@@ -1,0 +1,12 @@
+node_modules/
+dist/
+*.tsbuildinfo
+*.lockb
+bun.lock
+.DS_Store
+.npm-cache/
+test-consumer/
+test-cloudflare/
+test-all.sh
+.claude/
+references/
