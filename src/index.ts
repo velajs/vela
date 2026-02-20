@@ -1,20 +1,20 @@
 import 'reflect-metadata';
 
 // Factory & Application
-export { EdgestFactory } from './factory.js';
-export { EdgestApplication } from './application.js';
+export { EdgestFactory } from './factory';
+export { EdgestApplication } from './application';
 
 // DI Container
-export { Container, Injectable, Inject, InjectionToken } from './container/index.js';
+export { Container, Injectable, Inject, InjectionToken } from './container/index';
 export type {
   Type,
   Token,
   InjectableOptions,
   ProviderOptions,
-} from './container/index.js';
+} from './container/index';
 
 // Constants
-export { HttpMethod, ParamType, Scope } from './constants.js';
+export { HttpMethod, ParamType, Scope } from './constants';
 
 // HTTP Decorators
 export {
@@ -36,11 +36,11 @@ export {
   Header,
   Redirect,
   createParamDecorator,
-} from './http/index.js';
+} from './http/index';
 
 // Module
-export { Module } from './module/index.js';
-export type { ModuleOptions, DynamicModule } from './module/index.js';
+export { Module } from './module/index';
+export type { ModuleOptions, DynamicModule } from './module/index';
 
 // Pipeline Decorators
 export {
@@ -57,7 +57,7 @@ export {
   APP_INTERCEPTOR,
   APP_FILTER,
   APP_MIDDLEWARE,
-} from './pipeline/index.js';
+} from './pipeline/index';
 
 // Pipeline Types
 export type {
@@ -69,7 +69,7 @@ export type {
   PipeTransform,
   ExceptionFilter,
   ArgumentMetadata,
-} from './pipeline/index.js';
+} from './pipeline/index';
 
 // Component Types
 export type {
@@ -78,7 +78,7 @@ export type {
   PipeType,
   InterceptorType,
   FilterType,
-} from './registry/index.js';
+} from './registry/index';
 
 // Built-in Pipes
 export {
@@ -88,7 +88,7 @@ export {
   DefaultValuePipe,
   RequiredPipe,
   ZodValidationPipe,
-} from './pipeline/index.js';
+} from './pipeline/index';
 
 // Errors
 export {
@@ -111,7 +111,7 @@ export {
   BadGatewayException,
   ServiceUnavailableException,
   GatewayTimeoutException,
-} from './errors/index.js';
+} from './errors/index';
 
 // Lifecycle
 export type {
@@ -120,10 +120,10 @@ export type {
   OnModuleDestroy,
   OnApplicationShutdown,
   BeforeApplicationShutdown,
-} from './lifecycle/index.js';
+} from './lifecycle/index';
 
 // Registry (for advanced usage)
-export { MetadataRegistry } from './registry/index.js';
+export { MetadataRegistry } from './registry/index';
 
 // Component Manager (for advanced usage)
-export { ComponentManager } from './pipeline/index.js';
+export { ComponentManager } from './pipeline/index';

@@ -1,4 +1,4 @@
-export { ComponentManager } from './component.manager.js';
+export { ComponentManager } from './component.manager';
 export {
   UseMiddleware,
   UseGuards,
@@ -8,9 +8,9 @@ export {
   Catch,
   getCatchTypes,
   shouldFilterCatch,
-} from './decorators.js';
-export { SetMetadata, Reflector } from './reflector.js';
-export { APP_GUARD, APP_PIPE, APP_INTERCEPTOR, APP_FILTER, APP_MIDDLEWARE } from './tokens.js';
+} from './decorators';
+export { SetMetadata, Reflector } from './reflector';
+export { APP_GUARD, APP_PIPE, APP_INTERCEPTOR, APP_FILTER, APP_MIDDLEWARE } from './tokens';
 export {
   ParseIntPipe,
   ParseFloatPipe,
@@ -18,7 +18,7 @@ export {
   DefaultValuePipe,
   RequiredPipe,
   ZodValidationPipe,
-} from './pipes.js';
+} from './pipes';
 export type {
   ExecutionContext,
   CanActivate,
@@ -28,4 +28,4 @@ export type {
   PipeTransform,
   ExceptionFilter,
   ArgumentMetadata,
-} from './types.js';
+} from './types';

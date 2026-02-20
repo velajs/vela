@@ -1,5 +1,5 @@
-import { InjectionToken } from '../container/types.js';
-import type { CanActivate, ExceptionFilter, NestInterceptor, NestMiddleware, PipeTransform } from './types.js';
+import { InjectionToken } from '../container/types';
+import type { CanActivate, ExceptionFilter, NestInterceptor, NestMiddleware, PipeTransform } from './types';
 
 /**
  * Register global guards via module providers instead of app.useGlobalGuards().

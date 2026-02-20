@@ -16,12 +16,45 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "rm -rf dist && swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
     "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepare": "swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
+    "prepublishOnly": "bun run typecheck && bun run test"
+  },
+  "sideEffects": [
+    "./dist/index.js"
+  ],
+  "keywords": [
+    "edge",
+    "hono",
+    "nestjs",
+    "framework",
+    "decorators",
+    "dependency-injection",
+    "cloudflare-workers",
+    "deno",
+    "bun",
+    "typescript"
+  ],
+  "author": "ksh",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kshdotdev/edgest.git"
+  },
+  "homepage": "https://github.com/kshdotdev/edgest#readme",
+  "bugs": {
+    "url": "https://github.com/kshdotdev/edgest/issues"
+  },
+  "engines": {
+    "node": ">=20"
   },
   "dependencies": {
     "hono": "^4",
@@ -45,6 +78,8 @@
   },
   "devDependencies": {
     "@hono/zod-openapi": "^0.19",
+    "@swc/cli": "^0.8.0",
+    "@swc/core": "^1.15.11",
     "@types/bun": "latest",
     "hono-crud": "^0.4.4",
     "typescript": "^5",

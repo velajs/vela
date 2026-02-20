@@ -6,7 +6,7 @@ import type {
   ModuleOptions,
   ParameterMetadata,
   RouteDefinition,
-} from './types.js';
+} from './types';
 
 export interface ControllerOptions {
   version?: number | number[];

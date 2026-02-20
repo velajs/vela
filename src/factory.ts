@@ -1,16 +1,16 @@
-import { EdgestApplication } from './application.js';
-import { Container } from './container/container.js';
-import type { Type } from './container/types.js';
-import { RouteManager } from './http/route.manager.js';
-import { ModuleLoader } from './module/module-loader.js';
-import { ComponentManager } from './pipeline/component.manager.js';
+import { EdgestApplication } from './application';
+import { Container } from './container/container';
+import type { Type } from './container/types';
+import { RouteManager } from './http/route.manager';
+import { ModuleLoader } from './module/module-loader';
+import { ComponentManager } from './pipeline/component.manager';
 import {
   APP_GUARD,
   APP_PIPE,
   APP_INTERCEPTOR,
   APP_FILTER,
   APP_MIDDLEWARE,
-} from './pipeline/tokens.js';
+} from './pipeline/tokens';
 
 export const EdgestFactory = {
   async create(rootModule: Type): Promise<EdgestApplication> {

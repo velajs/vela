@@ -1,13 +1,13 @@
 import 'reflect-metadata';
-import { Scope } from '../constants.js';
+import { Scope } from '../constants';
 import {
   getConstructorDependencies,
   getInjectMetadata,
   getScope,
   isInjectable,
-} from './decorators.js';
-import type { ProviderOptions, ProviderRegistration, Token, Type } from './types.js';
-import { InjectionToken } from './types.js';
+} from './decorators';
+import type { ProviderOptions, ProviderRegistration, Token, Type } from './types';
+import { InjectionToken } from './types';
 
 export class Container {
   private providers = new Map<Token, ProviderRegistration>();

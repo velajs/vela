@@ -1,8 +1,8 @@
 import 'reflect-metadata';
-import { METADATA_KEYS } from '../constants.js';
-import { MetadataRegistry } from '../registry/metadata.registry.js';
-import type { Constructor } from '../registry/types.js';
-import type { ModuleMetadata, ModuleOptions } from './types.js';
+import { METADATA_KEYS } from '../constants';
+import { MetadataRegistry } from '../registry/metadata.registry';
+import type { Constructor } from '../registry/types';
+import type { ModuleMetadata, ModuleOptions } from './types';
 
 export function Module(options: ModuleOptions = {}): ClassDecorator {
   // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type

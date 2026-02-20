@@ -18,4 +18,4 @@ export {
   BadGatewayException,
   ServiceUnavailableException,
   GatewayTimeoutException,
-} from './http-exception.js';
+} from './http-exception';

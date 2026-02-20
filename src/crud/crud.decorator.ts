@@ -1,6 +1,6 @@
 import 'reflect-metadata';
-import { METADATA_KEYS } from '../constants.js';
-import type { CrudConfig } from './types.js';
+import { METADATA_KEYS } from '../constants';
+import type { CrudConfig } from './types';
 
 export function Crud(config: CrudConfig): ClassDecorator {
   return (target: object) => {

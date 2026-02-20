@@ -4,7 +4,7 @@ import type {
   NestInterceptor,
   NestMiddleware,
   PipeTransform,
-} from '../pipeline/types.js';
+} from '../pipeline/types';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Type<T = any> = new (...args: any[]) => T;

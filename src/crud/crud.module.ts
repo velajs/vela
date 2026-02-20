@@ -1,9 +1,9 @@
 import 'reflect-metadata';
-import { METADATA_KEYS, Scope } from '../constants.js';
-import type { Type } from '../container/types.js';
-import { ComponentManager } from '../pipeline/component.manager.js';
-import { MetadataRegistry } from '../registry/metadata.registry.js';
-import type { ResourceConfig, CrudConfig } from './types.js';
+import { METADATA_KEYS, Scope } from '../constants';
+import type { Type } from '../container/types';
+import { ComponentManager } from '../pipeline/component.manager';
+import { MetadataRegistry } from '../registry/metadata.registry';
+import type { ResourceConfig, CrudConfig } from './types';
 
 interface DynamicModule {
   module: Type;

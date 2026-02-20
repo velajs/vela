@@ -1,5 +1,5 @@
 import type { Context } from 'hono';
-import type { Type } from '../container/types.js';
+import type { Type } from '../container/types';
 
 export interface ExecutionContext {
   getClass(): Type;

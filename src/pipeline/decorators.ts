@@ -1,12 +1,12 @@
 import 'reflect-metadata';
-import { METADATA_KEYS } from '../constants.js';
-import type { Type } from '../container/types.js';
-import { ComponentManager } from './component.manager.js';
+import { METADATA_KEYS } from '../constants';
+import type { Type } from '../container/types';
+import { ComponentManager } from './component.manager';
 import type {
   ComponentType,
   ComponentTypeMap,
   Constructor,
-} from '../registry/types.js';
+} from '../registry/types';
 
 function UseComponent<T extends ComponentType>(type: T, ...components: ComponentTypeMap[T][]) {
   // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type

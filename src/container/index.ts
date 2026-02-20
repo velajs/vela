@@ -1,6 +1,6 @@
-export { Container } from './container.js';
-export { Injectable, Inject, isInjectable, getScope } from './decorators.js';
-export { InjectionToken } from './types.js';
+export { Container } from './container';
+export { Injectable, Inject, isInjectable, getScope } from './decorators';
+export { InjectionToken } from './types';
 export type {
   Type,
   Token,
@@ -9,4 +9,4 @@ export type {
   ProviderOptions,
   ProviderRegistration,
   InjectionTokenOptions,
-} from './types.js';
+} from './types';

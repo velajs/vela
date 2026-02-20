@@ -1,4 +1,4 @@
-export { MetadataRegistry } from './metadata.registry.js';
+export { MetadataRegistry } from './metadata.registry';
 export type {
   Type,
   Constructor,
@@ -15,4 +15,4 @@ export type {
   ModuleOptions,
   ProviderOptions,
   InjectionTokenLike,
-} from './types.js';
+} from './types';

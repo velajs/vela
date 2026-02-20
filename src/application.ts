@@ -1,15 +1,15 @@
 import type { Hono } from 'hono';
-import type { Container } from './container/container.js';
-import type { Token } from './container/types.js';
-import type { RouteManager } from './http/route.manager.js';
+import type { Container } from './container/container';
+import type { Token } from './container/types';
+import type { RouteManager } from './http/route.manager';
 import {
   hasBeforeApplicationShutdown,
   hasOnApplicationBootstrap,
   hasOnApplicationShutdown,
   hasOnModuleDestroy,
   hasOnModuleInit,
-} from './lifecycle/index.js';
-import type { FilterType, GuardType, InterceptorType, MiddlewareType, PipeType } from './registry/types.js';
+} from './lifecycle/index';
+import type { FilterType, GuardType, InterceptorType, MiddlewareType, PipeType } from './registry/types';
 
 export class EdgestApplication {
   private instances: unknown[] = [];

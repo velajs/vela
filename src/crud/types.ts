@@ -1,4 +1,4 @@
-import type { GuardType } from '../registry/types.js';
+import type { GuardType } from '../registry/types';
 
 export type CrudEndpointName =
   | 'create'

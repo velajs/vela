@@ -1,6 +1,6 @@
 import 'reflect-metadata';
-import { METADATA_KEYS, Scope } from '../constants.js';
-import type { InjectableOptions, InjectMetadata, Token } from './types.js';
+import { METADATA_KEYS, Scope } from '../constants';
+import type { InjectableOptions, InjectMetadata, Token } from './types';
 
 export function Injectable(options: InjectableOptions = {}): ClassDecorator {
   return (target: object) => {

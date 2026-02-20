@@ -1,5 +1,5 @@
-import { BadRequestException } from '../errors/http-exception.js';
-import type { ArgumentMetadata, PipeTransform } from './types.js';
+import { BadRequestException } from '../errors/http-exception';
+import type { ArgumentMetadata, PipeTransform } from './types';
 
 export class ParseIntPipe implements PipeTransform<string, number> {
   transform(value: string, metadata: ArgumentMetadata): number {

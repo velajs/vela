@@ -1,7 +1,7 @@
-import type { Container } from '../container/container.js';
-import type { InjectionToken, ProviderOptions, Token, Type } from '../container/types.js';
-import type { RouteManager } from '../http/route.manager.js';
-import { getModuleMetadata, isModule } from './decorators.js';
+import type { Container } from '../container/container';
+import type { InjectionToken, ProviderOptions, Token, Type } from '../container/types';
+import type { RouteManager } from '../http/route.manager';
+import { getModuleMetadata, isModule } from './decorators';
 
 interface DynamicModule {
   module: Type;

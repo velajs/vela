@@ -1,6 +1,6 @@
-import type { HttpMethod } from '../constants.js';
-import type { Type } from '../container/types.js';
-import type { PipeType } from '../registry/types.js';
+import type { HttpMethod } from '../constants';
+import type { Type } from '../container/types';
+import type { PipeType } from '../registry/types';
 
 export interface RouteMetadata {
   method: HttpMethod;

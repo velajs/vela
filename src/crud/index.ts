@@ -1,3 +1,3 @@
-export { Crud, getCrudConfig } from './crud.decorator.js';
-export { CrudModule } from './crud.module.js';
-export type { CrudConfig, ResourceConfig } from './types.js';
+export { Crud, getCrudConfig } from './crud.decorator';
+export { CrudModule } from './crud.module';
+export type { CrudConfig, ResourceConfig } from './types';

@@ -1,12 +1,12 @@
 import 'reflect-metadata';
 import { type Context, Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
-import { HttpMethod, ParamType } from '../constants.js';
-import type { Container } from '../container/container.js';
-import type { Type } from '../container/types.js';
-import { ForbiddenException, HttpException } from '../errors/http-exception.js';
-import { ComponentManager } from '../pipeline/component.manager.js';
-import { shouldFilterCatch } from '../pipeline/decorators.js';
+import { HttpMethod, ParamType } from '../constants';
+import type { Container } from '../container/container';
+import type { Type } from '../container/types';
+import { ForbiddenException, HttpException } from '../errors/http-exception';
+import { ComponentManager } from '../pipeline/component.manager';
+import { shouldFilterCatch } from '../pipeline/decorators';
 import type {
   ArgumentMetadata,
   CanActivate,
@@ -15,17 +15,17 @@ import type {
   NestInterceptor,
   NestMiddleware,
   PipeTransform,
-} from '../pipeline/types.js';
-import { MetadataRegistry } from '../registry/metadata.registry.js';
+} from '../pipeline/types';
+import { MetadataRegistry } from '../registry/metadata.registry';
 import type {
   FilterType,
   GuardType,
   InterceptorType,
   MiddlewareType,
   PipeType,
-} from '../registry/types.js';
-import { getHttpCode, getRedirect, getResponseHeaders } from './decorators.js';
-import type { ControllerRegistration, ParamMetadata, RouteMetadata } from './types.js';
+} from '../registry/types';
+import { getHttpCode, getRedirect, getResponseHeaders } from './decorators';
+import type { ControllerRegistration, ParamMetadata, RouteMetadata } from './types';
 
 interface RedirectOverride {
   url: string;
@@ -177,7 +177,7 @@ export class RouteManager {
     return app;
   }
 
-  private getCrudConfig(controller: Type): import('../crud/types.js').CrudConfig | undefined {
+  private getCrudConfig(controller: Type): import('../crud/types').CrudConfig | undefined {
     return Reflect.getMetadata('edgest:crud', controller);
   }
 
@@ -185,7 +185,7 @@ export class RouteManager {
     app: Hono,
     controller: Type,
     prefix: string,
-    crudConfig: import('../crud/types.js').CrudConfig,
+    crudConfig: import('../crud/types').CrudConfig,
   ): Promise<void> {
     // Dynamic import of optional peer dependencies
     let fromHono: Function;
@@ -210,7 +210,7 @@ export class RouteManager {
     }
 
     // Determine which CRUD operations to enable
-    const allEndpoints: import('../crud/types.js').CrudEndpointName[] =
+    const allEndpoints: import('../crud/types').CrudEndpointName[] =
       ['create', 'list', 'read', 'update', 'delete'];
 
     let enabledEndpoints = allEndpoints;
@@ -286,7 +286,7 @@ export class RouteManager {
     instance: object,
     route: RouteMetadata,
     controller: Type,
-    allParamMetadata: Map<string | symbol, import('../registry/types.js').ParameterMetadata[]>,
+    allParamMetadata: Map<string | symbol, import('../registry/types').ParameterMetadata[]>,
   ): (c: Context) => Response | Promise<Response> {
     const paramMetadata = (allParamMetadata.get(route.handlerName) || [])
       .sort((a, b) => a.index - b.index) as ParamMetadata[];

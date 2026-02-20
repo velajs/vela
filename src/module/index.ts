@@ -1,3 +1,3 @@
-export { Module, isModule, getModuleMetadata } from './decorators.js';
-export { ModuleLoader } from './module-loader.js';
-export type { ModuleOptions, ModuleMetadata, DynamicModule } from './types.js';
+export { Module, isModule, getModuleMetadata } from './decorators';
+export { ModuleLoader } from './module-loader';
+export type { ModuleOptions, ModuleMetadata, DynamicModule } from './types';

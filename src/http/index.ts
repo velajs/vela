@@ -1,4 +1,4 @@
-export { RouteManager } from './route.manager.js';
+export { RouteManager } from './route.manager';
 export {
   Controller,
   Version,
@@ -19,11 +19,11 @@ export {
   Redirect,
   createParamDecorator,
   isController,
-} from './decorators.js';
+} from './decorators';
 export type {
   RouteMetadata,
   ControllerMetadata,
   ControllerOptions,
   ParamMetadata,
   ControllerRegistration,
-} from './types.js';
+} from './types';

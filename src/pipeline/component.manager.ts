@@ -1,6 +1,6 @@
-import type { Container } from '../container/container.js';
-import type { Type } from '../container/types.js';
-import { MetadataRegistry } from '../registry/metadata.registry.js';
+import type { Container } from '../container/container';
+import type { Type } from '../container/types';
+import { MetadataRegistry } from '../registry/metadata.registry';
 import type {
   ComponentType,
   ComponentTypeMap,
@@ -10,7 +10,7 @@ import type {
   InterceptorType,
   MiddlewareType,
   PipeType,
-} from '../registry/types.js';
+} from '../registry/types';
 import type {
   ArgumentMetadata,
   CallHandler,
@@ -20,7 +20,7 @@ import type {
   NestInterceptor,
   NestMiddleware,
   PipeTransform,
-} from './types.js';
+} from './types';
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;

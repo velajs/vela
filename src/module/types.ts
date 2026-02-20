@@ -1,4 +1,4 @@
-import type { InjectionToken, ProviderOptions, Type } from '../container/types.js';
+import type { InjectionToken, ProviderOptions, Type } from '../container/types';
 
 export interface DynamicModule {
   module: Type;

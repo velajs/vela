@@ -1,9 +1,9 @@
 import 'reflect-metadata';
-import { HttpMethod, METADATA_KEYS, ParamType, Scope } from '../constants.js';
-import { MetadataRegistry } from '../registry/metadata.registry.js';
-import type { Constructor, PipeType } from '../registry/types.js';
-import type { ControllerOptions } from './types.js';
-import type { ExecutionContext } from '../pipeline/types.js';
+import { HttpMethod, METADATA_KEYS, ParamType, Scope } from '../constants';
+import { MetadataRegistry } from '../registry/metadata.registry';
+import type { Constructor, PipeType } from '../registry/types';
+import type { ControllerOptions } from './types';
+import type { ExecutionContext } from '../pipeline/types';
 
 function normalizePath(path: string): string {
   return path && !path.startsWith('/') ? `/${path}` : path;
@@ -205,7 +205,7 @@ export function createParamDecorator<TData = unknown>(
           factory: (_unused: unknown, ctx: unknown) => {
             const honoCtx = ctx as import('hono').Context;
             const execCtx: ExecutionContext = {
-              getClass: () => target.constructor as import('../container/types.js').Type,
+              getClass: () => target.constructor as import('../container/types').Type,
               getHandler: () => propertyKey,
               getContext: <T>() => honoCtx as T,
               getRequest: () => honoCtx.req.raw,
