@@ -1,5 +1,5 @@
 {
-  "name": "vela",
+  "name": "@velajs/core",
   "version": "0.1.0",
   "description": "NestJS-compatible framework for edge runtimes, powered by Hono",
   "type": "module",
