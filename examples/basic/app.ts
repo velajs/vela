@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import {
-  EdgestFactory,
+  VelaFactory,
   Controller,
   Get,
   Post,
@@ -124,7 +124,7 @@ class AppModule {}
 
 // --- Bootstrap ---
 
-const app = await EdgestFactory.create(AppModule);
+const app = await VelaFactory.create(AppModule);
 
 // Edge-compatible: export default with .fetch
 export default app;

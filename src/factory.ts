@@ -1,4 +1,4 @@
-import { EdgestApplication } from './application';
+import { VelaApplication } from './application';
 import { Container } from './container/container';
 import type { Type } from './container/types';
 import { RouteManager } from './http/route.manager';
@@ -12,8 +12,8 @@ import {
   APP_MIDDLEWARE,
 } from './pipeline/tokens';
 
-export const EdgestFactory = {
-  async create(rootModule: Type): Promise<EdgestApplication> {
+export const VelaFactory = {
+  async create(rootModule: Type): Promise<VelaApplication> {
     const container = new Container();
     const routeManager = new RouteManager(container);
     ComponentManager.init(container);
@@ -38,7 +38,7 @@ export const EdgestFactory = {
       routeManager.useGlobalMiddleware(container.resolve(APP_MIDDLEWARE));
     }
 
-    const app = new EdgestApplication(container, routeManager);
+    const app = new VelaApplication(container, routeManager);
     const instances = loader.resolveAllInstances();
     app.setInstances(instances);
 

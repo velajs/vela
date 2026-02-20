@@ -1,8 +1,8 @@
 import 'reflect-metadata';
 
 // Factory & Application
-export { EdgestFactory } from './factory';
-export { EdgestApplication } from './application';
+export { VelaFactory } from './factory';
+export { VelaApplication } from './application';
 
 // DI Container
 export { Container, Injectable, Inject, InjectionToken } from './container/index';

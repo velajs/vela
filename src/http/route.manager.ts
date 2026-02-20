@@ -178,7 +178,7 @@ export class RouteManager {
   }
 
   private getCrudConfig(controller: Type): import('../crud/types').CrudConfig | undefined {
-    return Reflect.getMetadata('edgest:crud', controller);
+    return Reflect.getMetadata('vela:crud', controller);
   }
 
   private async buildCrudRoutes(
@@ -229,7 +229,7 @@ export class RouteManager {
     // Generate endpoint classes via hono-crud
     const endpoints = defineEndpoints(endpointsDef, crudConfig.adapters);
 
-    // Convert edgest guards → Hono middleware for CRUD routes
+    // Convert vela guards → Hono middleware for CRUD routes
     const guardItems = ComponentManager.getComponents('guard', controller, '' as string | symbol);
     const guards = ComponentManager.resolveGuards(guardItems);
     const middlewares: Function[] = [];

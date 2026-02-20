@@ -1,5 +1,5 @@
 {
-  "name": "edgest",
+  "name": "vela",
   "version": "0.1.0",
   "description": "NestJS-compatible framework for edge runtimes, powered by Hono",
   "type": "module",
@@ -47,11 +47,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kshdotdev/edgest.git"
+    "url": "git+https://github.com/kshdotdev/vela.git"
   },
-  "homepage": "https://github.com/kshdotdev/edgest#readme",
+  "homepage": "https://github.com/kshdotdev/vela#readme",
   "bugs": {
-    "url": "https://github.com/kshdotdev/edgest/issues"
+    "url": "https://github.com/kshdotdev/vela/issues"
   },
   "engines": {
     "node": ">=20"

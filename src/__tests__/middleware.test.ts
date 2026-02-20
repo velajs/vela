@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { describe, it, expect, beforeEach } from 'bun:test';
 import {
-  EdgestFactory,
+  VelaFactory,
   Controller,
   Get,
   Module,
@@ -40,7 +40,7 @@ describe('Middleware', () => {
     @Module({ controllers: [MwController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/mw');
@@ -76,7 +76,7 @@ describe('Middleware', () => {
     @Module({ controllers: [RouteController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     calls.length = 0;
@@ -116,7 +116,7 @@ describe('Middleware', () => {
     @Module({ controllers: [GlobalMwController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     app.useGlobalMiddleware(new RequestIdMiddleware());
     await app.rebuild();
     const hono = app.getHonoApp();
@@ -160,7 +160,7 @@ describe('Middleware', () => {
     @Module({ controllers: [PipelineOrderController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     app.useGlobalGuards(new OrderGuard());
     const hono = app.getHonoApp();
 
@@ -188,7 +188,7 @@ describe('Middleware', () => {
     @Module({ controllers: [BlockedController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/blocked');
@@ -226,7 +226,7 @@ describe('Middleware', () => {
     @Module({ controllers: [ChainMwController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     order.length = 0;

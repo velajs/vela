@@ -62,7 +62,7 @@ export function Controller(prefixOrOptions?: string | ControllerOptions): ClassD
  * }
  * ```
  */
-const ROUTE_VERSION_PREFIX = 'edgest:route-version:';
+const ROUTE_VERSION_PREFIX = 'vela:route-version:';
 
 export function Version(version: number | number[]): MethodDecorator {
   return (target: object, propertyKey: string | symbol, _descriptor: PropertyDescriptor) => {
@@ -92,7 +92,7 @@ function createMethodDecorator(method: HttpMethod) {
       const normalizedPath = normalizePath(path);
 
       // Check for @Version metadata on this method
-      const versionKey = `edgest:route-version:${String(propertyKey)}`;
+      const versionKey = `vela:route-version:${String(propertyKey)}`;
       const version: number | number[] | undefined =
         Reflect.getMetadata(versionKey, target.constructor);
 

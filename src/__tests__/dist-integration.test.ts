@@ -7,68 +7,68 @@ import { describe, it, expect } from 'bun:test';
  */
 describe('dist/ integration', () => {
   it('should export all core symbols from the main entry point', async () => {
-    const edgest = await import('../../dist/index.js');
+    const vela = await import('../../dist/index.js');
 
     // Factory & Application
-    expect(edgest.EdgestFactory).toBeDefined();
-    expect(edgest.EdgestApplication).toBeDefined();
+    expect(vela.VelaFactory).toBeDefined();
+    expect(vela.VelaApplication).toBeDefined();
 
     // DI
-    expect(edgest.Container).toBeDefined();
-    expect(edgest.Injectable).toBeDefined();
-    expect(edgest.Inject).toBeDefined();
-    expect(edgest.InjectionToken).toBeDefined();
+    expect(vela.Container).toBeDefined();
+    expect(vela.Injectable).toBeDefined();
+    expect(vela.Inject).toBeDefined();
+    expect(vela.InjectionToken).toBeDefined();
 
     // Constants
-    expect(edgest.HttpMethod).toBeDefined();
-    expect(edgest.ParamType).toBeDefined();
-    expect(edgest.Scope).toBeDefined();
+    expect(vela.HttpMethod).toBeDefined();
+    expect(vela.ParamType).toBeDefined();
+    expect(vela.Scope).toBeDefined();
 
     // HTTP decorators
-    expect(edgest.Controller).toBeDefined();
-    expect(edgest.Get).toBeDefined();
-    expect(edgest.Post).toBeDefined();
-    expect(edgest.Put).toBeDefined();
-    expect(edgest.Patch).toBeDefined();
-    expect(edgest.Delete).toBeDefined();
-    expect(edgest.Param).toBeDefined();
-    expect(edgest.Query).toBeDefined();
-    expect(edgest.Body).toBeDefined();
-    expect(edgest.Headers).toBeDefined();
-    expect(edgest.Req).toBeDefined();
+    expect(vela.Controller).toBeDefined();
+    expect(vela.Get).toBeDefined();
+    expect(vela.Post).toBeDefined();
+    expect(vela.Put).toBeDefined();
+    expect(vela.Patch).toBeDefined();
+    expect(vela.Delete).toBeDefined();
+    expect(vela.Param).toBeDefined();
+    expect(vela.Query).toBeDefined();
+    expect(vela.Body).toBeDefined();
+    expect(vela.Headers).toBeDefined();
+    expect(vela.Req).toBeDefined();
 
     // Module
-    expect(edgest.Module).toBeDefined();
+    expect(vela.Module).toBeDefined();
 
     // Pipeline decorators
-    expect(edgest.UseMiddleware).toBeDefined();
-    expect(edgest.UseGuards).toBeDefined();
-    expect(edgest.UsePipes).toBeDefined();
-    expect(edgest.UseInterceptors).toBeDefined();
-    expect(edgest.UseFilters).toBeDefined();
-    expect(edgest.Catch).toBeDefined();
-    expect(edgest.SetMetadata).toBeDefined();
-    expect(edgest.Reflector).toBeDefined();
+    expect(vela.UseMiddleware).toBeDefined();
+    expect(vela.UseGuards).toBeDefined();
+    expect(vela.UsePipes).toBeDefined();
+    expect(vela.UseInterceptors).toBeDefined();
+    expect(vela.UseFilters).toBeDefined();
+    expect(vela.Catch).toBeDefined();
+    expect(vela.SetMetadata).toBeDefined();
+    expect(vela.Reflector).toBeDefined();
 
     // Built-in pipes
-    expect(edgest.ParseIntPipe).toBeDefined();
-    expect(edgest.ParseFloatPipe).toBeDefined();
-    expect(edgest.ParseBoolPipe).toBeDefined();
-    expect(edgest.DefaultValuePipe).toBeDefined();
-    expect(edgest.RequiredPipe).toBeDefined();
-    expect(edgest.ZodValidationPipe).toBeDefined();
+    expect(vela.ParseIntPipe).toBeDefined();
+    expect(vela.ParseFloatPipe).toBeDefined();
+    expect(vela.ParseBoolPipe).toBeDefined();
+    expect(vela.DefaultValuePipe).toBeDefined();
+    expect(vela.RequiredPipe).toBeDefined();
+    expect(vela.ZodValidationPipe).toBeDefined();
 
     // Errors
-    expect(edgest.HttpException).toBeDefined();
-    expect(edgest.BadRequestException).toBeDefined();
-    expect(edgest.UnauthorizedException).toBeDefined();
-    expect(edgest.ForbiddenException).toBeDefined();
-    expect(edgest.NotFoundException).toBeDefined();
-    expect(edgest.InternalServerErrorException).toBeDefined();
+    expect(vela.HttpException).toBeDefined();
+    expect(vela.BadRequestException).toBeDefined();
+    expect(vela.UnauthorizedException).toBeDefined();
+    expect(vela.ForbiddenException).toBeDefined();
+    expect(vela.NotFoundException).toBeDefined();
+    expect(vela.InternalServerErrorException).toBeDefined();
 
     // Advanced
-    expect(edgest.MetadataRegistry).toBeDefined();
-    expect(edgest.ComponentManager).toBeDefined();
+    expect(vela.MetadataRegistry).toBeDefined();
+    expect(vela.ComponentManager).toBeDefined();
   });
 
   it('should export CRUD symbols from the crud entry point', async () => {
@@ -81,7 +81,7 @@ describe('dist/ integration', () => {
 
   it('should create a working app from dist/', async () => {
     const {
-      EdgestFactory,
+      VelaFactory,
       Controller,
       Get,
       Injectable,
@@ -114,7 +114,7 @@ describe('dist/ integration', () => {
     })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/hello');

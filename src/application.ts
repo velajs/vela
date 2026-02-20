@@ -11,7 +11,7 @@ import {
 } from './lifecycle/index';
 import type { FilterType, GuardType, InterceptorType, MiddlewareType, PipeType } from './registry/types';
 
-export class EdgestApplication {
+export class VelaApplication {
   private instances: unknown[] = [];
   private honoApp: Hono | null = null;
   private routesBuilt = false;
@@ -21,7 +21,7 @@ export class EdgestApplication {
     private readonly routeManager: RouteManager,
   ) {}
 
-  /** Pre-build routes (handles async CRUD imports). Called by EdgestFactory. */
+  /** Pre-build routes (handles async CRUD imports). Called by VelaFactory. */
   async initRoutes(): Promise<void> {
     this.honoApp = await this.routeManager.build();
     this.routesBuilt = true;
@@ -39,7 +39,7 @@ export class EdgestApplication {
   private getApp(): Hono {
     if (!this.honoApp) {
       throw new Error(
-        'Routes not built. This should not happen — EdgestFactory.create() builds routes automatically.',
+        'Routes not built. This should not happen — VelaFactory.create() builds routes automatically.',
       );
     }
     return this.honoApp;

@@ -1,25 +1,25 @@
 export const METADATA_KEYS = {
   // DI
-  INJECTABLE: 'edgest:injectable',
-  INJECT: 'edgest:inject',
-  SCOPE: 'edgest:scope',
+  INJECTABLE: 'vela:injectable',
+  INJECT: 'vela:inject',
+  SCOPE: 'vela:scope',
 
   // Module
-  MODULE: 'edgest:module',
+  MODULE: 'vela:module',
 
   // HTTP
-  CONTROLLER: 'edgest:controller',
-  ROUTES: 'edgest:routes',
-  PARAMS: 'edgest:params',
-  HTTP_CODE: 'edgest:http-code',
-  RESPONSE_HEADERS: 'edgest:response-headers',
-  REDIRECT: 'edgest:redirect',
+  CONTROLLER: 'vela:controller',
+  ROUTES: 'vela:routes',
+  PARAMS: 'vela:params',
+  HTTP_CODE: 'vela:http-code',
+  RESPONSE_HEADERS: 'vela:response-headers',
+  REDIRECT: 'vela:redirect',
 
   // Pipeline
-  CATCH: 'edgest:catch',
+  CATCH: 'vela:catch',
 
   // CRUD
-  CRUD: 'edgest:crud',
+  CRUD: 'vela:crud',
 } as const;
 
 export enum HttpMethod {

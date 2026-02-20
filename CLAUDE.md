@@ -1,4 +1,4 @@
-# Edgest Framework
+# Vela Framework
 
 NestJS-compatible framework for edge runtimes, powered by Hono.
 

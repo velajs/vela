@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { describe, it, expect, beforeEach } from 'bun:test';
 import {
-  EdgestFactory,
+  VelaFactory,
   Controller,
   Get,
   Post,
@@ -52,7 +52,7 @@ describe('@HttpCode', () => {
     @Module({ controllers: [ItemController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/items', {
@@ -77,7 +77,7 @@ describe('@HttpCode', () => {
     @Module({ controllers: [ActionController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/actions/accept', { method: 'POST' });
@@ -97,7 +97,7 @@ describe('@HttpCode', () => {
     @Module({ controllers: [ResourceController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/resources/1', { method: 'DELETE' });
@@ -123,7 +123,7 @@ describe('@Header', () => {
     @Module({ controllers: [CachedController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/cached');
@@ -137,7 +137,7 @@ describe('@Header', () => {
     class MultiHeaderController {
       @Get()
       @Header('X-Request-Id', 'abc-123')
-      @Header('X-Powered-By', 'edgest')
+      @Header('X-Powered-By', 'vela')
       @Header('Cache-Control', 'no-store')
       getData() {
         return { ok: true };
@@ -147,13 +147,13 @@ describe('@Header', () => {
     @Module({ controllers: [MultiHeaderController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/multi-header');
     expect(res.status).toBe(200);
     expect(res.headers.get('X-Request-Id')).toBe('abc-123');
-    expect(res.headers.get('X-Powered-By')).toBe('edgest');
+    expect(res.headers.get('X-Powered-By')).toBe('vela');
     expect(res.headers.get('Cache-Control')).toBe('no-store');
   });
 
@@ -171,7 +171,7 @@ describe('@Header', () => {
     @Module({ controllers: [ComboController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/combo', { method: 'POST' });
@@ -196,7 +196,7 @@ describe('@Redirect', () => {
     @Module({ controllers: [OldController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/old', { redirect: 'manual' });
@@ -215,7 +215,7 @@ describe('@Redirect', () => {
     @Module({ controllers: [TempController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/temp', { redirect: 'manual' });
@@ -236,7 +236,7 @@ describe('@Redirect', () => {
     @Module({ controllers: [DynamicController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     // Without override — default
@@ -261,7 +261,7 @@ describe('@Redirect', () => {
     @Module({ controllers: [StatusOverrideController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res1 = await hono.request('/status-override', { redirect: 'manual' });
@@ -304,7 +304,7 @@ describe('APP_* tokens', () => {
     })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res1 = await hono.request('/guarded');
@@ -342,7 +342,7 @@ describe('APP_* tokens', () => {
     })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/intercepted');
@@ -376,7 +376,7 @@ describe('APP_* tokens', () => {
     })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     // Route params don't have leading/trailing spaces, but the pipe still runs

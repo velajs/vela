@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { describe, it, expect, beforeEach, beforeAll } from 'bun:test';
 import {
-  EdgestFactory,
+  VelaFactory,
   Controller,
   Get,
   Module,
@@ -76,7 +76,7 @@ describe('CRUD integration', () => {
     @Module({ controllers: [UserController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     // Test custom route still works
@@ -143,7 +143,7 @@ describe('CRUD integration', () => {
     @Module({ controllers: [ItemController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     // Without auth — 403

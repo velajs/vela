@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 
-const SET_METADATA_KEY = 'edgest:metadata';
+const SET_METADATA_KEY = 'vela:metadata';
 
 /**
  * Decorator that attaches custom metadata to a class or method.

@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { describe, it, expect, beforeEach } from 'bun:test';
 import {
-  EdgestFactory,
+  VelaFactory,
   Controller,
   Get,
   Module,
@@ -47,7 +47,7 @@ describe('SetMetadata + Reflector', () => {
     @Module({ controllers: [AdminController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     // No role — 403
@@ -109,7 +109,7 @@ describe('SetMetadata + Reflector', () => {
     @Module({ controllers: [ApiController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     // /api/private — needs admin role (from class)

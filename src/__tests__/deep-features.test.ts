@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { describe, it, expect, beforeEach } from 'bun:test';
 import {
-  EdgestFactory,
+  VelaFactory,
   Controller,
   Version,
   Get,
@@ -42,7 +42,7 @@ describe('Versioned routes', () => {
     @Module({ controllers: [UserV1Controller] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/v1/users');
@@ -70,7 +70,7 @@ describe('Versioned routes', () => {
     @Module({ controllers: [ItemController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res1 = await hono.request('/v1/items');
@@ -102,7 +102,7 @@ describe('Versioned routes', () => {
     @Module({ controllers: [DocController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     // Default version 1
@@ -132,7 +132,7 @@ describe('Versioned routes', () => {
     @Module({ controllers: [PlainController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/plain');
@@ -166,7 +166,7 @@ describe('Global prefix', () => {
     @Module({ controllers: [UserController, PostController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     app.setGlobalPrefix('/api');
     await app.rebuild();
     const hono = app.getHonoApp();
@@ -196,7 +196,7 @@ describe('Global prefix', () => {
     @Module({ controllers: [UserController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     app.setGlobalPrefix('/api');
     await app.rebuild();
     const hono = app.getHonoApp();
@@ -235,7 +235,7 @@ describe('createParamDecorator', () => {
     @Module({ controllers: [ProfileController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res1 = await hono.request('/profile');
@@ -270,7 +270,7 @@ describe('createParamDecorator', () => {
     @Module({ controllers: [HeaderController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/headers', {
@@ -305,7 +305,7 @@ describe('createParamDecorator', () => {
     @Module({ controllers: [TypedController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/typed/42');
@@ -337,7 +337,7 @@ describe('createParamDecorator', () => {
     @Module({ controllers: [CtxTestController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     await hono.request('/ctx-test');

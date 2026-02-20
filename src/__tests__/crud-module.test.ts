@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { describe, it, expect, beforeEach, beforeAll } from 'bun:test';
 import {
-  EdgestFactory,
+  VelaFactory,
   Controller,
   Get,
   Module,
@@ -68,7 +68,7 @@ describe('CrudModule.forResource()', () => {
     })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     // Create a post
@@ -139,7 +139,7 @@ describe('CrudModule.forResource()', () => {
     })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     // Without API key — 403
@@ -206,7 +206,7 @@ describe('CrudModule.forResource()', () => {
     })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     // Health endpoint works
@@ -254,7 +254,7 @@ describe('CrudModule.forResource()', () => {
     @Module({ imports: [itemCrud as any] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     // Create works

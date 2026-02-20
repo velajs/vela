@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { describe, it, expect, beforeEach } from 'bun:test';
-import { EdgestFactory, Module, Injectable, MetadataRegistry } from '../index.js';
+import { VelaFactory, Module, Injectable, MetadataRegistry } from '../index.js';
 
 beforeEach(() => {
   MetadataRegistry.clear();
@@ -22,7 +22,7 @@ describe('Module circular detection', () => {
     // We need to re-set the module options in the registry
     MetadataRegistry.setModuleOptions(ModuleB, { imports: [ModuleA] });
 
-    await expect(EdgestFactory.create(ModuleA)).rejects.toThrow(
+    await expect(VelaFactory.create(ModuleA)).rejects.toThrow(
       /Circular module dependency detected/,
     );
   });
@@ -40,7 +40,7 @@ describe('Module circular detection', () => {
     // Close the cycle: C imports A
     MetadataRegistry.setModuleOptions(ModuleC, { imports: [ModuleA] });
 
-    await expect(EdgestFactory.create(ModuleA)).rejects.toThrow(
+    await expect(VelaFactory.create(ModuleA)).rejects.toThrow(
       /Circular module dependency detected/,
     );
   });
@@ -51,7 +51,7 @@ describe('Module circular detection', () => {
     @Module({ imports: [NotAModule] })
     class AppModule {}
 
-    await expect(EdgestFactory.create(AppModule)).rejects.toThrow(
+    await expect(VelaFactory.create(AppModule)).rejects.toThrow(
       /NotAModule is not a module/,
     );
   });
@@ -75,7 +75,7 @@ describe('Module circular detection', () => {
     class AppModule {}
 
     // Should not throw — D is processed once and cached
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const shared = app.get(SharedService);
     expect(shared.value).toBe('shared');
   });
@@ -93,7 +93,7 @@ describe('Module circular detection', () => {
     @Module({ imports: [SharedModule, SharedModule] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const svc = app.get(CountService);
     expect(svc.count).toBe(0);
   });

@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { describe, it, expect, beforeEach } from 'bun:test';
 import {
-  EdgestFactory,
+  VelaFactory,
   Controller,
   Get,
   Post,
@@ -66,7 +66,7 @@ describe('@Catch type matching', () => {
     @Module({ controllers: [CatchTestController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     // NotFoundException — caught by NotFoundFilter
@@ -115,7 +115,7 @@ describe('@Catch type matching', () => {
     @Module({ controllers: [MultiCatchController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     // BadRequest — caught
@@ -160,7 +160,7 @@ describe('@Catch type matching', () => {
     @Module({ controllers: [CatchAllController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res1 = await hono.request('/catch-all/http');
@@ -205,7 +205,7 @@ describe('@Catch type matching', () => {
     @Module({ controllers: [PriorityController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     // Method-level filter runs first
@@ -254,7 +254,7 @@ describe('Pipe ordering', () => {
     @Module({ controllers: [PipeOrderController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     order.length = 0;
@@ -289,7 +289,7 @@ describe('Pipe ordering', () => {
     @Module({ controllers: [FullPipeOrderController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     app.useGlobalPipes(trackingPipe('global'));
     const hono = app.getHonoApp();
 
@@ -324,7 +324,7 @@ describe('Pipe ordering', () => {
     @Module({ controllers: [ChainPipeController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/chain-pipes/hello');
@@ -354,7 +354,7 @@ describe('Pipe ordering', () => {
     @Module({ controllers: [MixedPipeController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     sharedRan.length = 0;

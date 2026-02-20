@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { describe, it, expect, beforeEach } from 'bun:test';
 import {
-  EdgestFactory,
+  VelaFactory,
   Controller,
   Get,
   Post,
@@ -83,7 +83,7 @@ describe('Basic app', () => {
     })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     // Test GET /greetings
@@ -109,7 +109,7 @@ describe('Basic app', () => {
     @Module({ controllers: [ItemController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/items', {
@@ -133,7 +133,7 @@ describe('Basic app', () => {
     @Module({ controllers: [SearchController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/search?q=hello&page=2');
@@ -153,7 +153,7 @@ describe('Basic app', () => {
     @Module({ controllers: [AuthController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/auth', {
@@ -175,7 +175,7 @@ describe('Basic app', () => {
     @Module({ controllers: [RawController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/raw');
@@ -196,7 +196,7 @@ describe('Basic app', () => {
     @Module({ controllers: [EmptyController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/empty/1', { method: 'DELETE' });
@@ -215,7 +215,7 @@ describe('Basic app', () => {
     @Module({ controllers: [TextController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/text');
@@ -262,7 +262,7 @@ describe('DI Container', () => {
     })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/users/42');
@@ -304,7 +304,7 @@ describe('DI Container', () => {
     })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/api/url');
@@ -324,7 +324,7 @@ describe('DI Container', () => {
     @Module({ providers: [CounterService] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const counter = app.get(CounterService);
     expect(counter.increment()).toBe(1);
     expect(counter.increment()).toBe(2);
@@ -360,7 +360,7 @@ describe('Guards', () => {
     @Module({ controllers: [ProtectedController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     // Without auth — 403
@@ -400,7 +400,7 @@ describe('Guards', () => {
     @Module({ controllers: [ItemController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     // GET works without guard
@@ -438,7 +438,7 @@ describe('Pipes', () => {
     @Module({ controllers: [UserController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/users/42');
@@ -462,7 +462,7 @@ describe('Pipes', () => {
     @Module({ controllers: [ListController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/list');
@@ -500,7 +500,7 @@ describe('Interceptors', () => {
     @Module({ controllers: [WrappedController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/wrapped');
@@ -542,7 +542,7 @@ describe('Interceptors', () => {
     @Module({ controllers: [ChainController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     await hono.request('/chain');
@@ -585,7 +585,7 @@ describe('Exception Filters', () => {
     @Module({ controllers: [FilteredController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/filtered/99');
@@ -617,7 +617,7 @@ describe('Exception Filters', () => {
     @Module({ controllers: [ErrorController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/errors');
@@ -666,7 +666,7 @@ describe('Module system', () => {
     })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/feature');
@@ -696,7 +696,7 @@ describe('Lifecycle hooks', () => {
     @Module({ providers: [StartupService] })
     class AppModule {}
 
-    await EdgestFactory.create(AppModule);
+    await VelaFactory.create(AppModule);
 
     expect(calls).toEqual(['onModuleInit', 'onApplicationBootstrap']);
   });
@@ -726,7 +726,7 @@ describe('Global components', () => {
     @Module({ controllers: [DataController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     app.useGlobalGuards(new GlobalGuard());
     const hono = app.getHonoApp();
 
@@ -759,7 +759,7 @@ describe('Global components', () => {
     @Module({ controllers: [TimedController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     app.useGlobalInterceptors(new TimingInterceptor());
     const hono = app.getHonoApp();
 
@@ -795,7 +795,7 @@ describe('HttpException', () => {
     @Module({ controllers: [ExceptionController] })
     class AppModule {}
 
-    const app = await EdgestFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
     const res1 = await hono.request('/exceptions/not-found');
