@@ -1,5 +1,5 @@
 {
-  "name": "@velajs/core",
+  "name": "@velajs/vela",
   "version": "0.1.0",
   "description": "NestJS-compatible framework for edge runtimes, powered by Hono",
   "type": "module",
@@ -9,10 +9,6 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./crud": {
-      "types": "./dist/crud/index.d.ts",
-      "import": "./dist/crud/index.js"
     }
   },
   "files": [
@@ -47,11 +43,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/velajs/core.git"
+    "url": "git+https://github.com/velajs/vela.git"
   },
-  "homepage": "https://github.com/velajs/core#readme",
+  "homepage": "https://github.com/velajs/vela#readme",
   "bugs": {
-    "url": "https://github.com/velajs/core/issues"
+    "url": "https://github.com/velajs/vela/issues"
   },
   "engines": {
     "node": ">=20"
@@ -61,28 +57,17 @@
     "reflect-metadata": "^0.2"
   },
   "peerDependencies": {
-    "hono-crud": ">=0.4.0",
-    "@hono/zod-openapi": ">=0.9",
-    "zod": ">=3"
+    "@velajs/crud": ">=0.1.0"
   },
   "peerDependenciesMeta": {
-    "hono-crud": {
-      "optional": true
-    },
-    "@hono/zod-openapi": {
-      "optional": true
-    },
-    "zod": {
+    "@velajs/crud": {
       "optional": true
     }
   },
   "devDependencies": {
-    "@hono/zod-openapi": "^0.19",
     "@swc/cli": "^0.8.0",
     "@swc/core": "^1.15.11",
     "@types/bun": "latest",
-    "hono-crud": "^0.4.4",
-    "typescript": "^5",
-    "zod": "^4"
+    "typescript": "^5"
   }
 }

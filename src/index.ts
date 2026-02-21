@@ -14,7 +14,7 @@ export type {
 } from './container/index';
 
 // Constants
-export { HttpMethod, ParamType, Scope } from './constants';
+export { METADATA_KEYS, HttpMethod, ParamType, Scope } from './constants';
 
 // HTTP Decorators
 export {
@@ -73,6 +73,7 @@ export type {
 
 // Component Types
 export type {
+  Constructor,
   MiddlewareType,
   GuardType,
   PipeType,

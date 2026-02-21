@@ -1,20 +1,20 @@
-# vela
+# @velajs/vela
 
 NestJS-compatible framework for edge runtimes, powered by [Hono](https://hono.dev).
 
 ## Install
 
 ```bash
-npm install vela
+npm install @velajs/vela
 # or
-bun add vela
+bun add @velajs/vela
 ```
 
 ## Quick Start
 
 ```typescript
 import 'reflect-metadata';
-import { VelaFactory, Controller, Get, Module, Injectable } from 'vela';
+import { VelaFactory, Controller, Get, Module, Injectable } from '@velajs/vela';
 
 @Injectable()
 class AppService {
@@ -58,11 +58,11 @@ export default app; // Works on Cloudflare Workers, Deno, Bun, etc.
 - **Route versioning** — `@Controller({ version: '1' })` + `@Version('2')`
 - **Global prefix** — `app.setGlobalPrefix('/api')`
 - **Lifecycle hooks** — `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`
-- **CRUD integration** — Optional `hono-crud` support via `vela/crud`
+- **CRUD integration** — Optional [`@velajs/crud`](https://github.com/velajs/crud) package
 
 ## Edge Runtime Compatibility
 
-vela runs on any runtime that supports the Web Standards API:
+Vela runs on any runtime that supports the Web Standards API:
 
 - Cloudflare Workers
 - Deno Deploy
@@ -75,22 +75,10 @@ No Node.js-specific APIs (`node:fs`, `Buffer`, `process`) are used.
 ## CRUD Module (Optional)
 
 ```bash
-npm install hono-crud @hono/zod-openapi zod
+bun add @velajs/crud hono-crud @hono/zod-openapi zod
 ```
 
-```typescript
-import { CrudModule } from 'vela/crud';
-
-@Module({
-  imports: [
-    CrudModule.forResource({
-      resource: 'todo',
-      schema: todoSchema,
-    }),
-  ],
-})
-class AppModule {}
-```
+See [`@velajs/crud`](https://github.com/velajs/crud) for documentation.
 
 ## License
 

@@ -20,6 +20,7 @@ describe('dist/ integration', () => {
     expect(vela.InjectionToken).toBeDefined();
 
     // Constants
+    expect(vela.METADATA_KEYS).toBeDefined();
     expect(vela.HttpMethod).toBeDefined();
     expect(vela.ParamType).toBeDefined();
     expect(vela.Scope).toBeDefined();
@@ -69,14 +70,6 @@ describe('dist/ integration', () => {
     // Advanced
     expect(vela.MetadataRegistry).toBeDefined();
     expect(vela.ComponentManager).toBeDefined();
-  });
-
-  it('should export CRUD symbols from the crud entry point', async () => {
-    const crud = await import('../../dist/crud/index.js');
-
-    expect(crud.Crud).toBeDefined();
-    expect(crud.getCrudConfig).toBeDefined();
-    expect(crud.CrudModule).toBeDefined();
   });
 
   it('should create a working app from dist/', async () => {
