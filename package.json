@@ -47,11 +47,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kshdotdev/vela.git"
+    "url": "git+https://github.com/velajs/core.git"
   },
-  "homepage": "https://github.com/kshdotdev/vela#readme",
+  "homepage": "https://github.com/velajs/core#readme",
   "bugs": {
-    "url": "https://github.com/kshdotdev/vela/issues"
+    "url": "https://github.com/velajs/core/issues"
   },
   "engines": {
     "node": ">=20"
