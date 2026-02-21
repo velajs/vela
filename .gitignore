@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.tsbuildinfo
+*.lockb
+bun.lock
+.DS_Store
+.npm-cache/
+.claude/

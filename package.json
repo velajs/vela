@@ -1,0 +1,68 @@
+{
+  "name": "@velajs/crud",
+  "version": "0.1.0",
+  "description": "CRUD module for Vela framework",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "prepare": "swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly"
+  },
+  "sideEffects": false,
+  "keywords": [
+    "vela",
+    "crud",
+    "hono",
+    "hono-crud",
+    "decorators",
+    "edge",
+    "framework"
+  ],
+  "author": "ksh",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/velajs/crud.git"
+  },
+  "homepage": "https://github.com/velajs/crud#readme",
+  "bugs": {
+    "url": "https://github.com/velajs/crud/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "peerDependencies": {
+    "@velajs/vela": ">=0.1.0",
+    "hono": ">=4",
+    "hono-crud": ">=0.4.0",
+    "@hono/zod-openapi": ">=0.9",
+    "zod": ">=3"
+  },
+  "devDependencies": {
+    "@velajs/vela": "file:../../kshdotdev/edgest",
+    "@hono/zod-openapi": "^0.19",
+    "@swc/cli": "^0.8.0",
+    "@swc/core": "^1.15.11",
+    "@types/bun": "latest",
+    "hono": "^4",
+    "hono-crud": "^0.4.4",
+    "reflect-metadata": "^0.2",
+    "typescript": "^5",
+    "zod": "^4"
+  }
+}
