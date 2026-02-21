@@ -14,14 +14,14 @@ import {
   UseInterceptors,
   ParseIntPipe,
   NotFoundException,
-} from '../../src/index.js';
+} from '@velajs/vela';
 import type {
   CanActivate,
   ExecutionContext,
   NestInterceptor,
   CallHandler,
   OnModuleInit,
-} from '../../src/index.js';
+} from '@velajs/vela';
 
 // --- Services ---
 
