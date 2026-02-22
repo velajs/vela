@@ -1,6 +1,6 @@
 # @velajs/cloudflare
 
-Cloudflare Workers integration for the [Vela](https://github.com/velajs/vela) framework. NestJS-style per-service modules for KV, D1, R2, and Queues.
+Cloudflare Workers integration for the [Vela](https://github.com/velajs/vela) framework. NestJS-style per-service modules for KV, D1, R2, Queues, Durable Objects, Workers AI, Vectorize, and Hyperdrive.
 
 ## Install
 
@@ -77,6 +77,10 @@ Each module follows the same pattern: `XModule.forRoot({ binding: 'NAME' })` ret
 | `D1Module` | `D1Service` | D1 Database |
 | `R2Module` | `R2Service` | R2 Bucket |
 | `QueueModule` | `QueueService` | Queue (producer) |
+| `DurableObjectModule` | `DurableObjectService` | Durable Object Namespace |
+| `AIModule` | `AIService` | Workers AI |
+| `VectorizeModule` | `VectorizeService` | Vectorize Index |
+| `HyperdriveModule` | `HyperdriveService` | Hyperdrive |
 
 ### KVModule
 
@@ -155,6 +159,94 @@ class NotificationService {
 
   async sendEmail(to: string, subject: string) {
     await this.queue.send({ to, subject });
+  }
+}
+```
+
+### DurableObjectModule
+
+```ts
+import { DurableObjectModule } from '@velajs/cloudflare';
+import type { DurableObjectService } from '@velajs/cloudflare';
+
+@Module({ imports: [DurableObjectModule.forRoot({ binding: 'COUNTER' })] })
+class AppModule {}
+
+@Injectable()
+class CounterService {
+  constructor(private doNs: DurableObjectService) {}
+
+  async increment(name: string) {
+    const id = this.doNs.idFromName(name);
+    const stub = this.doNs.get(id);
+    return (stub as any).fetch('/increment');
+  }
+}
+```
+
+### AIModule
+
+```ts
+import { AIModule } from '@velajs/cloudflare';
+import type { AIService } from '@velajs/cloudflare';
+
+@Module({ imports: [AIModule.forRoot({ binding: 'AI' })] })
+class AppModule {}
+
+@Injectable()
+class ChatService {
+  constructor(private ai: AIService) {}
+
+  async chat(prompt: string) {
+    return this.ai.run('@cf/meta/llama-3.1-8b-instruct', {
+      messages: [{ role: 'user', content: prompt }],
+    });
+  }
+}
+```
+
+### VectorizeModule
+
+```ts
+import { VectorizeModule } from '@velajs/cloudflare';
+import type { VectorizeService } from '@velajs/cloudflare';
+
+@Module({ imports: [VectorizeModule.forRoot({ binding: 'EMBEDDINGS' })] })
+class AppModule {}
+
+@Injectable()
+class SearchService {
+  constructor(private vectorize: VectorizeService) {}
+
+  async search(vector: number[]) {
+    return this.vectorize.query(vector, { topK: 10 });
+  }
+
+  async addVectors(vectors: unknown[]) {
+    return this.vectorize.upsert(vectors);
+  }
+}
+```
+
+### HyperdriveModule
+
+```ts
+import { HyperdriveModule } from '@velajs/cloudflare';
+import type { HyperdriveService } from '@velajs/cloudflare';
+
+@Module({ imports: [HyperdriveModule.forRoot({ binding: 'POSTGRES' })] })
+class AppModule {}
+
+@Injectable()
+class DbService {
+  constructor(private hd: HyperdriveService) {}
+
+  getConnectionString() {
+    return this.hd.connectionString;
+  }
+
+  getConfig() {
+    return { host: this.hd.host, port: this.hd.port, database: this.hd.database };
   }
 }
 ```
@@ -256,6 +348,10 @@ const rawKV = kvService.namespace;     // KVNamespace
 const rawD1 = d1Service.database;      // D1Database
 const rawR2 = r2Service.bucket;        // R2Bucket
 const rawQueue = queueService.queue;   // Queue
+const rawDO = doService.namespace;     // DurableObjectNamespace
+const rawAI = aiService.binding;       // Ai
+const rawVec = vecService.index;       // VectorizeIndex
+const rawHD = hdService.binding;       // Hyperdrive
 ```
 
 ## How It Works
