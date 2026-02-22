@@ -49,6 +49,14 @@ export class VelaApplication {
     return this.getApp().fetch;
   }
 
+  getInstances(): unknown[] {
+    return this.instances;
+  }
+
+  getContainer(): Container {
+    return this.container;
+  }
+
   setInstances(instances: unknown[]): void {
     this.instances = instances;
   }
