@@ -63,6 +63,7 @@
       "optional": true
     }
   },
+  "packageManager": "pnpm@10.20.0",
   "pnpm": {
     "onlyBuiltDependencies": ["@swc/core", "esbuild"]
   },
