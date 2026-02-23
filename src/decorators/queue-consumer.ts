@@ -1,4 +1,4 @@
-import 'reflect-metadata';
+import { defineMetadata, getMetadata } from '@velajs/vela';
 
 const QUEUE_CONSUMER_METADATA_KEY = 'cloudflare:queue-consumer';
 
@@ -26,15 +26,14 @@ export interface QueueConsumerMetadata {
  */
 export function QueueConsumer(queueName: string): MethodDecorator {
   return (target: object, propertyKey: string | symbol, _descriptor: PropertyDescriptor) => {
-    // Use getOwnMetadata to avoid inheriting metadata from parent classes
     const existing: QueueConsumerMetadata[] =
-      Reflect.getOwnMetadata(QUEUE_CONSUMER_METADATA_KEY, target.constructor) ?? [];
+      (getMetadata(QUEUE_CONSUMER_METADATA_KEY, target.constructor) as QueueConsumerMetadata[]) ?? [];
     existing.push({ queueName, methodName: String(propertyKey) });
-    Reflect.defineMetadata(QUEUE_CONSUMER_METADATA_KEY, existing, target.constructor);
+    defineMetadata(QUEUE_CONSUMER_METADATA_KEY, existing, target.constructor);
   };
 }
 
 export function getQueueConsumerMetadata(target: object): QueueConsumerMetadata[] {
   const ctor = target.constructor ?? target;
-  return Reflect.getOwnMetadata(QUEUE_CONSUMER_METADATA_KEY, ctor) ?? [];
+  return (getMetadata(QUEUE_CONSUMER_METADATA_KEY, ctor) as QueueConsumerMetadata[]) ?? [];
 }

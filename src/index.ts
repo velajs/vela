@@ -1,5 +1,3 @@
-import 'reflect-metadata';
-
 // Factory & Application
 export { CloudflareFactory } from './cloudflare-factory';
 export { CloudflareApplication } from './cloudflare-application';

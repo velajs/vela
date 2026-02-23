@@ -1570,7 +1570,6 @@ snapshots:
   '@velajs/vela@file:../vela':
     dependencies:
       hono: 4.12.1
-      reflect-metadata: 0.2.2
 
   '@vitest/expect@4.0.18':
     dependencies:

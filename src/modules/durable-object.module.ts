@@ -1,5 +1,4 @@
-import 'reflect-metadata';
-import { METADATA_KEYS, MetadataRegistry } from '@velajs/vela';
+import { MetadataRegistry } from '@velajs/vela';
 import type { Type, DynamicModule } from '@velajs/vela';
 import { BindingRef } from '../binding-ref';
 import { DO_BINDING_REF, bindingsRegistry } from '../tokens';
@@ -14,7 +13,6 @@ export class DurableObjectModule {
     Object.defineProperty(moduleClass, 'name', {
       value: `DurableObjectModule_${options.binding}`,
     });
-    Reflect.defineMetadata(METADATA_KEYS.MODULE, true, moduleClass);
     MetadataRegistry.setModuleOptions(moduleClass as unknown as Type, {
       exports: [DurableObjectService, DO_BINDING_REF],
     });
