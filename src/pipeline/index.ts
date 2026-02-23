@@ -10,6 +10,7 @@ export {
   shouldFilterCatch,
 } from './decorators';
 export { SetMetadata, Reflector } from './reflector';
+export type { ReflectableDecorator, CreateDecoratorOptions } from './reflector';
 export { APP_GUARD, APP_PIPE, APP_INTERCEPTOR, APP_FILTER, APP_MIDDLEWARE } from './tokens';
 export {
   ParseIntPipe,

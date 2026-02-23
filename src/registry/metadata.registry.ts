@@ -1,8 +1,12 @@
+import type { Scope } from '../constants';
+import type { InjectMetadata } from '../container/types';
+import type { Type } from '../container/types';
 import type {
   ComponentInstance,
   ComponentType,
   ComponentTypeMap,
   Constructor,
+  HttpHandlerMeta,
   ModuleOptions,
   ParameterMetadata,
   RouteDefinition,
@@ -43,6 +47,24 @@ export class MetadataRegistry {
     ['interceptor', new Map()],
     ['filter', new Map()],
   ]);
+
+  // DI metadata
+  private static readonly injectables = new Set<Constructor>();
+  private static readonly scopes = new Map<Constructor, Scope>();
+  private static readonly injectTokens = new Map<Constructor, InjectMetadata[]>();
+
+  // HTTP handler metadata
+  private static readonly handlerHttpMeta = new Map<Constructor, Map<string | symbol, HttpHandlerMeta>>();
+
+  // Exception filter types
+  private static readonly catchTypes = new Map<Constructor, Type<Error>[]>();
+
+  // Route versions
+  private static readonly routeVersions = new Map<Constructor, Map<string | symbol, number | number[]>>();
+
+  // Custom metadata (SetMetadata)
+  private static readonly customClassMeta = new Map<Constructor, Map<string, unknown>>();
+  private static readonly customHandlerMeta = new Map<Constructor, Map<string | symbol, Map<string, unknown>>>();
 
   // Routes
 
@@ -156,6 +178,141 @@ export class MetadataRegistry {
     return (typeMap.get(handlerKey) || []) as unknown as ComponentTypeMap[T][];
   }
 
+  // DI metadata
+
+  static markInjectable(target: Constructor): void {
+    this.injectables.add(target);
+  }
+
+  static hasInjectable(target: Constructor): boolean {
+    return this.injectables.has(target);
+  }
+
+  static setScope(target: Constructor, scope: Scope): void {
+    this.scopes.set(target, scope);
+  }
+
+  static getScope(target: Constructor): Scope | undefined {
+    return this.scopes.get(target);
+  }
+
+  static setInjectTokens(target: Constructor, tokens: InjectMetadata[]): void {
+    this.injectTokens.set(target, tokens);
+  }
+
+  static getInjectTokens(target: Constructor): InjectMetadata[] | undefined {
+    return this.injectTokens.get(target);
+  }
+
+  // HTTP handler metadata
+
+  static setHandlerHttpMeta(
+    controller: Constructor,
+    method: string | symbol,
+    meta: HttpHandlerMeta,
+  ): void {
+    if (!this.handlerHttpMeta.has(controller)) {
+      this.handlerHttpMeta.set(controller, new Map());
+    }
+    const methodMap = this.handlerHttpMeta.get(controller)!;
+    const existing = methodMap.get(method) ?? {};
+    // Append-merge responseHeaders
+    const merged: HttpHandlerMeta = { ...existing, ...meta };
+    if (meta.responseHeaders) {
+      merged.responseHeaders = [...(existing.responseHeaders ?? []), ...meta.responseHeaders];
+    }
+    methodMap.set(method, merged);
+  }
+
+  static getHandlerHttpMeta(
+    controller: Constructor,
+    method: string | symbol,
+  ): HttpHandlerMeta | undefined {
+    return this.handlerHttpMeta.get(controller)?.get(method);
+  }
+
+  // Exception filter types
+
+  static setCatchTypes(filter: Constructor, types: Type<Error>[]): void {
+    this.catchTypes.set(filter, types);
+  }
+
+  static getCatchTypes(filter: Constructor): Type<Error>[] | undefined {
+    return this.catchTypes.get(filter);
+  }
+
+  static hasCatchTypes(filter: Constructor): boolean {
+    return this.catchTypes.has(filter);
+  }
+
+  // Route versions
+
+  static setRouteVersion(
+    controller: Constructor,
+    method: string | symbol,
+    version: number | number[],
+  ): void {
+    if (!this.routeVersions.has(controller)) {
+      this.routeVersions.set(controller, new Map());
+    }
+    this.routeVersions.get(controller)!.set(method, version);
+  }
+
+  static getRouteVersion(
+    controller: Constructor,
+    method: string | symbol,
+  ): number | number[] | undefined {
+    return this.routeVersions.get(controller)?.get(method);
+  }
+
+  // Custom metadata (SetMetadata)
+
+  static setCustomClassMeta(target: Constructor, key: string, value: unknown): void {
+    if (!this.customClassMeta.has(target)) {
+      this.customClassMeta.set(target, new Map());
+    }
+    this.customClassMeta.get(target)!.set(key, value);
+  }
+
+  static getCustomClassMeta(target: Constructor, key: string): unknown {
+    return this.customClassMeta.get(target)?.get(key);
+  }
+
+  static getCustomClassMetaAll(target: Constructor): Map<string, unknown> | undefined {
+    return this.customClassMeta.get(target);
+  }
+
+  static setCustomHandlerMeta(
+    target: Constructor,
+    handler: string | symbol,
+    key: string,
+    value: unknown,
+  ): void {
+    if (!this.customHandlerMeta.has(target)) {
+      this.customHandlerMeta.set(target, new Map());
+    }
+    const handlerMap = this.customHandlerMeta.get(target)!;
+    if (!handlerMap.has(handler)) {
+      handlerMap.set(handler, new Map());
+    }
+    handlerMap.get(handler)!.set(key, value);
+  }
+
+  static getCustomHandlerMeta(
+    target: Constructor,
+    handler: string | symbol,
+    key: string,
+  ): unknown {
+    return this.customHandlerMeta.get(target)?.get(handler)?.get(key);
+  }
+
+  static getCustomHandlerMetaAll(
+    target: Constructor,
+    handler: string | symbol,
+  ): Map<string, unknown> | undefined {
+    return this.customHandlerMeta.get(target)?.get(handler);
+  }
+
   // Clear all (for testing)
 
   static clear(): void {
@@ -174,5 +331,14 @@ export class MetadataRegistry {
     for (const map of this.handler.values()) {
       map.clear();
     }
+
+    this.injectables.clear();
+    this.scopes.clear();
+    this.injectTokens.clear();
+    this.handlerHttpMeta.clear();
+    this.catchTypes.clear();
+    this.routeVersions.clear();
+    this.customClassMeta.clear();
+    this.customHandlerMeta.clear();
   }
 }

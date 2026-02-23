@@ -41,6 +41,9 @@ export function Controller(prefixOrOptions?: string | ControllerOptions): ClassD
       MetadataRegistry.setControllerOptions(target, { version });
     }
 
+    MetadataRegistry.markInjectable(target as Constructor);
+    MetadataRegistry.setScope(target as Constructor, Scope.SINGLETON);
+    // Keep WeakMap write for external package compat
     defineMetadata(METADATA_KEYS.INJECTABLE, true, target);
     defineMetadata(METADATA_KEYS.SCOPE, Scope.SINGLETON, target);
   };
@@ -62,11 +65,12 @@ export function Controller(prefixOrOptions?: string | ControllerOptions): ClassD
  * }
  * ```
  */
-const ROUTE_VERSION_PREFIX = 'vela:route-version:';
-
 export function Version(version: number | number[]): MethodDecorator {
   return (target: object, propertyKey: string | symbol, _descriptor: PropertyDescriptor) => {
-    const versionKey = `${ROUTE_VERSION_PREFIX}${String(propertyKey)}`;
+    MetadataRegistry.setRouteVersion(target.constructor as Constructor, propertyKey, version);
+
+    // Keep WeakMap write for compat
+    const versionKey = `vela:route-version:${String(propertyKey)}`;
     defineMetadata(versionKey, version, target.constructor);
 
     // If route was already registered (decorator ran after @Get), patch it
@@ -82,8 +86,8 @@ export function getRouteVersion(
   target: Constructor,
   propertyKey: string | symbol,
 ): number | number[] | undefined {
-  const versionKey = `${ROUTE_VERSION_PREFIX}${String(propertyKey)}`;
-  return getMetadata(versionKey, target) as number | number[] | undefined;
+  return MetadataRegistry.getRouteVersion(target, propertyKey) ??
+    (getMetadata(`vela:route-version:${String(propertyKey)}`, target) as number | number[] | undefined);
 }
 
 function createMethodDecorator(method: HttpMethod) {
@@ -92,9 +96,9 @@ function createMethodDecorator(method: HttpMethod) {
       const normalizedPath = normalizePath(path);
 
       // Check for @Version metadata on this method
-      const versionKey = `vela:route-version:${String(propertyKey)}`;
       const version: number | number[] | undefined =
-        getMetadata(versionKey, target.constructor) as number | number[] | undefined;
+        MetadataRegistry.getRouteVersion(target.constructor as Constructor, propertyKey) ??
+        (getMetadata(`vela:route-version:${String(propertyKey)}`, target.constructor) as number | number[] | undefined);
 
       MetadataRegistry.addRoute(target.constructor, {
         method: method as string,
@@ -233,7 +237,7 @@ export function createParamDecorator<TData = unknown>(
  */
 export function HttpCode(statusCode: number): MethodDecorator {
   return (target: object, propertyKey: string | symbol, _descriptor: PropertyDescriptor) => {
-    defineMetadata(METADATA_KEYS.HTTP_CODE, statusCode, target.constructor, propertyKey);
+    MetadataRegistry.setHandlerHttpMeta(target.constructor as Constructor, propertyKey, { httpCode: statusCode });
   };
 }
 
@@ -251,10 +255,9 @@ export function HttpCode(statusCode: number): MethodDecorator {
  */
 export function Header(name: string, value: string): MethodDecorator {
   return (target: object, propertyKey: string | symbol, _descriptor: PropertyDescriptor) => {
-    const existing: Array<[string, string]> =
-      (getMetadata(METADATA_KEYS.RESPONSE_HEADERS, target.constructor, propertyKey) as Array<[string, string]>) ?? [];
-    existing.push([name, value]);
-    defineMetadata(METADATA_KEYS.RESPONSE_HEADERS, existing, target.constructor, propertyKey);
+    MetadataRegistry.setHandlerHttpMeta(target.constructor as Constructor, propertyKey, {
+      responseHeaders: [[name, value]],
+    });
   };
 }
 
@@ -277,21 +280,29 @@ export function Header(name: string, value: string): MethodDecorator {
  */
 export function Redirect(url: string, statusCode = 302): MethodDecorator {
   return (target: object, propertyKey: string | symbol, _descriptor: PropertyDescriptor) => {
-    defineMetadata(METADATA_KEYS.REDIRECT, { url, statusCode }, target.constructor, propertyKey);
+    MetadataRegistry.setHandlerHttpMeta(target.constructor as Constructor, propertyKey, {
+      redirect: { url, statusCode },
+    });
   };
 }
 
 // Metadata readers (used by RouteManager)
 
 export function getHttpCode(target: Constructor, method: string | symbol): number | undefined {
+  const meta = MetadataRegistry.getHandlerHttpMeta(target, method);
+  if (meta?.httpCode !== undefined) return meta.httpCode;
   return getMetadata(METADATA_KEYS.HTTP_CODE, target, method) as number | undefined;
 }
 
 export function getResponseHeaders(target: Constructor, method: string | symbol): Array<[string, string]> {
+  const meta = MetadataRegistry.getHandlerHttpMeta(target, method);
+  if (meta?.responseHeaders) return meta.responseHeaders;
   return (getMetadata(METADATA_KEYS.RESPONSE_HEADERS, target, method) as Array<[string, string]>) ?? [];
 }
 
 export function getRedirect(target: Constructor, method: string | symbol): { url: string; statusCode: number } | undefined {
+  const meta = MetadataRegistry.getHandlerHttpMeta(target, method);
+  if (meta?.redirect) return meta.redirect;
   return getMetadata(METADATA_KEYS.REDIRECT, target, method) as { url: string; statusCode: number } | undefined;
 }
 

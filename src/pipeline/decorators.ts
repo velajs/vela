@@ -1,7 +1,8 @@
 import { METADATA_KEYS } from '../constants';
 import type { Type } from '../container/types';
-import { defineMetadata, getMetadata } from '../metadata';
+import { getMetadata } from '../metadata';
 import { ComponentManager } from './component.manager';
+import { MetadataRegistry } from '../registry/metadata.registry';
 import type {
   ComponentType,
   ComponentTypeMap,
@@ -48,12 +49,15 @@ export function UseFilters(...filters: ComponentTypeMap['filter'][]) {
 
 export function Catch(...exceptions: Type<Error>[]): ClassDecorator {
   return (target: object) => {
-    defineMetadata(METADATA_KEYS.CATCH, exceptions, target);
+    MetadataRegistry.setCatchTypes(target as Constructor, exceptions);
   };
 }
 
 export function getCatchTypes(filter: unknown): Type<Error>[] {
-  const filterClass = typeof filter === 'function' ? filter : (filter as object).constructor;
+  const filterClass = (typeof filter === 'function' ? filter : (filter as object).constructor) as Constructor;
+  if (MetadataRegistry.hasCatchTypes(filterClass)) {
+    return MetadataRegistry.getCatchTypes(filterClass) ?? [];
+  }
   return (getMetadata(METADATA_KEYS.CATCH, filterClass) as Type<Error>[]) ?? [];
 }
 

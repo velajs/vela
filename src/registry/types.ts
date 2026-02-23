@@ -46,6 +46,12 @@ export interface ParameterMetadata {
   factory?: (data: unknown, ctx: unknown) => unknown;
 }
 
+export interface HttpHandlerMeta {
+  httpCode?: number;
+  responseHeaders?: Array<[string, string]>;
+  redirect?: { url: string; statusCode: number };
+}
+
 export interface ModuleOptions {
   imports?: unknown[];
   providers?: Array<Type | ProviderOptions>;

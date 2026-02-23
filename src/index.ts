@@ -70,6 +70,8 @@ export type {
   PipeTransform,
   ExceptionFilter,
   ArgumentMetadata,
+  ReflectableDecorator,
+  CreateDecoratorOptions,
 } from './pipeline/index';
 
 // Component Types

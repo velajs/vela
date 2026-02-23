@@ -10,7 +10,7 @@ import {
   ForbiddenException,
   MetadataRegistry,
 } from '../index.js';
-import type { CanActivate, ExecutionContext } from '../index.js';
+import type { CanActivate, ExecutionContext, ReflectableDecorator } from '../index.js';
 
 beforeEach(() => {
   MetadataRegistry.clear();
@@ -171,5 +171,204 @@ describe('SetMetadata + Reflector', () => {
     expect(reflector.get('roles', context)).toBeUndefined();
     expect(reflector.getHandler('roles', context)).toBeUndefined();
     expect(reflector.getClass('roles', context)).toBeUndefined();
+  });
+});
+
+describe('Reflector.createDecorator', () => {
+  it('should create a typed decorator at class level and read back via reflector.get', () => {
+    const reflector = new Reflector();
+    const Roles = Reflector.createDecorator<string[]>();
+
+    @Roles(['admin', 'editor'])
+    class TestController {
+      handler() {}
+    }
+
+    const context = {
+      getClass: () => TestController,
+      getHandler: () => 'handler' as string | symbol,
+    };
+
+    expect(reflector.get(Roles, context)).toEqual(['admin', 'editor']);
+  });
+
+  it('should create a typed decorator at method level and read back', () => {
+    const reflector = new Reflector();
+    const CacheKey = Reflector.createDecorator<string>();
+
+    class TestController {
+      @CacheKey('users-list')
+      handler() {}
+    }
+
+    const context = {
+      getClass: () => TestController,
+      getHandler: () => 'handler' as string | symbol,
+    };
+
+    expect(reflector.getHandler(CacheKey, context)).toBe('users-list');
+  });
+
+  it('should support explicit key option and expose .KEY', () => {
+    const Roles = Reflector.createDecorator<string[]>({ key: 'roles' });
+    expect(Roles.KEY).toBe('roles');
+  });
+
+  it('should produce distinct keys for separate createDecorator calls', () => {
+    const Dec1 = Reflector.createDecorator<string>();
+    const Dec2 = Reflector.createDecorator<string>();
+    expect(Dec1.KEY).not.toBe(Dec2.KEY);
+  });
+
+  it('should still work with string keys (backwards compat)', () => {
+    const reflector = new Reflector();
+
+    @Roles('admin')
+    class TestController {
+      handler() {}
+    }
+
+    const context = {
+      getClass: () => TestController,
+      getHandler: () => 'handler' as string | symbol,
+    };
+
+    expect(reflector.get<string[]>('roles', context)).toEqual(['admin']);
+  });
+});
+
+describe('Reflector.getAllAndOverride', () => {
+  it('should return handler value when both defined', () => {
+    const reflector = new Reflector();
+
+    @Roles('admin')
+    class TestController {
+      @Roles('editor')
+      handler() {}
+    }
+
+    const context = {
+      getClass: () => TestController,
+      getHandler: () => 'handler' as string | symbol,
+    };
+
+    expect(reflector.getAllAndOverride<string[]>('roles', context)).toEqual(['editor']);
+  });
+
+  it('should return class value when handler undefined', () => {
+    const reflector = new Reflector();
+
+    @Roles('admin')
+    class TestController {
+      handler() {}
+    }
+
+    const context = {
+      getClass: () => TestController,
+      getHandler: () => 'handler' as string | symbol,
+    };
+
+    expect(reflector.getAllAndOverride<string[]>('roles', context)).toEqual(['admin']);
+  });
+
+  it('should return undefined when neither defined', () => {
+    const reflector = new Reflector();
+
+    class TestController {
+      handler() {}
+    }
+
+    const context = {
+      getClass: () => TestController,
+      getHandler: () => 'handler' as string | symbol,
+    };
+
+    expect(reflector.getAllAndOverride('roles', context)).toBeUndefined();
+  });
+
+  it('should work with ReflectableDecorator', () => {
+    const reflector = new Reflector();
+    const Priority = Reflector.createDecorator<number>();
+
+    @Priority(1)
+    class TestController {
+      @Priority(10)
+      handler() {}
+    }
+
+    const context = {
+      getClass: () => TestController,
+      getHandler: () => 'handler' as string | symbol,
+    };
+
+    expect(reflector.getAllAndOverride(Priority, context)).toBe(10);
+  });
+});
+
+describe('Reflector.getAllAndMerge', () => {
+  it('should concatenate arrays', () => {
+    const reflector = new Reflector();
+
+    @Roles('admin')
+    class TestController {
+      @Roles('editor')
+      handler() {}
+    }
+
+    const context = {
+      getClass: () => TestController,
+      getHandler: () => 'handler' as string | symbol,
+    };
+
+    expect(reflector.getAllAndMerge<string[]>('roles', context)).toEqual(['editor', 'admin']);
+  });
+
+  it('should shallow-merge objects', () => {
+    const reflector = new Reflector();
+    const Config = (...args: [Record<string, unknown>]) => SetMetadata('config', args[0]);
+
+    @Config({ timeout: 5000 })
+    class TestController {
+      @Config({ retries: 3 })
+      handler() {}
+    }
+
+    const context = {
+      getClass: () => TestController,
+      getHandler: () => 'handler' as string | symbol,
+    };
+
+    expect(reflector.getAllAndMerge('config', context)).toEqual({ retries: 3, timeout: 5000 });
+  });
+
+  it('should return single value when only one level defines', () => {
+    const reflector = new Reflector();
+
+    @Roles('admin')
+    class TestController {
+      handler() {}
+    }
+
+    const context = {
+      getClass: () => TestController,
+      getHandler: () => 'handler' as string | symbol,
+    };
+
+    expect(reflector.getAllAndMerge<string[]>('roles', context)).toEqual(['admin']);
+  });
+
+  it('should return empty array when neither defined', () => {
+    const reflector = new Reflector();
+
+    class TestController {
+      handler() {}
+    }
+
+    const context = {
+      getClass: () => TestController,
+      getHandler: () => 'handler' as string | symbol,
+    };
+
+    expect(reflector.getAllAndMerge('roles', context)).toEqual([]);
   });
 });
