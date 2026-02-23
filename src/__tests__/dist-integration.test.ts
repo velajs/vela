@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect } from 'vitest';
 
 /**
  * Integration test: import from built dist/ to verify the package

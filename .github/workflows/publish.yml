@@ -13,22 +13,23 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: pnpm/action-setup@v4
         with:
-          bun-version: latest
+          version: latest
 
       - uses: actions/setup-node@v6
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
+          cache: pnpm
 
-      - run: bun install
+      - run: pnpm install
 
-      - run: bun run typecheck
+      - run: pnpm run typecheck
 
-      - run: bun run build
+      - run: pnpm run build
 
-      - run: bun test
+      - run: pnpm test
 
       - run: npm publish --provenance --access public
         env:

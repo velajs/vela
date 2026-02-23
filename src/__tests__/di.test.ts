@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { describe, it, expect, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { Container } from '../container/container.js';
 import { Injectable, Inject } from '../container/decorators.js';
 import { InjectionToken } from '../container/types.js';

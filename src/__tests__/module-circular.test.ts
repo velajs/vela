@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { describe, it, expect, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { VelaFactory, Module, Injectable, MetadataRegistry } from '../index.js';
 
 beforeEach(() => {
