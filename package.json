@@ -21,7 +21,8 @@
     "build": "rm -rf dist && swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "bun run typecheck && bun run test"
+    "prepare": "swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
+    "prepublishOnly": "pnpm run typecheck && pnpm test"
   },
   "sideEffects": false,
   "keywords": [
@@ -61,14 +62,13 @@
   "devDependencies": {
     "@swc/cli": "^0.8.0",
     "@swc/core": "^1.15.11",
-    "@types/bun": "latest",
-    "@velajs/vela": "file:../vela",
+    "@velajs/vela": "^0.2.0",
     "hono": "^4",
-    "reflect-metadata": "^0.2",
     "typescript": "^5",
     "unplugin-swc": "^1.5.9",
     "vitest": "^4.0.18"
   },
+  "packageManager": "pnpm@10.20.0",
   "pnpm": {
     "onlyBuiltDependencies": [
       "@swc/core",
