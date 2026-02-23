@@ -1,0 +1,67 @@
+{
+  "name": "@velajs/testing",
+  "version": "0.1.0",
+  "description": "Testing utilities for Vela framework",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "bun run typecheck && bun run test"
+  },
+  "sideEffects": false,
+  "keywords": [
+    "vela",
+    "testing",
+    "test",
+    "mock",
+    "override",
+    "edge",
+    "framework"
+  ],
+  "author": "ksh",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/velajs/testing.git"
+  },
+  "homepage": "https://github.com/velajs/testing#readme",
+  "bugs": {
+    "url": "https://github.com/velajs/testing/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "peerDependencies": {
+    "@velajs/vela": ">=0.1.0",
+    "hono": ">=4"
+  },
+  "peerDependenciesMeta": {
+    "@velajs/vela": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@velajs/vela": "file:../vela",
+    "@swc/cli": "^0.8.0",
+    "@swc/core": "^1.15.11",
+    "@types/bun": "latest",
+    "hono": "^4",
+    "reflect-metadata": "^0.2",
+    "typescript": "^5"
+  }
+}
