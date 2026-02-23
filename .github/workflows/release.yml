@@ -115,9 +115,18 @@ jobs:
         id: bump
         if: steps.commits.outputs.has_commits == 'true' && steps.version_type.outputs.type != ''
         run: |
-          VERSION_TYPE="${{ steps.version_type.outputs.type }}"
+          LATEST_TAG="${{ steps.latest_tag.outputs.tag }}"
           CURRENT_VERSION=$(node -p "require('./package.json').version")
 
+          # First release: publish current version as-is
+          if [ "$LATEST_TAG" = "v0.0.0" ]; then
+            echo "current=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+            echo "new=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+            echo "First release: publishing v${CURRENT_VERSION} as-is"
+            exit 0
+          fi
+
+          VERSION_TYPE="${{ steps.version_type.outputs.type }}"
           IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
 
           case "$VERSION_TYPE" in
