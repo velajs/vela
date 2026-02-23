@@ -60,6 +60,7 @@
     }
   },
   "devDependencies": {
+    "@velajs/crud": "link:",
     "@velajs/vela": "^0.2.0",
     "@hono/zod-openapi": "^0.19",
     "@swc/cli": "^0.8.0",

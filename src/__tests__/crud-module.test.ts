@@ -1,5 +1,4 @@
-import 'reflect-metadata';
-import { describe, it, expect, beforeEach, beforeAll } from 'bun:test';
+import { describe, it, expect, beforeEach, beforeAll } from 'vitest';
 import {
   VelaFactory,
   Controller,

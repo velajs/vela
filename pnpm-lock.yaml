@@ -17,9 +17,12 @@ importers:
       '@swc/core':
         specifier: ^1.15.11
         version: 1.15.13
+      '@velajs/crud':
+        specifier: 'link:'
+        version: 'link:'
       '@velajs/vela':
         specifier: ^0.2.0
-        version: 0.2.1
+        version: 0.2.1(@velajs/crud@)
       hono:
         specifier: ^4
         version: 4.12.2
@@ -1705,9 +1708,11 @@ snapshots:
 
   '@types/http-cache-semantics@4.2.0': {}
 
-  '@velajs/vela@0.2.1':
+  '@velajs/vela@0.2.1(@velajs/crud@)':
     dependencies:
       hono: 4.12.2
+    optionalDependencies:
+      '@velajs/crud': 'link:'
 
   '@vitest/expect@4.0.18':
     dependencies:
