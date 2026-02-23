@@ -156,14 +156,17 @@ jobs:
         if: steps.bump.outputs.new != ''
         run: |
           NEW_VERSION="${{ steps.bump.outputs.new }}"
+          CURRENT_VERSION="${{ steps.bump.outputs.current }}"
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          pnpm install --lockfile-only
+          if [ "$NEW_VERSION" != "$CURRENT_VERSION" ]; then
+            pnpm install --lockfile-only
+            git add package.json pnpm-lock.yaml
+            git commit -m "chore(release): v${NEW_VERSION}"
+          fi
 
-          git add package.json pnpm-lock.yaml
-          git commit -m "chore(release): v${NEW_VERSION}"
           git tag -a "v${NEW_VERSION}" -m "Release v${NEW_VERSION}"
           git push origin main --follow-tags
 
