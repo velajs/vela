@@ -1,5 +1,4 @@
-import 'reflect-metadata';
-import { METADATA_KEYS, Scope, ComponentManager, MetadataRegistry } from '@velajs/vela';
+import { METADATA_KEYS, Scope, ComponentManager, MetadataRegistry, defineMetadata } from '@velajs/vela';
 import type { Type } from '@velajs/vela';
 import type { ResourceConfig, CrudConfig } from './types';
 
@@ -18,8 +17,8 @@ export class CrudModule {
     });
 
     // Mark as injectable + controller
-    Reflect.defineMetadata(METADATA_KEYS.INJECTABLE, true, controllerClass);
-    Reflect.defineMetadata(METADATA_KEYS.SCOPE, Scope.SINGLETON, controllerClass);
+    MetadataRegistry.markInjectable(controllerClass);
+    MetadataRegistry.setScope(controllerClass, Scope.SINGLETON);
 
     // Store CRUD config
     const crudConfig: CrudConfig = {
@@ -29,7 +28,7 @@ export class CrudModule {
       except: config.except,
       endpoints: config.endpoints,
     };
-    Reflect.defineMetadata(METADATA_KEYS.CRUD, crudConfig, controllerClass);
+    defineMetadata(METADATA_KEYS.CRUD, crudConfig, controllerClass);
 
     // Store controller path in registry
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
@@ -47,7 +46,6 @@ export class CrudModule {
     Object.defineProperty(moduleClass, 'name', {
       value: `CrudModule_${path.replace(/[^a-zA-Z0-9]/g, '_')}`,
     });
-    Reflect.defineMetadata(METADATA_KEYS.MODULE, true, moduleClass);
     MetadataRegistry.setModuleOptions(moduleClass as unknown as Type, {
       controllers: [controllerClass as unknown as Type],
     });
