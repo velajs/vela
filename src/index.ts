@@ -126,5 +126,9 @@ export type {
 // Registry (for advanced usage)
 export { MetadataRegistry } from './registry/index';
 
+// Module internals (for @velajs/testing and advanced usage)
+export { RouteManager } from './http/index';
+export { ModuleLoader } from './module/index';
+
 // Component Manager (for advanced usage)
 export { ComponentManager } from './pipeline/index';
