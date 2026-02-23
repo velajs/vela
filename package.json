@@ -21,7 +21,8 @@
     "build": "rm -rf dist && swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "prepare": "swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly"
+    "prepare": "swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
+    "prepublishOnly": "pnpm run typecheck && pnpm test"
   },
   "sideEffects": false,
   "keywords": [
@@ -59,7 +60,7 @@
     }
   },
   "devDependencies": {
-    "@velajs/vela": "file:../vela",
+    "@velajs/vela": "^0.2.0",
     "@hono/zod-openapi": "^0.19",
     "@swc/cli": "^0.8.0",
     "@swc/core": "^1.15.11",
@@ -70,6 +71,7 @@
     "vitest": "^4.0.18",
     "zod": "^4"
   },
+  "packageManager": "pnpm@10.20.0",
   "pnpm": {
     "onlyBuiltDependencies": [
       "@swc/core",
