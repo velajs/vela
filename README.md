@@ -13,7 +13,6 @@ bun add @velajs/vela
 ## Quick Start
 
 ```typescript
-import 'reflect-metadata';
 import { VelaFactory, Controller, Get, Module, Injectable } from '@velajs/vela';
 
 @Injectable()

@@ -53,8 +53,7 @@
     "node": ">=20"
   },
   "dependencies": {
-    "hono": "^4",
-    "reflect-metadata": "^0.2"
+    "hono": "^4"
   },
   "peerDependencies": {
     "@velajs/crud": ">=0.1.0"

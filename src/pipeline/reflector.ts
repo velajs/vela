@@ -1,4 +1,4 @@
-import 'reflect-metadata';
+import { defineMetadata, getMetadata as internalGetMetadata } from '../metadata';
 
 const SET_METADATA_KEY = 'vela:metadata';
 
@@ -21,15 +21,15 @@ export function SetMetadata<V = unknown>(key: string, value: V) {
     if (propertyKey !== undefined) {
       // Method decorator
       const existing: Map<string, unknown> =
-        Reflect.getMetadata(SET_METADATA_KEY, target.constructor, propertyKey) ?? new Map();
+        (internalGetMetadata(SET_METADATA_KEY, target.constructor, propertyKey) as Map<string, unknown>) ?? new Map();
       existing.set(key, value);
-      Reflect.defineMetadata(SET_METADATA_KEY, existing, target.constructor, propertyKey);
+      defineMetadata(SET_METADATA_KEY, existing, target.constructor, propertyKey);
     } else {
       // Class decorator
       const existing: Map<string, unknown> =
-        Reflect.getMetadata(SET_METADATA_KEY, target) ?? new Map();
+        (internalGetMetadata(SET_METADATA_KEY, target) as Map<string, unknown>) ?? new Map();
       existing.set(key, value);
-      Reflect.defineMetadata(SET_METADATA_KEY, existing, target);
+      defineMetadata(SET_METADATA_KEY, existing, target);
     }
   };
 }
@@ -62,20 +62,20 @@ export class Reflector {
     context: { getClass(): Function; getHandler(): string | symbol },
   ): T | undefined {
     // Check handler-level first
-    const handlerMeta: Map<string, unknown> | undefined = Reflect.getMetadata(
+    const handlerMeta: Map<string, unknown> | undefined = internalGetMetadata(
       SET_METADATA_KEY,
       context.getClass(),
       context.getHandler(),
-    );
+    ) as Map<string, unknown> | undefined;
     if (handlerMeta?.has(key)) {
       return handlerMeta.get(key) as T;
     }
 
     // Fall back to class-level
-    const classMeta: Map<string, unknown> | undefined = Reflect.getMetadata(
+    const classMeta: Map<string, unknown> | undefined = internalGetMetadata(
       SET_METADATA_KEY,
       context.getClass(),
-    );
+    ) as Map<string, unknown> | undefined;
     if (classMeta?.has(key)) {
       return classMeta.get(key) as T;
     }
@@ -90,11 +90,11 @@ export class Reflector {
     key: string,
     context: { getClass(): Function; getHandler(): string | symbol },
   ): T | undefined {
-    const meta: Map<string, unknown> | undefined = Reflect.getMetadata(
+    const meta: Map<string, unknown> | undefined = internalGetMetadata(
       SET_METADATA_KEY,
       context.getClass(),
       context.getHandler(),
-    );
+    ) as Map<string, unknown> | undefined;
     return meta?.get(key) as T | undefined;
   }
 
@@ -105,10 +105,10 @@ export class Reflector {
     key: string,
     context: { getClass(): Function },
   ): T | undefined {
-    const meta: Map<string, unknown> | undefined = Reflect.getMetadata(
+    const meta: Map<string, unknown> | undefined = internalGetMetadata(
       SET_METADATA_KEY,
       context.getClass(),
-    );
+    ) as Map<string, unknown> | undefined;
     return meta?.get(key) as T | undefined;
   }
 

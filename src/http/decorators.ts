@@ -1,5 +1,5 @@
-import 'reflect-metadata';
 import { HttpMethod, METADATA_KEYS, ParamType, Scope } from '../constants';
+import { defineMetadata, getMetadata } from '../metadata';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import type { Constructor, PipeType } from '../registry/types';
 import type { ControllerOptions } from './types';
@@ -41,8 +41,8 @@ export function Controller(prefixOrOptions?: string | ControllerOptions): ClassD
       MetadataRegistry.setControllerOptions(target, { version });
     }
 
-    Reflect.defineMetadata(METADATA_KEYS.INJECTABLE, true, target);
-    Reflect.defineMetadata(METADATA_KEYS.SCOPE, Scope.SINGLETON, target);
+    defineMetadata(METADATA_KEYS.INJECTABLE, true, target);
+    defineMetadata(METADATA_KEYS.SCOPE, Scope.SINGLETON, target);
   };
 }
 
@@ -67,7 +67,7 @@ const ROUTE_VERSION_PREFIX = 'vela:route-version:';
 export function Version(version: number | number[]): MethodDecorator {
   return (target: object, propertyKey: string | symbol, _descriptor: PropertyDescriptor) => {
     const versionKey = `${ROUTE_VERSION_PREFIX}${String(propertyKey)}`;
-    Reflect.defineMetadata(versionKey, version, target.constructor);
+    defineMetadata(versionKey, version, target.constructor);
 
     // If route was already registered (decorator ran after @Get), patch it
     const routes = MetadataRegistry.getRoutes(target.constructor);
@@ -83,7 +83,7 @@ export function getRouteVersion(
   propertyKey: string | symbol,
 ): number | number[] | undefined {
   const versionKey = `${ROUTE_VERSION_PREFIX}${String(propertyKey)}`;
-  return Reflect.getMetadata(versionKey, target);
+  return getMetadata(versionKey, target) as number | number[] | undefined;
 }
 
 function createMethodDecorator(method: HttpMethod) {
@@ -94,7 +94,7 @@ function createMethodDecorator(method: HttpMethod) {
       // Check for @Version metadata on this method
       const versionKey = `vela:route-version:${String(propertyKey)}`;
       const version: number | number[] | undefined =
-        Reflect.getMetadata(versionKey, target.constructor);
+        getMetadata(versionKey, target.constructor) as number | number[] | undefined;
 
       MetadataRegistry.addRoute(target.constructor, {
         method: method as string,
@@ -233,7 +233,7 @@ export function createParamDecorator<TData = unknown>(
  */
 export function HttpCode(statusCode: number): MethodDecorator {
   return (target: object, propertyKey: string | symbol, _descriptor: PropertyDescriptor) => {
-    Reflect.defineMetadata(METADATA_KEYS.HTTP_CODE, statusCode, target.constructor, propertyKey);
+    defineMetadata(METADATA_KEYS.HTTP_CODE, statusCode, target.constructor, propertyKey);
   };
 }
 
@@ -252,9 +252,9 @@ export function HttpCode(statusCode: number): MethodDecorator {
 export function Header(name: string, value: string): MethodDecorator {
   return (target: object, propertyKey: string | symbol, _descriptor: PropertyDescriptor) => {
     const existing: Array<[string, string]> =
-      Reflect.getMetadata(METADATA_KEYS.RESPONSE_HEADERS, target.constructor, propertyKey) ?? [];
+      (getMetadata(METADATA_KEYS.RESPONSE_HEADERS, target.constructor, propertyKey) as Array<[string, string]>) ?? [];
     existing.push([name, value]);
-    Reflect.defineMetadata(METADATA_KEYS.RESPONSE_HEADERS, existing, target.constructor, propertyKey);
+    defineMetadata(METADATA_KEYS.RESPONSE_HEADERS, existing, target.constructor, propertyKey);
   };
 }
 
@@ -277,22 +277,22 @@ export function Header(name: string, value: string): MethodDecorator {
  */
 export function Redirect(url: string, statusCode = 302): MethodDecorator {
   return (target: object, propertyKey: string | symbol, _descriptor: PropertyDescriptor) => {
-    Reflect.defineMetadata(METADATA_KEYS.REDIRECT, { url, statusCode }, target.constructor, propertyKey);
+    defineMetadata(METADATA_KEYS.REDIRECT, { url, statusCode }, target.constructor, propertyKey);
   };
 }
 
 // Metadata readers (used by RouteManager)
 
 export function getHttpCode(target: Constructor, method: string | symbol): number | undefined {
-  return Reflect.getMetadata(METADATA_KEYS.HTTP_CODE, target, method);
+  return getMetadata(METADATA_KEYS.HTTP_CODE, target, method) as number | undefined;
 }
 
 export function getResponseHeaders(target: Constructor, method: string | symbol): Array<[string, string]> {
-  return Reflect.getMetadata(METADATA_KEYS.RESPONSE_HEADERS, target, method) ?? [];
+  return (getMetadata(METADATA_KEYS.RESPONSE_HEADERS, target, method) as Array<[string, string]>) ?? [];
 }
 
 export function getRedirect(target: Constructor, method: string | symbol): { url: string; statusCode: number } | undefined {
-  return Reflect.getMetadata(METADATA_KEYS.REDIRECT, target, method);
+  return getMetadata(METADATA_KEYS.REDIRECT, target, method) as { url: string; statusCode: number } | undefined;
 }
 
 // Helpers

@@ -1,6 +1,6 @@
-import 'reflect-metadata';
 import { METADATA_KEYS } from '../constants';
 import type { Type } from '../container/types';
+import { defineMetadata, getMetadata } from '../metadata';
 import { ComponentManager } from './component.manager';
 import type {
   ComponentType,
@@ -48,13 +48,13 @@ export function UseFilters(...filters: ComponentTypeMap['filter'][]) {
 
 export function Catch(...exceptions: Type<Error>[]): ClassDecorator {
   return (target: object) => {
-    Reflect.defineMetadata(METADATA_KEYS.CATCH, exceptions, target);
+    defineMetadata(METADATA_KEYS.CATCH, exceptions, target);
   };
 }
 
 export function getCatchTypes(filter: unknown): Type<Error>[] {
   const filterClass = typeof filter === 'function' ? filter : (filter as object).constructor;
-  return Reflect.getMetadata(METADATA_KEYS.CATCH, filterClass) ?? [];
+  return (getMetadata(METADATA_KEYS.CATCH, filterClass) as Type<Error>[]) ?? [];
 }
 
 export function shouldFilterCatch(filter: unknown, exception: unknown): boolean {

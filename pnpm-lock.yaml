@@ -11,9 +11,6 @@ importers:
       hono:
         specifier: ^4
         version: 4.12.1
-      reflect-metadata:
-        specifier: ^0.2
-        version: 0.2.2
     devDependencies:
       '@swc/cli':
         specifier: ^0.8.0
@@ -961,9 +958,6 @@ packages:
   quick-lru@5.1.1:
     resolution: {integrity: sha512-WuyALRjWPDGtt/wzJiadO5AXY+8hZ80hVpe6MyivgraREW751X3SbhRvG3eLKOYN+8VEvqLcf3wdnt44Z4S4SA==}
     engines: {node: '>=10'}
-
-  reflect-metadata@0.2.2:
-    resolution: {integrity: sha512-urBwgfrvVP/eAyXx4hluJivBKzuEbSQs9rKWCrCkbSxNv8mxPcUZKeuoF3Uy4mJl3Lwprp6yy5/39VWigZ4K6Q==}
 
   resolve-alpn@1.2.1:
     resolution: {integrity: sha512-0a1F4l73/ZFZOakJnQ3FvkJ2+gSTQWz/r2KE5OdDY0TxPm5h4GkqkWWfM47T7HsbnOtcJVEF4epCVy6u7Q3K+g==}
@@ -1978,8 +1972,6 @@ snapshots:
       source-map-js: 1.2.1
 
   quick-lru@5.1.1: {}
-
-  reflect-metadata@0.2.2: {}
 
   resolve-alpn@1.2.1: {}
 

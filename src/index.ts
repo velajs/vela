@@ -1,4 +1,5 @@
-import 'reflect-metadata';
+import './metadata';
+export { defineMetadata, getMetadata } from './metadata';
 
 // Factory & Application
 export { VelaFactory } from './factory';

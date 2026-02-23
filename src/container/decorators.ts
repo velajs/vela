@@ -1,41 +1,41 @@
-import 'reflect-metadata';
 import { METADATA_KEYS, Scope } from '../constants';
+import { defineMetadata, getMetadata } from '../metadata';
 import type { InjectableOptions, InjectMetadata, Token } from './types';
 
 export function Injectable(options: InjectableOptions = {}): ClassDecorator {
   return (target: object) => {
     const { scope = Scope.SINGLETON } = options;
-    Reflect.defineMetadata(METADATA_KEYS.INJECTABLE, true, target);
-    Reflect.defineMetadata(METADATA_KEYS.SCOPE, scope, target);
+    defineMetadata(METADATA_KEYS.INJECTABLE, true, target);
+    defineMetadata(METADATA_KEYS.SCOPE, scope, target);
   };
 }
 
 export function Inject(token: Token): ParameterDecorator {
   return (target: object, _propertyKey: string | symbol | undefined, parameterIndex: number) => {
     const existingMetadata: InjectMetadata[] =
-      Reflect.getMetadata(METADATA_KEYS.INJECT, target) || [];
+      getMetadata(METADATA_KEYS.INJECT, target) as InjectMetadata[] || [];
 
     existingMetadata.push({
       index: parameterIndex,
       token,
     });
 
-    Reflect.defineMetadata(METADATA_KEYS.INJECT, existingMetadata, target);
+    defineMetadata(METADATA_KEYS.INJECT, existingMetadata, target);
   };
 }
 
 export function isInjectable(target: object): boolean {
-  return Reflect.getMetadata(METADATA_KEYS.INJECTABLE, target) === true;
+  return getMetadata(METADATA_KEYS.INJECTABLE, target) === true;
 }
 
 export function getScope(target: object): Scope {
-  return Reflect.getMetadata(METADATA_KEYS.SCOPE, target) ?? Scope.SINGLETON;
+  return (getMetadata(METADATA_KEYS.SCOPE, target) as Scope) ?? Scope.SINGLETON;
 }
 
 export function getConstructorDependencies(target: object): unknown[] {
-  return Reflect.getMetadata('design:paramtypes', target) || [];
+  return (Reflect.getMetadata('design:paramtypes', target) as unknown[]) || [];
 }
 
 export function getInjectMetadata(target: object): InjectMetadata[] {
-  return Reflect.getMetadata(METADATA_KEYS.INJECT, target) || [];
+  return getMetadata(METADATA_KEYS.INJECT, target) as InjectMetadata[] || [];
 }

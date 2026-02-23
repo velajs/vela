@@ -1,4 +1,3 @@
-import 'reflect-metadata';
 import { Scope } from '../constants';
 import {
   getConstructorDependencies,

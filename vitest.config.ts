@@ -5,6 +5,7 @@ export default defineConfig({
   test: {
     globals: false,
     include: ['src/**/*.test.ts'],
+    setupFiles: ['./src/metadata.ts'],
   },
   plugins: [
     swc.vite({

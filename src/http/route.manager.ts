@@ -1,7 +1,7 @@
-import 'reflect-metadata';
 import { type Context, Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { HttpMethod, ParamType } from '../constants';
+import { getMetadata } from '../metadata';
 import type { Container } from '../container/container';
 import type { Type } from '../container/types';
 import { ForbiddenException, HttpException } from '../errors/http-exception';
@@ -168,7 +168,7 @@ export class RouteManager {
 
     // Second pass: mount CRUD sub-apps (/:id routes registered last)
     for (const { controller, metadata } of this.controllers) {
-      const crudConfig = Reflect.getMetadata('vela:crud', controller);
+      const crudConfig = getMetadata('vela:crud', controller);
       if (crudConfig) {
         try {
           const pkg = '@velajs/crud';
