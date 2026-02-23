@@ -28,6 +28,7 @@ export {
   Delete,
   Options,
   Head,
+  Sse,
   Param,
   Query,
   Body,
@@ -38,6 +39,14 @@ export {
   Redirect,
   createParamDecorator,
 } from './http/index';
+
+// Services
+export { Logger, LogLevel } from './services/index';
+export type { LoggerService } from './services/index';
+
+// Config
+export { ConfigModule, ConfigService, CONFIG_OPTIONS } from './config/index';
+export type { ConfigModuleOptions } from './config/index';
 
 // Module
 export { Module } from './module/index';

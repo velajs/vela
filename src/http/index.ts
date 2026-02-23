@@ -9,6 +9,7 @@ export {
   Delete,
   Options,
   Head,
+  Sse,
   Param,
   Query,
   Body,

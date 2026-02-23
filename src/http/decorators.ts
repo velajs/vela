@@ -117,6 +117,7 @@ export const Patch = createMethodDecorator(HttpMethod.PATCH);
 export const Delete = createMethodDecorator(HttpMethod.DELETE);
 export const Options = createMethodDecorator(HttpMethod.OPTIONS);
 export const Head = createMethodDecorator(HttpMethod.HEAD);
+export const Sse = createMethodDecorator(HttpMethod.GET);
 
 // Parameter decorators
 
