@@ -1,7 +1,9 @@
 name: Release
 
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
     inputs:
@@ -22,6 +24,7 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -102,9 +105,9 @@ jobs:
             exit 0
           fi
 
-          if echo "$COMMITS" | grep -qE "^(fix|perf|refactor|docs|style|test|build|ci|chore)(\(.+\))?:"; then
+          if echo "$COMMITS" | grep -qE "^fix(\(.+\))?:"; then
             echo "type=patch" >> $GITHUB_OUTPUT
-            echo "Detected: patch (fixes/improvements)"
+            echo "Detected: patch (bug fix)"
             exit 0
           fi
 
