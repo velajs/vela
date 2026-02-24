@@ -96,6 +96,26 @@ export type {
   ScheduleModuleOptions,
 } from './schedule/index';
 
+// Throttler
+export {
+  ThrottlerModule,
+  ThrottlerGuard,
+  ThrottlerStorage,
+  Throttle,
+  SkipThrottle,
+  THROTTLER_OPTIONS,
+  THROTTLER_STORAGE,
+  THROTTLE_METADATA,
+  SKIP_THROTTLE_METADATA,
+} from './throttler/index';
+export type {
+  ThrottlerModuleOptions,
+  ThrottleConfig,
+  ThrottlerStore,
+  ThrottlerStorageRecord,
+  RateLimitInfo,
+} from './throttler/index';
+
 // Module
 export { Module } from './module/index';
 export type { ModuleOptions, DynamicModule } from './module/index';
