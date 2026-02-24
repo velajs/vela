@@ -13,22 +13,35 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@v6
         with:
-          bun-version: latest
+          repository: velajs/vela
+          token: ${{ secrets.VELA_TOKEN }}
+          path: vela
+
+      - uses: pnpm/action-setup@v4
 
       - uses: actions/setup-node@v6
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
+          cache: pnpm
 
-      - run: bun install
+      - name: Build and pack vela
+        working-directory: vela
+        run: pnpm install && pnpm run build && pnpm pack --pack-destination ..
 
-      - run: bun run typecheck
+      - name: Install dependencies
+        run: |
+          rm pnpm-lock.yaml
+          jq 'del(.devDependencies["@velajs/vela"])' package.json > tmp && mv tmp package.json
+          pnpm add ./velajs-vela-*.tgz --save-dev
 
-      - run: bun run build
+      - run: pnpm run typecheck
 
-      - run: bun test
+      - run: pnpm run build
+
+      - run: pnpm test
 
       - run: npm publish --provenance --access public
         env:

@@ -12,14 +12,31 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@v6
         with:
-          bun-version: latest
+          repository: velajs/vela
+          token: ${{ secrets.VELA_TOKEN }}
+          path: vela
 
-      - run: bun install
+      - uses: pnpm/action-setup@v4
 
-      - run: bun run typecheck
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
 
-      - run: bun run build
+      - name: Build and pack vela
+        working-directory: vela
+        run: pnpm install && pnpm run build && pnpm pack --pack-destination ..
 
-      - run: bun test
+      - name: Install dependencies
+        run: |
+          rm pnpm-lock.yaml
+          jq 'del(.devDependencies["@velajs/vela"])' package.json > tmp && mv tmp package.json
+          pnpm add ./velajs-vela-*.tgz --save-dev
+
+      - run: pnpm run typecheck
+
+      - run: pnpm run build
+
+      - run: pnpm test
