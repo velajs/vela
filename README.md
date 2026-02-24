@@ -1,19 +1,22 @@
 # @velajs/cloudflare
 
+[![npm version](https://img.shields.io/npm/v/@velajs/cloudflare)](https://www.npmjs.com/package/@velajs/cloudflare)
+[![CI](https://github.com/velajs/cloudflare/actions/workflows/ci.yml/badge.svg)](https://github.com/velajs/cloudflare/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/npm/l/@velajs/cloudflare)](https://github.com/velajs/cloudflare/blob/main/LICENSE)
+
 Cloudflare Workers integration for the [Vela](https://github.com/velajs/vela) framework. NestJS-style per-service modules for KV, D1, R2, Queues, Durable Objects, Workers AI, Vectorize, and Hyperdrive.
 
 ## Install
 
 ```bash
-bun add @velajs/cloudflare @velajs/vela hono
+pnpm add @velajs/cloudflare @velajs/vela hono
 ```
 
 ## Quick Start
 
 ```ts
 import { Controller, Get, Module, Injectable, Param } from '@velajs/vela';
-import { CloudflareFactory, KVModule, D1Module } from '@velajs/cloudflare';
-import type { KVService, D1Service } from '@velajs/cloudflare';
+import { CloudflareFactory, KVModule, KVService, D1Module, D1Service } from '@velajs/cloudflare';
 
 @Injectable()
 class UserService {
@@ -85,8 +88,7 @@ Each module follows the same pattern: `XModule.forRoot({ binding: 'NAME' })` ret
 ### KVModule
 
 ```ts
-import { KVModule } from '@velajs/cloudflare';
-import type { KVService } from '@velajs/cloudflare';
+import { KVModule, KVService } from '@velajs/cloudflare';
 
 @Module({ imports: [KVModule.forRoot({ binding: 'MY_KV' })] })
 class AppModule {}
@@ -105,8 +107,7 @@ class CacheService {
 ### D1Module
 
 ```ts
-import { D1Module } from '@velajs/cloudflare';
-import type { D1Service } from '@velajs/cloudflare';
+import { D1Module, D1Service } from '@velajs/cloudflare';
 
 @Module({ imports: [D1Module.forRoot({ binding: 'DB' })] })
 class AppModule {}
@@ -128,8 +129,7 @@ class PostService {
 ### R2Module
 
 ```ts
-import { R2Module } from '@velajs/cloudflare';
-import type { R2Service } from '@velajs/cloudflare';
+import { R2Module, R2Service } from '@velajs/cloudflare';
 
 @Module({ imports: [R2Module.forRoot({ binding: 'ASSETS' })] })
 class AppModule {}
@@ -147,8 +147,7 @@ class StorageService {
 ### QueueModule
 
 ```ts
-import { QueueModule } from '@velajs/cloudflare';
-import type { QueueService } from '@velajs/cloudflare';
+import { QueueModule, QueueService } from '@velajs/cloudflare';
 
 @Module({ imports: [QueueModule.forRoot({ binding: 'EMAIL_QUEUE' })] })
 class AppModule {}
@@ -166,8 +165,7 @@ class NotificationService {
 ### DurableObjectModule
 
 ```ts
-import { DurableObjectModule } from '@velajs/cloudflare';
-import type { DurableObjectService } from '@velajs/cloudflare';
+import { DurableObjectModule, DurableObjectService } from '@velajs/cloudflare';
 
 @Module({ imports: [DurableObjectModule.forRoot({ binding: 'COUNTER' })] })
 class AppModule {}
@@ -187,8 +185,7 @@ class CounterService {
 ### AIModule
 
 ```ts
-import { AIModule } from '@velajs/cloudflare';
-import type { AIService } from '@velajs/cloudflare';
+import { AIModule, AIService } from '@velajs/cloudflare';
 
 @Module({ imports: [AIModule.forRoot({ binding: 'AI' })] })
 class AppModule {}
@@ -208,8 +205,7 @@ class ChatService {
 ### VectorizeModule
 
 ```ts
-import { VectorizeModule } from '@velajs/cloudflare';
-import type { VectorizeService } from '@velajs/cloudflare';
+import { VectorizeModule, VectorizeService } from '@velajs/cloudflare';
 
 @Module({ imports: [VectorizeModule.forRoot({ binding: 'EMBEDDINGS' })] })
 class AppModule {}
@@ -231,8 +227,7 @@ class SearchService {
 ### HyperdriveModule
 
 ```ts
-import { HyperdriveModule } from '@velajs/cloudflare';
-import type { HyperdriveService } from '@velajs/cloudflare';
+import { HyperdriveModule, HyperdriveService } from '@velajs/cloudflare';
 
 @Module({ imports: [HyperdriveModule.forRoot({ binding: 'POSTGRES' })] })
 class AppModule {}
