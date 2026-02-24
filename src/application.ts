@@ -1,6 +1,8 @@
 import type { Hono } from 'hono';
+import { cors } from 'hono/cors';
 import type { Container } from './container/container';
 import type { Token } from './container/types';
+import type { CorsOptions } from './cors/cors.types';
 import type { RouteManager } from './http/route.manager';
 import {
   hasBeforeApplicationShutdown,
@@ -9,6 +11,7 @@ import {
   hasOnModuleDestroy,
   hasOnModuleInit,
 } from './lifecycle/index';
+import type { NestMiddleware } from './pipeline/types';
 import type { FilterType, GuardType, InterceptorType, MiddlewareType, PipeType } from './registry/types';
 
 export class VelaApplication {
@@ -96,6 +99,22 @@ export class VelaApplication {
 
   useGlobalFilters(...filters: FilterType[]): this {
     this.routeManager.useGlobalFilters(...filters);
+    return this;
+  }
+
+  enableCors(options: CorsOptions = {}): this {
+    const corsMiddleware = cors({
+      origin: options.origin ?? '*',
+      allowMethods: options.allowMethods,
+      allowHeaders: options.allowHeaders,
+      exposeHeaders: options.exposeHeaders,
+      credentials: options.credentials,
+      maxAge: options.maxAge,
+    });
+    const mw: NestMiddleware = {
+      use: (c, next) => corsMiddleware(c, next) as Promise<Response | void>,
+    };
+    this.routeManager.useGlobalMiddleware(mw);
     return this;
   }
 

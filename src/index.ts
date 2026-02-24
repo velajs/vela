@@ -48,6 +48,54 @@ export type { LoggerService } from './services/index';
 export { ConfigModule, ConfigService, CONFIG_OPTIONS } from './config/index';
 export type { ConfigModuleOptions } from './config/index';
 
+// CORS
+export { CorsModule, CORS_OPTIONS } from './cors/index';
+export type { CorsOptions } from './cors/index';
+
+// Cache
+export {
+  CacheModule,
+  CacheService,
+  CacheInterceptor,
+  MemoryCacheStore,
+  CacheKey,
+  CacheTTL,
+  CACHE_MANAGER,
+  CACHE_MODULE_OPTIONS,
+  CACHE_KEY_METADATA,
+  CACHE_TTL_METADATA,
+} from './cache/index';
+export type { CacheModuleOptions, CacheStore, CacheEntry } from './cache/index';
+
+// Event Emitter
+export {
+  EventEmitterModule,
+  EventEmitter,
+  EventEmitterSubscriber,
+  OnEvent,
+  ON_EVENT_METADATA,
+} from './event-emitter/index';
+export type { EventHandler, OnEventMetadata } from './event-emitter/index';
+
+// Schedule
+export {
+  ScheduleModule,
+  ScheduleRegistry,
+  ScheduleExecutor,
+  Cron,
+  Interval,
+  SCHEDULE_MODULE_OPTIONS,
+  CRON_METADATA,
+  INTERVAL_METADATA,
+} from './schedule/index';
+export type {
+  RegisteredCronJob,
+  RegisteredIntervalJob,
+  CronMetadata,
+  IntervalMetadata,
+  ScheduleModuleOptions,
+} from './schedule/index';
+
 // Module
 export { Module } from './module/index';
 export type { ModuleOptions, DynamicModule } from './module/index';
