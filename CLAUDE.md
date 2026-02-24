@@ -32,4 +32,4 @@ This framework MUST be compatible with all edge runtimes (Cloudflare Workers, De
 
 ## Testing
 
-Run tests with `bun test`. Use Hono's `app.request()` for integration tests.
+Run tests with `pnpm test`. Use Hono's `app.request()` for integration tests.

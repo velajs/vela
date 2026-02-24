@@ -1,13 +1,15 @@
 # @velajs/vela
 
+[![npm version](https://img.shields.io/npm/v/@velajs/vela)](https://www.npmjs.com/package/@velajs/vela)
+[![CI](https://github.com/velajs/vela/actions/workflows/ci.yml/badge.svg)](https://github.com/velajs/vela/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/npm/l/@velajs/vela)](https://github.com/velajs/vela/blob/main/LICENSE)
+
 NestJS-compatible framework for edge runtimes, powered by [Hono](https://hono.dev).
 
 ## Install
 
 ```bash
-npm install @velajs/vela
-# or
-bun add @velajs/vela
+pnpm add @velajs/vela
 ```
 
 ## Quick Start
@@ -74,7 +76,7 @@ No Node.js-specific APIs (`node:fs`, `Buffer`, `process`) are used.
 ## CRUD Module (Optional)
 
 ```bash
-bun add @velajs/crud hono-crud @hono/zod-openapi zod
+pnpm add @velajs/crud hono-crud @hono/zod-openapi zod
 ```
 
 See [`@velajs/crud`](https://github.com/velajs/crud) for documentation.
