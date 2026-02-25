@@ -228,3 +228,12 @@ export { ModuleLoader } from './module/index';
 
 // Component Manager (for advanced usage)
 export { ComponentManager } from './pipeline/index';
+
+// Validation
+export { createZodDto, ValidationPipe } from './validation/index';
+
+// Serialization
+export { Serialize, SerializerInterceptor, SERIALIZE_METADATA } from './serialization/index';
+
+// Testing
+export { Test, TestingModule, TestingModuleBuilder } from './testing/index';

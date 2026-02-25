@@ -211,6 +211,13 @@ export class RouteManager {
     const paramMetadata = (allParamMetadata.get(route.handlerName) || [])
       .sort((a, b) => a.index - b.index) as ParamMetadata[];
 
+    // Read param types once at build time for metatype population
+    const paramTypes = Reflect.getMetadata(
+      'design:paramtypes',
+      instance.constructor.prototype,
+      route.handlerName,
+    ) as unknown[] | undefined;
+
     // Pre-resolve controller + method level components at build time
     const methodGuards = ComponentManager.getComponents('guard', controller, route.handlerName);
     const methodPipes = ComponentManager.getComponents('pipe', controller, route.handlerName);
@@ -243,7 +250,7 @@ export class RouteManager {
 
       try {
         // 1. Extract args + run pipes
-        const args = await this.extractArguments(c, paramMetadata, pipes);
+        const args = await this.extractArguments(c, paramMetadata, pipes, paramTypes);
 
         // 2. Guards (fail-fast)
         for (const guard of guards) {
@@ -316,6 +323,7 @@ export class RouteManager {
     c: Context,
     paramMetadata: ParamMetadata[],
     pipes: PipeTransform[],
+    paramTypes?: unknown[],
   ): Promise<unknown[]> {
     if (paramMetadata.length === 0) {
       return [c];
@@ -330,7 +338,7 @@ export class RouteManager {
       const metadata: ArgumentMetadata = {
         type: param.type,
         data: param.name,
-        metatype: undefined,
+        metatype: paramTypes?.[param.index] as Type | undefined,
       };
 
       // Run shared pipes (global + controller + method)
