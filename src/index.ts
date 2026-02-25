@@ -96,6 +96,22 @@ export type {
   ScheduleModuleOptions,
 } from './schedule/index';
 
+// Health
+export {
+  HealthModule,
+  HealthCheckService,
+  HealthIndicatorService,
+  HttpHealthIndicator,
+} from './health/index';
+export type {
+  HealthCheckResult,
+  HealthCheckStatus,
+  HealthIndicatorResult,
+  HealthIndicatorFunction,
+  ResponseCheckCallback,
+  HttpPingOptions,
+} from './health/index';
+
 // Throttler
 export {
   ThrottlerModule,
