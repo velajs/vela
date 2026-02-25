@@ -105,9 +105,9 @@ jobs:
             exit 0
           fi
 
-          if echo "$COMMITS" | grep -qE "^fix(\(.+\))?:"; then
+          if echo "$COMMITS" | grep -qE "^(fix|perf|refactor|enhance)(\(.+\))?:"; then
             echo "type=patch" >> $GITHUB_OUTPUT
-            echo "Detected: patch (bug fix)"
+            echo "Detected: patch"
             exit 0
           fi
 
