@@ -1,5 +1,5 @@
 import { METADATA_KEYS } from '../constants';
-import { getMetadata } from '../metadata';
+import { defineMetadata, getMetadata } from '../metadata';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import type { Constructor } from '../registry/types';
 import type { ModuleMetadata, ModuleOptions } from './types';
@@ -15,19 +15,24 @@ export function Global(): ClassDecorator {
 export function Module(options: ModuleOptions = {}): ClassDecorator {
   // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
   return (target: Function) => {
-    MetadataRegistry.setModuleOptions(target, {
+    const normalized: ModuleOptions = {
       imports: options.imports,
       providers: options.providers,
       controllers: options.controllers,
       exports: options.exports,
       isGlobal: options.isGlobal,
-    });
+    };
+    // WeakMap store survives MetadataRegistry.clear() — needed for framework modules
+    // decorated at import time (e.g. HttpModule, CorsModule).
+    defineMetadata(METADATA_KEYS.MODULE_OPTIONS, normalized, target);
+    MetadataRegistry.setModuleOptions(target, normalized);
   };
 }
 
 export function isModule(target: Constructor): boolean {
   return MetadataRegistry.getModuleOptions(target) !== undefined ||
-    getMetadata(METADATA_KEYS.MODULE, target) === true;
+    getMetadata(METADATA_KEYS.MODULE, target) === true ||
+    getMetadata(METADATA_KEYS.MODULE_OPTIONS, target) !== undefined;
 }
 
 export function getModuleMetadata(target: Constructor): ModuleMetadata | undefined {
@@ -35,8 +40,11 @@ export function getModuleMetadata(target: Constructor): ModuleMetadata | undefin
     return undefined;
   }
 
-  const options = MetadataRegistry.getModuleOptions(target);
-  if (!options) {
+  const options =
+    MetadataRegistry.getModuleOptions(target) ??
+    getMetadata<ModuleOptions>(METADATA_KEYS.MODULE_OPTIONS, target);
+
+  if (!options || typeof options !== 'object') {
     return undefined;
   }
 

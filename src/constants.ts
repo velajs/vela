@@ -6,6 +6,7 @@ export const METADATA_KEYS = {
 
   // Module
   MODULE: 'vela:module',
+  MODULE_OPTIONS: 'vela:module-options',
 
   // HTTP
   CONTROLLER: 'vela:controller',

@@ -50,6 +50,10 @@ export type { LoggerService } from './services/index';
 export { ConfigModule, ConfigService, CONFIG_OPTIONS } from './config/index';
 export type { ConfigModuleOptions } from './config/index';
 
+// HTTP Client
+export { HttpModule, HttpService, HTTP_MODULE_OPTIONS, HttpRequestException } from './fetch/index';
+export type { HttpModuleOptions, HttpResponse, HttpRequestConfig } from './fetch/index';
+
 // CORS
 export { CorsModule, CORS_OPTIONS } from './cors/index';
 export type { CorsOptions } from './cors/index';
