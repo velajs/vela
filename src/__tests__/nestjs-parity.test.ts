@@ -9,6 +9,7 @@ import {
   Query,
   Body,
   Module,
+  Global,
   Injectable,
   HttpCode,
   Header,
@@ -22,7 +23,14 @@ import {
   SetMetadata,
   Reflector,
   applyDecorators,
+  RequestMethod,
+  ModuleRef,
+  mixin,
+  InjectionToken,
+  ConfigModule,
+  ConfigService,
 } from '../index.js';
+import type { MiddlewareConsumer, NestModule, CanActivate, ExecutionContext } from '../index.js';
 import type {
   CanActivate,
   ExecutionContext,
@@ -508,5 +516,508 @@ describe('applyDecorators', () => {
     const res = await app.getHonoApp().request('/apply-test/data');
     expect(res.status).toBe(200);
     expect(res.headers.get('x-auth')).toBe('ok');
+  });
+});
+
+// =============================================================================
+// @Global
+// =============================================================================
+
+describe('@Global', () => {
+  it('should make module providers available without explicit import', async () => {
+    @Injectable()
+    class SharedService {
+      getValue() {
+        return 'from-global';
+      }
+    }
+
+    @Global()
+    @Module({ providers: [SharedService], exports: [SharedService] })
+    class SharedModule {}
+
+    @Injectable()
+    class FeatureService {
+      constructor(private shared: SharedService) {}
+      getData() {
+        return this.shared.getValue();
+      }
+    }
+
+    @Controller('/feature')
+    class FeatureController {
+      constructor(private svc: FeatureService) {}
+      @Get()
+      handle() {
+        return { value: this.svc.getData() };
+      }
+    }
+
+    @Module({ providers: [FeatureService], controllers: [FeatureController] })
+    class FeatureModule {}
+
+    @Module({ imports: [SharedModule, FeatureModule] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/feature');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ value: 'from-global' });
+  });
+
+  it('should support isGlobal option in @Module decorator', async () => {
+    @Injectable()
+    class ConfigService {
+      get(key: string) {
+        return `value-${key}`;
+      }
+    }
+
+    @Module({ providers: [ConfigService], exports: [ConfigService], isGlobal: true })
+    class ConfigModule {}
+
+    @Controller('/config-test')
+    class ConfigController {
+      constructor(private config: ConfigService) {}
+      @Get()
+      handle() {
+        return { val: this.config.get('db') };
+      }
+    }
+
+    @Module({ imports: [ConfigModule], controllers: [ConfigController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/config-test');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ val: 'value-db' });
+  });
+
+  it('should allow multiple global modules', async () => {
+    @Injectable()
+    class AuthService {
+      getUser() {
+        return 'alice';
+      }
+    }
+
+    @Injectable()
+    class LogService {
+      log(msg: string) {
+        return `[log] ${msg}`;
+      }
+    }
+
+    @Global()
+    @Module({ providers: [AuthService], exports: [AuthService] })
+    class AuthModule {}
+
+    @Global()
+    @Module({ providers: [LogService], exports: [LogService] })
+    class LogModule {}
+
+    @Controller('/multi-global')
+    class MultiController {
+      constructor(
+        private auth: AuthService,
+        private log: LogService,
+      ) {}
+      @Get()
+      handle() {
+        return { user: this.auth.getUser(), logged: this.log.log('ok') };
+      }
+    }
+
+    @Module({ controllers: [MultiController] })
+    class FeatureModule {}
+
+    @Module({ imports: [AuthModule, LogModule, FeatureModule] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/multi-global');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ user: 'alice', logged: '[log] ok' });
+  });
+});
+
+// =============================================================================
+// MiddlewareConsumer (NestModule.configure)
+// =============================================================================
+
+describe('MiddlewareConsumer', () => {
+  it('should apply middleware to all routes via forRoutes("*")', async () => {
+    const log: string[] = [];
+
+    @Injectable()
+    class TraceMiddleware {
+      use(c: import('hono').Context, next: import('hono').Next) {
+        log.push(`${c.req.method} ${c.req.path}`);
+        return next();
+      }
+    }
+
+    @Controller('/traced')
+    class TracedController {
+      @Get()
+      handle() {
+        return { ok: true };
+      }
+    }
+
+    @Module({ providers: [TraceMiddleware], controllers: [TracedController] })
+    class AppModule implements NestModule {
+      configure(consumer: MiddlewareConsumer) {
+        consumer.apply(TraceMiddleware).forRoutes('*');
+      }
+    }
+
+    const app = await VelaFactory.create(AppModule);
+    await app.getHonoApp().request('/traced');
+    expect(log).toEqual(['GET /traced']);
+  });
+
+  it('should apply middleware only to matching prefix via forRoutes(string)', async () => {
+    const log: string[] = [];
+
+    @Injectable()
+    class PrefixMiddleware {
+      use(c: import('hono').Context, next: import('hono').Next) {
+        log.push(c.req.path);
+        return next();
+      }
+    }
+
+    @Controller('/admin')
+    class AdminController {
+      @Get()
+      handle() { return { admin: true }; }
+    }
+
+    @Controller('/public')
+    class PublicController {
+      @Get()
+      handle() { return { public: true }; }
+    }
+
+    @Module({ providers: [PrefixMiddleware], controllers: [AdminController, PublicController] })
+    class AppModule implements NestModule {
+      configure(consumer: MiddlewareConsumer) {
+        consumer.apply(PrefixMiddleware).forRoutes('/admin');
+      }
+    }
+
+    const app = await VelaFactory.create(AppModule);
+    await app.getHonoApp().request('/admin');
+    await app.getHonoApp().request('/public');
+    expect(log).toEqual(['/admin']);
+  });
+
+  it('should apply middleware to controller routes via forRoutes(Controller)', async () => {
+    const log: string[] = [];
+
+    @Injectable()
+    class CtrlMiddleware {
+      use(c: import('hono').Context, next: import('hono').Next) {
+        log.push(c.req.path);
+        return next();
+      }
+    }
+
+    @Controller('/ctrl-mw')
+    class TargetController {
+      @Get()
+      handle() { return { ok: true }; }
+    }
+
+    @Controller('/other')
+    class OtherController {
+      @Get()
+      handle() { return { ok: true }; }
+    }
+
+    @Module({ providers: [CtrlMiddleware], controllers: [TargetController, OtherController] })
+    class AppModule implements NestModule {
+      configure(consumer: MiddlewareConsumer) {
+        consumer.apply(CtrlMiddleware).forRoutes(TargetController);
+      }
+    }
+
+    const app = await VelaFactory.create(AppModule);
+    await app.getHonoApp().request('/ctrl-mw');
+    await app.getHonoApp().request('/other');
+    expect(log).toEqual(['/ctrl-mw']);
+  });
+
+  it('should exclude specific paths from middleware', async () => {
+    const log: string[] = [];
+
+    @Injectable()
+    class LogMiddleware {
+      use(c: import('hono').Context, next: import('hono').Next) {
+        log.push(c.req.path);
+        return next();
+      }
+    }
+
+    @Controller('/api')
+    class ApiController {
+      @Get('/data')
+      data() { return { data: true }; }
+
+      @Get('/health')
+      health() { return { ok: true }; }
+    }
+
+    @Module({ providers: [LogMiddleware], controllers: [ApiController] })
+    class AppModule implements NestModule {
+      configure(consumer: MiddlewareConsumer) {
+        consumer.apply(LogMiddleware).exclude('/api/health').forRoutes('/api');
+      }
+    }
+
+    const app = await VelaFactory.create(AppModule);
+    await app.getHonoApp().request('/api/data');
+    await app.getHonoApp().request('/api/health');
+    expect(log).toEqual(['/api/data']);
+  });
+
+  it('should apply middleware only for a specific HTTP method', async () => {
+    const log: string[] = [];
+
+    @Injectable()
+    class PostOnlyMiddleware {
+      use(c: import('hono').Context, next: import('hono').Next) {
+        log.push(`${c.req.method}`);
+        return next();
+      }
+    }
+
+    @Controller('/methods')
+    class MethodsController {
+      @Get()
+      get() { return { method: 'GET' }; }
+
+      @Post()
+      post() { return { method: 'POST' }; }
+    }
+
+    @Module({ providers: [PostOnlyMiddleware], controllers: [MethodsController] })
+    class AppModule implements NestModule {
+      configure(consumer: MiddlewareConsumer) {
+        consumer
+          .apply(PostOnlyMiddleware)
+          .forRoutes({ path: '/methods', method: RequestMethod.POST });
+      }
+    }
+
+    const app = await VelaFactory.create(AppModule);
+    await app.getHonoApp().request('/methods');
+    await app.getHonoApp().request('/methods', { method: 'POST' });
+    expect(log).toEqual(['POST']);
+  });
+
+  it('should chain multiple middleware in apply()', async () => {
+    const order: string[] = [];
+
+    @Injectable()
+    class FirstMiddleware {
+      use(c: import('hono').Context, next: import('hono').Next) {
+        order.push('first');
+        return next();
+      }
+    }
+
+    @Injectable()
+    class SecondMiddleware {
+      use(c: import('hono').Context, next: import('hono').Next) {
+        order.push('second');
+        return next();
+      }
+    }
+
+    @Controller('/chained')
+    class ChainedController {
+      @Get()
+      handle() { return { ok: true }; }
+    }
+
+    @Module({ providers: [FirstMiddleware, SecondMiddleware], controllers: [ChainedController] })
+    class AppModule implements NestModule {
+      configure(consumer: MiddlewareConsumer) {
+        consumer.apply(FirstMiddleware, SecondMiddleware).forRoutes('*');
+      }
+    }
+
+    const app = await VelaFactory.create(AppModule);
+    await app.getHonoApp().request('/chained');
+    expect(order).toEqual(['first', 'second']);
+  });
+});
+
+// =============================================================================
+// ModuleRef
+// =============================================================================
+
+describe('ModuleRef', () => {
+  it('should resolve a registered singleton via get()', async () => {
+    @Injectable()
+    class GreetService {
+      greet() { return 'hello'; }
+    }
+
+    @Controller('/greet')
+    class GreetController {
+      constructor(private ref: ModuleRef) {}
+      @Get()
+      handle() {
+        const svc = this.ref.get(GreetService);
+        return { msg: svc.greet() };
+      }
+    }
+
+    @Module({ providers: [GreetService], controllers: [GreetController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/greet');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ msg: 'hello' });
+  });
+
+  it('should resolve using InjectionToken via get()', async () => {
+    const MY_TOKEN = new InjectionToken<string>('MY_TOKEN');
+
+    @Controller('/token')
+    class TokenController {
+      constructor(private ref: ModuleRef) {}
+      @Get()
+      handle() {
+        return { val: this.ref.get(MY_TOKEN) };
+      }
+    }
+
+    @Module({
+      providers: [{ token: MY_TOKEN, useValue: 'token-value' }],
+      controllers: [TokenController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/token');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ val: 'token-value' });
+  });
+
+  it('should create a fresh instance outside DI cache via create()', async () => {
+    @Injectable()
+    class CounterService {
+      private count = 0;
+      increment() { return ++this.count; }
+    }
+
+    @Controller('/counter')
+    class CounterController {
+      constructor(private ref: ModuleRef) {}
+      @Get()
+      handle() {
+        const a = this.ref.create(CounterService);
+        const b = this.ref.create(CounterService);
+        return { a: a.increment(), b: b.increment(), same: a === b };
+      }
+    }
+
+    @Module({ providers: [CounterService], controllers: [CounterController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/counter');
+    expect(res.status).toBe(200);
+    const body = await res.json() as { a: number; b: number; same: boolean };
+    expect(body.a).toBe(1);
+    expect(body.b).toBe(1); // fresh instance, starts at 0
+    expect(body.same).toBe(false);
+  });
+});
+
+// =============================================================================
+// mixin()
+// =============================================================================
+
+describe('mixin()', () => {
+  it('should create a reusable guard mixin parameterized by role', async () => {
+    function RoleGuardMixin(role: string) {
+      class MixedGuard implements CanActivate {
+        canActivate(ctx: ExecutionContext): boolean {
+          return ctx.getRequest().headers.get('x-role') === role;
+        }
+      }
+      return mixin(MixedGuard);
+    }
+
+    const AdminGuard = RoleGuardMixin('admin');
+    const UserGuard = RoleGuardMixin('user');
+
+    @Controller('/mixin-test')
+    class MixinController {
+      @Get('/admin')
+      @UseGuards(AdminGuard)
+      adminOnly() { return { role: 'admin' }; }
+
+      @Get('/user')
+      @UseGuards(UserGuard)
+      userOnly() { return { role: 'user' }; }
+    }
+
+    @Module({ controllers: [MixinController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    const denied = await hono.request('/mixin-test/admin');
+    expect(denied.status).toBe(403);
+
+    const allowed = await hono.request('/mixin-test/admin', { headers: { 'x-role': 'admin' } });
+    expect(allowed.status).toBe(200);
+
+    const userAllowed = await hono.request('/mixin-test/user', { headers: { 'x-role': 'user' } });
+    expect(userAllowed.status).toBe(200);
+
+    const userDenied = await hono.request('/mixin-test/user', { headers: { 'x-role': 'admin' } });
+    expect(userDenied.status).toBe(403);
+  });
+});
+
+// =============================================================================
+// ConfigModule.forRoot({ isGlobal: true })
+// =============================================================================
+
+describe('ConfigModule isGlobal', () => {
+  it('should make ConfigService available without explicit import', async () => {
+    @Injectable()
+    class AppService {
+      constructor(private config: ConfigService) {}
+      getVal() { return this.config.get('APP_NAME'); }
+    }
+
+    @Controller('/cfg-global')
+    class CfgController {
+      constructor(private svc: AppService) {}
+      @Get()
+      handle() { return { val: this.svc.getVal() }; }
+    }
+
+    @Module({ providers: [AppService], controllers: [CfgController] })
+    class FeatureModule {}
+
+    @Module({ imports: [ConfigModule.forRoot({ config: { APP_NAME: 'vela' }, isGlobal: true }), FeatureModule] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/cfg-global');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ val: 'vela' });
   });
 });

@@ -4,6 +4,8 @@ import { HttpMethod, ParamType } from '../constants';
 import { getMetadata } from '../metadata';
 import type { Container } from '../container/container';
 import type { Token, Type } from '../container/types';
+import type { MiddlewareRouteDefinition } from './middleware-consumer';
+import { RequestMethod } from './middleware-consumer';
 import { ForbiddenException, HttpException } from '../errors/http-exception';
 import { ComponentManager } from '../pipeline/component.manager';
 import { shouldFilterCatch } from '../pipeline/decorators';
@@ -53,8 +55,14 @@ export class RouteManager {
   private globalInterceptors: Array<InterceptorType | Token<NestInterceptor>> = [];
   private globalFilters: Array<FilterType | Token<ExceptionFilter>> = [];
   private globalPrefix = '';
+  private consumerMiddlewareDefinitions: MiddlewareRouteDefinition[] = [];
 
   constructor(private container: Container) {}
+
+  registerConsumerMiddleware(definitions: MiddlewareRouteDefinition[]): this {
+    this.consumerMiddlewareDefinitions.push(...definitions);
+    return this;
+  }
 
   setGlobalPrefix(prefix: string): this {
     this.globalPrefix = prefix && !prefix.startsWith('/') ? `/${prefix}` : prefix;
@@ -171,6 +179,43 @@ export class RouteManager {
         const requestContainer = this.getRequestContainer(c);
         const resolved = this.instantiate<NestMiddleware>(mw, requestContainer);
         return resolved.use(c, next);
+      });
+    }
+
+    // Register MiddlewareConsumer-configured middleware
+    for (const def of this.consumerMiddlewareDefinitions) {
+      app.use('*', (c, next) => {
+        const reqPath = c.req.path;
+        const reqMethod = c.req.method;
+
+        const matches = def.routes.some((route) => {
+          if (!this.matchesConsumerPath(reqPath, route.path)) return false;
+          if (route.method && route.method !== RequestMethod.ALL) {
+            if (reqMethod !== route.method) return false;
+          }
+          return true;
+        });
+
+        if (!matches) return next();
+
+        const excluded = def.excludes.some((exclude) => {
+          if (!this.matchesConsumerPath(reqPath, exclude.path)) return false;
+          if (exclude.method && exclude.method !== RequestMethod.ALL) {
+            if (reqMethod !== exclude.method) return false;
+          }
+          return true;
+        });
+
+        if (excluded) return next();
+
+        const requestContainer = this.getRequestContainer(c);
+        const runChain = (index: number): Promise<Response | void> => {
+          if (index >= def.middleware.length) return next();
+          const instance = this.instantiate<NestMiddleware>(def.middleware[index]!, requestContainer);
+          return instance.use(c, () => runChain(index + 1));
+        };
+
+        return runChain(0);
       });
     }
 
@@ -523,6 +568,17 @@ export class RouteManager {
     const cleanPrefix = prefix.endsWith('/') ? prefix.slice(0, -1) : prefix;
     const cleanPath = path && !path.startsWith('/') ? `/${path}` : path;
     return `${cleanPrefix}${cleanPath}` || '/';
+  }
+
+  private matchesConsumerPath(reqPath: string, routePath: string): boolean {
+    if (routePath === '*') return true;
+    const normalized = routePath.startsWith('/') ? routePath : `/${routePath}`;
+    if (reqPath === normalized) return true;
+    if (reqPath.startsWith(`${normalized}/`)) return true;
+    if (normalized.endsWith('*')) {
+      return reqPath.startsWith(normalized.slice(0, -1));
+    }
+    return false;
   }
 
   getControllers(): ControllerRegistration[] {

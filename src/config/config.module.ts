@@ -17,6 +17,7 @@ export class ConfigModule {
     defineMetadata(METADATA_KEYS.MODULE, true, moduleClass);
     MetadataRegistry.setModuleOptions(moduleClass, {
       exports: [ConfigService, CONFIG_OPTIONS],
+      isGlobal: options.isGlobal,
     });
 
     return {
@@ -25,6 +26,7 @@ export class ConfigModule {
         { token: CONFIG_OPTIONS, useValue: config },
         ConfigService,
       ],
+      ...(options.isGlobal ? { global: true } : {}),
     };
   }
 }

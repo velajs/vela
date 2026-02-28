@@ -6,7 +6,7 @@ export { VelaFactory } from './factory';
 export { VelaApplication } from './application';
 
 // DI Container
-export { Container, Injectable, Inject, Optional, InjectionToken, ForwardRef, forwardRef } from './container/index';
+export { Container, Injectable, Inject, Optional, InjectionToken, ForwardRef, forwardRef, ModuleRef, mixin } from './container/index';
 export type {
   Type,
   Token,
@@ -135,8 +135,10 @@ export type {
 } from './throttler/index';
 
 // Module
-export { Module } from './module/index';
+export { Global, Module } from './module/index';
 export type { ModuleOptions, DynamicModule } from './module/index';
+export { RequestMethod } from './http/index';
+export type { MiddlewareConsumer, NestModule, RouteInfo } from './http/index';
 
 // Pipeline Decorators
 export {

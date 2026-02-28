@@ -5,6 +5,7 @@ export interface DynamicModule {
   providers?: Array<Type | ProviderOptions>;
   controllers?: Type[];
   exports?: Array<Type | InjectionToken>;
+  global?: boolean;
 }
 
 export interface ModuleOptions {
@@ -12,6 +13,7 @@ export interface ModuleOptions {
   controllers?: Type[];
   imports?: Array<Type | DynamicModule>;
   exports?: Array<Type | InjectionToken>;
+  isGlobal?: boolean;
 }
 
 export interface ModuleMetadata {
@@ -19,4 +21,5 @@ export interface ModuleMetadata {
   controllers: Type[];
   imports: Array<Type | DynamicModule>;
   exports: Array<Type | InjectionToken>;
+  isGlobal: boolean;
 }

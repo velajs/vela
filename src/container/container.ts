@@ -114,6 +114,12 @@ export class Container {
     return child;
   }
 
+  createDetached(): Container {
+    const child = new Container();
+    child.providers = new Map(this.providers); // copy, not share
+    return child;
+  }
+
   clear(): void {
     this.providers.clear();
     this.resolutionStack.clear();

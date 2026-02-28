@@ -1,3 +1,3 @@
-export { Module, isModule, getModuleMetadata } from './decorators';
+export { Global, Module, isModule, getModuleMetadata } from './decorators';
 export { ModuleLoader } from './module-loader';
 export type { ModuleOptions, ModuleMetadata, DynamicModule } from './types';

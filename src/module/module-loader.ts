@@ -2,6 +2,8 @@ import { Scope } from '../constants';
 import type { Container } from '../container/container';
 import { InjectionToken } from '../container/types';
 import type { ProviderOptions, Token, Type } from '../container/types';
+import { MiddlewareBuilder } from '../http/middleware-consumer';
+import type { MiddlewareRouteDefinition } from '../http/middleware-consumer';
 import type { RouteManager } from '../http/route.manager';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_MIDDLEWARE, APP_PIPE } from '../pipeline/tokens';
 import { getModuleMetadata, isModule } from './decorators';
@@ -11,6 +13,7 @@ interface DynamicModule {
   providers?: Array<Type | ProviderOptions>;
   controllers?: Type[];
   exports?: Array<Type | InjectionToken>;
+  global?: boolean;
 }
 
 function isDynamicModule(value: unknown): value is DynamicModule {
@@ -28,6 +31,8 @@ export class ModuleLoader {
   private collectedControllers: Type[] = [];
   private registeredProviders: Token[] = [];
   private moduleExportsCache = new Map<Type, Set<Token>>();
+  private globalExports = new Set<Token>();
+  private consumerMiddlewareDefinitions: MiddlewareRouteDefinition[] = [];
   private appProviderCounter = 0;
   private appProviderTokens = new Map<Token, Token[]>([
     [APP_GUARD, []],
@@ -91,7 +96,7 @@ export class ModuleLoader {
     this.processingStack.add(moduleClass);
 
     try {
-      const importedProviders = new Set<Token>();
+      const importedProviders = new Set<Token>(this.globalExports);
 
       for (const importedModule of metadata.imports) {
         const exportedTokens = this.processModule(importedModule as Type | DynamicModule);
@@ -118,6 +123,25 @@ export class ModuleLoader {
 
       const exports = this.buildExportSet(metadata.exports, allProviders, importedProviders);
       this.moduleExportsCache.set(moduleClass, exports);
+
+      const isGlobal = metadata.isGlobal || (isDynamicModule(moduleClassOrDynamic) && moduleClassOrDynamic.global === true);
+      if (isGlobal) {
+        for (const token of exports) {
+          this.globalExports.add(token);
+        }
+      }
+
+      // Call configure() if the module implements NestModule
+      if (typeof (moduleClass as { prototype?: { configure?: unknown } }).prototype?.configure === 'function') {
+        try {
+          const instance = new moduleClass() as { configure: (c: MiddlewareBuilder) => void };
+          const builder = new MiddlewareBuilder();
+          instance.configure(builder);
+          this.consumerMiddlewareDefinitions.push(...builder.getDefinitions());
+        } catch {
+          // Module has constructor dependencies — configure() skipped
+        }
+      }
 
       return exports;
     } finally {
@@ -205,6 +229,10 @@ export class ModuleLoader {
 
   getAppProviderTokens(token: Token): Token[] {
     return [...(this.appProviderTokens.get(token) ?? [])];
+  }
+
+  getConsumerMiddlewareDefinitions(): MiddlewareRouteDefinition[] {
+    return [...this.consumerMiddlewareDefinitions];
   }
 
   resolveAllInstances(): unknown[] {

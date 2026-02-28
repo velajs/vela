@@ -57,6 +57,7 @@ export interface ModuleOptions {
   providers?: Array<Type | ProviderOptions>;
   controllers?: Type[];
   exports?: Array<Type | InjectionTokenLike>;
+  isGlobal?: boolean;
 }
 
 // Forward-compatible with InjectionToken

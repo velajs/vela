@@ -1,5 +1,6 @@
 import { VelaApplication } from './application';
 import { Container } from './container/container';
+import { ModuleRef } from './container/module-ref';
 import type { Type } from './container/types';
 import { RouteManager } from './http/route.manager';
 import { ModuleLoader } from './module/module-loader';
@@ -16,6 +17,7 @@ export const VelaFactory = {
   async create(rootModule: Type): Promise<VelaApplication> {
     const container = new Container();
     container.register({ token: Container, useValue: container });
+    container.register({ token: ModuleRef, useFactory: (c: Container) => new ModuleRef(c), inject: [Container] });
     const routeManager = new RouteManager(container);
     ComponentManager.init(container);
 
@@ -56,6 +58,8 @@ export const VelaFactory = {
     } else if (container.has(APP_MIDDLEWARE)) {
       routeManager.useGlobalMiddlewareTokens(APP_MIDDLEWARE);
     }
+
+    routeManager.registerConsumerMiddleware(loader.getConsumerMiddlewareDefinitions());
 
     const app = new VelaApplication(container, routeManager);
     const instances = loader.resolveAllInstances();
