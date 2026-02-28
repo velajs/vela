@@ -34,7 +34,7 @@ export class OverrideBy {
   }
 
   useClass(cls: Type): TestingModuleBuilder {
-    this.builder['addOverride']({ token: this.token, provider: { token: this.token, useFactory: () => new cls() } });
+    this.builder['addOverride']({ token: this.token, provider: { token: this.token, useClass: cls } });
     return this.builder;
   }
 
@@ -108,21 +108,39 @@ export class TestingModuleBuilder {
     const loader = new ModuleLoader(container, routeManager);
     loader.load(TestRootModule);
 
-    // Resolve APP_* tokens
-    if (container.has(APP_GUARD)) {
-      routeManager.useGlobalGuards(container.resolve(APP_GUARD));
+    const appGuards = loader.getAppProviderTokens(APP_GUARD);
+    if (appGuards.length > 0) {
+      routeManager.useGlobalGuardTokens(...appGuards);
+    } else if (container.has(APP_GUARD)) {
+      routeManager.useGlobalGuardTokens(APP_GUARD);
     }
-    if (container.has(APP_PIPE)) {
-      routeManager.useGlobalPipes(container.resolve(APP_PIPE));
+
+    const appPipes = loader.getAppProviderTokens(APP_PIPE);
+    if (appPipes.length > 0) {
+      routeManager.useGlobalPipeTokens(...appPipes);
+    } else if (container.has(APP_PIPE)) {
+      routeManager.useGlobalPipeTokens(APP_PIPE);
     }
-    if (container.has(APP_INTERCEPTOR)) {
-      routeManager.useGlobalInterceptors(container.resolve(APP_INTERCEPTOR));
+
+    const appInterceptors = loader.getAppProviderTokens(APP_INTERCEPTOR);
+    if (appInterceptors.length > 0) {
+      routeManager.useGlobalInterceptorTokens(...appInterceptors);
+    } else if (container.has(APP_INTERCEPTOR)) {
+      routeManager.useGlobalInterceptorTokens(APP_INTERCEPTOR);
     }
-    if (container.has(APP_FILTER)) {
-      routeManager.useGlobalFilters(container.resolve(APP_FILTER));
+
+    const appFilters = loader.getAppProviderTokens(APP_FILTER);
+    if (appFilters.length > 0) {
+      routeManager.useGlobalFilterTokens(...appFilters);
+    } else if (container.has(APP_FILTER)) {
+      routeManager.useGlobalFilterTokens(APP_FILTER);
     }
-    if (container.has(APP_MIDDLEWARE)) {
-      routeManager.useGlobalMiddleware(container.resolve(APP_MIDDLEWARE));
+
+    const appMiddleware = loader.getAppProviderTokens(APP_MIDDLEWARE);
+    if (appMiddleware.length > 0) {
+      routeManager.useGlobalMiddlewareTokens(...appMiddleware);
+    } else if (container.has(APP_MIDDLEWARE)) {
+      routeManager.useGlobalMiddlewareTokens(APP_MIDDLEWARE);
     }
 
     const app = new VelaApplication(container, routeManager);

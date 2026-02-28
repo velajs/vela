@@ -383,4 +383,57 @@ describe('APP_* tokens', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ name: 'hello' });
   });
+
+  it('should support multiple APP_GUARD providers in order', async () => {
+    const order: string[] = [];
+
+    @Injectable()
+    class FirstGuard implements CanActivate {
+      canActivate(_context: ExecutionContext): boolean {
+        order.push('first');
+        return true;
+      }
+    }
+
+    @Injectable()
+    class SecondGuard implements CanActivate {
+      canActivate(context: ExecutionContext): boolean {
+        order.push('second');
+        return context.getRequest().headers.get('x-pass') === '1';
+      }
+    }
+
+    @Controller('/stacked-guards')
+    class GuardedController {
+      @Get()
+      handle() {
+        return { ok: true };
+      }
+    }
+
+    @Module({
+      providers: [
+        FirstGuard,
+        SecondGuard,
+        { token: APP_GUARD, useExisting: FirstGuard },
+        { token: APP_GUARD, useExisting: SecondGuard },
+      ],
+      controllers: [GuardedController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    const blocked = await hono.request('/stacked-guards');
+    expect(blocked.status).toBe(403);
+    expect(order).toEqual(['first', 'second']);
+
+    order.length = 0;
+    const allowed = await hono.request('/stacked-guards', {
+      headers: { 'x-pass': '1' },
+    });
+    expect(allowed.status).toBe(200);
+    expect(order).toEqual(['first', 'second']);
+  });
 });

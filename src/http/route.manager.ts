@@ -3,7 +3,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { HttpMethod, ParamType } from '../constants';
 import { getMetadata } from '../metadata';
 import type { Container } from '../container/container';
-import type { Type } from '../container/types';
+import type { Token, Type } from '../container/types';
 import { ForbiddenException, HttpException } from '../errors/http-exception';
 import { ComponentManager } from '../pipeline/component.manager';
 import { shouldFilterCatch } from '../pipeline/decorators';
@@ -47,11 +47,11 @@ function parseRedirectResult(result: unknown): RedirectOverride | undefined {
 
 export class RouteManager {
   private controllers: ControllerRegistration[] = [];
-  private globalMiddleware: NestMiddleware[] = [];
-  private globalPipes: PipeTransform[] = [];
-  private globalGuards: CanActivate[] = [];
-  private globalInterceptors: NestInterceptor[] = [];
-  private globalFilters: ExceptionFilter[] = [];
+  private globalMiddleware: Array<MiddlewareType | Token<NestMiddleware>> = [];
+  private globalPipes: Array<PipeType | Token<PipeTransform>> = [];
+  private globalGuards: Array<GuardType | Token<CanActivate>> = [];
+  private globalInterceptors: Array<InterceptorType | Token<NestInterceptor>> = [];
+  private globalFilters: Array<FilterType | Token<ExceptionFilter>> = [];
   private globalPrefix = '';
 
   constructor(private container: Container) {}
@@ -62,48 +62,86 @@ export class RouteManager {
   }
 
   useGlobalMiddleware(...middleware: MiddlewareType[]): this {
-    for (const mw of middleware) {
-      this.globalMiddleware.push(this.instantiate<NestMiddleware>(mw));
-    }
+    this.globalMiddleware.push(...middleware);
+    return this;
+  }
+
+  useGlobalMiddlewareTokens(...middlewareTokens: Array<Token<NestMiddleware>>): this {
+    this.globalMiddleware.push(...middlewareTokens);
     return this;
   }
 
   useGlobalPipes(...pipes: PipeType[]): this {
-    for (const pipe of pipes) {
-      this.globalPipes.push(this.instantiate<PipeTransform>(pipe));
-    }
+    this.globalPipes.push(...pipes);
+    return this;
+  }
+
+  useGlobalPipeTokens(...pipeTokens: Array<Token<PipeTransform>>): this {
+    this.globalPipes.push(...pipeTokens);
     return this;
   }
 
   useGlobalGuards(...guards: GuardType[]): this {
-    for (const guard of guards) {
-      this.globalGuards.push(this.instantiate<CanActivate>(guard));
-    }
+    this.globalGuards.push(...guards);
+    return this;
+  }
+
+  useGlobalGuardTokens(...guardTokens: Array<Token<CanActivate>>): this {
+    this.globalGuards.push(...guardTokens);
     return this;
   }
 
   useGlobalInterceptors(...interceptors: InterceptorType[]): this {
-    for (const interceptor of interceptors) {
-      this.globalInterceptors.push(this.instantiate<NestInterceptor>(interceptor));
-    }
+    this.globalInterceptors.push(...interceptors);
+    return this;
+  }
+
+  useGlobalInterceptorTokens(...interceptorTokens: Array<Token<NestInterceptor>>): this {
+    this.globalInterceptors.push(...interceptorTokens);
     return this;
   }
 
   useGlobalFilters(...filters: FilterType[]): this {
-    for (const filter of filters) {
-      this.globalFilters.push(this.instantiate<ExceptionFilter>(filter));
-    }
+    this.globalFilters.push(...filters);
     return this;
   }
 
-  private instantiate<T>(classOrInstance: Type<T> | T): T {
-    if (typeof classOrInstance !== 'function') {
-      return classOrInstance as T;
+  useGlobalFilterTokens(...filterTokens: Array<Token<ExceptionFilter>>): this {
+    this.globalFilters.push(...filterTokens);
+    return this;
+  }
+
+  private instantiate<T>(classOrInstance: Type<T> | Token<T> | T, container: Container): T {
+    if (typeof classOrInstance === 'function') {
+      if (container.has(classOrInstance as Type<T>)) {
+        return container.resolve(classOrInstance as Type<T>);
+      }
+      return new (classOrInstance as Type<T>)();
     }
-    if (this.container.has(classOrInstance as Type<T>)) {
-      return this.container.resolve(classOrInstance as Type<T>);
+
+    if (container.has(classOrInstance as Token<T>)) {
+      return container.resolve(classOrInstance as Token<T>);
     }
-    return new (classOrInstance as Type<T>)();
+
+    return classOrInstance as T;
+  }
+
+  private instantiateMany<T>(
+    items: Array<Type<T> | Token<T> | T>,
+    container: Container,
+  ): T[] {
+    return items.map((item) => this.instantiate(item, container));
+  }
+
+  private getRequestContainer(c: Context): Container {
+    const existing = c.get('container') as Container | undefined;
+    if (existing) {
+      return existing;
+    }
+
+    const child = this.container.createChild();
+    c.set('container', child);
+    return child;
   }
 
   registerController(controller: Type): this {
@@ -129,13 +167,16 @@ export class RouteManager {
 
     // Register global middleware on the Hono app
     for (const mw of this.globalMiddleware) {
-      app.use('*', (c, next) => mw.use(c, next));
+      app.use('*', (c, next) => {
+        const requestContainer = this.getRequestContainer(c);
+        const resolved = this.instantiate<NestMiddleware>(mw, requestContainer);
+        return resolved.use(c, next);
+      });
     }
 
     // First pass: register all custom routes (must come before CRUD /:id routes)
     for (const { controller, metadata, routes } of this.controllers) {
       if (routes.length > 0) {
-        const instance = this.container.resolve(controller);
         const allParamMetadata = MetadataRegistry.getParameters(controller);
 
         for (const route of routes) {
@@ -152,13 +193,18 @@ export class RouteManager {
 
           // Register per-route middleware as Hono middleware before the handler
           const middlewareItems = ComponentManager.getComponents('middleware', controller, route.handlerName);
-          const resolvedMw = ComponentManager.resolveMiddleware(middlewareItems);
-
-          const handler = this.createHandler(instance, route, controller, allParamMetadata);
+          const handler = this.createHandler(route, controller, allParamMetadata);
 
           for (const fullPath of versionedPaths) {
-            for (const mw of resolvedMw) {
-              app.use(fullPath, (c, next) => mw.use(c, next));
+            for (const middlewareItem of middlewareItems) {
+              app.use(fullPath, (c, next) => {
+                const requestContainer = this.getRequestContainer(c);
+                const resolved = this.instantiate<NestMiddleware>(
+                  middlewareItem as Type<NestMiddleware> | NestMiddleware,
+                  requestContainer,
+                );
+                return resolved.use(c, next);
+              });
             }
             this.registerRoute(app, route.method, fullPath, handler);
           }
@@ -175,7 +221,7 @@ export class RouteManager {
           const { buildCrudRoutes } = await import(pkg);
           await buildCrudRoutes(app, controller, metadata.prefix, crudConfig, {
             globalPrefix: this.globalPrefix,
-            globalGuards: this.globalGuards,
+            globalGuards: this.instantiateMany<CanActivate>(this.globalGuards, this.container),
             joinPaths: this.joinPaths.bind(this),
           });
         } catch {
@@ -203,7 +249,6 @@ export class RouteManager {
   }
 
   private createHandler(
-    instance: object,
     route: RouteMetadata,
     controller: Type,
     allParamMetadata: Map<string | symbol, import('../registry/types').ParameterMetadata[]>,
@@ -214,21 +259,16 @@ export class RouteManager {
     // Read param types once at build time for metatype population
     const paramTypes = Reflect.getMetadata(
       'design:paramtypes',
-      instance.constructor.prototype,
+      controller.prototype,
       route.handlerName,
     ) as unknown[] | undefined;
 
-    // Pre-resolve controller + method level components at build time
+    // Collect controller + method level components at build time
     const methodGuards = ComponentManager.getComponents('guard', controller, route.handlerName);
     const methodPipes = ComponentManager.getComponents('pipe', controller, route.handlerName);
     const methodInterceptors = ComponentManager.getComponents('interceptor', controller, route.handlerName);
-    const methodFilters = ComponentManager.getComponents('filter', controller, route.handlerName);
-
-    const resolvedMethodGuards = ComponentManager.resolveGuards(methodGuards);
-    const resolvedMethodPipes = ComponentManager.resolvePipes(methodPipes);
-    const resolvedMethodInterceptors = ComponentManager.resolveInterceptors(methodInterceptors);
     // Filters: reverse order (handler → controller → global) — closest to handler runs first
-    const resolvedMethodFilters = ComponentManager.resolveFilters([...methodFilters].reverse());
+    const methodFilters = [...ComponentManager.getComponents('filter', controller, route.handlerName)].reverse();
 
     // Read response decorators at build time
     const httpCode = getHttpCode(controller, route.handlerName);
@@ -236,21 +276,32 @@ export class RouteManager {
     const redirect = getRedirect(controller, route.handlerName);
 
     return async (c: Context) => {
-      // Create a child container for request-scoped providers
-      const requestContainer = this.container.createChild();
-      c.set('container', requestContainer);
-
       // Combine global + method at request time (allows post-create registration)
-      const guards = [...this.globalGuards, ...resolvedMethodGuards];
-      const pipes = [...this.globalPipes, ...resolvedMethodPipes];
-      const interceptors = [...this.globalInterceptors, ...resolvedMethodInterceptors];
-      const filters = [...resolvedMethodFilters, ...this.globalFilters];
+      const requestContainer = this.getRequestContainer(c);
+      const guards = [
+        ...this.instantiateMany<CanActivate>(this.globalGuards, requestContainer),
+        ...this.instantiateMany<CanActivate>(methodGuards, requestContainer),
+      ];
+      const pipes = [
+        ...this.instantiateMany<PipeTransform>(this.globalPipes, requestContainer),
+        ...this.instantiateMany<PipeTransform>(methodPipes, requestContainer),
+      ];
+      const interceptors = [
+        ...this.instantiateMany<NestInterceptor>(this.globalInterceptors, requestContainer),
+        ...this.instantiateMany<NestInterceptor>(methodInterceptors, requestContainer),
+      ];
+      const filters = [
+        ...this.instantiateMany<ExceptionFilter>(methodFilters, requestContainer),
+        ...this.instantiateMany<ExceptionFilter>(this.globalFilters, requestContainer),
+      ];
 
       const executionContext = this.createExecutionContext(c, controller, route);
 
       try {
+        const instance = requestContainer.resolve(controller);
+
         // 1. Extract args + run pipes
-        const args = await this.extractArguments(c, paramMetadata, pipes, paramTypes);
+        const args = await this.extractArguments(c, paramMetadata, pipes, requestContainer, paramTypes);
 
         // 2. Guards (fail-fast)
         for (const guard of guards) {
@@ -323,6 +374,7 @@ export class RouteManager {
     c: Context,
     paramMetadata: ParamMetadata[],
     pipes: PipeTransform[],
+    requestContainer: Container,
     paramTypes?: unknown[],
   ): Promise<unknown[]> {
     if (paramMetadata.length === 0) {
@@ -349,7 +401,7 @@ export class RouteManager {
       // Run param-level pipes
       if (param.pipes && param.pipes.length > 0) {
         for (const paramPipe of param.pipes) {
-          const pipeInstance = this.instantiate<PipeTransform>(paramPipe);
+          const pipeInstance = this.instantiate<PipeTransform>(paramPipe, requestContainer);
           value = await pipeInstance.transform(value, metadata);
         }
       }

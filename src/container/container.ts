@@ -56,6 +56,8 @@ export class Container {
     } else if (options.useFactory) {
       registration.useFactory = options.useFactory;
       registration.inject = options.inject;
+    } else if (options.useClass) {
+      registration.useClass = options.useClass;
     } else if (options.useExisting) {
       registration.useExisting = options.useExisting;
     } else if (typeof token === 'function') {
@@ -90,6 +92,10 @@ export class Container {
 
   has(token: Token): boolean {
     return this.providers.has(token);
+  }
+
+  getProviderScope(token: Token): Scope | undefined {
+    return this.providers.get(token)?.scope;
   }
 
   getTokens(): Token[] {

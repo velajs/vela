@@ -36,6 +36,7 @@ export interface ProviderOptions<T = unknown> {
   useValue?: T;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   useFactory?: (...args: any[]) => T | Promise<T>;
+  useClass?: Type<T>;
   inject?: Token[];
   useExisting?: Token<T>;
 }

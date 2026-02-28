@@ -1,6 +1,9 @@
+import { Scope } from '../constants';
 import type { Container } from '../container/container';
-import type { InjectionToken, ProviderOptions, Token, Type } from '../container/types';
+import { InjectionToken } from '../container/types';
+import type { ProviderOptions, Token, Type } from '../container/types';
 import type { RouteManager } from '../http/route.manager';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_MIDDLEWARE, APP_PIPE } from '../pipeline/tokens';
 import { getModuleMetadata, isModule } from './decorators';
 
 interface DynamicModule {
@@ -25,6 +28,14 @@ export class ModuleLoader {
   private collectedControllers: Type[] = [];
   private registeredProviders: Token[] = [];
   private moduleExportsCache = new Map<Type, Set<Token>>();
+  private appProviderCounter = 0;
+  private appProviderTokens = new Map<Token, Token[]>([
+    [APP_GUARD, []],
+    [APP_PIPE, []],
+    [APP_INTERCEPTOR, []],
+    [APP_FILTER, []],
+    [APP_MIDDLEWARE, []],
+  ]);
 
   constructor(
     private container: Container,
@@ -122,13 +133,36 @@ export class ModuleLoader {
       }
     } else {
       const token = provider.token;
-      if (token && !this.container.has(token)) {
+      if (!token) {
+        this.container.register(provider);
+        return;
+      }
+
+      if (this.isAppToken(token)) {
+        const syntheticToken = new InjectionToken(
+          `${token.toString()}:${this.appProviderCounter++}`,
+        );
+        this.container.register({ ...provider, token: syntheticToken });
+        this.registeredProviders.push(syntheticToken);
+        this.appProviderTokens.get(token)!.push(syntheticToken);
+        return;
+      }
+
+      if (!this.container.has(token)) {
         this.container.register(provider);
         this.registeredProviders.push(token);
-      } else if (!token) {
-        this.container.register(provider);
       }
     }
+  }
+
+  private isAppToken(token: Token): boolean {
+    return (
+      token === APP_GUARD ||
+      token === APP_PIPE ||
+      token === APP_INTERCEPTOR ||
+      token === APP_FILTER ||
+      token === APP_MIDDLEWARE
+    );
   }
 
   private buildExportSet(
@@ -169,11 +203,18 @@ export class ModuleLoader {
     return [...this.registeredProviders];
   }
 
+  getAppProviderTokens(token: Token): Token[] {
+    return [...(this.appProviderTokens.get(token) ?? [])];
+  }
+
   resolveAllInstances(): unknown[] {
     const instances: unknown[] = [];
 
     for (const token of this.registeredProviders) {
       try {
+        if (this.container.getProviderScope(token) === Scope.REQUEST) {
+          continue;
+        }
         const instance = this.container.resolve(token);
         instances.push(instance);
       } catch {
@@ -183,6 +224,9 @@ export class ModuleLoader {
 
     for (const controller of this.collectedControllers) {
       try {
+        if (this.container.getProviderScope(controller) === Scope.REQUEST) {
+          continue;
+        }
         const instance = this.container.resolve(controller);
         if (!instances.includes(instance)) {
           instances.push(instance);

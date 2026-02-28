@@ -116,6 +116,33 @@ describe('ScheduleModule', () => {
   });
 
   describe('ScheduleExecutor', () => {
+    it('should run cron jobs when expression matches the current minute', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
+      let callCount = 0;
+
+      @Injectable()
+      class CronService {
+        @Cron('* * * * *')
+        tick() { callCount++; }
+      }
+
+      @Module({
+        imports: [ScheduleModule.forRoot({ enableTimers: true })],
+        providers: [CronService],
+      })
+      class AppModule {}
+
+      const app = await VelaFactory.create(AppModule);
+
+      // One call in the 00:00 minute and one in the 00:01 minute
+      await vi.advanceTimersByTimeAsync(61_000);
+      expect(callCount).toBe(2);
+
+      await app.close();
+      vi.useRealTimers();
+    });
+
     it('should run interval jobs with setTimeout recursion', async () => {
       vi.useFakeTimers();
       let callCount = 0;
