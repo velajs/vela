@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Container } from '../container/container.js';
 import { Injectable, Inject, Optional } from '../container/decorators.js';
-import { InjectionToken } from '../container/types.js';
+import { InjectionToken, forwardRef } from '../container/types.js';
 import { Scope } from '../constants.js';
 
 describe('DI Container', () => {
@@ -324,6 +324,62 @@ describe('DI Container', () => {
       container.register(ServiceA);
       const instance = container.resolve(ServiceA);
       expect(instance.value).toBeUndefined();
+    });
+  });
+
+  describe('forwardRef()', () => {
+    it('should resolve a forward-referenced provider (non-circular)', () => {
+      @Injectable()
+      class ServiceB {
+        greet() { return 'hello'; }
+      }
+
+      @Injectable()
+      class ServiceA {
+        constructor(@Inject(forwardRef(() => ServiceB)) public b: ServiceB) {}
+      }
+
+      container.register(ServiceB);
+      container.register(ServiceA);
+      const a = container.resolve(ServiceA);
+      expect(a.b).toBeInstanceOf(ServiceB);
+      expect(a.b.greet()).toBe('hello');
+    });
+
+    it('should break circular dependencies with forwardRef', () => {
+      // InjectionToken keys avoid the TypeScript design:paramtypes TDZ issue
+      // that occurs when two classes reference each other's type in the same scope.
+      const TOKEN_A = new InjectionToken('SERVICE_A');
+      const TOKEN_B = new InjectionToken('SERVICE_B');
+
+      @Injectable()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      class ServiceA {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        constructor(@Inject(forwardRef(() => TOKEN_B)) public b: any) {}
+        name() { return 'A'; }
+      }
+
+      @Injectable()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      class ServiceB {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        constructor(@Inject(forwardRef(() => TOKEN_A)) public a: any) {}
+        name() { return 'B'; }
+      }
+
+      container.register({ token: TOKEN_A, useClass: ServiceA });
+      container.register({ token: TOKEN_B, useClass: ServiceB });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const a = container.resolve<any>(TOKEN_A);
+      expect(a.name()).toBe('A');
+      expect(a.b.name()).toBe('B'); // b is resolved via lazy proxy
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const b = container.resolve<any>(TOKEN_B);
+      expect(b.name()).toBe('B');
+      expect(b.a.name()).toBe('A'); // a is resolved via lazy proxy
     });
   });
 });

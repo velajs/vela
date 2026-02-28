@@ -6,7 +6,7 @@ export { VelaFactory } from './factory';
 export { VelaApplication } from './application';
 
 // DI Container
-export { Container, Injectable, Inject, Optional, InjectionToken } from './container/index';
+export { Container, Injectable, Inject, Optional, InjectionToken, ForwardRef, forwardRef } from './container/index';
 export type {
   Type,
   Token,
@@ -34,6 +34,7 @@ export {
   Body,
   Headers,
   Req,
+  Ip,
   HttpCode,
   Header,
   Redirect,

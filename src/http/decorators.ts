@@ -163,6 +163,7 @@ export const Query = createBuiltinParamDecorator(ParamType.QUERY);
 export const Body = createBuiltinParamDecorator(ParamType.BODY);
 export const Headers = createBuiltinParamDecorator(ParamType.HEADERS);
 export const Req = createBuiltinParamDecorator(ParamType.REQUEST);
+export const Ip = createBuiltinParamDecorator(ParamType.IP);
 
 /**
  * Factory for creating custom parameter decorators.

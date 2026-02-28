@@ -3,6 +3,7 @@ import { defineMetadata, getMetadata } from '../metadata';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import type { Constructor } from '../registry/types';
 import type { InjectableOptions, InjectMetadata, Token } from './types';
+import { ForwardRef } from './types';
 
 export function Injectable(options: InjectableOptions = {}): ClassDecorator {
   return (target: object) => {
@@ -33,7 +34,7 @@ export function Optional(): ParameterDecorator {
   };
 }
 
-export function Inject(token: Token): ParameterDecorator {
+export function Inject(token: Token | ForwardRef): ParameterDecorator {
   return (target: object, _propertyKey: string | symbol | undefined, parameterIndex: number) => {
     const existing: InjectMetadata[] =
       MetadataRegistry.getInjectTokens(target as Constructor) ??

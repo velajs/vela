@@ -6,7 +6,7 @@ import {
   isInjectable,
 } from './decorators';
 import type { ProviderOptions, ProviderRegistration, Token, Type } from './types';
-import { InjectionToken } from './types';
+import { ForwardRef, InjectionToken } from './types';
 
 export class Container {
   private providers = new Map<Token, ProviderRegistration>();
@@ -183,7 +183,11 @@ export class Container {
 
     const dependencies = paramTypes.map((paramType, index) => {
       const meta = injectMap.get(index);
-      const token = meta?.token ?? paramType;
+      const rawToken = meta?.token;
+      const isForwardRef = rawToken instanceof ForwardRef;
+      const token: Token | undefined = isForwardRef
+        ? rawToken.factory()
+        : (rawToken as Token | undefined) ?? (paramType as Token);
 
       if (!token || token === Object) {
         if (meta?.optional) return undefined;
@@ -194,11 +198,16 @@ export class Container {
         );
       }
 
-      if (meta?.optional && !this.has(token as Token)) {
+      if (meta?.optional && !this.has(token)) {
         return undefined;
       }
 
-      return this.resolve(token as Token);
+      // forwardRef with circular dep — break the cycle with a lazy Proxy
+      if (isForwardRef && this.resolutionStack.has(token)) {
+        return this.createLazyProxy(token);
+      }
+
+      return this.resolve(token);
     });
 
     return new target(...dependencies);
@@ -252,6 +261,22 @@ export class Container {
     }
 
     return this.resolve(token);
+  }
+
+  private createLazyProxy<T>(token: Token<T>): T {
+    const container = this;
+    return new Proxy({} as T, {
+      get(_target, prop) {
+        const instance = container.resolve(token);
+        const value = (instance as Record<string | symbol, unknown>)[prop];
+        return typeof value === 'function' ? (value as Function).bind(instance) : value;
+      },
+      set(_target, prop, value) {
+        const instance = container.resolve(token);
+        (instance as Record<string | symbol, unknown>)[prop] = value;
+        return true;
+      },
+    });
   }
 
   private tokenToString(token: Token): string {

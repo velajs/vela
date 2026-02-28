@@ -15,6 +15,7 @@ export {
   Body,
   Headers,
   Req,
+  Ip,
   HttpCode,
   Header,
   Redirect,

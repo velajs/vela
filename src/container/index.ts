@@ -1,6 +1,6 @@
 export { Container } from './container';
 export { Injectable, Inject, Optional, isInjectable, getScope } from './decorators';
-export { InjectionToken } from './types';
+export { InjectionToken, ForwardRef, forwardRef } from './types';
 export type {
   Type,
   Token,

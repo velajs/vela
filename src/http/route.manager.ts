@@ -440,6 +440,11 @@ export class RouteManager {
       case ParamType.REQUEST:
         return c;
 
+      case ParamType.IP:
+        return c.req.raw.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+          c.req.raw.headers.get('x-real-ip') ??
+          null;
+
       default:
         // Custom param decorator — use factory if available
         if (param.factory) {

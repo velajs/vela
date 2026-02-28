@@ -18,6 +18,14 @@ export class InjectionToken<T = unknown> {
   }
 }
 
+export class ForwardRef<T = unknown> {
+  constructor(public readonly factory: () => Token<T>) {}
+}
+
+export function forwardRef<T>(factory: () => Token<T>): ForwardRef<T> {
+  return new ForwardRef(factory);
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Token<T = any> = Type<T> | InjectionToken<T> | string | symbol;
 
@@ -27,7 +35,7 @@ export interface InjectableOptions {
 
 export interface InjectMetadata {
   index: number;
-  token?: Token;
+  token?: Token | ForwardRef;
   optional?: boolean;
 }
 

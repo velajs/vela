@@ -38,6 +38,7 @@ export enum ParamType {
   PARAM = 'param',
   HEADERS = 'headers',
   REQUEST = 'request',
+  IP = 'ip',
 }
 
 export enum Scope {
