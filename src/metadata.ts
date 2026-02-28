@@ -26,8 +26,8 @@ export function defineMetadata(key: string, value: unknown, target: object, prop
   map.set(compositeKey(key, propertyKey), value);
 }
 
-export function getMetadata(key: string, target: object, propertyKey?: string | symbol): unknown {
-  return store.get(target)?.get(compositeKey(key, propertyKey));
+export function getMetadata<T = unknown>(key: string, target: object, propertyKey?: string | symbol): T | undefined {
+  return store.get(target)?.get(compositeKey(key, propertyKey)) as T | undefined;
 }
 
 // Minimal Reflect polyfill so the compiler's `Reflect.metadata(...)` calls work.

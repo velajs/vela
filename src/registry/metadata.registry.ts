@@ -180,28 +180,28 @@ export class MetadataRegistry {
 
   // DI metadata
 
-  static markInjectable(target: Constructor): void {
-    this.injectables.add(target);
+  static markInjectable(target: object): void {
+    this.injectables.add(target as Constructor);
   }
 
-  static hasInjectable(target: Constructor): boolean {
-    return this.injectables.has(target);
+  static hasInjectable(target: object): boolean {
+    return this.injectables.has(target as Constructor);
   }
 
-  static setScope(target: Constructor, scope: Scope): void {
-    this.scopes.set(target, scope);
+  static setScope(target: object, scope: Scope): void {
+    this.scopes.set(target as Constructor, scope);
   }
 
-  static getScope(target: Constructor): Scope | undefined {
-    return this.scopes.get(target);
+  static getScope(target: object): Scope | undefined {
+    return this.scopes.get(target as Constructor);
   }
 
-  static setInjectTokens(target: Constructor, tokens: InjectMetadata[]): void {
-    this.injectTokens.set(target, tokens);
+  static setInjectTokens(target: object, tokens: InjectMetadata[]): void {
+    this.injectTokens.set(target as Constructor, tokens);
   }
 
-  static getInjectTokens(target: Constructor): InjectMetadata[] | undefined {
-    return this.injectTokens.get(target);
+  static getInjectTokens(target: object): InjectMetadata[] | undefined {
+    return this.injectTokens.get(target as Constructor);
   }
 
   // HTTP handler metadata
