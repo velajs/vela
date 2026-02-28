@@ -18,6 +18,10 @@ import {
   APP_PIPE,
   APP_INTERCEPTOR,
   APP_FILTER,
+  UseGuards,
+  SetMetadata,
+  Reflector,
+  applyDecorators,
 } from '../index.js';
 import type {
   CanActivate,
@@ -435,5 +439,74 @@ describe('APP_* tokens', () => {
     });
     expect(allowed.status).toBe(200);
     expect(order).toEqual(['first', 'second']);
+  });
+});
+
+// =============================================================================
+// applyDecorators
+// =============================================================================
+
+describe('applyDecorators', () => {
+  it('should compose guard + metadata into a custom decorator', async () => {
+    const ROLES_KEY = 'roles';
+
+    // Custom composite decorator
+    const Roles = (...roles: string[]) =>
+      applyDecorators(SetMetadata(ROLES_KEY, roles), UseGuards(RolesGuard));
+
+    @Injectable()
+    class RolesGuard implements CanActivate {
+      constructor(private reflector: Reflector) {}
+      canActivate(ctx: ExecutionContext): boolean {
+        const required = this.reflector.get<string[]>(ROLES_KEY, ctx);
+        if (!required) return true;
+        return ctx.getRequest().headers.get('x-role') === required[0];
+      }
+    }
+
+    @Controller('/role-test')
+    class RoleController {
+      @Roles('admin')
+      @Get()
+      handle() {
+        return { ok: true };
+      }
+    }
+
+    @Module({
+      providers: [RolesGuard, Reflector],
+      controllers: [RoleController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    const denied = await hono.request('/role-test');
+    expect(denied.status).toBe(403);
+
+    const allowed = await hono.request('/role-test', { headers: { 'x-role': 'admin' } });
+    expect(allowed.status).toBe(200);
+  });
+
+  it('should apply multiple method decorators', async () => {
+    const AuthorizedGet = (path = '') =>
+      applyDecorators(Get(path), HttpCode(200), Header('x-auth', 'ok'));
+
+    @Controller('/apply-test')
+    class ApplyController {
+      @AuthorizedGet('/data')
+      handle() {
+        return { data: true };
+      }
+    }
+
+    @Module({ controllers: [ApplyController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/apply-test/data');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('x-auth')).toBe('ok');
   });
 });

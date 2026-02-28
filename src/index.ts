@@ -39,6 +39,7 @@ export {
   Header,
   Redirect,
   createParamDecorator,
+  applyDecorators,
 } from './http/index';
 
 // Services

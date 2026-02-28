@@ -308,6 +308,43 @@ export function getRedirect(target: Constructor, method: string | symbol): { url
   return getMetadata(METADATA_KEYS.REDIRECT, target, method) as { url: string; statusCode: number } | undefined;
 }
 
+/**
+ * Composes multiple decorators into one. Applies them in order (top to bottom),
+ * matching how stacked decorators behave when written separately.
+ *
+ * @example
+ * ```ts
+ * const Auth = (...roles: string[]) => applyDecorators(
+ *   UseGuards(JwtGuard, RolesGuard),
+ *   SetMetadata('roles', roles),
+ * );
+ *
+ * @Auth('admin')
+ * @Get('/admin')
+ * handle() { ... }
+ * ```
+ */
+export function applyDecorators(
+  ...decorators: Array<ClassDecorator | MethodDecorator | PropertyDecorator | ParameterDecorator>
+): ClassDecorator & MethodDecorator & PropertyDecorator {
+  const composed = (
+    target: object,
+    propertyKey?: string | symbol,
+    descriptor?: PropertyDescriptor | number,
+  ) => {
+    for (const decorator of decorators) {
+      if (propertyKey === undefined && typeof descriptor !== 'number') {
+        (decorator as ClassDecorator)(target as Function);
+      } else if (typeof descriptor === 'number') {
+        (decorator as ParameterDecorator)(target, propertyKey!, descriptor);
+      } else {
+        (decorator as MethodDecorator)(target, propertyKey!, descriptor!);
+      }
+    }
+  };
+  return composed as unknown as ClassDecorator & MethodDecorator & PropertyDecorator;
+}
+
 // Helpers
 
 export function isController(target: Constructor): boolean {

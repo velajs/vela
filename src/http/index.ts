@@ -20,6 +20,7 @@ export {
   Header,
   Redirect,
   createParamDecorator,
+  applyDecorators,
   isController,
 } from './decorators';
 export type {
