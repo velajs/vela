@@ -211,6 +211,7 @@ export function createParamDecorator<TData = unknown>(
           factory: (_unused: unknown, ctx: unknown) => {
             const honoCtx = ctx as import('hono').Context;
             const execCtx: ExecutionContext = {
+              getType: <T extends string = 'http'>() => 'http' as T,
               getClass: () => target.constructor as import('../container/types').Type,
               getHandler: () => propertyKey,
               getContext: <T>() => honoCtx as T,

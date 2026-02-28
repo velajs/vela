@@ -241,6 +241,7 @@ export class RouteManager {
     route: RouteMetadata,
   ): ExecutionContext {
     return {
+      getType: <T extends string = 'http'>() => 'http' as T,
       getClass: () => controller,
       getHandler: () => route.handlerName,
       getContext: <T = Context>() => c as T,

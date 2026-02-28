@@ -2,6 +2,7 @@ import type { Context } from 'hono';
 import type { Type } from '../container/types';
 
 export interface ExecutionContext {
+  getType<T extends string = 'http'>(): T;
   getClass(): Type;
   getHandler(): string | symbol;
   getContext<T = Context>(): T;
