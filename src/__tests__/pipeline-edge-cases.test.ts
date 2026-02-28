@@ -13,6 +13,9 @@ import {
   Catch,
   ParseIntPipe,
   ParseFloatPipe,
+  ParseUUIDPipe,
+  ParseEnumPipe,
+  ParseArrayPipe,
   HttpException,
   BadRequestException,
   NotFoundException,
@@ -365,5 +368,125 @@ describe('Pipe ordering', () => {
     // Invalid int — ParseIntPipe throws 400
     const res2 = await hono.request('/mixed-pipes/abc');
     expect(res2.status).toBe(400);
+  });
+});
+
+describe('Built-in pipes', () => {
+  describe('ParseUUIDPipe', () => {
+    it('should pass a valid UUID', async () => {
+      @Controller('/uuid')
+      class UUIDController {
+        @Get('/:id')
+        handle(@Param('id', ParseUUIDPipe) id: string) {
+          return { id };
+        }
+      }
+      @Module({ controllers: [UUIDController] })
+      class AppModule {}
+
+      const app = await VelaFactory.create(AppModule);
+      const res = await app.getHonoApp().request('/uuid/550e8400-e29b-41d4-a716-446655440000');
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ id: '550e8400-e29b-41d4-a716-446655440000' });
+    });
+
+    it('should reject an invalid UUID', async () => {
+      @Controller('/uuid2')
+      class UUIDController2 {
+        @Get('/:id')
+        handle(@Param('id', ParseUUIDPipe) id: string) {
+          return { id };
+        }
+      }
+      @Module({ controllers: [UUIDController2] })
+      class AppModule {}
+
+      const app = await VelaFactory.create(AppModule);
+      const res = await app.getHonoApp().request('/uuid2/not-a-uuid');
+      expect(res.status).toBe(400);
+    });
+
+    it('should enforce UUID version when specified', async () => {
+      const pipe = new ParseUUIDPipe({ version: '4' });
+      // Valid v4
+      expect(
+        pipe.transform('550e8400-e29b-41d4-a716-446655440000', { type: 'param' }),
+      ).toBe('550e8400-e29b-41d4-a716-446655440000');
+      // Invalid v4 (version digit is 3)
+      expect(() =>
+        pipe.transform('550e8400-e29b-31d4-a716-446655440000', { type: 'param' }),
+      ).toThrow(BadRequestException);
+    });
+  });
+
+  describe('ParseEnumPipe', () => {
+    enum Direction { UP = 'UP', DOWN = 'DOWN' }
+
+    it('should accept valid enum values', async () => {
+      @Controller('/enum')
+      class EnumController {
+        @Get('/:dir')
+        handle(@Param('dir', new ParseEnumPipe(Direction)) dir: Direction) {
+          return { dir };
+        }
+      }
+      @Module({ controllers: [EnumController] })
+      class AppModule {}
+
+      const app = await VelaFactory.create(AppModule);
+      const res = await app.getHonoApp().request('/enum/UP');
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ dir: 'UP' });
+    });
+
+    it('should reject invalid enum values', async () => {
+      @Controller('/enum2')
+      class EnumController2 {
+        @Get('/:dir')
+        handle(@Param('dir', new ParseEnumPipe(Direction)) dir: Direction) {
+          return { dir };
+        }
+      }
+      @Module({ controllers: [EnumController2] })
+      class AppModule {}
+
+      const app = await VelaFactory.create(AppModule);
+      const res = await app.getHonoApp().request('/enum2/LEFT');
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe('ParseArrayPipe', () => {
+    it('should split a comma-separated query string into an array', async () => {
+      @Controller('/array')
+      class ArrayController {
+        @Get()
+        handle(@Query('ids', new ParseArrayPipe()) ids: string[]) {
+          return { ids };
+        }
+      }
+      @Module({ controllers: [ArrayController] })
+      class AppModule {}
+
+      const app = await VelaFactory.create(AppModule);
+      const res = await app.getHonoApp().request('/array?ids=a,b,c');
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ids: ['a', 'b', 'c'] });
+    });
+
+    it('should return empty array for missing optional value', () => {
+      const pipe = new ParseArrayPipe({ optional: true });
+      expect(pipe.transform(undefined, { type: 'query' })).toEqual([]);
+    });
+
+    it('should throw for missing required value', () => {
+      const pipe = new ParseArrayPipe();
+      expect(() => pipe.transform(undefined, { type: 'query' })).toThrow(BadRequestException);
+    });
+
+    it('should support custom separator', () => {
+      const pipe = new ParseArrayPipe({ separator: '|' });
+      expect(pipe.transform('a|b|c', { type: 'query' })).toEqual(['a', 'b', 'c']);
+    });
   });
 });

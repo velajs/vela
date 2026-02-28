@@ -6,7 +6,7 @@ export { VelaFactory } from './factory';
 export { VelaApplication } from './application';
 
 // DI Container
-export { Container, Injectable, Inject, InjectionToken } from './container/index';
+export { Container, Injectable, Inject, Optional, InjectionToken } from './container/index';
 export type {
   Type,
   Token,
@@ -182,10 +182,14 @@ export {
   ParseIntPipe,
   ParseFloatPipe,
   ParseBoolPipe,
+  ParseUUIDPipe,
+  ParseEnumPipe,
+  ParseArrayPipe,
   DefaultValuePipe,
   RequiredPipe,
   ZodValidationPipe,
 } from './pipeline/index';
+export type { ParseUUIDPipeOptions, ParseArrayPipeOptions } from './pipeline/index';
 
 // Errors
 export {

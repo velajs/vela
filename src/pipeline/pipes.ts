@@ -61,3 +61,73 @@ export class ZodValidationPipe implements PipeTransform {
     return this.schema.parse(value);
   }
 }
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_VERSION_REGEX: Record<string, RegExp> = {
+  '3': /^[0-9a-f]{8}-[0-9a-f]{4}-3[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+  '4': /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+  '5': /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+};
+
+export interface ParseUUIDPipeOptions {
+  version?: '3' | '4' | '5';
+}
+
+export class ParseUUIDPipe implements PipeTransform<string, string> {
+  constructor(private readonly options?: ParseUUIDPipeOptions) {}
+
+  transform(value: string, metadata: ArgumentMetadata): string {
+    const regex = this.options?.version ? UUID_VERSION_REGEX[this.options.version] : UUID_REGEX;
+    if (!regex.test(value)) {
+      throw new BadRequestException(
+        `Validation failed (uuid${this.options?.version ? ` v${this.options.version}` : ''} expected)${metadata.data ? ` for parameter '${metadata.data}'` : ''}`,
+      );
+    }
+    return value;
+  }
+}
+
+export class ParseEnumPipe<T extends Record<string, string | number>>
+  implements PipeTransform<string, T[keyof T]>
+{
+  constructor(private readonly enumType: T) {}
+
+  transform(value: string, metadata: ArgumentMetadata): T[keyof T] {
+    const enumValues = Object.values(this.enumType);
+    if (!enumValues.includes(value as T[keyof T])) {
+      throw new BadRequestException(
+        `Validation failed (${enumValues.join(', ')} expected)${metadata.data ? ` for parameter '${metadata.data}'` : ''}`,
+      );
+    }
+    return value as T[keyof T];
+  }
+}
+
+export interface ParseArrayPipeOptions {
+  separator?: string;
+  optional?: boolean;
+}
+
+export class ParseArrayPipe implements PipeTransform {
+  constructor(private readonly options?: ParseArrayPipeOptions) {}
+
+  transform(value: unknown, metadata: ArgumentMetadata): unknown[] {
+    if (value === undefined || value === null || value === '') {
+      if (this.options?.optional) return [];
+      throw new BadRequestException(
+        `Validation failed (array expected)${metadata.data ? ` for parameter '${metadata.data}'` : ''}`,
+      );
+    }
+    if (Array.isArray(value)) return value;
+    if (typeof value === 'string') {
+      const sep = this.options?.separator ?? ',';
+      return value
+        .split(sep)
+        .map((v) => v.trim())
+        .filter((v) => v.length > 0);
+    }
+    throw new BadRequestException(
+      `Validation failed (array expected)${metadata.data ? ` for parameter '${metadata.data}'` : ''}`,
+    );
+  }
+}

@@ -27,7 +27,8 @@ export interface InjectableOptions {
 
 export interface InjectMetadata {
   index: number;
-  token: Token;
+  token?: Token;
+  optional?: boolean;
 }
 
 export interface ProviderOptions<T = unknown> {

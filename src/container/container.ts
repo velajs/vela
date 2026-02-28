@@ -179,17 +179,23 @@ export class Container {
   private resolveClass<T>(target: Type<T>): T {
     const paramTypes = getConstructorDependencies(target);
     const injectMetadata = getInjectMetadata(target);
-    const injectMap = new Map(injectMetadata.map((m) => [m.index, m.token]));
+    const injectMap = new Map(injectMetadata.map((m) => [m.index, m]));
 
     const dependencies = paramTypes.map((paramType, index) => {
-      const token = injectMap.get(index) ?? paramType;
+      const meta = injectMap.get(index);
+      const token = meta?.token ?? paramType;
 
       if (!token || token === Object) {
+        if (meta?.optional) return undefined;
         throw new Error(
           `Cannot resolve dependency at index ${index} for ${target.name}. ` +
             `Parameter type is undefined or Object. ` +
             `Use @Inject() to specify the token explicitly.`,
         );
+      }
+
+      if (meta?.optional && !this.has(token as Token)) {
+        return undefined;
       }
 
       return this.resolve(token as Token);

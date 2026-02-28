@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Container } from '../container/container.js';
-import { Injectable, Inject } from '../container/decorators.js';
+import { Injectable, Inject, Optional } from '../container/decorators.js';
 import { InjectionToken } from '../container/types.js';
 import { Scope } from '../constants.js';
 
@@ -280,6 +280,50 @@ describe('DI Container', () => {
       const b = child2.resolve(SingletonService);
 
       expect(a).toBe(b);
+    });
+  });
+
+  describe('@Optional()', () => {
+    it('should inject undefined when optional dep is not registered', () => {
+      @Injectable()
+      class OptionalDep {}
+
+      @Injectable()
+      class ServiceA {
+        constructor(@Optional() public dep?: OptionalDep) {}
+      }
+
+      container.register(ServiceA);
+      const instance = container.resolve(ServiceA);
+      expect(instance.dep).toBeUndefined();
+    });
+
+    it('should inject the value when optional dep is registered', () => {
+      @Injectable()
+      class OptionalDep {}
+
+      @Injectable()
+      class ServiceA {
+        constructor(@Optional() public dep?: OptionalDep) {}
+      }
+
+      container.register(OptionalDep);
+      container.register(ServiceA);
+      const instance = container.resolve(ServiceA);
+      expect(instance.dep).toBeInstanceOf(OptionalDep);
+    });
+
+    it('should work with @Inject() and @Optional() together', () => {
+      const TOKEN = new InjectionToken<string>('OPTIONAL_TOKEN');
+
+      @Injectable()
+      class ServiceA {
+        constructor(@Optional() @Inject(TOKEN) public value?: string) {}
+      }
+
+      container.register(ServiceA);
+      const instance = container.resolve(ServiceA);
+      expect(instance.value).toBeUndefined();
     });
   });
 });

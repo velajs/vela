@@ -15,6 +15,24 @@ export function Injectable(options: InjectableOptions = {}): ClassDecorator {
   };
 }
 
+export function Optional(): ParameterDecorator {
+  return (target: object, _propertyKey: string | symbol | undefined, parameterIndex: number) => {
+    const existing: InjectMetadata[] =
+      MetadataRegistry.getInjectTokens(target as Constructor) ??
+      (getMetadata(METADATA_KEYS.INJECT, target) as InjectMetadata[] || []);
+
+    const entry = existing.find((m) => m.index === parameterIndex);
+    if (entry) {
+      entry.optional = true;
+    } else {
+      existing.push({ index: parameterIndex, optional: true });
+    }
+
+    MetadataRegistry.setInjectTokens(target as Constructor, existing);
+    defineMetadata(METADATA_KEYS.INJECT, existing, target);
+  };
+}
+
 export function Inject(token: Token): ParameterDecorator {
   return (target: object, _propertyKey: string | symbol | undefined, parameterIndex: number) => {
     const existing: InjectMetadata[] =
