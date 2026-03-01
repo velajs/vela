@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { z } from 'zod';
 import {
   VelaFactory,
   Controller,
@@ -9,6 +10,8 @@ import {
   Param,
   Query,
   Body,
+  Headers,
+  Req,
   Module,
   Global,
   Injectable,
@@ -40,9 +43,20 @@ import {
   ParseBoolPipe,
   ParseEnumPipe,
   ParseArrayPipe,
+  ParseUUIDPipe,
   DefaultValuePipe,
   Res,
   createParamDecorator,
+  Serialize,
+  SerializerInterceptor,
+  createZodDto,
+  ValidationPipe,
+  HttpException,
+  NotFoundException,
+  BadRequestException,
+  UnauthorizedException,
+  ForbiddenException,
+  ConflictException,
 } from '../index.js';
 import type {
   OnModuleInit,
@@ -1884,5 +1898,469 @@ describe('Route versioning (@Version)', () => {
     expect(await (await hono.request('/v1/docs')).json()).toEqual({ v: 1 });
     expect(await (await hono.request('/v2/docs/new')).json()).toEqual({ v: 2 });
     expect((await hono.request('/v1/docs/new')).status).toBe(404);
+  });
+});
+
+// =============================================================================
+// HttpException hierarchy
+// =============================================================================
+
+describe('HttpException hierarchy', () => {
+  it('each subclass maps to its HTTP status code', async () => {
+    @Controller('/http-exc')
+    class ExcController {
+      @Get('/404') notFound()      { throw new NotFoundException('not found'); }
+      @Get('/400') badReq()        { throw new BadRequestException('bad input'); }
+      @Get('/401') unauth()        { throw new UnauthorizedException(); }
+      @Get('/403') forbidden()     { throw new ForbiddenException(); }
+      @Get('/409') conflict()      { throw new ConflictException('duplicate'); }
+    }
+
+    @Module({ controllers: [ExcController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    expect((await hono.request('/http-exc/404')).status).toBe(404);
+    expect((await hono.request('/http-exc/400')).status).toBe(400);
+    expect((await hono.request('/http-exc/401')).status).toBe(401);
+    expect((await hono.request('/http-exc/403')).status).toBe(403);
+    expect((await hono.request('/http-exc/409')).status).toBe(409);
+  });
+
+  it('getResponse() body is serialized as JSON', async () => {
+    @Controller('/exc-body')
+    class BodyController {
+      @Get() handle() { throw new NotFoundException('item missing'); }
+    }
+
+    @Module({ controllers: [BodyController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/exc-body');
+    expect(res.status).toBe(404);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const body = await res.json() as any;
+    expect(body.statusCode).toBe(404);
+    expect(body.message).toBe('item missing');
+  });
+
+  it('@Catch(HttpException) filter intercepts all HTTP exceptions', async () => {
+    @Injectable()
+    @Catch(HttpException)
+    class HttpExcFilter implements ExceptionFilter {
+      catch(err: HttpException, _host: ExecutionContext) {
+        return { caught: true, status: err.getStatus() };
+      }
+    }
+
+    @Controller('/exc-filter')
+    class FilteredController {
+      @Get('/404') notFound() { throw new NotFoundException(); }
+      @Get('/403') forbidden() { throw new ForbiddenException(); }
+    }
+
+    @Module({
+      providers: [HttpExcFilter, { provide: APP_FILTER, useExisting: HttpExcFilter }],
+      controllers: [FilteredController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    const r404 = await hono.request('/exc-filter/404');
+    expect(await r404.json()).toEqual({ caught: true, status: 404 });
+
+    const r403 = await hono.request('/exc-filter/403');
+    expect(await r403.json()).toEqual({ caught: true, status: 403 });
+  });
+
+  it('custom HttpException with structured response object', async () => {
+    @Controller('/exc-custom')
+    class CustomController {
+      @Get()
+      handle() {
+        throw new HttpException('Validation Failed', 422, {
+          statusCode: 422,
+          message: 'Validation Failed',
+          errors: ['field required'],
+        });
+      }
+    }
+
+    @Module({ controllers: [CustomController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/exc-custom');
+    expect(res.status).toBe(422);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const body = await res.json() as any;
+    expect(body.errors).toEqual(['field required']);
+  });
+});
+
+// =============================================================================
+// ParseUUIDPipe
+// =============================================================================
+
+describe('ParseUUIDPipe', () => {
+  it('accepts a valid UUID and passes it through', async () => {
+    @Controller('/uuid')
+    class UuidController {
+      @Get(':id')
+      handle(@Param('id', ParseUUIDPipe) id: string) { return { id }; }
+    }
+
+    @Module({ controllers: [UuidController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const validUuid = '550e8400-e29b-41d4-a716-446655440000';
+    const res = await app.getHonoApp().request(`/uuid/${validUuid}`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: validUuid });
+  });
+
+  it('throws 400 for non-UUID string', async () => {
+    @Controller('/uuid-err')
+    class UuidErrController {
+      @Get(':id')
+      handle(@Param('id', ParseUUIDPipe) id: string) { return { id }; }
+    }
+
+    @Module({ controllers: [UuidErrController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    expect((await app.getHonoApp().request('/uuid-err/not-a-uuid')).status).toBe(400);
+  });
+
+  it('validates specific UUID v4', async () => {
+    @Controller('/uuid-v4')
+    class UuidV4Controller {
+      @Get(':id')
+      handle(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) { return { id }; }
+    }
+
+    @Module({ controllers: [UuidV4Controller] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const v4 = '550e8400-e29b-41d4-a716-446655440000';
+    expect((await app.getHonoApp().request(`/uuid-v4/${v4}`)).status).toBe(200);
+
+    const v3 = '550e8400-e29b-31d4-a716-446655440000';
+    expect((await app.getHonoApp().request(`/uuid-v4/${v3}`)).status).toBe(400);
+  });
+});
+
+// =============================================================================
+// @Headers() param decorator
+// =============================================================================
+
+describe('@Headers() param decorator', () => {
+  it('extracts a single header by name', async () => {
+    @Controller('/hdrs')
+    class HdrsController {
+      @Get()
+      handle(@Headers('x-tenant') tenant: string) { return { tenant }; }
+    }
+
+    @Module({ controllers: [HdrsController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/hdrs', { headers: { 'x-tenant': 'acme' } });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ tenant: 'acme' });
+  });
+
+  it('returns undefined for a missing header', async () => {
+    @Controller('/hdrs-missing')
+    class HdrsMissingController {
+      @Get()
+      handle(@Headers('x-missing') val: string | undefined) { return { val: val ?? null }; }
+    }
+
+    @Module({ controllers: [HdrsMissingController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/hdrs-missing');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ val: null });
+  });
+});
+
+// =============================================================================
+// @Req() raw request decorator
+// =============================================================================
+
+describe('@Req() raw request decorator', () => {
+  it('injects the Hono Context and allows reading request headers', async () => {
+    @Controller('/req-dec')
+    class ReqController {
+      @Get()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      handle(@Req() ctx: any) {
+        // @Req() returns the Hono Context (c); headers are at c.req.header()
+        return { ua: ctx.req.header('user-agent') ?? 'unknown' };
+      }
+    }
+
+    @Module({ controllers: [ReqController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/req-dec', { headers: { 'user-agent': 'vela-test/1.0' } });
+    expect(res.status).toBe(200);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const body = await res.json() as any;
+    expect(body.ua).toBe('vela-test/1.0');
+  });
+
+  it('injects the Hono Context and allows reading request method', async () => {
+    @Controller('/req-meta')
+    class ReqMetaController {
+      @Get()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      handle(@Req() ctx: any) {
+        // @Req() returns the Hono Context (c); method is at c.req.method
+        return { method: ctx.req.method };
+      }
+    }
+
+    @Module({ controllers: [ReqMetaController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/req-meta');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ method: 'GET' });
+  });
+});
+
+// =============================================================================
+// Serialize / SerializerInterceptor
+// =============================================================================
+
+describe('Serialize / SerializerInterceptor', () => {
+  it('strips fields not in the DTO schema', async () => {
+    const Schema = z.object({ id: z.number(), name: z.string() });
+    class ResponseDto extends createZodDto(Schema) {}
+
+    @Controller('/serialize')
+    @UseInterceptors(SerializerInterceptor)
+    class SerializeController {
+      @Get()
+      @Serialize(ResponseDto)
+      handle() { return { id: 1, name: 'Alice', password: 'secret' }; }
+    }
+
+    @Module({ controllers: [SerializeController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/serialize');
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({ id: 1, name: 'Alice' });
+    expect(body).not.toHaveProperty('password');
+  });
+
+  it('works with array responses', async () => {
+    const Schema = z.object({ id: z.number(), name: z.string() });
+    class ResponseDto extends createZodDto(Schema) {}
+
+    @Controller('/serialize-arr')
+    @UseInterceptors(SerializerInterceptor)
+    class SerializeArrController {
+      @Get()
+      @Serialize(ResponseDto)
+      handle() {
+        return [
+          { id: 1, name: 'Alice', secret: 'x' },
+          { id: 2, name: 'Bob', secret: 'y' },
+        ];
+      }
+    }
+
+    @Module({ controllers: [SerializeArrController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/serialize-arr');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const body = await res.json() as any[];
+    expect(body).toEqual([{ id: 1, name: 'Alice' }, { id: 2, name: 'Bob' }]);
+  });
+
+  it('passes through response when no @Serialize is applied', async () => {
+    @Controller('/serialize-pass')
+    @UseInterceptors(SerializerInterceptor)
+    class PassController {
+      @Get()
+      handle() { return { id: 1, secret: 'kept' }; }
+    }
+
+    @Module({ controllers: [PassController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    expect(await (await app.getHonoApp().request('/serialize-pass')).json()).toEqual({ id: 1, secret: 'kept' });
+  });
+});
+
+// =============================================================================
+// APP_PIPE with ValidationPipe (global)
+// =============================================================================
+
+describe('APP_PIPE with ValidationPipe', () => {
+  it('validates request body via APP_PIPE globally', async () => {
+    const CreateSchema = z.object({
+      name: z.string(),
+      email: z.string().email(),
+    });
+    class CreateDto extends createZodDto(CreateSchema) {}
+
+    @Controller('/app-pipe-val')
+    class ValController {
+      @Post()
+      create(@Body() dto: CreateDto) { return { ok: true, name: (dto as { name: string }).name }; }
+    }
+
+    @Module({
+      providers: [{ provide: APP_PIPE, useClass: ValidationPipe }],
+      controllers: [ValController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    const valid = await hono.request('/app-pipe-val', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Alice', email: 'alice@example.com' }),
+    });
+    expect(valid.status).toBe(200);
+    expect(await valid.json()).toEqual({ ok: true, name: 'Alice' });
+
+    const invalid = await hono.request('/app-pipe-val', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Alice', email: 'not-an-email' }),
+    });
+    expect(invalid.status).toBe(400);
+  });
+
+  it('skips validation when body does not have a Zod schema', async () => {
+    @Controller('/app-pipe-plain')
+    class PlainController {
+      @Post()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      create(@Body() body: any) { return { received: body.x }; }
+    }
+
+    @Module({
+      providers: [{ provide: APP_PIPE, useClass: ValidationPipe }],
+      controllers: [PlainController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/app-pipe-plain', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x: 42 }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ received: 42 });
+  });
+});
+
+// =============================================================================
+// MiddlewareConsumer.exclude()
+// =============================================================================
+
+describe('MiddlewareConsumer.exclude()', () => {
+  it('middleware runs on all routes except excluded path', async () => {
+    const log: string[] = [];
+
+    @Injectable()
+    class LogMiddleware {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      use(c: any, next: () => Promise<void>) {
+        log.push(c.req.path);
+        return next();
+      }
+    }
+
+    @Controller('/excl')
+    class ExclController {
+      @Get('/a') a() { return { route: 'a' }; }
+      @Get('/b') b() { return { route: 'b' }; }
+      @Get('/skip') skip() { return { route: 'skip' }; }
+    }
+
+    @Module({ providers: [LogMiddleware], controllers: [ExclController] })
+    class AppModule implements NestModule {
+      configure(consumer: MiddlewareConsumer) {
+        consumer.apply(LogMiddleware).exclude('/excl/skip').forRoutes(ExclController);
+      }
+    }
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    await hono.request('/excl/a');
+    await hono.request('/excl/b');
+    await hono.request('/excl/skip');
+
+    expect(log).toContain('/excl/a');
+    expect(log).toContain('/excl/b');
+    expect(log).not.toContain('/excl/skip');
+  });
+
+  it('middleware runs on non-excluded methods and skips excluded method+path combo', async () => {
+    const log: string[] = [];
+
+    @Injectable()
+    class MethodMiddleware {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      use(c: any, next: () => Promise<void>) {
+        log.push(`${c.req.method}:${c.req.path}`);
+        return next();
+      }
+    }
+
+    @Controller('/meth-excl')
+    class MethController {
+      @Get('/open') open() { return {}; }
+      @Post('/login') login() { return {}; }
+    }
+
+    @Module({ providers: [MethodMiddleware], controllers: [MethController] })
+    class AppModule implements NestModule {
+      configure(consumer: MiddlewareConsumer) {
+        consumer
+          .apply(MethodMiddleware)
+          .exclude({ path: '/meth-excl/login', method: RequestMethod.POST })
+          .forRoutes(MethController);
+      }
+    }
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    await hono.request('/meth-excl/open');
+    await hono.request('/meth-excl/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+
+    expect(log).toContain('GET:/meth-excl/open');
+    expect(log).not.toContain('POST:/meth-excl/login');
   });
 });
