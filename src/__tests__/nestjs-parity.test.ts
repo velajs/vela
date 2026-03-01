@@ -2037,11 +2037,11 @@ describe('HttpException hierarchy', () => {
     class CustomController {
       @Get()
       handle() {
-        throw new HttpException('Validation Failed', 422, {
+        throw new HttpException({
           statusCode: 422,
           message: 'Validation Failed',
           errors: ['field required'],
-        });
+        }, 422);
       }
     }
 

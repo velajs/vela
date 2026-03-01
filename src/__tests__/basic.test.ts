@@ -783,11 +783,11 @@ describe('HttpException', () => {
 
       @Get('/bad-request')
       badRequest() {
-        throw new HttpException('Custom error', 422, {
+        throw new HttpException({
           statusCode: 422,
           message: 'Custom error',
           errors: ['field1 is invalid'],
-        });
+        }, 422);
       }
     }
 
@@ -807,6 +807,6 @@ describe('HttpException', () => {
       statusCode: 422,
       message: 'Custom error',
       errors: ['field1 is invalid'],
-    });
+    }, 422);
   });
 });

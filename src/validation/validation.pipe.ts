@@ -17,7 +17,7 @@ export class ValidationPipe implements PipeTransform {
         'issues' in error &&
         Array.isArray((error as Record<string, unknown>).issues)
       ) {
-        throw new BadRequestException('Validation failed', {
+        throw new BadRequestException({
           statusCode: 400,
           message: 'Validation failed',
           errors: (error as Record<string, unknown>).issues,
