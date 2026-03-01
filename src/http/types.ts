@@ -11,6 +11,7 @@ export interface RouteMetadata {
 
 export interface ControllerOptions {
   prefix?: string;
+  path?: string;
   version?: number | number[];
 }
 

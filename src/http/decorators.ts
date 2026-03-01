@@ -29,7 +29,7 @@ export function Controller(prefixOrOptions?: string | ControllerOptions): ClassD
     if (typeof prefixOrOptions === 'string') {
       prefix = prefixOrOptions;
     } else if (prefixOrOptions) {
-      prefix = prefixOrOptions.prefix ?? '';
+      prefix = prefixOrOptions.path ?? prefixOrOptions.prefix ?? '';
       version = prefixOrOptions.version;
     } else {
       prefix = '';

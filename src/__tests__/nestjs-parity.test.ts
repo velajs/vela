@@ -7270,3 +7270,446 @@ describe('@Headers("name") case-insensitive header lookup', () => {
     expect((await res.json() as any).hasAccept).toBe(true);
   });
 });
+
+// =============================================================================
+// @Controller({ path }) as alias for prefix
+// =============================================================================
+
+describe('@Controller({ path }) as alias for prefix', () => {
+  it('registers routes under the specified path', async () => {
+    @Controller({ path: '/path-alias' })
+    class TestController {
+      @Get()
+      get() { return { ok: true }; }
+    }
+
+    @Module({ controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/path-alias');
+    expect(res.status).toBe(200);
+    expect((await res.json() as any).ok).toBe(true);
+  });
+
+  it('supports { path } with version option', async () => {
+    @Controller({ path: '/versioned', version: 2 })
+    class TestController {
+      @Get()
+      get() { return { v: 2 }; }
+    }
+
+    @Module({ controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/v2/versioned');
+    expect(res.status).toBe(200);
+    expect((await res.json() as any).v).toBe(2);
+  });
+});
+
+// =============================================================================
+// @Param with pipe transforms the value
+// =============================================================================
+
+describe('@Param("id", ParseIntPipe) transforms string to integer', () => {
+  it('converts route param string to number', async () => {
+    @Controller('/param-int')
+    class TestController {
+      @Get('/:id')
+      get(@Param('id', ParseIntPipe) id: number) {
+        return { id, isNumber: typeof id === 'number' };
+      }
+    }
+
+    @Module({ controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/param-int/42');
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.id).toBe(42);
+    expect(body.isNumber).toBe(true);
+  });
+
+  it('throws BadRequestException for non-numeric param', async () => {
+    @Controller('/param-int-err')
+    class TestController {
+      @Get('/:id')
+      get(@Param('id', ParseIntPipe) id: number) { return { id }; }
+    }
+
+    @Module({ controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/param-int-err/abc');
+    expect(res.status).toBe(400);
+  });
+});
+
+// =============================================================================
+// @Body("field", pipe) extracts and transforms named body field
+// =============================================================================
+
+describe('@Body("field", ParseIntPipe) extracts and transforms named field', () => {
+  it('returns integer from string field in JSON body', async () => {
+    @Controller('/body-field-pipe')
+    class TestController {
+      @Post()
+      post(@Body('count', ParseIntPipe) count: number) {
+        return { count, isNumber: typeof count === 'number' };
+      }
+    }
+
+    @Module({ controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/body-field-pipe', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ count: '7' }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.count).toBe(7);
+    expect(body.isNumber).toBe(true);
+  });
+});
+
+// =============================================================================
+// ExceptionFilter shapes the JSON response
+// =============================================================================
+
+describe('ExceptionFilter shapes the JSON error response', () => {
+  it('custom filter returns structured error body', async () => {
+    @Catch(NotFoundException)
+    @Injectable()
+    class ShapeFilter implements ExceptionFilter {
+      catch(exception: NotFoundException, ctx: ExecutionContext) {
+        const c = ctx.switchToHttp().getResponse<any>();
+        const resp = exception.getResponse() as any;
+        return c.json({
+          error: true,
+          code: exception.getStatus(),
+          msg: typeof resp === 'string' ? resp : resp.message,
+        }, exception.getStatus() as any);
+      }
+    }
+
+    @Controller('/filter-shape')
+    class TestController {
+      @Get()
+      @UseFilters(ShapeFilter)
+      handle() { throw new NotFoundException('item not found'); }
+    }
+
+    @Module({ controllers: [TestController], providers: [ShapeFilter] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/filter-shape');
+    expect(res.status).toBe(404);
+    const body = await res.json() as any;
+    expect(body.error).toBe(true);
+    expect(body.code).toBe(404);
+    expect(body.msg).toBe('item not found');
+  });
+});
+
+// =============================================================================
+// NestInterceptor transforms the response
+// =============================================================================
+
+describe('NestInterceptor can wrap/transform the response', () => {
+  it('wraps return value in a data envelope', async () => {
+    @Injectable()
+    class WrapInterceptor implements NestInterceptor {
+      async intercept(_ctx: ExecutionContext, next: CallHandler) {
+        const value = await next.handle();
+        return { data: value, wrapped: true };
+      }
+    }
+
+    @Controller('/wrap-intercept')
+    class TestController {
+      @Get()
+      @UseInterceptors(WrapInterceptor)
+      handle() { return { hello: 'world' }; }
+    }
+
+    @Module({ controllers: [TestController], providers: [WrapInterceptor] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/wrap-intercept');
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.wrapped).toBe(true);
+    expect(body.data.hello).toBe('world');
+  });
+
+  it('interceptor can add metadata to the response', async () => {
+    @Injectable()
+    class TimestampInterceptor implements NestInterceptor {
+      async intercept(_ctx: ExecutionContext, next: CallHandler) {
+        const value = await next.handle() as Record<string, unknown>;
+        return { ...value, ts: 'fixed' };
+      }
+    }
+
+    @Controller('/timestamp-intercept')
+    class TestController {
+      @Get()
+      @UseInterceptors(TimestampInterceptor)
+      handle() { return { result: 'ok' }; }
+    }
+
+    @Module({ controllers: [TestController], providers: [TimestampInterceptor] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/timestamp-intercept');
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.result).toBe('ok');
+    expect(body.ts).toBe('fixed');
+  });
+});
+
+// =============================================================================
+// APP_GUARD + APP_FILTER interaction
+// =============================================================================
+
+describe('APP_GUARD and APP_FILTER interaction', () => {
+  it('global filter catches exception thrown by global guard', async () => {
+    @Injectable()
+    class BlockingGuard implements CanActivate {
+      canActivate() { throw new ForbiddenException('blocked by guard'); }
+    }
+
+    @Catch(ForbiddenException)
+    @Injectable()
+    class ForbiddenCatcher implements ExceptionFilter {
+      catch(exception: ForbiddenException, ctx: ExecutionContext) {
+        const c = ctx.switchToHttp().getResponse<any>();
+        return c.json({ caught: true, message: exception.message }, 403);
+      }
+    }
+
+    @Controller('/guard-filter-combo')
+    class TestController {
+      @Get()
+      handle() { return { reached: true }; }
+    }
+
+    @Module({
+      controllers: [TestController],
+      providers: [
+        BlockingGuard,
+        ForbiddenCatcher,
+        { provide: APP_GUARD, useExisting: BlockingGuard },
+        { provide: APP_FILTER, useExisting: ForbiddenCatcher },
+      ],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/guard-filter-combo');
+    expect(res.status).toBe(403);
+    const body = await res.json() as any;
+    expect(body.caught).toBe(true);
+    expect(body.message).toBe('blocked by guard');
+  });
+});
+
+// =============================================================================
+// useFactory with TRANSIENT scope creates fresh instances
+// =============================================================================
+
+describe('useFactory with Scope.TRANSIENT creates a new instance on each resolve', () => {
+  it('resolving the token twice yields distinct objects', async () => {
+    let callCount = 0;
+    const COUNTER_TOKEN = new InjectionToken<{ id: number }>('transient-counter');
+
+    @Module({
+      providers: [
+        {
+          provide: COUNTER_TOKEN,
+          useFactory: () => ({ id: ++callCount }),
+          scope: Scope.TRANSIENT,
+        },
+      ],
+      exports: [COUNTER_TOKEN],
+    })
+    class CounterModule {}
+
+    @Module({ imports: [CounterModule] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const container = app.getContainer();
+    const a = container.resolve(COUNTER_TOKEN);
+    const b = container.resolve(COUNTER_TOKEN);
+    // TRANSIENT: each resolve calls the factory, yielding distinct instances
+    expect(a.id).not.toBe(b.id);
+    // factory was called at least twice (once per resolve above; may also be
+    // called once during resolveAllInstances, so we just verify > 1 call)
+    expect(callCount).toBeGreaterThanOrEqual(2);
+  });
+});
+
+// =============================================================================
+// Dynamic module re-exports a provider through an intermediate module
+// =============================================================================
+
+describe('Module re-exports a provider from an imported module', () => {
+  it('consumer module can inject a provider re-exported by a middle module', async () => {
+    const VALUE_TOKEN = new InjectionToken<string>('reexport-value');
+
+    @Module({
+      providers: [{ provide: VALUE_TOKEN, useValue: 'from-inner' }],
+      exports: [VALUE_TOKEN],
+    })
+    class InnerModule {}
+
+    @Module({ imports: [InnerModule], exports: [VALUE_TOKEN] })
+    class MiddleModule {}
+
+    @Injectable()
+    class ConsumerService {
+      constructor(@Inject(VALUE_TOKEN) public value: string) {}
+    }
+
+    @Controller('/reexport')
+    class TestController {
+      constructor(private svc: ConsumerService) {}
+      @Get()
+      get() { return { value: this.svc.value }; }
+    }
+
+    @Module({
+      imports: [MiddleModule],
+      controllers: [TestController],
+      providers: [ConsumerService],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/reexport');
+    expect(res.status).toBe(200);
+    expect((await res.json() as any).value).toBe('from-inner');
+  });
+});
+
+// =============================================================================
+// onModuleDestroy lifecycle hook
+// =============================================================================
+
+describe('onModuleDestroy lifecycle hook', () => {
+  it('is called when app.close() is invoked', async () => {
+    const destroyed: string[] = [];
+
+    @Injectable()
+    class MyService implements OnModuleDestroy {
+      onModuleDestroy() { destroyed.push('service'); }
+    }
+
+    @Module({ providers: [MyService] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    expect(destroyed).toHaveLength(0);
+    await app.close();
+    expect(destroyed).toContain('service');
+  });
+
+  it('is called in reverse instantiation order', async () => {
+    const order: string[] = [];
+
+    @Injectable()
+    class FirstService implements OnModuleDestroy {
+      onModuleDestroy() { order.push('first'); }
+    }
+
+    @Injectable()
+    class SecondService implements OnModuleDestroy {
+      constructor(_first: FirstService) {}
+      onModuleDestroy() { order.push('second'); }
+    }
+
+    @Module({ providers: [FirstService, SecondService] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    await app.close();
+    // reversed: SecondService destroyed before FirstService
+    expect(order.indexOf('second')).toBeLessThan(order.indexOf('first'));
+  });
+});
+
+// =============================================================================
+// ModuleRef.get() retrieves provider from DI container
+// =============================================================================
+
+describe('ModuleRef.get() retrieves the singleton provider instance', () => {
+  it('returns the same instance as direct injection', async () => {
+    @Injectable()
+    class SharedService {
+      getValue() { return 'shared-value'; }
+    }
+
+    @Injectable()
+    class ConsumerService {
+      constructor(private moduleRef: ModuleRef) {}
+      getViaRef() { return this.moduleRef.get(SharedService); }
+    }
+
+    @Controller('/module-ref-get')
+    class TestController {
+      constructor(private svc: ConsumerService) {}
+      @Get()
+      get() {
+        const shared = this.svc.getViaRef();
+        return { value: shared.getValue() };
+      }
+    }
+
+    @Module({
+      controllers: [TestController],
+      providers: [SharedService, ConsumerService],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/module-ref-get');
+    expect(res.status).toBe(200);
+    expect((await res.json() as any).value).toBe('shared-value');
+  });
+
+  it('ModuleRef.get() and direct injection return the same singleton object', async () => {
+    @Injectable()
+    class SingletonService {
+      id = Math.random();
+    }
+
+    @Injectable()
+    class CheckService {
+      constructor(
+        public direct: SingletonService,
+        private moduleRef: ModuleRef,
+      ) {}
+      sameInstance() { return this.moduleRef.get(SingletonService) === this.direct; }
+    }
+
+    @Module({ providers: [SingletonService, CheckService] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const check = app.get(CheckService);
+    expect(check.sameInstance()).toBe(true);
+  });
+});
