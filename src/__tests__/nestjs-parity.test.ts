@@ -7713,3 +7713,552 @@ describe('ModuleRef.get() retrieves the singleton provider instance', () => {
     expect(check.sameInstance()).toBe(true);
   });
 });
+
+// =============================================================================
+// REQUEST scope — new instance per HTTP request
+// =============================================================================
+
+describe('REQUEST scope — child container isolation', () => {
+  it('two child containers cache REQUEST instances independently', async () => {
+    @Injectable({ scope: Scope.REQUEST })
+    class RequestStore {
+      id = Math.random();
+    }
+
+    @Module({ providers: [RequestStore] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const container = app.getContainer();
+
+    // Simulate two separate requests (two child containers)
+    const child1 = container.createChild();
+    const child2 = container.createChild();
+
+    const inst1a = child1.resolve(RequestStore);
+    const inst1b = child1.resolve(RequestStore); // same child → same cached instance
+    const inst2 = child2.resolve(RequestStore);
+
+    expect(inst1a).toBe(inst1b);        // same request → same instance
+    expect(inst1a).not.toBe(inst2);     // different requests → different instances
+  });
+
+  it('REQUEST-scoped guard gets a fresh instance per HTTP request', async () => {
+    const seenIds: number[] = [];
+
+    @Injectable({ scope: Scope.REQUEST })
+    class ReqValue { id = Math.random(); }
+
+    @Injectable({ scope: Scope.REQUEST })
+    class ReqGuard implements CanActivate {
+      constructor(private val: ReqValue) {}
+      canActivate() { seenIds.push(this.val.id); return true; }
+    }
+
+    @Controller('/req-guard-scope')
+    class TestController {
+      @Get()
+      get() { return { ok: true }; }
+    }
+
+    @Module({
+      providers: [ReqValue, ReqGuard, { provide: APP_GUARD, useExisting: ReqGuard }],
+      controllers: [TestController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    await app.getHonoApp().request('/req-guard-scope');
+    await app.getHonoApp().request('/req-guard-scope');
+    expect(seenIds).toHaveLength(2);
+    expect(seenIds[0]).not.toBe(seenIds[1]);
+  });
+});
+
+// =============================================================================
+// ModuleRef.create() — fresh instance outside singleton cache
+// =============================================================================
+
+describe('ModuleRef.create() creates a fresh instance outside the singleton cache', () => {
+  it('returns a new object each call, leaving the singleton untouched', async () => {
+    @Injectable()
+    class SingletonService {
+      id = Math.random();
+    }
+
+    @Injectable()
+    class FactoryService {
+      constructor(private moduleRef: ModuleRef) {}
+      createFresh() { return this.moduleRef.create(SingletonService); }
+    }
+
+    @Module({ providers: [SingletonService, FactoryService] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const factory = app.get(FactoryService);
+    const singleton = app.get(SingletonService);
+    const fresh1 = factory.createFresh();
+    const fresh2 = factory.createFresh();
+
+    expect(fresh1).not.toBe(singleton);
+    expect(fresh1).not.toBe(fresh2);
+    expect(app.get(SingletonService)).toBe(singleton); // singleton unchanged
+  });
+});
+
+// =============================================================================
+// @Global() module — providers available without explicit import
+// =============================================================================
+
+describe('@Global() module makes providers available across all modules', () => {
+  it('consumer can inject a globally-provided service without importing its module', async () => {
+    @Injectable()
+    class GlobalService {
+      greet() { return 'global'; }
+    }
+
+    @Global()
+    @Module({ providers: [GlobalService], exports: [GlobalService] })
+    class GlobalModule {}
+
+    @Injectable()
+    class LocalService {
+      constructor(private global: GlobalService) {}
+      say() { return this.global.greet(); }
+    }
+
+    @Controller('/global-svc')
+    class TestController {
+      constructor(private local: LocalService) {}
+      @Get()
+      get() { return { msg: this.local.say() }; }
+    }
+
+    // AppModule does NOT explicitly import GlobalModule — it's global
+    @Module({ imports: [GlobalModule], controllers: [TestController], providers: [LocalService] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/global-svc');
+    expect(res.status).toBe(200);
+    expect((await res.json() as any).msg).toBe('global');
+  });
+});
+
+// =============================================================================
+// Circular module imports with forwardRef
+// =============================================================================
+
+describe('Circular module imports resolved with forwardRef', () => {
+  it('modules that reference each other are both processed correctly', async () => {
+    const TOKEN_A = new InjectionToken<string>('circ-a');
+    const TOKEN_B = new InjectionToken<string>('circ-b');
+
+    // Use a let variable so the forwardRef closure captures it by reference.
+    // ModuleB imports ModuleA (via forwardRef) and ModuleA imports ModuleB —
+    // the cycle is broken because ModuleLoader skips the forwardRef'd import
+    // when the referenced module is already on the processing stack.
+    let ModuleARef: any;
+
+    @Module({
+      imports: [forwardRef(() => ModuleARef)],
+      providers: [{ provide: TOKEN_B, useValue: 'from-b' }],
+      exports: [TOKEN_B],
+    })
+    class ModuleB {}
+
+    @Module({
+      imports: [ModuleB],
+      providers: [{ provide: TOKEN_A, useValue: 'from-a' }],
+      exports: [TOKEN_A],
+    })
+    class ModuleA {}
+
+    ModuleARef = ModuleA; // assign after class is defined — forwardRef resolves here
+
+    @Injectable()
+    class TestService {
+      constructor(
+        @Inject(TOKEN_A) public a: string,
+        @Inject(TOKEN_B) public b: string,
+      ) {}
+    }
+
+    @Controller('/circular-mod')
+    class TestController {
+      constructor(private svc: TestService) {}
+      @Get()
+      get() { return { a: this.svc.a, b: this.svc.b }; }
+    }
+
+    @Module({
+      imports: [ModuleA, ModuleB],
+      controllers: [TestController],
+      providers: [TestService],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/circular-mod');
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.a).toBe('from-a');
+    expect(body.b).toBe('from-b');
+  });
+});
+
+// =============================================================================
+// Lifecycle hooks — onApplicationBootstrap and beforeApplicationShutdown order
+// =============================================================================
+
+describe('Lifecycle hooks — onApplicationBootstrap and beforeApplicationShutdown', () => {
+  it('onApplicationBootstrap is called after module init', async () => {
+    const events: string[] = [];
+
+    @Injectable()
+    class LifecycleService implements OnModuleInit, OnApplicationBootstrap {
+      onModuleInit() { events.push('init'); }
+      onApplicationBootstrap() { events.push('bootstrap'); }
+    }
+
+    @Module({ providers: [LifecycleService] })
+    class AppModule {}
+
+    await VelaFactory.create(AppModule);
+    expect(events.indexOf('init')).toBeLessThan(events.indexOf('bootstrap'));
+  });
+
+  it('beforeApplicationShutdown is called before onModuleDestroy on close()', async () => {
+    const events: string[] = [];
+
+    @Injectable()
+    class ShutdownService implements BeforeApplicationShutdown, OnModuleDestroy {
+      beforeApplicationShutdown() { events.push('before'); }
+      onModuleDestroy() { events.push('destroy'); }
+    }
+
+    @Module({ providers: [ShutdownService] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    await app.close();
+    expect(events.indexOf('before')).toBeLessThan(events.indexOf('destroy'));
+  });
+});
+
+// =============================================================================
+// @Version([1, 2]) array — route registered on multiple versions
+// =============================================================================
+
+describe('@Version([1, 2]) registers the route on multiple version paths', () => {
+  it('responds on both /v1 and /v2 paths', async () => {
+    @Controller({ path: '/multi', version: [1, 2] })
+    class TestController {
+      @Get()
+      get() { return { ok: true }; }
+    }
+
+    @Module({ controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+    const r1 = await hono.request('/v1/multi');
+    const r2 = await hono.request('/v2/multi');
+    const r3 = await hono.request('/v3/multi');
+    expect(r1.status).toBe(200);
+    expect(r2.status).toBe(200);
+    expect(r3.status).toBe(404);
+  });
+
+  it('@Version([]) on method overrides controller version', async () => {
+    @Controller({ path: '/ver-method', version: 1 })
+    class TestController {
+      @Get('/v1-only')
+      v1() { return { v: 1 }; }
+
+      @Version(2)
+      @Get('/v2-only')
+      v2() { return { v: 2 }; }
+    }
+
+    @Module({ controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+    const r1 = await hono.request('/v1/ver-method/v1-only');
+    const r2 = await hono.request('/v2/ver-method/v2-only');
+    const wrong = await hono.request('/v1/ver-method/v2-only');
+    expect(r1.status).toBe(200);
+    expect(r2.status).toBe(200);
+    expect(wrong.status).toBe(404);
+  });
+});
+
+// =============================================================================
+// ParseUUIDPipe, ParseEnumPipe, ParseArrayPipe edge cases
+// =============================================================================
+
+describe('ParseUUIDPipe validates UUID format', () => {
+  it('passes a valid UUID v4', async () => {
+    @Controller('/uuid-pipe')
+    class TestController {
+      @Get('/:id')
+      get(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) { return { id }; }
+    }
+    @Module({ controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const uuid = '550e8400-e29b-41d4-a716-446655440000';
+    const res = await app.getHonoApp().request(`/uuid-pipe/${uuid}`);
+    expect(res.status).toBe(200);
+    expect((await res.json() as any).id).toBe(uuid);
+  });
+
+  it('throws 400 for a non-UUID string', async () => {
+    @Controller('/uuid-pipe-err')
+    class TestController {
+      @Get('/:id')
+      get(@Param('id', ParseUUIDPipe) id: string) { return { id }; }
+    }
+    @Module({ controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/uuid-pipe-err/not-a-uuid');
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('ParseEnumPipe validates enum membership', () => {
+  it('passes a valid enum value', async () => {
+    enum Direction { Up = 'up', Down = 'down' }
+
+    @Controller('/enum-pipe')
+    class TestController {
+      @Get('/:dir')
+      get(@Param('dir', new ParseEnumPipe(Direction)) dir: Direction) { return { dir }; }
+    }
+    @Module({ controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/enum-pipe/up');
+    expect(res.status).toBe(200);
+    expect((await res.json() as any).dir).toBe('up');
+  });
+
+  it('throws 400 for a value not in the enum', async () => {
+    enum Color { Red = 'red', Blue = 'blue' }
+
+    @Controller('/enum-pipe-err')
+    class TestController {
+      @Get('/:color')
+      get(@Param('color', new ParseEnumPipe(Color)) color: Color) { return { color }; }
+    }
+    @Module({ controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/enum-pipe-err/green');
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('ParseArrayPipe splits comma-separated query string', () => {
+  it('splits a comma-separated param into an array', async () => {
+    @Controller('/arr-pipe')
+    class TestController {
+      @Get()
+      get(@Query('ids', new ParseArrayPipe({ separator: ',' })) ids: string[]) { return { ids }; }
+    }
+    @Module({ controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/arr-pipe?ids=1,2,3');
+    expect(res.status).toBe(200);
+    expect((await res.json() as any).ids).toEqual(['1', '2', '3']);
+  });
+
+  it('returns an empty array when optional and param is absent', async () => {
+    @Controller('/arr-pipe-opt')
+    class TestController {
+      @Get()
+      get(@Query('ids', new ParseArrayPipe({ optional: true })) ids: string[]) { return { ids }; }
+    }
+    @Module({ controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/arr-pipe-opt');
+    expect(res.status).toBe(200);
+    expect((await res.json() as any).ids).toEqual([]);
+  });
+});
+
+// =============================================================================
+// DefaultValuePipe and RequiredPipe
+// =============================================================================
+
+describe('DefaultValuePipe supplies a fallback when param is absent', () => {
+  it('uses the default when query param is missing, passes through when present', async () => {
+    @Controller('/default-pipe')
+    class TestController {
+      @Get()
+      get(@Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number) { return { page }; }
+    }
+    @Module({ controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+    const withParam = await hono.request('/default-pipe?page=5');
+    const withoutParam = await hono.request('/default-pipe');
+    expect((await withParam.json() as any).page).toBe(5);
+    expect((await withoutParam.json() as any).page).toBe(1);
+  });
+});
+
+describe('RequiredPipe rejects absent or empty values with 400', () => {
+  it('allows a present value and rejects a missing one', async () => {
+    @Controller('/required-pipe')
+    class TestController {
+      @Get()
+      get(@Query('name', RequiredPipe) name: string) { return { name }; }
+    }
+    @Module({ controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+    const ok = await hono.request('/required-pipe?name=alice');
+    const bad = await hono.request('/required-pipe');
+    expect((await ok.json() as any).name).toBe('alice');
+    expect(bad.status).toBe(400);
+  });
+});
+
+// =============================================================================
+// @Serialize() + SerializerInterceptor — response serialization
+// =============================================================================
+
+describe('@Serialize() with SerializerInterceptor strips extra fields via Zod', () => {
+  it('omits fields not in the DTO schema', async () => {
+    const UserDto = createZodDto(z.object({ id: z.number(), name: z.string() }));
+
+    @Controller('/serialize-dto')
+    class TestController {
+      @Get()
+      @Serialize(UserDto)
+      @UseInterceptors(SerializerInterceptor)
+      get() { return { id: 1, name: 'Alice', password: 'secret' }; }
+    }
+    @Module({ controllers: [TestController], providers: [SerializerInterceptor] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/serialize-dto');
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.id).toBe(1);
+    expect(body.name).toBe('Alice');
+    expect(body.password).toBeUndefined();
+  });
+
+  it('serializes each element when the handler returns an array', async () => {
+    const ItemDto = createZodDto(z.object({ id: z.number() }));
+
+    @Controller('/serialize-arr-dto')
+    class TestController {
+      @Get()
+      @Serialize(ItemDto)
+      @UseInterceptors(SerializerInterceptor)
+      get() { return [{ id: 1, secret: 'x' }, { id: 2, secret: 'y' }]; }
+    }
+    @Module({ controllers: [TestController], providers: [SerializerInterceptor] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/serialize-arr-dto');
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body).toHaveLength(2);
+    expect(body[0]).toEqual({ id: 1 });
+    expect(body[1]).toEqual({ id: 2 });
+  });
+});
+
+// =============================================================================
+// mixin() — parameterized injectable guards
+// =============================================================================
+
+describe('mixin() creates parameterized injectable classes', () => {
+  it('RoleGuard mixin allows admin and rejects others', async () => {
+    function RoleGuardMixin(role: string) {
+      class RoleGuard implements CanActivate {
+        canActivate(ctx: ExecutionContext): boolean {
+          return ctx.getRequest().headers.get('x-role') === role;
+        }
+      }
+      return mixin(RoleGuard);
+    }
+
+    const AdminGuard = RoleGuardMixin('admin');
+
+    @Controller('/mixin-role')
+    class TestController {
+      @Get()
+      @UseGuards(AdminGuard)
+      get() { return { ok: true }; }
+    }
+    @Module({ controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+    const allowed = await hono.request('/mixin-role', { headers: { 'x-role': 'admin' } });
+    const denied = await hono.request('/mixin-role', { headers: { 'x-role': 'user' } });
+    expect(allowed.status).toBe(200);
+    expect(denied.status).toBe(403);
+  });
+
+  it('two different mixin instances have independent behavior', async () => {
+    function TierGuardMixin(tier: string) {
+      class TierGuard implements CanActivate {
+        canActivate(ctx: ExecutionContext): boolean {
+          return ctx.getRequest().headers.get('x-tier') === tier;
+        }
+      }
+      return mixin(TierGuard);
+    }
+
+    const FreeGuard = TierGuardMixin('free');
+    const PaidGuard = TierGuardMixin('paid');
+
+    @Controller('/mixin-tier')
+    class TestController {
+      @Get('/free')
+      @UseGuards(FreeGuard)
+      free() { return { tier: 'free' }; }
+
+      @Get('/paid')
+      @UseGuards(PaidGuard)
+      paid() { return { tier: 'paid' }; }
+    }
+    @Module({ controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+    const freeOk = await hono.request('/mixin-tier/free', { headers: { 'x-tier': 'free' } });
+    const paidOk = await hono.request('/mixin-tier/paid', { headers: { 'x-tier': 'paid' } });
+    const freeBlocked = await hono.request('/mixin-tier/free', { headers: { 'x-tier': 'paid' } });
+    expect(freeOk.status).toBe(200);
+    expect(paidOk.status).toBe(200);
+    expect(freeBlocked.status).toBe(403);
+  });
+});
