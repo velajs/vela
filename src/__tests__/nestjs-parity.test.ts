@@ -36,6 +36,7 @@ import {
   ModuleRef,
   mixin,
   InjectionToken,
+  Inject,
   ConfigModule,
   ConfigService,
   ParseIntPipe,
@@ -77,6 +78,19 @@ import {
   ThrottlerGuard,
   Throttle,
   SkipThrottle,
+  Put,
+  Patch,
+  Options,
+  Head,
+  Sse,
+  HttpModule,
+  HttpService,
+  HttpRequestException,
+  HealthModule,
+  HealthCheckService,
+  HealthIndicatorService,
+  HttpHealthIndicator,
+  ServiceUnavailableException,
 } from '../index.js';
 import type {
   OnModuleInit,
@@ -2928,5 +2942,612 @@ describe('ThrottlerModule / @Throttle / @SkipThrottle', () => {
     for (let i = 0; i < 10; i++) {
       expect((await hono.request('/throttle-override/default')).status).toBe(200);
     }
+  });
+});
+
+// =============================================================================
+// HTTP method decorators (Put, Patch, Options, Head)
+// =============================================================================
+
+describe('HTTP method decorators (Put, Patch, Options, Head)', () => {
+  it('@Put() handles PUT requests', async () => {
+    @Controller('/items')
+    class ItemController {
+      @Put(':id')
+      update(@Param('id') id: string, @Body() body: { name: string }) {
+        return { id, name: body.name, updated: true };
+      }
+    }
+
+    @Module({ controllers: [ItemController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/items/42', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'updated' }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: '42', name: 'updated', updated: true });
+  });
+
+  it('@Patch() handles PATCH requests', async () => {
+    @Controller('/users')
+    class UserController {
+      @Patch(':id')
+      patch(@Param('id') id: string, @Body() body: { email: string }) {
+        return { id, email: body.email, patched: true };
+      }
+    }
+
+    @Module({ controllers: [UserController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/users/7', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'new@example.com' }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: '7', email: 'new@example.com', patched: true });
+  });
+
+  it('@Options() handles OPTIONS requests', async () => {
+    @Controller('/resource')
+    class ResourceController {
+      @Options()
+      options() { return { allow: 'GET,POST,OPTIONS' }; }
+    }
+
+    @Module({ controllers: [ResourceController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/resource', { method: 'OPTIONS' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ allow: 'GET,POST,OPTIONS' });
+  });
+
+  it('@Head() handles HEAD requests (no body)', async () => {
+    @Controller('/ping')
+    class PingController {
+      @Head()
+      @Header('x-alive', 'true')
+      ping() { return ''; }
+    }
+
+    @Module({ controllers: [PingController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/ping', { method: 'HEAD' });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('x-alive')).toBe('true');
+  });
+
+  it('all HTTP verbs coexist on the same controller', async () => {
+    @Controller('/things')
+    class ThingsController {
+      @Get()     list()              { return { method: 'GET' }; }
+      @Post()    create()            { return { method: 'POST' }; }
+      @Put(':id') replace()          { return { method: 'PUT' }; }
+      @Patch(':id') update()         { return { method: 'PATCH' }; }
+      @Delete(':id') remove()        { return { method: 'DELETE' }; }
+    }
+
+    @Module({ controllers: [ThingsController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    expect(await (await hono.request('/things')).json()).toEqual({ method: 'GET' });
+    expect(await (await hono.request('/things', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json()).toEqual({ method: 'POST' });
+    expect(await (await hono.request('/things/1', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json()).toEqual({ method: 'PUT' });
+    expect(await (await hono.request('/things/1', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json()).toEqual({ method: 'PATCH' });
+    expect(await (await hono.request('/things/1', { method: 'DELETE' })).json()).toEqual({ method: 'DELETE' });
+  });
+});
+
+// =============================================================================
+// HttpModule / HttpService
+// =============================================================================
+
+describe('HttpModule / HttpService', () => {
+  beforeEach(() => { vi.restoreAllMocks(); });
+
+  it('HttpService.get() makes a GET request and returns data', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ id: 1, name: 'Alice' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    @Injectable()
+    class UserService {
+      constructor(private http: HttpService) {}
+      async getUser() { return (await this.http.get<{ id: number; name: string }>('https://api.test/user/1')).data; }
+    }
+
+    @Controller('/users')
+    class UserController {
+      constructor(private svc: UserService) {}
+      @Get() async handle() { return this.svc.getUser(); }
+    }
+
+    @Module({ imports: [HttpModule], providers: [UserService], controllers: [UserController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/users');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: 1, name: 'Alice' });
+  });
+
+  it('HttpModule.register() sets baseURL for all requests', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    @Injectable()
+    class ApiService {
+      constructor(private http: HttpService) {}
+      ping() { return this.http.get('/status'); }
+    }
+
+    @Controller('/ping')
+    class PingController {
+      constructor(private api: ApiService) {}
+      @Get() async handle() { await this.api.ping(); return { called: true }; }
+    }
+
+    @Module({
+      imports: [HttpModule.register({ baseURL: 'https://my-api.com' })],
+      providers: [ApiService],
+      controllers: [PingController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    await app.getHonoApp().request('/ping');
+    expect(fetch).toHaveBeenCalledWith('https://my-api.com/status', expect.objectContaining({ method: 'GET' }));
+  });
+
+  it('HttpModule.registerAsync() resolves config from injected factory', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ async: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const BASE_URL = new InjectionToken<string>('BASE_URL');
+
+    @Injectable()
+    class RemoteService {
+      constructor(private http: HttpService) {}
+      fetch() { return this.http.get('/data'); }
+    }
+
+    @Controller('/async-http')
+    class AsyncHttpController {
+      constructor(private svc: RemoteService) {}
+      @Get() async handle() { await this.svc.fetch(); return { ok: true }; }
+    }
+
+    @Module({
+      imports: [
+        HttpModule.registerAsync({
+          useFactory: (url: string) => ({ baseURL: url }),
+          inject: [BASE_URL],
+        }),
+      ],
+      providers: [
+        { provide: BASE_URL, useValue: 'https://async-api.com' },
+        RemoteService,
+      ],
+      controllers: [AsyncHttpController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    await app.getHonoApp().request('/async-http');
+    expect(fetch).toHaveBeenCalledWith('https://async-api.com/data', expect.anything());
+  });
+
+  it('HttpRequestException is thrown for non-2xx responses', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('Not Found', { status: 404, statusText: 'Not Found' }),
+    );
+
+    @Injectable()
+    class FetchService {
+      constructor(private http: HttpService) {}
+      async fetch() {
+        try {
+          await this.http.get('https://api.test/missing');
+          return { threw: false };
+        } catch (e) {
+          return { threw: true, status: (e as HttpRequestException).status };
+        }
+      }
+    }
+
+    @Controller('/exc')
+    class ExcController {
+      constructor(private svc: FetchService) {}
+      @Get() async handle() { return this.svc.fetch(); }
+    }
+
+    @Module({ imports: [HttpModule], providers: [FetchService], controllers: [ExcController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/exc');
+    expect(await res.json()).toEqual({ threw: true, status: 404 });
+  });
+});
+
+// =============================================================================
+// HealthModule
+// =============================================================================
+
+describe('HealthModule', () => {
+  beforeEach(() => {
+    // HealthModule is a plain @Module() class; re-register after MetadataRegistry.clear()
+    MetadataRegistry.setModuleOptions(HealthModule, {
+      providers: [HealthCheckService, HealthIndicatorService, HttpHealthIndicator],
+      exports: [HealthCheckService, HealthIndicatorService, HttpHealthIndicator],
+    });
+  });
+
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('HealthCheckService.check() returns status:ok when all indicators pass', async () => {
+    @Controller('/health')
+    class HealthController {
+      constructor(
+        private health: HealthCheckService,
+        private indicator: HealthIndicatorService,
+      ) {}
+
+      @Get()
+      check() {
+        return this.health.check([
+          () => this.indicator.check('db').up({ responseTime: 5 }),
+        ]);
+      }
+    }
+
+    @Module({ imports: [HealthModule], controllers: [HealthController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/health');
+    expect(res.status).toBe(200);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const body = await res.json() as any;
+    expect(body.status).toBe('ok');
+    expect(body.info.db.status).toBe('up');
+  });
+
+  it('HealthCheckService returns 503 when an indicator is down', async () => {
+    @Controller('/health-down')
+    class DownController {
+      constructor(
+        private health: HealthCheckService,
+        private indicator: HealthIndicatorService,
+      ) {}
+
+      @Get()
+      check() {
+        return this.health.check([
+          () => this.indicator.check('redis').up(),
+          () => this.indicator.check('db').down({ message: 'timeout' }),
+        ]);
+      }
+    }
+
+    @Module({ imports: [HealthModule], controllers: [DownController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/health-down');
+    expect(res.status).toBe(503);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const body = await res.json() as any;
+    expect(body.status).toBe('error');
+    expect(body.error.db.status).toBe('down');
+  });
+
+  it('HttpHealthIndicator.pingCheck() returns up for 2xx', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('OK', { status: 200 })));
+
+    @Controller('/health-http')
+    class HttpHealthController {
+      constructor(
+        private health: HealthCheckService,
+        private http: HttpHealthIndicator,
+      ) {}
+
+      @Get()
+      check() {
+        return this.health.check([
+          () => this.http.pingCheck('api', 'https://api.test/ping'),
+        ]);
+      }
+    }
+
+    @Module({ imports: [HealthModule], controllers: [HttpHealthController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/health-http');
+    expect(res.status).toBe(200);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((await res.json() as any).info.api.status).toBe('up');
+  });
+});
+
+// =============================================================================
+// @Sse() Server-Sent Events
+// =============================================================================
+
+describe('@Sse() Server-Sent Events', () => {
+  it('@Sse() registers a GET route that returns text/event-stream', async () => {
+    @Controller('/stream')
+    class StreamController {
+      @Sse('/events')
+      events() {
+        return new Response('data: hello\n\n', {
+          headers: { 'Content-Type': 'text/event-stream' },
+        });
+      }
+    }
+
+    @Module({ controllers: [StreamController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/stream/events');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('text/event-stream');
+    expect(await res.text()).toBe('data: hello\n\n');
+  });
+
+  it('@Sse() and @Get() can coexist on the same controller', async () => {
+    @Controller('/mixed')
+    class MixedController {
+      @Get('/data') data() { return { type: 'json' }; }
+
+      @Sse('/live')
+      stream() {
+        return new Response('data: tick\n\n', {
+          headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
+        });
+      }
+    }
+
+    @Module({ controllers: [MixedController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    const json = await hono.request('/mixed/data');
+    expect(await json.json()).toEqual({ type: 'json' });
+
+    const sse = await hono.request('/mixed/live');
+    expect(sse.headers.get('content-type')).toBe('text/event-stream');
+    expect(sse.headers.get('cache-control')).toBe('no-cache');
+  });
+
+  it('@Sse() passes through guards and interceptors in the pipeline', async () => {
+    let guardCalled = false;
+
+    @Injectable()
+    class TrackGuard implements CanActivate {
+      canActivate() { guardCalled = true; return true; }
+    }
+
+    @Controller('/guarded-sse')
+    @UseGuards(TrackGuard)
+    class GuardedSseController {
+      @Sse('/feed')
+      feed() {
+        return new Response('data: ok\n\n', {
+          headers: { 'Content-Type': 'text/event-stream' },
+        });
+      }
+    }
+
+    @Module({ providers: [TrackGuard], controllers: [GuardedSseController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    await app.getHonoApp().request('/guarded-sse/feed');
+    expect(guardCalled).toBe(true);
+  });
+});
+
+// =============================================================================
+// useExisting provider alias in module context
+// =============================================================================
+
+describe('useExisting provider alias', () => {
+  it('alias resolves to the same singleton instance as the real token', async () => {
+    @Injectable()
+    class RealService {
+      id = Math.random();
+      getValue() { return this.id; }
+    }
+
+    const ALIAS = new InjectionToken<RealService>('ALIAS');
+
+    @Controller('/alias')
+    class AliasController {
+      constructor(
+        @Inject(ALIAS) private aliased: RealService,
+        private real: RealService,
+      ) {}
+
+      @Get()
+      handle() {
+        return { same: this.aliased === this.real, value: this.real.getValue() };
+      }
+    }
+
+    @Module({
+      providers: [
+        RealService,
+        { provide: ALIAS, useExisting: RealService },
+      ],
+      controllers: [AliasController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/alias');
+    expect(res.status).toBe(200);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const body = await res.json() as any;
+    expect(body.same).toBe(true);
+  });
+
+  it('multiple aliases can point to the same service', async () => {
+    @Injectable()
+    class LoggerService {
+      log(msg: string) { return msg; }
+    }
+
+    const LOGGER = new InjectionToken<LoggerService>('LOGGER');
+    const APP_LOGGER = new InjectionToken<LoggerService>('APP_LOGGER');
+
+    @Controller('/multi-alias')
+    class MultiAliasController {
+      constructor(
+        @Inject(LOGGER) private l1: LoggerService,
+        @Inject(APP_LOGGER) private l2: LoggerService,
+        private real: LoggerService,
+      ) {}
+
+      @Get()
+      handle() {
+        return { l1Real: this.l1 === this.real, l2Real: this.l2 === this.real };
+      }
+    }
+
+    @Module({
+      providers: [
+        LoggerService,
+        { provide: LOGGER, useExisting: LoggerService },
+        { provide: APP_LOGGER, useExisting: LoggerService },
+      ],
+      controllers: [MultiAliasController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/multi-alias');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const body = await res.json() as any;
+    expect(body.l1Real).toBe(true);
+    expect(body.l2Real).toBe(true);
+  });
+});
+
+// =============================================================================
+// forRootAsync() dynamic module pattern
+// =============================================================================
+
+describe('forRootAsync() dynamic module pattern', () => {
+  it('HttpModule.registerAsync() resolves config from ConfigService', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ data: 'async-config' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    @Injectable()
+    class DataService {
+      constructor(private http: HttpService) {}
+      async fetch() { return (await this.http.get<{ data: string }>('/resource')).data; }
+    }
+
+    @Controller('/async-root')
+    class AsyncRootController {
+      constructor(private svc: DataService) {}
+      @Get() async handle() { return this.svc.fetch(); }
+    }
+
+    @Module({
+      imports: [
+        ConfigModule.forRoot({ config: { API_BASE: 'https://async-root.test' } }),
+        HttpModule.registerAsync({
+          imports: [ConfigModule.forRoot({ config: { API_BASE: 'https://async-root.test' } })],
+          useFactory: (config: ConfigService) => ({
+            baseURL: config.get<string>('API_BASE') ?? '',
+          }),
+          inject: [ConfigService],
+        }),
+      ],
+      providers: [DataService],
+      controllers: [AsyncRootController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    await app.getHonoApp().request('/async-root');
+    expect(fetch).toHaveBeenCalledWith(
+      'https://async-root.test/resource',
+      expect.objectContaining({ method: 'GET' }),
+    );
+    vi.restoreAllMocks();
+  });
+
+  it('async factory receives injected dependency before module initializes', async () => {
+    const CONFIG_VAL = new InjectionToken<string>('CONFIG_VAL');
+
+    @Injectable()
+    class CheckService {
+      constructor(private http: HttpService) {}
+      getBaseURL() {
+        // Access the options via a GET to verify they were set correctly
+        return 'configured';
+      }
+    }
+
+    @Controller('/factory-order')
+    class FactoryOrderController {
+      constructor(private svc: CheckService) {}
+      @Get() handle() { return { result: this.svc.getBaseURL() }; }
+    }
+
+    @Module({
+      imports: [
+        HttpModule.registerAsync({
+          useFactory: (val: string) => ({ baseURL: `https://${val}.test` }),
+          inject: [CONFIG_VAL],
+        }),
+      ],
+      providers: [
+        { provide: CONFIG_VAL, useValue: 'injected-factory' },
+        CheckService,
+      ],
+      controllers: [FactoryOrderController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/factory-order');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ result: 'configured' });
   });
 });

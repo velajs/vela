@@ -566,7 +566,8 @@ export class RouteManager {
         app.options(normalizedPath, handler);
         break;
       case HttpMethod.HEAD:
-        app.on('HEAD', normalizedPath, handler);
+        // Hono converts HEAD to GET internally, so register as GET
+        app.get(normalizedPath, handler);
         break;
       default:
         app.on(method.toUpperCase(), normalizedPath, handler);
