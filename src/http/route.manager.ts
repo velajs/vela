@@ -291,6 +291,10 @@ export class RouteManager {
       getHandler: () => route.handlerName,
       getContext: <T = Context>() => c as T,
       getRequest: () => c.req.raw,
+      switchToHttp: () => ({
+        getRequest: <T = Request>() => c.req.raw as T,
+        getResponse: <T = Context>() => c as T,
+      }),
     };
   }
 
@@ -484,6 +488,9 @@ export class RouteManager {
         return headers;
 
       case ParamType.REQUEST:
+        return c;
+
+      case ParamType.RESPONSE:
         return c;
 
       case ParamType.IP:

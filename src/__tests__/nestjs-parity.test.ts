@@ -33,11 +33,13 @@ import {
   ConfigModule,
   ConfigService,
 } from '../index.js';
+import { Res } from '../index.js';
 import type {
   MiddlewareConsumer,
   NestModule,
   CanActivate,
   ExecutionContext,
+  HttpArgumentsHost,
   NestInterceptor,
   CallHandler,
   PipeTransform,
@@ -1125,5 +1127,85 @@ describe('Module-level Use* decorators', () => {
     const res = await app.getHonoApp().request('/mod-pipe/hello');
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ name: 'HELLO' });
+  });
+});
+
+describe('switchToHttp() and @Res() decorator', () => {
+  beforeEach(() => MetadataRegistry.clear());
+
+  it('switchToHttp().getRequest() returns the raw Request in a guard', async () => {
+    let capturedUrl: string | undefined;
+
+    @Injectable()
+    class InspectGuard implements CanActivate {
+      canActivate(ctx: ExecutionContext): boolean {
+        const http: HttpArgumentsHost = ctx.switchToHttp();
+        capturedUrl = http.getRequest<Request>().url;
+        return true;
+      }
+    }
+
+    @Controller('/switch-http')
+    class SwitchController {
+      @UseGuards(InspectGuard)
+      @Get()
+      handle() { return { ok: true }; }
+    }
+
+    @Module({ providers: [InspectGuard], controllers: [SwitchController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/switch-http');
+    expect(res.status).toBe(200);
+    expect(capturedUrl).toContain('/switch-http');
+  });
+
+  it('switchToHttp().getResponse() returns the Hono Context', async () => {
+    let capturedResponse: unknown;
+
+    @Injectable()
+    class InspectInterceptor implements NestInterceptor {
+      async intercept(ctx: ExecutionContext, next: CallHandler) {
+        const http: HttpArgumentsHost = ctx.switchToHttp();
+        capturedResponse = http.getResponse();
+        return next.handle();
+      }
+    }
+
+    @Controller('/switch-res')
+    class SwitchResController {
+      @UseInterceptors(InspectInterceptor)
+      @Get()
+      handle() { return { ok: true }; }
+    }
+
+    @Module({ providers: [InspectInterceptor], controllers: [SwitchResController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/switch-res');
+    expect(res.status).toBe(200);
+    expect(capturedResponse).toBeDefined();
+    // Hono Context has req and res properties
+    expect((capturedResponse as any).req).toBeDefined();
+  });
+
+  it('@Res() injects the Hono Context and allows manual response', async () => {
+    @Controller('/res-manual')
+    class ManualResController {
+      @Get()
+      handle(@Res() ctx: any) {
+        return ctx.json({ manual: true }, 201);
+      }
+    }
+
+    @Module({ controllers: [ManualResController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/res-manual');
+    expect(res.status).toBe(201);
+    expect(await res.json()).toEqual({ manual: true });
   });
 });

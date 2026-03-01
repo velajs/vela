@@ -17,6 +17,7 @@ export {
   Body,
   Headers,
   Req,
+  Res,
   Ip,
   Cookie,
   Cookies,

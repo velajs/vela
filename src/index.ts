@@ -34,6 +34,7 @@ export {
   Body,
   Headers,
   Req,
+  Res,
   Ip,
   Cookie,
   Cookies,
@@ -166,6 +167,7 @@ export {
 
 // Pipeline Types
 export type {
+  HttpArgumentsHost,
   ExecutionContext,
   CanActivate,
   CallHandler,

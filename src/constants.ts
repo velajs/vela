@@ -39,6 +39,7 @@ export enum ParamType {
   PARAM = 'param',
   HEADERS = 'headers',
   REQUEST = 'request',
+  RESPONSE = 'response',
   IP = 'ip',
   COOKIE = 'cookie',
   RAW_BODY = 'raw_body',

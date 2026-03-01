@@ -163,6 +163,23 @@ export const Query = createBuiltinParamDecorator(ParamType.QUERY);
 export const Body = createBuiltinParamDecorator(ParamType.BODY);
 export const Headers = createBuiltinParamDecorator(ParamType.HEADERS);
 export const Req = createBuiltinParamDecorator(ParamType.REQUEST);
+/**
+ * Injects the Hono `Context` as the response handle.
+ * In Hono, request and response state are unified in the `Context` object,
+ * so `@Res()` and `@Req()` both return it.
+ *
+ * Use `c.header()`, `c.setCookie()`, `c.redirect()`, etc. for response control.
+ *
+ * @example
+ * ```ts
+ * @Get('/set-cookie')
+ * handle(@Res() c: Context) {
+ *   c.setCookie('session', 'abc123', { httpOnly: true });
+ *   return { ok: true };
+ * }
+ * ```
+ */
+export const Res = createBuiltinParamDecorator(ParamType.RESPONSE);
 export const Ip = createBuiltinParamDecorator(ParamType.IP);
 export const Cookie = createBuiltinParamDecorator(ParamType.COOKIE);
 
@@ -257,6 +274,10 @@ export function createParamDecorator<TData = unknown>(
               getHandler: () => propertyKey,
               getContext: <T>() => honoCtx as T,
               getRequest: () => honoCtx.req.raw,
+              switchToHttp: () => ({
+                getRequest: <T = Request>() => honoCtx.req.raw as T,
+                getResponse: <T>() => honoCtx as T,
+              }),
             };
             return factory(data as TData, execCtx);
           },

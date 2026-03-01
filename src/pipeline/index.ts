@@ -25,6 +25,7 @@ export {
 } from './pipes';
 export type { ParseUUIDPipeOptions, ParseArrayPipeOptions } from './pipes';
 export type {
+  HttpArgumentsHost,
   ExecutionContext,
   CanActivate,
   CallHandler,
