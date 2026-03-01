@@ -32,8 +32,15 @@ import {
   InjectionToken,
   ConfigModule,
   ConfigService,
+  ParseIntPipe,
+  DefaultValuePipe,
+  Res,
 } from '../index.js';
-import { Res } from '../index.js';
+import type {
+  OnModuleInit,
+  OnApplicationBootstrap,
+  OnModuleDestroy,
+} from '../index.js';
 import type {
   MiddlewareConsumer,
   NestModule,
@@ -1207,5 +1214,163 @@ describe('switchToHttp() and @Res() decorator', () => {
     const res = await app.getHonoApp().request('/res-manual');
     expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ manual: true });
+  });
+});
+
+describe('Inline param-level pipes', () => {
+  beforeEach(() => MetadataRegistry.clear());
+
+  it('@Param("id", ParseIntPipe) parses route param to number', async () => {
+    @Controller('/users')
+    class UsersController {
+      @Get('/:id')
+      findOne(@Param('id', ParseIntPipe) id: number) {
+        return { id, type: typeof id };
+      }
+    }
+
+    @Module({ controllers: [UsersController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/users/42');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: 42, type: 'number' });
+  });
+
+  it('inline ParseIntPipe returns 400 for non-numeric input', async () => {
+    @Controller('/items')
+    class ItemsController {
+      @Get('/:id')
+      findOne(@Param('id', ParseIntPipe) id: number) {
+        return { id };
+      }
+    }
+
+    @Module({ controllers: [ItemsController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/items/not-a-number');
+    expect(res.status).toBe(400);
+  });
+
+  it('@Query("page", new DefaultValuePipe(1), ParseIntPipe) parses query with fallback', async () => {
+    @Controller('/posts')
+    class PostsController {
+      @Get()
+      list(@Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number) {
+        return { page };
+      }
+    }
+
+    @Module({ controllers: [PostsController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+
+    const withParam = await app.getHonoApp().request('/posts?page=3');
+    expect(await withParam.json()).toEqual({ page: 3 });
+
+    // DefaultValuePipe kicks in when query param is absent
+    const withoutParam = await app.getHonoApp().request('/posts');
+    expect(await withoutParam.json()).toEqual({ page: 1 });
+  });
+
+  it('multiple inline pipes chain in order: first to last', async () => {
+    class DoubleIt implements PipeTransform<number, number> {
+      transform(value: number): number { return value * 2; }
+    }
+    class AddTen implements PipeTransform<number, number> {
+      transform(value: number): number { return value + 10; }
+    }
+
+    @Controller('/calc')
+    class CalcController {
+      @Get('/:n')
+      handle(@Param('n', ParseIntPipe, new DoubleIt(), new AddTen()) n: number) {
+        return { n };
+      }
+    }
+
+    @Module({ controllers: [CalcController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    // 5 → ParseInt(5) → 5*2=10 → 10+10=20
+    const res = await app.getHonoApp().request('/calc/5');
+    expect(await res.json()).toEqual({ n: 20 });
+  });
+});
+
+describe('Lifecycle hooks', () => {
+  beforeEach(() => MetadataRegistry.clear());
+
+  it('onModuleInit() is called before the app is ready', async () => {
+    const calls: string[] = [];
+
+    @Injectable()
+    class DbService implements OnModuleInit {
+      async onModuleInit() {
+        calls.push('db:init');
+      }
+    }
+
+    @Module({ providers: [DbService] })
+    class AppModule {}
+
+    await VelaFactory.create(AppModule);
+    expect(calls).toEqual(['db:init']);
+  });
+
+  it('onApplicationBootstrap() is called after onModuleInit()', async () => {
+    const calls: string[] = [];
+
+    @Injectable()
+    class StartupService implements OnModuleInit, OnApplicationBootstrap {
+      async onModuleInit() { calls.push('init'); }
+      async onApplicationBootstrap() { calls.push('bootstrap'); }
+    }
+
+    @Module({ providers: [StartupService] })
+    class AppModule {}
+
+    await VelaFactory.create(AppModule);
+    expect(calls).toEqual(['init', 'bootstrap']);
+  });
+
+  it('all providers with hooks are called, in registration order', async () => {
+    const calls: string[] = [];
+
+    @Injectable()
+    class ServiceA implements OnModuleInit {
+      onModuleInit() { calls.push('A'); }
+    }
+    @Injectable()
+    class ServiceB implements OnModuleInit {
+      onModuleInit() { calls.push('B'); }
+    }
+
+    @Module({ providers: [ServiceA, ServiceB] })
+    class AppModule {}
+
+    await VelaFactory.create(AppModule);
+    expect(calls).toEqual(['A', 'B']);
+  });
+
+  it('app.close() calls onModuleDestroy() on each provider', async () => {
+    const calls: string[] = [];
+
+    @Injectable()
+    class CleanupService implements OnModuleDestroy {
+      onModuleDestroy() { calls.push('destroyed'); }
+    }
+
+    @Module({ providers: [CleanupService] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    await app.close();
+    expect(calls).toEqual(['destroyed']);
   });
 });
