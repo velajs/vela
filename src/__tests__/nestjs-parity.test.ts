@@ -5017,3 +5017,759 @@ describe('Async onModuleInit', () => {
     expect(await res.json()).toEqual({ items: ['alpha', 'beta', 'gamma'] });
   });
 });
+
+// =============================================================================
+// Reflector.createDecorator() in HTTP context
+// =============================================================================
+
+describe('Reflector.createDecorator() in HTTP context', () => {
+  it('typed decorator created with createDecorator() works in guards', async () => {
+    const Roles = Reflector.createDecorator<string[]>();
+
+    @Injectable()
+    class TypedRolesGuard implements CanActivate {
+      constructor(private reflector: Reflector) {}
+      canActivate(ctx: ExecutionContext): boolean {
+        const required = this.reflector.get(Roles, ctx);
+        if (!required) return true;
+        return ctx.getRequest().headers.get('x-role') === required[0];
+      }
+    }
+
+    @Controller('/typed-roles')
+    class TypedRolesController {
+      @Roles(['admin'])
+      @Get('admin')
+      admin() { return { access: 'admin' }; }
+
+      @Get('public')
+      public() { return { access: 'public' }; }
+    }
+
+    @Module({ providers: [TypedRolesGuard, Reflector], controllers: [TypedRolesController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    app.useGlobalGuards(new TypedRolesGuard(new Reflector()));
+    await app.rebuild();
+
+    const hono = app.getHonoApp();
+
+    const denied = await hono.request('/typed-roles/admin');
+    expect(denied.status).toBe(403);
+
+    const allowed = await hono.request('/typed-roles/admin', { headers: { 'x-role': 'admin' } });
+    expect(allowed.status).toBe(200);
+
+    const pub = await hono.request('/typed-roles/public');
+    expect(pub.status).toBe(200);
+  });
+
+  it('createDecorator() produces distinct keys for separate decorators', async () => {
+    const TagA = Reflector.createDecorator<string>();
+    const TagB = Reflector.createDecorator<string>();
+
+    const captured: { a?: string; b?: string } = {};
+
+    @Injectable()
+    class TagGuard implements CanActivate {
+      constructor(private reflector: Reflector) {}
+      canActivate(ctx: ExecutionContext): boolean {
+        captured.a = this.reflector.get(TagA, ctx);
+        captured.b = this.reflector.get(TagB, ctx);
+        return true;
+      }
+    }
+
+    @Controller('/tags')
+    class TagController {
+      @TagA('alpha')
+      @TagB('beta')
+      @Get()
+      @UseGuards(TagGuard)
+      handle() { return {}; }
+    }
+
+    @Module({ providers: [TagGuard, Reflector], controllers: [TagController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    await app.getHonoApp().request('/tags');
+    expect(captured.a).toBe('alpha');
+    expect(captured.b).toBe('beta');
+  });
+});
+
+// =============================================================================
+// Module re-export / transitive exports
+// =============================================================================
+
+describe('Module re-export / transitive exports', () => {
+  it('re-exported providers from an imported module are available to consumers', async () => {
+    @Injectable()
+    class DatabaseService {
+      query() { return 'db result'; }
+    }
+
+    @Module({ providers: [DatabaseService], exports: [DatabaseService] })
+    class DatabaseModule {}
+
+    // InfraModule imports and RE-EXPORTS DatabaseModule's service
+    @Module({ imports: [DatabaseModule], exports: [DatabaseService] })
+    class InfraModule {}
+
+    @Controller('/reexport')
+    class ReexportController {
+      constructor(private db: DatabaseService) {}
+      @Get() handle() { return { result: this.db.query() }; }
+    }
+
+    // AppModule only imports InfraModule — gets DatabaseService transitively
+    @Module({ imports: [InfraModule], controllers: [ReexportController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/reexport');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ result: 'db result' });
+  });
+
+  it('global module makes providers available without explicit import', async () => {
+    @Injectable()
+    class GlobalConfig { env = 'production'; }
+
+    @Global()
+    @Module({ providers: [GlobalConfig], exports: [GlobalConfig] })
+    class GlobalModule {}
+
+    @Controller('/global-inject')
+    class GlobalInjectController {
+      constructor(private config: GlobalConfig) {}
+      @Get() handle() { return { env: this.config.env }; }
+    }
+
+    @Module({ imports: [GlobalModule], controllers: [GlobalInjectController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/global-inject');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ env: 'production' });
+  });
+});
+
+// =============================================================================
+// Interceptor response transformation
+// =============================================================================
+
+describe('Interceptor response transformation', () => {
+  it('interceptor wraps all responses in { data: result }', async () => {
+    @Injectable()
+    class DataWrapInterceptor implements NestInterceptor {
+      async intercept(_ctx: ExecutionContext, next: CallHandler) {
+        const result = await next.handle();
+        return { data: result };
+      }
+    }
+
+    @Controller('/wrap')
+    class WrapController {
+      @Get() handle() { return { id: 1, name: 'Alice' }; }
+    }
+
+    @Module({ controllers: [WrapController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    app.useGlobalInterceptors(new DataWrapInterceptor());
+    await app.rebuild();
+
+    const res = await app.getHonoApp().request('/wrap');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ data: { id: 1, name: 'Alice' } });
+  });
+
+  it('interceptor can add response headers', async () => {
+    @Injectable()
+    class TimingInterceptor implements NestInterceptor {
+      async intercept(ctx: ExecutionContext, next: CallHandler) {
+        const result = await next.handle();
+        const c = ctx.getContext() as import('hono').Context;
+        c.header('x-timing', '42ms');
+        return result;
+      }
+    }
+
+    @Controller('/timed')
+    class TimedController {
+      @Get() handle() { return { ok: true }; }
+    }
+
+    @Module({ controllers: [TimedController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    app.useGlobalInterceptors(new TimingInterceptor());
+    await app.rebuild();
+
+    const res = await app.getHonoApp().request('/timed');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('x-timing')).toBe('42ms');
+  });
+
+  it('method-level interceptor runs after global interceptor', async () => {
+    const order: string[] = [];
+
+    @Injectable()
+    class GlobalInterceptor implements NestInterceptor {
+      async intercept(_ctx: ExecutionContext, next: CallHandler) {
+        order.push('global:before');
+        const r = await next.handle();
+        order.push('global:after');
+        return r;
+      }
+    }
+
+    @Injectable()
+    class LocalInterceptor implements NestInterceptor {
+      async intercept(_ctx: ExecutionContext, next: CallHandler) {
+        order.push('local:before');
+        const r = await next.handle();
+        order.push('local:after');
+        return r;
+      }
+    }
+
+    @Controller('/order-intercept')
+    class OrderInterceptController {
+      @Get()
+      @UseInterceptors(LocalInterceptor)
+      handle() { order.push('handler'); return {}; }
+    }
+
+    @Module({ controllers: [OrderInterceptController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    app.useGlobalInterceptors(new GlobalInterceptor());
+    await app.rebuild();
+
+    await app.getHonoApp().request('/order-intercept');
+    expect(order).toEqual(['global:before', 'local:before', 'handler', 'local:after', 'global:after']);
+  });
+});
+
+// =============================================================================
+// @UseFilters() at method level
+// =============================================================================
+
+describe('@UseFilters() at method level', () => {
+  it('method-level filter catches exception before global filter', async () => {
+    class DomainError extends Error { constructor() { super('domain'); } }
+
+    @Catch(DomainError)
+    class MethodFilter implements ExceptionFilter {
+      catch(_e: unknown, ctx: ExecutionContext) {
+        const c = ctx.getContext() as import('hono').Context;
+        return c.json({ handler: 'method' }, 422);
+      }
+    }
+
+    @Catch(DomainError)
+    class GlobalFilter implements ExceptionFilter {
+      catch(_e: unknown, ctx: ExecutionContext) {
+        const c = ctx.getContext() as import('hono').Context;
+        return c.json({ handler: 'global' }, 500);
+      }
+    }
+
+    @Controller('/method-filter')
+    class MethodFilterController {
+      @Get('filtered')
+      @UseFilters(MethodFilter)
+      filtered() { throw new DomainError(); }
+
+      @Get('unfiltered')
+      unfiltered() { throw new DomainError(); }
+    }
+
+    @Module({
+      providers: [{ provide: APP_FILTER, useClass: GlobalFilter }],
+      controllers: [MethodFilterController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    const r1 = await hono.request('/method-filter/filtered');
+    expect(r1.status).toBe(422);
+    expect(await r1.json()).toEqual({ handler: 'method' });
+
+    const r2 = await hono.request('/method-filter/unfiltered');
+    expect(r2.status).toBe(500);
+    expect(await r2.json()).toEqual({ handler: 'global' });
+  });
+
+  it('controller-level @UseFilters() applies to all methods', async () => {
+    class AppError extends Error { constructor() { super('app'); } }
+
+    @Catch(AppError)
+    class ControllerFilter implements ExceptionFilter {
+      catch(_e: unknown, ctx: ExecutionContext) {
+        const c = ctx.getContext() as import('hono').Context;
+        return c.json({ level: 'controller' }, 400);
+      }
+    }
+
+    @Controller('/ctrl-filter')
+    @UseFilters(ControllerFilter)
+    class CtrlFilterController {
+      @Get('a') a() { throw new AppError(); }
+      @Get('b') b() { throw new AppError(); }
+    }
+
+    @Module({ controllers: [CtrlFilterController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    expect(await (await hono.request('/ctrl-filter/a')).json()).toEqual({ level: 'controller' });
+    expect(await (await hono.request('/ctrl-filter/b')).json()).toEqual({ level: 'controller' });
+  });
+});
+
+// =============================================================================
+// useFactory async inline providers
+// =============================================================================
+
+describe('useFactory async inline providers', () => {
+  it('async useFactory provider is resolved before first request', async () => {
+    const DB_CONNECTION = new InjectionToken<{ ping(): string }>('DB_CONNECTION');
+
+    @Controller('/async-factory')
+    class AsyncFactoryController {
+      constructor(@Inject(DB_CONNECTION) private db: { ping(): string }) {}
+      @Get() handle() { return { pong: this.db.ping() }; }
+    }
+
+    @Module({
+      providers: [
+        {
+          provide: DB_CONNECTION,
+          useFactory: async () => {
+            await new Promise((r) => setTimeout(r, 5));
+            return { ping: () => 'pong' };
+          },
+        },
+      ],
+      controllers: [AsyncFactoryController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/async-factory');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ pong: 'pong' });
+  });
+
+  it('async factory receives injected dependencies', async () => {
+    const API_KEY = new InjectionToken<string>('API_KEY');
+    const HTTP_CLIENT = new InjectionToken<{ baseUrl: string }>('HTTP_CLIENT');
+
+    @Controller('/async-inject-factory')
+    class AsyncInjectController {
+      constructor(@Inject(HTTP_CLIENT) private client: { baseUrl: string }) {}
+      @Get() handle() { return { baseUrl: this.client.baseUrl }; }
+    }
+
+    @Module({
+      providers: [
+        { provide: API_KEY, useValue: 'https://api.example.com' },
+        {
+          provide: HTTP_CLIENT,
+          useFactory: async (key: string) => {
+            await Promise.resolve();
+            return { baseUrl: key };
+          },
+          inject: [API_KEY],
+        },
+      ],
+      controllers: [AsyncInjectController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/async-inject-factory');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ baseUrl: 'https://api.example.com' });
+  });
+});
+
+// =============================================================================
+// Custom dynamic module
+// =============================================================================
+
+describe('Custom dynamic module', () => {
+  it('user-defined register() pattern creates a valid dynamic module', async () => {
+    const STORAGE_OPTIONS = new InjectionToken<{ bucket: string }>('STORAGE_OPTIONS');
+
+    @Injectable()
+    class StorageService {
+      constructor(@Inject(STORAGE_OPTIONS) private opts: { bucket: string }) {}
+      getBucket() { return this.opts.bucket; }
+    }
+
+    class StorageModule {
+      static register(opts: { bucket: string }) {
+        const moduleClass = class StorageDynamicModule {} as unknown as Type;
+        Object.defineProperty(moduleClass, 'name', { value: 'StorageDynamicModule' });
+        MetadataRegistry.setModuleOptions(moduleClass, {
+          providers: [
+            { provide: STORAGE_OPTIONS, useValue: opts },
+            StorageService,
+          ],
+          exports: [StorageService],
+        });
+        return {
+          module: moduleClass,
+          providers: [
+            { provide: STORAGE_OPTIONS, useValue: opts },
+            StorageService,
+          ],
+        };
+      }
+    }
+
+    @Controller('/storage')
+    class StorageController {
+      constructor(private storage: StorageService) {}
+      @Get() handle() { return { bucket: this.storage.getBucket() }; }
+    }
+
+    @Module({
+      imports: [StorageModule.register({ bucket: 'my-bucket' })],
+      controllers: [StorageController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/storage');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ bucket: 'my-bucket' });
+  });
+
+  it('forRoot() pattern with isGlobal makes providers available everywhere', async () => {
+    const APP_CONFIG = new InjectionToken<{ apiUrl: string }>('APP_CONFIG');
+
+    @Injectable()
+    class AppConfigService {
+      constructor(@Inject(APP_CONFIG) private cfg: { apiUrl: string }) {}
+      getApiUrl() { return this.cfg.apiUrl; }
+    }
+
+    class AppConfigModule {
+      static forRoot(config: { apiUrl: string }) {
+        const moduleClass = class AppConfigDynModule {} as unknown as Type;
+        Object.defineProperty(moduleClass, 'name', { value: 'AppConfigDynModule' });
+        MetadataRegistry.setModuleOptions(moduleClass, {
+          providers: [
+            { provide: APP_CONFIG, useValue: config },
+            AppConfigService,
+          ],
+          exports: [AppConfigService],
+          isGlobal: true,
+        });
+        return {
+          module: moduleClass,
+          global: true,
+          providers: [
+            { provide: APP_CONFIG, useValue: config },
+            AppConfigService,
+          ],
+        };
+      }
+    }
+
+    @Controller('/cfg')
+    class CfgController {
+      constructor(private cfg: AppConfigService) {}
+      @Get() handle() { return { url: this.cfg.getApiUrl() }; }
+    }
+
+    @Module({ imports: [AppConfigModule.forRoot({ apiUrl: 'https://app.io' })], controllers: [CfgController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/cfg');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ url: 'https://app.io' });
+  });
+});
+
+// =============================================================================
+// Guard + pipe + interceptor combined priority order
+// =============================================================================
+
+describe('Guard + pipe + interceptor combined priority order', () => {
+  it('global guard blocks before controller interceptor runs', async () => {
+    const order: string[] = [];
+
+    @Injectable()
+    class TrackingInterceptor implements NestInterceptor {
+      async intercept(_ctx: ExecutionContext, next: CallHandler) {
+        order.push('interceptor');
+        return next.handle();
+      }
+    }
+
+    @Injectable()
+    class BlockingGuard implements CanActivate {
+      canActivate(_ctx: ExecutionContext): boolean {
+        order.push('guard');
+        return false;
+      }
+    }
+
+    @Controller('/combined')
+    @UseInterceptors(TrackingInterceptor)
+    class CombinedController {
+      @Get() handle() { order.push('handler'); return {}; }
+    }
+
+    @Module({ controllers: [CombinedController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    app.useGlobalGuards(new BlockingGuard());
+    await app.rebuild();
+
+    const res = await app.getHonoApp().request('/combined');
+    expect(res.status).toBe(403);
+    expect(order).toEqual(['guard']); // interceptor and handler never run
+  });
+
+  it('global pipe transforms param before guard and handler see it', async () => {
+    const seen: unknown[] = [];
+
+    @Injectable()
+    class UpperPipe implements PipeTransform {
+      transform(value: unknown) {
+        const upper = typeof value === 'string' ? value.toUpperCase() : value;
+        return upper;
+      }
+    }
+
+    @Controller('/pipe-order')
+    class PipeOrderController {
+      @Get()
+      handle(@Query('name') name: string) {
+        seen.push(name);
+        return { name };
+      }
+    }
+
+    @Module({ controllers: [PipeOrderController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    app.useGlobalPipes(new UpperPipe());
+    await app.rebuild();
+
+    const res = await app.getHonoApp().request('/pipe-order?name=alice');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ name: 'ALICE' });
+    expect(seen[0]).toBe('ALICE');
+  });
+
+  it('guards run in order: global → controller → method', async () => {
+    const order: string[] = [];
+
+    @Injectable()
+    class GlobalGuard implements CanActivate {
+      canActivate(_: ExecutionContext) { order.push('global'); return true; }
+    }
+    @Injectable()
+    class CtrlGuard implements CanActivate {
+      canActivate(_: ExecutionContext) { order.push('ctrl'); return true; }
+    }
+    @Injectable()
+    class MethodGuard implements CanActivate {
+      canActivate(_: ExecutionContext) { order.push('method'); return true; }
+    }
+
+    @Controller('/guard-order')
+    @UseGuards(CtrlGuard)
+    class GuardOrderController {
+      @Get()
+      @UseGuards(MethodGuard)
+      handle() { return {}; }
+    }
+
+    @Module({ controllers: [GuardOrderController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    app.useGlobalGuards(new GlobalGuard());
+    await app.rebuild();
+
+    await app.getHonoApp().request('/guard-order');
+    expect(order).toEqual(['global', 'ctrl', 'method']);
+  });
+});
+
+// =============================================================================
+// Module provider isolation
+// =============================================================================
+
+describe('Module provider isolation', () => {
+  it('providers not exported from a module are not accessible to importing modules', async () => {
+    @Injectable()
+    class InternalService { secret = 'hidden'; }
+
+    @Injectable()
+    class PublicService { value = 'visible'; }
+
+    @Module({
+      providers: [InternalService, PublicService],
+      exports: [PublicService], // InternalService NOT exported
+    })
+    class FeatureModule {}
+
+    @Controller('/isolation')
+    class IsolationController {
+      constructor(private pub: PublicService) {}
+      @Get() handle() { return { value: this.pub.value }; }
+    }
+
+    @Module({ imports: [FeatureModule], controllers: [IsolationController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/isolation');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ value: 'visible' });
+  });
+
+  it('deep import chain: AppModule → FeatureModule → CoreModule → Service', async () => {
+    @Injectable()
+    class CoreService {
+      greet() { return 'core-hello'; }
+    }
+
+    @Module({ providers: [CoreService], exports: [CoreService] })
+    class CoreModule {}
+
+    @Module({ imports: [CoreModule], exports: [CoreService] })
+    class FeatureModule {}
+
+    @Controller('/deep-chain')
+    class DeepChainController {
+      constructor(private core: CoreService) {}
+      @Get() handle() { return { msg: this.core.greet() }; }
+    }
+
+    @Module({ imports: [FeatureModule], controllers: [DeepChainController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/deep-chain');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ msg: 'core-hello' });
+  });
+});
+
+// =============================================================================
+// app.useGlobalInterceptors() post-create with rebuild()
+// =============================================================================
+
+describe('app.useGlobalInterceptors() / useGlobalGuards() / useGlobalPipes() post-create', () => {
+  it('useGlobalInterceptors() + rebuild() applies to all routes', async () => {
+    @Injectable()
+    class EnvelopeInterceptor implements NestInterceptor {
+      async intercept(_ctx: ExecutionContext, next: CallHandler) {
+        return { envelope: await next.handle() };
+      }
+    }
+
+    @Controller('/post-create')
+    class PostCreateController {
+      @Get() handle() { return { original: true }; }
+    }
+
+    @Module({ controllers: [PostCreateController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+
+    // Without interceptor
+    const before = await app.getHonoApp().request('/post-create');
+    expect(await before.json()).toEqual({ original: true });
+
+    // Add interceptor and rebuild
+    app.useGlobalInterceptors(new EnvelopeInterceptor());
+    await app.rebuild();
+
+    const after = await app.getHonoApp().request('/post-create');
+    expect(await after.json()).toEqual({ envelope: { original: true } });
+  });
+
+  it('useGlobalGuards() + rebuild() blocks requests globally', async () => {
+    @Injectable()
+    class DenyAllGuard implements CanActivate {
+      canActivate(_: ExecutionContext) { return false; }
+    }
+
+    @Controller('/post-guard')
+    class PostGuardController {
+      @Get() handle() { return { ok: true }; }
+    }
+
+    @Module({ controllers: [PostGuardController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+
+    const before = await app.getHonoApp().request('/post-guard');
+    expect(before.status).toBe(200);
+
+    app.useGlobalGuards(new DenyAllGuard());
+    await app.rebuild();
+
+    const after = await app.getHonoApp().request('/post-guard');
+    expect(after.status).toBe(403);
+  });
+
+  it('useGlobalFilters() + rebuild() catches unhandled exceptions globally', async () => {
+    class CustomError extends Error { constructor() { super('custom'); } }
+
+    @Catch(CustomError)
+    class CustomFilter implements ExceptionFilter {
+      catch(_e: unknown, ctx: ExecutionContext) {
+        const c = ctx.getContext() as import('hono').Context;
+        return c.json({ caught: true }, 418);
+      }
+    }
+
+    @Controller('/post-filter')
+    class PostFilterController {
+      @Get() handle() { throw new CustomError(); }
+    }
+
+    @Module({ controllers: [PostFilterController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+
+    const before = await app.getHonoApp().request('/post-filter');
+    expect(before.status).toBe(500); // unhandled
+
+    app.useGlobalFilters(new CustomFilter());
+    await app.rebuild();
+
+    const after = await app.getHonoApp().request('/post-filter');
+    expect(after.status).toBe(418);
+    expect(await after.json()).toEqual({ caught: true });
+  });
+});
