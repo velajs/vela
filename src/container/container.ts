@@ -33,7 +33,7 @@ export class Container {
 
     const scope = getScope(target);
     this.providers.set(target, {
-      token: target,
+      provide: target,
       scope,
       useClass: target,
     });
@@ -46,7 +46,7 @@ export class Container {
     }
 
     const registration: ProviderRegistration<T> = {
-      token,
+      provide: token,
       scope: options.scope ?? Scope.SINGLETON,
     };
 
@@ -142,20 +142,20 @@ export class Container {
 
     // Request: return cached from this child's requestInstances
     if (registration.scope === Scope.REQUEST) {
-      const cached = this.requestInstances.get(registration.token);
+      const cached = this.requestInstances.get(registration.provide);
       if (cached !== undefined) {
         return cached as T;
       }
     }
 
-    if (this.resolutionStack.has(registration.token)) {
-      const chain = [...this.resolutionStack, registration.token]
+    if (this.resolutionStack.has(registration.provide)) {
+      const chain = [...this.resolutionStack, registration.provide]
         .map((t) => this.tokenToString(t))
         .join(' -> ');
       throw new Error(`Circular dependency detected: ${chain}`);
     }
 
-    this.resolutionStack.add(registration.token);
+    this.resolutionStack.add(registration.provide);
 
     try {
       let instance: T;
@@ -166,19 +166,19 @@ export class Container {
         instance = this.resolveClass(registration.useClass);
       } else {
         throw new Error(
-          `Invalid provider registration for: ${this.tokenToString(registration.token)}`,
+          `Invalid provider registration for: ${this.tokenToString(registration.provide)}`,
         );
       }
 
       if (registration.scope === Scope.SINGLETON) {
         registration.instance = instance;
       } else if (registration.scope === Scope.REQUEST) {
-        this.requestInstances.set(registration.token, instance);
+        this.requestInstances.set(registration.provide, instance);
       }
 
       return instance;
     } finally {
-      this.resolutionStack.delete(registration.token);
+      this.resolutionStack.delete(registration.provide);
     }
   }
 
@@ -229,7 +229,7 @@ export class Container {
 
     if (result instanceof Promise) {
       throw new Error(
-        `Async factory for ${this.tokenToString(registration.token)} returned a Promise. ` +
+        `Async factory for ${this.tokenToString(registration.provide)} returned a Promise. ` +
           `Use resolveAsync() for async providers.`,
       );
     }

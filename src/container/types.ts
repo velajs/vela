@@ -51,7 +51,7 @@ export interface ProviderOptions<T = unknown> {
 }
 
 export interface ProviderRegistration<T = unknown> {
-  token: Token<T>;
+  provide: Token<T>;
   scope: Scope;
   instance?: T;
   useValue?: T;
