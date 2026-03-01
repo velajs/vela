@@ -491,6 +491,24 @@ export class RouteManager {
           c.req.raw.headers.get('x-real-ip') ??
           null;
 
+      case ParamType.COOKIE: {
+        const cookieHeader = c.req.raw.headers.get('cookie') ?? '';
+        const cookies: Record<string, string> = {};
+        for (const pair of cookieHeader.split(';')) {
+          const eqIdx = pair.indexOf('=');
+          if (eqIdx === -1) continue;
+          const name = pair.slice(0, eqIdx).trim();
+          const value = pair.slice(eqIdx + 1).trim();
+          if (name) cookies[name] = decodeURIComponent(value);
+        }
+        return param.name ? (cookies[param.name] ?? undefined) : cookies;
+      }
+
+      case ParamType.RAW_BODY: {
+        const buffer = await c.req.arrayBuffer();
+        return new Uint8Array(buffer);
+      }
+
       default:
         // Custom param decorator — use factory if available
         if (param.factory) {

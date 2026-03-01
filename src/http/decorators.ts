@@ -164,6 +164,47 @@ export const Body = createBuiltinParamDecorator(ParamType.BODY);
 export const Headers = createBuiltinParamDecorator(ParamType.HEADERS);
 export const Req = createBuiltinParamDecorator(ParamType.REQUEST);
 export const Ip = createBuiltinParamDecorator(ParamType.IP);
+export const Cookie = createBuiltinParamDecorator(ParamType.COOKIE);
+
+/**
+ * Injects all cookies as a `Record<string, string>`, or a single cookie value by name.
+ *
+ * - `@Cookie()` — all cookies as an object
+ * - `@Cookie('token')` — the value of the `token` cookie
+ *
+ * @example
+ * ```ts
+ * @Get('/me')
+ * handle(@Cookie('session') session: string) { ... }
+ * ```
+ */
+export const Cookies = Cookie;
+
+/**
+ * Injects the raw request body as a `Uint8Array`.
+ * Useful for webhook HMAC verification (Stripe, GitHub, etc.) where you
+ * need the raw bytes before any JSON parsing.
+ *
+ * @example
+ * ```ts
+ * @Post('/webhook')
+ * async handle(@RawBody() body: Uint8Array) {
+ *   const sig = new TextDecoder().decode(body);
+ *   // verify HMAC...
+ * }
+ * ```
+ */
+export function RawBody(): ParameterDecorator {
+  return (target: object, propertyKey: string | symbol | undefined, parameterIndex: number) => {
+    if (propertyKey === undefined) {
+      throw new Error('Parameter decorators can only be used on method parameters');
+    }
+    MetadataRegistry.addParameter(target.constructor, propertyKey, {
+      index: parameterIndex,
+      type: ParamType.RAW_BODY,
+    });
+  };
+}
 
 /**
  * Factory for creating custom parameter decorators.

@@ -40,6 +40,8 @@ export enum ParamType {
   HEADERS = 'headers',
   REQUEST = 'request',
   IP = 'ip',
+  COOKIE = 'cookie',
+  RAW_BODY = 'raw_body',
 }
 
 export enum Scope {
