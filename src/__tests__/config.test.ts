@@ -203,4 +203,41 @@ describe('ConfigModule', () => {
       expect(await res.json()).toEqual({ name: 'MyApp', version: '1.0.0' });
     });
   });
+
+  describe('forRootAsync()', () => {
+    it('should resolve config from an injected factory dependency', async () => {
+      @Injectable()
+      class EnvProvider {
+        get(key: string) {
+          return key === 'APP_NAME' ? 'async-app' : undefined;
+        }
+      }
+
+      @Controller('/async-cfg')
+      class AsyncCfgController {
+        constructor(private config: ConfigService) {}
+        @Get()
+        handle() { return { name: this.config.get('APP_NAME') }; }
+      }
+
+      @Module({
+        imports: [
+          ConfigModule.forRootAsync({
+            useFactory: (env: EnvProvider) => ({
+              config: { APP_NAME: env.get('APP_NAME') },
+            }),
+            inject: [EnvProvider],
+          }),
+        ],
+        providers: [EnvProvider],
+        controllers: [AsyncCfgController],
+      })
+      class AppModule {}
+
+      const app = await VelaFactory.create(AppModule);
+      const res = await app.getHonoApp().request('/async-cfg');
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ name: 'async-app' });
+    });
+  });
 });

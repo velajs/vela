@@ -144,7 +144,7 @@ export class TestingModuleBuilder {
     }
 
     const app = new VelaApplication(container, routeManager);
-    const instances = loader.resolveAllInstances();
+    const instances = await loader.resolveAllInstances();
     app.setInstances(instances);
 
     await app.callOnModuleInit();

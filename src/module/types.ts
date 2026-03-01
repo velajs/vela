@@ -1,4 +1,11 @@
-import type { InjectionToken, ProviderOptions, Type } from '../container/types';
+import type { InjectionToken, ProviderOptions, Token, Type } from '../container/types';
+
+export interface AsyncModuleOptions<T = unknown> {
+  imports?: Array<Type | DynamicModule>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  useFactory: (...args: any[]) => T | Promise<T>;
+  inject?: Token[];
+}
 
 export interface DynamicModule {
   module: Type;

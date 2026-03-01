@@ -241,7 +241,7 @@ export class ModuleLoader {
     return [...this.consumerMiddlewareDefinitions];
   }
 
-  resolveAllInstances(): unknown[] {
+  async resolveAllInstances(): Promise<unknown[]> {
     const instances: unknown[] = [];
 
     for (const token of this.registeredProviders) {
@@ -249,7 +249,7 @@ export class ModuleLoader {
         if (this.container.getProviderScope(token) === Scope.REQUEST) {
           continue;
         }
-        const instance = this.container.resolve(token);
+        const instance = await this.container.resolveAsync(token);
         instances.push(instance);
       } catch {
         // Skip unresolvable tokens
@@ -261,7 +261,7 @@ export class ModuleLoader {
         if (this.container.getProviderScope(controller) === Scope.REQUEST) {
           continue;
         }
-        const instance = this.container.resolve(controller);
+        const instance = await this.container.resolveAsync(controller);
         if (!instances.includes(instance)) {
           instances.push(instance);
         }

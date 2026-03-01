@@ -62,7 +62,7 @@ export const VelaFactory = {
     routeManager.registerConsumerMiddleware(loader.getConsumerMiddlewareDefinitions());
 
     const app = new VelaApplication(container, routeManager);
-    const instances = loader.resolveAllInstances();
+    const instances = await loader.resolveAllInstances();
     app.setInstances(instances);
 
     await app.callOnModuleInit();

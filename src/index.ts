@@ -140,7 +140,7 @@ export type {
 
 // Module
 export { Global, Module } from './module/index';
-export type { ModuleOptions, DynamicModule } from './module/index';
+export type { ModuleOptions, DynamicModule, AsyncModuleOptions } from './module/index';
 export { RequestMethod } from './http/index';
 export type { MiddlewareConsumer, NestModule, RouteInfo } from './http/index';
 

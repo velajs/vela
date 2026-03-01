@@ -6,6 +6,7 @@ import {
   Post,
   Module,
   Injectable,
+  InjectionToken,
   MetadataRegistry,
   HttpModule,
   HttpService,
@@ -249,5 +250,49 @@ describe('HttpModule', () => {
     const [, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit];
     expect((init.headers as Record<string, string>)['Authorization']).toBe('Bearer token');
     expect((init.headers as Record<string, string>)['X-Request-Id']).toBe('123');
+  });
+
+  it('registerAsync() should resolve baseURL from an injected service', async () => {
+    mockFetch(200, { ok: true });
+
+    const API_BASE = new InjectionToken<string>('API_BASE');
+
+    @Injectable()
+    class ApiConfigService {
+      getBaseUrl() { return 'https://async.example.com'; }
+    }
+
+    @Injectable()
+    class AsyncApiService {
+      constructor(private http: HttpService) {}
+      ping() { return this.http.get('/ping'); }
+    }
+
+    @Controller('/async-test')
+    class AsyncController {
+      constructor(private api: AsyncApiService) {}
+      @Get()
+      async handle() {
+        const res = await this.api.ping();
+        return res.data;
+      }
+    }
+
+    @Module({
+      imports: [
+        HttpModule.registerAsync({
+          imports: [],
+          useFactory: (cfg: ApiConfigService) => ({ baseURL: cfg.getBaseUrl() }),
+          inject: [ApiConfigService],
+        }),
+      ],
+      providers: [ApiConfigService, AsyncApiService],
+      controllers: [AsyncController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    await app.getHonoApp().request('/async-test');
+    expect(fetch).toHaveBeenCalledWith('https://async.example.com/ping', expect.anything());
   });
 });
