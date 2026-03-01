@@ -1,11 +1,18 @@
 export class HttpException extends Error {
+  public readonly statusCode: number;
+  private readonly _response: unknown;
+
   constructor(
-    message: string,
-    public readonly statusCode: number,
-    public readonly response?: unknown,
+    response: string | object,
+    statusCode: number,
+    legacyResponse?: unknown,
   ) {
+    const message = typeof response === 'string' ? response : JSON.stringify(response);
     super(message);
     this.name = 'HttpException';
+    this.statusCode = statusCode;
+    // Backward-compat: subclasses call super(message, status, responseObj)
+    this._response = legacyResponse !== undefined ? legacyResponse : response;
     Object.setPrototypeOf(this, new.target.prototype);
   }
 
@@ -14,12 +21,10 @@ export class HttpException extends Error {
   }
 
   getResponse(): unknown {
-    return (
-      this.response ?? {
-        statusCode: this.statusCode,
-        message: this.message,
-      }
-    );
+    if (typeof this._response === 'object' && this._response !== null) {
+      return this._response;
+    }
+    return { statusCode: this.statusCode, message: this._response as string };
   }
 }
 

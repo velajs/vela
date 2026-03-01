@@ -5773,3 +5773,519 @@ describe('app.useGlobalInterceptors() / useGlobalGuards() / useGlobalPipes() pos
     expect(await after.json()).toEqual({ caught: true });
   });
 });
+
+// =============================================================================
+// Exception response JSON shape
+// =============================================================================
+
+describe('Exception response JSON shape', () => {
+  it('NotFoundException returns { statusCode: 404, message }', async () => {
+    @Controller('/exc-shape')
+    class ExcShapeController {
+      @Get() handle() { throw new NotFoundException('Item not found'); }
+    }
+
+    @Module({ controllers: [ExcShapeController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/exc-shape');
+    expect(res.status).toBe(404);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const body = await res.json() as any;
+    expect(body.statusCode).toBe(404);
+    expect(body.message).toBe('Item not found');
+  });
+
+  it('BadRequestException with default message returns 400', async () => {
+    @Controller('/bad-shape')
+    class BadShapeController {
+      @Get() handle() { throw new BadRequestException(); }
+    }
+
+    @Module({ controllers: [BadShapeController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/bad-shape');
+    expect(res.status).toBe(400);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const body = await res.json() as any;
+    expect(body.statusCode).toBe(400);
+    expect(typeof body.message).toBe('string');
+  });
+
+  it('HttpException with object response returns the object verbatim', async () => {
+    @Controller('/obj-exc')
+    class ObjExcController {
+      @Get() handle() {
+        throw new HttpException({ code: 'RESOURCE_GONE', detail: 'archived' }, 410);
+      }
+    }
+
+    @Module({ controllers: [ObjExcController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/obj-exc');
+    expect(res.status).toBe(410);
+    expect(await res.json()).toEqual({ code: 'RESOURCE_GONE', detail: 'archived' });
+  });
+
+  it('unhandled non-HttpException returns generic 500 JSON', async () => {
+    @Controller('/raw-throw')
+    class RawThrowController {
+      @Get() handle() { throw new Error('boom'); }
+    }
+
+    @Module({ controllers: [RawThrowController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/raw-throw');
+    expect(res.status).toBe(500);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const body = await res.json() as any;
+    expect(body.statusCode).toBe(500);
+    expect(typeof body.message).toBe('string');
+  });
+});
+
+// =============================================================================
+// HttpException.getStatus() / getResponse()
+// =============================================================================
+
+describe('HttpException.getStatus() / getResponse()', () => {
+  it('getStatus() returns the HTTP status code', () => {
+    const exc = new NotFoundException('not found');
+    expect(exc.getStatus()).toBe(404);
+
+    const custom = new HttpException('custom', 418);
+    expect(custom.getStatus()).toBe(418);
+  });
+
+  it('getResponse() returns the structured response object', () => {
+    const exc = new BadRequestException('invalid input');
+    const response = exc.getResponse() as { statusCode: number; message: string };
+    expect(response.statusCode).toBe(400);
+    expect(response.message).toBe('invalid input');
+  });
+
+  it('getResponse() returns provided object when constructed with one', () => {
+    const custom = new HttpException({ error: 'E001', reason: 'duplicate' }, 409);
+    expect(custom.getResponse()).toEqual({ error: 'E001', reason: 'duplicate' });
+  });
+
+  it('getStatus() is accessible inside an ExceptionFilter', async () => {
+    @Catch(HttpException)
+    class StatusCheckFilter implements ExceptionFilter {
+      catch(exception: HttpException, ctx: ExecutionContext) {
+        const c = ctx.getContext() as import('hono').Context;
+        return c.json({ status: exception.getStatus() }, exception.getStatus() as import('hono/utils/http-status').ContentfulStatusCode);
+      }
+    }
+
+    @Controller('/status-check')
+    class StatusCheckController {
+      @Get() handle() { throw new ConflictException('duplicate'); }
+    }
+
+    @Module({
+      providers: [{ provide: APP_FILTER, useClass: StatusCheckFilter }],
+      controllers: [StatusCheckController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/status-check');
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ status: 409 });
+  });
+});
+
+// =============================================================================
+// NestMiddleware with DI (constructor injection)
+// =============================================================================
+
+describe('NestMiddleware with DI', () => {
+  it('middleware can receive injected services via constructor', async () => {
+    const calls: string[] = [];
+
+    @Injectable()
+    class AuditService {
+      record(msg: string) { calls.push(msg); }
+    }
+
+    @Injectable()
+    class AuditMiddleware implements NestModule {
+      constructor(private audit: AuditService) {}
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      use(c: any, next: () => Promise<void>) {
+        this.audit.record(`${c.req.method} ${c.req.path}`);
+        return next();
+      }
+    }
+
+    @Controller('/audit')
+    class AuditController {
+      @Get() handle() { return { ok: true }; }
+    }
+
+    @Module({
+      providers: [AuditService, AuditMiddleware],
+      controllers: [AuditController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    app.useGlobalMiddleware(AuditMiddleware as unknown as () => void);
+    await app.rebuild();
+
+    await app.getHonoApp().request('/audit');
+    expect(calls).toEqual(['GET /audit']);
+  });
+
+  it('MiddlewareConsumer.forRoutes() with injected middleware service', async () => {
+    const log: string[] = [];
+
+    @Injectable()
+    class LogService {
+      write(entry: string) { log.push(entry); }
+    }
+
+    @Injectable()
+    class LogMiddleware {
+      constructor(private logSvc: LogService) {}
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      use(c: any, next: () => Promise<void>) {
+        this.logSvc.write('logged');
+        return next();
+      }
+    }
+
+    @Controller('/mw-di')
+    class MwDiController {
+      @Get() handle() { return { ok: true }; }
+    }
+
+    @Module({
+      providers: [LogService, LogMiddleware],
+      controllers: [MwDiController],
+    })
+    class AppModule implements NestModule {
+      configure(consumer: MiddlewareConsumer) {
+        consumer.apply(LogMiddleware).forRoutes('/mw-di');
+      }
+    }
+
+    const app = await VelaFactory.create(AppModule);
+    await app.getHonoApp().request('/mw-di');
+    expect(log).toEqual(['logged']);
+  });
+});
+
+// =============================================================================
+// @Query() full object (no name)
+// =============================================================================
+
+describe('@Query() full query object', () => {
+  it('@Query() with no name returns all query params as object', async () => {
+    @Controller('/full-query')
+    class FullQueryController {
+      @Get()
+      handle(@Query() params: Record<string, string>) { return params; }
+    }
+
+    @Module({ controllers: [FullQueryController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/full-query?page=2&limit=10&sort=name');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ page: '2', limit: '10', sort: 'name' });
+  });
+
+  it('@Query() returns empty object when no params are present', async () => {
+    @Controller('/empty-query')
+    class EmptyQueryController {
+      @Get()
+      handle(@Query() params: Record<string, string>) { return params; }
+    }
+
+    @Module({ controllers: [EmptyQueryController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/empty-query');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({});
+  });
+});
+
+// =============================================================================
+// Nested route params
+// =============================================================================
+
+describe('Nested route params', () => {
+  it('extracts multiple params from nested path /users/:userId/posts/:postId', async () => {
+    @Controller('/users')
+    class NestedController {
+      @Get(':userId/posts/:postId')
+      getPost(@Param('userId') userId: string, @Param('postId') postId: string) {
+        return { userId, postId };
+      }
+    }
+
+    @Module({ controllers: [NestedController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/users/42/posts/99');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ userId: '42', postId: '99' });
+  });
+
+  it('@Param() with no name returns all params as object', async () => {
+    @Controller('/orgs/:orgId/repos/:repoId')
+    class OrgRepoController {
+      @Get()
+      get(@Param() params: Record<string, string>) { return params; }
+    }
+
+    @Module({ controllers: [OrgRepoController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/orgs/acme/repos/vela');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ orgId: 'acme', repoId: 'vela' });
+  });
+
+  it('handles deeply nested resources with query params alongside route params', async () => {
+    @Controller('/teams/:teamId/members/:memberId/tasks')
+    class TaskController {
+      @Get()
+      list(
+        @Param('teamId') teamId: string,
+        @Param('memberId') memberId: string,
+        @Query('status') status: string,
+      ) {
+        return { teamId, memberId, status };
+      }
+    }
+
+    @Module({ controllers: [TaskController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/teams/eng/members/alice/tasks?status=open');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ teamId: 'eng', memberId: 'alice', status: 'open' });
+  });
+});
+
+// =============================================================================
+// InjectionToken with default factory
+// =============================================================================
+
+describe('InjectionToken with default factory', () => {
+  it('auto-resolves when no explicit provider is registered', async () => {
+    const RAND_TOKEN = new InjectionToken<number>('RAND', {
+      factory: () => 42,
+    });
+
+    @Controller('/tok-factory')
+    class TokFactoryController {
+      constructor(@Inject(RAND_TOKEN) private val: number) {}
+      @Get() handle() { return { val: this.val }; }
+    }
+
+    @Module({ controllers: [TokFactoryController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/tok-factory');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ val: 42 });
+  });
+
+  it('explicit provider overrides the default factory', async () => {
+    const CONFIG_TOKEN = new InjectionToken<string>('CONFIG_DEF', {
+      factory: () => 'default-value',
+    });
+
+    @Controller('/override-factory')
+    class OverrideFactoryController {
+      constructor(@Inject(CONFIG_TOKEN) private val: string) {}
+      @Get() handle() { return { val: this.val }; }
+    }
+
+    @Module({
+      providers: [{ provide: CONFIG_TOKEN, useValue: 'overridden-value' }],
+      controllers: [OverrideFactoryController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/override-factory');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ val: 'overridden-value' });
+  });
+});
+
+// =============================================================================
+// ParseArrayPipe with optional
+// =============================================================================
+
+describe('ParseArrayPipe with optional', () => {
+  it('optional ParseArrayPipe returns empty array when param is absent', async () => {
+    @Controller('/opt-arr')
+    class OptArrController {
+      @Get()
+      handle(@Query('tags', new ParseArrayPipe({ optional: true })) tags: string[]) {
+        return { tags };
+      }
+    }
+
+    @Module({ controllers: [OptArrController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/opt-arr');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ tags: [] });
+  });
+
+  it('ParseArrayPipe with custom separator splits correctly', async () => {
+    @Controller('/pipe-sep')
+    class PipeSepController {
+      @Get()
+      handle(@Query('ids', new ParseArrayPipe({ separator: '|' })) ids: string[]) {
+        return { ids };
+      }
+    }
+
+    @Module({ controllers: [PipeSepController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/pipe-sep?ids=x|y|z');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ids: ['x', 'y', 'z'] });
+  });
+
+  it('non-optional ParseArrayPipe throws 400 when param is absent', async () => {
+    @Controller('/required-arr')
+    class RequiredArrController {
+      @Get()
+      handle(@Query('ids', ParseArrayPipe) ids: string[]) { return { ids }; }
+    }
+
+    @Module({ controllers: [RequiredArrController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/required-arr');
+    expect(res.status).toBe(400);
+  });
+});
+
+// =============================================================================
+// Empty / pass-through module
+// =============================================================================
+
+describe('Empty / pass-through module', () => {
+  it('module with no providers or controllers boots without error', async () => {
+    @Module({})
+    class EmptyModule {}
+
+    @Controller('/empty-mod')
+    class EmptyModController {
+      @Get() handle() { return { ok: true }; }
+    }
+
+    @Module({ imports: [EmptyModule], controllers: [EmptyModController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/empty-mod');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+  });
+
+  it('module with only imports and no own providers boots correctly', async () => {
+    @Injectable()
+    class SharedService { getValue() { return 'shared'; } }
+
+    @Module({ providers: [SharedService], exports: [SharedService] })
+    class SharedModule {}
+
+    @Module({ imports: [SharedModule] }) // pass-through: just re-imports, no own providers
+    class PassThroughModule {}
+
+    @Controller('/passthrough')
+    class PassThroughController {
+      constructor(private svc: SharedService) {}
+      @Get() handle() { return { value: this.svc.getValue() }; }
+    }
+
+    @Module({ imports: [SharedModule, PassThroughModule], controllers: [PassThroughController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/passthrough');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ value: 'shared' });
+  });
+});
+
+// =============================================================================
+// Multiple @Header() decorators on same handler
+// =============================================================================
+
+describe('Multiple @Header() decorators on same handler', () => {
+  it('multiple @Header() decorators all appear in the response', async () => {
+    @Controller('/multi-header')
+    class MultiHeaderController {
+      @Get()
+      @Header('x-api-version', '2')
+      @Header('x-rate-limit', '100')
+      @Header('cache-control', 'no-cache')
+      handle() { return { ok: true }; }
+    }
+
+    @Module({ controllers: [MultiHeaderController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/multi-header');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('x-api-version')).toBe('2');
+    expect(res.headers.get('x-rate-limit')).toBe('100');
+    expect(res.headers.get('cache-control')).toBe('no-cache');
+  });
+
+  it('@Header() and @HttpCode() can coexist on the same handler', async () => {
+    @Controller('/header-code')
+    class HeaderCodeController {
+      @Post()
+      @HttpCode(201)
+      @Header('location', '/header-code/1')
+      @Header('x-created-id', '1')
+      create() { return { id: 1 }; }
+    }
+
+    @Module({ controllers: [HeaderCodeController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/header-code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    expect(res.status).toBe(201);
+    expect(res.headers.get('location')).toBe('/header-code/1');
+    expect(res.headers.get('x-created-id')).toBe('1');
+  });
+});
