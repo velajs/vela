@@ -37,6 +37,8 @@ import {
   mixin,
   InjectionToken,
   Inject,
+  Scope,
+  forwardRef,
   ConfigModule,
   ConfigService,
   ParseIntPipe,
@@ -4299,5 +4301,719 @@ describe('@Optional() in HTTP context', () => {
     const res = await app.getHonoApp().request('/opt-mixed');
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ greeting: 'hello', extra: 'none' });
+  });
+});
+
+// =============================================================================
+// Scope.TRANSIENT providers
+// =============================================================================
+
+describe('Scope.TRANSIENT providers', () => {
+  it('each injection site receives a distinct instance', async () => {
+    @Injectable({ scope: Scope.TRANSIENT })
+    class IdService {
+      readonly id = Math.random();
+    }
+
+    @Injectable()
+    class ConsumerA {
+      constructor(public svc: IdService) {}
+    }
+
+    @Injectable()
+    class ConsumerB {
+      constructor(public svc: IdService) {}
+    }
+
+    @Controller('/transient')
+    class TransientController {
+      constructor(private a: ConsumerA, private b: ConsumerB) {}
+      @Get()
+      handle() { return { same: this.a.svc.id === this.b.svc.id }; }
+    }
+
+    @Module({ providers: [IdService, ConsumerA, ConsumerB], controllers: [TransientController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/transient');
+    expect(res.status).toBe(200);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((await res.json() as any).same).toBe(false);
+  });
+
+  it('transient provider always creates a new instance on each resolve', async () => {
+    const instances: object[] = [];
+
+    @Injectable({ scope: Scope.TRANSIENT })
+    class TransService {
+      constructor() { instances.push(this); }
+    }
+
+    @Controller('/trans-count')
+    class TransCountController {
+      constructor(private s1: TransService, private s2: TransService) {}
+      @Get() handle() { return { count: instances.length }; }
+    }
+
+    @Module({ providers: [TransService], controllers: [TransCountController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    await app.getHonoApp().request('/trans-count');
+    expect(instances.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('transient provider via { provide, useClass, scope } option', async () => {
+    @Injectable()
+    class Base { readonly id = Math.random(); }
+
+    @Controller('/trans-opts')
+    class TransOptsController {
+      constructor(private a: Base, private b: Base) {}
+      @Get() handle() { return { same: this.a === this.b }; }
+    }
+
+    @Module({
+      providers: [
+        { provide: Base, useClass: Base, scope: Scope.TRANSIENT },
+      ],
+      controllers: [TransOptsController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/trans-opts');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((await res.json() as any).same).toBe(false);
+  });
+});
+
+// =============================================================================
+// Scope.REQUEST in HTTP context
+// =============================================================================
+
+describe('Scope.REQUEST in HTTP context', () => {
+  it('request-scoped guard creates a new instance per HTTP request', async () => {
+    const ids: number[] = [];
+
+    @Injectable({ scope: Scope.REQUEST })
+    class RequestContext {
+      readonly id = Math.random();
+      constructor() { ids.push(this.id); }
+    }
+
+    @Injectable({ scope: Scope.REQUEST })
+    class ReqScopedGuard {
+      constructor(private ctx: RequestContext) {}
+      canActivate(_: ExecutionContext) { return true; }
+    }
+
+    @Controller('/req-scope')
+    class ReqScopeController {
+      @Get() @UseGuards(ReqScopedGuard) handle() { return { ok: true }; }
+    }
+
+    @Module({
+      providers: [RequestContext, ReqScopedGuard],
+      controllers: [ReqScopeController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    await hono.request('/req-scope');
+    await hono.request('/req-scope');
+
+    // Two requests → two distinct RequestContext instances
+    expect(ids).toHaveLength(2);
+    expect(ids[0]).not.toBe(ids[1]);
+  });
+
+  it('request-scoped provider is shared across guards/interceptors within a single request', async () => {
+    const callOrder: string[] = [];
+
+    @Injectable({ scope: Scope.REQUEST })
+    class ReqData {
+      readonly stamp = Math.random();
+    }
+
+    @Injectable({ scope: Scope.REQUEST })
+    class GuardA {
+      constructor(public data: ReqData) {}
+      canActivate(_: ExecutionContext) { callOrder.push(`A:${this.data.stamp}`); return true; }
+    }
+
+    @Injectable({ scope: Scope.REQUEST })
+    class GuardB {
+      constructor(public data: ReqData) {}
+      canActivate(_: ExecutionContext) { callOrder.push(`B:${this.data.stamp}`); return true; }
+    }
+
+    @Controller('/req-shared')
+    class ReqSharedController {
+      @Get() @UseGuards(GuardA, GuardB) handle() { return { ok: true }; }
+    }
+
+    @Module({
+      providers: [ReqData, GuardA, GuardB],
+      controllers: [ReqSharedController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    await app.getHonoApp().request('/req-shared');
+
+    // Both guards within the same request should see the same ReqData stamp
+    expect(callOrder).toHaveLength(2);
+    const stampA = callOrder[0]!.split(':')[1];
+    const stampB = callOrder[1]!.split(':')[1];
+    expect(stampA).toBe(stampB); // same stamp = same instance
+  });
+});
+
+// =============================================================================
+// forwardRef() circular module imports
+// =============================================================================
+
+describe('forwardRef() circular module imports', () => {
+  it('two modules that import each other via forwardRef resolve correctly', async () => {
+    @Injectable()
+    class ModAService {
+      name() { return 'ModA'; }
+    }
+
+    @Injectable()
+    class ModBService {
+      name() { return 'ModB'; }
+    }
+
+    @Controller('/circular-a')
+    class CircularController {
+      constructor(private a: ModAService, private b: ModBService) {}
+      @Get() handle() { return { a: this.a.name(), b: this.b.name() }; }
+    }
+
+    // Declare module classes before defining them (needed for forwardRef)
+    let ModuleB: any;
+
+    @Module({
+      imports: [forwardRef(() => ModuleB)],
+      providers: [ModAService],
+      controllers: [CircularController],
+      exports: [ModAService],
+    })
+    class ModuleA {}
+
+    @Module({
+      imports: [forwardRef(() => ModuleA)],
+      providers: [ModBService],
+      exports: [ModBService],
+    })
+    class ModuleBClass {}
+    ModuleB = ModuleBClass;
+
+    @Module({ imports: [ModuleA] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/circular-a');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ a: 'ModA', b: 'ModB' });
+  });
+
+  it('forwardRef module is not processed twice', async () => {
+    let initCount = 0;
+
+    @Injectable()
+    class SharedService {
+      constructor() { initCount++; }
+      value() { return 42; }
+    }
+
+    @Controller('/fwd-count')
+    class FwdController {
+      constructor(private svc: SharedService) {}
+      @Get() handle() { return { v: this.svc.value() }; }
+    }
+
+    let LazyModule: any;
+
+    @Module({
+      imports: [forwardRef(() => LazyModule)],
+      providers: [SharedService],
+      controllers: [FwdController],
+      exports: [SharedService],
+    })
+    class EagerModule {}
+
+    @Module({ imports: [forwardRef(() => EagerModule)] })
+    class LazyModuleClass {}
+    LazyModule = LazyModuleClass;
+
+    @Module({ imports: [EagerModule] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/fwd-count');
+    expect(res.status).toBe(200);
+    expect(initCount).toBe(1); // SharedService is singleton — only one instance
+  });
+});
+
+// =============================================================================
+// useClass provider substitution
+// =============================================================================
+
+describe('useClass provider substitution', () => {
+  it('{ provide: Token, useClass: Impl } injects the concrete implementation', async () => {
+    const MAILER_TOKEN = new InjectionToken<{ send(to: string): string }>('MAILER');
+
+    @Injectable()
+    class SmtpMailer {
+      send(to: string) { return `smtp:${to}`; }
+    }
+
+    @Controller('/mail')
+    class MailController {
+      constructor(@Inject(MAILER_TOKEN) private mailer: SmtpMailer) {}
+      @Get() handle() { return { result: this.mailer.send('user@test.com') }; }
+    }
+
+    @Module({
+      providers: [{ provide: MAILER_TOKEN, useClass: SmtpMailer }],
+      controllers: [MailController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/mail');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ result: 'smtp:user@test.com' });
+  });
+
+  it('useClass can substitute one class for another (polymorphism)', async () => {
+    @Injectable()
+    class BaseNotifier {
+      notify(msg: string) { return `base:${msg}`; }
+    }
+
+    @Injectable()
+    class SlackNotifier extends BaseNotifier {
+      override notify(msg: string) { return `slack:${msg}`; }
+    }
+
+    @Controller('/notify')
+    class NotifyController {
+      constructor(private notifier: BaseNotifier) {}
+      @Get() handle() { return { result: this.notifier.notify('hello') }; }
+    }
+
+    @Module({
+      providers: [{ provide: BaseNotifier, useClass: SlackNotifier }],
+      controllers: [NotifyController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/notify');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ result: 'slack:hello' });
+  });
+
+  it('useClass implementation can itself have injected dependencies', async () => {
+    @Injectable()
+    class Config {
+      getPrefix() { return 'sms'; }
+    }
+
+    @Injectable()
+    class SmsNotifier {
+      constructor(private config: Config) {}
+      notify(msg: string) { return `${this.config.getPrefix()}:${msg}`; }
+    }
+
+    @Injectable()
+    class AbstractNotifier {
+      notify(_msg: string): string { return ''; }
+    }
+
+    @Controller('/sms-notify')
+    class SmsController {
+      constructor(private n: AbstractNotifier) {}
+      @Get() handle() { return { result: this.n.notify('ping') }; }
+    }
+
+    @Module({
+      providers: [
+        Config,
+        SmsNotifier,
+        { provide: AbstractNotifier, useClass: SmsNotifier },
+      ],
+      controllers: [SmsController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/sms-notify');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ result: 'sms:ping' });
+  });
+});
+
+// =============================================================================
+// @Catch() with multiple exception types
+// =============================================================================
+
+describe('@Catch() with multiple exception types', () => {
+  it('@Catch(TypeA, TypeB) catches either exception type', async () => {
+    class DomainError extends Error { constructor() { super('domain'); this.name = 'DomainError'; } }
+    class NetworkError extends Error { constructor() { super('network'); this.name = 'NetworkError'; } }
+
+    @Catch(DomainError, NetworkError)
+    class MultiCatchFilter implements ExceptionFilter {
+      catch(exception: Error, ctx: ExecutionContext) {
+        const c = ctx.getContext() as import('hono').Context;
+        return c.json({ caught: exception.name }, 422);
+      }
+    }
+
+    @Controller('/multi-catch')
+    class MultiCatchController {
+      @Get('domain')
+      domain() { throw new DomainError(); }
+
+      @Get('network')
+      network() { throw new NetworkError(); }
+
+      @Get('other')
+      other() { throw new Error('other'); }
+    }
+
+    @Module({
+      controllers: [MultiCatchController],
+      providers: [{ provide: APP_FILTER, useClass: MultiCatchFilter }],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    const r1 = await hono.request('/multi-catch/domain');
+    expect(r1.status).toBe(422);
+    expect(await r1.json()).toEqual({ caught: 'DomainError' });
+
+    const r2 = await hono.request('/multi-catch/network');
+    expect(r2.status).toBe(422);
+    expect(await r2.json()).toEqual({ caught: 'NetworkError' });
+
+    const r3 = await hono.request('/multi-catch/other');
+    expect(r3.status).not.toBe(422);
+  });
+
+  it('@Catch() with no args catches all exceptions', async () => {
+    class AnyError extends Error { constructor() { super('any'); } }
+
+    @Catch()
+    class CatchAllFilter implements ExceptionFilter {
+      catch(_exception: unknown, ctx: ExecutionContext) {
+        const c = ctx.getContext() as import('hono').Context;
+        return c.json({ all: true }, 500);
+      }
+    }
+
+    @Controller('/catch-all')
+    class CatchAllController {
+      @Get() handle() { throw new AnyError(); }
+    }
+
+    @Module({
+      controllers: [CatchAllController],
+      providers: [{ provide: APP_FILTER, useClass: CatchAllFilter }],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/catch-all');
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ all: true });
+  });
+});
+
+// =============================================================================
+// Route wildcards
+// =============================================================================
+
+describe('Route wildcards', () => {
+  it('@Get("*") matches any sub-path under the controller prefix', async () => {
+    @Controller('/files')
+    class FilesController {
+      @Get('*')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      catchAll(@Req() ctx: any) {
+        return { path: ctx.req.path };
+      }
+    }
+
+    @Module({ controllers: [FilesController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    const r1 = await hono.request('/files/a/b/c');
+    expect(r1.status).toBe(200);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((await r1.json() as any).path).toBe('/files/a/b/c');
+
+    const r2 = await hono.request('/files/readme.md');
+    expect(r2.status).toBe(200);
+  });
+
+  it('specific route takes priority over wildcard on same controller', async () => {
+    @Controller('/docs')
+    class DocsController {
+      @Get('latest')
+      latest() { return { version: 'latest' }; }
+
+      @Get('*')
+      catchAll() { return { version: 'unknown' }; }
+    }
+
+    @Module({ controllers: [DocsController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    const r1 = await hono.request('/docs/latest');
+    expect(r1.status).toBe(200);
+    expect(await r1.json()).toEqual({ version: 'latest' });
+
+    const r2 = await hono.request('/docs/old/1.0');
+    expect(r2.status).toBe(200);
+    expect(await r2.json()).toEqual({ version: 'unknown' });
+  });
+});
+
+// =============================================================================
+// ModuleRef.resolve() and ModuleRef.create()
+// =============================================================================
+
+describe('ModuleRef.resolve() and ModuleRef.create()', () => {
+  it('ModuleRef.get() retrieves a singleton from the container', async () => {
+    @Injectable()
+    class SingletonCounter {
+      count = 0;
+      inc() { return ++this.count; }
+    }
+
+    @Controller('/modref-get')
+    class ModRefGetController {
+      constructor(private moduleRef: ModuleRef) {}
+
+      @Get()
+      handle() {
+        const svc = this.moduleRef.get(SingletonCounter);
+        svc.inc();
+        const svc2 = this.moduleRef.get(SingletonCounter);
+        svc2.inc();
+        return { count: svc2.count };
+      }
+    }
+
+    @Module({ providers: [SingletonCounter], controllers: [ModRefGetController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/modref-get');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ count: 2 });
+  });
+
+  it('ModuleRef.create() creates a fresh instance outside singleton cache', async () => {
+    @Injectable()
+    class FreshService {
+      readonly id = Math.random();
+    }
+
+    @Controller('/modref-create')
+    class ModRefCreateController {
+      constructor(private moduleRef: ModuleRef, private singleton: FreshService) {}
+
+      @Get()
+      handle() {
+        const fresh = this.moduleRef.create(FreshService);
+        return { same: fresh === this.singleton, freshId: fresh.id !== this.singleton.id };
+      }
+    }
+
+    @Module({ providers: [FreshService], controllers: [ModRefCreateController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/modref-create');
+    expect(res.status).toBe(200);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const body = await res.json() as any;
+    expect(body.same).toBe(false);
+    expect(body.freshId).toBe(true);
+  });
+
+  it('ModuleRef.resolve() works like get() for singleton-scoped providers', async () => {
+    @Injectable()
+    class Config { value = 'prod'; }
+
+    @Controller('/modref-resolve')
+    class ModRefResolveController {
+      constructor(private moduleRef: ModuleRef) {}
+
+      @Get()
+      handle() {
+        const c1 = this.moduleRef.resolve(Config);
+        const c2 = this.moduleRef.resolve(Config);
+        return { same: c1 === c2, value: c1.value };
+      }
+    }
+
+    @Module({ providers: [Config], controllers: [ModRefResolveController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/modref-resolve');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ same: true, value: 'prod' });
+  });
+});
+
+// =============================================================================
+// Request-scoped controller
+// =============================================================================
+
+describe('Request-scoped controller', () => {
+  it('@Injectable({ scope: Scope.REQUEST }) on a controller creates one per request', async () => {
+    const ctrlIds: number[] = [];
+
+    // @Injectable must come BEFORE @Controller so it's applied LAST (overriding SINGLETON scope)
+    @Injectable({ scope: Scope.REQUEST })
+    @Controller('/req-ctrl')
+    class ReqScopeCtrl {
+      readonly id = Math.random();
+      constructor() { ctrlIds.push(this.id); }
+
+      @Get() handle() { return { id: this.id }; }
+    }
+
+    @Module({ controllers: [ReqScopeCtrl] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    const r1 = await (await hono.request('/req-ctrl')).json() as { id: number };
+    const r2 = await (await hono.request('/req-ctrl')).json() as { id: number };
+
+    expect(r1.id).not.toBe(r2.id);
+    expect(ctrlIds.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+// =============================================================================
+// Async onModuleInit
+// =============================================================================
+
+describe('Async onModuleInit', () => {
+  it('async onModuleInit is awaited before first request is served', async () => {
+    let initialized = false;
+
+    @Injectable()
+    class AsyncInitService implements OnModuleInit {
+      data = '';
+
+      async onModuleInit() {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        this.data = 'loaded';
+        initialized = true;
+      }
+    }
+
+    @Controller('/async-init')
+    class AsyncInitController {
+      constructor(private svc: AsyncInitService) {}
+      @Get() handle() { return { data: this.svc.data, initialized }; }
+    }
+
+    @Module({ providers: [AsyncInitService], controllers: [AsyncInitController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/async-init');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ data: 'loaded', initialized: true });
+  });
+
+  it('multiple services with async onModuleInit are all awaited', async () => {
+    const order: string[] = [];
+
+    @Injectable()
+    class ServiceX implements OnModuleInit {
+      async onModuleInit() {
+        await new Promise((r) => setTimeout(r, 5));
+        order.push('X');
+      }
+    }
+
+    @Injectable()
+    class ServiceY implements OnModuleInit {
+      async onModuleInit() {
+        await new Promise((r) => setTimeout(r, 1));
+        order.push('Y');
+      }
+    }
+
+    @Controller('/multi-init')
+    class MultiInitController {
+      constructor(private x: ServiceX, private y: ServiceY) {}
+      @Get() handle() { return { order }; }
+    }
+
+    @Module({ providers: [ServiceX, ServiceY], controllers: [MultiInitController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/multi-init');
+    expect(res.status).toBe(200);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const body = await res.json() as any;
+    expect(body.order).toContain('X');
+    expect(body.order).toContain('Y');
+    expect(body.order).toHaveLength(2);
+  });
+
+  it('onModuleInit can perform async data fetching before the app is ready', async () => {
+    @Injectable()
+    class DataLoader implements OnModuleInit {
+      items: string[] = [];
+
+      async onModuleInit() {
+        // Simulate async data load
+        this.items = await Promise.resolve(['alpha', 'beta', 'gamma']);
+      }
+    }
+
+    @Controller('/loaded')
+    class LoadedController {
+      constructor(private loader: DataLoader) {}
+      @Get() handle() { return { items: this.loader.items }; }
+    }
+
+    @Module({ providers: [DataLoader], controllers: [LoadedController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/loaded');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ items: ['alpha', 'beta', 'gamma'] });
   });
 });
