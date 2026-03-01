@@ -59,7 +59,7 @@ export class HttpService {
 
     if (config.body !== undefined) {
       if (typeof config.body === 'string' || config.body instanceof FormData) {
-        init.body = config.body as BodyInit;
+        init.body = config.body as string | FormData;
       } else {
         init.body = JSON.stringify(config.body);
         if (!headers['Content-Type'] && !headers['content-type']) {
@@ -93,7 +93,7 @@ export class HttpService {
     const base = this.baseURL ? `${this.baseURL}${url}` : url;
     if (!params || Object.keys(params).length === 0) return base;
     const searchParams = new URLSearchParams(
-      Object.entries(params).map(([k, v]) => [k, String(v)]),
+      Object.entries(params).map(([k, v]) => [k, String(v)] as [string, string]),
     );
     return `${base}?${searchParams.toString()}`;
   }

@@ -269,9 +269,10 @@ export class Container {
     return this.resolve(token);
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private createLazyProxy<T>(token: Token<T>): T {
     const container = this;
-    return new Proxy({} as T, {
+    return new Proxy({} as any, {
       get(_target, prop) {
         const instance = container.resolve(token);
         const value = (instance as Record<string | symbol, unknown>)[prop];

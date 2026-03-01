@@ -227,7 +227,7 @@ export class ModuleLoader {
         if (typeof p === 'function') {
           return p === exported;
         }
-        return p.token === exported;
+        return p.provide === exported;
       });
 
       const isImportedProvider = importedProviders.has(exported as Token);

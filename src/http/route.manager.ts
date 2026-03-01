@@ -209,10 +209,11 @@ export class RouteManager {
         if (excluded) return next();
 
         const requestContainer = this.getRequestContainer(c);
-        const runChain = (index: number): Promise<Response | void> => {
+        const runChain = (index: number): Promise<void> => {
           if (index >= def.middleware.length) return next();
           const instance = this.instantiate<NestMiddleware>(def.middleware[index]!, requestContainer);
-          return instance.use(c, () => runChain(index + 1));
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          return (instance.use(c, () => runChain(index + 1)) as Promise<any>).then(() => {});
         };
 
         return runChain(0);
