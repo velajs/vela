@@ -471,12 +471,18 @@ export class RouteManager {
       case ParamType.QUERY:
         return param.name ? c.req.query(param.name) : c.req.query();
 
-      case ParamType.BODY:
+      case ParamType.BODY: {
+        let body: unknown;
         try {
-          return await c.req.json();
+          body = await c.req.json();
         } catch {
           return undefined;
         }
+        if (param.name && body !== null && typeof body === 'object') {
+          return (body as Record<string, unknown>)[param.name];
+        }
+        return body;
+      }
 
       case ParamType.HEADERS:
         if (param.name) {

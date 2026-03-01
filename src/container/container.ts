@@ -224,7 +224,10 @@ export class Container {
       throw new Error('Factory function is missing');
     }
 
-    const dependencies = (registration.inject || []).map((token) => this.resolve(token));
+    const dependencies = (registration.inject || []).map((token) => {
+      const resolved = token instanceof ForwardRef ? token.factory() : token;
+      return this.resolve(resolved as Token);
+    });
     const result = registration.useFactory(...dependencies);
 
     if (result instanceof Promise) {

@@ -6765,3 +6765,508 @@ describe('@UseFilters() at controller class level', () => {
     expect(withoutRes.status).toBe(404); // no filter, falls through to default
   });
 });
+
+// =============================================================================
+// @Body('field') named field extraction
+// =============================================================================
+
+describe('@Body("field") named field extraction', () => {
+  it('extracts a single top-level field from the request body', async () => {
+    @Controller('/body-field')
+    class TestController {
+      @Post()
+      handle(@Body('name') name: string) { return { name }; }
+    }
+
+    @Module({ controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/body-field', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Alice', age: 30 }),
+    });
+
+    expect(res.status).toBe(200);
+    expect((await res.json() as any).name).toBe('Alice');
+  });
+
+  it('returns undefined when named field is not present in body', async () => {
+    @Controller('/body-missing')
+    class TestController {
+      @Post()
+      handle(@Body('missing') val: unknown) { return { val: val ?? null }; }
+    }
+
+    @Module({ controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/body-missing', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ other: 'field' }),
+    });
+
+    expect(res.status).toBe(200);
+    expect((await res.json() as any).val).toBeNull();
+  });
+
+  it('multiple @Body("field") params each extract their own key', async () => {
+    @Controller('/body-multi')
+    class TestController {
+      @Post()
+      handle(@Body('x') x: number, @Body('y') y: number) { return { sum: x + y }; }
+    }
+
+    @Module({ controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/body-multi', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ x: 3, y: 4 }),
+    });
+
+    expect((await res.json() as any).sum).toBe(7);
+  });
+});
+
+// =============================================================================
+// @Query('param', ParseIntPipe)
+// =============================================================================
+
+describe('@Query("param", ParseIntPipe)', () => {
+  it('applies a pipe to a named query param', async () => {
+    @Controller('/query-pipe')
+    class TestController {
+      @Get()
+      handle(@Query('page', ParseIntPipe) page: number) { return { page }; }
+    }
+
+    @Module({ controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/query-pipe?page=3');
+    expect((await res.json() as any).page).toBe(3);
+  });
+
+  it('pipe on query param returns 400 for invalid value', async () => {
+    @Controller('/query-bad')
+    class TestController {
+      @Get()
+      handle(@Query('n', ParseIntPipe) n: number) { return { n }; }
+    }
+
+    @Module({ controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/query-bad?n=abc');
+    expect(res.status).toBe(400);
+  });
+
+  it('multiple piped query params each transform independently', async () => {
+    @Controller('/query-multi')
+    class TestController {
+      @Get()
+      handle(
+        @Query('a', ParseIntPipe) a: number,
+        @Query('b', ParseFloatPipe) b: number,
+      ) { return { a, b }; }
+    }
+
+    @Module({ controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/query-multi?a=10&b=3.14');
+    const body = await res.json() as any;
+    expect(body.a).toBe(10);
+    expect(body.b).toBeCloseTo(3.14);
+  });
+});
+
+// =============================================================================
+// Reflector.getAllAndOverride() / getAllAndMerge()
+// =============================================================================
+
+describe('Reflector.getAllAndOverride() / getAllAndMerge()', () => {
+  it('getAllAndOverride returns the first defined value (handler wins over controller)', async () => {
+    const ROLES_KEY = 'roles';
+    const captured: Array<string[] | undefined> = [];
+
+    @Injectable()
+    class RolesGuard implements CanActivate {
+      constructor(private reflector: Reflector) {}
+      canActivate(ctx: ExecutionContext): boolean {
+        captured.push(this.reflector.getAllAndOverride<string[]>(ROLES_KEY, ctx));
+        return true;
+      }
+    }
+
+    @Controller('/reflector-override')
+    @SetMetadata(ROLES_KEY, ['admin'])
+    @UseGuards(RolesGuard)
+    class TestController {
+      @Get('/handler-wins')
+      @SetMetadata(ROLES_KEY, ['user'])
+      handlerWins() { return { ok: true }; }
+
+      @Get('/controller-fallback')
+      controllerFallback() { return { ok: true }; }
+    }
+
+    @Module({ providers: [RolesGuard, Reflector], controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    await hono.request('/reflector-override/handler-wins');
+    await hono.request('/reflector-override/controller-fallback');
+
+    expect(captured[0]).toEqual(['user']);   // handler metadata wins
+    expect(captured[1]).toEqual(['admin']);  // falls back to controller metadata
+  });
+
+  it('getAllAndMerge concatenates metadata from handler and controller', async () => {
+    const PERMS_KEY = 'permissions';
+    let captured: unknown;
+
+    @Injectable()
+    class PermsGuard implements CanActivate {
+      constructor(private reflector: Reflector) {}
+      canActivate(ctx: ExecutionContext): boolean {
+        captured = this.reflector.getAllAndMerge<string[]>(PERMS_KEY, ctx);
+        return true;
+      }
+    }
+
+    @Controller('/reflector-merge')
+    @SetMetadata(PERMS_KEY, ['read'])
+    @UseGuards(PermsGuard)
+    class TestController {
+      @Get()
+      @SetMetadata(PERMS_KEY, ['write'])
+      handle() { return { ok: true }; }
+    }
+
+    @Module({ providers: [PermsGuard, Reflector], controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    await app.getHonoApp().request('/reflector-merge');
+    expect(captured).toContain('read');
+    expect(captured).toContain('write');
+  });
+});
+
+// =============================================================================
+// Middleware sets context variable, guard reads it
+// =============================================================================
+
+describe('Middleware sets context variable, guard reads it', () => {
+  it('middleware sets a property on context object accessible to the handler', async () => {
+    @Injectable()
+    class TagMiddleware implements NestMiddleware {
+      use(c: any, next: () => Promise<void>) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (c as any)._tag = 'from-middleware';
+        return next();
+      }
+    }
+
+    @Controller('/ctx-share')
+    class TestController {
+      @Get()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      handle(@Req() ctx: any) {
+        return { tag: (ctx as any)._tag ?? null };
+      }
+    }
+
+    @Module({
+      providers: [
+        TagMiddleware,
+        { provide: APP_MIDDLEWARE, useExisting: TagMiddleware },
+      ],
+      controllers: [TestController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/ctx-share');
+    expect(res.status).toBe(200);
+    expect((await res.json() as any).tag).toBe('from-middleware');
+  });
+
+  it('multiple middlewares share the same context object', async () => {
+    const order: string[] = [];
+
+    @Injectable()
+    class MwOne implements NestMiddleware {
+      use(c: any, next: () => Promise<void>) {
+        order.push('one');
+        (c as any)._count = ((c as any)._count ?? 0) + 1;
+        return next();
+      }
+    }
+
+    @Injectable()
+    class MwTwo implements NestMiddleware {
+      use(c: any, next: () => Promise<void>) {
+        order.push('two');
+        (c as any)._count = ((c as any)._count ?? 0) + 1;
+        return next();
+      }
+    }
+
+    @Controller('/ctx-multi')
+    class TestController {
+      @Get()
+      handle(@Req() ctx: any) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return { count: (ctx as any)._count ?? 0 };
+      }
+    }
+
+    @Module({
+      providers: [
+        MwOne, MwTwo,
+        { provide: APP_MIDDLEWARE, useExisting: MwOne },
+        { provide: APP_MIDDLEWARE, useExisting: MwTwo },
+      ],
+      controllers: [TestController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/ctx-multi');
+    expect(res.status).toBe(200);
+    expect((await res.json() as any).count).toBe(2);
+    expect(order).toEqual(['one', 'two']);
+  });
+});
+
+// =============================================================================
+// Route specificity (static beats dynamic)
+// =============================================================================
+
+describe('Route specificity — static path beats dynamic param', () => {
+  it('GET /items/search matches before /items/:id', async () => {
+    @Controller('/items')
+    class ItemsController {
+      @Get('search')
+      search() { return { type: 'search' }; }
+
+      @Get(':id')
+      getById(@Param('id') id: string) { return { type: 'by-id', id }; }
+    }
+
+    @Module({ controllers: [ItemsController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    const searchRes = await hono.request('/items/search');
+    const byIdRes = await hono.request('/items/42');
+
+    const searchBody = await searchRes.json() as any;
+    const byIdBody = await byIdRes.json() as any;
+    expect(searchBody.type).toBe('search');
+    expect(byIdBody.type).toBe('by-id');
+    expect(byIdBody.id).toBe('42');
+  });
+});
+
+// =============================================================================
+// forwardRef() in factory inject array
+// =============================================================================
+
+describe('forwardRef() in factory inject array', () => {
+  it('useFactory resolves forwardRef tokens from the inject array', async () => {
+    @Injectable()
+    class ConfigSvc {
+      readonly prefix = 'hello';
+    }
+
+    const GREETING = new InjectionToken<string>('GREETING');
+
+    @Controller('/fwd-factory')
+    class TestController {
+      constructor(@Inject(GREETING) private greeting: string) {}
+      @Get()
+      handle() { return { greeting: this.greeting }; }
+    }
+
+    @Module({
+      providers: [
+        ConfigSvc,
+        {
+          provide: GREETING,
+          useFactory: (cfg: ConfigSvc) => `${cfg.prefix}-world`,
+          inject: [forwardRef(() => ConfigSvc)],
+        },
+      ],
+      controllers: [TestController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/fwd-factory');
+    expect((await res.json() as any).greeting).toBe('hello-world');
+  });
+});
+
+// =============================================================================
+// Guard short-circuit (first guard fails → second never runs)
+// =============================================================================
+
+describe('Guard short-circuit', () => {
+  it('second guard is never called when first guard returns false', async () => {
+    let secondCalled = false;
+
+    @Injectable()
+    class DenyGuard implements CanActivate {
+      canActivate(): boolean { return false; }
+    }
+
+    @Injectable()
+    class SpyGuard implements CanActivate {
+      canActivate(): boolean { secondCalled = true; return true; }
+    }
+
+    @Controller('/short-circuit')
+    @UseGuards(DenyGuard, SpyGuard)
+    class TestController {
+      @Get()
+      handle() { return { ok: true }; }
+    }
+
+    @Module({ providers: [DenyGuard, SpyGuard], controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/short-circuit');
+
+    expect(res.status).toBe(403);
+    expect(secondCalled).toBe(false);
+  });
+});
+
+// =============================================================================
+// @Body() with missing / malformed JSON
+// =============================================================================
+
+describe('@Body() with missing or malformed JSON', () => {
+  it('returns undefined when body is empty', async () => {
+    @Controller('/body-empty')
+    class TestController {
+      @Post()
+      handle(@Body() body: unknown) { return { hasBody: body !== undefined }; }
+    }
+
+    @Module({ controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/body-empty', { method: 'POST' });
+    expect(res.status).toBe(200);
+    expect((await res.json() as any).hasBody).toBe(false);
+  });
+
+  it('returns undefined for malformed JSON without crashing', async () => {
+    @Controller('/body-malformed')
+    class TestController {
+      @Post()
+      handle(@Body() body: unknown) { return { body: body ?? null }; }
+    }
+
+    @Module({ controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/body-malformed', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: 'not-valid-json{{{',
+    });
+
+    expect(res.status).toBe(200);
+    expect((await res.json() as any).body).toBeNull();
+  });
+});
+
+// =============================================================================
+// @Param() when URL segment is absent
+// =============================================================================
+
+describe('@Param() when URL segment is absent', () => {
+  it('returns undefined for a param not in the actual URL', async () => {
+    @Controller('/maybe')
+    class TestController {
+      @Get()
+      withoutParam(@Param('id') id: string | undefined) {
+        return { id: id ?? null };
+      }
+    }
+
+    @Module({ controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/maybe');
+    expect(res.status).toBe(200);
+    expect((await res.json() as any).id).toBeNull();
+  });
+});
+
+// =============================================================================
+// @Headers('name') case-insensitive lookup
+// =============================================================================
+
+describe('@Headers("name") case-insensitive header lookup', () => {
+  it('retrieves header regardless of case sent by client', async () => {
+    @Controller('/header-ci')
+    class TestController {
+      @Get()
+      handle(@Headers('x-custom-token') token: string) { return { token }; }
+    }
+
+    @Module({ controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    const lower = await hono.request('/header-ci', { headers: { 'x-custom-token': 'abc' } });
+    const upper = await hono.request('/header-ci', { headers: { 'X-Custom-Token': 'xyz' } });
+
+    expect((await lower.json() as any).token).toBe('abc');
+    expect((await upper.json() as any).token).toBe('xyz');
+  });
+
+  it('@Headers() without name returns all headers as object', async () => {
+    @Controller('/all-headers')
+    class TestController {
+      @Get()
+      handle(@Headers() headers: Record<string, string>) {
+        return { hasAccept: 'accept' in headers || 'Accept' in headers };
+      }
+    }
+
+    @Module({ controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/all-headers', {
+      headers: { accept: 'application/json' },
+    });
+    expect((await res.json() as any).hasAccept).toBe(true);
+  });
+});
