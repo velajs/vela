@@ -1,6 +1,6 @@
 import { Scope } from '../constants';
 import type { Container } from '../container/container';
-import { InjectionToken } from '../container/types';
+import { ForwardRef, InjectionToken } from '../container/types';
 import type { ProviderOptions, Token, Type } from '../container/types';
 import { MiddlewareBuilder } from '../http/middleware-consumer';
 import type { MiddlewareRouteDefinition } from '../http/middleware-consumer';
@@ -8,9 +8,11 @@ import type { RouteManager } from '../http/route.manager';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_MIDDLEWARE, APP_PIPE } from '../pipeline/tokens';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import { getModuleMetadata, isModule } from './decorators';
+import type { ModuleImport } from './types';
 
 interface DynamicModule {
   module: Type;
+  imports?: ModuleImport[];
   providers?: Array<Type | ProviderOptions>;
   controllers?: Type[];
   exports?: Array<Type | InjectionToken>;
@@ -57,13 +59,15 @@ export class ModuleLoader {
   }
 
   private processModule(moduleClassOrDynamic: Type | DynamicModule): Set<Token> {
-    // Handle dynamic modules ({ module, controllers, providers })
+    // Handle dynamic modules ({ module, imports, controllers, providers })
     let moduleClass: Type;
+    let extraImports: ModuleImport[] = [];
     let extraControllers: Type[] = [];
     let extraProviders: Array<Type | ProviderOptions> = [];
 
     if (isDynamicModule(moduleClassOrDynamic)) {
       moduleClass = moduleClassOrDynamic.module;
+      extraImports = moduleClassOrDynamic.imports ?? [];
       extraControllers = moduleClassOrDynamic.controllers ?? [];
       extraProviders = moduleClassOrDynamic.providers ?? [];
     } else {
@@ -99,8 +103,24 @@ export class ModuleLoader {
     try {
       const importedProviders = new Set<Token>(this.globalExports);
 
-      for (const importedModule of metadata.imports) {
-        const exportedTokens = this.processModule(importedModule as Type | DynamicModule);
+      for (const entry of [...metadata.imports, ...extraImports]) {
+        // Unwrap forwardRef(() => Module) — resolves lazy circular references
+        const isForwardRef = entry instanceof ForwardRef;
+        const importedModule = isForwardRef
+          ? (entry.factory() as Type | DynamicModule)
+          : entry as Type | DynamicModule;
+
+        const importedModuleClass = isDynamicModule(importedModule)
+          ? importedModule.module
+          : importedModule as Type;
+
+        // If this forwardRef-wrapped import is currently being processed, skip it to
+        // break the circular chain. Non-forwardRef circular imports still throw.
+        if (isForwardRef && this.processingStack.has(importedModuleClass)) {
+          continue;
+        }
+
+        const exportedTokens = this.processModule(importedModule);
         for (const token of exportedTokens) {
           importedProviders.add(token);
         }
