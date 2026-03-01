@@ -84,6 +84,7 @@ import {
   Patch,
   Options,
   Head,
+  All,
   Ip,
   Sse,
   HttpModule,
@@ -6287,5 +6288,480 @@ describe('Multiple @Header() decorators on same handler', () => {
     expect(res.status).toBe(201);
     expect(res.headers.get('location')).toBe('/header-code/1');
     expect(res.headers.get('x-created-id')).toBe('1');
+  });
+});
+
+// =============================================================================
+// @All() decorator
+// =============================================================================
+
+describe('@All() decorator', () => {
+  it('handles GET, POST, PUT, DELETE on the same route', async () => {
+    @Controller('/all-handler')
+    class AllController {
+      @All()
+      handle(@Req() ctx: any) { return { method: ctx.req.method }; }
+    }
+
+    @Module({ controllers: [AllController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    const get = await hono.request('/all-handler', { method: 'GET' });
+    const post = await hono.request('/all-handler', { method: 'POST' });
+    const put = await hono.request('/all-handler', { method: 'PUT' });
+    const del = await hono.request('/all-handler', { method: 'DELETE' });
+
+    expect((await get.json() as any).method).toBe('GET');
+    expect((await post.json() as any).method).toBe('POST');
+    expect((await put.json() as any).method).toBe('PUT');
+    expect((await del.json() as any).method).toBe('DELETE');
+  });
+
+  it('@All() with path handles any method', async () => {
+    @Controller('/wildcard')
+    class WildController {
+      @All('/catch')
+      catch() { return { caught: true }; }
+    }
+
+    @Module({ controllers: [WildController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    const patch = await hono.request('/wildcard/catch', { method: 'PATCH' });
+    const options = await hono.request('/wildcard/catch', { method: 'OPTIONS' });
+
+    expect(patch.status).toBe(200);
+    expect(options.status).toBe(200);
+  });
+});
+
+// =============================================================================
+// @Catch() with no args (catch-all filter)
+// =============================================================================
+
+describe('@Catch() with no args — catch-all filter', () => {
+  it('catches any exception when @Catch() has no arguments', async () => {
+    @Catch()
+    class CatchAllFilter implements ExceptionFilter {
+      catch(exception: unknown, host: ArgumentsHost) {
+        const ctx = host.switchToHttp();
+        const c = ctx.getResponse<any>();
+        const message = exception instanceof Error ? exception.message : 'unknown';
+        return c.json({ caught: true, message }, 400);
+      }
+    }
+
+    @Controller('/catch-all')
+    class TestController {
+      @Get()
+      handle() { throw new Error('something broke'); }
+    }
+
+    @Module({
+      providers: [{ provide: APP_FILTER, useClass: CatchAllFilter }],
+      controllers: [TestController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/catch-all');
+    expect(res.status).toBe(400);
+    const body = await res.json() as any;
+    expect(body.caught).toBe(true);
+    expect(body.message).toBe('something broke');
+  });
+
+  it('@Catch() also catches HttpExceptions', async () => {
+    @Catch()
+    class AllFilter implements ExceptionFilter {
+      catch(_exception: unknown, host: ArgumentsHost) {
+        const c = host.switchToHttp().getResponse<any>();
+        return c.json({ intercepted: true }, 200);
+      }
+    }
+
+    @Controller('/catch-http')
+    class TestController {
+      @Get()
+      handle() { throw new NotFoundException(); }
+    }
+
+    @Module({
+      providers: [{ provide: APP_FILTER, useClass: AllFilter }],
+      controllers: [TestController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/catch-http');
+    expect(res.status).toBe(200);
+    expect((await res.json() as any).intercepted).toBe(true);
+  });
+});
+
+// =============================================================================
+// Async guard (canActivate returns Promise<boolean>)
+// =============================================================================
+
+describe('Async guard (canActivate returns Promise<boolean>)', () => {
+  it('allows request when async guard resolves true', async () => {
+    @Injectable()
+    class AsyncGuard implements CanActivate {
+      async canActivate(_ctx: ExecutionContext): Promise<boolean> {
+        await Promise.resolve();
+        return true;
+      }
+    }
+
+    @Controller('/async-guard')
+    @UseGuards(AsyncGuard)
+    class TestController {
+      @Get()
+      handle() { return { ok: true }; }
+    }
+
+    @Module({ providers: [AsyncGuard], controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/async-guard');
+    expect(res.status).toBe(200);
+  });
+
+  it('blocks request when async guard resolves false', async () => {
+    @Injectable()
+    class DenyGuard implements CanActivate {
+      async canActivate(_ctx: ExecutionContext): Promise<boolean> {
+        await Promise.resolve();
+        return false;
+      }
+    }
+
+    @Controller('/async-deny')
+    @UseGuards(DenyGuard)
+    class TestController {
+      @Get()
+      handle() { return { ok: true }; }
+    }
+
+    @Module({ providers: [DenyGuard], controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/async-deny');
+    expect(res.status).toBe(403);
+  });
+});
+
+// =============================================================================
+// Interceptor error interception
+// =============================================================================
+
+describe('Interceptor error interception', () => {
+  it('interceptor can catch handler errors and return a fallback', async () => {
+    @Injectable()
+    class ErrorRecoveryInterceptor implements NestInterceptor {
+      async intercept(_ctx: ExecutionContext, next: CallHandler): Promise<unknown> {
+        try {
+          return await next.handle();
+        } catch {
+          return { recovered: true };
+        }
+      }
+    }
+
+    @Controller('/err-intercept')
+    @UseInterceptors(ErrorRecoveryInterceptor)
+    class TestController {
+      @Get()
+      handle() { throw new Error('boom'); }
+    }
+
+    @Module({ providers: [ErrorRecoveryInterceptor], controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/err-intercept');
+    expect(res.status).toBe(200);
+    expect((await res.json() as any).recovered).toBe(true);
+  });
+
+  it('interceptor wrapping does not suppress HttpException when not caught', async () => {
+    @Injectable()
+    class PassThroughInterceptor implements NestInterceptor {
+      async intercept(_ctx: ExecutionContext, next: CallHandler): Promise<unknown> {
+        return next.handle();
+      }
+    }
+
+    @Controller('/err-pass')
+    @UseInterceptors(PassThroughInterceptor)
+    class TestController {
+      @Get()
+      handle() { throw new NotFoundException('not here'); }
+    }
+
+    @Module({ providers: [PassThroughInterceptor], controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/err-pass');
+    expect(res.status).toBe(404);
+  });
+});
+
+// =============================================================================
+// Multiple pipes on same param
+// =============================================================================
+
+describe('Multiple pipes chained on same param', () => {
+  it('applies pipes left-to-right on a single param', async () => {
+    @Controller('/multi-pipe')
+    class TestController {
+      @Get(':value')
+      handle(@Param('value', ParseIntPipe, new DefaultValuePipe(0)) value: number) {
+        return { value };
+      }
+    }
+
+    @Module({ controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    const r1 = await hono.request('/multi-pipe/42');
+    expect((await r1.json() as any).value).toBe(42);
+  });
+
+  it('second pipe receives output of first pipe', async () => {
+    class DoubleIntPipe implements PipeTransform {
+      transform(value: number) { return value * 2; }
+    }
+
+    @Controller('/double-pipe')
+    class TestController {
+      @Get(':n')
+      handle(@Param('n', ParseIntPipe, new DoubleIntPipe()) n: number) {
+        return { n };
+      }
+    }
+
+    @Module({ controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/double-pipe/5');
+    expect((await res.json() as any).n).toBe(10);
+  });
+});
+
+// =============================================================================
+// APP_INTERCEPTOR ordering (multiple)
+// =============================================================================
+
+describe('APP_INTERCEPTOR ordering with multiple global interceptors', () => {
+  it('first registered APP_INTERCEPTOR is outermost (wraps last)', async () => {
+    const order: string[] = [];
+
+    @Injectable()
+    class FirstInterceptor implements NestInterceptor {
+      async intercept(_ctx: ExecutionContext, next: CallHandler): Promise<unknown> {
+        order.push('first-in');
+        const result = await next.handle();
+        order.push('first-out');
+        return result;
+      }
+    }
+
+    @Injectable()
+    class SecondInterceptor implements NestInterceptor {
+      async intercept(_ctx: ExecutionContext, next: CallHandler): Promise<unknown> {
+        order.push('second-in');
+        const result = await next.handle();
+        order.push('second-out');
+        return result;
+      }
+    }
+
+    @Controller('/intercept-order')
+    class TestController {
+      @Get()
+      handle() { order.push('handler'); return { ok: true }; }
+    }
+
+    @Module({
+      providers: [
+        FirstInterceptor,
+        SecondInterceptor,
+        { provide: APP_INTERCEPTOR, useExisting: FirstInterceptor },
+        { provide: APP_INTERCEPTOR, useExisting: SecondInterceptor },
+      ],
+      controllers: [TestController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    await app.getHonoApp().request('/intercept-order');
+
+    expect(order).toEqual(['first-in', 'second-in', 'handler', 'second-out', 'first-out']);
+  });
+});
+
+// =============================================================================
+// @Controller() with no path
+// =============================================================================
+
+describe('@Controller() with no path', () => {
+  it('mounts at root when no path given', async () => {
+    @Controller()
+    class RootController {
+      @Get('/hello')
+      hello() { return { hi: true }; }
+    }
+
+    @Module({ controllers: [RootController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/hello');
+    expect(res.status).toBe(200);
+    expect((await res.json() as any).hi).toBe(true);
+  });
+
+  it('@Controller("") also mounts at root', async () => {
+    @Controller('')
+    class EmptyController {
+      @Get('/ping')
+      ping() { return { pong: true }; }
+    }
+
+    @Module({ controllers: [EmptyController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/ping');
+    expect(res.status).toBe(200);
+  });
+});
+
+// =============================================================================
+// Provider circular DI via forwardRef()
+// =============================================================================
+
+describe('Provider circular DI via forwardRef()', () => {
+  it('resolves circular provider dependency using forwardRef', async () => {
+    @Injectable()
+    class ServiceB {
+      value = 'B';
+      getFromA(): string { return serviceAInstance?.greet() ?? 'no-a'; }
+    }
+
+    let serviceAInstance: ServiceA | undefined;
+
+    @Injectable()
+    class ServiceA {
+      constructor(@Inject(forwardRef(() => ServiceB)) private b: ServiceB) {
+        serviceAInstance = this;
+      }
+      greet(): string { return `hello-from-A-with-${this.b.value}`; }
+    }
+
+    @Controller('/circ-di')
+    class TestController {
+      constructor(private a: ServiceA) {}
+      @Get()
+      handle() { return { result: this.a.greet() }; }
+    }
+
+    @Module({ providers: [ServiceA, ServiceB], controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/circ-di');
+    expect(res.status).toBe(200);
+    expect((await res.json() as any).result).toBe('hello-from-A-with-B');
+  });
+});
+
+// =============================================================================
+// @UseFilters() at controller class level
+// =============================================================================
+
+describe('@UseFilters() at controller class level', () => {
+  it('controller-level filter catches exceptions from any handler in that controller', async () => {
+    @Catch(NotFoundException)
+    class NotFoundFilter implements ExceptionFilter {
+      catch(_exception: unknown, host: ArgumentsHost) {
+        const c = host.switchToHttp().getResponse<any>();
+        return c.json({ filteredAt: 'controller' }, 200);
+      }
+    }
+
+    @Controller('/ctrl-filter')
+    @UseFilters(NotFoundFilter)
+    class TestController {
+      @Get('/a')
+      routeA() { throw new NotFoundException(); }
+
+      @Get('/b')
+      routeB() { throw new NotFoundException(); }
+    }
+
+    @Module({ providers: [NotFoundFilter], controllers: [TestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    const a = await hono.request('/ctrl-filter/a');
+    const b = await hono.request('/ctrl-filter/b');
+
+    expect(a.status).toBe(200);
+    expect((await a.json() as any).filteredAt).toBe('controller');
+    expect(b.status).toBe(200);
+    expect((await b.json() as any).filteredAt).toBe('controller');
+  });
+
+  it('controller-level filter does not bleed into other controllers', async () => {
+    @Catch(NotFoundException)
+    class IsolatedFilter implements ExceptionFilter {
+      catch(_exception: unknown, host: ArgumentsHost) {
+        const c = host.switchToHttp().getResponse<any>();
+        return c.json({ from: 'isolated' }, 200);
+      }
+    }
+
+    @Controller('/with-filter')
+    @UseFilters(IsolatedFilter)
+    class WithFilter {
+      @Get()
+      handle() { throw new NotFoundException(); }
+    }
+
+    @Controller('/without-filter')
+    class WithoutFilter {
+      @Get()
+      handle() { throw new NotFoundException(); }
+    }
+
+    @Module({ providers: [IsolatedFilter], controllers: [WithFilter, WithoutFilter] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    const withRes = await hono.request('/with-filter');
+    const withoutRes = await hono.request('/without-filter');
+
+    expect(withRes.status).toBe(200);
+    expect((await withRes.json() as any).from).toBe('isolated');
+    expect(withoutRes.status).toBe(404); // no filter, falls through to default
   });
 });

@@ -31,6 +31,7 @@ export enum HttpMethod {
   DELETE = 'delete',
   OPTIONS = 'options',
   HEAD = 'head',
+  ALL = 'all',
 }
 
 export enum ParamType {

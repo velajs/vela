@@ -28,6 +28,7 @@ export {
   Delete,
   Options,
   Head,
+  All,
   Sse,
   Param,
   Query,
