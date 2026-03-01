@@ -21,7 +21,7 @@ export class ScheduleModule {
     const moduleClass = makeScheduleModuleClass();
 
     const providers: Array<Type | ProviderOptions> = [
-      { token: SCHEDULE_MODULE_OPTIONS, useValue: options },
+      { provide: SCHEDULE_MODULE_OPTIONS, useValue: options },
       ScheduleRegistry,
     ];
 
@@ -45,7 +45,7 @@ export class ScheduleModule {
 
     const providers: Array<Type | ProviderOptions> = [
       {
-        token: SCHEDULE_MODULE_OPTIONS,
+        provide: SCHEDULE_MODULE_OPTIONS,
         useFactory: options.useFactory,
         inject: options.inject ?? [],
       },

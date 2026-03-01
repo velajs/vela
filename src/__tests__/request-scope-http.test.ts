@@ -46,7 +46,7 @@ describe('HTTP request scope', () => {
       providers: [
         RequestContextValue,
         RequestScopedGuard,
-        { token: APP_GUARD, useExisting: RequestScopedGuard },
+        { provide: APP_GUARD, useExisting: RequestScopedGuard },
       ],
       controllers: [TestController],
     })

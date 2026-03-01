@@ -16,8 +16,8 @@ import {
 export const VelaFactory = {
   async create(rootModule: Type): Promise<VelaApplication> {
     const container = new Container();
-    container.register({ token: Container, useValue: container });
-    container.register({ token: ModuleRef, useFactory: (c: Container) => new ModuleRef(c), inject: [Container] });
+    container.register({ provide: Container, useValue: container });
+    container.register({ provide: ModuleRef, useFactory: (c: Container) => new ModuleRef(c), inject: [Container] });
     const routeManager = new RouteManager(container);
     ComponentManager.init(container);
 

@@ -24,10 +24,10 @@ export class ThrottlerModule {
     });
 
     const providers: Array<Type | ProviderOptions> = [
-      { token: THROTTLER_OPTIONS, useValue: options },
-      { token: THROTTLER_STORAGE, useValue: options.storage ?? new ThrottlerStorage() },
+      { provide: THROTTLER_OPTIONS, useValue: options },
+      { provide: THROTTLER_STORAGE, useValue: options.storage ?? new ThrottlerStorage() },
       ThrottlerGuard,
-      { token: APP_GUARD, useExisting: ThrottlerGuard },
+      { provide: APP_GUARD, useExisting: ThrottlerGuard },
     ];
 
     return { module: moduleClass, providers };
@@ -42,17 +42,17 @@ export class ThrottlerModule {
 
     const providers: Array<Type | ProviderOptions> = [
       {
-        token: THROTTLER_OPTIONS,
+        provide: THROTTLER_OPTIONS,
         useFactory: options.useFactory,
         inject: options.inject ?? [],
       },
       {
-        token: THROTTLER_STORAGE,
+        provide: THROTTLER_STORAGE,
         useFactory: (opts: ThrottlerModuleOptions) => opts.storage ?? new ThrottlerStorage(),
         inject: [THROTTLER_OPTIONS],
       },
       ThrottlerGuard,
-      { token: APP_GUARD, useExisting: ThrottlerGuard },
+      { provide: APP_GUARD, useExisting: ThrottlerGuard },
     ];
 
     return { module: moduleClass, providers };

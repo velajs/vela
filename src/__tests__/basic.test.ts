@@ -297,7 +297,7 @@ describe('DI Container', () => {
     @Module({
       providers: [
         ApiService,
-        { token: CONFIG, useValue: { apiUrl: 'https://api.example.com' } },
+        { provide: CONFIG, useValue: { apiUrl: 'https://api.example.com' } },
       ],
       controllers: [ApiController],
     })

@@ -361,7 +361,7 @@ describe('Test.createTestingModule', () => {
     const moduleRef = await Test.createTestingModule({
       providers: [
         ApiService,
-        { token: API_URL, useValue: 'https://real-api.com' },
+        { provide: API_URL, useValue: 'https://real-api.com' },
       ],
       controllers: [ApiController],
     })

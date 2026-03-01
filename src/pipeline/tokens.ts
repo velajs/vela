@@ -9,7 +9,7 @@ import type { CanActivate, ExceptionFilter, NestInterceptor, NestMiddleware, Pip
  * @Module({
  *   providers: [
  *     AuthGuard,
- *     { token: APP_GUARD, useClass: AuthGuard },
+ *     { provide: APP_GUARD, useClass: AuthGuard },
  *   ],
  * })
  * class AppModule {}

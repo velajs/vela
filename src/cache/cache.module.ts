@@ -28,14 +28,14 @@ export class CacheModule {
     });
 
     const providers: Array<Type | ProviderOptions> = [
-      { token: CACHE_MANAGER, useValue: store },
-      { token: CACHE_MODULE_OPTIONS, useValue: options },
+      { provide: CACHE_MANAGER, useValue: store },
+      { provide: CACHE_MODULE_OPTIONS, useValue: options },
       CacheService,
       CacheInterceptor,
     ];
 
     if (isGlobal) {
-      providers.push({ token: APP_INTERCEPTOR, useExisting: CacheInterceptor });
+      providers.push({ provide: APP_INTERCEPTOR, useExisting: CacheInterceptor });
     }
 
     return { module: moduleClass, providers };
@@ -52,12 +52,12 @@ export class CacheModule {
 
     const providers: Array<Type | ProviderOptions> = [
       {
-        token: CACHE_MODULE_OPTIONS,
+        provide: CACHE_MODULE_OPTIONS,
         useFactory: options.useFactory,
         inject: options.inject ?? [],
       },
       {
-        token: CACHE_MANAGER,
+        provide: CACHE_MANAGER,
         useFactory: (opts: CacheModuleOptions) =>
           new MemoryCacheStore(opts.ttl ?? 5, opts.max ?? 100),
         inject: [CACHE_MODULE_OPTIONS],
@@ -67,7 +67,7 @@ export class CacheModule {
     ];
 
     if (options.isGlobal) {
-      providers.push({ token: APP_INTERCEPTOR, useExisting: CacheInterceptor });
+      providers.push({ provide: APP_INTERCEPTOR, useExisting: CacheInterceptor });
     }
 
     return { module: moduleClass, providers };

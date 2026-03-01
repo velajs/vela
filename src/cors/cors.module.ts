@@ -34,8 +34,8 @@ export class CorsModule {
     return {
       module: moduleClass,
       providers: [
-        { token: CORS_OPTIONS, useValue: options },
-        { token: APP_MIDDLEWARE, useValue: middleware },
+        { provide: CORS_OPTIONS, useValue: options },
+        { provide: APP_MIDDLEWARE, useValue: middleware },
       ],
     };
   }

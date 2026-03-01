@@ -23,6 +23,7 @@ import {
   UseInterceptors,
   UsePipes,
   UseFilters,
+  Catch,
   SetMetadata,
   Reflector,
   applyDecorators,
@@ -322,7 +323,7 @@ describe('APP_* tokens', () => {
     @Module({
       providers: [
         ApiKeyGuard,
-        { token: APP_GUARD, useExisting: ApiKeyGuard },
+        { provide: APP_GUARD, useExisting: ApiKeyGuard },
       ],
       controllers: [GuardedController],
     })
@@ -360,7 +361,7 @@ describe('APP_* tokens', () => {
     @Module({
       providers: [
         WrapInterceptor,
-        { token: APP_INTERCEPTOR, useExisting: WrapInterceptor },
+        { provide: APP_INTERCEPTOR, useExisting: WrapInterceptor },
       ],
       controllers: [InterceptedController],
     })
@@ -394,7 +395,7 @@ describe('APP_* tokens', () => {
     @Module({
       providers: [
         TrimPipe,
-        { token: APP_PIPE, useExisting: TrimPipe },
+        { provide: APP_PIPE, useExisting: TrimPipe },
       ],
       controllers: [TrimmedController],
     })
@@ -440,8 +441,8 @@ describe('APP_* tokens', () => {
       providers: [
         FirstGuard,
         SecondGuard,
-        { token: APP_GUARD, useExisting: FirstGuard },
-        { token: APP_GUARD, useExisting: SecondGuard },
+        { provide: APP_GUARD, useExisting: FirstGuard },
+        { provide: APP_GUARD, useExisting: SecondGuard },
       ],
       controllers: [GuardedController],
     })
@@ -912,7 +913,7 @@ describe('ModuleRef', () => {
     }
 
     @Module({
-      providers: [{ token: MY_TOKEN, useValue: 'token-value' }],
+      providers: [{ provide: MY_TOKEN, useValue: 'token-value' }],
       controllers: [TokenController],
     })
     class AppModule {}
@@ -1372,5 +1373,77 @@ describe('Lifecycle hooks', () => {
     const app = await VelaFactory.create(AppModule);
     await app.close();
     expect(calls).toEqual(['destroyed']);
+  });
+});
+
+describe('APP_FILTER global exception filter', () => {
+  beforeEach(() => MetadataRegistry.clear());
+
+  it('{ provide: APP_FILTER, useClass: Filter } catches exceptions globally', async () => {
+    @Injectable()
+    @Catch()
+    class GlobalFilter implements ExceptionFilter {
+      catch(_err: unknown, _host: ExecutionContext) {
+        return { caught: true, global: true };
+      }
+    }
+
+    @Controller('/filter-test')
+    class FilterController {
+      @Get()
+      handle() { throw new Error('boom'); }
+    }
+
+    @Module({
+      providers: [
+        GlobalFilter,
+        { provide: APP_FILTER, useExisting: GlobalFilter },
+      ],
+      controllers: [FilterController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/filter-test');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ caught: true, global: true });
+  });
+
+  it('APP_FILTER with @Catch(SpecificError) only catches matching exceptions', async () => {
+    class DomainError extends Error {}
+
+    @Injectable()
+    @Catch(DomainError)
+    class DomainFilter implements ExceptionFilter {
+      catch(_err: unknown, _host: ExecutionContext) {
+        return { domain: true };
+      }
+    }
+
+    @Controller('/domain-filter')
+    class DomainController {
+      @Get('/caught')
+      throwDomain() { throw new DomainError('domain'); }
+
+      @Get('/uncaught')
+      throwOther() { throw new Error('generic'); }
+    }
+
+    @Module({
+      providers: [
+        DomainFilter,
+        { provide: APP_FILTER, useExisting: DomainFilter },
+      ],
+      controllers: [DomainController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const caught = await app.getHonoApp().request('/domain-filter/caught');
+    expect(await caught.json()).toEqual({ domain: true });
+
+    // Generic Error not caught by DomainFilter → falls through to default 500
+    const uncaught = await app.getHonoApp().request('/domain-filter/uncaught');
+    expect(uncaught.status).toBe(500);
   });
 });

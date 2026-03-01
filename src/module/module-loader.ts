@@ -182,7 +182,7 @@ export class ModuleLoader {
         this.registeredProviders.push(provider);
       }
     } else {
-      const token = provider.token;
+      const token = provider.provide;
       if (!token) {
         this.container.register(provider);
         return;
@@ -192,7 +192,7 @@ export class ModuleLoader {
         const syntheticToken = new InjectionToken(
           `${token.toString()}:${this.appProviderCounter++}`,
         );
-        this.container.register({ ...provider, token: syntheticToken });
+        this.container.register({ ...provider, provide: syntheticToken });
         this.registeredProviders.push(syntheticToken);
         this.appProviderTokens.get(token)!.push(syntheticToken);
         return;

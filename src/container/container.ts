@@ -40,7 +40,7 @@ export class Container {
   }
 
   private registerOptions<T>(options: ProviderOptions<T>): void {
-    const token = options.token;
+    const token = options.provide;
     if (!token) {
       throw new Error('Provider registration requires a token');
     }
@@ -78,7 +78,7 @@ export class Container {
 
       if (token instanceof InjectionToken && token.options?.factory) {
         this.register({
-          token,
+          provide: token,
           useFactory: token.options.factory,
         });
         return this.resolve(token);

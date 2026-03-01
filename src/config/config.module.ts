@@ -23,7 +23,7 @@ export class ConfigModule {
     return {
       module: moduleClass,
       providers: [
-        { token: CONFIG_OPTIONS, useValue: config },
+        { provide: CONFIG_OPTIONS, useValue: config },
         ConfigService,
       ],
       ...(options.isGlobal ? { global: true } : {}),
@@ -47,7 +47,7 @@ export class ConfigModule {
       module: moduleClass,
       providers: [
         {
-          token: CONFIG_OPTIONS,
+          provide: CONFIG_OPTIONS,
           useFactory: async (...args: unknown[]) => {
             const opts = await options.useFactory(...args) as ConfigModuleOptions<T>;
             return opts.validate ? opts.validate(opts.config) : opts.config;

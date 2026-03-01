@@ -40,7 +40,7 @@ export interface InjectMetadata {
 }
 
 export interface ProviderOptions<T = unknown> {
-  token?: Token<T>;
+  provide?: Token<T>;
   scope?: Scope;
   useValue?: T;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -29,7 +29,7 @@ export class ModuleRef {
    */
   create<T>(type: Type<T>): T {
     const sandbox = this.container.createDetached();
-    sandbox.register({ token: type, useClass: type, scope: Scope.TRANSIENT });
+    sandbox.register({ provide: type, useClass: type, scope: Scope.TRANSIENT });
     return sandbox.resolve(type);
   }
 }

@@ -50,13 +50,13 @@ describe('DI Container', () => {
       const TOKEN_B = new InjectionToken('B');
 
       container.register({
-        token: TOKEN_A,
+        provide: TOKEN_A,
         useFactory: (b: unknown) => ({ name: 'A', dep: b }),
         inject: [TOKEN_B],
       });
 
       container.register({
-        token: TOKEN_B,
+        provide: TOKEN_B,
         useFactory: (a: unknown) => ({ name: 'B', dep: a }),
         inject: [TOKEN_A],
       });
@@ -70,19 +70,19 @@ describe('DI Container', () => {
       const TOKEN_C = new InjectionToken('C');
 
       container.register({
-        token: TOKEN_A,
+        provide: TOKEN_A,
         useFactory: (b: unknown) => ({ name: 'A', dep: b }),
         inject: [TOKEN_B],
       });
 
       container.register({
-        token: TOKEN_B,
+        provide: TOKEN_B,
         useFactory: (c: unknown) => ({ name: 'B', dep: c }),
         inject: [TOKEN_C],
       });
 
       container.register({
-        token: TOKEN_C,
+        provide: TOKEN_C,
         useFactory: (a: unknown) => ({ name: 'C', dep: a }),
         inject: [TOKEN_A],
       });
@@ -96,7 +96,7 @@ describe('DI Container', () => {
       const CONFIG = new InjectionToken<{ port: number }>('CONFIG');
 
       container.register({
-        token: CONFIG,
+        provide: CONFIG,
         useFactory: () => ({ port: 3000 }),
       });
 
@@ -109,12 +109,12 @@ describe('DI Container', () => {
       const DB = new InjectionToken<{ url: string; connected: boolean }>('DB');
 
       container.register({
-        token: DB_URL,
+        provide: DB_URL,
         useValue: 'postgres://localhost/mydb',
       });
 
       container.register({
-        token: DB,
+        provide: DB,
         useFactory: (url: string) => ({ url, connected: true }),
         inject: [DB_URL],
       });
@@ -128,7 +128,7 @@ describe('DI Container', () => {
       const COUNTER = new InjectionToken<number>('COUNTER');
 
       container.register({
-        token: COUNTER,
+        provide: COUNTER,
         useFactory: () => ++callCount,
       });
 
@@ -145,7 +145,7 @@ describe('DI Container', () => {
       const COUNTER = new InjectionToken<number>('COUNTER');
 
       container.register({
-        token: COUNTER,
+        provide: COUNTER,
         scope: Scope.TRANSIENT,
         useFactory: () => ++callCount,
       });
@@ -163,7 +163,7 @@ describe('DI Container', () => {
       const ASYNC_DATA = new InjectionToken<string>('ASYNC_DATA');
 
       container.register({
-        token: ASYNC_DATA,
+        provide: ASYNC_DATA,
         useFactory: async () => {
           // Simulate async operation
           return 'loaded';
@@ -179,7 +179,7 @@ describe('DI Container', () => {
       const ASYNC_COUNTER = new InjectionToken<number>('ASYNC_COUNTER');
 
       container.register({
-        token: ASYNC_COUNTER,
+        provide: ASYNC_COUNTER,
         useFactory: async () => ++callCount,
       });
 
@@ -194,7 +194,7 @@ describe('DI Container', () => {
   describe('useValue and useExisting', () => {
     it('should resolve useValue providers directly', () => {
       const TOKEN = new InjectionToken<string>('TOKEN');
-      container.register({ token: TOKEN, useValue: 'hello' });
+      container.register({ provide: TOKEN, useValue: 'hello' });
       expect(container.resolve(TOKEN)).toBe('hello');
     });
 
@@ -207,7 +207,7 @@ describe('DI Container', () => {
       const ALIAS = new InjectionToken<RealService>('ALIAS');
 
       container.register(RealService);
-      container.register({ token: ALIAS, useExisting: RealService });
+      container.register({ provide: ALIAS, useExisting: RealService });
 
       const fromAlias = container.resolve(ALIAS);
       const fromReal = container.resolve(RealService);
@@ -237,7 +237,7 @@ describe('DI Container', () => {
     it('should throw for sync resolve of async factory', () => {
       const TOKEN = new InjectionToken('ASYNC');
       container.register({
-        token: TOKEN,
+        provide: TOKEN,
         useFactory: async () => 'data',
       });
 
@@ -368,8 +368,8 @@ describe('DI Container', () => {
         name() { return 'B'; }
       }
 
-      container.register({ token: TOKEN_A, useClass: ServiceA });
-      container.register({ token: TOKEN_B, useClass: ServiceB });
+      container.register({ provide: TOKEN_A, useClass: ServiceA });
+      container.register({ provide: TOKEN_B, useClass: ServiceB });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const a = container.resolve<any>(TOKEN_A);

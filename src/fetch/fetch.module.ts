@@ -9,7 +9,7 @@ import type { HttpModuleOptions } from './fetch.types';
 
 @Module({
   providers: [
-    { token: HTTP_MODULE_OPTIONS, useValue: {} },
+    { provide: HTTP_MODULE_OPTIONS, useValue: {} },
     HttpService,
   ],
   exports: [HttpService],
@@ -27,7 +27,7 @@ export class HttpModule {
     return {
       module: moduleClass,
       providers: [
-        { token: HTTP_MODULE_OPTIONS, useValue: options },
+        { provide: HTTP_MODULE_OPTIONS, useValue: options },
         HttpService,
       ],
     };
@@ -47,7 +47,7 @@ export class HttpModule {
       module: moduleClass,
       providers: [
         {
-          token: HTTP_MODULE_OPTIONS,
+          provide: HTTP_MODULE_OPTIONS,
           useFactory: options.useFactory,
           inject: options.inject ?? [],
         },

@@ -29,19 +29,19 @@ export class OverrideBy {
   ) {}
 
   useValue(value: unknown): TestingModuleBuilder {
-    this.builder['addOverride']({ token: this.token, provider: { token: this.token, useValue: value } });
+    this.builder['addOverride']({ token: this.token, provider: { provide: this.token, useValue: value } });
     return this.builder;
   }
 
   useClass(cls: Type): TestingModuleBuilder {
-    this.builder['addOverride']({ token: this.token, provider: { token: this.token, useClass: cls } });
+    this.builder['addOverride']({ token: this.token, provider: { provide: this.token, useClass: cls } });
     return this.builder;
   }
 
   useFactory(options: { factory: (...args: unknown[]) => unknown; inject?: Token[] }): TestingModuleBuilder {
     this.builder['addOverride']({
       token: this.token,
-      provider: { token: this.token, useFactory: options.factory, inject: options.inject },
+      provider: { provide: this.token, useFactory: options.factory, inject: options.inject },
     });
     return this.builder;
   }
@@ -95,7 +95,7 @@ export class TestingModuleBuilder {
 
     // Bootstrap (mirrors VelaFactory.create)
     const container = new Container();
-    container.register({ token: Container, useValue: container });
+    container.register({ provide: Container, useValue: container });
 
     // Register overrides BEFORE module loading so ModuleLoader skips originals
     for (const override of this.overrides) {
