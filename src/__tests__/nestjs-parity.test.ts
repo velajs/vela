@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   VelaFactory,
   Controller,
+  Version,
   Get,
   Post,
   Delete,
@@ -19,6 +20,7 @@ import {
   APP_PIPE,
   APP_INTERCEPTOR,
   APP_FILTER,
+  APP_MIDDLEWARE,
   UseGuards,
   UseInterceptors,
   UsePipes,
@@ -34,13 +36,20 @@ import {
   ConfigModule,
   ConfigService,
   ParseIntPipe,
+  ParseFloatPipe,
+  ParseBoolPipe,
+  ParseEnumPipe,
+  ParseArrayPipe,
   DefaultValuePipe,
   Res,
+  createParamDecorator,
 } from '../index.js';
 import type {
   OnModuleInit,
   OnApplicationBootstrap,
   OnModuleDestroy,
+  OnApplicationShutdown,
+  BeforeApplicationShutdown,
 } from '../index.js';
 import type {
   MiddlewareConsumer,
@@ -1445,5 +1454,435 @@ describe('APP_FILTER global exception filter', () => {
     // Generic Error not caught by DomainFilter → falls through to default 500
     const uncaught = await app.getHonoApp().request('/domain-filter/uncaught');
     expect(uncaught.status).toBe(500);
+  });
+});
+
+// =============================================================================
+// Shutdown lifecycle hooks
+// =============================================================================
+
+describe('Shutdown lifecycle hooks', () => {
+  it('beforeApplicationShutdown and onApplicationShutdown are called on close()', async () => {
+    const log: string[] = [];
+
+    @Injectable()
+    class ServiceA implements BeforeApplicationShutdown, OnApplicationShutdown {
+      beforeApplicationShutdown(signal?: string) { log.push(`A:before:${signal ?? 'none'}`); }
+      onApplicationShutdown(signal?: string) { log.push(`A:shutdown:${signal ?? 'none'}`); }
+    }
+
+    @Injectable()
+    class ServiceB implements BeforeApplicationShutdown, OnApplicationShutdown {
+      beforeApplicationShutdown(signal?: string) { log.push(`B:before:${signal ?? 'none'}`); }
+      onApplicationShutdown(signal?: string) { log.push(`B:shutdown:${signal ?? 'none'}`); }
+    }
+
+    @Controller('/shutdown-test')
+    class ShutdownController {
+      constructor(private a: ServiceA, private b: ServiceB) {}
+      @Get() handle() { return { ok: true }; }
+    }
+
+    @Module({ providers: [ServiceA, ServiceB], controllers: [ShutdownController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    await app.close('SIGTERM');
+
+    expect(log).toContain('A:before:SIGTERM');
+    expect(log).toContain('B:before:SIGTERM');
+    expect(log).toContain('A:shutdown:SIGTERM');
+    expect(log).toContain('B:shutdown:SIGTERM');
+
+    // beforeApplicationShutdown phase precedes onApplicationShutdown phase
+    const firstBefore = Math.min(log.indexOf('A:before:SIGTERM'), log.indexOf('B:before:SIGTERM'));
+    const firstShutdown = Math.min(log.indexOf('A:shutdown:SIGTERM'), log.indexOf('B:shutdown:SIGTERM'));
+    expect(firstBefore).toBeLessThan(firstShutdown);
+  });
+
+  it('close() with no signal passes undefined to hooks', async () => {
+    let capturedSignal: string | undefined = 'NOT_SET';
+
+    @Injectable()
+    class WatchService implements OnApplicationShutdown {
+      onApplicationShutdown(signal?: string) { capturedSignal = signal; }
+    }
+
+    @Controller('/noop-shutdown')
+    class NoopController {
+      constructor(private w: WatchService) {}
+      @Get() handle() { return {}; }
+    }
+
+    @Module({ providers: [WatchService], controllers: [NoopController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    await app.close();
+    expect(capturedSignal).toBeUndefined();
+  });
+
+  it('hooks run in reverse instantiation order (LIFO)', async () => {
+    const log: string[] = [];
+
+    @Injectable()
+    class FirstService implements OnApplicationShutdown {
+      onApplicationShutdown() { log.push('first'); }
+    }
+
+    @Injectable()
+    class LastService implements OnApplicationShutdown {
+      onApplicationShutdown() { log.push('last'); }
+    }
+
+    @Controller('/lifo')
+    class LifoController {
+      constructor(private f: FirstService, private l: LastService) {}
+      @Get() handle() { return {}; }
+    }
+
+    @Module({ providers: [FirstService, LastService], controllers: [LifoController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    await app.close();
+
+    // LIFO — last instantiated shuts down first
+    expect(log.indexOf('last')).toBeLessThan(log.indexOf('first'));
+  });
+});
+
+// =============================================================================
+// APP_MIDDLEWARE global middleware token
+// =============================================================================
+
+describe('APP_MIDDLEWARE global middleware token', () => {
+  it('applies middleware to all routes via token', async () => {
+    @Injectable()
+    class RequestIdMiddleware {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      use(c: any, next: () => Promise<void>) {
+        c.header('x-request-id', 'mw-injected');
+        return next();
+      }
+    }
+
+    @Controller('/mw-global')
+    class MwController {
+      @Get() handle() { return { ok: true }; }
+    }
+
+    @Controller('/mw-global-2')
+    class MwController2 {
+      @Get() handle() { return { ok: 2 }; }
+    }
+
+    @Module({
+      providers: [
+        RequestIdMiddleware,
+        { provide: APP_MIDDLEWARE, useExisting: RequestIdMiddleware },
+      ],
+      controllers: [MwController, MwController2],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    const res1 = await hono.request('/mw-global');
+    expect(res1.status).toBe(200);
+    expect(res1.headers.get('x-request-id')).toBe('mw-injected');
+
+    const res2 = await hono.request('/mw-global-2');
+    expect(res2.status).toBe(200);
+    expect(res2.headers.get('x-request-id')).toBe('mw-injected');
+  });
+
+  it('multiple APP_MIDDLEWARE providers run in order', async () => {
+    const log: string[] = [];
+
+    @Injectable()
+    class MiddlewareA {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      use(_c: any, next: () => Promise<void>) { log.push('A'); return next(); }
+    }
+
+    @Injectable()
+    class MiddlewareB {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      use(_c: any, next: () => Promise<void>) { log.push('B'); return next(); }
+    }
+
+    @Controller('/mw-order')
+    class OrderController {
+      @Get() handle() { return { ok: true }; }
+    }
+
+    @Module({
+      providers: [
+        MiddlewareA,
+        MiddlewareB,
+        { provide: APP_MIDDLEWARE, useExisting: MiddlewareA },
+        { provide: APP_MIDDLEWARE, useExisting: MiddlewareB },
+      ],
+      controllers: [OrderController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    await app.getHonoApp().request('/mw-order');
+
+    expect(log).toEqual(['A', 'B']);
+  });
+});
+
+// =============================================================================
+// More built-in pipes
+// =============================================================================
+
+describe('More built-in pipes', () => {
+  it('ParseFloatPipe converts string to float', async () => {
+    @Controller('/float')
+    class FloatController {
+      @Get()
+      handle(@Query('v', ParseFloatPipe) v: number) { return { v }; }
+    }
+
+    @Module({ controllers: [FloatController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/float?v=3.14');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ v: 3.14 });
+  });
+
+  it('ParseFloatPipe throws 400 for non-numeric string', async () => {
+    @Controller('/float-err')
+    class FloatErrController {
+      @Get()
+      handle(@Query('v', ParseFloatPipe) v: number) { return { v }; }
+    }
+
+    @Module({ controllers: [FloatErrController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    expect((await app.getHonoApp().request('/float-err?v=abc')).status).toBe(400);
+  });
+
+  it('ParseBoolPipe converts "true" and "false" strings', async () => {
+    @Controller('/bool')
+    class BoolController {
+      @Get()
+      handle(@Query('v', ParseBoolPipe) v: boolean) { return { v }; }
+    }
+
+    @Module({ controllers: [BoolController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    expect(await (await app.getHonoApp().request('/bool?v=true')).json()).toEqual({ v: true });
+    expect(await (await app.getHonoApp().request('/bool?v=false')).json()).toEqual({ v: false });
+  });
+
+  it('ParseBoolPipe throws 400 for non-boolean string', async () => {
+    @Controller('/bool-err')
+    class BoolErrController {
+      @Get()
+      handle(@Query('v', ParseBoolPipe) v: boolean) { return { v }; }
+    }
+
+    @Module({ controllers: [BoolErrController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    expect((await app.getHonoApp().request('/bool-err?v=yes')).status).toBe(400);
+  });
+
+  it('ParseEnumPipe validates against an enum', async () => {
+    enum Direction { Up = 'up', Down = 'down' }
+
+    @Controller('/enum')
+    class EnumController {
+      @Get()
+      handle(@Query('dir', new ParseEnumPipe(Direction)) dir: Direction) { return { dir }; }
+    }
+
+    @Module({ controllers: [EnumController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    expect(await (await app.getHonoApp().request('/enum?dir=up')).json()).toEqual({ dir: 'up' });
+    expect((await app.getHonoApp().request('/enum?dir=left')).status).toBe(400);
+  });
+
+  it('ParseArrayPipe splits comma-delimited query string', async () => {
+    @Controller('/arr')
+    class ArrController {
+      @Get()
+      handle(@Query('ids', new ParseArrayPipe()) ids: string[]) { return { ids }; }
+    }
+
+    @Module({ controllers: [ArrController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    expect(await (await app.getHonoApp().request('/arr?ids=a,b,c')).json()).toEqual({ ids: ['a', 'b', 'c'] });
+  });
+
+  it('ParseArrayPipe with custom separator', async () => {
+    @Controller('/arr-sep')
+    class ArrSepController {
+      @Get()
+      handle(@Query('ids', new ParseArrayPipe({ separator: '|' })) ids: string[]) { return { ids }; }
+    }
+
+    @Module({ controllers: [ArrSepController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    expect(await (await app.getHonoApp().request('/arr-sep?ids=a|b|c')).json()).toEqual({ ids: ['a', 'b', 'c'] });
+  });
+
+  it('ParseArrayPipe optional returns empty array when absent', async () => {
+    @Controller('/arr-opt')
+    class ArrOptController {
+      @Get()
+      handle(@Query('ids', new ParseArrayPipe({ optional: true })) ids: string[]) { return { ids }; }
+    }
+
+    @Module({ controllers: [ArrOptController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    expect(await (await app.getHonoApp().request('/arr-opt')).json()).toEqual({ ids: [] });
+  });
+});
+
+// =============================================================================
+// createParamDecorator
+// =============================================================================
+
+describe('createParamDecorator', () => {
+  it('extracts custom value from request context', async () => {
+    const UserAgent = createParamDecorator(
+      (_data: unknown, ctx: ExecutionContext) => ctx.getRequest().headers.get('user-agent') ?? 'unknown',
+    );
+
+    @Controller('/custom-param')
+    class CustomController {
+      @Get()
+      handle(@UserAgent() ua: string) { return { ua }; }
+    }
+
+    @Module({ controllers: [CustomController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/custom-param', {
+      headers: { 'user-agent': 'test-bot/1.0' },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ua: 'test-bot/1.0' });
+  });
+
+  it('passes data argument to the factory', async () => {
+    const CustomHeader = createParamDecorator(
+      (data: string, ctx: ExecutionContext) => ctx.getRequest().headers.get(data),
+    );
+
+    @Controller('/custom-header')
+    class HeaderController {
+      @Get()
+      handle(@CustomHeader('x-tenant') tenant: string) { return { tenant }; }
+    }
+
+    @Module({ controllers: [HeaderController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/custom-header', {
+      headers: { 'x-tenant': 'acme' },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ tenant: 'acme' });
+  });
+
+  it('works with inline pipe applied after the factory', async () => {
+    const RawAge = createParamDecorator(
+      (_data: unknown, ctx: ExecutionContext) => ctx.getRequest().headers.get('x-age'),
+    );
+
+    @Controller('/age-pipe')
+    class AgePipeController {
+      @Get()
+      handle(@RawAge(undefined, ParseIntPipe) age: number) { return { age }; }
+    }
+
+    @Module({ controllers: [AgePipeController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/age-pipe', { headers: { 'x-age': '25' } });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ age: 25 });
+  });
+});
+
+// =============================================================================
+// Route versioning (@Version)
+// =============================================================================
+
+describe('Route versioning (@Version)', () => {
+  it('@Controller({ version }) adds /v{n} prefix to all routes', async () => {
+    @Controller({ prefix: '/things', version: 1 })
+    class ThingsV1Controller {
+      @Get() list() { return { version: 1 }; }
+    }
+
+    @Module({ controllers: [ThingsV1Controller] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    expect((await app.getHonoApp().request('/v1/things')).status).toBe(200);
+    expect(await (await app.getHonoApp().request('/v1/things')).json()).toEqual({ version: 1 });
+    expect((await app.getHonoApp().request('/things')).status).toBe(404);
+  });
+
+  it('@Controller({ version: [1,2] }) registers route at multiple versions', async () => {
+    @Controller({ prefix: '/multi', version: [1, 2] })
+    class MultiController {
+      @Get() handle() { return { ok: true }; }
+    }
+
+    @Module({ controllers: [MultiController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    expect((await app.getHonoApp().request('/v1/multi')).status).toBe(200);
+    expect((await app.getHonoApp().request('/v2/multi')).status).toBe(200);
+    expect((await app.getHonoApp().request('/multi')).status).toBe(404);
+  });
+
+  it('@Version() on method overrides controller version', async () => {
+    @Controller({ prefix: '/docs', version: 1 })
+    class DocController {
+      @Get() v1() { return { v: 1 }; }
+
+      @Version(2)
+      @Get('/new')
+      v2() { return { v: 2 }; }
+    }
+
+    @Module({ controllers: [DocController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    expect(await (await hono.request('/v1/docs')).json()).toEqual({ v: 1 });
+    expect(await (await hono.request('/v2/docs/new')).json()).toEqual({ v: 2 });
+    expect((await hono.request('/v1/docs/new')).status).toBe(404);
   });
 });
