@@ -6,6 +6,7 @@ import { MiddlewareBuilder } from '../http/middleware-consumer';
 import type { MiddlewareRouteDefinition } from '../http/middleware-consumer';
 import type { RouteManager } from '../http/route.manager';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_MIDDLEWARE, APP_PIPE } from '../pipeline/tokens';
+import { MetadataRegistry } from '../registry/metadata.registry';
 import { getModuleMetadata, isModule } from './decorators';
 
 interface DynamicModule {
@@ -117,6 +118,11 @@ export class ModuleLoader {
         if (!this.collectedControllers.includes(controller)) {
           this.collectedControllers.push(controller);
         }
+      }
+
+      // Propagate module-level Use* decorators (@UseGuards, @UseInterceptors, etc.) to each controller
+      for (const controller of allControllers) {
+        MetadataRegistry.propagateControllerComponents(moduleClass, controller);
       }
 
       this.processedModules.add(moduleClass);

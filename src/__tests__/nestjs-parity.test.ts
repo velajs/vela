@@ -20,6 +20,9 @@ import {
   APP_INTERCEPTOR,
   APP_FILTER,
   UseGuards,
+  UseInterceptors,
+  UsePipes,
+  UseFilters,
   SetMetadata,
   Reflector,
   applyDecorators,
@@ -30,8 +33,9 @@ import {
   ConfigModule,
   ConfigService,
 } from '../index.js';
-import type { MiddlewareConsumer, NestModule, CanActivate, ExecutionContext } from '../index.js';
 import type {
+  MiddlewareConsumer,
+  NestModule,
   CanActivate,
   ExecutionContext,
   NestInterceptor,
@@ -1019,5 +1023,107 @@ describe('ConfigModule isGlobal', () => {
     const res = await app.getHonoApp().request('/cfg-global');
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ val: 'vela' });
+  });
+});
+
+// =============================================================================
+// Module-level Use* decorators
+// =============================================================================
+
+describe('Module-level Use* decorators', () => {
+  it('@UseGuards() on module applies guard to all controllers in module', async () => {
+    @Injectable()
+    class AuthGuard implements CanActivate {
+      canActivate(ctx: ExecutionContext): boolean {
+        return ctx.getRequest().headers.get('x-auth') === 'secret';
+      }
+    }
+
+    @Controller('/mod-guard-a')
+    class ControllerA {
+      @Get()
+      handle() { return { from: 'a' }; }
+    }
+
+    @Controller('/mod-guard-b')
+    class ControllerB {
+      @Get()
+      handle() { return { from: 'b' }; }
+    }
+
+    @UseGuards(AuthGuard)
+    @Module({ providers: [AuthGuard], controllers: [ControllerA, ControllerB] })
+    class FeatureModule {}
+
+    @Module({ imports: [FeatureModule] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    expect((await hono.request('/mod-guard-a')).status).toBe(403);
+    expect((await hono.request('/mod-guard-b')).status).toBe(403);
+
+    const ok1 = await hono.request('/mod-guard-a', { headers: { 'x-auth': 'secret' } });
+    expect(ok1.status).toBe(200);
+    expect(await ok1.json()).toEqual({ from: 'a' });
+
+    const ok2 = await hono.request('/mod-guard-b', { headers: { 'x-auth': 'secret' } });
+    expect(ok2.status).toBe(200);
+  });
+
+  it('@UseInterceptors() on module wraps all controllers', async () => {
+    @Injectable()
+    class WrapInterceptor implements NestInterceptor {
+      async intercept(_ctx: ExecutionContext, next: CallHandler) {
+        const result = await next.handle();
+        return { wrapped: true, data: result };
+      }
+    }
+
+    @Controller('/mod-intercept')
+    class InterceptedController {
+      @Get()
+      handle() { return { raw: true }; }
+    }
+
+    @UseInterceptors(WrapInterceptor)
+    @Module({ providers: [WrapInterceptor], controllers: [InterceptedController] })
+    class FeatureModule {}
+
+    @Module({ imports: [FeatureModule] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/mod-intercept');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ wrapped: true, data: { raw: true } });
+  });
+
+  it('@UsePipes() on module transforms params for all controllers', async () => {
+    @Injectable()
+    class UpperCasePipe implements PipeTransform {
+      transform(value: unknown, _meta: ArgumentMetadata): unknown {
+        return typeof value === 'string' ? value.toUpperCase() : value;
+      }
+    }
+
+    @Controller('/mod-pipe')
+    class PipedController {
+      @Get('/:name')
+      handle(@Param('name') name: string) { return { name }; }
+    }
+
+    @UsePipes(UpperCasePipe)
+    @Module({ providers: [UpperCasePipe], controllers: [PipedController] })
+    class FeatureModule {}
+
+    @Module({ imports: [FeatureModule] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/mod-pipe/hello');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ name: 'HELLO' });
   });
 });

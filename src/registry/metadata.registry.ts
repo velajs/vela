@@ -313,6 +313,21 @@ export class MetadataRegistry {
     return this.customHandlerMeta.get(target)?.get(handler);
   }
 
+  // Propagate all controller-level components from one class to another.
+  // Used by ModuleLoader to apply module-level decorators to every controller.
+
+  static propagateControllerComponents(from: Constructor, to: Constructor): void {
+    for (const [, typeMap] of this.controller.entries()) {
+      const components = typeMap.get(from);
+      if (components && components.length > 0) {
+        if (!typeMap.has(to)) {
+          typeMap.set(to, []);
+        }
+        typeMap.get(to)!.push(...components);
+      }
+    }
+  }
+
   // Clear all (for testing)
 
   static clear(): void {
