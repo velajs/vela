@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { z } from 'zod';
 import {
   VelaFactory,
@@ -57,6 +57,26 @@ import {
   UnauthorizedException,
   ForbiddenException,
   ConflictException,
+  Cookie,
+  Cookies,
+  RawBody,
+  Test,
+  CacheModule,
+  CacheInterceptor,
+  CacheKey,
+  CacheTTL,
+  EventEmitterModule,
+  EventEmitter,
+  EventEmitterSubscriber,
+  OnEvent,
+  ScheduleModule,
+  ScheduleRegistry,
+  Cron,
+  Interval,
+  ThrottlerModule,
+  ThrottlerGuard,
+  Throttle,
+  SkipThrottle,
 } from '../index.js';
 import type {
   OnModuleInit,
@@ -2362,5 +2382,551 @@ describe('MiddlewareConsumer.exclude()', () => {
 
     expect(log).toContain('GET:/meth-excl/open');
     expect(log).not.toContain('POST:/meth-excl/login');
+  });
+});
+
+// =============================================================================
+// @Cookie() / @Cookies() param decorators
+// =============================================================================
+
+describe('@Cookie() / @Cookies() param decorators', () => {
+  it('extracts a single cookie by name', async () => {
+    @Controller('/ck')
+    class CkController {
+      @Get()
+      handle(@Cookie('session') session: string) { return { session }; }
+    }
+
+    @Module({ controllers: [CkController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/ck', {
+      headers: { Cookie: 'session=abc123' },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ session: 'abc123' });
+  });
+
+  it('returns undefined for a missing cookie', async () => {
+    @Controller('/ck-miss')
+    class CkMissController {
+      @Get()
+      handle(@Cookie('token') token: string | undefined) { return { token: token ?? null }; }
+    }
+
+    @Module({ controllers: [CkMissController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/ck-miss');
+    expect(await res.json()).toEqual({ token: null });
+  });
+
+  it('@Cookies() with no name returns all cookies as an object', async () => {
+    @Controller('/cks-all')
+    class CksAllController {
+      @Get()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      handle(@Cookies() cookies: any) { return cookies; }
+    }
+
+    @Module({ controllers: [CksAllController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/cks-all', {
+      headers: { Cookie: 'a=1; b=2' },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({ a: '1', b: '2' });
+  });
+});
+
+// =============================================================================
+// @RawBody() param decorator
+// =============================================================================
+
+describe('@RawBody() param decorator', () => {
+  it('injects the request body as Uint8Array', async () => {
+    @Controller('/raw')
+    class RawController {
+      @Post()
+      handle(@RawBody() body: Uint8Array) {
+        const text = new TextDecoder().decode(body);
+        return { text };
+      }
+    }
+
+    @Module({ controllers: [RawController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/raw', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: 'hello-raw',
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ text: 'hello-raw' });
+  });
+
+  it('allows HMAC-style verification from raw bytes', async () => {
+    @Controller('/raw-verify')
+    class RawVerifyController {
+      @Post()
+      handle(@RawBody() body: Uint8Array) {
+        return { byteLength: body.byteLength, isUint8Array: body instanceof Uint8Array };
+      }
+    }
+
+    @Module({ controllers: [RawVerifyController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const payload = JSON.stringify({ event: 'push' });
+    const res = await app.getHonoApp().request('/raw-verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload,
+    });
+    expect(res.status).toBe(200);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const body = await res.json() as any;
+    expect(body.byteLength).toBe(new TextEncoder().encode(payload).byteLength);
+    expect(body.isUint8Array).toBe(true);
+  });
+});
+
+// =============================================================================
+// CacheInterceptor / @CacheKey / @CacheTTL
+// =============================================================================
+
+describe('CacheInterceptor / @CacheKey / @CacheTTL', () => {
+  it('caches response — handler called only once for the same URL', async () => {
+    let callCount = 0;
+
+    @Controller('/cache-test')
+    class CacheController {
+      @Get()
+      @UseInterceptors(CacheInterceptor)
+      getData() { callCount++; return { n: callCount }; }
+    }
+
+    @Module({ imports: [CacheModule.forRoot()], controllers: [CacheController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    const r1 = await hono.request('/cache-test');
+    const r2 = await hono.request('/cache-test');
+
+    expect(await r1.json()).toEqual({ n: 1 });
+    expect(await r2.json()).toEqual({ n: 1 }); // served from cache
+    expect(callCount).toBe(1);
+  });
+
+  it('@CacheKey overrides the cache key', async () => {
+    let callCount = 0;
+
+    @Controller('/cache-key')
+    class CacheKeyController {
+      @Get()
+      @UseInterceptors(CacheInterceptor)
+      @CacheKey('my-custom-key')
+      getData() { callCount++; return { n: callCount }; }
+    }
+
+    @Module({ imports: [CacheModule.forRoot()], controllers: [CacheKeyController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    await hono.request('/cache-key');
+    await hono.request('/cache-key');
+    expect(callCount).toBe(1);
+  });
+
+  it('@CacheTTL sets per-route TTL', async () => {
+    let callCount = 0;
+
+    @Controller('/cache-ttl')
+    class CacheTTLController {
+      @Get()
+      @UseInterceptors(CacheInterceptor)
+      @CacheTTL(0.05) // 50ms TTL (TTL is in seconds)
+      getData() { callCount++; return { n: callCount }; }
+    }
+
+    @Module({ imports: [CacheModule.forRoot()], controllers: [CacheTTLController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    await hono.request('/cache-ttl');
+    expect(callCount).toBe(1);
+
+    // Wait well past TTL to ensure expiry (TTL = 50ms)
+    await new Promise((r) => setTimeout(r, 120));
+
+    await hono.request('/cache-ttl');
+    expect(callCount).toBe(2); // cache expired, handler called again
+  });
+});
+
+// =============================================================================
+// EventEmitter / @OnEvent
+// =============================================================================
+
+describe('EventEmitter / @OnEvent', () => {
+  beforeEach(() => {
+    // MetadataRegistry.clear() wipes EventEmitterModule metadata since it's a
+    // plain @Module() class whose decorator runs once at import time.
+    MetadataRegistry.setModuleOptions(EventEmitterModule, {
+      providers: [EventEmitter, EventEmitterSubscriber],
+      exports: [EventEmitter],
+    });
+  });
+
+  it('@OnEvent handler is auto-subscribed and fires on emit', async () => {
+    const received: string[] = [];
+
+    @Injectable()
+    class UserListener {
+      @OnEvent('user.created')
+      onCreated(name: string) { received.push(name); }
+    }
+
+    @Module({ imports: [EventEmitterModule], providers: [UserListener] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    await app.get(EventEmitter).emit('user.created', 'Alice');
+    expect(received).toEqual(['Alice']);
+  });
+
+  it('EventEmitter is injectable into controllers', async () => {
+    @Controller('/emit')
+    class EmitController {
+      constructor(private emitter: EventEmitter) {}
+
+      @Get()
+      async fire() {
+        await this.emitter.emit('ping', 'pong');
+        return { fired: true };
+      }
+    }
+
+    @Module({ imports: [EventEmitterModule], controllers: [EmitController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/emit');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ fired: true });
+  });
+
+  it('wildcard patterns (* and **) match event names', async () => {
+    const received: string[] = [];
+
+    @Injectable()
+    class WildListener {
+      @OnEvent('order.*')
+      onShallow(payload: string) { received.push(`shallow:${payload}`); }
+
+      @OnEvent('order.**')
+      onDeep(payload: string) { received.push(`deep:${payload}`); }
+    }
+
+    @Module({ imports: [EventEmitterModule], providers: [WildListener] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const emitter = app.get(EventEmitter);
+
+    await emitter.emit('order.created', 'A');
+    await emitter.emit('order.item.added', 'B');
+
+    expect(received).toContain('shallow:A');
+    expect(received).not.toContain('shallow:B'); // * doesn't match nested
+    expect(received).toContain('deep:A');
+    expect(received).toContain('deep:B');
+  });
+});
+
+// =============================================================================
+// ScheduleModule / @Cron / @Interval
+// =============================================================================
+
+describe('ScheduleModule / @Cron / @Interval', () => {
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('ScheduleRegistry discovers @Cron jobs after bootstrap', async () => {
+    @Injectable()
+    class TaskService {
+      @Cron('0 * * * *')
+      runHourly() {}
+
+      @Cron('0 0 * * *')
+      runDaily() {}
+    }
+
+    @Module({ imports: [ScheduleModule.forRoot()], providers: [TaskService] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const registry = app.get(ScheduleRegistry);
+
+    const jobs = registry.getCronJobs();
+    expect(jobs).toHaveLength(2);
+    expect(jobs.map((j) => j.expression)).toContain('0 * * * *');
+    expect(jobs.map((j) => j.expression)).toContain('0 0 * * *');
+  });
+
+  it('ScheduleRegistry discovers @Interval jobs after bootstrap', async () => {
+    @Injectable()
+    class TimerService {
+      @Interval(1000)
+      tick() {}
+    }
+
+    @Module({ imports: [ScheduleModule.forRoot()], providers: [TimerService] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const jobs = app.get(ScheduleRegistry).getIntervalJobs();
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0].ms).toBe(1000);
+  });
+
+  it('@Interval fires repeatedly when enableTimers is true', async () => {
+    vi.useFakeTimers();
+    let count = 0;
+
+    @Injectable()
+    class PulseService {
+      @Interval(100)
+      pulse() { count++; }
+    }
+
+    @Module({ imports: [ScheduleModule.forRoot({ enableTimers: true })], providers: [PulseService] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    await vi.advanceTimersByTimeAsync(350);
+    expect(count).toBe(3);
+    await app.close();
+  });
+
+  it('timers stop after app.close()', async () => {
+    vi.useFakeTimers();
+    let count = 0;
+
+    @Injectable()
+    class StopService {
+      @Interval(100)
+      tick() { count++; }
+    }
+
+    @Module({ imports: [ScheduleModule.forRoot({ enableTimers: true })], providers: [StopService] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    await vi.advanceTimersByTimeAsync(150);
+    const before = count;
+    await app.close();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(count).toBe(before); // no more ticks
+  });
+});
+
+// =============================================================================
+// TestingModule / Test.createTestingModule
+// =============================================================================
+
+describe('TestingModule / Test.createTestingModule', () => {
+  it('compiles a module and resolves providers via get()', async () => {
+    @Injectable()
+    class AppService {
+      greet() { return 'hello'; }
+    }
+
+    const moduleRef = await Test.createTestingModule({
+      providers: [AppService],
+    }).compile();
+
+    const svc = moduleRef.get(AppService);
+    expect(svc.greet()).toBe('hello');
+  });
+
+  it('overrideProvider().useValue() replaces the real implementation', async () => {
+    @Injectable()
+    class DataService {
+      fetch() { return 'real'; }
+    }
+
+    @Controller('/test-override')
+    class TestController {
+      constructor(private svc: DataService) {}
+      @Get() handle() { return { val: this.svc.fetch() }; }
+    }
+
+    const moduleRef = await Test.createTestingModule({
+      providers: [DataService],
+      controllers: [TestController],
+    })
+      .overrideProvider(DataService)
+      .useValue({ fetch: () => 'mocked' })
+      .compile();
+
+    const app = moduleRef.createNestApplication();
+    const res = await app.getHonoApp().request('/test-override');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ val: 'mocked' });
+  });
+
+  it('overrideGuard().useValue() bypasses a blocking guard', async () => {
+    @Injectable()
+    class BlockGuard implements CanActivate {
+      canActivate() { return false; }
+    }
+
+    @Controller('/guard-test')
+    @UseGuards(BlockGuard)
+    class GuardedController {
+      @Get() secret() { return { ok: true }; }
+    }
+
+    const moduleRef = await Test.createTestingModule({
+      providers: [BlockGuard],
+      controllers: [GuardedController],
+    })
+      .overrideGuard(BlockGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
+
+    const app = moduleRef.createNestApplication();
+    const res = await app.getHonoApp().request('/guard-test');
+    expect(res.status).toBe(200);
+  });
+
+  it('close() triggers onModuleDestroy lifecycle hook', async () => {
+    const log: string[] = [];
+
+    @Injectable()
+    class CleanupService {
+      onModuleDestroy() { log.push('destroyed'); }
+    }
+
+    const moduleRef = await Test.createTestingModule({
+      providers: [CleanupService],
+    }).compile();
+
+    await moduleRef.close();
+    expect(log).toContain('destroyed');
+  });
+});
+
+// =============================================================================
+// ThrottlerModule / @Throttle / @SkipThrottle
+// =============================================================================
+
+describe('ThrottlerModule / @Throttle / @SkipThrottle', () => {
+  it('blocks requests exceeding the rate limit with 429', async () => {
+    @Controller('/throttle-test')
+    class ThrottleController {
+      @Get() handle() { return { ok: true }; }
+    }
+
+    @Module({
+      imports: [ThrottlerModule.forRoot({ limit: 2, ttl: 60000 })],
+      controllers: [ThrottleController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    expect((await hono.request('/throttle-test')).status).toBe(200);
+    expect((await hono.request('/throttle-test')).status).toBe(200);
+    expect((await hono.request('/throttle-test')).status).toBe(429);
+  });
+
+  it('sets X-RateLimit-* headers on responses', async () => {
+    @Controller('/throttle-hdrs')
+    class ThrottleHdrsController {
+      @Get() handle() { return {}; }
+    }
+
+    @Module({
+      imports: [ThrottlerModule.forRoot({ limit: 5, ttl: 60000 })],
+      controllers: [ThrottleHdrsController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/throttle-hdrs');
+    expect(res.headers.get('X-RateLimit-Limit')).toBe('5');
+    expect(res.headers.get('X-RateLimit-Remaining')).toBe('4');
+  });
+
+  it('@SkipThrottle() bypasses rate limiting on that route', async () => {
+    @Controller('/throttle-skip')
+    class SkipController {
+      @Get('/limited') limited() { return { limited: true }; }
+
+      @Get('/unlimited')
+      @SkipThrottle()
+      unlimited() { return { unlimited: true }; }
+    }
+
+    @Module({
+      imports: [ThrottlerModule.forRoot({ limit: 1, ttl: 60000 })],
+      controllers: [SkipController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    await hono.request('/throttle-skip/limited');
+    expect((await hono.request('/throttle-skip/limited')).status).toBe(429);
+
+    // Unlimited route should still respond regardless of global limit state
+    expect((await hono.request('/throttle-skip/unlimited')).status).toBe(200);
+    expect((await hono.request('/throttle-skip/unlimited')).status).toBe(200);
+  });
+
+  it('@Throttle() overrides global config per route', async () => {
+    @Controller('/throttle-override')
+    class OverrideController {
+      @Get('/default') defRoute() { return {}; }
+
+      @Get('/tight')
+      @Throttle({ limit: 1, ttl: 60000 })
+      tightRoute() { return {}; }
+    }
+
+    @Module({
+      imports: [ThrottlerModule.forRoot({ limit: 10, ttl: 60000 })],
+      controllers: [OverrideController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    // Tight route blocks on 2nd request
+    expect((await hono.request('/throttle-override/tight')).status).toBe(200);
+    expect((await hono.request('/throttle-override/tight')).status).toBe(429);
+
+    // Default route still has limit 10
+    for (let i = 0; i < 10; i++) {
+      expect((await hono.request('/throttle-override/default')).status).toBe(200);
+    }
   });
 });
