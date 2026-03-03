@@ -4173,9 +4173,7 @@ describe('setGlobalPrefix', () => {
     @Module({ controllers: [UserController] })
     class AppModule {}
 
-    const app = await VelaFactory.create(AppModule);
-    app.setGlobalPrefix('api');
-    await app.rebuild();
+    const app = await VelaFactory.create(AppModule, { globalPrefix: 'api' });
 
     const hono = app.getHonoApp();
     expect(await (await hono.request('/api/users')).status).toBe(200);
@@ -4191,9 +4189,7 @@ describe('setGlobalPrefix', () => {
     @Module({ controllers: [ItemController] })
     class AppModule {}
 
-    const app = await VelaFactory.create(AppModule);
-    app.setGlobalPrefix('/v1');
-    await app.rebuild();
+    const app = await VelaFactory.create(AppModule, { globalPrefix: '/v1' });
 
     const res = await app.getHonoApp().request('/v1/items/99');
     expect(res.status).toBe(200);
@@ -4209,9 +4205,7 @@ describe('setGlobalPrefix', () => {
     @Module({ controllers: [ProductController] })
     class AppModule {}
 
-    const app = await VelaFactory.create(AppModule);
-    app.setGlobalPrefix('api/v2');
-    await app.rebuild();
+    const app = await VelaFactory.create(AppModule, { globalPrefix: 'api/v2' });
 
     const res = await app.getHonoApp().request('/api/v2/products/featured');
     expect(res.status).toBe(200);
@@ -5052,7 +5046,6 @@ describe('Reflector.createDecorator() in HTTP context', () => {
 
     const app = await VelaFactory.create(AppModule);
     app.useGlobalGuards(new TypedRolesGuard(new Reflector()));
-    await app.rebuild();
 
     const hono = app.getHonoApp();
 
@@ -5183,7 +5176,6 @@ describe('Interceptor response transformation', () => {
 
     const app = await VelaFactory.create(AppModule);
     app.useGlobalInterceptors(new DataWrapInterceptor());
-    await app.rebuild();
 
     const res = await app.getHonoApp().request('/wrap');
     expect(res.status).toBe(200);
@@ -5211,7 +5203,6 @@ describe('Interceptor response transformation', () => {
 
     const app = await VelaFactory.create(AppModule);
     app.useGlobalInterceptors(new TimingInterceptor());
-    await app.rebuild();
 
     const res = await app.getHonoApp().request('/timed');
     expect(res.status).toBe(200);
@@ -5253,7 +5244,6 @@ describe('Interceptor response transformation', () => {
 
     const app = await VelaFactory.create(AppModule);
     app.useGlobalInterceptors(new GlobalInterceptor());
-    await app.rebuild();
 
     await app.getHonoApp().request('/order-intercept');
     expect(order).toEqual(['global:before', 'local:before', 'handler', 'local:after', 'global:after']);
@@ -5544,7 +5534,6 @@ describe('Guard + pipe + interceptor combined priority order', () => {
 
     const app = await VelaFactory.create(AppModule);
     app.useGlobalGuards(new BlockingGuard());
-    await app.rebuild();
 
     const res = await app.getHonoApp().request('/combined');
     expect(res.status).toBe(403);
@@ -5576,7 +5565,6 @@ describe('Guard + pipe + interceptor combined priority order', () => {
 
     const app = await VelaFactory.create(AppModule);
     app.useGlobalPipes(new UpperPipe());
-    await app.rebuild();
 
     const res = await app.getHonoApp().request('/pipe-order?name=alice');
     expect(res.status).toBe(200);
@@ -5613,7 +5601,6 @@ describe('Guard + pipe + interceptor combined priority order', () => {
 
     const app = await VelaFactory.create(AppModule);
     app.useGlobalGuards(new GlobalGuard());
-    await app.rebuild();
 
     await app.getHonoApp().request('/guard-order');
     expect(order).toEqual(['global', 'ctrl', 'method']);
@@ -5708,9 +5695,8 @@ describe('app.useGlobalInterceptors() / useGlobalGuards() / useGlobalPipes() pos
     const before = await app.getHonoApp().request('/post-create');
     expect(await before.json()).toEqual({ original: true });
 
-    // Add interceptor and rebuild
+    // Add interceptor
     app.useGlobalInterceptors(new EnvelopeInterceptor());
-    await app.rebuild();
 
     const after = await app.getHonoApp().request('/post-create');
     expect(await after.json()).toEqual({ envelope: { original: true } });
@@ -5736,7 +5722,6 @@ describe('app.useGlobalInterceptors() / useGlobalGuards() / useGlobalPipes() pos
     expect(before.status).toBe(200);
 
     app.useGlobalGuards(new DenyAllGuard());
-    await app.rebuild();
 
     const after = await app.getHonoApp().request('/post-guard');
     expect(after.status).toBe(403);
@@ -5767,7 +5752,6 @@ describe('app.useGlobalInterceptors() / useGlobalGuards() / useGlobalPipes() pos
     expect(before.status).toBe(500); // unhandled
 
     app.useGlobalFilters(new CustomFilter());
-    await app.rebuild();
 
     const after = await app.getHonoApp().request('/post-filter');
     expect(after.status).toBe(418);
@@ -5938,9 +5922,15 @@ describe('NestMiddleware with DI', () => {
     })
     class AppModule {}
 
-    const app = await VelaFactory.create(AppModule);
-    app.useGlobalMiddleware(AuditMiddleware as unknown as () => void);
-    await app.rebuild();
+    const app = await VelaFactory.create(AppModule, {
+      middleware: [
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (c: any, next: () => Promise<void>) => {
+          calls.push(`${c.req.method} ${c.req.path}`);
+          return next();
+        },
+      ],
+    });
 
     await app.getHonoApp().request('/audit');
     expect(calls).toEqual(['GET /audit']);

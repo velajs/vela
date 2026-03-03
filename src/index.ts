@@ -242,6 +242,7 @@ export { MetadataRegistry } from './registry/index';
 
 // Module internals (for @velajs/testing and advanced usage)
 export { RouteManager } from './http/index';
+export type { RouteManagerOptions } from './http/index';
 export { ModuleLoader } from './module/index';
 
 // Component Manager (for advanced usage)
@@ -255,3 +256,6 @@ export { Serialize, SerializerInterceptor, SERIALIZE_METADATA } from './serializ
 
 // Testing
 export { Test, TestingModule, TestingModuleBuilder } from './testing/index';
+
+// Hono Adapter Utilities
+export { getRuntimeKey, env } from 'hono/adapter';

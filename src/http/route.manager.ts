@@ -1,4 +1,5 @@
 import { type Context, Hono } from 'hono';
+import { getCookie } from 'hono/cookie';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { HttpMethod, ParamType } from '../constants';
 import { getMetadata } from '../metadata';
@@ -34,6 +35,20 @@ interface RedirectOverride {
   statusCode?: number;
 }
 
+type MethodRegistrar = (app: Hono, path: string, h: (c: Context) => Response | Promise<Response>) => void;
+type ParamExtractor = (c: Context, param: ParamMetadata) => unknown | Promise<unknown>;
+
+export interface RouteManagerOptions {
+  getClientIp?: (c: Context) => string | null;
+  middleware?: MiddlewareHandler[];
+  globalPrefix?: string;
+}
+
+const defaultGetClientIp = (c: Context): string | null =>
+  c.req.raw.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+  ?? c.req.raw.headers.get('x-real-ip')
+  ?? null;
+
 function parseRedirectResult(result: unknown): RedirectOverride | undefined {
   if (typeof result !== 'object' || result === null) return undefined;
   if (!('url' in result)) return undefined;
@@ -48,6 +63,34 @@ function parseRedirectResult(result: unknown): RedirectOverride | undefined {
 }
 
 export class RouteManager {
+  private static readonly METHOD_REGISTRAR = new Map<string, MethodRegistrar>([
+    [HttpMethod.GET,     (app, p, h) => app.get(p, h)],
+    [HttpMethod.POST,    (app, p, h) => app.post(p, h)],
+    [HttpMethod.PUT,     (app, p, h) => app.put(p, h)],
+    [HttpMethod.PATCH,   (app, p, h) => app.patch(p, h)],
+    [HttpMethod.DELETE,  (app, p, h) => app.delete(p, h)],
+    [HttpMethod.OPTIONS, (app, p, h) => app.options(p, h)],
+    [HttpMethod.HEAD,    (app, p, h) => app.get(p, h)],
+    [HttpMethod.ALL,     (app, p, h) => app.all(p, h)],
+  ]);
+
+  private static readonly PARAM_EXTRACTORS = new Map<ParamType, ParamExtractor>([
+    [ParamType.PARAM,    (c, p) => p.name ? c.req.param(p.name) : c.req.param()],
+    [ParamType.QUERY,    (c, p) => p.name ? c.req.query(p.name) : c.req.query()],
+    [ParamType.BODY,     async (c, p) => {
+      let body: unknown;
+      try { body = await c.req.json(); } catch { return undefined; }
+      return p.name && body !== null && typeof body === 'object'
+        ? (body as Record<string, unknown>)[p.name]
+        : body;
+    }],
+    [ParamType.HEADERS,  (c, p) => p.name ? c.req.header(p.name) : c.req.header()],
+    [ParamType.REQUEST,  (c) => c],
+    [ParamType.RESPONSE, (c) => c],
+    [ParamType.COOKIE,   (c, p) => p.name ? getCookie(c, p.name) : getCookie(c)],
+    [ParamType.RAW_BODY, async (c) => new Uint8Array(await c.req.arrayBuffer())],
+  ]);
+
   private controllers: ControllerRegistration[] = [];
   private globalMiddleware: Array<MiddlewareType | Token<NestMiddleware>> = [];
   private globalPipes: Array<PipeType | Token<PipeTransform>> = [];
@@ -57,7 +100,11 @@ export class RouteManager {
   private globalPrefix = '';
   private consumerMiddlewareDefinitions: MiddlewareRouteDefinition[] = [];
 
-  constructor(private container: Container) {}
+  private readonly ipExtractor: (c: Context) => string | null;
+
+  constructor(private container: Container, options: RouteManagerOptions = {}) {
+    this.ipExtractor = options.getClientIp ?? defaultGetClientIp;
+  }
 
   registerConsumerMiddleware(definitions: MiddlewareRouteDefinition[]): this {
     this.consumerMiddlewareDefinitions.push(...definitions);
@@ -184,29 +231,14 @@ export class RouteManager {
 
     // Register MiddlewareConsumer-configured middleware
     for (const def of this.consumerMiddlewareDefinitions) {
+      const matchRoute   = this.compileRouteMatcher(def.routes);
+      const matchExclude = this.compileRouteMatcher(def.excludes);
+
       app.use('*', (c, next) => {
-        const reqPath = c.req.path;
-        const reqMethod = c.req.method;
+        const path   = c.req.path;
+        const method = c.req.method;
 
-        const matches = def.routes.some((route) => {
-          if (!this.matchesConsumerPath(reqPath, route.path)) return false;
-          if (route.method && route.method !== RequestMethod.ALL) {
-            if (reqMethod !== route.method) return false;
-          }
-          return true;
-        });
-
-        if (!matches) return next();
-
-        const excluded = def.excludes.some((exclude) => {
-          if (!this.matchesConsumerPath(reqPath, exclude.path)) return false;
-          if (exclude.method && exclude.method !== RequestMethod.ALL) {
-            if (reqMethod !== exclude.method) return false;
-          }
-          return true;
-        });
-
-        if (excluded) return next();
+        if (!matchRoute(path, method) || matchExclude(path, method)) return next();
 
         const requestContainer = this.getRequestContainer(c);
         const runChain = (index: number): Promise<void> => {
@@ -432,7 +464,7 @@ export class RouteManager {
       return [c];
     }
 
-    const maxIndex = Math.max(...paramMetadata.map((p) => p.index));
+    const maxIndex = paramMetadata.at(-1)!.index;
     const args: unknown[] = new Array(maxIndex + 1).fill(undefined);
 
     for (const param of paramMetadata) {
@@ -463,73 +495,11 @@ export class RouteManager {
     return args;
   }
 
-  private async extractParam(c: Context, param: ParamMetadata): Promise<unknown> {
-    switch (param.type) {
-      case ParamType.PARAM:
-        return param.name ? c.req.param(param.name) : c.req.param();
-
-      case ParamType.QUERY:
-        return param.name ? c.req.query(param.name) : c.req.query();
-
-      case ParamType.BODY: {
-        let body: unknown;
-        try {
-          body = await c.req.json();
-        } catch {
-          return undefined;
-        }
-        if (param.name && body !== null && typeof body === 'object') {
-          return (body as Record<string, unknown>)[param.name];
-        }
-        return body;
-      }
-
-      case ParamType.HEADERS:
-        if (param.name) {
-          return c.req.header(param.name);
-        }
-        const headers: Record<string, string> = {};
-        c.req.raw.headers.forEach((value, key) => {
-          headers[key] = value;
-        });
-        return headers;
-
-      case ParamType.REQUEST:
-        return c;
-
-      case ParamType.RESPONSE:
-        return c;
-
-      case ParamType.IP:
-        return c.req.raw.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
-          c.req.raw.headers.get('x-real-ip') ??
-          null;
-
-      case ParamType.COOKIE: {
-        const cookieHeader = c.req.raw.headers.get('cookie') ?? '';
-        const cookies: Record<string, string> = {};
-        for (const pair of cookieHeader.split(';')) {
-          const eqIdx = pair.indexOf('=');
-          if (eqIdx === -1) continue;
-          const name = pair.slice(0, eqIdx).trim();
-          const value = pair.slice(eqIdx + 1).trim();
-          if (name) cookies[name] = decodeURIComponent(value);
-        }
-        return param.name ? (cookies[param.name] ?? undefined) : cookies;
-      }
-
-      case ParamType.RAW_BODY: {
-        const buffer = await c.req.arrayBuffer();
-        return new Uint8Array(buffer);
-      }
-
-      default:
-        // Custom param decorator — use factory if available
-        if (param.factory) {
-          return param.factory(param.name, c);
-        }
-        return undefined;
-    }
+  private extractParam(c: Context, param: ParamMetadata): unknown | Promise<unknown> {
+    if (param.type === ParamType.IP) return this.ipExtractor(c);
+    const extractor = RouteManager.PARAM_EXTRACTORS.get(param.type);
+    if (extractor) return extractor(c, param);
+    return param.factory ? param.factory(param.name, c) : undefined;
   }
 
   private createResponse(c: Context, result: unknown, statusCode?: number): Response {
@@ -552,35 +522,10 @@ export class RouteManager {
     handler: (c: Context) => Response | Promise<Response>,
   ): void {
     const normalizedPath = path || '/';
-    switch (method) {
-      case HttpMethod.GET:
-        app.get(normalizedPath, handler);
-        break;
-      case HttpMethod.POST:
-        app.post(normalizedPath, handler);
-        break;
-      case HttpMethod.PUT:
-        app.put(normalizedPath, handler);
-        break;
-      case HttpMethod.PATCH:
-        app.patch(normalizedPath, handler);
-        break;
-      case HttpMethod.DELETE:
-        app.delete(normalizedPath, handler);
-        break;
-      case HttpMethod.OPTIONS:
-        app.options(normalizedPath, handler);
-        break;
-      case HttpMethod.HEAD:
-        // Hono converts HEAD to GET internally, so register as GET
-        app.get(normalizedPath, handler);
-        break;
-      case HttpMethod.ALL:
-        app.all(normalizedPath, handler);
-        break;
-      default:
-        app.on(method.toUpperCase(), normalizedPath, handler);
-    }
+    const registrar = RouteManager.METHOD_REGISTRAR.get(method);
+    registrar
+      ? registrar(app, normalizedPath, handler)
+      : app.on(method.toUpperCase(), normalizedPath, handler);
   }
 
   private buildVersionedPaths(
@@ -606,15 +551,30 @@ export class RouteManager {
     return `${cleanPrefix}${cleanPath}` || '/';
   }
 
-  private matchesConsumerPath(reqPath: string, routePath: string): boolean {
-    if (routePath === '*') return true;
-    const normalized = routePath.startsWith('/') ? routePath : `/${routePath}`;
-    if (reqPath === normalized) return true;
-    if (reqPath.startsWith(`${normalized}/`)) return true;
-    if (normalized.endsWith('*')) {
-      return reqPath.startsWith(normalized.slice(0, -1));
+  private compilePathMatcher(routePath: string): (reqPath: string) => boolean {
+    if (routePath === '*') return () => true;
+    const norm = routePath.startsWith('/') ? routePath : `/${routePath}`;
+    if (norm.endsWith('*')) {
+      const prefix = norm.slice(0, -1);
+      return (p) => p.startsWith(prefix);
     }
-    return false;
+    return (p) => p === norm || p.startsWith(`${norm}/`);
+  }
+
+  private compileRouteMatcher(
+    routes: Array<{ path: string; method?: RequestMethod }>,
+  ): (path: string, method: string) => boolean {
+    const matchers = routes.map((route) => {
+      const matchPath = this.compilePathMatcher(route.path);
+      return (path: string, method: string): boolean => {
+        if (!matchPath(path)) return false;
+        if (route.method && route.method !== RequestMethod.ALL) return method === route.method;
+        return true;
+      };
+    });
+    if (matchers.length === 0) return () => false;
+    if (matchers.length === 1) return matchers[0]!;
+    return (path, method) => matchers.some((m) => m(path, method));
   }
 
   getControllers(): ControllerRegistration[] {

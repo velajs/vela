@@ -165,9 +165,7 @@ describe('Global prefix', () => {
     @Module({ controllers: [UserController, PostController] })
     class AppModule {}
 
-    const app = await VelaFactory.create(AppModule);
-    app.setGlobalPrefix('/api');
-    await app.rebuild();
+    const app = await VelaFactory.create(AppModule, { globalPrefix: '/api' });
     const hono = app.getHonoApp();
 
     const res1 = await hono.request('/api/users');
@@ -195,9 +193,7 @@ describe('Global prefix', () => {
     @Module({ controllers: [UserController] })
     class AppModule {}
 
-    const app = await VelaFactory.create(AppModule);
-    app.setGlobalPrefix('/api');
-    await app.rebuild();
+    const app = await VelaFactory.create(AppModule, { globalPrefix: '/api' });
     const hono = app.getHonoApp();
 
     // Global prefix + version + controller prefix

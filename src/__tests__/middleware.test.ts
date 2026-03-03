@@ -90,15 +90,6 @@ describe('Middleware', () => {
   it('should support global middleware via app.useGlobalMiddleware()', async () => {
     const requestIds: string[] = [];
 
-    class RequestIdMiddleware implements NestMiddleware {
-      async use(c: Context, next: Next) {
-        const id = 'req-' + Math.random().toString(36).slice(2, 8);
-        c.set('requestId', id);
-        requestIds.push(id);
-        await next();
-      }
-    }
-
     @Controller('/global-mw')
     class GlobalMwController {
       @Get()
@@ -115,9 +106,16 @@ describe('Middleware', () => {
     @Module({ controllers: [GlobalMwController] })
     class AppModule {}
 
-    const app = await VelaFactory.create(AppModule);
-    app.useGlobalMiddleware(new RequestIdMiddleware());
-    await app.rebuild();
+    const app = await VelaFactory.create(AppModule, {
+      middleware: [
+        async (c: Context, next: Next) => {
+          const id = 'req-' + Math.random().toString(36).slice(2, 8);
+          c.set('requestId', id);
+          requestIds.push(id);
+          await next();
+        },
+      ],
+    });
     const hono = app.getHonoApp();
 
     await hono.request('/global-mw');

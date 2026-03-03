@@ -7,6 +7,7 @@ import {
   MetadataRegistry,
 } from '../index.js';
 import { CorsModule } from '../cors/index.js';
+import { cors } from 'hono/cors';
 
 beforeEach(() => {
   MetadataRegistry.clear();
@@ -119,9 +120,9 @@ describe('CorsModule', () => {
     @Module({ controllers: [TestController] })
     class AppModule {}
 
-    const app = await VelaFactory.create(AppModule);
-    app.enableCors({ origin: '*' });
-    await app.rebuild();
+    const app = await VelaFactory.create(AppModule, {
+      middleware: [cors({ origin: '*' })],
+    });
 
     const res = await app.getHonoApp().request('/test/hello', {
       headers: { Origin: 'http://example.com' },

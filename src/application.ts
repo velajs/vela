@@ -1,8 +1,6 @@
 import type { Hono } from 'hono';
-import { cors } from 'hono/cors';
 import type { Container } from './container/container';
 import type { Token } from './container/types';
-import type { CorsOptions } from './cors/cors.types';
 import type { RouteManager } from './http/route.manager';
 import {
   hasBeforeApplicationShutdown,
@@ -11,13 +9,11 @@ import {
   hasOnModuleDestroy,
   hasOnModuleInit,
 } from './lifecycle/index';
-import type { NestMiddleware } from './pipeline/types';
-import type { FilterType, GuardType, InterceptorType, MiddlewareType, PipeType } from './registry/types';
+import type { FilterType, GuardType, InterceptorType, PipeType } from './registry/types';
 
 export class VelaApplication {
   private instances: unknown[] = [];
   private honoApp: Hono | null = null;
-  private routesBuilt = false;
 
   constructor(
     private readonly container: Container,
@@ -27,16 +23,6 @@ export class VelaApplication {
   /** Pre-build routes (handles async CRUD imports). Called by VelaFactory. */
   async initRoutes(): Promise<void> {
     this.honoApp = await this.routeManager.build();
-    this.routesBuilt = true;
-  }
-
-  /**
-   * Rebuild routes. Call after registering global middleware/guards/etc.
-   * Not needed if you don't use useGlobalMiddleware() post-create.
-   */
-  async rebuild(): Promise<void> {
-    this.honoApp = await this.routeManager.build();
-    this.routesBuilt = true;
   }
 
   private getApp(): Hono {
@@ -64,23 +50,15 @@ export class VelaApplication {
     this.instances = instances;
   }
 
-  /**
-   * Set a global prefix for all routes (e.g. '/api').
-   * Must be called before getHonoApp()/fetch, or call rebuild() after.
-   */
-  setGlobalPrefix(prefix: string): this {
-    this.routeManager.setGlobalPrefix(prefix);
-    return this;
+  get<T>(token: Token<T>): T {
+    return this.container.resolve(token);
   }
 
-  /**
-   * Register global middleware. Call rebuild() after if called post-create.
-   * Controller/method-level @UseMiddleware works without rebuild.
-   */
-  useGlobalMiddleware(...middleware: MiddlewareType[]): this {
-    this.routeManager.useGlobalMiddleware(...middleware);
-    return this;
+  getHonoApp(): Hono {
+    return this.getApp();
   }
+
+  // Pipeline components — applied at request time, no rebuild needed
 
   useGlobalPipes(...pipes: PipeType[]): this {
     this.routeManager.useGlobalPipes(...pipes);
@@ -100,30 +78,6 @@ export class VelaApplication {
   useGlobalFilters(...filters: FilterType[]): this {
     this.routeManager.useGlobalFilters(...filters);
     return this;
-  }
-
-  enableCors(options: CorsOptions = {}): this {
-    const corsMiddleware = cors({
-      origin: options.origin ?? '*',
-      allowMethods: options.allowMethods,
-      allowHeaders: options.allowHeaders,
-      exposeHeaders: options.exposeHeaders,
-      credentials: options.credentials,
-      maxAge: options.maxAge,
-    });
-    const mw: NestMiddleware = {
-      use: (c, next) => corsMiddleware(c, next) as Promise<Response | void>,
-    };
-    this.routeManager.useGlobalMiddleware(mw);
-    return this;
-  }
-
-  get<T>(token: Token<T>): T {
-    return this.container.resolve(token);
-  }
-
-  getHonoApp(): Hono {
-    return this.getApp();
   }
 
   // Lifecycle hooks
