@@ -74,10 +74,9 @@ export class ComponentManager {
     handlerName: string | symbol,
   ): ComponentTypeMap[T][] {
     const handlerKey = `${controller.name}:${String(handlerName)}`;
-    const globalComponents = Array.from(MetadataRegistry.getGlobal(type));
     const controllerComponents = MetadataRegistry.getController(type, controller);
     const handlerComponents = MetadataRegistry.getHandler(type, handlerKey);
-    return [...globalComponents, ...controllerComponents, ...handlerComponents];
+    return [...MetadataRegistry.getGlobal(type), ...controllerComponents, ...handlerComponents];
   }
 
   // Type-specific resolvers

@@ -90,13 +90,19 @@ export class ParseUUIDPipe implements PipeTransform<string, string> {
 export class ParseEnumPipe<T extends Record<string, string | number>>
   implements PipeTransform<string, T[keyof T]>
 {
-  constructor(private readonly enumType: T) {}
+  private readonly allowedValues: Set<string | number>;
+  private readonly valuesLabel: string;
+
+  constructor(enumType: T) {
+    const values = Object.values(enumType);
+    this.allowedValues = new Set(values);
+    this.valuesLabel = values.join(', ');
+  }
 
   transform(value: string, metadata: ArgumentMetadata): T[keyof T] {
-    const enumValues = Object.values(this.enumType);
-    if (!enumValues.includes(value as T[keyof T])) {
+    if (!this.allowedValues.has(value)) {
       throw new BadRequestException(
-        `Validation failed (${enumValues.join(', ')} expected)${metadata.data ? ` for parameter '${metadata.data}'` : ''}`,
+        `Validation failed (${this.valuesLabel} expected)${metadata.data ? ` for parameter '${metadata.data}'` : ''}`,
       );
     }
     return value as T[keyof T];

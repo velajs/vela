@@ -1,14 +1,28 @@
-import { Scope } from '../constants';
-import type { Container } from '../container/container';
-import { ForwardRef, InjectionToken } from '../container/types';
-import type { ProviderOptions, Token, Type } from '../container/types';
-import { MiddlewareBuilder } from '../http/middleware-consumer';
-import type { MiddlewareRouteDefinition } from '../http/middleware-consumer';
-import type { RouteManager } from '../http/route.manager';
-import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_MIDDLEWARE, APP_PIPE } from '../pipeline/tokens';
-import { MetadataRegistry } from '../registry/metadata.registry';
-import { getModuleMetadata, isModule } from './decorators';
-import type { ModuleImport } from './types';
+import { Scope } from "../constants";
+import type { Container } from "../container/container";
+import { ForwardRef, InjectionToken } from "../container/types";
+import type { ProviderOptions, Token, Type } from "../container/types";
+import { MiddlewareBuilder } from "../http/middleware-consumer";
+import type { MiddlewareRouteDefinition } from "../http/middleware-consumer";
+import type { RouteManager } from "../http/route.manager";
+import {
+  APP_FILTER,
+  APP_GUARD,
+  APP_INTERCEPTOR,
+  APP_MIDDLEWARE,
+  APP_PIPE,
+} from "../pipeline/tokens";
+
+const APP_TOKENS = new Set<Token>([
+  APP_GUARD,
+  APP_PIPE,
+  APP_INTERCEPTOR,
+  APP_FILTER,
+  APP_MIDDLEWARE,
+]);
+import { MetadataRegistry } from "../registry/metadata.registry";
+import { getModuleMetadata, isModule } from "./decorators";
+import type { ModuleImport } from "./types";
 
 interface DynamicModule {
   module: Type;
@@ -21,17 +35,17 @@ interface DynamicModule {
 
 function isDynamicModule(value: unknown): value is DynamicModule {
   return (
-    typeof value === 'object' &&
+    typeof value === "object" &&
     value !== null &&
-    'module' in value &&
-    typeof (value as DynamicModule).module === 'function'
+    "module" in value &&
+    typeof (value as DynamicModule).module === "function"
   );
 }
 
 export class ModuleLoader {
   private processedModules = new Set<Type>();
   private processingStack = new Set<Type>();
-  private collectedControllers: Type[] = [];
+  private collectedControllers = new Set<Type>();
   private registeredProviders: Token[] = [];
   private moduleExportsCache = new Map<Type, Set<Token>>();
   private globalExports = new Set<Token>();
@@ -58,7 +72,9 @@ export class ModuleLoader {
     }
   }
 
-  private processModule(moduleClassOrDynamic: Type | DynamicModule): Set<Token> {
+  private processModule(
+    moduleClassOrDynamic: Type | DynamicModule,
+  ): Set<Token> {
     // Handle dynamic modules ({ module, imports, controllers, providers })
     let moduleClass: Type;
     let extraImports: ModuleImport[] = [];
@@ -77,20 +93,22 @@ export class ModuleLoader {
     if (this.processedModules.has(moduleClass)) {
       // Even if already processed, still collect extra controllers from dynamic module
       for (const controller of extraControllers) {
-        if (!this.collectedControllers.includes(controller)) {
-          this.collectedControllers.push(controller);
-        }
+        this.collectedControllers.add(controller);
       }
       return this.moduleExportsCache.get(moduleClass) ?? new Set();
     }
 
     if (this.processingStack.has(moduleClass)) {
-      const chain = [...this.processingStack, moduleClass].map((m) => m.name).join(' -> ');
+      const chain = [...this.processingStack, moduleClass]
+        .map((m) => m.name)
+        .join(" -> ");
       throw new Error(`Circular module dependency detected: ${chain}`);
     }
 
     if (!isModule(moduleClass)) {
-      throw new Error(`${moduleClass.name} is not a module. Add @Module() decorator to the class.`);
+      throw new Error(
+        `${moduleClass.name} is not a module. Add @Module() decorator to the class.`,
+      );
     }
 
     const metadata = getModuleMetadata(moduleClass);
@@ -108,11 +126,11 @@ export class ModuleLoader {
         const isForwardRef = entry instanceof ForwardRef;
         const importedModule = isForwardRef
           ? (entry.factory() as Type | DynamicModule)
-          : entry as Type | DynamicModule;
+          : (entry as Type | DynamicModule);
 
         const importedModuleClass = isDynamicModule(importedModule)
           ? importedModule.module
-          : importedModule as Type;
+          : (importedModule as Type);
 
         // If this forwardRef-wrapped import is currently being processed, skip it to
         // break the circular chain. Non-forwardRef circular imports still throw.
@@ -135,9 +153,7 @@ export class ModuleLoader {
       // Collect metadata controllers + dynamic module extra controllers
       const allControllers = [...metadata.controllers, ...extraControllers];
       for (const controller of allControllers) {
-        if (!this.collectedControllers.includes(controller)) {
-          this.collectedControllers.push(controller);
-        }
+        this.collectedControllers.add(controller);
       }
 
       // Propagate module-level Use* decorators (@UseGuards, @UseInterceptors, etc.) to each controller
@@ -147,10 +163,17 @@ export class ModuleLoader {
 
       this.processedModules.add(moduleClass);
 
-      const exports = this.buildExportSet(metadata.exports, allProviders, importedProviders);
+      const exports = this.buildExportSet(
+        metadata.exports,
+        allProviders,
+        importedProviders,
+      );
       this.moduleExportsCache.set(moduleClass, exports);
 
-      const isGlobal = metadata.isGlobal || (isDynamicModule(moduleClassOrDynamic) && moduleClassOrDynamic.global === true);
+      const isGlobal =
+        metadata.isGlobal ||
+        (isDynamicModule(moduleClassOrDynamic) &&
+          moduleClassOrDynamic.global === true);
       if (isGlobal) {
         for (const token of exports) {
           this.globalExports.add(token);
@@ -158,9 +181,14 @@ export class ModuleLoader {
       }
 
       // Call configure() if the module implements NestModule
-      if (typeof (moduleClass as { prototype?: { configure?: unknown } }).prototype?.configure === 'function') {
+      if (
+        typeof (moduleClass as { prototype?: { configure?: unknown } })
+          .prototype?.configure === "function"
+      ) {
         try {
-          const instance = new moduleClass() as { configure: (c: MiddlewareBuilder) => void };
+          const instance = new moduleClass() as {
+            configure: (c: MiddlewareBuilder) => void;
+          };
           const builder = new MiddlewareBuilder();
           instance.configure(builder);
           this.consumerMiddlewareDefinitions.push(...builder.getDefinitions());
@@ -176,7 +204,7 @@ export class ModuleLoader {
   }
 
   private registerProvider(provider: Type | ProviderOptions): void {
-    if (typeof provider === 'function') {
+    if (typeof provider === "function") {
       if (!this.container.has(provider)) {
         this.container.register(provider);
         this.registeredProviders.push(provider);
@@ -206,13 +234,7 @@ export class ModuleLoader {
   }
 
   private isAppToken(token: Token): boolean {
-    return (
-      token === APP_GUARD ||
-      token === APP_PIPE ||
-      token === APP_INTERCEPTOR ||
-      token === APP_FILTER ||
-      token === APP_MIDDLEWARE
-    );
+    return APP_TOKENS.has(token);
   }
 
   private buildExportSet(
@@ -221,15 +243,14 @@ export class ModuleLoader {
     importedProviders: Set<Token>,
   ): Set<Token> {
     const exportSet = new Set<Token>();
+    const providerTokens = new Set<Token>();
+    for (const p of providers) {
+      const token = typeof p === "function" ? p : p.provide;
+      if (token !== undefined) providerTokens.add(token);
+    }
 
     for (const exported of exports) {
-      const isLocalProvider = providers.some((p) => {
-        if (typeof p === 'function') {
-          return p === exported;
-        }
-        return p.provide === exported;
-      });
-
+      const isLocalProvider = providerTokens.has(exported as Token);
       const isImportedProvider = importedProviders.has(exported as Token);
 
       if (!isLocalProvider && !isImportedProvider) {
@@ -262,7 +283,7 @@ export class ModuleLoader {
   }
 
   async resolveAllInstances(): Promise<unknown[]> {
-    const instances: unknown[] = [];
+    const instanceSet = new Set<unknown>();
 
     for (const token of this.registeredProviders) {
       try {
@@ -270,7 +291,7 @@ export class ModuleLoader {
           continue;
         }
         const instance = await this.container.resolveAsync(token);
-        instances.push(instance);
+        instanceSet.add(instance);
       } catch {
         // Skip unresolvable tokens
       }
@@ -282,14 +303,12 @@ export class ModuleLoader {
           continue;
         }
         const instance = await this.container.resolveAsync(controller);
-        if (!instances.includes(instance)) {
-          instances.push(instance);
-        }
+        instanceSet.add(instance);
       } catch {
         // Skip unresolvable controllers
       }
     }
 
-    return instances;
+    return [...instanceSet];
   }
 }
