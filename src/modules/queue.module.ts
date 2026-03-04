@@ -20,7 +20,7 @@ export class QueueModule {
     return {
       module: moduleClass as unknown as Type,
       providers: [
-        { token: QUEUE_BINDING_REF, useValue: ref },
+        { provide: QUEUE_BINDING_REF, useValue: ref },
         QueueService,
       ],
     };

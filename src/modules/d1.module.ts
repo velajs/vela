@@ -20,7 +20,7 @@ export class D1Module {
     return {
       module: moduleClass as unknown as Type,
       providers: [
-        { token: D1_BINDING_REF, useValue: ref },
+        { provide: D1_BINDING_REF, useValue: ref },
         D1Service,
       ],
     };

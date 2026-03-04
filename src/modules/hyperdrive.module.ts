@@ -20,7 +20,7 @@ export class HyperdriveModule {
     return {
       module: moduleClass as unknown as Type,
       providers: [
-        { token: HYPERDRIVE_BINDING_REF, useValue: ref },
+        { provide: HYPERDRIVE_BINDING_REF, useValue: ref },
         HyperdriveService,
       ],
     };

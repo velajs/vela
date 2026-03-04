@@ -20,7 +20,7 @@ export class R2Module {
     return {
       module: moduleClass as unknown as Type,
       providers: [
-        { token: R2_BINDING_REF, useValue: ref },
+        { provide: R2_BINDING_REF, useValue: ref },
         R2Service,
       ],
     };

@@ -62,7 +62,7 @@
   "devDependencies": {
     "@swc/cli": "^0.8.0",
     "@swc/core": "^1.15.11",
-    "@velajs/vela": "^0.2.0",
+    "@velajs/vela": "link:../vela",
     "hono": "^4",
     "typescript": "^5",
     "unplugin-swc": "^1.5.9",

@@ -20,7 +20,7 @@ export class KVModule {
     return {
       module: moduleClass as unknown as Type,
       providers: [
-        { token: KV_BINDING_REF, useValue: ref },
+        { provide: KV_BINDING_REF, useValue: ref },
         KVService,
       ],
     };

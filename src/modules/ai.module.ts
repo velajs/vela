@@ -20,7 +20,7 @@ export class AIModule {
     return {
       module: moduleClass as unknown as Type,
       providers: [
-        { token: AI_BINDING_REF, useValue: ref },
+        { provide: AI_BINDING_REF, useValue: ref },
         AIService,
       ],
     };

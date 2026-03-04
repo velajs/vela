@@ -20,7 +20,7 @@ export class VectorizeModule {
     return {
       module: moduleClass as unknown as Type,
       providers: [
-        { token: VECTORIZE_BINDING_REF, useValue: ref },
+        { provide: VECTORIZE_BINDING_REF, useValue: ref },
         VectorizeService,
       ],
     };

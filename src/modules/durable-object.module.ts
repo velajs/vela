@@ -20,7 +20,7 @@ export class DurableObjectModule {
     return {
       module: moduleClass as unknown as Type,
       providers: [
-        { token: DO_BINDING_REF, useValue: ref },
+        { provide: DO_BINDING_REF, useValue: ref },
         DurableObjectService,
       ],
     };
