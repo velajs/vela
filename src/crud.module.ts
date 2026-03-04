@@ -1,12 +1,6 @@
-import { METADATA_KEYS, Scope, ComponentManager, MetadataRegistry, defineMetadata } from '@velajs/vela';
-import type { Type } from '@velajs/vela';
+import { METADATA_KEYS, Scope, ComponentManager, MetadataRegistry, defineMetadata, createModuleRef } from '@velajs/vela';
+import type { Type, DynamicModule } from '@velajs/vela';
 import type { ResourceConfig, CrudConfig } from './types';
-
-interface DynamicModule {
-  module: Type;
-  providers?: unknown[];
-  controllers?: Type[];
-}
 
 export class CrudModule {
   static forResource(path: string, config: ResourceConfig): DynamicModule {
@@ -41,17 +35,8 @@ export class CrudModule {
       }
     }
 
-    // Create a fresh dynamic module class for this resource
-    const moduleClass = class DynamicCrudModule {};
-    Object.defineProperty(moduleClass, 'name', {
-      value: `CrudModule_${path.replace(/[^a-zA-Z0-9]/g, '_')}`,
-    });
-    MetadataRegistry.setModuleOptions(moduleClass as unknown as Type, {
-      controllers: [controllerClass as unknown as Type],
-    });
-
     return {
-      module: moduleClass as unknown as Type,
+      module: createModuleRef(`CrudModule_${path.replace(/[^a-zA-Z0-9]/g, '_')}`),
       controllers: [controllerClass as unknown as Type],
     };
   }
