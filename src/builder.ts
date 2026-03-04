@@ -79,7 +79,7 @@ export async function buildCrudRoutes(
         getContext: <T = Context>() => c as T,
         getRequest: () => c.req.raw,
         switchToHttp: (): HttpArgumentsHost => ({
-          getRequest: <T = Request>() => c.req.raw as T,
+          getRequest: <T>() => c.req.raw as T,
           getResponse: <T = Context>() => c as T,
         }),
       };
