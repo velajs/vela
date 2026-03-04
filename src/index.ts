@@ -144,7 +144,7 @@ export type {
 } from './throttler/index';
 
 // Module
-export { Global, Module } from './module/index';
+export { Global, Module, createModuleRef } from './module/index';
 export type { ModuleOptions, DynamicModule, AsyncModuleOptions, ModuleImport } from './module/index';
 export { RequestMethod } from './http/index';
 export type { MiddlewareConsumer, NestModule, RouteInfo } from './http/index';

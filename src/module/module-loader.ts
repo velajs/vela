@@ -80,12 +80,14 @@ export class ModuleLoader {
     let extraImports: ModuleImport[] = [];
     let extraControllers: Type[] = [];
     let extraProviders: Array<Type | ProviderOptions> = [];
+    let extraExports: Array<Type | InjectionToken> = [];
 
     if (isDynamicModule(moduleClassOrDynamic)) {
       moduleClass = moduleClassOrDynamic.module;
       extraImports = moduleClassOrDynamic.imports ?? [];
       extraControllers = moduleClassOrDynamic.controllers ?? [];
       extraProviders = moduleClassOrDynamic.providers ?? [];
+      extraExports = moduleClassOrDynamic.exports ?? [];
     } else {
       moduleClass = moduleClassOrDynamic;
     }
@@ -106,9 +108,13 @@ export class ModuleLoader {
     }
 
     if (!isModule(moduleClass)) {
-      throw new Error(
-        `${moduleClass.name} is not a module. Add @Module() decorator to the class.`,
-      );
+      if (isDynamicModule(moduleClassOrDynamic)) {
+        MetadataRegistry.setModuleOptions(moduleClass, {});
+      } else {
+        throw new Error(
+          `${moduleClass.name} is not a module. Add @Module() decorator to the class.`,
+        );
+      }
     }
 
     const metadata = getModuleMetadata(moduleClass);
@@ -163,8 +169,9 @@ export class ModuleLoader {
 
       this.processedModules.add(moduleClass);
 
+      const allExports = [...metadata.exports, ...extraExports];
       const exports = this.buildExportSet(
-        metadata.exports,
+        allExports,
         allProviders,
         importedProviders,
       );
