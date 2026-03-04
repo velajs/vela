@@ -1,3 +1,4 @@
+import type { Context } from 'hono';
 import type {
   CanActivate,
   ExceptionFilter,
@@ -43,7 +44,7 @@ export interface ParameterMetadata {
   type: string;
   name?: string;
   pipes?: PipeType[];
-  factory?: (data: unknown, ctx: unknown) => unknown;
+  factory?: (data: unknown, ctx: Context) => unknown;
 }
 
 export interface HttpHandlerMeta {

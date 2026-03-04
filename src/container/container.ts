@@ -279,7 +279,7 @@ export class Container {
       get(_target, prop) {
         const instance = container.resolve(token);
         const value = (instance as Record<string | symbol, unknown>)[prop];
-        return typeof value === 'function' ? (value as Function).bind(instance) : value;
+        return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(instance) : value;
       },
       set(_target, prop, value) {
         const instance = container.resolve(token);
