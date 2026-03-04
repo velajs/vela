@@ -2,6 +2,7 @@ import { METADATA_KEYS } from '../constants';
 import { defineMetadata, getMetadata } from '../metadata';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import type { Constructor } from '../registry/types';
+import type { Type } from '../container/types';
 import type { ModuleMetadata, ModuleOptions } from './types';
 
 export function Global(): ClassDecorator {
@@ -33,6 +34,12 @@ export function isModule(target: Constructor): boolean {
   return MetadataRegistry.getModuleOptions(target) !== undefined ||
     getMetadata(METADATA_KEYS.MODULE, target) === true ||
     getMetadata(METADATA_KEYS.MODULE_OPTIONS, target) !== undefined;
+}
+
+export function createModuleRef(name: string): Type {
+  const moduleClass = class {} as unknown as Type;
+  Object.defineProperty(moduleClass, 'name', { value: name });
+  return moduleClass;
 }
 
 export function getModuleMetadata(target: Constructor): ModuleMetadata | undefined {

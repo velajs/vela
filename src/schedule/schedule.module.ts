@@ -1,6 +1,3 @@
-import { METADATA_KEYS } from '../constants';
-import { defineMetadata } from '../metadata';
-import { MetadataRegistry } from '../registry/metadata.registry';
 import type { InjectionToken, ProviderOptions, Type } from '../container/types';
 import type { AsyncModuleOptions, DynamicModule } from '../module/types';
 import { ScheduleExecutor } from './schedule.executor';
@@ -8,17 +5,9 @@ import { ScheduleRegistry } from './schedule.registry';
 import { SCHEDULE_MODULE_OPTIONS } from './schedule.tokens';
 import type { ScheduleModuleOptions } from './schedule.types';
 
-function makeScheduleModuleClass() {
-  const moduleClass = class ScheduleDynamicModule {} as unknown as Type;
-  Object.defineProperty(moduleClass, 'name', { value: 'ScheduleModule' });
-  defineMetadata(METADATA_KEYS.MODULE, true, moduleClass);
-  return moduleClass;
-}
-
 export class ScheduleModule {
   static forRoot(options: ScheduleModuleOptions = {}): DynamicModule {
     const { enableTimers = false } = options;
-    const moduleClass = makeScheduleModuleClass();
 
     const providers: Array<Type | ProviderOptions> = [
       { provide: SCHEDULE_MODULE_OPTIONS, useValue: options },
@@ -32,16 +21,13 @@ export class ScheduleModule {
       exports.push(ScheduleExecutor);
     }
 
-    MetadataRegistry.setModuleOptions(moduleClass, { exports });
-
-    return { module: moduleClass, providers };
+    return { module: ScheduleModule, providers, exports };
   }
 
   static forRootAsync(
     options: AsyncModuleOptions<ScheduleModuleOptions> & { enableTimers?: boolean },
   ): DynamicModule {
     const { enableTimers = false } = options;
-    const moduleClass = makeScheduleModuleClass();
 
     const providers: Array<Type | ProviderOptions> = [
       {
@@ -59,11 +45,11 @@ export class ScheduleModule {
       exports.push(ScheduleExecutor);
     }
 
-    MetadataRegistry.setModuleOptions(moduleClass, {
+    return {
+      module: ScheduleModule,
       imports: options.imports ?? [],
+      providers,
       exports,
-    });
-
-    return { module: moduleClass, providers };
+    };
   }
 }
