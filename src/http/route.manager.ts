@@ -1,4 +1,4 @@
-import { type Context, Hono } from 'hono';
+import { type Context, type MiddlewareHandler, Hono } from 'hono';
 import { getCookie } from 'hono/cookie';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { HttpMethod, ParamType } from '../constants';
@@ -497,7 +497,7 @@ export class RouteManager {
 
   private extractParam(c: Context, param: ParamMetadata): unknown | Promise<unknown> {
     if (param.type === ParamType.IP) return this.ipExtractor(c);
-    const extractor = RouteManager.PARAM_EXTRACTORS.get(param.type);
+    const extractor = RouteManager.PARAM_EXTRACTORS.get(param.type as ParamType);
     if (extractor) return extractor(c, param);
     return param.factory ? param.factory(param.name, c) : undefined;
   }
