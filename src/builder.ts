@@ -1,4 +1,4 @@
-import type { Context, Hono } from 'hono';
+import type { Context, Hono, MiddlewareHandler } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { CanActivate, ExecutionContext, HttpArgumentsHost, Type } from '@velajs/vela';
 import { ComponentManager, ForbiddenException, HttpException } from '@velajs/vela';
@@ -18,10 +18,14 @@ export async function buildCrudRoutes(
   ctx: BuilderContext,
 ): Promise<void> {
   // Dynamic import of optional peer dependencies
-  let fromHono: Function;
-  let registerCrud: Function;
-  let defineEndpoints: Function;
-  let OpenAPIHono: new () => Hono;
+  // These are typed generically because we call them with runtime-dynamic arguments.
+  // The compiler can't verify the specific overloads, so we accept the escape hatch here.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  type AnyFn = (...args: any[]) => any;
+  let fromHono!: AnyFn;
+  let registerCrud!: AnyFn;
+  let defineEndpoints!: AnyFn;
+  let OpenAPIHono!: new () => Hono;
 
   try {
     const [honoCrud, honoZodOpenapi] = await Promise.all([
@@ -62,12 +66,12 @@ export async function buildCrudRoutes(
   // Convert vela guards → Hono middleware for CRUD routes
   const guardItems = ComponentManager.getComponents('guard', controller, '' as string | symbol);
   const guards = ComponentManager.resolveGuards(guardItems);
-  const middlewares: Function[] = [];
+  const middlewares: MiddlewareHandler[] = [];
 
   if (guards.length > 0 || ctx.globalGuards.length > 0) {
     const allGuards = [...ctx.globalGuards, ...guards];
 
-    const guardMiddleware = async (c: Context, next: Function) => {
+    const guardMiddleware: MiddlewareHandler = async (c, next) => {
       const executionContext: ExecutionContext = {
         getType: <T extends string = 'http'>() => 'http' as T,
         getClass: () => controller,
