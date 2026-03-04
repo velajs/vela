@@ -1,6 +1,6 @@
 import type { Context, Hono } from 'hono';
-import type { CanActivate, ExecutionContext, Type } from '@velajs/vela';
-import { ComponentManager } from '@velajs/vela';
+import type { CanActivate, ExecutionContext, HttpArgumentsHost, Type } from '@velajs/vela';
+import { ComponentManager, ForbiddenException, HttpException } from '@velajs/vela';
 import type { CrudConfig, CrudEndpointName } from './types';
 
 interface BuilderContext {
@@ -68,16 +68,21 @@ export async function buildCrudRoutes(
 
     const guardMiddleware = async (c: Context, next: Function) => {
       const executionContext: ExecutionContext = {
+        getType: <T extends string = 'http'>() => 'http' as T,
         getClass: () => controller,
         getHandler: () => 'crud',
         getContext: <T = Context>() => c as T,
         getRequest: () => c.req.raw,
+        switchToHttp: (): HttpArgumentsHost => ({
+          getRequest: <T = Request>() => c.req.raw as T,
+          getResponse: <T = Context>() => c as T,
+        }),
       };
 
       for (const guard of allGuards) {
         const canActivate = await guard.canActivate(executionContext);
         if (!canActivate) {
-          return c.json({ statusCode: 403, message: 'Forbidden' }, 403);
+          throw new ForbiddenException();
         }
       }
 
@@ -87,8 +92,15 @@ export async function buildCrudRoutes(
     middlewares.push(guardMiddleware);
   }
 
-  // Create OpenAPIHono sub-app, proxy it via fromHono, register CRUD endpoints
-  const subApp = fromHono(new OpenAPIHono());
+  // Create OpenAPIHono sub-app with vela's exception handling
+  const openApiHono = new OpenAPIHono() as { onError: Function } & object;
+  openApiHono.onError((err: unknown, c: Context) => {
+    if (err instanceof HttpException) {
+      return c.json(err.getResponse(), err.getStatus() as 403);
+    }
+    return c.json({ statusCode: 500, message: 'Internal Server Error' }, 500);
+  });
+  const subApp = fromHono(openApiHono);
   registerCrud(subApp, '', endpoints, {
     middlewares: middlewares.length > 0 ? middlewares : undefined,
   });
