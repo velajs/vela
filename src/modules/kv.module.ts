@@ -1,5 +1,4 @@
-import { MetadataRegistry } from '@velajs/vela';
-import type { Type, DynamicModule } from '@velajs/vela';
+import { createModuleRef, type DynamicModule } from '@velajs/vela';
 import { BindingRef } from '../binding-ref';
 import { KV_BINDING_REF, bindingsRegistry } from '../tokens';
 import { KVService } from '../services/kv.service';
@@ -9,20 +8,13 @@ export class KVModule {
     const ref = new BindingRef(options.binding);
     bindingsRegistry.push(ref);
 
-    const moduleClass = class KVDynamicModule {};
-    Object.defineProperty(moduleClass, 'name', {
-      value: `KVModule_${options.binding}`,
-    });
-    MetadataRegistry.setModuleOptions(moduleClass as unknown as Type, {
-      exports: [KVService, KV_BINDING_REF],
-    });
-
     return {
-      module: moduleClass as unknown as Type,
+      module: createModuleRef(`KVModule_${options.binding}`),
       providers: [
         { provide: KV_BINDING_REF, useValue: ref },
         KVService,
       ],
+      exports: [KVService, KV_BINDING_REF],
     };
   }
 }
