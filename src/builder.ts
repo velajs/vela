@@ -1,4 +1,5 @@
 import type { Context, Hono } from 'hono';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { CanActivate, ExecutionContext, HttpArgumentsHost, Type } from '@velajs/vela';
 import { ComponentManager, ForbiddenException, HttpException } from '@velajs/vela';
 import type { CrudConfig, CrudEndpointName } from './types';
@@ -20,7 +21,7 @@ export async function buildCrudRoutes(
   let fromHono: Function;
   let registerCrud: Function;
   let defineEndpoints: Function;
-  let OpenAPIHono: new () => unknown;
+  let OpenAPIHono: new () => Hono;
 
   try {
     const [honoCrud, honoZodOpenapi] = await Promise.all([
@@ -93,10 +94,10 @@ export async function buildCrudRoutes(
   }
 
   // Create OpenAPIHono sub-app with vela's exception handling
-  const openApiHono = new OpenAPIHono() as { onError: Function } & object;
-  openApiHono.onError((err: unknown, c: Context) => {
+  const openApiHono = new OpenAPIHono();
+  openApiHono.onError((err, c) => {
     if (err instanceof HttpException) {
-      return c.json(err.getResponse(), err.getStatus() as 403);
+      return c.json(err.getResponse(), err.getStatus() as ContentfulStatusCode);
     }
     return c.json({ statusCode: 500, message: 'Internal Server Error' }, 500);
   });
