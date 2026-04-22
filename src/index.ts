@@ -6,7 +6,13 @@ export { VelaFactory, createApplication } from './factory';
 export { VelaApplication } from './application';
 
 // OpenAPI
-export { createOpenApiDocument, ApiDoc, ApiTags, zodToJsonSchema } from './openapi/index';
+export {
+  createOpenApiDocument,
+  ApiDoc,
+  ApiTags,
+  ApiResponse,
+  zodToJsonSchema,
+} from './openapi/index';
 export type {
   OpenApiDocument,
   OpenApiInfo,
@@ -16,6 +22,8 @@ export type {
   OpenApiRequestBody,
   OpenApiResponse,
   ApiDocMetadata,
+  ApiResponseEntry,
+  ApiResponseOptions,
   CreateOpenApiDocumentOptions,
   HttpVerb,
   JsonSchema,

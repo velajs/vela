@@ -86,6 +86,16 @@ export interface ApiDocMetadata {
   tags?: string[];
 }
 
+export interface ApiResponseOptions {
+  description: string;
+  /** Zod schema, DTO class (from createZodDto), or raw JSON Schema. */
+  schema?: unknown;
+}
+
+export interface ApiResponseEntry extends ApiResponseOptions {
+  status: number | string;
+}
+
 export interface CreateOpenApiDocumentOptions {
   info?: Partial<OpenApiInfo>;
   globalPrefix?: string;
