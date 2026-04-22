@@ -55,7 +55,6 @@ function collectControllers(rootModule: Type): Type[] {
 }
 
 function normalizePath(path: string): string {
-  // Hono/Nest style `:id` → OpenAPI `{id}`
   return path.replace(/:([a-zA-Z_][a-zA-Z0-9_]*)/g, '{$1}');
 }
 
@@ -66,10 +65,58 @@ function joinPath(a: string, b: string): string {
   return joined || '/';
 }
 
-function getParamSchema(param: ParameterMetadata, paramtypes?: unknown[]): JsonSchema | undefined {
-  const metatype = paramtypes?.[param.index] as { schema?: unknown } | undefined;
-  if (metatype?.schema) {
-    return zodToJsonSchema(metatype.schema);
+/**
+ * Tracks DTO classes referenced during document generation and registers
+ * each under `components.schemas`. Handles name collisions by suffixing.
+ */
+class ComponentsRegistry {
+  private schemas = new Map<string, JsonSchema>();
+  private classToKey = new WeakMap<object, string>();
+
+  ref(dtoClass: object): { $ref: string } {
+    const existing = this.classToKey.get(dtoClass);
+    if (existing) return { $ref: `#/components/schemas/${existing}` };
+
+    const baseName =
+      (dtoClass as { name?: string }).name && (dtoClass as { name: string }).name !== ''
+        ? (dtoClass as { name: string }).name
+        : 'Schema';
+
+    let key = baseName;
+    let counter = 2;
+    while (this.schemas.has(key)) {
+      key = `${baseName}${counter++}`;
+    }
+
+    this.classToKey.set(dtoClass, key);
+    const staticSchema = (dtoClass as { schema?: unknown }).schema;
+    this.schemas.set(key, zodToJsonSchema(staticSchema));
+    return { $ref: `#/components/schemas/${key}` };
+  }
+
+  build(): Record<string, JsonSchema> | undefined {
+    if (this.schemas.size === 0) return undefined;
+    return Object.fromEntries(this.schemas);
+  }
+}
+
+function isDtoClass(value: unknown): value is { schema: unknown; name?: string } {
+  return typeof value === 'function' && (value as { schema?: unknown }).schema != null;
+}
+
+function getParamSchema(
+  param: ParameterMetadata,
+  paramtypes: unknown[] | undefined,
+  registry: ComponentsRegistry,
+): JsonSchema | undefined {
+  const metatype = paramtypes?.[param.index];
+  if (!metatype) return undefined;
+  if (isDtoClass(metatype)) {
+    return registry.ref(metatype) as JsonSchema;
+  }
+  const maybeSchema = (metatype as { schema?: unknown }).schema;
+  if (maybeSchema) {
+    return zodToJsonSchema(maybeSchema);
   }
   return undefined;
 }
@@ -82,10 +129,38 @@ function isParamOptional(param: ParameterMetadata, paramtypes?: unknown[]): bool
   return true;
 }
 
+function isLikelyJsonSchema(value: unknown): value is JsonSchema {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  if (typeof (v as { toJSONSchema?: unknown }).toJSONSchema === 'function') return false;
+  return (
+    'type' in v || '$ref' in v || 'oneOf' in v || 'anyOf' in v || 'allOf' in v || 'enum' in v || 'const' in v
+  );
+}
+
+function resolveResponseSchema(input: unknown, registry: ComponentsRegistry): JsonSchema | undefined {
+  if (input === undefined || input === null) return undefined;
+
+  if (isDtoClass(input)) {
+    return registry.ref(input) as JsonSchema;
+  }
+
+  if (isLikelyJsonSchema(input)) {
+    return { ...(input as JsonSchema) };
+  }
+
+  if (typeof input === 'object' && typeof (input as { toJSONSchema?: unknown }).toJSONSchema === 'function') {
+    return zodToJsonSchema(input);
+  }
+
+  return undefined;
+}
+
 function buildOperation(
   controller: Type,
   route: RouteDefinition,
   pathString: string,
+  registry: ComponentsRegistry,
 ): OpenApiOperation {
   const handlerName = route.handlerName;
   const paramMetadata = MetadataRegistry.getParameters(controller).get(handlerName) ?? [];
@@ -96,7 +171,6 @@ function buildOperation(
   const parameters: OpenApiParameter[] = [];
   let requestBody: OpenApiRequestBody | undefined;
 
-  // Path params declared in the URL but not listed as @Param() get a string default.
   const declaredPathParams = new Set<string>();
   const pathParamNames = [...pathString.matchAll(/\{([^}]+)\}/g)].map((m) => m[1]!);
 
@@ -107,24 +181,24 @@ function buildOperation(
         name: param.name,
         in: 'path',
         required: true,
-        schema: getParamSchema(param, paramtypes) ?? { type: 'string' },
+        schema: getParamSchema(param, paramtypes, registry) ?? { type: 'string' },
       });
     } else if (param.type === ParamType.QUERY && param.name) {
       parameters.push({
         name: param.name,
         in: 'query',
         required: !isParamOptional(param, paramtypes),
-        schema: getParamSchema(param, paramtypes) ?? { type: 'string' },
+        schema: getParamSchema(param, paramtypes, registry) ?? { type: 'string' },
       });
     } else if (param.type === ParamType.HEADERS && param.name) {
       parameters.push({
         name: param.name,
         in: 'header',
         required: !isParamOptional(param, paramtypes),
-        schema: getParamSchema(param, paramtypes) ?? { type: 'string' },
+        schema: getParamSchema(param, paramtypes, registry) ?? { type: 'string' },
       });
     } else if (param.type === ParamType.BODY) {
-      const schema = getParamSchema(param, paramtypes);
+      const schema = getParamSchema(param, paramtypes, registry);
       if (schema) {
         requestBody = {
           required: !isParamOptional(param, paramtypes),
@@ -144,7 +218,6 @@ function buildOperation(
   const controllerTags = getApiTags(controller) ?? [];
   const handlerTags = getApiTags(controller.prototype as object, handlerName) ?? [];
   const docTags = docMeta?.tags ?? [];
-
   const mergedTags = [...new Set([...controllerTags, ...handlerTags, ...docTags])];
 
   const responses: Record<string, { description: string; content?: Record<string, { schema: JsonSchema }> }> = {
@@ -157,7 +230,7 @@ function buildOperation(
     const resolved: { description: string; content?: Record<string, { schema: JsonSchema }> } = {
       description: entry.description,
     };
-    const schema = resolveResponseSchema(entry.schema);
+    const schema = resolveResponseSchema(entry.schema, registry);
     if (schema) {
       resolved.content = { 'application/json': { schema } };
     }
@@ -177,41 +250,6 @@ function buildOperation(
   return operation;
 }
 
-function isLikelyJsonSchema(value: unknown): value is JsonSchema {
-  if (!value || typeof value !== 'object') return false;
-  const v = value as Record<string, unknown>;
-  // Heuristic: JSON Schema has one of these keys AND no toJSONSchema()
-  // method (which marks a Zod schema) AND no `schema` static (which
-  // marks a DTO class — but DTO classes are functions, not objects).
-  if (typeof (v as { toJSONSchema?: unknown }).toJSONSchema === 'function') return false;
-  return (
-    'type' in v || '$ref' in v || 'oneOf' in v || 'anyOf' in v || 'allOf' in v || 'enum' in v || 'const' in v
-  );
-}
-
-function resolveResponseSchema(input: unknown): JsonSchema | undefined {
-  if (input === undefined || input === null) return undefined;
-
-  // DTO class produced by createZodDto — has a static `schema` property.
-  if (typeof input === 'function') {
-    const staticSchema = (input as { schema?: unknown }).schema;
-    if (staticSchema) return zodToJsonSchema(staticSchema);
-    return undefined;
-  }
-
-  // Raw JSON Schema object (pass through).
-  if (isLikelyJsonSchema(input)) {
-    return { ...(input as JsonSchema) };
-  }
-
-  // Zod schema (has toJSONSchema() method).
-  if (typeof input === 'object' && typeof (input as { toJSONSchema?: unknown }).toJSONSchema === 'function') {
-    return zodToJsonSchema(input);
-  }
-
-  return undefined;
-}
-
 const VERB_WHITELIST: ReadonlySet<HttpVerb> = new Set([
   'get',
   'post',
@@ -228,6 +266,7 @@ export function createOpenApiDocument(
 ): OpenApiDocument {
   const paths: Record<string, OpenApiPathItem> = {};
   const globalPrefix = options.globalPrefix ?? '';
+  const registry = new ComponentsRegistry();
 
   for (const controller of collectControllers(rootModule)) {
     const controllerPath = MetadataRegistry.getControllerPath(controller as Type);
@@ -240,14 +279,14 @@ export function createOpenApiDocument(
       const rawPath = joinPath(joinPath(globalPrefix, controllerPath), route.path);
       const pathString = normalizePath(rawPath);
 
-      const operation = buildOperation(controller, route, pathString);
+      const operation = buildOperation(controller, route, pathString, registry);
       const pathItem = paths[pathString] ?? {};
       pathItem[method] = operation;
       paths[pathString] = pathItem;
     }
   }
 
-  return {
+  const document: OpenApiDocument = {
     openapi: '3.1.0',
     info: {
       title: options.info?.title ?? 'Vela API',
@@ -256,4 +295,11 @@ export function createOpenApiDocument(
     },
     paths,
   };
+
+  const schemas = registry.build();
+  if (schemas) {
+    document.components = { schemas };
+  }
+
+  return document;
 }
