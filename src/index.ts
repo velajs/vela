@@ -250,6 +250,7 @@ export { ComponentManager } from './pipeline/index';
 
 // Validation
 export { createZodDto, ValidationPipe } from './validation/index';
+export type { CreateZodDtoOptions } from './validation/index';
 
 // Serialization
 export { Serialize, SerializerInterceptor, SERIALIZE_METADATA } from './serialization/index';
