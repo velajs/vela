@@ -188,6 +188,39 @@ export class RouteManager {
     return items.map((item) => this.instantiate(item, container));
   }
 
+  // Resolve middleware priority at build time. Supports three sources:
+  //   1. static priority on the class constructor
+  //   2. priority property on the instance
+  //   3. for container tokens, resolve and inspect the instance (+ its ctor)
+  // Falls back to 0 on any error or when no priority is set.
+  private getMiddlewarePriority(entry: unknown): number {
+    if (entry == null) return 0;
+    if (typeof entry === 'function') {
+      const p = (entry as { priority?: unknown }).priority;
+      if (typeof p === 'number') return p;
+    }
+    if (typeof entry === 'object') {
+      const inst = entry as { priority?: unknown; constructor?: { priority?: unknown } };
+      if (typeof inst.priority === 'number') return inst.priority;
+      if (typeof inst.constructor?.priority === 'number') return inst.constructor.priority;
+    }
+    try {
+      const resolved = this.instantiate<NestMiddleware>(
+        entry as MiddlewareType | Token<NestMiddleware>,
+        this.container,
+      );
+      if (resolved && typeof resolved === 'object') {
+        const p = (resolved as { priority?: unknown }).priority;
+        if (typeof p === 'number') return p;
+        const cp = (resolved as { constructor?: { priority?: unknown } }).constructor?.priority;
+        if (typeof cp === 'number') return cp;
+      }
+    } catch {
+      // Unresolvable at build time (e.g. request-scoped) — default 0
+    }
+    return 0;
+  }
+
   private getRequestContainer(c: Context): Container {
     const existing = c.get('container') as Container | undefined;
     if (existing) {
@@ -220,17 +253,28 @@ export class RouteManager {
   async build(): Promise<Hono> {
     const app = new Hono();
 
+    // Sort global middleware by priority (lower runs first) with insertion
+    // index as tiebreaker so equal priorities preserve registration order.
+    const sortedGlobal = this.globalMiddleware
+      .map((entry, index) => ({ entry, index, priority: this.getMiddlewarePriority(entry) }))
+      .sort((a, b) => (a.priority - b.priority) || (a.index - b.index));
+
     // Register global middleware on the Hono app
-    for (const mw of this.globalMiddleware) {
+    for (const { entry } of sortedGlobal) {
       app.use('*', (c, next) => {
         const requestContainer = this.getRequestContainer(c);
-        const resolved = this.instantiate<NestMiddleware>(mw, requestContainer);
+        const resolved = this.instantiate<NestMiddleware>(entry, requestContainer);
         return resolved.use(c, next);
       });
     }
 
+    // Sort consumer middleware with the same stable-by-index rule.
+    const sortedConsumer = this.consumerMiddlewareDefinitions
+      .map((def, index) => ({ def, index, priority: def.priority ?? 0 }))
+      .sort((a, b) => (a.priority - b.priority) || (a.index - b.index));
+
     // Register MiddlewareConsumer-configured middleware
-    for (const def of this.consumerMiddlewareDefinitions) {
+    for (const { def } of sortedConsumer) {
       const matchRoute   = this.compileRouteMatcher(def.routes);
       const matchExclude = this.compileRouteMatcher(def.excludes);
 

@@ -22,10 +22,13 @@ export interface MiddlewareRouteDefinition {
   middleware: Array<Type<NestMiddleware> | NestMiddleware>;
   routes: RouteInfo[];
   excludes: RouteInfo[];
+  /** Stable-sort key; lower runs first. Default 0. */
+  priority?: number;
 }
 
 export interface MiddlewareConfigProxy {
   exclude(...routes: Array<string | RouteInfo>): MiddlewareConfigProxy;
+  withPriority(priority: number): MiddlewareConfigProxy;
   // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
   forRoutes(...routes: Array<string | Function | RouteInfo>): MiddlewareConsumer;
 }
@@ -44,10 +47,15 @@ export class MiddlewareBuilder implements MiddlewareConsumer {
   apply(...middleware: Array<Type<NestMiddleware> | NestMiddleware>): MiddlewareConfigProxy {
     const currentMiddleware = [...middleware];
     let currentExcludes: RouteInfo[] = [];
+    let currentPriority: number | undefined;
 
     const proxy: MiddlewareConfigProxy = {
       exclude: (...routes: Array<string | RouteInfo>) => {
         currentExcludes = routes.map(normalizeRouteArg);
+        return proxy;
+      },
+      withPriority: (priority: number) => {
+        currentPriority = priority;
         return proxy;
       },
       // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
@@ -56,8 +64,10 @@ export class MiddlewareBuilder implements MiddlewareConsumer {
           middleware: currentMiddleware,
           routes: routes.flatMap(resolveRouteArg),
           excludes: [...currentExcludes],
+          ...(currentPriority !== undefined ? { priority: currentPriority } : {}),
         });
         currentExcludes = [];
+        currentPriority = undefined;
         return this;
       },
     };
