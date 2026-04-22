@@ -5,7 +5,7 @@ import type { Type } from '../container/types';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import type { ParameterMetadata, RouteDefinition } from '../registry/types';
 import { ParamType } from '../constants';
-import { getApiDoc, getApiTags } from './decorators';
+import { getApiDoc, getApiResponses, getApiTags } from './decorators';
 import type {
   CreateOpenApiDocumentOptions,
   HttpVerb,
@@ -147,11 +147,24 @@ function buildOperation(
 
   const mergedTags = [...new Set([...controllerTags, ...handlerTags, ...docTags])];
 
-  const operation: OpenApiOperation = {
-    responses: {
-      '200': { description: 'OK' },
-    },
+  const responses: Record<string, { description: string; content?: Record<string, { schema: JsonSchema }> }> = {
+    '200': { description: 'OK' },
   };
+
+  const apiResponses = getApiResponses(controller.prototype as object, handlerName) ?? [];
+  for (const entry of apiResponses) {
+    const key = String(entry.status);
+    const resolved: { description: string; content?: Record<string, { schema: JsonSchema }> } = {
+      description: entry.description,
+    };
+    const schema = resolveResponseSchema(entry.schema);
+    if (schema) {
+      resolved.content = { 'application/json': { schema } };
+    }
+    responses[key] = resolved;
+  }
+
+  const operation: OpenApiOperation = { responses };
 
   if (parameters.length > 0) operation.parameters = parameters;
   if (requestBody) operation.requestBody = requestBody;
@@ -162,6 +175,41 @@ function buildOperation(
   if (mergedTags.length > 0) operation.tags = mergedTags;
 
   return operation;
+}
+
+function isLikelyJsonSchema(value: unknown): value is JsonSchema {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  // Heuristic: JSON Schema has one of these keys AND no toJSONSchema()
+  // method (which marks a Zod schema) AND no `schema` static (which
+  // marks a DTO class — but DTO classes are functions, not objects).
+  if (typeof (v as { toJSONSchema?: unknown }).toJSONSchema === 'function') return false;
+  return (
+    'type' in v || '$ref' in v || 'oneOf' in v || 'anyOf' in v || 'allOf' in v || 'enum' in v || 'const' in v
+  );
+}
+
+function resolveResponseSchema(input: unknown): JsonSchema | undefined {
+  if (input === undefined || input === null) return undefined;
+
+  // DTO class produced by createZodDto — has a static `schema` property.
+  if (typeof input === 'function') {
+    const staticSchema = (input as { schema?: unknown }).schema;
+    if (staticSchema) return zodToJsonSchema(staticSchema);
+    return undefined;
+  }
+
+  // Raw JSON Schema object (pass through).
+  if (isLikelyJsonSchema(input)) {
+    return { ...(input as JsonSchema) };
+  }
+
+  // Zod schema (has toJSONSchema() method).
+  if (typeof input === 'object' && typeof (input as { toJSONSchema?: unknown }).toJSONSchema === 'function') {
+    return zodToJsonSchema(input);
+  }
+
+  return undefined;
 }
 
 const VERB_WHITELIST: ReadonlySet<HttpVerb> = new Set([

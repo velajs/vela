@@ -1,7 +1,8 @@
-import type { ApiDocMetadata } from './types';
+import type { ApiDocMetadata, ApiResponseEntry, ApiResponseOptions } from './types';
 
 export const API_DOC_METADATA = 'vela:openapi:doc';
 export const API_TAGS_METADATA = 'vela:openapi:tags';
+export const API_RESPONSES_METADATA = 'vela:openapi:responses';
 
 /**
  * Attach OpenAPI documentation to a route handler (or controller).
@@ -46,4 +47,38 @@ export function getApiTags(target: object, propertyKey?: string | symbol): strin
   return propertyKey !== undefined
     ? (Reflect.getMetadata(API_TAGS_METADATA, target, propertyKey) as string[] | undefined)
     : (Reflect.getMetadata(API_TAGS_METADATA, target) as string[] | undefined);
+}
+
+/**
+ * Document a response for a given status code. Stackable: apply multiple
+ * times on the same handler to declare different statuses.
+ *
+ * ```ts
+ * @Get('/:id')
+ * @ApiResponse(200, { description: 'Found', schema: UserDto })
+ * @ApiResponse(404, { description: 'Not found', schema: ErrorDto })
+ * findOne() { ... }
+ * ```
+ */
+export function ApiResponse(
+  status: number | string,
+  options: ApiResponseOptions,
+): MethodDecorator {
+  return (target: object, propertyKey: string | symbol) => {
+    const existing =
+      (Reflect.getMetadata(API_RESPONSES_METADATA, target, propertyKey) as
+        | ApiResponseEntry[]
+        | undefined) ?? [];
+    existing.push({ status, ...options });
+    Reflect.defineMetadata(API_RESPONSES_METADATA, existing, target, propertyKey);
+  };
+}
+
+export function getApiResponses(
+  target: object,
+  propertyKey: string | symbol,
+): ApiResponseEntry[] | undefined {
+  return Reflect.getMetadata(API_RESPONSES_METADATA, target, propertyKey) as
+    | ApiResponseEntry[]
+    | undefined;
 }
