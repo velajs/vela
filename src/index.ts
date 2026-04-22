@@ -5,6 +5,22 @@ export { defineMetadata, getMetadata } from './metadata';
 export { VelaFactory, createApplication } from './factory';
 export { VelaApplication } from './application';
 
+// OpenAPI
+export { createOpenApiDocument, ApiDoc, ApiTags, zodToJsonSchema } from './openapi/index';
+export type {
+  OpenApiDocument,
+  OpenApiInfo,
+  OpenApiOperation,
+  OpenApiParameter,
+  OpenApiPathItem,
+  OpenApiRequestBody,
+  OpenApiResponse,
+  ApiDocMetadata,
+  CreateOpenApiDocumentOptions,
+  HttpVerb,
+  JsonSchema,
+} from './openapi/index';
+
 // DI Container
 export { Container, Injectable, Inject, Optional, InjectionToken, ForwardRef, forwardRef, ModuleRef, mixin } from './container/index';
 export type {
