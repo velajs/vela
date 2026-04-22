@@ -16,7 +16,7 @@ beforeEach(() => {
 });
 
 describe('@ApiResponse', () => {
-  it('registers a response with description and a Zod DTO schema', () => {
+  it('registers a response with description and a Zod DTO schema (via $ref)', () => {
     const UserSchema = z.object({ id: z.string(), name: z.string() });
     class UserDto extends createZodDto(UserSchema) {}
 
@@ -37,9 +37,11 @@ describe('@ApiResponse', () => {
     const res = op.responses['200']!;
     expect(res.description).toBe('User found');
     const schema = res.content!['application/json']!.schema;
-    expect(schema.type).toBe('object');
-    expect(schema.properties).toHaveProperty('id');
-    expect(schema.properties).toHaveProperty('name');
+    expect(schema.$ref).toBe('#/components/schemas/UserDto');
+    const resolved = doc.components!.schemas!['UserDto']!;
+    expect(resolved.type).toBe('object');
+    expect(resolved.properties).toHaveProperty('id');
+    expect(resolved.properties).toHaveProperty('name');
   });
 
   it('supports multiple @ApiResponse on one handler for different status codes', () => {
@@ -64,7 +66,10 @@ describe('@ApiResponse', () => {
     const op = doc.paths['/users/{id}']!.get!;
     expect(op.responses['200']!.description).toBe('OK');
     expect(op.responses['404']!.description).toBe('Not found');
-    expect(op.responses['404']!.content!['application/json']!.schema.properties).toHaveProperty('message');
+    expect(op.responses['404']!.content!['application/json']!.schema.$ref).toBe(
+      '#/components/schemas/ErrorDto',
+    );
+    expect(doc.components!.schemas!['ErrorDto']!.properties).toHaveProperty('message');
     expect(op.responses['500']!.description).toBe('Server error');
   });
 

@@ -134,7 +134,7 @@ describe('createOpenApiDocument — routes', () => {
     expect(searchParam!.required).toBe(false);
   });
 
-  it('includes body schema from a Zod DTO class', () => {
+  it('includes body schema from a Zod DTO class (emitted as $ref into components)', () => {
     const CreateUserSchema = z.object({
       name: z.string(),
       email: z.string().email(),
@@ -157,11 +157,14 @@ describe('createOpenApiDocument — routes', () => {
 
     expect(op.requestBody).toBeDefined();
     const schema = op.requestBody!.content!['application/json']!.schema;
-    expect(schema.type).toBe('object');
-    expect(schema.properties).toHaveProperty('name');
-    expect(schema.properties).toHaveProperty('email');
-    expect(schema.required).toContain('name');
-    expect(schema.required).toContain('email');
+    expect(schema.$ref).toBe('#/components/schemas/CreateUserDto');
+
+    const resolved = doc.components!.schemas!['CreateUserDto']!;
+    expect(resolved.type).toBe('object');
+    expect(resolved.properties).toHaveProperty('name');
+    expect(resolved.properties).toHaveProperty('email');
+    expect(resolved.required).toContain('name');
+    expect(resolved.required).toContain('email');
   });
 
   it('walks imported modules recursively', () => {
