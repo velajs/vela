@@ -85,3 +85,6 @@ export const VelaFactory = {
     return app;
   },
 };
+
+export const createApplication: typeof VelaFactory.create =
+  VelaFactory.create.bind(VelaFactory);
