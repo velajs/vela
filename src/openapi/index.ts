@@ -8,6 +8,7 @@ export {
   API_RESPONSES_METADATA,
 } from './decorators';
 export { zodToJsonSchema } from './zod-to-json-schema';
+export { renderScalarUi } from './scalar-ui';
 export type {
   ApiDocMetadata,
   ApiResponseEntry,
@@ -15,6 +16,7 @@ export type {
   CreateOpenApiDocumentOptions,
   HttpVerb,
   JsonSchema,
+  MountOpenApiOptions,
   OpenApiDocument,
   OpenApiInfo,
   OpenApiOperation,

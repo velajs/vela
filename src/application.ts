@@ -9,6 +9,8 @@ import {
   hasOnModuleDestroy,
   hasOnModuleInit,
 } from './lifecycle/index';
+import type { MountOpenApiOptions } from './openapi/types';
+import { renderScalarUi } from './openapi/scalar-ui';
 import type { FilterType, GuardType, InterceptorType, PipeType } from './registry/types';
 
 export class VelaApplication {
@@ -77,6 +79,32 @@ export class VelaApplication {
 
   useGlobalFilters(...filters: FilterType[]): this {
     this.routeManager.useGlobalFilters(...filters);
+    return this;
+  }
+
+  /**
+   * Serve a pre-built OpenAPI document (and optionally a Scalar UI) on
+   * the underlying Hono app. Edge-safe: the UI HTML loads Scalar from a
+   * CDN at runtime so nothing is bundled server-side.
+   *
+   * ```ts
+   * const doc = createOpenApiDocument(AppModule);
+   * app.mountOpenApi({ document: doc, ui: 'scalar' });
+   * ```
+   */
+  mountOpenApi(options: MountOpenApiOptions): this {
+    const app = this.getApp();
+    const jsonPath = options.path ?? '/docs.json';
+    const doc = options.document;
+
+    app.get(jsonPath, (c) => c.json(doc));
+
+    if (options.ui === 'scalar') {
+      const uiPath = options.uiPath ?? '/docs';
+      const html = renderScalarUi(jsonPath);
+      app.get(uiPath, (c) => c.html(html));
+    }
+
     return this;
   }
 

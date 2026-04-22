@@ -100,3 +100,14 @@ export interface CreateOpenApiDocumentOptions {
   info?: Partial<OpenApiInfo>;
   globalPrefix?: string;
 }
+
+export interface MountOpenApiOptions {
+  /** Pre-built OpenAPI document to serve. */
+  document: OpenApiDocument;
+  /** Path for the JSON endpoint. Default `/docs.json`. */
+  path?: string;
+  /** Opt-in UI renderer. Only `scalar` is bundled today. */
+  ui?: 'scalar';
+  /** Path the UI is served at when `ui` is set. Default `/docs`. */
+  uiPath?: string;
+}
