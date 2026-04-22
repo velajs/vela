@@ -8,6 +8,11 @@ import {
 import type { ProviderOptions, ProviderRegistration, Token, Type } from './types';
 import { ForwardRef, InjectionToken } from './types';
 
+const IMPORT_TYPE_HINT =
+  'Did you use `import type { X }`? TypeScript strips type-only imports at ' +
+  'runtime and `design:paramtypes` emits `Object`/`undefined` for their ' +
+  'positions. Use a runtime `import { X }` for DI tokens.';
+
 export class Container {
   private providers = new Map<Token, ProviderRegistration>();
   private resolutionStack = new Set<Token>();
@@ -71,6 +76,16 @@ export class Container {
     const registration = this.providers.get(token);
 
     if (!registration) {
+      // `Object`/undefined at a token position is the fingerprint of a
+      // type-only import that TypeScript stripped — emit the hint BEFORE
+      // auto-registering Object as a provider (which would silently "succeed").
+      if (token === (Object as unknown as Token<T>) || token == null) {
+        throw new Error(
+          `No provider found for token: ${this.tokenToString(token)}. ` +
+            IMPORT_TYPE_HINT,
+        );
+      }
+
       if (typeof token === 'function') {
         this.register(token);
         return this.resolve(token);
@@ -200,7 +215,8 @@ export class Container {
         throw new Error(
           `Cannot resolve dependency at index ${index} for ${target.name}. ` +
             `Parameter type is undefined or Object. ` +
-            `Use @Inject() to specify the token explicitly.`,
+            IMPORT_TYPE_HINT +
+            ` Alternatively, use \`@Inject()\` to specify the token explicitly.`,
         );
       }
 
