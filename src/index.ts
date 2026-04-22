@@ -2,7 +2,7 @@ import './metadata';
 export { defineMetadata, getMetadata } from './metadata';
 
 // Factory & Application
-export { VelaFactory } from './factory';
+export { VelaFactory, createApplication } from './factory';
 export { VelaApplication } from './application';
 
 // DI Container
