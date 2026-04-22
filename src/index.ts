@@ -65,7 +65,7 @@ export {
 
 // Services
 export { Logger, LogLevel } from './services/index';
-export type { LoggerService } from './services/index';
+export type { LoggerService, ContextProvider, Writer, LoggerLevelName } from './services/index';
 
 // Config
 export { ConfigModule, ConfigService, CONFIG_OPTIONS } from './config/index';
