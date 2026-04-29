@@ -2,16 +2,17 @@ import type { NestMiddleware } from '../pipeline/types';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import type { Constructor, Type } from '../registry/types';
 
-export enum RequestMethod {
-  GET = 'GET',
-  POST = 'POST',
-  PUT = 'PUT',
-  DELETE = 'DELETE',
-  PATCH = 'PATCH',
-  OPTIONS = 'OPTIONS',
-  HEAD = 'HEAD',
-  ALL = 'ALL',
-}
+export const RequestMethod = {
+  GET: 'GET',
+  POST: 'POST',
+  PUT: 'PUT',
+  DELETE: 'DELETE',
+  PATCH: 'PATCH',
+  OPTIONS: 'OPTIONS',
+  HEAD: 'HEAD',
+  ALL: 'ALL',
+} as const;
+export type RequestMethod = (typeof RequestMethod)[keyof typeof RequestMethod];
 
 export interface RouteInfo {
   path: string;

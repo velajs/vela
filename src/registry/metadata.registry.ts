@@ -40,7 +40,10 @@ export class MetadataRegistry {
     ['filter', new Map()],
   ]);
 
-  private static readonly handler = new Map<ComponentType, Map<string, ComponentInstance[]>>([
+  private static readonly handler = new Map<
+    ComponentType,
+    Map<Constructor, Map<string | symbol, ComponentInstance[]>>
+  >([
     ['middleware', new Map()],
     ['guard', new Map()],
     ['pipe', new Map()],
@@ -160,22 +163,31 @@ export class MetadataRegistry {
 
   static registerHandler<T extends ComponentType>(
     type: T,
-    handlerKey: string,
+    controller: Constructor,
+    methodName: string | symbol,
     component: ComponentTypeMap[T],
   ): void {
     const typeMap = this.handler.get(type)!;
-    if (!typeMap.has(handlerKey)) {
-      typeMap.set(handlerKey, []);
+    let methodMap = typeMap.get(controller);
+    if (!methodMap) {
+      methodMap = new Map();
+      typeMap.set(controller, methodMap);
     }
-    typeMap.get(handlerKey)!.push(component as ComponentInstance);
+    let components = methodMap.get(methodName);
+    if (!components) {
+      components = [];
+      methodMap.set(methodName, components);
+    }
+    components.push(component as ComponentInstance);
   }
 
   static getHandler<T extends ComponentType>(
     type: T,
-    handlerKey: string,
+    controller: Constructor,
+    methodName: string | symbol,
   ): ComponentTypeMap[T][] {
     const typeMap = this.handler.get(type)!;
-    return (typeMap.get(handlerKey) || []) as unknown as ComponentTypeMap[T][];
+    return (typeMap.get(controller)?.get(methodName) ?? []) as unknown as ComponentTypeMap[T][];
   }
 
   // DI metadata
