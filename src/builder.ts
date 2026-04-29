@@ -165,8 +165,8 @@ function buildOverrideMiddlewares(controller: Type): EndpointMiddlewares {
 
     const middleware: MiddlewareHandler = async (c) => {
       // Prototype-bound: overrides are called without instance state. The
-      // method should produce a Response from the Hono context directly.
-      const fn = handler as (this: unknown, c: Context) => Response | Promise<Response>;
+      // method should produce a Hono response from the context directly.
+      const fn = handler as (this: unknown, c: Context) => ReturnType<MiddlewareHandler>;
       return fn.call(proto, c);
     };
 
