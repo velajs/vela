@@ -74,6 +74,9 @@ import {
   OnEvent,
   ScheduleModule,
   ScheduleRegistry,
+} from '../index.js';
+import { ScheduleNodeModule } from '../schedule-node/index.js';
+import {
   Cron,
   Interval,
   ThrottlerModule,
@@ -2738,7 +2741,7 @@ describe('ScheduleModule / @Cron / @Interval', () => {
     expect(jobs[0].ms).toBe(1000);
   });
 
-  it('@Interval fires repeatedly when enableTimers is true', async () => {
+  it('@Interval fires repeatedly under ScheduleNodeModule', async () => {
     vi.useFakeTimers();
     let count = 0;
 
@@ -2748,7 +2751,7 @@ describe('ScheduleModule / @Cron / @Interval', () => {
       pulse() { count++; }
     }
 
-    @Module({ imports: [ScheduleModule.forRoot({ enableTimers: true })], providers: [PulseService] })
+    @Module({ imports: [ScheduleNodeModule.forRoot()], providers: [PulseService] })
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
@@ -2767,7 +2770,7 @@ describe('ScheduleModule / @Cron / @Interval', () => {
       tick() { count++; }
     }
 
-    @Module({ imports: [ScheduleModule.forRoot({ enableTimers: true })], providers: [StopService] })
+    @Module({ imports: [ScheduleNodeModule.forRoot()], providers: [StopService] })
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);

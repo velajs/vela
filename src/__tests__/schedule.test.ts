@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { VelaFactory, Module, Injectable, MetadataRegistry } from '../index.js';
-import { ScheduleModule, ScheduleRegistry, Cron, Interval } from '../schedule/index.js';
+import { ScheduleModule, ScheduleRegistry, Cron, Interval, parseCron } from '../schedule/index.js';
+import { ScheduleNodeModule, ScheduleExecutor } from '../schedule-node/index.js';
 
 beforeEach(() => { MetadataRegistry.clear(); });
 
@@ -113,91 +114,8 @@ describe('ScheduleModule', () => {
       expect(registry.getCronJobs()).toHaveLength(2);
       expect(registry.getIntervalJobs()).toHaveLength(1);
     });
-  });
 
-  describe('ScheduleExecutor', () => {
-    it('should run cron jobs when expression matches the current minute', async () => {
-      vi.useFakeTimers();
-      vi.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
-      let callCount = 0;
-
-      @Injectable()
-      class CronService {
-        @Cron('* * * * *')
-        tick() { callCount++; }
-      }
-
-      @Module({
-        imports: [ScheduleModule.forRoot({ enableTimers: true })],
-        providers: [CronService],
-      })
-      class AppModule {}
-
-      const app = await VelaFactory.create(AppModule);
-
-      // One call in the 00:00 minute and one in the 00:01 minute
-      await vi.advanceTimersByTimeAsync(61_000);
-      expect(callCount).toBe(2);
-
-      await app.close();
-      vi.useRealTimers();
-    });
-
-    it('should run interval jobs with setTimeout recursion', async () => {
-      vi.useFakeTimers();
-      let callCount = 0;
-
-      @Injectable()
-      class TimerService {
-        @Interval(100)
-        tick() { callCount++; }
-      }
-
-      @Module({
-        imports: [ScheduleModule.forRoot({ enableTimers: true })],
-        providers: [TimerService],
-      })
-      class AppModule {}
-
-      const app = await VelaFactory.create(AppModule);
-
-      // Advance past 3 intervals
-      await vi.advanceTimersByTimeAsync(350);
-      expect(callCount).toBe(3);
-
-      await app.close();
-      vi.useRealTimers();
-    });
-
-    it('should cleanup timers on app.close()', async () => {
-      vi.useFakeTimers();
-      let callCount = 0;
-
-      @Injectable()
-      class TimerService {
-        @Interval(100)
-        tick() { callCount++; }
-      }
-
-      @Module({
-        imports: [ScheduleModule.forRoot({ enableTimers: true })],
-        providers: [TimerService],
-      })
-      class AppModule {}
-
-      const app = await VelaFactory.create(AppModule);
-      await vi.advanceTimersByTimeAsync(150);
-      const countBeforeClose = callCount;
-
-      await app.close();
-
-      await vi.advanceTimersByTimeAsync(500);
-      expect(callCount).toBe(countBeforeClose); // No more ticks after close
-
-      vi.useRealTimers();
-    });
-
-    it('should not include executor when enableTimers is false', async () => {
+    it('should not include the executor on the core module', async () => {
       @Injectable()
       class TaskService {
         @Interval(100)
@@ -205,18 +123,114 @@ describe('ScheduleModule', () => {
       }
 
       @Module({
-        imports: [ScheduleModule.forRoot({ enableTimers: false })],
+        imports: [ScheduleModule.forRoot()],
         providers: [TaskService],
       })
       class AppModule {}
 
       const app = await VelaFactory.create(AppModule);
-      const registry = app.get(ScheduleRegistry);
-      expect(registry.getIntervalJobs()).toHaveLength(1);
-
-      // ScheduleExecutor should not be in container
-      const { ScheduleExecutor } = await import('../schedule/index.js');
       expect(app.getContainer().has(ScheduleExecutor)).toBe(false);
     });
+  });
+
+  describe('parseCron', () => {
+    it('matches "* * * * *" against any minute', () => {
+      const matcher = parseCron('* * * * *');
+      expect(matcher).not.toBeNull();
+      expect(matcher!(new Date('2024-01-01T00:00:00Z'))).toBe(true);
+    });
+
+    it('returns null for malformed expressions', () => {
+      expect(parseCron('not-a-cron')).toBeNull();
+      expect(parseCron('* * *')).toBeNull();
+    });
+
+    it('treats 7 as Sunday', () => {
+      const matcher = parseCron('0 0 * * 7');
+      // Local Sunday — getDay() returns 0; the cron lib must accept 7 as the same.
+      expect(matcher!(new Date(2024, 0, 7, 0, 0, 0))).toBe(true);
+    });
+  });
+});
+
+describe('ScheduleNodeModule', () => {
+  it('should run cron jobs when expression matches the current minute', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
+    let callCount = 0;
+
+    @Injectable()
+    class CronService {
+      @Cron('* * * * *')
+      tick() { callCount++; }
+    }
+
+    @Module({
+      imports: [ScheduleNodeModule.forRoot()],
+      providers: [CronService],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+
+    // One call in the 00:00 minute and one in the 00:01 minute
+    await vi.advanceTimersByTimeAsync(61_000);
+    expect(callCount).toBe(2);
+
+    await app.close();
+    vi.useRealTimers();
+  });
+
+  it('should run interval jobs', async () => {
+    vi.useFakeTimers();
+    let callCount = 0;
+
+    @Injectable()
+    class TimerService {
+      @Interval(100)
+      tick() { callCount++; }
+    }
+
+    @Module({
+      imports: [ScheduleNodeModule.forRoot()],
+      providers: [TimerService],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+
+    await vi.advanceTimersByTimeAsync(350);
+    expect(callCount).toBe(3);
+
+    await app.close();
+    vi.useRealTimers();
+  });
+
+  it('should cleanup timers on app.close()', async () => {
+    vi.useFakeTimers();
+    let callCount = 0;
+
+    @Injectable()
+    class TimerService {
+      @Interval(100)
+      tick() { callCount++; }
+    }
+
+    @Module({
+      imports: [ScheduleNodeModule.forRoot()],
+      providers: [TimerService],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    await vi.advanceTimersByTimeAsync(150);
+    const countBeforeClose = callCount;
+
+    await app.close();
+
+    await vi.advanceTimersByTimeAsync(500);
+    expect(callCount).toBe(countBeforeClose);
+
+    vi.useRealTimers();
   });
 });
