@@ -117,39 +117,36 @@ function buildEndpointsDef(
   // The mapped union of per-endpoint configs has no shared shape, so we build
   // the object as a plain Record and cast at the boundary. Each key lands in
   // the slot hono-crud expects at runtime.
-  const def: Record<string, unknown> = { meta: config.meta };
-  const flatHooks = config.hooks;
-  const dtos = config.dto;
+  const baseFor = (name: CrudEndpointName) =>
+    (config.endpoints?.[name] as Record<string, unknown> | undefined) ?? {};
 
-  for (const name of enabled) {
-    let perEndpoint = (config.endpoints?.[name] as Record<string, unknown> | undefined) ?? {};
-    if (flatHooks) perEndpoint = mergeFlatHooks(name, perEndpoint, flatHooks);
-    if (dtos) perEndpoint = mergeDto(name, perEndpoint, dtos);
-    def[name] = perEndpoint;
-  }
-  return def as unknown as EndpointsConfig<MetaInput>;
+  const entries = enabled.map(
+    (name) => [name, mergeDto(name, mergeFlatHooks(name, baseFor(name), config.hooks), config.dto)] as const,
+  );
+
+  return { meta: config.meta, ...Object.fromEntries(entries) } as unknown as EndpointsConfig<MetaInput>;
 }
 
 function mergeDto(
   endpoint: CrudEndpointName,
   base: Record<string, unknown>,
-  dtos: NonNullable<CrudConfig['dto']>,
+  dtos: CrudConfig['dto'],
 ): Record<string, unknown> {
   // dto.create / dto.update map onto hono-crud's bodySchema field on the
   // matching endpoint config. Per-endpoint bodySchema set explicitly via
   // `endpoints.{name}.bodySchema` wins over the flat dto sugar.
-  if (endpoint !== 'create' && endpoint !== 'update') return base;
+  if (!dtos || (endpoint !== 'create' && endpoint !== 'update')) return base;
   const dto = dtos[endpoint];
-  if (!dto) return base;
-  if (base.bodySchema !== undefined) return base;
+  if (!dto || base.bodySchema !== undefined) return base;
   return { ...base, bodySchema: dto };
 }
 
 function mergeFlatHooks(
   endpoint: CrudEndpointName,
   base: Record<string, unknown>,
-  flat: NonNullable<CrudConfig['hooks']>,
+  flat: CrudConfig['hooks'],
 ): Record<string, unknown> {
+  if (!flat) return base;
   const cap = endpoint.charAt(0).toUpperCase() + endpoint.slice(1);
   const before = flat[`before${cap}` as keyof typeof flat];
   const after = flat[`after${cap}` as keyof typeof flat];
