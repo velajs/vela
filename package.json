@@ -51,7 +51,7 @@
     "node": ">=20"
   },
   "peerDependencies": {
-    "@velajs/vela": ">=0.5.0",
+    "@velajs/vela": ">=1.0.0",
     "hono": ">=4"
   },
   "peerDependenciesMeta": {
@@ -62,7 +62,7 @@
   "devDependencies": {
     "@swc/cli": "^0.8.0",
     "@swc/core": "^1.15.11",
-    "@velajs/vela": "^0.6.0",
+    "@velajs/vela": "^1.0.0",
     "hono": "^4",
     "typescript": "^5",
     "unplugin-swc": "^1.5.9",

@@ -15,8 +15,8 @@ importers:
         specifier: ^1.15.11
         version: 1.15.11
       '@velajs/vela':
-        specifier: ^0.6.0
-        version: 0.6.1
+        specifier: ^1.0.0
+        version: 1.0.0
       hono:
         specifier: ^4
         version: 4.12.1
@@ -566,8 +566,8 @@ packages:
   '@types/node@25.3.0':
     resolution: {integrity: sha512-4K3bqJpXpqfg2XKGK9bpDTc6xO/xoUP/RBWS7AtRMug6zZFaRekiLzjVtAoZMquxoAbzBvy5nxQ7veS5eYzf8A==}
 
-  '@velajs/vela@0.6.1':
-    resolution: {integrity: sha512-xQpqbUUgkjJiJHsZBO3wQ0N5PJ78So9JbKOqCug9kJiYW5FtF/e6C/KnxA1H3By56pJ7NziXYlW8D3abAe6s5g==}
+  '@velajs/vela@1.0.0':
+    resolution: {integrity: sha512-5U2XvU8I5AgfS+2DvGHlHswmEvNufkqpDGNvBRse+LbS+4iLPlOXz1nugctHqW1V9ybOkPZnSy7K6+6JzV+1Ew==}
     engines: {node: '>=20'}
     peerDependencies:
       '@velajs/crud': '>=0.1.0'
@@ -1549,7 +1549,7 @@ snapshots:
       undici-types: 7.18.2
     optional: true
 
-  '@velajs/vela@0.6.1':
+  '@velajs/vela@1.0.0':
     dependencies:
       hono: 4.12.1
 

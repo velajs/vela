@@ -22,7 +22,7 @@
 
 ### Compatibility
 
-- Requires `@velajs/vela` ≥ 0.10.0 for the `@Cron` integration. The schedule split in vela 0.10 makes its `ScheduleModule` metadata-only, which lets edge platforms drive cron via their native triggers.
+- Requires `@velajs/vela` ≥ 1.0.0 for the `@Cron` integration. The schedule split in vela 0.10 makes its `ScheduleModule` metadata-only, which lets edge platforms drive cron via their native triggers.
 
 ## 0.1.0 (2026-04-13)
 
