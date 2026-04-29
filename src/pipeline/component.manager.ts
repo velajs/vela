@@ -60,9 +60,8 @@ export class ComponentManager {
     handlerName: string | symbol,
     ...components: ComponentTypeMap[T][]
   ): void {
-    const handlerKey = `${controller.name}:${String(handlerName)}`;
     for (const component of components) {
-      MetadataRegistry.registerHandler(type, handlerKey, component);
+      MetadataRegistry.registerHandler(type, controller, handlerName, component);
     }
   }
 
@@ -73,57 +72,37 @@ export class ComponentManager {
     controller: Constructor,
     handlerName: string | symbol,
   ): ComponentTypeMap[T][] {
-    const handlerKey = `${controller.name}:${String(handlerName)}`;
     const controllerComponents = MetadataRegistry.getController(type, controller);
-    const handlerComponents = MetadataRegistry.getHandler(type, handlerKey);
+    const handlerComponents = MetadataRegistry.getHandler(type, controller, handlerName);
     return [...MetadataRegistry.getGlobal(type), ...controllerComponents, ...handlerComponents];
   }
 
   // Type-specific resolvers
 
+  private static resolveAll<T>(items: Array<T | Type<T>>, methodKey: keyof T & string): T[] {
+    return items.map((item) =>
+      isObject(item) && methodKey in item ? (item as T) : this.container.resolve(item as Type<T>),
+    );
+  }
+
   static resolveMiddleware(items: MiddlewareType[]): NestMiddleware[] {
-    return items.map((item) => {
-      if (isObject(item) && 'use' in item) {
-        return item as NestMiddleware;
-      }
-      return this.container.resolve(item as Type<NestMiddleware>);
-    });
+    return this.resolveAll<NestMiddleware>(items, 'use');
   }
 
   static resolveGuards(items: GuardType[]): CanActivate[] {
-    return items.map((item) => {
-      if (isObject(item) && 'canActivate' in item) {
-        return item as CanActivate;
-      }
-      return this.container.resolve(item as Type<CanActivate>);
-    });
+    return this.resolveAll<CanActivate>(items, 'canActivate');
   }
 
   static resolvePipes(items: PipeType[]): PipeTransform[] {
-    return items.map((item) => {
-      if (isObject(item) && 'transform' in item) {
-        return item as PipeTransform;
-      }
-      return this.container.resolve(item as Type<PipeTransform>);
-    });
+    return this.resolveAll<PipeTransform>(items, 'transform');
   }
 
   static resolveInterceptors(items: InterceptorType[]): NestInterceptor[] {
-    return items.map((item) => {
-      if (isObject(item) && 'intercept' in item) {
-        return item as NestInterceptor;
-      }
-      return this.container.resolve(item as Type<NestInterceptor>);
-    });
+    return this.resolveAll<NestInterceptor>(items, 'intercept');
   }
 
   static resolveFilters(items: FilterType[]): ExceptionFilter[] {
-    return items.map((item) => {
-      if (isObject(item) && 'catch' in item) {
-        return item as ExceptionFilter;
-      }
-      return this.container.resolve(item as Type<ExceptionFilter>);
-    });
+    return this.resolveAll<ExceptionFilter>(items, 'catch');
   }
 
   // Pipe execution

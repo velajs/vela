@@ -23,31 +23,34 @@ export const METADATA_KEYS = {
   CRUD: 'vela:crud',
 } as const;
 
-export enum HttpMethod {
-  GET = 'get',
-  POST = 'post',
-  PUT = 'put',
-  PATCH = 'patch',
-  DELETE = 'delete',
-  OPTIONS = 'options',
-  HEAD = 'head',
-  ALL = 'all',
-}
+export const HttpMethod = {
+  GET: 'get',
+  POST: 'post',
+  PUT: 'put',
+  PATCH: 'patch',
+  DELETE: 'delete',
+  OPTIONS: 'options',
+  HEAD: 'head',
+  ALL: 'all',
+} as const;
+export type HttpMethod = (typeof HttpMethod)[keyof typeof HttpMethod];
 
-export enum ParamType {
-  BODY = 'body',
-  QUERY = 'query',
-  PARAM = 'param',
-  HEADERS = 'headers',
-  REQUEST = 'request',
-  RESPONSE = 'response',
-  IP = 'ip',
-  COOKIE = 'cookie',
-  RAW_BODY = 'raw_body',
-}
+export const ParamType = {
+  BODY: 'body',
+  QUERY: 'query',
+  PARAM: 'param',
+  HEADERS: 'headers',
+  REQUEST: 'request',
+  RESPONSE: 'response',
+  IP: 'ip',
+  COOKIE: 'cookie',
+  RAW_BODY: 'raw_body',
+} as const;
+export type ParamType = (typeof ParamType)[keyof typeof ParamType];
 
-export enum Scope {
-  SINGLETON = 'singleton',
-  TRANSIENT = 'transient',
-  REQUEST = 'request',
-}
+export const Scope = {
+  SINGLETON: 'singleton',
+  TRANSIENT: 'transient',
+  REQUEST: 'request',
+} as const;
+export type Scope = (typeof Scope)[keyof typeof Scope];

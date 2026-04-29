@@ -1,13 +1,14 @@
 import { Injectable } from '../container/decorators';
 
-export enum LogLevel {
-  VERBOSE = 0,
-  DEBUG = 1,
-  LOG = 2,
-  WARN = 3,
-  ERROR = 4,
-  SILENT = 5,
-}
+export const LogLevel = {
+  VERBOSE: 0,
+  DEBUG: 1,
+  LOG: 2,
+  WARN: 3,
+  ERROR: 4,
+  SILENT: 5,
+} as const;
+export type LogLevel = (typeof LogLevel)[keyof typeof LogLevel];
 
 export interface LoggerService {
   log(message: unknown, ...optionalParams: unknown[]): void;

@@ -70,7 +70,7 @@ export class RouteManager {
     [HttpMethod.PATCH,   (app, p, h) => app.patch(p, h)],
     [HttpMethod.DELETE,  (app, p, h) => app.delete(p, h)],
     [HttpMethod.OPTIONS, (app, p, h) => app.options(p, h)],
-    [HttpMethod.HEAD,    (app, p, h) => app.get(p, h)],
+    [HttpMethod.HEAD,    (app, p, h) => app.get(p, (c, next) => (c.req.method === 'HEAD' ? h(c) : next()))],
     [HttpMethod.ALL,     (app, p, h) => app.all(p, h)],
   ]);
 
@@ -188,11 +188,6 @@ export class RouteManager {
     return items.map((item) => this.instantiate(item, container));
   }
 
-  // Resolve middleware priority at build time. Supports three sources:
-  //   1. static priority on the class constructor
-  //   2. priority property on the instance
-  //   3. for container tokens, resolve and inspect the instance (+ its ctor)
-  // Falls back to 0 on any error or when no priority is set.
   private getMiddlewarePriority(entry: unknown): number {
     if (entry == null) return 0;
     if (typeof entry === 'function') {
