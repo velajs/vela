@@ -14,7 +14,7 @@ export const HYPERDRIVE_BINDING_REF = new InjectionToken<BindingRef>('CF_HYPERDR
 /**
  * Global registry of binding refs to initialize on first request.
  * Each module's `forRoot()` pushes its BindingRef here.
- * CloudflareFactory reads from this to populate bindings.
+ * createCloudflareApp reads from this to populate bindings.
  */
 export const bindingsRegistry: BindingRef[] = [];
 

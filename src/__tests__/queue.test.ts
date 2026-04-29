@@ -6,7 +6,7 @@ import {
   Injectable,
   MetadataRegistry,
 } from '@velajs/vela';
-import { CloudflareFactory } from '../cloudflare-factory';
+import { createCloudflareApp } from '../cloudflare-factory';
 import { QueueModule } from '../modules/queue.module';
 import { QueueService } from '../services/queue.service';
 import { QueueConsumer } from '../decorators/queue-consumer';
@@ -51,7 +51,7 @@ describe('QueueModule', () => {
     })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/jobs/send', undefined, { JOB_QUEUE: mockQueue });
@@ -84,7 +84,7 @@ describe('QueueModule', () => {
     })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/jobs/batch', undefined, { Q: mockQueue });
@@ -110,7 +110,7 @@ describe('@QueueConsumer() decorator', () => {
     @Module({ providers: [EmailWorker] })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const ctx = { waitUntil: () => {} };
 
     await app.queue(
@@ -145,7 +145,7 @@ describe('@QueueConsumer() decorator', () => {
     @Module({ providers: [Worker] })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const ctx = { waitUntil: () => {} };
 
     await app.queue(

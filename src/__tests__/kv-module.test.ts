@@ -6,7 +6,7 @@ import {
   Injectable,
   MetadataRegistry,
 } from '@velajs/vela';
-import { CloudflareFactory } from '../cloudflare-factory';
+import { createCloudflareApp } from '../cloudflare-factory';
 import { KVModule } from '../modules/kv.module';
 import { KVService } from '../services/kv.service';
 import { clearBindingsRegistry } from '../tokens';
@@ -71,7 +71,7 @@ describe('KVModule', () => {
     })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const hono = app.getHonoApp();
 
     // First request initializes bindings via middleware
@@ -111,7 +111,7 @@ describe('KVModule', () => {
     })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/kv/list', undefined, { MY_KV: mockKV });
@@ -153,7 +153,7 @@ describe('KVModule', () => {
     })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/users/cache-test', undefined, { USERS_KV: mockKV });
@@ -183,7 +183,7 @@ describe('KVModule', () => {
     })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/raw', undefined, { NS: mockKV });

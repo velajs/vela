@@ -1,5 +1,5 @@
 // Factory & Application
-export { CloudflareFactory } from './cloudflare-factory';
+export { createCloudflareApp } from './cloudflare-factory';
 export { CloudflareApplication } from './cloudflare-application';
 
 // Modules

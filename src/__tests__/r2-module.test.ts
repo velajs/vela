@@ -5,7 +5,7 @@ import {
   Module,
   MetadataRegistry,
 } from '@velajs/vela';
-import { CloudflareFactory } from '../cloudflare-factory';
+import { createCloudflareApp } from '../cloudflare-factory';
 import { R2Module } from '../modules/r2.module';
 import { R2Service } from '../services/r2.service';
 import { clearBindingsRegistry } from '../tokens';
@@ -87,7 +87,7 @@ describe('R2Module', () => {
     })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const hono = app.getHonoApp();
 
     // Upload
@@ -136,7 +136,7 @@ describe('R2Module', () => {
     })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const hono = app.getHonoApp();
 
     const listRes = await hono.request('/storage/list', undefined, { BUCKET: mockR2 });

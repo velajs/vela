@@ -6,7 +6,7 @@ import {
   Injectable,
   MetadataRegistry,
 } from '@velajs/vela';
-import { CloudflareFactory } from '../cloudflare-factory';
+import { createCloudflareApp } from '../cloudflare-factory';
 import { DurableObjectModule } from '../modules/durable-object.module';
 import { DurableObjectService } from '../services/durable-object.service';
 import { clearBindingsRegistry } from '../tokens';
@@ -68,7 +68,7 @@ describe('DurableObjectModule', () => {
     })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/do/call', undefined, { COUNTER: mockDO });
@@ -98,7 +98,7 @@ describe('DurableObjectModule', () => {
     })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/do/unique', undefined, { MY_DO: mockDO });
@@ -127,7 +127,7 @@ describe('DurableObjectModule', () => {
     })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/raw', undefined, { RAW_DO: mockDO });
@@ -166,7 +166,7 @@ describe('DurableObjectModule', () => {
     })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/counters/test', undefined, { COUNTERS: mockDO });

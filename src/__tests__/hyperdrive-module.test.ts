@@ -6,7 +6,7 @@ import {
   Injectable,
   MetadataRegistry,
 } from '@velajs/vela';
-import { CloudflareFactory } from '../cloudflare-factory';
+import { createCloudflareApp } from '../cloudflare-factory';
 import { HyperdriveModule } from '../modules/hyperdrive.module';
 import { HyperdriveService } from '../services/hyperdrive.service';
 import { clearBindingsRegistry } from '../tokens';
@@ -53,7 +53,7 @@ describe('HyperdriveModule', () => {
     })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/db/info', undefined, { POSTGRES: mockHD });
@@ -85,7 +85,7 @@ describe('HyperdriveModule', () => {
     })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/db/pass', undefined, { PG: mockHD });
@@ -113,7 +113,7 @@ describe('HyperdriveModule', () => {
     })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/raw', undefined, { RAW_HD: mockHD });
@@ -155,7 +155,7 @@ describe('HyperdriveModule', () => {
     })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/client/config', undefined, { DB: mockHD });

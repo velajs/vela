@@ -6,7 +6,7 @@ import {
   Injectable,
   MetadataRegistry,
 } from '@velajs/vela';
-import { CloudflareFactory } from '../cloudflare-factory';
+import { createCloudflareApp } from '../cloudflare-factory';
 import { AIModule } from '../modules/ai.module';
 import { AIService } from '../services/ai.service';
 import { clearBindingsRegistry } from '../tokens';
@@ -50,7 +50,7 @@ describe('AIModule', () => {
     })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/ai/chat', undefined, { AI: mockAI });
@@ -84,7 +84,7 @@ describe('AIModule', () => {
     })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/ai/stream', undefined, { MY_AI: mockAI });
@@ -114,7 +114,7 @@ describe('AIModule', () => {
     })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/raw', undefined, { RAW_AI: mockAI });
@@ -153,7 +153,7 @@ describe('AIModule', () => {
     })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/chat/test', undefined, { AI: mockAI });

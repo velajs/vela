@@ -6,7 +6,7 @@ import {
   Injectable,
   MetadataRegistry,
 } from '@velajs/vela';
-import { CloudflareFactory } from '../cloudflare-factory';
+import { createCloudflareApp } from '../cloudflare-factory';
 import { KVModule } from '../modules/kv.module';
 import { D1Module } from '../modules/d1.module';
 import { R2Module } from '../modules/r2.module';
@@ -134,7 +134,7 @@ describe('Integration: multiple modules in one app', () => {
     })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const hono = app.getHonoApp();
     const env = { CACHE: mockKV, DB: mockD1, ASSETS: mockR2 };
 
@@ -189,7 +189,7 @@ describe('Integration: multiple modules in one app', () => {
     })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const hono = app.getHonoApp();
     const env = { CACHE: mockKV };
 
@@ -240,7 +240,7 @@ describe('Integration: multiple modules in one app', () => {
     })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const hono = app.getHonoApp();
     const ctx = { waitUntil: () => {} };
 

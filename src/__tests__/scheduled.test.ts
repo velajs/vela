@@ -4,7 +4,7 @@ import {
   Injectable,
   MetadataRegistry,
 } from '@velajs/vela';
-import { CloudflareFactory } from '../cloudflare-factory';
+import { createCloudflareApp } from '../cloudflare-factory';
 import { Scheduled } from '../decorators/scheduled';
 import { clearBindingsRegistry } from '../tokens';
 
@@ -33,7 +33,7 @@ describe('@Scheduled() decorator', () => {
     @Module({ providers: [WorkerService] })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const ctx = { waitUntil: () => {} };
 
     // Trigger hourly cron
@@ -59,7 +59,7 @@ describe('@Scheduled() decorator', () => {
     @Module({ providers: [CronService] })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const ctx = { waitUntil: () => {} };
 
     await app.scheduled({ cron: '*/5 * * * *' }, {}, ctx);
@@ -88,7 +88,7 @@ describe('@Scheduled() decorator', () => {
     @Module({ providers: [ServiceA, ServiceB] })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const ctx = { waitUntil: () => {} };
 
     await app.scheduled({ cron: '0 * * * *' }, {}, ctx);

@@ -5,7 +5,7 @@ import {
   Module,
   MetadataRegistry,
 } from '@velajs/vela';
-import { CloudflareFactory } from '../cloudflare-factory';
+import { createCloudflareApp } from '../cloudflare-factory';
 import { D1Module } from '../modules/d1.module';
 import { D1Service } from '../services/d1.service';
 import { clearBindingsRegistry } from '../tokens';
@@ -74,7 +74,7 @@ describe('D1Module', () => {
     })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/db/user', undefined, { DB: mockD1 });
@@ -107,7 +107,7 @@ describe('D1Module', () => {
     })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/db/batch', undefined, { DB: mockD1 });
@@ -136,7 +136,7 @@ describe('D1Module', () => {
     })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/db/raw', undefined, { DB: mockD1 });

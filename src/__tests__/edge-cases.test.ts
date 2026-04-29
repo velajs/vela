@@ -5,7 +5,7 @@ import {
   Module,
   MetadataRegistry,
 } from '@velajs/vela';
-import { CloudflareFactory } from '../cloudflare-factory';
+import { createCloudflareApp } from '../cloudflare-factory';
 import { KVModule } from '../modules/kv.module';
 import { KVService } from '../services/kv.service';
 import { clearBindingsRegistry } from '../tokens';
@@ -48,7 +48,7 @@ describe('edge cases', () => {
     })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const hono = app.getHonoApp();
 
     // Request with env that doesn't have MISSING_KV
@@ -72,7 +72,7 @@ describe('edge cases', () => {
     })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const hono = app.getHonoApp();
 
     const mockKV = { get: async () => null, put: async () => {}, delete: async () => {}, list: async () => ({ keys: [] }), getWithMetadata: async () => ({ value: null }) };
@@ -107,7 +107,7 @@ describe('edge cases', () => {
     })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const hono = app.getHonoApp();
 
     // First request initializes

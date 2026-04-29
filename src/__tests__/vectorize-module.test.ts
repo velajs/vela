@@ -6,7 +6,7 @@ import {
   Injectable,
   MetadataRegistry,
 } from '@velajs/vela';
-import { CloudflareFactory } from '../cloudflare-factory';
+import { createCloudflareApp } from '../cloudflare-factory';
 import { VectorizeModule } from '../modules/vectorize.module';
 import { VectorizeService } from '../services/vectorize.service';
 import { clearBindingsRegistry } from '../tokens';
@@ -68,7 +68,7 @@ describe('VectorizeModule', () => {
     })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/search/query', undefined, { EMBEDDINGS: mockVectorize });
@@ -102,7 +102,7 @@ describe('VectorizeModule', () => {
     })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/vectors/insert', undefined, { VECS: mockVectorize });
@@ -130,7 +130,7 @@ describe('VectorizeModule', () => {
     })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/meta', undefined, { IDX: mockVectorize });
@@ -160,7 +160,7 @@ describe('VectorizeModule', () => {
     })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/raw', undefined, { RAW_VEC: mockVectorize });
@@ -197,7 +197,7 @@ describe('VectorizeModule', () => {
     })
     class AppModule {}
 
-    const app = await CloudflareFactory.create(AppModule);
+    const app = await createCloudflareApp(AppModule);
     const hono = app.getHonoApp();
 
     const res = await hono.request('/semantic/test', undefined, { SEARCH: mockVectorize });
