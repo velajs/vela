@@ -1,5 +1,6 @@
 import type { Hono } from 'hono';
-import type { VelaApplication } from '@velajs/vela';
+import { CRON_METADATA, getMetadata, type VelaApplication } from '@velajs/vela';
+import type { CronMetadata } from '@velajs/vela';
 import { getScheduledMetadata } from './decorators/scheduled';
 import { getQueueConsumerMetadata } from './decorators/queue-consumer';
 import type { ScheduledRegistration, QueueRegistration, CloudflareEnv } from './types';
@@ -12,7 +13,7 @@ import type { ScheduledRegistration, QueueRegistration, CloudflareEnv } from './
  *
  * @example
  * ```ts
- * const app = await CloudflareFactory.create(AppModule);
+ * const app = await createCloudflareApp(AppModule);
  * export default {
  *   fetch: app.fetch,
  *   scheduled: app.scheduled.bind(app),
@@ -34,7 +35,7 @@ export class CloudflareApplication {
     return this.app.getHonoApp();
   }
 
-  /** @internal — scans instances for @Scheduled and @QueueConsumer metadata */
+  /** @internal — scans instances for @Scheduled, @Cron, and @QueueConsumer metadata */
   scanInstances(instances: unknown[]): void {
     for (const instance of instances) {
       if (!instance || typeof instance !== 'object') continue;
@@ -45,6 +46,15 @@ export class CloudflareApplication {
           instance,
           methodName: meta.methodName,
           cron: meta.cron,
+        });
+      }
+
+      const cronMeta = (getMetadata(CRON_METADATA, instance.constructor) as CronMetadata[] | undefined) ?? [];
+      for (const meta of cronMeta) {
+        this.scheduledHandlers.push({
+          instance,
+          methodName: meta.methodName,
+          cron: meta.expression,
         });
       }
 
