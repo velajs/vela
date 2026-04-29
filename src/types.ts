@@ -4,6 +4,7 @@ import type {
   EndpointsConfig,
   MetaInput,
 } from 'hono-crud';
+import type { ZodObject, ZodRawShape } from 'zod';
 
 /**
  * The CRUD operations surfaced by @velajs/crud. Narrower than hono-crud's
@@ -32,6 +33,18 @@ export type EndpointOverride<M extends MetaInput = MetaInput> = {
   update: NonNullable<EndpointsConfig<M>['update']>;
   delete: NonNullable<EndpointsConfig<M>['delete']>;
 };
+
+/**
+ * Per-route Zod schema overrides for request bodies. Each key, when set,
+ * is forwarded to hono-crud as `endpoints.{name}.bodySchema` (added in
+ * hono-crud 0.5.0): the route validates against the user's schema instead
+ * of the model-derived default. The schema is used as-is — primary keys,
+ * multi-tenant fields, and `.partial()` are NOT applied automatically.
+ */
+export interface CrudDtos {
+  create?: ZodObject<ZodRawShape>;
+  update?: ZodObject<ZodRawShape>;
+}
 
 /**
  * Flat ergonomic sugar over `endpoints.{name}.hooks.{before,after}`.
@@ -64,6 +77,8 @@ export interface CrudConfig<M extends MetaInput = MetaInput> {
   endpoints?: { [K in CrudEndpointName]?: EndpointOverride<M>[K] };
   /** Flat before/after hooks per route. Sugar over endpoints.{name}.hooks. */
   hooks?: CrudHooks;
+  /** Per-route Zod schema overrides for create / update body validation. */
+  dto?: CrudDtos;
 }
 
 export interface ResourceConfig<M extends MetaInput = MetaInput>

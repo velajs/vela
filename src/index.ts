@@ -5,4 +5,11 @@ export { Override, getOverrides } from './override.decorator';
 export type { OverrideEntry } from './override.decorator';
 export { buildCrudRoutes } from './builder';
 export { ALL_CRUD_ENDPOINTS } from './types';
-export type { CrudConfig, ResourceConfig, CrudEndpointName, EndpointOverride } from './types';
+export type {
+  CrudConfig,
+  CrudDtos,
+  CrudHooks,
+  CrudEndpointName,
+  EndpointOverride,
+  ResourceConfig,
+} from './types';

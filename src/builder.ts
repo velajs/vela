@@ -119,16 +119,30 @@ function buildEndpointsDef(
   // the slot hono-crud expects at runtime.
   const def: Record<string, unknown> = { meta: config.meta };
   const flatHooks = config.hooks;
+  const dtos = config.dto;
 
   for (const name of enabled) {
-    const perEndpoint = (config.endpoints?.[name] as Record<string, unknown> | undefined) ?? {};
-    if (flatHooks) {
-      def[name] = mergeFlatHooks(name, perEndpoint, flatHooks);
-    } else {
-      def[name] = perEndpoint;
-    }
+    let perEndpoint = (config.endpoints?.[name] as Record<string, unknown> | undefined) ?? {};
+    if (flatHooks) perEndpoint = mergeFlatHooks(name, perEndpoint, flatHooks);
+    if (dtos) perEndpoint = mergeDto(name, perEndpoint, dtos);
+    def[name] = perEndpoint;
   }
   return def as unknown as EndpointsConfig<MetaInput>;
+}
+
+function mergeDto(
+  endpoint: CrudEndpointName,
+  base: Record<string, unknown>,
+  dtos: NonNullable<CrudConfig['dto']>,
+): Record<string, unknown> {
+  // dto.create / dto.update map onto hono-crud's bodySchema field on the
+  // matching endpoint config. Per-endpoint bodySchema set explicitly via
+  // `endpoints.{name}.bodySchema` wins over the flat dto sugar.
+  if (endpoint !== 'create' && endpoint !== 'update') return base;
+  const dto = dtos[endpoint];
+  if (!dto) return base;
+  if (base.bodySchema !== undefined) return base;
+  return { ...base, bodySchema: dto };
 }
 
 function mergeFlatHooks(
