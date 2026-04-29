@@ -116,10 +116,9 @@ export type { EventHandler, OnEventMetadata } from './event-emitter/index';
 export {
   ScheduleModule,
   ScheduleRegistry,
-  ScheduleExecutor,
   Cron,
   Interval,
-  SCHEDULE_MODULE_OPTIONS,
+  parseCron,
   CRON_METADATA,
   INTERVAL_METADATA,
 } from './schedule/index';
@@ -128,7 +127,7 @@ export type {
   RegisteredIntervalJob,
   CronMetadata,
   IntervalMetadata,
-  ScheduleModuleOptions,
+  CronMatcher,
 } from './schedule/index';
 
 // Health
