@@ -1,4 +1,4 @@
-export { Crud, getCrudConfig } from './crud.decorator';
+export { Crud } from './crud.decorator';
 export { CrudModule } from './crud.module';
 export { CrudService } from './crud.service';
 export { Override, getOverrides } from './override.decorator';

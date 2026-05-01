@@ -48,20 +48,15 @@
     "node": ">=20"
   },
   "peerDependencies": {
-    "@velajs/vela": ">=1.0.0",
+    "@velajs/vela": ">=1.1.0",
     "hono": ">=4",
     "hono-crud": ">=0.5.0",
     "@hono/zod-openapi": ">=0.9",
     "zod": ">=4"
   },
-  "peerDependenciesMeta": {
-    "@velajs/vela": {
-      "optional": true
-    }
-  },
   "devDependencies": {
     "@velajs/crud": "link:",
-    "@velajs/vela": "^1.0.0",
+    "@velajs/vela": "^1.1.0",
     "@hono/zod-openapi": "^0.19",
     "@swc/cli": "^0.8.0",
     "@swc/core": "^1.15.11",
