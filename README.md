@@ -73,13 +73,47 @@ Vela runs on any runtime that supports the Web Standards API:
 
 No Node.js-specific APIs (`node:fs`, `Buffer`, `process`) are used.
 
-## CRUD Module (Optional)
+## Dynamic modules
+
+Configurable modules use `forRoot` (sync) and `forRootAsync` (DI-resolved):
+
+```ts
+@Module({
+  imports: [
+    CacheModule.forRoot({ ttl: 60 }),
+    HttpModule.forRoot({ baseURL: 'https://api.example.com' }),
+    ConfigModule.forRootAsync({
+      useFactory: async (loader: ConfigLoader) => loader.load(),
+      inject: [ConfigLoader],
+    }),
+  ],
+})
+class AppModule {}
+```
+
+## Companion packages
+
+| Package | Purpose |
+|---|---|
+| [`@velajs/cloudflare`](https://github.com/velajs/cloudflare) | Cloudflare Workers adapter — typed services for KV, D1, R2, Queues, DO, AI, Vectorize, Hyperdrive |
+| [`@velajs/crud`](https://github.com/velajs/crud) | NestJS-style CRUD controllers on top of `hono-crud` |
+| [`@velajs/testing`](https://github.com/velajs/testing) | `Test.createTestingModule()` with `overrideProvider/Guard/Pipe/Interceptor/Filter` |
 
 ```bash
+pnpm add @velajs/testing -D
+pnpm add @velajs/cloudflare @cloudflare/workers-types
 pnpm add @velajs/crud hono-crud @hono/zod-openapi zod
 ```
 
-See [`@velajs/crud`](https://github.com/velajs/crud) for documentation.
+## `/internal` subpath (for plugin authors)
+
+Framework primitives — `MetadataRegistry`, `Container`, `RouteManager`, `ModuleLoader`, `ComponentManager`, `VelaApplication`, `bindAppProviders`, `APP_*` tokens — are exposed at `@velajs/vela/internal`. This is the stable target for plugin packages that need to reach below the public API.
+
+```ts
+import { MetadataRegistry, Container } from '@velajs/vela/internal';
+```
+
+The public root barrel still exports `MetadataRegistry` (used by tests for `clear()` between cases). Everything else lives at `/internal` only.
 
 ## License
 

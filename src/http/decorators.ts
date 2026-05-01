@@ -1,51 +1,36 @@
-import { HttpMethod, METADATA_KEYS, ParamType, Scope } from '../constants';
-import { defineMetadata, getMetadata } from '../metadata';
+import { HttpMethod, ParamType, Scope } from '../constants';
 import { MetadataRegistry } from '../registry/metadata.registry';
+import { normalizePath } from '../registry/paths';
 import type { Constructor, PipeType, Type } from '../registry/types';
 import type { ControllerOptions } from './types';
 import type { ExecutionContext } from '../pipeline/types';
-
-function normalizePath(path: string): string {
-  return path && !path.startsWith('/') ? `/${path}` : path;
-}
+import { buildExecutionContext } from './execution-context';
 
 /**
  * Marks a class as a controller.
- * Accepts a prefix string or an options object with prefix and version.
+ * Accepts a path string or an options object with `path` and `version`.
  *
  * @example
  * ```ts
  * @Controller('/users')
- * @Controller({ prefix: '/users', version: 1 })
- * @Controller({ prefix: '/users', version: [1, 2] })
+ * @Controller({ path: '/users', version: 1 })
+ * @Controller({ path: '/users', version: [1, 2] })
  * ```
  */
-export function Controller(prefixOrOptions?: string | ControllerOptions): ClassDecorator {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
-  return (target: Function) => {
-    let prefix: string;
-    let version: number | number[] | undefined;
+export function Controller(pathOrOptions?: string | ControllerOptions): ClassDecorator {
+  return (target) => {
+    const ctor = target as unknown as Constructor;
+    const path = typeof pathOrOptions === 'string' ? pathOrOptions : pathOrOptions?.path ?? '';
+    const version = typeof pathOrOptions === 'object' ? pathOrOptions?.version : undefined;
 
-    if (typeof prefixOrOptions === 'string') {
-      prefix = prefixOrOptions;
-    } else if (prefixOrOptions) {
-      prefix = prefixOrOptions.path ?? prefixOrOptions.prefix ?? '';
-      version = prefixOrOptions.version;
-    } else {
-      prefix = '';
-    }
-
-    MetadataRegistry.setControllerPath(target, normalizePath(prefix));
+    MetadataRegistry.setControllerPath(ctor, normalizePath(path));
 
     if (version !== undefined) {
-      MetadataRegistry.setControllerOptions(target, { version });
+      MetadataRegistry.setControllerOptions(ctor, { version });
     }
 
-    MetadataRegistry.markInjectable(target as Constructor);
-    MetadataRegistry.setScope(target as Constructor, Scope.SINGLETON);
-    // Keep WeakMap write for external package compat
-    defineMetadata(METADATA_KEYS.INJECTABLE, true, target);
-    defineMetadata(METADATA_KEYS.SCOPE, Scope.SINGLETON, target);
+    MetadataRegistry.markInjectable(ctor);
+    MetadataRegistry.setScope(ctor, Scope.SINGLETON);
   };
 }
 
@@ -67,15 +52,11 @@ export function Controller(prefixOrOptions?: string | ControllerOptions): ClassD
  */
 export function Version(version: number | number[]): MethodDecorator {
   return (target: object, propertyKey: string | symbol, _descriptor: PropertyDescriptor) => {
-    MetadataRegistry.setRouteVersion(target.constructor as Constructor, propertyKey, version);
+    const ctor = target.constructor as Constructor;
+    MetadataRegistry.setRouteVersion(ctor, propertyKey, version);
 
-    // Keep WeakMap write for compat
-    const versionKey = `vela:route-version:${String(propertyKey)}`;
-    defineMetadata(versionKey, version, target.constructor);
-
-    // If route was already registered (decorator ran after @Get), patch it
-    const routes = MetadataRegistry.getRoutes(target.constructor);
-    const route = routes.find((r) => r.handlerName === propertyKey);
+    // If route was already registered (decorator ran after @Get), patch it.
+    const route = MetadataRegistry.getRoutes(ctor).find((r) => r.handlerName === propertyKey);
     if (route) {
       route.version = version;
     }
@@ -86,21 +67,17 @@ export function getRouteVersion(
   target: Constructor,
   propertyKey: string | symbol,
 ): number | number[] | undefined {
-  return MetadataRegistry.getRouteVersion(target, propertyKey) ??
-    (getMetadata(`vela:route-version:${String(propertyKey)}`, target) as number | number[] | undefined);
+  return MetadataRegistry.getRouteVersion(target, propertyKey);
 }
 
 function createMethodDecorator(method: HttpMethod) {
   return (path = ''): MethodDecorator => {
     return (target: object, propertyKey: string | symbol, _descriptor: PropertyDescriptor) => {
+      const ctor = target.constructor as Constructor;
       const normalizedPath = normalizePath(path);
+      const version = MetadataRegistry.getRouteVersion(ctor, propertyKey);
 
-      // Check for @Version metadata on this method
-      const version: number | number[] | undefined =
-        MetadataRegistry.getRouteVersion(target.constructor as Constructor, propertyKey) ??
-        (getMetadata(`vela:route-version:${String(propertyKey)}`, target.constructor) as number | number[] | undefined);
-
-      MetadataRegistry.addRoute(target.constructor, {
+      MetadataRegistry.addRoute(ctor, {
         method: method as string,
         path: normalizedPath,
         handlerName: propertyKey,
@@ -146,7 +123,7 @@ function createBuiltinParamDecorator(type: ParamType) {
       }
 
       MetadataRegistry.addParameter(
-        target.constructor,
+        target.constructor as Constructor,
         propertyKey,
         {
           index: parameterIndex,
@@ -217,7 +194,7 @@ export function RawBody(): ParameterDecorator {
     if (propertyKey === undefined) {
       throw new Error('Parameter decorators can only be used on method parameters');
     }
-    MetadataRegistry.addParameter(target.constructor, propertyKey, {
+    MetadataRegistry.addParameter(target.constructor as Constructor, propertyKey, {
       index: parameterIndex,
       type: ParamType.RAW_BODY,
     });
@@ -261,7 +238,7 @@ export function createParamDecorator<TData = unknown>(
       }
 
       MetadataRegistry.addParameter(
-        target.constructor,
+        target.constructor as Constructor,
         propertyKey,
         {
           index: parameterIndex,
@@ -269,17 +246,7 @@ export function createParamDecorator<TData = unknown>(
           name: undefined,
           factory: (_unused: unknown, ctx: unknown) => {
             const honoCtx = ctx as import('hono').Context;
-            const execCtx: ExecutionContext = {
-              getType: <T extends string = 'http'>() => 'http' as T,
-              getClass: () => target.constructor as Type,
-              getHandler: () => propertyKey,
-              getContext: <T>() => honoCtx as T,
-              getRequest: () => honoCtx.req.raw,
-              switchToHttp: () => ({
-                getRequest: <T = Request>() => honoCtx.req.raw as T,
-                getResponse: <T>() => honoCtx as T,
-              }),
-            };
+            const execCtx = buildExecutionContext(honoCtx, target.constructor as Type, propertyKey);
             return factory(data as TData, execCtx);
           },
           ...(pipes.length > 0 ? { pipes } : {}),
@@ -355,21 +322,15 @@ export function Redirect(url: string, statusCode = 302): MethodDecorator {
 // Metadata readers (used by RouteManager)
 
 export function getHttpCode(target: Constructor, method: string | symbol): number | undefined {
-  const meta = MetadataRegistry.getHandlerHttpMeta(target, method);
-  if (meta?.httpCode !== undefined) return meta.httpCode;
-  return getMetadata(METADATA_KEYS.HTTP_CODE, target, method) as number | undefined;
+  return MetadataRegistry.getHandlerHttpMeta(target, method)?.httpCode;
 }
 
 export function getResponseHeaders(target: Constructor, method: string | symbol): Array<[string, string]> {
-  const meta = MetadataRegistry.getHandlerHttpMeta(target, method);
-  if (meta?.responseHeaders) return meta.responseHeaders;
-  return (getMetadata(METADATA_KEYS.RESPONSE_HEADERS, target, method) as Array<[string, string]>) ?? [];
+  return MetadataRegistry.getHandlerHttpMeta(target, method)?.responseHeaders ?? [];
 }
 
 export function getRedirect(target: Constructor, method: string | symbol): { url: string; statusCode: number } | undefined {
-  const meta = MetadataRegistry.getHandlerHttpMeta(target, method);
-  if (meta?.redirect) return meta.redirect;
-  return getMetadata(METADATA_KEYS.REDIRECT, target, method) as { url: string; statusCode: number } | undefined;
+  return MetadataRegistry.getHandlerHttpMeta(target, method)?.redirect;
 }
 
 /**
@@ -388,25 +349,34 @@ export function getRedirect(target: Constructor, method: string | symbol): { url
  * handle() { ... }
  * ```
  */
+// Polymorphic signature: matches the shape of every decorator slot
+// (class, method, property, parameter) so a single composition can be applied
+// at any of them. TypeScript can't express "this is one of N decorator types"
+// natively; the union shape below is what every decorator definition reduces to.
+export type ComposedDecorator = <T>(
+  target: T,
+  propertyKey?: string | symbol,
+  descriptor?: PropertyDescriptor | number,
+) => void;
+
 export function applyDecorators(
   ...decorators: Array<ClassDecorator | MethodDecorator | PropertyDecorator | ParameterDecorator>
-): ClassDecorator & MethodDecorator & PropertyDecorator {
-  const composed = (
+): ComposedDecorator {
+  return ((
     target: object,
     propertyKey?: string | symbol,
     descriptor?: PropertyDescriptor | number,
   ) => {
     for (const decorator of decorators) {
       if (propertyKey === undefined && typeof descriptor !== 'number') {
-        (decorator as ClassDecorator)(target as Function);
+        (decorator as ClassDecorator)(target as never);
       } else if (typeof descriptor === 'number') {
         (decorator as ParameterDecorator)(target, propertyKey!, descriptor);
       } else {
         (decorator as MethodDecorator)(target, propertyKey!, descriptor!);
       }
     }
-  };
-  return composed as unknown as ClassDecorator & MethodDecorator & PropertyDecorator;
+  }) as ComposedDecorator;
 }
 
 // Helpers

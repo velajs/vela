@@ -1,8 +1,10 @@
+export type ExceptionResponse = string | Record<string, unknown>;
+
 export class HttpException extends Error {
   public readonly statusCode: number;
-  private readonly _response: string | object;
+  private readonly _response: ExceptionResponse;
 
-  constructor(response: string | object, statusCode: number) {
+  constructor(response: ExceptionResponse, statusCode: number) {
     const message = typeof response === 'string' ? response : JSON.stringify(response);
     super(message);
     this.name = 'HttpException';
@@ -15,102 +17,102 @@ export class HttpException extends Error {
     return this.statusCode;
   }
 
-  getResponse(): unknown {
-    if (typeof this._response === 'object' && this._response !== null) {
-      return this._response;
+  getResponse(): Record<string, unknown> {
+    if (typeof this._response === 'string') {
+      return { statusCode: this.statusCode, message: this._response };
     }
-    return { statusCode: this.statusCode, message: this._response };
+    return this._response;
   }
 }
 
 // 4xx
 
 export class BadRequestException extends HttpException {
-  constructor(message: string | object = 'Bad Request') {
+  constructor(message: ExceptionResponse = 'Bad Request') {
     super(message, 400);
     this.name = 'BadRequestException';
   }
 }
 
 export class UnauthorizedException extends HttpException {
-  constructor(message: string | object = 'Unauthorized') {
+  constructor(message: ExceptionResponse = 'Unauthorized') {
     super(message, 401);
     this.name = 'UnauthorizedException';
   }
 }
 
 export class ForbiddenException extends HttpException {
-  constructor(message: string | object = 'Forbidden') {
+  constructor(message: ExceptionResponse = 'Forbidden') {
     super(message, 403);
     this.name = 'ForbiddenException';
   }
 }
 
 export class NotFoundException extends HttpException {
-  constructor(message: string | object = 'Not Found') {
+  constructor(message: ExceptionResponse = 'Not Found') {
     super(message, 404);
     this.name = 'NotFoundException';
   }
 }
 
 export class MethodNotAllowedException extends HttpException {
-  constructor(message: string | object = 'Method Not Allowed') {
+  constructor(message: ExceptionResponse = 'Method Not Allowed') {
     super(message, 405);
     this.name = 'MethodNotAllowedException';
   }
 }
 
 export class NotAcceptableException extends HttpException {
-  constructor(message: string | object = 'Not Acceptable') {
+  constructor(message: ExceptionResponse = 'Not Acceptable') {
     super(message, 406);
     this.name = 'NotAcceptableException';
   }
 }
 
 export class RequestTimeoutException extends HttpException {
-  constructor(message: string | object = 'Request Timeout') {
+  constructor(message: ExceptionResponse = 'Request Timeout') {
     super(message, 408);
     this.name = 'RequestTimeoutException';
   }
 }
 
 export class ConflictException extends HttpException {
-  constructor(message: string | object = 'Conflict') {
+  constructor(message: ExceptionResponse = 'Conflict') {
     super(message, 409);
     this.name = 'ConflictException';
   }
 }
 
 export class GoneException extends HttpException {
-  constructor(message: string | object = 'Gone') {
+  constructor(message: ExceptionResponse = 'Gone') {
     super(message, 410);
     this.name = 'GoneException';
   }
 }
 
 export class PayloadTooLargeException extends HttpException {
-  constructor(message: string | object = 'Payload Too Large') {
+  constructor(message: ExceptionResponse = 'Payload Too Large') {
     super(message, 413);
     this.name = 'PayloadTooLargeException';
   }
 }
 
 export class UnsupportedMediaTypeException extends HttpException {
-  constructor(message: string | object = 'Unsupported Media Type') {
+  constructor(message: ExceptionResponse = 'Unsupported Media Type') {
     super(message, 415);
     this.name = 'UnsupportedMediaTypeException';
   }
 }
 
 export class UnprocessableEntityException extends HttpException {
-  constructor(message: string | object = 'Unprocessable Entity') {
+  constructor(message: ExceptionResponse = 'Unprocessable Entity') {
     super(message, 422);
     this.name = 'UnprocessableEntityException';
   }
 }
 
 export class TooManyRequestsException extends HttpException {
-  constructor(message: string | object = 'Too Many Requests') {
+  constructor(message: ExceptionResponse = 'Too Many Requests') {
     super(message, 429);
     this.name = 'TooManyRequestsException';
   }
@@ -119,35 +121,35 @@ export class TooManyRequestsException extends HttpException {
 // 5xx
 
 export class InternalServerErrorException extends HttpException {
-  constructor(message: string | object = 'Internal Server Error') {
+  constructor(message: ExceptionResponse = 'Internal Server Error') {
     super(message, 500);
     this.name = 'InternalServerErrorException';
   }
 }
 
 export class NotImplementedException extends HttpException {
-  constructor(message: string | object = 'Not Implemented') {
+  constructor(message: ExceptionResponse = 'Not Implemented') {
     super(message, 501);
     this.name = 'NotImplementedException';
   }
 }
 
 export class BadGatewayException extends HttpException {
-  constructor(message: string | object = 'Bad Gateway') {
+  constructor(message: ExceptionResponse = 'Bad Gateway') {
     super(message, 502);
     this.name = 'BadGatewayException';
   }
 }
 
 export class ServiceUnavailableException extends HttpException {
-  constructor(message: string | object = 'Service Unavailable') {
+  constructor(message: ExceptionResponse = 'Service Unavailable') {
     super(message, 503);
     this.name = 'ServiceUnavailableException';
   }
 }
 
 export class GatewayTimeoutException extends HttpException {
-  constructor(message: string | object = 'Gateway Timeout') {
+  constructor(message: ExceptionResponse = 'Gateway Timeout') {
     super(message, 504);
     this.name = 'GatewayTimeoutException';
   }

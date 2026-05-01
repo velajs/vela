@@ -30,7 +30,7 @@ export class CacheModule {
     };
   }
 
-  static registerAsync(
+  static forRootAsync(
     options: AsyncModuleOptions<CacheModuleOptions> & { isGlobal?: boolean },
   ): DynamicModule {
     const providers: Array<Type | ProviderOptions> = [

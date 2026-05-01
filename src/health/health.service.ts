@@ -18,7 +18,7 @@ export class HealthCheckService implements BeforeApplicationShutdown {
   async check(indicators: HealthIndicatorFunction[]): Promise<HealthCheckResult> {
     if (this.isShuttingDown) {
       const result: HealthCheckResult = { status: 'shutting_down', info: {}, error: {}, details: {} };
-      throw new ServiceUnavailableException(result);
+      throw new ServiceUnavailableException({ ...result });
     }
 
     const results = await Promise.allSettled(indicators.map((fn) => fn()));
@@ -53,7 +53,7 @@ export class HealthCheckService implements BeforeApplicationShutdown {
     const checkResult: HealthCheckResult = { status, info, error, details };
 
     if (status === 'error') {
-      throw new ServiceUnavailableException(checkResult);
+      throw new ServiceUnavailableException({ ...checkResult });
     }
 
     return checkResult;

@@ -2,7 +2,7 @@ import './metadata';
 export { defineMetadata, getMetadata } from './metadata';
 
 // Factory & Application
-export { VelaFactory, createApplication } from './factory';
+export { VelaFactory } from './factory';
 export { VelaApplication } from './application';
 
 // OpenAPI
@@ -169,7 +169,6 @@ export type {
 // Module
 export { Global, Module, createModuleRef } from './module/index';
 export type { ModuleOptions, DynamicModule, AsyncModuleOptions, ModuleImport } from './module/index';
-export { RequestMethod } from './http/index';
 export type { MiddlewareConsumer, NestModule, RouteInfo } from './http/index';
 
 // Pipeline Decorators
@@ -260,16 +259,10 @@ export type {
   BeforeApplicationShutdown,
 } from './lifecycle/index';
 
-// Registry (for advanced usage)
-export { MetadataRegistry } from './registry/index';
-
-// Module internals (for @velajs/testing and advanced usage)
-export { RouteManager } from './http/index';
-export type { RouteManagerOptions } from './http/index';
-export { ModuleLoader } from './module/index';
-
-// Component Manager (for advanced usage)
-export { ComponentManager } from './pipeline/index';
+// MetadataRegistry — the central decoration store. Test setup typically
+// uses `MetadataRegistry.clear()` between cases. Internal primitives like
+// RouteManager/ModuleLoader/ComponentManager live only at @velajs/vela/internal.
+export { MetadataRegistry } from './registry/metadata.registry';
 
 // Validation
 export { createZodDto, ValidationPipe } from './validation/index';
@@ -278,8 +271,7 @@ export type { CreateZodDtoOptions } from './validation/index';
 // Serialization
 export { Serialize, SerializerInterceptor, SERIALIZE_METADATA } from './serialization/index';
 
-// Testing
-export { Test, TestingModule, TestingModuleBuilder } from './testing/index';
+// Testing utilities live in @velajs/testing — see https://github.com/velajs/testing
 
 // Hono Adapter Utilities
 export { getRuntimeKey, env } from 'hono/adapter';

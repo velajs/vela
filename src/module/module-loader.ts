@@ -2,8 +2,6 @@ import { Scope } from "../constants";
 import type { Container } from "../container/container";
 import { ForwardRef, InjectionToken } from "../container/types";
 import type { ProviderOptions, Token, Type } from "../container/types";
-import { MiddlewareBuilder } from "../http/middleware-consumer";
-import type { MiddlewareRouteDefinition } from "../http/middleware-consumer";
 import type { RouteManager } from "../http/route.manager";
 import {
   APP_FILTER,
@@ -12,6 +10,12 @@ import {
   APP_MIDDLEWARE,
   APP_PIPE,
 } from "../pipeline/tokens";
+import { MetadataRegistry } from "../registry/metadata.registry";
+import { getOrCreateArray } from "../registry/util";
+import { getModuleMetadata, isModule } from "./decorators";
+import { MiddlewareBuilder } from "./middleware";
+import type { MiddlewareRouteDefinition, NestModule } from "./middleware";
+import type { ModuleImport } from "./types";
 
 const APP_TOKENS = new Set<Token>([
   APP_GUARD,
@@ -20,9 +24,6 @@ const APP_TOKENS = new Set<Token>([
   APP_FILTER,
   APP_MIDDLEWARE,
 ]);
-import { MetadataRegistry } from "../registry/metadata.registry";
-import { getModuleMetadata, isModule } from "./decorators";
-import type { ModuleImport } from "./types";
 
 interface DynamicModule {
   module: Type;
@@ -40,6 +41,10 @@ function isDynamicModule(value: unknown): value is DynamicModule {
     "module" in value &&
     typeof (value as DynamicModule).module === "function"
   );
+}
+
+function implementsNestModule(cls: Type): cls is Type<NestModule> {
+  return typeof (cls.prototype as Partial<NestModule> | undefined)?.configure === "function";
 }
 
 export class ModuleLoader {
@@ -187,21 +192,16 @@ export class ModuleLoader {
         }
       }
 
-      // Call configure() if the module implements NestModule
-      if (
-        typeof (moduleClass as { prototype?: { configure?: unknown } })
-          .prototype?.configure === "function"
-      ) {
-        try {
-          const instance = new moduleClass() as {
-            configure: (c: MiddlewareBuilder) => void;
-          };
-          const builder = new MiddlewareBuilder();
-          instance.configure(builder);
-          this.consumerMiddlewareDefinitions.push(...builder.getDefinitions());
-        } catch {
-          // Module has constructor dependencies — configure() skipped
+      // Call configure() if the module implements NestModule. The module is
+      // resolved through the container so it can have its own DI dependencies.
+      if (implementsNestModule(moduleClass)) {
+        if (!this.container.has(moduleClass)) {
+          this.container.register(moduleClass);
         }
+        const instance = this.container.resolve(moduleClass);
+        const builder = new MiddlewareBuilder();
+        instance.configure(builder);
+        this.consumerMiddlewareDefinitions.push(...builder.getDefinitions());
       }
 
       return exports;
@@ -229,7 +229,7 @@ export class ModuleLoader {
         );
         this.container.register({ ...provider, provide: syntheticToken });
         this.registeredProviders.push(syntheticToken);
-        this.appProviderTokens.get(token)!.push(syntheticToken);
+        getOrCreateArray(this.appProviderTokens, token).push(syntheticToken);
         return;
       }
 

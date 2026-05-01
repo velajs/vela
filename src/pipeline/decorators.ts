@@ -1,6 +1,4 @@
-import { METADATA_KEYS } from '../constants';
 import type { Type } from '../container/types';
-import { getMetadata } from '../metadata';
 import { ComponentManager } from './component.manager';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import type {
@@ -10,18 +8,15 @@ import type {
 } from '../registry/types';
 
 function UseComponent<T extends ComponentType>(type: T, ...components: ComponentTypeMap[T][]) {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
-  return (target: Function | object, propertyKey?: string | symbol) => {
+  return (target: object, propertyKey?: string | symbol) => {
     if (propertyKey !== undefined) {
-      // Method decorator — target is prototype, target.constructor is the class
       ComponentManager.registerHandler(
         type,
-        target.constructor,
+        target.constructor as Constructor,
         propertyKey,
         ...components,
       );
     } else {
-      // Class decorator — target is the class itself
       ComponentManager.registerController(type, target as Constructor, ...components);
     }
   };
@@ -48,17 +43,14 @@ export function UseFilters(...filters: ComponentTypeMap['filter'][]) {
 }
 
 export function Catch(...exceptions: Type<Error>[]): ClassDecorator {
-  return (target: object) => {
-    MetadataRegistry.setCatchTypes(target as Constructor, exceptions);
+  return (target) => {
+    MetadataRegistry.setCatchTypes(target as unknown as Constructor, exceptions);
   };
 }
 
 export function getCatchTypes(filter: unknown): Type<Error>[] {
   const filterClass = (typeof filter === 'function' ? filter : (filter as object).constructor) as Constructor;
-  if (MetadataRegistry.hasCatchTypes(filterClass)) {
-    return MetadataRegistry.getCatchTypes(filterClass) ?? [];
-  }
-  return (getMetadata(METADATA_KEYS.CATCH, filterClass) as Type<Error>[]) ?? [];
+  return MetadataRegistry.getCatchTypes(filterClass) ?? [];
 }
 
 export function shouldFilterCatch(filter: unknown, exception: unknown): boolean {

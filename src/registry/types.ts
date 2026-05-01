@@ -6,13 +6,16 @@ import type {
   NestMiddleware,
   PipeTransform,
 } from '../pipeline/types';
+import type {
+  Constructor,
+  ForwardRef,
+  InjectionToken,
+  ProviderOptions,
+  Token,
+  Type,
+} from '../container/types';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type Type<T = any> = new (...args: any[]) => T;
-
-// Broader type that matches what decorators actually provide (Function)
-// eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
-export type Constructor = Function;
+export type { Constructor, ForwardRef, InjectionToken, ProviderOptions, Token, Type };
 
 export type ComponentType = 'middleware' | 'guard' | 'pipe' | 'interceptor' | 'filter';
 
@@ -53,25 +56,38 @@ export interface HttpHandlerMeta {
   redirect?: { url: string; statusCode: number };
 }
 
-export interface ModuleOptions {
-  imports?: unknown[];
+// Module shapes — canonical home (was duplicated in module/types.ts).
+
+export type ModuleImport = Type | DynamicModule | ForwardRef;
+
+export interface AsyncModuleOptions<T = unknown> {
+  imports?: ModuleImport[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  useFactory: (...args: any[]) => T | Promise<T>;
+  inject?: Token[];
+}
+
+export interface DynamicModule {
+  module: Type;
+  imports?: ModuleImport[];
   providers?: Array<Type | ProviderOptions>;
   controllers?: Type[];
-  exports?: Array<Type | InjectionTokenLike>;
+  exports?: Array<Type | InjectionToken>;
+  global?: boolean;
+}
+
+export interface ModuleOptions {
+  providers?: Array<Type | ProviderOptions>;
+  controllers?: Type[];
+  imports?: ModuleImport[];
+  exports?: Array<Type | InjectionToken>;
   isGlobal?: boolean;
 }
 
-// Forward-compatible with InjectionToken
-export interface InjectionTokenLike {
-  toString(): string;
-}
-
-// Forward-compatible with ProviderOptions
-export interface ProviderOptions<T = unknown> {
-  token?: unknown;
-  scope?: string;
-  useValue?: T;
-  useFactory?: (...args: unknown[]) => T | Promise<T>;
-  inject?: unknown[];
-  useExisting?: unknown;
+export interface ModuleMetadata {
+  providers: Array<Type | ProviderOptions>;
+  controllers: Type[];
+  imports: ModuleImport[];
+  exports: Array<Type | InjectionToken>;
+  isGlobal: boolean;
 }

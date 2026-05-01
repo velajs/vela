@@ -1,8 +1,7 @@
-import { getModuleMetadata } from '../module/decorators';
-import type { ModuleImport } from '../module/types';
-import { ForwardRef } from '../container/types';
 import type { Type } from '../container/types';
+import { collectControllers } from '../module/graph';
 import { MetadataRegistry } from '../registry/metadata.registry';
+import { joinPaths, toOpenApiPath } from '../registry/paths';
 import type { ParameterMetadata, RouteDefinition } from '../registry/types';
 import { ParamType } from '../constants';
 import { getApiDoc, getApiResponses, getApiTags } from './decorators';
@@ -17,53 +16,6 @@ import type {
   OpenApiRequestBody,
 } from './types';
 import { isOptional, zodToJsonSchema } from './zod-to-json-schema';
-
-interface DynamicModuleLike {
-  module: Type;
-  imports?: ModuleImport[];
-  controllers?: Type[];
-}
-
-function isDynamicModuleLike(v: unknown): v is DynamicModuleLike {
-  return !!v && typeof v === 'object' && 'module' in v && typeof (v as DynamicModuleLike).module === 'function';
-}
-
-function collectControllers(rootModule: Type): Type[] {
-  const visited = new Set<Type>();
-  const controllers = new Set<Type>();
-
-  function visit(entry: ModuleImport | Type | DynamicModuleLike): void {
-    const unwrapped = entry instanceof ForwardRef ? (entry.factory() as Type | DynamicModuleLike) : entry;
-    const moduleClass = isDynamicModuleLike(unwrapped) ? unwrapped.module : (unwrapped as Type);
-    const extraControllers = isDynamicModuleLike(unwrapped) ? unwrapped.controllers ?? [] : [];
-    const extraImports = isDynamicModuleLike(unwrapped) ? unwrapped.imports ?? [] : [];
-
-    if (typeof moduleClass !== 'function' || visited.has(moduleClass)) return;
-    visited.add(moduleClass);
-
-    const metadata = getModuleMetadata(moduleClass);
-    if (metadata) {
-      for (const controller of metadata.controllers) controllers.add(controller);
-      for (const imp of metadata.imports) visit(imp as ModuleImport);
-    }
-    for (const controller of extraControllers) controllers.add(controller);
-    for (const imp of extraImports) visit(imp);
-  }
-
-  visit(rootModule);
-  return [...controllers];
-}
-
-function normalizePath(path: string): string {
-  return path.replace(/:([a-zA-Z_][a-zA-Z0-9_]*)/g, '{$1}');
-}
-
-function joinPath(a: string, b: string): string {
-  const left = a.endsWith('/') ? a.slice(0, -1) : a;
-  const right = b && !b.startsWith('/') ? `/${b}` : b;
-  const joined = `${left}${right}`;
-  return joined || '/';
-}
 
 /**
  * Tracks DTO classes referenced during document generation and registers
@@ -214,9 +166,9 @@ function buildOperation(
     }
   }
 
-  const docMeta = getApiDoc(controller.prototype as object, handlerName);
+  const docMeta = getApiDoc(controller, handlerName);
   const controllerTags = getApiTags(controller) ?? [];
-  const handlerTags = getApiTags(controller.prototype as object, handlerName) ?? [];
+  const handlerTags = getApiTags(controller, handlerName) ?? [];
   const docTags = docMeta?.tags ?? [];
   const mergedTags = [...new Set([...controllerTags, ...handlerTags, ...docTags])];
 
@@ -224,7 +176,7 @@ function buildOperation(
     '200': { description: 'OK' },
   };
 
-  const apiResponses = getApiResponses(controller.prototype as object, handlerName) ?? [];
+  const apiResponses = getApiResponses(controller, handlerName) ?? [];
   for (const entry of apiResponses) {
     const key = String(entry.status);
     const resolved: { description: string; content?: Record<string, { schema: JsonSchema }> } = {
@@ -276,8 +228,8 @@ export function createOpenApiDocument(
       const method = route.method.toLowerCase() as HttpVerb;
       if (!VERB_WHITELIST.has(method)) continue;
 
-      const rawPath = joinPath(joinPath(globalPrefix, controllerPath), route.path);
-      const pathString = normalizePath(rawPath);
+      const rawPath = joinPaths(joinPaths(globalPrefix, controllerPath), route.path);
+      const pathString = toOpenApiPath(rawPath);
 
       const operation = buildOperation(controller, route, pathString, registry);
       const pathItem = paths[pathString] ?? {};

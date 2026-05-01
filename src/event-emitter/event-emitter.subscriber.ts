@@ -1,6 +1,8 @@
 import { Injectable, Inject } from '../container/index';
 import { Container } from '../container/container';
 import type { OnApplicationBootstrap } from '../lifecycle/index';
+import { MetadataRegistry } from '../registry/metadata.registry';
+import type { Constructor } from '../registry/types';
 import { EventEmitter } from './event-emitter.service';
 import { ON_EVENT_METADATA } from './event-emitter.tokens';
 import type { OnEventMetadata } from './event-emitter.types';
@@ -19,9 +21,9 @@ export class EventEmitterSubscriber implements OnApplicationBootstrap {
       // Skip non-class tokens
       if (typeof token !== 'function') continue;
 
-      const metadata = Reflect.getMetadata(
+      const metadata = MetadataRegistry.getCustomClassMeta(
+        token as Constructor,
         ON_EVENT_METADATA,
-        token,
       ) as OnEventMetadata[] | undefined;
 
       if (!metadata || metadata.length === 0) continue;
@@ -36,9 +38,7 @@ export class EventEmitterSubscriber implements OnApplicationBootstrap {
       for (const { event, methodName } of metadata) {
         const method = (instance as Record<string, unknown>)[methodName];
         if (typeof method === 'function') {
-          this.emitter.on(event, (...args: unknown[]) =>
-            (method as Function).apply(instance, args),
-          );
+          this.emitter.on(event, (...args: unknown[]) => method.apply(instance, args));
         }
       }
     }

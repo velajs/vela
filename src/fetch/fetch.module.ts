@@ -12,7 +12,7 @@ import type { HttpModuleOptions } from './fetch.types';
   exports: [HttpService],
 })
 export class HttpModule {
-  static register(options: HttpModuleOptions = {}): DynamicModule {
+  static forRoot(options: HttpModuleOptions = {}): DynamicModule {
     return {
       module: createModuleRef('HttpModule'),
       providers: [
@@ -23,7 +23,7 @@ export class HttpModule {
     };
   }
 
-  static registerAsync(options: AsyncModuleOptions<HttpModuleOptions>): DynamicModule {
+  static forRootAsync(options: AsyncModuleOptions<HttpModuleOptions>): DynamicModule {
     return {
       module: createModuleRef('HttpModule'),
       imports: options.imports ?? [],

@@ -5,8 +5,9 @@ import { HttpMethod, ParamType } from '../constants';
 import { getMetadata } from '../metadata';
 import type { Container } from '../container/container';
 import type { Token, Type } from '../container/types';
-import type { MiddlewareRouteDefinition } from './middleware-consumer';
-import { RequestMethod } from './middleware-consumer';
+import type { MiddlewareRouteDefinition } from '../module/middleware';
+import { joinPaths } from '../registry/paths';
+import { buildExecutionContext } from './execution-context';
 import { ForbiddenException, HttpException } from '../errors/http-exception';
 import { ComponentManager } from '../pipeline/component.manager';
 import { shouldFilterCatch } from '../pipeline/decorators';
@@ -339,11 +340,12 @@ export class RouteManager {
           await buildCrudRoutes(app, controller, metadata.prefix, crudConfig, {
             globalPrefix: this.globalPrefix,
             globalGuards: this.instantiateMany<CanActivate>(this.globalGuards, this.container),
-            joinPaths: this.joinPaths.bind(this),
+            joinPaths,
           });
-        } catch {
+        } catch (err) {
           throw new Error(
-            `@Crud() requires '@velajs/crud'. Install it: bun add @velajs/crud`,
+            `@Crud() requires '@velajs/crud'. Install it: pnpm add @velajs/crud`,
+            { cause: err },
           );
         }
       }
@@ -357,17 +359,7 @@ export class RouteManager {
     controller: Type,
     route: RouteMetadata,
   ): ExecutionContext {
-    return {
-      getType: <T extends string = 'http'>() => 'http' as T,
-      getClass: () => controller,
-      getHandler: () => route.handlerName,
-      getContext: <T = Context>() => c as T,
-      getRequest: () => c.req.raw,
-      switchToHttp: () => ({
-        getRequest: <T = Request>() => c.req.raw as T,
-        getResponse: <T = Context>() => c as T,
-      }),
-    };
+    return buildExecutionContext(c, controller, route.handlerName);
   }
 
   private createHandler(
@@ -378,12 +370,12 @@ export class RouteManager {
     const paramMetadata = (allParamMetadata.get(route.handlerName) || [])
       .sort((a, b) => a.index - b.index) as ParamMetadata[];
 
-    // Read param types once at build time for metatype population
-    const paramTypes = Reflect.getMetadata(
-      'design:paramtypes',
-      controller.prototype,
-      route.handlerName,
-    ) as unknown[] | undefined;
+    // Read param types once at build time for metatype population.
+    // Routed via Reflect so the polyfill funnels both src-level and dist-level
+    // consumers to the same registry (matters in tests that import from dist).
+    const paramTypes = Reflect.getMetadata('design:paramtypes', controller.prototype, route.handlerName) as
+      | unknown[]
+      | undefined;
 
     // Collect controller + method level components at build time
     const methodGuards = ComponentManager.getComponents('guard', controller, route.handlerName);
@@ -556,15 +548,17 @@ export class RouteManager {
 
   private registerRoute(
     app: Hono,
-    method: string | HttpMethod,
+    method: HttpMethod | string,
     path: string,
     handler: (c: Context) => Response | Promise<Response>,
   ): void {
     const normalizedPath = path || '/';
     const registrar = RouteManager.METHOD_REGISTRAR.get(method);
-    registrar
-      ? registrar(app, normalizedPath, handler)
-      : app.on(method.toUpperCase(), normalizedPath, handler);
+    if (registrar) {
+      registrar(app, normalizedPath, handler);
+    } else {
+      app.on(method, normalizedPath, handler);
+    }
   }
 
   private buildVersionedPaths(
@@ -574,20 +568,14 @@ export class RouteManager {
     version?: number | number[],
   ): string[] {
     if (version === undefined) {
-      return [this.joinPaths(globalPrefix, this.joinPaths(controllerPrefix, routePath))];
+      return [joinPaths(globalPrefix, joinPaths(controllerPrefix, routePath))];
     }
 
     const versions = Array.isArray(version) ? version : [version];
     return versions.map((v) => {
       const versionSegment = `/v${v}`;
-      return this.joinPaths(globalPrefix, this.joinPaths(versionSegment, this.joinPaths(controllerPrefix, routePath)));
+      return joinPaths(globalPrefix, joinPaths(versionSegment, joinPaths(controllerPrefix, routePath)));
     });
-  }
-
-  private joinPaths(prefix: string, path: string): string {
-    const cleanPrefix = prefix.endsWith('/') ? prefix.slice(0, -1) : prefix;
-    const cleanPath = path && !path.startsWith('/') ? `/${path}` : path;
-    return `${cleanPrefix}${cleanPath}` || '/';
   }
 
   private compilePathMatcher(routePath: string): (reqPath: string) => boolean {
@@ -601,13 +589,13 @@ export class RouteManager {
   }
 
   private compileRouteMatcher(
-    routes: Array<{ path: string; method?: RequestMethod }>,
+    routes: Array<{ path: string; method?: HttpMethod }>,
   ): (path: string, method: string) => boolean {
     const matchers = routes.map((route) => {
       const matchPath = this.compilePathMatcher(route.path);
       return (path: string, method: string): boolean => {
         if (!matchPath(path)) return false;
-        if (route.method && route.method !== RequestMethod.ALL) return method === route.method;
+        if (route.method && route.method !== HttpMethod.ALL) return method === route.method;
         return true;
       };
     });

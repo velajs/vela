@@ -1,6 +1,8 @@
 import { Injectable, Inject } from '../container/index';
 import { Container } from '../container/container';
 import type { OnApplicationBootstrap } from '../lifecycle/index';
+import { MetadataRegistry } from '../registry/metadata.registry';
+import type { Constructor } from '../registry/types';
 import { CRON_METADATA, INTERVAL_METADATA } from './schedule.tokens';
 import type { CronMetadata, IntervalMetadata } from './schedule.types';
 
@@ -31,8 +33,12 @@ export class ScheduleRegistry implements OnApplicationBootstrap {
     for (const token of tokens) {
       if (typeof token !== 'function') continue;
 
-      const cronMeta = Reflect.getMetadata(CRON_METADATA, token) as CronMetadata[] | undefined;
-      const intervalMeta = Reflect.getMetadata(INTERVAL_METADATA, token) as IntervalMetadata[] | undefined;
+      const cronMeta = MetadataRegistry.getCustomClassMeta(token as Constructor, CRON_METADATA) as
+        | CronMetadata[]
+        | undefined;
+      const intervalMeta = MetadataRegistry.getCustomClassMeta(token as Constructor, INTERVAL_METADATA) as
+        | IntervalMetadata[]
+        | undefined;
 
       if (!cronMeta && !intervalMeta) continue;
 

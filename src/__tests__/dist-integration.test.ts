@@ -66,9 +66,14 @@ describe('dist/ integration', () => {
     expect(vela.NotFoundException).toBeDefined();
     expect(vela.InternalServerErrorException).toBeDefined();
 
-    // Advanced
-    expect(vela.MetadataRegistry).toBeDefined();
-    expect(vela.ComponentManager).toBeDefined();
+    // Advanced — internal subpath
+    const internal = await import('../../dist/internal.js');
+    expect(internal.MetadataRegistry).toBeDefined();
+    expect(internal.ComponentManager).toBeDefined();
+    expect(internal.Container).toBeDefined();
+    expect(internal.RouteManager).toBeDefined();
+    expect(internal.ModuleLoader).toBeDefined();
+    expect(internal.bindAppProviders).toBeDefined();
   });
 
   it('should create a working app from dist/', async () => {
@@ -78,8 +83,8 @@ describe('dist/ integration', () => {
       Get,
       Injectable,
       Module,
-      MetadataRegistry,
     } = await import('../../dist/index.js');
+    const { MetadataRegistry } = await import('../../dist/internal.js');
 
     MetadataRegistry.clear();
 

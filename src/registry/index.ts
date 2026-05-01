@@ -14,5 +14,5 @@ export type {
   ParameterMetadata,
   ModuleOptions,
   ProviderOptions,
-  InjectionTokenLike,
+  InjectionToken,
 } from './types';
