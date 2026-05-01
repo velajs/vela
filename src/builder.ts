@@ -1,7 +1,8 @@
 import type { Context, Hono, MiddlewareHandler } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { CanActivate, ExecutionContext, HttpArgumentsHost, Type } from '@velajs/vela';
-import { ComponentManager, ForbiddenException, HttpException } from '@velajs/vela';
+import { ForbiddenException, HttpException } from '@velajs/vela';
+import { ComponentManager } from '@velajs/vela/internal';
 import type {
   AdapterBundle,
   EndpointMiddlewares,

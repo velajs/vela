@@ -1,3 +1,4 @@
+import { defineMetadata, getMetadata } from '@velajs/vela';
 import type { CrudEndpointName } from './types';
 
 const OVERRIDE_METADATA = 'vela:crud:overrides';
@@ -31,13 +32,12 @@ export interface OverrideEntry {
 export function Override(endpoint: CrudEndpointName): MethodDecorator {
   return (target: object, propertyKey: string | symbol) => {
     const ctor = target.constructor as object;
-    const existing: OverrideEntry[] =
-      (Reflect.getMetadata(OVERRIDE_METADATA, ctor) as OverrideEntry[] | undefined) ?? [];
+    const existing = (getMetadata<OverrideEntry[]>(OVERRIDE_METADATA, ctor)) ?? [];
     existing.push({ endpoint, methodName: propertyKey });
-    Reflect.defineMetadata(OVERRIDE_METADATA, existing, ctor);
+    defineMetadata(OVERRIDE_METADATA, existing, ctor);
   };
 }
 
 export function getOverrides(target: object): OverrideEntry[] {
-  return (Reflect.getMetadata(OVERRIDE_METADATA, target) as OverrideEntry[] | undefined) ?? [];
+  return getMetadata<OverrideEntry[]>(OVERRIDE_METADATA, target) ?? [];
 }

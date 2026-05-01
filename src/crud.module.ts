@@ -1,4 +1,5 @@
-import { METADATA_KEYS, Scope, ComponentManager, MetadataRegistry, defineMetadata, createModuleRef } from '@velajs/vela';
+import { METADATA_KEYS, MetadataRegistry, Scope, createModuleRef, defineMetadata } from '@velajs/vela';
+import { ComponentManager } from '@velajs/vela/internal';
 import type { Type, DynamicModule } from '@velajs/vela';
 import type { ResourceConfig, CrudConfig } from './types';
 
