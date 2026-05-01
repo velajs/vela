@@ -21,8 +21,8 @@ importers:
         specifier: 'link:'
         version: 'link:'
       '@velajs/vela':
-        specifier: ^1.0.0
-        version: 1.0.0(@velajs/crud@)
+        specifier: ^1.1.0
+        version: 1.1.0
       hono:
         specifier: ^4
         version: 4.12.2
@@ -628,14 +628,9 @@ packages:
   '@types/http-cache-semantics@4.2.0':
     resolution: {integrity: sha512-L3LgimLHXtGkWikKnsPg0/VFx9OGZaC+eN1u4r+OB1XRqH3meBIAVC2zr1WdMH+RHmnRkqliQAOHNJ/E0j/e0Q==}
 
-  '@velajs/vela@1.0.0':
-    resolution: {integrity: sha512-5U2XvU8I5AgfS+2DvGHlHswmEvNufkqpDGNvBRse+LbS+4iLPlOXz1nugctHqW1V9ybOkPZnSy7K6+6JzV+1Ew==}
+  '@velajs/vela@1.1.0':
+    resolution: {integrity: sha512-TaGyQ1KBHTMOA72QrFu+Nn0XHDBUnGkGMkHNAvNc6TQ7D6kxjBfLN2Y2Y5gbTEHVOVFXKr+6edVNbEDwDZVyEw==}
     engines: {node: '>=20'}
-    peerDependencies:
-      '@velajs/crud': '>=0.1.0'
-    peerDependenciesMeta:
-      '@velajs/crud':
-        optional: true
 
   '@vitest/expect@4.0.18':
     resolution: {integrity: sha512-8sCWUyckXXYvx4opfzVY03EOiYVxyNrHS5QxX3DAIi5dpJAAkyJezHCP77VMX4HKA2LDT/Jpfo8i2r5BE3GnQQ==}
@@ -1714,11 +1709,9 @@ snapshots:
 
   '@types/http-cache-semantics@4.2.0': {}
 
-  '@velajs/vela@1.0.0(@velajs/crud@)':
+  '@velajs/vela@1.1.0':
     dependencies:
       hono: 4.12.2
-    optionalDependencies:
-      '@velajs/crud': 'link:'
 
   '@vitest/expect@4.0.18':
     dependencies:
