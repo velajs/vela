@@ -1,129 +1,125 @@
+import type { ModuleOptions, ProviderOptions, Token, Type } from '@velajs/vela';
 import {
-  Container,
-  RouteManager,
-  ModuleLoader,
   ComponentManager,
+  Container,
+  MetadataRegistry,
+  ModuleLoader,
+  RouteManager,
   VelaApplication,
-  APP_GUARD,
-  APP_PIPE,
-  APP_INTERCEPTOR,
-  APP_FILTER,
-  APP_MIDDLEWARE,
-} from '@velajs/vela';
-import type { Token, Type, ProviderOptions } from '@velajs/vela';
+  bindAppProviders,
+} from '@velajs/vela/internal';
 import { TestingModule } from './testing-module.js';
 
-interface FactoryProvider {
-  factory: (...args: unknown[]) => unknown;
-  inject?: Token[];
-}
-
-interface Override {
+interface OverrideEntry {
   token: Token;
   provider: ProviderOptions;
 }
 
-class OverrideByImpl {
+export class OverrideBy {
   constructor(
     private readonly builder: TestingModuleBuilder,
     private readonly token: Token,
-    private readonly overrides: Override[],
   ) {}
 
   useValue(value: unknown): TestingModuleBuilder {
-    this.overrides.push({
+    this.builder['addOverride']({
       token: this.token,
-      provider: { token: this.token, useValue: value },
+      provider: { provide: this.token, useValue: value },
     });
     return this.builder;
   }
 
   useClass(cls: Type): TestingModuleBuilder {
-    // Container.registerOptions doesn't read useClass from ProviderOptions,
-    // so we use useFactory to instantiate the replacement class.
-    this.overrides.push({
+    this.builder['addOverride']({
       token: this.token,
-      provider: { token: this.token, useFactory: () => new cls() },
+      provider: { provide: this.token, useClass: cls },
     });
     return this.builder;
   }
 
-  useFactory(options: FactoryProvider): TestingModuleBuilder {
-    this.overrides.push({
+  useFactory(options: {
+    factory: (...args: unknown[]) => unknown;
+    inject?: Token[];
+  }): TestingModuleBuilder {
+    this.builder['addOverride']({
       token: this.token,
       provider: {
-        token: this.token,
+        provide: this.token,
         useFactory: options.factory,
         inject: options.inject,
-      } as ProviderOptions,
+      },
     });
     return this.builder;
   }
 }
 
 export class TestingModuleBuilder {
-  private overrides: Override[] = [];
+  private overrides: OverrideEntry[] = [];
 
-  constructor(private readonly rootModule: Type) {}
+  constructor(private readonly metadata: ModuleOptions) {}
 
-  overrideProvider(token: Token): OverrideByImpl {
-    return new OverrideByImpl(this, token, this.overrides);
+  overrideProvider(token: Token): OverrideBy {
+    return new OverrideBy(this, token);
   }
 
-  overrideGuard(guard: Type): OverrideByImpl {
-    return this.overrideProvider(guard);
+  overrideGuard(guard: Type): OverrideBy {
+    return new OverrideBy(this, guard);
   }
 
-  overrideInterceptor(interceptor: Type): OverrideByImpl {
-    return this.overrideProvider(interceptor);
+  overridePipe(pipe: Type): OverrideBy {
+    return new OverrideBy(this, pipe);
   }
 
-  overrideFilter(filter: Type): OverrideByImpl {
-    return this.overrideProvider(filter);
+  overrideInterceptor(interceptor: Type): OverrideBy {
+    return new OverrideBy(this, interceptor);
   }
 
-  overridePipe(pipe: Type): OverrideByImpl {
-    return this.overrideProvider(pipe);
+  overrideFilter(filter: Type): OverrideBy {
+    return new OverrideBy(this, filter);
+  }
+
+  private addOverride(entry: OverrideEntry): void {
+    const idx = this.overrides.findIndex((o) => o.token === entry.token);
+    if (idx !== -1) {
+      this.overrides[idx] = entry;
+    } else {
+      this.overrides.push(entry);
+    }
   }
 
   async compile(): Promise<TestingModule> {
+    class TestRootModule {}
+    MetadataRegistry.setModuleOptions(TestRootModule, {
+      imports: this.metadata.imports,
+      providers: this.metadata.providers,
+      controllers: this.metadata.controllers,
+      exports: this.metadata.exports,
+    });
+
     const container = new Container();
-    const routeManager = new RouteManager(container);
-    ComponentManager.init(container);
+    container.register({ provide: Container, useValue: container });
 
-    const loader = new ModuleLoader(container, routeManager);
-    loader.load(this.rootModule);
-
-    // Apply overrides — re-register overwrites existing entries in the Map
+    // Register overrides BEFORE module loading so ModuleLoader skips originals.
     for (const override of this.overrides) {
       container.register(override.provider);
     }
 
-    // Resolve APP_* tokens
-    if (container.has(APP_GUARD)) {
-      routeManager.useGlobalGuards(container.resolve(APP_GUARD));
-    }
-    if (container.has(APP_PIPE)) {
-      routeManager.useGlobalPipes(container.resolve(APP_PIPE));
-    }
-    if (container.has(APP_INTERCEPTOR)) {
-      routeManager.useGlobalInterceptors(container.resolve(APP_INTERCEPTOR));
-    }
-    if (container.has(APP_FILTER)) {
-      routeManager.useGlobalFilters(container.resolve(APP_FILTER));
-    }
-    if (container.has(APP_MIDDLEWARE)) {
-      routeManager.useGlobalMiddleware(container.resolve(APP_MIDDLEWARE));
-    }
+    const routeManager = new RouteManager(container);
+    ComponentManager.init(container);
+
+    const loader = new ModuleLoader(container, routeManager);
+    loader.load(TestRootModule);
+
+    bindAppProviders(routeManager, container, loader);
 
     const app = new VelaApplication(container, routeManager);
-    const instances = loader.resolveAllInstances();
+    const instances = await loader.resolveAllInstances();
     app.setInstances(instances);
 
     await app.callOnModuleInit();
     await app.callOnApplicationBootstrap();
+    await app.initRoutes();
 
-    // Routes are NOT built here — deferred to createApplication()
     return new TestingModule(app, container);
   }
 }

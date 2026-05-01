@@ -12,30 +12,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/checkout@v6
-        with:
-          repository: velajs/vela
-          token: ${{ secrets.VELA_TOKEN }}
-          path: vela
-
       - uses: pnpm/action-setup@v4
-        with:
-          version: latest
 
       - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: pnpm
 
-      - name: Build and pack vela
-        working-directory: vela
-        run: pnpm install && pnpm run build && pnpm pack --pack-destination ..
-
-      - name: Install dependencies
-        run: |
-          rm pnpm-lock.yaml
-          jq 'del(.devDependencies["@velajs/vela"])' package.json > tmp && mv tmp package.json
-          pnpm add ./velajs-vela-*.tgz --save-dev
+      - run: pnpm install
 
       - run: pnpm run typecheck
 

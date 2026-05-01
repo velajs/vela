@@ -1,4 +1,3 @@
-import 'reflect-metadata';
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   Injectable,
@@ -100,7 +99,7 @@ describe('Test.createTestingModule', () => {
     const DB_URL = new InjectionToken<string>('DB_URL');
 
     @Module({
-      providers: [{ token: DB_URL, useValue: 'postgres://prod' }],
+      providers: [{ provide: DB_URL, useValue: 'postgres://prod' }],
     })
     class DbModule {}
 
@@ -165,7 +164,7 @@ describe('Test.createTestingModule', () => {
     @Module({
       providers: [
         EnvService,
-        { token: CONFIG, useValue: { env: 'production' } },
+        { provide: CONFIG, useValue: { env: 'production' } },
       ],
     })
     class ConfigModule {}

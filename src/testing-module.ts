@@ -1,4 +1,5 @@
-import type { Container, Token, VelaApplication } from '@velajs/vela';
+import type { Token, VelaApplication } from '@velajs/vela';
+import type { Container } from '@velajs/vela/internal';
 
 export class TestingModule {
   constructor(
