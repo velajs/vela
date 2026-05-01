@@ -1,91 +1,117 @@
 import type { Scope } from '../constants';
 import type { InjectMetadata } from '../container/types';
-import type { Type } from '../container/types';
 import type {
-  ComponentInstance,
   ComponentType,
   ComponentTypeMap,
   Constructor,
+  FilterType,
+  GuardType,
   HttpHandlerMeta,
+  InterceptorType,
+  MiddlewareType,
   ModuleOptions,
   ParameterMetadata,
+  PipeType,
   RouteDefinition,
+  Type,
 } from './types';
+import { getOrCreate, getOrCreateArray, getOrCreateMap } from './util';
 
 export interface ControllerOptions {
   version?: number | number[];
 }
 
+interface ComponentStore {
+  middleware: Set<MiddlewareType>;
+  guard: Set<GuardType>;
+  pipe: Set<PipeType>;
+  interceptor: Set<InterceptorType>;
+  filter: Set<FilterType>;
+}
+
+interface ComponentByOwner<O> {
+  middleware: Map<O, MiddlewareType[]>;
+  guard: Map<O, GuardType[]>;
+  pipe: Map<O, PipeType[]>;
+  interceptor: Map<O, InterceptorType[]>;
+  filter: Map<O, FilterType[]>;
+}
+
+function emptyComponentStore(): ComponentStore {
+  return {
+    middleware: new Set(),
+    guard: new Set(),
+    pipe: new Set(),
+    interceptor: new Set(),
+    filter: new Set(),
+  };
+}
+
+function emptyComponentByOwner<O>(): ComponentByOwner<O> {
+  return {
+    middleware: new Map(),
+    guard: new Map(),
+    pipe: new Map(),
+    interceptor: new Map(),
+    filter: new Map(),
+  };
+}
+
 export class MetadataRegistry {
+  // Decoration metadata (set at import time, persists across clear()).
   private static readonly routes = new Map<Constructor, RouteDefinition[]>();
   private static readonly controllers = new Map<Constructor, string>();
   private static readonly controllerOptions = new Map<Constructor, ControllerOptions>();
   private static readonly modules = new Map<Constructor, ModuleOptions>();
   private static readonly parameters = new Map<Constructor, Map<string | symbol, ParameterMetadata[]>>();
-
-  // 3-level component hierarchy
-  private static readonly global = new Map<ComponentType, Set<ComponentInstance>>([
-    ['middleware', new Set()],
-    ['guard', new Set()],
-    ['pipe', new Set()],
-    ['interceptor', new Set()],
-    ['filter', new Set()],
-  ]);
-
-  private static readonly controller = new Map<ComponentType, Map<Constructor, ComponentInstance[]>>([
-    ['middleware', new Map()],
-    ['guard', new Map()],
-    ['pipe', new Map()],
-    ['interceptor', new Map()],
-    ['filter', new Map()],
-  ]);
-
-  private static readonly handler = new Map<
-    ComponentType,
-    Map<Constructor, Map<string | symbol, ComponentInstance[]>>
-  >([
-    ['middleware', new Map()],
-    ['guard', new Map()],
-    ['pipe', new Map()],
-    ['interceptor', new Map()],
-    ['filter', new Map()],
-  ]);
-
-  // DI metadata
   private static readonly injectables = new Set<Constructor>();
   private static readonly scopes = new Map<Constructor, Scope>();
   private static readonly injectTokens = new Map<Constructor, InjectMetadata[]>();
-
-  // HTTP handler metadata
   private static readonly handlerHttpMeta = new Map<Constructor, Map<string | symbol, HttpHandlerMeta>>();
-
-  // Exception filter types
   private static readonly catchTypes = new Map<Constructor, Type<Error>[]>();
-
-  // Route versions
   private static readonly routeVersions = new Map<Constructor, Map<string | symbol, number | number[]>>();
 
-  // Custom metadata (SetMetadata)
-  private static readonly customClassMeta = new Map<Constructor, Map<string, unknown>>();
-  private static readonly customHandlerMeta = new Map<Constructor, Map<string | symbol, Map<string, unknown>>>();
+  // Free-form key→value class & handler meta. Backs:
+  //   - @SetMetadata (custom user keys)
+  //   - feature decorators (@Cron, @OnEvent, @ApiDoc, …)
+  //   - the SWC shim (Reflect.metadata's design:* keys)
+  //   - external Reflect.defineMetadata / Reflect.getMetadata calls.
+  private static readonly classMeta = new Map<object, Map<string, unknown>>();
+  private static readonly handlerMeta = new Map<object, Map<string | symbol, Map<string, unknown>>>();
+
+  // Component decoration (set by @UseGuards/@UsePipes/etc. at decoration time).
+  private static readonly controllerComponents = emptyComponentByOwner<Constructor>();
+  private static readonly handlerComponents: {
+    middleware: Map<Constructor, Map<string | symbol, MiddlewareType[]>>;
+    guard: Map<Constructor, Map<string | symbol, GuardType[]>>;
+    pipe: Map<Constructor, Map<string | symbol, PipeType[]>>;
+    interceptor: Map<Constructor, Map<string | symbol, InterceptorType[]>>;
+    filter: Map<Constructor, Map<string | symbol, FilterType[]>>;
+  } = {
+    middleware: new Map(),
+    guard: new Map(),
+    pipe: new Map(),
+    interceptor: new Map(),
+    filter: new Map(),
+  };
+
+  // Global components — app-time state (cleared by clear()).
+  private static globalComponents: ComponentStore = emptyComponentStore();
 
   // Routes
 
   static getRoutes(controller: Constructor): RouteDefinition[] {
-    return this.routes.get(controller) || [];
+    return this.routes.get(controller) ?? [];
   }
 
   static addRoute(controller: Constructor, route: RouteDefinition): void {
-    if (!this.routes.has(controller)) {
-      this.routes.set(controller, []);
-    }
-    this.routes.get(controller)!.push(route);
+    getOrCreateArray(this.routes, controller).push(route);
   }
 
   // Controllers
 
   static getControllerPath(controller: Constructor): string {
-    return this.controllers.get(controller) || '';
+    return this.controllers.get(controller) ?? '';
   }
 
   static setControllerPath(controller: Constructor, path: string): void {
@@ -93,7 +119,7 @@ export class MetadataRegistry {
   }
 
   static getControllerOptions(controller: Constructor): ControllerOptions {
-    return this.controllerOptions.get(controller) || {};
+    return this.controllerOptions.get(controller) ?? {};
   }
 
   static setControllerOptions(controller: Constructor, options: ControllerOptions): void {
@@ -113,7 +139,7 @@ export class MetadataRegistry {
   // Parameters
 
   static getParameters(controller: Constructor): Map<string | symbol, ParameterMetadata[]> {
-    return this.parameters.get(controller) || new Map();
+    return this.parameters.get(controller) ?? new Map();
   }
 
   static addParameter(
@@ -121,45 +147,40 @@ export class MetadataRegistry {
     methodName: string | symbol,
     param: ParameterMetadata,
   ): void {
-    if (!this.parameters.has(controller)) {
-      this.parameters.set(controller, new Map());
-    }
-    const methodParams = this.parameters.get(controller)!;
-    if (!methodParams.has(methodName)) {
-      methodParams.set(methodName, []);
-    }
-    methodParams.get(methodName)!.push(param);
+    const methodMap = getOrCreateMap(this.parameters, controller);
+    getOrCreateArray(methodMap, methodName).push(param);
   }
 
-  // Component registration — 3 levels
+  // Component registration — global
 
   static registerGlobal<T extends ComponentType>(type: T, component: ComponentTypeMap[T]): void {
-    this.global.get(type)!.add(component as ComponentInstance);
+    (this.globalComponents[type] as Set<ComponentTypeMap[T]>).add(component);
   }
 
   static getGlobal<T extends ComponentType>(type: T): Set<ComponentTypeMap[T]> {
-    return this.global.get(type) as unknown as Set<ComponentTypeMap[T]>;
+    return this.globalComponents[type] as Set<ComponentTypeMap[T]>;
   }
+
+  // Component registration — controller-level
 
   static registerController<T extends ComponentType>(
     type: T,
     controller: Constructor,
     component: ComponentTypeMap[T],
   ): void {
-    const typeMap = this.controller.get(type)!;
-    if (!typeMap.has(controller)) {
-      typeMap.set(controller, []);
-    }
-    typeMap.get(controller)!.push(component as ComponentInstance);
+    const map = this.controllerComponents[type] as Map<Constructor, ComponentTypeMap[T][]>;
+    getOrCreateArray(map, controller).push(component);
   }
 
   static getController<T extends ComponentType>(
     type: T,
     controller: Constructor,
   ): ComponentTypeMap[T][] {
-    const typeMap = this.controller.get(type)!;
-    return (typeMap.get(controller) || []) as unknown as ComponentTypeMap[T][];
+    const map = this.controllerComponents[type] as Map<Constructor, ComponentTypeMap[T][]>;
+    return map.get(controller) ?? [];
   }
+
+  // Component registration — handler-level
 
   static registerHandler<T extends ComponentType>(
     type: T,
@@ -167,18 +188,9 @@ export class MetadataRegistry {
     methodName: string | symbol,
     component: ComponentTypeMap[T],
   ): void {
-    const typeMap = this.handler.get(type)!;
-    let methodMap = typeMap.get(controller);
-    if (!methodMap) {
-      methodMap = new Map();
-      typeMap.set(controller, methodMap);
-    }
-    let components = methodMap.get(methodName);
-    if (!components) {
-      components = [];
-      methodMap.set(methodName, components);
-    }
-    components.push(component as ComponentInstance);
+    const map = this.handlerComponents[type] as Map<Constructor, Map<string | symbol, ComponentTypeMap[T][]>>;
+    const methodMap = getOrCreateMap(map, controller);
+    getOrCreateArray(methodMap, methodName).push(component);
   }
 
   static getHandler<T extends ComponentType>(
@@ -186,8 +198,8 @@ export class MetadataRegistry {
     controller: Constructor,
     methodName: string | symbol,
   ): ComponentTypeMap[T][] {
-    const typeMap = this.handler.get(type)!;
-    return (typeMap.get(controller)?.get(methodName) ?? []) as unknown as ComponentTypeMap[T][];
+    const map = this.handlerComponents[type] as Map<Constructor, Map<string | symbol, ComponentTypeMap[T][]>>;
+    return map.get(controller)?.get(methodName) ?? [];
   }
 
   // DI metadata
@@ -223,12 +235,8 @@ export class MetadataRegistry {
     method: string | symbol,
     meta: HttpHandlerMeta,
   ): void {
-    if (!this.handlerHttpMeta.has(controller)) {
-      this.handlerHttpMeta.set(controller, new Map());
-    }
-    const methodMap = this.handlerHttpMeta.get(controller)!;
+    const methodMap = getOrCreateMap(this.handlerHttpMeta, controller);
     const existing = methodMap.get(method) ?? {};
-    // Append-merge responseHeaders
     const merged: HttpHandlerMeta = { ...existing, ...meta };
     if (meta.responseHeaders) {
       merged.responseHeaders = [...(existing.responseHeaders ?? []), ...meta.responseHeaders];
@@ -264,10 +272,7 @@ export class MetadataRegistry {
     method: string | symbol,
     version: number | number[],
   ): void {
-    if (!this.routeVersions.has(controller)) {
-      this.routeVersions.set(controller, new Map());
-    }
-    this.routeVersions.get(controller)!.set(method, version);
+    getOrCreateMap(this.routeVersions, controller).set(method, version);
   }
 
   static getRouteVersion(
@@ -277,95 +282,141 @@ export class MetadataRegistry {
     return this.routeVersions.get(controller)?.get(method);
   }
 
-  // Custom metadata (SetMetadata)
+  // Custom class/handler metadata. One slot per (target, key) for class-level,
+  // (target, handler, key) for handler-level. The same slots back @SetMetadata,
+  // every feature decorator (@Cron, @OnEvent, @ApiDoc, …), the SWC shim, and
+  // external Reflect.defineMetadata calls — one model, one source of truth.
 
-  static setCustomClassMeta(target: Constructor, key: string, value: unknown): void {
-    if (!this.customClassMeta.has(target)) {
-      this.customClassMeta.set(target, new Map());
-    }
-    this.customClassMeta.get(target)!.set(key, value);
+  static setCustomClassMeta(target: object, key: string, value: unknown): void {
+    getOrCreate(this.classMeta, target, () => new Map<string, unknown>()).set(key, value);
   }
 
-  static getCustomClassMeta(target: Constructor, key: string): unknown {
-    return this.customClassMeta.get(target)?.get(key);
+  static getCustomClassMeta(target: object, key: string): unknown {
+    return this.classMeta.get(target)?.get(key);
   }
 
-  static getCustomClassMetaAll(target: Constructor): Map<string, unknown> | undefined {
-    return this.customClassMeta.get(target);
+  static getCustomClassMetaAll(target: object): Map<string, unknown> | undefined {
+    return this.classMeta.get(target);
   }
 
   static setCustomHandlerMeta(
-    target: Constructor,
+    target: object,
     handler: string | symbol,
     key: string,
     value: unknown,
   ): void {
-    if (!this.customHandlerMeta.has(target)) {
-      this.customHandlerMeta.set(target, new Map());
-    }
-    const handlerMap = this.customHandlerMeta.get(target)!;
-    if (!handlerMap.has(handler)) {
-      handlerMap.set(handler, new Map());
-    }
-    handlerMap.get(handler)!.set(key, value);
+    const byHandler = getOrCreate(this.handlerMeta, target, () => new Map<string | symbol, Map<string, unknown>>());
+    getOrCreate(byHandler, handler, () => new Map<string, unknown>()).set(key, value);
   }
 
   static getCustomHandlerMeta(
-    target: Constructor,
+    target: object,
     handler: string | symbol,
     key: string,
   ): unknown {
-    return this.customHandlerMeta.get(target)?.get(handler)?.get(key);
+    return this.handlerMeta.get(target)?.get(handler)?.get(key);
   }
 
   static getCustomHandlerMetaAll(
-    target: Constructor,
+    target: object,
     handler: string | symbol,
   ): Map<string, unknown> | undefined {
-    return this.customHandlerMeta.get(target)?.get(handler);
+    return this.handlerMeta.get(target)?.get(handler);
+  }
+
+  // Append helpers — for stackable metadata like @Cron / @Interval / @OnEvent / @ApiResponse.
+
+  static appendCustomClassMeta<T>(target: object, key: string, item: T): void {
+    const list = (this.getCustomClassMeta(target, key) as T[] | undefined) ?? [];
+    list.push(item);
+    this.setCustomClassMeta(target, key, list);
+  }
+
+  static appendCustomHandlerMeta<T>(
+    target: object,
+    handler: string | symbol,
+    key: string,
+    item: T,
+  ): void {
+    const list = (this.getCustomHandlerMeta(target, handler, key) as T[] | undefined) ?? [];
+    list.push(item);
+    this.setCustomHandlerMeta(target, handler, key, list);
+  }
+
+  // Reflect-style API — same storage as the typed setters above. Lets external
+  // code (and the SWC shim's Reflect.metadata polyfill) write/read uniformly.
+
+  static setReflectMetadata(
+    target: object,
+    key: string,
+    value: unknown,
+    propertyKey?: string | symbol,
+  ): void {
+    if (propertyKey !== undefined) {
+      this.setCustomHandlerMeta(target, propertyKey, key, value);
+    } else {
+      this.setCustomClassMeta(target, key, value);
+    }
+  }
+
+  static getReflectMetadata<T = unknown>(
+    target: object,
+    key: string,
+    propertyKey?: string | symbol,
+  ): T | undefined {
+    if (propertyKey !== undefined) {
+      return this.getCustomHandlerMeta(target, propertyKey, key) as T | undefined;
+    }
+    return this.getCustomClassMeta(target, key) as T | undefined;
+  }
+
+  // SWC-emitted design:paramtypes — class-level for constructors, handler-level for methods.
+
+  static getParamTypes(target: object, propertyKey?: string | symbol): unknown[] | undefined {
+    return this.getReflectMetadata<unknown[]>(target, 'design:paramtypes', propertyKey);
   }
 
   // Propagate all controller-level components from one class to another.
-  // Used by ModuleLoader to apply module-level decorators to every controller.
 
   static propagateControllerComponents(from: Constructor, to: Constructor): void {
-    for (const [, typeMap] of this.controller.entries()) {
-      const components = typeMap.get(from);
+    for (const type of ['middleware', 'guard', 'pipe', 'interceptor', 'filter'] as const) {
+      const map = this.controllerComponents[type];
+      const components = map.get(from);
       if (components && components.length > 0) {
-        if (!typeMap.has(to)) {
-          typeMap.set(to, []);
-        }
-        typeMap.get(to)!.push(...components);
+        const target = getOrCreateArray(map as Map<Constructor, unknown[]>, to) as unknown[];
+        target.push(...components);
       }
     }
   }
 
-  // Clear all (for testing)
+  // Clear app-time state. Decoration metadata persists — once a class is
+  // decorated, that fact is permanent for the lifetime of the process.
 
   static clear(): void {
+    this.globalComponents = emptyComponentStore();
+  }
+
+  // Full reset, including decoration metadata. Used in framework-internal scenarios.
+
+  static reset(): void {
     this.routes.clear();
     this.controllers.clear();
     this.controllerOptions.clear();
     this.modules.clear();
     this.parameters.clear();
-
-    for (const set of this.global.values()) {
-      set.clear();
-    }
-    for (const map of this.controller.values()) {
-      map.clear();
-    }
-    for (const map of this.handler.values()) {
-      map.clear();
-    }
-
     this.injectables.clear();
     this.scopes.clear();
     this.injectTokens.clear();
     this.handlerHttpMeta.clear();
     this.catchTypes.clear();
     this.routeVersions.clear();
-    this.customClassMeta.clear();
-    this.customHandlerMeta.clear();
+    this.classMeta.clear();
+    this.handlerMeta.clear();
+    for (const type of ['middleware', 'guard', 'pipe', 'interceptor', 'filter'] as const) {
+      this.controllerComponents[type].clear();
+      this.handlerComponents[type].clear();
+    }
+    this.globalComponents = emptyComponentStore();
+    // reflectMeta is a WeakMap — entries die with their targets.
   }
 }

@@ -32,7 +32,7 @@ import {
   SetMetadata,
   Reflector,
   applyDecorators,
-  RequestMethod,
+  HttpMethod,
   ModuleRef,
   mixin,
   InjectionToken,
@@ -903,7 +903,7 @@ describe('MiddlewareConsumer', () => {
       configure(consumer: MiddlewareConsumer) {
         consumer
           .apply(PostOnlyMiddleware)
-          .forRoutes({ path: '/methods', method: RequestMethod.POST });
+          .forRoutes({ path: '/methods', method: HttpMethod.POST });
       }
     }
 
@@ -1908,7 +1908,7 @@ describe('createParamDecorator', () => {
 
 describe('Route versioning (@Version)', () => {
   it('@Controller({ version }) adds /v{n} prefix to all routes', async () => {
-    @Controller({ prefix: '/things', version: 1 })
+    @Controller({ path: '/things', version: 1 })
     class ThingsV1Controller {
       @Get() list() { return { version: 1 }; }
     }
@@ -1923,7 +1923,7 @@ describe('Route versioning (@Version)', () => {
   });
 
   it('@Controller({ version: [1,2] }) registers route at multiple versions', async () => {
-    @Controller({ prefix: '/multi', version: [1, 2] })
+    @Controller({ path: '/multi', version: [1, 2] })
     class MultiController {
       @Get() handle() { return { ok: true }; }
     }
@@ -1938,7 +1938,7 @@ describe('Route versioning (@Version)', () => {
   });
 
   it('@Version() on method overrides controller version', async () => {
-    @Controller({ prefix: '/docs', version: 1 })
+    @Controller({ path: '/docs', version: 1 })
     class DocController {
       @Get() v1() { return { v: 1 }; }
 
@@ -2407,7 +2407,7 @@ describe('MiddlewareConsumer.exclude()', () => {
       configure(consumer: MiddlewareConsumer) {
         consumer
           .apply(MethodMiddleware)
-          .exclude({ path: '/meth-excl/login', method: RequestMethod.POST })
+          .exclude({ path: '/meth-excl/login', method: HttpMethod.POST })
           .forRoutes(MethController);
       }
     }
@@ -2782,92 +2782,8 @@ describe('ScheduleModule / @Cron / @Interval', () => {
   });
 });
 
-// =============================================================================
-// TestingModule / Test.createTestingModule
-// =============================================================================
-
-describe('TestingModule / Test.createTestingModule', () => {
-  it('compiles a module and resolves providers via get()', async () => {
-    @Injectable()
-    class AppService {
-      greet() { return 'hello'; }
-    }
-
-    const moduleRef = await Test.createTestingModule({
-      providers: [AppService],
-    }).compile();
-
-    const svc = moduleRef.get(AppService);
-    expect(svc.greet()).toBe('hello');
-  });
-
-  it('overrideProvider().useValue() replaces the real implementation', async () => {
-    @Injectable()
-    class DataService {
-      fetch() { return 'real'; }
-    }
-
-    @Controller('/test-override')
-    class TestController {
-      constructor(private svc: DataService) {}
-      @Get() handle() { return { val: this.svc.fetch() }; }
-    }
-
-    const moduleRef = await Test.createTestingModule({
-      providers: [DataService],
-      controllers: [TestController],
-    })
-      .overrideProvider(DataService)
-      .useValue({ fetch: () => 'mocked' })
-      .compile();
-
-    const app = moduleRef.createNestApplication();
-    const res = await app.getHonoApp().request('/test-override');
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ val: 'mocked' });
-  });
-
-  it('overrideGuard().useValue() bypasses a blocking guard', async () => {
-    @Injectable()
-    class BlockGuard implements CanActivate {
-      canActivate() { return false; }
-    }
-
-    @Controller('/guard-test')
-    @UseGuards(BlockGuard)
-    class GuardedController {
-      @Get() secret() { return { ok: true }; }
-    }
-
-    const moduleRef = await Test.createTestingModule({
-      providers: [BlockGuard],
-      controllers: [GuardedController],
-    })
-      .overrideGuard(BlockGuard)
-      .useValue({ canActivate: () => true })
-      .compile();
-
-    const app = moduleRef.createNestApplication();
-    const res = await app.getHonoApp().request('/guard-test');
-    expect(res.status).toBe(200);
-  });
-
-  it('close() triggers onModuleDestroy lifecycle hook', async () => {
-    const log: string[] = [];
-
-    @Injectable()
-    class CleanupService {
-      onModuleDestroy() { log.push('destroyed'); }
-    }
-
-    const moduleRef = await Test.createTestingModule({
-      providers: [CleanupService],
-    }).compile();
-
-    await moduleRef.close();
-    expect(log).toContain('destroyed');
-  });
-});
+// TestingModule / Test.createTestingModule —
+// Coverage moved to @velajs/testing's own testing-module.test.ts.
 
 // =============================================================================
 // ThrottlerModule / @Throttle / @SkipThrottle
@@ -3111,7 +3027,7 @@ describe('HttpModule / HttpService', () => {
     expect(await res.json()).toEqual({ id: 1, name: 'Alice' });
   });
 
-  it('HttpModule.register() sets baseURL for all requests', async () => {
+  it('HttpModule.forRoot() sets baseURL for all requests', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ ok: true }), {
         status: 200,
@@ -3132,7 +3048,7 @@ describe('HttpModule / HttpService', () => {
     }
 
     @Module({
-      imports: [HttpModule.register({ baseURL: 'https://my-api.com' })],
+      imports: [HttpModule.forRoot({ baseURL: 'https://my-api.com' })],
       providers: [ApiService],
       controllers: [PingController],
     })
@@ -3143,7 +3059,7 @@ describe('HttpModule / HttpService', () => {
     expect(fetch).toHaveBeenCalledWith('https://my-api.com/status', expect.objectContaining({ method: 'GET' }));
   });
 
-  it('HttpModule.registerAsync() resolves config from injected factory', async () => {
+  it('HttpModule.forRootAsync() resolves config from injected factory', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ async: true }), {
         status: 200,
@@ -3167,7 +3083,7 @@ describe('HttpModule / HttpService', () => {
 
     @Module({
       imports: [
-        HttpModule.registerAsync({
+        HttpModule.forRootAsync({
           useFactory: (url: string) => ({ baseURL: url }),
           inject: [BASE_URL],
         }),
@@ -3491,7 +3407,7 @@ describe('useExisting provider alias', () => {
 // =============================================================================
 
 describe('forRootAsync() dynamic module pattern', () => {
-  it('HttpModule.registerAsync() resolves config from ConfigService', async () => {
+  it('HttpModule.forRootAsync() resolves config from ConfigService', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ data: 'async-config' }), {
         status: 200,
@@ -3514,7 +3430,7 @@ describe('forRootAsync() dynamic module pattern', () => {
     @Module({
       imports: [
         ConfigModule.forRoot({ config: { API_BASE: 'https://async-root.test' } }),
-        HttpModule.registerAsync({
+        HttpModule.forRootAsync({
           imports: [ConfigModule.forRoot({ config: { API_BASE: 'https://async-root.test' } })],
           useFactory: (config: ConfigService) => ({
             baseURL: config.get<string>('API_BASE') ?? '',
@@ -3556,7 +3472,7 @@ describe('forRootAsync() dynamic module pattern', () => {
 
     @Module({
       imports: [
-        HttpModule.registerAsync({
+        HttpModule.forRootAsync({
           useFactory: (val: string) => ({ baseURL: `https://${val}.test` }),
           inject: [CONFIG_VAL],
         }),

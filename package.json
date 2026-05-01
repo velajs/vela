@@ -10,6 +10,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./internal": {
+      "types": "./dist/internal.d.ts",
+      "import": "./dist/internal.js"
+    },
     "./streaming": {
       "types": "./dist/streaming/index.d.ts",
       "import": "./dist/streaming/index.js"
@@ -62,14 +66,6 @@
   },
   "dependencies": {
     "hono": "^4"
-  },
-  "peerDependencies": {
-    "@velajs/crud": ">=0.1.0"
-  },
-  "peerDependenciesMeta": {
-    "@velajs/crud": {
-      "optional": true
-    }
   },
   "packageManager": "pnpm@10.20.0",
   "pnpm": {

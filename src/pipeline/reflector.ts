@@ -1,8 +1,6 @@
-import { getMetadata as internalGetMetadata } from '../metadata';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import type { Constructor } from '../registry/types';
-
-const SET_METADATA_KEY = 'vela:metadata';
+import type { ExecutionContext } from './types';
 
 export interface CreateDecoratorOptions {
   key?: string;
@@ -12,8 +10,6 @@ export interface ReflectableDecorator<TParam> {
   (value: TParam): ClassDecorator & MethodDecorator;
   KEY: string;
 }
-
-let _decoratorKeyCounter = 0;
 
 /**
  * Decorator that attaches custom metadata to a class or method.
@@ -29,10 +25,8 @@ let _decoratorKeyCounter = 0;
  * ```
  */
 export function SetMetadata<V = unknown>(key: string, value: V) {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
-  return (target: Function | object, propertyKey?: string | symbol) => {
+  return (target: object, propertyKey?: string | symbol) => {
     if (propertyKey !== undefined) {
-      // Method decorator
       MetadataRegistry.setCustomHandlerMeta(
         target.constructor as Constructor,
         propertyKey,
@@ -40,7 +34,6 @@ export function SetMetadata<V = unknown>(key: string, value: V) {
         value,
       );
     } else {
-      // Class decorator
       MetadataRegistry.setCustomClassMeta(target as Constructor, key, value);
     }
   };
@@ -78,7 +71,7 @@ export class Reflector {
   static createDecorator<TParam = unknown>(
     options?: CreateDecoratorOptions,
   ): ReflectableDecorator<TParam> {
-    const key = options?.key ?? `vela:custom:${_decoratorKeyCounter++}`;
+    const key = options?.key ?? `vela:custom:${crypto.randomUUID()}`;
     const decorator = (value: TParam) => SetMetadata(key, value);
     (decorator as ReflectableDecorator<TParam>).KEY = key;
     return decorator as ReflectableDecorator<TParam>;
@@ -94,48 +87,13 @@ export class Reflector {
    */
   get<T = unknown>(
     key: string | ReflectableDecorator<T>,
-    context: { getClass(): Function; getHandler(): string | symbol },
+    context: ExecutionContext,
   ): T | undefined {
     const resolvedKey = this.resolveKey(key as string | ReflectableDecorator<unknown>);
-
-    // Check handler-level first (MetadataRegistry)
-    const handlerValue = MetadataRegistry.getCustomHandlerMeta(
-      context.getClass() as Constructor,
-      context.getHandler(),
-      resolvedKey,
-    );
-    if (handlerValue !== undefined) {
-      return handlerValue as T;
-    }
-
-    // Check class-level (MetadataRegistry)
-    const classValue = MetadataRegistry.getCustomClassMeta(
-      context.getClass() as Constructor,
-      resolvedKey,
-    );
-    if (classValue !== undefined) {
-      return classValue as T;
-    }
-
-    // Fallback to WeakMap for external package compat
-    const handlerMeta: Map<string, unknown> | undefined = internalGetMetadata(
-      SET_METADATA_KEY,
-      context.getClass(),
-      context.getHandler(),
-    ) as Map<string, unknown> | undefined;
-    if (handlerMeta?.has(resolvedKey)) {
-      return handlerMeta.get(resolvedKey) as T;
-    }
-
-    const classMeta: Map<string, unknown> | undefined = internalGetMetadata(
-      SET_METADATA_KEY,
-      context.getClass(),
-    ) as Map<string, unknown> | undefined;
-    if (classMeta?.has(resolvedKey)) {
-      return classMeta.get(resolvedKey) as T;
-    }
-
-    return undefined;
+    const ctor = context.getClass();
+    const handlerValue = MetadataRegistry.getCustomHandlerMeta(ctor, context.getHandler(), resolvedKey);
+    if (handlerValue !== undefined) return handlerValue as T;
+    return MetadataRegistry.getCustomClassMeta(ctor, resolvedKey) as T | undefined;
   }
 
   /**
@@ -143,27 +101,14 @@ export class Reflector {
    */
   getHandler<T = unknown>(
     key: string | ReflectableDecorator<T>,
-    context: { getClass(): Function; getHandler(): string | symbol },
+    context: ExecutionContext,
   ): T | undefined {
     const resolvedKey = this.resolveKey(key as string | ReflectableDecorator<unknown>);
-
-    // MetadataRegistry first
-    const value = MetadataRegistry.getCustomHandlerMeta(
-      context.getClass() as Constructor,
-      context.getHandler(),
-      resolvedKey,
-    );
-    if (value !== undefined) {
-      return value as T;
-    }
-
-    // Fallback to WeakMap
-    const meta: Map<string, unknown> | undefined = internalGetMetadata(
-      SET_METADATA_KEY,
+    return MetadataRegistry.getCustomHandlerMeta(
       context.getClass(),
       context.getHandler(),
-    ) as Map<string, unknown> | undefined;
-    return meta?.get(resolvedKey) as T | undefined;
+      resolvedKey,
+    ) as T | undefined;
   }
 
   /**
@@ -171,25 +116,10 @@ export class Reflector {
    */
   getClass<T = unknown>(
     key: string | ReflectableDecorator<T>,
-    context: { getClass(): Function },
+    context: Pick<ExecutionContext, "getClass">,
   ): T | undefined {
     const resolvedKey = this.resolveKey(key as string | ReflectableDecorator<unknown>);
-
-    // MetadataRegistry first
-    const value = MetadataRegistry.getCustomClassMeta(
-      context.getClass() as Constructor,
-      resolvedKey,
-    );
-    if (value !== undefined) {
-      return value as T;
-    }
-
-    // Fallback to WeakMap
-    const meta: Map<string, unknown> | undefined = internalGetMetadata(
-      SET_METADATA_KEY,
-      context.getClass(),
-    ) as Map<string, unknown> | undefined;
-    return meta?.get(resolvedKey) as T | undefined;
+    return MetadataRegistry.getCustomClassMeta(context.getClass(), resolvedKey) as T | undefined;
   }
 
   /**
@@ -198,7 +128,7 @@ export class Reflector {
    */
   getAll<T = unknown>(
     key: string | ReflectableDecorator<T>,
-    context: { getClass(): Function; getHandler(): string | symbol },
+    context: ExecutionContext,
   ): [T | undefined, T | undefined] {
     return [this.getHandler<T>(key, context), this.getClass<T>(key, context)];
   }
@@ -209,13 +139,9 @@ export class Reflector {
    */
   getAllAndOverride<T = unknown>(
     key: string | ReflectableDecorator<T>,
-    context: { getClass(): Function; getHandler(): string | symbol },
+    context: ExecutionContext,
   ): T | undefined {
-    const handlerValue = this.getHandler<T>(key, context);
-    if (handlerValue !== undefined) {
-      return handlerValue;
-    }
-    return this.getClass<T>(key, context);
+    return this.getHandler<T>(key, context) ?? this.getClass<T>(key, context);
   }
 
   /**
@@ -228,21 +154,16 @@ export class Reflector {
    */
   getAllAndMerge<T = unknown>(
     key: string | ReflectableDecorator<T>,
-    context: { getClass(): Function; getHandler(): string | symbol },
+    context: ExecutionContext,
   ): T | T[] {
     const [handlerValue, classValue] = this.getAll<T>(key, context);
     const values: T[] = [];
     if (handlerValue !== undefined) values.push(handlerValue);
     if (classValue !== undefined) values.push(classValue);
 
-    if (values.length === 0) {
-      return [] as T[];
-    }
-    if (values.length === 1) {
-      return values[0];
-    }
+    if (values.length === 0) return [] as T[];
+    if (values.length === 1) return values[0];
 
-    // Both defined — merge strategy depends on type
     if (Array.isArray(values[0]) && Array.isArray(values[1])) {
       return [...values[0], ...values[1]] as T;
     }

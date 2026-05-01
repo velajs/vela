@@ -3,6 +3,11 @@ import type { Scope } from '../constants';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Type<T = any> = new (...args: any[]) => T;
 
+// Broader: matches concrete and abstract classes. Used for metadata keying,
+// where any class reference is acceptable.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type Constructor<T = unknown> = abstract new (...args: any[]) => T;
+
 export interface InjectionTokenOptions<T> {
   factory?: () => T;
 }

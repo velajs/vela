@@ -1,22 +1,11 @@
+import { HttpMethod } from '../constants';
 import type { NestMiddleware } from '../pipeline/types';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import type { Constructor, Type } from '../registry/types';
 
-export const RequestMethod = {
-  GET: 'GET',
-  POST: 'POST',
-  PUT: 'PUT',
-  DELETE: 'DELETE',
-  PATCH: 'PATCH',
-  OPTIONS: 'OPTIONS',
-  HEAD: 'HEAD',
-  ALL: 'ALL',
-} as const;
-export type RequestMethod = (typeof RequestMethod)[keyof typeof RequestMethod];
-
 export interface RouteInfo {
   path: string;
-  method?: RequestMethod;
+  method?: HttpMethod;
 }
 
 export interface MiddlewareRouteDefinition {
@@ -30,8 +19,7 @@ export interface MiddlewareRouteDefinition {
 export interface MiddlewareConfigProxy {
   exclude(...routes: Array<string | RouteInfo>): MiddlewareConfigProxy;
   withPriority(priority: number): MiddlewareConfigProxy;
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
-  forRoutes(...routes: Array<string | Function | RouteInfo>): MiddlewareConsumer;
+  forRoutes(...routes: Array<string | Constructor | RouteInfo>): MiddlewareConsumer;
 }
 
 export interface MiddlewareConsumer {
@@ -59,8 +47,7 @@ export class MiddlewareBuilder implements MiddlewareConsumer {
         currentPriority = priority;
         return proxy;
       },
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
-      forRoutes: (...routes: Array<string | Function | RouteInfo>) => {
+      forRoutes: (...routes: Array<string | Constructor | RouteInfo>) => {
         this.definitions.push({
           middleware: currentMiddleware,
           routes: routes.flatMap(resolveRouteArg),
@@ -85,8 +72,7 @@ function normalizeRouteArg(route: string | RouteInfo): RouteInfo {
   return typeof route === 'string' ? { path: route } : route;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
-function resolveRouteArg(route: string | Function | RouteInfo): RouteInfo[] {
+function resolveRouteArg(route: string | Constructor | RouteInfo): RouteInfo[] {
   if (typeof route === 'string') {
     return [{ path: route }];
   }
@@ -94,5 +80,5 @@ function resolveRouteArg(route: string | Function | RouteInfo): RouteInfo[] {
     const prefix = MetadataRegistry.getControllerPath(route as Constructor);
     return [{ path: prefix || '/' }];
   }
-  return [route as RouteInfo];
+  return [route];
 }

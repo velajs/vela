@@ -25,7 +25,7 @@ beforeEach(() => {
 
 describe('Versioned routes', () => {
   it('should register routes with version prefix from controller', async () => {
-    @Controller({ prefix: '/users', version: 1 })
+    @Controller({ path: '/users', version: 1 })
     class UserV1Controller {
       @Get()
       list() {
@@ -58,7 +58,7 @@ describe('Versioned routes', () => {
   });
 
   it('should register routes at multiple versions via version array', async () => {
-    @Controller({ prefix: '/items', version: [1, 2] })
+    @Controller({ path: '/items', version: [1, 2] })
     class ItemController {
       @Get()
       list() {
@@ -84,7 +84,7 @@ describe('Versioned routes', () => {
   });
 
   it('should allow @Version() on a method to override controller version', async () => {
-    @Controller({ prefix: '/docs', version: 1 })
+    @Controller({ path: '/docs', version: 1 })
     class DocController {
       @Get()
       listV1() {
@@ -182,7 +182,7 @@ describe('Global prefix', () => {
   });
 
   it('should combine global prefix with versioned routes', async () => {
-    @Controller({ prefix: '/users', version: 1 })
+    @Controller({ path: '/users', version: 1 })
     class UserController {
       @Get()
       list() {

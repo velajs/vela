@@ -1,7 +1,7 @@
 export { RouteManager } from './route.manager';
 export type { RouteManagerOptions } from './route.manager';
-export { MiddlewareBuilder, RequestMethod } from './middleware-consumer';
-export type { MiddlewareConsumer, MiddlewareConfigProxy, RouteInfo, NestModule, MiddlewareRouteDefinition } from './middleware-consumer';
+export { MiddlewareBuilder } from '../module/middleware';
+export type { MiddlewareConsumer, MiddlewareConfigProxy, RouteInfo, NestModule, MiddlewareRouteDefinition } from '../module/middleware';
 export {
   Controller,
   Version,

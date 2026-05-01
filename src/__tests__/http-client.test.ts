@@ -68,7 +68,7 @@ describe('HttpModule', () => {
     expect(fetch).toHaveBeenCalledWith('https://api.test/user/1', expect.objectContaining({ method: 'GET' }));
   });
 
-  it('should use baseURL from HttpModule.register()', async () => {
+  it('should use baseURL from HttpModule.forRoot()', async () => {
     mockFetch(200, { ok: true });
 
     @Injectable()
@@ -90,7 +90,7 @@ describe('HttpModule', () => {
     }
 
     @Module({
-      imports: [HttpModule.register({ baseURL: 'https://api.example.com' })],
+      imports: [HttpModule.forRoot({ baseURL: 'https://api.example.com' })],
       providers: [ApiService],
       controllers: [TestController],
     })
@@ -239,7 +239,7 @@ describe('HttpModule', () => {
     }
 
     @Module({
-      imports: [HttpModule.register({ headers: { Authorization: 'Bearer token' } })],
+      imports: [HttpModule.forRoot({ headers: { Authorization: 'Bearer token' } })],
       providers: [AuthService],
       controllers: [AuthController],
     })
@@ -280,7 +280,7 @@ describe('HttpModule', () => {
 
     @Module({
       imports: [
-        HttpModule.registerAsync({
+        HttpModule.forRootAsync({
           imports: [],
           useFactory: (cfg: ApiConfigService) => ({ baseURL: cfg.getBaseUrl() }),
           inject: [ApiConfigService],

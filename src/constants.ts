@@ -24,14 +24,14 @@ export const METADATA_KEYS = {
 } as const;
 
 export const HttpMethod = {
-  GET: 'get',
-  POST: 'post',
-  PUT: 'put',
-  PATCH: 'patch',
-  DELETE: 'delete',
-  OPTIONS: 'options',
-  HEAD: 'head',
-  ALL: 'all',
+  GET: 'GET',
+  POST: 'POST',
+  PUT: 'PUT',
+  PATCH: 'PATCH',
+  DELETE: 'DELETE',
+  OPTIONS: 'OPTIONS',
+  HEAD: 'HEAD',
+  ALL: 'ALL',
 } as const;
 export type HttpMethod = (typeof HttpMethod)[keyof typeof HttpMethod];
 
