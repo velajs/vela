@@ -8,12 +8,11 @@ import {
 import { createCloudflareApp } from '../cloudflare-factory';
 import { KVModule } from '../modules/kv.module';
 import { KVService } from '../services/kv.service';
-import { clearBindingsRegistry } from '../tokens';
 import { BindingRef } from '../binding-ref';
 
 beforeEach(() => {
   MetadataRegistry.clear();
-  clearBindingsRegistry();
+
 });
 
 describe('edge cases', () => {
@@ -37,7 +36,7 @@ describe('edge cases', () => {
       @Get()
       async handle() {
         // Binding 'MISSING_KV' won't exist in env
-        const val = await this.kv.get('key');
+        const val = await this.kv.namespace.get('key');
         return { val };
       }
     }
@@ -96,7 +95,7 @@ describe('edge cases', () => {
 
       @Get()
       async handle() {
-        const val = await this.kv.get('key');
+        const val = await this.kv.namespace.get('key');
         return { val };
       }
     }

@@ -9,11 +9,9 @@ import {
 import { createCloudflareApp } from '../cloudflare-factory';
 import { DurableObjectModule } from '../modules/durable-object.module';
 import { DurableObjectService } from '../services/durable-object.service';
-import { clearBindingsRegistry } from '../tokens';
-
 beforeEach(() => {
   MetadataRegistry.clear();
-  clearBindingsRegistry();
+
 });
 
 function createMockDO() {
@@ -55,8 +53,8 @@ describe('DurableObjectModule', () => {
 
       @Get('/call')
       async call() {
-        const id = this.doNs.idFromName('counter');
-        const stub = this.doNs.get(id) as { fetch: Function };
+        const id = this.doNs.namespace.idFromName('counter');
+        const stub = this.doNs.namespace.get(id) as { fetch: Function };
         const res = await stub.fetch('/increment');
         return res.json();
       }
@@ -87,7 +85,7 @@ describe('DurableObjectModule', () => {
 
       @Get('/unique')
       async unique() {
-        const id = this.doNs.newUniqueId() as { toString: () => string };
+        const id = this.doNs.namespace.newUniqueId() as { toString: () => string };
         return { id: id.toString() };
       }
     }
@@ -142,8 +140,8 @@ describe('DurableObjectModule', () => {
     class CounterClient {
       constructor(private doNs: DurableObjectService) {}
       async callCounter(name: string) {
-        const id = this.doNs.idFromName(name);
-        const stub = this.doNs.get(id) as { fetch: Function };
+        const id = this.doNs.namespace.idFromName(name);
+        const stub = this.doNs.namespace.get(id) as { fetch: Function };
         const res = await stub.fetch('/value');
         return res.json();
       }

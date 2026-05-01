@@ -1,10 +1,6 @@
-/**
- * Mutable holder for a Cloudflare binding value.
- *
- * Created by each module's `forRoot()` and populated by
- * `createCloudflareApp`'s one-time middleware on the first request.
- * Services access the binding lazily via `.value`.
- */
+// Mutable holder for a Cloudflare binding value. Created by each module's
+// forRoot() and populated by createCloudflareApp's one-time middleware on
+// the first request. Services access the binding lazily via .value.
 export class BindingRef<T = unknown> {
   private _value: T | undefined;
 
@@ -21,8 +17,7 @@ export class BindingRef<T = unknown> {
   }
 
   /** @internal — called by createCloudflareApp middleware */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  _initialize(value: any): void {
+  _initialize(value: T): void {
     this._value = value;
   }
 }

@@ -8,11 +8,9 @@ import {
 import { createCloudflareApp } from '../cloudflare-factory';
 import { R2Module } from '../modules/r2.module';
 import { R2Service } from '../services/r2.service';
-import { clearBindingsRegistry } from '../tokens';
-
 beforeEach(() => {
   MetadataRegistry.clear();
-  clearBindingsRegistry();
+
 });
 
 function createMockR2() {
@@ -62,13 +60,13 @@ describe('R2Module', () => {
 
       @Get('/upload')
       async upload() {
-        await this.r2.put('test.txt', 'hello world');
+        await this.r2.bucket.put('test.txt', 'hello world');
         return { ok: true };
       }
 
       @Get('/download')
       async download() {
-        const obj = (await this.r2.get('test.txt')) as { text: () => Promise<string> } | null;
+        const obj = (await this.r2.bucket.get('test.txt')) as { text: () => Promise<string> } | null;
         if (!obj) return { content: null };
         const text = await obj.text();
         return { content: text };
@@ -76,7 +74,7 @@ describe('R2Module', () => {
 
       @Get('/remove')
       async remove() {
-        await this.r2.delete('test.txt');
+        await this.r2.bucket.delete('test.txt');
         return { ok: true };
       }
     }
@@ -119,13 +117,13 @@ describe('R2Module', () => {
 
       @Get('/list')
       async listFiles() {
-        const result = await this.r2.list();
+        const result = await this.r2.bucket.list();
         return result;
       }
 
       @Get('/head')
       async headFile() {
-        const meta = await this.r2.head('file1.txt');
+        const meta = await this.r2.bucket.head('file1.txt');
         return { meta };
       }
     }

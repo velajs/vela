@@ -9,11 +9,9 @@ import {
 import { createCloudflareApp } from '../cloudflare-factory';
 import { KVModule } from '../modules/kv.module';
 import { KVService } from '../services/kv.service';
-import { clearBindingsRegistry } from '../tokens';
-
 beforeEach(() => {
   MetadataRegistry.clear();
-  clearBindingsRegistry();
+
 });
 
 function createMockKV() {
@@ -48,19 +46,19 @@ describe('KVModule', () => {
 
       @Get('/set')
       async set() {
-        await this.kv.put('greeting', 'hello');
+        await this.kv.namespace.put('greeting', 'hello');
         return { ok: true };
       }
 
       @Get('/get')
       async getVal() {
-        const val = await this.kv.get('greeting');
+        const val = await this.kv.namespace.get('greeting');
         return { value: val };
       }
 
       @Get('/del')
       async del() {
-        await this.kv.delete('greeting');
+        await this.kv.namespace.delete('greeting');
         return { ok: true };
       }
     }
@@ -100,7 +98,7 @@ describe('KVModule', () => {
 
       @Get('/list')
       async listKeys() {
-        const result = await this.kv.list();
+        const result = await this.kv.namespace.list();
         return result;
       }
     }
@@ -127,10 +125,10 @@ describe('KVModule', () => {
     class UserCache {
       constructor(private kv: KVService) {}
       async getUser(id: string) {
-        return this.kv.get(`user:${id}`);
+        return this.kv.namespace.get(`user:${id}`);
       }
       async setUser(id: string, data: string) {
-        return this.kv.put(`user:${id}`, data);
+        return this.kv.namespace.put(`user:${id}`, data);
       }
     }
 

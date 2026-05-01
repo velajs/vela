@@ -10,6 +10,24 @@ Cloudflare Workers integration for the [Vela](https://github.com/velajs/vela) fr
 
 ```bash
 pnpm add @velajs/cloudflare @velajs/vela hono
+pnpm add -D @cloudflare/workers-types
+```
+
+`@cloudflare/workers-types` is a required peer (types-only — zero runtime cost). It's what gives `KVNamespace`, `D1Database`, `R2Bucket`, `Queue`, `DurableObjectNamespace`, `Ai`, `VectorizeIndex`, and `Hyperdrive` their proper types when you reach into the underlying binding.
+
+## Service shape
+
+Every service is a thin typed wrapper around its Cloudflare binding. Use the accessor (`.namespace`, `.database`, `.bucket`, `.queue`, `.binding`, `.index`) to call the binding's methods directly — full `@cloudflare/workers-types` autocomplete, no shim layer in between.
+
+```ts
+class KVService { readonly namespace: KVNamespace; }
+class D1Service { readonly database: D1Database; }
+class R2Service { readonly bucket: R2Bucket; }
+class QueueService<T> { readonly queue: Queue<T>; }
+class DurableObjectService { readonly namespace: DurableObjectNamespace; }
+class AIService { readonly binding: Ai; }
+class VectorizeService { readonly index: VectorizeIndex; }
+class HyperdriveService { readonly binding: Hyperdrive; }
 ```
 
 ## Quick Start
@@ -26,11 +44,11 @@ class UserService {
   ) {}
 
   async findById(id: string) {
-    const cached = await this.kv.get(`user:${id}`);
+    const cached = await this.kv.namespace.get(`user:${id}`);
     if (cached) return JSON.parse(cached as string);
 
-    const user = await this.d1.prepare('SELECT * FROM users WHERE id = ?').bind(id).first();
-    if (user) await this.kv.put(`user:${id}`, JSON.stringify(user));
+    const user = await this.d1.database.prepare('SELECT * FROM users WHERE id = ?').bind(id).first();
+    if (user) await this.kv.namespace.put(`user:${id}`, JSON.stringify(user));
     return user;
   }
 }
@@ -97,10 +115,10 @@ class AppModule {}
 class CacheService {
   constructor(private kv: KVService) {}
 
-  async get(key: string) { return this.kv.get(key); }
-  async set(key: string, value: string) { return this.kv.put(key, value); }
-  async remove(key: string) { return this.kv.delete(key); }
-  async keys() { return this.kv.list(); }
+  async get(key: string) { return this.kv.namespace.get(key); }
+  async set(key: string, value: string) { return this.kv.namespace.put(key, value); }
+  async remove(key: string) { return this.kv.namespace.delete(key); }
+  async keys() { return this.kv.namespace.list(); }
 }
 ```
 
@@ -117,11 +135,11 @@ class PostService {
   constructor(private d1: D1Service) {}
 
   async findAll() {
-    return this.d1.prepare('SELECT * FROM posts').all();
+    return this.d1.database.prepare('SELECT * FROM posts').all();
   }
 
   async create(title: string) {
-    return this.d1.prepare('INSERT INTO posts (title) VALUES (?)').bind(title).run();
+    return this.d1.database.prepare('INSERT INTO posts (title) VALUES (?)').bind(title).run();
   }
 }
 ```
@@ -138,9 +156,9 @@ class AppModule {}
 class StorageService {
   constructor(private r2: R2Service) {}
 
-  async upload(key: string, data: string) { return this.r2.put(key, data); }
-  async download(key: string) { return this.r2.get(key); }
-  async remove(key: string) { return this.r2.delete(key); }
+  async upload(key: string, data: string) { return this.r2.bucket.put(key, data); }
+  async download(key: string) { return this.r2.bucket.get(key); }
+  async remove(key: string) { return this.r2.bucket.delete(key); }
 }
 ```
 
@@ -157,7 +175,7 @@ class NotificationService {
   constructor(private queue: QueueService) {}
 
   async sendEmail(to: string, subject: string) {
-    await this.queue.send({ to, subject });
+    await this.queue.queue.send({ to, subject });
   }
 }
 ```
@@ -175,8 +193,8 @@ class CounterService {
   constructor(private doNs: DurableObjectService) {}
 
   async increment(name: string) {
-    const id = this.doNs.idFromName(name);
-    const stub = this.doNs.get(id);
+    const id = this.doNs.namespace.idFromName(name);
+    const stub = this.doNs.namespace.get(id);
     return (stub as any).fetch('/increment');
   }
 }
@@ -195,7 +213,7 @@ class ChatService {
   constructor(private ai: AIService) {}
 
   async chat(prompt: string) {
-    return this.ai.run('@cf/meta/llama-3.1-8b-instruct', {
+    return this.ai.binding.run('@cf/meta/llama-3.1-8b-instruct', {
       messages: [{ role: 'user', content: prompt }],
     });
   }
@@ -215,11 +233,11 @@ class SearchService {
   constructor(private vectorize: VectorizeService) {}
 
   async search(vector: number[]) {
-    return this.vectorize.query(vector, { topK: 10 });
+    return this.vectorize.index.query(vector, { topK: 10 });
   }
 
   async addVectors(vectors: unknown[]) {
-    return this.vectorize.upsert(vectors);
+    return this.vectorize.index.upsert(vectors);
   }
 }
 ```
@@ -237,11 +255,11 @@ class DbService {
   constructor(private hd: HyperdriveService) {}
 
   getConnectionString() {
-    return this.hd.connectionString;
+    return this.hd.binding.connectionString;
   }
 
   getConfig() {
-    return { host: this.hd.host, port: this.hd.port, database: this.hd.database };
+    return { host: this.hd.binding.host, port: this.hd.binding.port, database: this.hd.binding.database };
   }
 }
 ```

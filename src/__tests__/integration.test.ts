@@ -16,11 +16,9 @@ import { R2Service } from '../services/r2.service';
 import { Env } from '../decorators/env';
 import { Scheduled } from '../decorators/scheduled';
 import { QueueConsumer } from '../decorators/queue-consumer';
-import { clearBindingsRegistry } from '../tokens';
-
 beforeEach(() => {
   MetadataRegistry.clear();
-  clearBindingsRegistry();
+
 });
 
 function createMockKV() {
@@ -86,11 +84,11 @@ describe('Integration: multiple modules in one app', () => {
 
       async getUser(id: string) {
         // Check cache first
-        const cached = await this.kv.get(`user:${id}`);
+        const cached = await this.kv.namespace.get(`user:${id}`);
         if (cached) return JSON.parse(cached as string);
         // Fallback to D1
-        const user = await this.d1.prepare('SELECT * FROM users WHERE id = ?').bind(id).first();
-        if (user) await this.kv.put(`user:${id}`, JSON.stringify(user));
+        const user = await this.d1.database.prepare('SELECT * FROM users WHERE id = ?').bind(id).first();
+        if (user) await this.kv.namespace.put(`user:${id}`, JSON.stringify(user));
         return user;
       }
     }
@@ -112,13 +110,13 @@ describe('Integration: multiple modules in one app', () => {
 
       @Get('/upload')
       async upload() {
-        await this.r2.put('avatar.png', 'binary-data');
+        await this.r2.bucket.put('avatar.png', 'binary-data');
         return { uploaded: true };
       }
 
       @Get('/download')
       async download() {
-        const obj = (await this.r2.get('avatar.png')) as { text: () => Promise<string> } | null;
+        const obj = (await this.r2.bucket.get('avatar.png')) as { text: () => Promise<string> } | null;
         return { content: obj ? await obj.text() : null };
       }
     }
@@ -171,7 +169,7 @@ describe('Integration: multiple modules in one app', () => {
 
       @Get('/via-service')
       async viaService() {
-        await this.kv.put('source', 'service');
+        await this.kv.namespace.put('source', 'service');
         return { source: 'service' };
       }
 

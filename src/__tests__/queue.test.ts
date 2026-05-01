@@ -10,11 +10,9 @@ import { createCloudflareApp } from '../cloudflare-factory';
 import { QueueModule } from '../modules/queue.module';
 import { QueueService } from '../services/queue.service';
 import { QueueConsumer } from '../decorators/queue-consumer';
-import { clearBindingsRegistry } from '../tokens';
-
 beforeEach(() => {
   MetadataRegistry.clear();
-  clearBindingsRegistry();
+
 });
 
 function createMockQueue() {
@@ -40,7 +38,7 @@ describe('QueueModule', () => {
 
       @Get('/send')
       async sendJob() {
-        await this.queue.send({ type: 'email', to: 'alice@example.com' });
+        await this.queue.queue.send({ type: 'email', to: 'alice@example.com' });
         return { queued: true };
       }
     }
@@ -69,7 +67,7 @@ describe('QueueModule', () => {
 
       @Get('/batch')
       async sendBatch() {
-        await this.queue.sendBatch([
+        await this.queue.queue.sendBatch([
           { body: 'msg1' },
           { body: 'msg2' },
           { body: 'msg3' },

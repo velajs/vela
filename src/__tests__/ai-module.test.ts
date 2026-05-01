@@ -9,11 +9,9 @@ import {
 import { createCloudflareApp } from '../cloudflare-factory';
 import { AIModule } from '../modules/ai.module';
 import { AIService } from '../services/ai.service';
-import { clearBindingsRegistry } from '../tokens';
-
 beforeEach(() => {
   MetadataRegistry.clear();
-  clearBindingsRegistry();
+
 });
 
 function createMockAI() {
@@ -37,7 +35,7 @@ describe('AIModule', () => {
 
       @Get('/chat')
       async chat() {
-        const result = await this.ai.run('@cf/meta/llama-3.1-8b-instruct', {
+        const result = await this.ai.binding.run('@cf/meta/llama-3.1-8b-instruct', {
           messages: [{ role: 'user', content: 'hello' }],
         });
         return result;
@@ -69,7 +67,7 @@ describe('AIModule', () => {
 
       @Get('/stream')
       async stream() {
-        const result = await this.ai.run(
+        const result = await this.ai.binding.run(
           '@cf/meta/llama-3.1-8b-instruct',
           { prompt: 'test' },
           { stream: true },
@@ -130,7 +128,7 @@ describe('AIModule', () => {
     class ChatService {
       constructor(private ai: AIService) {}
       async chat(prompt: string) {
-        return this.ai.run('@cf/meta/llama-3.1-8b-instruct', {
+        return this.ai.binding.run('@cf/meta/llama-3.1-8b-instruct', {
           messages: [{ role: 'user', content: prompt }],
         });
       }

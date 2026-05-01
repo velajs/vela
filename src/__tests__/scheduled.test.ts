@@ -6,11 +6,9 @@ import {
 } from '@velajs/vela';
 import { createCloudflareApp } from '../cloudflare-factory';
 import { Scheduled } from '../decorators/scheduled';
-import { clearBindingsRegistry } from '../tokens';
-
 beforeEach(() => {
   MetadataRegistry.clear();
-  clearBindingsRegistry();
+
 });
 
 describe('@Scheduled() decorator', () => {

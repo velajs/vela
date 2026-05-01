@@ -8,11 +8,9 @@ import {
 import { createCloudflareApp } from '../cloudflare-factory';
 import { D1Module } from '../modules/d1.module';
 import { D1Service } from '../services/d1.service';
-import { clearBindingsRegistry } from '../tokens';
-
 beforeEach(() => {
   MetadataRegistry.clear();
-  clearBindingsRegistry();
+
 });
 
 function createMockD1() {
@@ -63,7 +61,7 @@ describe('D1Module', () => {
 
       @Get('/user')
       async getUser() {
-        const user = await this.d1.prepare('SELECT * FROM users WHERE id = ?').bind('1').first();
+        const user = await this.d1.database.prepare('SELECT * FROM users WHERE id = ?').bind('1').first();
         return { user };
       }
     }
@@ -93,10 +91,10 @@ describe('D1Module', () => {
       @Get('/batch')
       async batchOp() {
         const stmts = [
-          this.d1.prepare('INSERT INTO users VALUES (?, ?)'),
-          this.d1.prepare('INSERT INTO users VALUES (?, ?)'),
+          this.d1.database.prepare('INSERT INTO users VALUES (?, ?)'),
+          this.d1.database.prepare('INSERT INTO users VALUES (?, ?)'),
         ];
-        const results = await this.d1.batch(stmts);
+        const results = await this.d1.database.batch(stmts);
         return { count: results.length };
       }
     }

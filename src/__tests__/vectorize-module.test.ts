@@ -9,11 +9,9 @@ import {
 import { createCloudflareApp } from '../cloudflare-factory';
 import { VectorizeModule } from '../modules/vectorize.module';
 import { VectorizeService } from '../services/vectorize.service';
-import { clearBindingsRegistry } from '../tokens';
-
 beforeEach(() => {
   MetadataRegistry.clear();
-  clearBindingsRegistry();
+
 });
 
 function createMockVectorize() {
@@ -57,7 +55,7 @@ describe('VectorizeModule', () => {
 
       @Get('/query')
       async query() {
-        const result = await this.vectorize.query([0.1, 0.2, 0.3], { topK: 10 });
+        const result = await this.vectorize.index.query([0.1, 0.2, 0.3], { topK: 10 });
         return result;
       }
     }
@@ -87,11 +85,11 @@ describe('VectorizeModule', () => {
 
       @Get('/insert')
       async insert() {
-        await this.vectorize.insert([
+        await this.vectorize.index.insert([
           { id: 'v1', values: [1, 2, 3] },
           { id: 'v2', values: [4, 5, 6] },
         ]);
-        const results = await this.vectorize.getByIds(['v1', 'v2']);
+        const results = await this.vectorize.index.getByIds(['v1', 'v2']);
         return { results };
       }
     }
@@ -120,7 +118,7 @@ describe('VectorizeModule', () => {
 
       @Get()
       async describe() {
-        return this.vectorize.describe();
+        return this.vectorize.index.describe();
       }
     }
 
@@ -176,7 +174,7 @@ describe('VectorizeModule', () => {
     class SemanticSearch {
       constructor(private vectorize: VectorizeService) {}
       async search(vector: number[]) {
-        return this.vectorize.query(vector, { topK: 5 });
+        return this.vectorize.index.query(vector, { topK: 5 });
       }
     }
 

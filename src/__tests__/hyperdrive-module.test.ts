@@ -9,11 +9,9 @@ import {
 import { createCloudflareApp } from '../cloudflare-factory';
 import { HyperdriveModule } from '../modules/hyperdrive.module';
 import { HyperdriveService } from '../services/hyperdrive.service';
-import { clearBindingsRegistry } from '../tokens';
-
 beforeEach(() => {
   MetadataRegistry.clear();
-  clearBindingsRegistry();
+
 });
 
 function createMockHyperdrive() {

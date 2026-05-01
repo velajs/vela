@@ -2,20 +2,12 @@ import { Injectable, Inject } from '@velajs/vela';
 import type { BindingRef } from '../binding-ref';
 import { HYPERDRIVE_BINDING_REF } from '../tokens';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type HyperdriveBinding = { connectionString: string; host: string; port: number; user: string; password: string; database: string } & Record<string, any>;
-
-/**
- * Wrapper around Cloudflare Hyperdrive binding.
- * Injected via `HyperdriveModule.forRoot({ binding: 'POSTGRES' })`.
- */
 @Injectable()
 export class HyperdriveService {
-  constructor(@Inject(HYPERDRIVE_BINDING_REF) private ref: BindingRef) {}
+  constructor(@Inject(HYPERDRIVE_BINDING_REF) private ref: BindingRef<Hyperdrive>) {}
 
-  /** Access the raw Hyperdrive binding directly. */
-  get binding(): HyperdriveBinding {
-    return this.ref.value as HyperdriveBinding;
+  get binding(): Hyperdrive {
+    return this.ref.value;
   }
 
   get connectionString(): string {

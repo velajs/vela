@@ -27,20 +27,6 @@ export { Env } from './decorators/env';
 export { Scheduled } from './decorators/scheduled';
 export { QueueConsumer } from './decorators/queue-consumer';
 
-// Internals (for advanced usage / testing)
-export { BindingRef } from './binding-ref';
-export { bindingsRegistry, clearBindingsRegistry } from './tokens';
-export {
-  KV_BINDING_REF,
-  D1_BINDING_REF,
-  R2_BINDING_REF,
-  QUEUE_BINDING_REF,
-  DO_BINDING_REF,
-  AI_BINDING_REF,
-  VECTORIZE_BINDING_REF,
-  HYPERDRIVE_BINDING_REF,
-} from './tokens';
-
 // Types
 export type { CloudflareEnv, ScheduledRegistration, QueueRegistration } from './types';
 export type { ScheduledMetadata } from './decorators/scheduled';
