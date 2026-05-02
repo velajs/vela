@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.2.0 (2026-05-01)
+
+Module-boundary enforcement, bootstrap consolidation, structured discovery diagnostics, and a generic plugin composer. `strict: false` is the default — every existing test passes unchanged.
+
+### New
+
+- **`bootstrap(rootModule, options)`** — the wiring primitive shared by `VelaFactory.create`, `@velajs/testing`, and any non-HTTP consumer (CLI tools, custom runtimes). Returns `{ container, routeManager, loader }` without running lifecycle hooks or building the Hono app. `VelaFactory.create` is now a thin wrapper that calls `bootstrap()` then runs `OnModuleInit` / `OnApplicationBootstrap` and builds routes. Exported from `@velajs/vela` and `@velajs/vela/internal`.
+
+- **Strict module visibility (opt-in)** — `VelaFactory.create(Mod, { strict: true })` enables enforcement: every `Container.resolve` call from inside a module checks that the token is declared locally, exported by an imported module, or `@Global`. Throws `ModuleVisibilityError` on violation. `useExisting` aliases honor visibility (alias targets that the caller can't see are rejected). Auto-registration of unknown class tokens is disabled in strict mode. Default (`strict: false`) preserves all pre-1.2 behavior.
+
+- **Framework primitives are globally visible.** `Container`, `ModuleRef`, and `APP_GUARD`/`APP_PIPE`/`APP_INTERCEPTOR`/`APP_FILTER`/`APP_MIDDLEWARE` are marked global at boot — resolvable from any module without explicit imports, in both strict and non-strict mode. `ModuleRef.create()` continues to be the sandbox escape hatch (visibility check skipped for transient instantiation).
+
+- **Structured discovery diagnostics** — `VelaFactory.create(Mod, { diagnostics: 'silent' | 'log' | 'throw' })`. Default is `'log'` (was effectively `'silent'`); failed provider/controller resolution at `loader.resolveAllInstances`, schedule discovery, event-emitter discovery, and runtime job execution all route through the same dispatcher. `ModuleVisibilityError` always propagates regardless of mode.
+
+- **Plugin manifest + composer** — `definePlugin({ id, version, module, dependsOn?, metadata? })` and `composePlugins(plugins): DynamicModule` with topological sort, cycle detection, and missing-dep detection. Produces a global module that exposes a queryable `PluginRegistry` via `PLUGIN_REGISTRY_TOKEN` (`list`, `get(id)`, `dependents(id)`).
+
+- **New types**: `ModuleScope`, `ContainerOptions`, `BootstrapOptions`, `BootstrapResult`, `Diagnostics`, `Plugin` — exported from both root and `/internal`.
+
+### Internal cleanup
+
+- **`Container` constructor accepts `ContainerOptions`** (`{ strict?, diagnostics? }`). Threads `requestingModuleId` through `resolve` / `resolveAsync` / `resolveAll`. Per-module scopes are tracked via `registerScope`; framework-internal globals via `markGlobalToken`. `providerOrigin: Map<Token, string>` records each provider's declaring module so constructor injections resolve from the *class's* module, not the caller's.
+
+- **`ModuleLoader` registers a `ModuleScope` per module** before recursing into imports — `localProviders` includes the module class itself (so `NestModule.configure()` resolution stays inside its own scope), controllers, and every provider token. Synthetic `APP_*` tokens are marked global at mint time so RouteManager's request-time resolutions (no requester) keep working.
+
+- **`createChild()` shares container state by reference** (providers, scopes, globals, providerOrigin); `createDetached()` copies providers + providerOrigin and shares scopes + globals. Re-registering a token on a detached container without a moduleId clears any stale `providerOrigin` so sandbox-local registrations don't inherit a misleading owner.
+
+- **`resolveAsync` factory branch now unwraps `ForwardRef` in `inject`** (mirroring the sync `resolveFactory`). Previously asymmetric — sync path worked, async path silently failed during `loader.resolveAllInstances` and was swallowed by the discovery `try/catch`.
+
+- **Dropped unused `Container.parent` field** (audit #10). Was assigned in `createChild()` but never read.
+
+- **Bootstrap consolidated into `src/factory/bootstrap.ts`** — `VelaFactory.create` no longer hand-rolls the APP_* / consumer-middleware / global-prefix wiring sequence. Net code reduction in `factory.ts`.
+
 ## 1.1.0 (2026-04-30)
 
 Architectural remodel: one metadata model, one storage, public surface trimmed, internal primitives exposed via a stable subpath.

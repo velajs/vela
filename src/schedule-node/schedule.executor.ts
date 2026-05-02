@@ -1,4 +1,5 @@
-import { Injectable } from '../container/index';
+import { Inject, Injectable } from '../container/index';
+import { Container } from '../container/container';
 import type { OnApplicationBootstrap, OnModuleDestroy } from '../lifecycle/index';
 import { parseCron, type CronMatcher } from '../schedule/cron-matcher';
 import { ScheduleRegistry } from '../schedule/schedule.registry';
@@ -11,7 +12,10 @@ export class ScheduleExecutor implements OnApplicationBootstrap, OnModuleDestroy
   private lastCronMinute = new Map<string, number>();
   private running = true;
 
-  constructor(private registry: ScheduleRegistry) {}
+  constructor(
+    private registry: ScheduleRegistry,
+    @Inject(Container) private container: Container,
+  ) {}
 
   onApplicationBootstrap(): void {
     if (typeof setInterval !== 'function') {
@@ -67,8 +71,14 @@ export class ScheduleExecutor implements OnApplicationBootstrap, OnModuleDestroy
       if (typeof method === 'function') {
         await method.call(instance);
       }
-    } catch {
-      // Swallow errors so the scheduler keeps running
+    } catch (err) {
+      // Runtime job error — keep the scheduler running by default. Users
+      // can opt into rethrowing by setting diagnostics: 'throw'.
+      const mode = this.container.getDiagnostics();
+      if (mode === 'throw') throw err;
+      if (mode === 'log') {
+        console.warn(`[vela] scheduled job ${methodName} failed:`, err);
+      }
     }
   }
 

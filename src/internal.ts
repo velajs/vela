@@ -4,6 +4,12 @@
 
 export { Container } from './container/container';
 export { ModuleRef } from './container/module-ref';
+export { ModuleVisibilityError } from './container/types';
+export type {
+  ModuleScope,
+  ContainerOptions,
+  Diagnostics,
+} from './container/types';
 export { bindAppProviders } from './pipeline/app-providers';
 export { RouteManager } from './http/route.manager';
 export type { RouteManagerOptions } from './http/route.manager';
@@ -19,3 +25,18 @@ export {
   APP_MIDDLEWARE,
 } from './pipeline/tokens';
 export { getModuleMetadata, isModule } from './module/decorators';
+
+// Bootstrap primitive — used by VelaFactory.create, @velajs/testing, and any
+// non-HTTP consumer (CLI tools, custom runtimes).
+export { bootstrap } from './factory/bootstrap';
+export type { BootstrapOptions, BootstrapResult } from './factory/bootstrap';
+
+// Plugin manifest + composer
+export {
+  definePlugin,
+  composePlugins,
+  PluginRegistry,
+  PluginRootModule,
+  PLUGIN_REGISTRY_TOKEN,
+} from './plugin/plugin';
+export type { Plugin } from './plugin/plugin';

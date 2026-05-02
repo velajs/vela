@@ -1,6 +1,6 @@
 import { Scope } from "../constants";
 import type { Container } from "../container/container";
-import { ForwardRef, InjectionToken } from "../container/types";
+import { ForwardRef, InjectionToken, ModuleVisibilityError } from "../container/types";
 import type { ProviderOptions, Token, Type } from "../container/types";
 import type { RouteManager } from "../http/route.manager";
 import {
@@ -47,6 +47,10 @@ function implementsNestModule(cls: Type): cls is Type<NestModule> {
   return typeof (cls.prototype as Partial<NestModule> | undefined)?.configure === "function";
 }
 
+function tokenOfProvider(provider: Type | ProviderOptions): Token | undefined {
+  return typeof provider === "function" ? provider : provider.provide;
+}
+
 export class ModuleLoader {
   private processedModules = new Set<Type>();
   private processingStack = new Set<Type>();
@@ -63,6 +67,8 @@ export class ModuleLoader {
     [APP_FILTER, []],
     [APP_MIDDLEWARE, []],
   ]);
+  private moduleIdByClass = new Map<Type, string>();
+  private seenModuleIds = new Set<string>();
 
   constructor(
     private container: Container,
@@ -75,6 +81,20 @@ export class ModuleLoader {
     for (const controller of this.collectedControllers) {
       this.router.registerController(controller);
     }
+  }
+
+  private getModuleId(moduleClass: Type): string {
+    const cached = this.moduleIdByClass.get(moduleClass);
+    if (cached) return cached;
+    const baseName = moduleClass.name || "AnonModule";
+    let id = baseName;
+    let counter = 0;
+    while (this.seenModuleIds.has(id)) {
+      id = `${baseName}#${++counter}`;
+    }
+    this.seenModuleIds.add(id);
+    this.moduleIdByClass.set(moduleClass, id);
+    return id;
   }
 
   private processModule(
@@ -129,8 +149,14 @@ export class ModuleLoader {
 
     this.processingStack.add(moduleClass);
 
+    const moduleId = this.getModuleId(moduleClass);
+
     try {
       const importedProviders = new Set<Token>(this.globalExports);
+
+      // Determine importedModuleIds eagerly (before recursing) so child
+      // modules can be referenced in our scope's importedModules set.
+      const importedModuleIds = new Set<string>();
 
       for (const entry of [...metadata.imports, ...extraImports]) {
         // Unwrap forwardRef(() => Module) — resolves lazy circular references
@@ -142,6 +168,8 @@ export class ModuleLoader {
         const importedModuleClass = isDynamicModule(importedModule)
           ? importedModule.module
           : (importedModule as Type);
+
+        importedModuleIds.add(this.getModuleId(importedModuleClass));
 
         // If this forwardRef-wrapped import is currently being processed, skip it to
         // break the circular chain. Non-forwardRef circular imports still throw.
@@ -155,14 +183,41 @@ export class ModuleLoader {
         }
       }
 
-      // Register metadata providers + dynamic module extra providers
       const allProviders = [...metadata.providers, ...extraProviders];
+      const allControllers = [...metadata.controllers, ...extraControllers];
+      const allExports = [...metadata.exports, ...extraExports];
+
+      // Build the ModuleScope BEFORE registering providers so the visibility
+      // check (in strict mode) can see the local-provider set as we register.
+      const localProviders = new Set<Token>();
       for (const provider of allProviders) {
-        this.registerProvider(provider);
+        const tk = tokenOfProvider(provider);
+        if (tk !== undefined) localProviders.add(tk);
+      }
+      for (const controller of allControllers) {
+        localProviders.add(controller);
+      }
+      // The module class itself can be DI-resolved (NestModule.configure path);
+      // include it in its own scope.
+      localProviders.add(moduleClass);
+
+      const isGlobal =
+        metadata.isGlobal ||
+        (isDynamicModule(moduleClassOrDynamic) &&
+          moduleClassOrDynamic.global === true);
+
+      this.container.registerScope({
+        moduleId,
+        localProviders,
+        importedModules: importedModuleIds,
+        exportedTokens: new Set<Token>(allExports as Token[]),
+        isGlobal,
+      });
+
+      for (const provider of allProviders) {
+        this.registerProvider(provider, moduleId);
       }
 
-      // Collect metadata controllers + dynamic module extra controllers
-      const allControllers = [...metadata.controllers, ...extraControllers];
       for (const controller of allControllers) {
         this.collectedControllers.add(controller);
       }
@@ -174,7 +229,6 @@ export class ModuleLoader {
 
       this.processedModules.add(moduleClass);
 
-      const allExports = [...metadata.exports, ...extraExports];
       const exports = this.buildExportSet(
         allExports,
         allProviders,
@@ -182,10 +236,6 @@ export class ModuleLoader {
       );
       this.moduleExportsCache.set(moduleClass, exports);
 
-      const isGlobal =
-        metadata.isGlobal ||
-        (isDynamicModule(moduleClassOrDynamic) &&
-          moduleClassOrDynamic.global === true);
       if (isGlobal) {
         for (const token of exports) {
           this.globalExports.add(token);
@@ -196,9 +246,9 @@ export class ModuleLoader {
       // resolved through the container so it can have its own DI dependencies.
       if (implementsNestModule(moduleClass)) {
         if (!this.container.has(moduleClass)) {
-          this.container.register(moduleClass);
+          this.container.register(moduleClass, moduleId);
         }
-        const instance = this.container.resolve(moduleClass);
+        const instance = this.container.resolve(moduleClass, moduleId);
         const builder = new MiddlewareBuilder();
         instance.configure(builder);
         this.consumerMiddlewareDefinitions.push(...builder.getDefinitions());
@@ -210,16 +260,19 @@ export class ModuleLoader {
     }
   }
 
-  private registerProvider(provider: Type | ProviderOptions): void {
+  private registerProvider(
+    provider: Type | ProviderOptions,
+    moduleId: string,
+  ): void {
     if (typeof provider === "function") {
       if (!this.container.has(provider)) {
-        this.container.register(provider);
+        this.container.register(provider, moduleId);
         this.registeredProviders.push(provider);
       }
     } else {
       const token = provider.provide;
       if (!token) {
-        this.container.register(provider);
+        this.container.register(provider, moduleId);
         return;
       }
 
@@ -227,14 +280,20 @@ export class ModuleLoader {
         const syntheticToken = new InjectionToken(
           `${token.toString()}:${this.appProviderCounter++}`,
         );
-        this.container.register({ ...provider, provide: syntheticToken });
+        this.container.register(
+          { ...provider, provide: syntheticToken },
+          moduleId,
+        );
+        // Synthetic APP_* tokens are resolved at request time by RouteManager
+        // with no requester; mark them global so the visibility check passes.
+        this.container.markGlobalToken(syntheticToken);
         this.registeredProviders.push(syntheticToken);
         getOrCreateArray(this.appProviderTokens, token).push(syntheticToken);
         return;
       }
 
       if (!this.container.has(token)) {
-        this.container.register(provider);
+        this.container.register(provider, moduleId);
         this.registeredProviders.push(token);
       }
     }
@@ -252,7 +311,7 @@ export class ModuleLoader {
     const exportSet = new Set<Token>();
     const providerTokens = new Set<Token>();
     for (const p of providers) {
-      const token = typeof p === "function" ? p : p.provide;
+      const token = tokenOfProvider(p);
       if (token !== undefined) providerTokens.add(token);
     }
 
@@ -299,8 +358,11 @@ export class ModuleLoader {
         }
         const instance = await this.container.resolveAsync(token);
         instanceSet.add(instance);
-      } catch {
-        // Skip unresolvable tokens
+      } catch (err) {
+        // Module visibility errors must always propagate — they indicate a
+        // wiring bug the user explicitly asked to enforce by enabling strict.
+        if (err instanceof ModuleVisibilityError) throw err;
+        this.routeError(err, `resolve provider`);
       }
     }
 
@@ -311,11 +373,22 @@ export class ModuleLoader {
         }
         const instance = await this.container.resolveAsync(controller);
         instanceSet.add(instance);
-      } catch {
-        // Skip unresolvable controllers
+      } catch (err) {
+        if (err instanceof ModuleVisibilityError) throw err;
+        this.routeError(err, `resolve controller ${controller.name}`);
       }
     }
 
     return [...instanceSet];
+  }
+
+  private routeError(err: unknown, context: string): void {
+    const mode = this.container.getDiagnostics();
+    if (mode === "silent") return;
+    if (mode === "throw") {
+      throw err instanceof Error ? err : new Error(String(err));
+    }
+    // 'log'
+    console.warn(`[vela] ${context} failed:`, err);
   }
 }

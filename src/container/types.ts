@@ -66,3 +66,40 @@ export interface ProviderRegistration<T = unknown> {
   inject?: Token[];
   useExisting?: Token<T>;
 }
+
+// Module visibility (1.2.0)
+export interface ModuleScope {
+  moduleId: string;
+  localProviders: Set<Token>;
+  importedModules: Set<string>;
+  exportedTokens: Set<Token>;
+  isGlobal: boolean;
+}
+
+export type Diagnostics = 'silent' | 'log' | 'throw';
+
+export interface ContainerOptions {
+  strict?: boolean;
+  diagnostics?: Diagnostics;
+}
+
+function describeToken(token: Token): string {
+  if (token instanceof InjectionToken) return token.toString();
+  if (typeof token === 'function') return token.name;
+  if (typeof token === 'symbol') return token.toString();
+  return String(token);
+}
+
+export class ModuleVisibilityError extends Error {
+  constructor(
+    public readonly moduleId: string,
+    public readonly token: Token,
+  ) {
+    super(
+      `Module '${moduleId}' cannot resolve '${describeToken(token)}': ` +
+        `not declared in providers, not imported from another module's exports, not @Global. ` +
+        `Either add to imports/exports or mark as @Global.`,
+    );
+    this.name = 'ModuleVisibilityError';
+  }
+}
