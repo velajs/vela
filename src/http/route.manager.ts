@@ -8,6 +8,7 @@ import type { Token, Type } from '../container/types';
 import type { MiddlewareRouteDefinition } from '../module/middleware';
 import { joinPaths } from '../registry/paths';
 import { buildExecutionContext } from './execution-context';
+import { REQUEST_CONTEXT, createRequestContext } from './request-context';
 import { ForbiddenException, HttpException } from '../errors/http-exception';
 import { ComponentManager } from '../pipeline/component.manager';
 import { shouldFilterCatch } from '../pipeline/decorators';
@@ -224,6 +225,7 @@ export class RouteManager {
     }
 
     const child = this.container.createChild();
+    child.setRequestInstance(REQUEST_CONTEXT, createRequestContext(c));
     c.set('container', child);
     return child;
   }

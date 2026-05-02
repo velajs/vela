@@ -87,6 +87,10 @@ export {
   applyDecorators,
 } from './http/index';
 
+// Request-scoped context primitive
+export { REQUEST_CONTEXT } from './http/request-context';
+export type { RequestContext } from './http/request-context';
+
 // Services
 export { Logger, LogLevel } from './services/index';
 export type { LoggerService, ContextProvider, Writer, LoggerLevelName } from './services/index';

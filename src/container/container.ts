@@ -127,6 +127,15 @@ export class Container {
     this.globals.add(token);
   }
 
+  // Pre-seed the per-request cache. Only meaningful on a child container
+  // produced by createChild() — the root's requestInstances map is unused.
+  // Used by RouteManager to populate framework-provided request-scope
+  // values (REQUEST_CONTEXT) before any handler resolution runs, so the
+  // provider's factory never fires on the request path.
+  setRequestInstance(token: Token, value: unknown): void {
+    this.requestInstances.set(token, value);
+  }
+
   getDiagnostics(): Diagnostics {
     return this.diagnostics;
   }
