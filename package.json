@@ -32,6 +32,7 @@
   "scripts": {
     "build": "rm -rf dist && swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
     "test": "vitest run",
+    "test:workers": "vitest run --config vitest.config.workers.ts",
     "typecheck": "tsc --noEmit",
     "prepare": "swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
     "prepublishOnly": "pnpm run typecheck && pnpm test"
@@ -71,16 +72,20 @@
   "pnpm": {
     "onlyBuiltDependencies": [
       "@swc/core",
-      "esbuild"
+      "esbuild",
+      "workerd"
     ]
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.15.2",
     "@swc/cli": "^0.8.0",
     "@swc/core": "^1.15.11",
     "@types/bun": "latest",
+    "@vitest/runner": "^4.1.5",
+    "@vitest/snapshot": "^4.1.5",
     "typescript": "^5",
     "unplugin-swc": "^1.5.9",
-    "vitest": "^4.0.18",
+    "vitest": "^4.1.5",
     "zod": "^4.3.6"
   }
 }

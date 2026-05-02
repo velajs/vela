@@ -26,3 +26,5 @@ jobs:
       - run: pnpm run build
 
       - run: pnpm test
+
+      - run: pnpm run test:workers

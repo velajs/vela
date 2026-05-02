@@ -174,7 +174,9 @@ describe('Logger', () => {
   describe('DI resolution', () => {
     it('should resolve as injectable singleton', () => {
       const container = new Container();
-      container.register(Logger);
+      // Logger has an optional `context?: string` param that isn't a DI
+      // token — register via factory so constructor injection is bypassed.
+      container.register({ provide: Logger, useFactory: () => new Logger() });
 
       const a = container.resolve(Logger);
       const b = container.resolve(Logger);

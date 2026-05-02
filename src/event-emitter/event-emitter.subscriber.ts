@@ -31,7 +31,15 @@ export class EventEmitterSubscriber implements OnApplicationBootstrap {
       let instance: unknown;
       try {
         instance = this.container.resolve(token);
-      } catch {
+      } catch (err) {
+        const mode = this.container.getDiagnostics();
+        if (mode === 'throw') throw err;
+        if (mode === 'log') {
+          console.warn(
+            `[vela] event subscriber discovery: cannot resolve ${token.name || String(token)}:`,
+            err,
+          );
+        }
         continue;
       }
 

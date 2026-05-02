@@ -4,6 +4,8 @@ export { defineMetadata, getMetadata } from './metadata';
 // Factory & Application
 export { VelaFactory } from './factory';
 export { VelaApplication } from './application';
+export { bootstrap } from './factory/bootstrap';
+export type { BootstrapOptions, BootstrapResult } from './factory/bootstrap';
 
 // OpenAPI
 export {
@@ -30,12 +32,26 @@ export type {
 } from './openapi/index';
 
 // DI Container
-export { Container, Injectable, Inject, Optional, InjectionToken, ForwardRef, forwardRef, ModuleRef, mixin } from './container/index';
+export {
+  Container,
+  Injectable,
+  Inject,
+  Optional,
+  InjectionToken,
+  ForwardRef,
+  forwardRef,
+  ModuleRef,
+  ModuleVisibilityError,
+  mixin,
+} from './container/index';
 export type {
   Type,
   Token,
   InjectableOptions,
   ProviderOptions,
+  ModuleScope,
+  ContainerOptions,
+  Diagnostics,
 } from './container/index';
 
 // Constants
@@ -170,6 +186,16 @@ export type {
 export { Global, Module, createModuleRef } from './module/index';
 export type { ModuleOptions, DynamicModule, AsyncModuleOptions, ModuleImport } from './module/index';
 export type { MiddlewareConsumer, NestModule, RouteInfo } from './http/index';
+
+// Plugin manifest + composer
+export {
+  definePlugin,
+  composePlugins,
+  PluginRegistry,
+  PluginRootModule,
+  PLUGIN_REGISTRY_TOKEN,
+} from './plugin/plugin';
+export type { Plugin } from './plugin/plugin';
 
 // Pipeline Decorators
 export {
