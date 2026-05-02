@@ -28,6 +28,15 @@ const IMPORT_TYPE_HINT =
   'positions. Use a runtime `import { X }` for DI tokens.';
 
 /**
+ * Sentinel comparing a token to the bare `Object` class — `design:paramtypes`
+ * emits `Object` when TypeScript erases a type-only import, so any token that
+ * is `Object` (or nullish) is the fingerprint of a stripped type.
+ */
+function isErasedTypeToken(token: unknown): boolean {
+  return token === Object || token == null;
+}
+
+/**
  * Per-module provider buckets. Each module instance owns its providers under
  * its `moduleId`; the same logical token can have distinct registrations in
  * different buckets, supporting multi-instance dynamic modules.
@@ -159,9 +168,9 @@ export class Container {
   }
 
   resolve<T>(token: Token<T>, requestingModuleId?: string): T {
-    const registration = this.findRegistration(token, requestingModuleId);
+    const registration = this.findRegistration<T>(token, requestingModuleId);
     if (registration) {
-      return this.resolveRegistration(registration, requestingModuleId) as T;
+      return this.resolveRegistration(registration, requestingModuleId);
     }
 
     // Visibility error fires first when the token exists in some bucket but
@@ -178,7 +187,7 @@ export class Container {
     // `Object`/undefined at a token position is the fingerprint of a
     // type-only import that TypeScript stripped — emit the hint before
     // attempting any other recovery.
-    if (token === (Object as unknown as Token<T>) || token == null) {
+    if (isErasedTypeToken(token)) {
       throw new Error(
         `No provider found for token: ${this.tokenToString(token)}. ` +
           IMPORT_TYPE_HINT,
@@ -203,8 +212,8 @@ export class Container {
   }
 
   resolveAll<T>(token: Token<T>, requestingModuleId?: string): T[] {
-    const registrations = this.findAllRegistrations(token, requestingModuleId);
-    return registrations.map((r) => this.resolveRegistration(r, requestingModuleId) as T);
+    const registrations = this.findAllRegistrations<T>(token, requestingModuleId);
+    return registrations.map((r) => this.resolveRegistration(r, requestingModuleId));
   }
 
   /**
@@ -215,25 +224,28 @@ export class Container {
    * Returns `undefined` if no candidate exists. Throws
    * `MultipleProvidersFoundError` if the imports walk yields more than one.
    */
-  private findRegistration(
-    token: Token,
+  private findRegistration<T>(
+    token: Token<T>,
     requestingModuleId?: string,
-  ): ProviderRegistration | undefined {
+  ): ProviderRegistration<T> | undefined {
     // No requester OR no scope for this requester: framework-internal /
     // sandbox lookup. Prefer the `__root__` bucket so sandbox-registered
     // transients (ModuleRef.create) and bootstrap primitives win over module
     // buckets that may hold the same token under SINGLETON scope.
     if (requestingModuleId === undefined || !this.scopes.has(requestingModuleId)) {
-      const rootHit = this.providers.get(ROOT_MODULE_ID)?.get(token);
+      const rootHit = this.lookupInBucket<T>(ROOT_MODULE_ID, token);
       if (rootHit) return rootHit;
       const exporters = this.exporterIndex.get(token);
       if (!exporters) return undefined;
-      const first = exporters.values().next().value as string | undefined;
-      return first ? this.providers.get(first)?.get(token) : undefined;
+      for (const owner of exporters) {
+        const hit = this.lookupInBucket<T>(owner, token);
+        if (hit) return hit;
+      }
+      return undefined;
     }
 
     // 1. Local bucket.
-    const local = this.providers.get(requestingModuleId)?.get(token);
+    const local = this.lookupInBucket<T>(requestingModuleId, token);
     if (local) return local;
 
     // 2. Global tokens — registration still lives in some module's bucket.
@@ -246,7 +258,7 @@ export class Container {
           ]);
         }
         const [owner] = [...exporters];
-        return this.providers.get(owner)?.get(token);
+        return this.lookupInBucket<T>(owner, token);
       }
       return undefined;
     }
@@ -255,17 +267,17 @@ export class Container {
     // scope. If already auto-registered (in `__root__`), return that;
     // otherwise let the caller materialize it.
     if (token instanceof InjectionToken && token.options?.factory) {
-      return this.providers.get(ROOT_MODULE_ID)?.get(token);
+      return this.lookupInBucket<T>(ROOT_MODULE_ID, token);
     }
 
     // 4. Imported modules' exports — walk transitively so re-exports work.
     const scope = this.scopes.get(requestingModuleId);
     if (!scope) return undefined;
 
-    const candidates: ProviderRegistration[] = [];
+    const candidates: ProviderRegistration<T>[] = [];
     const candidateModuleIds: string[] = [];
     const visited = new Set<string>([requestingModuleId]);
-    this.collectFromImports(scope, token, visited, candidates, candidateModuleIds);
+    this.collectFromImports<T>(scope, token, visited, candidates, candidateModuleIds);
 
     if (candidates.length === 0) return undefined;
     if (candidates.length > 1) {
@@ -278,16 +290,24 @@ export class Container {
     return candidates[0];
   }
 
+  /** Typed bucket lookup — single seam where the Map<Token, Registration> erases T. */
+  private lookupInBucket<T>(
+    moduleId: string,
+    token: Token<T>,
+  ): ProviderRegistration<T> | undefined {
+    return this.providers.get(moduleId)?.get(token) as ProviderRegistration<T> | undefined;
+  }
+
   /**
    * Walk a scope's imports (and their imports' imports, …) collecting every
    * registration reachable through re-export chains. A child only contributes
    * if it explicitly exports the token — non-exported providers stay private.
    */
-  private collectFromImports(
+  private collectFromImports<T>(
     scope: ModuleScope,
-    token: Token,
+    token: Token<T>,
     visited: Set<string>,
-    candidates: ProviderRegistration[],
+    candidates: ProviderRegistration<T>[],
     candidateModuleIds: string[],
   ): void {
     for (const importedId of scope.importedModules) {
@@ -296,7 +316,7 @@ export class Container {
       const imported = this.scopes.get(importedId);
       if (!imported?.exportedTokens.has(token)) continue;
 
-      const direct = this.providers.get(importedId)?.get(token);
+      const direct = this.lookupInBucket<T>(importedId, token);
       if (direct) {
         candidates.push(direct);
         candidateModuleIds.push(importedId);
@@ -305,7 +325,7 @@ export class Container {
 
       // Imported module re-exports the token without owning it — recurse
       // into ITS imports.
-      this.collectFromImports(
+      this.collectFromImports<T>(
         imported,
         token,
         visited,
@@ -315,22 +335,22 @@ export class Container {
     }
   }
 
-  private findAllRegistrations(
-    token: Token,
+  private findAllRegistrations<T>(
+    token: Token<T>,
     requestingModuleId?: string,
-  ): ProviderRegistration[] {
+  ): ProviderRegistration<T>[] {
     if (requestingModuleId === undefined) {
       const exporters = this.exporterIndex.get(token);
       if (!exporters) return [];
       return [...exporters]
-        .map((id) => this.providers.get(id)?.get(token))
-        .filter((r): r is ProviderRegistration => r !== undefined);
+        .map((id) => this.lookupInBucket<T>(id, token))
+        .filter((r): r is ProviderRegistration<T> => r !== undefined);
     }
 
-    const out: ProviderRegistration[] = [];
-    const seen = new Set<ProviderRegistration>();
+    const out: ProviderRegistration<T>[] = [];
+    const seen = new Set<ProviderRegistration<T>>();
 
-    const local = this.providers.get(requestingModuleId)?.get(token);
+    const local = this.lookupInBucket<T>(requestingModuleId, token);
     if (local && !seen.has(local)) {
       out.push(local);
       seen.add(local);
@@ -338,7 +358,7 @@ export class Container {
 
     if (this.globals.has(token)) {
       for (const owner of this.exporterIndex.get(token) ?? []) {
-        const reg = this.providers.get(owner)?.get(token);
+        const reg = this.lookupInBucket<T>(owner, token);
         if (reg && !seen.has(reg)) {
           out.push(reg);
           seen.add(reg);
@@ -351,7 +371,7 @@ export class Container {
       for (const importedId of scope.importedModules) {
         const imported = this.scopes.get(importedId);
         if (!imported?.exportedTokens.has(token)) continue;
-        const reg = this.providers.get(importedId)?.get(token);
+        const reg = this.lookupInBucket<T>(importedId, token);
         if (reg && !seen.has(reg)) {
           out.push(reg);
           seen.add(reg);
@@ -458,9 +478,9 @@ export class Container {
 
     // Request: return cached from this child's requestInstances
     if (registration.scope === Scope.REQUEST) {
-      const cached = this.requestInstances.get(registration.provide);
+      const cached = this.requestInstances.get(registration.provide) as T | undefined;
       if (cached !== undefined) {
-        return cached as T;
+        return cached;
       }
     }
 
@@ -511,11 +531,13 @@ export class Container {
       const meta = injectMap.get(index);
       const rawToken = meta?.token;
       const isForwardRef = rawToken instanceof ForwardRef;
+      // `paramType` arrives as `unknown` from reflect-metadata's design:paramtypes —
+      // the runtime contract is that it's a constructor (Token); cast at the seam.
       const token: Token | undefined = isForwardRef
         ? rawToken.factory()
-        : (rawToken as Token | undefined) ?? (paramType as Token);
+        : rawToken ?? (paramType as Token);
 
-      if (!token || token === Object) {
+      if (!token || isErasedTypeToken(token)) {
         if (meta?.optional) return undefined;
         throw new Error(
           `Cannot resolve dependency at index ${index} for ${target.name}. ` +
@@ -550,7 +572,7 @@ export class Container {
     // resolves from, so it uses the same escape-hatch shape as ModuleRef.
     const dependencies = (registration.inject || []).map((token) => {
       const resolved = token instanceof ForwardRef ? token.factory() : token;
-      return this.resolve(resolved as Token);
+      return this.resolve(resolved);
     });
     const result = registration.useFactory(...dependencies);
 
@@ -565,7 +587,7 @@ export class Container {
   }
 
   async resolveAsync<T>(token: Token<T>, requestingModuleId?: string): Promise<T> {
-    const registration = this.findRegistration(token, requestingModuleId);
+    const registration = this.findRegistration<T>(token, requestingModuleId);
 
     if (!registration) {
       if (
@@ -590,7 +612,7 @@ export class Container {
 
     if (registration.useFactory) {
       if (registration.scope === Scope.SINGLETON && registration.instance !== undefined) {
-        return registration.instance as T;
+        return registration.instance;
       }
 
       // Factory inject deps resolve without a requester (same escape hatch as
@@ -598,17 +620,17 @@ export class Container {
       const dependencies = await Promise.all(
         (registration.inject || []).map((t) => {
           const resolved = t instanceof ForwardRef ? t.factory() : t;
-          return this.resolveAsync(resolved as Token);
+          return this.resolveAsync(resolved);
         }),
       );
 
-      const instance = await registration.useFactory(...dependencies);
+      const instance = (await registration.useFactory(...dependencies)) as T;
 
       if (registration.scope === Scope.SINGLETON) {
-        registration.instance = instance as T;
+        registration.instance = instance;
       }
 
-      return instance as T;
+      return instance;
     }
 
     return this.resolve(token, requestingModuleId);

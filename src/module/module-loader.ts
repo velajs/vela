@@ -207,14 +207,17 @@ export class ModuleLoader {
       const allImports = [...metadata.imports, ...extraImports];
 
       for (const entry of allImports) {
-        const isForwardRef = entry instanceof ForwardRef;
-        const importedModule = isForwardRef
-          ? (entry.factory() as Type | DynamicModule)
-          : (entry as Type | DynamicModule);
+        // ForwardRef.factory's return type is the broader Token<T>, but in
+        // module-import position the caller's contract is "factory yields a
+        // module class or DynamicModule." Cast at the seam.
+        const importedModule: Type | DynamicModule =
+          entry instanceof ForwardRef
+            ? (entry.factory() as Type | DynamicModule)
+            : entry;
 
         const importedModuleClass = isDynamicModule(importedModule)
           ? importedModule.module
-          : (importedModule as Type);
+          : importedModule;
         const importedKey = keyOfImport(importedModule);
 
         let keys = keysByClassInImports.get(importedModuleClass);
@@ -228,7 +231,7 @@ export class ModuleLoader {
         importedModuleIds.add(importedId);
 
         const importedStackKey = `${importedModuleClass.name}#${importedKey}`;
-        if (isForwardRef && this.processingStack.has(importedStackKey)) {
+        if (entry instanceof ForwardRef && this.processingStack.has(importedStackKey)) {
           continue;
         }
 
@@ -267,7 +270,7 @@ export class ModuleLoader {
         moduleId,
         localProviders,
         importedModules: importedModuleIds,
-        exportedTokens: new Set<Token>(allExports as Token[]),
+        exportedTokens: new Set<Token>(allExports),
         isGlobal,
       });
 
@@ -393,17 +396,17 @@ export class ModuleLoader {
     }
 
     for (const exported of exports) {
-      const isLocalProvider = providerTokens.has(exported as Token);
-      const isImportedProvider = importedProviders.has(exported as Token);
+      const isLocalProvider = providerTokens.has(exported);
+      const isImportedProvider = importedProviders.has(exported);
 
       if (!isLocalProvider && !isImportedProvider) {
-        const name = (exported as { name?: string }).name ?? String(exported);
+        const name = typeof exported === 'function' ? exported.name : String(exported);
         console.warn(
           `Warning: Exporting '${name}' which is neither a local provider nor imported from another module.`,
         );
       }
 
-      exportSet.add(exported as Token);
+      exportSet.add(exported);
     }
 
     return exportSet;
