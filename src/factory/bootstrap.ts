@@ -1,6 +1,8 @@
+import { Scope } from '../constants';
 import { Container } from '../container/container';
 import { ModuleRef } from '../container/module-ref';
 import type { Diagnostics, Type } from '../container/types';
+import { REQUEST_CONTEXT } from '../http/request-context';
 import { RouteManager } from '../http/route.manager';
 import type { RouteManagerOptions } from '../http/route.manager';
 import { ModuleLoader } from '../module/module-loader';
@@ -55,6 +57,22 @@ export async function bootstrap(
   for (const t of [APP_GUARD, APP_PIPE, APP_INTERCEPTOR, APP_FILTER, APP_MIDDLEWARE]) {
     container.markGlobalToken(t);
   }
+
+  // REQUEST_CONTEXT is seeded into each request-scoped child by RouteManager
+  // before any handler resolves it (see route.manager.ts:getRequestContainer).
+  // The factory throws so misuse outside the request path surfaces immediately
+  // instead of materializing a phantom context.
+  container.register({
+    provide: REQUEST_CONTEXT,
+    scope: Scope.REQUEST,
+    useFactory: () => {
+      throw new Error(
+        'REQUEST_CONTEXT can only be resolved inside a request — ' +
+          'it is seeded by RouteManager when the request enters the pipeline.',
+      );
+    },
+  });
+  container.markGlobalToken(REQUEST_CONTEXT);
 
   const routeManager = new RouteManager(container, options);
   ComponentManager.init(container);

@@ -417,6 +417,5 @@ export class MetadataRegistry {
       this.handlerComponents[type].clear();
     }
     this.globalComponents = emptyComponentStore();
-    // reflectMeta is a WeakMap — entries die with their targets.
   }
 }

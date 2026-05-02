@@ -9,6 +9,7 @@ import {
   Get,
   Injectable,
   Module,
+  REQUEST_CONTEXT,
   Req,
   VelaFactory,
   createOpenApiDocument,
@@ -17,6 +18,7 @@ import {
   type ExecutionContext,
   type NestInterceptor,
   type PipeTransform,
+  type RequestContext,
 } from '../../index';
 import type { VelaApplication } from '../../application';
 
@@ -103,8 +105,27 @@ class OrderTestController {
   }
 }
 
+// Singleton controller; resolves REQUEST_CONTEXT off the per-request child
+// container through the Hono context. The standard test suite covers the
+// @Inject(REQUEST_CONTEXT) constructor path under SWC; the workerd pool's
+// transpiler does not emit `design:paramtypes`, so we exercise the resolve
+// path that doesn't depend on constructor metadata.
+@Controller('/req-ctx')
+class RequestContextController {
+  @Get()
+  handle(@Req() c: Context) {
+    const container = c.get('container') as { resolve<T>(t: unknown): T };
+    const ctx = container.resolve<RequestContext>(REQUEST_CONTEXT);
+    return {
+      id: ctx.id,
+      receivedAt: ctx.receivedAt.toISOString(),
+      hasRawRequest: ctx.request instanceof Request,
+    };
+  }
+}
+
 @Module({
-  controllers: [HealthController, WhoAmIController, OrderTestController],
+  controllers: [HealthController, WhoAmIController, OrderTestController, RequestContextController],
   providers: [
     TraceGuard,
     TracePipe,
