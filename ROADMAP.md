@@ -18,17 +18,14 @@ Closes the test gap left over from audit #8. Asserts:
 
 ## Open audit follow-ups
 
-From `CODE_AUDIT_REPORT.md`. These don't gate a specific release; pick them up on opportunistic cadence.
-
-| # | Item | Why it's still open |
-|---|---|---|
-| 2 | Dynamic module identity is inconsistent | Some dynamic modules reuse their class; `HttpModule.register()` mints synthetic classes via `createModuleRef()`. Pick one identity model. |
+_None — audit complete as of 1.4._
 
 ## Closed audit items
 
 | # | Closed in | Notes |
 |---|---|---|
 | 1 | 1.3.0 | Module visibility enforced unconditionally via `ModuleVisibilityError`. |
+| 2 | 1.4 | Single identity model: `DynamicModule.key` + per-module bucket container; `createModuleRef()` removed. Multi-instance `forRoot()` is first-class; ambiguity throws `MultipleProvidersFoundError`. |
 | 3 | 1.3.0 | Bootstrap consolidated into `bootstrap(rootModule, options)`. |
 | 4 | 1.1.0 (verified 1.4) | `NestModule.configure()` runs through `container.resolve(moduleClass, moduleId)`; failures propagate. Regression coverage in `configure-resolution.test.ts`. |
 | 5 | 1.1.0 | `Type` / `Constructor` deduplicated to `container/types.ts`. |

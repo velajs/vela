@@ -1,5 +1,6 @@
 import type { ProviderOptions, Type } from '../container/types';
 import type { AsyncModuleOptions, DynamicModule } from '../module/types';
+import { stableHash } from '../module/stable-hash';
 import { APP_GUARD } from '../pipeline/tokens';
 import { ThrottlerGuard } from './throttler.guard';
 import { ThrottlerStorage } from './throttler.storage';
@@ -7,7 +8,7 @@ import { THROTTLER_OPTIONS, THROTTLER_STORAGE } from './throttler.tokens';
 import type { ThrottlerModuleOptions } from './throttler.types';
 
 export class ThrottlerModule {
-  static forRoot(options: ThrottlerModuleOptions): DynamicModule {
+  static forRoot(options: ThrottlerModuleOptions & { key?: string }): DynamicModule {
     const providers: Array<Type | ProviderOptions> = [
       { provide: THROTTLER_OPTIONS, useValue: options },
       { provide: THROTTLER_STORAGE, useValue: options.storage ?? new ThrottlerStorage() },
@@ -17,12 +18,15 @@ export class ThrottlerModule {
 
     return {
       module: ThrottlerModule,
+      key: options.key ?? stableHash(options),
       providers,
       exports: [THROTTLER_OPTIONS, THROTTLER_STORAGE, ThrottlerGuard],
     };
   }
 
-  static forRootAsync(options: AsyncModuleOptions<ThrottlerModuleOptions>): DynamicModule {
+  static forRootAsync(
+    options: AsyncModuleOptions<ThrottlerModuleOptions> & { key?: string },
+  ): DynamicModule {
     const providers: Array<Type | ProviderOptions> = [
       {
         provide: THROTTLER_OPTIONS,
@@ -40,6 +44,7 @@ export class ThrottlerModule {
 
     return {
       module: ThrottlerModule,
+      key: options.key ?? stableHash({ inject: options.inject, useFactory: options.useFactory }),
       imports: options.imports ?? [],
       providers,
       exports: [THROTTLER_OPTIONS, THROTTLER_STORAGE, ThrottlerGuard],

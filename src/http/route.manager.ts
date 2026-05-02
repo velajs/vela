@@ -182,6 +182,9 @@ export class RouteManager {
     const options = MetadataRegistry.getControllerOptions(controller);
     const routes = MetadataRegistry.getRoutes(controller);
 
+    // The ModuleLoader registers controllers in their owning module's bucket;
+    // fall back to a `__root__` registration only for controllers that arrive
+    // here outside the module-loading flow (test harnesses, custom adapters).
     if (!this.container.has(controller)) {
       this.container.register(controller);
     }

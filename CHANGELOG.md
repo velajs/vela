@@ -2,9 +2,13 @@
 
 ## Unreleased
 
-A sanctioned per-request injectable lands as a framework primitive, and the metadata-store unification finally has its regression tests.
+A sanctioned per-request injectable lands as a framework primitive, the metadata-store unification finally has its regression tests, and dynamic module identity becomes consistent — closing the last open audit item.
 
 ### New
+
+- **Dynamic module identity is now first-class** (audit #2 — last open item, fully closed). `DynamicModule` gains an optional `key?: string`; module authors call `key: stableHash(options)` inside `forRoot()` so two distinct option sets register as distinct module instances. The DI container is bucketed per-module (`Map<moduleId, Map<Token, Registration>>`) so the same logical token can have distinct registrations in different buckets — e.g., `imports: [CacheModule.forRoot({ttl:60}), CacheModule.forRoot({ttl:120})]` now actually produces two reachable cache configs instead of silently dropping one. A consumer module that imports both throws `MultipleProvidersFoundError` with both candidate ids in the message; resolve only one and the ambiguity disappears. `[HttpModule, HttpModule.forRoot({base:X})]` registers both and the loader emits a diagnostic warning. `createModuleRef()` is removed — module authors use `{module: RealClass, key}` directly. New helpers `defineDynamicModule()` and `stableHash()` are exported from the root.
+
+  Pre-fix this swallowed configuration silently in two places: same-class `forRoot` calls collided at `processedModules.has(class)`, and synthetic-class-per-call patterns (the old `HttpModule`) collided at the container's `if (!has(token))` provider guard. Both guards are gone.
 
 - **`REQUEST_CONTEXT` injectable.** A request-scoped primitive carrying a stable `id` (mirrored from inbound `x-request-id` if present, else `crypto.randomUUID()`), `receivedAt`, the raw `Request`, the Hono `Context`, and a typed `set/get/has` bag for cross-cutting metadata. Seeded by `RouteManager` into each per-request child container; resolves through `@Inject(REQUEST_CONTEXT)` from any request-scoped service. No `AsyncLocalStorage` — edge-runtime contract intact (verified live under workerd via `pnpm test:workers`).
 
@@ -20,6 +24,11 @@ A sanctioned per-request injectable lands as a framework primitive, and the meta
     }
   }
   ```
+
+### Breaking
+
+- **`createModuleRef()` removed.** The synthetic-class-per-`forRoot()` workaround is gone; modules use `{ module: RealClass, key }` instead. First-party modules (`HttpModule`, `CacheModule`, `ConfigModule`, `ThrottlerModule`, `CorsModule`) are migrated. Sibling consumers (`@velajs/cloudflare`, `@velajs/crud`) need to switch from `createModuleRef('${name}_${key}')` to `key: ...` on the DynamicModule.
+- **Container provider storage shape changed.** `Container.providers` is now `Map<moduleId, Map<Token, Registration>>` instead of flat. `providerOrigin` is removed (origin is now `declaringModuleId` on each `ProviderRegistration`). `assertVisible` is removed (its role is subsumed by lookup-or-throw in `resolve`). `Container.has(token)` is preserved (any-bucket scan); a new `Container.hasInScope(token, moduleId)` is the strict variant. `resolveAll(token)` is now a real walk across reachable buckets, not a stub. New error: `MultipleProvidersFoundError` when an imports walk yields >1 candidate. New constant: `ROOT_MODULE_ID = '__root__'` (sentinel bucket for bootstrap primitives and sandbox registrations).
 
 ### Internal cleanup
 

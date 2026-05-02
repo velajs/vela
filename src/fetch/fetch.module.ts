@@ -1,6 +1,6 @@
 import type { AsyncModuleOptions, DynamicModule } from '../module/types';
-import { createModuleRef } from '../module/decorators';
 import { Module } from '../module/decorators';
+import { stableHash } from '../module/stable-hash';
 import { HttpService, HTTP_MODULE_OPTIONS } from './fetch.service';
 import type { HttpModuleOptions } from './fetch.types';
 
@@ -14,7 +14,8 @@ import type { HttpModuleOptions } from './fetch.types';
 export class HttpModule {
   static forRoot(options: HttpModuleOptions = {}): DynamicModule {
     return {
-      module: createModuleRef('HttpModule'),
+      module: HttpModule,
+      key: stableHash(options),
       providers: [
         { provide: HTTP_MODULE_OPTIONS, useValue: options },
         HttpService,
@@ -23,9 +24,12 @@ export class HttpModule {
     };
   }
 
-  static forRootAsync(options: AsyncModuleOptions<HttpModuleOptions>): DynamicModule {
+  static forRootAsync(
+    options: AsyncModuleOptions<HttpModuleOptions> & { key?: string },
+  ): DynamicModule {
     return {
-      module: createModuleRef('HttpModule'),
+      module: HttpModule,
+      key: options.key ?? stableHash({ inject: options.inject, useFactory: options.useFactory }),
       imports: options.imports ?? [],
       providers: [
         {

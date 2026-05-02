@@ -106,7 +106,7 @@ expect_status 200 "@Global module"
 expect_json 'data.message === "global-ready"' "global body"
 
 request GET "/api/playground/dynamic" ""
-expect_status 200 "createModuleRef dynamic module"
+expect_status 200 "dynamic module"
 expect_json 'data.audit === "dynamic-audit-ready"' "dynamic body"
 
 request GET "/api/playground/forward-ref" ""
