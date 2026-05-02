@@ -188,7 +188,7 @@ export class ModuleLoader {
       const allExports = [...metadata.exports, ...extraExports];
 
       // Build the ModuleScope BEFORE registering providers so the visibility
-      // check (in strict mode) can see the local-provider set as we register.
+      // check sees the local-provider set as we register.
       const localProviders = new Set<Token>();
       for (const provider of allProviders) {
         const tk = tokenOfProvider(provider);
@@ -360,7 +360,7 @@ export class ModuleLoader {
         instanceSet.add(instance);
       } catch (err) {
         // Module visibility errors must always propagate — they indicate a
-        // wiring bug the user explicitly asked to enforce by enabling strict.
+        // genuine wiring bug, not something to swallow as a discovery skip.
         if (err instanceof ModuleVisibilityError) throw err;
         this.routeError(err, `resolve provider`);
       }

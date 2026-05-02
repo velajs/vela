@@ -86,7 +86,7 @@ describe('Diagnostics', () => {
     @Module({ imports: [ModA], providers: [ServiceB] })
     class ModB {}
 
-    // Even with 'silent', the strict-default visibility violation must throw.
+    // Even with 'silent', module-visibility violations must throw.
     await expect(
       VelaFactory.create(ModB, { diagnostics: 'silent' }),
     ).rejects.toThrow(ModuleVisibilityError);

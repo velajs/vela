@@ -21,9 +21,6 @@ const IMPORT_TYPE_HINT =
   'runtime and `design:paramtypes` emits `Object`/`undefined` for their ' +
   'positions. Use a runtime `import { X }` for DI tokens.';
 
-const STRICT_NO_AUTO_REGISTER =
-  '(auto-registration disabled in strict mode; declare it in a module\'s providers).';
-
 export class Container {
   private providers = new Map<Token, ProviderRegistration>();
   private resolutionStack = new Set<Token>();
@@ -31,11 +28,9 @@ export class Container {
   private scopes = new Map<string, ModuleScope>();
   private globals = new Set<Token>();
   private providerOrigin = new Map<Token, string>();
-  private strict: boolean;
   private diagnostics: Diagnostics;
 
   constructor(options: ContainerOptions = {}) {
-    this.strict = options.strict ?? false;
     this.diagnostics = options.diagnostics ?? 'log';
   }
 
@@ -136,12 +131,8 @@ export class Container {
     return this.diagnostics;
   }
 
-  isStrict(): boolean {
-    return this.strict;
-  }
-
   resolve<T>(token: Token<T>, requestingModuleId?: string): T {
-    if (this.strict && requestingModuleId !== undefined) {
+    if (requestingModuleId !== undefined) {
       this.assertVisible(requestingModuleId, token);
     }
 
@@ -149,8 +140,8 @@ export class Container {
 
     if (!registration) {
       // `Object`/undefined at a token position is the fingerprint of a
-      // type-only import that TypeScript stripped — emit the hint BEFORE
-      // auto-registering Object as a provider (which would silently "succeed").
+      // type-only import that TypeScript stripped — emit the hint before
+      // attempting any other recovery.
       if (token === (Object as unknown as Token<T>) || token == null) {
         throw new Error(
           `No provider found for token: ${this.tokenToString(token)}. ` +
@@ -159,18 +150,14 @@ export class Container {
       }
 
       if (typeof token === 'function') {
-        if (this.strict) {
-          throw new Error(
-            `No provider found for token: ${this.tokenToString(token)} ${STRICT_NO_AUTO_REGISTER}`,
-          );
-        }
-        this.register(token);
-        return this.resolve(token, requestingModuleId);
+        throw new Error(
+          `No provider found for token: ${this.tokenToString(token)}. ` +
+            `Declare it in a module's providers.`,
+        );
       }
 
       // InjectionToken default factories are explicit user declarations
-      // attached to the token at construction — not auto-registration of
-      // unknown classes. They work in strict mode too.
+      // attached to the token at construction — self-providing singletons.
       if (token instanceof InjectionToken && token.options?.factory) {
         this.register({
           provide: token,
@@ -208,10 +195,7 @@ export class Container {
    * instances separately per child (per request).
    */
   createChild(): Container {
-    const child = new Container({
-      strict: this.strict,
-      diagnostics: this.diagnostics,
-    });
+    const child = new Container({ diagnostics: this.diagnostics });
     // Share state by reference — request-scope children must see the same
     // module graph as the root.
     child.providers = this.providers;
@@ -222,10 +206,7 @@ export class Container {
   }
 
   createDetached(): Container {
-    const child = new Container({
-      strict: this.strict,
-      diagnostics: this.diagnostics,
-    });
+    const child = new Container({ diagnostics: this.diagnostics });
     // Copy mutable per-resolution state; share static module-graph metadata
     // so sandbox resolutions can still see exported providers.
     child.providers = new Map(this.providers);
@@ -373,7 +354,7 @@ export class Container {
   }
 
   async resolveAsync<T>(token: Token<T>, requestingModuleId?: string): Promise<T> {
-    if (this.strict && requestingModuleId !== undefined) {
+    if (requestingModuleId !== undefined) {
       this.assertVisible(requestingModuleId, token);
     }
 
@@ -381,16 +362,13 @@ export class Container {
 
     if (!registration) {
       if (typeof token === 'function') {
-        if (this.strict) {
-          throw new Error(
-            `No provider found for token: ${this.tokenToString(token)} ${STRICT_NO_AUTO_REGISTER}`,
-          );
-        }
-        this.register(token);
-        return this.resolveAsync(token, requestingModuleId);
+        throw new Error(
+          `No provider found for token: ${this.tokenToString(token)}. ` +
+            `Declare it in a module's providers.`,
+        );
       }
       if (token instanceof InjectionToken && token.options?.factory) {
-        // Default factories are explicit user declarations — work in strict mode.
+        // Self-providing token — register on demand from its declared factory.
         this.register({ provide: token, useFactory: token.options.factory });
         return this.resolveAsync(token, requestingModuleId);
       }

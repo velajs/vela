@@ -16,7 +16,6 @@ import {
 import type { NestMiddleware } from '../pipeline/types';
 
 export interface BootstrapOptions extends RouteManagerOptions {
-  strict?: boolean;
   diagnostics?: Diagnostics;
 }
 
@@ -33,16 +32,13 @@ export interface BootstrapResult {
  * non-HTTP consumer (CLI tools, custom runtimes).
  *
  * Framework-internal tokens (`Container`, `ModuleRef`, `APP_*`) are marked
- * global so they are resolvable from any module in strict mode.
+ * global so they are resolvable from any module.
  */
 export async function bootstrap(
   rootModule: Type,
   options: BootstrapOptions = {},
 ): Promise<BootstrapResult> {
   const container = new Container({
-    // Module boundaries are enforced by default — NestJS parity. Opt out
-    // with `strict: false` for migration scenarios or explicit looser DI.
-    strict: options.strict ?? true,
     diagnostics: options.diagnostics,
   });
 

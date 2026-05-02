@@ -79,7 +79,6 @@ export interface ModuleScope {
 export type Diagnostics = 'silent' | 'log' | 'throw';
 
 export interface ContainerOptions {
-  strict?: boolean;
   diagnostics?: Diagnostics;
 }
 

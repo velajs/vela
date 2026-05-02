@@ -22,7 +22,7 @@ beforeEach(() => {
   MetadataRegistry.clear();
 });
 
-describe('Module visibility (strict mode)', () => {
+describe('Module visibility', () => {
   it('rejects cross-module resolution when token is not exported', async () => {
     @Injectable()
     class ServiceA {}
@@ -36,7 +36,7 @@ describe('Module visibility (strict mode)', () => {
     @Module({ imports: [ModA], providers: [ServiceB] })
     class ModB {}
 
-    await expect(VelaFactory.create(ModB, { strict: true })).rejects.toThrow(
+    await expect(VelaFactory.create(ModB)).rejects.toThrow(
       ModuleVisibilityError,
     );
   });
@@ -54,7 +54,7 @@ describe('Module visibility (strict mode)', () => {
     @Module({ imports: [ModA], providers: [ServiceB] })
     class ModB {}
 
-    const app = await VelaFactory.create(ModB, { strict: true });
+    const app = await VelaFactory.create(ModB);
     expect(app.get(ServiceB).a).toBeInstanceOf(ServiceA);
   });
 
@@ -74,7 +74,7 @@ describe('Module visibility (strict mode)', () => {
     @Module({ imports: [ModB], providers: [ServiceA] })
     class ModA {}
 
-    const app = await VelaFactory.create(ModA, { strict: true });
+    const app = await VelaFactory.create(ModA);
     expect(app.get(ServiceA).x).toBeInstanceOf(ServiceX);
   });
 
@@ -93,7 +93,7 @@ describe('Module visibility (strict mode)', () => {
     @Module({ imports: [ModG], providers: [Consumer] })
     class ModC {}
 
-    const app = await VelaFactory.create(ModC, { strict: true });
+    const app = await VelaFactory.create(ModC);
     expect(app.get(Consumer).g).toBeInstanceOf(GlobalSvc);
   });
 
@@ -112,7 +112,7 @@ describe('Module visibility (strict mode)', () => {
     @Module({ imports: [ModG], providers: [Consumer] })
     class ModC {}
 
-    await expect(VelaFactory.create(ModC, { strict: true })).rejects.toThrow(
+    await expect(VelaFactory.create(ModC)).rejects.toThrow(
       ModuleVisibilityError,
     );
   });
@@ -145,23 +145,22 @@ describe('Module visibility (strict mode)', () => {
     @Module({ imports: [FeatureModule.forRoot()], providers: [Consumer] })
     class App {}
 
-    const app = await VelaFactory.create(App, { strict: true });
+    const app = await VelaFactory.create(App);
     expect(app.get(Consumer).value).toBe('shared-value');
   });
 
-  it('strict mode disables auto-registration of unknown class tokens', async () => {
+  it('unregistered class tokens never auto-register — must be declared as providers', async () => {
     @Injectable()
     class Standalone {}
 
     @Module({})
     class App {}
 
-    const app = await VelaFactory.create(App, { strict: true });
-    // Direct resolve with no requester (no module context) — the visibility
-    // check is skipped, but auto-registration is also disabled in strict
-    // mode, so the unregistered class throws.
+    const app = await VelaFactory.create(App);
+    // Direct resolve with no requester (no module context) bypasses the
+    // visibility check, but unregistered class tokens still throw.
     expect(() => app.getContainer().resolve(Standalone)).toThrow(
-      /No provider found for token: Standalone .*auto-registration disabled/,
+      /No provider found for token: Standalone\. Declare it in a module's providers\./,
     );
   });
 
@@ -189,7 +188,7 @@ describe('Module visibility (strict mode)', () => {
     })
     class ModB {}
 
-    await expect(VelaFactory.create(ModB, { strict: true })).rejects.toThrow(
+    await expect(VelaFactory.create(ModB)).rejects.toThrow(
       ModuleVisibilityError,
     );
   });
@@ -203,7 +202,7 @@ describe('Module visibility (strict mode)', () => {
     @Module({ providers: [UsesContainer] })
     class App {}
 
-    const app = await VelaFactory.create(App, { strict: true });
+    const app = await VelaFactory.create(App);
     const u = app.get(UsesContainer);
     expect(u.c).toBeInstanceOf(Container);
     expect(u.ref).toBeInstanceOf(ModuleRef);
@@ -232,7 +231,7 @@ describe('Module visibility (strict mode)', () => {
     @Module({ imports: [GreetingModule], controllers: [GreetController] })
     class App {}
 
-    const app = await VelaFactory.create(App, { strict: true });
+    const app = await VelaFactory.create(App);
     const res = await app.getHonoApp().request('/greet');
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ greeting: 'hi' });
@@ -255,7 +254,7 @@ describe('Module visibility (strict mode)', () => {
     @Module({ imports: [ConfigModule], providers: [Consumer] })
     class App {}
 
-    const app = await VelaFactory.create(App, { strict: true });
+    const app = await VelaFactory.create(App);
     expect(app.get(Consumer).name).toBe('alice');
   });
 
@@ -278,7 +277,7 @@ describe('Module visibility (strict mode)', () => {
     @Module({ imports: [ModA], providers: [] })
     class App {}
 
-    const app = await VelaFactory.create(App, { strict: true });
+    const app = await VelaFactory.create(App);
     const ref = app.get(ModuleRef);
     const t1 = ref.create(Transient);
     const t2 = ref.create(Transient);
@@ -287,53 +286,4 @@ describe('Module visibility (strict mode)', () => {
     expect(t1.id).not.toBe(t2.id);
   });
 
-  it('strict: false explicitly disables visibility enforcement (escape hatch)', async () => {
-    @Injectable()
-    class ServiceA {}
-    @Injectable()
-    class ServiceB {
-      constructor(public a: ServiceA) {}
-    }
-
-    @Module({ providers: [ServiceA] }) // not exported
-    class ModA {}
-    @Module({ imports: [ModA], providers: [ServiceB] })
-    class ModB {}
-
-    // strict: false opts out — pre-1.2 behavior
-    const app = await VelaFactory.create(ModB, { strict: false });
-    expect(app.get(ServiceB).a).toBeInstanceOf(ServiceA);
-  });
-
-  it('strict: false explicitly enables auto-registration of unknown class tokens', async () => {
-    @Injectable()
-    class Orphan {}
-    @Injectable()
-    class Needs {
-      constructor(public o: Orphan) {}
-    }
-
-    @Module({ providers: [Needs] })
-    class App {}
-
-    const app = await VelaFactory.create(App, { strict: false });
-    expect(app.get(Needs).o).toBeInstanceOf(Orphan);
-  });
-
-  it('default (no strict flag) is strict: true — NestJS parity', async () => {
-    @Injectable()
-    class ServiceA {}
-    @Injectable()
-    class ServiceB {
-      constructor(public a: ServiceA) {}
-    }
-
-    @Module({ providers: [ServiceA] }) // not exported
-    class ModA {}
-    @Module({ imports: [ModA], providers: [ServiceB] })
-    class ModB {}
-
-    // No strict flag → strict default → ModuleVisibilityError
-    await expect(VelaFactory.create(ModB)).rejects.toThrow(ModuleVisibilityError);
-  });
 });
