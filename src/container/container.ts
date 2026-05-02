@@ -99,13 +99,11 @@ export class Container {
     this.providers.set(token, registration);
     this.recordOrigin(token, declaringModuleId);
 
-    // Constructor injections of the useClass target resolve from the same
-    // module that declared the alias — keep their origin in sync.
-    if (
-      registration.useClass &&
-      (registration.useClass as unknown) !== (token as unknown)
-    ) {
-      this.recordOrigin(registration.useClass, declaringModuleId);
+    // For aliases like `{ provide: Foo, useClass: Bar }`, also record Bar's
+    // origin so `resolveClass(Bar)` resolves Bar's deps from the alias's
+    // declaring module. Idempotent if Bar === Foo.
+    if (options.useClass !== undefined) {
+      this.recordOrigin(options.useClass, declaringModuleId);
     }
   }
 
