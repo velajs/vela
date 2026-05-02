@@ -23,7 +23,6 @@ From `CODE_AUDIT_REPORT.md`. These don't gate a specific release; pick them up o
 | # | Item | Why it's still open |
 |---|---|---|
 | 2 | Dynamic module identity is inconsistent | Some dynamic modules reuse their class; `HttpModule.register()` mints synthetic classes via `createModuleRef()`. Pick one identity model. |
-| 4 | `NestModule.configure()` failures swallowed | Module class is `new`'d directly when `configure()` runs; constructor-injection failure is caught and middleware silently skipped. Should fail loudly or route through container. |
 | 7 | Edge-runtime carve-out for `schedule-node` is undocumented | The audit test excludes `src/schedule-node/` because that subpath uses `setInterval`; the contract should be stated in README + package docs so the carve-out is explicit. |
 | 9 | `RouteManager` is doing too much | Pipeline execution, argument extraction, and response shaping should be split out of route registration. Internal hygiene; works as-is. |
 
@@ -33,6 +32,7 @@ From `CODE_AUDIT_REPORT.md`. These don't gate a specific release; pick them up o
 |---|---|---|
 | 1 | 1.3.0 | Module visibility enforced unconditionally via `ModuleVisibilityError`. |
 | 3 | 1.3.0 | Bootstrap consolidated into `bootstrap(rootModule, options)`. |
+| 4 | 1.1.0 (verified 1.4) | `NestModule.configure()` runs through `container.resolve(moduleClass, moduleId)`; failures propagate. Regression coverage in `configure-resolution.test.ts`. |
 | 5 | 1.1.0 | `Type` / `Constructor` deduplicated to `container/types.ts`. |
 | 6 | 1.3.0 | Discovery diagnostics route through `{ diagnostics: 'silent' \| 'log' \| 'throw' }`. |
 | 8 | 1.1.0 | Metadata is unified through `MetadataRegistry`; Reflect polyfill funnels into the same slots. 1.4 adds the regression tests. |
