@@ -531,11 +531,9 @@ export class Container {
       const meta = injectMap.get(index);
       const rawToken = meta?.token;
       const isForwardRef = rawToken instanceof ForwardRef;
-      // `paramType` arrives as `unknown` from reflect-metadata's design:paramtypes —
-      // the runtime contract is that it's a constructor (Token); cast at the seam.
       const token: Token | undefined = isForwardRef
         ? rawToken.factory()
-        : rawToken ?? (paramType as Token);
+        : rawToken ?? paramType;
 
       if (!token || isErasedTypeToken(token)) {
         if (meta?.optional) return undefined;
@@ -624,7 +622,7 @@ export class Container {
         }),
       );
 
-      const instance = (await registration.useFactory(...dependencies)) as T;
+      const instance = await registration.useFactory(...dependencies);
 
       if (registration.scope === Scope.SINGLETON) {
         registration.instance = instance;
@@ -638,17 +636,16 @@ export class Container {
 
   private createLazyProxy(token: Token, requestingModuleId?: string): object {
     const container = this;
-    const target: Record<PropertyKey, unknown> = Object.create(null);
+    const target: object = Object.create(null);
     return new Proxy(target, {
       get(_target, prop) {
-        const instance = container.resolve(token, requestingModuleId);
-        const value = (instance as Record<string | symbol, unknown>)[prop];
+        const instance = container.resolve<object>(token, requestingModuleId);
+        const value = Reflect.get(instance, prop, instance);
         return typeof value === 'function' ? value.bind(instance) : value;
       },
       set(_target, prop, value) {
-        const instance = container.resolve(token, requestingModuleId);
-        (instance as Record<string | symbol, unknown>)[prop] = value;
-        return true;
+        const instance = container.resolve<object>(token, requestingModuleId);
+        return Reflect.set(instance, prop, value);
       },
     });
   }

@@ -33,16 +33,19 @@ const APP_TOKENS = new Set<Token>([
 const DEFAULT_KEY = "default";
 
 function isDynamicModule(value: unknown): value is DynamicModule {
+  // TS 4.9+ narrows `'module' in value` so `value.module` is typed `unknown`
+  // — no cast required for the typeof check below.
   return (
     typeof value === "object" &&
     value !== null &&
     "module" in value &&
-    typeof (value as DynamicModule).module === "function"
+    typeof value.module === "function"
   );
 }
 
 function implementsNestModule(cls: Type): cls is Type<NestModule> {
-  return typeof (cls.prototype as Partial<NestModule> | undefined)?.configure === "function";
+  // `Type.prototype` is `any` — direct property access is type-safe enough.
+  return typeof cls.prototype?.configure === "function";
 }
 
 function tokenOfProvider(provider: Type | ProviderOptions): Token | undefined {
@@ -51,6 +54,23 @@ function tokenOfProvider(provider: Type | ProviderOptions): Token | undefined {
 
 function keyOfImport(entry: Type | DynamicModule): string {
   return isDynamicModule(entry) ? (entry.key ?? DEFAULT_KEY) : DEFAULT_KEY;
+}
+
+/**
+ * `ForwardRef.factory` is typed to return the broader `Token<T>` because the
+ * primitive is shared with provider injection. In module-imports position the
+ * runtime contract narrows: the factory must yield a module class or a
+ * `DynamicModule`. This helper validates the contract AND narrows the type
+ * without a structural cast.
+ */
+function unwrapModuleForwardRef(ref: ForwardRef): Type | DynamicModule {
+  const result = ref.factory();
+  if (typeof result === 'function') return result;
+  if (isDynamicModule(result)) return result;
+  throw new Error(
+    `forwardRef in module imports must resolve to a module class or DynamicModule; ` +
+      `got ${typeof result === 'object' ? 'a non-module object' : typeof result}.`,
+  );
 }
 
 export class ModuleLoader {
@@ -207,13 +227,9 @@ export class ModuleLoader {
       const allImports = [...metadata.imports, ...extraImports];
 
       for (const entry of allImports) {
-        // ForwardRef.factory's return type is the broader Token<T>, but in
-        // module-import position the caller's contract is "factory yields a
-        // module class or DynamicModule." Cast at the seam.
-        const importedModule: Type | DynamicModule =
-          entry instanceof ForwardRef
-            ? (entry.factory() as Type | DynamicModule)
-            : entry;
+        const importedModule = entry instanceof ForwardRef
+          ? unwrapModuleForwardRef(entry)
+          : entry;
 
         const importedModuleClass = isDynamicModule(importedModule)
           ? importedModule.module

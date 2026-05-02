@@ -45,11 +45,18 @@ export function getScope(target: object): Scope {
   return MetadataRegistry.getScope(target) ?? Scope.SINGLETON;
 }
 
-export function getConstructorDependencies(target: object): unknown[] {
-  // Read through Reflect so dist/src coexistence in tests routes through the
-  // single polyfill-installed registry — SWC writes `design:paramtypes` via
-  // Reflect, so reads must too.
-  return (Reflect.getMetadata('design:paramtypes', target) as unknown[]) ?? [];
+/**
+ * Read through Reflect so dist/src coexistence in tests routes through the
+ * single polyfill-installed registry — SWC writes `design:paramtypes` via
+ * Reflect, so reads must too. The runtime contract is that each entry is a
+ * constructor reference (a `Token`); we surface that contract directly so
+ * callers don't need to re-cast.
+ */
+export function getConstructorDependencies(target: object): Array<Token | undefined> {
+  return (
+    (Reflect.getMetadata('design:paramtypes', target) as Array<Token | undefined> | undefined) ??
+    []
+  );
 }
 
 export function getInjectMetadata(target: object): InjectMetadata[] {
