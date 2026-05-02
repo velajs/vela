@@ -2,17 +2,32 @@
 
 ## 1.2.0 (2026-05-01)
 
-Module-boundary enforcement, bootstrap consolidation, structured discovery diagnostics, and a generic plugin composer. `strict: false` is the default — every existing test passes unchanged.
+Module-boundary enforcement is now the default. NestJS-shape: a service can no longer resolve dependencies from a module it didn't import. Bootstrap is consolidated into a single primitive, discovery failures are diagnostically routed, and a generic plugin composer is included.
+
+### Breaking changes
+
+- **`strict` defaults to `true`.** `VelaFactory.create(Mod)` now enforces module boundaries: every constructor injection checks the token is declared locally, exported by an imported module, marked `@Global`, or is an `InjectionToken` with a default factory. Throws `ModuleVisibilityError` with an actionable message on violation. Auto-registration of unknown class tokens is disabled. To opt out (migration / explicitly looser DI):
+
+  ```diff
+  - const app = await VelaFactory.create(AppModule);
+  + const app = await VelaFactory.create(AppModule, { strict: false });
+  ```
+
+  `strict: false` preserves pre-1.2 behavior bit-for-bit.
+
+- **Discovery diagnostics default to `'log'`.** Failed provider/controller resolution at `loader.resolveAllInstances`, schedule discovery, event-emitter discovery, and runtime job execution now emit `console.warn` by default (previously silent). Override with `{ diagnostics: 'silent' | 'throw' }`. `ModuleVisibilityError` always propagates regardless.
 
 ### New
 
 - **`bootstrap(rootModule, options)`** — the wiring primitive shared by `VelaFactory.create`, `@velajs/testing`, and any non-HTTP consumer (CLI tools, custom runtimes). Returns `{ container, routeManager, loader }` without running lifecycle hooks or building the Hono app. `VelaFactory.create` is now a thin wrapper that calls `bootstrap()` then runs `OnModuleInit` / `OnApplicationBootstrap` and builds routes. Exported from `@velajs/vela` and `@velajs/vela/internal`.
 
-- **Strict module visibility (opt-in)** — `VelaFactory.create(Mod, { strict: true })` enables enforcement: every `Container.resolve` call from inside a module checks that the token is declared locally, exported by an imported module, or `@Global`. Throws `ModuleVisibilityError` on violation. `useExisting` aliases honor visibility (alias targets that the caller can't see are rejected). Auto-registration of unknown class tokens is disabled in strict mode. Default (`strict: false`) preserves all pre-1.2 behavior.
+- **Module visibility primitives.** `Container({ strict, diagnostics })`, `ModuleScope`, `Container.registerScope`, `Container.markGlobalToken`, and `ModuleVisibilityError`. `useExisting` aliases honor visibility (alias targets the caller can't see are rejected). `ModuleRef.create()` remains the sandbox escape hatch — visibility is bypassed for transient instantiation.
+
+- **Self-providing tokens stay visible.** `new InjectionToken('X', { factory: () => Y })` is implicitly globally visible — the token's factory IS its provider, so no explicit declaration is required. Works in strict mode.
+
+- **Factory inject is a framework-level escape hatch.** `useFactory` provider deps (including `forRootAsync`, `registerAsync`) resolve without a module-visibility requester, so factory `inject: [...]` arrays can pull from the importing module's scope. A future `forRootAsync({ imports })` will tighten this; for 1.2.0 it's permissive by design.
 
 - **Framework primitives are globally visible.** `Container`, `ModuleRef`, and `APP_GUARD`/`APP_PIPE`/`APP_INTERCEPTOR`/`APP_FILTER`/`APP_MIDDLEWARE` are marked global at boot — resolvable from any module without explicit imports, in both strict and non-strict mode. `ModuleRef.create()` continues to be the sandbox escape hatch (visibility check skipped for transient instantiation).
-
-- **Structured discovery diagnostics** — `VelaFactory.create(Mod, { diagnostics: 'silent' | 'log' | 'throw' })`. Default is `'log'` (was effectively `'silent'`); failed provider/controller resolution at `loader.resolveAllInstances`, schedule discovery, event-emitter discovery, and runtime job execution all route through the same dispatcher. `ModuleVisibilityError` always propagates regardless of mode.
 
 - **Plugin manifest + composer** — `definePlugin({ id, version, module, dependsOn?, metadata? })` and `composePlugins(plugins): DynamicModule` with topological sort, cycle detection, and missing-dep detection. Produces a global module that exposes a queryable `PluginRegistry` via `PLUGIN_REGISTRY_TOKEN` (`list`, `get(id)`, `dependents(id)`).
 

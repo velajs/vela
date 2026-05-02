@@ -680,5 +680,5 @@ When implementing the changes, the vela maintainer can land them directly. erpos
 ## Open questions
 
 - **Should `definePlugin` move into vela, or stay in `@erpos/sdk`?** Current recommendation: a tiny generic version in vela; the erpos-specific shape (with `entities`, `events`, `agentTools`, etc.) wraps it in `@erpos/sdk`. This keeps vela reusable beyond erpos.
-- **Should strict mode default to `true` in vela 2.0?** Yes, eventually. For 1.2.0 it stays opt-in.
+- ~~**Should strict mode default to `true` in vela 2.0?**~~ **Resolved**: defaulted to `true` in vela 1.2.0. NestJS-shape parity. Opt out with `strict: false`.
 - **Should `bootstrap()` be in the public API or `@velajs/vela/internal`?** Public — it's the natural extension point for any consumer building a non-HTTP runtime.

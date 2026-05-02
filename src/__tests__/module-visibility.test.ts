@@ -287,7 +287,7 @@ describe('Module visibility (strict mode)', () => {
     expect(t1.id).not.toBe(t2.id);
   });
 
-  it('strict: false (default) preserves cross-module resolution backcompat', async () => {
+  it('strict: false explicitly disables visibility enforcement (escape hatch)', async () => {
     @Injectable()
     class ServiceA {}
     @Injectable()
@@ -295,17 +295,17 @@ describe('Module visibility (strict mode)', () => {
       constructor(public a: ServiceA) {}
     }
 
-    @Module({ providers: [ServiceA] })
+    @Module({ providers: [ServiceA] }) // not exported
     class ModA {}
     @Module({ imports: [ModA], providers: [ServiceB] })
     class ModB {}
 
-    // No strict flag → identical to pre-1.2 behavior
-    const app = await VelaFactory.create(ModB);
+    // strict: false opts out — pre-1.2 behavior
+    const app = await VelaFactory.create(ModB, { strict: false });
     expect(app.get(ServiceB).a).toBeInstanceOf(ServiceA);
   });
 
-  it('strict: false (default) preserves auto-registration backcompat', async () => {
+  it('strict: false explicitly enables auto-registration of unknown class tokens', async () => {
     @Injectable()
     class Orphan {}
     @Injectable()
@@ -316,7 +316,24 @@ describe('Module visibility (strict mode)', () => {
     @Module({ providers: [Needs] })
     class App {}
 
-    const app = await VelaFactory.create(App);
+    const app = await VelaFactory.create(App, { strict: false });
     expect(app.get(Needs).o).toBeInstanceOf(Orphan);
+  });
+
+  it('default (no strict flag) is strict: true — NestJS parity', async () => {
+    @Injectable()
+    class ServiceA {}
+    @Injectable()
+    class ServiceB {
+      constructor(public a: ServiceA) {}
+    }
+
+    @Module({ providers: [ServiceA] }) // not exported
+    class ModA {}
+    @Module({ imports: [ModA], providers: [ServiceB] })
+    class ModB {}
+
+    // No strict flag → strict default → ModuleVisibilityError
+    await expect(VelaFactory.create(ModB)).rejects.toThrow(ModuleVisibilityError);
   });
 });

@@ -168,12 +168,10 @@ export class Container {
         return this.resolve(token, requestingModuleId);
       }
 
+      // InjectionToken default factories are explicit user declarations
+      // attached to the token at construction — not auto-registration of
+      // unknown classes. They work in strict mode too.
       if (token instanceof InjectionToken && token.options?.factory) {
-        if (this.strict) {
-          throw new Error(
-            `No provider found for token: ${this.tokenToString(token)} ${STRICT_NO_AUTO_REGISTER}`,
-          );
-        }
         this.register({
           provide: token,
           useFactory: token.options.factory,
@@ -285,8 +283,11 @@ export class Container {
       let instance: T;
 
       if (registration.useFactory) {
-        const factoryOwner = this.providerOrigin.get(registration.provide);
-        instance = this.resolveFactory(registration, factoryOwner);
+        // Factories (forRootAsync, useFactory) commonly inject deps from the
+        // importing module's scope. Vela has no `forRootAsync({ imports })`
+        // surface to track that, so factory inject deps resolve without a
+        // requester — same escape-hatch shape as ModuleRef.
+        instance = this.resolveFactory(registration);
       } else if (registration.useClass) {
         instance = this.resolveClass(registration.useClass);
       } else {
@@ -389,11 +390,7 @@ export class Container {
         return this.resolveAsync(token, requestingModuleId);
       }
       if (token instanceof InjectionToken && token.options?.factory) {
-        if (this.strict) {
-          throw new Error(
-            `No provider found for token: ${this.tokenToString(token)} ${STRICT_NO_AUTO_REGISTER}`,
-          );
-        }
+        // Default factories are explicit user declarations — work in strict mode.
         this.register({ provide: token, useFactory: token.options.factory });
         return this.resolveAsync(token, requestingModuleId);
       }
@@ -405,11 +402,12 @@ export class Container {
         return registration.instance as T;
       }
 
-      const factoryOwner = this.providerOrigin.get(registration.provide);
+      // Factory inject deps resolve without a requester (escape hatch — see
+      // resolveRegistration's useFactory branch).
       const dependencies = await Promise.all(
         (registration.inject || []).map((t) => {
           const resolved = t instanceof ForwardRef ? t.factory() : t;
-          return this.resolveAsync(resolved as Token, factoryOwner);
+          return this.resolveAsync(resolved as Token);
         }),
       );
 
@@ -444,6 +442,10 @@ export class Container {
 
   private assertVisible(moduleId: string, token: Token): void {
     if (this.globals.has(token)) return;
+
+    // InjectionTokens with a default factory are self-providing singletons —
+    // visible from any module without requiring explicit declaration.
+    if (token instanceof InjectionToken && token.options?.factory) return;
 
     const scope = this.scopes.get(moduleId);
     if (!scope) {

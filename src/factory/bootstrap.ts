@@ -40,7 +40,9 @@ export async function bootstrap(
   options: BootstrapOptions = {},
 ): Promise<BootstrapResult> {
   const container = new Container({
-    strict: options.strict,
+    // Module boundaries are enforced by default — NestJS parity. Opt out
+    // with `strict: false` for migration scenarios or explicit looser DI.
+    strict: options.strict ?? true,
     diagnostics: options.diagnostics,
   });
 

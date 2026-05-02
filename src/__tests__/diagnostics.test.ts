@@ -1,8 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  Inject,
   Injectable,
-  InjectionToken,
   MetadataRegistry,
   Module,
   ModuleVisibilityError,
@@ -19,21 +17,19 @@ afterEach(() => {
 });
 
 describe('Diagnostics', () => {
-  it("default 'log': resolve failures during discovery emit a warning, app still boots", async () => {
+  it("default 'log': discovery failures emit a warning, app still boots", async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    const FAILS = new InjectionToken<unknown>('FAILS');
-
     @Injectable()
-    class WillFail {
-      constructor(@Inject(FAILS) public x: unknown) {}
+    class FailsInCtor {
+      constructor() {
+        throw new Error('intentional ctor failure');
+      }
     }
 
-    @Module({ providers: [WillFail] })
+    @Module({ providers: [FailsInCtor] })
     class App {}
 
-    // FAILS isn't registered — non-strict + default diagnostics ('log').
-    // resolveAllInstances logs the failure and continues.
     const app = await VelaFactory.create(App);
     expect(app).toBeDefined();
     expect(warn).toHaveBeenCalled();
@@ -44,14 +40,14 @@ describe('Diagnostics', () => {
   it("'silent' suppresses discovery warnings entirely", async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    const FAILS = new InjectionToken<unknown>('FAILS');
-
     @Injectable()
-    class WillFail {
-      constructor(@Inject(FAILS) public x: unknown) {}
+    class FailsInCtor {
+      constructor() {
+        throw new Error('intentional ctor failure');
+      }
     }
 
-    @Module({ providers: [WillFail] })
+    @Module({ providers: [FailsInCtor] })
     class App {}
 
     await VelaFactory.create(App, { diagnostics: 'silent' });
@@ -62,19 +58,19 @@ describe('Diagnostics', () => {
   });
 
   it("'throw' propagates discovery errors during bootstrap", async () => {
-    const FAILS = new InjectionToken<unknown>('FAILS');
-
     @Injectable()
-    class WillFail {
-      constructor(@Inject(FAILS) public x: unknown) {}
+    class FailsInCtor {
+      constructor() {
+        throw new Error('intentional ctor failure');
+      }
     }
 
-    @Module({ providers: [WillFail] })
+    @Module({ providers: [FailsInCtor] })
     class App {}
 
     await expect(
       VelaFactory.create(App, { diagnostics: 'throw' }),
-    ).rejects.toThrow(/No provider found/);
+    ).rejects.toThrow(/intentional ctor failure/);
   });
 
   it('ModuleVisibilityError ALWAYS propagates regardless of diagnostics mode', async () => {
@@ -90,9 +86,9 @@ describe('Diagnostics', () => {
     @Module({ imports: [ModA], providers: [ServiceB] })
     class ModB {}
 
-    // Even with 'silent', the strict-mode visibility violation must throw.
+    // Even with 'silent', the strict-default visibility violation must throw.
     await expect(
-      VelaFactory.create(ModB, { strict: true, diagnostics: 'silent' }),
+      VelaFactory.create(ModB, { diagnostics: 'silent' }),
     ).rejects.toThrow(ModuleVisibilityError);
 
     MetadataRegistry.clear();
@@ -104,11 +100,11 @@ describe('Diagnostics', () => {
 
     // Same with 'log'.
     await expect(
-      VelaFactory.create(ModB2, { strict: true, diagnostics: 'log' }),
+      VelaFactory.create(ModB2, { diagnostics: 'log' }),
     ).rejects.toThrow(ModuleVisibilityError);
   });
 
-  it('Container.getDiagnostics returns the configured mode', async () => {
+  it('Container.getDiagnostics returns the configured mode', () => {
     const c1 = new Container();
     expect(c1.getDiagnostics()).toBe('log');
 

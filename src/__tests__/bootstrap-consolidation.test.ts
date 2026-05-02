@@ -148,7 +148,7 @@ describe('bootstrap()', () => {
     expect(await res.json()).toEqual({ status: 'ok' });
   });
 
-  it('VelaFactory.create propagates strict to the container', async () => {
+  it('VelaFactory.create propagates strict to the container (default true; opt out with false)', async () => {
     const TOKEN = new InjectionToken<string>('TOK');
 
     @Injectable()
@@ -165,18 +165,16 @@ describe('bootstrap()', () => {
     @Module({ imports: [ModA], providers: [Consumer] })
     class ModB {}
 
-    // strict: true should reject because TOKEN isn't exported
-    await expect(VelaFactory.create(ModB, { strict: true })).rejects.toThrow(
-      /cannot resolve/,
-    );
+    // Default (strict: true) → rejects because TOKEN isn't exported
+    await expect(VelaFactory.create(ModB)).rejects.toThrow(/cannot resolve/);
 
-    // strict: false (default) should succeed
+    // strict: false explicitly opts out → succeeds
     MetadataRegistry.clear();
     @Module({ providers: [{ provide: TOKEN, useValue: 'x' }] })
     class ModA2 {}
     @Module({ imports: [ModA2], providers: [Consumer] })
     class ModB2 {}
-    const app = await VelaFactory.create(ModB2);
+    const app = await VelaFactory.create(ModB2, { strict: false });
     expect(app.get(Consumer).v).toBe('x');
   });
 });
