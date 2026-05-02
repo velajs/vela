@@ -23,7 +23,6 @@ From `CODE_AUDIT_REPORT.md`. These don't gate a specific release; pick them up o
 | # | Item | Why it's still open |
 |---|---|---|
 | 2 | Dynamic module identity is inconsistent | Some dynamic modules reuse their class; `HttpModule.register()` mints synthetic classes via `createModuleRef()`. Pick one identity model. |
-| 7 | Edge-runtime carve-out for `schedule-node` is undocumented | The audit test excludes `src/schedule-node/` because that subpath uses `setInterval`; the contract should be stated in README + package docs so the carve-out is explicit. |
 | 9 | `RouteManager` is doing too much | Pipeline execution, argument extraction, and response shaping should be split out of route registration. Internal hygiene; works as-is. |
 
 ## Closed audit items
@@ -35,5 +34,6 @@ From `CODE_AUDIT_REPORT.md`. These don't gate a specific release; pick them up o
 | 4 | 1.1.0 (verified 1.4) | `NestModule.configure()` runs through `container.resolve(moduleClass, moduleId)`; failures propagate. Regression coverage in `configure-resolution.test.ts`. |
 | 5 | 1.1.0 | `Type` / `Constructor` deduplicated to `container/types.ts`. |
 | 6 | 1.3.0 | Discovery diagnostics route through `{ diagnostics: 'silent' \| 'log' \| 'throw' }`. |
+| 7 | 1.4 | Edge-safe contract documented in README, including the explicit `schedule-node` carve-out and a link to the audit test. |
 | 8 | 1.1.0 | Metadata is unified through `MetadataRegistry`; Reflect polyfill funnels into the same slots. 1.4 adds the regression tests. |
 | 10 | 1.3.0 | Unused `Container.parent` removed. |

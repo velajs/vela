@@ -25,6 +25,7 @@ A sanctioned per-request injectable lands as a framework primitive, and the meta
 
 - **Metadata stacking + funnel coverage** (audit #8 follow-up). New `metadata-stacking.test.ts` asserts `appendCustomHandlerMeta` is order-deterministic, `Reflect.defineMetadata` round-trips through `MetadataRegistry`'s typed slots, `MetadataRegistry.reset()` clears `classMeta`/`handlerMeta`, and class+handler `@SetMetadata` on the same key remain independent.
 - **`NestModule.configure()` regression coverage** (audit #4 follow-up). New `configure-resolution.test.ts` asserts configure-time DI works (modules can constructor-inject providers from their own scope), synchronous errors thrown from `configure()` propagate, and unresolvable constructor deps fail loudly rather than silently skipping middleware setup.
+- **Edge-safe contract documented** (audit #7 follow-up). README now states the contract explicitly: the main export is edge-safe and audited in CI by `src/__tests__/edge-runtime-audit.test.ts`; `@velajs/vela/schedule-node` is the one opt-in Node/Bun carve-out.
 - **Stale `WeakMap` comment removed** from `MetadataRegistry.reset()` — the WeakMap fallback was retired in 1.1.0; the comment was documentation drift.
 - **`Container.setRequestInstance(token, value)`** — public method to pre-seed the per-request cache. Used by `RouteManager` to populate `REQUEST_CONTEXT` before any handler resolution runs.
 

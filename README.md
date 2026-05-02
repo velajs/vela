@@ -73,6 +73,19 @@ Vela runs on any runtime that supports the Web Standards API:
 
 No Node.js-specific APIs (`node:fs`, `Buffer`, `process`) are used.
 
+### Edge-safe contract
+
+The **main export** (`@velajs/vela`) is edge-safe by contract — no `node:*` imports, no `Buffer`, no `process`, no `setInterval`, no `Bun.serve`. This is enforced in CI by [`src/__tests__/edge-runtime-audit.test.ts`](src/__tests__/edge-runtime-audit.test.ts), which fails the build if any file under `src/` references a forbidden API.
+
+One subpath, **`@velajs/vela/schedule-node`**, is an opt-in Node/Bun adapter for `setInterval`-based job execution. It uses runtime-specific APIs by design and is **excluded from the edge-runtime audit**. Edge runtimes (Cloudflare Workers, Deno Deploy, Vercel Edge) should not import it — use platform cron triggers instead (e.g., `@velajs/cloudflare` ≥ 0.2.0 dispatches `@Cron` jobs via the Workers `scheduled()` handler).
+
+```ts
+// Node / Bun only — opt-in
+import { ScheduleNodeModule } from '@velajs/vela/schedule-node';
+```
+
+The other subpaths (`@velajs/vela/internal`, `@velajs/vela/streaming`) follow the main export's edge-safe contract.
+
 ## Dynamic modules
 
 Configurable modules use `forRoot` (sync) and `forRootAsync` (DI-resolved):
