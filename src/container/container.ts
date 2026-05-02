@@ -636,16 +636,19 @@ export class Container {
 
   private createLazyProxy(token: Token, requestingModuleId?: string): object {
     const container = this;
-    const target: object = Object.create(null);
+    const target: Record<PropertyKey, unknown> = Object.create(null);
     return new Proxy(target, {
       get(_target, prop) {
-        const instance = container.resolve<object>(token, requestingModuleId);
-        const value = Reflect.get(instance, prop, instance);
+        const instance = container.resolve(token, requestingModuleId);
+        // The cast yields `unknown` (vs `Reflect.get`'s `any`), keeping the
+        // typeof-narrows-to-Function guard below honest.
+        const value = (instance as Record<PropertyKey, unknown>)[prop];
         return typeof value === 'function' ? value.bind(instance) : value;
       },
       set(_target, prop, value) {
-        const instance = container.resolve<object>(token, requestingModuleId);
-        return Reflect.set(instance, prop, value);
+        const instance = container.resolve(token, requestingModuleId);
+        (instance as Record<PropertyKey, unknown>)[prop] = value;
+        return true;
       },
     });
   }

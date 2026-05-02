@@ -40,19 +40,15 @@ function stableStringify(value: unknown): string {
   const proto = Object.getPrototypeOf(value);
   if (proto !== null && proto !== Object.prototype) {
     const name: string = proto?.constructor?.name ?? 'AnonymousClass';
-    return `__cls:${name}` + stringifyOwnProps(value);
+    return `__cls:${name}` + stringifyOwnProps(value as Record<string, unknown>);
   }
 
-  return stringifyOwnProps(value);
+  return stringifyOwnProps(value as Record<string, unknown>);
 }
 
-function stringifyOwnProps(obj: object): string {
-  // `Object.entries(obj: object)` returns `[string, any][]` — `any` is
-  // bivariant and assignable to `unknown`, so we get an indexable, properly
-  // typed iteration without a cast.
-  const entries: Array<[string, unknown]> = Object.entries(obj);
-  entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-  const parts = entries.map(([k, v]) => JSON.stringify(k) + ':' + stableStringify(v));
+function stringifyOwnProps(obj: Record<string, unknown>): string {
+  const keys = Object.keys(obj).sort();
+  const parts = keys.map((k) => JSON.stringify(k) + ':' + stableStringify(obj[k]));
   return '{' + parts.join(',') + '}';
 }
 
