@@ -93,7 +93,7 @@ export class Container {
     } else if (options.useExisting) {
       registration.useExisting = options.useExisting;
     } else if (typeof token === 'function') {
-      registration.useClass = token as Type<T>;
+      registration.useClass = token;
     }
 
     this.providers.set(token, registration);

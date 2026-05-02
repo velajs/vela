@@ -50,7 +50,7 @@ export class ScheduleRegistry implements OnApplicationBootstrap {
         if (mode === 'throw') throw err;
         if (mode === 'log') {
           console.warn(
-            `[vela] schedule discovery: cannot resolve ${(token as Function).name ?? String(token)}:`,
+            `[vela] schedule discovery: cannot resolve ${token.name || String(token)}:`,
             err,
           );
         }

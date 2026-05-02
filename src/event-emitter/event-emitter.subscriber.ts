@@ -36,7 +36,7 @@ export class EventEmitterSubscriber implements OnApplicationBootstrap {
         if (mode === 'throw') throw err;
         if (mode === 'log') {
           console.warn(
-            `[vela] event subscriber discovery: cannot resolve ${(token as Function).name ?? String(token)}:`,
+            `[vela] event subscriber discovery: cannot resolve ${token.name || String(token)}:`,
             err,
           );
         }
