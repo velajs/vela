@@ -67,7 +67,7 @@ export interface ProviderRegistration<T = unknown> {
   useExisting?: Token<T>;
 }
 
-// Module visibility (1.2.0)
+// Module visibility
 export interface ModuleScope {
   moduleId: string;
   localProviders: Set<Token>;

@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.2.0 (2026-05-01)
+## Unreleased
 
 Module boundaries are enforced. NestJS-shape: a service cannot resolve dependencies from a module it didn't import. Bootstrap is consolidated into a single primitive, discovery failures are diagnostically routed, and a generic plugin composer is included.
 
