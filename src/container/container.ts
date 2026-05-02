@@ -636,19 +636,20 @@ export class Container {
 
   private createLazyProxy(token: Token, requestingModuleId?: string): object {
     const container = this;
-    const target: Record<PropertyKey, unknown> = Object.create(null);
+    const target: object = Object.create(null);
     return new Proxy(target, {
       get(_target, prop) {
-        const instance = container.resolve(token, requestingModuleId);
-        // The cast yields `unknown` (vs `Reflect.get`'s `any`), keeping the
-        // typeof-narrows-to-Function guard below honest.
-        const value = (instance as Record<PropertyKey, unknown>)[prop];
+        const instance = container.resolve<object>(token, requestingModuleId);
+        // Annotate `unknown` to contain `Reflect.get`'s `any` return so the
+        // typeof-narrows-to-Function guard below stays honest.
+        const value: unknown = Reflect.get(instance, prop, instance);
         return typeof value === 'function' ? value.bind(instance) : value;
       },
       set(_target, prop, value) {
-        const instance = container.resolve(token, requestingModuleId);
-        (instance as Record<PropertyKey, unknown>)[prop] = value;
-        return true;
+        const instance = container.resolve<object>(token, requestingModuleId);
+        // `Reflect.set` returns whether the assignment succeeded — that's the
+        // spec-correct Proxy `set` return, vs returning `true` unconditionally.
+        return Reflect.set(instance, prop, value);
       },
     });
   }
