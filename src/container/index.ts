@@ -1,6 +1,13 @@
 export { Container } from './container';
 export { Injectable, Inject, Optional, isInjectable, getScope } from './decorators';
-export { InjectionToken, ForwardRef, forwardRef, ModuleVisibilityError } from './types';
+export {
+  InjectionToken,
+  ForwardRef,
+  forwardRef,
+  ModuleVisibilityError,
+  MultipleProvidersFoundError,
+  ROOT_MODULE_ID,
+} from './types';
 export { ModuleRef } from './module-ref';
 export { mixin } from './mixin';
 export type {

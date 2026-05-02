@@ -58,6 +58,12 @@ export interface ProviderOptions<T = unknown> {
 export interface ProviderRegistration<T = unknown> {
   provide: Token<T>;
   scope: Scope;
+  /**
+   * Module that owns this registration. Used by `resolveClass` to determine
+   * the POV from which the class's dependencies resolve. Sandbox/bootstrap
+   * registrations land in the `"__root__"` bucket.
+   */
+  declaringModuleId: string;
   instance?: T;
   useValue?: T;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -102,3 +108,21 @@ export class ModuleVisibilityError extends Error {
     this.name = 'ModuleVisibilityError';
   }
 }
+
+export class MultipleProvidersFoundError extends Error {
+  constructor(
+    public readonly moduleId: string,
+    public readonly token: Token,
+    public readonly candidates: string[],
+  ) {
+    super(
+      `Multiple providers found for '${describeToken(token)}' in module '${moduleId}':\n` +
+        candidates.map((c) => `  - ${c}`).join('\n') +
+        `\nResolve ambiguity by importing only one instance, or by using a per-instance ` +
+        `accessor exposed by the module (e.g., Module.tokenFor(key)).`,
+    );
+    this.name = 'MultipleProvidersFoundError';
+  }
+}
+
+export const ROOT_MODULE_ID = '__root__';

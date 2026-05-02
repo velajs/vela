@@ -104,6 +104,45 @@ Configurable modules use `forRoot` (sync) and `forRootAsync` (DI-resolved):
 class AppModule {}
 ```
 
+### Identity model
+
+Each `DynamicModule` has an optional `key?: string` that discriminates one instance from another. First-party modules derive `key: stableHash(options)` automatically inside `forRoot` — so the same options always dedup, and distinct options register as distinct instances:
+
+```ts
+// Same options → dedup (one CacheModule instance, ttl: 60)
+imports: [
+  CacheModule.forRoot({ ttl: 60 }),
+  CacheModule.forRoot({ ttl: 60 }),
+]
+
+// Different options → two distinct instances coexist
+imports: [
+  CacheModule.forRoot({ ttl: 60 }),
+  CacheModule.forRoot({ ttl: 120 }),
+]
+```
+
+When a consumer module imports two instances both exporting the same logical token, the resolver throws `MultipleProvidersFoundError` with both candidate ids — resolve the ambiguity by importing only one, or use a per-instance accessor exposed by the module. Most apps with a single instance never hit this.
+
+Custom modules can use the same pattern via the public helpers:
+
+```ts
+import { defineDynamicModule, stableHash } from '@velajs/vela';
+
+class MyModule {
+  static forRoot(options: MyOptions): DynamicModule {
+    return defineDynamicModule({
+      module: MyModule,
+      key: stableHash(options),    // or pass an explicit key
+      providers: [/* ... */],
+      exports: [/* ... */],
+    });
+  }
+}
+```
+
+`forRootAsync` callers should pass `key` explicitly when the same module needs multiple async instances — factories aren't structurally hashable.
+
 ## Companion packages
 
 | Package | Purpose |

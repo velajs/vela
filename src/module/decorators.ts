@@ -1,5 +1,10 @@
 import { MetadataRegistry } from '../registry/metadata.registry';
-import type { Constructor, ModuleMetadata, ModuleOptions, Type } from '../registry/types';
+import type {
+  Constructor,
+  DynamicModule,
+  ModuleMetadata,
+  ModuleOptions,
+} from '../registry/types';
 
 export function Global(): ClassDecorator {
   return (target) => {
@@ -25,10 +30,12 @@ export function isModule(target: Constructor): boolean {
   return MetadataRegistry.getModuleOptions(target) !== undefined;
 }
 
-export function createModuleRef(name: string): Type {
-  const moduleClass = class {} as unknown as Type;
-  Object.defineProperty(moduleClass, 'name', { value: name });
-  return moduleClass;
+/**
+ * Normalize a DynamicModule, defaulting `key` to `"default"`. Module authors
+ * call this from `forRoot()` so the loader always sees an explicit key.
+ */
+export function defineDynamicModule(input: DynamicModule): DynamicModule {
+  return { ...input, key: input.key ?? 'default' };
 }
 
 export function getModuleMetadata(target: Constructor): ModuleMetadata | undefined {

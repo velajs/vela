@@ -69,6 +69,17 @@ export interface AsyncModuleOptions<T = unknown> {
 
 export interface DynamicModule {
   module: Type;
+  /**
+   * Author-supplied instance discriminator. Two DynamicModules with the same
+   * `module` class and the same `key` dedup; with different keys they coexist
+   * as separate module instances. Defaults to `"default"` when absent — which
+   * preserves single-instance dedup for the common case.
+   *
+   * For `forRoot(options)`, derive `key: stableHash(options)` so identical
+   * options dedup automatically. For `forRootAsync` (factories aren't
+   * structurally hashable), pass an explicit string.
+   */
+  key?: string;
   imports?: ModuleImport[];
   providers?: Array<Type | ProviderOptions>;
   controllers?: Type[];

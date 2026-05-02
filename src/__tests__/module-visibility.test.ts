@@ -11,12 +11,9 @@ import {
   ModuleRef,
   ModuleVisibilityError,
   VelaFactory,
-  defineMetadata,
-  METADATA_KEYS,
 } from '../index.js';
 import { Container } from '../internal.js';
 import type { DynamicModule } from '../index.js';
-import { createModuleRef } from '../module/decorators.js';
 
 beforeEach(() => {
   MetadataRegistry.clear();
@@ -127,14 +124,8 @@ describe('Module visibility', () => {
 
     class FeatureModule {
       static forRoot(): DynamicModule {
-        const m = createModuleRef('FeatureModule');
-        defineMetadata(METADATA_KEYS.MODULE, true, m);
-        MetadataRegistry.setModuleOptions(m, {
-          providers: [{ provide: TOKEN, useValue: 'shared-value' }],
-          exports: [TOKEN],
-        });
         return {
-          module: m,
+          module: FeatureModule,
           providers: [{ provide: TOKEN, useValue: 'shared-value' }],
           exports: [TOKEN],
           global: true,

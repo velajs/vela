@@ -21,7 +21,6 @@ import {
   UseGuards,
   VelaFactory,
   ZodValidationPipe,
-  createModuleRef,
   env,
   forwardRef,
   getRuntimeKey,
@@ -86,8 +85,10 @@ export async function createDiPlaygroundApp(): Promise<DiPlaygroundFixture> {
     }
   }
 
+  class DynamicAuditModuleClass {}
+
   const DynamicAuditModule = {
-    module: createModuleRef('DynamicAuditModule'),
+    module: DynamicAuditModuleClass,
     providers: [DynamicAuditService],
     exports: [DynamicAuditService],
   };

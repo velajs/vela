@@ -1,5 +1,6 @@
 import type { ProviderOptions, Type } from '../container/types';
 import type { AsyncModuleOptions, DynamicModule } from '../module/types';
+import { stableHash } from '../module/stable-hash';
 import { APP_INTERCEPTOR } from '../pipeline/tokens';
 import { CacheInterceptor } from './cache.interceptor';
 import { CacheService } from './cache.service';
@@ -25,13 +26,14 @@ export class CacheModule {
 
     return {
       module: CacheModule,
+      key: stableHash(options),
       providers,
       exports: [CACHE_MANAGER, CACHE_MODULE_OPTIONS, CacheService, CacheInterceptor],
     };
   }
 
   static forRootAsync(
-    options: AsyncModuleOptions<CacheModuleOptions> & { isGlobal?: boolean },
+    options: AsyncModuleOptions<CacheModuleOptions> & { isGlobal?: boolean; key?: string },
   ): DynamicModule {
     const providers: Array<Type | ProviderOptions> = [
       {
@@ -55,6 +57,7 @@ export class CacheModule {
 
     return {
       module: CacheModule,
+      key: options.key ?? stableHash({ inject: options.inject, useFactory: options.useFactory }),
       imports: options.imports ?? [],
       providers,
       exports: [CACHE_MANAGER, CACHE_MODULE_OPTIONS, CacheService, CacheInterceptor],

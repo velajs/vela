@@ -42,6 +42,8 @@ export {
   forwardRef,
   ModuleRef,
   ModuleVisibilityError,
+  MultipleProvidersFoundError,
+  ROOT_MODULE_ID,
   mixin,
 } from './container/index';
 export type {
@@ -187,7 +189,12 @@ export type {
 } from './throttler/index';
 
 // Module
-export { Global, Module, createModuleRef } from './module/index';
+export {
+  Global,
+  Module,
+  defineDynamicModule,
+  stableHash,
+} from './module/index';
 export type { ModuleOptions, DynamicModule, AsyncModuleOptions, ModuleImport } from './module/index';
 export type { MiddlewareConsumer, NestModule, RouteInfo } from './http/index';
 

@@ -38,7 +38,7 @@ No planned example projects remain in the current coverage plan.
 | `ModuleRef` | runtime | `di-playground-api` | `get`, `resolve`, and `create` covered |
 | `mixin` | runtime | `di-playground-api` | Parameterized role guards covered by curl |
 | `Module`, dynamic modules via `forRoot`, `forRootAsync` | runtime | `evergreen-market-api`, unit tests | Built-in modules use dynamic module shape |
-| `Global`, `createModuleRef` | runtime | `di-playground-api` | Global provider and dynamic module routes covered |
+| `Global`, `defineDynamicModule`, `stableHash` | runtime | `di-playground-api` | Global provider and dynamic module routes covered |
 | `UseMiddleware`, `UseGuards`, `UsePipes`, `UseInterceptors`, `UseFilters`, `Catch` | runtime | `evergreen-market-api` | Controller and method levels exercised |
 | `SetMetadata`, `Reflector` | runtime | `evergreen-market-api` | Scope guard reads route metadata |
 | `APP_GUARD`, `APP_PIPE`, `APP_INTERCEPTOR`, `APP_FILTER`, `APP_MIDDLEWARE` | runtime | `evergreen-market-api` | Registered through module providers |

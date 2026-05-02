@@ -20,7 +20,7 @@ Covered behaviors:
 - `ModuleRef.get()`, `ModuleRef.resolve()`, and `ModuleRef.create()`.
 - `mixin()` guards.
 - `@Global()` modules.
-- Dynamic modules with `createModuleRef()`.
+- Dynamic modules via the `{ module, providers, exports }` shape.
 - `Logger` and `LogLevel`.
 - Hono adapter helpers `getRuntimeKey()` and `env()`.
 - `ZodValidationPipe`.
