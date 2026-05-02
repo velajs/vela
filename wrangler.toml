@@ -1,0 +1,11 @@
+# Test-only Wrangler config — drives the workerd runtime that backs
+# `pnpm test:workers`. NOT used for production deployments. The `main`
+# entry boots a smoke-test vela app (see src/__tests__/workers/entry.ts).
+#
+# Notably absent: `nodejs_compat`. The point of this config is to lock
+# vela's edge-runtime contract — the smoke tests must run under bare
+# workerd. Adding compat flags would defeat that.
+
+name = "vela-edge-test"
+main = "src/__tests__/workers/entry.ts"
+compatibility_date = "2026-05-01"

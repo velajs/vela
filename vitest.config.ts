@@ -5,6 +5,9 @@ export default defineConfig({
   test: {
     globals: false,
     include: ['src/**/*.test.ts'],
+    // Workers smoke tests run under workerd via vitest.config.workers.ts —
+    // exclude them from the Node-based run.
+    exclude: ['src/__tests__/workers/**', 'node_modules/**'],
     setupFiles: ['./src/metadata.ts'],
   },
   plugins: [
