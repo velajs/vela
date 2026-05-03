@@ -2,6 +2,7 @@ import type { GuardType } from '@velajs/vela';
 import type {
   AdapterBundle,
   EndpointsConfig,
+  HookContext,
   MetaInput,
 } from 'hono-crud';
 import type { ZodObject, ZodRawShape } from 'zod';
@@ -92,21 +93,27 @@ export interface CrudDtos {
 }
 
 /**
- * Flat ergonomic sugar over `endpoints.{name}.hooks.{before,after}`.
- * Specifying both is allowed — the flat form runs first, then the per-endpoint
- * one (last-write-wins is hono-crud's behavior internally).
+ * Flat-sugar hooks fired by @velajs/crud. Each handler receives a
+ * HookContext (transaction handle, tenantId, organizationId, userId,
+ * agentId, agentRunId) as the first argument; the second argument is
+ * the data shape relevant to the hook.
+ *
+ * The bridge translates each flat hook into hono-crud's per-endpoint
+ * `(data, ctx)` shape inside builder.ts:mergeFlatHooks. Per-endpoint
+ * hooks attached via `endpoints.{name}.hooks` win over flat sugar
+ * (existing precedence preserved).
  */
 export interface CrudHooks {
-  beforeCreate?: (data: unknown) => unknown | Promise<unknown>;
-  afterCreate?: (data: unknown) => unknown | Promise<unknown>;
-  beforeList?: () => void | Promise<void>;
-  afterList?: (items: unknown[]) => unknown[] | Promise<unknown[]>;
-  beforeRead?: (lookupValue: string) => void | Promise<void>;
-  afterRead?: (data: unknown) => unknown | Promise<unknown>;
-  beforeUpdate?: (data: unknown) => unknown | Promise<unknown>;
-  afterUpdate?: (data: unknown) => unknown | Promise<unknown>;
-  beforeDelete?: (lookupValue: string) => void | Promise<void>;
-  afterDelete?: (lookupValue: string) => void | Promise<void>;
+  beforeCreate?: (ctx: HookContext, data: unknown) => unknown | Promise<unknown>;
+  afterCreate?: (ctx: HookContext, data: unknown) => unknown | Promise<unknown>;
+  beforeList?: (ctx: HookContext) => void | Promise<void>;
+  afterList?: (ctx: HookContext, items: unknown[]) => unknown[] | Promise<unknown[]>;
+  beforeRead?: (ctx: HookContext, lookupValue: string) => void | Promise<void>;
+  afterRead?: (ctx: HookContext, data: unknown) => unknown | Promise<unknown>;
+  beforeUpdate?: (ctx: HookContext, data: unknown) => unknown | Promise<unknown>;
+  afterUpdate?: (ctx: HookContext, data: unknown) => unknown | Promise<unknown>;
+  beforeDelete?: (ctx: HookContext, lookupValue: string) => void | Promise<void>;
+  afterDelete?: (ctx: HookContext, lookupValue: string) => void | Promise<void>;
 }
 
 export interface CrudConfig<M extends MetaInput = MetaInput> {
