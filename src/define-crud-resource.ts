@@ -1,10 +1,12 @@
 import type { Context } from 'hono';
-import type { DynamicModule } from '@velajs/vela';
+import type { DynamicModule, Type } from '@velajs/vela';
 import type { MetaInput } from 'hono-crud';
 
 import { CrudModule } from './crud.module';
 import { Override } from './override.decorator';
 import type { CrudEndpointName, ResourceConfig } from './types';
+
+type CrudOverrideHandler = (c: Context) => unknown | Promise<unknown>;
 
 /**
  * Config for {@link defineCrudResource}. Extends {@link ResourceConfig} with a
@@ -16,9 +18,7 @@ import type { CrudEndpointName, ResourceConfig } from './types';
 export interface DefineCrudResourceConfig<M extends MetaInput = MetaInput>
   extends ResourceConfig<M> {
   path: string;
-  overrides?: Partial<
-    Record<CrudEndpointName, (c: Context) => unknown | Promise<unknown>>
-  >;
+  overrides?: Partial<Record<CrudEndpointName, CrudOverrideHandler>>;
 }
 
 /**
@@ -48,39 +48,43 @@ export function defineCrudResource<M extends MetaInput = MetaInput>(
   config: DefineCrudResourceConfig<M>,
 ): DynamicModule {
   const { path, overrides, ...resourceConfig } = config;
-  const dynamic = CrudModule.forResource(
-    path,
-    resourceConfig as ResourceConfig<M>,
-  );
+  const dynamic = CrudModule.forResource(path, resourceConfig);
 
-  if (overrides) {
-    const controller = dynamic.controllers?.[0] as
-      | (Function & { prototype: Record<string, unknown> })
-      | undefined;
-    if (controller && controller.prototype) {
-      for (const [endpointName, handler] of Object.entries(overrides)) {
-        if (!handler) continue;
-        const methodName = `__defineCrudResource_${endpointName}`;
-        Object.defineProperty(controller.prototype, methodName, {
-          configurable: true,
-          enumerable: false,
-          writable: true,
-          value: function (c: Context) {
-            return handler(c);
-          },
-        });
-        const descriptor = Object.getOwnPropertyDescriptor(
-          controller.prototype,
-          methodName,
-        )!;
-        Override(endpointName as CrudEndpointName)(
-          controller.prototype,
-          methodName,
-          descriptor,
-        );
-      }
-    }
+  if (!overrides) return dynamic;
+  const controller = dynamic.controllers?.[0];
+  if (!controller) return dynamic;
+
+  for (const [endpoint, handler] of Object.entries(overrides)) {
+    if (!handler) continue;
+    attachOverrideMethod(controller, endpoint as CrudEndpointName, handler);
   }
 
   return dynamic;
+}
+
+/**
+ * Install a synthetic method on the controller's prototype and tag it with the
+ * `@Override` metadata so the regular CRUD pipeline picks it up. The synthetic
+ * method matches the shape of a hand-written class method (configurable,
+ * writable, non-enumerable) and wraps the handler so `this` is dropped at the
+ * call seam.
+ */
+function attachOverrideMethod(
+  controller: Type,
+  endpoint: CrudEndpointName,
+  handler: CrudOverrideHandler,
+): void {
+  const methodName = `__defineCrudResource_${endpoint}`;
+  const value = function (c: Context) {
+    return handler(c);
+  };
+  Object.defineProperty(controller.prototype, methodName, {
+    configurable: true,
+    enumerable: false,
+    writable: true,
+    value,
+  });
+  // `Override()` reads only (target, propertyKey); the descriptor arg is
+  // required by `MethodDecorator`'s signature but ignored.
+  Override(endpoint)(controller.prototype, methodName, { value });
 }
