@@ -8,11 +8,12 @@ export class CrudModule {
     // Synthetic per-resource controller class. Vela's audit #2 removed
     // `createModuleRef`, but controllers still need a unique class identity per
     // resource path so the registry can store path/CRUD metadata independently.
-    // Inline 3 lines instead of pulling in a helper — only one call site.
-    const controllerClass = class {} as Type;
-    Object.defineProperty(controllerClass, 'name', {
-      value: `CrudController_${path.replace(/[^a-zA-Z0-9]/g, '_')}`,
-    });
+    //
+    // Computed-property-name idiom: NamedEvaluation reads the property key
+    // and stamps `name` on the class at creation, no post-hoc property
+    // mutation, no cast.
+    const controllerName = `CrudController_${path.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    const controllerClass: Type = { [controllerName]: class {} }[controllerName];
 
     // Mark as injectable + controller
     MetadataRegistry.markInjectable(controllerClass);
