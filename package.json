@@ -52,14 +52,14 @@
   },
   "peerDependencies": {
     "@cloudflare/workers-types": ">=4",
-    "@velajs/vela": ">=1.1.0",
+    "@velajs/vela": ">=1.5.0",
     "hono": ">=4"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4",
     "@swc/cli": "^0.8.0",
     "@swc/core": "^1.15.11",
-    "@velajs/vela": "^1.1.0",
+    "@velajs/vela": "^1.5.0",
     "hono": "^4",
     "typescript": "^5",
     "unplugin-swc": "^1.5.9",

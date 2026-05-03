@@ -18,8 +18,8 @@ importers:
         specifier: ^1.15.11
         version: 1.15.11
       '@velajs/vela':
-        specifier: ^1.1.0
-        version: 1.1.0
+        specifier: ^1.5.0
+        version: 1.5.0
       hono:
         specifier: ^4
         version: 4.12.1
@@ -572,8 +572,8 @@ packages:
   '@types/node@25.3.0':
     resolution: {integrity: sha512-4K3bqJpXpqfg2XKGK9bpDTc6xO/xoUP/RBWS7AtRMug6zZFaRekiLzjVtAoZMquxoAbzBvy5nxQ7veS5eYzf8A==}
 
-  '@velajs/vela@1.1.0':
-    resolution: {integrity: sha512-TaGyQ1KBHTMOA72QrFu+Nn0XHDBUnGkGMkHNAvNc6TQ7D6kxjBfLN2Y2Y5gbTEHVOVFXKr+6edVNbEDwDZVyEw==}
+  '@velajs/vela@1.5.0':
+    resolution: {integrity: sha512-7sCORC3g2/T430qQXg3vkBQJTwNYrJ70jfrgjtgp3nxOX2MniXtD30JCDMoo7d+UpJ23l4lK+4QFbvgsUU1VKQ==}
     engines: {node: '>=20'}
 
   '@vitest/expect@4.0.18':
@@ -1552,7 +1552,7 @@ snapshots:
       undici-types: 7.18.2
     optional: true
 
-  '@velajs/vela@1.1.0':
+  '@velajs/vela@1.5.0':
     dependencies:
       hono: 4.12.1
 
