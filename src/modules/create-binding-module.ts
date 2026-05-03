@@ -31,10 +31,12 @@ export function createBindingModule<TService>(
   opts: CreateBindingModuleOptions<TService>,
 ): BindingModuleStatic {
   // Fresh module class per binding TYPE (one KVModule, one D1Module, ...).
-  // Stamp `name` for nicer diagnostics — class expressions otherwise inherit
-  // the variable name, but we'd rather guarantee `${opts.name}Module`.
-  const moduleClass = class {} as Type;
-  Object.defineProperty(moduleClass, 'name', { value: `${opts.name}Module` });
+  // The computed-property-name idiom is the canonical JS way to give a
+  // class expression a dynamic `name`: NamedEvaluation reads the property
+  // key and stamps it on the class at creation, instead of patching the
+  // (configurable, non-writable) `name` slot via Object.defineProperty.
+  const className = `${opts.name}Module`;
+  const moduleClass: Type = { [className]: class {} }[className];
 
   return {
     forRoot({ binding }: { binding: string }): DynamicModule {
