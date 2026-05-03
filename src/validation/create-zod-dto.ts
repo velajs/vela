@@ -13,22 +13,22 @@ export function createZodDto<T extends ZodLikeSchema>(
   schema: T,
   options: CreateZodDtoOptions = {},
 ) {
-  class ZodDto {
-    static schema = schema;
+  // Computed-property-name idiom: NamedEvaluation reads the property key and
+  // stamps `name` on the class at creation, so callers see `MyDto` (or the
+  // override) directly in stack traces and OpenAPI output — no post-hoc
+  // `Object.defineProperty` patching of the class's `name` slot.
+  const className = options.name ?? 'ZodDto';
+  const ZodDto = {
+    [className]: class {
+      static schema = schema;
 
-    constructor(initial?: InferOutput<T>) {
-      if (initial && typeof initial === 'object') {
-        Object.assign(this, initial);
+      constructor(initial?: InferOutput<T>) {
+        if (initial && typeof initial === 'object') {
+          Object.assign(this, initial);
+        }
       }
-    }
-  }
-
-  if (options.name) {
-    Object.defineProperty(ZodDto, 'name', {
-      value: options.name,
-      configurable: true,
-    });
-  }
+    },
+  }[className];
 
   return ZodDto as unknown as {
     new (initial?: InferOutput<T>): InferOutput<T>;

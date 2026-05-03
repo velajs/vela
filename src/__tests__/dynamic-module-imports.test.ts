@@ -46,8 +46,7 @@ describe('DynamicModule.imports', () => {
     // register() returns a DynamicModule with imports
     class FeatureModule {
       static register(): DynamicModule {
-        const moduleClass = class FeatureDynModule {};
-        Object.defineProperty(moduleClass, 'name', { value: 'FeatureModule' });
+        const moduleClass = { FeatureModule: class {} }.FeatureModule;
         defineMetadata(METADATA_KEYS.MODULE, true, moduleClass);
         MetadataRegistry.setModuleOptions(moduleClass, { exports: [FeatureService] });
 
@@ -76,8 +75,7 @@ describe('DynamicModule.imports', () => {
     }
 
     const makeBase = (): DynamicModule => {
-      const moduleClass = class BaseDyn {};
-      Object.defineProperty(moduleClass, 'name', { value: 'BaseModule' });
+      const moduleClass = { BaseModule: class {} }.BaseModule;
       defineMetadata(METADATA_KEYS.MODULE, true, moduleClass);
       MetadataRegistry.setModuleOptions(moduleClass, { exports: [BaseService] });
       return { module: moduleClass as never, providers: [BaseService] };
@@ -97,8 +95,7 @@ describe('DynamicModule.imports', () => {
     }
 
     const makeTop = (): DynamicModule => {
-      const moduleClass = class TopDyn {};
-      Object.defineProperty(moduleClass, 'name', { value: 'TopModule' });
+      const moduleClass = { TopModule: class {} }.TopModule;
       defineMetadata(METADATA_KEYS.MODULE, true, moduleClass);
       MetadataRegistry.setModuleOptions(moduleClass, {});
       return {

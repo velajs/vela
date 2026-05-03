@@ -5333,8 +5333,7 @@ describe('Custom dynamic module', () => {
 
     class StorageModule {
       static register(opts: { bucket: string }) {
-        const moduleClass = class StorageDynamicModule {} as unknown as Type;
-        Object.defineProperty(moduleClass, 'name', { value: 'StorageDynamicModule' });
+        const moduleClass: Type = { StorageDynamicModule: class {} }.StorageDynamicModule;
         MetadataRegistry.setModuleOptions(moduleClass, {
           providers: [
             { provide: STORAGE_OPTIONS, useValue: opts },
@@ -5381,8 +5380,7 @@ describe('Custom dynamic module', () => {
 
     class AppConfigModule {
       static forRoot(config: { apiUrl: string }) {
-        const moduleClass = class AppConfigDynModule {} as unknown as Type;
-        Object.defineProperty(moduleClass, 'name', { value: 'AppConfigDynModule' });
+        const moduleClass: Type = { AppConfigDynModule: class {} }.AppConfigDynModule;
         MetadataRegistry.setModuleOptions(moduleClass, {
           providers: [
             { provide: APP_CONFIG, useValue: config },
