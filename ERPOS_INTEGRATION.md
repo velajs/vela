@@ -141,7 +141,7 @@ Internally this is a wrapper around `CrudModule.forResource(...)` — same regis
 
 ### Tier 2 — drives kernel HIL + policy enforcement (depends on hono-crud 0.7.0)
 
-#### 4. Forward `requireApproval` guard (HIL deferred execution)
+#### 4. Forward `requireApproval` guard (HIL deferred execution) **(Shipped 0.6.0)**
 
 When hono-crud lands `requireApproval` (its 0.7.0 Tier-2 spec), `@velajs/crud` exposes it as a per-endpoint middleware:
 
@@ -160,15 +160,15 @@ When hono-crud lands `requireApproval` (its 0.7.0 Tier-2 spec), `@velajs/crud` e
 
 Already supported transparently — `@velajs/crud` forwards `endpoint.middlewares` to hono-crud's `endpointMiddlewares`. **Verify with an integration test** once hono-crud ships the guard.
 
-#### 5. Forward `requirePolicy` guard + `Model.policies` (row/field-level rules)
+#### 5. Forward `requirePolicy` guard + `Model.policies` (row/field-level rules) **(Shipped 0.6.0)**
 
 Same shape — `Model.policies` lives on the model passed via `meta`; the `requirePolicy` guard plugs into per-endpoint middlewares. No shape change in `@velajs/crud`. Verify with integration test.
 
-#### 6. `tenantId` + `organizationId` + actor identity in `CrudEventPayload`
+#### 6. `tenantId` + `organizationId` + actor identity in `CrudEventPayload` **(Shipped 0.6.0)**
 
 Pure transitive pass-through — `CrudEventEmitter` is owned by hono-crud; `@velajs/crud` doesn't intercept events. When hono-crud's payload widens, downstream `CrudEventEmitter.on(...)` listeners see the new fields. No code change in `@velajs/crud`.
 
-#### 7. Transactional hooks (`hooks.afterCreate` etc. inside parent tx)
+#### 7. Transactional hooks (`hooks.afterCreate` etc. inside parent tx) **(Shipped 0.6.0)**
 
 When hono-crud lands the `HookContext` change (its 0.7.0 G2 spec), `@velajs/crud`'s `CrudHooks` flat sugar needs to **forward the new context shape**:
 
@@ -219,9 +219,7 @@ export interface CrudHooks {
 
 0.5 — ✅ shipped — Tier 1 #2: integration test for Model.resolveSchema pass-through.
 
-0.6 — Tier 2 #4 + #5 + #6: requireApproval, requirePolicy, event-payload tenant/actor pass-through verification (~2 days)
-      Tier 2 #7: transactional hooks signature change with HookContext threading (~1-2 days)
-      → published once hono-crud 0.7.0 lands
+0.6 — ✅ shipped — Tier 2 #4/#5/#6/#7: requireApproval, requirePolicy, CrudEventPayload tenant fields (partial — multi-tenant middleware required for tenantId), transactional HookContext, actor-aware approvals.
 
 0.7+ — Tier 1 #1 cont: versioning endpoints (versionHistory/Read/Compare/Rollback) once a real consumer exercises them
        Tier 3 considered as opportunistic improvements
