@@ -2,16 +2,37 @@ import type { GuardType } from '@velajs/vela';
 import type {
   AdapterBundle,
   EndpointsConfig,
+  HookContext,
   MetaInput,
 } from 'hono-crud';
 import type { ZodObject, ZodRawShape } from 'zod';
 
 /**
- * The CRUD operations surfaced by @velajs/crud. Narrower than hono-crud's
- * CrudEndpointName — extension to batch / search / aggregate / etc. is
- * intentionally deferred.
+ * The CRUD operations surfaced by @velajs/crud. Mirrors hono-crud's
+ * CrudEndpointName so the bridge forwards the full surface — search,
+ * aggregate, restore, batch ops, export/import, upsert, clone.
+ *
+ * Versioning verbs (versionHistory/Read/Compare/Rollback) are still
+ * deferred until a real consumer exercises them.
  */
-export type CrudEndpointName = 'create' | 'list' | 'read' | 'update' | 'delete';
+export type CrudEndpointName =
+  | 'create'
+  | 'list'
+  | 'read'
+  | 'update'
+  | 'delete'
+  | 'search'
+  | 'aggregate'
+  | 'restore'
+  | 'batchCreate'
+  | 'batchUpdate'
+  | 'batchDelete'
+  | 'batchRestore'
+  | 'batchUpsert'
+  | 'export'
+  | 'import'
+  | 'upsert'
+  | 'clone';
 
 export const ALL_CRUD_ENDPOINTS: readonly CrudEndpointName[] = [
   'create',
@@ -19,12 +40,25 @@ export const ALL_CRUD_ENDPOINTS: readonly CrudEndpointName[] = [
   'read',
   'update',
   'delete',
+  'search',
+  'aggregate',
+  'restore',
+  'batchCreate',
+  'batchUpdate',
+  'batchDelete',
+  'batchRestore',
+  'batchUpsert',
+  'export',
+  'import',
+  'upsert',
+  'clone',
 ] as const;
 
 /**
- * Per-endpoint config passed through to hono-crud's defineEndpoints. The
- * mapped union of per-endpoint configs has incompatible shapes per key, so
- * each key only accepts the corresponding hono-crud config.
+ * Per-endpoint override forwarded to hono-crud's EndpointsConfig<M> slot.
+ * Each key references the matching hono-crud config-API type; the cast at
+ * builder.ts:128 unifies the narrow per-key shape into EndpointsConfig<M>
+ * before handing it to defineEndpoints(...).
  */
 export type EndpointOverride<M extends MetaInput = MetaInput> = {
   create: NonNullable<EndpointsConfig<M>['create']>;
@@ -32,6 +66,18 @@ export type EndpointOverride<M extends MetaInput = MetaInput> = {
   read: NonNullable<EndpointsConfig<M>['read']>;
   update: NonNullable<EndpointsConfig<M>['update']>;
   delete: NonNullable<EndpointsConfig<M>['delete']>;
+  search: NonNullable<EndpointsConfig<M>['search']>;
+  aggregate: NonNullable<EndpointsConfig<M>['aggregate']>;
+  restore: NonNullable<EndpointsConfig<M>['restore']>;
+  batchCreate: NonNullable<EndpointsConfig<M>['batchCreate']>;
+  batchUpdate: NonNullable<EndpointsConfig<M>['batchUpdate']>;
+  batchDelete: NonNullable<EndpointsConfig<M>['batchDelete']>;
+  batchRestore: NonNullable<EndpointsConfig<M>['batchRestore']>;
+  batchUpsert: NonNullable<EndpointsConfig<M>['batchUpsert']>;
+  export: NonNullable<EndpointsConfig<M>['export']>;
+  import: NonNullable<EndpointsConfig<M>['import']>;
+  upsert: NonNullable<EndpointsConfig<M>['upsert']>;
+  clone: NonNullable<EndpointsConfig<M>['clone']>;
 };
 
 /**
@@ -47,21 +93,27 @@ export interface CrudDtos {
 }
 
 /**
- * Flat ergonomic sugar over `endpoints.{name}.hooks.{before,after}`.
- * Specifying both is allowed — the flat form runs first, then the per-endpoint
- * one (last-write-wins is hono-crud's behavior internally).
+ * Flat-sugar hooks fired by @velajs/crud. Each handler receives a
+ * HookContext (transaction handle, tenantId, organizationId, userId,
+ * agentId, agentRunId) as the first argument; the second argument is
+ * the data shape relevant to the hook.
+ *
+ * The bridge translates each flat hook into hono-crud's per-endpoint
+ * `(data, ctx)` shape inside builder.ts:mergeFlatHooks. Per-endpoint
+ * hooks attached via `endpoints.{name}.hooks` win over flat sugar
+ * (existing precedence preserved).
  */
 export interface CrudHooks {
-  beforeCreate?: (data: unknown) => unknown | Promise<unknown>;
-  afterCreate?: (data: unknown) => unknown | Promise<unknown>;
-  beforeList?: () => void | Promise<void>;
-  afterList?: (items: unknown[]) => unknown[] | Promise<unknown[]>;
-  beforeRead?: (lookupValue: string) => void | Promise<void>;
-  afterRead?: (data: unknown) => unknown | Promise<unknown>;
-  beforeUpdate?: (data: unknown) => unknown | Promise<unknown>;
-  afterUpdate?: (data: unknown) => unknown | Promise<unknown>;
-  beforeDelete?: (lookupValue: string) => void | Promise<void>;
-  afterDelete?: (lookupValue: string) => void | Promise<void>;
+  beforeCreate?: (ctx: HookContext, data: unknown) => unknown | Promise<unknown>;
+  afterCreate?: (ctx: HookContext, data: unknown) => unknown | Promise<unknown>;
+  beforeList?: (ctx: HookContext) => void | Promise<void>;
+  afterList?: (ctx: HookContext, items: unknown[]) => unknown[] | Promise<unknown[]>;
+  beforeRead?: (ctx: HookContext, lookupValue: string) => void | Promise<void>;
+  afterRead?: (ctx: HookContext, data: unknown) => unknown | Promise<unknown>;
+  beforeUpdate?: (ctx: HookContext, data: unknown) => unknown | Promise<unknown>;
+  afterUpdate?: (ctx: HookContext, data: unknown) => unknown | Promise<unknown>;
+  beforeDelete?: (ctx: HookContext, lookupValue: string) => void | Promise<void>;
+  afterDelete?: (ctx: HookContext, lookupValue: string) => void | Promise<void>;
 }
 
 export interface CrudConfig<M extends MetaInput = MetaInput> {

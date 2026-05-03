@@ -1,15 +1,19 @@
-import { METADATA_KEYS, MetadataRegistry, Scope, createModuleRef, defineMetadata } from '@velajs/vela';
+import { METADATA_KEYS, MetadataRegistry, Scope, defineMetadata } from '@velajs/vela';
 import { ComponentManager } from '@velajs/vela/internal';
 import type { Type, DynamicModule } from '@velajs/vela';
 import type { ResourceConfig, CrudConfig } from './types';
 
 export class CrudModule {
   static forResource(path: string, config: ResourceConfig): DynamicModule {
-    // Create a unique dynamic controller class
-    const controllerClass = class DynamicCrudController {};
-    Object.defineProperty(controllerClass, 'name', {
-      value: `CrudController_${path.replace(/[^a-zA-Z0-9]/g, '_')}`,
-    });
+    // Synthetic per-resource controller class. Vela's audit #2 removed
+    // `createModuleRef`, but controllers still need a unique class identity per
+    // resource path so the registry can store path/CRUD metadata independently.
+    //
+    // Computed-property-name idiom: NamedEvaluation reads the property key
+    // and stamps `name` on the class at creation, no post-hoc property
+    // mutation, no cast.
+    const controllerName = `CrudController_${path.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    const controllerClass: Type = { [controllerName]: class {} }[controllerName];
 
     // Mark as injectable + controller
     MetadataRegistry.markInjectable(controllerClass);
@@ -36,9 +40,14 @@ export class CrudModule {
       }
     }
 
+    // Per audit #2: the synthetic module-class trick is replaced by the
+    // explicit `key` discriminator. Two `forResource(path)` calls with the
+    // same path dedup (same module + same key); different paths register as
+    // distinct module instances.
     return {
-      module: createModuleRef(`CrudModule_${path.replace(/[^a-zA-Z0-9]/g, '_')}`),
-      controllers: [controllerClass as unknown as Type],
+      module: CrudModule,
+      key: normalizedPath,
+      controllers: [controllerClass],
     };
   }
 }

@@ -149,17 +149,32 @@ function mergeFlatHooks(
 ): Record<string, unknown> {
   if (!flat) return base;
   const cap = endpoint.charAt(0).toUpperCase() + endpoint.slice(1);
-  const before = flat[`before${cap}` as keyof typeof flat];
-  const after = flat[`after${cap}` as keyof typeof flat];
+  const before = flat[`before${cap}` as keyof typeof flat] as
+    | ((...args: unknown[]) => unknown)
+    | undefined;
+  const after = flat[`after${cap}` as keyof typeof flat] as
+    | ((...args: unknown[]) => unknown)
+    | undefined;
   if (!before && !after) return base;
 
   const existing = (base.hooks as Record<string, unknown> | undefined) ?? {};
+
+  // hono-crud invokes handlers as `(data, ctx)`. velajs flat sugar is
+  // `(ctx, data)` — flip args and forward. Per-endpoint hooks attached
+  // via endpoints.{name}.hooks win over flat sugar.
+  const flipBefore = before
+    ? (data: unknown, ctx: unknown) => (before as (c: unknown, d: unknown) => unknown)(ctx, data)
+    : undefined;
+  const flipAfter = after
+    ? (data: unknown, ctx: unknown) => (after as (c: unknown, d: unknown) => unknown)(ctx, data)
+    : undefined;
+
   return {
     ...base,
     hooks: {
       ...existing,
-      ...(before ? { before: existing.before ?? before } : {}),
-      ...(after ? { after: existing.after ?? after } : {}),
+      ...(flipBefore ? { before: existing.before ?? flipBefore } : {}),
+      ...(flipAfter ? { after: existing.after ?? flipAfter } : {}),
     },
   };
 }

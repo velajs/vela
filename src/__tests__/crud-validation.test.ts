@@ -69,11 +69,11 @@ describe('buildCrudRoutes config validation', () => {
     const config: CrudConfig = {
       meta: makeMeta() as never,
       adapters: MemoryAdapters as never,
-      endpoints: { search: {} } as never,
+      endpoints: { NOT_A_VERB: {} } as never,
     };
     await expect(
       buildCrudRoutes(new Hono(), StubController as unknown as Type, '/x', config, ctx()),
-    ).rejects.toThrow(/unknown endpoint name 'search' in 'endpoints'/);
+    ).rejects.toThrow(/unknown endpoint name 'NOT_A_VERB' in 'endpoints'/);
   });
 
   it('accepts a valid config without throwing', async () => {

@@ -55,12 +55,12 @@ describe('flat hooks', () => {
       adapters: MemoryAdapters as never,
       only: ['create'],
       hooks: {
-        beforeCreate: (data) => {
+        beforeCreate: (_ctx, data) => {
           calls.push('before');
           const payload = data as Record<string, unknown>;
           return { ...payload, name: `enriched:${payload.name}` };
         },
-        afterCreate: (data) => {
+        afterCreate: (_ctx, data) => {
           calls.push('after');
           return data;
         },
@@ -91,7 +91,7 @@ describe('flat hooks', () => {
       adapters: MemoryAdapters as never,
       only: ['create'],
       hooks: {
-        beforeCreate: (data) => {
+        beforeCreate: (_ctx, data) => {
           const p = data as Record<string, unknown>;
           return { ...p, name: 'flat-wins' };
         },
