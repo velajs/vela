@@ -217,8 +217,7 @@ export interface CrudHooks {
 ```
 0.4 — ✅ shipped — Tier 1 #1: widen CrudEndpointName + EndpointOverride. Tier 1 #3: defineCrudResource ergonomic helper.
 
-0.5 — Tier 1 #2: integration test for Model.resolveSchema pass-through, once hono-crud 0.6.0 ships (~1 day)
-      → published once hono-crud 0.6.0 lands
+0.5 — ✅ shipped — Tier 1 #2: integration test for Model.resolveSchema pass-through.
 
 0.6 — Tier 2 #4 + #5 + #6: requireApproval, requirePolicy, event-payload tenant/actor pass-through verification (~2 days)
       Tier 2 #7: transactional hooks signature change with HookContext threading (~1-2 days)
