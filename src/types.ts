@@ -7,11 +7,31 @@ import type {
 import type { ZodObject, ZodRawShape } from 'zod';
 
 /**
- * The CRUD operations surfaced by @velajs/crud. Narrower than hono-crud's
- * CrudEndpointName — extension to batch / search / aggregate / etc. is
- * intentionally deferred.
+ * The CRUD operations surfaced by @velajs/crud. Mirrors hono-crud's
+ * CrudEndpointName so the bridge forwards the full surface — search,
+ * aggregate, restore, batch ops, export/import, upsert, clone.
+ *
+ * Versioning verbs (versionHistory/Read/Compare/Rollback) are still
+ * deferred until a real consumer exercises them.
  */
-export type CrudEndpointName = 'create' | 'list' | 'read' | 'update' | 'delete';
+export type CrudEndpointName =
+  | 'create'
+  | 'list'
+  | 'read'
+  | 'update'
+  | 'delete'
+  | 'search'
+  | 'aggregate'
+  | 'restore'
+  | 'batchCreate'
+  | 'batchUpdate'
+  | 'batchDelete'
+  | 'batchRestore'
+  | 'batchUpsert'
+  | 'export'
+  | 'import'
+  | 'upsert'
+  | 'clone';
 
 export const ALL_CRUD_ENDPOINTS: readonly CrudEndpointName[] = [
   'create',
@@ -19,12 +39,25 @@ export const ALL_CRUD_ENDPOINTS: readonly CrudEndpointName[] = [
   'read',
   'update',
   'delete',
+  'search',
+  'aggregate',
+  'restore',
+  'batchCreate',
+  'batchUpdate',
+  'batchDelete',
+  'batchRestore',
+  'batchUpsert',
+  'export',
+  'import',
+  'upsert',
+  'clone',
 ] as const;
 
 /**
- * Per-endpoint config passed through to hono-crud's defineEndpoints. The
- * mapped union of per-endpoint configs has incompatible shapes per key, so
- * each key only accepts the corresponding hono-crud config.
+ * Per-endpoint override forwarded to hono-crud's EndpointsConfig<M> slot.
+ * Each key references the matching hono-crud config-API type; the cast at
+ * builder.ts:128 unifies the narrow per-key shape into EndpointsConfig<M>
+ * before handing it to defineEndpoints(...).
  */
 export type EndpointOverride<M extends MetaInput = MetaInput> = {
   create: NonNullable<EndpointsConfig<M>['create']>;
@@ -32,6 +65,18 @@ export type EndpointOverride<M extends MetaInput = MetaInput> = {
   read: NonNullable<EndpointsConfig<M>['read']>;
   update: NonNullable<EndpointsConfig<M>['update']>;
   delete: NonNullable<EndpointsConfig<M>['delete']>;
+  search: NonNullable<EndpointsConfig<M>['search']>;
+  aggregate: NonNullable<EndpointsConfig<M>['aggregate']>;
+  restore: NonNullable<EndpointsConfig<M>['restore']>;
+  batchCreate: NonNullable<EndpointsConfig<M>['batchCreate']>;
+  batchUpdate: NonNullable<EndpointsConfig<M>['batchUpdate']>;
+  batchDelete: NonNullable<EndpointsConfig<M>['batchDelete']>;
+  batchRestore: NonNullable<EndpointsConfig<M>['batchRestore']>;
+  batchUpsert: NonNullable<EndpointsConfig<M>['batchUpsert']>;
+  export: NonNullable<EndpointsConfig<M>['export']>;
+  import: NonNullable<EndpointsConfig<M>['import']>;
+  upsert: NonNullable<EndpointsConfig<M>['upsert']>;
+  clone: NonNullable<EndpointsConfig<M>['clone']>;
 };
 
 /**

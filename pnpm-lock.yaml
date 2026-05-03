@@ -23,12 +23,18 @@ importers:
       '@velajs/vela':
         specifier: ^1.1.0
         version: 1.1.0
+      drizzle-orm:
+        specifier: ^0.36.4
+        version: 0.36.4
+      drizzle-zod:
+        specifier: ^0.8.3
+        version: 0.8.3(drizzle-orm@0.36.4)(zod@4.3.6)
       hono:
         specifier: ^4
         version: 4.12.2
       hono-crud:
-        specifier: ^0.5.0
-        version: 0.5.0(fastest-levenshtein@1.0.16)(hono@4.12.2)(pluralize@8.0.0)(zod@4.3.6)
+        specifier: ^0.7.0
+        version: 0.7.0(drizzle-orm@0.36.4)(drizzle-zod@0.8.3(drizzle-orm@0.36.4)(zod@4.3.6))(fastest-levenshtein@1.0.16)(hono@4.12.2)(pluralize@8.0.0)(zod@4.3.6)
       typescript:
         specifier: ^5
         version: 5.9.3
@@ -803,6 +809,104 @@ packages:
     resolution: {integrity: sha512-4tvttepXG1VaYGrRibk5EwJd1t4udunSOVMdLSAL6mId1ix438oPwPZMALY41FCijukO1L0twNcGsdzS7dHgDg==}
     engines: {node: '>=10'}
 
+  drizzle-orm@0.36.4:
+    resolution: {integrity: sha512-1OZY3PXD7BR00Gl61UUOFihslDldfH4NFRH2MbP54Yxi0G/PKn4HfO65JYZ7c16DeP3SpM3Aw+VXVG9j6CRSXA==}
+    peerDependencies:
+      '@aws-sdk/client-rds-data': '>=3'
+      '@cloudflare/workers-types': '>=3'
+      '@electric-sql/pglite': '>=0.2.0'
+      '@libsql/client': '>=0.10.0'
+      '@libsql/client-wasm': '>=0.10.0'
+      '@neondatabase/serverless': '>=0.10.0'
+      '@op-engineering/op-sqlite': '>=2'
+      '@opentelemetry/api': ^1.4.1
+      '@planetscale/database': '>=1'
+      '@prisma/client': '*'
+      '@tidbcloud/serverless': '*'
+      '@types/better-sqlite3': '*'
+      '@types/pg': '*'
+      '@types/react': '>=18'
+      '@types/sql.js': '*'
+      '@vercel/postgres': '>=0.8.0'
+      '@xata.io/client': '*'
+      better-sqlite3: '>=7'
+      bun-types: '*'
+      expo-sqlite: '>=14.0.0'
+      knex: '*'
+      kysely: '*'
+      mysql2: '>=2'
+      pg: '>=8'
+      postgres: '>=3'
+      prisma: '*'
+      react: '>=18'
+      sql.js: '>=1'
+      sqlite3: '>=5'
+    peerDependenciesMeta:
+      '@aws-sdk/client-rds-data':
+        optional: true
+      '@cloudflare/workers-types':
+        optional: true
+      '@electric-sql/pglite':
+        optional: true
+      '@libsql/client':
+        optional: true
+      '@libsql/client-wasm':
+        optional: true
+      '@neondatabase/serverless':
+        optional: true
+      '@op-engineering/op-sqlite':
+        optional: true
+      '@opentelemetry/api':
+        optional: true
+      '@planetscale/database':
+        optional: true
+      '@prisma/client':
+        optional: true
+      '@tidbcloud/serverless':
+        optional: true
+      '@types/better-sqlite3':
+        optional: true
+      '@types/pg':
+        optional: true
+      '@types/react':
+        optional: true
+      '@types/sql.js':
+        optional: true
+      '@vercel/postgres':
+        optional: true
+      '@xata.io/client':
+        optional: true
+      better-sqlite3:
+        optional: true
+      bun-types:
+        optional: true
+      expo-sqlite:
+        optional: true
+      knex:
+        optional: true
+      kysely:
+        optional: true
+      mysql2:
+        optional: true
+      pg:
+        optional: true
+      postgres:
+        optional: true
+      prisma:
+        optional: true
+      react:
+        optional: true
+      sql.js:
+        optional: true
+      sqlite3:
+        optional: true
+
+  drizzle-zod@0.8.3:
+    resolution: {integrity: sha512-66yVOuvGhKJnTdiqj1/Xaaz9/qzOdRJADpDa68enqS6g3t0kpNkwNYjUuaeXgZfO/UWuIM9HIhSlJ6C5ZraMww==}
+    peerDependencies:
+      drizzle-orm: '>=0.36.0'
+      zod: ^3.25.0 || ^4.0.0
+
   es-module-lexer@1.7.0:
     resolution: {integrity: sha512-jEQoCwk8hyb2AZziIOLhDqpm5+2ww5uIE6lkO/6jcOCusfk6LhMHpXXfBLXTZ7Ydyt0j4VoUQv6uGNYbdW+kBA==}
 
@@ -891,8 +995,8 @@ packages:
   graceful-fs@4.2.11:
     resolution: {integrity: sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==}
 
-  hono-crud@0.5.0:
-    resolution: {integrity: sha512-+kBAAKbqNzh3SX08x3DjGRf3/o8HQ0x4jC3pwJyTbQBRT0YDa/b+EU6ZPbKkbm0WMKsKZx8JKxlqhyUou3MJHw==}
+  hono-crud@0.7.0:
+    resolution: {integrity: sha512-dpavlTqPhNBY57L2uHx7o93HRiKPXaDrDfCSaqgf3fmNKSX1FW/BwWWe79NetJmcThO+VfgaNuN0DBDOlVXfmA==}
     engines: {node: '>=20.19.0'}
     peerDependencies:
       '@prisma/adapter-pg': '>=5.0.0'
@@ -900,7 +1004,7 @@ packages:
       drizzle-orm: '>=0.30.0'
       drizzle-zod: '>=0.8.0'
       fastest-levenshtein: '>=1.0.0'
-      hono: '>=4.0.0'
+      hono: '>=4.11.7 <5'
       pluralize: '>=8.0.0'
       zod: '>=4.0.0'
     peerDependenciesMeta:
@@ -1923,6 +2027,13 @@ snapshots:
 
   defer-to-connect@2.0.1: {}
 
+  drizzle-orm@0.36.4: {}
+
+  drizzle-zod@0.8.3(drizzle-orm@0.36.4)(zod@4.3.6):
+    dependencies:
+      drizzle-orm: 0.36.4
+      zod: 4.3.6
+
   es-module-lexer@1.7.0: {}
 
   esbuild@0.27.3:
@@ -2042,7 +2153,7 @@ snapshots:
 
   graceful-fs@4.2.11: {}
 
-  hono-crud@0.5.0(fastest-levenshtein@1.0.16)(hono@4.12.2)(pluralize@8.0.0)(zod@4.3.6):
+  hono-crud@0.7.0(drizzle-orm@0.36.4)(drizzle-zod@0.8.3(drizzle-orm@0.36.4)(zod@4.3.6))(fastest-levenshtein@1.0.16)(hono@4.12.2)(pluralize@8.0.0)(zod@4.3.6):
     dependencies:
       '@hono/swagger-ui': 0.5.3(hono@4.12.2)
       '@hono/zod-openapi': 1.2.2(hono@4.12.2)(zod@4.3.6)
@@ -2050,6 +2161,8 @@ snapshots:
       hono: 4.12.2
       zod: 4.3.6
     optionalDependencies:
+      drizzle-orm: 0.36.4
+      drizzle-zod: 0.8.3(drizzle-orm@0.36.4)(zod@4.3.6)
       fastest-levenshtein: 1.0.16
       pluralize: 8.0.0
 
