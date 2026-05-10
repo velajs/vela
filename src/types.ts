@@ -131,9 +131,158 @@ export interface CrudConfig<M extends MetaInput = MetaInput> {
   hooks?: CrudHooks;
   /** Per-route Zod schema overrides for create / update body validation. */
   dto?: CrudDtos;
+  /**
+   * Affirm that a tenant resolver (e.g. hono-crud's `multiTenant()`
+   * middleware, or any equivalent that calls `c.set('tenantId', ...)`) is
+   * mounted on the parent Hono app upstream of this resource.
+   *
+   * **Default `false`.** When the resolved `Model` is tenant-scoped — i.e.
+   * `Model.multiTenant === true | MultiTenantConfig`, or
+   * `Model.policies?.readPushdown` is set — and this flag is not `true`,
+   * `@velajs/crud` throws {@link MissingTenantResolverError} synchronously
+   * at module-load time.
+   *
+   * Why: `HookContext.tenantId` and `CrudEventPayload.tenantId` propagate
+   * only when something upstream resolves the tenant. Without that
+   * resolver, hooks, audit logs, events, and CDC consumers silently see
+   * `tenantId: undefined` for tenant-scoped data — a data-loss bug class
+   * (see CHANGELOG `[0.6.0]` for the canonical wiring pattern).
+   *
+   * Set this flag once you have verified that `multiTenant()` (or your
+   * own equivalent) is mounted before this resource. The flag is an
+   * affirmation, not a probe — `@velajs/crud` cannot introspect Hono's
+   * middleware stack at module-load time, so the bridge trusts the
+   * caller's affirmation and fails fast in its absence.
+   *
+   * @example
+   * ```ts
+   * // Parent app wires the resolver upstream:
+   * import { multiTenant } from 'hono-crud';
+   * app.use('/*', multiTenant());
+   *
+   * // Bridge config affirms the wiring:
+   * CrudModule.forResource('/posts', {
+   *   meta: postMeta,             // Model.multiTenant: true
+   *   adapters: drizzleAdapters,
+   *   tenantResolverMounted: true,
+   * });
+   * ```
+   */
+  tenantResolverMounted?: boolean;
 }
 
 export interface ResourceConfig<M extends MetaInput = MetaInput>
   extends CrudConfig<M> {
   guards?: GuardType[];
+}
+
+/**
+ * Thrown synchronously at module-load when a tenant-scoped {@link Model}
+ * is mounted via `CrudModule.forResource(...)` (or `defineCrudResource(...)`,
+ * or `@Crud(...)`) without the caller affirming that a tenant resolver is
+ * wired upstream via `tenantResolverMounted: true`.
+ *
+ * **Why this exists.** A `Model` declares tenant scope when its
+ * `multiTenant` field is set (`true` or a `MultiTenantConfig`), or when
+ * its `policies.readPushdown` is configured. If no upstream middleware
+ * resolves the tenant before requests reach this resource,
+ * `HookContext.tenantId` and `CrudEventPayload.tenantId` propagate as
+ * `undefined` — silent tenant attribution loss for hooks, audit logs,
+ * events, and CDC consumers. That is a data-loss bug class, not a
+ * recoverable runtime error. The bridge fails fast at compose-time so
+ * the misconfiguration cannot ship.
+ *
+ * **Recovering.** Either:
+ *   1. Mount `multiTenant()` (or your own equivalent that calls
+ *      `c.set('tenantId', ...)`) on the parent app *before* the resource
+ *      is mounted, and set `tenantResolverMounted: true` on the bridge
+ *      config.
+ *   2. If the model genuinely should not be tenant-scoped, remove
+ *      `multiTenant` (and any `policies.readPushdown`) from the model.
+ *
+ * Caught by consumers who want to surface a custom load-time message:
+ * ```ts
+ * import { MissingTenantResolverError } from '@velajs/crud';
+ * try { CrudModule.forResource(...); }
+ * catch (e) { if (e instanceof MissingTenantResolverError) { ... } }
+ * ```
+ */
+export class MissingTenantResolverError extends Error {
+  override readonly name = 'MissingTenantResolverError';
+  /** The mount path passed to `forResource` / `defineCrudResource` / `@Crud`. */
+  readonly mountPath: string;
+  /** The `Model.tableName` of the tenant-scoped resource. */
+  readonly tableName: string;
+
+  constructor(opts: { mountPath: string; tableName: string }) {
+    super(buildMissingTenantResolverMessage(opts));
+    this.mountPath = opts.mountPath;
+    this.tableName = opts.tableName;
+  }
+}
+
+function buildMissingTenantResolverMessage(opts: {
+  mountPath: string;
+  tableName: string;
+}): string {
+  const { mountPath, tableName } = opts;
+  return [
+    `@velajs/crud: tenant-scoped Model '${tableName}' is mounted at '${mountPath}'`,
+    `but no tenant resolver was affirmed on the bridge config.`,
+    ``,
+    `Without an upstream tenant resolver, HookContext.tenantId and`,
+    `CrudEventPayload.tenantId silently propagate as 'undefined' — a`,
+    `data-loss bug class for hooks, audit logs, events, and CDC consumers.`,
+    `See CHANGELOG [0.6.0] for the parent-app middleware pattern.`,
+    ``,
+    `Fix: mount a tenant resolver upstream and affirm it on the config:`,
+    ``,
+    `    import { multiTenant } from 'hono-crud';`,
+    `    app.use('/*', multiTenant());`,
+    ``,
+    `    CrudModule.forResource('${mountPath}', {`,
+    `      meta, adapters,`,
+    `      tenantResolverMounted: true,`,
+    `    });`,
+    ``,
+    `If the Model genuinely should not be tenant-scoped, remove`,
+    `'multiTenant' (and any 'policies.readPushdown') from the Model definition.`,
+  ].join('\n');
+}
+
+/**
+ * Returns `true` if the given `MetaInput.model` declares tenant scope —
+ * i.e. it has `multiTenant: true | MultiTenantConfig`, or it sets
+ * `policies.readPushdown` (the documented signal that pushdown filtering
+ * is tenant-aware in hono-crud's policy surface).
+ */
+export function isTenantScopedMeta(meta: MetaInput): boolean {
+  // Cast through `unknown` because `MetaInput`'s `model` is generic over a
+  // ZodObject; the runtime fields we read are stable across instantiations.
+  const model = (meta as unknown as { model?: Record<string, unknown> })?.model;
+  if (!model) return false;
+  const mt = model.multiTenant;
+  if (mt === true) return true;
+  if (mt && typeof mt === 'object') return true;
+  const policies = model.policies as { readPushdown?: unknown } | undefined;
+  if (policies && typeof policies.readPushdown === 'function') return true;
+  return false;
+}
+
+/**
+ * Throws {@link MissingTenantResolverError} when the model is tenant-scoped
+ * and the caller did not affirm `tenantResolverMounted: true`. No-op for
+ * non-tenant-scoped models or when the affirmation is present.
+ */
+export function assertTenantResolverMounted(opts: {
+  meta: MetaInput;
+  mountPath: string;
+  tenantResolverMounted: boolean | undefined;
+}): void {
+  if (opts.tenantResolverMounted === true) return;
+  if (!isTenantScopedMeta(opts.meta)) return;
+  const tableName =
+    ((opts.meta as unknown as { model?: { tableName?: string } })?.model?.tableName) ??
+    '<unknown>';
+  throw new MissingTenantResolverError({ mountPath: opts.mountPath, tableName });
 }

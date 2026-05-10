@@ -12,7 +12,12 @@ import type {
   RegisterCrudOptions,
 } from 'hono-crud';
 import { getOverrides } from './override.decorator';
-import { ALL_CRUD_ENDPOINTS, type CrudConfig, type CrudEndpointName } from './types';
+import {
+  ALL_CRUD_ENDPOINTS,
+  assertTenantResolverMounted,
+  type CrudConfig,
+  type CrudEndpointName,
+} from './types';
 
 interface BuilderContext {
   globalPrefix: string;
@@ -46,6 +51,15 @@ export async function buildCrudRoutes(
   ctx: BuilderContext,
 ): Promise<void> {
   validateEndpointNames(crudConfig);
+  // Tenant-scoped Models without an upstream resolver silently propagate
+  // `tenantId: undefined` through HookContext and CrudEventPayload — a
+  // data-loss bug class. Fail fast here so the misconfiguration cannot
+  // ship. See {@link MissingTenantResolverError} for the recovery shape.
+  assertTenantResolverMounted({
+    meta: crudConfig.meta,
+    mountPath: ctx.joinPaths(ctx.globalPrefix, prefix) || '/',
+    tenantResolverMounted: crudConfig.tenantResolverMounted,
+  });
 
   const { fromHono, registerCrud, defineEndpoints } = await loadHonoCrud();
   const { OpenAPIHono } = await loadHonoZodOpenapi();

@@ -1,10 +1,20 @@
 import { METADATA_KEYS, MetadataRegistry, Scope, defineMetadata } from '@velajs/vela';
 import { ComponentManager } from '@velajs/vela/internal';
 import type { Type, DynamicModule } from '@velajs/vela';
+import { assertTenantResolverMounted } from './types';
 import type { ResourceConfig, CrudConfig } from './types';
 
 export class CrudModule {
   static forResource(path: string, config: ResourceConfig): DynamicModule {
+    // Fail fast on tenant-scoped models without a resolver affirmation.
+    // Throws synchronously at module-load time — see
+    // {@link MissingTenantResolverError} for rationale and recovery.
+    assertTenantResolverMounted({
+      meta: config.meta,
+      mountPath: path,
+      tenantResolverMounted: config.tenantResolverMounted,
+    });
+
     // Synthetic per-resource controller class. Vela's audit #2 removed
     // `createModuleRef`, but controllers still need a unique class identity per
     // resource path so the registry can store path/CRUD metadata independently.
@@ -26,6 +36,7 @@ export class CrudModule {
       only: config.only,
       except: config.except,
       endpoints: config.endpoints,
+      tenantResolverMounted: config.tenantResolverMounted,
     };
     defineMetadata(METADATA_KEYS.CRUD, crudConfig, controllerClass);
 

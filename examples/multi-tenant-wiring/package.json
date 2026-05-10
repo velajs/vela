@@ -1,0 +1,36 @@
+{
+  "name": "multi-tenant-wiring",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Canonical wiring for a tenant-scoped @velajs/crud resource: multiTenant() upstream + tenantResolverMounted: true on the bridge config.",
+  "scripts": {
+    "build:vela": "pnpm --dir ../../../vela build",
+    "build:crud": "pnpm --dir ../.. build",
+    "sync:deps": "pnpm run build:vela && pnpm run build:crud && pnpm install",
+    "build": "pnpm run sync:deps && rm -rf dist && swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
+    "smoke": "pnpm run build && node dist/smoke.js",
+    "typecheck": "pnpm run sync:deps && tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/zod-openapi": "^0.19.6",
+    "@velajs/crud": "file:../..",
+    "@velajs/vela": "file:../../../vela",
+    "hono": "^4",
+    "hono-crud": "^0.7.0",
+    "zod": "^4"
+  },
+  "devDependencies": {
+    "@swc/cli": "^0.8.0",
+    "@swc/core": "^1.15.11",
+    "@types/node": "^22",
+    "typescript": "^5",
+    "unplugin-swc": "^1.5.9"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@swc/core",
+      "esbuild"
+    ]
+  }
+}

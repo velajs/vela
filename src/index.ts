@@ -6,7 +6,11 @@ export type { OverrideEntry } from './override.decorator';
 export { buildCrudRoutes } from './builder';
 export { defineCrudResource } from './define-crud-resource';
 export type { DefineCrudResourceConfig } from './define-crud-resource';
-export { ALL_CRUD_ENDPOINTS } from './types';
+export {
+  ALL_CRUD_ENDPOINTS,
+  MissingTenantResolverError,
+  isTenantScopedMeta,
+} from './types';
 export type {
   CrudConfig,
   CrudDtos,
