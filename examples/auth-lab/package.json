@@ -1,0 +1,29 @@
+{
+  "name": "auth-lab",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:auth": "pnpm --dir ../.. build",
+    "sync:auth": "pnpm run build:auth && pnpm install",
+    "build": "pnpm run sync:auth && rm -rf dist && swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
+    "dev": "pnpm run build && node dist/server.js",
+    "smoke": "pnpm run build && node dist/smoke.js",
+    "typecheck": "pnpm run sync:auth && tsc --noEmit",
+    "deploy": "pnpm run build && wrangler deploy"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.0",
+    "@velajs/better-auth": "file:../..",
+    "@velajs/vela": "^1.6.0",
+    "better-auth": "^1.6.0",
+    "hono": "^4"
+  },
+  "devDependencies": {
+    "@swc/cli": "^0.8.0",
+    "@swc/core": "^1.15.11",
+    "@types/node": "^20",
+    "typescript": "^5",
+    "wrangler": "^3"
+  }
+}
