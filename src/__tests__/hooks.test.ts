@@ -117,4 +117,103 @@ describe('flat hooks', () => {
     const body = (await res.json()) as { result: { name: string } };
     expect(body.result.name).toBe('specific-wins');
   });
+
+  it('afterUpdate receives (ctx, prior, current) — flipped from hono-crud (prior, current, ctx)', async () => {
+    if (!honoCrudAvailable) return;
+
+    let captured: { ctx: unknown; prior: unknown; current: unknown } | null = null;
+    class C {}
+
+    const config: CrudConfig = {
+      meta: makeMeta() as never,
+      adapters: MemoryAdapters as never,
+      only: ['create', 'update'],
+      hooks: {
+        afterUpdate: (ctx, prior, current) => {
+          captured = { ctx, prior, current };
+          return current;
+        },
+      },
+      endpoints: {
+        // Force sequential mode so the hook actually runs in-band.
+        update: { hooks: { afterMode: 'sequential' } } as never,
+      },
+    };
+
+    const app = new Hono();
+    await buildCrudRoutes(app, C as unknown as Type, '/h3', config, ctx());
+
+    const createRes = await app.request('/h3', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'r1', name: 'before' }),
+    });
+    expect(createRes.status).toBe(201);
+    const created = (await createRes.json()) as { result: { id: string } };
+    const rid = created.result.id;
+
+    const updated = await app.request(`/h3/${rid}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'after' }),
+    });
+    expect(updated.status).toBe(200);
+
+    expect(captured).not.toBeNull();
+    const cap = captured as unknown as {
+      ctx: Record<string, unknown>;
+      prior: { name: string };
+      current: { name: string };
+    };
+    // ctx is the HookContext (has db.tx); prior is pre-mutation; current is post.
+    expect(cap.ctx).toHaveProperty('db');
+    expect(cap.prior.name).toBe('before');
+    expect(cap.current.name).toBe('after');
+  });
+
+  it('afterDelete receives (ctx, prior) — flipped from hono-crud (prior, ctx)', async () => {
+    if (!honoCrudAvailable) return;
+
+    let captured: { ctx: unknown; prior: unknown } | null = null;
+    class C {}
+
+    const config: CrudConfig = {
+      meta: makeMeta() as never,
+      adapters: MemoryAdapters as never,
+      only: ['create', 'delete'],
+      hooks: {
+        afterDelete: (ctx, prior) => {
+          captured = { ctx, prior };
+        },
+      },
+      endpoints: {
+        delete: { hooks: { afterMode: 'sequential' } } as never,
+      },
+    };
+
+    const app = new Hono();
+    await buildCrudRoutes(app, C as unknown as Type, '/h4', config, ctx());
+
+    const createRes = await app.request('/h4', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'r1', name: 'doomed' }),
+    });
+    expect(createRes.status).toBe(201);
+    const created = (await createRes.json()) as { result: { id: string } };
+    const rid = created.result.id;
+
+    const deleted = await app.request(`/h4/${rid}`, { method: 'DELETE' });
+    expect(deleted.status).toBeGreaterThanOrEqual(200);
+    expect(deleted.status).toBeLessThan(300);
+
+    expect(captured).not.toBeNull();
+    const cap = captured as unknown as {
+      ctx: Record<string, unknown>;
+      prior: { name: string };
+    };
+    expect(cap.ctx).toHaveProperty('db');
+    // prior is the pre-mutation row.
+    expect(cap.prior.name).toBe('doomed');
+  });
 });

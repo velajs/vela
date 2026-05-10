@@ -76,13 +76,21 @@ export async function buildCrudRoutes(
     if (err instanceof HttpException) {
       return c.json(err.getResponse(), err.getStatus() as ContentfulStatusCode);
     }
-    return c.json({ statusCode: 500, message: 'Internal Server Error' }, 500);
+    // Rethrow non-HttpException errors so the parent app's `onError` (or any
+    // framework filter chain registered above the sub-app) can render them.
+    // Prior versions emitted a generic 500 here, which silently swallowed
+    // custom error subclasses thrown by middleware/hooks and prevented the
+    // parent's APP_FILTER coverage from reaching this resource.
+    throw err;
   });
 
   const subApp = fromHono(openApiHono);
   registerCrud(subApp, '', endpoints, {
     middlewares: middlewares.length > 0 ? middlewares : undefined,
     endpointMiddlewares: Object.keys(endpointMiddlewares).length > 0 ? endpointMiddlewares : undefined,
+    // Forward verbatim — see CrudConfig.responseEnvelope. Omitted when
+    // unset so hono-crud falls back to its default envelope.
+    responseEnvelope: crudConfig.responseEnvelope,
   });
 
   const mountPath = ctx.joinPaths(ctx.globalPrefix, prefix) || '/';
@@ -173,15 +181,32 @@ function mergeFlatHooks(
 
   const existing = (base.hooks as Record<string, unknown> | undefined) ?? {};
 
-  // hono-crud invokes handlers as `(data, ctx)`. velajs flat sugar is
+  // hono-crud invokes most handlers as `(data, ctx)`. velajs flat sugar is
   // `(ctx, data)` — flip args and forward. Per-endpoint hooks attached
   // via endpoints.{name}.hooks win over flat sugar.
   const flipBefore = before
     ? (data: unknown, ctx: unknown) => (before as (c: unknown, d: unknown) => unknown)(ctx, data)
     : undefined;
-  const flipAfter = after
-    ? (data: unknown, ctx: unknown) => (after as (c: unknown, d: unknown) => unknown)(ctx, data)
-    : undefined;
+
+  // hono-crud 0.10.0 widened the after-update/after-delete shape:
+  //   afterUpdate: (prior, current, ctx)   — UPDATE
+  //   afterDelete: (prior, ctx)            — DELETE
+  //   afterCreate / afterList / afterRead: (data, ctx)  — unchanged
+  // Flat sugar mirrors that shape with ctx hoisted to first arg, so the
+  // wrapper picks the right flip per endpoint.
+  let flipAfter: ((...args: unknown[]) => unknown) | undefined;
+  if (after) {
+    if (endpoint === 'update') {
+      flipAfter = (prior: unknown, current: unknown, ctx: unknown) =>
+        (after as (c: unknown, p: unknown, cur: unknown) => unknown)(ctx, prior, current);
+    } else if (endpoint === 'delete') {
+      flipAfter = (prior: unknown, ctx: unknown) =>
+        (after as (c: unknown, p: unknown) => unknown)(ctx, prior);
+    } else {
+      flipAfter = (data: unknown, ctx: unknown) =>
+        (after as (c: unknown, d: unknown) => unknown)(ctx, data);
+    }
+  }
 
   return {
     ...base,

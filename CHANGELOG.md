@@ -5,6 +5,67 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] — 2026-05-10
+
+### Fixed
+- `buildCrudRoutes`'s sub-app `onError` no longer swallows non-`HttpException`
+  errors. Prior versions installed a catch-all that rendered a generic 500
+  for anything that wasn't a `HttpException`, which silently lost error
+  fidelity for any consumer that throws custom error subclasses (domain
+  errors, framework filter chains, third-party middleware errors). The
+  handler now keeps rendering `HttpException` locally and **rethrows**
+  everything else so the parent app's `onError` (or any registered
+  framework filter chain) can render them. Coverage:
+  `src/__tests__/onerror-rethrow.test.ts`.
+
+### Added
+- `responseEnvelope?: ResponseEnvelope` on `CrudConfig` — forwarded
+  verbatim to hono-crud's `RegisterCrudOptions.responseEnvelope` (added
+  in hono-crud 0.10.0). When set, both `success(result, info?)` and
+  `error(structuredError)` are the final formatting step before each
+  response body is serialised. Each `forResource` /
+  `defineCrudResource` / `@Crud` mount carries its own envelope, so
+  different resources can ship different envelopes if needed. Omitting
+  the option is byte-identical to the pre-0.10.0 default
+  (`{ success: true, result, result_info? }`). Coverage:
+  `src/__tests__/response-envelope-passthrough.test.ts`.
+- Re-exports of `ResponseEnvelope`, `ResponseEnvelopeInfo`, and
+  `StructuredError` from the package root, so consumers configuring
+  `responseEnvelope` don't need a second import from `hono-crud`.
+
+### Changed (BREAKING)
+- Flat `CrudHooks.afterUpdate` and `CrudHooks.afterDelete` adopt
+  hono-crud 0.10.0's two-snapshot shape — the bridge surface
+  receives the **pre-mutation** row as `prior` and, for updates, the
+  **post-mutation** row as `current`, with `ctx` hoisted to first arg.
+  Per-endpoint hooks attached via `endpoints.{name}.hooks` continue to
+  use hono-crud's native shape and are untouched.
+
+  **Migration.** Update flat-sugar `afterUpdate` / `afterDelete`
+  callbacks:
+
+  ```diff
+  CrudModule.forResource('/posts', {
+    meta, adapters,
+    hooks: {
+  -   afterUpdate: (ctx, post) => emitChange(post),
+  +   afterUpdate: (ctx, prior, current) => emitChange(prior, current),
+  -   afterDelete: (ctx, id)   => emitDelete(id),
+  +   afterDelete: (ctx, prior) => emitDelete(prior),
+    },
+  });
+  ```
+
+  The two-snapshot shape lets downstream consumers compute
+  field-level diffs server-side (audit logs, CDC payloads, event
+  bodies) without a re-fetch and without racing concurrent writers.
+  Coverage: `src/__tests__/hooks.test.ts`.
+
+### Compatibility
+- Peer-dep bump: `hono-crud >=0.10.0` (was `>=0.7.0`). The
+  `responseEnvelope` forwarding and the `afterUpdate`/`afterDelete`
+  signature change both depend on the upstream's 0.10.0 surface.
+
 ## [1.1.0] — 2026-05-10
 
 ### Added

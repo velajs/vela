@@ -4,6 +4,7 @@ import type {
   EndpointsConfig,
   HookContext,
   MetaInput,
+  ResponseEnvelope,
 } from 'hono-crud';
 import type { ZodObject, ZodRawShape } from 'zod';
 
@@ -95,13 +96,23 @@ export interface CrudDtos {
 /**
  * Flat-sugar hooks fired by @velajs/crud. Each handler receives a
  * HookContext (transaction handle, tenantId, organizationId, userId,
- * agentId, agentRunId) as the first argument; the second argument is
- * the data shape relevant to the hook.
+ * agentId, agentRunId) as the first argument; remaining arguments are
+ * the data shape(s) relevant to the hook.
+ *
+ * `afterUpdate` and `afterDelete` mirror hono-crud's two-snapshot shape:
+ * the bridge surface receives the **pre-mutation** row as `prior` and,
+ * for updates, the **post-mutation** row as `current` — both observed
+ * inside the same DB transaction as the parent write (when the adapter
+ * wraps in one). The two-snapshot shape lets downstream consumers
+ * compute field-level diffs server-side (audit logs, CDC payloads,
+ * event bodies) without a re-fetch.
  *
  * The bridge translates each flat hook into hono-crud's per-endpoint
- * `(data, ctx)` shape inside builder.ts:mergeFlatHooks. Per-endpoint
- * hooks attached via `endpoints.{name}.hooks` win over flat sugar
- * (existing precedence preserved).
+ * shape inside `builder.ts:mergeFlatHooks` — for `afterUpdate` and
+ * `afterDelete` that means flipping `(ctx, prior, current?)` here into
+ * hono-crud's `(prior, current?, ctx)`. Per-endpoint hooks attached
+ * via `endpoints.{name}.hooks` win over flat sugar (existing
+ * precedence preserved).
  */
 export interface CrudHooks {
   beforeCreate?: (ctx: HookContext, data: unknown) => unknown | Promise<unknown>;
@@ -111,9 +122,13 @@ export interface CrudHooks {
   beforeRead?: (ctx: HookContext, lookupValue: string) => void | Promise<void>;
   afterRead?: (ctx: HookContext, data: unknown) => unknown | Promise<unknown>;
   beforeUpdate?: (ctx: HookContext, data: unknown) => unknown | Promise<unknown>;
-  afterUpdate?: (ctx: HookContext, data: unknown) => unknown | Promise<unknown>;
+  afterUpdate?: (
+    ctx: HookContext,
+    prior: unknown,
+    current: unknown,
+  ) => unknown | Promise<unknown>;
   beforeDelete?: (ctx: HookContext, lookupValue: string) => void | Promise<void>;
-  afterDelete?: (ctx: HookContext, lookupValue: string) => void | Promise<void>;
+  afterDelete?: (ctx: HookContext, prior: unknown) => void | Promise<void>;
 }
 
 export interface CrudConfig<M extends MetaInput = MetaInput> {
@@ -131,6 +146,33 @@ export interface CrudConfig<M extends MetaInput = MetaInput> {
   hooks?: CrudHooks;
   /** Per-route Zod schema overrides for create / update body validation. */
   dto?: CrudDtos;
+  /**
+   * Pluggable response envelope forwarded verbatim to hono-crud's
+   * `RegisterCrudOptions.responseEnvelope`. When set, both functions are
+   * the **final formatting step** before each response body is
+   * serialised — `success(result, info?)` for every 2xx and
+   * `error(structuredError)` for every error response (composed after
+   * any `ErrorMapper`s registered on `createErrorHandler`).
+   *
+   * Default behaviour (omit this option) is byte-identical to
+   * hono-crud's pre-0.10.0 shape — `{ success: true, result, result_info? }`
+   * for success and `{ success: false, error: <StructuredError> }` for
+   * errors. Each `forResource` / `defineCrudResource` / `@Crud` mount
+   * carries its own envelope, so different resources can ship different
+   * envelopes if needed.
+   *
+   * @example
+   * ```ts
+   * CrudModule.forResource('/posts', {
+   *   meta, adapters,
+   *   responseEnvelope: {
+   *     success: (result, info) => info ? { data: result, meta: info } : { data: result },
+   *     error:   (err) => ({ error: { code: err.code, message: err.message } }),
+   *   },
+   * });
+   * ```
+   */
+  responseEnvelope?: ResponseEnvelope;
   /**
    * Affirm that a tenant resolver (e.g. hono-crud's `multiTenant()`
    * middleware, or any equivalent that calls `c.set('tenantId', ...)`) is

@@ -33,8 +33,8 @@ importers:
         specifier: ^4
         version: 4.12.2
       hono-crud:
-        specifier: ^0.7.0
-        version: 0.7.0(drizzle-orm@0.36.4)(drizzle-zod@0.8.3(drizzle-orm@0.36.4)(zod@4.3.6))(fastest-levenshtein@1.0.16)(hono@4.12.2)(pluralize@8.0.0)(zod@4.3.6)
+        specifier: ^0.10.0
+        version: 0.10.0(drizzle-orm@0.36.4)(drizzle-zod@0.8.3(drizzle-orm@0.36.4)(zod@4.3.6))(fastest-levenshtein@1.0.16)(hono@4.12.2)(pluralize@8.0.0)(zod@4.3.6)
       typescript:
         specifier: ^5
         version: 5.9.3
@@ -995,8 +995,8 @@ packages:
   graceful-fs@4.2.11:
     resolution: {integrity: sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==}
 
-  hono-crud@0.7.0:
-    resolution: {integrity: sha512-dpavlTqPhNBY57L2uHx7o93HRiKPXaDrDfCSaqgf3fmNKSX1FW/BwWWe79NetJmcThO+VfgaNuN0DBDOlVXfmA==}
+  hono-crud@0.10.0:
+    resolution: {integrity: sha512-10kg2Orp1DhGj4As0d3lXrhWpLY3yZitiUjLKURAVwGBGjt1SqC6tmUmV0kZjiUxoK/qucyDccAd+YT0a9he3g==}
     engines: {node: '>=20.19.0'}
     peerDependencies:
       '@prisma/adapter-pg': '>=5.0.0'
@@ -2153,7 +2153,7 @@ snapshots:
 
   graceful-fs@4.2.11: {}
 
-  hono-crud@0.7.0(drizzle-orm@0.36.4)(drizzle-zod@0.8.3(drizzle-orm@0.36.4)(zod@4.3.6))(fastest-levenshtein@1.0.16)(hono@4.12.2)(pluralize@8.0.0)(zod@4.3.6):
+  hono-crud@0.10.0(drizzle-orm@0.36.4)(drizzle-zod@0.8.3(drizzle-orm@0.36.4)(zod@4.3.6))(fastest-levenshtein@1.0.16)(hono@4.12.2)(pluralize@8.0.0)(zod@4.3.6):
     dependencies:
       '@hono/swagger-ui': 0.5.3(hono@4.12.2)
       '@hono/zod-openapi': 1.2.2(hono@4.12.2)(zod@4.3.6)
