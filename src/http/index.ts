@@ -31,6 +31,7 @@ export {
   applyDecorators,
   isController,
 } from './decorators';
+export { createLazyParamDecorator } from './lazy-param.decorator';
 export type {
   RouteMetadata,
   ControllerMetadata,

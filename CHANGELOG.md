@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.6.0]
+
+The exception-filter chain now reaches into attached middlewares for full NestJS parity, and a new `createLazyParamDecorator` helper closes the parameter-decorator-vs-guard ordering hazard at the public-API surface.
+
+### Added
+
+- **`createLazyParamDecorator((data, ctx) => T)`.** Custom parameter decorators whose factory runs the *first time the handler reads a property on the resolved value* — not during argument extraction. Vela's argument resolver runs before guards by design (`extract args → guards → handler`), which means a `createParamDecorator` factory that depends on guard-populated state observes an empty slot. The lazy variant returns a `Proxy` whose traps invoke the factory on demand; the `get` trap short-circuits `prop === 'then'` so `await value` does not consider the proxy a thenable and therefore does not trigger eager resolution. Method results are auto-bound to the resolved real target so detached calls keep `this`; `ownKeys` + `getOwnPropertyDescriptor` are implemented so `JSON.stringify(value)` works after one access. Exported from the root barrel and from `@velajs/vela/internal` via the same surface as `createParamDecorator`. Documented in README under *Custom parameter decorators with deferred resolution*.
+
+### Changed
+
+- **Exception-filter chain now catches errors thrown inside vela-attached middlewares.** Previously the `APP_FILTER` / `@UseFilters` chain only handled errors thrown from `@Controller` handler methods; errors from middlewares (global, `MiddlewareConsumer.apply(...).forRoutes(...)`, and per-route attached) bypassed the chain and surfaced as Hono's outer 500. They now flow through the same filter resolution as handler exceptions, with a synthesized `ExecutionContext` whose `getClass()` returns the `VelaMiddlewareHost` marker and whose `getHandler()` returns the `Symbol.for('vela.middleware')` sentinel — `getType()` stays `'http'` for NestJS parity. Only global filters apply at the middleware boundary (per-handler `@UseFilters` requires a controller call frame); for thrown `HttpException`s with no catching filter, the chain renders the exception's own response/status (matching handler-thrown semantics). Non-`HttpException` throws with no catching filter re-throw to preserve the existing default-500 path. Non-throwing middleware paths (returning a `Response`, calling `await next()`, resolving a promise) are byte-identical to before.
+
 ## Unreleased
 
 A sanctioned per-request injectable lands as a framework primitive, the metadata-store unification finally has its regression tests, and dynamic module identity becomes consistent — closing the last open audit item.

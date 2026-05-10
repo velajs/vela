@@ -143,6 +143,51 @@ class MyModule {
 
 `forRootAsync` callers should pass `key` explicitly when the same module needs multiple async instances — factories aren't structurally hashable.
 
+## Custom parameter decorators with deferred resolution
+
+Vela's argument resolver runs **before** guards (`extract args → guards → handler`). A custom parameter decorator built with `createParamDecorator` therefore observes any state populated by a guard as still empty — its factory has already fired by the time the guard runs.
+
+When a parameter's value depends on guard output (a `REQUEST_CONTEXT`-stored user, a tenant resolved from a JWT, etc.), use `createLazyParamDecorator` instead. The factory does not run during argument extraction; it runs the first time the handler reads a property on the resolved value:
+
+```ts
+import {
+  createLazyParamDecorator,
+  Inject,
+  Injectable,
+  REQUEST_CONTEXT,
+  Scope,
+  UseGuards,
+} from '@velajs/vela';
+import type { CanActivate, ExecutionContext, RequestContext } from '@velajs/vela';
+
+const USER_KEY = Symbol.for('app.user');
+
+@Injectable({ scope: Scope.REQUEST })
+class AuthGuard implements CanActivate {
+  constructor(@Inject(REQUEST_CONTEXT) private readonly ctx: RequestContext) {}
+  canActivate(_e: ExecutionContext): boolean {
+    this.ctx.set(USER_KEY, { id: 'u-1', name: 'ada' });   // populated here
+    return true;
+  }
+}
+
+const CurrentUser = createLazyParamDecorator((_data, ctx: ExecutionContext) => {
+  const reqCtx = ctx
+    .getContext()
+    .get('container')
+    .resolve<RequestContext>(REQUEST_CONTEXT);
+  return reqCtx.get(USER_KEY);
+});
+
+@UseGuards(AuthGuard)
+@Get('/me')
+me(@CurrentUser() user: { id: string; name: string }) {
+  return { id: user.id };           // factory runs here, AFTER AuthGuard
+}
+```
+
+The proxy short-circuits `then` on its `get` trap so `await value` returns the proxy itself rather than triggering eager resolution. Method results are auto-bound to the resolved real target, so detached method calls keep `this`. `JSON.stringify(value)` works after one access (the proxy implements `ownKeys` + `getOwnPropertyDescriptor`).
+
 ## Companion packages
 
 | Package | Purpose |
