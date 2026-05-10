@@ -1,15 +1,20 @@
 import { type Context, type MiddlewareHandler, Hono } from 'hono';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { HttpMethod } from '../constants';
+import { HttpException } from '../errors/http-exception';
 import { getMetadata } from '../metadata';
 import type { Container } from '../container/container';
 import type { Token, Type } from '../container/types';
 import type { MiddlewareRouteDefinition } from '../module/middleware';
 import { joinPaths } from '../registry/paths';
 import { ArgumentResolver } from './argument-resolver';
+import { buildMiddlewareExecutionContext } from './execution-context';
 import { HandlerExecutor } from './handler-executor';
 import { instantiate, instantiateMany } from './instantiate';
 import { REQUEST_CONTEXT, createRequestContext } from './request-context';
+import { mapResponse } from './response-mapper';
 import { ComponentManager } from '../pipeline/component.manager';
+import { shouldFilterCatch } from '../pipeline/decorators';
 import type {
   CanActivate,
   ExceptionFilter,
@@ -177,6 +182,60 @@ export class RouteManager {
     return child;
   }
 
+  // Wraps an attached middleware so a thrown error flows through the
+  // exception-filter chain instead of bypassing it on the way to Hono's
+  // outer error handler. Mirrors the catch tail in HandlerExecutor — global
+  // filters are the only scope reachable here, since per-handler filters
+  // require a controller call frame that the middleware boundary lacks.
+  // Non-throwing middleware paths (returning a Response, calling `next()`,
+  // resolving a promise) are byte-identical to before — the wrapper only
+  // intercepts thrown / rejected values.
+  private wrapMiddlewareWithFilters(handler: MiddlewareHandler): MiddlewareHandler {
+    return async (c, next) => {
+      try {
+        return await handler(c, next);
+      } catch (error) {
+        const response = await this.mapMiddlewareError(c, error);
+        // Force-replace any handler-set response. A middleware that throws
+        // *after* `await next()` has the handler's body already attached
+        // to `c.res`; without overwriting it, Hono would emit the
+        // pre-throw success response and the filter's render would be
+        // dropped.
+        c.res = response;
+        return response;
+      }
+    };
+  }
+
+  private async mapMiddlewareError(c: Context, error: unknown): Promise<Response> {
+    const requestContainer = this.getRequestContainer(c);
+    const filters = instantiateMany<ExceptionFilter>(this.globalFilters, requestContainer);
+    const host = buildMiddlewareExecutionContext(c);
+
+    for (const filter of filters) {
+      if (shouldFilterCatch(filter, error)) {
+        try {
+          const filtered = await filter.catch(error, host);
+          return mapResponse(c, filtered);
+        } catch {
+          // Filter itself threw — fall through to default error mapping.
+          break;
+        }
+      }
+    }
+
+    if (error instanceof HttpException) {
+      const response = error.getResponse();
+      const status = error.getStatus() as ContentfulStatusCode;
+      return c.json(response, status);
+    }
+
+    // Non-HttpException with no catching filter: re-throw so Hono's
+    // outer error handler produces the same default-500 response it
+    // produced before this wrapping was introduced.
+    throw error;
+  }
+
   registerController(controller: Type): this {
     const prefix = MetadataRegistry.getControllerPath(controller);
     const options = MetadataRegistry.getControllerOptions(controller);
@@ -208,11 +267,11 @@ export class RouteManager {
       .sort((a, b) => (a.priority - b.priority) || (a.index - b.index));
 
     for (const { entry } of sortedGlobal) {
-      app.use('*', (c, next) => {
+      app.use('*', this.wrapMiddlewareWithFilters((c, next) => {
         const requestContainer = this.getRequestContainer(c);
         const resolved = instantiate<NestMiddleware>(entry, requestContainer);
         return resolved.use(c, next);
-      });
+      }));
     }
 
     const sortedConsumer = this.consumerMiddlewareDefinitions
@@ -223,7 +282,7 @@ export class RouteManager {
       const matchRoute   = this.compileRouteMatcher(def.routes);
       const matchExclude = this.compileRouteMatcher(def.excludes);
 
-      app.use('*', (c, next) => {
+      app.use('*', this.wrapMiddlewareWithFilters((c, next) => {
         const path   = c.req.path;
         const method = c.req.method;
 
@@ -238,7 +297,7 @@ export class RouteManager {
         };
 
         return runChain(0);
-      });
+      }));
     }
 
     // First pass: register all custom routes (must come before CRUD /:id routes).
@@ -261,14 +320,14 @@ export class RouteManager {
 
           for (const fullPath of versionedPaths) {
             for (const middlewareItem of middlewareItems) {
-              app.use(fullPath, (c, next) => {
+              app.use(fullPath, this.wrapMiddlewareWithFilters((c, next) => {
                 const requestContainer = this.getRequestContainer(c);
                 const resolved = instantiate<NestMiddleware>(
                   middlewareItem as Type<NestMiddleware> | NestMiddleware,
                   requestContainer,
                 );
                 return resolved.use(c, next);
-              });
+              }));
             }
             this.registerRoute(app, route.method, fullPath, handler);
           }

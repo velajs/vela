@@ -86,6 +86,7 @@ export {
   Header,
   Redirect,
   createParamDecorator,
+  createLazyParamDecorator,
   applyDecorators,
 } from './http/index';
 
