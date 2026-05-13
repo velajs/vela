@@ -1,6 +1,6 @@
 {
   "name": "@velajs/better-auth",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "better-auth integration for the Vela framework",
   "type": "module",
   "main": "./dist/index.js",
