@@ -14,6 +14,19 @@ export const VelaFactory = {
     const instances = await loader.resolveAllInstances();
     app.setInstances(instances);
 
+    // Register the first-request middleware AFTER user-supplied middleware
+    // (registered by bootstrap from `options.middleware`). Ordering matters:
+    // runtime adapters like `@velajs/cloudflare` install binding-init
+    // middleware that must run BEFORE OnFirstRequest hooks read those
+    // bindings. Vela's middleware is appended last → fires after all user
+    // middleware, before route handlers (which are registered separately).
+    routeManager.useGlobalMiddleware({
+      use: async (_c, next) => {
+        await app.callOnFirstRequest();
+        await next();
+      },
+    });
+
     await app.callOnModuleInit();
     await app.callOnApplicationBootstrap();
 

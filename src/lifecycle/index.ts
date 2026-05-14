@@ -6,6 +6,26 @@ export interface OnApplicationBootstrap {
   onApplicationBootstrap(): void | Promise<void>;
 }
 
+/**
+ * Fires exactly once, on the first incoming HTTP request, AFTER user-supplied
+ * middleware (so binding initializers like `@velajs/cloudflare`'s env capture
+ * run first) and BEFORE route handlers. The hook bridges module-load and
+ * request-time semantics — use it for state that depends on values only
+ * available at request time (Cloudflare bindings, Deno Deploy env, etc.).
+ *
+ * Concurrency: vela memoizes the call. Concurrent first requests all await
+ * the same promise; the hook runs exactly once.
+ *
+ * Non-HTTP consumers (CLI, tests) can trigger it manually via
+ * `app.callOnFirstRequest()`.
+ *
+ * Edge-safe: the hook itself is just `() => void | Promise<void>`. The
+ * runtime contract is async/Promise — no Node-only APIs are involved.
+ */
+export interface OnFirstRequest {
+  onFirstRequest(): void | Promise<void>;
+}
+
 export interface OnModuleDestroy {
   onModuleDestroy(): void | Promise<void>;
 }
@@ -31,6 +51,14 @@ export function hasOnApplicationBootstrap(instance: unknown): instance is OnAppl
     instance !== null &&
     typeof instance === 'object' &&
     typeof (instance as OnApplicationBootstrap).onApplicationBootstrap === 'function'
+  );
+}
+
+export function hasOnFirstRequest(instance: unknown): instance is OnFirstRequest {
+  return (
+    instance !== null &&
+    typeof instance === 'object' &&
+    typeof (instance as OnFirstRequest).onFirstRequest === 'function'
   );
 }
 

@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.7.0 (2026-05-14)
+
+### New
+
+- **`OnFirstRequest` lifecycle hook.** Fires exactly once on the first incoming HTTP request, AFTER user-supplied middleware (so runtime adapters like `@velajs/cloudflare`'s binding-init can run first) and BEFORE route handlers. Bridges module-load and request-time semantics — the canonical seam for state that depends on values only available at request time (Cloudflare D1/KV/R2 bindings, Deno Deploy env, etc.). Auto-fired by a global middleware vela installs after user middleware; non-HTTP consumers can trigger it manually via `app.callOnFirstRequest()`. Concurrency-safe: vela memoizes the promise so parallel first requests share a single fire.
+
+### Notes
+
+- Edge-clean addition — no `node:*`, no `Buffer`, no `setInterval`; the hook is just `() => void | Promise<void>` wired into Hono's middleware chain.
+- Backwards-compatible. Existing apps unaffected: the new middleware only fires hooks if any registered instance implements `OnFirstRequest`, and the implementation is a no-op otherwise.
+
 ## [1.6.0]
 
 The exception-filter chain now reaches into attached middlewares for full NestJS parity, and a new `createLazyParamDecorator` helper closes the parameter-decorator-vs-guard ordering hazard at the public-API surface.
