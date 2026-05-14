@@ -14,12 +14,11 @@ import {
   VelaFactory,
 } from '@velajs/vela';
 import {
-  BETTER_AUTH,
   BetterAuthModule,
+  BetterAuthService,
   CurrentSession,
   CurrentUser,
   Public,
-  type BetterAuthInstance,
   type Session,
   type User,
 } from '@velajs/better-auth';
@@ -44,21 +43,29 @@ const auth = betterAuth({
   trustedOrigins: ['http://localhost:8787', 'http://localhost'],
 });
 
-// A vela service that uses the better-auth instance via DI. This is the
-// "access in services or controllers" pattern: any @Injectable can
-// @Inject(BETTER_AUTH) and call auth.api.* directly.
+// A vela service that uses the better-auth surface via DI. This is the
+// canonical "access in services or controllers" pattern: any @Injectable
+// can @Inject(BetterAuthService) and call `.api.*` / `.handler` / `.auth`
+// — the service exposes the underlying betterAuth() instance through a
+// lazy-cached field, matching NestJS service-injection idioms.
 @Injectable()
 class StatsService {
-  // The auth instance is injected, not imported — keeps the service decoupled
-  // from the global module-level `auth` const and makes it overridable in tests.
-  constructor(@Inject(BETTER_AUTH) private readonly auth: BetterAuthInstance) {}
+  constructor(
+    @Inject(BetterAuthService) private readonly authService: BetterAuthService,
+  ) {}
 
   userCount(): number {
+    // BetterAuthService.api / .auth / .handler are available here. The
+    // memory adapter's tables happen to be a module-level const we can
+    // count directly; a real app would query through authService.api.
+    void this.authService;
     return memory.user.length;
   }
 
   hasSessionFor(userId: string): boolean {
-    return memory.session.some((s: any) => s.userId === userId);
+    return memory.session.some(
+      (s) => (s as { userId?: string }).userId === userId,
+    );
   }
 }
 
