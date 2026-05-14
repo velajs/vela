@@ -1,7 +1,18 @@
-import { MetadataRegistry } from '@velajs/vela';
+import {
+  Controller,
+  Get,
+  Inject,
+  MetadataRegistry,
+  UseGuards,
+} from '@velajs/vela';
 import { Test } from '@velajs/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { BETTER_AUTH, BetterAuthModule } from '../index';
+import {
+  AuthGuard,
+  BETTER_AUTH,
+  BetterAuthModule,
+  CurrentUser,
+} from '../index';
 import type { BetterAuthInstance } from '../better-auth.types';
 
 function makeAuth(label: string) {
@@ -13,17 +24,11 @@ function makeAuth(label: string) {
 }
 
 // These tests pin the documented unit-testing surface: `@velajs/testing`'s
-// `Test.createTestingModule(...).overrideProvider(BETTER_AUTH).use*(...)` and
-// the corresponding `moduleRef.get(BETTER_AUTH)` lookup. They prove the
-// override is reachable at the DI boundary — which is what consumers reach
-// for when unit-testing services that `@Inject(BETTER_AUTH)`.
-//
-// Note (current @velajs/testing limitation): `Test.createTestingModule(...)`
-// does not run the full `bootstrap()` (no REQUEST_CONTEXT registration), so
-// integration-style tests that exercise the request pipeline + AuthGuard
-// should use `VelaFactory.create(AppModule)` directly — see
-// auth.guard.test.ts. The override surface tested here remains useful for
-// any DI consumer that resolves BETTER_AUTH outside the request pipeline.
+// `Test.createTestingModule(...).overrideProvider(BETTER_AUTH).use*(...)`.
+// Verified against @velajs/testing >= 0.2.1, which fixed (a) bootstrap parity
+// for REQUEST_CONTEXT and (b) module-internal override visibility — so the
+// override now reaches both `moduleRef.get(...)` and controllers that
+// `@Inject(BETTER_AUTH)` directly.
 describe('Test.createTestingModule — BETTER_AUTH override', () => {
   beforeEach(() => MetadataRegistry.clear());
   afterEach(() => MetadataRegistry.clear());
@@ -63,5 +68,71 @@ describe('Test.createTestingModule — BETTER_AUTH override', () => {
       .compile();
 
     expect(moduleRef.get(BETTER_AUTH)).toBe(mock);
+  });
+
+  it('controllers that @Inject(BETTER_AUTH) receive the override', async () => {
+    const real = makeAuth('real');
+    const mock = makeAuth('mock');
+
+    @Controller('/probe')
+    class ProbeController {
+      constructor(
+        @Inject(BETTER_AUTH) private readonly auth: BetterAuthInstance & {
+          __label__: string;
+        },
+      ) {}
+
+      @Get()
+      identity() {
+        return { label: this.auth.__label__ };
+      }
+    }
+
+    const moduleRef = await Test.createTestingModule({
+      imports: [BetterAuthModule.forRoot({ auth: real })],
+      controllers: [ProbeController],
+    })
+      .overrideProvider(BETTER_AUTH)
+      .useValue(mock)
+      .compile();
+
+    const app = await moduleRef.createApplication();
+    const res = await app.getHonoApp().request('/probe');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ label: 'mock' });
+  });
+
+  it('AuthGuard reaches the mocked auth.api.getSession via the override', async () => {
+    const real = makeAuth('real');
+    const mock = makeAuth('mock-with-session');
+    // Make the mock return a session — the real one returns null.
+    mock.api.getSession = vi.fn().mockResolvedValue({
+      user: { id: 'mock-user', email: 'mock@example.com', name: 'Mock' },
+      session: { id: 'mock-sess', userId: 'mock-user' },
+    });
+
+    @Controller('/me')
+    @UseGuards(AuthGuard)
+    class MeController {
+      @Get()
+      me(@CurrentUser() user: { id: string }) {
+        return { id: user.id };
+      }
+    }
+
+    const moduleRef = await Test.createTestingModule({
+      imports: [BetterAuthModule.forRoot({ auth: real })],
+      controllers: [MeController],
+    })
+      .overrideProvider(BETTER_AUTH)
+      .useValue(mock)
+      .compile();
+
+    const app = await moduleRef.createApplication();
+    const res = await app.getHonoApp().request('/me');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: 'mock-user' });
+    expect(mock.api.getSession).toHaveBeenCalledTimes(1);
+    expect(real.api.getSession).not.toHaveBeenCalled();
   });
 });

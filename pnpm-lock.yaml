@@ -15,8 +15,8 @@ importers:
         specifier: ^1.15.11
         version: 1.15.33
       '@velajs/testing':
-        specifier: ^0.2.0
-        version: 0.2.0(@velajs/vela@1.6.0)(hono@4.12.18)
+        specifier: ^0.2.1
+        version: 0.2.1(@velajs/vela@1.6.0)(hono@4.12.18)
       '@velajs/vela':
         specifier: ^1.6.0
         version: 1.6.0
@@ -510,11 +510,11 @@ packages:
   '@types/http-cache-semantics@4.2.0':
     resolution: {integrity: sha512-L3LgimLHXtGkWikKnsPg0/VFx9OGZaC+eN1u4r+OB1XRqH3meBIAVC2zr1WdMH+RHmnRkqliQAOHNJ/E0j/e0Q==}
 
-  '@velajs/testing@0.2.0':
-    resolution: {integrity: sha512-YpTEudO16AndG8+dQ8nQVN7TVx9aS40dPvXexke0/FnXJ5wtx4wzJzwAEMZqj32Mmc7pHrxdDfQcxH1ihFb+Eg==}
+  '@velajs/testing@0.2.1':
+    resolution: {integrity: sha512-QdTIDpbykPUerWARt2Lrf2OL8ee67eSDlSzfn8E99jtTFLVDWMuSm2lk5wqKg6TCekkyOCTVredJfn4p2ZUB0g==}
     engines: {node: '>=20'}
     peerDependencies:
-      '@velajs/vela': '>=1.1.0'
+      '@velajs/vela': '>=1.6.0'
       hono: '>=4'
 
   '@velajs/vela@1.6.0':
@@ -1734,7 +1734,7 @@ snapshots:
 
   '@types/http-cache-semantics@4.2.0': {}
 
-  '@velajs/testing@0.2.0(@velajs/vela@1.6.0)(hono@4.12.18)':
+  '@velajs/testing@0.2.1(@velajs/vela@1.6.0)(hono@4.12.18)':
     dependencies:
       '@velajs/vela': 1.6.0
       hono: 4.12.18
