@@ -145,15 +145,15 @@ class AppModule {}
 
 ## Calling better-auth from services & controllers
 
-Inject the auth instance via the `BETTER_AUTH` token. The full `auth.api.*` surface is available — list sessions, revoke, impersonate, anything better-auth exposes server-side.
+Inject `BetterAuthService` — a normal `@Injectable()` exposing the underlying better-auth instance plus convenience getters for `.api` and `.handler`. The full `auth.api.*` surface is available: list sessions, revoke, impersonate, anything better-auth exposes server-side.
 
 ```ts
 import { Inject, Injectable } from '@velajs/vela';
-import { BETTER_AUTH, type BetterAuthInstance } from '@velajs/better-auth';
+import { BetterAuthService } from '@velajs/better-auth';
 
 @Injectable()
 class AdminUserService {
-  constructor(@Inject(BETTER_AUTH) private readonly auth: BetterAuthInstance) {}
+  constructor(@Inject(BetterAuthService) private readonly auth: BetterAuthService) {}
 
   listSessions(userId: string) {
     return this.auth.api.listUserSessions({ userId });
@@ -163,6 +163,8 @@ class AdminUserService {
   }
 }
 ```
+
+Under `forRootAsync`, the underlying `betterAuth({...})` instance is constructed **lazily on first `.auth` / `.api` / `.handler` access**. That's what makes Cloudflare bindings (D1, KV, R2) work: the user factory only runs after request-time middleware has populated env. No proxies, no lifecycle hooks — just a service with a cached field.
 
 ## Decorators
 
@@ -210,13 +212,13 @@ Set `mountHandler: false` and mount the catch-all yourself if you need a base pa
 
 ```ts
 import { Controller, All, Req, Inject, Injectable } from '@velajs/vela';
-import { BETTER_AUTH, Public } from '@velajs/better-auth';
+import { BetterAuthService, Public } from '@velajs/better-auth';
 
 @Public(true)
 @Controller('/auth')
 @Injectable()
 class CustomCatchallController {
-  constructor(@Inject(BETTER_AUTH) private auth: BetterAuthInstance) {}
+  constructor(@Inject(BetterAuthService) private auth: BetterAuthService) {}
   @All('/*') handle(@Req() c: Context) { return this.auth.handler(c.req.raw); }
 }
 ```
