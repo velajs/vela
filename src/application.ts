@@ -6,7 +6,6 @@ import {
   hasBeforeApplicationShutdown,
   hasOnApplicationBootstrap,
   hasOnApplicationShutdown,
-  hasOnFirstRequest,
   hasOnModuleDestroy,
   hasOnModuleInit,
 } from './lifecycle/index';
@@ -17,9 +16,6 @@ import type { FilterType, GuardType, InterceptorType, PipeType } from './registr
 export class VelaApplication {
   private instances: unknown[] = [];
   private honoApp: Hono | null = null;
-  // Memoizes the first-request hook fire. Concurrent first requests share
-  // this promise so the hook runs exactly once.
-  private firstRequestPromise: Promise<void> | undefined;
 
   constructor(
     private readonly container: Container,
@@ -128,27 +124,6 @@ export class VelaApplication {
         await instance.onApplicationBootstrap();
       }
     }
-  }
-
-  /**
-   * Fire `OnFirstRequest` hooks exactly once across the application's
-   * lifetime. Auto-invoked by a global middleware on the first HTTP request;
-   * also safe to call manually from non-HTTP entry points (CLI, tests).
-   *
-   * Concurrent calls share the same in-flight promise — vela guarantees
-   * each instance's `onFirstRequest()` runs at most once.
-   */
-  callOnFirstRequest(): Promise<void> {
-    if (!this.firstRequestPromise) {
-      this.firstRequestPromise = (async () => {
-        for (const instance of this.instances) {
-          if (hasOnFirstRequest(instance)) {
-            await instance.onFirstRequest();
-          }
-        }
-      })();
-    }
-    return this.firstRequestPromise;
   }
 
   async close(signal?: string): Promise<void> {

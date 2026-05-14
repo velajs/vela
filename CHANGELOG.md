@@ -1,15 +1,15 @@
 # Changelog
 
-## 1.7.0 (2026-05-14)
+## 1.8.1 (2026-05-14)
 
-### New
+### Revert
 
-- **`OnFirstRequest` lifecycle hook.** Fires exactly once on the first incoming HTTP request, AFTER user-supplied middleware (so runtime adapters like `@velajs/cloudflare`'s binding-init can run first) and BEFORE route handlers. Bridges module-load and request-time semantics — the canonical seam for state that depends on values only available at request time (Cloudflare D1/KV/R2 bindings, Deno Deploy env, etc.). Auto-fired by a global middleware vela installs after user middleware; non-HTTP consumers can trigger it manually via `app.callOnFirstRequest()`. Concurrency-safe: vela memoizes the promise so parallel first requests share a single fire.
+- **`OnFirstRequest` lifecycle hook removed.** Shipped in 1.8.0 to bridge module-load and request-time semantics for runtime-bound state (Cloudflare bindings, etc.). In practice, consumers can achieve the same deferral with a plain `@Injectable()` service holding the state as a lazy-cached field via a getter — the idiomatic NestJS pattern, no framework primitive required. Adding a lifecycle hook with zero in-tree consumers was YAGNI; reverting before it accumulates dependents. Apps that pinned to 1.8.0 and used `OnFirstRequest` should migrate to the lazy-service pattern before upgrading.
 
 ### Notes
 
-- Edge-clean addition — no `node:*`, no `Buffer`, no `setInterval`; the hook is just `() => void | Promise<void>` wired into Hono's middleware chain.
-- Backwards-compatible. Existing apps unaffected: the new middleware only fires hooks if any registered instance implements `OnFirstRequest`, and the implementation is a no-op otherwise.
+- 1.8.0 remains published on npm but no longer the `latest` tag.
+- `OnApplicationBootstrap`, `OnModuleInit`, and the existing lifecycle hooks are unchanged.
 
 ## [1.6.0]
 

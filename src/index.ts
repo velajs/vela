@@ -292,7 +292,6 @@ export {
 export type {
   OnModuleInit,
   OnApplicationBootstrap,
-  OnFirstRequest,
   OnModuleDestroy,
   OnApplicationShutdown,
   BeforeApplicationShutdown,
