@@ -4,10 +4,28 @@ End-to-end smoke for `@velajs/better-auth` — real `betterAuth({...})` instance
 
 ```bash
 pnpm install
-pnpm smoke              # runs in-process against Hono.request()
-pnpm dev                # starts a Node server on :8787
+pnpm smoke              # in-process against Hono.request() (13 checks)
+pnpm wrangler:smoke     # real wrangler dev + curl-equivalent (8 checks)
+pnpm dev                # Node server on :8787
 pnpm deploy             # wrangler deploy
 ```
+
+## Wrangler gotcha — direct adapter import
+
+This example imports `memoryAdapter` directly from `@better-auth/memory-adapter`,
+not from `better-auth/adapters/memory`. The latter is a one-line
+`export * from '@better-auth/memory-adapter'` re-export, which esbuild (used
+by Wrangler) wraps in an async init shim — top-level callsites observe
+`memoryAdapter === undefined` at module evaluation, and you get the runtime
+error:
+
+```
+TypeError: memoryAdapter is not a function
+```
+
+Direct imports from the underlying package resolve to a real ESM binding at
+module-load time and sidestep the hazard. This pattern applies to any
+`export *` re-export chain consumed under workerd / esbuild bundling.
 
 What it demonstrates:
 

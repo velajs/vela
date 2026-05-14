@@ -1,5 +1,10 @@
 import { betterAuth } from 'better-auth';
-import { memoryAdapter } from 'better-auth/adapters/memory';
+// Import directly from the underlying package rather than the `better-auth/adapters/memory`
+// re-export. The re-export uses `export * from '@better-auth/memory-adapter'`, which esbuild
+// (used by Wrangler) wraps in an async init shim — top-level calls to `memoryAdapter()` then
+// observe `undefined`. The direct import resolves to a real ESM binding at module evaluation
+// time, sidestepping the bundler-induced hazard.
+import { memoryAdapter } from '@better-auth/memory-adapter';
 import {
   Controller,
   Get,
@@ -32,7 +37,7 @@ const auth = betterAuth({
   // 32-byte secret for HMAC of session tokens. In production, source from env.
   secret: 'auth-lab-demo-secret-key-32-bytes-please-rotate',
   // baseURL drives cookie domain + Origin checks. Hono's in-process request()
-  // delivers requests as if from this origin, so set it explicitly.
+  // and curl-via-wrangler both deliver requests as if from this origin.
   baseURL: 'http://localhost',
   database: memoryAdapter(memory),
   emailAndPassword: { enabled: true, autoSignIn: true },
@@ -93,6 +98,3 @@ class AppModule {}
 export async function createApp() {
   return await VelaFactory.create(AppModule);
 }
-
-// Re-export the auth instance so smoke.ts can read internal state if needed.
-export { auth };
