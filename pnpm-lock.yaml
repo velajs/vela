@@ -16,10 +16,10 @@ importers:
         version: 1.15.33
       '@velajs/testing':
         specifier: ^0.2.1
-        version: 0.2.1(@velajs/vela@1.8.1)(hono@4.12.18)
+        version: 0.2.1(@velajs/vela@1.8.2)(hono@4.12.18)
       '@velajs/vela':
-        specifier: ^1.8.1
-        version: 1.8.1
+        specifier: ^1.8.2
+        version: 1.8.2
       better-auth:
         specifier: ^1.2.0
         version: 1.6.10(vitest@4.1.5(vite@8.0.11))
@@ -517,8 +517,8 @@ packages:
       '@velajs/vela': '>=1.6.0'
       hono: '>=4'
 
-  '@velajs/vela@1.8.1':
-    resolution: {integrity: sha512-gfdLP2mf8WUYJYpWPPOIIZXt7J968CFCeW2l6b0hG+XwG5useM2S3tidEH+hJN+bHGeblAT+vQ5hxMWoD1dDdw==}
+  '@velajs/vela@1.8.2':
+    resolution: {integrity: sha512-hyqyVhc8hgB+lcST7g3qvTMiJ3k3rQDaycRvfN/5SI/9uj2Ql56Z6P2WRi97mPl8sHg45mf9YTV1yBQnExJ32w==}
     engines: {node: '>=20'}
 
   '@vitest/expect@4.1.5':
@@ -1734,12 +1734,12 @@ snapshots:
 
   '@types/http-cache-semantics@4.2.0': {}
 
-  '@velajs/testing@0.2.1(@velajs/vela@1.8.1)(hono@4.12.18)':
+  '@velajs/testing@0.2.1(@velajs/vela@1.8.2)(hono@4.12.18)':
     dependencies:
-      '@velajs/vela': 1.8.1
+      '@velajs/vela': 1.8.2
       hono: 4.12.18
 
-  '@velajs/vela@1.8.1':
+  '@velajs/vela@1.8.2':
     dependencies:
       hono: 4.12.18
 

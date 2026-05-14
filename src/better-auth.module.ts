@@ -2,6 +2,7 @@ import {
   APP_GUARD,
   stableHash,
   type DynamicModule,
+  type InferTokens,
   type ProviderOptions,
   type Token,
   type Type,
@@ -18,18 +19,32 @@ import { RolesGuard } from './guards/roles.guard';
 
 const DEFAULT_BASE_PATH = '/api/auth';
 
-// `useFactory` is typed loosely (`any[]` params) so consumer factories with
-// concrete parameter signatures matching their `inject` order pass through
-// TypeScript. NestJS uses the same shape for its async-module options — the
-// DI container resolves deps at runtime; we can't statically match
-// `inject: [X, Y]` to `(x: X, y: Y) => T` without complex generic gymnastics.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AsyncAuthFactory = (...deps: any[]) => BetterAuthInstance;
-
-interface ForRootAsyncOptions {
-  inject?: Token[];
+/**
+ * Options for {@link BetterAuthModule.forRootAsync}.
+ *
+ * The `Inject` type parameter captures the literal `inject` tuple at the
+ * call site (via `const` inference on the consuming generic) so
+ * `useFactory` parameters are typed from the inject array, position-by-position.
+ * No `as const`, no `(...deps: any[])` workaround:
+ *
+ * ```ts
+ * BetterAuthModule.forRootAsync({
+ *   inject: [D1Service, ConfigService],   // captured as readonly tuple
+ *   useFactory: (d1, config) =>             // d1: D1Service, config: ConfigService
+ *     betterAuth({ database: drizzleAdapter(drizzle(d1.database), ...) }),
+ * });
+ * ```
+ *
+ * When `inject` isn't a literal tuple (or is omitted), `Inject` falls back
+ * to `readonly Token<unknown>[]` and `useFactory` accepts variadic
+ * `unknown[]` — the historical loose-typing behavior.
+ */
+interface ForRootAsyncOptions<
+  Inject extends readonly Token<unknown>[] = readonly Token<unknown>[],
+> {
+  inject?: Inject;
   imports?: DynamicModule['imports'];
-  useFactory: AsyncAuthFactory;
+  useFactory: (...deps: InferTokens<Inject>) => BetterAuthInstance;
   isGlobal?: boolean;
   mountHandler?: boolean;
   basePath?: string;
@@ -77,7 +92,9 @@ export class BetterAuthModule {
    * inside your factory body — `(d1: D1Service) => betterAuth({ database:
    * drizzleAdapter(drizzle(d1.database), ...) })`.
    */
-  static forRootAsync(options: ForRootAsyncOptions): DynamicModule {
+  static forRootAsync<
+    const Inject extends readonly Token<unknown>[] = readonly Token<unknown>[],
+  >(options: ForRootAsyncOptions<Inject>): DynamicModule {
     const mountHandler = options.mountHandler !== false;
     const isGlobal = options.isGlobal === true;
     const basePath = options.basePath ?? DEFAULT_BASE_PATH;
@@ -98,8 +115,16 @@ export class BetterAuthModule {
         // invoked lazily by BetterAuthService.auth on first access; vela
         // can resolve this provider at module load without running the user
         // factory — the factory body lives behind the closure.
+        //
+        // The inner factory is typed `unknown[]` (vela's runtime contract:
+        // deps are resolved by token order). The outer user-facing
+        // `options.useFactory` is statically typed via `InferTokens<Inject>`.
+        // We narrow at the boundary with a single cast — runtime order
+        // matches the declared `inject` order by construction.
         provide: BETTER_AUTH_BUILDER,
-        useFactory: (...deps: unknown[]) => () => options.useFactory(...deps),
+        useFactory: (...deps: unknown[]) =>
+          () =>
+            (options.useFactory as (...d: unknown[]) => BetterAuthInstance)(...deps),
         inject: options.inject ?? [],
       },
       BetterAuthService,
