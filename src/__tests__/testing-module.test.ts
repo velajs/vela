@@ -6,8 +6,10 @@ import {
   Get,
   Module,
   InjectionToken,
+  REQUEST_CONTEXT,
   UseGuards,
   MetadataRegistry,
+  createLazyParamDecorator,
 } from '@velajs/vela';
 import type {
   CanActivate,
@@ -384,5 +386,70 @@ describe('Test.createTestingModule', () => {
 
     const serviceC = moduleRef.get(ServiceC);
     expect(serviceC.getCombined()).toBe('mock-a-mock-b');
+  });
+
+  // ===========================================================================
+  // 12. REQUEST_CONTEXT-injecting guard works under Test.createTestingModule
+  // ===========================================================================
+  // Regression: before bootstrap-parity in compile(), guards that injected
+  // REQUEST_CONTEXT (the documented vela pattern for @CurrentUser-style
+  // lazy decorators) crashed with "REQUEST_CONTEXT can only be resolved
+  // inside a request" because the testing builder skipped bootstrap's
+  // request-scoped registration. This pins the behavior.
+
+  it('supports guards + lazy param decorators backed by REQUEST_CONTEXT', async () => {
+    const USER_KEY = Symbol.for('test.user');
+
+    // The canonical vela pattern: a guard resolves REQUEST_CONTEXT from the
+    // per-request child container (seeded by RouteManager via
+    // setRequestInstance) and writes into its bag. A lazy parameter decorator
+    // reads the same bag *after* guards run — createLazyParamDecorator defers
+    // factory execution past the args-before-guards ordering hazard.
+    @Injectable()
+    class GuardThatPopulates implements CanActivate {
+      async canActivate(context: ExecutionContext): Promise<boolean> {
+        const honoCtx = context.getContext() as {
+          get: (k: string) => { resolve<T>(t: unknown): T };
+        };
+        const reqCtx = honoCtx
+          .get('container')
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .resolve<any>(REQUEST_CONTEXT);
+        reqCtx.set(USER_KEY, { id: 'u-1' });
+        return true;
+      }
+    }
+
+    const CurrentUser = createLazyParamDecorator((_data, ctx: ExecutionContext) => {
+      const honoCtx = ctx.getContext() as {
+        get: (k: string) => { resolve<T>(t: unknown): T };
+      };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return honoCtx.get('container').resolve<any>(REQUEST_CONTEXT).get(USER_KEY);
+    });
+
+    @Controller('/me')
+    @UseGuards(GuardThatPopulates)
+    class MeController {
+      @Get()
+      me(@CurrentUser() user: { id: string }) {
+        return { id: user.id };
+      }
+    }
+
+    @Module({
+      providers: [GuardThatPopulates],
+      controllers: [MeController],
+    })
+    class GuardModule {}
+
+    const moduleRef = await Test.createTestingModule({
+      imports: [GuardModule],
+    }).compile();
+
+    const app = await moduleRef.createApplication();
+    const res = await app.getHonoApp().request('/me');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: 'u-1' });
   });
 });

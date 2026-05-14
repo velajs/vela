@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.1 (2026-05-14)
+
+### Fixes
+
+- **`compile()` now replicates `bootstrap()`'s global token setup.** Registers `Container`, `ModuleRef`, and `REQUEST_CONTEXT` as global tokens (the last is the canonical seam for the per-request bag that `RouteManager.setRequestInstance` populates). Marks `APP_GUARD/PIPE/INTERCEPTOR/FILTER/MIDDLEWARE` as global so multi-provider pipeline registration via `bindAppProviders` resolves cleanly. Before this fix, guards / services that injected `REQUEST_CONTEXT` (the documented `@CurrentUser` lazy-decorator pattern) crashed at request time with "REQUEST_CONTEXT can only be resolved inside a request". New test pins the behavior end-to-end.
+- **Overrides now win for controller-internal constructor injection.** Pre-registering an override at the root container's `__root__` bucket only beat framework-internal lookups (no `requestingModuleId`). Controller constructor injection passes the controller's module id, which finds the module's own registration before the root override and short-circuits. The builder now post-processes after `loader.load()` and overwrites the registration in every module bucket that already holds the token.
+
+### Breaking changes
+
+- **`@velajs/vela` peer bumped to `>=1.6.0`.** Needs `REQUEST_CONTEXT` and `createLazyParamDecorator` re-exports (added in vela 1.6.0).
+
 ## 0.2.0 (2026-04-30)
 
 Bugs fixed, rebuilt on `@velajs/vela/internal`, no more `reflect-metadata` dep.
