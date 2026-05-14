@@ -49,6 +49,8 @@ export {
 export type {
   Type,
   Token,
+  InferToken,
+  InferTokens,
   InjectableOptions,
   ProviderOptions,
   ModuleScope,

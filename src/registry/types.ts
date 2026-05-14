@@ -9,13 +9,15 @@ import type {
 import type {
   Constructor,
   ForwardRef,
+  InferToken,
+  InferTokens,
   InjectionToken,
   ProviderOptions,
   Token,
   Type,
 } from '../container/types';
 
-export type { Constructor, ForwardRef, InjectionToken, ProviderOptions, Token, Type };
+export type { Constructor, ForwardRef, InferToken, InferTokens, InjectionToken, ProviderOptions, Token, Type };
 
 export type ComponentType = 'middleware' | 'guard' | 'pipe' | 'interceptor' | 'filter';
 
@@ -60,11 +62,33 @@ export interface HttpHandlerMeta {
 
 export type ModuleImport = Type | DynamicModule | ForwardRef;
 
-export interface AsyncModuleOptions<T = unknown> {
+/**
+ * Async module options with **type-inferred `useFactory` parameters**.
+ *
+ * The `Inject` generic captures the literal `inject` tuple via `const` type
+ * parameter inference at the call site (TS 5.0+ — vela already requires it).
+ * `useFactory`'s parameter types are computed from that tuple via
+ * `InferTokens<Inject>`, so:
+ *
+ * ```ts
+ * SomeModule.forRootAsync({
+ *   inject: [D1Service, ConfigService],   // captured as readonly [typeof D1Service, typeof ConfigService]
+ *   useFactory: (d1, config) => { ... },  // d1: D1Service, config: ConfigService — inferred
+ * });
+ * ```
+ *
+ * Backwards compatible: when `inject` isn't a literal tuple (or is omitted),
+ * `Inject` falls back to `readonly Token<unknown>[]`, `InferTokens` resolves
+ * to `unknown[]`, and `useFactory` accepts variadic `unknown[]` — the prior
+ * loose-typing behavior. Existing callers don't break.
+ */
+export interface AsyncModuleOptions<
+  T = unknown,
+  Inject extends readonly Token<unknown>[] = readonly Token<unknown>[],
+> {
   imports?: ModuleImport[];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  useFactory: (...args: any[]) => T | Promise<T>;
-  inject?: Token[];
+  inject?: Inject;
+  useFactory: (...args: InferTokens<Inject>) => T | Promise<T>;
 }
 
 export interface DynamicModule {

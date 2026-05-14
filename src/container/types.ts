@@ -34,6 +34,35 @@ export function forwardRef<T>(factory: () => Token<T>): ForwardRef<T> {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Token<T = any> = Type<T> | InjectionToken<T> | string | symbol;
 
+/**
+ * Maps a single DI `Token<T>` to its resolved value type at the type level:
+ * - `InjectionToken<T>`           → `T`
+ * - `Type<T>` / `Constructor<T>`  → `T` (the instance type)
+ * - `ForwardRef<T>`               → `T`
+ * - `string` / `symbol`           → `unknown` (runtime-only tokens carry no
+ *                                   static type info; the consumer asserts).
+ *
+ * Used by `AsyncModuleOptions` to give `useFactory` parameters their real
+ * types based on the literal `inject` tuple — without `as const` at the call
+ * site (relies on the `const` type parameter on the consuming generic).
+ */
+export type InferToken<T> =
+  T extends InjectionToken<infer U> ? U :
+  T extends ForwardRef<infer U> ? U :
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  T extends abstract new (...args: any[]) => infer U ? U :
+  unknown;
+
+/**
+ * Map every position of a `Token[]` tuple to its resolved value type.
+ * Pairs with `const Inject extends readonly Token<unknown>[]` generics to
+ * give `useFactory(...deps)` parameter types inferred from the literal
+ * `inject` array.
+ */
+export type InferTokens<T extends readonly unknown[]> = {
+  [K in keyof T]: InferToken<T[K]>;
+};
+
 export interface InjectableOptions {
   scope?: Scope;
 }
@@ -51,7 +80,11 @@ export interface ProviderOptions<T = unknown> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   useFactory?: (...args: any[]) => T | Promise<T>;
   useClass?: Type<T>;
-  inject?: Token[];
+  // Accepts both mutable and readonly token arrays — the latter is what
+  // const-tuple-inferred `AsyncModuleOptions.inject` produces when threaded
+  // through to module-internal provider registrations. Behavior is identical
+  // at runtime; the container iterates and resolves.
+  inject?: readonly Token[];
   useExisting?: Token<T>;
 }
 
@@ -69,7 +102,7 @@ export interface ProviderRegistration<T = unknown> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   useFactory?: (...args: any[]) => T | Promise<T>;
   useClass?: Type<T>;
-  inject?: Token[];
+  inject?: readonly Token[];
   useExisting?: Token<T>;
 }
 

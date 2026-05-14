@@ -13,6 +13,8 @@ export { mixin } from './mixin';
 export type {
   Type,
   Token,
+  InferToken,
+  InferTokens,
   InjectableOptions,
   InjectMetadata,
   ProviderOptions,
