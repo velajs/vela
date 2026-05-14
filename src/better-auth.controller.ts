@@ -1,14 +1,16 @@
 import { All, Controller, Inject, Injectable, Req } from '@velajs/vela';
 import type { Context } from 'hono';
-import { BETTER_AUTH } from './better-auth.tokens';
-import type { BetterAuthInstance } from './better-auth.types';
+import { BetterAuthService } from './better-auth.service';
 import { Public } from './decorators/public.decorator';
 
 @Public(true)
 @Controller('/api/auth')
 @Injectable()
 export class BetterAuthCatchallController {
-  constructor(@Inject(BETTER_AUTH) private readonly auth: BetterAuthInstance) {}
+  // Inject the service — its `.handler` getter triggers lazy construction
+  // of the underlying betterAuth() instance on first access, AFTER any
+  // runtime adapter middleware (Cloudflare env capture) has run.
+  constructor(@Inject(BetterAuthService) private readonly auth: BetterAuthService) {}
 
   @All('/*')
   async handle(@Req() c: Context): Promise<Response> {

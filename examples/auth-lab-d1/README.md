@@ -1,0 +1,77 @@
+# auth-lab-d1
+
+Cloudflare D1-backed end-to-end smoke for `@velajs/better-auth`. Demonstrates
+**Pattern B** wiring: `BetterAuthModule.forRootAsync` injects `D1Service` from
+`@velajs/cloudflare`, hands the `D1Database` to `drizzle-orm/d1`, and passes
+the resulting drizzle instance into `better-auth`'s `drizzleAdapter`.
+
+```bash
+pnpm install
+pnpm wrangler:smoke        # auto-reset DB, apply migration, run wrangler dev, drive HTTP
+pnpm dev                   # interactive: wrangler dev on :8789
+pnpm db:reset              # nuke local D1 + reapply migrations/0000_initial.sql
+```
+
+`wrangler:smoke` runs 6 checks: healthz, 401-without-session, sign-up,
+cookie capture, /me with cookie, and verifies the user row round-tripped
+through D1.
+
+## Wiring
+
+```ts
+@Module({
+  imports: [
+    D1Module.forRoot({ binding: 'DB' }),
+    BetterAuthModule.forRootAsync({
+      inject: [D1Service],
+      useFactory: (d1: D1Service) => ({
+        auth: betterAuth({
+          database: drizzleAdapter(drizzle(d1.database), { provider: 'sqlite' }),
+          // ...
+        }),
+      }),
+      isGlobal: true,
+    }),
+  ],
+})
+class AppModule {}
+```
+
+`D1Module.forRoot` provides `D1Service` (a thin wrapper over `env.DB` resolved
+at request time). `forRootAsync.inject: [D1Service]` propagates that into the
+auth construction factory, which can't run at module-load because the D1
+binding only exists once a fetch event has populated `env`.
+
+## Schema + migrations
+
+`migrations/0000_initial.sql` is a hand-written SQLite schema matching
+better-auth ^1.6.0's standard tables (user, session, account, verification)
+plus the foreign keys and indexes better-auth uses. For plugin schemas
+(2FA, organization, admin, magic link, etc.), regenerate with:
+
+```bash
+pnpm dlx better-auth generate
+```
+
+…and drop the output into `migrations/`.
+
+`pnpm db:reset` wipes the local D1 sqlite file under `.wrangler/state/` and
+re-applies the migration via `wrangler d1 execute --local`.
+
+## Deploying to a real D1 binding
+
+1. `wrangler d1 create velajs-better-auth-d1` — creates the remote database.
+2. Copy the returned `database_id` UUID into `wrangler.toml`.
+3. `wrangler d1 execute velajs-better-auth-d1 --remote --file=migrations/0000_initial.sql`.
+4. Replace the hard-coded `secret` and `baseURL` in `src/app.ts` with
+   `env`-driven values via vela's `ConfigModule`.
+5. `pnpm deploy`.
+
+## Direct imports (workerd hazard)
+
+Like `auth-lab/src/app.ts`, this example imports the better-auth adapter
+directly from `@better-auth/drizzle-adapter` instead of via the
+`better-auth/adapters/drizzle` re-export — esbuild (Wrangler's bundler)
+wraps `export *` chains in an async init shim that leaves the named import
+undefined at module-evaluation time. See `auth-lab/README.md` for the full
+explanation.

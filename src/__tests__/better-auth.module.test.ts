@@ -7,9 +7,9 @@ import {
 } from '@velajs/vela';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  BETTER_AUTH,
   BETTER_AUTH_OPTIONS,
   BetterAuthModule,
+  BetterAuthService,
 } from '../index';
 import type { BetterAuthInstance } from '../better-auth.types';
 
@@ -26,14 +26,16 @@ describe('BetterAuthModule', () => {
   beforeEach(() => MetadataRegistry.clear());
   afterEach(() => MetadataRegistry.clear());
 
-  it('forRoot returns a DynamicModule that resolves BETTER_AUTH and BETTER_AUTH_OPTIONS', async () => {
+  it('forRoot exposes BetterAuthService with the provided auth instance', async () => {
     const auth = makeMockAuth();
 
     @Module({ imports: [BetterAuthModule.forRoot({ auth })] })
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
-    expect(app.get(BETTER_AUTH)).toBe(auth);
+    const service = app.get(BetterAuthService);
+    expect(service.auth).toBe(auth);
+    expect(service.api).toBe(auth.api);
     expect(app.get(BETTER_AUTH_OPTIONS)).toMatchObject({
       basePath: '/api/auth',
       defaultPolicy: 'deny',
@@ -42,21 +44,40 @@ describe('BetterAuthModule', () => {
     });
   });
 
-  it('forRootAsync resolves auth via factory + injected dependency', async () => {
+  it('forRootAsync defers the user factory until first auth access', async () => {
     const auth = makeMockAuth();
+    let factoryCalls = 0;
 
     @Module({
       imports: [
         BetterAuthModule.forRootAsync({
           inject: [],
-          useFactory: () => ({ auth, defaultPolicy: 'allow' }),
+          useFactory: () => {
+            factoryCalls++;
+            return auth;
+          },
+          defaultPolicy: 'allow',
         }),
       ],
     })
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
-    expect(app.get(BETTER_AUTH)).toBe(auth);
+    // Module load completes without invoking the user factory. The
+    // builder closure exists but is uncalled — vela resolved the
+    // BetterAuthService singleton, but the service's `.auth` getter only
+    // runs the builder on first use.
+    expect(factoryCalls).toBe(0);
+
+    const service = app.get(BetterAuthService);
+    // First access fires the factory and caches the result.
+    expect(service.auth).toBe(auth);
+    expect(factoryCalls).toBe(1);
+
+    // Subsequent accesses are cached — no second factory call.
+    expect(service.api).toBe(auth.api);
+    expect(factoryCalls).toBe(1);
+
     expect(app.get(BETTER_AUTH_OPTIONS).defaultPolicy).toBe('allow');
   });
 

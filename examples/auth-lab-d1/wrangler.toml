@@ -1,0 +1,14 @@
+name = "auth-lab-d1"
+main = "dist/worker.js"
+compatibility_date = "2024-09-23"
+# better-auth uses AsyncLocalStorage; enable Node.js compat so the binding
+# is available under workerd.
+compatibility_flags = ["nodejs_compat"]
+
+# Local D1 — miniflare provides a real sqlite-backed binding under
+# `wrangler dev --local`. For production, replace `database_id` with a real
+# UUID from `wrangler d1 create velajs-better-auth-d1`.
+[[d1_databases]]
+binding = "DB"
+database_name = "velajs_better_auth_d1"
+database_id = "00000000-0000-0000-0000-000000000001"

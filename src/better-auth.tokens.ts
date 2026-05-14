@@ -1,7 +1,6 @@
 import { InjectionToken } from '@velajs/vela';
-import type { BetterAuthInstance, BetterAuthModuleOptions } from './better-auth.types';
+import type { BetterAuthModuleOptions } from './better-auth.types';
 
-export const BETTER_AUTH = new InjectionToken<BetterAuthInstance>('vela.BetterAuth');
 export const BETTER_AUTH_OPTIONS = new InjectionToken<BetterAuthModuleOptions>(
   'vela.BetterAuthOptions',
 );

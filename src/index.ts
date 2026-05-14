@@ -1,10 +1,10 @@
 // Module
 export { BetterAuthModule } from './better-auth.module';
+export { BetterAuthService } from './better-auth.service';
 export { BetterAuthCatchallController } from './better-auth.controller';
 
 // Tokens & symbols
 export {
-  BETTER_AUTH,
   BETTER_AUTH_OPTIONS,
   AUTH_USER_KEY,
   AUTH_SESSION_KEY,

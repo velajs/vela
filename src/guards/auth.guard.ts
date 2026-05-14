@@ -11,10 +11,10 @@ import {
 import {
   AUTH_SESSION_KEY,
   AUTH_USER_KEY,
-  BETTER_AUTH,
   BETTER_AUTH_OPTIONS,
 } from '../better-auth.tokens';
-import type { BetterAuthInstance, BetterAuthModuleOptions } from '../better-auth.types';
+import { BetterAuthService } from '../better-auth.service';
+import type { BetterAuthModuleOptions } from '../better-auth.types';
 import { OptionalAuth } from '../decorators/optional-auth.decorator';
 import { Public } from '../decorators/public.decorator';
 
@@ -23,7 +23,12 @@ export class AuthGuard implements CanActivate {
   private readonly reflector = new Reflector();
 
   constructor(
-    @Inject(BETTER_AUTH) private readonly auth: BetterAuthInstance,
+    // Inject BetterAuthService rather than the raw better-auth instance.
+    // The service's lazy `.auth` getter defers construction to first use, so
+    // forRootAsync factories that depend on values only available at
+    // request time (Cloudflare D1/KV bindings, etc.) build safely on the
+    // first canActivate — not at module-load bootstrap.
+    @Inject(BetterAuthService) private readonly auth: BetterAuthService,
     @Inject(BETTER_AUTH_OPTIONS) private readonly opts: BetterAuthModuleOptions,
   ) {}
 
