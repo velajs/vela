@@ -1,6 +1,6 @@
 {
   "name": "@velajs/vela",
-  "version": "1.8.2",
+  "version": "1.8.3",
   "description": "NestJS-compatible framework for edge runtimes, powered by Hono",
   "type": "module",
   "main": "./dist/index.js",
