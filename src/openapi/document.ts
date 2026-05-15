@@ -268,6 +268,34 @@ export function createOpenApiDocument(
     }
   }
 
+  // Aggregate the document-root `tags` array. NestJS declares tag
+  // groups/descriptions/order via `DocumentBuilder().addTag(name, desc)`
+  // while its scanner auto-collects operation tags; we wire both halves
+  // here. Walk every operation's `tags` in first-seen order (stable: paths
+  // insertion order, then verb order), then merge with `options.tags`
+  // (caller-declared tags first — preserving their order + descriptions —
+  // followed by any purely-collected tag not already declared, as `{ name }`).
+  const seenTagNames = new Set<string>();
+  const collectedTagNames: string[] = [];
+  for (const pathItem of Object.values(paths)) {
+    for (const verb of VERB_WHITELIST) {
+      const operation = pathItem[verb];
+      if (!operation?.tags) continue;
+      for (const tagName of operation.tags) {
+        if (seenTagNames.has(tagName)) continue;
+        seenTagNames.add(tagName);
+        collectedTagNames.push(tagName);
+      }
+    }
+  }
+
+  const declaredTags = options.tags ?? [];
+  const declaredTagNames = new Set(declaredTags.map((t) => t.name));
+  const tags: Array<{ name: string; description?: string }> = [
+    ...declaredTags,
+    ...collectedTagNames.filter((name) => !declaredTagNames.has(name)).map((name) => ({ name })),
+  ];
+
   const document: OpenApiDocument = {
     openapi: '3.1.0',
     info: {
@@ -281,6 +309,13 @@ export function createOpenApiDocument(
   const schemas = registry.build();
   if (schemas) {
     document.components = { schemas };
+  }
+
+  // Only attach `tags` when non-empty. Emitting `tags: []` on a tag-less
+  // spec is the exact symptom the consumer reported, so omit the key
+  // entirely in that case (mirrors the `components` handling above).
+  if (tags.length > 0) {
+    document.tags = tags;
   }
 
   return document;
