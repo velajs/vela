@@ -1,9 +1,11 @@
+import { METADATA_KEYS, ParamType } from '../constants';
 import type { Type } from '../container/types';
+import { getCrudBridge } from '../http/crud-bridge';
+import { getMetadata } from '../metadata';
 import { collectControllers } from '../module/graph';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import { joinPaths, toOpenApiPath } from '../registry/paths';
 import type { ParameterMetadata, RouteDefinition } from '../registry/types';
-import { ParamType } from '../constants';
 import { getApiDoc, getApiResponses, getApiTags } from './decorators';
 import type {
   CreateOpenApiDocumentOptions,
@@ -220,7 +222,9 @@ export function createOpenApiDocument(
   const globalPrefix = options.globalPrefix ?? '';
   const registry = new ComponentsRegistry();
 
-  for (const controller of collectControllers(rootModule)) {
+  const controllers = collectControllers(rootModule);
+
+  for (const controller of controllers) {
     const controllerPath = MetadataRegistry.getControllerPath(controller as Type);
     const routes = MetadataRegistry.getRoutes(controller as Type);
 
@@ -235,6 +239,32 @@ export function createOpenApiDocument(
       const pathItem = paths[pathString] ?? {};
       pathItem[method] = operation;
       paths[pathString] = pathItem;
+    }
+  }
+
+  // Second pass: include `@Crud()`-generated routes via the registered
+  // CrudBridge. The bridge knows how to turn its own metadata config into
+  // OpenAPI path items; this loop is silent when no bridge is registered or
+  // no controller carries `vela:crud` metadata, so consumers without
+  // `@velajs/crud` see no behavioral change.
+  const bridge = getCrudBridge();
+  if (bridge) {
+    for (const controller of controllers) {
+      const crudConfig = getMetadata(METADATA_KEYS.CRUD, controller as Type);
+      if (!crudConfig) continue;
+
+      const controllerPrefix = MetadataRegistry.getControllerPath(controller as Type);
+      const crudPaths = bridge.buildOpenApiPaths(controller as Type, crudConfig, {
+        globalPrefix,
+        controllerPrefix,
+      });
+
+      for (const [pathKey, pathItem] of Object.entries(crudPaths)) {
+        // Verb-level merge: a hand-written `@Get('/')` on the same controller
+        // is preserved when the bridge contributes `post`/`patch`/etc. on
+        // the same path key.
+        paths[pathKey] = { ...(paths[pathKey] ?? {}), ...pathItem };
+      }
     }
   }
 

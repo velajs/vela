@@ -13,6 +13,22 @@ export type {
 export { bindAppProviders } from './pipeline/app-providers';
 export { RouteManager } from './http/route.manager';
 export type { RouteManagerOptions } from './http/route.manager';
+
+// CRUD bridge registry — the integration seam for `@velajs/crud` (and any
+// future CRUD route generator). `@velajs/crud` calls `registerCrudBridge`
+// once at import time; the framework consults `getCrudBridge` whenever it
+// encounters a controller carrying `vela:crud` metadata, both at route
+// build time and at OpenAPI document generation. The types are exposed so
+// integrators can write their own bridges or strongly-typed mocks in tests.
+export {
+  registerCrudBridge,
+  getCrudBridge,
+} from './http/crud-bridge';
+export type {
+  CrudBridge,
+  CrudBridgeRouteContext,
+  CrudBridgeOpenApiContext,
+} from './http/crud-bridge';
 export { ModuleLoader } from './module/module-loader';
 export { ComponentManager } from './pipeline/component.manager';
 export { VelaApplication } from './application';
