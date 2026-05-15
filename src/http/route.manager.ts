@@ -8,6 +8,7 @@ import type { Token, Type } from '../container/types';
 import type { MiddlewareRouteDefinition } from '../module/middleware';
 import { joinPaths } from '../registry/paths';
 import { ArgumentResolver } from './argument-resolver';
+import { getCrudBridge } from './crud-bridge';
 import { buildMiddlewareExecutionContext } from './execution-context';
 import { HandlerExecutor } from './handler-executor';
 import { instantiate, instantiateMany } from './instantiate';
@@ -336,24 +337,29 @@ export class RouteManager {
     }
 
     // Second pass: mount CRUD sub-apps (/:id routes registered last).
+    //
+    // Routes are produced by a registered CrudBridge — usually contributed
+    // by `@velajs/crud` as an import side effect. Inversion was deliberate:
+    // a previous implementation called `await import('@velajs/crud')` via
+    // an indirect variable to dodge esbuild's static analysis, which made
+    // Cloudflare Workers unable to resolve the module at runtime. The
+    // bridge contract removes that hazard — no runtime resolver involved.
     for (const { controller, metadata } of this.controllers) {
       const crudConfig = getMetadata('vela:crud', controller);
-      if (crudConfig) {
-        try {
-          const pkg = '@velajs/crud';
-          const { buildCrudRoutes } = await import(pkg);
-          await buildCrudRoutes(app, controller, metadata.prefix, crudConfig, {
-            globalPrefix: this.globalPrefix,
-            globalGuards: instantiateMany<CanActivate>(this.globalGuards, this.container),
-            joinPaths,
-          });
-        } catch (err) {
-          throw new Error(
-            `@Crud() requires '@velajs/crud'. Install it: pnpm add @velajs/crud`,
-            { cause: err },
-          );
-        }
+      if (!crudConfig) continue;
+
+      const bridge = getCrudBridge();
+      if (!bridge) {
+        throw new Error(
+          "@Crud() requires '@velajs/crud'. Install it: pnpm add @velajs/crud",
+        );
       }
+
+      await bridge.buildRoutes(app, controller, metadata.prefix, crudConfig, {
+        globalPrefix: this.globalPrefix,
+        globalGuards: instantiateMany<CanActivate>(this.globalGuards, this.container),
+        joinPaths,
+      });
     }
 
     return app;
