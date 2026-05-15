@@ -183,7 +183,7 @@ describe('ordering: controller middleware runs before guards', () => {
   });
 });
 
-describe('buildCrudOpenApiPaths', () => {
+describe('buildCrudOpenApiPaths (delegates to hono-crud)', () => {
   function makeConfig(overrides: Partial<CrudConfig> = {}): CrudConfig {
     const Schema = z.object({
       id: z.string(),
@@ -195,53 +195,64 @@ describe('buildCrudOpenApiPaths', () => {
     return { meta, adapters: MemoryAdapters, ...overrides } as CrudConfig;
   }
 
-  it('returns the 5 core path+verb combinations with schemas', () => {
+  it('emits the FULL authoritative endpoint set (not just the old 5 verbs) with populated schemas', () => {
     if (!honoCrudAvailable) return;
 
-    const config = makeConfig({ only: ['list', 'create', 'read', 'update', 'delete'] });
+    // No only/except → every CRUD verb hono-crud generates. The prior
+    // hand-rolled emitter only ever produced 5 verbs on 2 paths; delegating
+    // to hono-crud must surface search/batch/etc.
     const paths = buildCrudOpenApiPaths(
       class UsersController {} as never,
-      config,
+      makeConfig(),
       { globalPrefix: '/api', controllerPrefix: '/users' },
     );
 
-    expect(Object.keys(paths).sort()).toEqual(['/api/users', '/api/users/{id}']);
+    const keys = Object.keys(paths);
+    // Core 2 paths still present.
+    expect(keys).toContain('/api/users');
+    expect(keys).toContain('/api/users/{id}');
+    // Strictly richer than the legacy hand-rolled 2-path / 5-verb output:
+    // search + batch endpoints prove the delegation.
+    expect(keys).toContain('/api/users/search');
+    expect(keys).toContain('/api/users/batch');
+    expect(keys.length).toBeGreaterThan(2);
 
     const collection = paths['/api/users']!;
     const single = paths['/api/users/{id}']!;
-
     expect(collection.get).toBeDefined();
     expect(collection.post).toBeDefined();
     expect(single.get).toBeDefined();
     expect(single.patch).toBeDefined();
     expect(single.delete).toBeDefined();
+    // search endpoint contributed by the authoritative source.
+    expect(paths['/api/users/search']!.get).toBeDefined();
 
-    // list response is the hono-crud list envelope.
+    // hono-crud's own list envelope schema (richer than the prior
+    // hand-rolled `{ success: { type: 'boolean' } }` stub).
     const listSchema =
       collection.get!.responses['200']!.content!['application/json']!.schema;
-    expect(listSchema.properties?.success).toEqual({ type: 'boolean' });
+    expect(listSchema.properties?.success).toBeDefined();
     expect(listSchema.properties?.result?.type).toBe('array');
     expect(listSchema.properties?.result_info?.type).toBe('object');
+    // Model fields flow through into the list item schema.
+    expect(
+      Object.keys(listSchema.properties?.result?.items?.properties ?? {}),
+    ).toEqual(expect.arrayContaining(['id', 'name', 'email']));
 
-    // create request body derived from the model schema.
+    // create request body is hono-crud's model-derived create schema.
     const createBody = collection.post!.requestBody!.content!['application/json']!.schema;
     expect(createBody.type).toBe('object');
     expect(Object.keys(createBody.properties ?? {})).toEqual(
-      expect.arrayContaining(['id', 'name', 'email']),
+      expect.arrayContaining(['name', 'email']),
     );
 
-    // item envelope for read.
+    // read item response carries the model schema.
     const readSchema = single.get!.responses['200']!.content!['application/json']!.schema;
-    expect(readSchema.properties?.success).toEqual({ type: 'boolean' });
+    expect(readSchema.properties?.success).toBeDefined();
     expect(readSchema.properties?.result?.type).toBe('object');
-
-    // delete ack envelope.
-    const delSchema =
-      single.delete!.responses['200']!.content!['application/json']!.schema;
-    expect(delSchema.properties?.result?.properties?.deleted).toEqual({ type: 'boolean' });
   });
 
-  it('respects only', () => {
+  it('respects only — filters which paths/verbs appear', () => {
     if (!honoCrudAvailable) return;
     const paths = buildCrudOpenApiPaths(
       class C {} as never,
@@ -251,22 +262,46 @@ describe('buildCrudOpenApiPaths', () => {
     expect(Object.keys(paths)).toEqual(['/items']);
     expect(paths['/items']!.get).toBeDefined();
     expect(paths['/items']!.post).toBeUndefined();
+    // search/batch are NOT emitted when not enabled.
+    expect(paths['/items/search']).toBeUndefined();
+    expect(paths['/items/batch']).toBeUndefined();
   });
 
-  it('respects except', () => {
+  it('respects except — excluded verbs are absent', () => {
     if (!honoCrudAvailable) return;
     const paths = buildCrudOpenApiPaths(
       class C {} as never,
-      makeConfig({ except: ['create', 'update', 'delete', 'read'] }),
+      makeConfig({
+        except: [
+          'create',
+          'update',
+          'delete',
+          'read',
+          'search',
+          'aggregate',
+          'restore',
+          'batchCreate',
+          'batchUpdate',
+          'batchDelete',
+          'batchRestore',
+          'batchUpsert',
+          'export',
+          'import',
+          'upsert',
+          'clone',
+        ],
+      }),
       { globalPrefix: '/api', controllerPrefix: 'items' },
     );
-    // Only list (and the non-core endpoints we don't emit) — collection GET.
+    // Only list survives → collection GET, no `{id}` path, no search/batch.
+    expect(Object.keys(paths)).toEqual(['/api/items']);
     expect(paths['/api/items']!.get).toBeDefined();
     expect(paths['/api/items']!.post).toBeUndefined();
     expect(paths['/api/items/{id}']).toBeUndefined();
+    expect(paths['/api/items/search']).toBeUndefined();
   });
 
-  it('uses dto.create / dto.update when present', () => {
+  it('forwards dto.create / dto.update through the shared endpoints-def helper', () => {
     if (!honoCrudAvailable) return;
     const CreateDto = z.object({ name: z.string() });
     const UpdateDto = z.object({ name: z.string().optional() });
@@ -280,20 +315,21 @@ describe('buildCrudOpenApiPaths', () => {
     expect(Object.keys(createBody.properties ?? {})).toEqual(['name']);
   });
 
-  it('collapses double slashes and ensures a leading slash in the base path', () => {
+  it('joins globalPrefix + controllerPrefix and slash-normalizes the base path', () => {
     if (!honoCrudAvailable) return;
     const paths = buildCrudOpenApiPaths(
       class C {} as never,
-      makeConfig({ only: ['list'] }),
+      makeConfig({ only: ['list', 'read'] }),
       { globalPrefix: '/api/', controllerPrefix: '/users/' },
     );
-    expect(Object.keys(paths)).toEqual(['/api/users']);
+    // Double slash collapsed, single leading slash, `:id` -> `{id}`.
+    expect(Object.keys(paths).sort()).toEqual(['/api/users', '/api/users/{id}']);
   });
 
-  it('tags operations with @ApiTags when present, else the table name', () => {
+  it('@ApiTags on the controller overrides the emitted operation tag', () => {
     if (!honoCrudAvailable) return;
 
-    @ApiTags('Users')
+    @ApiTags('CustomUsers')
     @Controller('/users')
     class TaggedController {}
 
@@ -302,20 +338,40 @@ describe('buildCrudOpenApiPaths', () => {
       makeConfig({ only: ['list'] }),
       { globalPrefix: '', controllerPrefix: '/users' },
     );
-    expect(tagged['/users']!.get!.tags).toEqual(['Users']);
+    expect(tagged['/users']!.get!.tags).toEqual(['CustomUsers']);
+  });
 
-    class PlainController {}
-    const fallback = buildCrudOpenApiPaths(
-      PlainController as never,
+  it('without @ApiTags, falls back to hono-crud model.tag', () => {
+    if (!honoCrudAvailable) return;
+    const Schema = z.object({ id: z.string(), name: z.string() });
+    const Model = defineModel({
+      tableName: 'widgets',
+      schema: Schema,
+      primaryKeys: ['id'],
+      tag: 'WidgetModelTag',
+    });
+    const meta = defineMeta({ model: Model });
+    const paths = buildCrudOpenApiPaths(
+      class PlainController {} as never,
+      { meta, adapters: MemoryAdapters, only: ['list'] } as CrudConfig,
+      { globalPrefix: '', controllerPrefix: '/widgets' },
+    );
+    expect(paths['/widgets']!.get!.tags).toEqual(['WidgetModelTag']);
+  });
+
+  it('without @ApiTags or model.tag, falls back to the table name', () => {
+    if (!honoCrudAvailable) return;
+    const paths = buildCrudOpenApiPaths(
+      class PlainController {} as never,
       makeConfig({ only: ['list'] }),
       { globalPrefix: '', controllerPrefix: '/users' },
     );
-    expect(fallback['/users']!.get!.tags).toEqual(['users']);
+    expect(paths['/users']!.get!.tags).toEqual(['users']);
   });
 });
 
 describe('bridge round-trip via createOpenApiDocument', () => {
-  it('createOpenApiDocument includes CRUD paths contributed by the bridge', async () => {
+  it('createOpenApiDocument includes the full bridge-contributed CRUD set', async () => {
     if (!honoCrudAvailable) return;
 
     const Schema = z.object({ id: z.string(), title: z.string() });
@@ -324,7 +380,7 @@ describe('bridge round-trip via createOpenApiDocument', () => {
 
     @ApiTags('Posts')
     @Controller('/posts')
-    @Crud({ meta, adapters: MemoryAdapters, only: ['list', 'create', 'read', 'update', 'delete'] })
+    @Crud({ meta, adapters: MemoryAdapters })
     class PostController {}
 
     @Module({ controllers: [PostController] })
@@ -335,6 +391,7 @@ describe('bridge round-trip via createOpenApiDocument', () => {
       globalPrefix: '/api',
     });
 
+    // Core CRUD paths.
     expect(doc.paths['/api/posts']).toBeDefined();
     expect(doc.paths['/api/posts']!.get).toBeDefined();
     expect(doc.paths['/api/posts']!.post).toBeDefined();
@@ -342,6 +399,10 @@ describe('bridge round-trip via createOpenApiDocument', () => {
     expect(doc.paths['/api/posts/{id}']!.get).toBeDefined();
     expect(doc.paths['/api/posts/{id}']!.patch).toBeDefined();
     expect(doc.paths['/api/posts/{id}']!.delete).toBeDefined();
+    // Richer-than-legacy: the bridge now also contributes search/batch.
+    expect(doc.paths['/api/posts/search']).toBeDefined();
+    expect(doc.paths['/api/posts/batch']).toBeDefined();
+    // @ApiTags still wins end-to-end.
     expect(doc.paths['/api/posts']!.get!.tags).toEqual(['Posts']);
   });
 });

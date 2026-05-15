@@ -50,7 +50,6 @@ export async function buildCrudRoutes(
   crudConfig: CrudConfig,
   ctx: BuilderContext,
 ): Promise<void> {
-  validateEndpointNames(crudConfig);
   // Tenant-scoped Models without an upstream resolver silently propagate
   // `tenantId: undefined` through HookContext and CrudEventPayload — a
   // data-loss bug class. Fail fast here so the misconfiguration cannot
@@ -64,8 +63,11 @@ export async function buildCrudRoutes(
   const { fromHono, registerCrud, defineEndpoints } = await loadHonoCrud();
   const { OpenAPIHono } = await loadHonoZodOpenapi();
 
-  const enabledEndpoints = resolveEnabledEndpoints(crudConfig);
-  const endpointsDef = buildEndpointsDef(crudConfig, enabledEndpoints);
+  // Validation + only/except resolution + per-endpoint/dto/hooks merge is the
+  // single source of truth for what hono-crud generates. The OpenAPI bridge
+  // (`buildCrudOpenApiPaths`) reuses this exact helper so the documented
+  // surface can never drift from the mounted routes.
+  const endpointsDef = buildCrudEndpointsDef(crudConfig);
   const endpoints = defineEndpoints(endpointsDef, crudConfig.adapters);
 
   const middlewares = buildGuardMiddleware(controller, ctx.globalGuards);
@@ -108,6 +110,21 @@ export async function buildCrudRoutes(
 
   const mountPath = ctx.joinPaths(ctx.globalPrefix, prefix) || '/';
   app.route(mountPath, subApp);
+}
+
+/**
+ * Build the hono-crud `EndpointsConfig` from a `CrudConfig` — the single
+ * source of truth for *which* CRUD verbs exist and *how* they are shaped
+ * (only/except filtering, per-endpoint config, flat `dto`/`hooks` sugar).
+ *
+ * Both the route builder (`buildCrudRoutes`, runtime mount) and the OpenAPI
+ * bridge (`buildCrudOpenApiPaths`, document generation) call this so the
+ * emitted spec can never drift from the mounted routes. It is pure and
+ * synchronous; callers pass the result to hono-crud's `defineEndpoints`.
+ */
+export function buildCrudEndpointsDef(config: CrudConfig): EndpointsConfig<MetaInput> {
+  validateEndpointNames(config);
+  return buildEndpointsDef(config, resolveEnabledEndpoints(config));
 }
 
 function validateEndpointNames(config: CrudConfig): void {

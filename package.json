@@ -51,7 +51,7 @@
     "@hono/zod-openapi": ">=0.9",
     "@velajs/vela": ">=1.8.3",
     "hono": ">=4",
-    "hono-crud": ">=0.10.0",
+    "hono-crud": ">=0.11.0",
     "zod": ">=4"
   },
   "devDependencies": {
@@ -59,11 +59,11 @@
     "@swc/cli": "^0.8.0",
     "@swc/core": "^1.15.11",
     "@velajs/crud": "link:",
-    "@velajs/vela": "^1.8.3",
+    "@velajs/vela": "^1.8.4",
     "drizzle-orm": "^0.36.4",
     "drizzle-zod": "^0.8.3",
     "hono": "^4",
-    "hono-crud": "^0.10.0",
+    "hono-crud": "^0.11.0",
     "typescript": "^5",
     "unplugin-swc": "^1.5.9",
     "vitest": "^4.0.18",

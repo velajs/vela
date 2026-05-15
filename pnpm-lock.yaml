@@ -21,8 +21,8 @@ importers:
         specifier: 'link:'
         version: 'link:'
       '@velajs/vela':
-        specifier: ^1.8.3
-        version: 1.8.3
+        specifier: ^1.8.4
+        version: 1.8.4
       drizzle-orm:
         specifier: ^0.36.4
         version: 0.36.4
@@ -33,8 +33,8 @@ importers:
         specifier: ^4
         version: 4.12.2
       hono-crud:
-        specifier: ^0.10.0
-        version: 0.10.0(drizzle-orm@0.36.4)(drizzle-zod@0.8.3(drizzle-orm@0.36.4)(zod@4.3.6))(fastest-levenshtein@1.0.16)(hono@4.12.2)(pluralize@8.0.0)(zod@4.3.6)
+        specifier: ^0.11.0
+        version: 0.11.0(drizzle-orm@0.36.4)(drizzle-zod@0.8.3(drizzle-orm@0.36.4)(zod@4.3.6))(fastest-levenshtein@1.0.16)(hono@4.12.2)(pluralize@8.0.0)(zod@4.3.6)
       typescript:
         specifier: ^5
         version: 5.9.3
@@ -634,8 +634,8 @@ packages:
   '@types/http-cache-semantics@4.2.0':
     resolution: {integrity: sha512-L3LgimLHXtGkWikKnsPg0/VFx9OGZaC+eN1u4r+OB1XRqH3meBIAVC2zr1WdMH+RHmnRkqliQAOHNJ/E0j/e0Q==}
 
-  '@velajs/vela@1.8.3':
-    resolution: {integrity: sha512-kBGF7I8j8t3Om9O5v3xpKDetGTMQkcBDa2j8amSAjlD1r5ii3D92nFTRnoowAQtOzUAoWVtItqdhveHDvjhM4Q==}
+  '@velajs/vela@1.8.4':
+    resolution: {integrity: sha512-NHV33DW/lPENw5I6Iw4VYayjISWn7rz4CW2CwTvpYoD9fe+hI1avCAmLRlinUjjZOW2gX/eyq43YxP3LN2Jjmg==}
     engines: {node: '>=20'}
 
   '@vitest/expect@4.0.18':
@@ -995,8 +995,8 @@ packages:
   graceful-fs@4.2.11:
     resolution: {integrity: sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==}
 
-  hono-crud@0.10.0:
-    resolution: {integrity: sha512-10kg2Orp1DhGj4As0d3lXrhWpLY3yZitiUjLKURAVwGBGjt1SqC6tmUmV0kZjiUxoK/qucyDccAd+YT0a9he3g==}
+  hono-crud@0.11.0:
+    resolution: {integrity: sha512-iB1QAQSlR15KzCR14Gyim8OE/YebTYKUlj10RhEW6tg9yQjvbPHLfr0ke+tr1YbT1RMNFmVQabctu+ISMh6B9w==}
     engines: {node: '>=20.19.0'}
     peerDependencies:
       '@prisma/adapter-pg': '>=5.0.0'
@@ -1813,7 +1813,7 @@ snapshots:
 
   '@types/http-cache-semantics@4.2.0': {}
 
-  '@velajs/vela@1.8.3':
+  '@velajs/vela@1.8.4':
     dependencies:
       hono: 4.12.2
 
@@ -2153,7 +2153,7 @@ snapshots:
 
   graceful-fs@4.2.11: {}
 
-  hono-crud@0.10.0(drizzle-orm@0.36.4)(drizzle-zod@0.8.3(drizzle-orm@0.36.4)(zod@4.3.6))(fastest-levenshtein@1.0.16)(hono@4.12.2)(pluralize@8.0.0)(zod@4.3.6):
+  hono-crud@0.11.0(drizzle-orm@0.36.4)(drizzle-zod@0.8.3(drizzle-orm@0.36.4)(zod@4.3.6))(fastest-levenshtein@1.0.16)(hono@4.12.2)(pluralize@8.0.0)(zod@4.3.6):
     dependencies:
       '@hono/swagger-ui': 0.5.3(hono@4.12.2)
       '@hono/zod-openapi': 1.2.2(hono@4.12.2)(zod@4.3.6)
