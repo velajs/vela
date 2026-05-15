@@ -29,11 +29,11 @@ async function buildApp() {
 }
 
 describe('VelaApplication.mountOpenApi', () => {
-  it('serves the JSON document at the default path /docs.json', async () => {
+  it('serves the JSON document at the default path /openapi.json', async () => {
     const { app, document } = await buildApp();
     app.mountOpenApi({ document });
 
-    const res = await app.getHonoApp().request('/docs.json');
+    const res = await app.getHonoApp().request('/openapi.json');
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toMatch(/application\/json/);
     const body = (await res.json()) as typeof document;
@@ -44,27 +44,27 @@ describe('VelaApplication.mountOpenApi', () => {
 
   it('serves JSON at a custom path when configured', async () => {
     const { app, document } = await buildApp();
-    app.mountOpenApi({ document, path: '/openapi.json' });
+    app.mountOpenApi({ document, specPath: '/v3/api-docs' });
 
-    const defaultRes = await app.getHonoApp().request('/docs.json');
+    const defaultRes = await app.getHonoApp().request('/openapi.json');
     expect(defaultRes.status).toBe(404);
 
-    const customRes = await app.getHonoApp().request('/openapi.json');
+    const customRes = await app.getHonoApp().request('/v3/api-docs');
     expect(customRes.status).toBe(200);
   });
 
-  it('serves the Scalar UI at /docs when ui: "scalar" is set', async () => {
+  it('serves the Scalar UI at /scalar when ui: "scalar" is set', async () => {
     const { app, document } = await buildApp();
     app.mountOpenApi({ document, ui: 'scalar' });
 
-    const res = await app.getHonoApp().request('/docs');
+    const res = await app.getHonoApp().request('/scalar');
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toMatch(/text\/html/);
     const html = await res.text();
     expect(html).toContain('<!doctype html>');
     expect(html).toContain('api-reference');
     // UI HTML must reference the JSON URL
-    expect(html).toContain('data-url="/docs.json"');
+    expect(html).toContain('data-url="/openapi.json"');
   });
 
   it('respects a custom uiPath and JSON path together', async () => {
@@ -86,12 +86,15 @@ describe('VelaApplication.mountOpenApi', () => {
     expect(html).toContain('data-url="/v3/api-docs"');
   });
 
-  it('does not serve a UI when ui is omitted', async () => {
+  it('mounts Scalar by default when ui is omitted', async () => {
     const { app, document } = await buildApp();
     app.mountOpenApi({ document });
 
-    const res = await app.getHonoApp().request('/docs');
-    expect(res.status).toBe(404);
+    // Default UI is Scalar at /scalar; the old default /docs is not used.
+    const scalar = await app.getHonoApp().request('/scalar');
+    expect(scalar.status).toBe(200);
+    const docs = await app.getHonoApp().request('/docs');
+    expect(docs.status).toBe(404);
   });
 
   it('returns the application instance for chaining', async () => {

@@ -109,13 +109,28 @@ export interface CreateOpenApiDocumentOptions {
   tags?: Array<{ name: string; description?: string }>;
 }
 
+export type OpenApiUi = 'swagger' | 'scalar' | 'redoc';
+
 export interface MountOpenApiOptions {
   /** Pre-built OpenAPI document to serve. */
   document: OpenApiDocument;
-  /** Path for the JSON endpoint. Default `/docs.json`. */
+  /** OpenAPI JSON spec path. @default '/openapi.json' */
+  specPath?: string;
+  /**
+   * UI(s) to mount. 'all' mounts swagger + scalar + redoc.
+   * @default 'scalar'
+   */
+  ui?: OpenApiUi | OpenApiUi[] | 'all';
+  /** Swagger UI path. @default '/docs' */
+  swaggerPath?: string;
+  /** Scalar path. @default '/scalar' */
+  scalarPath?: string;
+  /** ReDoc path. @default '/redoc' */
+  redocPath?: string;
+  /** Page title for the UIs. */
+  title?: string;
+  /** @deprecated use `specPath`. Back-compat alias; if set, overrides specPath default. */
   path?: string;
-  /** Opt-in UI renderer. Only `scalar` is bundled today. */
-  ui?: 'scalar';
-  /** Path the UI is served at when `ui` is set. Default `/docs`. */
+  /** @deprecated single-UI path override; applies to the single `ui` when a string. */
   uiPath?: string;
 }
