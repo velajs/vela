@@ -99,6 +99,14 @@ export interface ApiResponseEntry extends ApiResponseOptions {
 export interface CreateOpenApiDocumentOptions {
   info?: Partial<OpenApiInfo>;
   globalPrefix?: string;
+  /**
+   * Declare top-level tag groups with descriptions and an explicit order
+   * (mirrors NestJS `DocumentBuilder().addTag(name, description)`). Tags
+   * actually used by operations but NOT declared here are still emitted —
+   * appended after the declared ones in first-seen order. Declared tags
+   * with no operations are kept (lets you pre-declare ordering/description).
+   */
+  tags?: Array<{ name: string; description?: string }>;
 }
 
 export interface MountOpenApiOptions {
