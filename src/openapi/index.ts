@@ -9,6 +9,8 @@ export {
 } from './decorators';
 export { zodToJsonSchema } from './zod-to-json-schema';
 export { renderScalarUi } from './scalar-ui';
+export { renderSwaggerUi } from './swagger-ui';
+export { renderRedocUi } from './redoc-ui';
 export type {
   ApiDocMetadata,
   ApiResponseEntry,
@@ -17,6 +19,7 @@ export type {
   HttpVerb,
   JsonSchema,
   MountOpenApiOptions,
+  OpenApiUi,
   OpenApiDocument,
   OpenApiInfo,
   OpenApiOperation,

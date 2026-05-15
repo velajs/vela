@@ -9,8 +9,10 @@ import {
   hasOnModuleDestroy,
   hasOnModuleInit,
 } from './lifecycle/index';
-import type { MountOpenApiOptions } from './openapi/types';
+import type { MountOpenApiOptions, OpenApiUi } from './openapi/types';
 import { renderScalarUi } from './openapi/scalar-ui';
+import { renderSwaggerUi } from './openapi/swagger-ui';
+import { renderRedocUi } from './openapi/redoc-ui';
 import type { FilterType, GuardType, InterceptorType, PipeType } from './registry/types';
 
 export class VelaApplication {
@@ -83,26 +85,67 @@ export class VelaApplication {
   }
 
   /**
-   * Serve a pre-built OpenAPI document (and optionally a Scalar UI) on
-   * the underlying Hono app. Edge-safe: the UI HTML loads Scalar from a
-   * CDN at runtime so nothing is bundled server-side.
+   * Serve a pre-built OpenAPI document and one or more interactive doc UIs
+   * (Swagger UI, Scalar, ReDoc) on the underlying Hono app, mirroring the
+   * hono-crud docs convention. Edge-safe: each UI is a tiny self-contained
+   * HTML shell that loads its renderer from a CDN at runtime so nothing is
+   * bundled server-side and no extra dependency is required.
+   *
+   * Defaults: spec at `/openapi.json`, Scalar at `/scalar`, Swagger UI at
+   * `/docs`, ReDoc at `/redoc`. The deprecated `path` / `uiPath` aliases are
+   * retained for migration from the previous single-UI shape.
    *
    * ```ts
    * const doc = createOpenApiDocument(AppModule);
-   * app.mountOpenApi({ document: doc, ui: 'scalar' });
+   * app.mountOpenApi({ document: doc });            // Scalar @ /scalar
+   * app.mountOpenApi({ document: doc, ui: 'all' }); // swagger + scalar + redoc
    * ```
    */
   mountOpenApi(options: MountOpenApiOptions): this {
     const app = this.getApp();
-    const jsonPath = options.path ?? '/docs.json';
     const doc = options.document;
+    const title = options.title;
 
-    app.get(jsonPath, (c) => c.json(doc));
+    // Spec JSON: new default `/openapi.json`. The deprecated `path` alias is
+    // honored as an override only (does not change the default).
+    const specPath = options.specPath ?? options.path ?? '/openapi.json';
+    app.get(specPath, (c) => c.json(doc));
 
-    if (options.ui === 'scalar') {
-      const uiPath = options.uiPath ?? '/docs';
-      const html = renderScalarUi(jsonPath);
-      app.get(uiPath, (c) => c.html(html));
+    // Normalize the requested UI set. Default is Scalar only.
+    const uiOption = options.ui;
+    let uis: OpenApiUi[];
+    let singleStringUi = false;
+    if (uiOption === undefined) {
+      uis = ['scalar'];
+    } else if (uiOption === 'all') {
+      uis = ['swagger', 'scalar', 'redoc'];
+    } else if (Array.isArray(uiOption)) {
+      uis = uiOption;
+    } else {
+      uis = [uiOption];
+      singleStringUi = true;
+    }
+
+    for (const ui of uis) {
+      // Back-compat: the old `{ ui: 'scalar', uiPath }` form mapped a single
+      // string UI to `uiPath`. Honor that only when exactly one UI was
+      // requested as a string.
+      const legacyPath =
+        singleStringUi && uis.length === 1 ? options.uiPath : undefined;
+
+      if (ui === 'swagger') {
+        const path = legacyPath ?? options.swaggerPath ?? '/docs';
+        const html = renderSwaggerUi(specPath, title);
+        app.get(path, (c) => c.html(html));
+      } else if (ui === 'redoc') {
+        const path = legacyPath ?? options.redocPath ?? '/redoc';
+        const html = renderRedocUi(specPath, title);
+        app.get(path, (c) => c.html(html));
+      } else {
+        const path = legacyPath ?? options.scalarPath ?? '/scalar';
+        const html = renderScalarUi(specPath, title);
+        app.get(path, (c) => c.html(html));
+      }
     }
 
     return this;
