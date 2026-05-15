@@ -1,6 +1,6 @@
 import type { Context, Hono, MiddlewareHandler } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
-import type { CanActivate, ExecutionContext, HttpArgumentsHost, Type } from '@velajs/vela';
+import type { CanActivate, ExecutionContext, HttpArgumentsHost, NestMiddleware, Type } from '@velajs/vela';
 import { ForbiddenException, HttpException } from '@velajs/vela';
 import { ComponentManager } from '@velajs/vela/internal';
 import type {
@@ -70,8 +70,21 @@ export async function buildCrudRoutes(
 
   const middlewares = buildGuardMiddleware(controller, ctx.globalGuards);
   const endpointMiddlewares = buildOverrideMiddlewares(controller);
+  const controllerMiddleware = buildControllerMiddleware(controller);
 
   const openApiHono = new OpenAPIHono();
+
+  // Controller-level `@UseMiddleware(...)` must run on generated CRUD routes
+  // exactly as it does on hand-written `@Get`/`@Post` handlers. vela's
+  // RouteManager attaches these per route; the CRUD sub-app is opaque to it,
+  // so previously this middleware was silently dropped — a per-request
+  // DB-binding middleware never ran and every CRUD call 500'd. Register here
+  // on the OpenAPIHono *before* `fromHono`/`registerCrud` so it runs ahead of
+  // the guard middleware and every generated handler (controller → guards →
+  // handler), mirroring RouteManager's ordering for normal routes.
+  for (const mw of controllerMiddleware) {
+    openApiHono.use('*', mw);
+  }
   openApiHono.onError((err, c) => {
     if (err instanceof HttpException) {
       return c.json(err.getResponse(), err.getStatus() as ContentfulStatusCode);
@@ -275,6 +288,39 @@ function buildGuardMiddleware(controller: Type, globalGuards: CanActivate[]): Mi
   };
 
   return [guardMiddleware];
+}
+
+/**
+ * Resolve controller-level `@UseMiddleware(...)` and wrap each instance as a
+ * Hono middleware. Mirrors vela's `RouteManager` first pass, which reads
+ * `ComponentManager.getComponents('middleware', controller, route.handlerName)`
+ * and applies `instance.use(c, next)` per route. Here the handler-name slot is
+ * the empty string so only the controller (and decorator-global) scope is
+ * pulled — handler-scoped middleware has no generated handler to bind to. This
+ * is the exact pattern {@link buildGuardMiddleware} uses for guards.
+ */
+function buildControllerMiddleware(controller: Type): MiddlewareHandler[] {
+  const middlewareItems = ComponentManager.getComponents(
+    'middleware',
+    controller,
+    '' as string | symbol,
+  );
+  if (middlewareItems.length === 0) return [];
+
+  const instances = ComponentManager.resolveMiddleware(middlewareItems);
+
+  // Mirror vela's RouteManager: invoke `instance.use(c, next)` and return its
+  // result directly — Hono assigns a returned Response or honors the
+  // `next()`-driven chain, so a NestMiddleware that short-circuits and one
+  // that passes through both behave exactly as on a hand-written route. The
+  // `c`/`next` casts bridge the Hono context-generic variance between this
+  // package's `hono` and vela's `NestMiddleware.use` signature (the same
+  // friction `buildGuardMiddleware` resolves with its `c as T` casts).
+  type UseArgs = Parameters<NestMiddleware['use']>;
+  return instances.map<MiddlewareHandler>(
+    (instance) => (c, next) =>
+      instance.use(c as unknown as UseArgs[0], next as unknown as UseArgs[1]),
+  );
 }
 
 async function loadHonoCrud(): Promise<HonoCrudModule> {
