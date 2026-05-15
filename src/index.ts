@@ -1,6 +1,8 @@
 // Factory & Application
 export { createCloudflareApp } from './cloudflare-factory';
+export type { CreateCloudflareAppOptions } from './cloudflare-factory';
 export { CloudflareApplication } from './cloudflare-application';
+export type { MountOpenApiOptions } from './cloudflare-application';
 
 // Modules
 export { KVModule } from './modules/kv.module';

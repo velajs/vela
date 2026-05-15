@@ -5,6 +5,15 @@ import { getScheduledMetadata } from './decorators/scheduled';
 import { getQueueConsumerMetadata } from './decorators/queue-consumer';
 import type { ScheduledRegistration, QueueRegistration, CloudflareEnv } from './types';
 
+/**
+ * Options accepted by {@link CloudflareApplication.mountOpenApi}.
+ *
+ * Re-exposes vela's `MountOpenApiOptions` type — derived structurally from
+ * the underlying `VelaApplication.mountOpenApi` signature so consumers don't
+ * have to reach into vela's internal subpaths to type the argument.
+ */
+export type MountOpenApiOptions = Parameters<VelaApplication['mountOpenApi']>[0];
+
 type Method = (...args: unknown[]) => unknown;
 
 function invoke(instance: object, methodName: string, args: unknown[]): unknown {
@@ -21,6 +30,8 @@ function invoke(instance: object, methodName: string, args: unknown[]): unknown 
  * - `scheduled` — Cron trigger handler (matches `@Scheduled()` decorators
  *                 AND vela's own `@Cron()` jobs)
  * - `queue` — Queue consumer handler (matches `@QueueConsumer()` decorators)
+ * - `mountOpenApi` — Serve an OpenAPI document (and optional Scalar UI) on
+ *                    the underlying Hono app
  *
  * @example
  * ```ts
@@ -30,6 +41,16 @@ function invoke(instance: object, methodName: string, args: unknown[]): unknown 
  *   scheduled: app.scheduled.bind(app),
  *   queue: app.queue.bind(app),
  * };
+ * ```
+ *
+ * @example
+ * ```ts
+ * // Serve OpenAPI docs alongside your routes
+ * const app = await createCloudflareApp(AppModule);
+ * const document = createOpenApiDocument(AppModule);
+ * app.mountOpenApi({ document, ui: 'scalar' });
+ * // GET /docs.json -> JSON document
+ * // GET /docs      -> Scalar UI (loads from CDN)
  * ```
  */
 export class CloudflareApplication {
@@ -44,6 +65,31 @@ export class CloudflareApplication {
 
   getHonoApp(): Hono {
     return this.app.getHonoApp();
+  }
+
+  /**
+   * Serve a pre-built OpenAPI document (and optionally a Scalar UI) on the
+   * underlying Hono app. Delegates verbatim to `VelaApplication.mountOpenApi`,
+   * so the JSON endpoint defaults to `/docs.json` and the Scalar UI (when
+   * opted in) defaults to `/docs`. Edge-safe — the UI HTML loads Scalar from
+   * a CDN at runtime, nothing is bundled server-side.
+   *
+   * @example
+   * ```ts
+   * import { createOpenApiDocument } from '@velajs/vela';
+   *
+   * const app = await createCloudflareApp(AppModule);
+   * const document = createOpenApiDocument(AppModule, {
+   *   info: { title: 'My API', version: '1.0.0' },
+   * });
+   * app.mountOpenApi({ document, ui: 'scalar' });
+   * // GET /docs.json -> { openapi: '3.1.0', ... }
+   * // GET /docs      -> Scalar UI HTML
+   * ```
+   */
+  mountOpenApi(options: MountOpenApiOptions): this {
+    this.app.mountOpenApi(options);
+    return this;
   }
 
   /** @internal — scans instances for @Scheduled, @Cron, and @QueueConsumer metadata */
