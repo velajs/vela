@@ -12,8 +12,8 @@ let honoCrudAvailable = false;
 
 beforeAll(async () => {
   try {
-    const honoCrud = await import('hono-crud');
-    const memory = await import('hono-crud/adapters/memory');
+    const honoCrud = { ...(await import('hono-crud')), ...(await import('@hono-crud/memory')), ...(await import('hono-crud/auth')), ...(await import('hono-crud/events')) };
+    const memory = await import('@hono-crud/memory');
     const zod = await import('zod');
     MemoryAdapters = honoCrud.MemoryAdapters;
     defineMeta = honoCrud.defineMeta;
@@ -35,7 +35,7 @@ const ctx = () => ({ globalPrefix: '', globalGuards: [], joinPaths: (...p: strin
 const newEndpoints = [
   'search', 'aggregate', 'restore',
   'batchCreate', 'batchUpdate', 'batchDelete', 'batchRestore', 'batchUpsert',
-  'export', 'import', 'upsert', 'clone',
+  'export', 'import', 'upsert', 'clone', 'bulkPatch',
 ] as const;
 
 describe('endpoint widening (0.4.0)', () => {
@@ -175,6 +175,42 @@ describe('endpoint widening (0.4.0)', () => {
     expect(agg.status).toBeLessThan(500);
     const exp = await app.request('/widgets/export');
     expect(exp.status).toBeLessThan(500);
+  });
+
+  it('registers a bulkPatch route end-to-end', async () => {
+    if (!honoCrudAvailable) return;
+    const meta = defineMeta({
+      model: defineModel({
+        tableName: 'widgets',
+        schema: z.object({ id: z.string(), name: z.string() }),
+        primaryKeys: ['id'],
+      }),
+    });
+    const app = new Hono();
+    class Stub {}
+    await buildCrudRoutes(app, Stub as any, '/widgets', { meta, adapters: MemoryAdapters, only: ['create', 'bulkPatch'] }, ctx());
+    await app.request('/widgets', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: '1', name: 'wrench' }),
+    });
+    await app.request('/widgets', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: '2', name: 'hammer' }),
+    });
+    // bulkPatch body = the fields to SET on every matched row (a partial of the
+    // model); filters go in the query string. No filter → matches all visible.
+    const res = await app.request('/widgets/bulk', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'patched' }),
+    });
+    expect(res.status).toBeLessThan(500);
+    const body = await res.json();
+    const payload = body.result ?? body;
+    expect(payload.matched).toBe(2);
+    expect(payload.updated).toBe(2);
   });
 
   it('@Override targets a new endpoint name', async () => {

@@ -17,8 +17,8 @@ let honoCrudAvailable = false;
 
 beforeAll(async () => {
   try {
-    const honoCrud = await import('hono-crud');
-    const memory = await import('hono-crud/adapters/memory');
+    const honoCrud = { ...(await import('hono-crud')), ...(await import('@hono-crud/memory')), ...(await import('hono-crud/auth')), ...(await import('hono-crud/events')) };
+    const memory = await import('@hono-crud/memory');
     const zod = await import('zod');
     MemoryAdapters = honoCrud.MemoryAdapters;
     defineMeta = honoCrud.defineMeta as typeof defineMeta;
@@ -60,7 +60,9 @@ describe('requireApproval pass-through (0.6.0)', () => {
     const approval = requireApproval!({
       reason: 'Permanent invoice deletion',
       expiresAfter: 'P1D',
-      approvalStorage: storage,
+      // hono-crud 0.13: ApprovalConfig's explicit-storage field is `storage`
+      // (was `approvalStorage`). Resolution priority: explicit > context > global.
+      storage,
     }) as (c: unknown, next: () => Promise<void>) => Promise<void>;
     app.use('/invoices/:id', async (c, next) => {
       if ((c as { req: { method: string } }).req.method !== 'DELETE') {

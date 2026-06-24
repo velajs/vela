@@ -3,18 +3,14 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { CanActivate, ExecutionContext, HttpArgumentsHost, NestMiddleware, Type } from '@velajs/vela';
 import { ForbiddenException, HttpException } from '@velajs/vela';
 import { ComponentManager } from '@velajs/vela/internal';
-import type {
-  AdapterBundle,
-  EndpointMiddlewares,
-  EndpointsConfig,
-  GeneratedEndpoints,
-  MetaInput,
-  RegisterCrudOptions,
-} from 'hono-crud';
+import type { EndpointMiddlewares, MetaInput, RegisterCrudOptions } from 'hono-crud';
+import type { AdapterBundle, EndpointsConfig, GeneratedEndpoints } from 'hono-crud/config';
 import { getOverrides } from './override.decorator';
 import {
+  adapterProvidesEndpoint,
   ALL_CRUD_ENDPOINTS,
   assertTenantResolverMounted,
+  crudEndpointSlot,
   type CrudConfig,
   type CrudEndpointName,
 } from './types';
@@ -155,18 +151,48 @@ function validateEndpointNames(config: CrudConfig): void {
 }
 
 function resolveEnabledEndpoints(config: CrudConfig): CrudEndpointName[] {
+  // Explicit `only` is an explicit request: do NOT silently drop unsupported
+  // verbs here. They are loud-failed in buildEndpointsDef with a clear @Crud:
+  // error instead of a silent skip.
   if (config.only) return [...config.only];
+
+  // For the default-derived lists (no selection, or `except`), restore the
+  // pre-0.13 "just works" DX: enable only the verbs the adapter bundle ships.
+  // hono-crud 0.13 throws at definition time when a configured verb's adapter
+  // slot is absent, so a partial custom AdapterBundle must not auto-enable a
+  // verb the consumer never explicitly asked for. First-party bundles
+  // (Memory/Drizzle/Prisma) fill every slot, so this is a no-op for them.
+  const provided = (e: CrudEndpointName) => adapterProvidesEndpoint(config.adapters, e);
   if (config.except) {
     const except = new Set<string>(config.except);
-    return ALL_CRUD_ENDPOINTS.filter((e) => !except.has(e));
+    return ALL_CRUD_ENDPOINTS.filter((e) => !except.has(e) && provided(e));
   }
-  return [...ALL_CRUD_ENDPOINTS];
+  return ALL_CRUD_ENDPOINTS.filter(provided);
 }
 
 function buildEndpointsDef(
   config: CrudConfig,
   enabled: CrudEndpointName[],
 ): EndpointsConfig<MetaInput> {
+  // Loud failure with a crud-level message when an EXPLICITLY requested verb
+  // is not backed by the adapter bundle. Default-derived verbs were already
+  // intersected away in resolveEnabledEndpoints, so only an explicit `only`
+  // list or an explicit `endpoints.{verb}` key can reach here unsupported.
+  // This pre-empts hono-crud's lower-level throw with an actionable message.
+  const explicit = new Set<CrudEndpointName>([
+    ...(config.only ?? []),
+    ...((config.endpoints ? Object.keys(config.endpoints) : []) as CrudEndpointName[]),
+  ]);
+  for (const name of explicit) {
+    if (!adapterProvidesEndpoint(config.adapters, name)) {
+      throw new Error(
+        `@Crud: endpoint '${name}' was explicitly enabled but the adapter bundle ` +
+          `has no ${crudEndpointSlot(name)}. Use an adapter bundle that ships ` +
+          `${crudEndpointSlot(name)}, or remove '${name}' from only/endpoints.`,
+      );
+    }
+  }
+
   // The mapped union of per-endpoint configs has no shared shape, so we build
   // the object as a plain Record and cast at the boundary. Each key lands in
   // the slot hono-crud expects at runtime.

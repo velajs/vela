@@ -1,4 +1,5 @@
-import type { AdapterBundle, MetaInput } from 'hono-crud';
+import type { MetaInput } from 'hono-crud';
+import type { AdapterBundle } from 'hono-crud/config';
 
 /**
  * Abstract base for CRUD services. Subclasses bind a hono-crud `AdapterBundle`

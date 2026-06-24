@@ -7,7 +7,9 @@ export { buildCrudRoutes } from './builder';
 export { defineCrudResource } from './define-crud-resource';
 export type { DefineCrudResourceConfig } from './define-crud-resource';
 export {
+  adapterProvidesEndpoint,
   ALL_CRUD_ENDPOINTS,
+  crudEndpointSlot,
   MissingTenantResolverError,
   isTenantScopedMeta,
 } from './types';

@@ -18,10 +18,14 @@ let honoCrudAvailable = false;
 
 beforeAll(async () => {
   try {
-    const [honoCrud, zod] = await Promise.all([
+    const [honoCrudBase, zod, memMod, authMod, eventsMod] = await Promise.all([
       import('hono-crud'),
       import('zod'),
+      import('@hono-crud/memory'),
+      import('hono-crud/auth'),
+      import('hono-crud/events'),
     ]);
+    const honoCrud = { ...honoCrudBase, ...memMod, ...authMod, ...eventsMod };
     defineMeta = honoCrud.defineMeta;
     defineModel = honoCrud.defineModel;
     MemoryAdapters = honoCrud.MemoryAdapters;

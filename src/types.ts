@@ -1,20 +1,16 @@
 import type { GuardType } from '@velajs/vela';
-import type {
-  AdapterBundle,
-  EndpointsConfig,
-  HookContext,
-  MetaInput,
-  ResponseEnvelope,
-} from 'hono-crud';
+import type { HookContext, MetaInput, ResponseEnvelope } from 'hono-crud';
+import type { AdapterBundle, EndpointsConfig } from 'hono-crud/config';
 import type { ZodObject, ZodRawShape } from 'zod';
 
 /**
  * The CRUD operations surfaced by @velajs/crud. Mirrors hono-crud's
  * CrudEndpointName so the bridge forwards the full surface — search,
- * aggregate, restore, batch ops, export/import, upsert, clone.
+ * aggregate, restore, batch ops, export/import, upsert, clone, and
+ * bulk-patch (PATCH a filtered set at the collection level).
  *
- * Versioning verbs (versionHistory/Read/Compare/Rollback) are still
- * deferred until a real consumer exercises them.
+ * Versioning verbs (versionHistory/Read/Compare/Rollback) are the only
+ * hono-crud verbs still deferred until a real consumer exercises them.
  */
 export type CrudEndpointName =
   | 'create'
@@ -33,7 +29,8 @@ export type CrudEndpointName =
   | 'export'
   | 'import'
   | 'upsert'
-  | 'clone';
+  | 'clone'
+  | 'bulkPatch';
 
 export const ALL_CRUD_ENDPOINTS: readonly CrudEndpointName[] = [
   'create',
@@ -53,7 +50,36 @@ export const ALL_CRUD_ENDPOINTS: readonly CrudEndpointName[] = [
   'import',
   'upsert',
   'clone',
+  'bulkPatch',
 ] as const;
+
+/**
+ * Maps a bridge endpoint verb to the PascalCase adapter slot name hono-crud
+ * looks up on the AdapterBundle (e.g. `'batchCreate'` → `'BatchCreateEndpoint'`).
+ * Mirrors hono-crud's internal verb→slot table; verified against `AdapterBundle`
+ * (hono-crud/config) and `@hono-crud/memory`'s `MemoryAdapters`.
+ */
+export function crudEndpointSlot(name: CrudEndpointName): string {
+  return `${name.charAt(0).toUpperCase()}${name.slice(1)}Endpoint`;
+}
+
+/**
+ * Returns `true` when the given adapter bundle ships the base class for `name`.
+ * Detects by runtime key presence on the bundle object — hono-crud 0.13's
+ * `AdapterBundle` is a plain record of `${Verb}Endpoint` constructors, with the
+ * five base verbs required and the rest optional. We read only public keys, so
+ * this does not couple to hono-crud internals. Slot values are class
+ * constructors (truthy when present), so the `!= null` presence test agrees
+ * with hono-crud's own falsy `if (!slot)` guard at its throw site.
+ */
+export function adapterProvidesEndpoint(
+  adapters: unknown,
+  name: CrudEndpointName,
+): boolean {
+  if (!adapters || typeof adapters !== 'object') return false;
+  const slot = crudEndpointSlot(name);
+  return (adapters as Record<string, unknown>)[slot] != null;
+}
 
 /**
  * Per-endpoint override forwarded to hono-crud's EndpointsConfig<M> slot.
@@ -79,6 +105,7 @@ export type EndpointOverride<M extends MetaInput = MetaInput> = {
   import: NonNullable<EndpointsConfig<M>['import']>;
   upsert: NonNullable<EndpointsConfig<M>['upsert']>;
   clone: NonNullable<EndpointsConfig<M>['clone']>;
+  bulkPatch: NonNullable<EndpointsConfig<M>['bulkPatch']>;
 };
 
 /**

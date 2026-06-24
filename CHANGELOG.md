@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed (BREAKING)
+- **Migrated to `hono-crud` 0.13** (peer `>=0.13.0`, was `>=0.11.0`; dev `^0.13.15`)
+  and **`@hono/zod-openapi >=1.0.0`** (was `>=0.9`). hono-crud 0.13 split its
+  exports across subpaths and extracted adapters into separate `@hono-crud/*`
+  packages: the bridge's type imports moved to `hono-crud/config`
+  (`AdapterBundle`/`EndpointsConfig`/`GeneratedEndpoints`), and the in-memory
+  adapter moved to `@hono-crud/memory` (dev-only, used by the test harness).
+- **Error response shape (consumer-facing).** hono-crud 0.13 unified every failure
+  into one canonical envelope `{ success: false, error: { code, message, details? } }`
+  with stable codes; `@velajs/crud` forwards these verbatim. Validation errors are
+  now **400 `VALIDATION_ERROR`** (was 422) with `details: [{ path, message, code }]`;
+  throw-sites carry real codes (`404 NOT_FOUND`, `403 FORBIDDEN`, `400 TENANT_REQUIRED`,
+  `409 CONFLICT`, …). The success envelope is unchanged.
+
+### Added
+- **`bulkPatch` endpoint** — surfaces hono-crud's collection-level `PATCH /bulk`
+  (apply a partial update to a filtered set). Now part of `ALL_CRUD_ENDPOINTS`,
+  `EndpointOverride`, route mounting, and the OpenAPI document. Only the four
+  `version*` verbs remain deferred.
+- **Default-endpoint hardening for partial adapter bundles.** hono-crud 0.13 throws
+  at definition time when a configured verb's adapter slot is absent. A default
+  mount (no `only`/`except`) now enables only the verbs the adapter bundle ships,
+  so a partial custom `AdapterBundle` no longer crashes on verbs the consumer never
+  asked for. An **explicitly** requested verb (via `only` or `endpoints.{verb}`)
+  that the bundle lacks fails fast with a clear `@Crud:` error. New exports:
+  `crudEndpointSlot`, `adapterProvidesEndpoint`.
+
+### Changed
+- Toolchain refresh: typescript ^5 → ^6.0.3, vitest ^4.0.18 → ^4.1.9, swc bumps,
+  drizzle-orm (dev) ^0.36.4 → ^0.45.2.
+
 ## [1.2.0] — 2026-05-10
 
 ### Fixed

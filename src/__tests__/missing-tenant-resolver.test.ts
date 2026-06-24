@@ -19,8 +19,8 @@ let honoCrudAvailable = false;
 
 beforeAll(async () => {
   try {
-    const honoCrud = await import('hono-crud');
-    const memory = await import('hono-crud/adapters/memory');
+    const honoCrud = { ...(await import('hono-crud')), ...(await import('@hono-crud/memory')), ...(await import('hono-crud/auth')), ...(await import('hono-crud/events')) };
+    const memory = await import('@hono-crud/memory');
     const zod = await import('zod');
     MemoryAdapters = honoCrud.MemoryAdapters;
     defineMeta = honoCrud.defineMeta as typeof defineMeta;
