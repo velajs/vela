@@ -25,7 +25,7 @@ function buildMinimalDoc(): OpenApiDocument {
 }
 
 describe('CloudflareApplication.mountOpenApi', () => {
-  it('serves the document JSON at /docs.json by default', async () => {
+  it('serves the document JSON at /openapi.json by default', async () => {
     @Controller('/health')
     class HealthController {
       @Get()
@@ -42,13 +42,13 @@ describe('CloudflareApplication.mountOpenApi', () => {
     app.mountOpenApi({ document, ui: 'scalar' });
     const hono = app.getHonoApp();
 
-    const jsonRes = await hono.request('/docs.json', undefined, {});
+    const jsonRes = await hono.request('/openapi.json', undefined, {});
     expect(jsonRes.status).toBe(200);
     expect(jsonRes.headers.get('content-type')).toMatch(/application\/json/);
     expect(await jsonRes.json()).toEqual(document);
   });
 
-  it("serves the Scalar UI at /docs with a data-url pointing at /docs.json", async () => {
+  it("serves the Scalar UI at /scalar with a data-url pointing at /openapi.json", async () => {
     @Controller('/ping')
     class PingController {
       @Get()
@@ -65,14 +65,15 @@ describe('CloudflareApplication.mountOpenApi', () => {
     app.mountOpenApi({ document, ui: 'scalar' });
     const hono = app.getHonoApp();
 
-    const uiRes = await hono.request('/docs', undefined, {});
+    const uiRes = await hono.request('/scalar', undefined, {});
     expect(uiRes.status).toBe(200);
     expect(uiRes.headers.get('content-type')).toMatch(/text\/html/);
 
     const html = await uiRes.text();
-    // Scalar UI HTML must reference our docs.json endpoint so the browser
-    // can hydrate the API reference.
-    expect(html).toContain('data-url="/docs.json"');
+    // Scalar UI HTML must reference the spec endpoint so the browser can
+    // hydrate the API reference. vela 1.8.x defaults the spec to /openapi.json
+    // and the Scalar UI to /scalar (overridable via specPath / scalarPath).
+    expect(html).toContain('data-url="/openapi.json"');
     expect(html).toContain('@scalar/api-reference');
   });
 

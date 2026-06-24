@@ -52,18 +52,18 @@
   },
   "peerDependencies": {
     "@cloudflare/workers-types": ">=4",
-    "@velajs/vela": ">=1.5.0",
+    "@velajs/vela": ">=1.8.5",
     "hono": ">=4"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4",
-    "@swc/cli": "^0.8.0",
-    "@swc/core": "^1.15.11",
-    "@velajs/vela": "^1.5.0",
-    "hono": "^4",
-    "typescript": "^5",
+    "@cloudflare/workers-types": "^4.20260624.1",
+    "@swc/cli": "^0.8.1",
+    "@swc/core": "^1.15.43",
+    "@velajs/vela": "^1.8.5",
+    "hono": "^4.12.27",
+    "typescript": "^6.0.3",
     "unplugin-swc": "^1.5.9",
-    "vitest": "^4.0.18"
+    "vitest": "^4.1.9"
   },
   "packageManager": "pnpm@10.20.0",
   "pnpm": {

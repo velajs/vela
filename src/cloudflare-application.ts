@@ -49,8 +49,8 @@ function invoke(instance: object, methodName: string, args: unknown[]): unknown 
  * const app = await createCloudflareApp(AppModule);
  * const document = createOpenApiDocument(AppModule);
  * app.mountOpenApi({ document, ui: 'scalar' });
- * // GET /docs.json -> JSON document
- * // GET /docs      -> Scalar UI (loads from CDN)
+ * // GET /openapi.json -> JSON document
+ * // GET /scalar       -> Scalar UI (loads from CDN)
  * ```
  */
 export class CloudflareApplication {
@@ -70,8 +70,8 @@ export class CloudflareApplication {
   /**
    * Serve a pre-built OpenAPI document (and optionally a Scalar UI) on the
    * underlying Hono app. Delegates verbatim to `VelaApplication.mountOpenApi`,
-   * so the JSON endpoint defaults to `/docs.json` and the Scalar UI (when
-   * opted in) defaults to `/docs`. Edge-safe — the UI HTML loads Scalar from
+   * so the JSON endpoint defaults to `/openapi.json` and the Scalar UI (when
+   * opted in) defaults to `/scalar`. Edge-safe — the UI HTML loads Scalar from
    * a CDN at runtime, nothing is bundled server-side.
    *
    * @example
@@ -83,8 +83,8 @@ export class CloudflareApplication {
    *   info: { title: 'My API', version: '1.0.0' },
    * });
    * app.mountOpenApi({ document, ui: 'scalar' });
-   * // GET /docs.json -> { openapi: '3.1.0', ... }
-   * // GET /docs      -> Scalar UI HTML
+   * // GET /openapi.json -> { openapi: '3.1.0', ... }
+   * // GET /scalar       -> Scalar UI HTML
    * ```
    */
   mountOpenApi(options: MountOpenApiOptions): this {
