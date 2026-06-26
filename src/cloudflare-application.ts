@@ -68,6 +68,22 @@ export class CloudflareApplication {
   }
 
   /**
+   * Resolve a provider from the application's DI container (delegates to
+   * `VelaApplication.get`). Handy for grabbing a service — e.g. an auth service —
+   * to use inside `createCloudflareApp({ middleware: [...] })` request middleware,
+   * which runs outside the DI request pipeline.
+   *
+   * @example
+   * ```ts
+   * const app = await createCloudflareApp(AppModule);
+   * const auth = app.get<BetterAuthService>(BetterAuthService);
+   * ```
+   */
+  get<T>(token: Parameters<VelaApplication['get']>[0]): T {
+    return this.app.get(token) as T;
+  }
+
+  /**
    * Serve a pre-built OpenAPI document (and optionally a Scalar UI) on the
    * underlying Hono app. Delegates verbatim to `VelaApplication.mountOpenApi`,
    * so the JSON endpoint defaults to `/openapi.json` and the Scalar UI (when
