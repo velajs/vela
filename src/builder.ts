@@ -33,6 +33,12 @@ interface HonoCrudModule {
     config: EndpointsConfig<M>,
     adapters: AdapterBundle,
   ) => GeneratedEndpoints;
+  // From hono-crud/internal: record a resource on a given app's registry so
+  // addons (e.g. @hono-crud/mcp auto) can enumerate it via
+  // getRegisteredCrudResources(app). registerCrud only records on the sub-app.
+  // Optional: absent on hono-crud versions that predate this export — the
+  // bridge degrades gracefully (no MCP auto-discovery) rather than crashing.
+  recordCrudResource?: (app: Hono, path: string, endpoints: GeneratedEndpoints) => void;
 }
 
 interface HonoZodOpenapiModule {
@@ -56,7 +62,7 @@ export async function buildCrudRoutes(
     tenantResolverMounted: crudConfig.tenantResolverMounted,
   });
 
-  const { fromHono, registerCrud, defineEndpoints } = await loadHonoCrud();
+  const { fromHono, registerCrud, defineEndpoints, recordCrudResource } = await loadHonoCrud();
   const { OpenAPIHono } = await loadHonoZodOpenapi();
 
   // Validation + only/except resolution + per-endpoint/dto/hooks merge is the
@@ -106,6 +112,15 @@ export async function buildCrudRoutes(
 
   const mountPath = ctx.joinPaths(ctx.globalPrefix, prefix) || '/';
   app.route(mountPath, subApp);
+
+  // registerCrud recorded this resource on the isolated sub-app (path ''); also
+  // record it on the MAIN app with its real mount path so addons that enumerate
+  // via getRegisteredCrudResources(mainApp) — notably @hono-crud/mcp's `auto`
+  // discovery — can find it (and re-dispatch tool calls through the mounted
+  // routes). Without this, MCP auto-discovers zero resources. Guarded: older
+  // hono-crud doesn't export recordCrudResource (then MCP discovery is simply
+  // unavailable instead of throwing).
+  recordCrudResource?.(app, mountPath, endpoints);
 }
 
 /**
@@ -368,8 +383,17 @@ function buildControllerMiddleware(controller: Type): MiddlewareHandler[] {
 
 async function loadHonoCrud(): Promise<HonoCrudModule> {
   try {
-    const mod = (await import('hono-crud')) as unknown as HonoCrudModule;
-    return mod;
+    const mod = (await import('hono-crud')) as unknown as Omit<
+      HonoCrudModule,
+      'recordCrudResource'
+    >;
+    // recordCrudResource lives on the satellite-facing `hono-crud/internal`
+    // surface (not the root barrel).
+    const internal = (await import('hono-crud/internal')) as unknown as Pick<
+      HonoCrudModule,
+      'recordCrudResource'
+    >;
+    return { ...mod, recordCrudResource: internal.recordCrudResource };
   } catch {
     throw new Error(
       `@Crud() requires 'hono-crud' as a dependency. Install it: pnpm add hono-crud`,
