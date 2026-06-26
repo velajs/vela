@@ -527,7 +527,20 @@ export class Container {
     const injectMetadata = getInjectMetadata(target);
     const injectMap = new Map(injectMetadata.map((m) => [m.index, m]));
 
-    const dependencies = paramTypes.map((paramType, index) => {
+    // Constructor arity. Normally `design:paramtypes` (emitDecoratorMetadata)
+    // gives the count, but some bundlers — notably esbuild (and therefore
+    // Wrangler) — do not emit it, leaving `paramTypes` empty even when
+    // `@Inject(token)` recorded explicit tokens. Fall back to the highest
+    // `@Inject` index so explicit-token constructors still resolve without
+    // emitted metadata. Slots with neither a param type nor an `@Inject` token
+    // still hit the unresolved-dependency error below.
+    const arity = Math.max(
+      paramTypes.length,
+      injectMetadata.reduce((max, m) => Math.max(max, m.index + 1), 0),
+    );
+
+    const dependencies = Array.from({ length: arity }, (_unused, index) => {
+      const paramType = paramTypes[index];
       const meta = injectMap.get(index);
       const rawToken = meta?.token;
       const isForwardRef = rawToken instanceof ForwardRef;
