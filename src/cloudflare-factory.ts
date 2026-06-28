@@ -4,6 +4,7 @@ import type { Type } from '@velajs/vela';
 import { Container } from '@velajs/vela/internal';
 import { BindingRef } from './binding-ref';
 import { CloudflareApplication } from './cloudflare-application';
+import { EnvRef } from './env-ref';
 
 // Walks every provider registered in the container and pulls out the
 // BindingRef instances. Replaces the old module-level `bindingsRegistry`
@@ -107,7 +108,9 @@ export async function createCloudflareApp(
       initialized = true;
       const env = (c.env as Record<string, unknown>) ?? {};
       for (const ref of refs!) {
-        ref._initialize(env[ref.bindingName]);
+        // EnvRef holds the whole env; every other ref holds one binding.
+        if (ref instanceof EnvRef) ref._initialize(env);
+        else ref._initialize(env[ref.bindingName]);
       }
     }
     await next();

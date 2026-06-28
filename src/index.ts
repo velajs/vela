@@ -13,6 +13,7 @@ export { DurableObjectModule } from './modules/durable-object.module';
 export { AIModule } from './modules/ai.module';
 export { VectorizeModule } from './modules/vectorize.module';
 export { HyperdriveModule } from './modules/hyperdrive.module';
+export { EnvModule } from './modules/env.module';
 
 // Services
 export { KVService } from './services/kv.service';
@@ -23,6 +24,7 @@ export { DurableObjectService } from './services/durable-object.service';
 export { AIService } from './services/ai.service';
 export { VectorizeService } from './services/vectorize.service';
 export { HyperdriveService } from './services/hyperdrive.service';
+export { EnvService } from './services/env.service';
 
 // Decorators
 export { Env } from './decorators/env';
