@@ -12,6 +12,7 @@ import {
   Public,
   type User,
 } from '@velajs/better-auth';
+import { schema } from './schema';
 
 @Controller('/me')
 class MeController {
@@ -43,7 +44,14 @@ class HealthController {
         betterAuth({
           secret: 'auth-lab-d1-demo-secret-32-bytes-please-rotate',
           baseURL: 'http://localhost',
-          database: drizzleAdapter(drizzle(d1.database), { provider: 'sqlite' }),
+          // Pass the drizzle `schema` so the adapter maps better-auth's models
+          // to typed tables — required on D1 so Date columns are encoded via
+          // drizzle's `{ mode: 'timestamp' }` (a bare adapter throws
+          // D1_TYPE_ERROR when better-auth writes a Date).
+          database: drizzleAdapter(drizzle(d1.database, { schema }), {
+            provider: 'sqlite',
+            schema,
+          }),
           emailAndPassword: { enabled: true, autoSignIn: true },
           trustedOrigins: ['http://localhost:8789', 'http://localhost'],
         }),

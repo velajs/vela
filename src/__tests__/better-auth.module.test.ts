@@ -95,6 +95,41 @@ describe('BetterAuthModule', () => {
     expect(auth.handler).toHaveBeenCalled();
   });
 
+  it('mounts the catch-all controller at a custom basePath', async () => {
+    const auth = makeMockAuth();
+
+    @Module({ imports: [BetterAuthModule.forRoot({ auth, basePath: '/auth' })] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    const res = await hono.request('/auth/sign-in', { method: 'POST' });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe('better-auth-ok');
+    expect(auth.handler).toHaveBeenCalled();
+
+    // The default base path is no longer mounted.
+    const old = await hono.request('/api/auth/sign-in', { method: 'POST' });
+    expect(old.status).toBe(404);
+  });
+
+  it('forRootAsync mounts the catch-all controller at a custom basePath', async () => {
+    const auth = makeMockAuth();
+
+    @Module({
+      imports: [
+        BetterAuthModule.forRootAsync({ useFactory: () => auth, basePath: '/auth' }),
+      ],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/auth/sign-in', { method: 'POST' });
+    expect(res.status).toBe(200);
+    expect(auth.handler).toHaveBeenCalled();
+  });
+
   it('mountHandler:false skips the catch-all controller', async () => {
     const auth = makeMockAuth();
 

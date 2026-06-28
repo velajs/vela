@@ -7,7 +7,7 @@ import {
   type Token,
   type Type,
 } from '@velajs/vela';
-import { BetterAuthCatchallController } from './better-auth.controller';
+import { createBetterAuthCatchallController } from './better-auth.controller';
 import {
   BetterAuthService,
   BETTER_AUTH_BUILDER,
@@ -72,7 +72,9 @@ export class BetterAuthModule {
         mountHandler: !!normalized.mountHandler,
       }),
       providers,
-      controllers: normalized.mountHandler ? [BetterAuthCatchallController] : [],
+      controllers: normalized.mountHandler
+        ? [createBetterAuthCatchallController(normalized.basePath)]
+        : [],
       exports: [BetterAuthService, BETTER_AUTH_OPTIONS, AuthGuard, RolesGuard],
     };
   }
@@ -149,7 +151,7 @@ export class BetterAuthModule {
         }),
       imports: options.imports ?? [],
       providers,
-      controllers: mountHandler ? [BetterAuthCatchallController] : [],
+      controllers: mountHandler ? [createBetterAuthCatchallController(basePath)] : [],
       exports: [BetterAuthService, BETTER_AUTH_OPTIONS, AuthGuard, RolesGuard],
     };
   }

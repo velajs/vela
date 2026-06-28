@@ -19,17 +19,25 @@ through D1.
 ## Wiring
 
 ```ts
+import { schema } from './schema';
+
 @Module({
   imports: [
     D1Module.forRoot({ binding: 'DB' }),
     BetterAuthModule.forRootAsync({
       inject: [D1Service],
-      useFactory: (d1: D1Service) => ({
-        auth: betterAuth({
-          database: drizzleAdapter(drizzle(d1.database), { provider: 'sqlite' }),
+      // useFactory returns the betterAuth() instance directly.
+      useFactory: (d1: D1Service) =>
+        betterAuth({
+          // Pass `schema` so the adapter maps better-auth's models to typed
+          // drizzle tables — required on D1 (Date columns use `{ mode:
+          // 'timestamp' }`; a bare adapter throws D1_TYPE_ERROR on a Date).
+          database: drizzleAdapter(drizzle(d1.database, { schema }), {
+            provider: 'sqlite',
+            schema,
+          }),
           // ...
         }),
-      }),
       isGlobal: true,
     }),
   ],
