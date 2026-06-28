@@ -382,4 +382,51 @@ describe('DI Container', () => {
       expect(b.a.name()).toBe('A'); // a is resolved via lazy proxy
     });
   });
+
+  describe('explicit @Inject without emitted design:paramtypes', () => {
+    // Some bundlers — notably esbuild, and therefore Wrangler — do not emit
+    // `design:paramtypes` even with `emitDecoratorMetadata: true`. Applying the
+    // decorators via direct calls (instead of decorator *syntax*) reproduces
+    // that: TypeScript emits no metadata, so the container only sees the
+    // explicit @Inject tokens. The container must still resolve the constructor.
+    it('resolves explicit-token constructors when paramtypes metadata is absent', () => {
+      const DEP = new InjectionToken<string>('DEP');
+      container.register({ provide: DEP, useValue: 'injected-value' });
+
+      class NoParamtypesService {
+        constructor(public dep: string) {}
+      }
+      // No decorator syntax above => no `design:paramtypes` emitted.
+      Injectable()(NoParamtypesService);
+      Inject(DEP)(NoParamtypesService, undefined, 0);
+
+      container.register(NoParamtypesService);
+
+      const instance = container.resolve(NoParamtypesService);
+      expect(instance.dep).toBe('injected-value');
+    });
+
+    it('resolves multiple explicit tokens by index without paramtypes', () => {
+      const A = new InjectionToken<string>('A');
+      const B = new InjectionToken<string>('B');
+      container.register({ provide: A, useValue: 'a-value' });
+      container.register({ provide: B, useValue: 'b-value' });
+
+      class TwoDeps {
+        constructor(
+          public a: string,
+          public b: string,
+        ) {}
+      }
+      Injectable()(TwoDeps);
+      Inject(A)(TwoDeps, undefined, 0);
+      Inject(B)(TwoDeps, undefined, 1);
+
+      container.register(TwoDeps);
+
+      const instance = container.resolve(TwoDeps);
+      expect(instance.a).toBe('a-value');
+      expect(instance.b).toBe('b-value');
+    });
+  });
 });
