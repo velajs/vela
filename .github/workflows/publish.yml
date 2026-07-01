@@ -26,12 +26,6 @@ jobs:
           cache: pnpm
       - run: pnpm install
       - run: pnpm run build
-      - name: Configure npm auth
-        run: |
-          echo "//registry.npmjs.org/:_authToken=\${NODE_AUTH_TOKEN}" > ~/.npmrc
-          echo "token present: ${NODE_AUTH_TOKEN:+yes} (len ${#NODE_AUTH_TOKEN})"
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-      - run: npm publish --access public
+      - run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
