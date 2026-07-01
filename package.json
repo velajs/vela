@@ -38,7 +38,9 @@
     "prepublishOnly": "pnpm run typecheck && pnpm test"
   },
   "sideEffects": [
-    "./dist/index.js"
+    "./dist/index.js",
+    "./dist/metadata.js",
+    "./dist/schedule-node/index.js"
   ],
   "keywords": [
     "edge",
