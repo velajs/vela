@@ -185,6 +185,71 @@ function resolveEnabledEndpoints(config: CrudConfig): CrudEndpointName[] {
   return ALL_CRUD_ENDPOINTS.filter(provided);
 }
 
+// Per-verb OpenAPI operationId naming. Single-record verbs use the SINGULAR
+// resource name; list/bulk verbs use the PLURAL. Two verb remaps keep the
+// generated client idiomatic: `read` -> `get`, `batch*` -> `bulk*`. version*
+// verbs are intentionally omitted (they don't fit the verb+Noun shape; set
+// `endpoints.{verb}.openapi.operationId` manually if you enable versioning).
+const SLOT_NAMING: Partial<Record<CrudEndpointName, { verb: string; plural: boolean }>> = {
+  create: { verb: 'create', plural: false },
+  list: { verb: 'list', plural: true },
+  read: { verb: 'get', plural: false },
+  update: { verb: 'update', plural: false },
+  delete: { verb: 'delete', plural: false },
+  restore: { verb: 'restore', plural: false },
+  upsert: { verb: 'upsert', plural: false },
+  clone: { verb: 'clone', plural: false },
+  search: { verb: 'search', plural: true },
+  aggregate: { verb: 'aggregate', plural: true },
+  export: { verb: 'export', plural: true },
+  import: { verb: 'import', plural: true },
+  bulkPatch: { verb: 'bulkPatch', plural: true },
+  batchCreate: { verb: 'bulkCreate', plural: true },
+  batchUpdate: { verb: 'bulkUpdate', plural: true },
+  batchDelete: { verb: 'bulkDelete', plural: true },
+  batchRestore: { verb: 'bulkRestore', plural: true },
+  batchUpsert: { verb: 'bulkUpsert', plural: true },
+};
+
+const pascal = (s: string): string =>
+  s.replace(/(?:^|[^a-zA-Z0-9]+)([a-zA-Z0-9])/g, (_m, c: string) => c.toUpperCase());
+
+// "bulkDelete" -> "Bulk delete"
+const humanizeVerb = (verb: string): string => {
+  const words = verb.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+};
+
+function resourceNames(config: CrudConfig): { singular: string; plural: string } {
+  const singular =
+    config.name ?? (config.meta as { model?: { tableName?: string } }).model?.tableName ?? 'item';
+  const plural = config.namePlural ?? `${singular}s`;
+  return { singular, plural };
+}
+
+/**
+ * Inject a derived OpenAPI `operationId` + `summary` for the verb, unless the
+ * user already set one (`endpoints.{name}.openapi.operationId` wins). Gives the
+ * generated client stable, friendly names instead of method+path fallbacks.
+ */
+function mergeOperationId(
+  name: CrudEndpointName,
+  base: Record<string, unknown>,
+  config: CrudConfig,
+): Record<string, unknown> {
+  const naming = SLOT_NAMING[name];
+  if (!naming) return base;
+  const existing = base.openapi as { operationId?: string; summary?: string } | undefined;
+  if (existing?.operationId) return base;
+
+  const { singular, plural } = resourceNames(config);
+  const noun = naming.plural ? plural : singular;
+  const operationId = `${naming.verb}${pascal(noun)}`;
+  const summary = `${humanizeVerb(naming.verb)} ${naming.plural ? plural : `a ${singular}`}`;
+
+  return { ...base, openapi: { operationId, summary, ...(existing ?? {}) } };
+}
+
 function buildEndpointsDef(
   config: CrudConfig,
   enabled: CrudEndpointName[],
@@ -215,7 +280,15 @@ function buildEndpointsDef(
     (config.endpoints?.[name] as Record<string, unknown> | undefined) ?? {};
 
   const entries = enabled.map(
-    (name) => [name, mergeDto(name, mergeFlatHooks(name, baseFor(name), config.hooks), config.dto)] as const,
+    (name) =>
+      [
+        name,
+        mergeOperationId(
+          name,
+          mergeDto(name, mergeFlatHooks(name, baseFor(name), config.hooks), config.dto),
+          config,
+        ),
+      ] as const,
   );
 
   return { meta: config.meta, ...Object.fromEntries(entries) } as unknown as EndpointsConfig<MetaInput>;

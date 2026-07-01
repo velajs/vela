@@ -163,6 +163,17 @@ export interface CrudConfig<M extends MetaInput = MetaInput> {
   meta: M;
   /** Adapter bundle (e.g. MemoryAdapters, DrizzleAdapters). */
   adapters: AdapterBundle;
+  /**
+   * Singular, lower-camel resource name used to derive stable OpenAPI
+   * `operationId`s + summaries for every verb (e.g. `listComments`,
+   * `getComment`, `createComment`, `bulkDeleteComments`) so the generated
+   * client gets friendly, stable names instead of method+path fallbacks.
+   * Defaults to `meta.model.tableName`. A per-endpoint `openapi.operationId`
+   * still wins over the derived value.
+   */
+  name?: string;
+  /** Plural form for the derived operationIds. Defaults to `name + "s"`. */
+  namePlural?: string;
   /** Include only these CRUD operations. */
   only?: CrudEndpointName[];
   /** Exclude these CRUD operations. */
