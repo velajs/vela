@@ -22,10 +22,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `409 CONFLICT`, …). The success envelope is unchanged.
 
 ### Added
+- **Record-versioning verbs (`versionHistory`/`versionRead`/`versionCompare`/
+  `versionRollback`)** — surfaces the last four hono-crud verbs, completing the
+  bridge's coverage (18 → 22). They are **gated behind model `versioning`**:
+  enabled by default only when the model declares `versioning` (so existing
+  non-versioned resources do not gain `/:id/versions*` routes that would 400).
+  An explicit `only`/`endpoints` entry on a non-versioned model fails fast with
+  an actionable "declare `versioning`" error. Derived operationIds read
+  `list{Noun}Versions` / `get{Noun}Version` / `compare{Noun}Versions` /
+  `rollback{Noun}Version`. New export: `VERSION_ENDPOINTS`.
 - **`bulkPatch` endpoint** — surfaces hono-crud's collection-level `PATCH /bulk`
   (apply a partial update to a filtered set). Now part of `ALL_CRUD_ENDPOINTS`,
-  `EndpointOverride`, route mounting, and the OpenAPI document. Only the four
-  `version*` verbs remain deferred.
+  `EndpointOverride`, route mounting, and the OpenAPI document.
+
+### Fixed
+- **vela ≥1.9.0 compat.** `ExecutionContext` requires `switchToWs()` since
+  vela's WebSocket support landed; the CRUD guard-middleware bridge now provides
+  it (throws for the HTTP context, mirroring vela's own HTTP `ExecutionContext`),
+  so the package type-checks/builds against current `@velajs/vela`.
 - **Default-endpoint hardening for partial adapter bundles.** hono-crud 0.13 throws
   at definition time when a configured verb's adapter slot is absent. A default
   mount (no `only`/`except`) now enables only the verbs the adapter bundle ships,

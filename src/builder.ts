@@ -13,6 +13,7 @@ import {
   crudEndpointSlot,
   type CrudConfig,
   type CrudEndpointName,
+  VERSION_ENDPOINTS,
 } from './types';
 
 interface BuilderContext {
@@ -177,20 +178,43 @@ function resolveEnabledEndpoints(config: CrudConfig): CrudEndpointName[] {
   // slot is absent, so a partial custom AdapterBundle must not auto-enable a
   // verb the consumer never explicitly asked for. First-party bundles
   // (Memory/Drizzle/Prisma) fill every slot, so this is a no-op for them.
-  const provided = (e: CrudEndpointName) => adapterProvidesEndpoint(config.adapters, e);
+  //
+  // Version verbs are additionally gated behind model `versioning`: first-party
+  // bundles ship their adapter slots, but auto-enabling `/:id/versions*` on a
+  // non-versioned resource would surface routes that throw
+  // VERSIONING_NOT_ENABLED at request time (and 4 dead paths per resource in
+  // the OpenAPI doc). So they only default-on when the model declares
+  // versioning. An explicit `only` still requests them (handled above).
+  const versioningEnabled = isModelVersioningEnabled(config);
+  const enabled = (e: CrudEndpointName) =>
+    adapterProvidesEndpoint(config.adapters, e) &&
+    (!VERSION_ENDPOINTS.has(e) || versioningEnabled);
   if (config.except) {
     const except = new Set<string>(config.except);
-    return ALL_CRUD_ENDPOINTS.filter((e) => !except.has(e) && provided(e));
+    return ALL_CRUD_ENDPOINTS.filter((e) => !except.has(e) && enabled(e));
   }
-  return ALL_CRUD_ENDPOINTS.filter(provided);
+  return ALL_CRUD_ENDPOINTS.filter(enabled);
+}
+
+/**
+ * True when the model opts into record versioning (`versioning: true` or a
+ * config object). Mirrors hono-crud's getVersioningConfig, which treats any
+ * truthy value as enabled and `false`/absent as disabled.
+ */
+function isModelVersioningEnabled(config: CrudConfig): boolean {
+  const model = (config.meta as { model?: { versioning?: unknown } }).model;
+  return Boolean(model?.versioning);
 }
 
 // Per-verb OpenAPI operationId naming. Single-record verbs use the SINGULAR
 // resource name; list/bulk verbs use the PLURAL. Two verb remaps keep the
-// generated client idiomatic: `read` -> `get`, `batch*` -> `bulk*`. version*
-// verbs are intentionally omitted (they don't fit the verb+Noun shape; set
-// `endpoints.{verb}.openapi.operationId` manually if you enable versioning).
-const SLOT_NAMING: Partial<Record<CrudEndpointName, { verb: string; plural: boolean }>> = {
+// generated client idiomatic: `read` -> `get`, `batch*` -> `bulk*`. Version
+// verbs carry a `suffix` (Version/Versions) so they read `list{Noun}Versions`
+// / `get{Noun}Version` / `compare{Noun}Versions` / `rollback{Noun}Version`; a
+// per-endpoint `openapi.operationId` still wins.
+const SLOT_NAMING: Partial<
+  Record<CrudEndpointName, { verb: string; plural: boolean; suffix?: string; summaryNoun?: string }>
+> = {
   create: { verb: 'create', plural: false },
   list: { verb: 'list', plural: true },
   read: { verb: 'get', plural: false },
@@ -209,6 +233,10 @@ const SLOT_NAMING: Partial<Record<CrudEndpointName, { verb: string; plural: bool
   batchDelete: { verb: 'bulkDelete', plural: true },
   batchRestore: { verb: 'bulkRestore', plural: true },
   batchUpsert: { verb: 'bulkUpsert', plural: true },
+  versionHistory: { verb: 'list', plural: false, suffix: 'Versions', summaryNoun: 'versions' },
+  versionRead: { verb: 'get', plural: false, suffix: 'Version', summaryNoun: 'version' },
+  versionCompare: { verb: 'compare', plural: false, suffix: 'Versions', summaryNoun: 'versions' },
+  versionRollback: { verb: 'rollback', plural: false, suffix: 'Version', summaryNoun: 'version' },
 };
 
 const pascal = (s: string): string =>
@@ -244,8 +272,12 @@ function mergeOperationId(
 
   const { singular, plural } = resourceNames(config);
   const noun = naming.plural ? plural : singular;
-  const operationId = `${naming.verb}${pascal(noun)}`;
-  const summary = `${humanizeVerb(naming.verb)} ${naming.plural ? plural : `a ${singular}`}`;
+  // A `suffix` (version verbs) appends to the operationId and picks a
+  // sub-resource summary noun: `listDocumentVersions` / "List document versions".
+  const operationId = `${naming.verb}${pascal(noun)}${naming.suffix ?? ''}`;
+  const summary = naming.summaryNoun
+    ? `${humanizeVerb(naming.verb)} ${singular} ${naming.summaryNoun}`
+    : `${humanizeVerb(naming.verb)} ${naming.plural ? plural : `a ${singular}`}`;
 
   return { ...base, openapi: { operationId, summary, ...(existing ?? {}) } };
 }
@@ -263,7 +295,21 @@ function buildEndpointsDef(
     ...(config.only ?? []),
     ...((config.endpoints ? Object.keys(config.endpoints) : []) as CrudEndpointName[]),
   ]);
+  const versioningEnabled = isModelVersioningEnabled(config);
   for (const name of explicit) {
+    // A version verb requested via only/endpoints on a model that doesn't
+    // declare `versioning` would 400 (VERSIONING_NOT_ENABLED) at request time.
+    // Fail fast with the actual fix — declaring versioning — rather than the
+    // misleading "adapter bundle has no X" error below (which fires for partial
+    // bundles) or silently dropping the verb (first-party bundles).
+    if (VERSION_ENDPOINTS.has(name) && !versioningEnabled) {
+      throw new Error(
+        `@Crud: endpoint '${name}' is a version verb, but the model does not ` +
+          `declare \`versioning\`. Add \`versioning: true\` (or a config object) to ` +
+          `the model's defineModel(...) to enable /:id/versions*, or remove ` +
+          `'${name}' from only/endpoints.`,
+      );
+    }
     if (!adapterProvidesEndpoint(config.adapters, name)) {
       throw new Error(
         `@Crud: endpoint '${name}' was explicitly enabled but the adapter bundle ` +
@@ -396,7 +442,12 @@ function buildGuardMiddleware(controller: Type, globalGuards: CanActivate[]): Mi
   const allGuards = [...globalGuards, ...guards];
 
   const guardMiddleware: MiddlewareHandler = async (c, next) => {
-    const executionContext: ExecutionContext = {
+    // Cast (not annotate) so this compiles against BOTH vela ExecutionContext
+    // shapes across the supported peer range (`>=1.8.3`): pre-1.9 has no
+    // `switchToWs` (here it's a harmless extra the assertion tolerates), while
+    // >=1.9 requires it. `switchToWs` mirrors vela's own HTTP ExecutionContext
+    // (throws — this bridge runs over HTTP, not a WebSocket gateway).
+    const executionContext = {
       getType: <T extends string = 'http'>() => 'http' as T,
       getClass: () => controller,
       getHandler: () => 'crud',
@@ -406,7 +457,12 @@ function buildGuardMiddleware(controller: Type, globalGuards: CanActivate[]): Mi
         getRequest: <T>() => c.req.raw as T,
         getResponse: <T = Context>() => c as T,
       }),
-    };
+      switchToWs: () => {
+        throw new Error(
+          'switchToWs() called on an HTTP ExecutionContext. This handler runs over HTTP, not a WebSocket gateway.',
+        );
+      },
+    } as ExecutionContext;
 
     for (const guard of allGuards) {
       const canActivate = await guard.canActivate(executionContext);

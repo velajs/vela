@@ -6,11 +6,13 @@ import type { ZodObject, ZodRawShape } from 'zod';
 /**
  * The CRUD operations surfaced by @velajs/crud. Mirrors hono-crud's
  * CrudEndpointName so the bridge forwards the full surface — search,
- * aggregate, restore, batch ops, export/import, upsert, clone, and
- * bulk-patch (PATCH a filtered set at the collection level).
+ * aggregate, restore, batch ops, export/import, upsert, clone,
+ * bulk-patch (PATCH a filtered set at the collection level), and the four
+ * record-versioning verbs (versionHistory/Read/Compare/Rollback).
  *
- * Versioning verbs (versionHistory/Read/Compare/Rollback) are the only
- * hono-crud verbs still deferred until a real consumer exercises them.
+ * Version verbs are GATED: they are only enabled by default on a model that
+ * declares `versioning` (see resolveEnabledEndpoints in builder.ts), so adding
+ * them here does not surface `/:id/versions*` on non-versioned resources.
  */
 export type CrudEndpointName =
   | 'create'
@@ -30,7 +32,11 @@ export type CrudEndpointName =
   | 'import'
   | 'upsert'
   | 'clone'
-  | 'bulkPatch';
+  | 'bulkPatch'
+  | 'versionHistory'
+  | 'versionRead'
+  | 'versionCompare'
+  | 'versionRollback';
 
 export const ALL_CRUD_ENDPOINTS: readonly CrudEndpointName[] = [
   'create',
@@ -51,7 +57,23 @@ export const ALL_CRUD_ENDPOINTS: readonly CrudEndpointName[] = [
   'upsert',
   'clone',
   'bulkPatch',
+  'versionHistory',
+  'versionRead',
+  'versionCompare',
+  'versionRollback',
 ] as const;
+
+/**
+ * The record-versioning verbs. Enabled by default only when the model declares
+ * `versioning` (gated in resolveEnabledEndpoints); an explicit `only` list can
+ * still request them, matching the "only is explicit" contract.
+ */
+export const VERSION_ENDPOINTS: ReadonlySet<CrudEndpointName> = new Set([
+  'versionHistory',
+  'versionRead',
+  'versionCompare',
+  'versionRollback',
+]);
 
 /**
  * Maps a bridge endpoint verb to the PascalCase adapter slot name hono-crud
@@ -106,6 +128,10 @@ export type EndpointOverride<M extends MetaInput = MetaInput> = {
   upsert: NonNullable<EndpointsConfig<M>['upsert']>;
   clone: NonNullable<EndpointsConfig<M>['clone']>;
   bulkPatch: NonNullable<EndpointsConfig<M>['bulkPatch']>;
+  versionHistory: NonNullable<EndpointsConfig<M>['versionHistory']>;
+  versionRead: NonNullable<EndpointsConfig<M>['versionRead']>;
+  versionCompare: NonNullable<EndpointsConfig<M>['versionCompare']>;
+  versionRollback: NonNullable<EndpointsConfig<M>['versionRollback']>;
 };
 
 /**
