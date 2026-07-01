@@ -34,7 +34,7 @@ class HyperdriveService { readonly binding: Hyperdrive; }
 
 ```ts
 import { Controller, Get, Module, Injectable, Param } from '@velajs/vela';
-import { CloudflareFactory, KVModule, KVService, D1Module, D1Service } from '@velajs/cloudflare';
+import { createCloudflareApp, KVModule, KVService, D1Module, D1Service } from '@velajs/cloudflare';
 
 @Injectable()
 class UserService {
@@ -73,7 +73,7 @@ class UserController {
 })
 class AppModule {}
 
-export default await CloudflareFactory.create(AppModule);
+export default await createCloudflareApp(AppModule);
 ```
 
 The `binding` string matches the binding name in your `wrangler.toml`:
@@ -327,14 +327,14 @@ class EmailWorker {
 }
 ```
 
-## CloudflareFactory
+## createCloudflareApp
 
-Use `CloudflareFactory.create()` instead of `VelaFactory.create()` for Cloudflare apps. It sets up a one-time middleware that captures `c.env` on the first request and initializes all binding modules.
+Use `createCloudflareApp()` instead of `VelaFactory.create()` for Cloudflare apps. It sets up a one-time middleware that captures `c.env` on the first request and initializes all binding modules.
 
 ```ts
-import { CloudflareFactory } from '@velajs/cloudflare';
+import { createCloudflareApp } from '@velajs/cloudflare';
 
-const app = await CloudflareFactory.create(AppModule);
+const app = await createCloudflareApp(AppModule);
 export default app;
 ```
 
@@ -343,7 +343,7 @@ export default app;
 To use scheduled triggers and queue consumers, export the handlers explicitly:
 
 ```ts
-const app = await CloudflareFactory.create(AppModule);
+const app = await createCloudflareApp(AppModule);
 
 export default {
   fetch: app.fetch,
@@ -371,7 +371,7 @@ const rawHD = hdService.binding;       // Hyperdrive
 
 Cloudflare Workers only provide bindings (`env.DB`, `env.MY_KV`, etc.) at request time via the `env` parameter. They are stable across requests within an isolate.
 
-`CloudflareFactory` handles this by:
+`createCloudflareApp` handles this by:
 
 1. Each `XModule.forRoot()` creates a `BindingRef` (mutable holder) and registers it in the DI container
 2. Services are constructed at boot time with the `BindingRef` — no binding access yet
