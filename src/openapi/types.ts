@@ -51,6 +51,14 @@ export interface OpenApiResponse {
   content?: Record<string, { schema: JsonSchema }>;
 }
 
+/**
+ * A single security requirement: maps a securityScheme name to the scopes it
+ * requires (empty array for apiKey/http schemes). An operation- or document-
+ * level array is an OR of these objects. Kept as a plain record so callers can
+ * build them inline (`{ cookieAuth: [] }`).
+ */
+export type OpenApiSecurityRequirement = Record<string, string[]>;
+
 export interface OpenApiOperation {
   summary?: string;
   description?: string;
@@ -60,6 +68,33 @@ export interface OpenApiOperation {
   parameters?: OpenApiParameter[];
   requestBody?: OpenApiRequestBody;
   responses: Record<string, OpenApiResponse>;
+  /** Per-operation security requirements (overrides the document-level array). */
+  security?: OpenApiSecurityRequirement[];
+}
+
+/** An OpenAPI Server Object. Kept loose so callers can add `variables`. */
+export interface OpenApiServer {
+  url: string;
+  description?: string;
+  variables?: Record<string, { enum?: string[]; default: string; description?: string }>;
+  [key: string]: unknown;
+}
+
+/**
+ * An OpenAPI Security Scheme Object (apiKey / http / oauth2 / openIdConnect /
+ * mutualTLS). Index signature keeps it open so any valid scheme shape passes
+ * without fighting the types (mirrors JsonSchema above).
+ */
+export interface OpenApiSecurityScheme {
+  type: 'apiKey' | 'http' | 'oauth2' | 'openIdConnect' | 'mutualTLS';
+  description?: string;
+  name?: string;
+  in?: 'query' | 'header' | 'cookie';
+  scheme?: string;
+  bearerFormat?: string;
+  flows?: Record<string, unknown>;
+  openIdConnectUrl?: string;
+  [key: string]: unknown;
 }
 
 export type HttpVerb = 'get' | 'post' | 'put' | 'patch' | 'delete' | 'options' | 'head';
@@ -71,10 +106,13 @@ export type OpenApiPathItem = {
 export interface OpenApiDocument {
   openapi: '3.1.0';
   info: OpenApiInfo;
+  servers?: OpenApiServer[];
   paths: Record<string, OpenApiPathItem>;
   components?: {
     schemas?: Record<string, JsonSchema>;
+    securitySchemes?: Record<string, OpenApiSecurityScheme>;
   };
+  security?: OpenApiSecurityRequirement[];
   tags?: Array<{ name: string; description?: string }>;
 }
 
@@ -107,6 +145,21 @@ export interface CreateOpenApiDocumentOptions {
    * with no operations are kept (lets you pre-declare ordering/description).
    */
   tags?: Array<{ name: string; description?: string }>;
+  /**
+   * Top-level `servers` array (base URLs the API is served from). Emitted
+   * verbatim between `info` and `paths` when non-empty; omitted otherwise.
+   */
+  servers?: OpenApiServer[];
+  /**
+   * Named security schemes, emitted under `components.securitySchemes` (merged
+   * with generated `components.schemas`). Reference them from `security`.
+   */
+  securitySchemes?: Record<string, OpenApiSecurityScheme>;
+  /**
+   * Document-level default security requirements (applies to every operation
+   * unless the operation overrides it). Emitted verbatim when non-empty.
+   */
+  security?: OpenApiSecurityRequirement[];
 }
 
 export type OpenApiUi = 'swagger' | 'scalar' | 'redoc';

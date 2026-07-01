@@ -303,12 +303,27 @@ export function createOpenApiDocument(
       version: options.info?.version ?? '1.0.0',
       ...(options.info?.description ? { description: options.info.description } : {}),
     },
+    // servers sits between info and paths (OpenAPI convention). Omitted when
+    // the caller passes none, mirroring the components/tags handling below.
+    ...(options.servers?.length ? { servers: options.servers } : {}),
     paths,
   };
 
+  // components.schemas (generated from DTOs) and components.securitySchemes
+  // (caller-supplied) share the same `components` object — attach it when
+  // either is present so neither clobbers the other.
   const schemas = registry.build();
-  if (schemas) {
-    document.components = { schemas };
+  if (schemas || options.securitySchemes) {
+    document.components = {
+      ...(schemas ? { schemas } : {}),
+      ...(options.securitySchemes ? { securitySchemes: options.securitySchemes } : {}),
+    };
+  }
+
+  // Document-level default security requirements (each operation may override).
+  // Omitted entirely when the caller passes none.
+  if (options.security?.length) {
+    document.security = options.security;
   }
 
   // Only attach `tags` when non-empty. Emitting `tags: []` on a tag-less
