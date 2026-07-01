@@ -26,6 +26,8 @@ jobs:
           cache: pnpm
       - run: pnpm install
       - run: pnpm run build
-      - run: npm publish --provenance --access public
+      # No --provenance: the repo is private, and provenance requires public
+      # source (Sigstore). Re-add once the repos are open-sourced.
+      - run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
