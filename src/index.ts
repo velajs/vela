@@ -15,8 +15,20 @@ export { VectorizeModule } from './modules/vectorize.module';
 export { HyperdriveModule } from './modules/hyperdrive.module';
 export { EnvModule } from './modules/env.module';
 
+// Storage (multi-disk over R2 + presign proxy)
+export {
+  StorageModule,
+  StorageService,
+  StorageManagerService,
+  StorageController,
+  R2StorageDriver,
+  STORAGE_OPTIONS,
+} from './storage/index';
+export type { StorageModuleOptions, DiskConfig, PresignedUrlConfig } from './storage/index';
+
 // Services
 export { KVService } from './services/kv.service';
+export { KVCacheStore } from './services/kv-cache.store';
 export { D1Service } from './services/d1.service';
 export { R2Service } from './services/r2.service';
 export { QueueService } from './services/queue.service';
@@ -30,6 +42,32 @@ export { EnvService } from './services/env.service';
 export { Env } from './decorators/env';
 export { Scheduled } from './decorators/scheduled';
 export { QueueConsumer } from './decorators/queue-consumer';
+
+// WebSocket (Durable Object transport for the Vela WebSocketModule)
+export {
+  VelaWebSocketDurableObject,
+  CloudflareWebSocketModule,
+  broadcastToRoom,
+} from './websocket/index';
+export type { WsGatewayRoute } from './websocket/index';
+// Re-export the core gateway API so a Cloudflare app can import it from one place.
+export {
+  WebSocketGateway,
+  SubscribeMessage,
+  MessageBody,
+  ConnectedSocket,
+  WebSocketServer,
+  WsException,
+} from '@velajs/vela/websocket';
+export type {
+  WsClient,
+  WsServer,
+  WsResponse,
+  WsMessage,
+  OnGatewayInit,
+  OnGatewayConnection,
+  OnGatewayDisconnect,
+} from '@velajs/vela/websocket';
 
 // Types
 export type { CloudflareEnv, ScheduledRegistration, QueueRegistration } from './types';

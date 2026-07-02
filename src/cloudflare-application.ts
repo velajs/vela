@@ -3,6 +3,7 @@ import { CRON_METADATA, getMetadata, type VelaApplication } from '@velajs/vela';
 import type { CronMetadata } from '@velajs/vela';
 import { getScheduledMetadata } from './decorators/scheduled';
 import { getQueueConsumerMetadata } from './decorators/queue-consumer';
+import { collectWsGatewayRoutes, type WsGatewayRoute } from './websocket/websocket-routing';
 import type { ScheduledRegistration, QueueRegistration, CloudflareEnv } from './types';
 
 /**
@@ -56,6 +57,7 @@ function invoke(instance: object, methodName: string, args: unknown[]): unknown 
 export class CloudflareApplication {
   private scheduledHandlers: ScheduledRegistration[] = [];
   private queueConsumers: QueueRegistration[] = [];
+  private wsGatewayRoutes: WsGatewayRoute[] = [];
 
   constructor(private app: VelaApplication) {}
 
@@ -138,7 +140,14 @@ export class CloudflareApplication {
           queueName: meta.queueName,
         });
       }
+
+      this.wsGatewayRoutes.push(...collectWsGatewayRoutes(instance));
     }
+  }
+
+  /** @internal — upgrade routes discovered from `@WebSocketGateway({ path, binding })`. */
+  getWsGatewayRoutes(): WsGatewayRoute[] {
+    return this.wsGatewayRoutes;
   }
 
   /**

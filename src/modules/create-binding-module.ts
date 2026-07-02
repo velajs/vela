@@ -1,4 +1,5 @@
 import {
+  defineConfigurableModule,
   type DynamicModule,
   type InjectionToken,
   type Type,
@@ -16,8 +17,8 @@ export interface BindingModuleStatic {
 }
 
 // Single factory for every Cloudflare binding module (KV, D1, R2, ...).
-// Each binding module is just a bag of (token, service); this generates
-// the canonical forRoot() shape for them.
+// Each binding module is just a bag of (token, service); this generates the
+// canonical forRoot() shape via vela's `defineConfigurableModule` engine.
 //
 // Identity model (post vela audit #2):
 //   - One real module class is declared per binding TYPE (KV, D1, R2, ...).
@@ -38,18 +39,14 @@ export function createBindingModule<TService>(
   const className = `${opts.name}Module`;
   const moduleClass: Type = { [className]: class {} }[className];
 
-  return {
-    forRoot({ binding }: { binding: string }): DynamicModule {
-      const ref = new BindingRef(binding);
-      return {
-        module: moduleClass,
-        key: binding,
-        providers: [
-          { provide: opts.bindingRefToken, useValue: ref },
-          opts.serviceClass,
-        ],
-        exports: [opts.serviceClass, opts.bindingRefToken],
-      };
-    },
-  };
+  return defineConfigurableModule<{ binding: string }>({
+    module: moduleClass,
+    methodName: 'forRoot',
+    keyFrom: ({ binding }) => binding,
+    providers: ({ binding }) => [
+      { provide: opts.bindingRefToken, useValue: new BindingRef(binding) },
+      opts.serviceClass,
+    ],
+    exports: [opts.serviceClass, opts.bindingRefToken],
+  }) as unknown as BindingModuleStatic;
 }

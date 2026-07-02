@@ -1,0 +1,104 @@
+import { Module, Controller, Get } from '@velajs/vela';
+import {
+  createCloudflareApp,
+  VelaWebSocketDurableObject,
+  CloudflareWebSocketModule,
+  WebSocketGateway,
+  SubscribeMessage,
+  MessageBody,
+  ConnectedSocket,
+  WebSocketServer,
+} from '../../dist/index.js';
+import type { WsClient, WsServer, OnGatewayConnection, OnGatewayDisconnect } from '../../dist/index.js';
+
+// ---- Gateway: one Durable Object per room; broadcast to everyone in it ----
+
+@WebSocketGateway({ path: '/rooms/:id/ws', binding: 'CHAT_ROOM' })
+export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
+  constructor(@WebSocketServer() private readonly server: WsServer) {}
+
+  handleConnection(client: WsClient) {
+    const who = client.id.slice(0, 8);
+    client.send('system', { text: `you are ${who}` });
+    void this.server.emit('system', { text: `${who} joined` });
+  }
+
+  handleDisconnect(client: WsClient) {
+    void this.server.emit('system', { text: `${client.id.slice(0, 8)} left` });
+  }
+
+  @SubscribeMessage('chat')
+  onChat(@MessageBody() body: { text: string }, @ConnectedSocket() client: WsClient) {
+    void this.server.emit('chat', { from: client.id.slice(0, 8), text: body.text });
+    return { event: 'ack', data: { ok: true } }; // echoed back to the sender only
+  }
+}
+
+// ---- Page: serve the browser client from the Worker (same origin) ----
+
+const PAGE = /* html */ `<!doctype html>
+<html><head><meta charset="utf-8"><title>Vela WS Chat</title>
+<style>
+  body{font:14px/1.5 system-ui,sans-serif;max-width:560px;margin:2rem auto;padding:0 1rem}
+  #log{border:1px solid #ccc;border-radius:8px;height:320px;overflow:auto;padding:.5rem;margin:.5rem 0;background:#fafafa}
+  .m{margin:.15rem 0}.sys{color:#888;font-style:italic}.me{color:#0a7}.ack{color:#a0a;font-size:12px}
+  form{display:flex;gap:.5rem}input{flex:1;padding:.5rem;border:1px solid #ccc;border-radius:6px}
+  button{padding:.5rem .9rem;border:0;border-radius:6px;background:#0a7;color:#fff;cursor:pointer}
+  #status{font-size:12px;color:#888}
+</style></head><body>
+<h2>Vela WebSocket · Cloudflare Durable Object</h2>
+<div id="status">connecting…</div>
+<div id="log"></div>
+<form id="f"><input id="t" placeholder="message" autocomplete="off"><button>send</button></form>
+<script>
+  const log = document.getElementById('log'), status = document.getElementById('status');
+  const add = (cls, txt) => { const d=document.createElement('div'); d.className='m '+cls; d.textContent=txt; log.appendChild(d); log.scrollTop=log.scrollHeight; };
+  const url = (location.protocol==='https:'?'wss':'ws')+'://'+location.host+'/rooms/general/ws';
+  const ws = new WebSocket(url);
+  ws.onopen = () => { status.textContent = 'connected: '+url; };
+  ws.onclose = () => { status.textContent = 'disconnected'; };
+  ws.onmessage = (e) => {
+    const { event, data } = JSON.parse(e.data);
+    if (event==='chat') add('', data.from+': '+data.text);
+    else if (event==='system') add('sys', data.text);
+    else if (event==='ack') add('ack', '✓ delivered');
+  };
+  document.getElementById('f').onsubmit = (e) => {
+    e.preventDefault();
+    const t = document.getElementById('t');
+    if (!t.value) return;
+    ws.send(JSON.stringify({ event:'chat', data:{ text: t.value } }));
+    add('me', 'me: '+t.value);
+    t.value='';
+  };
+</script></body></html>`;
+
+@Controller()
+export class PageController {
+  @Get('/')
+  index() {
+    return new Response(PAGE, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+  }
+}
+
+// ---- App module + Worker entry ----
+
+@Module({
+  imports: [CloudflareWebSocketModule.forRoot()],
+  controllers: [PageController],
+  providers: [ChatGateway],
+})
+export class AppModule {}
+
+// The Durable Object class (name must match wrangler `class_name`).
+export class ChatRoom extends VelaWebSocketDurableObject(AppModule) {}
+
+let appPromise: ReturnType<typeof createCloudflareApp> | undefined;
+
+export default {
+  async fetch(request: Request, env: unknown, ctx: unknown): Promise<Response> {
+    appPromise ??= createCloudflareApp(AppModule);
+    const app = await appPromise;
+    return (app.fetch as (r: Request, e: unknown, c: unknown) => Promise<Response>)(request, env, ctx);
+  },
+};

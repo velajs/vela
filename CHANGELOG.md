@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.6.0 (2026-07-01)
+
+### Added
+
+- **Multi-disk `StorageModule` over R2** (`StorageService.put/get/delete/exists/url`, per-disk templated roots, bucket-by-name via `EnvService`, `R2StorageDriver`) + a signature-gated `StorageController` presign-proxy.
+- **`KVCacheStore`** implementing vela's `AsyncCacheStore` — pair with `TieredCacheStore` for a memory→KV cache.
+- WebSocket transport for vela's WebSocket gateways (Durable Object backed).
+
+### Fixed
+
+- **Multiple same-type bindings** (e.g. two `KVModule.forRoot` with different bindings) now all initialize — `collectBindingRefs` enumerates every binding ref across module buckets instead of resolving each token once.
+
 ## 0.2.0 (2026-04-28)
 
 ### Breaking changes

@@ -5,20 +5,19 @@ import { Container } from '@velajs/vela/internal';
 import { BindingRef } from './binding-ref';
 import { CloudflareApplication } from './cloudflare-application';
 import { EnvRef } from './env-ref';
+import { registerWebSocketRoutes } from './websocket/websocket-routing';
 
 // Walks every provider registered in the container and pulls out the
 // BindingRef instances. Replaces the old module-level `bindingsRegistry`
 // global so two CloudflareApplication instances in one process don't
 // share state.
 function collectBindingRefs(container: Container): BindingRef[] {
+  // Enumerate per-instance useValue providers across ALL module buckets. Two
+  // same-type binding modules (e.g. KVModule.forRoot for CACHE and SESSIONS)
+  // share one token but live in distinct buckets — resolving the token would
+  // return only the first, leaving the others uninitialized.
   const refs: BindingRef[] = [];
-  for (const token of container.getTokens()) {
-    let value: unknown;
-    try {
-      value = container.resolve(token);
-    } catch {
-      continue;
-    }
+  for (const value of container.getUseValues()) {
     if (value instanceof BindingRef) refs.push(value);
   }
   return refs;
@@ -127,5 +126,10 @@ export async function createCloudflareApp(
 
   const cfApp = new CloudflareApplication(velaApp);
   cfApp.scanInstances(velaApp.getInstances());
+
+  // Register WebSocket upgrade routes for any @WebSocketGateway({ path, binding }).
+  // Each forwards the upgrade to the room's Durable Object (which owns the socket).
+  registerWebSocketRoutes(cfApp.getHonoApp(), cfApp.getWsGatewayRoutes());
+
   return cfApp;
 }
