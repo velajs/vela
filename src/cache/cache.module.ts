@@ -1,6 +1,5 @@
-import type { ProviderOptions, Type } from '../container/types';
-import type { AsyncModuleOptions, DynamicModule } from '../module/types';
-import { stableHash } from '../module/stable-hash';
+import { Module } from '../module/decorators';
+import { ConfigurableModuleBuilder } from '../module/configurable-module.builder';
 import { APP_INTERCEPTOR } from '../pipeline/tokens';
 import { CacheInterceptor } from './cache.interceptor';
 import { CacheService } from './cache.service';
@@ -8,59 +7,41 @@ import { MemoryCacheStore } from './cache.store';
 import { CACHE_MANAGER, CACHE_MODULE_OPTIONS } from './cache.tokens';
 import type { CacheModuleOptions } from './cache.types';
 
-export class CacheModule {
-  static forRoot(options: CacheModuleOptions = {}): DynamicModule {
-    const { ttl = 5, max = 100, isGlobal = false } = options;
-    const store = new MemoryCacheStore(ttl, max);
+// Reuse the public CACHE_MODULE_OPTIONS token so its identity (and the
+// index.ts export) is unchanged. `isGlobal` here means "register the interceptor
+// globally as APP_INTERCEPTOR" — NOT `DynamicModule.global` — so the extras
+// transform is customized rather than using the default isGlobal→global.
+const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = new ConfigurableModuleBuilder<CacheModuleOptions>({
+  moduleName: 'Cache',
+  optionsInjectionToken: CACHE_MODULE_OPTIONS,
+})
+  .setExtras({ isGlobal: false }, (definition, { isGlobal }) =>
+    isGlobal
+      ? {
+          ...definition,
+          providers: [
+            ...(definition.providers ?? []),
+            { provide: APP_INTERCEPTOR, useExisting: CacheInterceptor },
+          ],
+        }
+      : definition,
+  )
+  .build();
 
-    const providers: Array<Type | ProviderOptions> = [
-      { provide: CACHE_MANAGER, useValue: store },
-      { provide: CACHE_MODULE_OPTIONS, useValue: options },
-      CacheService,
-      CacheInterceptor,
-    ];
-
-    if (isGlobal) {
-      providers.push({ provide: APP_INTERCEPTOR, useExisting: CacheInterceptor });
-    }
-
-    return {
-      module: CacheModule,
-      key: stableHash(options),
-      providers,
-      exports: [CACHE_MANAGER, CACHE_MODULE_OPTIONS, CacheService, CacheInterceptor],
-    };
-  }
-
-  static forRootAsync(
-    options: AsyncModuleOptions<CacheModuleOptions> & { isGlobal?: boolean; key?: string },
-  ): DynamicModule {
-    const providers: Array<Type | ProviderOptions> = [
-      {
-        provide: CACHE_MODULE_OPTIONS,
-        useFactory: options.useFactory,
-        inject: options.inject ?? [],
-      },
-      {
-        provide: CACHE_MANAGER,
-        useFactory: (opts: CacheModuleOptions) =>
-          new MemoryCacheStore(opts.ttl ?? 5, opts.max ?? 100),
-        inject: [CACHE_MODULE_OPTIONS],
-      },
-      CacheService,
-      CacheInterceptor,
-    ];
-
-    if (options.isGlobal) {
-      providers.push({ provide: APP_INTERCEPTOR, useExisting: CacheInterceptor });
-    }
-
-    return {
-      module: CacheModule,
-      key: options.key ?? stableHash({ inject: options.inject, useFactory: options.useFactory }),
-      imports: options.imports ?? [],
-      providers,
-      exports: [CACHE_MANAGER, CACHE_MODULE_OPTIONS, CacheService, CacheInterceptor],
-    };
-  }
-}
+@Module({
+  providers: [
+    CacheService,
+    CacheInterceptor,
+    // One options-injecting provider serves BOTH forRoot and forRootAsync.
+    // A custom `store` (e.g. TieredCacheStore / KVCacheStore) overrides the
+    // default in-memory store.
+    {
+      provide: CACHE_MANAGER,
+      useFactory: (options: CacheModuleOptions) =>
+        options.store ?? new MemoryCacheStore(options.ttl ?? 5, options.max ?? 100),
+      inject: [MODULE_OPTIONS_TOKEN],
+    },
+  ],
+  exports: [CACHE_MANAGER, CACHE_MODULE_OPTIONS, CacheService, CacheInterceptor],
+})
+export class CacheModule extends ConfigurableModuleClass {}

@@ -90,7 +90,15 @@ export interface ProviderOptions<T = unknown> {
 
 export interface ProviderRegistration<T = unknown> {
   provide: Token<T>;
+  /** The declared scope (from `@Injectable`/`@Controller`/provider options). */
   scope: Scope;
+  /**
+   * Scope after request-scope bubbling: `REQUEST` if this provider (transitively)
+   * depends on a request-scoped provider, else the declared scope. Computed once
+   * at bootstrap (`Container.computeEffectiveScopes`); falls back to `scope`
+   * until then. Governs caching + eager instantiation.
+   */
+  effectiveScope?: Scope;
   /**
    * Module that owns this registration. Used by `resolveClass` to determine
    * the POV from which the class's dependencies resolve. Sandbox/bootstrap

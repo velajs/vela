@@ -7,10 +7,12 @@ import {
   ApiTags,
   Controller,
   Get,
+  Inject,
   Injectable,
   Module,
   REQUEST_CONTEXT,
   Req,
+  Scope,
   VelaFactory,
   createOpenApiDocument,
   type CallHandler,
@@ -20,6 +22,8 @@ import {
   type PipeTransform,
   type RequestContext,
 } from '../../index';
+import { I18nModule, I18nService } from '../../i18n';
+import { signUrl, verifySignedUrl } from '../../storage';
 import type { VelaApplication } from '../../application';
 
 // Smoke-test app for the workerd live-runtime suite. Each route exercises
@@ -124,9 +128,69 @@ class RequestContextController {
   }
 }
 
+// Request-scope bubbling: a request-scoped provider @Inject'd into a singleton
+// controller must rebuild the controller per request. Critically, workerd's
+// transpiler emits no `design:paramtypes`, so this proves bubbling works from
+// @Inject metadata alone.
+let bubbleCounter = 0;
+
+@Injectable({ scope: Scope.REQUEST })
+class RequestCounter {
+  readonly n = ++bubbleCounter;
+}
+
+@Controller('/bubble')
+class BubbleController {
+  constructor(@Inject(RequestCounter) private readonly counter: RequestCounter) {}
+  @Get()
+  handle() {
+    return { n: this.counter.n };
+  }
+}
+
+// i18n end-to-end: also proves `intl-messageformat` bundles + runs under workerd.
+@Controller('/i18n')
+class I18nSmokeController {
+  constructor(@Inject(I18nService) private readonly i18n: I18nService) {}
+  @Get()
+  handle() {
+    return { msg: this.i18n.t('greeting', { name: 'Ada' }), locale: this.i18n.getLocale() };
+  }
+}
+
+// Storage HMAC signing via Web Crypto (crypto.subtle) under real workerd.
+@Controller('/sign-check')
+class SignCheckController {
+  @Get()
+  async handle() {
+    const secret = 'smoke-secret';
+    const signed = await signUrl('/storage/uploads/a.png?method=GET', secret, { expiresIn: 60 });
+    return {
+      valid: await verifySignedUrl(signed, secret),
+      tampered: await verifySignedUrl(signed.replace('a.png', 'b.png'), secret),
+    };
+  }
+}
+
 @Module({
-  controllers: [HealthController, WhoAmIController, OrderTestController, RequestContextController],
+  imports: [
+    I18nModule.forRoot({ defaultLocale: 'en', locales: ['en', 'fr'] }),
+    I18nModule.registerMessages({
+      en: { greeting: 'Hello, {name}!' },
+      fr: { greeting: 'Bonjour, {name} !' },
+    }),
+  ],
+  controllers: [
+    HealthController,
+    WhoAmIController,
+    OrderTestController,
+    RequestContextController,
+    BubbleController,
+    I18nSmokeController,
+    SignCheckController,
+  ],
   providers: [
+    RequestCounter,
     TraceGuard,
     TracePipe,
     TraceInterceptor,

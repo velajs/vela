@@ -18,6 +18,7 @@ import type { FilterType, GuardType, InterceptorType, PipeType } from './registr
 export class VelaApplication {
   private instances: unknown[] = [];
   private honoApp: Hono | null = null;
+  private disposed = false;
 
   constructor(
     private readonly container: Container,
@@ -190,4 +191,33 @@ export class VelaApplication {
       }
     }
   }
+
+  /**
+   * Full teardown: run shutdown lifecycle hooks ({@link close}) then dispose
+   * container-held instances (LIFO) and clear cached singletons. Use for
+   * graceful shutdown and dev HMR so old and new DI graphs never coexist.
+   *
+   * On runtimes/TS supporting explicit resource management this is also exposed
+   * as `Symbol.asyncDispose`, enabling `await using app = await VelaFactory.create(...)`.
+   */
+  async dispose(signal?: string): Promise<void> {
+    // Idempotent: `await using` + an explicit dispose(), or repeated shutdown
+    // signals, must not re-run shutdown lifecycle hooks.
+    if (this.disposed) return;
+    this.disposed = true;
+    await this.close(signal);
+    await this.container.dispose();
+  }
+}
+
+// Attach the well-known async-dispose symbol at runtime (it is not in the
+// ES2022 lib the project compiles against) so `await using` works where
+// supported, without a type dependency on esnext.disposable.
+const ASYNC_DISPOSE: symbol | undefined = (Symbol as { asyncDispose?: symbol }).asyncDispose;
+if (ASYNC_DISPOSE) {
+  (VelaApplication.prototype as unknown as Record<PropertyKey, unknown>)[ASYNC_DISPOSE] = function (
+    this: VelaApplication,
+  ): Promise<void> {
+    return this.dispose();
+  };
 }

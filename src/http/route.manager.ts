@@ -1,4 +1,5 @@
-import { type Context, type MiddlewareHandler, Hono } from 'hono';
+import { type Context, type MiddlewareHandler, type Next, Hono } from 'hono';
+import { contextStorage } from 'hono/context-storage';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { HttpMethod } from '../constants';
 import { HttpException } from '../errors/http-exception';
@@ -39,12 +40,55 @@ export interface RouteManagerOptions {
   getClientIp?: (c: Context) => string | null;
   middleware?: MiddlewareHandler[];
   globalPrefix?: string;
+  /**
+   * Opt into ambient request-container access (`getCurrentContainer()` /
+   * `getCurrentRequestContext()`). Registers Hono's `contextStorage()` as the
+   * first middleware. Off by default — the explicit child container is unchanged.
+   */
+  ambientContainer?: boolean;
 }
 
 const defaultGetClientIp = (c: Context): string | null =>
   c.req.raw.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
   ?? c.req.raw.headers.get('x-real-ip')
   ?? null;
+
+// Mirror a response body stream, invoking `onDone` exactly once when it is fully
+// read, errors, or is cancelled. Lets request-scoped resources be disposed only
+// after the body has drained — never mid-stream.
+function disposeStreamWhenDone(
+  body: ReadableStream<Uint8Array>,
+  onDone: () => void,
+): ReadableStream<Uint8Array> {
+  const reader = body.getReader();
+  let finished = false;
+  const finish = (): void => {
+    if (!finished) {
+      finished = true;
+      onDone();
+    }
+  };
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          controller.close();
+          finish();
+          return;
+        }
+        controller.enqueue(value);
+      } catch (error) {
+        controller.error(error);
+        finish();
+      }
+    },
+    cancel(reason) {
+      finish();
+      return reader.cancel(reason);
+    },
+  });
+}
 
 export class RouteManager {
   private static readonly METHOD_REGISTRAR = new Map<string, MethodRegistrar>([
@@ -68,8 +112,10 @@ export class RouteManager {
   private consumerMiddlewareDefinitions: MiddlewareRouteDefinition[] = [];
 
   private readonly handlerExecutor: HandlerExecutor;
+  private readonly ambientContainer: boolean;
 
   constructor(private container: Container, options: RouteManagerOptions = {}) {
+    this.ambientContainer = options.ambientContainer ?? false;
     const argumentResolver = new ArgumentResolver(options.getClientIp ?? defaultGetClientIp);
     this.handlerExecutor = new HandlerExecutor(
       argumentResolver,
@@ -81,6 +127,26 @@ export class RouteManager {
       }),
       (c) => this.getRequestContainer(c),
     );
+  }
+
+  /**
+   * The global-tier components (`APP_*` provider tokens + imperative
+   * `app.useGlobalX()` instances). Exposed so non-HTTP transports (the
+   * WebSocket dispatcher) can apply the same app-wide guards/pipes/interceptors/
+   * filters as HTTP routes, read live so late registrations propagate.
+   */
+  getGlobalComponents(): {
+    guards: Array<GuardType | Token<CanActivate>>;
+    pipes: Array<PipeType | Token<PipeTransform>>;
+    interceptors: Array<InterceptorType | Token<NestInterceptor>>;
+    filters: Array<FilterType | Token<ExceptionFilter>>;
+  } {
+    return {
+      guards: this.globalGuards,
+      pipes: this.globalPipes,
+      interceptors: this.globalInterceptors,
+      filters: this.globalFilters,
+    };
   }
 
   registerConsumerMiddleware(definitions: MiddlewareRouteDefinition[]): this {
@@ -260,6 +326,43 @@ export class RouteManager {
 
   async build(): Promise<Hono> {
     const app = new Hono();
+
+    // Outermost: dispose the per-request child container once the request is
+    // fully done. Fast-paths out when the child has no request-scoped
+    // disposables (the common case → zero overhead / no behavior change).
+    // Streaming-safe: when a response body is present, disposal is deferred
+    // until the body is fully read (or errors/cancels), never mid-stream.
+    app.use('*', async (c: Context, next: Next) => {
+      let threw = false;
+      try {
+        await next();
+      } catch (error) {
+        threw = true;
+        throw error;
+      } finally {
+        const child = c.get('container') as Container | undefined;
+        if (child?.hasDisposables()) {
+          const body = threw ? null : (c.res?.body ?? null);
+          if (body) {
+            // Defer disposal to when the runtime finishes reading the body.
+            c.res = new Response(disposeStreamWhenDone(body, () => void child.dispose()), {
+              status: c.res.status,
+              statusText: c.res.statusText,
+              headers: c.res.headers,
+            });
+          } else {
+            // No body (or error path) — nothing streaming, dispose now.
+            await child.dispose();
+          }
+        }
+      }
+    });
+
+    // Opt-in ambient container: contextStorage() must be an early middleware so
+    // getContext() is available to everything downstream.
+    if (this.ambientContainer) {
+      app.use('*', contextStorage());
+    }
 
     // Sort global middleware by priority (lower runs first) with insertion
     // index as tiebreaker so equal priorities preserve registration order.

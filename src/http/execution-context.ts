@@ -19,6 +19,11 @@ export function buildExecutionContext(
       getRequest: <T = Request>() => c.req.raw as T,
       getResponse: <T = Context>() => c as T,
     }),
+    switchToWs: () => {
+      throw new Error(
+        'switchToWs() called on an HTTP ExecutionContext. This handler runs over HTTP, not a WebSocket gateway.',
+      );
+    },
   };
 }
 

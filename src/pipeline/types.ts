@@ -13,16 +13,35 @@ export interface HttpArgumentsHost {
   getResponse<T = Context>(): T;
 }
 
+/**
+ * WebSocket-specific arguments host returned by `ExecutionContext.switchToWs()`.
+ * Populated by `@velajs/vela/websocket` when a gateway message is dispatched.
+ *
+ * - `getClient()` — the connected socket (`WsClient`)
+ * - `getData()` — the inbound message payload (the envelope's `data`)
+ * - `getPattern()` — the subscribed event name that matched
+ */
+export interface WsArgumentsHost {
+  getClient<T = unknown>(): T;
+  getData<T = unknown>(): T;
+  getPattern<T = string>(): T;
+}
+
+/** The transport a component is executing under. `'http'` for routes, `'ws'` for gateway messages. */
+export type ContextType = 'http' | 'ws';
+
 export interface ExecutionContext {
-  getType<T extends string = 'http'>(): T;
+  getType<T extends string = ContextType>(): T;
   getClass(): Type;
   getHandler(): string | symbol;
-  /** Returns the Hono `Context` directly. */
+  /** Returns the Hono `Context` directly. Throws on a WebSocket context. */
   getContext<T = Context>(): T;
-  /** Shorthand for `switchToHttp().getRequest()` — returns the Web `Request`. */
+  /** Shorthand for `switchToHttp().getRequest()` — returns the Web `Request`. Throws on a WebSocket context. */
   getRequest(): Request;
-  /** Switch to the HTTP arguments host for NestJS-style `getRequest()` / `getResponse()` access. */
+  /** Switch to the HTTP arguments host. Throws on a WebSocket context. */
   switchToHttp(): HttpArgumentsHost;
+  /** Switch to the WebSocket arguments host. Throws on an HTTP context. */
+  switchToWs(): WsArgumentsHost;
 }
 
 export interface CanActivate {

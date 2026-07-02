@@ -21,6 +21,26 @@
     "./schedule-node": {
       "types": "./dist/schedule-node/index.d.ts",
       "import": "./dist/schedule-node/index.js"
+    },
+    "./websocket": {
+      "types": "./dist/websocket/index.d.ts",
+      "import": "./dist/websocket/index.js"
+    },
+    "./websocket-node": {
+      "types": "./dist/websocket-node/index.d.ts",
+      "import": "./dist/websocket-node/index.js"
+    },
+    "./i18n": {
+      "types": "./dist/i18n/index.d.ts",
+      "import": "./dist/i18n/index.js"
+    },
+    "./storage": {
+      "types": "./dist/storage/index.d.ts",
+      "import": "./dist/storage/index.js"
+    },
+    "./seeder": {
+      "types": "./dist/seeder/index.d.ts",
+      "import": "./dist/seeder/index.js"
     }
   },
   "files": [
@@ -33,6 +53,7 @@
     "build": "rm -rf dist && swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
     "test": "vitest run",
     "test:workers": "vitest run --config vitest.config.workers.ts",
+    "test:workers:als": "vitest run --config vitest.config.workers-als.ts",
     "typecheck": "tsc --noEmit",
     "prepare": "swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
     "prepublishOnly": "pnpm run typecheck && pnpm test"

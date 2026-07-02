@@ -1,4 +1,5 @@
 import { Scope } from '../constants';
+import { disposeInstance, isDisposable } from './disposable';
 import {
   getConstructorDependencies,
   getInjectMetadata,
@@ -53,6 +54,13 @@ export class Container {
   private scopes = new Map<string, ModuleScope>();
   private globals = new Set<Token>();
   private diagnostics: Diagnostics;
+  // The root container that owns shared state; a request child points back here
+  // so container-constructed SINGLETONs are tracked (and disposed) at the root,
+  // never by the ephemeral child that happened to first resolve them.
+  private root: Container = this;
+  // Container-constructed instances in creation order, for LIFO disposal.
+  // useValue providers are never tracked (they return before construction).
+  private disposables: unknown[] = [];
 
   constructor(options: ContainerOptions = {}) {
     this.diagnostics = options.diagnostics ?? 'log';
@@ -397,7 +405,7 @@ export class Container {
     if (!exporters) return undefined;
     for (const owner of exporters) {
       const reg = this.providers.get(owner)?.get(token);
-      if (reg) return reg.scope;
+      if (reg) return reg.effectiveScope ?? reg.scope;
     }
     return undefined;
   }
@@ -408,6 +416,106 @@ export class Container {
       for (const token of bucket.keys()) out.add(token);
     }
     return [...out];
+  }
+
+  /**
+   * Every statically-provided (useValue) instance across ALL module buckets.
+   * Unlike resolving a token (which yields only the first bucket's registration),
+   * this surfaces per-instance values — e.g. one BindingRef per multi-instance
+   * binding module — so framework adapters can initialize all of them.
+   */
+  getUseValues(): unknown[] {
+    const out: unknown[] = [];
+    for (const bucket of this.providers.values()) {
+      for (const reg of bucket.values()) {
+        if (reg.useValue !== undefined) out.push(reg.useValue);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Compute request-scope bubbling for every registration (call once at
+   * bootstrap, after all providers are registered). A provider whose declared
+   * scope is not REQUEST but which (transitively) depends on a request-scoped
+   * provider is marked `effectiveScope = REQUEST`, so it is rebuilt per request
+   * instead of capturing the first request's instance — matching NestJS.
+   */
+  computeEffectiveScopes(): void {
+    // Reverse-propagation worklist: seed with every declared-REQUEST provider,
+    // then flood "request-ness" to consumers transitively. This is order- and
+    // cycle-independent (a node flips to REQUEST at most once), avoiding the
+    // finalize-during-in-progress-cycle hazard of a recursive DFS.
+    const regs: ProviderRegistration[] = [];
+    for (const bucket of this.providers.values()) {
+      for (const reg of bucket.values()) {
+        reg.effectiveScope = reg.scope;
+        regs.push(reg);
+      }
+    }
+
+    // Build reverse edges: dependency registration -> registrations that consume it.
+    const consumers = new Map<ProviderRegistration, ProviderRegistration[]>();
+    for (const reg of regs) {
+      for (const depToken of this.dependencyTokensOf(reg)) {
+        const depReg = this.tryFindRegistration(depToken, reg.declaringModuleId);
+        if (!depReg) continue;
+        const list = consumers.get(depReg);
+        if (list) list.push(reg);
+        else consumers.set(depReg, [reg]);
+      }
+    }
+
+    const queue = regs.filter((r) => r.effectiveScope === Scope.REQUEST);
+    while (queue.length > 0) {
+      const dep = queue.pop()!;
+      for (const consumer of consumers.get(dep) ?? []) {
+        if (consumer.effectiveScope !== Scope.REQUEST) {
+          consumer.effectiveScope = Scope.REQUEST;
+          queue.push(consumer);
+        }
+      }
+    }
+  }
+
+  /** The dependency tokens a registration would resolve when constructed. */
+  private dependencyTokensOf(reg: ProviderRegistration): Token[] {
+    if (reg.useExisting) return [reg.useExisting];
+    if (reg.useFactory) {
+      return (reg.inject ?? []).map((t) => (t instanceof ForwardRef ? t.factory() : t));
+    }
+    const cls =
+      reg.useClass ?? (typeof reg.provide === 'function' ? (reg.provide as Type) : undefined);
+    if (!cls) return [];
+
+    const paramTypes = getConstructorDependencies(cls);
+    const injectMetadata = getInjectMetadata(cls);
+    const injectMap = new Map(injectMetadata.map((m) => [m.index, m]));
+    const arity = Math.max(
+      paramTypes.length,
+      injectMetadata.reduce((max, m) => Math.max(max, m.index + 1), 0),
+    );
+
+    const tokens: Token[] = [];
+    for (let i = 0; i < arity; i++) {
+      const raw = injectMap.get(i)?.token;
+      const token = raw instanceof ForwardRef ? raw.factory() : (raw ?? paramTypes[i]);
+      if (token && !isErasedTypeToken(token)) tokens.push(token);
+    }
+    return tokens;
+  }
+
+  private tryFindRegistration(
+    token: Token,
+    requestingModuleId: string,
+  ): ProviderRegistration | undefined {
+    try {
+      return this.findRegistration(token, requestingModuleId);
+    } catch {
+      // Ambiguous (MultipleProvidersFoundError) or unreachable — treat as
+      // unknown for scope computation; real resolution will surface any error.
+      return undefined;
+    }
   }
 
   /**
@@ -423,6 +531,9 @@ export class Container {
     child.exporterIndex = this.exporterIndex;
     child.scopes = this.scopes;
     child.globals = this.globals;
+    // SINGLETON disposal is owned by the root; the child keeps only its own
+    // REQUEST-scoped disposables (cleared when the request ends).
+    child.root = this.root;
     return child;
   }
 
@@ -456,6 +567,49 @@ export class Container {
     this.requestInstances.clear();
     this.scopes.clear();
     this.globals.clear();
+    this.disposables = [];
+  }
+
+  /** Whether this container has any tracked disposables (cheap request-path check). */
+  hasDisposables(): boolean {
+    return this.disposables.length > 0;
+  }
+
+  /**
+   * Dispose container-constructed instances (Symbol.asyncDispose /
+   * Symbol.dispose / .dispose()) in reverse creation order (LIFO). Errors are
+   * logged and skipped so one bad teardown never blocks the rest.
+   *
+   * A REQUEST child disposes only its own request-scoped instances; the root
+   * disposes shared SINGLETONs and clears their cached instance so a dev HMR
+   * generation cannot leak a stale graph. Shared provider maps are left intact
+   * for a request child (they belong to the root).
+   */
+  async dispose(): Promise<void> {
+    const pending = this.disposables;
+    this.disposables = [];
+    for (let i = pending.length - 1; i >= 0; i--) {
+      try {
+        await disposeInstance(pending[i]);
+      } catch (error) {
+        if (this.diagnostics !== 'silent') {
+          console.error('Error disposing instance:', error);
+        }
+      }
+    }
+    this.requestInstances.clear();
+
+    if (this.root === this) {
+      // Drop cached singleton instances (except useValue, which the app owns)
+      // so a rebuilt graph starts clean.
+      for (const bucket of this.providers.values()) {
+        for (const registration of bucket.values()) {
+          if (registration.scope === Scope.SINGLETON && registration.useValue === undefined) {
+            registration.instance = undefined;
+          }
+        }
+      }
+    }
   }
 
   private resolveRegistration<T>(
@@ -471,13 +625,18 @@ export class Container {
       return this.resolve(registration.useExisting, requestingModuleId);
     }
 
+    // Effective scope accounts for request-scope bubbling: a SINGLETON that
+    // (transitively) depends on a request-scoped provider is treated as REQUEST
+    // so it is rebuilt per request instead of capturing the first one.
+    const scope = registration.effectiveScope ?? registration.scope;
+
     // Singleton: return cached from registration (shared across all containers)
-    if (registration.scope === Scope.SINGLETON && registration.instance !== undefined) {
+    if (scope === Scope.SINGLETON && registration.instance !== undefined) {
       return registration.instance;
     }
 
     // Request: return cached from this child's requestInstances
-    if (registration.scope === Scope.REQUEST) {
+    if (scope === Scope.REQUEST) {
       const cached = this.requestInstances.get(registration.provide) as T | undefined;
       if (cached !== undefined) {
         return cached;
@@ -510,10 +669,14 @@ export class Container {
         );
       }
 
-      if (registration.scope === Scope.SINGLETON) {
+      if (scope === Scope.SINGLETON) {
         registration.instance = instance;
-      } else if (registration.scope === Scope.REQUEST) {
+        // Track for disposal on the ROOT — a singleton outlives the request
+        // child that may have first constructed it.
+        if (isDisposable(instance)) this.root.disposables.push(instance);
+      } else if (scope === Scope.REQUEST) {
         this.requestInstances.set(registration.provide, instance);
+        if (isDisposable(instance)) this.disposables.push(instance);
       }
 
       return instance;
@@ -622,7 +785,8 @@ export class Container {
     }
 
     if (registration.useFactory) {
-      if (registration.scope === Scope.SINGLETON && registration.instance !== undefined) {
+      const scope = registration.effectiveScope ?? registration.scope;
+      if (scope === Scope.SINGLETON && registration.instance !== undefined) {
         return registration.instance;
       }
 
@@ -637,8 +801,10 @@ export class Container {
 
       const instance = await registration.useFactory(...dependencies);
 
-      if (registration.scope === Scope.SINGLETON) {
+      if (scope === Scope.SINGLETON) {
         registration.instance = instance;
+        // Track for disposal on the ROOT, matching the sync resolveRegistration path.
+        if (isDisposable(instance)) this.root.disposables.push(instance);
       }
 
       return instance;

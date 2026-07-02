@@ -32,6 +32,11 @@ export {
   isController,
 } from './decorators';
 export { createLazyParamDecorator } from './lazy-param.decorator';
+export {
+  enableAmbientContainer,
+  getCurrentContainer,
+  getCurrentRequestContext,
+} from './ambient';
 export type {
   RouteMetadata,
   ControllerMetadata,

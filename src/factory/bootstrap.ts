@@ -75,6 +75,10 @@ export async function bootstrap(
   container.markGlobalToken(REQUEST_CONTEXT);
 
   const routeManager = new RouteManager(container, options);
+  // Resolvable so non-HTTP transports (the WebSocket dispatcher) can read the
+  // same global-tier components (APP_* + app.useGlobalX()).
+  container.register({ provide: RouteManager, useValue: routeManager });
+  container.markGlobalToken(RouteManager);
   ComponentManager.init(container);
 
   const loader = new ModuleLoader(container, routeManager);
@@ -91,6 +95,10 @@ export async function bootstrap(
     const mw: NestMiddleware = { use: handler };
     routeManager.useGlobalMiddleware(mw);
   }
+
+  // All providers are registered — compute request-scope bubbling so effective
+  // scopes are known before eager instantiation and request resolution.
+  container.computeEffectiveScopes();
 
   return { container, routeManager, loader };
 }

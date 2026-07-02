@@ -96,6 +96,13 @@ export {
 export { REQUEST_CONTEXT } from './http/request-context';
 export type { RequestContext } from './http/request-context';
 
+// Opt-in ambient container access (ALS via hono/context-storage)
+export {
+  enableAmbientContainer,
+  getCurrentContainer,
+  getCurrentRequestContext,
+} from './http/ambient';
+
 // Services
 export { Logger, LogLevel } from './services/index';
 export type { LoggerService, ContextProvider, Writer, LoggerLevelName } from './services/index';
@@ -118,6 +125,7 @@ export {
   CacheService,
   CacheInterceptor,
   MemoryCacheStore,
+  TieredCacheStore,
   CacheKey,
   CacheTTL,
   CACHE_MANAGER,
@@ -125,7 +133,14 @@ export {
   CACHE_KEY_METADATA,
   CACHE_TTL_METADATA,
 } from './cache/index';
-export type { CacheModuleOptions, CacheStore, CacheEntry } from './cache/index';
+export type {
+  Awaitable,
+  CacheModuleOptions,
+  CacheStore,
+  AsyncCacheStore,
+  AnyCacheStore,
+  CacheEntry,
+} from './cache/index';
 
 // Event Emitter
 export {
@@ -154,6 +169,34 @@ export type {
   IntervalMetadata,
   CronMatcher,
 } from './schedule/index';
+
+// WebSocket (edge-safe core; transport-facing internals live at @velajs/vela/websocket)
+export {
+  WebSocketModule,
+  WebSocketGateway,
+  SubscribeMessage,
+  MessageBody,
+  ConnectedSocket,
+  WebSocketServer,
+  WsDispatcher,
+  WsException,
+  WS_SERVER,
+} from './websocket/index';
+export type {
+  WebSocketModuleOptions,
+  WsClient,
+  WsServer,
+  WsMessage,
+  WsResponse,
+  WsExecutionContext,
+  WsArgumentsHost,
+  BroadcastCommand,
+  SyncDriver,
+  RoomRegistry,
+  OnGatewayInit,
+  OnGatewayConnection,
+  OnGatewayDisconnect,
+} from './websocket/index';
 
 // Health
 export {
@@ -197,8 +240,23 @@ export {
   Module,
   defineDynamicModule,
   stableHash,
+  ConfigurableModuleBuilder,
+  defineConfigurableModule,
 } from './module/index';
-export type { ModuleOptions, DynamicModule, AsyncModuleOptions, ModuleImport } from './module/index';
+export type {
+  ModuleOptions,
+  DynamicModule,
+  AsyncModuleOptions,
+  ModuleImport,
+  ConfigurableModuleAsyncOptions,
+  ConfigurableModuleBuilderOptions,
+  ConfigurableModuleClassType,
+  ConfigurableModuleExtras,
+  ConfigurableModuleExtrasTransform,
+  ConfigurableModuleHost,
+  ConfigurableModuleOptionsFactory,
+  DefineConfigurableModuleSpec,
+} from './module/index';
 export type { MiddlewareConsumer, NestModule, RouteInfo } from './http/index';
 
 // Plugin manifest + composer

@@ -1,0 +1,32 @@
+import { InjectionToken } from '../container/types';
+import type { RoomRegistry, SyncDriver } from './ws-sync';
+import type { WsServer } from './websocket.types';
+
+// Free-form metadata keys — same string-token convention as ON_EVENT_METADATA / CRON_METADATA.
+export const WS_GATEWAY_METADATA = 'vela:ws-gateway';
+export const WS_SUBSCRIBE_METADATA = 'vela:ws-subscribe';
+
+// WebSocket parameter-decorator kinds — parallel to `ParamType` for HTTP, keyed
+// by the WS argument resolver rather than the Hono-bound HTTP one.
+export const WsParamType = {
+  SOCKET: 'ws_socket',
+  BODY: 'ws_body',
+  SERVER: 'ws_server',
+} as const;
+export type WsParamType = (typeof WsParamType)[keyof typeof WsParamType];
+
+/**
+ * The connected gateway server handle. Injected into gateways/controllers via
+ * `@WebSocketServer()` (constructor injection only — the container has no
+ * property-injection pass) or `@Inject(WS_SERVER)`.
+ */
+export const WS_SERVER = new InjectionToken<WsServer>('WS_SERVER');
+
+/** The active cross-instance sync driver (`local()` by default). */
+export const WS_SYNC_DRIVER = new InjectionToken<SyncDriver>('WS_SYNC_DRIVER');
+
+/** The local room-membership registry a transport reads/writes. */
+export const WS_ROOM_REGISTRY = new InjectionToken<RoomRegistry>('WS_ROOM_REGISTRY');
+
+// forRoot() options carrier.
+export const WS_MODULE_OPTIONS = 'vela:ws-module-options';

@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.10.0 (2026-07-01)
+
+### Added
+
+- **WebSocket support** (`@velajs/vela/websocket` + `@velajs/vela/websocket-node`): `@WebSocketGateway`, `@SubscribeMessage`, gateways run through the same global guard/pipe/interceptor/filter tiers as HTTP (`RouteManager.getGlobalComponents()`).
+
+- **`ConfigurableModuleBuilder`** (NestJS-parity) + the lower-level `defineConfigurableModule` engine. Generates `forRoot`/`forRootAsync` (with `key`, `global`, `useClass`/`useExisting` async options, and the options token) from a tiny spec, so a new module is just its tokens + options type + service + a `@Module({...})` bag — while keeping vela's module encapsulation and multi-instance `key` dedup. `CacheModule`, `ConfigModule`, `ThrottlerModule`, and `HttpModule` are migrated onto it; `@velajs/cloudflare`'s binding modules reuse the engine.
+- **Opt-in ambient request access**: `getCurrentContainer()` / `getCurrentRequestContext()` + `enableAmbientContainer()`, wired via `VelaFactory.create(module, { ambientContainer: true })`. Backed by Hono's `hono/context-storage` (no `node:async_hooks` import in core); OFF by default, explicit child-container path unchanged. On Cloudflare Workers it requires the `nodejs_als` (or `nodejs_compat`) flag — validated on real workerd.
+- **Container + application disposal**: `Container.dispose()` (LIFO; `Symbol.asyncDispose`/`Symbol.dispose`/`.dispose()`, idempotent), `VelaApplication.dispose()` and `Symbol.asyncDispose` (enables `await using`). The root disposes shared singletons; the per-request child container is disposed automatically at the end of each HTTP request — streaming-safe (deferred until the response body drains) and zero-overhead when a request has no request-scoped disposables.
+- **Async cache stores (additive, non-breaking).** New `AsyncCacheStore` interface + `TieredCacheStore` (read-through + backfill + write-through over N sync/async tiers) in core, and `KVCacheStore` in `@velajs/cloudflare`, for a memory→KV cache. The existing synchronous `CacheStore`/`CacheService`/`CacheInterceptor` are **unchanged**; `CacheModuleOptions` gains an optional sync `store`. Use the async stores programmatically (inject under your own token).
+- **i18n** at the `@velajs/vela/i18n` subpath (keeps core lean; `intl-messageformat` is an optional peer dep): `I18nModule.forRoot()` + `registerMessages()` (deep-merged, HMR-safe globalThis registry), ICU formatting, header/query/cookie locale detection. `I18nService` is request-scoped and reads the per-request locale; injecting it into a controller is safe thanks to request-scope bubbling (no `ambientContainer` flag needed).
+- **Storage abstractions** at the `@velajs/vela/storage` subpath (dep-free, Web Crypto only): the `StorageDriver` contract, `expandPathTemplate`/`joinStoragePath`, and HMAC `signUrl`/`verifySignedUrl`. `@velajs/cloudflare` builds on them with a multi-disk `StorageModule` over R2 (`StorageService.put/get/delete/exists/url`, per-disk roots with `{date}`/`{year}`/… templates, bucket-by-name via `EnvService`) plus a signature-gated `StorageController` presign-proxy (R2 has no native presign).
+- **Seeders** at the `@velajs/vela/seeder` subpath: `@Seeder({ order })`, `SeederModule` (`forRoot({ seeders })`), and `SeederRegistry`/`runSeeders(app)` — decorator discovery at bootstrap (mirrors `ScheduleRegistry`), each seeder run in a request-scoped child. Paired with the **new `@velajs/cli` package** (clipanion) providing `vela db seed` driven by a `vela.config.{js,mjs,ts}` app factory (Node-side; kept out of the Worker bundle).
+
+### Changed
+
+- **Request-scope bubbling.** A provider (including controllers, which are singletons) that transitively depends on a request-scoped provider is now automatically treated as request-scoped — rebuilt per request instead of capturing the first request's instance. Matches NestJS; computed once at bootstrap (`Container.computeEffectiveScopes`), governs caching + eager instantiation. Fixes the captive-dependency hazard for request-scoped services injected into controllers.
+- **HMR-safe `MetadataRegistry`**: all backing state is now anchored on `globalThis` via `Symbol.for('vela:registry:v1')`, so a Vite dev re-eval reuses the state classes were decorated against (no split-brain: lost routes / spurious "not @Injectable" warnings / duplicated globals). No API change.
+- **`CacheModule`** now accepts an optional custom sync `store` in its options.
+
 ## 1.8.1 (2026-05-14)
 
 ### Revert

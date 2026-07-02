@@ -57,46 +57,125 @@ function emptyComponentByOwner<O>(): ComponentByOwner<O> {
   };
 }
 
-export class MetadataRegistry {
-  // Decoration metadata (set at import time, persists across clear()).
-  private static readonly routes = new Map<Constructor, RouteDefinition[]>();
-  private static readonly controllers = new Map<Constructor, string>();
-  private static readonly controllerOptions = new Map<Constructor, ControllerOptions>();
-  private static readonly modules = new Map<Constructor, ModuleOptions>();
-  private static readonly parameters = new Map<Constructor, Map<string | symbol, ParameterMetadata[]>>();
-  private static readonly injectables = new Set<Constructor>();
-  private static readonly scopes = new Map<Constructor, Scope>();
-  private static readonly injectTokens = new Map<Constructor, InjectMetadata[]>();
-  private static readonly handlerHttpMeta = new Map<Constructor, Map<string | symbol, HttpHandlerMeta>>();
-  private static readonly catchTypes = new Map<Constructor, Type<Error>[]>();
-  private static readonly routeVersions = new Map<Constructor, Map<string | symbol, number | number[]>>();
+type HandlerComponentStore = {
+  middleware: Map<Constructor, Map<string | symbol, MiddlewareType[]>>;
+  guard: Map<Constructor, Map<string | symbol, GuardType[]>>;
+  pipe: Map<Constructor, Map<string | symbol, PipeType[]>>;
+  interceptor: Map<Constructor, Map<string | symbol, InterceptorType[]>>;
+  filter: Map<Constructor, Map<string | symbol, FilterType[]>>;
+};
 
-  // Free-form key→value class & handler meta. Backs:
-  //   - @SetMetadata (custom user keys)
-  //   - feature decorators (@Cron, @OnEvent, @ApiDoc, …)
-  //   - the SWC shim (Reflect.metadata's design:* keys)
-  //   - external Reflect.defineMetadata / Reflect.getMetadata calls.
-  private static readonly classMeta = new Map<object, Map<string, unknown>>();
-  private static readonly handlerMeta = new Map<object, Map<string | symbol, Map<string, unknown>>>();
+interface RegistryState {
+  routes: Map<Constructor, RouteDefinition[]>;
+  controllers: Map<Constructor, string>;
+  controllerOptions: Map<Constructor, ControllerOptions>;
+  modules: Map<Constructor, ModuleOptions>;
+  parameters: Map<Constructor, Map<string | symbol, ParameterMetadata[]>>;
+  injectables: Set<Constructor>;
+  scopes: Map<Constructor, Scope>;
+  injectTokens: Map<Constructor, InjectMetadata[]>;
+  handlerHttpMeta: Map<Constructor, Map<string | symbol, HttpHandlerMeta>>;
+  catchTypes: Map<Constructor, Type<Error>[]>;
+  routeVersions: Map<Constructor, Map<string | symbol, number | number[]>>;
+  classMeta: Map<object, Map<string, unknown>>;
+  handlerMeta: Map<object, Map<string | symbol, Map<string, unknown>>>;
+  controllerComponents: ComponentByOwner<Constructor>;
+  handlerComponents: HandlerComponentStore;
+  globalComponents: ComponentStore;
+}
 
-  // Component decoration (set by @UseGuards/@UsePipes/etc. at decoration time).
-  private static readonly controllerComponents = emptyComponentByOwner<Constructor>();
-  private static readonly handlerComponents: {
-    middleware: Map<Constructor, Map<string | symbol, MiddlewareType[]>>;
-    guard: Map<Constructor, Map<string | symbol, GuardType[]>>;
-    pipe: Map<Constructor, Map<string | symbol, PipeType[]>>;
-    interceptor: Map<Constructor, Map<string | symbol, InterceptorType[]>>;
-    filter: Map<Constructor, Map<string | symbol, FilterType[]>>;
-  } = {
-    middleware: new Map(),
-    guard: new Map(),
-    pipe: new Map(),
-    interceptor: new Map(),
-    filter: new Map(),
+function createRegistryState(): RegistryState {
+  return {
+    routes: new Map(),
+    controllers: new Map(),
+    controllerOptions: new Map(),
+    modules: new Map(),
+    parameters: new Map(),
+    injectables: new Set(),
+    scopes: new Map(),
+    injectTokens: new Map(),
+    handlerHttpMeta: new Map(),
+    catchTypes: new Map(),
+    routeVersions: new Map(),
+    classMeta: new Map(),
+    handlerMeta: new Map(),
+    controllerComponents: emptyComponentByOwner<Constructor>(),
+    handlerComponents: {
+      middleware: new Map(),
+      guard: new Map(),
+      pipe: new Map(),
+      interceptor: new Map(),
+      filter: new Map(),
+    },
+    globalComponents: emptyComponentStore(),
   };
+}
 
-  // Global components — app-time state (cleared by clear()).
-  private static globalComponents: ComponentStore = emptyComponentStore();
+// HMR-safe: anchor ALL backing state on `globalThis` so a Vite dev re-eval of
+// this module reuses the SAME maps that classes were already decorated against.
+// Without this, re-eval creates fresh empty statics → split-brain (lost routes,
+// spurious "not @Injectable" warnings, duplicated global components). The
+// versioned symbol avoids collisions across framework major versions in one
+// process. `globalThis` + `Symbol.for` exist on every target runtime; no node:*.
+const REGISTRY_STATE_KEY = Symbol.for('vela:registry:v1');
+
+function registryState(): RegistryState {
+  const g = globalThis as unknown as Record<symbol, RegistryState | undefined>;
+  return (g[REGISTRY_STATE_KEY] ??= createRegistryState());
+}
+
+export class MetadataRegistry {
+  // Every field is a getter over the globalThis-anchored state (registryState).
+  // Method bodies keep using `this.<field>`; the getter returns the live map so
+  // `.set`/`.get`/`.clear` mutate the shared state.
+  private static get routes(): RegistryState['routes'] {
+    return registryState().routes;
+  }
+  private static get controllers(): RegistryState['controllers'] {
+    return registryState().controllers;
+  }
+  private static get controllerOptions(): RegistryState['controllerOptions'] {
+    return registryState().controllerOptions;
+  }
+  private static get modules(): RegistryState['modules'] {
+    return registryState().modules;
+  }
+  private static get parameters(): RegistryState['parameters'] {
+    return registryState().parameters;
+  }
+  private static get injectables(): RegistryState['injectables'] {
+    return registryState().injectables;
+  }
+  private static get scopes(): RegistryState['scopes'] {
+    return registryState().scopes;
+  }
+  private static get injectTokens(): RegistryState['injectTokens'] {
+    return registryState().injectTokens;
+  }
+  private static get handlerHttpMeta(): RegistryState['handlerHttpMeta'] {
+    return registryState().handlerHttpMeta;
+  }
+  private static get catchTypes(): RegistryState['catchTypes'] {
+    return registryState().catchTypes;
+  }
+  private static get routeVersions(): RegistryState['routeVersions'] {
+    return registryState().routeVersions;
+  }
+  private static get classMeta(): RegistryState['classMeta'] {
+    return registryState().classMeta;
+  }
+  private static get handlerMeta(): RegistryState['handlerMeta'] {
+    return registryState().handlerMeta;
+  }
+  private static get controllerComponents(): RegistryState['controllerComponents'] {
+    return registryState().controllerComponents;
+  }
+  private static get handlerComponents(): RegistryState['handlerComponents'] {
+    return registryState().handlerComponents;
+  }
+  private static get globalComponents(): RegistryState['globalComponents'] {
+    return registryState().globalComponents;
+  }
 
   // Routes
 
@@ -393,7 +472,7 @@ export class MetadataRegistry {
   // decorated, that fact is permanent for the lifetime of the process.
 
   static clear(): void {
-    this.globalComponents = emptyComponentStore();
+    registryState().globalComponents = emptyComponentStore();
   }
 
   // Full reset, including decoration metadata. Used in framework-internal scenarios.
@@ -416,6 +495,6 @@ export class MetadataRegistry {
       this.controllerComponents[type].clear();
       this.handlerComponents[type].clear();
     }
-    this.globalComponents = emptyComponentStore();
+    registryState().globalComponents = emptyComponentStore();
   }
 }
