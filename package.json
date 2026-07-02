@@ -91,6 +91,14 @@
   "dependencies": {
     "hono": "^4.12.26"
   },
+  "peerDependencies": {
+    "intl-messageformat": ">=10"
+  },
+  "peerDependenciesMeta": {
+    "intl-messageformat": {
+      "optional": true
+    }
+  },
   "packageManager": "pnpm@10.20.0",
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -106,6 +114,7 @@
     "@types/bun": "latest",
     "@vitest/runner": "^4.1.9",
     "@vitest/snapshot": "^4.1.9",
+    "intl-messageformat": "^11.2.9",
     "typescript": "^6.0.3",
     "unplugin-swc": "^1.5.9",
     "vitest": "^4.1.9",
