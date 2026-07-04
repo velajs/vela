@@ -9,7 +9,7 @@ import type { Token, Type } from '../container/types';
 import type { MiddlewareRouteDefinition } from '../module/middleware';
 import { joinPaths } from '../registry/paths';
 import { ArgumentResolver } from './argument-resolver';
-import { getCrudBridge } from './crud-bridge';
+import { getRouteContributors } from './route-contributor';
 import { buildMiddlewareExecutionContext } from './execution-context';
 import { HandlerExecutor } from './handler-executor';
 import { instantiate, instantiateMany } from './instantiate';
@@ -419,7 +419,9 @@ export class RouteManager {
             effectiveVersion,
           );
 
-          const middlewareItems = ComponentManager.getComponents('middleware', controller, route.handlerName);
+          // Scoped (controller/handler) middleware only — global middleware is
+          // applied once by this manager's own global pass, never re-read here.
+          const middlewareItems = ComponentManager.getScopedComponents('middleware', controller, route.handlerName);
           const handler = this.handlerExecutor.create(route, controller, allParamMetadata);
 
           for (const fullPath of versionedPaths) {
@@ -439,30 +441,40 @@ export class RouteManager {
       }
     }
 
-    // Second pass: mount CRUD sub-apps (/:id routes registered last).
-    //
-    // Routes are produced by a registered CrudBridge — usually contributed
-    // by `@velajs/crud` as an import side effect. Inversion was deliberate:
-    // a previous implementation called `await import('@velajs/crud')` via
-    // an indirect variable to dodge esbuild's static analysis, which made
-    // Cloudflare Workers unable to resolve the module at runtime. The
-    // bridge contract removes that hazard — no runtime resolver involved.
+    // Second pass: route contributors (generated routes registered last, so a
+    // contributor's `/:id` catch-alls never shadow explicit routes). Each
+    // contributor claims controllers by class-level metadata; `@velajs/crud`
+    // registers one as an import side effect. The registry contract (instead
+    // of dynamic `import()`) exists because esbuild leaves
+    // `await import(variable)` as a runtime import Cloudflare Workers cannot
+    // resolve.
+    const contributors = getRouteContributors();
     for (const { controller, metadata } of this.controllers) {
-      const crudConfig = getMetadata('vela:crud', controller);
-      if (!crudConfig) continue;
+      for (const contributor of contributors) {
+        const meta = getMetadata(contributor.claimsMetaKey, controller);
+        if (meta === undefined) continue;
 
-      const bridge = getCrudBridge();
-      if (!bridge) {
+        await contributor.buildRoutes(app, {
+          controller,
+          controllerPrefix: metadata.prefix,
+          meta,
+          globalPrefix: this.globalPrefix,
+          globalGuards: instantiateMany<CanActivate>(this.globalGuards, this.container),
+          container: this.container,
+          joinPaths,
+        });
+      }
+
+      // DX guard for the common mistake: @Crud() metadata present but the
+      // contributor package never imported.
+      if (
+        getMetadata('vela:crud', controller) !== undefined &&
+        !contributors.some((c) => c.claimsMetaKey === 'vela:crud')
+      ) {
         throw new Error(
           "@Crud() requires '@velajs/crud'. Install it: pnpm add @velajs/crud",
         );
       }
-
-      await bridge.buildRoutes(app, controller, metadata.prefix, crudConfig, {
-        globalPrefix: this.globalPrefix,
-        globalGuards: instantiateMany<CanActivate>(this.globalGuards, this.container),
-        joinPaths,
-      });
     }
 
     return app;

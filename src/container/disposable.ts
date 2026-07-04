@@ -1,4 +1,4 @@
-// Edge-safe disposal contract (mirrors stratal's). Precedence:
+// Edge-safe disposal contract. Precedence:
 //   Symbol.asyncDispose > Symbol.dispose > .dispose()
 // Symbol.asyncDispose/Symbol.dispose are resolved at runtime (they are not in
 // the ES2022 lib the project targets), so nothing here depends on the

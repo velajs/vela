@@ -1,4 +1,6 @@
 export { ComponentManager } from './component.manager';
+export { PipelineRunner } from './pipeline-runner';
+export type { PipelineRunOptions } from './pipeline-runner';
 export {
   UseMiddleware,
   UseGuards,

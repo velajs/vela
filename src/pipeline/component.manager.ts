@@ -11,9 +11,9 @@ import type {
   MiddlewareType,
   PipeType,
 } from '../registry/types';
+import { PipelineRunner } from './pipeline-runner';
 import type {
   ArgumentMetadata,
-  CallHandler,
   CanActivate,
   ExceptionFilter,
   ExecutionContext,
@@ -26,23 +26,17 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
+/**
+ * Component registration + resolution for the controller/handler tiers.
+ * App-wide (global) components have exactly ONE source: the per-app
+ * `RouteManager` (`APP_*` provider tokens + `useGlobalX()`) — callers merge
+ * `routeManager.getGlobalComponents()` with {@link getScopedComponents}.
+ *
+ * Stateless by design: no process-global container (two apps in one process
+ * never cross-talk) — every `resolve*` takes the resolving container.
+ */
 export class ComponentManager {
-  private static container: Container;
-
-  static init(container: Container): void {
-    this.container = container;
-  }
-
-  // 3-level registration
-
-  static registerGlobal<T extends ComponentType>(
-    type: T,
-    ...components: ComponentTypeMap[T][]
-  ): void {
-    for (const component of components) {
-      MetadataRegistry.registerGlobal(type, component);
-    }
-  }
+  // Scoped registration: controller → handler
 
   static registerController<T extends ComponentType>(
     type: T,
@@ -65,44 +59,50 @@ export class ComponentManager {
     }
   }
 
-  // 3-level resolution: global → controller → handler
+  // Scoped resolution: controller → handler. App-wide components come from
+  // RouteManager (APP_* tokens + useGlobalX()) — merged by the caller.
 
-  static getComponents<T extends ComponentType>(
+  static getScopedComponents<T extends ComponentType>(
     type: T,
     controller: Constructor,
     handlerName: string | symbol,
   ): ComponentTypeMap[T][] {
-    const controllerComponents = MetadataRegistry.getController(type, controller);
-    const handlerComponents = MetadataRegistry.getHandler(type, controller, handlerName);
-    return [...MetadataRegistry.getGlobal(type), ...controllerComponents, ...handlerComponents];
+    return [
+      ...MetadataRegistry.getController(type, controller),
+      ...MetadataRegistry.getHandler(type, controller, handlerName),
+    ];
   }
 
-  // Type-specific resolvers
+  // Type-specific resolvers — explicit container, always.
 
-  private static resolveAll<T>(items: Array<T | Type<T>>, methodKey: keyof T & string): T[] {
+  private static resolveAll<T>(
+    items: Array<T | Type<T>>,
+    methodKey: keyof T & string,
+    container: Container,
+  ): T[] {
     return items.map((item) =>
-      isObject(item) && methodKey in item ? (item as T) : this.container.resolve(item as Type<T>),
+      isObject(item) && methodKey in item ? (item as T) : container.resolve(item as Type<T>),
     );
   }
 
-  static resolveMiddleware(items: MiddlewareType[]): NestMiddleware[] {
-    return this.resolveAll<NestMiddleware>(items, 'use');
+  static resolveMiddleware(items: MiddlewareType[], container: Container): NestMiddleware[] {
+    return this.resolveAll<NestMiddleware>(items, 'use', container);
   }
 
-  static resolveGuards(items: GuardType[]): CanActivate[] {
-    return this.resolveAll<CanActivate>(items, 'canActivate');
+  static resolveGuards(items: GuardType[], container: Container): CanActivate[] {
+    return this.resolveAll<CanActivate>(items, 'canActivate', container);
   }
 
-  static resolvePipes(items: PipeType[]): PipeTransform[] {
-    return this.resolveAll<PipeTransform>(items, 'transform');
+  static resolvePipes(items: PipeType[], container: Container): PipeTransform[] {
+    return this.resolveAll<PipeTransform>(items, 'transform', container);
   }
 
-  static resolveInterceptors(items: InterceptorType[]): NestInterceptor[] {
-    return this.resolveAll<NestInterceptor>(items, 'intercept');
+  static resolveInterceptors(items: InterceptorType[], container: Container): NestInterceptor[] {
+    return this.resolveAll<NestInterceptor>(items, 'intercept', container);
   }
 
-  static resolveFilters(items: FilterType[]): ExceptionFilter[] {
-    return this.resolveAll<ExceptionFilter>(items, 'catch');
+  static resolveFilters(items: FilterType[], container: Container): ExceptionFilter[] {
+    return this.resolveAll<ExceptionFilter>(items, 'catch', container);
   }
 
   // Pipe execution
@@ -119,27 +119,14 @@ export class ComponentManager {
     return transformed;
   }
 
-  // Interceptor chain (onion pattern)
+  // Interceptor chain (onion pattern) — canonical implementation lives in
+  // PipelineRunner; kept here as a stable alias.
 
   static async runInterceptorChain(
     interceptors: NestInterceptor[],
     context: ExecutionContext,
     coreHandler: () => Promise<unknown>,
   ): Promise<unknown> {
-    if (interceptors.length === 0) {
-      return coreHandler();
-    }
-
-    let next: CallHandler = { handle: coreHandler };
-
-    for (let i = interceptors.length - 1; i >= 0; i--) {
-      const interceptor = interceptors[i];
-      const currentNext = next;
-      next = {
-        handle: () => interceptor.intercept(context, currentNext),
-      };
-    }
-
-    return next.handle();
+    return PipelineRunner.chainInterceptors(interceptors, context, coreHandler);
   }
 }

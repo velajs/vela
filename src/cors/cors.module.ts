@@ -1,34 +1,35 @@
 import { cors } from 'hono/cors';
-import type { DynamicModule } from '../module/types';
-import { stableHash } from '../module/stable-hash';
+import { defineModule } from '../module/define-module';
 import type { NestMiddleware } from '../pipeline/types';
 import { APP_MIDDLEWARE } from '../pipeline/tokens';
 import { CORS_OPTIONS } from './cors.tokens';
 import type { CorsOptions } from './cors.types';
 
-export class CorsModule {
-  static forRoot(options: CorsOptions & { key?: string } = {}): DynamicModule {
-    const corsMiddleware = cors({
-      origin: options.origin ?? '*',
-      allowMethods: options.allowMethods,
-      allowHeaders: options.allowHeaders,
-      exposeHeaders: options.exposeHeaders,
-      credentials: options.credentials,
-      maxAge: options.maxAge,
-    });
-
-    const middleware: NestMiddleware = {
-      use: (c, next) => corsMiddleware(c, next) as Promise<Response | void>,
-    };
-
-    return {
-      module: CorsModule,
-      key: options.key ?? stableHash(options),
-      providers: [
-        { provide: CORS_OPTIONS, useValue: options },
-        { provide: APP_MIDDLEWARE, useValue: middleware },
-      ],
-      exports: [CORS_OPTIONS],
-    };
-  }
+function buildCorsMiddleware(options: CorsOptions): NestMiddleware {
+  const corsMiddleware = cors({
+    origin: options.origin ?? '*',
+    allowMethods: options.allowMethods,
+    allowHeaders: options.allowHeaders,
+    exposeHeaders: options.exposeHeaders,
+    credentials: options.credentials,
+    maxAge: options.maxAge,
+  });
+  return { use: (c, next) => corsMiddleware(c, next) as Promise<Response | void> };
 }
+
+const { ConfigurableModuleClass } = defineModule<CorsOptions>({
+  name: 'Cors',
+  optionsToken: CORS_OPTIONS,
+  setup: ({ OPTIONS }) => ({
+    providers: [
+      {
+        provide: APP_MIDDLEWARE,
+        useFactory: (options: CorsOptions) => buildCorsMiddleware(options),
+        inject: [OPTIONS],
+      },
+    ],
+    exports: [OPTIONS],
+  }),
+});
+
+export class CorsModule extends ConfigurableModuleClass {}

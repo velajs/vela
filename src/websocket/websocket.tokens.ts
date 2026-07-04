@@ -1,4 +1,5 @@
 import { InjectionToken } from '../container/types';
+import type { WebSocketModuleOptions } from './websocket.module';
 import type { RoomRegistry, SyncDriver } from './ws-sync';
 import type { WsServer } from './websocket.types';
 
@@ -28,5 +29,6 @@ export const WS_SYNC_DRIVER = new InjectionToken<SyncDriver>('WS_SYNC_DRIVER');
 /** The local room-membership registry a transport reads/writes. */
 export const WS_ROOM_REGISTRY = new InjectionToken<RoomRegistry>('WS_ROOM_REGISTRY');
 
-// forRoot() options carrier.
-export const WS_MODULE_OPTIONS = 'vela:ws-module-options';
+// forRoot() options carrier — a typed InjectionToken like every other module
+// options token (the raw-string form was the odd one out).
+export const WS_MODULE_OPTIONS = new InjectionToken<WebSocketModuleOptions>('WS_MODULE_OPTIONS');

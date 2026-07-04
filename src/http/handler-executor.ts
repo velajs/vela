@@ -2,9 +2,10 @@ import type { Context } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { Container } from '../container/container';
 import type { Token, Type } from '../container/types';
-import { ForbiddenException, HttpException } from '../errors/http-exception';
+import { HttpException } from '../errors/http-exception';
 import { ComponentManager } from '../pipeline/component.manager';
 import { shouldFilterCatch } from '../pipeline/decorators';
+import { PipelineRunner } from '../pipeline/pipeline-runner';
 import type {
   CanActivate,
   ExceptionFilter,
@@ -60,11 +61,11 @@ export class HandlerExecutor {
       | unknown[]
       | undefined;
 
-    const methodGuards = ComponentManager.getComponents('guard', controller, route.handlerName);
-    const methodPipes = ComponentManager.getComponents('pipe', controller, route.handlerName);
-    const methodInterceptors = ComponentManager.getComponents('interceptor', controller, route.handlerName);
+    const methodGuards = ComponentManager.getScopedComponents('guard', controller, route.handlerName);
+    const methodPipes = ComponentManager.getScopedComponents('pipe', controller, route.handlerName);
+    const methodInterceptors = ComponentManager.getScopedComponents('interceptor', controller, route.handlerName);
     // Filters: reverse order (handler → controller → global) — closest to handler runs first
-    const methodFilters = [...ComponentManager.getComponents('filter', controller, route.handlerName)].reverse();
+    const methodFilters = [...ComponentManager.getScopedComponents('filter', controller, route.handlerName)].reverse();
 
     const httpCode = getHttpCode(controller, route.handlerName);
     const responseHeaders = getResponseHeaders(controller, route.handlerName);
@@ -97,32 +98,22 @@ export class HandlerExecutor {
       try {
         const instance = requestContainer.resolve(controller);
 
-        // 1. Extract args + run pipes (vela order: args before guards).
-        const args = await this.argumentResolver.extract(c, paramMetadata, pipes, requestContainer, paramTypes);
-
-        // 2. Guards (fail-fast).
-        for (const guard of guards) {
-          const canActivate = await guard.canActivate(executionContext);
-          if (!canActivate) {
-            throw new ForbiddenException();
-          }
-        }
-
-        // 3. Get handler method.
         const method = Reflect.get(instance, route.handlerName);
         if (typeof method !== 'function') {
           throw new Error(`Method ${String(route.handlerName)} not found on controller`);
         }
 
-        // 4. Build core handler.
-        const coreHandler = async () => Reflect.apply(method, instance, args);
-
-        // 5. Run interceptor chain.
-        const result = await ComponentManager.runInterceptorChain(
+        // Args + pipes → guards → interceptor chain → handler, via the shared
+        // runner. `argsBeforeGuards` preserves the deliberate vela HTTP order.
+        const result = await PipelineRunner.run({
+          context: executionContext,
+          guards,
           interceptors,
-          executionContext,
-          coreHandler,
-        );
+          argsBeforeGuards: true,
+          resolveArgs: () =>
+            this.argumentResolver.extract(c, paramMetadata, pipes, requestContainer, paramTypes),
+          invoke: async (args) => Reflect.apply(method, instance, args),
+        });
 
         if (redirect) {
           return mapRedirect(c, result, redirect);
@@ -149,6 +140,15 @@ export class HandlerExecutor {
           return c.json(response, status);
         }
 
+        // An unknown error reaching here means no filter claimed it — never
+        // swallow it silently: the response is a generic 500, but the cause
+        // must land in the logs (diagnostics 'silent' opts out).
+        if (requestContainer.getDiagnostics() !== 'silent') {
+          console.error(
+            `[vela] unhandled error in ${controller.name}.${String(route.handlerName)}:`,
+            error,
+          );
+        }
         return c.json({ statusCode: 500, message: 'Internal Server Error' }, 500);
       }
     };

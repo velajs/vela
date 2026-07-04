@@ -1,6 +1,8 @@
 import type { Hono } from 'hono';
 import type { Container } from './container/container';
 import type { Token } from './container/types';
+import { DiscoveryService } from './discovery/discovery.service';
+import { EntrypointRegistry } from './entrypoint/entrypoint.registry';
 import type { RouteManager } from './http/route.manager';
 import {
   hasBeforeApplicationShutdown,
@@ -18,6 +20,7 @@ import type { FilterType, GuardType, InterceptorType, PipeType } from './registr
 export class VelaApplication {
   private instances: unknown[] = [];
   private honoApp: Hono | null = null;
+  private entrypointRegistry: EntrypointRegistry | null = null;
   private disposed = false;
 
   constructor(
@@ -168,6 +171,31 @@ export class VelaApplication {
         await instance.onApplicationBootstrap();
       }
     }
+
+    // Build the per-app entrypoint registry AFTER the hooks: dispatchers that
+    // implement ContributesEntrypoints (WsDispatcher) finish their own
+    // discovery inside onApplicationBootstrap. Built here — not in
+    // VelaFactory/initRoutes — so slim bootstrap paths that never build HTTP
+    // routes (the Cloudflare Durable Object) still get `app.entrypoints`.
+    const discovery = this.container.has(DiscoveryService)
+      ? this.container.resolve(DiscoveryService)
+      : new DiscoveryService(this.container);
+    this.entrypointRegistry = await EntrypointRegistry.build(discovery, this.instances);
+  }
+
+  /**
+   * Every entrypoint contributed by the module graph, grouped by kind —
+   * what runtime adapters/transports query instead of re-scanning providers:
+   * `app.entrypoints.ofKind('websocket')`.
+   */
+  get entrypoints(): EntrypointRegistry {
+    if (!this.entrypointRegistry) {
+      throw new Error(
+        'Entrypoints are not built yet — they are assembled at the end of ' +
+          'callOnApplicationBootstrap(). Finish bootstrapping before querying them.',
+      );
+    }
+    return this.entrypointRegistry;
   }
 
   async close(signal?: string): Promise<void> {

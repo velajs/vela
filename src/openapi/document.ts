@@ -1,6 +1,6 @@
 import { METADATA_KEYS, ParamType } from '../constants';
 import type { Type } from '../container/types';
-import { getCrudBridge } from '../http/crud-bridge';
+import { getRouteContributors } from '../http/route-contributor';
 import { getMetadata } from '../metadata';
 import { collectControllers } from '../module/graph';
 import { MetadataRegistry } from '../registry/metadata.registry';
@@ -242,27 +242,28 @@ export function createOpenApiDocument(
     }
   }
 
-  // Second pass: include `@Crud()`-generated routes via the registered
-  // CrudBridge. The bridge knows how to turn its own metadata config into
-  // OpenAPI path items; this loop is silent when no bridge is registered or
-  // no controller carries `vela:crud` metadata, so consumers without
-  // `@velajs/crud` see no behavioral change.
-  const bridge = getCrudBridge();
-  if (bridge) {
+  // Second pass: include contributor-generated routes (e.g. `@Crud()` via
+  // `@velajs/crud`'s registered RouteContributor). Silent when no contributor
+  // is registered or no controller carries claiming metadata, so consumers
+  // without contributor packages see no behavioral change.
+  for (const contributor of getRouteContributors()) {
+    if (!contributor.buildOpenApiPaths) continue;
     for (const controller of controllers) {
-      const crudConfig = getMetadata(METADATA_KEYS.CRUD, controller as Type);
-      if (!crudConfig) continue;
+      const meta = getMetadata(contributor.claimsMetaKey, controller as Type);
+      if (meta === undefined) continue;
 
       const controllerPrefix = MetadataRegistry.getControllerPath(controller as Type);
-      const crudPaths = bridge.buildOpenApiPaths(controller as Type, crudConfig, {
+      const contributedPaths = contributor.buildOpenApiPaths({
+        controller: controller as Type,
+        meta,
         globalPrefix,
         controllerPrefix,
       });
 
-      for (const [pathKey, pathItem] of Object.entries(crudPaths)) {
+      for (const [pathKey, pathItem] of Object.entries(contributedPaths)) {
         // Verb-level merge: a hand-written `@Get('/')` on the same controller
-        // is preserved when the bridge contributes `post`/`patch`/etc. on
-        // the same path key.
+        // is preserved when the contributor adds `post`/`patch`/etc. on the
+        // same path key.
         paths[pathKey] = { ...(paths[pathKey] ?? {}), ...pathItem };
       }
     }

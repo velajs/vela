@@ -21,30 +21,12 @@ export interface ControllerOptions {
   version?: number | number[];
 }
 
-interface ComponentStore {
-  middleware: Set<MiddlewareType>;
-  guard: Set<GuardType>;
-  pipe: Set<PipeType>;
-  interceptor: Set<InterceptorType>;
-  filter: Set<FilterType>;
-}
-
 interface ComponentByOwner<O> {
   middleware: Map<O, MiddlewareType[]>;
   guard: Map<O, GuardType[]>;
   pipe: Map<O, PipeType[]>;
   interceptor: Map<O, InterceptorType[]>;
   filter: Map<O, FilterType[]>;
-}
-
-function emptyComponentStore(): ComponentStore {
-  return {
-    middleware: new Set(),
-    guard: new Set(),
-    pipe: new Set(),
-    interceptor: new Set(),
-    filter: new Set(),
-  };
 }
 
 function emptyComponentByOwner<O>(): ComponentByOwner<O> {
@@ -79,9 +61,13 @@ interface RegistryState {
   routeVersions: Map<Constructor, Map<string | symbol, number | number[]>>;
   classMeta: Map<object, Map<string, unknown>>;
   handlerMeta: Map<object, Map<string | symbol, Map<string, unknown>>>;
+  // Reverse indexes: metadata key -> targets carrying it. Backs DiscoveryService
+  // so metadata-driven discovery never scans every container token. `design:*`
+  // keys (SWC-emitted type info) are excluded — high-volume, never discovered.
+  classMetaIndex: Map<string, Set<object>>;
+  handlerMetaIndex: Map<string, Set<object>>;
   controllerComponents: ComponentByOwner<Constructor>;
   handlerComponents: HandlerComponentStore;
-  globalComponents: ComponentStore;
 }
 
 function createRegistryState(): RegistryState {
@@ -99,6 +85,8 @@ function createRegistryState(): RegistryState {
     routeVersions: new Map(),
     classMeta: new Map(),
     handlerMeta: new Map(),
+    classMetaIndex: new Map(),
+    handlerMetaIndex: new Map(),
     controllerComponents: emptyComponentByOwner<Constructor>(),
     handlerComponents: {
       middleware: new Map(),
@@ -107,7 +95,6 @@ function createRegistryState(): RegistryState {
       interceptor: new Map(),
       filter: new Map(),
     },
-    globalComponents: emptyComponentStore(),
   };
 }
 
@@ -119,9 +106,18 @@ function createRegistryState(): RegistryState {
 // process. `globalThis` + `Symbol.for` exist on every target runtime; no node:*.
 const REGISTRY_STATE_KEY = Symbol.for('vela:registry:v1');
 
+// Shared empty result for index misses — avoids allocating per lookup.
+const EMPTY_TARGET_SET: ReadonlySet<object> = new Set<object>();
+
 function registryState(): RegistryState {
   const g = globalThis as unknown as Record<symbol, RegistryState | undefined>;
-  return (g[REGISTRY_STATE_KEY] ??= createRegistryState());
+  const state = (g[REGISTRY_STATE_KEY] ??= createRegistryState());
+  // Backfill fields added after the v1 state shape was first anchored: a state
+  // created by an older copy of this module (dist/src coexistence in tests,
+  // mixed package versions in one process) must not crash newer readers.
+  state.classMetaIndex ??= new Map();
+  state.handlerMetaIndex ??= new Map();
+  return state;
 }
 
 export class MetadataRegistry {
@@ -167,14 +163,17 @@ export class MetadataRegistry {
   private static get handlerMeta(): RegistryState['handlerMeta'] {
     return registryState().handlerMeta;
   }
+  private static get classMetaIndex(): RegistryState['classMetaIndex'] {
+    return registryState().classMetaIndex;
+  }
+  private static get handlerMetaIndex(): RegistryState['handlerMetaIndex'] {
+    return registryState().handlerMetaIndex;
+  }
   private static get controllerComponents(): RegistryState['controllerComponents'] {
     return registryState().controllerComponents;
   }
   private static get handlerComponents(): RegistryState['handlerComponents'] {
     return registryState().handlerComponents;
-  }
-  private static get globalComponents(): RegistryState['globalComponents'] {
-    return registryState().globalComponents;
   }
 
   // Routes
@@ -230,17 +229,9 @@ export class MetadataRegistry {
     getOrCreateArray(methodMap, methodName).push(param);
   }
 
-  // Component registration — global
-
-  static registerGlobal<T extends ComponentType>(type: T, component: ComponentTypeMap[T]): void {
-    (this.globalComponents[type] as Set<ComponentTypeMap[T]>).add(component);
-  }
-
-  static getGlobal<T extends ComponentType>(type: T): Set<ComponentTypeMap[T]> {
-    return this.globalComponents[type] as Set<ComponentTypeMap[T]>;
-  }
-
-  // Component registration — controller-level
+  // Component registration — controller-level. (There is deliberately NO
+  // global tier here: app-wide components live on the per-app RouteManager,
+  // one source, never process-global state.)
 
   static registerController<T extends ComponentType>(
     type: T,
@@ -368,6 +359,9 @@ export class MetadataRegistry {
 
   static setCustomClassMeta(target: object, key: string, value: unknown): void {
     getOrCreate(this.classMeta, target, () => new Map<string, unknown>()).set(key, value);
+    if (!key.startsWith('design:')) {
+      getOrCreate(this.classMetaIndex, key, () => new Set<object>()).add(target);
+    }
   }
 
   static getCustomClassMeta(target: object, key: string): unknown {
@@ -386,6 +380,9 @@ export class MetadataRegistry {
   ): void {
     const byHandler = getOrCreate(this.handlerMeta, target, () => new Map<string | symbol, Map<string, unknown>>());
     getOrCreate(byHandler, handler, () => new Map<string, unknown>()).set(key, value);
+    if (!key.startsWith('design:')) {
+      getOrCreate(this.handlerMetaIndex, key, () => new Set<object>()).add(target);
+    }
   }
 
   static getCustomHandlerMeta(
@@ -420,6 +417,33 @@ export class MetadataRegistry {
     const list = (this.getCustomHandlerMeta(target, handler, key) as T[] | undefined) ?? [];
     list.push(item);
     this.setCustomHandlerMeta(target, handler, key, list);
+  }
+
+  // Reverse-index readers — the DiscoveryService seam. Return the constructors
+  // known to carry class-level (resp. handler-level) metadata under `key`.
+  // Callers must still intersect with container-registered tokens: decoration
+  // alone does not make a class a provider.
+
+  static getClassesWithClassMeta(key: string): ReadonlySet<object> {
+    return this.classMetaIndex.get(key) ?? EMPTY_TARGET_SET;
+  }
+
+  static getClassesWithHandlerMeta(key: string): ReadonlySet<object> {
+    return this.handlerMetaIndex.get(key) ?? EMPTY_TARGET_SET;
+  }
+
+  /** Every (handler, value) pair on `target` carrying metadata under `key`. */
+  static getHandlersWithMeta(
+    target: object,
+    key: string,
+  ): Array<{ handler: string | symbol; value: unknown }> {
+    const byHandler = this.handlerMeta.get(target);
+    if (!byHandler) return [];
+    const out: Array<{ handler: string | symbol; value: unknown }> = [];
+    for (const [handler, metaMap] of byHandler) {
+      if (metaMap.has(key)) out.push({ handler, value: metaMap.get(key) });
+    }
+    return out;
   }
 
   // Reflect-style API — same storage as the typed setters above. Lets external
@@ -470,9 +494,12 @@ export class MetadataRegistry {
 
   // Clear app-time state. Decoration metadata persists — once a class is
   // decorated, that fact is permanent for the lifetime of the process.
+  // Currently a no-op: the last piece of app-time registry state (the global
+  // component tier) moved to the per-app RouteManager. Kept because test
+  // suites call it between cases and future app-time state belongs here.
 
   static clear(): void {
-    registryState().globalComponents = emptyComponentStore();
+    // no app-time state to clear
   }
 
   // Full reset, including decoration metadata. Used in framework-internal scenarios.
@@ -491,10 +518,11 @@ export class MetadataRegistry {
     this.routeVersions.clear();
     this.classMeta.clear();
     this.handlerMeta.clear();
+    this.classMetaIndex.clear();
+    this.handlerMetaIndex.clear();
     for (const type of ['middleware', 'guard', 'pipe', 'interceptor', 'filter'] as const) {
       this.controllerComponents[type].clear();
       this.handlerComponents[type].clear();
     }
-    registryState().globalComponents = emptyComponentStore();
   }
 }

@@ -400,6 +400,44 @@ export class Container {
     return this.providers.get(moduleId)?.has(token) ?? false;
   }
 
+  /** Module buckets that hold a registration for `token` (registration order). */
+  getOwnerModuleIds(token: Token): string[] {
+    return [...(this.exporterIndex.get(token) ?? [])];
+  }
+
+  /**
+   * Force-replace a provider across module scopes — the supported form of the
+   * override loop test harnesses need (module-scoped resolution consults the
+   * module's own bucket first, so a root-only override would never win there).
+   *
+   * - `'all-existing'` (default): every non-root bucket that already holds the
+   *   token, plus `__root__` (so framework-internal lookups see it too).
+   * - `'root'`: only the `__root__` bucket.
+   * - `string[]`: exactly these bucket ids.
+   */
+  replaceProvider<T>(
+    provider: Type<T> | ProviderOptions<T>,
+    options: { buckets?: 'all-existing' | 'root' | string[] } = {},
+  ): this {
+    const buckets = options.buckets ?? 'all-existing';
+    if (buckets === 'root') {
+      return this.register(provider);
+    }
+    if (Array.isArray(buckets)) {
+      for (const moduleId of buckets) this.register(provider, moduleId);
+      return this;
+    }
+    const token = typeof provider === 'function' ? provider : provider.provide;
+    if (!token) {
+      throw new Error('replaceProvider requires a token (`provide`)');
+    }
+    for (const [moduleId, bucket] of this.providers) {
+      if (moduleId === ROOT_MODULE_ID) continue;
+      if (bucket.has(token)) this.register(provider, moduleId);
+    }
+    return this.register(provider);
+  }
+
   getProviderScope(token: Token): Scope | undefined {
     const exporters = this.exporterIndex.get(token);
     if (!exporters) return undefined;
@@ -656,10 +694,9 @@ export class Container {
       let instance: T;
 
       if (registration.useFactory) {
-        // Factories (forRootAsync, useFactory) commonly inject deps from the
-        // importing module's scope. Vela has no `forRootAsync({ imports })`
-        // surface to track that, so factory inject deps resolve from the
-        // declaring module's POV — same escape-hatch shape as ModuleRef.
+        // Factory inject deps resolve from the declaring module's scope first
+        // (visibility-correct for forRootAsync), with the legacy no-requester
+        // lookup kept as fallback — see resolveFactoryDependency.
         instance = this.resolveFactory(registration);
       } else if (registration.useClass) {
         instance = this.resolveClass(registration.useClass, registration.declaringModuleId);
@@ -736,17 +773,47 @@ export class Container {
     return new target(...dependencies);
   }
 
+  /**
+   * Resolve one factory `inject` dependency. Since 1.11 the declaring module's
+   * scope is consulted FIRST (proper visibility semantics — a `forRootAsync`
+   * factory can inject providers reachable through its module's imports); on
+   * any failure the legacy no-requester lookup (root bucket, then first
+   * exporter) is kept as fallback, so every previously-resolving graph still
+   * resolves.
+   */
+  private resolveFactoryDependency(token: Token, declaringModuleId: string): unknown {
+    if (declaringModuleId !== ROOT_MODULE_ID && this.scopes.has(declaringModuleId)) {
+      try {
+        return this.resolve(token, declaringModuleId);
+      } catch {
+        // Fall through to the legacy escape hatch below.
+      }
+    }
+    return this.resolve(token);
+  }
+
+  private async resolveFactoryDependencyAsync(
+    token: Token,
+    declaringModuleId: string,
+  ): Promise<unknown> {
+    if (declaringModuleId !== ROOT_MODULE_ID && this.scopes.has(declaringModuleId)) {
+      try {
+        return await this.resolveAsync(token, declaringModuleId);
+      } catch {
+        // Fall through to the legacy escape hatch below.
+      }
+    }
+    return this.resolveAsync(token);
+  }
+
   private resolveFactory<T>(registration: ProviderRegistration<T>): T {
     if (!registration.useFactory) {
       throw new Error('Factory function is missing');
     }
 
-    // Factory inject deps resolve without a requester — Vela has no
-    // `forRootAsync({ imports })` surface to track which module the factory
-    // resolves from, so it uses the same escape-hatch shape as ModuleRef.
     const dependencies = (registration.inject || []).map((token) => {
       const resolved = token instanceof ForwardRef ? token.factory() : token;
-      return this.resolve(resolved);
+      return this.resolveFactoryDependency(resolved, registration.declaringModuleId);
     });
     const result = registration.useFactory(...dependencies);
 
@@ -790,12 +857,12 @@ export class Container {
         return registration.instance;
       }
 
-      // Factory inject deps resolve without a requester (same escape hatch as
-      // sync resolveFactory).
+      // Module scope first, legacy no-requester fallback — same policy as the
+      // sync resolveFactory path.
       const dependencies = await Promise.all(
         (registration.inject || []).map((t) => {
           const resolved = t instanceof ForwardRef ? t.factory() : t;
-          return this.resolveAsync(resolved);
+          return this.resolveFactoryDependencyAsync(resolved, registration.declaringModuleId);
         }),
       );
 

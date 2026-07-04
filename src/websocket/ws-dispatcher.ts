@@ -1,11 +1,14 @@
 import { Container } from '../container/container';
 import { Inject, Injectable, Optional } from '../container/decorators';
-import type { Token, Type } from '../container/types';
+import type { Type } from '../container/types';
+import { DiscoveryService } from '../discovery/discovery.service';
+import type { ContributesEntrypoints, Entrypoint } from '../entrypoint/entrypoint.types';
 import { instantiateMany } from '../http/instantiate';
 import { RouteManager } from '../http/route.manager';
 import type { OnApplicationBootstrap } from '../lifecycle/index';
 import { ComponentManager } from '../pipeline/component.manager';
 import { shouldFilterCatch } from '../pipeline/decorators';
+import { PipelineRunner } from '../pipeline/pipeline-runner';
 import type {
   CanActivate,
   ExceptionFilter,
@@ -68,20 +71,30 @@ function isWsResponse(x: unknown): x is WsResponse {
   return typeof x === 'object' && x !== null && typeof (x as WsResponse).event === 'string';
 }
 
+/** Metadata carried by each `'websocket'` entrypoint a transport consumes. */
+export interface WsEntrypointMeta {
+  /** The gateway's route path (from `@WebSocketGateway({ path })`). */
+  path: string;
+  /** The dispatcher that routes frames for this gateway. */
+  dispatcher: WsDispatcher;
+}
+
 /**
- * Discovers `@WebSocketGateway` classes at bootstrap (same `container.getTokens()`
- * scan as `EventEmitterSubscriber` / `ScheduleRegistry`) and routes inbound
- * messages to `@SubscribeMessage` handlers. Transports call `handleOpen`,
- * `dispatchMessage`, `handleClose`, and `handleError`; the guard → pipe →
- * interceptor → filter pipeline (including `APP_*` global components) is reused
- * from `ComponentManager`.
+ * Discovers `@WebSocketGateway` classes at bootstrap (via `DiscoveryService`)
+ * and routes inbound messages to `@SubscribeMessage` handlers. Transports read
+ * the gateways from `app.entrypoints.ofKind('websocket')` (this dispatcher
+ * contributes them) and call `handleOpen`, `dispatchMessage`, `handleClose`,
+ * and `handleError`; the guard → pipe → interceptor → filter pipeline
+ * (including `APP_*` global components) runs through the shared
+ * `PipelineRunner`.
  */
 @Injectable()
-export class WsDispatcher implements OnApplicationBootstrap {
+export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoints {
   private readonly gateways = new Map<string, GatewayEntry>();
 
   constructor(
     @Inject(Container) private readonly container: Container,
+    @Inject(DiscoveryService) private readonly discovery: DiscoveryService,
     @Optional() @Inject(WS_SERVER) private readonly server?: WsServer,
     @Optional() @Inject(RouteManager) private readonly routeManager?: RouteManager,
   ) {}
@@ -92,24 +105,21 @@ export class WsDispatcher implements OnApplicationBootstrap {
   }
 
   async onApplicationBootstrap(): Promise<void> {
-    for (const token of this.container.getTokens()) {
-      if (typeof token !== 'function') continue;
-      const options = MetadataRegistry.getCustomClassMeta(token, WS_GATEWAY_METADATA) as
-        | WebSocketGatewayOptions
-        | undefined;
-      if (!options) continue;
+    for (const found of this.discovery.providersWithMeta<WebSocketGatewayOptions>(
+      WS_GATEWAY_METADATA,
+    )) {
+      if (!found.instance) continue;
+      const gatewayClass = found.metatype;
+      const instance = found.instance as Record<string, unknown>;
 
-      const instance = this.resolveGateway(token);
-      if (!instance) continue;
-
-      const entry = this.buildGatewayEntry(token as Type, options, instance);
+      const entry = this.buildGatewayEntry(gatewayClass, found.meta, instance);
 
       // Two gateways on the same path (or both defaulting to '') would silently
       // overwrite each other in the routing Map — surface it instead.
       if (this.gateways.has(entry.path)) {
         const msg =
           `[vela] duplicate @WebSocketGateway path '${entry.path}' ` +
-          `(${(token as Type).name}); keeping the first. Give each gateway a distinct path.`;
+          `(${gatewayClass.name}); keeping the first. Give each gateway a distinct path.`;
         if (this.container.getDiagnostics() === 'throw') throw new Error(msg);
         console.warn(msg);
         continue;
@@ -120,10 +130,20 @@ export class WsDispatcher implements OnApplicationBootstrap {
         try {
           await instance.afterInit(this.server);
         } catch (err) {
-          this.reportBootstrapError((token as Type).name, err);
+          this.reportBootstrapError(gatewayClass.name, err);
         }
       }
     }
+  }
+
+  /** One `'websocket'` entrypoint per discovered gateway (authoritative). */
+  collectEntrypoints(): Entrypoint<WsEntrypointMeta>[] {
+    return [...this.gateways.values()].map((entry) => ({
+      kind: 'websocket',
+      token: entry.gatewayClass,
+      instance: entry.instance,
+      meta: { path: entry.path, dispatcher: this },
+    }));
   }
 
   async handleOpen(path: string, client: WsClient): Promise<void> {
@@ -193,16 +213,19 @@ export class WsDispatcher implements OnApplicationBootstrap {
     ];
 
     try {
-      for (const guard of guards) {
-        if (!(await guard.canActivate(ctx))) {
-          throw new WsException('Forbidden');
-        }
-      }
-
-      const args = await resolveWsArgs(handler.paramMeta, client, message.data, pipes, handler.paramTypes);
       const method = entry.instance[handler.methodName] as (...a: unknown[]) => unknown;
-      const core = async () => method.apply(entry.instance, args);
-      const result = await ComponentManager.runInterceptorChain(interceptors, ctx, core);
+
+      // Guards → args + pipes → interceptor chain → handler, via the shared
+      // runner (WS keeps guards-first, unlike HTTP's args-before-guards).
+      const result = await PipelineRunner.run({
+        context: ctx,
+        guards,
+        interceptors,
+        resolveArgs: () =>
+          resolveWsArgs(handler.paramMeta, client, message.data, pipes, handler.paramTypes),
+        invoke: async (args) => method.apply(entry.instance, args),
+        onGuardReject: () => new WsException('Forbidden'),
+      });
 
       this.reply(client, message, result);
     } catch (error) {
@@ -269,20 +292,6 @@ export class WsDispatcher implements OnApplicationBootstrap {
     return parsed;
   }
 
-  private resolveGateway(token: Token): Record<string, unknown> | undefined {
-    try {
-      return this.container.resolve(token) as Record<string, unknown>;
-    } catch (err) {
-      const mode = this.container.getDiagnostics();
-      if (mode === 'throw') throw err;
-      if (mode === 'log') {
-        const name = typeof token === 'function' ? token.name : String(token);
-        console.warn(`[vela] websocket gateway discovery: cannot resolve ${name}:`, err);
-      }
-      return undefined;
-    }
-  }
-
   private buildGatewayEntry(
     gatewayClass: Type,
     options: WebSocketGatewayOptions,
@@ -306,11 +315,11 @@ export class WsDispatcher implements OnApplicationBootstrap {
         methodName,
         paramMeta,
         paramTypes,
-        guards: ComponentManager.getComponents('guard', ctor, methodName),
-        pipes: ComponentManager.getComponents('pipe', ctor, methodName),
-        interceptors: ComponentManager.getComponents('interceptor', ctor, methodName),
+        guards: ComponentManager.getScopedComponents('guard', ctor, methodName),
+        pipes: ComponentManager.getScopedComponents('pipe', ctor, methodName),
+        interceptors: ComponentManager.getScopedComponents('interceptor', ctor, methodName),
         // Handler → controller → global, so the closest filter runs first (mirrors HandlerExecutor).
-        filters: [...ComponentManager.getComponents('filter', ctor, methodName)].reverse(),
+        filters: [...ComponentManager.getScopedComponents('filter', ctor, methodName)].reverse(),
       });
     }
 

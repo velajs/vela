@@ -1,26 +1,33 @@
-import { InjectionToken, type ProviderOptions, type Token } from '../container/types';
+import { InjectionToken } from '../container/types';
 import type { DynamicModule } from '../registry/types';
 import type {
-  ConfigurableModuleAsyncOptions,
   ConfigurableModuleBuilderOptions,
-  ConfigurableModuleClassType,
   ConfigurableModuleExtras,
   ConfigurableModuleExtrasTransform,
   ConfigurableModuleHost,
   DefineConfigurableModuleSpec,
 } from './configurable-module.types';
+import { defineModule } from './define-module';
 import { stableHash } from './stable-hash';
 
-/** Default extra: `isGlobal` toggles `DynamicModule.global`, hiding the naming split. */
-const DEFAULT_EXTRAS = { isGlobal: false } as const;
-const DEFAULT_TRANSFORM: ConfigurableModuleExtrasTransform<{ isGlobal?: boolean }> = (def, extras) =>
-  extras.isGlobal ? { ...def, global: true } : def;
+/**
+ * Blessed key-derivation helper for hand-written `forRoot` statics: the one
+ * documented way to derive a `DynamicModule.key` from an options bag so
+ * identical configurations dedup (HMR-idempotent) and distinct ones coexist.
+ * Alias of {@link stableHash} with a module-authoring name.
+ */
+export const moduleKey: (options: unknown) => string = stableHash;
 
 /**
  * NestJS-parity builder that generates `forRoot`/`forRootAsync` (and `key`,
  * `global`, factory-param inference) from a tiny spec — so a module is just its
  * tokens + options type + service + a `@Module({...})` bag, while vela keeps its
  * encapsulation (`exports`/visibility) and multi-instance `key` dedup.
+ *
+ * Since 1.11 this is a thin adapter over {@link defineModule} — the single
+ * authoring engine. Prefer `defineModule` for new modules: it additionally
+ * supports contributions (providers/controllers/imports/exports/global
+ * components) computed as functions of the options.
  *
  * @example
  * ```ts
@@ -42,9 +49,8 @@ export class ConfigurableModuleBuilder<
 > {
   private classMethodName = 'forRoot';
   private factoryMethodName = 'create';
-  private extrasDefaults: ConfigurableModuleExtras = DEFAULT_EXTRAS;
-  private extrasTransform: ConfigurableModuleExtrasTransform<ConfigurableModuleExtras> =
-    DEFAULT_TRANSFORM as ConfigurableModuleExtrasTransform<ConfigurableModuleExtras>;
+  private extrasDefaults: ConfigurableModuleExtras | undefined;
+  private extrasTransform: ConfigurableModuleExtrasTransform<ConfigurableModuleExtras> | undefined;
 
   constructor(private readonly options: ConfigurableModuleBuilderOptions = {}) {}
 
@@ -75,105 +81,15 @@ export class ConfigurableModuleBuilder<
   }
 
   build(): ConfigurableModuleHost<Opts, MethodKey, FactoryMethodKey, Extras> {
-    const moduleName = this.options.moduleName ?? 'ConfigurableModule';
-    const optionsToken =
-      (this.options.optionsInjectionToken as InjectionToken<Opts> | undefined) ??
-      new InjectionToken<Opts>(`${moduleName}_MODULE_OPTIONS`);
-    const syncName = this.classMethodName;
-    const asyncName = `${this.classMethodName}Async`;
-    const factoryMethodName = this.factoryMethodName;
-    const extrasDefaults = this.extrasDefaults;
-    const transform = this.extrasTransform;
-
-    class ConfigurableModuleClass {}
-
-    Object.defineProperty(ConfigurableModuleClass, syncName, {
-      configurable: true,
-      writable: true,
-      enumerable: false,
-      value(this: unknown, options: Record<string, unknown> = {}): DynamicModule {
-        const { key, ...rest } = options;
-        const definition: DynamicModule = {
-          module: this as DynamicModule['module'],
-          key: (key as string | undefined) ?? stableHash(rest),
-          providers: [{ provide: optionsToken as Token, useValue: rest }],
-        };
-        return transform(definition, { ...extrasDefaults, ...rest });
-      },
+    return defineModule<Opts, Extras, MethodKey, FactoryMethodKey>({
+      name: this.options.moduleName ?? 'ConfigurableModule',
+      optionsToken: this.options.optionsInjectionToken as InjectionToken<Opts> | undefined,
+      extras: this.extrasDefaults as Extras | undefined,
+      transform: this.extrasTransform as ConfigurableModuleExtrasTransform<Extras> | undefined,
+      methodName: this.classMethodName as MethodKey,
+      factoryMethodName: this.factoryMethodName as FactoryMethodKey,
     });
-
-    Object.defineProperty(ConfigurableModuleClass, asyncName, {
-      configurable: true,
-      writable: true,
-      enumerable: false,
-      value(this: unknown, options: ConfigurableModuleAsyncOptions<Opts> = {}): DynamicModule {
-        const { key, imports, inject, useFactory, useClass, useExisting, ...restExtras } =
-          options as ConfigurableModuleAsyncOptions<Opts> & Record<string, unknown>;
-        const definition: DynamicModule = {
-          module: this as DynamicModule['module'],
-          // Include extras (e.g. isGlobal) in the key — like forRoot — so two
-          // async instances differing only in an extra don't wrongly dedup.
-          key:
-            (key as string | undefined) ??
-            stableHash({ inject, useFactory, useClass, useExisting, ...restExtras }),
-          imports: imports ?? [],
-          providers: buildAsyncOptionsProviders(
-            optionsToken as Token,
-            factoryMethodName,
-            { inject, useFactory, useClass, useExisting },
-          ),
-        };
-        return transform(definition, { ...extrasDefaults, ...restExtras });
-      },
-    });
-
-    return {
-      ConfigurableModuleClass: ConfigurableModuleClass as unknown as ConfigurableModuleClassType<
-        Opts,
-        MethodKey,
-        FactoryMethodKey,
-        Extras
-      >,
-      MODULE_OPTIONS_TOKEN: optionsToken,
-      // Type-only sentinels — never read at runtime.
-      OPTIONS_TYPE: undefined as never,
-      ASYNC_OPTIONS_TYPE: undefined as never,
-    };
   }
-}
-
-/** Lower `useFactory`/`useClass`/`useExisting` async options into provider registrations. */
-function buildAsyncOptionsProviders<Opts>(
-  optionsToken: Token,
-  factoryMethodName: string,
-  async: Pick<ConfigurableModuleAsyncOptions<Opts>, 'inject' | 'useFactory' | 'useClass' | 'useExisting'>,
-): Array<ProviderOptions> {
-  if (async.useFactory) {
-    return [{ provide: optionsToken, useFactory: async.useFactory, inject: async.inject ?? [] }];
-  }
-  if (async.useClass) {
-    const factoryClass = async.useClass;
-    return [
-      factoryClass as unknown as ProviderOptions,
-      {
-        provide: optionsToken,
-        useFactory: (instance: Record<string, () => unknown>) => instance[factoryMethodName](),
-        inject: [factoryClass as unknown as Token],
-      },
-    ];
-  }
-  if (async.useExisting) {
-    return [
-      {
-        provide: optionsToken,
-        useFactory: (instance: Record<string, () => unknown>) => instance[factoryMethodName](),
-        inject: [async.useExisting as unknown as Token],
-      },
-    ];
-  }
-  throw new Error(
-    'Async module options require one of `useFactory`, `useClass`, or `useExisting`.',
-  );
 }
 
 /**

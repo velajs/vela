@@ -18,7 +18,10 @@ const { ConfigurableModuleClass } = new ConfigurableModuleBuilder<I18nModuleOpti
 // Empty marker module for `registerMessages`. The contribution is a side-effect
 // on the global MessageRegistry; this carries NO providers so it never
 // duplicates I18nModule's providers (which would trip vela's multi-instance
-// encapsulation → MultipleProvidersFoundError).
+// encapsulation → MultipleProvidersFoundError). New modules whose contribution
+// is providers (not an external registry) should use `sideEffectModule` from
+// the authoring kit; this predates it and keeps a shared-class identity so
+// identical message trees dedup as one module instance.
 @Module({})
 class I18nMessagesModule {}
 

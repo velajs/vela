@@ -1,5 +1,107 @@
 # Changelog
 
+## 1.11.0 (2026-07-04)
+
+The module-model release: one blessed authoring path plus public kernel
+extension points, so feature modules (websocket, storage, queue, …) are built
+entirely on the public API. See `MODULE_AUTHORING.md` for the author contract.
+Contains deliberate breaking changes (no deprecation shims); coordinated
+releases of `@velajs/{storage,better-auth,testing,crud,cloudflare}` accompany
+this version.
+
+### Added
+
+- **`defineModule`** — the single module-authoring engine: generates `forRoot`
+  AND `forRootAsync` (typed `inject` inference), derives deterministic
+  `stableHash` keys (`key(options)` override + explicit `key` passthrough),
+  and accepts contributions (providers/controllers/imports/exports) **as
+  functions of the options** plus a standardized `global:` component slot.
+  `ConfigurableModuleBuilder` is now a thin adapter over it (unchanged API).
+- **Authoring primitives**: `lazyProvider` (memoized deferred thunk — replaces
+  the hand-rolled `(...deps)=>()=>fn(...deps)` closures), `provideGlobal`
+  (the one `APP_*` wiring idiom), `sideEffectModule` (first-class
+  contribution-only modules; supported form of the i18n empty-marker trick),
+  `moduleToken`, `moduleKey`.
+- **`DiscoveryService` + `createDiscoverableDecorator`** — public
+  decorator-driven discovery (`providersWithMeta`, `methodsWithMeta`,
+  `getProviders`) backed by a reverse metadata index inside
+  `MetadataRegistry`; honors container diagnostics in one place;
+  request-scoped providers are surfaced but not materialized (opt in with
+  `includeRequestScoped`). The event-emitter, schedule, and websocket
+  bootstrap scans now all run through it.
+- **Open entrypoint registry** — `registerEntrypointKind({ kind, metaKey,
+  level })`, the `ContributesEntrypoints` interface, and per-application
+  `app.entrypoints` (`ofKind`/`kinds`/`all`), built at the end of
+  `callOnApplicationBootstrap()` so slim bootstrap paths (Cloudflare Durable
+  Objects) get it too. Transports query entrypoints instead of module
+  internals; a new kind (queue, cron, CLI) needs **zero core changes**.
+- **`RouteContributor`** — public metadata-claimed route generation
+  (`registerRouteContributor`), consulted after explicit routes and during
+  OpenAPI generation with verb-level merge. Replaces the internal CrudBridge.
+- **`RuntimeAdapter`** — `VelaFactory.create(module, { adapters: [...] })`
+  with `requestMiddleware` (prepended to the global chain), `onBootstrap`
+  (after lifecycle + entrypoints, before routes) and `onRoutesBuilt` hooks.
+- **`PipelineRunner`** — the shared guard → pipe → interceptor execution core
+  used by HTTP and WebSocket dispatch (and any custom dispatcher);
+  configurable args/guards order, transport-specific guard-rejection error.
+- **`Container.replaceProvider(provider, { buckets })`** — supported
+  force-replace across module buckets (what test harnesses need).
+- **`buildEntrypointExecutionContext(kind, class, handler, payload)`** — the
+  entrypoint sibling of the HTTP/WS execution contexts, so guards/
+  interceptors/filters written against `getClass()`/`getHandler()`/`getType()`
+  run unchanged around queue batches, scheduled ticks, and custom kinds
+  (`EntrypointExecutionContext.getPayload()`). `@velajs/cloudflare` dispatches
+  queue/scheduled handlers through `PipelineRunner` with consumer-scoped
+  components (HTTP-global components deliberately do not apply; unclaimed
+  errors rethrow to preserve platform retry semantics).
+- **`runInEntrypointScope(container, fn)`** — the non-HTTP dispatch scope
+  primitive: runs one unit of work (queue batch, scheduled tick, RPC call) in
+  a fresh request-scoped child with LIFO disposal — the per-request-child
+  equivalent for entrypoint dispatchers. `@velajs/cloudflare`'s queue and
+  scheduled handlers run on it (request-scoped consumer deps rebuild per
+  batch/tick instead of capturing boot instances).
+
+### Changed
+
+- **Factory dependency visibility**: `useFactory`/`forRootAsync` `inject`
+  deps now resolve from the declaring module's scope FIRST (imports and
+  exports are honored), with the legacy no-requester lookup kept as fallback.
+- **All in-core configurable modules are on the one engine**: `CorsModule` and
+  `SeederModule` rebuilt on `defineModule` (Cors gains `forRootAsync`; both
+  keep their token/key identities), `ScheduleModule`/`ScheduleNodeModule`
+  normalized to zero-config `@Module` bags with parity `forRoot()` sugar.
+  Builder-based modules (Config/Cache/I18n/Throttler/Http) already run on it
+  through the `ConfigurableModuleBuilder` adapter.
+- **Unhandled handler errors are logged**: an error no exception filter claims
+  still maps to the generic 500 response, but the cause now lands in the logs
+  (`console.error`, gated on container diagnostics ≠ `silent`) — closing the
+  silent-500 gap.
+- **`WebSocketModule`** rebuilt on `defineModule`: registry → driver → server
+  construction moved into chained provider factories (single shared registry
+  preserved; everything materializes at bootstrap), deterministic key
+  `ws#<sync-kind>` — **two identical `forRoot()` calls now dedup**
+  (HMR-idempotent; pass explicit `key` for exotic multi-instance),
+  `forRootAsync` available. `WsDispatcher` contributes `'websocket'`
+  entrypoints; `registerWebSocketGateways` consumes
+  `app.entrypoints.ofKind('websocket')`.
+
+### Breaking
+
+- **`WS_MODULE_OPTIONS`** is now a typed `InjectionToken` (was the raw string
+  `'vela:ws-module-options'`).
+- **`ComponentManager`** is stateless: `init()` and the process-global
+  container are gone; `resolve*` methods require an explicit container;
+  `getComponents` replaced by `getScopedComponents` (controller + handler
+  only — app-wide components have one source: `RouteManager`).
+  `registerGlobal`/`MetadataRegistry.getGlobal` (a dead tier with no readers
+  on the request path) are removed; `MetadataRegistry.clear()` is now a
+  no-op.
+- **CrudBridge removed** (`registerCrudBridge`/`getCrudBridge` and the
+  `/internal` exports): use `registerRouteContributor`. `@velajs/crud`
+  migrates in its coordinated release.
+- `forRootAsync` structural fields (non-async keys passed alongside
+  `useFactory`) now merge under the resolved options.
+
 ## 1.10.0 (2026-07-01)
 
 ### Added

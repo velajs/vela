@@ -1,5 +1,4 @@
-import type { ProviderOptions, Type } from '../container/types';
-import type { DynamicModule } from '../module/types';
+import { defineModule } from '../module/define-module';
 import { WsDispatcher } from './ws-dispatcher';
 import { WsServerImpl } from './ws-server';
 import { InMemoryRoomRegistry, local, type RoomRegistry, type SyncDriver } from './ws-sync';
@@ -26,36 +25,48 @@ export interface WebSocketModuleOptions {
 
 /**
  * Registers the WebSocket gateway machinery: the message dispatcher (discovers
- * `@WebSocketGateway` classes at bootstrap), the room registry, the sync driver,
- * and the `@WebSocketServer()`-injected server handle. Mirrors
- * `CacheModule.forRoot` / `ScheduleModule.forRoot`.
+ * `@WebSocketGateway` classes via DiscoveryService at bootstrap), the room
+ * registry, the sync driver, and the `@WebSocketServer()`-injected server
+ * handle.
+ *
+ * Construction lives in chained provider factories — registry → driver
+ * (bound to THAT registry) → server — so the single shared registry instance
+ * is preserved and everything materializes at bootstrap's eager
+ * instantiation, before any lifecycle hook or message dispatch.
+ *
+ * The instance key derives from the sync driver kind: two `forRoot()` calls
+ * with the same driver kind dedup (HMR-idempotent); pass an explicit `key`
+ * to run multiple same-kind instances side by side.
  */
-// forRoot() carries non-serializable per-call state (a fresh registry/driver/
-// server), so each call is its own module instance. A unique key prevents the
-// module loader from deduping two distinct configurations into one (which would
-// silently discard the second registry/server).
-let instanceCounter = 0;
-
-export class WebSocketModule {
-  static forRoot(options: WebSocketModuleOptions = {}): DynamicModule {
-    const registry = options.registry ?? new InMemoryRoomRegistry();
-    const driver = options.sync ?? local();
-    driver.bind(registry);
-    const server = new WsServerImpl(driver);
-
-    const providers: Array<Type | ProviderOptions> = [
-      { provide: WS_MODULE_OPTIONS, useValue: options },
-      { provide: WS_ROOM_REGISTRY, useValue: registry },
-      { provide: WS_SYNC_DRIVER, useValue: driver },
-      { provide: WS_SERVER, useValue: server },
+const { ConfigurableModuleClass } = defineModule<WebSocketModuleOptions>({
+  name: 'WebSocket',
+  optionsToken: WS_MODULE_OPTIONS,
+  key: (options) => `ws#${options.sync?.kind ?? 'local'}`,
+  setup: ({ OPTIONS }) => ({
+    providers: [
+      {
+        provide: WS_ROOM_REGISTRY,
+        useFactory: (o: WebSocketModuleOptions) => o.registry ?? new InMemoryRoomRegistry(),
+        inject: [OPTIONS],
+      },
+      {
+        provide: WS_SYNC_DRIVER,
+        useFactory: (o: WebSocketModuleOptions, registry: RoomRegistry) => {
+          const driver = o.sync ?? local();
+          driver.bind(registry);
+          return driver;
+        },
+        inject: [OPTIONS, WS_ROOM_REGISTRY],
+      },
+      {
+        provide: WS_SERVER,
+        useFactory: (driver: SyncDriver) => new WsServerImpl(driver),
+        inject: [WS_SYNC_DRIVER],
+      },
       WsDispatcher,
-    ];
+    ],
+    exports: [WS_SERVER, WS_SYNC_DRIVER, WS_ROOM_REGISTRY, WsDispatcher],
+  }),
+});
 
-    return {
-      module: WebSocketModule,
-      key: `${driver.kind}#${(instanceCounter += 1)}`,
-      providers,
-      exports: [WS_SERVER, WS_SYNC_DRIVER, WS_ROOM_REGISTRY, WsDispatcher],
-    };
-  }
-}
+export class WebSocketModule extends ConfigurableModuleClass {}

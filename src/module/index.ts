@@ -9,7 +9,23 @@ export { stableHash } from './stable-hash';
 export {
   ConfigurableModuleBuilder,
   defineConfigurableModule,
+  moduleKey,
 } from './configurable-module.builder';
+export {
+  defineModule,
+  buildAsyncOptionsProviders,
+  type DefineModuleSpec,
+  type GlobalComponentSlot,
+  type ModuleContributions,
+  type ModuleSetupContext,
+} from './define-module';
+export {
+  lazyProvider,
+  moduleToken,
+  provideGlobal,
+  sideEffectModule,
+  type LazyProviderSpec,
+} from './lazy-provider';
 export type {
   ConfigurableModuleAsyncOptions,
   ConfigurableModuleBuilderOptions,

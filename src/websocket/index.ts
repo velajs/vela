@@ -11,8 +11,8 @@ export {
 export { WebSocketModule } from './websocket.module';
 export type { WebSocketModuleOptions } from './websocket.module';
 
-// Dispatcher (injected/called by transports)
-export { WsDispatcher } from './ws-dispatcher';
+// Dispatcher (injected/called by transports) + the 'websocket' entrypoint meta
+export { WsDispatcher, type WsEntrypointMeta } from './ws-dispatcher';
 
 // Server handle + rooms + sync
 export { WsServerImpl, BroadcastOperatorImpl } from './ws-server';

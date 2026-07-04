@@ -1,6 +1,7 @@
 import { Scope } from '../constants';
 import { Container } from '../container/container';
 import { ModuleRef } from '../container/module-ref';
+import { DiscoveryService } from '../discovery/discovery.service';
 import type { Diagnostics, Type } from '../container/types';
 import { REQUEST_CONTEXT } from '../http/request-context';
 import { RouteManager } from '../http/route.manager';
@@ -54,6 +55,14 @@ export async function bootstrap(
   });
   container.markGlobalToken(ModuleRef);
 
+  // Decorator-driven discovery — global so any provider can inject it.
+  container.register({
+    provide: DiscoveryService,
+    useFactory: (c: Container) => new DiscoveryService(c),
+    inject: [Container],
+  });
+  container.markGlobalToken(DiscoveryService);
+
   for (const t of [APP_GUARD, APP_PIPE, APP_INTERCEPTOR, APP_FILTER, APP_MIDDLEWARE]) {
     container.markGlobalToken(t);
   }
@@ -79,7 +88,6 @@ export async function bootstrap(
   // same global-tier components (APP_* + app.useGlobalX()).
   container.register({ provide: RouteManager, useValue: routeManager });
   container.markGlobalToken(RouteManager);
-  ComponentManager.init(container);
 
   const loader = new ModuleLoader(container, routeManager);
   loader.load(rootModule);

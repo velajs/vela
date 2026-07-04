@@ -1,36 +1,60 @@
 # vela — Roadmap
 
-This file tracks vela's own technical direction. Shipped work lives in `CHANGELOG.md`; this doc only covers what's planned next and which audit items remain.
+This file tracks vela's own technical direction. Shipped work lives in `CHANGELOG.md`; this doc only covers what's planned next.
 
-## Next release (1.4)
+## Shipped in 1.11 — the module model
 
-### `REQUEST_CONTEXT` injectable
+The state-of-the-art module system (see `MODULE_AUTHORING.md`): `defineModule`
+(one engine generating `forRoot`/`forRootAsync`, deterministic keys, options-
+derived contributions, `global:` slot), `lazyProvider`/`provideGlobal`/
+`sideEffectModule`/`moduleToken`, public `DiscoveryService` +
+`createDiscoverableDecorator`, the open `EntrypointRegistry`
+(`registerEntrypointKind` / `ContributesEntrypoints` / `app.entrypoints`),
+`RouteContributor` (CrudBridge generalized + public), `RuntimeAdapter`
+(`VelaFactory.create({ adapters })`), `PipelineRunner`, and
+`Container.replaceProvider`. WebSocket/storage/auth/testing/crud/cloudflare are
+retrofitted; consumer surface stays NestJS-parity (`forRoot`/`forRootAsync`).
 
-A sanctioned per-request primitive: stable `id`, `receivedAt`, the raw `Request`, the Hono `Context`, and a typed `set/get/has` bag for cross-cutting metadata (locale, feature flags, trace ids, …). Seeded by `RouteManager` into each per-request child container; resolves through `@Inject(REQUEST_CONTEXT)` from anywhere a request-scoped service can be reached. Honors an inbound `x-request-id` header; otherwise generates a UUID via Web Crypto. No `AsyncLocalStorage` — request scope is carried by the per-request child container, edge-runtime contract intact.
+## Phase 2 — full retrofit + dispatch semantics
 
-### Metadata stacking + funnel test coverage
+- ~~Migrate the remaining Tier-B in-core modules onto `defineModule`~~ — DONE
+  (1.11): Cors + Seeder on `defineModule`; Schedule/ScheduleNode normalized to
+  zero-config `@Module` bags (Health/EventEmitter already were; zero-config
+  plain `@Module` is itself a blessed path). i18n `registerMessages` keeps its
+  shared-marker-class pattern deliberately (dedup semantics `sideEffectModule`
+  intentionally doesn't have); comment documents the distinction.
+- ~~`createCloudflareApp` re-expressed on `RuntimeAdapter`~~ — DONE (1.11):
+  `cloudflareAdapter()` is exported (binding-init as `requestMiddleware`, ref
+  collection in `onBootstrap`); `createCloudflareApp` composes it.
+- ~~Entrypoint **dispatch** semantics~~ — DONE (1.11):
+  `runInEntrypointScope(container, fn)` (request-scoped child + LIFO
+  disposal). Validated by real consumers instead of a hypothetical
+  QueueModule: `@velajs/cloudflare`'s `@QueueConsumer`/`@Scheduled` (and
+  vela `@Cron` via the `cf:vela-cron` cross-package kind) now declare
+  entrypoint kinds and dispatch per-event inside a scope — the bespoke
+  `scanInstances` queue/cron scans are deleted. Running the dispatch through
+  `PipelineRunner` also DONE: `buildEntrypointExecutionContext` +
+  consumer-scoped guards/interceptors/filters around every queue/scheduled
+  dispatch (`getType()` is already generic over string — no widening needed;
+  HTTP-global components deliberately excluded; unclaimed errors rethrow for
+  platform retry).
 
-Closes the test gap left over from audit #8. Asserts:
-- `appendCustomHandlerMeta` is order-deterministic across many appends.
-- `Reflect.defineMetadata` funnels into the typed `MetadataRegistry` slots (polyfill round-trip).
-- `MetadataRegistry.reset()` clears `classMeta` and `handlerMeta`.
-- Class-level + handler-level `@SetMetadata` on the same key remain independently addressable.
+## Phase 3 — platform parity
 
-## Open audit follow-ups
+- **Cold-start laziness**: memoized lazy subsystem init at trigger points.
+- **Exception-handler layer**: Laravel-style report/render/dontReport/context
+  above the NestJS-style filters; also fixes the silent-500-no-logging path in
+  `HandlerExecutor`.
+- **CLI introspection** on `DiscoveryService`: `route:list`, module graph,
+  entrypoint list, OpenAPI dump in `@velajs/cli`.
+- **First-party `QueueModule`** authored 100% on the public API — the
+  openness proof (`registerEntrypointKind({ kind: 'queue', ... })`).
 
-_None — audit complete as of 1.4._
+## Historical: 2026 audit
 
-## Closed audit items
-
-| # | Closed in | Notes |
-|---|---|---|
-| 1 | 1.3.0 | Module visibility enforced unconditionally via `ModuleVisibilityError`. |
-| 2 | 1.4 | Single identity model: `DynamicModule.key` + per-module bucket container; `createModuleRef()` removed. Multi-instance `forRoot()` is first-class; ambiguity throws `MultipleProvidersFoundError`. |
-| 3 | 1.3.0 | Bootstrap consolidated into `bootstrap(rootModule, options)`. |
-| 4 | 1.1.0 (verified 1.4) | `NestModule.configure()` runs through `container.resolve(moduleClass, moduleId)`; failures propagate. Regression coverage in `configure-resolution.test.ts`. |
-| 5 | 1.1.0 | `Type` / `Constructor` deduplicated to `container/types.ts`. |
-| 6 | 1.3.0 | Discovery diagnostics route through `{ diagnostics: 'silent' \| 'log' \| 'throw' }`. |
-| 7 | 1.4 | Edge-safe contract documented in README, including the explicit `schedule-node` carve-out and a link to the audit test. |
-| 8 | 1.1.0 | Metadata is unified through `MetadataRegistry`; Reflect polyfill funnels into the same slots. 1.4 adds the regression tests. |
-| 9 | 1.4 | Pipeline execution split out of `RouteManager`: `ArgumentResolver`, `HandlerExecutor`, `response-mapper`, `instantiate` helpers each live in their own file. `RouteManager` is back to Hono route registration + path composition. |
-| 10 | 1.3.0 | Unused `Container.parent` removed. |
+All 10 findings of `CODE_AUDIT_REPORT.md` closed as of 1.4 (see that file and
+CHANGELOG). Later structural follow-ups shipped in 1.11: the two-source
+global-component hazard (dead `MetadataRegistry` tier removed; `RouteManager`
+is the single source), the `ComponentManager` process-global container
+(stateless now), and the triplicated bootstrap-discovery loops
+(`DiscoveryService`).

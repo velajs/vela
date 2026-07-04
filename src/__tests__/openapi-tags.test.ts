@@ -10,14 +10,17 @@ import {
   defineMetadata,
   ApiTags,
 } from '../index.js';
-import { registerCrudBridge, _resetCrudBridge } from '../http/crud-bridge.js';
+import {
+  registerRouteContributor,
+  _resetRouteContributors,
+} from '../http/route-contributor.js';
 
 beforeEach(() => {
   MetadataRegistry.clear();
 });
 
 afterEach(() => {
-  _resetCrudBridge();
+  _resetRouteContributors();
 });
 
 describe('createOpenApiDocument — top-level tags aggregation', () => {
@@ -119,7 +122,9 @@ describe('createOpenApiDocument — top-level tags aggregation', () => {
     @Module({ controllers: [ThingsController] })
     class AppModule {}
 
-    registerCrudBridge({
+    registerRouteContributor({
+      id: 'crud-test',
+      claimsMetaKey: METADATA_KEYS.CRUD,
       buildRoutes: async () => {},
       buildOpenApiPaths: () => ({
         '/things/{id}': {

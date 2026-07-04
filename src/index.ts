@@ -240,8 +240,15 @@ export {
   Module,
   defineDynamicModule,
   stableHash,
+  moduleKey,
   ConfigurableModuleBuilder,
   defineConfigurableModule,
+  defineModule,
+  buildAsyncOptionsProviders,
+  lazyProvider,
+  moduleToken,
+  provideGlobal,
+  sideEffectModule,
 } from './module/index';
 export type {
   ModuleOptions,
@@ -256,8 +263,58 @@ export type {
   ConfigurableModuleHost,
   ConfigurableModuleOptionsFactory,
   DefineConfigurableModuleSpec,
+  DefineModuleSpec,
+  GlobalComponentSlot,
+  ModuleContributions,
+  ModuleSetupContext,
+  LazyProviderSpec,
 } from './module/index';
 export type { MiddlewareConsumer, NestModule, RouteInfo } from './http/index';
+
+// Discovery — decorator-driven provider discovery (the public replacement for
+// hand-rolled bootstrap scans)
+export {
+  DiscoveryService,
+  createDiscoverableDecorator,
+} from './discovery/index';
+export type {
+  DiscoveredClass,
+  DiscoveredMethodMeta,
+  DiscoveryFilter,
+  DiscoverableDecorator,
+  CreateDiscoverableDecoratorOptions,
+} from './discovery/index';
+
+// Entrypoints — the open non-HTTP entry surface (websocket, queue, cron, …)
+export {
+  EntrypointRegistry,
+  registerEntrypointKind,
+  getEntrypointKinds,
+  contributesEntrypoints,
+  runInEntrypointScope,
+  buildEntrypointExecutionContext,
+} from './entrypoint/index';
+export type {
+  ContributesEntrypoints,
+  Entrypoint,
+  EntrypointKind,
+  EntrypointExecutionContext,
+} from './entrypoint/index';
+
+// Route contribution — metadata-claimed route generators (@Crud-style)
+export {
+  registerRouteContributor,
+  getRouteContributors,
+} from './http/route-contributor';
+export type {
+  RouteContributor,
+  RouteContributorContext,
+  RouteContributorOpenApiContext,
+} from './http/route-contributor';
+
+// Runtime adapters — platform bindings for VelaFactory.create({ adapters })
+export type { AdapterContext, RuntimeAdapter } from './factory/adapter';
+export type { VelaCreateOptions } from './factory';
 
 // Plugin manifest + composer
 export {
@@ -279,12 +336,16 @@ export {
   Catch,
   SetMetadata,
   Reflector,
+  PipelineRunner,
+  getCatchTypes,
+  shouldFilterCatch,
   APP_GUARD,
   APP_PIPE,
   APP_INTERCEPTOR,
   APP_FILTER,
   APP_MIDDLEWARE,
 } from './pipeline/index';
+export type { PipelineRunOptions } from './pipeline/index';
 
 // Pipeline Types
 export type {

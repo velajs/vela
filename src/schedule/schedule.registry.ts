@@ -1,8 +1,6 @@
 import { Injectable, Inject } from '../container/index';
-import { Container } from '../container/container';
+import { DiscoveryService } from '../discovery/discovery.service';
 import type { OnApplicationBootstrap } from '../lifecycle/index';
-import { MetadataRegistry } from '../registry/metadata.registry';
-import type { Constructor } from '../registry/types';
 import { CRON_METADATA, INTERVAL_METADATA } from './schedule.tokens';
 import type { CronMetadata, IntervalMetadata } from './schedule.types';
 
@@ -25,49 +23,27 @@ export class ScheduleRegistry implements OnApplicationBootstrap {
   private cronJobs: RegisteredCronJob[] = [];
   private intervalJobs: RegisteredIntervalJob[] = [];
 
-  constructor(@Inject(Container) private container: Container) {}
+  constructor(@Inject(DiscoveryService) private readonly discovery: DiscoveryService) {}
 
   onApplicationBootstrap(): void {
-    const tokens = this.container.getTokens();
+    for (const found of this.discovery.methodsWithMeta<CronMetadata>(CRON_METADATA)) {
+      if (!found.class.instance) continue;
+      this.cronJobs.push({
+        expression: found.meta.expression,
+        methodName: String(found.methodName),
+        instance: found.class.instance,
+        target: found.class.metatype,
+      });
+    }
 
-    for (const token of tokens) {
-      if (typeof token !== 'function') continue;
-
-      const cronMeta = MetadataRegistry.getCustomClassMeta(token as Constructor, CRON_METADATA) as
-        | CronMetadata[]
-        | undefined;
-      const intervalMeta = MetadataRegistry.getCustomClassMeta(token as Constructor, INTERVAL_METADATA) as
-        | IntervalMetadata[]
-        | undefined;
-
-      if (!cronMeta && !intervalMeta) continue;
-
-      let instance: unknown;
-      try {
-        instance = this.container.resolve(token);
-      } catch (err) {
-        const mode = this.container.getDiagnostics();
-        if (mode === 'throw') throw err;
-        if (mode === 'log') {
-          console.warn(
-            `[vela] schedule discovery: cannot resolve ${token.name || String(token)}:`,
-            err,
-          );
-        }
-        continue;
-      }
-
-      if (cronMeta) {
-        for (const { expression, methodName } of cronMeta) {
-          this.cronJobs.push({ expression, methodName, instance, target: token });
-        }
-      }
-
-      if (intervalMeta) {
-        for (const { ms, methodName } of intervalMeta) {
-          this.intervalJobs.push({ ms, methodName, instance, target: token });
-        }
-      }
+    for (const found of this.discovery.methodsWithMeta<IntervalMetadata>(INTERVAL_METADATA)) {
+      if (!found.class.instance) continue;
+      this.intervalJobs.push({
+        ms: found.meta.ms,
+        methodName: String(found.methodName),
+        instance: found.class.instance,
+        target: found.class.metatype,
+      });
     }
   }
 

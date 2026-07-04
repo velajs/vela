@@ -1,8 +1,8 @@
 import type { Context } from 'hono';
 import type { UpgradeWebSocket, WSMessageReceive } from 'hono/ws';
 import type { VelaApplication } from '../application';
-import { WsDispatcher, WS_ROOM_REGISTRY } from '../websocket/index';
-import type { RoomRegistry } from '../websocket/index';
+import { WS_ROOM_REGISTRY } from '../websocket/index';
+import type { RoomRegistry, WsEntrypointMeta } from '../websocket/index';
 import { NodeWsClient } from './node-ws-client';
 
 function toText(data: WSMessageReceive): string | undefined {
@@ -34,10 +34,10 @@ export function registerWebSocketGateways(
   upgradeWebSocket: UpgradeWebSocket,
 ): void {
   const hono = app.getHonoApp();
-  const dispatcher = app.get(WsDispatcher);
   const registry = app.get(WS_ROOM_REGISTRY) as RoomRegistry;
 
-  for (const path of dispatcher.gatewayPaths) {
+  for (const { meta } of app.entrypoints.ofKind<WsEntrypointMeta>('websocket')) {
+    const { path, dispatcher } = meta;
     hono.get(
       path,
       upgradeWebSocket((c: Context) => {
