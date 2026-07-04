@@ -24,8 +24,8 @@ importers:
         specifier: 'link:'
         version: 'link:'
       '@velajs/vela':
-        specifier: link:../vela
-        version: link:../vela
+        specifier: ^1.12.0
+        version: 1.12.0
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2
@@ -628,6 +628,15 @@ packages:
   '@types/http-cache-semantics@4.2.0':
     resolution: {integrity: sha512-L3LgimLHXtGkWikKnsPg0/VFx9OGZaC+eN1u4r+OB1XRqH3meBIAVC2zr1WdMH+RHmnRkqliQAOHNJ/E0j/e0Q==}
 
+  '@velajs/vela@1.12.0':
+    resolution: {integrity: sha512-7vfM47mXUNWdpe3DEk6ktcWp0+H6xTQ+Dsx5JM4B19107V2E/jMJ9zW3UWgZH2VwRRN4Jm9Md3J9zsgdAr09gQ==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      intl-messageformat: '>=10'
+    peerDependenciesMeta:
+      intl-messageformat:
+        optional: true
+
   '@vitest/expect@4.1.9':
     resolution: {integrity: sha512-vl/rYsUKcBr3SnQn166+XR5ZQcgMx3DQhFWdfli/cWpLnLUmbxZvyrJZotLFUryib+LtArYMSTJ5RbQ57ZqrlA==}
 
@@ -1000,6 +1009,10 @@ packages:
 
   hono@4.12.2:
     resolution: {integrity: sha512-gJnaDHXKDayjt8ue0n8Gs0A007yKXj4Xzb8+cNjZeYsSzzwKc0Lr+OZgYwVfB0pHfUs17EPoLvrOsEaJ9mj+Tg==}
+    engines: {node: '>=16.9.0'}
+
+  hono@4.12.27:
+    resolution: {integrity: sha512-1yrb/+w6HWQJrUCLkJ2IF5jNIPvvFkblV5RNOYl6bV+OA6p9GLcMpHFFGTosSvHvcAUibuUukRqhlYI4z32C7Q==}
     engines: {node: '>=16.9.0'}
 
   http-cache-semantics@4.2.0:
@@ -1830,6 +1843,10 @@ snapshots:
 
   '@types/http-cache-semantics@4.2.0': {}
 
+  '@velajs/vela@1.12.0':
+    dependencies:
+      hono: 4.12.27
+
   '@vitest/expect@4.1.9':
     dependencies:
       '@standard-schema/spec': 1.1.0
@@ -2192,6 +2209,8 @@ snapshots:
       zod: 4.3.6
 
   hono@4.12.2: {}
+
+  hono@4.12.27: {}
 
   http-cache-semantics@4.2.0: {}
 
