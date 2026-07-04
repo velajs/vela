@@ -24,6 +24,10 @@ export class VelaApplication {
   private entrypointRegistry: EntrypointRegistry | null = null;
   private disposed = false;
   private readonly lazyManager: LazyModuleManager | undefined;
+  // Identity guard for the instance flow: a token registered by BOTH a lazy
+  // and an eager module reaches us through the eager pass AND the absorbed
+  // batch — without dedup its hooks would run twice.
+  private readonly knownInstances = new Set<unknown>();
 
   constructor(
     private readonly container: Container,
@@ -37,8 +41,14 @@ export class VelaApplication {
     // Live-phase materializations join the instance flow so close()/dispose()
     // run shutdown hooks over them (LIFO — appended last, destroyed first).
     this.lazyManager?.setOnMaterialized((instances) => {
-      this.instances.push(...instances);
+      this.instances.push(...this.trackNew(instances));
     });
+  }
+
+  private trackNew(batch: unknown[]): unknown[] {
+    const fresh = batch.filter((i) => !this.knownInstances.has(i));
+    for (const i of fresh) this.knownInstances.add(i);
+    return fresh;
   }
 
   /** Pre-build routes (handles async CRUD imports). Called by VelaFactory. */
@@ -69,6 +79,8 @@ export class VelaApplication {
 
   setInstances(instances: unknown[]): void {
     this.instances = instances;
+    this.knownInstances.clear();
+    for (const i of instances) this.knownInstances.add(i);
   }
 
   get<T>(token: Token<T>): T {
@@ -177,7 +189,7 @@ export class VelaApplication {
    * injected it must be initialized before that consumer's hooks read it.
    */
   private absorbLazyInstances(prepend: boolean): unknown[] {
-    const batch = this.lazyManager?.takeAbsorbed() ?? [];
+    const batch = this.trackNew(this.lazyManager?.takeAbsorbed() ?? []);
     if (batch.length === 0) return batch;
     if (prepend) {
       this.instances = [...batch, ...this.instances];

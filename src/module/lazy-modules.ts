@@ -91,6 +91,18 @@ export class LazyModuleManager implements LazyResolutionHook {
     return this.claimed.length > 0;
   }
 
+  /**
+   * A drain loop is running. The container consults this before its
+   * post-resolution drain: `constructGroupAsync` resolves members through
+   * `resolveAsync`, whose end-of-cascade check would otherwise re-enter and
+   * AWAIT the very drain promise it is executing inside — a self-referential
+   * await that never settles (with ≥2 claimed groups). Claims made while
+   * draining are picked up by the running loop instead.
+   */
+  isDraining(): boolean {
+    return this.draining;
+  }
+
   /** Instances constructed during the bootstrap phase, owed their hooks. */
   takeAbsorbed(): unknown[] {
     if (this.absorbed.length === 0) return [];
@@ -101,10 +113,19 @@ export class LazyModuleManager implements LazyResolutionHook {
     if (this.draining) return;
     this.draining = true;
     try {
+      // Construct-all-then-hook, batch by batch: a cascade's groups arrive in
+      // consumer-before-dependency claim order (the consumer's token resolves
+      // first; constructing it claims its deps), so hook phases run over the
+      // REVERSED batch — dependency-before-consumer, matching what the eager
+      // bootstrap would have produced. Hooks can claim further groups
+      // (discovery cascades) → outer loop.
       while (this.claimed.length > 0) {
-        const group = this.claimed.shift()!;
-        const instances = this.constructGroupSync(group);
-        this.finishSync(group, instances);
+        const batch: Array<{ group: LazyModuleGroup; instances: unknown[] }> = [];
+        while (this.claimed.length > 0) {
+          const group = this.claimed.shift()!;
+          batch.push({ group, instances: this.constructGroupSync(group) });
+        }
+        this.finishBatchSync(batch);
       }
     } finally {
       this.draining = false;
@@ -113,17 +134,22 @@ export class LazyModuleManager implements LazyResolutionHook {
 
   drainAsync(): Promise<void> {
     if (this.draining) {
-      // A sync drain can't be awaited; claims landing during one are rare
-      // (same-tick reentrancy) and picked up by its loop synchronously.
+      // External concurrent callers await the in-flight completion (its loop
+      // picks their claims up). Callers INSIDE the drain's own await chain
+      // never reach here — the container skips its post-resolution drain
+      // while isDraining() (self-await would deadlock).
       return this.drainPromise ?? Promise.resolve();
     }
     this.draining = true;
     const run = (async () => {
       try {
         while (this.claimed.length > 0) {
-          const group = this.claimed.shift()!;
-          const instances = await this.constructGroupAsync(group);
-          await this.finishAsync(instances);
+          const batch: Array<{ group: LazyModuleGroup; instances: unknown[] }> = [];
+          while (this.claimed.length > 0) {
+            const group = this.claimed.shift()!;
+            batch.push({ group, instances: await this.constructGroupAsync(group) });
+          }
+          await this.finishBatchAsync(batch);
         }
       } finally {
         this.draining = false;
@@ -185,36 +211,55 @@ export class LazyModuleManager implements LazyResolutionHook {
     return [...out];
   }
 
-  private finishSync(group: LazyModuleGroup, instances: unknown[]): void {
-    if (this.phase === 'bootstrap') {
-      this.absorbed.push(...instances);
-      return;
-    }
-    for (const instance of instances) {
-      if (hasOnModuleInit(instance) && isThenable(instance.onModuleInit())) {
-        throw this.describeSyncFailure(group.moduleId);
-      }
-    }
-    for (const instance of instances) {
-      if (hasOnApplicationBootstrap(instance) && isThenable(instance.onApplicationBootstrap())) {
-        throw this.describeSyncFailure(group.moduleId);
-      }
-    }
-    this.onMaterialized?.(instances);
+  /** Reversed batch = dependency-before-consumer (see drainSync comment). */
+  private orderBatch(
+    batch: Array<{ group: LazyModuleGroup; instances: unknown[] }>,
+  ): Array<{ group: LazyModuleGroup; instances: unknown[] }> {
+    return [...batch].reverse();
   }
 
-  private async finishAsync(instances: unknown[]): Promise<void> {
+  private finishBatchSync(batch: Array<{ group: LazyModuleGroup; instances: unknown[] }>): void {
+    const ordered = this.orderBatch(batch);
     if (this.phase === 'bootstrap') {
-      this.absorbed.push(...instances);
+      for (const { instances } of ordered) this.absorbed.push(...instances);
       return;
     }
-    for (const instance of instances) {
-      if (hasOnModuleInit(instance)) await instance.onModuleInit();
+    for (const { group, instances } of ordered) {
+      for (const instance of instances) {
+        if (hasOnModuleInit(instance) && isThenable(instance.onModuleInit())) {
+          throw this.describeSyncFailure(group.moduleId);
+        }
+      }
     }
-    for (const instance of instances) {
-      if (hasOnApplicationBootstrap(instance)) await instance.onApplicationBootstrap();
+    for (const { group, instances } of ordered) {
+      for (const instance of instances) {
+        if (hasOnApplicationBootstrap(instance) && isThenable(instance.onApplicationBootstrap())) {
+          throw this.describeSyncFailure(group.moduleId);
+        }
+      }
     }
-    this.onMaterialized?.(instances);
+    this.onMaterialized?.(ordered.flatMap((b) => b.instances));
+  }
+
+  private async finishBatchAsync(
+    batch: Array<{ group: LazyModuleGroup; instances: unknown[] }>,
+  ): Promise<void> {
+    const ordered = this.orderBatch(batch);
+    if (this.phase === 'bootstrap') {
+      for (const { instances } of ordered) this.absorbed.push(...instances);
+      return;
+    }
+    for (const { instances } of ordered) {
+      for (const instance of instances) {
+        if (hasOnModuleInit(instance)) await instance.onModuleInit();
+      }
+    }
+    for (const { instances } of ordered) {
+      for (const instance of instances) {
+        if (hasOnApplicationBootstrap(instance)) await instance.onApplicationBootstrap();
+      }
+    }
+    this.onMaterialized?.(ordered.flatMap((b) => b.instances));
   }
 
   private describeSyncFailure(moduleId: string, cause?: unknown): Error {

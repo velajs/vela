@@ -287,3 +287,35 @@ Implemented on branch `worktree-lazy-cold-start-init` (isolated worktree) due
 to a concurrent sibling session sharing the main working tree. A claim marker
 (`CLAIMED-lazy-cold-start-init.md`) was left beside the spec in the main
 tree.
+
+### A7 — Post-review hardening (adversarial multi-agent review, 2026-07-04)
+
+Confirmed by independent reproduction and fixed:
+1. **drainAsync self-await deadlock** (critical): with ≥2 claimed groups, the
+   drain loop's own `resolveAsync` calls re-entered `drainAsync` via the
+   container's end-of-cascade check and awaited the in-flight drain promise —
+   a self-referential await hanging `create()` / `materializeLazyModules()`.
+   Fix: `LazyResolutionHook.isDraining()`; the container never starts or
+   awaits a drain while one is running (the loop picks pending claims up).
+   External concurrent callers still await the shared in-flight promise.
+   Corollary (documented): do not await `materializeLazyModules()` from
+   inside a lifecycle hook.
+2. **Nested lazy→lazy hook-order inversion** (major): drains now construct
+   the whole claim cascade first, then run hook phases over the REVERSED
+   batch (claims arrive consumer-before-dependency) — init for all, then
+   bootstrap for all — restoring eager-parity dependency-before-consumer
+   order in both live and bootstrap-absorption phases.
+3. **Double hooks for a token shared by lazy + eager modules** (major):
+   the application now identity-dedups the instance flow (eager pass +
+   absorbed batches + live materializations).
+4. **`createDetached()` bypass** (major): sandboxes (`ModuleRef.create`) now
+   share the real root, so sandbox resolution of a lazy registration claims
+   and replays hooks instead of poisoning the shared singleton cache with a
+   hook-less instance.
+5. **Testing-builder wiring gap** (critical): fixed by arming the manager
+   from `ModuleLoader.load()` (cherry-picked from the sibling session's
+   `feat/lazy-init-hardening`).
+6. **useFactory `ContributesEntrypoints` undetectable** (minor, documented):
+   computed-entrypoint contributors in lazy modules must be class providers
+   (static prototype detection); `useFactory` contributors require an eager
+   module.

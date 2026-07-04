@@ -139,6 +139,12 @@ export interface LazyResolutionHook {
   claim(moduleId: string): void;
   /** Any claimed-but-unmaterialized groups? (cheap fast-path check) */
   hasClaimed(): boolean;
+  /**
+   * A drain loop is currently running. The container must NOT start (or
+   * await) another drain from inside it — the running loop picks pending
+   * claims up; awaiting would self-deadlock on the async path.
+   */
+  isDraining(): boolean;
   /** Complete claimed groups synchronously; throws if async work surfaces. */
   drainSync(): void;
   /** Complete claimed groups, awaiting async construction and hooks. */

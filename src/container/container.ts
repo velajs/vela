@@ -93,9 +93,12 @@ export class Container {
     const hook = root.lazyHook;
     if (!hook?.hasClaimed()) return;
     // Never replay hooks while construction is in flight; an async cascade
-    // drains (with await) at its own end instead.
+    // drains (with await) at its own end instead. A running drain picks
+    // pending claims up itself — re-entering it is at best a no-op and on
+    // the async path a self-deadlock.
     if (this.resolutionStack.size > 0) return;
     if (root.asyncDepth > 0) return;
+    if (hook.isDraining()) return;
     hook.drainSync();
   }
 
@@ -662,6 +665,13 @@ export class Container {
 
     child.scopes = this.scopes;
     child.globals = this.globals;
+    // Registration objects are shallow-shared, so a sandbox resolve of a lazy
+    // module's singleton caches onto the SHARED registration. Point the
+    // sandbox at the real root so that resolution claims the module and
+    // replays its hooks like any other trigger — otherwise ModuleRef.create
+    // would leave a hook-less instance poisoning the shared cache (and its
+    // disposables tracked on an ephemeral root).
+    child.root = this.root;
     return child;
   }
 
@@ -908,7 +918,7 @@ export class Container {
     } finally {
       root.asyncDepth--;
     }
-    if (root.asyncDepth === 0 && root.lazyHook?.hasClaimed()) {
+    if (root.asyncDepth === 0 && root.lazyHook?.hasClaimed() && !root.lazyHook.isDraining()) {
       await root.lazyHook.drainAsync();
     }
     return result;

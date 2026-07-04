@@ -192,7 +192,9 @@ fully sync, or don't mark them lazy.
 - *Computed entrypoint contributors* are lazy-compatible but effectively
   eager: a `ContributesEntrypoints` provider in a lazy module is materialized
   right before the `app.entrypoints` snapshot (or its computed entries would
-  be silently absent). Decorator-declared kinds (`registerEntrypointKind`)
+  be silently absent). Detection is static (class prototype), so contributors
+  in lazy modules MUST be class providers (`Foo` or `useClass`) — a
+  `useFactory`-produced contributor is invisible; keep its module eager. Decorator-declared kinds (`registerEntrypointKind`)
   defer fine: their entries appear metadata-only (`instance: undefined`) and
   dispatchers that re-resolve by token materialize the module per event.
 - Constructors that *emit or dispatch during construction* observe pre-hook
