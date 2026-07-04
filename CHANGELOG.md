@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.13.0 (2026-07-04)
 
 Cold-start laziness (roadmap phase 3): modules can defer their entire init to
 first use, and the in-core subsystems an HTTP-only worker doesn't touch now
