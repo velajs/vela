@@ -41,7 +41,13 @@ retrofitted; consumer surface stays NestJS-parity (`forRoot`/`forRootAsync`).
 
 ## Phase 3 — platform parity
 
-- **Cold-start laziness**: memoized lazy subsystem init at trigger points.
+- ~~**Cold-start laziness**: memoized lazy subsystem init at trigger points.~~
+  — DONE: module-level `lazy: true` (`@Module` / `DynamicModule` /
+  `defineModule`), claim-at-resolution + drain-at-stack-unwind
+  materialization with lifecycle-hook replay, phase-aware bootstrap
+  absorption, metadata-only entrypoints for lazy declared kinds, and
+  `EventEmitter`/`Schedule`/`Seeder`/`I18n` modules flipped lazy. Spec:
+  `docs/superpowers/specs/2026-07-04-lazy-cold-start-init-design.md`.
 - **Exception-handler layer**: Laravel-style report/render/dontReport/context
   above the NestJS-style filters; also fixes the silent-500-no-logging path in
   `HandlerExecutor`.

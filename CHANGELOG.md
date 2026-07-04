@@ -1,5 +1,60 @@
 # Changelog
 
+## Unreleased
+
+Cold-start laziness (roadmap phase 3): modules can defer their entire init to
+first use, and the in-core subsystems an HTTP-only worker doesn't touch now
+cost it nothing at bootstrap.
+
+### Added
+
+- **Lazy modules** — `@Module({ lazy: true })`, `DynamicModule.lazy`, and
+  `defineModule({ lazy: true })` (also recognized per call site like
+  `isGlobal`) defer a module *instance*'s entire provider/controller group:
+  nothing constructs during `VelaFactory.create`. The first resolution of any
+  of its tokens (injection, `app.get()`, a request hitting its controller, a
+  dispatcher re-resolving an entrypoint token) claims the module; when the
+  resolution stack unwinds, the group materializes and its
+  `onModuleInit`/`onApplicationBootstrap` hooks replay in registration order,
+  exactly once (memoized). Materialized instances join the instance flow so
+  shutdown hooks stay symmetric; untouched modules get neither init nor
+  shutdown hooks. Triggers during bootstrap absorb the group into the normal
+  hook phases, ordered dependency-before-consumer. `useValue` reads (options
+  tokens) do not trigger. Sync seams (`app.get`, the request pipeline) throw
+  a descriptive error for lazy modules with async providers/hooks — reach
+  those through `app.materializeLazyModules()` (the new warmup escape hatch)
+  or keep them sync. Authoring contract: MODULE_AUTHORING.md "Lazy modules".
+- **`app.materializeLazyModules()`** — materialize every still-pending lazy
+  module (async-safe); warmup/eager-everything escape hatch.
+- **`Container.isLazyPending(token)` / `Container.isInstantiated(token)`** —
+  non-triggering diagnostics (build-time probes, cold-start regression tests).
+- **`DiscoveryFilter.deferLazy`** — discovery returns providers of
+  unmaterialized lazy modules as metadata-only entries (`instance:
+  undefined`, mirroring the request-scoped convention) instead of forcing the
+  group. `EntrypointRegistry.build` uses it: declared-kind entrypoints of
+  lazy modules are metadata-only in `app.entrypoints`; dispatchers that
+  re-resolve by token (cloudflare cron/queue/scheduled already do)
+  materialize the owning module at dispatch time. `ContributesEntrypoints`
+  providers in lazy modules are materialized right before the snapshot —
+  computed contributions can't defer (documented cost).
+
+### Changed
+
+- **`EventEmitterModule`, `ScheduleModule`, `SeederModule`, `I18nModule` are
+  now lazy.** An HTTP-only worker that imports them but never emits an event,
+  reads the schedule registry, runs seeders, or translates pays zero
+  cold-start cost for them — no subscriber wiring pass, no `@Cron` discovery
+  walk, no merged-message snapshot. Every consumer path is a trigger, so
+  observable behavior is unchanged (`app.get(EventEmitter).emit(...)` wires
+  subscribers first; `runSeeders()` populates the registry via hook replay).
+  `WebSocketModule` and `ScheduleNodeModule` deliberately stay eager (gateway
+  injection drags the WS chain in anyway; the node executor is self-driving).
+- `ModuleLoader.resolveAllInstances()` skips tokens owned exclusively by lazy
+  module instances; a token also registered by a non-lazy module stays on the
+  eager pass. Route building no longer instantiate-probes middleware tokens
+  that are lazy-pending (default priority 0) — the probe would have defeated
+  i18n's deferral at route build.
+
 ## 1.12.0 (2026-07-04)
 
 The module-model release: one blessed authoring path plus public kernel

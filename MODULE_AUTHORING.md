@@ -146,6 +146,64 @@ global components from `RouteManager.getGlobalComponents()` with
 `ComponentManager.getScopedComponents(...)`; exception-filter terminal
 behavior stays transport-specific.
 
+## Lazy modules: deferring cold-start init to first use
+
+A module can opt out of eager bootstrap instantiation:
+
+```ts
+@Module({ lazy: true, providers: [MyRegistry], exports: [MyRegistry] })
+class MyModule {}
+
+// or, on the engine / per instance:
+defineModule<Opts>({ name: 'X', lazy: true, ... })
+XModule.forRoot({ ..., lazy: true })
+// or on a hand-rolled definition:
+{ module: XModule, lazy: true, providers: [...] }
+```
+
+**Semantics.** The module *instance* (class + `key`) is the unit of deferral.
+None of its providers or controllers construct during `VelaFactory.create`;
+the first resolution of ANY of its tokens — an injection by another provider,
+`app.get()`, a request hitting one of its controllers, a dispatcher
+re-resolving an entrypoint token — *claims* the module. Once the resolution
+stack unwinds, the whole group materializes: every provider constructs (in
+registration order) and its `onModuleInit` → `onApplicationBootstrap` hooks
+replay, exactly once (memoized). Materialized instances join the app's
+instance flow, so shutdown hooks run for them on `app.close()`; a module that
+is never touched gets neither init nor shutdown hooks.
+
+If the trigger happens *during* bootstrap (an eager consumer injects a lazy
+export), the group is absorbed into the normal hook phases instead — with its
+hooks ordered BEFORE the eager list (dependency-before-consumer), so e.g. a
+lazy registry populates before an eager executor's hook reads it. Reading a
+lazy module's `useValue` registrations (options tokens) does NOT trigger it.
+
+**The sync seam rule.** `app.get()` and the request pipeline resolve
+synchronously. A lazy module whose providers or lifecycle hooks are async is
+only reachable through async seams — `app.materializeLazyModules()` (the
+warmup escape hatch) or an async provider path — and a sync trigger throws a
+descriptive error rather than silently skipping hooks. Keep lazy modules
+fully sync, or don't mark them lazy.
+
+**What can't be lazy.**
+- *Self-driving modules* — anything that arms its own timers or listeners in
+  a hook (`ScheduleNodeModule`'s executor). There is no external first
+  trigger; nothing would ever start it.
+- *Computed entrypoint contributors* are lazy-compatible but effectively
+  eager: a `ContributesEntrypoints` provider in a lazy module is materialized
+  right before the `app.entrypoints` snapshot (or its computed entries would
+  be silently absent). Decorator-declared kinds (`registerEntrypointKind`)
+  defer fine: their entries appear metadata-only (`instance: undefined`) and
+  dispatchers that re-resolve by token materialize the module per event.
+- Constructors that *emit or dispatch during construction* observe pre-hook
+  state in the live phase — same as bootstrap-phase semantics today; do
+  side-effecting work in hooks, not constructors.
+
+In-core lazy modules: `EventEmitterModule`, `ScheduleModule`, `SeederModule`,
+`I18nModule`. `WebSocketModule` stays eager (its gateways are user providers
+whose `@WebSocketServer()` injection drags the chain in anyway; transports
+read gateway instances at wiring time).
+
 ## Cross-runtime modules (the WebSocket triad pattern)
 
 1. **Edge-safe core** (`src/websocket/`): decorators + dispatcher + pluggable
@@ -172,3 +230,5 @@ behavior stays transport-specific.
       (`pnpm test` runs the edge audit).
 - [ ] Two instances of your module in one app either dedup intentionally or
       coexist — test both.
+- [ ] If `lazy: true`: providers and hooks are fully sync, nothing
+      self-drives, and construction does no dispatching — see "Lazy modules".
