@@ -1,5 +1,50 @@
 # Changelog
 
+## 1.14.0 (2026-07-04)
+
+First-party `QueueModule` (roadmap phase 3, "the openness proof"): a whole
+feature module authored on the public API alone — `defineModule` (+ `lazy`),
+`createDiscoverableDecorator`, `registerEntrypointKind`, `app.entrypoints`,
+`runInEntrypointScope`, `buildEntrypointExecutionContext`, `PipelineRunner` —
+machine-verified by an import audit test.
+
+### Added
+
+- **`@velajs/vela/queue`** — platform-agnostic queue subsystem (subpath-only;
+  deliberately NOT re-exported from the main barrel because
+  `@velajs/cloudflare` already exports an unrelated CF-binding `QueueModule`).
+  Producers: `QueueModule.forRoot({ queues: ['email'] })` + per-queue
+  `QueueClient` injected via `queueToken(name)` (`add(jobName, data,
+  { delayMs? })`). Consumers: `@Processor(queue)` classes with
+  `@Process(jobName?)` handlers (named wins over wildcard; duplicates warn,
+  first-wins). Dispatch runs each job in `runInEntrypointScope`
+  (request-scoped deps rebuild per job), re-resolves processors by token
+  through the async seam (lazy consumer modules — async init hooks included —
+  materialize on first job), and applies scoped
+  guards/interceptors/filters through the shared pipeline; unclaimed errors
+  rethrow for platform retry. App-wide `APP_*` components deliberately do NOT
+  run around queue jobs (cloudflare queue/scheduled parity; diverges from the
+  WebSocket dispatcher — revisit framework-wide). The in-core `inline()`
+  driver (edge-pure, no timers) delivers on a microtask (`immediate`) or via
+  `flush()` (`manual`, rejects with `AggregateError` on unclaimed handler
+  errors); platform drivers implement `QueueDriver` out-of-core and call
+  `dispatchQueueJob(container, app.entrypoints, job)`. The module is
+  `lazy: true` (dogfoods 1.13): consumer-only workers defer it entirely;
+  an eager producer's client injection materializes it at bootstrap.
+  `queues` is structural — `forRootAsync({ queues, useFactory })`.
+- **`resolveScopedComponents(type, class, method, container)`** — public
+  pipeline seam surfaced by the openness proof: scoped
+  `@UseGuards`/`@UsePipes`/`@UseInterceptors`/`@UseFilters` resolution for
+  custom dispatchers (declaration order preserved; conventions like
+  closest-first filter reversal stay with the caller).
+- **`EntrypointRegistry` is injectable** — the per-app registry registers
+  into the container (global token) at the end of
+  `callOnApplicationBootstrap()`, so providers that dispatch entrypoints
+  themselves (the queue module's in-process driver binding) resolve it
+  instead of needing a back-reference to the app; `container.has(...)` probes
+  it safely pre-bootstrap (the queue binding falls back to
+  `DiscoveryService` + `deferLazy` for deliveries during bootstrap).
+
 ## 1.13.0 (2026-07-04)
 
 Cold-start laziness (roadmap phase 3): modules can defer their entire init to

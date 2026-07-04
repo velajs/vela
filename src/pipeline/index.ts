@@ -1,6 +1,8 @@
 export { ComponentManager } from './component.manager';
 export { PipelineRunner } from './pipeline-runner';
 export type { PipelineRunOptions } from './pipeline-runner';
+export { resolveScopedComponents } from './scoped-components';
+export type { ResolvedComponentMap } from './scoped-components';
 export {
   UseMiddleware,
   UseGuards,

@@ -141,10 +141,24 @@ paths merge verb-by-verb with hand-written ones.
 
 Custom dispatchers (queue consumers, schedulers) run handlers through
 `PipelineRunner.run({ context, guards, interceptors, resolveArgs, invoke, onGuardReject })`
-— the same guard → pipe → interceptor core HTTP and WebSocket use. Merge
-global components from `RouteManager.getGlobalComponents()` with
-`ComponentManager.getScopedComponents(...)`; exception-filter terminal
+— the same guard → pipe → interceptor core HTTP and WebSocket use. Scoped
+components come from the public
+`resolveScopedComponents(type, class, method, container)` (declaration order;
+reverse filters yourself for closest-first). Whether app-wide components
+apply is a transport decision: WS merges `RouteManager.getGlobalComponents()`;
+queue/scheduled dispatch deliberately applies none. Exception-filter terminal
 behavior stays transport-specific.
+
+The worked example for ALL of this is the first-party queue module
+(`src/queue/`, `@velajs/vela/queue`): decorators via
+`createDiscoverableDecorator`, the `'queue'` entrypoint kind, per-job
+`runInEntrypointScope` + async-seam re-resolution (lazy-module compatible),
+`defineModule({ lazy: true })` with options-derived per-queue providers, and
+an import-audit test (`queue-openness.test.ts`) proving it never leaves the
+public API. Dispatch one unit of platform work with
+`dispatchQueueJob(container, app.entrypoints, job)`; after bootstrap the
+per-app `EntrypointRegistry` is also injectable (global token) for providers
+that dispatch entrypoints themselves.
 
 ## Lazy modules: deferring cold-start init to first use
 

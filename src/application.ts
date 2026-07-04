@@ -258,6 +258,14 @@ export class VelaApplication {
     this.entrypointRegistry = await EntrypointRegistry.build(discovery, this.instances, {
       deferLazy: true,
     });
+
+    // Make the per-app registry injectable (global token): providers that
+    // dispatch entrypoints themselves (the queue module's in-process driver
+    // binding) resolve it instead of needing a back-reference to the app.
+    // Registered AFTER build so anything resolving it sees the final registry;
+    // pre-bootstrap resolution attempts fail the `has()` probe and defer.
+    this.container.register({ provide: EntrypointRegistry, useValue: this.entrypointRegistry });
+    this.container.markGlobalToken(EntrypointRegistry);
   }
 
   /**

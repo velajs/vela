@@ -53,8 +53,15 @@ retrofitted; consumer surface stays NestJS-parity (`forRoot`/`forRootAsync`).
   `HandlerExecutor`.
 - **CLI introspection** on `DiscoveryService`: `route:list`, module graph,
   entrypoint list, OpenAPI dump in `@velajs/cli`.
-- **First-party `QueueModule`** authored 100% on the public API — the
-  openness proof (`registerEntrypointKind({ kind: 'queue', ... })`).
+- ~~**First-party `QueueModule`** authored 100% on the public API — the
+  openness proof (`registerEntrypointKind({ kind: 'queue', ... })`).~~ —
+  DONE (1.14): `@velajs/vela/queue` (`@Processor`/`@Process`, `queueToken` +
+  `QueueClient`, `inline()` driver, `dispatchQueueJob`), `lazy: true`,
+  authored on public exports only (machine-verified by
+  `src/__tests__/queue-openness.test.ts`). The proof surfaced and promoted
+  exactly two public seams: `resolveScopedComponents` and an injectable
+  per-app `EntrypointRegistry`. Spec:
+  `docs/superpowers/specs/2026-07-04-queue-module-design.md`.
 
 ## Historical: 2026 audit
 

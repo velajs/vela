@@ -339,13 +339,14 @@ export {
   PipelineRunner,
   getCatchTypes,
   shouldFilterCatch,
+  resolveScopedComponents,
   APP_GUARD,
   APP_PIPE,
   APP_INTERCEPTOR,
   APP_FILTER,
   APP_MIDDLEWARE,
 } from './pipeline/index';
-export type { PipelineRunOptions } from './pipeline/index';
+export type { PipelineRunOptions, ResolvedComponentMap } from './pipeline/index';
 
 // Pipeline Types
 export type {
