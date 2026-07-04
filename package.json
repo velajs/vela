@@ -56,8 +56,8 @@
   "devDependencies": {
     "@swc/cli": "^0.8.1",
     "@swc/core": "^1.15.41",
-    "@velajs/testing": "link:../testing",
-    "@velajs/vela": "link:../vela",
+    "@velajs/testing": "^0.3.0",
+    "@velajs/vela": "^1.12.0",
     "better-auth": "^1.6.20",
     "hono": "^4.12.26",
     "typescript": "^6.0.3",
