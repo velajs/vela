@@ -19,6 +19,7 @@ import { MetadataRegistry } from "../registry/metadata.registry";
 import { getOrCreateArray } from "../registry/util";
 import type { DynamicModule, ModuleImport } from "../registry/types";
 import { getModuleMetadata, isModule } from "./decorators";
+import { LazyModuleManager } from "./lazy-modules";
 import { MiddlewareBuilder } from "./middleware";
 import type { MiddlewareRouteDefinition, NestModule } from "./middleware";
 
@@ -129,6 +130,21 @@ export class ModuleLoader {
     for (const controller of this.collectedControllers) {
       this.router.registerController(controller);
     }
+
+    // Arm the deferred-init seam HERE — at the end of load(), not in
+    // bootstrap() — so every consumer of the loader gets identical lazy
+    // semantics, including hand-rolled bootstrap paths that never call
+    // bootstrap() (@velajs/testing's TestingModuleBuilder.compile builds its
+    // own container). Still after all module-load-time resolutions
+    // (NestModule.configure), so load-time resolution never claims a group.
+    // Registered as a provider so VelaApplication can drive the phase
+    // transitions from any of those paths.
+    const lazyManager = new LazyModuleManager(this.container);
+    for (const group of this.getLazyGroups()) {
+      lazyManager.registerGroup(group);
+    }
+    this.container.setLazyHook(lazyManager);
+    this.container.register({ provide: LazyModuleManager, useValue: lazyManager });
   }
 
   private getModuleId(moduleClass: Type, key: string): string {

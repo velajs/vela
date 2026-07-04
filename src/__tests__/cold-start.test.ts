@@ -669,3 +669,51 @@ describe('lazy cold-start init — concurrency', () => {
     await first;
   });
 });
+
+describe('lazy cold-start init — hand-rolled bootstrap paths', () => {
+  it('arms the manager from loader.load() so builders that never call bootstrap() keep hook replay', async () => {
+    // @velajs/testing's TestingModuleBuilder.compile() constructs its own
+    // Container and replicates bootstrap()'s registrations without calling
+    // bootstrap(). If the LazyModuleManager were armed only by bootstrap(),
+    // that path would skip lazy tokens in the eager sweep with NO trigger
+    // installed — first touch would construct silently WITHOUT hook replay.
+    const { Container, ModuleLoader, RouteManager, VelaApplication } = await import(
+      '../internal.js'
+    );
+
+    const events: string[] = [];
+
+    @Injectable()
+    class WiredService implements OnModuleInit {
+      onModuleInit() {
+        events.push('init');
+      }
+    }
+
+    @Module({ lazy: true, providers: [WiredService], exports: [WiredService] })
+    class LazyModule {}
+
+    @Module({ imports: [LazyModule] })
+    class AppModule {}
+
+    const container = new Container({ diagnostics: 'throw' });
+    const routeManager = new RouteManager(container);
+    const loader = new ModuleLoader(container, routeManager);
+    loader.load(AppModule);
+    container.computeEffectiveScopes();
+
+    const app = new VelaApplication(container, routeManager);
+    const instances = await loader.resolveAllInstances();
+    app.setInstances(instances);
+    await app.callOnModuleInit();
+    await app.callOnApplicationBootstrap();
+
+    // Deferred at bootstrap…
+    expect(instances.some((i) => i instanceof WiredService)).toBe(false);
+    expect(events).toEqual([]);
+
+    // …and the first sync touch still materializes WITH hook replay.
+    container.resolve(WiredService);
+    expect(events).toEqual(['init']);
+  });
+});
