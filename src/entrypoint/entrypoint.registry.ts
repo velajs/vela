@@ -61,12 +61,17 @@ export class EntrypointRegistry {
   static async build(
     discovery: DiscoveryService,
     eagerInstances: readonly unknown[],
+    options: { deferLazy?: boolean } = {},
   ): Promise<EntrypointRegistry> {
     const registry = new EntrypointRegistry();
+    // With deferLazy, providers of unmaterialized lazy modules yield
+    // metadata-only entries (instance: undefined). Dispatchers re-resolve by
+    // token per event, so the owning module materializes at dispatch time.
+    const filter = options.deferLazy ? { deferLazy: true } : undefined;
 
     for (const kind of getEntrypointKinds()) {
       if (kind.level === 'class') {
-        for (const found of discovery.providersWithMeta(kind.metaKey)) {
+        for (const found of discovery.providersWithMeta(kind.metaKey, filter)) {
           registry.add({
             kind: kind.kind,
             token: found.token,
@@ -75,7 +80,7 @@ export class EntrypointRegistry {
           });
         }
       } else {
-        for (const found of discovery.methodsWithMeta(kind.metaKey)) {
+        for (const found of discovery.methodsWithMeta(kind.metaKey, filter)) {
           registry.add({
             kind: kind.kind,
             token: found.class.token,

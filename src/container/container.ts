@@ -9,6 +9,7 @@ import {
 import type {
   ContainerOptions,
   Diagnostics,
+  LazyResolutionHook,
   ModuleScope,
   ProviderOptions,
   ProviderRegistration,
@@ -61,9 +62,41 @@ export class Container {
   // Container-constructed instances in creation order, for LIFO disposal.
   // useValue providers are never tracked (they return before construction).
   private disposables: unknown[] = [];
+  // Lazy-module seam (root-owned; children reach it via this.root). A
+  // resolution of a deferred registration CLAIMS its module; claimed groups
+  // are completed (constructed + hooks replayed) only when the resolution
+  // stack has unwound and no resolveAsync cascade is in flight — running the
+  // replay mid-construction could force-resolve a class currently on the
+  // resolution stack (discovery cascades) and mint a spurious
+  // circular-dependency error.
+  private lazyHook?: LazyResolutionHook;
+  private asyncDepth = 0;
 
   constructor(options: ContainerOptions = {}) {
     this.diagnostics = options.diagnostics ?? 'log';
+  }
+
+  /** Install the lazy-module seam (bootstrap-time; root container only). */
+  setLazyHook(hook: LazyResolutionHook): void {
+    this.root.lazyHook = hook;
+  }
+
+  private claimLazyModule(declaringModuleId: string): void {
+    const hook = this.root.lazyHook;
+    if (hook?.isPending(declaringModuleId)) {
+      hook.claim(declaringModuleId);
+    }
+  }
+
+  private maybeDrainSync(): void {
+    const root = this.root;
+    const hook = root.lazyHook;
+    if (!hook?.hasClaimed()) return;
+    // Never replay hooks while construction is in flight; an async cascade
+    // drains (with await) at its own end instead.
+    if (this.resolutionStack.size > 0) return;
+    if (root.asyncDepth > 0) return;
+    hook.drainSync();
   }
 
   register<T>(
@@ -178,7 +211,9 @@ export class Container {
   resolve<T>(token: Token<T>, requestingModuleId?: string): T {
     const registration = this.findRegistration<T>(token, requestingModuleId);
     if (registration) {
-      return this.resolveRegistration(registration, requestingModuleId);
+      const instance = this.resolveRegistration(registration, requestingModuleId);
+      this.maybeDrainSync();
+      return instance;
     }
 
     // Visibility error fires first when the token exists in some bucket but
@@ -221,7 +256,9 @@ export class Container {
 
   resolveAll<T>(token: Token<T>, requestingModuleId?: string): T[] {
     const registrations = this.findAllRegistrations<T>(token, requestingModuleId);
-    return registrations.map((r) => this.resolveRegistration(r, requestingModuleId));
+    const instances = registrations.map((r) => this.resolveRegistration(r, requestingModuleId));
+    this.maybeDrainSync();
+    return instances;
   }
 
   /**
@@ -436,6 +473,36 @@ export class Container {
       if (bucket.has(token)) this.register(provider, moduleId);
     }
     return this.register(provider);
+  }
+
+  /**
+   * True when the token belongs exclusively to lazy modules that have not
+   * been materialized yet — resolving it would trigger materialization.
+   * Build-time probes (route-manager middleware priority, entrypoint
+   * snapshots) use this to defer instead of forcing the group.
+   */
+  isLazyPending(token: Token): boolean {
+    const hook = this.root.lazyHook;
+    if (!hook) return false;
+    const owners = this.exporterIndex.get(token);
+    if (!owners || owners.size === 0) return false;
+    for (const owner of owners) {
+      if (!hook.isPending(owner)) return false;
+    }
+    return true;
+  }
+
+  /**
+   * True when any registration of the token holds a constructed instance.
+   * Diagnostic helper (cold-start tests): checks WITHOUT resolving, so it
+   * never triggers lazy materialization.
+   */
+  isInstantiated(token: Token): boolean {
+    for (const owner of this.exporterIndex.get(token) ?? []) {
+      const reg = this.providers.get(owner)?.get(token);
+      if (reg && reg.instance !== undefined) return true;
+    }
+    return false;
   }
 
   getProviderScope(token: Token): Scope | undefined {
@@ -655,8 +722,13 @@ export class Container {
     requestingModuleId?: string,
   ): T {
     if (registration.useValue !== undefined) {
+      // Deliberately BEFORE the lazy claim: reading a lazy module's useValue
+      // (options tokens) has no construction cost to defer and must not
+      // materialize the group.
       return registration.useValue;
     }
+
+    this.claimLazyModule(registration.declaringModuleId);
 
     if (registration.useExisting) {
       // Pass through the original requester to catch alias leaks
@@ -828,6 +900,21 @@ export class Container {
   }
 
   async resolveAsync<T>(token: Token<T>, requestingModuleId?: string): Promise<T> {
+    const root = this.root;
+    root.asyncDepth++;
+    let result: T;
+    try {
+      result = await this.resolveAsyncInner<T>(token, requestingModuleId);
+    } finally {
+      root.asyncDepth--;
+    }
+    if (root.asyncDepth === 0 && root.lazyHook?.hasClaimed()) {
+      await root.lazyHook.drainAsync();
+    }
+    return result;
+  }
+
+  private async resolveAsyncInner<T>(token: Token<T>, requestingModuleId?: string): Promise<T> {
     const registration = this.findRegistration<T>(token, requestingModuleId);
 
     if (!registration) {
@@ -856,6 +943,8 @@ export class Container {
       if (scope === Scope.SINGLETON && registration.instance !== undefined) {
         return registration.instance;
       }
+
+      this.claimLazyModule(registration.declaringModuleId);
 
       // Module scope first, legacy no-requester fallback — same policy as the
       // sync resolveFactory path.

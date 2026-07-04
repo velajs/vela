@@ -22,6 +22,7 @@ export function Module(options: ModuleOptions = {}): ClassDecorator {
       controllers: options.controllers,
       exports: options.exports,
       isGlobal: options.isGlobal,
+      lazy: options.lazy,
     });
   };
 }
@@ -48,5 +49,6 @@ export function getModuleMetadata(target: Constructor): ModuleMetadata | undefin
     imports: options.imports ?? [],
     exports: options.exports ?? [],
     isGlobal: options.isGlobal === true,
+    lazy: options.lazy === true,
   };
 }

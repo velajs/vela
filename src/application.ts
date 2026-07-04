@@ -3,6 +3,7 @@ import type { Container } from './container/container';
 import type { Token } from './container/types';
 import { DiscoveryService } from './discovery/discovery.service';
 import { EntrypointRegistry } from './entrypoint/entrypoint.registry';
+import { LazyModuleManager } from './module/lazy-modules';
 import type { RouteManager } from './http/route.manager';
 import {
   hasBeforeApplicationShutdown,
@@ -22,11 +23,23 @@ export class VelaApplication {
   private honoApp: Hono | null = null;
   private entrypointRegistry: EntrypointRegistry | null = null;
   private disposed = false;
+  private readonly lazyManager: LazyModuleManager | undefined;
 
   constructor(
     private readonly container: Container,
     private readonly routeManager: RouteManager,
-  ) {}
+  ) {
+    // bootstrap() registers the manager; a hand-built container may not have
+    // one (container unit tests) — lazy semantics simply don't engage then.
+    this.lazyManager = container.has(LazyModuleManager)
+      ? container.resolve(LazyModuleManager)
+      : undefined;
+    // Live-phase materializations join the instance flow so close()/dispose()
+    // run shutdown hooks over them (LIFO — appended last, destroyed first).
+    this.lazyManager?.setOnMaterialized((instances) => {
+      this.instances.push(...instances);
+    });
+  }
 
   /** Pre-build routes (handles async CRUD imports). Called by VelaFactory. */
   async initRoutes(): Promise<void> {
@@ -157,19 +170,66 @@ export class VelaApplication {
 
   // Lifecycle hooks
 
+  /**
+   * Pull instances materialized during the bootstrap phase (lazy modules
+   * dragged in by eager consumers) into the front of the instance list —
+   * dependency-before-consumer: a group absorbed because an eager provider
+   * injected it must be initialized before that consumer's hooks read it.
+   */
+  private absorbLazyInstances(prepend: boolean): unknown[] {
+    const batch = this.lazyManager?.takeAbsorbed() ?? [];
+    if (batch.length === 0) return batch;
+    if (prepend) {
+      this.instances = [...batch, ...this.instances];
+    } else {
+      this.instances.push(...batch);
+    }
+    return batch;
+  }
+
   async callOnModuleInit(): Promise<void> {
-    for (const instance of this.instances) {
+    this.absorbLazyInstances(true);
+    // Index loop: hooks can trigger further absorptions, which append —
+    // the loop naturally covers them.
+    for (let i = 0; i < this.instances.length; i++) {
+      const instance = this.instances[i];
       if (hasOnModuleInit(instance)) {
         await instance.onModuleInit();
       }
+      this.absorbLazyInstances(false);
     }
   }
 
   async callOnApplicationBootstrap(): Promise<void> {
-    for (const instance of this.instances) {
+    for (let i = 0; i < this.instances.length; i++) {
+      const instance = this.instances[i];
       if (hasOnApplicationBootstrap(instance)) {
         await instance.onApplicationBootstrap();
       }
+      // Instances absorbed mid-phase already missed the init pass — run
+      // onModuleInit now; the loop then reaches them for the bootstrap hook.
+      for (const late of this.absorbLazyInstances(false)) {
+        if (hasOnModuleInit(late)) await late.onModuleInit();
+      }
+    }
+
+    // Computed-entrypoint contributors (ContributesEntrypoints) in lazy
+    // modules must exist before the snapshot below — materialize them now
+    // (the documented cost of contributing computed entrypoints), then run
+    // their hooks through the same absorb loop.
+    if (this.lazyManager) {
+      await this.lazyManager.materializeContributors();
+      let batch: unknown[];
+      while ((batch = this.absorbLazyInstances(false)).length > 0) {
+        for (const late of batch) {
+          if (hasOnModuleInit(late)) await late.onModuleInit();
+        }
+        for (const late of batch) {
+          if (hasOnApplicationBootstrap(late)) await late.onApplicationBootstrap();
+        }
+      }
+      // From here on, materializations replay their hooks at the trigger.
+      this.lazyManager.setPhaseLive();
     }
 
     // Build the per-app entrypoint registry AFTER the hooks: dispatchers that
@@ -177,10 +237,25 @@ export class VelaApplication {
     // discovery inside onApplicationBootstrap. Built here — not in
     // VelaFactory/initRoutes — so slim bootstrap paths that never build HTTP
     // routes (the Cloudflare Durable Object) still get `app.entrypoints`.
+    // Lazy-pending providers of declared kinds yield metadata-only entries
+    // (instance: undefined) — dispatchers re-resolve by token per event,
+    // which materializes the owning module at dispatch time.
     const discovery = this.container.has(DiscoveryService)
       ? this.container.resolve(DiscoveryService)
       : new DiscoveryService(this.container);
-    this.entrypointRegistry = await EntrypointRegistry.build(discovery, this.instances);
+    this.entrypointRegistry = await EntrypointRegistry.build(discovery, this.instances, {
+      deferLazy: true,
+    });
+  }
+
+  /**
+   * Materialize every still-pending lazy module (async-safe): construct the
+   * groups, replay their lifecycle hooks, and add their instances to the
+   * shutdown flow. Warmup escape hatch for tests and node runtimes that want
+   * eager-everything semantics back after bootstrap.
+   */
+  async materializeLazyModules(): Promise<void> {
+    await this.lazyManager?.materializeAll();
   }
 
   /**

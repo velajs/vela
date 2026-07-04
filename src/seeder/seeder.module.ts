@@ -24,6 +24,9 @@ const { ConfigurableModuleClass } = defineModule<SeederModuleOptions>({
 });
 
 @Module({
+  // Lazy: the @Seeder metadata scan runs when SeederRegistry is first
+  // resolved (runSeeders) — hook replay repopulates it correctly.
+  lazy: true,
   providers: [SeederRegistry],
   exports: [SeederRegistry],
 })

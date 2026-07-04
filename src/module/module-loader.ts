@@ -32,6 +32,25 @@ const APP_TOKENS = new Set<Token>([
 
 const DEFAULT_KEY = "default";
 
+/** What the loader records per lazy module instance (see LazyModuleManager). */
+export interface LazyModuleGroupSpec {
+  moduleId: string;
+  tokens: Token[];
+  hasEntrypointContributor: boolean;
+}
+
+/**
+ * Structural check for `ContributesEntrypoints` on a provider's class —
+ * deliberately string-coupled to the interface's method name so the loader
+ * does not import from `entrypoint/` (layering).
+ */
+function declaresEntrypointContributor(provider: Type | ProviderOptions): boolean {
+  const cls = typeof provider === "function" ? provider : provider.useClass;
+  if (typeof cls !== "function") return false;
+  const proto = (cls as Type).prototype as Record<string, unknown> | undefined;
+  return typeof proto?.collectEntrypoints === "function";
+}
+
 function isDynamicModule(value: unknown): value is DynamicModule {
   // TS 4.9+ narrows `'module' in value` so `value.module` is typed `unknown`
   // — no cast required for the typeof check below.
@@ -94,6 +113,10 @@ export class ModuleLoader {
   // (class, key) → composed moduleId (cached for stable identity within a load)
   private moduleIdByClassKey = new Map<Type, Map<string, string>>();
   private seenModuleIds = new Set<string>();
+  // Lazy (deferred-init) module instances: moduleId → its own tokens in
+  // registration order. Consumed by LazyModuleManager via getLazyGroups().
+  private lazyModuleIds = new Set<string>();
+  private lazyGroups = new Map<string, LazyModuleGroupSpec>();
 
   constructor(
     private container: Container,
@@ -282,16 +305,29 @@ export class ModuleLoader {
         (isDynamicModule(moduleClassOrDynamic) &&
           moduleClassOrDynamic.global === true);
 
+      const isLazy =
+        metadata.lazy ||
+        (isDynamicModule(moduleClassOrDynamic) &&
+          moduleClassOrDynamic.lazy === true);
+
       this.container.registerScope({
         moduleId,
         localProviders,
         importedModules: importedModuleIds,
         exportedTokens: new Set<Token>(allExports),
         isGlobal,
+        lazy: isLazy,
       });
 
+      const lazyTokens: Token[] = [];
+      let hasEntrypointContributor = false;
+
       for (const provider of allProviders) {
-        this.registerProvider(provider, moduleId);
+        const registered = this.registerProvider(provider, moduleId);
+        if (isLazy && registered !== undefined) {
+          lazyTokens.push(registered);
+          hasEntrypointContributor ||= declaresEntrypointContributor(provider);
+        }
       }
 
       for (const controller of allControllers) {
@@ -299,6 +335,16 @@ export class ModuleLoader {
         // dependencies resolve from the module's POV (vs `__root__`'s).
         this.container.register(controller, moduleId);
         this.collectedControllers.add(controller);
+        if (isLazy) lazyTokens.push(controller);
+      }
+
+      if (isLazy) {
+        this.lazyModuleIds.add(moduleId);
+        this.lazyGroups.set(moduleId, {
+          moduleId,
+          tokens: lazyTokens,
+          hasEntrypointContributor,
+        });
       }
 
       // Propagate module-level Use* decorators (@UseGuards, @UseInterceptors, etc.) to each controller
@@ -357,42 +403,45 @@ export class ModuleLoader {
     }
   }
 
+  /** Registers the provider and returns the token it was registered under. */
   private registerProvider(
     provider: Type | ProviderOptions,
     moduleId: string,
-  ): void {
+  ): Token | undefined {
     if (typeof provider === "function") {
       // Per-module bucket: the same class can be registered in multiple
       // modules' buckets simultaneously without collision.
       this.container.register(provider, moduleId);
       this.registeredProviders.push(provider);
-    } else {
-      const token = provider.provide;
-      if (!token) {
-        this.container.register(provider, moduleId);
-        return;
-      }
-
-      if (this.isAppToken(token)) {
-        // Multiple APP_* providers within the same module bucket need
-        // distinct tokens so they don't overwrite each other in the bucket
-        // Map. Across buckets, `container.resolveAll(APP_GUARD)` walks
-        // every bucket — no need to mark synthetic tokens global.
-        const syntheticToken = new InjectionToken(
-          `${token.toString()}:${this.appProviderCounter++}`,
-        );
-        this.container.register(
-          { ...provider, provide: syntheticToken },
-          moduleId,
-        );
-        this.registeredProviders.push(syntheticToken);
-        getOrCreateArray(this.appProviderTokens, token).push(syntheticToken);
-        return;
-      }
-
-      this.container.register(provider, moduleId);
-      this.registeredProviders.push(token);
+      return provider;
     }
+
+    const token = provider.provide;
+    if (!token) {
+      this.container.register(provider, moduleId);
+      return undefined;
+    }
+
+    if (this.isAppToken(token)) {
+      // Multiple APP_* providers within the same module bucket need
+      // distinct tokens so they don't overwrite each other in the bucket
+      // Map. Across buckets, `container.resolveAll(APP_GUARD)` walks
+      // every bucket — no need to mark synthetic tokens global.
+      const syntheticToken = new InjectionToken(
+        `${token.toString()}:${this.appProviderCounter++}`,
+      );
+      this.container.register(
+        { ...provider, provide: syntheticToken },
+        moduleId,
+      );
+      this.registeredProviders.push(syntheticToken);
+      getOrCreateArray(this.appProviderTokens, token).push(syntheticToken);
+      return syntheticToken;
+    }
+
+    this.container.register(provider, moduleId);
+    this.registeredProviders.push(token);
+    return token;
   }
 
   private isAppToken(token: Token): boolean {
@@ -444,12 +493,36 @@ export class ModuleLoader {
     return [...this.consumerMiddlewareDefinitions];
   }
 
+  /**
+   * Every lazy module instance recorded during load. Handed to the
+   * LazyModuleManager at bootstrap; empty when no module opted in.
+   */
+  getLazyGroups(): LazyModuleGroupSpec[] {
+    return [...this.lazyGroups.values()];
+  }
+
+  /**
+   * A token is deferred iff EVERY module bucket holding it belongs to a lazy
+   * module instance — a token also registered by a non-lazy module stays on
+   * the eager pass (and resolving it there claims the lazy sibling, which is
+   * the "any use = init" semantic, not a bug).
+   */
+  private isLazyOnlyToken(token: Token): boolean {
+    if (this.lazyModuleIds.size === 0) return false;
+    const owners = this.container.getOwnerModuleIds(token);
+    if (owners.length === 0) return false;
+    return owners.every((id) => this.lazyModuleIds.has(id));
+  }
+
   async resolveAllInstances(): Promise<unknown[]> {
     const instanceSet = new Set<unknown>();
 
     for (const token of this.registeredProviders) {
       try {
         if (this.container.getProviderScope(token) === Scope.REQUEST) {
+          continue;
+        }
+        if (this.isLazyOnlyToken(token)) {
           continue;
         }
         const instance = await this.container.resolveAsync(token);
@@ -468,6 +541,9 @@ export class ModuleLoader {
     for (const controller of this.collectedControllers) {
       try {
         if (this.container.getProviderScope(controller) === Scope.REQUEST) {
+          continue;
+        }
+        if (this.isLazyOnlyToken(controller)) {
           continue;
         }
         const instance = await this.container.resolveAsync(controller);

@@ -87,6 +87,13 @@ export interface DefineModuleSpec<
   methodName?: MethodKey;
   /** Method a `useClass`/`useExisting` options factory must implement (default `create`). */
   factoryMethodName?: FactoryMethodKey;
+  /**
+   * Default every generated module instance to deferred (first-use)
+   * materialization. Call sites can also opt in per instance by passing
+   * `lazy: true` alongside the options (recognized like `isGlobal`).
+   * See MODULE_AUTHORING.md "Lazy modules".
+   */
+  lazy?: boolean;
 }
 
 const DEFAULT_EXTRAS = { isGlobal: false } as const;
@@ -167,6 +174,10 @@ export function defineModule<
   const deriveKey = (explicit: string | undefined, structural: Record<string, unknown>): string =>
     explicit ?? spec.key?.(structural as Partial<Opts>) ?? stableHash(structural);
 
+  // Laziness is OR-composed: the spec defaults it, a call site can add it.
+  const applyLazy = (definition: DynamicModule, callSiteLazy: unknown): DynamicModule =>
+    spec.lazy === true || callSiteLazy === true ? { ...definition, lazy: true } : definition;
+
   const applyContributions = (
     definition: DynamicModule,
     structural: Record<string, unknown>,
@@ -207,10 +218,13 @@ export function defineModule<
         key,
         providers: [{ provide: optionsToken as Token, useValue: rest }],
       };
-      return transform(applyContributions(definition, rest, key), {
-        ...extrasDefaults,
-        ...rest,
-      });
+      return applyLazy(
+        transform(applyContributions(definition, rest, key), {
+          ...extrasDefaults,
+          ...rest,
+        }),
+        rest.lazy,
+      );
     },
   });
 
@@ -250,10 +264,13 @@ export function defineModule<
           structural,
         ),
       };
-      return transform(applyContributions(definition, structural, key), {
-        ...extrasDefaults,
-        ...structural,
-      });
+      return applyLazy(
+        transform(applyContributions(definition, structural, key), {
+          ...extrasDefaults,
+          ...structural,
+        }),
+        structural.lazy,
+      );
     },
   });
 

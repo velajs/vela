@@ -109,6 +109,13 @@ export interface DynamicModule {
   controllers?: Type[];
   exports?: Array<Type | InjectionToken>;
   global?: boolean;
+  /**
+   * Defer this module instance's providers/controllers to first use: nothing
+   * constructs at bootstrap; the first resolution of any of its tokens
+   * materializes the whole group and replays its lifecycle hooks (memoized).
+   * See MODULE_AUTHORING.md "Lazy modules" for the contract.
+   */
+  lazy?: boolean;
 }
 
 export interface ModuleOptions {
@@ -117,6 +124,8 @@ export interface ModuleOptions {
   imports?: ModuleImport[];
   exports?: Array<Type | InjectionToken>;
   isGlobal?: boolean;
+  /** Defer to first use (see {@link DynamicModule.lazy}). */
+  lazy?: boolean;
 }
 
 export interface ModuleMetadata {
@@ -125,4 +134,5 @@ export interface ModuleMetadata {
   imports: ModuleImport[];
   exports: Array<Type | InjectionToken>;
   isGlobal: boolean;
+  lazy: boolean;
 }

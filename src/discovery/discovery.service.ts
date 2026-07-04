@@ -36,6 +36,14 @@ export interface DiscoveryFilter {
    * request-scoped hits are skipped with a diagnostics warning.
    */
   includeRequestScoped?: boolean;
+  /**
+   * Return providers of not-yet-materialized lazy modules as metadata-only
+   * entries (`instance: undefined`, mirroring the request-scoped convention)
+   * instead of resolving them — which would force the whole module group.
+   * Used by `EntrypointRegistry.build`; default false so every existing
+   * scanner keeps its transparent cascade-materialization semantics.
+   */
+  deferLazy?: boolean;
 }
 
 /** Class-level appended-list convention: method decorators that push `{ methodName, ... }` items. */
@@ -192,6 +200,12 @@ export class DiscoveryService {
     }
 
     const scope = this.container.getProviderScope(metatype) ?? Scope.SINGLETON;
+
+    if (filter?.deferLazy && this.container.isLazyPending(metatype)) {
+      // Deliberate deferral — no diagnostics warning: the entry is complete
+      // metadata-wise and consumers re-resolve by token at dispatch time.
+      return { token: metatype, metatype, moduleIds, scope, instance: undefined };
+    }
 
     if (scope === Scope.REQUEST && !filter?.includeRequestScoped) {
       if (this.container.getDiagnostics() === 'log') {

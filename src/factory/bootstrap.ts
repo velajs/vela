@@ -6,6 +6,7 @@ import type { Diagnostics, Type } from '../container/types';
 import { REQUEST_CONTEXT } from '../http/request-context';
 import { RouteManager } from '../http/route.manager';
 import type { RouteManagerOptions } from '../http/route.manager';
+import { LazyModuleManager } from '../module/lazy-modules';
 import { ModuleLoader } from '../module/module-loader';
 import { bindAppProviders } from '../pipeline/app-providers';
 import { ComponentManager } from '../pipeline/component.manager';
@@ -91,6 +92,17 @@ export async function bootstrap(
 
   const loader = new ModuleLoader(container, routeManager);
   loader.load(rootModule);
+
+  // Deferred-init seam: installed AFTER load so module-load-time resolutions
+  // (NestModule.configure) never claim a group, and registered as a provider
+  // so VelaApplication (and the testing builder, which shares this bootstrap)
+  // can drive the phase transitions.
+  const lazyManager = new LazyModuleManager(container);
+  for (const group of loader.getLazyGroups()) {
+    lazyManager.registerGroup(group);
+  }
+  container.setLazyHook(lazyManager);
+  container.register({ provide: LazyModuleManager, useValue: lazyManager });
 
   bindAppProviders(routeManager, container, loader);
   routeManager.registerConsumerMiddleware(loader.getConsumerMiddlewareDefinitions());

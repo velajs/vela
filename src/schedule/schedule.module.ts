@@ -8,6 +8,9 @@ import { ScheduleRegistry } from './schedule.registry';
  * (default key — repeated calls dedup).
  */
 @Module({
+  // Lazy: the @Cron/@Interval discovery pass runs when ScheduleRegistry is
+  // first resolved (executor bootstrap, introspection, first dispatch).
+  lazy: true,
   providers: [ScheduleRegistry],
   exports: [ScheduleRegistry],
 })

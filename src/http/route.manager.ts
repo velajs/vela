@@ -220,6 +220,11 @@ export class RouteManager {
       if (typeof inst.priority === 'number') return inst.priority;
       if (typeof inst.constructor?.priority === 'number') return inst.constructor.priority;
     }
+    // A token owned exclusively by unmaterialized lazy modules must not be
+    // instantiate-probed here — the probe at route build would defeat the
+    // module's deferral (i18n's APP_MIDDLEWARE). Default priority instead;
+    // the middleware still materializes on its first request.
+    if (this.container.isLazyPending(entry as Token)) return 0;
     try {
       const resolved = instantiate<NestMiddleware>(
         entry as MiddlewareType | Token<NestMiddleware>,

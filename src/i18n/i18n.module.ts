@@ -26,6 +26,11 @@ const { ConfigurableModuleClass } = new ConfigurableModuleBuilder<I18nModuleOpti
 class I18nMessagesModule {}
 
 @Module({
+  // Lazy: the merged-message snapshot (MessageLoaderService constructor) and
+  // locale middleware materialize on the first request that reaches them —
+  // message registration itself is import-time and unaffected. Safe because
+  // the route-build priority probe skips lazy-pending APP_MIDDLEWARE tokens.
+  lazy: true,
   providers: [
     MessageRegistry,
     MessageLoaderService,

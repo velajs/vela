@@ -121,6 +121,28 @@ export interface ModuleScope {
   importedModules: Set<string>;
   exportedTokens: Set<Token>;
   isGlobal: boolean;
+  /** Module instance opted into deferred (first-use) materialization. */
+  lazy?: boolean;
+}
+
+/**
+ * The container's seam into lazy-module materialization (implemented by
+ * `LazyModuleManager`). The container only ever *claims* a pending module at
+ * a resolution trigger and *drains* completed claims when the resolution
+ * stack has fully unwound — construction and hook replay live behind this
+ * interface so the container stays module-system-agnostic.
+ */
+export interface LazyResolutionHook {
+  /** Is this module instance still deferred (untriggered)? */
+  isPending(moduleId: string): boolean;
+  /** Mark a pending module as triggered; idempotent. */
+  claim(moduleId: string): void;
+  /** Any claimed-but-unmaterialized groups? (cheap fast-path check) */
+  hasClaimed(): boolean;
+  /** Complete claimed groups synchronously; throws if async work surfaces. */
+  drainSync(): void;
+  /** Complete claimed groups, awaiting async construction and hooks. */
+  drainAsync(): Promise<void>;
 }
 
 export type Diagnostics = 'silent' | 'log' | 'throw';
