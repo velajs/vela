@@ -1,6 +1,6 @@
 {
   "name": "@velajs/better-auth",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "better-auth integration for the Vela framework",
   "type": "module",
   "main": "./dist/index.js",
@@ -49,15 +49,15 @@
     "node": ">=20"
   },
   "peerDependencies": {
-    "@velajs/vela": ">=1.8.2",
+    "@velajs/vela": ">=1.11.0",
     "better-auth": ">=1.2.0",
     "hono": ">=4"
   },
   "devDependencies": {
     "@swc/cli": "^0.8.1",
     "@swc/core": "^1.15.41",
-    "@velajs/testing": "^0.2.1",
-    "@velajs/vela": "^1.8.5",
+    "@velajs/testing": "link:../testing",
+    "@velajs/vela": "link:../vela",
     "better-auth": "^1.6.20",
     "hono": "^4.12.26",
     "typescript": "^6.0.3",
