@@ -608,3 +608,64 @@ describe('lazy cold-start init — entrypoints', () => {
     expect(constructed).toHaveLength(2);
   });
 });
+
+describe('lazy cold-start init — concurrency', () => {
+  it('a drainAsync arriving while another is in flight awaits the full completion', async () => {
+    const { LazyModuleManager } = await import('../module/lazy-modules.js');
+    const { Container: RawContainer } = await import('../container/container.js');
+
+    const events: string[] = [];
+    const container = new RawContainer({ diagnostics: 'throw' });
+
+    @Injectable()
+    class Slow implements OnModuleInit {
+      async onModuleInit() {
+        await new Promise((r) => setTimeout(r, 20));
+        events.push('slow-init');
+      }
+    }
+
+    @Injectable()
+    class Fast implements OnModuleInit {
+      onModuleInit() {
+        events.push('fast-init');
+      }
+    }
+
+    container.registerScope({
+      moduleId: 'M1',
+      localProviders: new Set([Slow]),
+      importedModules: new Set(),
+      exportedTokens: new Set(),
+      isGlobal: false,
+      lazy: true,
+    });
+    container.registerScope({
+      moduleId: 'M2',
+      localProviders: new Set([Fast]),
+      importedModules: new Set(),
+      exportedTokens: new Set(),
+      isGlobal: false,
+      lazy: true,
+    });
+    container.register(Slow, 'M1');
+    container.register(Fast, 'M2');
+
+    const manager = new LazyModuleManager(container);
+    manager.registerGroup({ moduleId: 'M1', tokens: [Slow], hasEntrypointContributor: false });
+    manager.registerGroup({ moduleId: 'M2', tokens: [Fast], hasEntrypointContributor: false });
+    manager.setPhaseLive();
+
+    manager.claim('M1');
+    const first = manager.drainAsync();
+    manager.claim('M2');
+    const second = manager.drainAsync();
+
+    await second;
+    // The second drain must not resolve before every claimed group —
+    // including M2, picked up by the in-flight loop — has run its hooks.
+    expect(events).toContain('fast-init');
+    expect(events).toContain('slow-init');
+    await first;
+  });
+});

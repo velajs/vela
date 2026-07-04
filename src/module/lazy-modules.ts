@@ -50,6 +50,10 @@ export class LazyModuleManager implements LazyResolutionHook {
   private readonly absorbed: unknown[] = [];
   private phase: 'bootstrap' | 'live' = 'bootstrap';
   private draining = false;
+  // In-flight async drain: concurrent drainAsync callers must await the SAME
+  // completion (the running loop picks their claims up), never resolve early
+  // with a group's hooks still pending.
+  private drainPromise?: Promise<void>;
   private onMaterialized?: (instances: unknown[]) => void;
 
   constructor(private readonly container: Container) {}
@@ -107,18 +111,27 @@ export class LazyModuleManager implements LazyResolutionHook {
     }
   }
 
-  async drainAsync(): Promise<void> {
-    if (this.draining) return;
-    this.draining = true;
-    try {
-      while (this.claimed.length > 0) {
-        const group = this.claimed.shift()!;
-        const instances = await this.constructGroupAsync(group);
-        await this.finishAsync(instances);
-      }
-    } finally {
-      this.draining = false;
+  drainAsync(): Promise<void> {
+    if (this.draining) {
+      // A sync drain can't be awaited; claims landing during one are rare
+      // (same-tick reentrancy) and picked up by its loop synchronously.
+      return this.drainPromise ?? Promise.resolve();
     }
+    this.draining = true;
+    const run = (async () => {
+      try {
+        while (this.claimed.length > 0) {
+          const group = this.claimed.shift()!;
+          const instances = await this.constructGroupAsync(group);
+          await this.finishAsync(instances);
+        }
+      } finally {
+        this.draining = false;
+        this.drainPromise = undefined;
+      }
+    })();
+    this.drainPromise = run;
+    return run;
   }
 
   /**
