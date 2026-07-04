@@ -97,7 +97,7 @@
     "@cloudflare/workers-types": "^4.20260624.1",
     "@swc/cli": "^0.8.1",
     "@swc/core": "^1.15.43",
-    "@velajs/testing": "^0.3.0",
+    "@velajs/testing": "^0.4.0",
     "@velajs/vela": "^1.12.0",
     "aws4fetch": "^1.0.20",
     "hono": "^4.12.27",
