@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.0 (2026-07-04)
+
+- `ComponentManager.init` call removed; provider overrides use the supported `Container.replaceProvider`; registers `DiscoveryService` mirroring bootstrap. Requires `@velajs/vela >=1.11.0`.
+
+
 ## 0.2.1 (2026-05-14)
 
 ### Fixes

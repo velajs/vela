@@ -1,4 +1,5 @@
 import {
+  DiscoveryService,
   REQUEST_CONTEXT,
   Scope,
   type ModuleOptions,
@@ -12,7 +13,6 @@ import {
   APP_INTERCEPTOR,
   APP_MIDDLEWARE,
   APP_PIPE,
-  ComponentManager,
   Container,
   MetadataRegistry,
   ModuleLoader,
@@ -126,6 +126,16 @@ export class TestingModuleBuilder {
     });
     container.markGlobalToken(ModuleRef);
 
+    // Decorator-driven discovery — global so any provider can inject it, and so
+    // callOnApplicationBootstrap() reuses this instance instead of self-building
+    // one. Mirrors vela/src/factory/bootstrap.ts.
+    container.register({
+      provide: DiscoveryService,
+      useFactory: (c: Container) => new DiscoveryService(c),
+      inject: [Container],
+    });
+    container.markGlobalToken(DiscoveryService);
+
     for (const t of [APP_GUARD, APP_PIPE, APP_INTERCEPTOR, APP_FILTER, APP_MIDDLEWARE]) {
       container.markGlobalToken(t);
     }
@@ -155,33 +165,18 @@ export class TestingModuleBuilder {
     }
 
     const routeManager = new RouteManager(container);
-    ComponentManager.init(container);
 
     const loader = new ModuleLoader(container, routeManager);
     loader.load(TestRootModule);
 
     // Force-apply overrides into every module bucket that already holds the
-    // token. Without this, controller constructor-injection (which passes
-    // requestingModuleId to findRegistration) finds the module's own
-    // registration first and never consults the root override. Re-registering
-    // with the module's id overwrites the bucket entry.
-    //
-    // Reaches into Container internals (the `providers` map) until vela
-    // exposes a public "force replace across all scopes" API. The shape is
-    // stable in vela 1.6.x; if this breaks under a future vela version, raise
-    // a vela API request before working around again.
-    const providersMap = (
-      container as unknown as {
-        providers: Map<string, Map<Token, unknown>>;
-      }
-    ).providers;
+    // token (plus root). Without this, controller constructor-injection (which
+    // passes requestingModuleId to findRegistration) finds the module's own
+    // registration first and never consults the root override. The default
+    // 'all-existing' buckets replace every non-root bucket holding the token
+    // and re-register at root — the supported form of the old private loop.
     for (const override of this.overrides) {
-      for (const [moduleId, bucket] of providersMap) {
-        if (moduleId === '__root__') continue;
-        if (bucket.has(override.token)) {
-          container.register(override.provider, moduleId);
-        }
-      }
+      container.replaceProvider(override.provider);
     }
 
     bindAppProviders(routeManager, container, loader);

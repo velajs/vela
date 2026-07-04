@@ -1,6 +1,6 @@
 {
   "name": "@velajs/testing",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Testing utilities for Vela framework",
   "type": "module",
   "main": "./dist/index.js",
@@ -47,14 +47,14 @@
     "node": ">=20"
   },
   "peerDependencies": {
-    "@velajs/vela": ">=1.6.0",
+    "@velajs/vela": ">=1.11.0",
     "hono": ">=4"
   },
   "devDependencies": {
     "@swc/cli": "^0.8.1",
     "@swc/core": "^1.15.41",
     "@types/bun": "latest",
-    "@velajs/vela": "^1.8.5",
+    "@velajs/vela": "link:../vela",
     "hono": "^4.12.26",
     "typescript": "^6.0.3",
     "unplugin-swc": "^1.5.9",
