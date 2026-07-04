@@ -1,6 +1,11 @@
-import { defineMetadata, getMetadata } from '@velajs/vela';
+import { defineMetadata, getMetadata, registerEntrypointKind } from '@velajs/vela';
 
 const QUEUE_CONSUMER_METADATA_KEY = 'cloudflare:queue-consumer';
+
+// Open entrypoint kind: any adapter can enumerate queue consumers via
+// `app.entrypoints.ofKind('cf:queue')` — declared here, next to the decorator,
+// with zero vela-core involvement.
+registerEntrypointKind({ kind: 'cf:queue', metaKey: QUEUE_CONSUMER_METADATA_KEY, level: 'method' });
 
 export interface QueueConsumerMetadata {
   queueName: string;

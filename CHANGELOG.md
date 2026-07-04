@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.0 (2026-07-04)
+
+- `cloudflareAdapter()` exported (createCloudflareApp composes vela RuntimeAdapter); `@QueueConsumer`/`@Scheduled` declare open entrypoint kinds; queue/scheduled dispatch runs per-event in a request scope through PipelineRunner (consumer-scoped guards/interceptors/filters; request-scoped deps rebuild per batch); DO WebSocket reads `app.entrypoints`. Requires `@velajs/vela >=1.11.0`.
+
+
 ## 1.6.0 (2026-07-01)
 
 ### Added

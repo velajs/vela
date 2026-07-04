@@ -1,6 +1,6 @@
 import type { MiddlewareHandler } from 'hono';
 import { VelaFactory } from '@velajs/vela';
-import type { Type } from '@velajs/vela';
+import type { RuntimeAdapter, Type } from '@velajs/vela';
 import { Container } from '@velajs/vela/internal';
 import { BindingRef } from './binding-ref';
 import { CloudflareApplication } from './cloudflare-application';
@@ -95,34 +95,54 @@ export interface CreateCloudflareAppOptions {
  * });
  * ```
  */
+/**
+ * The Cloudflare platform binding as a vela {@link RuntimeAdapter}: a one-time
+ * request middleware captures `c.env` on the first request and initializes
+ * every `BindingRef`/`EnvRef` (collected at `onBootstrap`, before any request
+ * can arrive). Adapter `requestMiddleware` is prepended to the global chain by
+ * `VelaFactory.create`, so user middleware can safely read binding refs.
+ *
+ * Exposed so consumers composing `VelaFactory.create` themselves can opt in:
+ *
+ * ```ts
+ * const app = await VelaFactory.create(AppModule, { adapters: [cloudflareAdapter()] });
+ * ```
+ */
+export function cloudflareAdapter(): RuntimeAdapter {
+  let initialized = false;
+  let refs: BindingRef[] = [];
+
+  return {
+    name: 'cloudflare',
+    requestMiddleware: [
+      async (c, next) => {
+        if (!initialized) {
+          initialized = true;
+          const env = (c.env as Record<string, unknown>) ?? {};
+          for (const ref of refs) {
+            // EnvRef holds the whole env; every other ref holds one binding.
+            if (ref instanceof EnvRef) ref._initialize(env);
+            else ref._initialize(env[ref.bindingName]);
+          }
+        }
+        await next();
+      },
+    ],
+    onBootstrap: ({ container }) => {
+      refs = collectBindingRefs(container);
+    },
+  };
+}
+
 export async function createCloudflareApp(
   rootModule: Type,
   options: CreateCloudflareAppOptions = {},
 ): Promise<CloudflareApplication> {
-  let initialized = false;
-  let refs: BindingRef[] | undefined;
-
-  const bindingInit: MiddlewareHandler = async (c, next) => {
-    if (!initialized) {
-      initialized = true;
-      const env = (c.env as Record<string, unknown>) ?? {};
-      for (const ref of refs!) {
-        // EnvRef holds the whole env; every other ref holds one binding.
-        if (ref instanceof EnvRef) ref._initialize(env);
-        else ref._initialize(env[ref.bindingName]);
-      }
-    }
-    await next();
-  };
-
-  // IMPORTANT: keep the binding-init middleware FIRST so user middleware
-  // can safely read binding refs / `c.env` derivatives on the first request.
   const velaApp = await VelaFactory.create(rootModule, {
     globalPrefix: options.globalPrefix,
-    middleware: [bindingInit, ...(options.middleware ?? [])],
+    middleware: options.middleware,
+    adapters: [cloudflareAdapter()],
   });
-
-  refs = collectBindingRefs(velaApp.getContainer());
 
   const cfApp = new CloudflareApplication(velaApp);
   cfApp.scanInstances(velaApp.getInstances());

@@ -1,10 +1,24 @@
 import type { Hono } from 'hono';
-import { CRON_METADATA, getMetadata, type VelaApplication } from '@velajs/vela';
-import type { CronMetadata } from '@velajs/vela';
-import { getScheduledMetadata } from './decorators/scheduled';
-import { getQueueConsumerMetadata } from './decorators/queue-consumer';
+import {
+  CRON_METADATA,
+  PipelineRunner,
+  buildEntrypointExecutionContext,
+  registerEntrypointKind,
+  runInEntrypointScope,
+  shouldFilterCatch,
+  type VelaApplication,
+} from '@velajs/vela';
+import type { CronMetadata, Entrypoint, Type } from '@velajs/vela';
+import { ComponentManager } from '@velajs/vela/internal';
+import type { ScheduledMetadata } from './decorators/scheduled';
+import type { QueueConsumerMetadata } from './decorators/queue-consumer';
 import { collectWsGatewayRoutes, type WsGatewayRoute } from './websocket/websocket-routing';
-import type { ScheduledRegistration, QueueRegistration, CloudflareEnv } from './types';
+import type { CloudflareEnv } from './types';
+
+// vela's own @Cron jobs run via the same Workers cron trigger — declare an
+// entrypoint kind over vela's metadata key (the open-kind system makes
+// cross-package declarations first-class).
+registerEntrypointKind({ kind: 'cf:vela-cron', metaKey: CRON_METADATA, level: 'method' });
 
 /**
  * Options accepted by {@link CloudflareApplication.mountOpenApi}.
@@ -55,8 +69,6 @@ function invoke(instance: object, methodName: string, args: unknown[]): unknown 
  * ```
  */
 export class CloudflareApplication {
-  private scheduledHandlers: ScheduledRegistration[] = [];
-  private queueConsumers: QueueRegistration[] = [];
   private wsGatewayRoutes: WsGatewayRoute[] = [];
 
   constructor(private app: VelaApplication) {}
@@ -110,37 +122,15 @@ export class CloudflareApplication {
     return this;
   }
 
-  /** @internal — scans instances for @Scheduled, @Cron, and @QueueConsumer metadata */
+  /**
+   * @internal — scans instances for `@WebSocketGateway({ path, binding })`
+   * upgrade routes. Queue/scheduled handlers are NOT scanned anymore: they
+   * come from `app.entrypoints` (`cf:queue` / `cf:scheduled` / `cf:vela-cron`
+   * kinds) at dispatch time.
+   */
   scanInstances(instances: unknown[]): void {
     for (const instance of instances) {
       if (!instance || typeof instance !== 'object') continue;
-
-      for (const meta of getScheduledMetadata(instance)) {
-        this.scheduledHandlers.push({
-          instance,
-          methodName: meta.methodName,
-          cron: meta.cron,
-        });
-      }
-
-      // vela's @Cron jobs run via the same Workers cron trigger.
-      const cronMeta = (getMetadata(CRON_METADATA, instance.constructor) as CronMetadata[] | undefined) ?? [];
-      for (const meta of cronMeta) {
-        this.scheduledHandlers.push({
-          instance,
-          methodName: meta.methodName,
-          cron: meta.expression,
-        });
-      }
-
-      for (const meta of getQueueConsumerMetadata(instance)) {
-        this.queueConsumers.push({
-          instance,
-          methodName: meta.methodName,
-          queueName: meta.queueName,
-        });
-      }
-
       this.wsGatewayRoutes.push(...collectWsGatewayRoutes(instance));
     }
   }
@@ -152,32 +142,92 @@ export class CloudflareApplication {
 
   /**
    * Handle Cloudflare scheduled (cron) events.
-   * Matches the event's cron expression to `@Scheduled()` and vela `@Cron()` handlers.
+   * Matches the event's cron expression to `@Scheduled()` and vela `@Cron()`
+   * handlers read from `app.entrypoints`; each handler runs inside a fresh
+   * request-scoped child (request-scoped providers rebuild per tick).
    */
   async scheduled(
     event: { cron: string; scheduledTime?: number },
     env: CloudflareEnv,
     ctx: { waitUntil: (promise: Promise<unknown>) => void },
   ): Promise<void> {
-    const matching = this.scheduledHandlers.filter((h) => h.cron === event.cron);
-    await Promise.all(
-      matching.map((h) => invoke(h.instance as object, h.methodName, [event, env, ctx])),
-    );
+    const handlers = [
+      ...this.app.entrypoints
+        .ofKind<ScheduledMetadata>('cf:scheduled')
+        .map((ep) => ({ ep, cron: ep.meta.cron })),
+      ...this.app.entrypoints
+        .ofKind<CronMetadata>('cf:vela-cron')
+        .map((ep) => ({ ep, cron: ep.meta.expression })),
+    ].filter((h) => h.cron === event.cron);
+
+    await Promise.all(handlers.map(({ ep }) => this.dispatchEntrypoint(ep, [event, env, ctx])));
+  }
+
+  /**
+   * Run one entrypoint handler inside a fresh request scope, through the
+   * shared guard → interceptor pipeline (components declared with
+   * `@UseGuards`/`@UseInterceptors`/`@UseFilters` on the consumer class or
+   * method). HTTP-global components deliberately do NOT apply — an HTTP auth
+   * guard has no business rejecting a queue batch. Unclaimed errors rethrow
+   * so the platform's retry semantics stay intact.
+   */
+  private async dispatchEntrypoint(ep: Entrypoint, args: unknown[]): Promise<void> {
+    const targetClass = ep.token as Type;
+    const methodName = String(ep.methodName);
+    const context = buildEntrypointExecutionContext(ep.kind, targetClass, methodName, args[0]);
+
+    await runInEntrypointScope(this.app.getContainer(), async (scope) => {
+      const instance = scope.resolve(ep.token) as object;
+      const guards = ComponentManager.resolveGuards(
+        ComponentManager.getScopedComponents('guard', targetClass, methodName),
+        scope,
+      );
+      const interceptors = ComponentManager.resolveInterceptors(
+        ComponentManager.getScopedComponents('interceptor', targetClass, methodName),
+        scope,
+      );
+      // Closest-first, mirroring the HTTP/WS dispatchers.
+      const filters = ComponentManager.resolveFilters(
+        [...ComponentManager.getScopedComponents('filter', targetClass, methodName)].reverse(),
+        scope,
+      );
+
+      try {
+        await PipelineRunner.run({
+          context,
+          guards,
+          interceptors,
+          resolveArgs: async () => args,
+          invoke: async (resolved) => invoke(instance, methodName, resolved),
+        });
+      } catch (error) {
+        for (const filter of filters) {
+          if (shouldFilterCatch(filter, error)) {
+            await filter.catch(error, context);
+            return;
+          }
+        }
+        throw error;
+      }
+    });
   }
 
   /**
    * Handle Cloudflare Queue consumer events.
-   * Matches the batch queue name to `@QueueConsumer()` handlers.
+   * Matches the batch queue name to `@QueueConsumer()` handlers read from
+   * `app.entrypoints`; each batch is processed inside a fresh request-scoped
+   * child (request-scoped providers rebuild per batch — no boot-time captives).
    */
   async queue(
     batch: { queue: string; messages: unknown[] },
     env: CloudflareEnv,
     ctx: { waitUntil: (promise: Promise<unknown>) => void },
   ): Promise<void> {
-    const matching = this.queueConsumers.filter((h) => h.queueName === batch.queue);
-    await Promise.all(
-      matching.map((h) => invoke(h.instance as object, h.methodName, [batch, env, ctx])),
-    );
+    const handlers = this.app.entrypoints
+      .ofKind<QueueConsumerMetadata>('cf:queue')
+      .filter((ep) => ep.meta.queueName === batch.queue);
+
+    await Promise.all(handlers.map((ep) => this.dispatchEntrypoint(ep, [batch, env, ctx])));
   }
 
   async close(signal?: string): Promise<void> {

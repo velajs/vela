@@ -1,7 +1,7 @@
 import { bootstrap, VelaApplication } from '@velajs/vela';
 import type { Type } from '@velajs/vela';
 import { local, WsDispatcher, WsServerImpl, WS_SERVER } from '@velajs/vela/websocket';
-import type { WsServer } from '@velajs/vela/websocket';
+import type { WsEntrypointMeta, WsServer } from '@velajs/vela/websocket';
 import { BindingRef } from '../binding-ref';
 import { EnvRef } from '../env-ref';
 import { CfRoomRegistry } from './cf-room-registry';
@@ -12,6 +12,8 @@ export interface DoRuntime {
   dispatcher: WsDispatcher;
   registry: CfRoomRegistry;
   server: WsServer;
+  /** Gateway paths from `app.entrypoints.ofKind('websocket')` (discovery order). */
+  gatewayPaths: string[];
   close(signal?: string): Promise<void>;
 }
 
@@ -55,10 +57,18 @@ export async function buildDoRuntime(
   await app.callOnModuleInit();
   await app.callOnApplicationBootstrap();
 
+  // The entrypoint registry is the transport contract: one 'websocket' entry
+  // per discovered gateway ({ meta: { path, dispatcher } }). Built by
+  // callOnApplicationBootstrap(), so this slim no-routes path has it too.
+  const wsEntrypoints = app.entrypoints.ofKind<WsEntrypointMeta>('websocket');
+
   return {
-    dispatcher: app.get(WsDispatcher),
+    // Zero gateways still yields a live dispatcher (module imported, nothing
+    // decorated) — fall back to resolving it directly.
+    dispatcher: wsEntrypoints[0]?.meta.dispatcher ?? app.get(WsDispatcher),
     registry,
     server,
+    gatewayPaths: wsEntrypoints.map((ep) => ep.meta.path),
     close: (signal?: string) => app.close(signal),
   };
 }

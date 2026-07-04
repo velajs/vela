@@ -37,7 +37,7 @@ export function VelaWebSocketDurableObject(
       }
       this.ready = ctx.blockConcurrencyWhile(async () => {
         const runtime = await buildDoRuntime(rootModule, ctx, env);
-        this.host = new DoWebSocketHost(ctx, runtime.dispatcher, runtime.registry);
+        this.host = new DoWebSocketHost(ctx, runtime.dispatcher, runtime.registry, runtime.gatewayPaths);
       });
     }
 

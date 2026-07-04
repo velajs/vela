@@ -14,11 +14,12 @@ export class DoWebSocketHost {
     private readonly ctx: DoStateLike,
     private readonly dispatcher: WsDispatcher,
     private readonly registry: CfRoomRegistry,
+    private readonly gatewayPaths: readonly string[] = [],
   ) {}
 
   /** The single registered gateway's path — a fallback when the Worker didn't forward `x-vela-path`. */
   defaultPath(): string | undefined {
-    return this.dispatcher.gatewayPaths[0];
+    return this.gatewayPaths[0];
   }
 
   /**

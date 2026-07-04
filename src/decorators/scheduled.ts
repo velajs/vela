@@ -1,6 +1,10 @@
-import { defineMetadata, getMetadata } from '@velajs/vela';
+import { defineMetadata, getMetadata, registerEntrypointKind } from '@velajs/vela';
 
 const SCHEDULED_METADATA_KEY = 'cloudflare:scheduled';
+
+// Open entrypoint kind: adapters enumerate cron handlers via
+// `app.entrypoints.ofKind('cf:scheduled')` — declared next to the decorator.
+registerEntrypointKind({ kind: 'cf:scheduled', metaKey: SCHEDULED_METADATA_KEY, level: 'method' });
 
 export interface ScheduledMetadata {
   cron: string;

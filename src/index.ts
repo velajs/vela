@@ -1,5 +1,5 @@
 // Factory & Application
-export { createCloudflareApp } from './cloudflare-factory';
+export { cloudflareAdapter, createCloudflareApp } from './cloudflare-factory';
 export type { CreateCloudflareAppOptions } from './cloudflare-factory';
 export { CloudflareApplication } from './cloudflare-application';
 export type { MountOpenApiOptions } from './cloudflare-application';
