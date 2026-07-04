@@ -1,0 +1,116 @@
+{
+  "name": "@velajs/storage",
+  "version": "0.2.0",
+  "description": "Edge-first, driver-based object/file storage for the Vela framework",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./dist/client/index.d.ts",
+      "import": "./dist/client/index.js"
+    },
+    "./drivers/memory": {
+      "types": "./dist/drivers/memory/index.d.ts",
+      "import": "./dist/drivers/memory/index.js"
+    },
+    "./drivers/s3": {
+      "types": "./dist/drivers/s3/index.d.ts",
+      "import": "./dist/drivers/s3/index.js"
+    },
+    "./drivers/r2": {
+      "types": "./dist/drivers/r2/index.d.ts",
+      "import": "./dist/drivers/r2/index.js"
+    },
+    "./drivers/r2-http": {
+      "types": "./dist/drivers/r2-http/index.d.ts",
+      "import": "./dist/drivers/r2-http/index.js"
+    },
+    "./middleware": {
+      "types": "./dist/middleware/index.d.ts",
+      "import": "./dist/middleware/index.js"
+    },
+    "./storagesdk": {
+      "types": "./dist/storagesdk/index.d.ts",
+      "import": "./dist/storagesdk/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
+    "test": "vitest run",
+    "test:workers": "vitest run --config vitest.config.workers.ts",
+    "typecheck": "tsc --noEmit",
+    "prepare": "swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
+    "prepublishOnly": "pnpm run typecheck && pnpm test"
+  },
+  "sideEffects": false,
+  "keywords": [
+    "vela",
+    "storage",
+    "object-storage",
+    "s3",
+    "r2",
+    "presigned-url",
+    "multipart",
+    "edge",
+    "cloudflare-workers",
+    "framework"
+  ],
+  "author": "ksh",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/velajs/storage.git"
+  },
+  "homepage": "https://github.com/velajs/storage#readme",
+  "bugs": {
+    "url": "https://github.com/velajs/storage/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "aws4fetch": "^1.0.20"
+  },
+  "peerDependencies": {
+    "@velajs/vela": ">=1.11.0",
+    "hono": ">=4",
+    "@cloudflare/workers-types": ">=4"
+  },
+  "peerDependenciesMeta": {
+    "@cloudflare/workers-types": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.16.18",
+    "@cloudflare/workers-types": "^4.20260624.1",
+    "@swc/cli": "^0.8.1",
+    "@swc/core": "^1.15.43",
+    "@velajs/testing": "link:../testing",
+    "@velajs/vela": "link:../vela",
+    "aws4fetch": "^1.0.20",
+    "hono": "^4.12.27",
+    "typescript": "^6.0.3",
+    "unplugin-swc": "^1.5.9",
+    "vitest": "^4.1.9"
+  },
+  "packageManager": "pnpm@10.20.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@swc/core",
+      "esbuild",
+      "workerd"
+    ]
+  }
+}
