@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.11.0 (2026-07-04)
+## 1.12.0 (2026-07-04)
 
 The module-model release: one blessed authoring path plus public kernel
 extension points, so feature modules (websocket, storage, queue, …) are built
