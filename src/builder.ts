@@ -1,6 +1,6 @@
 import type { Context, Hono, MiddlewareHandler } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
-import type { CanActivate, ExecutionContext, HttpArgumentsHost, NestMiddleware, Type } from '@velajs/vela';
+import type { CanActivate, Container, ExecutionContext, HttpArgumentsHost, NestMiddleware, Type } from '@velajs/vela';
 import { ForbiddenException, HttpException } from '@velajs/vela';
 import { ComponentManager } from '@velajs/vela/internal';
 import type { EndpointMiddlewares, MetaInput, RegisterCrudOptions } from 'hono-crud';
@@ -20,6 +20,12 @@ interface BuilderContext {
   globalPrefix: string;
   globalGuards: CanActivate[];
   joinPaths: (...parts: string[]) => string;
+  // Root container from vela's RouteContributor path — required to resolve
+  // controller-scoped `@UseGuards`/`@UseMiddleware` instances now that
+  // `ComponentManager.resolve*` is stateless (no process-global container).
+  // Optional so `buildCrudRoutes` stays directly callable in unit tests that
+  // register neither guards nor middleware (the resolvers are never reached).
+  container?: Container;
 }
 
 interface HonoCrudModule {
@@ -73,9 +79,9 @@ export async function buildCrudRoutes(
   const endpointsDef = buildCrudEndpointsDef(crudConfig);
   const endpoints = defineEndpoints(endpointsDef, crudConfig.adapters);
 
-  const middlewares = buildGuardMiddleware(controller, ctx.globalGuards);
+  const middlewares = buildGuardMiddleware(controller, ctx.globalGuards, ctx.container);
   const endpointMiddlewares = buildOverrideMiddlewares(controller);
-  const controllerMiddleware = buildControllerMiddleware(controller);
+  const controllerMiddleware = buildControllerMiddleware(controller, ctx.container);
 
   const openApiHono = new OpenAPIHono();
 
@@ -434,9 +440,20 @@ function buildOverrideMiddlewares(controller: Type): EndpointMiddlewares {
   return result;
 }
 
-function buildGuardMiddleware(controller: Type, globalGuards: CanActivate[]): MiddlewareHandler[] {
-  const guardItems = ComponentManager.getComponents('guard', controller, '' as string | symbol);
-  const guards = ComponentManager.resolveGuards(guardItems);
+function buildGuardMiddleware(
+  controller: Type,
+  globalGuards: CanActivate[],
+  container: Container | undefined,
+): MiddlewareHandler[] {
+  // `getScopedComponents` returns the controller + handler tiers. The old
+  // `getComponents` also prepended an app-wide tier, but that tier was always
+  // empty on this path (CRUD controllers register no global components), so
+  // this is behaviorally identical — app-wide guards arrive via `globalGuards`.
+  const guardItems = ComponentManager.getScopedComponents('guard', controller, '' as string | symbol);
+  const guards =
+    guardItems.length > 0 && container
+      ? ComponentManager.resolveGuards(guardItems, container)
+      : [];
   if (guards.length === 0 && globalGuards.length === 0) return [];
 
   const allGuards = [...globalGuards, ...guards];
@@ -480,21 +497,24 @@ function buildGuardMiddleware(controller: Type, globalGuards: CanActivate[]): Mi
 /**
  * Resolve controller-level `@UseMiddleware(...)` and wrap each instance as a
  * Hono middleware. Mirrors vela's `RouteManager` first pass, which reads
- * `ComponentManager.getComponents('middleware', controller, route.handlerName)`
+ * `ComponentManager.getScopedComponents('middleware', controller, route.handlerName)`
  * and applies `instance.use(c, next)` per route. Here the handler-name slot is
- * the empty string so only the controller (and decorator-global) scope is
- * pulled — handler-scoped middleware has no generated handler to bind to. This
- * is the exact pattern {@link buildGuardMiddleware} uses for guards.
+ * the empty string so only the controller scope is pulled — handler-scoped
+ * middleware has no generated handler to bind to. This is the exact pattern
+ * {@link buildGuardMiddleware} uses for guards.
  */
-function buildControllerMiddleware(controller: Type): MiddlewareHandler[] {
-  const middlewareItems = ComponentManager.getComponents(
+function buildControllerMiddleware(
+  controller: Type,
+  container: Container | undefined,
+): MiddlewareHandler[] {
+  const middlewareItems = ComponentManager.getScopedComponents(
     'middleware',
     controller,
     '' as string | symbol,
   );
-  if (middlewareItems.length === 0) return [];
+  if (middlewareItems.length === 0 || !container) return [];
 
-  const instances = ComponentManager.resolveMiddleware(middlewareItems);
+  const instances = ComponentManager.resolveMiddleware(middlewareItems, container);
 
   // Mirror vela's RouteManager: invoke `instance.use(c, next)` and return its
   // result directly — Hono assigns a returned Response or honors the

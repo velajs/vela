@@ -1,6 +1,6 @@
 {
   "name": "@velajs/crud",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "CRUD module for Vela framework",
   "type": "module",
   "main": "./dist/index.js",
@@ -49,7 +49,7 @@
   },
   "peerDependencies": {
     "@hono/zod-openapi": ">=1.0.0",
-    "@velajs/vela": ">=1.8.3",
+    "@velajs/vela": ">=1.11.0",
     "hono": ">=4",
     "hono-crud": ">=0.13.0",
     "zod": ">=4"
@@ -60,7 +60,7 @@
     "@swc/cli": "^0.8.1",
     "@swc/core": "^1.15.41",
     "@velajs/crud": "link:",
-    "@velajs/vela": "^1.8.4",
+    "@velajs/vela": "link:../vela",
     "drizzle-orm": "^0.45.2",
     "drizzle-zod": "^0.8.3",
     "hono": "^4",

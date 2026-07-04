@@ -15,8 +15,8 @@ import type {
   NestMiddleware,
 } from '@velajs/vela';
 import type { Context, Next } from 'hono';
-import { getCrudBridge } from '@velajs/vela/internal';
-// Importing the package index is what registers the bridge (side-effect).
+import { getRouteContributors } from '@velajs/vela';
+// Importing the package index is what registers the contributor (side-effect).
 import { Crud, buildCrudOpenApiPaths } from '../index';
 import type { CrudConfig } from '../index';
 
@@ -48,12 +48,13 @@ beforeEach(() => {
   if (clearStorage) clearStorage();
 });
 
-describe('vela bridge self-registration', () => {
-  it('importing @velajs/crud registers a bridge on @velajs/vela/internal', () => {
-    const bridge = getCrudBridge();
-    expect(bridge).toBeDefined();
-    expect(typeof bridge?.buildRoutes).toBe('function');
-    expect(typeof bridge?.buildOpenApiPaths).toBe('function');
+describe('vela route-contributor self-registration', () => {
+  it('importing @velajs/crud registers a RouteContributor on @velajs/vela', () => {
+    const contributor = getRouteContributors().find((c) => c.id === 'crud');
+    expect(contributor).toBeDefined();
+    expect(contributor?.claimsMetaKey).toBe('vela:crud');
+    expect(typeof contributor?.buildRoutes).toBe('function');
+    expect(typeof contributor?.buildOpenApiPaths).toBe('function');
   });
 });
 

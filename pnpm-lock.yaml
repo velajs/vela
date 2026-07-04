@@ -24,8 +24,8 @@ importers:
         specifier: 'link:'
         version: 'link:'
       '@velajs/vela':
-        specifier: ^1.8.4
-        version: 1.8.4
+        specifier: link:../vela
+        version: link:../vela
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2
@@ -627,10 +627,6 @@ packages:
 
   '@types/http-cache-semantics@4.2.0':
     resolution: {integrity: sha512-L3LgimLHXtGkWikKnsPg0/VFx9OGZaC+eN1u4r+OB1XRqH3meBIAVC2zr1WdMH+RHmnRkqliQAOHNJ/E0j/e0Q==}
-
-  '@velajs/vela@1.8.4':
-    resolution: {integrity: sha512-NHV33DW/lPENw5I6Iw4VYayjISWn7rz4CW2CwTvpYoD9fe+hI1avCAmLRlinUjjZOW2gX/eyq43YxP3LN2Jjmg==}
-    engines: {node: '>=20'}
 
   '@vitest/expect@4.1.9':
     resolution: {integrity: sha512-vl/rYsUKcBr3SnQn166+XR5ZQcgMx3DQhFWdfli/cWpLnLUmbxZvyrJZotLFUryib+LtArYMSTJ5RbQ57ZqrlA==}
@@ -1833,10 +1829,6 @@ snapshots:
   '@types/estree@1.0.8': {}
 
   '@types/http-cache-semantics@4.2.0': {}
-
-  '@velajs/vela@1.8.4':
-    dependencies:
-      hono: 4.12.2
 
   '@vitest/expect@4.1.9':
     dependencies:

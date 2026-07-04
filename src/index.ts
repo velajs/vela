@@ -30,25 +30,45 @@ export type {
   StructuredError,
 } from 'hono-crud';
 
-// --- vela bridge self-registration (import side-effect) -------------------
+// --- vela RouteContributor self-registration (import side-effect) ----------
 //
-// vela inverted its `@Crud` integration: instead of vela doing a variable
+// vela inverts its `@Crud` integration: instead of vela doing a variable
 // `await import('@velajs/crud')` (which esbuild cannot bundle, breaking
-// Cloudflare Workers), vela exposes a register-based bridge at
-// `@velajs/vela/internal`. Merely importing `@velajs/crud` now wires the
-// bridge in — vela consults it at route-build time and at OpenAPI document
-// generation. Registration is last-writer-wins on vela's side, so this is
-// safe to import in any order and idempotent.
-import { registerCrudBridge } from '@velajs/vela/internal';
-import type { CrudBridge } from '@velajs/vela/internal';
+// Cloudflare Workers), it exposes a register-based `RouteContributor` on the
+// public surface. Merely importing `@velajs/crud` wires the contributor in —
+// vela consults it after explicit routes at route-build time and during
+// OpenAPI document generation, for every controller carrying `vela:crud`
+// metadata. Registration is last-writer-wins on vela's side (keyed by `id`),
+// so this is safe to import in any order and idempotent.
+import { registerRouteContributor } from '@velajs/vela';
+import type { Hono } from 'hono';
 import { buildCrudRoutes } from './builder';
 import { buildCrudOpenApiPaths as buildCrudOpenApiPathsImpl } from './openapi';
+import type { CrudConfig } from './types';
 
-registerCrudBridge({
-  // `buildCrudRoutes`'s signature already matches `CrudBridge.buildRoutes` +
-  // `CrudBridgeRouteContext`; the only divergence is `crudConfig`, typed as
-  // `CrudConfig` here but `unknown` in the bridge interface. Cast at the
-  // boundary so `buildCrudRoutes`'s own types stay strict.
-  buildRoutes: buildCrudRoutes as unknown as CrudBridge['buildRoutes'],
-  buildOpenApiPaths: buildCrudOpenApiPathsImpl as unknown as CrudBridge['buildOpenApiPaths'],
+registerRouteContributor({
+  id: 'crud',
+  claimsMetaKey: 'vela:crud',
+  // vela passes a single resolved context; map it onto `buildCrudRoutes`'s
+  // positional signature. `meta` is the stored `CrudConfig` (typed `unknown`
+  // in the contributor contract), and `container` threads through so the
+  // stateless `ComponentManager` resolvers can materialize controller-scoped
+  // guards/middleware. `app` is cast across the hono type boundary: with vela
+  // linked (`link:../vela`) its `hono` copy can differ from this package's, a
+  // compile-time-only identity skew the old CrudBridge registration bridged
+  // the same way (`as unknown as`).
+  buildRoutes(app, { controller, controllerPrefix, meta, globalPrefix, globalGuards, container, joinPaths }) {
+    return buildCrudRoutes(app as unknown as Hono, controller, controllerPrefix, meta as CrudConfig, {
+      globalPrefix,
+      globalGuards,
+      joinPaths,
+      container,
+    });
+  },
+  buildOpenApiPaths({ controller, meta, globalPrefix, controllerPrefix }) {
+    return buildCrudOpenApiPathsImpl(controller, meta as CrudConfig, {
+      globalPrefix,
+      controllerPrefix,
+    });
+  },
 });
