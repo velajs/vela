@@ -192,7 +192,7 @@ jobs:
         run: pnpm publish --no-git-checks --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: "true"
+          NPM_CONFIG_PROVENANCE: "${{ !github.event.repository.private }}"
 
       - name: Create GitHub Release
         if: steps.bump.outputs.new != ''
