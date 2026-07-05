@@ -64,7 +64,7 @@ class MeController {
 
 - `@CurrentUser()` / `@CurrentSession()` are **lazy** param decorators returning better-auth's `User` / `Session`. Because they return a lazy proxy, probe presence with `user?.id != null` — never `!!user`.
 - `@Public()` and `@OptionalAuth()` are `Reflector` boolean decorators; apply at method or controller level.
-- `@Roles('admin', 'editor')` + `RolesGuard` gate on `user.role` (comma-normalized).
+- `@Roles(['admin', 'editor'])` + `RolesGuard` gate on `user.role` (comma-normalized). The decorator is `Reflector.createDecorator<string[]>` — it takes a single array argument.
 
 Exported tokens/keys: `BETTER_AUTH_OPTIONS`, `AUTH_USER_KEY`, `AUTH_SESSION_KEY`. Types: `BetterAuthInstance`, `BetterAuthModuleOptions`, `User`, `Session`.
 

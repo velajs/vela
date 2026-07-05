@@ -33,7 +33,7 @@ class AppModule {}
 |---|---|---|
 | `@velajs/storage/drivers/memory` | `memoryDriver(opts?)` | `{ initial? }` — in-memory; the test fake |
 | `@velajs/storage/drivers/s3` | `s3Driver(opts)` | `{ endpoint, region, bucket, credentials: { accessKeyId, secretAccessKey, sessionToken? }, forcePathStyle?, publicBaseUrl?, defaultUrlExpiresIn?, fetch?, name? }` |
-| `@velajs/storage/drivers/r2` | `r2Driver(opts)` | `{ bucket: R2Bucket binding, publicBaseUrl?, name? }` — native binding, zero deps |
+| `@velajs/storage/drivers/r2` | `r2Driver(opts)` | `{ bucket: R2BucketLike binding, publicBaseUrl?, name? }` — native binding (`R2BucketLike` is a structural subset type), zero deps |
 | `@velajs/storage/drivers/r2-http` | `r2HttpDriver(opts)` / `r2HybridDriver(opts)` | `{ accountId, accessKeyId, secretAccessKey, bucket, endpoint?, publicBaseUrl?, … }` (hybrid adds `binding`) |
 
 `s3Driver` and the R2-HTTP drivers support presigned upload + download URLs; `r2Driver` (native binding) supports downloads via `publicBaseUrl` but not presigned uploads. Use `s3Driver({ region: 'auto', forcePathStyle: true })` (or `r2HttpDriver`) for R2 over the S3 API.

@@ -52,7 +52,7 @@ class CheckoutService {
 }
 ```
 
-Value methods: `getBooleanValue`, `getStringValue`, `getNumberValue`, `getObjectValue<T>` — each `(flagKey, defaultValue?, context?)`. `Details` variants (`getBooleanDetails`, …) return `FlagEvaluationDetails<T>` = `{ flagKey, value, reason: 'STATIC' | 'ERROR', errorMessage? }`. The **fallback** for each read is: explicit `defaultValue` arg → manifest default → the type's zero value (`false` / `''` / `0` / `{}`).
+Value methods: `getBooleanValue`, `getStringValue`, `getNumberValue`, `getObjectValue<T>` — each `(flagKey, defaultValue?, context?)`. `Details` variants (`getBooleanDetails`, …) return `FlagEvaluationDetails<T>` = `{ flagKey, value, reason: 'STATIC' | 'DEFAULT' | 'ERROR', errorMessage? }` (the service currently only emits `STATIC`/`ERROR`). The **fallback** for each read is: explicit `defaultValue` arg → manifest default → the type's zero value (`false` / `''` / `0` / `{}`).
 
 - `all(context?)` evaluates every manifest key (method chosen from each declared default's type) → `{ key: value }`.
 - `use(name)` returns a **new** immutable service bound to a different registered driver (throws `FeatureFlagError` on unknown name).
@@ -91,7 +91,7 @@ export interface FeatureFlagDriver {
 }
 ```
 
-`MemoryFlagDriver` (via `memoryFlagDriver({ name?, values? })`) is the in-package driver + test fake: `set(key, value)`, `delete(key)`, `has(key)`, `reset(values?)` are all chainable; it ignores the evaluation context (no targeting). Runtime-specific drivers live in their platform packages — **`@velajs/cloudflare` ships `flagshipFlagDriver` and `kvFlagDriver`** against this exact contract (see `references/cloudflare.md`). `FeatureFlagDriverRegistry` / `buildDriverRegistry(options)` back the driver lookup; `FeatureFlagError` is thrown only for config-time faults (unknown/duplicate/empty driver set), never during evaluation.
+`MemoryFlagDriver` (via `memoryFlagDriver({ name?, values? })`) is the in-package driver + test fake: `set(key, value)`, `delete(key)`, `reset(values?)` return `this` (chainable), while `has(key)` returns `boolean` (not chainable); it ignores the evaluation context (no targeting). Runtime-specific drivers live in their platform packages — **`@velajs/cloudflare` ships `flagshipFlagDriver` and `kvFlagDriver`** against this exact contract (see `references/cloudflare.md`). `FeatureFlagDriverRegistry` / `buildDriverRegistry(options)` back the driver lookup; `FeatureFlagError` is thrown only for config-time faults (unknown/duplicate/empty driver set), never during evaluation.
 
 ## Typed flag keys
 

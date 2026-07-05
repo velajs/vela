@@ -118,4 +118,4 @@ Declare bindings in `wrangler.toml`/`.jsonc` under their names, and set compatib
 - **Durable-Object WebSockets** need `compatibility_flags = ["nodejs_compat"]` plus the DO binding + a `new_sqlite_classes` migration for the hibernation DO.
 - **Ambient container / ALS** (`ambientContainer: true`, `getCurrentContainer()`) needs `nodejs_als` (or `nodejs_compat`). It is off by default — the per-request child container is the default DI path.
 
-(`@velajs/cloudflare` also ships its own R2-backed `StorageModule`/`StorageService`/`R2StorageDriver`, configured via `.register({ disks, defaultDisk, presignedUrl? })` — distinct from the standalone `@velajs/storage` package in `references/storage.md`.)
+(`@velajs/cloudflare` also ships its own R2-backed `StorageModule`/`StorageService`/`R2StorageDriver`, configured via `.forRoot({ disks, defaultDisk, presignedUrl? })` — distinct from the standalone `@velajs/storage` package in `references/storage.md`.)
