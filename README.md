@@ -52,5 +52,26 @@ class AppModule {}
 | R2 (HTTP + hybrid) | `@velajs/storage/drivers/r2-http` | ✅ | ✅ |
 | storagesdk bridge | `@velajs/storage/storagesdk` | Node/Bun only | depends on adapter |
 
+## Testing
+
+There's no separate storage fake — the **memory driver IS the fake**. Build a disk in one line and
+assert against it with the helpers from `@velajs/storage/testing`:
+
+```ts
+import { createStorage } from '@velajs/storage';
+import { memoryDriver } from '@velajs/storage/drivers/memory';
+import { assertExists, assertMissing, assertCount } from '@velajs/storage/testing';
+
+const storage = createStorage({ driver: memoryDriver() });
+await storage.upload('avatars/1.png', bytes);
+
+await assertExists(storage, 'avatars/1.png');
+await assertMissing(storage, 'avatars/2.png');
+await assertCount(storage, 'avatars/', 1); // or assertCount(storage, 1) for the whole disk
+```
+
+The helpers accept anything memory-backed — a `Storage` facade or an injected `StorageService`.
+For DI/integration tests, register the same driver instead: `StorageModule.forRoot({ driver: memoryDriver() })`.
+
 See the docs site for presigned uploads, the HTTP upload controller + browser client, middleware,
 multi-bucket, and the full capability matrix.
