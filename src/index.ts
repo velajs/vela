@@ -38,6 +38,12 @@ export { VectorizeService } from './services/vectorize.service';
 export { HyperdriveService } from './services/hyperdrive.service';
 export { EnvService } from './services/env.service';
 
+// Feature-flag drivers (implement @velajs/feature-flags' FeatureFlagDriver contract)
+export { FlagshipFlagDriver, flagshipFlagDriver } from './services/flagship-flag.driver';
+export type { FlagshipBinding, FlagshipFlagDriverOptions } from './services/flagship-flag.driver';
+export { KvFlagDriver, kvFlagDriver } from './services/kv-flag.driver';
+export type { KvFlagDriverOptions } from './services/kv-flag.driver';
+
 // Decorators
 export { Env } from './decorators/env';
 export { Scheduled } from './decorators/scheduled';
