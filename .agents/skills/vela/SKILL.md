@@ -41,6 +41,7 @@ Install as a dev dependency (`pnpm add -D @velajs/cli`) and add a `vela.config.{
 | `vela entrypoint list` | List declared entrypoint kinds (websocket, queue, cron, …) and their entries |
 | `vela openapi dump` | Emit the OpenAPI document (needs `rootModule`; `--out`, `--title`, `--api-version`, `--global-prefix`) |
 | `vela db seed` | Build the app and run all `@Seeder()` classes in order (`--continue-on-error`) |
+| `vela mcp serve` | Serve app introspection to MCP clients over stdio — tools `route_list`, `module_graph`, `entrypoint_list`, `openapi_dump`, `token_describe` + resource `vela://openapi` |
 
 See `references/cli-and-introspection.md` for full flags and config.
 

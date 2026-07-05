@@ -1,0 +1,80 @@
+# Storage (`@velajs/storage`)
+
+A full driver-based object-storage system for Vela: a `StorageService` with upload/download/list/presign, pluggable drivers (memory / S3 / R2 / R2-over-HTTP), an optional HTTP upload controller, and framework-free test helpers. Its only runtime dependency is `aws4fetch` (for SigV4 presigning). Subpaths include `.`, `./drivers/memory`, `./drivers/s3`, `./drivers/r2`, `./drivers/r2-http`, `./middleware`, and `./testing`.
+
+> **Two different "storage" surfaces.** `@velajs/storage` (this package) is the full system. `@velajs/vela/storage` (in-core subpath) is **types + helpers only** — the abstract `StorageDriver` contract plus `signUrl`/`verifySignedUrl` and path helpers, with no drivers, module, or service. They are separate, incompatible contracts (`@velajs/vela/storage`'s driver is `upload(body, path, opts)`; this package's is `upload(key, body, opts)`). `@velajs/cloudflare` ships yet another R2-backed `StorageModule`. This doc is about the standalone `@velajs/storage`.
+
+## Setup — `StorageModule.forRoot`
+
+You build a driver (from a `./drivers/*` subpath) and hand the instance to the module:
+
+```ts
+import { StorageModule } from '@velajs/storage';
+import { s3Driver } from '@velajs/storage/drivers/s3';
+
+@Module({
+  imports: [
+    StorageModule.forRoot({
+      driver: s3Driver({ endpoint, region: 'auto', bucket: 'uploads', credentials: { accessKeyId, secretAccessKey } }),
+      prefix: 'tenant-a/',   // optional key prefix
+    }),
+  ],
+})
+class AppModule {}
+```
+
+`StorageModuleOptions`: `driver` (a built `StorageDriver`, required), `name?` (default `'default'`), `prefix?`, `readonly?`, `hooks?`, and `http?` (mounts the HTTP controller). `forRootAsync({ inject, imports, useFactory, name?, prefix?, readonly?, hooks?, http?, key? })` — its `useFactory` returns the `StorageDriver` (so you can pull credentials from config/`EnvService`). The `driver` is a value, not a string — there is no name-based selector.
+
+`StorageHttpOptions` (when `http` is set): `basePath` (default `/api/storage`), `authorize`, `defaultPolicy` (`'deny'` default), `download` (`'redirect'` default | `'proxy'`), `mountController`, `defaultExpiresIn`, `maxExpiresIn`, `maxUploadSize`, `maxListLimit`, `deleteConcurrency`.
+
+## Drivers
+
+| Import from | Factory | Config |
+|---|---|---|
+| `@velajs/storage/drivers/memory` | `memoryDriver(opts?)` | `{ initial? }` — in-memory; the test fake |
+| `@velajs/storage/drivers/s3` | `s3Driver(opts)` | `{ endpoint, region, bucket, credentials: { accessKeyId, secretAccessKey, sessionToken? }, forcePathStyle?, publicBaseUrl?, defaultUrlExpiresIn?, fetch?, name? }` |
+| `@velajs/storage/drivers/r2` | `r2Driver(opts)` | `{ bucket: R2Bucket binding, publicBaseUrl?, name? }` — native binding, zero deps |
+| `@velajs/storage/drivers/r2-http` | `r2HttpDriver(opts)` / `r2HybridDriver(opts)` | `{ accountId, accessKeyId, secretAccessKey, bucket, endpoint?, publicBaseUrl?, … }` (hybrid adds `binding`) |
+
+`s3Driver` and the R2-HTTP drivers support presigned upload + download URLs; `r2Driver` (native binding) supports downloads via `publicBaseUrl` but not presigned uploads. Use `s3Driver({ region: 'auto', forcePathStyle: true })` (or `r2HttpDriver`) for R2 over the S3 API.
+
+## Using the service — `StorageService`
+
+Inject `StorageService` (or use the `@InjectStorage()` decorator / `storageToken(name)` for a named disk):
+
+```ts
+@Injectable()
+class AvatarsService {
+  constructor(private readonly storage: StorageService) {}
+
+  async save(key: string, bytes: Uint8Array) {
+    await this.storage.upload(key, bytes);
+    return this.storage.url(key, { expiresIn: 3600 });   // presigned GET
+  }
+}
+```
+
+Service methods: `upload(key, body, opts?)`, `download(key, opts?)`, `head(key, opts?)`, `exists(key, opts?)`, `delete(key, opts?)`, `deleteMany(keys, opts?)`, `copy(from, to, opts?)`, `move(from, to, opts?)`, `list(opts?)`, `url(key, opts?)`, `signedUploadUrl(key, opts)`. The richer facade (multipart, `listAll()` async iteration, `file(key)` handles, `signedMultipart`) is reachable via `service.storage`.
+
+## Presigned URLs
+
+Signing runs on `aws4fetch` + Web Crypto (edge-safe). `url(key, { expiresIn?, responseContentDisposition? })` returns a download URL (a public `publicBaseUrl` link when possible, else a presigned GET). `signedUploadUrl(key, { expiresIn, contentType?, maxSize?, minSize? })` returns a `SignedUpload` — either `{ method: 'PUT', url, headers? }`, or, when size bounds are set, a POST-policy `{ method: 'POST', url, fields }` your client submits directly.
+
+## Testing — `@velajs/storage/testing`
+
+Framework-free assertions (plain `Error`, no vitest dependency) over any storage target — a `StorageService`, the `Storage` facade, or a bare driver:
+
+```ts
+import { assertExists, assertMissing, assertCount } from '@velajs/storage/testing';
+import { memoryDriver } from '@velajs/storage/drivers/memory';
+import { createStorage } from '@velajs/storage';
+
+const storage = createStorage({ driver: memoryDriver() });
+await storage.upload('avatars/1.png', bytes);
+
+await assertExists(storage, 'avatars/1.png');
+await assertMissing(storage, 'avatars/2.png');
+await assertCount(storage, 'avatars/', 1);   // prefix-scoped; or assertCount(storage, 1) for the whole disk
+```
+
+`assertExists(storage, key)`, `assertMissing(storage, key)`, and `assertCount(storage, expected)` / `assertCount(storage, prefix, expected)` are the three helpers; a failing `assertExists` throws with the list of stored keys.
