@@ -6,6 +6,8 @@ import type { Diagnostics, Type } from '../container/types';
 import { REQUEST_CONTEXT } from '../http/request-context';
 import { RouteManager } from '../http/route.manager';
 import type { RouteManagerOptions } from '../http/route.manager';
+import { UrlGeneratorService } from '../http/url/url-generator.service';
+import { SignedUrlGuard } from '../http/url/signed-url.guard';
 import { ModuleLoader } from '../module/module-loader';
 import { bindAppProviders } from '../pipeline/app-providers';
 import { ComponentManager } from '../pipeline/component.manager';
@@ -88,6 +90,15 @@ export async function bootstrap(
   // same global-tier components (APP_* + app.useGlobalX()).
   container.register({ provide: RouteManager, useValue: routeManager });
   container.markGlobalToken(RouteManager);
+
+  // Named-route URL generation + signed-URL verification are app-level
+  // singletons: injectable from any module, and (for the guard) instantiable by
+  // the pipeline when a route opts in via `@SignedUrl()`. Both read their secret
+  // lazily and never force controllers/lazy modules to materialize.
+  container.register(UrlGeneratorService);
+  container.markGlobalToken(UrlGeneratorService);
+  container.register(SignedUrlGuard);
+  container.markGlobalToken(SignedUrlGuard);
 
   const loader = new ModuleLoader(container, routeManager);
   // loader.load() also arms the deferred-init seam (LazyModuleManager) — kept

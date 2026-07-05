@@ -70,8 +70,18 @@ export function getRouteVersion(
   return MetadataRegistry.getRouteVersion(target, propertyKey);
 }
 
+/** Per-route options for the HTTP method decorators (`@Get`, `@Post`, …). */
+export interface RouteOptions {
+  /**
+   * A stable, human-readable name for this route. Enables URL generation
+   * (`UrlGeneratorService.urlFor(name, …)`), surfaces on `app.describeRoutes()`,
+   * and — when set — becomes the OpenAPI `operationId`.
+   */
+  name?: string;
+}
+
 function createMethodDecorator(method: HttpMethod) {
-  return (path = ''): MethodDecorator => {
+  return (path = '', options?: RouteOptions): MethodDecorator => {
     return (target: object, propertyKey: string | symbol, _descriptor: PropertyDescriptor) => {
       const ctor = target.constructor as Constructor;
       const normalizedPath = normalizePath(path);
@@ -82,6 +92,7 @@ function createMethodDecorator(method: HttpMethod) {
         path: normalizedPath,
         handlerName: propertyKey,
         ...(version !== undefined ? { version } : {}),
+        ...(options?.name !== undefined ? { name: options.name } : {}),
       });
     };
   };

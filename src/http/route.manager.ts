@@ -52,6 +52,8 @@ export interface RouteDescription {
   controller: string;
   handler: string;
   version?: number;
+  /** Route name (`@Get(path, { name })`) — the URL-generation / `operationId` key. */
+  name?: string;
 }
 
 export interface RouteManagerOptions {
@@ -485,6 +487,7 @@ export class RouteManager {
               controller: controller.name,
               handler: String(route.handlerName),
               version: versionsForPaths[pathIndex],
+              ...(route.name !== undefined ? { name: route.name } : {}),
             });
           }
         }

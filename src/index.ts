@@ -95,7 +95,23 @@ export {
   createParamDecorator,
   createLazyParamDecorator,
   applyDecorators,
+  UrlGeneratorService,
+  SignedUrlGuard,
+  SignedUrl,
+  URL_SIGNING_SECRET,
 } from './http/index';
+export type {
+  RouteOptions,
+  UrlForOptions,
+  SignedUrlGenerateOptions,
+  VelaRouteMap,
+  RouteName,
+  RouteParams,
+} from './http/index';
+
+// Edge-safe HMAC signed-URL primitives (also re-exported from `@velajs/vela/storage`)
+export { signUrl, verifySignedUrl } from './crypto/signed-url';
+export type { SignedUrlOptions } from './crypto/signed-url';
 
 // Request-scoped context primitive
 export { REQUEST_CONTEXT } from './http/request-context';

@@ -7,6 +7,8 @@ export interface RouteMetadata {
   path: string;
   handlerName: string | symbol;
   version?: number | number[];
+  /** Route name for URL generation / OpenAPI operationId (`@Get(path, { name })`). */
+  name?: string;
 }
 
 export interface ControllerOptions {

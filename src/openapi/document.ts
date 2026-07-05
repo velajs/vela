@@ -197,7 +197,8 @@ function buildOperation(
   if (requestBody) operation.requestBody = requestBody;
   if (docMeta?.summary) operation.summary = docMeta.summary;
   if (docMeta?.description) operation.description = docMeta.description;
-  if (docMeta?.operationId) operation.operationId = docMeta.operationId;
+  const operationId = docMeta?.operationId ?? route.name;
+  if (operationId) operation.operationId = operationId;
   if (docMeta?.deprecated) operation.deprecated = docMeta.deprecated;
   if (mergedTags.length > 0) operation.tags = mergedTags;
 

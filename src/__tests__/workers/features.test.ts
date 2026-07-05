@@ -26,4 +26,21 @@ describe('vela session features on Cloudflare Workers (live miniflare)', () => {
     const res = await SELF.fetch('http://example.com/sign-check');
     expect(await res.json()).toEqual({ valid: true, tampered: false });
   });
+
+  it('named-route signed URL round-trips through UrlGeneratorService + SignedUrlGuard under workerd', async () => {
+    // UrlGeneratorService.signedUrl builds + signs the named route with Web Crypto.
+    const gen = await SELF.fetch('http://example.com/signed/make');
+    const { url } = (await gen.json()) as { url: string };
+    expect(url).toMatch(/^\/signed\/protected\?expires=\d+&signature=/);
+
+    // The SignedUrlGuard verifies that signature → 200.
+    const ok = await SELF.fetch(`http://example.com${url}`);
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ ok: true });
+
+    // Flipping the last signature char is rejected → 403.
+    const tampered = url.slice(0, -1) + (url.endsWith('A') ? 'B' : 'A');
+    const bad = await SELF.fetch(`http://example.com${tampered}`);
+    expect(bad.status).toBe(403);
+  });
 });

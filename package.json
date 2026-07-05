@@ -58,7 +58,7 @@
     "test": "vitest run",
     "test:workers": "vitest run --config vitest.config.workers.ts",
     "test:workers:als": "vitest run --config vitest.config.workers-als.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.type-tests.json",
     "prepare": "swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
     "prepublishOnly": "pnpm run typecheck && pnpm test"
   },

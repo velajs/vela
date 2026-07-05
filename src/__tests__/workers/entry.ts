@@ -7,12 +7,16 @@ import {
   ApiTags,
   Controller,
   Get,
+  Global,
   Inject,
   Injectable,
   Module,
   REQUEST_CONTEXT,
   Req,
   Scope,
+  SignedUrl,
+  URL_SIGNING_SECRET,
+  UrlGeneratorService,
   VelaFactory,
   createOpenApiDocument,
   type CallHandler,
@@ -172,8 +176,37 @@ class SignCheckController {
   }
 }
 
+// Named-route URL generation + signed-URL guard end-to-end under workerd:
+// `signedUrl()` builds + HMAC-signs a named route via Web Crypto, and
+// `SignedUrlGuard` verifies the same signature on the way back in.
+const WORKERS_SIGNING_SECRET = 'workerd-signing-secret';
+
+@Global()
+@Module({
+  providers: [{ provide: URL_SIGNING_SECRET, useValue: WORKERS_SIGNING_SECRET }],
+  exports: [URL_SIGNING_SECRET],
+})
+class SigningModule {}
+
+@Controller('/signed')
+class SignedUrlDemoController {
+  constructor(@Inject(UrlGeneratorService) private readonly urls: UrlGeneratorService) {}
+
+  @Get('make')
+  async make() {
+    return { url: await this.urls.signedUrl('workers.protected', {}, { expiresIn: 60 }) };
+  }
+
+  @Get('protected', { name: 'workers.protected' })
+  @SignedUrl()
+  protectedRoute() {
+    return { ok: true };
+  }
+}
+
 @Module({
   imports: [
+    SigningModule,
     I18nModule.forRoot({ defaultLocale: 'en', locales: ['en', 'fr'] }),
     I18nModule.registerMessages({
       en: { greeting: 'Hello, {name}!' },
@@ -188,6 +221,7 @@ class SignCheckController {
     BubbleController,
     I18nSmokeController,
     SignCheckController,
+    SignedUrlDemoController,
   ],
   providers: [
     RequestCounter,
