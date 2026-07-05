@@ -59,6 +59,7 @@
     "test:workers": "vitest run --config vitest.config.workers.ts",
     "test:workers:als": "vitest run --config vitest.config.workers-als.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.type-tests.json",
+    "check:skill": "node scripts/check-skill.mjs",
     "prepare": "swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
     "prepublishOnly": "pnpm run typecheck && pnpm test"
   },
