@@ -1,6 +1,11 @@
 // Signed-URL utilities using HMAC-SHA256 via the Web Crypto API (edge-safe;
 // no node:crypto). Verification uses crypto.subtle.verify for timing-safety.
 // Pattern: https://developers.cloudflare.com/workers/examples/signing-requests/
+//
+// This is the canonical home for the util. `@velajs/vela/storage` re-exports it
+// (see src/storage/index.ts) so the storage subpath API is unchanged, while
+// core (the URL generator + signed-URL guard) imports it here directly — core
+// never reaches into a published subpath.
 
 export interface SignedUrlOptions {
   /** Time-to-live in seconds; a matching `expires` param is added + enforced. */
