@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./websocket-node": {
+      "types": "./dist/websocket-node/index.d.ts",
+      "import": "./dist/websocket-node/index.js"
     }
   },
   "files": [
@@ -23,7 +27,9 @@
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "pnpm run typecheck && pnpm test"
   },
-  "sideEffects": false,
+  "sideEffects": [
+    "./dist/websocket-node/index.js"
+  ],
   "keywords": [
     "vela",
     "testing",
@@ -48,7 +54,18 @@
   },
   "peerDependencies": {
     "@velajs/vela": ">=1.11.0",
-    "hono": ">=4"
+    "hono": ">=4",
+    "vitest": ">=3",
+    "@hono/node-ws": ">=1",
+    "@hono/node-server": ">=1"
+  },
+  "peerDependenciesMeta": {
+    "@hono/node-ws": {
+      "optional": true
+    },
+    "@hono/node-server": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@swc/cli": "^0.8.1",
