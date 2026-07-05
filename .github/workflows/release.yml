@@ -160,6 +160,15 @@ jobs:
             fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
           "
 
+          # Keep the agent skill's metadata.version in lockstep with package.json;
+          # scripts/check-skill.mjs (a CI gate) hard-fails on any mismatch.
+          node -e "
+            const fs = require('fs');
+            const p = '.agents/skills/vela/SKILL.md';
+            const md = fs.readFileSync(p, 'utf8');
+            fs.writeFileSync(p, md.replace(/^ *version:.*\$/m, '  version: \"$NEW_VERSION\"'));
+          "
+
       - name: Commit and tag
         if: steps.bump.outputs.new != ''
         run: |
@@ -171,7 +180,7 @@ jobs:
 
           if [ "$NEW_VERSION" != "$CURRENT_VERSION" ]; then
             pnpm install --lockfile-only
-            git add package.json pnpm-lock.yaml
+            git add package.json pnpm-lock.yaml .agents/skills/vela/SKILL.md
             git commit -m "chore(release): v${NEW_VERSION}"
           fi
 
