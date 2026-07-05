@@ -20,7 +20,12 @@ let peersAvailable = false;
 try {
   await import('@hono/node-ws');
   await import('@hono/node-server');
-  peersAvailable = true;
+  // openClient needs a client socket: global WebSocket (Node >=22) or the ws package.
+  peersAvailable = typeof WebSocket !== 'undefined';
+  if (!peersAvailable) {
+    await import('ws');
+    peersAvailable = true;
+  }
 } catch {
   peersAvailable = false;
 }
