@@ -51,8 +51,13 @@ retrofitted; consumer surface stays NestJS-parity (`forRoot`/`forRootAsync`).
 - **Exception-handler layer**: Laravel-style report/render/dontReport/context
   above the NestJS-style filters; also fixes the silent-500-no-logging path in
   `HandlerExecutor`.
-- **CLI introspection** on `DiscoveryService`: `route:list`, module graph,
-  entrypoint list, OpenAPI dump in `@velajs/cli`.
+- ~~**CLI introspection** on `DiscoveryService`: `route:list`, module graph,
+  entrypoint list, OpenAPI dump in `@velajs/cli`.~~ — DONE: vela 1.15 grew
+  the seams (`app.describeRoutes()`, `app.getGlobalPrefix()`,
+  `Container.getModuleDescriptions()`, `describeToken`); `@velajs/cli` 0.2.0
+  ships `vela route list` / `module graph` / `entrypoint list` /
+  `openapi dump` on the `vela.config` `createApp()` convention (+ optional
+  `rootModule`). CLI design spec: `cli/docs/2026-07-04-introspection-design.md`.
 - ~~**First-party `QueueModule`** authored 100% on the public API — the
   openness proof (`registerEntrypointKind({ kind: 'queue', ... })`).~~ —
   DONE (1.14): `@velajs/vela/queue` (`@Processor`/`@Process`, `queueToken` +
