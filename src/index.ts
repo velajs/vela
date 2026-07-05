@@ -113,8 +113,24 @@ export { Logger, LogLevel } from './services/index';
 export type { LoggerService, ContextProvider, Writer, LoggerLevelName } from './services/index';
 
 // Config
-export { ConfigModule, ConfigService, CONFIG_OPTIONS } from './config/index';
-export type { ConfigModuleOptions } from './config/index';
+export {
+  ConfigModule,
+  ConfigService,
+  ConfigStore,
+  CONFIG_OPTIONS,
+  CONFIG_ENV,
+  registerAs,
+} from './config/index';
+export type {
+  ConfigModuleOptions,
+  ConfigSchema,
+  ConfigNamespace,
+  AnyConfigNamespace,
+  InferConfigType,
+  ConfigType,
+  ConfigPath,
+  ConfigPathValue,
+} from './config/index';
 
 // HTTP Client
 export { HttpModule, HttpService, HTTP_MODULE_OPTIONS, HttpRequestException } from './fetch/index';
