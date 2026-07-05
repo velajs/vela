@@ -60,6 +60,8 @@
     "test:workers:als": "vitest run --config vitest.config.workers-als.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.type-tests.json",
     "check:skill": "node scripts/check-skill.mjs",
+    "docs": "typedoc",
+    "docs:check": "typedoc --emit none",
     "prepare": "swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
     "prepublishOnly": "pnpm run typecheck && pnpm test"
   },
@@ -120,6 +122,7 @@
     "@vitest/runner": "^4.1.9",
     "@vitest/snapshot": "^4.1.9",
     "intl-messageformat": "^11.2.9",
+    "typedoc": "~0.28.19",
     "typescript": "^6.0.3",
     "unplugin-swc": "^1.5.9",
     "vitest": "^4.1.9",
