@@ -1,6 +1,6 @@
 {
   "name": "@velajs/storage",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Edge-first, driver-based object/file storage for the Vela framework",
   "type": "module",
   "main": "./dist/index.js",
