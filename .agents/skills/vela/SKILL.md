@@ -39,7 +39,7 @@ Install as a dev dependency (`pnpm add -D @velajs/cli`) and add a `vela.config.{
 | `vela route list` | List all HTTP routes (paths incl. prefix/version, named routes, contributed/CRUD routes) |
 | `vela module graph` | Print the module import graph with `global`/`lazy` flags and provider counts (`--json`) |
 | `vela entrypoint list` | List declared entrypoint kinds (websocket, queue, cron, …) and their entries |
-| `vela openapi dump` | Emit the OpenAPI document (needs `rootModule`; `--out`, `--title`, `--global-prefix`) |
+| `vela openapi dump` | Emit the OpenAPI document (needs `rootModule`; `--out`, `--title`, `--api-version`, `--global-prefix`) |
 | `vela db seed` | Build the app and run all `@Seeder()` classes in order (`--continue-on-error`) |
 
 See `references/cli-and-introspection.md` for full flags and config.

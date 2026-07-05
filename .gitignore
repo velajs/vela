@@ -10,3 +10,6 @@ test-cloudflare/
 test-all.sh
 .claude/
 references/
+# The vela agent skill ships its own reference docs; re-include them past the
+# broad `references/` rule above (which still ignores the root references/ dir).
+!.agents/skills/vela/references/

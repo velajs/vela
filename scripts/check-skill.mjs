@@ -17,8 +17,9 @@
 // version/subpath invariants both must respect.
 
 import { readFileSync, existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, '..');
@@ -61,15 +62,44 @@ if (!fmMatch) {
 }
 
 // --- 2. Reference Loading Guide doc paths (warn if missing) -------------------
+// A missing doc is only a warning (a sibling task may still land it). But a doc
+// that DOES exist on disk yet is NOT git-tracked is a hard FAIL: the `.gitignore`
+// root `references/` rule silently swallows .agents/skills/vela/references/*, so
+// docs can exist locally and never ship. Guard against that regression here.
 const docPaths = new Set();
 for (const m of skill.matchAll(/`(references\/[\w.-]+\.md|assets\/[\w.-]+\.md)`/g)) {
   docPaths.add(m[1]);
 }
+
+// True when `path` is committed or staged (tracked) in git; false otherwise.
+function isGitTracked(absPath) {
+  const relPath = relative(repoRoot, absPath);
+  try {
+    const out = execFileSync('git', ['ls-files', '--', relPath], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+    });
+    return out.trim().length > 0;
+  } catch (err) {
+    errors.push(`could not verify git tracking for ${relPath}: ${err.message}`);
+    return true; // don't double-report as untracked when git itself failed
+  }
+}
+
 let missing = 0;
 for (const rel of [...docPaths].sort()) {
-  if (!existsSync(join(skillDir, rel))) {
+  const abs = join(skillDir, rel);
+  if (!existsSync(abs)) {
     missing += 1;
     warnings.push(`referenced doc not found yet (sibling task may add it): ${rel}`);
+    continue;
+  }
+  if (!isGitTracked(abs)) {
+    errors.push(
+      `reference doc exists but is NOT git-tracked: ${rel} — likely swallowed by ` +
+        `the root \`references/\` .gitignore rule; add a scoped \`!.agents/skills/vela/references/\` ` +
+        `negation and \`git add\` it so the skill actually ships.`,
+    );
   }
 }
 
