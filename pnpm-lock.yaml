@@ -18,8 +18,8 @@ importers:
         specifier: ^1.15.43
         version: 1.15.43
       '@velajs/feature-flags':
-        specifier: link:../feature-flags
-        version: link:../feature-flags
+        specifier: ^0.1.0
+        version: 0.1.0(@velajs/vela@1.12.0)(hono@4.12.27)
       '@velajs/vela':
         specifier: ^1.12.0
         version: 1.12.0
@@ -595,6 +595,13 @@ packages:
 
   '@types/node@25.3.0':
     resolution: {integrity: sha512-4K3bqJpXpqfg2XKGK9bpDTc6xO/xoUP/RBWS7AtRMug6zZFaRekiLzjVtAoZMquxoAbzBvy5nxQ7veS5eYzf8A==}
+
+  '@velajs/feature-flags@0.1.0':
+    resolution: {integrity: sha512-qrjac/CzmKTM/rYidteyCyVXUuWUBZxTbglXqrvQpTzrpc8kPPXCwCOZ0vMuVjrS/GaOFFPiERpKmZjuY4rPxQ==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@velajs/vela': '>=1.11.0'
+      hono: '>=4'
 
   '@velajs/vela@1.12.0':
     resolution: {integrity: sha512-7vfM47mXUNWdpe3DEk6ktcWp0+H6xTQ+Dsx5JM4B19107V2E/jMJ9zW3UWgZH2VwRRN4Jm9Md3J9zsgdAr09gQ==}
@@ -1686,6 +1693,11 @@ snapshots:
     dependencies:
       undici-types: 7.18.2
     optional: true
+
+  '@velajs/feature-flags@0.1.0(@velajs/vela@1.12.0)(hono@4.12.27)':
+    dependencies:
+      '@velajs/vela': 1.12.0
+      hono: 4.12.27
 
   '@velajs/vela@1.12.0':
     dependencies:
