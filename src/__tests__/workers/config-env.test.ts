@@ -8,7 +8,7 @@ import {
   ConfigService,
   CONFIG_ENV,
   registerAs,
-} from '../../index';
+} from '../../index.js';
 
 // Live workerd (miniflare) validation of config namespaces on the bare
 // edge-runtime contract (no nodejs_compat — see wrangler.toml): CONFIG_ENV is

@@ -7,25 +7,54 @@ import { CONFIG_OPTIONS } from './config.tokens';
 import type { ConfigModuleOptions } from './config.types';
 import type { AnyConfigNamespace } from './register-as';
 
+/**
+ * Carrier for the namespace `asProvider()` KEY providers ONLY. Split out of
+ * ConfigModule and marked `lazy: true` so those factories — which inject
+ * `CONFIG_ENV`, live per-request on edge runtimes — never run at bootstrap.
+ * ConfigModule itself stays EAGER (see below).
+ */
+class ConfigNamespacesModule {}
+
+/**
+ * Build the lazy sub-module holding one KEY provider per namespace. Its `key`
+ * is derived from the owning ConfigModule instance key so multiple ConfigModule
+ * instances get distinct sub-module instances (no import-dedup collision).
+ */
+function namespacesSubModule(load: AnyConfigNamespace[], key: string): DynamicModule {
+  return {
+    module: ConfigNamespacesModule,
+    key: `config-ns:${key}`,
+    lazy: true,
+    providers: load.map((namespace) => namespace.asProvider()),
+    exports: load.map((namespace) => namespace.KEY),
+  };
+}
+
 // Rebuilt on `defineModule` (the blessed engine — CLAUDE.md: changed modules
-// use it). `setup()` derives, from the call-time options: one provider per
-// namespace (`asProvider()`, injecting CONFIG_ENV), a `CONFIG_OPTIONS` flat
-// passthrough (back-compat), the singleton `ConfigStore`, and `ConfigService`.
-// Namespaces are NOT resolved here — the store resolves them lazily on first
-// read. `forRoot`/`forRootAsync` (with typed `inject`) come from the engine.
+// use it). ConfigModule is EAGER: `ConfigService`, `ConfigStore`, and
+// `CONFIG_OPTIONS` construct at bootstrap, so a `forRootAsync` async
+// `useFactory` resolves in the awaited bootstrap pass and a *synchronous*
+// `app.get(ConfigService)` afterwards returns the cached singleton (no drain).
+//
+// ONLY the namespace `asProvider()` KEY providers are deferred — they move into
+// a LAZY sub-module (`ConfigNamespacesModule`) that ConfigModule imports and
+// re-exports. Their factories inject `CONFIG_ENV` (live per-request on edge
+// runtimes), so construction must not happen at bootstrap. `ConfigStore`
+// resolves each KEY through the container on first `get()`; that first
+// resolution claims + sync-drains the sub-module (namespace factories are
+// synchronous, so the sync seam is safe). `resolveAllInstances` treats the KEY
+// tokens as lazy-only (they belong solely to the lazy sub-module) and skips
+// them at bootstrap.
 const { ConfigurableModuleClass } = defineModule<ConfigModuleOptions>({
   name: 'Config',
-  // Deferred so namespace factories never run during bootstrap — env is only
-  // live per-request on edge runtimes. First resolution of any config token
-  // (an injected `ConfigService`, a request handler, `app.get`) materializes
-  // the group. All providers here are synchronous, so the sync seam is safe.
-  lazy: true,
-  setup: ({ OPTIONS, options }) => {
+  setup: ({ OPTIONS, options, key }) => {
     const load = (options.load ?? []) as AnyConfigNamespace[];
     const { validateSchema } = options;
     return {
+      // Lazy sub-module carries the KEY providers; re-exported below so direct
+      // `@Inject(ns.KEY)` and `ConfigStore`'s container lookup both reach them.
+      imports: load.length > 0 ? [namespacesSubModule(load, key)] : [],
       providers: [
-        ...load.map((namespace) => namespace.asProvider()),
         {
           // Flat config record. `validate` is applied here for the async path;
           // `forRoot` pre-validates eagerly and strips it (see the override).

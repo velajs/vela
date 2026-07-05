@@ -9,14 +9,23 @@ export type ConfigSchema =
   | ((config: Record<string, unknown>) => unknown)
   | { parse: (config: unknown) => unknown };
 
+/**
+ * Options for {@link ConfigModule}.
+ *
+ * NOTE: `load` and `validateSchema` are **`forRoot`-only** — they are read
+ * structurally from the call-time options bag. On the `forRootAsync` path the
+ * options come from a DI-resolved factory, so only the flat `config` record is
+ * supported there (async namespaces are out of scope; declare them via
+ * `forRoot`).
+ */
 export interface ConfigModuleOptions<T extends Record<string, unknown> = Record<string, unknown>> {
   /** Flat config record — the pre-namespace `config` path (still supported). */
   config?: T;
-  /** Config namespaces created via `registerAs()`, merged under their namespace name. */
+  /** Config namespaces created via `registerAs()`, merged under their namespace name. `forRoot`-only. */
   load?: AnyConfigNamespace[];
   /** Eager validator for the flat `config` record; runs at `forRoot()` call time. */
   validate?: (config: T) => T;
-  /** Schema validating the MERGED config (flat + namespaces); runs lazily on first read. */
+  /** Schema validating the MERGED config (flat + namespaces); runs lazily on first read. `forRoot`-only. */
   validateSchema?: ConfigSchema;
   isGlobal?: boolean;
 }

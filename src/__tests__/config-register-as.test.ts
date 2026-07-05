@@ -164,7 +164,7 @@ describe('registerAs config namespaces', () => {
   });
 
   describe('lazy namespace resolution', () => {
-    it('does not run namespace factories at bootstrap — deferred to first use', async () => {
+    it('runs a namespace factory only on its first read — not at bootstrap, not on app.get(ConfigService)', async () => {
       let calls = 0;
       const spyNs = registerAs('spy', (env: TestEnv) => {
         calls++;
@@ -177,11 +177,48 @@ describe('registerAs config namespaces', () => {
       class AppModule {}
 
       const app = await VelaFactory.create(AppModule);
-      expect(calls).toBe(0); // ConfigModule is lazy: nothing materialized at bootstrap
+      // The KEY provider lives in ConfigModule's lazy sub-module — not
+      // materialized at bootstrap.
+      expect(calls).toBe(0);
 
-      const cfg = app.get(ConfigService); // first config resolution claims + materializes
+      // ConfigModule is EAGER, so this returns the already-constructed
+      // ConfigService singleton; it does NOT drag in the lazy namespace group.
+      const cfg = app.get(ConfigService);
+      expect(calls).toBe(0);
+
+      // First read of the namespace resolves its KEY through the container,
+      // claiming + sync-draining the lazy sub-module → factory runs exactly once.
       expect(cfg.get('spy.url')).toBe('z');
       expect(calls).toBe(1);
+
+      // Second read is served from the ConfigStore cache — no re-run.
+      expect(cfg.get('spy.url')).toBe('z');
+      expect(calls).toBe(1);
+    });
+
+    it('resolves ConfigService synchronously after a genuinely async forRootAsync factory (eager module)', async () => {
+      // Regression: ConfigModule must stay eager so an async `useFactory`
+      // resolves in the awaited bootstrap pass and a *synchronous*
+      // app.get(ConfigService) afterwards returns the cached singleton — a
+      // module-level `lazy: true` would force the sync seam to drain the async
+      // options factory and throw.
+      @Module({
+        imports: [
+          ConfigModule.forRootAsync({
+            useFactory: async () => {
+              await Promise.resolve();
+              return { config: { APP_NAME: 'async-app', nested: { n: 1 } } };
+            },
+            isGlobal: true,
+          }),
+        ],
+      })
+      class AppModule {}
+
+      const app = await VelaFactory.create(AppModule);
+      const cfg = app.get(ConfigService); // sync, post-bootstrap — must not throw
+      expect(cfg.get('APP_NAME')).toBe('async-app');
+      expect(cfg.get('nested.n')).toBe(1);
     });
 
     it('ConfigStore resolves a namespace via the container once, then caches', () => {
