@@ -157,11 +157,34 @@ export interface ContainerOptions {
   diagnostics?: Diagnostics;
 }
 
-function describeToken(token: Token): string {
+/**
+ * Human-readable token label — class name, `InjectionToken(desc)`, symbol
+ * string, or String() fallback. Public so introspection tooling (module
+ * graphs, entrypoint listings) renders tokens the same way vela's own errors
+ * do.
+ */
+export function describeToken(token: Token): string {
   if (token instanceof InjectionToken) return token.toString();
   if (typeof token === 'function') return token.name;
   if (typeof token === 'symbol') return token.toString();
   return String(token);
+}
+
+/**
+ * One module instance in the loaded graph, serializable (strings only) —
+ * what `Container.getModuleDescriptions()` returns for introspection tooling
+ * (`vela module graph`). Reads registration state only; never constructs.
+ */
+export interface ModuleDescription {
+  moduleId: string;
+  /** moduleIds this instance imports. */
+  imports: string[];
+  isGlobal: boolean;
+  lazy: boolean;
+  /** Token labels registered in this instance's bucket (registration order). */
+  providers: string[];
+  /** Token labels this instance exports. */
+  exports: string[];
 }
 
 export class ModuleVisibilityError extends Error {

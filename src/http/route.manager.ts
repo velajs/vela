@@ -36,6 +36,24 @@ import type { ControllerRegistration, RouteMetadata } from './types';
 
 type MethodRegistrar = (app: Hono, path: string, h: (c: Context) => Response | Promise<Response>) => void;
 
+/**
+ * One explicit controller route as the framework registered it — recorded by
+ * `build()` with the SAME composed path handed to Hono (global prefix +
+ * version segment + controller prefix + route path), so introspection tooling
+ * (`vela route list`) never re-derives composition. Contributed routes
+ * (`RouteContributor`, e.g. `@velajs/crud`) mount directly on the Hono app
+ * and are not described here — diff `app.getHonoApp().routes` for those.
+ */
+export interface RouteDescription {
+  /** As declared on the handler — `@Head()` reports HEAD (Hono serves it under GET). */
+  method: string;
+  /** Fully composed path exactly as registered. */
+  path: string;
+  controller: string;
+  handler: string;
+  version?: number;
+}
+
 export interface RouteManagerOptions {
   getClientIp?: (c: Context) => string | null;
   middleware?: MiddlewareHandler[];
@@ -110,6 +128,7 @@ export class RouteManager {
   private globalFilters: Array<FilterType | Token<ExceptionFilter>> = [];
   private globalPrefix = '';
   private consumerMiddlewareDefinitions: MiddlewareRouteDefinition[] = [];
+  private routeDescriptions: RouteDescription[] = [];
 
   private readonly handlerExecutor: HandlerExecutor;
   private readonly ambientContainer: boolean;
@@ -329,8 +348,19 @@ export class RouteManager {
     return this;
   }
 
+  /** The explicit controller routes recorded by the last `build()`. */
+  getRouteDescriptions(): RouteDescription[] {
+    return [...this.routeDescriptions];
+  }
+
+  /** The global prefix in effect (set at bootstrap; '' when none). */
+  getGlobalPrefix(): string {
+    return this.globalPrefix;
+  }
+
   async build(): Promise<Hono> {
     const app = new Hono();
+    this.routeDescriptions = [];
 
     // Outermost: dispose the per-request child container once the request is
     // fully done. Fast-paths out when the child has no request-scoped
@@ -423,13 +453,21 @@ export class RouteManager {
             route.path,
             effectiveVersion,
           );
+          // Parallel to versionedPaths: buildVersionedPaths maps versions to
+          // paths 1:1 in order, so index i of both arrays belongs together.
+          const versionsForPaths: Array<number | undefined> =
+            effectiveVersion === undefined
+              ? [undefined]
+              : Array.isArray(effectiveVersion)
+                ? effectiveVersion
+                : [effectiveVersion];
 
           // Scoped (controller/handler) middleware only — global middleware is
           // applied once by this manager's own global pass, never re-read here.
           const middlewareItems = ComponentManager.getScopedComponents('middleware', controller, route.handlerName);
           const handler = this.handlerExecutor.create(route, controller, allParamMetadata);
 
-          for (const fullPath of versionedPaths) {
+          for (const [pathIndex, fullPath] of versionedPaths.entries()) {
             for (const middlewareItem of middlewareItems) {
               app.use(fullPath, this.wrapMiddlewareWithFilters((c, next) => {
                 const requestContainer = this.getRequestContainer(c);
@@ -441,6 +479,13 @@ export class RouteManager {
               }));
             }
             this.registerRoute(app, route.method, fullPath, handler);
+            this.routeDescriptions.push({
+              method: String(route.method),
+              path: fullPath || '/',
+              controller: controller.name,
+              handler: String(route.handlerName),
+              version: versionsForPaths[pathIndex],
+            });
           }
         }
       }

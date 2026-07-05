@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.15.0 (2026-07-04)
+
+Introspection seams for `@velajs/cli` (roadmap phase 3, CLI introspection):
+serializable, zero-instantiation views of the app the CLI renders instead of
+re-deriving framework internals.
+
+### Added
+
+- **`app.describeRoutes(): RouteDescription[]`** — every explicit controller
+  route exactly as `build()` registered it: method AS DECLARED (`@Head()`
+  reports HEAD even though Hono serves it under GET), fully composed path
+  (global prefix + version segment + controller prefix + route path),
+  controller name, handler name, version. Contributed routes
+  (`RouteContributor`/CRUD) mount directly on Hono and are observable via
+  `getHonoApp().routes`.
+- **`app.getGlobalPrefix()`** — the prefix in effect ('' when none); also
+  what `openapi` tooling threads into `createOpenApiDocument`.
+- **`Container.getModuleDescriptions(): ModuleDescription[]`** — the loaded
+  module graph (moduleId, imports, isGlobal, lazy, provider/export token
+  labels), load order plus the `__root__` bucket; reads registration state
+  only — safe pre/post bootstrap, never constructs, never claims lazy
+  modules.
+- **`describeToken(token)`** — the token-label helper vela's own errors use,
+  exported for tooling.
+
 ## 1.14.0 (2026-07-04)
 
 First-party `QueueModule` (roadmap phase 3, "the openness proof"): a whole

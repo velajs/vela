@@ -45,6 +45,7 @@ export {
   MultipleProvidersFoundError,
   ROOT_MODULE_ID,
   mixin,
+  describeToken,
 } from './container/index';
 export type {
   Type,
@@ -54,9 +55,13 @@ export type {
   InjectableOptions,
   ProviderOptions,
   ModuleScope,
+  ModuleDescription,
   ContainerOptions,
   Diagnostics,
 } from './container/index';
+// Introspection: the composed route table VelaApplication.describeRoutes()
+// returns (RouteManager itself stays internal-only).
+export type { RouteDescription } from './http/route.manager';
 
 // Constants
 export { METADATA_KEYS, HttpMethod, ParamType, Scope } from './constants';

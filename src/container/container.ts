@@ -10,6 +10,7 @@ import type {
   ContainerOptions,
   Diagnostics,
   LazyResolutionHook,
+  ModuleDescription,
   ModuleScope,
   ProviderOptions,
   ProviderRegistration,
@@ -17,6 +18,7 @@ import type {
   Type,
 } from './types';
 import {
+  describeToken,
   ForwardRef,
   InjectionToken,
   ModuleVisibilityError,
@@ -538,6 +540,38 @@ export class Container {
       for (const reg of bucket.values()) {
         if (reg.useValue !== undefined) out.push(reg.useValue);
       }
+    }
+    return out;
+  }
+
+  /**
+   * Serializable description of every loaded module instance (load order),
+   * plus the `__root__` bucket (bootstrap primitives) when non-empty —
+   * the `vela module graph` seam. Reads registration state only: safe pre-
+   * and post-bootstrap, never constructs, never claims lazy modules.
+   */
+  getModuleDescriptions(): ModuleDescription[] {
+    const out: ModuleDescription[] = [];
+    for (const scope of this.scopes.values()) {
+      out.push({
+        moduleId: scope.moduleId,
+        imports: [...scope.importedModules],
+        isGlobal: scope.isGlobal,
+        lazy: scope.lazy === true,
+        providers: [...(this.providers.get(scope.moduleId)?.keys() ?? [])].map(describeToken),
+        exports: [...scope.exportedTokens].map(describeToken),
+      });
+    }
+    const rootBucket = this.providers.get(ROOT_MODULE_ID);
+    if (rootBucket && rootBucket.size > 0) {
+      out.push({
+        moduleId: ROOT_MODULE_ID,
+        imports: [],
+        isGlobal: false,
+        lazy: false,
+        providers: [...rootBucket.keys()].map(describeToken),
+        exports: [],
+      });
     }
     return out;
   }

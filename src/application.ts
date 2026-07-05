@@ -4,7 +4,7 @@ import type { Token } from './container/types';
 import { DiscoveryService } from './discovery/discovery.service';
 import { EntrypointRegistry } from './entrypoint/entrypoint.registry';
 import { LazyModuleManager } from './module/lazy-modules';
-import type { RouteManager } from './http/route.manager';
+import type { RouteDescription, RouteManager } from './http/route.manager';
 import {
   hasBeforeApplicationShutdown,
   hasOnApplicationBootstrap,
@@ -89,6 +89,22 @@ export class VelaApplication {
 
   getHonoApp(): Hono {
     return this.getApp();
+  }
+
+  /**
+   * Every explicit controller route as the framework registered it (fully
+   * composed paths — the `vela route list` seam). Requires built routes;
+   * contributed routes (`@velajs/crud`) mount directly on Hono and are
+   * observable via `getHonoApp().routes` instead.
+   */
+  describeRoutes(): RouteDescription[] {
+    this.getApp(); // same routes-not-built guard as every HTTP accessor
+    return this.routeManager.getRouteDescriptions();
+  }
+
+  /** The global route prefix in effect ('' when none). */
+  getGlobalPrefix(): string {
+    return this.routeManager.getGlobalPrefix();
   }
 
   // Pipeline components — applied at request time, no rebuild needed

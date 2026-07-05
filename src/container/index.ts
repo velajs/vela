@@ -7,6 +7,7 @@ export {
   ModuleVisibilityError,
   MultipleProvidersFoundError,
   ROOT_MODULE_ID,
+  describeToken,
 } from './types';
 export { ModuleRef } from './module-ref';
 export { mixin } from './mixin';
@@ -21,6 +22,7 @@ export type {
   ProviderRegistration,
   InjectionTokenOptions,
   ModuleScope,
+  ModuleDescription,
   ContainerOptions,
   Diagnostics,
 } from './types';
