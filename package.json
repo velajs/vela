@@ -49,7 +49,7 @@
   },
   "peerDependencies": {
     "@hono/zod-openapi": ">=1.0.0",
-    "@velajs/vela": ">=1.11.0",
+    "@velajs/vela": ">=1.17.0",
     "hono": ">=4",
     "hono-crud": ">=0.13.0",
     "zod": ">=4"
