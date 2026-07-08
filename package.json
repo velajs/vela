@@ -1,0 +1,23 @@
+{
+  "name": "@velajs/client-workspace",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Workspace for the Vela client SDK (@velajs/client) and framework bindings (@velajs/react)",
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r run build",
+    "test": "pnpm -r run test",
+    "typecheck": "pnpm -r run typecheck"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@10.20.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@swc/core",
+      "esbuild"
+    ]
+  }
+}

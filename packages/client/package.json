@@ -1,0 +1,65 @@
+{
+  "name": "@velajs/client",
+  "version": "0.1.0",
+  "description": "Framework-neutral client for Vela live queries: live subscriptions over WebSocket, keyed deltas, cursor-gated optimistic updates, reconnect with resume",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./presence": {
+      "types": "./dist/presence.d.ts",
+      "import": "./dist/presence.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "prepare": "swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
+    "prepublishOnly": "pnpm run typecheck && pnpm test"
+  },
+  "sideEffects": false,
+  "keywords": [
+    "vela",
+    "live-queries",
+    "realtime",
+    "websocket",
+    "optimistic-updates",
+    "client"
+  ],
+  "author": "ksh",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/velajs/client.git",
+    "directory": "packages/client"
+  },
+  "homepage": "https://github.com/velajs/client#readme",
+  "bugs": {
+    "url": "https://github.com/velajs/client/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@velajs/live-protocol": "^1.0.0"
+  },
+  "devDependencies": {
+    "@swc/cli": "^0.8.1",
+    "@swc/core": "^1.15.43",
+    "typescript": "^6.0.3",
+    "unplugin-swc": "^1.5.9",
+    "vitest": "^4.1.9",
+    "@velajs/vela": "^1.15.0"
+  }
+}
