@@ -1,3 +1,4 @@
+import type { Context } from 'hono';
 import type { GuardType } from '@velajs/vela';
 import type { HookContext, MetaInput, ResponseEnvelope } from 'hono-crud';
 import type { AdapterBundle, EndpointsConfig } from 'hono-crud/config';
@@ -275,6 +276,34 @@ export interface CrudConfig<M extends MetaInput = MetaInput> {
    * ```
    */
   tenantResolverMounted?: boolean;
+  /**
+   * Make this resource LIVE: successful write verbs invalidate the
+   * `crud:<tableName>` tag through `@velajs/vela/live`'s `LiveInvalidation`
+   * (re-running every `@LiveQuery` that depends on it) and stamp the
+   * `Vela-Commit-Cursor` / `Vela-Commit-Epoch` response headers optimistic
+   * client updates gate on.
+   *
+   * Implemented as a response-boundary middleware on the CRUD sub-app: it
+   * observes the FINAL response after the handler (and its transaction)
+   * completed, so a rolled-back write never broadcasts — and the headers are
+   * set before the response leaves. (hono-crud's own event emitter dispatches
+   * after the response is flushed, too late for the headers; row-precise tags
+   * through it are a future refinement.)
+   *
+   * Requires `LiveModule` in the app; when it is absent the bridge warns once
+   * and no-ops.
+   */
+  live?: boolean | CrudLiveConfig;
+}
+
+export interface CrudLiveConfig {
+  /** Extra invalidation tags derived from the request (appended to `crud:<tableName>`). */
+  tags?: (c: Context) => string[];
+  /**
+   * Log-scope addressing for multi-scope transports (the Cloudflare
+   * durable-object driver routes by room). Default: the driver's local scope.
+   */
+  room?: (c: Context) => string | undefined;
 }
 
 export interface ResourceConfig<M extends MetaInput = MetaInput>

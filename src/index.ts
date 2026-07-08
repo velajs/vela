@@ -18,9 +18,11 @@ export type {
   CrudDtos,
   CrudHooks,
   CrudEndpointName,
+  CrudLiveConfig,
   EndpointOverride,
   ResourceConfig,
 } from './types';
+export { crudLiveTag } from './live-bridge';
 export { buildCrudOpenApiPaths } from './openapi';
 // Re-export hono-crud's envelope-shape types so consumers configuring
 // `CrudConfig.responseEnvelope` don't need a second import from hono-crud.

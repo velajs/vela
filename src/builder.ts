@@ -5,6 +5,7 @@ import { ForbiddenException, HttpException } from '@velajs/vela';
 import { ComponentManager } from '@velajs/vela/internal';
 import type { EndpointMiddlewares, MetaInput, RegisterCrudOptions } from 'hono-crud';
 import type { AdapterBundle, EndpointsConfig, GeneratedEndpoints } from 'hono-crud/config';
+import { buildLiveBridgeMiddleware } from './live-bridge';
 import { getOverrides } from './override.decorator';
 import {
   adapterProvidesEndpoint,
@@ -96,6 +97,14 @@ export async function buildCrudRoutes(
   for (const mw of controllerMiddleware) {
     openApiHono.use('*', mw);
   }
+
+  // `live: true` — the response-boundary invalidation + commit-header bridge
+  // (see live-bridge.ts for the post-commit/pre-flush timing rationale).
+  const liveMiddleware = buildLiveBridgeMiddleware(crudConfig, ctx.container);
+  if (liveMiddleware) {
+    openApiHono.use('*', liveMiddleware);
+  }
+
   openApiHono.onError((err, c) => {
     if (err instanceof HttpException) {
       return c.json(err.getResponse(), err.getStatus() as ContentfulStatusCode);
