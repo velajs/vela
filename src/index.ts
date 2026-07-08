@@ -56,6 +56,15 @@ export {
   broadcastToRoom,
 } from './websocket/index';
 export type { WsGatewayRoute } from './websocket/index';
+
+// Live queries (Durable Object transport for @velajs/vela/live)
+export {
+  DoCursorLog,
+  durableObjectCursorLog,
+  durableObjectLive,
+  liveInvalidateToRoom,
+} from './websocket/index';
+export type { CfLiveDriver, DurableObjectLiveOptions } from './websocket/index';
 // Re-export the core gateway API so a Cloudflare app can import it from one place.
 export {
   WebSocketGateway,

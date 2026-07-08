@@ -5,6 +5,17 @@ export { VelaWebSocketDurableObject } from './websocket.durable-object';
 export { CloudflareWebSocketModule } from './cloudflare-websocket.module';
 export { broadcastToRoom } from './broadcast';
 
+// Live queries: durable cursor log + DO-routed invalidation driver
+export {
+  DoCursorLog,
+  durableObjectCursorLog,
+  durableObjectLive,
+  initDoLive,
+  initializeWorkerLive,
+  liveInvalidateToRoom,
+} from './do-live';
+export type { CfLiveDriver, DurableObjectLiveOptions } from './do-live';
+
 // Transport internals (advanced use / testing)
 export { CfWsClient } from './cf-ws-client';
 export { CfRoomRegistry } from './cf-room-registry';
@@ -15,4 +26,4 @@ export type { DoRuntime } from './do-bootstrap';
 export { registerWebSocketRoutes, collectWsGatewayRoutes } from './websocket-routing';
 export type { WsGatewayRoute } from './websocket-routing';
 export { roomTag, connTag, roomToDurableId } from './room-id';
-export type { DoStateLike, WsLike, WsAttachment } from './do-state';
+export type { DoStateLike, SqlStorageLike, WsLike, WsAttachment } from './do-state';

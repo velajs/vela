@@ -5,6 +5,7 @@ import { Container } from '@velajs/vela/internal';
 import { BindingRef } from './binding-ref';
 import { CloudflareApplication } from './cloudflare-application';
 import { EnvRef } from './env-ref';
+import { initializeWorkerLive } from './websocket/do-live';
 import { registerWebSocketRoutes } from './websocket/websocket-routing';
 
 // Walks every provider registered in the container and pulls out the
@@ -111,6 +112,7 @@ export interface CreateCloudflareAppOptions {
 export function cloudflareAdapter(): RuntimeAdapter {
   let initialized = false;
   let refs: BindingRef[] = [];
+  let liveContainer: Container | undefined;
 
   return {
     name: 'cloudflare',
@@ -124,11 +126,15 @@ export function cloudflareAdapter(): RuntimeAdapter {
             if (ref instanceof EnvRef) ref._initialize(env);
             else ref._initialize(env[ref.bindingName]);
           }
+          // Live queries: hand the durableObjectLive() driver its env so
+          // Worker-side invalidations can resolve the room DO namespace.
+          if (liveContainer) initializeWorkerLive(liveContainer, env);
         }
         await next();
       },
     ],
     onBootstrap: ({ container }) => {
+      liveContainer = container;
       refs = collectBindingRefs(container);
     },
   };

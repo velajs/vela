@@ -1,6 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import type { Type } from '@velajs/vela';
 import type { BroadcastCommand } from '@velajs/vela/websocket';
+import type { CommitStamp, InvalidationCommand, LiveEngine } from '@velajs/vela/live';
 import { buildDoRuntime } from './do-bootstrap';
 import { DoWebSocketHost } from './do-websocket-host';
 import type { WsLike } from './do-state';
@@ -25,6 +26,7 @@ export function VelaWebSocketDurableObject(
 ): new (ctx: DurableObjectState, env: Record<string, unknown>) => DurableObject<Record<string, unknown>> {
   return class VelaWsDurableObject extends DurableObject<Record<string, unknown>> {
     private host!: DoWebSocketHost;
+    private liveEngine?: LiveEngine;
     private readonly ready: Promise<void>;
 
     constructor(ctx: DurableObjectState, env: Record<string, unknown>) {
@@ -38,6 +40,7 @@ export function VelaWebSocketDurableObject(
       this.ready = ctx.blockConcurrencyWhile(async () => {
         const runtime = await buildDoRuntime(rootModule, ctx, env);
         this.host = new DoWebSocketHost(ctx, runtime.dispatcher, runtime.registry, runtime.gatewayPaths);
+        this.liveEngine = runtime.live;
       });
     }
 
@@ -79,6 +82,17 @@ export function VelaWebSocketDurableObject(
     async broadcast(cmd: BroadcastCommand): Promise<void> {
       await this.ready;
       this.host.broadcast(cmd);
+    }
+
+    /**
+     * DO RPC — live tag invalidation forwarded from a Worker (durableObjectLive /
+     * liveInvalidateToRoom). Appends to THIS log scope's cursor log and returns
+     * the commit stamp (what `Vela-Commit-Cursor` carries); the subscription
+     * refreshes fan out asynchronously.
+     */
+    async invalidate(cmd: InvalidationCommand): Promise<CommitStamp | undefined> {
+      await this.ready;
+      return this.liveEngine?.applyInvalidation(cmd);
     }
   };
 }

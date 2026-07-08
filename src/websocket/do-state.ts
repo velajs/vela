@@ -9,11 +9,18 @@ export interface WsLike {
   deserializeAttachment(): unknown;
 }
 
+/** Structural view of the DO's SQLite handle (`ctx.storage.sql`, requires `new_sqlite_classes`). */
+export interface SqlStorageLike {
+  exec(query: string, ...bindings: unknown[]): { toArray(): Record<string, unknown>[] };
+}
+
 export interface DoStateLike {
   readonly id: { toString(): string; readonly name?: string | null };
   acceptWebSocket(ws: WsLike, tags?: string[]): void;
   getWebSockets(tag?: string): WsLike[];
   setWebSocketAutoResponse?(pair: unknown): void;
+  /** Present on SQLite-backed DOs — the live cursor log lives here. */
+  readonly storage?: { sql?: SqlStorageLike };
 }
 
 /** Per-connection metadata persisted in the hibernation attachment (≤ 16 KiB). */

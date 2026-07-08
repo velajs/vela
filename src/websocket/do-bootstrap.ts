@@ -2,9 +2,11 @@ import { bootstrap, VelaApplication } from '@velajs/vela';
 import type { Type } from '@velajs/vela';
 import { local, WsDispatcher, WsServerImpl, WS_SERVER } from '@velajs/vela/websocket';
 import type { WsEntrypointMeta, WsServer } from '@velajs/vela/websocket';
+import type { LiveEngine } from '@velajs/vela/live';
 import { BindingRef } from '../binding-ref';
 import { EnvRef } from '../env-ref';
 import { CfRoomRegistry } from './cf-room-registry';
+import { initDoLive } from './do-live';
 import type { DoStateLike } from './do-state';
 import { WsServerHolder } from './ws-server-holder';
 
@@ -14,6 +16,8 @@ export interface DoRuntime {
   server: WsServer;
   /** Gateway paths from `app.entrypoints.ofKind('websocket')` (discovery order). */
   gatewayPaths: string[];
+  /** The live-query engine (undefined when the app doesn't import LiveModule). */
+  live?: LiveEngine;
   close(signal?: string): Promise<void>;
 }
 
@@ -62,6 +66,10 @@ export async function buildDoRuntime(
   // callOnApplicationBootstrap(), so this slim no-routes path has it too.
   const wsEntrypoints = app.entrypoints.ofKind<WsEntrypointMeta>('websocket');
 
+  // Live queries: wire the SQLite cursor log + local driver mode and replay
+  // hibernation-persisted subscriptions into the fresh engine.
+  const live = initDoLive(app, container, ctx);
+
   return {
     // Zero gateways still yields a live dispatcher (module imported, nothing
     // decorated) — fall back to resolving it directly.
@@ -69,6 +77,7 @@ export async function buildDoRuntime(
     registry,
     server,
     gatewayPaths: wsEntrypoints.map((ep) => ep.meta.path),
+    live,
     close: (signal?: string) => app.close(signal),
   };
 }
