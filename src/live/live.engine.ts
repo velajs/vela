@@ -61,6 +61,29 @@ interface ConnectionEntry {
   subs: Map<string, SubscriptionRecord>;
 }
 
+/**
+ * Where the engine persists a connection's subscription records inside
+ * `client.data` (committed through `WsClient.commit()`). On Cloudflare that
+ * lands in the hibernation attachment, so subscriptions survive DO eviction;
+ * the transport replays them via `restoreSubscription` on wake. On node,
+ * `commit()` is a no-op and this is just in-memory bookkeeping.
+ */
+export const LIVE_SUBS_DATA_KEY = '__velaLiveSubs';
+
+/** Read the subscription records a transport persisted for a connection (wake/restore path). */
+export function readPersistedLiveSubscriptions(client: WsClient): SubscriptionRecord[] {
+  const raw = (client.data as Record<string, unknown> | undefined)?.[LIVE_SUBS_DATA_KEY];
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (record): record is SubscriptionRecord =>
+      typeof record === 'object' &&
+      record !== null &&
+      typeof (record as SubscriptionRecord).sub === 'string' &&
+      typeof (record as SubscriptionRecord).query === 'string' &&
+      Array.isArray((record as SubscriptionRecord).tags),
+  );
+}
+
 const defaultIdentity = (client: WsClient): LiveIdentity | undefined => {
   const data = client.data as Record<string, unknown> | undefined;
   if (!data || Object.keys(data).length === 0) return undefined;
@@ -165,8 +188,10 @@ export class LiveEngine
         return;
       case 'unsub': {
         const conn = this.connections.get(client.id);
-        conn?.subs.delete(frame.sub);
-        if (conn && conn.subs.size === 0) this.connections.delete(client.id);
+        if (!conn) return;
+        conn.subs.delete(frame.sub);
+        if (conn.subs.size === 0) this.connections.delete(client.id);
+        await this.persistSubscriptions(conn);
         return;
       }
       case 'presence':
@@ -294,6 +319,7 @@ export class LiveEngine
       identity,
     };
     conn.subs.set(frame.sub, record);
+    await this.persistSubscriptions(conn);
     this.sendFrame(client, { t: 'ack', sub: frame.sub });
 
     // Resume: when the client's cursor is still explainable and none of the
@@ -464,6 +490,27 @@ export class LiveEngine
         },
       });
     });
+  }
+
+  /**
+   * Mirror the connection's records into `client.data` + `commit()` so
+   * hibernating transports can replay them on wake. The volatile diff
+   * baseline (`lastJson`/`lastCursor`) is deliberately stripped: it can be
+   * large (the whole last result vs the 16 KiB attachment cap) and a lost
+   * baseline just means the next relevant change sends a full snapshot.
+   */
+  private async persistSubscriptions(conn: ConnectionEntry): Promise<void> {
+    const records = [...conn.subs.values()].map(
+      ({ lastJson: _lastJson, lastCursor: _lastCursor, ...persisted }) => persisted,
+    );
+    try {
+      (conn.client.data as Record<string, unknown>)[LIVE_SUBS_DATA_KEY] = records;
+      await conn.client.commit();
+    } catch (err) {
+      if (this.container.getDiagnostics() !== 'silent') {
+        console.warn('[vela] live subscription persistence failed (resume across eviction disabled):', err);
+      }
+    }
   }
 
   private ensureConnection(path: string, client: WsClient): ConnectionEntry {

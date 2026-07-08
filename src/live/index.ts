@@ -5,7 +5,7 @@
 // name stays free for platform packages.
 export { LiveModule } from './live.module';
 export { LiveResolver, LiveQuery, getLiveQueries } from './live.decorators';
-export { LiveEngine } from './live.engine';
+export { LiveEngine, LIVE_SUBS_DATA_KEY, readPersistedLiveSubscriptions } from './live.engine';
 export { LiveInvalidation, localLive, stampCommitHeaders } from './live.invalidation';
 export { InMemoryCursorLog } from './live.cursor';
 export { encodeSubscriptionUpdate } from './live.delta';
