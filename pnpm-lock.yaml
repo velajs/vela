@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@velajs/live-protocol':
+        specifier: ^1.0.0
+        version: 1.0.0
       hono:
         specifier: ^4.12.26
         version: 4.12.26
@@ -835,6 +838,10 @@ packages:
 
   '@types/unist@3.0.3':
     resolution: {integrity: sha512-ko/gIFJRv177XgZsZcBwnqJN5x/Gien8qNOn0D5bQU/zAzVf9Zt3BlcUiLqhV9y4ARk0GbT3tnUiPNgnTXzc/Q==}
+
+  '@velajs/live-protocol@1.0.0':
+    resolution: {integrity: sha512-TBEHd8XODRyvVUbjh6IUeH44coZ6rzBgS1XvIsGcQCKTMp39ywPbDrf1fH51stXVaAymFBkucJGb+UjY9h2qCg==}
+    engines: {node: '>=20'}
 
   '@vitest/expect@4.1.9':
     resolution: {integrity: sha512-vl/rYsUKcBr3SnQn166+XR5ZQcgMx3DQhFWdfli/cWpLnLUmbxZvyrJZotLFUryib+LtArYMSTJ5RbQ57ZqrlA==}
@@ -2330,6 +2337,8 @@ snapshots:
       undici-types: 8.3.0
 
   '@types/unist@3.0.3': {}
+
+  '@velajs/live-protocol@1.0.0': {}
 
   '@vitest/expect@4.1.9':
     dependencies:
