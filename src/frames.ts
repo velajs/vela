@@ -1,0 +1,249 @@
+/**
+ * The normative frame catalog for Vela live queries.
+ *
+ * Live frames ride Vela's existing WebSocket envelope `{ event, data }` under
+ * the single reserved event name `$live`; the frame itself is the envelope's
+ * `data`, discriminated on `t`. Classic gateway events, `ping`→`pong`
+ * keepalive, and live frames coexist on one socket. The `$` prefix is reserved
+ * for the framework: app gateways must never register a `$…` event.
+ *
+ * Byte-identical encoding matters: golden fixtures pin the exact wire string
+ * for every frame shape, and both the server and the client encode through
+ * {@link encodeLiveFrame} / {@link encodeLiveEnvelope} so the two sides cannot
+ * drift. Canonical key order is the declaration order of each type below;
+ * absent optionals are omitted entirely.
+ */
+
+/** The reserved envelope event every live frame rides under. */
+export const LIVE_EVENT = '$live';
+
+/**
+ * The reserved event-name prefix. The WS dispatcher rejects app gateways that
+ * register a `$…` event at bootstrap so live (and future framework) frames can
+ * never collide with app events.
+ */
+export const RESERVED_EVENT_PREFIX = '$';
+
+/**
+ * HTTP response headers carrying the commit cursor/epoch of the log scope a
+ * mutation's invalidations landed in. The client gates optimistic-layer drops
+ * on a subscription frame whose `cursor` passes this value (and whose `epoch`
+ * matches) — never on HTTP response timing, which races the broadcast.
+ */
+export const COMMIT_CURSOR_HEADER = 'Vela-Commit-Cursor';
+export const COMMIT_EPOCH_HEADER = 'Vela-Commit-Epoch';
+
+/** Well-known `error` frame codes. The code space is open — receivers must tolerate unknown codes. */
+export const LIVE_ERROR_CODES = {
+  UNSUPPORTED_PROTOCOL: 'unsupported_protocol',
+  DUPLICATE_SUB: 'duplicate_sub',
+  UNKNOWN_QUERY: 'unknown_query',
+  FORBIDDEN: 'forbidden',
+  BAD_ARGS: 'bad_args',
+  INTERNAL: 'internal',
+} as const;
+
+export type LiveErrorCode = (typeof LIVE_ERROR_CODES)[keyof typeof LIVE_ERROR_CODES] | (string & {});
+
+/**
+ * One row change inside a `delta` frame. Ops are keyed by the query's key
+ * field (default `'id'`); `insert`/`update` carry the full new row, `delete`
+ * omits it. An `insert` carries `before` — the key of the row it precedes in
+ * the authoritative result (`null` = append) — so the client reconstructs the
+ * server's ordering exactly. Application is idempotent: `insert` on an
+ * existing key replaces in place, `delete` of an absent key is a no-op.
+ */
+export type RowOp =
+  | { op: 'insert'; key: string; row: Record<string, unknown>; before: string | null }
+  | { op: 'update'; key: string; row: Record<string, unknown> }
+  | { op: 'delete'; key: string };
+
+/** Client → server frames (the `data` of a `{ event: '$live' }` envelope). */
+export type ClientLiveFrame =
+  | {
+      t: 'sub';
+      /** Client-chosen subscription id, unique per socket. */
+      sub: string;
+      /** The live-query identifier declared by `@LiveQuery(name)`. */
+      query: string;
+      args?: unknown;
+      /** Resume watermark: last observed cursor/epoch. Omitted = cold subscribe. */
+      sinceCursor?: number;
+      sinceEpoch?: string;
+      /** Key-field override for list deltas (default `'id'`). */
+      key?: string;
+      /** Protocol version the client speaks (see LIVE_PROTOCOL). */
+      v?: number;
+    }
+  | { t: 'unsub'; sub: string }
+  | { t: 'presence'; room: string; meta?: unknown };
+
+/** Server → client frames. `ack` precedes any `data`/`resume` for a sub. */
+export type ServerLiveFrame =
+  | { t: 'ack'; sub: string }
+  | { t: 'data'; sub: string; snapshot: unknown; cursor?: number; epoch?: string }
+  | { t: 'delta'; sub: string; ops: RowOp[]; cursor?: number; epoch?: string }
+  /** Re-run result was byte-identical — no payload, but the cursor still advances (drops optimistic layers). */
+  | { t: 'settled'; sub: string; cursor?: number; epoch?: string }
+  /** Resume verdict: nothing relevant changed while away — keep the cached value, advance the cursor. */
+  | { t: 'resume'; sub: string; cursor: number; epoch: string }
+  | { t: 'error'; sub?: string; code: LiveErrorCode; message: string; fatal: boolean };
+
+export type LiveFrame = ClientLiveFrame | ServerLiveFrame;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const isOptionalNumber = (value: unknown): value is number | undefined =>
+  value === undefined || (typeof value === 'number' && Number.isFinite(value));
+
+const isOptionalString = (value: unknown): value is string | undefined =>
+  value === undefined || typeof value === 'string';
+
+/** Structural guard for a single {@link RowOp}. Unknown extra fields are tolerated. */
+export const isRowOp = (value: unknown): value is RowOp => {
+  if (!isRecord(value) || typeof value['key'] !== 'string') return false;
+  const op = value['op'];
+  if (op === 'delete') return true;
+  if (op !== 'insert' && op !== 'update') return false;
+  if (!isRecord(value['row'])) return false;
+  if (op === 'insert') {
+    const before = value['before'];
+    return before === null || typeof before === 'string';
+  }
+  return true;
+};
+
+export const isRowOps = (value: unknown): value is RowOp[] => Array.isArray(value) && value.every(isRowOp);
+
+/**
+ * Structural guard for a client frame. Frames with an unknown `t` return
+ * false — per the forward-compat rule the receiver then ignores the frame.
+ */
+export const isClientLiveFrame = (value: unknown): value is ClientLiveFrame => {
+  if (!isRecord(value)) return false;
+  switch (value['t']) {
+    case 'sub':
+      return (
+        typeof value['sub'] === 'string' &&
+        typeof value['query'] === 'string' &&
+        isOptionalNumber(value['sinceCursor']) &&
+        isOptionalString(value['sinceEpoch']) &&
+        isOptionalString(value['key']) &&
+        isOptionalNumber(value['v'])
+      );
+    case 'unsub':
+      return typeof value['sub'] === 'string';
+    case 'presence':
+      return typeof value['room'] === 'string';
+    default:
+      return false;
+  }
+};
+
+/** Structural guard for a server frame. Unknown `t` → false (receiver ignores). */
+export const isServerLiveFrame = (value: unknown): value is ServerLiveFrame => {
+  if (!isRecord(value)) return false;
+  switch (value['t']) {
+    case 'ack':
+      return typeof value['sub'] === 'string';
+    case 'data':
+      return (
+        typeof value['sub'] === 'string' &&
+        'snapshot' in value &&
+        isOptionalNumber(value['cursor']) &&
+        isOptionalString(value['epoch'])
+      );
+    case 'delta':
+      return (
+        typeof value['sub'] === 'string' &&
+        isRowOps(value['ops']) &&
+        isOptionalNumber(value['cursor']) &&
+        isOptionalString(value['epoch'])
+      );
+    case 'settled':
+      return typeof value['sub'] === 'string' && isOptionalNumber(value['cursor']) && isOptionalString(value['epoch']);
+    case 'resume':
+      return (
+        typeof value['sub'] === 'string' &&
+        typeof value['cursor'] === 'number' &&
+        Number.isFinite(value['cursor']) &&
+        typeof value['epoch'] === 'string'
+      );
+    case 'error':
+      return (
+        isOptionalString(value['sub']) &&
+        typeof value['code'] === 'string' &&
+        typeof value['message'] === 'string' &&
+        typeof value['fatal'] === 'boolean'
+      );
+    default:
+      return false;
+  }
+};
+
+/**
+ * Extract the live frame from a parsed WS envelope, or `undefined` when the
+ * envelope is not a live envelope. Does NOT validate the frame — pair with
+ * {@link isClientLiveFrame} / {@link isServerLiveFrame} on the receiving side.
+ */
+export const readLiveEnvelope = (envelope: unknown): unknown => {
+  if (!isRecord(envelope) || envelope['event'] !== LIVE_EVENT) return undefined;
+  return envelope['data'];
+};
+
+/** Wrap a frame in the `$live` envelope object. */
+export const liveEnvelope = (frame: LiveFrame): { event: typeof LIVE_EVENT; data: LiveFrame } => ({
+  event: LIVE_EVENT,
+  data: frame,
+});
+
+const CANONICAL_KEYS: Record<string, readonly string[]> = {
+  sub: ['t', 'sub', 'query', 'args', 'sinceCursor', 'sinceEpoch', 'key', 'v'],
+  unsub: ['t', 'sub'],
+  presence: ['t', 'room', 'meta'],
+  ack: ['t', 'sub'],
+  data: ['t', 'sub', 'snapshot', 'cursor', 'epoch'],
+  delta: ['t', 'sub', 'ops', 'cursor', 'epoch'],
+  settled: ['t', 'sub', 'cursor', 'epoch'],
+  resume: ['t', 'sub', 'cursor', 'epoch'],
+  error: ['t', 'sub', 'code', 'message', 'fatal'],
+};
+
+const ROW_OP_KEYS = ['op', 'key', 'row', 'before'] as const;
+
+const canonicalRowOp = (op: RowOp): Record<string, unknown> => {
+  const source = op as unknown as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const key of ROW_OP_KEYS) {
+    if (source[key] !== undefined) out[key] = source[key];
+  }
+  return out;
+};
+
+/**
+ * Rebuild a frame with the canonical key order, dropping absent optionals.
+ * `JSON.stringify` of the result is the frame's canonical wire form — the one
+ * the golden fixtures pin byte-for-byte.
+ */
+export const canonicalLiveFrame = (frame: LiveFrame): Record<string, unknown> => {
+  const source = frame as unknown as Record<string, unknown>;
+  const keys = CANONICAL_KEYS[frame.t];
+  if (keys === undefined) {
+    throw new Error(`Unknown live frame type: ${String(frame.t)}`);
+  }
+  const out: Record<string, unknown> = {};
+  for (const key of keys) {
+    const value = source[key];
+    if (value === undefined) continue;
+    out[key] = frame.t === 'delta' && key === 'ops' ? (value as RowOp[]).map(canonicalRowOp) : value;
+  }
+  return out;
+};
+
+/** Canonical JSON encoding of a bare frame (no envelope). */
+export const encodeLiveFrame = (frame: LiveFrame): string => JSON.stringify(canonicalLiveFrame(frame));
+
+/** Canonical JSON encoding of the full `$live` envelope — what actually goes on the socket. */
+export const encodeLiveEnvelope = (frame: LiveFrame): string =>
+  `{"event":${JSON.stringify(LIVE_EVENT)},"data":${encodeLiveFrame(frame)}}`;
