@@ -19,10 +19,10 @@ importers:
         version: 1.15.43
       '@velajs/feature-flags':
         specifier: ^0.1.0
-        version: 0.1.0(@velajs/vela@1.12.0)(hono@4.12.27)
+        version: 0.1.0(@velajs/vela@1.17.0)(hono@4.12.27)
       '@velajs/vela':
-        specifier: ^1.12.0
-        version: 1.12.0
+        specifier: ^1.17.0
+        version: 1.17.0
       hono:
         specifier: ^4.12.27
         version: 4.12.27
@@ -603,8 +603,12 @@ packages:
       '@velajs/vela': '>=1.11.0'
       hono: '>=4'
 
-  '@velajs/vela@1.12.0':
-    resolution: {integrity: sha512-7vfM47mXUNWdpe3DEk6ktcWp0+H6xTQ+Dsx5JM4B19107V2E/jMJ9zW3UWgZH2VwRRN4Jm9Md3J9zsgdAr09gQ==}
+  '@velajs/live-protocol@1.0.0':
+    resolution: {integrity: sha512-TBEHd8XODRyvVUbjh6IUeH44coZ6rzBgS1XvIsGcQCKTMp39ywPbDrf1fH51stXVaAymFBkucJGb+UjY9h2qCg==}
+    engines: {node: '>=20'}
+
+  '@velajs/vela@1.17.0':
+    resolution: {integrity: sha512-OiDC66ULVaGKzPJiiS1y+dOjuZU7HzuYjMNIEfaDWprb6THEfMKr7fjndYOcrqaTCOEBC5uks1TJTG8zQvo7Vw==}
     engines: {node: '>=20'}
     peerDependencies:
       intl-messageformat: '>=10'
@@ -1694,13 +1698,16 @@ snapshots:
       undici-types: 7.18.2
     optional: true
 
-  '@velajs/feature-flags@0.1.0(@velajs/vela@1.12.0)(hono@4.12.27)':
+  '@velajs/feature-flags@0.1.0(@velajs/vela@1.17.0)(hono@4.12.27)':
     dependencies:
-      '@velajs/vela': 1.12.0
+      '@velajs/vela': 1.17.0
       hono: 4.12.27
 
-  '@velajs/vela@1.12.0':
+  '@velajs/live-protocol@1.0.0': {}
+
+  '@velajs/vela@1.17.0':
     dependencies:
+      '@velajs/live-protocol': 1.0.0
       hono: 4.12.27
 
   '@vitest/expect@4.1.9':
