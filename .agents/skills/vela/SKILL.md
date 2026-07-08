@@ -1,6 +1,6 @@
 ---
 name: vela
-description: "Build NestJS-compatible APIs for edge runtimes with the Vela framework (@velajs/vela), powered by Hono. Use when code imports from '@velajs/vela' or its subpaths ('@velajs/vela/i18n', '/queue', '/seeder', '/storage', '/schedule-node', '/websocket', '/websocket-node', '/streaming', '/internal'), or from sibling packages (@velajs/cloudflare, @velajs/crud, @velajs/better-auth, @velajs/storage, @velajs/testing, @velajs/cli, @velajs/feature-flags); when creating modules, controllers, services, providers, guards, pipes, interceptors, filters, WebSocket gateways, queue processors, cron jobs, seeders, or config namespaces; or when the user says 'create a vela module', 'add a controller/endpoint', 'add a gateway', 'set up config', 'add named routes', 'sign a URL', 'add CRUD', 'deploy to cloudflare', 'run NestJS on the edge', 'add validation', 'generate OpenAPI docs', or 'write a seeder'. Covers dependency injection, dynamic modules (defineModule/forRoot/forRootAsync), routing with named routes + signed URLs, the guard/pipe/interceptor/filter pipeline, Zod validation, OpenAPI, config with registerAs namespaces, events, scheduling, queues, i18n, health/throttling/caching, and WebSocket gateways. Do NOT use for plain Hono apps, raw Cloudflare Workers, or actual NestJS (Node-only) projects."
+description: "Build NestJS-compatible APIs for edge runtimes with the Vela framework (@velajs/vela), powered by Hono. Use when code imports from '@velajs/vela' or its subpaths ('@velajs/vela/i18n', '/queue', '/live', '/seeder', '/storage', '/schedule-node', '/websocket', '/websocket-node', '/streaming', '/internal'), or from sibling packages (@velajs/cloudflare, @velajs/crud, @velajs/better-auth, @velajs/storage, @velajs/testing, @velajs/cli, @velajs/feature-flags); when creating modules, controllers, services, providers, guards, pipes, interceptors, filters, WebSocket gateways, queue processors, cron jobs, seeders, or config namespaces; or when the user says 'create a vela module', 'add a controller/endpoint', 'add a gateway', 'set up config', 'add named routes', 'sign a URL', 'add CRUD', 'deploy to cloudflare', 'run NestJS on the edge', 'add validation', 'generate OpenAPI docs', or 'write a seeder'. Covers dependency injection, dynamic modules (defineModule/forRoot/forRootAsync), routing with named routes + signed URLs, the guard/pipe/interceptor/filter pipeline, Zod validation, OpenAPI, config with registerAs namespaces, events, scheduling, queues, i18n, health/throttling/caching, and WebSocket gateways. Do NOT use for plain Hono apps, raw Cloudflare Workers, or actual NestJS (Node-only) projects."
 license: MIT
 metadata:
   version: "1.16.0"
@@ -11,7 +11,7 @@ metadata:
 Vela (`@velajs/vela`) is a NestJS-compatible framework for **edge runtimes**, built on [Hono](https://hono.dev). Same decorators, DI, modules, and pipeline as NestJS, but it runs on Cloudflare Workers, Deno, Bun, Vercel Edge, and Node 20+ — anywhere with Web Standard APIs.
 
 - The **main export** `@velajs/vela` is edge-safe by contract (no `node:*`, `Buffer`, `process`, `setInterval`) — enforced in CI.
-- Subpaths: `@velajs/vela/i18n`, `/queue`, `/seeder`, `/storage`, `/schedule-node` (Node/Bun only), `/websocket`, `/websocket-node`, `/streaming`, `/internal` (plugin authors).
+- Subpaths: `@velajs/vela/i18n`, `/queue`, `/live`, `/seeder`, `/storage`, `/schedule-node` (Node/Bun only), `/websocket`, `/websocket-node`, `/streaming`, `/internal` (plugin authors).
 - Sibling packages: `@velajs/cloudflare` (Workers adapter: KV/D1/R2/Queues/DO), `@velajs/crud`, `@velajs/better-auth`, `@velajs/storage`, `@velajs/testing`, `@velajs/cli`, `@velajs/feature-flags`.
 
 ## Critical Rules
@@ -150,6 +150,7 @@ Load a reference when the task needs its depth. **This table is the contract** �
 | `references/config.md` | `ConfigModule.forRoot`, `registerAs`, `ConfigType`/`InferConfigType`, `CONFIG_ENV`, typed dot-notation, `forRoot`-only caveat |
 | `references/websocket.md` | Gateways, `@SubscribeMessage`, `WsServer`/rooms, `WebSocketModule`, transports (core / websocket-node / CF DO) |
 | `references/queues.md` | `@velajs/vela/queue`: `QueueModule`, `@Processor`/`@Process`, `queueToken`/`QueueClient`, inline driver, `dispatchQueueJob` |
+| `references/live-queries.md` | `@velajs/vela/live`: `LiveModule`, `@LiveResolver`/`@LiveQuery` + tags, `LiveInvalidation`, resume/cursors, CRUD `live: true` bridge, `@velajs/client` hooks |
 | `references/schedule-and-cron.md` | `ScheduleModule`, `@Cron`/`@Interval`, edge-safe registry vs `@velajs/vela/schedule-node` executor |
 | `references/events.md` | `EventEmitterModule`, `@OnEvent`, wildcards, lazy note |
 | `references/i18n.md` | `@velajs/vela/i18n`: `I18nModule`, `I18nService.t`, detection middleware, `intl-messageformat` peer |
