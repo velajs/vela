@@ -53,7 +53,7 @@
   "peerDependencies": {
     "@cloudflare/workers-types": ">=4",
     "@velajs/feature-flags": "^0.1.0",
-    "@velajs/vela": ">=1.11.0",
+    "@velajs/vela": ">=1.17.0",
     "hono": ">=4"
   },
   "peerDependenciesMeta": {
