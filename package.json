@@ -38,6 +38,10 @@
       "types": "./dist/queue/index.d.ts",
       "import": "./dist/queue/index.js"
     },
+    "./live": {
+      "types": "./dist/live/index.d.ts",
+      "import": "./dist/live/index.js"
+    },
     "./storage": {
       "types": "./dist/storage/index.d.ts",
       "import": "./dist/storage/index.js"
@@ -96,6 +100,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@velajs/live-protocol": "^1.0.0",
     "hono": "^4.12.26"
   },
   "peerDependencies": {

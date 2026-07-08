@@ -1,9 +1,21 @@
 import { Scope } from '../constants';
 import { Inject } from '../container/decorators';
+import { createDiscoverableDecorator } from '../discovery/index';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import type { Constructor } from '../registry/types';
-import { WS_GATEWAY_METADATA, WS_SERVER, WS_SUBSCRIBE_METADATA, WsParamType } from './websocket.tokens';
-import type { SubscribeMessageMetadata, WebSocketGatewayOptions } from './websocket.types';
+import {
+  RESERVED_WS_EVENT_PREFIX,
+  WS_GATEWAY_METADATA,
+  WS_RESERVED_METADATA,
+  WS_SERVER,
+  WS_SUBSCRIBE_METADATA,
+  WsParamType,
+} from './websocket.tokens';
+import type {
+  ReservedWsEventMetadata,
+  SubscribeMessageMetadata,
+  WebSocketGatewayOptions,
+} from './websocket.types';
 
 /**
  * Marks a class as a WebSocket gateway. Mirrors `@Controller` for the socket
@@ -37,6 +49,31 @@ export function SubscribeMessage(event: string): MethodDecorator {
       { event, methodName: String(propertyKey) },
     );
   };
+}
+
+const ReservedWsEventMeta = createDiscoverableDecorator<ReservedWsEventMetadata>(WS_RESERVED_METADATA);
+
+/**
+ * Claims a reserved (`$`-prefixed) envelope event for a framework-module
+ * provider (see `ReservedWsEventHandler`). Reserved frames route to the
+ * decorated provider across every gateway path — gateways themselves may not
+ * subscribe to `$…` events. Stack with `@Injectable()` like `@Processor`.
+ *
+ * @example
+ * ```ts
+ * @ReservedWsEvent('$live')
+ * @Injectable()
+ * class LiveEngine implements ReservedWsEventHandler { … }
+ * ```
+ */
+export function ReservedWsEvent(event: string): ClassDecorator {
+  if (!event.startsWith(RESERVED_WS_EVENT_PREFIX)) {
+    throw new Error(
+      `@ReservedWsEvent('${event}') must claim a '${RESERVED_WS_EVENT_PREFIX}'-prefixed event — ` +
+        'unprefixed events belong to app gateways (@SubscribeMessage).',
+    );
+  }
+  return ReservedWsEventMeta({ event }) as ClassDecorator;
 }
 
 function wsParamDecorator(type: WsParamType): () => ParameterDecorator {

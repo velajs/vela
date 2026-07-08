@@ -27,11 +27,19 @@ import type {
 import { resolveWsArgs } from './ws-argument-resolver';
 import { buildWsExecutionContext } from './ws-execution-context';
 import { toErrorFrame, WsException } from './ws-exception';
-import { WS_GATEWAY_METADATA, WS_SERVER, WS_SUBSCRIBE_METADATA } from './websocket.tokens';
+import {
+  RESERVED_WS_EVENT_PREFIX,
+  WS_GATEWAY_METADATA,
+  WS_RESERVED_METADATA,
+  WS_SERVER,
+  WS_SUBSCRIBE_METADATA,
+} from './websocket.tokens';
 import type {
   OnGatewayConnection,
   OnGatewayDisconnect,
   OnGatewayInit,
+  ReservedWsEventHandler,
+  ReservedWsEventMetadata,
   SubscribeMessageMetadata,
   WebSocketGatewayOptions,
   WsClient,
@@ -91,6 +99,7 @@ export interface WsEntrypointMeta {
 @Injectable()
 export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoints {
   private readonly gateways = new Map<string, GatewayEntry>();
+  private readonly reserved = new Map<string, ReservedWsEventHandler>();
 
   constructor(
     @Inject(Container) private readonly container: Container,
@@ -105,6 +114,24 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
   }
 
   async onApplicationBootstrap(): Promise<void> {
+    // Reserved-event handlers first: modules claiming a `$…` event
+    // (@ReservedWsEvent) receive those frames across every gateway path.
+    for (const found of this.discovery.providersWithMeta<ReservedWsEventMetadata>(
+      WS_RESERVED_METADATA,
+    )) {
+      if (!found.instance) continue;
+      const event = found.meta.event;
+      if (this.reserved.has(event)) {
+        const msg =
+          `[vela] duplicate @ReservedWsEvent('${event}') ` +
+          `(${found.metatype.name}); keeping the first.`;
+        if (this.container.getDiagnostics() === 'throw') throw new Error(msg);
+        console.warn(msg);
+        continue;
+      }
+      this.reserved.set(event, found.instance as unknown as ReservedWsEventHandler);
+    }
+
     for (const found of this.discovery.providersWithMeta<WebSocketGatewayOptions>(
       WS_GATEWAY_METADATA,
     )) {
@@ -154,6 +181,15 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
   }
 
   async handleClose(path: string, client: WsClient, _code: number, _reason: string): Promise<void> {
+    // Reserved handlers drop per-connection state first (isolated per handler)
+    // so a throwing gateway handleDisconnect can't leak live subscriptions.
+    for (const handler of this.reserved.values()) {
+      try {
+        await handler.handleSocketClose?.(path, client);
+      } catch (err) {
+        await this.handleError(path, client, err);
+      }
+    }
     const entry = this.gateways.get(path);
     if (entry && hasHandleDisconnect(entry.instance)) {
       await entry.instance.handleDisconnect(client);
@@ -175,6 +211,14 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
       message = this.parse(raw);
     } catch {
       this.trySend(client, 'exception', { message: 'Invalid message' });
+      return;
+    }
+
+    // Reserved namespace: `$…` frames route to @ReservedWsEvent handlers
+    // (after app-wide guards) and NEVER reach gateway handlers; an unclaimed
+    // reserved event is dropped like any unknown event.
+    if (message.event.startsWith(RESERVED_WS_EVENT_PREFIX)) {
+      await this.dispatchReserved(path, client, message);
       return;
     }
 
@@ -230,6 +274,40 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
       this.reply(client, message, result);
     } catch (error) {
       await this.runFilters(client, message, error, filters, ctx);
+    }
+  }
+
+  /**
+   * Route a reserved (`$…`) frame to its claiming handler. App-wide (`APP_*` /
+   * `useGlobalGuards`) guards protect reserved frames exactly like gateway
+   * messages — guards-first, WS convention; handler/class-tier components are
+   * the claiming module's own concern (e.g. live resolvers run their scoped
+   * guards at subscribe).
+   */
+  private async dispatchReserved(path: string, client: WsClient, message: WsMessage): Promise<void> {
+    const handler = this.reserved.get(message.event);
+    if (!handler) return;
+
+    const ctx = buildWsExecutionContext(
+      client,
+      message.data,
+      handler.constructor as Type,
+      'handleReservedEvent',
+      message.event,
+    );
+    const globals = this.routeManager?.getGlobalComponents();
+    const guards = instantiateMany<CanActivate>(globals?.guards ?? [], this.container);
+    try {
+      for (const guard of guards) {
+        if (!(await guard.canActivate(ctx))) {
+          const frame = toErrorFrame(new WsException('Forbidden'));
+          this.trySend(client, frame.event, frame.data, message.id);
+          return;
+        }
+      }
+      await handler.handleReservedEvent(path, client, message);
+    } catch (err) {
+      await this.handleError(path, client, err);
     }
   }
 
@@ -306,6 +384,16 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
 
     const handlers = new Map<string, HandlerEntry>();
     for (const { event, methodName } of subs) {
+      // The `$` namespace belongs to framework modules (@ReservedWsEvent) — an
+      // app gateway subscribing to it would never receive the frames anyway.
+      if (event.startsWith(RESERVED_WS_EVENT_PREFIX)) {
+        const msg =
+          `[vela] @SubscribeMessage('${event}') on ${gatewayClass.name}: the ` +
+          `'${RESERVED_WS_EVENT_PREFIX}' event prefix is reserved for framework modules — skipped.`;
+        if (this.container.getDiagnostics() === 'throw') throw new Error(msg);
+        console.warn(msg);
+        continue;
+      }
       const paramMeta = [...(allParams.get(methodName) ?? [])].sort((a, b) => a.index - b.index);
       const paramTypes = Reflect.getMetadata('design:paramtypes', gatewayClass.prototype, methodName) as
         | unknown[]

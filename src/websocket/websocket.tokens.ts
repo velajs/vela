@@ -6,6 +6,14 @@ import type { WsServer } from './websocket.types';
 // Free-form metadata keys — same string-token convention as ON_EVENT_METADATA / CRON_METADATA.
 export const WS_GATEWAY_METADATA = 'vela:ws-gateway';
 export const WS_SUBSCRIBE_METADATA = 'vela:ws-subscribe';
+export const WS_RESERVED_METADATA = 'vela:ws-reserved';
+
+/**
+ * Event names starting with this prefix are RESERVED for framework modules
+ * (`$live`, …): app gateways may not subscribe to them, and inbound frames
+ * carrying them route to `@ReservedWsEvent` handlers instead of gateways.
+ */
+export const RESERVED_WS_EVENT_PREFIX = '$';
 
 // WebSocket parameter-decorator kinds — parallel to `ParamType` for HTTP, keyed
 // by the WS argument resolver rather than the Hono-bound HTTP one.

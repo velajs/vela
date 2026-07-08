@@ -215,9 +215,11 @@ export {
   MessageBody,
   ConnectedSocket,
   WebSocketServer,
+  ReservedWsEvent,
   WsDispatcher,
   WsException,
   WS_SERVER,
+  RESERVED_WS_EVENT_PREFIX,
 } from './websocket/index';
 export type {
   WebSocketModuleOptions,
@@ -225,6 +227,8 @@ export type {
   WsServer,
   WsMessage,
   WsResponse,
+  ReservedWsEventMetadata,
+  ReservedWsEventHandler,
   WsExecutionContext,
   WsArgumentsHost,
   BroadcastCommand,

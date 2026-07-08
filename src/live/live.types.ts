@@ -1,0 +1,156 @@
+import type { WsClient } from '../index';
+
+/**
+ * Identity captured at subscribe time and replayed into every re-run of the
+ * subscription's query — never re-read from the client afterwards. Free-form;
+ * `expiresAt` (epoch ms) is the one recognized field: a lapsed identity drops
+ * the socket before it receives another scoped push (outbound enforcement —
+ * a passive subscriber never trips inbound checks).
+ */
+export interface LiveIdentity {
+  [key: string]: unknown;
+  expiresAt?: number;
+}
+
+/** Second positional argument every `@LiveQuery` handler receives. */
+export interface LiveQueryContext {
+  identity?: LiveIdentity;
+  /** The subscribed connection's id. */
+  clientId: string;
+  /** Rooms the connection was in when it subscribed. */
+  rooms: string[];
+}
+
+export interface LiveQueryOptions<A = unknown> {
+  /**
+   * Dependency tags this query's result is built from — the invalidation
+   * contract. Static for the common case; the function form derives
+   * per-entity tags from the (parsed) subscribe args. Writes invalidate tags
+   * via `LiveInvalidation.invalidate()` (the CRUD bridge does it
+   * automatically with `crud:<table>` tags).
+   */
+  tags: string[] | ((args: A) => string[]);
+  /** Key field for incremental list deltas (default `'id'`). */
+  key?: string;
+  /**
+   * Args validator, run ONCE at subscribe (a zod schema's `.parse` slots in
+   * directly). A throw rejects the subscription with a `bad_args` error frame.
+   */
+  parse?: (args: unknown) => A;
+}
+
+/** One `@LiveQuery` declaration on a `@LiveResolver` class. */
+export interface LiveQueryMetadata {
+  name: string;
+  methodName: string | symbol;
+  options: LiveQueryOptions;
+}
+
+/** Class-level marker meta written by `@LiveResolver()`. */
+export interface LiveResolverMetadata {}
+
+/** A position in this log scope's ordered invalidation log. */
+export interface CommitStamp {
+  cursor: number;
+  epoch: string;
+}
+
+/**
+ * Resume verdict for a reconnecting subscription:
+ * - `'resume'` — nothing the subscription depends on changed while away; keep
+ *   the client's cached value and just advance its cursor.
+ * - `'rerun'` — a relevant tag was invalidated in the gap; re-run and snapshot.
+ * - `'snapshot'` — the gap cannot be reasoned about (epoch fork, trimmed log,
+ *   rollback); re-run and snapshot.
+ */
+export type ResumeVerdict = 'resume' | 'rerun' | 'snapshot';
+
+/**
+ * The ordered tag-invalidation log for ONE log scope (this process on
+ * node/bun/deno; one Durable Object on Cloudflare). Cursor = monotonic
+ * sequence; epoch = timeline token rolled whenever monotonicity can no longer
+ * be guaranteed (process restart, DO reset).
+ */
+export interface CursorLog {
+  append(tags: string[]): CommitStamp | Promise<CommitStamp>;
+  current(): CommitStamp | Promise<CommitStamp>;
+  evaluateResume(
+    sinceCursor: number,
+    sinceEpoch: string,
+    subscriptionTags: string[],
+  ): ResumeVerdict | Promise<ResumeVerdict>;
+}
+
+/** A tag invalidation crossing the driver seam. `room` addresses the log scope holding the subscribers (advisory for local delivery). */
+export interface InvalidationCommand {
+  room?: string;
+  tags: string[];
+  /** Origin instance id — lets pub/sub drivers drop their own echo. */
+  origin?: string;
+}
+
+/** What a driver delivers invalidations INTO — the live engine of one log scope. */
+export interface LiveInvalidationSink {
+  applyInvalidation(cmd: InvalidationCommand): CommitStamp | Promise<CommitStamp>;
+}
+
+/**
+ * Cross-boundary invalidation transport — the live sibling of the WebSocket
+ * `SyncDriver`, carrying TAGS (re-run instructions) instead of pre-serialized
+ * frames. `localLive()` is the in-core single-scope default; platform packages
+ * (`durableObjectLive()` in @velajs/cloudflare, `redisLive()` in
+ * websocket-node) implement it out-of-core. `dispatch` returns the commit
+ * stamp of the targeted log scope when the driver can observe it.
+ */
+export interface LiveDriver {
+  readonly kind: string;
+  bind(sink: LiveInvalidationSink): void;
+  dispatch(cmd: InvalidationCommand): CommitStamp | undefined | Promise<CommitStamp | undefined>;
+  start?(): void | Promise<void>;
+  stop?(): void | Promise<void>;
+}
+
+/** One live subscription as tracked by the engine (and persisted by transports that survive eviction). */
+export interface SubscriptionRecord {
+  sub: string;
+  query: string;
+  args: unknown;
+  /** Frozen at subscribe from the (parsed) args. */
+  tags: string[];
+  /** Delta key field (subscribe-frame override wins over the handler option). */
+  key?: string;
+  identity?: LiveIdentity;
+  /**
+   * The last result this subscription confirmed on the wire (the delta diff
+   * baseline). `undefined` after a cursor-resume: the server never re-ran the
+   * query, so the next relevant change sends a full snapshot.
+   */
+  lastJson?: string;
+  lastCursor?: number;
+}
+
+export interface LivePresenceOptions {
+  /** Roster entries older than this are filtered at read time (default 30_000 ms). */
+  ttlMs?: number;
+}
+
+export interface LiveModuleOptions {
+  /** Cross-boundary invalidation driver. Defaults to `localLive()`. */
+  driver?: LiveDriver;
+  /** Ordered invalidation log. Defaults to the in-memory per-process log. */
+  log?: CursorLog;
+  /**
+   * Identity capture at subscribe. Default: a shallow copy of `client.data`
+   * (whatever the app's upgrade/`handleConnection` auth stamped there), or
+   * `undefined` when empty.
+   */
+  identity?: (client: WsClient) => LiveIdentity | undefined;
+  /** Presence preset configuration; `false` disables the built-in resolver. */
+  presence?: LivePresenceOptions | false;
+}
+
+/** Meta carried by the `'live'` entrypoint (transports reach the engine through it). */
+export interface LiveEntrypointMeta {
+  /** The engine — typed loosely to avoid a circular type edge; cast to `LiveEngine`. */
+  engine: unknown;
+}

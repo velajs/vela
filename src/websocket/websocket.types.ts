@@ -82,6 +82,24 @@ export interface SubscribeMessageMetadata {
   methodName: string;
 }
 
+/** Class-level meta written by `@ReservedWsEvent(event)`. */
+export interface ReservedWsEventMetadata {
+  /** The reserved (`$`-prefixed) envelope event this provider handles. */
+  event: string;
+}
+
+/**
+ * A provider claiming a reserved (`$`-prefixed) envelope event across EVERY
+ * gateway path. Discovered by `WsDispatcher` at bootstrap via the
+ * `@ReservedWsEvent` decorator; inbound frames for the event route here
+ * (after app-wide guards), never to gateways. `handleSocketClose` fires for
+ * every closing socket so the handler can drop per-connection state.
+ */
+export interface ReservedWsEventHandler {
+  handleReservedEvent(path: string, client: WsClient, message: WsMessage): void | Promise<void>;
+  handleSocketClose?(path: string, client: WsClient): void | Promise<void>;
+}
+
 /**
  * A fully serializable broadcast instruction. Crosses isolate / Durable-Object /
  * Redis boundaries as JSON, so every sync driver speaks the same command.

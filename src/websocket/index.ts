@@ -5,6 +5,7 @@ export {
   MessageBody,
   ConnectedSocket,
   WebSocketServer,
+  ReservedWsEvent,
 } from './websocket.decorators';
 
 // Module
@@ -34,6 +35,8 @@ export {
   WS_MODULE_OPTIONS,
   WS_GATEWAY_METADATA,
   WS_SUBSCRIBE_METADATA,
+  WS_RESERVED_METADATA,
+  RESERVED_WS_EVENT_PREFIX,
   WsParamType,
 } from './websocket.tokens';
 
@@ -47,6 +50,8 @@ export type {
   BroadcastOperator,
   WebSocketGatewayOptions,
   SubscribeMessageMetadata,
+  ReservedWsEventMetadata,
+  ReservedWsEventHandler,
   WsExecutionContext,
   WsArgumentsHost,
   OnGatewayInit,
