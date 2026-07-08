@@ -1,16 +1,16 @@
-name: CI
+name: Publish
 
 permissions:
   contents: read
 
+# Workspace publisher: publishes every non-private package whose version is
+# not yet on npm (pnpm -r publish skips already-published versions). Bump the
+# package versions in a normal commit, then dispatch this workflow.
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 jobs:
-  test:
+  publish:
     runs-on: ubuntu-latest
     steps:
       - name: Harden the runner (Audit all outbound calls)
@@ -26,6 +26,7 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
+          registry-url: 'https://registry.npmjs.org'
 
       - run: pnpm install
 
@@ -34,3 +35,9 @@ jobs:
       - run: pnpm -r run test
 
       - run: pnpm -r run build
+
+      # TODO: enable provenance once repo is public (add NPM_CONFIG_PROVENANCE: "true")
+      - name: Publish to npm
+        run: pnpm -r publish --no-git-checks --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
