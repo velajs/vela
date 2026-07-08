@@ -3,7 +3,7 @@ name: vela
 description: "Build NestJS-compatible APIs for edge runtimes with the Vela framework (@velajs/vela), powered by Hono. Use when code imports from '@velajs/vela' or its subpaths ('@velajs/vela/i18n', '/queue', '/live', '/seeder', '/storage', '/schedule-node', '/websocket', '/websocket-node', '/streaming', '/internal'), or from sibling packages (@velajs/cloudflare, @velajs/crud, @velajs/better-auth, @velajs/storage, @velajs/testing, @velajs/cli, @velajs/feature-flags); when creating modules, controllers, services, providers, guards, pipes, interceptors, filters, WebSocket gateways, queue processors, cron jobs, seeders, or config namespaces; or when the user says 'create a vela module', 'add a controller/endpoint', 'add a gateway', 'set up config', 'add named routes', 'sign a URL', 'add CRUD', 'deploy to cloudflare', 'run NestJS on the edge', 'add validation', 'generate OpenAPI docs', or 'write a seeder'. Covers dependency injection, dynamic modules (defineModule/forRoot/forRootAsync), routing with named routes + signed URLs, the guard/pipe/interceptor/filter pipeline, Zod validation, OpenAPI, config with registerAs namespaces, events, scheduling, queues, i18n, health/throttling/caching, and WebSocket gateways. Do NOT use for plain Hono apps, raw Cloudflare Workers, or actual NestJS (Node-only) projects."
 license: MIT
 metadata:
-  version: "1.16.0"
+  version: "1.17.0"
 ---
 
 # Vela Framework
