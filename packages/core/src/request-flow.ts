@@ -34,5 +34,10 @@ export function toResponse(c: Context, result: EngineResult): Response {
   for (const [name, value] of Object.entries(result.headers ?? {})) {
     c.header(name, value);
   }
+  // Non-JSON payloads (CSV export) set their own Content-Type and pass a
+  // string body; everything else is the JSON envelope.
+  if (typeof result.body === 'string' && result.headers?.['Content-Type'] !== undefined) {
+    return c.body(result.body, result.status as never);
+  }
   return c.json(result.body as never, result.status as never);
 }

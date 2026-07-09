@@ -11,8 +11,7 @@
  * create/list/read/update/delete), so `POST /items/:id/restore` is never
  * stamped. The delete/hide/list assertions are ported verbatim and RUN; the
  * three restore assertion blocks keep their original test names + assertions
- * but are `test.skip`ped with a `// TODO(M4): restore verb` marker until the
- * verb lands. See the port report for the exact skip list.
+ * All assertions now run — the restore verb landed with M4.
  */
 import { expect, test } from 'vitest';
 import {
@@ -85,10 +84,10 @@ test('soft-delete lifecycle: delete hides record from read/update/delete-again, 
   expect(onlyDeleted.result.map((record) => record.id)).toEqual([victim.id]);
 });
 
-// TODO(M4): restore verb — `POST /items/:id/restore` is not yet implemented by
+// Restore verb landed (M4) — the native engine's optional adapter.restore
 // the native engine (verb-table.ts IMPLEMENTED_ENDPOINTS). Assertions preserved
 // verbatim; unskip once the restore executor + route stamping land.
-test.skip('soft-delete lifecycle: restore revives it', async () => {
+test('soft-delete lifecycle: restore revives it', async () => {
   const { app } = ctx();
 
   const victim = await createRecord(app, '/items', {
@@ -118,8 +117,7 @@ test.skip('soft-delete lifecycle: restore revives it', async () => {
   expect(reRead.email).toBe('victim@conformance.test');
 });
 
-// TODO(M4): restore verb — see above.
-test.skip('restore of a record that is not soft-deleted → 404 NOT_FOUND', async () => {
+test('restore of a record that is not soft-deleted → 404 NOT_FOUND', async () => {
   const { app } = ctx();
   const record = await createRecord(app, '/items', {
     name: 'Never Deleted',
@@ -135,8 +133,7 @@ test.skip('restore of a record that is not soft-deleted → 404 NOT_FOUND', asyn
   );
 });
 
-// TODO(M4): restore verb — see above.
-test.skip('restore of a missing id → 404 NOT_FOUND', async () => {
+test('restore of a missing id → 404 NOT_FOUND', async () => {
   const { app } = ctx();
   await expectError(
     await app.request('/items/00000000-0000-4000-8000-000000000999/restore', {

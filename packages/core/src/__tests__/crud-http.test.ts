@@ -134,6 +134,9 @@ describe('@Crud over HTTP (decorated controller)', () => {
         'GET /items/:id item.read',
         'PATCH /items/:id item.update',
         'POST /items item.create',
+        'POST /items/:id/clone item.clone',
+        'POST /items/:id/restore item.restore',
+        'POST /items/upsert item.upsert',
       ].sort(),
     );
     for (const route of crudRoutes) {

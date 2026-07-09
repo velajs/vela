@@ -53,6 +53,7 @@ export interface MemoryAdapterConfig {
 
 const CAPABILITIES: ReadonlySet<AdapterCapability> = new Set([
   'softDelete',
+  'restore',
   'cursor',
   'nestedWrites',
   'cascade',
@@ -259,6 +260,20 @@ export function memoryAdapter<Row extends Record<string, unknown> = Record<strin
       }
       store.delete(id);
       return existing;
+    },
+
+    async restore(lookup, _scope): Promise<Row | null> {
+      // MemoryRestoreEndpoint parity: find the row INCLUDING soft-deleted ones
+      // (honoring lookup.filters for tenant scope), refuse if there is nothing
+      // to restore (missing, or a live row that is not soft-deleted), else clear
+      // the soft-delete field and persist the restored row.
+      const field = config.softDeleteField;
+      if (field === undefined) return null;
+      const existing = findOne(lookup, true);
+      if (!existing || !isSoftDeleted(existing)) return null;
+      const restored = { ...existing, [field]: null } as Row;
+      table().set(String((existing as Record<string, unknown>)[primaryKey]), restored);
+      return restored;
     },
 
     async list(query: ListQuery, _scope): Promise<Page<Row>> {

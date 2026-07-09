@@ -58,6 +58,15 @@ export const ADAPTER_CAPABILITIES = [
   'cascade',
   /** Soft-delete stamping in `delete` + soft-delete-aware reads. */
   'softDelete',
+  /**
+   * Native un-delete of a soft-deleted row (clears the soft-delete field).
+   * Restore CANNOT be synthesized from the core five: `update` is contractually
+   * blind to soft-deleted rows (a regular update of a deleted row 404s), so the
+   * engine has no core primitive that can flip the marker back — an adapter that
+   * soft-deletes must provide `restore` for the restore verb (and for upsert's
+   * match-and-restore of a soft-deleted row) to work.
+   */
+  'restore',
 ] as const;
 
 export type AdapterCapability = (typeof ADAPTER_CAPABILITIES)[number];
@@ -175,6 +184,15 @@ export interface CrudAdapter<Row = Record<string, unknown>> {
   aggregate?(spec: AggregateSpec, scope: AdapterScope): Promise<AggregateResult>;
   search?(spec: SearchQuery, scope: AdapterScope): Promise<Array<SearchHit<Row>>>;
   upsertOne?(input: UpsertInput<Row>, scope: AdapterScope): Promise<{ row: Row; created: boolean }>;
+  /**
+   * Un-delete a soft-deleted row: find it INCLUDING soft-deleted rows (honoring
+   * `lookup.filters` for tenant/ownership scope), clear the soft-delete field,
+   * and return the restored row. Returns `null` when the row is missing OR is
+   * not currently soft-deleted (nothing to restore) — the engine maps that to a
+   * 404 (MemoryRestoreEndpoint parity). Present iff `capabilities` has
+   * `'restore'`.
+   */
+  restore?(lookup: Lookup, scope: AdapterScope): Promise<Row | null>;
   updateWhere?(
     filters: FilterCondition[],
     patch: Partial<Row>,
@@ -192,6 +210,7 @@ export const CAPABILITY_MEMBERS: Partial<Record<AdapterCapability, keyof CrudAda
   aggregate: 'aggregate',
   nativeSearch: 'search',
   upsert: 'upsertOne',
+  restore: 'restore',
   bulkPatch: 'updateWhere',
   nativeBatch: 'createMany',
   nestedWrites: 'nested',
