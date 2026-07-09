@@ -197,17 +197,61 @@ export interface BulkOutcome<Row> {
 // Aggregate / search specs
 // ---------------------------------------------------------------------------
 
-export interface AggregateSpec {
+/**
+ * One aggregation within a (possibly multi-op) query — `?sum=amount&avg=age`
+ * becomes two `AggregateField`s. `field` is `'*'` for `COUNT(*)`. `alias`
+ * overrides the derived output key (the query-param path never sets it, so the
+ * alias is derived from operation + field; see `getAggregateAlias`).
+ */
+export interface AggregateField {
   operation: AggregateOperation;
-  /** Column the operation applies to (`count` may omit it). */
+  field: string;
+  alias?: string;
+}
+
+/**
+ * A validated aggregate query.
+ *
+ * Multi-aggregation parity with hono-crud 0.13: `aggregations` is the
+ * authoritative list. `operation`/`field` are retained as the legacy
+ * single-operation head (`= aggregations[0]`) so an adapter that only reads the
+ * single-op fields still compiles; every field beyond `operation`/`filters` is
+ * OPTIONAL and additive.
+ */
+export interface AggregateSpec {
+  /** Legacy single-op head = `aggregations[0].operation`. */
+  operation: AggregateOperation;
+  /** Legacy single-op field = `aggregations[0].field` (omitted for `COUNT(*)`). */
   field?: string;
+  /** Full multi-aggregation list; one entry per requested operation+field. */
+  aggregations?: AggregateField[];
   groupBy?: string[];
+  /** HAVING: output-alias → comparison-op (`eq|ne|gt|gte|lt|lte`) → threshold. */
+  having?: Record<string, Record<string, string>>;
+  /** Order groups by an aggregate alias or a `groupBy` column. */
+  orderBy?: string;
+  orderDirection?: SortDirection;
+  /** Group-window pagination (grouped queries only). */
+  limit?: number;
+  offset?: number;
   filters: FilterCondition[];
 }
 
+/** One group bucket: the `groupBy` key columns + the aliased aggregate values. */
+export interface AggregateBucket {
+  key: Record<string, unknown>;
+  values: Record<string, number | null>;
+}
+
+/**
+ * Aggregate result (hono-crud 0.13 shape). Ungrouped queries return `values`
+ * (aliased aggregate scalars); grouped queries return `groups` + `totalGroups`
+ * (post-HAVING group count, before limit/offset).
+ */
 export interface AggregateResult {
-  /** Flat result (no grouping) or one bucket per group. */
-  buckets: Array<Record<string, unknown>>;
+  values?: Record<string, number | null>;
+  groups?: AggregateBucket[];
+  totalGroups?: number;
 }
 
 export interface SearchQuery {
@@ -223,4 +267,6 @@ export interface SearchHit<Row> {
   record: Row;
   score: number;
   highlights?: Record<string, string[]>;
+  /** Fields that matched the query (surfaced in the search response). */
+  matchedFields?: string[];
 }

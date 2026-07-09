@@ -22,6 +22,10 @@
       "types": "./dist/query/index.d.ts",
       "import": "./dist/query/index.js"
     },
+    "./csv": {
+      "types": "./dist/csv/index.d.ts",
+      "import": "./dist/csv/index.js"
+    },
     "./envelope": {
       "types": "./dist/envelope/index.d.ts",
       "import": "./dist/envelope/index.js"

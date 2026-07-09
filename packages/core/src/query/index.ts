@@ -57,5 +57,6 @@ export {
 export {
   buildAggregateSpec,
   computeAggregateFallback,
+  getAggregateAlias,
   type AggregateBuildConfig,
 } from './aggregate';

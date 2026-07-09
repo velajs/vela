@@ -35,10 +35,22 @@ divergence is added or closed.
 
 ## Deferred gaps (planned, not yet built)
 
-- **Aggregate**: single-operation `AggregateSpec` only — hono-crud's
-  multi-aggregation per query, `having`, group ordering, group pagination,
-  `?sum=field` shorthand, and `sumValue`-style aliases are NOT implemented.
-  Revisit at M4 (aggregate verb) — full parity requires extending the spec.
+- **Aggregate**: CLOSED (M4). Full multi-aggregation parity landed — `?count=*`,
+  `?sum=field`, `?avg=field`, repeated ops on multiple fields, `getAggregateAlias`
+  camelCase keys (`sumAmount`, `countDistinctTag`, bare `count` for `COUNT(*)`),
+  multi-`groupBy`, `having[alias][op]=value` (eq/ne/gt/gte/lt/lte), `orderBy`/
+  `orderDirection`, and group `limit`/`offset` (+ `defaultLimit` 100 / `maxLimit`
+  1000). `computeAggregateFallback` mirrors hono-crud `computeAggregations`; the
+  response is `{ values }` (ungrouped) or `{ groups, totalGroups }` (grouped).
+  Type changes: `AggregateSpec` extended ADDITIVELY (optional `aggregations`,
+  `having`, `orderBy`, `orderDirection`, `limit`, `offset`; `operation`/`field`
+  retained as the legacy single-op head); `AggregateResult` REPLACED (`{ buckets }`
+  → `{ values?, groups?, totalGroups? }`) — a flagged non-additive change, safe
+  because no in-repo adapter implemented `aggregate`. Residual (minor): aggregate
+  WHERE uses the full `FilterCondition[]` bracket-operator pipeline (richer than
+  hono-crud's equality-only filter Record — additive), and `?withDeleted` is
+  honored on the fallback path (via `adapter.list`) but not plumbed into
+  `AggregateSpec` for a hypothetical native adapter.
 - **Nested-write schema merging**: `deriveCreateSchema` does not merge relation
   write shapes into the create body schema (no `nestedWrites` flags on
   `RelationConfig` yet). M4.
@@ -89,3 +101,27 @@ soft-deleted parent is still embedded via `?include=parent`. Observed:
 `readParent` returns the parent row (`deletedAt` = epoch-ms number) where the
 cell expects `null`. Fix: forward `excludeDeletedField: model.softDeleteField`
 in the `attachIncludes` load scope.
+
+## Extended-verb deviations (M4 families)
+
+- **restore/clone run hookless** (no single-verb hooks upstream either);
+  import runs without per-row lifecycle hooks (hono-crud had dedicated import
+  hooks) — consistent precedent.
+- **upsert body validates the FULL createSchema**, not hono-crud's
+  keys-required/rest-optional partial shape.
+- **clone.fieldsToReset** read via cast — promote to `ResourceConfig` (TODO).
+- **bulkPatch filters arrive in the request BODY** (`{ filter, data }`), not
+  the query string; same flat success body as hono-crud.
+- **Per-item batch hook errors follow the hook mode** (sequential aborts +
+  rolls back) instead of hono-crud's per-item error bucket + stopOnError;
+  only notFound ids drive 207. batchCreate is all-or-nothing (201).
+- **batchRestore absent-support is a loud 500 CONFIGURATION_ERROR** (matches
+  single restore), not hono-crud's 400 SOFT_DELETE_NOT_ENABLED.
+- **Hardening beyond hono-crud** (deliberate): search + export apply
+  read-policy row filtering + field masking; import injects + scopes the
+  request tenant; search's short `q` is VALIDATION_ERROR (was INVALID_QUERY).
+- **AggregateResult reshaped** to `{values?, groups?, totalGroups?}` (no
+  in-repo adapter implemented the old `{buckets}` shape); constraint→409
+  mapping for clone/upsert remains an adapter/errorMappers concern.
+- **Drizzle will need `restore`** (new optional adapter method + capability)
+  for its soft-delete leg — loud ConfigurationException until then (M7).

@@ -334,6 +334,7 @@ export function runSearchFallback<T extends Record<string, unknown>>(
       record,
       score,
       highlights: Object.keys(highlights).length > 0 ? highlights : undefined,
+      matchedFields,
     });
   }
 
