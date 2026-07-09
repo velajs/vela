@@ -26,6 +26,10 @@
       "types": "./dist/envelope/index.d.ts",
       "import": "./dist/envelope/index.js"
     },
+    "./kernel": {
+      "types": "./dist/kernel/index.d.ts",
+      "import": "./dist/kernel/index.js"
+    },
     "./policies": {
       "types": "./dist/policies/index.d.ts",
       "import": "./dist/policies/index.js"

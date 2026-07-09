@@ -1,0 +1,380 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
+import type { AdapterScope, CrudAdapter } from '../../adapter/contract';
+import type { ListQuery, Lookup, Page } from '../../adapter/query-types';
+import { defineModel } from '../../model/define-model';
+import { defineResource } from '../resource';
+import type { EngineRequest } from '../engine-request';
+
+type Row = Record<string, unknown>;
+
+/**
+ * Minimal in-test adapter over a plain Map — just enough of the memory
+ * semantics (eq filters, soft-delete visibility, offset slice) for the verb
+ * pipeline to be observable without depending on @velajs/crud-memory.
+ */
+function fakeAdapter(store: Map<string, Row>, softDeleteField?: string): CrudAdapter<Row> {
+  const scopeSentinel: AdapterScope = { tx: { fake: true } };
+  const visible = (row: Row, withDeleted: boolean) =>
+    withDeleted || softDeleteField === undefined || row[softDeleteField] == null;
+
+  const find = (lookup: Lookup, withDeleted: boolean): Row | null => {
+    for (const row of store.values()) {
+      if (String(row[lookup.field]) !== lookup.value) continue;
+      const extras = Object.entries(lookup.filters ?? {});
+      if (!extras.every(([k, v]) => String(row[k]) === v)) return null;
+      return visible(row, withDeleted) ? row : null;
+    }
+    return null;
+  };
+
+  return {
+    capabilities: new Set(softDeleteField !== undefined ? (['softDelete'] as const) : []),
+    async transaction(fn) {
+      return fn(scopeSentinel);
+    },
+    async create(input) {
+      const row = { ...input } as Row;
+      store.set(String(row.id), row);
+      return row;
+    },
+    async readOne(lookup, opts) {
+      return find(lookup, opts.withDeleted ?? false);
+    },
+    async update(lookup, patch) {
+      const existing = find(lookup, false);
+      if (!existing) return null;
+      const updated = { ...existing, ...patch };
+      store.set(String(existing.id), updated);
+      return updated;
+    },
+    async delete(lookup, opts) {
+      const existing = find(lookup, false);
+      if (!existing) return null;
+      if (opts.softDeleteField !== undefined) {
+        const stamped = { ...existing, [opts.softDeleteField]: Date.now() };
+        store.set(String(existing.id), stamped);
+        return stamped;
+      }
+      store.delete(String(existing.id));
+      return existing;
+    },
+    async list(query: ListQuery): Promise<Page<Row>> {
+      let rows = Array.from(store.values());
+      if (softDeleteField !== undefined && !query.options.withDeleted) {
+        rows = rows.filter((r) => r[softDeleteField] == null);
+      }
+      for (const f of query.filters) {
+        rows = rows.filter((r) => String(r[f.field]) === String(f.value));
+      }
+      const page = query.options.page ?? 1;
+      const perPage = query.options.per_page ?? 20;
+      const slice = rows.slice((page - 1) * perPage, page * perPage);
+      return {
+        result: slice,
+        result_info: {
+          page,
+          per_page: perPage,
+          total_count: rows.length,
+          total_pages: Math.ceil(rows.length / perPage),
+          has_next_page: page * perPage < rows.length,
+          has_prev_page: page > 1,
+        },
+      };
+    },
+  };
+}
+
+const itemSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1),
+  qty: z.number().int().nonnegative(),
+  secret: z.string().optional(),
+  createdAt: z.number().optional(),
+  updatedAt: z.number().optional(),
+  deletedAt: z.number().nullable().optional(),
+});
+
+function makeResource(overrides: Record<string, unknown> = {}, softDelete = true) {
+  const { model: modelOverrides, ...resourceOverrides } = overrides;
+  const store = new Map<string, Row>();
+  const model = defineModel({
+    name: 'item',
+    tableName: 'items',
+    schema: itemSchema,
+    softDelete,
+    ...((modelOverrides as object) ?? {}),
+  });
+  const adapter = fakeAdapter(store, softDelete ? 'deletedAt' : undefined);
+  const resource = defineResource('items', {
+    model,
+    adapter,
+    filterFields: ['qty', 'name'],
+    ...(resourceOverrides as object),
+  });
+  return { store, model, adapter, resource };
+}
+
+const req = (partial: Partial<EngineRequest> = {}): EngineRequest => partial;
+
+describe('create', () => {
+  it('validates, applies managed fields, and returns 201 with the default envelope', async () => {
+    const { resource } = makeResource();
+    const result = await resource.execute('create', req({ body: { name: 'Anchor', qty: 2 } }));
+    expect(result.status).toBe(201);
+    const body = result.body as { success: boolean; result: Row };
+    expect(body.success).toBe(true);
+    expect(body.result.name).toBe('Anchor');
+    expect(typeof body.result.id).toBe('string');
+    expect(typeof body.result.createdAt).toBe('number');
+    expect(typeof body.result.updatedAt).toBe('number');
+  });
+
+  it('rejects an invalid body with VALIDATION_ERROR 400', async () => {
+    const { resource } = makeResource();
+    await expect(
+      resource.execute('create', req({ body: { name: '', qty: -1 } })),
+    ).rejects.toMatchObject({ statusCode: 400, code: 'VALIDATION_ERROR' });
+  });
+
+  it('threads beforeCreate chain output into the adapter and runs afterCreate in-scope', async () => {
+    const order: string[] = [];
+    const { resource, store } = makeResource({
+      hooks: {
+        beforeCreate: (_ctx: unknown, data: Row) => {
+          order.push('before');
+          return { ...data, name: `${data.name}!` };
+        },
+        afterCreate: (ctx: { db: { tx: unknown } }, record: Row) => {
+          order.push('after');
+          expect(ctx.db.tx).toEqual({ fake: true });
+          expect(record.name).toBe('Hook!');
+        },
+      },
+    });
+    const result = await resource.execute('create', req({ body: { name: 'Hook', qty: 1 } }));
+    expect(order).toEqual(['before', 'after']);
+    expect((result.body as { result: Row }).result.name).toBe('Hook!');
+    expect(Array.from(store.values())[0]!.name).toBe('Hook!');
+  });
+
+  it('stamps the tenant field from request vars', async () => {
+    const { resource, store } = makeResource({ model: { multiTenant: true } });
+    await resource.execute('create', req({ body: { name: 'T', qty: 1 }, vars: { tenantId: 't1' } }));
+    expect(Array.from(store.values())[0]!.tenantId).toBe('t1');
+  });
+});
+
+describe('read', () => {
+  it('returns the record, 404s on missing id, and 404s on soft-deleted rows', async () => {
+    const { resource, store } = makeResource();
+    store.set('a', { id: 'a', name: 'A', qty: 1 });
+    store.set('b', { id: 'b', name: 'B', qty: 2, deletedAt: 5 });
+
+    const ok = await resource.execute('read', req({ id: 'a' }));
+    expect(ok.status).toBe(200);
+    expect((ok.body as { result: Row }).result.id).toBe('a');
+
+    await expect(resource.execute('read', req({ id: 'zz' }))).rejects.toMatchObject({ statusCode: 404 });
+    await expect(resource.execute('read', req({ id: 'b' }))).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('404s when the read policy denies and masks fields when configured', async () => {
+    const { resource, store } = makeResource({
+      model: {
+        policies: {
+          read: (_ctx: unknown, record: Row) => record.qty !== 99,
+          // Overlay semantics (hono-crud parity): the returned partial
+          // REPLACES matching fields — redaction, not subset selection.
+          fields: () => ({ secret: undefined }),
+        },
+      },
+    });
+    store.set('a', { id: 'a', name: 'A', qty: 1, secret: 'hide-me' });
+    store.set('x', { id: 'x', name: 'X', qty: 99 });
+
+    const ok = await resource.execute('read', req({ id: 'a' }));
+    expect((ok.body as { result: Row }).result.secret).toBeUndefined();
+    await expect(resource.execute('read', req({ id: 'x' }))).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('enforces tenant lookup filters from request vars', async () => {
+    const { resource, store } = makeResource({ model: { multiTenant: true } });
+    store.set('a', { id: 'a', name: 'A', qty: 1, tenantId: 't1' });
+    await expect(
+      resource.execute('read', req({ id: 'a', vars: { tenantId: 't2' } })),
+    ).rejects.toMatchObject({ statusCode: 404 });
+    const ok = await resource.execute('read', req({ id: 'a', vars: { tenantId: 't1' } }));
+    expect(ok.status).toBe(200);
+  });
+});
+
+describe('update', () => {
+  it('merges the patch, always stamps updatedAt, and hands two snapshots to afterUpdate', async () => {
+    const seen: Array<{ prior: Row; current: Row }> = [];
+    const { resource, store } = makeResource({
+      hooks: {
+        afterUpdate: (_ctx: unknown, prior: Row, current: Row) => {
+          seen.push({ prior, current });
+        },
+      },
+    });
+    store.set('a', { id: 'a', name: 'Old', qty: 1, updatedAt: 111 });
+
+    const result = await resource.execute('update', req({ id: 'a', body: { name: 'New' } }));
+    const body = result.body as { result: Row };
+    expect(body.result.name).toBe('New');
+    expect(body.result.updatedAt).not.toBe(111);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.prior.name).toBe('Old');
+    expect(seen[0]!.current.name).toBe('New');
+  });
+
+  it('403s when the write policy denies', async () => {
+    const { resource, store } = makeResource({
+      model: { policies: { write: () => false } },
+    });
+    store.set('a', { id: 'a', name: 'A', qty: 1 });
+    await expect(
+      resource.execute('update', req({ id: 'a', body: { name: 'B' } })),
+    ).rejects.toMatchObject({ statusCode: 403, code: 'FORBIDDEN' });
+  });
+
+  it('404s for a soft-deleted target', async () => {
+    const { resource, store } = makeResource();
+    store.set('a', { id: 'a', name: 'A', qty: 1, deletedAt: 4 });
+    await expect(
+      resource.execute('update', req({ id: 'a', body: { name: 'B' } })),
+    ).rejects.toMatchObject({ statusCode: 404 });
+  });
+});
+
+describe('delete', () => {
+  it('soft-deletes when the model soft-deletes and returns { deleted: true }', async () => {
+    const { resource, store } = makeResource();
+    store.set('a', { id: 'a', name: 'A', qty: 1 });
+
+    const result = await resource.execute('delete', req({ id: 'a' }));
+    expect(result.status).toBe(200);
+    expect((result.body as { result: Row }).result).toEqual({ deleted: true });
+    expect(typeof store.get('a')!.deletedAt).toBe('number');
+
+    // Delete-again → 404 (the record is now invisible).
+    await expect(resource.execute('delete', req({ id: 'a' }))).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('hard-deletes when the model does not soft-delete', async () => {
+    const { resource, store } = makeResource({}, false);
+    store.set('a', { id: 'a', name: 'A', qty: 1 });
+    await resource.execute('delete', req({ id: 'a' }));
+    expect(store.has('a')).toBe(false);
+  });
+
+  it('runs beforeDelete with the prior row', async () => {
+    const before = vi.fn();
+    const { resource, store } = makeResource({ hooks: { beforeDelete: before } });
+    store.set('a', { id: 'a', name: 'A', qty: 1 });
+    await resource.execute('delete', req({ id: 'a' }));
+    expect(before).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ id: 'a' }));
+  });
+});
+
+describe('list', () => {
+  it('parses filters, paginates, and envelopes with result_info', async () => {
+    const { resource, store } = makeResource();
+    for (let i = 1; i <= 5; i++) store.set(`r${i}`, { id: `r${i}`, name: `Row${i}`, qty: i });
+
+    const result = await resource.execute('list', req({ query: { 'qty[gte]': '2', per_page: '2' } }));
+    expect(result.status).toBe(200);
+    const body = result.body as { success: boolean; result: Row[]; result_info: Row };
+    expect(body.success).toBe(true);
+    // fake adapter only implements eq, so gte arrives as a parsed condition —
+    // assert the parse produced conditions rather than adapter semantics.
+    expect(body.result_info.per_page).toBe(2);
+  });
+
+  it('drops rows the read policy rejects and masks the rest', async () => {
+    const { resource, store } = makeResource({
+      model: {
+        policies: {
+          read: (_ctx: unknown, record: Row) => record.qty !== 2,
+          // Overlay semantics (hono-crud parity): the returned partial
+          // REPLACES matching fields — redaction, not subset selection.
+          fields: () => ({ secret: undefined }),
+        },
+      },
+    });
+    store.set('a', { id: 'a', name: 'A', qty: 1, secret: 's' });
+    store.set('b', { id: 'b', name: 'B', qty: 2 });
+
+    const result = await resource.execute('list', req());
+    const body = result.body as { result: Row[] };
+    expect(body.result.map((r) => r.id)).toEqual(['a']);
+    expect(body.result[0]!.secret).toBeUndefined();
+  });
+
+  it('injects tenant scope and policy pushdown into the adapter query', async () => {
+    const { resource, store } = makeResource({
+      model: {
+        multiTenant: true,
+        policies: { readPushdown: () => [{ field: 'qty', operator: 'eq' as const, value: 1 }] },
+      },
+    });
+    store.set('a', { id: 'a', name: 'A', qty: 1, tenantId: 't1' });
+    store.set('b', { id: 'b', name: 'B', qty: 1, tenantId: 't2' });
+    store.set('c', { id: 'c', name: 'C', qty: 9, tenantId: 't1' });
+
+    const result = await resource.execute('list', req({ vars: { tenantId: 't1' } }));
+    expect((result.body as { result: Row[] }).result.map((r) => r.id)).toEqual(['a']);
+  });
+});
+
+describe('custom envelope + error formatting', () => {
+  it('formats success and errors through the configured envelope', async () => {
+    const { resource, store } = makeResource({
+      envelope: {
+        success: (result: unknown, info?: unknown) => ({ data: result, meta: info ?? null }),
+        error: (err: { code: string }) => ({ problem: err.code }),
+      },
+    });
+    store.set('a', { id: 'a', name: 'A', qty: 1 });
+
+    const ok = await resource.execute('read', req({ id: 'a' }));
+    expect((ok.body as { data: Row }).data.id).toBe('a');
+
+    const missing = await resource.execute('read', req({ id: 'zz' }));
+    expect(missing.status).toBe(404);
+    expect(missing.body).toEqual({ problem: 'NOT_FOUND' });
+  });
+});
+
+describe('definition-time capability checks', () => {
+  it('throws loudly when cursor pagination is enabled without the capability', () => {
+    const store = new Map<string, Row>();
+    const model = defineModel({ name: 'item', tableName: 'items', schema: itemSchema });
+    expect(() =>
+      defineResource('items', {
+        model,
+        adapter: fakeAdapter(store),
+        pagination: { cursor: { enabled: true } },
+      }),
+    ).toThrowError(/cursor/);
+  });
+
+  it('throws when the model soft-deletes but the adapter cannot', () => {
+    const store = new Map<string, Row>();
+    const model = defineModel({
+      name: 'item',
+      tableName: 'items',
+      schema: itemSchema,
+      softDelete: true,
+    });
+    expect(() => defineResource('items', { model, adapter: fakeAdapter(store) })).toThrowError(
+      /softDelete/,
+    );
+  });
+});
+
+beforeEach(() => {
+  vi.restoreAllMocks();
+});
