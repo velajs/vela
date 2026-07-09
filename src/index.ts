@@ -117,6 +117,10 @@ export type { SignedUrlOptions } from './crypto/signed-url';
 export { REQUEST_CONTEXT } from './http/request-context';
 export type { RequestContext } from './http/request-context';
 
+// Explicit request-child container access (for programmatic-route authors,
+// param-decorator factories, and scoped middleware)
+export { getRequestContainer } from './http/request-container';
+
 // Opt-in ambient container access (ALS via hono/context-storage)
 export {
   enableAmbientContainer,

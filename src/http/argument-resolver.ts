@@ -53,7 +53,7 @@ export class ArgumentResolver {
       const metadata: ArgumentMetadata = {
         type: param.type,
         data: param.name,
-        metatype: paramTypes?.[param.index] as Type | undefined,
+        metatype: (param.metatype ?? paramTypes?.[param.index]) as Type | undefined,
       };
 
       for (const pipe of pipes) {

@@ -502,7 +502,7 @@ export class RouteManager {
     // `await import(variable)` as a runtime import Cloudflare Workers cannot
     // resolve.
     const contributors = getRouteContributors();
-    for (const { controller, metadata } of this.controllers) {
+    for (const { controller, metadata, routes } of this.controllers) {
       for (const contributor of contributors) {
         const meta = getMetadata(contributor.claimsMetaKey, controller);
         if (meta === undefined) continue;
@@ -518,14 +518,17 @@ export class RouteManager {
         });
       }
 
-      // DX guard for the common mistake: @Crud() metadata present but the
-      // contributor package never imported.
+      // DX warning for stale setups: @Crud() metadata but nothing produced a
+      // route — native @velajs/crud (>=1.18) stamps real routes at decoration
+      // time, and legacy bridges register a claiming contributor.
       if (
         getMetadata('vela:crud', controller) !== undefined &&
+        routes.length === 0 &&
         !contributors.some((c) => c.claimsMetaKey === 'vela:crud')
       ) {
-        throw new Error(
-          "@Crud() requires '@velajs/crud'. Install it: pnpm add @velajs/crud",
+        console.warn(
+          `[vela] ${controller.name} carries @Crud() metadata but produced no routes — ` +
+            "install and import '@velajs/crud' (>=1.18), or remove the decorator.",
         );
       }
     }

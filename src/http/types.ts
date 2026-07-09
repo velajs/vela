@@ -27,6 +27,12 @@ export interface ParamMetadata {
   name?: string;
   pipes?: PipeType[];
   factory?: (data: unknown, ctx: import('hono').Context) => unknown;
+  /**
+   * Explicit param type for programmatic routes. Methods synthesized at
+   * runtime (e.g. `@Crud()` verb handlers) have no `design:paramtypes`, so
+   * ValidationPipe and the OpenAPI walk read this instead when present.
+   */
+  metatype?: unknown;
 }
 
 export interface ControllerRegistration {

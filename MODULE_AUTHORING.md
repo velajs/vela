@@ -137,6 +137,18 @@ registerRouteContributor({
 Contributed routes are mounted **after** all explicit routes, and OpenAPI
 paths merge verb-by-verb with hand-written ones.
 
+Contributor-mounted routes bypass `RouteManager`, so they don't appear in
+`app.describeRoutes()` / `vela route list` (shown as `(mounted)`) and get no
+named-route `urlFor` support. For **first-class** generated routes, synthesize
+real routes instead: define a prototype method, stamp it with the standard
+verb decorators (`Get(path, { name })(proto, key, descriptor)`), and attach
+params via `MetadataRegistry.addParameter(ctor, key, { index, type, metatype })`.
+Synthesized methods have no `design:paramtypes`, so carry the DTO class as the
+explicit `metatype` — `ValidationPipe` and the OpenAPI walk read it. Inside a
+handler or `createParamDecorator` factory, `getRequestContainer(ctx.getContext())`
+returns the request-scoped child container (plain `@Inject(Container)` yields
+the root). This is the pattern the native `@velajs/crud` (>=1.18) uses.
+
 ## Dispatch: reusing the pipeline
 
 Custom dispatchers (queue consumers, schedulers) run handlers through

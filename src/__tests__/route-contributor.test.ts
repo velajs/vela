@@ -65,19 +65,42 @@ describe('RouteContributor registry', () => {
 });
 
 describe('RouteManager — route contributor integration', () => {
-  it('throws the install-it error when a controller has vela:crud metadata and no contributor claims it', async () => {
-    @Controller('/users')
-    class UsersController {
-      @Get('/ping') ping() { return { ok: true }; }
+  it('does not warn for vela:crud metadata without a contributor when the controller has real routes (native crud >=1.18)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      @Controller('/users')
+      class UsersController {
+        @Get('/ping') ping() { return { ok: true }; }
+      }
+      defineMetadata(METADATA_KEYS.CRUD, { entity: 'User' }, UsersController);
+
+      @Module({ controllers: [UsersController] })
+      class AppModule {}
+
+      const app = await VelaFactory.create(AppModule);
+      const res = await app.getHonoApp().request('/users/ping');
+      expect(res.status).toBe(200);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
     }
-    defineMetadata(METADATA_KEYS.CRUD, { entity: 'User' }, UsersController);
+  });
 
-    @Module({ controllers: [UsersController] })
-    class AppModule {}
+  it('warns (instead of throwing) when vela:crud metadata produced no routes and no contributor claims it', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      @Controller('/bare')
+      class BareController {}
+      defineMetadata(METADATA_KEYS.CRUD, { entity: 'Bare' }, BareController);
 
-    await expect(VelaFactory.create(AppModule)).rejects.toThrow(
-      /@Crud\(\) requires '@velajs\/crud'\. Install it: pnpm add @velajs\/crud/,
-    );
+      @Module({ controllers: [BareController] })
+      class AppModule {}
+
+      await expect(VelaFactory.create(AppModule)).resolves.toBeDefined();
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('produced no routes'));
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('calls buildRoutes with the Hono app and a full context for claimed controllers', async () => {

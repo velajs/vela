@@ -63,7 +63,7 @@ function getParamSchema(
   paramtypes: unknown[] | undefined,
   registry: ComponentsRegistry,
 ): JsonSchema | undefined {
-  const metatype = paramtypes?.[param.index];
+  const metatype = param.metatype ?? paramtypes?.[param.index];
   if (!metatype) return undefined;
   if (isDtoClass(metatype)) {
     return registry.ref(metatype) as JsonSchema;
@@ -76,7 +76,7 @@ function getParamSchema(
 }
 
 function isParamOptional(param: ParameterMetadata, paramtypes?: unknown[]): boolean {
-  const metatype = paramtypes?.[param.index] as { schema?: unknown } | undefined;
+  const metatype = (param.metatype ?? paramtypes?.[param.index]) as { schema?: unknown } | undefined;
   if (metatype?.schema) {
     return isOptional(metatype.schema);
   }
