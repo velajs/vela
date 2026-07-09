@@ -66,3 +66,26 @@ group-1 cells against the native engine:
   has no unique declaration — the source already skips it on the memory leg);
   `etag-concurrency` needs ETag/If-Match support (no `etagEnabled` read/update
   path in the native engine yet). Both revisit when those capabilities land.
+
+### Tenant cells (M3 gate)
+
+- **tenant-scoping**: PASS verbatim. `multiTenant()` mounted upstream (outer
+  Hono wrapper, path-scoped to `/tenant-items`); create-stamp + read/list/
+  update/delete tenant equality + `400 TENANT_REQUIRED` all hold. Harness note:
+  the outer Hono needs an `onError` that renders `CrudException` — Vela's
+  `HttpException` is not a Hono `HTTPException`, so a bare outer app swallows a
+  middleware-thrown TENANT_REQUIRED into an empty 200. In a real deployment the
+  resolver registers through Vela's pipeline (which renders it natively).
+- **relation-scoping**: cross-tenant + same-tenant include assertions PASS. The
+  soft-deleted-parent assertion is `test.skip` (**PARITY-GAP**, below).
+- **batch-tenant-scoping / extended-verb-tenant-scoping**: NOT ported — batch +
+  extended verbs land M4.
+
+**PARITY-GAP — relation loader `excludeDeletedField` not wired.**
+`kernel/verbs.ts` `attachIncludes` passes `RelationLoadScope {tenantField,
+tenantValue}` to the loader but NOT `excludeDeletedField`. The memory loader
+already HONORS `excludeDeletedField`; only the engine wiring is missing, so a
+soft-deleted parent is still embedded via `?include=parent`. Observed:
+`readParent` returns the parent row (`deletedAt` = epoch-ms number) where the
+cell expects `null`. Fix: forward `excludeDeletedField: model.softDeleteField`
+in the `attachIncludes` load scope.

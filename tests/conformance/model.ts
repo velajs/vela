@@ -50,6 +50,48 @@ export const conformanceModel = defineModel({
   timestamps: true,
 });
 
+// ============================================================================
+// Multi-tenant model variant (tenant-scoping + relation-scoping cells)
+// ============================================================================
+
+/** Physical table for the tenant-scoped `/tenant-items` route family. */
+export const CONFORMANCE_TENANT_TABLE = 'conformance_tenant_items';
+
+/**
+ * The tenant schema: the shared conformance fields plus a nullable `tenantId`
+ * discriminator (so serialized rows carry it) and a nullable `parentId` FK for
+ * the owner-scoped self-relation the relation-scoping cell exercises. Both are
+ * engine-managed/optional on input (`tenantId` is stamped from context;
+ * `parentId` is an ordinary optional column).
+ */
+export const tenantSchema = conformanceSchema.extend({
+  tenantId: z.string().nullable().optional(),
+  parentId: z.string().nullable().optional(),
+});
+
+export const tenantModel = defineModel({
+  name: 'tenantItem',
+  tableName: CONFORMANCE_TENANT_TABLE,
+  schema: tenantSchema,
+  primaryKeys: ['id'],
+  softDelete: { field: 'deletedAt' },
+  timestamps: true,
+  // Tenant field defaults to 'tenantId'; @Crud demands tenantResolverMounted.
+  multiTenant: true,
+  relations: {
+    // Owner-scoped self-relation: a row's `parent` is filtered to the caller's
+    // tenant (the engine passes the RelationLoadScope {tenantField, tenantValue}
+    // to the loader). Soft-delete exclusion of the parent is NOT yet wired —
+    // see the relation-scoping cell's PARITY-GAP skip.
+    parent: {
+      type: 'belongsTo',
+      target: CONFORMANCE_TENANT_TABLE,
+      foreignKey: 'parentId',
+      localKey: 'id',
+    },
+  },
+});
+
 /**
  * Operators every adapter must accept on the list endpoint. The filter cells
  * exercise exactly these.

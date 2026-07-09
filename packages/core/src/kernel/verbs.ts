@@ -152,6 +152,7 @@ async function attachIncludes(
   includes: string[] | undefined,
   rows: Row[],
   scope: AdapterScope,
+  opts: { withDeleted?: boolean } = {},
 ): Promise<void> {
   if (!includes || includes.length === 0 || rows.length === 0) return;
   const loader = resource.config.adapter.relations;
@@ -168,6 +169,12 @@ async function attachIncludes(
       {
         tenantField: model.tenantField,
         tenantValue: req.vars?.tenantId,
+        // Owner-scope: soft-deleted related rows are excluded (hono-crud
+        // parity: the parent model's soft-delete config governs, and
+        // ?withDeleted=true lifts the exclusion for the whole read).
+        ...(model.softDeleteField !== undefined && !opts.withDeleted
+          ? { excludeDeletedField: model.softDeleteField }
+          : {}),
       },
       scope,
     );
@@ -384,7 +391,9 @@ export async function executeList(
 
   const page = await config.adapter.transaction(async (scope) => {
     const fetched = (await config.adapter.list(scoped as never, scope)) as Page<Row>;
-    await attachIncludes(resource, req, scoped.options.include, fetched.result, scope);
+    await attachIncludes(resource, req, scoped.options.include, fetched.result, scope, {
+      withDeleted: scoped.options.withDeleted ?? false,
+    });
     return fetched;
   });
 

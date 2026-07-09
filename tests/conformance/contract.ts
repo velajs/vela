@@ -38,6 +38,27 @@ export interface ConformanceCapabilities {
    * strictly bumped on update, `createdAt` immutable.
    */
   timestampKind: 'epoch-ms' | 'iso-datetime';
+  /**
+   * Whether this leg mounts an owner-scoped self-relation (`parent` belongsTo
+   * via `parentId`, scoped to the tenant + soft-delete columns) so the
+   * relation-include scoping cell can run.
+   */
+  relationScoping: boolean;
+}
+
+/**
+ * How tenant scoping is wired for a given adapter leg. Memory uses a dedicated
+ * nullable `tenantId` column; the `multiTenant()` resolver reads `headerName`
+ * (its `X-Tenant-ID` default) and publishes the id as the `tenantId` context
+ * var the engine scopes on.
+ */
+export interface TenantWiring {
+  /** Model field carrying the tenant discriminator. */
+  field: string;
+  /** Header read by the `multiTenant()` middleware (its default). */
+  headerName: string;
+  tenantA: string;
+  tenantB: string;
 }
 
 export interface AdapterContext {
@@ -50,6 +71,7 @@ export interface AdapterContext {
 export interface AdapterDescriptor {
   name: string;
   capabilities: ConformanceCapabilities;
+  tenant: TenantWiring;
   setup(): Promise<AdapterContext>;
 }
 
