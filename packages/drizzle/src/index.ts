@@ -1,7 +1,13 @@
 /**
- * @velajs/crud-drizzle — Drizzle ORM CrudAdapter (pg, mysql, sqlite).
- *
- * Implementation lands with the native engine (M7); this package shell exists
- * so the workspace, release fixed-group, and CI wiring are in place first.
+ * @velajs/crud-drizzle — Drizzle ORM CrudAdapter (sqlite, pg, mysql) plus
+ * Drizzle-backed versioning/audit stores.
  */
-export {};
+
+export {
+  drizzleAdapter,
+  type DrizzleAdapterConfig,
+  type DrizzleRelation,
+} from './adapter';
+export { DrizzleAuditStore, DrizzleVersioningStore } from './stores';
+export type { DrizzleDialect, DrizzleTable } from './database';
+export { buildWhere, buildWhereCondition, substringMatch } from './filters';

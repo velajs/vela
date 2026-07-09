@@ -23,6 +23,7 @@ export default defineConfig({
       { find: '@velajs/crud/audit', replacement: r('./packages/core/src/audit/index.ts') },
       { find: '@velajs/crud', replacement: r('./packages/core/src/index.ts') },
       { find: '@velajs/crud-memory', replacement: r('./packages/memory/src/index.ts') },
+      { find: '@velajs/crud-drizzle', replacement: r('./packages/drizzle/src/index.ts') },
     ],
   },
   test: {

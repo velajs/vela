@@ -16,12 +16,13 @@
  * tests/conformance/cells/filter-operators.ts against the native engine's
  * memory descriptor.
  */
-import { expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
 import { expectList, setupConformance } from '../contract';
 import { seedFilterRows } from '../model';
-import { memoryConformance } from '../adapters/memory';
+import { conformanceAdapters } from '../adapters';
 
-const ctx = setupConformance(memoryConformance);
+describe.each(conformanceAdapters)('adapter: $name', (descriptor) => {
+const ctx = setupConformance(descriptor);
 
 interface FilterCase {
   title: string;
@@ -97,3 +98,4 @@ for (const filterCase of FILTER_CASES) {
     expect(got).toEqual([...filterCase.expectEmails].sort());
   });
 }
+});

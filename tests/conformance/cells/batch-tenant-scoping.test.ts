@@ -13,7 +13,7 @@
  * capability guard is dropped — this single-leg memory port always registers
  * the batch verbs on the tenant model.
  */
-import { expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
 import {
   type ConformanceRecord,
   createRecord,
@@ -24,9 +24,9 @@ import {
   readJson,
   setupConformance,
 } from '../contract';
-import { memoryConformance } from '../adapters/memory';
+import { conformanceAdapters } from '../adapters';
 
-const descriptor = memoryConformance;
+describe.each(conformanceAdapters)('adapter: $name', (descriptor) => {
 const ctx = setupConformance(descriptor);
 const { headerName, tenantA, tenantB } = descriptor.tenant;
 const asTenant = (tenant: string): Record<string, string> => ({ [headerName]: tenant });
@@ -154,4 +154,5 @@ test('batch owner-scoping: batch request without the tenant header → 400 TENAN
     400,
     'TENANT_REQUIRED',
   );
+});
 });

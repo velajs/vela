@@ -10,7 +10,7 @@
  * tests/conformance/cells/upsert-restore.ts. The /items resource is mounted
  * with `upsert: { keys: ['email'] }` (the conflict column hono-crud used).
  */
-import { expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
 import {
   type BatchUpsertResult,
   type ConformanceRecord,
@@ -24,9 +24,10 @@ import {
   readJson,
   setupConformance,
 } from '../contract';
-import { memoryConformance } from '../adapters/memory';
+import { conformanceAdapters } from '../adapters';
 
-const ctx = setupConformance(memoryConformance);
+describe.each(conformanceAdapters)('adapter: $name', (descriptor) => {
+const ctx = setupConformance(descriptor);
 
 async function createAndSoftDelete(getCtx: CtxGetter, email: string): Promise<ConformanceRecord> {
   const { app } = getCtx();
@@ -105,4 +106,5 @@ test('batchUpsert matching a soft-deleted row behaves identically to single upse
     200,
   );
   expect(reRead.name).toBe('Batch Reborn');
+});
 });

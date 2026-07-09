@@ -11,7 +11,7 @@
  * tests/conformance/cells/managed-fields.ts against the native engine's memory
  * descriptor.
  */
-import { expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
 import {
   type ConformanceRecord,
   UUID_V4,
@@ -22,9 +22,9 @@ import {
   sleep,
   timestampToMillis,
 } from '../contract';
-import { memoryConformance } from '../adapters/memory';
+import { conformanceAdapters } from '../adapters';
 
-const descriptor = memoryConformance;
+describe.each(conformanceAdapters)('adapter: $name', (descriptor) => {
 const ctx = setupConformance(descriptor);
 const kind = descriptor.capabilities.timestampKind;
 
@@ -69,4 +69,5 @@ test('managed fields: update bumps updatedAt strictly and leaves createdAt untou
   expect(timestampToMillis(updated.updatedAt, kind)).toBeGreaterThan(
     timestampToMillis(created.updatedAt, kind),
   );
+});
 });

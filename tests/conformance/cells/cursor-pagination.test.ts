@@ -25,7 +25,7 @@
  * The cursor WALK itself is still exercised by the second test (which asserts
  * the page order without inspecting `result_info.page`).
  */
-import { expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
 import {
   type ConformanceApp,
   type ConformanceRecord,
@@ -36,9 +36,10 @@ import {
   readJson,
   setupConformance,
 } from '../contract';
-import { memoryConformance } from '../adapters/memory';
+import { conformanceAdapters } from '../adapters';
 
-const ctx = setupConformance(memoryConformance);
+describe.each(conformanceAdapters)('adapter: $name', (descriptor) => {
+const ctx = setupConformance(descriptor);
 
 const BASE = '/cursor-items';
 
@@ -140,4 +141,5 @@ test('cursor pagination: plain page/per_page requests on a cursor-enabled endpoi
   });
   expect('next_cursor' in offset.result_info).toBe(false);
   expect('prev_cursor' in offset.result_info).toBe(false);
+});
 });

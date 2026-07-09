@@ -8,12 +8,13 @@
  * tests/conformance/cells/pagination.ts against the native engine's memory
  * descriptor.
  */
-import { expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
 import { type ResultInfo, expectList, setupConformance } from '../contract';
 import { SEED_EMAILS_SORTED, seedFilterRows } from '../model';
-import { memoryConformance } from '../adapters/memory';
+import { conformanceAdapters } from '../adapters';
 
-const ctx = setupConformance(memoryConformance);
+describe.each(conformanceAdapters)('adapter: $name', (descriptor) => {
+const ctx = setupConformance(descriptor);
 
 test('offset pagination: page walk returns every record exactly once with exact result_info', async () => {
   const { app } = ctx();
@@ -66,4 +67,5 @@ test('offset pagination: page beyond the last returns an empty result with exact
     has_next_page: false,
     has_prev_page: true,
   });
+});
 });

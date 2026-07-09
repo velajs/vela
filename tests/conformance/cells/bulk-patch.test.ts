@@ -16,7 +16,7 @@
  * { age } }`. `?dryRun=true` stays a query param. The flat success body
  * (`{ success, matched, updated, dryRun }`) and every assertion are verbatim.
  */
-import { expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
 import {
   type ConformanceRecord,
   expectError,
@@ -29,9 +29,9 @@ import {
   timestampToMillis,
 } from '../contract';
 import { seedFilterRows } from '../model';
-import { memoryConformance } from '../adapters/memory';
+import { conformanceAdapters } from '../adapters';
 
-const descriptor = memoryConformance;
+describe.each(conformanceAdapters)('adapter: $name', (descriptor) => {
 const ctx = setupConformance(descriptor);
 
 /** The flat (non-envelope) response body bulkPatch emits. */
@@ -117,4 +117,5 @@ test('bulk patch: dryRun=true reports the matched count without writing', async 
     200,
   );
   expect(cooperAfter.age).toBe(28);
+});
 });

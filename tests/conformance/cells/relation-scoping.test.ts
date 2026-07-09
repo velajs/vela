@@ -13,11 +13,11 @@
  * `excludeDeletedField` to the loader) was found by this port and fixed in
  * `attachIncludes` (packages/core/src/kernel/verbs.ts).
  */
-import { expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
 import { type ConformanceRecord, createRecord, expectSuccess, setupConformance } from '../contract';
-import { memoryConformance } from '../adapters/memory';
+import { conformanceAdapters } from '../adapters';
 
-const descriptor = memoryConformance;
+describe.each(conformanceAdapters)('adapter: $name', (descriptor) => {
 const ctx = setupConformance(descriptor);
 const { headerName, tenantA, tenantB } = descriptor.tenant;
 const asTenant = (tenant: string): Record<string, string> => ({ [headerName]: tenant });
@@ -117,4 +117,5 @@ test('relation include scoping (?include=parent): soft-deleted parents resolve t
     headers: asTenant(tenantA),
   });
   expect(await readParent(childSame.id, tenantA)).toBeNull();
+});
 });

@@ -267,3 +267,20 @@ stores are **DI seams decoupled from the data adapter**: `VersioningStore` /
   `params` map (previously dropped), so the `:version` path param reaches the
   version verbs. `stamp-routes` was not restructured (VERB_SHAPES already stamps
   id+version).
+
+## Drizzle adapter (M7)
+
+- **Capability honesty over hono-crud parity**: the drizzle adapter does NOT
+  declare `upsert` (the engine's find→restore/update→create synthesis runs in
+  a real transaction — atomic, exact `created` flag; hono-crud used ON
+  CONFLICT) nor `nativeSearch` (hono-crud's drizzle search was LIKE-based; the
+  engine fallback is equivalent).
+- **sqlite (libsql) fully exercised** — 14 unit tests + the full 38-cell
+  conformance leg. pg/mysql branches are written per hono-crud (POSITION/
+  LOCATE substring predicates, mysql insertId without RETURNING) but UNTESTED.
+- libsql caveat: transactions open a new connection, so `:memory:` databases
+  are per-connection — tests use file-backed temp DBs.
+- Workers-pool conformance leg DEFERRED: the drizzle leg cannot run in
+  workerd (libsql client), and the edge guarantee is already machine-verified
+  by the openness/edge import audits over product sources. Revisit if a
+  D1-flavored adapter lands.

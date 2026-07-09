@@ -10,7 +10,7 @@
  * tests/conformance/cells/tenant-scoping.ts against the native engine's memory
  * descriptor.
  */
-import { expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
 import {
   type ConformanceRecord,
   createRecord,
@@ -20,9 +20,9 @@ import {
   jsonInit,
   setupConformance,
 } from '../contract';
-import { memoryConformance } from '../adapters/memory';
+import { conformanceAdapters } from '../adapters';
 
-const descriptor = memoryConformance;
+describe.each(conformanceAdapters)('adapter: $name', (descriptor) => {
 const ctx = setupConformance(descriptor);
 const { field, headerName, tenantA, tenantB } = descriptor.tenant;
 const asTenant = (tenant: string): Record<string, string> => ({ [headerName]: tenant });
@@ -96,4 +96,5 @@ test(`tenant scoping (field: ${field}): tenant A records are invisible to tenant
 test('tenant scoping: request without the tenant header → 400 TENANT_REQUIRED', async () => {
   const { app } = ctx();
   await expectError(await app.request('/tenant-items'), 400, 'TENANT_REQUIRED');
+});
 });

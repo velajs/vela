@@ -13,7 +13,7 @@
  * three restore assertion blocks keep their original test names + assertions
  * All assertions now run — the restore verb landed with M4.
  */
-import { expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
 import {
   type ConformanceRecord,
   type SuccessEnvelope,
@@ -25,9 +25,10 @@ import {
   readJson,
   setupConformance,
 } from '../contract';
-import { memoryConformance } from '../adapters/memory';
+import { conformanceAdapters } from '../adapters';
 
-const ctx = setupConformance(memoryConformance);
+describe.each(conformanceAdapters)('adapter: $name', (descriptor) => {
+const ctx = setupConformance(descriptor);
 
 test('soft-delete lifecycle: delete hides record from read/update/delete-again, onlyDeleted lists it', async () => {
   const { app } = ctx();
@@ -142,4 +143,5 @@ test('restore of a missing id → 404 NOT_FOUND', async () => {
     404,
     'NOT_FOUND',
   );
+});
 });
