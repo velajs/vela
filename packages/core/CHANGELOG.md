@@ -1,9 +1,35 @@
 # Changelog
 
+## 1.18.0
+
+### Minor Changes
+
+- 7edf218: BREAKING — the engine is rewritten from scratch and the hono-crud dependency is
+  removed. `@velajs/crud` is now the native Vela CRUD engine.
+
+  - `@Crud()` stamps REAL controller routes (named routes → `urlFor`, full
+    guard/pipe/interceptor pipeline, OpenAPI via the normal controller walk); the
+    RouteContributor bridge is gone. Requires `@velajs/vela >= 1.18`.
+  - New adapter contract: one plain-object `CrudAdapter` (5 core methods +
+    declared capabilities + optional native methods). Adapters:
+    `@velajs/crud-memory`, `@velajs/crud-drizzle` (sqlite exercised; pg/mysql
+    branches present but untested).
+  - All 22 verbs: core five + restore/clone/upsert, batch family + bulkPatch
+    (X-Confirm-Bulk), search/aggregate (multi-op with aliases, having, group
+    ordering)/export (CSV/JSON)/import, and the four version verbs.
+  - Multi-tenant: `multiTenant()` resolver middleware + engine-level scoping +
+    the `tenantResolverMounted` fail-fast. Versioning/audit: DI store seams
+    (`VersioningStore`/`AuditStore`) with memory + drizzle implementations.
+  - Live queries: `live: true` invalidates `crud:<table>` and stamps commit
+    headers post-commit/pre-flush.
+  - NOT ported in this release: response cache, rate-limit, idempotency, MCP,
+    swagger/scalar UIs, prisma adapter, api-version, health, logging middleware,
+    events/webhooks, field encryption, serialization profiles. See
+    packages/core/PARITY.md for the full deviation ledger.
+
 ## 1.6.0 (2026-07-04)
 
 - Migrated from the removed CrudBridge to the public `registerRouteContributor`; ComponentManager calls use `getScopedComponents` + explicit container. Requires `@velajs/vela >=1.11.0`.
-
 
 All notable changes to this project will be documented in this file.
 
@@ -13,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed (BREAKING)
+
 - **Migrated to `hono-crud` 0.13** (peer `>=0.13.0`, was `>=0.11.0`; dev `^0.13.15`)
   and **`@hono/zod-openapi >=1.0.0`** (was `>=0.9`). hono-crud 0.13 split its
   exports across subpaths and extracted adapters into separate `@hono-crud/*`
@@ -27,6 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `409 CONFLICT`, …). The success envelope is unchanged.
 
 ### Added
+
 - **Record-versioning verbs (`versionHistory`/`versionRead`/`versionCompare`/
   `versionRollback`)** — surfaces the last four hono-crud verbs, completing the
   bridge's coverage (18 → 22). They are **gated behind model `versioning`**:
@@ -41,6 +69,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `EndpointOverride`, route mounting, and the OpenAPI document.
 
 ### Fixed
+
 - **vela ≥1.9.0 compat.** `ExecutionContext` requires `switchToWs()` since
   vela's WebSocket support landed; the CRUD guard-middleware bridge now provides
   it (throws for the HTTP context, mirroring vela's own HTTP `ExecutionContext`),
@@ -54,12 +83,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `crudEndpointSlot`, `adapterProvidesEndpoint`.
 
 ### Changed
+
 - Toolchain refresh: typescript ^5 → ^6.0.3, vitest ^4.0.18 → ^4.1.9, swc bumps,
   drizzle-orm (dev) ^0.36.4 → ^0.45.2.
 
 ## [1.2.0] — 2026-05-10
 
 ### Fixed
+
 - `buildCrudRoutes`'s sub-app `onError` no longer swallows non-`HttpException`
   errors. Prior versions installed a catch-all that rendered a generic 500
   for anything that wasn't a `HttpException`, which silently lost error
@@ -71,6 +102,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `src/__tests__/onerror-rethrow.test.ts`.
 
 ### Added
+
 - `responseEnvelope?: ResponseEnvelope` on `CrudConfig` — forwarded
   verbatim to hono-crud's `RegisterCrudOptions.responseEnvelope` (added
   in hono-crud 0.10.0). When set, both `success(result, info?)` and
@@ -86,6 +118,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `responseEnvelope` don't need a second import from `hono-crud`.
 
 ### Changed (BREAKING)
+
 - Flat `CrudHooks.afterUpdate` and `CrudHooks.afterDelete` adopt
   hono-crud 0.10.0's two-snapshot shape — the bridge surface
   receives the **pre-mutation** row as `prior` and, for updates, the
@@ -114,6 +147,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Coverage: `src/__tests__/hooks.test.ts`.
 
 ### Compatibility
+
 - Peer-dep bump: `hono-crud >=0.10.0` (was `>=0.7.0`). The
   `responseEnvelope` forwarding and the `afterUpdate`/`afterDelete`
   signature change both depend on the upstream's 0.10.0 surface.
@@ -121,6 +155,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.1.0] — 2026-05-10
 
 ### Added
+
 - `MissingTenantResolverError` — typed error thrown synchronously at
   module-load time when `CrudModule.forResource(...)`, `defineCrudResource(...)`,
   or `@Crud(...)` mounts a tenant-scoped `Model` without an affirmed tenant
@@ -139,6 +174,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `tenantResolverMounted: true` on the bridge config.
 
 ### Changed (soft-breaking)
+
 - Tenant-scoped `forResource(...)` calls now fail fast at module-load time
   unless `tenantResolverMounted: true` is set. Tenant scope is detected
   from `Model.multiTenant === true | MultiTenantConfig` or
@@ -154,20 +190,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the load-time throw surfaces the misconfiguration before it ships.
 
   **Migration.** Either wire a resolver and affirm it:
-  ```ts
-  import { multiTenant } from 'hono-crud';
-  app.use('/*', multiTenant()); // mount upstream of the resource
 
-  CrudModule.forResource('/posts', {
-    meta: postMeta,                // Model.multiTenant: true
+  ```ts
+  import { multiTenant } from "hono-crud";
+  app.use("/*", multiTenant()); // mount upstream of the resource
+
+  CrudModule.forResource("/posts", {
+    meta: postMeta, // Model.multiTenant: true
     adapters,
-    tenantResolverMounted: true,   // affirmation
+    tenantResolverMounted: true, // affirmation
   });
   ```
+
   Or, if the model genuinely should not be tenant-scoped, remove
   `multiTenant` (and any `policies.readPushdown`) from the model.
 
 ### Deferred
+
 - Forwarding hono-crud's new `prior` argument through the bridge's
   `mergeFlatHooks` translation, and forwarding hono-crud's new
   `responseEnvelope` option through `CrudConfig`, are deferred to a
@@ -176,45 +215,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   type-safely surface them.
 
 ### Compatibility
+
 - No peer-dep change. `hono-crud` peer remains `>=0.7.0`. The new error
-  + affirmation flag are pure bridge-side additions.
+  - affirmation flag are pure bridge-side additions.
 
 ## [0.6.0] — 2026-05-03
 
 ### Added (verified pass-throughs)
+
 - `requireApproval` middleware. First DELETE returns 202 + `actionId`; resume call replays original input. Coverage: `src/__tests__/require-approval-passthrough.test.ts`.
 - `requirePolicy` middleware + `Model.policies` row-level rules (note: `ModelPolicies.read` signature is `(ctx, record)`). Coverage: `src/__tests__/require-policy-passthrough.test.ts`.
 - `CrudEventPayload.organizationId` + `userId` populated from `c.var` (tenantId requires multi-tenant middleware to propagate to the payload). Coverage: `src/__tests__/event-payload-tenant-passthrough.test.ts`.
 - Actor-aware approvals — `PendingAction.actorUserId` / `userId` / `agentId` / `agentRunId` populated by hono-crud's middleware. Coverage: `src/__tests__/actor-aware-approval-passthrough.test.ts`.
 
 ### Changed (BREAKING)
+
 - Flat `CrudHooks` signatures gain a `HookContext` first parameter (transactional). `beforeCreate?: (data) => ...` is now `beforeCreate?: (ctx: HookContext, data) => ...`; the bridge flips arguments to forward into hono-crud's per-endpoint `(data, ctx)` shape. Per-endpoint `endpoints.{name}.hooks` continue to use hono-crud's native shape and win over flat sugar. Migration: prepend `ctx` (or `_ctx` if unused) to every flat-hook callback. Coverage: `src/__tests__/transactional-hooks.test.ts`.
 
 ### Notes
+
 - `EndpointsConfig['delete'].middlewares` (and the same for other verbs) is NOT a real slot in hono-crud@0.7.0. Per-endpoint middleware attachment via `app.use(...)` with HTTP-method gating is the documented path; pass-through tests follow that pattern. If hono-crud later exposes a config-API slot, `@velajs/crud` can adopt it without API change.
 - `HookContext.tenantId` / `organizationId` propagate only when a multi-tenant middleware runs upstream — raw `c.var.tenantId` does not auto-flow into the hook context. `CrudEventPayload` propagates `organizationId` from `c.var` directly.
 
 ### Compatibility
+
 - No peer-dep change. `hono-crud` peer remains `>=0.7.0` (set in 0.4.0).
 
 ## [0.5.0] — 2026-05-03
 
 ### Verified
+
 - `Model.resolveSchema` pass-through. Setting `meta.model.resolveSchema(ctx)` on a `@Crud` controller (or via `defineCrudResource`) lets hono-crud resolve a per-tenant schema for body validation and OpenAPI emission. No `@velajs/crud` API change — `meta` flows through `buildEndpointsDef → defineEndpoints` verbatim. Coverage: `src/__tests__/resolve-schema-passthrough.test.ts`.
 
 ### Compatibility
+
 - No peer-dep change. `hono-crud` peer remains `>=0.7.0` (set in 0.4.0).
 
 ## [0.4.0] — 2026-05-03
 
 ### Added
+
 - `CrudEndpointName` widened to mirror hono-crud's full surface: `search`, `aggregate`, `restore`, `batchCreate`, `batchUpdate`, `batchDelete`, `batchRestore`, `batchUpsert`, `export`, `import`, `upsert`, `clone`. `ALL_CRUD_ENDPOINTS` enumerates the 17-name surface; `EndpointOverride<M>` exposes a typed slot per name forwarded to hono-crud's `EndpointsConfig<M>`.
 - `defineCrudResource(config)` ergonomic helper — bundles `CrudModule.forResource` + programmatic `@Override` application for plugin authors who want to skip the synthetic-controller pattern. Returns a `DynamicModule` that registers identically to `CrudModule.forResource(...)`. The existing `@Crud` decorator on user-written classes remains the canonical form.
 - `drizzle-orm` and `drizzle-zod` added as devDependencies — required to import `hono-crud@^0.7.0`'s main bundle so the test suite genuinely exercises the bridge.
 
 ### Changed
+
 - `validateEndpointNames` now accepts the widened name set; new tests at `src/__tests__/endpoint-widening.test.ts` cover each new verb end-to-end via `MemoryAdapters`.
 - `crud-validation.test.ts` swapped its unknown-name sentinel from `'search'` (now valid) to `'NOT_A_VERB'`.
 
 ### Compatibility
+
 - Peer-dep on `hono-crud` raised to `>=0.7.0` (covers the wider `EndpointsConfig` + `defineEndpoints` switch and the post-merge `Model.resolveSchema`/`HookContext`/`requireApproval`/`requirePolicy` surface used by 0.5.0 + 0.6.0 verifications later).
