@@ -88,19 +88,70 @@ group-1 cells against the native engine:
   `HttpException` is not a Hono `HTTPException`, so a bare outer app swallows a
   middleware-thrown TENANT_REQUIRED into an empty 200. In a real deployment the
   resolver registers through Vela's pipeline (which renders it natively).
-- **relation-scoping**: cross-tenant + same-tenant include assertions PASS. The
-  soft-deleted-parent assertion is `test.skip` (**PARITY-GAP**, below).
-- **batch-tenant-scoping / extended-verb-tenant-scoping**: NOT ported — batch +
-  extended verbs land M4.
+- **relation-scoping**: PASS verbatim (all three assertions, incl. the
+  soft-deleted-parent one). The `excludeDeletedField` gap below is CLOSED.
+- **batch-tenant-scoping / extended-verb-tenant-scoping**: ported at the M4 gate
+  (below).
 
-**PARITY-GAP — relation loader `excludeDeletedField` not wired.**
-`kernel/verbs.ts` `attachIncludes` passes `RelationLoadScope {tenantField,
-tenantValue}` to the loader but NOT `excludeDeletedField`. The memory loader
-already HONORS `excludeDeletedField`; only the engine wiring is missing, so a
-soft-deleted parent is still embedded via `?include=parent`. Observed:
-`readParent` returns the parent row (`deletedAt` = epoch-ms number) where the
-cell expects `null`. Fix: forward `excludeDeletedField: model.softDeleteField`
-in the `attachIncludes` load scope.
+**PARITY-GAP (CLOSED) — relation loader `excludeDeletedField` not wired.**
+Was: `kernel/verbs.ts` `attachIncludes` forwarded only `{tenantField,
+tenantValue}`, so a soft-deleted parent stayed embedded via `?include=parent`.
+Fixed (the load scope now carries `excludeDeletedField`); the relation-scoping
+soft-deleted-parent assertion is un-skipped and green.
+
+### Extended-verb cells (M4 gate)
+
+All 18 non-version verbs are live, so five more cells are ported (run via
+`pnpm test:conformance`):
+
+- **upsert-restore**: PASS verbatim. `/items` mounts `upsert: { keys: ['email'] }`;
+  single upsert + batchUpsert both match-and-restore a soft-deleted row (same id,
+  `created: false`, `deletedAt` cleared). Synthesis path (memory declares
+  `restore` but not `upsert`).
+- **bulk-patch**: PASS. Assertions verbatim; only the TRANSPORT is adapted — the
+  filter moves from the query string (`?role=guest`) to the request body
+  (`{ filter: { role }, data: { age } }`), the engine's deliberate deviation
+  (see batch.ts). `?dryRun=true` stays a query param; flat `{ success, matched,
+  updated, dryRun }` body unchanged.
+- **batch-tenant-scoping**: PASS verbatim (capability guard dropped for the
+  single memory leg). Cross-tenant batchDelete/batchUpdate/batchRestore fall to
+  `notFound`; own-tenant ops succeed; no-header batch → 400 TENANT_REQUIRED.
+- **extended-verb-tenant-scoping**: PASS. Assertions verbatim; the bulkPatch leg
+  uses the body-filter transport. aggregate (`?count=*`, `?count=*&groupBy=role`),
+  search (`?q=`, `searchFields: ['name']`), export (`?format=json`), and
+  bulkPatch are all tenant-scoped; each 400s TENANT_REQUIRED without a header.
+  Note: `search`/`export` do not wire `?include=`, so the include-scoping
+  assertions hold trivially (the foreign parent is never embedded → `null`).
+- **cursor-pagination**: two of three tests PASS (the cursor WALK order + the
+  offset-mode-on-a-cursor-endpoint fallback). The first test is `test.skip`
+  (**PARITY-GAP**, below).
+
+**PARITY-GAP — memory cursor `result_info.page` is `1`, not `0`.**
+The engine's own `buildCursorPageInfo` (query/pagination.ts) and the
+cursor-pagination cell pin the next-only cursor envelope at `page: 0`
+(Stripe-style), but `memoryAdapter.list`'s cursor branch hardcodes `page: 1`.
+Every other field matches. Observed on `GET /cursor-items?limit=3`:
+`{"page":1,"per_page":3,"total_count":7,"has_next_page":true,
+"has_prev_page":false,"next_cursor":"…"}` — expected `page: 0`. Fix: have the
+memory adapter's cursor branch emit `page: 0` (e.g. delegate to
+`buildCursorPageInfo`).
+
+**Deferred (need unbuilt families — NOT ported):**
+- **finalize-pipeline**: needs a model-level `serializationProfile`
+  (`exclude: ['age']`) to strip a field from every response. The native engine
+  has no `serializationProfile` (computed fields exist and would satisfy the
+  `nameUpper` half, but not the `'age' in record === false` half). Revisit if a
+  serialization-profile authoring surface lands.
+- **transactional-hooks**: needs a hook-recorder harness + a `/hook-items`
+  controller sharing the `/items` table, AND diverges on the before-hook data
+  shape — the native engine stamps managed fields (incl. the generated `id`)
+  BEFORE `beforeCreate`, so `before.data.id` is defined where the cell asserts
+  `toBeUndefined()`. The noop-tx-sentinel semantics exist, but the create-hook
+  data-shape assertion cannot pass verbatim. Defer.
+- **events / encryption**: the engine has no event-emission or field-encryption
+  family yet (coordinator-confirmed). Defer.
+- No dedicated export/import conformance cell exists in the source; export (JSON
+  leg) is covered by the extended-verb-tenant-scoping cell.
 
 ## Extended-verb deviations (M4 families)
 

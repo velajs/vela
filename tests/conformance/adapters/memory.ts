@@ -31,13 +31,18 @@ import { Crud, CrudException, multiTenant } from '@velajs/crud';
 import { clearMemoryStorage, memoryAdapter } from '@velajs/crud-memory';
 import type { AdapterContext, AdapterDescriptor } from '../contract';
 import {
+  CONFORMANCE_CURSOR_TABLE,
   CONFORMANCE_FILTER_CONFIG,
   CONFORMANCE_SORT_FIELDS,
   CONFORMANCE_TABLE,
   CONFORMANCE_TENANT_TABLE,
   conformanceModel,
+  cursorModel,
   tenantModel,
 } from '../model';
+
+/** Conflict key for the upsert family (hono-crud's conformance app used `email`). */
+const UPSERT_KEYS = ['email'];
 
 async function setup(): Promise<AdapterContext> {
   clearMemoryStorage();
@@ -62,12 +67,20 @@ async function setup(): Promise<AdapterContext> {
     },
   });
 
+  const cursorAdapter = memoryAdapter({
+    tableName: CONFORMANCE_CURSOR_TABLE,
+    primaryKey: 'id',
+    softDeleteField: 'deletedAt',
+  });
+
   @Controller('/items')
   @Crud({
     model: conformanceModel,
     adapter: itemAdapter,
     filterConfig: CONFORMANCE_FILTER_CONFIG,
     sortFields: CONFORMANCE_SORT_FIELDS,
+    // upsert-restore + bulk-patch cells exercise the extended verbs on /items.
+    upsert: { keys: UPSERT_KEYS },
   })
   class ItemsController {}
 
@@ -77,10 +90,27 @@ async function setup(): Promise<AdapterContext> {
     adapter: tenantAdapter,
     tenantResolverMounted: true,
     allowedIncludes: ['parent'],
+    // The extended-verb tenant cell exercises aggregate/search/export/bulkPatch:
+    // searchFields powers /search, filterConfig allow-lists the bulkPatch filter
+    // + aggregate groupBy(role), upsert.keys powers batchUpsert.
+    filterConfig: CONFORMANCE_FILTER_CONFIG,
+    sortFields: CONFORMANCE_SORT_FIELDS,
+    searchFields: ['name'],
+    upsert: { keys: UPSERT_KEYS },
   })
   class TenantItemsController {}
 
-  @Module({ controllers: [ItemsController, TenantItemsController] })
+  @Controller('/cursor-items')
+  @Crud({
+    model: cursorModel,
+    adapter: cursorAdapter,
+    sortFields: CONFORMANCE_SORT_FIELDS,
+    // Keyset cursor pagination (cursor-pagination cell).
+    pagination: { cursor: { enabled: true, field: 'id' } },
+  })
+  class CursorItemsController {}
+
+  @Module({ controllers: [ItemsController, TenantItemsController, CursorItemsController] })
   class AppModule {}
 
   const app = await VelaFactory.create(AppModule);
@@ -101,7 +131,7 @@ async function setup(): Promise<AdapterContext> {
   outer.route('/', app.getHonoApp());
 
   return {
-    app: { request: (path, init) => outer.request(path, init) },
+    app: { request: async (path, init) => outer.request(path, init) },
     reset: () => {
       clearMemoryStorage();
     },

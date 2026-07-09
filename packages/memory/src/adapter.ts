@@ -312,7 +312,9 @@ export function memoryAdapter<Row extends Record<string, unknown> = Record<strin
         const hasNext = window.length > limit;
         const last = pageItems[pageItems.length - 1] as Record<string, unknown> | undefined;
         const info: PageInfo = {
-          page: 1,
+          // Next-only cursor walks have no page number (Stripe-style): the
+          // engine's buildCursorPageInfo pins page 0, and adapters must agree.
+          page: 0,
           per_page: limit,
           total_count: totalCount,
           has_next_page: hasNext,

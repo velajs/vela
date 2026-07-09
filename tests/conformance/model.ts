@@ -47,7 +47,7 @@ export const conformanceModel = defineModel({
   schema: conformanceSchema,
   primaryKeys: ['id'],
   softDelete: { field: 'deletedAt' },
-  timestamps: true,
+  // timestamps default ON in the native engine → createdAt/updatedAt (epoch-ms).
 });
 
 // ============================================================================
@@ -75,14 +75,14 @@ export const tenantModel = defineModel({
   schema: tenantSchema,
   primaryKeys: ['id'],
   softDelete: { field: 'deletedAt' },
-  timestamps: true,
+  // timestamps default ON in the native engine → createdAt/updatedAt (epoch-ms).
   // Tenant field defaults to 'tenantId'; @Crud demands tenantResolverMounted.
   multiTenant: true,
   relations: {
     // Owner-scoped self-relation: a row's `parent` is filtered to the caller's
-    // tenant (the engine passes the RelationLoadScope {tenantField, tenantValue}
-    // to the loader). Soft-delete exclusion of the parent is NOT yet wired —
-    // see the relation-scoping cell's PARITY-GAP skip.
+    // tenant AND excludes soft-deleted parents (the engine passes the
+    // RelationLoadScope {tenantField, tenantValue, excludeDeletedField} to the
+    // loader — see the relation-scoping cell).
     parent: {
       type: 'belongsTo',
       target: CONFORMANCE_TENANT_TABLE,
@@ -90,6 +90,22 @@ export const tenantModel = defineModel({
       localKey: 'id',
     },
   },
+});
+
+// ============================================================================
+// Cursor-pagination model variant (cursor-pagination cell)
+// ============================================================================
+
+/** Physical table for the cursor-enabled `/cursor-items` route family. */
+export const CONFORMANCE_CURSOR_TABLE = 'conformance_cursor_items';
+
+export const cursorModel = defineModel({
+  name: 'cursorItem',
+  tableName: CONFORMANCE_CURSOR_TABLE,
+  schema: conformanceSchema,
+  primaryKeys: ['id'],
+  softDelete: { field: 'deletedAt' },
+  // timestamps default ON in the native engine → createdAt/updatedAt (epoch-ms).
 });
 
 /**

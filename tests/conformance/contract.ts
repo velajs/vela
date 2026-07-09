@@ -138,6 +138,60 @@ export interface ListEnvelope<T> {
   result_info: ResultInfo;
 }
 
+/**
+ * Cursor-mode pagination metadata (keyset walks, next-only / Stripe-style).
+ * Exact shape pinned by the cursor-pagination cell: `page` is always 0, no
+ * `total_pages`, no `prev_cursor` — `next_cursor` only while more rows exist.
+ */
+export interface CursorResultInfo {
+  page: 0;
+  per_page: number;
+  total_count: number;
+  has_next_page: boolean;
+  has_prev_page: boolean;
+  next_cursor?: string;
+}
+
+export interface CursorListEnvelope<T> {
+  success: true;
+  result: T[];
+  result_info: CursorResultInfo;
+}
+
+/** Single upsert: `{ success, result, created }`, 201 created / 200 updated. */
+export interface UpsertEnvelope<T> {
+  success: true;
+  result: T;
+  created: boolean;
+}
+
+/**
+ * BatchUpsert request body is a BARE ARRAY of items (unlike batchCreate's
+ * `{ items: [...] }`); each result item wraps the record in `data` plus a
+ * per-item `created` flag.
+ */
+export interface BatchUpsertItem<T> {
+  data: T;
+  created: boolean;
+}
+
+export interface BatchUpsertResult<T> {
+  items: BatchUpsertItem<T>[];
+  createdCount: number;
+  updatedCount: number;
+  totalCount: number;
+}
+
+export interface BatchCreateResult<T> {
+  created: T[];
+  count: number;
+}
+
+export interface BatchDeleteResult<T> {
+  deleted: T[];
+  count: number;
+}
+
 /** A conformance record as returned over HTTP. */
 export interface ConformanceRecord {
   id: string;
