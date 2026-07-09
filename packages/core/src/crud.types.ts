@@ -15,7 +15,16 @@ import type { Model } from './model/model.types';
 import type { VersioningStore } from './versioning/index';
 import type { AuditStore } from './audit/index';
 import type { CrudEndpointName } from './verb-table';
+import type { Context } from 'hono';
 import type { ZodObject, ZodRawShape } from 'zod';
+
+/** Extra invalidation tags / room scoping for a live resource. */
+export interface CrudLiveConfig {
+  /** Additional tags invalidated alongside `crud:<tableName>`. */
+  tags?: (c: Context) => string[];
+  /** Scope the invalidation to a room. */
+  room?: (c: Context) => string;
+}
 
 export interface CrudConfig<Row extends Record<string, unknown> = Record<string, unknown>> {
   /** The normalized model (from `defineModel` / `defineModels`). */
@@ -71,6 +80,12 @@ export interface CrudConfig<Row extends Record<string, unknown> = Record<string,
   errorMappers?: ErrorMapper[];
   /** OpenAPI tags (defaults to the plural resource name). */
   tags?: string[];
+  /**
+   * Live-query invalidation: after a successful write, invalidate
+   * `crud:<tableName>` (+ configured extras) and stamp the commit headers
+   * (requires `@velajs/vela/live`'s LiveModule; degrades to a warning).
+   */
+  live?: boolean | CrudLiveConfig;
   /**
    * Affirms that a tenant resolver is mounted upstream for this tenant-scoped
    * model. Mounting a tenant-scoped resource without one silently loses

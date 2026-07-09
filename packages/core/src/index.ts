@@ -70,6 +70,10 @@ export {
 export type { CrudAdapter, AdapterCapability, AdapterScope } from './adapter/contract';
 export type { ModelPolicies, PolicyContext } from './policies/types';
 
+// Live-query bridge
+export { crudLiveTag, buildLiveStamper } from './live-bridge';
+export type { CrudLiveConfig } from './crud.types';
+
 // Multi-tenant resolution (full surface on ./multi-tenant)
 export {
   multiTenant,

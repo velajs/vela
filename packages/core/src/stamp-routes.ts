@@ -13,6 +13,7 @@
 import type { Context } from 'hono';
 import {
   ApiDoc,
+  ApiResponse,
   ApiTags,
   Delete,
   Get,
@@ -38,6 +39,7 @@ import {
   CRUD_DEFAULT_VERSIONING_STORE,
 } from './crud.tokens';
 import { MissingTenantResolverError, resourceNames, type CrudConfig } from './crud.types';
+import { buildLiveStamper, type LiveStamper } from './live-bridge';
 import { implementedEndpoints } from './kernel/extended/registry';
 import {
   CRUD_ROUTES,
@@ -121,6 +123,7 @@ export function stampCrudRoutes(controller: Ctor, config: CrudConfig): void {
   };
 
   const overrides = getOverrides(controller);
+  const liveStamper = buildLiveStamper(config);
   defineMetadata(METADATA_KEYS.CRUD, config, controller);
   ApiTags(...(config.tags ?? [names.plural]))(controller);
 
@@ -131,7 +134,7 @@ export function stampCrudRoutes(controller: Ctor, config: CrudConfig): void {
     const handlerName = overrideMethod ?? `crud$${endpoint}`;
 
     if (overrideMethod === undefined) {
-      defineHandler(controller, handlerName as string, endpoint, resolveResource);
+      defineHandler(controller, handlerName as string, endpoint, method, resolveResource, liveStamper);
       stampParams(controller, handlerName as string, endpoint, createDto, updateDto);
     }
 
@@ -155,6 +158,23 @@ export function stampCrudRoutes(controller: Ctor, config: CrudConfig): void {
         Object.getOwnPropertyDescriptor(controller.prototype, handlerName) as never,
       );
     }
+
+    // Canonical response statuses so the OpenAPI walk documents each verb:
+    // success (201 create, 200 otherwise), 404 for id-addressed verbs, and
+    // 400 for body-validated ones.
+    const shape = VERB_SHAPES[endpoint];
+    const descriptor = () =>
+      Object.getOwnPropertyDescriptor(controller.prototype, handlerName) as never;
+    const proto = controller.prototype as object;
+    ApiResponse(endpoint === 'create' ? 201 : 200, {
+      description: naming?.summary ?? `${endpoint} ${names.singular}`,
+    })(proto, handlerName, descriptor());
+    if (shape.id) {
+      ApiResponse(404, { description: `${names.singular} not found` })(proto, handlerName, descriptor());
+    }
+    if (shape.body) {
+      ApiResponse(400, { description: 'Validation failed' })(proto, handlerName, descriptor());
+    }
   }
 }
 
@@ -162,9 +182,11 @@ function defineHandler(
   controller: Ctor,
   handlerName: string,
   endpoint: CrudEndpointName,
+  method: string,
   resolveResource: (c: Context) => CrudResource,
+  liveStamper: LiveStamper | undefined,
 ): void {
-  const handler = buildVerbHandler(endpoint, resolveResource);
+  const handler = buildVerbHandler(endpoint, method, resolveResource, liveStamper);
   Object.defineProperty(controller.prototype, handlerName, {
     value: handler,
     writable: true,
@@ -205,7 +227,9 @@ const VERB_SHAPES: Record<CrudEndpointName, { id?: boolean; version?: boolean; b
 
 function buildVerbHandler(
   endpoint: CrudEndpointName,
+  method: string,
   resolveResource: (c: Context) => CrudResource,
+  liveStamper: LiveStamper | undefined,
 ): (...args: unknown[]) => Promise<Response> {
   const shape = VERB_SHAPES[endpoint];
   // Arg order mirrors the stamped param order: [id?, version?, body?, ctx].
@@ -216,17 +240,17 @@ function buildVerbHandler(
     const body = shape.body ? args[cursor++] : undefined;
     const ctx = args[cursor] as Context;
     const resource = resolveResource(ctx);
-    return toResponse(
-      ctx,
-      await resource.execute(
-        endpoint,
-        buildEngineRequest(ctx, {
-          id,
-          body,
-          ...(version !== undefined ? { params: { version } } : {}),
-        }),
-      ),
+    const result = await resource.execute(
+      endpoint,
+      buildEngineRequest(ctx, {
+        id,
+        body,
+        ...(version !== undefined ? { params: { version } } : {}),
+      }),
     );
+    // Post-commit, pre-flush: invalidate live tags + merge commit headers.
+    if (liveStamper) await liveStamper(ctx, result, method);
+    return toResponse(ctx, result);
   };
 }
 
