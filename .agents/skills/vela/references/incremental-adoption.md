@@ -54,7 +54,7 @@ Because Vela bakes `globalPrefix` into each route path at build time, mounting u
 
 - **Existing Hono middleware** drops straight into the `middleware` create-option (each is a Hono `MiddlewareHandler`): `VelaFactory.create(AppModule, { middleware: [cors({ origin: '*' }), logger()] })`. This is the sanctioned global-middleware hook — there is no `app.use()`.
 - **Platform integration** goes through a `RuntimeAdapter` (`{ name, requestMiddleware?, onBootstrap?, onRoutesBuilt? }`), passed via `adapters`. `requestMiddleware` prepends to the global chain; `onRoutesBuilt` runs after the Hono app exists — the documented place to mount extra platform routes via `ctx.app.getHonoApp()`. `@velajs/cloudflare`'s adapter is built exactly this way (see `references/cloudflare.md`).
-- **Generated/contributed routes** (e.g. `@velajs/crud`) attach through `registerRouteContributor` / `RouteContributor`, consulted after explicit routes — see `references/crud.md`.
+- **Generated routes**: `@velajs/crud` (>= 1.18) stamps REAL controller routes at decoration time (no contributor); other generators can still attach through `registerRouteContributor` / `RouteContributor`, consulted after explicit routes — see `references/crud.md`.
 
 ## Edge-runtime checklist
 

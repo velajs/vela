@@ -17,7 +17,7 @@ const document = createOpenApiDocument(AppModule, {
 });
 ```
 
-`CreateOpenApiDocumentOptions`: `info?` (`{ title?, version?, description? }`), `globalPrefix?`, `tags?` (`[{ name, description? }]`), `servers?`, `securitySchemes?`, `security?`. Defaults: `openapi: '3.1.0'`, title `'Vela API'`, version `'1.0.0'`. Paths are derived from controllers (`:id` → `{id}`), and `RouteContributor` packages (e.g. `@velajs/crud`) fold their generated paths in.
+`CreateOpenApiDocumentOptions`: `info?` (`{ title?, version?, description? }`), `globalPrefix?`, `tags?` (`[{ name, description? }]`), `servers?`, `securitySchemes?`, `security?`. Defaults: `openapi: '3.1.0'`, title `'Vela API'`, version `'1.0.0'`. Paths are derived from controllers (`:id` → `{id}`); `@velajs/crud` (>= 1.18) stamps real controller routes so its paths, operationIds, and DTO component schemas come through this same walk. `RouteContributor` packages fold additional generated paths in.
 
 ## Documenting operations
 

@@ -26,7 +26,7 @@ class AppModule {}
 - `LiveModule.forRoot({ driver?, log?, identity?, presence? })` — EAGER module (self-driving). `identity` defaults to a shallow copy of `client.data` (your WS auth's stamp); `identity.expiresAt` (epoch ms) is enforced outbound. `presence: false` drops the preset.
 - Handlers receive `(args, ctx)` positionally — no param decorators. Resolver `@UseGuards` run once at subscribe; re-runs replay the captured identity, guard-free.
 - Explicit invalidation: inject `LiveInvalidation`; `await live.invalidate({ tags, room? })` returns `{ cursor, epoch }`. Stamp mutation responses via `stampCommitHeaders(c, stamp)` (automatic with ambientContainer or the CRUD bridge).
-- CRUD bridge (`@velajs/crud`): `@Crud({ ..., live: true })` — successful write verbs invalidate `crud:<tableName>` and stamp `Vela-Commit-Cursor`/`Vela-Commit-Epoch`. `live: { tags?, room? }` derives extras from the Hono context.
+- Native CRUD (`@velajs/crud` >= 1.18): `@Crud({ ..., live: true })` — successful write verbs invalidate `crud:<tableName>` and stamp `Vela-Commit-Cursor`/`Vela-Commit-Epoch`. `live: { tags?, room? }` derives extras from the Hono context.
 - Presence preset: `{ t:'presence' }` heartbeats + built-in `$presence.roster` query (`PRESENCE_ROSTER_QUERY`); immediate departure on close; TTL filtered at read (no timers).
 - The `$` WS event prefix is reserved (`@ReservedWsEvent`); gateways registering `$…` events are rejected at bootstrap.
 
