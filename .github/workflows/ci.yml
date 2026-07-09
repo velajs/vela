@@ -35,9 +35,11 @@ jobs:
       # Single physical zod v4 guard — a second copy breaks instanceof/OpenAPI.
       - run: pnpm dedupe --check
 
-      - run: pnpm run typecheck
-
+      # Build first: sibling packages typecheck against @velajs/crud's
+      # published exports map, which points at dist/.
       - run: pnpm run build
+
+      - run: pnpm run typecheck
 
       - run: pnpm test
 
