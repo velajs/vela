@@ -1,6 +1,6 @@
 {
   "name": "@velajs/cloudflare",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "description": "Cloudflare Workers integration for Vela framework",
   "type": "module",
   "main": "./dist/index.js",
