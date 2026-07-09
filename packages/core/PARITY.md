@@ -308,3 +308,16 @@ stores are **DI seams decoupled from the data adapter**: `VersioningStore` /
   still win. Gap found by the erpos migration (custom-fields regression).
   Resolution is per-request, uncached (hono-crud parity) — resolvers may
   cache internally.
+
+- **`id: 'client'` PK strategy** (erpos round 2) — the engine strips PKs from
+  every create body (both static derivation and the resolveSchema path), so
+  callers with client-generated UUIDs need a capture-guard workaround
+  (erpos `ClientPkCaptureGuard`). Candidate: a model `id: 'client'` strategy
+  that keeps the PK in the create body schema and skips generation. 1.19.
+- **Sub-app onError note** (erpos round 2, vela-side) — hono `.route()`
+  sub-apps with their own error handler render locally; since vela 1.11's
+  pipeline rewrite, a parent app's `onError` no longer covers merged sub-app
+  routes. Not a crud issue; consumers mounting sub-apps alongside crud
+  controllers should propagate their error renderer (erpos intercepts
+  `hono.route` in bootstrap). Consider a vela docs note or an opt-in
+  fall-through.
