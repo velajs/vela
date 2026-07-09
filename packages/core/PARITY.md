@@ -284,3 +284,17 @@ stores are **DI seams decoupled from the data adapter**: `VersioningStore` /
   workerd (libsql client), and the edge guarantee is already machine-verified
   by the openness/edge import audits over product sources. Revisit if a
   D1-flavored adapter lands.
+
+## Gaps surfaced by the erpos migration (2026-07-09, erpos PR #315)
+
+- **No per-endpoint guard/middleware seam on `forFeature`** — hono-crud's
+  `registerCrud` accepted `endpointMiddlewares` per verb; the native config
+  has no equivalent, so erpos's `guardsFromAcl` per-verb feature gating can't
+  be wired on headless resources (decorated controllers can use `@UseGuards`
+  class-wide only). Candidate: `guards?: Partial<Record<CrudEndpointName,
+  GuardType[]>>` on CrudConfig, stamped per handler.
+- **Tenant not threaded into `adapter.transaction()`** — SQL setups using
+  RLS GUCs (`SET LOCAL app.tenant_id`) can't see the request tenant at tx
+  open. Engine-level tenant scoping covers row filtering, but RLS
+  defense-in-depth needs the tenant in the transaction seam. Candidate:
+  optional `transaction(fn, ctx?: { tenantId? })` overload.
