@@ -18,6 +18,7 @@ import { canRead, canWrite, filterReadable, maskFields, pushdownConditions } fro
 import { parseListFilters } from '../query/filters';
 import { applyFieldSelectionToArray } from '../query/field-selection';
 import type { EngineRequest, EngineResult } from './engine-request';
+import { captureAudit, captureVersion } from './capture';
 import { runBeforeChain, runHooks } from './run-hooks';
 import { envelopeOf } from './resource';
 import {
@@ -79,6 +80,11 @@ export async function executeCreate(
     return created;
   });
 
+  await captureAudit(resource, req, 'create', {
+    recordId: record[model.primaryKeys[0] ?? 'id'] as string | number,
+    record,
+  });
+
   const policyCtx = buildPolicyContext(req);
   const shaped = await shapeOne(resource, policyCtx, req, record);
   return { status: 201, body: envelopeOf(resource).success(shaped) };
@@ -125,7 +131,7 @@ export async function executeUpdate(
   const lookup = buildLookup(resource, req);
   const patch = parseBody(resource.updateSchema, req.body);
 
-  const updated = await config.adapter.transaction(async (scope) => {
+  const { prior, current } = await config.adapter.transaction(async (scope) => {
     const ctx = buildHookContext(req, scope);
     const prior = (await config.adapter.readOne(lookup, {}, scope)) as Row | null;
     if (!prior) throw new NotFoundException(model.name, lookup.value);
@@ -134,6 +140,10 @@ export async function executeUpdate(
     }
 
     const managed = applyManagedUpdateFields(model, patch);
+    // Version snapshot BEFORE the write: captures the pre-update state and
+    // stamps the incremented version field onto `managed` (no-op when the
+    // model does not version).
+    await captureVersion(resource, prior, managed, req);
     if (config.hooks?.beforeUpdate) {
       await config.hooks.beforeUpdate(ctx, managed as never, prior as never);
     }
@@ -146,10 +156,16 @@ export async function executeUpdate(
         () => config.hooks!.afterUpdate!(ctx, prior as never, current as never),
       ], []);
     }
-    return current;
+    return { prior, current };
   });
 
-  const shaped = await shapeOne(resource, policyCtx, req, updated);
+  await captureAudit(resource, req, 'update', {
+    recordId: current[model.primaryKeys[0] ?? 'id'] as string | number,
+    previousRecord: prior,
+    record: current,
+  });
+
+  const shaped = await shapeOne(resource, policyCtx, req, current);
   return { status: 200, body: envelopeOf(resource).success(shaped) };
 }
 
@@ -162,7 +178,7 @@ export async function executeDelete(
   const policyCtx = buildPolicyContext(req);
   const lookup = buildLookup(resource, req);
 
-  await config.adapter.transaction(async (scope) => {
+  const prior = await config.adapter.transaction(async (scope) => {
     const ctx = buildHookContext(req, scope);
     const prior = (await config.adapter.readOne(lookup, {}, scope)) as Row | null;
     if (!prior) throw new NotFoundException(model.name, lookup.value);
@@ -170,6 +186,9 @@ export async function executeDelete(
       throw new ForbiddenException();
     }
 
+    // Snapshot the pre-delete state (no-op when the model does not version);
+    // no write payload to stamp — the row is being removed.
+    await captureVersion(resource, prior, undefined, req);
     if (config.hooks?.beforeDelete) await config.hooks.beforeDelete(ctx, prior as never);
 
     const deleted = await config.adapter.delete(
@@ -184,6 +203,12 @@ export async function executeDelete(
         () => config.hooks!.afterDelete!(ctx, prior as never),
       ], []);
     }
+    return prior;
+  });
+
+  await captureAudit(resource, req, 'delete', {
+    recordId: prior[model.primaryKeys[0] ?? 'id'] as string | number,
+    previousRecord: prior,
   });
 
   return { status: 200, body: envelopeOf(resource).success({ deleted: true }) };

@@ -32,7 +32,11 @@ import { defineResource, type CrudResource, type ResourceConfig } from './kernel
 import { deriveCreateSchema, deriveUpdateSchema } from './model/schema-derive';
 import { deriveRouteName, deriveVerbNaming } from './naming';
 import { buildEngineRequest, toResponse } from './request-flow';
-import { CRUD_DEFAULT_ADAPTER } from './crud.tokens';
+import {
+  CRUD_DEFAULT_ADAPTER,
+  CRUD_DEFAULT_AUDIT_STORE,
+  CRUD_DEFAULT_VERSIONING_STORE,
+} from './crud.tokens';
 import { MissingTenantResolverError, resourceNames, type CrudConfig } from './crud.types';
 import { implementedEndpoints } from './kernel/extended/registry';
 import {
@@ -107,7 +111,12 @@ export function stampCrudRoutes(controller: Ctor, config: CrudConfig): void {
     const adapter =
       config.adapter ?? tryResolveDefaultAdapter(c) ??
       raiseNoAdapter(controller.name, names.singular);
-    compiled = defineResource(names.singular, toEngineConfig(config, adapter));
+    const engineConfig = toEngineConfig(config, adapter);
+    // Fall back to the forRoot default stores (like the adapter) when the
+    // resource does not provide its own.
+    engineConfig.versioningStore ??= tryResolveDefault(c, CRUD_DEFAULT_VERSIONING_STORE);
+    engineConfig.auditStore ??= tryResolveDefault(c, CRUD_DEFAULT_AUDIT_STORE);
+    compiled = defineResource(names.singular, engineConfig);
     return compiled;
   };
 
@@ -258,6 +267,15 @@ function tryResolveDefaultAdapter(c: Context): CrudAdapter | undefined {
   }
 }
 
+/** Resolve a forRoot default store from the request container, or `undefined`. */
+function tryResolveDefault<T>(c: Context, token: Parameters<ReturnType<typeof getRequestContainer>['resolve']>[0]): T | undefined {
+  try {
+    return getRequestContainer(c).resolve(token) as T | undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function raiseNoAdapter(controllerName: string, resource: string): never {
   throw new ConfigurationException(
     `${controllerName} ('${resource}'): no adapter available — pass 'adapter' in the @Crud() ` +
@@ -286,6 +304,8 @@ export function toEngineConfig(config: CrudConfig, adapter: CrudAdapter): Resour
     aggregate: config.aggregate,
     dto: config.dto,
     updateFields: config.updateFields,
+    versioningStore: config.versioningStore,
+    auditStore: config.auditStore,
     envelope: config.responseEnvelope,
     errorMappers: config.errorMappers,
   };

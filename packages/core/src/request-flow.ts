@@ -13,7 +13,7 @@ const VAR_KEYS = ['user', 'tenantId', 'organizationId', 'userId', 'agentId', 'ag
 
 export function buildEngineRequest(
   c: Context,
-  parts: { body?: unknown; id?: string } = {},
+  parts: { body?: unknown; id?: string; params?: Record<string, string> } = {},
 ): EngineRequest {
   const vars: Record<string, unknown> = {};
   for (const key of VAR_KEYS) {
@@ -25,6 +25,8 @@ export function buildEngineRequest(
     query: c.req.queries(),
     body: parts.body,
     id: parts.id,
+    // Extra path params (`:version` on the version verbs) forwarded verbatim.
+    ...(parts.params !== undefined ? { params: parts.params } : {}),
     request: c.req.raw,
     vars,
   };

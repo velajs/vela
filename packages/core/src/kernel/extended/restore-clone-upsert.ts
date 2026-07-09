@@ -21,6 +21,7 @@ import { ConfigurationException, NotFoundException } from '../../envelope/errors
 import { applyManagedInsertFields, applyManagedUpdateFields } from '../../model/managed-fields';
 import { applyUpsertRestore, isSoftDeleted } from '../../model/soft-delete';
 import type { CrudEndpointName } from '../../verb-table';
+import { captureAudit } from '../capture';
 import type { EngineRequest, EngineResult } from '../engine-request';
 import { envelopeOf } from '../resource';
 import {
@@ -84,6 +85,11 @@ async function executeRestore(resource: AnyResource, req: EngineRequest): Promis
     config.adapter.restore!(lookup, scope),
   );
   if (!restored) throw new NotFoundException(model.name, lookup.value);
+
+  await captureAudit(resource, req, 'restore', {
+    recordId: (restored as Row)[model.primaryKeys[0] ?? 'id'] as string | number,
+    record: restored as Row,
+  });
 
   const shaped = await shapeOne(resource, policyCtx, req, restored as Row);
   return { status: 200, body: envelopeOf(resource).success(shaped) };
@@ -201,7 +207,7 @@ async function executeUpsert(resource: AnyResource, req: EngineRequest): Promise
   }
   const databaseGeneratedId = caps.has('databaseGeneratedId');
 
-  const outcome = await adapter.transaction<{ record: Row; created: boolean }>(async (scope) => {
+  const outcome = await adapter.transaction<{ record: Row; created: boolean; previous: Row | null }>(async (scope) => {
     const ctx = buildHookContext(req, scope);
 
     // Pre-find determines isCreate for beforeUpsert and drives the synthesis
@@ -271,7 +277,14 @@ async function executeUpsert(resource: AnyResource, req: EngineRequest): Promise
       if (replaced !== undefined) record = replaced as Row;
     }
 
-    return { record, created };
+    return { record, created, previous: existing };
+  });
+
+  await captureAudit(resource, req, 'upsert', {
+    recordId: outcome.record[model.primaryKeys[0] ?? 'id'] as string | number,
+    record: outcome.record,
+    ...(outcome.previous !== null ? { previousRecord: outcome.previous } : {}),
+    metadata: { created: outcome.created },
   });
 
   const shaped = await shapeOne(resource, policyCtx, req, outcome.record);

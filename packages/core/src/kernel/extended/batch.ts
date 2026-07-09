@@ -53,6 +53,7 @@ import { parseListFilters } from '../../query/filters';
 import type { CrudEndpointName } from '../../verb-table';
 import type { EngineRequest, EngineResult } from '../engine-request';
 import type { HookContext, HookMode } from '../hook-types';
+import { captureAuditBatch } from '../capture';
 import { envelopeOf } from '../resource';
 import { runBeforeChain } from '../run-hooks';
 import {
@@ -285,6 +286,13 @@ async function executeBatchCreate(resource: AnyResource, req: EngineRequest): Pr
     return out;
   });
 
+  await captureAuditBatch(
+    resource,
+    req,
+    'batch_create',
+    created.map((row) => ({ recordId: row[primaryKey(resource)] as string | number, record: row })),
+  );
+
   const policyCtx = buildPolicyContext(req);
   const shaped = await Promise.all(created.map((row) => shapeOne(resource, policyCtx, req, row)));
   return { status: 201, body: envelopeOf(resource).success({ created: shaped, count: shaped.length }) };
@@ -335,6 +343,13 @@ async function executeBatchUpdate(resource: AnyResource, req: EngineRequest): Pr
     }
     return { updated, notFound };
   });
+
+  await captureAuditBatch(
+    resource,
+    req,
+    'batch_update',
+    outcome.updated.map((row) => ({ recordId: row[primaryKey(resource)] as string | number, record: row })),
+  );
 
   const policyCtx = buildPolicyContext(req);
   const shaped = await Promise.all(outcome.updated.map((row) => shapeOne(resource, policyCtx, req, row)));
@@ -388,6 +403,13 @@ async function executeBatchDelete(resource: AnyResource, req: EngineRequest): Pr
     }
     return { deleted, notFound };
   });
+
+  await captureAuditBatch(
+    resource,
+    req,
+    'batch_delete',
+    outcome.deleted.map((row) => ({ recordId: row[primaryKey(resource)] as string | number, previousRecord: row })),
+  );
 
   const policyCtx = buildPolicyContext(req);
   const shaped = await Promise.all(outcome.deleted.map((row) => shapeOne(resource, policyCtx, req, row)));
@@ -451,6 +473,13 @@ async function executeBatchRestore(resource: AnyResource, req: EngineRequest): P
     }
     return { restored, notFound };
   });
+
+  await captureAuditBatch(
+    resource,
+    req,
+    'batch_restore',
+    outcome.restored.map((row) => ({ recordId: row[primaryKey(resource)] as string | number, record: row })),
+  );
 
   const policyCtx = buildPolicyContext(req);
   const shaped = await Promise.all(outcome.restored.map((row) => shapeOne(resource, policyCtx, req, row)));
@@ -559,6 +588,16 @@ async function executeBatchUpsert(resource: AnyResource, req: EngineRequest): Pr
 
     return { items, createdCount, updatedCount };
   });
+
+  await captureAuditBatch(
+    resource,
+    req,
+    'batch_upsert',
+    outcome.items.map((item) => ({
+      recordId: item.record[primaryKey(resource)] as string | number,
+      record: item.record,
+    })),
+  );
 
   const policyCtx = buildPolicyContext(req);
   const items = await Promise.all(

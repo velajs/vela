@@ -16,6 +16,8 @@ import { defaultEnvelope, type ErrorMapper, type ResponseEnvelope } from '../env
 import { resolveStructuredError } from '../envelope/mappers';
 import { deriveCreateSchema, deriveUpdateSchema } from '../model/schema-derive';
 import type { Model } from '../model/model.types';
+import type { VersioningStore } from '../versioning/index';
+import type { AuditStore } from '../audit/index';
 import type { CrudEndpointName } from '../verb-table';
 import { EXTENDED_EXECUTORS } from './extended/registry';
 import type { CrudHooks, HookModeConfig } from './hook-types';
@@ -64,6 +66,18 @@ export interface ResourceConfig<Row extends Record<string, unknown> = Record<str
   /** Body-schema overrides (otherwise derived from the model schema). */
   dto?: { create?: ZodObject<ZodRawShape>; update?: ZodObject<ZodRawShape> };
   updateFields?: { allowed?: string[]; blocked?: string[] };
+  /**
+   * Version-history store (DI seam) — REQUIRED when `model.versioning` is on.
+   * The engine snapshots each versioned mutation here; the version verbs read
+   * it back. Decoupled from the data adapter.
+   */
+  versioningStore?: VersioningStore;
+  /**
+   * Audit-log store (DI seam) — REQUIRED when `model.audit` is on. The engine
+   * writes who/what/when(+field changes) entries here after each mutation.
+   * Decoupled from the data adapter.
+   */
+  auditStore?: AuditStore;
   envelope?: ResponseEnvelope;
   errorMappers?: ErrorMapper[];
 }
@@ -107,6 +121,20 @@ export function defineResource<Row extends Record<string, unknown>>(
   if ((config.allowedIncludes?.length ?? 0) > 0 && config.adapter.relations === undefined) {
     throw new ConfigurationException(
       `Resource '${name}': allowedIncludes configured but the adapter has no relation loader`,
+    );
+  }
+  // Loud, never silent: an enabled versioning/audit family without its store
+  // seam is a misconfiguration — fail at definition time, not on the first
+  // mutation (hono-crud surfaced this as a request-time CONFIGURATION_ERROR;
+  // the native engine catches it earlier).
+  if (config.model.versioning && config.versioningStore === undefined) {
+    throw new ConfigurationException(
+      `Resource '${name}': model.versioning is enabled but no versioningStore was provided`,
+    );
+  }
+  if (config.model.audit && config.auditStore === undefined) {
+    throw new ConfigurationException(
+      `Resource '${name}': model.audit is enabled but no auditStore was provided`,
     );
   }
 

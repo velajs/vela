@@ -12,6 +12,8 @@ import type { ErrorMapper, ResponseEnvelope } from './envelope/envelope';
 import type { CrudHooks, HookModeConfig } from './kernel/hook-types';
 import type { ResourceConfig, ResourcePaginationConfig } from './kernel/resource';
 import type { Model } from './model/model.types';
+import type { VersioningStore } from './versioning/index';
+import type { AuditStore } from './audit/index';
 import type { CrudEndpointName } from './verb-table';
 import type { ZodObject, ZodRawShape } from 'zod';
 
@@ -54,6 +56,16 @@ export interface CrudConfig<Row extends Record<string, unknown> = Record<string,
   /** Request-body schema overrides (else derived from the model schema). */
   dto?: { create?: ZodObject<ZodRawShape>; update?: ZodObject<ZodRawShape> };
   updateFields?: { allowed?: string[]; blocked?: string[] };
+  /**
+   * Version-history store (REQUIRED when `model.versioning` is on). Falls back
+   * to the `CrudModule.forRoot({ versioningStore })` default when omitted.
+   */
+  versioningStore?: VersioningStore;
+  /**
+   * Audit-log store (REQUIRED when `model.audit` is on). Falls back to the
+   * `CrudModule.forRoot({ auditStore })` default when omitted.
+   */
+  auditStore?: AuditStore;
   /** Pluggable response envelope (default: `{ success, result[, result_info] }`). */
   responseEnvelope?: ResponseEnvelope;
   errorMappers?: ErrorMapper[];

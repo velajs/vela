@@ -7,10 +7,21 @@
 import { moduleToken, type InjectionToken } from '@velajs/vela';
 import type { CrudAdapter } from './adapter/contract';
 import type { CrudResource } from './kernel/resource';
+import type { VersioningStore } from './versioning/index';
+import type { AuditStore } from './audit/index';
 
 /** The app-wide default adapter, provided by `CrudModule.forRoot`. */
 export const CRUD_DEFAULT_ADAPTER: InjectionToken<CrudAdapter> = moduleToken<CrudAdapter>(
   'crud:default-adapter',
+);
+
+/** The app-wide default version-history store, provided by `CrudModule.forRoot`. */
+export const CRUD_DEFAULT_VERSIONING_STORE: InjectionToken<VersioningStore> =
+  moduleToken<VersioningStore>('crud:default-versioning-store');
+
+/** The app-wide default audit-log store, provided by `CrudModule.forRoot`. */
+export const CRUD_DEFAULT_AUDIT_STORE: InjectionToken<AuditStore> = moduleToken<AuditStore>(
+  'crud:default-audit-store',
 );
 
 const RESOURCE_TOKENS = Symbol.for('velajs:crud:resource-tokens:v1');

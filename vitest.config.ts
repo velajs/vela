@@ -19,6 +19,8 @@ export default defineConfig({
       { find: '@velajs/crud/policies', replacement: r('./packages/core/src/policies/index.ts') },
       { find: '@velajs/crud/kernel', replacement: r('./packages/core/src/kernel/index.ts') },
       { find: '@velajs/crud/multi-tenant', replacement: r('./packages/core/src/multi-tenant/index.ts') },
+      { find: '@velajs/crud/versioning', replacement: r('./packages/core/src/versioning/index.ts') },
+      { find: '@velajs/crud/audit', replacement: r('./packages/core/src/audit/index.ts') },
       { find: '@velajs/crud', replacement: r('./packages/core/src/index.ts') },
       { find: '@velajs/crud-memory', replacement: r('./packages/memory/src/index.ts') },
     ],

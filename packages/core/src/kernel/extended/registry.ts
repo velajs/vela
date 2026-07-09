@@ -11,6 +11,7 @@ import type { AnyResource } from '../verb-helpers';
 import { restoreCloneUpsertExecutors } from './restore-clone-upsert';
 import { batchExecutors } from './batch';
 import { queryVerbExecutors } from './query-verbs';
+import { versioningExecutors } from './versioning';
 
 export type VerbExecutor = (resource: AnyResource, req: EngineRequest) => Promise<EngineResult>;
 
@@ -20,6 +21,7 @@ export const EXTENDED_EXECUTORS: Partial<Record<CrudEndpointName, VerbExecutor>>
   ...restoreCloneUpsertExecutors,
   ...batchExecutors,
   ...queryVerbExecutors,
+  ...versioningExecutors,
 };
 
 /** Every verb the engine can execute today (core five + registered extended). */

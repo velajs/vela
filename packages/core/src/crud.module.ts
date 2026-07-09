@@ -16,14 +16,25 @@ import type { DynamicModule, ProviderOptions } from '@velajs/vela';
 import type { CrudAdapter } from './adapter/contract';
 import { ConfigurationException } from './envelope/errors';
 import { defineResource } from './kernel/resource';
-import { CRUD_DEFAULT_ADAPTER, crudResourceToken } from './crud.tokens';
+import {
+  CRUD_DEFAULT_ADAPTER,
+  CRUD_DEFAULT_AUDIT_STORE,
+  CRUD_DEFAULT_VERSIONING_STORE,
+  crudResourceToken,
+} from './crud.tokens';
 import { resourceNames } from './crud.types';
 import { toEngineConfig } from './stamp-routes';
 import { synthesizeController, type CrudFeatureResource } from './synthesize-controller';
+import type { VersioningStore } from './versioning/index';
+import type { AuditStore } from './audit/index';
 
 export interface CrudModuleOptions {
   /** The app-wide default `CrudAdapter` (per-resource `adapter` overrides it). */
   adapter: CrudAdapter;
+  /** App-wide default version-history store (per-resource `versioningStore` overrides it). */
+  versioningStore?: VersioningStore;
+  /** App-wide default audit-log store (per-resource `auditStore` overrides it). */
+  auditStore?: AuditStore;
 }
 
 const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<CrudModuleOptions>({
@@ -43,8 +54,20 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<CrudModul
         },
         inject: [OPTIONS],
       },
+      // Optional app-wide default stores (may be undefined — resources that do
+      // not enable versioning/audit never resolve them).
+      {
+        provide: CRUD_DEFAULT_VERSIONING_STORE,
+        useFactory: (options: CrudModuleOptions) => options.versioningStore,
+        inject: [OPTIONS],
+      },
+      {
+        provide: CRUD_DEFAULT_AUDIT_STORE,
+        useFactory: (options: CrudModuleOptions) => options.auditStore,
+        inject: [OPTIONS],
+      },
     ],
-    exports: [CRUD_DEFAULT_ADAPTER],
+    exports: [CRUD_DEFAULT_ADAPTER, CRUD_DEFAULT_VERSIONING_STORE, CRUD_DEFAULT_AUDIT_STORE],
   }),
 });
 
@@ -64,7 +87,10 @@ export class CrudModule extends ConfigurableModuleClass {
         provide: crudResourceToken(names.singular),
         useFactory: (container: Container) => {
           const adapter = config.adapter ?? resolveDefault(container, names.singular);
-          return defineResource(names.singular, toEngineConfig(config, adapter));
+          const engineConfig = toEngineConfig(config, adapter);
+          engineConfig.versioningStore ??= resolveOptional(container, CRUD_DEFAULT_VERSIONING_STORE);
+          engineConfig.auditStore ??= resolveOptional(container, CRUD_DEFAULT_AUDIT_STORE);
+          return defineResource(names.singular, engineConfig);
         },
         inject: [Container],
       };
@@ -91,6 +117,12 @@ function resolveDefault(container: Container, resource: string): CrudAdapter {
     );
   }
   return container.resolve(CRUD_DEFAULT_ADAPTER);
+}
+
+/** Resolve an optional forRoot default store; `undefined` when unregistered. */
+function resolveOptional<T>(container: Container, token: Parameters<Container['resolve']>[0]): T | undefined {
+  if (!container.has(token)) return undefined;
+  return container.resolve(token) as T | undefined;
 }
 
 export { MODULE_OPTIONS_TOKEN as CRUD_MODULE_OPTIONS };

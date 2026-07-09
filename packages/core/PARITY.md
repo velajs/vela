@@ -176,3 +176,94 @@ memory adapter's cursor branch emit `page: 0` (e.g. delegate to
   mapping for clone/upsert remains an adapter/errorMappers concern.
 - **Drizzle will need `restore`** (new optional adapter method + capability)
   for its soft-delete leg — loud ConfigurationException until then (M7).
+
+## Versioning + Audit families (M5)
+
+Native rewrite of hono-crud 0.13's versioning (`versioning/index.ts` +
+`endpoints/version-history.ts`) and audit (`audit/index.ts`) families. Both
+stores are **DI seams decoupled from the data adapter**: `VersioningStore` /
+`AuditStore` interfaces + `MemoryVersioningStore` / `MemoryAuditStore` on the
+`@velajs/crud/versioning` + `@velajs/crud/audit` subpaths. Provided per-resource
+(`versioningStore` / `auditStore` on `ResourceConfig` / `CrudConfig`) or as a
+`CrudModule.forRoot({ versioningStore, auditStore })` default (resolved in
+`stamp-routes` `resolveResource` + `forFeature`, mirroring `CRUD_DEFAULT_ADAPTER`).
+
+### Pinned semantics (from hono-crud sources/tests)
+
+- **Store-seam renames** (shape preserved): `VersioningStorage` →
+  `VersioningStore` with `store→save`, `getByRecordId→list`, `getVersion→get`,
+  `getLatestVersion→latest` (+ optional `prune`/`deleteAll`). Per-`(tableName,
+  recordId)` keying, newest-first ordering, `latest` = max stored version or 0
+  (`versioning-store.test.ts`, `versioning.test.ts`). Audit fuses hono-crud's
+  `AuditLogger` (entry building, now in `kernel/capture.ts`) + `AuditLogStorage`
+  (persistence) into one seam: `log` / `logBatch` / `query`.
+- **Snapshot timing = PRE-mutation, inside the tx, before the write.** On
+  UPDATE the pre-update record is snapshotted and the row's version field is
+  incremented (`versioning.test.ts` "save version before update": snapshot =
+  pre-update state, row → v2). `captureVersion` (kernel/capture.ts) is the sole
+  placement.
+- **Version numbering:** the stored entry's `version` is the record's CURRENT
+  version field (or 0); the number stamped on the write is that **+ 1** — exactly
+  hono-crud `VersionManager.saveVersion` ("store the version BEFORE the update,
+  return the new one"). `version` column fixed to `'version'` (the model flag is
+  a boolean, so no config-object field-name override — see M5 note below).
+- **versionHistory** (`GET /:id/versions`): `?limit` (1..100, default 20),
+  `?offset` (≥0). Body `{ versions: [...newest-first], totalVersions }` where
+  `totalVersions = latest` (highest stored version).
+- **versionRead** (`GET /:id/versions/:version`): `:version` path param (positive
+  integer; non-int → 400 VALIDATION_ERROR); missing snapshot → 404. Body is the
+  bare `VersionEntry`.
+- **versionCompare** (`GET /:id/versions/compare?from=&to=`): **query** params
+  `from`/`to` (positive integers, both required → 400 if missing/invalid). Body
+  `{ from, to, changes }`; a **missing version yields `changes: []` (no 404)** —
+  parity with `VersionManager.compareVersions`. `?from`/`?to` were pinned as
+  query params (not path), matching hono-crud's `getQuerySchema`.
+- **versionRollback** (`POST /:id/versions/:version/rollback`): reads the target
+  snapshot (404 if absent), writes its historical `data` back via
+  `adapter.update` inside the tx, and returns the **resource envelope of the
+  rolled-back row** whose `version` = currentVersion + 1 (`versioning.test.ts`:
+  rollback to v1 of a v3 row → `title: 'Title v1'`, `version: 4`).
+- **Tenant/owner scope:** every version verb resolves the parent record through
+  the tenant-scoped `buildLookup` first (soft-delete-inclusive) — a foreign or
+  missing record is 404, so version data never leaks
+  (`versioning-tenant-scope.test.ts` parity).
+- **Audit entries** (who = `userId` / what = action + record/previousRecord +
+  `changes` / when = `timestamp`) are written **AFTER the mutation commits**;
+  batch mutations use `logBatch`. `changes` via `calculateChanges` (ported
+  verbatim, JSON-structural diff) on update/upsert. Wired into create, update,
+  delete, restore, upsert, and all five batch verbs.
+- **Definition-time loud errors:** `model.versioning` without a `versioningStore`
+  (or `model.audit` without an `auditStore`) throws `ConfigurationException` at
+  `defineResource` — hono-crud surfaced this only at request time.
+
+### Deliberate deviations (tracked)
+
+- **Versioning snapshots on UPDATE + DELETE + ROLLBACK.** hono-crud only ever
+  calls `saveVersion` in `update.ts` (verified: `saveVersion` has one caller).
+  The native engine additionally snapshots the pre-delete and pre-rollback state
+  (per the M5 design constraint / deliverable "snapshot capture on update/delete").
+  No hono-crud versioning test or conformance cell contradicts this (versioning
+  is gated behind `model.versioning`, off by default → no conformance cell).
+- **Rollback numbers the new version as `currentVersion + 1`** (symmetric with
+  update: it captures the pre-rollback state like an update would), where
+  hono-crud uses `getLatestVersion() + 1` **without** a pre-rollback snapshot. In
+  the pinned rollback test the two coincide (both → 4) because the seeded latest
+  version equals the live row's version; in a natural update-only history they
+  can differ.
+- **Audit is AWAITED post-transaction**, not fire-and-forget via
+  `runAfterResponse` — a caller (and a test) observes the entry with no timer.
+  Safe: the write already committed.
+- **`model.versioning` / `model.audit` stay booleans** (PARITY.md M5 note): no
+  config object yet, so `version` field = `'version'`, `excludeFields = []`, no
+  `maxVersions` pruning at capture time, and audit records every wired mutation.
+  The store `prune`/`deleteAll` methods exist for implementer parity but the
+  engine never calls them (no `maxVersions`).
+- **Version-verb "not enabled" / "store missing" → `ConfigurationException`
+  (500)**, not hono-crud's `VERSIONING_NOT_ENABLED` (400). Both are unreachable
+  through a stamped route (gated on `model.versioning`; store presence affirmed
+  at definition); this is defense for direct `resource.execute('version*')`
+  callers — consistent with the restore verb's 500.
+- **HTTP seam fix:** `request-flow.ts` `buildEngineRequest` now forwards the
+  `params` map (previously dropped), so the `:version` path param reaches the
+  version verbs. `stamp-routes` was not restructured (VERB_SHAPES already stamps
+  id+version).
