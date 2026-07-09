@@ -1,7 +1,7 @@
 import { defineModule } from '../index';
 import { InMemoryCursorLog } from './live.cursor';
 import { LiveEngine } from './live.engine';
-import { LiveInvalidation, localLive } from './live.invalidation';
+import { LiveInvalidation, localLive, perAppLiveDriver } from './live.invalidation';
 import { LIVE_CURSOR_LOG, LIVE_DRIVER, LIVE_MODULE_OPTIONS } from './live.tokens';
 import type { LiveDriver, LiveModuleOptions } from './live.types';
 import { PresenceResolver, PresenceService } from './presence';
@@ -40,7 +40,11 @@ const { ConfigurableModuleClass } = defineModule<LiveModuleOptions>({
       },
       {
         provide: LIVE_DRIVER,
-        useFactory: (o: LiveModuleOptions) => o.driver ?? localLive(),
+        // Wrapped per app: user-supplied drivers are shared config objects
+        // (the same module bootstraps in the Worker AND in each Durable
+        // Object), so per-app sink/mode state lives in the wrapper — see
+        // perAppLiveDriver.
+        useFactory: (o: LiveModuleOptions) => perAppLiveDriver(o.driver ?? localLive()),
         inject: [OPTIONS],
       },
       {

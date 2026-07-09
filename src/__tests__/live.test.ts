@@ -398,3 +398,50 @@ describe('LiveModule (tag-based live queries)', () => {
     await expect(VelaFactory.create(AppModule, { diagnostics: 'throw' })).rejects.toThrow(/reserved/);
   });
 });
+
+describe('perAppLiveDriver (shared driver across app instances)', () => {
+  it('keeps local mode and sinks per app: the DO flipping local must not poison the worker', async () => {
+    const { perAppLiveDriver } = await import('../live/index.js');
+    const dispatched: unknown[] = [];
+    const shared = {
+      kind: 'durable-object',
+      bind: () => {},
+      dispatch: (cmd: unknown) => {
+        dispatched.push(cmd);
+        return { cursor: 7, epoch: 'remote' };
+      },
+      _setLocalMode: () => {
+        throw new Error('underlying _setLocalMode must never be reached');
+      },
+    };
+
+    const makeSink = () => {
+      const applied: unknown[] = [];
+      return {
+        applied,
+        applyInvalidation: (cmd: unknown) => {
+          applied.push(cmd);
+          return { cursor: 1, epoch: 'local' };
+        },
+      };
+    };
+
+    const workerDriver = perAppLiveDriver(shared as never);
+    const doDriver = perAppLiveDriver(shared as never);
+    const workerSink = makeSink();
+    const doSink = makeSink();
+    workerDriver.bind(workerSink as never);
+    doDriver.bind(doSink as never);
+
+    (doDriver as unknown as { _setLocalMode(): void })._setLocalMode();
+
+    // DO app: applies to ITS OWN engine, no remote hop.
+    expect(await doDriver.dispatch({ tags: ['t'] })).toEqual({ cursor: 1, epoch: 'local' });
+    expect(doSink.applied).toHaveLength(1);
+
+    // Worker app: still routes through the underlying (remote) driver.
+    expect(await workerDriver.dispatch({ tags: ['t'] })).toEqual({ cursor: 7, epoch: 'remote' });
+    expect(workerSink.applied).toHaveLength(0);
+    expect(dispatched).toHaveLength(1);
+  });
+});

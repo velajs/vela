@@ -84,6 +84,12 @@ Mutation responses expose `Vela-Commit-Cursor` / `Vela-Commit-Epoch` (automatic 
 
 The module ships a preset: `{ t: 'presence' }` heartbeat frames update a per-room roster; `$presence.roster` is a built-in live query; socket close departs immediately (TTL only covers ungraceful drops, filtered at read time — no timers). Client side: `createPresence(client, { room, meta })` or React's `usePresence(room, { meta })`. Disable with `LiveModule.forRoot({ presence: false })`.
 
+## Cloudflare gotchas
+
+- **Data locality**: the Worker and each Durable Object bootstrap SEPARATE app instances of the same module. State that live queries read and mutations write must live in a shared store (D1/KV/external DB) — per-isolate memory makes writes invisible to re-runs. See `examples/live-todo`'s `TodoStore` seam.
+- **Commit headers on Workers**: stamp them explicitly (`stampCommitHeaders(c, stamp)`; the CRUD bridge does it automatically). Do NOT rely on `ambientContainer`: awaiting a Durable Object RPC inside hono's ALS `contextStorage()` middleware hangs the response under workerd.
+- Driver/log option objects are shared between those app instances by construction; vela wraps the driver per app (`perAppLiveDriver`) so per-app sink/local-mode state never leaks across instances — custom drivers should keep instance state to isolate-wide concerns only.
+
 ## Guarantees & limits (v1)
 
 - At-least-once frames; per-subscription total order within a log scope; coalescing may collapse bursts but every committed invalidation is observed by a re-run that starts after it.

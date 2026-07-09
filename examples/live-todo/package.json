@@ -1,0 +1,38 @@
+{
+  "name": "live-todo",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Realtime todo + presence demo for @velajs/vela/live: node transport and Cloudflare Durable Object variants, driven by the published @velajs/client.",
+  "scripts": {
+    "build:vela": "pnpm --dir ../.. build",
+    "sync:deps": "pnpm run build:vela && pnpm install",
+    "build": "rm -rf dist && swc src -d dist --strip-leading-paths && tsc --noEmit",
+    "bundle:web": "esbuild web/main.ts --bundle --format=esm --outfile=web/main.js",
+    "start": "pnpm run build && pnpm run bundle:web && node dist/server-node.js",
+    "typecheck": "tsc --noEmit",
+    "start:cf": "pnpm run build && pnpm run bundle:web && wrangler dev --port 8789"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.0",
+    "@hono/node-ws": "^1.2.0",
+    "@velajs/client": "^0.1.0",
+    "@velajs/cloudflare": "^1.10.0",
+    "@velajs/vela": "file:../..",
+    "hono": "^4"
+  },
+  "devDependencies": {
+    "@swc/cli": "^0.8.0",
+    "@swc/core": "^1.15.11",
+    "@types/node": "^22",
+    "esbuild": "^0.25.0",
+    "typescript": "^5",
+    "wrangler": "^4.107.1"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@swc/core",
+      "esbuild"
+    ]
+  }
+}
