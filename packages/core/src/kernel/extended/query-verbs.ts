@@ -49,6 +49,7 @@ import type { EngineRequest, EngineResult } from '../engine-request';
 import { envelopeOf } from '../resource';
 import {
   buildPolicyContext,
+  createSchemaFor,
   listParseOptions,
   scopeListQuery,
   shapeOne,
@@ -393,6 +394,7 @@ async function findExistingByKeys(
 async function processImportRow(
   resource: AnyResource,
   req: EngineRequest,
+  createSchema: AnyResource['createSchema'],
   data: Row,
   rowNumber: number,
   mode: 'create' | 'upsert',
@@ -404,7 +406,7 @@ async function processImportRow(
   const model = resource.model;
   const adapter = resource.config.adapter;
 
-  const parsed = resource.createSchema.safeParse(data);
+  const parsed = createSchema.safeParse(data);
   if (!parsed.success) {
     const issues = (parsed.error as { issues: Array<{ path: PropertyKey[]; message: string }> }).issues;
     return {
@@ -477,12 +479,14 @@ async function executeImport(resource: AnyResource, req: EngineRequest): Promise
 
   const summary: ImportSummary = { total: rows.length, created: 0, updated: 0, skipped: 0, failed: 0 };
   const results: ImportRowResult[] = [];
+  const createSchema = await createSchemaFor(resource, req);
 
   await config.adapter.transaction(async (scope) => {
     for (let i = 0; i < rows.length; i++) {
       const result = await processImportRow(
         resource,
         req,
+        createSchema,
         rows[i],
         i + 1,
         mode,

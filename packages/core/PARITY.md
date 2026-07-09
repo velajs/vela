@@ -298,3 +298,13 @@ stores are **DI seams decoupled from the data adapter**: `VersioningStore` /
   open. Engine-level tenant scoping covers row filtering, but RLS
   defense-in-depth needs the tenant in the transaction seam. Candidate:
   optional `transaction(fn, ctx?: { tenantId? })` overload.
+
+## resolveSchema wired (1.18.1)
+
+- `Model.resolveSchema` (per-tenant schemas — tenant custom fields) is now
+  INVOKED: every body-validating verb (create/update/upsert/clone/batch*/
+  bulkPatch/import) resolves the tenant schema per request and re-derives the
+  body schema (`createSchemaFor`/`updateSchemaFor`); explicit `dto` overrides
+  still win. Gap found by the erpos migration (custom-fields regression).
+  Resolution is per-request, uncached (hono-crud parity) — resolvers may
+  cache internally.

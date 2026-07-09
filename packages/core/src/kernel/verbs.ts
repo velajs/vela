@@ -27,7 +27,9 @@ import {
   buildLookup,
   buildPolicyContext,
   listParseOptions,
+  createSchemaFor,
   parseBody,
+  updateSchemaFor,
   parseIncludeParam,
   passesPushdown,
   resolveSelection,
@@ -49,7 +51,7 @@ export async function executeCreate(
 ): Promise<EngineResult> {
   const config = resource.config;
   const model = resource.model;
-  const data = parseBody(resource.createSchema, req.body);
+  const data = parseBody(await createSchemaFor(resource, req), req.body);
 
   if (model.tenantField !== undefined && req.vars?.tenantId !== undefined) {
     data[model.tenantField] = req.vars.tenantId;
@@ -129,7 +131,7 @@ export async function executeUpdate(
   const model = resource.model;
   const policyCtx = buildPolicyContext(req);
   const lookup = buildLookup(resource, req);
-  const patch = parseBody(resource.updateSchema, req.body);
+  const patch = parseBody(await updateSchemaFor(resource, req), req.body);
 
   const { prior, current } = await config.adapter.transaction(async (scope) => {
     const ctx = buildHookContext(req, scope);

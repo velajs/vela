@@ -28,6 +28,7 @@ import type { PolicyContext } from '../policies/types';
 import { matchesFilter, parseListFilters } from '../query/filters';
 import { applyFieldSelection, applyFieldSelectionToArray, parseFieldSelection } from '../query/field-selection';
 import type { EngineRequest, EngineResult } from './engine-request';
+import { deriveCreateSchema, deriveUpdateSchema } from '../model/schema-derive';
 import type { HookContext } from './hook-types';
 import { runBeforeChain, runHooks } from './run-hooks';
 import { envelopeOf, type CrudResource } from './resource';
@@ -232,4 +233,37 @@ export function parseIncludeParam(req: EngineRequest, allowed: string[] | undefi
   const trimmed = names.map((name) => name.trim()).filter((name) => name.length > 0);
   if (!allowed || allowed.length === 0) return [];
   return trimmed.filter((name) => allowed.includes(name));
+}
+
+/**
+ * The request-effective CREATE body schema. The compiled static schema is
+ * used unless the model declares `resolveSchema` (per-tenant schemas — e.g.
+ * tenant custom fields): then the model schema is resolved for the request
+ * tenant and the body schema re-derived. An explicit `dto.create` override
+ * always wins. Resolution is per-request (parity with hono-crud, whose
+ * Model.resolveSchema ran on every request); resolvers may cache internally.
+ */
+export async function createSchemaFor(
+  resource: AnyResource,
+  req: EngineRequest,
+): Promise<AnyResource['createSchema']> {
+  const model = resource.model;
+  if (resource.config.dto?.create !== undefined || model.resolveSchema === undefined) {
+    return resource.createSchema;
+  }
+  const schema = await model.resolveSchema({ tenantId: req.vars?.tenantId });
+  return deriveCreateSchema({ ...model, schema });
+}
+
+/** The request-effective UPDATE body schema — see {@link createSchemaFor}. */
+export async function updateSchemaFor(
+  resource: AnyResource,
+  req: EngineRequest,
+): Promise<AnyResource['updateSchema']> {
+  const model = resource.model;
+  if (resource.config.dto?.update !== undefined || model.resolveSchema === undefined) {
+    return resource.updateSchema;
+  }
+  const schema = await model.resolveSchema({ tenantId: req.vars?.tenantId });
+  return deriveUpdateSchema({ ...model, schema }, resource.config.updateFields ?? {});
 }

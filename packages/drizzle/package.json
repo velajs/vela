@@ -1,6 +1,6 @@
 {
   "name": "@velajs/crud-drizzle",
-  "version": "1.18.0",
+  "version": "1.18.1",
   "description": "Drizzle ORM adapter for @velajs/crud (pg, mysql, sqlite)",
   "type": "module",
   "main": "./dist/index.js",

@@ -60,7 +60,9 @@ import {
   buildHookContext,
   buildPolicyContext,
   listParseOptions,
+  createSchemaFor,
   parseBody,
+  updateSchemaFor,
   scopeListQuery,
   shapeOne,
   tenantFilters,
@@ -253,6 +255,7 @@ async function executeBatchCreate(resource: AnyResource, req: EngineRequest): Pr
   const afterMode = config.hooks?.modes?.batchCreate?.afterMode ?? 'sequential';
   const databaseGeneratedId = config.adapter.capabilities.has('databaseGeneratedId');
   const createMany = config.adapter.createMany;
+  const createSchema = await createSchemaFor(resource, req);
 
   const created = await config.adapter.transaction(async (scope) => {
     const ctx = buildHookContext(req, scope);
@@ -260,7 +263,7 @@ async function executeBatchCreate(resource: AnyResource, req: EngineRequest): Pr
     // Validate + stamp every item first (all-or-nothing: an invalid item aborts
     // before any before-hook runs or any row is written).
     const prepared: Row[] = rawItems.map((item) => {
-      const data = parseBody(resource.createSchema, item);
+      const data = parseBody(createSchema, item);
       if (model.tenantField !== undefined && req.vars?.tenantId !== undefined) {
         data[model.tenantField] = req.vars.tenantId;
       }
@@ -318,10 +321,11 @@ async function executeBatchUpdate(resource: AnyResource, req: EngineRequest): Pr
   const beforeMode = config.hooks?.modes?.batchUpdate?.beforeMode ?? 'sequential';
   const afterMode = config.hooks?.modes?.batchUpdate?.afterMode ?? 'sequential';
 
+  const updateSchema = await updateSchemaFor(resource, req);
   const outcome = await config.adapter.transaction(async (scope) => {
     const ctx = buildHookContext(req, scope);
     const patches = items.map((item) =>
-      applyManagedUpdateFields(model, parseBody(resource.updateSchema, item.data)),
+      applyManagedUpdateFields(model, parseBody(updateSchema, item.data)),
     );
 
     const updated: Row[] = [];
@@ -525,6 +529,7 @@ async function executeBatchUpsert(resource: AnyResource, req: EngineRequest): Pr
   const pk = primaryKey(resource);
   const upsertOne = adapter.upsertOne;
 
+  const upsertCreateSchema = await createSchemaFor(resource, req);
   const outcome = await adapter.transaction(async (scope) => {
     const ctx = buildHookContext(req, scope);
     const items: Array<{ record: Row; created: boolean; index: number }> = [];
@@ -532,7 +537,7 @@ async function executeBatchUpsert(resource: AnyResource, req: EngineRequest): Pr
     let updatedCount = 0;
 
     for (let i = 0; i < rawItems.length; i++) {
-      const values = parseBody(resource.createSchema, rawItems[i]);
+      const values = parseBody(upsertCreateSchema, rawItems[i]);
       if (model.tenantField !== undefined && req.vars?.tenantId !== undefined) {
         values[model.tenantField] = req.vars.tenantId;
       }
@@ -663,7 +668,7 @@ async function executeBulkPatch(resource: AnyResource, req: EngineRequest): Prom
       'EMPTY_BODY',
     );
   }
-  const patchFields = parseBody(resource.updateSchema, rawData);
+  const patchFields = parseBody(await updateSchemaFor(resource, req), rawData);
   const dryRun = isDryRun(req);
 
   // Parse + scope the body filters exactly like list (allow-listed fields /
