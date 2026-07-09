@@ -6,23 +6,41 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [20, 22]
     steps:
-      - uses: actions/checkout@v6
-
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v6
+      - name: Harden runner
+        uses: step-security/harden-runner@58077d3c7e43986b6b15fba718e8ea69e387dfcc # v2.15.1
         with:
-          node-version: 24
+          egress-policy: audit
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: ${{ matrix.node-version }}
           cache: pnpm
 
-      - run: pnpm install
+      - run: pnpm install --frozen-lockfile
+
+      # Single physical zod v4 guard — a second copy breaks instanceof/OpenAPI.
+      - run: pnpm dedupe --check
 
       - run: pnpm run typecheck
 
       - run: pnpm run build
 
       - run: pnpm test
+
+      # Catches missing README/LICENSE/dist entries before they ship.
+      - name: Pack dry-run
+        run: pnpm -r exec npm pack --dry-run

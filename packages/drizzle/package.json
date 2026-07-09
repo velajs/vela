@@ -1,0 +1,60 @@
+{
+  "name": "@velajs/crud-drizzle",
+  "version": "1.8.0",
+  "description": "Drizzle ORM adapter for @velajs/crud (pg, mysql, sqlite)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit"
+  },
+  "sideEffects": false,
+  "keywords": [
+    "vela",
+    "crud",
+    "adapter",
+    "drizzle",
+    "edge"
+  ],
+  "author": "ksh",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/velajs/crud.git",
+    "directory": "packages/drizzle"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "peerDependencies": {
+    "@velajs/crud": "workspace:^",
+    "drizzle-orm": ">=0.30.0",
+    "drizzle-zod": ">=0.8.0",
+    "zod": ">=4"
+  },
+  "peerDependenciesMeta": {
+    "drizzle-zod": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@velajs/crud": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "drizzle-zod": "^0.8.3",
+    "zod": "^4"
+  }
+}
