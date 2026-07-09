@@ -1,174 +1,128 @@
-import type { Context } from 'hono';
+/**
+ * Harbor inventory API — the full-surface @velajs/crud example.
+ *
+ * Shows both consumption styles:
+ * - a DECORATED controller (`/containers`): hooks, a hand-written route
+ *   coexisting with generated ones, an `@Override`, and a guard;
+ * - a HEADLESS resource (`/berths`) mounted via `CrudModule.forFeature`.
+ */
 import { z } from 'zod';
 import {
   Controller,
   Get,
-  Injectable,
   Module,
   UseGuards,
   VelaFactory,
-  MetadataRegistry,
+  type CanActivate,
+  type ExecutionContext,
 } from '@velajs/vela';
-import type { CanActivate, ExecutionContext, VelaApplication } from '@velajs/vela';
-import { Crud, CrudModule, CrudService, Override } from '@velajs/crud';
-import type { CrudConfig } from '@velajs/crud';
 import {
-  MemoryAdapters,
-  defineMeta,
+  Crud,
+  CrudCtx,
+  CrudModule,
+  Override,
   defineModel,
-} from 'hono-crud';
-import * as HonoCrud from 'hono-crud';
-import type { AdapterBundle, MetaInput } from 'hono-crud';
+  type CrudRequestContext,
+} from '@velajs/crud';
+import { clearMemoryStorage, getStore, memoryAdapter } from '@velajs/crud-memory';
 
-interface HarborFixture {
-  app: VelaApplication;
-}
+// ---------------------------------------------------------------------------
+// Models
+// ---------------------------------------------------------------------------
 
-const ContainerSchema = z.object({
-  id: z.string(),
-  code: z.string(),
-  status: z.enum(['arrived', 'loaded', 'departed']),
-  terminal: z.string(),
-  weightTons: z.number(),
+export const Container = defineModel({
+  name: 'container',
+  tableName: 'containers',
+  schema: z.object({
+    id: z.uuid(),
+    code: z.string().min(4),
+    weightKg: z.number().int().positive(),
+    hazardous: z.boolean().default(false),
+    createdAt: z.number().optional(),
+    updatedAt: z.number().optional(),
+    deletedAt: z.number().nullable().optional(),
+  }),
+  softDelete: true,
 });
 
-const CreateContainerSchema = z.object({
-  code: z.string().min(3),
-  status: z.enum(['arrived', 'loaded', 'departed']).default('arrived'),
-  terminal: z.string().default('north'),
-  weightTons: z.number().positive(),
+export const Berth = defineModel({
+  name: 'berth',
+  tableName: 'berths',
+  schema: z.object({
+    id: z.uuid(),
+    label: z.string().min(1),
+    depthM: z.number().positive(),
+    createdAt: z.number().optional(),
+    updatedAt: z.number().optional(),
+    deletedAt: z.number().nullable().optional(),
+  }),
+  softDelete: true,
 });
 
-const UpdateContainerSchema = z.object({
-  status: z.enum(['arrived', 'loaded', 'departed']),
-  terminal: z.string().optional(),
-  weightTons: z.number().positive().optional(),
-});
+// ---------------------------------------------------------------------------
+// A guard on the decorated controller (runs on every generated route too)
+// ---------------------------------------------------------------------------
 
-const BerthSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  vessel: z.string(),
-});
-
-const ContainerModel = defineModel({
-  tableName: 'harbor_containers',
-  schema: ContainerSchema,
-  primaryKeys: ['id'],
-});
-
-const BerthModel = defineModel({
-  tableName: 'harbor_berths',
-  schema: BerthSchema,
-  primaryKeys: ['id'],
-});
-
-const containerMeta = defineMeta({ model: ContainerModel }) as MetaInput;
-const berthMeta = defineMeta({ model: BerthModel }) as MetaInput;
-const adapters = MemoryAdapters as AdapterBundle;
-const clearHonoCrudStorage = (HonoCrud as typeof HonoCrud & {
-  clearStorage?: () => void;
-}).clearStorage;
-
-class HarborGuard implements CanActivate {
+class HarborKeyGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
-    return context.getRequest().headers.get('x-harbor-key') === 'harbor-secret';
+    return context.getRequest().headers.get('X-Harbor-Key') === 'letmein';
   }
 }
 
-const containerCrudConfig: CrudConfig = {
-  meta: containerMeta,
-  adapters,
-  dto: {
-    create: CreateContainerSchema,
-    update: UpdateContainerSchema,
-  },
+// ---------------------------------------------------------------------------
+// Decorated controller: /containers
+// ---------------------------------------------------------------------------
+
+@Controller('/containers')
+@UseGuards(HarborKeyGuard)
+@Crud({
+  model: Container,
+  adapter: memoryAdapter({ tableName: 'containers', softDeleteField: 'deletedAt' }),
+  filterFields: ['code', 'weightKg', 'hazardous'],
+  sortFields: ['weightKg'],
+  searchFields: ['code'],
   hooks: {
-    beforeCreate: (data) => {
-      const payload = data as z.infer<typeof CreateContainerSchema>;
-      return {
-        ...payload,
-        code: payload.code.toUpperCase(),
-      };
-    },
-    afterList: (items) =>
-      items.map((item) => ({
-        ...(item as Record<string, unknown>),
-        inspected: true,
-      })),
+    // Normalize codes on the way in; the returned value replaces the payload.
+    beforeCreate: (_ctx, data) => ({ ...data, code: String(data.code).toUpperCase() }),
   },
-};
-
-export async function createHarborCrudApp(): Promise<HarborFixture> {
-  MetadataRegistry.clear();
-  clearHonoCrudStorage?.();
-
-  @Injectable()
-  class ContainerCrudService extends CrudService {
-    readonly meta = containerMeta;
-    readonly adapters = adapters;
+})
+export class ContainersController {
+  /** Hand-written route — registered BEFORE the generated `/:id`. */
+  @Get('/stats')
+  stats() {
+    return { total: getStore('containers').size };
   }
 
-  @Controller('/containers')
-  @UseGuards(new HarborGuard())
-  @Crud(containerCrudConfig)
-  class ContainerController {
-    @Get('/dashboard')
-    dashboard() {
-      return {
-        resource: 'containers',
-        endpoints: ['create', 'list', 'read', 'update', 'delete'],
-      };
-    }
+  /** First-class takeover of the generated list (keeps the route name). */
+  @Override('list')
+  list(@CrudCtx() ctx: CrudRequestContext) {
+    const rows = [...getStore('containers').values()].filter((row) => row.deletedAt == null);
+    return {
+      success: true,
+      result: rows,
+      result_info: { note: 'served by @Override', requestPath: ctx.c.req.path },
+    };
   }
+}
 
-  @Controller('/container-reports')
-  @Crud({
-    meta: containerMeta,
-    adapters,
-    only: ['list'],
-  })
-  class ContainerReportsController {
-    @Override('list')
-    async customList(c: Context) {
-      return c.json({
-        result: [],
-        override: true,
-        terminal: c.req.query('terminal') ?? 'all',
-      });
-    }
-  }
+// ---------------------------------------------------------------------------
+// App: decorated controller + headless /berths
+// ---------------------------------------------------------------------------
 
-  @Controller('/meta')
-  class MetaController {
-    constructor(private readonly crud: ContainerCrudService) {}
+@Module({
+  controllers: [ContainersController],
+  imports: [
+    CrudModule.forRoot({
+      adapter: memoryAdapter({ tableName: 'berths', softDeleteField: 'deletedAt' }),
+    }),
+    CrudModule.forFeature([
+      { path: '/berths', model: Berth, only: ['create', 'list', 'read', 'delete'] },
+    ]),
+  ],
+})
+export class AppModule {}
 
-    @Get('/container-resource')
-    resource() {
-      return {
-        hasMeta: Boolean(this.crud.meta),
-        hasAdapters: Boolean(this.crud.adapters),
-      };
-    }
-  }
-
-  @Module({
-    imports: [
-      CrudModule.forResource('/berths', {
-        meta: berthMeta,
-        adapters,
-        only: ['create', 'list'],
-        guards: [new HarborGuard()],
-      }),
-    ],
-    providers: [ContainerCrudService],
-    controllers: [ContainerController, ContainerReportsController, MetaController],
-  })
-  class HarborCrudModule {}
-
-  const app = await VelaFactory.create(HarborCrudModule, {
-    globalPrefix: '/api',
-  });
-
-  return { app };
+export async function createApp() {
+  clearMemoryStorage();
+  return VelaFactory.create(AppModule);
 }

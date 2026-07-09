@@ -5,38 +5,17 @@
   "type": "module",
   "description": "Fictional harbor inventory API used as a real @velajs/crud example project.",
   "scripts": {
-    "build:vela": "pnpm --dir ../../../vela build",
-    "build:crud": "pnpm --dir ../.. build",
-    "sync:deps": "pnpm run build:vela && pnpm run build:crud && pnpm install",
-    "build": "pnpm run sync:deps && rm -rf dist && swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
+    "build": "rm -rf dist && swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
     "dev": "pnpm run build && node dist/server.js",
-    "start": "node dist/server.js",
-    "smoke": "pnpm run build && node dist/smoke.js",
-    "curl:test": "bash scripts/curl-all.sh",
-    "test": "pnpm run sync:deps && vitest run",
-    "typecheck": "pnpm run sync:deps && tsc --noEmit && tsc -p tsconfig.test.json"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.0",
-    "@hono/zod-openapi": "^0.19.6",
-    "@velajs/crud": "file:../..",
-    "@velajs/vela": "file:../../../vela",
+    "@velajs/crud": "workspace:*",
+    "@velajs/crud-memory": "workspace:*",
+    "@velajs/vela": "^1.18.0",
     "hono": "^4",
-    "hono-crud": "^0.5.0",
     "zod": "^4"
-  },
-  "devDependencies": {
-    "@swc/cli": "^0.8.0",
-    "@swc/core": "^1.15.11",
-    "@types/node": "^22",
-    "typescript": "^5",
-    "unplugin-swc": "^1.5.9",
-    "vitest": "^4.0.18"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@swc/core",
-      "esbuild"
-    ]
   }
 }
