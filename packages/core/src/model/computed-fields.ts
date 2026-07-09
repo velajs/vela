@@ -12,12 +12,29 @@
  * omitted, behavior is byte-identical to hono-crud (compute all configured).
  */
 
-import type { ComputedFieldsConfig, Model } from './model.types';
+import type { ComputedFieldsConfig } from './model.types';
 
 /** Options for the computed-field appliers. */
 export interface ApplyComputedFieldsOptions {
   /** Restrict evaluation to these computed-field names (allow-list). */
   only?: string[];
+}
+
+/**
+ * Structural applier parameter: any model whose computed fields can be
+ * evaluated. The `never` record parameter makes this the supertype of every
+ * concrete `ComputedFieldsConfig<T>` (function parameters are contravariant),
+ * so models with precisely-typed schemas pass without casts.
+ */
+export interface HasComputedFields {
+  computedFields?: Record<
+    string,
+    {
+      compute: (record: never) => unknown;
+      schema?: unknown;
+      dependsOn?: string[];
+    }
+  >;
 }
 
 function selectComputedFields(
@@ -37,11 +54,14 @@ function selectComputedFields(
  * record unchanged (same reference) when there is nothing to compute.
  */
 export async function applyComputedFields<T extends Record<string, unknown>>(
-  model: Pick<Model, 'computedFields'>,
+  model: HasComputedFields,
   record: T,
   opts: ApplyComputedFieldsOptions = {},
-): Promise<Record<string, unknown>> {
-  const selected = selectComputedFields(model.computedFields, opts);
+): Promise<T & Record<string, unknown>> {
+  const selected = selectComputedFields(
+    model.computedFields as ComputedFieldsConfig | undefined,
+    opts,
+  );
   if (selected.length === 0) return record;
 
   const result: Record<string, unknown> = { ...record };
@@ -53,7 +73,7 @@ export async function applyComputedFields<T extends Record<string, unknown>>(
       result[fieldName] = undefined;
     }
   }
-  return result;
+  return result as T & Record<string, unknown>;
 }
 
 /**
@@ -61,11 +81,14 @@ export async function applyComputedFields<T extends Record<string, unknown>>(
  * the array unchanged (same reference) when there is nothing to compute.
  */
 export async function applyComputedFieldsToArray<T extends Record<string, unknown>>(
-  model: Pick<Model, 'computedFields'>,
+  model: HasComputedFields,
   records: T[],
   opts: ApplyComputedFieldsOptions = {},
-): Promise<Array<Record<string, unknown>>> {
-  const selected = selectComputedFields(model.computedFields, opts);
+): Promise<Array<T & Record<string, unknown>>> {
+  const selected = selectComputedFields(
+    model.computedFields as ComputedFieldsConfig | undefined,
+    opts,
+  );
   if (selected.length === 0) return records;
   return Promise.all(records.map((record) => applyComputedFields(model, record, opts)));
 }

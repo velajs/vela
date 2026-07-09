@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 /**
@@ -12,7 +13,7 @@ import { describe, expect, it } from 'vitest';
  * 3. no `node:*` / bare node builtins in product code (tests excluded).
  */
 
-const SRC = join(__dirname, '..');
+const SRC = fileURLToPath(new URL('..', import.meta.url));
 
 function sourceFiles(dir: string): string[] {
   const out: string[] = [];

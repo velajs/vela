@@ -1,7 +1,7 @@
 {
   "name": "@velajs/crud-memory",
   "version": "1.8.0",
-  "description": "In-memory adapter for @velajs/crud — tests, prototypes, and examples",
+  "description": "In-memory adapter for @velajs/crud \u2014 tests, prototypes, and examples",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -20,7 +20,7 @@
   "scripts": {
     "build": "rm -rf dist && swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
     "test": "vitest run --passWithNoTests",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json"
   },
   "sideEffects": false,
   "keywords": [

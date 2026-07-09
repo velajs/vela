@@ -70,7 +70,7 @@ export function applyManagedInsertFields<T extends Record<string, unknown>>(
   model: Pick<Model, 'id' | 'timestamps' | 'primaryKeys'>,
   record: T,
   opts: { databaseGeneratedId: boolean },
-): T {
+): T & Record<string, unknown> {
   const out: Record<string, unknown> = { ...record };
   const pk = model.primaryKeys[0];
 
@@ -98,7 +98,7 @@ export function applyManagedInsertFields<T extends Record<string, unknown>>(
   if (createdAt && !(createdAt in record)) out[createdAt] = now;
   if (updatedAt && !(updatedAt in record)) out[updatedAt] = now;
 
-  return out as T;
+  return out as T & Record<string, unknown>;
 }
 
 /**
@@ -112,8 +112,8 @@ export function applyManagedInsertFields<T extends Record<string, unknown>>(
 export function applyManagedUpdateFields<T extends Record<string, unknown>>(
   model: Pick<Model, 'timestamps'>,
   patch: T,
-): T {
+): T & Record<string, unknown> {
   const { updatedAt } = model.timestamps;
   if (!updatedAt) return { ...patch };
-  return { ...patch, [updatedAt]: Date.now() } as T;
+  return { ...patch, [updatedAt]: Date.now() };
 }

@@ -33,6 +33,10 @@
     "./policies": {
       "types": "./dist/policies/index.d.ts",
       "import": "./dist/policies/index.js"
+    },
+    "./multi-tenant": {
+      "types": "./dist/multi-tenant/index.d.ts",
+      "import": "./dist/multi-tenant/index.js"
     }
   },
   "files": [
@@ -44,7 +48,7 @@
   "scripts": {
     "build": "rm -rf dist && swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "prepublishOnly": "pnpm run typecheck && pnpm test"
   },
   "sideEffects": false,
@@ -76,6 +80,7 @@
     "zod": ">=4"
   },
   "devDependencies": {
+    "@types/node": "^26.1.1",
     "@velajs/vela": "^1.18.0",
     "hono": "^4",
     "zod": "^4"
