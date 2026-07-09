@@ -23,6 +23,8 @@ export interface EngineRequest {
   body?: unknown;
   /** Path id param for point verbs. */
   id?: string;
+  /** Additional path params (`:version` on the version verbs). */
+  params?: Record<string, string>;
   /** The underlying Web Request, when available (policies/hooks receive it). */
   request?: Request;
   vars?: EngineRequestVars;

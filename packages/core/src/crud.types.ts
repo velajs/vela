@@ -41,6 +41,16 @@ export interface CrudConfig<Row extends Record<string, unknown> = Record<string,
   allowedIncludes?: string[];
   fieldSelection?: ResourceConfig<Row>['fieldSelection'];
   pagination?: ResourcePaginationConfig;
+  /** Insert-or-update conflict target for the upsert family. */
+  upsert?: ResourceConfig<Row>['upsert'];
+  /** Batch verb limits. */
+  batch?: ResourceConfig<Row>['batch'];
+  /** Filtered bulk patch limits + confirmation threshold. */
+  bulkPatch?: ResourceConfig<Row>['bulkPatch'];
+  /** /search weighted-field configuration (falls back to `searchFields`). */
+  search?: ResourceConfig<Row>['search'];
+  /** /aggregate validation configuration. */
+  aggregate?: ResourceConfig<Row>['aggregate'];
   /** Request-body schema overrides (else derived from the model schema). */
   dto?: { create?: ZodObject<ZodRawShape>; update?: ZodObject<ZodRawShape> };
   updateFields?: { allowed?: string[]; blocked?: string[] };

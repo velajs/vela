@@ -9,11 +9,15 @@ import type { ZodObject, ZodRawShape } from 'zod';
 import { assertAdapterSatisfies, type CapabilityRequirement } from '../adapter/capabilities';
 import type { CrudAdapter } from '../adapter/contract';
 import type { FilterConfig, SortSpec } from '../adapter/query-types';
+import type { AggregateBuildConfig } from '../query/aggregate';
+import type { SearchFieldConfig } from '../query/search';
 import { ConfigurationException } from '../envelope/errors';
 import { defaultEnvelope, type ErrorMapper, type ResponseEnvelope } from '../envelope/envelope';
 import { resolveStructuredError } from '../envelope/mappers';
 import { deriveCreateSchema, deriveUpdateSchema } from '../model/schema-derive';
 import type { Model } from '../model/model.types';
+import type { CrudEndpointName } from '../verb-table';
+import { EXTENDED_EXECUTORS } from './extended/registry';
 import type { CrudHooks, HookModeConfig } from './hook-types';
 import type { EngineRequest, EngineResult } from './engine-request';
 import { executeCreate, executeDelete, executeList, executeRead, executeUpdate } from './verbs';
@@ -47,6 +51,16 @@ export interface ResourceConfig<Row extends Record<string, unknown> = Record<str
     defaults?: string[];
   };
   pagination?: ResourcePaginationConfig;
+  /** Insert-or-update conflict target for the upsert family. */
+  upsert?: { keys: string[] };
+  /** Batch verb limits (default maxBatchSize follows hono-crud). */
+  batch?: { maxBatchSize?: number };
+  /** Filtered bulk patch limits + confirmation threshold (X-Confirm-Bulk). */
+  bulkPatch?: { maxBulkSize?: number; confirmThreshold?: number; returnRecords?: boolean };
+  /** /search weighted-field configuration (falls back to `searchFields`). */
+  search?: { fields?: Record<string, SearchFieldConfig> };
+  /** /aggregate validation configuration. */
+  aggregate?: AggregateBuildConfig;
   /** Body-schema overrides (otherwise derived from the model schema). */
   dto?: { create?: ZodObject<ZodRawShape>; update?: ZodObject<ZodRawShape> };
   updateFields?: { allowed?: string[]; blocked?: string[] };
@@ -61,7 +75,7 @@ export interface CrudResource<Row extends Record<string, unknown> = Record<strin
   /** Derived (or dto-overridden) request body schemas — the DTO bridge. */
   readonly createSchema: ZodObject<ZodRawShape>;
   readonly updateSchema: ZodObject<ZodRawShape>;
-  execute(verb: CoreVerb, req: EngineRequest): Promise<EngineResult>;
+  execute(verb: CrudEndpointName, req: EngineRequest): Promise<EngineResult>;
 }
 
 /** Derives the capability demands a resource config places on its adapter. */
@@ -106,7 +120,7 @@ export function defineResource<Row extends Record<string, unknown>>(
     config,
     createSchema,
     updateSchema,
-    async execute(verb: CoreVerb, req: EngineRequest): Promise<EngineResult> {
+    async execute(verb: CrudEndpointName, req: EngineRequest): Promise<EngineResult> {
       // Executors operate on the type-erased resource (rows are records
       // internally); the generic is a compile-time convenience for callers.
       const erased = resource as unknown as import('./verbs').AnyResource;
@@ -122,6 +136,15 @@ export function defineResource<Row extends Record<string, unknown>>(
             return await executeDelete(erased, req);
           case 'list':
             return await executeList(erased, req);
+          default: {
+            const executor = EXTENDED_EXECUTORS[verb];
+            if (!executor) {
+              throw new ConfigurationException(
+                `Verb '${verb}' is not implemented by the native engine yet`,
+              );
+            }
+            return await executor(erased, req);
+          }
         }
       } catch (error) {
         // With a CUSTOM envelope the engine owns error formatting (the

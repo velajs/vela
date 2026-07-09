@@ -34,9 +34,9 @@ import { deriveRouteName, deriveVerbNaming } from './naming';
 import { buildEngineRequest, toResponse } from './request-flow';
 import { CRUD_DEFAULT_ADAPTER } from './crud.tokens';
 import { MissingTenantResolverError, resourceNames, type CrudConfig } from './crud.types';
+import { implementedEndpoints } from './kernel/extended/registry';
 import {
   CRUD_ROUTES,
-  IMPLEMENTED_ENDPOINTS,
   resolveEnabledEndpoints,
   type CrudEndpointName,
 } from './verb-table';
@@ -78,15 +78,16 @@ export function stampCrudRoutes(controller: Ctor, config: CrudConfig): void {
     });
   }
 
+  const implemented = implementedEndpoints();
   const enabled = resolveEnabledEndpoints(model, { only: config.only, except: config.except });
-  const skipped = enabled.filter((name) => !IMPLEMENTED_ENDPOINTS.includes(name));
+  const skipped = enabled.filter((name) => !implemented.includes(name));
   if (skipped.length > 0) {
     console.warn(
       `[@velajs/crud] ${controller.name}: verbs not yet implemented by the native engine ` +
         `and skipped: ${skipped.join(', ')}`,
     );
   }
-  const stamped = enabled.filter((name) => IMPLEMENTED_ENDPOINTS.includes(name));
+  const stamped = enabled.filter((name) => implemented.includes(name));
 
   // DTO bridge — derived once per class, adapter-independent.
   const base = pascal(names.singular);
@@ -162,53 +163,62 @@ function defineHandler(
   });
 }
 
+/**
+ * Shape of each verb's synthesized handler: which path params it takes and
+ * whether it carries a request body. Single table for all 22 verbs — the
+ * handler builder and param stamping both derive from it, so adding an
+ * executor family never touches this file.
+ */
+const VERB_SHAPES: Record<CrudEndpointName, { id?: boolean; version?: boolean; body?: boolean }> = {
+  create: { body: true },
+  list: {},
+  batchCreate: { body: true },
+  batchUpdate: { body: true },
+  batchDelete: { body: true },
+  batchRestore: { body: true },
+  batchUpsert: { body: true },
+  search: {},
+  aggregate: {},
+  export: {},
+  import: { body: true },
+  upsert: { body: true },
+  bulkPatch: { body: true },
+  read: { id: true },
+  update: { id: true, body: true },
+  delete: { id: true },
+  restore: { id: true },
+  clone: { id: true, body: true },
+  versionHistory: { id: true },
+  versionCompare: { id: true },
+  versionRead: { id: true, version: true },
+  versionRollback: { id: true, version: true },
+};
+
 function buildVerbHandler(
   endpoint: CrudEndpointName,
   resolveResource: (c: Context) => CrudResource,
 ): (...args: unknown[]) => Promise<Response> {
-  switch (endpoint) {
-    case 'create':
-      return async function crudCreate(body: unknown, c: unknown): Promise<Response> {
-        const ctx = c as Context;
-        const resource = resolveResource(ctx);
-        return toResponse(ctx, await resource.execute('create', buildEngineRequest(ctx, { body })));
-      };
-    case 'list':
-      return async function crudList(c: unknown): Promise<Response> {
-        const ctx = c as Context;
-        const resource = resolveResource(ctx);
-        return toResponse(ctx, await resource.execute('list', buildEngineRequest(ctx)));
-      };
-    case 'read':
-      return async function crudRead(id: unknown, c: unknown): Promise<Response> {
-        const ctx = c as Context;
-        const resource = resolveResource(ctx);
-        return toResponse(
-          ctx,
-          await resource.execute('read', buildEngineRequest(ctx, { id: String(id) })),
-        );
-      };
-    case 'update':
-      return async function crudUpdate(id: unknown, body: unknown, c: unknown): Promise<Response> {
-        const ctx = c as Context;
-        const resource = resolveResource(ctx);
-        return toResponse(
-          ctx,
-          await resource.execute('update', buildEngineRequest(ctx, { id: String(id), body })),
-        );
-      };
-    case 'delete':
-      return async function crudDelete(id: unknown, c: unknown): Promise<Response> {
-        const ctx = c as Context;
-        const resource = resolveResource(ctx);
-        return toResponse(
-          ctx,
-          await resource.execute('delete', buildEngineRequest(ctx, { id: String(id) })),
-        );
-      };
-    default:
-      throw new ConfigurationException(`No native handler for verb '${endpoint}' yet`);
-  }
+  const shape = VERB_SHAPES[endpoint];
+  // Arg order mirrors the stamped param order: [id?, version?, body?, ctx].
+  return async function crudHandler(...args: unknown[]): Promise<Response> {
+    let cursor = 0;
+    const id = shape.id ? String(args[cursor++]) : undefined;
+    const version = shape.version ? String(args[cursor++]) : undefined;
+    const body = shape.body ? args[cursor++] : undefined;
+    const ctx = args[cursor] as Context;
+    const resource = resolveResource(ctx);
+    return toResponse(
+      ctx,
+      await resource.execute(
+        endpoint,
+        buildEngineRequest(ctx, {
+          id,
+          body,
+          ...(version !== undefined ? { params: { version } } : {}),
+        }),
+      ),
+    );
+  };
 }
 
 function stampParams(
@@ -225,25 +235,19 @@ function stampParams(
     metatype?: unknown;
   }): void => MetadataRegistry.addParameter(controller as never, handlerName, param as never);
 
-  switch (endpoint) {
-    case 'create':
-      add({ index: 0, type: ParamType.BODY, metatype: createDto });
-      add({ index: 1, type: ParamType.REQUEST });
-      break;
-    case 'list':
-      add({ index: 0, type: ParamType.REQUEST });
-      break;
-    case 'read':
-    case 'delete':
-      add({ index: 0, type: ParamType.PARAM, name: 'id' });
-      add({ index: 1, type: ParamType.REQUEST });
-      break;
-    case 'update':
-      add({ index: 0, type: ParamType.PARAM, name: 'id' });
-      add({ index: 1, type: ParamType.BODY, metatype: updateDto });
-      add({ index: 2, type: ParamType.REQUEST });
-      break;
+  const shape = VERB_SHAPES[endpoint];
+  let index = 0;
+  if (shape.id) add({ index: index++, type: ParamType.PARAM, name: 'id' });
+  if (shape.version) add({ index: index++, type: ParamType.PARAM, name: 'version' });
+  if (shape.body) {
+    // create/update carry their derived DTOs (ValidationPipe + OpenAPI);
+    // extended verbs validate in the engine — their body docs land with the
+    // OpenAPI parity pass (M6).
+    const metatype =
+      endpoint === 'create' ? createDto : endpoint === 'update' ? updateDto : undefined;
+    add({ index: index++, type: ParamType.BODY, ...(metatype ? { metatype } : {}) });
   }
+  add({ index, type: ParamType.REQUEST });
 }
 
 function tryResolveDefaultAdapter(c: Context): CrudAdapter | undefined {
@@ -275,6 +279,11 @@ export function toEngineConfig(config: CrudConfig, adapter: CrudAdapter): Resour
     allowedIncludes: config.allowedIncludes,
     fieldSelection: config.fieldSelection,
     pagination: config.pagination,
+    upsert: config.upsert,
+    batch: config.batch,
+    bulkPatch: config.bulkPatch,
+    search: config.search,
+    aggregate: config.aggregate,
     dto: config.dto,
     updateFields: config.updateFields,
     envelope: config.responseEnvelope,
