@@ -120,7 +120,7 @@
     ]
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.16.18",
+    "@cloudflare/vitest-pool-workers": "^0.18.2",
     "@swc/cli": "^0.8.1",
     "@swc/core": "^1.15.41",
     "@types/bun": "latest",
