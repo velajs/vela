@@ -1,0 +1,283 @@
+/**
+ * Route stamping: turns a `CrudConfig` into REAL controller routes — the same
+ * metadata hand-written `@Get`/`@Post` decorators produce. Everything flows
+ * through RouteManager's normal pass: first-class `vela route list`, named
+ * routes (`urlFor`), signed routes, the full guard/pipe/interceptor pipeline,
+ * and OpenAPI via the ordinary controller walk. No RouteContributor.
+ *
+ * Synthesized methods have no `design:paramtypes`, so each stamped parameter
+ * carries its DTO class as an explicit `metatype` (vela >= 1.18 reads it in
+ * ValidationPipe and the OpenAPI walk).
+ */
+
+import type { Context } from 'hono';
+import {
+  ApiDoc,
+  ApiTags,
+  Delete,
+  Get,
+  MetadataRegistry,
+  ParamType,
+  Patch,
+  Post,
+  Put,
+  defineMetadata,
+  getMetadata,
+  getRequestContainer,
+  METADATA_KEYS,
+} from '@velajs/vela';
+import type { CrudAdapter } from './adapter/contract';
+import { ConfigurationException } from './envelope/errors';
+import { defineResource, type CrudResource, type ResourceConfig } from './kernel/resource';
+import { deriveCreateSchema, deriveUpdateSchema } from './model/schema-derive';
+import { deriveRouteName, deriveVerbNaming } from './naming';
+import { buildEngineRequest, toResponse } from './request-flow';
+import { CRUD_DEFAULT_ADAPTER } from './crud.tokens';
+import { MissingTenantResolverError, resourceNames, type CrudConfig } from './crud.types';
+import {
+  CRUD_ROUTES,
+  IMPLEMENTED_ENDPOINTS,
+  resolveEnabledEndpoints,
+  type CrudEndpointName,
+} from './verb-table';
+import { createZodDto } from '@velajs/vela';
+
+const OVERRIDES_KEY = 'velajs:crud:overrides';
+
+/** Read the `@Override(verb)` map stamped on a controller class. */
+export function getOverrides(target: object): Partial<Record<CrudEndpointName, string | symbol>> {
+  return (getMetadata(OVERRIDES_KEY, target) as Partial<Record<CrudEndpointName, string | symbol>>) ?? {};
+}
+
+export function recordOverride(target: object, endpoint: CrudEndpointName, method: string | symbol): void {
+  defineMetadata(OVERRIDES_KEY, { ...getOverrides(target), [endpoint]: method }, target);
+}
+
+const ROUTE_DECORATORS = { get: Get, post: Post, put: Put, patch: Patch, delete: Delete } as const;
+
+const pascal = (s: string): string =>
+  s.replace(/(?:^|[^a-zA-Z0-9]+)([a-zA-Z0-9])/g, (_m, c: string) => c.toUpperCase());
+
+type Ctor = new (...args: never[]) => unknown;
+
+/**
+ * Applies the full CRUD stamping to a controller class. Called by the
+ * `@Crud()` class decorator and by `synthesizeController` (headless
+ * resources) — one implementation, two entry points.
+ */
+export function stampCrudRoutes(controller: Ctor, config: CrudConfig): void {
+  const model = config.model;
+  const names = resourceNames(config);
+
+  // Fail-fast tenant affirmation: silent tenant-isolation loss is a
+  // data-loss class, so a tenant-scoped model demands the explicit flag.
+  if (model.tenantField !== undefined && config.tenantResolverMounted !== true) {
+    throw new MissingTenantResolverError({
+      mountPath: controller.name,
+      tableName: model.tableName,
+    });
+  }
+
+  const enabled = resolveEnabledEndpoints(model, { only: config.only, except: config.except });
+  const skipped = enabled.filter((name) => !IMPLEMENTED_ENDPOINTS.includes(name));
+  if (skipped.length > 0) {
+    console.warn(
+      `[@velajs/crud] ${controller.name}: verbs not yet implemented by the native engine ` +
+        `and skipped: ${skipped.join(', ')}`,
+    );
+  }
+  const stamped = enabled.filter((name) => IMPLEMENTED_ENDPOINTS.includes(name));
+
+  // DTO bridge — derived once per class, adapter-independent.
+  const base = pascal(names.singular);
+  const createDto = createZodDto(config.dto?.create ?? deriveCreateSchema(model), {
+    name: `Create${base}Dto`,
+  });
+  const updateDto = createZodDto(
+    config.dto?.update ?? deriveUpdateSchema(model, config.updateFields ?? {}),
+    { name: `Update${base}Dto` },
+  );
+
+  // The compiled engine resource: lazy (the adapter may come from DI) and
+  // memoized per class.
+  let compiled: CrudResource | undefined;
+  const resolveResource = (c: Context): CrudResource => {
+    if (compiled) return compiled;
+    const adapter =
+      config.adapter ?? tryResolveDefaultAdapter(c) ??
+      raiseNoAdapter(controller.name, names.singular);
+    compiled = defineResource(names.singular, toEngineConfig(config, adapter));
+    return compiled;
+  };
+
+  const overrides = getOverrides(controller);
+  defineMetadata(METADATA_KEYS.CRUD, config, controller);
+  ApiTags(...(config.tags ?? [names.plural]))(controller);
+
+  for (const [endpoint, method, subPath] of CRUD_ROUTES) {
+    if (!stamped.includes(endpoint)) continue;
+
+    const overrideMethod = overrides[endpoint];
+    const handlerName = overrideMethod ?? `crud$${endpoint}`;
+
+    if (overrideMethod === undefined) {
+      defineHandler(controller, handlerName as string, endpoint, resolveResource);
+      stampParams(controller, handlerName as string, endpoint, createDto, updateDto);
+    }
+
+    // Route (real metadata → RouteManager first pass) + name for urlFor.
+    const decorate = ROUTE_DECORATORS[method];
+    decorate(subPath, { name: deriveRouteName(names.singular, endpoint) })(
+      controller.prototype as object,
+      handlerName,
+      Object.getOwnPropertyDescriptor(controller.prototype, handlerName) ?? {
+        value: (controller.prototype as Record<string | symbol, unknown>)[handlerName],
+        writable: true,
+        configurable: true,
+      },
+    );
+
+    const naming = deriveVerbNaming(endpoint, names.singular, names.plural);
+    if (naming) {
+      ApiDoc({ operationId: naming.operationId, summary: naming.summary })(
+        controller.prototype as object,
+        handlerName,
+        Object.getOwnPropertyDescriptor(controller.prototype, handlerName) as never,
+      );
+    }
+  }
+}
+
+function defineHandler(
+  controller: Ctor,
+  handlerName: string,
+  endpoint: CrudEndpointName,
+  resolveResource: (c: Context) => CrudResource,
+): void {
+  const handler = buildVerbHandler(endpoint, resolveResource);
+  Object.defineProperty(controller.prototype, handlerName, {
+    value: handler,
+    writable: true,
+    configurable: true,
+  });
+}
+
+function buildVerbHandler(
+  endpoint: CrudEndpointName,
+  resolveResource: (c: Context) => CrudResource,
+): (...args: unknown[]) => Promise<Response> {
+  switch (endpoint) {
+    case 'create':
+      return async function crudCreate(body: unknown, c: unknown): Promise<Response> {
+        const ctx = c as Context;
+        const resource = resolveResource(ctx);
+        return toResponse(ctx, await resource.execute('create', buildEngineRequest(ctx, { body })));
+      };
+    case 'list':
+      return async function crudList(c: unknown): Promise<Response> {
+        const ctx = c as Context;
+        const resource = resolveResource(ctx);
+        return toResponse(ctx, await resource.execute('list', buildEngineRequest(ctx)));
+      };
+    case 'read':
+      return async function crudRead(id: unknown, c: unknown): Promise<Response> {
+        const ctx = c as Context;
+        const resource = resolveResource(ctx);
+        return toResponse(
+          ctx,
+          await resource.execute('read', buildEngineRequest(ctx, { id: String(id) })),
+        );
+      };
+    case 'update':
+      return async function crudUpdate(id: unknown, body: unknown, c: unknown): Promise<Response> {
+        const ctx = c as Context;
+        const resource = resolveResource(ctx);
+        return toResponse(
+          ctx,
+          await resource.execute('update', buildEngineRequest(ctx, { id: String(id), body })),
+        );
+      };
+    case 'delete':
+      return async function crudDelete(id: unknown, c: unknown): Promise<Response> {
+        const ctx = c as Context;
+        const resource = resolveResource(ctx);
+        return toResponse(
+          ctx,
+          await resource.execute('delete', buildEngineRequest(ctx, { id: String(id) })),
+        );
+      };
+    default:
+      throw new ConfigurationException(`No native handler for verb '${endpoint}' yet`);
+  }
+}
+
+function stampParams(
+  controller: Ctor,
+  handlerName: string,
+  endpoint: CrudEndpointName,
+  createDto: unknown,
+  updateDto: unknown,
+): void {
+  const add = (param: {
+    index: number;
+    type: string;
+    name?: string;
+    metatype?: unknown;
+  }): void => MetadataRegistry.addParameter(controller as never, handlerName, param as never);
+
+  switch (endpoint) {
+    case 'create':
+      add({ index: 0, type: ParamType.BODY, metatype: createDto });
+      add({ index: 1, type: ParamType.REQUEST });
+      break;
+    case 'list':
+      add({ index: 0, type: ParamType.REQUEST });
+      break;
+    case 'read':
+    case 'delete':
+      add({ index: 0, type: ParamType.PARAM, name: 'id' });
+      add({ index: 1, type: ParamType.REQUEST });
+      break;
+    case 'update':
+      add({ index: 0, type: ParamType.PARAM, name: 'id' });
+      add({ index: 1, type: ParamType.BODY, metatype: updateDto });
+      add({ index: 2, type: ParamType.REQUEST });
+      break;
+  }
+}
+
+function tryResolveDefaultAdapter(c: Context): CrudAdapter | undefined {
+  try {
+    return getRequestContainer(c).resolve(CRUD_DEFAULT_ADAPTER);
+  } catch {
+    return undefined;
+  }
+}
+
+function raiseNoAdapter(controllerName: string, resource: string): never {
+  throw new ConfigurationException(
+    `${controllerName} ('${resource}'): no adapter available — pass 'adapter' in the @Crud() ` +
+      `config or provide a default via CrudModule.forRoot({ adapter })`,
+  );
+}
+
+/** Maps the consumer config onto the engine's `ResourceConfig`. */
+export function toEngineConfig(config: CrudConfig, adapter: CrudAdapter): ResourceConfig {
+  return {
+    model: config.model,
+    adapter,
+    hooks: config.hooks,
+    filterFields: config.filterFields,
+    filterConfig: config.filterConfig,
+    sortFields: config.sortFields,
+    defaultSort: config.defaultSort,
+    searchFields: config.searchFields,
+    allowedIncludes: config.allowedIncludes,
+    fieldSelection: config.fieldSelection,
+    pagination: config.pagination,
+    dto: config.dto,
+    updateFields: config.updateFields,
+    envelope: config.responseEnvelope,
+    errorMappers: config.errorMappers,
+  };
+}

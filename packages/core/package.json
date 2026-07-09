@@ -71,20 +71,13 @@
     "node": ">=20"
   },
   "peerDependencies": {
-    "@hono/zod-openapi": ">=1.0.0",
-    "@velajs/vela": ">=1.17.0",
+    "@velajs/vela": ">=1.18.0",
     "hono": ">=4",
-    "hono-crud": ">=0.13.0",
     "zod": ">=4"
   },
   "devDependencies": {
-    "@hono-crud/memory": "^0.1.12",
-    "@hono/zod-openapi": "^1.4.0",
-    "@velajs/vela": "^1.17.1",
-    "drizzle-orm": "^0.45.2",
-    "drizzle-zod": "^0.8.3",
+    "@velajs/vela": "^1.18.0",
     "hono": "^4",
-    "hono-crud": "^0.13.15",
     "zod": "^4"
   }
 }

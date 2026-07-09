@@ -1,64 +1,96 @@
-import { METADATA_KEYS, MetadataRegistry, Scope, defineMetadata } from '@velajs/vela';
-import { ComponentManager } from '@velajs/vela/internal';
-import type { Type, DynamicModule } from '@velajs/vela';
-import { assertTenantResolverMounted } from './types';
-import type { ResourceConfig, CrudConfig } from './types';
+/**
+ * `CrudModule` — defineModule-based (the queue-module template), EAGER by
+ * design: adapter capability checks, tenant affirmations, and schema
+ * derivation are load-time fail-fast wiring, exactly what MODULE_AUTHORING
+ * says not to defer.
+ *
+ * - `forRoot({ adapter })` / `forRootAsync` provide the app-wide default
+ *   adapter (`CRUD_DEFAULT_ADAPTER`).
+ * - `forFeature([{ path, model, ... }])` synthesizes a controller per
+ *   headless resource and registers its compiled engine under
+ *   `crudResourceToken(name)` (options-derived providers, queue-style).
+ */
 
-export class CrudModule {
-  static forResource(path: string, config: ResourceConfig): DynamicModule {
-    // Fail fast on tenant-scoped models without a resolver affirmation.
-    // Throws synchronously at module-load time — see
-    // {@link MissingTenantResolverError} for rationale and recovery.
-    assertTenantResolverMounted({
-      meta: config.meta,
-      mountPath: path,
-      tenantResolverMounted: config.tenantResolverMounted,
+import { Container, defineModule, stableHash } from '@velajs/vela';
+import type { DynamicModule, ProviderOptions } from '@velajs/vela';
+import type { CrudAdapter } from './adapter/contract';
+import { ConfigurationException } from './envelope/errors';
+import { defineResource } from './kernel/resource';
+import { CRUD_DEFAULT_ADAPTER, crudResourceToken } from './crud.tokens';
+import { resourceNames } from './crud.types';
+import { toEngineConfig } from './stamp-routes';
+import { synthesizeController, type CrudFeatureResource } from './synthesize-controller';
+
+export interface CrudModuleOptions {
+  /** The app-wide default `CrudAdapter` (per-resource `adapter` overrides it). */
+  adapter: CrudAdapter;
+}
+
+const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<CrudModuleOptions>({
+  name: 'Crud',
+  key: () => stableHash({ module: 'crud-root' }),
+  setup: ({ OPTIONS }) => ({
+    providers: [
+      {
+        provide: CRUD_DEFAULT_ADAPTER,
+        useFactory: (options: CrudModuleOptions) => {
+          if (!options.adapter) {
+            throw new ConfigurationException(
+              'CrudModule.forRoot requires an adapter: forRoot({ adapter: memoryAdapter(...) })',
+            );
+          }
+          return options.adapter;
+        },
+        inject: [OPTIONS],
+      },
+    ],
+    exports: [CRUD_DEFAULT_ADAPTER],
+  }),
+});
+
+export class CrudModule extends ConfigurableModuleClass {
+  /**
+   * Mounts headless resources. Controllers are synthesized (and their routes
+   * stamped) synchronously here; the compiled engine resource is provided
+   * under `crudResourceToken(name)` for anything that wants to dispatch verbs
+   * programmatically.
+   */
+  static forFeature(resources: CrudFeatureResource[]): DynamicModule {
+    const controllers = resources.map((feature) => synthesizeController(feature));
+    const providers: ProviderOptions[] = resources.map((feature) => {
+      const { path: _path, ...config } = feature;
+      const names = resourceNames(config);
+      return {
+        provide: crudResourceToken(names.singular),
+        useFactory: (container: Container) => {
+          const adapter = config.adapter ?? resolveDefault(container, names.singular);
+          return defineResource(names.singular, toEngineConfig(config, adapter));
+        },
+        inject: [Container],
+      };
     });
 
-    // Synthetic per-resource controller class. Vela's audit #2 removed
-    // `createModuleRef`, but controllers still need a unique class identity per
-    // resource path so the registry can store path/CRUD metadata independently.
-    //
-    // Computed-property-name idiom: NamedEvaluation reads the property key
-    // and stamps `name` on the class at creation, no post-hoc property
-    // mutation, no cast.
-    const controllerName = `CrudController_${path.replace(/[^a-zA-Z0-9]/g, '_')}`;
-    const controllerClass: Type = { [controllerName]: class {} }[controllerName];
-
-    // Mark as injectable + controller
-    MetadataRegistry.markInjectable(controllerClass);
-    MetadataRegistry.setScope(controllerClass, Scope.SINGLETON);
-
-    // Store CRUD config
-    const crudConfig: CrudConfig = {
-      meta: config.meta,
-      adapters: config.adapters,
-      only: config.only,
-      except: config.except,
-      endpoints: config.endpoints,
-      tenantResolverMounted: config.tenantResolverMounted,
-    };
-    defineMetadata(METADATA_KEYS.CRUD, crudConfig, controllerClass);
-
-    // Store controller path in registry
-    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-    MetadataRegistry.setControllerPath(controllerClass, normalizedPath);
-
-    // Register guards at controller level
-    if (config.guards) {
-      for (const guard of config.guards) {
-        ComponentManager.registerController('guard', controllerClass, guard);
-      }
-    }
-
-    // Per audit #2: the synthetic module-class trick is replaced by the
-    // explicit `key` discriminator. Two `forResource(path)` calls with the
-    // same path dedup (same module + same key); different paths register as
-    // distinct module instances.
     return {
       module: CrudModule,
-      key: normalizedPath,
-      controllers: [controllerClass],
+      key: `feature:${resources.map((r) => r.path).join(',')}`,
+      controllers,
+      providers,
+      exports: resources.map((feature) => {
+        const { path: _path, ...config } = feature;
+        return crudResourceToken(resourceNames(config).singular);
+      }),
     };
   }
 }
+
+function resolveDefault(container: Container, resource: string): CrudAdapter {
+  if (!container.has(CRUD_DEFAULT_ADAPTER)) {
+    throw new ConfigurationException(
+      `CrudModule.forFeature('${resource}'): no adapter — pass 'adapter' on the resource or ` +
+        'import CrudModule.forRoot({ adapter }) first',
+    );
+  }
+  return container.resolve(CRUD_DEFAULT_ADAPTER);
+}
+
+export { MODULE_OPTIONS_TOKEN as CRUD_MODULE_OPTIONS };
