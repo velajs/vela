@@ -48,3 +48,21 @@ divergence is added or closed.
 - **Not ported in release 1** (goes in the CHANGELOG too): cache, rate-limit,
   idempotency, MCP, swagger/scalar UIs, prisma adapter, api-version, health,
   logging middleware.
+
+## Conformance suite (hono-crud parity harness)
+
+The hono-crud conformance harness + group-1 cells are ported at the workspace
+root (`tests/conformance/`), run via `pnpm test:conformance`. Status of the
+group-1 cells against the native engine:
+
+- **soft-delete-lifecycle**: delete/hide/list assertions PASS. The three
+  `restore` assertion blocks are `test.skip`ped with `// TODO(M4): restore verb`
+  — `POST /:id/restore` is gated out of `IMPLEMENTED_ENDPOINTS` (verb-table.ts)
+  until the restore executor lands (M4). No engine bug; a known deferral.
+- **managed-fields**, **pagination**, **filter-operators**: PASS verbatim (no
+  gaps). No PARITY-GAP surfaced during the port.
+- **Deferred cells (NOT ported)**: `unique-conflict` needs unique-constraint
+  enforcement (the memory adapter has no constraint surface and the model layer
+  has no unique declaration — the source already skips it on the memory leg);
+  `etag-concurrency` needs ETag/If-Match support (no `etagEnabled` read/update
+  path in the native engine yet). Both revisit when those capabilities land.

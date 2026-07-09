@@ -5,7 +5,8 @@
   "scripts": {
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test",
+    "test": "pnpm -r test && vitest run tests",
+    "test:conformance": "vitest run tests",
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "pnpm build && changeset publish"
@@ -14,9 +15,12 @@
     "@changesets/cli": "^2.29.5",
     "@swc/cli": "^0.8.1",
     "@swc/core": "^1.15.41",
+    "@velajs/vela": "^1.18.0",
+    "hono": "^4",
     "typescript": "^6.0.3",
     "unplugin-swc": "^1.5.9",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.9",
+    "zod": "^4"
   },
   "packageManager": "pnpm@10.20.0",
   "engines": {
