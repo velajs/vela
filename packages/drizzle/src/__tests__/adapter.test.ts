@@ -149,6 +149,29 @@ describe('drizzleAdapter core', () => {
     expect(await scopeOf((s) => adapter.restore!({ field: 'id', value: 'a' }, s))).toBeNull();
   });
 
+  it('nested driver: createNested stamps the FK; applyNested connect/disconnect', async () => {
+    const adapter = makeAdapter();
+    await scopeOf((s) => adapter.create({ id: 'u1', name: 'U' }, s));
+    await adapter.transaction(async (s) => {
+      await adapter.nested!.createNested({ id: 'u1' }, 'posts', [{ id: 'p1', title: 'P' }], s);
+    });
+    let rows = (await db.select().from(posts)) as Array<Record<string, unknown>>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: 'p1', title: 'P', authorId: 'u1' });
+
+    await adapter.transaction(async (s) => {
+      await adapter.nested!.applyNested({ id: 'u1' }, 'posts', { disconnect: [{ id: 'p1' }] }, s);
+    });
+    rows = (await db.select().from(posts)) as Array<Record<string, unknown>>;
+    expect(rows[0]).toMatchObject({ id: 'p1', authorId: null });
+
+    await adapter.transaction(async (s) => {
+      await adapter.nested!.applyNested({ id: 'u1' }, 'posts', { connect: [{ id: 'p1' }] }, s);
+    });
+    rows = (await db.select().from(posts)) as Array<Record<string, unknown>>;
+    expect(rows[0]).toMatchObject({ id: 'p1', authorId: 'u1' });
+  });
+
   it('forwards TransactionContext to onOpenTransaction at tx open', async () => {
     const seen: Array<{ tx: unknown; tenantId?: string }> = [];
     const adapter = drizzleAdapter({

@@ -51,9 +51,20 @@ divergence is added or closed.
   hono-crud's equality-only filter Record — additive), and `?withDeleted` is
   honored on the fallback path (via `adapter.list`) but not plumbed into
   `AggregateSpec` for a hypothetical native adapter.
-- **Nested-write schema merging**: `deriveCreateSchema` does not merge relation
-  write shapes into the create body schema (no `nestedWrites` flags on
-  `RelationConfig` yet). M4.
+- **Nested-write schema merging**: SHIPPED (1.19). `nestedWrites` flags on
+  `RelationConfig` (allowCreate/Update/Delete/Connect/Disconnect, all default
+  OFF); `deriveCreateSchema` merges the child shape (omitting exactly
+  `['id', foreignKey]` — hono-crud parity; child timestamps/tenant NOT
+  stripped), `deriveUpdateSchema` merges the flag-gated ops envelope; the
+  single create/update verbs split the body and dispatch to the existing
+  `NestedWriteDriver` INSIDE the parent transaction (the driver was dead code
+  before — nothing invoked it). Extended verbs (batch family, upsert, clone,
+  bulkPatch, import) reject nested payloads with a loud 400
+  (`assertNoNestedWrites`) instead of silently inserting relation columns.
+  Deliberate scope: belongsTo nesting throws at define time (the driver
+  stamps the FK on the RELATED row); `set` relinks by `{ id }` or `null`
+  (create-via-set unported); related PK is `id` (hono-crud parity). Proven by
+  schema-derive/define-model/verbs unit tests + memory/drizzle driver tests.
 - **Per-relation include scoping** (`RelationConfig.scope`): dropped from the
   model layer; `RelationLoadScope` covers tenant + soft-delete owner-scoping at
   the loader. Revisit with the relation conformance cells (M3).

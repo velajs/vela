@@ -38,6 +38,7 @@ import { AggregationException, InputValidationException } from '../../envelope/e
 import { applyComputedFieldsToArray } from '../../model/computed-fields';
 import { applyProfile, applyProfileToArray } from '../../model/serialization-profile';
 import { applyManagedInsertFields, applyManagedUpdateFields, stripPrimaryKeys } from '../../model/managed-fields';
+import { assertNoNestedWrites } from '../nested-writes';
 import { applyUpsertRestore, isSoftDeleted } from '../../model/soft-delete';
 import { filterReadable, maskFields } from '../../policies/evaluate';
 import { buildAggregateSpec, computeAggregateFallback } from '../../query/aggregate';
@@ -437,6 +438,7 @@ async function processImportRow(
     };
   }
   const values = parsed.data as Row;
+  assertNoNestedWrites(model, values, 'import');
   if (model.tenantField !== undefined && req.vars?.tenantId !== undefined) {
     values[model.tenantField] = req.vars.tenantId;
   }

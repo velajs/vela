@@ -222,6 +222,29 @@ const withHeaders = (headers: Record<string, string>): Request =>
 // ===========================================================================
 
 describe('batchCreate', () => {
+  it('rejects nested-write payloads with a loud 400 (no dispatch seam)', async () => {
+    const PostSchema = z.object({ id: z.string(), authorId: z.string().optional(), title: z.string() });
+    const { resource } = makeResource({
+      model: {
+        relations: {
+          posts: {
+            type: 'hasMany' as const,
+            target: 'posts',
+            foreignKey: 'authorId',
+            schema: PostSchema,
+            nestedWrites: { allowCreate: true },
+          },
+        },
+      },
+    });
+    await expect(
+      resource.execute(
+        'batchCreate',
+        req({ body: { items: [{ email: 'x@x', name: 'X', posts: [{ title: 'p' }] }] } }),
+      ),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
   it('inserts every item → 201 { created, count } with fresh ids + timestamps', async () => {
     const { resource, store } = makeResource();
     const result = await resource.execute(

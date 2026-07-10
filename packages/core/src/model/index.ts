@@ -16,6 +16,7 @@ export type {
   Model,
   ModelConfig,
   MultiTenantInput,
+  NestedWriteConfig,
   NormalizedTimestamps,
   RelationConfig,
   RelationsConfig,

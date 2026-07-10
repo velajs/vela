@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import type { AdapterScope, CrudAdapter, TransactionContext } from '../../adapter/contract';
+import type {
+  AdapterCapability,
+  AdapterScope,
+  CrudAdapter,
+  NestedWriteOperations,
+  TransactionContext,
+} from '../../adapter/contract';
 import type { ListQuery, Lookup, Page } from '../../adapter/query-types';
 import { defineModel } from '../../model/define-model';
 import { defineResource } from '../resource';
@@ -148,6 +154,122 @@ describe('transaction context', () => {
     expect(seen).toHaveLength(2);
     expect(seen[1]).toBeDefined();
     expect(seen[1]?.tenantId).toBeUndefined();
+  });
+});
+
+describe('nested writes (create/update dispatch)', () => {
+  const PostSchema = z.object({
+    id: z.string(),
+    authorId: z.string().optional(),
+    title: z.string().min(1),
+  });
+  const NESTED_RELATIONS = {
+    posts: {
+      type: 'hasMany' as const,
+      target: 'posts',
+      foreignKey: 'authorId',
+      schema: PostSchema,
+      nestedWrites: {
+        allowCreate: true,
+        allowUpdate: true,
+        allowDelete: true,
+        allowConnect: true,
+        allowDisconnect: true,
+      },
+    },
+  };
+
+  function nestedResource() {
+    const store = new Map<string, Row>();
+    const calls: Array<{ kind: string; relation: string; parentId: unknown; payload: unknown }> = [];
+    const inner = fakeAdapter(store);
+    const adapter: CrudAdapter<Row> = {
+      ...inner,
+      capabilities: new Set<AdapterCapability>([...inner.capabilities, 'nestedWrites']),
+      nested: {
+        async createNested(parent, relation, records) {
+          calls.push({ kind: 'create', relation, parentId: (parent as Row).id, payload: records });
+        },
+        async applyNested(parent, relation, operations) {
+          calls.push({ kind: 'apply', relation, parentId: (parent as Row).id, payload: operations });
+        },
+      },
+    };
+    const model = defineModel({
+      name: 'item',
+      tableName: 'items',
+      schema: itemSchema,
+      softDelete: false,
+      relations: NESTED_RELATIONS,
+    });
+    const resource = defineResource('items', { model, adapter });
+    return { store, calls, resource };
+  }
+
+  it('create splits nested payloads off the parent row and dispatches in-scope', async () => {
+    const { store, calls, resource } = nestedResource();
+    const result = await resource.execute(
+      'create',
+      req({ body: { name: 'A', qty: 1, posts: [{ title: 'P1' }, { title: 'P2' }] } }),
+    );
+    expect(result.status).toBe(201);
+    const created = (result.body as { result: Row }).result;
+    // The relation key never reaches the adapter as a column.
+    expect('posts' in (store.get(String(created.id)) ?? {})).toBe(false);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ kind: 'create', relation: 'posts', parentId: created.id });
+    expect((calls[0]!.payload as Row[]).map((p) => p.title)).toEqual(['P1', 'P2']);
+  });
+
+  it('update translates the ops envelope into NestedWriteOperations', async () => {
+    const { store, calls, resource } = nestedResource();
+    store.set('a', { id: 'a', name: 'A', qty: 1 });
+    const result = await resource.execute(
+      'update',
+      req({
+        id: 'a',
+        body: {
+          name: 'B',
+          posts: {
+            create: { title: 'New' },
+            update: [{ id: 'p1', title: 'Upd' }],
+            delete: ['p2'],
+            connect: ['p3'],
+            disconnect: ['p4'],
+            set: null,
+          },
+        },
+      }),
+    );
+    expect(result.status).toBe(200);
+    expect(store.get('a')?.name).toBe('B');
+    expect('posts' in (store.get('a') ?? {})).toBe(false);
+    expect(calls[0]).toMatchObject({ kind: 'apply', relation: 'posts', parentId: 'a' });
+    const ops = calls[0]!.payload as NestedWriteOperations;
+    expect(ops.create).toEqual([{ title: 'New' }]);
+    expect(ops.update).toEqual([{ where: { id: 'p1' }, data: { title: 'Upd' } }]);
+    expect(ops.delete).toEqual([{ id: 'p2' }]);
+    expect(ops.connect).toEqual([{ id: 'p3' }]);
+    expect(ops.disconnect).toEqual([{ id: 'p4' }]);
+    expect(ops.set).toEqual([]);
+  });
+
+  it('throws a loud ConfigurationException when nesting without the driver', async () => {
+    const store = new Map<string, Row>();
+    const model = defineModel({
+      name: 'item',
+      tableName: 'items',
+      schema: itemSchema,
+      softDelete: false,
+      relations: NESTED_RELATIONS,
+    });
+    const resource = defineResource('items', { model, adapter: fakeAdapter(store) });
+    await expect(
+      resource.execute('create', req({ body: { name: 'A', qty: 1, posts: [{ title: 'x' }] } })),
+    ).rejects.toMatchObject({ statusCode: 500, code: 'CONFIGURATION_ERROR' });
+    // Without a nested payload the same resource still writes normally.
+    const plain = await resource.execute('create', req({ body: { name: 'B', qty: 1 } }));
+    expect(plain.status).toBe(201);
   });
 });
 

@@ -36,7 +36,7 @@ export { deriveRouteName, deriveVerbNaming } from './naming';
 // Model authoring (also on ./model)
 export { defineModel } from './model/define-model';
 export { defineModels, defineModelsExtending } from './model/model-registry';
-export type { Model, ModelConfig, RelationConfig } from './model/model.types';
+export type { Model, ModelConfig, NestedWriteConfig, RelationConfig } from './model/model.types';
 
 // Engine surface commonly needed by consumers (full set on subpaths)
 export {

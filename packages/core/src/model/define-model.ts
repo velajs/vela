@@ -19,6 +19,7 @@
  */
 
 import type { ZodObject, ZodRawShape } from 'zod';
+import { ConfigurationException } from '../envelope/errors';
 import type {
   Model,
   ModelConfig,
@@ -97,6 +98,25 @@ export function defineModel<
 
   const tenantField = normalizeTenantField(config.multiTenant);
   if (tenantField !== undefined) normalized.tenantField = tenantField;
+
+  // Loud, never silent: nested writes only work in the has* direction (the
+  // driver stamps the FK on the RELATED row keyed by the parent) and need the
+  // related schema to derive the write shape — fail at definition time.
+  for (const [name, rel] of Object.entries(
+    (config.relations ?? {}) as Record<string, RelationConfig>,
+  )) {
+    if (rel?.nestedWrites === undefined) continue;
+    if (rel.type === 'belongsTo') {
+      throw new ConfigurationException(
+        `Model '${config.name}': nestedWrites is not supported on belongsTo relation '${name}'`,
+      );
+    }
+    if (rel.schema === undefined) {
+      throw new ConfigurationException(
+        `Model '${config.name}': nestedWrites on relation '${name}' requires the relation 'schema'`,
+      );
+    }
+  }
 
   if (config.computedFields !== undefined) normalized.computedFields = config.computedFields;
   if (config.serializationProfile !== undefined) {

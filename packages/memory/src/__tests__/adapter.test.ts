@@ -32,6 +32,46 @@ describe('memoryAdapter core methods', () => {
     expect(getStore('users').get('u1')).toEqual({ id: 'u1', name: 'Ada' });
   });
 
+  it('nested driver: createNested stamps the FK; applyNested ops are FK-scoped', async () => {
+    const adapter = users();
+    seed([{ id: 'u1' }]);
+    await adapter.nested!.createNested({ id: 'u1' }, 'posts', [{ title: 'P' }], scope);
+    const created = [...getStore('posts').values()];
+    expect(created).toHaveLength(1);
+    expect(created[0]).toMatchObject({ title: 'P', authorId: 'u1' });
+
+    seed(
+      [
+        { id: 'p1', authorId: 'u1', title: 'Mine' },
+        { id: 'p2', authorId: 'u1', title: 'Del' },
+        { id: 'p3', authorId: null, title: 'Free' },
+        { id: 'p4', authorId: 'u1', title: 'Off' },
+      ],
+      'posts',
+    );
+    await adapter.nested!.applyNested(
+      { id: 'u1' },
+      'posts',
+      {
+        update: [{ where: { id: 'p1' }, data: { title: 'Mine2' } }],
+        delete: [{ id: 'p2' }],
+        connect: [{ id: 'p3' }],
+        disconnect: [{ id: 'p4' }],
+      },
+      scope,
+    );
+    const posts = getStore('posts');
+    expect(posts.get('p1')).toMatchObject({ title: 'Mine2' });
+    expect(posts.has('p2')).toBe(false);
+    expect(posts.get('p3')).toMatchObject({ authorId: 'u1' });
+    expect(posts.get('p4')).toMatchObject({ authorId: null });
+
+    // set = disconnect everything, then relink exactly the listed records.
+    await adapter.nested!.applyNested({ id: 'u1' }, 'posts', { set: [{ id: 'p4' }] }, scope);
+    expect(posts.get('p1')).toMatchObject({ authorId: null });
+    expect(posts.get('p4')).toMatchObject({ authorId: 'u1' });
+  });
+
   it('create throws ConflictException (409) on a duplicate primary key', async () => {
     const adapter = users();
     await adapter.create({ id: 'u1', name: 'Ada' }, scope);

@@ -62,6 +62,33 @@ export interface CascadeConfig {
 }
 
 /**
+ * Per-relation nested-write authoring flags (hono-crud 0.13 parity). All
+ * default OFF. Enabling any flag merges the relation's write shape into the
+ * derived body schemas — CREATE accepts child payloads under the relation
+ * key; UPDATE accepts an ops envelope (`create`/`update`/`delete`/`connect`/
+ * `disconnect`/`set`) — and the single create/update verbs dispatch to the
+ * adapter's `NestedWriteDriver` inside the parent write's transaction.
+ * Extended verbs (batch family, upsert, clone, bulkPatch, import) reject
+ * nested payloads with a 400. Only `hasOne`/`hasMany` relations may nest
+ * (the driver stamps the FK on the RELATED row); enabling on `belongsTo` or
+ * on a relation without `schema` throws at model definition. Deviation from
+ * hono-crud: `set` relinks by `{ id }` or disconnects all with `null` —
+ * create-via-set is not supported.
+ */
+export interface NestedWriteConfig {
+  /** Accept nested child payloads on create + `create` ops on update. @default false */
+  allowCreate?: boolean;
+  /** Accept `update` ops in the update envelope. @default false */
+  allowUpdate?: boolean;
+  /** Accept `delete` ops in the update envelope. @default false */
+  allowDelete?: boolean;
+  /** Accept `connect` and `set` ops in the update envelope. @default false */
+  allowConnect?: boolean;
+  /** Accept `disconnect` ops in the update envelope. @default false */
+  allowDisconnect?: boolean;
+}
+
+/**
  * One relation on a model. `target` is a registry key while authored inside a
  * `defineModels({...})` call; the factory rewrites it to the target model's
  * `tableName` (the form adapters resolve by). Authored standalone (a raw
@@ -84,6 +111,8 @@ export interface RelationConfig<TTable = unknown> {
   table?: TTable;
   /** Cascade behavior on parent (soft-)delete. */
   cascade?: CascadeConfig;
+  /** Nested-write authoring flags — see {@link NestedWriteConfig}. */
+  nestedWrites?: NestedWriteConfig;
   /**
    * Opt this relation out of {@link defineModels} sibling-key checking and
    * auto-population — for cross-package / polymorphic targets authored raw.

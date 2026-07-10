@@ -19,6 +19,7 @@
 import type { FilterCondition, ListQuery, Lookup } from '../../adapter/query-types';
 import { ConfigurationException, NotFoundException } from '../../envelope/errors';
 import { applyManagedInsertFields, applyManagedUpdateFields, stripPrimaryKeys } from '../../model/managed-fields';
+import { assertNoNestedWrites } from '../nested-writes';
 import { applyUpsertRestore, isSoftDeleted } from '../../model/soft-delete';
 import type { CrudEndpointName } from '../../verb-table';
 import { captureAudit } from '../capture';
@@ -116,6 +117,7 @@ async function executeClone(resource: AnyResource, req: EngineRequest): Promise<
   // Overrides validate against the create schema made fully optional — the
   // create schema already excludes engine-managed fields (PKs/timestamps/tenant).
   const overrides = parseBody((await createSchemaFor(resource, req)).partial(), req.body);
+  assertNoNestedWrites(model, overrides, 'clone');
   const fieldsToReset = config.clone?.fieldsToReset ?? [];
   const databaseGeneratedId = config.adapter.capabilities.has('databaseGeneratedId');
 
@@ -197,6 +199,7 @@ async function executeUpsert(resource: AnyResource, req: EngineRequest): Promise
   }
 
   const values = parseBody(await createSchemaFor(resource, req), req.body);
+  assertNoNestedWrites(model, values, 'upsert');
   // Tenant is injected before find + before-hook so a created row is scoped and
   // the find never crosses tenants (hono-crud injects tenant pre-find).
   if (model.tenantField !== undefined && req.vars?.tenantId !== undefined) {

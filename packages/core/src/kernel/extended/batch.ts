@@ -48,6 +48,7 @@ import {
   NotFoundException,
 } from '../../envelope/errors';
 import { applyManagedInsertFields, applyManagedUpdateFields, stripPrimaryKeys } from '../../model/managed-fields';
+import { assertNoNestedWrites } from '../nested-writes';
 import { applyUpsertRestore, isSoftDeleted, softDeleteVisibilityFilter } from '../../model/soft-delete';
 import { parseListFilters } from '../../query/filters';
 import type { CrudEndpointName } from '../../verb-table';
@@ -265,6 +266,7 @@ async function executeBatchCreate(resource: AnyResource, req: EngineRequest): Pr
     // before any before-hook runs or any row is written).
     const prepared: Row[] = rawItems.map((item) => {
       const data = parseBody(createSchema, item);
+      assertNoNestedWrites(model, data, 'batchCreate');
       if (model.tenantField !== undefined && req.vars?.tenantId !== undefined) {
         data[model.tenantField] = req.vars.tenantId;
       }
@@ -325,9 +327,11 @@ async function executeBatchUpdate(resource: AnyResource, req: EngineRequest): Pr
   const updateSchema = await updateSchemaFor(resource, req);
   const outcome = await config.adapter.transaction(async (scope) => {
     const ctx = buildHookContext(req, scope);
-    const patches = items.map((item) =>
-      applyManagedUpdateFields(model, parseBody(updateSchema, item.data)),
-    );
+    const patches = items.map((item) => {
+      const parsed = parseBody(updateSchema, item.data);
+      assertNoNestedWrites(model, parsed, 'batchUpdate');
+      return applyManagedUpdateFields(model, parsed);
+    });
 
     const updated: Row[] = [];
     const notFound: string[] = [];
@@ -539,6 +543,7 @@ async function executeBatchUpsert(resource: AnyResource, req: EngineRequest): Pr
 
     for (let i = 0; i < rawItems.length; i++) {
       const values = parseBody(upsertCreateSchema, rawItems[i]);
+      assertNoNestedWrites(model, values, 'batchUpsert');
       if (model.tenantField !== undefined && req.vars?.tenantId !== undefined) {
         values[model.tenantField] = req.vars.tenantId;
       }
@@ -671,6 +676,7 @@ async function executeBulkPatch(resource: AnyResource, req: EngineRequest): Prom
     );
   }
   const patchFields = parseBody(await updateSchemaFor(resource, req), rawData);
+  assertNoNestedWrites(model, patchFields, 'bulkPatch');
   const dryRun = isDryRun(req);
 
   // Parse + scope the body filters exactly like list (allow-listed fields /

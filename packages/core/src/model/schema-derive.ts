@@ -17,17 +17,19 @@
  * `getBodySchema`): the derivation (strip managed fields; update = base
  * `.partial()` with allowed/blocked) is ported faithfully.
  *
- * DEFERRED (intentional parity gap): hono-crud additionally merges nested-write
- * relation shapes into the body schema when a relation's `nestedWrites` flags
- * allow it. The native `RelationConfig` carries no `nestedWrites` config, and
- * nested-write orchestration lives in the adapter driver — so nested-write
- * shape merging is NOT derived here. Tracked as a blind spot to revisit if the
- * model layer grows a nested-write authoring surface.
+ * Nested writes (hono-crud `nested-writes.ts` parity): when a relation's
+ * `nestedWrites` flags opt in, the relation's write shape is merged into the
+ * derived bodies — CREATE gets the child shape (array for hasMany), UPDATE
+ * gets an ops envelope gated per flag. The child shape omits exactly
+ * `['id', foreignKey]` (child timestamps/tenant columns are NOT stripped —
+ * hono-crud parity). Models with no opted-in relation return the base schema
+ * unchanged (same reference path), preserving `id: 'client'` PK retention
+ * and the serialization-profile behavior untouched.
  */
 
-import type { ZodObject, ZodRawShape } from 'zod';
+import { z, type ZodObject, type ZodRawShape, type ZodType } from 'zod';
 import { getManagedInputExclusions } from './managed-fields';
-import type { Model } from './model.types';
+import type { Model, RelationConfig } from './model.types';
 
 /** Field allow/block-list for {@link deriveUpdateSchema}. */
 export interface DeriveFieldsConfig {
@@ -63,28 +65,97 @@ function pickFields(schema: ZodObject<ZodRawShape>, keep: string[]): ZodObject<Z
   return schema.pick(mask) as unknown as ZodObject<ZodRawShape>;
 }
 
+/** Relations whose `nestedWrites` flags opt them into a given derivation. */
+function nestableRelations(
+  relations: Record<string, RelationConfig> | undefined,
+  wants: (flags: NonNullable<RelationConfig['nestedWrites']>) => boolean,
+): Array<[string, RelationConfig]> {
+  return Object.entries(relations ?? {}).filter(([, rel]) => {
+    if (!rel.nestedWrites || rel.type === 'belongsTo' || rel.schema === undefined) return false;
+    return wants(rel.nestedWrites);
+  });
+}
+
+/** Child write shape: the related schema minus exactly `['id', foreignKey]`. */
+function childShape(rel: RelationConfig): ZodObject<ZodRawShape> {
+  return omitFields(rel.schema as ZodObject<ZodRawShape>, ['id', rel.foreignKey]);
+}
+
+const NESTED_ID = z.union([z.string(), z.number()]);
+
+/** Merge opted-in relations' CREATE shapes onto the base body schema. */
+function mergeNestedCreate(
+  base: ZodObject<ZodRawShape>,
+  relations: Record<string, RelationConfig> | undefined,
+): ZodObject<ZodRawShape> {
+  const merged: Record<string, ZodType> = {};
+  for (const [name, rel] of nestableRelations(relations, (f) => f.allowCreate === true)) {
+    const child = childShape(rel);
+    merged[name] = rel.type === 'hasMany' ? z.array(child).optional() : child.optional();
+  }
+  if (Object.keys(merged).length === 0) return base;
+  return base.extend(merged) as unknown as ZodObject<ZodRawShape>;
+}
+
+/** Merge opted-in relations' UPDATE ops envelopes onto the base body schema. */
+function mergeNestedUpdate(
+  base: ZodObject<ZodRawShape>,
+  relations: Record<string, RelationConfig> | undefined,
+): ZodObject<ZodRawShape> {
+  const merged: Record<string, ZodType> = {};
+  const anyFlag = (f: NonNullable<RelationConfig['nestedWrites']>) =>
+    f.allowCreate === true ||
+    f.allowUpdate === true ||
+    f.allowDelete === true ||
+    f.allowConnect === true ||
+    f.allowDisconnect === true;
+  for (const [name, rel] of nestableRelations(relations, anyFlag)) {
+    const flags = rel.nestedWrites!;
+    const child = childShape(rel);
+    const ops: Record<string, ZodType> = {};
+    if (flags.allowCreate) ops.create = z.union([child, z.array(child)]).optional();
+    if (flags.allowUpdate) {
+      ops.update = z.array(child.partial().extend({ id: NESTED_ID })).optional();
+    }
+    if (flags.allowDelete) ops.delete = z.array(NESTED_ID).optional();
+    if (flags.allowConnect) {
+      ops.connect = z.array(NESTED_ID).optional();
+      // `set`: relink by id, or null to disconnect all (create-via-set is a
+      // documented deviation from hono-crud — not supported).
+      ops.set = z.union([z.object({ id: NESTED_ID }), z.null()]).optional();
+    }
+    if (flags.allowDisconnect) ops.disconnect = z.array(NESTED_ID).optional();
+    merged[name] = z.object(ops).optional();
+  }
+  if (Object.keys(merged).length === 0) return base;
+  return base.extend(merged) as unknown as ZodObject<ZodRawShape>;
+}
+
 /**
  * The create-body schema: `model.schema` minus the engine-managed fields
  * (generated PKs + timestamp columns + tenant column). Under `id: 'client'`
  * the PK is RETAINED at its authored shape — the caller supplies it; every
  * consumer (static schema, resolveSchema re-derive, OpenAPI DTO) flows
- * through here. Update-side derivation always excludes the PK.
+ * through here. Update-side derivation always excludes the PK. Relations
+ * with `nestedWrites.allowCreate` merge their child shape onto the body.
  */
 export function deriveCreateSchema(
-  model: Pick<Model, 'schema' | 'id' | 'timestamps' | 'primaryKeys' | 'tenantField'>,
+  model: Pick<Model, 'schema' | 'id' | 'timestamps' | 'primaryKeys' | 'tenantField' | 'relations'>,
 ): ZodObject<ZodRawShape> {
-  return omitFields(
+  const base = omitFields(
     model.schema,
     getManagedInputExclusions(model, { includePrimaryKeys: model.id !== 'client' }),
   );
+  return mergeNestedCreate(base, model.relations);
 }
 
 /**
  * The update-body schema: the create base with `blocked` fields additionally
- * removed and `allowed` fields kept, then made fully `.partial()`.
+ * removed and `allowed` fields kept, then made fully `.partial()`. Relations
+ * with any `nestedWrites` flag merge their ops envelope onto the body.
  */
 export function deriveUpdateSchema(
-  model: Pick<Model, 'schema' | 'id' | 'timestamps' | 'primaryKeys' | 'tenantField'>,
+  model: Pick<Model, 'schema' | 'id' | 'timestamps' | 'primaryKeys' | 'tenantField' | 'relations'>,
   fieldsConfig: DeriveFieldsConfig = {},
 ): ZodObject<ZodRawShape> {
   let exclude = getManagedInputExclusions(model);
@@ -97,5 +168,6 @@ export function deriveUpdateSchema(
     schema = pickFields(schema, fieldsConfig.allowed);
   }
 
-  return schema.partial() as unknown as ZodObject<ZodRawShape>;
+  const partial = schema.partial() as unknown as ZodObject<ZodRawShape>;
+  return mergeNestedUpdate(partial, model.relations);
 }

@@ -46,6 +46,78 @@ describe('deriveCreateSchema', () => {
   });
 });
 
+const PostSchema = z.object({
+  id: z.string(),
+  authorId: z.string().optional(),
+  title: z.string().min(1),
+});
+
+const nestedModel = (nestedWrites: Record<string, boolean>, base: object = {}) =>
+  defineModel({
+    name: 'u',
+    tableName: 'u',
+    schema: Schema,
+    ...base,
+    relations: {
+      posts: {
+        type: 'hasMany' as const,
+        target: 'posts',
+        foreignKey: 'authorId',
+        schema: PostSchema,
+        nestedWrites,
+      },
+    },
+  });
+
+describe('nested-write schema merging', () => {
+  it('merges the hasMany child shape into the create body (omitting id + FK)', () => {
+    const create = deriveCreateSchema(nestedModel({ allowCreate: true }));
+    expect('posts' in create.shape).toBe(true);
+    const parsed = create.safeParse({
+      name: 'a',
+      email: 'e',
+      role: 'r',
+      tenantId: 't',
+      posts: [{ title: 'P', id: 'evil', authorId: 'evil' }],
+    });
+    expect(parsed.success).toBe(true);
+    const posts = (parsed.data as { posts: Array<Record<string, unknown>> }).posts;
+    // Child shape omits exactly ['id', foreignKey]; unknown keys are stripped.
+    expect(posts[0]).toEqual({ title: 'P' });
+  });
+
+  it('leaves the base schema untouched when no relation opts in (regression)', () => {
+    const plain = defineModel({ name: 'u', tableName: 'u', schema: Schema });
+    const withRelation = defineModel({
+      name: 'u',
+      tableName: 'u',
+      schema: Schema,
+      relations: {
+        posts: { type: 'hasMany' as const, target: 'posts', foreignKey: 'authorId', schema: PostSchema },
+      },
+    });
+    expect(keys(deriveCreateSchema(withRelation))).toEqual(keys(deriveCreateSchema(plain)));
+    expect(keys(deriveUpdateSchema(withRelation))).toEqual(keys(deriveUpdateSchema(plain)));
+  });
+
+  it('merges only the flag-gated ops into the update envelope', () => {
+    const update = deriveUpdateSchema(nestedModel({ allowCreate: true, allowDelete: true }));
+    expect('posts' in update.shape).toBe(true);
+    const ok = update.safeParse({ posts: { create: { title: 'N' }, delete: ['p1'] } });
+    expect(ok.success).toBe(true);
+    // Non-enabled ops are unknown keys — stripped, never dispatched.
+    const stripped = update.safeParse({ posts: { update: [{ id: 'p1', title: 'X' }] } });
+    expect(stripped.success).toBe(true);
+    expect((stripped.data as { posts: Record<string, unknown> }).posts).toEqual({});
+  });
+
+  it("coexists with id: 'client' PK retention", () => {
+    const create = deriveCreateSchema(nestedModel({ allowCreate: true }, { id: 'client' }));
+    expect('id' in create.shape).toBe(true);
+    expect('posts' in create.shape).toBe(true);
+  });
+});
+
 describe('deriveUpdateSchema', () => {
   it('is the create base made fully partial (every field optional)', () => {
     const model = defineModel({ name: 'u', tableName: 'u', schema: Schema, multiTenant: true });

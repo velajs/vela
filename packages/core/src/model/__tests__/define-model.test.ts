@@ -91,6 +91,41 @@ describe('defineModel normalization', () => {
     expect(model.id).toBe('client');
   });
 
+  it('throws at definition when nestedWrites is set on belongsTo or without a schema', () => {
+    const Related = UserSchema;
+    expect(() =>
+      defineModel({
+        name: 'u',
+        tableName: 'u',
+        schema: UserSchema,
+        relations: {
+          owner: {
+            type: 'belongsTo' as const,
+            target: 'owners',
+            foreignKey: 'ownerId',
+            schema: Related,
+            nestedWrites: { allowCreate: true },
+          },
+        },
+      }),
+    ).toThrow(/belongsTo/);
+    expect(() =>
+      defineModel({
+        name: 'u',
+        tableName: 'u',
+        schema: UserSchema,
+        relations: {
+          posts: {
+            type: 'hasMany' as const,
+            target: 'posts',
+            foreignKey: 'authorId',
+            nestedWrites: { allowCreate: true },
+          },
+        },
+      }),
+    ).toThrow(/schema/);
+  });
+
   it('returns a fresh object without mutating the input config', () => {
     const config = { name: 'user', tableName: 'users', schema: UserSchema, primaryKeys: ['id'] as ['id'] };
     const model = defineModel(config);

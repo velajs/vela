@@ -326,6 +326,30 @@ describe('clone', () => {
 describe('upsert', () => {
   const upsertCfg = { upsert: { keys: ['email'] } };
 
+  it('rejects nested-write payloads with a loud 400 (no dispatch seam)', async () => {
+    const PostSchema = z.object({ id: z.string(), authorId: z.string().optional(), title: z.string() });
+    const { resource } = makeResource({
+      ...upsertCfg,
+      model: {
+        relations: {
+          posts: {
+            type: 'hasMany' as const,
+            target: 'posts',
+            foreignKey: 'authorId',
+            schema: PostSchema,
+            nestedWrites: { allowCreate: true },
+          },
+        },
+      },
+    });
+    await expect(
+      resource.execute(
+        'upsert',
+        req({ body: { email: 'x@x', name: 'X', posts: [{ title: 'p' }] } }),
+      ),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
   it('throws a loud ConfigurationException when upsert.keys is not configured', async () => {
     const { resource } = makeResource();
     await expect(

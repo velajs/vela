@@ -14,6 +14,13 @@ import type { ListQuery, Page } from '../adapter/query-types';
 import { ForbiddenException, NotFoundException } from '../envelope/errors';
 import { applyComputedFieldsToArray } from '../model/computed-fields';
 import { applyProfileToArray } from '../model/serialization-profile';
+import {
+  nestedCreateRelations,
+  nestedUpdateRelations,
+  requireNestedDriver,
+  splitNested,
+  toNestedOps,
+} from './nested-writes';
 import { applyManagedInsertFields, applyManagedUpdateFields } from '../model/managed-fields';
 import { canRead, canWrite, filterReadable, maskFields, pushdownConditions } from '../policies/evaluate';
 import { parseListFilters } from '../query/filters';
@@ -59,9 +66,14 @@ export async function executeCreate(
     data[model.tenantField] = req.vars.tenantId;
   }
 
+  // Nested payloads (relations opted in via nestedWrites) split off the
+  // parent body and dispatch to the driver inside the SAME transaction.
+  const { main, nested } = splitNested(data, nestedCreateRelations(model));
+  const nestedDriver = nested.size > 0 ? requireNestedDriver(resource) : undefined;
+
   const record = await config.adapter.transaction(async (scope) => {
     const ctx = buildHookContext(req, scope);
-    const managed = applyManagedInsertFields(model, data, {
+    const managed = applyManagedInsertFields(model, main, {
       databaseGeneratedId: config.adapter.capabilities.has('databaseGeneratedId'),
     });
     const input = (await runBeforeChain(
@@ -72,6 +84,12 @@ export async function executeCreate(
     )) as Row;
 
     let created = await config.adapter.create(input, scope);
+    if (nestedDriver) {
+      for (const [name, value] of nested) {
+        const records = (Array.isArray(value) ? value : [value]) as Row[];
+        await nestedDriver.createNested(created, name, records, scope);
+      }
+    }
     if (config.hooks?.afterCreate) {
       const replaced = await runBeforeChain(
         config.hooks.afterMode ?? 'sequential',
@@ -135,6 +153,11 @@ export async function executeUpdate(
   const lookup = buildLookup(resource, req);
   const patch = parseBody(await updateSchemaFor(resource, req), req.body);
 
+  // Nested ops envelopes split off the patch and apply inside the SAME
+  // transaction, after the parent row is updated.
+  const { main: patchMain, nested } = splitNested(patch, nestedUpdateRelations(model));
+  const nestedDriver = nested.size > 0 ? requireNestedDriver(resource) : undefined;
+
   const { prior, current } = await config.adapter.transaction(async (scope) => {
     const ctx = buildHookContext(req, scope);
     const prior = (await config.adapter.readOne(lookup, {}, scope)) as Row | null;
@@ -143,7 +166,7 @@ export async function executeUpdate(
       throw new ForbiddenException();
     }
 
-    const managed = applyManagedUpdateFields(model, patch);
+    const managed = applyManagedUpdateFields(model, patchMain);
     // Version snapshot BEFORE the write: captures the pre-update state and
     // stamps the incremented version field onto `managed` (no-op when the
     // model does not version).
@@ -154,6 +177,12 @@ export async function executeUpdate(
 
     const current = (await config.adapter.update(lookup, managed as never, scope)) as Row | null;
     if (!current) throw new NotFoundException(model.name, lookup.value);
+
+    if (nestedDriver) {
+      for (const [name, value] of nested) {
+        await nestedDriver.applyNested(current, name, toNestedOps(value), scope);
+      }
+    }
 
     if (config.hooks?.afterUpdate) {
       await runHooks(config.hooks.afterMode ?? 'sequential', [

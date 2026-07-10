@@ -30,8 +30,11 @@ hit directly come first.
    (`{ exclude }`) wired through the shared shaping tails; finalize-pipeline
    cell (cell 12) runs over both adapters. `include`/`alwaysInclude`/
    `transform` remain unported.
-6. Nested-write schema merging (`nestedWrites` on `RelationConfig`) —
-   `deriveCreateSchema` doesn't merge relation write shapes.
+6. Nested-write schema merging — DONE (1.19): `nestedWrites` on
+   `RelationConfig`, schema merge in both derivations, create/update dispatch
+   to the `NestedWriteDriver` in-transaction; extended verbs reject nested
+   payloads (400). belongsTo nesting + create-via-set deliberately unported
+   (PARITY.md carries the shipped entry).
 7. ETag/If-Match concurrency + unique-constraint surface — unblocks the
    etag-concurrency and unique-conflict cells.
 8. Events family; field-level encryption (erpos uses its own encryption hooks,
