@@ -15,6 +15,7 @@ import type { Model } from './model/model.types';
 import type { VersioningStore } from './versioning/index';
 import type { AuditStore } from './audit/index';
 import type { CrudEndpointName } from './verb-table';
+import type { GuardType } from '@velajs/vela';
 import type { Context } from 'hono';
 import type { ZodObject, ZodRawShape } from 'zod';
 
@@ -43,6 +44,14 @@ export interface CrudConfig<Row extends Record<string, unknown> = Record<string,
   /** Verb selection: `only` wins over `except`; model gates always apply. */
   only?: readonly CrudEndpointName[];
   except?: readonly CrudEndpointName[];
+  /**
+   * Per-endpoint HTTP guards — stamped onto each synthesized handler exactly
+   * like a hand-written `@UseGuards` on that method, so they run after global
+   * and class-level guards (AND). Guards keyed to a disabled verb are inert;
+   * `@Override`'d endpoints keep their config guards alongside their own.
+   * Programmatic `resource.execute` dispatch bypasses HTTP guards by design.
+   */
+  guards?: Partial<Record<CrudEndpointName, GuardType[]>>;
   hooks?: CrudHooks<Row> & HookModeConfig;
   filterFields?: string[];
   filterConfig?: FilterConfig;

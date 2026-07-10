@@ -287,12 +287,18 @@ stores are **DI seams decoupled from the data adapter**: `VersioningStore` /
 
 ## Gaps surfaced by the erpos migration (2026-07-09, erpos PR #315)
 
-- **No per-endpoint guard/middleware seam on `forFeature`** — hono-crud's
-  `registerCrud` accepted `endpointMiddlewares` per verb; the native config
-  has no equivalent, so erpos's `guardsFromAcl` per-verb feature gating can't
-  be wired on headless resources (decorated controllers can use `@UseGuards`
-  class-wide only). Candidate: `guards?: Partial<Record<CrudEndpointName,
-  GuardType[]>>` on CrudConfig, stamped per handler.
+- **Per-endpoint guard seam**: CLOSED (1.19). Was: hono-crud's `registerCrud`
+  accepted `endpointMiddlewares` per verb; the native config had no
+  equivalent, so erpos's `guardsFromAcl` per-verb feature gating couldn't be
+  wired on headless resources. Shipped: `guards?:
+  Partial<Record<CrudEndpointName, GuardType[]>>` on `CrudConfig`, stamped per
+  synthesized handler via vela's public `UseGuards` in `stampCrudRoutes` —
+  covers `@Crud` controllers and `forFeature` resources; `@Override`'d
+  endpoints keep their config guards (AND with their own); runs after global +
+  class-level guards. Programmatic `resource.execute` is intentionally
+  unaffected. Proven by the "per-endpoint guards (config.guards)" tests in
+  crud-http.test.ts. Scope note: guards only — per-endpoint
+  middleware/interceptors/pipes remain unported.
 - **Tenant not threaded into `adapter.transaction()`** — SQL setups using
   RLS GUCs (`SET LOCAL app.tenant_id`) can't see the request tenant at tx
   open. Engine-level tenant scoping covers row filtering, but RLS

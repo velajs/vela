@@ -202,6 +202,124 @@ describe('@Crud over HTTP (decorated controller)', () => {
   });
 });
 
+describe('per-endpoint guards (config.guards)', () => {
+  it('scopes a config guard to its verb on a decorated controller', async () => {
+    const store = new Map<string, Row>();
+    store.set('a', { id: 'a', name: 'A', qty: 1 });
+
+    class DenyGuard implements CanActivate {
+      canActivate(_context: ExecutionContext): boolean {
+        return false;
+      }
+    }
+
+    @Controller('/scoped')
+    @Crud({
+      model: makeModel(),
+      adapter: testAdapter(store, 'deletedAt'),
+      guards: { read: [DenyGuard] },
+    })
+    class ScopedController {}
+
+    @Module({ controllers: [ScopedController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+    expect((await hono.request('/scoped/a')).status).toBe(403);
+    expect((await hono.request('/scoped')).status).toBe(200);
+  });
+
+  it('applies config guards to headless forFeature resources', async () => {
+    const store = new Map<string, Row>();
+    store.set('a', { id: 'a', name: 'A', qty: 1 });
+
+    class DenyGuard implements CanActivate {
+      canActivate(_context: ExecutionContext): boolean {
+        return false;
+      }
+    }
+
+    @Module({
+      imports: [
+        CrudModule.forRoot({ adapter: testAdapter(store, 'deletedAt') }),
+        CrudModule.forFeature([
+          { path: '/things', model: makeModel({ name: 'thing' }), guards: { read: [DenyGuard] } },
+        ]),
+      ],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+    expect((await hono.request('/things/a')).status).toBe(403);
+    expect((await hono.request('/things')).status).toBe(200);
+  });
+
+  it('keeps endpoint guards on @Override handlers (policy survives override)', async () => {
+    const store = new Map<string, Row>();
+    store.set('a', { id: 'a', name: 'A', qty: 1 });
+
+    class DenyGuard implements CanActivate {
+      canActivate(_context: ExecutionContext): boolean {
+        return false;
+      }
+    }
+
+    @Controller('/items')
+    @Crud({
+      model: makeModel(),
+      adapter: testAdapter(store, 'deletedAt'),
+      guards: { list: [DenyGuard] },
+    })
+    class ItemsController {
+      @Override('list')
+      customList() {
+        return { custom: true };
+      }
+    }
+
+    @Module({ controllers: [ItemsController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    expect((await app.getHonoApp().request('/items')).status).toBe(403);
+  });
+
+  it('ANDs class-level and endpoint guards (deny wins; unguarded verbs pass)', async () => {
+    const store = new Map<string, Row>();
+
+    class AllowGuard implements CanActivate {
+      canActivate(_context: ExecutionContext): boolean {
+        return true;
+      }
+    }
+    class DenyGuard implements CanActivate {
+      canActivate(_context: ExecutionContext): boolean {
+        return false;
+      }
+    }
+
+    @Controller('/anded')
+    @UseGuards(AllowGuard)
+    @Crud({
+      model: makeModel(),
+      adapter: testAdapter(store, 'deletedAt'),
+      guards: { list: [DenyGuard] },
+    })
+    class AndedController {}
+
+    @Module({ controllers: [AndedController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+    expect((await hono.request('/anded')).status).toBe(403);
+    const created = await hono.request('/anded', json('POST', { name: 'N', qty: 1 }));
+    expect(created.status).toBe(201);
+  });
+});
+
 describe('@Override', () => {
   it('takes over the verb with the route name and skips synthesis', async () => {
     const store = new Map<string, Row>();

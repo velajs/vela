@@ -22,6 +22,7 @@ import {
   Patch,
   Post,
   Put,
+  UseGuards,
   defineMetadata,
   getMetadata,
   getRequestContainer,
@@ -174,6 +175,14 @@ export function stampCrudRoutes(controller: Ctor, config: CrudConfig): void {
     }
     if (shape.body) {
       ApiResponse(400, { description: 'Validation failed' })(proto, handlerName, descriptor());
+    }
+
+    // Per-endpoint guards: the same metadata a hand-written @UseGuards on this
+    // method would produce. Stamped for @Override'd handlers too — the guard
+    // is endpoint policy, so an override must not silently drop it.
+    const endpointGuards = config.guards?.[endpoint];
+    if (endpointGuards?.length) {
+      UseGuards(...endpointGuards)(proto, handlerName);
     }
   }
 }
