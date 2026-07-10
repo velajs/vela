@@ -67,10 +67,9 @@ The hono-crud conformance harness + group-1 cells are ported at the workspace
 root (`tests/conformance/`), run via `pnpm test:conformance`. Status of the
 group-1 cells against the native engine:
 
-- **soft-delete-lifecycle**: delete/hide/list assertions PASS. The three
-  `restore` assertion blocks are `test.skip`ped with `// TODO(M4): restore verb`
-  — `POST /:id/restore` is gated out of `IMPLEMENTED_ENDPOINTS` (verb-table.ts)
-  until the restore executor lands (M4). No engine bug; a known deferral.
+- **soft-delete-lifecycle**: PASS in full — the delete/hide/list assertions
+  are ported verbatim, and the three `restore` assertion blocks run live since
+  the restore executor + route stamping landed (M4).
 - **managed-fields**, **pagination**, **filter-operators**: PASS verbatim (no
   gaps). No PARITY-GAP surfaced during the port.
 - **Deferred cells (NOT ported)**: `unique-conflict` needs unique-constraint

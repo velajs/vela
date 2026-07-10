@@ -71,12 +71,15 @@ export interface DrizzleAdapterConfig {
   softDeleteField?: string;
   relations?: Record<string, DrizzleRelation>;
   /**
-   * Called inside every engine-opened transaction, right after it opens and
-   * before any statement runs — the seam for per-transaction session state,
-   * e.g. a Postgres RLS GUC: `SELECT set_config('app.tenant_id', <tenant>, true)`
-   * via `tx.execute(...)`. Receives the raw Drizzle transaction handle.
-   * Invoked only when the caller passed a `TransactionContext` (the engine
-   * always does).
+   * Called at the open of every ENGINE-opened transaction (the engine passes
+   * a `TransactionContext` on all verb dispatches), before any statement runs
+   * — the seam for per-transaction session state, e.g. a Postgres RLS GUC:
+   * `SELECT set_config('app.tenant_id', <tenant>, true)` via `tx.execute(...)`.
+   * CAUTION: `ctx.tenantId` is undefined on untenanted requests and
+   * non-tenant models — guard the GUC write
+   * (`if (ctx.tenantId !== undefined) ...`) or the RLS predicate gets a
+   * NULL/empty setting. Receives the raw Drizzle transaction handle. Not
+   * invoked for direct adapter calls that omit the context.
    */
   onOpenTransaction?: (tx: unknown, ctx: TransactionContext) => void | Promise<void>;
 }

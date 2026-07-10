@@ -681,11 +681,12 @@ async function executeBulkPatch(resource: AnyResource, req: EngineRequest): Prom
     filters: scoped.filters,
     options: { ...scoped.options, page: 1, per_page: maxBulkSize },
   };
+  const txContext = txCtx(req);
 
   const matched = await adapter.transaction(async (scope) => {
     const page = await adapter.list(countQuery, scope);
     return page.result_info.total_count ?? page.result.length;
-  }, txCtx(req));
+  }, txContext);
 
   if (matched === 0) {
     return { status: 200, body: { success: true, matched: 0, updated: 0, dryRun } };
@@ -736,7 +737,7 @@ async function executeBulkPatch(resource: AnyResource, req: EngineRequest): Prom
       if (updated) records.push(updated);
     }
     return { updated: records.length, records };
-  }, txCtx(req));
+  }, txContext);
 
   const response: Record<string, unknown> = {
     success: true,

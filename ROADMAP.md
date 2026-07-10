@@ -7,21 +7,20 @@ hit directly come first.
 
 ## 1.19 — consumer-driven engine gaps (small, high value)
 
-1. **Per-endpoint guard seam** — `guards?: Partial<Record<CrudEndpointName,
-   GuardType[]>>` on `CrudConfig`, stamped per handler (headless `forFeature`
-   resources currently can't wire per-verb ACL; erpos works around it by
-   post-stamping `@RequireFeature`).
-2. **Tenant in the transaction seam** — optional
-   `transaction(fn, ctx?: { tenantId? })` overload so RLS-GUC setups
-   (`SET LOCAL app.tenant_id`) see the request tenant at tx-open (erpos
-   TODO in its coworker adapter).
+1. **Per-endpoint guard seam** — DONE (1.19): `guards?:
+   Partial<Record<CrudEndpointName, GuardType[]>>` on `CrudConfig`, stamped
+   per synthesized handler via vela's public `UseGuards` (PARITY.md carries
+   the closed entry + proving tests).
+2. **Tenant in the transaction seam** — DONE (1.19):
+   `transaction(fn, ctx?: TransactionContext)` overload, threaded at every
+   kernel tx-open site, plus the drizzle `onOpenTransaction(tx, ctx)` config
+   seam for RLS GUCs (PARITY.md carries the closed entry).
 3. **`id: 'client'` PK strategy** — keep the client-supplied PK in the create
    body schema and skip generation (erpos ships a `ClientPkCaptureGuard`
    workaround today).
-4. **Cleanup**: `verb-table.ts` still exports the vestigial static
-   `IMPLEMENTED_ENDPOINTS` (5 verbs); the live source is
-   `kernel/extended/registry.ts` `implementedEndpoints()`. Remove or re-point
-   the export.
+4. **Cleanup** — DONE (1.19): the vestigial `IMPLEMENTED_ENDPOINTS` export is
+   removed from `verb-table.ts` and the barrel; the live source of implemented
+   verbs is `kernel/extended/registry.ts` `implementedEndpoints()`.
 
 ## Engine features with hono-crud reference cells (proofs ready to port)
 

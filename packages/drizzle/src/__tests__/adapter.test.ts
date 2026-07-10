@@ -169,9 +169,18 @@ describe('drizzleAdapter core', () => {
     expect(seen[0]!.tenantId).toBe('t1');
     expect(seen[0]!.tx).not.toBeNull();
 
+    // Engine-shaped untenanted call: the engine always passes the ctx object,
+    // so the hook fires with tenantId undefined — consumers must guard it.
+    await adapter.transaction(
+      (scope) => adapter.readOne({ field: 'id', value: 'ctx1' }, {}, scope),
+      {},
+    );
+    expect(seen).toHaveLength(2);
+    expect(seen[1]!.tenantId).toBeUndefined();
+
     // Direct adapter use without a context: the hook is not invoked.
     await adapter.transaction((scope) => adapter.readOne({ field: 'id', value: 'ctx1' }, {}, scope));
-    expect(seen).toHaveLength(1);
+    expect(seen).toHaveLength(2);
   });
 
   it('rolls back the transaction when the callback throws', async () => {

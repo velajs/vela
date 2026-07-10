@@ -41,6 +41,18 @@ const json = (method: string, body: unknown) => ({
   body: JSON.stringify(body),
 });
 
+// Shared guard fixtures — stateless, so safe at module scope.
+class DenyGuard implements CanActivate {
+  canActivate(_context: ExecutionContext): boolean {
+    return false;
+  }
+}
+class AllowGuard implements CanActivate {
+  canActivate(_context: ExecutionContext): boolean {
+    return true;
+  }
+}
+
 beforeEach(() => {
   MetadataRegistry.clear();
 });
@@ -181,13 +193,6 @@ describe('@Crud over HTTP (decorated controller)', () => {
 
   it('runs controller guards on generated routes', async () => {
     const store = new Map<string, Row>();
-
-    class DenyGuard implements CanActivate {
-      canActivate(_context: ExecutionContext): boolean {
-        return false;
-      }
-    }
-
     @Controller('/guarded')
     @UseGuards(DenyGuard)
     @Crud({ model: makeModel(), adapter: testAdapter(store, 'deletedAt') })
@@ -206,13 +211,6 @@ describe('per-endpoint guards (config.guards)', () => {
   it('scopes a config guard to its verb on a decorated controller', async () => {
     const store = new Map<string, Row>();
     store.set('a', { id: 'a', name: 'A', qty: 1 });
-
-    class DenyGuard implements CanActivate {
-      canActivate(_context: ExecutionContext): boolean {
-        return false;
-      }
-    }
-
     @Controller('/scoped')
     @Crud({
       model: makeModel(),
@@ -233,13 +231,6 @@ describe('per-endpoint guards (config.guards)', () => {
   it('applies config guards to headless forFeature resources', async () => {
     const store = new Map<string, Row>();
     store.set('a', { id: 'a', name: 'A', qty: 1 });
-
-    class DenyGuard implements CanActivate {
-      canActivate(_context: ExecutionContext): boolean {
-        return false;
-      }
-    }
-
     @Module({
       imports: [
         CrudModule.forRoot({ adapter: testAdapter(store, 'deletedAt') }),
@@ -259,13 +250,6 @@ describe('per-endpoint guards (config.guards)', () => {
   it('keeps endpoint guards on @Override handlers (policy survives override)', async () => {
     const store = new Map<string, Row>();
     store.set('a', { id: 'a', name: 'A', qty: 1 });
-
-    class DenyGuard implements CanActivate {
-      canActivate(_context: ExecutionContext): boolean {
-        return false;
-      }
-    }
-
     @Controller('/items')
     @Crud({
       model: makeModel(),
@@ -289,17 +273,6 @@ describe('per-endpoint guards (config.guards)', () => {
   it('ANDs class-level and endpoint guards (deny wins; unguarded verbs pass)', async () => {
     const store = new Map<string, Row>();
 
-    class AllowGuard implements CanActivate {
-      canActivate(_context: ExecutionContext): boolean {
-        return true;
-      }
-    }
-    class DenyGuard implements CanActivate {
-      canActivate(_context: ExecutionContext): boolean {
-        return false;
-      }
-    }
-
     @Controller('/anded')
     @UseGuards(AllowGuard)
     @Crud({
@@ -317,6 +290,32 @@ describe('per-endpoint guards (config.guards)', () => {
     expect((await hono.request('/anded')).status).toBe(403);
     const created = await hono.request('/anded', json('POST', { name: 'N', qty: 1 }));
     expect(created.status).toBe(201);
+  });
+
+  // Locks the consumer→engine bridge: clone.fieldsToReset must ride
+  // toEngineConfig (the only forwarding path for @Crud/forFeature resources).
+  it('forwards clone.fieldsToReset to the engine (@Crud over HTTP)', async () => {
+    const store = new Map<string, Row>();
+    store.set('a', { id: 'a', name: 'Source', qty: 7 });
+
+    @Controller('/items')
+    @Crud({
+      model: makeModel(),
+      adapter: testAdapter(store, 'deletedAt'),
+      clone: { fieldsToReset: ['qty'] },
+    })
+    class ItemsController {}
+
+    @Module({ controllers: [ItemsController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/items/a/clone', json('POST', {}));
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { result: Row };
+    expect(body.result.name).toBe('Source');
+    expect(body.result.id).not.toBe('a');
+    expect(body.result.qty).toBeUndefined();
   });
 });
 
