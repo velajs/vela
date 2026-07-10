@@ -5,13 +5,10 @@
  * delete-again; default list excludes it, `?withDeleted=true` includes it, and
  * `?onlyDeleted=true` returns only it.
  *
- * Ported from hono-crud tests/conformance/cells/soft-delete-lifecycle.ts. The
- * `restore` verb is NOT yet implemented by the native engine
- * (IMPLEMENTED_ENDPOINTS in packages/core/src/verb-table.ts covers only
- * create/list/read/update/delete), so `POST /items/:id/restore` is never
- * stamped. The delete/hide/list assertions are ported verbatim and RUN; the
- * three restore assertion blocks keep their original test names + assertions
- * All assertions now run — the restore verb landed with M4.
+ * Ported from hono-crud tests/conformance/cells/soft-delete-lifecycle.ts.
+ * All assertions run live: the restore verb (and the optional adapter
+ * `restore` capability behind it) landed with M4, so `POST /items/:id/restore`
+ * is stamped and exercised below alongside the delete/hide/list contracts.
  */
 import { describe, expect, test } from 'vitest';
 import {
@@ -85,9 +82,8 @@ test('soft-delete lifecycle: delete hides record from read/update/delete-again, 
   expect(onlyDeleted.result.map((record) => record.id)).toEqual([victim.id]);
 });
 
-// Restore verb landed (M4) — the native engine's optional adapter.restore
-// the native engine (verb-table.ts IMPLEMENTED_ENDPOINTS). Assertions preserved
-// verbatim; unskip once the restore executor + route stamping land.
+// Restore verb landed (M4): stamped via the optional adapter `restore`
+// capability. Assertions preserved verbatim from the hono-crud cell.
 test('soft-delete lifecycle: restore revives it', async () => {
   const { app } = ctx();
 

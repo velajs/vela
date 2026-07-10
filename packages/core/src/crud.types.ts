@@ -54,6 +54,8 @@ export interface CrudConfig<Row extends Record<string, unknown> = Record<string,
   pagination?: ResourcePaginationConfig;
   /** Insert-or-update conflict target for the upsert family. */
   upsert?: ResourceConfig<Row>['upsert'];
+  /** Source fields cleared before a clone insert (model/db defaults reapply). */
+  clone?: ResourceConfig<Row>['clone'];
   /** Batch verb limits. */
   batch?: ResourceConfig<Row>['batch'];
   /** Filtered bulk patch limits + confirmation threshold. */

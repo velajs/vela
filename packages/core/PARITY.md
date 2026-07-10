@@ -122,19 +122,15 @@ All 18 non-version verbs are live, so five more cells are ported (run via
   bulkPatch are all tenant-scoped; each 400s TENANT_REQUIRED without a header.
   Note: `search`/`export` do not wire `?include=`, so the include-scoping
   assertions hold trivially (the foreign parent is never embedded → `null`).
-- **cursor-pagination**: two of three tests PASS (the cursor WALK order + the
-  offset-mode-on-a-cursor-endpoint fallback). The first test is `test.skip`
-  (**PARITY-GAP**, below).
+- **cursor-pagination**: all three tests PASS (exact cursor-mode result_info,
+  the cursor WALK order, and the offset-mode-on-a-cursor-endpoint fallback).
 
-**PARITY-GAP — memory cursor `result_info.page` is `1`, not `0`.**
-The engine's own `buildCursorPageInfo` (query/pagination.ts) and the
-cursor-pagination cell pin the next-only cursor envelope at `page: 0`
-(Stripe-style), but `memoryAdapter.list`'s cursor branch hardcodes `page: 1`.
-Every other field matches. Observed on `GET /cursor-items?limit=3`:
-`{"page":1,"per_page":3,"total_count":7,"has_next_page":true,
-"has_prev_page":false,"next_cursor":"…"}` — expected `page: 0`. Fix: have the
-memory adapter's cursor branch emit `page: 0` (e.g. delegate to
-`buildCursorPageInfo`).
+**PARITY-GAP (CLOSED) — memory cursor `result_info.page` was `1`, not `0`.**
+Was: `memoryAdapter.list`'s cursor branch hardcoded `page: 1` while the
+engine's own `buildCursorPageInfo` (query/pagination.ts) and the
+cursor-pagination cell pin the next-only envelope at `page: 0` (Stripe-style).
+Fixed (the memory cursor branch emits `page: 0`, memory/src/adapter.ts —
+drizzle's cursor branch agrees); all three cursor tests run un-skipped.
 
 **Deferred (need unbuilt families — NOT ported):**
 - **finalize-pipeline**: needs a model-level `serializationProfile`
@@ -160,7 +156,9 @@ memory adapter's cursor branch emit `page: 0` (e.g. delegate to
   hooks) — consistent precedent.
 - **upsert body validates the FULL createSchema**, not hono-crud's
   keys-required/rest-optional partial shape.
-- **clone.fieldsToReset** read via cast — promote to `ResourceConfig` (TODO).
+- **clone.fieldsToReset**: CLOSED — first-class `clone?: { fieldsToReset?:
+  string[] }` on `ResourceConfig` and `CrudConfig`; the file-local cast in
+  the clone executor is gone.
 - **bulkPatch filters arrive in the request BODY** (`{ filter, data }`), not
   the query string; same flat success body as hono-crud.
 - **Per-item batch hook errors follow the hook mode** (sequential aborts +
@@ -174,8 +172,10 @@ memory adapter's cursor branch emit `page: 0` (e.g. delegate to
 - **AggregateResult reshaped** to `{values?, groups?, totalGroups?}` (no
   in-repo adapter implemented the old `{buckets}` shape); constraint→409
   mapping for clone/upsert remains an adapter/errorMappers concern.
-- **Drizzle will need `restore`** (new optional adapter method + capability)
-  for its soft-delete leg — loud ConfigurationException until then (M7).
+- **Drizzle `restore`**: CLOSED (M7). Was: "will need `restore` — loud
+  ConfigurationException until then". Shipped: capability declared + implemented
+  in drizzle/src/adapter.ts, exercised by the drizzle adapter tests and the
+  soft-delete-lifecycle conformance cell on the drizzle leg.
 
 ## Versioning + Audit families (M5)
 

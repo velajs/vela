@@ -67,20 +67,6 @@ export const VERSION_ENDPOINTS: readonly CrudEndpointName[] = [
 /** Restore verbs are gated behind soft delete. */
 const RESTORE_ENDPOINTS: readonly CrudEndpointName[] = ['restore', 'batchRestore'];
 
-/**
- * Verbs the native engine currently implements. Grows as milestones land
- * (M4: extended verbs, M5: version verbs); resolveEnabledEndpoints intersects
- * with this so a configured-but-unbuilt verb is skipped loudly at decoration
- * time rather than mounted as a broken route.
- */
-export const IMPLEMENTED_ENDPOINTS: readonly CrudEndpointName[] = [
-  'create',
-  'list',
-  'read',
-  'update',
-  'delete',
-];
-
 export interface EndpointSelection {
   only?: readonly CrudEndpointName[];
   except?: readonly CrudEndpointName[];

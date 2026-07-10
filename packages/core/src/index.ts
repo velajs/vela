@@ -26,7 +26,6 @@ export { MissingTenantResolverError, resourceNames, type CrudConfig } from './cr
 export {
   ALL_CRUD_ENDPOINTS,
   CRUD_ROUTES,
-  IMPLEMENTED_ENDPOINTS,
   VERSION_ENDPOINTS,
   resolveEnabledEndpoints,
   type CrudEndpointName,

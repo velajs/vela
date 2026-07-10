@@ -38,12 +38,6 @@ import type { VerbExecutor } from './registry';
 
 type Row = Record<string, unknown>;
 
-/** `resource.config.clone` — NOT yet a first-class `ResourceConfig` field. */
-interface CloneConfig {
-  /** Source fields cleared before the clone insert (model/db defaults reapply). */
-  fieldsToReset?: string[];
-}
-
 // ---------------------------------------------------------------------------
 // restore — POST /:id/restore
 // ---------------------------------------------------------------------------
@@ -120,7 +114,7 @@ async function executeClone(resource: AnyResource, req: EngineRequest): Promise<
   // Overrides validate against the create schema made fully optional — the
   // create schema already excludes engine-managed fields (PKs/timestamps/tenant).
   const overrides = parseBody((await createSchemaFor(resource, req)).partial(), req.body);
-  const fieldsToReset = (config as { clone?: CloneConfig }).clone?.fieldsToReset ?? [];
+  const fieldsToReset = config.clone?.fieldsToReset ?? [];
   const databaseGeneratedId = config.adapter.capabilities.has('databaseGeneratedId');
 
   const created = await config.adapter.transaction(async (scope) => {

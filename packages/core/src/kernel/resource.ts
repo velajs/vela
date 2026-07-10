@@ -55,6 +55,8 @@ export interface ResourceConfig<Row extends Record<string, unknown> = Record<str
   pagination?: ResourcePaginationConfig;
   /** Insert-or-update conflict target for the upsert family. */
   upsert?: { keys: string[] };
+  /** Source fields cleared before a clone insert (model/db defaults reapply). */
+  clone?: { fieldsToReset?: string[] };
   /** Batch verb limits (default maxBatchSize follows hono-crud). */
   batch?: { maxBatchSize?: number };
   /** Filtered bulk patch limits + confirmation threshold (X-Confirm-Bulk). */

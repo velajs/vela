@@ -17,13 +17,6 @@
  * Ported verbatim (assertions + titles) from hono-crud
  * tests/conformance/cells/cursor-pagination.ts against `/cursor-items`
  * (`pagination: { cursor: { enabled: true, field: 'id' } }`).
- *
- * PARITY-GAP: the first test is `test.skip`ped — the memory adapter's
- * cursor-mode `result_info` reports `page: 1`, but the engine's own
- * `buildCursorPageInfo` (and this cell) pin `page: 0`. Every other field
- * matches; only `page` diverges. See the port report for exact expected/actual.
- * The cursor WALK itself is still exercised by the second test (which asserts
- * the page order without inspecting `result_info.page`).
  */
 import { describe, expect, test } from 'vitest';
 import {
