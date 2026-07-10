@@ -1,9 +1,10 @@
 /**
  * Derive request-body schemas from a model's Zod schema.
  *
- *  - `deriveCreateSchema(model)` = `model.schema` minus generated primary keys,
- *    managed timestamp columns, and the tenant column (all engine-owned on
- *    writes — {@link getManagedInputExclusions}).
+ *  - `deriveCreateSchema(model)` = `model.schema` minus generated primary keys
+ *    (RETAINED under `id: 'client'` — the caller supplies them), managed
+ *    timestamp columns, and the tenant column (all engine-owned on writes —
+ *    {@link getManagedInputExclusions}).
  *  - `deriveUpdateSchema(model, fieldsConfig?)` = the same base, then `blocked`
  *    fields removed and `allowed` fields kept, then `.partial()` (every field
  *    optional — the caller decides which are required).

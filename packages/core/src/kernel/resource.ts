@@ -102,6 +102,8 @@ export function deriveCapabilityRequirements(
   if (config.pagination?.cursor?.enabled) {
     requirements.push({ capability: 'cursor', reason: 'pagination.cursor.enabled' });
   }
+  // id: 'client' intentionally registers NO requirement — the caller supplies
+  // the PK, so no adapter generation capability is involved.
   if (config.model.id === 'database') {
     requirements.push({ capability: 'databaseGeneratedId', reason: "model id: 'database'" });
   }

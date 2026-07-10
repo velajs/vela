@@ -15,9 +15,11 @@ hit directly come first.
    `transaction(fn, ctx?: TransactionContext)` overload, threaded at every
    kernel tx-open site, plus the drizzle `onOpenTransaction(tx, ctx)` config
    seam for RLS GUCs (PARITY.md carries the closed entry).
-3. **`id: 'client'` PK strategy** — keep the client-supplied PK in the create
-   body schema and skip generation (erpos ships a `ClientPkCaptureGuard`
-   workaround today).
+3. **`id: 'client'` PK strategy** — DONE (1.19): `'client'` on `IdStrategy`
+   keeps the caller-supplied PK required in the create body (static +
+   resolveSchema derivation + OpenAPI DTO) and skips engine generation;
+   retires erpos's `ClientPkCaptureGuard` (PARITY.md carries the closed
+   entry).
 4. **Cleanup** — DONE (1.19): the vestigial `IMPLEMENTED_ENDPOINTS` export is
    removed from `verb-table.ts` and the barrel; the live source of implemented
    verbs is `kernel/extended/registry.ts` `implementedEndpoints()`.

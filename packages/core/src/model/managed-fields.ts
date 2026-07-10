@@ -15,7 +15,7 @@
  *    (hono-crud added it separately in the create endpoint).
  */
 
-import { ConfigurationException } from '../envelope/errors';
+import { ConfigurationException, InputValidationException } from '../envelope/errors';
 import type { IdStrategy, Model } from './model.types';
 
 /** Fields the engine owns on writes — stripped from model-derived input schemas. */
@@ -27,8 +27,11 @@ export function getManagedInputExclusions(
   const exclude = new Set<string>();
 
   // Primary keys are engine/DB-generated (uuid / custom fn / database), so a
-  // client must never be forced to supply them on create.
-  if (includePrimaryKeys) {
+  // client must never be forced to supply them on create — EXCEPT under
+  // id: 'client', where the caller-supplied PK stays in the create schema
+  // (this single gate flows to static derivation, the resolveSchema
+  // re-derive, and the OpenAPI DTO).
+  if (includePrimaryKeys && model.id !== 'client') {
     for (const pk of model.primaryKeys) exclude.add(pk);
   }
 
@@ -59,6 +62,8 @@ function pkSupplied(value: unknown): boolean {
  *     - `'database'` ⇒ DELETE the PK so the DB/ORM default fills it — but
  *       throws a {@link ConfigurationException} when the adapter cannot
  *       generate keys (`opts.databaseGeneratedId === false`);
+ *     - `'client'` ⇒ the caller owns generation; a missing PK throws an
+ *       {@link InputValidationException} (400 — missing input, not misconfig);
  *     - else (`'uuid'` or unset) ⇒ `crypto.randomUUID()`.
  *  2. Timestamps ({@link Model.timestamps}) when enabled: set the configured
  *     `createdAt` / `updatedAt` columns to `Date.now()` unless the caller
@@ -87,6 +92,14 @@ export function applyManagedInsertFields<T extends Record<string, unknown>>(
       // Omit the PK entirely: the DB/ORM column default fills it and the
       // adapter reads the generated value back via its create-return.
       delete out[pk];
+    } else if (strategy === 'client') {
+      // The caller owns PK generation; reaching here means none was supplied.
+      // The derived create schema keeps the PK, so a required PK 400s at
+      // validation — this seam catches optional-PK schemas and clone-without-
+      // override, which are caller input errors, not misconfiguration.
+      throw new InputValidationException(
+        "id:'client' requires a caller-supplied primary key in the create body",
+      );
     } else {
       // 'uuid' or unset — the historical default.
       out[pk] = crypto.randomUUID();

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { ConfigurationException } from '../../envelope/errors';
+import { ConfigurationException, InputValidationException } from '../../envelope/errors';
 import { defineModel } from '../define-model';
 import {
   applyManagedInsertFields,
@@ -55,6 +55,19 @@ describe('applyManagedInsertFields — PK strategy', () => {
     const model = defineModel({ name: 'u', tableName: 'u', schema: Schema, id: 'database' });
     expect(() => applyManagedInsertFields(model, { name: 'a' }, { databaseGeneratedId: false })).toThrow(
       ConfigurationException,
+    );
+  });
+
+  it("id:'client' keeps a caller-supplied PK untouched", () => {
+    const model = defineModel({ name: 'u', tableName: 'u', schema: Schema, id: 'client' });
+    const out = applyManagedInsertFields(model, { id: 'client-1', name: 'a' }, { databaseGeneratedId: false });
+    expect(out.id).toBe('client-1');
+  });
+
+  it("id:'client' throws InputValidationException (400) when no PK is supplied", () => {
+    const model = defineModel({ name: 'u', tableName: 'u', schema: Schema, id: 'client' });
+    expect(() => applyManagedInsertFields(model, { name: 'a' }, { databaseGeneratedId: false })).toThrow(
+      InputValidationException,
     );
   });
 });
@@ -146,6 +159,13 @@ describe('getManagedInputExclusions', () => {
     });
     const exclusions = new Set(getManagedInputExclusions(model));
     expect(exclusions).toEqual(new Set(['id', 'createdAt', 'updatedAt', 'tenantId']));
+  });
+
+  it("id:'client' does not exclude the primary key", () => {
+    const model = defineModel({ name: 'u', tableName: 'u', schema: Schema, id: 'client', multiTenant: true });
+    const exclusions = new Set(getManagedInputExclusions(model));
+    expect(exclusions.has('id')).toBe(false);
+    expect(exclusions).toEqual(new Set(['createdAt', 'updatedAt', 'tenantId']));
   });
 
   it('omits the tenant field when multi-tenancy is off, and timestamps when disabled', () => {

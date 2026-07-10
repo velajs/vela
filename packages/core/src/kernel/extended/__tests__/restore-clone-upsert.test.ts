@@ -278,6 +278,22 @@ describe('clone', () => {
     expect((overridden.body as { result: Row }).result.qty).toBe(99);
   });
 
+  it("id:'client': clone requires an id override (400 without; kept with)", async () => {
+    const { resource, store } = makeResource({ model: { id: 'client' } });
+    store.set('a', { id: 'a', email: 'a@x', name: 'Source', qty: 7 });
+
+    // The engine strips the source PK and has no generator under id:'client',
+    // so a clone without an id override is a caller input error.
+    await expect(resource.execute('clone', req({ id: 'a' }))).rejects.toMatchObject({
+      statusCode: 400,
+    });
+
+    const ok = await resource.execute('clone', req({ id: 'a', body: { id: 'clone-1' } }));
+    expect(ok.status).toBe(201);
+    expect((ok.body as { result: Row }).result.id).toBe('clone-1');
+    expect(store.get('clone-1')).toBeDefined();
+  });
+
   it('404s for a missing source and for a soft-deleted source', async () => {
     const { resource, store } = makeResource();
     store.set('gone', { id: 'gone', email: 'g@x', name: 'Gone', deletedAt: 4 });

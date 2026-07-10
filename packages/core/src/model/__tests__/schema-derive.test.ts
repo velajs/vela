@@ -35,6 +35,15 @@ describe('deriveCreateSchema', () => {
     expect('id' in create.shape).toBe(false);
     expect('createdAt' in create.shape).toBe(false);
   });
+
+  it("keeps the PK required under id: 'client'", () => {
+    const model = defineModel({ name: 'u', tableName: 'u', schema: Schema, id: 'client' });
+    const create = deriveCreateSchema(model);
+    expect('id' in create.shape).toBe(true);
+    // tenant off → tenantId stays a writable (required) field; only id differs.
+    expect(create.safeParse({ name: 'a', email: 'e', role: 'r', tenantId: 't' }).success).toBe(false);
+    expect(create.safeParse({ id: 'x', name: 'a', email: 'e', role: 'r', tenantId: 't' }).success).toBe(true);
+  });
 });
 
 describe('deriveUpdateSchema', () => {

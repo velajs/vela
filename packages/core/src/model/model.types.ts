@@ -36,10 +36,14 @@ export type SchemaKeys<T extends ZodObject<ZodRawShape>> = keyof z.infer<T>;
  *   DB/ORM column default fills it; the value is read back via the adapter's
  *   create-return. Requires the adapter's `databaseGeneratedId` capability —
  *   otherwise the first write throws a `ConfigurationException`.
+ * - `'client'` — the CALLER supplies the PK: it stays (with its authored,
+ *   typically required shape) in the derived create-body schema, the engine
+ *   performs no generation, and no adapter capability is needed. A create
+ *   reaching the insert seam without a PK is a 400 (InputValidationException).
  * - `() => string | number` — a custom JS generator (ulid / nanoid / ksuid /
  *   snowflake), invoked at every write site.
  */
-export type IdStrategy = 'uuid' | 'database' | (() => string | number);
+export type IdStrategy = 'uuid' | 'database' | 'client' | (() => string | number);
 
 // ---------------------------------------------------------------------------
 // Relations

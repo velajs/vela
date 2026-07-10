@@ -110,6 +110,37 @@ describe('Model.resolveSchema (per-tenant body schemas)', () => {
     expect(resolveSchema).toHaveBeenCalledWith({ tenantId: 't2' });
   });
 
+  it("id: 'client' keeps the caller PK required through the tenant-resolved schema", async () => {
+    const store = new Map<string, Row>();
+    let resolved = 0;
+    const model = defineModel({
+      name: 'item',
+      tableName: 'items',
+      schema: baseSchema,
+      timestamps: false,
+      id: 'client',
+      resolveSchema: () => {
+        resolved += 1;
+        return baseSchema;
+      },
+    });
+    const resource = defineResource('items', { model, adapter: fakeAdapter(store) });
+
+    // The re-derived body schema retains the PK, so a missing id is a 400.
+    await expect(
+      resource.execute('create', { body: { name: 'A' }, vars: { tenantId: 't1' } }),
+    ).rejects.toMatchObject({ statusCode: 400, code: 'VALIDATION_ERROR' });
+
+    const created = await resource.execute('create', {
+      body: { id: 'client-1', name: 'A' },
+      vars: { tenantId: 't1' },
+    });
+    expect(created.status).toBe(201);
+    expect((created.body as { result: Row }).result.id).toBe('client-1');
+    expect(store.get('client-1')).toBeDefined();
+    expect(resolved).toBeGreaterThan(0);
+  });
+
   it('update validates the patch against the tenant-resolved schema', async () => {
     const { resource, store } = makeResource();
     store.set('a', { id: 'a', name: 'A', custom1: 'x' });

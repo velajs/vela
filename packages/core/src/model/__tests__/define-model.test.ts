@@ -86,6 +86,11 @@ describe('defineModel normalization', () => {
     expect(model.id).toBe(gen);
   });
 
+  it("passes id: 'client' through normalization", () => {
+    const model = defineModel({ name: 'u', tableName: 'u', schema: UserSchema, id: 'client' });
+    expect(model.id).toBe('client');
+  });
+
   it('returns a fresh object without mutating the input config', () => {
     const config = { name: 'user', tableName: 'users', schema: UserSchema, primaryKeys: ['id'] as ['id'] };
     const model = defineModel(config);

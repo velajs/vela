@@ -319,11 +319,17 @@ stores are **DI seams decoupled from the data adapter**: `VersioningStore` /
   Resolution is per-request, uncached (hono-crud parity) — resolvers may
   cache internally.
 
-- **`id: 'client'` PK strategy** (erpos round 2) — the engine strips PKs from
-  every create body (both static derivation and the resolveSchema path), so
-  callers with client-generated UUIDs need a capture-guard workaround
-  (erpos `ClientPkCaptureGuard`). Candidate: a model `id: 'client'` strategy
-  that keeps the PK in the create body schema and skips generation. 1.19.
+- **`id: 'client'` PK strategy**: CLOSED (1.19). Was: the engine stripped PKs
+  from every create body (static derivation and the resolveSchema path), so
+  callers with client-generated UUIDs needed a capture-guard workaround
+  (erpos `ClientPkCaptureGuard`). Shipped: `'client'` on `IdStrategy` —
+  `getManagedInputExclusions` retains the PK (flows to static derivation, the
+  resolveSchema re-derive, and the OpenAPI DTO), `applyManagedInsertFields`
+  skips generation and throws `InputValidationException` (400) on a missing
+  PK. No adapter capability required; clone requires an `id` override. Proven
+  by managed-fields/schema-derive/resolve-schema/verbs/clone unit tests + the
+  crud-http "id: 'client' PK strategy" DTO round-trip. Retires
+  `ClientPkCaptureGuard`.
 - **Sub-app onError note** (erpos round 2, vela-side) — hono `.route()`
   sub-apps with their own error handler render locally; since vela 1.11's
   pipeline rewrite, a parent app's `onError` no longer covers merged sub-app

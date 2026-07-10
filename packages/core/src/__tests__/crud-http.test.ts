@@ -319,6 +319,38 @@ describe('per-endpoint guards (config.guards)', () => {
   });
 });
 
+describe("id: 'client' PK strategy", () => {
+  it('keeps the client PK required in the DTO and round-trips it over HTTP', async () => {
+    const store = new Map<string, Row>();
+
+    @Controller('/things')
+    @Crud({ model: makeModel({ name: 'thing', id: 'client' }), adapter: testAdapter(store, 'deletedAt') })
+    class ThingsController {}
+
+    @Module({ controllers: [ThingsController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+
+    // The DTO bridge derives from the client-PK schema: id present + required.
+    const doc = createOpenApiDocument(AppModule);
+    const dto = doc.components?.schemas?.CreateThingDto as {
+      required?: string[];
+      properties?: Record<string, unknown>;
+    };
+    expect(dto.properties?.id).toBeDefined();
+    expect(dto.required).toContain('id');
+
+    const hono = app.getHonoApp();
+    const created = await hono.request('/things', json('POST', { id: 'client-1', name: 'T', qty: 1 }));
+    expect(created.status).toBe(201);
+    expect(((await created.json()) as { result: Row }).result.id).toBe('client-1');
+
+    const missing = await hono.request('/things', json('POST', { name: 'NoId', qty: 1 }));
+    expect(missing.status).toBe(400);
+  });
+});
+
 describe('@Override', () => {
   it('takes over the verb with the route name and skips synthesis', async () => {
     const store = new Map<string, Row>();

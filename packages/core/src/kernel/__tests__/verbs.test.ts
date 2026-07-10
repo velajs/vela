@@ -171,6 +171,23 @@ describe('create', () => {
     ).rejects.toMatchObject({ statusCode: 400, code: 'VALIDATION_ERROR' });
   });
 
+  it("id: 'client' keeps the caller-supplied PK and requires it in the body", async () => {
+    const { resource, store } = makeResource({ model: { id: 'client' } });
+
+    const created = await resource.execute(
+      'create',
+      req({ body: { id: 'client-1', name: 'Anchor', qty: 2 } }),
+    );
+    expect(created.status).toBe(201);
+    expect((created.body as { result: Row }).result.id).toBe('client-1');
+    expect(store.get('client-1')).toBeDefined();
+
+    // Missing PK → the derived schema keeps it required → 400.
+    await expect(
+      resource.execute('create', req({ body: { name: 'NoId', qty: 1 } })),
+    ).rejects.toMatchObject({ statusCode: 400, code: 'VALIDATION_ERROR' });
+  });
+
   it('threads beforeCreate chain output into the adapter and runs afterCreate in-scope', async () => {
     const order: string[] = [];
     const { resource, store } = makeResource({
