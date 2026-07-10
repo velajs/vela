@@ -22,7 +22,7 @@ import {
   NotFoundException,
 } from '../envelope/errors';
 import { applyComputedFields, applyComputedFieldsToArray } from '../model/computed-fields';
-import { applyProfile } from '../model/serialization-profile';
+import { applyProfile, applyProfileToArray } from '../model/serialization-profile';
 import { applyManagedInsertFields, applyManagedUpdateFields } from '../model/managed-fields';
 import { canRead, canWrite, filterReadable, maskFields, pushdownConditions } from '../policies/evaluate';
 import type { PolicyContext } from '../policies/types';
@@ -190,9 +190,15 @@ export async function attachIncludes(
     );
     const parentJoinField =
       relation.type === 'belongsTo' ? relation.foreignKey : (relation.localKey ?? pk);
+    // SAME-model embeds follow the model's own serialization profile — the
+    // include surface otherwise attaches raw loader rows (per-relation
+    // shaping of OTHER models' embeds is the relation-scoping backlog item;
+    // policy masks share the same limitation today).
+    const stripEmbeds = relation.target === model.tableName;
     for (const row of rows) {
       const bucket = loaded.get(row[parentJoinField]) ?? [];
-      row[name] = relation.type === 'hasMany' ? bucket : (bucket[0] ?? null);
+      const shaped = stripEmbeds ? applyProfileToArray(model, bucket as Row[]) : bucket;
+      row[name] = relation.type === 'hasMany' ? shaped : (shaped[0] ?? null);
     }
   }
 }

@@ -79,6 +79,14 @@ async function setup(): Promise<AdapterContext> {
     tableName: CONFORMANCE_PROFILE_TABLE,
     primaryKey: 'id',
     softDeleteField: 'deletedAt',
+    relations: {
+      parent: {
+        type: 'belongsTo',
+        table: CONFORMANCE_PROFILE_TABLE,
+        foreignKey: 'parentId',
+        localKey: 'id',
+      },
+    },
   });
 
   @Controller('/items')
@@ -129,6 +137,7 @@ async function setup(): Promise<AdapterContext> {
     searchFields: ['name'],
     upsert: { keys: UPSERT_KEYS },
     fieldSelection: { enabled: true },
+    allowedIncludes: ['parent'],
   })
   class ProfileItemsController {}
 

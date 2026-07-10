@@ -117,20 +117,33 @@ export const CONFORMANCE_PROFILE_TABLE = 'conformance_profile_items';
 
 /**
  * The finalize-pipeline model: the shared conformance fields plus a computed
- * `nameUpper` (the hono-crud cell's computed half) and a serialization
- * profile excluding `age` — written and stored normally, ABSENT from every
- * response body (`'age' in record === false`).
+ * `nameUpper` (the hono-crud cell's computed half), a serialization profile
+ * excluding `age` — written and stored normally, ABSENT from every response
+ * body (`'age' in record === false`) — and a self-relation `parent` so the
+ * cell can pin that SAME-model embedded rows are stripped too.
  */
+export const profileSchema = conformanceSchema.extend({
+  parentId: z.string().nullable().optional(),
+});
+
 export const serializationModel = defineModel({
   name: 'profileItem',
   tableName: CONFORMANCE_PROFILE_TABLE,
-  schema: conformanceSchema,
+  schema: profileSchema,
   primaryKeys: ['id'],
   softDelete: { field: 'deletedAt' },
   computedFields: {
     nameUpper: { compute: (record) => String(record.name).toUpperCase() },
   },
   serializationProfile: { exclude: ['age'] },
+  relations: {
+    parent: {
+      type: 'belongsTo',
+      target: CONFORMANCE_PROFILE_TABLE,
+      foreignKey: 'parentId',
+      localKey: 'id',
+    },
+  },
 });
 
 /**

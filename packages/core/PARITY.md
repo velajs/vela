@@ -135,13 +135,20 @@ drizzle's cursor branch agrees); all three cursor tests run un-skipped.
   notes over `/profile-items`: model-level `serializationProfile`
   (`{ exclude }`) strips fields from every response surface (core five,
   clone/upsert/restore, batch create/upsert, search hits, export JSON + CSV
-  columns, import results) while the fields stay writable and stored
-  (filter-by-excluded-field proves storage); `?fields=` cannot resurrect an
-  excluded field (strip precedes selection). Version/audit SNAPSHOTS
-  intentionally retain excluded fields — versioning.test.ts "serialization
-  profile interplay" locks it; only rollback's live-record response strips.
-  hono-crud's `include`/`alwaysInclude`/`transform` profile options remain
-  unported (`exclude` is the proven consumer need).
+  columns, import results, SAME-model embedded relation rows) while the
+  fields stay writable and stored (filter-by-excluded-field proves storage);
+  `?fields=` / `fieldSelection.alwaysInclude` cannot resurrect an excluded
+  field (strip precedes selection); aggregate requests referencing an
+  excluded field are rejected 400 (aggregates project values; filters only
+  match). Version + audit SNAPSHOTS intentionally retain excluded fields —
+  versioning.test.ts "serialization profile interplay" locks both stores;
+  only rollback's live-record response strips. Known gaps (documented on
+  `SerializationProfile`): embedded rows of OTHER models are attached raw
+  (per-relation shaping = the relation-scoping backlog item; policy masks
+  share the limitation), and `transformRead`/`transformList` run AFTER the
+  strip (hono-crud's profile-before-transform order) with un-re-stripped
+  output. hono-crud's `include`/`alwaysInclude`/`transform` profile options
+  remain unported (`exclude` is the proven consumer need).
 
 **Deferred (need unbuilt families — NOT ported):**
 - **transactional-hooks**: needs a hook-recorder harness + a `/hook-items`

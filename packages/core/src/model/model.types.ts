@@ -209,9 +209,21 @@ export interface ModelConfig<
  * Response-serialization profile (hono-crud 0.13 finalize-pipeline parity).
  * Excluded fields are REMOVED from every response body
  * (`'field' in record === false`) — list/read/write/batch/upsert/clone/
- * restore/search/export/import — while staying fully writable and intact at
- * storage (filters, sorts, hooks, and version/audit snapshots see the full
- * row). hono-crud's `include`/`alwaysInclude`/`transform` profile options are
+ * restore/search/export/import, plus SAME-model embedded relation rows;
+ * aggregate requests referencing an excluded field are rejected (400).
+ * The fields stay fully writable and intact at storage: filters/sorts match
+ * them, the persistence-side before/after lifecycle hooks and version/audit
+ * snapshots see the full row. The strip wins over `?fields=` and
+ * `fieldSelection.alwaysInclude`.
+ *
+ * Caveats: the response-transform hooks (`transformRead`/`transformList`)
+ * run AFTER the strip (hono-crud's profile-before-transform order) — they see
+ * the stripped row and their output is not re-stripped. Embedded relation
+ * rows of OTHER models are attached raw (per-relation shaping is the
+ * relation-scoping backlog item; policy masks share the limitation). Entries
+ * are plain strings (they may name computed or relation fields), so a
+ * misspelled entry silently no-ops — keep the list in sync with renames.
+ * hono-crud's `include`/`alwaysInclude`/`transform` profile options are
  * deliberately not ported yet — `exclude` is the proven consumer need.
  */
 export interface SerializationProfile {

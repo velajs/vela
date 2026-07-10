@@ -34,7 +34,7 @@ import type {
   SearchHit,
   SearchQuery,
 } from '../../adapter/query-types';
-import { InputValidationException } from '../../envelope/errors';
+import { AggregationException, InputValidationException } from '../../envelope/errors';
 import { applyComputedFieldsToArray } from '../../model/computed-fields';
 import { applyProfile, applyProfileToArray } from '../../model/serialization-profile';
 import { applyManagedInsertFields, applyManagedUpdateFields, stripPrimaryKeys } from '../../model/managed-fields';
@@ -227,6 +227,23 @@ async function executeAggregate(resource: AnyResource, req: EngineRequest): Prom
   const scoped = scopeListQuery(resource, req, policyCtx, parsed);
   // May throw AggregationException (400) — thrown outside the transaction.
   const spec = buildAggregateSpec(req.query ?? {}, config.aggregate ?? {}, scoped.filters);
+
+  // A profile-excluded field must never be echoed by a response: aggregate
+  // group keys and min/max/sum/avg results project field VALUES (unlike
+  // filters, which only match rows), so reject the request loudly.
+  const excluded = resource.model.serializationProfile?.exclude;
+  if (excluded && excluded.length > 0) {
+    const referenced = [
+      ...(spec.groupBy ?? []),
+      ...(spec.aggregations ?? []).map((agg) => agg.field),
+    ];
+    const blocked = referenced.find((field) => excluded.includes(field));
+    if (blocked !== undefined) {
+      throw new AggregationException(
+        `Field '${blocked}' is excluded by the serialization profile and cannot be aggregated or grouped`,
+      );
+    }
+  }
 
   const adapterAggregate = config.adapter.aggregate;
   const result = await config.adapter.transaction(async (scope) => {

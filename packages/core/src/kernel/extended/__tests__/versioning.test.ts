@@ -353,18 +353,21 @@ describe('version verbs', () => {
 describe('serialization profile interplay', () => {
   it('snapshots retain excluded fields; rollback (a live record) strips them', async () => {
     const vstore = new MemoryVersioningStore();
+    const astore = new MemoryAuditStore();
     const store = new Map<string, Row>();
     const model = defineModel({
       name: 'doc',
       tableName: 'documents',
       schema: docSchema,
       versioning: true,
+      audit: true,
       serializationProfile: { exclude: ['content'] },
     });
     const resource = defineResource('doc', {
       model,
       adapter: fakeAdapter(store),
       versioningStore: vstore,
+      auditStore: astore,
     });
     store.set('d1', { id: 'd1', title: 'Original', content: 'Secret body', version: 1 });
 
@@ -374,6 +377,11 @@ describe('serialization profile interplay', () => {
     expect('content' in (updated.body as { result: Row }).result).toBe(false);
     const versions = await vstore.list('documents', 'd1');
     expect(versions[0]!.data.content).toBe('Secret body');
+
+    // AUDIT entries retain the excluded field too (full pre-shape rows).
+    const audits = astore.all();
+    expect(audits.length).toBeGreaterThan(0);
+    expect((audits[0]!.record as Row | undefined)?.content).toBe('Secret body');
 
     // versionHistory returns snapshots verbatim (excluded field retained).
     const history = await resource.execute('versionHistory', req({ id: 'd1' }));

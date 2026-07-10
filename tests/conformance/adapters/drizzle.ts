@@ -46,7 +46,10 @@ const tenantTable = sqliteTable('conformance_tenant_items', {
   parentId: text('parentId'),
 });
 const cursorTable = sqliteTable('conformance_cursor_items', baseColumns);
-const profileTable = sqliteTable('conformance_profile_items', baseColumns);
+const profileTable = sqliteTable('conformance_profile_items', {
+  ...baseColumns,
+  parentId: text('parentId'),
+});
 
 const BASE_DDL =
   'id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, role TEXT NOT NULL, ' +
@@ -62,7 +65,7 @@ async function setup(): Promise<AdapterContext> {
     `CREATE TABLE conformance_tenant_items (${BASE_DDL}, tenantId TEXT, parentId TEXT)`,
   );
   await client.execute(`CREATE TABLE conformance_cursor_items (${BASE_DDL})`);
-  await client.execute(`CREATE TABLE conformance_profile_items (${BASE_DDL})`);
+  await client.execute(`CREATE TABLE conformance_profile_items (${BASE_DDL}, parentId TEXT)`);
 
   const itemAdapter = drizzleAdapter({
     db,
@@ -90,6 +93,9 @@ async function setup(): Promise<AdapterContext> {
     dialect: 'sqlite',
     table: profileTable,
     softDeleteField: 'deletedAt',
+    relations: {
+      parent: { type: 'belongsTo', table: profileTable, foreignKey: 'parentId', localKey: 'id' },
+    },
   });
 
   @Controller('/items')
@@ -133,6 +139,7 @@ async function setup(): Promise<AdapterContext> {
     searchFields: ['name'],
     upsert: { keys: UPSERT_KEYS },
     fieldSelection: { enabled: true },
+    allowedIncludes: ['parent'],
   })
   class ProfileItemsController {}
 

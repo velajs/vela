@@ -137,32 +137,67 @@ test('finalize pipeline: batch create/upsert items are stripped', async () => {
     `${BASE}/batch`,
     jsonInit('POST', {
       items: [
-        { name: 'B1', email: 'b1@conformance.test', role: 'user', age: 11 },
-        { name: 'B2', email: 'b2@conformance.test', role: 'user', age: 12 },
+        { name: 'Bat one', email: 'b1@conformance.test', role: 'user', age: 11 },
+        { name: 'Bat two', email: 'b2@conformance.test', role: 'user', age: 12 },
       ],
     }),
   );
   expect(batchRes.status).toBe(201);
   const batch = await readJson<{ result: { created: ProfileRecord[]; count: number } }>(batchRes);
   expect(batch.result.created).toHaveLength(2);
-  for (const record of batch.result.created) {
-    expectShaped(record, String(record.name));
-  }
+  // Fixed literals — never derive the expected nameUpper from the response.
+  const byEmail = new Map(batch.result.created.map((record) => [record.email, record]));
+  expectShaped(byEmail.get('b1@conformance.test') as ProfileRecord, 'Bat one');
+  expectShaped(byEmail.get('b2@conformance.test') as ProfileRecord, 'Bat two');
 
   const upsertRes = await app.request(
     `${BASE}/batch/upsert`,
     jsonInit('POST', [
-      { name: 'B1x', email: 'b1@conformance.test', role: 'user', age: 13 }, // update leg
-      { name: 'B3', email: 'b3@conformance.test', role: 'user', age: 14 }, // insert leg
+      { name: 'Bat 1x', email: 'b1@conformance.test', role: 'user', age: 13 }, // update leg
+      { name: 'Bat three', email: 'b3@conformance.test', role: 'user', age: 14 }, // insert leg
     ]),
   );
   expect(upsertRes.status).toBe(200);
   const upserts = await readJson<{
     result: { items: Array<{ data: ProfileRecord; created: boolean }> };
   }>(upsertRes);
-  for (const item of upserts.result.items) {
-    expectShaped(item.data, String(item.data.name));
-  }
+  expectShaped(upserts.result.items[0]!.data, 'Bat 1x');
+  expect(upserts.result.items[0]!.created).toBe(false);
+  expectShaped(upserts.result.items[1]!.data, 'Bat three');
+  expect(upserts.result.items[1]!.created).toBe(true);
+});
+
+test('finalize pipeline: same-model embeds are stripped; aggregate rejects excluded fields', async () => {
+  const { app } = ctx();
+  const parent = await create(app, 'Parent', 'parent@conformance.test', 70);
+  const childRes = await app.request(
+    BASE,
+    jsonInit('POST', {
+      name: 'Child',
+      email: 'child@conformance.test',
+      role: 'user',
+      age: 8,
+      parentId: parent.id,
+    }),
+  );
+  expect(childRes.status).toBe(201);
+  const child = (await readJson<{ result: ProfileRecord }>(childRes)).result;
+
+  // The embedded SAME-model parent row follows the profile (raw loader rows
+  // otherwise bypass shaping — cross-model embeds stay a documented gap).
+  const withParent = await expectSuccess<ProfileRecord & { parent?: ProfileRecord | null }>(
+    await app.request(`${BASE}/${child.id}?include=parent`),
+    200,
+  );
+  expectShaped(withParent, 'Child');
+  expect(withParent.parent).toBeTruthy();
+  expect('age' in (withParent.parent as ProfileRecord)).toBe(false);
+
+  // Aggregates PROJECT field values (unlike filters, which only match), so
+  // referencing an excluded field is a loud 400 — never an echoed value.
+  expect((await app.request(`${BASE}/aggregate?count=*&groupBy=age`)).status).toBe(400);
+  expect((await app.request(`${BASE}/aggregate?min=age`)).status).toBe(400);
+  expect((await app.request(`${BASE}/aggregate?count=*`)).status).toBe(200);
 });
 
 test('finalize pipeline: search hits, export legs, and import results are stripped', async () => {

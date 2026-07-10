@@ -2,8 +2,10 @@
  * Apply a model's serialization profile to outgoing records: every `exclude`d
  * field is REMOVED from the response object (`'field' in record === false` —
  * hono-crud 0.13 finalize-pipeline parity), unlike a policy mask, which
- * redacts a value in place. Response-only: storage, filters, sorting, hooks,
- * and version/audit snapshots all see the full row.
+ * redacts a value in place. Response-only: storage, filters, sorting,
+ * persistence-side lifecycle hooks, and version/audit snapshots all see the
+ * full row. The response-transform hooks (transformRead/transformList) run
+ * AFTER the strip — profile-before-transform, per hono-crud.
  */
 
 import type { Model } from './model.types';
