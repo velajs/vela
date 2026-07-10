@@ -195,12 +195,28 @@ export interface ModelConfig<
   relations?: TRelations;
   /** Computed (runtime-only) fields added to responses. */
   computedFields?: ComputedFieldsConfig<z.infer<T>>;
+  /** Strip fields from every response body (hono-crud finalize-pipeline). */
+  serializationProfile?: SerializationProfile;
   /** Row/field-level access policies applied uniformly by the engine. */
   policies?: ModelPolicies<z.infer<T>>;
   /** Per-request (per-tenant) schema override; falls back to `schema`. */
   resolveSchema?: (ctx: SchemaResolveContext) => T | Promise<T>;
   /** ORM table reference (drizzle Table, etc.). */
   table?: TTable;
+}
+
+/**
+ * Response-serialization profile (hono-crud 0.13 finalize-pipeline parity).
+ * Excluded fields are REMOVED from every response body
+ * (`'field' in record === false`) — list/read/write/batch/upsert/clone/
+ * restore/search/export/import — while staying fully writable and intact at
+ * storage (filters, sorts, hooks, and version/audit snapshots see the full
+ * row). hono-crud's `include`/`alwaysInclude`/`transform` profile options are
+ * deliberately not ported yet — `exclude` is the proven consumer need.
+ */
+export interface SerializationProfile {
+  /** Field names stripped from every response. */
+  exclude?: string[];
 }
 
 /**
@@ -228,6 +244,7 @@ export interface Model<
   audit: boolean;
   relations?: TRelations;
   computedFields?: ComputedFieldsConfig<z.infer<T>>;
+  serializationProfile?: SerializationProfile;
   policies?: ModelPolicies<z.infer<T>>;
   resolveSchema?: (ctx: SchemaResolveContext) => T | Promise<T>;
   table?: TTable;

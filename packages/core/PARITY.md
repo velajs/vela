@@ -131,12 +131,19 @@ cursor-pagination cell pin the next-only envelope at `page: 0` (Stripe-style).
 Fixed (the memory cursor branch emits `page: 0`, memory/src/adapter.ts —
 drizzle's cursor branch agrees); all three cursor tests run un-skipped.
 
+- **finalize-pipeline**: PORTED (1.19) — cell 12 reconstructed from the port
+  notes over `/profile-items`: model-level `serializationProfile`
+  (`{ exclude }`) strips fields from every response surface (core five,
+  clone/upsert/restore, batch create/upsert, search hits, export JSON + CSV
+  columns, import results) while the fields stay writable and stored
+  (filter-by-excluded-field proves storage); `?fields=` cannot resurrect an
+  excluded field (strip precedes selection). Version/audit SNAPSHOTS
+  intentionally retain excluded fields — versioning.test.ts "serialization
+  profile interplay" locks it; only rollback's live-record response strips.
+  hono-crud's `include`/`alwaysInclude`/`transform` profile options remain
+  unported (`exclude` is the proven consumer need).
+
 **Deferred (need unbuilt families — NOT ported):**
-- **finalize-pipeline**: needs a model-level `serializationProfile`
-  (`exclude: ['age']`) to strip a field from every response. The native engine
-  has no `serializationProfile` (computed fields exist and would satisfy the
-  `nameUpper` half, but not the `'age' in record === false` half). Revisit if a
-  serialization-profile authoring surface lands.
 - **transactional-hooks**: needs a hook-recorder harness + a `/hook-items`
   controller sharing the `/items` table, AND diverges on the before-hook data
   shape — the native engine stamps managed fields (incl. the generated `id`)

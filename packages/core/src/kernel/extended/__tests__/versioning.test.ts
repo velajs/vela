@@ -347,6 +347,52 @@ describe('version verbs', () => {
 });
 
 // ===========================================================================
+// Serialization-profile interplay
+// ===========================================================================
+
+describe('serialization profile interplay', () => {
+  it('snapshots retain excluded fields; rollback (a live record) strips them', async () => {
+    const vstore = new MemoryVersioningStore();
+    const store = new Map<string, Row>();
+    const model = defineModel({
+      name: 'doc',
+      tableName: 'documents',
+      schema: docSchema,
+      versioning: true,
+      serializationProfile: { exclude: ['content'] },
+    });
+    const resource = defineResource('doc', {
+      model,
+      adapter: fakeAdapter(store),
+      versioningStore: vstore,
+    });
+    store.set('d1', { id: 'd1', title: 'Original', content: 'Secret body', version: 1 });
+
+    // The update RESPONSE is stripped, but the pre-update SNAPSHOT keeps the
+    // excluded field — version data is the audit trail, not a response body.
+    const updated = await resource.execute('update', req({ id: 'd1', body: { title: 'Updated' } }));
+    expect('content' in (updated.body as { result: Row }).result).toBe(false);
+    const versions = await vstore.list('documents', 'd1');
+    expect(versions[0]!.data.content).toBe('Secret body');
+
+    // versionHistory returns snapshots verbatim (excluded field retained).
+    const history = await resource.execute('versionHistory', req({ id: 'd1' }));
+    const entries = (history.body as { result: { versions: VersionEntry[] } }).result.versions;
+    expect(entries[0]!.data.content).toBe('Secret body');
+
+    // versionRollback returns the LIVE record — shaped, so the field strips
+    // from the response while the storage row gets it back.
+    const rolled = await resource.execute(
+      'versionRollback',
+      req({ id: 'd1', params: { version: '1' } }),
+    );
+    expect(rolled.status).toBe(200);
+    expect('content' in (rolled.body as { result: Row }).result).toBe(false);
+    expect(store.get('d1')!.content).toBe('Secret body');
+  });
+});
+
+// ===========================================================================
 // Tenant / owner scoping
 // ===========================================================================
 

@@ -13,6 +13,7 @@
 import type { ListQuery, Page } from '../adapter/query-types';
 import { ForbiddenException, NotFoundException } from '../envelope/errors';
 import { applyComputedFieldsToArray } from '../model/computed-fields';
+import { applyProfileToArray } from '../model/serialization-profile';
 import { applyManagedInsertFields, applyManagedUpdateFields } from '../model/managed-fields';
 import { canRead, canWrite, filterReadable, maskFields, pushdownConditions } from '../policies/evaluate';
 import { parseListFilters } from '../query/filters';
@@ -243,6 +244,7 @@ export async function executeList(
   const readable = await filterReadable(policyCtx, page.result, resource.model.policies);
   let rows = await applyComputedFieldsToArray(resource.model, readable);
   rows = rows.map((row) => maskFields(policyCtx, row, resource.model.policies) as Row);
+  rows = applyProfileToArray(resource.model, rows);
   if (config.hooks?.transformList) {
     const ctx = buildHookContext(req, { tx: undefined });
     rows = (await Promise.all(rows.map((row) => config.hooks!.transformList!(ctx, row as never)))) as Row[];

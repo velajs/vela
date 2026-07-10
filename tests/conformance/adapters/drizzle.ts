@@ -22,6 +22,7 @@ import {
   CONFORMANCE_SORT_FIELDS,
   conformanceModel,
   cursorModel,
+  serializationModel,
   tenantModel,
 } from '../model';
 
@@ -45,6 +46,7 @@ const tenantTable = sqliteTable('conformance_tenant_items', {
   parentId: text('parentId'),
 });
 const cursorTable = sqliteTable('conformance_cursor_items', baseColumns);
+const profileTable = sqliteTable('conformance_profile_items', baseColumns);
 
 const BASE_DDL =
   'id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, role TEXT NOT NULL, ' +
@@ -60,6 +62,7 @@ async function setup(): Promise<AdapterContext> {
     `CREATE TABLE conformance_tenant_items (${BASE_DDL}, tenantId TEXT, parentId TEXT)`,
   );
   await client.execute(`CREATE TABLE conformance_cursor_items (${BASE_DDL})`);
+  await client.execute(`CREATE TABLE conformance_profile_items (${BASE_DDL})`);
 
   const itemAdapter = drizzleAdapter({
     db,
@@ -80,6 +83,12 @@ async function setup(): Promise<AdapterContext> {
     db,
     dialect: 'sqlite',
     table: cursorTable,
+    softDeleteField: 'deletedAt',
+  });
+  const profileAdapter = drizzleAdapter({
+    db,
+    dialect: 'sqlite',
+    table: profileTable,
     softDeleteField: 'deletedAt',
   });
 
@@ -115,7 +124,26 @@ async function setup(): Promise<AdapterContext> {
   })
   class CursorItemsController {}
 
-  @Module({ controllers: [ItemsController, TenantItemsController, CursorItemsController] })
+  @Controller('/profile-items')
+  @Crud({
+    model: serializationModel,
+    adapter: profileAdapter,
+    filterConfig: CONFORMANCE_FILTER_CONFIG,
+    sortFields: CONFORMANCE_SORT_FIELDS,
+    searchFields: ['name'],
+    upsert: { keys: UPSERT_KEYS },
+    fieldSelection: { enabled: true },
+  })
+  class ProfileItemsController {}
+
+  @Module({
+    controllers: [
+      ItemsController,
+      TenantItemsController,
+      CursorItemsController,
+      ProfileItemsController,
+    ],
+  })
   class AppModule {}
 
   const app = await VelaFactory.create(AppModule);
@@ -140,6 +168,7 @@ async function setup(): Promise<AdapterContext> {
       await client.execute('DELETE FROM conformance_items');
       await client.execute('DELETE FROM conformance_tenant_items');
       await client.execute('DELETE FROM conformance_cursor_items');
+      await client.execute('DELETE FROM conformance_profile_items');
     },
   };
 }

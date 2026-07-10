@@ -26,8 +26,10 @@ hit directly come first.
 
 ## Engine features with hono-crud reference cells (proofs ready to port)
 
-5. Serialization profiles (`serializationProfile`) — unblocks the
-   finalize-pipeline conformance cell.
+5. Serialization profiles — DONE (1.19): model-level `serializationProfile`
+   (`{ exclude }`) wired through the shared shaping tails; finalize-pipeline
+   cell (cell 12) runs over both adapters. `include`/`alwaysInclude`/
+   `transform` remain unported.
 6. Nested-write schema merging (`nestedWrites` on `RelationConfig`) —
    `deriveCreateSchema` doesn't merge relation write shapes.
 7. ETag/If-Match concurrency + unique-constraint surface — unblocks the

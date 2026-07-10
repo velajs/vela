@@ -33,11 +33,13 @@ import type { AdapterContext, AdapterDescriptor } from '../contract';
 import {
   CONFORMANCE_CURSOR_TABLE,
   CONFORMANCE_FILTER_CONFIG,
+  CONFORMANCE_PROFILE_TABLE,
   CONFORMANCE_SORT_FIELDS,
   CONFORMANCE_TABLE,
   CONFORMANCE_TENANT_TABLE,
   conformanceModel,
   cursorModel,
+  serializationModel,
   tenantModel,
 } from '../model';
 
@@ -69,6 +71,12 @@ async function setup(): Promise<AdapterContext> {
 
   const cursorAdapter = memoryAdapter({
     tableName: CONFORMANCE_CURSOR_TABLE,
+    primaryKey: 'id',
+    softDeleteField: 'deletedAt',
+  });
+
+  const profileAdapter = memoryAdapter({
+    tableName: CONFORMANCE_PROFILE_TABLE,
     primaryKey: 'id',
     softDeleteField: 'deletedAt',
   });
@@ -110,7 +118,28 @@ async function setup(): Promise<AdapterContext> {
   })
   class CursorItemsController {}
 
-  @Module({ controllers: [ItemsController, TenantItemsController, CursorItemsController] })
+  @Controller('/profile-items')
+  @Crud({
+    model: serializationModel,
+    adapter: profileAdapter,
+    // The finalize-pipeline cell filters by the excluded field (storage proof),
+    // searches, upserts, and probes ?fields= against the profile strip.
+    filterConfig: CONFORMANCE_FILTER_CONFIG,
+    sortFields: CONFORMANCE_SORT_FIELDS,
+    searchFields: ['name'],
+    upsert: { keys: UPSERT_KEYS },
+    fieldSelection: { enabled: true },
+  })
+  class ProfileItemsController {}
+
+  @Module({
+    controllers: [
+      ItemsController,
+      TenantItemsController,
+      CursorItemsController,
+      ProfileItemsController,
+    ],
+  })
   class AppModule {}
 
   const app = await VelaFactory.create(AppModule);

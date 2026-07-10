@@ -22,6 +22,7 @@ export type {
   RelationType,
   SchemaKeys,
   SchemaResolveContext,
+  SerializationProfile,
   SoftDeleteInput,
   TimestampsInput,
 } from './model.types';
@@ -77,3 +78,9 @@ export {
   applyComputedFieldsToArray,
 } from './computed-fields';
 export type { ApplyComputedFieldsOptions } from './computed-fields';
+
+// -- Serialization profile ---------------------------------------------------
+export {
+  applyProfile,
+  applyProfileToArray,
+} from './serialization-profile';

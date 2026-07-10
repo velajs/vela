@@ -99,6 +99,9 @@ export function defineModel<
   if (tenantField !== undefined) normalized.tenantField = tenantField;
 
   if (config.computedFields !== undefined) normalized.computedFields = config.computedFields;
+  if (config.serializationProfile !== undefined) {
+    normalized.serializationProfile = config.serializationProfile;
+  }
   if (config.policies !== undefined) normalized.policies = config.policies;
   if (config.resolveSchema !== undefined) normalized.resolveSchema = config.resolveSchema;
   if (config.table !== undefined) normalized.table = config.table;

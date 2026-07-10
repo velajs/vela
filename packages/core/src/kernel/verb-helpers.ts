@@ -22,6 +22,7 @@ import {
   NotFoundException,
 } from '../envelope/errors';
 import { applyComputedFields, applyComputedFieldsToArray } from '../model/computed-fields';
+import { applyProfile } from '../model/serialization-profile';
 import { applyManagedInsertFields, applyManagedUpdateFields } from '../model/managed-fields';
 import { canRead, canWrite, filterReadable, maskFields, pushdownConditions } from '../policies/evaluate';
 import type { PolicyContext } from '../policies/types';
@@ -116,7 +117,9 @@ export function parseBody(schema: { safeParse(v: unknown): { success: boolean; d
 
 /**
  * The read-shaping tail shared by every verb that returns rows:
- * computed fields → policy field mask → field selection.
+ * computed fields → policy field mask → serialization profile → field
+ * selection. The profile strips BEFORE selection so an excluded field stays
+ * absent even when `?fields=` requests it explicitly.
  */
 export async function shapeOne(
   resource: AnyResource,
@@ -126,6 +129,7 @@ export async function shapeOne(
 ): Promise<Row> {
   let shaped = await applyComputedFields(resource.model, row);
   shaped = maskFields(policyCtx, shaped, resource.model.policies) as Row;
+  shaped = applyProfile(resource.model, shaped);
   const selection = resolveSelection(resource, req);
   if (selection) shaped = applyFieldSelection(shaped, selection) as Row;
   return shaped;

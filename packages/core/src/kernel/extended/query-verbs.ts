@@ -36,6 +36,7 @@ import type {
 } from '../../adapter/query-types';
 import { InputValidationException } from '../../envelope/errors';
 import { applyComputedFieldsToArray } from '../../model/computed-fields';
+import { applyProfile, applyProfileToArray } from '../../model/serialization-profile';
 import { applyManagedInsertFields, applyManagedUpdateFields, stripPrimaryKeys } from '../../model/managed-fields';
 import { applyUpsertRestore, isSoftDeleted } from '../../model/soft-delete';
 import { filterReadable, maskFields } from '../../policies/evaluate';
@@ -286,6 +287,7 @@ async function executeExport(resource: AnyResource, req: EngineRequest): Promise
   const readable = await filterReadable(policyCtx, rows, model.policies);
   let shaped = await applyComputedFieldsToArray(model, readable);
   shaped = shaped.map((row) => maskFields(policyCtx, row, model.policies) as Row);
+  shaped = applyProfileToArray(model, shaped);
 
   const filename = exportFilename(model.tableName, format);
   if (format === 'csv') {
@@ -440,7 +442,7 @@ async function processImportRow(
         const patch = applyUpsertRestore(model, applyManagedUpdateFields(model, stripPrimaryKeys(model, values)), existing) as Row;
         const updated = (await adapter.update(lookup, patch, scope)) as Row | null;
         if (!updated) return { rowNumber, status: 'failed', error: 'Record not found for update' };
-        return { rowNumber, status: 'updated', data: updated };
+        return { rowNumber, status: 'updated', data: applyProfile(model, updated) };
       }
     } else if (existing) {
       return {
@@ -452,7 +454,7 @@ async function processImportRow(
 
     const managed = applyManagedInsertFields(model, values, { databaseGeneratedId });
     const created = (await adapter.create(managed, scope)) as Row;
-    return { rowNumber, status: 'created', data: created };
+    return { rowNumber, status: 'created', data: applyProfile(model, created) };
   } catch (err) {
     return { rowNumber, status: 'failed', error: err instanceof Error ? err.message : String(err) };
   }

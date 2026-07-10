@@ -108,6 +108,31 @@ export const cursorModel = defineModel({
   // timestamps default ON in the native engine → createdAt/updatedAt (epoch-ms).
 });
 
+// ============================================================================
+// Serialization-profile model variant (finalize-pipeline cell)
+// ============================================================================
+
+/** Physical table for the profile-stripped `/profile-items` route family. */
+export const CONFORMANCE_PROFILE_TABLE = 'conformance_profile_items';
+
+/**
+ * The finalize-pipeline model: the shared conformance fields plus a computed
+ * `nameUpper` (the hono-crud cell's computed half) and a serialization
+ * profile excluding `age` — written and stored normally, ABSENT from every
+ * response body (`'age' in record === false`).
+ */
+export const serializationModel = defineModel({
+  name: 'profileItem',
+  tableName: CONFORMANCE_PROFILE_TABLE,
+  schema: conformanceSchema,
+  primaryKeys: ['id'],
+  softDelete: { field: 'deletedAt' },
+  computedFields: {
+    nameUpper: { compute: (record) => String(record.name).toUpperCase() },
+  },
+  serializationProfile: { exclude: ['age'] },
+});
+
 /**
  * Operators every adapter must accept on the list endpoint. The filter cells
  * exercise exactly these.
