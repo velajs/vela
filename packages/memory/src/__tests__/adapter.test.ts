@@ -32,6 +32,16 @@ describe('memoryAdapter core methods', () => {
     expect(getStore('users').get('u1')).toEqual({ id: 'u1', name: 'Ada' });
   });
 
+  it('transaction accepts a TransactionContext and runs fn unchanged', async () => {
+    const adapter = users();
+    const result = await adapter.transaction(
+      async (s) => adapter.create({ id: 'u9', name: 'Tx' }, s),
+      { tenantId: 't1' },
+    );
+    expect(result).toMatchObject({ id: 'u9' });
+    expect(getStore('users').get('u9')).toBeDefined();
+  });
+
   it('readOne finds by primary key and by secondary field', async () => {
     const adapter = users();
     seed([{ id: 'u1', email: 'ada@example.com' }]);

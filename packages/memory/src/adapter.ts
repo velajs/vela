@@ -14,6 +14,7 @@ import type {
   ReadOptions,
   RelationLoadScope,
   RelationLoader,
+  TransactionContext,
 } from '@velajs/crud/adapter';
 import { decodeCursor, encodeCursor } from '@velajs/crud/query';
 import { matchesFilter } from './filter';
@@ -225,7 +226,7 @@ export function memoryAdapter<Row extends Record<string, unknown> = Record<strin
   return {
     capabilities: CAPABILITIES,
 
-    async transaction<T>(fn: (scope: AdapterScope) => Promise<T>): Promise<T> {
+    async transaction<T>(fn: (scope: AdapterScope) => Promise<T>, _ctx?: TransactionContext): Promise<T> {
       return fn(NOOP_SCOPE);
     },
 

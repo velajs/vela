@@ -37,7 +37,7 @@ import type { CrudEndpointName } from '../../verb-table';
 import { captureVersion } from '../capture';
 import type { EngineRequest, EngineResult } from '../engine-request';
 import { envelopeOf } from '../resource';
-import { buildLookup, buildPolicyContext, shapeOne, type AnyResource } from '../verb-helpers';
+import { buildLookup, buildPolicyContext, shapeOne, txCtx, type AnyResource } from '../verb-helpers';
 import type { VerbExecutor } from './registry';
 
 type Row = Record<string, unknown>;
@@ -84,6 +84,7 @@ async function requireOwnedRecord(resource: AnyResource, req: EngineRequest): Pr
   const lookup = buildLookup(resource, req);
   const found = await resource.config.adapter.transaction(
     async (scope) => (await resource.config.adapter.readOne(lookup, { withDeleted: true }, scope)) as Row | null,
+    txCtx(req),
   );
   if (!found) throw new NotFoundException(resource.model.name, lookup.value);
   return found;
@@ -228,7 +229,7 @@ async function executeVersionRollback(resource: AnyResource, req: EngineRequest)
     const updated = (await config.adapter.update(lookup, writeData, scope)) as Row | null;
     if (!updated) throw new NotFoundException(model.name, lookup.value);
     return updated;
-  });
+  }, txCtx(req));
 
   const shaped = await shapeOne(resource, policyCtx, req, rolledBack);
   return { status: 200, body: envelopeOf(resource).success(shaped) };

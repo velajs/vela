@@ -149,6 +149,31 @@ describe('drizzleAdapter core', () => {
     expect(await scopeOf((s) => adapter.restore!({ field: 'id', value: 'a' }, s))).toBeNull();
   });
 
+  it('forwards TransactionContext to onOpenTransaction at tx open', async () => {
+    const seen: Array<{ tx: unknown; tenantId?: string }> = [];
+    const adapter = drizzleAdapter({
+      db,
+      dialect: 'sqlite',
+      table: items,
+      softDeleteField: 'deletedAt',
+      onOpenTransaction: (tx, ctx) => {
+        seen.push({ tx, tenantId: ctx.tenantId });
+      },
+    });
+
+    await adapter.transaction(
+      (scope) => adapter.create({ id: 'ctx1', name: 'Scoped' }, scope),
+      { tenantId: 't1' },
+    );
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.tenantId).toBe('t1');
+    expect(seen[0]!.tx).not.toBeNull();
+
+    // Direct adapter use without a context: the hook is not invoked.
+    await adapter.transaction((scope) => adapter.readOne({ field: 'id', value: 'ctx1' }, {}, scope));
+    expect(seen).toHaveLength(1);
+  });
+
   it('rolls back the transaction when the callback throws', async () => {
     const adapter = makeAdapter();
     await expect(

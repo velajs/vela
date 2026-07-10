@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import type { AdapterScope, CrudAdapter } from '../../adapter/contract';
+import type { AdapterScope, CrudAdapter, TransactionContext } from '../../adapter/contract';
 import type { ListQuery, Lookup, Page } from '../../adapter/query-types';
 import { defineModel } from '../../model/define-model';
 import { defineResource } from '../resource';
@@ -116,6 +116,40 @@ function makeResource(overrides: Record<string, unknown> = {}, softDelete = true
 }
 
 const req = (partial: Partial<EngineRequest> = {}): EngineRequest => partial;
+
+describe('transaction context', () => {
+  // Proves the engine threads the request tenant into adapter.transaction at
+  // every tx open (the RLS seam) — memory/libsql can't enforce RLS, so the
+  // assertion is seam invocation, not database isolation.
+  it('passes the request tenant to adapter.transaction at tx open', async () => {
+    const store = new Map<string, Row>();
+    const inner = fakeAdapter(store);
+    const seen: Array<TransactionContext | undefined> = [];
+    const adapter: CrudAdapter<Row> = {
+      ...inner,
+      transaction: (fn, ctx) => {
+        seen.push(ctx);
+        return inner.transaction(fn, ctx);
+      },
+    };
+    const model = defineModel({
+      name: 'item',
+      tableName: 'items',
+      schema: itemSchema,
+      softDelete: false,
+    });
+    const resource = defineResource('items', { model, adapter });
+
+    await resource.execute('create', req({ body: { name: 'Scoped', qty: 1 }, vars: { tenantId: 't1' } }));
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toEqual({ tenantId: 't1' });
+
+    await resource.execute('list', req({ query: {} }));
+    expect(seen).toHaveLength(2);
+    expect(seen[1]).toBeDefined();
+    expect(seen[1]?.tenantId).toBeUndefined();
+  });
+});
 
 describe('create', () => {
   it('validates, applies managed fields, and returns 201 with the default envelope', async () => {

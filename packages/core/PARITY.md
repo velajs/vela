@@ -299,11 +299,16 @@ stores are **DI seams decoupled from the data adapter**: `VersioningStore` /
   unaffected. Proven by the "per-endpoint guards (config.guards)" tests in
   crud-http.test.ts. Scope note: guards only — per-endpoint
   middleware/interceptors/pipes remain unported.
-- **Tenant not threaded into `adapter.transaction()`** — SQL setups using
-  RLS GUCs (`SET LOCAL app.tenant_id`) can't see the request tenant at tx
-  open. Engine-level tenant scoping covers row filtering, but RLS
-  defense-in-depth needs the tenant in the transaction seam. Candidate:
-  optional `transaction(fn, ctx?: { tenantId? })` overload.
+- **Tenant into `adapter.transaction()`**: CLOSED (1.19). Was: SQL setups
+  using RLS GUCs (`SET LOCAL app.tenant_id`) couldn't see the request tenant
+  at tx open. Shipped: `transaction(fn, ctx?: TransactionContext)` — the
+  engine passes `{ tenantId: req.vars.tenantId }` at every executor tx-open
+  site (`txCtx` in kernel/verb-helpers.ts), and the drizzle adapter adds an
+  `onOpenTransaction(tx, ctx)` config seam for issuing the `SET LOCAL`.
+  Engine WHERE-scoping remains the primary isolation layer; RLS is opt-in
+  defense-in-depth. Proven by verbs.test.ts "transaction context", drizzle's
+  "forwards TransactionContext to onOpenTransaction", and the memory
+  signature-widening test.
 
 ## resolveSchema wired (1.18.1)
 

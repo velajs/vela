@@ -41,6 +41,7 @@ import type {
   ReadOptions,
   RelationLoadScope,
   RelationLoader,
+  TransactionContext,
 } from '@velajs/crud/adapter';
 import { decodeCursor, encodeCursor } from '@velajs/crud/query';
 import { asDatabase, type DrizzleDatabase, type DrizzleDialect, type DrizzleSql, type DrizzleTable } from './database';
@@ -69,6 +70,15 @@ export interface DrizzleAdapterConfig {
   /** Soft-delete column, when the model soft-deletes. */
   softDeleteField?: string;
   relations?: Record<string, DrizzleRelation>;
+  /**
+   * Called inside every engine-opened transaction, right after it opens and
+   * before any statement runs — the seam for per-transaction session state,
+   * e.g. a Postgres RLS GUC: `SELECT set_config('app.tenant_id', <tenant>, true)`
+   * via `tx.execute(...)`. Receives the raw Drizzle transaction handle.
+   * Invoked only when the caller passed a `TransactionContext` (the engine
+   * always does).
+   */
+  onOpenTransaction?: (tx: unknown, ctx: TransactionContext) => void | Promise<void>;
 }
 
 const CAPABILITIES: ReadonlySet<AdapterCapability> = new Set([
@@ -220,8 +230,11 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
   return {
     capabilities: CAPABILITIES,
 
-    async transaction<T>(fn: (scope: AdapterScope) => Promise<T>): Promise<T> {
-      return rootDb.transaction(async (tx) => fn({ tx }));
+    async transaction<T>(fn: (scope: AdapterScope) => Promise<T>, ctx?: TransactionContext): Promise<T> {
+      return rootDb.transaction(async (tx) => {
+        if (ctx !== undefined) await config.onOpenTransaction?.(tx, ctx);
+        return fn({ tx });
+      });
     },
 
     async create(input, scope) {

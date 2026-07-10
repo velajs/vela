@@ -35,6 +35,7 @@ import {
   resolveSelection,
   scopeListQuery,
   shapeOne,
+  txCtx,
   type AnyResource,
 } from './verb-helpers';
 
@@ -80,7 +81,7 @@ export async function executeCreate(
       created = replaced as Row;
     }
     return created;
-  });
+  }, txCtx(req));
 
   await captureAudit(resource, req, 'create', {
     recordId: record[model.primaryKeys[0] ?? 'id'] as string | number,
@@ -105,7 +106,7 @@ export async function executeRead(
     const found = (await config.adapter.readOne(lookup, {}, scope)) as Row | null;
     if (found) await attachIncludes(resource, req, includes, [found], scope);
     return found;
-  });
+  }, txCtx(req));
 
   if (!row) throw new NotFoundException(resource.model.name, lookup.value);
   if (!passesPushdown(row, pushdownConditions(policyCtx, resource.model.policies))) {
@@ -159,7 +160,7 @@ export async function executeUpdate(
       ], []);
     }
     return { prior, current };
-  });
+  }, txCtx(req));
 
   await captureAudit(resource, req, 'update', {
     recordId: current[model.primaryKeys[0] ?? 'id'] as string | number,
@@ -206,7 +207,7 @@ export async function executeDelete(
       ], []);
     }
     return prior;
-  });
+  }, txCtx(req));
 
   await captureAudit(resource, req, 'delete', {
     recordId: prior[model.primaryKeys[0] ?? 'id'] as string | number,
@@ -236,7 +237,7 @@ export async function executeList(
       withDeleted: scoped.options.withDeleted ?? false,
     });
     return fetched;
-  });
+  }, txCtx(req));
 
   // Read policy: silently drop rows the caller may not see, then shape.
   const readable = await filterReadable(policyCtx, page.result, resource.model.policies);

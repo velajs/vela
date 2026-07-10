@@ -32,6 +32,7 @@ import {
   parseBody,
   shapeOne,
   tenantFilters,
+  txCtx,
   type AnyResource,
 } from '../verb-helpers';
 import type { VerbExecutor } from './registry';
@@ -76,8 +77,9 @@ async function executeRestore(resource: AnyResource, req: EngineRequest): Promis
   const policyCtx = buildPolicyContext(req);
   const lookup = buildLookup(resource, req);
 
-  const restored = await config.adapter.transaction(async (scope) =>
-    config.adapter.restore!(lookup, scope),
+  const restored = await config.adapter.transaction(
+    async (scope) => config.adapter.restore!(lookup, scope),
+    txCtx(req),
   );
   if (!restored) throw new NotFoundException(model.name, lookup.value);
 
@@ -135,7 +137,7 @@ async function executeClone(resource: AnyResource, req: EngineRequest): Promise<
 
     const managed = applyManagedInsertFields(model, cloneData, { databaseGeneratedId });
     return (await config.adapter.create(managed, scope)) as Row;
-  });
+  }, txCtx(req));
 
   const shaped = await shapeOne(resource, policyCtx, req, created);
   return { status: 201, body: envelopeOf(resource).success(shaped) };
@@ -273,7 +275,7 @@ async function executeUpsert(resource: AnyResource, req: EngineRequest): Promise
     }
 
     return { record, created, previous: existing };
-  });
+  }, txCtx(req));
 
   await captureAudit(resource, req, 'upsert', {
     recordId: outcome.record[model.primaryKeys[0] ?? 'id'] as string | number,

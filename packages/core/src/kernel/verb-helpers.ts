@@ -14,7 +14,7 @@
  * pre-mutation state in the same transaction).
  */
 
-import type { AdapterScope } from '../adapter/contract';
+import type { AdapterScope, TransactionContext } from '../adapter/contract';
 import type { FilterCondition, ListQuery, Lookup, Page } from '../adapter/query-types';
 import {
   ForbiddenException,
@@ -84,6 +84,11 @@ export function tenantFilters(resource: AnyResource, req: EngineRequest): Record
   const tenantId = req.vars?.tenantId;
   if (field === undefined || tenantId === undefined) return undefined;
   return { [field]: tenantId };
+}
+
+/** Request context for `adapter.transaction()` — the tenant at tx open (RLS GUCs). */
+export function txCtx(req: EngineRequest): TransactionContext {
+  return { tenantId: req.vars?.tenantId };
 }
 
 export function buildLookup(resource: AnyResource, req: EngineRequest): Lookup {

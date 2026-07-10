@@ -54,6 +54,7 @@ import {
   scopeListQuery,
   shapeOne,
   tenantFilters,
+  txCtx,
   type AnyResource,
 } from '../verb-helpers';
 import type { VerbExecutor } from './registry';
@@ -155,7 +156,7 @@ async function executeSearch(resource: AnyResource, req: EngineRequest): Promise
   const adapterSearch = config.adapter.search;
   const hits: Array<SearchHit<Row>> =
     config.adapter.capabilities.has('nativeSearch') && adapterSearch
-      ? await config.adapter.transaction((scope) => adapterSearch(searchQuery, scope))
+      ? await config.adapter.transaction((scope) => adapterSearch(searchQuery, scope), txCtx(req))
       : await config.adapter.transaction(async (scope) => {
           const scan = (await config.adapter.list(
             {
@@ -165,7 +166,7 @@ async function executeSearch(resource: AnyResource, req: EngineRequest): Promise
             scope,
           )) as Page<Row>;
           return runSearchFallback(scan.result, searchQuery);
-        });
+        }, txCtx(req));
 
   // minScore threshold + read-policy row filtering (hardening vs. hono-crud).
   let matched = hits.filter((hit) => hit.score >= minScore);
@@ -239,7 +240,7 @@ async function executeAggregate(resource: AnyResource, req: EngineRequest): Prom
       scope,
     )) as Page<Row>;
     return computeAggregateFallback(scan.result, spec);
-  });
+  }, txCtx(req));
 
   return { status: 200, body: envelopeOf(resource).success(result) };
 }
@@ -280,7 +281,7 @@ async function executeExport(resource: AnyResource, req: EngineRequest): Promise
       scope,
     )) as Page<Row>;
     return scan.result;
-  });
+  }, txCtx(req));
 
   const readable = await filterReadable(policyCtx, rows, model.policies);
   let shaped = await applyComputedFieldsToArray(model, readable);
@@ -499,7 +500,7 @@ async function executeImport(resource: AnyResource, req: EngineRequest): Promise
       summary[result.status]++;
       if (stopOnError && result.status === 'failed') break;
     }
-  });
+  }, txCtx(req));
 
   const status = summary.failed > 0 && summary.failed < summary.total ? 207 : 200;
   return { status, body: envelopeOf(resource).success({ summary, results }) };

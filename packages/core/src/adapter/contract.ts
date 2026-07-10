@@ -84,6 +84,16 @@ export interface AdapterScope {
   readonly tx: unknown;
 }
 
+/**
+ * Request context handed to `transaction()` at tx open — NOT part of
+ * `AdapterScope` (which stays the opaque per-op tx handle). SQL adapters can
+ * use it for per-transaction session state, e.g. a Postgres RLS GUC
+ * (`SET LOCAL app.tenant_id`). Adapters that ignore it stay valid.
+ */
+export interface TransactionContext {
+  readonly tenantId?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Optional drivers
 // ---------------------------------------------------------------------------
@@ -166,8 +176,12 @@ export interface CrudAdapter<Row = Record<string, unknown>> {
    * (memory) pass a frozen no-op sentinel scope; adapters with `transactions`
    * roll back when `fn` throws. The engine decides when a verb needs a scope
    * (any mutation with hooks, nested writes, cascade, or versioning).
+   *
+   * The engine passes the request's `TransactionContext` so SQL adapters can
+   * set per-transaction session state (RLS GUCs) at tx open; ignoring it is
+   * always valid.
    */
-  transaction<T>(fn: (scope: AdapterScope) => Promise<T>): Promise<T>;
+  transaction<T>(fn: (scope: AdapterScope) => Promise<T>, ctx?: TransactionContext): Promise<T>;
 
   // -- Required core (everything else can be synthesized from these) --------
 

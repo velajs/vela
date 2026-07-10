@@ -66,6 +66,7 @@ import {
   scopeListQuery,
   shapeOne,
   tenantFilters,
+  txCtx,
   type AnyResource,
 } from '../verb-helpers';
 import type { VerbExecutor } from './registry';
@@ -287,7 +288,7 @@ async function executeBatchCreate(resource: AnyResource, req: EngineRequest): Pr
       out.push(await runItemHook(afterMode, config.hooks?.afterBatchCreate, ctx, rows[i], i));
     }
     return out;
-  });
+  }, txCtx(req));
 
   await captureAuditBatch(
     resource,
@@ -346,7 +347,7 @@ async function executeBatchUpdate(resource: AnyResource, req: EngineRequest): Pr
       updated.push(await runItemHook(afterMode, config.hooks?.afterBatchUpdate, ctx, current, i));
     }
     return { updated, notFound };
-  });
+  }, txCtx(req));
 
   await captureAuditBatch(
     resource,
@@ -406,7 +407,7 @@ async function executeBatchDelete(resource: AnyResource, req: EngineRequest): Pr
       deleted.push(removed);
     }
     return { deleted, notFound };
-  });
+  }, txCtx(req));
 
   await captureAuditBatch(
     resource,
@@ -476,7 +477,7 @@ async function executeBatchRestore(resource: AnyResource, req: EngineRequest): P
       restored.push(await runItemHook(afterMode, config.hooks?.afterBatchRestore, ctx, row, i));
     }
     return { restored, notFound };
-  });
+  }, txCtx(req));
 
   await captureAuditBatch(
     resource,
@@ -592,7 +593,7 @@ async function executeBatchUpsert(resource: AnyResource, req: EngineRequest): Pr
     }
 
     return { items, createdCount, updatedCount };
-  });
+  }, txCtx(req));
 
   await captureAuditBatch(
     resource,
@@ -684,7 +685,7 @@ async function executeBulkPatch(resource: AnyResource, req: EngineRequest): Prom
   const matched = await adapter.transaction(async (scope) => {
     const page = await adapter.list(countQuery, scope);
     return page.result_info.total_count ?? page.result.length;
-  });
+  }, txCtx(req));
 
   if (matched === 0) {
     return { status: 200, body: { success: true, matched: 0, updated: 0, dryRun } };
@@ -735,7 +736,7 @@ async function executeBulkPatch(resource: AnyResource, req: EngineRequest): Prom
       if (updated) records.push(updated);
     }
     return { updated: records.length, records };
-  });
+  }, txCtx(req));
 
   const response: Record<string, unknown> = {
     success: true,

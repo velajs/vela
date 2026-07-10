@@ -13,6 +13,7 @@ export {
   type NestedWriteOperations,
   type RelationLoader,
   type RelationLoadScope,
+  type TransactionContext,
 } from './contract';
 export { assertAdapterSatisfies, type CapabilityRequirement } from './capabilities';
 export * from './query-types';
