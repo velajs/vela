@@ -323,13 +323,21 @@ stores are **DI seams decoupled from the data adapter**: `VersioningStore` /
   from every create body (static derivation and the resolveSchema path), so
   callers with client-generated UUIDs needed a capture-guard workaround
   (erpos `ClientPkCaptureGuard`). Shipped: `'client'` on `IdStrategy` —
-  `getManagedInputExclusions` retains the PK (flows to static derivation, the
-  resolveSchema re-derive, and the OpenAPI DTO), `applyManagedInsertFields`
-  skips generation and throws `InputValidationException` (400) on a missing
-  PK. No adapter capability required; clone requires an `id` override. Proven
-  by managed-fields/schema-derive/resolve-schema/verbs/clone unit tests + the
-  crud-http "id: 'client' PK strategy" DTO round-trip. Retires
-  `ClientPkCaptureGuard`.
+  `deriveCreateSchema` retains the PK at its authored shape (flows to static
+  derivation, the resolveSchema re-derive, and the OpenAPI DTO); the
+  UPDATE-side schemas still exclude the PK (identity is not patchable);
+  `applyManagedInsertFields` skips generation and throws
+  `InputValidationException` (400) on a missing PK. The upsert/batchUpsert/
+  import update legs strip the body PK (`stripPrimaryKeys`) so a matched
+  row's PK is never rewritten; native `upsertOne` adapters must do the same
+  (contract doc). A custom `dto.create` omitting the PK fails loudly at
+  definition time. Duplicate caller PKs: the memory adapter now 409s
+  (`ConflictException`) instead of silently overwriting; SQL adapters surface
+  their constraint error (the constraint→409 errorMappers concern stays
+  tracked above). No adapter capability required; clone requires an `id`
+  override. Proven by managed-fields/schema-derive/resolve-schema/verbs/
+  clone/upsert/batchUpsert/import unit tests + the crud-http
+  "id: 'client' PK strategy" DTO round-trip. Retires `ClientPkCaptureGuard`.
 - **Sub-app onError note** (erpos round 2, vela-side) — hono `.route()`
   sub-apps with their own error handler render locally; since vela 1.11's
   pipeline rewrite, a parent app's `onError` no longer covers merged sub-app

@@ -32,6 +32,15 @@ describe('memoryAdapter core methods', () => {
     expect(getStore('users').get('u1')).toEqual({ id: 'u1', name: 'Ada' });
   });
 
+  it('create throws ConflictException (409) on a duplicate primary key', async () => {
+    const adapter = users();
+    await adapter.create({ id: 'u1', name: 'Ada' }, scope);
+    await expect(adapter.create({ id: 'u1', name: 'Eve' }, scope)).rejects.toMatchObject({
+      statusCode: 409,
+    });
+    expect(getStore('users').get('u1')).toMatchObject({ name: 'Ada' });
+  });
+
   it('transaction accepts a TransactionContext and runs fn unchanged', async () => {
     const adapter = users();
     const result = await adapter.transaction(

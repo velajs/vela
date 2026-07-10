@@ -47,7 +47,7 @@ import {
   InputValidationException,
   NotFoundException,
 } from '../../envelope/errors';
-import { applyManagedInsertFields, applyManagedUpdateFields } from '../../model/managed-fields';
+import { applyManagedInsertFields, applyManagedUpdateFields, stripPrimaryKeys } from '../../model/managed-fields';
 import { applyUpsertRestore, isSoftDeleted, softDeleteVisibilityFilter } from '../../model/soft-delete';
 import { parseListFilters } from '../../query/filters';
 import type { CrudEndpointName } from '../../verb-table';
@@ -575,7 +575,8 @@ async function executeBatchUpsert(resource: AnyResource, req: EngineRequest): Pr
           }
           await restore(existingLookup, scope);
         }
-        const patch = applyUpsertRestore(model, applyManagedUpdateFields(model, data), existing) as Row;
+        // Body PK (present under id:'client') is insert-leg identity only.
+        const patch = applyUpsertRestore(model, applyManagedUpdateFields(model, stripPrimaryKeys(model, data)), existing) as Row;
         const updated = (await adapter.update(existingLookup, patch, scope)) as Row | null;
         if (!updated) throw new NotFoundException(model.name, existingLookup.value);
         record = updated;

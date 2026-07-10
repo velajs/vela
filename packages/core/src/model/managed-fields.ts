@@ -27,11 +27,11 @@ export function getManagedInputExclusions(
   const exclude = new Set<string>();
 
   // Primary keys are engine/DB-generated (uuid / custom fn / database), so a
-  // client must never be forced to supply them on create — EXCEPT under
-  // id: 'client', where the caller-supplied PK stays in the create schema
-  // (this single gate flows to static derivation, the resolveSchema
-  // re-derive, and the OpenAPI DTO).
-  if (includePrimaryKeys && model.id !== 'client') {
+  // client must never be forced to supply them on create. Under id: 'client'
+  // the CREATE-side derivation opts out via includePrimaryKeys — the
+  // UPDATE-side derivation always excludes the PK (identity is insert-time
+  // only, never patchable).
+  if (includePrimaryKeys) {
     for (const pk of model.primaryKeys) exclude.add(pk);
   }
 
@@ -45,6 +45,22 @@ export function getManagedInputExclusions(
   if (model.tenantField) exclude.add(model.tenantField);
 
   return [...exclude];
+}
+
+/**
+ * Remove PK fields from an update-leg patch. The PK is insert-time identity:
+ * under `id: 'client'` the create-derived body carries it (for the insert
+ * leg of upsert/import), but a matched row's PK must never be rewritten by
+ * an update leg. No-op for strategies whose body schemas already exclude PKs.
+ */
+export function stripPrimaryKeys<T extends Record<string, unknown>>(
+  model: Pick<Model, 'primaryKeys'>,
+  patch: T,
+): T {
+  if (!model.primaryKeys.some((pk) => pk in patch)) return patch;
+  const out: Record<string, unknown> = { ...patch };
+  for (const pk of model.primaryKeys) delete out[pk];
+  return out as T;
 }
 
 /** Treat `null`, `undefined` and `''` as "the caller did not supply a PK". */

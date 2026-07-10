@@ -161,11 +161,16 @@ describe('getManagedInputExclusions', () => {
     expect(exclusions).toEqual(new Set(['id', 'createdAt', 'updatedAt', 'tenantId']));
   });
 
-  it("id:'client' does not exclude the primary key", () => {
+  it("id:'client': excludes the PK by default (update side); create-side opts out", () => {
     const model = defineModel({ name: 'u', tableName: 'u', schema: Schema, id: 'client', multiTenant: true });
-    const exclusions = new Set(getManagedInputExclusions(model));
-    expect(exclusions.has('id')).toBe(false);
-    expect(exclusions).toEqual(new Set(['createdAt', 'updatedAt', 'tenantId']));
+    // Default (update-side derivation): identity is never patchable.
+    expect(new Set(getManagedInputExclusions(model))).toEqual(
+      new Set(['id', 'createdAt', 'updatedAt', 'tenantId']),
+    );
+    // Create-side derivation opts out (deriveCreateSchema under id:'client').
+    expect(new Set(getManagedInputExclusions(model, { includePrimaryKeys: false }))).toEqual(
+      new Set(['createdAt', 'updatedAt', 'tenantId']),
+    );
   });
 
   it('omits the tenant field when multi-tenancy is off, and timestamps when disabled', () => {

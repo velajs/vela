@@ -65,12 +65,18 @@ function pickFields(schema: ZodObject<ZodRawShape>, keep: string[]): ZodObject<Z
 
 /**
  * The create-body schema: `model.schema` minus the engine-managed fields
- * (generated PKs + timestamp columns + tenant column).
+ * (generated PKs + timestamp columns + tenant column). Under `id: 'client'`
+ * the PK is RETAINED at its authored shape — the caller supplies it; every
+ * consumer (static schema, resolveSchema re-derive, OpenAPI DTO) flows
+ * through here. Update-side derivation always excludes the PK.
  */
 export function deriveCreateSchema(
   model: Pick<Model, 'schema' | 'id' | 'timestamps' | 'primaryKeys' | 'tenantField'>,
 ): ZodObject<ZodRawShape> {
-  return omitFields(model.schema, getManagedInputExclusions(model));
+  return omitFields(
+    model.schema,
+    getManagedInputExclusions(model, { includePrimaryKeys: model.id !== 'client' }),
+  );
 }
 
 /**

@@ -535,6 +535,27 @@ describe('import', () => {
     expect(store.size).toBe(1);
   });
 
+  it("id:'client' upsert mode: matched rows keep their PK; created rows use the item id", async () => {
+    const { resource, store } = makeResource({ model: { id: 'client' }, upsert: { keys: ['email'] } });
+    store.set('right', { id: 'right', email: 'dup@x', name: 'Old' });
+    const result = await resource.execute(
+      'import',
+      req({
+        query: { mode: 'upsert' },
+        body: { items: [
+          { id: 'wrong', email: 'dup@x', name: 'Fresh' },
+          { id: 'fresh', email: 'new@x', name: 'New' },
+        ] },
+      }),
+    );
+    const body = result.body as { result: { summary: Record<string, number> } };
+    expect(body.result.summary).toMatchObject({ created: 1, updated: 1 });
+    expect(store.get('right')?.name).toBe('Fresh');
+    expect(store.get('right')?.id).toBe('right');
+    expect(store.get('wrong')).toBeUndefined();
+    expect(store.get('fresh')).toBeDefined();
+  });
+
   it('skips invalid rows by default and reports validationErrors', async () => {
     const { resource } = makeResource();
     const result = await resource.execute(

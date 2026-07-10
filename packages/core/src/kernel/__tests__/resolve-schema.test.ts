@@ -162,6 +162,23 @@ describe('Model.resolveSchema (per-tenant body schemas)', () => {
     expect((stripped.body as { result: Row }).result.custom1).toBe('y'); // unchanged
   });
 
+  it("id: 'client' + a custom dto.create omitting the PK fails at definition time", () => {
+    const model = defineModel({
+      name: 'item',
+      tableName: 'items',
+      schema: baseSchema,
+      timestamps: false,
+      id: 'client',
+    });
+    expect(() =>
+      defineResource('items', {
+        model,
+        adapter: fakeAdapter(new Map<string, Row>()),
+        dto: { create: z.object({ name: z.string() }) },
+      }),
+    ).toThrow(/dto\.create to include the primary key/);
+  });
+
   it('an explicit dto override wins and resolveSchema is not consulted', async () => {
     const dtoSchema = z.object({ name: z.string().min(3) });
     const { resource, resolveSchema } = makeResource({ dto: { create: dtoSchema } });

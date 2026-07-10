@@ -197,6 +197,12 @@ export interface CrudAdapter<Row = Record<string, unknown>> {
 
   aggregate?(spec: AggregateSpec, scope: AdapterScope): Promise<AggregateResult>;
   search?(spec: SearchQuery, scope: AdapterScope): Promise<Array<SearchHit<Row>>>;
+  /**
+   * Insert-or-update on the conflict target. On the UPDATE (conflict) leg,
+   * adapters must NOT rewrite primary-key columns from `input` — the PK is
+   * insert-time identity only (relevant under `id: 'client'`, where the
+   * create-derived body carries a caller PK).
+   */
   upsertOne?(input: UpsertInput<Row>, scope: AdapterScope): Promise<{ row: Row; created: boolean }>;
   /**
    * Un-delete a soft-deleted row: find it INCLUDING soft-deleted rows (honoring

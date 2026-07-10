@@ -56,6 +56,11 @@ describe('deriveUpdateSchema', () => {
     expect(update.safeParse({ name: 'x' }).success).toBe(true);
   });
 
+  it("still excludes the PK under id: 'client' (identity is not patchable)", () => {
+    const model = defineModel({ name: 'u', tableName: 'u', schema: Schema, id: 'client' });
+    expect('id' in deriveUpdateSchema(model).shape).toBe(false);
+  });
+
   it('removes blocked fields in addition to the managed set', () => {
     const model = defineModel({ name: 'u', tableName: 'u', schema: Schema });
     const update = deriveUpdateSchema(model, { blocked: ['email'] });

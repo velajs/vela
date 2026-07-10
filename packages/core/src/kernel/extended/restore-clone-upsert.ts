@@ -18,7 +18,7 @@
 
 import type { FilterCondition, ListQuery, Lookup } from '../../adapter/query-types';
 import { ConfigurationException, NotFoundException } from '../../envelope/errors';
-import { applyManagedInsertFields, applyManagedUpdateFields } from '../../model/managed-fields';
+import { applyManagedInsertFields, applyManagedUpdateFields, stripPrimaryKeys } from '../../model/managed-fields';
 import { applyUpsertRestore, isSoftDeleted } from '../../model/soft-delete';
 import type { CrudEndpointName } from '../../verb-table';
 import { captureAudit } from '../capture';
@@ -253,9 +253,11 @@ async function executeUpsert(resource: AnyResource, req: EngineRequest): Promise
         }
         await adapter.restore(existingLookup, scope);
       }
+      // The body PK (present under id:'client') is insert-leg identity only —
+      // never rewrite the matched row's PK on the update leg.
       const patch = applyUpsertRestore(
         model,
-        applyManagedUpdateFields(model, data),
+        applyManagedUpdateFields(model, stripPrimaryKeys(model, data)),
         existing,
       ) as Row;
       const updated = (await adapter.update(existingLookup, patch, scope)) as Row | null;

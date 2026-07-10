@@ -366,6 +366,32 @@ describe('upsert', () => {
     expect(store.size).toBe(1);
   });
 
+  it("id:'client': update leg keeps the matched row's PK; insert leg uses the body id", async () => {
+    const { resource, store } = makeResource({ model: { id: 'client' }, ...upsertCfg });
+    store.set('right', { id: 'right', email: 'a@x', name: 'Old' });
+
+    const updated = await resource.execute(
+      'upsert',
+      req({ body: { id: 'wrong', email: 'a@x', name: 'New' } }),
+    );
+    expect(updated.status).toBe(200);
+    const updatedBody = updated.body as { result: Row; created: boolean };
+    expect(updatedBody.created).toBe(false);
+    expect(updatedBody.result.id).toBe('right');
+    expect(store.get('right')?.name).toBe('New');
+    expect(store.get('wrong')).toBeUndefined();
+
+    const inserted = await resource.execute(
+      'upsert',
+      req({ body: { id: 'fresh', email: 'b@x', name: 'B' } }),
+    );
+    expect(inserted.status).toBe(201);
+    const insertedBody = inserted.body as { result: Row; created: boolean };
+    expect(insertedBody.created).toBe(true);
+    expect(insertedBody.result.id).toBe('fresh');
+    expect(store.get('fresh')).toBeDefined();
+  });
+
   it('match-and-restore: matching a soft-deleted row restores + updates it (created:false, 200)', async () => {
     const { resource, store } = makeResource(upsertCfg);
     store.set('a', { id: 'a', email: 'phoenix@x', name: 'Old', deletedAt: 999 });

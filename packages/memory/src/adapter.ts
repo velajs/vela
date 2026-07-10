@@ -16,6 +16,7 @@ import type {
   RelationLoader,
   TransactionContext,
 } from '@velajs/crud/adapter';
+import { ConflictException } from '@velajs/crud';
 import { decodeCursor, encodeCursor } from '@velajs/crud/query';
 import { matchesFilter } from './filter';
 import { getStore } from './storage';
@@ -233,6 +234,14 @@ export function memoryAdapter<Row extends Record<string, unknown> = Record<strin
     async create(input, _scope) {
       const row = { ...input } as Row;
       const id = String((row as Record<string, unknown>)[primaryKey]);
+      // A duplicate PK must never silently overwrite (reachable since
+      // id:'client' hands PK generation to the caller) — conflict like a
+      // database unique constraint would.
+      if (table().has(id)) {
+        throw new ConflictException(
+          `Duplicate primary key '${id}': a row with this key already exists`,
+        );
+      }
       table().set(id, row);
       return row;
     },

@@ -188,6 +188,19 @@ describe('create', () => {
     ).rejects.toMatchObject({ statusCode: 400, code: 'VALIDATION_ERROR' });
   });
 
+  it("id: 'client' never lets an update patch rewrite the PK", async () => {
+    const { resource, store } = makeResource({ model: { id: 'client' } });
+    store.set('a', { id: 'a', name: 'A', qty: 1 });
+
+    // The update schema still excludes the PK, so a body `id` is stripped at
+    // validation and the row keeps its identity.
+    const result = await resource.execute('update', req({ id: 'a', body: { id: 'evil', name: 'B' } }));
+    expect(result.status).toBe(200);
+    expect((result.body as { result: Row }).result.id).toBe('a');
+    expect(store.get('a')?.name).toBe('B');
+    expect(store.get('evil')).toBeUndefined();
+  });
+
   it('threads beforeCreate chain output into the adapter and runs afterCreate in-scope', async () => {
     const order: string[] = [];
     const { resource, store } = makeResource({

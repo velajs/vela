@@ -36,7 +36,7 @@ import type {
 } from '../../adapter/query-types';
 import { InputValidationException } from '../../envelope/errors';
 import { applyComputedFieldsToArray } from '../../model/computed-fields';
-import { applyManagedInsertFields, applyManagedUpdateFields } from '../../model/managed-fields';
+import { applyManagedInsertFields, applyManagedUpdateFields, stripPrimaryKeys } from '../../model/managed-fields';
 import { applyUpsertRestore, isSoftDeleted } from '../../model/soft-delete';
 import { filterReadable, maskFields } from '../../policies/evaluate';
 import { buildAggregateSpec, computeAggregateFallback } from '../../query/aggregate';
@@ -436,7 +436,8 @@ async function processImportRow(
         if (isSoftDeleted(model, existing) && adapter.restore) {
           await adapter.restore(lookup, scope);
         }
-        const patch = applyUpsertRestore(model, applyManagedUpdateFields(model, values), existing) as Row;
+        // Body PK (present under id:'client') is insert-leg identity only.
+        const patch = applyUpsertRestore(model, applyManagedUpdateFields(model, stripPrimaryKeys(model, values)), existing) as Row;
         const updated = (await adapter.update(lookup, patch, scope)) as Row | null;
         if (!updated) return { rowNumber, status: 'failed', error: 'Record not found for update' };
         return { rowNumber, status: 'updated', data: updated };

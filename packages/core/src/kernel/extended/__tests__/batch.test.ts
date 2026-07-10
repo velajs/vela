@@ -657,6 +657,28 @@ describe('batchUpsert', () => {
     expect(store.size).toBe(2);
   });
 
+  it("id:'client': update leg keeps the matched row's PK; insert leg uses the item id", async () => {
+    const { resource, store } = makeResource({ model: { id: 'client' }, ...upsertCfg });
+    store.set('right', { id: 'right', email: 'dup@x', name: 'Old' });
+
+    const result = await resource.execute(
+      'batchUpsert',
+      req({ body: [
+        { id: 'wrong', email: 'dup@x', name: 'Fresh' }, // matches by email — body id ignored
+        { id: 'fresh', email: 'new@x', name: 'New' }, // no match — body id used
+      ] }),
+    );
+    expect(result.status).toBe(200);
+    const body = result.body as { result: { items: Array<{ data: Row; created: boolean }> } };
+    expect(body.result.items[0].created).toBe(false);
+    expect(body.result.items[0].data.id).toBe('right');
+    expect(body.result.items[1].created).toBe(true);
+    expect(body.result.items[1].data.id).toBe('fresh');
+    expect(store.get('wrong')).toBeUndefined();
+    expect(store.get('right')?.name).toBe('Fresh');
+    expect(store.get('fresh')).toBeDefined();
+  });
+
   it('match-and-restore: matching a soft-deleted row restores + updates it (created:false)', async () => {
     const { resource, store } = makeResource(upsertCfg);
     store.set('a', { id: 'a', email: 'phoenix@x', name: 'Old', deletedAt: 999 });

@@ -142,6 +142,18 @@ export function defineResource<Row extends Record<string, unknown>>(
     );
   }
 
+  // Loud, never silent: under id:'client' the caller must be able to supply
+  // the PK on create — a custom dto.create that omits it would brick the
+  // create verb at the insert seam (permanent 400) with no authoring signal.
+  if (config.model.id === 'client' && config.dto?.create !== undefined) {
+    const pk = config.model.primaryKeys[0] ?? 'id';
+    if (!(pk in config.dto.create.shape)) {
+      throw new ConfigurationException(
+        `Resource '${name}': id:'client' requires the custom dto.create to include the primary key '${pk}'`,
+      );
+    }
+  }
+
   const createSchema = config.dto?.create ?? deriveCreateSchema(config.model);
   const updateSchema =
     config.dto?.update ?? deriveUpdateSchema(config.model, config.updateFields ?? {});
