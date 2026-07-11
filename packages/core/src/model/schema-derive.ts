@@ -76,9 +76,16 @@ function nestableRelations(
   });
 }
 
-/** Child write shape: the related schema minus exactly `['id', foreignKey]`. */
-function childShape(rel: RelationConfig): ZodObject<ZodRawShape> {
-  return omitFields(rel.schema as ZodObject<ZodRawShape>, ['id', rel.foreignKey]);
+/**
+ * Child write shape: the related schema minus `['id', foreignKey]` (hono-crud
+ * parity) plus the parent's tenant column — the engine force-stamps the
+ * request tenant onto nested creates, so a caller-supplied value must never
+ * validate (cross-tenant child writes).
+ */
+function childShape(rel: RelationConfig, tenantField: string | undefined): ZodObject<ZodRawShape> {
+  const exclude = ['id', rel.foreignKey];
+  if (tenantField !== undefined) exclude.push(tenantField);
+  return omitFields(rel.schema as ZodObject<ZodRawShape>, exclude);
 }
 
 const NESTED_ID = z.union([z.string(), z.number()]);
@@ -87,10 +94,11 @@ const NESTED_ID = z.union([z.string(), z.number()]);
 function mergeNestedCreate(
   base: ZodObject<ZodRawShape>,
   relations: Record<string, RelationConfig> | undefined,
+  tenantField: string | undefined,
 ): ZodObject<ZodRawShape> {
   const merged: Record<string, ZodType> = {};
   for (const [name, rel] of nestableRelations(relations, (f) => f.allowCreate === true)) {
-    const child = childShape(rel);
+    const child = childShape(rel, tenantField);
     merged[name] = rel.type === 'hasMany' ? z.array(child).optional() : child.optional();
   }
   if (Object.keys(merged).length === 0) return base;
@@ -101,6 +109,7 @@ function mergeNestedCreate(
 function mergeNestedUpdate(
   base: ZodObject<ZodRawShape>,
   relations: Record<string, RelationConfig> | undefined,
+  tenantField: string | undefined,
 ): ZodObject<ZodRawShape> {
   const merged: Record<string, ZodType> = {};
   const anyFlag = (f: NonNullable<RelationConfig['nestedWrites']>) =>
@@ -111,17 +120,23 @@ function mergeNestedUpdate(
     f.allowDisconnect === true;
   for (const [name, rel] of nestableRelations(relations, anyFlag)) {
     const flags = rel.nestedWrites!;
-    const child = childShape(rel);
+    const child = childShape(rel, tenantField);
     const ops: Record<string, ZodType> = {};
-    if (flags.allowCreate) ops.create = z.union([child, z.array(child)]).optional();
+    if (flags.allowCreate) {
+      // hasOne stays single-object on the update leg too — an array would
+      // silently violate the declared 1:1 cardinality.
+      ops.create =
+        rel.type === 'hasMany' ? z.union([child, z.array(child)]).optional() : child.optional();
+    }
     if (flags.allowUpdate) {
       ops.update = z.array(child.partial().extend({ id: NESTED_ID })).optional();
     }
     if (flags.allowDelete) ops.delete = z.array(NESTED_ID).optional();
-    if (flags.allowConnect) {
-      ops.connect = z.array(NESTED_ID).optional();
-      // `set`: relink by id, or null to disconnect all (create-via-set is a
-      // documented deviation from hono-crud — not supported).
+    if (flags.allowConnect) ops.connect = z.array(NESTED_ID).optional();
+    if (flags.allowConnect && flags.allowDisconnect) {
+      // `set` both relinks AND disconnects-all (null), so it demands BOTH
+      // flags — allowConnect alone must not grant mass detachment.
+      // Relink is by id; create-via-set is a documented hono-crud deviation.
       ops.set = z.union([z.object({ id: NESTED_ID }), z.null()]).optional();
     }
     if (flags.allowDisconnect) ops.disconnect = z.array(NESTED_ID).optional();
@@ -146,7 +161,7 @@ export function deriveCreateSchema(
     model.schema,
     getManagedInputExclusions(model, { includePrimaryKeys: model.id !== 'client' }),
   );
-  return mergeNestedCreate(base, model.relations);
+  return mergeNestedCreate(base, model.relations, model.tenantField);
 }
 
 /**
@@ -169,5 +184,5 @@ export function deriveUpdateSchema(
   }
 
   const partial = schema.partial() as unknown as ZodObject<ZodRawShape>;
-  return mergeNestedUpdate(partial, model.relations);
+  return mergeNestedUpdate(partial, model.relations, model.tenantField);
 }

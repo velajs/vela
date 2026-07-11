@@ -160,6 +160,17 @@ describe('drizzleAdapter core', () => {
     expect(rows[0]).toMatchObject({ id: 'p1', title: 'P', authorId: 'u1' });
 
     await adapter.transaction(async (s) => {
+      await adapter.nested!.applyNested(
+        { id: 'u1' },
+        'posts',
+        { update: [{ where: { id: 'p1' }, data: { title: 'P2' } }] },
+        s,
+      );
+    });
+    rows = (await db.select().from(posts)) as Array<Record<string, unknown>>;
+    expect(rows[0]).toMatchObject({ id: 'p1', title: 'P2' });
+
+    await adapter.transaction(async (s) => {
       await adapter.nested!.applyNested({ id: 'u1' }, 'posts', { disconnect: [{ id: 'p1' }] }, s);
     });
     rows = (await db.select().from(posts)) as Array<Record<string, unknown>>;

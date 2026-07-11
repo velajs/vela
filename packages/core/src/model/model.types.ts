@@ -65,15 +65,35 @@ export interface CascadeConfig {
  * Per-relation nested-write authoring flags (hono-crud 0.13 parity). All
  * default OFF. Enabling any flag merges the relation's write shape into the
  * derived body schemas — CREATE accepts child payloads under the relation
- * key; UPDATE accepts an ops envelope (`create`/`update`/`delete`/`connect`/
+ * key (single object for `hasOne`, array for `hasMany`); UPDATE accepts a
+ * flag-gated ops envelope (`create`/`update`/`delete`/`connect`/
  * `disconnect`/`set`) — and the single create/update verbs dispatch to the
- * adapter's `NestedWriteDriver` inside the parent write's transaction.
- * Extended verbs (batch family, upsert, clone, bulkPatch, import) reject
- * nested payloads with a 400. Only `hasOne`/`hasMany` relations may nest
- * (the driver stamps the FK on the RELATED row); enabling on `belongsTo` or
- * on a relation without `schema` throws at model definition. Deviation from
- * hono-crud: `set` relinks by `{ id }` or disconnects all with `null` —
- * create-via-set is not supported.
+ * adapter's `NestedWriteDriver` inside the parent write's transaction. Only
+ * `hasOne`/`hasMany` relations may nest (the driver stamps the FK on the
+ * RELATED row); enabling on `belongsTo` or without `schema` throws at model
+ * definition.
+ *
+ * Contract details:
+ * - Extended verbs (batch family, upsert, clone, bulkPatch, import) reject
+ *   nested payloads that survive their schemas with a 400; a relation key
+ *   NOT merged into a verb's schema is stripped by validation like any
+ *   unknown key. Empty payloads (`[]`, `{}`) are no-ops, never dispatched.
+ * - Nested CREATE children get the request tenant FORCED and timestamps
+ *   defaulted, but only when the child schema declares the parent model's
+ *   column names (the engine has no child Model — uniform naming is the
+ *   contract; otherwise the child table's DB defaults/RLS own it). Audit and
+ *   version capture remain PARENT-scoped: related-row mutations are not
+ *   independently audited or versioned.
+ * - SECURITY: `connect`/`set` relink related rows by id with NO
+ *   tenant/ownership check in the engine (update/delete/disconnect ops are
+ *   FK-scoped to the parent). On tenant-scoped models enforce isolation at
+ *   the database (RLS) or leave `allowConnect` off — definition logs a
+ *   warning. `set` requires BOTH `allowConnect` AND `allowDisconnect` (it
+ *   relinks and mass-detaches); `set: null` disconnects all; create-via-set
+ *   is a documented hono-crud deviation (unsupported).
+ * - Children are not echoed in write responses (read them via `?include=`),
+ *   and the memory adapter's no-op transaction cannot roll back the parent
+ *   if a nested op fails (SQL adapters roll back atomically).
  */
 export interface NestedWriteConfig {
   /** Accept nested child payloads on create + `create` ops on update. @default false */
@@ -82,9 +102,9 @@ export interface NestedWriteConfig {
   allowUpdate?: boolean;
   /** Accept `delete` ops in the update envelope. @default false */
   allowDelete?: boolean;
-  /** Accept `connect` and `set` ops in the update envelope. @default false */
+  /** Accept `connect` ops (+ `set`, with allowDisconnect) in the update envelope. @default false */
   allowConnect?: boolean;
-  /** Accept `disconnect` ops in the update envelope. @default false */
+  /** Accept `disconnect` ops (+ `set`, with allowConnect) in the update envelope. @default false */
   allowDisconnect?: boolean;
 }
 

@@ -111,6 +111,71 @@ describe('nested-write schema merging', () => {
     expect((stripped.data as { posts: Record<string, unknown> }).posts).toEqual({});
   });
 
+  it('hasOne stays single-object on both create and update legs', () => {
+    const model = defineModel({
+      name: 'u',
+      tableName: 'u',
+      schema: Schema,
+      relations: {
+        profile: {
+          type: 'hasOne' as const,
+          target: 'profiles',
+          foreignKey: 'userId',
+          schema: PostSchema,
+          nestedWrites: { allowCreate: true },
+        },
+      },
+    });
+    const create = deriveCreateSchema(model);
+    expect(
+      create.safeParse({ name: 'a', email: 'e', role: 'r', tenantId: 't', profile: [{ title: 'x' }] })
+        .success,
+    ).toBe(false);
+    const update = deriveUpdateSchema(model);
+    expect(update.safeParse({ profile: { create: [{ title: 'x' }] } }).success).toBe(false);
+    expect(update.safeParse({ profile: { create: { title: 'x' } } }).success).toBe(true);
+  });
+
+  it('gates `set` behind BOTH allowConnect and allowDisconnect', () => {
+    const both = deriveUpdateSchema(nestedModel({ allowConnect: true, allowDisconnect: true }));
+    expect(both.safeParse({ posts: { set: null } }).success).toBe(true);
+    // allowConnect alone must not grant the disconnect-all: `set` is an
+    // unknown key there and gets stripped.
+    const connectOnly = deriveUpdateSchema(nestedModel({ allowConnect: true }));
+    const parsed = connectOnly.safeParse({ posts: { set: null } });
+    expect(parsed.success).toBe(true);
+    expect((parsed.data as { posts: Record<string, unknown> }).posts).toEqual({});
+  });
+
+  it('strips the parent tenant column from child shapes (the engine stamps it)', () => {
+    const TenantPost = PostSchema.extend({ tenantId: z.string().optional() });
+    const model = defineModel({
+      name: 'u',
+      tableName: 'u',
+      schema: Schema,
+      multiTenant: true,
+      relations: {
+        posts: {
+          type: 'hasMany' as const,
+          target: 'posts',
+          foreignKey: 'authorId',
+          schema: TenantPost,
+          nestedWrites: { allowCreate: true },
+        },
+      },
+    });
+    const parsed = deriveCreateSchema(model).safeParse({
+      name: 'a',
+      email: 'e',
+      role: 'r',
+      posts: [{ title: 'P', tenantId: 'evil' }],
+    });
+    expect(parsed.success).toBe(true);
+    expect((parsed.data as { posts: Array<Record<string, unknown>> }).posts[0]).toEqual({
+      title: 'P',
+    });
+  });
+
   it("coexists with id: 'client' PK retention", () => {
     const create = deriveCreateSchema(nestedModel({ allowCreate: true }, { id: 'client' }));
     expect('id' in create.shape).toBe(true);

@@ -19,6 +19,7 @@ import {
   nestedUpdateRelations,
   requireNestedDriver,
   splitNested,
+  stampNestedCreates,
   toNestedOps,
 } from './nested-writes';
 import { applyManagedInsertFields, applyManagedUpdateFields } from '../model/managed-fields';
@@ -86,7 +87,12 @@ export async function executeCreate(
     let created = await config.adapter.create(input, scope);
     if (nestedDriver) {
       for (const [name, value] of nested) {
-        const records = (Array.isArray(value) ? value : [value]) as Row[];
+        const records = stampNestedCreates(
+          model,
+          name,
+          (Array.isArray(value) ? value : [value]) as Row[],
+          req.vars?.tenantId,
+        );
         await nestedDriver.createNested(created, name, records, scope);
       }
     }
@@ -180,7 +186,11 @@ export async function executeUpdate(
 
     if (nestedDriver) {
       for (const [name, value] of nested) {
-        await nestedDriver.applyNested(current, name, toNestedOps(value), scope);
+        const ops = toNestedOps(value);
+        if (ops.create) {
+          ops.create = stampNestedCreates(model, name, ops.create as Row[], req.vars?.tenantId);
+        }
+        await nestedDriver.applyNested(current, name, ops, scope);
       }
     }
 

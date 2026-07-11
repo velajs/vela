@@ -41,6 +41,14 @@ export function buildLiveStamper(config: CrudConfig): LiveStamper | undefined {
   const tableName = config.model.tableName;
   const live: CrudLiveConfig = typeof config.live === 'object' ? config.live : {};
   const baseTag = crudLiveTag(tableName);
+  // Nested writes mutate RELATED tables inside parent writes — invalidate
+  // their tags on every write too (over-invalidation on nested-free writes is
+  // a harmless refetch; missing invalidation is silent staleness).
+  const nestedTags = Object.values(config.model.relations ?? {})
+    .filter(
+      (rel) => rel.nestedWrites !== undefined && rel.type !== 'belongsTo' && rel.target !== undefined,
+    )
+    .map((rel) => crudLiveTag(rel.target as string));
 
   return async (c, result, method) => {
     if (!WRITE_METHODS.has(method.toLowerCase())) return;
@@ -49,7 +57,7 @@ export function buildLiveStamper(config: CrudConfig): LiveStamper | undefined {
     const invalidation = resolveInvalidation(c, tableName);
     if (!invalidation) return;
 
-    const tags = [baseTag, ...(live.tags?.(c) ?? [])];
+    const tags = [baseTag, ...nestedTags, ...(live.tags?.(c) ?? [])];
     const stamp = await invalidation.invalidate({ tags, room: live.room?.(c) });
     if (stamp) {
       const headers: Record<string, string> = { ...(result.headers ?? {}) };

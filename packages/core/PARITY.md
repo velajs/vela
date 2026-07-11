@@ -53,18 +53,32 @@ divergence is added or closed.
   `AggregateSpec` for a hypothetical native adapter.
 - **Nested-write schema merging**: SHIPPED (1.19). `nestedWrites` flags on
   `RelationConfig` (allowCreate/Update/Delete/Connect/Disconnect, all default
-  OFF); `deriveCreateSchema` merges the child shape (omitting exactly
-  `['id', foreignKey]` — hono-crud parity; child timestamps/tenant NOT
-  stripped), `deriveUpdateSchema` merges the flag-gated ops envelope; the
-  single create/update verbs split the body and dispatch to the existing
-  `NestedWriteDriver` INSIDE the parent transaction (the driver was dead code
-  before — nothing invoked it). Extended verbs (batch family, upsert, clone,
-  bulkPatch, import) reject nested payloads with a loud 400
-  (`assertNoNestedWrites`) instead of silently inserting relation columns.
-  Deliberate scope: belongsTo nesting throws at define time (the driver
-  stamps the FK on the RELATED row); `set` relinks by `{ id }` or `null`
-  (create-via-set unported); related PK is `id` (hono-crud parity). Proven by
-  schema-derive/define-model/verbs unit tests + memory/drizzle driver tests.
+  OFF); `deriveCreateSchema` merges the child shape (omits `['id',
+  foreignKey]` — hono-crud parity — PLUS the parent tenant column, which the
+  engine force-stamps; child timestamps stay writable and default when the
+  child schema declares the parent's column names), `deriveUpdateSchema`
+  merges the flag-gated ops envelope (hasOne stays single-object on both
+  legs; `set` demands BOTH allowConnect AND allowDisconnect — it relinks and
+  mass-detaches); the single create/update verbs split the body and dispatch
+  to the existing `NestedWriteDriver` INSIDE the parent transaction (the
+  driver was dead code before — nothing invoked it). Empty payloads
+  (`[]`/`{}`/zod-stripped envelopes) are no-ops — never demand a driver.
+  Id-only update ops are dropped at translation (SQL `.set({})` guards).
+  Extended verbs (batch family, upsert, clone, bulkPatch, import) reject
+  nested payloads that survive their schemas with a loud 400
+  (`assertNoNestedWrites`); un-merged relation keys are stripped by
+  validation like any unknown key. Live invalidation also broadcasts
+  `crud:<relatedTable>` for nested relations (over-invalidation beats
+  staleness). SECURITY caveat (documented on `NestedWriteConfig` +
+  define-time warning): `connect`/`set` relink by id with NO tenant/ownership
+  check — RLS owns isolation there; update/delete/disconnect are FK-scoped
+  to the (tenant-checked) parent. Audit/version capture stays PARENT-scoped —
+  related-row mutations are not independently audited/versioned. Memory's
+  no-op transaction cannot roll back the parent on nested failure (SQL
+  adapters are atomic). Deliberate scope: belongsTo nesting throws at define
+  time; create-via-`set` unported; related PK is `id` (hono-crud parity).
+  Proven by schema-derive/define-model/verbs unit tests + memory/drizzle
+  driver tests.
 - **Per-relation include scoping** (`RelationConfig.scope`): dropped from the
   model layer; `RelationLoadScope` covers tenant + soft-delete owner-scoping at
   the loader. Revisit with the relation conformance cells (M3).

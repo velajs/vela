@@ -232,7 +232,8 @@ describe('nested writes (create/update dispatch)', () => {
           name: 'B',
           posts: {
             create: { title: 'New' },
-            update: [{ id: 'p1', title: 'Upd' }],
+            // The id-only entry is dropped at translation (nothing to set).
+            update: [{ id: 'p1', title: 'Upd' }, { id: 'p9' }],
             delete: ['p2'],
             connect: ['p3'],
             disconnect: ['p4'],
@@ -270,6 +271,74 @@ describe('nested writes (create/update dispatch)', () => {
     // Without a nested payload the same resource still writes normally.
     const plain = await resource.execute('create', req({ body: { name: 'B', qty: 1 } }));
     expect(plain.status).toBe(201);
+    // EMPTY nested payloads are no-ops — no driver demanded, write proceeds.
+    const emptyCreate = await resource.execute(
+      'create',
+      req({ body: { name: 'C', qty: 1, posts: [] } }),
+    );
+    expect(emptyCreate.status).toBe(201);
+    const createdId = String(((emptyCreate.body as { result: Row }).result).id);
+    const emptyUpdate = await resource.execute(
+      'update',
+      req({ id: createdId, body: { name: 'D', posts: {} } }),
+    );
+    expect(emptyUpdate.status).toBe(200);
+  });
+
+  it('force-stamps the tenant and defaults timestamps onto nested creates', async () => {
+    const StampPost = z.object({
+      id: z.string(),
+      authorId: z.string().optional(),
+      title: z.string().min(1),
+      tenantId: z.string().optional(),
+      createdAt: z.number().optional(),
+      updatedAt: z.number().optional(),
+    });
+    const store = new Map<string, Row>();
+    const captured: Row[][] = [];
+    const inner = fakeAdapter(store);
+    const adapter: CrudAdapter<Row> = {
+      ...inner,
+      capabilities: new Set<AdapterCapability>([...inner.capabilities, 'nestedWrites']),
+      nested: {
+        async createNested(_parent, _relation, records) {
+          captured.push(records as Row[]);
+        },
+        async applyNested() {},
+      },
+    };
+    const model = defineModel({
+      name: 'item',
+      tableName: 'items',
+      schema: itemSchema,
+      softDelete: false,
+      multiTenant: true,
+      relations: {
+        posts: {
+          type: 'hasMany' as const,
+          target: 'posts',
+          foreignKey: 'authorId',
+          schema: StampPost,
+          nestedWrites: { allowCreate: true },
+        },
+      },
+    });
+    const resource = defineResource('items', { model, adapter });
+    const result = await resource.execute(
+      'create',
+      req({
+        body: { name: 'A', qty: 1, posts: [{ title: 'P', tenantId: 'evil' }] },
+        vars: { tenantId: 't1' },
+      }),
+    );
+    expect(result.status).toBe(201);
+    const child = captured[0]![0]!;
+    // Caller-supplied tenant is stripped by the schema and FORCED to the
+    // request tenant; timestamps default when the child schema declares them.
+    expect(child.tenantId).toBe('t1');
+    expect(typeof child.createdAt).toBe('number');
+    expect(typeof child.updatedAt).toBe('number');
+    expect(child.title).toBe('P');
   });
 });
 
