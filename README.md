@@ -1,8 +1,10 @@
 # @velajs/crud
 
 Native CRUD for the [Vela framework](https://github.com/velajs/vela) — a full resource engine
-(22 verbs, filtering, pagination, relations, hooks, policies, multi-tenant, versioning/audit,
-OpenAPI, live queries) built the Vela way: decorators, DI, guards, and Zod DTOs.
+(22 verbs, filtering, pagination, relations + nested writes, hooks, policies, per-endpoint
+guards, multi-tenant, unique constraints, ETag/If-Match, serialization profiles,
+versioning/audit, OpenAPI, live queries) built the Vela way: decorators, DI, guards, and
+Zod DTOs.
 
 This repository is a pnpm workspace:
 

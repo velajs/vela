@@ -1,61 +1,43 @@
-# Roadmap (post-1.18.1)
+# Roadmap (post-1.19.0)
 
 `packages/core/PARITY.md` is the authoritative deviation/gap ledger — this file
-is the triaged build order on top of it. The erpos migration
-(erpos-ai/erpos-internal#315, merged) is the consumer proof-ground: items it
-hit directly come first.
+is the triaged build order on top of it.
 
-## 1.19 — consumer-driven engine gaps (small, high value)
+## Shipped in 1.19.0 (2026-07-11)
 
-1. **Per-endpoint guard seam** — DONE (1.19): `guards?:
-   Partial<Record<CrudEndpointName, GuardType[]>>` on `CrudConfig`, stamped
-   per synthesized handler via vela's public `UseGuards` (PARITY.md carries
-   the closed entry + proving tests).
-2. **Tenant in the transaction seam** — DONE (1.19):
-   `transaction(fn, ctx?: TransactionContext)` overload, threaded at every
-   kernel tx-open site, plus the drizzle `onOpenTransaction(tx, ctx)` config
-   seam for RLS GUCs (PARITY.md carries the closed entry).
-3. **`id: 'client'` PK strategy** — DONE (1.19): `'client'` on `IdStrategy`
-   keeps the caller-supplied PK required in the create body (static +
-   resolveSchema derivation + OpenAPI DTO) and skips engine generation;
-   retires erpos's `ClientPkCaptureGuard` (PARITY.md carries the closed
-   entry).
-4. **Cleanup** — DONE (1.19): the vestigial `IMPLEMENTED_ENDPOINTS` export is
-   removed from `verb-table.ts` and the barrel; the live source of implemented
-   verbs is `kernel/extended/registry.ts` `implementedEndpoints()`.
+The consumer-driven engine gaps (erpos-ai/erpos-internal#315 proof-ground) and
+every hono-crud-referenced conformance cell are CLOSED: per-endpoint `guards`
+on `CrudConfig`; `TransactionContext` through `adapter.transaction()` + the
+drizzle `onOpenTransaction` RLS seam; the `id: 'client'` PK strategy (retires
+erpos's `ClientPkCaptureGuard`); model-level `serializationProfile` (cell 12);
+nested writes end to end (`nestedWrites` on `RelationConfig` — the driver was
+dead code before); ETag/If-Match (409 per hono-crud) + `unique` tuples with
+the `uniqueConstraints` capability (cells 13/14); the drizzle pg leg (PGlite);
+and the `IMPLEMENTED_ENDPOINTS` cleanup. Details live in each package's
+CHANGELOG and the closed PARITY.md entries. Conformance: 14 cells / 92 tests
+over both adapters.
 
-## Engine features with hono-crud reference cells (proofs ready to port)
+erpos follow-ups unlocked by 1.19.0 (erpos-side work): delete
+`ClientPkCaptureGuard`, replace `@RequireFeature` post-stamping with
+`config.guards`, wire `onOpenTransaction` for the RLS-GUC delta.
 
-5. Serialization profiles — DONE (1.19): model-level `serializationProfile`
-   (`{ exclude }`) wired through the shared shaping tails; finalize-pipeline
-   cell (cell 12) runs over both adapters. `include`/`alwaysInclude`/
-   `transform` remain unported.
-6. Nested-write schema merging — DONE (1.19): `nestedWrites` on
-   `RelationConfig`, schema merge in both derivations, create/update dispatch
-   to the `NestedWriteDriver` in-transaction; extended verbs reject nested
-   payloads (400). belongsTo nesting + create-via-set deliberately unported
-   (PARITY.md carries the shipped entry).
-7. ETag/If-Match concurrency + unique-constraint surface — DONE (1.19):
-   `etag: true` (strong content-hash ETag, If-None-Match 304, If-Match →
-   409 CONFLICT per hono-crud — not 412) + model `unique` tuples with the
-   `uniqueConstraints` capability (memory native, drizzle constraint→409);
-   cells 13 + 14 run over both adapters (PARITY.md carries the entries).
-8. Events family; field-level encryption (erpos uses its own encryption hooks,
-   so demand is unproven — verify before building).
+## Open — all gated; none is plain build-next work
 
-## Triage-first (crud-core vs sibling package vs vela-core vs won't-do)
-
-9. cache, rate-limit, idempotency, api-version, health, logging middleware,
-   swagger/scalar UIs, prisma adapter. MCP is likely covered by
-   `@velajs/cli mcp serve` — confirm, then won't-do here.
-
-## Adapter residuals
-
-10. Drizzle dialect legs — pg DONE (1.19): tested via PGlite
-    (adapter.pg.test.ts — predicates, unique→409, nested, real-tx rollback).
-    mysql remains written-per-hono-crud but UNTESTED (no embeddable server);
-    add a leg when a consumer needs it.
-11. Workers-pool conformance leg — deferred with rationale in PARITY.md.
+1. **Events family; field-level encryption** — demand UNPROVEN (erpos uses
+   its own encryption hooks); confirm a consumer wants it before building.
+2. **Cross-cutting middleware triage** — cache, rate-limit, idempotency,
+   api-version, health, logging middleware, swagger/scalar UIs, prisma
+   adapter: decide crud-core vs sibling package vs vela-core per family.
+   MCP is likely covered by `@velajs/cli mcp serve` — confirm, then won't-do
+   here.
+3. **Workers-pool conformance leg** — deferred: the drizzle leg cannot run in
+   workerd (libsql client) and the edge guarantee is machine-verified by the
+   openness/edge import audits; revisit if a D1-flavored adapter lands.
+4. **mysql dialect leg** — written per hono-crud but UNTESTED (no embeddable
+   server); add when a consumer needs the dialect.
+5. **Serialization-profile extensions** — hono-crud's `include`/
+   `alwaysInclude`/`transform` profile options remain unported (`exclude` is
+   the proven need); port on demand.
 
 ## Vela-side (owning repo: ../vela)
 
