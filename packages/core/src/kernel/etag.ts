@@ -16,8 +16,16 @@
 type Json = Record<string, unknown>;
 
 function canonicalize(value: unknown): unknown {
+  // JSON.stringify would throw on BigInt and Object.keys(new Date()) is [] —
+  // normalize both so exotic column types hash by VALUE, never as `{}`.
+  if (typeof value === 'bigint') return value.toString();
+  if (value instanceof Date) return value.toISOString();
   if (Array.isArray(value)) return value.map(canonicalize);
   if (value !== null && typeof value === 'object') {
+    // Non-plain objects (Map/Set/class instances) have no stable key shape —
+    // hash their string form rather than collapsing them all to `{}`.
+    const proto: unknown = Object.getPrototypeOf(value);
+    if (proto !== Object.prototype && proto !== null) return String(value);
     const sorted: Json = {};
     for (const key of Object.keys(value as Json).sort()) {
       sorted[key] = canonicalize((value as Json)[key]);

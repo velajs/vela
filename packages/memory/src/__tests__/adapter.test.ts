@@ -43,9 +43,11 @@ describe('memoryAdapter core methods', () => {
     ).rejects.toMatchObject({ statusCode: 409 });
     // A self-update to the SAME value never conflicts with itself.
     await adapter.update({ field: 'id', value: '1' }, { email: 'a@x' }, scope);
-    // SQL semantics: null values never occupy the slot.
+    // SQL semantics: null values never occupy the slot — and a LITERAL
+    // 'null' string never collides with an actual null.
     await adapter.create({ id: '4', email: null }, scope);
     await adapter.create({ id: '5', email: null }, scope);
+    await adapter.create({ id: '5b', email: 'null' }, scope);
     // Soft-deleted rows still occupy (non-partial-index semantics).
     await adapter.delete({ field: 'id', value: '1' }, { softDeleteField: 'deletedAt' }, scope);
     await expect(adapter.create({ id: '6', email: 'a@x' }, scope)).rejects.toMatchObject({
@@ -58,6 +60,13 @@ describe('memoryAdapter core methods', () => {
     const row = await adapter.create({ id: 'u1', name: 'Ada' }, scope);
     expect(row).toEqual({ id: 'u1', name: 'Ada' });
     expect(getStore('users').get('u1')).toEqual({ id: 'u1', name: 'Ada' });
+  });
+
+  it('declares uniqueConstraints only when tuples are configured (loud define-time pairing)', () => {
+    expect(users().capabilities.has('uniqueConstraints')).toBe(false);
+    expect(
+      memoryAdapter({ tableName: 'u2', unique: [['email']] }).capabilities.has('uniqueConstraints'),
+    ).toBe(true);
   });
 
   it('nested driver: createNested stamps the FK; applyNested ops are FK-scoped', async () => {

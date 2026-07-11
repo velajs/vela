@@ -99,13 +99,20 @@ group-1 cells against the native engine:
   gaps). No PARITY-GAP surfaced during the port.
 - **unique-conflict**: PORTED (1.19, cell 13) — model-level `unique` tuples +
   the `uniqueConstraints` adapter capability. Memory enforces natively
-  (create/update scans, 409); drizzle translates database unique-violations
-  (sqlite/pg/mysql shapes) to 409 ConflictException at the ADAPTER level, so
-  the default envelope renders 409 natively — the constraint→409
-  errorMappers concern is closed for the in-repo adapters. Semantics: GLOBAL
-  scope (put the tenant column in the tuple for per-tenant uniqueness);
-  soft-deleted rows still occupy the slot (non-partial index); tuples with
-  null values never conflict (SQL semantics).
+  (create/update scans, 409) and declares the capability ONLY when its
+  config mirrors the tuples — an unmirrored pairing fails loudly at define
+  time; drizzle translates database unique-violations (sqlite/pg/mysql
+  shapes, walking the DrizzleQueryError cause chain) to 409
+  ConflictException at the ADAPTER level on create/update/createMany/
+  updateWhere AND the nested-write driver — the constraint→409 errorMappers
+  concern is closed for the in-repo adapters. Semantics: GLOBAL scope (put
+  the tenant column in the tuple for per-tenant uniqueness); soft-deleted
+  rows still occupy the slot (non-partial index); null values never conflict
+  on either side. Known limits (documented on `ModelConfig.unique`): memory
+  nested writes bypass native enforcement (the parent adapter cannot see the
+  related model's tuples — SQL's index still enforces); memory's no-op
+  transaction commits earlier batch items before a mid-batch 409 (SQL
+  batches reject atomically).
 - **etag-concurrency**: PORTED (1.19, cell 14) — `etag: true` on the resource
   config: reads emit a STRONG content-hash `ETag` (SHA-256 of the
   computed→mask→profile representation WITHOUT `?fields=` selection, 32 hex,

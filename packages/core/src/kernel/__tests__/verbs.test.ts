@@ -386,6 +386,56 @@ describe('etag (optimistic concurrency)', () => {
     expect(ok.headers?.ETag).not.toBe(tag);
     expect(store.get('a')?.name).toBe('B');
   });
+
+  it('include-reads and bare reads share the tag (relation embeds never hash)', async () => {
+    const store = new Map<string, Row>();
+    const inner = fakeAdapter(store);
+    const adapter: CrudAdapter<Row> = {
+      ...inner,
+      relations: {
+        async load(rows) {
+          return new Map(rows.map((row) => [row.id, [{ id: 'p1', title: 'X' }]]));
+        },
+      },
+    };
+    const model = defineModel({
+      name: 'item',
+      tableName: 'items',
+      schema: itemSchema,
+      softDelete: false,
+      relations: {
+        posts: { type: 'hasMany' as const, target: 'posts', foreignKey: 'authorId' },
+      },
+    });
+    const resource = defineResource('items', {
+      model,
+      adapter,
+      etag: true,
+      allowedIncludes: ['posts'],
+    });
+    store.set('a', { id: 'a', name: 'A', qty: 1 });
+
+    const bare = await resource.execute('read', req({ id: 'a' }));
+    const embedded = await resource.execute(
+      'read',
+      req({ id: 'a', query: { include: ['posts'] } }),
+    );
+    expect((embedded.body as { result: Row }).result.posts).toBeTruthy();
+    expect(embedded.headers?.ETag).toBe(bare.headers?.ETag);
+
+    // ...so an include-read's tag satisfies the update-side If-Match.
+    const ok = await resource.execute(
+      'update',
+      req({
+        id: 'a',
+        body: { name: 'B' },
+        request: new Request('http://t/', {
+          headers: { 'If-Match': embedded.headers?.ETag as string },
+        }),
+      }),
+    );
+    expect(ok.status).toBe(200);
+  });
 });
 
 describe('create', () => {

@@ -235,7 +235,8 @@ export function memoryAdapter<Row extends Record<string, unknown> = Record<strin
   const uniqueTuples = config.unique ?? [];
   /**
    * First violated unique tuple, or undefined. SQL semantics: tuples with a
-   * null/undefined value never conflict; soft-deleted rows occupy the slot.
+   * null/undefined value (on either side) never conflict; soft-deleted rows
+   * occupy the slot.
    */
   const violatedUnique = (candidate: Row, excludeKey?: string): string[] | undefined => {
     for (const tuple of uniqueTuples) {
@@ -243,16 +244,28 @@ export function memoryAdapter<Row extends Record<string, unknown> = Record<strin
       if (values.some((value) => value === null || value === undefined)) continue;
       for (const [key, row] of table()) {
         if (excludeKey !== undefined && key === excludeKey) continue;
-        if (tuple.every((column, i) => String((row as Row)[column]) === String(values[i]))) {
-          return tuple;
-        }
+        const collides = tuple.every((column, i) => {
+          const rowValue = (row as Row)[column];
+          if (rowValue === null || rowValue === undefined) return false;
+          return String(rowValue) === String(values[i]);
+        });
+        if (collides) return tuple;
       }
     }
     return undefined;
   };
 
+  // Loud, never silent: the capability is declared ONLY when this instance
+  // actually enforces tuples — a model with `unique` paired with an
+  // unmirrored memory adapter fails assertAdapterSatisfies at define time
+  // instead of silently enforcing nothing.
+  const capabilities: ReadonlySet<AdapterCapability> =
+    uniqueTuples.length > 0
+      ? CAPABILITIES
+      : new Set([...CAPABILITIES].filter((cap) => cap !== 'uniqueConstraints'));
+
   return {
-    capabilities: CAPABILITIES,
+    capabilities,
 
     async transaction<T>(fn: (scope: AdapterScope) => Promise<T>, _ctx?: TransactionContext): Promise<T> {
       return fn(NOOP_SCOPE);

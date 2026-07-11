@@ -129,7 +129,13 @@ async function etagFor(
   policyCtx: ReturnType<typeof buildPolicyContext>,
   row: Row,
 ): Promise<string> {
-  let shaped = await applyComputedFields(resource.model, row);
+  // Copy + strip relation keys FIRST: attachIncludes mutates rows in place,
+  // and relation embeds must never fold into the tag — an include-read's
+  // ETag has to satisfy the update-side If-Match comparison, which hashes
+  // the bare row.
+  const bare: Row = { ...row };
+  for (const name of Object.keys(resource.model.relations ?? {})) delete bare[name];
+  let shaped = await applyComputedFields(resource.model, bare);
   shaped = maskFields(policyCtx, shaped, resource.model.policies) as Row;
   shaped = applyProfile(resource.model, shaped);
   return generateETag(shaped);

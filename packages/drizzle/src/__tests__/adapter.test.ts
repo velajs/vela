@@ -28,6 +28,7 @@ const uniqItems = sqliteTable('uniq_items', {
   id: text('id').primaryKey(),
   name: text('name'),
   email: text('email'),
+  authorId: text('authorId'),
   deletedAt: integer('deletedAt'),
 });
 
@@ -80,7 +81,7 @@ async function freshDb() {
     'CREATE TABLE posts (id TEXT PRIMARY KEY, authorId TEXT, title TEXT, deletedAt INTEGER)',
   );
   await client.execute(
-    'CREATE TABLE uniq_items (id TEXT PRIMARY KEY, name TEXT, email TEXT, deletedAt INTEGER, UNIQUE(email))',
+    'CREATE TABLE uniq_items (id TEXT PRIMARY KEY, name TEXT, email TEXT, authorId TEXT, deletedAt INTEGER, UNIQUE(email))',
   );
   await client.execute(
     'CREATE TABLE versions (id TEXT PRIMARY KEY, tableName TEXT NOT NULL, recordId TEXT NOT NULL, version INTEGER NOT NULL, data TEXT NOT NULL, createdAt INTEGER NOT NULL, changedBy TEXT, changeReason TEXT)',
@@ -209,6 +210,27 @@ describe('drizzleAdapter core', () => {
         await adapter.create({ id: '3', email: 'b@x' }, s);
         return adapter.update({ field: 'id', value: '3' }, { email: 'a@x' }, s);
       }),
+    ).rejects.toMatchObject({ statusCode: 409, code: 'CONFLICT' });
+  });
+
+  it('nested-write driver maps unique violations to 409 too', async () => {
+    const adapter = drizzleAdapter({
+      db,
+      dialect: 'sqlite',
+      table: items,
+      softDeleteField: 'deletedAt',
+      relations: {
+        uniq: { type: 'hasMany', table: uniqItems, foreignKey: 'authorId' },
+      },
+    });
+    await adapter.transaction(async (s) => {
+      await adapter.create({ id: 'u1', name: 'U' }, s);
+      await adapter.nested!.createNested({ id: 'u1' }, 'uniq', [{ id: 'q1', email: 'dup@x' }], s);
+    });
+    await expect(
+      adapter.transaction((s) =>
+        adapter.nested!.createNested({ id: 'u1' }, 'uniq', [{ id: 'q2', email: 'dup@x' }], s),
+      ),
     ).rejects.toMatchObject({ statusCode: 409, code: 'CONFLICT' });
   });
 

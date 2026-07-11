@@ -252,7 +252,13 @@ export interface ModelConfig<
    * for per-tenant uniqueness); soft-deleted rows still occupy the slot;
    * tuples containing null/undefined never conflict (SQL semantics).
    * Requires an adapter with the `uniqueConstraints` capability; violations
-   * surface as 409 ConflictException.
+   * surface as 409 ConflictException. Adapter wiring: the memory adapter
+   * must MIRROR these tuples in its own `unique` config (it declares the
+   * capability only when mirrored, so a mismatch fails loudly at define
+   * time); SQL adapters rely on the migration's UNIQUE index. Nested-write
+   * paths bypass memory-native enforcement (the parent adapter cannot see
+   * the related model's tuples) — on SQL the index still enforces, mapped
+   * to 409.
    */
   unique?: Array<string | string[]>;
   /** Row/field-level access policies applied uniformly by the engine. */

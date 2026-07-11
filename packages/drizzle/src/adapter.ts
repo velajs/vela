@@ -167,9 +167,13 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
       const rel = requireRelation(config, relation);
       const db = handle(scope);
       const parentKey = (parent as Row)[rel.localKey ?? primaryKey];
-      for (const record of records) {
-        const row = { ...record, id: record.id ?? crypto.randomUUID(), [rel.foreignKey]: parentKey };
-        await db.insert(rel.table).values(row);
+      try {
+        for (const record of records) {
+          const row = { ...record, id: record.id ?? crypto.randomUUID(), [rel.foreignKey]: parentKey };
+          await db.insert(rel.table).values(row);
+        }
+      } catch (err) {
+        rethrowMapped(err);
       }
     },
     async applyNested(parent, relation, operations: NestedWriteOperations, scope) {
@@ -180,27 +184,31 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
       const matches = (where: Row): DrizzleSql | undefined =>
         andAll(...Object.entries(where).map(([k, v]) => eq(getColumn(rel.table, k), v)));
 
-      for (const record of operations.create ?? []) {
-        const row = { ...record, id: record.id ?? crypto.randomUUID(), [rel.foreignKey]: parentKey };
-        await db.insert(rel.table).values(row);
-      }
-      for (const { where, data } of operations.update ?? []) {
-        await db.update(rel.table).set(data).where(andAll(matches(where), eq(fk, parentKey)));
-      }
-      for (const where of operations.delete ?? []) {
-        await db.delete(rel.table).where(andAll(matches(where), eq(fk, parentKey)));
-      }
-      for (const where of operations.connect ?? []) {
-        await db.update(rel.table).set({ [rel.foreignKey]: parentKey }).where(matches(where));
-      }
-      for (const where of operations.disconnect ?? []) {
-        await db.update(rel.table).set({ [rel.foreignKey]: null }).where(andAll(matches(where), eq(fk, parentKey)));
-      }
-      if (operations.set) {
-        await db.update(rel.table).set({ [rel.foreignKey]: null }).where(eq(fk, parentKey));
-        for (const where of operations.set) {
+      try {
+        for (const record of operations.create ?? []) {
+          const row = { ...record, id: record.id ?? crypto.randomUUID(), [rel.foreignKey]: parentKey };
+          await db.insert(rel.table).values(row);
+        }
+        for (const { where, data } of operations.update ?? []) {
+          await db.update(rel.table).set(data).where(andAll(matches(where), eq(fk, parentKey)));
+        }
+        for (const where of operations.delete ?? []) {
+          await db.delete(rel.table).where(andAll(matches(where), eq(fk, parentKey)));
+        }
+        for (const where of operations.connect ?? []) {
           await db.update(rel.table).set({ [rel.foreignKey]: parentKey }).where(matches(where));
         }
+        for (const where of operations.disconnect ?? []) {
+          await db.update(rel.table).set({ [rel.foreignKey]: null }).where(andAll(matches(where), eq(fk, parentKey)));
+        }
+        if (operations.set) {
+          await db.update(rel.table).set({ [rel.foreignKey]: null }).where(eq(fk, parentKey));
+          for (const where of operations.set) {
+            await db.update(rel.table).set({ [rel.foreignKey]: parentKey }).where(matches(where));
+          }
+        }
+      } catch (err) {
+        rethrowMapped(err);
       }
     },
   };

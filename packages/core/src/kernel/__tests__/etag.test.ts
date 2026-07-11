@@ -12,6 +12,15 @@ describe('generateETag', () => {
   it('changes when any value changes', async () => {
     expect(await generateETag({ a: 1 })).not.toBe(await generateETag({ a: 2 }));
   });
+
+  it('hashes Date and BigInt by VALUE (never as {} / never throws)', async () => {
+    const t1 = await generateETag({ at: new Date(1000), n: 2n });
+    const t2 = await generateETag({ at: new Date(2000), n: 2n });
+    const t3 = await generateETag({ at: new Date(1000), n: 3n });
+    expect(t1).toMatch(/^"[0-9a-f]{32}"$/);
+    expect(t1).not.toBe(t2);
+    expect(t1).not.toBe(t3);
+  });
 });
 
 describe('If-Match / If-None-Match matchers', () => {

@@ -57,6 +57,11 @@ export interface ResourceConfig<Row extends Record<string, unknown> = Record<str
    * ETag/If-Match optimistic concurrency (hono-crud `etagEnabled`): read
    * emits a strong content-hash `ETag` (+ 304 on `If-None-Match`), update
    * honors `If-Match` (409 CONFLICT on mismatch — hono-crud parity, not 412).
+   * The hashed representation excludes `?fields=` selection and relation
+   * embeds (tags stay stable across request variants — a deliberate
+   * RFC 7232 purity trade-off) and INCLUDES computed fields: computed
+   * functions must be deterministic over the stored row or tags rotate with
+   * no write (spurious 409s).
    */
   etag?: boolean;
   /** Insert-or-update conflict target for the upsert family. */
