@@ -1,6 +1,6 @@
 {
   "name": "@velajs/crud-memory",
-  "version": "1.18.1",
+  "version": "1.19.0",
   "description": "In-memory adapter for @velajs/crud — tests, prototypes, and examples",
   "type": "module",
   "main": "./dist/index.js",

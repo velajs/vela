@@ -1,5 +1,39 @@
 # @velajs/crud-memory
 
+## 1.19.0
+
+### Minor Changes
+
+- 68f05e4: ETag/If-Match optimistic concurrency and unique-constraint enforcement
+  (hono-crud parity, closing the last two deferred conformance cells).
+  `etag: true` on a resource makes reads emit a strong content-hash `ETag`
+  (computed→mask→profile representation, stable across `?fields=`) and honor
+  `If-None-Match` (304, empty body); updates honor `If-Match` and reject a
+  stale tag with 409 CONFLICT (hono-crud's actual behavior — not 412). Model
+  `unique` tuples (global scope; soft-deleted rows occupy the slot; null
+  values never conflict) require the new `uniqueConstraints` adapter
+  capability: the memory adapter enforces natively on create/update, and the
+  drizzle adapter translates database unique-violations (sqlite/pg/mysql
+  shapes) to 409 `ConflictException` — closing the constraint→409 concern for
+  the in-repo adapters.
+- 0dcc62b: Add the `id: 'client'` primary-key strategy: the caller-supplied PK stays in
+  the derived CREATE body schema at its authored (typically required) shape —
+  static derivation, the per-tenant resolveSchema path, and the OpenAPI DTO all
+  follow — and the engine performs no generation (a create reaching the insert
+  seam without a PK is a 400). Update-side schemas still exclude the PK, and the
+  upsert/batchUpsert/import update legs never rewrite a matched row's PK (the
+  body PK is insert-leg identity only). A custom `dto.create` that omits the PK
+  under `id: 'client'` fails loudly at definition time. The memory adapter now
+  throws a 409 `ConflictException` on a duplicate-PK create instead of silently
+  overwriting. No adapter capability required; clone requires an `id` override.
+  Retires the erpos `ClientPkCaptureGuard` workaround.
+- 2097825: Thread the request tenant into `adapter.transaction()`. New optional
+  `TransactionContext` param (`{ tenantId? }`) is passed by the engine at every
+  tx-open site; the drizzle adapter gains an `onOpenTransaction(tx, ctx)` config
+  seam so consumers can issue `SET LOCAL <guc> = <tenant>` for Postgres RLS
+  defense-in-depth. Additive: adapters and configs that ignore the context are
+  unchanged.
+
 ## 1.18.1
 
 ### Patch Changes
