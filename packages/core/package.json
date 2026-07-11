@@ -1,6 +1,6 @@
 {
   "name": "@velajs/crud",
-  "version": "1.18.1",
+  "version": "1.19.0",
   "description": "Native CRUD module for the Vela framework",
   "type": "module",
   "main": "./dist/index.js",

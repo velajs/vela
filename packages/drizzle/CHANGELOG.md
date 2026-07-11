@@ -1,5 +1,35 @@
 # @velajs/crud-drizzle
 
+## 1.19.0
+
+### Minor Changes
+
+- 68f05e4: ETag/If-Match optimistic concurrency and unique-constraint enforcement
+  (hono-crud parity, closing the last two deferred conformance cells).
+  `etag: true` on a resource makes reads emit a strong content-hash `ETag`
+  (computed→mask→profile representation, stable across `?fields=`) and honor
+  `If-None-Match` (304, empty body); updates honor `If-Match` and reject a
+  stale tag with 409 CONFLICT (hono-crud's actual behavior — not 412). Model
+  `unique` tuples (global scope; soft-deleted rows occupy the slot; null
+  values never conflict) require the new `uniqueConstraints` adapter
+  capability: the memory adapter enforces natively on create/update, and the
+  drizzle adapter translates database unique-violations (sqlite/pg/mysql
+  shapes) to 409 `ConflictException` — closing the constraint→409 concern for
+  the in-repo adapters.
+- 2097825: Thread the request tenant into `adapter.transaction()`. New optional
+  `TransactionContext` param (`{ tenantId? }`) is passed by the engine at every
+  tx-open site; the drizzle adapter gains an `onOpenTransaction(tx, ctx)` config
+  seam so consumers can issue `SET LOCAL <guc> = <tenant>` for Postgres RLS
+  defense-in-depth. Additive: adapters and configs that ignore the context are
+  unchanged.
+
+### Patch Changes
+
+- 783e415: Recognize Postgres's "duplicate key value violates unique constraint" message
+  shape in the unique-violation → 409 translation (previously only the `23505`
+  code matched), and exercise the pg dialect end to end via a new PGlite test
+  leg (predicates, cursor, restore, nested driver, real-transaction rollback).
+
 ## 1.18.1
 
 ### Patch Changes

@@ -1,5 +1,84 @@
 # Changelog
 
+## 1.19.0
+
+### Minor Changes
+
+- dee0eb9: Remove the dead `IMPLEMENTED_ENDPOINTS` export (stale since the extended-verb
+  registry landed — `resolveEnabledEndpoints` never read it; the live source of
+  implemented verbs is the kernel extended-verb registry) and promote
+  `clone.fieldsToReset` to a first-class, typed `clone?: { fieldsToReset?:
+string[] }` on `CrudConfig` and `ResourceConfig` (previously read via an
+  untyped cast in the clone executor).
+- 68f05e4: ETag/If-Match optimistic concurrency and unique-constraint enforcement
+  (hono-crud parity, closing the last two deferred conformance cells).
+  `etag: true` on a resource makes reads emit a strong content-hash `ETag`
+  (computed→mask→profile representation, stable across `?fields=`) and honor
+  `If-None-Match` (304, empty body); updates honor `If-Match` and reject a
+  stale tag with 409 CONFLICT (hono-crud's actual behavior — not 412). Model
+  `unique` tuples (global scope; soft-deleted rows occupy the slot; null
+  values never conflict) require the new `uniqueConstraints` adapter
+  capability: the memory adapter enforces natively on create/update, and the
+  drizzle adapter translates database unique-violations (sqlite/pg/mysql
+  shapes) to 409 `ConflictException` — closing the constraint→409 concern for
+  the in-repo adapters.
+- 0dcc62b: Add the `id: 'client'` primary-key strategy: the caller-supplied PK stays in
+  the derived CREATE body schema at its authored (typically required) shape —
+  static derivation, the per-tenant resolveSchema path, and the OpenAPI DTO all
+  follow — and the engine performs no generation (a create reaching the insert
+  seam without a PK is a 400). Update-side schemas still exclude the PK, and the
+  upsert/batchUpsert/import update legs never rewrite a matched row's PK (the
+  body PK is insert-leg identity only). A custom `dto.create` that omits the PK
+  under `id: 'client'` fails loudly at definition time. The memory adapter now
+  throws a 409 `ConflictException` on a duplicate-PK create instead of silently
+  overwriting. No adapter capability required; clone requires an `id` override.
+  Retires the erpos `ClientPkCaptureGuard` workaround.
+- b3fcdb6: Nested writes are now reachable end to end (hono-crud `nested-writes.ts`
+  parity). New `nestedWrites` flags on `RelationConfig`
+  (`allowCreate`/`allowUpdate`/`allowDelete`/`allowConnect`/`allowDisconnect`,
+  all default off) merge the relation's write shape into the derived body
+  schemas — CREATE accepts child payloads (single object for `hasOne`, array
+  for `hasMany`; the child shape omits `['id', foreignKey]` plus the parent
+  tenant column, which the engine force-stamps alongside defaulted timestamps
+  when the child schema declares them), UPDATE accepts a flag-gated ops
+  envelope (`create`/`update`/`delete`/`connect`/`disconnect`/`set`; `set`
+  requires BOTH connect and disconnect flags) — and the single create/update
+  verbs dispatch to the adapter's existing `NestedWriteDriver` inside the
+  parent write's transaction (previously the driver was unreachable). Empty
+  payloads are no-ops; id-only update entries are dropped; extended verbs
+  (batch family, upsert, clone, bulkPatch, import) reject surviving nested
+  payloads with a 400; live invalidation now also broadcasts the nested
+  relations' `crud:<relatedTable>` tags. Security note (documented +
+  define-time warning): `connect`/`set` relink related rows by id with no
+  engine-side tenant/ownership check — use database RLS on tenant-scoped
+  models. `belongsTo` nesting and create-via-`set` are deliberately
+  unsupported; audit/version capture remains parent-scoped.
+- 36cf850: Add `guards` to `CrudConfig`: `Partial<Record<CrudEndpointName, GuardType[]>>`,
+  stamped per synthesized handler. Per-verb HTTP guards now work on both `@Crud`
+  controllers and headless `CrudModule.forFeature` resources — exactly like
+  hand-written routes with `@UseGuards`. Guards run after class-level `@UseGuards`
+  and global guards (AND); `@Override`'d endpoints receive their declared config
+  guards plus any of their own. Programmatic `resource.execute` dispatch is
+  intentionally unaffected. Additive — existing configs stay valid.
+- d6bf44e: Add model-level `serializationProfile` (`{ exclude }`) — hono-crud
+  finalize-pipeline parity. Excluded fields are removed from every response body
+  (list/read/create/update, batch, upsert, clone, restore, search hits, export
+  JSON + CSV columns, import results, and same-model embedded relation rows);
+  aggregate requests referencing an excluded field are rejected with a 400. The
+  fields stay fully writable and intact at storage — filters and sorts match
+  them, persistence-side lifecycle hooks and version/audit snapshots see the
+  full row — and the strip wins over `?fields=` and
+  `fieldSelection.alwaysInclude`. Response-transform hooks
+  (`transformRead`/`transformList`) run after the strip, per hono-crud's
+  profile-before-transform order. Proven by the new finalize-pipeline
+  conformance cell over the memory and drizzle adapters.
+- 2097825: Thread the request tenant into `adapter.transaction()`. New optional
+  `TransactionContext` param (`{ tenantId? }`) is passed by the engine at every
+  tx-open site; the drizzle adapter gains an `onOpenTransaction(tx, ctx)` config
+  seam so consumers can issue `SET LOCAL <guc> = <tenant>` for Postgres RLS
+  defense-in-depth. Additive: adapters and configs that ignore the context are
+  unchanged.
+
 ## 1.18.1
 
 ### Patch Changes
