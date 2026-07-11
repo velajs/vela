@@ -91,6 +91,19 @@ describe('defineModel normalization', () => {
     expect(model.id).toBe('client');
   });
 
+  it('normalizes unique entries to tuples and rejects unknown columns', () => {
+    const model = defineModel({
+      name: 'u',
+      tableName: 'u',
+      schema: UserSchema,
+      unique: ['name', ['name', 'tenantId']],
+    });
+    expect(model.unique).toEqual([['name'], ['name', 'tenantId']]);
+    expect(() =>
+      defineModel({ name: 'u', tableName: 'u', schema: UserSchema, unique: ['nope'] }),
+    ).toThrow(/unique column 'nope'/);
+  });
+
   it('throws at definition when nestedWrites is set on belongsTo or without a schema', () => {
     const Related = UserSchema;
     expect(() =>

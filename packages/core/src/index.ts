@@ -46,6 +46,7 @@ export {
   type ResourceConfig,
 } from './kernel/resource';
 export type { EngineRequest, EngineResult } from './kernel/engine-request';
+export { generateETag, matchesIfMatch, matchesIfNoneMatch } from './kernel/etag';
 export type { CrudHooks, HookContext, HookMode, HookModeConfig } from './kernel/hook-types';
 export {
   CrudException,

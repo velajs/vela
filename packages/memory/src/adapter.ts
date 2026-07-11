@@ -51,6 +51,13 @@ export interface MemoryAdapterConfig {
   /** Soft-delete column, when the model soft-deletes. */
   softDeleteField?: string;
   relations?: Record<string, MemoryRelation>;
+  /**
+   * Unique tuples enforced natively on create/update (409 ConflictException).
+   * GLOBAL scope; soft-deleted rows still occupy the slot; tuples containing
+   * null/undefined never conflict (SQL semantics). Mirror the model's
+   * normalized `unique`.
+   */
+  unique?: string[][];
 }
 
 const CAPABILITIES: ReadonlySet<AdapterCapability> = new Set([
@@ -59,6 +66,7 @@ const CAPABILITIES: ReadonlySet<AdapterCapability> = new Set([
   'cursor',
   'nestedWrites',
   'cascade',
+  'uniqueConstraints',
 ] as const);
 
 /**
@@ -224,6 +232,25 @@ export function memoryAdapter<Row extends Record<string, unknown> = Record<strin
     },
   };
 
+  const uniqueTuples = config.unique ?? [];
+  /**
+   * First violated unique tuple, or undefined. SQL semantics: tuples with a
+   * null/undefined value never conflict; soft-deleted rows occupy the slot.
+   */
+  const violatedUnique = (candidate: Row, excludeKey?: string): string[] | undefined => {
+    for (const tuple of uniqueTuples) {
+      const values = tuple.map((column) => candidate[column]);
+      if (values.some((value) => value === null || value === undefined)) continue;
+      for (const [key, row] of table()) {
+        if (excludeKey !== undefined && key === excludeKey) continue;
+        if (tuple.every((column, i) => String((row as Row)[column]) === String(values[i]))) {
+          return tuple;
+        }
+      }
+    }
+    return undefined;
+  };
+
   return {
     capabilities: CAPABILITIES,
 
@@ -242,6 +269,10 @@ export function memoryAdapter<Row extends Record<string, unknown> = Record<strin
           `Duplicate primary key '${id}': a row with this key already exists`,
         );
       }
+      const violated = violatedUnique(row);
+      if (violated) {
+        throw new ConflictException(`Unique constraint violated on (${violated.join(', ')})`);
+      }
       table().set(id, row);
       return row;
     },
@@ -254,7 +285,12 @@ export function memoryAdapter<Row extends Record<string, unknown> = Record<strin
       const existing = findOne(lookup, false);
       if (!existing) return null;
       const updated = { ...existing, ...patch } as Row;
-      table().set(String((existing as Record<string, unknown>)[primaryKey]), updated);
+      const existingKey = String((existing as Record<string, unknown>)[primaryKey]);
+      const violated = violatedUnique(updated, existingKey);
+      if (violated) {
+        throw new ConflictException(`Unique constraint violated on (${violated.join(', ')})`);
+      }
+      table().set(existingKey, updated);
       return updated;
     },
 

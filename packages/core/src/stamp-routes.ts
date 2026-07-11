@@ -330,6 +330,7 @@ export function toEngineConfig(config: CrudConfig, adapter: CrudAdapter): Resour
     allowedIncludes: config.allowedIncludes,
     fieldSelection: config.fieldSelection,
     pagination: config.pagination,
+    etag: config.etag,
     upsert: config.upsert,
     clone: config.clone,
     batch: config.batch,

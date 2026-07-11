@@ -4,6 +4,7 @@
  */
 
 export type { EngineRequest, EngineRequestVars, EngineResult } from './engine-request';
+export { generateETag, matchesIfMatch, matchesIfNoneMatch } from './etag';
 export {
   defineResource,
   deriveCapabilityRequirements,

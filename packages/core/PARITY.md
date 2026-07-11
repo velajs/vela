@@ -97,11 +97,22 @@ group-1 cells against the native engine:
   the restore executor + route stamping landed (M4).
 - **managed-fields**, **pagination**, **filter-operators**: PASS verbatim (no
   gaps). No PARITY-GAP surfaced during the port.
-- **Deferred cells (NOT ported)**: `unique-conflict` needs unique-constraint
-  enforcement (the memory adapter has no constraint surface and the model layer
-  has no unique declaration — the source already skips it on the memory leg);
-  `etag-concurrency` needs ETag/If-Match support (no `etagEnabled` read/update
-  path in the native engine yet). Both revisit when those capabilities land.
+- **unique-conflict**: PORTED (1.19, cell 13) — model-level `unique` tuples +
+  the `uniqueConstraints` adapter capability. Memory enforces natively
+  (create/update scans, 409); drizzle translates database unique-violations
+  (sqlite/pg/mysql shapes) to 409 ConflictException at the ADAPTER level, so
+  the default envelope renders 409 natively — the constraint→409
+  errorMappers concern is closed for the in-repo adapters. Semantics: GLOBAL
+  scope (put the tenant column in the tuple for per-tenant uniqueness);
+  soft-deleted rows still occupy the slot (non-partial index); tuples with
+  null values never conflict (SQL semantics).
+- **etag-concurrency**: PORTED (1.19, cell 14) — `etag: true` on the resource
+  config: reads emit a STRONG content-hash `ETag` (SHA-256 of the
+  computed→mask→profile representation WITHOUT `?fields=` selection, 32 hex,
+  quoted) and honor `If-None-Match` (304, empty body); updates honor
+  `If-Match` with **409 CONFLICT on mismatch — hono-crud parity, NOT the
+  hypothesized 412/428** (verified against the hono-crud 0.13 dist). Delete/
+  upsert/bulkPatch do not check If-Match (hono-crud scope).
 
 ### Tenant cells (M3 gate)
 
@@ -209,7 +220,9 @@ drizzle's cursor branch agrees); all three cursor tests run un-skipped.
   request tenant; search's short `q` is VALIDATION_ERROR (was INVALID_QUERY).
 - **AggregateResult reshaped** to `{values?, groups?, totalGroups?}` (no
   in-repo adapter implemented the old `{buckets}` shape); constraint→409
-  mapping for clone/upsert remains an adapter/errorMappers concern.
+  mapping is CLOSED (1.19) for the in-repo adapters — drizzle translates
+  driver unique-violations to 409 ConflictException natively (errorMappers
+  stays the escape hatch for custom envelopes/exotic drivers).
 - **Drizzle `restore`**: CLOSED (M7). Was: "will need `restore` — loud
   ConfigurationException until then". Shipped: capability declared + implemented
   in drizzle/src/adapter.ts, exercised by the drizzle adapter tests and the
@@ -371,9 +384,9 @@ stores are **DI seams decoupled from the data adapter**: `VersioningStore` /
   row's PK is never rewritten; native `upsertOne` adapters must do the same
   (contract doc). A custom `dto.create` omitting the PK fails loudly at
   definition time. Duplicate caller PKs: the memory adapter now 409s
-  (`ConflictException`) instead of silently overwriting; SQL adapters surface
-  their constraint error (the constraint→409 errorMappers concern stays
-  tracked above). No adapter capability required; clone requires an `id`
+  (`ConflictException`) instead of silently overwriting; the drizzle adapter
+  now translates driver unique/PK violations to 409 ConflictException too
+  (1.19). No adapter capability required; clone requires an `id`
   override. Proven by managed-fields/schema-derive/resolve-schema/verbs/
   clone/upsert/batchUpsert/import unit tests + the crud-http
   "id: 'client' PK strategy" DTO round-trip. Retires `ClientPkCaptureGuard`.

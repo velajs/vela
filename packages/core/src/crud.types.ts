@@ -61,6 +61,8 @@ export interface CrudConfig<Row extends Record<string, unknown> = Record<string,
   allowedIncludes?: string[];
   fieldSelection?: ResourceConfig<Row>['fieldSelection'];
   pagination?: ResourcePaginationConfig;
+  /** ETag/If-Match optimistic concurrency (read ETag + 304; update If-Match → 409). */
+  etag?: ResourceConfig<Row>['etag'];
   /** Insert-or-update conflict target for the upsert family. */
   upsert?: ResourceConfig<Row>['upsert'];
   /** Source fields cleared before a clone insert (model/db defaults reapply). */

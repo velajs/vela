@@ -36,6 +36,10 @@ export function toResponse(c: Context, result: EngineResult): Response {
   for (const [name, value] of Object.entries(result.headers ?? {})) {
     c.header(name, value);
   }
+  // Bodiless results (304 Not Modified) — headers are already flushed above.
+  if (result.body === null || result.body === undefined) {
+    return c.body(null, result.status as never);
+  }
   // Non-JSON payloads (CSV export) set their own Content-Type and pass a
   // string body; everything else is the JSON envelope.
   if (typeof result.body === 'string' && result.headers?.['Content-Type'] !== undefined) {

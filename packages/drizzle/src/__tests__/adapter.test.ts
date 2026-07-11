@@ -24,6 +24,13 @@ const posts = sqliteTable('posts', {
   deletedAt: integer('deletedAt'),
 });
 
+const uniqItems = sqliteTable('uniq_items', {
+  id: text('id').primaryKey(),
+  name: text('name'),
+  email: text('email'),
+  deletedAt: integer('deletedAt'),
+});
+
 const versions = sqliteTable('versions', {
   id: text('id').primaryKey(),
   tableName: text('tableName').notNull(),
@@ -71,6 +78,9 @@ async function freshDb() {
   );
   await client.execute(
     'CREATE TABLE posts (id TEXT PRIMARY KEY, authorId TEXT, title TEXT, deletedAt INTEGER)',
+  );
+  await client.execute(
+    'CREATE TABLE uniq_items (id TEXT PRIMARY KEY, name TEXT, email TEXT, deletedAt INTEGER, UNIQUE(email))',
   );
   await client.execute(
     'CREATE TABLE versions (id TEXT PRIMARY KEY, tableName TEXT NOT NULL, recordId TEXT NOT NULL, version INTEGER NOT NULL, data TEXT NOT NULL, createdAt INTEGER NOT NULL, changedBy TEXT, changeReason TEXT)',
@@ -181,6 +191,25 @@ describe('drizzleAdapter core', () => {
     });
     rows = (await db.select().from(posts)) as Array<Record<string, unknown>>;
     expect(rows[0]).toMatchObject({ id: 'p1', authorId: 'u1' });
+  });
+
+  it('maps driver unique violations to a 409 ConflictException', async () => {
+    const adapter = drizzleAdapter({
+      db,
+      dialect: 'sqlite',
+      table: uniqItems,
+      softDeleteField: 'deletedAt',
+    });
+    await adapter.transaction((s) => adapter.create({ id: '1', email: 'a@x' }, s));
+    await expect(
+      adapter.transaction((s) => adapter.create({ id: '2', email: 'a@x' }, s)),
+    ).rejects.toMatchObject({ statusCode: 409, code: 'CONFLICT' });
+    await expect(
+      adapter.transaction(async (s) => {
+        await adapter.create({ id: '3', email: 'b@x' }, s);
+        return adapter.update({ field: 'id', value: '3' }, { email: 'a@x' }, s);
+      }),
+    ).rejects.toMatchObject({ statusCode: 409, code: 'CONFLICT' });
   });
 
   it('forwards TransactionContext to onOpenTransaction at tx open', async () => {

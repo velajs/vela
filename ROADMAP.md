@@ -35,8 +35,11 @@ hit directly come first.
    to the `NestedWriteDriver` in-transaction; extended verbs reject nested
    payloads (400). belongsTo nesting + create-via-set deliberately unported
    (PARITY.md carries the shipped entry).
-7. ETag/If-Match concurrency + unique-constraint surface — unblocks the
-   etag-concurrency and unique-conflict cells.
+7. ETag/If-Match concurrency + unique-constraint surface — DONE (1.19):
+   `etag: true` (strong content-hash ETag, If-None-Match 304, If-Match →
+   409 CONFLICT per hono-crud — not 412) + model `unique` tuples with the
+   `uniqueConstraints` capability (memory native, drizzle constraint→409);
+   cells 13 + 14 run over both adapters (PARITY.md carries the entries).
 8. Events family; field-level encryption (erpos uses its own encryption hooks,
    so demand is unproven — verify before building).
 

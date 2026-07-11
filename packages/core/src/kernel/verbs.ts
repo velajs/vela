@@ -11,9 +11,10 @@
  */
 
 import type { ListQuery, Page } from '../adapter/query-types';
-import { ForbiddenException, NotFoundException } from '../envelope/errors';
-import { applyComputedFieldsToArray } from '../model/computed-fields';
-import { applyProfileToArray } from '../model/serialization-profile';
+import { ConflictException, ForbiddenException, NotFoundException } from '../envelope/errors';
+import { applyComputedFields, applyComputedFieldsToArray } from '../model/computed-fields';
+import { applyProfile, applyProfileToArray } from '../model/serialization-profile';
+import { generateETag, matchesIfMatch, matchesIfNoneMatch } from './etag';
 import {
   nestedCreateRelations,
   nestedUpdateRelations,
@@ -118,6 +119,22 @@ export async function executeCreate(
   return { status: 201, body: envelopeOf(resource).success(shaped) };
 }
 
+/**
+ * The representation an ETag hashes: computed → mask → profile, WITHOUT
+ * request field-selection — the token must be stable across `?fields=`
+ * variants so a read's ETag matches the update-side If-Match comparison.
+ */
+async function etagFor(
+  resource: AnyResource,
+  policyCtx: ReturnType<typeof buildPolicyContext>,
+  row: Row,
+): Promise<string> {
+  let shaped = await applyComputedFields(resource.model, row);
+  shaped = maskFields(policyCtx, shaped, resource.model.policies) as Row;
+  shaped = applyProfile(resource.model, shaped);
+  return generateETag(shaped);
+}
+
 export async function executeRead(
   resource: AnyResource,
   req: EngineRequest,
@@ -146,6 +163,13 @@ export async function executeRead(
     const ctx = buildHookContext(req, { tx: undefined });
     shaped = (await config.hooks.transformRead(ctx, shaped as never)) as Row;
   }
+  if (config.etag) {
+    const tag = await etagFor(resource, policyCtx, row);
+    if (matchesIfNoneMatch(req.request?.headers.get('If-None-Match'), tag)) {
+      return { status: 304, body: null, headers: { ETag: tag } };
+    }
+    return { status: 200, body: envelopeOf(resource).success(shaped), headers: { ETag: tag } };
+  }
   return { status: 200, body: envelopeOf(resource).success(shaped) };
 }
 
@@ -170,6 +194,15 @@ export async function executeUpdate(
     if (!prior) throw new NotFoundException(model.name, lookup.value);
     if (!(await canWrite(policyCtx, prior, model.policies))) {
       throw new ForbiddenException();
+    }
+
+    // If-Match optimistic concurrency: mismatch is a 409 CONFLICT (hono-crud
+    // parity — not 412). An absent header is an unconditional update.
+    if (config.etag) {
+      const ifMatch = req.request?.headers.get('If-Match');
+      if (ifMatch != null && !matchesIfMatch(ifMatch, await etagFor(resource, policyCtx, prior))) {
+        throw new ConflictException('Resource has been modified by another request');
+      }
     }
 
     const managed = applyManagedUpdateFields(model, patchMain);
@@ -209,6 +242,13 @@ export async function executeUpdate(
   });
 
   const shaped = await shapeOne(resource, policyCtx, req, current);
+  if (config.etag) {
+    return {
+      status: 200,
+      body: envelopeOf(resource).success(shaped),
+      headers: { ETag: await etagFor(resource, policyCtx, current) },
+    };
+  }
   return { status: 200, body: envelopeOf(resource).success(shaped) };
 }
 

@@ -43,6 +43,7 @@ import type {
   RelationLoader,
   TransactionContext,
 } from '@velajs/crud/adapter';
+import { ConflictException } from '@velajs/crud';
 import { decodeCursor, encodeCursor } from '@velajs/crud/query';
 import { asDatabase, type DrizzleDatabase, type DrizzleDialect, type DrizzleSql, type DrizzleTable } from './database';
 import { andAll, buildWhere, getColumn, orAll, substringMatch } from './filters';
@@ -95,7 +96,41 @@ const CAPABILITIES: ReadonlySet<AdapterCapability> = new Set([
   'nestedWrites',
   'cascade',
   'softDelete',
+  'uniqueConstraints',
 ] as const);
+
+/**
+ * Translate driver unique-violation errors to a 409 ConflictException —
+ * adapter-owned so the default envelope renders 409 natively (errorMappers
+ * stays the custom-envelope escape hatch). Covers sqlite/libsql message +
+ * codes, pg 23505, mysql 1062/ER_DUP_ENTRY.
+ */
+function isUniqueViolation(err: unknown): boolean {
+  // drizzle-orm wraps driver errors (DrizzleQueryError) — the violation
+  // signal lives down the `cause` chain, so walk it.
+  let current: unknown = err;
+  for (let depth = 0; current !== null && current !== undefined && depth < 5; depth++) {
+    const e = current as { message?: unknown; code?: unknown; errno?: unknown; cause?: unknown };
+    const message = String(e.message ?? '');
+    if (
+      message.includes('UNIQUE constraint failed') ||
+      e.code === 'SQLITE_CONSTRAINT' ||
+      e.code === 'SQLITE_CONSTRAINT_UNIQUE' ||
+      e.code === '23505' ||
+      e.errno === 1062 ||
+      e.code === 'ER_DUP_ENTRY'
+    ) {
+      return true;
+    }
+    current = e.cause;
+  }
+  return false;
+}
+
+function rethrowMapped(err: unknown): never {
+  if (isUniqueViolation(err)) throw new ConflictException('Unique constraint violated');
+  throw err;
+}
 
 export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig): CrudAdapter<R> {
   const dialect: DrizzleDialect = config.dialect ?? 'sqlite';
@@ -242,19 +277,23 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
 
     async create(input, scope) {
       const db = handle(scope);
-      if (dialect === 'mysql') {
-        // mysql has no RETURNING: insert then re-select by PK (client-supplied)
-        // or insertId (database-generated). Written per hono-crud; UNTESTED.
-        const result = (await db.insert(table).values(input)) as { insertId?: number | string };
-        const pk = (input as Row)[primaryKey] ?? result.insertId;
-        const row = await selectOne(db, eq(pkColumn(), pk));
-        if (!row) throw new Error('drizzleAdapter: created row not found after insert');
-        return row;
+      try {
+        if (dialect === 'mysql') {
+          // mysql has no RETURNING: insert then re-select by PK (client-supplied)
+          // or insertId (database-generated). Written per hono-crud; UNTESTED.
+          const result = (await db.insert(table).values(input)) as { insertId?: number | string };
+          const pk = (input as Row)[primaryKey] ?? result.insertId;
+          const row = await selectOne(db, eq(pkColumn(), pk));
+          if (!row) throw new Error('drizzleAdapter: created row not found after insert');
+          return row;
+        }
+        const rows = (await db.insert(table).values(input).returning()) as R[];
+        const created = rows[0];
+        if (!created) throw new Error('drizzleAdapter: insert returned no row');
+        return created;
+      } catch (err) {
+        rethrowMapped(err);
       }
-      const rows = (await db.insert(table).values(input).returning()) as R[];
-      const created = rows[0];
-      if (!created) throw new Error('drizzleAdapter: insert returned no row');
-      return created;
     },
 
     async readOne(lookup, opts: ReadOptions, scope) {
@@ -266,7 +305,11 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
       const where = lookupWhere(lookup, false);
       const existing = await selectOne(db, where);
       if (!existing) return null;
-      await db.update(table).set(patch).where(where);
+      try {
+        await db.update(table).set(patch).where(where);
+      } catch (err) {
+        rethrowMapped(err);
+      }
       return selectOne(db, eq(pkColumn(), (existing as Row)[primaryKey]));
     },
 
@@ -439,7 +482,11 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
       const where = andAll(buildWhere(table, filters, dialect), visibility);
       const matched = (await db.select().from(table).where(where)) as R[];
       if (matched.length === 0) return { count: 0, records: [] };
-      await db.update(table).set(patch).where(where);
+      try {
+        await db.update(table).set(patch).where(where);
+      } catch (err) {
+        rethrowMapped(err);
+      }
       const pks = matched.map((row) => (row as Row)[primaryKey]);
       const updated = (await db
         .select()
@@ -451,18 +498,22 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
     async createMany(rows, scope) {
       const db = handle(scope);
       if (rows.length === 0) return [];
-      if (dialect === 'mysql') {
-        // Per-row insert + re-select (no RETURNING). UNTESTED.
-        const out: R[] = [];
-        for (const row of rows) {
-          await db.insert(table).values(row);
-          const pk = (row as Row)[primaryKey];
-          const created = await selectOne(db, eq(pkColumn(), pk));
-          if (created) out.push(created);
+      try {
+        if (dialect === 'mysql') {
+          // Per-row insert + re-select (no RETURNING). UNTESTED.
+          const out: R[] = [];
+          for (const row of rows) {
+            await db.insert(table).values(row);
+            const pk = (row as Row)[primaryKey];
+            const created = await selectOne(db, eq(pkColumn(), pk));
+            if (created) out.push(created);
+          }
+          return out;
         }
-        return out;
+        return (await db.insert(table).values(rows).returning()) as R[];
+      } catch (err) {
+        rethrowMapped(err);
       }
-      return (await db.insert(table).values(rows).returning()) as R[];
     },
 
     nested,

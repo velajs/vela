@@ -99,6 +99,26 @@ export function defineModel<
   const tenantField = normalizeTenantField(config.multiTenant);
   if (tenantField !== undefined) normalized.tenantField = tenantField;
 
+  // Loud, never silent: a unique column absent from the schema would make
+  // the constraint silently unenforceable — fail at definition time.
+  if (config.unique !== undefined) {
+    const shape = new Set(Object.keys(config.schema.shape));
+    const tuples = config.unique.map((entry) => (Array.isArray(entry) ? entry : [entry]));
+    for (const tuple of tuples) {
+      if (tuple.length === 0) {
+        throw new ConfigurationException(`Model '${config.name}': empty unique tuple`);
+      }
+      for (const column of tuple) {
+        if (!shape.has(column)) {
+          throw new ConfigurationException(
+            `Model '${config.name}': unique column '${column}' is not in the schema`,
+          );
+        }
+      }
+    }
+    normalized.unique = tuples;
+  }
+
   // Loud, never silent: nested writes only work in the has* direction (the
   // driver stamps the FK on the RELATED row keyed by the parent) and need the
   // related schema to derive the write shape — fail at definition time.

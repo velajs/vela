@@ -25,6 +25,34 @@ function seed(rows: Array<Record<string, unknown>>, table = 'users'): void {
 }
 
 describe('memoryAdapter core methods', () => {
+  it('unique tuples: create/update violations 409; tombstones occupy; nulls never conflict', async () => {
+    const adapter = memoryAdapter({
+      tableName: 'uniq',
+      primaryKey: 'id',
+      softDeleteField: 'deletedAt',
+      unique: [['email']],
+    });
+    await adapter.create({ id: '1', email: 'a@x' }, scope);
+    await expect(adapter.create({ id: '2', email: 'a@x' }, scope)).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'CONFLICT',
+    });
+    await adapter.create({ id: '3', email: 'b@x' }, scope);
+    await expect(
+      adapter.update({ field: 'id', value: '3' }, { email: 'a@x' }, scope),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    // A self-update to the SAME value never conflicts with itself.
+    await adapter.update({ field: 'id', value: '1' }, { email: 'a@x' }, scope);
+    // SQL semantics: null values never occupy the slot.
+    await adapter.create({ id: '4', email: null }, scope);
+    await adapter.create({ id: '5', email: null }, scope);
+    // Soft-deleted rows still occupy (non-partial-index semantics).
+    await adapter.delete({ field: 'id', value: '1' }, { softDeleteField: 'deletedAt' }, scope);
+    await expect(adapter.create({ id: '6', email: 'a@x' }, scope)).rejects.toMatchObject({
+      statusCode: 409,
+    });
+  });
+
   it('create stores the row keyed by primary key', async () => {
     const adapter = users();
     const row = await adapter.create({ id: 'u1', name: 'Ada' }, scope);

@@ -67,6 +67,13 @@ export const ADAPTER_CAPABILITIES = [
    * match-and-restore of a soft-deleted row) to work.
    */
   'restore',
+  /**
+   * The adapter enforces the model's `unique` tuples — natively (memory
+   * scans) or via database constraints translated to 409 ConflictException
+   * (SQL drivers). Member-less: enforcement is behavioral on the write
+   * methods, not a dedicated method.
+   */
+  'uniqueConstraints',
 ] as const;
 
 export type AdapterCapability = (typeof ADAPTER_CAPABILITIES)[number];

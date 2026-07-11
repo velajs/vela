@@ -32,15 +32,19 @@ import { clearMemoryStorage, memoryAdapter } from '@velajs/crud-memory';
 import type { AdapterContext, AdapterDescriptor } from '../contract';
 import {
   CONFORMANCE_CURSOR_TABLE,
+  CONFORMANCE_ETAG_TABLE,
   CONFORMANCE_FILTER_CONFIG,
   CONFORMANCE_PROFILE_TABLE,
   CONFORMANCE_SORT_FIELDS,
   CONFORMANCE_TABLE,
   CONFORMANCE_TENANT_TABLE,
+  CONFORMANCE_UNIQUE_TABLE,
   conformanceModel,
   cursorModel,
+  etagModel,
   serializationModel,
   tenantModel,
+  uniqueModel,
 } from '../model';
 
 /** Conflict key for the upsert family (hono-crud's conformance app used `email`). */
@@ -126,6 +130,27 @@ async function setup(): Promise<AdapterContext> {
   })
   class CursorItemsController {}
 
+  const uniqueAdapter = memoryAdapter({
+    tableName: CONFORMANCE_UNIQUE_TABLE,
+    primaryKey: 'id',
+    softDeleteField: 'deletedAt',
+    unique: [['email']],
+  });
+
+  const etagAdapter = memoryAdapter({
+    tableName: CONFORMANCE_ETAG_TABLE,
+    primaryKey: 'id',
+    softDeleteField: 'deletedAt',
+  });
+
+  @Controller('/unique-items')
+  @Crud({ model: uniqueModel, adapter: uniqueAdapter })
+  class UniqueItemsController {}
+
+  @Controller('/etag-items')
+  @Crud({ model: etagModel, adapter: etagAdapter, etag: true })
+  class EtagItemsController {}
+
   @Controller('/profile-items')
   @Crud({
     model: serializationModel,
@@ -147,6 +172,8 @@ async function setup(): Promise<AdapterContext> {
       TenantItemsController,
       CursorItemsController,
       ProfileItemsController,
+      UniqueItemsController,
+      EtagItemsController,
     ],
   })
   class AppModule {}
@@ -179,7 +206,7 @@ async function setup(): Promise<AdapterContext> {
 export const memoryConformance: AdapterDescriptor = {
   name: 'memory',
   capabilities: {
-    uniqueConstraints: false,
+    uniqueConstraints: true,
     timestampKind: 'epoch-ms',
     relationScoping: true,
   },

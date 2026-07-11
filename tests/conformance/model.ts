@@ -146,6 +146,42 @@ export const serializationModel = defineModel({
   },
 });
 
+// ============================================================================
+// Unique-constraint model variant (unique-conflict cell)
+// ============================================================================
+
+/** Physical table for the unique-enforcing `/unique-items` route family. */
+export const CONFORMANCE_UNIQUE_TABLE = 'conformance_unique_items';
+
+/**
+ * The unique-conflict model: the shared conformance fields with a UNIQUE
+ * email — enforced natively by the memory adapter and by a database UNIQUE
+ * index on the drizzle leg (both surface violations as 409).
+ */
+export const uniqueModel = defineModel({
+  name: 'uniqueItem',
+  tableName: CONFORMANCE_UNIQUE_TABLE,
+  schema: conformanceSchema,
+  primaryKeys: ['id'],
+  softDelete: { field: 'deletedAt' },
+  unique: ['email'],
+});
+
+// ============================================================================
+// ETag model variant (etag-concurrency cell)
+// ============================================================================
+
+/** Physical table for the ETag-enabled `/etag-items` route family. */
+export const CONFORMANCE_ETAG_TABLE = 'conformance_etag_items';
+
+export const etagModel = defineModel({
+  name: 'etagItem',
+  tableName: CONFORMANCE_ETAG_TABLE,
+  schema: conformanceSchema,
+  primaryKeys: ['id'],
+  softDelete: { field: 'deletedAt' },
+});
+
 /**
  * Operators every adapter must accept on the list endpoint. The filter cells
  * exercise exactly these.

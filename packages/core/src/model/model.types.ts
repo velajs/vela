@@ -246,6 +246,15 @@ export interface ModelConfig<
   computedFields?: ComputedFieldsConfig<z.infer<T>>;
   /** Strip fields from every response body (hono-crud finalize-pipeline). */
   serializationProfile?: SerializationProfile;
+  /**
+   * Unique constraints, one entry per constraint: a column name or a
+   * composite tuple. GLOBAL scope (include the tenant column in the tuple
+   * for per-tenant uniqueness); soft-deleted rows still occupy the slot;
+   * tuples containing null/undefined never conflict (SQL semantics).
+   * Requires an adapter with the `uniqueConstraints` capability; violations
+   * surface as 409 ConflictException.
+   */
+  unique?: Array<string | string[]>;
   /** Row/field-level access policies applied uniformly by the engine. */
   policies?: ModelPolicies<z.infer<T>>;
   /** Per-request (per-tenant) schema override; falls back to `schema`. */
@@ -306,6 +315,8 @@ export interface Model<
   relations?: TRelations;
   computedFields?: ComputedFieldsConfig<z.infer<T>>;
   serializationProfile?: SerializationProfile;
+  /** Normalized unique constraints — every entry a column tuple. */
+  unique?: string[][];
   policies?: ModelPolicies<z.infer<T>>;
   resolveSchema?: (ctx: SchemaResolveContext) => T | Promise<T>;
   table?: TTable;

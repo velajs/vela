@@ -22,8 +22,10 @@ import {
   CONFORMANCE_SORT_FIELDS,
   conformanceModel,
   cursorModel,
+  etagModel,
   serializationModel,
   tenantModel,
+  uniqueModel,
 } from '../model';
 
 const UPSERT_KEYS = ['email'];
@@ -50,6 +52,8 @@ const profileTable = sqliteTable('conformance_profile_items', {
   ...baseColumns,
   parentId: text('parentId'),
 });
+const uniqueTable = sqliteTable('conformance_unique_items', baseColumns);
+const etagTable = sqliteTable('conformance_etag_items', baseColumns);
 
 const BASE_DDL =
   'id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, role TEXT NOT NULL, ' +
@@ -66,6 +70,10 @@ async function setup(): Promise<AdapterContext> {
   );
   await client.execute(`CREATE TABLE conformance_cursor_items (${BASE_DDL})`);
   await client.execute(`CREATE TABLE conformance_profile_items (${BASE_DDL}, parentId TEXT)`);
+  // The unique leg enforces via a real database constraint (adapter maps the
+  // driver violation to 409 ConflictException).
+  await client.execute(`CREATE TABLE conformance_unique_items (${BASE_DDL}, UNIQUE(email))`);
+  await client.execute(`CREATE TABLE conformance_etag_items (${BASE_DDL})`);
 
   const itemAdapter = drizzleAdapter({
     db,
@@ -130,6 +138,27 @@ async function setup(): Promise<AdapterContext> {
   })
   class CursorItemsController {}
 
+  const uniqueAdapter = drizzleAdapter({
+    db,
+    dialect: 'sqlite',
+    table: uniqueTable,
+    softDeleteField: 'deletedAt',
+  });
+  const etagAdapter = drizzleAdapter({
+    db,
+    dialect: 'sqlite',
+    table: etagTable,
+    softDeleteField: 'deletedAt',
+  });
+
+  @Controller('/unique-items')
+  @Crud({ model: uniqueModel, adapter: uniqueAdapter })
+  class UniqueItemsController {}
+
+  @Controller('/etag-items')
+  @Crud({ model: etagModel, adapter: etagAdapter, etag: true })
+  class EtagItemsController {}
+
   @Controller('/profile-items')
   @Crud({
     model: serializationModel,
@@ -149,6 +178,8 @@ async function setup(): Promise<AdapterContext> {
       TenantItemsController,
       CursorItemsController,
       ProfileItemsController,
+      UniqueItemsController,
+      EtagItemsController,
     ],
   })
   class AppModule {}
@@ -176,6 +207,8 @@ async function setup(): Promise<AdapterContext> {
       await client.execute('DELETE FROM conformance_tenant_items');
       await client.execute('DELETE FROM conformance_cursor_items');
       await client.execute('DELETE FROM conformance_profile_items');
+      await client.execute('DELETE FROM conformance_unique_items');
+      await client.execute('DELETE FROM conformance_etag_items');
     },
   };
 }
@@ -183,7 +216,7 @@ async function setup(): Promise<AdapterContext> {
 export const drizzleConformance: AdapterDescriptor = {
   name: 'drizzle',
   capabilities: {
-    uniqueConstraints: false,
+    uniqueConstraints: true,
     timestampKind: 'epoch-ms',
     relationScoping: true,
   },

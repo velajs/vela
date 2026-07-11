@@ -342,6 +342,52 @@ describe('nested writes (create/update dispatch)', () => {
   });
 });
 
+describe('etag (optimistic concurrency)', () => {
+  it('read emits the tag + 304; update honors If-Match (409 on stale)', async () => {
+    const { resource, store } = makeResource({ etag: true });
+    store.set('a', { id: 'a', name: 'A', qty: 1 });
+
+    const read = await resource.execute('read', req({ id: 'a' }));
+    const tag = read.headers?.ETag as string;
+    expect(tag).toMatch(/^"[0-9a-f]{32}"$/);
+
+    const cached = await resource.execute(
+      'read',
+      req({ id: 'a', request: new Request('http://t/', { headers: { 'If-None-Match': tag } }) }),
+    );
+    expect(cached.status).toBe(304);
+    expect(cached.body).toBeNull();
+    expect(cached.headers?.ETag).toBe(tag);
+
+    // Stale If-Match → 409, nothing written.
+    await expect(
+      resource.execute(
+        'update',
+        req({
+          id: 'a',
+          body: { name: 'B' },
+          request: new Request('http://t/', { headers: { 'If-Match': '"00000000000000000000000000000bad"' } }),
+        }),
+      ),
+    ).rejects.toMatchObject({ statusCode: 409, code: 'CONFLICT' });
+    expect(store.get('a')?.name).toBe('A');
+
+    // Current If-Match → 200 with a rotated tag.
+    const ok = await resource.execute(
+      'update',
+      req({
+        id: 'a',
+        body: { name: 'B' },
+        request: new Request('http://t/', { headers: { 'If-Match': tag } }),
+      }),
+    );
+    expect(ok.status).toBe(200);
+    expect(ok.headers?.ETag).toMatch(/^"[0-9a-f]{32}"$/);
+    expect(ok.headers?.ETag).not.toBe(tag);
+    expect(store.get('a')?.name).toBe('B');
+  });
+});
+
 describe('create', () => {
   it('validates, applies managed fields, and returns 201 with the default envelope', async () => {
     const { resource } = makeResource();

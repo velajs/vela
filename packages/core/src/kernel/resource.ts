@@ -53,6 +53,12 @@ export interface ResourceConfig<Row extends Record<string, unknown> = Record<str
     defaults?: string[];
   };
   pagination?: ResourcePaginationConfig;
+  /**
+   * ETag/If-Match optimistic concurrency (hono-crud `etagEnabled`): read
+   * emits a strong content-hash `ETag` (+ 304 on `If-None-Match`), update
+   * honors `If-Match` (409 CONFLICT on mismatch — hono-crud parity, not 412).
+   */
+  etag?: boolean;
   /** Insert-or-update conflict target for the upsert family. */
   upsert?: { keys: string[] };
   /** Source fields cleared before a clone insert (model/db defaults reapply). */
@@ -109,6 +115,9 @@ export function deriveCapabilityRequirements(
   }
   if (config.model.softDeleteField !== undefined) {
     requirements.push({ capability: 'softDelete', reason: 'model softDelete' });
+  }
+  if (config.model.unique !== undefined && config.model.unique.length > 0) {
+    requirements.push({ capability: 'uniqueConstraints', reason: 'model unique' });
   }
   return requirements;
 }
