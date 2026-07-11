@@ -28,7 +28,7 @@ importers:
         version: 1.18.0
       drizzle-orm:
         specifier: ^0.45.2
-        version: 0.45.2(@libsql/client@0.17.4)
+        version: 0.45.2(@electric-sql/pglite@0.5.4)(@libsql/client@0.17.4)
       hono:
         specifier: ^4
         version: 4.12.27
@@ -101,6 +101,9 @@ importers:
 
   packages/drizzle:
     devDependencies:
+      '@electric-sql/pglite':
+        specifier: ^0.5.4
+        version: 0.5.4
       '@libsql/client':
         specifier: ^0.17.4
         version: 0.17.4
@@ -109,10 +112,10 @@ importers:
         version: link:../core
       drizzle-orm:
         specifier: ^0.45.2
-        version: 0.45.2(@libsql/client@0.17.4)
+        version: 0.45.2(@electric-sql/pglite@0.5.4)(@libsql/client@0.17.4)
       drizzle-zod:
         specifier: ^0.8.3
-        version: 0.8.3(drizzle-orm@0.45.2(@libsql/client@0.17.4))(zod@4.3.6)
+        version: 0.8.3(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@libsql/client@0.17.4))(zod@4.3.6)
       zod:
         specifier: ^4
         version: 4.3.6
@@ -189,6 +192,9 @@ packages:
 
   '@changesets/write@0.4.0':
     resolution: {integrity: sha512-CdTLvIOPiCNuH71pyDu3rA+Q0n65cmAbXnwWH84rKGiFumFzkmHNT8KHTMEchcxN+Kl8I54xGUhJ7l3E7X396Q==}
+
+  '@electric-sql/pglite@0.5.4':
+    resolution: {integrity: sha512-yYZUyyXrHU7tPlCjwZQJ6hIG9DscdCCn7Uk0mYKwC1FeHX286AbcmFveMiRBEak8e9iPupjsoVImN3yJZVed2g==}
 
   '@esbuild/aix-ppc64@0.27.3':
     resolution: {integrity: sha512-9fJMTNFTWZMh5qwrBItuziu834eOCUcEqymSH7pY+zoMVEZg3gcPuBNxH1EvfVYe9h0x/Ptw8KBzv7qxb7l8dg==}
@@ -2074,6 +2080,8 @@ snapshots:
       human-id: 4.2.0
       prettier: 2.8.8
 
+  '@electric-sql/pglite@0.5.4': {}
+
   '@esbuild/aix-ppc64@0.27.3':
     optional: true
 
@@ -2785,13 +2793,14 @@ snapshots:
     dependencies:
       path-type: 4.0.0
 
-  drizzle-orm@0.45.2(@libsql/client@0.17.4):
+  drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@libsql/client@0.17.4):
     optionalDependencies:
+      '@electric-sql/pglite': 0.5.4
       '@libsql/client': 0.17.4
 
-  drizzle-zod@0.8.3(drizzle-orm@0.45.2(@libsql/client@0.17.4))(zod@4.3.6):
+  drizzle-zod@0.8.3(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(@libsql/client@0.17.4))(zod@4.3.6):
     dependencies:
-      drizzle-orm: 0.45.2(@libsql/client@0.17.4)
+      drizzle-orm: 0.45.2(@electric-sql/pglite@0.5.4)(@libsql/client@0.17.4)
       zod: 4.3.6
 
   enquirer@2.4.1:

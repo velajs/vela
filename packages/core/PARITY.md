@@ -333,9 +333,14 @@ stores are **DI seams decoupled from the data adapter**: `VersioningStore` /
   a real transaction — atomic, exact `created` flag; hono-crud used ON
   CONFLICT) nor `nativeSearch` (hono-crud's drizzle search was LIKE-based; the
   engine fallback is equivalent).
-- **sqlite (libsql) fully exercised** — 14 unit tests + the full 38-cell
-  conformance leg. pg/mysql branches are written per hono-crud (POSITION/
-  LOCATE substring predicates, mysql insertId without RETURNING) but UNTESTED.
+- **sqlite (libsql) fully exercised** — unit tests + the full conformance
+  leg. **pg leg TESTED (1.19)** via PGlite (in-process Postgres,
+  adapter.pg.test.ts): core five, POSITION/LOWER substring predicates,
+  cursor, restore, nested driver, real-tx rollback, and 23505/"duplicate key
+  value" unique violations → 409 (isUniqueViolation recognizes the pg
+  message shape). mysql branches remain written-per-hono-crud but UNTESTED
+  (LOCATE predicates, insertId without RETURNING — no embeddable server; add
+  a leg when a consumer needs it).
 - libsql caveat: transactions open a new connection, so `:memory:` databases
   are per-connection — tests use file-backed temp DBs.
 - Workers-pool conformance leg DEFERRED: the drizzle leg cannot run in

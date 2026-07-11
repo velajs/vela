@@ -51,8 +51,10 @@ hit directly come first.
 
 ## Adapter residuals
 
-10. Drizzle pg/mysql branches are written per hono-crud but UNTESTED (sqlite/
-    libsql only); add legs when a consumer needs them.
+10. Drizzle dialect legs — pg DONE (1.19): tested via PGlite
+    (adapter.pg.test.ts — predicates, unique→409, nested, real-tx rollback).
+    mysql remains written-per-hono-crud but UNTESTED (no embeddable server);
+    add a leg when a consumer needs it.
 11. Workers-pool conformance leg — deferred with rationale in PARITY.md.
 
 ## Vela-side (owning repo: ../vela)

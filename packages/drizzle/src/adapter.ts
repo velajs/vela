@@ -114,6 +114,7 @@ function isUniqueViolation(err: unknown): boolean {
     const message = String(e.message ?? '');
     if (
       message.includes('UNIQUE constraint failed') ||
+      message.includes('duplicate key value violates unique constraint') || // pg message shape
       e.code === 'SQLITE_CONSTRAINT' ||
       e.code === 'SQLITE_CONSTRAINT_UNIQUE' ||
       e.code === '23505' ||
