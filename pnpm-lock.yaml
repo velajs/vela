@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@velajs/errors':
-        specifier: link:../errors
-        version: link:../errors
+        specifier: ^1.0.0
+        version: 1.0.0
       '@velajs/live-protocol':
         specifier: ^1.0.0
         version: 1.0.0
@@ -841,6 +841,10 @@ packages:
 
   '@types/unist@3.0.3':
     resolution: {integrity: sha512-ko/gIFJRv177XgZsZcBwnqJN5x/Gien8qNOn0D5bQU/zAzVf9Zt3BlcUiLqhV9y4ARk0GbT3tnUiPNgnTXzc/Q==}
+
+  '@velajs/errors@1.0.0':
+    resolution: {integrity: sha512-e7pjXJrb52FN+/A6SdENyYIQHW3qu+LbvkNAUaX1kSTrwRAlz5C8wlnLlLj5ki1IWAEfoC0D052AMpsMSBId2w==}
+    engines: {node: '>=20'}
 
   '@velajs/live-protocol@1.0.0':
     resolution: {integrity: sha512-TBEHd8XODRyvVUbjh6IUeH44coZ6rzBgS1XvIsGcQCKTMp39ywPbDrf1fH51stXVaAymFBkucJGb+UjY9h2qCg==}
@@ -2340,6 +2344,8 @@ snapshots:
       undici-types: 8.3.0
 
   '@types/unist@3.0.3': {}
+
+  '@velajs/errors@1.0.0': {}
 
   '@velajs/live-protocol@1.0.0': {}
 
