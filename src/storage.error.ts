@@ -34,6 +34,14 @@ export interface StorageErrorOptions {
   status?: number;
   /** Override the default retryability implied by {@link StorageErrorCode}. */
   retryable?: boolean;
+  /**
+   * True when `message` came from a provider/transport/wrapped source rather
+   * than being authored as client-safe text. The HTTP controller redacts such
+   * messages so raw provider detail never reaches a client. Default false —
+   * a bare `new StorageError(code, msg)` is the author's vouch that `msg` is
+   * client-safe; driver/wrap code MUST set this when echoing provider text.
+   */
+  internal?: boolean;
 }
 
 export class StorageError extends Error {
@@ -41,19 +49,23 @@ export class StorageError extends Error {
   readonly code: StorageErrorCode;
   readonly retryable: boolean;
   readonly status: number | undefined;
+  /** Whether `message` is non-client-safe (provider/transport/wrapped origin). */
+  readonly internal: boolean;
 
   constructor(code: StorageErrorCode, message: string, options?: StorageErrorOptions) {
     super(message, options?.cause !== undefined ? { cause: options.cause } : undefined);
     this.code = code;
     this.status = options?.status;
     this.retryable = options?.retryable ?? RETRYABLE.has(code);
+    this.internal = options?.internal ?? false;
   }
 
   /** Wrap an arbitrary thrown value as a `StorageError` (idempotent). */
   static wrap(e: unknown): StorageError {
     if (e instanceof StorageError) return e;
     if (isAbort(e)) return new StorageError('Aborted', 'operation aborted', { cause: e });
-    return new StorageError('Provider', e instanceof Error ? e.message : String(e), { cause: e });
+    // The wrapped message is arbitrary provider/host text — never client-safe.
+    return new StorageError('Provider', e instanceof Error ? e.message : String(e), { cause: e, internal: true });
   }
 
   /** Map a transport status code to a `StorageError` (5xx/429 retryable). */
@@ -74,6 +86,8 @@ export class StorageError extends Error {
       status,
       cause,
       retryable: status === 429 || status >= 500,
+      // Message came off a transport response — treat as non-client-safe.
+      internal: true,
     });
   }
 }

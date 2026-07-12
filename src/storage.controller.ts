@@ -67,7 +67,13 @@ export function createStorageController(
     private fail(c: Context, e: unknown): Response {
       const err = e instanceof StorageError ? e : StorageError.wrap(e);
       const { wire, status } = mapError(err.code);
-      return c.json({ error: { code: wire, message: err.message } }, status as never);
+      // Never echo a provider/transport/wrapped message to the client: those are
+      // flagged `internal` (driver <Message>/<Code>, StorageError.wrap, fromStatus)
+      // and can carry host/bucket/credential detail — including on a 4xx status.
+      // Redact internal errors at any status, plus all upstream (5xx) responses;
+      // 4xx codes with an author-vouched message echo it.
+      const message = err.internal || status >= 500 ? 'storage backend error' : err.message;
+      return c.json({ error: { code: wire, message } }, status as never);
     }
 
     @Post('/sign-upload')

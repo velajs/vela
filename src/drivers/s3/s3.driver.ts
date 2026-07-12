@@ -89,6 +89,9 @@ function toError(status: number, code: string | undefined, message: string | und
   return new StorageError(mapped, message ?? code ?? `S3 error${key ? ` (${key})` : ''}`, {
     status: status >= 400 ? status : undefined,
     retryable,
+    // `message`/`code` are the provider's own <Message>/<Code> — never client-safe,
+    // even on a 4xx status (e.g. AccessDenied/NoSuchKey text can carry internal detail).
+    internal: true,
   });
 }
 
