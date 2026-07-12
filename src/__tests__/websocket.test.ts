@@ -24,6 +24,7 @@ import {
   SubscribeMessage,
   MessageBody,
   ConnectedSocket,
+  ReservedWsEvent,
 } from '../websocket/websocket.decorators.js';
 import {
   WS_GATEWAY_METADATA,
@@ -43,6 +44,7 @@ import type {
   OnGatewayInit,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  ReservedWsEventHandler,
 } from '../websocket/websocket.types.js';
 
 type SinkClient = WsClient & { received: Array<{ event: string; data: unknown }> };
@@ -685,5 +687,44 @@ describe('WsDispatcher — exception frames through toErrorBody (Task 9)', () =>
     ]);
     // Report FIRST always: the original error + the exception-filter-threw report.
     expect(errorSpy).toHaveBeenCalledTimes(2);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Observability gap (whole-branch review): a reserved (`$…`) event handler
+  // throwing was swallowed by handleError with a bare console.warn — a custom
+  // APP_EXCEPTION_HANDLER never saw it. handleError now routes through the shared
+  // reporter (default reporter → console.error). This path deliberately sends NO
+  // client frame (reserved frames own their own responses).
+  // ---------------------------------------------------------------------------
+  it('reserved-event handler throwing → routed through the reporter, NO client frame sent', async () => {
+    @ReservedWsEvent('$boom')
+    @Injectable()
+    class BoomReserved implements ReservedWsEventHandler {
+      async handleReservedEvent(): Promise<void> {
+        throw new Error('reserved boom');
+      }
+    }
+
+    @WebSocketGateway({ path: '/g' })
+    class Gateway {
+      @SubscribeMessage('noop')
+      onNoop() {}
+    }
+
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [Gateway, BoomReserved] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const client = new FakeClient();
+
+    await app.get(WsDispatcher).dispatchMessage('/g', client, frame('$boom', {}, 'r1'));
+
+    // Deliberately no client frame for the reserved-frame error path.
+    expect(client.sent).toEqual([]);
+    // Routed through the reporter (default reporter → console.error).
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    const reported = errorSpy.mock.calls[0][1] as Error;
+    expect(reported).toBeInstanceOf(Error);
+    expect(reported.message).toBe('reserved boom');
   });
 });

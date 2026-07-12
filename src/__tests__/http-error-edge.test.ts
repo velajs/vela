@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { Context, Next } from 'hono';
+import { HTTPException } from 'hono/http-exception';
 import {
   VelaFactory,
   Controller,
@@ -241,5 +242,67 @@ describe('hono app.onError — hono/middleware errors cannot bypass report + red
     expect(JSON.stringify(body)).not.toContain('boundary secret');
     // Old `{ statusCode, message }` shape must NOT surface for raw errors.
     expect(body).not.toHaveProperty('statusCode');
+  });
+
+  // ---------------------------------------------------------------------------
+  // Observability gap (whole-branch review): a hono HTTPException is returned
+  // verbatim by onError. That is correct for the client-bound response, but a
+  // 5xx hono exception is still a server fault — every other edge reports before
+  // returning. onError must now report status>=500 HTTPExceptions before the
+  // verbatim return, while leaving that response (and its status) untouched.
+  // ---------------------------------------------------------------------------
+  it('hono HTTPException status>=500 → verbatim response preserved AND reported once', async () => {
+    @Controller('/ok')
+    class OkController {
+      @Get()
+      handle() {
+        return { ok: true };
+      }
+    }
+
+    @Module({ controllers: [OkController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+
+    // Raw hono middleware throwing hono's own HTTPException — reaches onError
+    // directly (not through vela's wrapping).
+    app.getHonoApp().use('*', async (_c: Context, _next: Next) => {
+      throw new HTTPException(503, { message: 'upstream down' });
+    });
+
+    const res = await app.getHonoApp().request('/boom');
+
+    // Client still gets hono's deliberate verbatim response — status unchanged.
+    expect(res.status).toBe(503);
+    expect(await res.text()).toContain('upstream down');
+    // ...and the 5xx server fault was reported exactly once.
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('hono HTTPException status<500 (429) → verbatim response, NOT reported', async () => {
+    @Controller('/ok')
+    class OkController {
+      @Get()
+      handle() {
+        return { ok: true };
+      }
+    }
+
+    @Module({ controllers: [OkController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+
+    app.getHonoApp().use('*', async (_c: Context, _next: Next) => {
+      throw new HTTPException(429, { message: 'slow down' });
+    });
+
+    const res = await app.getHonoApp().request('/boom');
+
+    expect(res.status).toBe(429);
+    expect(await res.text()).toContain('slow down');
+    // 4xx author-intended client errors are NOT server faults — never reported.
+    expect(errorSpy).toHaveBeenCalledTimes(0);
   });
 });

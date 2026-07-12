@@ -198,9 +198,15 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
   }
 
   async handleError(path: string, _client: WsClient, err: unknown): Promise<void> {
-    if (this.container.getDiagnostics() !== 'silent') {
-      console.warn(`[vela] websocket error on gateway ${path}:`, err);
-    }
+    // Connection-level and reserved-frame (`$…`) throws land here. Route them
+    // through the shared reporter so a custom APP_EXCEPTION_HANDLER observes
+    // them too — the default reporter console.errors and honors `'silent'`.
+    // No client frame is sent for this path, by design: reserved frames own
+    // their own client-facing responses, and there is no envelope id to reply to.
+    resolveErrorReporter(this.container).report(err, {
+      edge: 'ws',
+      source: path ? `reserved-frame ${path}` : 'reserved-frame',
+    });
   }
 
   async dispatchMessage(path: string, client: WsClient, raw: string | ArrayBuffer): Promise<void> {

@@ -68,13 +68,19 @@ export class VelaApplication {
     // unredacted. `onError` funnels it through the same report-first + canonical
     // redacted body path every other edge uses.
     this.honoApp.onError((err, c) => {
+      const reporter = resolveErrorReporter(this.container);
       // Hono's own HTTPException (e.g. `bodyLimit`'s 413) carries a deliberate,
       // author-intended client response — honor it exactly as Hono's default
       // error handler would, without treating it as a server fault to redact.
+      // But a 5xx HTTPException is still a server fault: every other edge reports
+      // before returning, so report status>=500 here too (leaving the verbatim
+      // response — and its redaction/status — untouched).
       if (err instanceof HTTPException) {
+        if (err.status >= 500) {
+          reporter.report(err, { edge: 'hono', source: `${c.req.method} ${c.req.path}` });
+        }
         return err.getResponse();
       }
-      const reporter = resolveErrorReporter(this.container);
       reporter.report(err, { edge: 'hono', source: `${c.req.method} ${c.req.path}` });
       const { body, status } = toErrorBody(err, { catalog: reporter.catalog });
       return c.json(body, status as ContentfulStatusCode);
