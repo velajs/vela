@@ -1,0 +1,76 @@
+{
+  "name": "@velajs/authz",
+  "version": "1.0.0",
+  "description": "Framework-agnostic permission/role engine for Vela: defineRole, fail-closed can(), composition + masking helpers",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./vela": {
+      "types": "./dist/vela/index.d.ts",
+      "import": "./dist/vela/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.test.json",
+    "prepare": "swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
+    "prepublishOnly": "pnpm run typecheck && pnpm test"
+  },
+  "sideEffects": false,
+  "keywords": [
+    "vela",
+    "authz",
+    "authorization",
+    "rbac",
+    "permissions",
+    "framework"
+  ],
+  "author": "ksh",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/velajs/authz.git"
+  },
+  "homepage": "https://github.com/velajs/authz#readme",
+  "bugs": {
+    "url": "https://github.com/velajs/authz/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "peerDependencies": {
+    "@velajs/vela": ">=1.11.0"
+  },
+  "peerDependenciesMeta": {
+    "@velajs/vela": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@swc/cli": "^0.8.1",
+    "@swc/core": "^1.15.43",
+    "@velajs/vela": "^1.19.0",
+    "typescript": "^6.0.3",
+    "unplugin-swc": "^1.5.9",
+    "vitest": "^4.1.9"
+  },
+  "packageManager": "pnpm@10.20.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@swc/core",
+      "esbuild"
+    ]
+  }
+}

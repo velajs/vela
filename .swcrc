@@ -1,0 +1,16 @@
+{
+  "jsc": {
+    "target": "es2022",
+    "parser": {
+      "syntax": "typescript"
+    },
+    "keepClassNames": true,
+    "baseUrl": "."
+  },
+  "module": {
+    "type": "es6",
+    "resolveFully": true,
+    "outFileExtension": "js"
+  },
+  "exclude": [".*\\.test\\.ts$", ".*__tests__.*"]
+}
