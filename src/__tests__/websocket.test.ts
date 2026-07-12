@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   MetadataRegistry,
   VelaFactory,
@@ -10,6 +10,7 @@ import {
   Catch,
   APP_GUARD,
 } from '../index.js';
+import { VelaError } from '@velajs/errors';
 import type {
   CanActivate,
   NestInterceptor,
@@ -538,5 +539,151 @@ describe('WsDispatcher — code-review regressions', () => {
     await expect(
       app.get(WsDispatcher).dispatchMessage('/dead', dead, frame('echo', { a: 1 })),
     ).resolves.toBeUndefined();
+  });
+});
+
+// =============================================================================
+// Task 9 — WS edge: exception frames route through `toErrorBody` (the single
+// wire-redaction seam) and the dispatcher REPORTS every error before filtering.
+//
+//   1. a branded VelaError serializes to its canonical `{ code, message }`;
+//   2. an unbranded Error is redacted to the internal frame — its raw message
+//      surfaces ONLY through the reporter (default reporter → console.error);
+//   3. a WsException still ships its own payload verbatim (unchanged);
+//   4. the report fires FIRST, even when a filter claims the error, and a
+//      throwing filter is itself reported (`note: 'exception filter threw'`).
+// =============================================================================
+describe('WsDispatcher — exception frames through toErrorBody (Task 9)', () => {
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    MetadataRegistry.clear();
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    errorSpy.mockRestore();
+  });
+
+  it('branded VelaError → canonical exception frame with code + message', async () => {
+    @WebSocketGateway({ path: '/vela' })
+    class VelaGateway {
+      @SubscribeMessage('act')
+      onAct() {
+        throw new VelaError('forbidden', { message: 'room is locked' });
+      }
+    }
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [VelaGateway] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const client = new FakeClient();
+    await app.get(WsDispatcher).dispatchMessage('/vela', client, frame('act', {}, '1'));
+
+    expect(client.sent).toEqual([
+      { event: 'exception', data: { code: 'forbidden', message: 'room is locked' }, id: '1' },
+    ]);
+  });
+
+  it('unbranded Error → redacted internal frame; raw message only via report', async () => {
+    @WebSocketGateway({ path: '/raw' })
+    class RawGateway {
+      @SubscribeMessage('act')
+      onAct() {
+        throw new Error('ws secret');
+      }
+    }
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [RawGateway] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const client = new FakeClient();
+    await app.get(WsDispatcher).dispatchMessage('/raw', client, frame('act', {}, '2'));
+
+    expect(client.sent).toEqual([
+      { event: 'exception', data: { code: 'internal', message: 'Internal Server Error' }, id: '2' },
+    ]);
+    // Raw message never echoed to the client...
+    expect(JSON.stringify(client.sent)).not.toContain('ws secret');
+    // ...it surfaces ONLY through the reporter (default reporter → console.error).
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    const reported = errorSpy.mock.calls[0][1];
+    expect(reported).toBeInstanceOf(Error);
+    expect(reported.message).toBe('ws secret');
+  });
+
+  it('WsException string payload → { message } frame (unchanged)', async () => {
+    @WebSocketGateway({ path: '/wsex' })
+    class WsExGateway {
+      @SubscribeMessage('act')
+      onAct() {
+        throw new WsException('custom text');
+      }
+    }
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [WsExGateway] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const client = new FakeClient();
+    await app.get(WsDispatcher).dispatchMessage('/wsex', client, frame('act', {}, '3'));
+
+    expect(client.sent).toEqual([{ event: 'exception', data: { message: 'custom text' }, id: '3' }]);
+  });
+
+  it('reports the error before filtering, even when a filter silently claims it', async () => {
+    @Catch()
+    class SwallowFilter implements ExceptionFilter {
+      catch(): void {
+        // claims the error but sends nothing to the client
+      }
+    }
+    @WebSocketGateway({ path: '/report-first' })
+    class Gateway {
+      @SubscribeMessage('act')
+      @UseFilters(SwallowFilter)
+      onAct() {
+        throw new WsException('handled quietly');
+      }
+    }
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [Gateway, SwallowFilter] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const client = new FakeClient();
+    await app.get(WsDispatcher).dispatchMessage('/report-first', client, frame('act', {}, '4'));
+
+    // The filter swallowed the client frame, but the reporter still saw it first.
+    expect(client.sent).toEqual([]);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('throwing exception filter → original + filter both reported, redacted frame', async () => {
+    @Catch()
+    class BoomFilter implements ExceptionFilter {
+      catch(): never {
+        throw new Error('filter blew up');
+      }
+    }
+    @WebSocketGateway({ path: '/filter-throws' })
+    class Gateway {
+      @SubscribeMessage('act')
+      @UseFilters(BoomFilter)
+      onAct() {
+        throw new Error('original ws');
+      }
+    }
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [Gateway, BoomFilter] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const client = new FakeClient();
+    await app.get(WsDispatcher).dispatchMessage('/filter-throws', client, frame('act', {}, '5'));
+
+    // The filter blew up → fall through to the default redacted frame.
+    expect(client.sent).toEqual([
+      { event: 'exception', data: { code: 'internal', message: 'Internal Server Error' }, id: '5' },
+    ]);
+    // Report FIRST always: the original error + the exception-filter-threw report.
+    expect(errorSpy).toHaveBeenCalledTimes(2);
   });
 });

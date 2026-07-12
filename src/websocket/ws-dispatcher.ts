@@ -3,6 +3,7 @@ import { Inject, Injectable, Optional } from '../container/decorators';
 import type { Type } from '../container/types';
 import { DiscoveryService } from '../discovery/discovery.service';
 import type { ContributesEntrypoints, Entrypoint } from '../entrypoint/entrypoint.types';
+import { resolveErrorReporter, type ErrorReporter } from '../exceptions/reporter';
 import { instantiateMany } from '../http/instantiate';
 import { RouteManager } from '../http/route.manager';
 import type { OnApplicationBootstrap } from '../lifecycle/index';
@@ -273,7 +274,12 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
 
       this.reply(client, message, result);
     } catch (error) {
-      await this.runFilters(client, message, error, filters, ctx);
+      const reporter = resolveErrorReporter(this.container);
+      const source = `${entry.gatewayClass.name}.${handler.methodName}`;
+      // Report FIRST, always — before any exception filter can claim (and thus
+      // hide) the error. Rendering is a separate concern (mirrors HandlerExecutor).
+      reporter.report(error, { edge: 'ws', source });
+      await this.runFilters(client, message, error, filters, ctx, reporter, source);
     }
   }
 
@@ -300,7 +306,7 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
     try {
       for (const guard of guards) {
         if (!(await guard.canActivate(ctx))) {
-          const frame = toErrorFrame(new WsException('Forbidden'));
+          const frame = toErrorFrame(new WsException('Forbidden'), resolveErrorReporter(this.container).catalog);
           this.trySend(client, frame.event, frame.data, message.id);
           return;
         }
@@ -326,6 +332,8 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
     error: unknown,
     filters: ExceptionFilter[],
     ctx: WsExecutionContext,
+    reporter: ErrorReporter,
+    source: string,
   ): Promise<void> {
     for (const filter of filters) {
       if (shouldFilterCatch(filter, error)) {
@@ -334,15 +342,17 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
           if (isWsResponse(handled)) {
             this.trySend(client, handled.event, handled.data, message.id);
           }
-        } catch {
-          // A throwing filter falls back to the default error frame (mirrors HandlerExecutor).
-          const frame = toErrorFrame(error);
+        } catch (filterError) {
+          // A throwing filter is itself a bug worth reporting — then fall back
+          // to the default redacted frame (mirrors HandlerExecutor).
+          reporter.report(filterError, { edge: 'ws', source, note: 'exception filter threw' });
+          const frame = toErrorFrame(error, reporter.catalog);
           this.trySend(client, frame.event, frame.data, message.id);
         }
         return;
       }
     }
-    const errorFrame = toErrorFrame(error);
+    const errorFrame = toErrorFrame(error, reporter.catalog);
     this.trySend(client, errorFrame.event, errorFrame.data, message.id);
   }
 
