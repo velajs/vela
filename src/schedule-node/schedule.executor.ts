@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '../container/index';
 import { Container } from '../container/container';
+import { resolveErrorReporter } from '../exceptions/reporter';
 import type { OnApplicationBootstrap, OnModuleDestroy } from '../lifecycle/index';
 import { parseCron, type CronMatcher } from '../schedule/cron-matcher';
 import { ScheduleRegistry } from '../schedule/schedule.registry';
@@ -72,13 +73,17 @@ export class ScheduleExecutor implements OnApplicationBootstrap, OnModuleDestroy
         await method.call(instance);
       }
     } catch (err) {
+      // Report BEFORE the rethrow below — the exception handler sees every
+      // scheduled-job error, and its default reporter logs it (unless silent),
+      // replacing the previous bare console.warn.
+      resolveErrorReporter(this.container).report(err, {
+        edge: 'schedule',
+        source: methodName,
+      });
       // Runtime job error — keep the scheduler running by default. Users
       // can opt into rethrowing by setting diagnostics: 'throw'.
       const mode = this.container.getDiagnostics();
       if (mode === 'throw') throw err;
-      if (mode === 'log') {
-        console.warn(`[vela] scheduled job ${methodName} failed:`, err);
-      }
     }
   }
 

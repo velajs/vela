@@ -1,6 +1,7 @@
 import {
   buildEntrypointExecutionContext,
   PipelineRunner,
+  resolveErrorReporter,
   resolveScopedComponents,
   runInEntrypointScope,
   shouldFilterCatch,
@@ -158,13 +159,20 @@ async function dispatchToProcessor(
       });
       return true;
     } catch (error) {
+      // Report BEFORE the filter loop and BEFORE any rethrow — every dispatch
+      // error reaches the exception handler, whether a scoped filter claims it
+      // or it rethrows to preserve platform retry semantics.
+      resolveErrorReporter(scope).report(error, {
+        edge: 'queue',
+        source: `${processorClass.name}.${String(handler.methodName)}`,
+      });
       for (const filter of filters) {
         if (shouldFilterCatch(filter, error)) {
           await filter.catch(error, context);
           return true;
         }
       }
-      throw error;
+      throw error; // unclaimed → platform retry semantics stay intact
     }
   });
 }

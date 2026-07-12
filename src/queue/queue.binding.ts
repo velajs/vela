@@ -1,4 +1,4 @@
-import { EntrypointRegistry } from '../index';
+import { EntrypointRegistry, resolveErrorReporter } from '../index';
 import type { Container, DiscoveryService } from '../index';
 import { dispatchJobToEntries } from './queue.dispatch';
 import type { QueueEntry } from './queue.dispatch';
@@ -61,9 +61,13 @@ export class QueueDispatchBinding {
     if (mode === 'throw') {
       throw error instanceof Error ? error : new Error(String(error));
     }
-    console.error(
-      `[vela] unhandled error processing queue job '${job.name}' on '${job.queue}':`,
-      error,
-    );
+    // Fire-and-forget (inline `immediate`) deliveries have no awaiter to rethrow
+    // into — route their unclaimed errors to the exception handler instead of a
+    // bare console.error.
+    resolveErrorReporter(this.container).report(error, {
+      edge: 'queue',
+      source: `${job.queue}/${job.name}`,
+      note: 'inline driver',
+    });
   }
 }

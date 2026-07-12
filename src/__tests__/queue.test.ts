@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
+  APP_EXCEPTION_HANDLER,
   CanActivate,
   Inject,
   Injectable,
@@ -14,6 +15,7 @@ import {
 } from '../index.js';
 import type {
   CallHandler,
+  ErrorReportContext,
   ExceptionFilter,
   ExecutionContext,
   NestInterceptor,
@@ -569,6 +571,76 @@ describe('laziness (dogfoods 1.13 lazy modules)', () => {
     await driver.flush();
 
     expect(events).toEqual(['init', 'handled:first:ready=true']);
+    await app.dispose();
+  });
+});
+
+describe('error reporter edge (report-then-rethrow)', () => {
+  it('reports an unclaimed processor error before rethrowing (platform retry preserved)', async () => {
+    const reports: Array<{ error: unknown; ctx: ErrorReportContext }> = [];
+    const report = vi.fn((error: unknown, ctx: ErrorReportContext) => {
+      reports.push({ error, ctx });
+    });
+
+    @Processor('reportq')
+    @Injectable()
+    class ThrowingProcessor {
+      @Process()
+      run() {
+        throw new Error('kaboom');
+      }
+    }
+
+    const { driver } = manualApp();
+
+    @Module({
+      imports: [QueueModule.forRoot({ queues: ['reportq'], driver })],
+      providers: [ThrowingProcessor, { provide: APP_EXCEPTION_HANDLER, useValue: { report } }],
+    })
+    class App {}
+
+    const app = await VelaFactory.create(App);
+    await app.get<QueueClient>(queueToken('reportq')).add('go', {});
+
+    // The unclaimed error still rejects the dispatch → the platform retries.
+    await expect(driver.flush()).rejects.toThrow(AggregateError);
+    // …and report ran before that rethrow, carrying edge + source.
+    expect(report).toHaveBeenCalledTimes(1);
+    expect(reports[0].ctx).toMatchObject({ edge: 'queue', source: 'ThrowingProcessor.run' });
+    expect((reports[0].error as Error).message).toBe('kaboom');
+    await app.dispose();
+  });
+
+  it('routes the inline driver fire-and-forget error through APP_EXCEPTION_HANDLER, not console.error', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const report = vi.fn();
+
+    @Processor('inlinereport')
+    @Injectable()
+    class BoomProcessor {
+      @Process()
+      run() {
+        throw new Error('detached-boom');
+      }
+    }
+
+    @Module({
+      imports: [QueueModule.forRoot({ queues: ['inlinereport'] })], // default inline() immediate
+      providers: [BoomProcessor, { provide: APP_EXCEPTION_HANDLER, useValue: { report } }],
+    })
+    class App {}
+
+    const app = await VelaFactory.create(App);
+    await app.get<QueueClient>(queueToken('inlinereport')).add('ping', {});
+    await settle();
+
+    // The binding's fire-and-forget default arm reports instead of bare console.error.
+    expect(report).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ edge: 'queue', note: 'inline driver' }),
+    );
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
     await app.dispose();
   });
 });
