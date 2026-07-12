@@ -2001,8 +2001,8 @@ describe('HttpException hierarchy', () => {
     expect(res.status).toBe(404);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const body = await res.json() as any;
-    expect(body.statusCode).toBe(404);
-    expect(body.message).toBe('item missing');
+    expect(body.error.code).toBe('not_found');
+    expect(body.error.message).toBe('item missing');
   });
 
   it('@Catch(HttpException) filter intercepts all HTTP exceptions', async () => {
@@ -4074,7 +4074,8 @@ describe('Remaining HTTP exceptions', () => {
     expect(res.status).toBe(418);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const body = await res.json() as any;
-    expect(body.message).toBe('Custom error');
+    // 418 has no catalog code → falls back to 'internal', message echoed verbatim.
+    expect(body.error.message).toBe('Custom error');
   });
 });
 
@@ -5681,7 +5682,7 @@ describe('app.useGlobalInterceptors() / useGlobalGuards() / useGlobalPipes() pos
 // =============================================================================
 
 describe('Exception response JSON shape', () => {
-  it('NotFoundException returns { statusCode: 404, message }', async () => {
+  it('NotFoundException returns canonical { error: { code, message } }', async () => {
     @Controller('/exc-shape')
     class ExcShapeController {
       @Get() handle() { throw new NotFoundException('Item not found'); }
@@ -5695,8 +5696,8 @@ describe('Exception response JSON shape', () => {
     expect(res.status).toBe(404);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const body = await res.json() as any;
-    expect(body.statusCode).toBe(404);
-    expect(body.message).toBe('Item not found');
+    expect(body.error.code).toBe('not_found');
+    expect(body.error.message).toBe('Item not found');
   });
 
   it('BadRequestException with default message returns 400', async () => {
@@ -5713,8 +5714,8 @@ describe('Exception response JSON shape', () => {
     expect(res.status).toBe(400);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const body = await res.json() as any;
-    expect(body.statusCode).toBe(400);
-    expect(typeof body.message).toBe('string');
+    expect(body.error.code).toBe('bad_request');
+    expect(typeof body.error.message).toBe('string');
   });
 
   it('HttpException with object response returns the object verbatim', async () => {
@@ -5748,8 +5749,8 @@ describe('Exception response JSON shape', () => {
     expect(res.status).toBe(500);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const body = await res.json() as any;
-    expect(body.statusCode).toBe(500);
-    expect(typeof body.message).toBe('string');
+    expect(body.error.code).toBe('internal');
+    expect(typeof body.error.message).toBe('string');
   });
 });
 

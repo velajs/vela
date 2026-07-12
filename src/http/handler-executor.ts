@@ -1,8 +1,10 @@
+import { STATUS_TO_CODE, toErrorBody } from '@velajs/errors';
 import type { Context } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { Container } from '../container/container';
 import type { Token, Type } from '../container/types';
 import { HttpException } from '../errors/http-exception';
+import { resolveErrorReporter } from '../exceptions/reporter';
 import { ComponentManager } from '../pipeline/component.manager';
 import { shouldFilterCatch } from '../pipeline/decorators';
 import { PipelineRunner } from '../pipeline/pipeline-runner';
@@ -123,33 +125,41 @@ export class HandlerExecutor {
         applyResponseHeaders(response, responseHeaders);
         return response;
       } catch (error) {
+        const reporter = resolveErrorReporter(requestContainer);
+        const source = `${controller.name}.${String(route.handlerName)}`;
+        // Report FIRST, always — rendering (filters included) is a separate
+        // concern; a filter claiming the error must not make it invisible.
+        reporter.report(error, { edge: 'http', source });
+
         for (const filter of filters) {
           if (shouldFilterCatch(filter, error)) {
             try {
               const filtered = await filter.catch(error, executionContext);
               return mapResponse(c, filtered);
-            } catch {
+            } catch (filterError) {
+              // A broken filter is itself a bug worth logs — then fall through
+              // to the default render instead of silently dying here.
+              reporter.report(filterError, { edge: 'http', source, note: 'exception filter threw' });
               break;
             }
           }
         }
 
+        const rendered = reporter.render(error, executionContext);
+        if (rendered instanceof Response) return rendered;
+        if (rendered) return c.json(rendered.body, rendered.status as ContentfulStatusCode);
+
         if (error instanceof HttpException) {
-          const response = error.getResponse();
           const status = error.getStatus() as ContentfulStatusCode;
-          return c.json(response, status);
+          const raw = error.getRawResponse() ?? error.message;
+          if (typeof raw === 'string') {
+            return c.json({ error: { code: STATUS_TO_CODE[status] ?? 'internal', message: raw } }, status);
+          }
+          return c.json(raw, status); // object responses ship verbatim (crud envelope compat)
         }
 
-        // An unknown error reaching here means no filter claimed it — never
-        // swallow it silently: the response is a generic 500, but the cause
-        // must land in the logs (diagnostics 'silent' opts out).
-        if (requestContainer.getDiagnostics() !== 'silent') {
-          console.error(
-            `[vela] unhandled error in ${controller.name}.${String(route.handlerName)}:`,
-            error,
-          );
-        }
-        return c.json({ statusCode: 500, message: 'Internal Server Error' }, 500);
+        const { body, status } = toErrorBody(error, { catalog: reporter.catalog });
+        return c.json(body, status as ContentfulStatusCode);
       }
     };
   }

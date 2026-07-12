@@ -79,12 +79,12 @@ describe('@Catch type matching', () => {
     // ForbiddenException — NOT caught by NotFoundFilter, falls to default handler
     const res2 = await hono.request('/catch-test/forbidden');
     expect(res2.status).toBe(403);
-    expect(await res2.json()).toEqual({ statusCode: 403, message: 'No access' });
+    expect(await res2.json()).toEqual({ error: { code: 'forbidden', message: 'No access' } });
 
     // BadRequestException — NOT caught by NotFoundFilter, falls to default handler
     const res3 = await hono.request('/catch-test/bad-request');
     expect(res3.status).toBe(400);
-    expect(await res3.json()).toEqual({ statusCode: 400, message: 'Invalid' });
+    expect(await res3.json()).toEqual({ error: { code: 'bad_request', message: 'Invalid' } });
   });
 
   it('should catch multiple exception types with @Catch(TypeA, TypeB)', async () => {

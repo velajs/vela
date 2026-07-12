@@ -23,6 +23,15 @@ export class HttpException extends Error {
     }
     return this._response;
   }
+
+  // The constructor's original argument, untransformed — a string message or a
+  // caller-supplied object. The canonical HTTP edge branches on this: string
+  // responses become `{ error: { code, message } }`, object responses ship
+  // verbatim (crud envelope compat). Distinct from `getResponse()`, which wraps
+  // strings in the legacy `{ statusCode, message }` shape.
+  getRawResponse(): ExceptionResponse {
+    return this._response;
+  }
 }
 
 // 4xx

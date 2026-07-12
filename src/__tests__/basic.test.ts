@@ -621,7 +621,7 @@ describe('Exception Filters', () => {
 
     const res = await hono.request('/errors');
     expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({ statusCode: 403, message: 'Access denied' });
+    expect(await res.json()).toEqual({ error: { code: 'forbidden', message: 'Access denied' } });
   });
 });
 
@@ -799,7 +799,7 @@ describe('HttpException', () => {
 
     const res1 = await hono.request('/exceptions/not-found');
     expect(res1.status).toBe(404);
-    expect(await res1.json()).toEqual({ statusCode: 404, message: 'Resource not found' });
+    expect(await res1.json()).toEqual({ error: { code: 'not_found', message: 'Resource not found' } });
 
     const res2 = await hono.request('/exceptions/bad-request');
     expect(res2.status).toBe(422);
