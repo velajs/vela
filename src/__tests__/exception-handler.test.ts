@@ -45,6 +45,21 @@ describe('ErrorReporter', () => {
     expect(() => resolveErrorReporter(container).report(new Error('x'), { edge: 'http' })).not.toThrow();
   });
 
+  it('a throwing dontReport matcher never escapes report() and the error is still reported', () => {
+    const container = new Container();
+    const report = vi.fn();
+    container.register({
+      provide: APP_EXCEPTION_HANDLER,
+      useValue: {
+        report,
+        dontReport: [() => { throw new Error('broken matcher'); }],
+      },
+    });
+    const reporter = resolveErrorReporter(container);
+    expect(() => reporter.report(new Error('original'), { edge: 'http' })).not.toThrow();
+    expect(report).toHaveBeenCalledOnce();
+  });
+
   it('exposes the composed ERROR_CATALOG when provided', () => {
     const container = new Container();
     const catalog = defineErrorCatalog({ order_expired: { status: 410, title: 'Order expired' } });

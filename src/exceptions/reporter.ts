@@ -30,7 +30,13 @@ export const resolveErrorReporter = (container: Container): ErrorReporter => {
   return {
     catalog,
     report(error, ctx) {
-      if (matchesAny(handler?.dontReport, error)) return;
+      let suppressed = false;
+      try {
+        suppressed = matchesAny(handler?.dontReport, error);
+      } catch {
+        // A broken matcher must never mask the original error — treat as no match.
+      }
+      if (suppressed) return;
       const merged = handler?.context ? { ...ctx, ...safeContext(handler, error, ctx) } : ctx;
       if (handler?.report) {
         try {

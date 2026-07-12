@@ -10,6 +10,11 @@ import { isVelaError, type ErrorBodyResult } from '@velajs/errors';
  *   A class and a predicate are both `typeof 'function'`; {@link matchesAny}
  *   discriminates on `prototype`, which arrow functions do not have.
  * - an error class constructor — matches via `instanceof`.
+ *
+ * Bound functions (e.g. `SomeClass.bind(null)`) also lack `.prototype`, so they
+ * are treated as predicates and invoked — never as class matchers. Since a bound
+ * constructor cannot be called without `new`, using one here throws; pass the
+ * unbound class instead.
  */
 export type ErrorMatcher = string | ((error: unknown) => boolean) | (new (...args: never[]) => Error);
 
@@ -49,6 +54,8 @@ export interface ExceptionHandler {
  * else with a `prototype` is treated as an error class and matched via
  * `instanceof`. Predicates therefore MUST be arrow functions — a regular
  * `function` expression has a `prototype` and would be mistaken for a class.
+ * Bound functions (e.g. `SomeClass.bind(null)`) lack `.prototype` too, so they
+ * are invoked as predicates — don't pass a bound class as a class matcher.
  */
 export const matchesAny = (matchers: ErrorMatcher[] | undefined, error: unknown): boolean => {
   if (!matchers?.length) return false;
