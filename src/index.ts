@@ -460,10 +460,11 @@ export {
 // Exception handling — the ExceptionHandler contract + shared error reporter.
 // Re-exports the core @velajs/errors surface so app authors need one import to
 // author handlers, throw branded errors, and define/compose catalogs.
-export { matchesAny, resolveErrorReporter } from './exceptions/index';
+export { ErrorsModule, matchesAny, resolveErrorReporter } from './exceptions/index';
 export type {
   ErrorMatcher,
   ErrorReportContext,
+  ErrorsModuleOptions,
   ExceptionHandler,
   ErrorReporter,
 } from './exceptions/index';

@@ -48,9 +48,16 @@ retrofitted; consumer surface stays NestJS-parity (`forRoot`/`forRootAsync`).
   absorption, metadata-only entrypoints for lazy declared kinds, and
   `EventEmitter`/`Schedule`/`Seeder`/`I18n` modules flipped lazy. Spec:
   `docs/superpowers/specs/2026-07-04-lazy-cold-start-init-design.md`.
-- **Exception-handler layer**: Laravel-style report/render/dontReport/context
+- ~~**Exception-handler layer**: Laravel-style report/render/dontReport/context
   above the NestJS-style filters; also fixes the silent-500-no-logging path in
-  `HandlerExecutor`.
+  `HandlerExecutor`.~~ — DONE: the `@velajs/errors` package (branded `VelaError`,
+  catalogs, the single `toErrorBody` wire-redaction seam) + the
+  `ExceptionHandler` contract wired at every transport edge through
+  `resolveErrorReporter` (report-first, never masks the original error);
+  `APP_EXCEPTION_HANDLER` / `ERROR_CATALOG` tokens, `ErrorsModule.forRoot({
+  catalogs, handler })`, and the imperative `app.useGlobalExceptionHandler()`.
+  Redacts the raw-message leak on the live/WS/hono edges. Spec:
+  `docs/superpowers/specs/2026-07-11-errors-package-and-exception-layer-design.md`.
 - ~~**CLI introspection** on `DiscoveryService`: `route:list`, module graph,
   entrypoint list, OpenAPI dump in `@velajs/cli`.~~ — DONE: vela 1.15 grew
   the seams (`app.describeRoutes()`, `app.getGlobalPrefix()`,

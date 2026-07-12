@@ -1,5 +1,61 @@
 # Changelog
 
+## 1.19.0 (2026-07-11)
+
+Exception-handler layer (roadmap phase 3): a single branded error concept, one
+wire-redaction seam, and a Laravel-style reporting contract layered above the
+NestJS-style exception filters. Design spec:
+`docs/superpowers/specs/2026-07-11-errors-package-and-exception-layer-design.md`.
+
+### Added
+
+- **`@velajs/errors` dependency** — the new sibling package vela now builds on:
+  the branded `VelaError` (own+enumerable fields so it rides any wire codec /
+  `structuredClone` / DO-RPC prop copy), error catalogs
+  (`defineErrorCatalog`/`composeCatalogs`/`CORE_CATALOG`), and the single
+  `toErrorBody` wire-redaction seam (unbranded or `internal`-coded errors never
+  echo their message). Its core surface is re-exported from `@velajs/vela` so
+  app authors need one import to throw branded errors, author handlers, and
+  define/compose catalogs.
+- **`ExceptionHandler` contract + `resolveErrorReporter`** — an optional
+  application-wide handler (`report` / `dontReport` / `context` / `render`)
+  consulted at every transport edge (HTTP, WS, live, queue, schedule). Reporting
+  is fire-and-forget and fully contained: a broken or throwing handler (or
+  `dontReport` matcher) can never mask the original error.
+- **`APP_EXCEPTION_HANDLER` / `ERROR_CATALOG` tokens** — provide the handler and
+  the composed catalog via module providers.
+- **`ErrorsModule.forRoot({ catalogs?, handler? })`** — composes
+  `[CORE_CATALOG, ...catalogs]` (eager; a duplicate code across catalogs fails
+  fast with `duplicate error code`) into `ERROR_CATALOG`, and — when given —
+  registers `APP_EXCEPTION_HANDLER` (`useClass` for a handler class, `useValue`
+  for a handler object).
+- **`app.useGlobalExceptionHandler(handler)`** — the imperative sibling of
+  `ErrorsModule.forRoot({ handler })`; registers `APP_EXCEPTION_HANDLER` on the
+  root container, taking effect on the next request without a rebuild.
+
+### Changed
+
+- **BREAKING (sanctioned wire break): the HTTP error body is now the canonical
+  error object.** Uncaught controller/handler errors render as
+  `{ error: { code, message, hint?, docsUrl?, details? } }` with the code's
+  catalog status, replacing the prior `{ statusCode, message }` shape.
+  `HttpException` object responses still ship verbatim (crud-envelope compat).
+  Error reporting is now **report-first**: the reporter runs before any
+  exception filter, so a filter claiming an error can no longer make it
+  invisible to logging/Sentry. A new `app.onError` fallback funnels raw
+  hono-middleware throws (which previously bypassed the filter tier entirely)
+  through the same report + redaction path; hono's own `HTTPException`
+  responses are still honored verbatim. Per the compat policy, shipped under a
+  minor with no deprecation shim.
+
+### Fixed
+
+- **Live engine raw-message leak** — initial-subscribe resolver errors were sent
+  to the browser as raw `err.message` (`src/live/live.engine.ts`); they now flow
+  through `toErrorBody`, so unbranded/internal errors are redacted like every
+  other edge. The WS exception frame and the report-then-rethrow queue/schedule
+  dispatch paths were aligned to the same report-first + redacted-body invariant.
+
 ## 1.15.0 (2026-07-04)
 
 Introspection seams for `@velajs/cli` (roadmap phase 3, CLI introspection):

@@ -3,7 +3,9 @@ import { HTTPException } from 'hono/http-exception';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { toErrorBody } from '@velajs/errors';
 import type { Container } from './container/container';
-import type { Token } from './container/types';
+import type { Token, Type } from './container/types';
+import { APP_EXCEPTION_HANDLER } from './pipeline/tokens';
+import type { ExceptionHandler } from './exceptions/exception-handler';
 import { resolveErrorReporter } from './exceptions/reporter';
 import { DiscoveryService } from './discovery/discovery.service';
 import { EntrypointRegistry } from './entrypoint/entrypoint.registry';
@@ -149,6 +151,26 @@ export class VelaApplication {
 
   useGlobalFilters(...filters: FilterType[]): this {
     this.routeManager.useGlobalFilters(...filters);
+    return this;
+  }
+
+  /**
+   * Register the application-wide {@link ExceptionHandler} imperatively — the
+   * sibling of `ErrorsModule.forRoot({ handler })`. A class is constructed
+   * through DI (`useClass`); a plain handler object is registered verbatim
+   * (`useValue`). Consumed by `resolveErrorReporter` at every transport edge,
+   * so it takes effect on the next request without a rebuild.
+   *
+   * ```ts
+   * app.useGlobalExceptionHandler({ report: (e) => sentry.capture(e) });
+   * ```
+   */
+  useGlobalExceptionHandler(handler: Type<ExceptionHandler> | ExceptionHandler): this {
+    this.container.register(
+      typeof handler === 'function'
+        ? { provide: APP_EXCEPTION_HANDLER, useClass: handler }
+        : { provide: APP_EXCEPTION_HANDLER, useValue: handler },
+    );
     return this;
   }
 
