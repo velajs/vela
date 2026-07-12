@@ -15,7 +15,15 @@ export {
 } from './decorators';
 export { SetMetadata, Reflector } from './reflector';
 export type { ReflectableDecorator, CreateDecoratorOptions } from './reflector';
-export { APP_GUARD, APP_PIPE, APP_INTERCEPTOR, APP_FILTER, APP_MIDDLEWARE } from './tokens';
+export {
+  APP_GUARD,
+  APP_PIPE,
+  APP_INTERCEPTOR,
+  APP_FILTER,
+  APP_MIDDLEWARE,
+  APP_EXCEPTION_HANDLER,
+  ERROR_CATALOG,
+} from './tokens';
 export {
   ParseIntPipe,
   ParseFloatPipe,

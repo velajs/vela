@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@velajs/errors':
+        specifier: link:../errors
+        version: link:../errors
       '@velajs/live-protocol':
         specifier: ^1.0.0
         version: 1.0.0

@@ -1,4 +1,6 @@
+import type { Catalog } from '@velajs/errors';
 import { InjectionToken } from '../container/types';
+import type { ExceptionHandler } from '../exceptions/exception-handler';
 import type { CanActivate, ExceptionFilter, NestInterceptor, NestMiddleware, PipeTransform } from './types';
 
 /**
@@ -36,3 +38,27 @@ export const APP_FILTER = new InjectionToken<ExceptionFilter>('APP_FILTER');
  * Register global middleware via module providers.
  */
 export const APP_MIDDLEWARE = new InjectionToken<NestMiddleware>('APP_MIDDLEWARE');
+
+/**
+ * Register the application-wide exception handler via module providers.
+ * Consumed by the shared error reporter (`resolveErrorReporter`) at every
+ * transport edge to customize how errors are reported and rendered.
+ *
+ * @example
+ * ```ts
+ * @Module({
+ *   providers: [
+ *     { provide: APP_EXCEPTION_HANDLER, useValue: { report: (e) => sentry.capture(e) } },
+ *   ],
+ * })
+ * class AppModule {}
+ * ```
+ */
+export const APP_EXCEPTION_HANDLER = new InjectionToken<ExceptionHandler>('APP_EXCEPTION_HANDLER');
+
+/**
+ * Provide the composed error catalog (`composeCatalogs(CORE_CATALOG, …)`)
+ * consulted when rendering wire-bound error bodies. Defaults to the core
+ * catalog when unset.
+ */
+export const ERROR_CATALOG = new InjectionToken<Catalog<string>>('ERROR_CATALOG');

@@ -390,6 +390,8 @@ export {
   APP_INTERCEPTOR,
   APP_FILTER,
   APP_MIDDLEWARE,
+  APP_EXCEPTION_HANDLER,
+  ERROR_CATALOG,
 } from './pipeline/index';
 export type { PipelineRunOptions, ResolvedComponentMap } from './pipeline/index';
 
@@ -454,6 +456,26 @@ export {
   ServiceUnavailableException,
   GatewayTimeoutException,
 } from './errors/index';
+
+// Exception handling — the ExceptionHandler contract + shared error reporter.
+// Re-exports the core @velajs/errors surface so app authors need one import to
+// author handlers, throw branded errors, and define/compose catalogs.
+export { matchesAny, resolveErrorReporter } from './exceptions/index';
+export type {
+  ErrorMatcher,
+  ErrorReportContext,
+  ExceptionHandler,
+  ErrorReporter,
+} from './exceptions/index';
+export {
+  VelaError,
+  isVelaError,
+  defineErrorCatalog,
+  composeCatalogs,
+  toErrorBody,
+  CORE_CATALOG,
+} from '@velajs/errors';
+export type { Catalog, ErrorBodyResult, ErrorCatalogEntry, VelaErrorOptions } from '@velajs/errors';
 
 // Lifecycle
 export type {

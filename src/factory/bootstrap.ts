@@ -12,11 +12,13 @@ import { ModuleLoader } from '../module/module-loader';
 import { bindAppProviders } from '../pipeline/app-providers';
 import { ComponentManager } from '../pipeline/component.manager';
 import {
+  APP_EXCEPTION_HANDLER,
   APP_FILTER,
   APP_GUARD,
   APP_INTERCEPTOR,
   APP_MIDDLEWARE,
   APP_PIPE,
+  ERROR_CATALOG,
 } from '../pipeline/tokens';
 import type { NestMiddleware } from '../pipeline/types';
 
@@ -65,7 +67,15 @@ export async function bootstrap(
   });
   container.markGlobalToken(DiscoveryService);
 
-  for (const t of [APP_GUARD, APP_PIPE, APP_INTERCEPTOR, APP_FILTER, APP_MIDDLEWARE]) {
+  for (const t of [
+    APP_GUARD,
+    APP_PIPE,
+    APP_INTERCEPTOR,
+    APP_FILTER,
+    APP_MIDDLEWARE,
+    APP_EXCEPTION_HANDLER,
+    ERROR_CATALOG,
+  ]) {
     container.markGlobalToken(t);
   }
 
