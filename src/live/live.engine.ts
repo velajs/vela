@@ -4,7 +4,7 @@ import {
   encodeLiveEnvelope,
   isClientLiveFrame,
 } from '@velajs/live-protocol';
-import type { ClientLiveFrame, ServerLiveFrame } from '@velajs/live-protocol';
+import type { ClientLiveFrame, LiveErrorCode, ServerLiveFrame } from '@velajs/live-protocol';
 import {
   Container,
   DiscoveryService,
@@ -14,8 +14,11 @@ import {
   PipelineRunner,
   ReservedWsEvent,
   buildEntrypointExecutionContext,
+  isVelaError,
+  resolveErrorReporter,
   resolveScopedComponents,
   runInEntrypointScope,
+  toErrorBody,
 } from '../index';
 import type {
   ContributesEntrypoints,
@@ -404,6 +407,19 @@ export class LiveEngine
     }
   }
 
+  /**
+   * Map a resolver failure to its live error-frame code. A branded
+   * {@link VelaError} carries an HTTP-ish status that projects onto the live
+   * vocabulary (403 → forbidden, 400/422 → bad_args); everything else — and
+   * every unbranded error — is `internal` (the client sees a redacted message).
+   */
+  private static liveFrameCode(err: unknown): LiveErrorCode {
+    if (!isVelaError(err)) return LIVE_ERROR_CODES.INTERNAL;
+    if (err.status === 403) return LIVE_ERROR_CODES.FORBIDDEN;
+    if (err.status === 400 || err.status === 422) return LIVE_ERROR_CODES.BAD_ARGS;
+    return LIVE_ERROR_CODES.INTERNAL;
+  }
+
   private async push(
     conn: ConnectionEntry,
     record: SubscriptionRecord,
@@ -433,12 +449,19 @@ export class LiveEngine
       json = JSON.stringify(result);
     } catch (err) {
       if (initial) {
+        // Close the leak: an initial-subscribe resolver failure is REDACTED
+        // through `toErrorBody` (the single wire-redaction seam) — an unbranded
+        // error's raw message never reaches the browser, it surfaces only via
+        // the reporter. Branded VelaErrors keep their client-facing message.
         conn.subs.delete(record.sub);
+        const reporter = resolveErrorReporter(this.container);
+        reporter.report(err, { edge: 'live', source: record.query });
+        const safe = toErrorBody(err, { catalog: reporter.catalog });
         this.sendFrame(conn.client, {
           t: 'error',
           sub: record.sub,
-          code: LIVE_ERROR_CODES.INTERNAL,
-          message: err instanceof Error ? err.message : 'live query failed',
+          code: LiveEngine.liveFrameCode(err),
+          message: safe.body.error.message,
           fatal: true,
         });
       } else if (this.container.getDiagnostics() !== 'silent') {

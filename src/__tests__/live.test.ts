@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { VelaError } from '@velajs/errors';
 import {
   Injectable,
   MetadataRegistry,
@@ -396,6 +397,118 @@ describe('LiveModule (tag-based live queries)', () => {
     class AppModule {}
 
     await expect(VelaFactory.create(AppModule, { diagnostics: 'throw' })).rejects.toThrow(/reserved/);
+  });
+});
+
+// =============================================================================
+// Task 10 — Live engine: an INITIAL-SUBSCRIBE resolver error is REDACTED through
+// `toErrorBody` (the single wire-redaction seam). A raw resolver failure must
+// never echo its message to the browser — it surfaces ONLY through the reporter.
+// Branded VelaErrors keep their client-facing message and map to a live frame
+// code (403 → forbidden, 400/422 → bad_args, else internal). The subscribe-arg
+// PARSE path is client-facing by convention (crud's fromZodError) and untouched.
+//
+// The initial `ack` is sent BEFORE the resolver runs, so a resolver-execution
+// error yields `[ack, error]`; the pre-ack parse path yields `[error]` only.
+// =============================================================================
+describe('LiveEngine — initial-subscribe resolver errors are redacted (Task 10)', () => {
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    MetadataRegistry.clear();
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => errorSpy.mockRestore());
+
+  async function subscribeThrowing(makeError: () => unknown): Promise<FakeClient> {
+    @LiveResolver()
+    @Injectable()
+    class Boom {
+      @LiveQuery('boom.q', { tags: ['boom'] })
+      q() {
+        throw makeError();
+      }
+    }
+
+    @WebSocketGateway({ path: '/ws' })
+    class Gw {}
+
+    @Module({ imports: [WebSocketModule.forRoot(), LiveModule.forRoot()], providers: [Gw, Boom] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const dispatcher = app.get(WsDispatcher);
+    const client = new FakeClient();
+    await dispatcher.handleOpen('/ws', client);
+    await dispatcher.dispatchMessage('/ws', client, subFrame('s1', 'boom.q'));
+    return client;
+  }
+
+  it('unbranded resolver Error → redacted internal frame; raw text only via report', async () => {
+    const client = await subscribeThrowing(() => new Error('SELECT * FROM secrets failed'));
+
+    expect(client.live()).toEqual([
+      { t: 'ack', sub: 's1' },
+      { t: 'error', sub: 's1', code: 'internal', message: 'Internal Server Error', fatal: true },
+    ]);
+    // The leak is closed: the raw resolver message never rides the wire…
+    expect(JSON.stringify(client.frames)).not.toContain('SELECT * FROM secrets failed');
+    // …it surfaces ONLY through the reporter (default reporter → console.error).
+    const reported = errorSpy.mock.calls.map((c) => c[1]).find((a): a is Error => a instanceof Error);
+    expect(reported?.message).toBe('SELECT * FROM secrets failed');
+  });
+
+  it('branded VelaError(403) → forbidden frame keeps its client-facing message', async () => {
+    const client = await subscribeThrowing(() => new VelaError('forbidden', { message: 'not your list' }));
+
+    expect(client.live()).toEqual([
+      { t: 'ack', sub: 's1' },
+      { t: 'error', sub: 's1', code: 'forbidden', message: 'not your list', fatal: true },
+    ]);
+  });
+
+  it('branded VelaError(422) → bad_args frame keeps its client-facing message', async () => {
+    const client = await subscribeThrowing(() => new VelaError('unprocessable', { message: 'bad cursor' }));
+
+    expect(client.live()).toEqual([
+      { t: 'ack', sub: 's1' },
+      { t: 'error', sub: 's1', code: 'bad_args', message: 'bad cursor', fatal: true },
+    ]);
+  });
+
+  it('leaves the subscribe-arg parse path untouched (validation message still echoed)', async () => {
+    @LiveResolver()
+    @Injectable()
+    class Strict {
+      @LiveQuery('strict.q', {
+        tags: ['t'],
+        parse: (args: unknown) => {
+          if (typeof (args as { n?: unknown })?.n !== 'number') throw new Error('n must be a number');
+          return args as { n: number };
+        },
+      })
+      q(args: { n: number }) {
+        return args.n;
+      }
+    }
+
+    @WebSocketGateway({ path: '/ws' })
+    class Gw {}
+
+    @Module({ imports: [WebSocketModule.forRoot(), LiveModule.forRoot()], providers: [Gw, Strict] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const dispatcher = app.get(WsDispatcher);
+    const client = new FakeClient();
+    await dispatcher.handleOpen('/ws', client);
+    await dispatcher.dispatchMessage('/ws', client, subFrame('s1', 'strict.q', { n: 'NaN' }));
+
+    // Pre-ack path: the validation message IS client-facing (unlike resolver errors).
+    expect(client.live()).toEqual([
+      { t: 'error', sub: 's1', code: 'bad_args', message: 'n must be a number', fatal: true },
+    ]);
   });
 });
 
