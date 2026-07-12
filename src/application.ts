@@ -1,6 +1,10 @@
 import type { Hono } from 'hono';
+import { HTTPException } from 'hono/http-exception';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
+import { toErrorBody } from '@velajs/errors';
 import type { Container } from './container/container';
 import type { Token } from './container/types';
+import { resolveErrorReporter } from './exceptions/reporter';
 import { DiscoveryService } from './discovery/discovery.service';
 import { EntrypointRegistry } from './entrypoint/entrypoint.registry';
 import { LazyModuleManager } from './module/lazy-modules';
@@ -54,6 +58,25 @@ export class VelaApplication {
   /** Pre-build routes (handles async CRUD imports). Called by VelaFactory. */
   async initRoutes(): Promise<void> {
     this.honoApp = await this.routeManager.build();
+
+    // Last line of defense for the HTTP edge. HandlerExecutor's catch tail
+    // only sees controller-handler errors; a raw Hono middleware (or any
+    // hono-level throw that bypasses route.manager's wrapMiddlewareWithFilters)
+    // would otherwise reach Hono's default error handler unreported and
+    // unredacted. `onError` funnels it through the same report-first + canonical
+    // redacted body path every other edge uses.
+    this.honoApp.onError((err, c) => {
+      // Hono's own HTTPException (e.g. `bodyLimit`'s 413) carries a deliberate,
+      // author-intended client response — honor it exactly as Hono's default
+      // error handler would, without treating it as a server fault to redact.
+      if (err instanceof HTTPException) {
+        return err.getResponse();
+      }
+      const reporter = resolveErrorReporter(this.container);
+      reporter.report(err, { edge: 'hono', source: `${c.req.method} ${c.req.path}` });
+      const { body, status } = toErrorBody(err, { catalog: reporter.catalog });
+      return c.json(body, status as ContentfulStatusCode);
+    });
   }
 
   private getApp(): Hono {

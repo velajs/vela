@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import type { Context, Next } from 'hono';
 import {
   VelaFactory,
   Controller,
@@ -143,5 +144,102 @@ describe('HTTP error edge — report-first ordering + canonical body', () => {
     expect(await res.json()).toEqual({ error: { code: 'internal', message: 'Internal Server Error' } });
     // Report FIRST always: original error + the exception-filter-threw report.
     expect(errorSpy).toHaveBeenCalledTimes(2);
+  });
+});
+
+// =============================================================================
+// Task 8 — hono `app.onError`: hono/middleware-level errors can no longer
+// bypass report + redaction.
+//
+// HandlerExecutor's catch tail only sees controller-handler errors. A raw
+// Hono middleware registered directly on the app (bypassing vela's
+// wrapMiddlewareWithFilters wrapping entirely) throws straight into Hono's
+// outer error path. `app.onError` is the last line of defense: it must report
+// the error once and emit the canonical, redacted body — never the raw
+// message.
+// =============================================================================
+
+describe('hono app.onError — hono/middleware errors cannot bypass report + redaction', () => {
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    MetadataRegistry.clear();
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    errorSpy.mockRestore();
+  });
+
+  it('raw hono middleware error (bypasses vela wrapping) → reported once + redacted 500', async () => {
+    @Controller('/ok')
+    class OkController {
+      @Get()
+      handle() {
+        return { ok: true };
+      }
+    }
+
+    @Module({ controllers: [OkController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+
+    // Registered directly on the built Hono app — this middleware is NOT run
+    // through route.manager's wrapMiddlewareWithFilters, so nothing but
+    // `app.onError` can intercept its throw. Request an unmatched path so the
+    // `*` middleware is the only handler in the chain.
+    app.getHonoApp().use('*', async (_c: Context, _next: Next) => {
+      throw new Error('middleware secret');
+    });
+
+    const res = await app.getHonoApp().request('/boom');
+
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body).toEqual({ error: { code: 'internal', message: 'Internal Server Error' } });
+    // Raw message never echoed to the client.
+    expect(JSON.stringify(body)).not.toContain('middleware secret');
+    // onError reports exactly once via the shared reporter.
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Diagnostic probe (Task 7 review follow-up): a route.manager-level GLOBAL
+  // middleware throwing a *raw* Error. wrapMiddlewareWithFilters catches it,
+  // finds no filter + non-HttpException, and re-throws to Hono's outer handler.
+  // We observe what body reaches the client now that onError is wired.
+  // This test only DOCUMENTS the observed behavior — it does not fix
+  // route.manager.
+  // ---------------------------------------------------------------------------
+  it('probe: route.manager global-middleware raw-error boundary reaches onError (redacted, no leak)', async () => {
+    @Controller('/probe')
+    class ProbeController {
+      @Get()
+      handle() {
+        return { ok: true };
+      }
+    }
+
+    @Module({ controllers: [ProbeController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule, {
+      middleware: [
+        async (_c: Context, _next: Next) => {
+          throw new Error('boundary secret');
+        },
+      ],
+    });
+
+    const res = await app.getHonoApp().request('/probe');
+    const body = await res.json();
+
+    // Documented observation: onError closes the raw-Error middleware boundary.
+    expect(res.status).toBe(500);
+    expect(body).toEqual({ error: { code: 'internal', message: 'Internal Server Error' } });
+    expect(JSON.stringify(body)).not.toContain('boundary secret');
+    // Old `{ statusCode, message }` shape must NOT surface for raw errors.
+    expect(body).not.toHaveProperty('statusCode');
   });
 });
