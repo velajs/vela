@@ -3,6 +3,7 @@ import { resolveErrorReporter } from '../exceptions/reporter';
 import { APP_EXCEPTION_HANDLER, ERROR_CATALOG } from '../pipeline/tokens';
 import { Container } from '../container/container';
 import { defineErrorCatalog, VelaError } from '@velajs/errors';
+import { InternalServerErrorException, NotFoundException } from '../errors/http-exception';
 
 describe('ErrorReporter', () => {
   it('default reporter console.errors unless diagnostics is silent', () => {
@@ -11,6 +12,35 @@ describe('ErrorReporter', () => {
     resolveErrorReporter(container).report(new Error('boom'), { edge: 'http', source: 'X.y' });
     expect(spy).toHaveBeenCalledOnce();
     spy.mockRestore();
+  });
+
+  it('default reporter skips 4xx client-fault errors (no console noise)', () => {
+    const container = new Container();
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const reporter = resolveErrorReporter(container);
+    reporter.report(new NotFoundException('missing thing'), { edge: 'http' });
+    reporter.report(new VelaError('not_found'), { edge: 'http' });
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it('default reporter still logs 5xx and unbranded errors', () => {
+    const container = new Container();
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const reporter = resolveErrorReporter(container);
+    reporter.report(new InternalServerErrorException('boom'), { edge: 'http' });
+    reporter.report(new VelaError('internal'), { edge: 'http' });
+    reporter.report(new Error('raw'), { edge: 'http' });
+    expect(spy).toHaveBeenCalledTimes(3);
+    spy.mockRestore();
+  });
+
+  it('custom handler.report still receives 4xx errors (skip is default-console-only)', () => {
+    const container = new Container();
+    const report = vi.fn();
+    container.register({ provide: APP_EXCEPTION_HANDLER, useValue: { report } });
+    resolveErrorReporter(container).report(new NotFoundException('missing thing'), { edge: 'http' });
+    expect(report).toHaveBeenCalledOnce();
   });
 
   it('custom handler.report always runs, even under diagnostics silent', () => {

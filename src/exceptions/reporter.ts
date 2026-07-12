@@ -1,5 +1,7 @@
-import { CORE_CATALOG, type Catalog, type ErrorBodyResult } from '@velajs/errors';
+import { CORE_CATALOG, isVelaError, type Catalog, type ErrorBodyResult } from '@velajs/errors';
+import { HTTPException } from 'hono/http-exception';
 import type { Container } from '../container/container';
+import { HttpException } from '../errors/http-exception';
 import { APP_EXCEPTION_HANDLER, ERROR_CATALOG } from '../pipeline/tokens';
 import { matchesAny, type ErrorReportContext, type ExceptionHandler } from './exception-handler';
 
@@ -47,6 +49,8 @@ export const resolveErrorReporter = (container: Container): ErrorReporter => {
         return;
       }
       if (container.getDiagnostics() !== 'silent') {
+        const status = clientFaultStatus(error);
+        if (status !== undefined && status >= 400 && status < 500) return; // client fault — not server-error log noise
         console.error(
           `[vela] ${merged.edge} error${merged.source ? ` in ${merged.source}` : ''}${merged.note ? ` (${merged.note})` : ''}:`,
           error,
@@ -61,6 +65,21 @@ export const resolveErrorReporter = (container: Container): ErrorReporter => {
       }
     },
   };
+};
+
+/**
+ * The HTTP status of a client-fault (4xx) error, read across the three shapes a
+ * caught error can take: a branded {@link VelaError} (`.status`), vela's own
+ * {@link HttpException} (`getStatus()`), or hono's {@link HTTPException}
+ * (`.status`). `undefined` for anything else — including raw/unbranded errors,
+ * which must always be logged. Only the DEFAULT console reporter uses this to
+ * mute client faults; a custom `handler.report` still receives everything.
+ */
+const clientFaultStatus = (error: unknown): number | undefined => {
+  if (isVelaError(error)) return error.status;
+  if (error instanceof HttpException) return error.getStatus();
+  if (error instanceof HTTPException) return error.status; // hono
+  return undefined;
 };
 
 const safeContext = (
