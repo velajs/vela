@@ -16,10 +16,7 @@ export interface VelaCreateOptions extends BootstrapOptions {
 }
 
 export const VelaFactory = {
-  async create(
-    rootModule: Type,
-    options: VelaCreateOptions = {},
-  ): Promise<VelaApplication> {
+  async create(rootModule: Type, options: VelaCreateOptions = {}): Promise<VelaApplication> {
     const { adapters = [], ...bootstrapOptions } = options;
 
     const adapterMiddleware = adapters.flatMap((a) => a.requestMiddleware ?? []);

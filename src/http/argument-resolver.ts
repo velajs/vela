@@ -10,19 +10,26 @@ import type { ParamMetadata } from './types';
 type ParamExtractor = (c: Context, param: ParamMetadata) => unknown | Promise<unknown>;
 
 const PARAM_EXTRACTORS = new Map<ParamType, ParamExtractor>([
-  [ParamType.PARAM,    (c, p) => p.name ? c.req.param(p.name) : c.req.param()],
-  [ParamType.QUERY,    (c, p) => p.name ? c.req.query(p.name) : c.req.query()],
-  [ParamType.BODY,     async (c, p) => {
-    let body: unknown;
-    try { body = await c.req.json(); } catch { return undefined; }
-    return p.name && body !== null && typeof body === 'object'
-      ? (body as Record<string, unknown>)[p.name]
-      : body;
-  }],
-  [ParamType.HEADERS,  (c, p) => p.name ? c.req.header(p.name) : c.req.header()],
-  [ParamType.REQUEST,  (c) => c],
+  [ParamType.PARAM, (c, p) => (p.name ? c.req.param(p.name) : c.req.param())],
+  [ParamType.QUERY, (c, p) => (p.name ? c.req.query(p.name) : c.req.query())],
+  [
+    ParamType.BODY,
+    async (c, p) => {
+      let body: unknown;
+      try {
+        body = await c.req.json();
+      } catch {
+        return undefined;
+      }
+      return p.name && body !== null && typeof body === 'object'
+        ? (body as Record<string, unknown>)[p.name]
+        : body;
+    },
+  ],
+  [ParamType.HEADERS, (c, p) => (p.name ? c.req.header(p.name) : c.req.header())],
+  [ParamType.REQUEST, (c) => c],
   [ParamType.RESPONSE, (c) => c],
-  [ParamType.COOKIE,   (c, p) => p.name ? getCookie(c, p.name) : getCookie(c)],
+  [ParamType.COOKIE, (c, p) => (p.name ? getCookie(c, p.name) : getCookie(c))],
   [ParamType.RAW_BODY, async (c) => new Uint8Array(await c.req.arrayBuffer())],
 ]);
 

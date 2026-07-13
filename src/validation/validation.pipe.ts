@@ -3,9 +3,7 @@ import type { ArgumentMetadata, PipeTransform } from '../pipeline/types';
 
 export class ValidationPipe implements PipeTransform {
   transform(value: unknown, metadata: ArgumentMetadata): unknown {
-    const metatype = metadata.metatype as
-      | { schema?: { parse(d: unknown): unknown } }
-      | undefined;
+    const metatype = metadata.metatype as { schema?: { parse(d: unknown): unknown } } | undefined;
     if (!metatype?.schema?.parse) return value;
 
     try {

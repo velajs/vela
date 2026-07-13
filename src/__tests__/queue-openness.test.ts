@@ -34,7 +34,12 @@ function parseImports(file: string, source: string): ParsedImport[] {
       .filter(Boolean)
       // `type X` inside a value import clause, and `X as Y` aliasing:
       // the PUBLIC name is the left-hand side.
-      .map((s) => s.replace(/^type\s+/, '').split(/\s+as\s+/)[0].trim());
+      .map((s) =>
+        s
+          .replace(/^type\s+/, '')
+          .split(/\s+as\s+/)[0]
+          .trim(),
+      );
     out.push({ file, specifier: match[2], symbols });
   }
   return out;
@@ -62,17 +67,13 @@ function publicExportNames(): Set<string> {
 
 describe('QueueModule openness proof', () => {
   const files = readdirSync(QUEUE_DIR).filter((f) => f.endsWith('.ts'));
-  const imports = files.flatMap((f) =>
-    parseImports(f, readFileSync(join(QUEUE_DIR, f), 'utf8')),
-  );
+  const imports = files.flatMap((f) => parseImports(f, readFileSync(join(QUEUE_DIR, f), 'utf8')));
 
   it('imports vela only through the public barrel', () => {
     const offenders = imports.filter(
       (imp) => !imp.specifier.startsWith('./') && imp.specifier !== '../index',
     );
-    expect(
-      offenders.map((o) => `${o.file}: '${o.specifier}'`),
-    ).toEqual([]);
+    expect(offenders.map((o) => `${o.file}: '${o.specifier}'`)).toEqual([]);
   });
 
   it('uses only symbols the public barrel exports', () => {

@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { VelaFactory, Module, Controller, Get, Head, Options, MetadataRegistry } from '../index.js';
 
-beforeEach(() => { MetadataRegistry.clear(); });
+beforeEach(() => {
+  MetadataRegistry.clear();
+});
 
 describe('HTTP method routing', () => {
   describe('@Head()', () => {
@@ -9,7 +11,9 @@ describe('HTTP method routing', () => {
       @Controller('/x')
       class C {
         @Head()
-        h() { return 'should not be sent as body'; }
+        h() {
+          return 'should not be sent as body';
+        }
       }
 
       @Module({ controllers: [C] })
@@ -24,7 +28,9 @@ describe('HTTP method routing', () => {
       @Controller('/x')
       class C {
         @Head()
-        h() { return 'head-only'; }
+        h() {
+          return 'head-only';
+        }
       }
 
       @Module({ controllers: [C] })
@@ -39,10 +45,14 @@ describe('HTTP method routing', () => {
       @Controller('/x')
       class C {
         @Get()
-        g() { return 'get-body'; }
+        g() {
+          return 'get-body';
+        }
 
         @Head()
-        h() { return null; }
+        h() {
+          return null;
+        }
       }
 
       @Module({ controllers: [C] })
@@ -63,7 +73,9 @@ describe('HTTP method routing', () => {
       @Controller('/x')
       class C {
         @Options()
-        o() { return 'opts'; }
+        o() {
+          return 'opts';
+        }
       }
 
       @Module({ controllers: [C] })

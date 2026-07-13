@@ -33,9 +33,7 @@ describe('Module visibility', () => {
     @Module({ imports: [ModA], providers: [ServiceB] })
     class ModB {}
 
-    await expect(VelaFactory.create(ModB)).rejects.toThrow(
-      ModuleVisibilityError,
-    );
+    await expect(VelaFactory.create(ModB)).rejects.toThrow(ModuleVisibilityError);
   });
 
   it('allows resolution when token is exported by an imported module', async () => {
@@ -109,9 +107,7 @@ describe('Module visibility', () => {
     @Module({ imports: [ModG], providers: [Consumer] })
     class ModC {}
 
-    await expect(VelaFactory.create(ModC)).rejects.toThrow(
-      ModuleVisibilityError,
-    );
+    await expect(VelaFactory.create(ModC)).rejects.toThrow(ModuleVisibilityError);
   });
 
   it('dynamic module global: true makes its exports visible cross-module', async () => {
@@ -172,22 +168,20 @@ describe('Module visibility', () => {
     // ModB declares the alias but the alias targets ModA's invisible HiddenImpl
     @Module({
       imports: [ModA],
-      providers: [
-        Consumer,
-        { provide: ALIAS, useExisting: HiddenImpl },
-      ],
+      providers: [Consumer, { provide: ALIAS, useExisting: HiddenImpl }],
     })
     class ModB {}
 
-    await expect(VelaFactory.create(ModB)).rejects.toThrow(
-      ModuleVisibilityError,
-    );
+    await expect(VelaFactory.create(ModB)).rejects.toThrow(ModuleVisibilityError);
   });
 
   it('framework primitives (Container, ModuleRef) are resolvable from any module', async () => {
     @Injectable()
     class UsesContainer {
-      constructor(public c: Container, public ref: ModuleRef) {}
+      constructor(
+        public c: Container,
+        public ref: ModuleRef,
+      ) {}
     }
 
     @Module({ providers: [UsesContainer] })
@@ -276,5 +270,4 @@ describe('Module visibility', () => {
     expect(t2).toBeInstanceOf(Transient);
     expect(t1.id).not.toBe(t2.id);
   });
-
 });

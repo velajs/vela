@@ -106,13 +106,13 @@ describe('defineModule', () => {
     });
     class WidgetModule extends ConfigurableModuleClass {}
 
-    @Module({ imports: [WidgetModule.forRootAsync({ size: 7, useFactory: () => ({ color: 'green' }) })] })
+    @Module({
+      imports: [WidgetModule.forRootAsync({ size: 7, useFactory: () => ({ color: 'green' }) })],
+    })
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
-    const resolved = await app
-      .getContainer()
-      .resolveAsync<WidgetOptions>(MODULE_OPTIONS_TOKEN);
+    const resolved = await app.getContainer().resolveAsync<WidgetOptions>(MODULE_OPTIONS_TOKEN);
     seen.push(resolved);
     expect(resolved).toEqual({ size: 7, color: 'green' });
     void Probe;

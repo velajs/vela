@@ -1,13 +1,6 @@
 import type { Context, Next } from 'hono';
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  Controller,
-  Get,
-  Injectable,
-  MetadataRegistry,
-  Module,
-  VelaFactory,
-} from '../index.js';
+import { Controller, Get, Injectable, MetadataRegistry, Module, VelaFactory } from '../index.js';
 import type { MiddlewareConsumer, NestModule } from '../index.js';
 
 beforeEach(() => {

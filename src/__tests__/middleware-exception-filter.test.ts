@@ -38,8 +38,7 @@ describe('Middleware exception filter coverage', () => {
     class CatchAllFilter implements ExceptionFilter {
       catch(exception: unknown, _ctx: ExecutionContext) {
         const message = exception instanceof Error ? exception.message : 'unknown';
-        const status =
-          exception instanceof HttpException ? exception.getStatus() : 500;
+        const status = exception instanceof HttpException ? exception.getStatus() : 500;
         return { caught: true, message, status };
       }
     }
@@ -61,10 +60,7 @@ describe('Middleware exception filter coverage', () => {
 
     @Module({
       controllers: [M1Controller],
-      providers: [
-        ThrowingMw,
-        { provide: APP_FILTER, useClass: CatchAllFilter },
-      ],
+      providers: [ThrowingMw, { provide: APP_FILTER, useClass: CatchAllFilter }],
     })
     class AppModule implements NestModule {
       configure(consumer: MiddlewareConsumer) {
@@ -87,8 +83,7 @@ describe('Middleware exception filter coverage', () => {
     @Catch()
     class CatchAllFilter implements ExceptionFilter {
       catch(exception: unknown, _ctx: ExecutionContext) {
-        const status =
-          exception instanceof HttpException ? exception.getStatus() : 500;
+        const status = exception instanceof HttpException ? exception.getStatus() : 500;
         return { caught: 'global', status };
       }
     }
@@ -145,10 +140,7 @@ describe('Middleware exception filter coverage', () => {
 
     @Module({
       controllers: [R1Controller],
-      providers: [
-        ThrowingMw,
-        { provide: APP_FILTER, useClass: PerRouteFilter },
-      ],
+      providers: [ThrowingMw, { provide: APP_FILTER, useClass: PerRouteFilter }],
     })
     class AppModule implements NestModule {
       configure(consumer: MiddlewareConsumer) {
@@ -190,10 +182,7 @@ describe('Middleware exception filter coverage', () => {
 
     @Module({
       controllers: [TypedController],
-      providers: [
-        ThrowingMw,
-        { provide: APP_FILTER, useClass: NotFoundOnlyFilter },
-      ],
+      providers: [ThrowingMw, { provide: APP_FILTER, useClass: NotFoundOnlyFilter }],
     })
     class AppModule implements NestModule {
       configure(consumer: MiddlewareConsumer) {
@@ -387,10 +376,7 @@ describe('Middleware exception filter coverage', () => {
 
     @Module({
       controllers: [PostController],
-      providers: [
-        PostThrowMw,
-        { provide: APP_FILTER, useClass: PostFilter },
-      ],
+      providers: [PostThrowMw, { provide: APP_FILTER, useClass: PostFilter }],
     })
     class AppModule implements NestModule {
       configure(consumer: MiddlewareConsumer) {
@@ -432,10 +418,7 @@ describe('Middleware exception filter coverage', () => {
 
     @Module({
       controllers: [SyncController],
-      providers: [
-        SyncThrowMw,
-        { provide: APP_FILTER, useClass: SyncFilter },
-      ],
+      providers: [SyncThrowMw, { provide: APP_FILTER, useClass: SyncFilter }],
     })
     class AppModule implements NestModule {
       configure(consumer: MiddlewareConsumer) {

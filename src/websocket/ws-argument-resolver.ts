@@ -24,7 +24,7 @@ export async function resolveWsArgs(
     return [client, data];
   }
 
-  const maxIndex = paramMeta[paramMeta.length - 1].index;
+  const maxIndex = paramMeta[paramMeta.length - 1]!.index;
   const args: unknown[] = new Array(maxIndex + 1).fill(undefined);
 
   for (const param of paramMeta) {

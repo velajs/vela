@@ -1,7 +1,4 @@
-import {
-  getConstructorDependencies,
-  getInjectMetadata,
-} from '../container/decorators';
+import { getConstructorDependencies, getInjectMetadata } from '../container/decorators';
 import type { Container } from '../container/container';
 import type { Token, Type } from '../container/types';
 
@@ -22,10 +19,7 @@ import type { Token, Type } from '../container/types';
 // OR a non-empty `design:paramtypes` (the SWC/TS emit for any constructor
 // parameter). `@Injectable()` alone is NOT sufficient — `mixin()` and many
 // parameterless guards are `@Injectable()` and still safe to `new` directly.
-export function instantiate<T>(
-  classOrInstance: Type<T> | Token<T> | T,
-  container: Container,
-): T {
+export function instantiate<T>(classOrInstance: Type<T> | Token<T> | T, container: Container): T {
   if (typeof classOrInstance === 'function') {
     const clazz = classOrInstance as Type<T>;
     if (container.has(clazz)) {

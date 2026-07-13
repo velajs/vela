@@ -65,7 +65,10 @@ describe('HttpModule', () => {
     const res = await app.getHonoApp().request('/users');
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ id: 1, name: 'Alice' });
-    expect(fetch).toHaveBeenCalledWith('https://api.test/user/1', expect.objectContaining({ method: 'GET' }));
+    expect(fetch).toHaveBeenCalledWith(
+      'https://api.test/user/1',
+      expect.objectContaining({ method: 'GET' }),
+    );
   });
 
   it('should use baseURL from HttpModule.forRoot()', async () => {
@@ -259,13 +262,17 @@ describe('HttpModule', () => {
 
     @Injectable()
     class ApiConfigService {
-      getBaseUrl() { return 'https://async.example.com'; }
+      getBaseUrl() {
+        return 'https://async.example.com';
+      }
     }
 
     @Injectable()
     class AsyncApiService {
       constructor(private http: HttpService) {}
-      ping() { return this.http.get('/ping'); }
+      ping() {
+        return this.http.get('/ping');
+      }
     }
 
     @Controller('/async-test')

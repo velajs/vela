@@ -50,9 +50,7 @@ describe('Module circular detection', () => {
     @Module({ imports: [NotAModule] })
     class AppModule {}
 
-    await expect(VelaFactory.create(AppModule)).rejects.toThrow(
-      /NotAModule is not a module/,
-    );
+    await expect(VelaFactory.create(AppModule)).rejects.toThrow(/NotAModule is not a module/);
   });
 
   it('should handle diamond dependencies without error (A → B, A → C, B → D, C → D)', async () => {

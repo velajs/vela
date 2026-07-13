@@ -70,7 +70,9 @@ describe('RouteManager — route contributor integration', () => {
     try {
       @Controller('/users')
       class UsersController {
-        @Get('/ping') ping() { return { ok: true }; }
+        @Get('/ping') ping() {
+          return { ok: true };
+        }
       }
       defineMetadata(METADATA_KEYS.CRUD, { entity: 'User' }, UsersController);
 
@@ -156,7 +158,9 @@ describe('RouteManager — route contributor integration', () => {
   it('does not invoke a contributor for controllers without its claiming metadata', async () => {
     @Controller('/plain')
     class PlainController {
-      @Get() list() { return []; }
+      @Get() list() {
+        return [];
+      }
     }
 
     @Module({ controllers: [PlainController] })
@@ -181,8 +185,12 @@ describe('RouteManager — route contributor integration', () => {
 
     const aRoutes = vi.fn(async () => {});
     const bRoutes = vi.fn(async () => {});
-    registerRouteContributor(contributor({ id: 'a', claimsMetaKey: 'vela:gen-a', buildRoutes: aRoutes }));
-    registerRouteContributor(contributor({ id: 'b', claimsMetaKey: 'vela:gen-b', buildRoutes: bRoutes }));
+    registerRouteContributor(
+      contributor({ id: 'a', claimsMetaKey: 'vela:gen-a', buildRoutes: aRoutes }),
+    );
+    registerRouteContributor(
+      contributor({ id: 'b', claimsMetaKey: 'vela:gen-b', buildRoutes: bRoutes }),
+    );
 
     await VelaFactory.create(AppModule);
 
@@ -197,27 +205,27 @@ describe('createOpenApiDocument — route contributor integration', () => {
   it('includes contributed paths for claimed controllers', () => {
     @Controller('/users')
     class UsersController {
-      @Get() hand() { return []; }
+      @Get() hand() {
+        return [];
+      }
     }
     defineMetadata(METADATA_KEYS.CRUD, { entity: 'User' }, UsersController);
 
     @Module({ controllers: [UsersController] })
     class AppModule {}
 
-    const buildOpenApiPaths = vi.fn(
-      (ctx: { globalPrefix: string; controllerPrefix: string }) => ({
-        [`${ctx.globalPrefix}${ctx.controllerPrefix}/{id}`]: {
-          get: {
-            summary: 'Read one user',
-            responses: { '200': { description: 'OK' } },
-          },
-          delete: {
-            summary: 'Delete a user',
-            responses: { '204': { description: 'No Content' } },
-          },
+    const buildOpenApiPaths = vi.fn((ctx: { globalPrefix: string; controllerPrefix: string }) => ({
+      [`${ctx.globalPrefix}${ctx.controllerPrefix}/{id}`]: {
+        get: {
+          summary: 'Read one user',
+          responses: { '200': { description: 'OK' } },
         },
-      }),
-    );
+        delete: {
+          summary: 'Delete a user',
+          responses: { '204': { description: 'No Content' } },
+        },
+      },
+    }));
 
     registerRouteContributor(contributor({ buildOpenApiPaths }));
 
@@ -241,7 +249,9 @@ describe('createOpenApiDocument — route contributor integration', () => {
   it('merges contributed verbs with hand-written verbs on the same path', () => {
     @Controller('/posts')
     class PostsController {
-      @Get() list() { return []; }
+      @Get() list() {
+        return [];
+      }
     }
     defineMetadata(METADATA_KEYS.CRUD, { entity: 'Post' }, PostsController);
 
@@ -270,7 +280,9 @@ describe('createOpenApiDocument — route contributor integration', () => {
   it('works exactly as before when no contributor is registered (regression)', () => {
     @Controller('/books')
     class BooksController {
-      @Get() list() { return []; }
+      @Get() list() {
+        return [];
+      }
     }
 
     @Module({ controllers: [BooksController] })
@@ -285,7 +297,9 @@ describe('createOpenApiDocument — route contributor integration', () => {
   it('does not invoke a contributor for controllers without its claiming metadata', () => {
     @Controller('/widgets')
     class WidgetsController {
-      @Get() list() { return []; }
+      @Get() list() {
+        return [];
+      }
     }
 
     @Module({ controllers: [WidgetsController] })

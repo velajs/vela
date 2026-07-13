@@ -295,10 +295,7 @@ describe('DI Container', () => {
     }
 
     @Module({
-      providers: [
-        ApiService,
-        { provide: CONFIG, useValue: { apiUrl: 'https://api.example.com' } },
-      ],
+      providers: [ApiService, { provide: CONFIG, useValue: { apiUrl: 'https://api.example.com' } }],
       controllers: [ApiController],
     })
     class AppModule {}
@@ -783,11 +780,14 @@ describe('HttpException', () => {
 
       @Get('/bad-request')
       badRequest() {
-        throw new HttpException({
-          statusCode: 422,
-          message: 'Custom error',
-          errors: ['field1 is invalid'],
-        }, 422);
+        throw new HttpException(
+          {
+            statusCode: 422,
+            message: 'Custom error',
+            errors: ['field1 is invalid'],
+          },
+          422,
+        );
       }
     }
 
@@ -799,14 +799,19 @@ describe('HttpException', () => {
 
     const res1 = await hono.request('/exceptions/not-found');
     expect(res1.status).toBe(404);
-    expect(await res1.json()).toEqual({ error: { code: 'not_found', message: 'Resource not found' } });
+    expect(await res1.json()).toEqual({
+      error: { code: 'not_found', message: 'Resource not found' },
+    });
 
     const res2 = await hono.request('/exceptions/bad-request');
     expect(res2.status).toBe(422);
-    expect(await res2.json()).toEqual({
-      statusCode: 422,
-      message: 'Custom error',
-      errors: ['field1 is invalid'],
-    }, 422);
+    expect(await res2.json()).toEqual(
+      {
+        statusCode: 422,
+        message: 'Custom error',
+        errors: ['field1 is invalid'],
+      },
+      422,
+    );
   });
 });

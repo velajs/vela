@@ -1,5 +1,10 @@
 import { Inject, Injectable, InjectionToken, Optional } from '../container/index';
-import type { HttpModuleOptions, HttpRequestConfig, HttpResponse, RequestConfig } from './fetch.types';
+import type {
+  HttpModuleOptions,
+  HttpRequestConfig,
+  HttpResponse,
+  RequestConfig,
+} from './fetch.types';
 
 export const HTTP_MODULE_OPTIONS = new InjectionToken<HttpModuleOptions>('HTTP_MODULE_OPTIONS');
 
@@ -39,7 +44,11 @@ export class HttpService {
     return this.request<T>({ method: 'PUT', url, body, ...config });
   }
 
-  patch<T = unknown>(url: string, body?: unknown, config?: RequestConfig): Promise<HttpResponse<T>> {
+  patch<T = unknown>(
+    url: string,
+    body?: unknown,
+    config?: RequestConfig,
+  ): Promise<HttpResponse<T>> {
     return this.request<T>({ method: 'PATCH', url, body, ...config });
   }
 

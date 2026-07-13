@@ -114,7 +114,9 @@ describe('HTTP error edge — report-first ordering + canonical body', () => {
 
     expect(res.status).toBe(500);
     // Raw message never echoed — redacted to the catalog title.
-    expect(await res.json()).toEqual({ error: { code: 'internal', message: 'Internal Server Error' } });
+    expect(await res.json()).toEqual({
+      error: { code: 'internal', message: 'Internal Server Error' },
+    });
     expect(errorSpy).toHaveBeenCalledTimes(1);
   });
 
@@ -142,7 +144,9 @@ describe('HTTP error edge — report-first ordering + canonical body', () => {
     const res = await app.getHonoApp().request('/filter-throws');
 
     expect(res.status).toBe(500);
-    expect(await res.json()).toEqual({ error: { code: 'internal', message: 'Internal Server Error' } });
+    expect(await res.json()).toEqual({
+      error: { code: 'internal', message: 'Internal Server Error' },
+    });
     // Report FIRST always: original error + the exception-filter-threw report.
     expect(errorSpy).toHaveBeenCalledTimes(2);
   });

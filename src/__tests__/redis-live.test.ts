@@ -66,7 +66,9 @@ describe('redisLive', () => {
     expect(sink.applied).toHaveLength(0);
 
     driver.stop?.();
-    bus.clientPair().publish('vela:live:invalidate', JSON.stringify({ tags: ['x'], origin: 'peer' }));
+    bus
+      .clientPair()
+      .publish('vela:live:invalidate', JSON.stringify({ tags: ['x'], origin: 'peer' }));
     await Promise.resolve();
     expect(sink.applied).toHaveLength(0); // unsubscribed
   });

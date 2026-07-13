@@ -1,10 +1,5 @@
 import { ForbiddenException } from '../errors/http-exception';
-import type {
-  CallHandler,
-  CanActivate,
-  ExecutionContext,
-  NestInterceptor,
-} from './types';
+import type { CallHandler, CanActivate, ExecutionContext, NestInterceptor } from './types';
 
 export interface PipelineRunOptions {
   context: ExecutionContext;
@@ -71,7 +66,7 @@ export class PipelineRunner {
       const interceptor = interceptors[i];
       const currentNext = next;
       next = {
-        handle: () => interceptor.intercept(context, currentNext),
+        handle: () => interceptor!.intercept(context, currentNext),
       };
     }
 

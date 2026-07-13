@@ -43,5 +43,9 @@ export interface StorageDriver {
   download(path: string): Promise<DownloadResult>;
   delete(path: string): Promise<void>;
   exists(path: string): Promise<boolean>;
-  getPresignedUrl(path: string, method: PresignMethod, expiresIn: number): Promise<PresignedUrlResult>;
+  getPresignedUrl(
+    path: string,
+    method: PresignMethod,
+    expiresIn: number,
+  ): Promise<PresignedUrlResult>;
 }

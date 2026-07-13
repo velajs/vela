@@ -1,10 +1,4 @@
-export {
-  Global,
-  Module,
-  isModule,
-  getModuleMetadata,
-  defineDynamicModule,
-} from './decorators';
+export { Global, Module, isModule, getModuleMetadata, defineDynamicModule } from './decorators';
 export { stableHash } from './stable-hash';
 export {
   ConfigurableModuleBuilder,
@@ -45,4 +39,10 @@ export type {
   NestModule,
   RouteInfo,
 } from './middleware';
-export type { ModuleOptions, ModuleMetadata, DynamicModule, AsyncModuleOptions, ModuleImport } from './types';
+export type {
+  ModuleOptions,
+  ModuleMetadata,
+  DynamicModule,
+  AsyncModuleOptions,
+  ModuleImport,
+} from './types';

@@ -32,9 +32,7 @@ describe('Serialization', () => {
       password: z.string(),
     });
 
-    class UserResponseDto extends createZodDto(
-      UserSchema.omit({ password: true }),
-    ) {}
+    class UserResponseDto extends createZodDto(UserSchema.omit({ password: true })) {}
 
     @Injectable()
     class UserService {
@@ -77,9 +75,7 @@ describe('Serialization', () => {
       name: z.string(),
       password: z.string(),
     });
-    class UserResponseDto extends createZodDto(
-      UserSchema.omit({ password: true }),
-    ) {}
+    class UserResponseDto extends createZodDto(UserSchema.omit({ password: true })) {}
 
     @Controller('/users')
     @UseInterceptors(SerializerInterceptor)
@@ -102,7 +98,7 @@ describe('Serialization', () => {
 
     const res = await hono.request('/users');
     expect(res.status).toBe(200);
-    const body = await res.json() as any[];
+    const body = (await res.json()) as any[];
     expect(body).toEqual([
       { id: 1, name: 'Alice' },
       { id: 2, name: 'Bob' },
@@ -129,7 +125,7 @@ describe('Serialization', () => {
 
     const res = await hono.request('/items');
     expect(res.status).toBe(200);
-    const body = await res.json() as any[];
+    const body = (await res.json()) as any[];
     expect(body).toEqual([{ id: 1, name: 'Widget', secret: 'data' }]);
   });
 
@@ -203,7 +199,7 @@ describe('Serialization', () => {
       }),
     });
     expect(invalidRes.status).toBe(400);
-    const errorBody = await invalidRes.json() as any;
+    const errorBody = (await invalidRes.json()) as any;
     expect(errorBody.message).toBe('Validation failed');
     expect(errorBody.errors.length).toBeGreaterThan(0);
   });

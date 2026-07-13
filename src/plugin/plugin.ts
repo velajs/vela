@@ -48,9 +48,7 @@ export class PluginRegistry {
   }
 }
 
-export const PLUGIN_REGISTRY_TOKEN = new InjectionToken<PluginRegistry>(
-  'PLUGIN_REGISTRY',
-);
+export const PLUGIN_REGISTRY_TOKEN = new InjectionToken<PluginRegistry>('PLUGIN_REGISTRY');
 
 @Module({})
 export class PluginRootModule {}
@@ -82,9 +80,7 @@ function topologicalSort(plugins: readonly Plugin[]): Plugin[] {
     for (const depId of p.dependsOn ?? []) {
       const dep = byId.get(depId);
       if (!dep) {
-        throw new Error(
-          `Plugin '${p.id}' depends on missing plugin '${depId}'`,
-        );
+        throw new Error(`Plugin '${p.id}' depends on missing plugin '${depId}'`);
       }
       visit(dep, [...path, p.id]);
     }

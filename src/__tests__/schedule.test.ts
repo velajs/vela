@@ -3,7 +3,9 @@ import { VelaFactory, Module, Injectable, MetadataRegistry } from '../index.js';
 import { ScheduleModule, ScheduleRegistry, Cron, Interval, parseCron } from '../schedule/index.js';
 import { ScheduleNodeModule, ScheduleExecutor } from '../schedule-node/index.js';
 
-beforeEach(() => { MetadataRegistry.clear(); });
+beforeEach(() => {
+  MetadataRegistry.clear();
+});
 
 describe('ScheduleModule', () => {
   describe('@Cron decorator', () => {
@@ -162,7 +164,9 @@ describe('ScheduleNodeModule', () => {
     @Injectable()
     class CronService {
       @Cron('* * * * *')
-      tick() { callCount++; }
+      tick() {
+        callCount++;
+      }
     }
 
     @Module({
@@ -188,7 +192,9 @@ describe('ScheduleNodeModule', () => {
     @Injectable()
     class TimerService {
       @Interval(100)
-      tick() { callCount++; }
+      tick() {
+        callCount++;
+      }
     }
 
     @Module({
@@ -213,7 +219,9 @@ describe('ScheduleNodeModule', () => {
     @Injectable()
     class TimerService {
       @Interval(100)
-      tick() { callCount++; }
+      tick() {
+        callCount++;
+      }
     }
 
     @Module({

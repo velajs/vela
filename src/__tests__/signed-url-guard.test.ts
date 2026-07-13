@@ -100,7 +100,11 @@ describe('signed URLs — UrlGeneratorService.signedUrl + SignedUrlGuard', () =>
     const app = await VelaFactory.create(AppModule);
     const urls = app.get(UrlGeneratorService);
 
-    const signed = await urls.signedUrl('file.download', {}, { expiresIn: 60, secret: 'other-secret' });
+    const signed = await urls.signedUrl(
+      'file.download',
+      {},
+      { expiresIn: 60, secret: 'other-secret' },
+    );
 
     expect(await verifySignedUrl(signed, 'other-secret')).toBe(true);
     expect(await verifySignedUrl(signed, SECRET)).toBe(false);

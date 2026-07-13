@@ -10,10 +10,7 @@ import {
   defineMetadata,
   ApiTags,
 } from '../index.js';
-import {
-  registerRouteContributor,
-  _resetRouteContributors,
-} from '../http/route-contributor.js';
+import { registerRouteContributor, _resetRouteContributors } from '../http/route-contributor.js';
 
 beforeEach(() => {
   MetadataRegistry.clear();

@@ -96,7 +96,7 @@ describe('Container per-module buckets', () => {
     expect(c.resolve(TOKEN, 'top')).toBe('leaf-value');
   });
 
-  it('emits ModuleVisibilityError when token exists but isn\'t imported', () => {
+  it("emits ModuleVisibilityError when token exists but isn't imported", () => {
     const c = new Container({ diagnostics: 'silent' });
     c.registerScope({
       moduleId: 'private',
@@ -138,7 +138,7 @@ describe('Container per-module buckets', () => {
     expect(c.resolve(TOKEN, 'consumer')).toBe('globally-visible');
   });
 
-  it('createDetached deep-clones buckets so sandbox writes don\'t leak back', () => {
+  it("createDetached deep-clones buckets so sandbox writes don't leak back", () => {
     const c = new Container({ diagnostics: 'silent' });
     c.register({ provide: TOKEN, useValue: 'parent' });
     const sandbox = c.createDetached();
@@ -166,10 +166,12 @@ describe('Container per-module buckets', () => {
     expect(c.resolve(TOKEN)).toBe('rooted');
   });
 
-  it('class deps resolve from the registration\'s declaring module POV', () => {
+  it("class deps resolve from the registration's declaring module POV", () => {
     @Injectable()
     class Dep {
-      label() { return 'dep-from-A'; }
+      label() {
+        return 'dep-from-A';
+      }
     }
     @Injectable()
     class WithDep {
@@ -191,7 +193,7 @@ describe('Container per-module buckets', () => {
     expect(instance.dep.label()).toBe('dep-from-A');
   });
 
-  it('useExisting alias delegates to the original requester\'s scope', () => {
+  it("useExisting alias delegates to the original requester's scope", () => {
     @Injectable()
     class Real {}
     const ALIAS = new InjectionToken<Real>('ALIAS');

@@ -4,7 +4,13 @@ export function parseCron(expression: string): CronMatcher | null {
   const fields = expression.trim().split(/\s+/);
   if (fields.length !== 5) return null;
 
-  const [minuteField, hourField, dayField, monthField, weekdayField] = fields;
+  const [minuteField, hourField, dayField, monthField, weekdayField] = fields as [
+    string,
+    string,
+    string,
+    string,
+    string,
+  ];
 
   const minute = parseField(minuteField, 0, 59);
   const hour = parseField(hourField, 0, 23);
@@ -33,10 +39,10 @@ function parseField(field: string, min: number, max: number): ((value: number) =
     const stepParts = segment.split('/');
     if (stepParts.length > 2) return null;
 
-    const step = stepParts.length === 2 ? Number(stepParts[1]) : 1;
+    const step = stepParts.length === 2 ? Number(stepParts[1]!) : 1;
     if (!Number.isInteger(step) || step <= 0) return null;
 
-    const range = parseRange(stepParts[0], min, max);
+    const range = parseRange(stepParts[0]!, min, max);
     if (!range) return null;
 
     predicates.push((value) => {
@@ -48,19 +54,23 @@ function parseField(field: string, min: number, max: number): ((value: number) =
   return (value) => predicates.some((p) => p(value));
 }
 
-function parseRange(segment: string, min: number, max: number): { start: number; end: number } | null {
+function parseRange(
+  segment: string,
+  min: number,
+  max: number,
+): { start: number; end: number } | null {
   if (segment === '*') return { start: min, end: max };
 
   const bounds = segment.split('-');
   if (bounds.length === 1) {
-    const value = parseCronNumber(bounds[0], min, max);
+    const value = parseCronNumber(bounds[0]!, min, max);
     if (value === null) return null;
     return { start: value, end: value };
   }
 
   if (bounds.length !== 2) return null;
-  const start = parseCronNumber(bounds[0], min, max);
-  const end = parseCronNumber(bounds[1], min, max);
+  const start = parseCronNumber(bounds[0]!, min, max);
+  const end = parseCronNumber(bounds[1]!, min, max);
   if (start === null || end === null || start > end) return null;
   return { start, end };
 }

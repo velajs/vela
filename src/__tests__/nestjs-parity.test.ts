@@ -402,10 +402,7 @@ describe('APP_* tokens', () => {
     }
 
     @Module({
-      providers: [
-        ApiKeyGuard,
-        { provide: APP_GUARD, useExisting: ApiKeyGuard },
-      ],
+      providers: [ApiKeyGuard, { provide: APP_GUARD, useExisting: ApiKeyGuard }],
       controllers: [GuardedController],
     })
     class AppModule {}
@@ -440,10 +437,7 @@ describe('APP_* tokens', () => {
     }
 
     @Module({
-      providers: [
-        WrapInterceptor,
-        { provide: APP_INTERCEPTOR, useExisting: WrapInterceptor },
-      ],
+      providers: [WrapInterceptor, { provide: APP_INTERCEPTOR, useExisting: WrapInterceptor }],
       controllers: [InterceptedController],
     })
     class AppModule {}
@@ -474,10 +468,7 @@ describe('APP_* tokens', () => {
     }
 
     @Module({
-      providers: [
-        TrimPipe,
-        { provide: APP_PIPE, useExisting: TrimPipe },
-      ],
+      providers: [TrimPipe, { provide: APP_PIPE, useExisting: TrimPipe }],
       controllers: [TrimmedController],
     })
     class AppModule {}
@@ -787,13 +778,17 @@ describe('MiddlewareConsumer', () => {
     @Controller('/admin')
     class AdminController {
       @Get()
-      handle() { return { admin: true }; }
+      handle() {
+        return { admin: true };
+      }
     }
 
     @Controller('/public')
     class PublicController {
       @Get()
-      handle() { return { public: true }; }
+      handle() {
+        return { public: true };
+      }
     }
 
     @Module({ providers: [PrefixMiddleware], controllers: [AdminController, PublicController] })
@@ -823,13 +818,17 @@ describe('MiddlewareConsumer', () => {
     @Controller('/ctrl-mw')
     class TargetController {
       @Get()
-      handle() { return { ok: true }; }
+      handle() {
+        return { ok: true };
+      }
     }
 
     @Controller('/other')
     class OtherController {
       @Get()
-      handle() { return { ok: true }; }
+      handle() {
+        return { ok: true };
+      }
     }
 
     @Module({ providers: [CtrlMiddleware], controllers: [TargetController, OtherController] })
@@ -859,10 +858,14 @@ describe('MiddlewareConsumer', () => {
     @Controller('/api')
     class ApiController {
       @Get('/data')
-      data() { return { data: true }; }
+      data() {
+        return { data: true };
+      }
 
       @Get('/health')
-      health() { return { ok: true }; }
+      health() {
+        return { ok: true };
+      }
     }
 
     @Module({ providers: [LogMiddleware], controllers: [ApiController] })
@@ -892,18 +895,20 @@ describe('MiddlewareConsumer', () => {
     @Controller('/methods')
     class MethodsController {
       @Get()
-      get() { return { method: 'GET' }; }
+      get() {
+        return { method: 'GET' };
+      }
 
       @Post()
-      post() { return { method: 'POST' }; }
+      post() {
+        return { method: 'POST' };
+      }
     }
 
     @Module({ providers: [PostOnlyMiddleware], controllers: [MethodsController] })
     class AppModule implements NestModule {
       configure(consumer: MiddlewareConsumer) {
-        consumer
-          .apply(PostOnlyMiddleware)
-          .forRoutes({ path: '/methods', method: HttpMethod.POST });
+        consumer.apply(PostOnlyMiddleware).forRoutes({ path: '/methods', method: HttpMethod.POST });
       }
     }
 
@@ -935,7 +940,9 @@ describe('MiddlewareConsumer', () => {
     @Controller('/chained')
     class ChainedController {
       @Get()
-      handle() { return { ok: true }; }
+      handle() {
+        return { ok: true };
+      }
     }
 
     @Module({ providers: [FirstMiddleware, SecondMiddleware], controllers: [ChainedController] })
@@ -959,7 +966,9 @@ describe('ModuleRef', () => {
   it('should resolve a registered singleton via get()', async () => {
     @Injectable()
     class GreetService {
-      greet() { return 'hello'; }
+      greet() {
+        return 'hello';
+      }
     }
 
     @Controller('/greet')
@@ -1009,7 +1018,9 @@ describe('ModuleRef', () => {
     @Injectable()
     class CounterService {
       private count = 0;
-      increment() { return ++this.count; }
+      increment() {
+        return ++this.count;
+      }
     }
 
     @Controller('/counter')
@@ -1029,7 +1040,7 @@ describe('ModuleRef', () => {
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/counter');
     expect(res.status).toBe(200);
-    const body = await res.json() as { a: number; b: number; same: boolean };
+    const body = (await res.json()) as { a: number; b: number; same: boolean };
     expect(body.a).toBe(1);
     expect(body.b).toBe(1); // fresh instance, starts at 0
     expect(body.same).toBe(false);
@@ -1058,11 +1069,15 @@ describe('mixin()', () => {
     class MixinController {
       @Get('/admin')
       @UseGuards(AdminGuard)
-      adminOnly() { return { role: 'admin' }; }
+      adminOnly() {
+        return { role: 'admin' };
+      }
 
       @Get('/user')
       @UseGuards(UserGuard)
-      userOnly() { return { role: 'user' }; }
+      userOnly() {
+        return { role: 'user' };
+      }
     }
 
     @Module({ controllers: [MixinController] })
@@ -1094,20 +1109,29 @@ describe('ConfigModule isGlobal', () => {
     @Injectable()
     class AppService {
       constructor(private config: ConfigService) {}
-      getVal() { return this.config.get('APP_NAME'); }
+      getVal() {
+        return this.config.get('APP_NAME');
+      }
     }
 
     @Controller('/cfg-global')
     class CfgController {
       constructor(private svc: AppService) {}
       @Get()
-      handle() { return { val: this.svc.getVal() }; }
+      handle() {
+        return { val: this.svc.getVal() };
+      }
     }
 
     @Module({ providers: [AppService], controllers: [CfgController] })
     class FeatureModule {}
 
-    @Module({ imports: [ConfigModule.forRoot({ config: { APP_NAME: 'vela' }, isGlobal: true }), FeatureModule] })
+    @Module({
+      imports: [
+        ConfigModule.forRoot({ config: { APP_NAME: 'vela' }, isGlobal: true }),
+        FeatureModule,
+      ],
+    })
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
@@ -1133,13 +1157,17 @@ describe('Module-level Use* decorators', () => {
     @Controller('/mod-guard-a')
     class ControllerA {
       @Get()
-      handle() { return { from: 'a' }; }
+      handle() {
+        return { from: 'a' };
+      }
     }
 
     @Controller('/mod-guard-b')
     class ControllerB {
       @Get()
-      handle() { return { from: 'b' }; }
+      handle() {
+        return { from: 'b' };
+      }
     }
 
     @UseGuards(AuthGuard)
@@ -1175,7 +1203,9 @@ describe('Module-level Use* decorators', () => {
     @Controller('/mod-intercept')
     class InterceptedController {
       @Get()
-      handle() { return { raw: true }; }
+      handle() {
+        return { raw: true };
+      }
     }
 
     @UseInterceptors(WrapInterceptor)
@@ -1202,7 +1232,9 @@ describe('Module-level Use* decorators', () => {
     @Controller('/mod-pipe')
     class PipedController {
       @Get('/:name')
-      handle(@Param('name') name: string) { return { name }; }
+      handle(@Param('name') name: string) {
+        return { name };
+      }
     }
 
     @UsePipes(UpperCasePipe)
@@ -1238,7 +1270,9 @@ describe('switchToHttp() and @Res() decorator', () => {
     class SwitchController {
       @UseGuards(InspectGuard)
       @Get()
-      handle() { return { ok: true }; }
+      handle() {
+        return { ok: true };
+      }
     }
 
     @Module({ providers: [InspectGuard], controllers: [SwitchController] })
@@ -1266,7 +1300,9 @@ describe('switchToHttp() and @Res() decorator', () => {
     class SwitchResController {
       @UseInterceptors(InspectInterceptor)
       @Get()
-      handle() { return { ok: true }; }
+      handle() {
+        return { ok: true };
+      }
     }
 
     @Module({ providers: [InspectInterceptor], controllers: [SwitchResController] })
@@ -1361,10 +1397,14 @@ describe('Inline param-level pipes', () => {
 
   it('multiple inline pipes chain in order: first to last', async () => {
     class DoubleIt implements PipeTransform<number, number> {
-      transform(value: number): number { return value * 2; }
+      transform(value: number): number {
+        return value * 2;
+      }
     }
     class AddTen implements PipeTransform<number, number> {
-      transform(value: number): number { return value + 10; }
+      transform(value: number): number {
+        return value + 10;
+      }
     }
 
     @Controller('/calc')
@@ -1410,8 +1450,12 @@ describe('Lifecycle hooks', () => {
 
     @Injectable()
     class StartupService implements OnModuleInit, OnApplicationBootstrap {
-      async onModuleInit() { calls.push('init'); }
-      async onApplicationBootstrap() { calls.push('bootstrap'); }
+      async onModuleInit() {
+        calls.push('init');
+      }
+      async onApplicationBootstrap() {
+        calls.push('bootstrap');
+      }
     }
 
     @Module({ providers: [StartupService] })
@@ -1426,11 +1470,15 @@ describe('Lifecycle hooks', () => {
 
     @Injectable()
     class ServiceA implements OnModuleInit {
-      onModuleInit() { calls.push('A'); }
+      onModuleInit() {
+        calls.push('A');
+      }
     }
     @Injectable()
     class ServiceB implements OnModuleInit {
-      onModuleInit() { calls.push('B'); }
+      onModuleInit() {
+        calls.push('B');
+      }
     }
 
     @Module({ providers: [ServiceA, ServiceB] })
@@ -1445,7 +1493,9 @@ describe('Lifecycle hooks', () => {
 
     @Injectable()
     class CleanupService implements OnModuleDestroy {
-      onModuleDestroy() { calls.push('destroyed'); }
+      onModuleDestroy() {
+        calls.push('destroyed');
+      }
     }
 
     @Module({ providers: [CleanupService] })
@@ -1472,14 +1522,13 @@ describe('APP_FILTER global exception filter', () => {
     @Controller('/filter-test')
     class FilterController {
       @Get()
-      handle() { throw new Error('boom'); }
+      handle() {
+        throw new Error('boom');
+      }
     }
 
     @Module({
-      providers: [
-        GlobalFilter,
-        { provide: APP_FILTER, useExisting: GlobalFilter },
-      ],
+      providers: [GlobalFilter, { provide: APP_FILTER, useExisting: GlobalFilter }],
       controllers: [FilterController],
     })
     class AppModule {}
@@ -1504,17 +1553,18 @@ describe('APP_FILTER global exception filter', () => {
     @Controller('/domain-filter')
     class DomainController {
       @Get('/caught')
-      throwDomain() { throw new DomainError('domain'); }
+      throwDomain() {
+        throw new DomainError('domain');
+      }
 
       @Get('/uncaught')
-      throwOther() { throw new Error('generic'); }
+      throwOther() {
+        throw new Error('generic');
+      }
     }
 
     @Module({
-      providers: [
-        DomainFilter,
-        { provide: APP_FILTER, useExisting: DomainFilter },
-      ],
+      providers: [DomainFilter, { provide: APP_FILTER, useExisting: DomainFilter }],
       controllers: [DomainController],
     })
     class AppModule {}
@@ -1539,20 +1589,33 @@ describe('Shutdown lifecycle hooks', () => {
 
     @Injectable()
     class ServiceA implements BeforeApplicationShutdown, OnApplicationShutdown {
-      beforeApplicationShutdown(signal?: string) { log.push(`A:before:${signal ?? 'none'}`); }
-      onApplicationShutdown(signal?: string) { log.push(`A:shutdown:${signal ?? 'none'}`); }
+      beforeApplicationShutdown(signal?: string) {
+        log.push(`A:before:${signal ?? 'none'}`);
+      }
+      onApplicationShutdown(signal?: string) {
+        log.push(`A:shutdown:${signal ?? 'none'}`);
+      }
     }
 
     @Injectable()
     class ServiceB implements BeforeApplicationShutdown, OnApplicationShutdown {
-      beforeApplicationShutdown(signal?: string) { log.push(`B:before:${signal ?? 'none'}`); }
-      onApplicationShutdown(signal?: string) { log.push(`B:shutdown:${signal ?? 'none'}`); }
+      beforeApplicationShutdown(signal?: string) {
+        log.push(`B:before:${signal ?? 'none'}`);
+      }
+      onApplicationShutdown(signal?: string) {
+        log.push(`B:shutdown:${signal ?? 'none'}`);
+      }
     }
 
     @Controller('/shutdown-test')
     class ShutdownController {
-      constructor(private a: ServiceA, private b: ServiceB) {}
-      @Get() handle() { return { ok: true }; }
+      constructor(
+        private a: ServiceA,
+        private b: ServiceB,
+      ) {}
+      @Get() handle() {
+        return { ok: true };
+      }
     }
 
     @Module({ providers: [ServiceA, ServiceB], controllers: [ShutdownController] })
@@ -1568,7 +1631,10 @@ describe('Shutdown lifecycle hooks', () => {
 
     // beforeApplicationShutdown phase precedes onApplicationShutdown phase
     const firstBefore = Math.min(log.indexOf('A:before:SIGTERM'), log.indexOf('B:before:SIGTERM'));
-    const firstShutdown = Math.min(log.indexOf('A:shutdown:SIGTERM'), log.indexOf('B:shutdown:SIGTERM'));
+    const firstShutdown = Math.min(
+      log.indexOf('A:shutdown:SIGTERM'),
+      log.indexOf('B:shutdown:SIGTERM'),
+    );
     expect(firstBefore).toBeLessThan(firstShutdown);
   });
 
@@ -1577,13 +1643,17 @@ describe('Shutdown lifecycle hooks', () => {
 
     @Injectable()
     class WatchService implements OnApplicationShutdown {
-      onApplicationShutdown(signal?: string) { capturedSignal = signal; }
+      onApplicationShutdown(signal?: string) {
+        capturedSignal = signal;
+      }
     }
 
     @Controller('/noop-shutdown')
     class NoopController {
       constructor(private w: WatchService) {}
-      @Get() handle() { return {}; }
+      @Get() handle() {
+        return {};
+      }
     }
 
     @Module({ providers: [WatchService], controllers: [NoopController] })
@@ -1599,18 +1669,27 @@ describe('Shutdown lifecycle hooks', () => {
 
     @Injectable()
     class FirstService implements OnApplicationShutdown {
-      onApplicationShutdown() { log.push('first'); }
+      onApplicationShutdown() {
+        log.push('first');
+      }
     }
 
     @Injectable()
     class LastService implements OnApplicationShutdown {
-      onApplicationShutdown() { log.push('last'); }
+      onApplicationShutdown() {
+        log.push('last');
+      }
     }
 
     @Controller('/lifo')
     class LifoController {
-      constructor(private f: FirstService, private l: LastService) {}
-      @Get() handle() { return {}; }
+      constructor(
+        private f: FirstService,
+        private l: LastService,
+      ) {}
+      @Get() handle() {
+        return {};
+      }
     }
 
     @Module({ providers: [FirstService, LastService], controllers: [LifoController] })
@@ -1641,12 +1720,16 @@ describe('APP_MIDDLEWARE global middleware token', () => {
 
     @Controller('/mw-global')
     class MwController {
-      @Get() handle() { return { ok: true }; }
+      @Get() handle() {
+        return { ok: true };
+      }
     }
 
     @Controller('/mw-global-2')
     class MwController2 {
-      @Get() handle() { return { ok: 2 }; }
+      @Get() handle() {
+        return { ok: 2 };
+      }
     }
 
     @Module({
@@ -1676,18 +1759,26 @@ describe('APP_MIDDLEWARE global middleware token', () => {
     @Injectable()
     class MiddlewareA {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      use(_c: any, next: () => Promise<void>) { log.push('A'); return next(); }
+      use(_c: any, next: () => Promise<void>) {
+        log.push('A');
+        return next();
+      }
     }
 
     @Injectable()
     class MiddlewareB {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      use(_c: any, next: () => Promise<void>) { log.push('B'); return next(); }
+      use(_c: any, next: () => Promise<void>) {
+        log.push('B');
+        return next();
+      }
     }
 
     @Controller('/mw-order')
     class OrderController {
-      @Get() handle() { return { ok: true }; }
+      @Get() handle() {
+        return { ok: true };
+      }
     }
 
     @Module({
@@ -1717,7 +1808,9 @@ describe('More built-in pipes', () => {
     @Controller('/float')
     class FloatController {
       @Get()
-      handle(@Query('v', ParseFloatPipe) v: number) { return { v }; }
+      handle(@Query('v', ParseFloatPipe) v: number) {
+        return { v };
+      }
     }
 
     @Module({ controllers: [FloatController] })
@@ -1733,7 +1826,9 @@ describe('More built-in pipes', () => {
     @Controller('/float-err')
     class FloatErrController {
       @Get()
-      handle(@Query('v', ParseFloatPipe) v: number) { return { v }; }
+      handle(@Query('v', ParseFloatPipe) v: number) {
+        return { v };
+      }
     }
 
     @Module({ controllers: [FloatErrController] })
@@ -1747,7 +1842,9 @@ describe('More built-in pipes', () => {
     @Controller('/bool')
     class BoolController {
       @Get()
-      handle(@Query('v', ParseBoolPipe) v: boolean) { return { v }; }
+      handle(@Query('v', ParseBoolPipe) v: boolean) {
+        return { v };
+      }
     }
 
     @Module({ controllers: [BoolController] })
@@ -1762,7 +1859,9 @@ describe('More built-in pipes', () => {
     @Controller('/bool-err')
     class BoolErrController {
       @Get()
-      handle(@Query('v', ParseBoolPipe) v: boolean) { return { v }; }
+      handle(@Query('v', ParseBoolPipe) v: boolean) {
+        return { v };
+      }
     }
 
     @Module({ controllers: [BoolErrController] })
@@ -1773,12 +1872,17 @@ describe('More built-in pipes', () => {
   });
 
   it('ParseEnumPipe validates against an enum', async () => {
-    enum Direction { Up = 'up', Down = 'down' }
+    enum Direction {
+      Up = 'up',
+      Down = 'down',
+    }
 
     @Controller('/enum')
     class EnumController {
       @Get()
-      handle(@Query('dir', new ParseEnumPipe(Direction)) dir: Direction) { return { dir }; }
+      handle(@Query('dir', new ParseEnumPipe(Direction)) dir: Direction) {
+        return { dir };
+      }
     }
 
     @Module({ controllers: [EnumController] })
@@ -1793,35 +1897,45 @@ describe('More built-in pipes', () => {
     @Controller('/arr')
     class ArrController {
       @Get()
-      handle(@Query('ids', new ParseArrayPipe()) ids: string[]) { return { ids }; }
+      handle(@Query('ids', new ParseArrayPipe()) ids: string[]) {
+        return { ids };
+      }
     }
 
     @Module({ controllers: [ArrController] })
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
-    expect(await (await app.getHonoApp().request('/arr?ids=a,b,c')).json()).toEqual({ ids: ['a', 'b', 'c'] });
+    expect(await (await app.getHonoApp().request('/arr?ids=a,b,c')).json()).toEqual({
+      ids: ['a', 'b', 'c'],
+    });
   });
 
   it('ParseArrayPipe with custom separator', async () => {
     @Controller('/arr-sep')
     class ArrSepController {
       @Get()
-      handle(@Query('ids', new ParseArrayPipe({ separator: '|' })) ids: string[]) { return { ids }; }
+      handle(@Query('ids', new ParseArrayPipe({ separator: '|' })) ids: string[]) {
+        return { ids };
+      }
     }
 
     @Module({ controllers: [ArrSepController] })
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
-    expect(await (await app.getHonoApp().request('/arr-sep?ids=a|b|c')).json()).toEqual({ ids: ['a', 'b', 'c'] });
+    expect(await (await app.getHonoApp().request('/arr-sep?ids=a|b|c')).json()).toEqual({
+      ids: ['a', 'b', 'c'],
+    });
   });
 
   it('ParseArrayPipe optional returns empty array when absent', async () => {
     @Controller('/arr-opt')
     class ArrOptController {
       @Get()
-      handle(@Query('ids', new ParseArrayPipe({ optional: true })) ids: string[]) { return { ids }; }
+      handle(@Query('ids', new ParseArrayPipe({ optional: true })) ids: string[]) {
+        return { ids };
+      }
     }
 
     @Module({ controllers: [ArrOptController] })
@@ -1839,13 +1953,16 @@ describe('More built-in pipes', () => {
 describe('createParamDecorator', () => {
   it('extracts custom value from request context', async () => {
     const UserAgent = createParamDecorator(
-      (_data: unknown, ctx: ExecutionContext) => ctx.getRequest().headers.get('user-agent') ?? 'unknown',
+      (_data: unknown, ctx: ExecutionContext) =>
+        ctx.getRequest().headers.get('user-agent') ?? 'unknown',
     );
 
     @Controller('/custom-param')
     class CustomController {
       @Get()
-      handle(@UserAgent() ua: string) { return { ua }; }
+      handle(@UserAgent() ua: string) {
+        return { ua };
+      }
     }
 
     @Module({ controllers: [CustomController] })
@@ -1860,14 +1977,16 @@ describe('createParamDecorator', () => {
   });
 
   it('passes data argument to the factory', async () => {
-    const CustomHeader = createParamDecorator(
-      (data: string, ctx: ExecutionContext) => ctx.getRequest().headers.get(data),
+    const CustomHeader = createParamDecorator((data: string, ctx: ExecutionContext) =>
+      ctx.getRequest().headers.get(data),
     );
 
     @Controller('/custom-header')
     class HeaderController {
       @Get()
-      handle(@CustomHeader('x-tenant') tenant: string) { return { tenant }; }
+      handle(@CustomHeader('x-tenant') tenant: string) {
+        return { tenant };
+      }
     }
 
     @Module({ controllers: [HeaderController] })
@@ -1882,14 +2001,16 @@ describe('createParamDecorator', () => {
   });
 
   it('works with inline pipe applied after the factory', async () => {
-    const RawAge = createParamDecorator(
-      (_data: unknown, ctx: ExecutionContext) => ctx.getRequest().headers.get('x-age'),
+    const RawAge = createParamDecorator((_data: unknown, ctx: ExecutionContext) =>
+      ctx.getRequest().headers.get('x-age'),
     );
 
     @Controller('/age-pipe')
     class AgePipeController {
       @Get()
-      handle(@RawAge(undefined, ParseIntPipe) age: number) { return { age }; }
+      handle(@RawAge(undefined, ParseIntPipe) age: number) {
+        return { age };
+      }
     }
 
     @Module({ controllers: [AgePipeController] })
@@ -1910,7 +2031,9 @@ describe('Route versioning (@Version)', () => {
   it('@Controller({ version }) adds /v{n} prefix to all routes', async () => {
     @Controller({ path: '/things', version: 1 })
     class ThingsV1Controller {
-      @Get() list() { return { version: 1 }; }
+      @Get() list() {
+        return { version: 1 };
+      }
     }
 
     @Module({ controllers: [ThingsV1Controller] })
@@ -1925,7 +2048,9 @@ describe('Route versioning (@Version)', () => {
   it('@Controller({ version: [1,2] }) registers route at multiple versions', async () => {
     @Controller({ path: '/multi', version: [1, 2] })
     class MultiController {
-      @Get() handle() { return { ok: true }; }
+      @Get() handle() {
+        return { ok: true };
+      }
     }
 
     @Module({ controllers: [MultiController] })
@@ -1940,11 +2065,15 @@ describe('Route versioning (@Version)', () => {
   it('@Version() on method overrides controller version', async () => {
     @Controller({ path: '/docs', version: 1 })
     class DocController {
-      @Get() v1() { return { v: 1 }; }
+      @Get() v1() {
+        return { v: 1 };
+      }
 
       @Version(2)
       @Get('/new')
-      v2() { return { v: 2 }; }
+      v2() {
+        return { v: 2 };
+      }
     }
 
     @Module({ controllers: [DocController] })
@@ -1967,11 +2096,21 @@ describe('HttpException hierarchy', () => {
   it('each subclass maps to its HTTP status code', async () => {
     @Controller('/http-exc')
     class ExcController {
-      @Get('/404') notFound()      { throw new NotFoundException('not found'); }
-      @Get('/400') badReq()        { throw new BadRequestException('bad input'); }
-      @Get('/401') unauth()        { throw new UnauthorizedException(); }
-      @Get('/403') forbidden()     { throw new ForbiddenException(); }
-      @Get('/409') conflict()      { throw new ConflictException('duplicate'); }
+      @Get('/404') notFound() {
+        throw new NotFoundException('not found');
+      }
+      @Get('/400') badReq() {
+        throw new BadRequestException('bad input');
+      }
+      @Get('/401') unauth() {
+        throw new UnauthorizedException();
+      }
+      @Get('/403') forbidden() {
+        throw new ForbiddenException();
+      }
+      @Get('/409') conflict() {
+        throw new ConflictException('duplicate');
+      }
     }
 
     @Module({ controllers: [ExcController] })
@@ -1990,7 +2129,9 @@ describe('HttpException hierarchy', () => {
   it('getResponse() body is serialized as JSON', async () => {
     @Controller('/exc-body')
     class BodyController {
-      @Get() handle() { throw new NotFoundException('item missing'); }
+      @Get() handle() {
+        throw new NotFoundException('item missing');
+      }
     }
 
     @Module({ controllers: [BodyController] })
@@ -2000,7 +2141,7 @@ describe('HttpException hierarchy', () => {
     const res = await app.getHonoApp().request('/exc-body');
     expect(res.status).toBe(404);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const body = await res.json() as any;
+    const body = (await res.json()) as any;
     expect(body.error.code).toBe('not_found');
     expect(body.error.message).toBe('item missing');
   });
@@ -2016,8 +2157,12 @@ describe('HttpException hierarchy', () => {
 
     @Controller('/exc-filter')
     class FilteredController {
-      @Get('/404') notFound() { throw new NotFoundException(); }
-      @Get('/403') forbidden() { throw new ForbiddenException(); }
+      @Get('/404') notFound() {
+        throw new NotFoundException();
+      }
+      @Get('/403') forbidden() {
+        throw new ForbiddenException();
+      }
     }
 
     @Module({
@@ -2041,11 +2186,14 @@ describe('HttpException hierarchy', () => {
     class CustomController {
       @Get()
       handle() {
-        throw new HttpException({
-          statusCode: 422,
-          message: 'Validation Failed',
-          errors: ['field required'],
-        }, 422);
+        throw new HttpException(
+          {
+            statusCode: 422,
+            message: 'Validation Failed',
+            errors: ['field required'],
+          },
+          422,
+        );
       }
     }
 
@@ -2056,7 +2204,7 @@ describe('HttpException hierarchy', () => {
     const res = await app.getHonoApp().request('/exc-custom');
     expect(res.status).toBe(422);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const body = await res.json() as any;
+    const body = (await res.json()) as any;
     expect(body.errors).toEqual(['field required']);
   });
 });
@@ -2070,7 +2218,9 @@ describe('ParseUUIDPipe', () => {
     @Controller('/uuid')
     class UuidController {
       @Get(':id')
-      handle(@Param('id', ParseUUIDPipe) id: string) { return { id }; }
+      handle(@Param('id', ParseUUIDPipe) id: string) {
+        return { id };
+      }
     }
 
     @Module({ controllers: [UuidController] })
@@ -2087,7 +2237,9 @@ describe('ParseUUIDPipe', () => {
     @Controller('/uuid-err')
     class UuidErrController {
       @Get(':id')
-      handle(@Param('id', ParseUUIDPipe) id: string) { return { id }; }
+      handle(@Param('id', ParseUUIDPipe) id: string) {
+        return { id };
+      }
     }
 
     @Module({ controllers: [UuidErrController] })
@@ -2101,7 +2253,9 @@ describe('ParseUUIDPipe', () => {
     @Controller('/uuid-v4')
     class UuidV4Controller {
       @Get(':id')
-      handle(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) { return { id }; }
+      handle(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+        return { id };
+      }
     }
 
     @Module({ controllers: [UuidV4Controller] })
@@ -2125,7 +2279,9 @@ describe('@Headers() param decorator', () => {
     @Controller('/hdrs')
     class HdrsController {
       @Get()
-      handle(@Headers('x-tenant') tenant: string) { return { tenant }; }
+      handle(@Headers('x-tenant') tenant: string) {
+        return { tenant };
+      }
     }
 
     @Module({ controllers: [HdrsController] })
@@ -2141,7 +2297,9 @@ describe('@Headers() param decorator', () => {
     @Controller('/hdrs-missing')
     class HdrsMissingController {
       @Get()
-      handle(@Headers('x-missing') val: string | undefined) { return { val: val ?? null }; }
+      handle(@Headers('x-missing') val: string | undefined) {
+        return { val: val ?? null };
+      }
     }
 
     @Module({ controllers: [HdrsMissingController] })
@@ -2174,10 +2332,12 @@ describe('@Req() raw request decorator', () => {
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
-    const res = await app.getHonoApp().request('/req-dec', { headers: { 'user-agent': 'vela-test/1.0' } });
+    const res = await app
+      .getHonoApp()
+      .request('/req-dec', { headers: { 'user-agent': 'vela-test/1.0' } });
     expect(res.status).toBe(200);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const body = await res.json() as any;
+    const body = (await res.json()) as any;
     expect(body.ua).toBe('vela-test/1.0');
   });
 
@@ -2216,7 +2376,9 @@ describe('Serialize / SerializerInterceptor', () => {
     class SerializeController {
       @Get()
       @Serialize(ResponseDto)
-      handle() { return { id: 1, name: 'Alice', password: 'secret' }; }
+      handle() {
+        return { id: 1, name: 'Alice', password: 'secret' };
+      }
     }
 
     @Module({ controllers: [SerializeController] })
@@ -2253,8 +2415,11 @@ describe('Serialize / SerializerInterceptor', () => {
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/serialize-arr');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const body = await res.json() as any[];
-    expect(body).toEqual([{ id: 1, name: 'Alice' }, { id: 2, name: 'Bob' }]);
+    const body = (await res.json()) as any[];
+    expect(body).toEqual([
+      { id: 1, name: 'Alice' },
+      { id: 2, name: 'Bob' },
+    ]);
   });
 
   it('passes through response when no @Serialize is applied', async () => {
@@ -2262,14 +2427,19 @@ describe('Serialize / SerializerInterceptor', () => {
     @UseInterceptors(SerializerInterceptor)
     class PassController {
       @Get()
-      handle() { return { id: 1, secret: 'kept' }; }
+      handle() {
+        return { id: 1, secret: 'kept' };
+      }
     }
 
     @Module({ controllers: [PassController] })
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
-    expect(await (await app.getHonoApp().request('/serialize-pass')).json()).toEqual({ id: 1, secret: 'kept' });
+    expect(await (await app.getHonoApp().request('/serialize-pass')).json()).toEqual({
+      id: 1,
+      secret: 'kept',
+    });
   });
 });
 
@@ -2288,7 +2458,9 @@ describe('APP_PIPE with ValidationPipe', () => {
     @Controller('/app-pipe-val')
     class ValController {
       @Post()
-      create(@Body() dto: CreateDto) { return { ok: true, name: (dto as { name: string }).name }; }
+      create(@Body() dto: CreateDto) {
+        return { ok: true, name: (dto as { name: string }).name };
+      }
     }
 
     @Module({
@@ -2321,7 +2493,9 @@ describe('APP_PIPE with ValidationPipe', () => {
     class PlainController {
       @Post()
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      create(@Body() body: any) { return { received: body.x }; }
+      create(@Body() body: any) {
+        return { received: body.x };
+      }
     }
 
     @Module({
@@ -2360,9 +2534,15 @@ describe('MiddlewareConsumer.exclude()', () => {
 
     @Controller('/excl')
     class ExclController {
-      @Get('/a') a() { return { route: 'a' }; }
-      @Get('/b') b() { return { route: 'b' }; }
-      @Get('/skip') skip() { return { route: 'skip' }; }
+      @Get('/a') a() {
+        return { route: 'a' };
+      }
+      @Get('/b') b() {
+        return { route: 'b' };
+      }
+      @Get('/skip') skip() {
+        return { route: 'skip' };
+      }
     }
 
     @Module({ providers: [LogMiddleware], controllers: [ExclController] })
@@ -2398,8 +2578,12 @@ describe('MiddlewareConsumer.exclude()', () => {
 
     @Controller('/meth-excl')
     class MethController {
-      @Get('/open') open() { return {}; }
-      @Post('/login') login() { return {}; }
+      @Get('/open') open() {
+        return {};
+      }
+      @Post('/login') login() {
+        return {};
+      }
     }
 
     @Module({ providers: [MethodMiddleware], controllers: [MethController] })
@@ -2416,7 +2600,11 @@ describe('MiddlewareConsumer.exclude()', () => {
     const hono = app.getHonoApp();
 
     await hono.request('/meth-excl/open');
-    await hono.request('/meth-excl/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    await hono.request('/meth-excl/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
 
     expect(log).toContain('GET:/meth-excl/open');
     expect(log).not.toContain('POST:/meth-excl/login');
@@ -2432,7 +2620,9 @@ describe('@Cookie() / @Cookies() param decorators', () => {
     @Controller('/ck')
     class CkController {
       @Get()
-      handle(@Cookie('session') session: string) { return { session }; }
+      handle(@Cookie('session') session: string) {
+        return { session };
+      }
     }
 
     @Module({ controllers: [CkController] })
@@ -2450,7 +2640,9 @@ describe('@Cookie() / @Cookies() param decorators', () => {
     @Controller('/ck-miss')
     class CkMissController {
       @Get()
-      handle(@Cookie('token') token: string | undefined) { return { token: token ?? null }; }
+      handle(@Cookie('token') token: string | undefined) {
+        return { token: token ?? null };
+      }
     }
 
     @Module({ controllers: [CkMissController] })
@@ -2466,7 +2658,9 @@ describe('@Cookie() / @Cookies() param decorators', () => {
     class CksAllController {
       @Get()
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      handle(@Cookies() cookies: any) { return cookies; }
+      handle(@Cookies() cookies: any) {
+        return cookies;
+      }
     }
 
     @Module({ controllers: [CksAllController] })
@@ -2531,7 +2725,7 @@ describe('@RawBody() param decorator', () => {
     });
     expect(res.status).toBe(200);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const body = await res.json() as any;
+    const body = (await res.json()) as any;
     expect(body.byteLength).toBe(new TextEncoder().encode(payload).byteLength);
     expect(body.isUint8Array).toBe(true);
   });
@@ -2549,7 +2743,10 @@ describe('CacheInterceptor / @CacheKey / @CacheTTL', () => {
     class CacheController {
       @Get()
       @UseInterceptors(CacheInterceptor)
-      getData() { callCount++; return { n: callCount }; }
+      getData() {
+        callCount++;
+        return { n: callCount };
+      }
     }
 
     @Module({ imports: [CacheModule.forRoot()], controllers: [CacheController] })
@@ -2574,7 +2771,10 @@ describe('CacheInterceptor / @CacheKey / @CacheTTL', () => {
       @Get()
       @UseInterceptors(CacheInterceptor)
       @CacheKey('my-custom-key')
-      getData() { callCount++; return { n: callCount }; }
+      getData() {
+        callCount++;
+        return { n: callCount };
+      }
     }
 
     @Module({ imports: [CacheModule.forRoot()], controllers: [CacheKeyController] })
@@ -2596,7 +2796,10 @@ describe('CacheInterceptor / @CacheKey / @CacheTTL', () => {
       @Get()
       @UseInterceptors(CacheInterceptor)
       @CacheTTL(0.05) // 50ms TTL (TTL is in seconds)
-      getData() { callCount++; return { n: callCount }; }
+      getData() {
+        callCount++;
+        return { n: callCount };
+      }
     }
 
     @Module({ imports: [CacheModule.forRoot()], controllers: [CacheTTLController] })
@@ -2636,7 +2839,9 @@ describe('EventEmitter / @OnEvent', () => {
     @Injectable()
     class UserListener {
       @OnEvent('user.created')
-      onCreated(name: string) { received.push(name); }
+      onCreated(name: string) {
+        received.push(name);
+      }
     }
 
     @Module({ imports: [EventEmitterModule], providers: [UserListener] })
@@ -2674,10 +2879,14 @@ describe('EventEmitter / @OnEvent', () => {
     @Injectable()
     class WildListener {
       @OnEvent('order.*')
-      onShallow(payload: string) { received.push(`shallow:${payload}`); }
+      onShallow(payload: string) {
+        received.push(`shallow:${payload}`);
+      }
 
       @OnEvent('order.**')
-      onDeep(payload: string) { received.push(`deep:${payload}`); }
+      onDeep(payload: string) {
+        received.push(`deep:${payload}`);
+      }
     }
 
     @Module({ imports: [EventEmitterModule], providers: [WildListener] })
@@ -2701,7 +2910,9 @@ describe('EventEmitter / @OnEvent', () => {
 // =============================================================================
 
 describe('ScheduleModule / @Cron / @Interval', () => {
-  afterEach(() => { vi.useRealTimers(); });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   it('ScheduleRegistry discovers @Cron jobs after bootstrap', async () => {
     @Injectable()
@@ -2748,7 +2959,9 @@ describe('ScheduleModule / @Cron / @Interval', () => {
     @Injectable()
     class PulseService {
       @Interval(100)
-      pulse() { count++; }
+      pulse() {
+        count++;
+      }
     }
 
     @Module({ imports: [ScheduleNodeModule.forRoot()], providers: [PulseService] })
@@ -2767,7 +2980,9 @@ describe('ScheduleModule / @Cron / @Interval', () => {
     @Injectable()
     class StopService {
       @Interval(100)
-      tick() { count++; }
+      tick() {
+        count++;
+      }
     }
 
     @Module({ imports: [ScheduleNodeModule.forRoot()], providers: [StopService] })
@@ -2793,7 +3008,9 @@ describe('ThrottlerModule / @Throttle / @SkipThrottle', () => {
   it('blocks requests exceeding the rate limit with 429', async () => {
     @Controller('/throttle-test')
     class ThrottleController {
-      @Get() handle() { return { ok: true }; }
+      @Get() handle() {
+        return { ok: true };
+      }
     }
 
     @Module({
@@ -2813,7 +3030,9 @@ describe('ThrottlerModule / @Throttle / @SkipThrottle', () => {
   it('sets X-RateLimit-* headers on responses', async () => {
     @Controller('/throttle-hdrs')
     class ThrottleHdrsController {
-      @Get() handle() { return {}; }
+      @Get() handle() {
+        return {};
+      }
     }
 
     @Module({
@@ -2831,11 +3050,15 @@ describe('ThrottlerModule / @Throttle / @SkipThrottle', () => {
   it('@SkipThrottle() bypasses rate limiting on that route', async () => {
     @Controller('/throttle-skip')
     class SkipController {
-      @Get('/limited') limited() { return { limited: true }; }
+      @Get('/limited') limited() {
+        return { limited: true };
+      }
 
       @Get('/unlimited')
       @SkipThrottle()
-      unlimited() { return { unlimited: true }; }
+      unlimited() {
+        return { unlimited: true };
+      }
     }
 
     @Module({
@@ -2858,11 +3081,15 @@ describe('ThrottlerModule / @Throttle / @SkipThrottle', () => {
   it('@Throttle() overrides global config per route', async () => {
     @Controller('/throttle-override')
     class OverrideController {
-      @Get('/default') defRoute() { return {}; }
+      @Get('/default') defRoute() {
+        return {};
+      }
 
       @Get('/tight')
       @Throttle({ limit: 1, ttl: 60000 })
-      tightRoute() { return {}; }
+      tightRoute() {
+        return {};
+      }
     }
 
     @Module({
@@ -2938,7 +3165,9 @@ describe('HTTP method decorators (Put, Patch, Options, Head)', () => {
     @Controller('/resource')
     class ResourceController {
       @Options()
-      options() { return { allow: 'GET,POST,OPTIONS' }; }
+      options() {
+        return { allow: 'GET,POST,OPTIONS' };
+      }
     }
 
     @Module({ controllers: [ResourceController] })
@@ -2955,7 +3184,9 @@ describe('HTTP method decorators (Put, Patch, Options, Head)', () => {
     class PingController {
       @Head()
       @Header('x-alive', 'true')
-      ping() { return ''; }
+      ping() {
+        return '';
+      }
     }
 
     @Module({ controllers: [PingController] })
@@ -2970,11 +3201,21 @@ describe('HTTP method decorators (Put, Patch, Options, Head)', () => {
   it('all HTTP verbs coexist on the same controller', async () => {
     @Controller('/things')
     class ThingsController {
-      @Get()     list()              { return { method: 'GET' }; }
-      @Post()    create()            { return { method: 'POST' }; }
-      @Put(':id') replace()          { return { method: 'PUT' }; }
-      @Patch(':id') update()         { return { method: 'PATCH' }; }
-      @Delete(':id') remove()        { return { method: 'DELETE' }; }
+      @Get() list() {
+        return { method: 'GET' };
+      }
+      @Post() create() {
+        return { method: 'POST' };
+      }
+      @Put(':id') replace() {
+        return { method: 'PUT' };
+      }
+      @Patch(':id') update() {
+        return { method: 'PATCH' };
+      }
+      @Delete(':id') remove() {
+        return { method: 'DELETE' };
+      }
     }
 
     @Module({ controllers: [ThingsController] })
@@ -2984,10 +3225,36 @@ describe('HTTP method decorators (Put, Patch, Options, Head)', () => {
     const hono = app.getHonoApp();
 
     expect(await (await hono.request('/things')).json()).toEqual({ method: 'GET' });
-    expect(await (await hono.request('/things', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json()).toEqual({ method: 'POST' });
-    expect(await (await hono.request('/things/1', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json()).toEqual({ method: 'PUT' });
-    expect(await (await hono.request('/things/1', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json()).toEqual({ method: 'PATCH' });
-    expect(await (await hono.request('/things/1', { method: 'DELETE' })).json()).toEqual({ method: 'DELETE' });
+    expect(
+      await (
+        await hono.request('/things', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+        })
+      ).json(),
+    ).toEqual({ method: 'POST' });
+    expect(
+      await (
+        await hono.request('/things/1', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+        })
+      ).json(),
+    ).toEqual({ method: 'PUT' });
+    expect(
+      await (
+        await hono.request('/things/1', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+        })
+      ).json(),
+    ).toEqual({ method: 'PATCH' });
+    expect(await (await hono.request('/things/1', { method: 'DELETE' })).json()).toEqual({
+      method: 'DELETE',
+    });
   });
 });
 
@@ -2996,7 +3263,9 @@ describe('HTTP method decorators (Put, Patch, Options, Head)', () => {
 // =============================================================================
 
 describe('HttpModule / HttpService', () => {
-  beforeEach(() => { vi.restoreAllMocks(); });
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
 
   it('HttpService.get() makes a GET request and returns data', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
@@ -3009,13 +3278,17 @@ describe('HttpModule / HttpService', () => {
     @Injectable()
     class UserService {
       constructor(private http: HttpService) {}
-      async getUser() { return (await this.http.get<{ id: number; name: string }>('https://api.test/user/1')).data; }
+      async getUser() {
+        return (await this.http.get<{ id: number; name: string }>('https://api.test/user/1')).data;
+      }
     }
 
     @Controller('/users')
     class UserController {
       constructor(private svc: UserService) {}
-      @Get() async handle() { return this.svc.getUser(); }
+      @Get() async handle() {
+        return this.svc.getUser();
+      }
     }
 
     @Module({ imports: [HttpModule], providers: [UserService], controllers: [UserController] })
@@ -3038,13 +3311,18 @@ describe('HttpModule / HttpService', () => {
     @Injectable()
     class ApiService {
       constructor(private http: HttpService) {}
-      ping() { return this.http.get('/status'); }
+      ping() {
+        return this.http.get('/status');
+      }
     }
 
     @Controller('/ping')
     class PingController {
       constructor(private api: ApiService) {}
-      @Get() async handle() { await this.api.ping(); return { called: true }; }
+      @Get() async handle() {
+        await this.api.ping();
+        return { called: true };
+      }
     }
 
     @Module({
@@ -3056,7 +3334,10 @@ describe('HttpModule / HttpService', () => {
 
     const app = await VelaFactory.create(AppModule);
     await app.getHonoApp().request('/ping');
-    expect(fetch).toHaveBeenCalledWith('https://my-api.com/status', expect.objectContaining({ method: 'GET' }));
+    expect(fetch).toHaveBeenCalledWith(
+      'https://my-api.com/status',
+      expect.objectContaining({ method: 'GET' }),
+    );
   });
 
   it('HttpModule.forRootAsync() resolves config from injected factory', async () => {
@@ -3072,13 +3353,18 @@ describe('HttpModule / HttpService', () => {
     @Injectable()
     class RemoteService {
       constructor(private http: HttpService) {}
-      fetch() { return this.http.get('/data'); }
+      fetch() {
+        return this.http.get('/data');
+      }
     }
 
     @Controller('/async-http')
     class AsyncHttpController {
       constructor(private svc: RemoteService) {}
-      @Get() async handle() { await this.svc.fetch(); return { ok: true }; }
+      @Get() async handle() {
+        await this.svc.fetch();
+        return { ok: true };
+      }
     }
 
     @Module({
@@ -3088,10 +3374,7 @@ describe('HttpModule / HttpService', () => {
           inject: [BASE_URL],
         }),
       ],
-      providers: [
-        { provide: BASE_URL, useValue: 'https://async-api.com' },
-        RemoteService,
-      ],
+      providers: [{ provide: BASE_URL, useValue: 'https://async-api.com' }, RemoteService],
       controllers: [AsyncHttpController],
     })
     class AppModule {}
@@ -3122,7 +3405,9 @@ describe('HttpModule / HttpService', () => {
     @Controller('/exc')
     class ExcController {
       constructor(private svc: FetchService) {}
-      @Get() async handle() { return this.svc.fetch(); }
+      @Get() async handle() {
+        return this.svc.fetch();
+      }
     }
 
     @Module({ imports: [HttpModule], providers: [FetchService], controllers: [ExcController] })
@@ -3147,7 +3432,9 @@ describe('HealthModule', () => {
     });
   });
 
-  afterEach(() => { vi.restoreAllMocks(); });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   it('HealthCheckService.check() returns status:ok when all indicators pass', async () => {
     @Controller('/health')
@@ -3159,9 +3446,7 @@ describe('HealthModule', () => {
 
       @Get()
       check() {
-        return this.health.check([
-          () => this.indicator.check('db').up({ responseTime: 5 }),
-        ]);
+        return this.health.check([() => this.indicator.check('db').up({ responseTime: 5 })]);
       }
     }
 
@@ -3172,7 +3457,7 @@ describe('HealthModule', () => {
     const res = await app.getHonoApp().request('/health');
     expect(res.status).toBe(200);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const body = await res.json() as any;
+    const body = (await res.json()) as any;
     expect(body.status).toBe('ok');
     expect(body.info.db.status).toBe('up');
   });
@@ -3201,7 +3486,7 @@ describe('HealthModule', () => {
     const res = await app.getHonoApp().request('/health-down');
     expect(res.status).toBe(503);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const body = await res.json() as any;
+    const body = (await res.json()) as any;
     expect(body.status).toBe('error');
     expect(body.error.db.status).toBe('down');
   });
@@ -3218,9 +3503,7 @@ describe('HealthModule', () => {
 
       @Get()
       check() {
-        return this.health.check([
-          () => this.http.pingCheck('api', 'https://api.test/ping'),
-        ]);
+        return this.health.check([() => this.http.pingCheck('api', 'https://api.test/ping')]);
       }
     }
 
@@ -3231,7 +3514,7 @@ describe('HealthModule', () => {
     const res = await app.getHonoApp().request('/health-http');
     expect(res.status).toBe(200);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect((await res.json() as any).info.api.status).toBe('up');
+    expect(((await res.json()) as any).info.api.status).toBe('up');
   });
 });
 
@@ -3264,7 +3547,9 @@ describe('@Sse() Server-Sent Events', () => {
   it('@Sse() and @Get() can coexist on the same controller', async () => {
     @Controller('/mixed')
     class MixedController {
-      @Get('/data') data() { return { type: 'json' }; }
+      @Get('/data') data() {
+        return { type: 'json' };
+      }
 
       @Sse('/live')
       stream() {
@@ -3293,7 +3578,10 @@ describe('@Sse() Server-Sent Events', () => {
 
     @Injectable()
     class TrackGuard implements CanActivate {
-      canActivate() { guardCalled = true; return true; }
+      canActivate() {
+        guardCalled = true;
+        return true;
+      }
     }
 
     @Controller('/guarded-sse')
@@ -3325,7 +3613,9 @@ describe('useExisting provider alias', () => {
     @Injectable()
     class RealService {
       id = Math.random();
-      getValue() { return this.id; }
+      getValue() {
+        return this.id;
+      }
     }
 
     const ALIAS = new InjectionToken<RealService>('ALIAS');
@@ -3344,10 +3634,7 @@ describe('useExisting provider alias', () => {
     }
 
     @Module({
-      providers: [
-        RealService,
-        { provide: ALIAS, useExisting: RealService },
-      ],
+      providers: [RealService, { provide: ALIAS, useExisting: RealService }],
       controllers: [AliasController],
     })
     class AppModule {}
@@ -3356,14 +3643,16 @@ describe('useExisting provider alias', () => {
     const res = await app.getHonoApp().request('/alias');
     expect(res.status).toBe(200);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const body = await res.json() as any;
+    const body = (await res.json()) as any;
     expect(body.same).toBe(true);
   });
 
   it('multiple aliases can point to the same service', async () => {
     @Injectable()
     class LoggerService {
-      log(msg: string) { return msg; }
+      log(msg: string) {
+        return msg;
+      }
     }
 
     const LOGGER = new InjectionToken<LoggerService>('LOGGER');
@@ -3396,7 +3685,7 @@ describe('useExisting provider alias', () => {
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/multi-alias');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const body = await res.json() as any;
+    const body = (await res.json()) as any;
     expect(body.l1Real).toBe(true);
     expect(body.l2Real).toBe(true);
   });
@@ -3418,13 +3707,17 @@ describe('forRootAsync() dynamic module pattern', () => {
     @Injectable()
     class DataService {
       constructor(private http: HttpService) {}
-      async fetch() { return (await this.http.get<{ data: string }>('/resource')).data; }
+      async fetch() {
+        return (await this.http.get<{ data: string }>('/resource')).data;
+      }
     }
 
     @Controller('/async-root')
     class AsyncRootController {
       constructor(private svc: DataService) {}
-      @Get() async handle() { return this.svc.fetch(); }
+      @Get() async handle() {
+        return this.svc.fetch();
+      }
     }
 
     @Module({
@@ -3467,7 +3760,9 @@ describe('forRootAsync() dynamic module pattern', () => {
     @Controller('/factory-order')
     class FactoryOrderController {
       constructor(private svc: CheckService) {}
-      @Get() handle() { return { result: this.svc.getBaseURL() }; }
+      @Get() handle() {
+        return { result: this.svc.getBaseURL() };
+      }
     }
 
     @Module({
@@ -3477,10 +3772,7 @@ describe('forRootAsync() dynamic module pattern', () => {
           inject: [CONFIG_VAL],
         }),
       ],
-      providers: [
-        { provide: CONFIG_VAL, useValue: 'injected-factory' },
-        CheckService,
-      ],
+      providers: [{ provide: CONFIG_VAL, useValue: 'injected-factory' }, CheckService],
       controllers: [FactoryOrderController],
     })
     class AppModule {}
@@ -3500,7 +3792,9 @@ describe('CorsModule', () => {
   it('adds Access-Control-Allow-Origin header for allowed origins', async () => {
     @Controller('/data')
     class DataController {
-      @Get() handle() { return { ok: true }; }
+      @Get() handle() {
+        return { ok: true };
+      }
     }
 
     @Module({
@@ -3520,7 +3814,9 @@ describe('CorsModule', () => {
   it('sets wildcard origin by default', async () => {
     @Controller('/open')
     class OpenController {
-      @Get() handle() { return { open: true }; }
+      @Get() handle() {
+        return { open: true };
+      }
     }
 
     @Module({
@@ -3540,15 +3836,19 @@ describe('CorsModule', () => {
   it('handles OPTIONS preflight and returns correct CORS headers', async () => {
     @Controller('/api')
     class ApiController {
-      @Post() create() { return {}; }
+      @Post() create() {
+        return {};
+      }
     }
 
     @Module({
-      imports: [CorsModule.forRoot({
-        origin: 'https://app.test',
-        allowMethods: ['GET', 'POST'],
-        allowHeaders: ['Content-Type', 'Authorization'],
-      })],
+      imports: [
+        CorsModule.forRoot({
+          origin: 'https://app.test',
+          allowMethods: ['GET', 'POST'],
+          allowHeaders: ['Content-Type', 'Authorization'],
+        }),
+      ],
       controllers: [ApiController],
     })
     class AppModule {}
@@ -3641,7 +3941,9 @@ describe('Logger / LoggerService', () => {
     @Controller('/log')
     class LogController {
       constructor(private svc: LoggingService) {}
-      @Get() handle() { return { msg: this.svc.greet() }; }
+      @Get() handle() {
+        return { msg: this.svc.greet() };
+      }
     }
 
     @Module({ providers: [LoggingService], controllers: [LogController] })
@@ -3665,7 +3967,9 @@ describe('@Ip() param decorator', () => {
     @Controller('/ip')
     class IpController {
       @Get()
-      handle(@Ip() ip: string | null) { return { ip }; }
+      handle(@Ip() ip: string | null) {
+        return { ip };
+      }
     }
 
     @Module({ controllers: [IpController] })
@@ -3683,7 +3987,9 @@ describe('@Ip() param decorator', () => {
     @Controller('/realip')
     class RealIpController {
       @Get()
-      handle(@Ip() ip: string | null) { return { ip }; }
+      handle(@Ip() ip: string | null) {
+        return { ip };
+      }
     }
 
     @Module({ controllers: [RealIpController] })
@@ -3701,7 +4007,9 @@ describe('@Ip() param decorator', () => {
     @Controller('/noip')
     class NoIpController {
       @Get()
-      handle(@Ip() ip: string | null) { return { ip }; }
+      handle(@Ip() ip: string | null) {
+        return { ip };
+      }
     }
 
     @Module({ controllers: [NoIpController] })
@@ -3723,8 +4031,12 @@ describe('CacheService / CACHE_MANAGER direct injection', () => {
     @Injectable()
     class ItemService {
       constructor(private cache: CacheService) {}
-      setItem(key: string, val: unknown) { this.cache.set(key, val); }
-      getItem(key: string) { return this.cache.get(key); }
+      setItem(key: string, val: unknown) {
+        this.cache.set(key, val);
+      }
+      getItem(key: string) {
+        return this.cache.get(key);
+      }
     }
 
     @Controller('/cache-svc')
@@ -3738,7 +4050,9 @@ describe('CacheService / CACHE_MANAGER direct injection', () => {
       }
 
       @Get(':key')
-      get(@Param('key') key: string) { return { value: this.svc.getItem(key) }; }
+      get(@Param('key') key: string) {
+        return { value: this.svc.getItem(key) };
+      }
     }
 
     @Module({
@@ -3766,20 +4080,38 @@ describe('CacheService / CACHE_MANAGER direct injection', () => {
     @Injectable()
     class StoreService {
       constructor(private cache: CacheService) {}
-      put(k: string, v: unknown) { this.cache.set(k, v); }
-      remove(k: string) { this.cache.del(k); }
-      read(k: string) { return this.cache.get(k); }
+      put(k: string, v: unknown) {
+        this.cache.set(k, v);
+      }
+      remove(k: string) {
+        this.cache.del(k);
+      }
+      read(k: string) {
+        return this.cache.get(k);
+      }
     }
 
     @Controller('/del-cache')
     class DelCacheController {
       constructor(private svc: StoreService) {}
-      @Get('set') setItem() { this.svc.put('x', 'value'); return { ok: true }; }
-      @Get('del') delItem() { this.svc.remove('x'); return { ok: true }; }
-      @Get('get') getItem() { return { value: this.svc.read('x') }; }
+      @Get('set') setItem() {
+        this.svc.put('x', 'value');
+        return { ok: true };
+      }
+      @Get('del') delItem() {
+        this.svc.remove('x');
+        return { ok: true };
+      }
+      @Get('get') getItem() {
+        return { value: this.svc.read('x') };
+      }
     }
 
-    @Module({ imports: [CacheModule.forRoot()], providers: [StoreService], controllers: [DelCacheController] })
+    @Module({
+      imports: [CacheModule.forRoot()],
+      providers: [StoreService],
+      controllers: [DelCacheController],
+    })
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
@@ -3794,7 +4126,12 @@ describe('CacheService / CACHE_MANAGER direct injection', () => {
   it('CACHE_MANAGER token injects the raw cache store', async () => {
     @Controller('/raw-cache')
     class RawCacheController {
-      constructor(@Inject(CACHE_MANAGER) private store: { get: (k: string) => unknown; set: (k: string, v: unknown) => void }) {}
+      constructor(
+        @Inject(CACHE_MANAGER) private store: {
+          get: (k: string) => unknown;
+          set: (k: string, v: unknown) => void;
+        },
+      ) {}
 
       @Get()
       handle() {
@@ -3875,7 +4212,9 @@ describe('ZodValidationPipe', () => {
     @UsePipes(new ZodValidationPipe(QuerySchema))
     class ZodQueryController {
       @Get()
-      handle(@Query() query: unknown) { return query; }
+      handle(@Query() query: unknown) {
+        return query;
+      }
     }
 
     @Module({ controllers: [ZodQueryController] })
@@ -3897,7 +4236,9 @@ describe('RequiredPipe', () => {
     @Controller('/req-pipe')
     class ReqPipeController {
       @Get()
-      handle(@Query('name', RequiredPipe) name: string) { return { name }; }
+      handle(@Query('name', RequiredPipe) name: string) {
+        return { name };
+      }
     }
 
     @Module({ controllers: [ReqPipeController] })
@@ -3913,7 +4254,9 @@ describe('RequiredPipe', () => {
     @Controller('/req-missing')
     class ReqMissingController {
       @Get()
-      handle(@Query('name', RequiredPipe) name: string) { return { name }; }
+      handle(@Query('name', RequiredPipe) name: string) {
+        return { name };
+      }
     }
 
     @Module({ controllers: [ReqMissingController] })
@@ -3928,7 +4271,9 @@ describe('RequiredPipe', () => {
     @Controller('/req-empty')
     class ReqEmptyController {
       @Get()
-      handle(@Query('q', RequiredPipe) q: string) { return { q }; }
+      handle(@Query('q', RequiredPipe) q: string) {
+        return { q };
+      }
     }
 
     @Module({ controllers: [ReqEmptyController] })
@@ -3976,7 +4321,9 @@ describe('applyDecorators compound decorator', () => {
     class CompoundController {
       @Get()
       @AdminOnly()
-      secret() { return { secret: true }; }
+      secret() {
+        return { secret: true };
+      }
     }
 
     @Module({ providers: [RolesGuard, Reflector], controllers: [CompoundController] })
@@ -3993,12 +4340,18 @@ describe('applyDecorators compound decorator', () => {
 
     @Injectable()
     class GuardA implements CanActivate {
-      canActivate(_ctx: ExecutionContext): boolean { calls.push('A'); return true; }
+      canActivate(_ctx: ExecutionContext): boolean {
+        calls.push('A');
+        return true;
+      }
     }
 
     @Injectable()
     class GuardB implements CanActivate {
-      canActivate(_ctx: ExecutionContext): boolean { calls.push('B'); return true; }
+      canActivate(_ctx: ExecutionContext): boolean {
+        calls.push('B');
+        return true;
+      }
     }
 
     function AuthAndVerified() {
@@ -4009,7 +4362,9 @@ describe('applyDecorators compound decorator', () => {
     class StackedController {
       @Get()
       @AuthAndVerified()
-      handle() { return { guards: calls }; }
+      handle() {
+        return { guards: calls };
+      }
     }
 
     @Module({ controllers: [StackedController] })
@@ -4019,7 +4374,7 @@ describe('applyDecorators compound decorator', () => {
     const res = await app.getHonoApp().request('/stacked');
     expect(res.status).toBe(200);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const body = await res.json() as any;
+    const body = (await res.json()) as any;
     expect(body.guards).toContain('A');
     expect(body.guards).toContain('B');
   });
@@ -4048,7 +4403,9 @@ describe('Remaining HTTP exceptions', () => {
 
       @Controller('/exc')
       class ExcController {
-        @Get() handle() { throw exc; }
+        @Get() handle() {
+          throw exc;
+        }
       }
 
       @Module({ controllers: [ExcController] })
@@ -4063,7 +4420,9 @@ describe('Remaining HTTP exceptions', () => {
   it('HttpException accepts custom message and status', async () => {
     @Controller('/custom-exc')
     class CustomExcController {
-      @Get() handle() { throw new HttpException('Custom error', 418); }
+      @Get() handle() {
+        throw new HttpException('Custom error', 418);
+      }
     }
 
     @Module({ controllers: [CustomExcController] })
@@ -4073,7 +4432,7 @@ describe('Remaining HTTP exceptions', () => {
     const res = await app.getHonoApp().request('/custom-exc');
     expect(res.status).toBe(418);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const body = await res.json() as any;
+    const body = (await res.json()) as any;
     // 418 has no catalog code → falls back to 'internal', message echoed verbatim.
     expect(body.error.message).toBe('Custom error');
   });
@@ -4087,7 +4446,9 @@ describe('setGlobalPrefix', () => {
   it('prefixes all routes with the given path segment', async () => {
     @Controller('/users')
     class UserController {
-      @Get() list() { return [{ id: 1 }]; }
+      @Get() list() {
+        return [{ id: 1 }];
+      }
     }
 
     @Module({ controllers: [UserController] })
@@ -4103,7 +4464,9 @@ describe('setGlobalPrefix', () => {
   it('works with a leading slash in the prefix', async () => {
     @Controller('/items')
     class ItemController {
-      @Get(':id') get(@Param('id') id: string) { return { id }; }
+      @Get(':id') get(@Param('id') id: string) {
+        return { id };
+      }
     }
 
     @Module({ controllers: [ItemController] })
@@ -4119,7 +4482,9 @@ describe('setGlobalPrefix', () => {
   it('combines global prefix with controller prefix and route path', async () => {
     @Controller('products')
     class ProductController {
-      @Get('featured') featured() { return { featured: true }; }
+      @Get('featured') featured() {
+        return { featured: true };
+      }
     }
 
     @Module({ controllers: [ProductController] })
@@ -4172,7 +4537,9 @@ describe('@Optional() in HTTP context', () => {
       ) {}
 
       @Get()
-      handle() { return { value: this.svc?.msg() ?? 'missing' }; }
+      handle() {
+        return { value: this.svc?.msg() ?? 'missing' };
+      }
     }
 
     @Module({
@@ -4191,7 +4558,11 @@ describe('@Optional() in HTTP context', () => {
     const OPT_DEP = new InjectionToken<string>('OPT_DEP');
 
     @Injectable()
-    class RequiredService { greet() { return 'hello'; } }
+    class RequiredService {
+      greet() {
+        return 'hello';
+      }
+    }
 
     @Controller('/opt-mixed')
     class OptMixedController {
@@ -4242,9 +4613,14 @@ describe('Scope.TRANSIENT providers', () => {
 
     @Controller('/transient')
     class TransientController {
-      constructor(private a: ConsumerA, private b: ConsumerB) {}
+      constructor(
+        private a: ConsumerA,
+        private b: ConsumerB,
+      ) {}
       @Get()
-      handle() { return { same: this.a.svc.id === this.b.svc.id }; }
+      handle() {
+        return { same: this.a.svc.id === this.b.svc.id };
+      }
     }
 
     @Module({ providers: [IdService, ConsumerA, ConsumerB], controllers: [TransientController] })
@@ -4254,7 +4630,7 @@ describe('Scope.TRANSIENT providers', () => {
     const res = await app.getHonoApp().request('/transient');
     expect(res.status).toBe(200);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect((await res.json() as any).same).toBe(false);
+    expect(((await res.json()) as any).same).toBe(false);
   });
 
   it('transient provider always creates a new instance on each resolve', async () => {
@@ -4262,13 +4638,20 @@ describe('Scope.TRANSIENT providers', () => {
 
     @Injectable({ scope: Scope.TRANSIENT })
     class TransService {
-      constructor() { instances.push(this); }
+      constructor() {
+        instances.push(this);
+      }
     }
 
     @Controller('/trans-count')
     class TransCountController {
-      constructor(private s1: TransService, private s2: TransService) {}
-      @Get() handle() { return { count: instances.length }; }
+      constructor(
+        private s1: TransService,
+        private s2: TransService,
+      ) {}
+      @Get() handle() {
+        return { count: instances.length };
+      }
     }
 
     @Module({ providers: [TransService], controllers: [TransCountController] })
@@ -4281,18 +4664,23 @@ describe('Scope.TRANSIENT providers', () => {
 
   it('transient provider via { provide, useClass, scope } option', async () => {
     @Injectable()
-    class Base { readonly id = Math.random(); }
+    class Base {
+      readonly id = Math.random();
+    }
 
     @Controller('/trans-opts')
     class TransOptsController {
-      constructor(private a: Base, private b: Base) {}
-      @Get() handle() { return { same: this.a === this.b }; }
+      constructor(
+        private a: Base,
+        private b: Base,
+      ) {}
+      @Get() handle() {
+        return { same: this.a === this.b };
+      }
     }
 
     @Module({
-      providers: [
-        { provide: Base, useClass: Base, scope: Scope.TRANSIENT },
-      ],
+      providers: [{ provide: Base, useClass: Base, scope: Scope.TRANSIENT }],
       controllers: [TransOptsController],
     })
     class AppModule {}
@@ -4300,7 +4688,7 @@ describe('Scope.TRANSIENT providers', () => {
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/trans-opts');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect((await res.json() as any).same).toBe(false);
+    expect(((await res.json()) as any).same).toBe(false);
   });
 });
 
@@ -4315,18 +4703,24 @@ describe('Scope.REQUEST in HTTP context', () => {
     @Injectable({ scope: Scope.REQUEST })
     class RequestContext {
       readonly id = Math.random();
-      constructor() { ids.push(this.id); }
+      constructor() {
+        ids.push(this.id);
+      }
     }
 
     @Injectable({ scope: Scope.REQUEST })
     class ReqScopedGuard {
       constructor(private ctx: RequestContext) {}
-      canActivate(_: ExecutionContext) { return true; }
+      canActivate(_: ExecutionContext) {
+        return true;
+      }
     }
 
     @Controller('/req-scope')
     class ReqScopeController {
-      @Get() @UseGuards(ReqScopedGuard) handle() { return { ok: true }; }
+      @Get() @UseGuards(ReqScopedGuard) handle() {
+        return { ok: true };
+      }
     }
 
     @Module({
@@ -4357,18 +4751,26 @@ describe('Scope.REQUEST in HTTP context', () => {
     @Injectable({ scope: Scope.REQUEST })
     class GuardA {
       constructor(public data: ReqData) {}
-      canActivate(_: ExecutionContext) { callOrder.push(`A:${this.data.stamp}`); return true; }
+      canActivate(_: ExecutionContext) {
+        callOrder.push(`A:${this.data.stamp}`);
+        return true;
+      }
     }
 
     @Injectable({ scope: Scope.REQUEST })
     class GuardB {
       constructor(public data: ReqData) {}
-      canActivate(_: ExecutionContext) { callOrder.push(`B:${this.data.stamp}`); return true; }
+      canActivate(_: ExecutionContext) {
+        callOrder.push(`B:${this.data.stamp}`);
+        return true;
+      }
     }
 
     @Controller('/req-shared')
     class ReqSharedController {
-      @Get() @UseGuards(GuardA, GuardB) handle() { return { ok: true }; }
+      @Get() @UseGuards(GuardA, GuardB) handle() {
+        return { ok: true };
+      }
     }
 
     @Module({
@@ -4396,18 +4798,27 @@ describe('forwardRef() circular module imports', () => {
   it('two modules that import each other via forwardRef resolve correctly', async () => {
     @Injectable()
     class ModAService {
-      name() { return 'ModA'; }
+      name() {
+        return 'ModA';
+      }
     }
 
     @Injectable()
     class ModBService {
-      name() { return 'ModB'; }
+      name() {
+        return 'ModB';
+      }
     }
 
     @Controller('/circular-a')
     class CircularController {
-      constructor(private a: ModAService, private b: ModBService) {}
-      @Get() handle() { return { a: this.a.name(), b: this.b.name() }; }
+      constructor(
+        private a: ModAService,
+        private b: ModBService,
+      ) {}
+      @Get() handle() {
+        return { a: this.a.name(), b: this.b.name() };
+      }
     }
 
     // Declare module classes before defining them (needed for forwardRef)
@@ -4443,14 +4854,20 @@ describe('forwardRef() circular module imports', () => {
 
     @Injectable()
     class SharedService {
-      constructor() { initCount++; }
-      value() { return 42; }
+      constructor() {
+        initCount++;
+      }
+      value() {
+        return 42;
+      }
     }
 
     @Controller('/fwd-count')
     class FwdController {
       constructor(private svc: SharedService) {}
-      @Get() handle() { return { v: this.svc.value() }; }
+      @Get() handle() {
+        return { v: this.svc.value() };
+      }
     }
 
     let LazyModule: any;
@@ -4487,13 +4904,17 @@ describe('useClass provider substitution', () => {
 
     @Injectable()
     class SmtpMailer {
-      send(to: string) { return `smtp:${to}`; }
+      send(to: string) {
+        return `smtp:${to}`;
+      }
     }
 
     @Controller('/mail')
     class MailController {
       constructor(@Inject(MAILER_TOKEN) private mailer: SmtpMailer) {}
-      @Get() handle() { return { result: this.mailer.send('user@test.com') }; }
+      @Get() handle() {
+        return { result: this.mailer.send('user@test.com') };
+      }
     }
 
     @Module({
@@ -4511,18 +4932,24 @@ describe('useClass provider substitution', () => {
   it('useClass can substitute one class for another (polymorphism)', async () => {
     @Injectable()
     class BaseNotifier {
-      notify(msg: string) { return `base:${msg}`; }
+      notify(msg: string) {
+        return `base:${msg}`;
+      }
     }
 
     @Injectable()
     class SlackNotifier extends BaseNotifier {
-      override notify(msg: string) { return `slack:${msg}`; }
+      override notify(msg: string) {
+        return `slack:${msg}`;
+      }
     }
 
     @Controller('/notify')
     class NotifyController {
       constructor(private notifier: BaseNotifier) {}
-      @Get() handle() { return { result: this.notifier.notify('hello') }; }
+      @Get() handle() {
+        return { result: this.notifier.notify('hello') };
+      }
     }
 
     @Module({
@@ -4540,32 +4967,36 @@ describe('useClass provider substitution', () => {
   it('useClass implementation can itself have injected dependencies', async () => {
     @Injectable()
     class Config {
-      getPrefix() { return 'sms'; }
+      getPrefix() {
+        return 'sms';
+      }
     }
 
     @Injectable()
     class SmsNotifier {
       constructor(private config: Config) {}
-      notify(msg: string) { return `${this.config.getPrefix()}:${msg}`; }
+      notify(msg: string) {
+        return `${this.config.getPrefix()}:${msg}`;
+      }
     }
 
     @Injectable()
     class AbstractNotifier {
-      notify(_msg: string): string { return ''; }
+      notify(_msg: string): string {
+        return '';
+      }
     }
 
     @Controller('/sms-notify')
     class SmsController {
       constructor(private n: AbstractNotifier) {}
-      @Get() handle() { return { result: this.n.notify('ping') }; }
+      @Get() handle() {
+        return { result: this.n.notify('ping') };
+      }
     }
 
     @Module({
-      providers: [
-        Config,
-        SmsNotifier,
-        { provide: AbstractNotifier, useClass: SmsNotifier },
-      ],
+      providers: [Config, SmsNotifier, { provide: AbstractNotifier, useClass: SmsNotifier }],
       controllers: [SmsController],
     })
     class AppModule {}
@@ -4583,8 +5014,18 @@ describe('useClass provider substitution', () => {
 
 describe('@Catch() with multiple exception types', () => {
   it('@Catch(TypeA, TypeB) catches either exception type', async () => {
-    class DomainError extends Error { constructor() { super('domain'); this.name = 'DomainError'; } }
-    class NetworkError extends Error { constructor() { super('network'); this.name = 'NetworkError'; } }
+    class DomainError extends Error {
+      constructor() {
+        super('domain');
+        this.name = 'DomainError';
+      }
+    }
+    class NetworkError extends Error {
+      constructor() {
+        super('network');
+        this.name = 'NetworkError';
+      }
+    }
 
     @Catch(DomainError, NetworkError)
     class MultiCatchFilter implements ExceptionFilter {
@@ -4597,13 +5038,19 @@ describe('@Catch() with multiple exception types', () => {
     @Controller('/multi-catch')
     class MultiCatchController {
       @Get('domain')
-      domain() { throw new DomainError(); }
+      domain() {
+        throw new DomainError();
+      }
 
       @Get('network')
-      network() { throw new NetworkError(); }
+      network() {
+        throw new NetworkError();
+      }
 
       @Get('other')
-      other() { throw new Error('other'); }
+      other() {
+        throw new Error('other');
+      }
     }
 
     @Module({
@@ -4628,7 +5075,11 @@ describe('@Catch() with multiple exception types', () => {
   });
 
   it('@Catch() with no args catches all exceptions', async () => {
-    class AnyError extends Error { constructor() { super('any'); } }
+    class AnyError extends Error {
+      constructor() {
+        super('any');
+      }
+    }
 
     @Catch()
     class CatchAllFilter implements ExceptionFilter {
@@ -4640,7 +5091,9 @@ describe('@Catch() with multiple exception types', () => {
 
     @Controller('/catch-all')
     class CatchAllController {
-      @Get() handle() { throw new AnyError(); }
+      @Get() handle() {
+        throw new AnyError();
+      }
     }
 
     @Module({
@@ -4680,7 +5133,7 @@ describe('Route wildcards', () => {
     const r1 = await hono.request('/files/a/b/c');
     expect(r1.status).toBe(200);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect((await r1.json() as any).path).toBe('/files/a/b/c');
+    expect(((await r1.json()) as any).path).toBe('/files/a/b/c');
 
     const r2 = await hono.request('/files/readme.md');
     expect(r2.status).toBe(200);
@@ -4690,10 +5143,14 @@ describe('Route wildcards', () => {
     @Controller('/docs')
     class DocsController {
       @Get('latest')
-      latest() { return { version: 'latest' }; }
+      latest() {
+        return { version: 'latest' };
+      }
 
       @Get('*')
-      catchAll() { return { version: 'unknown' }; }
+      catchAll() {
+        return { version: 'unknown' };
+      }
     }
 
     @Module({ controllers: [DocsController] })
@@ -4721,7 +5178,9 @@ describe('ModuleRef.resolve() and ModuleRef.create()', () => {
     @Injectable()
     class SingletonCounter {
       count = 0;
-      inc() { return ++this.count; }
+      inc() {
+        return ++this.count;
+      }
     }
 
     @Controller('/modref-get')
@@ -4755,7 +5214,10 @@ describe('ModuleRef.resolve() and ModuleRef.create()', () => {
 
     @Controller('/modref-create')
     class ModRefCreateController {
-      constructor(private moduleRef: ModuleRef, private singleton: FreshService) {}
+      constructor(
+        private moduleRef: ModuleRef,
+        private singleton: FreshService,
+      ) {}
 
       @Get()
       handle() {
@@ -4771,14 +5233,16 @@ describe('ModuleRef.resolve() and ModuleRef.create()', () => {
     const res = await app.getHonoApp().request('/modref-create');
     expect(res.status).toBe(200);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const body = await res.json() as any;
+    const body = (await res.json()) as any;
     expect(body.same).toBe(false);
     expect(body.freshId).toBe(true);
   });
 
   it('ModuleRef.resolve() works like get() for singleton-scoped providers', async () => {
     @Injectable()
-    class Config { value = 'prod'; }
+    class Config {
+      value = 'prod';
+    }
 
     @Controller('/modref-resolve')
     class ModRefResolveController {
@@ -4815,9 +5279,13 @@ describe('Request-scoped controller', () => {
     @Controller('/req-ctrl')
     class ReqScopeCtrl {
       readonly id = Math.random();
-      constructor() { ctrlIds.push(this.id); }
+      constructor() {
+        ctrlIds.push(this.id);
+      }
 
-      @Get() handle() { return { id: this.id }; }
+      @Get() handle() {
+        return { id: this.id };
+      }
     }
 
     @Module({ controllers: [ReqScopeCtrl] })
@@ -4826,8 +5294,8 @@ describe('Request-scoped controller', () => {
     const app = await VelaFactory.create(AppModule);
     const hono = app.getHonoApp();
 
-    const r1 = await (await hono.request('/req-ctrl')).json() as { id: number };
-    const r2 = await (await hono.request('/req-ctrl')).json() as { id: number };
+    const r1 = (await (await hono.request('/req-ctrl')).json()) as { id: number };
+    const r2 = (await (await hono.request('/req-ctrl')).json()) as { id: number };
 
     expect(r1.id).not.toBe(r2.id);
     expect(ctrlIds.length).toBeGreaterThanOrEqual(2);
@@ -4856,7 +5324,9 @@ describe('Async onModuleInit', () => {
     @Controller('/async-init')
     class AsyncInitController {
       constructor(private svc: AsyncInitService) {}
-      @Get() handle() { return { data: this.svc.data, initialized }; }
+      @Get() handle() {
+        return { data: this.svc.data, initialized };
+      }
     }
 
     @Module({ providers: [AsyncInitService], controllers: [AsyncInitController] })
@@ -4889,8 +5359,13 @@ describe('Async onModuleInit', () => {
 
     @Controller('/multi-init')
     class MultiInitController {
-      constructor(private x: ServiceX, private y: ServiceY) {}
-      @Get() handle() { return { order }; }
+      constructor(
+        private x: ServiceX,
+        private y: ServiceY,
+      ) {}
+      @Get() handle() {
+        return { order };
+      }
     }
 
     @Module({ providers: [ServiceX, ServiceY], controllers: [MultiInitController] })
@@ -4900,7 +5375,7 @@ describe('Async onModuleInit', () => {
     const res = await app.getHonoApp().request('/multi-init');
     expect(res.status).toBe(200);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const body = await res.json() as any;
+    const body = (await res.json()) as any;
     expect(body.order).toContain('X');
     expect(body.order).toContain('Y');
     expect(body.order).toHaveLength(2);
@@ -4920,7 +5395,9 @@ describe('Async onModuleInit', () => {
     @Controller('/loaded')
     class LoadedController {
       constructor(private loader: DataLoader) {}
-      @Get() handle() { return { items: this.loader.items }; }
+      @Get() handle() {
+        return { items: this.loader.items };
+      }
     }
 
     @Module({ providers: [DataLoader], controllers: [LoadedController] })
@@ -4955,10 +5432,14 @@ describe('Reflector.createDecorator() in HTTP context', () => {
     class TypedRolesController {
       @Roles(['admin'])
       @Get('admin')
-      admin() { return { access: 'admin' }; }
+      admin() {
+        return { access: 'admin' };
+      }
 
       @Get('public')
-      public() { return { access: 'public' }; }
+      public() {
+        return { access: 'public' };
+      }
     }
 
     @Module({ providers: [TypedRolesGuard, Reflector], controllers: [TypedRolesController] })
@@ -5001,7 +5482,9 @@ describe('Reflector.createDecorator() in HTTP context', () => {
       @TagB('beta')
       @Get()
       @UseGuards(TagGuard)
-      handle() { return {}; }
+      handle() {
+        return {};
+      }
     }
 
     @Module({ providers: [TagGuard, Reflector], controllers: [TagController] })
@@ -5022,7 +5505,9 @@ describe('Module re-export / transitive exports', () => {
   it('re-exported providers from an imported module are available to consumers', async () => {
     @Injectable()
     class DatabaseService {
-      query() { return 'db result'; }
+      query() {
+        return 'db result';
+      }
     }
 
     @Module({ providers: [DatabaseService], exports: [DatabaseService] })
@@ -5035,7 +5520,9 @@ describe('Module re-export / transitive exports', () => {
     @Controller('/reexport')
     class ReexportController {
       constructor(private db: DatabaseService) {}
-      @Get() handle() { return { result: this.db.query() }; }
+      @Get() handle() {
+        return { result: this.db.query() };
+      }
     }
 
     // AppModule only imports InfraModule — gets DatabaseService transitively
@@ -5050,7 +5537,9 @@ describe('Module re-export / transitive exports', () => {
 
   it('global module makes providers available without explicit import', async () => {
     @Injectable()
-    class GlobalConfig { env = 'production'; }
+    class GlobalConfig {
+      env = 'production';
+    }
 
     @Global()
     @Module({ providers: [GlobalConfig], exports: [GlobalConfig] })
@@ -5059,7 +5548,9 @@ describe('Module re-export / transitive exports', () => {
     @Controller('/global-inject')
     class GlobalInjectController {
       constructor(private config: GlobalConfig) {}
-      @Get() handle() { return { env: this.config.env }; }
+      @Get() handle() {
+        return { env: this.config.env };
+      }
     }
 
     @Module({ imports: [GlobalModule], controllers: [GlobalInjectController] })
@@ -5088,7 +5579,9 @@ describe('Interceptor response transformation', () => {
 
     @Controller('/wrap')
     class WrapController {
-      @Get() handle() { return { id: 1, name: 'Alice' }; }
+      @Get() handle() {
+        return { id: 1, name: 'Alice' };
+      }
     }
 
     @Module({ controllers: [WrapController] })
@@ -5115,7 +5608,9 @@ describe('Interceptor response transformation', () => {
 
     @Controller('/timed')
     class TimedController {
-      @Get() handle() { return { ok: true }; }
+      @Get() handle() {
+        return { ok: true };
+      }
     }
 
     @Module({ controllers: [TimedController] })
@@ -5156,7 +5651,10 @@ describe('Interceptor response transformation', () => {
     class OrderInterceptController {
       @Get()
       @UseInterceptors(LocalInterceptor)
-      handle() { order.push('handler'); return {}; }
+      handle() {
+        order.push('handler');
+        return {};
+      }
     }
 
     @Module({ controllers: [OrderInterceptController] })
@@ -5166,7 +5664,13 @@ describe('Interceptor response transformation', () => {
     app.useGlobalInterceptors(new GlobalInterceptor());
 
     await app.getHonoApp().request('/order-intercept');
-    expect(order).toEqual(['global:before', 'local:before', 'handler', 'local:after', 'global:after']);
+    expect(order).toEqual([
+      'global:before',
+      'local:before',
+      'handler',
+      'local:after',
+      'global:after',
+    ]);
   });
 });
 
@@ -5176,7 +5680,11 @@ describe('Interceptor response transformation', () => {
 
 describe('@UseFilters() at method level', () => {
   it('method-level filter catches exception before global filter', async () => {
-    class DomainError extends Error { constructor() { super('domain'); } }
+    class DomainError extends Error {
+      constructor() {
+        super('domain');
+      }
+    }
 
     @Catch(DomainError)
     class MethodFilter implements ExceptionFilter {
@@ -5198,10 +5706,14 @@ describe('@UseFilters() at method level', () => {
     class MethodFilterController {
       @Get('filtered')
       @UseFilters(MethodFilter)
-      filtered() { throw new DomainError(); }
+      filtered() {
+        throw new DomainError();
+      }
 
       @Get('unfiltered')
-      unfiltered() { throw new DomainError(); }
+      unfiltered() {
+        throw new DomainError();
+      }
     }
 
     @Module({
@@ -5223,7 +5735,11 @@ describe('@UseFilters() at method level', () => {
   });
 
   it('controller-level @UseFilters() applies to all methods', async () => {
-    class AppError extends Error { constructor() { super('app'); } }
+    class AppError extends Error {
+      constructor() {
+        super('app');
+      }
+    }
 
     @Catch(AppError)
     class ControllerFilter implements ExceptionFilter {
@@ -5236,8 +5752,12 @@ describe('@UseFilters() at method level', () => {
     @Controller('/ctrl-filter')
     @UseFilters(ControllerFilter)
     class CtrlFilterController {
-      @Get('a') a() { throw new AppError(); }
-      @Get('b') b() { throw new AppError(); }
+      @Get('a') a() {
+        throw new AppError();
+      }
+      @Get('b') b() {
+        throw new AppError();
+      }
     }
 
     @Module({ controllers: [CtrlFilterController] })
@@ -5262,7 +5782,9 @@ describe('useFactory async inline providers', () => {
     @Controller('/async-factory')
     class AsyncFactoryController {
       constructor(@Inject(DB_CONNECTION) private db: { ping(): string }) {}
-      @Get() handle() { return { pong: this.db.ping() }; }
+      @Get() handle() {
+        return { pong: this.db.ping() };
+      }
     }
 
     @Module({
@@ -5292,7 +5814,9 @@ describe('useFactory async inline providers', () => {
     @Controller('/async-inject-factory')
     class AsyncInjectController {
       constructor(@Inject(HTTP_CLIENT) private client: { baseUrl: string }) {}
-      @Get() handle() { return { baseUrl: this.client.baseUrl }; }
+      @Get() handle() {
+        return { baseUrl: this.client.baseUrl };
+      }
     }
 
     @Module({
@@ -5329,25 +5853,21 @@ describe('Custom dynamic module', () => {
     @Injectable()
     class StorageService {
       constructor(@Inject(STORAGE_OPTIONS) private opts: { bucket: string }) {}
-      getBucket() { return this.opts.bucket; }
+      getBucket() {
+        return this.opts.bucket;
+      }
     }
 
     class StorageModule {
       static register(opts: { bucket: string }) {
         const moduleClass: Type = { StorageDynamicModule: class {} }.StorageDynamicModule;
         MetadataRegistry.setModuleOptions(moduleClass, {
-          providers: [
-            { provide: STORAGE_OPTIONS, useValue: opts },
-            StorageService,
-          ],
+          providers: [{ provide: STORAGE_OPTIONS, useValue: opts }, StorageService],
           exports: [StorageService],
         });
         return {
           module: moduleClass,
-          providers: [
-            { provide: STORAGE_OPTIONS, useValue: opts },
-            StorageService,
-          ],
+          providers: [{ provide: STORAGE_OPTIONS, useValue: opts }, StorageService],
         };
       }
     }
@@ -5355,7 +5875,9 @@ describe('Custom dynamic module', () => {
     @Controller('/storage')
     class StorageController {
       constructor(private storage: StorageService) {}
-      @Get() handle() { return { bucket: this.storage.getBucket() }; }
+      @Get() handle() {
+        return { bucket: this.storage.getBucket() };
+      }
     }
 
     @Module({
@@ -5376,27 +5898,23 @@ describe('Custom dynamic module', () => {
     @Injectable()
     class AppConfigService {
       constructor(@Inject(APP_CONFIG) private cfg: { apiUrl: string }) {}
-      getApiUrl() { return this.cfg.apiUrl; }
+      getApiUrl() {
+        return this.cfg.apiUrl;
+      }
     }
 
     class AppConfigModule {
       static forRoot(config: { apiUrl: string }) {
         const moduleClass: Type = { AppConfigDynModule: class {} }.AppConfigDynModule;
         MetadataRegistry.setModuleOptions(moduleClass, {
-          providers: [
-            { provide: APP_CONFIG, useValue: config },
-            AppConfigService,
-          ],
+          providers: [{ provide: APP_CONFIG, useValue: config }, AppConfigService],
           exports: [AppConfigService],
           isGlobal: true,
         });
         return {
           module: moduleClass,
           global: true,
-          providers: [
-            { provide: APP_CONFIG, useValue: config },
-            AppConfigService,
-          ],
+          providers: [{ provide: APP_CONFIG, useValue: config }, AppConfigService],
         };
       }
     }
@@ -5404,10 +5922,15 @@ describe('Custom dynamic module', () => {
     @Controller('/cfg')
     class CfgController {
       constructor(private cfg: AppConfigService) {}
-      @Get() handle() { return { url: this.cfg.getApiUrl() }; }
+      @Get() handle() {
+        return { url: this.cfg.getApiUrl() };
+      }
     }
 
-    @Module({ imports: [AppConfigModule.forRoot({ apiUrl: 'https://app.io' })], controllers: [CfgController] })
+    @Module({
+      imports: [AppConfigModule.forRoot({ apiUrl: 'https://app.io' })],
+      controllers: [CfgController],
+    })
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
@@ -5444,7 +5967,10 @@ describe('Guard + pipe + interceptor combined priority order', () => {
     @Controller('/combined')
     @UseInterceptors(TrackingInterceptor)
     class CombinedController {
-      @Get() handle() { order.push('handler'); return {}; }
+      @Get() handle() {
+        order.push('handler');
+        return {};
+      }
     }
 
     @Module({ controllers: [CombinedController] })
@@ -5495,15 +6021,24 @@ describe('Guard + pipe + interceptor combined priority order', () => {
 
     @Injectable()
     class GlobalGuard implements CanActivate {
-      canActivate(_: ExecutionContext) { order.push('global'); return true; }
+      canActivate(_: ExecutionContext) {
+        order.push('global');
+        return true;
+      }
     }
     @Injectable()
     class CtrlGuard implements CanActivate {
-      canActivate(_: ExecutionContext) { order.push('ctrl'); return true; }
+      canActivate(_: ExecutionContext) {
+        order.push('ctrl');
+        return true;
+      }
     }
     @Injectable()
     class MethodGuard implements CanActivate {
-      canActivate(_: ExecutionContext) { order.push('method'); return true; }
+      canActivate(_: ExecutionContext) {
+        order.push('method');
+        return true;
+      }
     }
 
     @Controller('/guard-order')
@@ -5511,7 +6046,9 @@ describe('Guard + pipe + interceptor combined priority order', () => {
     class GuardOrderController {
       @Get()
       @UseGuards(MethodGuard)
-      handle() { return {}; }
+      handle() {
+        return {};
+      }
     }
 
     @Module({ controllers: [GuardOrderController] })
@@ -5532,10 +6069,14 @@ describe('Guard + pipe + interceptor combined priority order', () => {
 describe('Module provider isolation', () => {
   it('providers not exported from a module are not accessible to importing modules', async () => {
     @Injectable()
-    class InternalService { secret = 'hidden'; }
+    class InternalService {
+      secret = 'hidden';
+    }
 
     @Injectable()
-    class PublicService { value = 'visible'; }
+    class PublicService {
+      value = 'visible';
+    }
 
     @Module({
       providers: [InternalService, PublicService],
@@ -5546,7 +6087,9 @@ describe('Module provider isolation', () => {
     @Controller('/isolation')
     class IsolationController {
       constructor(private pub: PublicService) {}
-      @Get() handle() { return { value: this.pub.value }; }
+      @Get() handle() {
+        return { value: this.pub.value };
+      }
     }
 
     @Module({ imports: [FeatureModule], controllers: [IsolationController] })
@@ -5561,7 +6104,9 @@ describe('Module provider isolation', () => {
   it('deep import chain: AppModule → FeatureModule → CoreModule → Service', async () => {
     @Injectable()
     class CoreService {
-      greet() { return 'core-hello'; }
+      greet() {
+        return 'core-hello';
+      }
     }
 
     @Module({ providers: [CoreService], exports: [CoreService] })
@@ -5573,7 +6118,9 @@ describe('Module provider isolation', () => {
     @Controller('/deep-chain')
     class DeepChainController {
       constructor(private core: CoreService) {}
-      @Get() handle() { return { msg: this.core.greet() }; }
+      @Get() handle() {
+        return { msg: this.core.greet() };
+      }
     }
 
     @Module({ imports: [FeatureModule], controllers: [DeepChainController] })
@@ -5601,7 +6148,9 @@ describe('app.useGlobalInterceptors() / useGlobalGuards() / useGlobalPipes() pos
 
     @Controller('/post-create')
     class PostCreateController {
-      @Get() handle() { return { original: true }; }
+      @Get() handle() {
+        return { original: true };
+      }
     }
 
     @Module({ controllers: [PostCreateController] })
@@ -5623,12 +6172,16 @@ describe('app.useGlobalInterceptors() / useGlobalGuards() / useGlobalPipes() pos
   it('useGlobalGuards() + rebuild() blocks requests globally', async () => {
     @Injectable()
     class DenyAllGuard implements CanActivate {
-      canActivate(_: ExecutionContext) { return false; }
+      canActivate(_: ExecutionContext) {
+        return false;
+      }
     }
 
     @Controller('/post-guard')
     class PostGuardController {
-      @Get() handle() { return { ok: true }; }
+      @Get() handle() {
+        return { ok: true };
+      }
     }
 
     @Module({ controllers: [PostGuardController] })
@@ -5646,7 +6199,11 @@ describe('app.useGlobalInterceptors() / useGlobalGuards() / useGlobalPipes() pos
   });
 
   it('useGlobalFilters() + rebuild() catches unhandled exceptions globally', async () => {
-    class CustomError extends Error { constructor() { super('custom'); } }
+    class CustomError extends Error {
+      constructor() {
+        super('custom');
+      }
+    }
 
     @Catch(CustomError)
     class CustomFilter implements ExceptionFilter {
@@ -5658,7 +6215,9 @@ describe('app.useGlobalInterceptors() / useGlobalGuards() / useGlobalPipes() pos
 
     @Controller('/post-filter')
     class PostFilterController {
-      @Get() handle() { throw new CustomError(); }
+      @Get() handle() {
+        throw new CustomError();
+      }
     }
 
     @Module({ controllers: [PostFilterController] })
@@ -5685,7 +6244,9 @@ describe('Exception response JSON shape', () => {
   it('NotFoundException returns canonical { error: { code, message } }', async () => {
     @Controller('/exc-shape')
     class ExcShapeController {
-      @Get() handle() { throw new NotFoundException('Item not found'); }
+      @Get() handle() {
+        throw new NotFoundException('Item not found');
+      }
     }
 
     @Module({ controllers: [ExcShapeController] })
@@ -5695,7 +6256,7 @@ describe('Exception response JSON shape', () => {
     const res = await app.getHonoApp().request('/exc-shape');
     expect(res.status).toBe(404);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const body = await res.json() as any;
+    const body = (await res.json()) as any;
     expect(body.error.code).toBe('not_found');
     expect(body.error.message).toBe('Item not found');
   });
@@ -5703,7 +6264,9 @@ describe('Exception response JSON shape', () => {
   it('BadRequestException with default message returns 400', async () => {
     @Controller('/bad-shape')
     class BadShapeController {
-      @Get() handle() { throw new BadRequestException(); }
+      @Get() handle() {
+        throw new BadRequestException();
+      }
     }
 
     @Module({ controllers: [BadShapeController] })
@@ -5713,7 +6276,7 @@ describe('Exception response JSON shape', () => {
     const res = await app.getHonoApp().request('/bad-shape');
     expect(res.status).toBe(400);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const body = await res.json() as any;
+    const body = (await res.json()) as any;
     expect(body.error.code).toBe('bad_request');
     expect(typeof body.error.message).toBe('string');
   });
@@ -5738,7 +6301,9 @@ describe('Exception response JSON shape', () => {
   it('unhandled non-HttpException returns generic 500 JSON', async () => {
     @Controller('/raw-throw')
     class RawThrowController {
-      @Get() handle() { throw new Error('boom'); }
+      @Get() handle() {
+        throw new Error('boom');
+      }
     }
 
     @Module({ controllers: [RawThrowController] })
@@ -5748,7 +6313,7 @@ describe('Exception response JSON shape', () => {
     const res = await app.getHonoApp().request('/raw-throw');
     expect(res.status).toBe(500);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const body = await res.json() as any;
+    const body = (await res.json()) as any;
     expect(body.error.code).toBe('internal');
     expect(typeof body.error.message).toBe('string');
   });
@@ -5784,13 +6349,18 @@ describe('HttpException.getStatus() / getResponse()', () => {
     class StatusCheckFilter implements ExceptionFilter {
       catch(exception: HttpException, ctx: ExecutionContext) {
         const c = ctx.getContext() as import('hono').Context;
-        return c.json({ status: exception.getStatus() }, exception.getStatus() as import('hono/utils/http-status').ContentfulStatusCode);
+        return c.json(
+          { status: exception.getStatus() },
+          exception.getStatus() as import('hono/utils/http-status').ContentfulStatusCode,
+        );
       }
     }
 
     @Controller('/status-check')
     class StatusCheckController {
-      @Get() handle() { throw new ConflictException('duplicate'); }
+      @Get() handle() {
+        throw new ConflictException('duplicate');
+      }
     }
 
     @Module({
@@ -5816,7 +6386,9 @@ describe('NestMiddleware with DI', () => {
 
     @Injectable()
     class AuditService {
-      record(msg: string) { calls.push(msg); }
+      record(msg: string) {
+        calls.push(msg);
+      }
     }
 
     @Injectable()
@@ -5831,7 +6403,9 @@ describe('NestMiddleware with DI', () => {
 
     @Controller('/audit')
     class AuditController {
-      @Get() handle() { return { ok: true }; }
+      @Get() handle() {
+        return { ok: true };
+      }
     }
 
     @Module({
@@ -5859,7 +6433,9 @@ describe('NestMiddleware with DI', () => {
 
     @Injectable()
     class LogService {
-      write(entry: string) { log.push(entry); }
+      write(entry: string) {
+        log.push(entry);
+      }
     }
 
     @Injectable()
@@ -5874,7 +6450,9 @@ describe('NestMiddleware with DI', () => {
 
     @Controller('/mw-di')
     class MwDiController {
-      @Get() handle() { return { ok: true }; }
+      @Get() handle() {
+        return { ok: true };
+      }
     }
 
     @Module({
@@ -5902,7 +6480,9 @@ describe('@Query() full query object', () => {
     @Controller('/full-query')
     class FullQueryController {
       @Get()
-      handle(@Query() params: Record<string, string>) { return params; }
+      handle(@Query() params: Record<string, string>) {
+        return params;
+      }
     }
 
     @Module({ controllers: [FullQueryController] })
@@ -5918,7 +6498,9 @@ describe('@Query() full query object', () => {
     @Controller('/empty-query')
     class EmptyQueryController {
       @Get()
-      handle(@Query() params: Record<string, string>) { return params; }
+      handle(@Query() params: Record<string, string>) {
+        return params;
+      }
     }
 
     @Module({ controllers: [EmptyQueryController] })
@@ -5958,7 +6540,9 @@ describe('Nested route params', () => {
     @Controller('/orgs/:orgId/repos/:repoId')
     class OrgRepoController {
       @Get()
-      get(@Param() params: Record<string, string>) { return params; }
+      get(@Param() params: Record<string, string>) {
+        return params;
+      }
     }
 
     @Module({ controllers: [OrgRepoController] })
@@ -6006,7 +6590,9 @@ describe('InjectionToken with default factory', () => {
     @Controller('/tok-factory')
     class TokFactoryController {
       constructor(@Inject(RAND_TOKEN) private val: number) {}
-      @Get() handle() { return { val: this.val }; }
+      @Get() handle() {
+        return { val: this.val };
+      }
     }
 
     @Module({ controllers: [TokFactoryController] })
@@ -6026,7 +6612,9 @@ describe('InjectionToken with default factory', () => {
     @Controller('/override-factory')
     class OverrideFactoryController {
       constructor(@Inject(CONFIG_TOKEN) private val: string) {}
-      @Get() handle() { return { val: this.val }; }
+      @Get() handle() {
+        return { val: this.val };
+      }
     }
 
     @Module({
@@ -6087,7 +6675,9 @@ describe('ParseArrayPipe with optional', () => {
     @Controller('/required-arr')
     class RequiredArrController {
       @Get()
-      handle(@Query('ids', ParseArrayPipe) ids: string[]) { return { ids }; }
+      handle(@Query('ids', ParseArrayPipe) ids: string[]) {
+        return { ids };
+      }
     }
 
     @Module({ controllers: [RequiredArrController] })
@@ -6110,7 +6700,9 @@ describe('Empty / pass-through module', () => {
 
     @Controller('/empty-mod')
     class EmptyModController {
-      @Get() handle() { return { ok: true }; }
+      @Get() handle() {
+        return { ok: true };
+      }
     }
 
     @Module({ imports: [EmptyModule], controllers: [EmptyModController] })
@@ -6124,7 +6716,11 @@ describe('Empty / pass-through module', () => {
 
   it('module with only imports and no own providers boots correctly', async () => {
     @Injectable()
-    class SharedService { getValue() { return 'shared'; } }
+    class SharedService {
+      getValue() {
+        return 'shared';
+      }
+    }
 
     @Module({ providers: [SharedService], exports: [SharedService] })
     class SharedModule {}
@@ -6135,7 +6731,9 @@ describe('Empty / pass-through module', () => {
     @Controller('/passthrough')
     class PassThroughController {
       constructor(private svc: SharedService) {}
-      @Get() handle() { return { value: this.svc.getValue() }; }
+      @Get() handle() {
+        return { value: this.svc.getValue() };
+      }
     }
 
     @Module({ imports: [SharedModule, PassThroughModule], controllers: [PassThroughController] })
@@ -6160,7 +6758,9 @@ describe('Multiple @Header() decorators on same handler', () => {
       @Header('x-api-version', '2')
       @Header('x-rate-limit', '100')
       @Header('cache-control', 'no-cache')
-      handle() { return { ok: true }; }
+      handle() {
+        return { ok: true };
+      }
     }
 
     @Module({ controllers: [MultiHeaderController] })
@@ -6181,7 +6781,9 @@ describe('Multiple @Header() decorators on same handler', () => {
       @HttpCode(201)
       @Header('location', '/header-code/1')
       @Header('x-created-id', '1')
-      create() { return { id: 1 }; }
+      create() {
+        return { id: 1 };
+      }
     }
 
     @Module({ controllers: [HeaderCodeController] })
@@ -6208,7 +6810,9 @@ describe('@All() decorator', () => {
     @Controller('/all-handler')
     class AllController {
       @All()
-      handle(@Req() ctx: any) { return { method: ctx.req.method }; }
+      handle(@Req() ctx: any) {
+        return { method: ctx.req.method };
+      }
     }
 
     @Module({ controllers: [AllController] })
@@ -6222,17 +6826,19 @@ describe('@All() decorator', () => {
     const put = await hono.request('/all-handler', { method: 'PUT' });
     const del = await hono.request('/all-handler', { method: 'DELETE' });
 
-    expect((await get.json() as any).method).toBe('GET');
-    expect((await post.json() as any).method).toBe('POST');
-    expect((await put.json() as any).method).toBe('PUT');
-    expect((await del.json() as any).method).toBe('DELETE');
+    expect(((await get.json()) as any).method).toBe('GET');
+    expect(((await post.json()) as any).method).toBe('POST');
+    expect(((await put.json()) as any).method).toBe('PUT');
+    expect(((await del.json()) as any).method).toBe('DELETE');
   });
 
   it('@All() with path handles any method', async () => {
     @Controller('/wildcard')
     class WildController {
       @All('/catch')
-      catch() { return { caught: true }; }
+      catch() {
+        return { caught: true };
+      }
     }
 
     @Module({ controllers: [WildController] })
@@ -6268,7 +6874,9 @@ describe('@Catch() with no args — catch-all filter', () => {
     @Controller('/catch-all')
     class TestController {
       @Get()
-      handle() { throw new Error('something broke'); }
+      handle() {
+        throw new Error('something broke');
+      }
     }
 
     @Module({
@@ -6280,7 +6888,7 @@ describe('@Catch() with no args — catch-all filter', () => {
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/catch-all');
     expect(res.status).toBe(400);
-    const body = await res.json() as any;
+    const body = (await res.json()) as any;
     expect(body.caught).toBe(true);
     expect(body.message).toBe('something broke');
   });
@@ -6297,7 +6905,9 @@ describe('@Catch() with no args — catch-all filter', () => {
     @Controller('/catch-http')
     class TestController {
       @Get()
-      handle() { throw new NotFoundException(); }
+      handle() {
+        throw new NotFoundException();
+      }
     }
 
     @Module({
@@ -6309,7 +6919,7 @@ describe('@Catch() with no args — catch-all filter', () => {
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/catch-http');
     expect(res.status).toBe(200);
-    expect((await res.json() as any).intercepted).toBe(true);
+    expect(((await res.json()) as any).intercepted).toBe(true);
   });
 });
 
@@ -6331,7 +6941,9 @@ describe('Async guard (canActivate returns Promise<boolean>)', () => {
     @UseGuards(AsyncGuard)
     class TestController {
       @Get()
-      handle() { return { ok: true }; }
+      handle() {
+        return { ok: true };
+      }
     }
 
     @Module({ providers: [AsyncGuard], controllers: [TestController] })
@@ -6355,7 +6967,9 @@ describe('Async guard (canActivate returns Promise<boolean>)', () => {
     @UseGuards(DenyGuard)
     class TestController {
       @Get()
-      handle() { return { ok: true }; }
+      handle() {
+        return { ok: true };
+      }
     }
 
     @Module({ providers: [DenyGuard], controllers: [TestController] })
@@ -6388,7 +7002,9 @@ describe('Interceptor error interception', () => {
     @UseInterceptors(ErrorRecoveryInterceptor)
     class TestController {
       @Get()
-      handle() { throw new Error('boom'); }
+      handle() {
+        throw new Error('boom');
+      }
     }
 
     @Module({ providers: [ErrorRecoveryInterceptor], controllers: [TestController] })
@@ -6397,7 +7013,7 @@ describe('Interceptor error interception', () => {
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/err-intercept');
     expect(res.status).toBe(200);
-    expect((await res.json() as any).recovered).toBe(true);
+    expect(((await res.json()) as any).recovered).toBe(true);
   });
 
   it('interceptor wrapping does not suppress HttpException when not caught', async () => {
@@ -6412,7 +7028,9 @@ describe('Interceptor error interception', () => {
     @UseInterceptors(PassThroughInterceptor)
     class TestController {
       @Get()
-      handle() { throw new NotFoundException('not here'); }
+      handle() {
+        throw new NotFoundException('not here');
+      }
     }
 
     @Module({ providers: [PassThroughInterceptor], controllers: [TestController] })
@@ -6445,12 +7063,14 @@ describe('Multiple pipes chained on same param', () => {
     const hono = app.getHonoApp();
 
     const r1 = await hono.request('/multi-pipe/42');
-    expect((await r1.json() as any).value).toBe(42);
+    expect(((await r1.json()) as any).value).toBe(42);
   });
 
   it('second pipe receives output of first pipe', async () => {
     class DoubleIntPipe implements PipeTransform {
-      transform(value: number) { return value * 2; }
+      transform(value: number) {
+        return value * 2;
+      }
     }
 
     @Controller('/double-pipe')
@@ -6466,7 +7086,7 @@ describe('Multiple pipes chained on same param', () => {
 
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/double-pipe/5');
-    expect((await res.json() as any).n).toBe(10);
+    expect(((await res.json()) as any).n).toBe(10);
   });
 });
 
@@ -6501,7 +7121,10 @@ describe('APP_INTERCEPTOR ordering with multiple global interceptors', () => {
     @Controller('/intercept-order')
     class TestController {
       @Get()
-      handle() { order.push('handler'); return { ok: true }; }
+      handle() {
+        order.push('handler');
+        return { ok: true };
+      }
     }
 
     @Module({
@@ -6531,7 +7154,9 @@ describe('@Controller() with no path', () => {
     @Controller()
     class RootController {
       @Get('/hello')
-      hello() { return { hi: true }; }
+      hello() {
+        return { hi: true };
+      }
     }
 
     @Module({ controllers: [RootController] })
@@ -6540,14 +7165,16 @@ describe('@Controller() with no path', () => {
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/hello');
     expect(res.status).toBe(200);
-    expect((await res.json() as any).hi).toBe(true);
+    expect(((await res.json()) as any).hi).toBe(true);
   });
 
   it('@Controller("") also mounts at root', async () => {
     @Controller('')
     class EmptyController {
       @Get('/ping')
-      ping() { return { pong: true }; }
+      ping() {
+        return { pong: true };
+      }
     }
 
     @Module({ controllers: [EmptyController] })
@@ -6568,7 +7195,9 @@ describe('Provider circular DI via forwardRef()', () => {
     @Injectable()
     class ServiceB {
       value = 'B';
-      getFromA(): string { return serviceAInstance?.greet() ?? 'no-a'; }
+      getFromA(): string {
+        return serviceAInstance?.greet() ?? 'no-a';
+      }
     }
 
     let serviceAInstance: ServiceA | undefined;
@@ -6578,14 +7207,18 @@ describe('Provider circular DI via forwardRef()', () => {
       constructor(@Inject(forwardRef(() => ServiceB)) private b: ServiceB) {
         serviceAInstance = this;
       }
-      greet(): string { return `hello-from-A-with-${this.b.value}`; }
+      greet(): string {
+        return `hello-from-A-with-${this.b.value}`;
+      }
     }
 
     @Controller('/circ-di')
     class TestController {
       constructor(private a: ServiceA) {}
       @Get()
-      handle() { return { result: this.a.greet() }; }
+      handle() {
+        return { result: this.a.greet() };
+      }
     }
 
     @Module({ providers: [ServiceA, ServiceB], controllers: [TestController] })
@@ -6594,7 +7227,7 @@ describe('Provider circular DI via forwardRef()', () => {
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/circ-di');
     expect(res.status).toBe(200);
-    expect((await res.json() as any).result).toBe('hello-from-A-with-B');
+    expect(((await res.json()) as any).result).toBe('hello-from-A-with-B');
   });
 });
 
@@ -6616,10 +7249,14 @@ describe('@UseFilters() at controller class level', () => {
     @UseFilters(NotFoundFilter)
     class TestController {
       @Get('/a')
-      routeA() { throw new NotFoundException(); }
+      routeA() {
+        throw new NotFoundException();
+      }
 
       @Get('/b')
-      routeB() { throw new NotFoundException(); }
+      routeB() {
+        throw new NotFoundException();
+      }
     }
 
     @Module({ providers: [NotFoundFilter], controllers: [TestController] })
@@ -6632,9 +7269,9 @@ describe('@UseFilters() at controller class level', () => {
     const b = await hono.request('/ctrl-filter/b');
 
     expect(a.status).toBe(200);
-    expect((await a.json() as any).filteredAt).toBe('controller');
+    expect(((await a.json()) as any).filteredAt).toBe('controller');
     expect(b.status).toBe(200);
-    expect((await b.json() as any).filteredAt).toBe('controller');
+    expect(((await b.json()) as any).filteredAt).toBe('controller');
   });
 
   it('controller-level filter does not bleed into other controllers', async () => {
@@ -6650,13 +7287,17 @@ describe('@UseFilters() at controller class level', () => {
     @UseFilters(IsolatedFilter)
     class WithFilter {
       @Get()
-      handle() { throw new NotFoundException(); }
+      handle() {
+        throw new NotFoundException();
+      }
     }
 
     @Controller('/without-filter')
     class WithoutFilter {
       @Get()
-      handle() { throw new NotFoundException(); }
+      handle() {
+        throw new NotFoundException();
+      }
     }
 
     @Module({ providers: [IsolatedFilter], controllers: [WithFilter, WithoutFilter] })
@@ -6669,7 +7310,7 @@ describe('@UseFilters() at controller class level', () => {
     const withoutRes = await hono.request('/without-filter');
 
     expect(withRes.status).toBe(200);
-    expect((await withRes.json() as any).from).toBe('isolated');
+    expect(((await withRes.json()) as any).from).toBe('isolated');
     expect(withoutRes.status).toBe(404); // no filter, falls through to default
   });
 });
@@ -6683,7 +7324,9 @@ describe('@Body("field") named field extraction', () => {
     @Controller('/body-field')
     class TestController {
       @Post()
-      handle(@Body('name') name: string) { return { name }; }
+      handle(@Body('name') name: string) {
+        return { name };
+      }
     }
 
     @Module({ controllers: [TestController] })
@@ -6697,14 +7340,16 @@ describe('@Body("field") named field extraction', () => {
     });
 
     expect(res.status).toBe(200);
-    expect((await res.json() as any).name).toBe('Alice');
+    expect(((await res.json()) as any).name).toBe('Alice');
   });
 
   it('returns undefined when named field is not present in body', async () => {
     @Controller('/body-missing')
     class TestController {
       @Post()
-      handle(@Body('missing') val: unknown) { return { val: val ?? null }; }
+      handle(@Body('missing') val: unknown) {
+        return { val: val ?? null };
+      }
     }
 
     @Module({ controllers: [TestController] })
@@ -6718,14 +7363,16 @@ describe('@Body("field") named field extraction', () => {
     });
 
     expect(res.status).toBe(200);
-    expect((await res.json() as any).val).toBeNull();
+    expect(((await res.json()) as any).val).toBeNull();
   });
 
   it('multiple @Body("field") params each extract their own key', async () => {
     @Controller('/body-multi')
     class TestController {
       @Post()
-      handle(@Body('x') x: number, @Body('y') y: number) { return { sum: x + y }; }
+      handle(@Body('x') x: number, @Body('y') y: number) {
+        return { sum: x + y };
+      }
     }
 
     @Module({ controllers: [TestController] })
@@ -6738,7 +7385,7 @@ describe('@Body("field") named field extraction', () => {
       body: JSON.stringify({ x: 3, y: 4 }),
     });
 
-    expect((await res.json() as any).sum).toBe(7);
+    expect(((await res.json()) as any).sum).toBe(7);
   });
 });
 
@@ -6751,7 +7398,9 @@ describe('@Query("param", ParseIntPipe)', () => {
     @Controller('/query-pipe')
     class TestController {
       @Get()
-      handle(@Query('page', ParseIntPipe) page: number) { return { page }; }
+      handle(@Query('page', ParseIntPipe) page: number) {
+        return { page };
+      }
     }
 
     @Module({ controllers: [TestController] })
@@ -6759,14 +7408,16 @@ describe('@Query("param", ParseIntPipe)', () => {
 
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/query-pipe?page=3');
-    expect((await res.json() as any).page).toBe(3);
+    expect(((await res.json()) as any).page).toBe(3);
   });
 
   it('pipe on query param returns 400 for invalid value', async () => {
     @Controller('/query-bad')
     class TestController {
       @Get()
-      handle(@Query('n', ParseIntPipe) n: number) { return { n }; }
+      handle(@Query('n', ParseIntPipe) n: number) {
+        return { n };
+      }
     }
 
     @Module({ controllers: [TestController] })
@@ -6781,10 +7432,9 @@ describe('@Query("param", ParseIntPipe)', () => {
     @Controller('/query-multi')
     class TestController {
       @Get()
-      handle(
-        @Query('a', ParseIntPipe) a: number,
-        @Query('b', ParseFloatPipe) b: number,
-      ) { return { a, b }; }
+      handle(@Query('a', ParseIntPipe) a: number, @Query('b', ParseFloatPipe) b: number) {
+        return { a, b };
+      }
     }
 
     @Module({ controllers: [TestController] })
@@ -6792,7 +7442,7 @@ describe('@Query("param", ParseIntPipe)', () => {
 
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/query-multi?a=10&b=3.14');
-    const body = await res.json() as any;
+    const body = (await res.json()) as any;
     expect(body.a).toBe(10);
     expect(body.b).toBeCloseTo(3.14);
   });
@@ -6822,10 +7472,14 @@ describe('Reflector.getAllAndOverride() / getAllAndMerge()', () => {
     class TestController {
       @Get('/handler-wins')
       @SetMetadata(ROLES_KEY, ['user'])
-      handlerWins() { return { ok: true }; }
+      handlerWins() {
+        return { ok: true };
+      }
 
       @Get('/controller-fallback')
-      controllerFallback() { return { ok: true }; }
+      controllerFallback() {
+        return { ok: true };
+      }
     }
 
     @Module({ providers: [RolesGuard, Reflector], controllers: [TestController] })
@@ -6837,8 +7491,8 @@ describe('Reflector.getAllAndOverride() / getAllAndMerge()', () => {
     await hono.request('/reflector-override/handler-wins');
     await hono.request('/reflector-override/controller-fallback');
 
-    expect(captured[0]).toEqual(['user']);   // handler metadata wins
-    expect(captured[1]).toEqual(['admin']);  // falls back to controller metadata
+    expect(captured[0]).toEqual(['user']); // handler metadata wins
+    expect(captured[1]).toEqual(['admin']); // falls back to controller metadata
   });
 
   it('getAllAndMerge concatenates metadata from handler and controller', async () => {
@@ -6860,7 +7514,9 @@ describe('Reflector.getAllAndOverride() / getAllAndMerge()', () => {
     class TestController {
       @Get()
       @SetMetadata(PERMS_KEY, ['write'])
-      handle() { return { ok: true }; }
+      handle() {
+        return { ok: true };
+      }
     }
 
     @Module({ providers: [PermsGuard, Reflector], controllers: [TestController] })
@@ -6898,10 +7554,7 @@ describe('Middleware sets context variable, guard reads it', () => {
     }
 
     @Module({
-      providers: [
-        TagMiddleware,
-        { provide: APP_MIDDLEWARE, useExisting: TagMiddleware },
-      ],
+      providers: [TagMiddleware, { provide: APP_MIDDLEWARE, useExisting: TagMiddleware }],
       controllers: [TestController],
     })
     class AppModule {}
@@ -6909,7 +7562,7 @@ describe('Middleware sets context variable, guard reads it', () => {
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/ctx-share');
     expect(res.status).toBe(200);
-    expect((await res.json() as any).tag).toBe('from-middleware');
+    expect(((await res.json()) as any).tag).toBe('from-middleware');
   });
 
   it('multiple middlewares share the same context object', async () => {
@@ -6944,7 +7597,8 @@ describe('Middleware sets context variable, guard reads it', () => {
 
     @Module({
       providers: [
-        MwOne, MwTwo,
+        MwOne,
+        MwTwo,
         { provide: APP_MIDDLEWARE, useExisting: MwOne },
         { provide: APP_MIDDLEWARE, useExisting: MwTwo },
       ],
@@ -6955,7 +7609,7 @@ describe('Middleware sets context variable, guard reads it', () => {
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/ctx-multi');
     expect(res.status).toBe(200);
-    expect((await res.json() as any).count).toBe(2);
+    expect(((await res.json()) as any).count).toBe(2);
     expect(order).toEqual(['one', 'two']);
   });
 });
@@ -6969,10 +7623,14 @@ describe('Route specificity — static path beats dynamic param', () => {
     @Controller('/items')
     class ItemsController {
       @Get('search')
-      search() { return { type: 'search' }; }
+      search() {
+        return { type: 'search' };
+      }
 
       @Get(':id')
-      getById(@Param('id') id: string) { return { type: 'by-id', id }; }
+      getById(@Param('id') id: string) {
+        return { type: 'by-id', id };
+      }
     }
 
     @Module({ controllers: [ItemsController] })
@@ -6984,8 +7642,8 @@ describe('Route specificity — static path beats dynamic param', () => {
     const searchRes = await hono.request('/items/search');
     const byIdRes = await hono.request('/items/42');
 
-    const searchBody = await searchRes.json() as any;
-    const byIdBody = await byIdRes.json() as any;
+    const searchBody = (await searchRes.json()) as any;
+    const byIdBody = (await byIdRes.json()) as any;
     expect(searchBody.type).toBe('search');
     expect(byIdBody.type).toBe('by-id');
     expect(byIdBody.id).toBe('42');
@@ -7009,7 +7667,9 @@ describe('forwardRef() in factory inject array', () => {
     class TestController {
       constructor(@Inject(GREETING) private greeting: string) {}
       @Get()
-      handle() { return { greeting: this.greeting }; }
+      handle() {
+        return { greeting: this.greeting };
+      }
     }
 
     @Module({
@@ -7027,7 +7687,7 @@ describe('forwardRef() in factory inject array', () => {
 
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/fwd-factory');
-    expect((await res.json() as any).greeting).toBe('hello-world');
+    expect(((await res.json()) as any).greeting).toBe('hello-world');
   });
 });
 
@@ -7041,19 +7701,26 @@ describe('Guard short-circuit', () => {
 
     @Injectable()
     class DenyGuard implements CanActivate {
-      canActivate(): boolean { return false; }
+      canActivate(): boolean {
+        return false;
+      }
     }
 
     @Injectable()
     class SpyGuard implements CanActivate {
-      canActivate(): boolean { secondCalled = true; return true; }
+      canActivate(): boolean {
+        secondCalled = true;
+        return true;
+      }
     }
 
     @Controller('/short-circuit')
     @UseGuards(DenyGuard, SpyGuard)
     class TestController {
       @Get()
-      handle() { return { ok: true }; }
+      handle() {
+        return { ok: true };
+      }
     }
 
     @Module({ providers: [DenyGuard, SpyGuard], controllers: [TestController] })
@@ -7076,7 +7743,9 @@ describe('@Body() with missing or malformed JSON', () => {
     @Controller('/body-empty')
     class TestController {
       @Post()
-      handle(@Body() body: unknown) { return { hasBody: body !== undefined }; }
+      handle(@Body() body: unknown) {
+        return { hasBody: body !== undefined };
+      }
     }
 
     @Module({ controllers: [TestController] })
@@ -7085,14 +7754,16 @@ describe('@Body() with missing or malformed JSON', () => {
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/body-empty', { method: 'POST' });
     expect(res.status).toBe(200);
-    expect((await res.json() as any).hasBody).toBe(false);
+    expect(((await res.json()) as any).hasBody).toBe(false);
   });
 
   it('returns undefined for malformed JSON without crashing', async () => {
     @Controller('/body-malformed')
     class TestController {
       @Post()
-      handle(@Body() body: unknown) { return { body: body ?? null }; }
+      handle(@Body() body: unknown) {
+        return { body: body ?? null };
+      }
     }
 
     @Module({ controllers: [TestController] })
@@ -7106,7 +7777,7 @@ describe('@Body() with missing or malformed JSON', () => {
     });
 
     expect(res.status).toBe(200);
-    expect((await res.json() as any).body).toBeNull();
+    expect(((await res.json()) as any).body).toBeNull();
   });
 });
 
@@ -7130,7 +7801,7 @@ describe('@Param() when URL segment is absent', () => {
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/maybe');
     expect(res.status).toBe(200);
-    expect((await res.json() as any).id).toBeNull();
+    expect(((await res.json()) as any).id).toBeNull();
   });
 });
 
@@ -7143,7 +7814,9 @@ describe('@Headers("name") case-insensitive header lookup', () => {
     @Controller('/header-ci')
     class TestController {
       @Get()
-      handle(@Headers('x-custom-token') token: string) { return { token }; }
+      handle(@Headers('x-custom-token') token: string) {
+        return { token };
+      }
     }
 
     @Module({ controllers: [TestController] })
@@ -7155,8 +7828,8 @@ describe('@Headers("name") case-insensitive header lookup', () => {
     const lower = await hono.request('/header-ci', { headers: { 'x-custom-token': 'abc' } });
     const upper = await hono.request('/header-ci', { headers: { 'X-Custom-Token': 'xyz' } });
 
-    expect((await lower.json() as any).token).toBe('abc');
-    expect((await upper.json() as any).token).toBe('xyz');
+    expect(((await lower.json()) as any).token).toBe('abc');
+    expect(((await upper.json()) as any).token).toBe('xyz');
   });
 
   it('@Headers() without name returns all headers as object', async () => {
@@ -7175,7 +7848,7 @@ describe('@Headers("name") case-insensitive header lookup', () => {
     const res = await app.getHonoApp().request('/all-headers', {
       headers: { accept: 'application/json' },
     });
-    expect((await res.json() as any).hasAccept).toBe(true);
+    expect(((await res.json()) as any).hasAccept).toBe(true);
   });
 });
 
@@ -7188,7 +7861,9 @@ describe('@Controller({ path }) as alias for prefix', () => {
     @Controller({ path: '/path-alias' })
     class TestController {
       @Get()
-      get() { return { ok: true }; }
+      get() {
+        return { ok: true };
+      }
     }
 
     @Module({ controllers: [TestController] })
@@ -7197,14 +7872,16 @@ describe('@Controller({ path }) as alias for prefix', () => {
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/path-alias');
     expect(res.status).toBe(200);
-    expect((await res.json() as any).ok).toBe(true);
+    expect(((await res.json()) as any).ok).toBe(true);
   });
 
   it('supports { path } with version option', async () => {
     @Controller({ path: '/versioned', version: 2 })
     class TestController {
       @Get()
-      get() { return { v: 2 }; }
+      get() {
+        return { v: 2 };
+      }
     }
 
     @Module({ controllers: [TestController] })
@@ -7213,7 +7890,7 @@ describe('@Controller({ path }) as alias for prefix', () => {
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/v2/versioned');
     expect(res.status).toBe(200);
-    expect((await res.json() as any).v).toBe(2);
+    expect(((await res.json()) as any).v).toBe(2);
   });
 });
 
@@ -7237,7 +7914,7 @@ describe('@Param("id", ParseIntPipe) transforms string to integer', () => {
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/param-int/42');
     expect(res.status).toBe(200);
-    const body = await res.json() as any;
+    const body = (await res.json()) as any;
     expect(body.id).toBe(42);
     expect(body.isNumber).toBe(true);
   });
@@ -7246,7 +7923,9 @@ describe('@Param("id", ParseIntPipe) transforms string to integer', () => {
     @Controller('/param-int-err')
     class TestController {
       @Get('/:id')
-      get(@Param('id', ParseIntPipe) id: number) { return { id }; }
+      get(@Param('id', ParseIntPipe) id: number) {
+        return { id };
+      }
     }
 
     @Module({ controllers: [TestController] })
@@ -7282,7 +7961,7 @@ describe('@Body("field", ParseIntPipe) extracts and transforms named field', () 
       body: JSON.stringify({ count: '7' }),
     });
     expect(res.status).toBe(200);
-    const body = await res.json() as any;
+    const body = (await res.json()) as any;
     expect(body.count).toBe(7);
     expect(body.isNumber).toBe(true);
   });
@@ -7300,11 +7979,14 @@ describe('ExceptionFilter shapes the JSON error response', () => {
       catch(exception: NotFoundException, ctx: ExecutionContext) {
         const c = ctx.switchToHttp().getResponse<any>();
         const resp = exception.getResponse() as any;
-        return c.json({
-          error: true,
-          code: exception.getStatus(),
-          msg: typeof resp === 'string' ? resp : resp.message,
-        }, exception.getStatus() as any);
+        return c.json(
+          {
+            error: true,
+            code: exception.getStatus(),
+            msg: typeof resp === 'string' ? resp : resp.message,
+          },
+          exception.getStatus() as any,
+        );
       }
     }
 
@@ -7312,7 +7994,9 @@ describe('ExceptionFilter shapes the JSON error response', () => {
     class TestController {
       @Get()
       @UseFilters(ShapeFilter)
-      handle() { throw new NotFoundException('item not found'); }
+      handle() {
+        throw new NotFoundException('item not found');
+      }
     }
 
     @Module({ controllers: [TestController], providers: [ShapeFilter] })
@@ -7321,7 +8005,7 @@ describe('ExceptionFilter shapes the JSON error response', () => {
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/filter-shape');
     expect(res.status).toBe(404);
-    const body = await res.json() as any;
+    const body = (await res.json()) as any;
     expect(body.error).toBe(true);
     expect(body.code).toBe(404);
     expect(body.msg).toBe('item not found');
@@ -7346,7 +8030,9 @@ describe('NestInterceptor can wrap/transform the response', () => {
     class TestController {
       @Get()
       @UseInterceptors(WrapInterceptor)
-      handle() { return { hello: 'world' }; }
+      handle() {
+        return { hello: 'world' };
+      }
     }
 
     @Module({ controllers: [TestController], providers: [WrapInterceptor] })
@@ -7355,7 +8041,7 @@ describe('NestInterceptor can wrap/transform the response', () => {
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/wrap-intercept');
     expect(res.status).toBe(200);
-    const body = await res.json() as any;
+    const body = (await res.json()) as any;
     expect(body.wrapped).toBe(true);
     expect(body.data.hello).toBe('world');
   });
@@ -7364,7 +8050,7 @@ describe('NestInterceptor can wrap/transform the response', () => {
     @Injectable()
     class TimestampInterceptor implements NestInterceptor {
       async intercept(_ctx: ExecutionContext, next: CallHandler) {
-        const value = await next.handle() as Record<string, unknown>;
+        const value = (await next.handle()) as Record<string, unknown>;
         return { ...value, ts: 'fixed' };
       }
     }
@@ -7373,7 +8059,9 @@ describe('NestInterceptor can wrap/transform the response', () => {
     class TestController {
       @Get()
       @UseInterceptors(TimestampInterceptor)
-      handle() { return { result: 'ok' }; }
+      handle() {
+        return { result: 'ok' };
+      }
     }
 
     @Module({ controllers: [TestController], providers: [TimestampInterceptor] })
@@ -7382,7 +8070,7 @@ describe('NestInterceptor can wrap/transform the response', () => {
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/timestamp-intercept');
     expect(res.status).toBe(200);
-    const body = await res.json() as any;
+    const body = (await res.json()) as any;
     expect(body.result).toBe('ok');
     expect(body.ts).toBe('fixed');
   });
@@ -7396,7 +8084,9 @@ describe('APP_GUARD and APP_FILTER interaction', () => {
   it('global filter catches exception thrown by global guard', async () => {
     @Injectable()
     class BlockingGuard implements CanActivate {
-      canActivate() { throw new ForbiddenException('blocked by guard'); }
+      canActivate() {
+        throw new ForbiddenException('blocked by guard');
+      }
     }
 
     @Catch(ForbiddenException)
@@ -7411,7 +8101,9 @@ describe('APP_GUARD and APP_FILTER interaction', () => {
     @Controller('/guard-filter-combo')
     class TestController {
       @Get()
-      handle() { return { reached: true }; }
+      handle() {
+        return { reached: true };
+      }
     }
 
     @Module({
@@ -7428,7 +8120,7 @@ describe('APP_GUARD and APP_FILTER interaction', () => {
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/guard-filter-combo');
     expect(res.status).toBe(403);
-    const body = await res.json() as any;
+    const body = (await res.json()) as any;
     expect(body.caught).toBe(true);
     expect(body.message).toBe('blocked by guard');
   });
@@ -7496,7 +8188,9 @@ describe('Module re-exports a provider from an imported module', () => {
     class TestController {
       constructor(private svc: ConsumerService) {}
       @Get()
-      get() { return { value: this.svc.value }; }
+      get() {
+        return { value: this.svc.value };
+      }
     }
 
     @Module({
@@ -7509,7 +8203,7 @@ describe('Module re-exports a provider from an imported module', () => {
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/reexport');
     expect(res.status).toBe(200);
-    expect((await res.json() as any).value).toBe('from-inner');
+    expect(((await res.json()) as any).value).toBe('from-inner');
   });
 });
 
@@ -7523,7 +8217,9 @@ describe('onModuleDestroy lifecycle hook', () => {
 
     @Injectable()
     class MyService implements OnModuleDestroy {
-      onModuleDestroy() { destroyed.push('service'); }
+      onModuleDestroy() {
+        destroyed.push('service');
+      }
     }
 
     @Module({ providers: [MyService] })
@@ -7540,13 +8236,17 @@ describe('onModuleDestroy lifecycle hook', () => {
 
     @Injectable()
     class FirstService implements OnModuleDestroy {
-      onModuleDestroy() { order.push('first'); }
+      onModuleDestroy() {
+        order.push('first');
+      }
     }
 
     @Injectable()
     class SecondService implements OnModuleDestroy {
       constructor(_first: FirstService) {}
-      onModuleDestroy() { order.push('second'); }
+      onModuleDestroy() {
+        order.push('second');
+      }
     }
 
     @Module({ providers: [FirstService, SecondService] })
@@ -7567,13 +8267,17 @@ describe('ModuleRef.get() retrieves the singleton provider instance', () => {
   it('returns the same instance as direct injection', async () => {
     @Injectable()
     class SharedService {
-      getValue() { return 'shared-value'; }
+      getValue() {
+        return 'shared-value';
+      }
     }
 
     @Injectable()
     class ConsumerService {
       constructor(private moduleRef: ModuleRef) {}
-      getViaRef() { return this.moduleRef.get(SharedService); }
+      getViaRef() {
+        return this.moduleRef.get(SharedService);
+      }
     }
 
     @Controller('/module-ref-get')
@@ -7595,7 +8299,7 @@ describe('ModuleRef.get() retrieves the singleton provider instance', () => {
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/module-ref-get');
     expect(res.status).toBe(200);
-    expect((await res.json() as any).value).toBe('shared-value');
+    expect(((await res.json()) as any).value).toBe('shared-value');
   });
 
   it('ModuleRef.get() and direct injection return the same singleton object', async () => {
@@ -7610,7 +8314,9 @@ describe('ModuleRef.get() retrieves the singleton provider instance', () => {
         public direct: SingletonService,
         private moduleRef: ModuleRef,
       ) {}
-      sameInstance() { return this.moduleRef.get(SingletonService) === this.direct; }
+      sameInstance() {
+        return this.moduleRef.get(SingletonService) === this.direct;
+      }
     }
 
     @Module({ providers: [SingletonService, CheckService] })
@@ -7647,26 +8353,33 @@ describe('REQUEST scope — child container isolation', () => {
     const inst1b = child1.resolve(RequestStore); // same child → same cached instance
     const inst2 = child2.resolve(RequestStore);
 
-    expect(inst1a).toBe(inst1b);        // same request → same instance
-    expect(inst1a).not.toBe(inst2);     // different requests → different instances
+    expect(inst1a).toBe(inst1b); // same request → same instance
+    expect(inst1a).not.toBe(inst2); // different requests → different instances
   });
 
   it('REQUEST-scoped guard gets a fresh instance per HTTP request', async () => {
     const seenIds: number[] = [];
 
     @Injectable({ scope: Scope.REQUEST })
-    class ReqValue { id = Math.random(); }
+    class ReqValue {
+      id = Math.random();
+    }
 
     @Injectable({ scope: Scope.REQUEST })
     class ReqGuard implements CanActivate {
       constructor(private val: ReqValue) {}
-      canActivate() { seenIds.push(this.val.id); return true; }
+      canActivate() {
+        seenIds.push(this.val.id);
+        return true;
+      }
     }
 
     @Controller('/req-guard-scope')
     class TestController {
       @Get()
-      get() { return { ok: true }; }
+      get() {
+        return { ok: true };
+      }
     }
 
     @Module({
@@ -7697,7 +8410,9 @@ describe('ModuleRef.create() creates a fresh instance outside the singleton cach
     @Injectable()
     class FactoryService {
       constructor(private moduleRef: ModuleRef) {}
-      createFresh() { return this.moduleRef.create(SingletonService); }
+      createFresh() {
+        return this.moduleRef.create(SingletonService);
+      }
     }
 
     @Module({ providers: [SingletonService, FactoryService] })
@@ -7723,7 +8438,9 @@ describe('@Global() module makes providers available across all modules', () => 
   it('consumer can inject a globally-provided service without importing its module', async () => {
     @Injectable()
     class GlobalService {
-      greet() { return 'global'; }
+      greet() {
+        return 'global';
+      }
     }
 
     @Global()
@@ -7733,14 +8450,18 @@ describe('@Global() module makes providers available across all modules', () => 
     @Injectable()
     class LocalService {
       constructor(private global: GlobalService) {}
-      say() { return this.global.greet(); }
+      say() {
+        return this.global.greet();
+      }
     }
 
     @Controller('/global-svc')
     class TestController {
       constructor(private local: LocalService) {}
       @Get()
-      get() { return { msg: this.local.say() }; }
+      get() {
+        return { msg: this.local.say() };
+      }
     }
 
     // AppModule does NOT explicitly import GlobalModule — it's global
@@ -7750,7 +8471,7 @@ describe('@Global() module makes providers available across all modules', () => 
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/global-svc');
     expect(res.status).toBe(200);
-    expect((await res.json() as any).msg).toBe('global');
+    expect(((await res.json()) as any).msg).toBe('global');
   });
 });
 
@@ -7797,7 +8518,9 @@ describe('Circular module imports resolved with forwardRef', () => {
     class TestController {
       constructor(private svc: TestService) {}
       @Get()
-      get() { return { a: this.svc.a, b: this.svc.b }; }
+      get() {
+        return { a: this.svc.a, b: this.svc.b };
+      }
     }
 
     @Module({
@@ -7810,7 +8533,7 @@ describe('Circular module imports resolved with forwardRef', () => {
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/circular-mod');
     expect(res.status).toBe(200);
-    const body = await res.json() as any;
+    const body = (await res.json()) as any;
     expect(body.a).toBe('from-a');
     expect(body.b).toBe('from-b');
   });
@@ -7826,8 +8549,12 @@ describe('Lifecycle hooks — onApplicationBootstrap and beforeApplicationShutdo
 
     @Injectable()
     class LifecycleService implements OnModuleInit, OnApplicationBootstrap {
-      onModuleInit() { events.push('init'); }
-      onApplicationBootstrap() { events.push('bootstrap'); }
+      onModuleInit() {
+        events.push('init');
+      }
+      onApplicationBootstrap() {
+        events.push('bootstrap');
+      }
     }
 
     @Module({ providers: [LifecycleService] })
@@ -7842,8 +8569,12 @@ describe('Lifecycle hooks — onApplicationBootstrap and beforeApplicationShutdo
 
     @Injectable()
     class ShutdownService implements BeforeApplicationShutdown, OnModuleDestroy {
-      beforeApplicationShutdown() { events.push('before'); }
-      onModuleDestroy() { events.push('destroy'); }
+      beforeApplicationShutdown() {
+        events.push('before');
+      }
+      onModuleDestroy() {
+        events.push('destroy');
+      }
     }
 
     @Module({ providers: [ShutdownService] })
@@ -7864,7 +8595,9 @@ describe('@Version([1, 2]) registers the route on multiple version paths', () =>
     @Controller({ path: '/multi', version: [1, 2] })
     class TestController {
       @Get()
-      get() { return { ok: true }; }
+      get() {
+        return { ok: true };
+      }
     }
 
     @Module({ controllers: [TestController] })
@@ -7884,11 +8617,15 @@ describe('@Version([1, 2]) registers the route on multiple version paths', () =>
     @Controller({ path: '/ver-method', version: 1 })
     class TestController {
       @Get('/v1-only')
-      v1() { return { v: 1 }; }
+      v1() {
+        return { v: 1 };
+      }
 
       @Version(2)
       @Get('/v2-only')
-      v2() { return { v: 2 }; }
+      v2() {
+        return { v: 2 };
+      }
     }
 
     @Module({ controllers: [TestController] })
@@ -7914,7 +8651,9 @@ describe('ParseUUIDPipe validates UUID format', () => {
     @Controller('/uuid-pipe')
     class TestController {
       @Get('/:id')
-      get(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) { return { id }; }
+      get(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+        return { id };
+      }
     }
     @Module({ controllers: [TestController] })
     class AppModule {}
@@ -7923,14 +8662,16 @@ describe('ParseUUIDPipe validates UUID format', () => {
     const uuid = '550e8400-e29b-41d4-a716-446655440000';
     const res = await app.getHonoApp().request(`/uuid-pipe/${uuid}`);
     expect(res.status).toBe(200);
-    expect((await res.json() as any).id).toBe(uuid);
+    expect(((await res.json()) as any).id).toBe(uuid);
   });
 
   it('throws 400 for a non-UUID string', async () => {
     @Controller('/uuid-pipe-err')
     class TestController {
       @Get('/:id')
-      get(@Param('id', ParseUUIDPipe) id: string) { return { id }; }
+      get(@Param('id', ParseUUIDPipe) id: string) {
+        return { id };
+      }
     }
     @Module({ controllers: [TestController] })
     class AppModule {}
@@ -7943,12 +8684,17 @@ describe('ParseUUIDPipe validates UUID format', () => {
 
 describe('ParseEnumPipe validates enum membership', () => {
   it('passes a valid enum value', async () => {
-    enum Direction { Up = 'up', Down = 'down' }
+    enum Direction {
+      Up = 'up',
+      Down = 'down',
+    }
 
     @Controller('/enum-pipe')
     class TestController {
       @Get('/:dir')
-      get(@Param('dir', new ParseEnumPipe(Direction)) dir: Direction) { return { dir }; }
+      get(@Param('dir', new ParseEnumPipe(Direction)) dir: Direction) {
+        return { dir };
+      }
     }
     @Module({ controllers: [TestController] })
     class AppModule {}
@@ -7956,16 +8702,21 @@ describe('ParseEnumPipe validates enum membership', () => {
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/enum-pipe/up');
     expect(res.status).toBe(200);
-    expect((await res.json() as any).dir).toBe('up');
+    expect(((await res.json()) as any).dir).toBe('up');
   });
 
   it('throws 400 for a value not in the enum', async () => {
-    enum Color { Red = 'red', Blue = 'blue' }
+    enum Color {
+      Red = 'red',
+      Blue = 'blue',
+    }
 
     @Controller('/enum-pipe-err')
     class TestController {
       @Get('/:color')
-      get(@Param('color', new ParseEnumPipe(Color)) color: Color) { return { color }; }
+      get(@Param('color', new ParseEnumPipe(Color)) color: Color) {
+        return { color };
+      }
     }
     @Module({ controllers: [TestController] })
     class AppModule {}
@@ -7981,7 +8732,9 @@ describe('ParseArrayPipe splits comma-separated query string', () => {
     @Controller('/arr-pipe')
     class TestController {
       @Get()
-      get(@Query('ids', new ParseArrayPipe({ separator: ',' })) ids: string[]) { return { ids }; }
+      get(@Query('ids', new ParseArrayPipe({ separator: ',' })) ids: string[]) {
+        return { ids };
+      }
     }
     @Module({ controllers: [TestController] })
     class AppModule {}
@@ -7989,14 +8742,16 @@ describe('ParseArrayPipe splits comma-separated query string', () => {
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/arr-pipe?ids=1,2,3');
     expect(res.status).toBe(200);
-    expect((await res.json() as any).ids).toEqual(['1', '2', '3']);
+    expect(((await res.json()) as any).ids).toEqual(['1', '2', '3']);
   });
 
   it('returns an empty array when optional and param is absent', async () => {
     @Controller('/arr-pipe-opt')
     class TestController {
       @Get()
-      get(@Query('ids', new ParseArrayPipe({ optional: true })) ids: string[]) { return { ids }; }
+      get(@Query('ids', new ParseArrayPipe({ optional: true })) ids: string[]) {
+        return { ids };
+      }
     }
     @Module({ controllers: [TestController] })
     class AppModule {}
@@ -8004,7 +8759,7 @@ describe('ParseArrayPipe splits comma-separated query string', () => {
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/arr-pipe-opt');
     expect(res.status).toBe(200);
-    expect((await res.json() as any).ids).toEqual([]);
+    expect(((await res.json()) as any).ids).toEqual([]);
   });
 });
 
@@ -8017,7 +8772,9 @@ describe('DefaultValuePipe supplies a fallback when param is absent', () => {
     @Controller('/default-pipe')
     class TestController {
       @Get()
-      get(@Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number) { return { page }; }
+      get(@Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number) {
+        return { page };
+      }
     }
     @Module({ controllers: [TestController] })
     class AppModule {}
@@ -8026,8 +8783,8 @@ describe('DefaultValuePipe supplies a fallback when param is absent', () => {
     const hono = app.getHonoApp();
     const withParam = await hono.request('/default-pipe?page=5');
     const withoutParam = await hono.request('/default-pipe');
-    expect((await withParam.json() as any).page).toBe(5);
-    expect((await withoutParam.json() as any).page).toBe(1);
+    expect(((await withParam.json()) as any).page).toBe(5);
+    expect(((await withoutParam.json()) as any).page).toBe(1);
   });
 });
 
@@ -8036,7 +8793,9 @@ describe('RequiredPipe rejects absent or empty values with 400', () => {
     @Controller('/required-pipe')
     class TestController {
       @Get()
-      get(@Query('name', RequiredPipe) name: string) { return { name }; }
+      get(@Query('name', RequiredPipe) name: string) {
+        return { name };
+      }
     }
     @Module({ controllers: [TestController] })
     class AppModule {}
@@ -8045,7 +8804,7 @@ describe('RequiredPipe rejects absent or empty values with 400', () => {
     const hono = app.getHonoApp();
     const ok = await hono.request('/required-pipe?name=alice');
     const bad = await hono.request('/required-pipe');
-    expect((await ok.json() as any).name).toBe('alice');
+    expect(((await ok.json()) as any).name).toBe('alice');
     expect(bad.status).toBe(400);
   });
 });
@@ -8063,7 +8822,9 @@ describe('@Serialize() with SerializerInterceptor strips extra fields via Zod', 
       @Get()
       @Serialize(UserDto)
       @UseInterceptors(SerializerInterceptor)
-      get() { return { id: 1, name: 'Alice', password: 'secret' }; }
+      get() {
+        return { id: 1, name: 'Alice', password: 'secret' };
+      }
     }
     @Module({ controllers: [TestController], providers: [SerializerInterceptor] })
     class AppModule {}
@@ -8071,7 +8832,7 @@ describe('@Serialize() with SerializerInterceptor strips extra fields via Zod', 
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/serialize-dto');
     expect(res.status).toBe(200);
-    const body = await res.json() as any;
+    const body = (await res.json()) as any;
     expect(body.id).toBe(1);
     expect(body.name).toBe('Alice');
     expect(body.password).toBeUndefined();
@@ -8085,7 +8846,12 @@ describe('@Serialize() with SerializerInterceptor strips extra fields via Zod', 
       @Get()
       @Serialize(ItemDto)
       @UseInterceptors(SerializerInterceptor)
-      get() { return [{ id: 1, secret: 'x' }, { id: 2, secret: 'y' }]; }
+      get() {
+        return [
+          { id: 1, secret: 'x' },
+          { id: 2, secret: 'y' },
+        ];
+      }
     }
     @Module({ controllers: [TestController], providers: [SerializerInterceptor] })
     class AppModule {}
@@ -8093,7 +8859,7 @@ describe('@Serialize() with SerializerInterceptor strips extra fields via Zod', 
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/serialize-arr-dto');
     expect(res.status).toBe(200);
-    const body = await res.json() as any;
+    const body = (await res.json()) as any;
     expect(body).toHaveLength(2);
     expect(body[0]).toEqual({ id: 1 });
     expect(body[1]).toEqual({ id: 2 });
@@ -8121,7 +8887,9 @@ describe('mixin() creates parameterized injectable classes', () => {
     class TestController {
       @Get()
       @UseGuards(AdminGuard)
-      get() { return { ok: true }; }
+      get() {
+        return { ok: true };
+      }
     }
     @Module({ controllers: [TestController] })
     class AppModule {}
@@ -8151,11 +8919,15 @@ describe('mixin() creates parameterized injectable classes', () => {
     class TestController {
       @Get('/free')
       @UseGuards(FreeGuard)
-      free() { return { tier: 'free' }; }
+      free() {
+        return { tier: 'free' };
+      }
 
       @Get('/paid')
       @UseGuards(PaidGuard)
-      paid() { return { tier: 'paid' }; }
+      paid() {
+        return { tier: 'paid' };
+      }
     }
     @Module({ controllers: [TestController] })
     class AppModule {}

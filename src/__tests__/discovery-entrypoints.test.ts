@@ -215,9 +215,7 @@ describe('EntrypointRegistry', () => {
     @Injectable()
     class Computer implements ContributesEntrypoints {
       collectEntrypoints(): Entrypoint[] {
-        return [
-          { kind: 'marked', token: Computer, instance: this, meta: { computed: true } },
-        ];
+        return [{ kind: 'marked', token: Computer, instance: this, meta: { computed: true } }];
       }
     }
 

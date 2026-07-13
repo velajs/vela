@@ -34,7 +34,9 @@ describe('OpenAPI — $ref components for DTO classes', () => {
 
     const doc = createOpenApiDocument(AppModule);
     const body = doc.paths['/users']!.post!.requestBody!;
-    expect(body.content!['application/json']!.schema.$ref).toBe('#/components/schemas/CreateUserDto');
+    expect(body.content!['application/json']!.schema.$ref).toBe(
+      '#/components/schemas/CreateUserDto',
+    );
     expect(doc.components!.schemas!['CreateUserDto']!.type).toBe('object');
     expect(doc.components!.schemas!['CreateUserDto']!.properties).toHaveProperty('name');
   });
@@ -56,7 +58,8 @@ describe('OpenAPI — $ref components for DTO classes', () => {
     class AppModule {}
 
     const doc = createOpenApiDocument(AppModule);
-    const resSchema = doc.paths['/users/{id}']!.get!.responses['200']!.content!['application/json']!.schema;
+    const resSchema =
+      doc.paths['/users/{id}']!.get!.responses['200']!.content!['application/json']!.schema;
     expect(resSchema.$ref).toBe('#/components/schemas/UserDto');
     expect(doc.components!.schemas!['UserDto']).toBeDefined();
   });
@@ -93,8 +96,12 @@ describe('OpenAPI — $ref components for DTO classes', () => {
   });
 
   it('two distinct DTOs produce two components entries', () => {
-    class CreateUserDto extends createZodDto(z.object({ name: z.string() }), { name: 'CreateUserDto' }) {}
-    class UserDto extends createZodDto(z.object({ id: z.string(), name: z.string() }), { name: 'UserDto' }) {}
+    class CreateUserDto extends createZodDto(z.object({ name: z.string() }), {
+      name: 'CreateUserDto',
+    }) {}
+    class UserDto extends createZodDto(z.object({ id: z.string(), name: z.string() }), {
+      name: 'UserDto',
+    }) {}
 
     @Controller('/users')
     class UsersController {
@@ -168,7 +175,8 @@ describe('OpenAPI — $ref components for DTO classes', () => {
     class AppModule {}
 
     const doc = createOpenApiDocument(AppModule);
-    const schema = doc.paths['/items']!.post!.responses['201']!.content!['application/json']!.schema;
+    const schema =
+      doc.paths['/items']!.post!.responses['201']!.content!['application/json']!.schema;
     expect(schema.$ref).toBeUndefined();
     expect(schema.type).toBe('object');
     expect(doc.components?.schemas).toBeUndefined();

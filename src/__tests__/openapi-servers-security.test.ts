@@ -48,7 +48,12 @@ describe('createOpenApiDocument — securitySchemes / security', () => {
   it('emits options.securitySchemes under components.securitySchemes', () => {
     const doc = createOpenApiDocument(AppModule, {
       securitySchemes: {
-        cookieAuth: { type: 'apiKey', in: 'cookie', name: 'session', description: 'Session cookie' },
+        cookieAuth: {
+          type: 'apiKey',
+          in: 'cookie',
+          name: 'session',
+          description: 'Session cookie',
+        },
       },
     });
 

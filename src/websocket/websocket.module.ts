@@ -2,12 +2,7 @@ import { defineModule } from '../module/define-module';
 import { WsDispatcher } from './ws-dispatcher';
 import { WsServerImpl } from './ws-server';
 import { InMemoryRoomRegistry, local, type RoomRegistry, type SyncDriver } from './ws-sync';
-import {
-  WS_MODULE_OPTIONS,
-  WS_ROOM_REGISTRY,
-  WS_SERVER,
-  WS_SYNC_DRIVER,
-} from './websocket.tokens';
+import { WS_MODULE_OPTIONS, WS_ROOM_REGISTRY, WS_SERVER, WS_SYNC_DRIVER } from './websocket.tokens';
 
 export interface WebSocketModuleOptions {
   /**

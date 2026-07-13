@@ -54,9 +54,7 @@ describe('ConfigModule', () => {
 
     it('should return undefined for missing keys', async () => {
       @Module({
-        imports: [
-          ConfigModule.forRoot({ config: { a: 1 } }),
-        ],
+        imports: [ConfigModule.forRoot({ config: { a: 1 } })],
       })
       class AppModule {}
 
@@ -68,9 +66,7 @@ describe('ConfigModule', () => {
 
     it('should return default value for missing keys', async () => {
       @Module({
-        imports: [
-          ConfigModule.forRoot({ config: { a: 1 } }),
-        ],
+        imports: [ConfigModule.forRoot({ config: { a: 1 } })],
       })
       class AppModule {}
 
@@ -107,9 +103,7 @@ describe('ConfigModule', () => {
 
     it('should return default for non-existent nested path', async () => {
       @Module({
-        imports: [
-          ConfigModule.forRoot({ config: { db: { host: 'local' } } }),
-        ],
+        imports: [ConfigModule.forRoot({ config: { db: { host: 'local' } } })],
       })
       class AppModule {}
 
@@ -217,7 +211,9 @@ describe('ConfigModule', () => {
       class AsyncCfgController {
         constructor(private config: ConfigService) {}
         @Get()
-        handle() { return { name: this.config.get('APP_NAME') }; }
+        handle() {
+          return { name: this.config.get('APP_NAME') };
+        }
       }
 
       @Module({

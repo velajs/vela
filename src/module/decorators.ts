@@ -1,10 +1,5 @@
 import { MetadataRegistry } from '../registry/metadata.registry';
-import type {
-  Constructor,
-  DynamicModule,
-  ModuleMetadata,
-  ModuleOptions,
-} from '../registry/types';
+import type { Constructor, DynamicModule, ModuleMetadata, ModuleOptions } from '../registry/types';
 
 export function Global(): ClassDecorator {
   return (target) => {

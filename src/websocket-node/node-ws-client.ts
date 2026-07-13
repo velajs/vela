@@ -6,9 +6,9 @@ import type { RoomRegistry, WsClient } from '../websocket/index';
  * Room membership is mirrored into the shared `RoomRegistry` so broadcasts from
  * the `WsServer` reach this connection.
  */
-export class NodeWsClient<TData extends Record<string, unknown> = Record<string, unknown>>
-  implements WsClient<TData>
-{
+export class NodeWsClient<
+  TData extends Record<string, unknown> = Record<string, unknown>,
+> implements WsClient<TData> {
   readonly id: string = crypto.randomUUID();
   data: TData = {} as TData;
   private readonly _rooms = new Set<string>();

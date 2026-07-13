@@ -11,7 +11,12 @@ import {
   WS_ROOM_REGISTRY,
   InMemoryRoomRegistry,
 } from '../websocket/index.js';
-import type { WsClient, WsServer, BroadcastCommand, OnGatewayConnection } from '../websocket/index.js';
+import type {
+  WsClient,
+  WsServer,
+  BroadcastCommand,
+  OnGatewayConnection,
+} from '../websocket/index.js';
 import { NodeWsClient, registerWebSocketGateways, redis } from '../websocket-node/index.js';
 import type { RedisPubSubClient } from '../websocket-node/index.js';
 import type { WSContext, WSEvents, UpgradeWebSocket } from 'hono/ws';
@@ -81,7 +86,9 @@ describe('registerWebSocketGateways', () => {
     return { upgrade, captured };
   }
 
-  const ctxWithRoom = (id: string) => ({ req: { param: (k: string) => (k === 'id' ? id : undefined) } });
+  const ctxWithRoom = (id: string) => ({
+    req: { param: (k: string) => (k === 'id' ? id : undefined) },
+  });
   const tick = () => new Promise((r) => setTimeout(r, 0));
 
   it('dispatches messages to the gateway and replies on the socket', async () => {

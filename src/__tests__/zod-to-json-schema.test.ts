@@ -128,6 +128,8 @@ describe('zodToJsonSchema — nested', () => {
     });
     const out = zodToJsonSchema(schema);
     expect(out.properties?.user?.type).toBe('object');
-    expect((out.properties?.user?.properties as { id: { format: string } })?.id.format).toBe('uuid');
+    expect((out.properties?.user?.properties as { id: { format: string } })?.id.format).toBe(
+      'uuid',
+    );
   });
 });

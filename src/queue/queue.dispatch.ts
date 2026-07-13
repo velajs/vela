@@ -36,7 +36,7 @@ function selectHandler(
     const label = named.length > 0 ? `@Process('${jobName}')` : '@Process() (wildcard)';
     const message =
       `[vela] duplicate ${label} handlers on ${processorClass.name}; ` +
-      `keeping the first ('${String(pool[0].methodName)}').`;
+      `keeping the first ('${String(pool[0]!.methodName)}').`;
     if (container.getDiagnostics() === 'throw') throw new Error(message);
     if (container.getDiagnostics() === 'log') console.warn(message);
   }
@@ -106,7 +106,12 @@ async function dispatchToProcessor(
   processorClass: Type,
   job: QueueJob,
 ): Promise<boolean> {
-  const handler = selectHandler(container, processorClass, getProcessHandlers(processorClass), job.name);
+  const handler = selectHandler(
+    container,
+    processorClass,
+    getProcessHandlers(processorClass),
+    job.name,
+  );
   if (!handler) {
     if (container.getDiagnostics() === 'log') {
       console.warn(
@@ -120,10 +125,7 @@ async function dispatchToProcessor(
   return runInEntrypointScope(container, async (scope) => {
     // Async seam: materializes lazy processor modules (drainAsync awaits
     // their async providers/hooks) and rebuilds request-scoped processors.
-    const instance = (await scope.resolveAsync(processorClass)) as Record<
-      string | symbol,
-      unknown
-    >;
+    const instance = (await scope.resolveAsync(processorClass)) as Record<string | symbol, unknown>;
     const context = buildEntrypointExecutionContext(
       'queue',
       processorClass,

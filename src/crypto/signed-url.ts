@@ -42,7 +42,11 @@ function fromBase64Url(value: string): Uint8Array<ArrayBuffer> {
  * The signature covers `pathname + search` (minus the signature param). Returns
  * the full URL for absolute inputs, or `pathname?search` for relative ones.
  */
-export async function signUrl(url: string, secret: string, options?: SignedUrlOptions): Promise<string> {
+export async function signUrl(
+  url: string,
+  secret: string,
+  options?: SignedUrlOptions,
+): Promise<string> {
   const parsed = new URL(url, 'https://placeholder.local');
   const key = await importKey(secret);
 
@@ -52,7 +56,11 @@ export async function signUrl(url: string, secret: string, options?: SignedUrlOp
   }
 
   const dataToSign = `${parsed.pathname}?${parsed.searchParams.toString()}`;
-  const signatureBuffer = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(dataToSign));
+  const signatureBuffer = await crypto.subtle.sign(
+    'HMAC',
+    key,
+    new TextEncoder().encode(dataToSign),
+  );
   parsed.searchParams.set('signature', toBase64Url(signatureBuffer));
 
   return url.startsWith('http')
@@ -75,5 +83,10 @@ export async function verifySignedUrl(url: string, secret: string): Promise<bool
   parsed.searchParams.delete('signature');
   const dataToVerify = `${parsed.pathname}?${parsed.searchParams.toString()}`;
   const key = await importKey(secret);
-  return crypto.subtle.verify('HMAC', key, fromBase64Url(signature), new TextEncoder().encode(dataToVerify));
+  return crypto.subtle.verify(
+    'HMAC',
+    key,
+    fromBase64Url(signature),
+    new TextEncoder().encode(dataToVerify),
+  );
 }

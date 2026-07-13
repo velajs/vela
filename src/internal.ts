@@ -5,11 +5,7 @@
 export { Container } from './container/container';
 export { ModuleRef } from './container/module-ref';
 export { ModuleVisibilityError } from './container/types';
-export type {
-  ModuleScope,
-  ContainerOptions,
-  Diagnostics,
-} from './container/types';
+export type { ModuleScope, ContainerOptions, Diagnostics } from './container/types';
 export { bindAppProviders } from './pipeline/app-providers';
 export { RouteManager } from './http/route.manager';
 export type { RouteManagerOptions } from './http/route.manager';

@@ -1,0 +1,16 @@
+{
+  "name": "@velajs/docs-tooling",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "docs": "typedoc --options ../../typedoc.json",
+    "docs:check": "typedoc --options ../../typedoc.json --emit none"
+  },
+  "devDependencies": {
+    "typedoc": "~0.28.20",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

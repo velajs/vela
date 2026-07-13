@@ -35,10 +35,14 @@ export function LiveResolver(): ClassDecorator {
  * subscribe (via `options.parse`), then replayed verbatim into every re-run
  * under the subscriber's captured identity.
  */
-export function LiveQuery<A = unknown>(name: string, options: LiveQueryOptions<A>): MethodDecorator {
+export function LiveQuery<A = unknown>(
+  name: string,
+  options: LiveQueryOptions<A>,
+): MethodDecorator {
   return (target: object, propertyKey: string | symbol) => {
     const ctor = target.constructor;
-    const existing = (getMetadata(LIVE_QUERY_METADATA, ctor) as LiveQueryMetadata[] | undefined) ?? [];
+    const existing =
+      (getMetadata(LIVE_QUERY_METADATA, ctor) as LiveQueryMetadata[] | undefined) ?? [];
     existing.push({ name, methodName: propertyKey, options: options as LiveQueryOptions });
     defineMetadata(LIVE_QUERY_METADATA, existing, ctor);
   };

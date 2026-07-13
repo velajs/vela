@@ -22,9 +22,10 @@ interface WidgetOptions {
 describe('ConfigurableModuleBuilder', () => {
   describe('forRoot (sync)', () => {
     it('emits a DynamicModule referencing the subclass with an options provider and a stable key', () => {
-      const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = new ConfigurableModuleBuilder<WidgetOptions>({
-        moduleName: 'Widget',
-      }).build();
+      const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } =
+        new ConfigurableModuleBuilder<WidgetOptions>({
+          moduleName: 'Widget',
+        }).build();
       @Module({})
       class WidgetModule extends ConfigurableModuleClass {}
 
@@ -32,11 +33,15 @@ describe('ConfigurableModuleBuilder', () => {
       expect(dyn.module).toBe(WidgetModule);
       expect(typeof dyn.key).toBe('string');
       expect(dyn.global).toBeUndefined();
-      expect(dyn.providers).toEqual([{ provide: MODULE_OPTIONS_TOKEN, useValue: { color: 'red' } }]);
+      expect(dyn.providers).toEqual([
+        { provide: MODULE_OPTIONS_TOKEN, useValue: { color: 'red' } },
+      ]);
     });
 
     it('dedups by options (same → same key, different → different key)', () => {
-      const { ConfigurableModuleClass } = new ConfigurableModuleBuilder<WidgetOptions>({ moduleName: 'Widget' }).build();
+      const { ConfigurableModuleClass } = new ConfigurableModuleBuilder<WidgetOptions>({
+        moduleName: 'Widget',
+      }).build();
       @Module({})
       class WidgetModule extends ConfigurableModuleClass {}
 
@@ -48,7 +53,9 @@ describe('ConfigurableModuleBuilder', () => {
     });
 
     it('honors an explicit key and does not leak it into the options bag', () => {
-      const { ConfigurableModuleClass } = new ConfigurableModuleBuilder<WidgetOptions>({ moduleName: 'Widget' }).build();
+      const { ConfigurableModuleClass } = new ConfigurableModuleBuilder<WidgetOptions>({
+        moduleName: 'Widget',
+      }).build();
       @Module({})
       class WidgetModule extends ConfigurableModuleClass {}
 
@@ -58,7 +65,9 @@ describe('ConfigurableModuleBuilder', () => {
     });
 
     it('default isGlobal extra toggles DynamicModule.global and changes identity', () => {
-      const { ConfigurableModuleClass } = new ConfigurableModuleBuilder<WidgetOptions>({ moduleName: 'Widget' }).build();
+      const { ConfigurableModuleClass } = new ConfigurableModuleBuilder<WidgetOptions>({
+        moduleName: 'Widget',
+      }).build();
       @Module({})
       class WidgetModule extends ConfigurableModuleClass {}
 
@@ -70,8 +79,13 @@ describe('ConfigurableModuleBuilder', () => {
     });
 
     it('applies a custom extras transform', () => {
-      const { ConfigurableModuleClass } = new ConfigurableModuleBuilder<WidgetOptions>({ moduleName: 'Widget' })
-        .setExtras({ tag: 'none' as string }, (def, { tag }) => ({ ...def, key: `${def.key}:${tag}` }))
+      const { ConfigurableModuleClass } = new ConfigurableModuleBuilder<WidgetOptions>({
+        moduleName: 'Widget',
+      })
+        .setExtras({ tag: 'none' as string }, (def, { tag }) => ({
+          ...def,
+          key: `${def.key}:${tag}`,
+        }))
         .build();
       @Module({})
       class WidgetModule extends ConfigurableModuleClass {}
@@ -83,23 +97,27 @@ describe('ConfigurableModuleBuilder', () => {
 
   describe('forRootAsync', () => {
     it('lowers useFactory into an options provider and passes imports through', () => {
-      const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = new ConfigurableModuleBuilder<WidgetOptions>({
-        moduleName: 'Widget',
-      }).build();
+      const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } =
+        new ConfigurableModuleBuilder<WidgetOptions>({
+          moduleName: 'Widget',
+        }).build();
       @Module({})
       class WidgetModule extends ConfigurableModuleClass {}
 
       const fn = () => ({ color: 'red' });
       const dyn = WidgetModule.forRootAsync({ useFactory: fn, inject: [], imports: [] });
       expect(dyn.module).toBe(WidgetModule);
-      expect(dyn.providers).toEqual([{ provide: MODULE_OPTIONS_TOKEN, useFactory: fn, inject: [] }]);
+      expect(dyn.providers).toEqual([
+        { provide: MODULE_OPTIONS_TOKEN, useFactory: fn, inject: [] },
+      ]);
       expect(dyn.imports).toEqual([]);
     });
 
     it('lowers useClass into a factory-class registration + create() provider', () => {
-      const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = new ConfigurableModuleBuilder<WidgetOptions>({
-        moduleName: 'Widget',
-      }).build();
+      const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } =
+        new ConfigurableModuleBuilder<WidgetOptions>({
+          moduleName: 'Widget',
+        }).build();
       @Module({})
       class WidgetModule extends ConfigurableModuleClass {}
 
@@ -117,9 +135,10 @@ describe('ConfigurableModuleBuilder', () => {
     });
 
     it('lowers useExisting into a create() provider injecting the existing token', () => {
-      const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = new ConfigurableModuleBuilder<WidgetOptions>({
-        moduleName: 'Widget',
-      }).build();
+      const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } =
+        new ConfigurableModuleBuilder<WidgetOptions>({
+          moduleName: 'Widget',
+        }).build();
       @Module({})
       class WidgetModule extends ConfigurableModuleClass {}
 
@@ -137,9 +156,10 @@ describe('ConfigurableModuleBuilder', () => {
 
   describe('end-to-end DI', () => {
     it('resolves options + a derived service through the container (forRoot)', async () => {
-      const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = new ConfigurableModuleBuilder<WidgetOptions>({
-        moduleName: 'Widget',
-      }).build();
+      const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } =
+        new ConfigurableModuleBuilder<WidgetOptions>({
+          moduleName: 'Widget',
+        }).build();
 
       @Injectable()
       class WidgetService {
@@ -160,9 +180,10 @@ describe('ConfigurableModuleBuilder', () => {
     });
 
     it('resolves options via forRootAsync useFactory with injected deps', async () => {
-      const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = new ConfigurableModuleBuilder<WidgetOptions>({
-        moduleName: 'Widget',
-      }).build();
+      const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } =
+        new ConfigurableModuleBuilder<WidgetOptions>({
+          moduleName: 'Widget',
+        }).build();
 
       @Injectable()
       class WidgetService {
@@ -195,9 +216,10 @@ describe('ConfigurableModuleBuilder', () => {
     });
 
     it('supports multiple instances of the same builder module via distinct keys', async () => {
-      const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = new ConfigurableModuleBuilder<WidgetOptions>({
-        moduleName: 'Widget',
-      }).build();
+      const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } =
+        new ConfigurableModuleBuilder<WidgetOptions>({
+          moduleName: 'Widget',
+        }).build();
 
       @Injectable()
       class WidgetService {

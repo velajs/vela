@@ -11,22 +11,23 @@ import type { CacheModuleOptions } from './cache.types';
 // index.ts export) is unchanged. `isGlobal` here means "register the interceptor
 // globally as APP_INTERCEPTOR" — NOT `DynamicModule.global` — so the extras
 // transform is customized rather than using the default isGlobal→global.
-const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = new ConfigurableModuleBuilder<CacheModuleOptions>({
-  moduleName: 'Cache',
-  optionsInjectionToken: CACHE_MODULE_OPTIONS,
-})
-  .setExtras({ isGlobal: false }, (definition, { isGlobal }) =>
-    isGlobal
-      ? {
-          ...definition,
-          providers: [
-            ...(definition.providers ?? []),
-            { provide: APP_INTERCEPTOR, useExisting: CacheInterceptor },
-          ],
-        }
-      : definition,
-  )
-  .build();
+const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } =
+  new ConfigurableModuleBuilder<CacheModuleOptions>({
+    moduleName: 'Cache',
+    optionsInjectionToken: CACHE_MODULE_OPTIONS,
+  })
+    .setExtras({ isGlobal: false }, (definition, { isGlobal }) =>
+      isGlobal
+        ? {
+            ...definition,
+            providers: [
+              ...(definition.providers ?? []),
+              { provide: APP_INTERCEPTOR, useExisting: CacheInterceptor },
+            ],
+          }
+        : definition,
+    )
+    .build();
 
 @Module({
   providers: [

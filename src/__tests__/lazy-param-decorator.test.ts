@@ -13,11 +13,7 @@ import {
   createParamDecorator,
   MetadataRegistry,
 } from '../index.js';
-import type {
-  CanActivate,
-  ExecutionContext,
-  RequestContext,
-} from '../index.js';
+import type { CanActivate, ExecutionContext, RequestContext } from '../index.js';
 
 beforeEach(() => {
   MetadataRegistry.clear();
@@ -203,9 +199,7 @@ describe('createLazyParamDecorator', () => {
     const CurrentUser = createLazyParamDecorator(
       (_data: unknown, ctx: ExecutionContext): User | undefined => {
         const hono = ctx.getContext();
-        const requestContainer = hono.get('container') as
-          | { resolve<T>(t: unknown): T }
-          | undefined;
+        const requestContainer = hono.get('container') as { resolve<T>(t: unknown): T } | undefined;
         if (!requestContainer) return undefined;
         const reqCtx = requestContainer.resolve<RequestContext>(REQUEST_CONTEXT);
         return reqCtx.get<User>(USER_KEY);

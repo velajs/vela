@@ -5,11 +5,14 @@ import { join } from 'node:path';
 const SRC_ROOT = join(process.cwd(), 'src');
 const FORBIDDEN = [
   // node:* imports
-  { name: "node:* import", re: /from\s+['"]node:[a-z_]+['"]/g },
+  { name: 'node:* import', re: /from\s+['"]node:[a-z_]+['"]/g },
   // Buffer (excluding ArrayBuffer / SharedArrayBuffer)
   { name: 'Buffer', re: /(?<![A-Za-z])Buffer(?![A-Za-z])/g },
   // process.env / process.exit / process.on / etc.
-  { name: 'process.*', re: /(?<![A-Za-z_])process\.(env|exit|on|argv|cwd|hrtime|nextTick|stdout|stderr|stdin)\b/g },
+  {
+    name: 'process.*',
+    re: /(?<![A-Za-z_])process\.(env|exit|on|argv|cwd|hrtime|nextTick|stdout|stderr|stdin)\b/g,
+  },
   // __dirname / __filename
   { name: '__dirname', re: /(?<![A-Za-z_])__dirname\b/g },
   { name: '__filename', re: /(?<![A-Za-z_])__filename\b/g },
@@ -35,7 +38,7 @@ async function listTsFiles(dir: string): Promise<string[]> {
     const p = join(dir, entry.name);
     if (entry.isDirectory()) {
       if (entry.name === '__tests__' || entry.name === 'node_modules') continue;
-      out.push(...await listTsFiles(p));
+      out.push(...(await listTsFiles(p)));
       continue;
     }
     if (!entry.isFile()) continue;
@@ -59,9 +62,7 @@ describe('edge-runtime audit', () => {
     for (const file of files) {
       const content = await readFile(file, 'utf8');
       // Strip line + block comments so banned tokens in docs don't trip the scan.
-      const stripped = content
-        .replace(/\/\*[\s\S]*?\*\//g, '')
-        .replace(/\/\/[^\n]*/g, '');
+      const stripped = content.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
 
       for (const { name, re } of FORBIDDEN) {
         re.lastIndex = 0;

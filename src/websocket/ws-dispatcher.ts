@@ -296,7 +296,11 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
    * the claiming module's own concern (e.g. live resolvers run their scoped
    * guards at subscribe).
    */
-  private async dispatchReserved(path: string, client: WsClient, message: WsMessage): Promise<void> {
+  private async dispatchReserved(
+    path: string,
+    client: WsClient,
+    message: WsMessage,
+  ): Promise<void> {
     const handler = this.reserved.get(message.event);
     if (!handler) return;
 
@@ -312,7 +316,10 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
     try {
       for (const guard of guards) {
         if (!(await guard.canActivate(ctx))) {
-          const frame = toErrorFrame(new WsException('Forbidden'), resolveErrorReporter(this.container).catalog);
+          const frame = toErrorFrame(
+            new WsException('Forbidden'),
+            resolveErrorReporter(this.container).catalog,
+          );
           this.trySend(client, frame.event, frame.data, message.id);
           return;
         }
@@ -411,9 +418,11 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
         continue;
       }
       const paramMeta = [...(allParams.get(methodName) ?? [])].sort((a, b) => a.index - b.index);
-      const paramTypes = Reflect.getMetadata('design:paramtypes', gatewayClass.prototype, methodName) as
-        | unknown[]
-        | undefined;
+      const paramTypes = Reflect.getMetadata(
+        'design:paramtypes',
+        gatewayClass.prototype,
+        methodName,
+      ) as unknown[] | undefined;
 
       handlers.set(event, {
         methodName,

@@ -32,7 +32,7 @@ export class ScheduleExecutor implements OnApplicationBootstrap, OnModuleDestroy
     const cronJobs = this.registry.getCronJobs();
     for (let i = 0; i < cronJobs.length; i++) {
       const job = cronJobs[i];
-      this.scheduleCron(job.instance, job.methodName, job.expression, i);
+      this.scheduleCron(job!.instance, job!.methodName, job!.expression, i);
     }
   }
 
@@ -45,7 +45,12 @@ export class ScheduleExecutor implements OnApplicationBootstrap, OnModuleDestroy
     this.intervalTimers.push(timer);
   }
 
-  private scheduleCron(instance: unknown, methodName: string, expression: string, index: number): void {
+  private scheduleCron(
+    instance: unknown,
+    methodName: string,
+    expression: string,
+    index: number,
+  ): void {
     if (!this.running) return;
 
     const matcher = this.getMatcher(expression);

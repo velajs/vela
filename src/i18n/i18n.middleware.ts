@@ -3,7 +3,11 @@ import type { Container } from '../container/container';
 import { Inject, Injectable } from '../container/decorators';
 import { REQUEST_CONTEXT, type RequestContext } from '../http/request-context';
 import type { NestMiddleware } from '../pipeline/types';
-import { resolveI18nOptions, type I18nModuleOptions, type ResolvedI18nOptions } from './i18n.options';
+import {
+  resolveI18nOptions,
+  type I18nModuleOptions,
+  type ResolvedI18nOptions,
+} from './i18n.options';
 import { I18N_LOCALE_KEY, I18N_OPTIONS } from './i18n.tokens';
 
 /**

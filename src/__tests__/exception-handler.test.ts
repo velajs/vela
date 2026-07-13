@@ -39,7 +39,9 @@ describe('ErrorReporter', () => {
     const container = new Container();
     const report = vi.fn();
     container.register({ provide: APP_EXCEPTION_HANDLER, useValue: { report } });
-    resolveErrorReporter(container).report(new NotFoundException('missing thing'), { edge: 'http' });
+    resolveErrorReporter(container).report(new NotFoundException('missing thing'), {
+      edge: 'http',
+    });
     expect(report).toHaveBeenCalledOnce();
   });
 
@@ -57,7 +59,10 @@ describe('ErrorReporter', () => {
     const report = vi.fn();
     container.register({
       provide: APP_EXCEPTION_HANDLER,
-      useValue: { report, dontReport: ['not_found', (e: unknown) => (e as Error).message === 'skip'] },
+      useValue: {
+        report,
+        dontReport: ['not_found', (e: unknown) => (e as Error).message === 'skip'],
+      },
     });
     const reporter = resolveErrorReporter(container);
     reporter.report(new VelaError('not_found'), { edge: 'http' });
@@ -70,9 +75,15 @@ describe('ErrorReporter', () => {
     const container = new Container();
     container.register({
       provide: APP_EXCEPTION_HANDLER,
-      useValue: { report: () => { throw new Error('reporter bug'); } },
+      useValue: {
+        report: () => {
+          throw new Error('reporter bug');
+        },
+      },
     });
-    expect(() => resolveErrorReporter(container).report(new Error('x'), { edge: 'http' })).not.toThrow();
+    expect(() =>
+      resolveErrorReporter(container).report(new Error('x'), { edge: 'http' }),
+    ).not.toThrow();
   });
 
   it('a throwing dontReport matcher never escapes report() and the error is still reported', () => {
@@ -82,7 +93,11 @@ describe('ErrorReporter', () => {
       provide: APP_EXCEPTION_HANDLER,
       useValue: {
         report,
-        dontReport: [() => { throw new Error('broken matcher'); }],
+        dontReport: [
+          () => {
+            throw new Error('broken matcher');
+          },
+        ],
       },
     });
     const reporter = resolveErrorReporter(container);

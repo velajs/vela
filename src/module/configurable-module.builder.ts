@@ -61,7 +61,12 @@ export class ConfigurableModuleBuilder<
   ): ConfigurableModuleBuilder<Opts, MethodKey, FactoryMethodKey, NewExtras> {
     this.extrasDefaults = defaults;
     this.extrasTransform = transform as ConfigurableModuleExtrasTransform<ConfigurableModuleExtras>;
-    return this as unknown as ConfigurableModuleBuilder<Opts, MethodKey, FactoryMethodKey, NewExtras>;
+    return this as unknown as ConfigurableModuleBuilder<
+      Opts,
+      MethodKey,
+      FactoryMethodKey,
+      NewExtras
+    >;
   }
 
   /** Rename the sync static (default `forRoot`); the async static becomes `<name>Async`. */
@@ -69,7 +74,12 @@ export class ConfigurableModuleBuilder<
     name: NewMethodKey,
   ): ConfigurableModuleBuilder<Opts, NewMethodKey, FactoryMethodKey, Extras> {
     this.classMethodName = name;
-    return this as unknown as ConfigurableModuleBuilder<Opts, NewMethodKey, FactoryMethodKey, Extras>;
+    return this as unknown as ConfigurableModuleBuilder<
+      Opts,
+      NewMethodKey,
+      FactoryMethodKey,
+      Extras
+    >;
   }
 
   /** Rename the method a `useClass`/`useExisting` options factory must implement (default `create`). */
@@ -77,7 +87,12 @@ export class ConfigurableModuleBuilder<
     name: NewFactoryMethodKey,
   ): ConfigurableModuleBuilder<Opts, MethodKey, NewFactoryMethodKey, Extras> {
     this.factoryMethodName = name;
-    return this as unknown as ConfigurableModuleBuilder<Opts, MethodKey, NewFactoryMethodKey, Extras>;
+    return this as unknown as ConfigurableModuleBuilder<
+      Opts,
+      MethodKey,
+      NewFactoryMethodKey,
+      Extras
+    >;
   }
 
   build(): ConfigurableModuleHost<Opts, MethodKey, FactoryMethodKey, Extras> {

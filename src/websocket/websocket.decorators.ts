@@ -51,7 +51,8 @@ export function SubscribeMessage(event: string): MethodDecorator {
   };
 }
 
-const ReservedWsEventMeta = createDiscoverableDecorator<ReservedWsEventMetadata>(WS_RESERVED_METADATA);
+const ReservedWsEventMeta =
+  createDiscoverableDecorator<ReservedWsEventMetadata>(WS_RESERVED_METADATA);
 
 /**
  * Claims a reserved (`$`-prefixed) envelope event for a framework-module

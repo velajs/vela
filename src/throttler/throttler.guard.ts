@@ -2,8 +2,18 @@ import { Injectable, Inject } from '../container/decorators';
 import { Reflector } from '../pipeline/reflector';
 import type { CanActivate, ExecutionContext } from '../pipeline/types';
 import { TooManyRequestsException } from '../errors/http-exception';
-import { THROTTLER_OPTIONS, THROTTLER_STORAGE, THROTTLE_METADATA, SKIP_THROTTLE_METADATA } from './throttler.tokens';
-import type { ThrottlerModuleOptions, ThrottlerStore, ThrottleConfig, RateLimitInfo } from './throttler.types';
+import {
+  THROTTLER_OPTIONS,
+  THROTTLER_STORAGE,
+  THROTTLE_METADATA,
+  SKIP_THROTTLE_METADATA,
+} from './throttler.tokens';
+import type {
+  ThrottlerModuleOptions,
+  ThrottlerStore,
+  ThrottleConfig,
+  RateLimitInfo,
+} from './throttler.types';
 
 @Injectable()
 export class ThrottlerGuard implements CanActivate {
@@ -27,7 +37,7 @@ export class ThrottlerGuard implements CanActivate {
     const request = context.getRequest();
     const tracker = this.options.getTracker
       ? this.options.getTracker(request)
-      : request.headers.get('x-forwarded-for') ?? 'anonymous';
+      : (request.headers.get('x-forwarded-for') ?? 'anonymous');
 
     const className = context.getClass().name;
     const handlerName = String(context.getHandler());

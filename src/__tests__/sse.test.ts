@@ -1,12 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  VelaFactory,
-  Controller,
-  Sse,
-  Get,
-  Module,
-  MetadataRegistry,
-} from '../index.js';
+import { VelaFactory, Controller, Sse, Get, Module, MetadataRegistry } from '../index.js';
 
 beforeEach(() => {
   MetadataRegistry.clear();
@@ -66,7 +59,7 @@ describe('SSE/Streaming', () => {
           headers: {
             'Content-Type': 'text/event-stream',
             'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
+            Connection: 'keep-alive',
           },
         });
       }

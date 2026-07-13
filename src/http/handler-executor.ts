@@ -53,21 +53,34 @@ export class HandlerExecutor {
     controller: Type,
     allParamMetadata: Map<string | symbol, ParameterMetadata[]>,
   ): (c: Context) => Promise<Response> {
-    const paramMetadata = (allParamMetadata.get(route.handlerName) || [])
-      .sort((a, b) => a.index - b.index) as ParamMetadata[];
+    const paramMetadata = (allParamMetadata.get(route.handlerName) || []).sort(
+      (a, b) => a.index - b.index,
+    ) as ParamMetadata[];
 
     // Read param types once at build time for metatype population.
     // Routed via Reflect so the polyfill funnels both src-level and dist-level
     // consumers to the same registry (matters in tests that import from dist).
-    const paramTypes = Reflect.getMetadata('design:paramtypes', controller.prototype, route.handlerName) as
-      | unknown[]
-      | undefined;
+    const paramTypes = Reflect.getMetadata(
+      'design:paramtypes',
+      controller.prototype,
+      route.handlerName,
+    ) as unknown[] | undefined;
 
-    const methodGuards = ComponentManager.getScopedComponents('guard', controller, route.handlerName);
+    const methodGuards = ComponentManager.getScopedComponents(
+      'guard',
+      controller,
+      route.handlerName,
+    );
     const methodPipes = ComponentManager.getScopedComponents('pipe', controller, route.handlerName);
-    const methodInterceptors = ComponentManager.getScopedComponents('interceptor', controller, route.handlerName);
+    const methodInterceptors = ComponentManager.getScopedComponents(
+      'interceptor',
+      controller,
+      route.handlerName,
+    );
     // Filters: reverse order (handler → controller → global) — closest to handler runs first
-    const methodFilters = [...ComponentManager.getScopedComponents('filter', controller, route.handlerName)].reverse();
+    const methodFilters = [
+      ...ComponentManager.getScopedComponents('filter', controller, route.handlerName),
+    ].reverse();
 
     const httpCode = getHttpCode(controller, route.handlerName);
     const responseHeaders = getResponseHeaders(controller, route.handlerName);
@@ -95,7 +108,11 @@ export class HandlerExecutor {
         ...instantiateMany<ExceptionFilter>(globals.filters, requestContainer),
       ];
 
-      const executionContext: ExecutionContext = buildExecutionContext(c, controller, route.handlerName);
+      const executionContext: ExecutionContext = buildExecutionContext(
+        c,
+        controller,
+        route.handlerName,
+      );
 
       try {
         const instance = requestContainer.resolve(controller);
@@ -139,7 +156,11 @@ export class HandlerExecutor {
             } catch (filterError) {
               // A broken filter is itself a bug worth logs — then fall through
               // to the default render instead of silently dying here.
-              reporter.report(filterError, { edge: 'http', source, note: 'exception filter threw' });
+              reporter.report(filterError, {
+                edge: 'http',
+                source,
+                note: 'exception filter threw',
+              });
               break;
             }
           }
@@ -153,7 +174,10 @@ export class HandlerExecutor {
           const status = error.getStatus() as ContentfulStatusCode;
           const raw = error.getRawResponse() ?? error.message;
           if (typeof raw === 'string') {
-            return c.json({ error: { code: STATUS_TO_CODE[status] ?? 'internal', message: raw } }, status);
+            return c.json(
+              { error: { code: STATUS_TO_CODE[status] ?? 'internal', message: raw } },
+              status,
+            );
           }
           return c.json(raw, status); // object responses ship verbatim (crud envelope compat)
         }
@@ -164,4 +188,3 @@ export class HandlerExecutor {
     };
   }
 }
-

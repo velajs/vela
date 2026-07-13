@@ -201,7 +201,9 @@ describe('explicit param metatype on programmatic routes', () => {
 
 describe('getRequestContainer', () => {
   it('yields the request child (REQUEST_CONTEXT resolvable) inside a request', async () => {
-    const CurrentContainer = createParamDecorator((_data, ctx) => getRequestContainer(ctx.getContext()));
+    const CurrentContainer = createParamDecorator((_data, ctx) =>
+      getRequestContainer(ctx.getContext()),
+    );
 
     @Controller('/probe')
     class ProbeController {
@@ -228,7 +230,9 @@ describe('getRequestContainer', () => {
   });
 
   it('throws outside a Vela-managed request', () => {
-    const bareContext = { get: () => undefined } as unknown as Parameters<typeof getRequestContainer>[0];
+    const bareContext = { get: () => undefined } as unknown as Parameters<
+      typeof getRequestContainer
+    >[0];
     expect(() => getRequestContainer(bareContext)).toThrow(/Vela-managed request/);
   });
 });

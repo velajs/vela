@@ -60,7 +60,9 @@ export function registerWebSocketGateways(
           onMessage: (evt) => {
             const text = toText(evt.data);
             if (text === undefined) return;
-            void ready.then(() => dispatcher.dispatchMessage(path, client, text)).catch(onSetupError);
+            void ready
+              .then(() => dispatcher.dispatchMessage(path, client, text))
+              .catch(onSetupError);
           },
           onClose: (evt) => {
             const code = (evt as CloseEvent).code || 1000;

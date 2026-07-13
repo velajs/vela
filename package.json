@@ -2,7 +2,40 @@
   "name": "@velajs/vela",
   "version": "1.19.0",
   "description": "NestJS-compatible framework for edge runtimes, powered by Hono",
+  "keywords": [
+    "bun",
+    "cloudflare-workers",
+    "decorators",
+    "deno",
+    "dependency-injection",
+    "edge",
+    "framework",
+    "hono",
+    "nestjs",
+    "typescript"
+  ],
+  "homepage": "https://github.com/velajs/vela#readme",
+  "bugs": {
+    "url": "https://github.com/velajs/vela/issues"
+  },
+  "license": "MIT",
+  "author": "ksh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/velajs/vela.git"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
   "type": "module",
+  "sideEffects": [
+    "./dist/index.js",
+    "./dist/metadata.js",
+    "./dist/schedule-node/index.js"
+  ],
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -51,58 +84,47 @@
       "import": "./dist/seeder/index.js"
     }
   },
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE",
-    "CHANGELOG.md"
-  ],
   "scripts": {
-    "build": "rm -rf dist && swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
+    "build": "tsdown",
     "test": "vitest run",
     "test:workers": "vitest run --config vitest.config.workers.ts",
     "test:workers:als": "vitest run --config vitest.config.workers-als.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.type-tests.json",
     "check:skill": "node scripts/check-skill.mjs",
-    "docs": "typedoc",
-    "docs:check": "typedoc --emit none",
-    "prepare": "swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
-    "prepublishOnly": "pnpm run typecheck && pnpm test"
-  },
-  "sideEffects": [
-    "./dist/index.js",
-    "./dist/metadata.js",
-    "./dist/schedule-node/index.js"
-  ],
-  "keywords": [
-    "edge",
-    "hono",
-    "nestjs",
-    "framework",
-    "decorators",
-    "dependency-injection",
-    "cloudflare-workers",
-    "deno",
-    "bun",
-    "typescript"
-  ],
-  "author": "ksh",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/velajs/vela.git"
-  },
-  "homepage": "https://github.com/velajs/vela#readme",
-  "bugs": {
-    "url": "https://github.com/velajs/vela/issues"
-  },
-  "engines": {
-    "node": ">=20"
+    "docs": "pnpm --dir tools/docs docs",
+    "docs:check": "pnpm --dir tools/docs docs:check",
+    "lint": "oxlint .",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "publint": "publint",
+    "attw": "attw --pack . --profile esm-only",
+    "changeset": "changeset",
+    "version-packages": "changeset version && node scripts/sync-skill-version.mjs",
+    "release": "pnpm build && changeset publish",
+    "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm check:skill && pnpm docs:check && pnpm test && pnpm test:workers && pnpm test:workers:als && pnpm publint && pnpm attw"
   },
   "dependencies": {
     "@velajs/errors": "^1.0.0",
     "@velajs/live-protocol": "^1.0.0",
     "hono": "^4.12.26"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "catalog:",
+    "@changesets/cli": "catalog:",
+    "@cloudflare/vitest-pool-workers": "^0.16.18",
+    "@swc/core": "catalog:",
+    "@types/bun": "latest",
+    "@vitest/runner": "catalog:",
+    "@vitest/snapshot": "catalog:",
+    "intl-messageformat": "^11.2.9",
+    "oxfmt": "catalog:",
+    "oxlint": "catalog:",
+    "publint": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "unplugin-swc": "catalog:",
+    "vitest": "catalog:",
+    "zod": "catalog:"
   },
   "peerDependencies": {
     "intl-messageformat": ">=10"
@@ -112,26 +134,8 @@
       "optional": true
     }
   },
-  "packageManager": "pnpm@10.20.0",
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@swc/core",
-      "esbuild",
-      "workerd"
-    ]
+  "engines": {
+    "node": ">=24"
   },
-  "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.16.18",
-    "@swc/cli": "^0.8.1",
-    "@swc/core": "^1.15.41",
-    "@types/bun": "latest",
-    "@vitest/runner": "^4.1.9",
-    "@vitest/snapshot": "^4.1.9",
-    "intl-messageformat": "^11.2.9",
-    "typedoc": "~0.28.19",
-    "typescript": "^6.0.3",
-    "unplugin-swc": "^1.5.9",
-    "vitest": "^4.1.9",
-    "zod": "^4.4.3"
-  }
+  "packageManager": "pnpm@11.11.0"
 }

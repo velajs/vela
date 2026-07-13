@@ -96,7 +96,11 @@ export class UrlGeneratorService {
   ): Promise<string> {
     const url = this.urlFor(name, params);
     const secret = resolveSigningSecret(options.secret, this.secretToken, this.env);
-    return signUrl(url, secret, options.expiresIn !== undefined ? { expiresIn: options.expiresIn } : undefined);
+    return signUrl(
+      url,
+      secret,
+      options.expiresIn !== undefined ? { expiresIn: options.expiresIn } : undefined,
+    );
   }
 
   /**

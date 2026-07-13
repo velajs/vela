@@ -14,7 +14,12 @@ import {
   ScheduleRegistry,
   VelaFactory,
 } from '../index.js';
-import type { DynamicModule, OnApplicationBootstrap, OnModuleDestroy, OnModuleInit } from '../index.js';
+import type {
+  DynamicModule,
+  OnApplicationBootstrap,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '../index.js';
 import { SeederModule, SeederRegistry, Seeder, runSeeders } from '../seeder/index.js';
 import { I18nModule, MessageLoaderService } from '../i18n/index.js';
 import { defineModule } from '../module/define-module.js';
@@ -435,7 +440,11 @@ describe('lazy cold-start init — first-party subsystems (HTTP-only worker)', (
     }
     // Decorate via the public decorator import to keep parity with schedule tests.
     const { Cron } = await import('../schedule/index.js');
-    Cron('* * * * *')(Jobs.prototype, 'tick', Object.getOwnPropertyDescriptor(Jobs.prototype, 'tick')!);
+    Cron('* * * * *')(
+      Jobs.prototype,
+      'tick',
+      Object.getOwnPropertyDescriptor(Jobs.prototype, 'tick')!,
+    );
 
     @Module({ imports: [ScheduleModule], providers: [Jobs] })
     class AppModule {}
@@ -554,7 +563,9 @@ describe('lazy cold-start init — entrypoints', () => {
         events.push('construct');
       }
       collectEntrypoints() {
-        return [{ kind: 'cs:tick', token: TickDispatcher, instance: this, meta: { computed: true } }];
+        return [
+          { kind: 'cs:tick', token: TickDispatcher, instance: this, meta: { computed: true } },
+        ];
       }
     }
 
@@ -677,9 +688,8 @@ describe('lazy cold-start init — hand-rolled bootstrap paths', () => {
     // bootstrap(). If the LazyModuleManager were armed only by bootstrap(),
     // that path would skip lazy tokens in the eager sweep with NO trigger
     // installed — first touch would construct silently WITHOUT hook replay.
-    const { Container, ModuleLoader, RouteManager, VelaApplication } = await import(
-      '../internal.js'
-    );
+    const { Container, ModuleLoader, RouteManager, VelaApplication } =
+      await import('../internal.js');
 
     const events: string[] = [];
 
@@ -719,73 +729,81 @@ describe('lazy cold-start init — hand-rolled bootstrap paths', () => {
 });
 
 describe('lazy cold-start init — review hardening', () => {
-  it('an eager provider injecting exports from TWO lazy modules does not deadlock create()', { timeout: 5000 }, async () => {
-    const events: string[] = [];
+  it(
+    'an eager provider injecting exports from TWO lazy modules does not deadlock create()',
+    { timeout: 5000 },
+    async () => {
+      const events: string[] = [];
 
-    @Injectable()
-    class SvcOne implements OnApplicationBootstrap {
-      onApplicationBootstrap() {
-        events.push('boot:one');
+      @Injectable()
+      class SvcOne implements OnApplicationBootstrap {
+        onApplicationBootstrap() {
+          events.push('boot:one');
+        }
       }
-    }
-    @Injectable()
-    class SvcTwo implements OnApplicationBootstrap {
-      onApplicationBootstrap() {
-        events.push('boot:two');
+      @Injectable()
+      class SvcTwo implements OnApplicationBootstrap {
+        onApplicationBootstrap() {
+          events.push('boot:two');
+        }
       }
-    }
 
-    @Module({ lazy: true, providers: [SvcOne], exports: [SvcOne] })
-    class LazyOne {}
-    @Module({ lazy: true, providers: [SvcTwo], exports: [SvcTwo] })
-    class LazyTwo {}
+      @Module({ lazy: true, providers: [SvcOne], exports: [SvcOne] })
+      class LazyOne {}
+      @Module({ lazy: true, providers: [SvcTwo], exports: [SvcTwo] })
+      class LazyTwo {}
 
-    @Injectable()
-    class EagerBoth {
-      constructor(
-        @Inject(SvcOne) readonly one: SvcOne,
-        @Inject(SvcTwo) readonly two: SvcTwo,
-      ) {}
-    }
-
-    @Module({ imports: [LazyOne, LazyTwo], providers: [EagerBoth] })
-    class AppModule {}
-
-    const app = await VelaFactory.create(AppModule);
-    expect(events).toContain('boot:one');
-    expect(events).toContain('boot:two');
-    await app.close();
-  });
-
-  it('materializeLazyModules() with several pending lazy modules does not deadlock', { timeout: 5000 }, async () => {
-    const events: string[] = [];
-
-    @Injectable()
-    class PendingA implements OnModuleInit {
-      onModuleInit() {
-        events.push('init:a');
+      @Injectable()
+      class EagerBoth {
+        constructor(
+          @Inject(SvcOne) readonly one: SvcOne,
+          @Inject(SvcTwo) readonly two: SvcTwo,
+        ) {}
       }
-    }
-    @Injectable()
-    class PendingB implements OnModuleInit {
-      onModuleInit() {
-        events.push('init:b');
+
+      @Module({ imports: [LazyOne, LazyTwo], providers: [EagerBoth] })
+      class AppModule {}
+
+      const app = await VelaFactory.create(AppModule);
+      expect(events).toContain('boot:one');
+      expect(events).toContain('boot:two');
+      await app.close();
+    },
+  );
+
+  it(
+    'materializeLazyModules() with several pending lazy modules does not deadlock',
+    { timeout: 5000 },
+    async () => {
+      const events: string[] = [];
+
+      @Injectable()
+      class PendingA implements OnModuleInit {
+        onModuleInit() {
+          events.push('init:a');
+        }
       }
-    }
+      @Injectable()
+      class PendingB implements OnModuleInit {
+        onModuleInit() {
+          events.push('init:b');
+        }
+      }
 
-    @Module({ lazy: true, providers: [PendingA], exports: [PendingA] })
-    class ModA {}
-    @Module({ lazy: true, providers: [PendingB], exports: [PendingB] })
-    class ModB {}
+      @Module({ lazy: true, providers: [PendingA], exports: [PendingA] })
+      class ModA {}
+      @Module({ lazy: true, providers: [PendingB], exports: [PendingB] })
+      class ModB {}
 
-    @Module({ imports: [ModA, ModB] })
-    class AppModule {}
+      @Module({ imports: [ModA, ModB] })
+      class AppModule {}
 
-    const app = await VelaFactory.create(AppModule);
-    expect(events).toEqual([]);
-    await app.materializeLazyModules();
-    expect(events.sort()).toEqual(['init:a', 'init:b']);
-  });
+      const app = await VelaFactory.create(AppModule);
+      expect(events).toEqual([]);
+      await app.materializeLazyModules();
+      expect(events.sort()).toEqual(['init:a', 'init:b']);
+    },
+  );
 
   it('ModuleRef.create (detached sandbox) still triggers lazy materialization with hook replay', async () => {
     const { ModuleRef } = await import('../index.js');
@@ -851,59 +869,68 @@ describe('lazy cold-start init — review hardening', () => {
     expect(events).toEqual(['init', 'boot', 'destroy']);
   });
 
-  it('live-phase nested lazy→lazy keeps dependency-before-consumer hook order (eager parity)', { timeout: 5000 }, async () => {
-    const events: string[] = [];
+  it(
+    'live-phase nested lazy→lazy keeps dependency-before-consumer hook order (eager parity)',
+    { timeout: 5000 },
+    async () => {
+      const events: string[] = [];
 
-    @Injectable()
-    class DepSvc implements OnModuleInit, OnApplicationBootstrap {
-      constructor() {
-        events.push('construct:dep');
+      @Injectable()
+      class DepSvc implements OnModuleInit, OnApplicationBootstrap {
+        constructor() {
+          events.push('construct:dep');
+        }
+        onModuleInit() {
+          events.push('init:dep');
+        }
+        onApplicationBootstrap() {
+          events.push('boot:dep');
+        }
       }
-      onModuleInit() {
-        events.push('init:dep');
+
+      @Module({ lazy: true, providers: [DepSvc], exports: [DepSvc] })
+      class LazyDepModule {}
+
+      @Injectable()
+      class ConsumerSvc implements OnModuleInit, OnApplicationBootstrap {
+        constructor(@Inject(DepSvc) readonly dep: DepSvc) {
+          events.push('construct:consumer');
+        }
+        onModuleInit() {
+          events.push('init:consumer');
+        }
+        onApplicationBootstrap() {
+          events.push('boot:consumer');
+        }
       }
-      onApplicationBootstrap() {
-        events.push('boot:dep');
-      }
-    }
 
-    @Module({ lazy: true, providers: [DepSvc], exports: [DepSvc] })
-    class LazyDepModule {}
+      @Module({
+        lazy: true,
+        imports: [LazyDepModule],
+        providers: [ConsumerSvc],
+        exports: [ConsumerSvc],
+      })
+      class LazyConsumerModule {}
 
-    @Injectable()
-    class ConsumerSvc implements OnModuleInit, OnApplicationBootstrap {
-      constructor(@Inject(DepSvc) readonly dep: DepSvc) {
-        events.push('construct:consumer');
-      }
-      onModuleInit() {
-        events.push('init:consumer');
-      }
-      onApplicationBootstrap() {
-        events.push('boot:consumer');
-      }
-    }
+      @Module({ imports: [LazyConsumerModule] })
+      class AppModule {}
 
-    @Module({ lazy: true, imports: [LazyDepModule], providers: [ConsumerSvc], exports: [ConsumerSvc] })
-    class LazyConsumerModule {}
+      const app = await VelaFactory.create(AppModule);
+      expect(events).toEqual([]);
 
-    @Module({ imports: [LazyConsumerModule] })
-    class AppModule {}
-
-    const app = await VelaFactory.create(AppModule);
-    expect(events).toEqual([]);
-
-    app.get(ConsumerSvc);
-    // Same phase order the eager bootstrap would produce: dependency's hooks
-    // before the consumer's, all inits before all bootstraps.
-    expect(events).toEqual([
-      'construct:dep',
-      'construct:consumer',
-      'init:dep',
-      'init:consumer',
-      'boot:dep',
-      'boot:consumer',
-    ]);
-  });
+      app.get(ConsumerSvc);
+      // Same phase order the eager bootstrap would produce: dependency's hooks
+      // before the consumer's, all inits before all bootstraps.
+      expect(events).toEqual([
+        'construct:dep',
+        'construct:consumer',
+        'init:dep',
+        'init:consumer',
+        'boot:dep',
+        'boot:consumer',
+      ]);
+    },
+  );
 
   it('bootstrap-phase nested lazy→lazy absorption keeps dependency-before-consumer hook order', async () => {
     const events: string[] = [];

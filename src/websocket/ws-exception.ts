@@ -8,7 +8,11 @@ import { toErrorBody, type Catalog } from '@velajs/errors';
  */
 export class WsException extends Error {
   constructor(private readonly err: string | Record<string, unknown>) {
-    super(typeof err === 'string' ? err : String((err as Record<string, unknown>).message ?? 'WsException'));
+    super(
+      typeof err === 'string'
+        ? err
+        : String((err as Record<string, unknown>).message ?? 'WsException'),
+    );
     this.name = 'WsException';
   }
 
@@ -26,7 +30,10 @@ export class WsException extends Error {
  * are redacted to their catalog title and only branded `VelaError`s echo a
  * client-safe `{ code, message, ... }`.
  */
-export function toErrorFrame(error: unknown, catalog?: Catalog<string>): { event: 'exception'; data: unknown } {
+export function toErrorFrame(
+  error: unknown,
+  catalog?: Catalog<string>,
+): { event: 'exception'; data: unknown } {
   if (error instanceof WsException) {
     const e = error.getError();
     return { event: 'exception', data: typeof e === 'string' ? { message: e } : e };

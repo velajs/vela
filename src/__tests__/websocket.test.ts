@@ -266,7 +266,10 @@ describe('WsDispatcher', () => {
       }
     }
 
-    @Module({ imports: [WebSocketModule.forRoot()], providers: [InterceptGateway, WrapInterceptor] })
+    @Module({
+      imports: [WebSocketModule.forRoot()],
+      providers: [InterceptGateway, WrapInterceptor],
+    })
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
@@ -348,7 +351,9 @@ describe('WsDispatcher', () => {
 
     await app.get(WsDispatcher).dispatchMessage('/e', client, frame('crash', {}, 'z'));
 
-    expect(client.sent).toEqual([{ event: 'exception', data: { code: 'BAD', message: 'boom' }, id: 'z' }]);
+    expect(client.sent).toEqual([
+      { event: 'exception', data: { code: 'BAD', message: 'boom' }, id: 'z' },
+    ]);
   });
 });
 
@@ -426,7 +431,11 @@ describe('rooms + Server handle', () => {
     registry.join(a, 'r1');
     registry.join(b, 'r1');
 
-    registry.deliverLocal({ rooms: ['r1'], exceptIds: ['a'], frame: JSON.stringify({ event: 'z', data: 3 }) });
+    registry.deliverLocal({
+      rooms: ['r1'],
+      exceptIds: ['a'],
+      frame: JSON.stringify({ event: 'z', data: 3 }),
+    });
 
     expect(a.received).toEqual([]);
     expect(b.received).toEqual([{ event: 'z', data: 3 }]);
@@ -518,7 +527,9 @@ describe('WsDispatcher — code-review regressions', () => {
     const client = new FakeClient();
     await app.get(WsDispatcher).dispatchMessage('/broken-filter', client, frame('boom', {}, '9'));
 
-    expect(client.sent).toEqual([{ event: 'exception', data: { code: 'X', message: 'orig' }, id: '9' }]);
+    expect(client.sent).toEqual([
+      { event: 'exception', data: { code: 'X', message: 'orig' }, id: '9' },
+    ]);
   });
 
   it('does not throw when the client socket is dead mid-dispatch', async () => {
@@ -629,7 +640,9 @@ describe('WsDispatcher — exception frames through toErrorBody (Task 9)', () =>
     const client = new FakeClient();
     await app.get(WsDispatcher).dispatchMessage('/wsex', client, frame('act', {}, '3'));
 
-    expect(client.sent).toEqual([{ event: 'exception', data: { message: 'custom text' }, id: '3' }]);
+    expect(client.sent).toEqual([
+      { event: 'exception', data: { message: 'custom text' }, id: '3' },
+    ]);
   });
 
   it('reports the error before filtering, even when a filter silently claims it', async () => {

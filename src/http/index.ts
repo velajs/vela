@@ -1,7 +1,13 @@
 export { RouteManager } from './route.manager';
 export type { RouteManagerOptions } from './route.manager';
 export { MiddlewareBuilder } from '../module/middleware';
-export type { MiddlewareConsumer, MiddlewareConfigProxy, RouteInfo, NestModule, MiddlewareRouteDefinition } from '../module/middleware';
+export type {
+  MiddlewareConsumer,
+  MiddlewareConfigProxy,
+  RouteInfo,
+  NestModule,
+  MiddlewareRouteDefinition,
+} from '../module/middleware';
 export {
   Controller,
   Version,
@@ -35,19 +41,10 @@ export type { RouteOptions } from './decorators';
 export { createLazyParamDecorator } from './lazy-param.decorator';
 
 // Named-route URL generation + signed URLs
-export {
-  UrlGeneratorService,
-  SignedUrlGuard,
-  SignedUrl,
-  URL_SIGNING_SECRET,
-} from './url/index';
+export { UrlGeneratorService, SignedUrlGuard, SignedUrl, URL_SIGNING_SECRET } from './url/index';
 export type { UrlForOptions, SignedUrlGenerateOptions } from './url/index';
 export type { VelaRouteMap, RouteName, RouteParams } from './route-map';
-export {
-  enableAmbientContainer,
-  getCurrentContainer,
-  getCurrentRequestContext,
-} from './ambient';
+export { enableAmbientContainer, getCurrentContainer, getCurrentRequestContext } from './ambient';
 export type {
   RouteMetadata,
   ControllerMetadata,
