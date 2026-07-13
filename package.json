@@ -2,7 +2,34 @@
   "name": "@velajs/better-auth",
   "version": "0.6.0",
   "description": "better-auth integration for the Vela framework",
+  "keywords": [
+    "auth",
+    "authentication",
+    "better-auth",
+    "edge",
+    "framework",
+    "oauth",
+    "session",
+    "vela"
+  ],
+  "homepage": "https://github.com/velajs/better-auth#readme",
+  "bugs": {
+    "url": "https://github.com/velajs/better-auth/issues"
+  },
+  "license": "MIT",
+  "author": "ksh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/velajs/better-auth.git"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
   "type": "module",
+  "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -15,64 +42,46 @@
       "import": "./dist/testing/index.js"
     }
   },
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE",
-    "CHANGELOG.md"
-  ],
   "scripts": {
-    "build": "rm -rf dist && swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
+    "build": "tsdown",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "prepare": "swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
-    "prepublishOnly": "pnpm run typecheck && pnpm test"
+    "lint": "oxlint .",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "publint": "publint",
+    "attw": "attw --pack . --profile esm-only",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "pnpm build && changeset publish",
+    "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm test && pnpm publint && pnpm attw"
   },
-  "sideEffects": false,
-  "keywords": [
-    "vela",
-    "better-auth",
-    "auth",
-    "authentication",
-    "session",
-    "oauth",
-    "edge",
-    "framework"
-  ],
-  "author": "ksh",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/velajs/better-auth.git"
+  "dependencies": {
+    "@velajs/authz": "^1.0.0"
   },
-  "homepage": "https://github.com/velajs/better-auth#readme",
-  "bugs": {
-    "url": "https://github.com/velajs/better-auth/issues"
-  },
-  "engines": {
-    "node": ">=20"
+  "devDependencies": {
+    "@arethetypeswrong/cli": "catalog:",
+    "@changesets/cli": "catalog:",
+    "@swc/core": "catalog:",
+    "@velajs/testing": "^0.4.0",
+    "@velajs/vela": "^1.12.0",
+    "better-auth": "^1.6.20",
+    "hono": "^4.12.26",
+    "oxfmt": "catalog:",
+    "oxlint": "catalog:",
+    "publint": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "unplugin-swc": "catalog:",
+    "vitest": "catalog:"
   },
   "peerDependencies": {
     "@velajs/vela": ">=1.11.0",
     "better-auth": ">=1.2.0",
     "hono": ">=4"
   },
-  "devDependencies": {
-    "@swc/cli": "^0.8.1",
-    "@swc/core": "^1.15.41",
-    "@velajs/testing": "^0.4.0",
-    "@velajs/vela": "^1.12.0",
-    "better-auth": "^1.6.20",
-    "hono": "^4.12.26",
-    "typescript": "^6.0.3",
-    "unplugin-swc": "^1.5.9",
-    "vitest": "^4.1.9"
+  "engines": {
+    "node": ">=24"
   },
-  "packageManager": "pnpm@10.20.0",
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@swc/core",
-      "esbuild"
-    ]
-  }
+  "packageManager": "pnpm@11.11.0"
 }

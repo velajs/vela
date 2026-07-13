@@ -8,11 +8,7 @@ import {
   type ExecutionContext,
   type RequestContext,
 } from '@velajs/vela';
-import {
-  AUTH_SESSION_KEY,
-  AUTH_USER_KEY,
-  BETTER_AUTH_OPTIONS,
-} from '../better-auth.tokens';
+import { AUTH_SESSION_KEY, AUTH_USER_KEY, BETTER_AUTH_OPTIONS } from '../better-auth.tokens';
 import { BetterAuthService } from '../better-auth.service';
 import type { BetterAuthModuleOptions } from '../better-auth.types';
 import { OptionalAuth } from '../decorators/optional-auth.decorator';

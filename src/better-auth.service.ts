@@ -33,9 +33,7 @@ export const BETTER_AUTH_BUILDER = new InjectionToken<() => BetterAuthInstance>(
 export class BetterAuthService {
   private cached: BetterAuthInstance | undefined;
 
-  constructor(
-    @Inject(BETTER_AUTH_BUILDER) private readonly build: () => BetterAuthInstance,
-  ) {}
+  constructor(@Inject(BETTER_AUTH_BUILDER) private readonly build: () => BetterAuthInstance) {}
 
   /**
    * The underlying better-auth instance. Constructed once on first access.

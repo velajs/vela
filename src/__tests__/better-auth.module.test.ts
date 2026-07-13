@@ -1,16 +1,6 @@
-import {
-  Controller,
-  Get,
-  MetadataRegistry,
-  Module,
-  VelaFactory,
-} from '@velajs/vela';
+import { Controller, Get, MetadataRegistry, Module, VelaFactory } from '@velajs/vela';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  BETTER_AUTH_OPTIONS,
-  BetterAuthModule,
-  BetterAuthService,
-} from '../index';
+import { BETTER_AUTH_OPTIONS, BetterAuthModule, BetterAuthService } from '../index';
 import type { BetterAuthInstance } from '../better-auth.types';
 
 function makeMockAuth(session: { user: unknown; session: unknown } | null = null) {
@@ -118,9 +108,7 @@ describe('BetterAuthModule', () => {
     const auth = makeMockAuth();
 
     @Module({
-      imports: [
-        BetterAuthModule.forRootAsync({ useFactory: () => auth, basePath: '/auth' }),
-      ],
+      imports: [BetterAuthModule.forRootAsync({ useFactory: () => auth, basePath: '/auth' })],
     })
     class AppModule {}
 

@@ -15,6 +15,7 @@ import { BETTER_AUTH_OPTIONS } from './better-auth.tokens';
 import type { BetterAuthInstance, BetterAuthModuleOptions } from './better-auth.types';
 import { AuthGuard } from './guards/auth.guard';
 import { RolesGuard } from './guards/roles.guard';
+import { PermissionGuard } from './guards/permission.guard';
 
 const DEFAULT_BASE_PATH = '/api/auth';
 
@@ -42,9 +43,9 @@ function commonContributions(n: NormalizedOptions): {
   exports: DynamicModule['exports'];
 } {
   return {
-    providers: [BetterAuthService, AuthGuard, RolesGuard],
+    providers: [BetterAuthService, AuthGuard, RolesGuard, PermissionGuard],
     controllers: n.mountHandler ? [createBetterAuthCatchallController(n.basePath)] : [],
-    exports: [BetterAuthService, BETTER_AUTH_OPTIONS, AuthGuard, RolesGuard],
+    exports: [BetterAuthService, BETTER_AUTH_OPTIONS, AuthGuard, RolesGuard, PermissionGuard],
   };
 }
 
@@ -143,9 +144,9 @@ export class BetterAuthModule {
    * the service. Inject deps resolve at module load (cheap BindingRef wrappers);
    * their *values* are read at first auth use, inside your factory body.
    */
-  static forRootAsync<
-    const Inject extends readonly Token<unknown>[] = readonly Token<unknown>[],
-  >(options: ForRootAsyncOptions<Inject>): DynamicModule {
+  static forRootAsync<const Inject extends readonly Token<unknown>[] = readonly Token<unknown>[]>(
+    options: ForRootAsyncOptions<Inject>,
+  ): DynamicModule {
     const n = normalize(options);
     const common = commonContributions(n);
     return {

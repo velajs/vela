@@ -1,18 +1,7 @@
-import {
-  Controller,
-  Get,
-  Inject,
-  MetadataRegistry,
-  UseGuards,
-} from '@velajs/vela';
+import { Controller, Get, Inject, MetadataRegistry, UseGuards } from '@velajs/vela';
 import { Test } from '@velajs/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  AuthGuard,
-  BetterAuthModule,
-  BetterAuthService,
-  CurrentUser,
-} from '../index';
+import { AuthGuard, BetterAuthModule, BetterAuthService, CurrentUser } from '../index';
 import type { BetterAuthInstance } from '../better-auth.types';
 
 function makeAuth(label: string) {
@@ -33,7 +22,11 @@ describe('Test.createTestingModule — BetterAuthService override', () => {
 
   it('overrideProvider(BetterAuthService).useValue(stub) — resolved via moduleRef.get', async () => {
     const real = makeAuth('real');
-    const stub = { auth: makeAuth('stub'), api: makeAuth('stub').api, handler: makeAuth('stub').handler };
+    const stub = {
+      auth: makeAuth('stub'),
+      api: makeAuth('stub').api,
+      handler: makeAuth('stub').handler,
+    };
 
     const moduleRef = await Test.createTestingModule({
       imports: [BetterAuthModule.forRoot({ auth: real })],
@@ -71,8 +64,12 @@ describe('Test.createTestingModule — BetterAuthService override', () => {
       .overrideProvider(BetterAuthService)
       .useValue({
         auth: mock,
-        get api() { return mock.api; },
-        get handler() { return mock.handler; },
+        get api() {
+          return mock.api;
+        },
+        get handler() {
+          return mock.handler;
+        },
       })
       .compile();
 
@@ -90,9 +87,7 @@ describe('Test.createTestingModule — BetterAuthService override', () => {
 
     @Controller('/probe')
     class ProbeController {
-      constructor(
-        @Inject(BetterAuthService) private readonly svc: BetterAuthService,
-      ) {}
+      constructor(@Inject(BetterAuthService) private readonly svc: BetterAuthService) {}
 
       @Get()
       identity() {

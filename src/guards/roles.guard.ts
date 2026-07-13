@@ -31,9 +31,7 @@ export class RolesGuard implements CanActivate {
     const userRoles = normalizeRoles(user.role);
     const ok = required.some((r) => userRoles.includes(r));
     if (!ok) {
-      throw new ForbiddenException(
-        `Insufficient role; one of [${required.join(', ')}] required`,
-      );
+      throw new ForbiddenException(`Insufficient role; one of [${required.join(', ')}] required`);
     }
     return true;
   }
@@ -42,5 +40,8 @@ export class RolesGuard implements CanActivate {
 function normalizeRoles(role: string | string[] | undefined): string[] {
   if (!role) return [];
   if (Array.isArray(role)) return role;
-  return role.split(',').map((r) => r.trim()).filter(Boolean);
+  return role
+    .split(',')
+    .map((r) => r.trim())
+    .filter(Boolean);
 }

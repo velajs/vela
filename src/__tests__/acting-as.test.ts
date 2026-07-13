@@ -1,19 +1,9 @@
-import {
-  Controller,
-  Get,
-  MetadataRegistry,
-  UseGuards,
-} from '@velajs/vela';
+import { Controller, Get, MetadataRegistry, UseGuards } from '@velajs/vela';
 import { Test } from '@velajs/testing';
 import { betterAuth } from 'better-auth';
 import { memoryAdapter } from 'better-auth/adapters/memory';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import {
-  AuthGuard,
-  BetterAuthModule,
-  BetterAuthService,
-  CurrentUser,
-} from '../index';
+import { AuthGuard, BetterAuthModule, BetterAuthService, CurrentUser } from '../index';
 import { actingAs } from '../testing';
 
 /** A real betterAuth instance backed by an in-memory adapter. */
@@ -89,9 +79,7 @@ describe('actingAs (@velajs/better-auth/testing)', () => {
 
     const headers = await actingAs(moduleRef, { email: 'grace@example.com' });
 
-    const data = await moduleRef
-      .get(BetterAuthService)
-      .auth.api.getSession({ headers });
+    const data = await moduleRef.get(BetterAuthService).auth.api.getSession({ headers });
     expect(data).not.toBeNull();
     expect(data?.user.email).toBe('grace@example.com');
     expect(data?.session.token).toBeTruthy();
@@ -110,9 +98,7 @@ describe('actingAs (@velajs/better-auth/testing)', () => {
     });
 
     const headers = await actingAs(moduleRef, { id: existing.id });
-    const data = await moduleRef
-      .get(BetterAuthService)
-      .auth.api.getSession({ headers });
+    const data = await moduleRef.get(BetterAuthService).auth.api.getSession({ headers });
     expect(data?.user.id).toBe(existing.id);
     expect(data?.user.email).toBe('alan@example.com');
   });
@@ -123,8 +109,6 @@ describe('actingAs (@velajs/better-auth/testing)', () => {
       imports: [BetterAuthModule.forRoot({ auth })],
     }).compile();
 
-    await expect(actingAs(moduleRef, { role: 'admin' })).rejects.toThrow(
-      /email|id/,
-    );
+    await expect(actingAs(moduleRef, { role: 'admin' })).rejects.toThrow(/email|id/);
   });
 });

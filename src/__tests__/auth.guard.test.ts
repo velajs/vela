@@ -1,11 +1,4 @@
-import {
-  Controller,
-  Get,
-  MetadataRegistry,
-  Module,
-  UseGuards,
-  VelaFactory,
-} from '@velajs/vela';
+import { Controller, Get, MetadataRegistry, Module, UseGuards, VelaFactory } from '@velajs/vela';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   AuthGuard,
