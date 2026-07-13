@@ -73,8 +73,9 @@ async function ensureServer(module: TestingModule): Promise<RunningServer> {
   const started = (async (): Promise<RunningServer> => {
     const { serve } = await importOptional<NodeServerModule>('@hono/node-server');
     const { createNodeWebSocket } = await importOptional<NodeWsModule>('@hono/node-ws');
-    const { registerWebSocketGateways } =
-      await importOptional<VelaWsNodeModule>('@velajs/vela/websocket-node');
+    const { registerWebSocketGateways } = await importOptional<VelaWsNodeModule>(
+      '@velajs/vela/websocket-node',
+    );
 
     const app = await module.createApplication();
     const hono = app.getHonoApp();

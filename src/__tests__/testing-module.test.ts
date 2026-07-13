@@ -11,12 +11,7 @@ import {
   MetadataRegistry,
   createLazyParamDecorator,
 } from '@velajs/vela';
-import type {
-  CanActivate,
-  ExecutionContext,
-  OnModuleInit,
-  OnModuleDestroy,
-} from '@velajs/vela';
+import type { CanActivate, ExecutionContext, OnModuleInit, OnModuleDestroy } from '@velajs/vela';
 import { Test } from '../test.js';
 
 beforeEach(() => {
@@ -164,10 +159,7 @@ describe('Test.createTestingModule', () => {
     }
 
     @Module({
-      providers: [
-        EnvService,
-        { provide: CONFIG, useValue: { env: 'production' } },
-      ],
+      providers: [EnvService, { provide: CONFIG, useValue: { env: 'production' } }],
     })
     class ConfigModule {}
 

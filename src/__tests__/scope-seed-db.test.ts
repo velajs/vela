@@ -129,7 +129,10 @@ describe('module database assertions', () => {
   it('assertDatabaseHas / Missing / Count delegate to the TestDatabase', async () => {
     const module = await Test.createTestingModule({ providers: [] }).compile();
     const db = new InMemoryTestDatabase({
-      user: [{ id: 1, email: 'a@b.com' }, { id: 2, email: 'c@d.com' }],
+      user: [
+        { id: 1, email: 'a@b.com' },
+        { id: 2, email: 'c@d.com' },
+      ],
     });
 
     await module.assertDatabaseHas(db, 'user', { email: 'a@b.com' });

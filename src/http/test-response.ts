@@ -103,10 +103,9 @@ export class TestResponse {
 
   /** Assert the response has the given status code. */
   assertStatus(expected: number): this {
-    expect(
-      this.response.status,
-      `Expected status ${expected}, got ${this.response.status}`,
-    ).toBe(expected);
+    expect(this.response.status, `Expected status ${expected}, got ${this.response.status}`).toBe(
+      expected,
+    );
     return this;
   }
 
@@ -198,10 +197,7 @@ export class TestResponse {
   }
 
   /** Assert the value at a path satisfies a predicate. */
-  async assertJsonPathMatches(
-    path: string,
-    matcher: (value: unknown) => boolean,
-  ): Promise<this> {
+  async assertJsonPathMatches(path: string, matcher: (value: unknown) => boolean): Promise<this> {
     const json = await this.json();
     const value = getValueAtPath(json, path);
 

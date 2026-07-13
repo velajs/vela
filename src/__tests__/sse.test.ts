@@ -26,10 +26,7 @@ function eventStream(events: string[]): Response {
 class StreamController {
   @Sse('/events')
   events() {
-    return eventStream([
-      'event: message\ndata: ping\nid: 1\n\n',
-      'data: {"n":2}\n\n',
-    ]);
+    return eventStream(['event: message\ndata: ping\nid: 1\n\n', 'data: {"n":2}\n\n']);
   }
 
   @Sse('/plain')
