@@ -10,8 +10,7 @@
 
 Exception-handler layer (roadmap phase 3): a single branded error concept, one
 wire-redaction seam, and a Laravel-style reporting contract layered above the
-NestJS-style exception filters. Design spec:
-`docs/superpowers/specs/2026-07-11-errors-package-and-exception-layer-design.md`.
+NestJS-style exception filters.
 
 ### Added
 
