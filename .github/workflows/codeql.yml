@@ -30,6 +30,8 @@ permissions:
 jobs:
   analyze:
     name: Analyze
+    # Private repositories require GitHub Advanced Security for code scanning.
+    if: ${{ github.event.repository.private == false }}
     runs-on: ubuntu-latest
     permissions:
       actions: read
