@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.19.1
+
+### Patch Changes
+
+- 50854e2: Modernize the package build, validation, and release toolchain.
+
 ## 1.19.0 (2026-07-11)
 
 Exception-handler layer (roadmap phase 3): a single branded error concept, one
@@ -96,7 +102,7 @@ machine-verified by an import audit test.
   `@velajs/cloudflare` already exports an unrelated CF-binding `QueueModule`).
   Producers: `QueueModule.forRoot({ queues: ['email'] })` + per-queue
   `QueueClient` injected via `queueToken(name)` (`add(jobName, data,
-  { delayMs? })`). Consumers: `@Processor(queue)` classes with
+{ delayMs? })`). Consumers: `@Processor(queue)` classes with
   `@Process(jobName?)` handlers (named wins over wildcard; duplicates warn,
   first-wins). Dispatch runs each job in `runInEntrypointScope`
   (request-scoped deps rebuild per job), re-resolves processors by token
@@ -136,7 +142,7 @@ cost it nothing at bootstrap.
 
 - **Lazy modules** — `@Module({ lazy: true })`, `DynamicModule.lazy`, and
   `defineModule({ lazy: true })` (also recognized per call site like
-  `isGlobal`) defer a module *instance*'s entire provider/controller group:
+  `isGlobal`) defer a module _instance_'s entire provider/controller group:
   nothing constructs during `VelaFactory.create`. The first resolution of any
   of its tokens (injection, `app.get()`, a request hitting its controller, a
   dispatcher re-resolving an entrypoint token) claims the module; when the
@@ -156,7 +162,7 @@ cost it nothing at bootstrap.
   non-triggering diagnostics (build-time probes, cold-start regression tests).
 - **`DiscoveryFilter.deferLazy`** — discovery returns providers of
   unmaterialized lazy modules as metadata-only entries (`instance:
-  undefined`, mirroring the request-scoped convention) instead of forcing the
+undefined`, mirroring the request-scoped convention) instead of forcing the
   group. `EntrypointRegistry.build` uses it: declared-kind entrypoints of
   lazy modules are metadata-only in `app.entrypoints`; dispatchers that
   re-resolve by token (cloudflare cron/queue/scheduled already do)
@@ -211,7 +217,7 @@ this version.
   `includeRequestScoped`). The event-emitter, schedule, and websocket
   bootstrap scans now all run through it.
 - **Open entrypoint registry** — `registerEntrypointKind({ kind, metaKey,
-  level })`, the `ContributesEntrypoints` interface, and per-application
+level })`, the `ContributesEntrypoints` interface, and per-application
   `app.entrypoints` (`ofKind`/`kinds`/`all`), built at the end of
   `callOnApplicationBootstrap()` so slim bootstrap paths (Cloudflare Durable
   Objects) get it too. Transports query entrypoints instead of module
@@ -320,7 +326,7 @@ The exception-filter chain now reaches into attached middlewares for full NestJS
 
 ### Added
 
-- **`createLazyParamDecorator((data, ctx) => T)`.** Custom parameter decorators whose factory runs the *first time the handler reads a property on the resolved value* — not during argument extraction. Vela's argument resolver runs before guards by design (`extract args → guards → handler`), which means a `createParamDecorator` factory that depends on guard-populated state observes an empty slot. The lazy variant returns a `Proxy` whose traps invoke the factory on demand; the `get` trap short-circuits `prop === 'then'` so `await value` does not consider the proxy a thenable and therefore does not trigger eager resolution. Method results are auto-bound to the resolved real target so detached calls keep `this`; `ownKeys` + `getOwnPropertyDescriptor` are implemented so `JSON.stringify(value)` works after one access. Exported from the root barrel and from `@velajs/vela/internal` via the same surface as `createParamDecorator`. Documented in README under *Custom parameter decorators with deferred resolution*.
+- **`createLazyParamDecorator((data, ctx) => T)`.** Custom parameter decorators whose factory runs the _first time the handler reads a property on the resolved value_ — not during argument extraction. Vela's argument resolver runs before guards by design (`extract args → guards → handler`), which means a `createParamDecorator` factory that depends on guard-populated state observes an empty slot. The lazy variant returns a `Proxy` whose traps invoke the factory on demand; the `get` trap short-circuits `prop === 'then'` so `await value` does not consider the proxy a thenable and therefore does not trigger eager resolution. Method results are auto-bound to the resolved real target so detached calls keep `this`; `ownKeys` + `getOwnPropertyDescriptor` are implemented so `JSON.stringify(value)` works after one access. Exported from the root barrel and from `@velajs/vela/internal` via the same surface as `createParamDecorator`. Documented in README under _Custom parameter decorators with deferred resolution_.
 
 ### Changed
 
@@ -339,14 +345,16 @@ A sanctioned per-request injectable lands as a framework primitive, the metadata
 - **`REQUEST_CONTEXT` injectable.** A request-scoped primitive carrying a stable `id` (mirrored from inbound `x-request-id` if present, else `crypto.randomUUID()`), `receivedAt`, the raw `Request`, the Hono `Context`, and a typed `set/get/has` bag for cross-cutting metadata. Seeded by `RouteManager` into each per-request child container; resolves through `@Inject(REQUEST_CONTEXT)` from any request-scoped service. No `AsyncLocalStorage` — edge-runtime contract intact (verified live under workerd via `pnpm test:workers`).
 
   ```ts
-  import { Inject, Injectable, Scope, REQUEST_CONTEXT } from '@velajs/vela';
-  import type { RequestContext } from '@velajs/vela';
+  import { Inject, Injectable, Scope, REQUEST_CONTEXT } from "@velajs/vela";
+  import type { RequestContext } from "@velajs/vela";
 
   @Injectable({ scope: Scope.REQUEST })
   class TenantResolver {
-    constructor(@Inject(REQUEST_CONTEXT) private readonly ctx: RequestContext) {}
+    constructor(
+      @Inject(REQUEST_CONTEXT) private readonly ctx: RequestContext
+    ) {}
     resolve() {
-      return this.ctx.hono.req.header('x-tenant') ?? 'default';
+      return this.ctx.hono.req.header("x-tenant") ?? "default";
     }
   }
   ```
@@ -393,7 +401,7 @@ Module boundaries are enforced. NestJS-shape: a service cannot resolve dependenc
 
 ### Internal cleanup
 
-- **`Container` constructor accepts `ContainerOptions`** (`{ diagnostics? }`). Threads `requestingModuleId` through `resolve` / `resolveAsync` / `resolveAll`. Per-module scopes are tracked via `registerScope`; framework-internal globals via `markGlobalToken`. `providerOrigin: Map<Token, string>` records each provider's declaring module so constructor injections resolve from the *class's* module, not the caller's. Visibility enforcement runs whenever a `requestingModuleId` is supplied — there is no on/off switch.
+- **`Container` constructor accepts `ContainerOptions`** (`{ diagnostics? }`). Threads `requestingModuleId` through `resolve` / `resolveAsync` / `resolveAll`. Per-module scopes are tracked via `registerScope`; framework-internal globals via `markGlobalToken`. `providerOrigin: Map<Token, string>` records each provider's declaring module so constructor injections resolve from the _class's_ module, not the caller's. Visibility enforcement runs whenever a `requestingModuleId` is supplied — there is no on/off switch.
 
 - **`ModuleLoader` registers a `ModuleScope` per module** before recursing into imports — `localProviders` includes the module class itself (so `NestModule.configure()` resolution stays inside its own scope), controllers, and every provider token. Synthetic `APP_*` tokens are marked global at mint time so RouteManager's request-time resolutions (no requester) keep working.
 
@@ -403,7 +411,7 @@ Module boundaries are enforced. NestJS-shape: a service cannot resolve dependenc
 
 - **Dropped unused `Container.parent` field** (audit #10). Was assigned in `createChild()` but never read.
 
-- **Bootstrap consolidated into `src/factory/bootstrap.ts`** — `VelaFactory.create` no longer hand-rolls the APP_* / consumer-middleware / global-prefix wiring sequence. Net code reduction in `factory.ts`.
+- **Bootstrap consolidated into `src/factory/bootstrap.ts`** — `VelaFactory.create` no longer hand-rolls the APP\_\* / consumer-middleware / global-prefix wiring sequence. Net code reduction in `factory.ts`.
 
 ## 1.1.0 (2026-04-30)
 
@@ -480,7 +488,7 @@ Architectural remodel: one metadata model, one storage, public surface trimmed, 
 - **`module-loader` `new moduleClass()` footgun fixed.** `NestModule.configure()` modules are now resolved through the container, so they can have constructor-injected deps.
 - **One path util** (`registry/paths.ts`: `normalizePath`, `joinPaths`, `toOpenApiPath`). Replaces 2× duplicated implementations in `http/decorators.ts`, `openapi/document.ts`, and `route.manager.ts`.
 - **One `ExecutionContext` factory** (`http/execution-context.ts`: `buildExecutionContext`). Replaces 2× duplicated literal construction.
-- **One `bindAppProviders` helper** (`pipeline/app-providers.ts`). Implements the NestJS APP_* provider convention in one place; replaces 5× duplicated APP_* wiring blocks across `factory.ts` and `testing.builder.ts`.
+- **One `bindAppProviders` helper** (`pipeline/app-providers.ts`). Implements the NestJS APP*\* provider convention in one place; replaces 5× duplicated APP*\* wiring blocks across `factory.ts` and `testing.builder.ts`.
 - **One module-graph walk** (`module/graph.ts`: `collectControllers`). Replaces the duplicate implementation in `openapi/document.ts`.
 - **schedule/event-emitter/openapi decorators** now use `MetadataRegistry.appendCustomClassMeta`/`appendCustomHandlerMeta` instead of direct `Reflect.defineMetadata` calls.
 - **Stub `pnpm-workspace.yaml` and `bunfig.toml` deleted** — they only set `onlyBuiltDependencies`, which lives in `package.json#pnpm`. `bun.lock` deleted; pnpm is the source of truth.
@@ -494,7 +502,7 @@ Edge-runtime audit and AI-drift cleanup.
 - **Schedule module split.** `ScheduleExecutor`, `SCHEDULE_MODULE_OPTIONS`, and `ScheduleModuleOptions` are no longer exported from `@velajs/vela`. The `setInterval`-based timer executor moved to a new opt-in sub-export at `@velajs/vela/schedule-node`. Consumers on Node or Bun should now do:
 
   ```ts
-  import { ScheduleNodeModule } from '@velajs/vela/schedule-node';
+  import { ScheduleNodeModule } from "@velajs/vela/schedule-node";
 
   @Module({ imports: [ScheduleNodeModule.forRoot()], providers: [JobsService] })
   class AppModule {}
@@ -504,7 +512,7 @@ Edge-runtime audit and AI-drift cleanup.
 
   Edge runtimes without `setInterval` (Cloudflare Workers, etc.) should continue to use platform cron triggers — `@velajs/cloudflare` ≥ 0.2.0 dispatches core `@Cron` jobs via its `scheduled()` handler.
 
-- **TypeScript enums replaced with `as const` objects** for `HttpMethod`, `ParamType`, `Scope`, `RequestMethod`, and `LogLevel`. Value access (`HttpMethod.GET`) keeps working; type-position usages (`: HttpMethod`) keep working via same-name type aliases. Code that imported the enum *type* with structural assumptions about enum runtime shape may need adjustment.
+- **TypeScript enums replaced with `as const` objects** for `HttpMethod`, `ParamType`, `Scope`, `RequestMethod`, and `LogLevel`. Value access (`HttpMethod.GET`) keeps working; type-position usages (`: HttpMethod`) keep working via same-name type aliases. Code that imported the enum _type_ with structural assumptions about enum runtime shape may need adjustment.
 
 ### Fixes
 
