@@ -2,7 +2,32 @@
   "name": "@velajs/authz",
   "version": "1.0.0",
   "description": "Framework-agnostic permission/role engine for Vela: defineRole, fail-closed can(), composition + masking helpers",
+  "keywords": [
+    "authorization",
+    "authz",
+    "framework",
+    "permissions",
+    "rbac",
+    "vela"
+  ],
+  "homepage": "https://github.com/velajs/authz#readme",
+  "bugs": {
+    "url": "https://github.com/velajs/authz/issues"
+  },
+  "license": "MIT",
+  "author": "ksh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/velajs/authz.git"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
   "type": "module",
+  "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -15,40 +40,30 @@
       "import": "./dist/vela/index.js"
     }
   },
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE",
-    "CHANGELOG.md"
-  ],
   "scripts": {
-    "build": "rm -rf dist && swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
+    "build": "tsdown",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
-    "prepare": "swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
-    "prepublishOnly": "pnpm run typecheck && pnpm test"
+    "lint": "oxlint .",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "publint": "publint",
+    "attw": "attw --pack . --profile esm-only",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "pnpm build && changeset publish",
+    "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm test && pnpm publint && pnpm attw"
   },
-  "sideEffects": false,
-  "keywords": [
-    "vela",
-    "authz",
-    "authorization",
-    "rbac",
-    "permissions",
-    "framework"
-  ],
-  "author": "ksh",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/velajs/authz.git"
-  },
-  "homepage": "https://github.com/velajs/authz#readme",
-  "bugs": {
-    "url": "https://github.com/velajs/authz/issues"
-  },
-  "engines": {
-    "node": ">=20"
+  "devDependencies": {
+    "@arethetypeswrong/cli": "catalog:",
+    "@changesets/cli": "catalog:",
+    "@velajs/vela": "^1.19.0",
+    "oxfmt": "catalog:",
+    "oxlint": "catalog:",
+    "publint": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   },
   "peerDependencies": {
     "@velajs/vela": ">=1.11.0"
@@ -58,19 +73,8 @@
       "optional": true
     }
   },
-  "devDependencies": {
-    "@swc/cli": "^0.8.1",
-    "@swc/core": "^1.15.43",
-    "@velajs/vela": "^1.19.0",
-    "typescript": "^6.0.3",
-    "unplugin-swc": "^1.5.9",
-    "vitest": "^4.1.9"
+  "engines": {
+    "node": ">=24"
   },
-  "packageManager": "pnpm@10.20.0",
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@swc/core",
-      "esbuild"
-    ]
-  }
+  "packageManager": "pnpm@11.11.0"
 }

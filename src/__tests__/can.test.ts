@@ -30,12 +30,19 @@ describe('createAuthz + can (role-backed default resolver)', () => {
     expect(await authz.can({}, 'posts:read')).toBe(false);
   });
   it('FAIL-CLOSED: a throwing resolver denies (never allows on error)', async () => {
-    const boom = { grants() { throw new Error('resolver down'); } };
+    const boom = {
+      grants() {
+        throw new Error('resolver down');
+      },
+    };
     expect(await can({ roles: ['admin'] }, 'posts:read', boom)).toBe(false);
   });
   it('createAuthz flags a role granting an undeclared permission when permissions are declared', () => {
     expect(() =>
-      createAuthz({ roles: [defineRole('x', ['posts:frobnicate'])], permissions: [definePermission('posts:read')] }),
+      createAuthz({
+        roles: [defineRole('x', ['posts:frobnicate'])],
+        permissions: [definePermission('posts:read')],
+      }),
     ).toThrow(/undeclared permission 'posts:frobnicate'/);
   });
 });
