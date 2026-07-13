@@ -1,9 +1,14 @@
 # Changelog
 
+## 0.3.2
+
+### Patch Changes
+
+- cb3140a: Modernize the package build, validation, and release toolchain.
+
 ## 0.2.0 (2026-07-04)
 
 - Rebuilt on vela 1.11 `defineModule` + `lazyProvider` (hand-rolled forRoot/forRootAsync deleted; public API byte-identical). Requires `@velajs/vela >=1.11.0`.
-
 
 ## 0.1.0 (unreleased)
 
