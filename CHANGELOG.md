@@ -1,9 +1,14 @@
 # Changelog
 
+## 0.6.1
+
+### Patch Changes
+
+- 89f5473: Modernize the package build, validation, and release toolchain.
+
 ## 0.4.0 (2026-07-04)
 
 - Rebuilt on vela 1.11 `defineModule` + `lazyProvider` + `provideGlobal` (lazy auth-builder deferral preserved; public API unchanged). Requires `@velajs/vela >=1.11.0`.
-
 
 All notable changes to `@velajs/better-auth` are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
