@@ -1,9 +1,14 @@
 # Changelog
 
+## 1.10.1
+
+### Patch Changes
+
+- 6f04d15: Modernize the package build, validation, and release toolchain.
+
 ## 1.7.0 (2026-07-04)
 
 - `cloudflareAdapter()` exported (createCloudflareApp composes vela RuntimeAdapter); `@QueueConsumer`/`@Scheduled` declare open entrypoint kinds; queue/scheduled dispatch runs per-event in a request scope through PipelineRunner (consumer-scoped guards/interceptors/filters; request-scoped deps rebuild per batch); DO WebSocket reads `app.entrypoints`. Requires `@velajs/vela >=1.11.0`.
-
 
 ## 1.6.0 (2026-07-01)
 
@@ -25,11 +30,11 @@
 
   ```ts
   // before
-  import { CloudflareFactory } from '@velajs/cloudflare';
+  import { CloudflareFactory } from "@velajs/cloudflare";
   const app = await CloudflareFactory.create(AppModule);
 
   // after
-  import { createCloudflareApp } from '@velajs/cloudflare';
+  import { createCloudflareApp } from "@velajs/cloudflare";
   const app = await createCloudflareApp(AppModule);
   ```
 
