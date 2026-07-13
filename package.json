@@ -2,7 +2,36 @@
   "name": "@velajs/storage",
   "version": "0.3.1",
   "description": "Edge-first, driver-based object/file storage for the Vela framework",
+  "keywords": [
+    "cloudflare-workers",
+    "edge",
+    "framework",
+    "multipart",
+    "object-storage",
+    "presigned-url",
+    "r2",
+    "s3",
+    "storage",
+    "vela"
+  ],
+  "homepage": "https://github.com/velajs/storage#readme",
+  "bugs": {
+    "url": "https://github.com/velajs/storage/issues"
+  },
+  "license": "MIT",
+  "author": "ksh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/velajs/storage.git"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
   "type": "module",
+  "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -43,78 +72,54 @@
       "import": "./dist/testing/index.js"
     }
   },
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE",
-    "CHANGELOG.md"
-  ],
   "scripts": {
-    "build": "rm -rf dist && swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
+    "build": "tsdown",
     "test": "vitest run",
     "test:workers": "vitest run --config vitest.config.workers.ts",
     "typecheck": "tsc --noEmit",
-    "prepare": "swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
-    "prepublishOnly": "pnpm run typecheck && pnpm test"
-  },
-  "sideEffects": false,
-  "keywords": [
-    "vela",
-    "storage",
-    "object-storage",
-    "s3",
-    "r2",
-    "presigned-url",
-    "multipart",
-    "edge",
-    "cloudflare-workers",
-    "framework"
-  ],
-  "author": "ksh",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/velajs/storage.git"
-  },
-  "homepage": "https://github.com/velajs/storage#readme",
-  "bugs": {
-    "url": "https://github.com/velajs/storage/issues"
-  },
-  "engines": {
-    "node": ">=20"
+    "lint": "oxlint .",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "publint": "publint",
+    "attw": "attw --pack . --profile esm-only",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "pnpm build && changeset publish",
+    "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm test && pnpm test:workers && pnpm publint && pnpm attw"
   },
   "dependencies": {
     "aws4fetch": "^1.0.20"
   },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "catalog:",
+    "@changesets/cli": "catalog:",
+    "@cloudflare/vitest-pool-workers": "^0.16.18",
+    "@cloudflare/workers-types": "^4.20260624.1",
+    "@swc/core": "catalog:",
+    "@velajs/testing": "^0.4.0",
+    "@velajs/vela": "^1.12.0",
+    "aws4fetch": "^1.0.20",
+    "hono": "^4.12.27",
+    "oxfmt": "catalog:",
+    "oxlint": "catalog:",
+    "publint": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "unplugin-swc": "catalog:",
+    "vitest": "catalog:"
+  },
   "peerDependencies": {
+    "@cloudflare/workers-types": ">=4",
     "@velajs/vela": ">=1.11.0",
-    "hono": ">=4",
-    "@cloudflare/workers-types": ">=4"
+    "hono": ">=4"
   },
   "peerDependenciesMeta": {
     "@cloudflare/workers-types": {
       "optional": true
     }
   },
-  "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.16.18",
-    "@cloudflare/workers-types": "^4.20260624.1",
-    "@swc/cli": "^0.8.1",
-    "@swc/core": "^1.15.43",
-    "@velajs/testing": "^0.4.0",
-    "@velajs/vela": "^1.12.0",
-    "aws4fetch": "^1.0.20",
-    "hono": "^4.12.27",
-    "typescript": "^6.0.3",
-    "unplugin-swc": "^1.5.9",
-    "vitest": "^4.1.9"
+  "engines": {
+    "node": ">=24"
   },
-  "packageManager": "pnpm@10.20.0",
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@swc/core",
-      "esbuild",
-      "workerd"
-    ]
-  }
+  "packageManager": "pnpm@11.11.0"
 }

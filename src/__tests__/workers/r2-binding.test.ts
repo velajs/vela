@@ -8,7 +8,10 @@ import type { R2BucketLike } from '../../drivers/r2/r2.types';
 // The only faithful test of the native binding path: a real R2 binding under
 // workerd/miniflare (TEST_BUCKET from wrangler.toml).
 describe('r2Driver under workerd (native binding)', () => {
-  const storage = () => createStorage({ driver: r2Driver({ bucket: (env as { TEST_BUCKET: R2BucketLike }).TEST_BUCKET }) });
+  const storage = () =>
+    createStorage({
+      driver: r2Driver({ bucket: (env as { TEST_BUCKET: R2BucketLike }).TEST_BUCKET }),
+    });
 
   it('uploads, downloads, ranges, lists, and deletes', async () => {
     const s = storage();

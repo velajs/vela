@@ -24,7 +24,11 @@ function fakeAdapter(withMove = false): StorageSdkAdapterLike & { store: Map<str
     store,
     async upload(path, body, opts) {
       const bytes = new Uint8Array(await toBytes(body));
-      const e: Entry = { bytes, contentType: opts?.contentType ?? 'application/octet-stream', metadata: opts?.metadata };
+      const e: Entry = {
+        bytes,
+        contentType: opts?.contentType ?? 'application/octet-stream',
+        metadata: opts?.metadata,
+      };
       store.set(path, e);
       return meta(path, e);
     },
@@ -41,7 +45,9 @@ function fakeAdapter(withMove = false): StorageSdkAdapterLike & { store: Map<str
     async list(opts) {
       const prefix = opts?.prefix ?? '';
       return {
-        items: [...store.entries()].filter(([k]) => k.startsWith(prefix)).map(([k, e]) => meta(k, e)),
+        items: [...store.entries()]
+          .filter(([k]) => k.startsWith(prefix))
+          .map(([k, e]) => meta(k, e)),
       };
     },
     async url(path) {
@@ -69,7 +75,10 @@ describe('storageSdkDriver bridge', () => {
   it('maps core operations (path<->key, buffered body -> StoredFile)', async () => {
     const d = storageSdkDriver(fakeAdapter());
     expect(d.name).toBe('storagesdk:fake');
-    const r = await d.upload('docs/a.txt', 'hello', { contentType: 'text/plain', metadata: { o: '1' } });
+    const r = await d.upload('docs/a.txt', 'hello', {
+      contentType: 'text/plain',
+      metadata: { o: '1' },
+    });
     expect(r.size).toBe(5);
     const f = await d.download('docs/a.txt');
     expect(await f.text()).toBe('hello');
@@ -92,7 +101,9 @@ describe('storageSdkDriver bridge', () => {
     await d.upload('k', 'v');
     expect(await d.exists('k')).toBe(true);
     expect(await d.exists('missing')).toBe(false);
-    await expect(d.signedUploadUrl('k', { expiresIn: 60 })).rejects.toMatchObject({ code: 'Unsupported' });
+    await expect(d.signedUploadUrl('k', { expiresIn: 60 })).rejects.toMatchObject({
+      code: 'Unsupported',
+    });
   });
 
   it('exposes move only when the adapter has it', async () => {

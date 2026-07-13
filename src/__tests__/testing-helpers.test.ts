@@ -21,9 +21,7 @@ describe('@velajs/storage/testing', () => {
 
     it('throws with a clear message when the object is missing', async () => {
       const s = service();
-      await expect(assertExists(s, 'nope.txt')).rejects.toThrow(
-        /assertExists.*"nope\.txt".*exist/,
-      );
+      await expect(assertExists(s, 'nope.txt')).rejects.toThrow(/assertExists.*"nope\.txt".*exist/);
     });
 
     it('also works against a bare Storage facade', async () => {
@@ -42,9 +40,7 @@ describe('@velajs/storage/testing', () => {
     it('throws with a clear message when an object is present', async () => {
       const s = service();
       await s.upload('here.txt', 'x');
-      await expect(assertMissing(s, 'here.txt')).rejects.toThrow(
-        /assertMissing.*"here\.txt"/,
-      );
+      await expect(assertMissing(s, 'here.txt')).rejects.toThrow(/assertMissing.*"here\.txt"/);
     });
   });
 

@@ -36,7 +36,7 @@ export function failover(fallbacks: StorageDriver[], opts: FailoverOptions = {})
       let lastError: unknown;
       for (let i = 0; i < chain.length; i++) {
         try {
-          return await fn(chain[i]);
+          return await fn(chain[i]!);
         } catch (e) {
           lastError = e;
           if (!should(e) || i === chain.length - 1) throw e;

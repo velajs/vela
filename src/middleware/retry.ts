@@ -28,6 +28,9 @@ export function retry(opts: RetryMiddlewareOptions = {}): Middleware {
       list: (o) => run(o, (s) => inner.list({ ...o, signal: s })),
       delete: (k, o) => run(o, (s) => inner.delete(k, { ...o, signal: s })),
       copy: (f, t, o) => run(o, (s) => inner.copy(f, t, { ...o, signal: s })),
-      upload: (k, b, o) => (isStream(b) ? inner.upload(k, b, o) : run(o, (s) => inner.upload(k, b, { ...o, signal: s }))),
+      upload: (k, b, o) =>
+        isStream(b)
+          ? inner.upload(k, b, o)
+          : run(o, (s) => inner.upload(k, b, { ...o, signal: s })),
     });
 }

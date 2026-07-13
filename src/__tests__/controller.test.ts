@@ -17,7 +17,9 @@ function s3Mock() {
     fetch: (async (input: RequestInfo | URL) => {
       const url = new URL(input instanceof Request ? input.url : String(input));
       if (url.searchParams.get('list-type') === '2') {
-        return new Response('<ListBucketResult><Contents><Key>a.txt</Key><Size>3</Size></Contents><IsTruncated>false</IsTruncated></ListBucketResult>');
+        return new Response(
+          '<ListBucketResult><Contents><Key>a.txt</Key><Size>3</Size></Contents><IsTruncated>false</IsTruncated></ListBucketResult>',
+        );
       }
       return new Response(null, { status: 204 });
     }) as unknown as typeof fetch,
@@ -44,7 +46,10 @@ describe('StorageController', () => {
 
   it('default-deny: rejects when no authorizer is configured', async () => {
     const app = await appWith({ defaultPolicy: 'deny' });
-    const res = await app.request('/api/storage/sign-upload', post('/api/storage/sign-upload', { key: 'a.txt' }));
+    const res = await app.request(
+      '/api/storage/sign-upload',
+      post('/api/storage/sign-upload', { key: 'a.txt' }),
+    );
     expect(res.status).toBe(403);
     expect((await res.json()).error.code).toBe('forbidden');
   });
@@ -56,7 +61,10 @@ describe('StorageController', () => {
         throw new Error(`provider blew up: ${secret}`);
       },
     });
-    const res = await app.request('/api/storage/sign-upload', post('x', { key: 'a.txt', contentType: 'text/plain' }));
+    const res = await app.request(
+      '/api/storage/sign-upload',
+      post('x', { key: 'a.txt', contentType: 'text/plain' }),
+    );
     expect(res.status).toBe(502);
     const body = await res.json();
     expect(body.error.code).toBe('upstream_error');
@@ -86,7 +94,9 @@ describe('StorageController', () => {
       forcePathStyle: true,
       credentials: { accessKeyId: 'AK', secretAccessKey: 'sk' },
       fetch: (async () =>
-        new Response(`<Error><Code>AccessDenied</Code><Message>${secret}</Message></Error>`, { status: 403 })) as unknown as typeof fetch,
+        new Response(`<Error><Code>AccessDenied</Code><Message>${secret}</Message></Error>`, {
+          status: 403,
+        })) as unknown as typeof fetch,
     });
     const moduleRef = await Test.createTestingModule({
       imports: [StorageModule.forRoot({ driver: s3, http: { defaultPolicy: 'allow' } })],
@@ -102,7 +112,10 @@ describe('StorageController', () => {
 
   it('mints a presigned PUT when allowed', async () => {
     const app = await appWith({ authorize: () => true });
-    const res = await app.request('/api/storage/sign-upload', post('x', { key: 'a.txt', contentType: 'text/plain' }));
+    const res = await app.request(
+      '/api/storage/sign-upload',
+      post('x', { key: 'a.txt', contentType: 'text/plain' }),
+    );
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.key).toBe('a.txt');

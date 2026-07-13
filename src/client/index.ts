@@ -66,12 +66,16 @@ export class StorageClientError extends Error {
   }
 }
 
-async function pool<T>(items: T[], limit: number, worker: (item: T, index: number) => Promise<void>): Promise<void> {
+async function pool<T>(
+  items: T[],
+  limit: number,
+  worker: (item: T, index: number) => Promise<void>,
+): Promise<void> {
   let i = 0;
   const run = async () => {
     while (i < items.length) {
       const index = i++;
-      await worker(items[index], index);
+      await worker(items[index]!, index);
     }
   };
   await Promise.all(Array.from({ length: Math.min(Math.max(1, limit), items.length || 1) }, run));
@@ -100,7 +104,9 @@ function xhrSend(o: {
     xhr.onload = () =>
       xhr.status >= 200 && xhr.status < 300
         ? resolve({ status: xhr.status, getHeader: (n) => xhr.getResponseHeader(n) })
-        : reject(new StorageClientError('upstream_error', `upload failed: ${xhr.status}`, xhr.status));
+        : reject(
+            new StorageClientError('upstream_error', `upload failed: ${xhr.status}`, xhr.status),
+          );
     xhr.onerror = () => reject(new StorageClientError('upstream_error', 'network error', 0));
     o.signal?.addEventListener('abort', () => xhr.abort(), { once: true });
     xhr.send(o.body);
@@ -114,7 +120,10 @@ interface ResumeSession {
   uploaded: Record<number, string>; // partNumber -> etag
 }
 
-function loadSession(resumeKey: string | undefined, fingerprint: string): ResumeSession | undefined {
+function loadSession(
+  resumeKey: string | undefined,
+  fingerprint: string,
+): ResumeSession | undefined {
   if (!resumeKey || typeof localStorage === 'undefined') return undefined;
   try {
     const raw = localStorage.getItem(`vela.storage.resume:${resumeKey}`);
@@ -154,7 +163,9 @@ export class StorageClient {
     return multipart ? this.#multipartUpload(file, opts) : this.#simpleUpload(file, opts);
   }
 
-  list(query: { prefix?: string; cursor?: string; limit?: number; delimiter?: string } = {}): Promise<ListResponse> {
+  list(
+    query: { prefix?: string; cursor?: string; limit?: number; delimiter?: string } = {},
+  ): Promise<ListResponse> {
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(query)) if (v != null) qs.set(k, String(v));
     return this.#json<ListResponse>('GET', `/list?${qs.toString()}`);
@@ -192,9 +203,19 @@ export class StorageClient {
       const form = new FormData();
       for (const [k, v] of Object.entries(upload.fields)) form.append(k, v);
       form.append('file', file); // 'file' must be last for an S3/R2 POST policy
-      await xhrSend({ method: 'POST', url: upload.url, body: form, signal: opts.signal, onProgress: opts.onProgress });
+      await xhrSend({
+        method: 'POST',
+        url: upload.url,
+        body: form,
+        signal: opts.signal,
+        onProgress: opts.onProgress,
+      });
     }
-    return { key, size: file.size, contentType: opts.contentType ?? (file.type || 'application/octet-stream') };
+    return {
+      key,
+      size: file.size,
+      contentType: opts.contentType ?? (file.type || 'application/octet-stream'),
+    };
   }
 
   async #multipartUpload(file: File | Blob, opts: ClientUploadOptions): Promise<UploadResult> {
@@ -211,17 +232,25 @@ export class StorageClient {
         metadata: opts.metadata,
         partSize: typeof opts.multipart === 'object' ? opts.multipart.partSize : undefined,
       });
-      session = { key: created.key, uploadId: created.uploadId, partSize: created.partSize, uploaded: {} };
+      session = {
+        key: created.key,
+        uploadId: created.uploadId,
+        partSize: created.partSize,
+        uploaded: {},
+      };
     }
 
     const partSize = session.partSize;
     const count = Math.ceil(file.size / partSize) || 1;
     const loaded = new Array<number>(count + 1).fill(0);
-    for (const n of Object.keys(session.uploaded)) loaded[Number(n)] = partBytes(Number(n), partSize, file.size);
+    for (const n of Object.keys(session.uploaded))
+      loaded[Number(n)] = partBytes(Number(n), partSize, file.size);
     const report = () =>
       opts.onProgress?.({ loaded: loaded.reduce((a, b) => a + b, 0), total: file.size });
 
-    const todo = Array.from({ length: count }, (_, i) => i + 1).filter((n) => !session!.uploaded[n]);
+    const todo = Array.from({ length: count }, (_, i) => i + 1).filter(
+      (n) => !session!.uploaded[n],
+    );
 
     await pool(todo, concurrency, async (n) => {
       const blob = file.slice((n - 1) * partSize, Math.min(n * partSize, file.size));

@@ -1,7 +1,12 @@
 import { byteLengthOf, toStream } from '../internal/body';
 import { createStoredFile } from '../internal/stored-file';
 import { StorageError } from '../storage.error';
-import type { DownloadOptions, OperationOptions, StoredFile, UploadOptions } from '../storage.types';
+import type {
+  DownloadOptions,
+  OperationOptions,
+  StoredFile,
+  UploadOptions,
+} from '../storage.types';
 import { passthrough, type Middleware } from './wrap';
 
 export type CompressionFormat = 'gzip' | 'deflate' | 'deflate-raw';
@@ -29,7 +34,8 @@ function stripVela(meta: Record<string, string> | undefined): Record<string, str
  */
 export function compression(opts: CompressionOptions = {}): Middleware {
   const format = opts.format ?? 'gzip';
-  const available = typeof CompressionStream !== 'undefined' && typeof DecompressionStream !== 'undefined';
+  const available =
+    typeof CompressionStream !== 'undefined' && typeof DecompressionStream !== 'undefined';
   if (!available && (opts.onUnavailable ?? 'throw') === 'throw') {
     throw new StorageError('Unsupported', 'CompressionStream is not available in this runtime');
   }
@@ -43,7 +49,9 @@ export function compression(opts: CompressionOptions = {}): Middleware {
       if (!zip) return file; // untagged / legacy object
       const plain = file
         .stream()
-        .pipeThrough(new DecompressionStream(zip) as unknown as ReadableWritablePair<Uint8Array, Uint8Array>);
+        .pipeThrough(
+          new DecompressionStream(zip) as unknown as ReadableWritablePair<Uint8Array, Uint8Array>,
+        );
       const size = file.metadata?.['vela-size'] ? Number(file.metadata['vela-size']) : file.size;
       return createStoredFile(
         {
@@ -67,7 +75,10 @@ export function compression(opts: CompressionOptions = {}): Middleware {
         signedUrl: { supported: false, upload: false },
         async upload(k, body, o?: UploadOptions) {
           const zipped = toStream(body).pipeThrough(
-            new CompressionStream(format) as unknown as ReadableWritablePair<Uint8Array, Uint8Array>,
+            new CompressionStream(format) as unknown as ReadableWritablePair<
+              Uint8Array,
+              Uint8Array
+            >,
           );
           const metadata: Record<string, string> = { ...o?.metadata, 'vela-zip': format };
           if (o?.contentType) metadata['vela-ct'] = o.contentType;
@@ -78,7 +89,11 @@ export function compression(opts: CompressionOptions = {}): Middleware {
             metadata: inner.supportsMetadata ? metadata : undefined,
             contentType: 'application/octet-stream',
           });
-          return { ...r, size: known ?? r.size, contentType: o?.contentType ?? 'application/octet-stream' };
+          return {
+            ...r,
+            size: known ?? r.size,
+            contentType: o?.contentType ?? 'application/octet-stream',
+          };
         },
         download: decompressDownload,
         async head(k, o?: OperationOptions) {
@@ -95,14 +110,20 @@ export function compression(opts: CompressionOptions = {}): Middleware {
               etag: file.etag,
               metadata: stripVela(file.metadata),
             },
-            { kind: 'lazy', fetch: async () => new Response((await decompressDownload(k)).stream()) },
+            {
+              kind: 'lazy',
+              fetch: async () => new Response((await decompressDownload(k)).stream()),
+            },
           );
         },
         url() {
           throw new StorageError('Unsupported', 'compression: url() would serve compressed bytes');
         },
         signedUploadUrl() {
-          throw new StorageError('Unsupported', 'compression: signed uploads would store uncompressed');
+          throw new StorageError(
+            'Unsupported',
+            'compression: signed uploads would store uncompressed',
+          );
         },
       },
       ['createMultipartUpload', 'resumeMultipartUpload', 'signedMultipart'],

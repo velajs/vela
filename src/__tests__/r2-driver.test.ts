@@ -24,7 +24,11 @@ function makeR2Stub(): R2BucketLike & { store: Map<string, Entry> } {
     store,
     async put(key, value: R2PutValue, options) {
       const bytes = await toBytes((value ?? '') as never);
-      const e: Entry = { bytes, httpMetadata: options?.httpMetadata, customMetadata: options?.customMetadata };
+      const e: Entry = {
+        bytes,
+        httpMetadata: options?.httpMetadata,
+        customMetadata: options?.customMetadata,
+      };
       store.set(key, e);
       return obj(key, e);
     },
@@ -34,9 +38,16 @@ function makeR2Stub(): R2BucketLike & { store: Map<string, Entry> } {
       let out = e.bytes;
       if (options?.range?.offset != null) {
         const off = options.range.offset;
-        out = e.bytes.subarray(off, options.range.length != null ? off + options.range.length : undefined);
+        out = e.bytes.subarray(
+          off,
+          options.range.length != null ? off + options.range.length : undefined,
+        );
       }
-      return { ...obj(key, e), body: new Response(out).body as ReadableStream, arrayBuffer: async () => out.buffer as ArrayBuffer };
+      return {
+        ...obj(key, e),
+        body: new Response(out).body as ReadableStream,
+        arrayBuffer: async () => out.buffer as ArrayBuffer,
+      };
     },
     async head(key) {
       const e = store.get(key);
@@ -61,7 +72,9 @@ function makeR2Stub(): R2BucketLike & { store: Map<string, Entry> } {
           return { partNumber, etag: `p${partNumber}` };
         },
         async complete(uploaded) {
-          const ordered = uploaded.sort((a, b) => a.partNumber - b.partNumber).map((p) => parts.get(p.partNumber)!);
+          const ordered = uploaded
+            .sort((a, b) => a.partNumber - b.partNumber)
+            .map((p) => parts.get(p.partNumber)!);
           const total = ordered.reduce((n, c) => n + c.byteLength, 0);
           const all = new Uint8Array(total);
           let o = 0;
@@ -69,7 +82,11 @@ function makeR2Stub(): R2BucketLike & { store: Map<string, Entry> } {
             all.set(c, o);
             o += c.byteLength;
           }
-          const e: Entry = { bytes: all, httpMetadata: options?.httpMetadata, customMetadata: options?.customMetadata };
+          const e: Entry = {
+            bytes: all,
+            httpMetadata: options?.httpMetadata,
+            customMetadata: options?.customMetadata,
+          };
           store.set(key, e);
           return obj(key, e);
         },

@@ -46,10 +46,12 @@ export function passthrough(
     d.move = over.move ?? ((f, t, o) => inner.move!(f, t, o));
   }
   if (has('createMultipartUpload') && (over.createMultipartUpload || inner.createMultipartUpload)) {
-    d.createMultipartUpload = over.createMultipartUpload ?? ((k, o) => inner.createMultipartUpload!(k, o));
+    d.createMultipartUpload =
+      over.createMultipartUpload ?? ((k, o) => inner.createMultipartUpload!(k, o));
   }
   if (has('resumeMultipartUpload') && (over.resumeMultipartUpload || inner.resumeMultipartUpload)) {
-    d.resumeMultipartUpload = over.resumeMultipartUpload ?? ((k, u) => inner.resumeMultipartUpload!(k, u));
+    d.resumeMultipartUpload =
+      over.resumeMultipartUpload ?? ((k, u) => inner.resumeMultipartUpload!(k, u));
   }
   if (has('signedMultipart') && (over.signedMultipart || inner.signedMultipart)) {
     d.signedMultipart = over.signedMultipart ?? inner.signedMultipart;

@@ -47,7 +47,7 @@ function tagPattern(tag: string): string {
 /** First `<tag>…</tag>` inner text (entity-decoded), or `undefined`. */
 export function tagText(xml: string, tag: string): string | undefined {
   const m = new RegExp(tagPattern(tag)).exec(xml);
-  return m ? unescapeXml(m[1]) : undefined;
+  return m ? unescapeXml(m[1]!) : undefined;
 }
 
 /** All `<tag>…</tag>` inner blocks (raw, not decoded — for nested extraction). */
@@ -55,6 +55,6 @@ export function tagBlocks(xml: string, tag: string): string[] {
   const re = new RegExp(tagPattern(tag), 'g');
   const out: string[] = [];
   let m: RegExpExecArray | null;
-  while ((m = re.exec(xml)) !== null) out.push(m[1]);
+  while ((m = re.exec(xml)) !== null) out.push(m[1]!);
   return out;
 }

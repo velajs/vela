@@ -83,9 +83,18 @@ function mapS3Code(code: string | undefined, status: number): StorageErrorCode {
   return 'Provider'; // e.g. a 200 response carrying an <Error> body
 }
 
-function toError(status: number, code: string | undefined, message: string | undefined, key?: string): StorageError {
+function toError(
+  status: number,
+  code: string | undefined,
+  message: string | undefined,
+  key?: string,
+): StorageError {
   const mapped = mapS3Code(code, status);
-  const retryable = mapped === 'Provider' || mapped === 'RateLimited' || mapped === 'Timeout' || mapped === 'Network';
+  const retryable =
+    mapped === 'Provider' ||
+    mapped === 'RateLimited' ||
+    mapped === 'Timeout' ||
+    mapped === 'Network';
   return new StorageError(mapped, message ?? code ?? `S3 error${key ? ` (${key})` : ''}`, {
     status: status >= 400 ? status : undefined,
     retryable,
@@ -126,14 +135,17 @@ export function s3Driver(options: S3DriverOptions): StorageDriver {
   const expires = options.defaultUrlExpiresIn ?? DEFAULT_EXPIRES;
 
   function uploadHeaders(
-    opts: { contentType?: string; cacheControl?: string; metadata?: Record<string, string> } | undefined,
+    opts:
+      | { contentType?: string; cacheControl?: string; metadata?: Record<string, string> }
+      | undefined,
     unsignedPayload: boolean,
   ): Headers {
     const h = new Headers();
     if (unsignedPayload) h.set('x-amz-content-sha256', 'UNSIGNED-PAYLOAD');
     if (opts?.contentType) h.set('content-type', opts.contentType);
     if (opts?.cacheControl) h.set('cache-control', opts.cacheControl);
-    if (opts?.metadata) for (const [k, v] of Object.entries(opts.metadata)) h.set(`x-amz-meta-${k}`, v);
+    if (opts?.metadata)
+      for (const [k, v] of Object.entries(opts.metadata)) h.set(`x-amz-meta-${k}`, v);
     return h;
   }
 
@@ -256,7 +268,12 @@ export function s3Driver(options: S3DriverOptions): StorageDriver {
       const res = await client.send(
         client.objectUrl(key),
         withDuplex(
-          { method: 'PUT', headers: uploadHeaders(opts, true), body: body as BodyInit, signal: opts?.signal },
+          {
+            method: 'PUT',
+            headers: uploadHeaders(opts, true),
+            body: body as BodyInit,
+            signal: opts?.signal,
+          },
           body,
         ),
       );
@@ -279,7 +296,8 @@ export function s3Driver(options: S3DriverOptions): StorageDriver {
         signal: opts?.signal,
       });
       if (!res.ok || !res.body) {
-        if (res.status === 404) throw new StorageError('NotFound', `not found: ${key}`, { status: 404 });
+        if (res.status === 404)
+          throw new StorageError('NotFound', `not found: ${key}`, { status: 404 });
         throw await s3Error(res, key);
       }
       return createStoredFile(
@@ -296,9 +314,13 @@ export function s3Driver(options: S3DriverOptions): StorageDriver {
     },
 
     async head(key: string, opts?: OperationOptions): Promise<StoredFile> {
-      const res = await client.send(client.objectUrl(key), { method: 'HEAD', signal: opts?.signal });
+      const res = await client.send(client.objectUrl(key), {
+        method: 'HEAD',
+        signal: opts?.signal,
+      });
       if (!res.ok) {
-        if (res.status === 404) throw new StorageError('NotFound', `not found: ${key}`, { status: 404 });
+        if (res.status === 404)
+          throw new StorageError('NotFound', `not found: ${key}`, { status: 404 });
         throw await s3Error(res, key);
       }
       return createStoredFile(
@@ -315,14 +337,20 @@ export function s3Driver(options: S3DriverOptions): StorageDriver {
     },
 
     async exists(key: string, opts?: OperationOptions): Promise<boolean> {
-      const res = await client.send(client.objectUrl(key), { method: 'HEAD', signal: opts?.signal });
+      const res = await client.send(client.objectUrl(key), {
+        method: 'HEAD',
+        signal: opts?.signal,
+      });
       if (res.status === 404) return false;
       if (!res.ok) throw await s3Error(res, key);
       return true;
     },
 
     async delete(key: string, opts?: OperationOptions): Promise<void> {
-      const res = await client.send(client.objectUrl(key), { method: 'DELETE', signal: opts?.signal });
+      const res = await client.send(client.objectUrl(key), {
+        method: 'DELETE',
+        signal: opts?.signal,
+      });
       if (!res.ok && res.status !== 404) throw await s3Error(res, key);
     },
 
@@ -343,7 +371,10 @@ export function s3Driver(options: S3DriverOptions): StorageDriver {
       if (opts?.delimiter) query.delimiter = opts.delimiter;
       if (opts?.cursor) query['continuation-token'] = opts.cursor;
       if (opts?.limit) query['max-keys'] = String(opts.limit);
-      const res = await client.send(client.objectUrl('', query), { method: 'GET', signal: opts?.signal });
+      const res = await client.send(client.objectUrl('', query), {
+        method: 'GET',
+        signal: opts?.signal,
+      });
       const xml = await res.text();
       if (!res.ok) throw parseErrorBody(res.status, xml);
 
@@ -363,7 +394,8 @@ export function s3Driver(options: S3DriverOptions): StorageDriver {
       const prefixes = tagBlocks(xml, 'CommonPrefixes')
         .map((b) => tagText(b, 'Prefix'))
         .filter((p): p is string => !!p);
-      const cursor = tagText(xml, 'IsTruncated') === 'true' ? tagText(xml, 'NextContinuationToken') : undefined;
+      const cursor =
+        tagText(xml, 'IsTruncated') === 'true' ? tagText(xml, 'NextContinuationToken') : undefined;
       return { items, prefixes: prefixes.length ? prefixes : undefined, cursor };
     },
 

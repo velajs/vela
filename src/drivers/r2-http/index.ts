@@ -53,7 +53,11 @@ export interface R2HybridOptions extends R2HttpOptions {
  * that need browser-facing presigned URLs.
  */
 export function r2HybridDriver(o: R2HybridOptions): StorageDriver {
-  const binding = r2Driver({ bucket: o.binding, publicBaseUrl: o.publicBaseUrl, name: 'r2-hybrid' });
+  const binding = r2Driver({
+    bucket: o.binding,
+    publicBaseUrl: o.publicBaseUrl,
+    name: 'r2-hybrid',
+  });
   const http = r2HttpDriver(o);
   return {
     ...binding,

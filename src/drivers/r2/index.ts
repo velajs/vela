@@ -15,12 +15,7 @@ import type {
   UploadResult,
   UrlOptions,
 } from '../../storage.types';
-import type {
-  R2BucketLike,
-  R2DriverOptions,
-  R2ObjectLike,
-  R2PutValue,
-} from './r2.types';
+import type { R2BucketLike, R2DriverOptions, R2ObjectLike, R2PutValue } from './r2.types';
 
 export type {
   R2BucketLike,
@@ -98,9 +93,7 @@ export function r2Driver(options: R2DriverOptions): StorageDriver<R2BucketLike> 
       const obj = await bucket.get(key, range ? { range } : undefined);
       if (!obj) throw new StorageError('NotFound', `not found: ${key}`);
       const meta = metaOf(obj);
-      const size = range
-        ? (range.length ?? obj.size - range.offset)
-        : obj.size;
+      const size = range ? (range.length ?? obj.size - range.offset) : obj.size;
       return createStoredFile({ ...meta, size }, { kind: 'stream', stream: obj.body });
     },
 

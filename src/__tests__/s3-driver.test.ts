@@ -49,7 +49,11 @@ describe('s3Driver (SigV4 via aws4fetch)', () => {
 
   it('downloads a body and honors range', async () => {
     const { driver, calls } = driverWith(
-      () => new Response('hello', { status: 200, headers: { 'content-type': 'text/plain', 'content-length': '5', etag: '"h"' } }),
+      () =>
+        new Response('hello', {
+          status: 200,
+          headers: { 'content-type': 'text/plain', 'content-length': '5', etag: '"h"' },
+        }),
     );
     const f = await driver.download('a.txt', { range: { start: 0, end: 4 } });
     expect(await f.text()).toBe('hello');
@@ -88,15 +92,22 @@ describe('s3Driver (SigV4 via aws4fetch)', () => {
       const u = new URL(req.url);
       if (req.method === 'POST' && u.searchParams.has('uploads')) {
         seen.push('create');
-        return new Response('<InitiateMultipartUploadResult><UploadId>UP1</UploadId></InitiateMultipartUploadResult>');
+        return new Response(
+          '<InitiateMultipartUploadResult><UploadId>UP1</UploadId></InitiateMultipartUploadResult>',
+        );
       }
       if (req.method === 'PUT' && u.searchParams.has('partNumber')) {
         seen.push(`part${u.searchParams.get('partNumber')}`);
-        return new Response(null, { status: 200, headers: { etag: `"p${u.searchParams.get('partNumber')}"` } });
+        return new Response(null, {
+          status: 200,
+          headers: { etag: `"p${u.searchParams.get('partNumber')}"` },
+        });
       }
       if (req.method === 'POST' && u.searchParams.get('uploadId') === 'UP1') {
         seen.push('complete');
-        return new Response('<CompleteMultipartUploadResult><ETag>"final"</ETag></CompleteMultipartUploadResult>');
+        return new Response(
+          '<CompleteMultipartUploadResult><ETag>"final"</ETag></CompleteMultipartUploadResult>',
+        );
       }
       return new Response('', { status: 400 });
     });
@@ -125,7 +136,8 @@ describe('s3Driver (SigV4 via aws4fetch)', () => {
     const { driver } = driverWith(() => new Response('', { status: 200 }));
     const put = await driver.signedUploadUrl('a.txt', { expiresIn: 300, contentType: 'image/png' });
     expect(put.method).toBe('PUT');
-    if (put.method === 'PUT') expect(new URL(put.url).searchParams.get('X-Amz-Signature')).toBeTruthy();
+    if (put.method === 'PUT')
+      expect(new URL(put.url).searchParams.get('X-Amz-Signature')).toBeTruthy();
 
     const post = await driver.signedUploadUrl('a.txt', { expiresIn: 300, maxSize: 1024 });
     expect(post.method).toBe('POST');
@@ -140,11 +152,18 @@ describe('s3Driver (SigV4 via aws4fetch)', () => {
   });
 
   it('copies server-side and detects a 200-then-Error body', async () => {
-    const ok = driverWith(() => new Response('<CopyObjectResult><ETag>"x"</ETag></CopyObjectResult>', { status: 200 }));
+    const ok = driverWith(
+      () => new Response('<CopyObjectResult><ETag>"x"</ETag></CopyObjectResult>', { status: 200 }),
+    );
     await ok.driver.copy('a', 'b');
     expect(ok.calls[0].headers.get('x-amz-copy-source')).toBe('/my-bucket/a');
 
-    const err = driverWith(() => new Response('<Error><Code>AccessDenied</Code><Message>no</Message></Error>', { status: 200 }));
+    const err = driverWith(
+      () =>
+        new Response('<Error><Code>AccessDenied</Code><Message>no</Message></Error>', {
+          status: 200,
+        }),
+    );
     await expect(err.driver.copy('a', 'b')).rejects.toMatchObject({ code: 'AccessDenied' });
   });
 });

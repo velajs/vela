@@ -65,7 +65,10 @@ export class StorageError extends Error {
     if (e instanceof StorageError) return e;
     if (isAbort(e)) return new StorageError('Aborted', 'operation aborted', { cause: e });
     // The wrapped message is arbitrary provider/host text — never client-safe.
-    return new StorageError('Provider', e instanceof Error ? e.message : String(e), { cause: e, internal: true });
+    return new StorageError('Provider', e instanceof Error ? e.message : String(e), {
+      cause: e,
+      internal: true,
+    });
   }
 
   /** Map a transport status code to a `StorageError` (5xx/429 retryable). */

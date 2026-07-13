@@ -1,4 +1,13 @@
-import { Controller, Get, Inject, Injectable, Post, Req, type Token, type Type } from '@velajs/vela';
+import {
+  Controller,
+  Get,
+  Inject,
+  Injectable,
+  Post,
+  Req,
+  type Token,
+  type Type,
+} from '@velajs/vela';
 import type { Context } from 'hono';
 import { sanitizeKey } from './object-key';
 import { StorageError } from './storage.error';
@@ -88,7 +97,11 @@ export function createStorageController(
         });
         const key = sanitizeKey(ov.key ?? b.key);
         const upload = await this.storage.signedUploadUrl(key, {
-          expiresIn: clampExpiry(ov.expiresIn ?? b.expiresIn, http.defaultExpiresIn, http.maxExpiresIn),
+          expiresIn: clampExpiry(
+            ov.expiresIn ?? b.expiresIn,
+            http.defaultExpiresIn,
+            http.maxExpiresIn,
+          ),
           contentType: b.contentType,
           maxSize: ov.maxSize ?? http.maxUploadSize,
         });
@@ -102,7 +115,11 @@ export function createStorageController(
     async multipartCreate(@Req() c: Context): Promise<Response> {
       try {
         const b = (await c.req.json()) as MultipartCreateRequest;
-        const ov = await this.authorize(c, { type: 'multipart-create', key: b.key, contentType: b.contentType });
+        const ov = await this.authorize(c, {
+          type: 'multipart-create',
+          key: b.key,
+          contentType: b.contentType,
+        });
         const key = sanitizeKey(ov.key ?? b.key);
         const sm = this.storage.signedMultipart;
         if (!sm) throw new StorageError('Unsupported', 'presigned multipart not supported');
@@ -133,7 +150,12 @@ export function createStorageController(
         const part = await sm.signPart(key, b.uploadId, b.partNumber, {
           expiresIn: clampExpiry(ov.expiresIn, http.defaultExpiresIn, http.maxExpiresIn),
         });
-        return c.json({ partNumber: b.partNumber, method: 'PUT', url: part.url, headers: part.headers });
+        return c.json({
+          partNumber: b.partNumber,
+          method: 'PUT',
+          url: part.url,
+          headers: part.headers,
+        });
       } catch (e) {
         return this.fail(c, e);
       }
@@ -143,7 +165,11 @@ export function createStorageController(
     async multipartComplete(@Req() c: Context): Promise<Response> {
       try {
         const b = (await c.req.json()) as MultipartCompleteRequest;
-        const ov = await this.authorize(c, { type: 'multipart-complete', key: b.key, uploadId: b.uploadId });
+        const ov = await this.authorize(c, {
+          type: 'multipart-complete',
+          key: b.key,
+          uploadId: b.uploadId,
+        });
         const key = sanitizeKey(ov.key ?? b.key);
         const sm = this.storage.signedMultipart;
         if (!sm) throw new StorageError('Unsupported', 'presigned multipart not supported');
@@ -157,7 +183,11 @@ export function createStorageController(
     async multipartAbort(@Req() c: Context): Promise<Response> {
       try {
         const b = (await c.req.json()) as MultipartAbortRequest;
-        const ov = await this.authorize(c, { type: 'multipart-abort', key: b.key, uploadId: b.uploadId });
+        const ov = await this.authorize(c, {
+          type: 'multipart-abort',
+          key: b.key,
+          uploadId: b.uploadId,
+        });
         const key = sanitizeKey(ov.key ?? b.key);
         const sm = this.storage.signedMultipart;
         if (!sm) throw new StorageError('Unsupported', 'presigned multipart not supported');
@@ -209,7 +239,9 @@ export function createStorageController(
         const keys = b.keys.map((k) => sanitizeKey(k));
         const ov = await this.authorize(c, { type: 'delete', keys });
         const effective = (ov.keys ?? keys).map((k) => sanitizeKey(k));
-        return c.json(await this.storage.delete(effective, { concurrency: http.deleteConcurrency }));
+        return c.json(
+          await this.storage.delete(effective, { concurrency: http.deleteConcurrency }),
+        );
       } catch (e) {
         return this.fail(c, e);
       }
@@ -256,7 +288,11 @@ export function createStorageController(
         const b = (await c.req.json()) as { key: string; expiresIn?: number };
         const ov = await this.authorize(c, { type: 'download', key: b.key });
         const key = sanitizeKey(ov.key ?? b.key);
-        const expiresIn = clampExpiry(ov.expiresIn ?? b.expiresIn, http.defaultExpiresIn, http.maxExpiresIn);
+        const expiresIn = clampExpiry(
+          ov.expiresIn ?? b.expiresIn,
+          http.defaultExpiresIn,
+          http.maxExpiresIn,
+        );
         const url = await this.storage.url(key, { expiresIn });
         return c.json({ url, expiresAt: Date.now() + expiresIn * 1000 });
       } catch (e) {

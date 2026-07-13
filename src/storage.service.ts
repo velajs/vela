@@ -33,7 +33,9 @@ export function lazyDriver(build: () => StorageDriver): StorageDriver {
     get(_target, prop) {
       const driver = ensure() as unknown as Record<string | symbol, unknown>;
       const value = driver[prop];
-      return typeof value === 'function' ? (value as (...a: unknown[]) => unknown).bind(driver) : value;
+      return typeof value === 'function'
+        ? (value as (...a: unknown[]) => unknown).bind(driver)
+        : value;
     },
     has(_target, prop) {
       return prop in (ensure() as unknown as object);

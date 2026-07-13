@@ -105,7 +105,11 @@ export function cache(opts: CacheOptions = {}): Middleware {
               });
             }
             const file = await inner.head(k, o);
-            await store.set(ns(k), { kind: 'meta', meta: toMeta(file), expiresAt: now() + ttl }, ttl);
+            await store.set(
+              ns(k),
+              { kind: 'meta', meta: toMeta(file), expiresAt: now() + ttl },
+              ttl,
+            );
             return file;
           }
         : undefined,

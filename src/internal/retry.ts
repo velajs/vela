@@ -110,15 +110,14 @@ export async function runWithRetry<T>(
     if (opts.signal?.aborted) throw new StorageError('Aborted', 'operation aborted');
 
     const to = useTimeout ? timeoutController(opts.timeout!) : undefined;
-    const signal = to
-      ? anySignal([opts.signal, to.controller.signal])
-      : opts.signal;
+    const signal = to ? anySignal([opts.signal, to.controller.signal]) : opts.signal;
 
     try {
       return await fn(signal);
     } catch (e) {
       // Hard caller cancellation: never retried.
-      if (opts.signal?.aborted) throw new StorageError('Aborted', 'operation aborted', { cause: e });
+      if (opts.signal?.aborted)
+        throw new StorageError('Aborted', 'operation aborted', { cause: e });
 
       const error =
         to?.controller.signal.aborted && isAbort(e)

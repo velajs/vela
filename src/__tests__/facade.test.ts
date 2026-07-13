@@ -15,9 +15,9 @@ describe('Storage facade', () => {
     });
 
     const noMeta: StorageDriver = { ...memoryDriver(), supportsMetadata: false };
-    await expect(createStorage({ driver: noMeta }).upload('k', 'v', { metadata: { a: '1' } })).rejects.toMatchObject(
-      { code: 'Unsupported' },
-    );
+    await expect(
+      createStorage({ driver: noMeta }).upload('k', 'v', { metadata: { a: '1' } }),
+    ).rejects.toMatchObject({ code: 'Unsupported' });
 
     const s2 = createStorage({ driver: memoryDriver() }); // signedUrl unsupported
     await expect(s2.url('k')).rejects.toMatchObject({ code: 'Unsupported' });
@@ -50,9 +50,9 @@ describe('Storage facade', () => {
         throw new StorageError('AccessDenied', 'nope');
       },
     };
-    await expect(createStorage({ driver: hard, retries: noBackoff }).download('k')).rejects.toMatchObject(
-      { code: 'AccessDenied' },
-    );
+    await expect(
+      createStorage({ driver: hard, retries: noBackoff }).download('k'),
+    ).rejects.toMatchObject({ code: 'AccessDenied' });
     expect(calls2).toBe(1); // not retried
   });
 
@@ -65,9 +65,9 @@ describe('Storage facade', () => {
 
     const noMp: StorageDriver = { ...memoryDriver() };
     delete noMp.createMultipartUpload;
-    await expect(createStorage({ driver: noMp }).upload('x', 'y', { multipart: true })).rejects.toMatchObject(
-      { code: 'Unsupported' },
-    );
+    await expect(
+      createStorage({ driver: noMp }).upload('x', 'y', { multipart: true }),
+    ).rejects.toMatchObject({ code: 'Unsupported' });
   });
 
   it('falls back to copy+delete when the driver has no native move', async () => {

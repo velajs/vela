@@ -26,9 +26,7 @@ export interface RetryBackoffContext {
   error: StorageError;
 }
 
-export type RetryOptions =
-  | number
-  | { max: number; backoff?: (ctx: RetryBackoffContext) => number };
+export type RetryOptions = number | { max: number; backoff?: (ctx: RetryBackoffContext) => number };
 
 export interface OperationOptions {
   /** Abort the operation when this signal fires. */

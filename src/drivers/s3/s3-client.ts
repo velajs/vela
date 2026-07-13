@@ -146,7 +146,11 @@ export class S3Client {
     if (sessionToken) conditions.push({ 'x-amz-security-token': sessionToken });
     if (opts.contentType) conditions.push({ 'content-type': opts.contentType });
     if (opts.maxSize != null || opts.minSize != null) {
-      conditions.push(['content-length-range', opts.minSize ?? 0, opts.maxSize ?? opts.minSize ?? 0]);
+      conditions.push([
+        'content-length-range',
+        opts.minSize ?? 0,
+        opts.maxSize ?? opts.minSize ?? 0,
+      ]);
     }
 
     const policyB64 = utf8ToBase64(JSON.stringify({ expiration, conditions }));

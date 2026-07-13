@@ -3,13 +3,7 @@
 // keeps workers-types an optional peer; a real `R2Bucket` (and
 // `@velajs/cloudflare`'s `R2Service.bucket`) is structurally assignable.
 
-export type R2PutValue =
-  | ReadableStream
-  | ArrayBuffer
-  | ArrayBufferView
-  | string
-  | Blob
-  | null;
+export type R2PutValue = ReadableStream | ArrayBuffer | ArrayBufferView | string | Blob | null;
 
 export interface R2HttpMetadataLike {
   contentType?: string;

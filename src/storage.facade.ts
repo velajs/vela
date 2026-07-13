@@ -1,10 +1,4 @@
-import {
-  byteLengthOf,
-  chunkStream,
-  countingStream,
-  isStream,
-  toStream,
-} from './internal/body';
+import { byteLengthOf, chunkStream, countingStream, isStream, toStream } from './internal/body';
 import { normalizeRetry, runWithRetry } from './internal/retry';
 import { joinKey, normalizePrefix, sanitizeKey, stripPrefix } from './object-key';
 import { StorageError } from './storage.error';
@@ -204,7 +198,10 @@ export class Storage {
     const d = this.#driver;
     if (d.deleteMany) {
       const res = await this.#exec('deleteMany', undefined, true, opts, (signal) =>
-        d.deleteMany!(keys.map((k) => this.#path(k)), { ...opts, signal }),
+        d.deleteMany!(
+          keys.map((k) => this.#path(k)),
+          { ...opts, signal },
+        ),
       );
       return {
         deleted: res.deleted.map((k) => this.#strip(k)),
@@ -222,11 +219,11 @@ export class Storage {
       while (index < keys.length && !stopped) {
         const key = keys[index++];
         try {
-          await d.delete(this.#path(key), { signal: opts?.signal });
-          deleted.push(key);
+          await d.delete(this.#path(key!), { signal: opts?.signal });
+          deleted.push(key!);
         } catch (e) {
           const error = StorageError.wrap(e);
-          errors.push({ key, error });
+          errors.push({ key: key!, error });
           if (stopOnError) {
             stopped = true;
             throw error;
@@ -324,7 +321,10 @@ export class Storage {
 
   // ---- low-level multipart ----------------------------------------------
 
-  async createMultipartUpload(key: string, opts?: CreateMultipartOptions): Promise<MultipartUpload> {
+  async createMultipartUpload(
+    key: string,
+    opts?: CreateMultipartOptions,
+  ): Promise<MultipartUpload> {
     this.#assertWritable();
     if (typeof this.#driver.createMultipartUpload !== 'function') {
       throw new StorageError('Unsupported', `${this.#driver.name}: multipart not supported`);

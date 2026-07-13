@@ -159,7 +159,8 @@ export function storageSdkDriver<Raw = unknown>(
         return true;
       } catch (e) {
         if (e instanceof StorageError && e.code === 'NotFound') return false;
-        if (e && typeof e === 'object' && (e as { code?: string }).code === 'NotFound') return false;
+        if (e && typeof e === 'object' && (e as { code?: string }).code === 'NotFound')
+          return false;
         throw e;
       }
     },
@@ -200,7 +201,10 @@ export function storageSdkDriver<Raw = unknown>(
       if (!adapter.signedUploadUrl) {
         throw new StorageError('Unsupported', 'storagesdk adapter cannot presign uploads');
       }
-      return adapter.signedUploadUrl(key, { expiresIn: opts.expiresIn, contentType: opts.contentType });
+      return adapter.signedUploadUrl(key, {
+        expiresIn: opts.expiresIn,
+        contentType: opts.contentType,
+      });
     },
   };
 

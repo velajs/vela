@@ -1,7 +1,12 @@
 import { toBytes } from '../internal/body';
 import { createStoredFile } from '../internal/stored-file';
 import { StorageError } from '../storage.error';
-import type { DownloadOptions, OperationOptions, StoredFile, UploadOptions } from '../storage.types';
+import type {
+  DownloadOptions,
+  OperationOptions,
+  StoredFile,
+  UploadOptions,
+} from '../storage.types';
 import { passthrough, type Middleware } from './wrap';
 
 export interface EncryptionOptions {
@@ -27,10 +32,13 @@ function stripVela(meta: Record<string, string> | undefined): Record<string, str
 
 async function importKey(key: CryptoKey | Uint8Array): Promise<CryptoKey> {
   if (key instanceof Uint8Array) {
-    return crypto.subtle.importKey('raw', key as unknown as ArrayBuffer, { name: 'AES-GCM' }, false, [
-      'encrypt',
-      'decrypt',
-    ]);
+    return crypto.subtle.importKey(
+      'raw',
+      key as unknown as ArrayBuffer,
+      { name: 'AES-GCM' },
+      false,
+      ['encrypt', 'decrypt'],
+    );
   }
   return key;
 }
@@ -104,12 +112,18 @@ export function encryption(opts: EncryptionOptions): Middleware {
             metadata: inner.supportsMetadata ? metadata : undefined,
             contentType: 'application/octet-stream',
           });
-          return { ...r, size: plaintext.byteLength, contentType: o?.contentType ?? 'application/octet-stream' };
+          return {
+            ...r,
+            size: plaintext.byteLength,
+            contentType: o?.contentType ?? 'application/octet-stream',
+          };
         },
         download: decryptDownload,
         async head(k, o?: OperationOptions) {
           const file = await inner.head(k, o);
-          const size = file.metadata?.['vela-size'] ? Number(file.metadata['vela-size']) : file.size;
+          const size = file.metadata?.['vela-size']
+            ? Number(file.metadata['vela-size'])
+            : file.size;
           return createStoredFile(
             {
               key: k,
