@@ -32,7 +32,12 @@ import type {
 } from '../index';
 import { getLiveQueries } from './live.decorators';
 import { encodeSubscriptionUpdate } from './live.delta';
-import { LIVE_CURSOR_LOG, LIVE_DRIVER, LIVE_MODULE_OPTIONS, LIVE_RESOLVER_METADATA } from './live.tokens';
+import {
+  LIVE_CURSOR_LOG,
+  LIVE_DRIVER,
+  LIVE_MODULE_OPTIONS,
+  LIVE_RESOLVER_METADATA,
+} from './live.tokens';
 import type {
   CommitStamp,
   CursorLog,
@@ -93,7 +98,11 @@ const defaultIdentity = (client: WsClient): LiveIdentity | undefined => {
   return { ...data } as LiveIdentity;
 };
 
-async function runPool<T>(items: T[], size: number, run: (item: T) => Promise<void>): Promise<void> {
+async function runPool<T>(
+  items: T[],
+  size: number,
+  run: (item: T) => Promise<void>,
+): Promise<void> {
   const queue = [...items];
   const workers = Array.from({ length: Math.min(size, queue.length) }, async () => {
     for (let item = queue.shift(); item !== undefined; item = queue.shift()) {
@@ -130,7 +139,11 @@ async function runPool<T>(items: T[], size: number, run: (item: T) => Promise<vo
 @ReservedWsEvent('$live')
 @Injectable()
 export class LiveEngine
-  implements OnApplicationBootstrap, ContributesEntrypoints, ReservedWsEventHandler, LiveInvalidationSink
+  implements
+    OnApplicationBootstrap,
+    ContributesEntrypoints,
+    ReservedWsEventHandler,
+    LiveInvalidationSink
 {
   private readonly queries = new Map<string, RegisteredQuery>();
   private readonly connections = new Map<string, ConnectionEntry>();
@@ -153,7 +166,9 @@ export class LiveEngine
   }
 
   async onApplicationBootstrap(): Promise<void> {
-    for (const found of this.discovery.providersWithMeta<LiveResolverMetadata>(LIVE_RESOLVER_METADATA)) {
+    for (const found of this.discovery.providersWithMeta<LiveResolverMetadata>(
+      LIVE_RESOLVER_METADATA,
+    )) {
       if (!found.instance) continue;
       for (const declared of getLiveQueries(found.metatype)) {
         if (this.queries.has(declared.name)) {
@@ -175,7 +190,14 @@ export class LiveEngine
 
   /** The `'live'` entrypoint — how transports (node registrar, CF DO bootstrap) find the engine. */
   collectEntrypoints(): Entrypoint<LiveEntrypointMeta>[] {
-    return [{ kind: 'live', token: LiveEngine as unknown as Token, instance: this, meta: { engine: this } }];
+    return [
+      {
+        kind: 'live',
+        token: LiveEngine as unknown as Token,
+        instance: this,
+        meta: { engine: this },
+      },
+    ];
   }
 
   // ---- ReservedWsEventHandler ----
@@ -333,7 +355,14 @@ export class LiveEngine
       const verdict = await this.log.evaluateResume(frame.sinceCursor, frame.sinceEpoch, tags);
       if (verdict === 'resume') {
         const stamp = await this.log.current();
-        if (this.sendFrame(client, { t: 'resume', sub: frame.sub, cursor: stamp.cursor, epoch: stamp.epoch })) {
+        if (
+          this.sendFrame(client, {
+            t: 'resume',
+            sub: frame.sub,
+            cursor: stamp.cursor,
+            epoch: stamp.epoch,
+          })
+        ) {
           record.lastCursor = stamp.cursor;
         }
         return;
@@ -349,13 +378,23 @@ export class LiveEngine
     query: string,
     args: unknown,
   ): Promise<boolean> {
-    const guards = resolveScopedComponents('guard', registered.token, registered.methodName, this.container);
+    const guards = resolveScopedComponents(
+      'guard',
+      registered.token,
+      registered.methodName,
+      this.container,
+    );
     if (guards.length === 0) return true;
-    const context = buildEntrypointExecutionContext('live', registered.token, registered.methodName, {
-      query,
-      args,
-      client,
-    });
+    const context = buildEntrypointExecutionContext(
+      'live',
+      registered.token,
+      registered.methodName,
+      {
+        query,
+        args,
+        client,
+      },
+    );
     try {
       for (const guard of guards) {
         if (!(await guard.canActivate(context))) return false;
@@ -485,17 +524,25 @@ export class LiveEngine
     return runInEntrypointScope(this.container, async (scope) => {
       // Async seam: lazy resolver modules materialize, request-scoped
       // resolvers rebuild per run (mirrors queue dispatch).
-      const instance = (await scope.resolveAsync(registered.token)) as Record<string | symbol, unknown>;
+      const instance = (await scope.resolveAsync(registered.token)) as Record<
+        string | symbol,
+        unknown
+      >;
       const liveContext: LiveQueryContext = {
         identity: record.identity,
         clientId: client.id,
         rooms: [...client.rooms],
       };
-      const context = buildEntrypointExecutionContext('live', registered.token, registered.methodName, {
-        query: record.query,
-        args: record.args,
-        client,
-      });
+      const context = buildEntrypointExecutionContext(
+        'live',
+        registered.token,
+        registered.methodName,
+        {
+          query: record.query,
+          args: record.args,
+          client,
+        },
+      );
       const interceptors = resolveScopedComponents(
         'interceptor',
         registered.token,
@@ -531,7 +578,10 @@ export class LiveEngine
       await conn.client.commit();
     } catch (err) {
       if (this.container.getDiagnostics() !== 'silent') {
-        console.warn('[vela] live subscription persistence failed (resume across eviction disabled):', err);
+        console.warn(
+          '[vela] live subscription persistence failed (resume across eviction disabled):',
+          err,
+        );
       }
     }
   }

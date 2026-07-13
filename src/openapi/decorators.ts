@@ -18,7 +18,12 @@ export const API_RESPONSES_METADATA = 'vela:openapi:responses';
 export function ApiDoc(metadata: ApiDocMetadata): MethodDecorator & ClassDecorator {
   return (target: object, propertyKey?: string | symbol) => {
     if (propertyKey !== undefined) {
-      MetadataRegistry.setCustomHandlerMeta(target.constructor as Constructor, propertyKey, API_DOC_METADATA, metadata);
+      MetadataRegistry.setCustomHandlerMeta(
+        target.constructor as Constructor,
+        propertyKey,
+        API_DOC_METADATA,
+        metadata,
+      );
     } else {
       MetadataRegistry.setCustomClassMeta(target as Constructor, API_DOC_METADATA, metadata);
     }
@@ -32,18 +37,28 @@ export function ApiDoc(metadata: ApiDocMetadata): MethodDecorator & ClassDecorat
 export function ApiTags(...tags: string[]): MethodDecorator & ClassDecorator {
   return (target: object, propertyKey?: string | symbol) => {
     if (propertyKey !== undefined) {
-      MetadataRegistry.setCustomHandlerMeta(target.constructor as Constructor, propertyKey, API_TAGS_METADATA, tags);
+      MetadataRegistry.setCustomHandlerMeta(
+        target.constructor as Constructor,
+        propertyKey,
+        API_TAGS_METADATA,
+        tags,
+      );
     } else {
       MetadataRegistry.setCustomClassMeta(target as Constructor, API_TAGS_METADATA, tags);
     }
   };
 }
 
-export function getApiDoc(target: object, propertyKey?: string | symbol): ApiDocMetadata | undefined {
+export function getApiDoc(
+  target: object,
+  propertyKey?: string | symbol,
+): ApiDocMetadata | undefined {
   if (propertyKey !== undefined) {
-    return MetadataRegistry.getCustomHandlerMeta(target as Constructor, propertyKey, API_DOC_METADATA) as
-      | ApiDocMetadata
-      | undefined;
+    return MetadataRegistry.getCustomHandlerMeta(
+      target as Constructor,
+      propertyKey,
+      API_DOC_METADATA,
+    ) as ApiDocMetadata | undefined;
   }
   return MetadataRegistry.getCustomClassMeta(target as Constructor, API_DOC_METADATA) as
     | ApiDocMetadata
@@ -52,9 +67,11 @@ export function getApiDoc(target: object, propertyKey?: string | symbol): ApiDoc
 
 export function getApiTags(target: object, propertyKey?: string | symbol): string[] | undefined {
   if (propertyKey !== undefined) {
-    return MetadataRegistry.getCustomHandlerMeta(target as Constructor, propertyKey, API_TAGS_METADATA) as
-      | string[]
-      | undefined;
+    return MetadataRegistry.getCustomHandlerMeta(
+      target as Constructor,
+      propertyKey,
+      API_TAGS_METADATA,
+    ) as string[] | undefined;
   }
   return MetadataRegistry.getCustomClassMeta(target as Constructor, API_TAGS_METADATA) as
     | string[]
@@ -72,10 +89,7 @@ export function getApiTags(target: object, propertyKey?: string | symbol): strin
  * findOne() { ... }
  * ```
  */
-export function ApiResponse(
-  status: number | string,
-  options: ApiResponseOptions,
-): MethodDecorator {
+export function ApiResponse(status: number | string, options: ApiResponseOptions): MethodDecorator {
   return (target: object, propertyKey: string | symbol) => {
     MetadataRegistry.appendCustomHandlerMeta<ApiResponseEntry>(
       target.constructor as Constructor,

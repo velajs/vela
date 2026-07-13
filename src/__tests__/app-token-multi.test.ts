@@ -35,24 +35,20 @@ describe('APP_* providers across multiple modules', () => {
     }
 
     @Module({
-      providers: [
-        GuardA,
-        { provide: APP_GUARD, useExisting: GuardA },
-      ],
+      providers: [GuardA, { provide: APP_GUARD, useExisting: GuardA }],
     })
     class FeatureA {}
 
     @Module({
-      providers: [
-        GuardB,
-        { provide: APP_GUARD, useExisting: GuardB },
-      ],
+      providers: [GuardB, { provide: APP_GUARD, useExisting: GuardB }],
     })
     class FeatureB {}
 
     @Controller('/multi-guard')
     class MultiCtl {
-      @Get() handle() { return { ok: true }; }
+      @Get() handle() {
+        return { ok: true };
+      }
     }
 
     @Module({ imports: [FeatureA, FeatureB], controllers: [MultiCtl] })

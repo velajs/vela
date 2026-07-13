@@ -258,7 +258,10 @@ export class MetadataRegistry {
     methodName: string | symbol,
     component: ComponentTypeMap[T],
   ): void {
-    const map = this.handlerComponents[type] as Map<Constructor, Map<string | symbol, ComponentTypeMap[T][]>>;
+    const map = this.handlerComponents[type] as Map<
+      Constructor,
+      Map<string | symbol, ComponentTypeMap[T][]>
+    >;
     const methodMap = getOrCreateMap(map, controller);
     getOrCreateArray(methodMap, methodName).push(component);
   }
@@ -268,7 +271,10 @@ export class MetadataRegistry {
     controller: Constructor,
     methodName: string | symbol,
   ): ComponentTypeMap[T][] {
-    const map = this.handlerComponents[type] as Map<Constructor, Map<string | symbol, ComponentTypeMap[T][]>>;
+    const map = this.handlerComponents[type] as Map<
+      Constructor,
+      Map<string | symbol, ComponentTypeMap[T][]>
+    >;
     return map.get(controller)?.get(methodName) ?? [];
   }
 
@@ -378,18 +384,18 @@ export class MetadataRegistry {
     key: string,
     value: unknown,
   ): void {
-    const byHandler = getOrCreate(this.handlerMeta, target, () => new Map<string | symbol, Map<string, unknown>>());
+    const byHandler = getOrCreate(
+      this.handlerMeta,
+      target,
+      () => new Map<string | symbol, Map<string, unknown>>(),
+    );
     getOrCreate(byHandler, handler, () => new Map<string, unknown>()).set(key, value);
     if (!key.startsWith('design:')) {
       getOrCreate(this.handlerMetaIndex, key, () => new Set<object>()).add(target);
     }
   }
 
-  static getCustomHandlerMeta(
-    target: object,
-    handler: string | symbol,
-    key: string,
-  ): unknown {
+  static getCustomHandlerMeta(target: object, handler: string | symbol, key: string): unknown {
     return this.handlerMeta.get(target)?.get(handler)?.get(key);
   }
 

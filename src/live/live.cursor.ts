@@ -5,7 +5,8 @@ interface LogEntry {
   tags: string[];
 }
 
-const intersects = (a: readonly string[], b: ReadonlySet<string>): boolean => a.some((tag) => b.has(tag));
+const intersects = (a: readonly string[], b: ReadonlySet<string>): boolean =>
+  a.some((tag) => b.has(tag));
 
 /**
  * The in-core `CursorLog`: a bounded in-memory ring, epoch minted per process
@@ -38,7 +39,11 @@ export class InMemoryCursorLog implements CursorLog {
     return { cursor: this.seq, epoch: this.epoch };
   }
 
-  evaluateResume(sinceCursor: number, sinceEpoch: string, subscriptionTags: string[]): ResumeVerdict {
+  evaluateResume(
+    sinceCursor: number,
+    sinceEpoch: string,
+    subscriptionTags: string[],
+  ): ResumeVerdict {
     // Forked timeline (restart/reset) — the client's cursor means nothing here.
     if (sinceEpoch !== this.epoch) return 'snapshot';
     // Rollback guard: a cursor from the future is unexplainable.

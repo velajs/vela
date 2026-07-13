@@ -27,7 +27,9 @@ export const resolveErrorReporter = (container: Container): ErrorReporter => {
   const handler: ExceptionHandler | undefined = container.has(APP_EXCEPTION_HANDLER)
     ? container.resolve(APP_EXCEPTION_HANDLER)
     : undefined;
-  const catalog: Catalog<string> = container.has(ERROR_CATALOG) ? container.resolve(ERROR_CATALOG) : CORE_CATALOG;
+  const catalog: Catalog<string> = container.has(ERROR_CATALOG)
+    ? container.resolve(ERROR_CATALOG)
+    : CORE_CATALOG;
 
   return {
     catalog,

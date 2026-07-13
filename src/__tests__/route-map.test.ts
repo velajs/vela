@@ -15,7 +15,7 @@ declare module '../http/route-map' {
 }
 
 type Equal<A, B> =
-  (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
+  (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 type Expect<T extends true> = T;
 
 // Augmentation narrows `RouteParams<'users.show'>` to the declared params.
@@ -37,13 +37,7 @@ type FallbackRouteName<M> = keyof M extends never ? string : Extract<keyof M, st
 type _Fallback = Expect<Equal<FallbackRouteName<Record<never, never>>, string>>;
 
 // Keep every assertion referenced so it is retained by the compiler.
-export type __RouteMapTypeAssertions = [
-  _ShowParams,
-  _IndexParams,
-  _Names,
-  _Rejected,
-  _Fallback,
-];
+export type __RouteMapTypeAssertions = [_ShowParams, _IndexParams, _Names, _Rejected, _Fallback];
 
 it('route-map types compile (assertions checked via tsconfig.type-tests.json)', () => {
   expect(true).toBe(true);

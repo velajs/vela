@@ -34,7 +34,11 @@ import type {
 } from '../registry/types';
 import type { ControllerRegistration, RouteMetadata } from './types';
 
-type MethodRegistrar = (app: Hono, path: string, h: (c: Context) => Response | Promise<Response>) => void;
+type MethodRegistrar = (
+  app: Hono,
+  path: string,
+  h: (c: Context) => Response | Promise<Response>,
+) => void;
 
 /**
  * One explicit controller route as the framework registered it — recorded by
@@ -69,9 +73,9 @@ export interface RouteManagerOptions {
 }
 
 const defaultGetClientIp = (c: Context): string | null =>
-  c.req.raw.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-  ?? c.req.raw.headers.get('x-real-ip')
-  ?? null;
+  c.req.raw.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+  c.req.raw.headers.get('x-real-ip') ??
+  null;
 
 // Mirror a response body stream, invoking `onDone` exactly once when it is fully
 // read, errors, or is cancelled. Lets request-scoped resources be disposed only
@@ -112,14 +116,17 @@ function disposeStreamWhenDone(
 
 export class RouteManager {
   private static readonly METHOD_REGISTRAR = new Map<string, MethodRegistrar>([
-    [HttpMethod.GET,     (app, p, h) => app.get(p, h)],
-    [HttpMethod.POST,    (app, p, h) => app.post(p, h)],
-    [HttpMethod.PUT,     (app, p, h) => app.put(p, h)],
-    [HttpMethod.PATCH,   (app, p, h) => app.patch(p, h)],
-    [HttpMethod.DELETE,  (app, p, h) => app.delete(p, h)],
+    [HttpMethod.GET, (app, p, h) => app.get(p, h)],
+    [HttpMethod.POST, (app, p, h) => app.post(p, h)],
+    [HttpMethod.PUT, (app, p, h) => app.put(p, h)],
+    [HttpMethod.PATCH, (app, p, h) => app.patch(p, h)],
+    [HttpMethod.DELETE, (app, p, h) => app.delete(p, h)],
     [HttpMethod.OPTIONS, (app, p, h) => app.options(p, h)],
-    [HttpMethod.HEAD,    (app, p, h) => app.get(p, (c, next) => (c.req.method === 'HEAD' ? h(c) : next()))],
-    [HttpMethod.ALL,     (app, p, h) => app.all(p, h)],
+    [
+      HttpMethod.HEAD,
+      (app, p, h) => app.get(p, (c, next) => (c.req.method === 'HEAD' ? h(c) : next())),
+    ],
+    [HttpMethod.ALL, (app, p, h) => app.all(p, h)],
   ]);
 
   private controllers: ControllerRegistration[] = [];
@@ -135,7 +142,10 @@ export class RouteManager {
   private readonly handlerExecutor: HandlerExecutor;
   private readonly ambientContainer: boolean;
 
-  constructor(private container: Container, options: RouteManagerOptions = {}) {
+  constructor(
+    private container: Container,
+    options: RouteManagerOptions = {},
+  ) {
     this.ambientContainer = options.ambientContainer ?? false;
     const argumentResolver = new ArgumentResolver(options.getClientIp ?? defaultGetClientIp);
     this.handlerExecutor = new HandlerExecutor(
@@ -382,11 +392,14 @@ export class RouteManager {
           const body = threw ? null : (c.res?.body ?? null);
           if (body) {
             // Defer disposal to when the runtime finishes reading the body.
-            c.res = new Response(disposeStreamWhenDone(body, () => void child.dispose()), {
-              status: c.res.status,
-              statusText: c.res.statusText,
-              headers: c.res.headers,
-            });
+            c.res = new Response(
+              disposeStreamWhenDone(body, () => void child.dispose()),
+              {
+                status: c.res.status,
+                statusText: c.res.statusText,
+                headers: c.res.headers,
+              },
+            );
           } else {
             // No body (or error path) — nothing streaming, dispose now.
             await child.dispose();
@@ -405,40 +418,46 @@ export class RouteManager {
     // index as tiebreaker so equal priorities preserve registration order.
     const sortedGlobal = this.globalMiddleware
       .map((entry, index) => ({ entry, index, priority: this.getMiddlewarePriority(entry) }))
-      .sort((a, b) => (a.priority - b.priority) || (a.index - b.index));
+      .sort((a, b) => a.priority - b.priority || a.index - b.index);
 
     for (const { entry } of sortedGlobal) {
-      app.use('*', this.wrapMiddlewareWithFilters((c, next) => {
-        const requestContainer = this.getRequestContainer(c);
-        const resolved = instantiate<NestMiddleware>(entry, requestContainer);
-        return resolved.use(c, next);
-      }));
+      app.use(
+        '*',
+        this.wrapMiddlewareWithFilters((c, next) => {
+          const requestContainer = this.getRequestContainer(c);
+          const resolved = instantiate<NestMiddleware>(entry, requestContainer);
+          return resolved.use(c, next);
+        }),
+      );
     }
 
     const sortedConsumer = this.consumerMiddlewareDefinitions
       .map((def, index) => ({ def, index, priority: def.priority ?? 0 }))
-      .sort((a, b) => (a.priority - b.priority) || (a.index - b.index));
+      .sort((a, b) => a.priority - b.priority || a.index - b.index);
 
     for (const { def } of sortedConsumer) {
-      const matchRoute   = this.compileRouteMatcher(def.routes);
+      const matchRoute = this.compileRouteMatcher(def.routes);
       const matchExclude = this.compileRouteMatcher(def.excludes);
 
-      app.use('*', this.wrapMiddlewareWithFilters((c, next) => {
-        const path   = c.req.path;
-        const method = c.req.method;
+      app.use(
+        '*',
+        this.wrapMiddlewareWithFilters((c, next) => {
+          const path = c.req.path;
+          const method = c.req.method;
 
-        if (!matchRoute(path, method) || matchExclude(path, method)) return next();
+          if (!matchRoute(path, method) || matchExclude(path, method)) return next();
 
-        const requestContainer = this.getRequestContainer(c);
-        const runChain = (index: number): Promise<void> => {
-          if (index >= def.middleware.length) return next();
-          const instance = instantiate<NestMiddleware>(def.middleware[index]!, requestContainer);
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          return (instance.use(c, () => runChain(index + 1)) as Promise<any>).then(() => {});
-        };
+          const requestContainer = this.getRequestContainer(c);
+          const runChain = (index: number): Promise<void> => {
+            if (index >= def.middleware.length) return next();
+            const instance = instantiate<NestMiddleware>(def.middleware[index]!, requestContainer);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            return (instance.use(c, () => runChain(index + 1)) as Promise<any>).then(() => {});
+          };
 
-        return runChain(0);
-      }));
+          return runChain(0);
+        }),
+      );
     }
 
     // First pass: register all custom routes (must come before CRUD /:id routes).
@@ -466,19 +485,26 @@ export class RouteManager {
 
           // Scoped (controller/handler) middleware only — global middleware is
           // applied once by this manager's own global pass, never re-read here.
-          const middlewareItems = ComponentManager.getScopedComponents('middleware', controller, route.handlerName);
+          const middlewareItems = ComponentManager.getScopedComponents(
+            'middleware',
+            controller,
+            route.handlerName,
+          );
           const handler = this.handlerExecutor.create(route, controller, allParamMetadata);
 
           for (const [pathIndex, fullPath] of versionedPaths.entries()) {
             for (const middlewareItem of middlewareItems) {
-              app.use(fullPath, this.wrapMiddlewareWithFilters((c, next) => {
-                const requestContainer = this.getRequestContainer(c);
-                const resolved = instantiate<NestMiddleware>(
-                  middlewareItem as Type<NestMiddleware> | NestMiddleware,
-                  requestContainer,
-                );
-                return resolved.use(c, next);
-              }));
+              app.use(
+                fullPath,
+                this.wrapMiddlewareWithFilters((c, next) => {
+                  const requestContainer = this.getRequestContainer(c);
+                  const resolved = instantiate<NestMiddleware>(
+                    middlewareItem as Type<NestMiddleware> | NestMiddleware,
+                    requestContainer,
+                  );
+                  return resolved.use(c, next);
+                }),
+              );
             }
             this.registerRoute(app, route.method, fullPath, handler);
             this.routeDescriptions.push({
@@ -564,7 +590,10 @@ export class RouteManager {
     const versions = Array.isArray(version) ? version : [version];
     return versions.map((v) => {
       const versionSegment = `/v${v}`;
-      return joinPaths(globalPrefix, joinPaths(versionSegment, joinPaths(controllerPrefix, routePath)));
+      return joinPaths(
+        globalPrefix,
+        joinPaths(versionSegment, joinPaths(controllerPrefix, routePath)),
+      );
     });
   }
 

@@ -15,7 +15,10 @@ export const QUEUE_DRIVER = new InjectionToken<QueueDriver>('vela:queue:driver')
 const TOKEN_STORE_KEY = Symbol.for('vela:queue:client-tokens:v1');
 
 function tokenStore(): Map<string, InjectionToken<QueueClient>> {
-  const g = globalThis as unknown as Record<symbol, Map<string, InjectionToken<QueueClient>> | undefined>;
+  const g = globalThis as unknown as Record<
+    symbol,
+    Map<string, InjectionToken<QueueClient>> | undefined
+  >;
   return (g[TOKEN_STORE_KEY] ??= new Map());
 }
 

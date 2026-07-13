@@ -331,7 +331,9 @@ describe('DI Container', () => {
     it('should resolve a forward-referenced provider (non-circular)', () => {
       @Injectable()
       class ServiceB {
-        greet() { return 'hello'; }
+        greet() {
+          return 'hello';
+        }
       }
 
       @Injectable()
@@ -357,7 +359,9 @@ describe('DI Container', () => {
       class ServiceA {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         constructor(@Inject(forwardRef(() => TOKEN_B)) public b: any) {}
-        name() { return 'A'; }
+        name() {
+          return 'A';
+        }
       }
 
       @Injectable()
@@ -365,7 +369,9 @@ describe('DI Container', () => {
       class ServiceB {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         constructor(@Inject(forwardRef(() => TOKEN_A)) public a: any) {}
-        name() { return 'B'; }
+        name() {
+          return 'B';
+        }
       }
 
       container.register({ provide: TOKEN_A, useClass: ServiceA });

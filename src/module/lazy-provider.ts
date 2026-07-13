@@ -1,4 +1,10 @@
-import { InjectionToken, type InferTokens, type ProviderOptions, type Token, type Type } from '../container/types';
+import {
+  InjectionToken,
+  type InferTokens,
+  type ProviderOptions,
+  type Token,
+  type Type,
+} from '../container/types';
 import { Module } from './decorators';
 import type { ComponentType, DynamicModule } from '../registry/types';
 import {

@@ -2,13 +2,7 @@ import type { Container } from '../container/container';
 import type { Token } from '../container/types';
 import type { RouteManager } from '../http/route.manager';
 import type { ModuleLoader } from '../module/module-loader';
-import {
-  APP_FILTER,
-  APP_GUARD,
-  APP_INTERCEPTOR,
-  APP_MIDDLEWARE,
-  APP_PIPE,
-} from './tokens';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_MIDDLEWARE, APP_PIPE } from './tokens';
 
 type Bind = (...tokens: Token[]) => RouteManager;
 

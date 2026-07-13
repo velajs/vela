@@ -25,10 +25,11 @@ export function collectControllers(rootModule: Type): Type[] {
   const controllers = new Set<Type>();
 
   const visit = (entry: ModuleImport | Type | DynamicModule): void => {
-    const unwrapped = entry instanceof ForwardRef ? (entry.factory() as Type | DynamicModule) : entry;
+    const unwrapped =
+      entry instanceof ForwardRef ? (entry.factory() as Type | DynamicModule) : entry;
     const moduleClass = isDynamicModuleLike(unwrapped) ? unwrapped.module : (unwrapped as Type);
-    const extraControllers = isDynamicModuleLike(unwrapped) ? unwrapped.controllers ?? [] : [];
-    const extraImports = isDynamicModuleLike(unwrapped) ? unwrapped.imports ?? [] : [];
+    const extraControllers = isDynamicModuleLike(unwrapped) ? (unwrapped.controllers ?? []) : [];
+    const extraImports = isDynamicModuleLike(unwrapped) ? (unwrapped.imports ?? []) : [];
 
     if (typeof moduleClass !== 'function' || visited.has(moduleClass)) return;
     visited.add(moduleClass);

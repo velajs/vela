@@ -152,7 +152,9 @@ describe('LiveModule (tag-based live queries)', () => {
     await invalidation.invalidate({ tags: ['todos:l1'] }); // nothing actually changed
     await engine.whenIdle();
 
-    expect(client.live()).toEqual([{ t: 'settled', sub: 's1', cursor: 1, epoch: expect.any(String) }]);
+    expect(client.live()).toEqual([
+      { t: 'settled', sub: 's1', cursor: 1, epoch: expect.any(String) },
+    ]);
   });
 
   it('falls back to a snapshot when the result is not a keyable list', async () => {
@@ -195,7 +197,8 @@ describe('LiveModule (tag-based live queries)', () => {
       @LiveQuery('strict.q', {
         tags: ['t'],
         parse: (args: unknown) => {
-          if (typeof (args as { n?: unknown })?.n !== 'number') throw new Error('n must be a number');
+          if (typeof (args as { n?: unknown })?.n !== 'number')
+            throw new Error('n must be a number');
           return args as { n: number };
         },
       })
@@ -273,7 +276,12 @@ describe('LiveModule (tag-based live queries)', () => {
     await dispatcher.dispatchMessage(
       '/rooms/:id/ws',
       returning,
-      subFrame('r1', 'todos.list', { listId: 'l1' }, { sinceCursor: initial.cursor, sinceEpoch: initial.epoch }),
+      subFrame(
+        'r1',
+        'todos.list',
+        { listId: 'l1' },
+        { sinceCursor: initial.cursor, sinceEpoch: initial.epoch },
+      ),
     );
     expect(returning.live()).toEqual([
       { t: 'ack', sub: 'r1' },
@@ -288,7 +296,12 @@ describe('LiveModule (tag-based live queries)', () => {
     await dispatcher.dispatchMessage(
       '/rooms/:id/ws',
       second,
-      subFrame('r2', 'todos.list', { listId: 'l1' }, { sinceCursor: initial.cursor, sinceEpoch: initial.epoch }),
+      subFrame(
+        'r2',
+        'todos.list',
+        { listId: 'l1' },
+        { sinceCursor: initial.cursor, sinceEpoch: initial.epoch },
+      ),
     );
     expect(second.live()[1]).toMatchObject({ t: 'data', sub: 'r2', cursor: 2 });
 
@@ -298,7 +311,12 @@ describe('LiveModule (tag-based live queries)', () => {
     await dispatcher.dispatchMessage(
       '/rooms/:id/ws',
       third,
-      subFrame('r3', 'todos.list', { listId: 'l1' }, { sinceCursor: 1, sinceEpoch: 'forked-timeline' }),
+      subFrame(
+        'r3',
+        'todos.list',
+        { listId: 'l1' },
+        { sinceCursor: 1, sinceEpoch: 'forked-timeline' },
+      ),
     );
     expect(third.live()[1]).toMatchObject({ t: 'data', sub: 'r3' });
   });
@@ -358,7 +376,10 @@ describe('LiveModule (tag-based live queries)', () => {
     watcher.clear();
 
     await dispatch(
-      JSON.stringify({ event: '$live', data: { t: 'presence', room: 'lobby', meta: { name: 'kauan' } } }),
+      JSON.stringify({
+        event: '$live',
+        data: { t: 'presence', room: 'lobby', meta: { name: 'kauan' } },
+      }),
     );
     await engine.whenIdle();
     const joined = watcher.live();
@@ -396,7 +417,9 @@ describe('LiveModule (tag-based live queries)', () => {
     @Module({ imports: [WebSocketModule.forRoot()], providers: [Sneaky] })
     class AppModule {}
 
-    await expect(VelaFactory.create(AppModule, { diagnostics: 'throw' })).rejects.toThrow(/reserved/);
+    await expect(VelaFactory.create(AppModule, { diagnostics: 'throw' })).rejects.toThrow(
+      /reserved/,
+    );
   });
 });
 
@@ -455,12 +478,16 @@ describe('LiveEngine — initial-subscribe resolver errors are redacted (Task 10
     // The leak is closed: the raw resolver message never rides the wire…
     expect(JSON.stringify(client.frames)).not.toContain('SELECT * FROM secrets failed');
     // …it surfaces ONLY through the reporter (default reporter → console.error).
-    const reported = errorSpy.mock.calls.map((c) => c[1]).find((a): a is Error => a instanceof Error);
+    const reported = errorSpy.mock.calls
+      .map((c) => c[1])
+      .find((a): a is Error => a instanceof Error);
     expect(reported?.message).toBe('SELECT * FROM secrets failed');
   });
 
   it('branded VelaError(403) → forbidden frame keeps its client-facing message', async () => {
-    const client = await subscribeThrowing(() => new VelaError('forbidden', { message: 'not your list' }));
+    const client = await subscribeThrowing(
+      () => new VelaError('forbidden', { message: 'not your list' }),
+    );
 
     expect(client.live()).toEqual([
       { t: 'ack', sub: 's1' },
@@ -469,7 +496,9 @@ describe('LiveEngine — initial-subscribe resolver errors are redacted (Task 10
   });
 
   it('branded VelaError(422) → bad_args frame keeps its client-facing message', async () => {
-    const client = await subscribeThrowing(() => new VelaError('unprocessable', { message: 'bad cursor' }));
+    const client = await subscribeThrowing(
+      () => new VelaError('unprocessable', { message: 'bad cursor' }),
+    );
 
     expect(client.live()).toEqual([
       { t: 'ack', sub: 's1' },
@@ -484,7 +513,8 @@ describe('LiveEngine — initial-subscribe resolver errors are redacted (Task 10
       @LiveQuery('strict.q', {
         tags: ['t'],
         parse: (args: unknown) => {
-          if (typeof (args as { n?: unknown })?.n !== 'number') throw new Error('n must be a number');
+          if (typeof (args as { n?: unknown })?.n !== 'number')
+            throw new Error('n must be a number');
           return args as { n: number };
         },
       })

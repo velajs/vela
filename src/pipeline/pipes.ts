@@ -78,7 +78,7 @@ export class ParseUUIDPipe implements PipeTransform<string, string> {
 
   transform(value: string, metadata: ArgumentMetadata): string {
     const regex = this.options?.version ? UUID_VERSION_REGEX[this.options.version] : UUID_REGEX;
-    if (!regex.test(value)) {
+    if (!regex!.test(value)) {
       throw new BadRequestException(
         `Validation failed (uuid${this.options?.version ? ` v${this.options.version}` : ''} expected)${metadata.data ? ` for parameter '${metadata.data}'` : ''}`,
       );
@@ -87,9 +87,10 @@ export class ParseUUIDPipe implements PipeTransform<string, string> {
   }
 }
 
-export class ParseEnumPipe<T extends Record<string, string | number>>
-  implements PipeTransform<string, T[keyof T]>
-{
+export class ParseEnumPipe<T extends Record<string, string | number>> implements PipeTransform<
+  string,
+  T[keyof T]
+> {
   private readonly allowedValues: Set<string | number>;
   private readonly valuesLabel: string;
 

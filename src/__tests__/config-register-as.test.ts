@@ -116,7 +116,10 @@ describe('registerAs config namespaces', () => {
 
     it('getOrThrow throws on a missing key; has() reflects presence', async () => {
       @Module({
-        imports: [seedEnv({ DATABASE_URL: 'x' }), ConfigModule.forRoot({ load: [dbConfig], isGlobal: true })],
+        imports: [
+          seedEnv({ DATABASE_URL: 'x' }),
+          ConfigModule.forRoot({ load: [dbConfig], isGlobal: true }),
+        ],
       })
       class AppModule {}
 
@@ -153,7 +156,10 @@ describe('registerAs config namespaces', () => {
       }
 
       @Module({
-        imports: [seedEnv({ DATABASE_URL: 'mysql://h/db' }), ConfigModule.forRoot({ load: [dbConfig] })],
+        imports: [
+          seedEnv({ DATABASE_URL: 'mysql://h/db' }),
+          ConfigModule.forRoot({ load: [dbConfig] }),
+        ],
         providers: [DbClient],
       })
       class AppModule {}
@@ -172,7 +178,10 @@ describe('registerAs config namespaces', () => {
       });
 
       @Module({
-        imports: [seedEnv({ DATABASE_URL: 'z' }), ConfigModule.forRoot({ load: [spyNs], isGlobal: true })],
+        imports: [
+          seedEnv({ DATABASE_URL: 'z' }),
+          ConfigModule.forRoot({ load: [spyNs], isGlobal: true }),
+        ],
       })
       class AppModule {}
 
@@ -290,7 +299,11 @@ describe('registerAs config namespaces', () => {
       @Module({
         imports: [
           seedEnv({ DATABASE_URL: 'pg://x' }),
-          ConfigModule.forRoot({ config: { port: 8080, nested: { a: 1 } }, load: [dbConfig], isGlobal: true }),
+          ConfigModule.forRoot({
+            config: { port: 8080, nested: { a: 1 } },
+            load: [dbConfig],
+            isGlobal: true,
+          }),
         ],
       })
       class AppModule {}
@@ -306,7 +319,10 @@ describe('registerAs config namespaces', () => {
 
     it('ConfigType<> gives a typed shape usable as the ConfigService generic', async () => {
       @Module({
-        imports: [seedEnv({ DATABASE_URL: 'pg://x' }), ConfigModule.forRoot({ load: [dbConfig], isGlobal: true })],
+        imports: [
+          seedEnv({ DATABASE_URL: 'pg://x' }),
+          ConfigModule.forRoot({ load: [dbConfig], isGlobal: true }),
+        ],
       })
       class AppModule {}
 

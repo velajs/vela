@@ -24,7 +24,9 @@ describe('DynamicModule.imports', () => {
   it('should process imports returned from a register() method', async () => {
     @Injectable()
     class SharedService {
-      greet() { return 'hello from shared'; }
+      greet() {
+        return 'hello from shared';
+      }
     }
 
     @Module({ providers: [SharedService], exports: [SharedService] })
@@ -33,14 +35,18 @@ describe('DynamicModule.imports', () => {
     @Injectable()
     class FeatureService {
       constructor(private shared: SharedService) {}
-      hello() { return this.shared.greet(); }
+      hello() {
+        return this.shared.greet();
+      }
     }
 
     @Controller('/dyn-imports')
     class FeatureController {
       constructor(private svc: FeatureService) {}
       @Get()
-      handle() { return { msg: this.svc.hello() }; }
+      handle() {
+        return { msg: this.svc.hello() };
+      }
     }
 
     // register() returns a DynamicModule with imports
@@ -52,7 +58,7 @@ describe('DynamicModule.imports', () => {
 
         return {
           module: moduleClass as never,
-          imports: [SharedModule],   // <-- imports inside DynamicModule return
+          imports: [SharedModule], // <-- imports inside DynamicModule return
           providers: [FeatureService],
           controllers: [FeatureController],
         };
@@ -71,7 +77,9 @@ describe('DynamicModule.imports', () => {
   it('should allow a dynamic module to import another dynamic module', async () => {
     @Injectable()
     class BaseService {
-      value() { return 42; }
+      value() {
+        return 42;
+      }
     }
 
     const makeBase = (): DynamicModule => {
@@ -84,14 +92,18 @@ describe('DynamicModule.imports', () => {
     @Injectable()
     class TopService {
       constructor(private base: BaseService) {}
-      get() { return this.base.value() * 2; }
+      get() {
+        return this.base.value() * 2;
+      }
     }
 
     @Controller('/nested-dyn')
     class TopController {
       constructor(private svc: TopService) {}
       @Get()
-      handle() { return { v: this.svc.get() }; }
+      handle() {
+        return { v: this.svc.get() };
+      }
     }
 
     const makeTop = (): DynamicModule => {
@@ -124,7 +136,9 @@ describe('forwardRef() in module imports', () => {
   it('should resolve a simple forwardRef import', async () => {
     @Injectable()
     class HelperService {
-      help() { return 'helped'; }
+      help() {
+        return 'helped';
+      }
     }
 
     @Module({ providers: [HelperService], exports: [HelperService] })
@@ -133,14 +147,18 @@ describe('forwardRef() in module imports', () => {
     @Injectable()
     class AppService {
       constructor(private helper: HelperService) {}
-      run() { return this.helper.help(); }
+      run() {
+        return this.helper.help();
+      }
     }
 
     @Controller('/fwd-simple')
     class AppController {
       constructor(private svc: AppService) {}
       @Get()
-      handle() { return { result: this.svc.run() }; }
+      handle() {
+        return { result: this.svc.run() };
+      }
     }
 
     @Module({
@@ -161,25 +179,36 @@ describe('forwardRef() in module imports', () => {
     // ModuleB provides ServiceB, needs ServiceA from ModuleA
     @Injectable()
     class ServiceA {
-      name() { return 'A'; }
+      name() {
+        return 'A';
+      }
     }
 
     @Injectable()
     class ServiceB {
-      name() { return 'B'; }
+      name() {
+        return 'B';
+      }
     }
 
     @Injectable()
     class CompositeService {
-      constructor(private a: ServiceA, private b: ServiceB) {}
-      both() { return `${this.a.name()}+${this.b.name()}`; }
+      constructor(
+        private a: ServiceA,
+        private b: ServiceB,
+      ) {}
+      both() {
+        return `${this.a.name()}+${this.b.name()}`;
+      }
     }
 
     @Controller('/circular-modules')
     class CompositeController {
       constructor(private svc: CompositeService) {}
       @Get()
-      handle() { return { result: this.svc.both() }; }
+      handle() {
+        return { result: this.svc.both() };
+      }
     }
 
     // Use forwardRef to break the circular reference at the TypeScript level

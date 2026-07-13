@@ -226,8 +226,7 @@ export class VelaApplication {
       // Back-compat: the old `{ ui: 'scalar', uiPath }` form mapped a single
       // string UI to `uiPath`. Honor that only when exactly one UI was
       // requested as a string.
-      const legacyPath =
-        singleStringUi && uis.length === 1 ? options.uiPath : undefined;
+      const legacyPath = singleStringUi && uis.length === 1 ? options.uiPath : undefined;
 
       if (ui === 'swagger') {
         const path = legacyPath ?? options.swaggerPath ?? '/docs';

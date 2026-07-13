@@ -1,16 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  VelaFactory,
-  Controller,
-  Get,
-  Module,
-  MetadataRegistry,
-} from '../index.js';
-import {
-  ThrottlerModule,
-  Throttle,
-  SkipThrottle,
-} from '../throttler/index.js';
+import { VelaFactory, Controller, Get, Module, MetadataRegistry } from '../index.js';
+import { ThrottlerModule, Throttle, SkipThrottle } from '../throttler/index.js';
 import type { ThrottlerStore, ThrottlerStorageRecord } from '../throttler/index.js';
 
 beforeEach(() => {

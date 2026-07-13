@@ -49,21 +49,17 @@ export function createLazyParamDecorator<TData = unknown>(
         throw new Error('Parameter decorators can only be used on method parameters');
       }
 
-      MetadataRegistry.addParameter(
-        target.constructor as Constructor,
-        propertyKey,
-        {
-          index: parameterIndex,
-          type: CUSTOM_PARAM_TYPE,
-          name: undefined,
-          factory: (_unused: unknown, ctx: unknown) => {
-            const honoCtx = ctx as import('hono').Context;
-            const execCtx = buildExecutionContext(honoCtx, target.constructor as Type, propertyKey);
-            return createLazyProxy(() => factory(data as TData, execCtx));
-          },
-          ...(pipes.length > 0 ? { pipes } : {}),
+      MetadataRegistry.addParameter(target.constructor as Constructor, propertyKey, {
+        index: parameterIndex,
+        type: CUSTOM_PARAM_TYPE,
+        name: undefined,
+        factory: (_unused: unknown, ctx: unknown) => {
+          const honoCtx = ctx as import('hono').Context;
+          const execCtx = buildExecutionContext(honoCtx, target.constructor as Type, propertyKey);
+          return createLazyProxy(() => factory(data as TData, execCtx));
         },
-      );
+        ...(pipes.length > 0 ? { pipes } : {}),
+      });
     };
   };
 }

@@ -139,8 +139,7 @@ describe('@Catch type matching', () => {
     @Catch()
     class CatchAllFilter implements ExceptionFilter {
       catch(exception: unknown, _context: ExecutionContext) {
-        const msg =
-          exception instanceof Error ? exception.message : 'unknown';
+        const msg = exception instanceof Error ? exception.message : 'unknown';
         return { caught: 'all', message: msg };
       }
     }
@@ -409,9 +408,9 @@ describe('Built-in pipes', () => {
     it('should enforce UUID version when specified', async () => {
       const pipe = new ParseUUIDPipe({ version: '4' });
       // Valid v4
-      expect(
-        pipe.transform('550e8400-e29b-41d4-a716-446655440000', { type: 'param' }),
-      ).toBe('550e8400-e29b-41d4-a716-446655440000');
+      expect(pipe.transform('550e8400-e29b-41d4-a716-446655440000', { type: 'param' })).toBe(
+        '550e8400-e29b-41d4-a716-446655440000',
+      );
       // Invalid v4 (version digit is 3)
       expect(() =>
         pipe.transform('550e8400-e29b-31d4-a716-446655440000', { type: 'param' }),
@@ -420,7 +419,10 @@ describe('Built-in pipes', () => {
   });
 
   describe('ParseEnumPipe', () => {
-    enum Direction { UP = 'UP', DOWN = 'DOWN' }
+    enum Direction {
+      UP = 'UP',
+      DOWN = 'DOWN',
+    }
 
     it('should accept valid enum values', async () => {
       @Controller('/enum')

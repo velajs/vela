@@ -1,7 +1,13 @@
 import type { Catalog } from '@velajs/errors';
 import { InjectionToken } from '../container/types';
 import type { ExceptionHandler } from '../exceptions/exception-handler';
-import type { CanActivate, ExceptionFilter, NestInterceptor, NestMiddleware, PipeTransform } from './types';
+import type {
+  CanActivate,
+  ExceptionFilter,
+  NestInterceptor,
+  NestMiddleware,
+  PipeTransform,
+} from './types';
 
 /**
  * Register global guards via module providers instead of app.useGlobalGuards().

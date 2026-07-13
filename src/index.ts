@@ -318,10 +318,7 @@ export type { MiddlewareConsumer, NestModule, RouteInfo } from './http/index';
 
 // Discovery — decorator-driven provider discovery (the public replacement for
 // hand-rolled bootstrap scans)
-export {
-  DiscoveryService,
-  createDiscoverableDecorator,
-} from './discovery/index';
+export { DiscoveryService, createDiscoverableDecorator } from './discovery/index';
 export type {
   DiscoveredClass,
   DiscoveredMethodMeta,
@@ -347,10 +344,7 @@ export type {
 } from './entrypoint/index';
 
 // Route contribution — metadata-claimed route generators (@Crud-style)
-export {
-  registerRouteContributor,
-  getRouteContributors,
-} from './http/route-contributor';
+export { registerRouteContributor, getRouteContributors } from './http/route-contributor';
 export type {
   RouteContributor,
   RouteContributorContext,

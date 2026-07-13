@@ -13,9 +13,7 @@ import {
 
 // Helper: produces a TS error if `T` is not assignable from `U`.
 type Assert<T extends true> = T;
-type Eq<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2
-  ? true
-  : false;
+type Eq<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 
 describe('InferToken / InferTokens', () => {
   it('maps InjectionToken<T> to T (compile-time)', () => {

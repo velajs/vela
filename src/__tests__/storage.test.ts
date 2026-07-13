@@ -42,7 +42,9 @@ describe('storage path templates', () => {
 
   it('neutralizes .. / . segments so keys cannot escape the disk root (path traversal)', () => {
     // `..` is dropped, not applied — the key stays under the root.
-    expect(joinStoragePath('uploads', '../private/secret.txt', d)).toBe('uploads/private/secret.txt');
+    expect(joinStoragePath('uploads', '../private/secret.txt', d)).toBe(
+      'uploads/private/secret.txt',
+    );
     expect(joinStoragePath('uploads', '../../etc/passwd', d)).toBe('uploads/etc/passwd');
     expect(joinStoragePath('uploads', './a/./b.png', d)).toBe('uploads/a/b.png');
     // `..` segments are dropped (not applied), so the key stays under the root.

@@ -30,7 +30,12 @@ function parseImports(file: string, source: string): ParsedImport[] {
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean)
-      .map((s) => s.replace(/^type\s+/, '').split(/\s+as\s+/)[0].trim());
+      .map((s) =>
+        s
+          .replace(/^type\s+/, '')
+          .split(/\s+as\s+/)[0]
+          .trim(),
+      );
     out.push({ file, specifier: match[2], symbols });
   }
   return out;

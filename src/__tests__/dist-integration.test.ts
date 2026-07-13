@@ -77,13 +77,8 @@ describe('dist/ integration', () => {
   });
 
   it('should create a working app from dist/', async () => {
-    const {
-      VelaFactory,
-      Controller,
-      Get,
-      Injectable,
-      Module,
-    } = await import('../../dist/index.js');
+    const { VelaFactory, Controller, Get, Injectable, Module } =
+      await import('../../dist/index.js');
     const { MetadataRegistry } = await import('../../dist/internal.js');
 
     MetadataRegistry.clear();

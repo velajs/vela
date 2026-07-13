@@ -92,7 +92,10 @@ export function inline(options: InlineQueueOptions = {}): InlineQueueDriver {
         }
       }
       if (errors.length > 0) {
-        throw new AggregateError(errors, `queue flush: ${errors.length} of ${jobs.length} jobs failed (${delivered} delivered)`);
+        throw new AggregateError(
+          errors,
+          `queue flush: ${errors.length} of ${jobs.length} jobs failed (${delivered} delivered)`,
+        );
       }
       return delivered;
     },

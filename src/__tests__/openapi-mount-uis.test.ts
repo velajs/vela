@@ -58,12 +58,8 @@ describe('VelaApplication.mountOpenApi — hono-crud docs convention', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toMatch(/text\/html/);
     const html = await res.text();
-    expect(html).toContain(
-      'cdn.jsdelivr.net/npm/swagger-ui-dist/swagger-ui.css',
-    );
-    expect(html).toContain(
-      'cdn.jsdelivr.net/npm/swagger-ui-dist/swagger-ui-bundle.js',
-    );
+    expect(html).toContain('cdn.jsdelivr.net/npm/swagger-ui-dist/swagger-ui.css');
+    expect(html).toContain('cdn.jsdelivr.net/npm/swagger-ui-dist/swagger-ui-bundle.js');
     expect(html).toContain('SwaggerUIBundle({ url: "/openapi.json"');
   });
 
@@ -75,9 +71,7 @@ describe('VelaApplication.mountOpenApi — hono-crud docs convention', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toMatch(/text\/html/);
     const html = await res.text();
-    expect(html).toContain(
-      'cdn.jsdelivr.net/npm/redoc/bundles/redoc.standalone.js',
-    );
+    expect(html).toContain('cdn.jsdelivr.net/npm/redoc/bundles/redoc.standalone.js');
     expect(html).toContain('spec-url="/openapi.json"');
   });
 

@@ -28,13 +28,7 @@ describe('vela on Cloudflare Workers (live miniflare)', () => {
     const res = await SELF.fetch('http://example.com/order-test');
     expect(res.status).toBe(200);
     const body = (await res.json()) as { trace: string[] };
-    expect(body.trace).toEqual([
-      'guard',
-      'pipe',
-      'interceptor',
-      'handler',
-      'response-interceptor',
-    ]);
+    expect(body.trace).toEqual(['guard', 'pipe', 'interceptor', 'handler', 'response-interceptor']);
   });
 
   it('OpenAPI document is mountable and served', async () => {

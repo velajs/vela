@@ -47,11 +47,14 @@ export type Token<T = any> = Type<T> | InjectionToken<T> | string | symbol;
  * site (relies on the `const` type parameter on the consuming generic).
  */
 export type InferToken<T> =
-  T extends InjectionToken<infer U> ? U :
-  T extends ForwardRef<infer U> ? U :
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  T extends abstract new (...args: any[]) => infer U ? U :
-  unknown;
+  T extends InjectionToken<infer U>
+    ? U
+    : T extends ForwardRef<infer U>
+      ? U
+      : // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        T extends abstract new (...args: any[]) => infer U
+        ? U
+        : unknown;
 
 /**
  * Map every position of a `Token[]` tuple to its resolved value type.

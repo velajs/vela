@@ -21,7 +21,11 @@ export function expandPathTemplate(template: string, now: Date = new Date()): st
  * hazard for the presign proxy, where the key flows through `new URL()` which
  * would otherwise normalize `..`). Backslashes are treated as separators too.
  */
-export function joinStoragePath(root: string | undefined, relativePath: string, now?: Date): string {
+export function joinStoragePath(
+  root: string | undefined,
+  relativePath: string,
+  now?: Date,
+): string {
   const expandedRoot = root ? expandPathTemplate(root, now) : '';
   return `${expandedRoot}/${relativePath}`
     .split(/[/\\]+/)

@@ -76,7 +76,10 @@ describe('bootstrap()', () => {
   it('registers Container and ModuleRef as global; resolvable from any module', async () => {
     @Injectable()
     class UsesPrimitives {
-      constructor(public c: Container, public m: ModuleRef) {}
+      constructor(
+        public c: Container,
+        public m: ModuleRef,
+      ) {}
     }
 
     @Module({ providers: [UsesPrimitives] })

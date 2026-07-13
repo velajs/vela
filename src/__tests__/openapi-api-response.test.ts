@@ -92,7 +92,9 @@ describe('@ApiResponse', () => {
     const doc = createOpenApiDocument(AppModule);
     const op = doc.paths['/items']!.post!;
     expect(op.responses['201']!.description).toBe('Created');
-    expect(op.responses['201']!.content!['application/json']!.schema.properties).toHaveProperty('id');
+    expect(op.responses['201']!.content!['application/json']!.schema.properties).toHaveProperty(
+      'id',
+    );
   });
 
   it('accepts a raw JSON Schema object', () => {

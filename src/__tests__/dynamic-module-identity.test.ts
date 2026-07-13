@@ -30,13 +30,17 @@ describe('Dynamic module identity (audit #2)', () => {
   it('A: static module imported once → registers once', async () => {
     @Injectable()
     class StaticSvc {
-      ping() { return 'static'; }
+      ping() {
+        return 'static';
+      }
     }
 
     @Controller('/static')
     class StaticController {
       constructor(private svc: StaticSvc) {}
-      @Get() handle() { return { value: this.svc.ping() }; }
+      @Get() handle() {
+        return { value: this.svc.ping() };
+      }
     }
 
     @Module({ providers: [StaticSvc], controllers: [StaticController] })
@@ -56,7 +60,9 @@ describe('Dynamic module identity (audit #2)', () => {
 
     @Injectable()
     class SharedSvc {
-      constructor() { constructed++; }
+      constructor() {
+        constructed++;
+      }
     }
 
     @Module({ providers: [SharedSvc], exports: [SharedSvc] })
@@ -74,10 +80,7 @@ describe('Dynamic module identity (audit #2)', () => {
   // -------------------------------------------------------------------------
   it('C: CacheModule.forRoot({ttl:60}) imported twice → dedups (same key)', async () => {
     @Module({
-      imports: [
-        CacheModule.forRoot({ ttl: 60 }),
-        CacheModule.forRoot({ ttl: 60 }),
-      ],
+      imports: [CacheModule.forRoot({ ttl: 60 }), CacheModule.forRoot({ ttl: 60 })],
     })
     class App {}
 
@@ -114,12 +117,16 @@ describe('Dynamic module identity (audit #2)', () => {
     @Controller('/fast')
     class FastCtl {
       constructor(@Inject(CACHE_MODULE_OPTIONS) public opts: { ttl: number }) {}
-      @Get() handle() { return this.opts; }
+      @Get() handle() {
+        return this.opts;
+      }
     }
     @Controller('/slow')
     class SlowCtl {
       constructor(@Inject(CACHE_MODULE_OPTIONS) public opts: { ttl: number }) {}
-      @Get() handle() { return this.opts; }
+      @Get() handle() {
+        return this.opts;
+      }
     }
 
     @Module({ imports: [CacheModule.forRoot({ ttl: 60 })], controllers: [FastCtl] })
@@ -143,10 +150,7 @@ describe('Dynamic module identity (audit #2)', () => {
     }
 
     @Module({
-      imports: [
-        CacheModule.forRoot({ ttl: 60 }),
-        CacheModule.forRoot({ ttl: 120 }),
-      ],
+      imports: [CacheModule.forRoot({ ttl: 60 }), CacheModule.forRoot({ ttl: 120 })],
       providers: [Consumer],
     })
     class App {}
@@ -212,7 +216,9 @@ describe('Dynamic module identity (audit #2)', () => {
   it('G: [HttpModule, HttpModule.forRoot({base:X})] → both register, loader warns', async () => {
     const warnings: string[] = [];
     const originalWarn = console.warn;
-    console.warn = (msg: string) => { warnings.push(msg); };
+    console.warn = (msg: string) => {
+      warnings.push(msg);
+    };
 
     try {
       @Module({

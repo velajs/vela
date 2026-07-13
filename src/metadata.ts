@@ -6,10 +6,18 @@ import { MetadataRegistry } from './registry/metadata.registry';
 
 declare global {
   namespace Reflect {
-    function defineMetadata(key: string, value: unknown, target: object, propertyKey?: string | symbol): void;
+    function defineMetadata(
+      key: string,
+      value: unknown,
+      target: object,
+      propertyKey?: string | symbol,
+    ): void;
     function getMetadata(key: string, target: object, propertyKey?: string | symbol): unknown;
     function getOwnMetadata(key: string, target: object, propertyKey?: string | symbol): unknown;
-    function metadata(key: string, value: unknown): (target: object, propertyKey?: string | symbol) => void;
+    function metadata(
+      key: string,
+      value: unknown,
+    ): (target: object, propertyKey?: string | symbol) => void;
   }
 }
 

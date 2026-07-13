@@ -45,7 +45,7 @@ export function getCurrentContainer(): Container {
   if (!container) {
     throw new Error(
       'getCurrentContainer() is unavailable: enable ambient access via ' +
-        "VelaFactory.create(module, { ambientContainer: true }) (or app.use(enableAmbientContainer())) " +
+        'VelaFactory.create(module, { ambientContainer: true }) (or app.use(enableAmbientContainer())) ' +
         'and only call it within a request.',
     );
   }

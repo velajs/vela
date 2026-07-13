@@ -54,8 +54,7 @@ export function getScope(target: object): Scope {
  */
 export function getConstructorDependencies(target: object): Array<Token | undefined> {
   return (
-    (Reflect.getMetadata('design:paramtypes', target) as Array<Token | undefined> | undefined) ??
-    []
+    (Reflect.getMetadata('design:paramtypes', target) as Array<Token | undefined> | undefined) ?? []
   );
 }
 

@@ -1,9 +1,5 @@
 import type { DiscoveryService } from '../discovery/discovery.service';
-import {
-  contributesEntrypoints,
-  type Entrypoint,
-  type EntrypointKind,
-} from './entrypoint.types';
+import { contributesEntrypoints, type Entrypoint, type EntrypointKind } from './entrypoint.types';
 
 // Kind declarations are process-global and import-time (a module declares its
 // kind next to its decorator, before any app exists), so they are anchored on

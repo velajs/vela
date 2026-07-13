@@ -11,7 +11,9 @@ import {
   type ExecutionContext,
 } from '../index.js';
 
-beforeEach(() => { MetadataRegistry.clear(); });
+beforeEach(() => {
+  MetadataRegistry.clear();
+});
 
 describe('handler-key collision under duplicate class names', () => {
   it('two controllers with the same class.name keep distinct handler-level guards', async () => {
@@ -39,7 +41,9 @@ describe('handler-key collision under duplicate class names', () => {
       class C {
         @Get()
         @UseGuards(AllowGuard)
-        ping() { return 'a-ok'; }
+        ping() {
+          return 'a-ok';
+        }
       }
       return C;
     };
@@ -48,7 +52,9 @@ describe('handler-key collision under duplicate class names', () => {
       class C {
         @Get()
         @UseGuards(DenyGuard)
-        ping() { return 'b-ok'; }
+        ping() {
+          return 'b-ok';
+        }
       }
       return C;
     };

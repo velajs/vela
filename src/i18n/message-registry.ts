@@ -19,7 +19,9 @@ function contentKey(value: unknown): string {
   if (typeof value === 'object' && value !== null) {
     const entries = Object.keys(value)
       .sort()
-      .map((key) => `${JSON.stringify(key)}:${contentKey((value as Record<string, unknown>)[key])}`);
+      .map(
+        (key) => `${JSON.stringify(key)}:${contentKey((value as Record<string, unknown>)[key])}`,
+      );
     return `{${entries.join(',')}}`;
   }
   return JSON.stringify(value) ?? 'undefined';

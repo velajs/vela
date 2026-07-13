@@ -1,27 +1,27 @@
-import { Scope } from "../constants";
-import type { Container } from "../container/container";
+import { Scope } from '../constants';
+import type { Container } from '../container/container';
 import {
   ForwardRef,
   InjectionToken,
   ModuleVisibilityError,
   MultipleProvidersFoundError,
-} from "../container/types";
-import type { ProviderOptions, Token, Type } from "../container/types";
-import type { RouteManager } from "../http/route.manager";
+} from '../container/types';
+import type { ProviderOptions, Token, Type } from '../container/types';
+import type { RouteManager } from '../http/route.manager';
 import {
   APP_FILTER,
   APP_GUARD,
   APP_INTERCEPTOR,
   APP_MIDDLEWARE,
   APP_PIPE,
-} from "../pipeline/tokens";
-import { MetadataRegistry } from "../registry/metadata.registry";
-import { getOrCreateArray } from "../registry/util";
-import type { DynamicModule, ModuleImport } from "../registry/types";
-import { getModuleMetadata, isModule } from "./decorators";
-import { LazyModuleManager } from "./lazy-modules";
-import { MiddlewareBuilder } from "./middleware";
-import type { MiddlewareRouteDefinition, NestModule } from "./middleware";
+} from '../pipeline/tokens';
+import { MetadataRegistry } from '../registry/metadata.registry';
+import { getOrCreateArray } from '../registry/util';
+import type { DynamicModule, ModuleImport } from '../registry/types';
+import { getModuleMetadata, isModule } from './decorators';
+import { LazyModuleManager } from './lazy-modules';
+import { MiddlewareBuilder } from './middleware';
+import type { MiddlewareRouteDefinition, NestModule } from './middleware';
 
 const APP_TOKENS = new Set<Token>([
   APP_GUARD,
@@ -31,7 +31,7 @@ const APP_TOKENS = new Set<Token>([
   APP_MIDDLEWARE,
 ]);
 
-const DEFAULT_KEY = "default";
+const DEFAULT_KEY = 'default';
 
 /** What the loader records per lazy module instance (see LazyModuleManager). */
 export interface LazyModuleGroupSpec {
@@ -46,30 +46,30 @@ export interface LazyModuleGroupSpec {
  * does not import from `entrypoint/` (layering).
  */
 function declaresEntrypointContributor(provider: Type | ProviderOptions): boolean {
-  const cls = typeof provider === "function" ? provider : provider.useClass;
-  if (typeof cls !== "function") return false;
+  const cls = typeof provider === 'function' ? provider : provider.useClass;
+  if (typeof cls !== 'function') return false;
   const proto = (cls as Type).prototype as Record<string, unknown> | undefined;
-  return typeof proto?.collectEntrypoints === "function";
+  return typeof proto?.collectEntrypoints === 'function';
 }
 
 function isDynamicModule(value: unknown): value is DynamicModule {
   // TS 4.9+ narrows `'module' in value` so `value.module` is typed `unknown`
   // — no cast required for the typeof check below.
   return (
-    typeof value === "object" &&
+    typeof value === 'object' &&
     value !== null &&
-    "module" in value &&
-    typeof value.module === "function"
+    'module' in value &&
+    typeof value.module === 'function'
   );
 }
 
 function implementsNestModule(cls: Type): cls is Type<NestModule> {
   // `Type.prototype` is `any` — direct property access is type-safe enough.
-  return typeof cls.prototype?.configure === "function";
+  return typeof cls.prototype?.configure === 'function';
 }
 
 function tokenOfProvider(provider: Type | ProviderOptions): Token | undefined {
-  return typeof provider === "function" ? provider : provider.provide;
+  return typeof provider === 'function' ? provider : provider.provide;
 }
 
 function keyOfImport(entry: Type | DynamicModule): string {
@@ -157,7 +157,7 @@ export class ModuleLoader {
       this.moduleIdByClassKey.set(moduleClass, perClass);
     }
 
-    const baseName = moduleClass.name || "AnonModule";
+    const baseName = moduleClass.name || 'AnonModule';
     let id = `${baseName}#${key}`;
     let counter = 0;
     // Cross-class name collision (rare): two different classes named identically.
@@ -197,9 +197,7 @@ export class ModuleLoader {
     perClass.set(key, exports);
   }
 
-  private processModule(
-    moduleClassOrDynamic: Type | DynamicModule,
-  ): Set<Token> {
+  private processModule(moduleClassOrDynamic: Type | DynamicModule): Set<Token> {
     let moduleClass: Type;
     let extraImports: ModuleImport[] = [];
     let extraControllers: Type[] = [];
@@ -228,7 +226,7 @@ export class ModuleLoader {
 
     const stackKey = `${moduleClass.name}#${key}`;
     if (this.processingStack.has(stackKey)) {
-      const chain = [...this.processingStack, stackKey].join(" -> ");
+      const chain = [...this.processingStack, stackKey].join(' -> ');
       throw new Error(`Circular module dependency detected: ${chain}`);
     }
 
@@ -266,9 +264,7 @@ export class ModuleLoader {
       const allImports = [...metadata.imports, ...extraImports];
 
       for (const entry of allImports) {
-        const importedModule = entry instanceof ForwardRef
-          ? unwrapModuleForwardRef(entry)
-          : entry;
+        const importedModule = entry instanceof ForwardRef ? unwrapModuleForwardRef(entry) : entry;
 
         const importedModuleClass = isDynamicModule(importedModule)
           ? importedModule.module
@@ -318,13 +314,11 @@ export class ModuleLoader {
 
       const isGlobal =
         metadata.isGlobal ||
-        (isDynamicModule(moduleClassOrDynamic) &&
-          moduleClassOrDynamic.global === true);
+        (isDynamicModule(moduleClassOrDynamic) && moduleClassOrDynamic.global === true);
 
       const isLazy =
         metadata.lazy ||
-        (isDynamicModule(moduleClassOrDynamic) &&
-          moduleClassOrDynamic.lazy === true);
+        (isDynamicModule(moduleClassOrDynamic) && moduleClassOrDynamic.lazy === true);
 
       this.container.registerScope({
         moduleId,
@@ -370,11 +364,7 @@ export class ModuleLoader {
 
       this.markProcessed(moduleClass, key);
 
-      const exports = this.buildExportSet(
-        allExports,
-        allProviders,
-        importedProviders,
-      );
+      const exports = this.buildExportSet(allExports, allProviders, importedProviders);
       this.cacheExports(moduleClass, key, exports);
 
       if (isGlobal) {
@@ -406,7 +396,7 @@ export class ModuleLoader {
     keysByClass: Map<Type, Set<string>>,
   ): void {
     const mode = this.container.getDiagnostics();
-    if (mode === "silent") return;
+    if (mode === 'silent') return;
     for (const [cls, keys] of keysByClass) {
       if (keys.size < 2) continue;
       if (!keys.has(DEFAULT_KEY)) continue;
@@ -414,17 +404,14 @@ export class ModuleLoader {
         `[vela] ${cls.name} imported in both bare and keyed form in '${parentName}'. ` +
         `These resolve to distinct module instances; consumers asking for an exported ` +
         `token will hit MultipleProvidersFoundError. Use one form consistently.`;
-      if (mode === "throw") throw new Error(message);
+      if (mode === 'throw') throw new Error(message);
       console.warn(message);
     }
   }
 
   /** Registers the provider and returns the token it was registered under. */
-  private registerProvider(
-    provider: Type | ProviderOptions,
-    moduleId: string,
-  ): Token | undefined {
-    if (typeof provider === "function") {
+  private registerProvider(provider: Type | ProviderOptions, moduleId: string): Token | undefined {
+    if (typeof provider === 'function') {
       // Per-module bucket: the same class can be registered in multiple
       // modules' buckets simultaneously without collision.
       this.container.register(provider, moduleId);
@@ -443,13 +430,8 @@ export class ModuleLoader {
       // distinct tokens so they don't overwrite each other in the bucket
       // Map. Across buckets, `container.resolveAll(APP_GUARD)` walks
       // every bucket — no need to mark synthetic tokens global.
-      const syntheticToken = new InjectionToken(
-        `${token.toString()}:${this.appProviderCounter++}`,
-      );
-      this.container.register(
-        { ...provider, provide: syntheticToken },
-        moduleId,
-      );
+      const syntheticToken = new InjectionToken(`${token.toString()}:${this.appProviderCounter++}`);
+      this.container.register({ ...provider, provide: syntheticToken }, moduleId);
       this.registeredProviders.push(syntheticToken);
       getOrCreateArray(this.appProviderTokens, token).push(syntheticToken);
       return syntheticToken;
@@ -544,10 +526,7 @@ export class ModuleLoader {
         const instance = await this.container.resolveAsync(token);
         instanceSet.add(instance);
       } catch (err) {
-        if (
-          err instanceof ModuleVisibilityError ||
-          err instanceof MultipleProvidersFoundError
-        ) {
+        if (err instanceof ModuleVisibilityError || err instanceof MultipleProvidersFoundError) {
           throw err;
         }
         this.routeError(err, `resolve provider`);
@@ -565,10 +544,7 @@ export class ModuleLoader {
         const instance = await this.container.resolveAsync(controller);
         instanceSet.add(instance);
       } catch (err) {
-        if (
-          err instanceof ModuleVisibilityError ||
-          err instanceof MultipleProvidersFoundError
-        ) {
+        if (err instanceof ModuleVisibilityError || err instanceof MultipleProvidersFoundError) {
           throw err;
         }
         this.routeError(err, `resolve controller ${controller.name}`);
@@ -580,8 +556,8 @@ export class ModuleLoader {
 
   private routeError(err: unknown, context: string): void {
     const mode = this.container.getDiagnostics();
-    if (mode === "silent") return;
-    if (mode === "throw") {
+    if (mode === 'silent') return;
+    if (mode === 'throw') {
       throw err instanceof Error ? err : new Error(String(err));
     }
     console.warn(`[vela] ${context} failed:`, err);

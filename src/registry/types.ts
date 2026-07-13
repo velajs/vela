@@ -17,7 +17,16 @@ import type {
   Type,
 } from '../container/types';
 
-export type { Constructor, ForwardRef, InferToken, InferTokens, InjectionToken, ProviderOptions, Token, Type };
+export type {
+  Constructor,
+  ForwardRef,
+  InferToken,
+  InferTokens,
+  InjectionToken,
+  ProviderOptions,
+  Token,
+  Type,
+};
 
 export type ComponentType = 'middleware' | 'guard' | 'pipe' | 'interceptor' | 'filter';
 
@@ -35,7 +44,12 @@ export interface ComponentTypeMap {
   filter: FilterType;
 }
 
-export type ComponentInstance = MiddlewareType | GuardType | PipeType | InterceptorType | FilterType;
+export type ComponentInstance =
+  | MiddlewareType
+  | GuardType
+  | PipeType
+  | InterceptorType
+  | FilterType;
 
 export interface RouteDefinition {
   method: string;

@@ -68,9 +68,9 @@ describe('Diagnostics', () => {
     @Module({ providers: [FailsInCtor] })
     class App {}
 
-    await expect(
-      VelaFactory.create(App, { diagnostics: 'throw' }),
-    ).rejects.toThrow(/intentional ctor failure/);
+    await expect(VelaFactory.create(App, { diagnostics: 'throw' })).rejects.toThrow(
+      /intentional ctor failure/,
+    );
   });
 
   it('ModuleVisibilityError ALWAYS propagates regardless of diagnostics mode', async () => {
@@ -87,9 +87,9 @@ describe('Diagnostics', () => {
     class ModB {}
 
     // Even with 'silent', module-visibility violations must throw.
-    await expect(
-      VelaFactory.create(ModB, { diagnostics: 'silent' }),
-    ).rejects.toThrow(ModuleVisibilityError);
+    await expect(VelaFactory.create(ModB, { diagnostics: 'silent' })).rejects.toThrow(
+      ModuleVisibilityError,
+    );
 
     MetadataRegistry.clear();
 
@@ -99,9 +99,9 @@ describe('Diagnostics', () => {
     class ModB2 {}
 
     // Same with 'log'.
-    await expect(
-      VelaFactory.create(ModB2, { diagnostics: 'log' }),
-    ).rejects.toThrow(ModuleVisibilityError);
+    await expect(VelaFactory.create(ModB2, { diagnostics: 'log' })).rejects.toThrow(
+      ModuleVisibilityError,
+    );
   });
 
   it('Container.getDiagnostics returns the configured mode', () => {

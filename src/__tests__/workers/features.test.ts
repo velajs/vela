@@ -15,10 +15,14 @@ describe('vela session features on Cloudflare Workers (live miniflare)', () => {
   });
 
   it('i18n (intl-messageformat) bundles and runs under workerd, honoring Accept-Language', async () => {
-    const en = await SELF.fetch('http://example.com/i18n', { headers: { 'accept-language': 'en' } });
+    const en = await SELF.fetch('http://example.com/i18n', {
+      headers: { 'accept-language': 'en' },
+    });
     expect(await en.json()).toEqual({ msg: 'Hello, Ada!', locale: 'en' });
 
-    const fr = await SELF.fetch('http://example.com/i18n', { headers: { 'accept-language': 'fr' } });
+    const fr = await SELF.fetch('http://example.com/i18n', {
+      headers: { 'accept-language': 'fr' },
+    });
     expect(await fr.json()).toEqual({ msg: 'Bonjour, Ada !', locale: 'fr' });
   });
 

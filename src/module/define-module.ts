@@ -126,7 +126,14 @@ function lowerGlobalSlot(slot: GlobalComponentSlot): Array<Type | ProviderOption
   return out;
 }
 
-const ASYNC_OPTION_KEYS = new Set(['key', 'imports', 'inject', 'useFactory', 'useClass', 'useExisting']);
+const ASYNC_OPTION_KEYS = new Set([
+  'key',
+  'imports',
+  'inject',
+  'useFactory',
+  'useClass',
+  'useExisting',
+]);
 
 /**
  * The one blessed module-authoring engine. Generates `forRoot` AND
@@ -162,8 +169,7 @@ export function defineModule<
 >(
   spec: DefineModuleSpec<Opts, Extras, MethodKey, FactoryMethodKey>,
 ): ConfigurableModuleHost<Opts, MethodKey, FactoryMethodKey, Extras> {
-  const optionsToken =
-    spec.optionsToken ?? new InjectionToken<Opts>(`${spec.name}_MODULE_OPTIONS`);
+  const optionsToken = spec.optionsToken ?? new InjectionToken<Opts>(`${spec.name}_MODULE_OPTIONS`);
   const syncName = spec.methodName ?? 'forRoot';
   const asyncName = `${syncName}Async`;
   const factoryMethodName = spec.factoryMethodName ?? 'create';
@@ -331,7 +337,7 @@ export function buildAsyncOptionsProviders<Opts>(
       {
         provide: optionsToken,
         useFactory: (instance: Record<string, () => Opts | Promise<Opts>>) =>
-          merge(instance[factoryMethodName]()),
+          merge(instance[factoryMethodName]!()),
         inject: [factoryClass as unknown as Token],
       },
     ];
@@ -341,7 +347,7 @@ export function buildAsyncOptionsProviders<Opts>(
       {
         provide: optionsToken,
         useFactory: (instance: Record<string, () => Opts | Promise<Opts>>) =>
-          merge(instance[factoryMethodName]()),
+          merge(instance[factoryMethodName]!()),
         inject: [async.useExisting as unknown as Token],
       },
     ];

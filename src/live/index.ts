@@ -6,7 +6,12 @@
 export { LiveModule } from './live.module';
 export { LiveResolver, LiveQuery, getLiveQueries } from './live.decorators';
 export { LiveEngine, LIVE_SUBS_DATA_KEY, readPersistedLiveSubscriptions } from './live.engine';
-export { LiveInvalidation, localLive, perAppLiveDriver, stampCommitHeaders } from './live.invalidation';
+export {
+  LiveInvalidation,
+  localLive,
+  perAppLiveDriver,
+  stampCommitHeaders,
+} from './live.invalidation';
 export { InMemoryCursorLog } from './live.cursor';
 export { encodeSubscriptionUpdate } from './live.delta';
 export { PresenceService, PresenceResolver, presenceTag, PRESENCE_ROSTER_QUERY } from './presence';

@@ -90,10 +90,13 @@ describe('ValidationPipe', () => {
     const schema = z.object({ name: z.string() });
     const Dto = createZodDto(schema);
 
-    const result = pipe.transform({ name: 'Alice' }, {
-      type: 'body',
-      metatype: Dto as any,
-    });
+    const result = pipe.transform(
+      { name: 'Alice' },
+      {
+        type: 'body',
+        metatype: Dto as any,
+      },
+    );
     expect(result).toEqual({ name: 'Alice' });
   });
 
@@ -101,10 +104,13 @@ describe('ValidationPipe', () => {
     const schema = z.object({ name: z.string() });
     const Dto = createZodDto(schema);
 
-    const result = pipe.transform({ name: 'Alice', extra: true }, {
-      type: 'body',
-      metatype: Dto as any,
-    });
+    const result = pipe.transform(
+      { name: 'Alice', extra: true },
+      {
+        type: 'body',
+        metatype: Dto as any,
+      },
+    );
     expect(result).toEqual({ name: 'Alice' });
   });
 
@@ -113,17 +119,23 @@ describe('ValidationPipe', () => {
     const Dto = createZodDto(schema);
 
     expect(() =>
-      pipe.transform({ name: 123, email: 'bad' }, {
-        type: 'body',
-        metatype: Dto as any,
-      }),
+      pipe.transform(
+        { name: 123, email: 'bad' },
+        {
+          type: 'body',
+          metatype: Dto as any,
+        },
+      ),
     ).toThrow();
 
     try {
-      pipe.transform({ name: 123, email: 'bad' }, {
-        type: 'body',
-        metatype: Dto as any,
-      });
+      pipe.transform(
+        { name: 123, email: 'bad' },
+        {
+          type: 'body',
+          metatype: Dto as any,
+        },
+      );
     } catch (err: any) {
       expect(err.statusCode).toBe(400);
       const response = err.getResponse() as any;
@@ -162,10 +174,13 @@ describe('ValidationPipe', () => {
     const Dto = createZodDto(schema);
 
     expect(() =>
-      pipe.transform({ name: 'Alice', address: { street: 123 } }, {
-        type: 'body',
-        metatype: Dto as any,
-      }),
+      pipe.transform(
+        { name: 'Alice', address: { street: 123 } },
+        {
+          type: 'body',
+          metatype: Dto as any,
+        },
+      ),
     ).toThrow();
   });
 });
@@ -185,7 +200,7 @@ describe('ValidationPipe integration', () => {
     @Injectable()
     class UserService {
       create(data: unknown) {
-        return { id: 1, ...data as object };
+        return { id: 1, ...(data as object) };
       }
     }
 
@@ -227,7 +242,7 @@ describe('ValidationPipe integration', () => {
       body: JSON.stringify({ name: 'Alice', email: 'not-an-email' }),
     });
     expect(invalidRes.status).toBe(400);
-    const errorBody = await invalidRes.json() as any;
+    const errorBody = (await invalidRes.json()) as any;
     expect(errorBody.message).toBe('Validation failed');
     expect(errorBody.errors).toBeDefined();
   });

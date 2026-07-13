@@ -20,7 +20,7 @@ import { buildExecutionContext } from './execution-context';
 export function Controller(pathOrOptions?: string | ControllerOptions): ClassDecorator {
   return (target) => {
     const ctor = target as unknown as Constructor;
-    const path = typeof pathOrOptions === 'string' ? pathOrOptions : pathOrOptions?.path ?? '';
+    const path = typeof pathOrOptions === 'string' ? pathOrOptions : (pathOrOptions?.path ?? '');
     const version = typeof pathOrOptions === 'object' ? pathOrOptions?.version : undefined;
 
     MetadataRegistry.setControllerPath(ctor, normalizePath(path));
@@ -133,16 +133,12 @@ function createBuiltinParamDecorator(type: ParamType) {
         allPipes = pipes;
       }
 
-      MetadataRegistry.addParameter(
-        target.constructor as Constructor,
-        propertyKey,
-        {
-          index: parameterIndex,
-          type,
-          name,
-          ...(allPipes.length > 0 ? { pipes: allPipes } : {}),
-        },
-      );
+      MetadataRegistry.addParameter(target.constructor as Constructor, propertyKey, {
+        index: parameterIndex,
+        type,
+        name,
+        ...(allPipes.length > 0 ? { pipes: allPipes } : {}),
+      });
     };
   };
 }
@@ -248,21 +244,17 @@ export function createParamDecorator<TData = unknown>(
         throw new Error('Parameter decorators can only be used on method parameters');
       }
 
-      MetadataRegistry.addParameter(
-        target.constructor as Constructor,
-        propertyKey,
-        {
-          index: parameterIndex,
-          type: CUSTOM_PARAM_TYPE,
-          name: undefined,
-          factory: (_unused: unknown, ctx: unknown) => {
-            const honoCtx = ctx as import('hono').Context;
-            const execCtx = buildExecutionContext(honoCtx, target.constructor as Type, propertyKey);
-            return factory(data as TData, execCtx);
-          },
-          ...(pipes.length > 0 ? { pipes } : {}),
+      MetadataRegistry.addParameter(target.constructor as Constructor, propertyKey, {
+        index: parameterIndex,
+        type: CUSTOM_PARAM_TYPE,
+        name: undefined,
+        factory: (_unused: unknown, ctx: unknown) => {
+          const honoCtx = ctx as import('hono').Context;
+          const execCtx = buildExecutionContext(honoCtx, target.constructor as Type, propertyKey);
+          return factory(data as TData, execCtx);
         },
-      );
+        ...(pipes.length > 0 ? { pipes } : {}),
+      });
     };
   };
 }
@@ -281,7 +273,9 @@ export function createParamDecorator<TData = unknown>(
  */
 export function HttpCode(statusCode: number): MethodDecorator {
   return (target: object, propertyKey: string | symbol, _descriptor: PropertyDescriptor) => {
-    MetadataRegistry.setHandlerHttpMeta(target.constructor as Constructor, propertyKey, { httpCode: statusCode });
+    MetadataRegistry.setHandlerHttpMeta(target.constructor as Constructor, propertyKey, {
+      httpCode: statusCode,
+    });
   };
 }
 
@@ -336,11 +330,17 @@ export function getHttpCode(target: Constructor, method: string | symbol): numbe
   return MetadataRegistry.getHandlerHttpMeta(target, method)?.httpCode;
 }
 
-export function getResponseHeaders(target: Constructor, method: string | symbol): Array<[string, string]> {
+export function getResponseHeaders(
+  target: Constructor,
+  method: string | symbol,
+): Array<[string, string]> {
   return MetadataRegistry.getHandlerHttpMeta(target, method)?.responseHeaders ?? [];
 }
 
-export function getRedirect(target: Constructor, method: string | symbol): { url: string; statusCode: number } | undefined {
+export function getRedirect(
+  target: Constructor,
+  method: string | symbol,
+): { url: string; statusCode: number } | undefined {
   return MetadataRegistry.getHandlerHttpMeta(target, method)?.redirect;
 }
 
@@ -393,6 +393,8 @@ export function applyDecorators(
 // Helpers
 
 export function isController(target: Constructor): boolean {
-  return MetadataRegistry.getControllerPath(target) !== '' ||
-    MetadataRegistry.getRoutes(target).length > 0;
+  return (
+    MetadataRegistry.getControllerPath(target) !== '' ||
+    MetadataRegistry.getRoutes(target).length > 0
+  );
 }

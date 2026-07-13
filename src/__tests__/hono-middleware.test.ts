@@ -223,11 +223,7 @@ describe('VelaApplication Hono middleware methods', () => {
 
     const logs: string[] = [];
     const app = await VelaFactory.create(FactoryModule, {
-      middleware: [
-        logger((str) => logs.push(str)),
-        secureHeaders(),
-        requestId(),
-      ],
+      middleware: [logger((str) => logs.push(str)), secureHeaders(), requestId()],
     });
 
     // No rebuild() needed
@@ -254,11 +250,7 @@ describe('VelaApplication Hono middleware methods', () => {
 
     const logs: string[] = [];
     const app = await VelaFactory.create(ChainModule, {
-      middleware: [
-        logger((str) => logs.push(str)),
-        requestId(),
-        secureHeaders(),
-      ],
+      middleware: [logger((str) => logs.push(str)), requestId(), secureHeaders()],
     });
 
     const res = await app.getHonoApp().request('/chain/hello');

@@ -6,10 +6,11 @@ import { ThrottlerStorage } from './throttler.storage';
 import { THROTTLER_OPTIONS, THROTTLER_STORAGE } from './throttler.tokens';
 import type { ThrottlerModuleOptions } from './throttler.types';
 
-const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = new ConfigurableModuleBuilder<ThrottlerModuleOptions>({
-  moduleName: 'Throttler',
-  optionsInjectionToken: THROTTLER_OPTIONS,
-}).build();
+const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } =
+  new ConfigurableModuleBuilder<ThrottlerModuleOptions>({
+    moduleName: 'Throttler',
+    optionsInjectionToken: THROTTLER_OPTIONS,
+  }).build();
 
 @Module({
   providers: [

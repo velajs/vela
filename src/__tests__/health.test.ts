@@ -1,11 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import {
-  VelaFactory,
-  Controller,
-  Get,
-  Module,
-  MetadataRegistry,
-} from '../index.js';
+import { VelaFactory, Controller, Get, Module, MetadataRegistry } from '../index.js';
 import {
   HealthModule,
   HealthCheckService,
@@ -62,9 +56,9 @@ describe('HttpHealthIndicator', () => {
   const indicator = new HealthIndicatorService();
 
   it('should return up for 2xx response', async () => {
-    const mockFetch = vi.fn().mockResolvedValue(
-      new Response('OK', { status: 200, statusText: 'OK' }),
-    );
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValue(new Response('OK', { status: 200, statusText: 'OK' }));
     vi.stubGlobal('fetch', mockFetch);
 
     const http = new HttpHealthIndicator(indicator);
@@ -83,9 +77,9 @@ describe('HttpHealthIndicator', () => {
   });
 
   it('should return down for non-2xx response', async () => {
-    const mockFetch = vi.fn().mockResolvedValue(
-      new Response('Not Found', { status: 404, statusText: 'Not Found' }),
-    );
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValue(new Response('Not Found', { status: 404, statusText: 'Not Found' }));
     vi.stubGlobal('fetch', mockFetch);
 
     const http = new HttpHealthIndicator(indicator);
@@ -113,9 +107,9 @@ describe('HttpHealthIndicator', () => {
   });
 
   it('should respect expectedStatus option', async () => {
-    const mockFetch = vi.fn().mockResolvedValue(
-      new Response('', { status: 301, statusText: 'Moved Permanently' }),
-    );
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValue(new Response('', { status: 301, statusText: 'Moved Permanently' }));
     vi.stubGlobal('fetch', mockFetch);
 
     const http = new HttpHealthIndicator(indicator);
@@ -135,9 +129,7 @@ describe('HttpHealthIndicator.responseCheck', () => {
   const indicator = new HealthIndicatorService();
 
   it('should return up when callback returns true', async () => {
-    const mockFetch = vi.fn().mockResolvedValue(
-      new Response('{"healthy":true}', { status: 200 }),
-    );
+    const mockFetch = vi.fn().mockResolvedValue(new Response('{"healthy":true}', { status: 200 }));
     vi.stubGlobal('fetch', mockFetch);
 
     const http = new HttpHealthIndicator(indicator);
@@ -155,20 +147,14 @@ describe('HttpHealthIndicator.responseCheck', () => {
   });
 
   it('should return down when callback returns false', async () => {
-    const mockFetch = vi.fn().mockResolvedValue(
-      new Response('{"healthy":false}', { status: 200 }),
-    );
+    const mockFetch = vi.fn().mockResolvedValue(new Response('{"healthy":false}', { status: 200 }));
     vi.stubGlobal('fetch', mockFetch);
 
     const http = new HttpHealthIndicator(indicator);
-    const result = await http.responseCheck(
-      'api',
-      'https://example.com/health',
-      async (res) => {
-        const body = await res.json();
-        return body.healthy === true;
-      },
-    );
+    const result = await http.responseCheck('api', 'https://example.com/health', async (res) => {
+      const body = await res.json();
+      return body.healthy === true;
+    });
 
     expect(result).toEqual({
       api: { status: 'down', statusCode: 200 },
@@ -182,11 +168,7 @@ describe('HttpHealthIndicator.responseCheck', () => {
     vi.stubGlobal('fetch', mockFetch);
 
     const http = new HttpHealthIndicator(indicator);
-    const result = await http.responseCheck(
-      'api',
-      'https://unreachable.local',
-      () => true,
-    );
+    const result = await http.responseCheck('api', 'https://unreachable.local', () => true);
 
     expect(result).toEqual({
       api: { status: 'down', message: 'fetch failed' },
@@ -276,7 +258,10 @@ describe('HealthCheckService', () => {
       expect.unreachable('Should have thrown');
     } catch (error) {
       expect(error).toBeInstanceOf(ServiceUnavailableException);
-      const response = (error as ServiceUnavailableException).getResponse() as Record<string, unknown>;
+      const response = (error as ServiceUnavailableException).getResponse() as Record<
+        string,
+        unknown
+      >;
       expect(response.status).toBe('error');
       expect(response.info).toEqual({ db: { status: 'up' } });
       expect(response.error).toEqual({ unknown: { status: 'down', message: 'Redis exploded' } });
@@ -303,7 +288,10 @@ describe('HealthCheckService', () => {
         },
       ]);
     } catch (error) {
-      const response = (error as ServiceUnavailableException).getResponse() as Record<string, unknown>;
+      const response = (error as ServiceUnavailableException).getResponse() as Record<
+        string,
+        unknown
+      >;
       const details = response.details as Record<string, unknown>;
       expect(details).toHaveProperty('db');
       expect(details).toHaveProperty('redis');
@@ -319,9 +307,7 @@ describe('HealthCheckService shutting_down', () => {
     service.beforeApplicationShutdown();
 
     try {
-      await service.check([
-        async () => ({ db: { status: 'up' } }),
-      ]);
+      await service.check([async () => ({ db: { status: 'up' } })]);
       expect.unreachable('Should have thrown');
     } catch (error) {
       expect(error).toBeInstanceOf(ServiceUnavailableException);
@@ -345,9 +331,7 @@ describe('HealthCheckService shutting_down', () => {
 
       @Get()
       async check() {
-        return this.health.check([
-          async () => this.indicator.check('app').up(),
-        ]);
+        return this.health.check([async () => this.indicator.check('app').up()]);
       }
     }
 

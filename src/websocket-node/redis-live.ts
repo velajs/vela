@@ -1,4 +1,9 @@
-import type { CommitStamp, InvalidationCommand, LiveDriver, LiveInvalidationSink } from '../live/index';
+import type {
+  CommitStamp,
+  InvalidationCommand,
+  LiveDriver,
+  LiveInvalidationSink,
+} from '../live/index';
 import type { RedisPubSubClient } from './redis-sync';
 
 export interface RedisLiveOptions {

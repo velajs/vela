@@ -1,10 +1,7 @@
 import { Scope } from '../constants';
 import type { Container } from '../container/container';
 import type { LazyResolutionHook, Token } from '../container/types';
-import {
-  hasOnApplicationBootstrap,
-  hasOnModuleInit,
-} from '../lifecycle/index';
+import { hasOnApplicationBootstrap, hasOnModuleInit } from '../lifecycle/index';
 
 /** One lazy module instance's deferral unit: its own tokens, in registration order. */
 export interface LazyModuleGroup {
@@ -181,9 +178,7 @@ export class LazyModuleManager implements LazyResolutionHook {
   }
 
   private groupTokensToConstruct(group: LazyModuleGroup): Token[] {
-    return group.tokens.filter(
-      (token) => this.container.getProviderScope(token) !== Scope.REQUEST,
-    );
+    return group.tokens.filter((token) => this.container.getProviderScope(token) !== Scope.REQUEST);
   }
 
   private constructGroupSync(group: LazyModuleGroup): unknown[] {

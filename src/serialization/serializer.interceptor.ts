@@ -8,11 +8,9 @@ export class SerializerInterceptor implements NestInterceptor {
     const controller = context.getClass();
     const handler = context.getHandler();
 
-    const dto = MetadataRegistry.getCustomHandlerMeta(
-      controller,
-      handler,
-      SERIALIZE_METADATA,
-    ) as { schema?: { parse(data: unknown): unknown } } | undefined;
+    const dto = MetadataRegistry.getCustomHandlerMeta(controller, handler, SERIALIZE_METADATA) as
+      | { schema?: { parse(data: unknown): unknown } }
+      | undefined;
 
     const schema = dto?.schema;
     if (!schema?.parse) return result;

@@ -16,7 +16,10 @@ import { isVelaError, type ErrorBodyResult } from '@velajs/errors';
  * constructor cannot be called without `new`, using one here throws; pass the
  * unbound class instead.
  */
-export type ErrorMatcher = string | ((error: unknown) => boolean) | (new (...args: never[]) => Error);
+export type ErrorMatcher =
+  | string
+  | ((error: unknown) => boolean)
+  | (new (...args: never[]) => Error);
 
 /**
  * Ambient context handed to every reporting/rendering hook. `edge` names the

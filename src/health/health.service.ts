@@ -17,7 +17,12 @@ export class HealthCheckService implements BeforeApplicationShutdown {
 
   async check(indicators: HealthIndicatorFunction[]): Promise<HealthCheckResult> {
     if (this.isShuttingDown) {
-      const result: HealthCheckResult = { status: 'shutting_down', info: {}, error: {}, details: {} };
+      const result: HealthCheckResult = {
+        status: 'shutting_down',
+        info: {},
+        error: {},
+        details: {},
+      };
       throw new ServiceUnavailableException({ ...result });
     }
 
@@ -39,9 +44,8 @@ export class HealthCheckService implements BeforeApplicationShutdown {
           }
         }
       } else {
-        const message = result.reason instanceof Error
-          ? result.reason.message
-          : 'Health check failed';
+        const message =
+          result.reason instanceof Error ? result.reason.message : 'Health check failed';
         const key = 'unknown';
         const value = { status: 'down' as const, message };
         details[key] = value;

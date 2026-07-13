@@ -76,7 +76,9 @@ function getParamSchema(
 }
 
 function isParamOptional(param: ParameterMetadata, paramtypes?: unknown[]): boolean {
-  const metatype = (param.metatype ?? paramtypes?.[param.index]) as { schema?: unknown } | undefined;
+  const metatype = (param.metatype ?? paramtypes?.[param.index]) as
+    | { schema?: unknown }
+    | undefined;
   if (metatype?.schema) {
     return isOptional(metatype.schema);
   }
@@ -88,11 +90,20 @@ function isLikelyJsonSchema(value: unknown): value is JsonSchema {
   const v = value as Record<string, unknown>;
   if (typeof (v as { toJSONSchema?: unknown }).toJSONSchema === 'function') return false;
   return (
-    'type' in v || '$ref' in v || 'oneOf' in v || 'anyOf' in v || 'allOf' in v || 'enum' in v || 'const' in v
+    'type' in v ||
+    '$ref' in v ||
+    'oneOf' in v ||
+    'anyOf' in v ||
+    'allOf' in v ||
+    'enum' in v ||
+    'const' in v
   );
 }
 
-function resolveResponseSchema(input: unknown, registry: ComponentsRegistry): JsonSchema | undefined {
+function resolveResponseSchema(
+  input: unknown,
+  registry: ComponentsRegistry,
+): JsonSchema | undefined {
   if (input === undefined || input === null) return undefined;
 
   if (isDtoClass(input)) {
@@ -103,7 +114,10 @@ function resolveResponseSchema(input: unknown, registry: ComponentsRegistry): Js
     return { ...(input as JsonSchema) };
   }
 
-  if (typeof input === 'object' && typeof (input as { toJSONSchema?: unknown }).toJSONSchema === 'function') {
+  if (
+    typeof input === 'object' &&
+    typeof (input as { toJSONSchema?: unknown }).toJSONSchema === 'function'
+  ) {
     return zodToJsonSchema(input);
   }
 
@@ -174,7 +188,10 @@ function buildOperation(
   const docTags = docMeta?.tags ?? [];
   const mergedTags = [...new Set([...controllerTags, ...handlerTags, ...docTags])];
 
-  const responses: Record<string, { description: string; content?: Record<string, { schema: JsonSchema }> }> = {
+  const responses: Record<
+    string,
+    { description: string; content?: Record<string, { schema: JsonSchema }> }
+  > = {
     '200': { description: 'OK' },
   };
 

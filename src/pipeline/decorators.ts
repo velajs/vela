@@ -1,11 +1,7 @@
 import type { Type } from '../container/types';
 import { ComponentManager } from './component.manager';
 import { MetadataRegistry } from '../registry/metadata.registry';
-import type {
-  ComponentType,
-  ComponentTypeMap,
-  Constructor,
-} from '../registry/types';
+import type { ComponentType, ComponentTypeMap, Constructor } from '../registry/types';
 
 function UseComponent<T extends ComponentType>(type: T, ...components: ComponentTypeMap[T][]) {
   return (target: object, propertyKey?: string | symbol) => {
@@ -49,7 +45,9 @@ export function Catch(...exceptions: Type<Error>[]): ClassDecorator {
 }
 
 export function getCatchTypes(filter: unknown): Type<Error>[] {
-  const filterClass = (typeof filter === 'function' ? filter : (filter as object).constructor) as Constructor;
+  const filterClass = (
+    typeof filter === 'function' ? filter : (filter as object).constructor
+  ) as Constructor;
   return MetadataRegistry.getCatchTypes(filterClass) ?? [];
 }
 

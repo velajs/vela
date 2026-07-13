@@ -212,12 +212,10 @@ describe('Global prefix', () => {
 
 describe('createParamDecorator', () => {
   it('should create a custom parameter decorator', async () => {
-    const CurrentUser = createParamDecorator(
-      (_data: unknown, ctx: ExecutionContext) => {
-        const req = ctx.getRequest();
-        return req.headers.get('x-user-id') ?? 'anonymous';
-      },
-    );
+    const CurrentUser = createParamDecorator((_data: unknown, ctx: ExecutionContext) => {
+      const req = ctx.getRequest();
+      return req.headers.get('x-user-id') ?? 'anonymous';
+    });
 
     @Controller('/profile')
     class ProfileController {
@@ -245,19 +243,14 @@ describe('createParamDecorator', () => {
   });
 
   it('should pass data argument to the factory', async () => {
-    const Header = createParamDecorator<string>(
-      (headerName: string, ctx: ExecutionContext) => {
-        return ctx.getRequest().headers.get(headerName);
-      },
-    );
+    const Header = createParamDecorator<string>((headerName: string, ctx: ExecutionContext) => {
+      return ctx.getRequest().headers.get(headerName);
+    });
 
     @Controller('/headers')
     class HeaderController {
       @Get()
-      handle(
-        @Header('x-request-id') requestId: string,
-        @Header('x-trace-id') traceId: string,
-      ) {
+      handle(@Header('x-request-id') requestId: string, @Header('x-trace-id') traceId: string) {
         return { requestId, traceId };
       }
     }
@@ -282,12 +275,10 @@ describe('createParamDecorator', () => {
   });
 
   it('should support pipes with custom param decorators', async () => {
-    const ParamInt = createParamDecorator<string>(
-      (paramName: string, ctx: ExecutionContext) => {
-        const honoCtx = ctx.getContext<import('hono').Context>();
-        return honoCtx.req.param(paramName);
-      },
-    );
+    const ParamInt = createParamDecorator<string>((paramName: string, ctx: ExecutionContext) => {
+      const honoCtx = ctx.getContext<import('hono').Context>();
+      return honoCtx.req.param(paramName);
+    });
 
     @Controller('/typed')
     class TypedController {
@@ -314,12 +305,10 @@ describe('createParamDecorator', () => {
   it('should provide ExecutionContext with correct class and handler info', async () => {
     let capturedCtx: ExecutionContext | null = null;
 
-    const CaptureContext = createParamDecorator(
-      (_data: unknown, ctx: ExecutionContext) => {
-        capturedCtx = ctx;
-        return 'captured';
-      },
-    );
+    const CaptureContext = createParamDecorator((_data: unknown, ctx: ExecutionContext) => {
+      capturedCtx = ctx;
+      return 'captured';
+    });
 
     @Controller('/ctx-test')
     class CtxTestController {

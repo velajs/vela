@@ -31,15 +31,11 @@ describe('Plugin manifest', () => {
   it('definePlugin requires id, version, module', () => {
     @Module({})
     class M {}
-    expect(() =>
-      definePlugin({ id: '', version: '1.0.0', module: M } as never),
-    ).toThrow(/id/);
-    expect(() =>
-      definePlugin({ id: 'a', version: '', module: M } as never),
-    ).toThrow(/version/);
-    expect(() =>
-      definePlugin({ id: 'a', version: '1.0.0', module: undefined as never }),
-    ).toThrow(/module/);
+    expect(() => definePlugin({ id: '', version: '1.0.0', module: M } as never)).toThrow(/id/);
+    expect(() => definePlugin({ id: 'a', version: '', module: M } as never)).toThrow(/version/);
+    expect(() => definePlugin({ id: 'a', version: '1.0.0', module: undefined as never })).toThrow(
+      /module/,
+    );
   });
 
   it('composePlugins orders dependencies before dependents (topological)', () => {
@@ -139,9 +135,7 @@ describe('Plugin manifest', () => {
 
     @Injectable()
     class BService {
-      constructor(
-        @Inject(PLUGIN_REGISTRY_TOKEN) public registry: PluginRegistry,
-      ) {}
+      constructor(@Inject(PLUGIN_REGISTRY_TOKEN) public registry: PluginRegistry) {}
     }
 
     @Module({ providers: [BService] })

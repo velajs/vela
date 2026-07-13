@@ -104,10 +104,7 @@ export class Container {
     hook.drainSync();
   }
 
-  register<T>(
-    provider: Type<T> | ProviderOptions<T>,
-    declaringModuleId?: string,
-  ): this {
+  register<T>(provider: Type<T> | ProviderOptions<T>, declaringModuleId?: string): this {
     const moduleId = declaringModuleId ?? ROOT_MODULE_ID;
     if (typeof provider === 'function') {
       this.registerClass(provider, moduleId);
@@ -237,8 +234,7 @@ export class Container {
     // attempting any other recovery.
     if (isErasedTypeToken(token)) {
       throw new Error(
-        `No provider found for token: ${this.tokenToString(token)}. ` +
-          IMPORT_TYPE_HINT,
+        `No provider found for token: ${this.tokenToString(token)}. ` + IMPORT_TYPE_HINT,
       );
     }
 
@@ -303,12 +299,10 @@ export class Container {
       const exporters = this.exporterIndex.get(token);
       if (exporters && exporters.size > 0) {
         if (exporters.size > 1) {
-          throw new MultipleProvidersFoundError(requestingModuleId, token, [
-            ...exporters,
-          ]);
+          throw new MultipleProvidersFoundError(requestingModuleId, token, [...exporters]);
         }
         const [owner] = [...exporters];
-        return this.lookupInBucket<T>(owner, token);
+        return this.lookupInBucket<T>(owner!, token);
       }
       return undefined;
     }
@@ -331,11 +325,7 @@ export class Container {
 
     if (candidates.length === 0) return undefined;
     if (candidates.length > 1) {
-      throw new MultipleProvidersFoundError(
-        requestingModuleId,
-        token,
-        candidateModuleIds,
-      );
+      throw new MultipleProvidersFoundError(requestingModuleId, token, candidateModuleIds);
     }
     return candidates[0];
   }
@@ -375,13 +365,7 @@ export class Container {
 
       // Imported module re-exports the token without owning it — recurse
       // into ITS imports.
-      this.collectFromImports<T>(
-        imported,
-        token,
-        visited,
-        candidates,
-        candidateModuleIds,
-      );
+      this.collectFromImports<T>(imported, token, visited, candidates, candidateModuleIds);
     }
   }
 
@@ -860,9 +844,7 @@ export class Container {
       const meta = injectMap.get(index);
       const rawToken = meta?.token;
       const isForwardRef = rawToken instanceof ForwardRef;
-      const token: Token | undefined = isForwardRef
-        ? rawToken.factory()
-        : rawToken ?? paramType;
+      const token: Token | undefined = isForwardRef ? rawToken.factory() : (rawToken ?? paramType);
 
       if (!token || isErasedTypeToken(token)) {
         if (meta?.optional) return undefined;

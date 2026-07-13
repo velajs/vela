@@ -36,10 +36,9 @@ export class QueueDispatchBinding {
       }
     }
 
-    driver.bind?.(
-      (job) => this.deliver(job),
-      { onError: (error, job) => this.routeError(error, job) },
-    );
+    driver.bind?.((job) => this.deliver(job), {
+      onError: (error, job) => this.routeError(error, job),
+    });
   }
 
   private async deliver(job: QueueJob): Promise<void> {

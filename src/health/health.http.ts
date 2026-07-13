@@ -28,9 +28,10 @@ export class HttpHealthIndicator {
       });
 
       const statusCode = response.status;
-      const isHealthy = expectedStatus !== undefined
-        ? statusCode === expectedStatus
-        : statusCode >= 200 && statusCode < 300;
+      const isHealthy =
+        expectedStatus !== undefined
+          ? statusCode === expectedStatus
+          : statusCode >= 200 && statusCode < 300;
 
       if (isHealthy) {
         return this.indicator.check(key).up({ statusCode });

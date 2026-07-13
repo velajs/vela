@@ -64,7 +64,12 @@ describe('SeederModule', () => {
     await runSeeders(app);
 
     expect(seeded).toEqual([{ user: 'ada' }]);
-    expect(app.get(SeederRegistry).list().map((s) => s.name)).toEqual(['UserSeeder']);
+    expect(
+      app
+        .get(SeederRegistry)
+        .list()
+        .map((s) => s.name),
+    ).toEqual(['UserSeeder']);
   });
 
   it('records failures and stops on the first error by default', async () => {

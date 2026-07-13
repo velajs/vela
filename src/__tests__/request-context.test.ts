@@ -11,12 +11,7 @@ import {
   Scope,
   VelaFactory,
 } from '../index.js';
-import type {
-  CallHandler,
-  ExecutionContext,
-  NestInterceptor,
-  RequestContext,
-} from '../index.js';
+import type { CallHandler, ExecutionContext, NestInterceptor, RequestContext } from '../index.js';
 
 beforeEach(() => {
   MetadataRegistry.clear();
@@ -133,7 +128,10 @@ describe('REQUEST_CONTEXT injectable', () => {
     }
 
     @Module({
-      providers: [PeekingInterceptor, { provide: APP_INTERCEPTOR, useExisting: PeekingInterceptor }],
+      providers: [
+        PeekingInterceptor,
+        { provide: APP_INTERCEPTOR, useExisting: PeekingInterceptor },
+      ],
       controllers: [C],
     })
     class AppModule {}

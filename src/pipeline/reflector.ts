@@ -91,7 +91,11 @@ export class Reflector {
   ): T | undefined {
     const resolvedKey = this.resolveKey(key as string | ReflectableDecorator<unknown>);
     const ctor = context.getClass();
-    const handlerValue = MetadataRegistry.getCustomHandlerMeta(ctor, context.getHandler(), resolvedKey);
+    const handlerValue = MetadataRegistry.getCustomHandlerMeta(
+      ctor,
+      context.getHandler(),
+      resolvedKey,
+    );
     if (handlerValue !== undefined) return handlerValue as T;
     return MetadataRegistry.getCustomClassMeta(ctor, resolvedKey) as T | undefined;
   }
@@ -116,7 +120,7 @@ export class Reflector {
    */
   getClass<T = unknown>(
     key: string | ReflectableDecorator<T>,
-    context: Pick<ExecutionContext, "getClass">,
+    context: Pick<ExecutionContext, 'getClass'>,
   ): T | undefined {
     const resolvedKey = this.resolveKey(key as string | ReflectableDecorator<unknown>);
     return MetadataRegistry.getCustomClassMeta(context.getClass(), resolvedKey) as T | undefined;
@@ -162,7 +166,7 @@ export class Reflector {
     if (classValue !== undefined) values.push(classValue);
 
     if (values.length === 0) return [] as T[];
-    if (values.length === 1) return values[0];
+    if (values.length === 1) return values[0]!;
 
     if (Array.isArray(values[0]) && Array.isArray(values[1])) {
       return [...values[0], ...values[1]] as T;

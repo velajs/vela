@@ -52,7 +52,7 @@ class NoSecretModule {}
 function tamperSignature(signed: string): string {
   const url = new URL(signed, 'http://localhost');
   const sig = url.searchParams.get('signature') ?? '';
-  const flipped = sig.slice(0, -1) + (sig.endsWith('A') ? 'B' : 'A');
+  const flipped = (sig.startsWith('A') ? 'B' : 'A') + sig.slice(1);
   url.searchParams.set('signature', flipped);
   return `${url.pathname}?${url.searchParams.toString()}`;
 }
@@ -100,7 +100,11 @@ describe('signed URLs — UrlGeneratorService.signedUrl + SignedUrlGuard', () =>
     const app = await VelaFactory.create(AppModule);
     const urls = app.get(UrlGeneratorService);
 
-    const signed = await urls.signedUrl('file.download', {}, { expiresIn: 60, secret: 'other-secret' });
+    const signed = await urls.signedUrl(
+      'file.download',
+      {},
+      { expiresIn: 60, secret: 'other-secret' },
+    );
 
     expect(await verifySignedUrl(signed, 'other-secret')).toBe(true);
     expect(await verifySignedUrl(signed, SECRET)).toBe(false);
