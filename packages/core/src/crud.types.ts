@@ -3,7 +3,7 @@
  * `CrudModule.forFeature()`. Field names stay continuous with the previous
  * bridge where a concept survives (`only`/`except`, `hooks`, `dto`,
  * `responseEnvelope`, `tenantResolverMounted`, `name`/`namePlural`) — that is
- * the surface downstream translators (erpos) emit.
+ * the surface downstream translators emit.
  */
 
 import type { CrudAdapter } from './adapter/contract';

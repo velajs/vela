@@ -43,7 +43,7 @@
 - Wire `Model.resolveSchema` into request-time body validation: every
   body-validating verb now resolves the per-tenant schema and re-derives its
   body schema per request (explicit `dto` overrides still win). Fixes the
-  tenant custom-fields regression found by the erpos migration.
+  tenant custom-fields regression found by a downstream migration.
 
 ## 1.18.0
 

@@ -38,7 +38,7 @@ string[] }` on `CrudConfig` and `ResourceConfig` (previously read via an
   under `id: 'client'` fails loudly at definition time. The memory adapter now
   throws a 409 `ConflictException` on a duplicate-PK create instead of silently
   overwriting. No adapter capability required; clone requires an `id` override.
-  Retires the erpos `ClientPkCaptureGuard` workaround.
+  Retires the downstream `ClientPkCaptureGuard` workaround.
 - b3fcdb6: Nested writes are now reachable end to end (hono-crud `nested-writes.ts`
   parity). New `nestedWrites` flags on `RelationConfig`
   (`allowCreate`/`allowUpdate`/`allowDelete`/`allowConnect`/`allowDisconnect`,
@@ -92,7 +92,7 @@ string[] }` on `CrudConfig` and `ResourceConfig` (previously read via an
 - Wire `Model.resolveSchema` into request-time body validation: every
   body-validating verb now resolves the per-tenant schema and re-derives its
   body schema per request (explicit `dto` overrides still win). Fixes the
-  tenant custom-fields regression found by the erpos migration.
+  tenant custom-fields regression found by a downstream migration.
 
 ## 1.18.0
 

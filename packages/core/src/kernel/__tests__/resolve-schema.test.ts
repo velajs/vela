@@ -57,7 +57,7 @@ const baseSchema = z.object({
 });
 
 const tenantSchema = baseSchema.extend({
-  // Tenant t1 has a REQUIRED custom field (the erpos custom-fields shape).
+  // Tenant t1 has a REQUIRED custom field (a downstream custom-fields shape).
   custom1: z.string().min(1),
 });
 

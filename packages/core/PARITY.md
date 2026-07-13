@@ -348,11 +348,11 @@ stores are **DI seams decoupled from the data adapter**: `VersioningStore` /
   by the openness/edge import audits over product sources. Revisit if a
   D1-flavored adapter lands.
 
-## Gaps surfaced by the erpos migration (2026-07-09, erpos PR #315)
+## Gaps surfaced by downstream integration testing (2026-07-09)
 
 - **Per-endpoint guard seam**: CLOSED (1.19). Was: hono-crud's `registerCrud`
   accepted `endpointMiddlewares` per verb; the native config had no
-  equivalent, so erpos's `guardsFromAcl` per-verb feature gating couldn't be
+  equivalent, so downstream `guardsFromAcl` per-verb feature gating couldn't be
   wired on headless resources. Shipped: `guards?:
   Partial<Record<CrudEndpointName, GuardType[]>>` on `CrudConfig`, stamped per
   synthesized handler via vela's public `UseGuards` in `stampCrudRoutes` —
@@ -379,14 +379,14 @@ stores are **DI seams decoupled from the data adapter**: `VersioningStore` /
   INVOKED: every body-validating verb (create/update/upsert/clone/batch*/
   bulkPatch/import) resolves the tenant schema per request and re-derives the
   body schema (`createSchemaFor`/`updateSchemaFor`); explicit `dto` overrides
-  still win. Gap found by the erpos migration (custom-fields regression).
+  still win. Gap found by a downstream migration (custom-fields regression).
   Resolution is per-request, uncached (hono-crud parity) — resolvers may
   cache internally.
 
 - **`id: 'client'` PK strategy**: CLOSED (1.19). Was: the engine stripped PKs
   from every create body (static derivation and the resolveSchema path), so
   callers with client-generated UUIDs needed a capture-guard workaround
-  (erpos `ClientPkCaptureGuard`). Shipped: `'client'` on `IdStrategy` —
+  (downstream `ClientPkCaptureGuard`). Shipped: `'client'` on `IdStrategy` —
   `deriveCreateSchema` retains the PK at its authored shape (flows to static
   derivation, the resolveSchema re-derive, and the OpenAPI DTO); the
   UPDATE-side schemas still exclude the PK (identity is not patchable);
@@ -402,10 +402,10 @@ stores are **DI seams decoupled from the data adapter**: `VersioningStore` /
   override. Proven by managed-fields/schema-derive/resolve-schema/verbs/
   clone/upsert/batchUpsert/import unit tests + the crud-http
   "id: 'client' PK strategy" DTO round-trip. Retires `ClientPkCaptureGuard`.
-- **Sub-app onError note** (erpos round 2, vela-side) — hono `.route()`
+- **Sub-app onError note** (downstream integration, Vela-side) — hono `.route()`
   sub-apps with their own error handler render locally; since vela 1.11's
   pipeline rewrite, a parent app's `onError` no longer covers merged sub-app
   routes. Not a crud issue; consumers mounting sub-apps alongside crud
-  controllers should propagate their error renderer (erpos intercepts
-  `hono.route` in bootstrap). Consider a vela docs note or an opt-in
+  controllers should propagate their error renderer (some integrations
+  intercept `hono.route` in bootstrap). Consider a Vela docs note or an opt-in
   fall-through.

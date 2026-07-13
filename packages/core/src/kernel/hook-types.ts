@@ -5,7 +5,7 @@
  * the engine-built {@link HookContext} as its first argument, then the
  * verb-specific payload. It is the native replacement for the old hono-crud
  * bridge, whose flat `CrudHooks` (see `../types.ts`) already exposed a
- * ctx-first shape to downstream consumers like `erpos`. The names and arities
+ * ctx-first shape to downstream consumers. The names and arities
  * that existed on the bridge are kept compatible; the surface is EXTENDED with
  * everything hono-crud supported that the bridge lacked (upsert hooks, per-item
  * batch hooks, per-verb `transform`), plus a per-verb hook-mode config.
