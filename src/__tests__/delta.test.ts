@@ -18,11 +18,16 @@ describe('encodeListDelta', () => {
   });
 
   it('bails when the op count exceeds the next length (rule 5)', () => {
-    expect(encodeListDelta([{ id: 'a' }, { id: 'b' }], [{ id: 'b', n: 2 }, { id: 'c' }])).toBeUndefined();
+    expect(
+      encodeListDelta([{ id: 'a' }, { id: 'b' }], [{ id: 'b', n: 2 }, { id: 'c' }]),
+    ).toBeUndefined();
   });
 
   it('anchors an insert to the nearest following survivor', () => {
-    const ops = encodeListDelta([{ id: 'a' }, { id: 'z' }], [{ id: 'a' }, { id: 'm' }, { id: 'z' }]);
+    const ops = encodeListDelta(
+      [{ id: 'a' }, { id: 'z' }],
+      [{ id: 'a' }, { id: 'm' }, { id: 'z' }],
+    );
     expect(ops).toEqual([{ op: 'insert', key: 'm', row: { id: 'm' }, before: 'z' }]);
   });
 
@@ -59,12 +64,18 @@ describe('applyListDelta', () => {
   });
 
   it('appends when an insert anchor is gone (degraded replay)', () => {
-    const merged = applyListDelta([{ id: 'a' }], [{ op: 'insert', key: 'x', row: { id: 'x' }, before: 'gone' }]);
+    const merged = applyListDelta(
+      [{ id: 'a' }],
+      [{ op: 'insert', key: 'x', row: { id: 'x' }, before: 'gone' }],
+    );
     expect(merged).toEqual([{ id: 'a' }, { id: 'x' }]);
   });
 
   it('appends an update for a row this page never held', () => {
-    const merged = applyListDelta([{ id: 'a' }], [{ op: 'update', key: 'x', row: { id: 'x', n: 1 } }]);
+    const merged = applyListDelta(
+      [{ id: 'a' }],
+      [{ op: 'update', key: 'x', row: { id: 'x', n: 1 } }],
+    );
     expect(merged).toEqual([{ id: 'a' }, { id: 'x', n: 1 }]);
   });
 
@@ -77,6 +88,8 @@ describe('applyListDelta', () => {
   });
 
   it('bails on duplicate keys in the cache', () => {
-    expect(applyListDelta([{ id: 'a' }, { id: 'a' }], [{ op: 'delete', key: 'a' }])).toBeUndefined();
+    expect(
+      applyListDelta([{ id: 'a' }, { id: 'a' }], [{ op: 'delete', key: 'a' }]),
+    ).toBeUndefined();
   });
 });

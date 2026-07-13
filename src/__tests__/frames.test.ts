@@ -15,7 +15,10 @@ describe('envelope', () => {
   });
 
   it('extracts the frame from a live envelope and nothing else', () => {
-    expect(readLiveEnvelope({ event: '$live', data: { t: 'ack', sub: 's1' } })).toEqual({ t: 'ack', sub: 's1' });
+    expect(readLiveEnvelope({ event: '$live', data: { t: 'ack', sub: 's1' } })).toEqual({
+      t: 'ack',
+      sub: 's1',
+    });
     expect(readLiveEnvelope({ event: 'chat.message', data: {} })).toBeUndefined();
     expect(readLiveEnvelope('not an envelope')).toBeUndefined();
   });
@@ -26,7 +29,9 @@ describe('envelope', () => {
   });
 
   it('encodes optionals only when present', () => {
-    expect(encodeLiveEnvelope({ t: 'settled', sub: 's1' })).toBe('{"event":"$live","data":{"t":"settled","sub":"s1"}}');
+    expect(encodeLiveEnvelope({ t: 'settled', sub: 's1' })).toBe(
+      '{"event":"$live","data":{"t":"settled","sub":"s1"}}',
+    );
   });
 });
 
@@ -47,8 +52,14 @@ describe('guards', () => {
   });
 
   it('validates delta ops structurally', () => {
-    expect(isServerLiveFrame({ t: 'delta', sub: 's1', ops: [{ op: 'delete', key: 'a' }] })).toBe(true);
-    expect(isServerLiveFrame({ t: 'delta', sub: 's1', ops: [{ op: 'insert', key: 'a', row: {} }] })).toBe(false); // missing before
-    expect(isServerLiveFrame({ t: 'delta', sub: 's1', ops: [{ op: 'nope', key: 'a' }] })).toBe(false);
+    expect(isServerLiveFrame({ t: 'delta', sub: 's1', ops: [{ op: 'delete', key: 'a' }] })).toBe(
+      true,
+    );
+    expect(
+      isServerLiveFrame({ t: 'delta', sub: 's1', ops: [{ op: 'insert', key: 'a', row: {} }] }),
+    ).toBe(false); // missing before
+    expect(isServerLiveFrame({ t: 'delta', sub: 's1', ops: [{ op: 'nope', key: 'a' }] })).toBe(
+      false,
+    );
   });
 });

@@ -43,7 +43,9 @@ export const LIVE_ERROR_CODES = {
   INTERNAL: 'internal',
 } as const;
 
-export type LiveErrorCode = (typeof LIVE_ERROR_CODES)[keyof typeof LIVE_ERROR_CODES] | (string & {});
+export type LiveErrorCode =
+  | (typeof LIVE_ERROR_CODES)[keyof typeof LIVE_ERROR_CODES]
+  | (string & {});
 
 /**
  * One row change inside a `delta` frame. Ops are keyed by the query's key
@@ -114,7 +116,8 @@ export const isRowOp = (value: unknown): value is RowOp => {
   return true;
 };
 
-export const isRowOps = (value: unknown): value is RowOp[] => Array.isArray(value) && value.every(isRowOp);
+export const isRowOps = (value: unknown): value is RowOp[] =>
+  Array.isArray(value) && value.every(isRowOp);
 
 /**
  * Structural guard for a client frame. Frames with an unknown `t` return
@@ -162,7 +165,11 @@ export const isServerLiveFrame = (value: unknown): value is ServerLiveFrame => {
         isOptionalString(value['epoch'])
       );
     case 'settled':
-      return typeof value['sub'] === 'string' && isOptionalNumber(value['cursor']) && isOptionalString(value['epoch']);
+      return (
+        typeof value['sub'] === 'string' &&
+        isOptionalNumber(value['cursor']) &&
+        isOptionalString(value['epoch'])
+      );
     case 'resume':
       return (
         typeof value['sub'] === 'string' &&
@@ -236,13 +243,15 @@ export const canonicalLiveFrame = (frame: LiveFrame): Record<string, unknown> =>
   for (const key of keys) {
     const value = source[key];
     if (value === undefined) continue;
-    out[key] = frame.t === 'delta' && key === 'ops' ? (value as RowOp[]).map(canonicalRowOp) : value;
+    out[key] =
+      frame.t === 'delta' && key === 'ops' ? (value as RowOp[]).map(canonicalRowOp) : value;
   }
   return out;
 };
 
 /** Canonical JSON encoding of a bare frame (no envelope). */
-export const encodeLiveFrame = (frame: LiveFrame): string => JSON.stringify(canonicalLiveFrame(frame));
+export const encodeLiveFrame = (frame: LiveFrame): string =>
+  JSON.stringify(canonicalLiveFrame(frame));
 
 /** Canonical JSON encoding of the full `$live` envelope — what actually goes on the socket. */
 export const encodeLiveEnvelope = (frame: LiveFrame): string =>

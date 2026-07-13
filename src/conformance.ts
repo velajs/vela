@@ -17,14 +17,23 @@
  */
 
 import { DEFAULT_KEY_FIELD, applyListDelta, encodeListDelta } from './delta';
-import { encodeLiveEnvelope, isClientLiveFrame, isServerLiveFrame, readLiveEnvelope } from './frames';
+import {
+  encodeLiveEnvelope,
+  isClientLiveFrame,
+  isServerLiveFrame,
+  readLiveEnvelope,
+} from './frames';
 import type { RowOp } from './frames';
 import { DELTA_FIXTURES, FRAME_FIXTURES } from './fixtures';
 
 /** The two halves a wire endpoint must implement compatibly. */
 export interface DeltaCodec {
   encodeListDelta: (previous: unknown, next: unknown, keyField?: string) => RowOp[] | undefined;
-  applyListDelta: (current: unknown, ops: readonly RowOp[], keyField?: string) => unknown[] | undefined;
+  applyListDelta: (
+    current: unknown,
+    ops: readonly RowOp[],
+    keyField?: string,
+  ) => unknown[] | undefined;
 }
 
 const REFERENCE_CODEC: DeltaCodec = { encodeListDelta, applyListDelta };
@@ -107,7 +116,9 @@ export const runProtocolConformance = (codec: DeltaCodec = REFERENCE_CODEC): Con
     checks += 1;
     const encoded = encodeLiveEnvelope(fixture.frame);
     if (encoded !== fixture.wire) {
-      failures.push(`frame "${fixture.name}": encoded wire differs\n  expected ${fixture.wire}\n  actual   ${encoded}`);
+      failures.push(
+        `frame "${fixture.name}": encoded wire differs\n  expected ${fixture.wire}\n  actual   ${encoded}`,
+      );
       continue;
     }
     const frame = readLiveEnvelope(JSON.parse(fixture.wire));
@@ -127,13 +138,17 @@ export const runProtocolConformance = (codec: DeltaCodec = REFERENCE_CODEC): Con
 
     if (fixture.expected === null) {
       if (ops !== undefined) {
-        failures.push(`delta "${fixture.name}": expected bail-to-snapshot, got ${JSON.stringify(ops)}`);
+        failures.push(
+          `delta "${fixture.name}": expected bail-to-snapshot, got ${JSON.stringify(ops)}`,
+        );
       }
       continue;
     }
 
     if (ops === undefined) {
-      failures.push(`delta "${fixture.name}": encoder bailed, expected ${JSON.stringify(fixture.expected)}`);
+      failures.push(
+        `delta "${fixture.name}": encoder bailed, expected ${JSON.stringify(fixture.expected)}`,
+      );
       continue;
     }
     if (!deepEqual(ops, fixture.expected)) {

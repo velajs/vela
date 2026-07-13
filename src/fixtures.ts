@@ -181,17 +181,42 @@ export const DELTA_FIXTURES: DeltaFixture[] = [
     expected: [{ op: 'update', key: 'a', row: { _key: 'a', n: 2 } }],
   },
   // ---- bail cases (expected: null → full snapshot) ----
-  { name: 'bail: clear list (rule 5)', previous: [{ id: 'a' }, { id: 'b' }], next: [], expected: null },
+  {
+    name: 'bail: clear list (rule 5)',
+    previous: [{ id: 'a' }, { id: 'b' }],
+    next: [],
+    expected: null,
+  },
   {
     name: 'bail: near-total change (rule 5)',
     previous: [{ id: 'a' }, { id: 'b' }],
     next: [{ id: 'c' }, { id: 'd' }, { id: 'e' }],
     expected: null,
   },
-  { name: 'bail: previous not array (rule 1)', previous: { id: 'a' }, next: [{ id: 'a' }], expected: null },
-  { name: 'bail: next not array (rule 1)', previous: [{ id: 'a' }], next: { id: 'a' }, expected: null },
-  { name: 'bail: row missing key (rule 2)', previous: [{ id: 'a' }], next: [{ text: 'no key' }], expected: null },
-  { name: 'bail: non-string key (rule 2)', previous: [{ id: 'a' }], next: [{ id: 5 }], expected: null },
+  {
+    name: 'bail: previous not array (rule 1)',
+    previous: { id: 'a' },
+    next: [{ id: 'a' }],
+    expected: null,
+  },
+  {
+    name: 'bail: next not array (rule 1)',
+    previous: [{ id: 'a' }],
+    next: { id: 'a' },
+    expected: null,
+  },
+  {
+    name: 'bail: row missing key (rule 2)',
+    previous: [{ id: 'a' }],
+    next: [{ text: 'no key' }],
+    expected: null,
+  },
+  {
+    name: 'bail: non-string key (rule 2)',
+    previous: [{ id: 'a' }],
+    next: [{ id: 5 }],
+    expected: null,
+  },
   { name: 'bail: scalar row (rule 2)', previous: [{ id: 'a' }], next: ['a'], expected: null },
   {
     name: 'bail: duplicate key in previous (rule 3)',
