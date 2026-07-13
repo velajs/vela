@@ -32,7 +32,8 @@ export interface QueueConsumerMetadata {
 export function QueueConsumer(queueName: string): MethodDecorator {
   return (target: object, propertyKey: string | symbol, _descriptor: PropertyDescriptor) => {
     const existing: QueueConsumerMetadata[] =
-      (getMetadata(QUEUE_CONSUMER_METADATA_KEY, target.constructor) as QueueConsumerMetadata[]) ?? [];
+      (getMetadata(QUEUE_CONSUMER_METADATA_KEY, target.constructor) as QueueConsumerMetadata[]) ??
+      [];
     existing.push({ queueName, methodName: String(propertyKey) });
     defineMetadata(QUEUE_CONSUMER_METADATA_KEY, existing, target.constructor);
   };

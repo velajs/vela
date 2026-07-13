@@ -23,7 +23,10 @@ const PONG = '{"event":"pong"}';
  */
 export function VelaWebSocketDurableObject(
   rootModule: Type,
-): new (ctx: DurableObjectState, env: Record<string, unknown>) => DurableObject<Record<string, unknown>> {
+): new (
+  ctx: DurableObjectState,
+  env: Record<string, unknown>,
+) => DurableObject<Record<string, unknown>> {
   return class VelaWsDurableObject extends DurableObject<Record<string, unknown>> {
     private host!: DoWebSocketHost;
     private liveEngine?: LiveEngine;
@@ -39,12 +42,17 @@ export function VelaWebSocketDurableObject(
       }
       this.ready = ctx.blockConcurrencyWhile(async () => {
         const runtime = await buildDoRuntime(rootModule, ctx, env);
-        this.host = new DoWebSocketHost(ctx, runtime.dispatcher, runtime.registry, runtime.gatewayPaths);
+        this.host = new DoWebSocketHost(
+          ctx,
+          runtime.dispatcher,
+          runtime.registry,
+          runtime.gatewayPaths,
+        );
         this.liveEngine = runtime.live;
       });
     }
 
-    async fetch(request: Request): Promise<Response> {
+    override async fetch(request: Request): Promise<Response> {
       await this.ready;
       if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
         return new Response('Expected WebSocket upgrade', { status: 426 });
@@ -63,17 +71,17 @@ export function VelaWebSocketDurableObject(
       return new Response(null, { status: 101, webSocket: client });
     }
 
-    async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
+    override async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
       await this.ready;
       await this.host.onMessage(ws as unknown as WsLike, message);
     }
 
-    async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
+    override async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
       await this.ready;
       await this.host.onClose(ws as unknown as WsLike, code, reason);
     }
 
-    async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
+    override async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
       await this.ready;
       await this.host.onError(ws as unknown as WsLike, error);
     }

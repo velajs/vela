@@ -15,7 +15,6 @@ import { QueueService } from '../services/queue.service';
 import { QueueConsumer } from '../decorators/queue-consumer';
 beforeEach(() => {
   MetadataRegistry.clear();
-
 });
 
 function createMockQueue() {
@@ -70,11 +69,7 @@ describe('QueueModule', () => {
 
       @Get('/batch')
       async sendBatch() {
-        await this.queue.queue.sendBatch([
-          { body: 'msg1' },
-          { body: 'msg2' },
-          { body: 'msg3' },
-        ]);
+        await this.queue.queue.sendBatch([{ body: 'msg1' }, { body: 'msg2' }, { body: 'msg3' }]);
         return { count: 3 };
       }
     }
@@ -117,19 +112,13 @@ describe('@QueueConsumer() decorator', () => {
     await app.queue(
       {
         queue: 'email-queue',
-        messages: [
-          { body: { to: 'alice@example.com' } },
-          { body: { to: 'bob@example.com' } },
-        ],
+        messages: [{ body: { to: 'alice@example.com' } }, { body: { to: 'bob@example.com' } }],
       },
       {},
       ctx,
     );
 
-    expect(processed).toEqual([
-      { to: 'alice@example.com' },
-      { to: 'bob@example.com' },
-    ]);
+    expect(processed).toEqual([{ to: 'alice@example.com' }, { to: 'bob@example.com' }]);
   });
 
   it('runs each batch in a fresh request scope (request-scoped deps rebuild per batch)', async () => {
@@ -223,11 +212,7 @@ describe('@QueueConsumer() decorator', () => {
     const app = await createCloudflareApp(AppModule);
     const ctx = { waitUntil: () => {} };
 
-    await app.queue(
-      { queue: 'other-queue', messages: [{ body: 'test' }] },
-      {},
-      ctx,
-    );
+    await app.queue({ queue: 'other-queue', messages: [{ body: 'test' }] }, {}, ctx);
 
     expect(processed).toEqual([]);
   });

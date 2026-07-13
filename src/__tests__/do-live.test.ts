@@ -41,7 +41,13 @@ class FakeWs implements WsLike {
   deserializeAttachment(): unknown {
     return this.attachment;
   }
-  liveFrames(): Array<{ t: string; sub: string; cursor?: number; epoch?: string; snapshot?: unknown }> {
+  liveFrames(): Array<{
+    t: string;
+    sub: string;
+    cursor?: number;
+    epoch?: string;
+    snapshot?: unknown;
+  }> {
     return this.sent
       .map((raw) => JSON.parse(raw) as { event: string; data: never })
       .filter((envelope) => envelope.event === '$live')
@@ -192,7 +198,12 @@ describe('live queries inside the Durable Object', () => {
     // --- first DO lifetime -------------------------------------------------
     const runtime = await buildDoRuntime(AppModule, ctx, {});
     expect(runtime.live).toBeDefined();
-    const host = new DoWebSocketHost(ctx, runtime.dispatcher, runtime.registry, runtime.gatewayPaths);
+    const host = new DoWebSocketHost(
+      ctx,
+      runtime.dispatcher,
+      runtime.registry,
+      runtime.gatewayPaths,
+    );
 
     const ws = new FakeWs();
     host.accept(ws, PATH, 'room-1');
@@ -234,7 +245,12 @@ describe('live queries inside the Durable Object', () => {
     const ctx = new FakeDoState(storage);
     const { AppModule } = makeModule(todos);
     const runtime = await buildDoRuntime(AppModule, ctx, {});
-    const host = new DoWebSocketHost(ctx, runtime.dispatcher, runtime.registry, runtime.gatewayPaths);
+    const host = new DoWebSocketHost(
+      ctx,
+      runtime.dispatcher,
+      runtime.registry,
+      runtime.gatewayPaths,
+    );
 
     const first = new FakeWs();
     host.accept(first, PATH, 'room-1');
@@ -247,7 +263,10 @@ describe('live queries inside the Durable Object', () => {
     // Reconnect with cursor 0: untouched tags → tiny resume at cursor 1.
     const second = new FakeWs();
     host.accept(second, PATH, 'room-1');
-    await host.onMessage(second, subEnvelope('r1', 'todos.list', { sinceCursor: 0, sinceEpoch: epoch }));
+    await host.onMessage(
+      second,
+      subEnvelope('r1', 'todos.list', { sinceCursor: 0, sinceEpoch: epoch }),
+    );
     expect(second.liveFrames()).toEqual([
       { t: 'ack', sub: 'r1' },
       { t: 'resume', sub: 'r1', cursor: 1, epoch },
@@ -257,7 +276,10 @@ describe('live queries inside the Durable Object', () => {
     await runtime.live!.whenIdle();
     const third = new FakeWs();
     host.accept(third, PATH, 'room-1');
-    await host.onMessage(third, subEnvelope('r2', 'todos.list', { sinceCursor: 0, sinceEpoch: epoch }));
+    await host.onMessage(
+      third,
+      subEnvelope('r2', 'todos.list', { sinceCursor: 0, sinceEpoch: epoch }),
+    );
     expect(third.liveFrames()[1]).toMatchObject({ t: 'data', sub: 'r2', cursor: 2 });
   });
 });

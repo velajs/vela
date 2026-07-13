@@ -1,9 +1,5 @@
 import type { Container } from '@velajs/vela';
-import {
-  LIVE_CURSOR_LOG,
-  LIVE_DRIVER,
-  readPersistedLiveSubscriptions,
-} from '@velajs/vela/live';
+import { LIVE_CURSOR_LOG, LIVE_DRIVER, readPersistedLiveSubscriptions } from '@velajs/vela/live';
 import type {
   CommitStamp,
   CursorLog,
@@ -60,7 +56,11 @@ export class DoCursorLog implements CursorLog {
 
   append(tags: string[]): CommitStamp {
     const sql = this.assertReady();
-    sql.exec('INSERT INTO __vela_live_log (ts, tags) VALUES (?, ?)', Date.now(), JSON.stringify(tags));
+    sql.exec(
+      'INSERT INTO __vela_live_log (ts, tags) VALUES (?, ?)',
+      Date.now(),
+      JSON.stringify(tags),
+    );
     const stamp = this.current();
     // Bounded retention: trimmed gaps degrade to snapshot-on-reconnect.
     if (stamp.cursor > this.maxRows) {
@@ -76,7 +76,9 @@ export class DoCursorLog implements CursorLog {
     // insert — before that the log is empty and the cursor is 0.
     let cursor = 0;
     try {
-      const row = sql.exec("SELECT seq FROM sqlite_sequence WHERE name = '__vela_live_log'").toArray()[0];
+      const row = sql
+        .exec("SELECT seq FROM sqlite_sequence WHERE name = '__vela_live_log'")
+        .toArray()[0];
       cursor = typeof row?.seq === 'number' ? row.seq : Number(row?.seq ?? 0);
     } catch {
       cursor = 0;
@@ -84,7 +86,11 @@ export class DoCursorLog implements CursorLog {
     return { cursor, epoch: this.epoch as string };
   }
 
-  evaluateResume(sinceCursor: number, sinceEpoch: string, subscriptionTags: string[]): ResumeVerdict {
+  evaluateResume(
+    sinceCursor: number,
+    sinceEpoch: string,
+    subscriptionTags: string[],
+  ): ResumeVerdict {
     const sql = this.assertReady();
     const { cursor, epoch } = this.current();
     if (sinceEpoch !== epoch) return 'snapshot'; // forked timeline (reset/recreated DO)
@@ -97,7 +103,9 @@ export class DoCursorLog implements CursorLog {
     if (min === undefined || min > sinceCursor + 1) return 'snapshot';
 
     const subTags = new Set(subscriptionTags);
-    for (const row of sql.exec('SELECT tags FROM __vela_live_log WHERE seq > ?', sinceCursor).toArray()) {
+    for (const row of sql
+      .exec('SELECT tags FROM __vela_live_log WHERE seq > ?', sinceCursor)
+      .toArray()) {
       let tags: unknown;
       try {
         tags = JSON.parse(String(row.tags));
@@ -211,7 +219,11 @@ interface EntrypointsApp {
  * subscribers. Returns the engine for the `invalidate` RPC, or undefined when
  * the app doesn't use LiveModule.
  */
-export function initDoLive(app: EntrypointsApp, container: Container, ctx: DoStateLike): LiveEngine | undefined {
+export function initDoLive(
+  app: EntrypointsApp,
+  container: Container,
+  ctx: DoStateLike,
+): LiveEngine | undefined {
   const entry = app.entrypoints.ofKind<LiveEntrypointMeta>('live')[0];
   if (!entry) return undefined;
   const engine = entry.meta.engine as LiveEngine;

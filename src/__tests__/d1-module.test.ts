@@ -1,16 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  Controller,
-  Get,
-  Module,
-  MetadataRegistry,
-} from '@velajs/vela';
+import { Controller, Get, Module, MetadataRegistry } from '@velajs/vela';
 import { createCloudflareApp } from '../cloudflare-factory';
 import { D1Module } from '../modules/d1.module';
 import { D1Service } from '../services/d1.service';
 beforeEach(() => {
   MetadataRegistry.clear();
-
 });
 
 function createMockD1() {
@@ -61,7 +55,10 @@ describe('D1Module', () => {
 
       @Get('/user')
       async getUser() {
-        const user = await this.d1.database.prepare('SELECT * FROM users WHERE id = ?').bind('1').first();
+        const user = await this.d1.database
+          .prepare('SELECT * FROM users WHERE id = ?')
+          .bind('1')
+          .first();
         return { user };
       }
     }

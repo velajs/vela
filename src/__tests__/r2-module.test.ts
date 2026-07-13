@@ -1,16 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  Controller,
-  Get,
-  Module,
-  MetadataRegistry,
-} from '@velajs/vela';
+import { Controller, Get, Module, MetadataRegistry } from '@velajs/vela';
 import { createCloudflareApp } from '../cloudflare-factory';
 import { R2Module } from '../modules/r2.module';
 import { R2Service } from '../services/r2.service';
 beforeEach(() => {
   MetadataRegistry.clear();
-
 });
 
 function createMockR2() {
@@ -66,7 +60,9 @@ describe('R2Module', () => {
 
       @Get('/download')
       async download() {
-        const obj = (await this.r2.bucket.get('test.txt')) as { text: () => Promise<string> } | null;
+        const obj = (await this.r2.bucket.get('test.txt')) as {
+          text: () => Promise<string>;
+        } | null;
         if (!obj) return { content: null };
         const text = await obj.text();
         return { content: text };

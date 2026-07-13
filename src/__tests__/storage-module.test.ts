@@ -11,11 +11,7 @@ beforeEach(() => {
 function createMockR2() {
   const store = new Map<string, { body: string; contentType?: string }>();
   return {
-    async put(
-      key: string,
-      value: unknown,
-      options?: { httpMetadata?: { contentType?: string } },
-    ) {
+    async put(key: string, value: unknown, options?: { httpMetadata?: { contentType?: string } }) {
       store.set(key, { body: String(value), contentType: options?.httpMetadata?.contentType });
       return { key };
     },
@@ -129,7 +125,11 @@ describe('StorageModule (multi-disk R2 + presign proxy)', () => {
     await hono.request('/files/upload', undefined, env);
 
     // No signature at all → 403.
-    const unsigned = await hono.request('/storage/uploads/uploads/hello.txt?method=GET', undefined, env);
+    const unsigned = await hono.request(
+      '/storage/uploads/uploads/hello.txt?method=GET',
+      undefined,
+      env,
+    );
     expect(unsigned.status).toBe(403);
 
     // Tampered path under a valid-looking signature → 403.

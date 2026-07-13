@@ -1,17 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  Controller,
-  Get,
-  Module,
-  Injectable,
-  MetadataRegistry,
-} from '@velajs/vela';
+import { Controller, Get, Module, Injectable, MetadataRegistry } from '@velajs/vela';
 import { createCloudflareApp } from '../cloudflare-factory';
 import { HyperdriveModule } from '../modules/hyperdrive.module';
 import { HyperdriveService } from '../services/hyperdrive.service';
 beforeEach(() => {
   MetadataRegistry.clear();
-
 });
 
 function createMockHyperdrive() {
@@ -56,7 +49,7 @@ describe('HyperdriveModule', () => {
 
     const res = await hono.request('/db/info', undefined, { POSTGRES: mockHD });
     expect(res.status).toBe(200);
-    const data = await res.json() as Record<string, unknown>;
+    const data = (await res.json()) as Record<string, unknown>;
     expect(data.connectionString).toBe('postgresql://user:pass@hyperdrive.local:5432/mydb');
     expect(data.host).toBe('hyperdrive.local');
     expect(data.port).toBe(5432);
@@ -158,7 +151,7 @@ describe('HyperdriveModule', () => {
 
     const res = await hono.request('/client/config', undefined, { DB: mockHD });
     expect(res.status).toBe(200);
-    const data = await res.json() as Record<string, unknown>;
+    const data = (await res.json()) as Record<string, unknown>;
     expect(data.host).toBe('hyperdrive.local');
     expect(data.database).toBe('mydb');
   });

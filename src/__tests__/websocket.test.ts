@@ -55,9 +55,7 @@ class FakeDoState implements DoStateLike {
     this.accepted.push({ ws: ws as FakeWs, tags });
   }
   getWebSockets(tag?: string): WsLike[] {
-    return this.accepted
-      .filter((a) => tag === undefined || a.tags.includes(tag))
-      .map((a) => a.ws);
+    return this.accepted.filter((a) => tag === undefined || a.tags.includes(tag)).map((a) => a.ws);
   }
   setWebSocketAutoResponse(): void {}
   blockConcurrencyWhile<T>(fn: () => Promise<T>): Promise<T> {
@@ -73,9 +71,11 @@ describe('room-id mappings', () => {
     expect(connTag('abc')).toBe('conn:abc');
     const ns = { idFromName: (n: string) => ({ toString: () => `id:${n}` }) } as never;
     // roomToDurableId delegates to idFromName
-    expect((ns as { idFromName: (n: string) => { toString(): string } }).idFromName('general').toString()).toBe(
-      'id:general',
-    );
+    expect(
+      (ns as { idFromName: (n: string) => { toString(): string } })
+        .idFromName('general')
+        .toString(),
+    ).toBe('id:general');
   });
 });
 
@@ -91,7 +91,12 @@ describe('CfWsClient', () => {
   }
 
   it('frames send() with optional correlation id and exposes attachment state', () => {
-    const ws = withAttachment({ connId: 'c1', path: '/chat', rooms: ['r1'], data: { userId: 'u1' } });
+    const ws = withAttachment({
+      connId: 'c1',
+      path: '/chat',
+      rooms: ['r1'],
+      data: { userId: 'u1' },
+    });
     const client = new CfWsClient(ctx, ws);
 
     expect(client.id).toBe('c1');
@@ -254,7 +259,12 @@ describe('DO runtime integration', () => {
 
 describe('registerWebSocketRoutes (Worker → DO)', () => {
   function mockNamespace() {
-    const calls: Array<{ id: string; room: string | null; path: string | null; user: string | null }> = [];
+    const calls: Array<{
+      id: string;
+      room: string | null;
+      path: string | null;
+      user: string | null;
+    }> = [];
     const ns = {
       idFromName: (name: string) => ({ toString: () => `id:${name}`, name }),
       get: (id: { toString(): string }) => ({
@@ -342,7 +352,10 @@ describe('VelaWebSocketDurableObject shell', () => {
     ws.serializeAttachment({ connId: 'x', path: '/chat', rooms: ['room1'], data: {} });
     ctx.acceptWebSocket(ws, [roomTag('room1')]);
 
-    await instance.broadcast({ rooms: ['room1'], frame: JSON.stringify({ event: 'ping', data: 1 }) });
+    await instance.broadcast({
+      rooms: ['room1'],
+      frame: JSON.stringify({ event: 'ping', data: 1 }),
+    });
 
     expect(ws.lastFrame()).toEqual({ event: 'ping', data: 1 });
   });

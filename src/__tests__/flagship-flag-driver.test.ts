@@ -29,7 +29,8 @@ describe('FlagshipFlagDriver', () => {
   });
 
   it('returns the binding value for each type (value hit)', async () => {
-    const { binding, getBooleanValue, getStringValue, getNumberValue, getObjectValue } = makeBinding();
+    const { binding, getBooleanValue, getStringValue, getNumberValue, getObjectValue } =
+      makeBinding();
     getBooleanValue.mockResolvedValueOnce(true);
     getStringValue.mockResolvedValueOnce('v2');
     getNumberValue.mockResolvedValueOnce(42);

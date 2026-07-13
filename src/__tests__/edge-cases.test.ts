@@ -1,10 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  Controller,
-  Get,
-  Module,
-  MetadataRegistry,
-} from '@velajs/vela';
+import { Controller, Get, Module, MetadataRegistry } from '@velajs/vela';
 import { createCloudflareApp } from '../cloudflare-factory';
 import { KVModule } from '../modules/kv.module';
 import { KVService } from '../services/kv.service';
@@ -12,7 +7,6 @@ import { BindingRef } from '../binding-ref';
 
 beforeEach(() => {
   MetadataRegistry.clear();
-
 });
 
 describe('edge cases', () => {
@@ -74,7 +68,13 @@ describe('edge cases', () => {
     const app = await createCloudflareApp(AppModule);
     const hono = app.getHonoApp();
 
-    const mockKV = { get: async () => null, put: async () => {}, delete: async () => {}, list: async () => ({ keys: [] }), getWithMetadata: async () => ({ value: null }) };
+    const mockKV = {
+      get: async () => null,
+      put: async () => {},
+      delete: async () => {},
+      list: async () => ({ keys: [] }),
+      getWithMetadata: async () => ({ value: null }),
+    };
     const res = await hono.request('/plain', undefined, { KV: mockKV });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ simple: true });

@@ -1,11 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  Controller,
-  Get,
-  Module,
-  Injectable,
-  MetadataRegistry,
-} from '@velajs/vela';
+import { Controller, Get, Module, Injectable, MetadataRegistry } from '@velajs/vela';
 import { createCloudflareApp } from '../cloudflare-factory';
 import { KVModule } from '../modules/kv.module';
 import { D1Module } from '../modules/d1.module';
@@ -18,7 +12,6 @@ import { Scheduled } from '../decorators/scheduled';
 import { QueueConsumer } from '../decorators/queue-consumer';
 beforeEach(() => {
   MetadataRegistry.clear();
-
 });
 
 function createMockKV() {
@@ -26,15 +19,22 @@ function createMockKV() {
   return {
     get: async (key: string) => store.get(key) ?? null,
     getWithMetadata: async (key: string) => ({ value: store.get(key) ?? null, metadata: null }),
-    put: async (key: string, value: string) => { store.set(key, value); },
-    delete: async (key: string) => { store.delete(key); },
+    put: async (key: string, value: string) => {
+      store.set(key, value);
+    },
+    delete: async (key: string) => {
+      store.delete(key);
+    },
     list: async () => ({ keys: [...store.keys()].map((name) => ({ name })), list_complete: true }),
     _store: store,
   };
 }
 
 function createMockD1() {
-  const rows = [{ id: '1', name: 'Alice' }, { id: '2', name: 'Bob' }];
+  const rows = [
+    { id: '1', name: 'Alice' },
+    { id: '2', name: 'Bob' },
+  ];
   return {
     prepare: (query: string) => ({
       bind: (...values: unknown[]) => ({
@@ -60,12 +60,19 @@ function createMockR2() {
       if (!val) return null;
       return { key, body: val, text: async () => val };
     },
-    head: async (key: string) => store.has(key) ? { key, size: (store.get(key) ?? '').length } : null,
-    put: async (key: string, value: string) => { store.set(key, String(value)); return { key }; },
-    delete: async (keys: string | string[]) => {
-      for (const k of (Array.isArray(keys) ? keys : [keys])) store.delete(k);
+    head: async (key: string) =>
+      store.has(key) ? { key, size: (store.get(key) ?? '').length } : null,
+    put: async (key: string, value: string) => {
+      store.set(key, String(value));
+      return { key };
     },
-    list: async () => ({ objects: [...store.entries()].map(([key]) => ({ key })), truncated: false }),
+    delete: async (keys: string | string[]) => {
+      for (const k of Array.isArray(keys) ? keys : [keys]) store.delete(k);
+    },
+    list: async () => ({
+      objects: [...store.entries()].map(([key]) => ({ key })),
+      truncated: false,
+    }),
   };
 }
 
@@ -87,7 +94,10 @@ describe('Integration: multiple modules in one app', () => {
         const cached = await this.kv.namespace.get(`user:${id}`);
         if (cached) return JSON.parse(cached as string);
         // Fallback to D1
-        const user = await this.d1.database.prepare('SELECT * FROM users WHERE id = ?').bind(id).first();
+        const user = await this.d1.database
+          .prepare('SELECT * FROM users WHERE id = ?')
+          .bind(id)
+          .first();
         if (user) await this.kv.namespace.put(`user:${id}`, JSON.stringify(user));
         return user;
       }
@@ -116,7 +126,9 @@ describe('Integration: multiple modules in one app', () => {
 
       @Get('/download')
       async download() {
-        const obj = (await this.r2.bucket.get('avatar.png')) as { text: () => Promise<string> } | null;
+        const obj = (await this.r2.bucket.get('avatar.png')) as {
+          text: () => Promise<string>;
+        } | null;
         return { content: obj ? await obj.text() : null };
       }
     }
@@ -252,11 +264,7 @@ describe('Integration: multiple modules in one app', () => {
     expect(cronCalls).toEqual(['cleanup']);
 
     // Queue consumer works
-    await app.queue(
-      { queue: 'notifications', messages: [{ body: { text: 'hello' } }] },
-      {},
-      ctx,
-    );
+    await app.queue({ queue: 'notifications', messages: [{ body: { text: 'hello' } }] }, {}, ctx);
     expect(queueMessages).toEqual([{ text: 'hello' }]);
   });
 });

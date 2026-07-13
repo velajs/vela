@@ -62,7 +62,14 @@ export class CfRoomRegistry implements RoomRegistry {
   }
 
   private attachmentOf(ws: WsLike): WsAttachment {
-    return (ws.deserializeAttachment() as WsAttachment | null) ?? { connId: '', path: '', rooms: [], data: {} };
+    return (
+      (ws.deserializeAttachment() as WsAttachment | null) ?? {
+        connId: '',
+        path: '',
+        rooms: [],
+        data: {},
+      }
+    );
   }
 
   /** Reconstruct a `WsClient` for a raw socket (e.g. inside gateway lifecycle scans). */

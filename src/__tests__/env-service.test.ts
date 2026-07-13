@@ -1,12 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  Controller,
-  Get,
-  Inject,
-  InjectionToken,
-  MetadataRegistry,
-  Module,
-} from '@velajs/vela';
+import { Controller, Get, Inject, InjectionToken, MetadataRegistry, Module } from '@velajs/vela';
 import { createCloudflareApp } from '../cloudflare-factory';
 import { EnvModule } from '../modules/env.module';
 import { EnvService } from '../services/env.service';

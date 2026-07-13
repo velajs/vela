@@ -1,17 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  Controller,
-  Get,
-  Module,
-  Injectable,
-  MetadataRegistry,
-} from '@velajs/vela';
+import { Controller, Get, Module, Injectable, MetadataRegistry } from '@velajs/vela';
 import { createCloudflareApp } from '../cloudflare-factory';
 import { DurableObjectModule } from '../modules/durable-object.module';
 import { DurableObjectService } from '../services/durable-object.service';
 beforeEach(() => {
   MetadataRegistry.clear();
-
 });
 
 function createMockDO() {
@@ -71,7 +64,7 @@ describe('DurableObjectModule', () => {
 
     const res = await hono.request('/do/call', undefined, { COUNTER: mockDO });
     expect(res.status).toBe(200);
-    const data = await res.json() as { url: string; stub: string };
+    const data = (await res.json()) as { url: string; stub: string };
     expect(data.url).toBe('/increment');
     expect(data.stub).toBe('name-id-counter');
   });
@@ -169,7 +162,7 @@ describe('DurableObjectModule', () => {
 
     const res = await hono.request('/counters/test', undefined, { COUNTERS: mockDO });
     expect(res.status).toBe(200);
-    const data = await res.json() as { url: string };
+    const data = (await res.json()) as { url: string };
     expect(data.url).toBe('/value');
   });
 });

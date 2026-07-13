@@ -48,7 +48,7 @@ describe('CloudflareApplication.mountOpenApi', () => {
     expect(await jsonRes.json()).toEqual(document);
   });
 
-  it("serves the Scalar UI at /scalar with a data-url pointing at /openapi.json", async () => {
+  it('serves the Scalar UI at /scalar with a data-url pointing at /openapi.json', async () => {
     @Controller('/ping')
     class PingController {
       @Get()

@@ -1,37 +1,36 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  Controller,
-  Get,
-  Module,
-  Injectable,
-  MetadataRegistry,
-} from '@velajs/vela';
+import { Controller, Get, Module, Injectable, MetadataRegistry } from '@velajs/vela';
 import { createCloudflareApp } from '../cloudflare-factory';
 import { VectorizeModule } from '../modules/vectorize.module';
 import { VectorizeService } from '../services/vectorize.service';
 beforeEach(() => {
   MetadataRegistry.clear();
-
 });
 
 function createMockVectorize() {
-  const vectors = new Map<string, { id: string; values: number[]; metadata?: Record<string, unknown> }>();
+  const vectors = new Map<
+    string,
+    { id: string; values: number[]; metadata?: Record<string, unknown> }
+  >();
   return {
     query: async (vector: number[], options?: Record<string, unknown>) => ({
       matches: [{ id: 'vec-1', score: 0.95, values: vector }],
       count: 1,
       ...options,
     }),
-    insert: async (vecs: { id: string; values: number[]; metadata?: Record<string, unknown> }[]) => {
+    insert: async (
+      vecs: { id: string; values: number[]; metadata?: Record<string, unknown> }[],
+    ) => {
       for (const v of vecs) vectors.set(v.id, v);
       return { mutationId: 'mut-1', count: vecs.length };
     },
-    upsert: async (vecs: { id: string; values: number[]; metadata?: Record<string, unknown> }[]) => {
+    upsert: async (
+      vecs: { id: string; values: number[]; metadata?: Record<string, unknown> }[],
+    ) => {
       for (const v of vecs) vectors.set(v.id, v);
       return { mutationId: 'mut-2', count: vecs.length };
     },
-    getByIds: async (ids: string[]) =>
-      ids.map((id) => vectors.get(id) ?? null).filter(Boolean),
+    getByIds: async (ids: string[]) => ids.map((id) => vectors.get(id) ?? null).filter(Boolean),
     deleteByIds: async (ids: string[]) => {
       for (const id of ids) vectors.delete(id);
       return { mutationId: 'mut-3', count: ids.length };
@@ -71,7 +70,7 @@ describe('VectorizeModule', () => {
 
     const res = await hono.request('/search/query', undefined, { EMBEDDINGS: mockVectorize });
     expect(res.status).toBe(200);
-    const data = await res.json() as { matches: unknown[]; count: number; topK: number };
+    const data = (await res.json()) as { matches: unknown[]; count: number; topK: number };
     expect(data.count).toBe(1);
     expect(data.topK).toBe(10);
   });
@@ -105,7 +104,7 @@ describe('VectorizeModule', () => {
 
     const res = await hono.request('/vectors/insert', undefined, { VECS: mockVectorize });
     expect(res.status).toBe(200);
-    const data = await res.json() as { results: unknown[] };
+    const data = (await res.json()) as { results: unknown[] };
     expect(data.results).toHaveLength(2);
   });
 
@@ -133,7 +132,7 @@ describe('VectorizeModule', () => {
 
     const res = await hono.request('/meta', undefined, { IDX: mockVectorize });
     expect(res.status).toBe(200);
-    const data = await res.json() as { dimensions: number };
+    const data = (await res.json()) as { dimensions: number };
     expect(data.dimensions).toBe(384);
   });
 
@@ -163,7 +162,7 @@ describe('VectorizeModule', () => {
 
     const res = await hono.request('/raw', undefined, { RAW_VEC: mockVectorize });
     expect(res.status).toBe(200);
-    const data = await res.json() as { dimensions: number };
+    const data = (await res.json()) as { dimensions: number };
     expect(data.dimensions).toBe(384);
   });
 
@@ -200,7 +199,7 @@ describe('VectorizeModule', () => {
 
     const res = await hono.request('/semantic/test', undefined, { SEARCH: mockVectorize });
     expect(res.status).toBe(200);
-    const data = await res.json() as { count: number };
+    const data = (await res.json()) as { count: number };
     expect(data.count).toBe(1);
   });
 });

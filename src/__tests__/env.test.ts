@@ -1,11 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  VelaFactory,
-  Controller,
-  Get,
-  Module,
-  MetadataRegistry,
-} from '@velajs/vela';
+import { VelaFactory, Controller, Get, Module, MetadataRegistry } from '@velajs/vela';
 import { Env } from '../decorators/env';
 
 beforeEach(() => {

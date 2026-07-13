@@ -25,7 +25,12 @@ export class StorageService {
     @Inject(StorageManagerService) private readonly manager: StorageManagerService,
   ) {}
 
-  put(relativePath: string, body: StorageBody, options: UploadOptions = {}, disk?: string): Promise<UploadResult> {
+  put(
+    relativePath: string,
+    body: StorageBody,
+    options: UploadOptions = {},
+    disk?: string,
+  ): Promise<UploadResult> {
     const name = this.resolveDisk(disk);
     return this.manager.getDriver(name).upload(body, this.fullPath(relativePath, name), options);
   }

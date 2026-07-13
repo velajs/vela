@@ -1,22 +1,19 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  Controller,
-  Get,
-  Module,
-  Injectable,
-  MetadataRegistry,
-} from '@velajs/vela';
+import { Controller, Get, Module, Injectable, MetadataRegistry } from '@velajs/vela';
 import { createCloudflareApp } from '../cloudflare-factory';
 import { AIModule } from '../modules/ai.module';
 import { AIService } from '../services/ai.service';
 beforeEach(() => {
   MetadataRegistry.clear();
-
 });
 
 function createMockAI() {
   return {
-    run: async (model: string, inputs: Record<string, unknown>, options?: Record<string, unknown>) => ({
+    run: async (
+      model: string,
+      inputs: Record<string, unknown>,
+      options?: Record<string, unknown>,
+    ) => ({
       response: `mock response from ${model}`,
       model,
       inputs,
@@ -53,7 +50,7 @@ describe('AIModule', () => {
 
     const res = await hono.request('/ai/chat', undefined, { AI: mockAI });
     expect(res.status).toBe(200);
-    const data = await res.json() as { response: string; model: string };
+    const data = (await res.json()) as { response: string; model: string };
     expect(data.response).toBe('mock response from @cf/meta/llama-3.1-8b-instruct');
     expect(data.model).toBe('@cf/meta/llama-3.1-8b-instruct');
   });
@@ -87,7 +84,7 @@ describe('AIModule', () => {
 
     const res = await hono.request('/ai/stream', undefined, { MY_AI: mockAI });
     expect(res.status).toBe(200);
-    const data = await res.json() as { options: { stream: boolean } };
+    const data = (await res.json()) as { options: { stream: boolean } };
     expect(data.options).toEqual({ stream: true });
   });
 
@@ -117,7 +114,7 @@ describe('AIModule', () => {
 
     const res = await hono.request('/raw', undefined, { RAW_AI: mockAI });
     expect(res.status).toBe(200);
-    const data = await res.json() as { model: string };
+    const data = (await res.json()) as { model: string };
     expect(data.model).toBe('test-model');
   });
 
@@ -156,7 +153,7 @@ describe('AIModule', () => {
 
     const res = await hono.request('/chat/test', undefined, { AI: mockAI });
     expect(res.status).toBe(200);
-    const data = await res.json() as { response: string };
+    const data = (await res.json()) as { response: string };
     expect(data.response).toContain('mock response');
   });
 });

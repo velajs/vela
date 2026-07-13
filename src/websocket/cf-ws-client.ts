@@ -11,9 +11,9 @@ const EMPTY: WsAttachment = { connId: '', path: '', rooms: [], data: {} };
  * Per-connection state lives in the hibernation attachment (survives eviction),
  * so a fresh `CfWsClient` is reconstructed per message with no in-memory state.
  */
-export class CfWsClient<TData extends Record<string, unknown> = Record<string, unknown>>
-  implements WsClient<TData>
-{
+export class CfWsClient<
+  TData extends Record<string, unknown> = Record<string, unknown>,
+> implements WsClient<TData> {
   private readonly attachment: WsAttachment;
 
   constructor(

@@ -37,7 +37,7 @@ export function createBindingModule<TService>(
   // key and stamps it on the class at creation, instead of patching the
   // (configurable, non-writable) `name` slot via Object.defineProperty.
   const className = `${opts.name}Module`;
-  const moduleClass: Type = { [className]: class {} }[className];
+  const moduleClass: Type = { [className]: class {} }[className]!;
 
   return defineConfigurableModule<{ binding: string }>({
     module: moduleClass,

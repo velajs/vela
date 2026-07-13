@@ -7,6 +7,7 @@ const cloudflareWorkersShim = fileURLToPath(
 );
 
 export default defineConfig({
+  oxc: false,
   test: {
     globals: false,
     include: ['src/**/*.test.ts'],

@@ -43,7 +43,10 @@ class SessionsController {
   }
 }
 
-@Module({ imports: [KVModule.forRoot({ binding: 'SESSIONS_KV' })], controllers: [SessionsController] })
+@Module({
+  imports: [KVModule.forRoot({ binding: 'SESSIONS_KV' })],
+  controllers: [SessionsController],
+})
 class SessionsFeature {}
 
 @Module({ imports: [CacheFeature, SessionsFeature] })

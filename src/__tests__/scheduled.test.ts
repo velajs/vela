@@ -1,14 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  Module,
-  Injectable,
-  MetadataRegistry,
-} from '@velajs/vela';
+import { Module, Injectable, MetadataRegistry } from '@velajs/vela';
 import { createCloudflareApp } from '../cloudflare-factory';
 import { Scheduled } from '../decorators/scheduled';
 beforeEach(() => {
   MetadataRegistry.clear();
-
 });
 
 describe('@Scheduled() decorator', () => {

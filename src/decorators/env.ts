@@ -15,12 +15,10 @@ import { createParamDecorator } from '@velajs/vela';
  * handle(@Env('MY_KV') kv: KVNamespace) { ... }
  * ```
  */
-export const Env = createParamDecorator<string | undefined>(
-  (bindingName, ctx) => {
-    // Hono Context has .env on Cloudflare Workers
-    const c = ctx.getContext<{ env?: Record<string, unknown> }>();
-    const env = c.env;
-    if (!env) return undefined;
-    return bindingName ? env[bindingName] : env;
-  },
-);
+export const Env = createParamDecorator<string | undefined>((bindingName, ctx) => {
+  // Hono Context has .env on Cloudflare Workers
+  const c = ctx.getContext<{ env?: Record<string, unknown> }>();
+  const env = c.env;
+  if (!env) return undefined;
+  return bindingName ? env[bindingName] : env;
+});
