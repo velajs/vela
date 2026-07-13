@@ -1,9 +1,14 @@
 # Changelog
 
+## 0.5.1
+
+### Patch Changes
+
+- 647fd5f: Modernize the package build, validation, and release toolchain.
+
 ## 0.3.0 (2026-07-04)
 
 - `ComponentManager.init` call removed; provider overrides use the supported `Container.replaceProvider`; registers `DiscoveryService` mirroring bootstrap. Requires `@velajs/vela >=1.11.0`.
-
 
 ## 0.2.1 (2026-05-14)
 
@@ -25,7 +30,7 @@ Bugs fixed, rebuilt on `@velajs/vela/internal`, no more `reflect-metadata` dep.
 - **Provider override shape was wrong.** `overrideProvider(token).useValue(v)` constructed `{ token, useValue }` but vela's container reads `{ provide, useValue }`. The misleading `as ProviderOptions` cast hid this; nothing actually overrode. Fixed.
 - **`useClass` now uses the container's native `useClass` path** instead of the bogus `useFactory: () => new cls()` workaround. The previous comment claimed `Container.registerOptions` doesn't read `useClass` — it does (`vela/src/container/container.ts`).
 - **`loader.resolveAllInstances()` is now awaited.** Was called synchronously even though vela's signature is async; lifecycle hooks fired before instance resolution finished.
-- **APP_* token wiring uses vela's canonical `bindAppProviders` helper.** Replaces the five duplicated `useGlobalGuards/Pipes/Interceptors/Filters/Middleware(container.resolve(APP_*))` blocks that handled only the single-value case (vela switched to array form months ago). Now stays in lockstep with `VelaFactory.create` automatically.
+- **APP\_\* token wiring uses vela's canonical `bindAppProviders` helper.** Replaces the five duplicated `useGlobalGuards/Pipes/Interceptors/Filters/Middleware(container.resolve(APP_*))` blocks that handled only the single-value case (vela switched to array form months ago). Now stays in lockstep with `VelaFactory.create` automatically.
 
 ### Breaking changes
 
