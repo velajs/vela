@@ -1,4 +1,9 @@
-import { LIVE_PROTOCOL, encodeLiveEnvelope, isServerLiveFrame, readLiveEnvelope } from '@velajs/live-protocol';
+import {
+  LIVE_PROTOCOL,
+  encodeLiveEnvelope,
+  isServerLiveFrame,
+  readLiveEnvelope,
+} from '@velajs/live-protocol';
 import type { ClientLiveFrame } from '@velajs/live-protocol';
 import { applyServerFrame } from './frame-reducer';
 import { nextReconnectDelay, resetReconnect } from './reconnect';
@@ -88,7 +93,10 @@ export class RoomConnection {
     }
     if (generation !== this.generation || this.closedByUser) return;
 
-    const url = token === undefined ? this.url : `${this.url}${this.url.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`;
+    const url =
+      token === undefined
+        ? this.url
+        : `${this.url}${this.url.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`;
     let socket: ReturnType<WebSocketFactory>;
     try {
       socket = this.deps.makeSocket(url);

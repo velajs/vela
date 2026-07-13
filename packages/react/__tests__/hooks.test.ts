@@ -3,7 +3,13 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { createElement } from 'react';
 import type { ReactNode } from 'react';
 import type { ConnectionStatus, LiveClient, MutateOptions } from '@velajs/client';
-import { LiveProvider, useConnectionStatus, useLiveMutation, useLiveQuery, usePresence } from '../src/index';
+import {
+  LiveProvider,
+  useConnectionStatus,
+  useLiveMutation,
+  useLiveQuery,
+  usePresence,
+} from '../src/index';
 
 interface Entry {
   value: unknown;
@@ -15,13 +21,22 @@ function makeFakeClient() {
   const beats: Array<{ room: string; meta?: unknown }> = [];
   const statusListeners = new Set<(status: ConnectionStatus) => void>();
   let status: ConnectionStatus = 'idle';
-  let mutateImpl: (path: string, body?: unknown, options?: MutateOptions) => Promise<unknown> = async () => ({});
+  let mutateImpl: (
+    path: string,
+    body?: unknown,
+    options?: MutateOptions,
+  ) => Promise<unknown> = async () => ({});
 
   const keyOf = (query: string, args: unknown, room?: string): string =>
     `${room ?? 'default'}|${query}|${JSON.stringify(args ?? null)}`;
 
   const client = {
-    subscribe(query: string, args: unknown, cb: (value: unknown) => void, opts?: { room?: string }) {
+    subscribe(
+      query: string,
+      args: unknown,
+      cb: (value: unknown) => void,
+      opts?: { room?: string },
+    ) {
       const key = keyOf(query, args, opts?.room);
       let entry = entries.get(key);
       if (!entry) {
@@ -105,7 +120,9 @@ describe('useLiveMutation', () => {
     let release!: (value: unknown) => void;
     fake.setMutate(() => new Promise((resolve) => (release = resolve)));
 
-    const { result } = renderHook(() => useLiveMutation('/todos'), { wrapper: wrapperFor(fake.client) });
+    const { result } = renderHook(() => useLiveMutation('/todos'), {
+      wrapper: wrapperFor(fake.client),
+    });
     let promise!: Promise<unknown>;
     act(() => {
       promise = result.current.mutate({ text: 'x' });
@@ -132,7 +149,9 @@ describe('useLiveMutation', () => {
 describe('useConnectionStatus', () => {
   it('tracks the client status', () => {
     const fake = makeFakeClient();
-    const { result } = renderHook(() => useConnectionStatus(), { wrapper: wrapperFor(fake.client) });
+    const { result } = renderHook(() => useConnectionStatus(), {
+      wrapper: wrapperFor(fake.client),
+    });
     expect(result.current).toBe('idle');
     act(() => fake.setStatus('connected'));
     expect(result.current).toBe('connected');
@@ -145,7 +164,8 @@ describe('usePresence', () => {
     try {
       const fake = makeFakeClient();
       const { result, rerender, unmount } = renderHook(
-        ({ name }: { name: string }) => usePresence('lobby', { meta: { name }, heartbeatIntervalMs: 1000 }),
+        ({ name }: { name: string }) =>
+          usePresence('lobby', { meta: { name }, heartbeatIntervalMs: 1000 }),
         { wrapper: wrapperFor(fake.client), initialProps: { name: 'kauan' } },
       );
 
@@ -153,7 +173,9 @@ describe('usePresence', () => {
       expect(fake.beats.at(-1)).toEqual({ room: 'lobby', meta: { name: 'kauan' } });
 
       // Roster push re-renders.
-      act(() => fake.push('$presence.roster', { room: 'lobby' }, [{ id: 'c1', lastSeen: 1 }], 'lobby'));
+      act(() =>
+        fake.push('$presence.roster', { room: 'lobby' }, [{ id: 'c1', lastSeen: 1 }], 'lobby'),
+      );
       expect(result.current).toEqual([{ id: 'c1', lastSeen: 1 }]);
 
       // Later beats carry the LATEST render's meta.

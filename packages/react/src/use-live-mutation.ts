@@ -29,7 +29,9 @@ export function useLiveMutation<R = unknown>(
   defaults?: MutateOptions,
 ): UseLiveMutationResult<R> {
   const client = useLiveClient();
-  const [state, setState] = useState<{ pending: number; data?: R; error?: unknown }>({ pending: 0 });
+  const [state, setState] = useState<{ pending: number; data?: R; error?: unknown }>({
+    pending: 0,
+  });
   const defaultsRef = useRef(defaults);
   defaultsRef.current = defaults;
 

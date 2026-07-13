@@ -100,7 +100,11 @@ export function applyOptimisticLayer(
  * confirmed under a DIFFERENT epoch is also dropped — its gate can never fire
  * on this timeline. Returns whether any layer was removed (host re-folds).
  */
-export function dropConfirmedLayers(host: OptimisticHost, cursor?: number, epoch?: string): boolean {
+export function dropConfirmedLayers(
+  host: OptimisticHost,
+  cursor?: number,
+  epoch?: string,
+): boolean {
   if (cursor === undefined) return false;
   const before = host.layers.length;
   host.layers = host.layers.filter((layer) => {

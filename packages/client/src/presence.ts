@@ -36,7 +36,10 @@ export interface PresenceHandle {
  * room's live socket) and subscribes to it. Departure is immediate on socket
  * close — the heartbeat/TTL pair only covers ungraceful drops.
  */
-export function createPresence(client: LiveClient<LiveContract>, options: PresenceOptions): PresenceHandle {
+export function createPresence(
+  client: LiveClient<LiveContract>,
+  options: PresenceOptions,
+): PresenceHandle {
   const intervalMs = options.heartbeatIntervalMs ?? 10_000;
   let members: PresenceMember[] | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -44,7 +47,8 @@ export function createPresence(client: LiveClient<LiveContract>, options: Presen
 
   const beat = (): void => {
     if (stopped) return;
-    const meta = typeof options.meta === 'function' ? (options.meta as () => unknown)() : options.meta;
+    const meta =
+      typeof options.meta === 'function' ? (options.meta as () => unknown)() : options.meta;
     client.presenceBeat(options.room, meta);
   };
 

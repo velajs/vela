@@ -2,18 +2,9 @@ export { LiveClient } from './live-client';
 export { RoomConnection } from './connection';
 export { applyServerFrame } from './frame-reducer';
 export type { FrameEffect } from './frame-reducer';
-export {
-  applyOptimisticLayer,
-  dropConfirmedLayers,
-  foldOptimistic,
-} from './optimistic';
+export { applyOptimisticLayer, dropConfirmedLayers, foldOptimistic } from './optimistic';
 export type { CommitStamp, LayerHandle, OptimisticHost, OptimisticLayer } from './optimistic';
-export {
-  argsKeyOf,
-  createSubscriptionState,
-  refold,
-  subscriptionKey,
-} from './subscription';
+export { argsKeyOf, createSubscriptionState, refold, subscriptionKey } from './subscription';
 export type { SubscriptionState } from './subscription';
 export { VelaLiveError, getErrorCode, isVelaLiveError } from './errors';
 export {

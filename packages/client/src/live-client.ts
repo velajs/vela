@@ -3,7 +3,13 @@ import { RoomConnection } from './connection';
 import { toMutationError } from './errors';
 import { applyOptimisticLayer } from './optimistic';
 import type { CommitStamp, LayerHandle } from './optimistic';
-import { argsKeyOf, createSubscriptionState, notify, refold, subscriptionKey } from './subscription';
+import {
+  argsKeyOf,
+  createSubscriptionState,
+  notify,
+  refold,
+  subscriptionKey,
+} from './subscription';
 import type { SubscriptionState } from './subscription';
 import type {
   ArgsOf,
@@ -83,7 +89,11 @@ export class LiveClient<C extends LiveContract = LiveContract> {
   }
 
   /** The current cached (folded) value — referentially stable between notifications. */
-  peek<Q extends keyof C & string>(query: Q, args: ArgsOf<C, Q>, room?: string): ResultOf<C, Q> | undefined {
+  peek<Q extends keyof C & string>(
+    query: Q,
+    args: ArgsOf<C, Q>,
+    room?: string,
+  ): ResultOf<C, Q> | undefined {
     const state = this.registry.get(
       subscriptionKey(query, argsKeyOf(args), room ?? this.options.defaultRoom ?? DEFAULT_ROOM),
     );
@@ -96,7 +106,11 @@ export class LiveClient<C extends LiveContract = LiveContract> {
    * `Vela-Commit-Cursor` (missing header ⇒ one-shot optimism); a rejection
    * rolls back. Resolves with the parsed JSON body (undefined when empty).
    */
-  async mutate<R = unknown>(path: string, body?: unknown, mutateOptions?: MutateOptions): Promise<R> {
+  async mutate<R = unknown>(
+    path: string,
+    body?: unknown,
+    mutateOptions?: MutateOptions,
+  ): Promise<R> {
     const handles: Array<{ state: SubscriptionState; handle: LayerHandle }> = [];
     const paint = (state: SubscriptionState, transform: (current: unknown) => unknown): void => {
       const handle = applyOptimisticLayer(state, transform);

@@ -200,15 +200,24 @@ describe('client ↔ vela live e2e (in-memory transport)', () => {
     client.subscribe('todos.list', {}, (value) => seen.push(value as unknown[]));
     await settle(engine);
 
-    await client.mutate('/todos', { text: 'optimistic' }, {
-      optimistic: {
-        query: 'todos.list',
-        args: {},
-        apply: (current) => [...((current as unknown[]) ?? []), { id: 'temp', text: 'optimistic' }],
+    await client.mutate(
+      '/todos',
+      { text: 'optimistic' },
+      {
+        optimistic: {
+          query: 'todos.list',
+          args: {},
+          apply: (current) => [
+            ...((current as unknown[]) ?? []),
+            { id: 'temp', text: 'optimistic' },
+          ],
+        },
       },
-    });
+    );
     // Painted immediately (before/while the server processes).
-    expect(seen.some((value) => value.some((row) => (row as { id: string }).id === 'temp'))).toBe(true);
+    expect(seen.some((value) => value.some((row) => (row as { id: string }).id === 'temp'))).toBe(
+      true,
+    );
 
     await settle(engine);
     const final = seen.at(-1) as Array<{ id: string; text: string }>;
@@ -218,7 +227,8 @@ describe('client ↔ vela live e2e (in-memory transport)', () => {
   });
 
   it('resumes an untouched subscription across a reconnect and re-snapshots a touched one', async () => {
-    const { client, engine, invalidation, todos, dropFromServer, lastLiveFrame } = await makeStack();
+    const { client, engine, invalidation, todos, dropFromServer, lastLiveFrame } =
+      await makeStack();
     const seen: unknown[] = [];
     client.subscribe('todos.list', {}, (value) => seen.push(value));
     await settle(engine);

@@ -21,7 +21,9 @@ export function LiveProvider(props: LiveProviderProps): ReturnType<typeof create
 export function useLiveClient<C extends LiveContract = LiveContract>(): LiveClient<C> {
   const client = useContext(LiveClientContext);
   if (!client) {
-    throw new Error('useLiveClient: no LiveClient in context — wrap the tree in <LiveProvider client={…}>.');
+    throw new Error(
+      'useLiveClient: no LiveClient in context — wrap the tree in <LiveProvider client={…}>.',
+    );
   }
   return client as LiveClient<C>;
 }

@@ -91,7 +91,12 @@ export interface OptimisticTarget<T = unknown> {
 /** Multi-subscription optimistic store (the `optimisticUpdate` callback's argument). */
 export interface LiveStore {
   get(query: string, args?: unknown, room?: string): unknown;
-  set(query: string, args: unknown, next: unknown | ((current: unknown) => unknown), room?: string): void;
+  set(
+    query: string,
+    args: unknown,
+    next: unknown | ((current: unknown) => unknown),
+    room?: string,
+  ): void;
 }
 
 export interface MutateOptions {

@@ -59,7 +59,11 @@ interface Harness {
   client: LiveClient;
   socket: () => FakeSocket;
   fetchCalls: Array<{ url: string; init: RequestInit }>;
-  respondWith: (init: { status?: number; headers?: Record<string, string>; body?: unknown }) => void;
+  respondWith: (init: {
+    status?: number;
+    headers?: Record<string, string>;
+    body?: unknown;
+  }) => void;
 }
 
 function makeHarness(): Harness {
@@ -210,9 +214,17 @@ describe('LiveClient subscriptions', () => {
 
     h.socket().receive({ t: 'data', sub, snapshot: [{ id: 'a' }], cursor: 5, epoch: 'e1' });
     h.respondWith({ headers: { 'Vela-Commit-Cursor': '9', 'Vela-Commit-Epoch': 'e1' } });
-    await h.client.mutate('/todos', { text: 'x' }, {
-      optimistic: { query: 'todos.list', args: {}, apply: (t) => [...((t as unknown[]) ?? []), { id: 'tmp' }] },
-    });
+    await h.client.mutate(
+      '/todos',
+      { text: 'x' },
+      {
+        optimistic: {
+          query: 'todos.list',
+          args: {},
+          apply: (t) => [...((t as unknown[]) ?? []), { id: 'tmp' }],
+        },
+      },
+    );
     expect((h.client.peek('todos.list', {}) as unknown[]).length).toBe(2); // overlay pending (cursor 9 > 5)
 
     // Server restarted: new epoch. The stale gate must not survive the fork.
@@ -237,15 +249,22 @@ describe('optimistic mutations', () => {
     const { sub } = await subscribed(h);
 
     h.respondWith({ headers: { 'Vela-Commit-Cursor': '5', 'Vela-Commit-Epoch': 'e1' } });
-    const mutation = h.client.mutate('/todos', { text: 'new' }, {
-      optimistic: {
-        query: 'todos.list',
-        args: {},
-        apply: (todos) => [...((todos as unknown[]) ?? []), { id: 'tmp', text: 'new' }],
+    const mutation = h.client.mutate(
+      '/todos',
+      { text: 'new' },
+      {
+        optimistic: {
+          query: 'todos.list',
+          args: {},
+          apply: (todos) => [...((todos as unknown[]) ?? []), { id: 'tmp', text: 'new' }],
+        },
       },
-    });
+    );
     // Painted synchronously.
-    expect((h.client.peek('todos.list', {}) as unknown[]).at(-1)).toEqual({ id: 'tmp', text: 'new' });
+    expect((h.client.peek('todos.list', {}) as unknown[]).at(-1)).toEqual({
+      id: 'tmp',
+      text: 'new',
+    });
 
     await mutation;
     // Unrelated frame below the commit cursor: the layer REBASES onto the new base.
@@ -277,14 +296,18 @@ describe('optimistic mutations', () => {
 
     // The confirming settled frame arrives BEFORE the mutation resolves.
     h.respondWith({ headers: { 'Vela-Commit-Cursor': '2', 'Vela-Commit-Epoch': 'e1' } });
-    const mutation = h.client.mutate('/todos/a', { done: true }, {
-      method: 'PATCH',
-      optimistic: {
-        query: 'todos.list',
-        args: {},
-        apply: (todos) => (todos as Array<{ id: string }>).map((t) => ({ ...t, done: true })),
+    const mutation = h.client.mutate(
+      '/todos/a',
+      { done: true },
+      {
+        method: 'PATCH',
+        optimistic: {
+          query: 'todos.list',
+          args: {},
+          apply: (todos) => (todos as Array<{ id: string }>).map((t) => ({ ...t, done: true })),
+        },
       },
-    });
+    );
     h.socket().receive({ t: 'settled', sub, cursor: 2, epoch: 'e1' });
     await mutation;
 
@@ -297,16 +320,24 @@ describe('optimistic mutations', () => {
     await subscribed(h);
 
     h.respondWith({}); // no commit headers
-    await h.client.mutate('/todos', {}, {
-      optimistic: { query: 'todos.list', args: {}, apply: () => [{ id: 'oneshot' }] },
-    });
+    await h.client.mutate(
+      '/todos',
+      {},
+      {
+        optimistic: { query: 'todos.list', args: {}, apply: () => [{ id: 'oneshot' }] },
+      },
+    );
     // Layer dropped silently on success — value reconciles to the base on the next fold-triggering event.
 
     h.respondWith({ status: 500, body: { error: { code: 'boom', message: 'nope' } } });
     await expect(
-      h.client.mutate('/todos', {}, {
-        optimistic: { query: 'todos.list', args: {}, apply: () => [{ id: 'doomed' }] },
-      }),
+      h.client.mutate(
+        '/todos',
+        {},
+        {
+          optimistic: { query: 'todos.list', args: {}, apply: () => [{ id: 'doomed' }] },
+        },
+      ),
     ).rejects.toMatchObject({ code: 'boom', status: 500 });
     expect(h.client.peek('todos.list', {})).toEqual([{ id: 'a' }]); // rolled back
   });
@@ -316,12 +347,19 @@ describe('optimistic mutations', () => {
     await subscribed(h);
 
     h.respondWith({ headers: { 'Vela-Commit-Cursor': '4', 'Vela-Commit-Epoch': 'e1' } });
-    await h.client.mutate('/todos', {}, {
-      optimisticUpdate: (store) => {
-        store.set('todos.list', {}, (current) => [...((current as unknown[]) ?? []), { id: 'multi' }]);
-        store.set('missing.query', {}, () => ['ignored']); // no live subscription → no-op
+    await h.client.mutate(
+      '/todos',
+      {},
+      {
+        optimisticUpdate: (store) => {
+          store.set('todos.list', {}, (current) => [
+            ...((current as unknown[]) ?? []),
+            { id: 'multi' },
+          ]);
+          store.set('missing.query', {}, () => ['ignored']); // no live subscription → no-op
+        },
       },
-    });
+    );
     expect((h.client.peek('todos.list', {}) as unknown[]).at(-1)).toEqual({ id: 'multi' });
 
     expect(h.fetchCalls[0].url).toBe('http://api.test/todos');
