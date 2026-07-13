@@ -16,7 +16,10 @@ describe('resolveSort', () => {
 
   it('ignores a field outside the allow-list and falls back to defaultSort', () => {
     expect(
-      resolveSort({ sort: 'evil' }, { sortFields: ['name'], defaultSort: { field: 'id', order: 'desc' } }),
+      resolveSort(
+        { sort: 'evil' },
+        { sortFields: ['name'], defaultSort: { field: 'id', order: 'desc' } },
+      ),
     ).toEqual({ field: 'id', order: 'desc' });
   });
 

@@ -24,10 +24,20 @@ import {
 import { applyComputedFields, applyComputedFieldsToArray } from '../model/computed-fields';
 import { applyProfile, applyProfileToArray } from '../model/serialization-profile';
 import { applyManagedInsertFields, applyManagedUpdateFields } from '../model/managed-fields';
-import { canRead, canWrite, filterReadable, maskFields, pushdownConditions } from '../policies/evaluate';
+import {
+  canRead,
+  canWrite,
+  filterReadable,
+  maskFields,
+  pushdownConditions,
+} from '../policies/evaluate';
 import type { PolicyContext } from '../policies/types';
 import { matchesFilter, parseListFilters } from '../query/filters';
-import { applyFieldSelection, applyFieldSelectionToArray, parseFieldSelection } from '../query/field-selection';
+import {
+  applyFieldSelection,
+  applyFieldSelectionToArray,
+  parseFieldSelection,
+} from '../query/field-selection';
 import type { EngineRequest, EngineResult } from './engine-request';
 import { deriveCreateSchema, deriveUpdateSchema } from '../model/schema-derive';
 import type { HookContext } from './hook-types';
@@ -80,7 +90,10 @@ export function buildPolicyContext(req: EngineRequest): PolicyContext {
 }
 
 /** Tenant scoping for point lookups — full resolution middleware lands in M3. */
-export function tenantFilters(resource: AnyResource, req: EngineRequest): Record<string, string> | undefined {
+export function tenantFilters(
+  resource: AnyResource,
+  req: EngineRequest,
+): Record<string, string> | undefined {
   const field = resource.model.tenantField;
   const tenantId = req.vars?.tenantId;
   if (field === undefined || tenantId === undefined) return undefined;
@@ -105,11 +118,16 @@ export function passesPushdown(row: Row, conditions: FilterCondition[]): boolean
   return conditions.every((condition) => matchesFilter(row[condition.field], condition));
 }
 
-export function parseBody(schema: { safeParse(v: unknown): { success: boolean; data?: unknown; error?: unknown } }, body: unknown): Row {
+export function parseBody(
+  schema: { safeParse(v: unknown): { success: boolean; data?: unknown; error?: unknown } },
+  body: unknown,
+): Row {
   const parsed = schema.safeParse(body ?? {});
   if (!parsed.success) {
     throw InputValidationException.fromZodError(
-      parsed.error as { issues: Array<{ path: Array<PropertyKey>; message: string; code: string }> },
+      parsed.error as {
+        issues: Array<{ path: Array<PropertyKey>; message: string; code: string }>;
+      },
     );
   }
   return parsed.data as Row;
@@ -240,8 +258,10 @@ export function scopeListQuery(
   return { filters, options: query.options };
 }
 
-
-export function parseIncludeParam(req: EngineRequest, allowed: string[] | undefined): string[] | undefined {
+export function parseIncludeParam(
+  req: EngineRequest,
+  allowed: string[] | undefined,
+): string[] | undefined {
   const raw = req.query?.include;
   if (raw === undefined) return undefined;
   const names = (Array.isArray(raw) ? raw : [raw]).flatMap((value) => value.split(','));

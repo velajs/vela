@@ -25,49 +25,49 @@ import {
 import { conformanceAdapters } from '../adapters';
 
 describe.each(conformanceAdapters)('adapter: $name', (descriptor) => {
-const ctx = setupConformance(descriptor);
-const kind = descriptor.capabilities.timestampKind;
+  const ctx = setupConformance(descriptor);
+  const kind = descriptor.capabilities.timestampKind;
 
-test(`managed fields: create sets uuid id + createdAt/updatedAt (${kind})`, async () => {
-  const { app } = ctx();
-  const created = await createRecord(app, '/items', {
-    name: 'Managed',
-    email: 'managed@conformance.test',
-    role: 'user',
-    age: 33,
+  test(`managed fields: create sets uuid id + createdAt/updatedAt (${kind})`, async () => {
+    const { app } = ctx();
+    const created = await createRecord(app, '/items', {
+      name: 'Managed',
+      email: 'managed@conformance.test',
+      role: 'user',
+      age: 33,
+    });
+
+    expect(created.id).toMatch(UUID_V4);
+
+    const createdAt = timestampToMillis(created.createdAt, kind);
+    const updatedAt = timestampToMillis(created.updatedAt, kind);
+    // Sanity: a real recent timestamp, not a zero value or garbage.
+    expect(createdAt).toBeGreaterThan(Date.parse('2020-01-01T00:00:00Z'));
+    expect(updatedAt).toBeGreaterThan(Date.parse('2020-01-01T00:00:00Z'));
   });
 
-  expect(created.id).toMatch(UUID_V4);
+  test('managed fields: update bumps updatedAt strictly and leaves createdAt untouched', async () => {
+    const { app } = ctx();
+    const created = await createRecord(app, '/items', {
+      name: 'Before Bump',
+      email: 'bump@conformance.test',
+      role: 'user',
+      age: 34,
+    });
 
-  const createdAt = timestampToMillis(created.createdAt, kind);
-  const updatedAt = timestampToMillis(created.updatedAt, kind);
-  // Sanity: a real recent timestamp, not a zero value or garbage.
-  expect(createdAt).toBeGreaterThan(Date.parse('2020-01-01T00:00:00Z'));
-  expect(updatedAt).toBeGreaterThan(Date.parse('2020-01-01T00:00:00Z'));
-});
+    // Ensure the clock can advance past epoch-ms resolution.
+    await sleep(15);
 
-test('managed fields: update bumps updatedAt strictly and leaves createdAt untouched', async () => {
-  const { app } = ctx();
-  const created = await createRecord(app, '/items', {
-    name: 'Before Bump',
-    email: 'bump@conformance.test',
-    role: 'user',
-    age: 34,
+    const updated = await expectSuccess<ConformanceRecord>(
+      await app.request(`/items/${created.id}`, jsonInit('PATCH', { name: 'After Bump' })),
+      200,
+    );
+
+    expect(updated.id).toBe(created.id);
+    expect(updated.name).toBe('After Bump');
+    expect(updated.createdAt).toEqual(created.createdAt);
+    expect(timestampToMillis(updated.updatedAt, kind)).toBeGreaterThan(
+      timestampToMillis(created.updatedAt, kind),
+    );
   });
-
-  // Ensure the clock can advance past epoch-ms resolution.
-  await sleep(15);
-
-  const updated = await expectSuccess<ConformanceRecord>(
-    await app.request(`/items/${created.id}`, jsonInit('PATCH', { name: 'After Bump' })),
-    200,
-  );
-
-  expect(updated.id).toBe(created.id);
-  expect(updated.name).toBe('After Bump');
-  expect(updated.createdAt).toEqual(created.createdAt);
-  expect(timestampToMillis(updated.updatedAt, kind)).toBeGreaterThan(
-    timestampToMillis(created.updatedAt, kind),
-  );
-});
 });

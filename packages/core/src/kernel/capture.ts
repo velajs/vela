@@ -21,7 +21,12 @@
 
 import { ConfigurationException } from '../envelope/errors';
 import type { Model } from '../model/model.types';
-import { calculateChanges, type AuditAction, type AuditEntry, type AuditStore } from '../audit/index';
+import {
+  calculateChanges,
+  type AuditAction,
+  type AuditEntry,
+  type AuditStore,
+} from '../audit/index';
 import type { VersioningStore } from '../versioning/index';
 import type { EngineRequest } from './engine-request';
 import type { AnyResource } from './verb-helpers';
@@ -80,7 +85,8 @@ export async function captureVersion(
   if (!model.versioning) return;
   const store = requireVersioningStore(resource);
 
-  const currentVersion = (typeof prior[VERSION_FIELD] === 'number' ? (prior[VERSION_FIELD] as number) : 0) || 0;
+  const currentVersion =
+    (typeof prior[VERSION_FIELD] === 'number' ? (prior[VERSION_FIELD] as number) : 0) || 0;
   const changedBy = req.vars?.userId;
   await store.save(model.tableName, {
     id: crypto.randomUUID(),
@@ -99,7 +105,12 @@ function buildAuditEntry(
   model: Model,
   req: EngineRequest,
   action: AuditAction,
-  parts: { recordId: string | number; record?: Row; previousRecord?: Row; metadata?: Record<string, unknown> },
+  parts: {
+    recordId: string | number;
+    record?: Row;
+    previousRecord?: Row;
+    metadata?: Record<string, unknown>;
+  },
 ): AuditEntry {
   const userId = req.vars?.userId;
   const entry: AuditEntry = {
@@ -127,7 +138,12 @@ export async function captureAudit(
   resource: AnyResource,
   req: EngineRequest,
   action: AuditAction,
-  parts: { recordId: string | number; record?: Row; previousRecord?: Row; metadata?: Record<string, unknown> },
+  parts: {
+    recordId: string | number;
+    record?: Row;
+    previousRecord?: Row;
+    metadata?: Record<string, unknown>;
+  },
 ): Promise<void> {
   if (!resource.model.audit) return;
   const store = requireAuditStore(resource);

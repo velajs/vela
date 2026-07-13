@@ -186,10 +186,7 @@ async function setup(): Promise<AdapterContext> {
     if (err instanceof CrudException) {
       return c.json(err.getResponse() as Record<string, unknown>, err.getStatus() as never);
     }
-    return c.json(
-      { success: false, error: { code: 'INTERNAL_ERROR', message: String(err) } },
-      500,
-    );
+    return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: String(err) } }, 500);
   });
   outer.use('/tenant-items', multiTenant());
   outer.use('/tenant-items/*', multiTenant());

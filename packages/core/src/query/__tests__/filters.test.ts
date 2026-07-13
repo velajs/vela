@@ -39,7 +39,9 @@ describe('FilterOperator single source of truth', () => {
   });
 
   it('assertNever throws on an invariant violation', () => {
-    expect(() => assertNever('unexpected' as never)).toThrow(/Unhandled discriminated union member/);
+    expect(() => assertNever('unexpected' as never)).toThrow(
+      /Unhandled discriminated union member/,
+    );
   });
 });
 
@@ -95,10 +97,16 @@ describe('matchesFilter', () => {
 
   it('applies the literal-needle contract for like/ilike', () => {
     // `%` in the needle is stripped, so "50%" matches a value containing "50".
-    expect(matchesFilter('50 percent off', { field: 'x', operator: 'like', value: '50%' })).toBe(true);
+    expect(matchesFilter('50 percent off', { field: 'x', operator: 'like', value: '50%' })).toBe(
+      true,
+    );
     // `_` is literal: "foo_bar" needle must NOT match "fooXbar".
-    expect(matchesFilter('fooXbar', { field: 'x', operator: 'like', value: 'foo_bar' })).toBe(false);
-    expect(matchesFilter('Literal foo_bar', { field: 'x', operator: 'like', value: 'foo_bar' })).toBe(true);
+    expect(matchesFilter('fooXbar', { field: 'x', operator: 'like', value: 'foo_bar' })).toBe(
+      false,
+    );
+    expect(
+      matchesFilter('Literal foo_bar', { field: 'x', operator: 'like', value: 'foo_bar' }),
+    ).toBe(true);
     // like is case-sensitive; ilike is not.
     expect(matchesFilter('HELLO', { field: 'x', operator: 'like', value: 'hello' })).toBe(false);
     expect(matchesFilter('HELLO', { field: 'x', operator: 'ilike', value: 'hello' })).toBe(true);

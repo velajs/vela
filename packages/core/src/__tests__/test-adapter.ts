@@ -8,10 +8,7 @@ type Row = Record<string, unknown>;
  * semantics). Core's own tests can't use @velajs/crud-memory — that package
  * depends on core — so integration suites carry this mini adapter instead.
  */
-export function testAdapter(
-  store: Map<string, Row>,
-  softDeleteField?: string,
-): CrudAdapter<Row> {
+export function testAdapter(store: Map<string, Row>, softDeleteField?: string): CrudAdapter<Row> {
   const scope: AdapterScope = { tx: { test: true } };
   const visible = (row: Row, withDeleted: boolean) =>
     withDeleted || softDeleteField === undefined || row[softDeleteField] == null;

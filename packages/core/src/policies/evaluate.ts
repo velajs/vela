@@ -86,11 +86,7 @@ export async function filterReadable<T>(
  * (e.g. redacted values), not the fields to keep. Synchronous, mirroring the
  * `ModelPolicies.fields` contract (a sync `(ctx, record) => Partial<T>`).
  */
-export function maskFields<T>(
-  ctx: PolicyContext,
-  record: T,
-  policies?: ModelPolicies<T>,
-): T {
+export function maskFields<T>(ctx: PolicyContext, record: T, policies?: ModelPolicies<T>): T {
   if (!policies?.fields) return record;
   const mask = policies.fields(ctx, record);
   return {

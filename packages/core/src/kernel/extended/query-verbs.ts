@@ -37,7 +37,11 @@ import type {
 import { AggregationException, InputValidationException } from '../../envelope/errors';
 import { applyComputedFieldsToArray } from '../../model/computed-fields';
 import { applyProfile, applyProfileToArray } from '../../model/serialization-profile';
-import { applyManagedInsertFields, applyManagedUpdateFields, stripPrimaryKeys } from '../../model/managed-fields';
+import {
+  applyManagedInsertFields,
+  applyManagedUpdateFields,
+  stripPrimaryKeys,
+} from '../../model/managed-fields';
 import { assertNoNestedWrites } from '../nested-writes';
 import { applyUpsertRestore, isSoftDeleted } from '../../model/soft-delete';
 import { filterReadable, maskFields } from '../../policies/evaluate';
@@ -99,7 +103,10 @@ function resolveSearchFields(resource: AnyResource): Record<string, SearchFieldC
 }
 
 /** Parse a comma-separated `?fields=` restrictor, intersected with configured fields. */
-function parseRequestedFields(raw: string | undefined, configured: Record<string, unknown>): string[] {
+function parseRequestedFields(
+  raw: string | undefined,
+  configured: Record<string, unknown>,
+): string[] {
   if (!raw) return [];
   const available = Object.keys(configured);
   return raw
@@ -172,7 +179,11 @@ async function executeSearch(resource: AnyResource, req: EngineRequest): Promise
 
   // minScore threshold + read-policy row filtering (hardening vs. hono-crud).
   let matched = hits.filter((hit) => hit.score >= minScore);
-  const readable = await filterReadable(policyCtx, matched.map((h) => h.record), resource.model.policies);
+  const readable = await filterReadable(
+    policyCtx,
+    matched.map((h) => h.record),
+    resource.model.policies,
+  );
   if (readable.length !== matched.length) {
     const allow = new Set(readable);
     matched = matched.filter((hit) => allow.has(hit.record));
@@ -378,7 +389,11 @@ function parseImportItems(body: unknown, maxBatchSize: number): Row[] {
     items = parsed.data;
   } else if (Array.isArray(body)) {
     items = body;
-  } else if (body !== null && typeof body === 'object' && Array.isArray((body as { items?: unknown }).items)) {
+  } else if (
+    body !== null &&
+    typeof body === 'object' &&
+    Array.isArray((body as { items?: unknown }).items)
+  ) {
     items = (body as { items: unknown[] }).items;
   } else {
     throw new InputValidationException(
@@ -401,7 +416,11 @@ async function findExistingByKeys(
   data: Row,
   scope: AdapterScope,
 ): Promise<Row | null> {
-  const filters: FilterCondition[] = keys.map((key) => ({ field: key, operator: 'eq', value: data[key] }));
+  const filters: FilterCondition[] = keys.map((key) => ({
+    field: key,
+    operator: 'eq',
+    value: data[key],
+  }));
   const tenantField = resource.model.tenantField;
   if (tenantField !== undefined && req.vars?.tenantId !== undefined) {
     filters.push({ field: tenantField, operator: 'eq', value: req.vars.tenantId });
@@ -429,7 +448,8 @@ async function processImportRow(
 
   const parsed = createSchema.safeParse(data);
   if (!parsed.success) {
-    const issues = (parsed.error as { issues: Array<{ path: PropertyKey[]; message: string }> }).issues;
+    const issues = (parsed.error as { issues: Array<{ path: PropertyKey[]; message: string }> })
+      .issues;
     return {
       rowNumber,
       status: skipInvalid ? 'skipped' : 'failed',
@@ -458,7 +478,11 @@ async function processImportRow(
           await adapter.restore(lookup, scope);
         }
         // Body PK (present under id:'client') is insert-leg identity only.
-        const patch = applyUpsertRestore(model, applyManagedUpdateFields(model, stripPrimaryKeys(model, values)), existing) as Row;
+        const patch = applyUpsertRestore(
+          model,
+          applyManagedUpdateFields(model, stripPrimaryKeys(model, values)),
+          existing,
+        ) as Row;
         const updated = (await adapter.update(lookup, patch, scope)) as Row | null;
         if (!updated) return { rowNumber, status: 'failed', error: 'Record not found for update' };
         return { rowNumber, status: 'updated', data: applyProfile(model, updated) };
@@ -500,7 +524,13 @@ async function executeImport(resource: AnyResource, req: EngineRequest): Promise
   const upsertKeys = config.upsert?.keys ?? model.primaryKeys;
   const databaseGeneratedId = config.adapter.capabilities.has('databaseGeneratedId');
 
-  const summary: ImportSummary = { total: rows.length, created: 0, updated: 0, skipped: 0, failed: 0 };
+  const summary: ImportSummary = {
+    total: rows.length,
+    created: 0,
+    updated: 0,
+    skipped: 0,
+    failed: 0,
+  };
   const results: ImportRowResult[] = [];
   const createSchema = await createSchemaFor(resource, req);
 

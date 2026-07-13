@@ -69,10 +69,12 @@ describe('runHooks — fire-and-forget', () => {
   it('resolves immediately without awaiting a slow hook', async () => {
     let settled = false;
     const slow = () =>
-      new Promise((resolve) => setTimeout(() => {
-        settled = true;
-        resolve(undefined);
-      }, 1000));
+      new Promise((resolve) =>
+        setTimeout(() => {
+          settled = true;
+          resolve(undefined);
+        }, 1000),
+      );
     await runHooks('fire-and-forget', [slow], []);
     // Returned before the slow hook could settle.
     expect(settled).toBe(false);
@@ -158,7 +160,9 @@ describe('runBeforeChain — parallel IGNORES returns (locked parity)', () => {
     const bad = async () => {
       throw new Error('parallel-before-fail');
     };
-    await expect(runBeforeChain('parallel', [bad], ctx, {})).rejects.toThrow('parallel-before-fail');
+    await expect(runBeforeChain('parallel', [bad], ctx, {})).rejects.toThrow(
+      'parallel-before-fail',
+    );
   });
 });
 

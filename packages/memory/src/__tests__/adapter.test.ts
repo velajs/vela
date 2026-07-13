@@ -131,7 +131,9 @@ describe('memoryAdapter core methods', () => {
   it('readOne finds by primary key and by secondary field', async () => {
     const adapter = users();
     seed([{ id: 'u1', email: 'ada@example.com' }]);
-    expect(await adapter.readOne({ field: 'id', value: 'u1' }, {}, scope)).toMatchObject({ id: 'u1' });
+    expect(await adapter.readOne({ field: 'id', value: 'u1' }, {}, scope)).toMatchObject({
+      id: 'u1',
+    });
     expect(
       await adapter.readOne({ field: 'email', value: 'ada@example.com' }, {}, scope),
     ).toMatchObject({ id: 'u1' });
@@ -187,7 +189,9 @@ describe('memoryAdapter core methods', () => {
       scope,
     );
     expect(soft).toMatchObject({ id: 'u2' });
-    expect(typeof (getStore('users').get('u2') as Record<string, unknown>).deletedAt).toBe('number');
+    expect(typeof (getStore('users').get('u2') as Record<string, unknown>).deletedAt).toBe(
+      'number',
+    );
   });
 
   it('transaction passes the frozen no-op sentinel scope', async () => {
@@ -234,7 +238,10 @@ describe('memoryAdapter list', () => {
   it('sorts and offset-paginates with page metadata', async () => {
     const adapter = users();
     const page = await adapter.list(
-      { filters: [], options: { order_by: 'qty', order_by_direction: 'desc', page: 2, per_page: 2 } },
+      {
+        filters: [],
+        options: { order_by: 'qty', order_by_direction: 'desc', page: 2, per_page: 2 },
+      },
       scope,
     );
     expect(page.result.map((r) => r.id)).toEqual(['a']);
@@ -259,10 +266,7 @@ describe('memoryAdapter list', () => {
 
   it('walks pages with a keyset cursor (next-only, strictly-after boundary)', async () => {
     const adapter = users();
-    const first = await adapter.list(
-      { filters: [], options: { limit: 2, order_by: 'id' } },
-      scope,
-    );
+    const first = await adapter.list({ filters: [], options: { limit: 2, order_by: 'id' } }, scope);
     expect(first.result.map((r) => r.id)).toEqual(['a', 'b']);
     expect(first.result_info.has_next_page).toBe(true);
     expect(first.result_info.next_cursor).toBeDefined();
@@ -294,7 +298,12 @@ describe('memoryAdapter drivers', () => {
     const loaded = await adapter.relations!.load(rows, 'posts', {}, scope);
     expect(loaded.get('u1')).toHaveLength(2);
 
-    const scoped = await adapter.relations!.load(rows, 'posts', { excludeDeletedField: 'deletedAt' }, scope);
+    const scoped = await adapter.relations!.load(
+      rows,
+      'posts',
+      { excludeDeletedField: 'deletedAt' },
+      scope,
+    );
     expect(scoped.get('u1')).toHaveLength(1);
     expect(scoped.get('u2')).toHaveLength(1);
   });

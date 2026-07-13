@@ -1,12 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import {
-  canRead,
-  canWrite,
-  filterReadable,
-  maskFields,
-  pushdownConditions,
-} from '../evaluate';
+import { canRead, canWrite, filterReadable, maskFields, pushdownConditions } from '../evaluate';
 import type { ModelPolicies, PolicyContext } from '../types';
 
 interface Post {
@@ -109,7 +103,11 @@ describe('maskFields', () => {
     const policies: ModelPolicies<Post> = {
       fields: () => ({ title: '***' }),
     };
-    const masked = maskFields(ctxFor('alice'), { id: 'p1', authorId: 'a', title: 'secret' }, policies);
+    const masked = maskFields(
+      ctxFor('alice'),
+      { id: 'p1', authorId: 'a', title: 'secret' },
+      policies,
+    );
     expect(masked.title).toBe('***');
     expect(masked.id).toBe('p1');
   });
@@ -118,8 +116,16 @@ describe('maskFields', () => {
     const policies: ModelPolicies<Post> = {
       fields: (ctx, post) => (post.authorId === ctx.userId ? {} : { secret: undefined }),
     };
-    const own = maskFields(ctxFor('alice'), { id: 'p1', authorId: 'alice', title: 't', secret: 's' }, policies);
-    const other = maskFields(ctxFor('bob'), { id: 'p1', authorId: 'alice', title: 't', secret: 's' }, policies);
+    const own = maskFields(
+      ctxFor('alice'),
+      { id: 'p1', authorId: 'alice', title: 't', secret: 's' },
+      policies,
+    );
+    const other = maskFields(
+      ctxFor('bob'),
+      { id: 'p1', authorId: 'alice', title: 't', secret: 's' },
+      policies,
+    );
     expect(own.secret).toBe('s');
     expect(other.secret).toBeUndefined();
   });

@@ -17,13 +17,7 @@
  *   follows hono-crud's insertId pattern but is NOT exercised by tests.
  */
 
-import {
-  asc as drizzleAsc,
-  desc as drizzleDesc,
-  eq,
-  isNull,
-  sql,
-} from 'drizzle-orm';
+import { asc as drizzleAsc, desc as drizzleDesc, eq, isNull, sql } from 'drizzle-orm';
 import type {
   AdapterCapability,
   AdapterScope,
@@ -45,7 +39,13 @@ import type {
 } from '@velajs/crud/adapter';
 import { ConflictException } from '@velajs/crud';
 import { decodeCursor, encodeCursor } from '@velajs/crud/query';
-import { asDatabase, type DrizzleDatabase, type DrizzleDialect, type DrizzleSql, type DrizzleTable } from './database';
+import {
+  asDatabase,
+  type DrizzleDatabase,
+  type DrizzleDialect,
+  type DrizzleSql,
+  type DrizzleTable,
+} from './database';
 import { andAll, buildWhere, getColumn, orAll, substringMatch } from './filters';
 
 type Row = Record<string, unknown>;
@@ -158,7 +158,10 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
       softDeleteVisibility(withDeleted),
     );
 
-  const selectOne = async (db: DrizzleDatabase, where: DrizzleSql | undefined): Promise<R | null> => {
+  const selectOne = async (
+    db: DrizzleDatabase,
+    where: DrizzleSql | undefined,
+  ): Promise<R | null> => {
     const rows = (await db.select().from(table).where(where).limit(1)) as R[];
     return rows[0] ?? null;
   };
@@ -170,7 +173,11 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
       const parentKey = (parent as Row)[rel.localKey ?? primaryKey];
       try {
         for (const record of records) {
-          const row = { ...record, id: record.id ?? crypto.randomUUID(), [rel.foreignKey]: parentKey };
+          const row = {
+            ...record,
+            id: record.id ?? crypto.randomUUID(),
+            [rel.foreignKey]: parentKey,
+          };
           await db.insert(rel.table).values(row);
         }
       } catch (err) {
@@ -187,25 +194,44 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
 
       try {
         for (const record of operations.create ?? []) {
-          const row = { ...record, id: record.id ?? crypto.randomUUID(), [rel.foreignKey]: parentKey };
+          const row = {
+            ...record,
+            id: record.id ?? crypto.randomUUID(),
+            [rel.foreignKey]: parentKey,
+          };
           await db.insert(rel.table).values(row);
         }
         for (const { where, data } of operations.update ?? []) {
-          await db.update(rel.table).set(data).where(andAll(matches(where), eq(fk, parentKey)));
+          await db
+            .update(rel.table)
+            .set(data)
+            .where(andAll(matches(where), eq(fk, parentKey)));
         }
         for (const where of operations.delete ?? []) {
           await db.delete(rel.table).where(andAll(matches(where), eq(fk, parentKey)));
         }
         for (const where of operations.connect ?? []) {
-          await db.update(rel.table).set({ [rel.foreignKey]: parentKey }).where(matches(where));
+          await db
+            .update(rel.table)
+            .set({ [rel.foreignKey]: parentKey })
+            .where(matches(where));
         }
         for (const where of operations.disconnect ?? []) {
-          await db.update(rel.table).set({ [rel.foreignKey]: null }).where(andAll(matches(where), eq(fk, parentKey)));
+          await db
+            .update(rel.table)
+            .set({ [rel.foreignKey]: null })
+            .where(andAll(matches(where), eq(fk, parentKey)));
         }
         if (operations.set) {
-          await db.update(rel.table).set({ [rel.foreignKey]: null }).where(eq(fk, parentKey));
+          await db
+            .update(rel.table)
+            .set({ [rel.foreignKey]: null })
+            .where(eq(fk, parentKey));
           for (const where of operations.set) {
-            await db.update(rel.table).set({ [rel.foreignKey]: parentKey }).where(matches(where));
+            await db
+              .update(rel.table)
+              .set({ [rel.foreignKey]: parentKey })
+              .where(matches(where));
           }
         }
       } catch (err) {
@@ -226,7 +252,9 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
     async deleteRelated(relation, parentKey, scope) {
       const rel = requireRelation(config, relation);
       const count = await cascade.countRelated(relation, parentKey, scope);
-      await handle(scope).delete(rel.table).where(eq(getColumn(rel.table, rel.foreignKey), parentKey));
+      await handle(scope)
+        .delete(rel.table)
+        .where(eq(getColumn(rel.table, rel.foreignKey), parentKey));
       return count;
     },
     async nullifyRelated(relation, parentKey, scope) {
@@ -245,7 +273,8 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
       const rel = requireRelation(config, relation);
       const db = handle(scope);
       const relatedJoinField = rel.type === 'belongsTo' ? (rel.localKey ?? 'id') : rel.foreignKey;
-      const parentJoinField = rel.type === 'belongsTo' ? rel.foreignKey : (rel.localKey ?? primaryKey);
+      const parentJoinField =
+        rel.type === 'belongsTo' ? rel.foreignKey : (rel.localKey ?? primaryKey);
       const wanted = [...new Set(rows.map((r) => (r as Row)[parentJoinField]))].filter(
         (v) => v !== null && v !== undefined,
       );
@@ -277,7 +306,10 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
   return {
     capabilities: CAPABILITIES,
 
-    async transaction<T>(fn: (scope: AdapterScope) => Promise<T>, ctx?: TransactionContext): Promise<T> {
+    async transaction<T>(
+      fn: (scope: AdapterScope) => Promise<T>,
+      ctx?: TransactionContext,
+    ): Promise<T> {
       return rootDb.transaction(async (tx) => {
         if (ctx !== undefined) await config.onOpenTransaction?.(tx, ctx);
         return fn({ tx });
@@ -328,7 +360,10 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
       const existing = await selectOne(db, where);
       if (!existing) return null;
       if (opts.softDeleteField !== undefined) {
-        await db.update(table).set({ [opts.softDeleteField]: Date.now() }).where(where);
+        await db
+          .update(table)
+          .set({ [opts.softDeleteField]: Date.now() })
+          .where(where);
         return selectOne(db, eq(pkColumn(), (existing as Row)[primaryKey]));
       }
       await db.delete(table).where(where);
@@ -393,7 +428,10 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
           }
         }
         const column = getColumn(table, cursorField);
-        const windowWhere = andAll(where, decoded !== null ? sql`${column} > ${decoded}` : undefined);
+        const windowWhere = andAll(
+          where,
+          decoded !== null ? sql`${column} > ${decoded}` : undefined,
+        );
         const rows = (await db
           .select()
           .from(table)
@@ -534,7 +572,9 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
 function requireRelation(config: DrizzleAdapterConfig, relation: string): DrizzleRelation {
   const rel = config.relations?.[relation];
   if (!rel) {
-    throw new Error(`drizzleAdapter: unknown relation '${relation}' — declare it in config.relations`);
+    throw new Error(
+      `drizzleAdapter: unknown relation '${relation}' — declare it in config.relations`,
+    );
   }
   return rel;
 }

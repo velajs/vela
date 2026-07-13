@@ -2,7 +2,33 @@
   "name": "@velajs/crud",
   "version": "1.19.0",
   "description": "Native CRUD module for the Vela framework",
+  "keywords": [
+    "crud",
+    "decorators",
+    "edge",
+    "framework",
+    "hono",
+    "vela"
+  ],
+  "homepage": "https://github.com/velajs/crud#readme",
+  "bugs": {
+    "url": "https://github.com/velajs/crud/issues"
+  },
+  "license": "MIT",
+  "author": "ksh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/velajs/crud.git",
+    "directory": "packages/core"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
   "type": "module",
+  "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -51,50 +77,26 @@
       "import": "./dist/audit/index.js"
     }
   },
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE",
-    "CHANGELOG.md"
-  ],
   "scripts": {
-    "build": "rm -rf dist && swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
+    "build": "tsdown",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
-    "prepublishOnly": "pnpm run typecheck && pnpm test"
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json"
   },
-  "sideEffects": false,
-  "keywords": [
-    "vela",
-    "crud",
-    "hono",
-    "decorators",
-    "edge",
-    "framework"
-  ],
-  "author": "ksh",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/velajs/crud.git",
-    "directory": "packages/core"
-  },
-  "homepage": "https://github.com/velajs/crud#readme",
-  "bugs": {
-    "url": "https://github.com/velajs/crud/issues"
-  },
-  "engines": {
-    "node": ">=20"
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@velajs/vela": "^1.18.0",
+    "hono": "^4",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:",
+    "zod": "^4"
   },
   "peerDependencies": {
     "@velajs/vela": ">=1.18.0",
     "hono": ">=4",
     "zod": ">=4"
   },
-  "devDependencies": {
-    "@types/node": "^26.1.1",
-    "@velajs/vela": "^1.18.0",
-    "hono": "^4",
-    "zod": "^4"
+  "engines": {
+    "node": ">=24"
   }
 }

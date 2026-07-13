@@ -30,14 +30,24 @@
  * (both → 4) because the seeded latest version equals the live record's version.
  */
 
-import { ConfigurationException, InputValidationException, NotFoundException } from '../../envelope/errors';
+import {
+  ConfigurationException,
+  InputValidationException,
+  NotFoundException,
+} from '../../envelope/errors';
 import { calculateChanges } from '../../audit/index';
 import type { VersioningStore } from '../../versioning/index';
 import type { CrudEndpointName } from '../../verb-table';
 import { captureVersion } from '../capture';
 import type { EngineRequest, EngineResult } from '../engine-request';
 import { envelopeOf } from '../resource';
-import { buildLookup, buildPolicyContext, shapeOne, txCtx, type AnyResource } from '../verb-helpers';
+import {
+  buildLookup,
+  buildPolicyContext,
+  shapeOne,
+  txCtx,
+  type AnyResource,
+} from '../verb-helpers';
 import type { VerbExecutor } from './registry';
 
 type Row = Record<string, unknown>;
@@ -83,7 +93,8 @@ function versioningStoreOf(resource: AnyResource): VersioningStore {
 async function requireOwnedRecord(resource: AnyResource, req: EngineRequest): Promise<Row> {
   const lookup = buildLookup(resource, req);
   const found = await resource.config.adapter.transaction(
-    async (scope) => (await resource.config.adapter.readOne(lookup, { withDeleted: true }, scope)) as Row | null,
+    async (scope) =>
+      (await resource.config.adapter.readOne(lookup, { withDeleted: true }, scope)) as Row | null,
     txCtx(req),
   );
   if (!found) throw new NotFoundException(resource.model.name, lookup.value);
@@ -95,7 +106,9 @@ function parseVersionParam(req: EngineRequest): number {
   const raw = req.params?.version;
   const version = Number(raw);
   if (!Number.isInteger(version) || version < 1) {
-    throw new InputValidationException(`Invalid version '${raw ?? ''}': expected a positive integer`);
+    throw new InputValidationException(
+      `Invalid version '${raw ?? ''}': expected a positive integer`,
+    );
   }
   return version;
 }
@@ -110,7 +123,10 @@ function parseVersionParam(req: EngineRequest): number {
  * `{ success, result: { versions, totalVersions } }` where `totalVersions` is
  * the highest stored version number (hono-crud `getLatestVersion`).
  */
-async function executeVersionHistory(resource: AnyResource, req: EngineRequest): Promise<EngineResult> {
+async function executeVersionHistory(
+  resource: AnyResource,
+  req: EngineRequest,
+): Promise<EngineResult> {
   const store = versioningStoreOf(resource);
   const record = await requireOwnedRecord(resource, req);
   const recordId = record[resource.model.primaryKeys[0] ?? 'id'] as string | number;
@@ -119,7 +135,10 @@ async function executeVersionHistory(resource: AnyResource, req: EngineRequest):
   const offsetRaw = firstParam(req.query, 'offset');
   const limit =
     limitRaw !== undefined
-      ? Math.min(MAX_HISTORY_LIMIT, Math.max(1, Number.parseInt(limitRaw, 10) || DEFAULT_HISTORY_LIMIT))
+      ? Math.min(
+          MAX_HISTORY_LIMIT,
+          Math.max(1, Number.parseInt(limitRaw, 10) || DEFAULT_HISTORY_LIMIT),
+        )
       : DEFAULT_HISTORY_LIMIT;
   const offset = offsetRaw !== undefined ? Math.max(0, Number.parseInt(offsetRaw, 10) || 0) : 0;
 
@@ -140,7 +159,10 @@ async function executeVersionHistory(resource: AnyResource, req: EngineRequest):
  * Read one specific version snapshot. `:version` is a positive integer; a
  * missing snapshot is a 404. Response: `{ success, result: <VersionEntry> }`.
  */
-async function executeVersionRead(resource: AnyResource, req: EngineRequest): Promise<EngineResult> {
+async function executeVersionRead(
+  resource: AnyResource,
+  req: EngineRequest,
+): Promise<EngineResult> {
   const store = versioningStoreOf(resource);
   const version = parseVersionParam(req);
   const record = await requireOwnedRecord(resource, req);
@@ -172,7 +194,10 @@ function parseCompareParam(req: EngineRequest, key: 'from' | 'to'): number {
  * is missing, `changes` is `[]` (no 404) — parity with
  * `VersionManager.compareVersions`.
  */
-async function executeVersionCompare(resource: AnyResource, req: EngineRequest): Promise<EngineResult> {
+async function executeVersionCompare(
+  resource: AnyResource,
+  req: EngineRequest,
+): Promise<EngineResult> {
   const store = versioningStoreOf(resource);
   const from = parseCompareParam(req, 'from');
   const to = parseCompareParam(req, 'to');
@@ -184,9 +209,7 @@ async function executeVersionCompare(resource: AnyResource, req: EngineRequest):
     store.get(resource.model.tableName, recordId, to),
   ]);
   const changes =
-    entryFrom && entryTo
-      ? calculateChanges(entryFrom.data as Row, entryTo.data as Row)
-      : [];
+    entryFrom && entryTo ? calculateChanges(entryFrom.data as Row, entryTo.data as Row) : [];
 
   return { status: 200, body: envelopeOf(resource).success({ from, to, changes }) };
 }
@@ -203,7 +226,10 @@ async function executeVersionCompare(resource: AnyResource, req: EngineRequest):
  * the resource envelope of the rolled-back row (its `version` = currentVersion
  * + 1). Tenant/owner-scoped: a foreign/missing record is a 404.
  */
-async function executeVersionRollback(resource: AnyResource, req: EngineRequest): Promise<EngineResult> {
+async function executeVersionRollback(
+  resource: AnyResource,
+  req: EngineRequest,
+): Promise<EngineResult> {
   const store = versioningStoreOf(resource);
   const version = parseVersionParam(req);
   const config = resource.config;
@@ -214,7 +240,11 @@ async function executeVersionRollback(resource: AnyResource, req: EngineRequest)
   const rolledBack = await config.adapter.transaction(async (scope) => {
     // Owner-scope BEFORE mutating (soft-delete-inclusive: a deleted parent can
     // still be rolled back — its record row is what we own-check).
-    const current = (await config.adapter.readOne(lookup, { withDeleted: true }, scope)) as Row | null;
+    const current = (await config.adapter.readOne(
+      lookup,
+      { withDeleted: true },
+      scope,
+    )) as Row | null;
     if (!current) throw new NotFoundException(model.name, lookup.value);
 
     const recordId = current[model.primaryKeys[0] ?? 'id'] as string | number;

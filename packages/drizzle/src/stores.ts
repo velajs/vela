@@ -6,11 +6,7 @@
  */
 
 import { and, desc, eq, sql } from 'drizzle-orm';
-import type {
-  AuditEntry,
-  AuditQuery,
-  AuditStore,
-} from '@velajs/crud/audit';
+import type { AuditEntry, AuditQuery, AuditStore } from '@velajs/crud/audit';
 import type { VersionEntry, VersioningStore } from '@velajs/crud/versioning';
 import { asDatabase, type DrizzleDatabase, type DrizzleTable } from './database';
 import { getColumn } from './filters';
@@ -98,9 +94,7 @@ export class DrizzleVersioningStore implements VersioningStore {
     const existing = await this.list(tableName, recordId);
     await this.db
       .delete(this.table)
-      .where(
-        and(eq(this.col('tableName'), tableName), eq(this.col('recordId'), String(recordId))),
-      );
+      .where(and(eq(this.col('tableName'), tableName), eq(this.col('recordId'), String(recordId))));
     return existing.length;
   }
 
@@ -160,7 +154,9 @@ export class DrizzleAuditStore implements AuditStore {
   async query(options: AuditQuery = {}): Promise<AuditEntry[]> {
     const conditions = [
       options.tableName !== undefined ? eq(this.col('tableName'), options.tableName) : undefined,
-      options.recordId !== undefined ? eq(this.col('recordId'), String(options.recordId)) : undefined,
+      options.recordId !== undefined
+        ? eq(this.col('recordId'), String(options.recordId))
+        : undefined,
       options.action !== undefined ? eq(this.col('action'), options.action) : undefined,
       options.userId !== undefined ? eq(this.col('userId'), options.userId) : undefined,
     ].filter((c) => c !== undefined);

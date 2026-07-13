@@ -17,10 +17,7 @@ type HasProfile = Pick<Model, 'serializationProfile'>;
  * the input is never mutated. Returns the record unchanged (same reference)
  * when no exclusions are configured or none are present on the record.
  */
-export function applyProfile<T extends Record<string, unknown>>(
-  model: HasProfile,
-  record: T,
-): T {
+export function applyProfile<T extends Record<string, unknown>>(model: HasProfile, record: T): T {
   const exclude = model.serializationProfile?.exclude;
   if (!exclude || exclude.length === 0) return record;
   if (!exclude.some((field) => field in record)) return record;

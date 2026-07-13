@@ -25,7 +25,13 @@
 
 import type { ZodObject, ZodRawShape } from 'zod';
 import { defineModel } from './define-model';
-import type { Model, ModelConfig, RelationConfig, RelationsConfig, SchemaKeys } from './model.types';
+import type {
+  Model,
+  ModelConfig,
+  RelationConfig,
+  RelationsConfig,
+  SchemaKeys,
+} from './model.types';
 
 /** Registry key → its Zod schema; the value-map the field constraints read. */
 type RelationSchemaMap = Record<string, ZodObject<ZodRawShape>>;
@@ -244,7 +250,10 @@ function suggestRegistryKey(target: string, knownKeys: readonly string[]): strin
 }
 
 /** Aggregated, suggestion-bearing message for every unknown internal target. */
-function formatUnknownTargets(misses: readonly UnknownTarget[], knownKeys: readonly string[]): string {
+function formatUnknownTargets(
+  misses: readonly UnknownTarget[],
+  knownKeys: readonly string[],
+): string {
   const details = misses
     .map(({ modelKey, relationName, target }) => {
       const suggestion = suggestRegistryKey(target, knownKeys);
@@ -431,8 +440,9 @@ export function defineModels<
  * Setup bag for {@link defineModelsExtending} — the {@link DefineModelsConfig}
  * knobs plus the base map whose keys become referenceable siblings.
  */
-export interface DefineModelsExtendConfig<TBase extends Record<string, Model>>
-  extends DefineModelsConfig {
+export interface DefineModelsExtendConfig<
+  TBase extends Record<string, Model>,
+> extends DefineModelsConfig {
   /** A previously-wired map whose keys become referenceable siblings. */
   extends: TBase;
 }

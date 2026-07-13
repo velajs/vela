@@ -52,9 +52,7 @@ export const CRUD_ROUTES = [
 /** Every endpoint name, derived from the table so the union cannot drift. */
 export type CrudEndpointName = (typeof CRUD_ROUTES)[number][0];
 
-export const ALL_CRUD_ENDPOINTS: readonly CrudEndpointName[] = CRUD_ROUTES.map(
-  ([name]) => name,
-);
+export const ALL_CRUD_ENDPOINTS: readonly CrudEndpointName[] = CRUD_ROUTES.map(([name]) => name);
 
 /** Version verbs are gated behind `model.versioning`. */
 export const VERSION_ENDPOINTS: readonly CrudEndpointName[] = [

@@ -34,9 +34,7 @@ export function assertAdapterSatisfies(
 
   for (const { capability, reason } of requirements) {
     if (!adapter.capabilities.has(capability)) {
-      problems.push(
-        `requires '${capability}' (${reason}) but the adapter does not declare it`,
-      );
+      problems.push(`requires '${capability}' (${reason}) but the adapter does not declare it`);
     }
   }
 

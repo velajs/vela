@@ -32,7 +32,8 @@ function sourceFiles(dir: string): string[] {
 function importsOf(file: string): string[] {
   const content = readFileSync(file, 'utf8');
   const specifiers: string[] = [];
-  const pattern = /(?:import|export)\s[^'"]*?from\s+['"]([^'"]+)['"]|import\(\s*['"]([^'"]+)['"]\s*\)/g;
+  const pattern =
+    /(?:import|export)\s[^'"]*?from\s+['"]([^'"]+)['"]|import\(\s*['"]([^'"]+)['"]\s*\)/g;
   for (const match of content.matchAll(pattern)) {
     specifiers.push((match[1] ?? match[2])!);
   }
@@ -40,8 +41,23 @@ function importsOf(file: string): string[] {
 }
 
 const NODE_BUILTINS = new Set([
-  'fs', 'path', 'os', 'crypto', 'http', 'https', 'net', 'tls', 'stream', 'util',
-  'events', 'buffer', 'child_process', 'worker_threads', 'async_hooks', 'url', 'zlib',
+  'fs',
+  'path',
+  'os',
+  'crypto',
+  'http',
+  'https',
+  'net',
+  'tls',
+  'stream',
+  'util',
+  'events',
+  'buffer',
+  'child_process',
+  'worker_threads',
+  'async_hooks',
+  'url',
+  'zlib',
 ]);
 
 describe('openness + edge audit', () => {
@@ -52,13 +68,17 @@ describe('openness + edge audit', () => {
   });
 
   it('never imports @velajs/vela/internal', () => {
-    const offenders = files.filter((f) => importsOf(f).some((s) => s.startsWith('@velajs/vela/internal')));
+    const offenders = files.filter((f) =>
+      importsOf(f).some((s) => s.startsWith('@velajs/vela/internal')),
+    );
     expect(offenders).toEqual([]);
   });
 
   it('never imports hono-crud', () => {
     const offenders = files.filter((f) =>
-      importsOf(f).some((s) => s === 'hono-crud' || s.startsWith('hono-crud/') || s.startsWith('@hono-crud/')),
+      importsOf(f).some(
+        (s) => s === 'hono-crud' || s.startsWith('hono-crud/') || s.startsWith('@hono-crud/'),
+      ),
     );
     expect(offenders).toEqual([]);
   });

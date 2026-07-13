@@ -223,7 +223,11 @@ const withHeaders = (headers: Record<string, string>): Request =>
 
 describe('batchCreate', () => {
   it('rejects nested-write payloads with a loud 400 (no dispatch seam)', async () => {
-    const PostSchema = z.object({ id: z.string(), authorId: z.string().optional(), title: z.string() });
+    const PostSchema = z.object({
+      id: z.string(),
+      authorId: z.string().optional(),
+      title: z.string(),
+    });
     const { resource } = makeResource({
       model: {
         relations: {
@@ -249,10 +253,14 @@ describe('batchCreate', () => {
     const { resource, store } = makeResource();
     const result = await resource.execute(
       'batchCreate',
-      req({ body: { items: [
-        { email: 'a@x', name: 'A' },
-        { email: 'b@x', name: 'B' },
-      ] } }),
+      req({
+        body: {
+          items: [
+            { email: 'a@x', name: 'A' },
+            { email: 'b@x', name: 'B' },
+          ],
+        },
+      }),
     );
     expect(result.status).toBe(201);
     const body = result.body as { success: boolean; result: { created: Row[]; count: number } };
@@ -267,11 +275,18 @@ describe('batchCreate', () => {
   it('rejects a batch over maxBatchSize with VALIDATION_ERROR 400 (nothing written)', async () => {
     const { resource, store } = makeResource({ batch: { maxBatchSize: 2 } });
     await expect(
-      resource.execute('batchCreate', req({ body: { items: [
-        { email: 'a@x', name: 'A' },
-        { email: 'b@x', name: 'B' },
-        { email: 'c@x', name: 'C' },
-      ] } })),
+      resource.execute(
+        'batchCreate',
+        req({
+          body: {
+            items: [
+              { email: 'a@x', name: 'A' },
+              { email: 'b@x', name: 'B' },
+              { email: 'c@x', name: 'C' },
+            ],
+          },
+        }),
+      ),
     ).rejects.toMatchObject({ statusCode: 400, code: 'VALIDATION_ERROR' });
     expect(store.size).toBe(0);
   });
@@ -289,10 +304,17 @@ describe('batchCreate', () => {
   it('aborts the whole batch on a per-item validation error (400, atomic — nothing written)', async () => {
     const { resource, store } = makeResource();
     await expect(
-      resource.execute('batchCreate', req({ body: { items: [
-        { email: 'a@x', name: 'A' },
-        { email: 'b@x', name: '' }, // invalid: name min(1)
-      ] } })),
+      resource.execute(
+        'batchCreate',
+        req({
+          body: {
+            items: [
+              { email: 'a@x', name: 'A' },
+              { email: 'b@x', name: '' }, // invalid: name min(1)
+            ],
+          },
+        }),
+      ),
     ).rejects.toMatchObject({ statusCode: 400, code: 'VALIDATION_ERROR' });
     expect(store.size).toBe(0);
   });
@@ -312,10 +334,14 @@ describe('batchCreate', () => {
     const { resource } = makeResource({ hooks });
     const result = await resource.execute(
       'batchCreate',
-      req({ body: { items: [
-        { email: 'a@x', name: 'A' },
-        { email: 'b@x', name: 'B' },
-      ] } }),
+      req({
+        body: {
+          items: [
+            { email: 'a@x', name: 'A' },
+            { email: 'b@x', name: 'B' },
+          ],
+        },
+      }),
     );
     expect(seen).toEqual([
       { phase: 'before', index: 0 },
@@ -340,10 +366,14 @@ describe('batchCreate', () => {
 
     const result = await resource.execute(
       'batchCreate',
-      req({ body: { items: [
-        { email: 'a@x', name: 'A' },
-        { email: 'b@x', name: 'B' },
-      ] } }),
+      req({
+        body: {
+          items: [
+            { email: 'a@x', name: 'A' },
+            { email: 'b@x', name: 'B' },
+          ],
+        },
+      }),
     );
     expect(result.status).toBe(201);
     expect(createMany).toHaveBeenCalledTimes(1);
@@ -375,10 +405,14 @@ describe('batchUpdate', () => {
 
     const result = await resource.execute(
       'batchUpdate',
-      req({ body: { items: [
-        { id: 'a', data: { name: 'A2' } },
-        { id: 'b', data: { name: 'B2' } },
-      ] } }),
+      req({
+        body: {
+          items: [
+            { id: 'a', data: { name: 'A2' } },
+            { id: 'b', data: { name: 'B2' } },
+          ],
+        },
+      }),
     );
     expect(result.status).toBe(200);
     const body = result.body as { result: { updated: Row[]; count: number; notFound?: string[] } };
@@ -394,10 +428,14 @@ describe('batchUpdate', () => {
 
     const result = await resource.execute(
       'batchUpdate',
-      req({ body: { items: [
-        { id: 'a', data: { name: 'A2' } },
-        { id: 'ghost', data: { name: 'Z' } },
-      ] } }),
+      req({
+        body: {
+          items: [
+            { id: 'a', data: { name: 'A2' } },
+            { id: 'ghost', data: { name: 'Z' } },
+          ],
+        },
+      }),
     );
     expect(result.status).toBe(207);
     const body = result.body as { result: { updated: Row[]; count: number; notFound: string[] } };
@@ -412,7 +450,7 @@ describe('batchUpdate', () => {
     ).rejects.toMatchObject({ statusCode: 400, code: 'TENANT_REQUIRED' });
   });
 
-  it('scopes to the tenant: another tenant\'s id falls through to notFound (row untouched)', async () => {
+  it("scopes to the tenant: another tenant's id falls through to notFound (row untouched)", async () => {
     const { resource, store } = makeResource({ model: { multiTenant: true } });
     store.set('a', { id: 'a', email: 'a@x', name: 'A', tenantId: 't1' });
 
@@ -446,10 +484,14 @@ describe('batchUpdate', () => {
 
     const result = await resource.execute(
       'batchUpdate',
-      req({ body: { items: [
-        { id: 'a', data: { name: 'A2' } },
-        { id: 'b', data: { name: 'B2' } },
-      ] } }),
+      req({
+        body: {
+          items: [
+            { id: 'a', data: { name: 'A2' } },
+            { id: 'b', data: { name: 'B2' } },
+          ],
+        },
+      }),
     );
     expect(seen).toEqual([
       { phase: 'before', index: 0 },
@@ -506,7 +548,10 @@ describe('batchDelete', () => {
     store.set('a', { id: 'a', email: 'a@x', name: 'A' });
     store.set('gone', { id: 'gone', email: 'g@x', name: 'Gone', deletedAt: 5 });
 
-    const result = await resource.execute('batchDelete', req({ body: { ids: ['a', 'gone', 'ghost'] } }));
+    const result = await resource.execute(
+      'batchDelete',
+      req({ body: { ids: ['a', 'gone', 'ghost'] } }),
+    );
     expect(result.status).toBe(207);
     const body = result.body as { result: { count: number; notFound: string[] } };
     expect(body.result.count).toBe(1);
@@ -574,7 +619,10 @@ describe('batchRestore', () => {
     store.set('a', { id: 'a', email: 'a@x', name: 'A', deletedAt: 5 });
     store.set('live', { id: 'live', email: 'l@x', name: 'Live' });
 
-    const result = await resource.execute('batchRestore', req({ body: { ids: ['a', 'live', 'ghost'] } }));
+    const result = await resource.execute(
+      'batchRestore',
+      req({ body: { ids: ['a', 'live', 'ghost'] } }),
+    );
     expect(result.status).toBe(207);
     const body = result.body as { result: { count: number; notFound: string[] } };
     expect(body.result.count).toBe(1);
@@ -656,10 +704,12 @@ describe('batchUpsert', () => {
 
     const result = await resource.execute(
       'batchUpsert',
-      req({ body: [
-        { email: 'dup@x', name: 'Fresh' }, // update existing
-        { email: 'new@x', name: 'New' }, // create
-      ] }),
+      req({
+        body: [
+          { email: 'dup@x', name: 'Fresh' }, // update existing
+          { email: 'new@x', name: 'New' }, // create
+        ],
+      }),
     );
     expect(result.status).toBe(200);
     const body = result.body as {
@@ -686,10 +736,12 @@ describe('batchUpsert', () => {
 
     const result = await resource.execute(
       'batchUpsert',
-      req({ body: [
-        { id: 'wrong', email: 'dup@x', name: 'Fresh' }, // matches by email — body id ignored
-        { id: 'fresh', email: 'new@x', name: 'New' }, // no match — body id used
-      ] }),
+      req({
+        body: [
+          { id: 'wrong', email: 'dup@x', name: 'Fresh' }, // matches by email — body id ignored
+          { id: 'fresh', email: 'new@x', name: 'New' }, // no match — body id used
+        ],
+      }),
     );
     expect(result.status).toBe(200);
     const body = result.body as { result: { items: Array<{ data: Row; created: boolean }> } };
@@ -720,7 +772,12 @@ describe('batchUpsert', () => {
 
   it('uses the native upsertOne path when the adapter declares the upsert capability', async () => {
     const store = new Map<string, Row>();
-    const model = defineModel({ name: 'item', tableName: 'items', schema: itemSchema, softDelete: true });
+    const model = defineModel({
+      name: 'item',
+      tableName: 'items',
+      schema: itemSchema,
+      softDelete: true,
+    });
     const base = fakeAdapter(store, { softDeleteField: 'deletedAt', native: true });
     const upsertOne = vi.fn(base.upsertOne!);
     base.upsertOne = upsertOne;
@@ -728,10 +785,12 @@ describe('batchUpsert', () => {
 
     const result = await resource.execute(
       'batchUpsert',
-      req({ body: [
-        { email: 'nat1@x', name: 'N1' },
-        { email: 'nat2@x', name: 'N2' },
-      ] }),
+      req({
+        body: [
+          { email: 'nat1@x', name: 'N1' },
+          { email: 'nat2@x', name: 'N2' },
+        ],
+      }),
     );
     expect(result.status).toBe(200);
     expect(upsertOne).toHaveBeenCalledTimes(2);
@@ -790,10 +849,15 @@ describe('batchUpsert', () => {
   it('rejects an over-limit batch with VALIDATION_ERROR 400', async () => {
     const { resource } = makeResource({ ...upsertCfg, batch: { maxBatchSize: 1 } });
     await expect(
-      resource.execute('batchUpsert', req({ body: [
-        { email: 'a@x', name: 'A' },
-        { email: 'b@x', name: 'B' },
-      ] })),
+      resource.execute(
+        'batchUpsert',
+        req({
+          body: [
+            { email: 'a@x', name: 'A' },
+            { email: 'b@x', name: 'B' },
+          ],
+        }),
+      ),
     ).rejects.toMatchObject({ statusCode: 400, code: 'VALIDATION_ERROR' });
   });
 });
@@ -804,8 +868,22 @@ describe('batchUpsert', () => {
 
 describe('bulkPatch', () => {
   const seedGuests = (store: Map<string, Row>) => {
-    store.set('carol', { id: 'carol', email: 'c@x', name: 'Carol', role: 'guest', age: 40, updatedAt: 1 });
-    store.set('dave', { id: 'dave', email: 'd@x', name: 'Dave', role: 'guest', age: 50, deletedAt: 7 });
+    store.set('carol', {
+      id: 'carol',
+      email: 'c@x',
+      name: 'Carol',
+      role: 'guest',
+      age: 40,
+      updatedAt: 1,
+    });
+    store.set('dave', {
+      id: 'dave',
+      email: 'd@x',
+      name: 'Dave',
+      role: 'guest',
+      age: 50,
+      deletedAt: 7,
+    });
     store.set('alice', { id: 'alice', email: 'a@x', name: 'Alice', role: 'user', age: 35 });
   };
 
@@ -891,7 +969,12 @@ describe('bulkPatch', () => {
       'bulkPatch',
       req({ body: { filter: { role: 'guest' }, data: { age: 9 } } }),
     );
-    const body = result.body as { success: boolean; matched: number; updated: number; records: Row[] };
+    const body = result.body as {
+      success: boolean;
+      matched: number;
+      updated: number;
+      records: Row[];
+    };
     expect(body.matched).toBe(1);
     expect(body.records).toHaveLength(1);
     expect(body.records[0].age).toBe(9);
@@ -899,7 +982,12 @@ describe('bulkPatch', () => {
 
   it('uses the native updateWhere path when the adapter declares bulkPatch', async () => {
     const store = new Map<string, Row>();
-    const model = defineModel({ name: 'item', tableName: 'items', schema: itemSchema, softDelete: true });
+    const model = defineModel({
+      name: 'item',
+      tableName: 'items',
+      schema: itemSchema,
+      softDelete: true,
+    });
     const base = fakeAdapter(store, { softDeleteField: 'deletedAt', bulkPatch: true });
     const updateWhere = vi.fn(base.updateWhere!);
     base.updateWhere = updateWhere;
@@ -927,7 +1015,10 @@ describe('bulkPatch', () => {
   });
 
   it('scopes matched rows to the request tenant', async () => {
-    const { resource, store } = makeResource({ model: { multiTenant: true }, bulkPatch: { returnRecords: true } });
+    const { resource, store } = makeResource({
+      model: { multiTenant: true },
+      bulkPatch: { returnRecords: true },
+    });
     store.set('a', { id: 'a', email: 'a@x', name: 'A', role: 'guest', tenantId: 't1' });
     store.set('b', { id: 'b', email: 'b@x', name: 'B', role: 'guest', tenantId: 't2' });
 

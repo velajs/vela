@@ -24,7 +24,13 @@ import {
   toNestedOps,
 } from './nested-writes';
 import { applyManagedInsertFields, applyManagedUpdateFields } from '../model/managed-fields';
-import { canRead, canWrite, filterReadable, maskFields, pushdownConditions } from '../policies/evaluate';
+import {
+  canRead,
+  canWrite,
+  filterReadable,
+  maskFields,
+  pushdownConditions,
+} from '../policies/evaluate';
 import { parseListFilters } from '../query/filters';
 import { applyFieldSelectionToArray } from '../query/field-selection';
 import type { EngineRequest, EngineResult } from './engine-request';
@@ -234,9 +240,11 @@ export async function executeUpdate(
     }
 
     if (config.hooks?.afterUpdate) {
-      await runHooks(config.hooks.afterMode ?? 'sequential', [
-        () => config.hooks!.afterUpdate!(ctx, prior as never, current as never),
-      ], []);
+      await runHooks(
+        config.hooks.afterMode ?? 'sequential',
+        [() => config.hooks!.afterUpdate!(ctx, prior as never, current as never)],
+        [],
+      );
     }
     return { prior, current };
   }, txCtx(req));
@@ -288,9 +296,11 @@ export async function executeDelete(
     if (!deleted) throw new NotFoundException(model.name, lookup.value);
 
     if (config.hooks?.afterDelete) {
-      await runHooks(config.hooks.afterMode ?? 'sequential', [
-        () => config.hooks!.afterDelete!(ctx, prior as never),
-      ], []);
+      await runHooks(
+        config.hooks.afterMode ?? 'sequential',
+        [() => config.hooks!.afterDelete!(ctx, prior as never)],
+        [],
+      );
     }
     return prior;
   }, txCtx(req));
@@ -332,7 +342,9 @@ export async function executeList(
   rows = applyProfileToArray(resource.model, rows);
   if (config.hooks?.transformList) {
     const ctx = buildHookContext(req, { tx: undefined });
-    rows = (await Promise.all(rows.map((row) => config.hooks!.transformList!(ctx, row as never)))) as Row[];
+    rows = (await Promise.all(
+      rows.map((row) => config.hooks!.transformList!(ctx, row as never)),
+    )) as Row[];
   }
   const selection = resolveSelection(resource, req);
   if (selection) rows = applyFieldSelectionToArray(rows, selection) as Row[];

@@ -6,6 +6,7 @@ import { defineConfig } from 'vitest/config';
 const r = (p: string): string => fileURLToPath(new URL(p, import.meta.url));
 
 export default defineConfig({
+  oxc: false,
   // Run the ported conformance suite directly against the ENGINE SOURCE (not
   // the built dist), mirroring how @velajs/crud's own subpath exports resolve.
   // Order matters: longest keys first so `@velajs/crud/adapter` matches before
@@ -18,8 +19,14 @@ export default defineConfig({
       { find: '@velajs/crud/envelope', replacement: r('./packages/core/src/envelope/index.ts') },
       { find: '@velajs/crud/policies', replacement: r('./packages/core/src/policies/index.ts') },
       { find: '@velajs/crud/kernel', replacement: r('./packages/core/src/kernel/index.ts') },
-      { find: '@velajs/crud/multi-tenant', replacement: r('./packages/core/src/multi-tenant/index.ts') },
-      { find: '@velajs/crud/versioning', replacement: r('./packages/core/src/versioning/index.ts') },
+      {
+        find: '@velajs/crud/multi-tenant',
+        replacement: r('./packages/core/src/multi-tenant/index.ts'),
+      },
+      {
+        find: '@velajs/crud/versioning',
+        replacement: r('./packages/core/src/versioning/index.ts'),
+      },
       { find: '@velajs/crud/audit', replacement: r('./packages/core/src/audit/index.ts') },
       { find: '@velajs/crud', replacement: r('./packages/core/src/index.ts') },
       { find: '@velajs/crud-memory', replacement: r('./packages/memory/src/index.ts') },

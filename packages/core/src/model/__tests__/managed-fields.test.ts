@@ -19,7 +19,7 @@ const Schema = z.object({
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 describe('applyManagedInsertFields — PK strategy', () => {
-  it("uuid (default) generates a crypto.randomUUID primary key", () => {
+  it('uuid (default) generates a crypto.randomUUID primary key', () => {
     const model = defineModel({ name: 'u', tableName: 'u', schema: Schema });
     const out = applyManagedInsertFields(model, { name: 'a' }, { databaseGeneratedId: false });
     expect(String(out.id)).toMatch(UUID_RE);
@@ -27,14 +27,22 @@ describe('applyManagedInsertFields — PK strategy', () => {
 
   it('a caller-supplied non-empty PK wins untouched', () => {
     const model = defineModel({ name: 'u', tableName: 'u', schema: Schema });
-    const out = applyManagedInsertFields(model, { id: 'given', name: 'a' }, { databaseGeneratedId: false });
+    const out = applyManagedInsertFields(
+      model,
+      { id: 'given', name: 'a' },
+      { databaseGeneratedId: false },
+    );
     expect(out.id).toBe('given');
   });
 
   it('treats empty-string / null PK as unsupplied and generates one', () => {
     const model = defineModel({ name: 'u', tableName: 'u', schema: Schema });
-    expect(String(applyManagedInsertFields(model, { id: '' }, { databaseGeneratedId: false }).id)).toMatch(UUID_RE);
-    expect(String(applyManagedInsertFields(model, { id: null }, { databaseGeneratedId: false }).id)).toMatch(UUID_RE);
+    expect(
+      String(applyManagedInsertFields(model, { id: '' }, { databaseGeneratedId: false }).id),
+    ).toMatch(UUID_RE);
+    expect(
+      String(applyManagedInsertFields(model, { id: null }, { databaseGeneratedId: false }).id),
+    ).toMatch(UUID_RE);
   });
 
   it('a custom id function is invoked for the PK', () => {
@@ -47,28 +55,36 @@ describe('applyManagedInsertFields — PK strategy', () => {
 
   it("id:'database' omits the PK when the adapter supports databaseGeneratedId", () => {
     const model = defineModel({ name: 'u', tableName: 'u', schema: Schema, id: 'database' });
-    const out = applyManagedInsertFields(model, { id: undefined, name: 'a' }, { databaseGeneratedId: true });
+    const out = applyManagedInsertFields(
+      model,
+      { id: undefined, name: 'a' },
+      { databaseGeneratedId: true },
+    );
     expect('id' in out).toBe(false);
   });
 
   it("id:'database' throws ConfigurationException when the adapter cannot generate keys", () => {
     const model = defineModel({ name: 'u', tableName: 'u', schema: Schema, id: 'database' });
-    expect(() => applyManagedInsertFields(model, { name: 'a' }, { databaseGeneratedId: false })).toThrow(
-      ConfigurationException,
-    );
+    expect(() =>
+      applyManagedInsertFields(model, { name: 'a' }, { databaseGeneratedId: false }),
+    ).toThrow(ConfigurationException);
   });
 
   it("id:'client' keeps a caller-supplied PK untouched", () => {
     const model = defineModel({ name: 'u', tableName: 'u', schema: Schema, id: 'client' });
-    const out = applyManagedInsertFields(model, { id: 'client-1', name: 'a' }, { databaseGeneratedId: false });
+    const out = applyManagedInsertFields(
+      model,
+      { id: 'client-1', name: 'a' },
+      { databaseGeneratedId: false },
+    );
     expect(out.id).toBe('client-1');
   });
 
   it("id:'client' throws InputValidationException (400) when no PK is supplied", () => {
     const model = defineModel({ name: 'u', tableName: 'u', schema: Schema, id: 'client' });
-    expect(() => applyManagedInsertFields(model, { name: 'a' }, { databaseGeneratedId: false })).toThrow(
-      InputValidationException,
-    );
+    expect(() =>
+      applyManagedInsertFields(model, { name: 'a' }, { databaseGeneratedId: false }),
+    ).toThrow(InputValidationException);
   });
 });
 
@@ -84,7 +100,11 @@ describe('applyManagedInsertFields — timestamps', () => {
 
   it('does not overwrite a caller-supplied timestamp field', () => {
     const model = defineModel({ name: 'u', tableName: 'u', schema: Schema });
-    const out = applyManagedInsertFields(model, { name: 'a', createdAt: 123 }, { databaseGeneratedId: false });
+    const out = applyManagedInsertFields(
+      model,
+      { name: 'a', createdAt: 123 },
+      { databaseGeneratedId: false },
+    );
     expect(out.createdAt).toBe(123);
     expect(typeof out.updatedAt).toBe('number');
   });
@@ -162,7 +182,13 @@ describe('getManagedInputExclusions', () => {
   });
 
   it("id:'client': excludes the PK by default (update side); create-side opts out", () => {
-    const model = defineModel({ name: 'u', tableName: 'u', schema: Schema, id: 'client', multiTenant: true });
+    const model = defineModel({
+      name: 'u',
+      tableName: 'u',
+      schema: Schema,
+      id: 'client',
+      multiTenant: true,
+    });
     // Default (update-side derivation): identity is never patchable.
     expect(new Set(getManagedInputExclusions(model))).toEqual(
       new Set(['id', 'createdAt', 'updatedAt', 'tenantId']),

@@ -3,36 +3,40 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "pnpm -r build",
+    "build": "pnpm -r --workspace-concurrency=4 build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test && vitest run tests",
     "test:conformance": "vitest run tests",
+    "lint": "oxlint .",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "publint": "pnpm --filter @velajs/crud --filter @velajs/crud-drizzle --filter @velajs/crud-memory --no-bail exec publint",
+    "attw": "pnpm --filter @velajs/crud --filter @velajs/crud-drizzle --filter @velajs/crud-memory --no-bail exec attw --pack . --profile esm-only",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "pnpm build && changeset publish"
+    "release": "pnpm build && changeset publish",
+    "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm test && pnpm publint && pnpm attw"
   },
   "devDependencies": {
-    "@changesets/cli": "^2.29.5",
+    "@arethetypeswrong/cli": "catalog:",
+    "@changesets/cli": "catalog:",
     "@libsql/client": "^0.17.4",
-    "@swc/cli": "^0.8.1",
-    "@swc/core": "^1.15.41",
-    "@types/node": "^26.1.1",
+    "@swc/core": "catalog:",
+    "@types/node": "catalog:",
     "@velajs/vela": "^1.18.0",
     "drizzle-orm": "^0.45.2",
     "hono": "^4",
-    "typescript": "^6.0.3",
-    "unplugin-swc": "^1.5.9",
-    "vitest": "^4.1.9",
+    "oxfmt": "catalog:",
+    "oxlint": "catalog:",
+    "publint": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "unplugin-swc": "catalog:",
+    "vitest": "catalog:",
     "zod": "^4"
   },
-  "packageManager": "pnpm@10.20.0",
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@swc/core",
-      "esbuild"
-    ]
-  }
+  "packageManager": "pnpm@11.11.0"
 }

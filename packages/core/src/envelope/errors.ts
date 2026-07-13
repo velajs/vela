@@ -48,10 +48,21 @@ export class CrudException extends HttpException {
   public readonly code: CrudErrorCode;
   public readonly details?: unknown;
 
-  constructor(message: string, status = 500, code: CrudErrorCode = 'INTERNAL_ERROR', details?: unknown) {
+  constructor(
+    message: string,
+    status = 500,
+    code: CrudErrorCode = 'INTERNAL_ERROR',
+    details?: unknown,
+  ) {
     const error: StructuredError = { code, message };
     if (details !== undefined) error.details = details;
-    super({ success: false, error: error as unknown as Record<string, unknown> } as Record<string, unknown>, status);
+    super(
+      { success: false, error: error as unknown as Record<string, unknown> } as Record<
+        string,
+        unknown
+      >,
+      status,
+    );
     this.name = 'CrudException';
     this.code = code;
     this.details = details;
@@ -75,7 +86,9 @@ export class InputValidationException extends CrudException {
   }
 
   /** Flattens a Zod (v4) error into the canonical issue list. */
-  static fromZodError(error: { issues: Array<{ path: Array<PropertyKey>; message: string; code: string }> }): InputValidationException {
+  static fromZodError(error: {
+    issues: Array<{ path: Array<PropertyKey>; message: string; code: string }>;
+  }): InputValidationException {
     const issues: ValidationIssue[] = error.issues.map((issue) => ({
       path: issue.path.join('.'),
       message: issue.message,

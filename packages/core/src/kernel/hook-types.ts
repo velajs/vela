@@ -67,10 +67,7 @@ export interface HookModeConfig {
  * payload); returning `void`/`undefined` leaves the value unchanged. Both sync
  * and async are accepted.
  */
-type Mutator<In, Out = In> = (
-  ctx: HookContext,
-  value: In,
-) => Out | void | Promise<Out | void>;
+type Mutator<In, Out = In> = (ctx: HookContext, value: In) => Out | void | Promise<Out | void>;
 
 /**
  * Lifecycle hooks for one CRUD resource. Every field is optional; a resource
@@ -122,11 +119,7 @@ export interface CrudHooks<T = unknown> {
    * `UpdateHooks.after(prior, current, ctx)` (0.10.0 two-snapshot shape),
    * ctx-first — identical arity to the old bridge's `afterUpdate`.
    */
-  afterUpdate?: (
-    ctx: HookContext,
-    prior: T,
-    current: T,
-  ) => T | void | Promise<T | void>;
+  afterUpdate?: (ctx: HookContext, prior: T, current: T) => T | void | Promise<T | void>;
 
   // -------------------------------------------------------------------------
   // delete
@@ -163,10 +156,7 @@ export interface CrudHooks<T = unknown> {
    * full `Page<T>` so a hook can adjust pagination metadata alongside the rows.
    * Per-row shaping belongs in {@link transformList}.
    */
-  afterList?: (
-    ctx: HookContext,
-    page: Page<T>,
-  ) => Page<T> | void | Promise<Page<T> | void>;
+  afterList?: (ctx: HookContext, page: Page<T>) => Page<T> | void | Promise<Page<T> | void>;
   /**
    * Per-row output transform for LIST. Runs once per row after `afterList`.
    * Parity: hono-crud `ListHooks.transform(item)` — ctx-first here (the old
@@ -213,11 +203,7 @@ export interface CrudHooks<T = unknown> {
    * was INSERTED (`true`) rather than UPDATED. May return a replacement.
    * Parity: hono-crud `UpsertHooks.after(data, created)`, ctx-first.
    */
-  afterUpsert?: (
-    ctx: HookContext,
-    record: T,
-    created: boolean,
-  ) => T | void | Promise<T | void>;
+  afterUpsert?: (ctx: HookContext, record: T, created: boolean) => T | void | Promise<T | void>;
 
   // -------------------------------------------------------------------------
   // batch* — run once PER ITEM with the item's 0-based index
@@ -236,23 +222,11 @@ export interface CrudHooks<T = unknown> {
   /** After each item of a batch UPDATE. May return a replacement row. */
   afterBatchUpdate?: BatchMutator<T>;
   /** Before each item of a batch DELETE. Receives the pre-mutation row. */
-  beforeBatchDelete?: (
-    ctx: HookContext,
-    prior: T,
-    index: number,
-  ) => void | Promise<void>;
+  beforeBatchDelete?: (ctx: HookContext, prior: T, index: number) => void | Promise<void>;
   /** After each item of a batch DELETE. Receives the pre-mutation row. */
-  afterBatchDelete?: (
-    ctx: HookContext,
-    prior: T,
-    index: number,
-  ) => void | Promise<void>;
+  afterBatchDelete?: (ctx: HookContext, prior: T, index: number) => void | Promise<void>;
   /** Before each item of a batch RESTORE. Receives the soft-deleted row. */
-  beforeBatchRestore?: (
-    ctx: HookContext,
-    prior: T,
-    index: number,
-  ) => void | Promise<void>;
+  beforeBatchRestore?: (ctx: HookContext, prior: T, index: number) => void | Promise<void>;
   /** After each item of a batch RESTORE. May return a replacement row. */
   afterBatchRestore?: BatchMutator<T>;
   /** Before each item of a batch UPSERT. May return a replacement item. */

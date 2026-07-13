@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Canonical tenant-resolver wiring for a tenant-scoped @velajs/crud resource.",
   "scripts": {
-    "build": "rm -rf dist && swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
+    "build": "tsdown",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json"
   },

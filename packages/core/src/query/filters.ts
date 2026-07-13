@@ -258,7 +258,10 @@ export function parseListFilters(query: RawQuery, config: ParseListQueryOptions 
       continue;
     }
     if (cursorPaginationEnabled && key === 'limit') {
-      options.limit = Math.min(maxPerPage, Math.max(1, Number.parseInt(value, 10) || defaultPerPage));
+      options.limit = Math.min(
+        maxPerPage,
+        Math.max(1, Number.parseInt(value, 10) || defaultPerPage),
+      );
       continue;
     }
 
@@ -268,7 +271,10 @@ export function parseListFilters(query: RawQuery, config: ParseListQueryOptions 
       continue;
     }
     if (key === 'per_page') {
-      options.per_page = Math.min(maxPerPage, Math.max(1, Number.parseInt(value, 10) || defaultPerPage));
+      options.per_page = Math.min(
+        maxPerPage,
+        Math.max(1, Number.parseInt(value, 10) || defaultPerPage),
+      );
       continue;
     }
 
@@ -309,7 +315,9 @@ export function parseListFilters(query: RawQuery, config: ParseListQueryOptions 
         .map((v) => v.trim())
         .filter(Boolean);
       options.include =
-        allowedIncludes.length > 0 ? requested.filter((r) => allowedIncludes.includes(r)) : requested;
+        allowedIncludes.length > 0
+          ? requested.filter((r) => allowedIncludes.includes(r))
+          : requested;
       continue;
     }
 

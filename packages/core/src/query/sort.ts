@@ -35,7 +35,10 @@ function first(raw: string | string[] | undefined): string | undefined {
  * Returns `undefined` when no field is resolvable (no valid `sort` and no
  * `defaultSort.field`) — the adapter then applies its own default ordering.
  */
-export function resolveSort(params: RawQuery, options: ResolveSortOptions = {}): SortSpec | undefined {
+export function resolveSort(
+  params: RawQuery,
+  options: ResolveSortOptions = {},
+): SortSpec | undefined {
   const { sortFields = [], defaultSort } = options;
 
   const sortParam = first(params.sort);

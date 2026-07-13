@@ -41,19 +41,40 @@ describe('defineModel normalization', () => {
   });
 
   it('resolves softDelete: true → default field, and object → custom field', () => {
-    expect(defineModel({ name: 'u', tableName: 'u', schema: UserSchema, softDelete: true }).softDeleteField).toBe('deletedAt');
     expect(
-      defineModel({ name: 'u', tableName: 'u', schema: UserSchema, softDelete: { field: 'removedAt' } }).softDeleteField,
+      defineModel({ name: 'u', tableName: 'u', schema: UserSchema, softDelete: true })
+        .softDeleteField,
+    ).toBe('deletedAt');
+    expect(
+      defineModel({
+        name: 'u',
+        tableName: 'u',
+        schema: UserSchema,
+        softDelete: { field: 'removedAt' },
+      }).softDeleteField,
     ).toBe('removedAt');
-    expect(defineModel({ name: 'u', tableName: 'u', schema: UserSchema, softDelete: false }).softDeleteField).toBeUndefined();
+    expect(
+      defineModel({ name: 'u', tableName: 'u', schema: UserSchema, softDelete: false })
+        .softDeleteField,
+    ).toBeUndefined();
   });
 
   it('resolves multiTenant: true → default field, and object → custom field', () => {
-    expect(defineModel({ name: 'u', tableName: 'u', schema: UserSchema, multiTenant: true }).tenantField).toBe('tenantId');
     expect(
-      defineModel({ name: 'u', tableName: 'u', schema: UserSchema, multiTenant: { field: 'orgId' } }).tenantField,
+      defineModel({ name: 'u', tableName: 'u', schema: UserSchema, multiTenant: true }).tenantField,
+    ).toBe('tenantId');
+    expect(
+      defineModel({
+        name: 'u',
+        tableName: 'u',
+        schema: UserSchema,
+        multiTenant: { field: 'orgId' },
+      }).tenantField,
     ).toBe('orgId');
-    expect(defineModel({ name: 'u', tableName: 'u', schema: UserSchema, multiTenant: false }).tenantField).toBeUndefined();
+    expect(
+      defineModel({ name: 'u', tableName: 'u', schema: UserSchema, multiTenant: false })
+        .tenantField,
+    ).toBeUndefined();
   });
 
   it('normalizes timestamps: false disables both columns', () => {
@@ -140,7 +161,12 @@ describe('defineModel normalization', () => {
   });
 
   it('returns a fresh object without mutating the input config', () => {
-    const config = { name: 'user', tableName: 'users', schema: UserSchema, primaryKeys: ['id'] as ['id'] };
+    const config = {
+      name: 'user',
+      tableName: 'users',
+      schema: UserSchema,
+      primaryKeys: ['id'] as ['id'],
+    };
     const model = defineModel(config);
     expect(model).not.toBe(config);
     // Normalizing did not add resolved fields onto the author's config.

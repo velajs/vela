@@ -88,7 +88,10 @@ export class CrudModule extends ConfigurableModuleClass {
         useFactory: (container: Container) => {
           const adapter = config.adapter ?? resolveDefault(container, names.singular);
           const engineConfig = toEngineConfig(config, adapter);
-          engineConfig.versioningStore ??= resolveOptional(container, CRUD_DEFAULT_VERSIONING_STORE);
+          engineConfig.versioningStore ??= resolveOptional(
+            container,
+            CRUD_DEFAULT_VERSIONING_STORE,
+          );
           engineConfig.auditStore ??= resolveOptional(container, CRUD_DEFAULT_AUDIT_STORE);
           return defineResource(names.singular, engineConfig);
         },
@@ -120,7 +123,10 @@ function resolveDefault(container: Container, resource: string): CrudAdapter {
 }
 
 /** Resolve an optional forRoot default store; `undefined` when unregistered. */
-function resolveOptional<T>(container: Container, token: Parameters<Container['resolve']>[0]): T | undefined {
+function resolveOptional<T>(
+  container: Container,
+  token: Parameters<Container['resolve']>[0],
+): T | undefined {
   if (!container.has(token)) return undefined;
   return container.resolve(token) as T | undefined;
 }

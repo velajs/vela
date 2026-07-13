@@ -116,7 +116,11 @@ export function memoryAdapter<Row extends Record<string, unknown> = Record<strin
       const relatedStore = getStore(rel.table);
       const parentKey = (parent as Record<string, unknown>)[rel.localKey ?? primaryKey];
       for (const record of records) {
-        const row = { ...record, id: record.id ?? crypto.randomUUID(), [rel.foreignKey]: parentKey };
+        const row = {
+          ...record,
+          id: record.id ?? crypto.randomUUID(),
+          [rel.foreignKey]: parentKey,
+        };
         relatedStore.set(String(row.id), row);
       }
     },
@@ -126,7 +130,11 @@ export function memoryAdapter<Row extends Record<string, unknown> = Record<strin
       const parentKey = (parent as Record<string, unknown>)[rel.localKey ?? primaryKey];
 
       for (const record of operations.create ?? []) {
-        const row = { ...record, id: record.id ?? crypto.randomUUID(), [rel.foreignKey]: parentKey };
+        const row = {
+          ...record,
+          id: record.id ?? crypto.randomUUID(),
+          [rel.foreignKey]: parentKey,
+        };
         relatedStore.set(String(row.id), row);
       }
       for (const { where, data } of operations.update ?? []) {
@@ -162,7 +170,8 @@ export function memoryAdapter<Row extends Record<string, unknown> = Record<strin
         }
         for (const where of operations.set) {
           for (const [id, row] of relatedStore) {
-            if (rowMatches(row, where)) relatedStore.set(id, { ...row, [rel.foreignKey]: parentKey });
+            if (rowMatches(row, where))
+              relatedStore.set(id, { ...row, [rel.foreignKey]: parentKey });
           }
         }
       }
@@ -207,7 +216,8 @@ export function memoryAdapter<Row extends Record<string, unknown> = Record<strin
       // Join value on the RELATED side: FK column for hasOne/hasMany, the
       // target key for belongsTo (parent rows carry the FK).
       const relatedJoinField = rel.type === 'belongsTo' ? (rel.localKey ?? 'id') : rel.foreignKey;
-      const parentJoinField = rel.type === 'belongsTo' ? rel.foreignKey : (rel.localKey ?? primaryKey);
+      const parentJoinField =
+        rel.type === 'belongsTo' ? rel.foreignKey : (rel.localKey ?? primaryKey);
       const wanted = new Set(rows.map((r) => (r as Record<string, unknown>)[parentJoinField]));
 
       const grouped = new Map<unknown, Array<Record<string, unknown>>>();
@@ -267,7 +277,10 @@ export function memoryAdapter<Row extends Record<string, unknown> = Record<strin
   return {
     capabilities,
 
-    async transaction<T>(fn: (scope: AdapterScope) => Promise<T>, _ctx?: TransactionContext): Promise<T> {
+    async transaction<T>(
+      fn: (scope: AdapterScope) => Promise<T>,
+      _ctx?: TransactionContext,
+    ): Promise<T> {
       return fn(NOOP_SCOPE);
     },
 
@@ -364,7 +377,9 @@ export function memoryAdapter<Row extends Record<string, unknown> = Record<strin
             ? items
             : items.filter((item) => {
                 const value = (item as Record<string, unknown>)[cursorField];
-                return typeof value === 'number' ? value > Number(decoded) : String(value) > String(decoded);
+                return typeof value === 'number'
+                  ? value > Number(decoded)
+                  : String(value) > String(decoded);
               });
 
         const pageItems = window.slice(0, limit) as Row[];

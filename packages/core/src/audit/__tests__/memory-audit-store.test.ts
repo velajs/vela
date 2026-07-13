@@ -8,7 +8,9 @@ import { MemoryAuditStore, calculateChanges, type AuditEntry } from '../index';
  * store persists via `log`/`logBatch` and reads back via `query`).
  */
 
-function entry(partial: Partial<AuditEntry> & Pick<AuditEntry, 'action' | 'tableName' | 'recordId'>): AuditEntry {
+function entry(
+  partial: Partial<AuditEntry> & Pick<AuditEntry, 'action' | 'tableName' | 'recordId'>,
+): AuditEntry {
   return {
     id: crypto.randomUUID(),
     timestamp: new Date(),
@@ -24,7 +26,15 @@ describe('MemoryAuditStore', () => {
   });
 
   it('logs and retrieves a single entry', async () => {
-    await store.log(entry({ action: 'create', tableName: 'users', recordId: '123', userId: 'user-456', record: { name: 'John' } }));
+    await store.log(
+      entry({
+        action: 'create',
+        tableName: 'users',
+        recordId: '123',
+        userId: 'user-456',
+        record: { name: 'John' },
+      }),
+    );
 
     const all = store.all();
     expect(all).toHaveLength(1);
@@ -53,8 +63,12 @@ describe('MemoryAuditStore', () => {
   });
 
   it('queries by action and userId', async () => {
-    await store.log(entry({ action: 'create', tableName: 'users', recordId: '123', userId: 'user-1' }));
-    await store.log(entry({ action: 'update', tableName: 'users', recordId: '123', userId: 'user-2' }));
+    await store.log(
+      entry({ action: 'create', tableName: 'users', recordId: '123', userId: 'user-1' }),
+    );
+    await store.log(
+      entry({ action: 'update', tableName: 'users', recordId: '123', userId: 'user-2' }),
+    );
 
     expect(await store.query({ action: 'create' })).toHaveLength(1);
     expect(await store.query({ userId: 'user-1' })).toHaveLength(1);
@@ -103,7 +117,10 @@ describe('calculateChanges', () => {
   });
 
   it('detects added and removed fields', () => {
-    const changes = calculateChanges({ name: 'John', oldField: 'value' }, { name: 'John', newField: 'value' });
+    const changes = calculateChanges(
+      { name: 'John', oldField: 'value' },
+      { name: 'John', newField: 'value' },
+    );
     expect(changes).toHaveLength(2);
     expect(changes).toContainEqual({ field: 'oldField', oldValue: 'value', newValue: undefined });
     expect(changes).toContainEqual({ field: 'newField', oldValue: undefined, newValue: 'value' });

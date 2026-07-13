@@ -11,9 +11,8 @@ import type { VersioningStore } from './versioning/index';
 import type { AuditStore } from './audit/index';
 
 /** The app-wide default adapter, provided by `CrudModule.forRoot`. */
-export const CRUD_DEFAULT_ADAPTER: InjectionToken<CrudAdapter> = moduleToken<CrudAdapter>(
-  'crud:default-adapter',
-);
+export const CRUD_DEFAULT_ADAPTER: InjectionToken<CrudAdapter> =
+  moduleToken<CrudAdapter>('crud:default-adapter');
 
 /** The app-wide default version-history store, provided by `CrudModule.forRoot`. */
 export const CRUD_DEFAULT_VERSIONING_STORE: InjectionToken<VersioningStore> =

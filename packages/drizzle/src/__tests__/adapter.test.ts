@@ -67,7 +67,12 @@ let dbCounter = 0;
 
 afterAll(() => {
   client?.close();
-  rmSync(tmpDir, { recursive: true, force: true });
+  try {
+    rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (process.platform !== 'win32' || (code !== 'EPERM' && code !== 'EBUSY')) throw error;
+  }
 });
 
 async function freshDb() {
@@ -131,7 +136,9 @@ describe('drizzleAdapter core', () => {
     await scopeOf((s) => adapter.create({ id: 'b', name: 'B', deletedAt: 5 }, s));
 
     expect(
-      await scopeOf((s) => adapter.readOne({ field: 'id', value: 'a', filters: { tenantId: 't2' } }, {}, s)),
+      await scopeOf((s) =>
+        adapter.readOne({ field: 'id', value: 'a', filters: { tenantId: 't2' } }, {}, s),
+      ),
     ).toBeNull();
     expect(await scopeOf((s) => adapter.readOne({ field: 'id', value: 'b' }, {}, s))).toBeNull();
     expect(
@@ -246,10 +253,9 @@ describe('drizzleAdapter core', () => {
       },
     });
 
-    await adapter.transaction(
-      (scope) => adapter.create({ id: 'ctx1', name: 'Scoped' }, scope),
-      { tenantId: 't1' },
-    );
+    await adapter.transaction((scope) => adapter.create({ id: 'ctx1', name: 'Scoped' }, scope), {
+      tenantId: 't1',
+    });
     expect(seen).toHaveLength(1);
     expect(seen[0]!.tenantId).toBe('t1');
     expect(seen[0]!.tx).not.toBeNull();
@@ -264,7 +270,9 @@ describe('drizzleAdapter core', () => {
     expect(seen[1]!.tenantId).toBeUndefined();
 
     // Direct adapter use without a context: the hook is not invoked.
-    await adapter.transaction((scope) => adapter.readOne({ field: 'id', value: 'ctx1' }, {}, scope));
+    await adapter.transaction((scope) =>
+      adapter.readOne({ field: 'id', value: 'ctx1' }, {}, scope),
+    );
     expect(seen).toHaveLength(2);
   });
 
@@ -300,7 +308,10 @@ describe('drizzleAdapter list', () => {
     expect(page.result_info.total_count).toBe(2);
 
     const like = await scopeOf((s) =>
-      adapter.list({ filters: [{ field: 'name', operator: 'ilike', value: 'AN%' }], options: {} }, s),
+      adapter.list(
+        { filters: [{ field: 'name', operator: 'ilike', value: 'AN%' }], options: {} },
+        s,
+      ),
     );
     // literal needle: % stripped → matches Anchor and Crane ('an' substring)
     expect(like.result.map((r) => r.id).sort()).toEqual(['a', 'c']);
@@ -318,7 +329,10 @@ describe('drizzleAdapter list', () => {
     const adapter = makeAdapter();
     const page = await scopeOf((s) =>
       adapter.list(
-        { filters: [], options: { order_by: 'qty', order_by_direction: 'desc', page: 2, per_page: 2 } },
+        {
+          filters: [],
+          options: { order_by: 'qty', order_by_direction: 'desc', page: 2, per_page: 2 },
+        },
         s,
       ),
     );
@@ -336,12 +350,19 @@ describe('drizzleAdapter list', () => {
 
     const second = await scopeOf((s) =>
       adapter.list(
-        { filters: [], options: { limit: 2, order_by: 'id', cursor: first.result_info.next_cursor } },
+        {
+          filters: [],
+          options: { limit: 2, order_by: 'id', cursor: first.result_info.next_cursor },
+        },
         s,
       ),
     );
     expect(second.result.map((r) => r.id)).toEqual(['c']);
-    expect(second.result_info).toMatchObject({ page: 0, has_next_page: false, has_prev_page: true });
+    expect(second.result_info).toMatchObject({
+      page: 0,
+      has_next_page: false,
+      has_prev_page: true,
+    });
   });
 });
 
@@ -363,7 +384,13 @@ describe('drizzleAdapter bulk + aggregate + drivers', () => {
   it('createMany inserts with RETURNING', async () => {
     const adapter = makeAdapter();
     const rows = await scopeOf((s) =>
-      adapter.createMany!([{ id: 'x', name: 'X' }, { id: 'y', name: 'Y' }], s),
+      adapter.createMany!(
+        [
+          { id: 'x', name: 'X' },
+          { id: 'y', name: 'Y' },
+        ],
+        s,
+      ),
     );
     expect(rows.map((r) => r.id)).toEqual(['x', 'y']);
   });

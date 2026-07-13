@@ -46,7 +46,8 @@ export function buildLiveStamper(config: CrudConfig): LiveStamper | undefined {
   // a harmless refetch; missing invalidation is silent staleness).
   const nestedTags = Object.values(config.model.relations ?? {})
     .filter(
-      (rel) => rel.nestedWrites !== undefined && rel.type !== 'belongsTo' && rel.target !== undefined,
+      (rel) =>
+        rel.nestedWrites !== undefined && rel.type !== 'belongsTo' && rel.target !== undefined,
     )
     .map((rel) => crudLiveTag(rel.target as string));
 

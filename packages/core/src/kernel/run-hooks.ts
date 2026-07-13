@@ -53,11 +53,7 @@ function invokeFireAndForget(fn: AnyHookFn, args: unknown[]): void {
  *
  * Return values are discarded — use {@link runBeforeChain} to thread data.
  */
-export async function runHooks(
-  mode: HookMode,
-  fns: AnyHookFn[],
-  args: unknown[],
-): Promise<void> {
+export async function runHooks(mode: HookMode, fns: AnyHookFn[], args: unknown[]): Promise<void> {
   if (fns.length === 0) return;
 
   switch (mode) {

@@ -36,10 +36,7 @@ export {
   normalizeTimestamps,
 } from './define-model';
 
-export {
-  defineModels,
-  defineModelsExtending,
-} from './model-registry';
+export { defineModels, defineModelsExtending } from './model-registry';
 export type {
   DefineModelsConfig,
   DefineModelsExtendConfig,
@@ -67,21 +64,12 @@ export {
 export type { SoftDeleteVisibility } from './soft-delete';
 
 // -- Schema derivation ------------------------------------------------------
-export {
-  deriveCreateSchema,
-  deriveUpdateSchema,
-} from './schema-derive';
+export { deriveCreateSchema, deriveUpdateSchema } from './schema-derive';
 export type { DeriveFieldsConfig } from './schema-derive';
 
 // -- Computed fields --------------------------------------------------------
-export {
-  applyComputedFields,
-  applyComputedFieldsToArray,
-} from './computed-fields';
+export { applyComputedFields, applyComputedFieldsToArray } from './computed-fields';
 export type { ApplyComputedFieldsOptions } from './computed-fields';
 
 // -- Serialization profile ---------------------------------------------------
-export {
-  applyProfile,
-  applyProfileToArray,
-} from './serialization-profile';
+export { applyProfile, applyProfileToArray } from './serialization-profile';

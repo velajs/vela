@@ -47,14 +47,26 @@ describe('parseFieldSelection', () => {
 
   it('filters out blocked fields', () => {
     const config: FieldSelectionConfig = { blockedFields: ['password'] };
-    const selection = parseFieldSelection('id,name,password', config, ['id', 'name', 'email', 'password', 'role']);
+    const selection = parseFieldSelection('id,name,password', config, [
+      'id',
+      'name',
+      'email',
+      'password',
+      'role',
+    ]);
     expect(selection.fields).not.toContain('password');
     expect(selection.fields).toEqual(expect.arrayContaining(['id', 'name']));
   });
 
   it('only includes allowed fields when configured', () => {
     const config: FieldSelectionConfig = { allowedFields: ['id', 'name', 'email'] };
-    const selection = parseFieldSelection('id,name,role,password', config, ['id', 'name', 'email', 'password', 'role']);
+    const selection = parseFieldSelection('id,name,role,password', config, [
+      'id',
+      'name',
+      'email',
+      'password',
+      'role',
+    ]);
     expect(selection.fields).toEqual(expect.arrayContaining(['id', 'name']));
     expect(selection.fields).not.toContain('role');
     expect(selection.fields).not.toContain('password');
@@ -62,7 +74,13 @@ describe('parseFieldSelection', () => {
 
   it('always includes specified fields', () => {
     const config: FieldSelectionConfig = { alwaysIncludeFields: ['id'] };
-    const selection = parseFieldSelection('name,email', config, ['id', 'name', 'email', 'password', 'role']);
+    const selection = parseFieldSelection('name,email', config, [
+      'id',
+      'name',
+      'email',
+      'password',
+      'role',
+    ]);
     expect(selection.fields).toEqual(expect.arrayContaining(['id', 'name', 'email']));
   });
 
@@ -73,7 +91,10 @@ describe('parseFieldSelection', () => {
   });
 
   it('applies default fields (inactive) when no param provided', () => {
-    const config: FieldSelectionConfig = { defaultFields: ['id', 'name'], alwaysIncludeFields: ['createdAt'] };
+    const config: FieldSelectionConfig = {
+      defaultFields: ['id', 'name'],
+      alwaysIncludeFields: ['createdAt'],
+    };
     const selection = parseFieldSelection(undefined, config, ['id', 'name', 'email', 'createdAt']);
     expect(selection.isActive).toBe(false);
     expect(selection.fields).toEqual(expect.arrayContaining(['id', 'name', 'createdAt']));
@@ -92,7 +113,13 @@ describe('parseFieldSelection', () => {
 
   it('can disable computed fields', () => {
     const config: FieldSelectionConfig = { allowComputedFields: false };
-    const selection = parseFieldSelection('id,name,fullName', config, ['id', 'name'], ['fullName'], []);
+    const selection = parseFieldSelection(
+      'id,name,fullName',
+      config,
+      ['id', 'name'],
+      ['fullName'],
+      [],
+    );
     expect(selection.fields).toEqual(expect.arrayContaining(['id', 'name']));
     expect(selection.fields).not.toContain('fullName');
   });

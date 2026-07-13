@@ -12,7 +12,12 @@ import {
 const Schema = z.object({ id: z.string(), name: z.string(), deletedAt: z.number().nullable() });
 
 const on = defineModel({ name: 'u', tableName: 'u', schema: Schema, softDelete: true });
-const custom = defineModel({ name: 'u', tableName: 'u', schema: Schema, softDelete: { field: 'removedAt' } });
+const custom = defineModel({
+  name: 'u',
+  tableName: 'u',
+  schema: Schema,
+  softDelete: { field: 'removedAt' },
+});
 const off = defineModel({ name: 'u', tableName: 'u', schema: Schema });
 
 describe('softDeleteFieldOf', () => {
@@ -37,7 +42,11 @@ describe('isSoftDeleted', () => {
 
 describe('softDeleteVisibilityFilter', () => {
   it('defaults to "IS NULL" (live rows only)', () => {
-    expect(softDeleteVisibilityFilter(on)).toEqual({ field: 'deletedAt', operator: 'null', value: true });
+    expect(softDeleteVisibilityFilter(on)).toEqual({
+      field: 'deletedAt',
+      operator: 'null',
+      value: true,
+    });
   });
 
   it('withDeleted yields no filter', () => {
@@ -62,7 +71,11 @@ describe('softDeleteVisibilityFilter', () => {
   });
 
   it('uses the custom field name', () => {
-    expect(softDeleteVisibilityFilter(custom)).toEqual({ field: 'removedAt', operator: 'null', value: true });
+    expect(softDeleteVisibilityFilter(custom)).toEqual({
+      field: 'removedAt',
+      operator: 'null',
+      value: true,
+    });
   });
 });
 

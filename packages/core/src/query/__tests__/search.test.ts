@@ -96,13 +96,21 @@ describe('calculateScore', () => {
 
 describe('generateHighlights', () => {
   it('highlights a matching term', () => {
-    const highlights = generateHighlights('TypeScript is great for building applications', ['typescript'], 'any');
+    const highlights = generateHighlights(
+      'TypeScript is great for building applications',
+      ['typescript'],
+      'any',
+    );
     expect(highlights).toHaveLength(1);
     expect(highlights[0]).toContain('<mark>TypeScript</mark>');
   });
 
   it('highlights a phrase', () => {
-    const highlights = generateHighlights('The quick brown fox jumps over the lazy dog', ['quick brown'], 'phrase');
+    const highlights = generateHighlights(
+      'The quick brown fox jumps over the lazy dog',
+      ['quick brown'],
+      'phrase',
+    );
     expect(highlights).toHaveLength(1);
     expect(highlights[0]).toContain('<mark>quick brown</mark>');
   });
@@ -122,7 +130,12 @@ describe('runSearchFallback', () => {
   const rows = [
     { id: '1', title: 'TypeScript Handbook', body: 'A guide to TypeScript', status: 'published' },
     { id: '2', title: 'Python Handbook', body: 'A guide to Python', status: 'published' },
-    { id: '3', title: 'Advanced TypeScript', body: 'Deep dive into TypeScript generics', status: 'draft' },
+    {
+      id: '3',
+      title: 'Advanced TypeScript',
+      body: 'Deep dive into TypeScript generics',
+      status: 'draft',
+    },
   ];
 
   const baseQuery = (over: Partial<SearchQuery>): SearchQuery => ({
@@ -157,15 +170,24 @@ describe('runSearchFallback', () => {
   });
 
   it('all mode requires every token to match', () => {
-    const anyHits = runSearchFallback(rows, baseQuery({ term: 'typescript generics', mode: 'any' }));
-    const allHits = runSearchFallback(rows, baseQuery({ term: 'typescript generics', mode: 'all' }));
+    const anyHits = runSearchFallback(
+      rows,
+      baseQuery({ term: 'typescript generics', mode: 'any' }),
+    );
+    const allHits = runSearchFallback(
+      rows,
+      baseQuery({ term: 'typescript generics', mode: 'all' }),
+    );
     expect(anyHits.length).toBeGreaterThan(allHits.length);
     // only row 3 contains both "typescript" and "generics"
     expect(allHits.map((h) => h.record.id)).toEqual(['3']);
   });
 
   it('phrase mode matches an exact substring', () => {
-    const hits = runSearchFallback(rows, baseQuery({ term: 'guide to typescript', mode: 'phrase' }));
+    const hits = runSearchFallback(
+      rows,
+      baseQuery({ term: 'guide to typescript', mode: 'phrase' }),
+    );
     expect(hits.map((h) => h.record.id)).toEqual(['1']);
   });
 

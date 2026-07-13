@@ -45,8 +45,14 @@ describe('buildOffsetPageInfo', () => {
   });
 
   it('sets has_next_page false on the last page and has_prev_page false on page one', () => {
-    expect(buildOffsetPageInfo(1, 10, 5)).toMatchObject({ has_next_page: false, has_prev_page: false });
-    expect(buildOffsetPageInfo(3, 10, 25)).toMatchObject({ has_next_page: false, has_prev_page: true });
+    expect(buildOffsetPageInfo(1, 10, 5)).toMatchObject({
+      has_next_page: false,
+      has_prev_page: false,
+    });
+    expect(buildOffsetPageInfo(3, 10, 25)).toMatchObject({
+      has_next_page: false,
+      has_prev_page: true,
+    });
   });
 });
 

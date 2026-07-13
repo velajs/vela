@@ -33,9 +33,7 @@ describe('resolveStructuredError precedence', () => {
   it('(a) custom mappers run first and the first non-undefined wins', () => {
     const first: ErrorMapper = () => undefined;
     const second: ErrorMapper = (e) =>
-      (e as Error).message === 'dup'
-        ? { code: 'CONFLICT', message: 'Already exists' }
-        : undefined;
+      (e as Error).message === 'dup' ? { code: 'CONFLICT', message: 'Already exists' } : undefined;
     const third: ErrorMapper = () => ({ code: 'INTERNAL_ERROR', message: 'unreached' });
 
     const { structured, status } = resolveStructuredError(new Error('dup'), [first, second, third]);
@@ -66,7 +64,11 @@ describe('resolveStructuredError precedence', () => {
       new ConflictException('Dup key', { field: 'email' }),
     );
     expect(status).toBe(409);
-    expect(structured).toEqual({ code: 'CONFLICT', message: 'Dup key', details: { field: 'email' } });
+    expect(structured).toEqual({
+      code: 'CONFLICT',
+      message: 'Dup key',
+      details: { field: 'email' },
+    });
   });
 
   it('(b) covers CrudException subclasses like Forbidden', () => {
@@ -92,7 +94,9 @@ describe('resolveStructuredError precedence', () => {
     expect(structured.message).toBe('Validation failed');
     const details = structured.details as Array<{ path: string; message: string; code: string }>;
     expect(details.length).toBeGreaterThan(0);
-    expect(details.every((d) => typeof d.path === 'string' && typeof d.code === 'string')).toBe(true);
+    expect(details.every((d) => typeof d.path === 'string' && typeof d.code === 'string')).toBe(
+      true,
+    );
   });
 
   it('(c) any object with an issues array is treated as Zod-shaped', () => {

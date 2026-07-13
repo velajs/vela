@@ -34,7 +34,12 @@ async function makeApp(live: boolean | object, withProvider = true) {
 
   @Controller('/live-items')
   @Crud({
-    model: defineModel({ name: 'liveItem', tableName: 'live_items', schema: itemSchema, softDelete: true }),
+    model: defineModel({
+      name: 'liveItem',
+      tableName: 'live_items',
+      schema: itemSchema,
+      softDelete: true,
+    }),
     adapter: testAdapter(store, 'deletedAt'),
     live: live as never,
   })

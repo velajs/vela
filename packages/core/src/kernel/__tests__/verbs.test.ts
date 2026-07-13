@@ -146,7 +146,10 @@ describe('transaction context', () => {
     });
     const resource = defineResource('items', { model, adapter });
 
-    await resource.execute('create', req({ body: { name: 'Scoped', qty: 1 }, vars: { tenantId: 't1' } }));
+    await resource.execute(
+      'create',
+      req({ body: { name: 'Scoped', qty: 1 }, vars: { tenantId: 't1' } }),
+    );
     expect(seen).toHaveLength(1);
     expect(seen[0]).toEqual({ tenantId: 't1' });
 
@@ -181,7 +184,8 @@ describe('nested writes (create/update dispatch)', () => {
 
   function nestedResource() {
     const store = new Map<string, Row>();
-    const calls: Array<{ kind: string; relation: string; parentId: unknown; payload: unknown }> = [];
+    const calls: Array<{ kind: string; relation: string; parentId: unknown; payload: unknown }> =
+      [];
     const inner = fakeAdapter(store);
     const adapter: CrudAdapter<Row> = {
       ...inner,
@@ -191,7 +195,12 @@ describe('nested writes (create/update dispatch)', () => {
           calls.push({ kind: 'create', relation, parentId: (parent as Row).id, payload: records });
         },
         async applyNested(parent, relation, operations) {
-          calls.push({ kind: 'apply', relation, parentId: (parent as Row).id, payload: operations });
+          calls.push({
+            kind: 'apply',
+            relation,
+            parentId: (parent as Row).id,
+            payload: operations,
+          });
         },
       },
     };
@@ -277,7 +286,7 @@ describe('nested writes (create/update dispatch)', () => {
       req({ body: { name: 'C', qty: 1, posts: [] } }),
     );
     expect(emptyCreate.status).toBe(201);
-    const createdId = String(((emptyCreate.body as { result: Row }).result).id);
+    const createdId = String((emptyCreate.body as { result: Row }).result.id);
     const emptyUpdate = await resource.execute(
       'update',
       req({ id: createdId, body: { name: 'D', posts: {} } }),
@@ -366,7 +375,9 @@ describe('etag (optimistic concurrency)', () => {
         req({
           id: 'a',
           body: { name: 'B' },
-          request: new Request('http://t/', { headers: { 'If-Match': '"00000000000000000000000000000bad"' } }),
+          request: new Request('http://t/', {
+            headers: { 'If-Match': '"00000000000000000000000000000bad"' },
+          }),
         }),
       ),
     ).rejects.toMatchObject({ statusCode: 409, code: 'CONFLICT' });
@@ -481,7 +492,10 @@ describe('create', () => {
 
     // The update schema still excludes the PK, so a body `id` is stripped at
     // validation and the row keeps its identity.
-    const result = await resource.execute('update', req({ id: 'a', body: { id: 'evil', name: 'B' } }));
+    const result = await resource.execute(
+      'update',
+      req({ id: 'a', body: { id: 'evil', name: 'B' } }),
+    );
     expect(result.status).toBe(200);
     expect((result.body as { result: Row }).result.id).toBe('a');
     expect(store.get('a')?.name).toBe('B');
@@ -511,7 +525,10 @@ describe('create', () => {
 
   it('stamps the tenant field from request vars', async () => {
     const { resource, store } = makeResource({ model: { multiTenant: true } });
-    await resource.execute('create', req({ body: { name: 'T', qty: 1 }, vars: { tenantId: 't1' } }));
+    await resource.execute(
+      'create',
+      req({ body: { name: 'T', qty: 1 }, vars: { tenantId: 't1' } }),
+    );
     expect(Array.from(store.values())[0]!.tenantId).toBe('t1');
   });
 });
@@ -526,8 +543,12 @@ describe('read', () => {
     expect(ok.status).toBe(200);
     expect((ok.body as { result: Row }).result.id).toBe('a');
 
-    await expect(resource.execute('read', req({ id: 'zz' }))).rejects.toMatchObject({ statusCode: 404 });
-    await expect(resource.execute('read', req({ id: 'b' }))).rejects.toMatchObject({ statusCode: 404 });
+    await expect(resource.execute('read', req({ id: 'zz' }))).rejects.toMatchObject({
+      statusCode: 404,
+    });
+    await expect(resource.execute('read', req({ id: 'b' }))).rejects.toMatchObject({
+      statusCode: 404,
+    });
   });
 
   it('404s when the read policy denies and masks fields when configured', async () => {
@@ -546,7 +567,9 @@ describe('read', () => {
 
     const ok = await resource.execute('read', req({ id: 'a' }));
     expect((ok.body as { result: Row }).result.secret).toBeUndefined();
-    await expect(resource.execute('read', req({ id: 'x' }))).rejects.toMatchObject({ statusCode: 404 });
+    await expect(resource.execute('read', req({ id: 'x' }))).rejects.toMatchObject({
+      statusCode: 404,
+    });
   });
 
   it('enforces tenant lookup filters from request vars', async () => {
@@ -611,7 +634,9 @@ describe('delete', () => {
     expect(typeof store.get('a')!.deletedAt).toBe('number');
 
     // Delete-again → 404 (the record is now invisible).
-    await expect(resource.execute('delete', req({ id: 'a' }))).rejects.toMatchObject({ statusCode: 404 });
+    await expect(resource.execute('delete', req({ id: 'a' }))).rejects.toMatchObject({
+      statusCode: 404,
+    });
   });
 
   it('hard-deletes when the model does not soft-delete', async () => {
@@ -635,7 +660,10 @@ describe('list', () => {
     const { resource, store } = makeResource();
     for (let i = 1; i <= 5; i++) store.set(`r${i}`, { id: `r${i}`, name: `Row${i}`, qty: i });
 
-    const result = await resource.execute('list', req({ query: { 'qty[gte]': '2', per_page: '2' } }));
+    const result = await resource.execute(
+      'list',
+      req({ query: { 'qty[gte]': '2', per_page: '2' } }),
+    );
     expect(result.status).toBe(200);
     const body = result.body as { success: boolean; result: Row[]; result_info: Row };
     expect(body.success).toBe(true);

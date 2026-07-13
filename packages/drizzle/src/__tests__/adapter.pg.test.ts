@@ -83,7 +83,9 @@ describe('drizzleAdapter pg leg (PGlite)', () => {
     );
     expect(row).toMatchObject({ id: 'a', name: 'Anchor', qty: 2 });
 
-    const updated = await scopeOf((s) => adapter.update({ field: 'id', value: 'a' }, { qty: 9 }, s));
+    const updated = await scopeOf((s) =>
+      adapter.update({ field: 'id', value: 'a' }, { qty: 9 }, s),
+    );
     expect(updated?.qty).toBe(9);
 
     const deleted = await scopeOf((s) =>
@@ -199,6 +201,8 @@ describe('drizzleAdapter pg leg (PGlite)', () => {
         throw new Error('boom');
       }),
     ).rejects.toThrow('boom');
-    expect(await scopeOf((s) => adapter.readOne({ field: 'id', value: 'ghost' }, {}, s))).toBeNull();
+    expect(
+      await scopeOf((s) => adapter.readOne({ field: 'id', value: 'ghost' }, {}, s)),
+    ).toBeNull();
   });
 });

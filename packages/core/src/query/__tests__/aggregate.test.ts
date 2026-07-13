@@ -17,7 +17,9 @@ describe('getAggregateAlias', () => {
     expect(getAggregateAlias({ operation: 'count', field: 'id' })).toBe('countId');
     expect(getAggregateAlias({ operation: 'sum', field: 'amount' })).toBe('sumAmount');
     expect(getAggregateAlias({ operation: 'avg', field: 'age' })).toBe('avgAge');
-    expect(getAggregateAlias({ operation: 'countDistinct', field: 'tag' })).toBe('countDistinctTag');
+    expect(getAggregateAlias({ operation: 'countDistinct', field: 'tag' })).toBe(
+      'countDistinctTag',
+    );
   });
 
   it('honors an explicit alias', () => {
@@ -34,9 +36,15 @@ describe('buildAggregateSpec', () => {
     });
     // `count=*`, `count=true`, and `count=''` (falsy → skipped → default) all
     // collapse to COUNT(*).
-    expect(buildAggregateSpec({ count: '*' }).aggregations).toEqual([{ operation: 'count', field: '*' }]);
-    expect(buildAggregateSpec({ count: 'true' }).aggregations).toEqual([{ operation: 'count', field: '*' }]);
-    expect(buildAggregateSpec({ count: '' }).aggregations).toEqual([{ operation: 'count', field: '*' }]);
+    expect(buildAggregateSpec({ count: '*' }).aggregations).toEqual([
+      { operation: 'count', field: '*' },
+    ]);
+    expect(buildAggregateSpec({ count: 'true' }).aggregations).toEqual([
+      { operation: 'count', field: '*' },
+    ]);
+    expect(buildAggregateSpec({ count: '' }).aggregations).toEqual([
+      { operation: 'count', field: '*' },
+    ]);
   });
 
   it('parses multiple operations in AGGREGATE_OPERATIONS order', () => {
@@ -99,7 +107,12 @@ describe('buildAggregateSpec', () => {
   });
 
   it('parses orderBy/orderDirection (default asc, only with orderBy)', () => {
-    const desc = buildAggregateSpec({ sum: 'value', groupBy: 'category', orderBy: 'sumValue', orderDirection: 'desc' });
+    const desc = buildAggregateSpec({
+      sum: 'value',
+      groupBy: 'category',
+      orderBy: 'sumValue',
+      orderDirection: 'desc',
+    });
     expect(desc.orderBy).toBe('sumValue');
     expect(desc.orderDirection).toBe('desc');
     const asc = buildAggregateSpec({ count: '*', groupBy: 'category', orderBy: 'category' });
@@ -114,13 +127,17 @@ describe('buildAggregateSpec', () => {
     expect(paged.offset).toBe(2);
     // Grouped, no explicit limit → default 100 (overridable).
     expect(buildAggregateSpec({ count: '*', groupBy: 'category' }).limit).toBe(100);
-    expect(buildAggregateSpec({ count: '*', groupBy: 'category' }, { defaultLimit: 25 }).limit).toBe(25);
+    expect(
+      buildAggregateSpec({ count: '*', groupBy: 'category' }, { defaultLimit: 25 }).limit,
+    ).toBe(25);
     // Ungrouped queries get no default limit.
     expect(buildAggregateSpec({ count: '*' }).limit).toBeUndefined();
   });
 
   it('rejects a limit above the ceiling', () => {
-    expect(() => buildAggregateSpec({ count: '*', limit: '2000' })).toThrow(/Limit cannot exceed 1000/);
+    expect(() => buildAggregateSpec({ count: '*', limit: '2000' })).toThrow(
+      /Limit cannot exceed 1000/,
+    );
     expect(() => buildAggregateSpec({ count: '*', limit: '50' }, { maxLimit: 40 })).toThrow(
       /Limit cannot exceed 40/,
     );
@@ -149,16 +166,28 @@ describe('computeAggregateFallback', () => {
       ),
     ).toEqual({ values: { sumValue: 150 } });
     expect(
-      computeAggregateFallback(records, spec({ aggregations: [{ operation: 'avg', field: 'value' }] })),
+      computeAggregateFallback(
+        records,
+        spec({ aggregations: [{ operation: 'avg', field: 'value' }] }),
+      ),
     ).toEqual({ values: { avgValue: 30 } });
     expect(
-      computeAggregateFallback(records, spec({ aggregations: [{ operation: 'min', field: 'value' }] })),
+      computeAggregateFallback(
+        records,
+        spec({ aggregations: [{ operation: 'min', field: 'value' }] }),
+      ),
     ).toEqual({ values: { minValue: 10 } });
     expect(
-      computeAggregateFallback(records, spec({ aggregations: [{ operation: 'max', field: 'value' }] })),
+      computeAggregateFallback(
+        records,
+        spec({ aggregations: [{ operation: 'max', field: 'value' }] }),
+      ),
     ).toEqual({ values: { maxValue: 50 } });
     expect(
-      computeAggregateFallback(records, spec({ aggregations: [{ operation: 'countDistinct', field: 'tag' }] })),
+      computeAggregateFallback(
+        records,
+        spec({ aggregations: [{ operation: 'countDistinct', field: 'tag' }] }),
+      ),
     ).toEqual({ values: { countDistinctTag: 3 } });
   });
 
@@ -234,7 +263,10 @@ describe('computeAggregateFallback', () => {
       computeAggregateFallback([], spec({ aggregations: [{ operation: 'sum', field: 'value' }] })),
     ).toEqual({ values: { sumValue: null } });
     expect(
-      computeAggregateFallback([], spec({ aggregations: [{ operation: 'count', field: '*' }], groupBy: ['category'] })),
+      computeAggregateFallback(
+        [],
+        spec({ aggregations: [{ operation: 'count', field: '*' }], groupBy: ['category'] }),
+      ),
     ).toEqual({ groups: [], totalGroups: 0 });
   });
 

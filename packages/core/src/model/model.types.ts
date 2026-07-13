@@ -170,7 +170,9 @@ export type MultiTenantInput = boolean | { field: string };
 // Computed fields
 // ---------------------------------------------------------------------------
 
-export type ComputedFieldFn<T = Record<string, unknown>, R = unknown> = (record: T) => R | Promise<R>;
+export type ComputedFieldFn<T = Record<string, unknown>, R = unknown> = (
+  record: T,
+) => R | Promise<R>;
 
 export interface ComputedFieldConfig<T = Record<string, unknown>, R = unknown> {
   /** Computes the field value from the (stored) record. Sync or async. */

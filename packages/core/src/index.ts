@@ -67,7 +67,12 @@ export {
   type ResponseEnvelope,
   type ResponseEnvelopeInfo,
 } from './envelope/envelope';
-export type { CrudAdapter, AdapterCapability, AdapterScope, TransactionContext } from './adapter/contract';
+export type {
+  CrudAdapter,
+  AdapterCapability,
+  AdapterScope,
+  TransactionContext,
+} from './adapter/contract';
 export type { ModelPolicies, PolicyContext } from './policies/types';
 
 // Live-query bridge

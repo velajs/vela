@@ -68,7 +68,8 @@ function fakeAdapter(store: Map<string, Row>, softDeleteField?: string): CrudAda
       if (softDeleteField !== undefined && !query.options.withDeleted) {
         rows = rows.filter((r) => r[softDeleteField] == null);
       }
-      for (const f of query.filters) rows = rows.filter((r) => String(r[f.field]) === String(f.value));
+      for (const f of query.filters)
+        rows = rows.filter((r) => String(r[f.field]) === String(f.value));
       const page = query.options.page ?? 1;
       const perPage = query.options.per_page ?? 20;
       const slice = rows.slice((page - 1) * perPage, page * perPage);
@@ -195,7 +196,10 @@ describe('version snapshot capture', () => {
     const { resource, store } = makeResource({ versioning: true, versioningStore: vstore });
     store.set('d1', { id: 'd1', title: 'Original', version: 1 });
 
-    await resource.execute('update', req({ id: 'd1', body: { title: 'New' }, vars: { userId: 'u-9' } }));
+    await resource.execute(
+      'update',
+      req({ id: 'd1', body: { title: 'New' }, vars: { userId: 'u-9' } }),
+    );
     const versions = await vstore.list('documents', 'd1');
     expect(versions[0].changedBy).toBe('u-9');
   });
@@ -258,7 +262,10 @@ describe('version verbs', () => {
 
   it('versionRead → 200 with the requested version snapshot', async () => {
     const { resource } = versionedFixture();
-    const result = await resource.execute('versionRead', req({ id: 'd1', params: { version: '2' } }));
+    const result = await resource.execute(
+      'versionRead',
+      req({ id: 'd1', params: { version: '2' } }),
+    );
     expect(result.status).toBe(200);
     const body = result.body as { result: VersionEntry };
     expect(body.result.version).toBe(2);
@@ -340,9 +347,10 @@ describe('version verbs', () => {
 
   it('version verbs throw a loud ConfigurationException when versioning is not enabled', async () => {
     const { resource } = makeResource({});
-    await expect(
-      resource.execute('versionHistory', req({ id: 'd1' })),
-    ).rejects.toMatchObject({ statusCode: 500, code: 'CONFIGURATION_ERROR' });
+    await expect(resource.execute('versionHistory', req({ id: 'd1' }))).rejects.toMatchObject({
+      statusCode: 500,
+      code: 'CONFIGURATION_ERROR',
+    });
   });
 });
 
@@ -419,7 +427,10 @@ describe('version verbs — tenant/owner scope', () => {
 
   it('owner tenant sees history; another tenant gets 404', async () => {
     const { resource } = tenantFixture();
-    const owner = await resource.execute('versionHistory', req({ id: 'd1', vars: { tenantId: 't1' } }));
+    const owner = await resource.execute(
+      'versionHistory',
+      req({ id: 'd1', vars: { tenantId: 't1' } }),
+    );
     expect(owner.status).toBe(200);
 
     await expect(
@@ -430,10 +441,16 @@ describe('version verbs — tenant/owner scope', () => {
   it('read / rollback are owner-scoped (404 for another tenant)', async () => {
     const { resource } = tenantFixture();
     await expect(
-      resource.execute('versionRead', req({ id: 'd1', params: { version: '1' }, vars: { tenantId: 't2' } })),
+      resource.execute(
+        'versionRead',
+        req({ id: 'd1', params: { version: '1' }, vars: { tenantId: 't2' } }),
+      ),
     ).rejects.toMatchObject({ statusCode: 404 });
     await expect(
-      resource.execute('versionRollback', req({ id: 'd1', params: { version: '1' }, vars: { tenantId: 't2' } })),
+      resource.execute(
+        'versionRollback',
+        req({ id: 'd1', params: { version: '1' }, vars: { tenantId: 't2' } }),
+      ),
     ).rejects.toMatchObject({ statusCode: 404 });
 
     // Owner still succeeds.
@@ -468,7 +485,10 @@ describe('audit capture', () => {
     const { resource, store } = makeResource({ audit: true, auditStore: astore });
     store.set('d1', { id: 'd1', title: 'Old', version: 1 });
 
-    await resource.execute('update', req({ id: 'd1', body: { title: 'New' }, vars: { userId: 'u-2' } }));
+    await resource.execute(
+      'update',
+      req({ id: 'd1', body: { title: 'New' }, vars: { userId: 'u-2' } }),
+    );
 
     const logs = await astore.query({ action: 'update' });
     expect(logs).toHaveLength(1);

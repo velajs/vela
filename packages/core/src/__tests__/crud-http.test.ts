@@ -33,7 +33,13 @@ const itemSchema = z.object({
 });
 
 const makeModel = (overrides: object = {}) =>
-  defineModel({ name: 'item', tableName: 'items', schema: itemSchema, softDelete: true, ...overrides });
+  defineModel({
+    name: 'item',
+    tableName: 'items',
+    schema: itemSchema,
+    softDelete: true,
+    ...overrides,
+  });
 
 const json = (method: string, body: unknown) => ({
   method,
@@ -122,7 +128,10 @@ describe('@Crud over HTTP (decorated controller)', () => {
     const { hono } = await makeApp();
     const res = await hono.request('/items', json('POST', { name: '', qty: -1 }));
     expect(res.status).toBe(400);
-    const body = (await res.json()) as { success: boolean; error: { code: string; details: unknown[] } };
+    const body = (await res.json()) as {
+      success: boolean;
+      error: { code: string; details: unknown[] };
+    };
     expect(body.success).toBe(false);
     expect(body.error.code).toBe('VALIDATION_ERROR');
     expect(Array.isArray(body.error.details)).toBe(true);
@@ -185,7 +194,9 @@ describe('@Crud over HTTP (decorated controller)', () => {
 
     expect(doc.components?.schemas?.CreateItemDto).toBeDefined();
     expect(doc.components?.schemas?.UpdateItemDto).toBeDefined();
-    expect(JSON.stringify(doc.paths['/items']?.post)).toContain('#/components/schemas/CreateItemDto');
+    expect(JSON.stringify(doc.paths['/items']?.post)).toContain(
+      '#/components/schemas/CreateItemDto',
+    );
 
     // Tags default to the plural resource name.
     expect(doc.paths['/items']?.get?.tags).toContain('items');
@@ -324,7 +335,10 @@ describe("id: 'client' PK strategy", () => {
     const store = new Map<string, Row>();
 
     @Controller('/things')
-    @Crud({ model: makeModel({ name: 'thing', id: 'client' }), adapter: testAdapter(store, 'deletedAt') })
+    @Crud({
+      model: makeModel({ name: 'thing', id: 'client' }),
+      adapter: testAdapter(store, 'deletedAt'),
+    })
     class ThingsController {}
 
     @Module({ controllers: [ThingsController] })
@@ -342,7 +356,10 @@ describe("id: 'client' PK strategy", () => {
     expect(dto.required).toContain('id');
 
     const hono = app.getHonoApp();
-    const created = await hono.request('/things', json('POST', { id: 'client-1', name: 'T', qty: 1 }));
+    const created = await hono.request(
+      '/things',
+      json('POST', { id: 'client-1', name: 'T', qty: 1 }),
+    );
     expect(created.status).toBe(201);
     expect(((await created.json()) as { result: Row }).result.id).toBe('client-1');
 
@@ -417,7 +434,11 @@ describe('CrudModule', () => {
       imports: [
         CrudModule.forRoot({ adapter: testAdapter(defaultStore, 'deletedAt') }),
         CrudModule.forFeature([
-          { path: '/owned', model: makeModel({ name: 'owned' }), adapter: testAdapter(ownStore, 'deletedAt') },
+          {
+            path: '/owned',
+            model: makeModel({ name: 'owned' }),
+            adapter: testAdapter(ownStore, 'deletedAt'),
+          },
         ]),
       ],
     })

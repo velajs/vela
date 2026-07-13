@@ -327,7 +327,11 @@ describe('upsert', () => {
   const upsertCfg = { upsert: { keys: ['email'] } };
 
   it('rejects nested-write payloads with a loud 400 (no dispatch seam)', async () => {
-    const PostSchema = z.object({ id: z.string(), authorId: z.string().optional(), title: z.string() });
+    const PostSchema = z.object({
+      id: z.string(),
+      authorId: z.string().optional(),
+      title: z.string(),
+    });
     const { resource } = makeResource({
       ...upsertCfg,
       model: {

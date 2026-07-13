@@ -18,7 +18,11 @@
 
 import type { FilterCondition, ListQuery, Lookup } from '../../adapter/query-types';
 import { ConfigurationException, NotFoundException } from '../../envelope/errors';
-import { applyManagedInsertFields, applyManagedUpdateFields, stripPrimaryKeys } from '../../model/managed-fields';
+import {
+  applyManagedInsertFields,
+  applyManagedUpdateFields,
+  stripPrimaryKeys,
+} from '../../model/managed-fields';
 import { assertNoNestedWrites } from '../nested-writes';
 import { applyUpsertRestore, isSoftDeleted } from '../../model/soft-delete';
 import type { CrudEndpointName } from '../../verb-table';
@@ -207,7 +211,11 @@ async function executeUpsert(resource: AnyResource, req: EngineRequest): Promise
   }
   const databaseGeneratedId = caps.has('databaseGeneratedId');
 
-  const outcome = await adapter.transaction<{ record: Row; created: boolean; previous: Row | null }>(async (scope) => {
+  const outcome = await adapter.transaction<{
+    record: Row;
+    created: boolean;
+    previous: Row | null;
+  }>(async (scope) => {
     const ctx = buildHookContext(req, scope);
 
     // Pre-find determines isCreate for beforeUpsert and drives the synthesis

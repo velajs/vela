@@ -47,9 +47,17 @@ import {
   InputValidationException,
   NotFoundException,
 } from '../../envelope/errors';
-import { applyManagedInsertFields, applyManagedUpdateFields, stripPrimaryKeys } from '../../model/managed-fields';
+import {
+  applyManagedInsertFields,
+  applyManagedUpdateFields,
+  stripPrimaryKeys,
+} from '../../model/managed-fields';
 import { assertNoNestedWrites } from '../nested-writes';
-import { applyUpsertRestore, isSoftDeleted, softDeleteVisibilityFilter } from '../../model/soft-delete';
+import {
+  applyUpsertRestore,
+  isSoftDeleted,
+  softDeleteVisibilityFilter,
+} from '../../model/soft-delete';
 import { parseListFilters } from '../../query/filters';
 import type { CrudEndpointName } from '../../verb-table';
 import type { EngineRequest, EngineResult } from '../engine-request';
@@ -146,11 +154,15 @@ function extractUpdateItems(body: unknown): UpdateItem[] {
   return extractItems(body).map((raw, index) => {
     const item = raw as { id?: unknown; data?: unknown } | null | undefined;
     if (typeof item?.id !== 'string' || item.id === '') {
-      throw new InputValidationException(`Batch update item at index ${index} is missing a string "id"`);
+      throw new InputValidationException(
+        `Batch update item at index ${index} is missing a string "id"`,
+      );
     }
     const data = item.data;
     if (data !== undefined && (typeof data !== 'object' || data === null || Array.isArray(data))) {
-      throw new InputValidationException(`Batch update item at index ${index} has a non-object "data"`);
+      throw new InputValidationException(
+        `Batch update item at index ${index} has a non-object "data"`,
+      );
     }
     return { id: item.id, data: (data ?? {}) as Row };
   });
@@ -247,7 +259,10 @@ function isDryRun(req: EngineRequest): boolean {
  * All-or-nothing: validation / hooks throw and roll back the single
  * transaction (hono-crud's default `stopOnError: true` — no partial `errors`).
  */
-async function executeBatchCreate(resource: AnyResource, req: EngineRequest): Promise<EngineResult> {
+async function executeBatchCreate(
+  resource: AnyResource,
+  req: EngineRequest,
+): Promise<EngineResult> {
   const config = resource.config;
   const model = resource.model;
   const rawItems = extractItems(req.body);
@@ -275,7 +290,9 @@ async function executeBatchCreate(resource: AnyResource, req: EngineRequest): Pr
 
     const inputs: Row[] = [];
     for (let i = 0; i < prepared.length; i++) {
-      inputs.push(await runItemHook(beforeMode, config.hooks?.beforeBatchCreate, ctx, prepared[i], i));
+      inputs.push(
+        await runItemHook(beforeMode, config.hooks?.beforeBatchCreate, ctx, prepared[i], i),
+      );
     }
 
     const rows: Row[] = [];
@@ -301,7 +318,10 @@ async function executeBatchCreate(resource: AnyResource, req: EngineRequest): Pr
 
   const policyCtx = buildPolicyContext(req);
   const shaped = await Promise.all(created.map((row) => shapeOne(resource, policyCtx, req, row)));
-  return { status: 201, body: envelopeOf(resource).success({ created: shaped, count: shaped.length }) };
+  return {
+    status: 201,
+    body: envelopeOf(resource).success({ created: shaped, count: shaped.length }),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -314,7 +334,10 @@ async function executeBatchCreate(resource: AnyResource, req: EngineRequest): Pr
  * prior (missing → `notFound`), `beforeBatchUpdate(patch, index)`, `update`,
  * `afterBatchUpdate(row, index)`. 200, or 207 when any id was not found.
  */
-async function executeBatchUpdate(resource: AnyResource, req: EngineRequest): Promise<EngineResult> {
+async function executeBatchUpdate(
+  resource: AnyResource,
+  req: EngineRequest,
+): Promise<EngineResult> {
   const config = resource.config;
   const model = resource.model;
   requireTenant(resource, req);
@@ -342,7 +365,13 @@ async function executeBatchUpdate(resource: AnyResource, req: EngineRequest): Pr
         notFound.push(items[i].id);
         continue;
       }
-      const patch = await runItemHook(beforeMode, config.hooks?.beforeBatchUpdate, ctx, patches[i], i);
+      const patch = await runItemHook(
+        beforeMode,
+        config.hooks?.beforeBatchUpdate,
+        ctx,
+        patches[i],
+        i,
+      );
       const current = (await config.adapter.update(lookup, patch, scope)) as Row | null;
       if (!current) {
         notFound.push(items[i].id);
@@ -357,11 +386,16 @@ async function executeBatchUpdate(resource: AnyResource, req: EngineRequest): Pr
     resource,
     req,
     'batch_update',
-    outcome.updated.map((row) => ({ recordId: row[primaryKey(resource)] as string | number, record: row })),
+    outcome.updated.map((row) => ({
+      recordId: row[primaryKey(resource)] as string | number,
+      record: row,
+    })),
   );
 
   const policyCtx = buildPolicyContext(req);
-  const shaped = await Promise.all(outcome.updated.map((row) => shapeOne(resource, policyCtx, req, row)));
+  const shaped = await Promise.all(
+    outcome.updated.map((row) => shapeOne(resource, policyCtx, req, row)),
+  );
   return batchResult(resource, 'updated', shaped, outcome.notFound);
 }
 
@@ -376,7 +410,10 @@ async function executeBatchUpdate(resource: AnyResource, req: EngineRequest): Pr
  * `afterBatchDelete(prior, index)`. The removed rows come back in `deleted`.
  * 200, or 207 when any id was not found.
  */
-async function executeBatchDelete(resource: AnyResource, req: EngineRequest): Promise<EngineResult> {
+async function executeBatchDelete(
+  resource: AnyResource,
+  req: EngineRequest,
+): Promise<EngineResult> {
   const config = resource.config;
   const model = resource.model;
   requireTenant(resource, req);
@@ -417,11 +454,16 @@ async function executeBatchDelete(resource: AnyResource, req: EngineRequest): Pr
     resource,
     req,
     'batch_delete',
-    outcome.deleted.map((row) => ({ recordId: row[primaryKey(resource)] as string | number, previousRecord: row })),
+    outcome.deleted.map((row) => ({
+      recordId: row[primaryKey(resource)] as string | number,
+      previousRecord: row,
+    })),
   );
 
   const policyCtx = buildPolicyContext(req);
-  const shaped = await Promise.all(outcome.deleted.map((row) => shapeOne(resource, policyCtx, req, row)));
+  const shaped = await Promise.all(
+    outcome.deleted.map((row) => shapeOne(resource, policyCtx, req, row)),
+  );
   return batchResult(resource, 'deleted', shaped, outcome.notFound);
 }
 
@@ -438,7 +480,10 @@ async function executeBatchDelete(resource: AnyResource, req: EngineRequest): Pr
  * Loud config guards (single-restore parity): the model must soft-delete AND
  * the adapter must declare `restore` — restore has no core-five synthesis.
  */
-async function executeBatchRestore(resource: AnyResource, req: EngineRequest): Promise<EngineResult> {
+async function executeBatchRestore(
+  resource: AnyResource,
+  req: EngineRequest,
+): Promise<EngineResult> {
   const config = resource.config;
   const model = resource.model;
 
@@ -467,7 +512,11 @@ async function executeBatchRestore(resource: AnyResource, req: EngineRequest): P
     const notFound: string[] = [];
     for (let i = 0; i < ids.length; i++) {
       const lookup = lookupFor(resource, req, ids[i]);
-      const prior = (await config.adapter.readOne(lookup, { withDeleted: true }, scope)) as Row | null;
+      const prior = (await config.adapter.readOne(
+        lookup,
+        { withDeleted: true },
+        scope,
+      )) as Row | null;
       if (!prior || !isSoftDeleted(model, prior)) {
         notFound.push(ids[i]);
         continue;
@@ -487,11 +536,16 @@ async function executeBatchRestore(resource: AnyResource, req: EngineRequest): P
     resource,
     req,
     'batch_restore',
-    outcome.restored.map((row) => ({ recordId: row[primaryKey(resource)] as string | number, record: row })),
+    outcome.restored.map((row) => ({
+      recordId: row[primaryKey(resource)] as string | number,
+      record: row,
+    })),
   );
 
   const policyCtx = buildPolicyContext(req);
-  const shaped = await Promise.all(outcome.restored.map((row) => shapeOne(resource, policyCtx, req, row)));
+  const shaped = await Promise.all(
+    outcome.restored.map((row) => shapeOne(resource, policyCtx, req, row)),
+  );
   return batchResult(resource, 'restored', shaped, outcome.notFound);
 }
 
@@ -509,7 +563,10 @@ async function executeBatchRestore(resource: AnyResource, req: EngineRequest): P
  * `upsert.keys` is REQUIRED (loud ConfigurationException). Empty body array is
  * valid (→ empty result); only the max size is enforced (hono-crud has no min).
  */
-async function executeBatchUpsert(resource: AnyResource, req: EngineRequest): Promise<EngineResult> {
+async function executeBatchUpsert(
+  resource: AnyResource,
+  req: EngineRequest,
+): Promise<EngineResult> {
   const config = resource.config;
   const model = resource.model;
   const adapter = config.adapter;
@@ -525,7 +582,9 @@ async function executeBatchUpsert(resource: AnyResource, req: EngineRequest): Pr
   const rawItems = extractArray(req.body);
   const max = maxBatchSize(resource);
   if (rawItems.length > max) {
-    throw new InputValidationException(`Batch size ${rawItems.length} exceeds the maximum of ${max}`);
+    throw new InputValidationException(
+      `Batch size ${rawItems.length} exceeds the maximum of ${max}`,
+    );
   }
 
   const beforeMode = config.hooks?.modes?.batchUpsert?.beforeMode ?? 'sequential';
@@ -581,7 +640,11 @@ async function executeBatchUpsert(resource: AnyResource, req: EngineRequest): Pr
           await restore(existingLookup, scope);
         }
         // Body PK (present under id:'client') is insert-leg identity only.
-        const patch = applyUpsertRestore(model, applyManagedUpdateFields(model, stripPrimaryKeys(model, data)), existing) as Row;
+        const patch = applyUpsertRestore(
+          model,
+          applyManagedUpdateFields(model, stripPrimaryKeys(model, data)),
+          existing,
+        ) as Row;
         const updated = (await adapter.update(existingLookup, patch, scope)) as Row | null;
         if (!updated) throw new NotFoundException(model.name, existingLookup.value);
         record = updated;

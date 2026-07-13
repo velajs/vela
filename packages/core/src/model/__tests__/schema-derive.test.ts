@@ -26,7 +26,14 @@ describe('deriveCreateSchema', () => {
   it('keeps timestamp/tenant columns as writable when those features are off', () => {
     const model = defineModel({ name: 'u', tableName: 'u', schema: Schema, timestamps: false });
     // tenant off (default) and timestamps off → only the PK is stripped.
-    expect(keys(deriveCreateSchema(model))).toEqual(['createdAt', 'email', 'name', 'role', 'tenantId', 'updatedAt']);
+    expect(keys(deriveCreateSchema(model))).toEqual([
+      'createdAt',
+      'email',
+      'name',
+      'role',
+      'tenantId',
+      'updatedAt',
+    ]);
   });
 
   it('produces a schema whose parse rejects the stripped id field via strict? (fields simply absent)', () => {
@@ -41,8 +48,12 @@ describe('deriveCreateSchema', () => {
     const create = deriveCreateSchema(model);
     expect('id' in create.shape).toBe(true);
     // tenant off → tenantId stays a writable (required) field; only id differs.
-    expect(create.safeParse({ name: 'a', email: 'e', role: 'r', tenantId: 't' }).success).toBe(false);
-    expect(create.safeParse({ id: 'x', name: 'a', email: 'e', role: 'r', tenantId: 't' }).success).toBe(true);
+    expect(create.safeParse({ name: 'a', email: 'e', role: 'r', tenantId: 't' }).success).toBe(
+      false,
+    );
+    expect(
+      create.safeParse({ id: 'x', name: 'a', email: 'e', role: 'r', tenantId: 't' }).success,
+    ).toBe(true);
   });
 });
 
@@ -93,7 +104,12 @@ describe('nested-write schema merging', () => {
       tableName: 'u',
       schema: Schema,
       relations: {
-        posts: { type: 'hasMany' as const, target: 'posts', foreignKey: 'authorId', schema: PostSchema },
+        posts: {
+          type: 'hasMany' as const,
+          target: 'posts',
+          foreignKey: 'authorId',
+          schema: PostSchema,
+        },
       },
     });
     expect(keys(deriveCreateSchema(withRelation))).toEqual(keys(deriveCreateSchema(plain)));
@@ -128,8 +144,13 @@ describe('nested-write schema merging', () => {
     });
     const create = deriveCreateSchema(model);
     expect(
-      create.safeParse({ name: 'a', email: 'e', role: 'r', tenantId: 't', profile: [{ title: 'x' }] })
-        .success,
+      create.safeParse({
+        name: 'a',
+        email: 'e',
+        role: 'r',
+        tenantId: 't',
+        profile: [{ title: 'x' }],
+      }).success,
     ).toBe(false);
     const update = deriveUpdateSchema(model);
     expect(update.safeParse({ profile: { create: [{ title: 'x' }] } }).success).toBe(false);

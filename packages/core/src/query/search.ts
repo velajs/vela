@@ -30,9 +30,32 @@ export interface SearchFieldConfig {
 // ---------------------------------------------------------------------------
 
 const STOP_WORDS = new Set([
-  'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from', 'has', 'he',
-  'in', 'is', 'it', 'its', 'of', 'on', 'or', 'that', 'the', 'to', 'was', 'were',
-  'will', 'with',
+  'a',
+  'an',
+  'and',
+  'are',
+  'as',
+  'at',
+  'be',
+  'by',
+  'for',
+  'from',
+  'has',
+  'he',
+  'in',
+  'is',
+  'it',
+  'its',
+  'of',
+  'on',
+  'or',
+  'that',
+  'the',
+  'to',
+  'was',
+  'were',
+  'will',
+  'with',
 ]);
 
 /**
@@ -317,7 +340,12 @@ export function runSearchFallback<T extends Record<string, unknown>>(
   const hits: Array<SearchHit<T>> = [];
 
   for (const record of candidates) {
-    const { score, matchedFields } = calculateScore(record, queryTokens, fieldsToSearch, query.mode);
+    const { score, matchedFields } = calculateScore(
+      record,
+      queryTokens,
+      fieldsToSearch,
+      query.mode,
+    );
     if (score <= 0 || matchedFields.length === 0) {
       continue;
     }

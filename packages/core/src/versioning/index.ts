@@ -54,11 +54,7 @@ export interface VersioningStore {
     options?: { limit?: number; offset?: number },
   ): Promise<VersionEntry[]>;
   /** One specific snapshot, or `null` when it does not exist. */
-  get(
-    tableName: string,
-    recordId: string | number,
-    version: number,
-  ): Promise<VersionEntry | null>;
+  get(tableName: string, recordId: string | number, version: number): Promise<VersionEntry | null>;
   /** Highest stored version number for a record, or `0` when it has none. */
   latest(tableName: string, recordId: string | number): Promise<number>;
   /** Trim to the newest `keepCount` snapshots; returns how many were removed. */
@@ -116,11 +112,7 @@ export class MemoryVersioningStore implements VersioningStore {
     return Math.max(...entries.map((entry) => entry.version));
   }
 
-  async prune(
-    tableName: string,
-    recordId: string | number,
-    keepCount: number,
-  ): Promise<number> {
+  async prune(tableName: string, recordId: string | number, keepCount: number): Promise<number> {
     const key = this.keyFor(tableName, recordId);
     const entries = this.versions.get(key) ?? [];
     if (entries.length <= keepCount) return 0;

@@ -42,21 +42,23 @@ import {
 import { MissingTenantResolverError, resourceNames, type CrudConfig } from './crud.types';
 import { buildLiveStamper, type LiveStamper } from './live-bridge';
 import { implementedEndpoints } from './kernel/extended/registry';
-import {
-  CRUD_ROUTES,
-  resolveEnabledEndpoints,
-  type CrudEndpointName,
-} from './verb-table';
+import { CRUD_ROUTES, resolveEnabledEndpoints, type CrudEndpointName } from './verb-table';
 import { createZodDto } from '@velajs/vela';
 
 const OVERRIDES_KEY = 'velajs:crud:overrides';
 
 /** Read the `@Override(verb)` map stamped on a controller class. */
 export function getOverrides(target: object): Partial<Record<CrudEndpointName, string | symbol>> {
-  return (getMetadata(OVERRIDES_KEY, target) as Partial<Record<CrudEndpointName, string | symbol>>) ?? {};
+  return (
+    (getMetadata(OVERRIDES_KEY, target) as Partial<Record<CrudEndpointName, string | symbol>>) ?? {}
+  );
 }
 
-export function recordOverride(target: object, endpoint: CrudEndpointName, method: string | symbol): void {
+export function recordOverride(
+  target: object,
+  endpoint: CrudEndpointName,
+  method: string | symbol,
+): void {
   defineMetadata(OVERRIDES_KEY, { ...getOverrides(target), [endpoint]: method }, target);
 }
 
@@ -112,7 +114,8 @@ export function stampCrudRoutes(controller: Ctor, config: CrudConfig): void {
   const resolveResource = (c: Context): CrudResource => {
     if (compiled) return compiled;
     const adapter =
-      config.adapter ?? tryResolveDefaultAdapter(c) ??
+      config.adapter ??
+      tryResolveDefaultAdapter(c) ??
       raiseNoAdapter(controller.name, names.singular);
     const engineConfig = toEngineConfig(config, adapter);
     // Fall back to the forRoot default stores (like the adapter) when the
@@ -135,7 +138,14 @@ export function stampCrudRoutes(controller: Ctor, config: CrudConfig): void {
     const handlerName = overrideMethod ?? `crud$${endpoint}`;
 
     if (overrideMethod === undefined) {
-      defineHandler(controller, handlerName as string, endpoint, method, resolveResource, liveStamper);
+      defineHandler(
+        controller,
+        handlerName as string,
+        endpoint,
+        method,
+        resolveResource,
+        liveStamper,
+      );
       stampParams(controller, handlerName as string, endpoint, createDto, updateDto);
     }
 
@@ -171,7 +181,11 @@ export function stampCrudRoutes(controller: Ctor, config: CrudConfig): void {
       description: naming?.summary ?? `${endpoint} ${names.singular}`,
     })(proto, handlerName, descriptor());
     if (shape.id) {
-      ApiResponse(404, { description: `${names.singular} not found` })(proto, handlerName, descriptor());
+      ApiResponse(404, { description: `${names.singular} not found` })(
+        proto,
+        handlerName,
+        descriptor(),
+      );
     }
     if (shape.body) {
       ApiResponse(400, { description: 'Validation failed' })(proto, handlerName, descriptor());
@@ -270,12 +284,8 @@ function stampParams(
   createDto: unknown,
   updateDto: unknown,
 ): void {
-  const add = (param: {
-    index: number;
-    type: string;
-    name?: string;
-    metatype?: unknown;
-  }): void => MetadataRegistry.addParameter(controller as never, handlerName, param as never);
+  const add = (param: { index: number; type: string; name?: string; metatype?: unknown }): void =>
+    MetadataRegistry.addParameter(controller as never, handlerName, param as never);
 
   const shape = VERB_SHAPES[endpoint];
   let index = 0;
@@ -301,7 +311,10 @@ function tryResolveDefaultAdapter(c: Context): CrudAdapter | undefined {
 }
 
 /** Resolve a forRoot default store from the request container, or `undefined`. */
-function tryResolveDefault<T>(c: Context, token: Parameters<ReturnType<typeof getRequestContainer>['resolve']>[0]): T | undefined {
+function tryResolveDefault<T>(
+  c: Context,
+  token: Parameters<ReturnType<typeof getRequestContainer>['resolve']>[0],
+): T | undefined {
   try {
     return getRequestContainer(c).resolve(token) as T | undefined;
   } catch {

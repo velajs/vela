@@ -53,14 +53,18 @@ export function normalizeTimestamps(timestamps: TimestampsInput | undefined): No
 }
 
 /** Resolve the soft-delete column name, or `undefined` when disabled. */
-export function normalizeSoftDeleteField(softDelete: SoftDeleteInput | undefined): string | undefined {
+export function normalizeSoftDeleteField(
+  softDelete: SoftDeleteInput | undefined,
+): string | undefined {
   if (!softDelete) return undefined;
   if (softDelete === true) return DEFAULT_SOFT_DELETE_FIELD;
   return softDelete.field ?? DEFAULT_SOFT_DELETE_FIELD;
 }
 
 /** Resolve the tenant column name, or `undefined` when disabled. */
-export function normalizeTenantField(multiTenant: MultiTenantInput | undefined): string | undefined {
+export function normalizeTenantField(
+  multiTenant: MultiTenantInput | undefined,
+): string | undefined {
   if (!multiTenant) return undefined;
   if (multiTenant === true) return DEFAULT_TENANT_FIELD;
   return multiTenant.field ?? DEFAULT_TENANT_FIELD;

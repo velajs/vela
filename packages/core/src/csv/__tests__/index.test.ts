@@ -58,7 +58,9 @@ describe('generateCsv', () => {
   });
 
   it('honors excludeFields', () => {
-    const csv = generateCsv([{ id: '1', name: 'Alice', secret: 'x' }], { excludeFields: ['secret'] });
+    const csv = generateCsv([{ id: '1', name: 'Alice', secret: 'x' }], {
+      excludeFields: ['secret'],
+    });
     expect(csv).toBe('id,name\r\n1,Alice');
   });
 
