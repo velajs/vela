@@ -1,6 +1,6 @@
 {
   "name": "@velajs/live-protocol",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Normative wire protocol for Vela live queries: frame types, the shared keyed-delta codec, and golden conformance fixtures",
   "keywords": [
     "delta",
