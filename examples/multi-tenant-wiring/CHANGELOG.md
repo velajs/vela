@@ -1,5 +1,13 @@
 # multi-tenant-wiring
 
+## 0.0.4
+
+### Patch Changes
+
+- Updated dependencies [65a30ed]
+  - @velajs/crud@1.19.1
+  - @velajs/crud-memory@1.19.1
+
 ## 0.0.3
 
 ### Patch Changes

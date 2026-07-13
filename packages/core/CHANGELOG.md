@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.19.1
+
+### Patch Changes
+
+- 65a30ed: Modernize the package build, validation, and release toolchain.
+
 ## 1.19.0
 
 ### Minor Changes
