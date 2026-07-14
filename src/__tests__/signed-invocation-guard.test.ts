@@ -98,7 +98,13 @@ describe('SignedInvocation guard — @SignedInvocation() route', () => {
   it('rejects a tampered token with 403', async () => {
     const app = await VelaFactory.create(AppModule);
     const token = await tokenFor();
-    const tampered = token.slice(0, -1) + (token.endsWith('A') ? 'B' : 'A');
+    // Flip the FIRST character of the signature segment. The final base64url
+    // char of a 32-byte HMAC is zero-pad-aligned (only its top bits are
+    // significant), so mutating it can decode to identical bytes; the first
+    // char is fully significant, so this always changes the decoded signature.
+    const dot = token.indexOf('.');
+    const sigHead = token.charAt(dot + 1);
+    const tampered = token.slice(0, dot + 1) + (sigHead === 'A' ? 'B' : 'A') + token.slice(dot + 2);
     expect((await send(app, tampered)).status).toBe(403);
     await app.dispose();
   });

@@ -42,8 +42,13 @@ describe('vela session features on Cloudflare Workers (live miniflare)', () => {
     expect(ok.status).toBe(200);
     expect(await ok.json()).toEqual({ ok: true });
 
-    // Flipping the last signature char is rejected → 403.
-    const tampered = url.slice(0, -1) + (url.endsWith('A') ? 'B' : 'A');
+    // Flipping the FIRST signature char is rejected → 403. (The last base64url
+    // char of a 32-byte HMAC is zero-pad-aligned, so mutating it can decode to
+    // identical bytes; the first char is fully significant.)
+    const sigStart = url.indexOf('signature=') + 'signature='.length;
+    const sigHead = url.charAt(sigStart);
+    const tampered =
+      url.slice(0, sigStart) + (sigHead === 'A' ? 'B' : 'A') + url.slice(sigStart + 1);
     const bad = await SELF.fetch(`http://example.com${tampered}`);
     expect(bad.status).toBe(403);
   });

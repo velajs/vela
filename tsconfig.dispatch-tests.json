@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [
+    "src/__tests__/invocation-crypto.test.ts",
+    "src/__tests__/signed-invocation-guard.test.ts",
+    "src/__tests__/internal-dispatch-adopter.test.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
+}
