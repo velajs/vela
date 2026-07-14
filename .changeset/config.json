@@ -5,6 +5,6 @@
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "fixed": [["@velajs/client", "@velajs/react"]],
+  "fixed": [["@velajs/client", "@velajs/react", "@velajs/react-native"]],
   "ignore": []
 }
