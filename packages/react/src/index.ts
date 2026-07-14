@@ -7,3 +7,5 @@ export type { UseLiveMutationResult } from './use-live-mutation';
 export { useConnectionStatus } from './use-connection-status';
 export { usePresence } from './use-presence';
 export type { UsePresenceOptions } from './use-presence';
+export { useClientQuery } from './use-client-query';
+export { usePendingMutations } from './use-pending-mutations';

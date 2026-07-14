@@ -74,7 +74,7 @@ describe('client ↔ vela live e2e (in-memory transport)', () => {
     class RoomsGateway {}
 
     @Module({
-      imports: [WebSocketModule.forRoot(), LiveModule.forRoot()],
+      imports: [WebSocketModule.forRoot({}), LiveModule.forRoot({})],
       providers: [RoomsGateway, TodoLive],
     })
     class AppModule {}
@@ -134,7 +134,9 @@ describe('client ↔ vela live e2e (in-memory transport)', () => {
 
     const lastLiveFrame = (): { t: string } | undefined => {
       for (let index = received.length - 1; index >= 0; index -= 1) {
-        const envelope = JSON.parse(received[index]) as { event: string; data: { t: string } };
+        const raw = received[index];
+        if (raw === undefined) continue;
+        const envelope = JSON.parse(raw) as { event: string; data: { t: string } };
         if (envelope.event === '$live') return envelope.data;
       }
       return undefined;

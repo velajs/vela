@@ -1,11 +1,19 @@
 export { LiveClient } from './live-client';
 export { RoomConnection } from './connection';
+export type { ConnectionDeps } from './connection';
 export { applyServerFrame } from './frame-reducer';
 export type { FrameEffect } from './frame-reducer';
 export { applyOptimisticLayer, dropConfirmedLayers, foldOptimistic } from './optimistic';
 export type { CommitStamp, LayerHandle, OptimisticHost, OptimisticLayer } from './optimistic';
 export { argsKeyOf, createSubscriptionState, refold, subscriptionKey } from './subscription';
 export type { SubscriptionState } from './subscription';
+export { MutationQueue, isStaleVersion } from './mutation-queue';
+export type { EnqueueInput, MutationQueueDeps, QueuedMutation } from './mutation-queue';
+export { createMemoryMutationStore } from './memory-store';
+export { createSnapshotPrecondition } from './snapshot-precondition';
+export { CrossTabCoordinator } from './cross-tab';
+export type { CrossTabCallbacks, WantSpec } from './cross-tab';
+export { ClientQueryStore, createClientQuery } from './client-query';
 export { VelaLiveError, getErrorCode, isVelaLiveError } from './errors';
 export {
   DEFAULT_RECONNECT_BASE_MS,
@@ -16,15 +24,22 @@ export {
 export { stableStringify } from './stable-key';
 export type {
   ArgsOf,
+  BroadcastChannelFactory,
+  BroadcastChannelLike,
+  ClientQueryRef,
   ConnectionStatus,
+  CrossTabOptions,
   HydrationEntry,
   LiveClientOptions,
   LiveContract,
   LiveStore,
   MutateOptions,
+  MutationSettledEvent,
+  MutationStore,
+  MutationVerdict,
+  OfflineQueueOptions,
   OptimisticTarget,
-  OutboxSink,
-  ReadCacheAdapter,
+  PersistedMutation,
   ReconnectOptions,
   ResultOf,
   SubscribeOptions,

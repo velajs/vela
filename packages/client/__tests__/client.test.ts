@@ -352,7 +352,7 @@ describe('optimistic mutations', () => {
       {},
       {
         optimisticUpdate: (store) => {
-          store.set('todos.list', {}, (current) => [
+          store.set('todos.list', {}, (current: unknown) => [
             ...((current as unknown[]) ?? []),
             { id: 'multi' },
           ]);
@@ -362,8 +362,9 @@ describe('optimistic mutations', () => {
     );
     expect((h.client.peek('todos.list', {}) as unknown[]).at(-1)).toEqual({ id: 'multi' });
 
-    expect(h.fetchCalls[0].url).toBe('http://api.test/todos');
-    expect(h.fetchCalls[0].init.method).toBe('POST');
+    const call = h.fetchCalls[0];
+    expect(call?.url).toBe('http://api.test/todos');
+    expect(call?.init.method).toBe('POST');
   });
 });
 

@@ -39,6 +39,10 @@
     "./presence": {
       "types": "./dist/presence.d.ts",
       "import": "./dist/presence.js"
+    },
+    "./offline": {
+      "types": "./dist/offline.d.ts",
+      "import": "./dist/offline.js"
     }
   },
   "scripts": {

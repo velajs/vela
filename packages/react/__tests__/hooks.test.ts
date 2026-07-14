@@ -2,9 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { createElement } from 'react';
 import type { ReactNode } from 'react';
-import type { ConnectionStatus, LiveClient, MutateOptions } from '@velajs/client';
+import { createClientQuery, LiveClient } from '@velajs/client';
+import type { ConnectionStatus, MutateOptions } from '@velajs/client';
 import {
   LiveProvider,
+  useClientQuery,
   useConnectionStatus,
   useLiveMutation,
   useLiveQuery,
@@ -155,6 +157,27 @@ describe('useConnectionStatus', () => {
     expect(result.current).toBe('idle');
     act(() => fake.setStatus('connected'));
     expect(result.current).toBe('connected');
+  });
+});
+
+describe('useClientQuery', () => {
+  it('returns [value, setter] with no undefined flash, re-renders on set, shared across consumers', () => {
+    const client = new LiveClient({ url: 'http://api.test' });
+    const filter = createClientQuery('ui.filter', 'all');
+
+    const first = renderHook(() => useClientQuery(filter), { wrapper: wrapperFor(client) });
+    expect(first.result.current[0]).toBe('all'); // default, never undefined
+
+    act(() => first.result.current[1]('active'));
+    expect(first.result.current[0]).toBe('active');
+
+    // A second consumer of the same ref shares the value and re-renders on writes.
+    const second = renderHook(() => useClientQuery(filter), { wrapper: wrapperFor(client) });
+    expect(second.result.current[0]).toBe('active');
+
+    act(() => second.result.current[1]('done'));
+    expect(first.result.current[0]).toBe('done');
+    expect(second.result.current[0]).toBe('done');
   });
 });
 

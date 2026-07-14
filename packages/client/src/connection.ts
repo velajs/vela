@@ -20,6 +20,13 @@ export interface ConnectionDeps {
   heartbeatIntervalMs: number;
   reconnect?: ReconnectOptions;
   onStatusChange: () => void;
+  /**
+   * Called after every applied server frame that advanced the authoritative
+   * base or watermark (data/delta/resume/settled) — never on error/resubscribe.
+   * The cross-tab leader wires this to relay `serverBase` + cursor/epoch to
+   * follower tabs. Optional/additive.
+   */
+  onServerFrameApplied?: (state: SubscriptionState) => void;
 }
 
 /**
@@ -153,7 +160,7 @@ export class RoomConnection {
     switch (effect) {
       case 'notify':
         notify(state);
-        return;
+        break;
       case 'error':
         if (frame.t === 'error') {
           for (const callback of state.errorCallbacks) {
@@ -172,7 +179,19 @@ export class RoomConnection {
         this.sendSub(state);
         return;
       case 'none':
-        return;
+        break;
+    }
+
+    // The authoritative base/watermark may have advanced (data/delta/resume/
+    // settled) even when the displayed value didn't change — relay it so
+    // follower tabs both render and keep their optimism cursor-gated.
+    if (
+      frame.t === 'data' ||
+      frame.t === 'delta' ||
+      frame.t === 'resume' ||
+      frame.t === 'settled'
+    ) {
+      this.deps.onServerFrameApplied?.(state);
     }
   }
 
