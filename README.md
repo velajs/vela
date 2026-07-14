@@ -367,6 +367,76 @@ const rawVec = vecService.index;       // VectorizeIndex
 const rawHD = hdService.binding;       // Hyperdrive
 ```
 
+## Workflows
+
+Durable [Cloudflare Workflows](https://developers.cloudflare.com/workflows/) over [`@velajs/workflow`](https://www.npmjs.com/package/@velajs/workflow)'s neutral core. Declare each workflow **once** as a `defineWorkflow` export and consume it twice from that one source — on the `AppModule` (for `ctx.workflows` + entrypoint discovery) and in the Worker entry (for the platform class).
+
+```ts
+// workflows.ts
+import { defineWorkflow } from '@velajs/cloudflare';
+
+export const orderPipeline = defineWorkflow<{ orderId: string }>({
+  handler: async (ctx) => {
+    const order = await ctx.step.do('fetch-order', () =>
+      // ctx.run re-enters a signed app route across isolates (see below).
+      ctx.run({ route: 'orders.get' }, { body: { id: ctx.params.orderId } }),
+    );
+    await ctx.step.sleep('settle', '1 minute');
+    return order;
+  },
+});
+```
+
+```ts
+// app.module.ts
+import { Module } from '@velajs/vela';
+import { WorkflowModule } from '@velajs/cloudflare';
+import * as workflows from './workflows';
+
+@Module({ imports: [WorkflowModule.forRoot({ workflows })] })
+export class AppModule {}
+```
+
+```ts
+// worker.ts — the exported class const name MUST equal the wrangler class_name.
+import { createCloudflareApp, createWorkflowEntrypoints } from '@velajs/cloudflare';
+import * as workflows from './workflows';
+import { AppModule } from './app.module';
+
+const app = await createCloudflareApp(AppModule);
+export default { fetch: app.fetch };
+
+export const { OrderPipelineWorkflow } = createWorkflowEntrypoints(workflows, {
+  rootModule: AppModule,
+});
+```
+
+### `ctx.run` (cross-isolate re-entry)
+
+A `WorkflowEntrypoint` runs in its own isolate with no HTTP server, so `ctx.run` crosses back to the main Worker (where the routes live) over a **self-service binding** and re-enters a `@SignedInvocation()` route. The signed token is verified byte-identically to the in-isolate path — only the network hop differs. A deterministic `4xx` response is re-thrown as the native `NonRetryableError` (the input will never succeed on retry); a `5xx` propagates as a retryable error.
+
+### wrangler configuration
+
+Names are derived purely from the **export name**, so wrangler config, the generated class const, and the entrypoint registry always agree. For `export const orderPipeline = defineWorkflow(...)`:
+
+```jsonc
+{
+  "workflows": [
+    {
+      "name": "order-pipeline",              // definition.name ?? kebab(exportName)
+      "binding": "WORKFLOW_ORDER_PIPELINE",  // WORKFLOW_ + SCREAMING_SNAKE(exportName)
+      "class_name": "OrderPipelineWorkflow", // Pascal(exportName) + "Workflow"
+    },
+  ],
+  // A self-reference so ctx.run can re-enter the main Worker's routes.
+  "services": [{ "binding": "SELF", "service": "<this-worker>" }],
+}
+```
+
+`URL_SIGNING_SECRET` (or `INVOCATION_SIGNING_SECRET`) **must** be a Workers secret (`wrangler secret put …` / `.dev.vars`) so both isolates resolve the same key. Override the re-entry binding with `createWorkflowEntrypoints(workflows, { rootModule, serviceBinding: 'MY_SELF' })`.
+
+Every declared workflow is discoverable through `app.entrypoints.ofKind('cf:workflow')` for CLI / OpenAPI / introspection.
+
 ## How It Works
 
 Cloudflare Workers only provide bindings (`env.DB`, `env.MY_KV`, etc.) at request time via the `env` parameter. They are stable across requests within an isolate.
