@@ -84,6 +84,64 @@ export type {
   OnGatewayDisconnect,
 } from '@velajs/vela/websocket';
 
+// Cloudflare Workflows (durable execution over @velajs/workflow's neutral core).
+// Import @velajs/cloudflare pulls @velajs/workflow the same way it pulls
+// @velajs/vela — the WorkflowModule declares the `cf:workflow` entrypoint kind at
+// import time. Declare each workflow once as a `defineWorkflow` export, then
+// consume it twice from one source: `WorkflowModule.forRoot({ workflows })` on
+// the AppModule (ctx.workflows + the cf:workflow registry), and
+// `createWorkflowEntrypoints(workflows, { rootModule })` in the Worker entry (the
+// platform's WorkflowEntrypoint classes).
+export { WorkflowModule } from './workflow/workflow.module';
+export type { WorkflowModuleOptions } from './workflow/workflow.module';
+export { WorkflowsService } from './workflow/workflows.service';
+export { WorkflowRegistry } from './workflow/workflow-registry';
+export {
+  createWorkflowEntrypoint,
+  createWorkflowEntrypoints,
+  runWorkflowDefinition,
+} from './workflow/create-workflow-entrypoint';
+export type {
+  CreateWorkflowEntrypointOptions,
+  CreateWorkflowEntrypointsOptions,
+  RunWorkflowDefinitionArgs,
+  WorkflowEntrypointClass,
+} from './workflow/create-workflow-entrypoint';
+export {
+  buildWorkflowRuntime,
+  workflowReentryAdapter,
+  DEFAULT_WORKFLOW_SERVICE_BINDING,
+} from './workflow/build-workflow-runtime';
+export type {
+  BuildWorkflowRuntimeOptions,
+  WorkflowRuntime,
+} from './workflow/build-workflow-runtime';
+export {
+  WORKFLOW_DEFINITIONS,
+  WORKFLOW_ENTRYPOINT_KIND,
+  WORKFLOW_ENTRYPOINT_META_KEY,
+  workflowBindingRefToken,
+} from './workflow/tokens';
+export type { AnyWorkflowDefinition, WorkflowEntrypointMeta } from './workflow/tokens';
+// Re-export the workflow authoring surface so a Cloudflare app imports it from
+// one place (mirrors the WebSocket gateway re-export above).
+export {
+  defineWorkflow,
+  defineStep,
+  WorkflowNonRetryableError,
+  isWorkflowDefinition,
+  workflowBindingName,
+  workflowClassName,
+  workflowDefaultName,
+} from '@velajs/workflow';
+export type {
+  WorkflowDefinition,
+  WorkflowHandle,
+  Workflows,
+  WorkflowRunContext,
+  StepDefinition,
+} from '@velajs/workflow';
+
 // Types
 export type { CloudflareEnv, ScheduledRegistration, QueueRegistration } from './types';
 export type { ScheduledMetadata } from './decorators/scheduled';

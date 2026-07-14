@@ -1,0 +1,14 @@
+{
+  // Typecheck the source PLUS the new workflow tests (the base tsconfig excludes
+  // **/*.test.ts, so tests are otherwise never type-checked). Scoped to the
+  // workflow suite the same way vela's tsconfig.dispatch-tests.json scopes to its
+  // new dispatch tests — pre-existing test files carry their own untypechecked
+  // debt that is out of this batch's scope.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "files": ["src/__tests__/workflow.test.ts"],
+  "include": ["src/**/*.ts", "test-shims/**/*.ts"],
+  "exclude": ["node_modules", "dist", "src/__tests__"]
+}

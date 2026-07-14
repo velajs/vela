@@ -5,15 +5,22 @@ import { defineConfig } from 'vitest/config';
 const cloudflareWorkersShim = fileURLToPath(
   new URL('./test-shims/cloudflare-workers.ts', import.meta.url),
 );
+const cloudflareWorkflowsShim = fileURLToPath(
+  new URL('./test-shims/cloudflare-workflows.ts', import.meta.url),
+);
 
 export default defineConfig({
   oxc: false,
   test: {
     globals: false,
     include: ['src/**/*.test.ts'],
-    // The `cloudflare:workers` runtime module only exists in workerd; alias it
-    // to a Node stub so the DO shell can be unit-tested outside Cloudflare.
-    alias: [{ find: /^cloudflare:workers$/, replacement: cloudflareWorkersShim }],
+    // The `cloudflare:workers` / `cloudflare:workflows` runtime modules only
+    // exist in workerd; alias them to Node stubs so the DO shell and the
+    // Workflow entrypoint can be unit-tested outside Cloudflare.
+    alias: [
+      { find: /^cloudflare:workers$/, replacement: cloudflareWorkersShim },
+      { find: /^cloudflare:workflows$/, replacement: cloudflareWorkflowsShim },
+    ],
   },
   plugins: [
     swc.vite({

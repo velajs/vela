@@ -37,9 +37,24 @@ catalogs:
       specifier: ^4.1.10
       version: 4.1.10
 
+overrides:
+  '@velajs/vela': link:/Users/kauan/Projects/velajs/vela
+  '@velajs/workflow': link:/Users/kauan/Projects/velajs/workflow
+  hono: link:/Users/kauan/Projects/velajs/vela/node_modules/hono
+
 importers:
 
   .:
+    dependencies:
+      '@velajs/vela':
+        specifier: link:/Users/kauan/Projects/velajs/vela
+        version: link:../../../../../../../Users/kauan/Projects/velajs/vela
+      '@velajs/workflow':
+        specifier: link:/Users/kauan/Projects/velajs/workflow
+        version: link:../../../../../../../Users/kauan/Projects/velajs/workflow
+      hono:
+        specifier: link:/Users/kauan/Projects/velajs/vela/node_modules/hono
+        version: link:../../../../../../../Users/kauan/Projects/velajs/vela/node_modules/hono
     devDependencies:
       '@arethetypeswrong/cli':
         specifier: 'catalog:'
@@ -55,13 +70,7 @@ importers:
         version: 1.15.43
       '@velajs/feature-flags':
         specifier: ^0.1.0
-        version: 0.1.0(@velajs/vela@1.17.0)(hono@4.12.27)
-      '@velajs/vela':
-        specifier: ^1.17.0
-        version: 1.17.0
-      hono:
-        specifier: ^4.12.27
-        version: 4.12.27
+        version: 0.1.0(@velajs/vela@..+..+..+..+..+..+Users+kauan+Projects+velajs+vela)(hono@..+..+..+..+..+..+Users+kauan+Projects+velajs+vela+node_modules+hono)
       oxfmt:
         specifier: 'catalog:'
         version: 0.58.0
@@ -1128,19 +1137,6 @@ packages:
       '@velajs/vela': '>=1.11.0'
       hono: '>=4'
 
-  '@velajs/live-protocol@1.0.0':
-    resolution: {integrity: sha512-TBEHd8XODRyvVUbjh6IUeH44coZ6rzBgS1XvIsGcQCKTMp39ywPbDrf1fH51stXVaAymFBkucJGb+UjY9h2qCg==}
-    engines: {node: '>=20'}
-
-  '@velajs/vela@1.17.0':
-    resolution: {integrity: sha512-OiDC66ULVaGKzPJiiS1y+dOjuZU7HzuYjMNIEfaDWprb6THEfMKr7fjndYOcrqaTCOEBC5uks1TJTG8zQvo7Vw==}
-    engines: {node: '>=20'}
-    peerDependencies:
-      intl-messageformat: '>=10'
-    peerDependenciesMeta:
-      intl-messageformat:
-        optional: true
-
   '@vitest/expect@4.1.10':
     resolution: {integrity: sha512-YsCn+qAk1GWjQOWFEsEcL2gNQ0zmVmQu3T03qP6UyjhtmdtwtbuI+DASn/7iQB3HGTXkdBwGddzxPlmiql5vlA==}
 
@@ -1538,10 +1534,6 @@ packages:
 
   highlight.js@10.7.3:
     resolution: {integrity: sha512-tzcUFauisWKNHaRkN4Wjl/ZA07gENAjFl3J/c480dprkGTg5EQstgaNFqBfUqCq54kZRIEcreTsAgF/m2quD7A==}
-
-  hono@4.12.27:
-    resolution: {integrity: sha512-1yrb/+w6HWQJrUCLkJ2IF5jNIPvvFkblV5RNOYl6bV+OA6p9GLcMpHFFGTosSvHvcAUibuUukRqhlYI4z32C7Q==}
-    engines: {node: '>=16.9.0'}
 
   hookable@6.1.1:
     resolution: {integrity: sha512-U9LYDy1CwhMCnprUfeAZWZGByVbhd54hwepegYTK7Pi5NvqEj63ifz5z+xukznehT7i6NIZRu89Ay1AZmRsLEQ==}
@@ -2168,7 +2160,7 @@ snapshots:
       cjs-module-lexer: 1.4.3
       fflate: 0.8.3
       lru-cache: 11.5.2
-      semver: 7.7.4
+      semver: 7.8.5
       typescript: 5.6.1-rc
       validate-npm-package-name: 5.0.1
 
@@ -2886,17 +2878,10 @@ snapshots:
   '@typescript/typescript-win32-x64@7.0.2':
     optional: true
 
-  '@velajs/feature-flags@0.1.0(@velajs/vela@1.17.0)(hono@4.12.27)':
+  '@velajs/feature-flags@0.1.0(@velajs/vela@..+..+..+..+..+..+Users+kauan+Projects+velajs+vela)(hono@..+..+..+..+..+..+Users+kauan+Projects+velajs+vela+node_modules+hono)':
     dependencies:
-      '@velajs/vela': 1.17.0
-      hono: 4.12.27
-
-  '@velajs/live-protocol@1.0.0': {}
-
-  '@velajs/vela@1.17.0':
-    dependencies:
-      '@velajs/live-protocol': 1.0.0
-      hono: 4.12.27
+      '@velajs/vela': link:../../../../../../../Users/kauan/Projects/velajs/vela
+      hono: link:../../../../../../../Users/kauan/Projects/velajs/vela/node_modules/hono
 
   '@vitest/expect@4.1.10':
     dependencies:
@@ -3183,6 +3168,10 @@ snapshots:
     optionalDependencies:
       picomatch: 4.0.4
 
+  fdir@6.5.0(picomatch@4.0.5):
+    optionalDependencies:
+      picomatch: 4.0.5
+
   fflate@0.8.3: {}
 
   fill-range@7.1.1:
@@ -3233,8 +3222,6 @@ snapshots:
   has-flag@4.0.0: {}
 
   highlight.js@10.7.3: {}
-
-  hono@4.12.27: {}
 
   hookable@6.1.1: {}
 
@@ -3717,8 +3704,8 @@ snapshots:
   vite@7.3.1(@types/node@25.3.0):
     dependencies:
       esbuild: 0.27.7
-      fdir: 6.5.0(picomatch@4.0.4)
-      picomatch: 4.0.4
+      fdir: 6.5.0(picomatch@4.0.5)
+      picomatch: 4.0.5
       postcss: 8.5.15
       rollup: 4.62.2
       tinyglobby: 0.2.17
