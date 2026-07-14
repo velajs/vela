@@ -95,6 +95,37 @@ expect(await res.json()).toEqual([{ id: 1, name: 'Item 1' }]);
 | `TestingModule` | Result of `compile()`: `get(token)`, `createApplication()`, `close()`. |
 | `OverrideBy` | The fluent intermediate from `overrideX()` — exposed for type-narrowing. |
 
+## Output scoring / evals
+
+`@velajs/testing/eval` is a small, model-agnostic harness for grading the output of any string-producing function — an LLM turn, an agent loop, a formatter — against heuristics or an injected LLM judge. It pulls in no AI SDK: the only model touchpoint is `llmScorer`, whose `judge` is a plain callback you supply.
+
+```ts
+import { evaluate, keyword, llmScorer } from '@velajs/testing/eval';
+
+const report = await evaluate(
+  [{ input: 'where is my order?', expected: 'shipped' }],
+  async (input) => askSupportAgent(input),
+  {
+    coverage: keyword(['shipped']),
+    helpful: llmScorer({ criteria: 'answers the question', judge: myModel }),
+  },
+);
+
+expect(report.aggregate.overall).toBeGreaterThan(0.5);
+```
+
+Each scorer returns a `[0, 1]` score (auto-clamped) with an optional reason. `evaluate` runs every case through the producer, grades each output with every scorer, and returns per-case reports plus an aggregate (`perScorer` means and an `overall` mean).
+
+| Export | Purpose |
+|---|---|
+| `evaluate(dataset, run, scorers)` | Grade a dataset; returns `{ cases, aggregate }`. |
+| `exactMatch(options?)` | 1 when the output equals `expected` (trimmed by default). |
+| `contains(needles, options?)` | Substring match, `all`-of (default) or `any`-of. |
+| `keyword(keywords, options?)` | Fractional coverage — the share of keywords present. |
+| `regex(pattern)` | 1 when the pattern matches (global/sticky flags stripped for reuse). |
+| `llmScorer({ criteria, judge })` | LLM-as-judge with an injected `judge` callback; fails soft to 0. |
+| `Scorer` | `(input) => number \| ScoreResult` (sync or async) — write your own. |
+
 ## How it's wired
 
 `@velajs/testing` consumes vela's framework primitives via `@velajs/vela/internal` (`MetadataRegistry`, `Container`, `RouteManager`, `ModuleLoader`, `ComponentManager`, `VelaApplication`, `bindAppProviders`). The same `bindAppProviders` that `VelaFactory.create` uses, so test-mode and run-mode app construction stay in lockstep automatically.
