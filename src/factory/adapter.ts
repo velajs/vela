@@ -2,6 +2,7 @@ import type { MiddlewareHandler } from 'hono';
 import type { VelaApplication } from '../application';
 import type { Container } from '../container/container';
 import type { DiscoveryService } from '../discovery/discovery.service';
+import type { InvocationTransport } from '../dispatch/types';
 import type { RouteManager } from '../http/route.manager';
 
 /** The framework's resolved world, handed to adapter hooks. */
@@ -29,10 +30,17 @@ export interface AdapterContext {
  *   available, BEFORE routes are built — register platform services here.
  * - `onRoutesBuilt` runs after the Hono app exists — mount platform routes
  *   (WebSocket upgrades, health endpoints) here via `ctx.app.getHonoApp()`.
+ * - `invocationTransport` supplies the transport `InternalDispatcher` (`ctx.run`)
+ *   uses to re-enter the app. In-isolate adapters return `undefined` so core's
+ *   default `app.fetch` short-circuit is used; a separate-binding adapter (e.g.
+ *   a Cloudflare Workflow entrypoint) returns an HTTP transport over its service
+ *   binding / origin so re-entry crosses back to where the routes live. Signing
+ *   and verification are identical on both paths — only the network hop differs.
  */
 export interface RuntimeAdapter {
   name: string;
   requestMiddleware?: MiddlewareHandler[];
   onBootstrap?(ctx: AdapterContext): void | Promise<void>;
   onRoutesBuilt?(ctx: AdapterContext): void | Promise<void>;
+  invocationTransport?(ctx: AdapterContext): InvocationTransport | undefined;
 }

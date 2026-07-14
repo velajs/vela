@@ -6,35 +6,15 @@
 // (see src/storage/index.ts) so the storage subpath API is unchanged, while
 // core (the URL generator + signed-URL guard) imports it here directly — core
 // never reaches into a published subpath.
+//
+// The HMAC / base64url plumbing lives in `./hmac` — a single definition shared
+// with `./invocation` so no security verify path drifts from a byte-similar copy.
+
+import { fromBase64Url, importHmacKey, toBase64Url } from './hmac';
 
 export interface SignedUrlOptions {
   /** Time-to-live in seconds; a matching `expires` param is added + enforced. */
   expiresIn?: number;
-}
-
-async function importKey(secret: string): Promise<CryptoKey> {
-  return crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign', 'verify'],
-  );
-}
-
-function toBase64Url(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-function fromBase64Url(value: string): Uint8Array<ArrayBuffer> {
-  const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
-  const binary = atob(base64);
-  const bytes = new Uint8Array(new ArrayBuffer(binary.length));
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
 }
 
 /**
@@ -48,7 +28,7 @@ export async function signUrl(
   options?: SignedUrlOptions,
 ): Promise<string> {
   const parsed = new URL(url, 'https://placeholder.local');
-  const key = await importKey(secret);
+  const key = await importHmacKey(secret);
 
   if (options?.expiresIn) {
     const expires = Math.floor(Date.now() / 1000) + options.expiresIn;
@@ -82,7 +62,7 @@ export async function verifySignedUrl(url: string, secret: string): Promise<bool
 
   parsed.searchParams.delete('signature');
   const dataToVerify = `${parsed.pathname}?${parsed.searchParams.toString()}`;
-  const key = await importKey(secret);
+  const key = await importHmacKey(secret);
   return crypto.subtle.verify(
     'HMAC',
     key,

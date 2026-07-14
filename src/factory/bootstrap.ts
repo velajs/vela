@@ -3,6 +3,10 @@ import { Container } from '../container/container';
 import { ModuleRef } from '../container/module-ref';
 import { DiscoveryService } from '../discovery/discovery.service';
 import type { Diagnostics, Type } from '../container/types';
+import { InternalDispatcher } from '../dispatch/internal-dispatcher';
+import { MemoryNonceStore } from '../dispatch/nonce-store';
+import { SignedInvocationGuard } from '../dispatch/signed-invocation.guard';
+import { NONCE_STORE } from '../dispatch/tokens';
 import { REQUEST_CONTEXT } from '../http/request-context';
 import { RouteManager } from '../http/route.manager';
 import type { RouteManagerOptions } from '../http/route.manager';
@@ -109,6 +113,19 @@ export async function bootstrap(
   container.markGlobalToken(UrlGeneratorService);
   container.register(SignedUrlGuard);
   container.markGlobalToken(SignedUrlGuard);
+
+  // Internal-dispatch seam (`ctx.run`): the dispatcher + its signed-invocation
+  // guard are app-level singletons injectable from any queue/cron/entrypoint
+  // handler. The transport the dispatcher resolves (INVOCATION_TRANSPORT) is
+  // registered later by VelaFactory, once the Hono app exists. The nonce store
+  // defaults to the per-isolate MemoryNonceStore and stays overridable (an
+  // adapter can provide a shared DO/KV-backed store for cross-isolate reuse).
+  container.register(InternalDispatcher);
+  container.markGlobalToken(InternalDispatcher);
+  container.register(SignedInvocationGuard);
+  container.markGlobalToken(SignedInvocationGuard);
+  container.register({ provide: NONCE_STORE, useClass: MemoryNonceStore });
+  container.markGlobalToken(NONCE_STORE);
 
   const loader = new ModuleLoader(container, routeManager);
   // loader.load() also arms the deferred-init seam (LazyModuleManager) — kept

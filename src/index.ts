@@ -113,6 +113,32 @@ export type {
 export { signUrl, verifySignedUrl } from './crypto/signed-url';
 export type { SignedUrlOptions } from './crypto/signed-url';
 
+// Internal-dispatch seam (`ctx.run`): re-enter the app through a per-invocation
+// SIGNED route (scoped claim, short expiry, single-use nonce — no shared bearer).
+// Consumed by queue / schedule / (future) workflow handlers.
+export {
+  InternalDispatcher,
+  SignedInvocationGuard,
+  SignedInvocation,
+  MemoryNonceStore,
+  INVOCATION_SIGNING_SECRET,
+} from './dispatch/index';
+export type {
+  InvocationTransport,
+  InvocationTarget,
+  InvocationRouteTarget,
+  InvocationPathTarget,
+  RunInit,
+  NonceStore,
+} from './dispatch/index';
+export {
+  signInvocation,
+  verifyInvocation,
+  INVOCATION_AUDIENCE,
+  INVOCATION_DEFAULT_TTL_SECONDS,
+} from './crypto/invocation';
+export type { InvocationClaim, VerifyInvocationOptions } from './crypto/invocation';
+
 // Request-scoped context primitive
 export { REQUEST_CONTEXT } from './http/request-context';
 export type { RequestContext } from './http/request-context';
