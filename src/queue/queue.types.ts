@@ -1,3 +1,5 @@
+import type { InvocationTarget } from '../index';
+
 /**
  * One job as handed to `@Process` handlers and drivers. Ids are minted by the
  * client via `crypto.randomUUID()` (Web Crypto — edge-safe).
@@ -45,6 +47,31 @@ export interface QueueDriver {
   bind?(dispatch: QueueDispatchFn, hooks?: QueueDriverBindHooks): void;
 }
 
+/**
+ * How a delivered job reaches its handling logic.
+ *
+ * `direct` (default) runs the in-isolate `@Processor`/`@Process` path
+ * unchanged. `signed` re-enters the app through a per-invocation SIGNED route
+ * (`ctx.run`): the job is re-issued as a signed HTTP request to a
+ * user-authored `@SignedInvocation()` route, so the processing logic runs
+ * through the FULL request pipeline (global guards/interceptors/filters) that
+ * the direct `@Processor` path deliberately bypasses — and, with a
+ * cross-isolate transport, can even land in the Worker that owns the routes.
+ *
+ * Purely additive: absent (or `{ kind: 'direct' }`) keeps today's behavior.
+ */
+export type QueueDispatchMode =
+  | { readonly kind: 'direct' }
+  | {
+      readonly kind: 'signed';
+      /** Maps a delivered job to the route/path it re-enters. */
+      readonly target: (job: QueueJob) => InvocationTarget;
+      /** HTTP method for the signed re-entry request (default `POST`). */
+      readonly method?: string;
+      /** Signed-claim lifetime override (seconds). */
+      readonly ttlSeconds?: number;
+    };
+
 export interface QueueModuleOptions {
   /**
    * Queue names this instance provides clients for. STRUCTURAL — must be
@@ -54,6 +81,13 @@ export interface QueueModuleOptions {
   queues?: string[];
   /** Defaults to the in-core `inline()` driver. */
   driver?: QueueDriver;
+  /**
+   * Opt-in signed re-entry for delivered jobs (default `direct`). STRUCTURAL —
+   * like `queues`, pass it alongside the factory for `forRootAsync`. The
+   * `dispatch.kind` participates in the module dedup key, so a `signed`
+   * instance never dedups with a `direct` one.
+   */
+  dispatch?: QueueDispatchMode;
 }
 
 /** Class-level meta written by `@Processor(queueName)` (the 'queue' entrypoint kind). */

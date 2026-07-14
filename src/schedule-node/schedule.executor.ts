@@ -1,9 +1,12 @@
-import { Inject, Injectable } from '../container/index';
+import { Inject, Injectable, Optional } from '../container/index';
 import { Container } from '../container/container';
+import { InternalDispatcher } from '../dispatch/index';
 import { resolveErrorReporter } from '../exceptions/reporter';
 import type { OnApplicationBootstrap, OnModuleDestroy } from '../lifecycle/index';
 import { parseCron, type CronMatcher } from '../schedule/cron-matcher';
 import { ScheduleRegistry } from '../schedule/schedule.registry';
+import { SCHEDULE_DISPATCH } from '../schedule/schedule.tokens';
+import type { ScheduleDispatchMode, ScheduleJobRef } from '../schedule/schedule.types';
 
 @Injectable()
 export class ScheduleExecutor implements OnApplicationBootstrap, OnModuleDestroy {
@@ -16,6 +19,8 @@ export class ScheduleExecutor implements OnApplicationBootstrap, OnModuleDestroy
   constructor(
     private registry: ScheduleRegistry,
     @Inject(Container) private container: Container,
+    @Optional() @Inject(SCHEDULE_DISPATCH) private readonly dispatch?: ScheduleDispatchMode,
+    @Optional() @Inject(InternalDispatcher) private readonly dispatcher?: InternalDispatcher,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -40,7 +45,7 @@ export class ScheduleExecutor implements OnApplicationBootstrap, OnModuleDestroy
     if (!this.running) return;
 
     const timer = setInterval(() => {
-      void this.invoke(instance, methodName);
+      void this.invoke(instance, { kind: 'interval', methodName, ms });
     }, ms);
     this.intervalTimers.push(timer);
   }
@@ -65,17 +70,30 @@ export class ScheduleExecutor implements OnApplicationBootstrap, OnModuleDestroy
       if (!matcher(now)) return;
 
       this.lastCronMinute.set(jobKey, minuteKey);
-      void this.invoke(instance, methodName);
+      void this.invoke(instance, { kind: 'cron', methodName, expression });
     }, 1000);
 
     this.cronTimers.push(timer);
   }
 
-  private async invoke(instance: unknown, methodName: string): Promise<void> {
+  private async invoke(instance: unknown, job: ScheduleJobRef): Promise<void> {
     try {
-      const method = (instance as Record<string, Function>)[methodName];
-      if (typeof method === 'function') {
-        await method.call(instance);
+      if (this.dispatch?.kind === 'signed' && this.dispatcher) {
+        // Opt-in signed re-entry: the fired job re-enters a user-authored
+        // `@SignedInvocation()` route through `ctx.run`, running the full
+        // request pipeline instead of a bare in-isolate method call. The
+        // node/bun in-isolate transport (app.fetch) still verifies the claim.
+        const dispatch = this.dispatch;
+        await this.dispatcher.run(dispatch.target(job), {
+          method: dispatch.method,
+          ttlSeconds: dispatch.ttlSeconds,
+          iss: `schedule:${job.methodName}`,
+        });
+      } else {
+        const method = (instance as Record<string, Function>)[job.methodName];
+        if (typeof method === 'function') {
+          await method.call(instance);
+        }
       }
     } catch (err) {
       // Report BEFORE the rethrow below — the exception handler sees every
@@ -83,7 +101,7 @@ export class ScheduleExecutor implements OnApplicationBootstrap, OnModuleDestroy
       // replacing the previous bare console.warn.
       resolveErrorReporter(this.container).report(err, {
         edge: 'schedule',
-        source: methodName,
+        source: job.methodName,
       });
       // Runtime job error — keep the scheduler running by default. Users
       // can opt into rethrowing by setting diagnostics: 'throw'.

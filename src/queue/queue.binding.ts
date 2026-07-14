@@ -1,9 +1,9 @@
-import { EntrypointRegistry, resolveErrorReporter } from '../index';
+import { EntrypointRegistry, InternalDispatcher, resolveErrorReporter } from '../index';
 import type { Container, DiscoveryService } from '../index';
 import { dispatchJobToEntries } from './queue.dispatch';
 import type { QueueEntry } from './queue.dispatch';
 import { PROCESSOR_METADATA, queueToken } from './queue.tokens';
-import type { ProcessorMetadata, QueueDriver, QueueJob } from './queue.types';
+import type { ProcessorMetadata, QueueDispatchMode, QueueDriver, QueueJob } from './queue.types';
 
 /**
  * Wires a `QueueModule` instance's driver to the app: binds in-process
@@ -25,6 +25,7 @@ export class QueueDispatchBinding {
     private readonly discovery: DiscoveryService,
     driver: QueueDriver,
     queues: string[],
+    private readonly dispatch?: QueueDispatchMode,
   ) {
     for (const queue of queues) {
       const owners = container.getOwnerModuleIds(queueToken(queue));
@@ -42,6 +43,23 @@ export class QueueDispatchBinding {
   }
 
   private async deliver(job: QueueJob): Promise<void> {
+    // Opt-in signed re-entry: the job re-enters a user-authored
+    // `@SignedInvocation()` route through `ctx.run` instead of the direct
+    // in-isolate `@Processor` path, so it runs the full HTTP pipeline (and,
+    // with a cross-isolate transport, can cross back to the routing Worker).
+    // `InternalDispatcher` is a bootstrap-registered global token, so it
+    // resolves from the root container the binding holds.
+    if (this.dispatch?.kind === 'signed') {
+      const dispatch = this.dispatch;
+      await this.container.resolve(InternalDispatcher).run(dispatch.target(job), {
+        body: job,
+        method: dispatch.method,
+        ttlSeconds: dispatch.ttlSeconds,
+        iss: `queue:${job.queue}`,
+      });
+      return;
+    }
+
     const entries: QueueEntry[] = this.container.has(EntrypointRegistry)
       ? this.container
           .resolve(EntrypointRegistry)

@@ -34,9 +34,15 @@ import type { QueueDriver, QueueModuleOptions } from './queue.types';
 const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<QueueModuleOptions>({
   name: 'Queue',
   lazy: true,
-  key: (o) => stableHash({ queues: o.queues ?? [], driver: o.driver?.kind ?? 'inline' }),
+  key: (o) =>
+    stableHash({
+      queues: o.queues ?? [],
+      driver: o.driver?.kind ?? 'inline',
+      dispatch: o.dispatch?.kind ?? 'direct',
+    }),
   setup: ({ OPTIONS, options }) => {
     const queues = options.queues;
+    const dispatch = options.dispatch;
     if (!queues || queues.length === 0) {
       throw new Error(
         "QueueModule requires 'queues' as a structural option: " +
@@ -62,7 +68,7 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<QueueModu
         {
           provide: QueueDispatchBinding,
           useFactory: (container: Container, discovery: DiscoveryService, driver: QueueDriver) =>
-            new QueueDispatchBinding(container, discovery, driver, queues),
+            new QueueDispatchBinding(container, discovery, driver, queues, dispatch),
           inject: [Container, DiscoveryService, QUEUE_DRIVER],
         },
         ...clientProviders,

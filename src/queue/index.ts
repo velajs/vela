@@ -12,11 +12,22 @@ export { dispatchQueueJob } from './queue.dispatch';
 export type { QueueDispatchResult, QueueEntry } from './queue.dispatch';
 export { inline } from './inline.driver';
 export type { InlineQueueDriver, InlineQueueOptions } from './inline.driver';
+export { observeMessage, observeBatch } from './message-disposition';
+export type {
+  QueueMessageLike,
+  MessageOutcome,
+  MessageDisposition,
+  ObserveMessageOptions,
+  ObservedMessage,
+  BatchDisposition,
+  ObservedBatch,
+} from './message-disposition';
 export type {
   AddJobOptions,
   ProcessMetadata,
   ProcessorMetadata,
   QueueDispatchFn,
+  QueueDispatchMode,
   QueueDriver,
   QueueDriverBindHooks,
   QueueJob,
