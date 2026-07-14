@@ -65,7 +65,11 @@ describe('invocation crypto — signInvocation / verifyInvocation', () => {
 
   it('rejects a tampered signature with null', async () => {
     const token = await signInvocation(baseClaim(), SECRET);
-    const flipped = token.slice(0, -1) + (token.endsWith('A') ? 'B' : 'A');
+    // Flip the FIRST character of the signature segment — the final base64url
+    // char carries padding bits and can alias to the same signature bytes.
+    const dot = token.lastIndexOf('.');
+    const sigHead = token[dot + 1];
+    const flipped = token.slice(0, dot + 1) + (sigHead === 'A' ? 'B' : 'A') + token.slice(dot + 2);
     expect(await verifyInvocation(flipped, SECRET)).toBeNull();
   });
 
