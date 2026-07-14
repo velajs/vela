@@ -5,8 +5,9 @@ import { verifyInvocation } from '../crypto/invocation';
 import { ForbiddenException } from '../errors/http-exception';
 import { applyDecorators } from '../http/decorators';
 import { URL_SIGNING_SECRET, resolveSigningSecret } from '../http/url/signing-secret';
-import { UseGuards } from '../pipeline/decorators';
+import { UseGuards, UseMiddleware } from '../pipeline/decorators';
 import type { CanActivate, ExecutionContext } from '../pipeline/types';
+import { SignedInvocationBodyCapture, takeCapturedBodyHash } from './signed-body-capture';
 import { INVOCATION_HEADER, INVOCATION_SIGNING_SECRET, NONCE_STORE } from './tokens';
 import type { NonceStore } from './types';
 
@@ -14,6 +15,29 @@ import type { NonceStore } from './types';
 // token, a method/path/body mismatch, or a replayed nonce all look identical to
 // a caller, so nothing leaks which check tripped (and never the secret).
 const INVALID = 'Invalid or expired invocation';
+
+// A sentinel that can NEVER equal a real base64url SHA-256 digest (base64url has
+// no NUL byte and the empty-body case is the empty string). Returned when the
+// body was already consumed WITHOUT the capture middleware — the bare-guard
+// misuse (`@UseGuards(SignedInvocationGuard)` sans `@SignedInvocation()`) on a
+// `@Body()` handler — so `claim.bodyHash !== bodyHash` always holds → generic
+// 403, never a 500. Fail-closed.
+const UNRECOVERABLE_BODY = '\u0000';
+
+/**
+ * Hash the live request body, tolerating an already-consumed stream. Returns
+ * `''` for an empty body, `base64url(SHA-256(bytes))` otherwise, or the
+ * fail-closed sentinel when `clone()` throws (body already used). Only reached
+ * when the capture middleware did not run.
+ */
+async function hashLiveBody(request: Request): Promise<string> {
+  try {
+    const bytes = new Uint8Array(await request.clone().arrayBuffer());
+    return bytes.byteLength === 0 ? '' : await sha256Base64Url(bytes);
+  } catch {
+    return UNRECOVERABLE_BODY;
+  }
+}
 
 /**
  * Verifies the signed invocation token on `x-vela-invocation` and binds it to
@@ -52,8 +76,13 @@ export class SignedInvocationGuard implements CanActivate {
     const url = new URL(request.url);
     if (claim.path !== `${url.pathname}${url.search}`) throw new ForbiddenException(INVALID);
 
-    const bodyBytes = new Uint8Array(await request.clone().arrayBuffer());
-    const bodyHash = bodyBytes.byteLength === 0 ? '' : await sha256Base64Url(bodyBytes);
+    // The capture middleware installed by `@SignedInvocation()` hashes the raw
+    // body BEFORE `@Body()` consumes it (HTTP resolves args before guards). Use
+    // that hash when present; fall back to hashing the still-unconsumed live
+    // body for the bare-guard case. `takeCapturedBodyHash` also clears the entry
+    // so a Request identity reused across the isolate can't feed a stale hash.
+    const captured = takeCapturedBodyHash(request);
+    const bodyHash = captured !== undefined ? captured : await hashLiveBody(request);
     if (claim.bodyHash !== bodyHash) throw new ForbiddenException(INVALID);
 
     // Single-use: reject a replay of the same nonce (per-isolate for the default
@@ -77,7 +106,14 @@ export class SignedInvocationGuard implements CanActivate {
  * @SignedInvocation()
  * reindex(@Body() body: ReindexJob) { ... }
  * ```
+ *
+ * Composes {@link SignedInvocationBodyCapture} ahead of the guard so the raw
+ * body is hashed before `@Body()` consumes it — the guard needs those bytes to
+ * verify the claim's `bodyHash`, but HTTP resolves handler args before guards.
  */
 export function SignedInvocation(): ReturnType<typeof applyDecorators> {
-  return applyDecorators(UseGuards(SignedInvocationGuard));
+  return applyDecorators(
+    UseMiddleware(SignedInvocationBodyCapture),
+    UseGuards(SignedInvocationGuard),
+  );
 }

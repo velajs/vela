@@ -1,0 +1,5 @@
+---
+"@velajs/vela": patch
+---
+
+Fix `@SignedInvocation()` on handlers that declare `@Body()`. HTTP resolves handler arguments before guards (the documented NestJS-parity contract), so `@Body()` consumed the request body before `SignedInvocationGuard` could re-hash it to verify the claim's `bodyHash` — the guard's `request.clone()` then threw on the already-used stream, surfacing as a 500 instead of the intended 200/403. A new route-scoped capture middleware, composed onto every `@SignedInvocation()` route, hashes the raw body before it is consumed and publishes the digest to the guard via a request-keyed `WeakMap`; the guard prefers that captured hash and only falls back to hashing the live body when the middleware is absent (bare-guard misuse), where it now fails closed with a 403 rather than a 500. Token wire-format, guard semantics, the cross-isolate signed `InvocationTransport` path, and the args-before-guards machinery are all unchanged; bodyless invocations behave exactly as before.
