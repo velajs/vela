@@ -40,12 +40,16 @@ catalogs:
 overrides:
   '@velajs/vela': link:/Users/kauan/Projects/velajs/vela
   '@velajs/workflow': link:/Users/kauan/Projects/velajs/workflow
+  '@velajs/mail': link:/Users/kauan/Projects/velajs/mail
   hono: link:/Users/kauan/Projects/velajs/vela/node_modules/hono
 
 importers:
 
   .:
     dependencies:
+      '@velajs/mail':
+        specifier: link:/Users/kauan/Projects/velajs/mail
+        version: link:../../../../../../../Users/kauan/Projects/velajs/mail
       '@velajs/vela':
         specifier: link:/Users/kauan/Projects/velajs/vela
         version: link:../../../../../../../Users/kauan/Projects/velajs/vela

@@ -142,6 +142,25 @@ export type {
   StepDefinition,
 } from '@velajs/workflow';
 
+// Email Workers (inbound `email()` host hook + outbound `send_email` transport
+// over @velajs/mail's neutral core). CloudflareEmailModule provides MAIL_TRANSPORT
+// globally so a MailModule.forRoot({ from }) in another module resolves it; the
+// email() host hook (on CloudflareApplication) parses the raw stream and hands
+// off to @velajs/mail's CF-free inbound dispatcher.
+export { CloudflareEmailModule, DEFAULT_SEND_EMAIL_BINDING } from './email/cloudflare-email.module';
+export type { CloudflareEmailModuleOptions } from './email/cloudflare-email.module';
+export { createCloudflareEmailTransport } from './email/cloudflare-email-transport';
+// Re-export the mail inbound authoring surface so a Cloudflare app imports it
+// from one place (mirrors the WebSocket gateway + workflow re-exports above).
+export { OnInboundEmail, DEFAULT_INBOUND_GATE, evaluateInboundGate } from '@velajs/mail';
+export type {
+  InboundEmail,
+  InboundAuthentication,
+  Verdict,
+  MailInboundGate,
+  OnInboundEmailMeta,
+} from '@velajs/mail';
+
 // Types
 export type { CloudflareEnv, ScheduledRegistration, QueueRegistration } from './types';
 export type { ScheduledMetadata } from './decorators/scheduled';

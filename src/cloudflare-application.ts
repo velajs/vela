@@ -10,6 +10,7 @@ import {
 } from '@velajs/vela';
 import type { CronMetadata, Entrypoint, Type } from '@velajs/vela';
 import { ComponentManager } from '@velajs/vela/internal';
+import { dispatchInboundEmail, parseInboundEmail } from '@velajs/mail';
 import type { ScheduledMetadata } from './decorators/scheduled';
 import type { QueueConsumerMetadata } from './decorators/queue-consumer';
 import { collectWsGatewayRoutes, type WsGatewayRoute } from './websocket/websocket-routing';
@@ -45,6 +46,8 @@ function invoke(instance: object, methodName: string, args: unknown[]): unknown 
  * - `scheduled` — Cron trigger handler (matches `@Scheduled()` decorators
  *                 AND vela's own `@Cron()` jobs)
  * - `queue` — Queue consumer handler (matches `@QueueConsumer()` decorators)
+ * - `email` — Email Routing handler (dispatches `@OnInboundEmail()` handlers
+ *             from `@velajs/mail` after fail-closed verdict gating)
  * - `mountOpenApi` — Serve an OpenAPI document (and optional Scalar UI) on
  *                    the underlying Hono app
  *
@@ -55,6 +58,7 @@ function invoke(instance: object, methodName: string, args: unknown[]): unknown 
  *   fetch: app.fetch,
  *   scheduled: app.scheduled.bind(app),
  *   queue: app.queue.bind(app),
+ *   email: app.email.bind(app),
  * };
  * ```
  *
@@ -228,6 +232,33 @@ export class CloudflareApplication {
       .filter((ep) => ep.meta.queueName === batch.queue);
 
     await Promise.all(handlers.map((ep) => this.dispatchEntrypoint(ep, [batch, env, ctx])));
+  }
+
+  /**
+   * Handle Cloudflare Email Routing events (the Worker's `email` handler).
+   * Reads the RAW byte stream — NOT `message.headers`, which is a `Headers`
+   * object that collapses duplicate `Authentication-Results` headers and would
+   * let an attacker-injected lower header win. The SMTP envelope (`from`/`to`)
+   * is supplied to `@velajs/mail`'s neutral, CF-free parser; verdict gating and
+   * the handler pipeline live entirely in that core (this hook only does I/O).
+   *
+   * When the app gate rejects the message, `dispatchInboundEmail` runs NO
+   * handler (privileged inbound handlers never see an ungated message) and this
+   * hook returns a permanent SMTP reject with a FIXED, generic reason — never a
+   * verdict name or internal detail, since the sender may be the attacker.
+   * A gate-passed message with no matching handler is dropped (the default).
+   */
+  async email(
+    message: ForwardableEmailMessage,
+    _env: CloudflareEnv,
+    _ctx: { waitUntil: (promise: Promise<unknown>) => void },
+  ): Promise<void> {
+    const bytes = new Uint8Array(await new Response(message.raw).arrayBuffer());
+    const email = parseInboundEmail(bytes, { from: message.from, to: message.to });
+    const result = await dispatchInboundEmail(this.app.getContainer(), this.app.entrypoints, email);
+    if (result.gated) {
+      message.setReject('message could not be processed');
+    }
   }
 
   async close(signal?: string): Promise<void> {

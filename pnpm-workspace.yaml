@@ -2,14 +2,17 @@ packages:
   - '.'
 
 # WP-A dev/test resolution for unpublished local packages (documented in
-# batch-5 spec DEP WIRING): @velajs/workflow is not on npm and @velajs/vela's
-# local main is ahead of npm (carries the unpublished ctx.run seam). Both are
-# resolved to their local repos via absolute `link:` overrides so a fresh
-# worktree (which has no relative node_modules symlink) resolves them
-# location-independently. Remove these once both versions publish.
+# batch-5 spec DEP WIRING): @velajs/workflow and @velajs/mail are not on npm and
+# @velajs/vela's local main is ahead of npm (carries the unpublished ctx.run
+# seam). All three are resolved to their local repos via absolute `link:`
+# overrides so a fresh worktree (which has no relative node_modules symlink)
+# resolves them location-independently. @velajs/mail is consumed by the Email
+# Workers adapter (batch 7): its outbound transport + the email() host hook's
+# inbound dispatcher. Remove these once the versions publish.
 overrides:
   '@velajs/vela': 'link:/Users/kauan/Projects/velajs/vela'
   '@velajs/workflow': 'link:/Users/kauan/Projects/velajs/workflow'
+  '@velajs/mail': 'link:/Users/kauan/Projects/velajs/mail'
   # Dedupe hono onto the SAME physical copy the linked vela uses. Without this,
   # the worktree installs its own hono and the linked vela keeps its bundled one,
   # so `VelaApplication`'s Hono-typed surface (getHonoApp / middleware) reads as

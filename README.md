@@ -437,6 +437,88 @@ Names are derived purely from the **export name**, so wrangler config, the gener
 
 Every declared workflow is discoverable through `app.entrypoints.ofKind('cf:workflow')` for CLI / OpenAPI / introspection.
 
+## Email
+
+Send and receive email over [`@velajs/mail`](https://www.npmjs.com/package/@velajs/mail)'s edge-neutral core. `@velajs/mail` owns the send pipeline (render → validate → build → dispatch), every address / header-injection guard, and the inbound verdict gate; this package supplies two Cloudflare adapters — an **outbound** transport over the `send_email` binding and an **inbound** `email()` host hook — and re-exports the inbound authoring surface (`OnInboundEmail`, `InboundEmail`, `MailInboundGate`).
+
+### Outbound (`send_email` binding)
+
+`CloudflareEmailModule.forRoot()` provides `@velajs/mail`'s `MAIL_TRANSPORT` **globally**, so a `MailModule.forRoot({ from })` in any module resolves it — import the email module first and pass no explicit `transport`:
+
+```ts
+import { Module } from '@velajs/vela';
+import { CloudflareEmailModule } from '@velajs/cloudflare';
+import { MailModule, MailService } from '@velajs/mail';
+
+@Module({
+  imports: [
+    CloudflareEmailModule.forRoot(), // provides MAIL_TRANSPORT (binding: 'SEND_EMAIL')
+    MailModule.forRoot({ from: 'no-reply@example.com' }),
+  ],
+})
+export class AppModule {}
+
+// Inject MailService anywhere and send — guards run in @velajs/mail's buildMessage
+// ABOVE the transport, so a malicious subject/address never reaches the binding:
+class Notifier {
+  constructor(private readonly mail: MailService) {}
+  notify() {
+    return this.mail.send({ to: 'user@example.com', subject: 'Hi', text: 'Hello' });
+  }
+}
+```
+
+The transport assembles the RFC 822 message with `renderRawMessage` above the seam and constructs one `EmailMessage` per envelope recipient (`cloudflare:email` is single-recipient, so multi-recipient sends fan out). Provider errors are redacted — a failed `send()` throws a fixed `MailError('provider_error', …, { internal: true })`; the raw platform error rides `MailError.cause` for server-side logging only. Override the binding name with `CloudflareEmailModule.forRoot({ binding: 'MY_SEND_EMAIL' })`.
+
+### Inbound (`email()` host hook)
+
+Declare handlers with `@OnInboundEmail` and export `email` from the Worker. The hook reads the **raw byte stream** (not `message.headers`, which collapses duplicate `Authentication-Results` and would let an attacker-injected lower header win) and hands a parsed `InboundEmail` to `@velajs/mail`'s CF-free dispatcher:
+
+```ts
+import { Injectable } from '@velajs/vela';
+import { OnInboundEmail } from '@velajs/cloudflare';
+import type { InboundEmail } from '@velajs/cloudflare';
+
+@Injectable()
+export class SupportInbox {
+  // Runs ONLY if the app gate passed; `match` merely routes, it never relaxes the gate.
+  @OnInboundEmail({ match: (e) => e.to.some((a) => a.includes('support@')) })
+  async handle(email: InboundEmail) {
+    // email.from is SPOOFABLE — authorize on email.authentication, not on from.
+    // email.raw() / email.rawText() expose the bytes for BYO full-MIME parsing.
+  }
+}
+```
+
+Gating is **fail-closed**: the default policy requires `dmarc === 'pass'`; a missing `Authentication-Results` header, or any non-`pass` verdict, rejects. When the gate fails, **no handler runs** and the hook replies with a permanent SMTP reject carrying a fixed generic reason (never a verdict name or internal detail — the sender may be the attacker). A gate-passed message with no matching handler is dropped. Configure the policy via `MailModule.forRoot({ inbound: { gate: { require: ['dkim', 'spf', 'dmarc'] } } })`, or set `trustInternal: true` as the explicit escape hatch for trusted-internal MTAs.
+
+### Full Worker export
+
+```ts
+const app = await createCloudflareApp(AppModule);
+
+export default {
+  fetch: app.fetch,
+  scheduled: app.scheduled.bind(app),
+  queue: app.queue.bind(app),
+  email: app.email.bind(app),
+};
+```
+
+### wrangler configuration
+
+```jsonc
+{
+  "compatibility_flags": ["nodejs_compat"],
+  // Outbound: a send_email binding (name must match CloudflareEmailModule.forRoot({ binding })).
+  // Optionally constrain recipients with destination_address / allowed_destination_addresses.
+  "send_email": [{ "name": "SEND_EMAIL" }],
+}
+```
+
+- **Inbound** is wired in the Cloudflare dashboard, not `wrangler.jsonc`: enable **Email Routing** on the zone, then add a routing rule **"Send to a Worker"** → this Worker (which exports `email`). `email.forward(...)` requires verified destination addresses.
+- `cloudflare:email` and `cloudflare:workers` are built-in Workers modules — no dependency to install.
+
 ## How It Works
 
 Cloudflare Workers only provide bindings (`env.DB`, `env.MY_KV`, etc.) at request time via the `env` parameter. They are stable across requests within an isolate.

@@ -11,6 +11,7 @@ export const DO_BINDING_REF = new InjectionToken<BindingRef>('CF_DO_BINDING_REF'
 export const AI_BINDING_REF = new InjectionToken<BindingRef>('CF_AI_BINDING_REF');
 export const VECTORIZE_BINDING_REF = new InjectionToken<BindingRef>('CF_VECTORIZE_BINDING_REF');
 export const HYPERDRIVE_BINDING_REF = new InjectionToken<BindingRef>('CF_HYPERDRIVE_BINDING_REF');
+export const SEND_EMAIL_BINDING_REF = new InjectionToken<BindingRef>('CF_SEND_EMAIL_BINDING_REF');
 
 // Token for the whole-env holder (full c.env), backing EnvService.
 export const ENV_REF = new InjectionToken<EnvRef>('CF_ENV_REF');

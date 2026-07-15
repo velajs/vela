@@ -60,6 +60,7 @@
     "@cloudflare/workers-types": "^4.20260624.1",
     "@swc/core": "catalog:",
     "@velajs/feature-flags": "^0.1.0",
+    "@velajs/mail": ">=0.1.0",
     "@velajs/vela": "^1.17.0",
     "@velajs/workflow": "^0.1.0",
     "hono": "^4.12.27",
@@ -74,6 +75,7 @@
   "peerDependencies": {
     "@cloudflare/workers-types": ">=4",
     "@velajs/feature-flags": "^0.1.0",
+    "@velajs/mail": ">=0.1.0",
     "@velajs/vela": ">=1.17.0",
     "@velajs/workflow": ">=0.1.0",
     "hono": ">=4"
