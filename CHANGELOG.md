@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.20.0
+
+### Minor Changes
+
+- 1d584f8: Add the internal-dispatch seam: `InternalDispatcher.run()` re-enters the app through named routes using per-invocation HMAC-signed claims (audience-tagged, method/path/body-hash-bound, short-TTL, nonce single-use via a pluggable `NonceStore`), verified fail-closed by the new `@SignedInvocation()` guard. Shared HMAC/base64url plumbing is extracted to `crypto/hmac.ts` and reused by the existing signed-URL feature unchanged.
+- 03570b1: Adopt the `ctx.run` signed re-entry seam in QueueModule and ScheduleModule, and add a queue disposition harness.
+
+  - **Opt-in signed dispatch (default off, additive).** `QueueModule.forRoot({ dispatch: { kind: 'signed', target } })` and `ScheduleModule.forRoot({ dispatch: { kind: 'signed', target } })` re-enter a user-authored `@SignedInvocation()` route through `InternalDispatcher.run()` instead of the direct in-isolate `@Processor`/decorated-method path, so the job runs the full request pipeline (global guards/interceptors/filters). Absent (or `{ kind: 'direct' }`) keeps today's behavior exactly; `dispatch.kind` participates in the QueueModule dedup key. The schedule-node `ScheduleExecutor` reads the policy via an `@Optional` global `SCHEDULE_DISPATCH` token.
+  - **Queue disposition harness** (`@velajs/vela/queue`): `observeMessage`/`observeBatch` WRAP (never mutate) a non-extensible host queue `Message` in a Proxy to record `ack`/`retry` outcomes and honestly infer `deadLettered` when the observer supplies `maxRetries` (`undefined` when unknown, never a misleading `false`). Platform-neutral testing/observability seam; not wired into any delivery path.
+
+### Patch Changes
+
+- 877699e: Fix `@SignedInvocation()` on handlers that declare `@Body()`. HTTP resolves handler arguments before guards (the documented NestJS-parity contract), so `@Body()` consumed the request body before `SignedInvocationGuard` could re-hash it to verify the claim's `bodyHash` — the guard's `request.clone()` then threw on the already-used stream, surfacing as a 500 instead of the intended 200/403. A new route-scoped capture middleware, composed onto every `@SignedInvocation()` route, hashes the raw body before it is consumed and publishes the digest to the guard via a request-keyed `WeakMap`; the guard prefers that captured hash and only falls back to hashing the live body when the middleware is absent (bare-guard misuse), where it now fails closed with a 403 rather than a 500. Token wire-format, guard semantics, the cross-isolate signed `InvocationTransport` path, and the args-before-guards machinery are all unchanged; bodyless invocations behave exactly as before.
+
 ## 1.19.1
 
 ### Patch Changes
