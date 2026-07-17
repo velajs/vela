@@ -1,6 +1,6 @@
 {
   "name": "@velajs/client",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Framework-neutral client for Vela live queries: live subscriptions over WebSocket, keyed deltas, cursor-gated optimistic updates, reconnect with resume",
   "keywords": [
     "client",
