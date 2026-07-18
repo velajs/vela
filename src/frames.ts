@@ -13,6 +13,7 @@
  * drift. Canonical key order is the declaration order of each type below;
  * absent optionals are omitted entirely.
  */
+import { LIVE_PROTOCOL } from './version';
 
 /** The reserved envelope event every live frame rides under. */
 export const LIVE_EVENT = '$live';
@@ -33,6 +34,11 @@ export const RESERVED_EVENT_PREFIX = '$';
 export const COMMIT_CURSOR_HEADER = 'Vela-Commit-Cursor';
 export const COMMIT_EPOCH_HEADER = 'Vela-Commit-Epoch';
 
+/** Default hard limits shared by every live-protocol endpoint. */
+export const MAX_LIVE_FRAME_BYTES = 64 * 1024;
+export const MAX_PRESENCE_METADATA_BYTES = 4 * 1024;
+export const MAX_DELTA_OPS = 1000;
+
 /** Well-known `error` frame codes. The code space is open — receivers must tolerate unknown codes. */
 export const LIVE_ERROR_CODES = {
   UNSUPPORTED_PROTOCOL: 'unsupported_protocol',
@@ -40,6 +46,7 @@ export const LIVE_ERROR_CODES = {
   UNKNOWN_QUERY: 'unknown_query',
   FORBIDDEN: 'forbidden',
   BAD_ARGS: 'bad_args',
+  LIMIT_EXCEEDED: 'limit_exceeded',
   INTERNAL: 'internal',
 } as const;
 
@@ -75,7 +82,7 @@ export type ClientLiveFrame =
       /** Key-field override for list deltas (default `'id'`). */
       key?: string;
       /** Protocol version the client speaks (see LIVE_PROTOCOL). */
-      v?: number;
+      v: number;
     }
   | { t: 'unsub'; sub: string }
   | { t: 'presence'; room: string; meta?: unknown };
@@ -96,49 +103,64 @@ export type LiveFrame = ClientLiveFrame | ServerLiveFrame;
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-const isOptionalNumber = (value: unknown): value is number | undefined =>
-  value === undefined || (typeof value === 'number' && Number.isFinite(value));
+const isCursor = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 
-const isOptionalString = (value: unknown): value is string | undefined =>
-  value === undefined || typeof value === 'string';
+const isOptionalCursor = (value: unknown): value is number | undefined =>
+  value === undefined || isCursor(value);
+
+const isBoundedString = (value: unknown, max: number, allowEmpty = false): value is string =>
+  typeof value === 'string' && (allowEmpty || value.length > 0) && value.length <= max;
+
+const isOptionalBoundedString = (value: unknown, max: number): value is string | undefined =>
+  value === undefined || isBoundedString(value, max);
+
+const hasOwn = (value: Record<string, unknown>, key: string): boolean => Object.hasOwn(value, key);
+
+const hasCursorPair = (value: Record<string, unknown>, cursor: string, epoch: string): boolean =>
+  (value[cursor] === undefined && value[epoch] === undefined) ||
+  (isCursor(value[cursor]) && isBoundedString(value[epoch], 256));
 
 /** Structural guard for a single {@link RowOp}. Unknown extra fields are tolerated. */
 export const isRowOp = (value: unknown): value is RowOp => {
-  if (!isRecord(value) || typeof value['key'] !== 'string') return false;
+  if (!isRecord(value) || !isBoundedString(value['key'], 512)) return false;
   const op = value['op'];
   if (op === 'delete') return true;
   if (op !== 'insert' && op !== 'update') return false;
-  if (!isRecord(value['row'])) return false;
+  if (!isRecord(value['row']) || !isJsonWithin(value['row'], MAX_LIVE_FRAME_BYTES)) return false;
   if (op === 'insert') {
     const before = value['before'];
-    return before === null || typeof before === 'string';
+    return before === null || isBoundedString(before, 512);
   }
   return true;
 };
 
 export const isRowOps = (value: unknown): value is RowOp[] =>
-  Array.isArray(value) && value.every(isRowOp);
+  Array.isArray(value) && value.length <= MAX_DELTA_OPS && value.every(isRowOp);
 
 /**
  * Structural guard for a client frame. Frames with an unknown `t` return
  * false — per the forward-compat rule the receiver then ignores the frame.
  */
 export const isClientLiveFrame = (value: unknown): value is ClientLiveFrame => {
-  if (!isRecord(value)) return false;
+  if (!isRecord(value) || !isJsonWithin(value, MAX_LIVE_FRAME_BYTES)) return false;
   switch (value['t']) {
     case 'sub':
       return (
-        typeof value['sub'] === 'string' &&
-        typeof value['query'] === 'string' &&
-        isOptionalNumber(value['sinceCursor']) &&
-        isOptionalString(value['sinceEpoch']) &&
-        isOptionalString(value['key']) &&
-        isOptionalNumber(value['v'])
+        isBoundedString(value['sub'], 256) &&
+        isBoundedString(value['query'], 256) &&
+        hasCursorPair(value, 'sinceCursor', 'sinceEpoch') &&
+        isOptionalBoundedString(value['key'], 128) &&
+        value['v'] === LIVE_PROTOCOL &&
+        (!hasOwn(value, 'args') || isJsonWithin(value['args'], 32 * 1024))
       );
     case 'unsub':
-      return typeof value['sub'] === 'string';
+      return isBoundedString(value['sub'], 256);
     case 'presence':
-      return typeof value['room'] === 'string';
+      return (
+        isBoundedString(value['room'], 512) &&
+        (!hasOwn(value, 'meta') || isJsonWithin(value['meta'], MAX_PRESENCE_METADATA_BYTES))
+      );
     default:
       return false;
   }
@@ -146,42 +168,35 @@ export const isClientLiveFrame = (value: unknown): value is ClientLiveFrame => {
 
 /** Structural guard for a server frame. Unknown `t` → false (receiver ignores). */
 export const isServerLiveFrame = (value: unknown): value is ServerLiveFrame => {
-  if (!isRecord(value)) return false;
+  if (!isRecord(value) || !isJsonWithin(value, MAX_LIVE_FRAME_BYTES)) return false;
   switch (value['t']) {
     case 'ack':
-      return typeof value['sub'] === 'string';
+      return isBoundedString(value['sub'], 256);
     case 'data':
       return (
-        typeof value['sub'] === 'string' &&
-        'snapshot' in value &&
-        isOptionalNumber(value['cursor']) &&
-        isOptionalString(value['epoch'])
+        isBoundedString(value['sub'], 256) &&
+        hasOwn(value, 'snapshot') &&
+        hasCursorPair(value, 'cursor', 'epoch')
       );
     case 'delta':
       return (
-        typeof value['sub'] === 'string' &&
+        isBoundedString(value['sub'], 256) &&
         isRowOps(value['ops']) &&
-        isOptionalNumber(value['cursor']) &&
-        isOptionalString(value['epoch'])
+        hasCursorPair(value, 'cursor', 'epoch')
       );
     case 'settled':
-      return (
-        typeof value['sub'] === 'string' &&
-        isOptionalNumber(value['cursor']) &&
-        isOptionalString(value['epoch'])
-      );
+      return isBoundedString(value['sub'], 256) && hasCursorPair(value, 'cursor', 'epoch');
     case 'resume':
       return (
-        typeof value['sub'] === 'string' &&
-        typeof value['cursor'] === 'number' &&
-        Number.isFinite(value['cursor']) &&
-        typeof value['epoch'] === 'string'
+        isBoundedString(value['sub'], 256) &&
+        isCursor(value['cursor']) &&
+        isBoundedString(value['epoch'], 256)
       );
     case 'error':
       return (
-        isOptionalString(value['sub']) &&
-        typeof value['code'] === 'string' &&
-        typeof value['message'] === 'string' &&
+        isOptionalBoundedString(value['sub'], 256) &&
+        isBoundedString(value['code'], 128) &&
+        isBoundedString(value['message'], 2048, true) &&
         typeof value['fatal'] === 'boolean'
       );
     default:
@@ -195,8 +210,59 @@ export const isServerLiveFrame = (value: unknown): value is ServerLiveFrame => {
  * {@link isClientLiveFrame} / {@link isServerLiveFrame} on the receiving side.
  */
 export const readLiveEnvelope = (envelope: unknown): unknown => {
-  if (!isRecord(envelope) || envelope['event'] !== LIVE_EVENT) return undefined;
+  if (
+    !isRecord(envelope) ||
+    envelope['event'] !== LIVE_EVENT ||
+    !hasOwn(envelope, 'data') ||
+    !isJsonWithin(envelope, MAX_LIVE_FRAME_BYTES)
+  ) {
+    return undefined;
+  }
   return envelope['data'];
+};
+
+const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+const isJsonWithin = (value: unknown, maxBytes: number): boolean => {
+  if (!isJsonValue(value, new WeakSet(), { nodes: 0 }, 0)) return false;
+  try {
+    const serialized = JSON.stringify(value);
+    return serialized !== undefined && new TextEncoder().encode(serialized).byteLength <= maxBytes;
+  } catch {
+    return false;
+  }
+};
+
+const isJsonValue = (
+  value: unknown,
+  seen: WeakSet<object>,
+  budget: { nodes: number },
+  depth: number,
+): boolean => {
+  budget.nodes += 1;
+  if (budget.nodes > 10_000 || depth > 32) return false;
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (typeof value !== 'object' || seen.has(value)) return false;
+  seen.add(value);
+
+  const values: unknown[] = [];
+  if (Array.isArray(value)) {
+    values.push(...value);
+  } else {
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return false;
+    for (const key of Object.keys(value)) {
+      if (DANGEROUS_KEYS.has(key)) return false;
+      values.push((value as Record<string, unknown>)[key]);
+    }
+  }
+
+  for (const child of values) {
+    if (!isJsonValue(child, seen, budget, depth + 1)) return false;
+  }
+  seen.delete(value);
+  return true;
 };
 
 /** Wrap a frame in the `$live` envelope object. */
@@ -250,8 +316,12 @@ export const canonicalLiveFrame = (frame: LiveFrame): Record<string, unknown> =>
 };
 
 /** Canonical JSON encoding of a bare frame (no envelope). */
-export const encodeLiveFrame = (frame: LiveFrame): string =>
-  JSON.stringify(canonicalLiveFrame(frame));
+export const encodeLiveFrame = (frame: LiveFrame): string => {
+  if (!isClientLiveFrame(frame) && !isServerLiveFrame(frame)) {
+    throw new TypeError('Cannot encode an invalid or oversized live frame.');
+  }
+  return JSON.stringify(canonicalLiveFrame(frame));
+};
 
 /** Canonical JSON encoding of the full `$live` envelope — what actually goes on the socket. */
 export const encodeLiveEnvelope = (frame: LiveFrame): string =>

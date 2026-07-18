@@ -8,4 +8,4 @@
  * frame; a server that cannot serve that version replies
  * `{ t: 'error', code: 'unsupported_protocol', fatal: true }`.
  */
-export const LIVE_PROTOCOL = 1;
+export const LIVE_PROTOCOL = 2;

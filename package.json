@@ -48,7 +48,8 @@
     "attw": "attw --pack . --profile esm-only",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "pnpm build && changeset publish",
+    "release:check": "node scripts/check-release-lock.mjs && pnpm verify && pnpm audit --audit-level=high",
+    "release": "pnpm release:check && changeset publish",
     "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm test && pnpm publint && pnpm attw"
   },
   "devDependencies": {

@@ -28,14 +28,14 @@ export const FRAME_FIXTURES: FrameFixture[] = [
       sinceCursor: 42,
       sinceEpoch: 'e-1',
       key: 'id',
-      v: 1,
+      v: 2,
     },
-    wire: '{"event":"$live","data":{"t":"sub","sub":"s1","query":"todos.list","args":{"listId":"l1"},"sinceCursor":42,"sinceEpoch":"e-1","key":"id","v":1}}',
+    wire: '{"event":"$live","data":{"t":"sub","sub":"s1","query":"todos.list","args":{"listId":"l1"},"sinceCursor":42,"sinceEpoch":"e-1","key":"id","v":2}}',
   },
   {
     name: 'sub (minimal)',
-    frame: { t: 'sub', sub: 's2', query: 'todos.all' },
-    wire: '{"event":"$live","data":{"t":"sub","sub":"s2","query":"todos.all"}}',
+    frame: { t: 'sub', sub: 's2', query: 'todos.all', v: 2 },
+    wire: '{"event":"$live","data":{"t":"sub","sub":"s2","query":"todos.all","v":2}}',
   },
   {
     name: 'unsub',
