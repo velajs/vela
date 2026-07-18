@@ -53,20 +53,20 @@
     "attw": "attw --pack . --profile esm-only",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release:preflight": "npm view @velajs/vela@2.0.0 version && npm view @velajs/authz@2.0.0 version && npm view @velajs/testing@1.0.0 version",
+    "release:preflight": "npm view @velajs/vela@1.21.0 version && npm view @velajs/authz@1.1.0 version && npm view @velajs/testing@1.0.0 version",
     "release:check": "node scripts/check-release-lock.mjs && pnpm verify && pnpm audit --audit-level=high",
     "release": "pnpm release:preflight && pnpm release:check && changeset publish",
     "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm test && pnpm publint && pnpm attw"
   },
   "dependencies": {
-    "@velajs/authz": "^2.0.0"
+    "@velajs/authz": "^1.1.0"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "catalog:",
     "@changesets/cli": "catalog:",
     "@swc/core": "catalog:",
     "@velajs/testing": "^1.0.0",
-    "@velajs/vela": "^2.0.0",
+    "@velajs/vela": "^1.21.0",
     "better-auth": "^1.6.20",
     "hono": "^4.12.26",
     "oxfmt": "catalog:",
@@ -78,7 +78,7 @@
     "vitest": "catalog:"
   },
   "peerDependencies": {
-    "@velajs/vela": ">=2.0.0",
+    "@velajs/vela": ">=1.21.0 <2",
     "better-auth": ">=1.2.0",
     "hono": ">=4"
   },

@@ -16,9 +16,9 @@
   "dependencies": {
     "@better-auth/drizzle-adapter": "^1.6.10",
     "@velajs/better-auth": "file:../..",
-    "@velajs/cloudflare": "^2.0.0",
+    "@velajs/cloudflare": "^1.11.0",
     "@velajs/mail": "^1.0.0",
-    "@velajs/vela": "^2.0.0",
+    "@velajs/vela": "^1.21.0",
     "@velajs/workflow": "^0.1.0",
     "better-auth": "^1.6.0",
     "drizzle-orm": "^0.36.0",
