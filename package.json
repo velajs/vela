@@ -84,7 +84,9 @@
     "attw": "attw --pack . --profile esm-only",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "pnpm build && changeset publish",
+    "release:preflight": "npm view @velajs/vela@2.0.0 version && npm view @velajs/testing@1.0.0 version",
+    "release:check": "node scripts/check-release-lock.mjs && pnpm verify && pnpm audit --audit-level=high",
+    "release": "pnpm release:preflight && pnpm release:check && changeset publish",
     "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm test && pnpm test:workers && pnpm publint && pnpm attw"
   },
   "dependencies": {
@@ -96,8 +98,8 @@
     "@cloudflare/vitest-pool-workers": "^0.16.18",
     "@cloudflare/workers-types": "^4.20260624.1",
     "@swc/core": "catalog:",
-    "@velajs/testing": "^0.4.0",
-    "@velajs/vela": "^1.12.0",
+    "@velajs/testing": "^1.0.0",
+    "@velajs/vela": "^2.0.0",
     "aws4fetch": "^1.0.20",
     "hono": "^4.12.27",
     "oxfmt": "catalog:",
@@ -110,7 +112,7 @@
   },
   "peerDependencies": {
     "@cloudflare/workers-types": ">=4",
-    "@velajs/vela": ">=1.11.0",
+    "@velajs/vela": ">=2.0.0",
     "hono": ">=4"
   },
   "peerDependenciesMeta": {

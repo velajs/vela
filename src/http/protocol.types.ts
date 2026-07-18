@@ -14,26 +14,32 @@ export interface SignUploadRequest {
 
 export interface MultipartCreateRequest {
   key: string;
+  /** Exact total object size. Bound into the server-signed multipart grant. */
+  size: number;
   contentType?: string;
   metadata?: Record<string, string>;
   partSize?: number;
+  expiresIn?: number;
 }
 
 export interface SignPartRequest {
   key: string;
   uploadId: string;
   partNumber: number;
+  grant: string;
 }
 
 export interface MultipartCompleteRequest {
   key: string;
   uploadId: string;
   parts: UploadedPart[];
+  grant: string;
 }
 
 export interface MultipartAbortRequest {
   key: string;
   uploadId: string;
+  grant: string;
 }
 
 export interface DeleteRequest {
@@ -50,6 +56,9 @@ export interface MultipartCreateResponse {
   key: string;
   uploadId: string;
   partSize: number;
+  partCount: number;
+  expiresAtMs: number;
+  grant: string;
 }
 
 export interface SignPartResponse {

@@ -7,7 +7,7 @@ import type { Context } from 'hono';
  */
 export type StorageAction =
   | { type: 'sign-upload'; key: string; contentType?: string; size?: number }
-  | { type: 'multipart-create'; key: string; contentType?: string }
+  | { type: 'multipart-create'; key: string; contentType?: string; size: number }
   | { type: 'multipart-sign-part'; key: string; uploadId: string; partNumber: number }
   | { type: 'multipart-complete'; key: string; uploadId: string }
   | { type: 'multipart-abort'; key: string; uploadId: string }
@@ -27,6 +27,8 @@ export interface StorageAuthContext {
 
 /** Return this to ALLOW with server-side modifications. */
 export interface StorageAuthResult {
+  /** Stable authenticated actor identifier. Required for every multipart action. */
+  actorId?: string;
   key?: string;
   keys?: string[];
   prefix?: string;

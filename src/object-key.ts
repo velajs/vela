@@ -7,6 +7,7 @@ import { StorageError } from './storage.error';
 
 // Control characters: C0 range (0x00-0x1F) plus DEL (0x7F).
 const CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
+const encoder = new TextEncoder();
 
 /**
  * True when `key` is a safe object key:
@@ -17,7 +18,9 @@ const CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
  * - no backslashes (Windows-style separators)
  */
 export function isSafeKey(key: string): boolean {
-  if (typeof key !== 'string' || key.length === 0 || key.length > 1024) return false;
+  if (typeof key !== 'string' || key.length === 0 || encoder.encode(key).byteLength > 1024) {
+    return false;
+  }
   if (key.startsWith('/')) return false;
   if (key.includes('\\')) return false;
   if (CONTROL_CHARS.test(key)) return false;

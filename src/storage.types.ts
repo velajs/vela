@@ -176,6 +176,8 @@ export interface SignedUrlCapability {
   supported: boolean;
   /** Can mint a presigned upload via `signedUploadUrl()`. */
   upload: boolean;
+  /** `url()` cryptographically binds a response `Content-Disposition` override. */
+  responseContentDisposition?: boolean;
   /** Provider ceiling on `expiresIn` (seconds), if any. */
   maxExpiresIn?: number;
 }

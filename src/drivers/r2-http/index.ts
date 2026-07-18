@@ -63,7 +63,7 @@ export function r2HybridDriver(o: R2HybridOptions): StorageDriver {
     ...binding,
     name: 'r2-hybrid',
     supportsServerSideCopy: true,
-    signedUrl: { supported: true, upload: true },
+    signedUrl: { supported: true, upload: true, responseContentDisposition: true },
     url: (key, opts) => http.url(key, opts),
     signedUploadUrl: (key, opts) => http.signedUploadUrl(key, opts),
     signedMultipart: http.signedMultipart,
