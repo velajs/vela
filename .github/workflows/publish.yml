@@ -2,9 +2,9 @@ name: Publish
 
 # Publishes the CURRENT package.json version to npm on demand. The auto-release
 # (release.yml) only fires on new commits; this lets an already-bumped+tagged
-# version that missed publication (e.g. a run before NPM_TOKEN was configured)
+# version that missed publication (e.g. a failed trusted-publisher run)
 # be published without a synthetic bump. If the version already exists, the
-# workflow repairs its public access instead of failing on a duplicate publish.
+# workflow exits successfully when that version is already published.
 on:
   workflow_dispatch: {}
   release:
@@ -35,20 +35,26 @@ jobs:
           registry-url: https://registry.npmjs.org
           cache: pnpm
 
-      - run: pnpm install
+      - run: npm install -g npm@12.0.0
 
-      - run: pnpm run build
+      - name: Validate release lock integrity
+        run: node scripts/check-release-lock.mjs
 
-      - name: Publish or repair public access
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm release:preflight
+
+      - run: pnpm release:check
+
+      - name: Publish when absent
         run: |
           package_name="$(node -p "require('./package.json').name")"
           package_version="$(node -p "require('./package.json').version")"
 
           if npm view "${package_name}@${package_version}" version >/dev/null 2>&1; then
-            npm access set status=public "${package_name}"
+            echo "${package_name}@${package_version} is already published"
           else
             npm publish --access public
           fi
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: "${{ !github.event.repository.private }}"
+          NPM_CONFIG_PROVENANCE: "true"

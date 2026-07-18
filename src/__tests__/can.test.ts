@@ -29,6 +29,16 @@ describe('createAuthz + can (role-backed default resolver)', () => {
     expect(await authz.can(anonymous, 'posts:read')).toBe(false);
     expect(await authz.can({}, 'posts:read')).toBe(false);
   });
+  it('accepts stable issuer-scoped principals without changing role semantics', async () => {
+    const identity = {
+      issuer: 'https://issuer.example',
+      subject: 'user-1',
+      principalType: 'user' as const,
+      userId: 'user-1',
+      roles: ['editor'],
+    };
+    expect(await authz.can(identity, 'posts:write')).toBe(true);
+  });
   it('FAIL-CLOSED: a throwing resolver denies (never allows on error)', async () => {
     const boom = {
       grants() {

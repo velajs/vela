@@ -1,4 +1,4 @@
-export type { Identity, PermissionResolver } from './identity';
+export type { Identity, PermissionResolver, PrincipalType } from './identity';
 export { anonymous } from './identity';
 
 export type { RoleDef, PermissionDef } from './roles';
