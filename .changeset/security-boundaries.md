@@ -1,5 +1,5 @@
 ---
-"@velajs/vela": major
+"@velajs/vela": minor
 ---
 
 Harden the framework's HTTP, cache, signed-URL, storage-path, live, and WebSocket security boundaries.

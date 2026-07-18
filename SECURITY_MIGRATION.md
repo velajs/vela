@@ -1,10 +1,10 @@
-# Security migration (2.0)
+# Security migration (1.21)
 
-Vela 2.0 intentionally tightens request, cache, capability, identity, and
+Vela 1.21 intentionally tightens request, cache, capability, identity, and
 WebSocket boundaries. These changes are breaking where an older default was
 unsafe or ambiguous.
 
-The packages use a staged publish order because Live Protocol 2 and Vela 2
+The packages use a staged publish order because Live Protocol 1.1 and Vela 1.21
 change security-sensitive wire contracts. Follow
 [COORDINATED_RELEASE.md](./COORDINATED_RELEASE.md); consumer release scripts
 also verify their exact upstream versions are public before publishing.

@@ -17,7 +17,7 @@
     "@hono/node-server": "^1.19.0",
     "@hono/node-ws": "^1.2.0",
     "@velajs/client": "^1.0.0",
-    "@velajs/cloudflare": "^2.0.0",
+    "@velajs/cloudflare": "^1.11.0",
     "@velajs/mail": "^1.0.0",
     "@velajs/vela": "file:../..",
     "@velajs/workflow": "^0.1.0",
