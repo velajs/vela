@@ -51,6 +51,10 @@ out of date until its new upstream versions exist. It must never contain a
 synthetic registry snapshot for an unpublished package, a guessed integrity
 hash, or a relative/absolute `link:` override.
 
+The handoff also covers every checked-in example lockfile: regenerate and audit
+those locks after their upstreams publish. Vela's current example locks must
+wait for Live Protocol 1.1 before they can be regenerated safely.
+
 After each upstream phase is visible on npm, perform this handoff in every
 downstream repository required by the next phase:
 
