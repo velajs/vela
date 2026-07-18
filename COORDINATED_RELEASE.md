@@ -4,6 +4,23 @@ The security hardening spans separately published packages. Publish in the
 following phases so no consumer can resolve an older security contract or rely
 on an unpublished sibling checkout.
 
+## Platform prerequisites
+
+- Private-repository Actions billing and spending limits must be healthy before
+  starting the release; jobs that GitHub refuses to allocate cannot validate or
+  publish a package.
+- Organization Actions settings must allow `GITHUB_TOKEN` to create pull
+  requests. If that capability is disabled, open the generated Changesets
+  release branch as a pull request manually.
+- Configure npm trusted publishing for each package and its `release.yml`
+  workflow before merging a version pull request.
+- Workflow's first `@velajs/workflow@0.1.0` publication is a manual bootstrap
+  owned by `publish.yml`; its normal release workflow intentionally skips that
+  unpublished initial version when no changeset is pending.
+- npm provenance is enabled only when the GitHub repository is public because
+  npm does not support provenance attestations from private repositories. OIDC
+  trusted publishing remains the authentication mechanism in either case.
+
 1. Publish the independent foundations:
    `@velajs/errors@1.1.0`, `@velajs/live-protocol@1.1.0`,
    `@velajs/workflow@0.1.0`, `@velajs/ai@1.0.0`, and
