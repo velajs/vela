@@ -14,7 +14,7 @@
     "attw": "pnpm --filter @velajs/crud --filter @velajs/crud-drizzle --filter @velajs/crud-memory --no-bail exec attw --pack . --profile esm-only",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release:preflight": "npm view @velajs/vela@2.0.0 version",
+    "release:preflight": "npm view @velajs/vela@1.21.0 version",
     "release:check": "node scripts/check-release-lock.mjs && pnpm verify && pnpm audit --audit-level=high",
     "release": "pnpm release:preflight && pnpm release:check && changeset publish",
     "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm test && pnpm publint && pnpm attw"
@@ -25,7 +25,7 @@
     "@libsql/client": "^0.17.4",
     "@swc/core": "catalog:",
     "@types/node": "catalog:",
-    "@velajs/vela": "^2.0.0",
+    "@velajs/vela": "^1.21.0",
     "drizzle-orm": "^0.45.2",
     "hono": "^4",
     "oxfmt": "catalog:",

@@ -84,7 +84,7 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "@velajs/vela": "^2.0.0",
+    "@velajs/vela": "^1.21.0",
     "hono": "^4",
     "tsdown": "catalog:",
     "typescript": "catalog:",
@@ -92,7 +92,7 @@
     "zod": "^4"
   },
   "peerDependencies": {
-    "@velajs/vela": ">=2.0.0",
+    "@velajs/vela": ">=1.21.0 <2",
     "hono": ">=4",
     "zod": ">=4"
   },

@@ -1,7 +1,7 @@
 ---
-"@velajs/crud": major
-"@velajs/crud-drizzle": major
-"@velajs/crud-memory": major
+"@velajs/crud": minor
+"@velajs/crud-drizzle": minor
+"@velajs/crud-memory": minor
 ---
 
 Route every CRUD verb through uniform tenant and operation-policy enforcement, default resources to the core five endpoints, remove the tenant-selector trust bypass, require explicit aggregate operation/field authorization, cap fallback scans (including export), authorize includes and versions, inspect and authorize every nested-write target in-transaction, enforce target create/write policies, strip managed fields, and harden aggregate/search/import output. Existing-row mutations now require both source `read` and `write`, every single-row response rechecks `read`, and arbitrary read predicates paginate only after a bounded authorization scan so hidden counts/page existence cannot leak. Query-filter and native Drizzle aggregate dictionaries use null prototypes and own-property access; prototype keys and unsafe/colliding aggregate aliases are rejected fail-closed.
