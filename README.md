@@ -102,7 +102,7 @@ const filter = createClientQuery<'all' | 'active'>('todos.filter', 'all');
 
 ## Local development
 
-Cross-repo dependencies target the published Live Protocol 2 and Vela 2
+Cross-repo dependencies target the published Live Protocol 1.1 and Vela 1.21
 releases. Before that release train is public, use packed prerelease tarballs
 only in a disposable integration checkout. The committed manifest and lockfile
 must continue to describe the last registry-resolvable graph; regenerate them
