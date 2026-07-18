@@ -23,6 +23,8 @@ export interface WsResponse<T = unknown> {
 export interface WsClient<TData = Record<string, unknown>> {
   readonly id: string;
   readonly rooms: ReadonlySet<string>;
+  /** Validated inbound/outbound ceiling for this gateway connection. */
+  readonly maxFrameBytes?: number;
   data: TData;
   /** Frame and send `{ event, data }` (optionally correlated by `id`) to this socket. */
   send(event: string, data?: unknown, id?: string): void;
@@ -51,6 +53,8 @@ export interface WsServer {
   to(room: string): BroadcastOperator;
   in(room: string): BroadcastOperator;
   except(room: string): BroadcastOperator;
+  /** @internal Set by gateway discovery to bound cross-instance commands. */
+  setOutboundFrameLimit?(maxFrameBytes: number): void;
 }
 
 /** An `ExecutionContext` whose transport is a WebSocket gateway. `switchToWs()` is guaranteed present. */
@@ -69,11 +73,63 @@ export interface OnGatewayDisconnect {
   handleDisconnect(client: WsClient): void | Promise<void>;
 }
 
+/** Canonical, issuer-qualified principal accepted at the WebSocket boundary. */
+export interface WebSocketPrincipal {
+  issuer: string;
+  subject: string;
+  principalType: 'user' | 'service';
+}
+
+/** Trusted connection identity persisted by WebSocket transports. */
+export interface WebSocketUpgradeIdentity {
+  principal: WebSocketPrincipal;
+  tenantId: string;
+  /** Exclusive credential/session expiry in epoch milliseconds. */
+  expiresAtMs: number;
+}
+
+export interface WebSocketUpgradeAuthenticationContext {
+  gatewayPath: string;
+  room: string;
+  /** Opaque query ticket, removed from the Request before callbacks run. */
+  ticket?: string;
+}
+
 export interface WebSocketGatewayOptions {
   /** Route path the upgrade is served on (e.g. `/rooms/:id/ws`). */
   path?: string;
   /** Cloudflare Durable Object binding name that hosts this gateway's sockets. */
   binding?: string;
+  /**
+   * Path parameter used as the room id. Required for every parameterized path
+   * so routing remains explicit across transports.
+   */
+  roomParam?: string;
+  /**
+   * Browser origins allowed to open the socket. Omitted means same-origin;
+   * non-browser clients without an Origin header are allowed. `'*'` is an
+   * explicit opt-out.
+   */
+  allowedOrigins?: '*' | readonly string[];
+  /** Optional additional authorization run before authentication/allocation. */
+  authorizeUpgrade?: (request: Request) => boolean | Promise<boolean>;
+  /**
+   * Authenticate an upgrade with a secure cookie or a short-lived socket
+   * ticket. Returning anything except a valid trusted identity denies the
+   * upgrade. This hook is required for every successful upgrade; omitting it
+   * makes the gateway fail closed.
+   */
+  authenticateUpgrade?: (
+    request: Request,
+    context: WebSocketUpgradeAuthenticationContext,
+  ) => WebSocketUpgradeIdentity | false | Promise<WebSocketUpgradeIdentity | false>;
+  /**
+   * Per-recipient authorization re-run before server-initiated delivery. Use
+   * it for revocation or mutable membership checks; errors fail closed.
+   */
+  authorizeDelivery?: (client: WsClient) => boolean | Promise<boolean>;
+  /** Maximum inbound and outbound frame size in bytes (default 64 KiB). */
+  maxFrameBytes?: number;
 }
 
 /** Stored per `@SubscribeMessage` — a flat class-level list, mirroring `@OnEvent`. */

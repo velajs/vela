@@ -1,5 +1,11 @@
 import type { WSContext } from 'hono/ws';
 import type { RoomRegistry, WsClient } from '../websocket/index';
+import {
+  assertWebSocketRoomId,
+  DEFAULT_WS_MAX_FRAME_BYTES,
+  DEFAULT_WS_MAX_JOINED_ROOMS,
+  webSocketFrameFits,
+} from '../websocket/gateway-routing';
 
 /**
  * Core `WsClient` over Hono's `WSContext` (node/bun/deno — no hibernation).
@@ -17,6 +23,7 @@ export class NodeWsClient<
     private readonly ws: WSContext,
     private readonly registry: RoomRegistry,
     readonly path: string,
+    readonly maxFrameBytes: number = DEFAULT_WS_MAX_FRAME_BYTES,
   ) {}
 
   get rooms(): ReadonlySet<string> {
@@ -28,14 +35,22 @@ export class NodeWsClient<
   }
 
   send(event: string, data?: unknown, id?: string): void {
-    this.ws.send(JSON.stringify(id !== undefined ? { id, event, data } : { event, data }));
+    this.sendRaw(JSON.stringify(id !== undefined ? { id, event, data } : { event, data }));
   }
 
   sendRaw(payload: string): void {
+    if (!webSocketFrameFits(payload, this.maxFrameBytes)) {
+      this.close(1009, 'Message too large');
+      return;
+    }
     this.ws.send(payload);
   }
 
   join(room: string): void | Promise<void> {
+    assertWebSocketRoomId(room);
+    if (!this._rooms.has(room) && this._rooms.size >= DEFAULT_WS_MAX_JOINED_ROOMS) {
+      throw new Error(`A WebSocket may join at most ${DEFAULT_WS_MAX_JOINED_ROOMS} rooms`);
+    }
     this._rooms.add(room);
     return this.registry.join(this, room);
   }

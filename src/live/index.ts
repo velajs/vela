@@ -28,6 +28,7 @@ export type {
   CursorLog,
   InvalidationCommand,
   LiveDriver,
+  LiveDeliveryAuthorizationContext,
   LiveEntrypointMeta,
   LiveIdentity,
   LiveInvalidationSink,

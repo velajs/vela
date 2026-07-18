@@ -46,6 +46,7 @@ describe('describeRoutes / getGlobalPrefix', () => {
           path: '/api/v1/users/:id',
           controller: 'UsersController',
           handler: 'getOne',
+          moduleId: 'App#default',
           version: 1,
         },
         {
@@ -53,6 +54,7 @@ describe('describeRoutes / getGlobalPrefix', () => {
           path: '/api/v1/users',
           controller: 'UsersController',
           handler: 'create',
+          moduleId: 'App#default',
           version: 1,
         },
         {
@@ -60,6 +62,7 @@ describe('describeRoutes / getGlobalPrefix', () => {
           path: '/api/v1/users/ping',
           controller: 'UsersController',
           handler: 'ping',
+          moduleId: 'App#default',
           version: 1,
         },
       ]),

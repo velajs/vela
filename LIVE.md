@@ -51,7 +51,7 @@ const stamp = await this.live.invalidate({ tags: [`todos:${listId}`] }); // inje
 ## How it works
 
 - Live frames ride the normal WebSocket envelope under the reserved `$live` event (the `$` prefix is framework-reserved; gateways cannot subscribe to it). One socket serves classic gateway events AND live frames.
-- Subscribing runs app-wide guards (dispatcher tier) plus the resolver's own `@UseGuards` once; args are validated once; the subscriber's **identity** (from `client.data`, i.e. whatever your upgrade/`handleConnection` auth stamped) is captured and replayed into every re-run — including `identity.expiresAt` enforcement on the *outbound* path, since a passive subscriber never sends inbound frames.
+- Subscribing runs app-wide guards (dispatcher tier) plus the resolver's own `@UseGuards`; args are validated once; the subscriber's **identity** (from `client.data`, i.e. whatever your upgrade/`handleConnection` auth stamped) is captured and replayed into every re-run. Before resume or invalidation delivery, app-wide/gateway delivery authorization, resolver guards, optional `authorizeDelivery`, and `identity.expiresAtMs` are rechecked. Revocation purges subscriptions and closes with 1008.
 - On invalidation the engine coalesces bursts, re-runs affected queries (bounded concurrency), and pushes: `settled` when the result is byte-identical (the cursor still advances — that is what drops optimistic layers), a batched keyed `delta` when the shared codec can diff, else a full `data` snapshot. Baselines advance only when a frame actually left the socket (at-least-once; deltas are idempotent).
 - Every frame carries a **cursor + epoch** identifying a position in the *log scope*'s ordered invalidation log. Reconnecting clients resubscribe with their last watermark; untouched subscriptions get a tiny `resume` instead of a re-run.
 
@@ -68,12 +68,16 @@ const stamp = await this.live.invalidate({ tags: [`todos:${listId}`] }); // inje
 ```ts
 LiveModule.forRoot({
   log: durableObjectCursorLog(),                 // SQLite-backed cursor log (per room DO)
-  driver: durableObjectLive({ binding: 'CHAT_ROOM', defaultRoom: 'lobby' }),
+  driver: durableObjectLive({
+    binding: 'CHAT_ROOM',
+    gatewayPath: '/rooms/:id/ws',
+    defaultRoom: 'lobby',
+  }),
 })
 ```
 
 - The DO class **must** be SQLite-backed: add it to wrangler `migrations[].new_sqlite_classes`.
-- Worker-side `invalidate()` (HTTP mutations, crons, queue consumers) routes to the room DO's `invalidate` RPC and returns *that* log scope's stamp; inside the DO it applies locally. `liveInvalidateToRoom(ns, room, tags)` is the imperative sibling of `broadcastToRoom`.
+- Worker-side `invalidate()` (HTTP mutations, crons, queue consumers) routes to the gateway + room DO's `invalidate` RPC and returns *that* log scope's stamp; inside the DO it applies locally. `liveInvalidateToRoom(ns, gatewayPath, room, tags)` is the imperative sibling of `broadcastToRoom`.
 - Subscriptions are persisted in the hibernation attachment and replayed on wake — an eviction is invisible to subscribers (their next update arrives as a snapshot, since the diff baseline is deliberately not persisted).
 
 ## Optimistic updates
@@ -83,6 +87,10 @@ Mutation responses expose `Vela-Commit-Cursor` / `Vela-Commit-Epoch` (automatic 
 ## Presence
 
 The module ships a preset: `{ t: 'presence' }` heartbeat frames update a per-room roster; `$presence.roster` is a built-in live query; socket close departs immediately (TTL only covers ungraceful drops, filtered at read time — no timers). Client side: `createPresence(client, { room, meta })` or React's `usePresence(room, { meta })`. Disable with `LiveModule.forRoot({ presence: false })`.
+
+Defaults are 100 subscriptions per socket, 100 tags per subscription or
+invalidation, 10,000 refreshes per drain pass, and 4 KiB of presence metadata.
+All may be lowered; the first three have explicit bounded module options.
 
 ## Cloudflare gotchas
 
@@ -95,7 +103,9 @@ The module ships a preset: `{ t: 'presence' }` heartbeat frames update a per-roo
 - At-least-once frames; per-subscription total order within a log scope; coalescing may collapse bursts but every committed invalidation is observed by a re-run that starts after it.
 - Tag granularity: N identical subscriptions re-run N times per invalidation. A row-level memoized reactive cache (lunora's `reactive-cache`/`dependency-tracker` design) is the planned optimization.
 - A subscription lives in exactly one room; cross-room live queries are out of scope.
-- Mid-subscription auth revocation is only enforced via `identity.expiresAt`; full re-authorization on re-run is out of scope.
+- Resume, invalidation re-runs, and delivery re-check identity expiry plus the
+  app/gateway/resolver authorization chain. A revoked identity removes the
+  subscription and closes the socket with 1008.
 - A typed client generated from OpenAPI operationIds + live metadata (`vela codegen`) is a planned CLI addition; v1 uses a hand-written `LiveContract` interface shaped to be codegen-compatible.
 
 ## Design notes

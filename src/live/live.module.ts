@@ -1,10 +1,27 @@
-import { defineModule } from '../index';
+import { defineModule, stableHash } from '../index';
 import { InMemoryCursorLog } from './live.cursor';
 import { LiveEngine } from './live.engine';
 import { LiveInvalidation, localLive, perAppLiveDriver } from './live.invalidation';
 import { LIVE_CURSOR_LOG, LIVE_DRIVER, LIVE_MODULE_OPTIONS } from './live.tokens';
 import type { LiveDriver, LiveModuleOptions } from './live.types';
 import { PresenceResolver, PresenceService } from './presence';
+
+const liveReferenceIds = new WeakMap<object, number>();
+let nextLiveReferenceId = 1;
+
+function liveReferenceId(value: unknown): string {
+  if (value === undefined) return 'none';
+  if ((typeof value === 'object' && value !== null) || typeof value === 'function') {
+    const reference = value as object;
+    let id = liveReferenceIds.get(reference);
+    if (id === undefined) {
+      id = nextLiveReferenceId++;
+      liveReferenceIds.set(reference, id);
+    }
+    return `object:${id}`;
+  }
+  return `${typeof value}:${String(value)}`;
+}
 
 /**
  * First-party live-query module (tag-based realtime reactivity) — authored,
@@ -30,7 +47,18 @@ import { PresenceResolver, PresenceService } from './presence';
 const { ConfigurableModuleClass } = defineModule<LiveModuleOptions>({
   name: 'Live',
   optionsToken: LIVE_MODULE_OPTIONS,
-  key: (options) => `live#${options?.driver?.kind ?? 'local'}`,
+  key: (options) =>
+    stableHash({
+      driverKind: options?.driver?.kind ?? 'local',
+      driver: liveReferenceId(options?.driver),
+      log: liveReferenceId(options?.log),
+      identity: liveReferenceId(options?.identity),
+      authorizeDelivery: liveReferenceId(options?.authorizeDelivery),
+      maxSubscriptionsPerSocket: options?.maxSubscriptionsPerSocket ?? 100,
+      maxRefreshFanout: options?.maxRefreshFanout ?? 10_000,
+      maxTags: options?.maxTags ?? 100,
+      presence: options?.presence === false ? false : { ttlMs: options?.presence?.ttlMs ?? 30_000 },
+    }),
   setup: ({ OPTIONS, options }) => ({
     providers: [
       {

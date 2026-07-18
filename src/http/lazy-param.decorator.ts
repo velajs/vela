@@ -11,13 +11,14 @@ const CUSTOM_PARAM_TYPE = 'custom';
  * factory does not run during argument extraction; it runs the first time
  * the handler reads a property on the resolved value.
  *
- * Why this exists: vela's argument resolver runs *before* guards
- * (handler-executor order: extract args → guards → handler). A custom
- * `createParamDecorator` factory that depends on guard-populated state
- * (e.g. a value a guard places into `REQUEST_CONTEXT`) therefore observes
- * an empty slot. `createLazyParamDecorator` defers factory execution to
- * first property access on the proxied result, by which point guards have
- * run and the slot is populated.
+ * Vela runs guards before argument extraction, so both eager and lazy custom
+ * decorators can observe guard-populated state. This variant defers expensive
+ * materialization until first property access and avoids work when the handler
+ * never reads the parameter.
+ *
+ * Do not use this helper for optional identities or any value whose absence is
+ * tested by truthiness: the proxy itself is always truthy. Use
+ * `createParamDecorator` so an absent value remains the real `undefined`.
  *
  * The proxy explicitly short-circuits `prop === 'then'` so `await value`
  * does not consider the proxy a thenable, which would otherwise trigger
@@ -26,7 +27,7 @@ const CUSTOM_PARAM_TYPE = 'custom';
  *
  * @example
  * ```ts
- * const CurrentUser = createLazyParamDecorator(
+ * const DeferredProfile = createLazyParamDecorator(
  *   (_data: unknown, ctx: ExecutionContext) => {
  *     const reqCtx = ctx.getContext().get('container').resolve(REQUEST_CONTEXT);
  *     return reqCtx.get('user');     // populated by AuthGuard
@@ -35,8 +36,8 @@ const CUSTOM_PARAM_TYPE = 'custom';
  *
  * @UseGuards(AuthGuard)
  * @Get('/me')
- * me(@CurrentUser() user: User) {
- *   return { id: user.id };          // factory runs here, after AuthGuard
+ * me(@DeferredProfile() profile: User) {
+ *   return { id: profile.id };       // factory runs here, after AuthGuard
  * }
  * ```
  */

@@ -13,6 +13,7 @@ import {
   Optional,
   PipelineRunner,
   ReservedWsEvent,
+  WsDispatcher,
   buildEntrypointExecutionContext,
   isVelaError,
   resolveErrorReporter,
@@ -56,9 +57,15 @@ import { PresenceService } from './presence';
 
 /** How many subscriptions refresh concurrently per flush (lunora's socket-pool default). */
 const REFRESH_POOL_SIZE = 8;
+const DEFAULT_MAX_SUBSCRIPTIONS_PER_SOCKET = 100;
+const DEFAULT_MAX_REFRESH_FANOUT = 10_000;
+const DEFAULT_MAX_TAGS = 100;
+const MAX_TAG_BYTES = 256;
+const textEncoder = new TextEncoder();
 
 interface RegisteredQuery {
   token: Type;
+  moduleId: string;
   methodName: string | symbol;
   options: LiveQueryOptions;
 }
@@ -150,6 +157,9 @@ export class LiveEngine
   private readonly pendingTags = new Set<string>();
   private drainChain: Promise<void> = Promise.resolve();
   private draining = false;
+  private readonly maxSubscriptionsPerSocket: number;
+  private readonly maxRefreshFanout: number;
+  private readonly maxTags: number;
 
   constructor(
     @Inject(Container) private readonly container: Container,
@@ -159,6 +169,19 @@ export class LiveEngine
     @Inject(LIVE_MODULE_OPTIONS) private readonly options: LiveModuleOptions,
     @Optional() @Inject(PresenceService) private readonly presence?: PresenceService,
   ) {
+    this.maxSubscriptionsPerSocket = this.boundedOption(
+      options.maxSubscriptionsPerSocket,
+      DEFAULT_MAX_SUBSCRIPTIONS_PER_SOCKET,
+      10_000,
+      'maxSubscriptionsPerSocket',
+    );
+    this.maxRefreshFanout = this.boundedOption(
+      options.maxRefreshFanout,
+      DEFAULT_MAX_REFRESH_FANOUT,
+      100_000,
+      'maxRefreshFanout',
+    );
+    this.maxTags = this.boundedOption(options.maxTags, DEFAULT_MAX_TAGS, 1_000, 'maxTags');
     driver.bind(this);
     this.presence?.bindInvalidator((tags) => {
       void driver.dispatch({ tags });
@@ -181,6 +204,7 @@ export class LiveEngine
         }
         this.queries.set(declared.name, {
           token: found.metatype,
+          moduleId: found.moduleIds[0]!,
           methodName: declared.methodName,
           options: declared.options,
         });
@@ -204,6 +228,16 @@ export class LiveEngine
 
   async handleReservedEvent(path: string, client: WsClient, message: WsMessage): Promise<void> {
     const frame = message.data;
+    if (this.isUnsupportedSubscribeFrame(frame)) {
+      this.sendFrame(client, {
+        t: 'error',
+        sub: frame.sub,
+        code: LIVE_ERROR_CODES.UNSUPPORTED_PROTOCOL,
+        message: `server speaks live protocol v${LIVE_PROTOCOL}, client asked for v${frame.v}`,
+        fatal: true,
+      });
+      return;
+    }
     // Forward-compat: unknown frame shapes are ignored, not errors.
     if (!isClientLiveFrame(frame)) return;
 
@@ -221,6 +255,15 @@ export class LiveEngine
       }
       case 'presence':
         if (this.presence?.enabled) {
+          // Presence is an authorization-sensitive room operation.  A frame
+          // may only name a room the trusted transport already joined for
+          // this socket; client-supplied room strings never create membership.
+          if (!client.rooms.has(frame.room)) {
+            this.connections.delete(client.id);
+            this.presence.reap(client.id);
+            client.close(1008, 'presence room not joined');
+            return;
+          }
           this.presence.beat(frame.room, client.id, frame.meta);
         }
         return;
@@ -235,6 +278,7 @@ export class LiveEngine
   // ---- LiveInvalidationSink ----
 
   async applyInvalidation(cmd: InvalidationCommand): Promise<CommitStamp> {
+    this.assertTags(cmd.tags, 'invalidation');
     const stamp = await this.log.append(cmd.tags);
     for (const tag of cmd.tags) this.pendingTags.add(tag);
     this.scheduleDrain();
@@ -254,7 +298,12 @@ export class LiveEngine
    * on wake. No frames are sent; the next relevant invalidation pushes.
    */
   restoreSubscription(path: string, client: WsClient, record: SubscriptionRecord): void {
-    this.ensureConnection(path, client).subs.set(record.sub, record);
+    const conn = this.ensureConnection(path, client);
+    if (conn.subs.size >= this.maxSubscriptionsPerSocket || !this.isRestorableRecord(record)) {
+      void this.revokeConnection(conn, 'invalid persisted live subscription');
+      return;
+    }
+    conn.subs.set(record.sub, record);
   }
 
   // ---- subscribe path ----
@@ -264,17 +313,6 @@ export class LiveEngine
     client: WsClient,
     frame: Extract<ClientLiveFrame, { t: 'sub' }>,
   ): Promise<void> {
-    if (frame.v !== undefined && frame.v > LIVE_PROTOCOL) {
-      this.sendFrame(client, {
-        t: 'error',
-        sub: frame.sub,
-        code: LIVE_ERROR_CODES.UNSUPPORTED_PROTOCOL,
-        message: `server speaks live protocol v${LIVE_PROTOCOL}, client asked for v${frame.v}`,
-        fatal: true,
-      });
-      return;
-    }
-
     const conn = this.ensureConnection(path, client);
     if (conn.subs.has(frame.sub)) {
       this.sendFrame(client, {
@@ -283,6 +321,17 @@ export class LiveEngine
         code: LIVE_ERROR_CODES.DUPLICATE_SUB,
         message: `subscription id '${frame.sub}' is already active on this socket`,
         fatal: false,
+      });
+      return;
+    }
+
+    if (conn.subs.size >= this.maxSubscriptionsPerSocket) {
+      this.sendFrame(client, {
+        t: 'error',
+        sub: frame.sub,
+        code: LIVE_ERROR_CODES.LIMIT_EXCEEDED,
+        message: `a socket may have at most ${this.maxSubscriptionsPerSocket} live subscriptions`,
+        fatal: true,
       });
       return;
     }
@@ -315,9 +364,8 @@ export class LiveEngine
       }
     }
 
-    // Resolver-tier guards run ONCE, here (app-wide guards already ran in the
-    // dispatcher's reserved-event path). Re-runs are server-initiated and rely
-    // on the identity captured below instead of re-authorizing.
+    // Resolver-tier guards run here and again before server-initiated delivery.
+    // App-wide guards already protected the inbound reserved-event path.
     if (!(await this.runSubscribeGuards(registered, client, frame.query, args))) {
       this.sendFrame(client, {
         t: 'error',
@@ -334,6 +382,22 @@ export class LiveEngine
       typeof registered.options.tags === 'function'
         ? registered.options.tags(args)
         : registered.options.tags;
+    try {
+      this.assertTags(tags, `subscription '${frame.query}'`);
+    } catch (err) {
+      resolveErrorReporter(this.container).report(err, {
+        edge: 'live',
+        source: frame.query,
+      });
+      this.sendFrame(client, {
+        t: 'error',
+        sub: frame.sub,
+        code: LIVE_ERROR_CODES.INTERNAL,
+        message: 'Internal Server Error',
+        fatal: true,
+      });
+      return;
+    }
 
     const record: SubscriptionRecord = {
       sub: frame.sub,
@@ -343,6 +407,10 @@ export class LiveEngine
       key: frame.key ?? registered.options.key,
       identity,
     };
+    if (!(await this.authorizeRecord(record, client, false))) {
+      await this.revokeConnection(conn, 'live authorization revoked');
+      return;
+    }
     conn.subs.set(frame.sub, record);
     await this.persistSubscriptions(conn);
     this.sendFrame(client, { t: 'ack', sub: frame.sub });
@@ -394,6 +462,7 @@ export class LiveEngine
         args,
         client,
       },
+      registered.moduleId,
     );
     try {
       for (const guard of guards) {
@@ -434,13 +503,23 @@ export class LiveEngine
       const stamp = await this.log.current();
 
       const work: Array<{ conn: ConnectionEntry; record: SubscriptionRecord }> = [];
+      const overflow = new Set<ConnectionEntry>();
       for (const conn of this.connections.values()) {
         for (const record of conn.subs.values()) {
-          if (record.tags.some((tag) => changed.has(tag))) work.push({ conn, record });
+          if (!record.tags.some((tag) => changed.has(tag))) continue;
+          if (work.length < this.maxRefreshFanout) work.push({ conn, record });
+          else overflow.add(conn);
         }
       }
 
-      await runPool(work, REFRESH_POOL_SIZE, async ({ conn, record }) => {
+      await Promise.all(
+        [...overflow].map((conn) =>
+          this.revokeConnection(conn, 'live invalidation fan-out limit exceeded'),
+        ),
+      );
+
+      const authorizedWork = work.filter(({ conn }) => !overflow.has(conn));
+      await runPool(authorizedWork, REFRESH_POOL_SIZE, async ({ conn, record }) => {
         await this.push(conn, record, stamp, { initial: false });
       });
     }
@@ -467,14 +546,19 @@ export class LiveEngine
   ): Promise<void> {
     // Outbound expiry enforcement — the only place expiry CAN be enforced for
     // a passive subscriber.
-    const expiresAt = record.identity?.expiresAt;
-    if (typeof expiresAt === 'number' && expiresAt <= Date.now()) {
-      this.connections.delete(conn.client.id);
-      try {
-        conn.client.close(1008, 'identity expired');
-      } catch {
-        // already gone
-      }
+    const expiresAtMs = record.identity?.expiresAtMs;
+    if (
+      expiresAtMs !== undefined &&
+      (typeof expiresAtMs !== 'number' ||
+        !Number.isSafeInteger(expiresAtMs) ||
+        expiresAtMs <= Date.now())
+    ) {
+      await this.revokeConnection(conn, 'identity expired');
+      return;
+    }
+
+    if (!initial && !(await this.authorizeRecord(record, conn.client, true))) {
+      await this.revokeConnection(conn, 'live authorization revoked');
       return;
     }
 
@@ -493,6 +577,7 @@ export class LiveEngine
         // error's raw message never reaches the browser, it surfaces only via
         // the reporter. Branded VelaErrors keep their client-facing message.
         conn.subs.delete(record.sub);
+        await this.persistSubscriptions(conn);
         const reporter = resolveErrorReporter(this.container);
         reporter.report(err, { edge: 'live', source: record.query });
         const safe = toErrorBody(err, { catalog: reporter.catalog });
@@ -542,6 +627,7 @@ export class LiveEngine
           args: record.args,
           client,
         },
+        registered.moduleId,
       );
       const interceptors = resolveScopedComponents(
         'interceptor',
@@ -593,6 +679,126 @@ export class LiveEngine
       this.connections.set(client.id, conn);
     }
     return conn;
+  }
+
+  private async authorizeRecord(
+    record: SubscriptionRecord,
+    client: WsClient,
+    rerunScopedGuards: boolean,
+  ): Promise<boolean> {
+    const registered = this.queries.get(record.query);
+    if (!registered) return false;
+    try {
+      const dispatcher = this.container.resolve(WsDispatcher);
+      if (
+        !(await dispatcher.authorizeDelivery(this.connections.get(client.id)?.path ?? '', client))
+      ) {
+        return false;
+      }
+    } catch {
+      return false;
+    }
+    if (
+      rerunScopedGuards &&
+      !(await this.runSubscribeGuards(registered, client, record.query, record.args))
+    ) {
+      return false;
+    }
+    if (!this.options.authorizeDelivery) return true;
+    try {
+      return (
+        (await this.options.authorizeDelivery({
+          identity: record.identity,
+          query: record.query,
+          args: record.args,
+          client,
+        })) === true
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  private async revokeConnection(conn: ConnectionEntry, reason: string): Promise<void> {
+    this.connections.delete(conn.client.id);
+    conn.subs.clear();
+    this.presence?.reap(conn.client.id);
+    await this.persistSubscriptions(conn);
+    try {
+      conn.client.close(1008, reason);
+    } catch {
+      // already closed
+    }
+  }
+
+  private assertTags(tags: unknown, source: string): asserts tags is string[] {
+    if (
+      !Array.isArray(tags) ||
+      tags.length === 0 ||
+      tags.length > this.maxTags ||
+      tags.some(
+        (tag) =>
+          typeof tag !== 'string' ||
+          tag.length === 0 ||
+          textEncoder.encode(tag).byteLength > MAX_TAG_BYTES ||
+          /[\u0000-\u001f\u007f]/.test(tag),
+      )
+    ) {
+      throw new Error(
+        `[vela] ${source} tags must contain 1-${this.maxTags} bounded, control-free strings`,
+      );
+    }
+  }
+
+  private isRestorableRecord(record: SubscriptionRecord): boolean {
+    if (
+      typeof record.sub !== 'string' ||
+      record.sub.length === 0 ||
+      typeof record.query !== 'string' ||
+      record.query.length === 0 ||
+      !this.queries.has(record.query)
+    ) {
+      return false;
+    }
+    try {
+      this.assertTags(record.tags, 'persisted subscription');
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private boundedOption(
+    value: number | undefined,
+    fallback: number,
+    maximum: number,
+    name: string,
+  ): number {
+    const resolved = value ?? fallback;
+    if (!Number.isSafeInteger(resolved) || resolved <= 0 || resolved > maximum) {
+      throw new Error(`[vela] LiveModule ${name} must be an integer between 1 and ${maximum}`);
+    }
+    return resolved;
+  }
+
+  private isUnsupportedSubscribeFrame(
+    value: unknown,
+  ): value is { t: 'sub'; sub: string; query: string; v: number } {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const frame = value as Record<string, unknown>;
+    return (
+      frame.t === 'sub' &&
+      typeof frame.sub === 'string' &&
+      frame.sub.length > 0 &&
+      frame.sub.length <= 256 &&
+      typeof frame.query === 'string' &&
+      frame.query.length > 0 &&
+      frame.query.length <= 256 &&
+      typeof frame.v === 'number' &&
+      Number.isSafeInteger(frame.v) &&
+      frame.v > 0 &&
+      frame.v !== LIVE_PROTOCOL
+    );
   }
 
   private sendFrame(client: WsClient, frame: ServerLiveFrame): boolean {

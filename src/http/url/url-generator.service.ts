@@ -1,6 +1,6 @@
 import { Injectable, Inject, Optional } from '../../container/decorators';
 import { CONFIG_ENV } from '../../config/config.tokens';
-import { signUrl } from '../../crypto/signed-url';
+import { HTTP_SIGNED_URL_PURPOSE, signUrl } from '../../crypto/signed-url';
 import { RouteManager } from '../route.manager';
 import type { RouteDescription } from '../route.manager';
 import type { RouteName, RouteParams } from '../route-map';
@@ -18,7 +18,12 @@ export interface UrlForOptions {
 /** Options for {@link UrlGeneratorService.signedUrl}. */
 export interface SignedUrlGenerateOptions {
   /** Time-to-live in seconds; enforced on verification via the `expires` param. */
-  expiresIn?: number;
+  expiresIn: number;
+  /**
+   * Request method to authorize. Defaults to the named route's method; required
+   * for an `@All()` route because `ALL` is not a wire method.
+   */
+  method?: string;
   /** Override the signing secret (else the `URL_SIGNING_SECRET` token / `CONFIG_ENV`). */
   secret?: string;
 }
@@ -91,16 +96,22 @@ export class UrlGeneratorService {
    */
   async signedUrl<N extends RouteName>(
     name: N,
-    params?: RouteParams<N>,
-    options: SignedUrlGenerateOptions = {},
+    params: RouteParams<N> | undefined,
+    options: SignedUrlGenerateOptions,
   ): Promise<string> {
     const url = this.urlFor(name, params);
+    const description = this.routes().get(name as string);
+    if (!description) throw new Error(`No route named "${String(name)}" was found.`);
+    const method = options.method ?? description.method;
+    if (method === 'ALL') {
+      throw new Error(`signedUrl('${String(name)}') requires options.method for an @All() route`);
+    }
     const secret = resolveSigningSecret(options.secret, this.secretToken, this.env);
-    return signUrl(
-      url,
-      secret,
-      options.expiresIn !== undefined ? { expiresIn: options.expiresIn } : undefined,
-    );
+    return signUrl(url, secret, {
+      expiresIn: options.expiresIn,
+      method,
+      purpose: HTTP_SIGNED_URL_PURPOSE,
+    });
   }
 
   /**

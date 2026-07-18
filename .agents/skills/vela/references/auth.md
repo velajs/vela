@@ -22,8 +22,8 @@ class AppModule {}
 |---|---|---|
 | `auth` | — (required) | a built `BetterAuthInstance` (`Auth<any>`) |
 | `basePath` | `'/api/auth'` | where the catch-all handler mounts (relative to vela's `globalPrefix`) |
-| `isGlobal` | `false` | make the module global **and** register `AuthGuard` app-wide |
-| `defaultPolicy` | `'deny'` | `'allow'` lets unauthenticated requests through when no `@Public`/`@OptionalAuth` |
+| `isGlobal` | `true` | register `AuthGuard` app-wide; disable only when an equivalent global guard is installed |
+| `defaultPolicy` | `'deny'` | deny-only compatibility field; anonymous routes must be explicit |
 | `mountHandler` | `true` | `false` skips mounting the `/api/auth/*` routes |
 
 `forRootAsync({ inject, imports, useFactory, ... })` builds the instance lazily — its `useFactory` **returns the `BetterAuthInstance` directly** (not `{ auth }`), and construction is deferred to first `.auth`/`.handler` access (so a runtime adapter can capture `env` first — e.g. on Cloudflare).
@@ -34,11 +34,11 @@ With `mountHandler` on (the default), the module registers a `@Public` catch-all
 
 ## Guarding routes — `AuthGuard`
 
-Register `AuthGuard` per route via `@UseGuards(AuthGuard)`, or app-wide via `forRoot({ isGlobal: true })`. On each request it:
+`BetterAuthModule` registers `AuthGuard` app-wide by default. On each request it:
 
-1. Passes through immediately for `@Public` handlers, and for requests to the auth base path itself (so the catch-all runs unauthenticated).
+1. Passes through immediately only for explicitly `@Public` handlers. The generated auth catch-all controller carries that metadata; URL prefixes are not trusted.
 2. Calls `auth.api.getSession({ headers })`; on a session it attaches `user` and `session` to the request context (readable via the decorators below) and allows.
-3. With no session: allows when `defaultPolicy: 'allow'` or the handler is `@OptionalAuth`; otherwise throws `UnauthorizedException`.
+3. With no session: allows only when the handler is `@OptionalAuth`; otherwise throws `UnauthorizedException`.
 
 ```ts
 import { AuthGuard, CurrentUser, CurrentSession, Public, OptionalAuth, Roles } from '@velajs/better-auth';
@@ -58,11 +58,11 @@ class MeController {
 
   @OptionalAuth()              // populates user if present, never 401s
   @Get('/maybe')
-  maybe(@CurrentUser() user: User) { return { anon: user?.id == null }; }
+  maybe(@CurrentUser() user: User | undefined) { return { anon: !user }; }
 }
 ```
 
-- `@CurrentUser()` / `@CurrentSession()` are **lazy** param decorators returning better-auth's `User` / `Session`. Because they return a lazy proxy, probe presence with `user?.id != null` — never `!!user`.
+- `@CurrentUser()` / `@CurrentSession()` are ordinary post-guard parameter decorators. Optional authentication returns the real `undefined`, so normal truthiness checks are safe.
 - `@Public()` and `@OptionalAuth()` are `Reflector` boolean decorators; apply at method or controller level.
 - `@Roles(['admin', 'editor'])` + `RolesGuard` gate on `user.role` (comma-normalized). The decorator is `Reflector.createDecorator<string[]>` — it takes a single array argument.
 

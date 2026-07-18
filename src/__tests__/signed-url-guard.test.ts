@@ -85,15 +85,19 @@ describe('signed URLs — UrlGeneratorService.signedUrl + SignedUrlGuard', () =>
     expect(res.status).toBe(403);
   });
 
-  it('rejects an expired signature with 403', async () => {
+  it('rejects malformed signatures with 403 instead of surfacing a 500', async () => {
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/files/download?signature=%%%');
+    expect(res.status).toBe(403);
+  });
+
+  it('rejects invalid expiry at generation', async () => {
     const app = await VelaFactory.create(AppModule);
     const urls = app.get(UrlGeneratorService);
 
-    // Already expired (negative TTL) → `expires` is in the past.
-    const expired = await urls.signedUrl('file.download', {}, { expiresIn: -10 });
-    const res = await app.getHonoApp().request(expired);
-
-    expect(res.status).toBe(403);
+    await expect(urls.signedUrl('file.download', {}, { expiresIn: -10 })).rejects.toThrow(
+      /positive/,
+    );
   });
 
   it('honours an explicit secret override, verifiable with the raw util', async () => {
@@ -106,8 +110,18 @@ describe('signed URLs — UrlGeneratorService.signedUrl + SignedUrlGuard', () =>
       { expiresIn: 60, secret: 'other-secret' },
     );
 
-    expect(await verifySignedUrl(signed, 'other-secret')).toBe(true);
-    expect(await verifySignedUrl(signed, SECRET)).toBe(false);
+    expect(
+      await verifySignedUrl(signed, 'other-secret', {
+        method: 'GET',
+        purpose: 'vela:http-route',
+      }),
+    ).toBe(true);
+    expect(
+      await verifySignedUrl(signed, SECRET, {
+        method: 'GET',
+        purpose: 'vela:http-route',
+      }),
+    ).toBe(false);
   });
 
   it('signedUrl throws a descriptive error when no secret is available', async () => {

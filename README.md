@@ -44,6 +44,20 @@ const app = await VelaFactory.create(AppModule);
 export default app; // Works on Cloudflare Workers, Deno, Bun, etc.
 ```
 
+HTTP requests have a 1 MiB body ceiling plus bounded query size/count/depth by
+default, enforced before application middleware, signed-body capture, guards,
+and parameter parsing. Configure global and narrow streaming limits with
+`VelaFactory.create(AppModule, { security: { body: ..., query: ... } })`.
+Guards run before parameter decorators and pipes, and malformed JSON passed to
+`@Body()` produces a 400 response. See the [2.0 security migration](./SECURITY_MIGRATION.md)
+for caching, signed URL, browser-header, client-IP, and WebSocket changes.
+
+Rate limiting prefers identity explicitly published by trusted authentication
+through `setTrustedRequestIdentity()` (principal plus verified tenant), then a
+configured tracker, then the runtime-attested client address. Core never derives
+a tracker from forwarding headers. Authentication guards must be registered
+before `ThrottlerModule`.
+
 ## Features
 
 - **Decorator-based controllers** — `@Controller`, `@Get`, `@Post`, `@Put`, `@Patch`, `@Delete`
@@ -145,9 +159,12 @@ class MyModule {
 
 ## Custom parameter decorators with deferred resolution
 
-Vela's argument resolver runs **before** guards (`extract args → guards → handler`). A custom parameter decorator built with `createParamDecorator` therefore observes any state populated by a guard as still empty — its factory has already fired by the time the guard runs.
-
-When a parameter's value depends on guard output (a `REQUEST_CONTEXT`-stored user, a tenant resolved from a JWT, etc.), use `createLazyParamDecorator` instead. The factory does not run during argument extraction; it runs the first time the handler reads a property on the resolved value:
+Vela follows the secure request order (`middleware → guards → extract
+args/pipes → interceptors → handler`), so a custom parameter decorator can
+observe request state populated by a guard. Use `createLazyParamDecorator` only
+for a guaranteed object whose construction is expensive or should materialize
+only if the handler actually reads it. Its factory runs on first property
+access:
 
 ```ts
 import {
@@ -171,7 +188,7 @@ class AuthGuard implements CanActivate {
   }
 }
 
-const CurrentUser = createLazyParamDecorator((_data, ctx: ExecutionContext) => {
+const DeferredProfile = createLazyParamDecorator((_data, ctx: ExecutionContext) => {
   const reqCtx = ctx
     .getContext()
     .get('container')
@@ -181,12 +198,17 @@ const CurrentUser = createLazyParamDecorator((_data, ctx: ExecutionContext) => {
 
 @UseGuards(AuthGuard)
 @Get('/me')
-me(@CurrentUser() user: { id: string; name: string }) {
-  return { id: user.id };           // factory runs here, AFTER AuthGuard
+me(@DeferredProfile() profile: { id: string; name: string }) {
+  return { id: profile.id };        // factory runs here, AFTER AuthGuard
 }
 ```
 
 The proxy short-circuits `then` on its `get` trap so `await value` returns the proxy itself rather than triggering eager resolution. Method results are auto-bound to the resolved real target, so detached method calls keep `this`. `JSON.stringify(value)` works after one access (the proxy implements `ownKeys` + `getOwnPropertyDescriptor`).
+
+Do not use a lazy decorator for optional authentication identities: a proxy is
+always truthy even when its eventual value is absent. Identity integrations
+must use ordinary post-guard parameter decorators so anonymous callers receive
+the real `undefined` value.
 
 ## Companion packages
 

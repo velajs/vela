@@ -100,12 +100,14 @@
     "attw": "attw --pack . --profile esm-only",
     "changeset": "changeset",
     "version-packages": "changeset version && node scripts/sync-skill-version.mjs",
-    "release": "pnpm build && changeset publish",
+    "release:preflight": "npm view @velajs/live-protocol@2.0.0 version",
+    "release:check": "node scripts/check-release-lock.mjs && pnpm verify && pnpm audit --audit-level=high",
+    "release": "pnpm release:preflight && pnpm release:check && changeset publish",
     "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm check:skill && pnpm docs:check && pnpm test && pnpm test:workers && pnpm test:workers:als && pnpm publint && pnpm attw"
   },
   "dependencies": {
     "@velajs/errors": "^1.0.0",
-    "@velajs/live-protocol": "^1.0.0",
+    "@velajs/live-protocol": "2.0.0",
     "hono": "^4.12.26"
   },
   "devDependencies": {

@@ -249,13 +249,10 @@ describe('hono app.onError — hono/middleware errors cannot bypass report + red
   });
 
   // ---------------------------------------------------------------------------
-  // Observability gap (whole-branch review): a hono HTTPException is returned
-  // verbatim by onError. That is correct for the client-bound response, but a
-  // 5xx hono exception is still a server fault — every other edge reports before
-  // returning. onError must now report status>=500 HTTPExceptions before the
-  // verbatim return, while leaving that response (and its status) untouched.
+  // A hono HTTPException can carry arbitrary provider/middleware text. 5xx
+  // responses retain their status but are reported and redacted at the edge.
   // ---------------------------------------------------------------------------
-  it('hono HTTPException status>=500 → verbatim response preserved AND reported once', async () => {
+  it('hono HTTPException status>=500 → response redacted AND reported once', async () => {
     @Controller('/ok')
     class OkController {
       @Get()
@@ -277,9 +274,10 @@ describe('hono app.onError — hono/middleware errors cannot bypass report + red
 
     const res = await app.getHonoApp().request('/boom');
 
-    // Client still gets hono's deliberate verbatim response — status unchanged.
     expect(res.status).toBe(503);
-    expect(await res.text()).toContain('upstream down');
+    const body = await res.json();
+    expect(body).toEqual({ error: { code: 'internal', message: 'Internal Server Error' } });
+    expect(JSON.stringify(body)).not.toContain('upstream down');
     // ...and the 5xx server fault was reported exactly once.
     expect(errorSpy).toHaveBeenCalledTimes(1);
   });

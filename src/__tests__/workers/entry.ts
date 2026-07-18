@@ -168,10 +168,14 @@ class SignCheckController {
   @Get()
   async handle() {
     const secret = 'smoke-secret';
-    const signed = await signUrl('/storage/uploads/a.png?method=GET', secret, { expiresIn: 60 });
+    const scope = { method: 'GET', purpose: 'workers:storage-smoke' } as const;
+    const signed = await signUrl('/storage/uploads/a.png?method=GET', secret, {
+      expiresIn: 60,
+      ...scope,
+    });
     return {
-      valid: await verifySignedUrl(signed, secret),
-      tampered: await verifySignedUrl(signed.replace('a.png', 'b.png'), secret),
+      valid: await verifySignedUrl(signed, secret, scope),
+      tampered: await verifySignedUrl(signed.replace('a.png', 'b.png'), secret, scope),
     };
   }
 }

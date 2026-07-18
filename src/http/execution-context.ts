@@ -2,17 +2,28 @@ import type { Context } from 'hono';
 import type { Type } from '../container/types';
 import type { ExecutionContext } from '../pipeline/types';
 
+// Private request-local bridge for custom param decorators, which construct
+// their own ExecutionContext from the same Hono Context after guards run.
+// WeakMap prevents application middleware from forging the declaring module.
+const moduleIdByContext = new WeakMap<object, string>();
+
 // Single source of ExecutionContext shape — used by the route pipeline AND
 // by createParamDecorator's deferred factory call.
 export function buildExecutionContext(
   c: Context,
   controller: Type,
   handlerName: string | symbol,
+  moduleId?: string,
 ): ExecutionContext {
+  if (moduleId !== undefined) moduleIdByContext.set(c, moduleId);
+  const ownerModuleId = moduleId ?? moduleIdByContext.get(c);
   return {
     getType: <T extends string = 'http'>() => 'http' as T,
     getClass: () => controller,
     getHandler: () => handlerName,
+    getModuleId: () => ownerModuleId,
+    getContainer: <T = unknown>() =>
+      (c as unknown as { get: (key: string) => unknown }).get('container') as T | undefined,
     getContext: <T = Context>() => c as T,
     getRequest: () => c.req.raw,
     switchToHttp: () => ({

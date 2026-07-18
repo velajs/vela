@@ -1,4 +1,83 @@
 import type { BroadcastCommand, WsClient } from './websocket.types';
+import {
+  DEFAULT_WS_MAX_FRAME_BYTES,
+  resolveMaxFrameBytes,
+  webSocketFrameFits,
+} from './gateway-routing';
+
+const MAX_BROADCAST_VECTOR_ITEMS = 256;
+const MAX_BROADCAST_SELECTOR_BYTES = 512;
+/** Bounded room/exclusion metadata allowance beyond the actual WS frame. */
+export const MAX_WS_SYNC_ENVELOPE_OVERHEAD_BYTES = 64 * 1024;
+const encoder = new TextEncoder();
+
+function isBoundedStringVector(value: unknown, required: boolean): value is string[] | undefined {
+  if (value === undefined) return !required;
+  return (
+    Array.isArray(value) &&
+    value.length <= MAX_BROADCAST_VECTOR_ITEMS &&
+    value.every(
+      (item) =>
+        typeof item === 'string' &&
+        item.length > 0 &&
+        encoder.encode(item).byteLength <= MAX_BROADCAST_SELECTOR_BYTES,
+    )
+  );
+}
+
+/** Runtime validation for commands crossing Redis/DO synchronization boundaries. */
+export function broadcastCommandFits(
+  value: unknown,
+  maxFrameBytes = DEFAULT_WS_MAX_FRAME_BYTES,
+): value is BroadcastCommand {
+  if (!value || typeof value !== 'object') return false;
+  const command = value as Partial<BroadcastCommand>;
+  return (
+    isBoundedStringVector(command.rooms, true) &&
+    isBoundedStringVector(command.exceptRooms, false) &&
+    isBoundedStringVector(command.exceptIds, false) &&
+    (command.origin === undefined ||
+      (typeof command.origin === 'string' &&
+        command.origin.length > 0 &&
+        encoder.encode(command.origin).byteLength <= MAX_BROADCAST_SELECTOR_BYTES)) &&
+    typeof command.frame === 'string' &&
+    webSocketFrameFits(command.frame, maxFrameBytes)
+  );
+}
+
+export function assertBroadcastCommandFits(
+  value: unknown,
+  maxFrameBytes = DEFAULT_WS_MAX_FRAME_BYTES,
+): asserts value is BroadcastCommand {
+  if (!broadcastCommandFits(value, maxFrameBytes)) {
+    throw new RangeError(
+      `WebSocket broadcast command is invalid or exceeds ${maxFrameBytes} frame bytes`,
+    );
+  }
+}
+
+/** Bound the serialized bus envelope before JSON.parse/publish allocations fan out. */
+export function webSocketSyncEnvelopeFits(serialized: string, maxFrameBytes: number): boolean {
+  const resolved = resolveMaxFrameBytes({ maxFrameBytes });
+  const envelopeLimit = Math.min(
+    Number.MAX_SAFE_INTEGER,
+    resolved + MAX_WS_SYNC_ENVELOPE_OVERHEAD_BYTES,
+  );
+  return webSocketFrameFits(serialized, envelopeLimit);
+}
+
+function deliverFrame(client: WsClient, frame: string): void {
+  const maxFrameBytes = client.maxFrameBytes ?? DEFAULT_WS_MAX_FRAME_BYTES;
+  if (!webSocketFrameFits(frame, maxFrameBytes)) {
+    try {
+      client.close(1009, 'Message too large');
+    } catch {
+      // already closed
+    }
+    return;
+  }
+  client.sendRaw(frame);
+}
 
 /**
  * Owns LOCAL room membership and local fan-out for the connections a single
@@ -15,6 +94,8 @@ export interface RoomRegistry {
   leaveAll(client: WsClient): void | Promise<void>;
   /** Deliver a command to the sockets THIS node holds, applying every exclusion. */
   deliverLocal(cmd: BroadcastCommand): void | Promise<void>;
+  /** Install the runtime's per-recipient guard recheck before fan-out. */
+  setDeliveryAuthorizer?(authorizer: (client: WsClient) => boolean | Promise<boolean>): void;
   localIdsInRoom(room: string): string[];
 }
 
@@ -29,6 +110,8 @@ export interface SyncDriver {
   bind(registry: RoomRegistry): void;
   /** Route a command so every node that may hold a matching socket delivers it. */
   dispatch(cmd: BroadcastCommand): void | Promise<void>;
+  /** @internal Configure the largest explicitly declared gateway frame. */
+  setMaxFrameBytes?(maxFrameBytes: number): void;
   countRoom?(room: string): Promise<number>;
   start?(): void | Promise<void>;
   stop?(): void | Promise<void>;
@@ -37,13 +120,18 @@ export interface SyncDriver {
 /** Single-instance default: deliver straight to the local registry, no cross-node hop. */
 export function local(): SyncDriver {
   let registry: RoomRegistry | undefined;
+  let maxFrameBytes = DEFAULT_WS_MAX_FRAME_BYTES;
   return {
     kind: 'local',
     bind(r) {
       registry = r;
     },
     dispatch(cmd) {
+      assertBroadcastCommandFits(cmd, maxFrameBytes);
       return registry?.deliverLocal(cmd);
+    },
+    setMaxFrameBytes(value) {
+      maxFrameBytes = resolveMaxFrameBytes({ maxFrameBytes: value });
     },
   };
 }
@@ -53,6 +141,11 @@ export class InMemoryRoomRegistry implements RoomRegistry {
   private readonly rooms = new Map<string, Set<WsClient>>();
   private readonly clientRooms = new Map<string, Set<string>>();
   private readonly clients = new Map<string, WsClient>();
+  private deliveryAuthorizer?: (client: WsClient) => boolean | Promise<boolean>;
+
+  setDeliveryAuthorizer(authorizer: (client: WsClient) => boolean | Promise<boolean>): void {
+    this.deliveryAuthorizer = authorizer;
+  }
 
   register(client: WsClient): void {
     this.clients.set(client.id, client);
@@ -96,7 +189,7 @@ export class InMemoryRoomRegistry implements RoomRegistry {
     return [...(this.rooms.get(room) ?? [])].map((c) => c.id);
   }
 
-  deliverLocal(cmd: BroadcastCommand): void {
+  deliverLocal(cmd: BroadcastCommand): void | Promise<void> {
     const excludeIds = new Set(cmd.exceptIds ?? []);
     const excludeRooms = cmd.exceptRooms ?? [];
 
@@ -113,11 +206,32 @@ export class InMemoryRoomRegistry implements RoomRegistry {
             return set;
           })();
 
+    const selected: WsClient[] = [];
     for (const client of candidates) {
       if (excludeIds.has(client.id)) continue;
       const joined = this.clientRooms.get(client.id);
       if (excludeRooms.some((room) => joined?.has(room))) continue;
-      client.sendRaw(cmd.frame);
+      selected.push(client);
     }
+
+    if (!this.deliveryAuthorizer) {
+      for (const client of selected) deliverFrame(client, cmd.frame);
+      return;
+    }
+    return Promise.all(
+      selected.map(async (client) => {
+        let allowed = false;
+        try {
+          allowed = (await this.deliveryAuthorizer!(client)) === true;
+        } catch {
+          allowed = false;
+        }
+        if (allowed) deliverFrame(client, cmd.frame);
+        else {
+          this.leaveAll(client);
+          client.close(1008, 'delivery authorization revoked');
+        }
+      }),
+    ).then(() => undefined);
   }
 }

@@ -21,6 +21,22 @@ export const VelaFactory = {
   async create(rootModule: Type, options: VelaCreateOptions = {}): Promise<VelaApplication> {
     const { adapters = [], ...bootstrapOptions } = options;
 
+    const adapterIpResolvers = adapters.filter(
+      (adapter): adapter is RuntimeAdapter & Required<Pick<RuntimeAdapter, 'getClientIp'>> =>
+        adapter.getClientIp !== undefined,
+    );
+    if (adapterIpResolvers.length > 1) {
+      throw new Error(
+        `Multiple runtime adapters provide getClientIp (${adapterIpResolvers.map((a) => a.name).join(', ')}); configure exactly one trust boundary`,
+      );
+    }
+    if (bootstrapOptions.getClientIp && adapterIpResolvers.length === 1) {
+      throw new Error(
+        'Configure getClientIp either explicitly or through a runtime adapter, not both',
+      );
+    }
+    if (adapterIpResolvers[0]) bootstrapOptions.getClientIp = adapterIpResolvers[0].getClientIp;
+
     const adapterMiddleware = adapters.flatMap((a) => a.requestMiddleware ?? []);
     if (adapterMiddleware.length > 0) {
       bootstrapOptions.middleware = [...adapterMiddleware, ...(bootstrapOptions.middleware ?? [])];

@@ -24,7 +24,7 @@ import type {
  *
  * @example
  * ```ts
- * @WebSocketGateway({ path: '/rooms/:id/ws', binding: 'CHAT_ROOM' })
+ * @WebSocketGateway({ path: '/rooms/:id/ws', roomParam: 'id', binding: 'CHAT_ROOM' })
  * class ChatGateway {}
  * ```
  */

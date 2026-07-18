@@ -227,7 +227,7 @@ describe('createLazyParamDecorator', () => {
     expect(await res.json()).toEqual({ id: 'u-from-guard', msg: 'hello lovelace' });
   });
 
-  it('regression: a non-lazy createParamDecorator fires before guards (documents the hazard)', async () => {
+  it('a non-lazy createParamDecorator fires after guards', async () => {
     const order: string[] = [];
 
     @Injectable({ scope: Scope.REQUEST })
@@ -263,7 +263,6 @@ describe('createLazyParamDecorator', () => {
     order.length = 0;
     const res = await app.getHonoApp().request('/eager-order');
     expect(res.status).toBe(200);
-    // Eager decorator factory runs during arg extraction — before guards.
-    expect(order).toEqual(['decorator-factory', 'guard', 'handler']);
+    expect(order).toEqual(['guard', 'decorator-factory', 'handler']);
   });
 });

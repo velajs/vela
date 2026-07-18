@@ -20,6 +20,8 @@ export function buildWsExecutionContext(
   controller: Type,
   handlerName: string | symbol,
   pattern: string,
+  moduleId?: string,
+  container?: unknown,
 ): WsExecutionContext {
   const host: WsArgumentsHost = {
     getClient: <T = unknown>() => client as T,
@@ -31,6 +33,8 @@ export function buildWsExecutionContext(
     getType: <T extends string = 'ws'>() => 'ws' as T,
     getClass: () => controller,
     getHandler: () => handlerName,
+    getModuleId: () => moduleId,
+    getContainer: <T = unknown>() => container as T | undefined,
     getContext: HTTP_ON_WS('getContext()') as never,
     getRequest: HTTP_ON_WS('getRequest()') as never,
     switchToHttp: HTTP_ON_WS('switchToHttp()') as never,

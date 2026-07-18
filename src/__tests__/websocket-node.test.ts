@@ -37,6 +37,23 @@ class FakeWSContext {
   }
 }
 
+// Fake `upgradeWebSocket` that captures each route's `createEvents` so the
+// socket lifecycle can be driven directly (no real server needed).
+function capturingUpgrade() {
+  const captured: Array<(c: unknown) => WSEvents | Promise<WSEvents>> = [];
+  const upgrade = ((createEvents: (c: unknown) => WSEvents | Promise<WSEvents>) => {
+    captured.push(createEvents);
+    return async () => {};
+  }) as unknown as UpgradeWebSocket;
+  return { upgrade, captured };
+}
+
+const authenticateTestUpgrade = () => ({
+  principal: { issuer: 'test', subject: 'u1', principalType: 'user' as const },
+  tenantId: 't1',
+  expiresAtMs: Date.now() + 60_000,
+});
+
 describe('NodeWsClient', () => {
   it('frames messages and mirrors room membership into the registry', () => {
     const registry = new InMemoryRoomRegistry();
@@ -54,11 +71,43 @@ describe('NodeWsClient', () => {
     expect([...client.rooms]).toEqual([]);
     expect(registry.localIdsInRoom('r1')).toEqual([]);
   });
+
+  it('caps Node socket membership at 32 rooms', () => {
+    const registry = new InMemoryRoomRegistry();
+    const ws = new FakeWSContext();
+    const client = new NodeWsClient(ws as unknown as WSContext, registry, '/chat');
+
+    for (let index = 0; index < 32; index += 1) client.join(`room-${index}`);
+
+    expect(client.rooms.size).toBe(32);
+    expect(() => client.join('room-overflow')).toThrow(/at most 32 rooms/);
+    expect(registry.localIdsInRoom('room-overflow')).toEqual([]);
+  });
+
+  it('closes with 1009 and never writes direct oversized outbound frames', () => {
+    const registry = new InMemoryRoomRegistry();
+    const ws = new FakeWSContext();
+    const client = new NodeWsClient(ws as unknown as WSContext, registry, '/chat', 32);
+
+    client.sendRaw('x'.repeat(33));
+    expect(ws.sent).toEqual([]);
+    expect(ws.closed).toEqual({ code: 1009, reason: 'Message too large' });
+
+    const framed = new FakeWSContext();
+    const framedClient = new NodeWsClient(framed as unknown as WSContext, registry, '/chat', 32);
+    framedClient.send('large', 'x'.repeat(32));
+    expect(framed.sent).toEqual([]);
+    expect(framed.closed?.code).toBe(1009);
+  });
 });
 
 describe('registerWebSocketGateways', () => {
   function chatApp() {
-    @WebSocketGateway({ path: '/rooms/:id/ws' })
+    @WebSocketGateway({
+      path: '/rooms/:id/ws',
+      roomParam: 'id',
+      authenticateUpgrade: authenticateTestUpgrade,
+    })
     class RoomGateway {
       constructor(@WebSocketServer() private readonly server: WsServer) {}
       @SubscribeMessage('echo')
@@ -75,19 +124,11 @@ describe('registerWebSocketGateways', () => {
     return AppModule;
   }
 
-  // Fake `upgradeWebSocket` that captures each route's `createEvents` so the
-  // socket lifecycle can be driven directly (no real server needed).
-  function capturingUpgrade() {
-    const captured: Array<(c: unknown) => WSEvents> = [];
-    const upgrade = ((createEvents: (c: unknown) => WSEvents) => {
-      captured.push(createEvents);
-      return async () => {};
-    }) as unknown as UpgradeWebSocket;
-    return { upgrade, captured };
-  }
-
   const ctxWithRoom = (id: string) => ({
-    req: { param: (k: string) => (k === 'id' ? id : undefined) },
+    req: {
+      raw: new Request(`http://localhost/rooms/${id}/ws`),
+      param: (k: string) => (k === 'id' ? id : undefined),
+    },
   });
   const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -96,10 +137,10 @@ describe('registerWebSocketGateways', () => {
     const { upgrade, captured } = capturingUpgrade();
     registerWebSocketGateways(app, upgrade);
 
-    const events = captured[0](ctxWithRoom('room1'));
+    const events = await captured[0](ctxWithRoom('room1'));
     const ws = new FakeWSContext();
     events.onOpen?.(new Event('open'), ws as unknown as WSContext);
-    await tick();
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     events.onMessage?.(
       { data: JSON.stringify({ id: '1', event: 'echo', data: { text: 'hi' } }) } as MessageEvent,
@@ -110,6 +151,41 @@ describe('registerWebSocketGateways', () => {
     expect(ws.last()).toEqual({ id: '1', event: 'echo', data: 'HI' });
   });
 
+  it('applies the gateway ceiling to dispatcher replies before writing', async () => {
+    @WebSocketGateway({
+      path: '/limited-reply',
+      maxFrameBytes: 48,
+      authenticateUpgrade: authenticateTestUpgrade,
+    })
+    class LimitedReplyGateway {
+      @SubscribeMessage('large')
+      onLarge() {
+        return 'x'.repeat(100);
+      }
+    }
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [LimitedReplyGateway] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const { upgrade, captured } = capturingUpgrade();
+    registerWebSocketGateways(app, upgrade);
+    const events = await captured[0]({
+      req: { raw: new Request('http://localhost/limited-reply'), param: () => undefined },
+    });
+    const ws = new FakeWSContext();
+    events.onOpen?.(new Event('open'), ws as unknown as WSContext);
+    await tick();
+
+    events.onMessage?.(
+      { data: JSON.stringify({ event: 'large' }) } as MessageEvent,
+      ws as unknown as WSContext,
+    );
+    await tick();
+
+    expect(ws.sent).toEqual([]);
+    expect(ws.closed?.code).toBe(1009);
+  });
+
   it('auto-joins the :id room so broadcasts reach every socket in it', async () => {
     const app = await VelaFactory.create(chatApp());
     const { upgrade, captured } = capturingUpgrade();
@@ -118,8 +194,8 @@ describe('registerWebSocketGateways', () => {
 
     const wsA = new FakeWSContext();
     const wsB = new FakeWSContext();
-    const evA = createEvents(ctxWithRoom('room1'));
-    const evB = createEvents(ctxWithRoom('room1'));
+    const evA = await createEvents(ctxWithRoom('room1'));
+    const evB = await createEvents(ctxWithRoom('room1'));
     evA.onOpen?.(new Event('open'), wsA as unknown as WSContext);
     evB.onOpen?.(new Event('open'), wsB as unknown as WSContext);
     await tick();
@@ -132,6 +208,52 @@ describe('registerWebSocketGateways', () => {
 
     expect(wsA.last()).toEqual({ event: 'shout', data: 'hey' });
     expect(wsB.last()).toEqual({ event: 'shout', data: 'hey' });
+  });
+
+  it('uses the declared non-id room parameter instead of collapsing the route', async () => {
+    @WebSocketGateway({
+      path: '/rooms/:roomId/ws',
+      roomParam: 'roomId',
+      authenticateUpgrade: authenticateTestUpgrade,
+    })
+    class NamedRoomGateway {}
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [NamedRoomGateway] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const { upgrade, captured } = capturingUpgrade();
+    registerWebSocketGateways(app, upgrade);
+    const events = await captured[0]({
+      req: {
+        raw: new Request('http://localhost/rooms/alpha/ws'),
+        param: (name: string) => (name === 'roomId' ? 'alpha' : undefined),
+      },
+    });
+    const ws = new FakeWSContext();
+    events.onOpen?.(new Event('open'), ws as unknown as WSContext);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const registry = app.get(WS_ROOM_REGISTRY) as InMemoryRoomRegistry;
+    expect(registry.localIdsInRoom('alpha')).toHaveLength(1);
+    expect(registry.localIdsInRoom('/rooms/:roomId/ws')).toHaveLength(0);
+  });
+
+  it('rejects every parameterized room route unless roomParam is explicit', async () => {
+    @WebSocketGateway({ path: '/tenants/:tenant/rooms/:room/ws' })
+    class AmbiguousGateway {}
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [AmbiguousGateway] })
+    class AppModule {}
+
+    await expect(VelaFactory.create(AppModule)).rejects.toThrow(/roomParam explicitly/);
+  });
+
+  it('rejects a single parameter route without roomParam', async () => {
+    @WebSocketGateway({ path: '/rooms/:id/ws' })
+    class ImplicitGateway {}
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [ImplicitGateway] })
+    class AppModule {}
+
+    await expect(VelaFactory.create(AppModule)).rejects.toThrow(/roomParam explicitly/);
   });
 });
 
@@ -195,6 +317,31 @@ describe('redis() sync driver', () => {
     expect(b.received).toEqual([{ event: 'x', data: 1 }]); // via redis fan-out
     expect(c.received).toEqual([]); // filtered out — not in room1
   });
+
+  it('never publishes an oversized command and allows only an explicit raised ceiling', () => {
+    let publishes = 0;
+    const pub: RedisPubSubClient = {
+      publish() {
+        publishes += 1;
+      },
+      subscribe() {},
+      on() {},
+    };
+    const sub: RedisPubSubClient = { publish() {}, subscribe() {}, on() {} };
+    const driver = redis({ pub, sub });
+    driver.bind(new InMemoryRoomRegistry());
+    const command: BroadcastCommand = {
+      rooms: ['r1'],
+      frame: JSON.stringify({ event: 'large', data: 'x'.repeat(70 * 1024) }),
+    };
+
+    expect(() => driver.dispatch(command)).toThrow(/exceeds 65536/);
+    expect(publishes).toBe(0);
+
+    driver.setMaxFrameBytes?.(96 * 1024);
+    expect(() => driver.dispatch(command)).not.toThrow();
+    expect(publishes).toBe(1);
+  });
 });
 
 describe('websocket-node — code-review regressions', () => {
@@ -238,7 +385,7 @@ describe('websocket-node — code-review regressions', () => {
   it('queues inbound messages until handleConnection resolves', async () => {
     const order: string[] = [];
 
-    @WebSocketGateway({ path: '/ordered' })
+    @WebSocketGateway({ path: '/ordered', authenticateUpgrade: authenticateTestUpgrade })
     class OrderedGateway implements OnGatewayConnection {
       async handleConnection() {
         await new Promise((r) => setTimeout(r, 20));
@@ -253,14 +400,16 @@ describe('websocket-node — code-review regressions', () => {
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
-    const captured: Array<(c: unknown) => WSEvents> = [];
-    const upgrade = ((createEvents: (c: unknown) => WSEvents) => {
+    const captured: Array<(c: unknown) => WSEvents | Promise<WSEvents>> = [];
+    const upgrade = ((createEvents: (c: unknown) => WSEvents | Promise<WSEvents>) => {
       captured.push(createEvents);
       return async () => {};
     }) as unknown as UpgradeWebSocket;
     registerWebSocketGateways(app, upgrade);
 
-    const events = captured[0]({ req: { param: () => undefined } });
+    const events = await captured[0]({
+      req: { raw: new Request('http://localhost/ordered'), param: () => undefined },
+    });
     const ws = new FakeWSContext();
     events.onOpen?.(new Event('open'), ws as unknown as WSContext);
     events.onMessage?.(
@@ -270,5 +419,167 @@ describe('websocket-node — code-review regressions', () => {
     await new Promise((r) => setTimeout(r, 50));
 
     expect(order).toEqual(['open', 'message']); // message waited for handleConnection
+  });
+
+  it('closes fail-closed and never dispatches when handleConnection rejects', async () => {
+    let hits = 0;
+
+    @WebSocketGateway({ path: '/rejected', authenticateUpgrade: authenticateTestUpgrade })
+    class RejectedGateway implements OnGatewayConnection {
+      handleConnection() {
+        throw new Error('not authorized');
+      }
+      @SubscribeMessage('go')
+      onGo() {
+        hits++;
+      }
+    }
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [RejectedGateway] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule, { diagnostics: 'silent' });
+    const { upgrade, captured } = capturingUpgrade();
+    registerWebSocketGateways(app, upgrade);
+    const events = await captured[0]({
+      req: { raw: new Request('http://localhost/rejected'), param: () => undefined },
+    });
+    const ws = new FakeWSContext();
+    events.onOpen?.(new Event('open'), ws as unknown as WSContext);
+    events.onMessage?.(
+      { data: JSON.stringify({ event: 'go', data: {} }) } as MessageEvent,
+      ws as unknown as WSContext,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(ws.closed?.code).toBe(1008);
+    expect(hits).toBe(0);
+  });
+
+  it('rejects a disallowed browser Origin before the upgrade', async () => {
+    @WebSocketGateway({ path: '/origin', allowedOrigins: ['https://trusted.test'] })
+    class OriginGateway {}
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [OriginGateway] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const { upgrade, captured } = capturingUpgrade();
+    registerWebSocketGateways(app, upgrade);
+
+    await expect(
+      captured[0]({
+        req: {
+          raw: new Request('https://api.test/origin', {
+            headers: { origin: 'https://evil.test' },
+          }),
+          param: () => undefined,
+        },
+      }),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('rejects a gateway without upgrade authentication before socket allocation', async () => {
+    @WebSocketGateway({ path: '/missing-auth' })
+    class MissingAuthGateway {}
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [MissingAuthGateway] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const { upgrade, captured } = capturingUpgrade();
+    registerWebSocketGateways(app, upgrade);
+
+    await expect(
+      captured[0]({
+        req: {
+          raw: new Request('https://api.test/missing-auth'),
+          param: () => undefined,
+        },
+      }),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('authenticates a socket ticket before open and installs only trusted identity state', async () => {
+    let callbackUrl = '';
+    let callbackTicket: string | undefined;
+    let connectedData: unknown;
+    const expiresAtMs = Date.now() + 30_000;
+
+    @WebSocketGateway({
+      path: '/rooms/:room/ws',
+      roomParam: 'room',
+      authenticateUpgrade: (request, context) => {
+        callbackUrl = request.url;
+        callbackTicket = context.ticket;
+        if (context.room !== 'alpha' || context.ticket !== 'opaque-once') return false;
+        return {
+          principal: { issuer: 'https://issuer.test', subject: 'u1', principalType: 'user' },
+          tenantId: 't1',
+          expiresAtMs,
+        };
+      },
+    })
+    class TicketGateway implements OnGatewayConnection {
+      handleConnection(client: WsClient) {
+        connectedData = client.data;
+      }
+    }
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [TicketGateway] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const { upgrade, captured } = capturingUpgrade();
+    registerWebSocketGateways(app, upgrade);
+    const events = await captured[0]({
+      req: {
+        raw: new Request('https://api.test/rooms/alpha/ws?ticket=opaque-once'),
+        param: (name: string) => (name === 'room' ? 'alpha' : undefined),
+      },
+    });
+    const ws = new FakeWSContext();
+    events.onOpen?.(new Event('open'), ws as unknown as WSContext);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(callbackUrl).toBe('https://api.test/rooms/alpha/ws');
+    expect(callbackTicket).toBe('opaque-once');
+    expect(connectedData).toEqual({
+      principal: { issuer: 'https://issuer.test', subject: 'u1', principalType: 'user' },
+      tenantId: 't1',
+      expiresAtMs,
+      userId: 'u1',
+    });
+  });
+
+  it('rejects reusable or malformed WebSocket query credentials before authentication', async () => {
+    let authCalls = 0;
+    @WebSocketGateway({
+      path: '/query-secret',
+      authenticateUpgrade: () => {
+        authCalls++;
+        return false;
+      },
+    })
+    class SecretGateway {}
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [SecretGateway] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const { upgrade, captured } = capturingUpgrade();
+    registerWebSocketGateways(app, upgrade);
+
+    for (const suffix of [
+      '?access_token=long-lived',
+      '?Ticket=case-confusable',
+      '?ticket=contains%20space',
+      `?ticket=${'x'.repeat(8 * 1024 + 1)}`,
+    ]) {
+      await expect(
+        captured[0]({
+          req: {
+            raw: new Request(`https://api.test/query-secret${suffix}`),
+            param: () => undefined,
+          },
+        }),
+      ).rejects.toMatchObject({ status: 403 });
+    }
+    expect(authCalls).toBe(0);
   });
 });

@@ -72,12 +72,16 @@ export class VelaApplication {
       // Hono's own HTTPException (e.g. `bodyLimit`'s 413) carries a deliberate,
       // author-intended client response — honor it exactly as Hono's default
       // error handler would, without treating it as a server fault to redact.
-      // But a 5xx HTTPException is still a server fault: every other edge reports
-      // before returning, so report status>=500 here too (leaving the verbatim
-      // response — and its redaction/status — untouched).
+      // But a 5xx HTTPException is still a server fault: report it and replace
+      // its possibly provider-controlled response body.  The status is useful
+      // protocol information; the raw message/headers remain server-side only.
       if (err instanceof HTTPException) {
         if (err.status >= 500) {
           reporter.report(err, { edge: 'hono', source: `${c.req.method} ${c.req.path}` });
+          return c.json(
+            { error: { code: 'internal', message: 'Internal Server Error' } },
+            err.status as ContentfulStatusCode,
+          );
         }
         return err.getResponse();
       }

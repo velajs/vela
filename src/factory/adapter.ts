@@ -1,4 +1,5 @@
 import type { MiddlewareHandler } from 'hono';
+import type { Context } from 'hono';
 import type { VelaApplication } from '../application';
 import type { Container } from '../container/container';
 import type { DiscoveryService } from '../discovery/discovery.service';
@@ -39,6 +40,8 @@ export interface AdapterContext {
  */
 export interface RuntimeAdapter {
   name: string;
+  /** Platform-attested client address resolver used by @Ip() and default throttling. */
+  getClientIp?: (c: Context) => string | null;
   requestMiddleware?: MiddlewareHandler[];
   onBootstrap?(ctx: AdapterContext): void | Promise<void>;
   onRoutesBuilt?(ctx: AdapterContext): void | Promise<void>;

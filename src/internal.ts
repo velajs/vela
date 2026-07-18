@@ -9,6 +9,7 @@ export type { ModuleScope, ContainerOptions, Diagnostics } from './container/typ
 export { bindAppProviders } from './pipeline/app-providers';
 export { RouteManager } from './http/route.manager';
 export type { RouteManagerOptions } from './http/route.manager';
+export type { VelaSecurityOptions } from './http/security-options';
 
 export { ModuleLoader } from './module/module-loader';
 export { ComponentManager } from './pipeline/component.manager';

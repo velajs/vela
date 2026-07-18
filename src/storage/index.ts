@@ -1,8 +1,13 @@
 // The HMAC signed-URL util now lives in `src/crypto/` (core consumes it there
 // for the URL generator + guard). Re-exported here so `@velajs/vela/storage`'s
 // public API is unchanged for existing consumers.
-export { signUrl, verifySignedUrl } from '../crypto/signed-url';
-export type { SignedUrlOptions } from '../crypto/signed-url';
+export {
+  signUrl,
+  verifySignedUrl,
+  HTTP_SIGNED_URL_PURPOSE,
+  STORAGE_SIGNED_URL_PURPOSE,
+} from '../crypto/signed-url';
+export type { SignedUrlOptions, VerifySignedUrlOptions } from '../crypto/signed-url';
 export { expandPathTemplate, joinStoragePath } from './path-template';
 export type {
   StorageBody,

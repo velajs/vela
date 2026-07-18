@@ -14,10 +14,47 @@ export type { WebSocketModuleOptions } from './websocket.module';
 
 // Dispatcher (injected/called by transports) + the 'websocket' entrypoint meta
 export { WsDispatcher, type WsEntrypointMeta } from './ws-dispatcher';
+export {
+  DEFAULT_WS_MAX_FRAME_BYTES,
+  DEFAULT_WS_MAX_JOINED_ROOMS,
+  DEFAULT_WS_MAX_ROOM_ID_BYTES,
+  assertWebSocketRoomId,
+  authenticateWebSocketUpgrade,
+  authorizeWebSocketUpgrade,
+  isWebSocketOriginAllowed,
+  normalizeWebSocketUpgradeIdentity,
+  webSocketFrameFits,
+  resolveGatewayRoomId,
+  resolveGatewayRoomParam,
+  resolveMaxFrameBytes,
+} from './gateway-routing';
+export type { AuthenticatedWebSocketUpgrade } from './gateway-routing';
+export {
+  issueWebSocketTicket,
+  verifyAndConsumeWebSocketTicket,
+  WEBSOCKET_TICKET_AUDIENCE,
+  WEBSOCKET_TICKET_PURPOSE,
+  WEBSOCKET_TICKET_MAX_TTL_MS,
+} from './socket-ticket';
+export type {
+  WebSocketTicketPrincipalType,
+  WebSocketTicketPrincipal,
+  WebSocketTicketClaim,
+  WebSocketTicketNonceStore,
+  IssueWebSocketTicketOptions,
+  VerifyWebSocketTicketOptions,
+} from './socket-ticket';
 
 // Server handle + rooms + sync
 export { WsServerImpl, BroadcastOperatorImpl } from './ws-server';
-export { InMemoryRoomRegistry, local } from './ws-sync';
+export {
+  InMemoryRoomRegistry,
+  assertBroadcastCommandFits,
+  broadcastCommandFits,
+  local,
+  MAX_WS_SYNC_ENVELOPE_OVERHEAD_BYTES,
+  webSocketSyncEnvelopeFits,
+} from './ws-sync';
 export type { SyncDriver, RoomRegistry } from './ws-sync';
 
 // Execution context + exceptions
@@ -49,6 +86,9 @@ export type {
   BroadcastCommand,
   BroadcastOperator,
   WebSocketGatewayOptions,
+  WebSocketPrincipal,
+  WebSocketUpgradeIdentity,
+  WebSocketUpgradeAuthenticationContext,
   SubscribeMessageMetadata,
   ReservedWsEventMetadata,
   ReservedWsEventHandler,

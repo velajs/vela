@@ -77,10 +77,9 @@ export class SignedInvocationGuard implements CanActivate {
     if (claim.path !== `${url.pathname}${url.search}`) throw new ForbiddenException(INVALID);
 
     // The capture middleware installed by `@SignedInvocation()` hashes the raw
-    // body BEFORE `@Body()` consumes it (HTTP resolves args before guards). Use
-    // that hash when present; fall back to hashing the still-unconsumed live
-    // body for the bare-guard case. `takeCapturedBodyHash` also clears the entry
-    // so a Request identity reused across the isolate can't feed a stale hash.
+    // body before the guard. HTTP now runs guards before argument extraction,
+    // so the fallback can also hash the still-unconsumed live body safely.
+    // `takeCapturedBodyHash` clears the entry to prevent stale Request reuse.
     const captured = takeCapturedBodyHash(request);
     const bodyHash = captured !== undefined ? captured : await hashLiveBody(request);
     if (claim.bodyHash !== bodyHash) throw new ForbiddenException(INVALID);
@@ -107,9 +106,9 @@ export class SignedInvocationGuard implements CanActivate {
  * reindex(@Body() body: ReindexJob) { ... }
  * ```
  *
- * Composes {@link SignedInvocationBodyCapture} ahead of the guard so the raw
- * body is hashed before `@Body()` consumes it — the guard needs those bytes to
- * verify the claim's `bodyHash`, but HTTP resolves handler args before guards.
+ * Composes {@link SignedInvocationBodyCapture} ahead of the guard so body
+ * hashing remains stable even when earlier scoped middleware observes the
+ * request. The application's outer body limit runs before this middleware.
  */
 export function SignedInvocation(): ReturnType<typeof applyDecorators> {
   return applyDecorators(

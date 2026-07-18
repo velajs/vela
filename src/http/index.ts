@@ -1,5 +1,18 @@
-export { RouteManager } from './route.manager';
+export { DEFAULT_BODY_LIMIT_BYTES, RouteManager } from './route.manager';
 export type { RouteManagerOptions } from './route.manager';
+export {
+  DEFAULT_QUERY_BYTES_LIMIT,
+  DEFAULT_QUERY_DEPTH_LIMIT,
+  DEFAULT_QUERY_PARAMETER_LIMIT,
+  shouldWarnProductionSecurity,
+  warnRelaxedSecurityLimit,
+} from './security-options';
+export type {
+  VelaSecurityOptions,
+  VelaBodySecurityOptions,
+  VelaBodyLimitOverride,
+  VelaQuerySecurityOptions,
+} from './security-options';
 export { MiddlewareBuilder } from '../module/middleware';
 export type {
   MiddlewareConsumer,

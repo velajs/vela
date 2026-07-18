@@ -16,9 +16,11 @@ import {
   LiveEngine,
   LiveInvalidation,
   LiveModule,
+  LIVE_PROTOCOL,
   LiveQuery,
   LiveResolver,
   PRESENCE_ROSTER_QUERY,
+  PresenceService,
 } from '../live/index.js';
 import type { LiveQueryContext, ServerLiveFrame } from '../live/index.js';
 
@@ -27,9 +29,15 @@ interface RawFrame {
   data: ServerLiveFrame;
 }
 
+const trustedSocketData = (): Record<string, unknown> => ({
+  principal: { issuer: 'test', subject: 'u1', principalType: 'user' },
+  tenantId: 't1',
+  expiresAtMs: Date.now() + 60_000,
+});
+
 class FakeClient implements WsClient {
   readonly rooms = new Set<string>();
-  data: Record<string, unknown> = {};
+  data: Record<string, unknown> = trustedSocketData();
   readonly raw = null;
   readonly frames: RawFrame[] = [];
   failNextSend = false;
@@ -43,8 +51,12 @@ class FakeClient implements WsClient {
     }
     this.frames.push(JSON.parse(payload) as RawFrame);
   }
-  join(): void {}
-  leave(): void {}
+  join(room: string): void {
+    this.rooms.add(room);
+  }
+  leave(room: string): void {
+    this.rooms.delete(room);
+  }
   commit(): void {}
   close(code?: number, reason?: string): void {
     this.closed = { code, reason };
@@ -62,7 +74,11 @@ const subFrame = (
   query: string,
   args?: unknown,
   extra?: Record<string, unknown>,
-): string => JSON.stringify({ event: '$live', data: { t: 'sub', sub, query, args, ...extra } });
+): string =>
+  JSON.stringify({
+    event: '$live',
+    data: { t: 'sub', sub, query, args, v: LIVE_PROTOCOL, ...extra },
+  });
 
 describe('LiveModule (tag-based live queries)', () => {
   beforeEach(() => MetadataRegistry.clear());
@@ -86,7 +102,7 @@ describe('LiveModule (tag-based live queries)', () => {
       }
     }
 
-    @WebSocketGateway({ path: '/rooms/:id/ws' })
+    @WebSocketGateway({ path: '/rooms/:id/ws', roomParam: 'id' })
     class RoomsGateway {}
 
     @Module({
@@ -104,6 +120,17 @@ describe('LiveModule (tag-based live queries)', () => {
     const dispatch = (raw: string) => dispatcher.dispatchMessage('/rooms/:id/ws', client, raw);
     return { app, dispatcher, engine, invalidation, client, dispatch, todos };
   }
+
+  it('does not collapse distinct security callbacks into one dynamic module', () => {
+    const first = LiveModule.forRoot({ authorizeDelivery: () => true });
+    const second = LiveModule.forRoot({ authorizeDelivery: () => true });
+    const shared = () => true;
+    const sameA = LiveModule.forRoot({ authorizeDelivery: shared });
+    const sameB = LiveModule.forRoot({ authorizeDelivery: shared });
+
+    expect(first.key).not.toBe(second.key);
+    expect(sameA.key).toBe(sameB.key);
+  });
 
   it('acks a subscription and pushes the initial snapshot with cursor+epoch', async () => {
     const { client, dispatch } = await makeTodoApp();
@@ -262,6 +289,113 @@ describe('LiveModule (tag-based live queries)', () => {
     ]);
   });
 
+  it('caps active subscriptions per socket', async () => {
+    @LiveResolver()
+    @Injectable()
+    class Limited {
+      @LiveQuery('limited.q', { tags: ['limited'] })
+      q() {
+        return 1;
+      }
+    }
+    @WebSocketGateway({ path: '/ws' })
+    class Gw {}
+    @Module({
+      imports: [WebSocketModule.forRoot(), LiveModule.forRoot({ maxSubscriptionsPerSocket: 1 })],
+      providers: [Gw, Limited],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const dispatcher = app.get(WsDispatcher);
+    const client = new FakeClient();
+    await dispatcher.dispatchMessage('/ws', client, subFrame('s1', 'limited.q'));
+    await dispatcher.dispatchMessage('/ws', client, subFrame('s2', 'limited.q'));
+
+    expect(client.live().at(-1)).toMatchObject({
+      t: 'error',
+      sub: 's2',
+      code: 'limit_exceeded',
+      fatal: true,
+    });
+  });
+
+  it('re-authorizes before invalidation delivery and purges a revoked socket', async () => {
+    let authorized = true;
+    @LiveResolver()
+    @Injectable()
+    class Revocable {
+      @LiveQuery('revocable.q', { tags: ['revocable'] })
+      q() {
+        return 1;
+      }
+    }
+    @WebSocketGateway({ path: '/ws' })
+    class Gw {}
+    @Module({
+      imports: [
+        WebSocketModule.forRoot(),
+        LiveModule.forRoot({ authorizeDelivery: () => authorized }),
+      ],
+      providers: [Gw, Revocable],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const dispatcher = app.get(WsDispatcher);
+    const engine = app.get(LiveEngine);
+    const invalidation = app.get(LiveInvalidation);
+    const client = new FakeClient();
+    await dispatcher.dispatchMessage('/ws', client, subFrame('s1', 'revocable.q'));
+    client.clear();
+
+    authorized = false;
+    await invalidation.invalidate({ tags: ['revocable'] });
+    await engine.whenIdle();
+
+    expect(client.live()).toEqual([]);
+    expect(client.closed?.code).toBe(1008);
+    expect(client.data.__velaLiveSubs).toEqual([]);
+  });
+
+  it('re-runs resolver guards before invalidation delivery', async () => {
+    let allowed = true;
+    @Injectable()
+    class MutableGuard implements CanActivate {
+      canActivate() {
+        return allowed;
+      }
+    }
+    @LiveResolver()
+    @Injectable()
+    class Guarded {
+      @UseGuards(MutableGuard)
+      @LiveQuery('guarded.q', { tags: ['guarded'] })
+      q() {
+        return 1;
+      }
+    }
+    @WebSocketGateway({ path: '/ws' })
+    class Gw {}
+    @Module({
+      imports: [WebSocketModule.forRoot(), LiveModule.forRoot()],
+      providers: [Gw, Guarded, MutableGuard],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const dispatcher = app.get(WsDispatcher);
+    const engine = app.get(LiveEngine);
+    const invalidation = app.get(LiveInvalidation);
+    const client = new FakeClient();
+    await dispatcher.dispatchMessage('/ws', client, subFrame('s1', 'guarded.q'));
+
+    allowed = false;
+    await invalidation.invalidate({ tags: ['guarded'] });
+    await engine.whenIdle();
+    expect(client.closed?.code).toBe(1008);
+  });
+
   it('resumes a reconnecting subscription whose tags were untouched, snapshots otherwise', async () => {
     const { client, dispatch, dispatcher, engine, invalidation } = await makeTodoApp();
     await dispatch(subFrame('s1', 'todos.list', { listId: 'l1' }));
@@ -350,7 +484,7 @@ describe('LiveModule (tag-based live queries)', () => {
 
   it('captures identity at subscribe and enforces expiry on the outbound path', async () => {
     const { client, dispatch, engine, invalidation, todos } = await makeTodoApp();
-    client.data = { userId: 'u1', expiresAt: Date.now() - 1 };
+    client.data = { userId: 'u1', expiresAtMs: Date.now() - 1 };
     await dispatch(subFrame('s1', 'todos.list', { listId: 'l1' }));
     client.clear();
 
@@ -359,13 +493,15 @@ describe('LiveModule (tag-based live queries)', () => {
     await engine.whenIdle();
 
     expect(client.live()).toEqual([]); // no scoped data after expiry…
-    expect(client.closed).toEqual({ code: 1008, reason: 'identity expired' }); // …the socket is dropped
+    expect(client.closed).toEqual({ code: 1008, reason: 'identity invalid or expired' }); // …the socket is dropped
   });
 
   it('ships presence: heartbeat updates the roster, close departs immediately', async () => {
     const { client, dispatch, dispatcher, engine } = await makeTodoApp();
+    client.rooms.add('lobby');
 
     const watcher = new FakeClient('watcher');
+    watcher.rooms.add('lobby');
     await dispatcher.handleOpen('/rooms/:id/ws', watcher);
     await dispatcher.dispatchMessage(
       '/rooms/:id/ws',
@@ -391,6 +527,46 @@ describe('LiveModule (tag-based live queries)', () => {
     // Clearing the last member empties the list — the rule-5 codec bail sends
     // a snapshot rather than a delete-only delta (delta count > next length).
     expect(watcher.live()[0]).toMatchObject({ t: 'data', snapshot: [] });
+  });
+
+  it('rejects presence metadata above 4 KiB on the server', async () => {
+    const { app, client, dispatch } = await makeTodoApp();
+    client.rooms.add('lobby');
+
+    await dispatch(
+      JSON.stringify({
+        event: '$live',
+        data: { t: 'presence', room: 'lobby', meta: { value: 'x'.repeat(5_000) } },
+      }),
+    );
+
+    expect(app.get(PresenceService).roster('lobby')).toEqual([]);
+  });
+
+  it('rejects presence heartbeats and roster reads outside joined rooms', async () => {
+    const { app, client, dispatch, dispatcher } = await makeTodoApp();
+
+    await dispatch(
+      JSON.stringify({
+        event: '$live',
+        data: { t: 'presence', room: 'foreign', meta: { injected: true } },
+      }),
+    );
+
+    expect(client.closed).toEqual({ code: 1008, reason: 'presence room not joined' });
+    expect(app.get(PresenceService).roster('foreign')).toEqual([]);
+
+    const watcher = new FakeClient('foreign-watcher');
+    watcher.rooms.add('lobby');
+    await dispatcher.handleOpen('/rooms/:id/ws', watcher);
+    await dispatcher.dispatchMessage(
+      '/rooms/:id/ws',
+      watcher,
+      subFrame('p-foreign', PRESENCE_ROSTER_QUERY, { room: 'foreign' }),
+    );
+    expect(watcher.live()).toContainEqual(
+      expect.objectContaining({ t: 'error', sub: 'p-foreign', fatal: true }),
+    );
   });
 
   it('drops live subscriptions when the socket closes', async () => {
