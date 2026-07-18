@@ -6,7 +6,7 @@
 
 Cloudflare Workers integration for the [Vela](https://github.com/velajs/vela) framework. NestJS-style per-service modules for KV, D1, R2, Queues, Durable Objects, Workers AI, Vectorize, and Hyperdrive.
 
-Upgrading to 2.0? Read the [security migration](./SECURITY_MIGRATION.md); R2
+Upgrading to 1.11? Read the [security migration](./SECURITY_MIGRATION.md); R2
 presigned URLs and WebSocket identity contracts are intentionally incompatible
 with older releases.
 

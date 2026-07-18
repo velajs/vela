@@ -1,6 +1,6 @@
-# Security migration (2.0)
+# Security migration (1.11)
 
-This release coordinates with `@velajs/vela` 2.0 and intentionally invalidates
+This release coordinates with `@velajs/vela` 1.21 and intentionally invalidates
 older security-sensitive wire formats.
 
 ## R2 presigned URLs

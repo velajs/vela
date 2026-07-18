@@ -1,8 +1,8 @@
 ---
-"@velajs/cloudflare": major
+"@velajs/cloudflare": minor
 ---
 
-Align Cloudflare adapters with Vela's hardened v2 security contracts.
+Align Cloudflare adapters with Vela's hardened 1.x security contracts.
 
 - R2 proxy URLs use method/purpose-scoped signatures, carry object keys as opaque signed claims, decode exactly once, and reject malformed/non-canonical/out-of-root keys. Existing proxy URLs must be regenerated.
 - R2 proxy downloads are always served as attachments with `nosniff`; attacker-controlled HTML/SVG is never rendered inline on the authenticated API origin.
@@ -15,4 +15,4 @@ Align Cloudflare adapters with Vela's hardened v2 security contracts.
 - Initial hibernation attachments are bounded to Cloudflare's 16 KiB limit.
 - Add a fail-closed Vela throttler adapter for Cloudflare's distributed Rate Limiting binding. Binding limit and period must match the route configuration; exact remaining quota is no longer fabricated.
 - Inbound email forwards only the platform SMTP envelope and does not promote raw or `Headers`-derived Authentication-Results into verified verdicts.
-- Release wiring requires the published Vela 2, Feature Flags 1, Mail 1, and Workflow 0.1 packages; local absolute package overrides are removed so frozen standalone CI is portable.
+- Release wiring requires the published Vela 1.21, Feature Flags 1, Mail 1, and Workflow 0.1 packages; local absolute package overrides are removed so frozen standalone CI is portable.

@@ -52,7 +52,7 @@
     "attw": "attw --pack . --profile esm-only",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release:preflight": "npm view @velajs/vela@2.0.0 version && npm view @velajs/feature-flags@1.0.0 version && npm view @velajs/mail@1.0.0 version && npm view @velajs/workflow@0.1.0 version",
+    "release:preflight": "npm view @velajs/vela@1.21.0 version && npm view @velajs/feature-flags@1.0.0 version && npm view @velajs/mail@1.0.0 version && npm view @velajs/workflow@0.1.0 version",
     "release:check": "node scripts/check-release-lock.mjs && pnpm verify && pnpm audit --audit-level=high",
     "release": "pnpm release:preflight && pnpm release:check && changeset publish",
     "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm test && pnpm test:workers && pnpm publint && pnpm attw"
@@ -65,7 +65,7 @@
     "@swc/core": "catalog:",
     "@velajs/feature-flags": "^1.0.0",
     "@velajs/mail": "^1.0.0",
-    "@velajs/vela": "^2.0.0",
+    "@velajs/vela": "^1.21.0",
     "@velajs/workflow": "^0.1.0",
     "hono": "^4.12.27",
     "oxfmt": "catalog:",
@@ -79,10 +79,10 @@
   },
   "peerDependencies": {
     "@cloudflare/workers-types": ">=4",
-    "@velajs/feature-flags": ">=1.0.0",
-    "@velajs/mail": ">=1.0.0",
-    "@velajs/vela": ">=2.0.0",
-    "@velajs/workflow": ">=0.1.0",
+    "@velajs/feature-flags": ">=1.0.0 <2",
+    "@velajs/mail": ">=1.0.0 <2",
+    "@velajs/vela": ">=1.21.0 <2",
+    "@velajs/workflow": ">=0.1.0 <2",
     "hono": ">=4"
   },
   "peerDependenciesMeta": {
