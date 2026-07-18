@@ -20,6 +20,9 @@ catalog:
   unplugin-swc: ^1.5.9
   '@types/node': ^24.13.3
 
+overrides:
+  'vite@>=7.0.0 <7.3.5': ^7.3.5
+
 minimumReleaseAgeExclude:
   - '@arethetypeswrong/cli@0.18.5'
   - '@arethetypeswrong/core@0.18.5'
