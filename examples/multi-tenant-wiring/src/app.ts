@@ -53,7 +53,14 @@ export async function createApp(): Promise<Hono> {
     }
     throw err;
   });
-  outer.use('*', multiTenant()); // resolves X-Tenant-ID (400 TENANT_REQUIRED without it)
+  outer.use(
+    '*',
+    multiTenant({
+      // Replace this illustrative allow-list with your authenticated user's
+      // tenant-membership lookup. A header alone is never authorization.
+      validate: (tenantId) => tenantId === 'tenant-a' || tenantId === 'tenant-b',
+    }),
+  ); // resolves X-Tenant-ID (400 TENANT_REQUIRED without it)
   outer.route('/', app.getHonoApp());
   return outer;
 }

@@ -11,6 +11,8 @@
 
 import {
   type FilterCondition,
+  type SearchHighlight,
+  type SearchHighlightRange,
   type SearchHit,
   type SearchMode,
   type SearchQuery,
@@ -189,16 +191,17 @@ export function calculateScore<T extends Record<string, unknown>>(
 // ---------------------------------------------------------------------------
 
 /**
- * Generate highlighted snippets for matched terms in a field value, wrapping
- * matches in `<tag>...</tag>` (default `mark`). Up to 3 snippets per field.
+ * Generate presentation-neutral snippets and half-open match ranges. Clients
+ * must render `text` as text and decorate the ranges themselves; stored values
+ * never become executable HTML. Up to 3 snippets per field.
  */
 export function generateHighlights(
   value: unknown,
   queryTokens: string[],
   mode: SearchMode,
-  tag = 'mark',
+  _tag = 'mark',
   snippetLength = 150,
-): string[] {
+): SearchHighlight[] {
   if (value === undefined || value === null) {
     return [];
   }
@@ -208,14 +211,14 @@ export function generateHighlights(
     return [];
   }
 
-  const highlights: string[] = [];
+  const highlights: SearchHighlight[] = [];
   const contentLower = content.toLowerCase();
 
   if (mode === 'phrase') {
     const phrase = queryTokens[0];
     const index = contentLower.indexOf(phrase);
     if (index !== -1) {
-      const snippet = createSnippet(content, index, phrase.length, snippetLength, tag);
+      const snippet = createSnippet(content, index, phrase.length, snippetLength);
       if (snippet) highlights.push(snippet);
     }
     return highlights;
@@ -241,7 +244,7 @@ export function generateHighlights(
     );
     if (nearbyUsed) continue;
 
-    const snippet = createSnippet(content, pos.start, pos.length, snippetLength, tag);
+    const snippet = createSnippet(content, pos.start, pos.length, snippetLength);
     if (snippet) {
       highlights.push(snippet);
       usedPositions.add(pos.start);
@@ -258,8 +261,7 @@ function createSnippet(
   matchStart: number,
   matchLength: number,
   snippetLength: number,
-  tag: string,
-): string | null {
+): SearchHighlight | null {
   const halfSnippet = Math.floor(snippetLength / 2);
   let snippetStart = Math.max(0, matchStart - halfSnippet);
   let snippetEnd = Math.min(content.length, matchStart + matchLength + halfSnippet);
@@ -281,37 +283,36 @@ function createSnippet(
   if (snippetStart > 0) snippet = '...' + snippet;
   if (snippetEnd < content.length) snippet = snippet + '...';
 
-  return highlightTermsInText(snippet, [content.slice(matchStart, matchStart + matchLength)], tag);
+  const ranges = findHighlightRanges(snippet, [
+    content.slice(matchStart, matchStart + matchLength),
+  ]);
+  return ranges.length === 0 ? null : { text: snippet, ranges };
 }
 
-/** Wrap matched terms (longest first) in highlight tags within text. */
-function highlightTermsInText(text: string, terms: string[], tag: string): string {
-  let result = text;
+/** Locate non-overlapping matched terms (longest first) within snippet text. */
+function findHighlightRanges(text: string, terms: string[]): SearchHighlightRange[] {
   const textLower = text.toLowerCase();
-  const sortedTerms = [...terms].sort((a, b) => b.length - a.length);
+  const normalized = [...new Set(terms.map((term) => term.toLowerCase()).filter(Boolean))].toSorted(
+    (a, b) => b.length - a.length,
+  );
+  let cursor = 0;
+  const ranges: SearchHighlightRange[] = [];
 
-  for (const term of sortedTerms) {
-    const termLower = term.toLowerCase();
-    let lastIndex = 0;
-    let highlighted = '';
-    let searchIndex = 0;
-
-    while (searchIndex < textLower.length) {
-      const index = textLower.indexOf(termLower, searchIndex);
-      if (index === -1) break;
-      highlighted += result.slice(lastIndex, index);
-      highlighted += `<${tag}>${result.slice(index, index + term.length)}</${tag}>`;
-      lastIndex = index + term.length;
-      searchIndex = lastIndex;
+  while (cursor < text.length) {
+    let nextIndex = -1;
+    let nextTerm = '';
+    for (const term of normalized) {
+      const index = textLower.indexOf(term, cursor);
+      if (index !== -1 && (nextIndex === -1 || index < nextIndex)) {
+        nextIndex = index;
+        nextTerm = term;
+      }
     }
-
-    if (highlighted) {
-      highlighted += result.slice(lastIndex);
-      result = highlighted;
-    }
+    if (nextIndex === -1) break;
+    ranges.push({ start: nextIndex, end: nextIndex + nextTerm.length });
+    cursor = nextIndex + nextTerm.length;
   }
-
-  return result;
+  return ranges;
 }
 
 // ---------------------------------------------------------------------------
@@ -350,7 +351,7 @@ export function runSearchFallback<T extends Record<string, unknown>>(
       continue;
     }
 
-    const highlights: Record<string, string[]> = {};
+    const highlights: Record<string, SearchHighlight[]> = {};
     for (const field of matchedFields) {
       const fieldHighlights = generateHighlights(record[field], queryTokens, query.mode);
       if (fieldHighlights.length > 0) {

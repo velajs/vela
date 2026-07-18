@@ -53,6 +53,14 @@ export function assertAdapterSatisfies(
     }
   }
 
+  if (adapter.nested !== undefined) {
+    for (const method of ['inspectNestedTargets', 'createNested', 'applyNested'] as const) {
+      if (typeof adapter.nested[method] !== 'function') {
+        problems.push(`nested-write driver is missing its '${method}' method`);
+      }
+    }
+  }
+
   if (problems.length > 0) {
     throw new ConfigurationException(
       `Resource '${resourceName}': adapter capability mismatch:\n- ${problems.join('\n- ')}`,

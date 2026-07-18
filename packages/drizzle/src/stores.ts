@@ -7,14 +7,19 @@
 
 import { and, desc, eq, sql } from 'drizzle-orm';
 import type { AuditEntry, AuditQuery, AuditStore } from '@velajs/crud/audit';
-import type { VersionEntry, VersioningStore } from '@velajs/crud/versioning';
+import {
+  serializeVersionRecordKey,
+  type VersionEntry,
+  type VersioningStore,
+  type VersionRecordKey,
+} from '@velajs/crud/versioning';
 import { asDatabase, type DrizzleDatabase, type DrizzleTable } from './database';
 import { getColumn } from './filters';
 
 type Row = Record<string, unknown>;
 
 /**
- * Column contract: id (text pk), tableName (text), recordId (text),
+ * Column contract: id (text pk), tableName (text), recordId (text v2 scoped key),
  * version (integer), data (text json), createdAt (integer epoch-ms),
  * changedBy (text null), changeReason (text null).
  */
@@ -32,13 +37,17 @@ export class DrizzleVersioningStore implements VersioningStore {
     return getColumn(this.table, name);
   }
 
-  async save(tableName: string, entry: VersionEntry): Promise<void> {
+  async save(tableName: string, key: VersionRecordKey, entry: VersionEntry): Promise<void> {
     await this.db.insert(this.table).values({
       id: entry.id,
       tableName,
-      recordId: String(entry.recordId),
+      recordId: serializeVersionRecordKey(key),
       version: entry.version,
-      data: JSON.stringify(entry.data),
+      data: JSON.stringify({
+        __velaVersionEntry: 2,
+        recordId: entry.recordId,
+        data: entry.data,
+      }),
       createdAt: entry.createdAt.getTime(),
       changedBy: entry.changedBy ?? null,
       changeReason: entry.changeReason ?? null,
@@ -47,13 +56,18 @@ export class DrizzleVersioningStore implements VersioningStore {
 
   async list(
     tableName: string,
-    recordId: string | number,
+    key: VersionRecordKey,
     options: { limit?: number; offset?: number } = {},
   ): Promise<VersionEntry[]> {
     let builder = this.db
       .select()
       .from(this.table)
-      .where(and(eq(this.col('tableName'), tableName), eq(this.col('recordId'), String(recordId))))
+      .where(
+        and(
+          eq(this.col('tableName'), tableName),
+          eq(this.col('recordId'), serializeVersionRecordKey(key)),
+        ),
+      )
       .orderBy(desc(this.col('version')));
     if (options.limit !== undefined) builder = builder.limit(options.limit);
     if (options.offset !== undefined) builder = builder.offset(options.offset);
@@ -63,7 +77,7 @@ export class DrizzleVersioningStore implements VersioningStore {
 
   async get(
     tableName: string,
-    recordId: string | number,
+    key: VersionRecordKey,
     version: number,
   ): Promise<VersionEntry | null> {
     const rows = (await this.db
@@ -72,7 +86,7 @@ export class DrizzleVersioningStore implements VersioningStore {
       .where(
         and(
           eq(this.col('tableName'), tableName),
-          eq(this.col('recordId'), String(recordId)),
+          eq(this.col('recordId'), serializeVersionRecordKey(key)),
           eq(this.col('version'), version),
         ),
       )
@@ -80,30 +94,54 @@ export class DrizzleVersioningStore implements VersioningStore {
     return rows[0] ? this.toEntry(rows[0]) : null;
   }
 
-  async latest(tableName: string, recordId: string | number): Promise<number> {
+  async latest(tableName: string, key: VersionRecordKey): Promise<number> {
     const rows = (await this.db
       .select({ latest: sql`max(${this.col('version')})` })
       .from(this.table)
       .where(
-        and(eq(this.col('tableName'), tableName), eq(this.col('recordId'), String(recordId))),
+        and(
+          eq(this.col('tableName'), tableName),
+          eq(this.col('recordId'), serializeVersionRecordKey(key)),
+        ),
       )) as Array<{ latest: unknown }>;
     return Number(rows[0]?.latest) || 0;
   }
 
-  async deleteAll(tableName: string, recordId: string | number): Promise<number> {
-    const existing = await this.list(tableName, recordId);
+  async deleteAll(tableName: string, key: VersionRecordKey): Promise<number> {
+    const existing = await this.list(tableName, key);
     await this.db
       .delete(this.table)
-      .where(and(eq(this.col('tableName'), tableName), eq(this.col('recordId'), String(recordId))));
+      .where(
+        and(
+          eq(this.col('tableName'), tableName),
+          eq(this.col('recordId'), serializeVersionRecordKey(key)),
+        ),
+      );
     return existing.length;
   }
 
   private toEntry(row: Row): VersionEntry {
+    const stored = JSON.parse(String(row.data)) as unknown;
+    if (
+      typeof stored !== 'object' ||
+      stored === null ||
+      Array.isArray(stored) ||
+      (stored as Row).__velaVersionEntry !== 2 ||
+      !Object.hasOwn(stored, 'data') ||
+      (typeof (stored as Row).recordId !== 'string' &&
+        typeof (stored as Row).recordId !== 'number') ||
+      typeof (stored as Row).data !== 'object' ||
+      (stored as Row).data === null ||
+      Array.isArray((stored as Row).data)
+    ) {
+      throw new Error('invalid or legacy unscoped version entry');
+    }
+    const envelope = stored as { recordId: string | number; data: Record<string, unknown> };
     return {
       id: String(row.id),
-      recordId: String(row.recordId),
+      recordId: envelope.recordId,
       version: Number(row.version),
-      data: JSON.parse(String(row.data)) as Record<string, unknown>,
+      data: envelope.data,
       createdAt: new Date(Number(row.createdAt)),
       ...(row.changedBy != null ? { changedBy: String(row.changedBy) } : {}),
       ...(row.changeReason != null ? { changeReason: String(row.changeReason) } : {}),

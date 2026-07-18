@@ -10,13 +10,16 @@
  * read-shaping → envelope.
  */
 
-import type { ListQuery, Page } from '../adapter/query-types';
-import { ConflictException, ForbiddenException, NotFoundException } from '../envelope/errors';
+import type { Page } from '../adapter/query-types';
+import { ConflictException, NotFoundException } from '../envelope/errors';
 import { applyComputedFields, applyComputedFieldsToArray } from '../model/computed-fields';
 import { applyProfile, applyProfileToArray } from '../model/serialization-profile';
 import { generateETag, matchesIfMatch, matchesIfNoneMatch } from './etag';
 import {
+  assertNestedCreatesAllowed,
+  assertNestedOperationsAllowed,
   nestedCreateRelations,
+  nestedTargetScope,
   nestedUpdateRelations,
   requireNestedDriver,
   splitNested,
@@ -24,30 +27,28 @@ import {
   toNestedOps,
 } from './nested-writes';
 import { applyManagedInsertFields, applyManagedUpdateFields } from '../model/managed-fields';
-import {
-  canRead,
-  canWrite,
-  filterReadable,
-  maskFields,
-  pushdownConditions,
-} from '../policies/evaluate';
+import { filterReadable, maskFields } from '../policies/evaluate';
 import { parseListFilters } from '../query/filters';
 import { applyFieldSelectionToArray } from '../query/field-selection';
+import { buildCursorPageInfo, buildOffsetPageInfo, resolveCursor } from '../query/pagination';
 import type { EngineRequest, EngineResult } from './engine-request';
 import { captureAudit, captureVersion } from './capture';
 import { runBeforeChain, runHooks } from './run-hooks';
 import { envelopeOf } from './resource';
 import {
   attachIncludes,
+  assertCreateAllowed,
+  assertReadAllowed,
+  assertWriteAllowed,
   buildHookContext,
   buildLookup,
   buildPolicyContext,
   listParseOptions,
+  listFallbackRows,
   createSchemaFor,
   parseBody,
   updateSchemaFor,
   parseIncludeParam,
-  passesPushdown,
   resolveSelection,
   scopeListQuery,
   shapeOne,
@@ -78,11 +79,13 @@ export async function executeCreate(
   // parent body and dispatch to the driver inside the SAME transaction.
   const { main, nested } = splitNested(data, nestedCreateRelations(model));
   const nestedDriver = nested.size > 0 ? requireNestedDriver(resource) : undefined;
+  const policyCtx = buildPolicyContext(req);
 
   const record = await config.adapter.transaction(async (scope) => {
     const ctx = buildHookContext(req, scope);
     const managed = applyManagedInsertFields(model, main, {
       databaseGeneratedId: config.adapter.capabilities.has('databaseGeneratedId'),
+      tenantId: req.vars?.tenantId,
     });
     const input = (await runBeforeChain(
       config.hooks?.beforeMode ?? 'sequential',
@@ -90,8 +93,9 @@ export async function executeCreate(
       ctx,
       managed,
     )) as Row;
+    await assertCreateAllowed(resource, policyCtx, input);
 
-    let created = await config.adapter.create(input, scope);
+    const preparedNested = new Map<string, Row[]>();
     if (nestedDriver) {
       for (const [name, value] of nested) {
         const records = stampNestedCreates(
@@ -100,6 +104,14 @@ export async function executeCreate(
           (Array.isArray(value) ? value : [value]) as Row[],
           req.vars?.tenantId,
         );
+        await assertNestedCreatesAllowed(model, name, policyCtx, records);
+        preparedNested.set(name, records);
+      }
+    }
+
+    let created = await config.adapter.create(input, scope);
+    if (nestedDriver) {
+      for (const [name, records] of preparedNested) {
         await nestedDriver.createNested(created, name, records, scope);
       }
     }
@@ -120,7 +132,6 @@ export async function executeCreate(
     record,
   });
 
-  const policyCtx = buildPolicyContext(req);
   const shaped = await shapeOne(resource, policyCtx, req, record);
   return { status: 201, body: envelopeOf(resource).success(shaped) };
 }
@@ -163,12 +174,7 @@ export async function executeRead(
   }, txCtx(req));
 
   if (!row) throw new NotFoundException(resource.model.name, lookup.value);
-  if (!passesPushdown(row, pushdownConditions(policyCtx, resource.model.policies))) {
-    throw new NotFoundException(resource.model.name, lookup.value);
-  }
-  if (!(await canRead(policyCtx, row, resource.model.policies))) {
-    throw new NotFoundException(resource.model.name, lookup.value);
-  }
+  await assertReadAllowed(resource, policyCtx, row, lookup.value);
 
   let shaped = await shapeOne(resource, policyCtx, req, row);
   if (config.hooks?.transformRead) {
@@ -204,9 +210,7 @@ export async function executeUpdate(
     const ctx = buildHookContext(req, scope);
     const prior = (await config.adapter.readOne(lookup, {}, scope)) as Row | null;
     if (!prior) throw new NotFoundException(model.name, lookup.value);
-    if (!(await canWrite(policyCtx, prior, model.policies))) {
-      throw new ForbiddenException();
-    }
+    await assertWriteAllowed(resource, policyCtx, prior);
 
     // If-Match optimistic concurrency: mismatch is a 409 CONFLICT (hono-crud
     // parity — not 412). An absent header is an unconditional update.
@@ -214,6 +218,26 @@ export async function executeUpdate(
       const ifMatch = req.request?.headers.get('If-Match');
       if (ifMatch != null && !matchesIfMatch(ifMatch, await etagFor(resource, policyCtx, prior))) {
         throw new ConflictException('Resource has been modified by another request');
+      }
+    }
+
+    const preparedNested = new Map<string, ReturnType<typeof toNestedOps>>();
+    if (nestedDriver) {
+      for (const [name, value] of nested) {
+        const ops = toNestedOps(value, nestedTargetScope(model, name, req.vars?.tenantId));
+        if (ops.create) {
+          ops.create = stampNestedCreates(model, name, ops.create as Row[], req.vars?.tenantId);
+        }
+        await assertNestedOperationsAllowed(
+          model,
+          name,
+          policyCtx,
+          prior,
+          ops,
+          nestedDriver,
+          scope,
+        );
+        preparedNested.set(name, ops);
       }
     }
 
@@ -230,11 +254,7 @@ export async function executeUpdate(
     if (!current) throw new NotFoundException(model.name, lookup.value);
 
     if (nestedDriver) {
-      for (const [name, value] of nested) {
-        const ops = toNestedOps(value);
-        if (ops.create) {
-          ops.create = stampNestedCreates(model, name, ops.create as Row[], req.vars?.tenantId);
-        }
+      for (const [name, ops] of preparedNested) {
         await nestedDriver.applyNested(current, name, ops, scope);
       }
     }
@@ -279,9 +299,7 @@ export async function executeDelete(
     const ctx = buildHookContext(req, scope);
     const prior = (await config.adapter.readOne(lookup, {}, scope)) as Row | null;
     if (!prior) throw new NotFoundException(model.name, lookup.value);
-    if (!(await canWrite(policyCtx, prior, model.policies))) {
-      throw new ForbiddenException();
-    }
+    await assertWriteAllowed(resource, policyCtx, prior);
 
     // Snapshot the pre-delete state (no-op when the model does not version);
     // no write payload to stamp — the row is being removed.
@@ -327,17 +345,77 @@ export async function executeList(
     await config.hooks.beforeList(buildHookContext(req, { tx: undefined }));
   }
 
+  const enumerateForReadPolicy = resource.model.policies?.read !== undefined;
   const page = await config.adapter.transaction(async (scope) => {
-    const fetched = (await config.adapter.list(scoped as never, scope)) as Page<Row>;
+    const fetched = enumerateForReadPolicy
+      ? {
+          result: await listFallbackRows(
+            resource,
+            {
+              filters: scoped.filters,
+              options: {
+                ...scoped.options,
+                page: 1,
+                per_page: undefined,
+                cursor: undefined,
+                limit: undefined,
+              },
+            },
+            scope,
+          ),
+          // Replaced with policy-safe metadata after every row is checked.
+          result_info: {
+            page: 1,
+            per_page: scoped.options.per_page ?? 20,
+            has_next_page: false,
+            has_prev_page: false,
+          },
+        }
+      : ((await config.adapter.list(scoped as never, scope)) as Page<Row>);
     await attachIncludes(resource, req, scoped.options.include, fetched.result, scope, {
       withDeleted: scoped.options.withDeleted ?? false,
     });
     return fetched;
   }, txCtx(req));
 
-  // Read policy: silently drop rows the caller may not see, then shape.
+  // Read policy: silently drop rows the caller may not see.  Arbitrary read
+  // predicates cannot be pushed into a generic adapter, so enumerate the
+  // bounded source set first and paginate only the authorized rows.  This
+  // prevents hidden rows from leaking through total_count/page existence.
   const readable = await filterReadable(policyCtx, page.result, resource.model.policies);
-  let rows = await applyComputedFieldsToArray(resource.model, readable);
+  let visiblePage: Page<Row> = page;
+  if (enumerateForReadPolicy) {
+    const options = scoped.options;
+    if (options.cursor !== undefined || options.limit !== undefined) {
+      const cursorField = options.order_by ?? resource.model.primaryKeys[0] ?? 'id';
+      const decoded = options.cursor === undefined ? undefined : resolveCursor(options.cursor);
+      const window =
+        decoded === undefined
+          ? readable
+          : readable.filter((row) => {
+              const value = row[cursorField];
+              return typeof value === 'number' ? value > Number(decoded) : String(value) > decoded;
+            });
+      const limit = options.limit ?? options.per_page ?? 20;
+      const cursorPage = buildCursorPageInfo(limit, window, cursorField, {
+        totalCount: readable.length,
+        cursorApplied: decoded !== undefined,
+      });
+      visiblePage = { result: cursorPage.items, result_info: cursorPage.result_info };
+    } else {
+      const currentPage = options.page ?? 1;
+      const perPage = options.per_page ?? 20;
+      const start = (currentPage - 1) * perPage;
+      visiblePage = {
+        result: readable.slice(start, start + perPage),
+        result_info: buildOffsetPageInfo(currentPage, perPage, readable.length),
+      };
+    }
+  } else {
+    visiblePage = { ...page, result: readable };
+  }
+
+  let rows = await applyComputedFieldsToArray(resource.model, visiblePage.result);
   rows = rows.map((row) => maskFields(policyCtx, row, resource.model.policies) as Row);
   rows = applyProfileToArray(resource.model, rows);
   if (config.hooks?.transformList) {
@@ -349,7 +427,7 @@ export async function executeList(
   const selection = resolveSelection(resource, req);
   if (selection) rows = applyFieldSelectionToArray(rows, selection) as Row[];
 
-  const result: Page<Row> = { result: rows, result_info: page.result_info };
+  const result: Page<Row> = { result: rows, result_info: visiblePage.result_info };
   if (config.hooks?.afterList) {
     const ctx = buildHookContext(req, { tx: undefined });
     await config.hooks.afterList(ctx, result as never);

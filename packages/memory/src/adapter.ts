@@ -111,6 +111,34 @@ export function memoryAdapter<Row extends Record<string, unknown> = Record<strin
   };
 
   const nested: NestedWriteDriver<Row> = {
+    async inspectNestedTargets(parent, relation, operations, _scope) {
+      const rel = requireRelation(config, relation);
+      const relatedStore = getStore(rel.table);
+      const parentKey = (parent as Record<string, unknown>)[rel.localKey ?? primaryKey];
+      const find = (where: Record<string, unknown>, mustBelongToParent: boolean): Row | null => {
+        for (const row of relatedStore.values()) {
+          if (!rowMatches(row, where) || !rowMatches(row, operations.targetScope ?? {})) continue;
+          if (mustBelongToParent && row[rel.foreignKey] !== parentKey) continue;
+          return { ...row } as Row;
+        }
+        return null;
+      };
+      return {
+        update: (operations.update ?? []).map(({ where }) => find(where, true)),
+        delete: (operations.delete ?? []).map((where) => find(where, true)),
+        connect: (operations.connect ?? []).map((where) => find(where, false)),
+        disconnect: (operations.disconnect ?? []).map((where) => find(where, true)),
+        setConnect: (operations.set ?? []).map((where) => find(where, false)),
+        // Deliberately do not apply targetScope here: the engine must see and
+        // reject an already-linked foreign-tenant row before mass-detaching.
+        setDisconnect:
+          operations.set === undefined
+            ? []
+            : Array.from(relatedStore.values())
+                .filter((row) => row[rel.foreignKey] === parentKey)
+                .map((row) => ({ ...row }) as Row),
+      };
+    },
     async createNested(parent, relation, records, _scope) {
       const rel = requireRelation(config, relation);
       const relatedStore = getStore(rel.table);
@@ -128,6 +156,8 @@ export function memoryAdapter<Row extends Record<string, unknown> = Record<strin
       const rel = requireRelation(config, relation);
       const relatedStore = getStore(rel.table);
       const parentKey = (parent as Record<string, unknown>)[rel.localKey ?? primaryKey];
+      const scopedMatch = (row: Record<string, unknown>, where: Record<string, unknown>): boolean =>
+        rowMatches(row, where) && rowMatches(row, operations.targetScope ?? {});
 
       for (const record of operations.create ?? []) {
         const row = {
@@ -139,24 +169,25 @@ export function memoryAdapter<Row extends Record<string, unknown> = Record<strin
       }
       for (const { where, data } of operations.update ?? []) {
         for (const [id, row] of relatedStore) {
-          if (rowMatches(row, where) && row[rel.foreignKey] === parentKey) {
+          if (scopedMatch(row, where) && row[rel.foreignKey] === parentKey) {
             relatedStore.set(id, { ...row, ...data });
           }
         }
       }
       for (const where of operations.delete ?? []) {
         for (const [id, row] of relatedStore) {
-          if (rowMatches(row, where) && row[rel.foreignKey] === parentKey) relatedStore.delete(id);
+          if (scopedMatch(row, where) && row[rel.foreignKey] === parentKey) relatedStore.delete(id);
         }
       }
       for (const where of operations.connect ?? []) {
         for (const [id, row] of relatedStore) {
-          if (rowMatches(row, where)) relatedStore.set(id, { ...row, [rel.foreignKey]: parentKey });
+          if (scopedMatch(row, where))
+            relatedStore.set(id, { ...row, [rel.foreignKey]: parentKey });
         }
       }
       for (const where of operations.disconnect ?? []) {
         for (const [id, row] of relatedStore) {
-          if (rowMatches(row, where) && row[rel.foreignKey] === parentKey) {
+          if (scopedMatch(row, where) && row[rel.foreignKey] === parentKey) {
             relatedStore.set(id, { ...row, [rel.foreignKey]: null });
           }
         }
@@ -164,13 +195,13 @@ export function memoryAdapter<Row extends Record<string, unknown> = Record<strin
       if (operations.set) {
         // set = disconnect everything, then connect the listed records.
         for (const [id, row] of relatedStore) {
-          if (row[rel.foreignKey] === parentKey) {
+          if (row[rel.foreignKey] === parentKey && rowMatches(row, operations.targetScope ?? {})) {
             relatedStore.set(id, { ...row, [rel.foreignKey]: null });
           }
         }
         for (const where of operations.set) {
           for (const [id, row] of relatedStore) {
-            if (rowMatches(row, where))
+            if (scopedMatch(row, where))
               relatedStore.set(id, { ...row, [rel.foreignKey]: parentKey });
           }
         }

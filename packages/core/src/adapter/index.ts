@@ -10,6 +10,7 @@ export {
   type CascadeDriver,
   type CrudAdapter,
   type NestedWriteDriver,
+  type NestedWriteInspection,
   type NestedWriteOperations,
   type RelationLoader,
   type RelationLoadScope,

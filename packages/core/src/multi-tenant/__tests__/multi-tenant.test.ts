@@ -23,7 +23,7 @@ function appWith(options?: MultiTenantMiddlewareConfig<TenantEnv>) {
     }
     throw err;
   });
-  app.use('*', multiTenant<TenantEnv>(options));
+  app.use('*', multiTenant<TenantEnv>({ validate: () => true, ...options }));
   app.get('/data', (c) => c.json({ tenantId: c.get('tenantId') ?? null }));
   return app;
 }
@@ -51,7 +51,7 @@ describe('multiTenant', () => {
 
   it('resolves from a path param', async () => {
     const app = new Hono<TenantEnv>();
-    app.use('/:tenantId/*', multiTenant<TenantEnv>({ source: 'path' }));
+    app.use('/:tenantId/*', multiTenant<TenantEnv>({ source: 'path', validate: () => true }));
     app.get('/:tenantId/data', (c) => c.json({ tenantId: c.get('tenantId') }));
     const res = await app.request('/t42/data');
     expect(await res.json()).toEqual({ tenantId: 't42' });
@@ -84,6 +84,7 @@ describe('multiTenant', () => {
         source: 'custom',
         extractor: (c) => c.req.header('X-Org') ?? undefined,
         contextKey: 'organizationId',
+        validate: () => true,
       }),
     );
     app.get('/data', (c) => c.json({ org: c.get('organizationId') }));
@@ -94,6 +95,15 @@ describe('multiTenant', () => {
   it('throws at setup when custom source has no extractor', () => {
     expect(() => multiTenant({ source: 'custom' })).toThrowError(/requires an `extractor`/);
   });
+
+  it.each(['header', 'path', 'query', 'custom'] as const)(
+    'requires authorization for a client-selected %s tenant source',
+    (source) => {
+      expect(() =>
+        multiTenant({ source, ...(source === 'custom' ? { extractor: () => 'tenant' } : {}) }),
+      ).toThrowError(/requires a `validate` membership check/);
+    },
+  );
 
   it('rejects invalid tenants with 400 INVALID_TENANT via validate', async () => {
     const res = await appWith({ validate: (id) => id === 'good' }).request('/data', {

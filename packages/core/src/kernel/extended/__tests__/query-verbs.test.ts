@@ -170,12 +170,17 @@ function makeResource(
 ) {
   const { model: modelOverrides, ...resourceOverrides } = overrides;
   const store = new Map<string, Row>();
+  const policies = {
+    operation: () => true,
+    ...((modelOverrides as { policies?: ModelPolicies } | undefined)?.policies ?? {}),
+  } satisfies ModelPolicies;
   const model = defineModel({
     name: 'item',
     tableName: 'items',
     schema: itemSchema,
     softDelete: fake.softDeleteField !== undefined,
     ...((modelOverrides as object) ?? {}),
+    policies,
   });
   const { adapter, search, aggregate } = fakeAdapter(store, fake);
   const resource = defineResource('items', {
@@ -284,10 +289,19 @@ describe('search', () => {
       req({ query: { q: 'typescript', highlight: 'true' } }),
     );
     const body = result.body as {
-      result: Array<{ item: Row; highlights?: Record<string, string[]> }>;
+      result: Array<{
+        item: Row;
+        highlights?: Record<
+          string,
+          Array<{ text: string; ranges: Array<{ start: number; end: number }> }>
+        >;
+      }>;
     };
     const hit = body.result.find((h) => h.item.id === '1');
-    expect(hit?.highlights?.title?.[0]).toContain('<mark>');
+    const highlight = hit?.highlights?.title?.[0];
+    expect(highlight?.text.slice(highlight.ranges[0]?.start, highlight.ranges[0]?.end)).toBe(
+      'TypeScript',
+    );
   });
 
   it('all mode requires every token; phrase mode matches an exact substring', async () => {
@@ -383,6 +397,22 @@ describe('search', () => {
 // ===========================================================================
 
 describe('aggregate', () => {
+  it('requires and enforces explicit operation authorization', async () => {
+    const missing = makeResource({ model: { policies: { operation: undefined } } });
+    await expect(
+      missing.resource.execute('aggregate', req({ query: { count: '*' } })),
+    ).rejects.toMatchObject({ statusCode: 403, code: 'FORBIDDEN' });
+
+    const denied = makeResource({
+      model: {
+        policies: { operation: (_ctx: unknown, operation: string) => operation !== 'aggregate' },
+      },
+    });
+    await expect(
+      denied.resource.execute('aggregate', req({ query: { count: '*' } })),
+    ).rejects.toMatchObject({ statusCode: 403, code: 'FORBIDDEN' });
+  });
+
   it('computes ungrouped { values } keyed by alias', async () => {
     const { resource, store } = makeResource();
     seedArticles(store);
@@ -497,6 +527,27 @@ describe('aggregate', () => {
       count: 3,
     });
   });
+
+  it('does not use native aggregate when a row read policy requires post-filtering', async () => {
+    const { resource, store, aggregate } = makeResource(
+      { model: { policies: { read: () => false } } },
+      { softDeleteField: 'deletedAt', nativeAggregate: true },
+    );
+    seedArticles(store);
+    const result = await resource.execute('aggregate', req({ query: { count: '*' } }));
+    expect(aggregate).not.toHaveBeenCalled();
+    expect((result.body as { result: { values: Record<string, number> } }).result.values).toEqual({
+      count: 0,
+    });
+  });
+
+  it('rejects an engine fallback scan above 1000 rows', async () => {
+    const { resource, store } = makeResource();
+    for (let i = 0; i < 1_001; i++) store.set(String(i), { id: String(i), value: i });
+    await expect(
+      resource.execute('aggregate', req({ query: { count: '*' } })),
+    ).rejects.toMatchObject({ statusCode: 400, code: 'SCAN_LIMIT_EXCEEDED' });
+  });
 });
 
 // ===========================================================================
@@ -588,6 +639,20 @@ describe('export', () => {
     expect(data).toHaveLength(1);
     expect(data[0]).toMatchObject({ id: '1', secret: '***' });
   });
+
+  it('rejects exports above the 1,000-row authorization window for arbitrary read policies', async () => {
+    const { resource, store } = makeResource({
+      model: { policies: { read: () => true } },
+    });
+    for (let index = 0; index < 1_001; index++) {
+      store.set(String(index), { id: String(index), title: `Item ${index}` });
+    }
+
+    await expect(resource.execute('export', req({ query: {} }))).rejects.toMatchObject({
+      statusCode: 400,
+      code: 'SCAN_LIMIT_EXCEEDED',
+    });
+  });
 });
 
 // ===========================================================================
@@ -595,6 +660,49 @@ describe('export', () => {
 // ===========================================================================
 
 describe('import', () => {
+  it('enforces create and write policies without exposing internal errors', async () => {
+    const createDenied = makeResource({ model: { policies: { create: () => false } } });
+    const deniedCreate = await createDenied.resource.execute(
+      'import',
+      req({ body: { items: [{ email: 'new@x', name: 'New' }] } }),
+    );
+    expect(
+      (deniedCreate.body as { result: { results: Array<{ status: string }> } }).result.results[0]
+        .status,
+    ).toBe('failed');
+    expect(createDenied.store.size).toBe(0);
+
+    const writeDenied = makeResource({
+      model: { policies: { write: () => false } },
+      upsert: { keys: ['email'] },
+    });
+    writeDenied.store.set('a', { id: 'a', email: 'a@x', name: 'Original' });
+    const deniedWrite = await writeDenied.resource.execute(
+      'import',
+      req({
+        query: { mode: 'upsert' },
+        body: { items: [{ email: 'a@x', name: 'Changed' }] },
+      }),
+    );
+    expect(
+      (deniedWrite.body as { result: { results: Array<{ status: string }> } }).result.results[0]
+        .status,
+    ).toBe('failed');
+    expect(writeDenied.store.get('a')!.name).toBe('Original');
+
+    const errors = makeResource();
+    errors.adapter.create = async () => {
+      throw new Error('SQL failed password=super-secret');
+    };
+    const failed = await errors.resource.execute(
+      'import',
+      req({ body: { items: [{ email: 'x@x', name: 'X' }] } }),
+    );
+    const publicError = (failed.body as { result: { results: Array<{ error?: string }> } }).result
+      .results[0].error;
+    expect(publicError).toBe('Import operation failed');
+    expect(publicError).not.toContain('super-secret');
+  });
   it('creates rows from a JSON items payload → summary + per-row results, 200', async () => {
     const { resource, store } = makeResource();
     const result = await resource.execute(

@@ -50,6 +50,15 @@ import { andAll, buildWhere, getColumn, orAll, substringMatch } from './filters'
 
 type Row = Record<string, unknown>;
 
+const UNSAFE_DYNAMIC_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+const SAFE_RESULT_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+function assertSafeResultKey(value: string, kind: 'aggregate alias' | 'group field'): void {
+  if (!SAFE_RESULT_KEY.test(value) || UNSAFE_DYNAMIC_KEYS.has(value)) {
+    throw new Error(`drizzleAdapter: unsafe ${kind} '${value}'`);
+  }
+}
+
 export interface DrizzleRelation {
   type: 'hasOne' | 'hasMany' | 'belongsTo';
   /** The related Drizzle table. */
@@ -167,6 +176,52 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
   };
 
   const nested: NestedWriteDriver<R> = {
+    async inspectNestedTargets(parent, relation, operations, scope) {
+      const rel = requireRelation(config, relation);
+      const db = handle(scope);
+      const parentKey = (parent as Row)[rel.localKey ?? primaryKey];
+      const fk = getColumn(rel.table, rel.foreignKey);
+      const scopedWhere = (where: Row, mustBelongToParent: boolean): DrizzleSql | undefined =>
+        andAll(
+          ...Object.entries({ ...where, ...(operations.targetScope ?? {}) }).map(([field, value]) =>
+            eq(getColumn(rel.table, field), value),
+          ),
+          mustBelongToParent ? eq(fk, parentKey) : undefined,
+        );
+      const find = async (where: Row, mustBelongToParent: boolean): Promise<R | null> => {
+        const rows = (await db
+          .select()
+          .from(rel.table)
+          .where(scopedWhere(where, mustBelongToParent))
+          .limit(1)) as R[];
+        return rows[0] ?? null;
+      };
+      const inspect = async (
+        selectors: Row[],
+        mustBelongToParent: boolean,
+      ): Promise<Array<R | null>> => {
+        const rows: Array<R | null> = [];
+        for (const selector of selectors) rows.push(await find(selector, mustBelongToParent));
+        return rows;
+      };
+      const setDisconnect =
+        operations.set === undefined
+          ? []
+          : ((await db.select().from(rel.table).where(eq(fk, parentKey))) as R[]);
+      return {
+        update: await inspect(
+          (operations.update ?? []).map(({ where }) => where),
+          true,
+        ),
+        delete: await inspect(operations.delete ?? [], true),
+        connect: await inspect(operations.connect ?? [], false),
+        disconnect: await inspect(operations.disconnect ?? [], true),
+        setConnect: await inspect(operations.set ?? [], false),
+        // Intentionally unscoped; the engine rejects any attached row that
+        // does not satisfy the trusted target scope before `set` mutates it.
+        setDisconnect,
+      };
+    },
     async createNested(parent, relation, records, scope) {
       const rel = requireRelation(config, relation);
       const db = handle(scope);
@@ -190,7 +245,12 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
       const parentKey = (parent as Row)[rel.localKey ?? primaryKey];
       const fk = getColumn(rel.table, rel.foreignKey);
       const matches = (where: Row): DrizzleSql | undefined =>
-        andAll(...Object.entries(where).map(([k, v]) => eq(getColumn(rel.table, k), v)));
+        andAll(
+          ...Object.entries({ ...where, ...(operations.targetScope ?? {}) }).map(([k, v]) =>
+            eq(getColumn(rel.table, k), v),
+          ),
+        );
+      const targetScope = matches({});
 
       try {
         for (const record of operations.create ?? []) {
@@ -226,7 +286,7 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
           await db
             .update(rel.table)
             .set({ [rel.foreignKey]: null })
-            .where(eq(fk, parentKey));
+            .where(andAll(eq(fk, parentKey), targetScope));
           for (const where of operations.set) {
             await db
               .update(rel.table)
@@ -484,16 +544,28 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
       const db = handle(scope);
       const where = buildWhere(table, spec.filters, dialect);
 
-      const fields: Record<string, DrizzleSql> = {};
+      const fields = Object.create(null) as Record<string, DrizzleSql>;
       const aggregations = spec.aggregations ?? [
         { operation: spec.operation, field: spec.field ?? '*' },
       ];
       for (const agg of aggregations) {
         const alias = agg.alias ?? deriveAlias(agg.operation, agg.field);
+        assertSafeResultKey(alias, 'aggregate alias');
+        if (Object.hasOwn(fields, alias)) {
+          throw new Error(`drizzleAdapter: duplicate aggregate alias '${alias}'`);
+        }
         fields[alias] = aggregateSql(table, agg.operation, agg.field);
       }
       const groupBy = spec.groupBy ?? [];
-      for (const group of groupBy) fields[group] = getColumn(table, group);
+      for (const group of groupBy) {
+        assertSafeResultKey(group, 'group field');
+        if (Object.hasOwn(fields, group)) {
+          throw new Error(
+            `drizzleAdapter: group field '${group}' collides with an aggregate alias`,
+          );
+        }
+        fields[group] = getColumn(table, group);
+      }
 
       let builder = db.select(fields).from(table).where(where);
       if (groupBy.length > 0) {
@@ -503,20 +575,22 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
       const aliases = aggregations.map((agg) => agg.alias ?? deriveAlias(agg.operation, agg.field));
 
       if (groupBy.length === 0) {
-        const first = buckets[0] ?? {};
-        const values: Record<string, number | null> = {};
+        const first = buckets[0] ?? Object.create(null);
+        const values = Object.create(null) as Record<string, number | null>;
         for (const alias of aliases) {
-          values[alias] = first[alias] == null ? null : Number(first[alias]);
+          const value = Object.hasOwn(first, alias) ? first[alias] : undefined;
+          values[alias] = value == null ? null : Number(value);
         }
         return { values };
       }
 
       const groups = buckets.map((bucket) => {
-        const key: Record<string, unknown> = {};
-        for (const g of groupBy) key[g] = bucket[g];
-        const values: Record<string, number | null> = {};
+        const key = Object.create(null) as Record<string, unknown>;
+        for (const g of groupBy) key[g] = Object.hasOwn(bucket, g) ? bucket[g] : undefined;
+        const values = Object.create(null) as Record<string, number | null>;
         for (const alias of aliases) {
-          values[alias] = bucket[alias] == null ? null : Number(bucket[alias]);
+          const value = Object.hasOwn(bucket, alias) ? bucket[alias] : undefined;
+          values[alias] = value == null ? null : Number(value);
         }
         return { key, values };
       });

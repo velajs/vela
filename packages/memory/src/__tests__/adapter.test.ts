@@ -109,6 +109,50 @@ describe('memoryAdapter core methods', () => {
     expect(posts.get('p4')).toMatchObject({ authorId: 'u1' });
   });
 
+  it('nested connect/set AND target ids with the server tenant scope', async () => {
+    const adapter = users();
+    seed(
+      [
+        { id: 'mine', authorId: null, tenantId: 't1' },
+        { id: 'foreign', authorId: null, tenantId: 't2' },
+      ],
+      'posts',
+    );
+    const inspected = await adapter.nested!.inspectNestedTargets(
+      { id: 'u1', tenantId: 't1' },
+      'posts',
+      {
+        targetScope: { tenantId: 't1' },
+        connect: [{ id: 'mine' }, { id: 'foreign' }],
+      },
+      scope,
+    );
+    expect(inspected.connect.map((row) => row?.id ?? null)).toEqual(['mine', null]);
+
+    await adapter.nested!.applyNested(
+      { id: 'u1', tenantId: 't1' },
+      'posts',
+      {
+        targetScope: { tenantId: 't1' },
+        connect: [{ id: 'mine' }, { id: 'foreign' }],
+      },
+      scope,
+    );
+    expect(getStore('posts').get('mine')!.authorId).toBe('u1');
+    expect(getStore('posts').get('foreign')!.authorId).toBeNull();
+
+    seed([{ id: 'corrupt', authorId: 'u1', tenantId: 't2' }], 'posts');
+    const setInspection = await adapter.nested!.inspectNestedTargets(
+      { id: 'u1', tenantId: 't1' },
+      'posts',
+      { targetScope: { tenantId: 't1' }, set: [] },
+      scope,
+    );
+    // Mass-detach inspection intentionally surfaces an already-linked
+    // foreign row so the engine can deny instead of silently leaving it.
+    expect(setInspection.setDisconnect.map((row) => row.id).sort()).toEqual(['corrupt', 'mine']);
+  });
+
   it('create throws ConflictException (409) on a duplicate primary key', async () => {
     const adapter = users();
     await adapter.create({ id: 'u1', name: 'Ada' }, scope);

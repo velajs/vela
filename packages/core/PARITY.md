@@ -69,16 +69,21 @@ divergence is added or closed.
   (`assertNoNestedWrites`); un-merged relation keys are stripped by
   validation like any unknown key. Live invalidation also broadcasts
   `crud:<relatedTable>` for nested relations (over-invalidation beats
-  staleness). SECURITY caveat (documented on `NestedWriteConfig` +
-  define-time warning): `connect`/`set` relink by id with NO tenant/ownership
-  check — RLS owns isolation there; update/delete/disconnect are FK-scoped
-  to the (tenant-checked) parent. Audit/version capture stays PARENT-scoped —
-  related-row mutations are not independently audited/versioned. Memory's
-  no-op transaction cannot roll back the parent on nested failure (SQL
-  adapters are atomic). Deliberate scope: belongsTo nesting throws at define
-  time; create-via-`set` unported; related PK is `id` (hono-crud parity).
-  Proven by schema-derive/define-model/verbs unit tests + memory/drizzle
-  driver tests.
+  staleness). SECURITY hardening in the next major: the nested driver first
+  resolves every update/delete/connect/disconnect/set target in the SAME
+  scope. The engine validates the server tenant scope, denies missing or
+  foreign targets, and evaluates the target model's `write` predicate before
+  applying anything; `set` inspection includes every currently attached row
+  so mass-detach cannot skip a corrupt foreign relation. Nested children also
+  pass the target model's `create` predicate before the parent is persisted.
+  Drivers lacking the inspection seam fail closed. Audit/version capture
+  stays PARENT-scoped — related-row mutations are not independently
+  audited/versioned. Memory's no-op transaction still cannot roll back an
+  adapter failure (SQL adapters are atomic), but all target policy decisions
+  run before the parent mutation. Deliberate scope: belongsTo nesting throws
+  at define time; create-via-`set` unported; related PK is `id` (hono-crud
+  parity). Proven by adversarial target-policy tests plus memory/drizzle
+  inspection tests.
 - **Per-relation include scoping** (`RelationConfig.scope`): dropped from the
   model layer; `RelationLoadScope` covers tenant + soft-delete owner-scoping at
   the loader. Revisit with the relation conformance cells (M3).
@@ -178,18 +183,18 @@ drizzle's cursor branch agrees); all three cursor tests run un-skipped.
   notes over `/profile-items`: model-level `serializationProfile`
   (`{ exclude }`) strips fields from every response surface (core five,
   clone/upsert/restore, batch create/upsert, search hits, export JSON + CSV
-  columns, import results, SAME-model embedded relation rows) while the
+  columns, import results, and registered target-model relation rows) while the
   fields stay writable and stored (filter-by-excluded-field proves storage);
   `?fields=` / `fieldSelection.alwaysInclude` cannot resurrect an excluded
   field (strip precedes selection); aggregate requests referencing an
   excluded field are rejected 400 (aggregates project values; filters only
-  match). Version + audit SNAPSHOTS intentionally retain excluded fields —
-  versioning.test.ts "serialization profile interplay" locks both stores;
-  only rollback's live-record response strips. Known gaps (documented on
-  `SerializationProfile`): embedded rows of OTHER models are attached raw
-  (per-relation shaping = the relation-scoping backlog item; policy masks
-  share the limitation), and `transformRead`/`transformList` run AFTER the
-  strip (hono-crud's profile-before-transform order) with un-re-stripped
+  match). Version + audit STORES intentionally retain excluded fields, but
+  every version endpoint applies the snapshot's read predicate, field mask,
+  serialization profile, and field selection before returning it; rollback's
+  live-record response follows the same pipeline. Cross-model includes require
+  explicit target response metadata and filter/mask/profile each related row.
+  The remaining profile gap is that `transformRead`/`transformList` run AFTER
+  the strip (hono-crud's profile-before-transform order) with un-re-stripped
   output. hono-crud's `include`/`alwaysInclude`/`transform` profile options
   remain unported (`exclude` is the proven consumer need).
 
@@ -248,11 +253,13 @@ stores are **DI seams decoupled from the data adapter**: `VersioningStore` /
 
 ### Pinned semantics (from hono-crud sources/tests)
 
-- **Store-seam renames** (shape preserved): `VersioningStorage` →
+- **Store-seam renames** (security-hardened shape): `VersioningStorage` →
   `VersioningStore` with `store→save`, `getByRecordId→list`, `getVersion→get`,
-  `getLatestVersion→latest` (+ optional `prune`/`deleteAll`). Per-`(tableName,
-  recordId)` keying, newest-first ordering, `latest` = max stored version or 0
-  (`versioning-store.test.ts`, `versioning.test.ts`). Audit fuses hono-crud's
+  `getLatestVersion→latest` (+ optional `prune`/`deleteAll`). The next major
+  adds a `VersionRecordKey` argument containing the trusted tenant namespace
+  and canonical full primary-key tuple; legacy table/id-only buckets fail
+  closed. Ordering remains newest-first and `latest` remains the max stored
+  version or 0 (`versioning-store.test.ts`, `versioning.test.ts`). Audit fuses hono-crud's
   `AuditLogger` (entry building, now in `kernel/capture.ts`) + `AuditLogStorage`
   (persistence) into one seam: `log` / `logBatch` / `query`.
 - **Snapshot timing = PRE-mutation, inside the tx, before the write.** On
@@ -282,9 +289,10 @@ stores are **DI seams decoupled from the data adapter**: `VersioningStore` /
   rolled-back row** whose `version` = currentVersion + 1 (`versioning.test.ts`:
   rollback to v1 of a v3 row → `title: 'Title v1'`, `version: 4`).
 - **Tenant/owner scope:** every version verb resolves the parent record through
-  the tenant-scoped `buildLookup` first (soft-delete-inclusive) — a foreign or
-  missing record is 404, so version data never leaks
-  (`versioning-tenant-scope.test.ts` parity).
+  the tenant-scoped `buildLookup` first (soft-delete-inclusive), addresses the
+  store by trusted tenant plus full PK, and independently verifies the returned
+  snapshot has the same tenant/key before exposing or rolling it back. Foreign,
+  malformed, legacy-unscoped, or missing history fails closed.
 - **Audit entries** (who = `userId` / what = action + record/previousRecord +
   `changes` / when = `timestamp`) are written **AFTER the mutation commits**;
   batch mutations use `logBatch`. `changes` via `calculateChanges` (ported

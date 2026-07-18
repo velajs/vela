@@ -187,6 +187,22 @@ describe('parseListFilters', () => {
     expect(bracket.filters).toEqual([]);
   });
 
+  it.each(['__proto__', 'constructor', 'prototype'])(
+    'rejects prototype key %s without throwing or inheriting an allow-list',
+    (field) => {
+      expect(parseListFilters({ [field]: 'x', [`${field}[eq]`]: 'x' }, config).filters).toEqual([]);
+      expect(
+        parseListFilters(
+          { [field]: 'x', [`${field}[eq]`]: 'x' },
+          {
+            filterFields: [field],
+            filterConfig: { [field]: ['eq'] },
+          },
+        ).filters,
+      ).toEqual([]);
+    },
+  );
+
   it('routes reserved params to options, never to filters', () => {
     const { filters, options } = parseListFilters(
       {

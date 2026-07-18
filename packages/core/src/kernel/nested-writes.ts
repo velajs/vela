@@ -8,9 +8,21 @@
  * contract, never a parallel system.
  */
 
-import type { NestedWriteDriver, NestedWriteOperations } from '../adapter/contract';
-import { ConfigurationException, InputValidationException } from '../envelope/errors';
+import type {
+  AdapterScope,
+  NestedWriteDriver,
+  NestedWriteInspection,
+  NestedWriteOperations,
+} from '../adapter/contract';
+import {
+  ConfigurationException,
+  CrudException,
+  ForbiddenException,
+  InputValidationException,
+} from '../envelope/errors';
 import type { Model } from '../model/model.types';
+import { canCreate, canWrite } from '../policies/evaluate';
+import type { ModelPolicies, PolicyContext } from '../policies/types';
 import type { AnyResource } from './verb-helpers';
 
 type Row = Record<string, unknown>;
@@ -86,9 +98,13 @@ interface NestedUpdateEnvelope {
  * `NestedWriteOperations` (related rows are matched by `id` — hono-crud
  * parity; a related PK other than `id` is out of scope).
  */
-export function toNestedOps(value: unknown): NestedWriteOperations {
+export function toNestedOps(
+  value: unknown,
+  targetScope?: Record<string, unknown>,
+): NestedWriteOperations {
   const env = value as NestedUpdateEnvelope;
   const ops: NestedWriteOperations = {};
+  if (targetScope !== undefined) ops.targetScope = targetScope;
   if (env.create !== undefined) {
     ops.create = Array.isArray(env.create) ? env.create : [env.create];
   }
@@ -109,39 +125,263 @@ export function toNestedOps(value: unknown): NestedWriteOperations {
 }
 
 /**
- * Stamp engine-managed columns onto nested CREATE records: the request tenant
- * (forced — the child shape strips a caller-supplied value) and timestamps
- * (defaulted when absent), each ONLY when the child schema declares the
- * parent model's column name. The engine has no child Model, so uniform
- * column naming is the contract; children whose schemas use other names are
- * the child table's own concern (DB defaults / RLS).
+ * Stamp engine-managed columns onto nested CREATE records from target-model
+ * relation metadata: strip target PKs, force the trusted request tenant,
+ * remove the soft-delete marker, and overwrite managed timestamps. This is a
+ * final persistence-boundary check after custom DTO parsing.
  */
 export function stampNestedCreates(
-  model: Pick<Model, 'tenantField' | 'timestamps' | 'relations'>,
+  model: Pick<
+    Model,
+    'tableName' | 'primaryKeys' | 'tenantField' | 'timestamps' | 'softDeleteField' | 'relations'
+  >,
   relationName: string,
   records: Row[],
   tenantId: string | undefined,
 ): Row[] {
-  const schema = model.relations?.[relationName]?.schema;
+  const relation = model.relations?.[relationName];
+  const schema = relation?.schema;
   if (!schema) return records;
+  const sameModel = relation?.target === model.tableName;
+  const targetTenantField = sameModel
+    ? model.tenantField
+    : relation?.response?.tenantField === false
+      ? undefined
+      : relation?.response?.tenantField;
+  const targetSoftDeleteField = sameModel
+    ? model.softDeleteField
+    : relation?.response?.softDeleteField === false
+      ? undefined
+      : relation?.response?.softDeleteField;
+  const targetTimestamps = sameModel ? model.timestamps : relation?.response?.timestamps;
+  const targetPrimaryKeys = sameModel ? model.primaryKeys : relation?.response?.primaryKeys;
+  if (targetTenantField !== undefined && tenantId === undefined) {
+    throw new CrudException('This nested write requires a tenant context', 400, 'TENANT_REQUIRED');
+  }
   const childKeys = new Set(Object.keys(schema.shape));
-  const { createdAt, updatedAt } = model.timestamps;
+  const createdAt = targetTimestamps?.createdAt;
+  const updatedAt = targetTimestamps?.updatedAt;
   const now = Date.now();
   return records.map((record) => {
     const out: Row = { ...record };
-    if (model.tenantField && tenantId !== undefined && childKeys.has(model.tenantField)) {
-      out[model.tenantField] = tenantId;
+    // A custom DTO can expose managed target columns that the derived child
+    // schema omits. Strip them again at the persistence boundary so a nested
+    // create cannot overwrite an existing target row by choosing its PK.
+    for (const primaryKey of targetPrimaryKeys ?? ['id']) delete out[primaryKey];
+    if (targetTenantField !== undefined) {
+      out[targetTenantField] = tenantId;
     }
-    if (createdAt && childKeys.has(createdAt) && !(createdAt in record)) out[createdAt] = now;
-    if (updatedAt && childKeys.has(updatedAt) && !(updatedAt in record)) out[updatedAt] = now;
+    if (targetSoftDeleteField !== undefined) delete out[targetSoftDeleteField];
+    if (createdAt && childKeys.has(createdAt)) out[createdAt] = now;
+    if (updatedAt && childKeys.has(updatedAt)) out[updatedAt] = now;
     return out;
   });
+}
+
+/** Server-derived target tenant scope for nested existing-row operations. */
+export function nestedTargetScope(
+  model: Pick<Model, 'name' | 'tableName' | 'tenantField' | 'relations'>,
+  relationName: string,
+  tenantId: string | undefined,
+): Record<string, unknown> {
+  const relation = relationFor(model, relationName);
+  const targetTenantField =
+    relation.target === model.tableName
+      ? model.tenantField
+      : relation.response?.tenantField === false
+        ? undefined
+        : relation.response?.tenantField;
+  if (targetTenantField === undefined) return {};
+  if (tenantId === undefined) {
+    throw new CrudException('This nested write requires a tenant context', 400, 'TENANT_REQUIRED');
+  }
+  return { [targetTenantField]: tenantId };
+}
+
+function relationFor(
+  model: Pick<Model, 'name' | 'relations'>,
+  relationName: string,
+): NonNullable<Model['relations']>[string] {
+  const relation = model.relations?.[relationName];
+  if (relation === undefined) {
+    throw new ConfigurationException(
+      `Model '${model.name}': unknown nested relation '${relationName}'`,
+    );
+  }
+  return relation;
+}
+
+/** Target-model create policy for children, evaluated before either write. */
+export async function assertNestedCreatesAllowed(
+  model: Pick<Model, 'name' | 'relations'>,
+  relationName: string,
+  policyCtx: PolicyContext,
+  records: Row[],
+): Promise<void> {
+  const policies = relationFor(model, relationName).response?.policies;
+  for (const record of records) {
+    if (!(await canCreate(policyCtx, record, policies))) throw new ForbiddenException();
+  }
+}
+
+const INSPECTION_ARRAYS = [
+  'update',
+  'delete',
+  'connect',
+  'disconnect',
+  'setConnect',
+  'setDisconnect',
+] as const satisfies ReadonlyArray<keyof NestedWriteInspection>;
+
+function assertInspectionShape(value: unknown, modelName: string): NestedWriteInspection<Row> {
+  if (value === null || typeof value !== 'object') {
+    throw new ConfigurationException(
+      `Model '${modelName}': nested-write driver returned an invalid target inspection`,
+    );
+  }
+  for (const field of INSPECTION_ARRAYS) {
+    if (!Array.isArray((value as Record<string, unknown>)[field])) {
+      throw new ConfigurationException(
+        `Model '${modelName}': nested-write target inspection is missing '${field}'`,
+      );
+    }
+  }
+  return value as NestedWriteInspection<Row>;
+}
+
+function scalarEqual(actual: unknown, expected: unknown): boolean {
+  if (actual === expected) return true;
+  const comparable = (value: unknown): value is string | number =>
+    typeof value === 'string' || typeof value === 'number';
+  return comparable(actual) && comparable(expected) && String(actual) === String(expected);
+}
+
+function matches(row: Row, selector: Record<string, unknown>): boolean {
+  return Object.entries(selector).every(
+    ([field, expected]) => Object.hasOwn(row, field) && scalarEqual(row[field], expected),
+  );
+}
+
+async function assertTargetAllowed(
+  row: Row | null,
+  selector: Record<string, unknown> | undefined,
+  targetScope: Record<string, unknown>,
+  policyCtx: PolicyContext,
+  policies: ModelPolicies<Row> | undefined,
+  softDeleteField?: string,
+): Promise<void> {
+  if (row !== null && (typeof row !== 'object' || Array.isArray(row))) {
+    throw new ConfigurationException('Nested-write driver returned an invalid target row');
+  }
+  // A selector that is missing, outside the trusted tenant scope, or not the
+  // row the adapter claims to have inspected is indistinguishable to callers.
+  if (row === null || !matches(row, targetScope) || (selector && !matches(row, selector))) {
+    throw new ForbiddenException();
+  }
+  if (softDeleteField !== undefined && row[softDeleteField] != null) {
+    throw new ForbiddenException();
+  }
+  if (!(await canWrite(policyCtx, row, policies))) throw new ForbiddenException();
+}
+
+/**
+ * Inspect and authorize every existing target before a nested mutation. The
+ * inspection and the later adapter mutation share `scope`, closing the
+ * check/use gap for transactional adapters. This also validates target
+ * existence and the trusted tenant scope even when the target has no custom
+ * write predicate.
+ */
+export async function assertNestedOperationsAllowed(
+  model: Pick<Model, 'name' | 'tableName' | 'softDeleteField' | 'relations'>,
+  relationName: string,
+  policyCtx: PolicyContext,
+  parent: Row,
+  operations: NestedWriteOperations,
+  driver: NestedWriteDriver<Row>,
+  scope: AdapterScope,
+): Promise<void> {
+  const relation = relationFor(model, relationName);
+  const policies = relation.response?.policies;
+  const targetSoftDeleteField =
+    relation.target === model.tableName
+      ? model.softDeleteField
+      : relation.response?.softDeleteField === false
+        ? undefined
+        : relation.response?.softDeleteField;
+  await assertNestedCreatesAllowed(
+    model,
+    relationName,
+    policyCtx,
+    (operations.create ?? []) as Row[],
+  );
+
+  const needsInspection =
+    (operations.update?.length ?? 0) > 0 ||
+    (operations.delete?.length ?? 0) > 0 ||
+    (operations.connect?.length ?? 0) > 0 ||
+    (operations.disconnect?.length ?? 0) > 0 ||
+    operations.set !== undefined;
+  if (!needsInspection) return;
+
+  const inspection = assertInspectionShape(
+    await driver.inspectNestedTargets(parent, relationName, operations, scope),
+    model.name,
+  );
+  const aligned: Array<{
+    selectors: Array<Record<string, unknown>>;
+    rows: Array<Row | null>;
+  }> = [
+    { selectors: operations.update?.map((entry) => entry.where) ?? [], rows: inspection.update },
+    { selectors: operations.delete ?? [], rows: inspection.delete },
+    { selectors: operations.connect ?? [], rows: inspection.connect },
+    { selectors: operations.disconnect ?? [], rows: inspection.disconnect },
+    { selectors: operations.set ?? [], rows: inspection.setConnect },
+  ];
+  const targetScope = operations.targetScope ?? {};
+  for (const { selectors, rows } of aligned) {
+    if (selectors.length !== rows.length) {
+      throw new ConfigurationException(
+        `Model '${model.name}': nested-write driver returned an incomplete target inspection`,
+      );
+    }
+    for (let index = 0; index < selectors.length; index++) {
+      await assertTargetAllowed(
+        rows[index] ?? null,
+        selectors[index],
+        targetScope,
+        policyCtx,
+        policies,
+        targetSoftDeleteField,
+      );
+    }
+  }
+  for (const row of inspection.setDisconnect) {
+    if (row === null || typeof row !== 'object') {
+      throw new ConfigurationException(
+        `Model '${model.name}': nested-write driver returned an invalid set target`,
+      );
+    }
+    await assertTargetAllowed(
+      row,
+      undefined,
+      targetScope,
+      policyCtx,
+      policies,
+      targetSoftDeleteField,
+    );
+  }
 }
 
 /** The adapter's nested driver — loud when nesting is configured without it. */
 export function requireNestedDriver(resource: AnyResource): NestedWriteDriver<Row> {
   const adapter = resource.config.adapter;
-  if (!adapter.capabilities.has('nestedWrites') || adapter.nested === undefined) {
+  if (
+    !adapter.capabilities.has('nestedWrites') ||
+    adapter.nested === undefined ||
+    typeof adapter.nested.inspectNestedTargets !== 'function' ||
+    typeof adapter.nested.createNested !== 'function' ||
+    typeof adapter.nested.applyNested !== 'function'
+  ) {
     throw new ConfigurationException(
       `Resource '${resource.model.name}': nested writes require an adapter with the 'nestedWrites' capability`,
     );

@@ -140,16 +140,20 @@ export function defineModel<
         `Model '${config.name}': nestedWrites on relation '${name}' requires the relation 'schema'`,
       );
     }
-    if (rel.nestedWrites.allowConnect === true && tenantField !== undefined) {
-      // Not an error: RLS-backed deployments legitimately rely on the DB for
-      // isolation (the drizzle onOpenTransaction seam) — but the engine
-      // cannot scope connect/set by tenant, so say it loudly.
-      console.warn(
-        `[@velajs/crud] Model '${config.name}': relation '${name}' enables ` +
-          `nestedWrites.allowConnect on a tenant-scoped model — connect/set relink related ` +
-          `rows by id with NO tenant/ownership check in the engine; enforce isolation at ` +
-          `the database (RLS) or leave allowConnect off`,
-      );
+    const targetsExistingRows =
+      rel.nestedWrites.allowUpdate === true ||
+      rel.nestedWrites.allowDelete === true ||
+      rel.nestedWrites.allowConnect === true ||
+      rel.nestedWrites.allowDisconnect === true;
+    const targetTenantField =
+      rel.response?.tenantField === false ? undefined : (rel.response?.tenantField ?? tenantField);
+    if (targetsExistingRows && targetTenantField !== undefined) {
+      if (!(targetTenantField in rel.schema.shape)) {
+        throw new ConfigurationException(
+          `Model '${config.name}': tenant-scoped nested writes on relation '${name}' ` +
+            `requires the related schema to declare tenant field '${targetTenantField}'`,
+        );
+      }
     }
   }
 

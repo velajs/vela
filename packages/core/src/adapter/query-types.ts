@@ -263,10 +263,25 @@ export interface SearchQuery {
   options: ListOptions;
 }
 
+/** A half-open character range within a search-highlight snippet. */
+export interface SearchHighlightRange {
+  start: number;
+  end: number;
+}
+
+/**
+ * Presentation-neutral search highlight. Consumers render `text` as text and
+ * may decorate the validated ranges; the API never returns executable HTML.
+ */
+export interface SearchHighlight {
+  text: string;
+  ranges: SearchHighlightRange[];
+}
+
 export interface SearchHit<Row> {
   record: Row;
   score: number;
-  highlights?: Record<string, string[]>;
+  highlights?: Record<string, SearchHighlight[]>;
   /** Fields that matched the query (surfaced in the search response). */
   matchedFields?: string[];
 }

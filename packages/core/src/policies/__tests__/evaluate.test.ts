@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest';
 
-import { canRead, canWrite, filterReadable, maskFields, pushdownConditions } from '../evaluate';
+import {
+  canCreate,
+  canPerformOperation,
+  canRead,
+  canWrite,
+  filterReadable,
+  maskFields,
+  pushdownConditions,
+} from '../evaluate';
 import type { ModelPolicies, PolicyContext } from '../types';
 
 interface Post {
@@ -19,6 +27,28 @@ const rows: Post[] = [
   { id: 'p2', authorId: 'bob', title: 'B1' },
   { id: 'p3', authorId: 'alice', title: 'A2' },
 ];
+
+describe('canPerformOperation', () => {
+  it('evaluates the operation policy before executor work', async () => {
+    await expect(canPerformOperation(ctxFor('alice'), 'read', {})).resolves.toBe(true);
+    const policies: ModelPolicies<Post> = {
+      operation: async (_ctx, operation) => operation === 'read',
+    };
+    await expect(canPerformOperation(ctxFor('alice'), 'read', policies)).resolves.toBe(true);
+    await expect(canPerformOperation(ctxFor('alice'), 'aggregate', policies)).resolves.toBe(false);
+  });
+});
+
+describe('canCreate', () => {
+  it('defaults open and evaluates sync/async create predicates', async () => {
+    await expect(canCreate(ctxFor('alice'), rows[0], {})).resolves.toBe(true);
+    const policies: ModelPolicies<Post> = {
+      create: async (ctx, post) => post.authorId === ctx.userId,
+    };
+    await expect(canCreate(ctxFor('alice'), rows[0], policies)).resolves.toBe(true);
+    await expect(canCreate(ctxFor('bob'), rows[0], policies)).resolves.toBe(false);
+  });
+});
 
 describe('canRead', () => {
   it('returns true when no read predicate is configured', async () => {

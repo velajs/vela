@@ -27,7 +27,7 @@
  */
 import { Hono } from 'hono';
 import { Controller, Module, VelaFactory } from '@velajs/vela';
-import { Crud, CrudException, multiTenant } from '@velajs/crud';
+import { ALL_CRUD_ENDPOINTS, Crud, CrudException, multiTenant } from '@velajs/crud';
 import { clearMemoryStorage, memoryAdapter } from '@velajs/crud-memory';
 import type { AdapterContext, AdapterDescriptor } from '../contract';
 import {
@@ -97,6 +97,7 @@ async function setup(): Promise<AdapterContext> {
   @Crud({
     model: conformanceModel,
     adapter: itemAdapter,
+    only: ALL_CRUD_ENDPOINTS,
     filterConfig: CONFORMANCE_FILTER_CONFIG,
     sortFields: CONFORMANCE_SORT_FIELDS,
     // upsert-restore + bulk-patch cells exercise the extended verbs on /items.
@@ -108,6 +109,7 @@ async function setup(): Promise<AdapterContext> {
   @Crud({
     model: tenantModel,
     adapter: tenantAdapter,
+    only: ALL_CRUD_ENDPOINTS,
     tenantResolverMounted: true,
     allowedIncludes: ['parent'],
     // The extended-verb tenant cell exercises aggregate/search/export/bulkPatch:
@@ -116,6 +118,7 @@ async function setup(): Promise<AdapterContext> {
     filterConfig: CONFORMANCE_FILTER_CONFIG,
     sortFields: CONFORMANCE_SORT_FIELDS,
     searchFields: ['name'],
+    aggregate: { groupByFields: ['role'] },
     upsert: { keys: UPSERT_KEYS },
   })
   class TenantItemsController {}
@@ -155,6 +158,7 @@ async function setup(): Promise<AdapterContext> {
   @Crud({
     model: serializationModel,
     adapter: profileAdapter,
+    only: ALL_CRUD_ENDPOINTS,
     // The finalize-pipeline cell filters by the excluded field (storage proof),
     // searches, upserts, and probes ?fields= against the profile strip.
     filterConfig: CONFORMANCE_FILTER_CONFIG,
@@ -188,8 +192,8 @@ async function setup(): Promise<AdapterContext> {
     }
     return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: String(err) } }, 500);
   });
-  outer.use('/tenant-items', multiTenant());
-  outer.use('/tenant-items/*', multiTenant());
+  outer.use('/tenant-items', multiTenant({ validate: () => true }));
+  outer.use('/tenant-items/*', multiTenant({ validate: () => true }));
   outer.route('/', app.getHonoApp());
 
   return {

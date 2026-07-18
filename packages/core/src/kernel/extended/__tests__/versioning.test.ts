@@ -7,6 +7,7 @@ import { defineResource } from '../../resource';
 import type { EngineRequest } from '../../engine-request';
 import { MemoryVersioningStore, type VersionEntry } from '../../../versioning/index';
 import { MemoryAuditStore } from '../../../audit/index';
+import type { ModelPolicies } from '../../../policies/types';
 
 type Row = Record<string, unknown>;
 
@@ -106,6 +107,7 @@ interface MakeOpts {
   softDelete?: boolean;
   versioningStore?: MemoryVersioningStore;
   auditStore?: MemoryAuditStore;
+  policies?: ModelPolicies;
 }
 
 function makeResource(opts: MakeOpts = {}) {
@@ -118,6 +120,7 @@ function makeResource(opts: MakeOpts = {}) {
     multiTenant: opts.multiTenant ?? false,
     versioning: opts.versioning ?? false,
     audit: opts.audit ?? false,
+    policies: opts.policies,
   });
   const adapter = fakeAdapter(store, opts.softDelete ? 'deletedAt' : undefined);
   const resource = defineResource('doc', {
@@ -132,16 +135,34 @@ function makeResource(opts: MakeOpts = {}) {
 
 const req = (partial: Partial<EngineRequest> = {}): EngineRequest => partial;
 
-function seedHistory(vstore: MemoryVersioningStore, recordId: string, upTo: number): void {
+function keyFor(recordId: string, tenantId?: string) {
+  return {
+    tenantNamespace: tenantId === undefined ? 'global' : `tenant:${JSON.stringify(tenantId)}`,
+    primaryKey: JSON.stringify([['id', 'string', recordId]]),
+  };
+}
+
+function seedHistory(
+  vstore: MemoryVersioningStore,
+  recordId: string,
+  upTo: number,
+  tenantId?: string,
+): void {
   for (let i = 1; i <= upTo; i++) {
     const entry: VersionEntry = {
       id: `entry-${i}`,
       recordId,
       version: i,
-      data: { id: recordId, title: `Title v${i}`, content: `Content v${i}`, version: i },
+      data: {
+        id: recordId,
+        title: `Title v${i}`,
+        content: `Content v${i}`,
+        version: i,
+        ...(tenantId !== undefined ? { tenantId } : {}),
+      },
       createdAt: new Date(Date.now() - (upTo - i) * 1000),
     };
-    void vstore.save('documents', entry);
+    void vstore.save('documents', keyFor(recordId, tenantId), entry);
   }
 }
 
@@ -185,7 +206,7 @@ describe('version snapshot capture', () => {
     expect((result.body as { result: Row }).result.version).toBe(2);
     expect(store.get('d1')!.title).toBe('Updated');
 
-    const versions = await vstore.list('documents', 'd1');
+    const versions = await vstore.list('documents', keyFor('d1'));
     expect(versions).toHaveLength(1);
     expect(versions[0].version).toBe(1); // the version BEFORE the update
     expect(versions[0].data.title).toBe('Original'); // pre-update snapshot
@@ -200,7 +221,7 @@ describe('version snapshot capture', () => {
       'update',
       req({ id: 'd1', body: { title: 'New' }, vars: { userId: 'u-9' } }),
     );
-    const versions = await vstore.list('documents', 'd1');
+    const versions = await vstore.list('documents', keyFor('d1'));
     expect(versions[0].changedBy).toBe('u-9');
   });
 
@@ -210,7 +231,7 @@ describe('version snapshot capture', () => {
     store.set('d1', { id: 'd1', title: 'Doomed', version: 2 });
 
     await resource.execute('delete', req({ id: 'd1' }));
-    const versions = await vstore.list('documents', 'd1');
+    const versions = await vstore.list('documents', keyFor('d1'));
     expect(versions).toHaveLength(1);
     expect(versions[0].version).toBe(2);
     expect(versions[0].data.title).toBe('Doomed');
@@ -332,7 +353,7 @@ describe('version verbs', () => {
     expect(store.get('d1')!.version).toBe(4);
 
     // Pre-rollback state was snapshotted (native hardening).
-    const preRollback = (await vstore.list('documents', 'd1')).find(
+    const preRollback = (await vstore.list('documents', keyFor('d1'))).find(
       (e) => (e.data as Row).title === 'Current Title',
     );
     expect(preRollback).toBeDefined();
@@ -383,7 +404,7 @@ describe('serialization profile interplay', () => {
     // excluded field — version data is the audit trail, not a response body.
     const updated = await resource.execute('update', req({ id: 'd1', body: { title: 'Updated' } }));
     expect('content' in (updated.body as { result: Row }).result).toBe(false);
-    const versions = await vstore.list('documents', 'd1');
+    const versions = await vstore.list('documents', keyFor('d1'));
     expect(versions[0]!.data.content).toBe('Secret body');
 
     // AUDIT entries retain the excluded field too (full pre-shape rows).
@@ -391,10 +412,10 @@ describe('serialization profile interplay', () => {
     expect(audits.length).toBeGreaterThan(0);
     expect((audits[0]!.record as Row | undefined)?.content).toBe('Secret body');
 
-    // versionHistory returns snapshots verbatim (excluded field retained).
+    // Version endpoints shape stored snapshots before returning them.
     const history = await resource.execute('versionHistory', req({ id: 'd1' }));
     const entries = (history.body as { result: { versions: VersionEntry[] } }).result.versions;
-    expect(entries[0]!.data.content).toBe('Secret body');
+    expect('content' in entries[0]!.data).toBe(false);
 
     // versionRollback returns the LIVE record — shaped, so the field strips
     // from the response while the storage row gets it back.
@@ -406,6 +427,78 @@ describe('serialization profile interplay', () => {
     expect('content' in (rolled.body as { result: Row }).result).toBe(false);
     expect(store.get('d1')!.content).toBe('Secret body');
   });
+});
+
+describe('version endpoint policy enforcement', () => {
+  it('requires read access for history and write access for rollback', async () => {
+    const hiddenStore = new MemoryVersioningStore();
+    const hidden = makeResource({
+      versioning: true,
+      versioningStore: hiddenStore,
+      policies: { read: () => false },
+    });
+    hidden.store.set('d1', { id: 'd1', title: 'Hidden', version: 1 });
+    await expect(
+      hidden.resource.execute('versionHistory', req({ id: 'd1' })),
+    ).rejects.toMatchObject({ statusCode: 404 });
+
+    const rollbackStore = new MemoryVersioningStore();
+    await rollbackStore.save('documents', keyFor('d1'), {
+      id: 'v1',
+      recordId: 'd1',
+      version: 1,
+      data: { id: 'd1', title: 'Old', version: 1 },
+      createdAt: new Date(),
+    });
+    const denied = makeResource({
+      versioning: true,
+      versioningStore: rollbackStore,
+      policies: { read: () => true, write: () => false },
+    });
+    denied.store.set('d1', { id: 'd1', title: 'Current', version: 2 });
+    await expect(
+      denied.resource.execute('versionRollback', req({ id: 'd1', params: { version: '1' } })),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    expect(denied.store.get('d1')!.title).toBe('Current');
+  });
+
+  it.each(['versionHistory', 'versionRead', 'versionCompare', 'versionRollback'] as const)(
+    'applies read policy to historical snapshots for %s',
+    async (verb) => {
+      const vstore = new MemoryVersioningStore();
+      await vstore.save('documents', keyFor('d1'), {
+        id: 'v1',
+        recordId: 'd1',
+        version: 1,
+        data: { id: 'd1', title: 'Former owner', version: 1 },
+        createdAt: new Date(),
+      });
+      await vstore.save('documents', keyFor('d1'), {
+        id: 'v2',
+        recordId: 'd1',
+        version: 2,
+        data: { id: 'd1', title: 'Current', version: 2 },
+        createdAt: new Date(),
+      });
+      const denied = makeResource({
+        versioning: true,
+        versioningStore: vstore,
+        policies: { read: (_ctx, row) => (row as Row).title !== 'Former owner' },
+      });
+      denied.store.set('d1', { id: 'd1', title: 'Current', version: 2 });
+      const requests: Record<typeof verb, EngineRequest> = {
+        versionHistory: { id: 'd1' },
+        versionRead: { id: 'd1', params: { version: '1' } },
+        versionCompare: { id: 'd1', query: { from: '1', to: '2' } },
+        versionRollback: { id: 'd1', params: { version: '1' } },
+      };
+
+      await expect(denied.resource.execute(verb, requests[verb])).rejects.toMatchObject({
+        statusCode: 404,
+      });
+      expect(denied.store.get('d1')!.title).toBe('Current');
+    },
+  );
 });
 
 // ===========================================================================
@@ -421,7 +514,7 @@ describe('version verbs — tenant/owner scope', () => {
       versioningStore: vstore,
     });
     store.set('d1', { id: 'd1', title: 'A doc', tenantId: 't1', version: 2 });
-    seedHistory(vstore, 'd1', 2);
+    seedHistory(vstore, 'd1', 2, 't1');
     return { resource, store, vstore };
   }
 
@@ -459,6 +552,37 @@ describe('version verbs — tenant/owner scope', () => {
       req({ id: 'd1', params: { version: '1' }, vars: { tenantId: 't1' } }),
     );
     expect(ok.status).toBe(200);
+  });
+
+  it('isolates equal record ids in different tenant version namespaces', async () => {
+    const vstore = new MemoryVersioningStore();
+    const { resource, store } = makeResource({
+      versioning: true,
+      multiTenant: true,
+      versioningStore: vstore,
+    });
+    seedHistory(vstore, 'shared', 1, 't1');
+    await vstore.save('documents', keyFor('shared', 't2'), {
+      id: 't2-v1',
+      recordId: 'shared',
+      version: 1,
+      data: { id: 'shared', title: 'Tenant two', tenantId: 't2', version: 1 },
+      createdAt: new Date(),
+    });
+
+    store.set('shared', { id: 'shared', title: 'Tenant one', tenantId: 't1', version: 2 });
+    const tenantOne = await resource.execute(
+      'versionRead',
+      req({ id: 'shared', params: { version: '1' }, vars: { tenantId: 't1' } }),
+    );
+    expect((tenantOne.body as { result: VersionEntry }).result.data.title).toBe('Title v1');
+
+    store.set('shared', { id: 'shared', title: 'Tenant two', tenantId: 't2', version: 2 });
+    const tenantTwo = await resource.execute(
+      'versionRead',
+      req({ id: 'shared', params: { version: '1' }, vars: { tenantId: 't2' } }),
+    );
+    expect((tenantTwo.body as { result: VersionEntry }).result.data.title).toBe('Tenant two');
   });
 });
 

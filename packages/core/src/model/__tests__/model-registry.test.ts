@@ -41,6 +41,30 @@ describe('defineModels', () => {
     expect(db.posts.relations?.author.schema).toBe(UserSchema);
   });
 
+  it('auto-populates relation response policies and serialization metadata', () => {
+    const read = () => false;
+    const db = defineModels({
+      users: {
+        name: 'user',
+        tableName: 'users',
+        schema: UserSchema,
+        relations: { posts: { type: 'hasMany', target: 'posts', foreignKey: 'authorId' } },
+      },
+      posts: {
+        name: 'post',
+        tableName: 'posts',
+        schema: PostSchema,
+        policies: { read },
+        serializationProfile: { exclude: ['title'] },
+      },
+    });
+
+    expect(db.users.relations?.posts.response?.policies?.read).toBe(read);
+    expect(db.users.relations?.posts.response?.serializationProfile).toEqual({
+      exclude: ['title'],
+    });
+  });
+
   it('auto-populates relation.table from the sibling table object (undefined when the sibling has none)', () => {
     const usersTable = { _: { name: 'users', columns: {} } };
     const postsTable = { _: { name: 'posts', columns: {} } };
@@ -291,6 +315,7 @@ describe('defineModels', () => {
     expect(Object.isFrozen(db.users)).toBe(true);
     expect(Object.isFrozen(db.users.relations)).toBe(true);
     expect(Object.isFrozen(db.users.relations?.posts)).toBe(true);
+    expect(Object.isFrozen(db.users.relations?.posts.response)).toBe(true);
   });
 
   it('passes relation-less entries through with their config intact (and normalized)', () => {

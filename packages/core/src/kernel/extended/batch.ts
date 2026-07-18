@@ -29,8 +29,9 @@
  *  - bulkPatch filters arrive in the REQUEST BODY (`{ filter, data }`) rather
  *    than the query string (hono-crud). The success body stays flat
  *    (`{ success, matched, updated, dryRun, records? }`) exactly like hono-crud.
- *  - The id-keyed batch verbs apply TENANT scoping (like the single verbs) but
- *    NOT per-row policy pushdown; bulkPatch applies tenant + policy pushdown.
+ *  - The id-keyed batch verbs apply TENANT scoping and enforce create/write
+ *    policy per row. `bulkPatch` also filters read policy before mutation; a
+ *    configured row policy disables unsafe native bulk execution.
  *  - Per-item hook errors follow the hook mode (sequential throws/aborts,
  *    fire-and-forget swallows) instead of hono-crud's per-item error bucket +
  *    `stopOnError`; only `notFound` ids drive the 207 status.
@@ -59,6 +60,7 @@ import {
   softDeleteVisibilityFilter,
 } from '../../model/soft-delete';
 import { parseListFilters } from '../../query/filters';
+import { filterReadable } from '../../policies/evaluate';
 import type { CrudEndpointName } from '../../verb-table';
 import type { EngineRequest, EngineResult } from '../engine-request';
 import type { HookContext, HookMode } from '../hook-types';
@@ -66,8 +68,11 @@ import { captureAuditBatch } from '../capture';
 import { envelopeOf } from '../resource';
 import { runBeforeChain } from '../run-hooks';
 import {
+  assertCreateAllowed,
+  assertWriteAllowed,
   buildHookContext,
   buildPolicyContext,
+  listFallbackRows,
   listParseOptions,
   createSchemaFor,
   parseBody,
@@ -285,14 +290,23 @@ async function executeBatchCreate(
       if (model.tenantField !== undefined && req.vars?.tenantId !== undefined) {
         data[model.tenantField] = req.vars.tenantId;
       }
-      return applyManagedInsertFields(model, data, { databaseGeneratedId });
+      return applyManagedInsertFields(model, data, {
+        databaseGeneratedId,
+        tenantId: req.vars?.tenantId,
+      });
     });
 
     const inputs: Row[] = [];
     for (let i = 0; i < prepared.length; i++) {
-      inputs.push(
-        await runItemHook(beforeMode, config.hooks?.beforeBatchCreate, ctx, prepared[i], i),
+      const input = await runItemHook(
+        beforeMode,
+        config.hooks?.beforeBatchCreate,
+        ctx,
+        prepared[i],
+        i,
       );
+      await assertCreateAllowed(resource, buildPolicyContext(req), input);
+      inputs.push(input);
     }
 
     const rows: Row[] = [];
@@ -365,6 +379,7 @@ async function executeBatchUpdate(
         notFound.push(items[i].id);
         continue;
       }
+      await assertWriteAllowed(resource, buildPolicyContext(req), prior);
       const patch = await runItemHook(
         beforeMode,
         config.hooks?.beforeBatchUpdate,
@@ -434,6 +449,7 @@ async function executeBatchDelete(
         notFound.push(ids[i]);
         continue;
       }
+      await assertWriteAllowed(resource, buildPolicyContext(req), prior);
       await runItemHook(beforeMode, config.hooks?.beforeBatchDelete, ctx, prior, i);
       const removed = (await config.adapter.delete(
         lookup,
@@ -521,6 +537,7 @@ async function executeBatchRestore(
         notFound.push(ids[i]);
         continue;
       }
+      await assertWriteAllowed(resource, buildPolicyContext(req), prior);
       await runItemHook(beforeMode, config.hooks?.beforeBatchRestore, ctx, prior, i);
       const row = (await restore(lookup, scope)) as Row | null;
       if (!row) {
@@ -613,11 +630,25 @@ async function executeBatchUpsert(
 
       const data = await runItemHook(beforeMode, config.hooks?.beforeBatchUpsert, ctx, values, i);
 
+      if (existing !== null) {
+        await assertWriteAllowed(resource, buildPolicyContext(req), existing);
+      }
+
       let record: Row;
       let created: boolean;
 
-      if (caps.has('upsert') && upsertOne) {
-        const managed = applyManagedInsertFields(model, data, { databaseGeneratedId });
+      if (
+        caps.has('upsert') &&
+        upsertOne &&
+        model.tenantField === undefined &&
+        model.policies?.create === undefined &&
+        model.policies?.read === undefined &&
+        model.policies?.write === undefined
+      ) {
+        const managed = applyManagedInsertFields(model, data, {
+          databaseGeneratedId,
+          tenantId: req.vars?.tenantId,
+        });
         const conflictValues =
           existing !== null ? (applyUpsertRestore(model, managed, existing) as Row) : managed;
         const res = await upsertOne({ conflictTarget: keys, values: conflictValues }, scope);
@@ -650,7 +681,11 @@ async function executeBatchUpsert(
         record = updated;
         created = false;
       } else {
-        const managed = applyManagedInsertFields(model, data, { databaseGeneratedId });
+        const managed = applyManagedInsertFields(model, data, {
+          databaseGeneratedId,
+          tenantId: req.vars?.tenantId,
+        });
+        await assertCreateAllowed(resource, buildPolicyContext(req), managed);
         record = (await adapter.create(managed, scope)) as Row;
         created = true;
       }
@@ -749,55 +784,82 @@ async function executeBulkPatch(resource: AnyResource, req: EngineRequest): Prom
   const scoped = scopeListQuery(resource, req, policyCtx, parsed);
   const countQuery: ListQuery = {
     filters: scoped.filters,
-    options: { ...scoped.options, page: 1, per_page: maxBulkSize },
+    options: { ...scoped.options, page: 1, per_page: Math.min(maxBulkSize, DEFAULT_MAX_BULK_SIZE) },
   };
   const txContext = txCtx(req);
+  const hasRowPolicies = model.policies?.read !== undefined || model.policies?.write !== undefined;
 
-  const matched = await adapter.transaction(async (scope) => {
-    const page = await adapter.list(countQuery, scope);
-    return page.result_info.total_count ?? page.result.length;
-  }, txContext);
+  const authorizedRows = async (scope: Parameters<typeof listFallbackRows>[2]): Promise<Row[]> => {
+    const rows = await listFallbackRows(resource, countQuery, scope);
+    const readable = await filterReadable(policyCtx, rows, model.policies);
+    for (const row of readable) await assertWriteAllowed(resource, policyCtx, row);
+    return readable;
+  };
 
-  if (matched === 0) {
-    return { status: 200, body: { success: true, matched: 0, updated: 0, dryRun } };
-  }
-  if (matched > maxBulkSize) {
-    throw new CrudException(
-      `Bulk patch affects ${matched} records, exceeding the maximum of ${maxBulkSize}. ` +
-        'Use more specific filters.',
-      400,
-      'BULK_TOO_LARGE',
-    );
-  }
-  if (matched >= confirmThreshold) {
-    const confirm = req.request?.headers.get('X-Confirm-Bulk');
-    if (confirm !== 'true') {
+  const patch = applyManagedUpdateFields(model, patchFields);
+  const updateWhere = adapter.updateWhere;
+  const canUseAtomicNativeBulk =
+    adapter.capabilities.has('transactions') &&
+    adapter.capabilities.has('bulkPatch') &&
+    updateWhere !== undefined &&
+    !hasRowPolicies;
+
+  // Count/authorization/confirmation and mutation share one transaction. For
+  // adapters without an atomic native bulk primitive, enumerate a fixed row
+  // set first and update only those primary keys.
+  const result = await adapter.transaction(async (scope) => {
+    let fixedRows: Row[] | undefined;
+    let matched: number;
+    if (canUseAtomicNativeBulk) {
+      const page = await adapter.list(countQuery, scope);
+      matched = page.result_info.total_count ?? page.result.length;
+    } else {
+      fixedRows = hasRowPolicies
+        ? await authorizedRows(scope)
+        : await listFallbackRows(resource, countQuery, scope);
+      matched = fixedRows.length;
+    }
+
+    if (matched === 0) return { matched, updated: 0, records: undefined, dryRun };
+    if (matched > maxBulkSize) {
+      throw new CrudException(
+        `Bulk patch affects ${matched} records, exceeding the maximum of ${maxBulkSize}. ` +
+          'Use more specific filters.',
+        400,
+        'BULK_TOO_LARGE',
+      );
+    }
+    if (matched >= confirmThreshold && req.request?.headers.get('X-Confirm-Bulk') !== 'true') {
       throw new CrudException(
         `This operation will affect ${matched} records. Set X-Confirm-Bulk: true to confirm.`,
         400,
         'CONFIRMATION_REQUIRED',
       );
     }
-  }
-  if (dryRun) {
-    return { status: 200, body: { success: true, matched, updated: 0, dryRun: true } };
-  }
+    if (dryRun) return { matched, updated: 0, records: undefined, dryRun: true };
 
-  const patch = applyManagedUpdateFields(model, patchFields);
-  const updateWhere = adapter.updateWhere;
-
-  const result = await adapter.transaction(async (scope) => {
-    if (adapter.capabilities.has('bulkPatch') && updateWhere) {
+    if (canUseAtomicNativeBulk) {
       const filters = [...scoped.filters];
       const visibility = softDeleteVisibilityFilter(model);
       if (visibility) filters.push(visibility);
-      const out = await updateWhere(filters, patch, scope);
-      return { updated: out.count, records: out.records as Row[] | undefined };
+      const out = await updateWhere!(filters, patch, scope);
+      if (out.count !== matched || out.count > maxBulkSize) {
+        throw new CrudException(
+          'Bulk patch target set changed during the atomic operation',
+          409,
+          'CONFLICT',
+        );
+      }
+      return {
+        matched,
+        updated: out.count,
+        records: out.records as Row[] | undefined,
+        dryRun: false,
+      };
     }
-    // Synthesis: re-list the visible matched rows and patch each by PK.
-    const page = await adapter.list(countQuery, scope);
+
     const records: Row[] = [];
-    for (const row of page.result as Row[]) {
+    for (const row of fixedRows ?? []) {
       const lookup: Lookup = {
         field: primaryKey(resource),
         value: String(row[primaryKey(resource)]),
@@ -806,14 +868,14 @@ async function executeBulkPatch(resource: AnyResource, req: EngineRequest): Prom
       const updated = (await adapter.update(lookup, patch, scope)) as Row | null;
       if (updated) records.push(updated);
     }
-    return { updated: records.length, records };
+    return { matched, updated: records.length, records, dryRun: false };
   }, txContext);
 
   const response: Record<string, unknown> = {
     success: true,
-    matched,
+    matched: result.matched,
     updated: result.updated,
-    dryRun: false,
+    dryRun: result.dryRun,
   };
   if (returnRecords && result.records) {
     response.records = await Promise.all(

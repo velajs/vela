@@ -36,12 +36,20 @@ import {
   NotFoundException,
 } from '../../envelope/errors';
 import { calculateChanges } from '../../audit/index';
-import type { VersioningStore } from '../../versioning/index';
+import { applyManagedUpdateFields } from '../../model/managed-fields';
+import {
+  serializeVersionRecordKey,
+  type VersionEntry,
+  type VersioningStore,
+  type VersionRecordKey,
+} from '../../versioning/index';
 import type { CrudEndpointName } from '../../verb-table';
-import { captureVersion } from '../capture';
+import { captureVersion, versionRecordKeyFor } from '../capture';
 import type { EngineRequest, EngineResult } from '../engine-request';
 import { envelopeOf } from '../resource';
 import {
+  assertReadAllowed,
+  assertWriteAllowed,
   buildLookup,
   buildPolicyContext,
   shapeOne,
@@ -98,7 +106,44 @@ async function requireOwnedRecord(resource: AnyResource, req: EngineRequest): Pr
     txCtx(req),
   );
   if (!found) throw new NotFoundException(resource.model.name, lookup.value);
+  await assertReadAllowed(resource, buildPolicyContext(req), found, lookup.value);
   return found;
+}
+
+/** Never expose a store-owned raw snapshot or its unshaped field diff. */
+async function shapeVersionEntry(
+  resource: AnyResource,
+  req: EngineRequest,
+  expectedKey: VersionRecordKey,
+  entry: VersionEntry,
+): Promise<Omit<VersionEntry, 'data' | 'changes'> & { data: Row }> {
+  const { data, changes: _changes, ...metadata } = entry;
+  const snapshot = data as Row;
+  assertVersionEntryScope(resource, req, expectedKey, entry);
+  const policyCtx = buildPolicyContext(req);
+  await assertReadAllowed(resource, policyCtx, snapshot, String(entry.recordId));
+  return {
+    ...metadata,
+    data: await shapeOne(resource, policyCtx, req, snapshot),
+  };
+}
+
+/** Defense in depth against a buggy or hostile store returning another scope. */
+function assertVersionEntryScope(
+  resource: AnyResource,
+  req: EngineRequest,
+  expectedKey: VersionRecordKey,
+  entry: VersionEntry,
+): void {
+  let actualKey: VersionRecordKey;
+  try {
+    actualKey = versionRecordKeyFor(resource.model, entry.data as Row, req);
+  } catch {
+    throw new NotFoundException('version', String(entry.version));
+  }
+  if (serializeVersionRecordKey(actualKey) !== serializeVersionRecordKey(expectedKey)) {
+    throw new NotFoundException('version', String(entry.version));
+  }
 }
 
 /** Parse + validate a `:version` path param (positive integer). */
@@ -130,6 +175,7 @@ async function executeVersionHistory(
   const store = versioningStoreOf(resource);
   const record = await requireOwnedRecord(resource, req);
   const recordId = record[resource.model.primaryKeys[0] ?? 'id'] as string | number;
+  const recordKey = versionRecordKeyFor(resource.model, record, req);
 
   const limitRaw = firstParam(req.query, 'limit');
   const offsetRaw = firstParam(req.query, 'offset');
@@ -142,8 +188,11 @@ async function executeVersionHistory(
       : DEFAULT_HISTORY_LIMIT;
   const offset = offsetRaw !== undefined ? Math.max(0, Number.parseInt(offsetRaw, 10) || 0) : 0;
 
-  const versions = await store.list(resource.model.tableName, recordId, { limit, offset });
-  const totalVersions = await store.latest(resource.model.tableName, recordId);
+  const stored = await store.list(resource.model.tableName, recordKey, { limit, offset });
+  const versions = await Promise.all(
+    stored.map((entry) => shapeVersionEntry(resource, req, recordKey, entry)),
+  );
+  const totalVersions = await store.latest(resource.model.tableName, recordKey);
 
   return {
     status: 200,
@@ -167,11 +216,15 @@ async function executeVersionRead(
   const version = parseVersionParam(req);
   const record = await requireOwnedRecord(resource, req);
   const recordId = record[resource.model.primaryKeys[0] ?? 'id'] as string | number;
+  const recordKey = versionRecordKeyFor(resource.model, record, req);
 
-  const entry = await store.get(resource.model.tableName, recordId, version);
+  const entry = await store.get(resource.model.tableName, recordKey, version);
   if (!entry) throw new NotFoundException(`version ${version}`, String(recordId));
 
-  return { status: 200, body: envelopeOf(resource).success(entry) };
+  return {
+    status: 200,
+    body: envelopeOf(resource).success(await shapeVersionEntry(resource, req, recordKey, entry)),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -203,13 +256,25 @@ async function executeVersionCompare(
   const to = parseCompareParam(req, 'to');
   const record = await requireOwnedRecord(resource, req);
   const recordId = record[resource.model.primaryKeys[0] ?? 'id'] as string | number;
+  const recordKey = versionRecordKeyFor(resource.model, record, req);
 
   const [entryFrom, entryTo] = await Promise.all([
-    store.get(resource.model.tableName, recordId, from),
-    store.get(resource.model.tableName, recordId, to),
+    store.get(resource.model.tableName, recordKey, from),
+    store.get(resource.model.tableName, recordKey, to),
   ]);
+  if (entryFrom) assertVersionEntryScope(resource, req, recordKey, entryFrom);
+  if (entryTo) assertVersionEntryScope(resource, req, recordKey, entryTo);
+  const policyCtx = buildPolicyContext(req);
+  if (entryFrom)
+    await assertReadAllowed(resource, policyCtx, entryFrom.data as Row, String(recordId));
+  if (entryTo) await assertReadAllowed(resource, policyCtx, entryTo.data as Row, String(recordId));
   const changes =
-    entryFrom && entryTo ? calculateChanges(entryFrom.data as Row, entryTo.data as Row) : [];
+    entryFrom && entryTo
+      ? calculateChanges(
+          await shapeOne(resource, policyCtx, req, entryFrom.data as Row),
+          await shapeOne(resource, policyCtx, req, entryTo.data as Row),
+        )
+      : [];
 
   return { status: 200, body: envelopeOf(resource).success({ from, to, changes }) };
 }
@@ -246,14 +311,19 @@ async function executeVersionRollback(
       scope,
     )) as Row | null;
     if (!current) throw new NotFoundException(model.name, lookup.value);
+    await assertReadAllowed(resource, policyCtx, current, lookup.value);
+    await assertWriteAllowed(resource, policyCtx, current);
 
     const recordId = current[model.primaryKeys[0] ?? 'id'] as string | number;
-    const entry = await store.get(model.tableName, recordId, version);
+    const recordKey = versionRecordKeyFor(model, current, req);
+    const entry = await store.get(model.tableName, recordKey, version);
     if (!entry) throw new NotFoundException(`version ${version}`, String(recordId));
+    assertVersionEntryScope(resource, req, recordKey, entry);
+    await assertReadAllowed(resource, policyCtx, entry.data as Row, String(recordId));
 
     // Snapshot the pre-rollback state and stamp the incremented version onto
     // the historical data we are about to write back.
-    const writeData: Row = { ...(entry.data as Row) };
+    const writeData = applyManagedUpdateFields(model, entry.data as Row) as Row;
     await captureVersion(resource, current, writeData, req);
 
     const updated = (await config.adapter.update(lookup, writeData, scope)) as Row | null;

@@ -107,6 +107,21 @@ export interface TransactionContext {
 
 /** Nested relation-write operations (hono-crud `nested-writes.ts` semantics). */
 export interface NestedWriteDriver<Row = Record<string, unknown>> {
+  /**
+   * Resolve every existing row an operation can mutate, inside the same
+   * adapter scope that will later apply the mutation. Arrays for selector
+   * based operations MUST be positionally aligned with the corresponding
+   * operation array; a missing or out-of-scope target is represented by
+   * `null`. `setDisconnect` is deliberately unscoped: it contains every row
+   * currently related to the parent, including a row outside `targetScope`,
+   * so the engine can detect corrupt/cross-tenant relations and fail closed.
+   */
+  inspectNestedTargets(
+    parent: Row,
+    relation: string,
+    operations: NestedWriteOperations,
+    scope: AdapterScope,
+  ): Promise<NestedWriteInspection<Row>>;
   /** Create related records referenced by a parent create/update payload. */
   createNested(
     parent: Row,
@@ -124,12 +139,24 @@ export interface NestedWriteDriver<Row = Record<string, unknown>> {
 }
 
 export interface NestedWriteOperations {
+  /** Server-derived target-row scope (tenant isolation) ANDed into every nested match. */
+  targetScope?: Record<string, unknown>;
   create?: Array<Record<string, unknown>>;
   update?: Array<{ where: Record<string, unknown>; data: Record<string, unknown> }>;
   delete?: Array<Record<string, unknown>>;
   connect?: Array<Record<string, unknown>>;
   disconnect?: Array<Record<string, unknown>>;
   set?: Array<Record<string, unknown>>;
+}
+
+/** Rows resolved by {@link NestedWriteDriver.inspectNestedTargets}. */
+export interface NestedWriteInspection<Row = Record<string, unknown>> {
+  update: Array<Row | null>;
+  delete: Array<Row | null>;
+  connect: Array<Row | null>;
+  disconnect: Array<Row | null>;
+  setConnect: Array<Row | null>;
+  setDisconnect: Row[];
 }
 
 /** Cascade-on-delete operations (hono-crud `endpoints/delete.ts` semantics). */

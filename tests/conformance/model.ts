@@ -78,6 +78,9 @@ export const tenantModel = defineModel({
   // timestamps default ON in the native engine → createdAt/updatedAt (epoch-ms).
   // Tenant field defaults to 'tenantId'; @Crud demands tenantResolverMounted.
   multiTenant: true,
+  // The conformance app explicitly exposes extended verbs. Production apps
+  // should make this predicate actor/tenant-aware.
+  policies: { operation: () => true },
   relations: {
     // Owner-scoped self-relation: a row's `parent` is filtered to the caller's
     // tenant AND excludes soft-deleted parents (the engine passes the
@@ -136,6 +139,7 @@ export const serializationModel = defineModel({
     nameUpper: { compute: (record) => String(record.name).toUpperCase() },
   },
   serializationProfile: { exclude: ['age'] },
+  policies: { operation: () => true },
   relations: {
     parent: {
       type: 'belongsTo',
