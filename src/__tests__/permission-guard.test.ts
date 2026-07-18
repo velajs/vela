@@ -254,4 +254,32 @@ describe('PermissionGuard (e2e)', () => {
     const res = await app.getHonoApp().request('/posts');
     expect(res.status).toBe(403);
   });
+
+  it('denies (403) when more than one AUTHZ provider is registered', async () => {
+    const auth = mockAuth(sessionWithRole('editor'));
+
+    @Controller('/ambiguous')
+    @UseGuards(AuthGuard, PermissionGuard)
+    class AmbiguousController {
+      @Get()
+      @RequirePermission(['posts:write'])
+      handle() {
+        return { ok: true };
+      }
+    }
+
+    @Module({
+      imports: [
+        AuthzModule.forRoot({ roles: [defineRole('editor', ['posts:write'])] }),
+        AuthzModule.forRoot({ roles: [defineRole('editor', ['posts:*'])] }),
+        BetterAuthModule.forRoot({ auth }),
+      ],
+      controllers: [AmbiguousController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/ambiguous');
+    expect(res.status).toBe(403);
+  });
 });

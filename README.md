@@ -8,13 +8,13 @@ pnpm add @velajs/better-auth better-auth
 
 ## Quick start
 
-Construct your better-auth instance once, hand it to `BetterAuthModule.forRoot`, then use `AuthGuard` + `@CurrentUser()` like any other vela primitive.
+Construct your better-auth instance once and hand it to `BetterAuthModule.forRoot`. The module installs `AuthGuard` application-wide by default; use `@CurrentUser()` on authenticated routes and mark the small anonymous surface explicitly.
 
 ```ts
 import { betterAuth } from 'better-auth';
-import { Module, Controller, Get, UseGuards, VelaFactory } from '@velajs/vela';
+import { Module, Controller, Get, VelaFactory } from '@velajs/vela';
 import {
-  BetterAuthModule, AuthGuard, CurrentUser, Public,
+  BetterAuthModule, CurrentUser, Public,
 } from '@velajs/better-auth';
 
 const auth = betterAuth({
@@ -24,7 +24,6 @@ const auth = betterAuth({
 });
 
 @Controller('/me')
-@UseGuards(AuthGuard)
 class MeController {
   @Get() me(@CurrentUser() user: { id: string; email: string }) {
     return { id: user.id, email: user.email };
@@ -35,7 +34,7 @@ class MeController {
 }
 
 @Module({
-  imports: [BetterAuthModule.forRoot({ auth, isGlobal: true })],
+  imports: [BetterAuthModule.forRoot({ auth })],
   controllers: [MeController],
 })
 class AppModule {}
@@ -51,12 +50,14 @@ export default app; // edge-compatible (.fetch)
 ```ts
 BetterAuthModule.forRoot({
   auth,                          // pre-constructed betterAuth({ ... }) instance
+  issuer: 'my-app:better-auth',  // stable namespace paired with user ids
   basePath: '/api/auth',         // default — must match your better-auth config
-  isGlobal: false,               // register AuthGuard as APP_GUARD (deny-by-default)
-  defaultPolicy: 'deny',         // 'deny' | 'allow' for unauthenticated requests
+  isGlobal: true,                // default — register AuthGuard as APP_GUARD
   mountHandler: true,            // mount /api/auth/* catch-all controller
 });
 ```
+
+Authentication has no allow-by-default compatibility mode. Use `@Public(true)` for routes that intentionally skip authentication, or `@OptionalAuth(true)` when the route accepts an anonymous identity. `isGlobal: false` is intended only for applications that install an equivalent global authentication guard themselves.
 
 ## Three composition patterns
 
@@ -170,26 +171,30 @@ Under `forRootAsync`, the underlying `betterAuth({...})` instance is constructed
 
 | Decorator           | Purpose                                                                  |
 | ------------------- | ------------------------------------------------------------------------ |
-| `@CurrentUser()`    | Lazy parameter — better-auth `User` from the request (read by AuthGuard) |
-| `@CurrentSession()` | Lazy parameter — better-auth `Session`                                   |
+| `@CurrentUser()`    | Better-auth `User` from the request after guards run                      |
+| `@CurrentSession()` | Better-auth `Session` after guards run                                    |
 | `@Public(true)`     | Class or method — bypass AuthGuard entirely                              |
 | `@OptionalAuth(true)` | Class or method — populate user if present, never throw 401            |
 | `@Roles(['admin'])` | Method — read by `RolesGuard`. Compares against `user.role`.            |
 
-`@CurrentUser()` returns a lazy proxy. It's always object-truthy (because it's a proxy). When auth is optional, probe a property instead of `!!user`:
+Optional identities are ordinary values: an anonymous caller receives the actual `undefined`, so normal truthiness checks are safe.
 
 ```ts
 handle(@CurrentUser() user: User | undefined) {
-  return { hasUser: user?.id != null };  // ✓ correct
+  return { hasUser: Boolean(user) };
 }
 ```
 
 ## Guards
 
-- **`AuthGuard`** — singleton. Reads `Authorization` header / cookies via `auth.api.getSession`, populates `REQUEST_CONTEXT`. Honors `@Public()` and `@OptionalAuth()` overrides. Always lets requests under `basePath` through (so the catch-all controller can run unauthenticated).
+- **`AuthGuard`** — singleton. Reads `Authorization` header / cookies via `auth.api.getSession`, populates `REQUEST_CONTEXT`, and publishes Vela's trusted principal/tenant identity for downstream security components. The Better Auth organization plugin's verified `activeOrganizationId` becomes the tenant partition when present. The guard honors only explicit `@Public()` / `@OptionalAuth()` metadata. The generated Better Auth catch-all controller is explicitly public; sharing its URL prefix never makes an application controller public.
 - **`RolesGuard`** — singleton. Reads `@Roles([...])` metadata, compares against `user.role`. Use with `@UseGuards(AuthGuard, RolesGuard)` — order matters.
 
-Global registration: pass `isGlobal: true` to `forRoot` (binds AuthGuard to `APP_GUARD`). Routes are deny-by-default; mark public ones with `@Public(true)`.
+Global registration is the default: installing the module binds `AuthGuard` to `APP_GUARD`. Routes are deny-by-default; mark public ones with `@Public(true)`. The generated Better Auth controller is already marked public.
+
+When using `ThrottlerModule`, import Better Auth first. Vela then rate-limits by
+the verified issuer, subject, principal type, and active organization before it
+falls back to a platform-attested client address.
 
 ## Edge-safe DB adapters
 
@@ -223,7 +228,7 @@ class CustomCatchallController {
 }
 ```
 
-Pass `basePath: '/auth'` to `BetterAuthModule.forRoot` so `AuthGuard` skips the right paths, and keep your `betterAuth({ basePath: '/auth' })` config in sync.
+Pass `basePath: '/auth'` to `BetterAuthModule.forRoot` to mount the generated controller there, and keep your `betterAuth({ basePath: '/auth' })` config in sync. A custom catch-all must carry `@Public(true)` itself. Base paths must be canonical absolute paths: no root mount, trailing slash, wildcards, query/fragment, backslashes, or dot segments.
 
 ## License
 

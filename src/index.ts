@@ -7,7 +7,13 @@ export {
 } from './better-auth.controller';
 
 // Tokens & symbols
-export { BETTER_AUTH_OPTIONS, AUTH_USER_KEY, AUTH_SESSION_KEY } from './better-auth.tokens';
+export {
+  BETTER_AUTH_OPTIONS,
+  AUTH_ISSUER_KEY,
+  AUTH_PRINCIPAL_TYPE_KEY,
+  AUTH_USER_KEY,
+  AUTH_SESSION_KEY,
+} from './better-auth.tokens';
 
 // Guards
 export { AuthGuard } from './guards/auth.guard';
@@ -26,7 +32,12 @@ export {
 } from './decorators/require-permission.decorator';
 
 // Authz bridge (@velajs/authz)
-export { identityFromUser, betterAuthAcResolver, permissionsFromAcRole } from './authz-bridge';
+export {
+  BETTER_AUTH_ISSUER,
+  identityFromUser,
+  betterAuthAcResolver,
+  permissionsFromAcRole,
+} from './authz-bridge';
 export type { AuthUser, BetterAuthAcRole } from './authz-bridge';
 
 // Types

@@ -37,16 +37,9 @@ catalogs:
       specifier: ^4.1.10
       version: 4.1.10
 
-overrides:
-  '@velajs/authz': link:../authz
-
 importers:
 
   .:
-    dependencies:
-      '@velajs/authz':
-        specifier: link:../authz
-        version: link:../authz
     devDependencies:
       '@arethetypeswrong/cli':
         specifier: 'catalog:'

@@ -73,8 +73,8 @@ class StatsService {
 class MeController {
   @Get()
   me(@CurrentUser() user: User) {
-    // The lazy proxy materializes on property access; safe here because
-    // AuthGuard is global and unauthenticated requests never reach this handler.
+    // AuthGuard runs first and supplies an ordinary user value. Anonymous
+    // requests never reach this protected handler.
     return { id: user.id, email: user.email, name: user.name };
   }
 

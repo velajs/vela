@@ -10,22 +10,43 @@ describe('identityFromUser', () => {
     // exported signature is typed against `User`; the mapping is dogfooded by
     // the return-value assertions below, not the fixture's compile-time shape.
     const id = identityFromUser({ id: 'u1', role: 'admin' } as never);
-    expect(id).toEqual({ userId: 'u1', roles: ['admin'] });
+    expect(id).toEqual({
+      issuer: 'better-auth',
+      subject: 'u1',
+      principalType: 'user',
+      userId: 'u1',
+      roles: ['admin'],
+    });
   });
 
   it('splits a comma-separated role string into roles', () => {
     const id = identityFromUser({ id: 'u2', role: 'admin, editor ,viewer' } as never);
-    expect(id).toEqual({ userId: 'u2', roles: ['admin', 'editor', 'viewer'] });
+    expect(id).toMatchObject({
+      issuer: 'better-auth',
+      subject: 'u2',
+      principalType: 'user',
+      userId: 'u2',
+      roles: ['admin', 'editor', 'viewer'],
+    });
   });
 
   it('accepts a role array as-is', () => {
     const id = identityFromUser({ id: 'u3', role: ['admin', 'editor'] } as never);
-    expect(id).toEqual({ userId: 'u3', roles: ['admin', 'editor'] });
+    expect(id).toMatchObject({ userId: 'u3', roles: ['admin', 'editor'] });
   });
 
   it('yields empty roles when the user has no role field', () => {
     const id = identityFromUser({ id: 'u4' } as never);
-    expect(id).toEqual({ userId: 'u4', roles: [] });
+    expect(id).toMatchObject({ userId: 'u4', roles: [] });
+  });
+
+  it('accepts an application-specific stable issuer namespace', () => {
+    const id = identityFromUser({ id: 'u5' } as never, 'https://app.example/auth');
+    expect(id).toMatchObject({
+      issuer: 'https://app.example/auth',
+      subject: 'u5',
+      principalType: 'user',
+    });
   });
 
   it('fail-closed: a missing user maps to the zero-privilege identity', () => {

@@ -28,7 +28,9 @@ jobs:
           node-version: 26
           cache: pnpm
       - name: Ensure npm supports OIDC trusted publishing
-        run: npm install -g npm@latest
+        run: npm install -g npm@12.0.0
+      - name: Validate release lock integrity
+        run: node scripts/check-release-lock.mjs
       - name: Build Authz sibling
         run: |
           git clone --depth 1 https://github.com/velajs/authz.git ../authz
@@ -36,10 +38,10 @@ jobs:
           pnpm --dir ../authz build
       - run: pnpm install --frozen-lockfile
       - name: Create release PR or publish
-        uses: changesets/action@v1
+        uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
         with:
           publish: pnpm release
           version: pnpm version-packages
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: "true"
