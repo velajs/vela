@@ -17,6 +17,7 @@ const toResolverOptions = (
   preset: options.preset,
   aud: options.aud,
   ...(options.mapClaims === undefined ? {} : { mapClaims: options.mapClaims }),
+  ...(options.groupRoles === undefined ? {} : { groupRoles: options.groupRoles }),
   ...(options.identity === undefined ? {} : { identity: options.identity }),
   ...(options.clockToleranceSec === undefined
     ? {}

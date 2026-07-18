@@ -13,6 +13,8 @@ import {
   ACCESS_IDENTITY_KEY,
   ACCESS_MODULE_OPTIONS,
   ACCESS_RESOLVER,
+  BETTER_AUTH_ISSUER_KEY,
+  BETTER_AUTH_PRINCIPAL_TYPE_KEY,
   BETTER_AUTH_USER_KEY,
   type CloudflareAccessModuleOptions,
 } from './tokens';
@@ -65,11 +67,12 @@ export class CloudflareAccessGuard implements CanActivate {
 
     if (identity) {
       reqCtx.set(ACCESS_IDENTITY_KEY, identity);
-      const expiry = identity.expiresAtMs ?? identity.exp;
-      if (expiry !== undefined) reqCtx.set(ACCESS_EXP_KEY, expiry);
+      reqCtx.set(ACCESS_EXP_KEY, identity.expiresAtMs);
       hono.set('userId', identity.userId);
       if (this.options.betterAuthInterop === true) {
-        reqCtx.set(BETTER_AUTH_USER_KEY, { id: identity.userId, role: identity.groups ?? [] });
+        reqCtx.set(BETTER_AUTH_USER_KEY, { id: identity.userId, role: identity.roles ?? [] });
+        reqCtx.set(BETTER_AUTH_ISSUER_KEY, identity.issuer);
+        reqCtx.set(BETTER_AUTH_PRINCIPAL_TYPE_KEY, identity.principalType);
       }
       return true;
     }

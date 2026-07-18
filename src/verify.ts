@@ -78,6 +78,10 @@ export const verifyAccessJwt = async (
     keySet as Parameters<typeof jwtVerify>[1],
     verifyOptions,
   );
+  const expiresAtMs = typeof payload.exp === 'number' ? payload.exp * 1000 : Number.NaN;
+  if (!Number.isSafeInteger(expiresAtMs) || expiresAtMs <= 0) {
+    throw new Error('@velajs/cloudflare-access: a finite exp claim is required');
+  }
   return payload;
 };
 

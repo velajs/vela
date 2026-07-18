@@ -85,28 +85,38 @@ export interface RequestVerifyOptions extends VerifyAccessJwtOptions {
   onError?: (error: unknown, request: Request) => void;
 }
 
+/** Explicit mapping from external IdP groups to application-local roles. */
+export type GroupRoleMapping = Readonly<Record<string, string | readonly string[]>>;
+
+/** Stable principal kinds shared with `@velajs/authz`. */
+export type PrincipalType = 'user' | 'service';
+
 /**
  * The structural shape a resolved identity returns. `userId` is the durable
- * caller key; all other properties tag along as-is. The pair `exp` (epoch
- * **seconds**) and `expiresAtMs` (epoch **milliseconds**, higher precedence) is
- * what a WebSocket layer reads to tear a socket down when the credential lapses —
- * leave both off for a session that never expires.
+ * caller key; all other properties tag along as-is. Security-sensitive fields
+ * are derived only from the verified JWT and cannot be replaced by `mapClaims`.
  */
 export interface ResolvedIdentity {
   /** Any additional claims carried forward. */
   [claim: string]: unknown;
-  /** The durable caller key. */
+  /** Verified issuer namespace. */
+  issuer: string;
+  /** Stable issuer-local principal subject. */
+  subject: string;
+  /** Interactive user or machine/service principal. */
+  principalType: PrincipalType;
+  /** @deprecated Compatibility alias for `subject`. */
   userId: string;
-  /** `exp` in epoch **seconds**; drives socket expiry unless `expiresAtMs` is set. */
-  exp?: number;
-  /** Absolute expiry in epoch **milliseconds**; wins over `exp`. */
-  expiresAtMs?: number;
+  /** Verified absolute credential expiry in epoch milliseconds. */
+  expiresAtMs: number;
   /** Verified email for an SSO caller. */
   email?: string;
   /** Service-token label (`common_name`) for a machine caller. */
   commonName?: string;
   /** Group memberships from the issuer, when present. */
   groups?: string[];
+  /** Application-local roles produced only by an explicit group mapping. */
+  roles?: string[];
   /** The complete verified claim set, keeping the on-the-wire names. */
   claims: AccessClaims;
 }

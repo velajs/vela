@@ -1,7 +1,9 @@
 export type {
   AccessClaims,
   AccessKeySet,
+  GroupRoleMapping,
   IssuerPreset,
+  PrincipalType,
   RequestVerifyOptions,
   ResolvedIdentity,
   ResolveIdentity,
@@ -35,4 +37,9 @@ export type {
 } from './standard-schema';
 
 export type { CreateAccessResolverOptions } from './resolver';
-export { composeResolvers, createAccessResolver, IdentityRejectedError } from './resolver';
+export {
+  composeResolvers,
+  createAccessResolver,
+  IdentityRejectedError,
+  rolesFromGroups,
+} from './resolver';

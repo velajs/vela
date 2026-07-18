@@ -55,10 +55,11 @@ describe('exported type signatures', () => {
     expectTypeOf(hook).toEqualTypeOf<FrameworkIdentityHook>();
   });
 
-  it('ResolvedIdentity forwards exp/expiresAtMs as optional numbers', () => {
-    expectTypeOf<ResolvedIdentity['exp']>().toEqualTypeOf<number | undefined>();
-    expectTypeOf<ResolvedIdentity['expiresAtMs']>().toEqualTypeOf<number | undefined>();
+  it('ResolvedIdentity exposes a required canonical millisecond expiry', () => {
+    expectTypeOf<ResolvedIdentity['expiresAtMs']>().toEqualTypeOf<number>();
     expectTypeOf<ResolvedIdentity['userId']>().toEqualTypeOf<string>();
+    expectTypeOf<ResolvedIdentity['issuer']>().toEqualTypeOf<string>();
+    expectTypeOf<ResolvedIdentity['subject']>().toEqualTypeOf<string>();
   });
 
   it('defineIdentity infers the declared claim type via InferIdentity', () => {

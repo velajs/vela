@@ -27,7 +27,7 @@ const resolveIdentity = createAccessResolver({
 });
 
 const identity = await resolveIdentity(request);
-// identity: { userId, email?, groups?, exp?, claims, … } | null (anonymous)
+// identity: { issuer, subject, principalType, expiresAtMs, ... } | null
 ```
 
 ## Core surface (`@velajs/cloudflare-access`)
@@ -68,25 +68,30 @@ The claim schema is a [Standard Schema v1](https://standardschema.dev) validator
 
 ### Resolvers
 
-- **`createAccessResolver({ preset, aud, mapClaims?, identity?, onError?, clockToleranceSec?, keySet? })`** — returns a fail-closed `ResolveIdentity`. Per request it verifies the token, optionally validates it against a `defineIdentity` contract (`onInvalid: 'anonymous'` downgrades a violation to `null`; `'reject'` throws a 401-shaped `IdentityRejectedError`), derives `userId` (`sub` → `email` → `common_name`), and maps to a `ResolvedIdentity` forwarding `email`, `commonName`, `groups`, `exp`, and the full `claims`. A missing or unverifiable token resolves to `null` (anonymous). `mapClaims` can add fields and override the derived `userId`.
+- **`createAccessResolver({ preset, aud, mapClaims?, groupRoles?, identity?, onError?, clockToleranceSec?, keySet? })`** — returns a fail-closed `ResolveIdentity`. It requires a finite `exp`, derives stable `{ issuer, subject, principalType }`, exposes the verified expiry only as epoch-millisecond `expiresAtMs`, and retains `userId` as a compatibility alias for `subject`. `mapClaims` may add application fields but cannot replace verified identity, expiry, groups, claims, or local roles.
+- **External groups are not roles.** `groupRoles` is an explicit own-property allowlist such as `{ 'idp-editors': ['editor'] }`; unmapped groups grant nothing.
 - **`composeResolvers(...resolvers)`** — ordered fallback: each resolver is tried in order, the first non-null identity wins, and all-null resolves to anonymous (`null`). The sequential await is intentional.
 
 ### `ResolvedIdentity` and the WS socket-expiry contract
 
 ```ts
 interface ResolvedIdentity {
+  issuer: string;
+  subject: string;
+  principalType: 'user' | 'service';
+  /** @deprecated compatibility alias for subject */
   userId: string;
-  exp?: number; // epoch SECONDS — drives WS socket expiry
-  expiresAtMs?: number; // epoch MILLISECONDS — takes precedence over exp
+  expiresAtMs: number;
   email?: string;
   commonName?: string;
   groups?: string[];
+  roles?: string[]; // only from explicit groupRoles mapping
   claims: AccessClaims;
   [claim: string]: unknown;
 }
 ```
 
-`exp`/`expiresAtMs` are the **data contract** a WebSocket transport consumes to expire a socket when the credential lapses. This package (edge-neutral) only *produces* that value; the `./vela` guard writes it to a request-context key. The Durable-Object-side wiring that closes the socket at expiry lives in the Cloudflare adapter and is out of this package's scope.
+`expiresAtMs` is the **data contract** a WebSocket transport consumes to expire a socket when the credential lapses. The JWT `exp` remains in `claims` in its standard epoch-seconds form; it is never exposed as a competing top-level unit.
 
 ## Vela integration (`@velajs/cloudflare-access/vela`)
 
@@ -95,7 +100,7 @@ The subpath ships the framework glue behind the optional `@velajs/vela` (and `@v
 - **`CloudflareAccessModule.forRoot(options)` / `.forRootAsync(options)`** — built on `defineModule`. Provides the `ResolveIdentity` (from `preset` + `aud` + optional contract) under the exported `ACCESS_RESOLVER` token, the guard, and the options bag. `forRootAsync` supports binding-time env config (`env.CF_ACCESS_TEAM_DOMAIN` / `AUD`). The resolver token is exported so an app can inject it and `composeResolvers(...)` it with other schemes.
 - **`CloudflareAccessGuard`** — verifies via the configured resolver; on success writes the identity to `ACCESS_IDENTITY_KEY`, the expiry to `ACCESS_EXP_KEY`, and the `userId` to the Hono `userId` variable the CF WebSocket routing already forwards. `required` mode (default) rejects an anonymous caller with `UnauthorizedException`; `optional` mode passes them through. Fail-closed on every abnormal path.
 - **`CurrentAccessIdentity()`** — parameter decorator yielding the verified identity for the request (or `undefined` when anonymous).
-- **`identityFromAccess(identity)`** — bridges a `ResolvedIdentity` into an `@velajs/authz` `Identity` (`userId` → `userId`, `groups` → `roles`, full claims → `claims`). The `@velajs/authz` import is **type-only**, so no runtime dependency edge is added.
+- **`identityFromAccess(identity)`** — bridges stable principal fields and explicitly mapped local `roles` into `@velajs/authz`. Raw external groups are never promoted to roles.
 - **`AccessPermissionGuard` + `@RequireAccessPermission([...])`** — enforces `@velajs/authz` permissions (require-ALL / AND) against the mapped identity, resolving `AUTHZ` at **request time** from the container so it works whether or not `AuthzModule` is global. Fail-closed: denies when `AUTHZ` is unresolved, when no identity is present, or when any required permission is not granted.
 - **Opt-in better-auth interop** — set `betterAuthInterop: true` to also project the identity as `{ id, role }` under `Symbol.for('vela.better-auth.user')`, so the unchanged `@velajs/better-auth` `PermissionGuard` can consume an Access caller. Off by default.
 
@@ -114,6 +119,7 @@ import {
     CloudflareAccessModule.forRoot({
       preset: cloudflareAccessIssuer(env.CF_ACCESS_TEAM_DOMAIN),
       aud: env.CF_ACCESS_AUD,
+      groupRoles: { 'idp-editors': ['editor'] },
     }),
     AuthzModule.forRoot({ roles: [defineRole('editor', ['posts:write'])] }),
   ],
@@ -137,6 +143,8 @@ class PostsController {
 - **Fail-closed everywhere.** Any verification failure (bad signature, wrong issuer/audience, expiry, unparseable token) yields anonymous, never a partial identity.
 - **RS256-pinned.** The algorithm set is pinned per preset, so `alg:none` and HS-signed forgeries are rejected before any signature check.
 - **Audience required.** An empty/unset `aud` is refused, never defaulted open.
+- **Expiry required and unit-safe.** Tokens without a finite `exp` are refused; transports receive only `expiresAtMs`.
+- **Groups grant nothing by default.** Local roles require an explicit `groupRoles` mapping.
 - **No secrets in errors or logs.** Contract-violation messages never echo claim values; the package never logs.
 
 ## Testing without a network

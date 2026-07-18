@@ -1,6 +1,6 @@
 import {
   Controller,
-  createLazyParamDecorator,
+  createParamDecorator,
   type ExecutionContext,
   Get,
   MetadataRegistry,
@@ -18,6 +18,7 @@ import type { ResolvedIdentity } from '../types';
 import {
   AccessPermissionGuard,
   ACCESS_EXP_KEY,
+  BETTER_AUTH_ISSUER_KEY,
   BETTER_AUTH_USER_KEY,
   CloudflareAccessGuard,
   CloudflareAccessModule,
@@ -42,31 +43,35 @@ interface ContainerLike {
   resolve<T>(token: unknown): T;
 }
 
-// Lazy param decorators must resolve to an OBJECT: the lazy proxy defers to
-// first property access (args resolve before guards), and it wraps object
-// values — so primitives are boxed in `{ value }` and read back via `.value`.
-
 /** Reads the guard-written expiry off the request context (proves ACCESS_EXP_KEY). */
-const AccessExp = createLazyParamDecorator((_data: unknown, ctx: ExecutionContext) => ({
-  value: ctx
+const AccessExp = createParamDecorator((_data: unknown, ctx: ExecutionContext) =>
+  ctx
     .getContext<{ get(key: 'container'): ContainerLike }>()
     .get('container')
     .resolve<RequestContext>(REQUEST_CONTEXT)
     .get<number>(ACCESS_EXP_KEY),
-}));
+);
 
 /** Reads the Hono `userId` variable the guard sets (the key CF WS routing forwards). */
-const HonoUserId = createLazyParamDecorator((_data: unknown, ctx: ExecutionContext) => ({
-  value: ctx.getContext<{ get(key: string): unknown }>().get('userId'),
-}));
+const HonoUserId = createParamDecorator((_data: unknown, ctx: ExecutionContext) =>
+  ctx.getContext<{ get(key: string): unknown }>().get('userId'),
+);
 
 /** Reads the opt-in better-auth interop projection. */
-const InteropUser = createLazyParamDecorator((_data: unknown, ctx: ExecutionContext) =>
+const InteropUser = createParamDecorator((_data: unknown, ctx: ExecutionContext) =>
   ctx
     .getContext<{ get(key: 'container'): ContainerLike }>()
     .get('container')
     .resolve<RequestContext>(REQUEST_CONTEXT)
     .get<{ id: string; role: string[] }>(BETTER_AUTH_USER_KEY),
+);
+
+const InteropIssuer = createParamDecorator((_data: unknown, ctx: ExecutionContext) =>
+  ctx
+    .getContext<{ get(key: 'container'): ContainerLike }>()
+    .get('container')
+    .resolve<RequestContext>(REQUEST_CONTEXT)
+    .get<string>(BETTER_AUTH_ISSUER_KEY),
 );
 
 const tokenWith = (claims: Record<string, unknown>, subject = 'user-1'): Promise<string> =>
@@ -92,15 +97,15 @@ describe('CloudflareAccessGuard', () => {
       @Get()
       me(
         @CurrentAccessIdentity() identity: ResolvedIdentity | undefined,
-        @AccessExp() expBox: { value: number | undefined },
-        @HonoUserId() honoUserId: { value: unknown },
+        @AccessExp() expiresAtMs: number | undefined,
+        @HonoUserId() honoUserId: unknown,
       ) {
         return {
           userId: identity?.userId,
           email: identity?.email,
           groups: identity?.groups,
-          exp: expBox.value,
-          honoUserId: honoUserId.value,
+          expiresAtMs,
+          honoUserId,
         };
       }
     }
@@ -120,13 +125,13 @@ describe('CloudflareAccessGuard', () => {
       userId: string;
       email: string;
       groups: string[];
-      exp: number;
+      expiresAtMs: number;
       honoUserId: string;
     };
     expect(body.userId).toBe('user-1');
     expect(body.email).toBe('ada@example.com');
     expect(body.groups).toEqual(['admins']);
-    expect(typeof body.exp).toBe('number');
+    expect(Number.isSafeInteger(body.expiresAtMs)).toBe(true);
     expect(body.honoUserId).toBe('user-1');
 
     await app.dispose();
@@ -160,9 +165,7 @@ describe('CloudflareAccessGuard', () => {
     class MaybeController {
       @Get()
       maybe(@CurrentAccessIdentity() identity: ResolvedIdentity | undefined) {
-        // The lazy proxy is always object-truthy; probe a property to
-        // materialize the underlying (undefined for an anonymous caller).
-        return { hasIdentity: identity?.userId !== undefined };
+        return { hasIdentity: Boolean(identity) };
       }
     }
 
@@ -186,8 +189,11 @@ describe('CloudflareAccessGuard', () => {
     @UseGuards(CloudflareAccessGuard)
     class InteropController {
       @Get()
-      interop(@InteropUser() user: { id: string; role: string[] } | undefined) {
-        return { id: user?.id, role: user?.role };
+      interop(
+        @InteropUser() user: { id: string; role: string[] } | undefined,
+        @InteropIssuer() issuer: string | undefined,
+      ) {
+        return { id: user?.id, role: user?.role, issuer };
       }
     }
 
@@ -198,6 +204,7 @@ describe('CloudflareAccessGuard', () => {
           aud: AUD,
           keySet: keys.jwks,
           betterAuthInterop: true,
+          groupRoles: { editor: 'editor' },
         }),
       ],
       controllers: [InteropController],
@@ -208,20 +215,30 @@ describe('CloudflareAccessGuard', () => {
     const token = await tokenWith({ groups: ['editor'] });
     const res = await app.getHonoApp().request(withHeader('/interop', token));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ id: 'user-1', role: ['editor'] });
+    expect(await res.json()).toEqual({
+      id: 'user-1',
+      role: ['editor'],
+      issuer: preset.issuer,
+    });
     await app.dispose();
   });
 });
 
 describe('identityFromAccess', () => {
-  it('maps userId, groups→roles, and full claims, and is accepted by authz.can()', async () => {
+  it('maps stable principal fields and explicit local roles into authz', async () => {
     const identity: ResolvedIdentity = {
+      issuer: preset.issuer,
+      subject: 'user-1',
+      principalType: 'user',
       userId: 'user-1',
+      expiresAtMs: Date.now() + 60_000,
       groups: ['editor'],
+      roles: ['editor'],
       claims: { sub: 'user-1', groups: ['editor'] },
     };
     const mapped = identityFromAccess(identity);
     expect(mapped.userId).toBe('user-1');
+    expect((mapped as { issuer?: string }).issuer).toBe(preset.issuer);
     expect(mapped.roles).toEqual(['editor']);
     expect(mapped.claims).toEqual({ sub: 'user-1', groups: ['editor'] });
 
@@ -230,8 +247,16 @@ describe('identityFromAccess', () => {
     expect(await authz.can(mapped, 'posts:delete')).toBe(false);
   });
 
-  it('defaults roles to an empty list when no groups are present', () => {
-    const mapped = identityFromAccess({ userId: 'svc', claims: {} });
+  it('does not treat unmapped external groups as local roles', () => {
+    const mapped = identityFromAccess({
+      issuer: preset.issuer,
+      subject: 'svc',
+      principalType: 'service',
+      userId: 'svc',
+      expiresAtMs: Date.now() + 60_000,
+      groups: ['admin'],
+      claims: {},
+    });
     expect(mapped.roles).toEqual([]);
   });
 });
@@ -251,7 +276,12 @@ describe('AccessPermissionGuard', () => {
     @Module({
       imports: [
         AuthzModule.forRoot({ roles: [defineRole('editor', ['posts:write'])] }),
-        CloudflareAccessModule.forRoot({ preset, aud: AUD, keySet: keys.jwks }),
+        CloudflareAccessModule.forRoot({
+          preset,
+          aud: AUD,
+          keySet: keys.jwks,
+          groupRoles: { editor: 'editor' },
+        }),
       ],
       controllers: [PostsController],
     })
@@ -367,6 +397,80 @@ describe('AccessPermissionGuard', () => {
     const token = await tokenWith({ groups: ['editor'] });
     const res = await app.getHonoApp().request(withHeader('/open', token));
     expect(res.status).toBe(200);
+    await app.dispose();
+  });
+
+  it('resolves only the AUTHZ provider visible from the declaring route module', async () => {
+    @Controller('/scoped')
+    @UseGuards(CloudflareAccessGuard, AccessPermissionGuard)
+    class ScopedController {
+      @Get()
+      @RequireAccessPermission(['posts:write'])
+      handle() {
+        return { ok: true };
+      }
+    }
+
+    @Module({
+      imports: [
+        AuthzModule.forRoot({ roles: [defineRole('editor', ['posts:write'])] }),
+        CloudflareAccessModule.forRoot({
+          preset,
+          aud: AUD,
+          keySet: keys.jwks,
+          groupRoles: { editor: 'editor' },
+        }),
+      ],
+      controllers: [ScopedController],
+    })
+    class RouteModule {}
+
+    @Module({
+      imports: [AuthzModule.forRoot({ roles: [defineRole('editor', ['unrelated:*'])] })],
+    })
+    class UnrelatedModule {}
+
+    @Module({ imports: [RouteModule, UnrelatedModule] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const token = await tokenWith({ groups: ['editor'] });
+    const res = await app.getHonoApp().request(withHeader('/scoped', token));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    await app.dispose();
+  });
+
+  it('fails closed when more than one AUTHZ provider is registered', async () => {
+    @Controller('/ambiguous')
+    @UseGuards(CloudflareAccessGuard, AccessPermissionGuard)
+    class AmbiguousController {
+      @Get()
+      @RequireAccessPermission(['posts:write'])
+      handle() {
+        return { ok: true };
+      }
+    }
+
+    @Module({
+      imports: [
+        AuthzModule.forRoot({ roles: [defineRole('editor', ['posts:write'])] }),
+        AuthzModule.forRoot({ roles: [defineRole('editor', ['posts:*'])] }),
+        CloudflareAccessModule.forRoot({
+          preset,
+          aud: AUD,
+          keySet: keys.jwks,
+          groupRoles: { editor: 'editor' },
+        }),
+      ],
+      controllers: [AmbiguousController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const token = await tokenWith({ groups: ['editor'] });
+    const res = await app.getHonoApp().request(withHeader('/ambiguous', token));
+    expect(res.status).toBe(403);
     await app.dispose();
   });
 });

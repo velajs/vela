@@ -2,7 +2,9 @@ import type { IdentityContract } from './identity-contract';
 import type {
   AccessClaims,
   AccessKeySet,
+  GroupRoleMapping,
   IssuerPreset,
+  PrincipalType,
   RequestVerifyOptions,
   ResolvedIdentity,
   ResolveIdentity,
@@ -28,8 +30,10 @@ export interface CreateAccessResolverOptions {
   preset: IssuerPreset;
   /** Required application audience tag(s). Fail-closed when empty. */
   aud: string | string[];
-  /** Rewrite verified claims into extra identity fields; a returned `userId` overrides the derived one. */
+  /** Add non-security identity fields derived from verified claims. */
   mapClaims?: (claims: AccessClaims) => Record<string, unknown>;
+  /** Explicitly map external identity-provider groups to application-local roles. */
+  groupRoles?: GroupRoleMapping;
   /** Optional claim contract run over the verified claims before an identity is assembled. */
   identity?: IdentityContract;
   /** Observe present-but-invalid tokens. Never called for an absent token. */
@@ -44,6 +48,63 @@ export interface CreateAccessResolverOptions {
 const nonEmptyString = (value: unknown): string | undefined =>
   typeof value === 'string' && value.length > 0 ? value : undefined;
 
+const SECURITY_FIELDS = new Set([
+  '__proto__',
+  'claims',
+  'commonName',
+  'constructor',
+  'email',
+  'exp',
+  'expiresAtMs',
+  'groups',
+  'issuer',
+  'principalType',
+  'prototype',
+  'roles',
+  'subject',
+  'userId',
+]);
+
+const normalizeGroups = (groups: unknown): string[] | undefined => {
+  if (!Array.isArray(groups)) return undefined;
+  const normalized = groups.filter(
+    (group): group is string => typeof group === 'string' && group.length > 0,
+  );
+  return normalized.length > 0 ? [...new Set(normalized)] : undefined;
+};
+
+const assertGroupRoleMapping = (mapping: GroupRoleMapping | undefined): void => {
+  if (mapping === undefined) return;
+  for (const [group, configured] of Object.entries(mapping)) {
+    if (group.length === 0) {
+      throw new Error('@velajs/cloudflare-access: group role mapping keys must be non-empty');
+    }
+    const roles = Array.isArray(configured) ? configured : [configured];
+    if (roles.length === 0 || roles.some((role) => typeof role !== 'string' || role.length === 0)) {
+      throw new Error(
+        `@velajs/cloudflare-access: group role mapping for "${group}" must contain non-empty roles`,
+      );
+    }
+  }
+};
+
+/** Map external groups to local roles using own properties only. */
+export const rolesFromGroups = (
+  groups: readonly string[] | undefined,
+  mapping: GroupRoleMapping | undefined,
+): string[] => {
+  if (mapping === undefined) return [];
+  const roles = new Set<string>();
+  for (const group of groups ?? []) {
+    if (!Object.hasOwn(mapping, group)) continue;
+    const configured = mapping[group];
+    for (const role of Array.isArray(configured) ? configured : [configured]) {
+      if (typeof role === 'string' && role.length > 0) roles.add(role);
+    }
+  }
+  return [...roles];
+};
+
 /**
  * Pick the caller's durable id out of the verified claims. Interactive logins put
  * it in `sub`; when that is blank (service tokens have no `sub`) the code walks on
@@ -51,48 +112,86 @@ const nonEmptyString = (value: unknown): string | undefined =>
  * id, so the caller is left anonymous rather than being assigned an empty-string
  * id that every id-less caller would end up sharing.
  */
-const deriveUserId = (claims: AccessClaims): string | undefined =>
-  nonEmptyString(claims.sub) ?? nonEmptyString(claims.email) ?? nonEmptyString(claims.common_name);
+const deriveSubject = (claims: AccessClaims, declaredSubjectClaim?: string): string | undefined =>
+  nonEmptyString(claims.sub) ??
+  (declaredSubjectClaim === undefined ? undefined : nonEmptyString(claims[declaredSubjectClaim])) ??
+  nonEmptyString(claims.email) ??
+  nonEmptyString(claims.common_name);
+
+const derivePrincipalType = (claims: AccessClaims): PrincipalType =>
+  nonEmptyString(claims.common_name) !== undefined &&
+  nonEmptyString(claims.sub) === undefined &&
+  nonEmptyString(claims.email) === undefined
+    ? 'service'
+    : 'user';
 
 /**
  * Assemble the {@link ResolvedIdentity}. The whole claim set is retained under
- * `claims`; the frequently-read fields (`email`, `commonName`, `groups`, `exp`)
- * are lifted to top-level keys when present, `exp` in epoch seconds so a socket
- * layer can time out an expiring credential. `mapClaims` output is applied last,
- * with `userId` skipped here because the id was already settled by the caller.
+ * `claims`; frequently-read non-authority fields are lifted when present. The
+ * expiry is normalized once to milliseconds. `mapClaims` output is applied last
+ * but is rejected if it attempts to replace any verified security field.
  */
 const buildResolvedIdentity = (
   claims: AccessClaims,
-  userId: string,
+  subject: string,
+  groups: string[] | undefined,
+  roles: string[],
   overrides: Record<string, unknown>,
 ): ResolvedIdentity => {
-  const resolved: ResolvedIdentity = { userId, claims };
+  const issuer = nonEmptyString(claims.iss);
+  const expiresAtMs = typeof claims.exp === 'number' ? claims.exp * 1000 : Number.NaN;
+  if (issuer === undefined || !Number.isSafeInteger(expiresAtMs) || expiresAtMs <= 0) {
+    throw new Error('@velajs/cloudflare-access: verified identity claims are incomplete');
+  }
+  const resolved: ResolvedIdentity = {
+    issuer,
+    subject,
+    principalType: derivePrincipalType(claims),
+    userId: subject,
+    expiresAtMs,
+    claims,
+  };
   if (claims.email !== undefined) resolved.email = claims.email;
   if (claims.common_name !== undefined) resolved.commonName = claims.common_name;
-  if (claims.groups !== undefined) resolved.groups = claims.groups;
-  if (typeof claims.exp === 'number') resolved.exp = claims.exp;
+  if (groups !== undefined) resolved.groups = groups;
+  if (roles.length > 0) resolved.roles = roles;
 
   for (const [key, value] of Object.entries(overrides)) {
-    if (key !== 'userId') resolved[key] = value;
+    if (SECURITY_FIELDS.has(key)) {
+      throw new Error(
+        `@velajs/cloudflare-access: mapClaims cannot replace verified security field "${key}"`,
+      );
+    }
+    resolved[key] = value;
   }
   return resolved;
 };
 
 /**
- * Convert verified claims into a {@link ResolvedIdentity}, or `null` when no id is
- * available. `mapClaims` (if given) runs first, so a caller may inject fields and,
- * via a returned `userId`, take over the id; absent that override the id comes
- * from {@link deriveUserId}. A missing id short-circuits to anonymous instead of
- * producing an identity keyed on the empty string.
+ * Convert verified claims into a {@link ResolvedIdentity}, or `null` when no
+ * stable subject is available. Claim mapping may enrich the result but cannot
+ * replace the verified subject, issuer, expiry, groups, claims, or local roles.
  */
 const toResolvedIdentity = (
   claims: AccessClaims,
   mapClaims?: (claims: AccessClaims) => Record<string, unknown>,
+  groupRoles?: GroupRoleMapping,
+  declaredSubjectClaim?: string,
 ): ResolvedIdentity | null => {
-  const overrides = mapClaims ? mapClaims(claims) : {};
-  const userId = nonEmptyString(overrides.userId) ?? deriveUserId(claims);
-  if (userId === undefined) return null;
-  return buildResolvedIdentity(claims, userId, overrides);
+  const overrides = mapClaims ? mapClaims(structuredClone(claims)) : {};
+  if (typeof overrides !== 'object' || overrides === null || Array.isArray(overrides)) {
+    throw new Error('@velajs/cloudflare-access: mapClaims must return an object');
+  }
+  const subject = deriveSubject(claims, declaredSubjectClaim);
+  if (subject === undefined) return null;
+  const groups = normalizeGroups(claims.groups);
+  return buildResolvedIdentity(
+    claims,
+    subject,
+    groups,
+    rolesFromGroups(groups, groupRoles),
+    overrides,
+  );
 };
 
 /**
@@ -108,6 +207,7 @@ const toResolvedIdentity = (
  */
 export const createAccessResolver = (options: CreateAccessResolverOptions): ResolveIdentity => {
   assertVerifyOptions(options);
+  assertGroupRoleMapping(options.groupRoles);
 
   const verifyOptions: RequestVerifyOptions = {
     preset: options.preset,
@@ -122,9 +222,13 @@ export const createAccessResolver = (options: CreateAccessResolverOptions): Reso
   return async (request: Request): Promise<ResolvedIdentity | null> => {
     const claims = await verifyRequest(request, verifyOptions);
     if (claims === undefined) return null;
+    // Hooks receive defensive clones. A claim validator or mapper is
+    // application code and must not be able to mutate the verified authority
+    // fields that this resolver subsequently trusts.
+    const verifiedClaims = structuredClone(claims);
 
     if (options.identity !== undefined) {
-      const result = await options.identity.validate(claims);
+      const result = await options.identity.validate(structuredClone(verifiedClaims));
       if (!result.ok) {
         if (options.identity.onInvalid === 'reject') {
           throw new IdentityRejectedError(
@@ -135,7 +239,12 @@ export const createAccessResolver = (options: CreateAccessResolverOptions): Reso
       }
     }
 
-    return toResolvedIdentity(claims, options.mapClaims);
+    return toResolvedIdentity(
+      verifiedClaims,
+      options.mapClaims,
+      options.groupRoles,
+      options.identity?.subjectClaim,
+    );
   };
 };
 
