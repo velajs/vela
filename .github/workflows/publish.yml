@@ -45,4 +45,4 @@ jobs:
       - name: Publish to npm
         run: pnpm -r publish --no-git-checks --access public
         env:
-          NPM_CONFIG_PROVENANCE: "true"
+          NPM_CONFIG_PROVENANCE: ${{ github.event.repository.private == false }}
