@@ -9,7 +9,7 @@ Test-module builder for [Vela](https://github.com/velajs/vela). Compose modules 
 
 ```bash
 pnpm add -D @velajs/testing
-# Peer (already in your project): @velajs/vela >=2, hono >=4
+# Peer (already in your project): @velajs/vela >=1.21 <2, hono >=4
 ```
 
 No `reflect-metadata` needed — Vela ships its own polyfill.
