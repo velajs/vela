@@ -32,7 +32,7 @@ try {
 
 describe.skipIf(!peersAvailable)('module.ws (Node transport)', () => {
   it('echoes a framed message over a real socket', async () => {
-    @WebSocketGateway({ path: '/rooms/:id/ws' })
+    @WebSocketGateway({ path: '/rooms/:id/ws', roomParam: 'id' })
     class RoomGateway {
       @SubscribeMessage('echo')
       onEcho(@MessageBody() body: { text: string }) {
