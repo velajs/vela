@@ -8,6 +8,7 @@ export { createMemoryMutationStore } from './memory-store';
 export { createSnapshotPrecondition } from './snapshot-precondition';
 export type {
   MutationStore,
+  MutationStoreScope,
   MutationSettledEvent,
   MutationVerdict,
   OfflineQueueOptions,

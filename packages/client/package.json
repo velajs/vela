@@ -51,11 +51,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@velajs/live-protocol": "^1.0.0"
+    "@velajs/live-protocol": "2.0.0"
   },
   "devDependencies": {
     "@swc/core": "catalog:",
-    "@velajs/vela": "^1.17.0",
+    "@velajs/vela": "^2.0.0",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "unplugin-swc": "catalog:",

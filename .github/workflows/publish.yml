@@ -12,6 +12,9 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Harden the runner (Audit all outbound calls)
         uses: step-security/harden-runner@58077d3c7e43986b6b15fba718e8ea69e387dfcc # v2.15.1
@@ -28,16 +31,18 @@ jobs:
           cache: pnpm
           registry-url: 'https://registry.npmjs.org'
 
-      - run: pnpm install
+      - run: npm install -g npm@12.0.0
 
-      - run: pnpm -r run typecheck
+      - name: Validate release lock integrity
+        run: node scripts/check-release-lock.mjs
 
-      - run: pnpm -r run test
+      - run: pnpm install --frozen-lockfile
 
-      - run: pnpm -r run build
+      - run: pnpm release:preflight
 
-      # TODO: enable provenance once repo is public (add NPM_CONFIG_PROVENANCE: "true")
+      - run: pnpm release:check
+
       - name: Publish to npm
         run: pnpm -r publish --no-git-checks --access public
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: "true"

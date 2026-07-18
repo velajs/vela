@@ -5,8 +5,8 @@ import type { AsyncStorageLike } from './types';
 export const DEFAULT_MUTATION_STORE_KEY = 'velajs.mutations';
 
 /**
- * A durable {@link MutationStore} backed by a single {@link AsyncStorageLike}
- * key holding the whole FIFO mutation array as one JSON document.
+ * A durable {@link MutationStore} backed by one account-epoch-namespaced
+ * {@link AsyncStorageLike} key per authenticated partition.
  *
  * Two properties matter for correctness against the client's offline queue:
  *
@@ -31,11 +31,16 @@ export function createAsyncStorageMutationStore(config: {
 
   // `undefined` until the first op seeds it from storage; thereafter it is the
   // authoritative FIFO list and storage is written from it.
-  let mirror: PersistedMutation[] | undefined;
+  const mirrors = new Map<string, PersistedMutation[]>();
   let tail: Promise<unknown> = Promise.resolve();
 
-  const seed = async (): Promise<PersistedMutation[]> => {
-    if (mirror === undefined) mirror = decodeRecords(await storage.getItem(key));
+  const partitionKey = (account: string): string => `${key}:${encodeURIComponent(account)}`;
+  const seed = async (account: string): Promise<PersistedMutation[]> => {
+    let mirror = mirrors.get(account);
+    if (mirror === undefined) {
+      mirror = decodeRecords(await storage.getItem(partitionKey(account)));
+      mirrors.set(account, mirror);
+    }
     return mirror;
   };
 
@@ -50,30 +55,31 @@ export function createAsyncStorageMutationStore(config: {
   };
 
   return {
-    append(record) {
+    append(record, { account }) {
       return chain(async () => {
-        const records = await seed();
+        const records = await seed(account);
         records.push(clone(record));
-        await storage.setItem(key, JSON.stringify(records));
+        await storage.setItem(partitionKey(account), JSON.stringify(records));
       });
     },
-    load() {
+    load({ account }) {
       return chain(async () => {
-        const records = await seed();
+        const records = await seed(account);
         return records.map(clone);
       });
     },
-    remove(id) {
+    remove(id, { account }) {
       return chain(async () => {
-        const records = await seed();
-        mirror = records.filter((record) => record.id !== id);
-        await storage.setItem(key, JSON.stringify(mirror));
+        const records = await seed(account);
+        const mirror = records.filter((record) => record.id !== id);
+        mirrors.set(account, mirror);
+        await storage.setItem(partitionKey(account), JSON.stringify(mirror));
       });
     },
-    clear() {
+    clear({ account }) {
       return chain(async () => {
-        mirror = [];
-        await storage.removeItem(key);
+        mirrors.delete(account);
+        await storage.removeItem(partitionKey(account));
       });
     },
   };

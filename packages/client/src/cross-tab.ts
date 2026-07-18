@@ -1,3 +1,5 @@
+import { VelaLiveError } from './errors';
+import { MAX_LIVE_FRAME_BYTES } from '@velajs/live-protocol';
 import type { BroadcastChannelFactory, BroadcastChannelLike, CrossTabOptions } from './types';
 
 /**
@@ -40,19 +42,34 @@ export interface CrossTabCallbacks {
 }
 
 type CrossTabMessage =
-  | { type: 'claim'; tab: string; ts: number }
-  | { type: 'heartbeat'; tab: string; ts: number; leader: boolean }
-  | { type: 'resign'; tab: string }
-  | { type: 'want'; tab: string; key: string; spec: WantSpec }
-  | { type: 'unwant'; tab: string; key: string }
-  | { type: 'frame'; tab: string; key: string; value: unknown; cursor?: number; epoch?: string }
+  | { scope: string; type: 'claim'; tab: string; ts: number }
+  | { scope: string; type: 'heartbeat'; tab: string; ts: number; leader: true }
+  | { scope: string; type: 'resign'; tab: string }
+  | { scope: string; type: 'want'; tab: string; key: string; spec: WantSpec }
+  | { scope: string; type: 'unwant'; tab: string; key: string }
   | {
+      scope: string;
+      type: 'frame';
+      tab: string;
+      key: string;
+      value: unknown;
+      cursor?: number;
+      epoch?: string;
+    }
+  | {
+      scope: string;
       type: 'frameError';
       tab: string;
       key: string;
       error: { code: string; message: string; fatal: boolean };
     }
-  | { type: 'resync'; tab: string };
+  | { scope: string; type: 'resync'; tab: string };
+
+type CrossTabOutbound = CrossTabMessage extends infer Message
+  ? Message extends CrossTabMessage
+    ? Omit<Message, 'scope'>
+    : never
+  : never;
 
 const DEFAULT_CHANNEL = 'velajs-live';
 const DEFAULT_HEARTBEAT_MS = 1000;
@@ -68,10 +85,12 @@ export class CrossTabCoordinator {
   private readonly heartbeatMs: number;
   private readonly leaderTimeoutMs: number;
   private readonly channel?: BroadcastChannelLike;
+  private readonly scope: string;
 
   private leader = false;
   private started = false;
   private lastLeaderSeen = 0;
+  private leaderTab?: string;
   /** Per-tab last-seen timestamp (liveness), for wanter GC. */
   private readonly tabSeen = new Map<string, number>();
 
@@ -83,15 +102,30 @@ export class CrossTabCoordinator {
     options: CrossTabOptions | undefined,
     private readonly callbacks: CrossTabCallbacks,
   ) {
-    this.tabId = `${(tabCounter += 1)}-${uuid()}`;
-    this.channelName = options?.channelName ?? DEFAULT_CHANNEL;
-    this.heartbeatMs = options?.heartbeatMs ?? DEFAULT_HEARTBEAT_MS;
+    if (
+      options === undefined ||
+      !isBoundedString(options.appId, 1, 128) ||
+      !isBoundedString(options.sessionId, 1, 256) ||
+      !isBoundedString(options.accountEpoch, 1, 128)
+    ) {
+      throw new VelaLiveError(
+        'CROSS_TAB_SCOPE_REQUIRED',
+        'cross-tab coordination requires bounded appId, sessionId, and accountEpoch values',
+      );
+    }
+    this.tabId = `${String((tabCounter += 1)).padStart(12, '0')}-${uuid()}`;
+    this.scope = JSON.stringify([options.appId, options.sessionId, options.accountEpoch]);
+    const prefix = options.channelName ?? DEFAULT_CHANNEL;
+    this.channelName = `${prefix}:${encodeURIComponent(options.appId)}:${encodeURIComponent(
+      options.sessionId,
+    )}:${encodeURIComponent(options.accountEpoch)}`;
+    this.heartbeatMs = options.heartbeatMs ?? DEFAULT_HEARTBEAT_MS;
     this.leaderTimeoutMs = Math.max(
-      options?.leaderTimeoutMs ?? DEFAULT_LEADER_TIMEOUT_MS,
+      options.leaderTimeoutMs ?? DEFAULT_LEADER_TIMEOUT_MS,
       this.heartbeatMs + 1,
     );
 
-    let factory: BroadcastChannelFactory | undefined = options?.BroadcastChannel;
+    let factory: BroadcastChannelFactory | undefined = options.BroadcastChannel;
     if (factory === undefined) {
       const Global = (
         globalThis as { BroadcastChannel?: new (name: string) => BroadcastChannelLike }
@@ -135,6 +169,7 @@ export class CrossTabCoordinator {
       this.channel.close();
     }
     this.leader = false;
+    this.leaderTab = undefined;
   }
 
   /** Follower → leader: I want the query at `key`. */
@@ -162,6 +197,7 @@ export class CrossTabCoordinator {
   private promote(): void {
     if (this.leader) return;
     this.leader = true;
+    this.leaderTab = this.tabId;
     this.lastLeaderSeen = now();
     this.startHeartbeat();
     this.callbacks.onBecomeLeader();
@@ -172,15 +208,15 @@ export class CrossTabCoordinator {
   private resign(): void {
     if (!this.leader) return;
     this.leader = false;
+    this.leaderTab = undefined;
     this.stopHeartbeat();
     this.broadcast({ type: 'resign', tab: this.tabId });
     this.callbacks.onResignLeader();
   }
 
   private receive(data: unknown): void {
-    const message = data as CrossTabMessage;
-    if (message === null || typeof message !== 'object' || typeof message.type !== 'string') return;
-    if ('tab' in message && message.tab === this.tabId) return; // ignore our own echo
+    const message = parseMessage(data, this.scope);
+    if (message === undefined || message.tab === this.tabId) return;
 
     switch (message.type) {
       case 'claim': {
@@ -199,6 +235,7 @@ export class CrossTabCoordinator {
       case 'heartbeat': {
         this.tabSeen.set(message.tab, now());
         if (message.leader) {
+          this.leaderTab = message.tab;
           this.lastLeaderSeen = now();
           if (this.promoteTimer !== undefined) {
             clearTimeout(this.promoteTimer);
@@ -213,7 +250,8 @@ export class CrossTabCoordinator {
         this.tabSeen.delete(message.tab);
         this.callbacks.onTabGone(message.tab);
         // The leader vanished — reclaim promptly on the next check.
-        if (!this.leader) {
+        if (!this.leader && this.leaderTab === message.tab) {
+          this.leaderTab = undefined;
           this.lastLeaderSeen = 0;
           this.leaderCheck();
         }
@@ -231,20 +269,22 @@ export class CrossTabCoordinator {
       }
       case 'frame': {
         this.tabSeen.set(message.tab, now());
-        if (!this.leader) {
+        if (!this.leader && message.tab === this.leaderTab) {
           this.callbacks.onFrame(message.key, message.value, message.cursor, message.epoch);
         }
         return;
       }
       case 'frameError': {
         this.tabSeen.set(message.tab, now());
-        if (!this.leader) this.callbacks.onFrameError(message.key, message.error);
+        if (!this.leader && message.tab === this.leaderTab) {
+          this.callbacks.onFrameError(message.key, message.error);
+        }
         return;
       }
       case 'resync': {
         this.tabSeen.set(message.tab, now());
         // A new leader asked everyone to re-declare intent.
-        if (!this.leader) this.callbacks.onResync();
+        if (!this.leader && message.tab === this.leaderTab) this.callbacks.onResync();
         return;
       }
     }
@@ -284,8 +324,8 @@ export class CrossTabCoordinator {
     this.broadcast({ type: 'heartbeat', tab: this.tabId, ts: now(), leader: true });
   }
 
-  private broadcast(message: CrossTabMessage): void {
-    this.channel?.postMessage(message);
+  private broadcast(message: CrossTabOutbound): void {
+    this.channel?.postMessage({ ...message, scope: this.scope });
   }
 
   private clearTimers(): void {
@@ -297,6 +337,101 @@ export class CrossTabCoordinator {
     this.leaderCheckTimer = undefined;
   }
 }
+
+const parseMessage = (data: unknown, scope: string): CrossTabMessage | undefined => {
+  if (!isRecord(data) || data.scope !== scope || !isBoundedString(data.tab, 1, 256)) {
+    return undefined;
+  }
+  if (!isJsonWithin(data, MAX_LIVE_FRAME_BYTES) || typeof data.type !== 'string') {
+    return undefined;
+  }
+
+  switch (data.type) {
+    case 'claim':
+      return hasOnly(data, ['scope', 'type', 'tab', 'ts']) && isTimestamp(data.ts)
+        ? (data as CrossTabMessage)
+        : undefined;
+    case 'heartbeat':
+      return hasOnly(data, ['scope', 'type', 'tab', 'ts', 'leader']) &&
+        isTimestamp(data.ts) &&
+        data.leader === true
+        ? (data as CrossTabMessage)
+        : undefined;
+    case 'resign':
+    case 'resync':
+      return hasOnly(data, ['scope', 'type', 'tab']) ? (data as CrossTabMessage) : undefined;
+    case 'unwant':
+      return hasOnly(data, ['scope', 'type', 'tab', 'key']) && isBoundedString(data.key, 1, 4096)
+        ? (data as CrossTabMessage)
+        : undefined;
+    case 'want':
+      return hasOnly(data, ['scope', 'type', 'tab', 'key', 'spec']) &&
+        isBoundedString(data.key, 1, 4096) &&
+        isWantSpec(data.spec)
+        ? (data as CrossTabMessage)
+        : undefined;
+    case 'frame':
+      return hasOnly(data, ['scope', 'type', 'tab', 'key', 'value', 'cursor', 'epoch']) &&
+        isBoundedString(data.key, 1, 4096) &&
+        Object.hasOwn(data, 'value') &&
+        hasCursorPair(data.cursor, data.epoch)
+        ? (data as CrossTabMessage)
+        : undefined;
+    case 'frameError':
+      return hasOnly(data, ['scope', 'type', 'tab', 'key', 'error']) &&
+        isBoundedString(data.key, 1, 4096) &&
+        isFrameError(data.error)
+        ? (data as CrossTabMessage)
+        : undefined;
+    default:
+      return undefined;
+  }
+};
+
+const isWantSpec = (value: unknown): value is WantSpec =>
+  isRecord(value) &&
+  hasOnly(value, ['query', 'args', 'room', 'keyField']) &&
+  isBoundedString(value.query, 1, 256) &&
+  Object.hasOwn(value, 'args') &&
+  isJsonWithin(value.args, 32 * 1024) &&
+  isBoundedString(value.room, 1, 512) &&
+  (value.keyField === undefined || isBoundedString(value.keyField, 1, 128));
+
+const isFrameError = (value: unknown): value is { code: string; message: string; fatal: boolean } =>
+  isRecord(value) &&
+  hasOnly(value, ['code', 'message', 'fatal']) &&
+  isBoundedString(value.code, 1, 128) &&
+  isBoundedString(value.message, 0, 2048) &&
+  typeof value.fatal === 'boolean';
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+
+const hasOnly = (value: Record<string, unknown>, allowed: ReadonlyArray<string>): boolean => {
+  const keys = new Set(allowed);
+  return Object.keys(value).every((key) => keys.has(key));
+};
+
+const isBoundedString = (value: unknown, min: number, max: number): value is string =>
+  typeof value === 'string' && value.length >= min && value.length <= max;
+
+const isTimestamp = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+
+const isCursor = (value: unknown): value is number => isTimestamp(value);
+
+const hasCursorPair = (cursor: unknown, epoch: unknown): boolean =>
+  (cursor === undefined && epoch === undefined) ||
+  (isCursor(cursor) && isBoundedString(epoch, 1, 256));
+
+const isJsonWithin = (value: unknown, maxBytes: number): boolean => {
+  try {
+    const serialized = JSON.stringify(value);
+    return serialized !== undefined && new TextEncoder().encode(serialized).byteLength <= maxBytes;
+  } catch {
+    return false;
+  }
+};
 
 const now = (): number => Date.now();
 

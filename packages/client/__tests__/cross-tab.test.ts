@@ -11,6 +11,9 @@ type Live = {
 };
 
 const CROSS_TAB: CrossTabOptions = {
+  appId: 'test-app',
+  sessionId: 'session-user-a',
+  accountEpoch: 'login-1',
   BroadcastChannel: broadcastFactory,
   channelName: 'test-channel',
   heartbeatMs: 1000,
@@ -171,7 +174,10 @@ describe('CrossTabCoordinator election', () => {
   it('is the sole leader immediately when BroadcastChannel is unavailable', () => {
     vi.stubGlobal('BroadcastChannel', undefined);
     const callbacks = spyCallbacks();
-    const coordinator = new CrossTabCoordinator(undefined, callbacks satisfies CrossTabCallbacks);
+    const coordinator = new CrossTabCoordinator(
+      { appId: 'test-app', sessionId: 'session-user-a', accountEpoch: 'login-1' },
+      callbacks satisfies CrossTabCallbacks,
+    );
     coordinator.start();
     expect(coordinator.isLeader()).toBe(true);
     expect(callbacks.onBecomeLeader).toHaveBeenCalledTimes(1);
@@ -240,5 +246,81 @@ describe('CrossTabCoordinator election', () => {
     expect(b.isLeader()).toBe(true);
     expect(bCbs.onBecomeLeader).toHaveBeenCalledTimes(1);
     b.stop();
+  });
+
+  it('does not coordinate across account epochs', async () => {
+    const first = new CrossTabCoordinator(CROSS_TAB, spyCallbacks() satisfies CrossTabCallbacks);
+    const second = new CrossTabCoordinator(
+      { ...CROSS_TAB, accountEpoch: 'login-2' },
+      spyCallbacks() satisfies CrossTabCallbacks,
+    );
+    first.start();
+    second.start();
+    await vi.advanceTimersByTimeAsync(3100);
+
+    expect(first.isLeader()).toBe(true);
+    expect(second.isLeader()).toBe(true);
+    first.stop();
+    second.stop();
+  });
+
+  it('ignores malformed or oversized channel messages', async () => {
+    const callbacks = spyCallbacks();
+    const coordinator = new CrossTabCoordinator(CROSS_TAB, callbacks satisfies CrossTabCallbacks);
+    coordinator.start();
+    await vi.advanceTimersByTimeAsync(3100);
+
+    const channel = new FakeBroadcastChannel('test-channel:test-app:session-user-a:login-1');
+    const scope = JSON.stringify(['test-app', 'session-user-a', 'login-1']);
+    channel.postMessage({
+      scope,
+      type: 'want',
+      tab: 'attacker',
+      key: 'x',
+      spec: { query: 'q', room: 'r', args: 'x'.repeat(70 * 1024) },
+    });
+    channel.postMessage({ scope, type: 'heartbeat', tab: 'attacker', ts: -1, leader: true });
+
+    expect(callbacks.onWant).not.toHaveBeenCalled();
+    coordinator.stop();
+    channel.close();
+  });
+
+  it('rejects relayed snapshots with unpaired watermarks', async () => {
+    const leaderCallbacks = spyCallbacks();
+    const followerCallbacks = spyCallbacks();
+    const leader = new CrossTabCoordinator(CROSS_TAB, leaderCallbacks satisfies CrossTabCallbacks);
+    const follower = new CrossTabCoordinator(
+      CROSS_TAB,
+      followerCallbacks satisfies CrossTabCallbacks,
+    );
+    leader.start();
+    follower.start();
+    await vi.advanceTimersByTimeAsync(3100);
+    const channel = new FakeBroadcastChannel('test-channel:test-app:session-user-a:login-1');
+    const scope = JSON.stringify(['test-app', 'session-user-a', 'login-1']);
+    channel.postMessage({
+      scope,
+      type: 'frame',
+      tab: leader.tabId,
+      key: 'key',
+      value: [],
+      cursor: 3,
+    });
+    expect(followerCallbacks.onFrame).not.toHaveBeenCalled();
+
+    channel.postMessage({
+      scope,
+      type: 'frame',
+      tab: leader.tabId,
+      key: 'key',
+      value: [],
+      cursor: 3,
+      epoch: 'e1',
+    });
+    expect(followerCallbacks.onFrame).toHaveBeenCalledWith('key', [], 3, 'e1');
+    leader.stop();
+    follower.stop();
+    channel.close();
   });
 });

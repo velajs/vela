@@ -34,7 +34,15 @@ const PATH = '/rooms/:id/ws';
 
 /** The server side of one in-memory connection. */
 class ServerSocket implements WsClient {
-  data: Record<string, unknown> = {};
+  data: Record<string, unknown> = {
+    principal: {
+      issuer: 'https://in-memory.test',
+      subject: 'integration-user',
+      principalType: 'user',
+    },
+    tenantId: 'integration-tenant',
+    expiresAtMs: Date.now() + 60_000,
+  };
   readonly rooms = new Set<string>(['default']);
   readonly raw = null;
   onFrame?: (raw: string) => void;
@@ -70,7 +78,7 @@ describe('client ↔ vela live e2e (in-memory transport)', () => {
       }
     }
 
-    @WebSocketGateway({ path: PATH })
+    @WebSocketGateway({ path: PATH, roomParam: 'id' })
     class RoomsGateway {}
 
     @Module({

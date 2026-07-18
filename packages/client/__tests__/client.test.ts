@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { runProtocolConformance } from '@velajs/live-protocol';
+import { LIVE_PROTOCOL, runProtocolConformance } from '@velajs/live-protocol';
 import type { ClientLiveFrame, ServerLiveFrame } from '@velajs/live-protocol';
 import { LiveClient } from '../src/live-client';
 import type { WebSocketLike } from '../src/types';
@@ -96,6 +96,80 @@ function makeHarness(): Harness {
 }
 
 describe('LiveClient subscriptions', () => {
+  it('hydrates through clone and cursor continuity validation', async () => {
+    const h = makeHarness();
+    const value = [{ id: 'safe' }];
+    h.client.hydrate([
+      { query: 'todos.list', args: {}, value, cursor: 4, epoch: 'e1' },
+      { query: 'invalid.list', args: {}, value: [], cursor: 1 },
+      { query: 'fractional.list', args: {}, value: [], cursor: 1.5, epoch: 'e1' },
+    ]);
+    value[0]!.id = 'mutated-after-hydrate';
+
+    expect(h.client.peek('todos.list', {})).toEqual([{ id: 'safe' }]);
+    expect(h.client.peek('invalid.list', {})).toBeUndefined();
+    expect(h.client.peek('fractional.list', {})).toBeUndefined();
+
+    h.client.subscribe('todos.list', {}, () => {});
+    await tick();
+    h.socket().open();
+    expect(h.socket().liveFrames()[0]).toMatchObject({ sinceCursor: 4, sinceEpoch: 'e1' });
+  });
+
+  it('uses a socket ticket and never places the HTTP bearer token in the WebSocket URL', async () => {
+    FakeSocket.instances = [];
+    const client = new LiveClient({
+      url: 'https://api.test',
+      WebSocket: (url) => new FakeSocket(url),
+      authToken: () => 'long-lived-bearer',
+      socketTicket: () => 'single-use-ticket',
+    });
+
+    client.subscribe('todos.list', {}, () => {});
+    await tick();
+
+    expect(FakeSocket.instances[0]?.url).toContain('ticket=single-use-ticket');
+    expect(FakeSocket.instances[0]?.url).not.toContain('long-lived-bearer');
+    expect(FakeSocket.instances[0]?.url).not.toContain('token=');
+    client.close();
+  });
+
+  it('rejects malformed socket tickets before constructing a WebSocket', async () => {
+    FakeSocket.instances = [];
+    const client = new LiveClient({
+      url: 'https://api.test',
+      WebSocket: (url) => new FakeSocket(url),
+      socketTicket: () => 'contains whitespace',
+      reconnect: { baseMs: 60_000, capMs: 60_000 },
+    });
+
+    client.subscribe('todos.list', {}, () => {});
+    await tick();
+
+    expect(FakeSocket.instances).toHaveLength(0);
+    client.close();
+  });
+
+  it('rejects preloaded bearer credentials in a WebSocket URL', () => {
+    const client = new LiveClient({
+      url: 'https://api.test',
+      wsPath: '/rooms/:room/ws?access_token=long-lived-secret',
+      WebSocket: (url) => new FakeSocket(url),
+    });
+
+    expect(() => client.subscribe('todos.list', {}, () => {})).toThrow(
+      /credentials must come from the socketTicket provider/,
+    );
+    client.close();
+  });
+
+  it('rejects presence metadata above 4 KiB', () => {
+    const h = makeHarness();
+    expect(() => h.client.presenceBeat('room', { value: 'x'.repeat(5000) })).toThrow(
+      /presence metadata exceeds/,
+    );
+  });
+
   it('subscribes with the protocol version, dedupes identical subscriptions, replays cached values', async () => {
     const h = makeHarness();
     const seen: unknown[] = [];
@@ -105,7 +179,12 @@ describe('LiveClient subscriptions', () => {
 
     const subs = h.socket().liveFrames();
     expect(subs).toHaveLength(1);
-    expect(subs[0]).toMatchObject({ t: 'sub', query: 'todos.list', args: { listId: 'l1' }, v: 1 });
+    expect(subs[0]).toMatchObject({
+      t: 'sub',
+      query: 'todos.list',
+      args: { listId: 'l1' },
+      v: LIVE_PROTOCOL,
+    });
 
     const sub = (subs[0] as { sub: string }).sub;
     h.socket().receive({ t: 'ack', sub });
@@ -230,6 +309,22 @@ describe('LiveClient subscriptions', () => {
     // Server restarted: new epoch. The stale gate must not survive the fork.
     h.socket().receive({ t: 'data', sub, snapshot: [{ id: 'z' }], cursor: 1, epoch: 'e2' });
     expect(h.client.peek('todos.list', {})).toEqual([{ id: 'z' }]);
+  });
+
+  it('ignores regressive cursors and cold-resubscribes on an invalid epoch resume', async () => {
+    const h = makeHarness();
+    h.client.subscribe('todos.list', {}, () => {});
+    await tick();
+    h.socket().open();
+    const sub = (h.socket().liveFrames()[0] as { sub: string }).sub;
+
+    h.socket().receive({ t: 'data', sub, snapshot: [{ id: 'new' }], cursor: 5, epoch: 'e1' });
+    h.socket().receive({ t: 'data', sub, snapshot: [{ id: 'stale' }], cursor: 4, epoch: 'e1' });
+    expect(h.client.peek('todos.list', {})).toEqual([{ id: 'new' }]);
+
+    h.socket().receive({ t: 'resume', sub, cursor: 6, epoch: 'e2' });
+    expect(h.socket().liveFrames().at(-2)).toEqual({ t: 'unsub', sub });
+    expect(h.socket().liveFrames().at(-1)).toMatchObject({ t: 'sub', sub });
   });
 });
 
