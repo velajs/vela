@@ -1,5 +1,6 @@
 import {
   signUrl,
+  STORAGE_SIGNED_URL_PURPOSE,
   type DownloadResult,
   type PresignedUrlResult,
   type PresignMethod,
@@ -8,6 +9,7 @@ import {
   type UploadOptions,
   type UploadResult,
 } from '@velajs/vela/storage';
+import { encodeStorageKeyClaim } from './storage-key-claim';
 
 /** Base path of the StorageController presign-proxy route. */
 export const STORAGE_ROUTE_BASE = '/storage';
@@ -72,11 +74,22 @@ export class R2StorageDriver implements StorageDriver {
     }
     // Defend the direct-driver path too: a non-finite/non-positive expiry would
     // make signUrl omit `expires`, yielding a never-expiring URL.
-    if (!Number.isFinite(expiresIn) || expiresIn <= 0) {
-      throw new Error(`Invalid presigned URL expiry: ${expiresIn}s (must be a positive number).`);
+    if (!Number.isSafeInteger(expiresIn) || expiresIn <= 0) {
+      throw new Error(
+        `Invalid presigned URL expiry: ${expiresIn}s (must be a positive safe integer).`,
+      );
     }
-    const routePath = `${STORAGE_ROUTE_BASE}/${this.config.disk}/${path}`;
-    const url = await signUrl(`${routePath}?method=${method}`, this.config.secret, { expiresIn });
+    // The object key is an opaque signed query claim, never a URL path. This
+    // prevents WHATWG path normalization / multi-decode behavior from turning
+    // an encoded key into a different storage capability.
+    const claim = encodeStorageKeyClaim(path);
+    const routePath = `${STORAGE_ROUTE_BASE}/${encodeURIComponent(this.config.disk)}`;
+    const query = new URLSearchParams({ key: claim, method });
+    const url = await signUrl(`${routePath}?${query}`, this.config.secret, {
+      expiresIn,
+      method,
+      purpose: STORAGE_SIGNED_URL_PURPOSE,
+    });
     return { url, method, expiresIn, expiresAt: new Date(Date.now() + expiresIn * 1000) };
   }
 }

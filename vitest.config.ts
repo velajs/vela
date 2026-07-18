@@ -29,6 +29,9 @@ export default defineConfig({
   test: {
     globals: false,
     include: ['src/**/*.test.ts'],
+    // Real workerd tests import the `cloudflare:test` virtual module and run
+    // through the dedicated workers-pool configuration.
+    exclude: ['src/__tests__/workers/**', 'node_modules/**'],
     // The `cloudflare:workers` / `cloudflare:workflows` / `cloudflare:email`
     // runtime modules only exist in workerd; alias them to Node stubs so the DO
     // shell, the Workflow entrypoint, and the email transport can be unit-tested

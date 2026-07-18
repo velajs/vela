@@ -1,4 +1,5 @@
 import { Injectable } from '@velajs/vela';
+import { resolveMaxFrameBytes } from '@velajs/vela/websocket';
 import type { BroadcastOperator, WsServer } from '@velajs/vela/websocket';
 
 /**
@@ -10,16 +11,25 @@ import type { BroadcastOperator, WsServer } from '@velajs/vela/websocket';
 @Injectable()
 export class WsServerHolder implements WsServer {
   private target?: WsServer;
+  private maxFrameBytes?: number;
 
   setTarget(server: WsServer): void {
     this.target = server;
+    if (this.maxFrameBytes !== undefined) server.setOutboundFrameLimit?.(this.maxFrameBytes);
+  }
+
+  setOutboundFrameLimit(maxFrameBytes: number): void {
+    const resolved = resolveMaxFrameBytes({ maxFrameBytes });
+    this.maxFrameBytes =
+      this.maxFrameBytes === undefined ? resolved : Math.max(this.maxFrameBytes, resolved);
+    this.target?.setOutboundFrameLimit?.(this.maxFrameBytes);
   }
 
   private get resolved(): WsServer {
     if (!this.target) {
       throw new Error(
         'WebSocket server is only available inside a WebSocket Durable Object. To ' +
-          'push from a Worker HTTP handler, use broadcastToRoom(namespace, room, ...).',
+          'push from a Worker HTTP handler, use broadcastToRoom(namespace, gatewayPath, room, ...).',
       );
     }
     return this.target;

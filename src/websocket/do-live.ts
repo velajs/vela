@@ -132,6 +132,8 @@ export class DoCursorLog implements CursorLog {
 export interface DurableObjectLiveOptions {
   /** The wrangler binding name of the WebSocket DO namespace (e.g. `'CHAT_ROOM'`). */
   binding: string;
+  /** Exact `@WebSocketGateway()` path sharing this room/log namespace. */
+  gatewayPath: string;
   /** Room used when an invalidation names none. Matches the client default. */
   defaultRoom?: string;
 }
@@ -184,7 +186,9 @@ export function durableObjectLive(options: DurableObjectLiveOptions): CfLiveDriv
         );
       }
       const room = cmd.room ?? options.defaultRoom ?? DEFAULT_ROOM;
-      const stub = namespace.get(roomToDurableId(namespace, room)) as unknown as LiveInvalidateStub;
+      const stub = namespace.get(
+        roomToDurableId(namespace, options.gatewayPath, room),
+      ) as unknown as LiveInvalidateStub;
       return stub.invalidate({ ...cmd, room });
     },
   };
@@ -278,9 +282,10 @@ export function durableObjectCursorLog(maxRows?: number): DoCursorLog {
  */
 export async function liveInvalidateToRoom(
   ns: DurableObjectNamespace,
+  gatewayPath: string,
   room: string,
   tags: string[],
 ): Promise<CommitStamp | undefined> {
-  const stub = ns.get(roomToDurableId(ns, room)) as unknown as LiveInvalidateStub;
+  const stub = ns.get(roomToDurableId(ns, gatewayPath, room)) as unknown as LiveInvalidateStub;
   return stub.invalidate({ room, tags });
 }

@@ -1,7 +1,8 @@
 import type { MiddlewareHandler } from 'hono';
+import { getConnInfo } from 'hono/cloudflare-workers';
 import { VelaFactory } from '@velajs/vela';
-import type { RuntimeAdapter, Type } from '@velajs/vela';
-import { Container } from '@velajs/vela/internal';
+import type { RuntimeAdapter, Type, VelaSecurityOptions } from '@velajs/vela';
+import type { Container } from '@velajs/vela/internal';
 import { BindingRef } from './binding-ref';
 import { CloudflareApplication } from './cloudflare-application';
 import { EnvRef } from './env-ref';
@@ -43,6 +44,9 @@ export interface CreateCloudflareAppOptions {
    * ```
    */
   globalPrefix?: string;
+
+  /** Unified Vela body/query limits, including narrow streaming overrides. */
+  security?: VelaSecurityOptions;
 
   /**
    * Extra Hono middleware to register on the underlying Hono app. Runs
@@ -116,6 +120,9 @@ export function cloudflareAdapter(): RuntimeAdapter {
 
   return {
     name: 'cloudflare',
+    // Hono's Cloudflare adapter reads only the platform-provided
+    // CF-Connecting-IP signal. Never fall back to spoofable forwarding headers.
+    getClientIp: (c) => getConnInfo(c).remote.address ?? null,
     requestMiddleware: [
       async (c, next) => {
         if (!initialized) {
@@ -146,6 +153,7 @@ export async function createCloudflareApp(
 ): Promise<CloudflareApplication> {
   const velaApp = await VelaFactory.create(rootModule, {
     globalPrefix: options.globalPrefix,
+    security: options.security,
     middleware: options.middleware,
     adapters: [cloudflareAdapter()],
   });

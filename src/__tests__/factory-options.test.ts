@@ -1,7 +1,15 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import type { MiddlewareHandler } from 'hono';
-import { Controller, Get, Module, MetadataRegistry } from '@velajs/vela';
-import { createCloudflareApp } from '../cloudflare-factory';
+import {
+  Controller,
+  Get,
+  Ip,
+  Module,
+  MetadataRegistry,
+  ThrottlerModule,
+  VelaFactory,
+} from '@velajs/vela';
+import { cloudflareAdapter, createCloudflareApp } from '../cloudflare-factory';
 import { KVModule } from '../modules/kv.module';
 import { KVService } from '../services/kv.service';
 
@@ -166,5 +174,114 @@ describe('createCloudflareApp options', () => {
     const res = await hono.request('/ping', undefined, {});
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ pong: true });
+  });
+
+  it('uses only Cloudflare-attested client IP and ignores spoofed forwarding headers', async () => {
+    @Controller('/ip')
+    class IpController {
+      @Get()
+      read(@Ip() ip: string | null) {
+        return { ip };
+      }
+    }
+
+    @Module({ controllers: [IpController] })
+    class AppModule {}
+
+    const app = await createCloudflareApp(AppModule);
+    const hono = app.getHonoApp();
+    const trusted = await hono.request(
+      '/ip',
+      {
+        headers: {
+          'cf-connecting-ip': '203.0.113.9',
+          'x-forwarded-for': 'attacker',
+          'x-real-ip': 'attacker-too',
+        },
+      },
+      {},
+    );
+    expect(await trusted.json()).toEqual({ ip: '203.0.113.9' });
+
+    const spoofOnly = await hono.request(
+      '/ip',
+      { headers: { 'x-forwarded-for': '198.51.100.1' } },
+      {},
+    );
+    expect(await spoofOnly.json()).toEqual({ ip: null });
+  });
+
+  it('uses the same trusted Cloudflare identity for default throttling', async () => {
+    @Controller('/limited')
+    class LimitedController {
+      @Get()
+      get() {
+        return { ok: true };
+      }
+    }
+
+    @Module({
+      imports: [ThrottlerModule.forRoot({ limit: 1, ttl: 60_000 })],
+      controllers: [LimitedController],
+    })
+    class AppModule {}
+
+    const hono = (await createCloudflareApp(AppModule)).getHonoApp();
+    const first = await hono.request(
+      '/limited',
+      { headers: { 'cf-connecting-ip': '203.0.113.1', 'x-forwarded-for': 'a' } },
+      {},
+    );
+    const spoofChanged = await hono.request(
+      '/limited',
+      { headers: { 'cf-connecting-ip': '203.0.113.1', 'x-forwarded-for': 'b' } },
+      {},
+    );
+    const otherClient = await hono.request(
+      '/limited',
+      { headers: { 'cf-connecting-ip': '203.0.113.2', 'x-forwarded-for': 'a' } },
+      {},
+    );
+    expect(first.status).toBe(200);
+    expect(spoofChanged.status).toBe(429);
+    expect(otherClient.status).toBe(200);
+  });
+
+  it('applies the adapter trust resolver for direct VelaFactory composition', async () => {
+    @Controller('/direct-ip')
+    class IpController {
+      @Get()
+      read(@Ip() ip: string | null) {
+        return { ip };
+      }
+    }
+    @Module({ controllers: [IpController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule, { adapters: [cloudflareAdapter()] });
+    const response = await app.getHonoApp().request('/direct-ip', {
+      headers: { 'cf-connecting-ip': '192.0.2.10', 'x-forwarded-for': 'spoofed' },
+    });
+    expect(await response.json()).toEqual({ ip: '192.0.2.10' });
+  });
+
+  it('forwards unified parser security options', async () => {
+    @Controller('/bounded')
+    class BoundedController {
+      @Get()
+      get() {
+        return { ok: true };
+      }
+    }
+    @Module({ controllers: [BoundedController] })
+    class AppModule {}
+
+    const hono = (
+      await createCloudflareApp(AppModule, {
+        security: { query: { maxParameters: 1 } },
+      })
+    ).getHonoApp();
+    const response = await hono.request('/bounded?a=1&b=2', undefined, {});
+    expect(response.status).toBe(400);
   });
 });

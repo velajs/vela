@@ -13,7 +13,7 @@ import type { WsClient, WsServer, OnGatewayConnection, OnGatewayDisconnect } fro
 
 // ---- Gateway: one Durable Object per room; broadcast to everyone in it ----
 
-@WebSocketGateway({ path: '/rooms/:id/ws', binding: 'CHAT_ROOM' })
+@WebSocketGateway({ path: '/rooms/:id/ws', roomParam: 'id', binding: 'CHAT_ROOM' })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(@WebSocketServer() private readonly server: WsServer) {}
 

@@ -65,6 +65,12 @@ export async function buildDoRuntime(
   // per discovered gateway ({ meta: { path, dispatcher } }). Built by
   // callOnApplicationBootstrap(), so this slim no-routes path has it too.
   const wsEntrypoints = app.entrypoints.ofKind<WsEntrypointMeta>('websocket');
+  const dispatcher = wsEntrypoints[0]?.meta.dispatcher ?? app.get(WsDispatcher);
+  registry.setFrameLimitResolver((path) => dispatcher.getGatewayMaxFrameBytes(path));
+  registry.setDeliveryAuthorizer((client) => {
+    const path = (client as { readonly path?: string }).path ?? '';
+    return dispatcher.authorizeDelivery(path, client);
+  });
 
   // Live queries: wire the SQLite cursor log + local driver mode and replay
   // hibernation-persisted subscriptions into the fresh engine.
@@ -73,7 +79,7 @@ export async function buildDoRuntime(
   return {
     // Zero gateways still yields a live dispatcher (module imported, nothing
     // decorated) — fall back to resolving it directly.
-    dispatcher: wsEntrypoints[0]?.meta.dispatcher ?? app.get(WsDispatcher),
+    dispatcher,
     registry,
     server,
     gatewayPaths: wsEntrypoints.map((ep) => ep.meta.path),

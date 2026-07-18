@@ -1,3 +1,8 @@
+import {
+  assertBroadcastCommandFits,
+  DEFAULT_WS_MAX_FRAME_BYTES,
+  resolveMaxFrameBytes,
+} from '@velajs/vela/websocket';
 import type { BroadcastCommand } from '@velajs/vela/websocket';
 import { roomToDurableId } from './room-id';
 
@@ -14,21 +19,26 @@ interface WsBroadcastStub {
  * @example
  * ```ts
  * // In a controller — ns from DurableObjectService.namespace
- * await broadcastToRoom(ns, `org:${id}`, 'order.created', order);
+ * await broadcastToRoom(ns, '/orgs/:orgId/ws', `org:${id}`, 'order.created', order);
  * ```
  */
 export async function broadcastToRoom(
   ns: DurableObjectNamespace,
+  gatewayPath: string,
   room: string,
   event: string,
   data?: unknown,
-  options?: { exceptIds?: string[] },
+  options?: { exceptIds?: string[]; maxFrameBytes?: number },
 ): Promise<void> {
   const cmd: BroadcastCommand = {
     rooms: [room],
     exceptIds: options?.exceptIds,
     frame: JSON.stringify({ event, data }),
   };
-  const stub = ns.get(roomToDurableId(ns, room)) as unknown as WsBroadcastStub;
+  const maxFrameBytes = resolveMaxFrameBytes({
+    maxFrameBytes: options?.maxFrameBytes ?? DEFAULT_WS_MAX_FRAME_BYTES,
+  });
+  assertBroadcastCommandFits(cmd, maxFrameBytes);
+  const stub = ns.get(roomToDurableId(ns, gatewayPath, room)) as unknown as WsBroadcastStub;
   await stub.broadcast(cmd);
 }

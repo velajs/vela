@@ -3,11 +3,21 @@ import type { Type } from '@velajs/vela';
 import type { BroadcastCommand } from '@velajs/vela/websocket';
 import type { CommitStamp, InvalidationCommand, LiveEngine } from '@velajs/vela/live';
 import { buildDoRuntime } from './do-bootstrap';
-import { DoWebSocketHost } from './do-websocket-host';
+import { DoWebSocketHost, type WsConnectionPrincipal } from './do-websocket-host';
 import type { WsLike } from './do-state';
 
 const PING = '{"event":"ping"}';
 const PONG = '{"event":"pong"}';
+const MAX_IDENTITY_FIELD_BYTES = 2048;
+const encoder = new TextEncoder();
+
+function isIdentityField(value: string | null): value is string {
+  return (
+    value !== null &&
+    value.length > 0 &&
+    encoder.encode(value).byteLength <= MAX_IDENTITY_FIELD_BYTES
+  );
+}
 
 /**
  * Base class for the WebSocket Durable Object. The user exports a named subclass
@@ -58,7 +68,6 @@ export function VelaWebSocketDurableObject(
         return new Response('Expected WebSocket upgrade', { status: 426 });
       }
 
-      const { 0: client, 1: server } = new WebSocketPair();
       const url = new URL(request.url);
       // Headers are primary (carry auth + multi-gateway routing); fall back to the
       // DO's own name (set via idFromName(room)) and the single gateway path so a
@@ -66,8 +75,52 @@ export function VelaWebSocketDurableObject(
       const roomId = request.headers.get('x-vela-room') ?? this.ctx.id.name ?? url.pathname;
       const path = request.headers.get('x-vela-path') ?? this.host.defaultPath() ?? url.pathname;
       const userId = request.headers.get('x-vela-user') || undefined;
+      const rawExpiresAtMs = request.headers.get('x-vela-expires-at-ms');
+      const parsedExpiresAtMs = rawExpiresAtMs === null ? undefined : Number(rawExpiresAtMs);
+      if (
+        parsedExpiresAtMs !== undefined &&
+        (!Number.isSafeInteger(parsedExpiresAtMs) || parsedExpiresAtMs <= 0)
+      ) {
+        return new Response('Invalid WebSocket identity expiry', { status: 403 });
+      }
 
-      this.host.accept(server as unknown as WsLike, path, roomId, userId);
+      const issuer = request.headers.get('x-vela-issuer');
+      const subject = request.headers.get('x-vela-subject');
+      const principalType = request.headers.get('x-vela-principal-type');
+      const tenantId = request.headers.get('x-vela-tenant');
+      const hasPrincipalHeader =
+        issuer !== null || subject !== null || principalType !== null || tenantId !== null;
+      let principal: WsConnectionPrincipal | undefined;
+      if (hasPrincipalHeader) {
+        if (
+          !isIdentityField(issuer) ||
+          !isIdentityField(subject) ||
+          (principalType !== 'user' && principalType !== 'service') ||
+          !isIdentityField(tenantId) ||
+          parsedExpiresAtMs === undefined ||
+          (userId !== undefined && userId !== subject)
+        ) {
+          return new Response('Invalid WebSocket principal', { status: 403 });
+        }
+        principal = { issuer, subject, principalType, tenantId };
+      } else if (parsedExpiresAtMs !== undefined) {
+        return new Response('WebSocket identity tuple is missing', { status: 403 });
+      }
+
+      if (parsedExpiresAtMs !== undefined && parsedExpiresAtMs <= Date.now()) {
+        return new Response('WebSocket identity expired', { status: 403 });
+      }
+
+      const { 0: client, 1: server } = new WebSocketPair();
+      const accepted = await this.host.accept(
+        server as unknown as WsLike,
+        path,
+        roomId,
+        userId,
+        parsedExpiresAtMs,
+        principal,
+      );
+      if (!accepted) return new Response('WebSocket connection rejected', { status: 403 });
       return new Response(null, { status: 101, webSocket: client });
     }
 
@@ -89,7 +142,7 @@ export function VelaWebSocketDurableObject(
     /** DO RPC — server-initiated broadcast forwarded from a Worker (see `broadcastToRoom`). */
     async broadcast(cmd: BroadcastCommand): Promise<void> {
       await this.ready;
-      this.host.broadcast(cmd);
+      await this.host.broadcast(cmd);
     }
 
     /**

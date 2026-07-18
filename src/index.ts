@@ -165,3 +165,14 @@ export type {
 export type { CloudflareEnv, ScheduledRegistration, QueueRegistration } from './types';
 export type { ScheduledMetadata } from './decorators/scheduled';
 export type { QueueConsumerMetadata } from './decorators/queue-consumer';
+
+// Distributed abuse control (Cloudflare Workers Rate Limiting binding)
+export { cloudflareRateLimitStore } from './rate-limit/index';
+export type {
+  CloudflareRateLimitBinding,
+  CloudflareRateLimitStoreOptions,
+} from './rate-limit/index';
+
+// Strict global single-use nonces (SQLite Durable Object)
+export { durableObjectNonceStore, VelaNonceDurableObject } from './nonce/index';
+export type { DurableObjectNonceNamespace, DurableObjectNonceStoreOptions } from './nonce/index';

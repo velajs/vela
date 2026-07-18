@@ -6,6 +6,10 @@
 
 Cloudflare Workers integration for the [Vela](https://github.com/velajs/vela) framework. NestJS-style per-service modules for KV, D1, R2, Queues, Durable Objects, Workers AI, Vectorize, and Hyperdrive.
 
+Upgrading to 2.0? Read the [security migration](./SECURITY_MIGRATION.md); R2
+presigned URLs and WebSocket identity contracts are intentionally incompatible
+with older releases.
+
 ## Install
 
 ```bash
@@ -367,6 +371,113 @@ const rawVec = vecService.index;       // VectorizeIndex
 const rawHD = hdService.binding;       // Hyperdrive
 ```
 
+## Distributed abuse control
+
+Use the Workers Rate Limiting binding as Vela's distributed throttler store. The
+binding's configured limit and period must exactly match `ThrottlerModule`; a
+route-level `@Throttle()` override cannot silently weaken or exceed that fixed
+platform configuration.
+
+```ts
+import { Module, ThrottlerModule } from '@velajs/vela';
+import {
+  CloudflareRateLimitBinding,
+  EnvModule,
+  EnvService,
+  cloudflareRateLimitStore,
+} from '@velajs/cloudflare';
+
+@Module({
+  imports: [
+    EnvModule.forRoot(),
+    ThrottlerModule.forRootAsync({
+      inject: [EnvService],
+      useFactory: (env: EnvService) => ({
+        limit: 100,
+        ttl: 60_000,
+        storage: cloudflareRateLimitStore(
+          () => env.get<CloudflareRateLimitBinding>('API_RATE_LIMIT')!,
+          { limit: 100, periodSeconds: 60 },
+        ),
+        // Prefer a verified tenant/principal identifier supplied by your auth
+        // boundary. createCloudflareApp uses CF-Connecting-IP only as fallback.
+        getTracker: (request) => verifiedRateLimitSubject(request),
+      }),
+    }),
+  ],
+})
+class AppModule {}
+```
+
+The binding does not expose an exact remaining counter, so Vela omits that
+header instead of estimating it. Cloudflare's counters are distributed abuse
+control, not strict global accounting; use a Durable Object-backed store for
+globally unique nonces or exact quotas.
+
+## Strict global nonces
+
+`durableObjectNonceStore()` implements Vela's structural `NonceStore` contract
+with a SQLite Durable Object. Use it for signed invocations, 30-second
+single-use WebSocket tickets, or another flow where replay-once-per-isolate is
+not sufficient. The binding is resolved only when `claim()` runs and every
+binding/RPC/storage anomaly denies the claim.
+
+```ts
+import type { NonceStore } from '@velajs/vela';
+import {
+  durableObjectNonceStore,
+  type DurableObjectNonceNamespace,
+  EnvService,
+  VelaNonceDurableObject,
+} from '@velajs/cloudflare';
+
+// Export a concrete class whose name matches Wrangler's class_name.
+export class AppNonceStore extends VelaNonceDurableObject {}
+
+// This may run during DI bootstrap: EnvService is read only inside the lazy
+// binding callback, after createCloudflareApp has installed the request env.
+export function createNonceStore(env: EnvService): NonceStore {
+  return durableObjectNonceStore({
+    // Explicit and stable per application + deployment environment. Claims in
+    // a different appNamespace are intentionally isolated.
+    appNamespace: 'billing-api:production',
+    binding: () => {
+      const binding = env.get<DurableObjectNonceNamespace>('VELA_NONCES');
+      if (!binding) throw new Error('VELA_NONCES binding is unavailable');
+      return binding;
+    },
+  });
+}
+```
+
+Register the returned object for Vela's `NONCE_STORE` provider (or pass it to
+the component that consumes socket-ticket nonces). The application namespace is
+required, must not contain surrounding whitespace/control characters, and is
+limited to 128 UTF-8 bytes. Nonces are limited to 512 UTF-8 bytes.
+
+Configure a Durable Object binding and **append** a SQLite migration in
+`wrangler.jsonc` (use the next migration tag in an existing project; never edit
+an already-deployed migration):
+
+```jsonc
+{
+  "durable_objects": {
+    "bindings": [
+      { "name": "VELA_NONCES", "class_name": "AppNonceStore" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v2", "new_sqlite_classes": ["AppNonceStore"] }
+  ]
+}
+```
+
+The adapter maps the explicit app namespace to one Durable Object, where the
+nonce primary key and synchronous `INSERT ... ON CONFLICT DO NOTHING RETURNING`
+make consumption atomic. Expired rows are removed in bounded batches. A nonce
+is retained through its expiry second because Vela's invocation verifier still
+accepts `now === exp`.
+
 ## Workflows
 
 Durable [Cloudflare Workflows](https://developers.cloudflare.com/workflows/) over [`@velajs/workflow`](https://www.npmjs.com/package/@velajs/workflow)'s neutral core. Declare each workflow **once** as a `defineWorkflow` export and consume it twice from that one source — on the `AppModule` (for `ctx.workflows` + entrypoint discovery) and in the Worker entry (for the platform class).
@@ -484,13 +595,27 @@ export class SupportInbox {
   // Runs ONLY if the app gate passed; `match` merely routes, it never relaxes the gate.
   @OnInboundEmail({ match: (e) => e.to.some((a) => a.includes('support@')) })
   async handle(email: InboundEmail) {
-    // email.from is SPOOFABLE — authorize on email.authentication, not on from.
+    // email.from and raw auth headers are SPOOFABLE. This adapter leaves
+    // email.authentication unverified; authority must come from another trusted source.
     // email.raw() / email.rawText() expose the bytes for BYO full-MIME parsing.
   }
 }
 ```
 
-Gating is **fail-closed**: the default policy requires `dmarc === 'pass'`; a missing `Authentication-Results` header, or any non-`pass` verdict, rejects. When the gate fails, **no handler runs** and the hook replies with a permanent SMTP reject carrying a fixed generic reason (never a verdict name or internal detail — the sender may be the attacker). A gate-passed message with no matching handler is dropped. Configure the policy via `MailModule.forRoot({ inbound: { gate: { require: ['dkim', 'spf', 'dmarc'] } } })`, or set `trustInternal: true` as the explicit escape hatch for trusted-internal MTAs.
+Gating is **fail-closed**. Cloudflare's `ForwardableEmailMessage` exposes no
+out-of-band authentication verdict, so this adapter passes only the
+platform-supplied SMTP envelope and never promotes a raw
+`Authentication-Results` header into `email.authentication`. The default
+DMARC gate therefore rejects the message. When a gate fails, **no handler
+runs**, and the hook returns a fixed permanent SMTP rejection with no verdict
+or internal detail.
+
+An application may configure a narrower explicit gate with
+`MailModule.forRoot({ inbound: { gate } })`, but removing authentication
+requirements is an application trust decision, not an internal-mail shortcut.
+There is no `trustInternal` bypass. Integrations that possess an independently
+verified verdict must supply it through a trusted mail adapter; a raw message
+header is never such a verdict.
 
 ### Full Worker export
 

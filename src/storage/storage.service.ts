@@ -75,9 +75,10 @@ export class StorageService {
   private validateExpiry(expiresIn?: number): number {
     const cfg = this.options.presignedUrl ?? DEFAULT_PRESIGN;
     const value = expiresIn ?? cfg.defaultExpiry;
-    // `Number.isFinite` rejects NaN — otherwise `NaN < 1 || NaN > max` is false,
+    // `Number.isSafeInteger` rejects NaN/fractional/infinite values — otherwise
+    // `NaN < 1 || NaN > max` is false,
     // NaN slips through, signUrl omits `expires`, and the URL never expires.
-    if (!Number.isFinite(value) || value < 1 || value > cfg.maxExpiry) {
+    if (!Number.isSafeInteger(value) || value < 1 || value > cfg.maxExpiry) {
       throw new Error(`Presigned URL expiry ${value}s is out of range (1–${cfg.maxExpiry}s).`);
     }
     return value;

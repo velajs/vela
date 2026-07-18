@@ -19,11 +19,12 @@ export type { CfLiveDriver, DurableObjectLiveOptions } from './do-live';
 // Transport internals (advanced use / testing)
 export { CfWsClient } from './cf-ws-client';
 export { CfRoomRegistry } from './cf-room-registry';
-export { DoWebSocketHost } from './do-websocket-host';
+export { DoWebSocketHost, type WsConnectionPrincipal } from './do-websocket-host';
 export { WsServerHolder } from './ws-server-holder';
 export { buildDoRuntime } from './do-bootstrap';
 export type { DoRuntime } from './do-bootstrap';
 export { registerWebSocketRoutes, collectWsGatewayRoutes } from './websocket-routing';
 export type { WsGatewayRoute } from './websocket-routing';
-export { roomTag, connTag, roomToDurableId } from './room-id';
+export { roomTag, connTag, durableObjectRoomName, roomToDurableId } from './room-id';
+export { MAX_WS_ATTACHMENT_BYTES } from './do-state';
 export type { DoStateLike, SqlStorageLike, WsLike, WsAttachment } from './do-state';

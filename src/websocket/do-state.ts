@@ -2,6 +2,9 @@
 // logic is unit-testable in Node with fakes. Real `DurableObjectState` and
 // `WebSocket` (from @cloudflare/workers-types) satisfy these structurally.
 
+/** Cloudflare's serialized WebSocket hibernation attachment ceiling. */
+export const MAX_WS_ATTACHMENT_BYTES = 16_384;
+
 export interface WsLike {
   send(message: string | ArrayBuffer): void;
   close(code?: number, reason?: string): void;
@@ -26,9 +29,23 @@ export interface DoStateLike {
 /** Per-connection metadata persisted in the hibernation attachment (≤ 16 KiB). */
 export interface WsAttachment {
   connId: string;
+  /** Only active sockets may dispatch frames or receive fan-out. */
+  state: 'pending' | 'active' | 'rejected';
   userId?: string;
+  /** Verified, issuer-qualified connection principal. */
+  principal?: {
+    issuer: string;
+    subject: string;
+    principalType: 'user' | 'service';
+  };
+  /** Trusted server-derived tenant boundary for this connection. */
+  tenantId?: string;
+  /** Verified auth credential expiry in epoch milliseconds. */
+  expiresAtMs?: number;
   /** The gateway route path this socket belongs to — used to route messages. */
   path: string;
+  /** Validated inbound/outbound gateway frame ceiling, persisted across hibernation. */
+  maxFrameBytes?: number;
   /** Dynamically-joined room names (the hub room is also a hibernation tag). */
   rooms: string[];
   data: Record<string, unknown>;

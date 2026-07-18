@@ -8,7 +8,13 @@
   "compilerOptions": {
     "noEmit": true
   },
-  "files": ["src/__tests__/workflow.test.ts", "src/__tests__/email.test.ts"],
+  "files": [
+    "src/__tests__/workflow.test.ts",
+    "src/__tests__/email.test.ts",
+    "src/__tests__/durable-object-nonce-store.test.ts",
+    "src/__tests__/workers/entry.ts",
+    "src/__tests__/workers/websocket-runtime.test.ts"
+  ],
   "include": ["src/**/*.ts", "test-shims/**/*.ts"],
   "exclude": ["node_modules", "dist", "src/__tests__"]
 }

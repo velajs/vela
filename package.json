@@ -43,6 +43,7 @@
   "scripts": {
     "build": "tsdown",
     "test": "vitest run",
+    "test:workers": "vitest run --config vitest.config.workers.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
     "lint": "oxlint .",
     "format": "oxfmt .",
@@ -51,17 +52,20 @@
     "attw": "attw --pack . --profile esm-only",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "pnpm build && changeset publish",
-    "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm test && pnpm publint && pnpm attw"
+    "release:preflight": "npm view @velajs/vela@2.0.0 version && npm view @velajs/feature-flags@1.0.0 version && npm view @velajs/mail@1.0.0 version && npm view @velajs/workflow@0.1.0 version",
+    "release:check": "node scripts/check-release-lock.mjs && pnpm verify && pnpm audit --audit-level=high",
+    "release": "pnpm release:preflight && pnpm release:check && changeset publish",
+    "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm test && pnpm test:workers && pnpm publint && pnpm attw"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "catalog:",
     "@changesets/cli": "catalog:",
+    "@cloudflare/vitest-pool-workers": "^0.16.18",
     "@cloudflare/workers-types": "^4.20260624.1",
     "@swc/core": "catalog:",
-    "@velajs/feature-flags": "^0.1.0",
-    "@velajs/mail": ">=0.1.0",
-    "@velajs/vela": "^1.17.0",
+    "@velajs/feature-flags": "^1.0.0",
+    "@velajs/mail": "^1.0.0",
+    "@velajs/vela": "^2.0.0",
     "@velajs/workflow": "^0.1.0",
     "hono": "^4.12.27",
     "oxfmt": "catalog:",
@@ -70,13 +74,14 @@
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "unplugin-swc": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "zod": "^3.25.76"
   },
   "peerDependencies": {
     "@cloudflare/workers-types": ">=4",
-    "@velajs/feature-flags": "^0.1.0",
-    "@velajs/mail": ">=0.1.0",
-    "@velajs/vela": ">=1.17.0",
+    "@velajs/feature-flags": ">=1.0.0",
+    "@velajs/mail": ">=1.0.0",
+    "@velajs/vela": ">=2.0.0",
     "@velajs/workflow": ">=0.1.0",
     "hono": ">=4"
   },

@@ -236,11 +236,11 @@ export class CloudflareApplication {
 
   /**
    * Handle Cloudflare Email Routing events (the Worker's `email` handler).
-   * Reads the RAW byte stream — NOT `message.headers`, which is a `Headers`
-   * object that collapses duplicate `Authentication-Results` headers and would
-   * let an attacker-injected lower header win. The SMTP envelope (`from`/`to`)
-   * is supplied to `@velajs/mail`'s neutral, CF-free parser; verdict gating and
-   * the handler pipeline live entirely in that core (this hook only does I/O).
+   * Reads the RAW byte stream for message content, but trusts neither raw
+   * `Authentication-Results` nor `message.headers`: ForwardableEmailMessage has
+   * no out-of-band verified authentication verdict. Only the platform-supplied
+   * SMTP envelope (`from`/`to`) is passed as trusted adapter data. Verdict
+   * gating and the handler pipeline live in `@velajs/mail`.
    *
    * When the app gate rejects the message, `dispatchInboundEmail` runs NO
    * handler (privileged inbound handlers never see an ungated message) and this
@@ -254,7 +254,12 @@ export class CloudflareApplication {
     _ctx: { waitUntil: (promise: Promise<unknown>) => void },
   ): Promise<void> {
     const bytes = new Uint8Array(await new Response(message.raw).arrayBuffer());
-    const email = parseInboundEmail(bytes, { from: message.from, to: message.to });
+    // Cloudflare's ForwardableEmailMessage exposes no out-of-band verified
+    // authentication verdict. Preserve only the trusted SMTP envelope; raw
+    // Authentication-Results remains untrusted and the mail gate fails closed.
+    const email = parseInboundEmail(bytes, {
+      envelope: { from: message.from, to: message.to },
+    });
     const result = await dispatchInboundEmail(this.app.getContainer(), this.app.entrypoints, email);
     if (result.gated) {
       message.setReject('message could not be processed');

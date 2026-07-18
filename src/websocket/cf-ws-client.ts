@@ -1,10 +1,19 @@
 import type { WsClient } from '@velajs/vela/websocket';
-import type { DoStateLike, WsAttachment, WsLike } from './do-state';
-
-const MAX_ATTACHMENT_BYTES = 16_384; // Cloudflare hibernation attachment limit (16 KiB).
+import {
+  assertWebSocketRoomId,
+  DEFAULT_WS_MAX_FRAME_BYTES,
+  DEFAULT_WS_MAX_JOINED_ROOMS,
+  webSocketFrameFits,
+} from '@velajs/vela/websocket';
+import {
+  MAX_WS_ATTACHMENT_BYTES,
+  type DoStateLike,
+  type WsAttachment,
+  type WsLike,
+} from './do-state';
 const encoder = new TextEncoder();
 
-const EMPTY: WsAttachment = { connId: '', path: '', rooms: [], data: {} };
+const EMPTY: WsAttachment = { connId: '', state: 'rejected', path: '', rooms: [], data: {} };
 
 /**
  * Core `WsClient` over a native Cloudflare `WebSocket` inside a Durable Object.
@@ -49,16 +58,31 @@ export class CfWsClient<
     return this.ws;
   }
 
+  get maxFrameBytes(): number {
+    const value = this.attachment.maxFrameBytes;
+    return typeof value === 'number' && Number.isSafeInteger(value) && value > 0
+      ? value
+      : DEFAULT_WS_MAX_FRAME_BYTES;
+  }
+
   send(event: string, data?: unknown, id?: string): void {
-    this.ws.send(JSON.stringify(id !== undefined ? { id, event, data } : { event, data }));
+    this.sendRaw(JSON.stringify(id !== undefined ? { id, event, data } : { event, data }));
   }
 
   sendRaw(payload: string): void {
+    if (!webSocketFrameFits(payload, this.maxFrameBytes)) {
+      this.close(1009, 'Message too large');
+      return;
+    }
     this.ws.send(payload);
   }
 
   join(room: string): void {
+    assertWebSocketRoomId(room);
     if (!this.attachment.rooms.includes(room)) {
+      if (this.attachment.rooms.length >= DEFAULT_WS_MAX_JOINED_ROOMS) {
+        throw new Error(`A WebSocket may join at most ${DEFAULT_WS_MAX_JOINED_ROOMS} rooms`);
+      }
       this.attachment.rooms.push(room);
       this.persist();
     }
@@ -83,7 +107,7 @@ export class CfWsClient<
 
   private persist(): void {
     const serialized = JSON.stringify(this.attachment);
-    if (encoder.encode(serialized).length > MAX_ATTACHMENT_BYTES) {
+    if (encoder.encode(serialized).length > MAX_WS_ATTACHMENT_BYTES) {
       throw new Error(
         `WebSocket attachment exceeds the 16 KiB Cloudflare limit. Store large ` +
           `per-connection state in Durable Object storage keyed by connId instead.`,

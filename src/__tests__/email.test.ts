@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { EmailMessage } from 'cloudflare:email';
 import { Controller, Post, Module, Injectable, MetadataRegistry } from '@velajs/vela';
 import { buildMessage, MailError, MailModule, MailService, OnInboundEmail } from '@velajs/mail';
-import type { BuiltMessage, InboundEmail } from '@velajs/mail';
+import type { BuiltMessage, InboundEmail, MailInboundGate } from '@velajs/mail';
 import { createCloudflareApp } from '../cloudflare-factory';
 import { BindingRef } from '../binding-ref';
 import { CloudflareEmailModule } from '../email/cloudflare-email.module';
@@ -193,8 +193,8 @@ function streamOf(bytes: Uint8Array): ReadableStream<Uint8Array> {
 
 /**
  * A ForwardableEmailMessage double. `headers` is deliberately settable to a
- * MISLEADING value so a test can prove the hook parses `raw` (topmost
- * Authentication-Results) and never `headers`.
+ * misleading value so tests can prove neither it nor raw message headers are
+ * promoted to a verified authentication verdict.
  */
 function makeInboundMessage(opts: { raw: string; from: string; to: string; headers?: Headers }): {
   message: ForwardableEmailMessage;
@@ -228,8 +228,20 @@ function rawEmail(headers: string[], body = 'hello world'): string {
   return `${headers.join('\r\n')}\r\n\r\n${body}`;
 }
 
+/**
+ * Cloudflare supplies the SMTP envelope out of band. These routing-only tests
+ * deliberately accept one fixture envelope without treating raw message
+ * headers as authentication; production applications should normally require
+ * adapter-verified authentication verdicts as well.
+ */
+const TEST_ENVELOPE_GATE: MailInboundGate = {
+  require: [],
+  policy: (_authentication, email) =>
+    email.envelope?.from === 'sender@partner.example' && email.envelope.to.endsWith('@my.example'),
+};
+
 describe('CloudflareApplication.email() host hook', () => {
-  it('dispatches @OnInboundEmail handlers when the gate passes (default DMARC)', async () => {
+  it('does not trust a raw DMARC pass without adapter verification', async () => {
     const received: string[] = [];
 
     @Injectable()
@@ -257,8 +269,8 @@ describe('CloudflareApplication.email() host hook', () => {
 
     await app.email(message, {}, CTX);
 
-    expect(received).toEqual(['Quarterly report']);
-    expect(rejects).toEqual([]);
+    expect(received).toEqual([]);
+    expect(rejects).toEqual(['message could not be processed']);
     await app.close();
   });
 
@@ -323,7 +335,7 @@ describe('CloudflareApplication.email() host hook', () => {
     await app.close();
   });
 
-  it('reads verdicts from the RAW stream (topmost), never from message.headers', async () => {
+  it('trusts verdicts from neither the raw stream nor message.headers', async () => {
     const received: string[] = [];
 
     @Injectable()
@@ -338,9 +350,8 @@ describe('CloudflareApplication.email() host hook', () => {
     class AppModule {}
 
     const app = await createCloudflareApp(AppModule);
-    // message.headers is a MISLEADING Headers view (dmarc=fail). If the hook read
-    // it instead of the raw stream, the gate would fail. The raw stream's TOPMOST
-    // Authentication-Results is dmarc=pass, so a correct hook dispatches.
+    // Both sources are attacker-controlled message content. Even a topmost raw
+    // dmarc=pass must not become an authenticated adapter verdict.
     const misleadingHeaders = new Headers({
       'Authentication-Results': 'mx.my.example; dmarc=fail',
     });
@@ -359,21 +370,29 @@ describe('CloudflareApplication.email() host hook', () => {
 
     await app.email(message, {}, CTX);
 
-    expect(received).toEqual(['Topmost wins']);
-    expect(rejects).toEqual([]);
+    expect(received).toEqual([]);
+    expect(rejects).toEqual(['message could not be processed']);
     await app.close();
   });
 
   it('drops (no setReject) when the gate passes but no handler matches', async () => {
     @Injectable()
     class Inbox {
-      @OnInboundEmail({ match: (e) => e.to.some((a) => a.includes('support@')) })
+      @OnInboundEmail({ match: (e) => e.envelope?.to.includes('support@') === true })
       async handle(): Promise<void> {
         throw new Error('should not run for a non-support recipient');
       }
     }
 
-    @Module({ providers: [Inbox] })
+    @Module({
+      imports: [
+        MailModule.forRoot({
+          from: 'no-reply@example.com',
+          inbound: { gate: TEST_ENVELOPE_GATE },
+        }),
+      ],
+      providers: [Inbox],
+    })
     class AppModule {}
 
     const app = await createCloudflareApp(AppModule);
@@ -383,7 +402,9 @@ describe('CloudflareApplication.email() host hook', () => {
       raw: rawEmail([
         'Authentication-Results: mx.my.example; dmarc=pass',
         'From: sender@partner.example',
-        'To: sales@my.example',
+        // Raw To is attacker-controlled and intentionally conflicts with the
+        // platform envelope used by the match predicate.
+        'To: support@my.example',
         'Subject: Unrouted',
       ]),
     });
@@ -402,7 +423,7 @@ describe('CloudflareApplication.email() host hook', () => {
 
     @Injectable()
     class SupportInbox {
-      @OnInboundEmail({ match: (e) => e.to.some((a) => a.includes('support@')) })
+      @OnInboundEmail({ match: (e) => e.envelope?.to.includes('support@') === true })
       async handle(email: InboundEmail): Promise<void> {
         support.push(email.subject ?? '');
       }
@@ -410,13 +431,21 @@ describe('CloudflareApplication.email() host hook', () => {
 
     @Injectable()
     class BillingInbox {
-      @OnInboundEmail({ match: (e) => e.to.some((a) => a.includes('billing@')) })
+      @OnInboundEmail({ match: (e) => e.envelope?.to.includes('billing@') === true })
       async handle(email: InboundEmail): Promise<void> {
         billing.push(email.subject ?? '');
       }
     }
 
-    @Module({ providers: [SupportInbox, BillingInbox] })
+    @Module({
+      imports: [
+        MailModule.forRoot({
+          from: 'no-reply@example.com',
+          inbound: { gate: TEST_ENVELOPE_GATE },
+        }),
+      ],
+      providers: [SupportInbox, BillingInbox],
+    })
     class AppModule {}
 
     const app = await createCloudflareApp(AppModule);
@@ -426,7 +455,8 @@ describe('CloudflareApplication.email() host hook', () => {
       raw: rawEmail([
         'Authentication-Results: mx.my.example; dmarc=pass',
         'From: sender@partner.example',
-        'To: support@my.example',
+        // Routing follows the trusted envelope, never this spoofable header.
+        'To: billing@my.example',
         'Subject: Help please',
       ]),
     });

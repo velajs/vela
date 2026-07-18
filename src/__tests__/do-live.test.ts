@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { Injectable, MetadataRegistry, Module, WebSocketModule } from '@velajs/vela';
 import { WebSocketGateway } from '@velajs/vela/websocket';
-import { LiveModule, LiveQuery, LiveResolver } from '@velajs/vela/live';
+import { LIVE_PROTOCOL, LiveModule, LiveQuery, LiveResolver } from '@velajs/vela/live';
 import type { CommitStamp, InvalidationCommand, LiveInvalidationSink } from '@velajs/vela/live';
 import { buildDoRuntime } from '../websocket/do-bootstrap';
 import { DoCursorLog, durableObjectCursorLog, durableObjectLive } from '../websocket/do-live';
@@ -68,6 +68,15 @@ class FakeDoState implements DoStateLike {
   setWebSocketAutoResponse(): void {}
 }
 
+function acceptTrusted(host: DoWebSocketHost, ws: WsLike): Promise<boolean> {
+  return host.accept(ws, '/rooms/:id/ws', 'room-1', 'user-1', Date.now() + 60_000, {
+    issuer: 'https://issuer.test',
+    subject: 'user-1',
+    principalType: 'user',
+    tenantId: 'tenant-1',
+  });
+}
+
 describe('DoCursorLog (SQLite)', () => {
   it('is monotonic, epoch-stable across instances, and cursor-stable across trims', () => {
     const storage = sqlStorage();
@@ -126,15 +135,22 @@ describe('durableObjectLive driver', () => {
       }),
     } as never;
 
-    const driver = durableObjectLive({ binding: 'ROOM', defaultRoom: 'lobby' });
+    const driver = durableObjectLive({
+      binding: 'ROOM',
+      gatewayPath: '/rooms/:id/ws',
+      defaultRoom: 'lobby',
+    });
     driver._initializeEnv({ ROOM: ns });
 
     const stamp = await driver.dispatch({ tags: ['crud:todos'] });
     expect(stamp).toEqual({ cursor: 7, epoch: 'do-epoch' });
-    expect(calls[0]).toEqual({ id: 'id:lobby', cmd: { tags: ['crud:todos'], room: 'lobby' } });
+    expect(calls[0]).toEqual({
+      id: 'id:vela:ws:v2:%2Frooms%2F%3Aid%2Fws:lobby',
+      cmd: { tags: ['crud:todos'], room: 'lobby' },
+    });
 
     await driver.dispatch({ tags: ['x'], room: 'org:1' });
-    expect(calls[1].id).toBe('id:org:1');
+    expect(calls[1].id).toBe('id:vela:ws:v2:%2Frooms%2F%3Aid%2Fws:org%3A1');
   });
 
   it('applies locally inside the DO (local mode) and fails loudly without env', async () => {
@@ -145,13 +161,13 @@ describe('durableObjectLive driver', () => {
         return { cursor: 1, epoch: 'e' };
       },
     };
-    const driver = durableObjectLive({ binding: 'ROOM' });
+    const driver = durableObjectLive({ binding: 'ROOM', gatewayPath: '/rooms/:id/ws' });
     driver.bind(sink);
     driver._setLocalMode();
     await driver.dispatch({ tags: ['t'] });
     expect(applied).toEqual([{ tags: ['t'] }]);
 
-    const cold = durableObjectLive({ binding: 'ROOM' });
+    const cold = durableObjectLive({ binding: 'ROOM', gatewayPath: '/rooms/:id/ws' });
     expect(() => cold.dispatch({ tags: ['t'] })).toThrow(/binding 'ROOM'/);
   });
 });
@@ -169,7 +185,7 @@ describe('live queries inside the Durable Object', () => {
       }
     }
 
-    @WebSocketGateway({ path: PATH })
+    @WebSocketGateway({ path: PATH, roomParam: 'id' })
     class RoomsGateway {}
 
     @Module({
@@ -177,7 +193,7 @@ describe('live queries inside the Durable Object', () => {
         WebSocketModule.forRoot(),
         LiveModule.forRoot({
           log: durableObjectCursorLog(),
-          driver: durableObjectLive({ binding: 'ROOM' }),
+          driver: durableObjectLive({ binding: 'ROOM', gatewayPath: PATH }),
         }),
       ],
       providers: [RoomsGateway, TodoLive],
@@ -187,7 +203,10 @@ describe('live queries inside the Durable Object', () => {
   }
 
   const subEnvelope = (sub: string, query: string, extra?: Record<string, unknown>): string =>
-    JSON.stringify({ event: '$live', data: { t: 'sub', sub, query, args: {}, ...extra } });
+    JSON.stringify({
+      event: '$live',
+      data: { t: 'sub', sub, query, args: {}, v: LIVE_PROTOCOL, ...extra },
+    });
 
   it('subscribes over the hibernation socket, pushes with SQLite-backed stamps, survives eviction', async () => {
     const todos = [{ id: 't1', text: 'first' }];
@@ -206,7 +225,7 @@ describe('live queries inside the Durable Object', () => {
     );
 
     const ws = new FakeWs();
-    host.accept(ws, PATH, 'room-1');
+    await expect(acceptTrusted(host, ws)).resolves.toBe(true);
     await host.onMessage(ws, subEnvelope('s1', 'todos.list'));
 
     const frames = ws.liveFrames();
@@ -253,7 +272,7 @@ describe('live queries inside the Durable Object', () => {
     );
 
     const first = new FakeWs();
-    host.accept(first, PATH, 'room-1');
+    await expect(acceptTrusted(host, first)).resolves.toBe(true);
     await host.onMessage(first, subEnvelope('s1', 'todos.list'));
     const epoch = first.liveFrames()[1].epoch as string;
 
@@ -262,7 +281,7 @@ describe('live queries inside the Durable Object', () => {
 
     // Reconnect with cursor 0: untouched tags → tiny resume at cursor 1.
     const second = new FakeWs();
-    host.accept(second, PATH, 'room-1');
+    await expect(acceptTrusted(host, second)).resolves.toBe(true);
     await host.onMessage(
       second,
       subEnvelope('r1', 'todos.list', { sinceCursor: 0, sinceEpoch: epoch }),
@@ -275,7 +294,7 @@ describe('live queries inside the Durable Object', () => {
     await runtime.live!.applyInvalidation({ tags: ['crud:todos'] }); // cursor 2, touches the query
     await runtime.live!.whenIdle();
     const third = new FakeWs();
-    host.accept(third, PATH, 'room-1');
+    await expect(acceptTrusted(host, third)).resolves.toBe(true);
     await host.onMessage(
       third,
       subEnvelope('r2', 'todos.list', { sinceCursor: 0, sinceEpoch: epoch }),

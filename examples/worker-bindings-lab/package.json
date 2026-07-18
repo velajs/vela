@@ -15,8 +15,11 @@
   },
   "dependencies": {
     "@velajs/cloudflare": "file:../..",
+    "@velajs/mail": "^1.0.0",
     "@velajs/vela": "file:../../../vela",
-    "hono": "^4"
+    "@velajs/workflow": "^0.1.0",
+    "hono": "^4",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4",
