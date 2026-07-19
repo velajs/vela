@@ -34,6 +34,10 @@ export interface ExecutionContext {
   getType<T extends string = ContextType>(): T;
   getClass(): Type;
   getHandler(): string | symbol;
+  /** Declaring module bucket for routed HTTP/WS handlers; absent for synthetic framework hosts. */
+  getModuleId(): string | undefined;
+  /** Framework-owned DI container for transport-neutral guards. */
+  getContainer?<T = unknown>(): T | undefined;
   /** Returns the Hono `Context` directly. Throws on a WebSocket context. */
   getContext<T = Context>(): T;
   /** Shorthand for `switchToHttp().getRequest()` — returns the Web `Request`. Throws on a WebSocket context. */

@@ -25,8 +25,15 @@ import type {
   ParameterMetadata,
   PipeType,
 } from '../registry/types';
+import { shouldWarnProductionSecurity } from '../http/security-options';
 import { resolveWsArgs } from './ws-argument-resolver';
 import { buildWsExecutionContext } from './ws-execution-context';
+import {
+  normalizeWebSocketUpgradeIdentity,
+  resolveGatewayRoomParam,
+  resolveMaxFrameBytes,
+  webSocketFrameFits,
+} from './gateway-routing';
 import { toErrorFrame, WsException } from './ws-exception';
 import {
   RESERVED_WS_EVENT_PREFIX,
@@ -62,9 +69,17 @@ interface HandlerEntry {
 
 interface GatewayEntry {
   path: string;
+  options: WebSocketGatewayOptions;
+  maxFrameBytes: number;
   instance: Record<string, unknown>;
   gatewayClass: Type;
+  moduleId: string;
   handlers: Map<string, HandlerEntry>;
+}
+
+interface ReservedEntry {
+  handler: ReservedWsEventHandler;
+  moduleId: string;
 }
 
 function hasAfterInit(x: unknown): x is OnGatewayInit {
@@ -86,6 +101,10 @@ export interface WsEntrypointMeta {
   path: string;
   /** The dispatcher that routes frames for this gateway. */
   dispatcher: WsDispatcher;
+  /** Validated gateway routing and upgrade policy. */
+  options: WebSocketGatewayOptions;
+  /** Stable container module bucket that declares the gateway. */
+  moduleId: string;
 }
 
 /**
@@ -100,7 +119,7 @@ export interface WsEntrypointMeta {
 @Injectable()
 export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoints {
   private readonly gateways = new Map<string, GatewayEntry>();
-  private readonly reserved = new Map<string, ReservedWsEventHandler>();
+  private readonly reserved = new Map<string, ReservedEntry>();
 
   constructor(
     @Inject(Container) private readonly container: Container,
@@ -112,6 +131,21 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
   /** Paths of every discovered `@WebSocketGateway` — used by transports to register routes. */
   get gatewayPaths(): string[] {
     return [...this.gateways.keys()];
+  }
+
+  /** Validated per-gateway frame ceiling used by runtime transports. */
+  getGatewayMaxFrameBytes(path: string): number | undefined {
+    return this.gateways.get(path)?.maxFrameBytes;
+  }
+
+  /** Largest explicitly configured gateway ceiling for cross-instance buses. */
+  getMaximumGatewayFrameBytes(): number {
+    let maximum: number | undefined;
+    for (const entry of this.gateways.values()) {
+      maximum =
+        maximum === undefined ? entry.maxFrameBytes : Math.max(maximum, entry.maxFrameBytes);
+    }
+    return maximum ?? resolveMaxFrameBytes({});
   }
 
   async onApplicationBootstrap(): Promise<void> {
@@ -130,7 +164,10 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
         console.warn(msg);
         continue;
       }
-      this.reserved.set(event, found.instance as unknown as ReservedWsEventHandler);
+      this.reserved.set(event, {
+        handler: found.instance as unknown as ReservedWsEventHandler,
+        moduleId: found.moduleIds[0]!,
+      });
     }
 
     for (const found of this.discovery.providersWithMeta<WebSocketGatewayOptions>(
@@ -140,7 +177,7 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
       const gatewayClass = found.metatype;
       const instance = found.instance as Record<string, unknown>;
 
-      const entry = this.buildGatewayEntry(gatewayClass, found.meta, instance);
+      const entry = this.buildGatewayEntry(gatewayClass, found.meta, instance, found.moduleIds[0]!);
 
       // Two gateways on the same path (or both defaulting to '') would silently
       // overwrite each other in the routing Map — surface it instead.
@@ -153,6 +190,7 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
         continue;
       }
       this.gateways.set(entry.path, entry);
+      this.server?.setOutboundFrameLimit?.(entry.maxFrameBytes);
 
       if (this.server && hasAfterInit(instance)) {
         try {
@@ -170,7 +208,12 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
       kind: 'websocket',
       token: entry.gatewayClass,
       instance: entry.instance,
-      meta: { path: entry.path, dispatcher: this },
+      meta: {
+        path: entry.path,
+        dispatcher: this,
+        options: entry.options,
+        moduleId: entry.moduleId,
+      },
     }));
   }
 
@@ -184,7 +227,7 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
   async handleClose(path: string, client: WsClient, _code: number, _reason: string): Promise<void> {
     // Reserved handlers drop per-connection state first (isolated per handler)
     // so a throwing gateway handleDisconnect can't leak live subscriptions.
-    for (const handler of this.reserved.values()) {
+    for (const { handler } of this.reserved.values()) {
       try {
         await handler.handleSocketClose?.(path, client);
       } catch (err) {
@@ -209,15 +252,73 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
     });
   }
 
+  /** Re-run app-wide and gateway delivery authorization for one push recipient. */
+  async authorizeDelivery(path: string, client: WsClient): Promise<boolean> {
+    const entry = this.gateways.get(path);
+    if (!entry) return false;
+    if (normalizeWebSocketUpgradeIdentity(client.data) === false) {
+      try {
+        client.close(1008, 'identity invalid or expired');
+      } catch {
+        // already closed
+      }
+      return false;
+    }
+
+    const context = buildWsExecutionContext(
+      client,
+      undefined,
+      entry.gatewayClass,
+      '__delivery__',
+      '$delivery',
+      entry.moduleId,
+      this.container,
+    );
+    const globals = this.routeManager?.getGlobalComponents();
+    const guards = instantiateMany<CanActivate>(globals?.guards ?? [], this.container);
+    try {
+      for (const guard of guards) {
+        if (!(await guard.canActivate(context))) return false;
+      }
+      if (
+        entry.options.authorizeDelivery &&
+        (await entry.options.authorizeDelivery(client)) !== true
+      ) {
+        return false;
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async dispatchMessage(path: string, client: WsClient, raw: string | ArrayBuffer): Promise<void> {
     const entry = this.gateways.get(path);
     if (!entry) return;
+
+    if (normalizeWebSocketUpgradeIdentity(client.data) === false) {
+      try {
+        client.close(1008, 'identity invalid or expired');
+      } catch {
+        // already closed
+      }
+      return;
+    }
+
+    if (!this.frameFits(raw, entry.maxFrameBytes)) {
+      try {
+        client.close(1009, 'Message too large');
+      } catch {
+        // already closed
+      }
+      return;
+    }
 
     let message: WsMessage;
     try {
       message = this.parse(raw);
     } catch {
-      this.trySend(client, 'exception', { message: 'Invalid message' });
+      this.trySend(client, entry.maxFrameBytes, 'exception', { message: 'Invalid message' });
       return;
     }
 
@@ -238,6 +339,8 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
       entry.gatewayClass,
       handler.methodName,
       message.event,
+      entry.moduleId,
+      this.container,
     );
 
     // App-wide global components (APP_* provider tokens + imperative
@@ -267,7 +370,7 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
       const method = entry.instance[handler.methodName] as (...a: unknown[]) => unknown;
 
       // Guards → args + pipes → interceptor chain → handler, via the shared
-      // runner (WS keeps guards-first, unlike HTTP's args-before-guards).
+      // runner (both HTTP and WS use guards-first).
       const result = await PipelineRunner.run({
         context: ctx,
         guards,
@@ -278,14 +381,23 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
         onGuardReject: () => new WsException('Forbidden'),
       });
 
-      this.reply(client, message, result);
+      this.reply(client, message, result, entry.maxFrameBytes);
     } catch (error) {
       const reporter = resolveErrorReporter(this.container);
       const source = `${entry.gatewayClass.name}.${handler.methodName}`;
       // Report FIRST, always — before any exception filter can claim (and thus
       // hide) the error. Rendering is a separate concern (mirrors HandlerExecutor).
       reporter.report(error, { edge: 'ws', source });
-      await this.runFilters(client, message, error, filters, ctx, reporter, source);
+      await this.runFilters(
+        client,
+        message,
+        error,
+        filters,
+        ctx,
+        reporter,
+        source,
+        entry.maxFrameBytes,
+      );
     }
   }
 
@@ -301,8 +413,10 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
     client: WsClient,
     message: WsMessage,
   ): Promise<void> {
-    const handler = this.reserved.get(message.event);
-    if (!handler) return;
+    const reserved = this.reserved.get(message.event);
+    if (!reserved) return;
+    const { handler, moduleId } = reserved;
+    const maxFrameBytes = this.gateways.get(path)?.maxFrameBytes ?? resolveMaxFrameBytes({});
 
     const ctx = buildWsExecutionContext(
       client,
@@ -310,6 +424,8 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
       handler.constructor as Type,
       'handleReservedEvent',
       message.event,
+      moduleId,
+      this.container,
     );
     const globals = this.routeManager?.getGlobalComponents();
     const guards = instantiateMany<CanActivate>(globals?.guards ?? [], this.container);
@@ -320,7 +436,7 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
             new WsException('Forbidden'),
             resolveErrorReporter(this.container).catalog,
           );
-          this.trySend(client, frame.event, frame.data, message.id);
+          this.trySend(client, maxFrameBytes, frame.event, frame.data, message.id);
           return;
         }
       }
@@ -330,12 +446,17 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
     }
   }
 
-  private reply(client: WsClient, message: WsMessage, result: unknown): void {
+  private reply(
+    client: WsClient,
+    message: WsMessage,
+    result: unknown,
+    maxFrameBytes: number,
+  ): void {
     if (result === undefined || result === null) return;
     if (isWsResponse(result)) {
-      this.trySend(client, result.event, result.data, message.id);
+      this.trySend(client, maxFrameBytes, result.event, result.data, message.id);
     } else {
-      this.trySend(client, message.event, result, message.id);
+      this.trySend(client, maxFrameBytes, message.event, result, message.id);
     }
   }
 
@@ -347,31 +468,43 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
     ctx: WsExecutionContext,
     reporter: ErrorReporter,
     source: string,
+    maxFrameBytes: number,
   ): Promise<void> {
     for (const filter of filters) {
       if (shouldFilterCatch(filter, error)) {
         try {
           const handled = await filter.catch(error, ctx);
           if (isWsResponse(handled)) {
-            this.trySend(client, handled.event, handled.data, message.id);
+            this.trySend(client, maxFrameBytes, handled.event, handled.data, message.id);
           }
         } catch (filterError) {
           // A throwing filter is itself a bug worth reporting — then fall back
           // to the default redacted frame (mirrors HandlerExecutor).
           reporter.report(filterError, { edge: 'ws', source, note: 'exception filter threw' });
           const frame = toErrorFrame(error, reporter.catalog);
-          this.trySend(client, frame.event, frame.data, message.id);
+          this.trySend(client, maxFrameBytes, frame.event, frame.data, message.id);
         }
         return;
       }
     }
     const errorFrame = toErrorFrame(error, reporter.catalog);
-    this.trySend(client, errorFrame.event, errorFrame.data, message.id);
+    this.trySend(client, maxFrameBytes, errorFrame.event, errorFrame.data, message.id);
   }
 
   // Outbound sends are best-effort: the socket may have closed mid-dispatch.
-  private trySend(client: WsClient, event: string, data: unknown, id?: string): void {
+  private trySend(
+    client: WsClient,
+    maxFrameBytes: number,
+    event: string,
+    data: unknown,
+    id?: string,
+  ): void {
     try {
+      const frame = JSON.stringify(id !== undefined ? { id, event, data } : { event, data });
+      if (!webSocketFrameFits(frame, maxFrameBytes)) {
+        client.close(1009, 'Message too large');
+        return;
+      }
       client.send(event, data, id);
     } catch {
       // socket closed — nothing to do
@@ -393,11 +526,26 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
     return parsed;
   }
 
+  private frameFits(raw: string | ArrayBuffer, maxBytes: number): boolean {
+    return webSocketFrameFits(raw, maxBytes);
+  }
+
   private buildGatewayEntry(
     gatewayClass: Type,
     options: WebSocketGatewayOptions,
     instance: Record<string, unknown>,
+    moduleId: string,
   ): GatewayEntry {
+    // Validate security-sensitive routing at bootstrap rather than silently
+    // collapsing rooms when a transport receives its first request.
+    resolveGatewayRoomParam(options);
+    if (options.allowedOrigins === '*' && shouldWarnProductionSecurity()) {
+      console.warn(
+        `[vela] security warning: WebSocket gateway ${gatewayClass.name} allows every browser ` +
+          'Origin; use an exact origin allowlist for credentialed/public deployments',
+      );
+    }
+    const maxFrameBytes = resolveMaxFrameBytes(options);
     const ctor = gatewayClass as unknown as Constructor;
     const subs =
       (MetadataRegistry.getCustomClassMeta(ctor, WS_SUBSCRIBE_METADATA) as
@@ -436,6 +584,14 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
       });
     }
 
-    return { path: options.path ?? '', instance, gatewayClass, handlers };
+    return {
+      path: options.path ?? '',
+      options: { ...options },
+      maxFrameBytes,
+      instance,
+      gatewayClass,
+      moduleId,
+      handlers,
+    };
   }
 }

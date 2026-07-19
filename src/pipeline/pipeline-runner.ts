@@ -11,9 +11,9 @@ export interface PipelineRunOptions {
   /** Call the actual handler. */
   invoke: (args: unknown[]) => Promise<unknown>;
   /**
-   * HTTP runs argument extraction + pipes BEFORE guards (a deliberate vela
-   * deviation — see handler-executor); WebSocket runs guards first. Default
-   * false (guards first).
+   * Compatibility escape hatch for non-HTTP/custom transports that explicitly
+   * need argument extraction before guards. HTTP and WebSocket both use the
+   * secure default (`false`: guards first).
    */
   argsBeforeGuards?: boolean;
   /** Error thrown when a guard rejects (default `ForbiddenException`). */

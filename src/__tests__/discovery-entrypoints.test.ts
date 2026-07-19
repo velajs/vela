@@ -257,7 +257,7 @@ describe('EntrypointRegistry', () => {
   it('the websocket module contributes one entrypoint per gateway (HMR-dedup regression)', async () => {
     const { WebSocketGateway, SubscribeMessage } = await import('../websocket/index.js');
 
-    @WebSocketGateway({ path: '/ws/chat/:id' })
+    @WebSocketGateway({ path: '/ws/chat/:id', roomParam: 'id' })
     class ChatGateway {
       @SubscribeMessage('ping')
       ping() {

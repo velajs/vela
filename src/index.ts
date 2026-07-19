@@ -99,6 +99,10 @@ export {
   SignedUrlGuard,
   SignedUrl,
   URL_SIGNING_SECRET,
+  DEFAULT_BODY_LIMIT_BYTES,
+  DEFAULT_QUERY_BYTES_LIMIT,
+  DEFAULT_QUERY_DEPTH_LIMIT,
+  DEFAULT_QUERY_PARAMETER_LIMIT,
 } from './http/index';
 export type {
   RouteOptions,
@@ -107,11 +111,20 @@ export type {
   VelaRouteMap,
   RouteName,
   RouteParams,
+  VelaSecurityOptions,
+  VelaBodySecurityOptions,
+  VelaBodyLimitOverride,
+  VelaQuerySecurityOptions,
 } from './http/index';
 
 // Edge-safe HMAC signed-URL primitives (also re-exported from `@velajs/vela/storage`)
-export { signUrl, verifySignedUrl } from './crypto/signed-url';
-export type { SignedUrlOptions } from './crypto/signed-url';
+export {
+  signUrl,
+  verifySignedUrl,
+  HTTP_SIGNED_URL_PURPOSE,
+  STORAGE_SIGNED_URL_PURPOSE,
+} from './crypto/signed-url';
+export type { SignedUrlOptions, VerifySignedUrlOptions } from './crypto/signed-url';
 
 // Internal-dispatch seam (`ctx.run`): re-enter the app through a per-invocation
 // SIGNED route (scoped claim, short expiry, single-use nonce — no shared bearer).
@@ -122,6 +135,7 @@ export {
   SignedInvocation,
   MemoryNonceStore,
   INVOCATION_SIGNING_SECRET,
+  NONCE_STORE,
 } from './dispatch/index';
 export type {
   InvocationTransport,
@@ -142,6 +156,15 @@ export type { InvocationClaim, VerifyInvocationOptions } from './crypto/invocati
 // Request-scoped context primitive
 export { REQUEST_CONTEXT } from './http/request-context';
 export type { RequestContext } from './http/request-context';
+export {
+  clearTrustedRequestIdentity,
+  getTrustedRequestIdentity,
+  setTrustedRequestIdentity,
+} from './http/trusted-request-identity';
+export type {
+  TrustedRequestIdentity,
+  TrustedRequestPrincipal,
+} from './http/trusted-request-identity';
 
 // Explicit request-child container access (for programmatic-route authors,
 // param-decorator factories, and scoped middleware)
@@ -167,6 +190,15 @@ export {
   CONFIG_ENV,
   registerAs,
 } from './config/index';
+
+// Browser/HTTP hardening
+export { SecurityModule, SECURITY_OPTIONS, buildSecurityMiddleware } from './security/index';
+export type {
+  SecurityModuleOptions,
+  SecurityCorsOptions,
+  OriginProtectionOptions,
+  SecurityHeadersOptions,
+} from './security/index';
 export type {
   ConfigModuleOptions,
   ConfigSchema,
@@ -193,10 +225,12 @@ export {
   CacheInterceptor,
   MemoryCacheStore,
   TieredCacheStore,
+  Cacheable,
   CacheKey,
   CacheTTL,
   CACHE_MANAGER,
   CACHE_MODULE_OPTIONS,
+  CACHEABLE_METADATA,
   CACHE_KEY_METADATA,
   CACHE_TTL_METADATA,
 } from './cache/index';
@@ -251,6 +285,7 @@ export {
   ReservedWsEvent,
   WsDispatcher,
   WsException,
+  assertWebSocketRoomId,
   WS_SERVER,
   RESERVED_WS_EVENT_PREFIX,
 } from './websocket/index';

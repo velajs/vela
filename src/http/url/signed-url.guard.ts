@@ -1,6 +1,6 @@
 import { Injectable, Inject, Optional } from '../../container/decorators';
 import { CONFIG_ENV } from '../../config/config.tokens';
-import { verifySignedUrl } from '../../crypto/signed-url';
+import { HTTP_SIGNED_URL_PURPOSE, verifySignedUrl } from '../../crypto/signed-url';
 import { ForbiddenException } from '../../errors/http-exception';
 import { applyDecorators } from '../decorators';
 import { UseGuards } from '../../pipeline/decorators';
@@ -25,7 +25,10 @@ export class SignedUrlGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
     const secret = resolveSigningSecret(undefined, this.secretToken, this.env);
-    const valid = await verifySignedUrl(request.url, secret);
+    const valid = await verifySignedUrl(request.url, secret, {
+      method: request.method,
+      purpose: HTTP_SIGNED_URL_PURPOSE,
+    });
     if (!valid) {
       throw new ForbiddenException('Invalid or expired signed URL');
     }

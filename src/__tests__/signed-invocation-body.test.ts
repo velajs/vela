@@ -17,12 +17,9 @@ import {
 import type { InvocationClaim } from '../index.js';
 import { sha256Base64Url } from '../crypto/hmac';
 
-// The defect this file pins: vela's HTTP pipeline resolves handler args BEFORE
-// guards (documented NestJS-parity contract), so `@Body()` consumes the request
-// body before `SignedInvocationGuard` can read it to recompute `bodyHash`. The
-// fix installs a route-scoped capture middleware (via `@SignedInvocation()`) that
-// hashes the raw body BEFORE it is consumed and publishes it to the guard. These
-// tests exercise the previously-broken body-carrying path end-to-end.
+// Signed invocation body binding is exercised both through the route-scoped
+// capture middleware and through a bare guard. Guards run before argument
+// extraction, so both paths can verify the exact raw bytes fail-closed.
 
 const SECRET = 'body-signing-secret';
 const HEADER = 'x-vela-invocation';
@@ -42,8 +39,7 @@ class SecretModule {}
 
 @Controller('/binv')
 class BodyInvController {
-  // The currently-broken shape: a signed invocation whose handler declares
-  // `@Body()`. `run(@Body() body)` consumes the body during arg resolution.
+  // A signed invocation whose handler declares `@Body()`.
   @Post('run', { name: 'binv.run' })
   @SignedInvocation()
   run(@Body() body: Record<string, unknown>): { ran: boolean; echo: Record<string, unknown> } {
@@ -51,9 +47,7 @@ class BodyInvController {
     return { ran: true, echo: body };
   }
 
-  // Deliberate misuse: the bare guard WITHOUT the capture middleware, still on a
-  // `@Body()` handler. Proves the guard fails CLOSED (403, never 500) when it
-  // cannot recover the body hash.
+  // The bare guard also works because guards precede body argument extraction.
   @Post('bare', { name: 'binv.bare' })
   @UseGuards(SignedInvocationGuard)
   bare(@Body() body: Record<string, unknown>): { ran: boolean } {
@@ -193,21 +187,19 @@ describe('SignedInvocation guard — @Body()-carrying signed routes', () => {
     await app.dispose();
   });
 
-  it('the BARE guard (no capture middleware) on a @Body() handler fails CLOSED with 403, not 500', async () => {
+  it('the bare guard can verify a @Body() handler before argument extraction', async () => {
     bareHits.length = 0;
     const app = await VelaFactory.create(AppModule);
 
-    // A perfectly valid token for the bare route with a matching body hash. The
-    // capture middleware is ABSENT (bare `@UseGuards`), so args-before-guards
-    // consumes the body before the guard runs; the guard cannot re-read it and
-    // must reject rather than throw a 500.
+    // Guards run before argument extraction, so the bare guard can clone and
+    // hash the still-unconsumed body even without capture middleware.
     const bodyText = JSON.stringify({ tenant: 'acme', n: 7 });
     const bodyHash = await sha256Base64Url(new TextEncoder().encode(bodyText));
     const token = await tokenFor(BARE_ROUTE, { bodyHash });
 
     const res = await send(app, BARE_ROUTE, token, bodyText);
-    expect(res.status).toBe(403);
-    expect(bareHits).toEqual([]);
+    expect(res.status).toBe(200);
+    expect(bareHits).toEqual(['bare']);
     await app.dispose();
   });
 

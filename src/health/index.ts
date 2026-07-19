@@ -1,5 +1,5 @@
 export { HealthModule } from './health.module';
-export { HealthCheckService } from './health.service';
+export { HealthCheckService, HealthCheckException } from './health.service';
 export { HealthIndicatorService } from './health.indicator';
 export { HttpHealthIndicator } from './health.http';
 export type {

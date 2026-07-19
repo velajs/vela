@@ -16,10 +16,13 @@
   "dependencies": {
     "@hono/node-server": "^1.19.0",
     "@hono/node-ws": "^1.2.0",
-    "@velajs/client": "^0.1.0",
-    "@velajs/cloudflare": "^1.10.0",
+    "@velajs/client": "^1.0.0",
+    "@velajs/cloudflare": "^1.11.0",
+    "@velajs/mail": "^1.0.0",
     "@velajs/vela": "file:../..",
-    "hono": "^4"
+    "@velajs/workflow": "^0.1.0",
+    "hono": "^4",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@swc/cli": "^0.8.0",

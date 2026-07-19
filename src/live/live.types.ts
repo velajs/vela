@@ -3,13 +3,13 @@ import type { WsClient } from '../index';
 /**
  * Identity captured at subscribe time and replayed into every re-run of the
  * subscription's query — never re-read from the client afterwards. Free-form;
- * `expiresAt` (epoch ms) is the one recognized field: a lapsed identity drops
+ * `expiresAtMs` (epoch ms) is the one recognized field: a lapsed identity drops
  * the socket before it receives another scoped push (outbound enforcement —
  * a passive subscriber never trips inbound checks).
  */
 export interface LiveIdentity {
   [key: string]: unknown;
-  expiresAt?: number;
+  expiresAtMs?: number;
 }
 
 /** Second positional argument every `@LiveQuery` handler receives. */
@@ -145,8 +145,27 @@ export interface LiveModuleOptions {
    * `undefined` when empty.
    */
   identity?: (client: WsClient) => LiveIdentity | undefined;
+  /**
+   * Re-run immediately before every resume/snapshot/delta delivery. Use this
+   * for revocation or tenant-membership checks that can change after subscribe.
+   * Errors and every value except exactly `true` revoke the socket fail-closed.
+   */
+  authorizeDelivery?: (context: LiveDeliveryAuthorizationContext) => boolean | Promise<boolean>;
+  /** Maximum active subscriptions on one socket. Default 100. */
+  maxSubscriptionsPerSocket?: number;
+  /** Maximum matching subscription refreshes scheduled by one drain pass. Default 10,000. */
+  maxRefreshFanout?: number;
+  /** Maximum tags on one subscription or invalidation. Default 100. */
+  maxTags?: number;
   /** Presence preset configuration; `false` disables the built-in resolver. */
   presence?: LivePresenceOptions | false;
+}
+
+export interface LiveDeliveryAuthorizationContext {
+  identity?: LiveIdentity;
+  query: string;
+  args: unknown;
+  client: WsClient;
 }
 
 /** Meta carried by the `'live'` entrypoint (transports reach the engine through it). */

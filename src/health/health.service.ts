@@ -7,6 +7,26 @@ import type {
   HealthIndicatorResult,
 } from './health.types';
 
+/**
+ * Health failure with a deliberately minimal client response. Structured
+ * reporters still receive the full, non-enumerable diagnostics on the error
+ * object; HTTP serialization only sees `getResponse()`.
+ */
+export class HealthCheckException extends ServiceUnavailableException {
+  declare readonly diagnostics: HealthCheckResult;
+
+  constructor(status: 'error' | 'shutting_down', diagnostics: HealthCheckResult) {
+    super({ status, info: {}, error: {}, details: {} });
+    this.name = 'HealthCheckException';
+    Object.defineProperty(this, 'diagnostics', {
+      value: diagnostics,
+      enumerable: false,
+      configurable: false,
+      writable: false,
+    });
+  }
+}
+
 @Injectable()
 export class HealthCheckService implements BeforeApplicationShutdown {
   private isShuttingDown = false;
@@ -23,7 +43,7 @@ export class HealthCheckService implements BeforeApplicationShutdown {
         error: {},
         details: {},
       };
-      throw new ServiceUnavailableException({ ...result });
+      throw new HealthCheckException('shutting_down', result);
     }
 
     const results = await Promise.allSettled(indicators.map((fn) => fn()));
@@ -57,9 +77,12 @@ export class HealthCheckService implements BeforeApplicationShutdown {
     const checkResult: HealthCheckResult = { status, info, error, details };
 
     if (status === 'error') {
-      throw new ServiceUnavailableException({ ...checkResult });
+      throw new HealthCheckException('error', checkResult);
     }
 
-    return checkResult;
+    // A liveness/readiness endpoint is a public protocol surface, not a
+    // diagnostics dump. Indicator payloads (versions, hostnames, provider
+    // messages) are intentionally not reflected to clients.
+    return { status: 'ok', info: {}, error: {}, details: {} };
   }
 }

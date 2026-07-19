@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { VelaFactory, Controller, Get, Module, MetadataRegistry } from '../index.js';
 import {
+  HealthCheckException,
   HealthModule,
   HealthCheckService,
   HealthIndicatorService,
@@ -209,15 +210,9 @@ describe('HealthCheckService', () => {
 
     expect(result).toEqual({
       status: 'ok',
-      info: {
-        db: { status: 'up', responseTime: 5 },
-        redis: { status: 'up' },
-      },
+      info: {},
       error: {},
-      details: {
-        db: { status: 'up', responseTime: 5 },
-        redis: { status: 'up' },
-      },
+      details: {},
     });
   });
 
@@ -231,14 +226,15 @@ describe('HealthCheckService', () => {
       ]);
       expect.unreachable('Should have thrown');
     } catch (error) {
-      expect(error).toBeInstanceOf(ServiceUnavailableException);
-      const exc = error as ServiceUnavailableException;
+      expect(error).toBeInstanceOf(HealthCheckException);
+      const exc = error as HealthCheckException;
       expect(exc.getStatus()).toBe(503);
       const response = exc.getResponse() as Record<string, unknown>;
       expect(response.status).toBe('error');
-      expect(response.info).toEqual({ db: { status: 'up' } });
-      expect(response.error).toEqual({ redis: { status: 'down', message: 'Connection refused' } });
-      expect(response.details).toEqual({
+      expect(response.info).toEqual({});
+      expect(response.error).toEqual({});
+      expect(response.details).toEqual({});
+      expect(exc.diagnostics.details).toEqual({
         db: { status: 'up' },
         redis: { status: 'down', message: 'Connection refused' },
       });
@@ -258,13 +254,14 @@ describe('HealthCheckService', () => {
       expect.unreachable('Should have thrown');
     } catch (error) {
       expect(error).toBeInstanceOf(ServiceUnavailableException);
-      const response = (error as ServiceUnavailableException).getResponse() as Record<
-        string,
-        unknown
-      >;
+      const exc = error as HealthCheckException;
+      const response = exc.getResponse() as Record<string, unknown>;
       expect(response.status).toBe('error');
-      expect(response.info).toEqual({ db: { status: 'up' } });
-      expect(response.error).toEqual({ unknown: { status: 'down', message: 'Redis exploded' } });
+      expect(response.info).toEqual({});
+      expect(response.error).toEqual({});
+      expect(exc.diagnostics.error).toEqual({
+        unknown: { status: 'down', message: 'Redis exploded' },
+      });
     }
   });
 
@@ -288,11 +285,7 @@ describe('HealthCheckService', () => {
         },
       ]);
     } catch (error) {
-      const response = (error as ServiceUnavailableException).getResponse() as Record<
-        string,
-        unknown
-      >;
-      const details = response.details as Record<string, unknown>;
+      const details = (error as HealthCheckException).diagnostics.details;
       expect(details).toHaveProperty('db');
       expect(details).toHaveProperty('redis');
       expect(details).toHaveProperty('api');
@@ -393,9 +386,9 @@ describe('HealthModule integration', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
       status: 'ok',
-      info: { app: { status: 'up', version: '1.0.0' } },
+      info: {},
       error: {},
-      details: { app: { status: 'up', version: '1.0.0' } },
+      details: {},
     });
   });
 
@@ -429,12 +422,9 @@ describe('HealthModule integration', () => {
     expect(res.status).toBe(503);
     expect(await res.json()).toEqual({
       status: 'error',
-      info: { app: { status: 'up' } },
-      error: { db: { status: 'down', message: 'No connection' } },
-      details: {
-        app: { status: 'up' },
-        db: { status: 'down', message: 'No connection' },
-      },
+      info: {},
+      error: {},
+      details: {},
     });
   });
 });

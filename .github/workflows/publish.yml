@@ -2,7 +2,7 @@ name: Publish
 
 # Publishes the CURRENT package.json version to npm on demand. The auto-release
 # (release.yml) only fires on new commits; this lets an already-bumped+tagged
-# version that missed publication (e.g. a run before NPM_TOKEN was configured)
+# version that missed publication (e.g. a failed trusted-publisher run)
 # be published without a synthetic bump. `npm publish` no-ops loudly if the
 # version already exists.
 on:
@@ -35,11 +35,17 @@ jobs:
           registry-url: https://registry.npmjs.org
           cache: pnpm
 
-      - run: pnpm install
+      - run: npm install -g npm@12.0.0
 
-      - run: pnpm run build
+      - name: Validate release lock integrity
+        run: node scripts/check-release-lock.mjs
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm release:preflight
+
+      - run: pnpm release:check
 
       - run: npm publish --access public
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: "${{ !github.event.repository.private }}"
+          NPM_CONFIG_PROVENANCE: ${{ github.event.repository.private == false }}

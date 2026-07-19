@@ -141,7 +141,7 @@ export class TodosController {
  * `binding` is only read by the Cloudflare transport (which forwards the
  * upgrade to that room's Durable Object); the node transport ignores it.
  */
-@WebSocketGateway({ path: '/rooms/:id/ws', binding: 'CHAT_ROOM' })
+@WebSocketGateway({ path: '/rooms/:id/ws', roomParam: 'id', binding: 'CHAT_ROOM' })
 export class RoomsGateway {}
 
 export interface MakeAppModuleOptions {

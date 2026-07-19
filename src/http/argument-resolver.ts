@@ -3,6 +3,7 @@ import type { Context } from 'hono';
 import { ParamType } from '../constants';
 import type { Container } from '../container/container';
 import type { Type } from '../container/types';
+import { BadRequestException } from '../errors/http-exception';
 import type { ArgumentMetadata, PipeTransform } from '../pipeline/types';
 import { instantiate } from './instantiate';
 import type { ParamMetadata } from './types';
@@ -15,11 +16,15 @@ const PARAM_EXTRACTORS = new Map<ParamType, ParamExtractor>([
   [
     ParamType.BODY,
     async (c, p) => {
+      if (!c.req.raw.body || c.req.header('content-length') === '0') return undefined;
       let body: unknown;
       try {
         body = await c.req.json();
-      } catch {
-        return undefined;
+      } catch (error) {
+        if (error instanceof SyntaxError) {
+          throw new BadRequestException('Malformed JSON body');
+        }
+        throw error;
       }
       return p.name && body !== null && typeof body === 'object'
         ? (body as Record<string, unknown>)[p.name]

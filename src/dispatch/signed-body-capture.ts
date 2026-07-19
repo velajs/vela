@@ -1,12 +1,7 @@
-// Bridges the args-before-guards gap for `@SignedInvocation()` routes.
-//
-// vela's HTTP pipeline resolves handler arguments BEFORE guards (a deliberate
-// NestJS-parity contract — see PipelineRunner). So on a signed route whose
-// handler declares `@Body()`, the body is consumed (`c.req.json()` sets
-// `bodyUsed = true`) before `SignedInvocationGuard` runs — and the guard's own
-// `request.clone().arrayBuffer()` then throws because a used body can't be
-// cloned. The signature covers a `bodyHash`, so the guard MUST see the raw
-// bytes to verify it.
+// Captures the exact bytes for `@SignedInvocation()` routes before any scoped
+// middleware can consume them. HTTP guards now run before handler argument
+// extraction, but this seam also protects applications with body-reading
+// scoped middleware. RouteManager's outer body limit runs before this capture.
 //
 // This handler-scoped middleware runs BEFORE the route handler (Hono runs
 // `app.use(path)` middleware ahead of the matched handler; RouteManager installs

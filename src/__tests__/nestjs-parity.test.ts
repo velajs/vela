@@ -66,6 +66,7 @@ import {
   Test,
   CacheModule,
   CacheInterceptor,
+  Cacheable,
   CacheKey,
   CacheTTL,
   EventEmitterModule,
@@ -2743,6 +2744,7 @@ describe('CacheInterceptor / @CacheKey / @CacheTTL', () => {
     class CacheController {
       @Get()
       @UseInterceptors(CacheInterceptor)
+      @Cacheable()
       getData() {
         callCount++;
         return { n: callCount };
@@ -2770,6 +2772,7 @@ describe('CacheInterceptor / @CacheKey / @CacheTTL', () => {
     class CacheKeyController {
       @Get()
       @UseInterceptors(CacheInterceptor)
+      @Cacheable()
       @CacheKey('my-custom-key')
       getData() {
         callCount++;
@@ -2795,6 +2798,7 @@ describe('CacheInterceptor / @CacheKey / @CacheTTL', () => {
     class CacheTTLController {
       @Get()
       @UseInterceptors(CacheInterceptor)
+      @Cacheable()
       @CacheTTL(0.05) // 50ms TTL (TTL is in seconds)
       getData() {
         callCount++;
@@ -3459,7 +3463,7 @@ describe('HealthModule', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const body = (await res.json()) as any;
     expect(body.status).toBe('ok');
-    expect(body.info.db.status).toBe('up');
+    expect(body).toEqual({ status: 'ok', info: {}, error: {}, details: {} });
   });
 
   it('HealthCheckService returns 503 when an indicator is down', async () => {
@@ -3488,7 +3492,7 @@ describe('HealthModule', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const body = (await res.json()) as any;
     expect(body.status).toBe('error');
-    expect(body.error.db.status).toBe('down');
+    expect(body).toEqual({ status: 'error', info: {}, error: {}, details: {} });
   });
 
   it('HttpHealthIndicator.pingCheck() returns up for 2xx', async () => {
@@ -3514,7 +3518,7 @@ describe('HealthModule', () => {
     const res = await app.getHonoApp().request('/health-http');
     expect(res.status).toBe(200);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect(((await res.json()) as any).info.api.status).toBe('up');
+    expect(await res.json()).toEqual({ status: 'ok', info: {}, error: {}, details: {} });
   });
 });
 
@@ -3963,7 +3967,7 @@ describe('Logger / LoggerService', () => {
 // =============================================================================
 
 describe('@Ip() param decorator', () => {
-  it('extracts client IP from x-forwarded-for header', async () => {
+  it('ignores spoofable forwarding headers by default', async () => {
     @Controller('/ip')
     class IpController {
       @Get()
@@ -3977,13 +3981,16 @@ describe('@Ip() param decorator', () => {
 
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/ip', {
-      headers: { 'x-forwarded-for': '203.0.113.42, 10.0.0.1' },
+      headers: {
+        'x-forwarded-for': '203.0.113.42, 10.0.0.1',
+        'x-real-ip': '198.51.100.5',
+      },
     });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ip: '203.0.113.42' });
+    expect(await res.json()).toEqual({ ip: null });
   });
 
-  it('falls back to x-real-ip when x-forwarded-for is absent', async () => {
+  it('uses an explicit trusted runtime resolver', async () => {
     @Controller('/realip')
     class RealIpController {
       @Get()
@@ -3995,9 +4002,14 @@ describe('@Ip() param decorator', () => {
     @Module({ controllers: [RealIpController] })
     class AppModule {}
 
-    const app = await VelaFactory.create(AppModule);
+    const app = await VelaFactory.create(AppModule, {
+      getClientIp: (c) => c.req.header('x-runtime-client-ip') ?? null,
+    });
     const res = await app.getHonoApp().request('/realip', {
-      headers: { 'x-real-ip': '198.51.100.5' },
+      headers: {
+        'x-runtime-client-ip': '198.51.100.5',
+        'x-forwarded-for': 'attacker-controlled',
+      },
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ip: '198.51.100.5' });
@@ -7757,7 +7769,7 @@ describe('@Body() with missing or malformed JSON', () => {
     expect(((await res.json()) as any).hasBody).toBe(false);
   });
 
-  it('returns undefined for malformed JSON without crashing', async () => {
+  it('rejects malformed JSON with 400', async () => {
     @Controller('/body-malformed')
     class TestController {
       @Post()
@@ -7776,8 +7788,10 @@ describe('@Body() with missing or malformed JSON', () => {
       body: 'not-valid-json{{{',
     });
 
-    expect(res.status).toBe(200);
-    expect(((await res.json()) as any).body).toBeNull();
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: { code: 'bad_request', message: 'Malformed JSON body' },
+    });
   });
 });
 

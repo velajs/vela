@@ -9,6 +9,7 @@ import {
   UseFilters,
   Catch,
   APP_GUARD,
+  Container,
 } from '../index.js';
 import { VelaError } from '@velajs/errors';
 import type {
@@ -39,6 +40,7 @@ import { InMemoryRoomRegistry, local } from '../websocket/ws-sync.js';
 import { WsServerImpl } from '../websocket/ws-server.js';
 import { WS_ROOM_REGISTRY } from '../websocket/websocket.tokens.js';
 import type {
+  BroadcastCommand,
   WsClient,
   WsServer,
   OnGatewayInit,
@@ -46,15 +48,22 @@ import type {
   OnGatewayDisconnect,
   ReservedWsEventHandler,
 } from '../websocket/websocket.types.js';
+import type { SyncDriver } from '../websocket/ws-sync.js';
 
 type SinkClient = WsClient & { received: Array<{ event: string; data: unknown }> };
+
+const trustedSocketData = (): Record<string, unknown> => ({
+  principal: { issuer: 'test', subject: 'u1', principalType: 'user' },
+  tenantId: 't1',
+  expiresAtMs: Date.now() + 60_000,
+});
 
 function sink(id: string): SinkClient {
   const received: Array<{ event: string; data: unknown }> = [];
   return {
     id,
     rooms: new Set(),
-    data: {},
+    data: trustedSocketData(),
     raw: null,
     received,
     send() {},
@@ -76,9 +85,10 @@ interface Sent {
 
 class FakeClient implements WsClient {
   readonly rooms = new Set<string>();
-  data: Record<string, unknown> = {};
+  data: Record<string, unknown> = trustedSocketData();
   readonly raw = null;
   readonly sent: Sent[] = [];
+  closed?: { code?: number; reason?: string };
   constructor(public readonly id = 'c1') {}
   send(event: string, data?: unknown, id?: string): void {
     this.sent.push({ event, data, id });
@@ -89,7 +99,9 @@ class FakeClient implements WsClient {
   join(): void {}
   leave(): void {}
   commit(): void {}
-  close(): void {}
+  close(code?: number, reason?: string): void {
+    this.closed = { code, reason };
+  }
 }
 
 const frame = (event: string, data: unknown, id?: string): string =>
@@ -100,11 +112,19 @@ describe('buildWsExecutionContext', () => {
   const client = { id: 'c1' } as never;
 
   it('reports a ws context type with client/data/pattern access', () => {
-    const ctx = buildWsExecutionContext(client, { hi: 1 }, ChatGateway as never, 'onChat', 'chat');
+    const ctx = buildWsExecutionContext(
+      client,
+      { hi: 1 },
+      ChatGateway as never,
+      'onChat',
+      'chat',
+      'ChatModule#default',
+    );
 
     expect(ctx.getType()).toBe('ws');
     expect(ctx.getClass()).toBe(ChatGateway);
     expect(ctx.getHandler()).toBe('onChat');
+    expect(ctx.getModuleId()).toBe('ChatModule#default');
     expect(ctx.switchToWs().getClient()).toBe(client);
     expect(ctx.switchToWs().getData()).toEqual({ hi: 1 });
     expect(ctx.switchToWs().getPattern()).toBe('chat');
@@ -161,6 +181,25 @@ describe('gateway decorators', () => {
 
 describe('WsDispatcher', () => {
   beforeEach(() => MetadataRegistry.clear());
+
+  it('warns in production when a gateway opts out of Origin isolation', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    @WebSocketGateway({ path: '/open-origin', allowedOrigins: '*' })
+    class OpenOriginGateway {}
+
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [OpenOriginGateway] })
+    class AppModule {}
+
+    try {
+      await VelaFactory.create(AppModule);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('allows every browser Origin'));
+    } finally {
+      vi.unstubAllEnvs();
+      warn.mockRestore();
+    }
+  });
 
   it('routes a message to the matching @SubscribeMessage handler and frames the WsResponse', async () => {
     @WebSocketGateway({ path: '/chat' })
@@ -220,10 +259,75 @@ describe('WsDispatcher', () => {
     expect(client.sent).toEqual([]);
   });
 
+  it('closes oversized frames with 1009 before parsing or dispatch', async () => {
+    let hits = 0;
+    @WebSocketGateway({ path: '/limited', maxFrameBytes: 32 })
+    class LimitedGateway {
+      @SubscribeMessage('go')
+      onGo() {
+        hits++;
+      }
+    }
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [LimitedGateway] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const client = new FakeClient();
+    await app
+      .get(WsDispatcher)
+      .dispatchMessage('/limited', client, JSON.stringify({ event: 'go', data: 'x'.repeat(100) }));
+
+    expect(client.closed?.code).toBe(1009);
+    expect(hits).toBe(0);
+  });
+
+  it('closes oversized handler replies with 1009 and does not send them', async () => {
+    @WebSocketGateway({ path: '/limited-reply', maxFrameBytes: 48 })
+    class LimitedReplyGateway {
+      @SubscribeMessage('go')
+      onGo() {
+        return 'x'.repeat(100);
+      }
+    }
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [LimitedReplyGateway] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const client = new FakeClient();
+    await app.get(WsDispatcher).dispatchMessage('/limited-reply', client, frame('go', null));
+
+    expect(client.sent).toEqual([]);
+    expect(client.closed?.code).toBe(1009);
+  });
+
+  it('closes an expired attached identity before message dispatch', async () => {
+    let hits = 0;
+    @WebSocketGateway({ path: '/expired' })
+    class ExpiredGateway {
+      @SubscribeMessage('go')
+      onGo() {
+        hits++;
+      }
+    }
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [ExpiredGateway] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const client = new FakeClient();
+    client.data = { expiresAtMs: Date.now() - 1 };
+    await app.get(WsDispatcher).dispatchMessage('/expired', client, frame('go', {}));
+
+    expect(client.closed?.code).toBe(1008);
+    expect(hits).toBe(0);
+  });
+
   it('reuses guards through the WsExecutionContext and blocks the handler on deny', async () => {
+    let guardedModuleId: string | undefined;
+
     @Injectable()
     class WsOnlyDenyGuard implements CanActivate {
       canActivate(ctx: ExecutionContext): boolean {
+        guardedModuleId = ctx.getModuleId();
         return ctx.getType() !== 'ws';
       }
     }
@@ -246,6 +350,7 @@ describe('WsDispatcher', () => {
     await app.get(WsDispatcher).dispatchMessage('/g', client, frame('secret', {}, '7'));
 
     expect(client.sent).toEqual([{ event: 'exception', data: { message: 'Forbidden' }, id: '7' }]);
+    expect(guardedModuleId).toBe(app.get(Container).getOwnerModuleIds(GuardedGateway)[0]);
   });
 
   it('reuses the interceptor onion chain', async () => {
@@ -393,6 +498,57 @@ describe('rooms + Server handle', () => {
 
     expect(a.received).toEqual([{ event: 'ping', data: 1 }]);
     expect(b.received).toEqual([{ event: 'ping', data: 1 }]);
+  });
+
+  it('rejects oversized broadcasts before invoking the synchronization driver', () => {
+    const dispatched: BroadcastCommand[] = [];
+    const driver: SyncDriver = {
+      kind: 'spy',
+      bind() {},
+      dispatch(command) {
+        dispatched.push(command);
+      },
+    };
+    const server = new WsServerImpl(driver);
+
+    expect(() => server.emit('large', 'x'.repeat(70 * 1024))).toThrow(/exceeds 65536/);
+    expect(dispatched).toEqual([]);
+
+    server.setOutboundFrameLimit(96 * 1024);
+    expect(() => server.to('r1').emit('large', 'x'.repeat(70 * 1024))).not.toThrow();
+    expect(dispatched).toHaveLength(1);
+  });
+
+  it('enforces each recipient ceiling during broadcast fan-out', () => {
+    const registry = new InMemoryRoomRegistry();
+    const driver = local();
+    driver.bind(registry);
+    const server = new WsServerImpl(driver);
+    const sent: string[] = [];
+    let closeCode: number | undefined;
+    const limited: WsClient = {
+      id: 'limited',
+      rooms: new Set(),
+      maxFrameBytes: 48,
+      data: trustedSocketData(),
+      raw: null,
+      send() {},
+      sendRaw(payload) {
+        sent.push(payload);
+      },
+      join() {},
+      leave() {},
+      commit() {},
+      close(code) {
+        closeCode = code;
+      },
+    };
+    registry.join(limited, 'r1');
+
+    server.to('r1').emit('large', 'x'.repeat(100));
+
+    expect(sent).toEqual([]);
+    expect(closeCode).toBe(1009);
   });
 
   it('except(room) excludes those members and unioned rooms dedup per connection', () => {

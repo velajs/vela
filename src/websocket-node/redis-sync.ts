@@ -1,3 +1,10 @@
+import {
+  assertBroadcastCommandFits,
+  broadcastCommandFits,
+  DEFAULT_WS_MAX_FRAME_BYTES,
+  resolveMaxFrameBytes,
+  webSocketSyncEnvelopeFits,
+} from '../websocket/index';
 import type { BroadcastCommand, RoomRegistry, SyncDriver } from '../websocket/index';
 
 /**
@@ -45,15 +52,18 @@ export function redis(options: RedisSyncOptions): SyncDriver {
   const origin = crypto.randomUUID();
   let registry: RoomRegistry | undefined;
   let bound = false;
+  let maxFrameBytes = DEFAULT_WS_MAX_FRAME_BYTES;
 
   const onMessage = (ch: string, message: string): void => {
     if (ch !== channel) return;
+    if (!webSocketSyncEnvelopeFits(message, maxFrameBytes)) return;
     let cmd: BroadcastCommand & { origin?: string };
     try {
       cmd = JSON.parse(message);
     } catch {
       return;
     }
+    if (!broadcastCommandFits(cmd, maxFrameBytes)) return;
     if (cmd.origin === origin) return; // our own publish — already delivered locally
     swallow(registry?.deliverLocal(cmd));
   };
@@ -68,8 +78,16 @@ export function redis(options: RedisSyncOptions): SyncDriver {
       options.sub.on('message', onMessage);
     },
     dispatch(cmd) {
+      assertBroadcastCommandFits(cmd, maxFrameBytes);
+      const serialized = JSON.stringify({ ...cmd, origin });
+      if (!webSocketSyncEnvelopeFits(serialized, maxFrameBytes)) {
+        throw new RangeError('WebSocket synchronization envelope exceeds its configured limit');
+      }
       swallow(registry?.deliverLocal(cmd));
-      swallow(options.pub.publish(channel, JSON.stringify({ ...cmd, origin })));
+      swallow(options.pub.publish(channel, serialized));
+    },
+    setMaxFrameBytes(value) {
+      maxFrameBytes = resolveMaxFrameBytes({ maxFrameBytes: value });
     },
     stop() {
       if (!bound) return;

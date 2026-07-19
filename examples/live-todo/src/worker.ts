@@ -50,7 +50,7 @@ class KvTodoStore implements TodoStore {
 const AppModule = makeAppModule({
   live: {
     log: durableObjectCursorLog(),
-    driver: durableObjectLive({ binding: 'CHAT_ROOM' }),
+    driver: durableObjectLive({ binding: 'CHAT_ROOM', gatewayPath: '/rooms/:id/ws' }),
   },
   imports: [KVModule.forRoot({ binding: 'TODOS' })],
   storeProvider: { provide: TODO_STORE, useClass: KvTodoStore },

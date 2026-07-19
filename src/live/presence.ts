@@ -1,8 +1,15 @@
-import { Inject, Injectable } from '../index';
+import { MAX_PRESENCE_METADATA_BYTES } from '@velajs/live-protocol';
+import { Inject, Injectable, assertWebSocketRoomId } from '../index';
 import { LiveQuery, LiveResolver } from './live.decorators';
+import type { LiveQueryContext } from './live.types';
+
+const encoder = new TextEncoder();
 
 /** The invalidation tag for one room's roster. `$`-prefixed: never collides with app tags. */
-export const presenceTag = (room: string): string => `$presence:${room}`;
+export const presenceTag = (room: string): string => {
+  assertWebSocketRoomId(room);
+  return `$presence:${room}`;
+};
 
 /** The built-in roster query name (`useLiveQuery`-able like any app query). */
 export const PRESENCE_ROSTER_QUERY = '$presence.roster';
@@ -38,7 +45,11 @@ export class PresenceService {
   constructor(
     private readonly ttlMs = 30_000,
     readonly enabled = true,
-  ) {}
+  ) {
+    if (!Number.isSafeInteger(ttlMs) || ttlMs <= 0) {
+      throw new Error('[vela] presence ttlMs must be a positive safe integer');
+    }
+  }
 
   /** Wired by the engine so beats/reaps invalidate through the live driver. */
   bindInvalidator(invalidator: (tags: string[]) => void): void {
@@ -47,6 +58,23 @@ export class PresenceService {
 
   beat(room: string, clientId: string, meta?: unknown): void {
     if (!this.enabled) return;
+    assertWebSocketRoomId(room);
+    if (meta !== undefined) {
+      let serialized: string | undefined;
+      try {
+        serialized = JSON.stringify(meta);
+      } catch {
+        throw new Error('[vela] presence metadata must be serializable JSON');
+      }
+      if (
+        serialized === undefined ||
+        encoder.encode(serialized).byteLength > MAX_PRESENCE_METADATA_BYTES
+      ) {
+        throw new Error(
+          `[vela] presence metadata must not exceed ${MAX_PRESENCE_METADATA_BYTES} bytes`,
+        );
+      }
+    }
     let state = this.rooms.get(room);
     if (!state) {
       state = { members: new Map() };
@@ -98,13 +126,18 @@ export class PresenceResolver {
     tags: (args: { room: string }) => [presenceTag(args.room)],
     parse: (args: unknown) => {
       const room = (args as { room?: unknown } | undefined)?.room;
-      if (typeof room !== 'string' || room.length === 0) {
+      try {
+        assertWebSocketRoomId(room);
+      } catch {
         throw new Error("presence roster args require a non-empty 'room' string");
       }
       return { room };
     },
   })
-  roster(args: { room: string }): PresenceMember[] {
+  roster(args: { room: string }, context: LiveQueryContext): PresenceMember[] {
+    if (!context.rooms.includes(args.room)) {
+      throw new Error('presence roster room is not joined by this connection');
+    }
     return this.presence.roster(args.room);
   }
 }

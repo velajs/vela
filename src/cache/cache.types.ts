@@ -6,6 +6,14 @@ export interface CacheModuleOptions {
   max?: number; // max entries (default: 100)
   isGlobal?: boolean; // register CacheInterceptor as APP_INTERCEPTOR
   /**
+   * Resolve the authenticated principal/tenant partition for a request.
+   * Credential-bearing requests are cached only when this returns a non-empty
+   * value. The value is SHA-256 hashed before it becomes part of the cache key.
+   * Throwing, returning an empty value, or returning an oversized value safely
+   * bypasses caching.
+   */
+  varyBy?: (request: Request) => Awaitable<string | undefined>;
+  /**
    * Custom SYNC backing store (replaces the default in-memory store). For async
    * (KV/tiered) caching use {@link AsyncCacheStore} + `TieredCacheStore`
    * programmatically — the interceptor/CacheService path is synchronous.

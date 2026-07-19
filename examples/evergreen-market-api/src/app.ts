@@ -832,7 +832,7 @@ export async function createEvergreenMarketApp(
 
   const app = await VelaFactory.create(AppModule, {
     globalPrefix: '/api',
-    getClientIp: (c) => c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? null,
+    getClientIp: (c) => c.req.header('cf-connecting-ip') ?? null,
   });
 
   const document = createOpenApiDocument(AppModule, {

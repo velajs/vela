@@ -51,6 +51,7 @@ export class HandlerExecutor {
   create(
     route: RouteMetadata,
     controller: Type,
+    moduleId: string,
     allParamMetadata: Map<string | symbol, ParameterMetadata[]>,
   ): (c: Context) => Promise<Response> {
     const paramMetadata = (allParamMetadata.get(route.handlerName) || []).sort(
@@ -112,23 +113,24 @@ export class HandlerExecutor {
         c,
         controller,
         route.handlerName,
+        moduleId,
       );
 
       try {
-        const instance = requestContainer.resolve(controller);
+        const instance = requestContainer.resolve(controller, moduleId);
 
         const method = Reflect.get(instance, route.handlerName);
         if (typeof method !== 'function') {
           throw new Error(`Method ${String(route.handlerName)} not found on controller`);
         }
 
-        // Args + pipes → guards → interceptor chain → handler, via the shared
-        // runner. `argsBeforeGuards` preserves the deliberate vela HTTP order.
+        // Guards → args + pipes → interceptor chain → handler, via the shared
+        // runner. Authentication/authorization therefore rejects before body
+        // parsing and validation work, matching Nest's request lifecycle.
         const result = await PipelineRunner.run({
           context: executionContext,
           guards,
           interceptors,
-          argsBeforeGuards: true,
           resolveArgs: () =>
             this.argumentResolver.extract(c, paramMetadata, pipes, requestContainer, paramTypes),
           invoke: async (args) => Reflect.apply(method, instance, args),

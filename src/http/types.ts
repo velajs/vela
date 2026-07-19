@@ -37,6 +37,8 @@ export interface ParamMetadata {
 
 export interface ControllerRegistration {
   controller: Type;
+  /** Stable container bucket that owns this routed controller instance. */
+  moduleId: string;
   metadata: ControllerMetadata;
   routes: RouteMetadata[];
 }

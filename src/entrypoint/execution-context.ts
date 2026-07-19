@@ -27,11 +27,13 @@ export function buildEntrypointExecutionContext(
   targetClass: Type,
   handlerName: string | symbol,
   payload: unknown,
+  moduleId?: string,
 ): EntrypointExecutionContext {
   return {
     getType: <T extends string>() => kind as T,
     getClass: () => targetClass,
     getHandler: () => handlerName,
+    getModuleId: () => moduleId,
     getPayload: <T = unknown>() => payload as T,
     getContext: WRONG_TRANSPORT('getContext()', kind) as never,
     getRequest: WRONG_TRANSPORT('getRequest()', kind) as never,

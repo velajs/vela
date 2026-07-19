@@ -39,7 +39,7 @@ import {
 } from '@velajs/vela/websocket';
 import type { WsClient, WsServer, OnGatewayConnection, OnGatewayDisconnect } from '@velajs/vela/websocket';
 
-@WebSocketGateway({ path: '/rooms/:id/ws', binding: 'CHAT_ROOM' })
+@WebSocketGateway({ path: '/rooms/:id/ws', roomParam: 'id', binding: 'CHAT_ROOM' })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   // Constructor injection only (the DI container has no property-injection pass).
   constructor(@WebSocketServer() private readonly server: WsServer) {}
@@ -62,6 +62,16 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 `@WebSocketGateway(options)`:
 - `path` — the route the upgrade is served on (supports params, e.g. `:id`).
 - `binding` — **Cloudflare only**: the `wrangler.toml` Durable Object binding name that hosts this gateway's sockets. Ignored on node/bun/deno.
+- `roomParam` — the path parameter used as the room id. It is required for every parameterized path; bootstrap rejects missing or non-existent parameter names.
+- `allowedOrigins` — browser Origin allowlist. Omitted means same-origin; clients without an Origin header are allowed. Use `'*'` only as an explicit opt-out.
+- `authorizeUpgrade(request)` — optional lightweight authentication/authorization hook that runs before socket allocation. It must return exactly `true`; errors fail closed.
+- `authenticateUpgrade(request, context)` — cookie/socket-ticket authenticator. It receives the resolved room and optional short-lived `ticket`, and must return a canonical `{ principal, tenantId, expiresAtMs }` identity. Invalid results and errors fail closed.
+- `authorizeDelivery(client)` — optional mutable authorization/revocation hook re-run for every server-initiated recipient. App-wide guards are also re-run; denial closes with 1008.
+- `maxFrameBytes` — inbound and outbound frame ceiling, defaulting to 64 KiB. Oversized inbound frames close with code 1009 before JSON decoding; oversized replies, direct sends, and broadcasts close the affected recipient with 1009 without writing the frame.
+
+Derived room ids are limited to 512 UTF-8 bytes and reject control characters
+before transport allocation. A connection may join at most 32 rooms, including
+its initial gateway room.
 
 Handler parameter decorators:
 - `@MessageBody()` — the envelope's `data`.
@@ -125,6 +135,81 @@ onSecret() { /* ... */ }
 - Throw `WsException(stringOrObject)` from a guard/handler to send a client-facing error frame. Register a `@Catch(WsException)` `ExceptionFilter` to customize it.
 - **Note:** request-scoped (`Scope.REQUEST`) providers that depend on the HTTP request are not available in gateways.
 
+### Connection security
+
+Origin, `authorizeUpgrade`, and `authenticateUpgrade` checks run before the runtime upgrades the socket
+(and, on Cloudflare, before resolving or allocating a Durable Object). Message
+guards still run for every accepted frame. If `handleConnection` throws, the
+transport closes with policy code 1008 and never dispatches queued messages.
+
+Authentication middleware can attach an epoch-millisecond `expiresAtMs` value to
+`client.data`; the dispatcher closes expired identities with code 1008 before
+handling another frame. The Cloudflare Access integration forwards its verified
+credential expiry into the hibernation attachment and rejects already-expired
+upgrades before Durable Object allocation.
+
+#### Short-lived socket tickets
+
+For browser flows that cannot attach an `Authorization` header, exchange the
+normal authenticated HTTPS session for a room-bound, single-use socket ticket.
+It may use the reserved `ticket` query parameter because its lifetime is at most
+30 seconds and it is consumed once; Vela removes it before authorization
+callbacks and Cloudflare Durable Object forwarding. Never put a Bearer token,
+session token, API key, or other reusable credential in a WebSocket URL. Secure
+same-site cookies plus Origin checks remain preferable when available.
+
+```ts
+import { MemoryNonceStore } from '@velajs/vela';
+import {
+  issueWebSocketTicket,
+  verifyAndConsumeWebSocketTicket,
+} from '@velajs/vela/websocket';
+
+const token = await issueWebSocketTicket({
+  secret: env.SOCKET_TICKET_SECRET,
+  gatewayPath: '/tenants/:tenantId/rooms/:room/ws',
+  room: 'room:engineering',
+  principal: {
+    issuer: 'https://identity.example.com',
+    subject: session.user.id,
+    principalType: 'user',
+  },
+  tenantId: session.tenantId,
+  ttlMs: 30_000,
+});
+
+const nonceStore = new MemoryNonceStore();
+
+@WebSocketGateway({
+  path: '/tenants/:tenantId/rooms/:room/ws',
+  roomParam: 'room',
+  authenticateUpgrade: async (_request, { ticket, gatewayPath, room }) => {
+    if (!ticket) return false;
+    return verifyAndConsumeWebSocketTicket(ticket, {
+      secret: env.SOCKET_TICKET_SECRET,
+      gatewayPath,
+      room,
+      nonceStore,
+    });
+  },
+})
+class RoomGateway {}
+```
+
+The HMAC claim has fixed `vela:websocket` / `socket-ticket`
+audience-and-purpose tags and is bound to the declared gateway path, resolved
+room, canonical principal, tenant, issue time, expiry, and generated nonce.
+Lifetimes cannot exceed 30 seconds. Parsing is size-bounded and rejects unknown
+fields; malformed, tampered, mismatched, future, expired, or replayed tokens
+return `false`.
+
+`MemoryNonceStore` is suitable only for a single process/isolate. Strong
+single-use behavior across Cloudflare isolates requires a structural
+`NonceStore` backed by a Durable Object (or another store whose `claim` operation
+is atomic). The Node and Cloudflare transports persist the returned principal,
+tenant, and `expiresAtMs` in connection state, then continue checking expiry and
+authorization for frames and server-initiated delivery.
+
 ---
 
 ## Runtime setup
@@ -180,14 +265,14 @@ tag = "v1"
 new_sqlite_classes = ["ChatRoom"]
 ```
 
-How it works: the Worker's Hono app validates the `Upgrade` header and forwards the request to the room's Durable Object (addressed by `idFromName(roomId)`). The DO owns the raw socket via `WebSocketPair` + `ctx.acceptWebSocket(server, tags)` (hibernatable) and dispatches `webSocketMessage`/`webSocketClose`/`webSocketError` into the gateway. **One Durable Object per room = native horizontal scale.** Hono's `upgradeWebSocket` cannot bridge DO hibernation, which is why the DO uses the raw runtime API.
+How it works: the Worker's Hono app validates the `Upgrade` header and forwards the request to the gateway + room Durable Object (a canonical namespace derived from the declared gateway path and room id). The DO owns the raw socket via `WebSocketPair` + `ctx.acceptWebSocket(server, tags)` (hibernatable) and dispatches `webSocketMessage`/`webSocketClose`/`webSocketError` into the gateway. **One Durable Object per gateway room = native horizontal scale without cross-gateway room collisions.** Hono's `upgradeWebSocket` cannot bridge DO hibernation, which is why the DO uses the raw runtime API.
 
 Server-initiated push from an HTTP controller / cron / queue:
 
 ```ts
 import { broadcastToRoom } from '@velajs/cloudflare';
 // ns = DurableObjectService.namespace
-await broadcastToRoom(ns, `org:${orgId}`, 'order.created', order);
+await broadcastToRoom(ns, '/orgs/:orgId/ws', `org:${orgId}`, 'order.created', order);
 ```
 
 ### Node.js
@@ -232,7 +317,7 @@ registerWebSocketGateways(app, upgradeWebSocket);
 Deno.serve(app.fetch);
 ```
 
-On node/bun/deno each connection auto-joins the room from the `:id` route param (or the route path), mirroring the Cloudflare DO-per-room model.
+On node/bun/deno each connection auto-joins the room from the configured or derived route parameter (or the static route path), mirroring the Cloudflare DO-per-room model.
 
 ---
 
@@ -258,5 +343,6 @@ Delivery guarantees (honest): at-most-once, no ordering across publishers, no re
 
 - **`nodejs_compat` is required on Cloudflare** — vela statically imports `hono/context-storage` (`node:async_hooks`).
 - Cloudflare per-connection state (`client.data`, room membership) lives in the hibernation **attachment** — max **16 KiB**; store larger state in Durable Object storage keyed by `client.id`. Room membership survives hibernation; never keep it in DO instance fields.
+- Inbound and outbound frames default to a **64 KiB** limit. The per-gateway value follows each connection through local or Redis fan-out and Cloudflare hibernation. Raise `maxFrameBytes` only after considering isolate memory, synchronization traffic, and validation cost.
 - Protocol is **JSON text frames only** — binary frames and backpressure signalling are out of scope.
 - Not yet implemented: Worker-isolate `@WebSocketServer()` emit (use `broadcastToRoom` from a controller instead), cross-DO global `server.emit()`, per-user-DO direct messages.

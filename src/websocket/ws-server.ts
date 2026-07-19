@@ -1,4 +1,6 @@
 import type { SyncDriver } from './ws-sync';
+import { assertBroadcastCommandFits } from './ws-sync';
+import { DEFAULT_WS_MAX_FRAME_BYTES, resolveMaxFrameBytes } from './gateway-routing';
 import type { BroadcastCommand, BroadcastOperator, WsServer } from './websocket.types';
 
 /**
@@ -9,6 +11,7 @@ import type { BroadcastCommand, BroadcastOperator, WsServer } from './websocket.
 export class BroadcastOperatorImpl implements BroadcastOperator {
   constructor(
     private readonly driver: SyncDriver,
+    private readonly maxFrameBytes: () => number = () => DEFAULT_WS_MAX_FRAME_BYTES,
     private readonly rooms = new Set<string>(),
     private readonly exceptRooms = new Set<string>(),
     private readonly exceptIds = new Set<string>(),
@@ -35,6 +38,7 @@ export class BroadcastOperatorImpl implements BroadcastOperator {
       exceptIds: this.exceptIds.size ? [...this.exceptIds] : undefined,
       frame: JSON.stringify({ event, data }),
     };
+    assertBroadcastCommandFits(cmd, this.maxFrameBytes());
     return this.driver.dispatch(cmd);
   }
 }
@@ -45,15 +49,29 @@ export class BroadcastOperatorImpl implements BroadcastOperator {
  * sender — that lives in the transport's client, not here).
  */
 export class WsServerImpl implements WsServer {
-  constructor(private readonly driver: SyncDriver) {}
+  private maxFrameBytes = DEFAULT_WS_MAX_FRAME_BYTES;
+  private hasGatewayLimit = false;
+
+  constructor(private readonly driver: SyncDriver) {
+    this.driver.setMaxFrameBytes?.(this.maxFrameBytes);
+  }
+
+  setOutboundFrameLimit(maxFrameBytes: number): void {
+    const resolved = resolveMaxFrameBytes({ maxFrameBytes });
+    this.maxFrameBytes = this.hasGatewayLimit ? Math.max(this.maxFrameBytes, resolved) : resolved;
+    this.hasGatewayLimit = true;
+    this.driver.setMaxFrameBytes?.(this.maxFrameBytes);
+  }
 
   emit(event: string, data?: unknown): void | Promise<void> {
     // Empty `rooms` means GLOBAL.
-    return this.driver.dispatch({ rooms: [], frame: JSON.stringify({ event, data }) });
+    const command: BroadcastCommand = { rooms: [], frame: JSON.stringify({ event, data }) };
+    assertBroadcastCommandFits(command, this.maxFrameBytes);
+    return this.driver.dispatch(command);
   }
 
   to(room: string): BroadcastOperator {
-    return new BroadcastOperatorImpl(this.driver).to(room);
+    return new BroadcastOperatorImpl(this.driver, () => this.maxFrameBytes).to(room);
   }
 
   in(room: string): BroadcastOperator {
@@ -61,6 +79,6 @@ export class WsServerImpl implements WsServer {
   }
 
   except(room: string): BroadcastOperator {
-    return new BroadcastOperatorImpl(this.driver).except(room);
+    return new BroadcastOperatorImpl(this.driver, () => this.maxFrameBytes).except(room);
   }
 }

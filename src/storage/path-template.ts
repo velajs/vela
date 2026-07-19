@@ -29,6 +29,24 @@ export function joinStoragePath(
   const expandedRoot = root ? expandPathTemplate(root, now) : '';
   return `${expandedRoot}/${relativePath}`
     .split(/[/\\]+/)
-    .filter((segment) => segment !== '' && segment !== '.' && segment !== '..')
+    .filter((segment) => !isDotSegment(segment))
     .join('/');
+}
+
+/** WHATWG URL parsing treats percent-encoded dot segments as navigation too. */
+function isDotSegment(segment: string): boolean {
+  if (segment === '') return true;
+  let decoded = segment;
+  // Decode twice so `%252e%252e` cannot become traversal after a second layer.
+  for (let i = 0; i < 2; i++) {
+    if (decoded === '.' || decoded === '..') return true;
+    try {
+      const next = decodeURIComponent(decoded);
+      if (next === decoded) break;
+      decoded = next;
+    } catch {
+      break;
+    }
+  }
+  return decoded === '.' || decoded === '..';
 }
