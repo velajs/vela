@@ -75,6 +75,7 @@
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "unplugin-swc": "catalog:",
+    "vite": "^8.0.16",
     "vitest": "catalog:"
   },
   "peerDependencies": {
