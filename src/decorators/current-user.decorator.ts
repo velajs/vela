@@ -1,14 +1,10 @@
-import {
-  createLazyParamDecorator,
-  REQUEST_CONTEXT,
-  type ExecutionContext,
-  type RequestContext,
-} from '@velajs/vela';
-import { AUTH_USER_KEY } from '../better-auth.tokens';
+import { createParamDecorator, type ExecutionContext } from '@velajs/vela';
+import { getAuthRequestState } from '../auth-request-state';
 import type { User } from '../better-auth.types';
 
-export const CurrentUser = createLazyParamDecorator((_data: unknown, ctx: ExecutionContext) => {
-  const honoCtx = ctx.getContext() as { get: (k: string) => { resolve<T>(t: unknown): T } };
-  const reqCtx = honoCtx.get('container').resolve<RequestContext>(REQUEST_CONTEXT);
-  return reqCtx.get<User>(AUTH_USER_KEY);
-});
+export const CurrentUser = createParamDecorator(
+  (_data: unknown, ctx: ExecutionContext): User | undefined => {
+    const state = getAuthRequestState(ctx);
+    return state.authenticated ? state.user : undefined;
+  },
+);

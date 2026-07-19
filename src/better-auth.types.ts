@@ -9,9 +9,16 @@ export type BetterAuthInstance = Auth<any>;
 
 export interface BetterAuthModuleOptions {
   auth: BetterAuthInstance;
+  /** Stable namespace paired with user ids in authorization identities. */
+  issuer?: string;
   basePath?: string;
+  /**
+   * Register AuthGuard application-wide. Defaults to `true`; opt out only when
+   * the application installs an equivalent global authentication guard itself.
+   */
   isGlobal?: boolean;
-  defaultPolicy?: 'deny' | 'allow';
+  /** @deprecated Authentication is deny-by-default. Only `'deny'` is accepted. */
+  defaultPolicy?: 'deny';
   mountHandler?: boolean;
 }
 

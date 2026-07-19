@@ -1,17 +1,14 @@
 import {
   ForbiddenException,
   Injectable,
-  InjectionToken,
-  REQUEST_CONTEXT,
   Reflector,
   type CanActivate,
   type ExecutionContext,
-  type RequestContext,
+  type InjectionToken,
 } from '@velajs/vela';
 import { AUTHZ } from '@velajs/authz/vela';
-import type { Authz } from '@velajs/authz';
-import { AUTH_USER_KEY } from '../better-auth.tokens';
-import type { User } from '../better-auth.types';
+import type { Authz, Identity } from '@velajs/authz';
+import { getAuthRequestState } from '../auth-request-state';
 import { identityFromUser } from '../authz-bridge';
 import { RequirePermission } from '../decorators/require-permission.decorator';
 
@@ -23,28 +20,42 @@ import { RequirePermission } from '../decorators/require-permission.decorator';
 // accepts it without a structural clash. This is purely a compile-time alias;
 // it changes nothing at runtime. (Version-skew workaround until both publish.)
 const AUTHZ_TOKEN = AUTHZ as unknown as InjectionToken<Authz>;
+const ACCESS_DENIED = 'Access denied';
+
+interface ContainerLike {
+  resolve<T>(token: unknown, requestingModuleId?: string): T;
+  resolveAll?<T>(token: unknown, requestingModuleId?: string): T[];
+}
+
+function resolveSingleAuthz(container: ContainerLike, moduleId: string): Authz | undefined {
+  try {
+    if (typeof container.resolveAll === 'function') {
+      const candidates = container.resolveAll<Authz>(AUTHZ_TOKEN, moduleId);
+      return candidates.length === 1 ? candidates[0] : undefined;
+    }
+    return container.resolve<Authz>(AUTHZ_TOKEN, moduleId);
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Enforces the `@RequirePermission(...)` metadata against the `@velajs/authz`
  * engine. For each required permission it calls `authz.can(identity, perm)`,
  * requiring **all** of them (AND semantics — contrast {@link RolesGuard}, which
  * is OR over roles). The caller's `Identity` is derived from the better-auth
- * user that {@link AuthGuard} placed in the request context, so this guard must
+ * user that {@link AuthGuard} placed in canonical request-local auth state, so this guard must
  * run *after* `AuthGuard` (e.g. `@UseGuards(AuthGuard, PermissionGuard)`).
  *
- * `AUTHZ` is resolved at **request time** from the per-request container (the
- * same container `REQUEST_CONTEXT` is resolved from), not constructor-injected.
- * This deliberately avoids DI visibility coupling: the guard works whether or
- * not `AuthzModule` is registered as global — a present-but-non-global
- * `AuthzModule` resolves fine and, crucially, never crashes bootstrap. If
- * `AuthzModule` is not registered at all the resolve fails and the guard fails
- * closed (403) rather than granting access.
+ * `AUTHZ` is resolved at request time from the per-request container. Exactly
+ * one reachable engine is required; zero or multiple registrations deny rather
+ * than selecting one by import order.
  *
  * Fail-closed on every abnormal path — no branch grants access on missing
  * wiring or a missing caller:
  * - no required permissions → allow (nothing to enforce);
  * - `AUTHZ` unresolvable (`AuthzModule` not registered) → deny (`ForbiddenException`);
- * - no authenticated user in the request context → deny;
+ * - no authenticated user in request-local auth state → deny;
  * - any single required permission not granted → deny.
  *
  * The guard is stateless (no injected dependencies), so it is safe to register
@@ -58,39 +69,80 @@ export class PermissionGuard implements CanActivate {
     const required = this.reflector.getAllAndOverride(RequirePermission, context);
     if (!required || required.length === 0) return true;
 
-    const honoCtx = context.getContext() as {
-      get: (k: string) => { resolve<T>(t: unknown): T };
-    };
-    const container = honoCtx.get('container');
+    const container = resolveContextContainer(context);
+    const moduleId = context.getModuleId();
 
-    // Resolve AUTHZ at request time from the per-request container — the SAME
-    // container REQUEST_CONTEXT resolves from. Because this lookup carries no
-    // requesting module, it matches AUTHZ by its exporter, so a non-global
-    // `AuthzModule` is reachable without forcing the app to declare it global.
-    // `resolve` throws (or, defensively, could yield undefined) for an
-    // unregistered token, so wrap it and fail closed on any failure.
-    let authz: Authz | undefined;
-    try {
-      authz = container.resolve<Authz>(AUTHZ_TOKEN);
-    } catch {
-      authz = undefined;
-    }
+    // Resolve all visible AUTHZ registrations and accept only an unambiguous
+    // single engine. This prevents import order from selecting another tenant's
+    // or feature module's authorization policy.
+    const authz =
+      container === undefined || moduleId === undefined
+        ? undefined
+        : resolveSingleAuthz(container, moduleId);
     if (!authz) {
-      throw new ForbiddenException('Authorization is not configured');
+      throw new ForbiddenException(ACCESS_DENIED);
     }
 
-    const reqCtx = container.resolve<RequestContext>(REQUEST_CONTEXT);
-    const user = reqCtx.get<User & { id?: string; role?: string | string[] }>(AUTH_USER_KEY);
-    if (!user) {
-      throw new ForbiddenException('Permission check requires authentication');
-    }
-
-    const identity = identityFromUser(user);
+    const identity = resolveContextIdentity(context);
+    if (identity === undefined) throw new ForbiddenException(ACCESS_DENIED);
     for (const permission of required) {
       if (!(await authz.can(identity, permission))) {
-        throw new ForbiddenException(`Missing permission: ${permission}`);
+        throw new ForbiddenException(ACCESS_DENIED);
       }
     }
     return true;
   }
+}
+
+function resolveContextContainer(context: ExecutionContext): ContainerLike | undefined {
+  const direct = context.getContainer?.<ContainerLike>();
+  if (direct !== undefined) return direct;
+  if (context.getType() !== 'http') return undefined;
+  try {
+    const honoCtx = context.getContext() as { get: (key: string) => ContainerLike | undefined };
+    return honoCtx.get('container');
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveContextIdentity(context: ExecutionContext): Identity | undefined {
+  if (context.getType() === 'ws') {
+    try {
+      const data = context.switchToWs().getClient<{ data?: unknown }>()?.data;
+      if (!data || typeof data !== 'object') return undefined;
+      const record = data as Record<string, unknown>;
+      const principal = record.principal;
+      if (!principal || typeof principal !== 'object') return undefined;
+      const fields = principal as Record<string, unknown>;
+      if (
+        typeof fields.issuer !== 'string' ||
+        fields.issuer.length === 0 ||
+        typeof fields.subject !== 'string' ||
+        fields.subject.length === 0 ||
+        (fields.principalType !== 'user' && fields.principalType !== 'service') ||
+        typeof record.tenantId !== 'string' ||
+        record.tenantId.length === 0 ||
+        typeof record.expiresAtMs !== 'number' ||
+        !Number.isSafeInteger(record.expiresAtMs) ||
+        record.expiresAtMs <= Date.now()
+      ) {
+        return undefined;
+      }
+      return {
+        issuer: fields.issuer,
+        subject: fields.subject,
+        principalType: fields.principalType,
+        userId: fields.subject,
+        roles: [],
+      };
+    } catch {
+      return undefined;
+    }
+  }
+
+  const state = getAuthRequestState(context);
+  return state.authenticated
+    ? identityFromUser(state.user, state.issuer, state.principalType)
+    : undefined;
 }

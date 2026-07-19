@@ -8,6 +8,9 @@ import type { User } from './better-auth.types';
  */
 export type AuthUser = User & { role?: string | string[] | null };
 
+/** Stable issuer namespace used for better-auth session principals. */
+export const BETTER_AUTH_ISSUER = 'better-auth';
+
 const normalizeRoles = (role: string | string[] | null | undefined): string[] => {
   if (!role) return [];
   // Strip empty entries and return a fresh array (never alias the caller's
@@ -20,16 +23,26 @@ const normalizeRoles = (role: string | string[] | null | undefined): string[] =>
 };
 
 /**
- * Adapts a better-auth user into a `@velajs/authz` {@link Identity}. Maps
- * `user.id` → `userId` and the admin-plugin `role` field → `roles`.
+ * Adapts a better-auth user into a stable `@velajs/authz` {@link Identity}.
+ * The issuer scopes `user.id` as both `subject` and the compatibility `userId`;
+ * the admin-plugin `role` field supplies local roles.
  *
  * Fail-closed: a missing user (`null`/`undefined`, i.e. an unauthenticated
  * request) maps to the zero-privilege identity `{ roles: [] }`, so downstream
  * `can()` checks grant nothing.
  */
-export const identityFromUser = (user: AuthUser | null | undefined): Identity => {
-  if (!user) return { roles: [] };
+export const identityFromUser = (
+  user: AuthUser | null | undefined,
+  issuer: string = BETTER_AUTH_ISSUER,
+  principalType: 'user' | 'service' = 'user',
+): Identity => {
+  if (!user || typeof user.id !== 'string' || user.id.length === 0) return { roles: [] };
+  if (issuer.length === 0)
+    throw new Error('@velajs/better-auth: identity issuer must be non-empty');
   return {
+    issuer,
+    subject: user.id,
+    principalType,
     userId: user.id,
     roles: normalizeRoles(user.role),
   };

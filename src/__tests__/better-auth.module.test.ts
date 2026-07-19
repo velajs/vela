@@ -1,6 +1,11 @@
 import { Controller, Get, MetadataRegistry, Module, VelaFactory } from '@velajs/vela';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { BETTER_AUTH_OPTIONS, BetterAuthModule, BetterAuthService } from '../index';
+import {
+  BETTER_AUTH_OPTIONS,
+  BetterAuthModule,
+  BetterAuthService,
+  createBetterAuthCatchallController,
+} from '../index';
 import type { BetterAuthInstance } from '../better-auth.types';
 
 function makeMockAuth(session: { user: unknown; session: unknown } | null = null) {
@@ -28,10 +33,45 @@ describe('BetterAuthModule', () => {
     expect(service.api).toBe(auth.api);
     expect(app.get(BETTER_AUTH_OPTIONS)).toMatchObject({
       basePath: '/api/auth',
+      issuer: 'better-auth:/api/auth',
       defaultPolicy: 'deny',
-      isGlobal: false,
+      isGlobal: true,
       mountHandler: true,
     });
+  });
+
+  it('keys otherwise identical registrations by auth instance identity', () => {
+    const first = BetterAuthModule.forRoot({ auth: makeMockAuth() });
+    const second = BetterAuthModule.forRoot({ auth: makeMockAuth() });
+    expect(first.key).not.toBe(second.key);
+  });
+
+  it('keys same-source async closures by factory identity', () => {
+    const makeFactory = () => () => makeMockAuth();
+    const first = BetterAuthModule.forRootAsync({ useFactory: makeFactory() });
+    const second = BetterAuthModule.forRootAsync({ useFactory: makeFactory() });
+    expect(first.key).not.toBe(second.key);
+  });
+
+  it('rejects an explicit key rebound to a different auth registration', () => {
+    const key = 'security-test-explicit-conflict';
+    BetterAuthModule.forRoot({ auth: makeMockAuth(), key });
+    expect(() => BetterAuthModule.forRoot({ auth: makeMockAuth(), key })).toThrow(
+      /already bound to a different auth registration/,
+    );
+  });
+
+  it.each(['', '/', 'api/auth', '//api/auth', '/api/auth/', '/api/../auth', '/api/%2e%2e/auth'])(
+    'rejects unsafe basePath %j',
+    (basePath) => {
+      expect(() => BetterAuthModule.forRoot({ auth: makeMockAuth(), basePath })).toThrow(
+        /basePath/,
+      );
+    },
+  );
+
+  it('applies the same basePath validation to the exported controller factory', () => {
+    expect(() => createBetterAuthCatchallController('/api/../private')).toThrow(/basePath/);
   });
 
   it('forRootAsync defers the user factory until first auth access', async () => {
@@ -46,7 +86,6 @@ describe('BetterAuthModule', () => {
             factoryCalls++;
             return auth;
           },
-          defaultPolicy: 'allow',
         }),
       ],
     })
@@ -68,7 +107,7 @@ describe('BetterAuthModule', () => {
     expect(service.api).toBe(auth.api);
     expect(factoryCalls).toBe(1);
 
-    expect(app.get(BETTER_AUTH_OPTIONS).defaultPolicy).toBe('allow');
+    expect(app.get(BETTER_AUTH_OPTIONS).defaultPolicy).toBe('deny');
   });
 
   it('mounts the catch-all controller at /api/auth/* by default', async () => {
@@ -133,7 +172,7 @@ describe('BetterAuthModule', () => {
     expect(auth.handler).not.toHaveBeenCalled();
   });
 
-  it('isGlobal:true registers AuthGuard via APP_GUARD', async () => {
+  it('registers AuthGuard via APP_GUARD by default', async () => {
     const auth = makeMockAuth(null);
 
     @Controller('/items')
@@ -145,7 +184,7 @@ describe('BetterAuthModule', () => {
     }
 
     @Module({
-      imports: [BetterAuthModule.forRoot({ auth, isGlobal: true })],
+      imports: [BetterAuthModule.forRoot({ auth })],
       controllers: [ItemsController],
     })
     class AppModule {}
@@ -153,5 +192,13 @@ describe('BetterAuthModule', () => {
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/items');
     expect(res.status).toBe(401);
+  });
+
+  it('rejects the removed allow-by-default compatibility policy at runtime', () => {
+    const options = { auth: makeMockAuth(), defaultPolicy: 'allow' } as unknown as Parameters<
+      typeof BetterAuthModule.forRoot
+    >[0];
+
+    expect(() => BetterAuthModule.forRoot(options)).toThrow(/deny-only/);
   });
 });

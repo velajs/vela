@@ -1,7 +1,7 @@
 import { Controller, Get, Inject, MetadataRegistry, UseGuards } from '@velajs/vela';
 import { Test } from '@velajs/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AuthGuard, BetterAuthModule, BetterAuthService, CurrentUser } from '../index';
+import { AuthGuard, BetterAuthModule, BetterAuthService, CurrentUser, Public } from '../index';
 import type { BetterAuthInstance } from '../better-auth.types';
 
 function makeAuth(label: string) {
@@ -58,7 +58,10 @@ describe('Test.createTestingModule — BetterAuthService override', () => {
     }
 
     const moduleRef = await Test.createTestingModule({
-      imports: [BetterAuthModule.forRoot({ auth: real })],
+      // This test installs AuthGuard explicitly on the controller. Disable the
+      // module-level global registration so a single request has one guard
+      // invocation, matching the behavior under test.
+      imports: [BetterAuthModule.forRoot({ auth: real, isGlobal: false })],
       controllers: [MeController],
     })
       .overrideProvider(BetterAuthService)
@@ -81,11 +84,45 @@ describe('Test.createTestingModule — BetterAuthService override', () => {
     expect(real.api.getSession).not.toHaveBeenCalled();
   });
 
+  it('fails closed when an overridden service returns a mismatched session identity', async () => {
+    const real = makeAuth('real');
+    const mock = makeAuth('malformed-session');
+    mock.api.getSession = vi.fn().mockResolvedValue({
+      user: { id: 'user-a', email: 'a@example.com' },
+      session: { id: 'session-a', userId: 'user-b' },
+    });
+
+    @Controller('/private')
+    @UseGuards(AuthGuard)
+    class PrivateController {
+      @Get()
+      handle() {
+        return { leaked: true };
+      }
+    }
+
+    const moduleRef = await Test.createTestingModule({
+      imports: [BetterAuthModule.forRoot({ auth: real })],
+      controllers: [PrivateController],
+    })
+      .overrideProvider(BetterAuthService)
+      .useValue({ auth: mock, api: mock.api, handler: mock.handler })
+      .compile();
+
+    const app = await moduleRef.createApplication();
+    const res = await app.getHonoApp().request('/private');
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({
+      error: { code: 'unauthorized', message: 'Authentication required' },
+    });
+  });
+
   it('controllers that @Inject(BetterAuthService) receive the override', async () => {
     const real = makeAuth('real');
     const mock = makeAuth('mock');
 
     @Controller('/probe')
+    @Public(true)
     class ProbeController {
       constructor(@Inject(BetterAuthService) private readonly svc: BetterAuthService) {}
 

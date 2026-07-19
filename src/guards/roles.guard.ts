@@ -1,15 +1,14 @@
 import {
   ForbiddenException,
   Injectable,
-  REQUEST_CONTEXT,
   Reflector,
   type CanActivate,
   type ExecutionContext,
-  type RequestContext,
 } from '@velajs/vela';
-import { AUTH_USER_KEY } from '../better-auth.tokens';
-import type { User } from '../better-auth.types';
+import { getAuthRequestState } from '../auth-request-state';
 import { Roles } from '../decorators/roles.decorator';
+
+const ACCESS_DENIED = 'Access denied';
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -19,19 +18,15 @@ export class RolesGuard implements CanActivate {
     const required = this.reflector.getAllAndOverride(Roles, context);
     if (!required || required.length === 0) return true;
 
-    const honoCtx = context.getContext() as {
-      get: (k: string) => { resolve<T>(t: unknown): T };
-    };
-    const reqCtx = honoCtx.get('container').resolve<RequestContext>(REQUEST_CONTEXT);
-    const user = reqCtx.get<User & { role?: string | string[] }>(AUTH_USER_KEY);
-    if (!user) {
-      throw new ForbiddenException('Role check requires authentication');
+    const state = getAuthRequestState(context);
+    if (!state.authenticated) {
+      throw new ForbiddenException(ACCESS_DENIED);
     }
 
-    const userRoles = normalizeRoles(user.role);
+    const userRoles = normalizeRoles((state.user as { role?: string | string[] }).role);
     const ok = required.some((r) => userRoles.includes(r));
     if (!ok) {
-      throw new ForbiddenException(`Insufficient role; one of [${required.join(', ')}] required`);
+      throw new ForbiddenException(ACCESS_DENIED);
     }
     return true;
   }

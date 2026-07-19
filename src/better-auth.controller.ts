@@ -2,6 +2,7 @@ import { All, Controller, Inject, Injectable, Req, type Type } from '@velajs/vel
 import type { Context } from 'hono';
 import { BetterAuthService } from './better-auth.service';
 import { Public } from './decorators/public.decorator';
+import { normalizeBetterAuthBasePath } from './base-path';
 
 /**
  * Build a catch-all controller that mounts better-auth's handler at `basePath`
@@ -17,8 +18,9 @@ import { Public } from './decorators/public.decorator';
  * Both default to `/api/auth`, so the no-prefix / no-config case just works.
  */
 export function createBetterAuthCatchallController(basePath: string = '/api/auth'): Type {
+  const normalizedBasePath = normalizeBetterAuthBasePath(basePath);
   @Public(true)
-  @Controller(basePath)
+  @Controller(normalizedBasePath)
   @Injectable()
   class BetterAuthCatchallController {
     // Inject the service — its `.handler` getter triggers lazy construction

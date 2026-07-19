@@ -16,22 +16,70 @@ import type { BetterAuthInstance, BetterAuthModuleOptions } from './better-auth.
 import { AuthGuard } from './guards/auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { PermissionGuard } from './guards/permission.guard';
+import { normalizeBetterAuthBasePath } from './base-path';
 
-const DEFAULT_BASE_PATH = '/api/auth';
+const referenceIds = new WeakMap<object, number>();
+const explicitKeyClaims = new Map<
+  string,
+  { readonly kind: 'auth' | 'factory'; readonly reference: object; readonly shape: string }
+>();
+let nextReferenceId = 1;
+
+function referenceId(reference: object): number {
+  const existing = referenceIds.get(reference);
+  if (existing !== undefined) return existing;
+  const id = nextReferenceId++;
+  referenceIds.set(reference, id);
+  return id;
+}
+
+function claimExplicitKey(
+  key: string,
+  kind: 'auth' | 'factory',
+  reference: object,
+  shape: string,
+): string {
+  if (key.length === 0 || key !== key.trim()) {
+    throw new Error('@velajs/better-auth: an explicit module key must be a non-empty string');
+  }
+  const existing = explicitKeyClaims.get(key);
+  if (
+    existing !== undefined &&
+    (existing.kind !== kind || existing.reference !== reference || existing.shape !== shape)
+  ) {
+    throw new Error(
+      `@velajs/better-auth: explicit module key "${key}" is already bound to a different auth registration`,
+    );
+  }
+  explicitKeyClaims.set(key, { kind, reference, shape });
+  return `explicit:${key}:ref:${referenceId(reference)}`;
+}
 
 /** Structural options with defaults applied (everything but the auth instance). */
 interface NormalizedOptions {
   basePath: string;
+  issuer: string;
   isGlobal: boolean;
-  defaultPolicy: 'deny' | 'allow';
+  defaultPolicy: 'deny';
   mountHandler: boolean;
 }
 
 function normalize(options: Partial<BetterAuthModuleOptions>): NormalizedOptions {
+  const basePath = normalizeBetterAuthBasePath(options.basePath);
+  const issuer = options.issuer ?? `better-auth:${basePath}`;
+  if (issuer.length === 0 || issuer !== issuer.trim()) {
+    throw new Error('@velajs/better-auth: issuer must be a non-empty stable namespace');
+  }
+  if (options.defaultPolicy !== undefined && options.defaultPolicy !== 'deny') {
+    throw new Error(
+      '@velajs/better-auth: defaultPolicy is deny-only; mark anonymous routes with @Public() or @OptionalAuth()',
+    );
+  }
   return {
-    basePath: options.basePath ?? DEFAULT_BASE_PATH,
-    isGlobal: options.isGlobal ?? false,
-    defaultPolicy: options.defaultPolicy ?? 'deny',
+    basePath,
+    issuer,
+    isGlobal: options.isGlobal ?? true,
+    defaultPolicy: 'deny',
     mountHandler: options.mountHandler ?? true,
   };
 }
@@ -63,7 +111,8 @@ const authModuleHost = defineModule<BetterAuthModuleOptions>({
   name: 'BetterAuth',
   optionsToken: BETTER_AUTH_OPTIONS,
   transform: (definition) => definition,
-  // The auth instance is a stateful value — key off the structural subset only.
+  // Public entry points always supply an identity-aware key. Keep this fallback
+  // for direct host use in tests and future refactors.
   key: (options) => stableHash(normalize(options)),
   setup: ({ OPTIONS, options }) => {
     const n = normalize(options);
@@ -113,7 +162,9 @@ interface ForRootAsyncOptions<
   isGlobal?: boolean;
   mountHandler?: boolean;
   basePath?: string;
-  defaultPolicy?: 'deny' | 'allow';
+  issuer?: string;
+  /** @deprecated Authentication is deny-by-default. Only `'deny'` is accepted. */
+  defaultPolicy?: 'deny';
   key?: string;
 }
 
@@ -127,10 +178,19 @@ export class BetterAuthModule {
   static forRoot(
     options: BetterAuthModuleOptions & { isGlobal?: boolean; key?: string },
   ): DynamicModule {
+    const normalized = normalize(options);
+    const shape = stableHash(normalized);
+    const key =
+      options.key === undefined
+        ? `${shape}:auth:${referenceId(options.auth)}`
+        : claimExplicitKey(options.key, 'auth', options.auth, shape);
     // Delegate to the generated static, then rebrand the module identity so the
     // public `BetterAuthModule` class is the one registered (consistent with
     // `forRootAsync` and better diagnostics).
-    return { ...authModuleHost.ConfigurableModuleClass.forRoot(options), module: BetterAuthModule };
+    return {
+      ...authModuleHost.ConfigurableModuleClass.forRoot({ ...options, key }),
+      module: BetterAuthModule,
+    };
   }
 
   /**
@@ -149,9 +209,14 @@ export class BetterAuthModule {
   ): DynamicModule {
     const n = normalize(options);
     const common = commonContributions(n);
+    const shape = stableHash({ ...n, inject: options.inject });
+    const key =
+      options.key === undefined
+        ? `${shape}:factory:${referenceId(options.useFactory)}`
+        : claimExplicitKey(options.key, 'factory', options.useFactory, shape);
     return {
       module: BetterAuthModule,
-      key: options.key ?? stableHash({ ...n, inject: options.inject }),
+      key,
       imports: options.imports ?? [],
       providers: [
         { provide: BETTER_AUTH_OPTIONS, useValue: n },
