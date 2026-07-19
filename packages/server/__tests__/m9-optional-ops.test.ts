@@ -11,6 +11,10 @@ import {
 import type { ModuleImport, ProviderOptions, Type } from '@velajs/vela';
 import { Process, Processor, QueueModule } from '@velajs/vela/queue';
 import { FeatureFlagsModule } from '@velajs/feature-flags';
+import { BetterAuthService } from '@velajs/better-auth';
+import { betterAuth } from 'better-auth';
+import { admin, organization } from 'better-auth/plugins';
+import { memoryAdapter } from 'better-auth/adapters/memory';
 import {
   STUDIO_AUTH_SOURCE,
   STUDIO_MODEL_SOURCE,
@@ -25,7 +29,7 @@ import type {
   StudioWriteContext,
   StudioWriteRowOutcome,
 } from '../src';
-import { StudioAuthModule } from '../src/auth';
+import { BetterAuthStudioSource, StudioAuthModule } from '../src/auth';
 import { StudioFlagsModule } from '../src/flags';
 import { StudioQueueModule } from '../src/queue';
 import { StudioScheduleModule } from '../src/schedule';
@@ -87,6 +91,14 @@ function challenge<T>(res: AdminRpcResponse<T>): StudioConfirmChallenge {
   if (res.ok) throw new Error(`expected a 428 challenge, got ${JSON.stringify(res)}`);
   expect(res.status).toBe(428);
   return res.error.details as StudioConfirmChallenge;
+}
+
+/** Assert an op response degraded to the `FEATURE_UNCONFIGURED` error (never ok, never 500). */
+function expectUnconfigured<T>(res: AdminRpcResponse<T>): void {
+  expect(res.ok).toBe(false);
+  if (res.ok) throw new Error(`expected FEATURE_UNCONFIGURED, got ${JSON.stringify(res)}`);
+  expect(res.error.code).toBe('FEATURE_UNCONFIGURED');
+  expect(res.status).not.toBe(500);
 }
 
 // ===========================================================================
@@ -467,6 +479,106 @@ describe('auth ops (over the STUDIO_AUTH_SOURCE port)', () => {
 });
 
 // ===========================================================================
+// Auth — over a REAL better-auth (admin + organization) via the trusted DATA
+// layer (`auth.$context` → internalAdapter / adapter), NOT the authz HTTP API.
+// ===========================================================================
+
+/** A real betterAuth instance (admin + organization) over an in-memory adapter. */
+function realBetterAuth(db: Record<string, unknown[]>) {
+  return betterAuth({
+    baseURL: 'http://localhost',
+    secret: 'studio-auth-test-secret-please-ignore-0123456789',
+    emailAndPassword: { enabled: true },
+    database: memoryAdapter(db),
+    plugins: [admin(), organization()],
+    logger: { disabled: true },
+  });
+}
+
+/** The model arrays the memory adapter needs pre-seeded (it throws on an unwritten table). */
+function seededDb(): Record<string, unknown[]> {
+  return {
+    user: [],
+    session: [],
+    account: [],
+    verification: [],
+    organization: [],
+    member: [],
+    invitation: [],
+  };
+}
+
+describe('auth ops (over real better-auth via the trusted data layer)', () => {
+  it('lists users/detail/sessions/orgs + revokes a session through the trusted path', async () => {
+    const auth = realBetterAuth(seededDb());
+    const ctx = await auth.$context;
+    const u1 = await ctx.internalAdapter.createUser({ email: 'ann@x.io', name: 'Ann' });
+    const u2 = await ctx.internalAdapter.createUser({ email: 'bob@x.io', name: 'Bob' });
+    const session = await ctx.internalAdapter.createSession(u1.id, false, {
+      ipAddress: '10.0.0.9',
+      userAgent: 'vela-studio-test',
+    });
+    await ctx.adapter.create({
+      model: 'organization',
+      data: { name: 'Acme', slug: 'acme', createdAt: new Date() },
+    });
+
+    const source = new BetterAuthStudioSource(new BetterAuthService(() => auth));
+    const app = await makeApp({ editable: { ops: true } }, [authModule(source)]);
+
+    // Capabilities light off the wired plugins (admin + organization).
+    const caps = ok(await rpc(app, 'studio.capabilities'));
+    expect(caps.features.auth).toBe(true);
+    expect(caps.features.authOrganizations).toBe(true);
+
+    // Users read through internalAdapter.listUsers (no admin session required).
+    const users = ok(await rpc(app, 'auth.users', {}));
+    expect(users.rows.map((u) => u.email).toSorted()).toEqual(['ann@x.io', 'bob@x.io']);
+
+    // Search filters via a `contains` clause on email.
+    const filtered = ok(await rpc(app, 'auth.users', { q: 'bob' }));
+    expect(filtered.rows.map((u) => u.email)).toEqual(['bob@x.io']);
+
+    // userDetail resolves by DIRECT id lookup (NOT limited to the first page).
+    const detail = ok(await rpc(app, 'auth.userDetail', { id: u2.id }));
+    expect(detail.user.email).toBe('bob@x.io');
+
+    // Sessions read per-user; the created session shows up.
+    const sessions = ok(await rpc(app, 'auth.sessions', { userId: u1.id }));
+    expect(sessions.map((s) => s.id)).toContain(session.id);
+
+    // Revoke by the session's own id → deleted through the raw adapter.
+    expect(ok(await rpc(app, 'auth.revokeSession', { sessionId: session.id }))).toEqual({
+      ok: true,
+    });
+    expect(ok(await rpc(app, 'auth.sessions', { userId: u1.id }))).toEqual([]);
+
+    // Organizations read through the raw adapter.findMany.
+    const orgs = ok(await rpc(app, 'auth.organizations', {}));
+    expect(orgs.map((o) => o.name)).toEqual(['Acme']);
+  });
+
+  it('maps a thrown trusted-layer failure to FEATURE_UNCONFIGURED (never a raw 500)', async () => {
+    // Unseeded memory db: every trusted-layer read/delete THROWS (model not in DB)
+    // — the same class of failure a thrown better-auth APIError would produce.
+    const auth = realBetterAuth({});
+    const source = new BetterAuthStudioSource(new BetterAuthService(() => auth));
+    const app = await makeApp({ editable: { ops: true } }, [authModule(source)]);
+
+    // The features still light (plugins ARE wired); the failure is at read time.
+    const caps = ok(await rpc(app, 'studio.capabilities'));
+    expect(caps.features.auth).toBe(true);
+    expect(caps.features.authOrganizations).toBe(true);
+
+    expectUnconfigured(await rpc(app, 'auth.users', {}));
+    expectUnconfigured(await rpc(app, 'auth.userDetail', { id: 'nope' }));
+    expectUnconfigured(await rpc(app, 'auth.sessions', { userId: 'u1' }));
+    expectUnconfigured(await rpc(app, 'auth.revokeSession', { sessionId: 's1' }));
+    expectUnconfigured(await rpc(app, 'auth.organizations', {}));
+  });
+});
+
+// ===========================================================================
 // Flags — over a real FeatureFlagsModule
 // ===========================================================================
 
@@ -532,18 +644,10 @@ describe('queue ops (@velajs/studio/queue)', () => {
     const sent = ok(await rpc(app, 'queue.send', { queue: 'email', payload: { hi: 1 } }));
     expect(typeof sent.id).toBe('string');
 
-    for (const op of ['queue.depths', 'queue.dlq', 'queue.replay'] as const) {
-      const args =
-        op === 'queue.dlq'
-          ? { queue: 'email' }
-          : op === 'queue.replay'
-            ? { queue: 'email', ids: [] }
-            : {};
-      const res = await rpc(app, op, args as never);
-      expect(res.ok).toBe(false);
-      if (res.ok) throw new Error('expected error');
-      expect(res.error.code).toBe('FEATURE_UNCONFIGURED');
-    }
+    // Per-op typed calls (no `as never`): each degrades honestly.
+    expectUnconfigured(await rpc(app, 'queue.depths', {}));
+    expectUnconfigured(await rpc(app, 'queue.dlq', { queue: 'email' }));
+    expectUnconfigured(await rpc(app, 'queue.replay', { queue: 'email', ids: [] }));
   });
 
   it('send gates on opsEditable (403 when closed)', async () => {

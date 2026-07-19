@@ -12,7 +12,11 @@
  * - `transfer.import` is DESTRUCTIVE (bulk ingest): it rides the SAME single-use
  *   428 confirm challenge the dispatch registry raises for every `destructive`
  *   op (per `STUDIO_OP_META`), and is `transferImport`-gated. It writes each
- *   NDJSON line through the source's create path and reports per-line errors.
+ *   NDJSON line through the source's write path and reports per-line errors.
+ *   Import is an UPSERT, not an insert: a line whose primary key already exists
+ *   OVERWRITES that row (source `writeRow` with no explicit `id` keys off the
+ *   row's own pk) rather than erroring on a duplicate — round-tripping an export
+ *   back over its origin is idempotent, and re-importing is a deliberate replace.
  *
  * The NDJSON streaming helpers here are shared with the `/export` route.
  */
@@ -155,6 +159,12 @@ export class StudioTransferOps {
     return { exportUrl: `${joinPath(base, STUDIO_EXPORT_SUFFIX)}${query}` };
   }
 
+  /**
+   * Bulk-ingest NDJSON as an UPSERT: each line is written through the source's
+   * `writeRow` with no explicit `id`, so the row's own primary key decides the
+   * target — an existing id is OVERWRITTEN (not rejected as a duplicate). One bad
+   * line is reported in `errors` and skipped; the import does not abort.
+   */
   @AdminRpc({ op: 'transfer.import' })
   async import(
     ctx: AdminOpContext,
