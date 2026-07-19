@@ -35,7 +35,7 @@ import { ConfirmTokenSigner } from '../security/confirm-token';
 import { studioError, studioNotFound } from '../studio.errors';
 import { TIME_TRAVEL_PORT } from '../timetravel/port.token';
 
-/** The op a preview mints, and armRestore re-verifies, the confirm token against. */
+/** The op `preview` mints the confirm token against (the dispatch registry's 428 gate verifies it). */
 const ARM_RESTORE_OP = 'timeTravel.armRestore';
 
 /**
@@ -93,21 +93,29 @@ export interface CloudflareDoTimeTravelPortDeps {
  *
  * Confirm flow — the SAME single-use challenge as every destructive Studio op.
  * `preview` mints a {@link ConfirmTokenSigner} token bound to op
- * `timeTravel.armRestore` + the resolved `{ bookmark }`; the dispatch registry's
- * 428 gate consumes it before `armRestore` runs. `armRestore` additionally
- * re-verifies the token STATELESSLY over `(op, args-minus-token)` — the identical
- * tuple the registry binds — so the check passes in the registry path (after the
- * single-use consume) AND fail-closes a direct call that arrives without a valid
- * confirm. Because the binding is over the whole arm payload, adding `restart` /
- * `scope` (which the preview token was NOT minted with) correctly forces a fresh
- * 428 challenge — the same widening behavior as the portable adapter.
+ * `timeTravel.armRestore` + the resolved `{ bookmark }`. The dispatch registry's
+ * 428 gate is the SOLE gate: it verifies + single-use-consumes the `confirmToken`
+ * over the ACTUALLY-DISPATCHED `(op, payload-minus-token)` BEFORE the handler
+ * runs. `armRestore` does NOT re-verify — exactly like the portable
+ * `SnapshotTimeTravelAdapter`. A port-level re-verify cannot be correct here: the
+ * port doesn't know which op dispatched — both `timeTravel.armRestore` AND
+ * `timeTravel.undo` route through this one `armRestore` method, carrying tokens
+ * the registry minted for DIFFERENT (op, payload) tuples (`(armRestore,
+ * { bookmark })` vs `(undo, { undoMark })`). A stateless `(armRestore, { bookmark })`
+ * check would reject undo's token — AFTER the registry already consumed it —
+ * permanently breaking `undo`. The registry's payload binding also handles the
+ * widening case (a `restart`/`scope` the preview token was not minted with
+ * correctly forces a fresh 428), so the port never needs to.
  *
  * Marks are opaque DO bookmark strings; `undoMark.id` IS the bookmark for the
  * pre-restore state. A restore is IN-PLACE and RESTART-REQUIRED: with
  * `restart: false` (default) it is armed for the DO's next session
- * (`applied: false`); with `restart: true` the DO aborts to apply now
- * (`applied: true`). This tier has NO mark listing, snapshot creation, or
- * off-platform export (the corresponding capability booleans are `false`).
+ * (`applied: false`) and the caller receives this outcome incl. the `undoMark`.
+ * With `restart: true` the DO aborts to apply NOW — `ctx.abort` severs the
+ * in-flight RPC, so the caller CANNOT actually receive the returned `undoMark`
+ * (or `applied: true`); `restart: false` is the confirmable, undo-mark-returning
+ * path and `restart: true` is fire-and-forget. This tier has NO mark listing,
+ * snapshot creation, or off-platform export (the capability booleans are `false`).
  */
 export class CloudflareDoTimeTravelPort implements TimeTravelPort {
   readonly id = 'cf-do-pitr';
@@ -174,14 +182,14 @@ export class CloudflareDoTimeTravelPort implements TimeTravelPort {
   }
 
   async armRestore(req: RestoreRequest): Promise<RestoreOutcome> {
-    // Defense in depth: the dispatch registry's 428 gate already verified +
-    // consumed this token (single-use) before we run; this STATELESS re-verify
-    // over the same (op, args-minus-token) tuple fail-closes a direct call and
-    // re-passes idempotently in the registry path. See the class doc.
-    const { confirmToken, ...payload } = req;
-    const valid = await this.confirm.verify(ARM_RESTORE_OP, payload, confirmToken);
-    if (!valid) throw studioError('STUDIO_CONFIRM_REQUIRED');
-
+    // The confirm token was already verified + single-use-consumed by the dispatch
+    // registry's 428 gate over the ACTUALLY-DISPATCHED (op, payload) — for BOTH
+    // `timeTravel.armRestore` and `timeTravel.undo`, which route here. The port
+    // does NOT re-verify: it cannot know the dispatched op name (arm vs undo both
+    // call this method), so a port-level `(armRestore, { bookmark })` check would
+    // reject undo's `(undo, { undoMark })` token. The registry owns the gate —
+    // exactly as the portable `SnapshotTimeTravelAdapter` relies on it. See the
+    // class doc.
     const restart = req.restart === true;
     const opts: DoPitrArmOptions = {
       ...(req.bookmark !== undefined ? { bookmark: req.bookmark } : {}),
@@ -193,7 +201,10 @@ export class CloudflareDoTimeTravelPort implements TimeTravelPort {
       restoredTo: result.restoredTo,
       undoMark: { id: result.undoBookmark, kind: 'bookmark' },
       // `restart: false` arms the restore for the DO's next session (not yet
-      // applied); `restart: true` aborts the DO to apply it now.
+      // applied) and returns this outcome, incl. the `undoMark`, to the caller.
+      // `restart: true` aborts the DO to apply NOW — `ctx.abort` severs the RPC,
+      // so the caller does not actually receive this `applied: true` / `undoMark`;
+      // the confirmable, undo-returning path is `restart: false`.
       applied: restart,
       restartRequested: restart,
     };

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Module, VelaFactory } from '@velajs/vela';
 import { ConfirmTokenSigner, StudioModule } from '../src';
-import type { StudioModuleOptions } from '../src';
+import type { StudioConfirmChallenge, StudioModuleOptions } from '../src';
 import { CloudflareDoTimeTravelPort, StudioCloudflareTimeTravelModule } from '../src/cloudflare';
 // TYPE-ONLY: importing a VALUE from `@velajs/cloudflare` would pull its
 // `cloudflare:workers` runtime module (workerd-only), which studio's node/vitest
@@ -232,21 +232,17 @@ describe('CloudflareDoTimeTravelPort — preview mints the confirm token', () =>
   });
 });
 
-describe('CloudflareDoTimeTravelPort — preview → confirm → armRestore threads the token', () => {
-  it('re-verifies the confirm token, calls pitrArmRestore, and returns the mapped outcome (restart: false → armed)', async () => {
-    const { port, stub, confirm } = makePort({ undo: 'bm-undo-A' });
+describe('CloudflareDoTimeTravelPort — armRestore over the RPC hop', () => {
+  // The port does NOT re-verify the confirm token: the dispatch registry's 428
+  // gate is the sole gate (it verifies + single-use-consumes over the actually-
+  // dispatched op, which the port cannot know — armRestore AND undo both call
+  // this one method). The registry-owned gate is exercised end-to-end in the
+  // dispatch-level suite below; here we assert the RPC hop + outcome mapping.
+  it('arms the restore and maps the outcome (restart: false → armed, not applied)', async () => {
+    const { port, stub } = makePort({ undo: 'bm-undo-A' });
 
+    // preview still mints a confirm token (the registry gate owns verifying it).
     const preview = await port.preview({ bookmark: 'bm-A' });
-
-    // Simulate the dispatch registry's 428 gate CONSUMING the token (single-use)
-    // before armRestore runs — the port's re-verify must still pass afterwards.
-    expect(
-      await confirm.verifyAndConsume(
-        'timeTravel.armRestore',
-        { bookmark: 'bm-A' },
-        preview.confirmToken,
-      ),
-    ).toBe(true);
 
     const outcome = await port.armRestore({ bookmark: 'bm-A', confirmToken: preview.confirmToken });
 
@@ -260,39 +256,14 @@ describe('CloudflareDoTimeTravelPort — preview → confirm → armRestore thre
   });
 
   it('restart: true → aborts-to-apply, applied: true, and threads restart into pitrArmRestore', async () => {
-    const { port, stub, confirm } = makePort();
-    // A restart-widened arm needs a token bound to the widened payload (exactly
-    // what the registry re-challenge would mint) — the preview `{ bookmark }`
-    // token would NOT validate it (asserted in the next test).
-    const { token } = await confirm.issue('timeTravel.armRestore', {
-      bookmark: 'bm-A',
-      restart: true,
-    });
+    const { port, stub } = makePort();
 
-    const outcome = await port.armRestore({ bookmark: 'bm-A', restart: true, confirmToken: token });
+    const outcome = await port.armRestore({ bookmark: 'bm-A', restart: true, confirmToken: 'tok' });
 
     expect(stub.armCalls).toEqual([{ bookmark: 'bm-A', restart: true }]);
     expect(outcome.applied).toBe(true);
     expect(outcome.restartRequested).toBe(true);
     expect(outcome.undoMark).toEqual({ id: 'bm-undo', kind: 'bookmark' });
-  });
-
-  it('fails closed (no DO call) when the confirm token is invalid or the payload widened', async () => {
-    const { port, stub } = makePort();
-
-    // Garbage token → 428, DO never touched.
-    await expect(
-      port.armRestore({ bookmark: 'bm-A', confirmToken: 'not-a-real-token' }),
-    ).rejects.toSatisfy((err: unknown) => errorCode(err) === 'STUDIO_CONFIRM_REQUIRED');
-    expect(stub.armCalls).toEqual([]);
-
-    // A preview token bound to { bookmark } does NOT authorize a restart-widened
-    // arm — the payload binding covers `restart`, so it re-challenges.
-    const preview = await port.preview({ bookmark: 'bm-A' });
-    await expect(
-      port.armRestore({ bookmark: 'bm-A', restart: true, confirmToken: preview.confirmToken }),
-    ).rejects.toSatisfy((err: unknown) => errorCode(err) === 'STUDIO_CONFIRM_REQUIRED');
-    expect(stub.armCalls).toEqual([]);
   });
 });
 
@@ -391,6 +362,15 @@ function ok<T>(res: AdminRpcResponse<T>): T {
   return res.data;
 }
 
+function challenge<T>(res: AdminRpcResponse<T>): StudioConfirmChallenge {
+  if (res.ok) throw new Error(`expected a 428 challenge, got ${JSON.stringify(res)}`);
+  expect(res.status).toBe(428);
+  expect(res.error.code).toBe('STUDIO_CONFIRM_REQUIRED');
+  const d = res.error.details as StudioConfirmChallenge;
+  expect(typeof d.confirmToken).toBe('string');
+  return d;
+}
+
 describe('StudioCloudflareTimeTravelModule — capabilities through dispatch', () => {
   it('studio.capabilities resolves the CF port’s capabilities the same way as the portable one', async () => {
     const app = await makeCfApp(new FakePitrNamespace(new FakePitrStub()));
@@ -440,5 +420,91 @@ describe('StudioCloudflareTimeTravelModule — preview → armRestore through th
     expect(res.status).toBe(428);
     expect(res.error.code).toBe('STUDIO_CONFIRM_REQUIRED');
     expect(stub.armCalls).toEqual([]); // never reached the DO
+  });
+});
+
+// ===========================================================================
+// Destructive time-travel ops through the REAL dispatch registry + 428 gate.
+// This is the coverage gap that hid the undo bug: `armRestore` AND `undo` BOTH
+// route through `port.armRestore`, but the registry mints their confirm tokens
+// for DIFFERENT (op, payload) tuples — so an armRestore-only re-verify in the
+// port silently broke `undo` after the token was already single-use consumed.
+// ===========================================================================
+
+describe('StudioCloudflareTimeTravelModule — destructive ops through the 428 challenge', () => {
+  it('timeTravel.armRestore: no token → 428 → echo token → arms the DO restore', async () => {
+    const stub = new FakePitrStub({ undo: 'bm-undo-arm' });
+    const app = await makeCfApp(new FakePitrNamespace(stub), { editable: { timeTravel: true } });
+
+    // No token → the registry mints a 428 challenge bound to (armRestore, { bookmark }).
+    const ch = challenge(
+      await rpc(app, 'timeTravel.armRestore', { bookmark: 'bm-A', confirmToken: '' }),
+    );
+    expect(ch.summary.toLowerCase()).toContain('restore');
+    expect(stub.armCalls).toEqual([]); // the gate blocked before the DO hop
+
+    // Echo the token → the single-use gate clears and the DO is armed.
+    const outcome = ok(
+      await rpc(app, 'timeTravel.armRestore', { bookmark: 'bm-A', confirmToken: ch.confirmToken }),
+    ) satisfies RestoreOutcome;
+    expect(outcome.applied).toBe(false); // restart omitted → armed for the next session
+    expect(outcome.undoMark).toEqual({ id: 'bm-undo-arm', kind: 'bookmark' });
+    expect(stub.armCalls).toEqual([{ bookmark: 'bm-A', restart: false }]);
+  });
+
+  it('timeTravel.undo: no token → 428 → echo token → applies (regression: op-mismatched port re-verify broke this)', async () => {
+    const stub = new FakePitrStub({ undo: 'bm-undo-mark' });
+    const app = await makeCfApp(new FakePitrNamespace(stub), { editable: { timeTravel: true } });
+
+    // Arm a restore first (through its own 428) to obtain an undo mark.
+    const armCh = challenge(
+      await rpc(app, 'timeTravel.armRestore', { bookmark: 'bm-A', confirmToken: '' }),
+    );
+    const restored = ok(
+      await rpc(app, 'timeTravel.armRestore', {
+        bookmark: 'bm-A',
+        confirmToken: armCh.confirmToken,
+      }),
+    ) satisfies RestoreOutcome;
+    const undoMarkId = restored.undoMark!.id; // 'bm-undo-mark'
+
+    // `undo` rides its OWN 428 challenge — the registry mints for (undo, { undoMark }).
+    // Regression: the port used to re-verify that token against (armRestore,
+    // { bookmark }), which never matches, so it threw a fresh 428 AFTER the registry
+    // had single-use-consumed the token → undo was PERMANENTLY broken (every retry
+    // re-challenged and re-failed), contradicting capabilities().undo === true.
+    const undoCh = challenge(
+      await rpc(app, 'timeTravel.undo', { undoMark: undoMarkId, confirmToken: '' }),
+    );
+    const undone = ok(
+      await rpc(app, 'timeTravel.undo', {
+        undoMark: undoMarkId,
+        confirmToken: undoCh.confirmToken,
+      }),
+    ) satisfies RestoreOutcome;
+
+    expect(undone.restartRequested).toBe(false);
+    expect(undone.undoMark).toEqual({ id: 'bm-undo-mark', kind: 'bookmark' });
+    // The undo armed a fresh DO restore to the undo mark (bookmark == undoMark).
+    expect(stub.armCalls.at(-1)).toEqual({ bookmark: undoMarkId, restart: false });
+  });
+
+  it('capabilities().undo === true stays honest — undo actually works end-to-end through dispatch', async () => {
+    const stub = new FakePitrStub();
+    const app = await makeCfApp(new FakePitrNamespace(stub), { editable: { timeTravel: true } });
+
+    // The advertised capability…
+    const caps = ok(await rpc(app, 'timeTravel.capabilities', {}));
+    expect(caps.undo).toBe(true);
+
+    // …is backed by a working undo through the registry (mint → echo → apply).
+    const undoCh = challenge(
+      await rpc(app, 'timeTravel.undo', { undoMark: 'bm-prev', confirmToken: '' }),
+    );
+    const undone = ok(
+      await rpc(app, 'timeTravel.undo', { undoMark: 'bm-prev', confirmToken: undoCh.confirmToken }),
+    ) satisfies RestoreOutcome;
+    expect(stub.armCalls).toEqual([{ bookmark: 'bm-prev', restart: false }]);
+    expect(undone.undoMark).toEqual({ id: 'bm-undo', kind: 'bookmark' });
   });
 });
