@@ -52,7 +52,9 @@
     "attw": "attw --pack . --profile esm-only",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "pnpm build && changeset publish",
+    "release:preflight": "npm view @velajs/vela@1.21.0 version && npm view @velajs/authz@1.1.0 version",
+    "release:check": "node scripts/check-release-lock.mjs && pnpm verify && pnpm audit --audit-level=high",
+    "release": "pnpm release:preflight && pnpm release:check && changeset publish",
     "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm test && pnpm publint && pnpm attw"
   },
   "dependencies": {
@@ -62,8 +64,8 @@
     "@arethetypeswrong/cli": "catalog:",
     "@changesets/cli": "catalog:",
     "@swc/core": "catalog:",
-    "@velajs/authz": "^1.0.0",
-    "@velajs/vela": "^1.19.0",
+    "@velajs/authz": "^1.1.0",
+    "@velajs/vela": "^1.21.0",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",
     "publint": "catalog:",
@@ -73,8 +75,8 @@
     "vitest": "catalog:"
   },
   "peerDependencies": {
-    "@velajs/authz": "^1.0.0",
-    "@velajs/vela": ">=1.11.0"
+    "@velajs/authz": ">=1.1.0 <2",
+    "@velajs/vela": ">=1.21.0 <2"
   },
   "peerDependenciesMeta": {
     "@velajs/authz": {

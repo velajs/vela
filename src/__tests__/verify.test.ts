@@ -1,3 +1,4 @@
+import { SignJWT } from 'jose';
 import { describe, expect, it } from 'vitest';
 import { cloudflareAccessIssuer } from '../issuer';
 import type { AccessKeySet } from '../types';
@@ -93,6 +94,18 @@ describe('verifyAccessJwt', () => {
       expiresAt: past,
     });
     await expect(verifyAccessJwt(token, { preset, aud: AUD, keySet: keySet() })).rejects.toThrow();
+  });
+
+  it('rejects a correctly signed token with no exp claim', async () => {
+    await setup();
+    const token = await new SignJWT({ sub: 'user-42' })
+      .setProtectedHeader({ alg: 'RS256', kid: keys.kid })
+      .setIssuer(preset.issuer)
+      .setAudience(AUD)
+      .sign(keys.privateKey);
+    await expect(verifyAccessJwt(token, { preset, aud: AUD, keySet: keySet() })).rejects.toThrow(
+      /finite exp claim is required/,
+    );
   });
 
   it('rejects an HS256-signed forgery (RS256 pin)', async () => {

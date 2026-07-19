@@ -1,6 +1,12 @@
 import { InjectionToken } from '@velajs/vela';
 import type { IdentityContract } from '../identity-contract';
-import type { AccessClaims, AccessKeySet, IssuerPreset, ResolveIdentity } from '../types';
+import type {
+  AccessClaims,
+  AccessKeySet,
+  GroupRoleMapping,
+  IssuerPreset,
+  ResolveIdentity,
+} from '../types';
 
 /**
  * RequestContext key under which {@link CloudflareAccessGuard} stashes the
@@ -12,7 +18,7 @@ export const ACCESS_IDENTITY_KEY: unique symbol = Symbol.for('vela.cloudflare-ac
 
 /**
  * RequestContext key carrying the credential expiry the guard resolved
- * (`expiresAtMs` when present, else `exp` in epoch seconds). This is the data a
+ * (`expiresAtMs`, always epoch milliseconds). This is the data a
  * WebSocket-upgrade route reads to drive DO socket expiry.
  */
 export const ACCESS_EXP_KEY: unique symbol = Symbol.for('vela.cloudflare-access.exp');
@@ -24,6 +30,10 @@ export const ACCESS_EXP_KEY: unique symbol = Symbol.for('vela.cloudflare-access.
  * as a raw `Symbol.for` — no `@velajs/better-auth` import.
  */
 export const BETTER_AUTH_USER_KEY: unique symbol = Symbol.for('vela.better-auth.user');
+export const BETTER_AUTH_ISSUER_KEY: unique symbol = Symbol.for('vela.better-auth.issuer');
+export const BETTER_AUTH_PRINCIPAL_TYPE_KEY: unique symbol = Symbol.for(
+  'vela.better-auth.principal-type',
+);
 
 /** How the guard treats an anonymous (unverified) caller. */
 export type CloudflareAccessMode = 'required' | 'optional';
@@ -40,6 +50,8 @@ export interface CloudflareAccessModuleOptions {
   identity?: IdentityContract;
   /** Remap verified claims into extra identity fields. */
   mapClaims?: (claims: AccessClaims) => Record<string, unknown>;
+  /** Explicitly map external IdP groups to application-local roles. */
+  groupRoles?: GroupRoleMapping;
   /** Clock-skew tolerance in seconds. */
   clockToleranceSec?: number;
   /** Override the verification key source. Primarily for tests. */

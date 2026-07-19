@@ -26,15 +26,18 @@ const resolver = (): ReturnType<typeof createAccessResolver> =>
   createAccessResolver({ preset, aud: AUD, keySet: keys.jwks });
 
 describe('createAccessResolver', () => {
-  it('maps a verified token to a ResolvedIdentity, forwarding groups/email/exp/claims', async () => {
+  it('maps a verified token to a stable principal with canonical millisecond expiry', async () => {
     const token = await tokenRequest({ email: 'ada@example.com', groups: ['admins'] }, 'user-42');
     const identity = await resolver()(requestWithHeader(preset.header, token));
 
     expect(identity).not.toBeNull();
+    expect(identity?.issuer).toBe(preset.issuer);
+    expect(identity?.subject).toBe('user-42');
+    expect(identity?.principalType).toBe('user');
     expect(identity?.userId).toBe('user-42');
     expect(identity?.email).toBe('ada@example.com');
     expect(identity?.groups).toEqual(['admins']);
-    expect(typeof identity?.exp).toBe('number');
+    expect(Number.isSafeInteger(identity?.expiresAtMs)).toBe(true);
     expect(identity?.claims.iss).toBe(preset.issuer);
   });
 
@@ -61,18 +64,77 @@ describe('createAccessResolver', () => {
     expect(await resolver()(requestWithHeader(preset.header, 'not-a-jwt'))).toBeNull();
   });
 
-  it('applies mapClaims overrides and can override the derived userId', async () => {
+  it('allows mapClaims enrichment without changing verified principal fields', async () => {
     const custom = createAccessResolver({
       preset,
       aud: AUD,
       keySet: keys.jwks,
-      mapClaims: (claims) => ({ userId: `tenant:${String(claims.sub)}`, tenantId: 't-9' }),
+      mapClaims: () => ({ tenantId: 't-9' }),
     });
     const identity = await custom(
       requestWithHeader(preset.header, await tokenRequest({}, 'user-42')),
     );
-    expect(identity?.userId).toBe('tenant:user-42');
+    expect(identity?.userId).toBe('user-42');
     expect(identity?.tenantId).toBe('t-9');
+  });
+
+  it.each([
+    'userId',
+    'subject',
+    'issuer',
+    'principalType',
+    'expiresAtMs',
+    'roles',
+    'email',
+    '__proto__',
+  ])('rejects mapClaims attempts to replace security field %s', async (field) => {
+    const custom = createAccessResolver({
+      preset,
+      aud: AUD,
+      keySet: keys.jwks,
+      mapClaims: () => ({ [field]: 'attacker-controlled' }),
+    });
+    await expect(
+      custom(requestWithHeader(preset.header, await tokenRequest({}, 'user-42'))),
+    ).rejects.toThrow(/cannot replace verified security field/);
+  });
+
+  it('prevents mapClaims from mutating verified subject, expiry, or groups in place', async () => {
+    const custom = createAccessResolver({
+      preset,
+      aud: AUD,
+      keySet: keys.jwks,
+      groupRoles: { editor: 'editor', admin: 'admin' },
+      mapClaims: (claims) => {
+        claims.sub = 'attacker';
+        claims.exp = Number(claims.exp) + 86_400;
+        claims.groups = ['admin'];
+        return { tenantId: 't-9' };
+      },
+    });
+    const identity = await custom(
+      requestWithHeader(preset.header, await tokenRequest({ groups: ['editor'] }, 'user-42')),
+    );
+    expect(identity?.subject).toBe('user-42');
+    expect(identity?.roles).toEqual(['editor']);
+    expect(identity?.expiresAtMs).toBe(Number(identity?.claims.exp) * 1000);
+  });
+
+  it('maps external groups to local roles only through an explicit allowlist', async () => {
+    const token = await tokenRequest({ groups: ['idp-admin', 'unmapped', '__proto__'] }, 'user-42');
+    const withoutMapping = await resolver()(requestWithHeader(preset.header, token));
+    expect(withoutMapping?.roles).toBeUndefined();
+
+    const mapped = createAccessResolver({
+      preset,
+      aud: AUD,
+      keySet: keys.jwks,
+      groupRoles: { 'idp-admin': ['editor', 'auditor'] },
+    });
+    expect((await mapped(requestWithHeader(preset.header, token)))?.roles).toEqual([
+      'editor',
+      'auditor',
+    ]);
   });
 
   it('fails fast at build time on an empty audience (no silent-anonymous)', () => {
@@ -83,7 +145,14 @@ describe('createAccessResolver', () => {
 });
 
 describe('composeResolvers', () => {
-  const hit: ResolvedIdentity = { userId: 'from-second', claims: {} };
+  const hit: ResolvedIdentity = {
+    issuer: 'https://issuer.example',
+    subject: 'from-second',
+    principalType: 'user',
+    userId: 'from-second',
+    expiresAtMs: Date.now() + 60_000,
+    claims: {},
+  };
   const anon: ResolveIdentity = () => null;
   const found: ResolveIdentity = () => hit;
 

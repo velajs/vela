@@ -1,5 +1,5 @@
 import {
-  createLazyParamDecorator,
+  createParamDecorator,
   REQUEST_CONTEXT,
   type ExecutionContext,
   type RequestContext,
@@ -22,7 +22,7 @@ interface ContainerLike {
  * me(@CurrentAccessIdentity() identity?: ResolvedIdentity) {}
  * ```
  */
-export const CurrentAccessIdentity = createLazyParamDecorator(
+export const CurrentAccessIdentity = createParamDecorator(
   (_data: unknown, context: ExecutionContext) => {
     const reqCtx = context
       .getContext<{ get(key: 'container'): ContainerLike }>()
