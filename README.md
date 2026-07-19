@@ -3,13 +3,13 @@
 [![npm version](https://img.shields.io/npm/v/@velajs/testing)](https://www.npmjs.com/package/@velajs/testing)
 [![License: MIT](https://img.shields.io/npm/l/@velajs/testing)](https://github.com/velajs/testing/blob/main/LICENSE)
 
-Test-module builder for [Vela](https://github.com/velajs/vela). Compose modules in isolation, override providers/guards/pipes/interceptors/filters, and exercise controllers via Hono's `app.request()` — without bootstrapping the real factory.
+Test-module builder for [Vela](https://github.com/velajs/vela). Compose modules in isolation, override providers/guards/pipes/interceptors/filters, and exercise controllers via Hono's `app.request()`. Testing uses the same bootstrap primitive as production so request scope and framework-global providers cannot drift.
 
 ## Install
 
 ```bash
 pnpm add -D @velajs/testing
-# Peer (already in your project): @velajs/vela ^1.1.0, hono ^4
+# Peer (already in your project): @velajs/vela >=1.21 <2, hono >=4
 ```
 
 No `reflect-metadata` needed — Vela ships its own polyfill.
