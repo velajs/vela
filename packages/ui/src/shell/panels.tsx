@@ -1,45 +1,67 @@
 /**
- * Placeholder panels (one per tab). M6 owns the real panel UI; here each tab
- * renders its id + a cheap `useStudioCapabilities` readout, wrapped as a
- * `React.lazy` boundary so the routed `<Outlet>`'s `<Suspense>` is exercised.
+ * The panel registry. Every real v1 panel loads through a true
+ * `lazy(() => import('../panels/<x>'))` boundary, so the bundler emits one chunk
+ * per panel and the routed `<Outlet>`'s `<Suspense>` is a real code-split seam.
+ *
+ * `timeTravel` (M8) and `transfer` (M9) intentionally keep a lightweight stub —
+ * their panels land in later milestones; the stub still resolves through `lazy`,
+ * so the router treats every tab uniformly.
  */
 import { lazy } from 'react';
-import { useStudioCapabilities } from '../data/capabilities';
+import type { ComponentType, LazyExoticComponent } from 'react';
 import { TAB_META } from './nav';
 import type { StudioTab } from './nav';
 
-export function PanelStub({ tab }: { tab: StudioTab }) {
-  const { capabilities, isLoading } = useStudioCapabilities();
+/** The placeholder shown for tabs whose panels are owned by a later milestone. */
+export function StubPanel({ tab }: { tab: StudioTab }) {
   const meta = TAB_META[tab];
-  const featureLive = capabilities.features[meta.feature];
   return (
-    <section className="vela-panel" data-tab={tab} aria-labelledby={`vela-panel-title-${tab}`}>
-      <h2 id={`vela-panel-title-${tab}`} className="vela-panel__title">
-        {meta.label}
-      </h2>
-      <p className="vela-panel__id">Panel: {tab}</p>
-      <dl className="vela-panel__caps">
-        <div className="vela-panel__cap">
-          <dt>feature</dt>
-          <dd>
-            {meta.feature}: {String(featureLive)}
-          </dd>
+    <section className="vela-panel" data-tab={tab}>
+      <header className="vela-panel__head">
+        <div>
+          <h1 className="vela-panel__h1">{meta.label}</h1>
+          <p className="vela-panel__desc">This panel lands in a later milestone.</p>
         </div>
-        <div className="vela-panel__cap">
-          <dt>capabilities</dt>
-          <dd>{isLoading ? 'loading…' : 'ready'}</dd>
+      </header>
+      <div className="vela-panel__body">
+        <div className="vela-state vela-state--empty">
+          <p className="vela-state__label">Panel: {tab}</p>
         </div>
-      </dl>
-      <p className="vela-panel__note">Real panel lands in M6.</p>
+      </div>
     </section>
   );
 }
 
+const stubLazy = (tab: StudioTab): LazyExoticComponent<ComponentType> =>
+  lazy(async () => ({ default: () => <StubPanel tab={tab} /> }));
+
 /**
- * A `React.lazy` stub for a tab. The stubs resolve synchronously (no real
- * `import()`), but stay lazy so the shell's `<Suspense>` path is real and
- * testable.
+ * Tab → lazy panel component. `satisfies Record<StudioTab, …>` enforces total
+ * coverage (a new tab must be wired here), while each `import()` stays a static
+ * literal so the bundler can split it into its own chunk.
  */
-export function lazyPanel(tab: StudioTab) {
-  return lazy(async () => ({ default: () => <PanelStub tab={tab} /> }));
+const PANELS = {
+  home: lazy(() => import('../panels/home')),
+  routes: lazy(() => import('../panels/routes')),
+  modules: lazy(() => import('../panels/modules')),
+  entrypoints: lazy(() => import('../panels/entrypoints')),
+  api: lazy(() => import('../panels/api/index')),
+  data: lazy(() => import('../panels/data/index')),
+  timeTravel: stubLazy('timeTravel'),
+  transfer: stubLazy('transfer'),
+  users: lazy(() => import('../panels/users')),
+  sessions: lazy(() => import('../panels/sessions')),
+  organizations: lazy(() => import('../panels/organizations')),
+  queues: lazy(() => import('../panels/queues')),
+  schedule: lazy(() => import('../panels/schedule')),
+  flags: lazy(() => import('../panels/flags')),
+  logs: lazy(() => import('../panels/logs')),
+  live: lazy(() => import('../panels/live')),
+  presence: lazy(() => import('../panels/presence')),
+  audit: lazy(() => import('../panels/audit')),
+} satisfies Record<StudioTab, LazyExoticComponent<ComponentType>>;
+
+/** The lazy panel component for a tab. */
+export function panelComponentFor(tab: StudioTab): LazyExoticComponent<ComponentType> {
+  return PANELS[tab];
 }

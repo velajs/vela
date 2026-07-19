@@ -9,3 +9,5 @@ export const STUDIO_FIXTURES_VERSION = '0';
 
 export * from './fake-transport';
 export * from './fixtures';
+export * from './panel-fixtures';
+export * from './data-fixtures';

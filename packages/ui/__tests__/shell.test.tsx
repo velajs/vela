@@ -14,6 +14,15 @@ afterEach(() => {
   }
 });
 
+/**
+ * The sidebar nav, scoped. The real Overview panel also renders quick-link
+ * anchors to every enabled domain, so a bare `getByRole('link', …)` is now
+ * ambiguous — tab-navigation assertions must target the sidebar `<nav>`.
+ */
+async function sidebar(): Promise<ReturnType<typeof within>> {
+  return within(await screen.findByRole('navigation', { name: 'Studio sections' }));
+}
+
 describe('StudioApp login gate', () => {
   it('shows the login screen with no token, then flips to the shell after submit', async () => {
     render(<StudioApp baseUrl="http://host" fetchImpl={studioFetch()} initialPath="/" />);
@@ -25,9 +34,9 @@ describe('StudioApp login gate', () => {
     fireEvent.change(screen.getByLabelText('Admin token'), { target: { value: 'secret-token' } });
     fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
 
-    // Shell appears (nav + landing panel).
-    expect(await screen.findByRole('link', { name: 'Routes' })).toBeTruthy();
-    await screen.findByText('Panel: home');
+    // Shell appears (nav + real landing panel).
+    expect((await sidebar()).getByRole('link', { name: 'Routes' })).toBeTruthy();
+    await screen.findByRole('heading', { name: 'Overview' });
     expect(screen.queryByLabelText('Admin token')).toBeNull();
   });
 
@@ -49,8 +58,8 @@ describe('StudioApp login gate', () => {
     );
 
     // Shell renders: nav + landing panel appear (proves no redirect loop).
-    expect(await screen.findByRole('link', { name: 'Routes' })).toBeTruthy();
-    await screen.findByText('Panel: home');
+    expect((await sidebar()).getByRole('link', { name: 'Routes' })).toBeTruthy();
+    await screen.findByRole('heading', { name: 'Overview' });
 
     // RPCs went to the custom admin prefix — and never to the default one.
     await waitFor(() =>
@@ -68,12 +77,13 @@ describe('Studio shell (capability gating)', () => {
     );
     renderWithAdmin(<Studio initialPath="/" />, transport);
 
-    await screen.findByText('Panel: home');
+    await screen.findByRole('heading', { name: 'Overview' });
+    const nav = await sidebar();
     // `transfer` stays visible (feature true); `timeTravel`/`data` are hidden.
-    await waitFor(() => expect(screen.queryByRole('link', { name: 'Time Travel' })).toBeNull());
-    expect(screen.queryByRole('link', { name: 'Data' })).toBeNull();
-    expect(screen.queryByRole('link', { name: 'Transfer' })).not.toBeNull();
-    expect(screen.queryByRole('link', { name: 'Routes' })).not.toBeNull();
+    await waitFor(() => expect(nav.queryByRole('link', { name: 'Time Travel' })).toBeNull());
+    expect(nav.queryByRole('link', { name: 'Data' })).toBeNull();
+    expect(nav.queryByRole('link', { name: 'Transfer' })).not.toBeNull();
+    expect(nav.queryByRole('link', { name: 'Routes' })).not.toBeNull();
   });
 
   it('redirects a deep-link to a hidden tab back home', async () => {
@@ -82,7 +92,7 @@ describe('Studio shell (capability gating)', () => {
     );
     renderWithAdmin(<Studio initialPath="/timeTravel" />, transport);
 
-    await waitFor(() => expect(screen.getByText('Panel: home')).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Overview' })).toBeTruthy());
     expect(screen.queryByText('Panel: timeTravel')).toBeNull();
   });
 });
@@ -90,7 +100,7 @@ describe('Studio shell (capability gating)', () => {
 describe('Studio shell (command palette + lazy panels)', () => {
   it('opens with ⌘K and fuzzy-filters the tab list', async () => {
     renderWithAdmin(<Studio initialPath="/" />, new FakeAdminTransport(fakeTable()));
-    await screen.findByText('Panel: home');
+    await screen.findByRole('heading', { name: 'Overview' });
 
     fireEvent.keyDown(window, { key: 'k', metaKey: true });
 
@@ -104,10 +114,23 @@ describe('Studio shell (command palette + lazy panels)', () => {
 
   it('renders a lazy panel stub when navigating to a tab', async () => {
     renderWithAdmin(<Studio initialPath="/" />, new FakeAdminTransport(fakeTable()));
-    await screen.findByText('Panel: home');
+    await screen.findByRole('heading', { name: 'Overview' });
 
-    fireEvent.click(screen.getByRole('link', { name: 'Modules' }));
+    fireEvent.click((await sidebar()).getByRole('link', { name: 'Modules' }));
 
-    expect(await screen.findByText('Panel: modules')).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Modules' })).toBeTruthy();
+  });
+
+  it('offers per-model quick jumps from data.listModels', async () => {
+    renderWithAdmin(<Studio initialPath="/" />, new FakeAdminTransport(fakeTable()));
+    await screen.findByRole('heading', { name: 'Overview' });
+
+    fireEvent.keyDown(window, { key: 'k', metaKey: true });
+    const input = await screen.findByLabelText('Command palette search');
+    fireEvent.change(input, { target: { value: 'user' } });
+
+    const dialog = screen.getByRole('dialog', { name: 'Command palette' });
+    // The `data model` hint is unique to the per-model jump entries.
+    expect(await within(dialog).findByText('data model')).toBeTruthy();
   });
 });

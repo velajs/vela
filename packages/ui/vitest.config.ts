@@ -12,6 +12,7 @@ export default defineConfig({
       '__tests__/**/*.test.tsx',
     ],
     environment: 'happy-dom',
+    setupFiles: ['./__tests__/setup.ts'],
     exclude: ['node_modules', 'dist'],
   },
   plugins: [

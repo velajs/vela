@@ -23,11 +23,13 @@ function fuzzyMatch(query: string, text: string): boolean {
 
 export interface CommandPaletteProps {
   tabs: readonly StudioTab[];
+  /** Model names to offer as data-panel quick jumps (from `data.listModels`). */
+  models?: readonly string[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-export function CommandPalette({ tabs, open, onOpenChange }: CommandPaletteProps) {
+export function CommandPalette({ tabs, models = [], open, onOpenChange }: CommandPaletteProps) {
   const [query, setQuery] = useState('');
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -43,12 +45,21 @@ export function CommandPalette({ tabs, open, onOpenChange }: CommandPaletteProps
     () => tabs.filter((tab) => fuzzyMatch(query, TAB_META[tab].label) || fuzzyMatch(query, tab)),
     [tabs, query],
   );
+  const modelResults = useMemo(
+    () => models.filter((model) => fuzzyMatch(query, model) || fuzzyMatch(query, `data ${model}`)),
+    [models, query],
+  );
 
   if (!open) return null;
 
   const go = (tab: StudioTab): void => {
     onOpenChange(false);
     void navigate({ to: tabPath(tab) });
+  };
+
+  const goModel = (model: string): void => {
+    onOpenChange(false);
+    void navigate({ to: tabPath('data'), search: () => ({ model }) });
   };
 
   return (
@@ -70,21 +81,36 @@ export function CommandPalette({ tabs, open, onOpenChange }: CommandPaletteProps
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && results.length > 0) go(results[0]);
+            else if (event.key === 'Enter' && modelResults.length > 0) goModel(modelResults[0]);
             else if (event.key === 'Escape') onOpenChange(false);
           }}
         />
         <ul className="vela-palette__list" role="listbox" aria-label="Results">
-          {results.length === 0 ? (
+          {results.length === 0 && modelResults.length === 0 ? (
             <li className="vela-palette__empty">No matches</li>
           ) : (
-            results.map((tab) => (
-              <li key={tab}>
-                <button type="button" className="vela-palette__item" onClick={() => go(tab)}>
-                  <span className="vela-palette__label">{TAB_META[tab].label}</span>
-                  <span className="vela-palette__hint">{tab}</span>
-                </button>
-              </li>
-            ))
+            <>
+              {results.map((tab) => (
+                <li key={`tab-${tab}`}>
+                  <button type="button" className="vela-palette__item" onClick={() => go(tab)}>
+                    <span className="vela-palette__label">{TAB_META[tab].label}</span>
+                    <span className="vela-palette__hint">{tab}</span>
+                  </button>
+                </li>
+              ))}
+              {modelResults.map((model) => (
+                <li key={`model-${model}`}>
+                  <button
+                    type="button"
+                    className="vela-palette__item"
+                    onClick={() => goModel(model)}
+                  >
+                    <span className="vela-palette__label">{model}</span>
+                    <span className="vela-palette__hint">data model</span>
+                  </button>
+                </li>
+              ))}
+            </>
           )}
         </ul>
       </div>

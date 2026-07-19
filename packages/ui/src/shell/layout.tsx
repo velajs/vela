@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 import { useStudioCapabilities } from '../data/capabilities';
+import { useAdminQuery } from '../data/query';
 import { useShellChrome } from './chrome';
 import { CommandPalette } from './command-palette';
 import { isTabVisible, tabFromPath, tabPath, TAB_META, visibleGroups } from './nav';
@@ -26,6 +27,11 @@ export function StudioLayout({ children }: StudioLayoutProps) {
 
   const groups = visibleGroups(capabilities.features);
   const visibleTabs = groups.flatMap((group) => group.tabs);
+  const dataVisible = isTabVisible('data', capabilities.features);
+
+  // Per-model ⌘K quick jumps: only fetched when the data panel is reachable.
+  const models = useAdminQuery('data.listModels', {}, { enabled: dataVisible });
+  const modelNames = (models.data ?? []).map((model) => model.name);
 
   // ⌘K / Ctrl-K toggles the palette; Escape closes it.
   useEffect(() => {
@@ -93,7 +99,12 @@ export function StudioLayout({ children }: StudioLayoutProps) {
         </header>
         <main className="vela-content">{children}</main>
       </div>
-      <CommandPalette tabs={visibleTabs} open={paletteOpen} onOpenChange={setPaletteOpen} />
+      <CommandPalette
+        tabs={visibleTabs}
+        models={modelNames}
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+      />
     </div>
   );
 }

@@ -15,8 +15,9 @@ import {
 } from '@tanstack/react-router';
 import type { RouterHistory } from '@tanstack/react-router';
 import { StudioLayout } from './layout';
-import { lazyPanel } from './panels';
+import { panelComponentFor } from './panels';
 import { NAV_GROUPS, tabPath } from './nav';
+import { decodeDataViewSearch } from '../panels/data/view-state';
 
 function RootLayout() {
   return (
@@ -53,11 +54,21 @@ export function createStudioRouter(options: StudioRouterOptions = {}) {
 
   const tabs = NAV_GROUPS.flatMap((group) => group.tabs);
   const routes = tabs.map((tab) =>
-    createRoute({
-      getParentRoute: () => rootRoute,
-      path: tabPath(tab),
-      component: lazyPanel(tab),
-    }),
+    tab === 'data'
+      ? createRoute({
+          getParentRoute: () => rootRoute,
+          path: tabPath(tab),
+          component: panelComponentFor(tab),
+          // The data browser serializes its ENTIRE view state into the URL search
+          // params — this validator is what keeps them across navigations and
+          // hydrates a fresh mount from a shared link.
+          validateSearch: (raw) => decodeDataViewSearch(raw),
+        })
+      : createRoute({
+          getParentRoute: () => rootRoute,
+          path: tabPath(tab),
+          component: panelComponentFor(tab),
+        }),
   );
 
   const routeTree = rootRoute.addChildren(routes);
