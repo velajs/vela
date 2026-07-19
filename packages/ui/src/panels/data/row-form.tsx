@@ -78,13 +78,21 @@ export function RowForm({
 }: RowFormProps): ReactNode {
   const editable = useMemo(() => columns.filter((column) => !isReadOnly(column)), [columns]);
 
-  const [values, setValues] = useState<Record<string, string>>(() => {
+  // The initial rendered string for every editable field. Seeds the form AND is
+  // the "untouched" baseline for edit mode: a field whose input string still
+  // equals this baseline was never touched by the user, so it must never enter
+  // the patch. This is what stops an untouched nullable/number column (rendered
+  // as an empty input, which would otherwise coerce to `null`) from being PATCHed
+  // to null over an absent-or-null initial value.
+  const initialInputs = useMemo(() => {
     const seed: Record<string, string> = {};
     for (const column of editable) {
       seed[column.name] = toInputValue(initial?.[column.name]);
     }
     return seed;
-  });
+  }, [editable, initial]);
+
+  const [values, setValues] = useState<Record<string, string>>(initialInputs);
 
   const setField = (name: string, next: string): void => {
     setValues((prev) => ({ ...prev, [name]: next }));
@@ -94,12 +102,20 @@ export function RowForm({
     const patch: Record<string, unknown> = {};
     for (const column of editable) {
       const raw = values[column.name] ?? '';
-      const coerced = coerceField(column, raw);
       if (mode === 'edit') {
-        if (!unchanged(coerced, initial?.[column.name])) patch[column.name] = coerced;
+        // Untouched: the input still matches what we rendered → never patch. This
+        // is the load-bearing guard — clearing a field emits `null` ONLY when the
+        // user actually changed a previously-set value, never for a field they
+        // never touched.
+        if (raw === (initialInputs[column.name] ?? '')) continue;
+        const coerced = coerceField(column, raw);
+        // Touched but semantically identical (e.g. reformatted JSON, `5` re-typed
+        // as `5.0`) → still no change to send.
+        if (unchanged(coerced, initial?.[column.name])) continue;
+        patch[column.name] = coerced;
       } else if (column.type === 'boolean' || raw !== '') {
         // Create: send booleans always, and any field the user actually filled.
-        patch[column.name] = coerced;
+        patch[column.name] = coerceField(column, raw);
       }
     }
     onSubmit(patch);
