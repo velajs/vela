@@ -10,6 +10,7 @@ export default defineConfig({
     'src/schedule/index.ts',
     'src/timetravel/index.ts',
     'src/crud/index.ts',
+    'src/cloudflare/index.ts',
   ],
   format: ['esm'],
   dts: true,

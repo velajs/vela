@@ -62,6 +62,10 @@
     "./crud": {
       "types": "./dist/crud/index.d.ts",
       "import": "./dist/crud/index.js"
+    },
+    "./cloudflare": {
+      "types": "./dist/cloudflare/index.d.ts",
+      "import": "./dist/cloudflare/index.js"
     }
   },
   "scripts": {
@@ -75,6 +79,7 @@
   },
   "devDependencies": {
     "@velajs/better-auth": "^0.6.1",
+    "@velajs/cloudflare": "link:../../../cloudflare",
     "@velajs/crud": "^1.19.1",
     "@velajs/feature-flags": "^0.1.1",
     "@velajs/vela": "^1.20.0",
@@ -86,6 +91,7 @@
   },
   "peerDependencies": {
     "@velajs/better-auth": ">=0.6.0 <1",
+    "@velajs/cloudflare": ">=1.11.0 <2",
     "@velajs/crud": ">=1.19.0 <2",
     "@velajs/feature-flags": ">=0.1.1 <1",
     "@velajs/vela": ">=1.20.0 <2",
@@ -94,6 +100,9 @@
   },
   "peerDependenciesMeta": {
     "@velajs/better-auth": {
+      "optional": true
+    },
+    "@velajs/cloudflare": {
       "optional": true
     },
     "@velajs/crud": {
