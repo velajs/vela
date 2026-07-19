@@ -3,6 +3,7 @@ packages:
   - 'examples/*'
 
 allowBuilds:
+  '@parcel/watcher': true
   '@swc/core': true
   esbuild: true
   workerd: true
@@ -25,6 +26,7 @@ overrides:
   'vite@>=7.0.0 <7.3.5': ^7.3.5
 
 onlyBuiltDependencies:
+  - '@parcel/watcher'
   - '@swc/core'
   - esbuild
   - workerd
