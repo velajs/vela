@@ -63,7 +63,7 @@
   "scripts": {
     "build": "tsdown",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json"
   },
   "dependencies": {
     "@velajs/errors": "^1.1.0",
@@ -77,7 +77,7 @@
     "vitest": "catalog:"
   },
   "peerDependencies": {
-    "@velajs/vela": ">=1.21.0 <2",
+    "@velajs/vela": ">=1.20.0 <2",
     "hono": ">=4"
   },
   "engines": {

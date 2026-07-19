@@ -20,7 +20,24 @@ import { studioError, toAdminErrorBody } from '../studio.errors';
 import { StudioDispatchRegistry } from '../rpc/dispatch.registry';
 import { AdminSubTokenSigner } from '../security/sub-token.signer';
 import { timingSafeEqual } from '../security/token-compare';
-import { RateLimiter } from './middleware/rate-limit';
+import { FixedWindowCounter, RateLimiter } from './middleware/rate-limit';
+
+/**
+ * Stable pseudo-op identifier stamped onto the `/ws-token` endpoint's
+ * pre-dispatch error envelope. `/ws-token` is NOT an `@AdminRpc` op, but the
+ * protocol's error branch ({@link AdminRpcResponse} `ok: false`) requires an
+ * `op: string`; this constant fills that slot so the endpoint never emits an
+ * undeclared wire shape. It is deliberately NOT a member of `STUDIO_OPS`.
+ */
+const WS_TOKEN_PSEUDO_OP = 'studio.wsToken';
+
+/**
+ * Pre-auth throttle ceiling as a multiple of the post-auth `max`. Generous by
+ * design: the fixed-window counter only exists to blunt unauthenticated floods,
+ * never to constrain a legitimate authenticated caller (whom the post-auth token
+ * bucket governs).
+ */
+const PRE_AUTH_MULTIPLIER = 5;
 
 function jsonResponse(data: unknown, status: number): Response {
   return new Response(JSON.stringify(data), {
@@ -29,13 +46,10 @@ function jsonResponse(data: unknown, status: number): Response {
   });
 }
 
-/** Build a redacted error envelope (`op` included when the failure is op-scoped). */
-function errorEnvelope(code: StudioErrorCode, op?: string): Response {
+/** Build a redacted, op-scoped error envelope (matches the {@link AdminRpcResponse} error branch). */
+function errorEnvelope(code: StudioErrorCode, op: string): Response {
   const { body, status } = toAdminErrorBody(studioError(code));
-  return jsonResponse(
-    op !== undefined ? { ok: false, op, error: body, status } : { ok: false, error: body, status },
-    status,
-  );
+  return jsonResponse({ ok: false, op, error: body, status }, status);
 }
 
 function clientIp(c: Context): string | null {
@@ -76,7 +90,15 @@ export function mountAdminRouter(app: Hono, ctx: RouteContributorContext): void 
   const rpcPath = ctx.joinPaths(base, `${STUDIO_RPC_SUFFIX}:op`);
   const wsTokenPath = ctx.joinPaths(base, STUDIO_WS_TOKEN_SUFFIX);
 
+  // Post-auth token bucket (per authenticated principal IP).
   const rateLimiter = config.rateLimit ? new RateLimiter(config.rateLimit) : null;
+  // Pre-auth fixed-window counter (per client IP), 5× the post-auth ceiling.
+  const preAuthCounter = config.rateLimit
+    ? new FixedWindowCounter({
+        windowMs: config.rateLimit.windowMs,
+        max: config.rateLimit.max * PRE_AUTH_MULTIPLIER,
+      })
+    : null;
 
   // Health is always reachable (never existence-hidden): it is how a client
   // learns Studio is disabled.
@@ -84,12 +106,17 @@ export function mountAdminRouter(app: Hono, ctx: RouteContributorContext): void 
     jsonResponse({ enabled: config.enabled, protocolVersion: STUDIO_PROTOCOL_VERSION }, 200),
   );
 
-  // Shared pre-dispatch chain: default-closed → auth → rate limit.
+  // Shared pre-dispatch chain: default-closed → pre-auth throttle → auth →
+  // post-auth rate limit. The pre-auth throttle runs BEFORE the bearer check so
+  // an unauthenticated flood cannot force a constant-time compare per request.
   const guard = async (
     c: Context,
-    op?: string,
+    op: string,
   ): Promise<{ principal: AdminPrincipal } | { response: Response }> => {
     if (!config.enabled) return { response: errorEnvelope('STUDIO_DISABLED', op) };
+    if (preAuthCounter && !preAuthCounter.check(clientIp(c) ?? 'unknown')) {
+      return { response: errorEnvelope('STUDIO_RATE_LIMITED', op) };
+    }
     const principal = await authenticate(c, config);
     if (!principal) return { response: errorEnvelope('STUDIO_UNAUTHORIZED', op) };
     if (rateLimiter && !rateLimiter.check(principal.ip ?? 'unknown')) {
@@ -112,7 +139,7 @@ export function mountAdminRouter(app: Hono, ctx: RouteContributorContext): void 
   });
 
   app.post(wsTokenPath, async (c) => {
-    const gated = await guard(c);
+    const gated = await guard(c, WS_TOKEN_PSEUDO_OP);
     if ('response' in gated) return gated.response;
 
     const body = await readBody(c);

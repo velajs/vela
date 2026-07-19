@@ -10,6 +10,7 @@ import {
 } from '../src';
 import type { AdminOpContext, StudioModuleOptions } from '../src';
 import { STUDIO_PROTOCOL_VERSION } from '@velajs/studio-protocol';
+import type { AdminErrorBody } from '@velajs/studio-protocol';
 
 const TOKEN = 'test-master-token-value';
 const BASE = '/_vela/admin';
@@ -290,5 +291,106 @@ describe('StudioModule — ws-token + rate limit', () => {
     const third = await hono.request(`${BASE}/rpc/app.routes`, authed({}, ip));
     expect(third.status).toBe(429);
     expect((await third.json()).error.code).toBe('STUDIO_RATE_LIMITED');
+  });
+
+  it('pre-auth throttle 429s an unauthenticated flood BEFORE the bearer check', async () => {
+    // Pre-auth ceiling = 5× post-auth max = 10. Requests with no bearer would
+    // each 401; once the fixed-window counter is exhausted the throttle fires
+    // first, proving it runs ahead of authentication.
+    const app = await makeApp({ token: TOKEN, rateLimit: { windowMs: 60_000, max: 2 } });
+    const hono = app.getHonoApp();
+    const ip = '198.51.100.9';
+    const noAuth = (): RequestInit => ({
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-forwarded-for': ip },
+      body: '{}',
+    });
+    for (let i = 0; i < 10; i++) {
+      expect((await hono.request(`${BASE}/rpc/app.routes`, noAuth())).status).toBe(401);
+    }
+    const flooded = await hono.request(`${BASE}/rpc/app.routes`, noAuth());
+    expect(flooded.status).toBe(429);
+    expect((await flooded.json()).error.code).toBe('STUDIO_RATE_LIMITED');
+  });
+});
+
+describe('StudioModule — ws-token pre-dispatch error envelope', () => {
+  it('carries the declared error branch shape with a stable pseudo-op', async () => {
+    // /ws-token is not an @AdminRpc op, but its pre-dispatch errors must still be
+    // the protocol error branch: { ok:false, op, error, status } — never an
+    // undeclared shape missing `op`.
+    const app = await makeApp({ token: TOKEN });
+    const res = await app.getHonoApp().request(`${BASE}/ws-token`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    });
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as {
+      ok: boolean;
+      op: string;
+      error: AdminErrorBody;
+      status: number;
+    };
+    expect(body.ok).toBe(false);
+    expect(body.op).toBe('studio.wsToken');
+    expect(body.status).toBe(401);
+    expect(body.error.code).toBe('STUDIO_UNAUTHORIZED');
+    expect(typeof body.error.title).toBe('string');
+    expect(typeof body.error.message).toBe('string');
+    expect(body.error.status).toBe(401);
+  });
+
+  it('includes the pseudo-op when Studio is disabled too', async () => {
+    const app = await makeApp({});
+    const res = await app.getHonoApp().request(`${BASE}/ws-token`, authed({}));
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { ok: boolean; op: string; error: { code: string } };
+    expect(body.op).toBe('studio.wsToken');
+    expect(body.error.code).toBe('STUDIO_DISABLED');
+  });
+});
+
+describe('StudioModule — forRootAsync', () => {
+  it('mounts + health via forRootAsync({ useFactory })', async () => {
+    @Module({
+      imports: [
+        StudioModule.forRootAsync({
+          useFactory: (): StudioModuleOptions => ({ token: TOKEN }),
+        }),
+      ],
+    })
+    class AsyncAppModule {}
+    const app = await VelaFactory.create(AsyncAppModule);
+    const res = await app.getHonoApp().request(`${BASE}/health`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ enabled: true, protocolVersion: STUDIO_PROTOCOL_VERSION });
+  });
+
+  it('plumbs async-resolved options end-to-end (editable gate open on dispatch)', async () => {
+    @Injectable()
+    class DataOps {
+      @AdminRpc({ op: 'data.writeRow' })
+      writeRow() {
+        return { written: true };
+      }
+    }
+    @Module({
+      imports: [
+        StudioModule.forRootAsync({
+          useFactory: async (): Promise<StudioModuleOptions> => {
+            await Promise.resolve();
+            return { token: TOKEN, editable: { data: true } };
+          },
+        }),
+      ],
+      providers: [DataOps],
+    })
+    class AsyncAppModule {}
+    const app = await VelaFactory.create(AsyncAppModule);
+    // With data editing enabled via the async factory, the write op is NOT gated.
+    const res = await app.getHonoApp().request(`${BASE}/rpc/data.writeRow`, authed({ args: {} }));
+    expect(res.status).toBe(200);
+    expect((await res.json()).data).toEqual({ written: true });
   });
 });

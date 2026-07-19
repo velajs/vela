@@ -25,8 +25,20 @@ export function base64UrlEncode(bytes: Uint8Array): string {
   return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
 }
 
-/** URL-safe base64 decode. Returns `null` on malformed input rather than throwing. */
+/** Strict base64url alphabet — no padding, no whitespace, no `+`/`/`. */
+const BASE64URL_RE = /^[A-Za-z0-9_-]*$/;
+
+/**
+ * URL-safe base64 decode. Returns `null` on malformed input rather than
+ * throwing.
+ *
+ * `atob` is deliberately forgiving — it silently ignores ASCII whitespace and
+ * accepts stray padding — which for token bodies is a footgun: two distinct
+ * strings could decode to the same bytes. We reject anything outside the strict
+ * base64url alphabet up front, so only exact `base64UrlEncode` output round-trips.
+ */
 export function base64UrlDecode(input: string): Uint8Array | null {
+  if (!BASE64URL_RE.test(input)) return null;
   try {
     const normalized = input.replaceAll('-', '+').replaceAll('_', '/');
     const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);

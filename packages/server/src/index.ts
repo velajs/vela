@@ -63,7 +63,7 @@ export { AdminLogBuffer } from './logs/log-buffer';
 export { StudioFeaturesService } from './features/features.service';
 
 // HTTP
-export { RateLimiter } from './http/middleware/rate-limit';
+export { RateLimiter, FixedWindowCounter, DEFAULT_MAX_ENTRIES } from './http/middleware/rate-limit';
 export type { RateLimitOptions, Clock } from './http/middleware/rate-limit';
 export { StudioAdminController, studioRouteContributor } from './http/route-contributor';
 export { mountAdminRouter } from './http/admin-router';

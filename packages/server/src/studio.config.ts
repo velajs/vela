@@ -14,6 +14,8 @@ export interface StudioEnv {
   VELA_STUDIO_DATA_EDITABLE?: string;
   VELA_STUDIO_SCHEMA_EDITABLE?: string;
   VELA_STUDIO_OPS_EDITABLE?: string;
+  VELA_STUDIO_TIMETRAVEL_EDITABLE?: string;
+  VELA_STUDIO_TRANSFER_EDITABLE?: string;
 }
 
 /** The env-derived config slice (before module-option overrides). */
@@ -22,6 +24,8 @@ export interface StudioEnvConfig {
   data?: boolean;
   schema?: boolean;
   ops?: boolean;
+  timeTravel?: boolean;
+  transfer?: boolean;
 }
 
 /** Parse a boolean-ish env flag: `'1'` / `'true'` (case-insensitive) → true. */
@@ -40,6 +44,8 @@ export const studioConfig = registerAs(
     data: envBool(env.VELA_STUDIO_DATA_EDITABLE),
     schema: envBool(env.VELA_STUDIO_SCHEMA_EDITABLE),
     ops: envBool(env.VELA_STUDIO_OPS_EDITABLE),
+    timeTravel: envBool(env.VELA_STUDIO_TIMETRAVEL_EDITABLE),
+    transfer: envBool(env.VELA_STUDIO_TRANSFER_EDITABLE),
   }),
 );
 
@@ -56,6 +62,8 @@ export function resolveStudioConfig(
     schema: options.editable?.schema ?? env.schema ?? false,
     identity: options.editable?.identity ?? false,
     ops: options.editable?.ops ?? env.ops ?? false,
+    timeTravel: options.editable?.timeTravel ?? env.timeTravel ?? false,
+    transfer: options.editable?.transfer ?? env.transfer ?? false,
   };
   // Default-closed: enabled iff a token exists, unless explicitly disabled.
   const enabled = options.enabled === false ? false : Boolean(token);

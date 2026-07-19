@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { timingSafeEqual } from '../src/security/token-compare';
 import { AdminSubTokenSigner } from '../src/security/sub-token.signer';
 import { ConfirmTokenSigner } from '../src/security/confirm-token';
-import { RateLimiter } from '../src/http/middleware/rate-limit';
+import { FixedWindowCounter, RateLimiter } from '../src/http/middleware/rate-limit';
 import { base64UrlDecode, base64UrlEncode, canonicalJson } from '../src/security/crypto';
 
 describe('timingSafeEqual', () => {
@@ -31,8 +31,16 @@ describe('base64url', () => {
     expect([...(decoded ?? [])]).toEqual([...bytes]);
   });
 
-  it('returns null on malformed input', () => {
-    expect(base64UrlDecode('!!!not base64!!!')).not.toBe(undefined);
+  it('returns null on malformed input (out-of-alphabet characters)', () => {
+    expect(base64UrlDecode('!!!not base64!!!')).toBeNull();
+  });
+
+  it('returns null on input a forgiving atob would tolerate (embedded whitespace)', () => {
+    // atob silently ignores ASCII whitespace and would decode these to bytes;
+    // the strict decoder must reject anything outside the base64url alphabet.
+    expect(base64UrlDecode('  spaces  ')).toBeNull();
+    expect(base64UrlDecode('Zm9v YmFy')).toBeNull();
+    expect(base64UrlDecode('Zm9v\nYmFy')).toBeNull();
   });
 
   it('canonicalizes object key order', () => {
@@ -147,5 +155,55 @@ describe('RateLimiter', () => {
     expect(limiter.check('ip-1')).toBe(false);
     now += 1000; // one full window later -> one token back
     expect(limiter.check('ip-1')).toBe(true);
+  });
+
+  it('bounds its map under many distinct spoofed IPs (idle eviction)', () => {
+    let now = 0;
+    const limiter = new RateLimiter({ windowMs: 1000, max: 5, maxEntries: 10 }, () => now);
+    // A flood of distinct source IPs, the clock advancing so older entries age
+    // out of the window and become evictable. Without the cap this map would
+    // hold ~1000 entries; with it, it stays bounded.
+    for (let i = 0; i < 1000; i++) {
+      now += 200; // window is 1000ms => an entry is idle after 5 inserts
+      limiter.check(`ip-${i}`);
+    }
+    expect(limiter.size).toBeLessThanOrEqual(11); // maxEntries + the just-inserted key
+  });
+});
+
+describe('FixedWindowCounter (pre-auth throttle)', () => {
+  it('allows up to max per window, then denies', () => {
+    let now = 0;
+    const counter = new FixedWindowCounter({ windowMs: 1000, max: 3 }, () => now);
+    expect(counter.check('ip-1')).toBe(true);
+    expect(counter.check('ip-1')).toBe(true);
+    expect(counter.check('ip-1')).toBe(true);
+    expect(counter.check('ip-1')).toBe(false);
+  });
+
+  it('rolls over when the window elapses', () => {
+    let now = 0;
+    const counter = new FixedWindowCounter({ windowMs: 1000, max: 1 }, () => now);
+    expect(counter.check('ip-1')).toBe(true);
+    expect(counter.check('ip-1')).toBe(false);
+    now += 1000; // new window
+    expect(counter.check('ip-1')).toBe(true);
+  });
+
+  it('is per-key', () => {
+    const counter = new FixedWindowCounter({ windowMs: 1000, max: 1 }, () => 0);
+    expect(counter.check('ip-1')).toBe(true);
+    expect(counter.check('ip-1')).toBe(false);
+    expect(counter.check('ip-2')).toBe(true);
+  });
+
+  it('bounds its map under many distinct spoofed IPs (idle eviction)', () => {
+    let now = 0;
+    const counter = new FixedWindowCounter({ windowMs: 1000, max: 3, maxEntries: 10 }, () => now);
+    for (let i = 0; i < 1000; i++) {
+      now += 200;
+      counter.check(`ip-${i}`);
+    }
+    expect(counter.size).toBeLessThanOrEqual(11);
   });
 });

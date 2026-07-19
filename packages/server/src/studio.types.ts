@@ -9,9 +9,14 @@ import type { StudioOp, StudioWriteGates } from '@velajs/studio-protocol';
 import type { AdminAuditEntry } from '@velajs/studio-protocol';
 
 /**
- * The four server-side editable categories. The wire-facing
- * {@link StudioWriteGates} are DERIVED from these (see `deriveWriteGates`); the
- * config surface stays small (data / schema / identity / ops).
+ * The six server-side editable categories. The wire-facing
+ * {@link StudioWriteGates} are DERIVED one-to-one from these (see
+ * `deriveWriteGates`). Each category gates a distinct class of destructive
+ * capability — none is a proxy for another — so an operator can, e.g., enable
+ * time-travel restore without also unlocking bulk transfer import.
+ *
+ * This is SERVER-SIDE config, not a frozen wire shape; the wire
+ * {@link StudioWriteGates} in `@velajs/studio-protocol` is the frozen contract.
  */
 export interface EditableFlags {
   /** Data-row create/update/delete/generate. */
@@ -22,6 +27,10 @@ export interface EditableFlags {
   identity: boolean;
   /** Operational actions (queue send/replay, schedule run-now, session revoke, api.tryit). */
   ops: boolean;
+  /** Time-travel restore / undo / prune. */
+  timeTravel: boolean;
+  /** Transfer import (bulk NDJSON ingest). */
+  transfer: boolean;
 }
 
 /** Options accepted by `StudioModule.forRoot` (override env). */
@@ -107,9 +116,10 @@ export interface AdminRpcMeta {
 }
 
 /**
- * Derive the six wire-facing write gates from the four editable categories.
- * Anything that writes persisted application data is gated by `data`; schema,
- * identity, and ops map one-to-one. Documented here as the single derivation.
+ * Derive the six wire-facing write gates from the six editable categories.
+ * Every mapping is one-to-one — no category grants a gate it does not name — so
+ * enabling one capability never silently unlocks another. Documented here as
+ * the single derivation.
  */
 export function deriveWriteGates(editable: EditableFlags): StudioWriteGates {
   return {
@@ -117,7 +127,7 @@ export function deriveWriteGates(editable: EditableFlags): StudioWriteGates {
     schemaEditable: editable.schema,
     opsEditable: editable.ops,
     runAsIdentity: editable.identity,
-    timeTravelRestore: editable.data,
-    transferImport: editable.data,
+    timeTravelRestore: editable.timeTravel,
+    transferImport: editable.transfer,
   };
 }
