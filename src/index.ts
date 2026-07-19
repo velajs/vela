@@ -8,6 +8,7 @@ import {
 } from './commands/introspect.commands.js';
 import { McpServeCommand } from './commands/mcp.command.js';
 import { SeedCommand } from './commands/seed.command.js';
+import { StudioCommand } from './commands/studio.command.js';
 
 const cli = new Cli({
   binaryName: 'vela',
@@ -23,6 +24,7 @@ cli.register(ModuleGraphCommand);
 cli.register(EntrypointListCommand);
 cli.register(OpenApiDumpCommand);
 cli.register(McpServeCommand);
+cli.register(StudioCommand);
 
 void cli.runExit(process.argv.slice(2));
 
@@ -34,6 +36,7 @@ export {
   RouteListCommand,
 } from './commands/introspect.commands.js';
 export { McpServeCommand } from './commands/mcp.command.js';
+export { StudioCommand } from './commands/studio.command.js';
 export {
   collectRoutes,
   collectModules,
