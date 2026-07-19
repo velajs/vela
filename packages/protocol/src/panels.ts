@@ -76,37 +76,68 @@ export interface DlqEntryRow {
 
 // ---- schedule -------------------------------------------------------------
 
-/** A scheduled job row. */
+/**
+ * A scheduled job row. Mirrors vela's `ScheduleJobRef` (`kind` + `expression?` /
+ * `ms?`). `ScheduleJobRef` carries no name or run timestamps, so `name`,
+ * `lastRun`, and `nextRun` are all server-synthesized around the driver read.
+ */
 export interface ScheduleJobRow {
+  /** Server-synthesized display name (derived from the job's `methodName`). */
   name: string;
-  cron?: string;
+  kind: 'cron' | 'interval';
+  /** Cron expression (`kind: 'cron'`). */
+  expression?: string;
+  /** Interval period in ms (`kind: 'interval'`). */
+  ms?: number;
+  /** Server-synthesized: last fire time (epoch ms). */
   lastRun?: number;
+  /** Server-synthesized: next scheduled fire time (epoch ms). */
   nextRun?: number;
-  enabled?: boolean;
 }
 
 /** A declared cron trigger. */
 export interface CronTriggerRow {
   name: string;
   cron: string;
-  timezone?: string;
   nextRun?: number;
 }
 
 // ---- flags ----------------------------------------------------------------
 
-/** A feature-flag row. */
+/**
+ * A value a feature flag can resolve to. A local structural mirror of
+ * `@velajs/feature-flags`' `FlagValue` (`boolean | string | number | object`) —
+ * mirrored, never imported, so this contract stays dependency-free.
+ */
+export type FlagValue = boolean | string | number | object;
+
+/**
+ * Why a flag evaluation returned the value it did. A local structural mirror of
+ * `@velajs/feature-flags`' `FlagEvaluationReason` union (its members, exactly).
+ */
+export type FlagEvaluationReason = 'STATIC' | 'DEFAULT' | 'ERROR';
+
+/**
+ * A feature-flag row. A flag resolves to a {@link FlagValue}, not a boolean —
+ * the driver has no `enabled`/`description` fields to back those, so the row
+ * carries only the key and its resolved value.
+ */
 export interface FlagRow {
   key: string;
-  enabled: boolean;
-  description?: string;
+  value: FlagValue;
 }
 
-/** The result of evaluating a flag against a context. */
+/**
+ * The result of evaluating a flag against a context. Mirrors
+ * `@velajs/feature-flags`' `FlagEvaluationDetails`: `flagKey`, the resolved
+ * {@link FlagValue}, a required {@link FlagEvaluationReason}, and an optional
+ * `errorMessage` present only on `reason: 'ERROR'`.
+ */
 export interface FlagEvaluation {
-  key: string;
-  value: unknown;
-  reason?: string;
+  flagKey: string;
+  value: FlagValue;
+  reason: FlagEvaluationReason;
+  errorMessage?: string;
 }
 
 // ---- logs -----------------------------------------------------------------

@@ -190,7 +190,14 @@ export const STUDIO_OP_META = {
   'app.modules': { mode: 'read', feature: 'app' },
   'app.entrypoints': { mode: 'read', feature: 'app' },
   'app.openapi': { mode: 'read', feature: 'openapi' },
-  'api.tryit': { mode: 'read', feature: 'openapi' },
+  /**
+   * `api.tryit` proxies an arbitrary HTTP verb (GET/POST/DELETE/...) through the
+   * app, so it is classified `write`, not `read`: a read-only Studio (with
+   * `opsEditable` closed) must never execute it, and its audit rows must record
+   * `mode: 'write'`. It is NOT destructive, though — no persistent Studio-side
+   * mutation to confirm — so it carries no `confirmToken`.
+   */
+  'api.tryit': { mode: 'write', feature: 'openapi', gate: 'opsEditable' },
 
   'data.listModels': { mode: 'read', feature: 'data' },
   'data.describeModel': { mode: 'read', feature: 'data' },
