@@ -54,8 +54,8 @@ importers:
         specifier: ^1.0.0
         version: 1.0.0
       '@velajs/live-protocol':
-        specifier: ^1.0.0
-        version: 1.0.0
+        specifier: 1.1.0
+        version: 1.1.0
       hono:
         specifier: ^4.12.26
         version: 4.12.26
@@ -1387,9 +1387,9 @@ packages:
     resolution: {integrity: sha512-e7pjXJrb52FN+/A6SdENyYIQHW3qu+LbvkNAUaX1kSTrwRAlz5C8wlnLlLj5ki1IWAEfoC0D052AMpsMSBId2w==}
     engines: {node: '>=20'}
 
-  '@velajs/live-protocol@1.0.0':
-    resolution: {integrity: sha512-TBEHd8XODRyvVUbjh6IUeH44coZ6rzBgS1XvIsGcQCKTMp39ywPbDrf1fH51stXVaAymFBkucJGb+UjY9h2qCg==}
-    engines: {node: '>=20'}
+  '@velajs/live-protocol@1.1.0':
+    resolution: {integrity: sha512-ynRgROK+QjEJny18p8gFTP9ug94RvP/wc5KG1ki2+KzxlwFoOT6ZsgyLs67I7uEDnaBCr+Ki3rYM6MYtJIfimw==}
+    engines: {node: '>=24'}
 
   '@vitest/expect@4.1.10':
     resolution: {integrity: sha512-YsCn+qAk1GWjQOWFEsEcL2gNQ0zmVmQu3T03qP6UyjhtmdtwtbuI+DASn/7iQB3HGTXkdBwGddzxPlmiql5vlA==}
@@ -3541,7 +3541,7 @@ snapshots:
 
   '@velajs/errors@1.0.0': {}
 
-  '@velajs/live-protocol@1.0.0': {}
+  '@velajs/live-protocol@1.1.0': {}
 
   '@vitest/expect@4.1.10':
     dependencies:
