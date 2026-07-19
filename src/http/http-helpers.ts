@@ -1,4 +1,5 @@
 import type { StorageErrorCode } from '../storage.error';
+import { StorageError } from '../storage.error';
 import type { ByteRange, StoredFile } from '../storage.types';
 import type { StorageWireErrorCode } from './protocol.types';
 
@@ -41,7 +42,24 @@ export function serializeStored(file: StoredFile) {
 }
 
 export function clampExpiry(requested: number | undefined, def: number, max: number): number {
-  return Math.min(requested ?? def, max);
+  if (
+    typeof def !== 'number' ||
+    !Number.isSafeInteger(def) ||
+    def <= 0 ||
+    typeof max !== 'number' ||
+    !Number.isSafeInteger(max) ||
+    max <= 0
+  ) {
+    throw new StorageError(
+      'InvalidRequest',
+      'storage URL expiry configuration must be positive and finite',
+    );
+  }
+  const value: unknown = requested === undefined ? def : requested;
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) {
+    throw new StorageError('InvalidRequest', 'storage URL expiry must be a positive integer');
+  }
+  return Math.min(value, max);
 }
 
 /** Parse an HTTP `Range` header (single range) into a {@link ByteRange}. */
@@ -55,7 +73,21 @@ export function parseRange(header: string | undefined | null): ByteRange | undef
 }
 
 /** Content-Disposition header — defaults to `attachment` (anti stored-XSS). */
-export function dispositionHeader(disposition: string | undefined, name: string): string {
+export function dispositionHeader(
+  disposition: string | undefined,
+  name: string,
+  contentType?: string,
+): string {
   const filename = `filename*=UTF-8''${encodeURIComponent(name)}`;
-  return disposition === 'inline' ? `inline; ${filename}` : `attachment; ${filename}`;
+  const mediaType = contentType?.split(';', 1)[0]?.trim().toLowerCase();
+  const safeInline =
+    mediaType === 'text/plain' ||
+    mediaType === 'image/png' ||
+    mediaType === 'image/jpeg' ||
+    mediaType === 'image/gif' ||
+    mediaType === 'image/webp' ||
+    mediaType === 'image/avif' ||
+    mediaType?.startsWith('audio/') === true ||
+    mediaType?.startsWith('video/') === true;
+  return disposition === 'inline' && safeInline ? `inline; ${filename}` : `attachment; ${filename}`;
 }

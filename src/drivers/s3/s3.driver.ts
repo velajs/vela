@@ -261,7 +261,7 @@ export function s3Driver(options: S3DriverOptions): StorageDriver {
     supportsCacheControl: true,
     supportsServerSideCopy: true,
     reportsUploadProgress: false,
-    signedUrl: { supported: true, upload: true },
+    signedUrl: { supported: true, upload: true, responseContentDisposition: true },
 
     async upload(key: string, body: Body, opts?: UploadOptions): Promise<UploadResult> {
       const size = byteLengthOf(body) ?? 0;

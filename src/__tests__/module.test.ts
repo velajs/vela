@@ -24,6 +24,50 @@ describe('StorageModule', () => {
     expect(await svc.exists('missing')).toBe(false);
   });
 
+  it('does not collapse distinct security-sensitive registrations with equal-looking options', () => {
+    const driverA = memoryDriver();
+    const driverB = memoryDriver();
+    const authorizeA = () => true;
+    const authorizeB = () => true;
+
+    const first = StorageModule.forRoot({
+      driver: driverA,
+      http: { authorize: authorizeA, multipartGrantSecret: 'a'.repeat(32) },
+    });
+    const same = StorageModule.forRoot({
+      driver: driverA,
+      http: { authorize: authorizeA, multipartGrantSecret: 'a'.repeat(32) },
+    });
+    const otherDriver = StorageModule.forRoot({
+      driver: driverB,
+      http: { authorize: authorizeA, multipartGrantSecret: 'a'.repeat(32) },
+    });
+    const otherAuthorizer = StorageModule.forRoot({
+      driver: driverA,
+      http: { authorize: authorizeB, multipartGrantSecret: 'a'.repeat(32) },
+    });
+    const otherSecret = StorageModule.forRoot({
+      driver: driverA,
+      http: { authorize: authorizeA, multipartGrantSecret: 'b'.repeat(32) },
+    });
+
+    expect(same.key).toBe(first.key);
+    expect(otherDriver.key).not.toBe(first.key);
+    expect(otherAuthorizer.key).not.toBe(first.key);
+    expect(otherSecret.key).not.toBe(first.key);
+  });
+
+  it('includes async factory identity in the dynamic-module key', () => {
+    const factoryA = () => memoryDriver();
+    const factoryB = () => memoryDriver();
+    const first = StorageModule.forRootAsync({ useFactory: factoryA });
+    const same = StorageModule.forRootAsync({ useFactory: factoryA });
+    const other = StorageModule.forRootAsync({ useFactory: factoryB });
+
+    expect(same.key).toBe(first.key);
+    expect(other.key).not.toBe(first.key);
+  });
+
   it('forRootAsync builds the driver lazily (edge-binding safe)', async () => {
     let calls = 0;
     const moduleRef = await Test.createTestingModule({

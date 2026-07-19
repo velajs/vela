@@ -118,6 +118,8 @@ interface ResumeSession {
   uploadId: string;
   partSize: number;
   uploaded: Record<number, string>; // partNumber -> etag
+  grant: string;
+  expiresAtMs: number;
 }
 
 function loadSession(
@@ -129,7 +131,7 @@ function loadSession(
     const raw = localStorage.getItem(`vela.storage.resume:${resumeKey}`);
     if (!raw) return undefined;
     const s = JSON.parse(raw) as ResumeSession & { fingerprint?: string };
-    return s.fingerprint === fingerprint ? s : undefined;
+    return s.fingerprint === fingerprint && s.expiresAtMs > Date.now() ? s : undefined;
   } catch {
     return undefined;
   }
@@ -230,12 +232,15 @@ export class StorageClient {
         key,
         contentType: opts.contentType ?? (file.type || undefined),
         metadata: opts.metadata,
+        size: file.size,
         partSize: typeof opts.multipart === 'object' ? opts.multipart.partSize : undefined,
       });
       session = {
         key: created.key,
         uploadId: created.uploadId,
         partSize: created.partSize,
+        grant: created.grant,
+        expiresAtMs: created.expiresAtMs,
         uploaded: {},
       };
     }
@@ -258,6 +263,7 @@ export class StorageClient {
         key: session!.key,
         uploadId: session!.uploadId,
         partNumber: n,
+        grant: session!.grant,
       });
       const res = await xhrSend({
         method: 'PUT',
@@ -289,6 +295,7 @@ export class StorageClient {
       key: session.key,
       uploadId: session.uploadId,
       parts,
+      grant: session.grant,
     });
     clearSession(opts.resumeKey);
     return result;

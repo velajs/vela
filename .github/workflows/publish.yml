@@ -11,26 +11,27 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
           cache: pnpm
 
-      - run: pnpm install
+      - run: npm install -g npm@12.0.0
 
-      - run: pnpm run typecheck
+      - name: Validate release lock integrity
+        run: node scripts/check-release-lock.mjs
 
-      - run: pnpm run build
+      - run: pnpm install --frozen-lockfile
 
-      - run: pnpm test
+      - run: pnpm release:preflight
 
-      - run: pnpm run test:workers
+      - run: pnpm release:check
 
       - run: npm publish --access public
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: ${{ github.event.repository.private == false }}

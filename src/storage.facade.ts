@@ -30,6 +30,8 @@ import type {
 
 const DEFAULT_PART_SIZE = 5 * 1024 * 1024; // 5 MiB (S3 minimum non-final part)
 const DEFAULT_CONCURRENCY = 4;
+const MAX_MULTIPART_PARTS = 10_000;
+const MAX_MULTIPART_CONCURRENCY = 32;
 // Known-length bodies larger than this are routed through multipart so we never
 // buffer a whole large object in memory (aws4fetch must hash the payload).
 const MULTIPART_THRESHOLD = 16 * 1024 * 1024;
@@ -118,7 +120,14 @@ export class Storage {
   async #putMultipart(path: string, body: Body, opts?: UploadOptions): Promise<UploadResult> {
     const mp: MultipartOptions = typeof opts?.multipart === 'object' ? opts.multipart : {};
     const partSize = mp.partSize ?? DEFAULT_PART_SIZE;
-    const concurrency = Math.max(1, mp.concurrency ?? DEFAULT_CONCURRENCY);
+    if (!Number.isSafeInteger(partSize) || partSize <= 0) {
+      throw new StorageError('InvalidRequest', 'multipart partSize must be a positive integer');
+    }
+    const requestedConcurrency = mp.concurrency ?? DEFAULT_CONCURRENCY;
+    if (!Number.isSafeInteger(requestedConcurrency) || requestedConcurrency <= 0) {
+      throw new StorageError('InvalidRequest', 'multipart concurrency must be a positive integer');
+    }
+    const concurrency = Math.min(requestedConcurrency, MAX_MULTIPART_CONCURRENCY);
     const total = byteLengthOf(body);
     const upload = await this.#driver.createMultipartUpload!(path, {
       contentType: opts?.contentType,
@@ -135,6 +144,9 @@ export class Storage {
 
       for await (const chunk of chunkStream(toStream(body), partSize)) {
         partNumber += 1;
+        if (partNumber > MAX_MULTIPART_PARTS) {
+          throw new StorageError('InvalidRequest', 'multipart upload exceeds 10,000 parts');
+        }
         const n = partNumber;
         const size = chunk.byteLength;
         const task: Promise<void> = (async () => {

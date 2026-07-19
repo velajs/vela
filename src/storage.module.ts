@@ -19,8 +19,8 @@ export interface StorageHttpOptions {
   basePath?: string;
   /** Fine-grained per-action authorizer (deny / allow / allow-with-overrides). */
   authorize?: StorageAuthorizer;
-  /** Behavior when no `authorize` is set. Default `'deny'`. */
-  defaultPolicy?: 'deny' | 'allow';
+  /** @deprecated Storage HTTP routes are deny-only without `authorize`. */
+  defaultPolicy?: 'deny';
   /** `redirect` to a signed URL (default) or `proxy` bytes through the Worker. */
   download?: 'redirect' | 'proxy';
   /** Set `false` to configure options without mounting the controller. Default mounts. */
@@ -28,12 +28,18 @@ export interface StorageHttpOptions {
   defaultExpiresIn?: number;
   maxExpiresIn?: number;
   maxUploadSize?: number;
+  /** HMAC key for stateless multipart grants. Required for multipart HTTP endpoints. */
+  multipartGrantSecret?: string | Uint8Array;
+  /** Maximum browser-direct multipart parts. Default 10,000. */
+  maxMultipartParts?: number;
   maxListLimit?: number;
   deleteConcurrency?: number;
 }
 
 export interface StorageModuleOptions {
   driver: StorageDriver;
+  /** Optional caller namespace; it is combined with, never substituted for, instance identity. */
+  key?: string;
   name?: string;
   prefix?: string;
   readonly?: boolean;
@@ -52,6 +58,7 @@ export interface StorageModuleAsyncOptions<
   readonly?: boolean;
   hooks?: StorageHooks;
   http?: StorageHttpOptions;
+  /** Optional caller namespace; it is combined with, never substituted for, factory identity. */
   key?: string;
 }
 
@@ -64,11 +71,69 @@ export interface StorageModuleAsyncOptions<
  */
 interface StorageSetupOptions {
   driver: () => StorageDriver;
+  registrationIdentity: string;
   name?: string;
   prefix?: string;
   readonly?: boolean;
   hooks?: StorageHooks;
   http?: StorageHttpOptions;
+}
+
+const objectIdentities = new WeakMap<object, number>();
+const symbolIdentities = new Map<symbol, number>();
+const stringIdentities = new Map<string, number>();
+let nextIdentity = 1;
+
+/** Process-local identity avoids source-code and presence-only collisions for stateful options. */
+function instanceIdentity(value: unknown): string {
+  if ((typeof value === 'object' && value !== null) || typeof value === 'function') {
+    const key = value as object;
+    let id = objectIdentities.get(key);
+    if (id === undefined) {
+      id = nextIdentity++;
+      objectIdentities.set(key, id);
+    }
+    return `object:${id}`;
+  }
+  if (typeof value === 'symbol') {
+    let id = symbolIdentities.get(value);
+    if (id === undefined) {
+      id = nextIdentity++;
+      symbolIdentities.set(value, id);
+    }
+    return `symbol:${id}`;
+  }
+  return `${typeof value}:${String(value)}`;
+}
+
+function secretIdentity(value: string | Uint8Array | undefined): string {
+  if (value === undefined) return 'none';
+  if (value instanceof Uint8Array) return instanceIdentity(value);
+  let id = stringIdentities.get(value);
+  if (id === undefined) {
+    id = nextIdentity++;
+    stringIdentities.set(value, id);
+  }
+  return `secret:${id}`;
+}
+
+function securityIdentity(input: {
+  owner: unknown;
+  callerKey?: string;
+  hooks?: StorageHooks;
+  http?: StorageHttpOptions;
+  inject?: readonly unknown[];
+  imports?: readonly unknown[];
+}): string {
+  return stableHash({
+    owner: instanceIdentity(input.owner),
+    callerKey: input.callerKey ?? null,
+    hooks: input.hooks ? instanceIdentity(input.hooks) : null,
+    authorize: input.http?.authorize ? instanceIdentity(input.http.authorize) : null,
+    multipartGrantSecret: secretIdentity(input.http?.multipartGrantSecret),
+    inject: input.inject?.map(instanceIdentity) ?? [],
+    imports: input.imports?.map(instanceIdentity) ?? [],
+  });
 }
 
 /**
@@ -81,8 +146,25 @@ function httpKeyPart(http: StorageHttpOptions | undefined): Record<string, unkno
   return {
     basePath: http.basePath ?? '/api/storage',
     download: http.download ?? 'redirect',
-    defaultPolicy: http.defaultPolicy ?? 'deny',
+    defaultExpiresIn: http.defaultExpiresIn ?? 900,
+    maxExpiresIn: http.maxExpiresIn ?? 3600,
+    maxUploadSize: http.maxUploadSize ?? null,
+    maxListLimit: http.maxListLimit ?? 1000,
+    deleteConcurrency: http.deleteConcurrency ?? 8,
+    maxMultipartParts: http.maxMultipartParts ?? 10_000,
+    multipartGrants: http.multipartGrantSecret !== undefined,
   };
+}
+
+function positiveInteger(value: number, label: string): number {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new TypeError(`@velajs/storage: ${label} must be a positive integer`);
+  }
+  return value;
+}
+
+function optionalPositiveInteger(value: number | undefined, label: string): number | undefined {
+  return value === undefined ? undefined : positiveInteger(value, label);
 }
 
 function buildControllers(
@@ -91,16 +173,24 @@ function buildControllers(
   http: StorageHttpOptions | undefined,
 ): Type[] {
   if (!http || http.mountController === false) return [];
+  if (http.defaultPolicy !== undefined && http.defaultPolicy !== 'deny') {
+    throw new TypeError(
+      '@velajs/storage: defaultPolicy is deny-only; use an explicit authorize callback for public access',
+    );
+  }
+  const defaultExpiresIn = positiveInteger(http.defaultExpiresIn ?? 900, 'defaultExpiresIn');
+  const maxExpiresIn = positiveInteger(http.maxExpiresIn ?? 3600, 'maxExpiresIn');
   const resolved: ResolvedHttpOptions = {
     driverName: name,
     authorize: http.authorize,
-    defaultPolicy: http.defaultPolicy ?? 'deny',
     download: http.download ?? 'redirect',
-    defaultExpiresIn: http.defaultExpiresIn ?? 900,
-    maxExpiresIn: http.maxExpiresIn ?? 3600,
-    maxUploadSize: http.maxUploadSize,
-    maxListLimit: http.maxListLimit ?? 1000,
-    deleteConcurrency: http.deleteConcurrency ?? 8,
+    defaultExpiresIn,
+    maxExpiresIn,
+    maxUploadSize: optionalPositiveInteger(http.maxUploadSize, 'maxUploadSize'),
+    multipartGrantSecret: http.multipartGrantSecret,
+    maxMultipartParts: positiveInteger(http.maxMultipartParts ?? 10_000, 'maxMultipartParts'),
+    maxListLimit: positiveInteger(http.maxListLimit ?? 1000, 'maxListLimit'),
+    deleteConcurrency: positiveInteger(http.deleteConcurrency ?? 8, 'deleteConcurrency'),
   };
   const basePath = http.basePath ?? '/api/storage';
   return [createStorageController(basePath, serviceToken, resolved)];
@@ -117,6 +207,7 @@ const { ConfigurableModuleClass } = defineModule<StorageSetupOptions>({
       prefix: o.prefix ?? '',
       readonly: !!o.readonly,
       hooks: !!o.hooks,
+      registrationIdentity: o.registrationIdentity,
       ...httpKeyPart(o.http),
     }),
   setup: ({ OPTIONS, options }) => {
@@ -153,9 +244,19 @@ const { ConfigurableModuleClass } = defineModule<StorageSetupOptions>({
 export class StorageModule {
   /** Synchronous registration — the driver is provided directly. */
   static forRoot(options: StorageModuleOptions): DynamicModule {
-    const { driver, ...rest } = options;
+    const { driver, key, ...rest } = options;
+    const registrationIdentity = securityIdentity({
+      owner: driver,
+      callerKey: key,
+      hooks: rest.hooks,
+      http: rest.http,
+    });
     return {
-      ...ConfigurableModuleClass.forRoot({ ...rest, driver: () => driver }),
+      ...ConfigurableModuleClass.forRoot({
+        ...rest,
+        registrationIdentity,
+        driver: () => driver,
+      }),
       module: StorageModule,
     };
   }
@@ -165,16 +266,27 @@ export class StorageModule {
     options: StorageModuleAsyncOptions<Inject>,
   ): DynamicModule {
     const { useFactory, inject, imports, key, ...structural } = options;
+    const registrationIdentity = securityIdentity({
+      owner: useFactory,
+      callerKey: key,
+      hooks: structural.hooks,
+      http: structural.http,
+      inject,
+      imports,
+    });
+    const asyncStructural = { ...structural, registrationIdentity };
     return {
       ...ConfigurableModuleClass.forRootAsync<Inject>({
         imports,
         inject,
-        key,
-        ...structural,
+        ...asyncStructural,
         // Wrap the caller's driver factory in a thunk so resolving the options
         // token (at bootstrap) does NOT build the driver — only the first
         // storage operation does.
-        useFactory: (...deps: InferTokens<Inject>) => ({ driver: () => useFactory(...deps) }),
+        useFactory: (...deps: InferTokens<Inject>) => ({
+          registrationIdentity,
+          driver: () => useFactory(...deps),
+        }),
       }),
       module: StorageModule,
     };
