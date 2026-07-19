@@ -76,12 +76,19 @@ const userModel: Model = {
     id: { type: 'string' },
     email: { type: 'string' },
     role: { type: 'string' },
+    // Composite-unique members (tenantId, slug) — plain columns, NOT the model's
+    // tenantField, so they exercise unique derivation without touching flags.
+    tenantId: { type: 'string' },
+    slug: { type: 'string' },
     createdAt: { type: 'number', optional: true },
     updatedAt: { type: 'number', optional: true },
   }),
   primaryKeys: ['id'],
   id: 'uuid',
   timestamps: { createdAt: 'createdAt', updatedAt: 'updatedAt' },
+  // A non-PK single unique (email) plus a composite unique (tenantId+slug): the
+  // single projects `unique: true` on its column; composite members do not.
+  unique: [['email'], ['tenantId', 'slug']],
   versioning: false,
   audit: false,
   relations: {
@@ -395,6 +402,76 @@ async function makeCrudApp(studio: Partial<StudioModuleOptions> = {}): Promise<A
   return VelaFactory.create(AppModule);
 }
 
+// A parent→child pair whose relation carries an explicit `cascade.onDelete`,
+// used to prove cascadePreview surfaces the authored action (not just noAction).
+const orgModel: Model = {
+  name: 'org',
+  namePlural: 'orgs',
+  tableName: 'orgs',
+  schema: zSchema({ id: { type: 'string' }, name: { type: 'string' } }),
+  primaryKeys: ['id'],
+  id: 'uuid',
+  timestamps: { createdAt: false, updatedAt: false },
+  versioning: false,
+  audit: false,
+  relations: {
+    seats: {
+      type: 'hasMany',
+      target: 'seats',
+      foreignKey: 'orgId',
+      cascade: { onDelete: 'cascade' },
+    } satisfies RelationConfig,
+  },
+};
+
+const seatModel: Model = {
+  name: 'seat',
+  namePlural: 'seats',
+  tableName: 'seats',
+  schema: zSchema({ id: { type: 'string' }, orgId: { type: 'string' } }),
+  primaryKeys: ['id'],
+  id: 'uuid',
+  timestamps: { createdAt: false, updatedAt: false },
+  versioning: false,
+  audit: false,
+};
+
+/** Build an app whose org→seats relation authors `cascade.onDelete: 'cascade'`. */
+async function makeCascadeApp(): Promise<App> {
+  const db = new MemoryDb();
+  db.seed('orgs', [{ id: 'o1', name: 'Acme' }]);
+  db.seed('seats', [
+    { id: 's1', orgId: 'o1' },
+    { id: 's2', orgId: 'o1' },
+  ]);
+
+  const orgsAdapter = memoryAdapter(orgModel, db, ['cascade']);
+  const seatsAdapter = memoryAdapter(seatModel, db, []);
+
+  @Controller('/orgs')
+  class OrgsController {}
+  defineMetadata(
+    METADATA_KEYS.CRUD,
+    { model: orgModel, adapter: orgsAdapter } satisfies CrudConfig,
+    OrgsController,
+  );
+
+  @Controller('/seats')
+  class SeatsController {}
+  defineMetadata(
+    METADATA_KEYS.CRUD,
+    { model: seatModel, adapter: seatsAdapter } satisfies CrudConfig,
+    SeatsController,
+  );
+
+  @Module({
+    imports: [StudioModule.forRoot({ token: TOKEN }), StudioCrudModule.forRoot({})],
+    controllers: [OrgsController, SeatsController],
+  })
+  class AppModule {}
+  return VelaFactory.create(AppModule);
+}
+
 /** Build an app with Studio but NO crud source bound. */
 async function makeBareApp(): Promise<App> {
   @Module({ imports: [StudioModule.forRoot({ token: TOKEN })] })
@@ -482,6 +559,22 @@ describe('data.describeModel', () => {
       { name: 'posts', type: 'hasMany', target: 'posts', foreignKey: 'authorId' },
     ]);
     expect(user.supports).toEqual({ facets: true, search: false, cascade: true });
+  });
+
+  it('derives unique per-column: single-column unique yes, composite members no, pk yes', async () => {
+    const app = await makeCrudApp();
+    const user: StudioModelDescriptor = ok(await rpc(app, 'data.describeModel', { model: 'user' }));
+    const col = (name: string) => user.columns.find((c) => c.name === name);
+
+    // A non-PK single-column unique (`unique: [['email']]`) projects on its column.
+    expect(col('email')?.unique).toBe(true);
+    expect(col('email')?.pk).toBe(false);
+    // Composite-unique members (`[['tenantId','slug']]`) do NOT get `unique: true`.
+    expect(col('tenantId')?.unique).toBe(false);
+    expect(col('slug')?.unique).toBe(false);
+    // The primary key is still reported unique.
+    expect(col('id')?.pk).toBe(true);
+    expect(col('id')?.unique).toBe(true);
   });
 
   it('unknown model -> STUDIO_UNKNOWN_MODEL (404)', async () => {
@@ -593,6 +686,23 @@ describe('data.cascadePreview', () => {
       { relation: 'posts', target: 'posts', action: 'noAction', affected: 2 },
     ]);
   });
+
+  it('surfaces an explicit cascade.onDelete action authored on the relation', async () => {
+    const app = await makeCascadeApp();
+    const preview = ok(await rpc(app, 'data.cascadePreview', { model: 'org', ids: ['o1'] }));
+    expect(preview.relations).toEqual([
+      { relation: 'seats', target: 'seats', action: 'cascade', affected: 2 },
+    ]);
+  });
+
+  it('omits a relation whose target model is excluded (no aggregate-count leak)', async () => {
+    // With `post` excluded, user's only hasMany relation targets a hidden model:
+    // it must be absent from the preview so its row count never leaks.
+    const app = await makeCrudApp({ managedModels: { exclude: ['post'] } });
+    const preview = ok(await rpc(app, 'data.cascadePreview', { model: 'user', ids: ['u1'] }));
+    expect(preview.relations.some((r) => r.relation === 'posts')).toBe(false);
+    expect(preview.relations).toEqual([]);
+  });
 });
 
 describe('no-crud app', () => {
@@ -625,5 +735,27 @@ describe('capabilities + managedModels', () => {
     expect(res.ok).toBe(false);
     if (res.ok) throw new Error('expected error');
     expect(res.error.code).toBe('STUDIO_UNKNOWN_MODEL');
+
+    // Exclusion is enforced across every model-addressed read, not just describe:
+    // listRows and facets on the excluded model also 404 with STUDIO_UNKNOWN_MODEL.
+    const rows = await rpc(app, 'data.listRows', { model: 'post' });
+    expect(rows.ok).toBe(false);
+    if (rows.ok) throw new Error('expected error');
+    expect(rows.status).toBe(404);
+    expect(rows.error.code).toBe('STUDIO_UNKNOWN_MODEL');
+
+    const facets = await rpc(app, 'data.facets', { model: 'post', field: 'status' });
+    expect(facets.ok).toBe(false);
+    if (facets.ok) throw new Error('expected error');
+    expect(facets.status).toBe(404);
+    expect(facets.error.code).toBe('STUDIO_UNKNOWN_MODEL');
+  });
+
+  it('reports data feature false when managedModels excludes every model', async () => {
+    const app = await makeCrudApp({ managedModels: { exclude: ['user', 'post'] } });
+    const models: StudioModelInfo[] = ok(await rpc(app, 'data.listModels'));
+    expect(models).toEqual([]);
+    const caps = ok(await rpc(app, 'studio.capabilities'));
+    expect(caps.features.data).toBe(false);
   });
 });

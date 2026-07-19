@@ -347,7 +347,23 @@ export class CrudStudioModelSource implements StudioModelSource {
   }
 
   async cascadePreview(request: CascadePreviewRequest): Promise<CascadePreviewResponse> {
-    const entry = this.entryFor(request.model);
+    const index = this.index();
+    const entry = index.get(request.model);
+    if (entry === undefined) {
+      throw studioError('STUDIO_UNKNOWN_MODEL', `unknown model '${request.model}'`);
+    }
+    // Privacy parity with `list`/`facets`: those 404 an excluded model outright,
+    // so a cascade preview must not leak that same model back through a
+    // neighbor's relation — not even an aggregate `affected` count. Relations
+    // whose TARGET model is not itself managed (excluded via `managedModels`, or
+    // simply not a discovered resource) are skipped entirely. Visible targets
+    // are matched by model name OR table name (relation `target` is normalized
+    // to the sibling's `tableName`).
+    const visibleTargets = new Set<string>();
+    for (const managed of index.values()) {
+      visibleTargets.add(managed.model.name);
+      visibleTargets.add(managed.model.tableName);
+    }
     const cascade =
       entry.adapter.capabilities.has('cascade') && entry.adapter.cascade !== undefined
         ? entry.adapter.cascade
@@ -356,6 +372,8 @@ export class CrudStudioModelSource implements StudioModelSource {
     for (const [name, rel] of Object.entries(entry.model.relations ?? {})) {
       // Children referencing this model via the FK are what a delete cascades to.
       if (rel.type !== 'hasMany' && rel.type !== 'hasOne') continue;
+      // Skip relations that point at an unmanaged (e.g. excluded) target model.
+      if (!visibleTargets.has(rel.target ?? '')) continue;
       const action = rel.cascade?.onDelete ?? 'noAction';
       let affected = 0;
       if (cascade !== undefined) {

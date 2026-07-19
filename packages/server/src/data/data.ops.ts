@@ -34,11 +34,16 @@ import type { StudioModelSource } from './model-source.port';
 export class StudioDataOps {
   constructor(@Inject(Container) private readonly container: Container) {}
 
+  // Admin-bypass read posture: the master token sees all managed models; no
+  // policy/tenant scoping is applied (policy/tenant-aware reads land with
+  // runAsIdentity in M7).
   @AdminRpc({ op: 'data.listModels' })
   listModels(_ctx: AdminOpContext): StudioModelInfo[] {
     return this.source().listModels();
   }
 
+  // Admin-bypass read posture: the master token describes any managed model
+  // (policy/tenant-aware reads land with runAsIdentity in M7).
   @AdminRpc({ op: 'data.describeModel' })
   describeModel(
     _ctx: AdminOpContext,
@@ -47,11 +52,15 @@ export class StudioDataOps {
     return this.source().describe(args.model);
   }
 
+  // Admin-bypass read posture: the master token sees all rows, unscoped by
+  // policy or tenant (policy/tenant-aware reads land with runAsIdentity in M7).
   @AdminRpc({ op: 'data.listRows' })
   listRows(_ctx: AdminOpContext, args: ListRowsRequest): Promise<StudioRowPage> {
     return this.source().list(args.model, args);
   }
 
+  // Admin-bypass read posture: the master token reads any row, unscoped by
+  // policy or tenant (policy/tenant-aware reads land with runAsIdentity in M7).
   @AdminRpc({ op: 'data.readRow' })
   readRow(
     _ctx: AdminOpContext,
@@ -60,6 +69,8 @@ export class StudioDataOps {
     return this.source().readOne(args.model, args.id);
   }
 
+  // Admin-bypass read posture: the master token facets over all rows, unscoped
+  // by policy or tenant (policy/tenant-aware reads land with runAsIdentity in M7).
   @AdminRpc({ op: 'data.facets' })
   facets(_ctx: AdminOpContext, args: FacetsRequest): Promise<FacetsResponse> {
     const source = this.source();
@@ -69,6 +80,9 @@ export class StudioDataOps {
     return source.facets(args);
   }
 
+  // Admin-bypass read posture: the master token previews cascade impact over all
+  // rows, unscoped by policy or tenant (policy/tenant-aware reads land with
+  // runAsIdentity in M7).
   @AdminRpc({ op: 'data.cascadePreview' })
   cascadePreview(
     _ctx: AdminOpContext,
