@@ -107,7 +107,17 @@ export class StudioTimeTravelOps {
       summary: `restore data to ${target}`,
       extra: { subject: ctx.admin.subject },
     });
-    const outcome = await port.armRestore(args);
+    let outcome: RestoreOutcome;
+    try {
+      outcome = await port.armRestore(args);
+    } catch (error) {
+      // A NON-atomic portable restore can fail partway; the port surfaces the
+      // pre-captured undo mark on the error. Audit that recovery target here so
+      // it is findable in the audit trail even when the apply throws (not only
+      // on success) — then re-throw unchanged so the client sees it too.
+      this.auditRestoreFailure(ctx, target, error);
+      throw error;
+    }
     ctx.audit({
       target: outcome.restoredTo,
       summary: `restored data to snapshot ${outcome.restoredTo}`,
@@ -134,11 +144,18 @@ export class StudioTimeTravelOps {
       summary: `undo restore (to mark ${args.undoMark})`,
       extra: { subject: ctx.admin.subject },
     });
-    const outcome = await port.armRestore({
-      bookmark: args.undoMark,
-      ...(args.scope !== undefined ? { scope: args.scope } : {}),
-      confirmToken: args.confirmToken,
-    });
+    let outcome: RestoreOutcome;
+    try {
+      outcome = await port.armRestore({
+        bookmark: args.undoMark,
+        ...(args.scope !== undefined ? { scope: args.scope } : {}),
+        confirmToken: args.confirmToken,
+      });
+    } catch (error) {
+      // Undo is itself a restore — surface its own undo mark on a mid-way failure.
+      this.auditRestoreFailure(ctx, `mark ${args.undoMark}`, error);
+      throw error;
+    }
     ctx.audit({
       target: outcome.restoredTo,
       summary: `undid restore — data at mark ${outcome.restoredTo}`,
@@ -202,11 +219,38 @@ export class StudioTimeTravelOps {
     return mark;
   }
 
+  /**
+   * Audit a restore that failed partway, capturing the undo mark id the port
+   * surfaced on the error (the recovery target). No-op on errors that carry no
+   * undo mark (e.g. a pre-apply schema-mismatch, where nothing was mutated).
+   */
+  private auditRestoreFailure(ctx: AdminOpContext, target: string, error: unknown): void {
+    const undoMark = restoreUndoMarkFromError(error);
+    if (undoMark === undefined) return;
+    ctx.audit({
+      target,
+      summary: `restore to ${target} FAILED partway — recover via undo mark ${undoMark}`,
+      extra: { subject: ctx.admin.subject, undoMark, failed: true },
+    });
+  }
+
   /** The bound port, or `TIMETRAVEL_UNAVAILABLE` when no port module is wired. */
   private port(): TimeTravelPort {
     if (!this.container.has(TIME_TRAVEL_PORT)) throw studioError('TIMETRAVEL_UNAVAILABLE');
     return this.container.resolve(TIME_TRAVEL_PORT);
   }
+}
+
+/**
+ * The undo-mark id a portable restore failure surfaces on its error `data`
+ * (`studioRestoreInterrupted`), or `undefined` for any other error shape.
+ */
+function restoreUndoMarkFromError(error: unknown): string | undefined {
+  if (typeof error !== 'object' || error === null || !('data' in error)) return undefined;
+  const data = (error as { data?: unknown }).data;
+  if (typeof data !== 'object' || data === null || !('undoMark' in data)) return undefined;
+  const undoMark = (data as { undoMark?: unknown }).undoMark;
+  return typeof undoMark === 'string' ? undoMark : undefined;
 }
 
 /** A human label for a restore target (mark id or point in time). */

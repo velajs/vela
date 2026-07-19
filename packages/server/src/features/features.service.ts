@@ -90,10 +90,22 @@ export class StudioFeaturesService {
     };
   }
 
-  /** The bound {@link TimeTravelPort}'s capabilities, or `null` when unbound. */
+  /**
+   * The bound {@link TimeTravelPort}'s capabilities, or `null` when unbound OR
+   * misconfigured. A bound port whose factory or `capabilities()` throws (e.g.
+   * `TIME_TRAVEL_PORT` bound without a `STUDIO_MODEL_SOURCE`) must degrade
+   * `timeTravel` to `null` — exactly like an unbound port — rather than 500 the
+   * whole `studio.capabilities` op and black out every UI panel. The resolve +
+   * `capabilities()` call is therefore guarded, matching how `data` degrades to
+   * `false` instead of throwing.
+   */
   private timeTravelCapabilities(): TimeTravelCapabilities | null {
     if (!this.container.has(TIME_TRAVEL_PORT)) return null;
-    return this.container.resolve(TIME_TRAVEL_PORT).capabilities();
+    try {
+      return this.container.resolve(TIME_TRAVEL_PORT).capabilities();
+    } catch {
+      return null;
+    }
   }
 
   private detect(

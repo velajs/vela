@@ -19,6 +19,7 @@ import {
   InMemorySnapshotStore,
   SnapshotTimeTravelAdapter,
   StudioModule,
+  TIME_TRAVEL_PORT,
 } from '../src';
 import type {
   ChangeSource,
@@ -37,6 +38,8 @@ import type {
   ClearTableRequest,
   DeleteRowsRequest,
   ListRowsRequest,
+  RestoreOutcome,
+  RestorePreview,
   RestoreRequest,
   StudioChange,
   StudioColumn,
@@ -46,6 +49,9 @@ import type {
   StudioOpReq,
   StudioOpRes,
   StudioRowPage,
+  TimeTravelCapabilities,
+  TimeTravelMark,
+  TimeTravelPort,
   WriteRowRequest,
 } from '@velajs/studio-protocol';
 
@@ -190,6 +196,15 @@ function errorCode(err: unknown): string | undefined {
   return typeof err === 'object' && err !== null && 'code' in err
     ? String((err as { code: unknown }).code)
     : undefined;
+}
+
+/** The undo-mark id a restore failure surfaces on its error `data.undoMark`, if any. */
+function undoMarkFromError(err: unknown): string | undefined {
+  if (typeof err !== 'object' || err === null || !('data' in err)) return undefined;
+  const data = (err as { data?: unknown }).data;
+  if (typeof data !== 'object' || data === null || !('undoMark' in data)) return undefined;
+  const undoMark = (data as { undoMark?: unknown }).undoMark;
+  return typeof undoMark === 'string' ? undoMark : undefined;
 }
 
 function userSource(): FakeModelSource {
@@ -431,6 +446,47 @@ describe('SnapshotTimeTravelAdapter — CDC replay (snapshot+cdc)', () => {
     expect(rows.has('u5')).toBe(false); // outside the window — not replayed
     // markForTime resolves the base snapshot for that time.
     expect((await adapter.getMarkForTime(1500))?.id).toBe(snap.id);
+  });
+});
+
+describe('SnapshotTimeTravelAdapter — non-atomic restore recovery', () => {
+  it('surfaces the pre-captured undo mark id on the error when a restore throws mid-way', async () => {
+    const source = userSource();
+    const original = source.writeRow.bind(source);
+    let failWrites = false;
+    // Fail the restore RELOAD (writeRow) — after the undo snapshot (which only
+    // reads) has been captured — to simulate a partial, non-atomic restore.
+    source.writeRow = async (
+      model: string,
+      request: WriteRowRequest,
+      ctx: StudioWriteContext,
+    ): Promise<StudioWriteRowOutcome> => {
+      if (failWrites) throw new Error('backing store failure mid-restore');
+      return original(model, request, ctx);
+    };
+    const adapter = makeAdapter(source);
+    const mark = await adapter.createSnapshot();
+
+    source.models.get('user')!.rows.set('u3', { id: 'u3', email: 'cat@x.io' });
+    failWrites = true;
+
+    const error = await adapter.armRestore(arm(mark.id, '')).then(
+      () => {
+        throw new Error('expected the restore to throw');
+      },
+      (e: unknown) => e,
+    );
+
+    // The failure is a conflict that names the undo mark id (the recovery target).
+    expect(errorCode(error)).toBe('conflict');
+    const undoMarkId = undoMarkFromError(error);
+    expect(typeof undoMarkId).toBe('string');
+    expect(undoMarkId).toMatch(/^snap-/);
+
+    // The surfaced id is a real, listable snapshot — a caller can restore to it.
+    failWrites = false;
+    const marks = await adapter.listMarks();
+    expect(marks.marks.some((m) => m.id === undoMarkId)).toBe(true);
   });
 });
 
@@ -784,5 +840,147 @@ describe('timeTravel ops — audit-backed CDC via StudioTimeTravelModule', () =>
     );
     const caps = ok(await rpc(app, 'studio.capabilities'));
     expect(caps.timeTravel?.granularity).toBe('snapshot+cdc');
+  });
+});
+
+// ===========================================================================
+// A bound TIME_TRAVEL_PORT that is MISCONFIGURED (capabilities() throws) — the
+// same failure class as a port bound without a STUDIO_MODEL_SOURCE.
+// ===========================================================================
+
+class BrokenTimeTravelPort implements TimeTravelPort {
+  readonly id = 'broken';
+  capabilities(): TimeTravelCapabilities {
+    throw new Error('misconfigured time-travel port (no STUDIO_MODEL_SOURCE bound)');
+  }
+  getCurrentMark(): Promise<TimeTravelMark> {
+    return Promise.reject(new Error('misconfigured'));
+  }
+  preview(): Promise<RestorePreview> {
+    return Promise.reject(new Error('misconfigured'));
+  }
+  armRestore(): Promise<RestoreOutcome> {
+    return Promise.reject(new Error('misconfigured'));
+  }
+}
+
+async function brokenPortApp(): Promise<App> {
+  @Module({
+    providers: [{ provide: TIME_TRAVEL_PORT, useValue: new BrokenTimeTravelPort() }],
+    exports: [TIME_TRAVEL_PORT],
+  })
+  class BrokenTimeTravelModule {}
+
+  @Module({ imports: [StudioModule.forRoot({ token: TOKEN }), BrokenTimeTravelModule] })
+  class BrokenApp {}
+  return VelaFactory.create(BrokenApp);
+}
+
+describe('timeTravel wiring — bound-but-broken port', () => {
+  it('studio.capabilities degrades timeTravel to null (200, not a 500) when the port throws', async () => {
+    const app = await brokenPortApp();
+    const res = await rpc(app, 'studio.capabilities');
+    // The op must NOT 500: a single misconfigured port cannot black out every panel.
+    expect(res.ok).toBe(true);
+    expect(ok(res).timeTravel).toBeNull();
+  });
+});
+
+describe('timeTravel ops — CDC through preview→arm (dispatch)', () => {
+  it('preview(time) mints a token that arms a CDC replay up to that time', async () => {
+    const auditStore = new MemoryAuditStore();
+    const app = await makeApp(
+      { editable: { data: true, timeTravel: true } },
+      { changeSource: new AuditStoreChangeSource(auditStore) },
+    );
+
+    // Baseline snapshot: widgets w1=alpha, w2=beta at t0.
+    const base = ok(await rpc(app, 'timeTravel.createSnapshot', {}));
+    const t0 = base.time!;
+
+    // A change COMMITTED after the snapshot (recorded in the audit log): w1 renamed.
+    await auditStore.log({
+      id: 'cdc1',
+      timestamp: new Date(t0 + 5),
+      action: 'update',
+      tableName: 'widgets',
+      recordId: 'w1',
+      previousRecord: { id: 'w1', name: 'alpha' },
+      record: { id: 'w1', name: 'alpha-cdc' },
+    });
+    const targetTime = t0 + 10;
+
+    // Diverge live state so the restore+replay must overwrite it.
+    ok(await rpc(app, 'data.writeRow', { model: 'widget', id: 'w1', patch: { name: 'GARBAGE' } }));
+
+    // Preview a restore to the mid-window time. On a CDC adapter the token now
+    // carries { bookmark, time } (not just the collapsed bookmark).
+    const preview = ok(await rpc(app, 'timeTravel.preview', { target: { time: targetTime } }));
+    expect(preview.target.id).toBe(base.id);
+
+    // Arm with the previewed token: reload the base snapshot, then replay CDC up
+    // to targetTime — reaching the exact mid-window state, not the snapshot edge.
+    const restore = ok(
+      await rpc(app, 'timeTravel.armRestore', {
+        bookmark: preview.target.id,
+        time: targetTime,
+        confirmToken: preview.confirmToken,
+      }),
+    );
+    expect(restore.applied).toBe(true);
+
+    // w1 reflects the CDC-replayed value — NOT the snapshot's 'alpha', NOT 'GARBAGE'.
+    const w1 = ok(await rpc(app, 'data.readRow', { model: 'widget', id: 'w1' }));
+    expect(w1!.name).toBe('alpha-cdc');
+  });
+});
+
+describe('timeTravel ops — undo + markForTime through dispatch', () => {
+  it('undo runs through its own 428 challenge, returning data to the undo mark', async () => {
+    const app = await makeApp({ editable: { data: true, timeTravel: true } });
+    const base = ok(await rpc(app, 'timeTravel.createSnapshot', {}));
+
+    // Diverge: rename w1.
+    ok(await rpc(app, 'data.writeRow', { model: 'widget', id: 'w1', patch: { name: 'DIVERGED' } }));
+
+    // Restore to base (confirm via challenge) → w1 back to 'alpha'; capture undoMark.
+    const armCh = challenge(
+      await rpc(app, 'timeTravel.armRestore', { bookmark: base.id, confirmToken: '' }),
+    );
+    const restore = ok(
+      await rpc(app, 'timeTravel.armRestore', {
+        bookmark: base.id,
+        confirmToken: armCh.confirmToken,
+      }),
+    );
+    expect(ok(await rpc(app, 'data.readRow', { model: 'widget', id: 'w1' }))!.name).toBe('alpha');
+    const undoMarkId = restore.undoMark!.id;
+
+    // Undo via dispatch — its OWN 428 challenge — restores the diverged state.
+    const undoCh = challenge(
+      await rpc(app, 'timeTravel.undo', { undoMark: undoMarkId, confirmToken: '' }),
+    );
+    const undone = ok(
+      await rpc(app, 'timeTravel.undo', {
+        undoMark: undoMarkId,
+        confirmToken: undoCh.confirmToken,
+      }),
+    );
+    expect(undone.applied).toBe(true);
+    expect(ok(await rpc(app, 'data.readRow', { model: 'widget', id: 'w1' }))!.name).toBe(
+      'DIVERGED',
+    );
+  });
+
+  it('markForTime resolves the base snapshot for a time (and null before any)', async () => {
+    const app = await makeApp({ editable: { timeTravel: true } });
+    const base = ok(await rpc(app, 'timeTravel.createSnapshot', {}));
+    const t0 = base.time!;
+
+    const at = ok(await rpc(app, 'timeTravel.markForTime', { time: t0 + 1000 }));
+    expect(at?.id).toBe(base.id);
+
+    const before = ok(await rpc(app, 'timeTravel.markForTime', { time: t0 - 1000 }));
+    expect(before).toBeNull();
   });
 });

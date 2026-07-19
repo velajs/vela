@@ -151,6 +151,13 @@ export class StudioDispatchRegistry implements OnApplicationBootstrap {
    * `error.details = { confirmToken, expiresAt, summary }` — the summary
    * supplied by the op's `@AdminConfirmSummary` provider. Generic: any op
    * flagged `destructive` in `STUDIO_OP_META` gets this flow.
+   *
+   * The binding is over the ENTIRE payload (args minus `confirmToken`), so a
+   * preview token minted without `force`/`scope` will NOT verify against an arm
+   * that adds them (the payload hash differs) — the caller gets a fresh 428
+   * challenge for the widened request. That re-challenge is CORRECT: `force`
+   * (override a schema mismatch) and `scope` change what the destructive op does,
+   * so the operator must re-confirm the summary for the actual action.
    */
   private async enforceConfirm(
     op: string,

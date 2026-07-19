@@ -58,6 +58,25 @@ export function studioNotFound(message: string): VelaError {
 }
 
 /**
+ * A portable time-travel restore that failed PARTWAY. The portable tier has no
+ * cross-table transaction, so a mid-restore throw can leave tables partially
+ * applied; the pre-captured `undoMark` id is the recovery target. Uses the core
+ * `conflict` code (409, NON-internal) so the recovery id rides through the wire
+ * redaction seam on `details.undoMark` — the client and audit must both learn
+ * it. The underlying failure is attached as `cause` (server logs only; the
+ * redaction seam never echoes `cause`).
+ */
+export function studioRestoreInterrupted(undoMarkId: string, cause: unknown): VelaError {
+  return STUDIO_CATALOG.error('conflict', {
+    message:
+      'restore failed partway and may have left tables partially applied; ' +
+      `recover by restoring to undo mark '${undoMarkId}'`,
+    data: { undoMark: undoMarkId },
+    cause,
+  });
+}
+
+/**
  * A 400 BAD REQUEST via the composed core `bad_request` code — the Studio
  * catalog has no request-shape code and the frozen protocol adds none, so
  * request-validation guards reuse the core code (wire `code: 'bad_request'`,

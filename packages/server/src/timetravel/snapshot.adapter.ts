@@ -14,14 +14,25 @@
  *
  * Confirm flow (the SAME single-use challenge as every destructive Studio op):
  * `preview` mints a {@link ConfirmTokenSigner} token bound to op
- * `timeTravel.armRestore` and the arming payload `{ bookmark }`, so the UI's
- * preview→arm step rides straight through the dispatch registry's 428 gate
- * (which consumes it). The adapter does NOT re-verify — the registry owns that.
+ * `timeTravel.armRestore` and the arming payload `{ bookmark }` — OR, when this
+ * adapter is CDC-capable (`snapshot+cdc`) and the preview addressed a mid-window
+ * `time`, the payload `{ bookmark, time }`. That second form is what makes CDC
+ * reachable THROUGH preview→arm: the previewed token authorizes a reload-base-
+ * snapshot-then-replay-CDC-up-to-`time` restore, instead of collapsing to the
+ * snapshot boundary and losing CDC precision (`RestoreRequest` already carries
+ * both fields — no wire change). The UI's preview→arm step rides straight
+ * through the dispatch registry's 428 gate (which consumes it); the adapter does
+ * NOT re-verify — the registry owns that. Because the confirm is payload-bound,
+ * arming with a `force`/`scope` the preview token was NOT minted with fails
+ * verification and (correctly) yields a fresh 428 challenge.
  *
  * Restore is IN-PLACE + immediate (`applied: true`, `restartRequested: false`),
  * captures an undo snapshot of the pre-restore state FIRST (returned as
  * `undoMark`), and — when a {@link ChangeSource} is bound — replays audit-backed
  * changes to reach a mid-window point in time (`granularity: 'snapshot+cdc'`).
+ * The restore is NOT atomic across tables (this portable tier has no cross-table
+ * transaction): a mid-restore failure can leave tables partially applied, so it
+ * throws an error carrying the pre-captured `undoMark` id (the recovery target).
  */
 import type {
   RestoreOutcome,
@@ -39,7 +50,7 @@ import type {
 } from '@velajs/studio-protocol';
 import { ConfirmTokenSigner } from '../security/confirm-token';
 import { utf8 } from '../security/crypto';
-import { studioError, studioNotFound } from '../studio.errors';
+import { studioError, studioNotFound, studioRestoreInterrupted } from '../studio.errors';
 import type { StudioModelSource, StudioWriteContext } from '../data/model-source.port';
 import type { SnapshotStore } from './snapshot-store.port';
 import type { ChangeSource } from './change-source.port';
@@ -74,7 +85,10 @@ const DEFAULT_MARK_LIMIT = 50;
 const SCOPE_NOTE =
   'Restores the managed crud models (row data only) captured in the snapshot. ' +
   'External stores (object storage, queues, caches, third-party systems) and any ' +
-  'tables not managed by Studio are NOT affected.';
+  'tables not managed by Studio are NOT affected. A portable restore is NOT atomic ' +
+  'across tables (this tier has no cross-table transaction): if it fails partway, ' +
+  'recover by restoring to the undo mark it returns as `undoMark` — the same id is ' +
+  'surfaced on the failure error details.';
 
 const manifestKey = (id: string): string => `${MANIFEST_PREFIX}${id}.json`;
 const ndjsonKey = (id: string, table: string): string => `snapshots/${id}/${table}.ndjson`;
@@ -159,7 +173,7 @@ export class SnapshotTimeTravelAdapter implements TimeTravelPort {
     const incompatibleTables = await this.incompatibleTables(manifest);
     const { token, exp } = await this.confirm.issue(
       'timeTravel.armRestore',
-      this.armPayload(manifest.id),
+      this.armPayloadFor(target, manifest),
     );
     return {
       target: await this.manifestToMark(manifest),
@@ -186,19 +200,29 @@ export class SnapshotTimeTravelAdapter implements TimeTravelPort {
       );
     }
 
-    // Capture the pre-restore state FIRST so the restore is reversible.
+    // Capture the pre-restore state FIRST so the restore is reversible. Its id
+    // is the ONLY recovery handle if the (non-atomic, cross-table) restore below
+    // fails partway, so it is captured BEFORE the loop and surfaced on failure.
     const undoMark = await this.createSnapshot({
       ...(req.scope !== undefined ? { scope: req.scope } : {}),
       label: `undo before restore to ${manifest.id}`,
     });
 
-    for (const table of manifest.tables) {
-      await this.restoreTable(table.table, manifest.id);
-    }
+    try {
+      for (const table of manifest.tables) {
+        await this.restoreTable(table.table, manifest.id);
+      }
 
-    const replayTo = this.cdcTargetTime(req, manifest);
-    if (replayTo !== null && this.changeSource !== undefined) {
-      await this.replayChanges(manifest, replayTo, req.scope);
+      const replayTo = this.cdcTargetTime(req, manifest);
+      if (replayTo !== null && this.changeSource !== undefined) {
+        await this.replayChanges(manifest, replayTo, req.scope);
+      }
+    } catch (cause) {
+      // Portable tier has NO cross-table transaction, so a throw here can leave
+      // tables partially applied. Surface the undo mark id (the recovery target)
+      // on the error so the client + audit can restore to it; the underlying
+      // failure rides as `cause` (server logs only, never echoed to the client).
+      throw studioRestoreInterrupted(undoMark.id, cause);
     }
 
     await this.live.invalidateTables(this.tableNamesFor(manifest));
@@ -206,6 +230,15 @@ export class SnapshotTimeTravelAdapter implements TimeTravelPort {
     return { restoredTo: manifest.id, undoMark, applied: true, restartRequested: false };
   }
 
+  /**
+   * Capture every managed model to an NDJSON dump + a manifest. NOTE (portable-
+   * tier limitation): each table is paged out by OFFSET (`page`/`perPage`), so a
+   * snapshot taken WHILE the source is being written is NOT guaranteed point-in-
+   * time-consistent — concurrent inserts/deletes shift the offset window and can
+   * duplicate or skip rows across page boundaries. Snapshot from a quiesced
+   * source, or use a runtime-native PITR adapter, when cross-row consistency
+   * under concurrent writes is required.
+   */
   async createSnapshot(opts?: {
     scope?: TimeTravelScope;
     label?: string;
@@ -345,10 +378,17 @@ export class SnapshotTimeTravelAdapter implements TimeTravelPort {
     }
   }
 
-  /** The requested epoch time when the restore is a mid-window point-in-time (else null). */
+  /**
+   * The epoch time a restore must replay CDC up to, or null when there is no
+   * mid-window replay to do. Any `time` later than the base snapshot triggers
+   * replay — INCLUDING a request that ALSO pins an explicit base `bookmark`
+   * (the preview→arm CDC path mints `{ bookmark, time }`, so the arm reloads the
+   * pinned base then replays up to `time`). A bookmark-only request (e.g. undo)
+   * carries no `time` and so never replays. Replay is a no-op regardless unless
+   * a change source is bound (guarded in `armRestore`).
+   */
   private cdcTargetTime(req: RestoreRequest, manifest: SnapshotManifest): number | null {
-    if (req.bookmark !== undefined) return null; // explicit mark → no replay
-    if (req.time === undefined) return null;
+    if (req.time === undefined) return null; // explicit-mark / bookmark-only → no replay
     const t = toEpoch(req.time);
     if (Number.isNaN(t)) return null;
     return t > manifest.createdAt ? t : null;
@@ -457,8 +497,27 @@ export class SnapshotTimeTravelAdapter implements TimeTravelPort {
     };
   }
 
-  private armPayload(id: string): { bookmark: string } {
-    return { bookmark: id };
+  /**
+   * The confirm payload `preview` mints its token over. Normally just the
+   * resolved base `{ bookmark }`. When this adapter is CDC-capable
+   * (`snapshot+cdc`) AND the preview addressed a mid-window `time` (a pure time
+   * target, no explicit bookmark), the payload ALSO carries that `time`, so the
+   * previewed arm re-sends `{ bookmark, time }` and reaches the exact point in
+   * time via CDC replay instead of collapsing to the snapshot boundary. The
+   * snapshot-only path (no change source) keeps collapsing to `{ bookmark }`.
+   */
+  private armPayloadFor(
+    target: RestoreTarget,
+    manifest: SnapshotManifest,
+  ): { bookmark: string } | { bookmark: string; time: number | string } {
+    if (
+      this.changeSource !== undefined &&
+      target.time !== undefined &&
+      target.bookmark === undefined
+    ) {
+      return { bookmark: manifest.id, time: target.time };
+    }
+    return { bookmark: manifest.id };
   }
 
   private modelTableMap(): Map<string, string> {
