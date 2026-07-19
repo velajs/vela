@@ -8,6 +8,11 @@ import { AdminAuditLog } from '../src/audit/audit-log';
 import { AdminLogBuffer } from '../src/logs/log-buffer';
 import type { AdminAuditEntry } from '@velajs/studio-protocol';
 
+/** Normalize a recursive-readdir relative path to forward slashes (OS-agnostic keys). */
+function normalizeRel(rel: string): string {
+  return rel.split(/[\\/]/).join('/');
+}
+
 // ---- drift guard: AdminErrorBody (minus Studio enrichment) === WireErrorObject
 type Equal<X, Y> =
   (<T>() => T extends X ? 1 : 2) extends <T>() => T extends Y ? 1 : 2 ? true : false;
@@ -29,15 +34,24 @@ describe('openness audit — no deep vela imports', () => {
     const files = readdirSync(srcDir, { recursive: true, encoding: 'utf8' }).filter((f) =>
       f.endsWith('.ts'),
     );
+    // The bare barrel is always allowed. The PUBLIC vela subpaths (first-class
+    // entries in vela's exports map — not internals) are allowed ONLY in the M9
+    // optional-op subpath that is the sanctioned SOLE importer of each: the
+    // whole point of `@velajs/studio/{queue,live}` is to isolate those imports
+    // there, keeping the core `.` entry free of them (a build-time grep of
+    // `dist/index.js` also verifies this). Everything else stays forbidden.
+    const publicSubpathAllow = new Map<string, string>([
+      [normalizeRel('queue/index.ts'), '@velajs/vela/queue'],
+      [normalizeRel('live/index.ts'), '@velajs/vela/live'],
+    ]);
     const offenders: string[] = [];
     const importRe = /(?:import|export)[^'"]*from\s*['"]([^'"]+)['"]/g;
     for (const rel of files) {
       const content = readFileSync(join(srcDir, rel), 'utf8');
       for (const match of content.matchAll(importRe)) {
         const spec = match[1] ?? '';
-        // Allowed: the bare public barrel. Disallowed: any deep subpath or a
-        // relative climb into a sibling vela source tree.
         if (spec === '@velajs/vela') continue;
+        if (publicSubpathAllow.get(normalizeRel(rel)) === spec) continue;
         if (spec.startsWith('@velajs/vela/')) offenders.push(`${rel}: ${spec}`);
         if (/(^|\/)vela\/src\//.test(spec)) offenders.push(`${rel}: ${spec}`);
         if (spec.startsWith('node:')) offenders.push(`${rel}: ${spec}`);

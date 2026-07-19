@@ -24,29 +24,56 @@ import type { EntrypointRow, ModuleNode, RouteRow } from '@velajs/studio-protoco
 import type { StudioAppHolder } from './app-holder';
 
 /**
- * The app route table, from the captured Hono app. `method:'ALL'` entries are
- * framework/user middleware mounts (disposal, body-limit, query guards, scoped
- * middleware) — not endpoints — so they are dropped, mirroring the CLI. Rows are
- * deduped by `method path` and sorted for a stable wire order.
+ * The app route table. Two tiers, deduped by `method path` and sorted for a
+ * stable wire order:
  *
- * Honest degradation: without `describeRoutes()` (RouteManager is not public),
- * no row can be attributed to a `Controller#handler`, so every row reports
- * `handler:'(mounted)'` / `source:'mounted'`. Returns `[]` before mount / for a
- * slim app that never built HTTP routes.
+ *   1. ATTRIBUTED controller routes from `VelaApplication.describeRoutes()` —
+ *      present only when the app wired {@link studioRuntimeAdapter} (its
+ *      `onRoutesBuilt` deposited them in the {@link StudioAppHolder}). These
+ *      carry the real `Controller#handler` and `source: 'controller'`.
+ *   2. Everything left in the live Hono table (contributor-mounted surfaces the
+ *      framework did NOT compose itself — the admin surface, the crud bridge)
+ *      degrades honestly to `handler:'(mounted)'` / `source:'mounted'`.
+ *
+ * Without the adapter, tier 1 is empty and EVERY row degrades to `(mounted)` —
+ * the pre-M9 behavior, unchanged. `method:'ALL'` entries are middleware mounts
+ * (not endpoints) and are dropped, mirroring the CLI. Returns `[]` before mount.
  */
 export function collectRoutes(holder: StudioAppHolder): RouteRow[] {
-  const app = holder.app;
-  if (!app) return [];
-
   const rows: RouteRow[] = [];
   const seen = new Set<string>();
-  for (const route of app.routes) {
-    if (route.method === 'ALL') continue;
-    const key = `${route.method} ${route.path}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    rows.push({ method: route.method, path: route.path, handler: '(mounted)', source: 'mounted' });
+
+  const described = holder.routeDescriptions;
+  if (described !== null) {
+    for (const route of described) {
+      const key = `${route.method} ${route.path}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rows.push({
+        method: route.method,
+        path: route.path,
+        handler: `${route.controller}#${route.handler}`,
+        source: 'controller',
+      });
+    }
   }
+
+  const app = holder.app;
+  if (app) {
+    for (const route of app.routes) {
+      if (route.method === 'ALL') continue;
+      const key = `${route.method} ${route.path}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rows.push({
+        method: route.method,
+        path: route.path,
+        handler: '(mounted)',
+        source: 'mounted',
+      });
+    }
+  }
+
   return rows.toSorted((a, b) => a.path.localeCompare(b.path) || a.method.localeCompare(b.method));
 }
 

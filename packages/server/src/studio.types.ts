@@ -5,7 +5,7 @@
  */
 import type { Context } from 'hono';
 import type { Token, Type } from '@velajs/vela';
-import type { StudioOp, StudioWriteGates } from '@velajs/studio-protocol';
+import type { StudioConfirmChallenge, StudioOp, StudioWriteGates } from '@velajs/studio-protocol';
 import type { AdminAuditEntry } from '@velajs/studio-protocol';
 
 /**
@@ -166,19 +166,15 @@ export type AdminConfirmSummarizer = (
 ) => string | Promise<string>;
 
 /**
- * The `error.details` payload of a 428 `STUDIO_CONFIRM_REQUIRED` challenge. Rides
- * the existing `WireErrorObject.details` (typed `unknown` on the wire — this is
- * the server-side view of that slot, not a new wire shape). The client re-sends
- * the identical args plus `confirmToken` to complete the destructive op.
+ * The `error.details` payload of a 428 `STUDIO_CONFIRM_REQUIRED` challenge.
+ *
+ * FOLD-IN (M9): this is the FROZEN protocol {@link StudioConfirmChallenge}
+ * (`@velajs/studio-protocol`), re-exported here so the server keeps a single
+ * import site. It was previously re-declared locally (identical shape, both
+ * epoch-ms) — the protocol type is now the sole source, so producer (the 428
+ * emit site in `dispatch.registry`) and consumer (UI decode) cannot drift.
  */
-export interface StudioConfirmChallenge {
-  /** A fresh single-use token bound to (op, payload-minus-token). */
-  confirmToken: string;
-  /** Absolute token expiry (epoch ms). */
-  expiresAt: number;
-  /** Human summary of the pending destructive action. */
-  summary: string;
-}
+export type { StudioConfirmChallenge };
 
 /**
  * Metadata carried by `@AdminRpc`. `op` is the ONLY classification stored here;

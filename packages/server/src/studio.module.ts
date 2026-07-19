@@ -27,6 +27,8 @@ import { StudioLogsOps } from './ops/logs.ops';
 import { StudioCapabilitiesOps } from './ops/studio.ops';
 import { StudioDataOps } from './data/data.ops';
 import { StudioTimeTravelOps } from './timetravel/timetravel.ops';
+import { StudioAuthOps } from './auth/auth.ops';
+import { StudioTransferOps } from './transfer/transfer.ops';
 // Importing the marker controller pulls the route-contributor module (and its
 // import-time `registerRouteContributor` side effect) into the graph.
 import { StudioAdminController } from './http/route-contributor';
@@ -89,6 +91,15 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<StudioMod
       // opt-in `@velajs/studio/timetravel` StudioTimeTravelModule, or a CF-DO
       // PITR module in M11).
       StudioTimeTravelOps,
+      // Auth panel ops (M9). Registered unconditionally against STUDIO_AUTH_SOURCE
+      // (the port); each reports FEATURE_UNCONFIGURED until the
+      // `@velajs/studio/auth` subpath binds a better-auth-backed source. The
+      // core `.` entry never imports better-auth — only the subpath does.
+      StudioAuthOps,
+      // Transfer ops (M9): export (a URL to the /export route) + import (bulk
+      // NDJSON ingest). Registered unconditionally against STUDIO_MODEL_SOURCE;
+      // each reports FEATURE_UNCONFIGURED until a source is bound.
+      StudioTransferOps,
     ];
 
     return {

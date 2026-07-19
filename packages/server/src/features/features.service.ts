@@ -9,18 +9,21 @@
  *   (b) the per-app `EntrypointRegistry` kinds (`queue`, `websocket`);
  *   (c) `Container.has(...)` probes for optional public tokens (schedule, live).
  *
- * Three keys are handled out-of-band, never on op registration: `openapi` is
- * gated SOLELY on a configured `rootModule` (the op's precondition), `data`
- * SOLELY on a bound `STUDIO_MODEL_SOURCE` with at least one managed model, and
- * `timeTravel` SOLELY on a bound `TIME_TRAVEL_PORT` (the data + time-travel ops
- * are registered unconditionally, so registration is not a signal for them).
- * Absent evidence ⇒ false.
+ * Several keys are handled OUT-OF-BAND, never on op registration, because their
+ * ops ship on the core `.` entry (registered unconditionally, so registration is
+ * not a signal): `openapi` is gated SOLELY on a configured `rootModule`; `data`
+ * and `transfer` SOLELY on a bound `STUDIO_MODEL_SOURCE` with ≥1 managed model
+ * (transfer rides the same source); `timeTravel` SOLELY on a bound
+ * `TIME_TRAVEL_PORT`; `auth` / `authOrganizations` SOLELY on a bound
+ * `STUDIO_AUTH_SOURCE` (the `@velajs/studio/auth` subpath) reporting the matching
+ * capability (admin / organization plugin) — the two auth sub-features light
+ * INDEPENDENTLY. Absent evidence ⇒ false.
  *
- * GAP (documented in the M4 report): `transfer`, `auth`, `authOrganizations`,
- * `flags`, `presence` have no public-barrel probe token and no core entrypoint
- * kind in 1.20.0 — their packages live outside the vela barrel. They read
- * `false` here until their op namespace registers in a later milestone (source
- * (a)), which is the honest signal that Studio can serve them.
+ * The remaining optional namespaces (`queue`, `schedule`, `flags`, `live`,
+ * `presence`) ship their ops in the M9 subpath modules (`@velajs/studio/{queue,
+ * schedule,flags,live}`), so op-registration (source (a)) IS the honest signal —
+ * unioned with the pre-existing entrypoint-kind (b) / probe-token (c) evidence
+ * for queue/schedule/live.
  */
 import {
   Container,
@@ -42,6 +45,8 @@ import type { ResolvedStudioConfig } from '../studio.types';
 import { StudioDispatchRegistry } from '../rpc/dispatch.registry';
 import { STUDIO_MODEL_SOURCE } from '../data/model-source.port';
 import { TIME_TRAVEL_PORT } from '../timetravel/port.token';
+import { STUDIO_AUTH_SOURCE } from '../auth/auth.port';
+import type { StudioAuthCapabilities } from '../auth/auth.port';
 
 /**
  * Per-feature entrypoint-kind evidence (source (b)). A kind counts only when the
@@ -128,6 +133,16 @@ export class StudioFeaturesService {
     // The honest signal is a bound `TIME_TRAVEL_PORT`.
     if (key === 'timeTravel') return this.container.has(TIME_TRAVEL_PORT);
 
+    // `transfer` ops (export/import) also ship on core against the data source,
+    // so the honest signal is the same bound-source-with-models one `data` uses.
+    if (key === 'transfer') return this.dataBound();
+
+    // `auth` / `authOrganizations` ops ship on core against `STUDIO_AUTH_SOURCE`
+    // (bound by the `@velajs/studio/auth` subpath). Each sub-feature lights on
+    // its OWN better-auth capability (admin / organization plugin), independently.
+    if (key === 'auth') return this.authCapabilities().admin;
+    if (key === 'authOrganizations') return this.authCapabilities().organizations;
+
     // (a) Studio ships an op for this feature.
     if (registered.has(key)) return true;
 
@@ -151,6 +166,21 @@ export class StudioFeaturesService {
   private dataBound(): boolean {
     if (!this.container.has(STUDIO_MODEL_SOURCE)) return false;
     return this.container.resolve(STUDIO_MODEL_SOURCE).listModels().length > 0;
+  }
+
+  /**
+   * The bound auth source's capabilities, or both-false when unbound OR the
+   * source throws (misconfigured better-auth). Guarded like `timeTravel` so a
+   * broken auth source degrades the two auth features to false, never 500s
+   * `studio.capabilities`.
+   */
+  private authCapabilities(): StudioAuthCapabilities {
+    if (!this.container.has(STUDIO_AUTH_SOURCE)) return { admin: false, organizations: false };
+    try {
+      return this.container.resolve(STUDIO_AUTH_SOURCE).capabilities();
+    } catch {
+      return { admin: false, organizations: false };
+    }
   }
 
   /** Feature keys for which at least one op handler is registered (source (a)). */

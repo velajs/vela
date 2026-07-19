@@ -14,20 +14,36 @@
  *   - `app.routes`       → ONLY reachable here (RouteManager is internal).
  */
 import type { Hono } from 'hono';
+import type { RouteDescription } from '@velajs/vela';
 
 /**
  * A per-app singleton the route contributor populates once, at mount time.
  * Holds a reference to the live Hono app (not a snapshot), so reading
  * {@link app}`.routes` at dispatch time observes the fully-built table.
+ *
+ * OPT-IN route attribution (M9): the live Hono table cannot attribute a row to
+ * its `Controller#handler` (that lives on the barrel-internal `RouteManager`),
+ * so `app.routes` degrades every row to `(mounted)`. When the app wires the
+ * {@link import('./runtime-adapter').studioRuntimeAdapter} via
+ * `VelaFactory.create(App, { adapters: [studioRuntimeAdapter] })`, its
+ * `onRoutesBuilt` hook deposits the fully-attributed `RouteDescription[]` here
+ * (`ctx.app.describeRoutes()`), and the collector reports real handler/source.
+ * Without the adapter the mount-time Hono capture is the fallback (unchanged).
  */
 export class StudioAppHolder {
   private honoApp: Hono | null = null;
   private prefix = '';
+  private descriptions: RouteDescription[] | null = null;
 
   /** Called once by the route contributor's `buildRoutes`. */
   capture(app: Hono, globalPrefix: string): void {
     this.honoApp = app;
     this.prefix = globalPrefix;
+  }
+
+  /** Called by {@link studioRuntimeAdapter}'s `onRoutesBuilt` when the adapter is wired. */
+  captureRouteDescriptions(descriptions: RouteDescription[]): void {
+    this.descriptions = descriptions;
   }
 
   /** The live Hono app, or null before the contributor has mounted. */
@@ -38,5 +54,10 @@ export class StudioAppHolder {
   /** The app's normalized global prefix ('' when none), or '' before capture. */
   get globalPrefix(): string {
     return this.prefix;
+  }
+
+  /** The fully-attributed route descriptions, or null when the adapter isn't wired. */
+  get routeDescriptions(): RouteDescription[] | null {
+    return this.descriptions;
   }
 }

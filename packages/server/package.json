@@ -74,20 +74,35 @@
     "@velajs/studio-protocol": "workspace:^"
   },
   "devDependencies": {
+    "@velajs/better-auth": "^0.6.1",
     "@velajs/crud": "^1.19.1",
+    "@velajs/feature-flags": "^0.1.1",
     "@velajs/vela": "^1.20.0",
+    "better-auth": "^1.2.0",
     "hono": "^4",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   },
   "peerDependencies": {
+    "@velajs/better-auth": ">=0.6.0 <1",
     "@velajs/crud": ">=1.19.0 <2",
+    "@velajs/feature-flags": ">=0.1.1 <1",
     "@velajs/vela": ">=1.20.0 <2",
+    "better-auth": ">=1.2.0",
     "hono": ">=4"
   },
   "peerDependenciesMeta": {
+    "@velajs/better-auth": {
+      "optional": true
+    },
     "@velajs/crud": {
+      "optional": true
+    },
+    "@velajs/feature-flags": {
+      "optional": true
+    },
+    "better-auth": {
       "optional": true
     }
   },

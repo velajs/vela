@@ -7,6 +7,7 @@
 import type { Context, Hono } from 'hono';
 import type { Container, RouteContributorContext } from '@velajs/vela';
 import {
+  STUDIO_EXPORT_SUFFIX,
   STUDIO_HEALTH_SUFFIX,
   STUDIO_PROTOCOL_VERSION,
   STUDIO_RPC_SUFFIX,
@@ -20,6 +21,9 @@ import { studioError, toAdminErrorBody } from '../studio.errors';
 import { StudioDispatchRegistry } from '../rpc/dispatch.registry';
 import { AdminSubTokenSigner } from '../security/sub-token.signer';
 import { timingSafeEqual } from '../security/token-compare';
+import { STUDIO_MODEL_SOURCE } from '../data/model-source.port';
+import { TIME_TRAVEL_PORT } from '../timetravel/port.token';
+import { streamAllModelsNdjson, streamModelNdjson } from '../transfer/transfer.ops';
 import { FixedWindowCounter, RateLimiter } from './middleware/rate-limit';
 
 /**
@@ -30,6 +34,9 @@ import { FixedWindowCounter, RateLimiter } from './middleware/rate-limit';
  * undeclared wire shape. It is deliberately NOT a member of `STUDIO_OPS`.
  */
 const WS_TOKEN_PSEUDO_OP = 'studio.wsToken';
+
+/** Pseudo-op stamped onto the `/export` route's pre-stream error envelope (see {@link WS_TOKEN_PSEUDO_OP}). */
+const EXPORT_PSEUDO_OP = 'transfer.export';
 
 /**
  * Pre-auth throttle ceiling as a multiple of the post-auth `max`. Generous by
@@ -89,6 +96,7 @@ export function mountAdminRouter(app: Hono, ctx: RouteContributorContext): void 
   const healthPath = ctx.joinPaths(base, STUDIO_HEALTH_SUFFIX);
   const rpcPath = ctx.joinPaths(base, `${STUDIO_RPC_SUFFIX}:op`);
   const wsTokenPath = ctx.joinPaths(base, STUDIO_WS_TOKEN_SUFFIX);
+  const exportPath = ctx.joinPaths(base, STUDIO_EXPORT_SUFFIX);
 
   // Post-auth token bucket (per authenticated principal IP).
   const rateLimiter = config.rateLimit ? new RateLimiter(config.rateLimit) : null;
@@ -151,6 +159,60 @@ export function mountAdminRouter(app: Hono, ctx: RouteContributorContext): void 
     });
     return jsonResponse({ token, exp }, 200);
   });
+
+  // `GET {base}/export` — the transfer/snapshot NDJSON stream. Behind the SAME
+  // bearer + rate-limit chain as the RPC surface (a read of admin-visible data,
+  // so no editable gate). Query: `?model=<name>` (one model), `?mark=<id>` (a
+  // snapshot via the bound time-travel port), or neither (every managed model).
+  app.get(exportPath, async (c) => {
+    const gated = await guard(c, EXPORT_PSEUDO_OP);
+    if ('response' in gated) return gated.response;
+    try {
+      const stream = await exportStream(c, container);
+      return new Response(stream, {
+        status: 200,
+        headers: {
+          'content-type': 'application/x-ndjson; charset=UTF-8',
+          'content-disposition': 'attachment; filename="studio-export.ndjson"',
+        },
+      });
+    } catch (error) {
+      const { body, status } = toAdminErrorBody(error);
+      return jsonResponse({ ok: false, op: EXPORT_PSEUDO_OP, error: body, status }, status);
+    }
+  });
+}
+
+/**
+ * Resolve the NDJSON export stream for a `GET {base}/export` request. `mark`
+ * takes precedence (a snapshot via the time-travel port's optional
+ * `exportSnapshot`); otherwise `model` scopes to one model, and its absence
+ * streams every managed model. Throws `FEATURE_UNCONFIGURED` when the required
+ * source/port is unbound (surfaced as an error envelope, not a broken stream).
+ */
+async function exportStream(c: Context, container: Container): Promise<ReadableStream<Uint8Array>> {
+  const mark = c.req.query('mark');
+  if (mark !== undefined) {
+    if (!container.has(TIME_TRAVEL_PORT)) throw studioError('TIMETRAVEL_UNAVAILABLE');
+    const port = container.resolve(TIME_TRAVEL_PORT);
+    if (port.exportSnapshot === undefined) {
+      throw studioError(
+        'FEATURE_UNCONFIGURED',
+        'the bound time-travel port has no snapshot export',
+      );
+    }
+    return port.exportSnapshot(mark);
+  }
+  if (!container.has(STUDIO_MODEL_SOURCE)) throw studioError('FEATURE_UNCONFIGURED');
+  const source = container.resolve(STUDIO_MODEL_SOURCE);
+  const model = c.req.query('model');
+  // Validate a named model synchronously so an unknown model is an error
+  // envelope, not a stream that throws on first pull.
+  if (model !== undefined) {
+    source.describe(model);
+    return streamModelNdjson(source, model);
+  }
+  return streamAllModelsNdjson(source);
 }
 
 function buildOpContext(

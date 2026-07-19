@@ -68,9 +68,11 @@ export { AdminLogBuffer } from './logs/log-buffer';
 // Features (real detection — M4)
 export { StudioFeaturesService } from './features/features.service';
 
-// Introspection collectors + the mount-time app-capture seam
+// Introspection collectors + the mount-time app-capture seam + the opt-in
+// route-attribution adapter (M9).
 export { StudioAppHolder } from './introspect/app-holder';
 export { collectRoutes, collectModules, collectEntrypoints } from './introspect/collect';
+export { studioRuntimeAdapter } from './introspect/runtime-adapter';
 
 // M4 op providers (app introspection, logs/audit, capability negotiation)
 export { StudioAppOps } from './ops/app.ops';
@@ -117,6 +119,20 @@ export type {
   LiveInvalidatorPort,
   StudioTimeTravelModuleOptions,
 } from './timetravel';
+
+// M9 auth panel — the READ/WRITE ops + the source port (the better-auth binding
+// lives in the optional `@velajs/studio/auth` subpath, never in this core `.` entry).
+export { StudioAuthOps } from './auth/auth.ops';
+export { STUDIO_AUTH_SOURCE } from './auth/auth.port';
+export type { StudioAuthSource, StudioAuthCapabilities } from './auth/auth.port';
+
+// M9 transfer — bulk export/import ops (over STUDIO_MODEL_SOURCE) + the NDJSON
+// streaming helpers the `/export` route shares. Peer-free (crud-agnostic).
+export {
+  StudioTransferOps,
+  streamModelNdjson,
+  streamAllModelsNdjson,
+} from './transfer/transfer.ops';
 
 // HTTP
 export { RateLimiter, FixedWindowCounter, DEFAULT_MAX_ENTRIES } from './http/middleware/rate-limit';
