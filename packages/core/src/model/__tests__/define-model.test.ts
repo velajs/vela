@@ -160,6 +160,45 @@ describe('defineModel normalization', () => {
     ).toThrow(/schema/);
   });
 
+  it('requires a tenant field on related schemas targeted by nested mutations', () => {
+    const RelatedWithoutTenant = z.object({ id: z.string(), authorId: z.string().optional() });
+    expect(() =>
+      defineModel({
+        name: 'u',
+        tableName: 'u',
+        schema: UserSchema,
+        multiTenant: true,
+        relations: {
+          posts: {
+            type: 'hasMany' as const,
+            target: 'posts',
+            foreignKey: 'authorId',
+            schema: RelatedWithoutTenant,
+            nestedWrites: { allowConnect: true },
+          },
+        },
+      }),
+    ).toThrow(/requires the related schema to declare tenant field 'tenantId'/);
+
+    expect(() =>
+      defineModel({
+        name: 'u',
+        tableName: 'u',
+        schema: UserSchema,
+        multiTenant: true,
+        relations: {
+          posts: {
+            type: 'hasMany' as const,
+            target: 'posts',
+            foreignKey: 'authorId',
+            schema: RelatedWithoutTenant,
+            nestedWrites: { allowUpdate: true },
+          },
+        },
+      }),
+    ).toThrow(/requires the related schema to declare tenant field 'tenantId'/);
+  });
+
   it('returns a fresh object without mutating the input config', () => {
     const config = {
       name: 'user',

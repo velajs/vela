@@ -27,6 +27,27 @@
 
 import type { FilterCondition } from '../adapter/query-types';
 import type { ModelPolicies, PolicyContext } from './types';
+import type { CrudEndpointName } from '../verb-table';
+
+/** Whether the actor may invoke an executor at all. */
+export async function canPerformOperation<T>(
+  ctx: PolicyContext,
+  operation: CrudEndpointName,
+  policies?: ModelPolicies<T>,
+): Promise<boolean> {
+  if (!policies?.operation) return true;
+  return Boolean(await policies.operation(ctx, operation));
+}
+
+/** Whether the current actor may create the validated record. */
+export async function canCreate<T>(
+  ctx: PolicyContext,
+  record: Partial<T>,
+  policies?: ModelPolicies<T>,
+): Promise<boolean> {
+  if (!policies?.create) return true;
+  return Boolean(await policies.create(ctx, record));
+}
 
 /**
  * Whether a single record is readable by the current actor. `true` when no

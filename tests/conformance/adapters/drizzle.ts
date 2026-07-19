@@ -14,7 +14,7 @@ import { createClient } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 import { Controller, Module, VelaFactory } from '@velajs/vela';
-import { Crud, CrudException, multiTenant } from '@velajs/crud';
+import { ALL_CRUD_ENDPOINTS, Crud, CrudException, multiTenant } from '@velajs/crud';
 import { drizzleAdapter } from '@velajs/crud-drizzle';
 import type { AdapterContext, AdapterDescriptor } from '../contract';
 import {
@@ -110,6 +110,7 @@ async function setup(): Promise<AdapterContext> {
   @Crud({
     model: conformanceModel,
     adapter: itemAdapter,
+    only: ALL_CRUD_ENDPOINTS,
     filterConfig: CONFORMANCE_FILTER_CONFIG,
     sortFields: CONFORMANCE_SORT_FIELDS,
     upsert: { keys: UPSERT_KEYS },
@@ -120,11 +121,13 @@ async function setup(): Promise<AdapterContext> {
   @Crud({
     model: tenantModel,
     adapter: tenantAdapter,
+    only: ALL_CRUD_ENDPOINTS,
     tenantResolverMounted: true,
     allowedIncludes: ['parent'],
     filterConfig: CONFORMANCE_FILTER_CONFIG,
     sortFields: CONFORMANCE_SORT_FIELDS,
     searchFields: ['name'],
+    aggregate: { groupByFields: ['role'] },
     upsert: { keys: UPSERT_KEYS },
   })
   class TenantItemsController {}
@@ -163,6 +166,7 @@ async function setup(): Promise<AdapterContext> {
   @Crud({
     model: serializationModel,
     adapter: profileAdapter,
+    only: ALL_CRUD_ENDPOINTS,
     filterConfig: CONFORMANCE_FILTER_CONFIG,
     sortFields: CONFORMANCE_SORT_FIELDS,
     searchFields: ['name'],
@@ -193,8 +197,8 @@ async function setup(): Promise<AdapterContext> {
     }
     return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: String(err) } }, 500);
   });
-  outer.use('/tenant-items', multiTenant());
-  outer.use('/tenant-items/*', multiTenant());
+  outer.use('/tenant-items', multiTenant({ validate: () => true }));
+  outer.use('/tenant-items/*', multiTenant({ validate: () => true }));
   outer.route('/', app.getHonoApp());
 
   return {

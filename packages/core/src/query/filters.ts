@@ -203,6 +203,13 @@ export const RESERVED_LIST_PARAMS = [
   'onlyDeleted',
 ] as const;
 
+/** Property names which can mutate or escape ordinary object dictionaries. */
+const UNSAFE_DICTIONARY_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+function isSafeDictionaryKey(value: string): boolean {
+  return !UNSAFE_DICTIONARY_KEYS.has(value);
+}
+
 /** First value of a possibly-repeated query param, coerced to string. */
 function firstString(raw: string | string[]): string {
   return String(Array.isArray(raw) ? raw[0] : raw);
@@ -241,11 +248,19 @@ export function parseListFilters(query: RawQuery, config: ParseListQueryOptions 
 
   // Build the per-field operator allow-list: bare `filterFields` allow only
   // `eq`; `filterConfig` entries override with an explicit operator list.
-  const allowedFilters: FilterConfig = {};
+  const allowedFilters = Object.create(null) as FilterConfig;
   for (const field of filterFields) {
-    allowedFilters[field] = ['eq'];
+    if (isSafeDictionaryKey(field)) allowedFilters[field] = ['eq'];
   }
-  Object.assign(allowedFilters, filterConfig);
+  for (const [field, operators] of Object.entries(filterConfig)) {
+    if (
+      isSafeDictionaryKey(field) &&
+      Array.isArray(operators) &&
+      operators.every((operator) => isFilterOperator(operator))
+    ) {
+      allowedFilters[field] = operators;
+    }
+  }
 
   for (const [key, rawValue] of Object.entries(query)) {
     if (rawValue === undefined || rawValue === null) continue;
@@ -348,14 +363,15 @@ export function parseListFilters(query: RawQuery, config: ParseListQueryOptions 
       const operator = bracketMatch[2] as FilterOperator;
       // Fail-closed: `allowedFilters` only ever holds real operators, so an
       // unknown operator (or an unallowed field) simply drops.
-      if (allowedFilters[field]?.includes(operator)) {
+      const operators = Object.hasOwn(allowedFilters, field) ? allowedFilters[field] : undefined;
+      if (Array.isArray(operators) && operators.includes(operator)) {
         filters.push({ field, operator, value: coerceFilterValue(operator, value) });
       }
       continue;
     }
 
     // Simple field=value → equality (fail-closed on unallowed field).
-    if (allowedFilters[key]) {
+    if (Object.hasOwn(allowedFilters, key) && Array.isArray(allowedFilters[key])) {
       filters.push({ field: key, operator: 'eq', value });
     }
   }

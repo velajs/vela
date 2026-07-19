@@ -11,7 +11,7 @@ import type { CrudAdapter } from '../adapter/contract';
 import type { FilterConfig, SortSpec } from '../adapter/query-types';
 import type { AggregateBuildConfig } from '../query/aggregate';
 import type { SearchFieldConfig } from '../query/search';
-import { ConfigurationException } from '../envelope/errors';
+import { ConfigurationException, ForbiddenException } from '../envelope/errors';
 import { defaultEnvelope, type ErrorMapper, type ResponseEnvelope } from '../envelope/envelope';
 import { resolveStructuredError } from '../envelope/mappers';
 import { deriveCreateSchema, deriveUpdateSchema } from '../model/schema-derive';
@@ -22,6 +22,8 @@ import type { CrudEndpointName } from '../verb-table';
 import { EXTENDED_EXECUTORS } from './extended/registry';
 import type { CrudHooks, HookModeConfig } from './hook-types';
 import type { EngineRequest, EngineResult } from './engine-request';
+import { buildPolicyContext, requireTenantContext } from './verb-helpers';
+import { canPerformOperation } from '../policies/evaluate';
 import { executeCreate, executeDelete, executeList, executeRead, executeUpdate } from './verbs';
 
 export type CoreVerb = 'create' | 'read' | 'update' | 'delete' | 'list';
@@ -141,6 +143,63 @@ export function defineResource<Row extends Record<string, unknown>>(
       `Resource '${name}': allowedIncludes configured but the adapter has no relation loader`,
     );
   }
+  for (const include of config.allowedIncludes ?? []) {
+    const relation = config.model.relations?.[include];
+    if (
+      relation !== undefined &&
+      relation.target !== config.model.tableName &&
+      relation.response === undefined
+    ) {
+      throw new ConfigurationException(
+        `Resource '${name}': included relation '${include}' targets another model but has no ` +
+          '`response` authorization metadata. Use defineModels() to auto-wire it, or provide ' +
+          '`relation.response` explicitly (an empty object explicitly marks a public target).',
+      );
+    }
+  }
+  for (const [relationName, relation] of Object.entries(config.model.relations ?? {})) {
+    const nested = relation.nestedWrites;
+    const exposesTarget =
+      (config.allowedIncludes ?? []).includes(relationName) ||
+      nested?.allowCreate === true ||
+      nested?.allowUpdate === true ||
+      nested?.allowDelete === true ||
+      nested?.allowConnect === true ||
+      nested?.allowDisconnect === true;
+    if (!exposesTarget || relation.target === config.model.tableName) continue;
+    if (
+      relation.response?.tenantField === undefined ||
+      relation.response.softDeleteField === undefined ||
+      (nested?.allowCreate === true &&
+        (relation.response.primaryKeys === undefined ||
+          relation.response.primaryKeys.length === 0 ||
+          relation.response.timestamps === undefined))
+    ) {
+      throw new ConfigurationException(
+        `Resource '${name}': relation '${relationName}' targets another model but does not ` +
+          'declare target tenant/soft-delete/primary-key/timestamp metadata. Use defineModels() ' +
+          'to auto-wire it, or set response.tenantField/softDeleteField/primaryKeys/timestamps ' +
+          'explicitly ' +
+          '(false means not applicable for tenant and soft-delete fields).',
+      );
+    }
+    const targetShape = relation.schema?.shape;
+    for (const field of [
+      relation.response.tenantField,
+      relation.response.softDeleteField,
+      ...(relation.response.primaryKeys ?? []),
+    ]) {
+      if (
+        typeof field === 'string' &&
+        targetShape !== undefined &&
+        !Object.hasOwn(targetShape, field)
+      ) {
+        throw new ConfigurationException(
+          `Resource '${name}': relation '${relationName}' target metadata references missing field '${field}'`,
+        );
+      }
+    }
+  }
   // Loud, never silent: an enabled versioning/audit family without its store
   // seam is a misconfiguration — fail at definition time, not on the first
   // mutation (hono-crud surfaced this as a request-time CONFIGURATION_ERROR;
@@ -183,6 +242,16 @@ export function defineResource<Row extends Record<string, unknown>>(
       // internally); the generic is a compile-time convenience for callers.
       const erased = resource as unknown as import('./verbs').AnyResource;
       try {
+        requireTenantContext(erased, req);
+        const policies = erased.model.policies;
+        if (verb === 'aggregate' && policies?.operation === undefined) {
+          throw new ForbiddenException(
+            'Aggregate requires an explicit operation authorization policy',
+          );
+        }
+        if (!(await canPerformOperation(buildPolicyContext(req), verb, policies))) {
+          throw new ForbiddenException(`Operation '${verb}' is not permitted`);
+        }
         switch (verb) {
           case 'create':
             return await executeCreate(erased, req);

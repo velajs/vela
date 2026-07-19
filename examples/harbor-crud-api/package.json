@@ -14,7 +14,7 @@
     "@hono/node-server": "^1.19.0",
     "@velajs/crud": "workspace:*",
     "@velajs/crud-memory": "workspace:*",
-    "@velajs/vela": "^1.18.0",
+    "@velajs/vela": "^1.21.0",
     "hono": "^4",
     "zod": "^4"
   }

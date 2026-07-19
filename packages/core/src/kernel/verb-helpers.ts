@@ -17,14 +17,15 @@
 import type { AdapterScope, TransactionContext } from '../adapter/contract';
 import type { FilterCondition, ListQuery, Lookup, Page } from '../adapter/query-types';
 import {
+  CrudException,
   ForbiddenException,
   InputValidationException,
   NotFoundException,
 } from '../envelope/errors';
 import { applyComputedFields, applyComputedFieldsToArray } from '../model/computed-fields';
 import { applyProfile, applyProfileToArray } from '../model/serialization-profile';
-import { applyManagedInsertFields, applyManagedUpdateFields } from '../model/managed-fields';
 import {
+  canCreate,
   canRead,
   canWrite,
   filterReadable,
@@ -32,17 +33,12 @@ import {
   pushdownConditions,
 } from '../policies/evaluate';
 import type { PolicyContext } from '../policies/types';
-import { matchesFilter, parseListFilters } from '../query/filters';
-import {
-  applyFieldSelection,
-  applyFieldSelectionToArray,
-  parseFieldSelection,
-} from '../query/field-selection';
-import type { EngineRequest, EngineResult } from './engine-request';
+import { matchesFilter } from '../query/filters';
+import { applyFieldSelection, parseFieldSelection } from '../query/field-selection';
+import type { EngineRequest } from './engine-request';
 import { deriveCreateSchema, deriveUpdateSchema } from '../model/schema-derive';
 import type { HookContext } from './hook-types';
-import { runBeforeChain, runHooks } from './run-hooks';
-import { envelopeOf, type CrudResource } from './resource';
+import type { CrudResource } from './resource';
 
 type Row = Record<string, unknown>;
 
@@ -53,6 +49,9 @@ type Row = Record<string, unknown>;
  * effectively invariant, so `CrudResource<never>` is not a usable bottom).
  */
 export type AnyResource = CrudResource<Row>;
+
+/** Hard ceiling for any engine-side scan used to emulate a native operation. */
+export const MAX_FALLBACK_SCAN = 1_000;
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -87,6 +86,68 @@ export function buildPolicyContext(req: EngineRequest): PolicyContext {
     // outside HTTP) get a synthetic one.
     request: req.request ?? new Request('http://engine.internal/'),
   };
+}
+
+/**
+ * Tenant models never execute without a non-empty tenant id. Keeping this at
+ * the engine boundary protects direct `resource.execute(...)` calls as well as
+ * HTTP routes and prevents middleware ordering mistakes from becoming an
+ * unscoped query.
+ */
+export function requireTenantContext(resource: AnyResource, req: EngineRequest): void {
+  if (resource.model.tenantField === undefined) return;
+  const tenantId = req.vars?.tenantId;
+  if (typeof tenantId !== 'string' || tenantId.trim() === '') {
+    throw new CrudException('This operation requires a tenant context', 400, 'TENANT_REQUIRED');
+  }
+}
+
+/** Fail closed when the model's create policy denies a validated input. */
+export async function assertCreateAllowed(
+  resource: AnyResource,
+  policyCtx: PolicyContext,
+  record: Row,
+): Promise<void> {
+  if (!(await canCreate(policyCtx, record, resource.model.policies))) {
+    throw new ForbiddenException();
+  }
+}
+
+/** Point-read authorization: pushdown + row predicate, rendered as a 404. */
+export async function assertReadAllowed(
+  resource: AnyResource,
+  policyCtx: PolicyContext,
+  record: Row,
+  id?: string,
+): Promise<void> {
+  const policies = resource.model.policies;
+  if (
+    !passesPushdown(record, pushdownConditions(policyCtx, policies)) ||
+    !(await canRead(policyCtx, record, policies))
+  ) {
+    throw new NotFoundException(resource.model.name, id);
+  }
+}
+
+/**
+ * Mutation authorization for an existing row.
+ *
+ * A write predicate never grants visibility by itself.  Every mutation must
+ * first prove that the source row is readable (including read-pushdown), then
+ * prove that it is writable.  This keeps all mutation executors on the same
+ * fail-closed policy pipeline and prevents a write-only actor from probing or
+ * mutating a row that is otherwise hidden from them.
+ */
+export async function assertWriteAllowed(
+  resource: AnyResource,
+  policyCtx: PolicyContext,
+  record: Row,
+): Promise<void> {
+  const primaryKey = resource.model.primaryKeys[0] ?? 'id';
+  await assertReadAllowed(resource, policyCtx, record, String(record[primaryKey] ?? ''));
+  if (!(await canWrite(policyCtx, record, resource.model.policies))) {
+    throw new ForbiddenException();
+  }
 }
 
 /** Tenant scoping for point lookups — full resolution middleware lands in M3. */
@@ -134,10 +195,12 @@ export function parseBody(
 }
 
 /**
- * The read-shaping tail shared by every verb that returns rows:
- * computed fields → policy field mask → serialization profile → field
- * selection. The profile strips BEFORE selection so an excluded field stays
- * absent even when `?fields=` requests it explicitly.
+ * The read-shaping tail shared by every verb that returns one row:
+ * response read-check → computed fields → policy field mask →
+ * serialization profile → field selection.  Mutation executors call this
+ * too, so a successful write can never echo a representation that the actor
+ * is not allowed to read. The profile strips BEFORE selection so an excluded
+ * field stays absent even when `?fields=` requests it explicitly.
  */
 export async function shapeOne(
   resource: AnyResource,
@@ -145,6 +208,8 @@ export async function shapeOne(
   req: EngineRequest,
   row: Row,
 ): Promise<Row> {
+  const primaryKey = resource.model.primaryKeys[0] ?? 'id';
+  await assertReadAllowed(resource, policyCtx, row, String(row[primaryKey] ?? ''));
   let shaped = await applyComputedFields(resource.model, row);
   shaped = maskFields(policyCtx, shaped, resource.model.policies) as Row;
   shaped = applyProfile(resource.model, shaped);
@@ -191,31 +256,67 @@ export async function attachIncludes(
   for (const name of includes) {
     const relation = model.relations?.[name];
     if (!relation) continue;
+    const sameModel = relation.target === model.tableName;
+    const targetTenantField = sameModel
+      ? model.tenantField
+      : relation.response?.tenantField === false
+        ? undefined
+        : relation.response?.tenantField;
+    const targetSoftDeleteField = sameModel
+      ? model.softDeleteField
+      : relation.response?.softDeleteField === false
+        ? undefined
+        : relation.response?.softDeleteField;
+    if (targetTenantField !== undefined && req.vars?.tenantId === undefined) {
+      throw new CrudException('This relation requires a tenant context', 400, 'TENANT_REQUIRED');
+    }
     const loaded = await loader.load(
       rows,
       name,
       {
-        tenantField: model.tenantField,
+        tenantField: targetTenantField,
         tenantValue: req.vars?.tenantId,
-        // Owner-scope: soft-deleted related rows are excluded (hono-crud
-        // parity: the parent model's soft-delete config governs, and
-        // ?withDeleted=true lifts the exclusion for the whole read).
-        ...(model.softDeleteField !== undefined && !opts.withDeleted
-          ? { excludeDeletedField: model.softDeleteField }
+        ...(targetSoftDeleteField !== undefined && !opts.withDeleted
+          ? { excludeDeletedField: targetSoftDeleteField }
           : {}),
       },
       scope,
     );
     const parentJoinField =
       relation.type === 'belongsTo' ? relation.foreignKey : (relation.localKey ?? pk);
-    // SAME-model embeds follow the model's own serialization profile — the
-    // include surface otherwise attaches raw loader rows (per-relation
-    // shaping of OTHER models' embeds is the relation-scoping backlog item;
-    // policy masks share the same limitation today).
-    const stripEmbeds = relation.target === model.tableName;
+    // Internal `defineModels` relations carry their target's response metadata.
+    // Same-model relations use the current model directly. Resource definition
+    // rejects enabled cross-model includes without an explicit response trust /
+    // authorization contract, so this never silently emits unknown raw rows.
+    const responseModel = relation.target === model.tableName ? model : relation.response;
+    const policyCtx = buildPolicyContext(req);
     for (const row of rows) {
       const bucket = loaded.get(row[parentJoinField]) ?? [];
-      const shaped = stripEmbeds ? applyProfileToArray(model, bucket as Row[]) : bucket;
+      let shaped = (bucket as Row[]).filter((record) => {
+        if (
+          targetTenantField !== undefined &&
+          (!Object.hasOwn(record, targetTenantField) ||
+            String(record[targetTenantField]) !== String(req.vars?.tenantId))
+        ) {
+          return false;
+        }
+        return !(
+          targetSoftDeleteField !== undefined &&
+          !opts.withDeleted &&
+          record[targetSoftDeleteField] != null
+        );
+      });
+      if (responseModel) {
+        shaped = shaped.filter((record) =>
+          passesPushdown(record, pushdownConditions(policyCtx, responseModel.policies)),
+        );
+        shaped = await filterReadable(policyCtx, shaped, responseModel.policies);
+        shaped = await applyComputedFieldsToArray(responseModel, shaped);
+        shaped = shaped.map(
+          (record) => maskFields(policyCtx, record, responseModel.policies) as Row,
+        );
+        shaped = applyProfileToArray(responseModel, shaped);
+      }
       row[name] = relation.type === 'hasMany' ? shaped : (shaped[0] ?? null);
     }
   }
@@ -256,6 +357,37 @@ export function scopeListQuery(
   }
   filters.push(...pushdownConditions(policyCtx, resource.model.policies));
   return { filters, options: query.options };
+}
+
+/**
+ * Run an adapter list as a bounded engine-side fallback. A backend that cannot
+ * report totals is rejected when it fills the window because silently
+ * computing over a truncated data set would be incorrect and attacker-controlled.
+ */
+export async function listFallbackRows(
+  resource: AnyResource,
+  query: ListQuery,
+  scope: AdapterScope,
+): Promise<Row[]> {
+  const page = (await resource.config.adapter.list(
+    {
+      filters: query.filters,
+      options: { ...query.options, page: 1, per_page: MAX_FALLBACK_SCAN },
+    },
+    scope,
+  )) as Page<Row>;
+  const total = page.result_info.total_count;
+  if (
+    (typeof total === 'number' && total > MAX_FALLBACK_SCAN) ||
+    (total === undefined && page.result.length >= MAX_FALLBACK_SCAN)
+  ) {
+    throw new CrudException(
+      `Engine fallback scan exceeds the ${MAX_FALLBACK_SCAN}-row safety limit`,
+      400,
+      'SCAN_LIMIT_EXCEEDED',
+    );
+  }
+  return page.result;
 }
 
 export function parseIncludeParam(

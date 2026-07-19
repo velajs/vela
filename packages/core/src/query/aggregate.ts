@@ -38,6 +38,7 @@ import type { RawQuery } from './filters';
 
 /** Per-operation field allow-lists + groupBy / group-limit constraints. */
 export interface AggregateBuildConfig {
+  countFields?: string[];
   sumFields?: string[];
   avgFields?: string[];
   minMaxFields?: string[];
@@ -54,20 +55,17 @@ export interface AggregateBuildConfig {
 /**
  * Per-operation field-restriction rules, exhaustive over `AggregateOperation`:
  * a newly-added operation cannot silently skip validation (it fails to compile
- * until given a rule). `null` means the operation has no per-field allow-list
- * (COUNT — always allowed, `COUNT(*)` and `COUNT(field)` alike).
+ * until given a rule). `COUNT(*)` is the sole field-less form; every named
+ * field, including `COUNT(field)`, must be explicitly allow-listed.
  */
 const AGG_FIELD_RULES = {
-  count: null,
+  count: { config: 'countFields', label: 'COUNT' },
   sum: { config: 'sumFields', label: 'SUM' },
   avg: { config: 'avgFields', label: 'AVG' },
   min: { config: 'minMaxFields', label: 'MIN/MAX' },
   max: { config: 'minMaxFields', label: 'MIN/MAX' },
   countDistinct: { config: 'countDistinctFields', label: 'COUNT DISTINCT' },
-} satisfies Record<
-  AggregateOperation,
-  { config: keyof AggregateBuildConfig; label: string } | null
->;
+} satisfies Record<AggregateOperation, { config: keyof AggregateBuildConfig; label: string }>;
 
 /** Comparison operators available in a HAVING clause (hono-crud parity). */
 const COMPARISON_OPERATORS: Record<string, (value: number, threshold: number) => boolean> = {
@@ -78,6 +76,8 @@ const COMPARISON_OPERATORS: Record<string, (value: number, threshold: number) =>
   lt: (v, t) => v < t,
   lte: (v, t) => v <= t,
 };
+
+const UNSAFE_OBJECT_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 
 // ---------------------------------------------------------------------------
 // Query-param parsing helpers
@@ -126,28 +126,39 @@ function parseGroupBy(query: RawQuery, config: AggregateBuildConfig): string[] |
   if (groupBy.length > maxGroupByFields) {
     throw new AggregationException(`Maximum ${maxGroupByFields} GROUP BY fields allowed`);
   }
-  if (config.groupByFields && config.groupByFields.length > 0) {
-    for (const field of groupBy) {
-      if (!config.groupByFields.includes(field)) {
-        throw new AggregationException(`Field '${field}' is not allowed for GROUP BY`);
-      }
+  for (const field of groupBy) {
+    if (!config.groupByFields?.includes(field)) {
+      throw new AggregationException(`Field '${field}' is not allowed for GROUP BY`);
     }
   }
   return groupBy;
 }
 
 /** Parse `?having[alias][op]=value` into `{ alias: { op: threshold } }`. */
-function parseHaving(query: RawQuery): Record<string, Record<string, string>> | undefined {
+function parseHaving(
+  query: RawQuery,
+  aggregateAliases: ReadonlySet<string>,
+): Record<string, Record<string, string>> | undefined {
   let having: Record<string, Record<string, string>> | undefined;
   for (const [key, value] of Object.entries(query)) {
     const match = key.match(/^having\[(\w+)\]\[(\w+)\]$/);
     if (!match) continue;
     const alias = match[1];
     const op = match[2];
+    if (
+      UNSAFE_OBJECT_KEYS.has(alias) ||
+      UNSAFE_OBJECT_KEYS.has(op) ||
+      !aggregateAliases.has(alias) ||
+      !Object.hasOwn(COMPARISON_OPERATORS, op)
+    ) {
+      throw new AggregationException(`Invalid HAVING expression '${alias}.${op}'`);
+    }
     const threshold = first(value);
     if (threshold === undefined) continue;
-    if (!having) having = {};
-    if (!having[alias]) having[alias] = {};
+    if (!having) having = Object.create(null) as Record<string, Record<string, string>>;
+    if (!Object.hasOwn(having, alias)) {
+      having[alias] = Object.create(null) as Record<string, string>;
+    }
     having[alias][op] = threshold;
   }
   return having;
@@ -183,18 +194,17 @@ export function buildAggregateSpec(
   for (const agg of aggregations) {
     if (agg.operation === 'count' && agg.field === '*') continue;
     const rule = AGG_FIELD_RULES[agg.operation];
-    if (rule) {
-      const allowed = config[rule.config] as string[] | undefined;
-      if (allowed && allowed.length > 0 && !allowed.includes(agg.field)) {
-        throw new AggregationException(
-          `Field '${agg.field}' is not allowed for ${rule.label} aggregation`,
-        );
-      }
+    const allowed = config[rule.config] as string[] | undefined;
+    if (!allowed?.includes(agg.field)) {
+      throw new AggregationException(
+        `Field '${agg.field}' is not allowed for ${rule.label} aggregation`,
+      );
     }
   }
 
   const groupBy = parseGroupBy(query, config);
-  const having = parseHaving(query);
+  const aliases = new Set(aggregations.map((aggregation) => getAggregateAlias(aggregation)));
+  const having = parseHaving(query, aliases);
   const orderBy = first(query.orderBy);
   const orderDirection: SortDirection = first(query.orderDirection) === 'desc' ? 'desc' : 'asc';
   let limit = parseIntParam(query.limit);
@@ -205,6 +215,15 @@ export function buildAggregateSpec(
   const maxLimit = config.maxLimit ?? 1000;
   if (limit !== undefined && limit > maxLimit) {
     throw new AggregationException(`Limit cannot exceed ${maxLimit}`);
+  }
+  if (limit !== undefined && limit < 0) {
+    throw new AggregationException('Limit cannot be negative');
+  }
+  if (offset !== undefined && offset < 0) {
+    throw new AggregationException('Offset cannot be negative');
+  }
+  if (orderBy !== undefined && !aliases.has(orderBy) && !(groupBy?.includes(orderBy) ?? false)) {
+    throw new AggregationException(`Invalid aggregate orderBy '${orderBy}'`);
   }
   if (groupBy && groupBy.length > 0 && limit === undefined) {
     limit = config.defaultLimit ?? 100;
@@ -322,7 +341,7 @@ export function computeAggregateFallback<T extends Record<string, unknown>>(
   const groupBy = spec.groupBy;
 
   if (!groupBy || groupBy.length === 0) {
-    const values: Record<string, number | null> = {};
+    const values = Object.create(null) as Record<string, number | null>;
     for (const agg of aggregations) values[getAggregateAlias(agg)] = computeOne(rows, agg);
     return { values };
   }
@@ -339,11 +358,11 @@ export function computeAggregateFallback<T extends Record<string, unknown>>(
   let groupResults: AggregateBucket[] = [];
   for (const [keyStr, groupRows] of groups) {
     const parts = keyStr.split('|');
-    const key: Record<string, unknown> = {};
+    const key = Object.create(null) as Record<string, unknown>;
     groupBy.forEach((f, i) => {
       key[f] = parts[i] === 'null' ? null : parts[i];
     });
-    const values: Record<string, number | null> = {};
+    const values = Object.create(null) as Record<string, number | null>;
     for (const agg of aggregations) values[getAggregateAlias(agg)] = computeOne(groupRows, agg);
     groupResults.push({ key, values });
   }

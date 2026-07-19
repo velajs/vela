@@ -102,7 +102,8 @@ describe('generateHighlights', () => {
       'any',
     );
     expect(highlights).toHaveLength(1);
-    expect(highlights[0]).toContain('<mark>TypeScript</mark>');
+    const first = highlights[0]!;
+    expect(first.text.slice(first.ranges[0]?.start, first.ranges[0]?.end)).toBe('TypeScript');
   });
 
   it('highlights a phrase', () => {
@@ -112,7 +113,8 @@ describe('generateHighlights', () => {
       'phrase',
     );
     expect(highlights).toHaveLength(1);
-    expect(highlights[0]).toContain('<mark>quick brown</mark>');
+    const first = highlights[0]!;
+    expect(first.text.slice(first.ranges[0]?.start, first.ranges[0]?.end)).toBe('quick brown');
   });
 
   it('handles no matches', () => {
@@ -122,7 +124,20 @@ describe('generateHighlights', () => {
   it('handles array values', () => {
     const highlights = generateHighlights(['tag1', 'typescript', 'tag3'], ['typescript'], 'any');
     expect(highlights).toHaveLength(1);
-    expect(highlights[0]).toContain('<mark>typescript</mark>');
+    const first = highlights[0]!;
+    expect(first.text.slice(first.ranges[0]?.start, first.ranges[0]?.end)).toBe('typescript');
+  });
+
+  it('returns inert text plus ranges instead of executable highlight HTML', () => {
+    const highlights = generateHighlights(
+      '<img src=x onerror=alert(1)> TypeScript',
+      ['typescript'],
+      'any',
+    );
+    const first = highlights[0]!;
+    expect(first.text).toContain('<img src=x onerror=alert(1)>');
+    expect(first.text).not.toContain('<mark>');
+    expect(first.text.slice(first.ranges[0]?.start, first.ranges[0]?.end)).toBe('TypeScript');
   });
 });
 
@@ -194,6 +209,9 @@ describe('runSearchFallback', () => {
   it('attaches highlights for matched fields', () => {
     const hits = runSearchFallback(rows, baseQuery({}));
     const row1 = hits.find((h) => h.record.id === '1');
-    expect(row1?.highlights?.title?.[0]).toContain('<mark>');
+    const highlight = row1?.highlights?.title?.[0];
+    expect(highlight?.text.slice(highlight.ranges[0]?.start, highlight.ranges[0]?.end)).toBe(
+      'TypeScript',
+    );
   });
 });

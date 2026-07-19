@@ -30,6 +30,9 @@ import { captureAudit } from '../capture';
 import type { EngineRequest, EngineResult } from '../engine-request';
 import { envelopeOf } from '../resource';
 import {
+  assertCreateAllowed,
+  assertReadAllowed,
+  assertWriteAllowed,
   buildHookContext,
   buildLookup,
   buildPolicyContext,
@@ -82,10 +85,18 @@ async function executeRestore(resource: AnyResource, req: EngineRequest): Promis
   const policyCtx = buildPolicyContext(req);
   const lookup = buildLookup(resource, req);
 
-  const restored = await config.adapter.transaction(
-    async (scope) => config.adapter.restore!(lookup, scope),
-    txCtx(req),
-  );
+  const restored = await config.adapter.transaction(async (scope) => {
+    const prior = (await config.adapter.readOne(
+      lookup,
+      { withDeleted: true },
+      scope,
+    )) as Row | null;
+    if (!prior || !isSoftDeleted(model, prior)) {
+      throw new NotFoundException(model.name, lookup.value);
+    }
+    await assertWriteAllowed(resource, policyCtx, prior);
+    return config.adapter.restore!(lookup, scope);
+  }, txCtx(req));
   if (!restored) throw new NotFoundException(model.name, lookup.value);
 
   await captureAudit(resource, req, 'restore', {
@@ -128,6 +139,7 @@ async function executeClone(resource: AnyResource, req: EngineRequest): Promise<
   const created = await config.adapter.transaction(async (scope) => {
     const source = (await config.adapter.readOne(lookup, {}, scope)) as Row | null;
     if (!source) throw new NotFoundException(model.name, lookup.value);
+    await assertReadAllowed(resource, policyCtx, source, lookup.value);
 
     // Build clone data: source minus managed insert fields (fresh PK + fresh
     // timestamps are stamped below), minus fieldsToReset, plus overrides.
@@ -141,7 +153,11 @@ async function executeClone(resource: AnyResource, req: EngineRequest): Promise<
       cloneData[model.tenantField] = req.vars.tenantId;
     }
 
-    const managed = applyManagedInsertFields(model, cloneData, { databaseGeneratedId });
+    const managed = applyManagedInsertFields(model, cloneData, {
+      databaseGeneratedId,
+      tenantId: req.vars?.tenantId,
+    });
+    await assertCreateAllowed(resource, policyCtx, managed);
     return (await config.adapter.create(managed, scope)) as Row;
   }, txCtx(req));
 
@@ -231,15 +247,29 @@ async function executeUpsert(resource: AnyResource, req: EngineRequest): Promise
       if (replaced !== undefined) data = replaced as Row;
     }
 
+    if (existing !== null) {
+      await assertWriteAllowed(resource, policyCtx, existing);
+    }
+
     let record: Row;
     let created: boolean;
 
-    if (caps.has('upsert') && adapter.upsertOne !== undefined) {
+    if (
+      caps.has('upsert') &&
+      adapter.upsertOne !== undefined &&
+      model.tenantField === undefined &&
+      model.policies?.create === undefined &&
+      model.policies?.read === undefined &&
+      model.policies?.write === undefined
+    ) {
       // Native path — the adapter owns insert-or-update atomically. Managed
       // insert fields prepare the INSERT case (PK + timestamps); on conflict the
       // adapter keeps the existing PK. Match-and-restore clears the soft-delete
       // field in the values when the matched row is deleted.
-      const managed = applyManagedInsertFields(model, data, { databaseGeneratedId });
+      const managed = applyManagedInsertFields(model, data, {
+        databaseGeneratedId,
+        tenantId: req.vars?.tenantId,
+      });
       const conflictValues =
         existing !== null ? (applyUpsertRestore(model, managed, existing) as Row) : managed;
       const res = await adapter.upsertOne({ conflictTarget: keys, values: conflictValues }, scope);
@@ -277,7 +307,11 @@ async function executeUpsert(resource: AnyResource, req: EngineRequest): Promise
       created = false;
     } else {
       // Synthesis CREATE branch.
-      const managed = applyManagedInsertFields(model, data, { databaseGeneratedId });
+      const managed = applyManagedInsertFields(model, data, {
+        databaseGeneratedId,
+        tenantId: req.vars?.tenantId,
+      });
+      await assertCreateAllowed(resource, policyCtx, managed);
       record = (await adapter.create(managed, scope)) as Row;
       created = true;
     }

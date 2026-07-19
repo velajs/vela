@@ -341,6 +341,12 @@ describe('upsert', () => {
             target: 'posts',
             foreignKey: 'authorId',
             schema: PostSchema,
+            response: {
+              tenantField: false,
+              softDeleteField: false,
+              primaryKeys: ['id'],
+              timestamps: { createdAt: false, updatedAt: false },
+            },
             nestedWrites: { allowCreate: true },
           },
         },
@@ -520,5 +526,106 @@ describe('upsert', () => {
     expect(updated.created).toBe(false);
     expect(updated.result.name).toBe('Native 2');
     expect(store.size).toBe(1);
+  });
+
+  it('never delegates tenant upserts to a conflict target that can match another tenant', async () => {
+    const { resource, store, adapter } = makeResource(
+      { ...upsertCfg, model: { multiTenant: true } },
+      { softDeleteField: 'deletedAt', native: true },
+    );
+    store.set('foreign', {
+      id: 'foreign',
+      email: 'shared@x',
+      name: 'Tenant 1',
+      tenantId: 't1',
+    });
+    const native = vi.fn(adapter.upsertOne!);
+    adapter.upsertOne = native;
+
+    const result = await resource.execute(
+      'upsert',
+      req({ body: { email: 'shared@x', name: 'Tenant 2' }, vars: { tenantId: 't2' } }),
+    );
+
+    expect(native).not.toHaveBeenCalled();
+    expect(store.get('foreign')).toMatchObject({ name: 'Tenant 1', tenantId: 't1' });
+    expect((result.body as { result: Row }).result.tenantId).toBe('t2');
+  });
+
+  it('disables native upsert when an arbitrary read predicate must authorize the conflict row', async () => {
+    const nativeCall = vi.fn();
+    const store = new Map<string, Row>();
+    const model = defineModel({
+      name: 'item',
+      tableName: 'items',
+      schema: itemSchema,
+      softDelete: true,
+      policies: { read: () => true },
+    });
+    const adapter = fakeAdapter(store, { softDeleteField: 'deletedAt', native: true });
+    const native = adapter.upsertOne!;
+    adapter.upsertOne = async (input, scope) => {
+      nativeCall();
+      return native(input, scope);
+    };
+    const resource = defineResource('items', {
+      model,
+      adapter,
+      upsert: { keys: ['email'] },
+    });
+
+    await resource.execute('upsert', req({ body: { email: 'safe@x', name: 'Created' } }));
+    await resource.execute('upsert', req({ body: { email: 'safe@x', name: 'Updated' } }));
+
+    expect(nativeCall).not.toHaveBeenCalled();
+    expect([...store.values()][0]?.name).toBe('Updated');
+  });
+});
+
+describe('point extended policy enforcement', () => {
+  it('clone requires read access to the source and create access to the clone', async () => {
+    const deniedRead = makeResource({ model: { policies: { read: () => false } } });
+    deniedRead.store.set('a', { id: 'a', email: 'a@x', name: 'Source' });
+    await expect(
+      deniedRead.resource.execute('clone', req({ id: 'a', body: {} })),
+    ).rejects.toMatchObject({ statusCode: 404 });
+    expect(deniedRead.store.size).toBe(1);
+
+    const deniedCreate = makeResource({ model: { policies: { create: () => false } } });
+    deniedCreate.store.set('a', { id: 'a', email: 'a@x', name: 'Source' });
+    await expect(
+      deniedCreate.resource.execute('clone', req({ id: 'a', body: {} })),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    expect(deniedCreate.store.size).toBe(1);
+  });
+
+  it('restore and both upsert legs enforce write/create policies', async () => {
+    const restoreDenied = makeResource({ model: { policies: { write: () => false } } });
+    restoreDenied.store.set('a', {
+      id: 'a',
+      email: 'a@x',
+      name: 'Deleted',
+      deletedAt: 1,
+    });
+    await expect(restoreDenied.resource.execute('restore', req({ id: 'a' }))).rejects.toMatchObject(
+      { statusCode: 403 },
+    );
+
+    const writeDenied = makeResource({
+      model: { policies: { write: () => false } },
+      upsert: { keys: ['email'] },
+    });
+    writeDenied.store.set('a', { id: 'a', email: 'a@x', name: 'Original' });
+    await expect(
+      writeDenied.resource.execute('upsert', req({ body: { email: 'a@x', name: 'Changed' } })),
+    ).rejects.toMatchObject({ statusCode: 403 });
+
+    const createDenied = makeResource({
+      model: { policies: { create: () => false } },
+      upsert: { keys: ['email'] },
+    });
+    await expect(
+      createDenied.resource.execute('upsert', req({ body: { email: 'new@x', name: 'New' } })),
+    ).rejects.toMatchObject({ statusCode: 403 });
   });
 });

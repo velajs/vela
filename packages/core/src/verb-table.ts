@@ -54,6 +54,15 @@ export type CrudEndpointName = (typeof CRUD_ROUTES)[number][0];
 
 export const ALL_CRUD_ENDPOINTS: readonly CrudEndpointName[] = CRUD_ROUTES.map(([name]) => name);
 
+/** Secure default surface; every extended endpoint requires explicit `only`. */
+export const CORE_CRUD_ENDPOINTS: readonly CrudEndpointName[] = [
+  'create',
+  'list',
+  'read',
+  'update',
+  'delete',
+];
+
 /** Version verbs are gated behind `model.versioning`. */
 export const VERSION_ENDPOINTS: readonly CrudEndpointName[] = [
   'versionHistory',
@@ -80,9 +89,8 @@ export function resolveEnabledEndpoints(
   model: Pick<Model, 'versioning' | 'softDeleteField'>,
   selection: EndpointSelection = {},
 ): CrudEndpointName[] {
-  const requested = new Set<CrudEndpointName>(
-    selection.only ?? ALL_CRUD_ENDPOINTS.filter((name) => !selection.except?.includes(name)),
-  );
+  const defaults = CORE_CRUD_ENDPOINTS.filter((name) => !selection.except?.includes(name));
+  const requested = new Set<CrudEndpointName>(selection.only ?? defaults);
   return ALL_CRUD_ENDPOINTS.filter((name) => {
     if (!requested.has(name)) return false;
     if (VERSION_ENDPOINTS.includes(name) && !model.versioning) return false;

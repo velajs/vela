@@ -20,7 +20,7 @@ import type { IdStrategy, Model } from './model.types';
 
 /** Fields the engine owns on writes — stripped from model-derived input schemas. */
 export function getManagedInputExclusions(
-  model: Pick<Model, 'id' | 'timestamps' | 'primaryKeys' | 'tenantField'>,
+  model: Pick<Model, 'id' | 'timestamps' | 'primaryKeys' | 'tenantField' | 'softDeleteField'>,
   options: { includePrimaryKeys?: boolean } = {},
 ): string[] {
   const { includePrimaryKeys = true } = options;
@@ -43,6 +43,7 @@ export function getManagedInputExclusions(
 
   // The tenant column is injected automatically from request context.
   if (model.tenantField) exclude.add(model.tenantField);
+  if (model.softDeleteField) exclude.add(model.softDeleteField);
 
   return [...exclude];
 }
@@ -88,12 +89,28 @@ function pkSupplied(value: unknown): boolean {
  * Returns a NEW object — the input is never mutated.
  */
 export function applyManagedInsertFields<T extends Record<string, unknown>>(
-  model: Pick<Model, 'id' | 'timestamps' | 'primaryKeys'>,
+  model: Pick<Model, 'id' | 'timestamps' | 'primaryKeys'> &
+    Partial<Pick<Model, 'tenantField' | 'softDeleteField'>>,
   record: T,
-  opts: { databaseGeneratedId: boolean },
+  opts: { databaseGeneratedId: boolean; tenantId?: string },
 ): T & Record<string, unknown> {
   const out: Record<string, unknown> = { ...record };
   const pk = model.primaryKeys[0];
+
+  // A custom DTO may deliberately include fields omitted by the derived DTO.
+  // Strip them again at the write boundary so validation overrides cannot turn
+  // engine-managed identity, tenancy, or timestamps into mass-assignment.
+  if (model.id !== 'client') {
+    for (const key of model.primaryKeys) delete out[key];
+  }
+  if (model.tenantField) {
+    delete out[model.tenantField];
+    if (opts.tenantId !== undefined) out[model.tenantField] = opts.tenantId;
+  }
+  if (model.softDeleteField) delete out[model.softDeleteField];
+  const { createdAt, updatedAt } = model.timestamps;
+  if (createdAt) delete out[createdAt];
+  if (updatedAt) delete out[updatedAt];
 
   if (!pkSupplied(out[pk])) {
     const strategy: IdStrategy = model.id;
@@ -122,10 +139,9 @@ export function applyManagedInsertFields<T extends Record<string, unknown>>(
     }
   }
 
-  const { createdAt, updatedAt } = model.timestamps;
   const now = Date.now();
-  if (createdAt && !(createdAt in record)) out[createdAt] = now;
-  if (updatedAt && !(updatedAt in record)) out[updatedAt] = now;
+  if (createdAt) out[createdAt] = now;
+  if (updatedAt) out[updatedAt] = now;
 
   return out as T & Record<string, unknown>;
 }
@@ -139,10 +155,16 @@ export function applyManagedInsertFields<T extends Record<string, unknown>>(
  * callers never mutate their input.
  */
 export function applyManagedUpdateFields<T extends Record<string, unknown>>(
-  model: Pick<Model, 'timestamps'>,
+  model: Pick<Model, 'timestamps'> &
+    Partial<Pick<Model, 'primaryKeys' | 'tenantField' | 'softDeleteField'>>,
   patch: T,
 ): T & Record<string, unknown> {
-  const { updatedAt } = model.timestamps;
-  if (!updatedAt) return { ...patch };
-  return { ...patch, [updatedAt]: Date.now() };
+  const out: Record<string, unknown> = { ...patch };
+  for (const pk of model.primaryKeys ?? []) delete out[pk];
+  if (model.tenantField) delete out[model.tenantField];
+  if (model.softDeleteField) delete out[model.softDeleteField];
+  const { createdAt, updatedAt } = model.timestamps;
+  if (createdAt) delete out[createdAt];
+  if (updatedAt) out[updatedAt] = Date.now();
+  return out as T & Record<string, unknown>;
 }

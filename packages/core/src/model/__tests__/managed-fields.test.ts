@@ -25,14 +25,15 @@ describe('applyManagedInsertFields — PK strategy', () => {
     expect(String(out.id)).toMatch(UUID_RE);
   });
 
-  it('a caller-supplied non-empty PK wins untouched', () => {
+  it('strips a caller-supplied PK unless id strategy is client', () => {
     const model = defineModel({ name: 'u', tableName: 'u', schema: Schema });
     const out = applyManagedInsertFields(
       model,
       { id: 'given', name: 'a' },
       { databaseGeneratedId: false },
     );
-    expect(out.id).toBe('given');
+    expect(out.id).not.toBe('given');
+    expect(String(out.id)).toMatch(UUID_RE);
   });
 
   it('treats empty-string / null PK as unsupplied and generates one', () => {
@@ -98,14 +99,14 @@ describe('applyManagedInsertFields — timestamps', () => {
     expect(out.createdAt as number).toBeGreaterThanOrEqual(before);
   });
 
-  it('does not overwrite a caller-supplied timestamp field', () => {
+  it('overwrites a caller-supplied timestamp field', () => {
     const model = defineModel({ name: 'u', tableName: 'u', schema: Schema });
     const out = applyManagedInsertFields(
       model,
       { name: 'a', createdAt: 123 },
       { databaseGeneratedId: false },
     );
-    expect(out.createdAt).toBe(123);
+    expect(out.createdAt).not.toBe(123);
     expect(typeof out.updatedAt).toBe('number');
   });
 
@@ -166,6 +167,21 @@ describe('applyManagedUpdateFields', () => {
     });
     const out = applyManagedUpdateFields(model, { name: 'b' });
     expect(typeof out.updated_ms).toBe('number');
+  });
+
+  it('strips the soft-delete marker at the final insert and update boundaries', () => {
+    const schema = Schema.extend({ deletedAt: z.number().nullable() });
+    const model = defineModel({ name: 'u', tableName: 'u', schema, softDelete: true });
+    const inserted = applyManagedInsertFields(
+      model,
+      { name: 'a', deletedAt: 1 },
+      { databaseGeneratedId: false },
+    );
+    const updated = applyManagedUpdateFields(model, { name: 'b', deletedAt: 2 });
+
+    expect(inserted.deletedAt).toBeUndefined();
+    expect(updated.deletedAt).toBeUndefined();
+    expect(getManagedInputExclusions(model)).toContain('deletedAt');
   });
 });
 

@@ -3,16 +3,22 @@
  * parity). Mount it upstream of tenant-scoped resources; it publishes the
  * resolved tenant id as a context var (`c.set('tenantId', ...)`), which the
  * engine consumes for lookup scoping, list filtering, and create stamping.
+ * Header, path, query, and custom selectors are not authorization by
+ * themselves: configure `validate` to enforce tenant membership. The callback
+ * may delegate to an upstream guard's trusted membership result, but a boolean
+ * configuration switch can never turn a client selector into authority.
  *
- * Mounting a tenant-scoped model WITHOUT a resolver is a data-loss class —
- * that is why `@Crud()` demands `tenantResolverMounted: true` on tenant-scoped
- * configs (see `MissingTenantResolverError`).
+ * `@Crud()` demands `tenantResolverMounted: true` on tenant-scoped configs
+ * (see `MissingTenantResolverError`), and the engine rejects missing tenant
+ * context even for direct programmatic execution.
  *
  * Generic over the Hono `Env` so typed apps keep their variable map:
  *
  * ```ts
  * const app = new Hono<TenantEnv>();
- * app.use('*', multiTenant<TenantEnv>());
+ * app.use('*', multiTenant<TenantEnv>({
+ *   validate: (tenantId, ctx) => userBelongsToTenant(ctx, tenantId),
+ * }));
  * app.get('/data', (c) => c.json({ tenantId: c.get('tenantId') })); // typed
  * ```
  */
@@ -51,7 +57,10 @@ export interface MultiTenantMiddlewareConfig<E extends Env = Env> {
   errorMessage?: string;
   /** Custom handler for missing tenant ids (instead of the 400). */
   onMissing?: (ctx: Context<E>) => Response | Promise<Response>;
-  /** Optional tenant validation (existence/allow-list checks). */
+  /**
+   * Tenant membership validation. Required for every client-selected source
+   * (`header`, `path`, `query`, and `custom`).
+   */
   validate?: (tenantId: string, ctx: Context<E>) => boolean | Promise<boolean>;
   /** @default 'Invalid tenant ID' */
   invalidMessage?: string;
@@ -95,6 +104,16 @@ export function multiTenant<E extends Env = Env>(
   if (source === 'custom' && !extractor) {
     throw new Error(
       "multiTenant: source 'custom' requires an `extractor` function. Provide `extractor`, or choose a different `source`.",
+    );
+  }
+
+  // A client-selected tenant id is only a selector, never proof that the
+  // caller belongs to that tenant. Make the authorization boundary explicit
+  // instead of shipping an insecure header default that silently trusts input.
+  if (source !== 'jwt' && !validate) {
+    throw new Error(
+      `multiTenant: source '${source}' requires a \`validate\` membership check. ` +
+        'Client-provided tenant selectors are never trusted by configuration.',
     );
   }
 

@@ -41,7 +41,10 @@ export interface CrudConfig<Row extends Record<string, unknown> = Record<string,
    */
   name?: string;
   namePlural?: string;
-  /** Verb selection: `only` wins over `except`; model gates always apply. */
+  /**
+   * Verb selection: the core five are enabled by default; extended endpoints
+   * require explicit `only`. `only` wins over `except`; model gates still apply.
+   */
   only?: readonly CrudEndpointName[];
   except?: readonly CrudEndpointName[];
   /**
@@ -101,8 +104,8 @@ export interface CrudConfig<Row extends Record<string, unknown> = Record<string,
   live?: boolean | CrudLiveConfig;
   /**
    * Affirms that a tenant resolver is mounted upstream for this tenant-scoped
-   * model. Mounting a tenant-scoped resource without one silently loses
-   * tenant isolation — a data-loss class — so decoration fails fast instead.
+   * model. Decoration fails fast without the affirmation, and the engine also
+   * rejects every request whose tenant context is missing.
    */
   tenantResolverMounted?: boolean;
 }
@@ -123,8 +126,7 @@ export class MissingTenantResolverError extends Error {
     super(
       `CRUD resource at '${opts.mountPath}' uses the tenant-scoped model '${opts.tableName}' ` +
         `but no tenant resolver is affirmed. Mount your tenant-resolution middleware upstream ` +
-        `and set 'tenantResolverMounted: true' on the resource config — without it every row ` +
-        `read or written silently ignores tenant isolation.`,
+        `and set 'tenantResolverMounted: true' on the resource config.`,
     );
     this.mountPath = opts.mountPath;
     this.tableName = opts.tableName;

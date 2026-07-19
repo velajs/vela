@@ -11,8 +11,8 @@
  *
  *  1. validates each internal relation target against the sibling keys
  *     (aggregating every miss into one setup-time `Error` with a did-you-mean),
- *  2. auto-populates each relation's `schema` (the sibling's BASE schema) and
- *     `table` (the sibling's `Model.table` reference the drizzle adapter needs),
+ *  2. auto-populates each relation's `schema`, `table`, and target response
+ *     policy / serialization metadata,
  *  3. rewrites `relation.target` from the registry key to the sibling's
  *     `tableName`, the form the adapters resolve by,
  *  4. normalizes each entry via {@link defineModel} (resolved defaults).
@@ -29,6 +29,7 @@ import type {
   Model,
   ModelConfig,
   RelationConfig,
+  RelationResponseConfig,
   RelationsConfig,
   SchemaKeys,
 } from './model.types';
@@ -205,6 +206,13 @@ interface WiringEntry {
   schema?: ZodObject<ZodRawShape>;
   table?: unknown;
   relations?: RelationsConfig;
+  computedFields?: RelationResponseConfig['computedFields'];
+  serializationProfile?: RelationResponseConfig['serializationProfile'];
+  policies?: RelationResponseConfig['policies'];
+  tenantField?: string;
+  softDeleteField?: string;
+  timestamps?: RelationResponseConfig['timestamps'];
+  primaryKeys?: readonly string[];
 }
 
 /** One unresolved internal relation target, for the aggregated setup error. */
@@ -347,6 +355,16 @@ function wireRelation(
   if (config.autoPopulateTable && tableUnset && sibling.table != null) {
     relation.table = sibling.table;
   }
+  const targetResponse: RelationResponseConfig = {
+    computedFields: sibling.computedFields as RelationResponseConfig['computedFields'],
+    serializationProfile: sibling.serializationProfile,
+    policies: sibling.policies as RelationResponseConfig['policies'],
+    tenantField: sibling.tenantField ?? false,
+    softDeleteField: sibling.softDeleteField ?? false,
+    timestamps: sibling.timestamps,
+    primaryKeys: sibling.primaryKeys ?? ['id'],
+  };
+  relation.response = { ...targetResponse, ...relation.response };
   relation.target = sibling.tableName;
   return relation;
 }
@@ -355,7 +373,10 @@ function wireRelation(
 function freezeWiredModels(wired: Record<string, Model>): void {
   for (const model of Object.values(wired)) {
     if (model.relations) {
-      for (const relation of Object.values(model.relations)) Object.freeze(relation);
+      for (const relation of Object.values(model.relations)) {
+        if (relation.response) Object.freeze(relation.response);
+        Object.freeze(relation);
+      }
       Object.freeze(model.relations);
     }
     Object.freeze(model);
@@ -386,13 +407,26 @@ function wireModelMap(
 
   // Pass 2b — wire relations (fresh objects, auto-population, key→tableName
   // rewrite) then normalize each entry through defineModel.
+  // Target response metadata must come from normalized siblings: raw author
+  // configs contain `multiTenant`/`softDelete` inputs, not their resolved
+  // field names. Relations are omitted for this metadata-only pass so circular
+  // graphs remain inert.
+  const normalizedCopies: Record<string, Model> = {};
+  for (const [key, copy] of Object.entries(copies)) {
+    normalizedCopies[key] = defineModel({ ...copy, relations: undefined } as ModelConfig) as Model;
+  }
   const wired: Record<string, Model> = {};
   for (const [key, copy] of Object.entries(copies)) {
     let relations = copy.relations;
     if (relations) {
       const rewired: Record<string, RelationConfig> = {};
       for (const [relationName, authored] of Object.entries(relations)) {
-        rewired[relationName] = wireRelation(authored as AuthoredRelation, copies, base, resolved);
+        rewired[relationName] = wireRelation(
+          authored as AuthoredRelation,
+          normalizedCopies,
+          base,
+          resolved,
+        );
       }
       relations = rewired;
     }
@@ -407,8 +441,8 @@ function wireModelMap(
 /**
  * Author every cross-referencing model in ONE call. Sibling references are
  * registry keys, so circular graphs need no ordering games, and each
- * relation's `schema`/`table` is auto-populated from its target. Returns
- * fully-wired, NORMALIZED {@link Model} objects.
+ * relation's `schema`/`table` and response metadata are auto-populated from
+ * its target. Returns fully-wired, NORMALIZED {@link Model} objects.
  *
  * Setup-time validation failures throw a plain `Error` aggregating every
  * unknown target at once.

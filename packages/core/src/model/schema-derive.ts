@@ -83,8 +83,16 @@ function nestableRelations(
  * validate (cross-tenant child writes).
  */
 function childShape(rel: RelationConfig, tenantField: string | undefined): ZodObject<ZodRawShape> {
-  const exclude = ['id', rel.foreignKey];
-  if (tenantField !== undefined) exclude.push(tenantField);
+  const exclude = ['id', rel.foreignKey, ...(rel.response?.primaryKeys ?? [])];
+  const targetTenantField =
+    rel.response?.tenantField === false ? undefined : (rel.response?.tenantField ?? tenantField);
+  if (targetTenantField !== undefined) exclude.push(targetTenantField);
+  const targetTimestamps = rel.response?.timestamps;
+  if (targetTimestamps?.createdAt) exclude.push(targetTimestamps.createdAt);
+  if (targetTimestamps?.updatedAt) exclude.push(targetTimestamps.updatedAt);
+  const targetSoftDeleteField =
+    rel.response?.softDeleteField === false ? undefined : rel.response?.softDeleteField;
+  if (targetSoftDeleteField !== undefined) exclude.push(targetSoftDeleteField);
   return omitFields(rel.schema as ZodObject<ZodRawShape>, exclude);
 }
 
@@ -155,7 +163,10 @@ function mergeNestedUpdate(
  * with `nestedWrites.allowCreate` merge their child shape onto the body.
  */
 export function deriveCreateSchema(
-  model: Pick<Model, 'schema' | 'id' | 'timestamps' | 'primaryKeys' | 'tenantField' | 'relations'>,
+  model: Pick<
+    Model,
+    'schema' | 'id' | 'timestamps' | 'primaryKeys' | 'tenantField' | 'softDeleteField' | 'relations'
+  >,
 ): ZodObject<ZodRawShape> {
   const base = omitFields(
     model.schema,
@@ -170,7 +181,10 @@ export function deriveCreateSchema(
  * with any `nestedWrites` flag merge their ops envelope onto the body.
  */
 export function deriveUpdateSchema(
-  model: Pick<Model, 'schema' | 'id' | 'timestamps' | 'primaryKeys' | 'tenantField' | 'relations'>,
+  model: Pick<
+    Model,
+    'schema' | 'id' | 'timestamps' | 'primaryKeys' | 'tenantField' | 'softDeleteField' | 'relations'
+  >,
   fieldsConfig: DeriveFieldsConfig = {},
 ): ZodObject<ZodRawShape> {
   let exclude = getManagedInputExclusions(model);

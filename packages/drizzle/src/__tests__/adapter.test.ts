@@ -21,6 +21,7 @@ const posts = sqliteTable('posts', {
   id: text('id').primaryKey(),
   authorId: text('authorId'),
   title: text('title'),
+  tenantId: text('tenantId'),
   deletedAt: integer('deletedAt'),
 });
 
@@ -83,7 +84,7 @@ async function freshDb() {
     'CREATE TABLE items (id TEXT PRIMARY KEY, name TEXT NOT NULL, qty INTEGER NOT NULL DEFAULT 0, tenantId TEXT, deletedAt INTEGER)',
   );
   await client.execute(
-    'CREATE TABLE posts (id TEXT PRIMARY KEY, authorId TEXT, title TEXT, deletedAt INTEGER)',
+    'CREATE TABLE posts (id TEXT PRIMARY KEY, authorId TEXT, title TEXT, tenantId TEXT, deletedAt INTEGER)',
   );
   await client.execute(
     'CREATE TABLE uniq_items (id TEXT PRIMARY KEY, name TEXT, email TEXT, authorId TEXT, deletedAt INTEGER, UNIQUE(email))',
@@ -171,7 +172,12 @@ describe('drizzleAdapter core', () => {
     const adapter = makeAdapter();
     await scopeOf((s) => adapter.create({ id: 'u1', name: 'U' }, s));
     await adapter.transaction(async (s) => {
-      await adapter.nested!.createNested({ id: 'u1' }, 'posts', [{ id: 'p1', title: 'P' }], s);
+      await adapter.nested!.createNested(
+        { id: 'u1' },
+        'posts',
+        [{ id: 'p1', title: 'P', tenantId: 't1' }],
+        s,
+      );
     });
     let rows = (await db.select().from(posts)) as Array<Record<string, unknown>>;
     expect(rows).toHaveLength(1);
@@ -199,6 +205,48 @@ describe('drizzleAdapter core', () => {
     });
     rows = (await db.select().from(posts)) as Array<Record<string, unknown>>;
     expect(rows[0]).toMatchObject({ id: 'p1', authorId: 'u1' });
+
+    await db.insert(posts).values({ id: 'p2', title: 'Foreign', tenantId: 't2' });
+    await adapter.transaction(async (s) => {
+      const inspected = await adapter.nested!.inspectNestedTargets(
+        { id: 'u1', tenantId: 't1' },
+        'posts',
+        {
+          targetScope: { tenantId: 't1' },
+          connect: [{ id: 'p1' }, { id: 'p2' }],
+        },
+        s,
+      );
+      expect(inspected.connect.map((row) => row?.id ?? null)).toEqual(['p1', null]);
+      await adapter.nested!.applyNested(
+        { id: 'u1', tenantId: 't1' },
+        'posts',
+        {
+          targetScope: { tenantId: 't1' },
+          connect: [{ id: 'p1' }, { id: 'p2' }],
+        },
+        s,
+      );
+    });
+    rows = (await db.select().from(posts)) as Array<Record<string, unknown>>;
+    expect(rows.find((row) => row.id === 'p1')?.authorId).toBe('u1');
+    expect(rows.find((row) => row.id === 'p2')?.authorId).toBeNull();
+
+    await db.insert(posts).values({
+      id: 'p3',
+      title: 'Corrupt relation',
+      tenantId: 't2',
+      authorId: 'u1',
+    });
+    await adapter.transaction(async (s) => {
+      const inspected = await adapter.nested!.inspectNestedTargets(
+        { id: 'u1', tenantId: 't1' },
+        'posts',
+        { targetScope: { tenantId: 't1' }, set: [] },
+        s,
+      );
+      expect(inspected.setDisconnect.map((row) => row.id).sort()).toEqual(['p1', 'p3']);
+    });
   });
 
   it('maps driver unique violations to a 409 ConflictException', async () => {
@@ -436,6 +484,39 @@ describe('drizzleAdapter bulk + aggregate + drivers', () => {
     expect(t1?.values.sumQty).toBe(30);
   });
 
+  it.each(['__proto__', 'constructor', 'prototype'])(
+    'rejects prototype-bearing native aggregate keys: %s',
+    async (unsafe) => {
+      const adapter = makeAdapter();
+      await expect(
+        scopeOf((s) =>
+          adapter.aggregate!(
+            {
+              operation: 'count',
+              filters: [],
+              aggregations: [{ operation: 'count', field: '*', alias: unsafe }],
+            },
+            s,
+          ),
+        ),
+      ).rejects.toThrow(/unsafe aggregate alias/);
+
+      await expect(
+        scopeOf((s) =>
+          adapter.aggregate!(
+            {
+              operation: 'count',
+              filters: [],
+              aggregations: [{ operation: 'count', field: '*' }],
+              groupBy: [unsafe],
+            },
+            s,
+          ),
+        ),
+      ).rejects.toThrow(/unsafe group field/);
+    },
+  );
+
   it('relation loader groups with owner-scope pushdown; cascade counts/deletes/nullifies', async () => {
     const adapter = makeAdapter();
     await scopeOf((s) => adapter.create({ id: 'u1', name: 'U1' }, s));
@@ -461,14 +542,18 @@ describe('drizzleAdapter bulk + aggregate + drivers', () => {
 describe('Drizzle stores', () => {
   it('versioning store round-trips entries newest-first with latest()', async () => {
     const store = new DrizzleVersioningStore(db, versions);
-    await store.save('items', {
+    const recordKey = {
+      tenantNamespace: 'global',
+      primaryKey: JSON.stringify([['id', 'string', 'a']]),
+    };
+    await store.save('items', recordKey, {
       id: 'v1',
       recordId: 'a',
       version: 1,
       data: { name: 'One' },
       createdAt: new Date(1000),
     });
-    await store.save('items', {
+    await store.save('items', recordKey, {
       id: 'v2',
       recordId: 'a',
       version: 2,
@@ -477,14 +562,33 @@ describe('Drizzle stores', () => {
       changedBy: 'user-1',
     });
 
-    expect(await store.latest('items', 'a')).toBe(2);
-    const list = await store.list('items', 'a');
+    expect(await store.latest('items', recordKey)).toBe(2);
+    const list = await store.list('items', recordKey);
     expect(list.map((e) => e.version)).toEqual([2, 1]);
-    const v1 = await store.get('items', 'a', 1);
+    const v1 = await store.get('items', recordKey, 1);
     expect(v1?.data).toEqual({ name: 'One' });
-    expect(await store.get('items', 'a', 9)).toBeNull();
-    expect(await store.deleteAll('items', 'a')).toBe(2);
-    expect(await store.latest('items', 'a')).toBe(0);
+    expect(await store.get('items', recordKey, 9)).toBeNull();
+    expect(await store.deleteAll('items', recordKey)).toBe(2);
+    expect(await store.latest('items', recordKey)).toBe(0);
+  });
+
+  it('does not expose legacy table/id-only version rows through a v2 scoped key', async () => {
+    await db.insert(versions).values({
+      id: 'legacy-v1',
+      tableName: 'items',
+      recordId: 'a',
+      version: 1,
+      data: JSON.stringify({ id: 'a', name: 'Legacy' }),
+      createdAt: 1,
+    });
+    const store = new DrizzleVersioningStore(db, versions);
+    const recordKey = {
+      tenantNamespace: 'tenant:"t1"',
+      primaryKey: JSON.stringify([['id', 'string', 'a']]),
+    };
+
+    expect(await store.list('items', recordKey)).toEqual([]);
+    expect(await store.get('items', recordKey, 1)).toBeNull();
   });
 
   it('audit store logs, batches, and queries newest-first with filters', async () => {

@@ -54,6 +54,8 @@ export {
   type SearchFieldConfig,
 } from './search';
 
+export type { SearchHighlight, SearchHighlightRange } from '../adapter/query-types';
+
 export {
   buildAggregateSpec,
   computeAggregateFallback,

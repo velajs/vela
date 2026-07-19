@@ -31,12 +31,13 @@ import type {
   ListQuery,
   Lookup,
   Page,
+  SearchHighlight,
   SearchHit,
   SearchQuery,
 } from '../../adapter/query-types';
 import { AggregationException, InputValidationException } from '../../envelope/errors';
 import { applyComputedFieldsToArray } from '../../model/computed-fields';
-import { applyProfile, applyProfileToArray } from '../../model/serialization-profile';
+import { applyProfileToArray } from '../../model/serialization-profile';
 import {
   applyManagedInsertFields,
   applyManagedUpdateFields,
@@ -48,15 +49,25 @@ import { filterReadable, maskFields } from '../../policies/evaluate';
 import { buildAggregateSpec, computeAggregateFallback } from '../../query/aggregate';
 import { parseListFilters } from '../../query/filters';
 import { resolveOffsetPagination } from '../../query/pagination';
-import { parseSearchMode, runSearchFallback, type SearchFieldConfig } from '../../query/search';
+import {
+  generateHighlights,
+  parseSearchMode,
+  runSearchFallback,
+  tokenizeQuery,
+  type SearchFieldConfig,
+} from '../../query/search';
 import { generateCsv, parseCsv } from '../../csv/index';
 import type { CrudEndpointName } from '../../verb-table';
 import type { EngineRequest, EngineResult } from '../engine-request';
 import { envelopeOf } from '../resource';
 import {
+  assertCreateAllowed,
+  assertWriteAllowed,
   buildPolicyContext,
   createSchemaFor,
+  listFallbackRows,
   listParseOptions,
+  MAX_FALLBACK_SCAN,
   scopeListQuery,
   shapeOne,
   tenantFilters,
@@ -66,9 +77,6 @@ import {
 import type { VerbExecutor } from './registry';
 
 type Row = Record<string, unknown>;
-
-/** Per-page ceiling used to scan every matching row for the in-memory fallbacks. */
-const FULL_SCAN_PER_PAGE = Number.MAX_SAFE_INTEGER;
 
 /** Maximum rows a single export streams (hono-crud `maxExportRecords`). */
 const MAX_EXPORT_RECORDS = 10_000;
@@ -159,7 +167,7 @@ async function executeSearch(resource: AnyResource, req: EngineRequest): Promise
       weight: searchFieldsConfig[field]?.weight ?? 1,
     })),
     filters: scoped.filters,
-    options: { ...scoped.options, page: 1, per_page: FULL_SCAN_PER_PAGE },
+    options: { ...scoped.options, page: 1, per_page: MAX_FALLBACK_SCAN },
   };
 
   const adapterSearch = config.adapter.search;
@@ -167,14 +175,8 @@ async function executeSearch(resource: AnyResource, req: EngineRequest): Promise
     config.adapter.capabilities.has('nativeSearch') && adapterSearch
       ? await config.adapter.transaction((scope) => adapterSearch(searchQuery, scope), txCtx(req))
       : await config.adapter.transaction(async (scope) => {
-          const scan = (await config.adapter.list(
-            {
-              filters: scoped.filters,
-              options: { ...scoped.options, page: 1, per_page: FULL_SCAN_PER_PAGE },
-            },
-            scope,
-          )) as Page<Row>;
-          return runSearchFallback(scan.result, searchQuery);
+          const rows = await listFallbackRows(resource, scoped, scope);
+          return runSearchFallback(rows, searchQuery);
         }, txCtx(req));
 
   // minScore threshold + read-policy row filtering (hardening vs. hono-crud).
@@ -201,8 +203,14 @@ async function executeSearch(resource: AnyResource, req: EngineRequest): Promise
         score: hit.score,
         matchedFields: hit.matchedFields ?? [],
       };
-      if (highlight && hit.highlights && Object.keys(hit.highlights).length > 0) {
-        item.highlights = hit.highlights;
+      if (highlight) {
+        const safeHighlights: Record<string, SearchHighlight[]> = {};
+        const tokens = tokenizeQuery(term, mode);
+        for (const field of hit.matchedFields ?? []) {
+          const snippets = generateHighlights(shaped[field], tokens, mode);
+          if (snippets.length > 0) safeHighlights[field] = snippets;
+        }
+        if (Object.keys(safeHighlights).length > 0) item.highlights = safeHighlights;
       }
       return item;
     }),
@@ -226,8 +234,9 @@ async function executeSearch(resource: AnyResource, req: EngineRequest): Promise
 /**
  * Multi-aggregation query. `buildAggregateSpec` validates the requested
  * operations, groupBy, HAVING, ordering, and group pagination; the adapter's
- * native `aggregate` runs it when declared, else the engine computes it in
- * memory over a full tenant-scoped, policy-pushed `adapter.list` scan. The
+ * native `aggregate` runs it when declared and no row/field policy requires
+ * engine evaluation; otherwise the engine computes it over a tenant-scoped,
+ * policy-filtered scan capped at 1,000 rows. The
  * response is `{ success, result }` where `result` is `{ values }` (ungrouped)
  * or `{ groups, totalGroups }` (grouped).
  */
@@ -259,17 +268,20 @@ async function executeAggregate(resource: AnyResource, req: EngineRequest): Prom
 
   const adapterAggregate = config.adapter.aggregate;
   const result = await config.adapter.transaction(async (scope) => {
-    if (config.adapter.capabilities.has('aggregate') && adapterAggregate) {
+    if (
+      config.adapter.capabilities.has('aggregate') &&
+      adapterAggregate &&
+      resource.model.policies?.read === undefined &&
+      resource.model.policies?.fields === undefined
+    ) {
       return adapterAggregate(spec, scope);
     }
-    const scan = (await config.adapter.list(
-      {
-        filters: scoped.filters,
-        options: { ...scoped.options, page: 1, per_page: FULL_SCAN_PER_PAGE },
-      },
-      scope,
-    )) as Page<Row>;
-    return computeAggregateFallback(scan.result, spec);
+    const rows = await listFallbackRows(resource, scoped, scope);
+    const readable = await filterReadable(policyCtx, rows, resource.model.policies);
+    const visible = readable.map(
+      (row) => maskFields(policyCtx, row, resource.model.policies) as Row,
+    );
+    return computeAggregateFallback(visible, spec);
   }, txCtx(req));
 
   return { status: 200, body: envelopeOf(resource).success(result) };
@@ -303,6 +315,12 @@ async function executeExport(resource: AnyResource, req: EngineRequest): Promise
   const scoped = scopeListQuery(resource, req, policyCtx, parsed);
 
   const rows = await config.adapter.transaction(async (scope) => {
+    // Arbitrary read predicates execute in-process and must use the mandatory
+    // 1,000-row authorization window. Export's larger serialization cap must
+    // never become an alternate policy-scan path.
+    if (model.policies?.read !== undefined) {
+      return listFallbackRows(resource, scoped, scope);
+    }
     const scan = (await config.adapter.list(
       {
         filters: scoped.filters,
@@ -445,6 +463,7 @@ async function processImportRow(
 ): Promise<ImportRowResult> {
   const model = resource.model;
   const adapter = resource.config.adapter;
+  const policyCtx = buildPolicyContext(req);
 
   const parsed = createSchema.safeParse(data);
   if (!parsed.success) {
@@ -464,10 +483,11 @@ async function processImportRow(
   }
 
   try {
-    const existing = await findExistingByKeys(resource, req, upsertKeys, data, scope);
+    const existing = await findExistingByKeys(resource, req, upsertKeys, values, scope);
 
     if (mode === 'upsert') {
       if (existing) {
+        await assertWriteAllowed(resource, policyCtx, existing);
         const pk = model.primaryKeys[0] ?? 'id';
         const lookup: Lookup = {
           field: pk,
@@ -485,7 +505,11 @@ async function processImportRow(
         ) as Row;
         const updated = (await adapter.update(lookup, patch, scope)) as Row | null;
         if (!updated) return { rowNumber, status: 'failed', error: 'Record not found for update' };
-        return { rowNumber, status: 'updated', data: applyProfile(model, updated) };
+        return {
+          rowNumber,
+          status: 'updated',
+          data: await shapeOne(resource, policyCtx, req, updated),
+        };
       }
     } else if (existing) {
       return {
@@ -495,11 +519,19 @@ async function processImportRow(
       };
     }
 
-    const managed = applyManagedInsertFields(model, values, { databaseGeneratedId });
+    const managed = applyManagedInsertFields(model, values, {
+      databaseGeneratedId,
+      tenantId: req.vars?.tenantId,
+    });
+    await assertCreateAllowed(resource, policyCtx, managed);
     const created = (await adapter.create(managed, scope)) as Row;
-    return { rowNumber, status: 'created', data: applyProfile(model, created) };
-  } catch (err) {
-    return { rowNumber, status: 'failed', error: err instanceof Error ? err.message : String(err) };
+    return {
+      rowNumber,
+      status: 'created',
+      data: await shapeOne(resource, policyCtx, req, created),
+    };
+  } catch {
+    return { rowNumber, status: 'failed', error: 'Import operation failed' };
   }
 }
 

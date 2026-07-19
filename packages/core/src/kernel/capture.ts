@@ -27,7 +27,7 @@ import {
   type AuditEntry,
   type AuditStore,
 } from '../audit/index';
-import type { VersioningStore } from '../versioning/index';
+import type { VersioningStore, VersionRecordKey } from '../versioning/index';
 import type { EngineRequest } from './engine-request';
 import type { AnyResource } from './verb-helpers';
 
@@ -42,7 +42,52 @@ export const VERSION_FIELD = 'version';
 
 function primaryKeyValue(model: Model, record: Row): string | number {
   const pk = model.primaryKeys[0] ?? 'id';
-  return record[pk] as string | number;
+  const value = record[pk];
+  if (typeof value !== 'string' && (typeof value !== 'number' || !Number.isFinite(value))) {
+    throw new ConfigurationException(
+      `Model '${model.name}': versioned row has an invalid primary key '${pk}'`,
+    );
+  }
+  return value;
+}
+
+/**
+ * Build the v2 version-store identity from trusted request tenancy and every
+ * model primary-key field. Exported so read/compare/rollback use exactly the
+ * same namespace as mutation capture.
+ */
+export function versionRecordKeyFor(
+  model: Model,
+  record: Row,
+  req: EngineRequest,
+): VersionRecordKey {
+  let tenantNamespace = 'global';
+  if (model.tenantField !== undefined) {
+    const tenantId = req.vars?.tenantId;
+    if (typeof tenantId !== 'string' || tenantId.length === 0) {
+      throw new ConfigurationException(
+        `Model '${model.name}': versioning requires a trusted tenant context`,
+      );
+    }
+    if (record[model.tenantField] !== tenantId) {
+      throw new ConfigurationException(
+        `Model '${model.name}': versioned row does not match the trusted tenant`,
+      );
+    }
+    tenantNamespace = `tenant:${JSON.stringify(tenantId)}`;
+  }
+
+  const tuple = model.primaryKeys.map((column) => {
+    const value = record[column];
+    if (typeof value === 'string') return [column, 'string', value] as const;
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return [column, 'number', value] as const;
+    }
+    throw new ConfigurationException(
+      `Model '${model.name}': versioned row has an invalid primary key '${column}'`,
+    );
+  });
+  return { tenantNamespace, primaryKey: JSON.stringify(tuple) };
 }
 
 function requireVersioningStore(resource: AnyResource): VersioningStore {
@@ -88,7 +133,7 @@ export async function captureVersion(
   const currentVersion =
     (typeof prior[VERSION_FIELD] === 'number' ? (prior[VERSION_FIELD] as number) : 0) || 0;
   const changedBy = req.vars?.userId;
-  await store.save(model.tableName, {
+  await store.save(model.tableName, versionRecordKeyFor(model, prior, req), {
     id: crypto.randomUUID(),
     recordId: primaryKeyValue(model, prior),
     version: currentVersion,

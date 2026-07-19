@@ -62,7 +62,7 @@ function fakeAdapter(store: Map<string, Row>, opts: FakeOptions = {}): CrudAdapt
   if (hasRestore) caps.push('restore');
   if (hasUpsert) caps.push('upsert');
   if (hasNativeBatch) caps.push('nativeBatch');
-  if (hasBulkPatch) caps.push('bulkPatch');
+  if (hasBulkPatch) caps.push('bulkPatch', 'transactions');
 
   const adapter: CrudAdapter<Row> = {
     capabilities: new Set(caps),
@@ -236,6 +236,12 @@ describe('batchCreate', () => {
             target: 'posts',
             foreignKey: 'authorId',
             schema: PostSchema,
+            response: {
+              tenantField: false,
+              softDeleteField: false,
+              primaryKeys: ['id'],
+              timestamps: { createdAt: false, updatedAt: false },
+            },
             nestedWrites: { allowCreate: true },
           },
         },
@@ -797,6 +803,34 @@ describe('batchUpsert', () => {
     expect((result.body as { result: { createdCount: number } }).result.createdCount).toBe(2);
   });
 
+  it('never delegates tenant batch upserts to a cross-tenant conflict target', async () => {
+    const { resource, store, adapter } = makeResource(
+      { ...upsertCfg, model: { multiTenant: true } },
+      { softDeleteField: 'deletedAt', native: true },
+    );
+    store.set('foreign', {
+      id: 'foreign',
+      email: 'shared@x',
+      name: 'Tenant 1',
+      tenantId: 't1',
+    });
+    const native = vi.fn(adapter.upsertOne!);
+    adapter.upsertOne = native;
+
+    const result = await resource.execute(
+      'batchUpsert',
+      req({
+        body: [{ email: 'shared@x', name: 'Tenant 2' }],
+        vars: { tenantId: 't2' },
+      }),
+    );
+
+    expect(native).not.toHaveBeenCalled();
+    expect(store.get('foreign')).toMatchObject({ name: 'Tenant 1', tenantId: 't1' });
+    const item = (result.body as { result: { items: Array<{ data: Row }> } }).result.items[0];
+    expect(item?.data.tenantId).toBe('t2');
+  });
+
   it('runs beforeBatchUpsert/afterBatchUpsert per item with index, threading replacements', async () => {
     const seen: Array<{ phase: string; index: number }> = [];
     const hooks: CrudHooks<Row> & HookModeConfig = {
@@ -1014,6 +1048,28 @@ describe('bulkPatch', () => {
     expect(store.get('gone')!.age).toBeUndefined();
   });
 
+  it('aborts when an atomic native target set changes after confirmation', async () => {
+    const store = new Map<string, Row>();
+    const model = defineModel({
+      name: 'item',
+      tableName: 'items',
+      schema: itemSchema,
+      softDelete: false,
+    });
+    const adapter = fakeAdapter(store, { bulkPatch: true });
+    adapter.updateWhere = vi.fn(async () => ({ count: 2, records: [] }));
+    const resource = defineResource('items', {
+      model,
+      adapter,
+      filterFields: ['role'],
+    });
+    store.set('a', { id: 'a', email: 'a@x', name: 'A', role: 'guest' });
+
+    await expect(
+      resource.execute('bulkPatch', req({ body: { filter: { role: 'guest' }, data: { age: 9 } } })),
+    ).rejects.toMatchObject({ statusCode: 409, code: 'CONFLICT' });
+  });
+
   it('scopes matched rows to the request tenant', async () => {
     const { resource, store } = makeResource({
       model: { multiTenant: true },
@@ -1030,5 +1086,57 @@ describe('bulkPatch', () => {
     expect(body.matched).toBe(1);
     expect(body.records[0].id).toBe('a');
     expect(store.get('b')!.age).toBeUndefined(); // other tenant untouched
+  });
+});
+
+describe('extended mutation policy enforcement', () => {
+  const deniedCases: Array<{
+    verb: 'batchUpdate' | 'batchDelete' | 'batchRestore' | 'batchUpsert' | 'bulkPatch';
+    body: unknown;
+    deleted?: boolean;
+  }> = [
+    { verb: 'batchUpdate', body: { items: [{ id: 'a', data: { name: 'Changed' } }] } },
+    { verb: 'batchDelete', body: { ids: ['a'] } },
+    { verb: 'batchRestore', body: { ids: ['a'] }, deleted: true },
+    { verb: 'batchUpsert', body: [{ email: 'a@x', name: 'Changed' }] },
+    { verb: 'bulkPatch', body: { data: { name: 'Changed' } } },
+  ];
+
+  it.each(deniedCases)('$verb enforces the row write policy', async ({ verb, body, deleted }) => {
+    const { resource, store } = makeResource({
+      model: { policies: { write: () => false } },
+      upsert: { keys: ['email'] },
+    });
+    store.set('a', {
+      id: 'a',
+      email: 'a@x',
+      name: 'Original',
+      ...(deleted ? { deletedAt: 1 } : {}),
+    });
+
+    await expect(resource.execute(verb, req({ body }))).rejects.toMatchObject({
+      statusCode: 403,
+      code: 'FORBIDDEN',
+    });
+    expect(store.get('a')!.name).toBe('Original');
+  });
+
+  it.each([
+    ['batchCreate', { items: [{ email: 'new@x', name: 'New' }] }],
+    ['batchUpsert', [{ email: 'new@x', name: 'New' }]],
+  ] as const)('%s enforces the create policy', async (verb, body) => {
+    const { resource, store } = makeResource(
+      {
+        model: { policies: { create: () => false } },
+        upsert: { keys: ['email'] },
+      },
+      { softDeleteField: 'deletedAt', native: true, nativeBatch: true },
+    );
+
+    await expect(resource.execute(verb, req({ body }))).rejects.toMatchObject({
+      statusCode: 403,
+      code: 'FORBIDDEN',
+    });
+    expect(store.size).toBe(0);
   });
 });

@@ -151,23 +151,10 @@ describe('@Crud over HTTP (decorated controller)', () => {
     expect(crudRoutes.map((r) => `${r.method} ${r.path} ${r.name}`).sort()).toEqual(
       [
         'DELETE /items/:id item.delete',
-        'DELETE /items/batch item.batchDelete',
         'GET /items item.list',
         'GET /items/:id item.read',
-        'GET /items/aggregate item.aggregate',
-        'GET /items/export item.export',
-        'GET /items/search item.search',
         'PATCH /items/:id item.update',
-        'PATCH /items/batch item.batchUpdate',
-        'PATCH /items/bulk item.bulkPatch',
         'POST /items item.create',
-        'POST /items/:id/clone item.clone',
-        'POST /items/:id/restore item.restore',
-        'POST /items/batch item.batchCreate',
-        'POST /items/batch/restore item.batchRestore',
-        'POST /items/batch/upsert item.batchUpsert',
-        'POST /items/import item.import',
-        'POST /items/upsert item.upsert',
       ].sort(),
     );
     for (const route of crudRoutes) {
@@ -313,6 +300,7 @@ describe('per-endpoint guards (config.guards)', () => {
     @Crud({
       model: makeModel(),
       adapter: testAdapter(store, 'deletedAt'),
+      only: ['clone'],
       clone: { fieldsToReset: ['qty'] },
     })
     class ItemsController {}
@@ -482,8 +470,8 @@ describe('tenant fail-fast', () => {
       /* placeholder for ordering — real resolver sets c.set('tenantId', ...) */
     });
     const res = await app.getHonoApp().request('/scoped');
-    // Without a resolved tenant var, no scoping applies (resolver contract).
-    expect(((await res.json()) as { result: Row[] }).result).toHaveLength(2);
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('TENANT_REQUIRED');
   });
 });
 

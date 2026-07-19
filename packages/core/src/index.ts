@@ -25,6 +25,7 @@ export { synthesizeController, type CrudFeatureResource } from './synthesize-con
 export { MissingTenantResolverError, resourceNames, type CrudConfig } from './crud.types';
 export {
   ALL_CRUD_ENDPOINTS,
+  CORE_CRUD_ENDPOINTS,
   CRUD_ROUTES,
   VERSION_ENDPOINTS,
   resolveEnabledEndpoints,
@@ -36,7 +37,13 @@ export { deriveRouteName, deriveVerbNaming } from './naming';
 // Model authoring (also on ./model)
 export { defineModel } from './model/define-model';
 export { defineModels, defineModelsExtending } from './model/model-registry';
-export type { Model, ModelConfig, NestedWriteConfig, RelationConfig } from './model/model.types';
+export type {
+  Model,
+  ModelConfig,
+  NestedWriteConfig,
+  RelationConfig,
+  RelationResponseConfig,
+} from './model/model.types';
 
 // Engine surface commonly needed by consumers (full set on subpaths)
 export {

@@ -2,6 +2,22 @@ import { describe, expect, it } from 'vitest';
 import type { AggregateSpec } from '../../adapter/query-types';
 import { AggregationException } from '../../envelope/errors';
 import { buildAggregateSpec, computeAggregateFallback, getAggregateAlias } from '../aggregate';
+import type { AggregateBuildConfig } from '../aggregate';
+
+const ALLOWED_FIELDS: AggregateBuildConfig = {
+  countFields: ['id'],
+  sumFields: ['amount', 'price', 'quantity', 'value'],
+  avgFields: ['age', 'value'],
+  minMaxFields: ['price', 'value'],
+  countDistinctFields: ['tag'],
+  groupByFields: ['category', 'tag', 'a', 'b', 'c'],
+};
+
+const build = (
+  query: Parameters<typeof buildAggregateSpec>[0],
+  config: AggregateBuildConfig = {},
+  filters: Parameters<typeof buildAggregateSpec>[2] = [],
+) => buildAggregateSpec(query, { ...ALLOWED_FIELDS, ...config }, filters);
 
 const records = [
   { category: 'A', value: 10, tag: 'x' },
@@ -29,26 +45,20 @@ describe('getAggregateAlias', () => {
 
 describe('buildAggregateSpec', () => {
   it('defaults to COUNT(*) when nothing is requested', () => {
-    expect(buildAggregateSpec({})).toEqual({
+    expect(build({})).toEqual({
       operation: 'count',
       aggregations: [{ operation: 'count', field: '*' }],
       filters: [],
     });
     // `count=*`, `count=true`, and `count=''` (falsy → skipped → default) all
     // collapse to COUNT(*).
-    expect(buildAggregateSpec({ count: '*' }).aggregations).toEqual([
-      { operation: 'count', field: '*' },
-    ]);
-    expect(buildAggregateSpec({ count: 'true' }).aggregations).toEqual([
-      { operation: 'count', field: '*' },
-    ]);
-    expect(buildAggregateSpec({ count: '' }).aggregations).toEqual([
-      { operation: 'count', field: '*' },
-    ]);
+    expect(build({ count: '*' }).aggregations).toEqual([{ operation: 'count', field: '*' }]);
+    expect(build({ count: 'true' }).aggregations).toEqual([{ operation: 'count', field: '*' }]);
+    expect(build({ count: '' }).aggregations).toEqual([{ operation: 'count', field: '*' }]);
   });
 
   it('parses multiple operations in AGGREGATE_OPERATIONS order', () => {
-    const spec = buildAggregateSpec({ sum: 'amount', avg: 'age', count: '*' });
+    const spec = build({ sum: 'amount', avg: 'age', count: '*' });
     expect(spec.aggregations).toEqual([
       { operation: 'count', field: '*' },
       { operation: 'sum', field: 'amount' },
@@ -60,12 +70,12 @@ describe('buildAggregateSpec', () => {
   });
 
   it('accepts the same operation on multiple fields (repeated param)', () => {
-    const spec = buildAggregateSpec({ min: 'price', max: 'price' });
+    const spec = build({ min: 'price', max: 'price' });
     expect(spec.aggregations).toEqual([
       { operation: 'min', field: 'price' },
       { operation: 'max', field: 'price' },
     ]);
-    const summed = buildAggregateSpec({ sum: ['price', 'quantity'] });
+    const summed = build({ sum: ['price', 'quantity'] });
     expect(summed.aggregations).toEqual([
       { operation: 'sum', field: 'price' },
       { operation: 'sum', field: 'quantity' },
@@ -79,25 +89,24 @@ describe('buildAggregateSpec', () => {
     expect(buildAggregateSpec({ sum: 'value' }, { sumFields: ['value'] }).aggregations).toEqual([
       { operation: 'sum', field: 'value' },
     ]);
-    // COUNT of a specific field is never restricted.
-    expect(() => buildAggregateSpec({ count: 'id' }, { sumFields: ['value'] })).not.toThrow();
+    expect(() => buildAggregateSpec({ count: 'id' }, {})).toThrow(/not allowed for COUNT/);
+    expect(buildAggregateSpec({ count: 'id' }, { countFields: ['id'] }).aggregations).toEqual([
+      { operation: 'count', field: 'id' },
+    ]);
   });
 
   it('validates groupBy against the allow-list and cardinality cap', () => {
     expect(() =>
       buildAggregateSpec({ count: '*', groupBy: 'evil' }, { groupByFields: ['category'] }),
     ).toThrow(/not allowed for GROUP BY/);
-    expect(() =>
-      buildAggregateSpec({ count: '*', groupBy: 'a,b,c' }, { maxGroupByFields: 2 }),
-    ).toThrow(/Maximum 2 GROUP BY/);
-    expect(buildAggregateSpec({ count: '*', groupBy: 'category, tag' }).groupBy).toEqual([
-      'category',
-      'tag',
-    ]);
+    expect(() => build({ count: '*', groupBy: 'a,b,c' }, { maxGroupByFields: 2 })).toThrow(
+      /Maximum 2 GROUP BY/,
+    );
+    expect(build({ count: '*', groupBy: 'category, tag' }).groupBy).toEqual(['category', 'tag']);
   });
 
   it('parses having[alias][op]=value', () => {
-    const spec = buildAggregateSpec({
+    const spec = build({
       count: '*',
       groupBy: 'category',
       'having[count][gte]': '2',
@@ -106,8 +115,26 @@ describe('buildAggregateSpec', () => {
     expect(spec.having).toEqual({ count: { gte: '2', lt: '10' } });
   });
 
+  it.each(['__proto__', 'constructor', 'prototype'])(
+    'rejects prototype-pollution key %s in aliases and operators',
+    (unsafeKey) => {
+      const prototype = Object.prototype as Record<string, unknown>;
+      delete prototype.withDeleted;
+      for (const expression of [`having[${unsafeKey}][gte]`, `having[count][${unsafeKey}]`]) {
+        expect(() =>
+          build({
+            count: '*',
+            groupBy: 'category',
+            [expression]: 'true',
+          }),
+        ).toThrow(AggregationException);
+      }
+      expect(prototype.withDeleted).toBeUndefined();
+    },
+  );
+
   it('parses orderBy/orderDirection (default asc, only with orderBy)', () => {
-    const desc = buildAggregateSpec({
+    const desc = build({
       sum: 'value',
       groupBy: 'category',
       orderBy: 'sumValue',
@@ -115,37 +142,38 @@ describe('buildAggregateSpec', () => {
     });
     expect(desc.orderBy).toBe('sumValue');
     expect(desc.orderDirection).toBe('desc');
-    const asc = buildAggregateSpec({ count: '*', groupBy: 'category', orderBy: 'category' });
+    const asc = build({ count: '*', groupBy: 'category', orderBy: 'category' });
     expect(asc.orderDirection).toBe('asc');
     // No orderDirection without an orderBy.
-    expect(buildAggregateSpec({ count: '*' }).orderDirection).toBeUndefined();
+    expect(build({ count: '*' }).orderDirection).toBeUndefined();
   });
 
   it('parses group limit/offset and injects the default limit for grouped queries', () => {
-    const paged = buildAggregateSpec({ count: '*', groupBy: 'category', limit: '5', offset: '2' });
+    const paged = build({ count: '*', groupBy: 'category', limit: '5', offset: '2' });
     expect(paged.limit).toBe(5);
     expect(paged.offset).toBe(2);
     // Grouped, no explicit limit → default 100 (overridable).
-    expect(buildAggregateSpec({ count: '*', groupBy: 'category' }).limit).toBe(100);
-    expect(
-      buildAggregateSpec({ count: '*', groupBy: 'category' }, { defaultLimit: 25 }).limit,
-    ).toBe(25);
+    expect(build({ count: '*', groupBy: 'category' }).limit).toBe(100);
+    expect(build({ count: '*', groupBy: 'category' }, { defaultLimit: 25 }).limit).toBe(25);
     // Ungrouped queries get no default limit.
-    expect(buildAggregateSpec({ count: '*' }).limit).toBeUndefined();
+    expect(build({ count: '*' }).limit).toBeUndefined();
   });
 
   it('rejects a limit above the ceiling', () => {
-    expect(() => buildAggregateSpec({ count: '*', limit: '2000' })).toThrow(
-      /Limit cannot exceed 1000/,
-    );
-    expect(() => buildAggregateSpec({ count: '*', limit: '50' }, { maxLimit: 40 })).toThrow(
+    expect(() => build({ count: '*', limit: '2000' })).toThrow(/Limit cannot exceed 1000/);
+    expect(() => build({ count: '*', limit: '50' }, { maxLimit: 40 })).toThrow(
       /Limit cannot exceed 40/,
     );
   });
 
+  it('rejects negative pagination', () => {
+    expect(() => build({ count: '*', limit: '-1' })).toThrow(/negative/);
+    expect(() => build({ count: '*', offset: '-1' })).toThrow(/negative/);
+  });
+
   it('threads the already-parsed filters through', () => {
     const filters = [{ field: 'category', operator: 'eq' as const, value: 'A' }];
-    expect(buildAggregateSpec({ count: '*' }, {}, filters).filters).toBe(filters);
+    expect(build({ count: '*' }, {}, filters).filters).toBe(filters);
   });
 });
 

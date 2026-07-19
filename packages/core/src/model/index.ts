@@ -19,6 +19,7 @@ export type {
   NestedWriteConfig,
   NormalizedTimestamps,
   RelationConfig,
+  RelationResponseConfig,
   RelationsConfig,
   RelationType,
   SchemaKeys,

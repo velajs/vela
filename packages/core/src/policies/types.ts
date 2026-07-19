@@ -5,6 +5,7 @@
  */
 
 import type { FilterCondition } from '../adapter/query-types';
+import type { CrudEndpointName } from '../verb-table';
 
 /**
  * Context passed to policy callbacks. Sourced from the in-flight request:
@@ -20,6 +21,13 @@ export interface PolicyContext {
 }
 
 export interface ModelPolicies<T = unknown> {
+  /**
+   * Operation-level authorization, evaluated before any parsing or adapter
+   * access for every executor. Aggregate requires this policy explicitly.
+   */
+  operation?: (ctx: PolicyContext, operation: CrudEndpointName) => boolean | Promise<boolean>;
+  /** Create permission: false rejects insertion of the validated, managed input with 403. */
+  create?: (ctx: PolicyContext, record: Partial<T>) => boolean | Promise<boolean>;
   /** Row visibility: false filters the row from lists and 404s point reads. */
   read?: (ctx: PolicyContext, record: T) => boolean | Promise<boolean>;
   /** Write permission: false rejects update/delete/restore with 403. */

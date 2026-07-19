@@ -5,4 +5,12 @@
  */
 
 export type { ModelPolicies, PolicyContext } from './types';
-export { canRead, canWrite, filterReadable, maskFields, pushdownConditions } from './evaluate';
+export {
+  canCreate,
+  canPerformOperation,
+  canRead,
+  canWrite,
+  filterReadable,
+  maskFields,
+  pushdownConditions,
+} from './evaluate';
