@@ -66,6 +66,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@velajs/errors": "^1.1.0",
     "@velajs/studio-protocol": "workspace:^"
   },
   "devDependencies": {
