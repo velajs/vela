@@ -1,6 +1,6 @@
 {
   "name": "@velajs/storage",
-  "version": "0.3.2",
+  "version": "1.0.0",
   "description": "Edge-first, driver-based object/file storage for the Vela framework",
   "keywords": [
     "cloudflare-workers",
