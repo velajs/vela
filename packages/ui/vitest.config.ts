@@ -5,7 +5,12 @@ export default defineConfig({
   oxc: false,
   test: {
     globals: false,
-    include: ['src/**/*.test.ts', '__tests__/**/*.test.ts'],
+    include: [
+      'src/**/*.test.ts',
+      'src/**/*.test.tsx',
+      '__tests__/**/*.test.ts',
+      '__tests__/**/*.test.tsx',
+    ],
     environment: 'happy-dom',
     exclude: ['node_modules', 'dist'],
   },
@@ -17,11 +22,15 @@ export default defineConfig({
         target: 'es2022',
         parser: {
           syntax: 'typescript',
+          tsx: true,
           decorators: true,
         },
         transform: {
           legacyDecorator: true,
           decoratorMetadata: true,
+          react: {
+            runtime: 'automatic',
+          },
         },
         keepClassNames: true,
       },

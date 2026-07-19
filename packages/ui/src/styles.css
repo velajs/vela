@@ -1,0 +1,354 @@
+/*
+ * @velajs/studio-ui — scoped Studio stylesheet.
+ *
+ * SCOPING MECHANISM: every rule is nested under the `.vela-studio` root class
+ * (via CSS nesting), so mounting Studio inside a host app can never restyle the
+ * host — nothing here matches a bare element selector outside `.vela-studio`.
+ * Theme is driven by `data-theme="light" | "dark"` on the same root.
+ *
+ * These are hand-authored design tokens using Tailwind v4's conventions (CSS
+ * custom properties + a small utility surface). Full Tailwind utility generation
+ * needs the `@tailwindcss/*` scanner/CLI, which is not in the pre-provisioned dep
+ * tree (see the report); the token model and `.vela-studio` scope are the parts
+ * that matter for M3, and M6 owns the real panel visuals.
+ */
+
+.vela-studio {
+  --vela-bg: #ffffff;
+  --vela-bg-elevated: #f7f8fa;
+  --vela-fg: #1a1c23;
+  --vela-fg-muted: #5c6270;
+  --vela-border: #e3e6eb;
+  --vela-accent: #4f46e5;
+  --vela-accent-fg: #ffffff;
+  --vela-danger: #dc2626;
+  --vela-radius: 8px;
+  --vela-sidebar-w: 240px;
+
+  color-scheme: light dark;
+  box-sizing: border-box;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--vela-fg);
+  background: var(--vela-bg);
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: inherit;
+  }
+}
+
+.vela-studio[data-theme='dark'] {
+  --vela-bg: #0f1115;
+  --vela-bg-elevated: #171a21;
+  --vela-fg: #e6e8ee;
+  --vela-fg-muted: #9aa1b0;
+  --vela-border: #262a33;
+  --vela-accent: #7c7bff;
+  --vela-accent-fg: #0f1115;
+  --vela-danger: #f87171;
+}
+
+/* ---- shell layout ------------------------------------------------------- */
+
+.vela-shell {
+  display: grid;
+  grid-template-columns: var(--vela-sidebar-w) 1fr;
+  min-height: 100vh;
+  height: 100%;
+}
+
+.vela-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px 12px;
+  border-right: 1px solid var(--vela-border);
+  background: var(--vela-bg-elevated);
+  overflow-y: auto;
+}
+
+.vela-brand {
+  font-weight: 600;
+  font-size: 15px;
+  padding: 4px 8px;
+}
+
+.vela-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.vela-group__label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--vela-fg-muted);
+  padding: 0 8px 4px;
+}
+
+.vela-group__tabs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vela-tab {
+  display: block;
+  padding: 6px 8px;
+  border-radius: 6px;
+  color: var(--vela-fg);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.vela-tab:hover {
+  background: color-mix(in srgb, var(--vela-accent) 12%, transparent);
+}
+
+.vela-tab--active {
+  background: var(--vela-accent);
+  color: var(--vela-accent-fg);
+}
+
+.vela-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.vela-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--vela-border);
+}
+
+.vela-cmdk {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--vela-border);
+  border-radius: var(--vela-radius);
+  background: var(--vela-bg-elevated);
+  color: var(--vela-fg-muted);
+  cursor: pointer;
+}
+
+.vela-cmdk__kbd {
+  font-size: 11px;
+  border: 1px solid var(--vela-border);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.vela-signout {
+  margin-left: auto;
+  padding: 6px 12px;
+  border: 1px solid var(--vela-border);
+  border-radius: var(--vela-radius);
+  background: transparent;
+  color: var(--vela-fg);
+  cursor: pointer;
+}
+
+.vela-content {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  padding: 24px;
+}
+
+/* ---- panels ------------------------------------------------------------- */
+
+.vela-panel__title {
+  margin: 0 0 4px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.vela-panel__id {
+  color: var(--vela-fg-muted);
+  margin: 0 0 16px;
+}
+
+.vela-panel__caps {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 16px;
+}
+
+.vela-panel__cap {
+  display: flex;
+  gap: 8px;
+}
+
+.vela-panel__cap dt {
+  color: var(--vela-fg-muted);
+  min-width: 96px;
+}
+
+.vela-panel__cap dd {
+  margin: 0;
+}
+
+.vela-panel__note {
+  color: var(--vela-fg-muted);
+  font-size: 12px;
+}
+
+.vela-panel--loading {
+  color: var(--vela-fg-muted);
+}
+
+/* ---- login -------------------------------------------------------------- */
+
+.vela-login {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.vela-login__form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-width: 320px;
+  padding: 24px;
+  border: 1px solid var(--vela-border);
+  border-radius: var(--vela-radius);
+  background: var(--vela-bg-elevated);
+}
+
+.vela-login__title {
+  margin: 0;
+  font-size: 20px;
+}
+
+.vela-login__subtitle {
+  margin: 0 0 8px;
+  color: var(--vela-fg-muted);
+  font-size: 13px;
+}
+
+.vela-login__label {
+  font-size: 12px;
+  color: var(--vela-fg-muted);
+}
+
+.vela-login__input,
+.vela-palette__input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--vela-border);
+  border-radius: 6px;
+  background: var(--vela-bg);
+  color: var(--vela-fg);
+}
+
+.vela-login__error {
+  color: var(--vela-danger);
+  font-size: 13px;
+  margin: 0;
+}
+
+.vela-login__submit {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 6px;
+  background: var(--vela-accent);
+  color: var(--vela-accent-fg);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.vela-login__submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---- command palette ---------------------------------------------------- */
+
+.vela-palette {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 12vh;
+  background: color-mix(in srgb, #000 45%, transparent);
+  z-index: 1000;
+}
+
+.vela-palette__box {
+  width: 100%;
+  max-width: 480px;
+  border: 1px solid var(--vela-border);
+  border-radius: var(--vela-radius);
+  background: var(--vela-bg-elevated);
+  overflow: hidden;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+}
+
+.vela-palette__input {
+  border: none;
+  border-bottom: 1px solid var(--vela-border);
+  border-radius: 0;
+}
+
+.vela-palette__list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.vela-palette__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--vela-fg);
+  text-align: left;
+  cursor: pointer;
+}
+
+.vela-palette__item:hover {
+  background: color-mix(in srgb, var(--vela-accent) 14%, transparent);
+}
+
+.vela-palette__hint {
+  color: var(--vela-fg-muted);
+  font-size: 12px;
+}
+
+.vela-palette__empty {
+  padding: 12px 10px;
+  color: var(--vela-fg-muted);
+}
