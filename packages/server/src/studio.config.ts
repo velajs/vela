@@ -72,6 +72,7 @@ export function resolveStudioConfig(
     path: options.path ?? STUDIO_DEFAULT_PATH,
     absolute: options.absolute ?? false,
     ...(token !== undefined ? { token } : {}),
+    ...(options.rootModule !== undefined ? { rootModule: options.rootModule } : {}),
     editable,
     rateLimit: options.rateLimit === undefined ? { ...DEFAULT_RATE_LIMIT } : options.rateLimit,
     subTokenTtlSec: options.subTokenTtlSec ?? 300,

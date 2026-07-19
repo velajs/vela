@@ -21,6 +21,10 @@ import { AdminAuditLog } from './audit/audit-log';
 import { AdminLogBuffer } from './logs/log-buffer';
 import { StudioDispatchRegistry } from './rpc/dispatch.registry';
 import { StudioFeaturesService } from './features/features.service';
+import { StudioAppHolder } from './introspect/app-holder';
+import { StudioAppOps } from './ops/app.ops';
+import { StudioLogsOps } from './ops/logs.ops';
+import { StudioCapabilitiesOps } from './ops/studio.ops';
 // Importing the marker controller pulls the route-contributor module (and its
 // import-time `registerRouteContributor` side effect) into the graph.
 import { StudioAdminController } from './http/route-contributor';
@@ -67,6 +71,13 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<StudioMod
       },
       StudioFeaturesService,
       StudioDispatchRegistry,
+      // Introspection seam + the M4 op providers. The dispatch registry
+      // discovers their `@AdminRpc` methods at bootstrap and resolves each
+      // per call; the holder is populated at mount time by the contributor.
+      StudioAppHolder,
+      StudioAppOps,
+      StudioLogsOps,
+      StudioCapabilitiesOps,
     ];
 
     return {
@@ -80,6 +91,7 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<StudioMod
         AdminLogBuffer,
         StudioFeaturesService,
         StudioDispatchRegistry,
+        StudioAppHolder,
       ],
     };
   },

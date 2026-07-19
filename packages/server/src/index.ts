@@ -2,8 +2,10 @@
  * @velajs/studio — the edge-safe Vela Studio admin module.
  *
  * Mounts the reserved `/_vela/admin` surface, hosts `@AdminRpc` operations, and
- * carries the token / sub-token / confirm-token security layer. Feature ops land
- * in later milestones; M2 ships the mount + security + dispatch registry.
+ * carries the token / sub-token / confirm-token security layer. M2 shipped the
+ * mount + security + dispatch registry; M4 adds the app-introspection, logs/audit,
+ * and capability-negotiation ops with real feature detection. Data-browser,
+ * time-travel, and adapter ops land in later milestones.
  */
 
 // Reserved base path (kept for compatibility; canonical value lives in the
@@ -59,8 +61,17 @@ export type { ConfirmTokenSignerOptions } from './security/confirm-token';
 export { AdminAuditLog } from './audit/audit-log';
 export { AdminLogBuffer } from './logs/log-buffer';
 
-// Features (M2 stub; detection lands in M4)
+// Features (real detection — M4)
 export { StudioFeaturesService } from './features/features.service';
+
+// Introspection collectors + the mount-time app-capture seam
+export { StudioAppHolder } from './introspect/app-holder';
+export { collectRoutes, collectModules, collectEntrypoints } from './introspect/collect';
+
+// M4 op providers (app introspection, logs/audit, capability negotiation)
+export { StudioAppOps } from './ops/app.ops';
+export { StudioLogsOps } from './ops/logs.ops';
+export { StudioCapabilitiesOps } from './ops/studio.ops';
 
 // HTTP
 export { RateLimiter, FixedWindowCounter, DEFAULT_MAX_ENTRIES } from './http/middleware/rate-limit';

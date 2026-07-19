@@ -4,7 +4,7 @@
  * here — they come from `@velajs/studio-protocol`.
  */
 import type { Context } from 'hono';
-import type { Token } from '@velajs/vela';
+import type { Token, Type } from '@velajs/vela';
 import type { StudioOp, StudioWriteGates } from '@velajs/studio-protocol';
 import type { AdminAuditEntry } from '@velajs/studio-protocol';
 
@@ -43,6 +43,13 @@ export interface StudioModuleOptions {
   absolute?: boolean;
   /** Master bearer token. When absent (and none in env), Studio is default-closed. */
   token?: string;
+  /**
+   * The app's ROOT module. Required for `app.openapi` (and the `openapi`
+   * capability): Studio is mounted as an imported module and cannot otherwise
+   * discover the graph to hand `createOpenApiDocument`. Absent ⇒ the op reports
+   * `FEATURE_UNCONFIGURED` and the `openapi` feature stays dark.
+   */
+  rootModule?: Type;
   /** Editable-category overrides (each defaults to its env value, else false). */
   editable?: Partial<EditableFlags>;
   /** Audit ring-buffer capacity. Default 500. */
@@ -61,6 +68,8 @@ export interface ResolvedStudioConfig {
   path: string;
   absolute: boolean;
   token?: string;
+  /** The app's root module for OpenAPI generation (see {@link StudioModuleOptions.rootModule}). */
+  rootModule?: Type;
   editable: EditableFlags;
   rateLimit: { windowMs: number; max: number } | false;
   subTokenTtlSec: number;

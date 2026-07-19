@@ -94,22 +94,23 @@ describe('StudioModule — auth', () => {
 describe('StudioModule — dispatch', () => {
   it('unknown op -> 404 STUDIO_UNKNOWN_OP', async () => {
     const app = await makeApp({ token: TOKEN });
-    const res = await app.getHonoApp().request(`${BASE}/rpc/app.routes`, authed({}));
-    // 'app.routes' is a real op but has no registered handler in this app.
+    const res = await app.getHonoApp().request(`${BASE}/rpc/data.listModels`, authed({}));
+    // 'data.listModels' is a real op but has no registered handler in this app
+    // (M4 registers app.*/logs/audit/studio ops, not the data browser).
     expect(res.status).toBe(404);
     expect((await res.json()).error.code).toBe('STUDIO_UNKNOWN_OP');
   });
 
   it('@AdminRpc happy path returns { ok, data, meta } (real op + stub handler)', async () => {
     @Injectable()
-    class AppOps {
-      @AdminRpc({ op: 'app.routes' })
-      routes() {
-        return [{ method: 'GET', path: '/x' }];
+    class DataOps {
+      @AdminRpc({ op: 'data.listModels' })
+      listModels() {
+        return [{ model: 'User' }];
       }
     }
-    const app = await makeApp({ token: TOKEN }, [AppOps]);
-    const res = await app.getHonoApp().request(`${BASE}/rpc/app.routes`, authed({}));
+    const app = await makeApp({ token: TOKEN }, [DataOps]);
+    const res = await app.getHonoApp().request(`${BASE}/rpc/data.listModels`, authed({}));
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       ok: boolean;
@@ -118,8 +119,8 @@ describe('StudioModule — dispatch', () => {
       meta: { op: string; mode: string; ms: number };
     };
     expect(body.ok).toBe(true);
-    expect(body.op).toBe('app.routes');
-    expect(body.data).toEqual([{ method: 'GET', path: '/x' }]);
+    expect(body.op).toBe('data.listModels');
+    expect(body.data).toEqual([{ model: 'User' }]);
     expect(body.meta.mode).toBe('read');
     expect(typeof body.meta.ms).toBe('number');
   });
@@ -146,20 +147,20 @@ describe('StudioModule — dispatch', () => {
   it('duplicate op registration throws at bootstrap', async () => {
     @Injectable()
     class A {
-      @AdminRpc({ op: 'app.routes' })
-      routes() {
+      @AdminRpc({ op: 'data.listModels' })
+      listModels() {
         return [];
       }
     }
     @Injectable()
     class B {
-      @AdminRpc({ op: 'app.routes' })
-      routesToo() {
+      @AdminRpc({ op: 'data.listModels' })
+      listModelsToo() {
         return [];
       }
     }
     await expect(makeApp({ token: TOKEN }, [A, B])).rejects.toThrow(
-      /duplicate handler for op 'app.routes'/,
+      /duplicate handler for op 'data.listModels'/,
     );
   });
 
@@ -177,13 +178,13 @@ describe('StudioModule — dispatch', () => {
   it('internal error message is redacted (never echoed)', async () => {
     @Injectable()
     class Boom {
-      @AdminRpc({ op: 'app.routes' })
-      routes() {
+      @AdminRpc({ op: 'data.listModels' })
+      listModels() {
         throw new Error('SUPER SECRET internal db dsn leak');
       }
     }
     const app = await makeApp({ token: TOKEN }, [Boom]);
-    const res = await app.getHonoApp().request(`${BASE}/rpc/app.routes`, authed({}));
+    const res = await app.getHonoApp().request(`${BASE}/rpc/data.listModels`, authed({}));
     expect(res.status).toBe(500);
     const body = (await res.json()) as { error: { code: string; message: string } };
     expect(body.error.message).not.toContain('SUPER SECRET');
@@ -277,18 +278,18 @@ describe('StudioModule — ws-token + rate limit', () => {
 
   it('returns 429 STUDIO_RATE_LIMITED after max requests from one IP', async () => {
     @Injectable()
-    class AppOps {
-      @AdminRpc({ op: 'app.routes' })
-      routes() {
+    class DataOps {
+      @AdminRpc({ op: 'data.listModels' })
+      listModels() {
         return [];
       }
     }
-    const app = await makeApp({ token: TOKEN, rateLimit: { windowMs: 60_000, max: 2 } }, [AppOps]);
+    const app = await makeApp({ token: TOKEN, rateLimit: { windowMs: 60_000, max: 2 } }, [DataOps]);
     const hono = app.getHonoApp();
     const ip = '203.0.113.7';
-    expect((await hono.request(`${BASE}/rpc/app.routes`, authed({}, ip))).status).toBe(200);
-    expect((await hono.request(`${BASE}/rpc/app.routes`, authed({}, ip))).status).toBe(200);
-    const third = await hono.request(`${BASE}/rpc/app.routes`, authed({}, ip));
+    expect((await hono.request(`${BASE}/rpc/data.listModels`, authed({}, ip))).status).toBe(200);
+    expect((await hono.request(`${BASE}/rpc/data.listModels`, authed({}, ip))).status).toBe(200);
+    const third = await hono.request(`${BASE}/rpc/data.listModels`, authed({}, ip));
     expect(third.status).toBe(429);
     expect((await third.json()).error.code).toBe('STUDIO_RATE_LIMITED');
   });

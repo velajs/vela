@@ -14,6 +14,7 @@ import { Controller, defineMetadata, registerRouteContributor } from '@velajs/ve
 import type { RouteContributor } from '@velajs/vela';
 import { STUDIO_DEFAULT_PATH } from '@velajs/studio-protocol';
 import { STUDIO_ADMIN_META } from '../tokens';
+import { StudioAppHolder } from '../introspect/app-holder';
 import { mountAdminRouter } from './admin-router';
 
 /**
@@ -32,6 +33,11 @@ export const studioRouteContributor: RouteContributor = {
   id: '@velajs/studio',
   claimsMetaKey: STUDIO_ADMIN_META,
   buildRoutes(app, ctx) {
+    // Capture the live Hono app + global prefix for the introspection ops — the
+    // only public seam to the route table (RouteManager is barrel-internal).
+    if (ctx.container.has(StudioAppHolder)) {
+      ctx.container.resolve(StudioAppHolder).capture(app, ctx.globalPrefix);
+    }
     mountAdminRouter(app, ctx);
   },
 };
