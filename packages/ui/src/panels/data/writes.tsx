@@ -12,13 +12,15 @@ import type { ReactNode } from 'react';
 import type { StudioModelDescriptor } from '@velajs/studio-protocol';
 import { useAdminMutation } from '../../data/query';
 import { useConfirmedMutation } from '../../data/use-confirmed-mutation';
-import { ConfirmDialog, Drawer } from '../shared';
+import { ConfirmDialog, Drawer, useDialogA11y } from '../shared';
 import { RowForm } from './row-form';
 
 /** A small count-input dialog for `data.generateRows`, surfacing the cap hint. */
 function GenerateDialog({ model, onClose }: { model: string; onClose: () => void }): ReactNode {
   const [count, setCount] = useState('10');
   const generate = useAdminMutation('data.generateRows', { invalidates: ['data.listRows'] });
+  // Only mounted while generating, so the trap is always active here.
+  const dialogRef = useDialogA11y(true, onClose);
 
   const submit = (): void => {
     const n = Number(count);
@@ -28,6 +30,7 @@ function GenerateDialog({ model, onClose }: { model: string; onClose: () => void
 
   return (
     <div
+      ref={dialogRef}
       className="vela-modal"
       role="dialog"
       aria-modal="true"

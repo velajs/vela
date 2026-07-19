@@ -3,9 +3,75 @@
  * discipline (with a dedicated `FEATURE_UNCONFIGURED` render), and a handful of
  * dense presentational atoms (badge, drawer, JSON block) every read panel reuses.
  */
-import type { ReactNode } from 'react';
+import { useEffect, useRef } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import type { AdminError } from '../client/admin-client';
 import { formatJson } from './format';
+
+/** Focusable descendants of a modal, in DOM order, skipping disabled controls. */
+function focusablesWithin(node: HTMLElement): HTMLElement[] {
+  const selector = 'a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])';
+  return Array.from(node.querySelectorAll<HTMLElement>(selector)).filter(
+    (el) => !el.hasAttribute('disabled') && el.getAttribute('aria-hidden') !== 'true',
+  );
+}
+
+/**
+ * Modal-dialog accessibility for the shared overlays: while `active`, trap Tab /
+ * Shift+Tab focus inside the returned container, move focus into it on open,
+ * restore focus to the previously-focused element on close, and route Escape to
+ * `onEscape` (Cancel). Callback identity is held in a ref so a re-render passing
+ * a fresh `onEscape` never re-runs the effect (which would re-steal focus). Must
+ * be called unconditionally — pass `active: false` when the dialog is closed.
+ */
+export function useDialogA11y(
+  active: boolean,
+  onEscape: () => void,
+): RefObject<HTMLDivElement | null> {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const escapeRef = useRef(onEscape);
+  escapeRef.current = onEscape;
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!active || node === null) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    (focusablesWithin(node)[0] ?? node).focus();
+
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        escapeRef.current();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const items = focusablesWithin(node);
+      if (items.length === 0) {
+        event.preventDefault();
+        node.focus();
+        return;
+      }
+      const first = items[0];
+      const last = items[items.length - 1];
+      const current = document.activeElement;
+      if (event.shiftKey && (current === first || !node.contains(current))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (current === last || !node.contains(current))) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    node.addEventListener('keydown', onKeyDown);
+    return () => {
+      node.removeEventListener('keydown', onKeyDown);
+      previouslyFocused?.focus?.();
+    };
+  }, [active]);
+
+  return ref;
+}
 
 export interface PanelProps {
   title: string;
@@ -179,9 +245,13 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }): ReactNode {
+  // Called unconditionally (before the early return) to respect the rules of
+  // hooks; it no-ops while the dialog is closed.
+  const dialogRef = useDialogA11y(pending !== null, onCancel);
   if (pending === null) return null;
   return (
     <div
+      ref={dialogRef}
       className="vela-modal"
       role="dialog"
       aria-modal="true"
