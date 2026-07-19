@@ -22,6 +22,7 @@
 import { Container, DiscoveryService, METADATA_KEYS, defineModule } from '@velajs/vela';
 import { CRUD_DEFAULT_ADAPTER } from '@velajs/crud';
 import type { CrudConfig } from '@velajs/crud';
+import type { AuditStore } from '@velajs/crud/audit';
 import type { Model } from '@velajs/crud/model';
 import type {
   AdapterScope,
@@ -58,10 +59,13 @@ import type {
   StudioWriteContext,
   StudioWriteRowOutcome,
 } from '../data/model-source.port';
+import type { StudioChange, StudioChangeKind } from '@velajs/studio-protocol';
+import type { TimeTravelScope } from '@velajs/studio-protocol';
 import { studioConflict, studioError, studioNotFound } from '../studio.errors';
 import { STUDIO_RESOLVED_CONFIG } from '../tokens';
 import { StudioDataWriteOps } from '../data/data.write.ops';
 import type { ResolvedStudioConfig } from '../studio.types';
+import type { ChangeSource } from '../timetravel/change-source.port';
 
 /** Cap on per-row audit images (delete before-images / generate sample). */
 const MAX_AUDIT_IMAGES = 50;
@@ -803,3 +807,74 @@ const { ConfigurableModuleClass } = defineModule<StudioCrudModuleOptions>({
  * — this is the seam that lights the `data` feature.
  */
 export class StudioCrudModule extends ConfigurableModuleClass {}
+
+// ---------------------------------------------------------------------------
+// Audit-backed CDC change source (the zero-seam `snapshot+cdc` path)
+// ---------------------------------------------------------------------------
+
+/** Options for {@link AuditStoreChangeSource}. */
+export interface AuditStoreChangeSourceOptions {
+  /**
+   * The row primary-key field used to build a change's `key`. Default `'id'`.
+   * The adapter only relies on this as a fallback — the before/after images
+   * carry the real primary key — so a non-`id` pk still replays correctly.
+   */
+  primaryKeyField?: string;
+}
+
+/** Infer a change kind from the presence of the before/after images (action-enum agnostic). */
+function inferChangeKind(hasAfter: boolean, hasBefore: boolean): StudioChangeKind | null {
+  if (hasAfter && !hasBefore) return 'insert';
+  if (hasAfter && hasBefore) return 'update';
+  if (!hasAfter && hasBefore) return 'delete';
+  return null;
+}
+
+/**
+ * A {@link ChangeSource} over a crud {@link AuditStore} (`@velajs/crud/audit`) —
+ * the zero-seam CDC path: it READS the audit log's `query()` change history
+ * (before/after/timestamp per row) rather than adding a `changeFeed` capability
+ * to crud. Bind it to the time-travel module (`StudioTimeTravelModule.forRoot({
+ * changeSource })`) to enable `snapshot+cdc` restore-to-a-time.
+ *
+ * The app supplies its OWN `AuditStore` instance — the wired default store sits
+ * behind an internal crud token, so there is no public accessor for it (M8a
+ * investigation). This class only ever touches the PUBLIC `AuditStore.query`
+ * contract, so it works with `MemoryAuditStore` or any custom store.
+ */
+export class AuditStoreChangeSource implements ChangeSource {
+  constructor(
+    private readonly store: AuditStore,
+    private readonly options: AuditStoreChangeSourceOptions = {},
+  ) {}
+
+  async changesBetween(
+    table: string,
+    fromTs: number,
+    toTs: number,
+    _scope?: TimeTravelScope,
+  ): Promise<StudioChange[]> {
+    const entries = await this.store.query({
+      tableName: table,
+      startDate: new Date(fromTs),
+      endDate: new Date(toTs),
+    });
+    const pk = this.options.primaryKeyField ?? 'id';
+    const changes: StudioChange[] = [];
+    for (const entry of entries) {
+      const ts = entry.timestamp.getTime();
+      if (ts <= fromTs || ts > toTs) continue; // enforce the half-open window exactly
+      const kind = inferChangeKind(entry.record !== undefined, entry.previousRecord !== undefined);
+      if (kind === null) continue;
+      changes.push({
+        ts,
+        table: entry.tableName,
+        kind,
+        key: { [pk]: entry.recordId },
+        ...(entry.previousRecord !== undefined ? { before: entry.previousRecord } : {}),
+        ...(entry.record !== undefined ? { after: entry.record } : {}),
+      });
+    }
+    return changes.toSorted((a, b) => a.ts - b.ts);
+  }
+}

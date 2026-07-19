@@ -93,6 +93,31 @@ export type {
   StudioGenerateRowsOutcome,
 } from './data/model-source.port';
 
+// M8a portable time travel — the port token + the `timeTravel.*` ops (registered
+// on core). The snapshot adapter, store seam, CDC seam, and opt-in binding module
+// live in the `@velajs/studio/timetravel` subpath.
+export { TIME_TRAVEL_PORT } from './timetravel/port.token';
+export { StudioTimeTravelOps } from './timetravel/timetravel.ops';
+export {
+  SnapshotTimeTravelAdapter,
+  SNAPSHOT_STORE,
+  InMemorySnapshotStore,
+  CHANGE_SOURCE,
+  StudioTimeTravelModule,
+  STUDIO_TIMETRAVEL_MODULE_OPTIONS,
+  NoopLiveInvalidator,
+  ContainerLiveInvalidator,
+  schemaHashForColumns,
+  combinedSchemaHash,
+} from './timetravel';
+export type {
+  SnapshotStore,
+  SnapshotAdapterDeps,
+  ChangeSource,
+  LiveInvalidatorPort,
+  StudioTimeTravelModuleOptions,
+} from './timetravel';
+
 // HTTP
 export { RateLimiter, FixedWindowCounter, DEFAULT_MAX_ENTRIES } from './http/middleware/rate-limit';
 export type { RateLimitOptions, Clock } from './http/middleware/rate-limit';

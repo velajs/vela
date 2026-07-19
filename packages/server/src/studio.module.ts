@@ -26,6 +26,7 @@ import { StudioAppOps } from './ops/app.ops';
 import { StudioLogsOps } from './ops/logs.ops';
 import { StudioCapabilitiesOps } from './ops/studio.ops';
 import { StudioDataOps } from './data/data.ops';
+import { StudioTimeTravelOps } from './timetravel/timetravel.ops';
 // Importing the marker controller pulls the route-contributor module (and its
 // import-time `registerRouteContributor` side effect) into the graph.
 import { StudioAdminController } from './http/route-contributor';
@@ -83,6 +84,11 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<StudioMod
       // each reports FEATURE_UNCONFIGURED until a STUDIO_MODEL_SOURCE is bound
       // (the `@velajs/studio/crud` subpath's StudioCrudModule, or a BYO source).
       StudioDataOps,
+      // Time-travel ops. Registered unconditionally (stable wire surface); each
+      // reports TIMETRAVEL_UNAVAILABLE until a TIME_TRAVEL_PORT is bound (the
+      // opt-in `@velajs/studio/timetravel` StudioTimeTravelModule, or a CF-DO
+      // PITR module in M11).
+      StudioTimeTravelOps,
     ];
 
     return {

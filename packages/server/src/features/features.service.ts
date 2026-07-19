@@ -9,17 +9,18 @@
  *   (b) the per-app `EntrypointRegistry` kinds (`queue`, `websocket`);
  *   (c) `Container.has(...)` probes for optional public tokens (schedule, live).
  *
- * Two keys are handled out-of-band, never on op registration: `openapi` is
- * gated SOLELY on a configured `rootModule` (the op's precondition), and `data`
- * SOLELY on a bound `STUDIO_MODEL_SOURCE` with at least one managed model (the
- * data ops are registered unconditionally, so registration is not a signal for
- * them). Absent evidence ⇒ false.
+ * Three keys are handled out-of-band, never on op registration: `openapi` is
+ * gated SOLELY on a configured `rootModule` (the op's precondition), `data`
+ * SOLELY on a bound `STUDIO_MODEL_SOURCE` with at least one managed model, and
+ * `timeTravel` SOLELY on a bound `TIME_TRAVEL_PORT` (the data + time-travel ops
+ * are registered unconditionally, so registration is not a signal for them).
+ * Absent evidence ⇒ false.
  *
- * GAP (documented in the M4 report): `timeTravel`, `transfer`, `auth`,
- * `authOrganizations`, `flags`, `presence` have no public-barrel probe token and
- * no core entrypoint kind in 1.20.0 — their packages live outside the vela
- * barrel. They read `false` here until their op namespace registers in a later
- * milestone (source (a)), which is the honest signal that Studio can serve them.
+ * GAP (documented in the M4 report): `transfer`, `auth`, `authOrganizations`,
+ * `flags`, `presence` have no public-barrel probe token and no core entrypoint
+ * kind in 1.20.0 — their packages live outside the vela barrel. They read
+ * `false` here until their op namespace registers in a later milestone (source
+ * (a)), which is the honest signal that Studio can serve them.
  */
 import {
   Container,
@@ -34,11 +35,13 @@ import {
 import type { Token } from '@velajs/vela';
 import { STUDIO_FEATURE_KEYS, STUDIO_OP_META } from '@velajs/studio-protocol';
 import type { StudioCapabilities, StudioFeatureKey } from '@velajs/studio-protocol';
+import type { TimeTravelCapabilities } from '@velajs/studio-protocol';
 import { STUDIO_RESOLVED_CONFIG } from '../tokens';
 import { deriveWriteGates } from '../studio.types';
 import type { ResolvedStudioConfig } from '../studio.types';
 import { StudioDispatchRegistry } from '../rpc/dispatch.registry';
 import { STUDIO_MODEL_SOURCE } from '../data/model-source.port';
+import { TIME_TRAVEL_PORT } from '../timetravel/port.token';
 
 /**
  * Per-feature entrypoint-kind evidence (source (b)). A kind counts only when the
@@ -83,8 +86,14 @@ export class StudioFeaturesService {
     return {
       features: this.features(),
       writes: deriveWriteGates(this.config.editable),
-      timeTravel: null,
+      timeTravel: this.timeTravelCapabilities(),
     };
+  }
+
+  /** The bound {@link TimeTravelPort}'s capabilities, or `null` when unbound. */
+  private timeTravelCapabilities(): TimeTravelCapabilities | null {
+    if (!this.container.has(TIME_TRAVEL_PORT)) return null;
+    return this.container.resolve(TIME_TRAVEL_PORT).capabilities();
   }
 
   private detect(
@@ -101,6 +110,11 @@ export class StudioFeaturesService {
     // unconditionally, so the honest signal is a bound model source that
     // actually discovers at least one managed model.
     if (key === 'data') return this.dataBound();
+
+    // `timeTravel` is out-of-band for the same reason: the `timeTravel.*` ops
+    // are registered unconditionally, so op-registration is not a signal.
+    // The honest signal is a bound `TIME_TRAVEL_PORT`.
+    if (key === 'timeTravel') return this.container.has(TIME_TRAVEL_PORT);
 
     // (a) Studio ships an op for this feature.
     if (registered.has(key)) return true;
