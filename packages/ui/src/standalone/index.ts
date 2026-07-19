@@ -1,0 +1,1 @@
+export const STUDIO_UI_STANDALONE_VERSION = '0';

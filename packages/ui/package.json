@@ -1,0 +1,74 @@
+{
+  "name": "@velajs/studio-ui",
+  "version": "0.1.0",
+  "description": "Vela Studio admin panel UI (React)",
+  "keywords": [
+    "admin",
+    "react",
+    "studio",
+    "ui",
+    "vela"
+  ],
+  "homepage": "https://github.com/velajs/studio#readme",
+  "bugs": {
+    "url": "https://github.com/velajs/studio/issues"
+  },
+  "license": "MIT",
+  "author": "ksh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/velajs/studio.git",
+    "directory": "packages/ui"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./dist/client/index.d.ts",
+      "import": "./dist/client/index.js"
+    },
+    "./standalone": {
+      "types": "./dist/standalone/index.d.ts",
+      "import": "./dist/standalone/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@velajs/studio-protocol": "workspace:^"
+  },
+  "devDependencies": {
+    "@swc/core": "catalog:",
+    "@testing-library/react": "^16.3.0",
+    "@types/react": "^19.0.0",
+    "happy-dom": "^20.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "unplugin-swc": "catalog:",
+    "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "react": ">=19",
+    "react-dom": ">=19"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

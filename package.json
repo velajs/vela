@@ -1,0 +1,35 @@
+{
+  "name": "@velajs/studio-monorepo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r --workspace-concurrency=4 build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "lint": "oxlint .",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "publint": "pnpm --filter @velajs/studio-protocol --filter @velajs/studio --filter @velajs/studio-ui --filter @velajs/studio-host --no-bail exec publint",
+    "attw": "pnpm --filter @velajs/studio-protocol --filter @velajs/studio --filter @velajs/studio-ui --filter @velajs/studio-host --no-bail exec attw --pack . --profile esm-only",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm test && pnpm publint && pnpm attw"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "catalog:",
+    "@changesets/cli": "catalog:",
+    "@swc/core": "catalog:",
+    "@types/node": "catalog:",
+    "oxfmt": "catalog:",
+    "oxlint": "catalog:",
+    "publint": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "unplugin-swc": "catalog:",
+    "vitest": "catalog:"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@11.11.0"
+}
