@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.0
+
+### Minor Changes
+
+- d36de0e: Add issuer-scoped `subject` and `principalType` fields to the identity contract while retaining `userId` as a compatibility alias.
+
 ## 1.0.1
 
 ### Patch Changes
