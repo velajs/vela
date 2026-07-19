@@ -1,9 +1,17 @@
 /**
- * @velajs/studio-protocol — types-only wire contract for Vela Studio:
- * the admin op catalog, request/response envelopes, and capability
- * descriptors shared by the server module, the UI, and the dev host.
+ * @velajs/studio-protocol — the frozen wire contract for Vela Studio.
  *
- * Runtime surface is intentionally minimal; the contract lives in the
- * type layer. This version marker is the stable placeholder export.
+ * Types + string-literal/number constants only; zero runtime dependencies
+ * (`sideEffects: false`). This is THE coupling point shared by the server module
+ * (M2), the UI transport (M3), and platform adapters (M11). Everything exported
+ * here is canonical: later milestones may ADD ops, never rename or remove.
  */
-export const STUDIO_PROTOCOL_VERSION = '0';
+export * from './errors';
+export * from './envelope';
+export * from './capabilities';
+export * from './time-travel';
+export * from './data';
+export * from './app';
+export * from './panels';
+export * from './ops';
+export * from './http';
