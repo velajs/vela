@@ -60,7 +60,10 @@ export function resolveOptions(options: StudioHostOptions): ResolvedOptions {
     adminToken: options.adminToken,
     adminPath: normaliseAdminPath(options.adminPath ?? DEFAULT_ADMIN_PATH),
     basePath: normaliseBasePath(options.basePath ?? DEFAULT_BASE_PATH),
-    editable: options.editable ?? true,
+    // Opt-IN: the editable affordances (auto-auth + edit UI) stay OFF unless the
+    // caller explicitly enables them. The loopback dev host / CLI passes
+    // `editable: true`; a bare mount is read-only by default.
+    editable: options.editable ?? false,
     sessionToken: randomUUID(),
     resolveFrom: options.resolveFrom ?? import.meta.url,
     fetchImpl: options.fetchImpl,

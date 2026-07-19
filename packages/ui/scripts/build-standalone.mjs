@@ -62,5 +62,5 @@ writeFileSync(join(outdir, 'metafile.json'), JSON.stringify(result.metafile), 'u
 const outputs = Object.keys(result.metafile.outputs)
   .map((p) => p.replace(`${pkgRoot}/`, '').replace('dist/standalone/', ''))
   .filter((name) => name.endsWith('.js'))
-  .sort();
+  .toSorted();
 console.warn(`[studio-ui] standalone bundle: ${outputs.join(', ')}`);

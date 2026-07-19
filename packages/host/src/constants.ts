@@ -28,6 +28,9 @@ export const LOOPBACK_HOSTS: ReadonlySet<string> = new Set([
   '0.0.0.0',
   '127.0.0.1',
   '::1',
+  // Fully-expanded IPv6 loopback — the same address as `::1`, spelled out. A
+  // client that emits this form must not be falsely flagged as DNS rebinding.
+  '0:0:0:0:0:0:0:1',
   'localhost',
 ]);
 

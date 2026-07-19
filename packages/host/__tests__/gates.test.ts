@@ -9,8 +9,8 @@ import {
 const headers = (init: Record<string, string>): Headers => new Headers(init);
 
 describe('isLoopbackAddress', () => {
-  it('accepts loopback v4/v6 and the IPv4-mapped form', () => {
-    for (const addr of ['127.0.0.1', '127.5.5.5', '::1', '::ffff:127.0.0.1']) {
+  it('accepts loopback v4/v6, the expanded IPv6 form, and the IPv4-mapped form', () => {
+    for (const addr of ['127.0.0.1', '127.5.5.5', '::1', '0:0:0:0:0:0:0:1', '::ffff:127.0.0.1']) {
       expect(isLoopbackAddress(addr)).toBe(true);
     }
   });
@@ -47,6 +47,14 @@ describe('transportRejectionReason', () => {
       /loopback/,
     );
   });
+  it('accepts the expanded IPv6 loopback Host form', () => {
+    expect(
+      transportRejectionReason({
+        remoteAddress: '::1',
+        headers: headers({ host: '[0:0:0:0:0:0:0:1]:8787' }),
+      }),
+    ).toBeUndefined();
+  });
   it('rejects a non-localhost Host header (DNS rebind)', () => {
     expect(
       transportRejectionReason({
@@ -54,6 +62,18 @@ describe('transportRejectionReason', () => {
         headers: headers({ host: 'evil.example.com' }),
       }),
     ).toMatch(/Host/);
+  });
+  it('fails closed on a MISSING Host header when the peer is unverifiable', () => {
+    // No Host + no concrete peer (in-process/mocked): locality is unprovable, so
+    // the DNS-rebind gate must not be silently skipped.
+    expect(transportRejectionReason({ headers: headers({}) })).toMatch(/Host/);
+  });
+  it('allows a MISSING Host header when the peer is a concrete loopback IP (local CLI)', () => {
+    // A non-browser client (e.g. curl) may omit Host; trusted only because the
+    // kernel-reported peer is provably loopback.
+    expect(
+      transportRejectionReason({ remoteAddress: '127.0.0.1', headers: headers({}) }),
+    ).toBeUndefined();
   });
   it('rejects any X-Forwarded-* / Forwarded header', () => {
     for (const name of ['x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'forwarded']) {

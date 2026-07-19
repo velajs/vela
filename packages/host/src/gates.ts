@@ -8,10 +8,10 @@
 import { FORWARDING_HEADERS, LOOPBACK_HOSTS } from './constants';
 
 /**
- * True for an IPv4/IPv6 loopback peer (`127.0.0.0/8`, `::1`, and the
- * IPv4-mapped `::ffff:127.x`). A missing address means the transport can't be
- * read (a mocked/in-process request) — treated as loopback so a mounting
- * adapter's own bind stays the source of truth there.
+ * True for an IPv4/IPv6 loopback peer (`127.0.0.0/8`, `::1`, the fully-expanded
+ * `0:0:0:0:0:0:0:1`, and the IPv4-mapped `::ffff:127.x`). A missing address
+ * means the transport can't be read (a mocked/in-process request) — treated as
+ * loopback so a mounting adapter's own bind stays the source of truth there.
  */
 export function isLoopbackAddress(remoteAddress: string | undefined): boolean {
   if (remoteAddress === undefined || remoteAddress === '') {
@@ -19,10 +19,20 @@ export function isLoopbackAddress(remoteAddress: string | undefined): boolean {
   }
   const address = remoteAddress.toLowerCase();
   const v4 = address.startsWith('::ffff:') ? address.slice(7) : address;
-  if (v4 === '::1') {
+  if (v4 === '::1' || v4 === '0:0:0:0:0:0:0:1') {
     return true;
   }
   return v4.startsWith('127.');
+}
+
+/**
+ * True only for a CONCRETELY-verified loopback peer: the kernel reported a
+ * non-empty address and it is loopback. Distinct from {@link isLoopbackAddress},
+ * which also returns `true` for a missing/unverifiable address — a distinction
+ * the DNS-rebind gate relies on to fail closed when it can't prove locality.
+ */
+function isConcreteLoopbackPeer(remoteAddress: string | undefined): boolean {
+  return remoteAddress !== undefined && remoteAddress !== '' && isLoopbackAddress(remoteAddress);
 }
 
 /** The host portion (no port) of a `Host` header value, lower-cased; brackets stripped from IPv6. */
@@ -45,9 +55,17 @@ export function hostnameOf(host: string | undefined): string | undefined {
  *  - reject a non-loopback peer (catches a non-loopback bind),
  *  - reject a non-localhost `Host` (catches DNS rebinding — a public name that
  *    resolves to loopback still arrives with that name in `Host`),
+ *  - reject a MISSING `Host` — fail closed (see below),
  *  - reject any `X-Forwarded-*` / `Forwarded` header (a reverse proxy/tunnel is
  *    relaying a possibly-remote client that must never drive the proxy).
  * Returns a refusal reason, or `undefined` when the connection is loopback-local.
+ *
+ * Missing-Host policy: a browser ALWAYS sends `Host`, so its absence means a
+ * non-browser client. Rather than silently skip the DNS-rebind check (which
+ * would let a public mount bypass it by simply omitting `Host`), we fail closed
+ * — EXCEPT when the kernel-reported peer is a concretely-verified loopback IP
+ * (a trusted local CLI such as `curl`). An unverifiable/in-process peer with no
+ * `Host` is rejected: locality could not be proven from either signal.
  */
 export function transportRejectionReason(input: {
   remoteAddress?: string;
@@ -58,7 +76,11 @@ export function transportRejectionReason(input: {
   }
 
   const host = hostnameOf(input.headers.get('host') ?? undefined);
-  if (host !== undefined && !LOOPBACK_HOSTS.has(host)) {
+  if (host === undefined) {
+    if (!isConcreteLoopbackPeer(input.remoteAddress)) {
+      return 'Vela Studio rejects a request with no Host header.';
+    }
+  } else if (!LOOPBACK_HOSTS.has(host)) {
     return 'Vela Studio rejects a non-localhost Host header.';
   }
 

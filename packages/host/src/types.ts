@@ -35,10 +35,11 @@ export interface StudioHostOptions {
   /** SPA router base path the Studio mounts under in the browser; defaults to `/`. */
   basePath?: string;
   /**
-   * Enable the developer-only editable affordances (auto-auth + edit UI). On a
-   * loopback dev host this defaults to `true`. When on, a NON-secret browser
-   * session token is injected so the Studio skips the login screen; the master
-   * token is never injected into the page.
+   * Enable the developer-only editable affordances (auto-auth + edit UI).
+   * Opt-IN: defaults to `false` (read-only). The loopback dev host / CLI passes
+   * `editable: true` explicitly. When on, a NON-secret browser session token is
+   * injected so the Studio skips the login screen; the master token is never
+   * injected into the page.
    */
   editable?: boolean;
   /**
