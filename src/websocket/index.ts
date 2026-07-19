@@ -1,6 +1,24 @@
 // DO base class (imports `cloudflare:workers` — only runs in workerd).
 export { VelaWebSocketDurableObject } from './websocket.durable-object';
 
+// Durable Object PITR (point-in-time recovery) — raw capability wrappers +
+// contract types. `cloudflare:workers`-free; wrapped by `@velajs/studio/cloudflare`.
+export {
+  readDoPitrBookmark,
+  armDoPitr,
+  DoPitrUnavailableError,
+  isDoPitrUnavailable,
+} from './do-pitr';
+export type {
+  DoPitrStorage,
+  DoPitrBookmarkRead,
+  DoPitrArmOptions,
+  DoPitrArmResult,
+  VelaDoPitrRpc,
+  DoPitrId,
+  DoPitrNamespace,
+} from './do-pitr';
+
 // Module + server-initiated emit helper
 export { CloudflareWebSocketModule } from './cloudflare-websocket.module';
 export { broadcastToRoom } from './broadcast';

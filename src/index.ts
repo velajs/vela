@@ -57,6 +57,26 @@ export {
 } from './websocket/index';
 export type { WsGatewayRoute } from './websocket/index';
 
+// Durable Object PITR (point-in-time recovery) — raw bookmark wrappers + the RPC
+// contract types. The WS Durable Object exposes `pitrCurrentBookmark`,
+// `pitrBookmarkForTime`, `pitrArmRestore` (intra-worker-only RPC); studio's
+// `@velajs/studio/cloudflare` port wraps these into a `TimeTravelPort`.
+export {
+  readDoPitrBookmark,
+  armDoPitr,
+  DoPitrUnavailableError,
+  isDoPitrUnavailable,
+} from './websocket/index';
+export type {
+  DoPitrStorage,
+  DoPitrBookmarkRead,
+  DoPitrArmOptions,
+  DoPitrArmResult,
+  VelaDoPitrRpc,
+  DoPitrId,
+  DoPitrNamespace,
+} from './websocket/index';
+
 // Live queries (Durable Object transport for @velajs/vela/live)
 export {
   DoCursorLog,

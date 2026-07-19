@@ -5,6 +5,8 @@ import type { CommitStamp, InvalidationCommand, LiveEngine } from '@velajs/vela/
 import { buildDoRuntime } from './do-bootstrap';
 import { DoWebSocketHost, type WsConnectionPrincipal } from './do-websocket-host';
 import type { WsLike } from './do-state';
+import { armDoPitr, readDoPitrBookmark } from './do-pitr';
+import type { DoPitrArmOptions, DoPitrArmResult, DoPitrBookmarkRead } from './do-pitr';
 
 const PING = '{"event":"ping"}';
 const PONG = '{"event":"pong"}';
@@ -154,6 +156,45 @@ export function VelaWebSocketDurableObject(
     async invalidate(cmd: InvalidationCommand): Promise<CommitStamp | undefined> {
       await this.ready;
       return this.liveEngine?.applyInvalidation(cmd);
+    }
+
+    // -- Durable Object PITR (point-in-time recovery) RPC ---------------------
+    //
+    // GUARD / reachability: these are admin-privileged operations (a restore can
+    // roll the DO's SQLite state back up to 30 days and, with `restart`, abort
+    // the DO to apply it now). They are safe to expose here because a Durable
+    // Object's RPC methods are NOT network-reachable: a `DurableObjectStub` is
+    // obtainable ONLY from a Worker that binds this DO namespace, and RPC calls
+    // travel Cloudflare's internal capability channel — never the public
+    // internet. A WebSocket/HTTP client reaches only `fetch()` above, never these
+    // methods. The security boundary is therefore the WORKER-SIDE studio admin
+    // gate that fronts the `CloudflareDoTimeTravelPort` (master admin token + the
+    // 428 confirm challenge) — the identical trust model as `broadcast()` /
+    // `invalidate()` on this same DO. See `do-pitr.ts` for the storage wrappers.
+
+    /** DO RPC — the current PITR bookmark (typed-unavailable on a non-SQLite DO). */
+    async pitrCurrentBookmark(): Promise<DoPitrBookmarkRead> {
+      await this.ready;
+      return readDoPitrBookmark(this.ctx.storage);
+    }
+
+    /** DO RPC — the PITR bookmark closest to `time` (+ the current bookmark). */
+    async pitrBookmarkForTime(time: number | string): Promise<DoPitrBookmarkRead> {
+      await this.ready;
+      return readDoPitrBookmark(this.ctx.storage, time);
+    }
+
+    /**
+     * DO RPC — arm a PITR restore and return the undo bookmark. When `restart` is
+     * requested, `ctx.abort()` is called AFTER the undo bookmark is computed so
+     * the recovery applies on the immediately-following session; otherwise the
+     * restore applies on the next natural restart (`restarted: false`).
+     */
+    async pitrArmRestore(opts: DoPitrArmOptions): Promise<DoPitrArmResult> {
+      await this.ready;
+      const result = await armDoPitr(this.ctx.storage, opts);
+      if (opts.restart === true) this.ctx.abort('vela PITR restore');
+      return result;
     }
   };
 }
