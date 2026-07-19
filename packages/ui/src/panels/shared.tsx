@@ -158,6 +158,57 @@ export function Drawer({
   );
 }
 
+/**
+ * A modal confirmation dialog driven by a `pending` summary — the render half of
+ * {@link useConfirmedMutation}'s 428 challenge. Renders nothing when `pending` is
+ * `null`; otherwise shows the server's human `summary` and Confirm/Cancel. The
+ * Confirm action defaults to the danger tone (destructive by nature).
+ */
+export function ConfirmDialog({
+  pending,
+  title = 'Confirm action',
+  confirmLabel = 'Confirm',
+  busy = false,
+  onConfirm,
+  onCancel,
+}: {
+  pending: { summary: string } | null;
+  title?: string;
+  confirmLabel?: string;
+  busy?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}): ReactNode {
+  if (pending === null) return null;
+  return (
+    <div
+      className="vela-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      onClick={onCancel}
+    >
+      <div className="vela-modal__box" onClick={(event) => event.stopPropagation()}>
+        <h2 className="vela-modal__title">{title}</h2>
+        <p className="vela-modal__body">{pending.summary}</p>
+        <div className="vela-modal__actions">
+          <button type="button" className="vela-btn" onClick={onCancel} disabled={busy}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="vela-btn vela-btn--danger"
+            onClick={onConfirm}
+            disabled={busy}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** A monospace, scrollable JSON block. */
 export function JsonBlock({ value }: { value: unknown }): ReactNode {
   return <pre className="vela-json">{formatJson(value)}</pre>;

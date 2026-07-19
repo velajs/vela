@@ -5,6 +5,13 @@
  * grid grammar (filters, sort, search, pagination, `withDeleted`). Every value is
  * annotated with a `@velajs/studio-protocol` type, so this module double-guards
  * the wire contract at compile time.
+ *
+ * The WRITE responders (`data.writeRow`/`deleteRows`/`clearTable`/`generateRows`)
+ * simulate the server's M7a behaviour: a destructive op (delete/clear) called
+ * without a valid `confirmToken` throws a 428 `STUDIO_CONFIRM_REQUIRED` carrying a
+ * single-use `details.{confirmToken,expiresAt,summary}`; re-sending the identical
+ * args WITH that token succeeds; the token is then spent, so a repeat re-issues a
+ * fresh challenge. `generateRows` is clamped at {@link GENERATE_ROWS_MAX}.
  */
 import type {
   FacetsRequest,
@@ -17,6 +24,7 @@ import type {
   StudioRowPage,
 } from '@velajs/studio-protocol';
 import type { FakeTransportTable } from './fake-transport';
+import { FakeAdminError, makeErrorBody } from './fake-transport';
 
 type Row = Record<string, unknown>;
 
@@ -273,13 +281,111 @@ export function readDataRow(model: string, id: string): Row | null {
   return dataRows(model).find((row) => row.id === id) ?? null;
 }
 
-/** The `data.*` read responders, wired over the in-memory engine. */
+// ---- write responders + the 428 confirm challenge --------------------------
+
+/** The server clamps `data.generateRows` at this many rows per call. */
+export const GENERATE_ROWS_MAX = 1000;
+
+/** The single-use confirm challenge carried on a 428 `STUDIO_CONFIRM_REQUIRED`. */
+export interface ConfirmChallengeDetails {
+  confirmToken: string;
+  expiresAt: string;
+  summary: string;
+}
+
+/**
+ * A single-use confirm-token ledger. `issue` mints a fresh valid token for a
+ * human `summary`; `consume` spends a token exactly once (an unknown, empty, or
+ * already-spent token is rejected, forcing a fresh challenge) — the generic
+ * server behaviour M7b drives.
+ */
+export interface ConfirmStore {
+  issue(summary: string): ConfirmChallengeDetails;
+  consume(token: string | undefined): boolean;
+}
+
+function makeConfirmStore(): ConfirmStore {
+  const valid = new Set<string>();
+  let counter = 0;
+  return {
+    issue(summary) {
+      counter += 1;
+      const confirmToken = `confirm_${counter}`;
+      valid.add(confirmToken);
+      return {
+        confirmToken,
+        // A fixed +5m window keeps the fixture deterministic.
+        expiresAt: new Date(BASE_TS + 300_000).toISOString(),
+        summary,
+      };
+    },
+    consume(token) {
+      if (token === undefined || token === '' || !valid.has(token)) return false;
+      valid.delete(token);
+      return true;
+    },
+  };
+}
+
+function confirmRequired(challenge: ConfirmChallengeDetails): FakeAdminError {
+  return new FakeAdminError(
+    makeErrorBody('STUDIO_CONFIRM_REQUIRED', 428, {
+      title: 'Confirmation required',
+      message: 'This destructive action requires confirmation.',
+      details: challenge,
+    }),
+  );
+}
+
+/**
+ * The `data.*` responders, wired over the in-memory engine. Read responders are
+ * pure; the write responders share a fresh {@link ConfirmStore} per call, so
+ * each `fakeTable()` (one per test) gets an isolated single-use token ledger.
+ */
 export function dataResponders(): FakeTransportTable {
+  const confirmStore = makeConfirmStore();
+  let created = 0;
   return {
     'data.listModels': dataModels,
     'data.describeModel': (args) => describeDataModel(args.model),
     'data.listRows': (args) => queryRows(args),
     'data.facets': (args) => facetRows(args),
     'data.readRow': (args) => readDataRow(args.model, args.id),
+    'data.writeRow': (args) => {
+      // Validate the model (unknown → throws, mirroring the server 404).
+      describeDataModel(args.model);
+      if (args.id === undefined) {
+        created += 1;
+        return { id: `${args.model}_new_${created}`, ...args.patch };
+      }
+      return { id: args.id, ...args.patch };
+    },
+    'data.deleteRows': (args) => {
+      if (!confirmStore.consume(args.confirmToken)) {
+        throw confirmRequired(
+          confirmStore.issue(`${args.mode}-delete ${args.ids.length} rows from ${args.model}`),
+        );
+      }
+      return { deleted: args.ids.length };
+    },
+    'data.clearTable': (args) => {
+      if (!confirmStore.consume(args.confirmToken)) {
+        const total = dataRows(args.model).length;
+        throw confirmRequired(confirmStore.issue(`clear all ${total} rows from ${args.model}`));
+      }
+      return { deleted: dataRows(args.model).length };
+    },
+    'data.generateRows': (args) => {
+      if (args.count > GENERATE_ROWS_MAX) {
+        throw new FakeAdminError(
+          makeErrorBody('STUDIO_BAD_REQUEST', 400, {
+            title: 'Too many rows',
+            message: `Cannot generate ${args.count} rows in one call.`,
+            hint: `Maximum ${GENERATE_ROWS_MAX} rows per generate; requested ${args.count}.`,
+          }),
+        );
+      }
+      return { inserted: args.count };
+    },
   };
 }

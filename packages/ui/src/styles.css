@@ -198,25 +198,6 @@
   margin: 0 0 16px;
 }
 
-.vela-panel__cap {
-  display: flex;
-  gap: 8px;
-}
-
-.vela-panel__cap dt {
-  color: var(--vela-fg-muted);
-  min-width: 96px;
-}
-
-.vela-panel__cap dd {
-  margin: 0;
-}
-
-.vela-panel__note {
-  color: var(--vela-fg-muted);
-  font-size: 12px;
-}
-
 .vela-panel--loading {
   color: var(--vela-fg-muted);
 }
@@ -974,6 +955,13 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.vela-grid__th--check,
+.vela-grid__td--check {
+  width: 32px;
+  text-align: center;
+  padding: 5px 8px;
+  cursor: default;
+}
 .vela-pager {
   display: flex;
   align-items: center;
@@ -1225,4 +1213,90 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+.vela-drawer__toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+/* ---- data write affordances -------------------------------------------- */
+
+.vela-data__writes {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--vela-border);
+}
+
+/* ---- row form ----------------------------------------------------------- */
+
+.vela-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.vela-form__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.vela-form__label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--vela-fg-muted);
+}
+.vela-form__type {
+  font-size: 11px;
+  color: var(--vela-fg-muted);
+  opacity: 0.7;
+}
+.vela-form__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* ---- modal (confirm / generate) ---------------------------------------- */
+
+.vela-modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 16vh;
+  background: color-mix(in srgb, #000 45%, transparent);
+  z-index: 1100;
+}
+.vela-modal__box {
+  width: 100%;
+  max-width: 420px;
+  padding: 20px;
+  border: 1px solid var(--vela-border);
+  border-radius: var(--vela-radius);
+  background: var(--vela-bg-elevated);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.vela-modal__title {
+  margin: 0;
+  font-size: 16px;
+}
+.vela-modal__body {
+  margin: 0;
+  color: var(--vela-fg-muted);
+  font-size: 14px;
+}
+.vela-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }

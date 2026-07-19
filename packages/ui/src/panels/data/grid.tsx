@@ -36,6 +36,13 @@ function sortIndicator(sort: DataView['sort'], field: string): string {
   return sort.order === 'asc' ? ' ▲' : ' ▼';
 }
 
+/** Row-selection wiring for the checkbox column (write mode only). */
+export interface GridSelection {
+  selectedIds: ReadonlySet<string>;
+  onToggle: (id: string) => void;
+  onToggleAll: (ids: string[], select: boolean) => void;
+}
+
 export interface DataGridProps {
   columns: StudioColumn[];
   rows: Row[];
@@ -43,6 +50,8 @@ export interface DataGridProps {
   sort: DataView['sort'];
   onSortChange: (sort: DataView['sort']) => void;
   onSelectRow: (id: string) => void;
+  /** When present, a leading checkbox column renders for bulk delete. */
+  selection?: GridSelection;
 }
 
 export function DataGrid({
@@ -52,6 +61,7 @@ export function DataGrid({
   sort,
   onSortChange,
   onSelectRow,
+  selection,
 }: DataGridProps): ReactNode {
   const columnDefs = useMemo(() => {
     const helper = createColumnHelper<Row>();
@@ -89,6 +99,13 @@ export function DataGrid({
   const paddingTop = virtualRows.length > 0 ? virtualRows[0].start : 0;
   const paddingBottom =
     virtualRows.length > 0 ? totalSize - virtualRows[virtualRows.length - 1].end : 0;
+  const colCount = columns.length + (selection !== undefined ? 1 : 0);
+
+  const pageIds = selection !== undefined ? rows.map((row) => formatCell(row[pkField])) : [];
+  const allSelected =
+    selection !== undefined &&
+    pageIds.length > 0 &&
+    pageIds.every((id) => selection.selectedIds.has(id));
 
   return (
     <div className="vela-grid" ref={scrollRef} data-testid="data-grid">
@@ -96,6 +113,16 @@ export function DataGrid({
         <thead>
           {table.getHeaderGroups().map((group) => (
             <tr key={group.id}>
+              {selection !== undefined ? (
+                <th className="vela-grid__th vela-grid__th--check">
+                  <input
+                    type="checkbox"
+                    aria-label="Select all rows"
+                    checked={allSelected}
+                    onChange={(event) => selection.onToggleAll(pageIds, event.target.checked)}
+                  />
+                </th>
+              ) : null}
               {group.headers.map((header) => (
                 <th key={header.id} className="vela-grid__th">
                   <button
@@ -116,7 +143,7 @@ export function DataGrid({
         <tbody>
           {paddingTop > 0 ? (
             <tr aria-hidden="true">
-              <td colSpan={columns.length} style={{ height: paddingTop }} />
+              <td colSpan={colCount} style={{ height: paddingTop }} />
             </tr>
           ) : null}
           {virtualRows.map((virtualRow) => {
@@ -129,6 +156,19 @@ export function DataGrid({
                 data-testid="data-grid-row"
                 onClick={() => onSelectRow(id)}
               >
+                {selection !== undefined ? (
+                  <td
+                    className="vela-grid__td vela-grid__td--check"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <input
+                      type="checkbox"
+                      aria-label={`Select row ${id}`}
+                      checked={selection.selectedIds.has(id)}
+                      onChange={() => selection.onToggle(id)}
+                    />
+                  </td>
+                ) : null}
                 {row.getVisibleCells().map((cell) => (
                   <td key={cell.id} className="vela-grid__td" title={formatCell(cell.getValue())}>
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -139,7 +179,7 @@ export function DataGrid({
           })}
           {paddingBottom > 0 ? (
             <tr aria-hidden="true">
-              <td colSpan={columns.length} style={{ height: paddingBottom }} />
+              <td colSpan={colCount} style={{ height: paddingBottom }} />
             </tr>
           ) : null}
         </tbody>

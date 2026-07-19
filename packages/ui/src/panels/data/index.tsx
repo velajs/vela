@@ -12,10 +12,13 @@ import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import type { StudioGridFilter, StudioModelInfo } from '@velajs/studio-protocol';
-import { useAdminQuery } from '../../data/query';
+import { useAdminMutation, useAdminQuery } from '../../data/query';
+import { useStudioCapabilities } from '../../data/capabilities';
 import { Panel, QueryView, Badge, Drawer, JsonBlock, KeyValueList } from '../shared';
 import { EmptyState, AdminErrorView } from '../shared';
 import { DataGrid } from './grid';
+import { DataWrites } from './writes';
+import { RowForm } from './row-form';
 import { FacetBar } from './facets';
 import { FilterBuilder } from './filters';
 import {
@@ -64,7 +67,14 @@ export default function DataPanel(): ReactNode {
   const navigate = useNavigate();
   const rawSearch = useSearch({ strict: false });
   const view = useMemo(() => toDataView(decodeDataViewSearch(rawSearch)), [rawSearch]);
+  const { capabilities } = useStudioCapabilities();
+  const canEdit = capabilities.writes.dataEditable;
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [editing, setEditing] = useState(false);
+  const editMutation = useAdminMutation('data.writeRow', {
+    invalidates: ['data.listRows', 'data.readRow'],
+  });
 
   const update = (next: DataView): void => {
     void navigate({ to: '/data', search: () => toSearch(next) });
@@ -91,7 +101,40 @@ export default function DataPanel(): ReactNode {
 
   const selectModel = (name: string): void => {
     setSelectedId(null);
+    setSelectedIds(new Set());
+    setEditing(false);
     update({ ...DEFAULT_DATA_VIEW, model: name });
+  };
+
+  const openRow = (id: string): void => {
+    setSelectedId(id);
+    setEditing(false);
+  };
+
+  const closeRow = (): void => {
+    setSelectedId(null);
+    setEditing(false);
+    editMutation.reset();
+  };
+
+  const toggleSelect = (id: string): void => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = (ids: string[], select: boolean): void => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) {
+        if (select) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
   };
 
   const toggleFacet = (field: string, value: unknown): void => {
@@ -164,6 +207,14 @@ export default function DataPanel(): ReactNode {
                     </div>
                   </div>
 
+                  {canEdit ? (
+                    <DataWrites
+                      descriptor={descriptor}
+                      selectedIds={selectedIds}
+                      onClearSelection={() => setSelectedIds(new Set())}
+                    />
+                  ) : null}
+
                   <FilterBuilder
                     columns={descriptor.columns}
                     filters={view.filters}
@@ -201,7 +252,16 @@ export default function DataPanel(): ReactNode {
                           pkField={descriptor.primaryKeys[0] ?? 'id'}
                           sort={view.sort}
                           onSortChange={(sort) => update({ ...view, sort })}
-                          onSelectRow={setSelectedId}
+                          onSelectRow={openRow}
+                          selection={
+                            canEdit
+                              ? {
+                                  selectedIds,
+                                  onToggle: toggleSelect,
+                                  onToggleAll: toggleSelectAll,
+                                }
+                              : undefined
+                          }
                         />
                         <div className="vela-pager">
                           <span className="vela-pager__info">
@@ -260,7 +320,7 @@ export default function DataPanel(): ReactNode {
       <Drawer
         open={selectedId !== null}
         title={selectedId !== null ? `Row ${selectedId}` : 'Row'}
-        onClose={() => setSelectedId(null)}
+        onClose={closeRow}
       >
         {detail.error !== null ? (
           <AdminErrorView error={detail.error} />
@@ -268,13 +328,45 @@ export default function DataPanel(): ReactNode {
           <p className="vela-state__hint">Loading…</p>
         ) : detail.data === null ? (
           <EmptyState label="Row not found" />
-        ) : (
-          <KeyValueList
-            rows={Object.entries(detail.data).map(([key, value]) => [
-              key,
-              <JsonBlock key={key} value={value} />,
-            ])}
+        ) : editing && descriptor !== undefined ? (
+          <RowForm
+            columns={descriptor.columns}
+            mode="edit"
+            initial={detail.data}
+            busy={editMutation.isPending}
+            error={editMutation.error}
+            onCancel={() => {
+              setEditing(false);
+              editMutation.reset();
+            }}
+            onSubmit={(patch) =>
+              editMutation.mutate(
+                { model: model ?? '', id: selectedId ?? '', patch },
+                {
+                  onSuccess: () => {
+                    setEditing(false);
+                    editMutation.reset();
+                  },
+                },
+              )
+            }
           />
+        ) : (
+          <>
+            {canEdit ? (
+              <div className="vela-drawer__toolbar">
+                <button type="button" className="vela-btn" onClick={() => setEditing(true)}>
+                  Edit
+                </button>
+              </div>
+            ) : null}
+            <KeyValueList
+              rows={Object.entries(detail.data).map(([key, value]) => [
+                key,
+                <JsonBlock key={key} value={value} />,
+              ])}
+            />
+          </>
         )}
       </Drawer>
     </Panel>

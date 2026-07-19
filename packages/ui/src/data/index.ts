@@ -14,3 +14,10 @@ export type {
 } from './query';
 export { DEFAULT_CAPABILITIES, useStudioCapabilities } from './capabilities';
 export type { StudioCapabilitiesResult } from './capabilities';
+export { readConfirmChallenge, useConfirmedMutation } from './use-confirmed-mutation';
+export type {
+  ConfirmChallenge,
+  PendingConfirm,
+  UseConfirmedMutationOptions,
+  UseConfirmedMutationResult,
+} from './use-confirmed-mutation';
