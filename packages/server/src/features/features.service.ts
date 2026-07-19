@@ -9,11 +9,13 @@
  *   (b) the per-app `EntrypointRegistry` kinds (`queue`, `websocket`);
  *   (c) `Container.has(...)` probes for optional public tokens (schedule, live).
  *
- * Two keys are handled out-of-band: `openapi` is gated SOLELY on a configured
- * `rootModule` (the op's precondition), never on op registration — so it stays
- * dark even though `app.openapi` is always registered. Absent evidence ⇒ false.
+ * Two keys are handled out-of-band, never on op registration: `openapi` is
+ * gated SOLELY on a configured `rootModule` (the op's precondition), and `data`
+ * SOLELY on a bound `STUDIO_MODEL_SOURCE` with at least one managed model (the
+ * data ops are registered unconditionally, so registration is not a signal for
+ * them). Absent evidence ⇒ false.
  *
- * GAP (documented in the M4 report): `data`, `timeTravel`, `transfer`, `auth`,
+ * GAP (documented in the M4 report): `timeTravel`, `transfer`, `auth`,
  * `authOrganizations`, `flags`, `presence` have no public-barrel probe token and
  * no core entrypoint kind in 1.20.0 — their packages live outside the vela
  * barrel. They read `false` here until their op namespace registers in a later
@@ -36,6 +38,7 @@ import { STUDIO_RESOLVED_CONFIG } from '../tokens';
 import { deriveWriteGates } from '../studio.types';
 import type { ResolvedStudioConfig } from '../studio.types';
 import { StudioDispatchRegistry } from '../rpc/dispatch.registry';
+import { STUDIO_MODEL_SOURCE } from '../data/model-source.port';
 
 /**
  * Per-feature entrypoint-kind evidence (source (b)). A kind counts only when the
@@ -94,6 +97,11 @@ export class StudioFeaturesService {
     // has nothing to scan otherwise), regardless of `app.openapi` being wired.
     if (key === 'openapi') return this.config.rootModule !== undefined;
 
+    // `data` is likewise out-of-band: the data ops are registered
+    // unconditionally, so the honest signal is a bound model source that
+    // actually discovers at least one managed model.
+    if (key === 'data') return this.dataBound();
+
     // (a) Studio ships an op for this feature.
     if (registered.has(key)) return true;
 
@@ -106,6 +114,17 @@ export class StudioFeaturesService {
     if (probes !== undefined && probes.some((token) => this.container.has(token))) return true;
 
     return false;
+  }
+
+  /**
+   * `data` evidence: a `STUDIO_MODEL_SOURCE` is bound (the crud subpath or a BYO
+   * source module) AND it discovers ≥1 managed model. Resolving + listing here
+   * is safe — capability negotiation runs post-bootstrap and `listModels()` is a
+   * pure metadata read (no adapter I/O).
+   */
+  private dataBound(): boolean {
+    if (!this.container.has(STUDIO_MODEL_SOURCE)) return false;
+    return this.container.resolve(STUDIO_MODEL_SOURCE).listModels().length > 0;
   }
 
   /** Feature keys for which at least one op handler is registered (source (a)). */

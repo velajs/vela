@@ -74,6 +74,7 @@ export function resolveStudioConfig(
     ...(token !== undefined ? { token } : {}),
     ...(options.rootModule !== undefined ? { rootModule: options.rootModule } : {}),
     editable,
+    ...(options.managedModels !== undefined ? { managedModels: options.managedModels } : {}),
     rateLimit: options.rateLimit === undefined ? { ...DEFAULT_RATE_LIMIT } : options.rateLimit,
     subTokenTtlSec: options.subTokenTtlSec ?? 300,
     auditBufferSize: options.auditBufferSize ?? 500,

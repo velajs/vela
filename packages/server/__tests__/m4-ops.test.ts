@@ -161,6 +161,32 @@ describe('app.openapi', () => {
     expect(paths).toContain('/status');
     expect(paths.some((p) => p.startsWith('/widgets'))).toBe(true);
   });
+
+  it('carries the app global prefix in the documented paths', async () => {
+    // The captured global prefix must flow into createOpenApiDocument so the
+    // documented paths match the real mounted routes (M4 review carry-over).
+    @Module({
+      imports: [
+        ApiModule,
+        // `absolute` keeps the admin surface at /_vela/admin (reachable by the
+        // rpc helper) while the app's own routes take the global prefix — which
+        // the captured holder still reports, so the doc paths carry it.
+        StudioModule.forRoot({ token: TOKEN, rootModule: ApiModule, absolute: true }),
+      ],
+    })
+    class PrefixedAppModule {}
+    const app = await VelaFactory.create(PrefixedAppModule, { globalPrefix: '/api/v1' });
+
+    const r = await rpc(app, 'app.openapi');
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error('expected ok');
+    const doc = r.data as { paths?: Record<string, unknown> };
+    const paths = Object.keys(doc.paths ?? {});
+    expect(paths).toContain('/api/v1/status');
+    expect(paths.some((p) => p.startsWith('/api/v1/widgets'))).toBe(true);
+    // ...and nothing is documented at the un-prefixed path.
+    expect(paths).not.toContain('/status');
+  });
 });
 
 describe('logs.tail', () => {

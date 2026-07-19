@@ -73,6 +73,12 @@ export { StudioAppOps } from './ops/app.ops';
 export { StudioLogsOps } from './ops/logs.ops';
 export { StudioCapabilitiesOps } from './ops/studio.ops';
 
+// M5 data browser — the READ ops + the source port (the crud binding lives in
+// the optional `@velajs/studio/crud` subpath, never in this core `.` entry).
+export { StudioDataOps } from './data/data.ops';
+export { STUDIO_MODEL_SOURCE } from './data/model-source.port';
+export type { StudioModelSource } from './data/model-source.port';
+
 // HTTP
 export { RateLimiter, FixedWindowCounter, DEFAULT_MAX_ENTRIES } from './http/middleware/rate-limit';
 export type { RateLimitOptions, Clock } from './http/middleware/rate-limit';

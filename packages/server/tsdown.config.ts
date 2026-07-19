@@ -9,6 +9,7 @@ export default defineConfig({
     'src/live/index.ts',
     'src/schedule/index.ts',
     'src/timetravel/index.ts',
+    'src/crud/index.ts',
   ],
   format: ['esm'],
   dts: true,

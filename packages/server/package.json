@@ -58,6 +58,10 @@
     "./timetravel": {
       "types": "./dist/timetravel/index.d.ts",
       "import": "./dist/timetravel/index.js"
+    },
+    "./crud": {
+      "types": "./dist/crud/index.d.ts",
+      "import": "./dist/crud/index.js"
     }
   },
   "scripts": {
@@ -70,6 +74,7 @@
     "@velajs/studio-protocol": "workspace:^"
   },
   "devDependencies": {
+    "@velajs/crud": "^1.19.1",
     "@velajs/vela": "^1.20.0",
     "hono": "^4",
     "tsdown": "catalog:",
@@ -77,8 +82,14 @@
     "vitest": "catalog:"
   },
   "peerDependencies": {
+    "@velajs/crud": ">=1.19.0 <2",
     "@velajs/vela": ">=1.20.0 <2",
     "hono": ">=4"
+  },
+  "peerDependenciesMeta": {
+    "@velajs/crud": {
+      "optional": true
+    }
   },
   "engines": {
     "node": ">=24"

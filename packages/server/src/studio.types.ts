@@ -52,6 +52,13 @@ export interface StudioModuleOptions {
   rootModule?: Type;
   /** Editable-category overrides (each defaults to its env value, else false). */
   editable?: Partial<EditableFlags>;
+  /**
+   * Restrict which discovered crud models the data browser manages. `include`
+   * is an allow-list (only these surface); `exclude` is a deny-list. Each entry
+   * matches a model by its name OR its table name. Absent ⇒ every discovered
+   * model is managed.
+   */
+  managedModels?: { include?: string[]; exclude?: string[] };
   /** Audit ring-buffer capacity. Default 500. */
   auditBufferSize?: number;
   /** Log ring-buffer capacity. Default 1000. */
@@ -71,6 +78,8 @@ export interface ResolvedStudioConfig {
   /** The app's root module for OpenAPI generation (see {@link StudioModuleOptions.rootModule}). */
   rootModule?: Type;
   editable: EditableFlags;
+  /** Data-browser model allow/deny filter (see {@link StudioModuleOptions.managedModels}). */
+  managedModels?: { include?: string[]; exclude?: string[] };
   rateLimit: { windowMs: number; max: number } | false;
   subTokenTtlSec: number;
   auditBufferSize: number;

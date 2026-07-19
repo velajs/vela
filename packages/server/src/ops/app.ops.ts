@@ -52,6 +52,8 @@ export class StudioAppOps {
   openapi(_ctx: AdminOpContext): unknown {
     const root = this.config.rootModule;
     if (root === undefined) throw studioError('FEATURE_UNCONFIGURED');
-    return createOpenApiDocument(root);
+    // Carry the app's captured global prefix so documented paths match the real
+    // mounted routes (the contributor deposits it in the holder at mount time).
+    return createOpenApiDocument(root, { globalPrefix: this.holder.globalPrefix });
   }
 }

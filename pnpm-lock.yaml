@@ -134,6 +134,9 @@ importers:
         specifier: workspace:^
         version: link:../protocol
     devDependencies:
+      '@velajs/crud':
+        specifier: ^1.19.1
+        version: 1.19.1(@velajs/vela@1.20.0)(hono@4.12.30)(zod@4.4.3)
       '@velajs/vela':
         specifier: ^1.20.0
         version: 1.20.0
@@ -1315,6 +1318,14 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@velajs/crud@1.19.1':
+    resolution: {integrity: sha512-YPD8DRehPGWjhlus7hDTGpmM4+smH9zzaEEC5zm1mbAdEhU2Pi0Kwa31q1LWW+gKw1lB+pDMK89ThB7MSwRlqQ==}
+    engines: {node: '>=24'}
+    peerDependencies:
+      '@velajs/vela': '>=1.18.0'
+      hono: '>=4'
+      zod: '>=4'
+
   '@velajs/errors@1.1.0':
     resolution: {integrity: sha512-o9keDgzCCoUwzS8dwQJxzanc8pqlgQrNi1ikvwkDx1EYkdA/4TCvF6Q8fBZF9bxl17IVkTnDXFZQgxGMGmx+yA==}
     engines: {node: '>=24'}
@@ -2430,6 +2441,9 @@ packages:
   yuku-parser@0.6.9:
     resolution: {integrity: sha512-ChQnt7Ocxrg633pl0Ve6nLsysxX51uYJ2V6pEUeKyzZoaKSFFhQHFl8G5VBjitIrtpZb/QHktQSQdNoYsPTc5g==}
 
+  zod@4.4.3:
+    resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
+
 snapshots:
 
   '@andrewbranch/untar.js@1.0.3': {}
@@ -3248,6 +3262,12 @@ snapshots:
 
   '@typescript/typescript-win32-x64@7.0.2':
     optional: true
+
+  '@velajs/crud@1.19.1(@velajs/vela@1.20.0)(hono@4.12.30)(zod@4.4.3)':
+    dependencies:
+      '@velajs/vela': 1.20.0
+      hono: 4.12.30
+      zod: 4.4.3
 
   '@velajs/errors@1.1.0': {}
 
@@ -4303,3 +4323,5 @@ snapshots:
       '@yuku-parser/binding-linux-x64-musl': 0.6.9
       '@yuku-parser/binding-win32-arm64': 0.6.9
       '@yuku-parser/binding-win32-x64': 0.6.9
+
+  zod@4.4.3: {}
