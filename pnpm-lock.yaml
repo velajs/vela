@@ -55,11 +55,11 @@ importers:
         specifier: 'catalog:'
         version: 1.15.43
       '@velajs/authz':
-        specifier: ^1.0.0
-        version: 1.0.1(@velajs/vela@1.19.1)
+        specifier: ^1.1.0
+        version: 1.1.0(@velajs/vela@1.21.0)
       '@velajs/vela':
-        specifier: ^1.19.0
-        version: 1.19.1
+        specifier: ^1.21.0
+        version: 1.21.0
       oxfmt:
         specifier: 'catalog:'
         version: 0.58.0
@@ -819,11 +819,11 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@velajs/authz@1.0.1':
-    resolution: {integrity: sha512-ILDZyiWoWKj5nXvWFS4jbbs2H2KEWnItsO0GEymmnKO86tCYQgeBPvnwiA71jonH5JvfIjSTIhV4dVdLF/3oJQ==}
+  '@velajs/authz@1.1.0':
+    resolution: {integrity: sha512-L9JU1ys6qhphTD/MMNriiLGXdWezfr7jvn8cZXaCLawL6R1MyUHCMHxbAEFlPL5YKBzHqsHTZtNY0dGaT1KG4Q==}
     engines: {node: '>=24'}
     peerDependencies:
-      '@velajs/vela': '>=1.11.0'
+      '@velajs/vela': '>=1.21.0 <2'
     peerDependenciesMeta:
       '@velajs/vela':
         optional: true
@@ -832,12 +832,12 @@ packages:
     resolution: {integrity: sha512-GOQ7WMfUYlyZSLNdBTZcQvuCKTlD/Vlx+vgucLncYEVpE6rtmIO6Mi6Aw0ltSt7EfVXpWBkoMMfq1t1nqGWGPg==}
     engines: {node: '>=24'}
 
-  '@velajs/live-protocol@1.0.1':
-    resolution: {integrity: sha512-Y5Alyf8Yh/EFEa+gToANcBgdIxXO7YphSzePCAZrPiOwFQNkx7TrKuzI8DpbAvBjTGd9Eolaloww+pZl1Io5GA==}
+  '@velajs/live-protocol@1.1.0':
+    resolution: {integrity: sha512-ynRgROK+QjEJny18p8gFTP9ug94RvP/wc5KG1ki2+KzxlwFoOT6ZsgyLs67I7uEDnaBCr+Ki3rYM6MYtJIfimw==}
     engines: {node: '>=24'}
 
-  '@velajs/vela@1.19.1':
-    resolution: {integrity: sha512-4KkJRN7DYPKvjC6pcI6ZRcZkrvzu6NMY3rLRePqrSxzV0PXbjewWuXrM0odKd65AgFbq3DUS1oobiVK0MTTY8A==}
+  '@velajs/vela@1.21.0':
+    resolution: {integrity: sha512-RPMkf+s9g0G3uhGoMA7C271x+aC54NU8ktzlbj+1MvdQYC5geQqHTRSKruocxym26k0ckkINEU75E3cJbrGwIQ==}
     engines: {node: '>=24'}
     peerDependencies:
       intl-messageformat: '>=10'
@@ -2481,18 +2481,18 @@ snapshots:
   '@typescript/typescript-win32-x64@7.0.2':
     optional: true
 
-  '@velajs/authz@1.0.1(@velajs/vela@1.19.1)':
+  '@velajs/authz@1.1.0(@velajs/vela@1.21.0)':
     optionalDependencies:
-      '@velajs/vela': 1.19.1
+      '@velajs/vela': 1.21.0
 
   '@velajs/errors@1.0.1': {}
 
-  '@velajs/live-protocol@1.0.1': {}
+  '@velajs/live-protocol@1.1.0': {}
 
-  '@velajs/vela@1.19.1':
+  '@velajs/vela@1.21.0':
     dependencies:
       '@velajs/errors': 1.0.1
-      '@velajs/live-protocol': 1.0.1
+      '@velajs/live-protocol': 1.1.0
       hono: 4.12.30
 
   '@vitest/expect@4.1.10':
