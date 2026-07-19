@@ -13,6 +13,7 @@
  *   - `app.entrypoints`  → `EntrypointRegistry` (public global token).
  *   - `app.routes`       → ONLY reachable here (RouteManager is internal).
  */
+import { Injectable } from '@velajs/vela';
 import type { Hono } from 'hono';
 import type { RouteDescription } from '@velajs/vela';
 
@@ -30,6 +31,7 @@ import type { RouteDescription } from '@velajs/vela';
  * (`ctx.app.describeRoutes()`), and the collector reports real handler/source.
  * Without the adapter the mount-time Hono capture is the fallback (unchanged).
  */
+@Injectable()
 export class StudioAppHolder {
   private honoApp: Hono | null = null;
   private prefix = '';
