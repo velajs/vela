@@ -15,12 +15,10 @@ export type { CreateNativeClientOptions } from './types';
  *    defaults ON whenever a durable store exists. An explicit `mutationStore`
  *    wins over `storage`; an explicit `offline` (including `false`) wins over
  *    the store-derived default.
- *  - `authToken`, `fetch`, and `WebSocket` pass straight through. The core
- *    already carries the credential as a Bearer header on HTTP mutations and a
- *    `?token=` query param on the live socket — never a `Cookie` — so it is
- *    natively correct for the cookie-jar-less, `Origin`-less native runtime
- *    with zero extra plumbing. The core resolves the global `fetch`/`WebSocket`
- *    when they are omitted.
+ *  - `authToken`, `socketTicket`, `fetch`, and `WebSocket` pass straight
+ *    through. HTTP uses the bearer provider; WebSockets use only a short-lived,
+ *    room-bound ticket. Durable offline storage additionally requires a stable
+ *    non-secret `identity` fingerprint.
  *
  * No cross-tab coordination is defaulted: React Native is single-process and
  * has no `BroadcastChannel`.

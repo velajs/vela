@@ -60,11 +60,16 @@ export interface LiveClientOptions {
   fetch?: typeof fetch;
 
   /**
-   * Async token provider, re-invoked per socket connect and per mutation.
-   * Sockets carry it as a `?token=` query param (browsers cannot set WS
-   * headers — use short-lived rotating tokens); mutations as a Bearer header.
+   * Async HTTP token provider, re-invoked per mutation and sent as a Bearer
+   * header. It is never placed in a WebSocket URL.
    */
   authToken?: () => string | undefined | Promise<string | undefined>;
+  /**
+   * Optional short-lived, room-bound, single-use socket ticket provider. The
+   * server should expire tickets within 30 seconds. Browser apps may omit this
+   * and authenticate sockets with secure cookies plus server-side Origin checks.
+   */
+  socketTicket?: (room: string) => string | undefined | Promise<string | undefined>;
 
   /** App-level `{event:'ping'}` keepalive cadence (default 30 000 ms; CF answers without waking the DO). */
   heartbeatIntervalMs?: number;
@@ -79,10 +84,15 @@ export interface LiveClientOptions {
   offline?: boolean | OfflineQueueOptions;
   /** App/schema version stamped on persisted writes; stale-version records purged on hydrate. */
   persistenceVersion?: string;
-  /** Issuing-identity provider; stamped on enqueue, re-checked before replay. */
+  /**
+   * Issuing account+login-epoch provider; required for offline mutations,
+   * used as the durable partition, stamped on enqueue, and rechecked on replay.
+   * After changing/clearing it on logout, call
+   * `client.purgeOfflineMutations(previousIdentity)` for the old epoch.
+   */
   identity?: () => string | null | undefined;
-  /** Cross-tab coordination via BroadcastChannel (one shared socket per app). */
-  crossTab?: boolean | CrossTabOptions;
+  /** Explicitly scoped cross-tab coordination via BroadcastChannel. Off by default. */
+  crossTab?: CrossTabOptions;
 }
 
 export interface SubscribeOptions {
@@ -144,13 +154,19 @@ export interface HydrationEntry {
 /**
  * Durable FIFO store for the offline mutation queue (BYO storage). The client
  * owns the queue + replay logic; this only persists/loads/removes records.
- * `load()` MUST return records in append (FIFO) order.
+ * `load()` MUST return records in append (FIFO) order within the supplied
+ * authenticated account/epoch partition.
  */
 export interface MutationStore {
-  append(record: PersistedMutation): Promise<void>;
-  load(): Promise<PersistedMutation[]>;
-  remove(id: string): Promise<void>;
-  clear(): Promise<void>;
+  append(record: PersistedMutation, scope: MutationStoreScope): Promise<void>;
+  load(scope: MutationStoreScope): Promise<PersistedMutation[]>;
+  remove(id: string, scope: MutationStoreScope): Promise<void>;
+  clear(scope: MutationStoreScope): Promise<void>;
+}
+
+/** Authenticated account/epoch partition for durable offline records. */
+export interface MutationStoreScope {
+  account: string;
 }
 
 /**
@@ -166,11 +182,10 @@ export interface PersistedMutation {
   headers?: Record<string, string>;
   room?: string;
   /**
-   * Issuing-identity fingerprint at enqueue (`null` = signed out). Replay is
-   * identity-gated when {@link LiveClientOptions.identity} is set. Absent =
-   * ambient.
+   * Issuing account+login-epoch fingerprint. It selects the durable store
+   * partition and is rechecked before replay.
    */
-  identity?: string | null;
+  identity: string;
   /**
    * App/schema version stamp; a record whose version !== the current
    * `persistenceVersion` is dropped + purged on hydrate. Absent = no gating.
@@ -221,7 +236,13 @@ export interface BroadcastChannelLike {
 export type BroadcastChannelFactory = (name: string) => BroadcastChannelLike;
 
 export interface CrossTabOptions {
-  /** Channel name shared by every tab of the app. Default `'velajs-live'`. */
+  /** Stable application namespace. Required to prevent unrelated apps sharing a channel. */
+  appId: string;
+  /** Authenticated session identifier/fingerprint. Never use a bearer token here. */
+  sessionId: string;
+  /** Monotonic login/account epoch; recreate the client whenever it changes. */
+  accountEpoch: string;
+  /** Optional channel prefix. Default `'velajs-live'`. */
   channelName?: string;
   /** Leader heartbeat cadence. Default 1000 ms. */
   heartbeatMs?: number;

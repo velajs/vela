@@ -3,7 +3,7 @@ import type { AsyncStorageLike } from '../src/types';
 // A minimal WebSocketLike-shaped fake. `@velajs/client`'s WebSocketFactory is
 // `(url: string) => WebSocketLike`, so this class is used through that exact
 // signature (see `makeSocketFactory`) — no casts. It captures the connect URL
-// (that is where the `?token=` auth param lands) and lets a test drive the
+// (that is where the short-lived `?ticket=` auth claim lands) and lets a test drive the
 // open/drop lifecycle the offline queue reacts to.
 export class FakeSocket {
   readyState = 0;

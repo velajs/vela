@@ -4,6 +4,7 @@ import { RoomConnection } from './connection';
 import { CrossTabCoordinator } from './cross-tab';
 import type { WantSpec } from './cross-tab';
 import { isVelaLiveError, toMutationError, VelaLiveError } from './errors';
+import { applySnapshotFrame, isCursorEpochPair } from './frame-reducer';
 import { MutationQueue } from './mutation-queue';
 import type { QueuedMutation } from './mutation-queue';
 import { applyOptimisticLayer, dropConfirmedLayers } from './optimistic';
@@ -38,6 +39,22 @@ const DEFAULT_WS_PATH = '/rooms/:room/ws';
 const DEFAULT_ROOM = 'default';
 const DEFAULT_HEARTBEAT_MS = 30_000;
 const DEFAULT_MAX_QUEUE = 1000;
+
+interface ActiveOfflineMutation {
+  entry: QueuedMutation;
+  controller: AbortController;
+  settled: boolean;
+}
+
+const withoutAuthorization = (
+  headers: Record<string, string> | undefined,
+): Record<string, string> | undefined => {
+  if (headers === undefined) return undefined;
+  const safe = Object.fromEntries(
+    Object.entries(headers).filter(([name]) => name.toLowerCase() !== 'authorization'),
+  );
+  return Object.keys(safe).length === 0 ? undefined : safe;
+};
 
 /**
  * The framework-neutral Vela live client.
@@ -74,6 +91,10 @@ export class LiveClient<C extends LiveContract = LiveContract> {
   private readonly queue?: MutationQueue;
   private readonly settledListeners = new Set<(event: MutationSettledEvent) => void>();
   private readonly pendingListeners = new Set<() => void>();
+  /** Account/login epochs retired through `purgeOfflineMutations()`. */
+  private readonly retiredOfflineIdentities = new Set<string>();
+  /** Drained queue entries currently being replayed (and therefore absent from `MutationQueue`). */
+  private readonly activeOfflineMutations = new Map<string, ActiveOfflineMutation>();
   private offlineQueueBeforeFirstConnect = false;
   private flushing = false;
 
@@ -86,6 +107,12 @@ export class LiveClient<C extends LiveContract = LiveContract> {
 
   constructor(private readonly options: LiveClientOptions) {
     if (options.offline) {
+      if (options.identity === undefined) {
+        throw new VelaLiveError(
+          'OFFLINE_IDENTITY_REQUIRED',
+          'offline mutations require an authenticated identity provider',
+        );
+      }
       const config: OfflineQueueOptions =
         typeof options.offline === 'object' ? options.offline : {};
       this.offlineQueueBeforeFirstConnect = config.queueBeforeFirstConnect ?? false;
@@ -94,19 +121,40 @@ export class LiveClient<C extends LiveContract = LiveContract> {
         maxItems: config.maxItems ?? DEFAULT_MAX_QUEUE,
         version: options.persistenceVersion,
         store: options.mutationStore,
+        account: () => {
+          const identity = options.identity?.();
+          return typeof identity === 'string' && identity.length > 0 && identity.length <= 256
+            ? identity
+            : undefined;
+        },
         onError,
         onSize: () => this.notifyPending(),
         onEvict: (entry) => this.emitSettled(entry, 'dropped', 'OFFLINE_QUEUE_OVERFLOW'),
+        onIdentityPurge: (entry) => this.emitSettled(entry, 'dropped', 'OFFLINE_IDENTITY_PURGED'),
+        validateHydrated: (record) => this.isSafePersistedMutation(record),
+        onInvalidHydrated: (record) => this.emitInvalidHydrated(record),
       });
       void this.queue
         .hydrate()
-        .then(() => this.flush())
+        .then(() => {
+          // Hydration may finish after the socket became offline and a new
+          // live write was queued. Never let the constructor's background
+          // replay bypass the same proven-offline gate used by `mutate()`;
+          // reconnect and explicit `flush()` remain the replay triggers.
+          if (!this.shouldQueueEagerly()) return this.flush();
+          return undefined;
+        })
         .catch(() => {});
     }
 
     if (options.crossTab) {
-      const config: CrossTabOptions | undefined =
-        typeof options.crossTab === 'object' ? options.crossTab : undefined;
+      if (typeof options.crossTab !== 'object') {
+        throw new VelaLiveError(
+          'CROSS_TAB_SCOPE_REQUIRED',
+          'cross-tab coordination requires appId, sessionId, and accountEpoch',
+        );
+      }
+      const config: CrossTabOptions = options.crossTab;
       this.coordinator = new CrossTabCoordinator(config, {
         onBecomeLeader: this.onBecomeLeader,
         onResignLeader: this.onResignLeader,
@@ -131,7 +179,7 @@ export class LiveClient<C extends LiveContract = LiveContract> {
     const key = subscriptionKey(query, argsKeyOf(args), room);
 
     let state = this.registry.get(key);
-    let fresh = false;
+    let fresh = state?.callbacks.size === 0;
     if (!state) {
       state = createSubscriptionState(query, args, room, subscribeOptions?.key);
       this.registry.set(key, state);
@@ -185,6 +233,7 @@ export class LiveClient<C extends LiveContract = LiveContract> {
     body?: unknown,
     mutateOptions?: MutateOptions,
   ): Promise<R> {
+    this.assertSameOriginMutationPath(path);
     const handles: Array<{ state: SubscriptionState; handle: LayerHandle }> = [];
     const paint = (state: SubscriptionState, transform: (current: unknown) => unknown): void => {
       const handle = applyOptimisticLayer(state, transform);
@@ -269,6 +318,63 @@ export class LiveClient<C extends LiveContract = LiveContract> {
     return this.queue?.size ?? 0;
   }
 
+  /**
+   * Retire and purge a previous account/login epoch after logout or account
+   * switch. The identity provider must already return the new epoch (or no
+   * identity), which prevents accidentally deleting the active partition.
+   *
+   * Pending live writes for the retired epoch reject with
+   * `OFFLINE_IDENTITY_PURGED`; its durable partition is cleared only after all
+   * earlier persistence operations settle. Returns the number of live writes
+   * rejected. Ordinary {@link close} deliberately does not clear persistence.
+   */
+  async purgeOfflineMutations(previousIdentity: string): Promise<number> {
+    if (
+      typeof previousIdentity !== 'string' ||
+      previousIdentity.length === 0 ||
+      previousIdentity.length > 256
+    ) {
+      throw new VelaLiveError(
+        'OFFLINE_INVALID_IDENTITY',
+        'offline mutation purge requires a non-empty account/login-epoch identity',
+      );
+    }
+    const queue = this.queue;
+    if (!queue) {
+      throw new VelaLiveError(
+        'OFFLINE_DISABLED',
+        'offline mutations must be enabled before an identity partition can be purged',
+      );
+    }
+    let currentIdentity: string | null | undefined;
+    try {
+      currentIdentity = this.options.identity?.();
+    } catch {
+      throw new VelaLiveError(
+        'OFFLINE_IDENTITY_UNAVAILABLE',
+        'active identity could not be verified; the offline partition was not purged',
+      );
+    }
+    if (currentIdentity === previousIdentity) {
+      throw new VelaLiveError(
+        'OFFLINE_IDENTITY_STILL_ACTIVE',
+        'change or clear the active identity before purging its offline mutation partition',
+      );
+    }
+
+    // Retire synchronously before the first await: no replay or enqueue can
+    // race a logout clear under the old account/login epoch.
+    this.retiredOfflineIdentities.add(previousIdentity);
+    let activeCount = 0;
+    for (const active of this.activeOfflineMutations.values()) {
+      if (active.entry.identity !== previousIdentity || active.settled) continue;
+      activeCount += 1;
+      this.settlePurgedActiveMutation(active, queue);
+    }
+    const queuedCount = await queue.purgeAccount(previousIdentity);
+    return activeCount + queuedCount;
+  }
+
   /** Observe terminal verdicts — the only channel for hydrated (awaiter-less) writes. */
   onMutationSettled(callback: (event: MutationSettledEvent) => void): Unsubscribe {
     this.settledListeners.add(callback);
@@ -307,16 +413,34 @@ export class LiveClient<C extends LiveContract = LiveContract> {
 
   /** Seed subscription state before connecting (SSR hydration). Subscribes then resume from the seeded cursor. */
   hydrate(entries: HydrationEntry[]): void {
-    for (const entry of entries) {
+    for (const entry of entries.slice(0, 1000)) {
+      if (
+        typeof entry.query !== 'string' ||
+        entry.query.length === 0 ||
+        entry.query.length > 256 ||
+        !isCursorEpochPair(entry.cursor, entry.epoch) ||
+        !isJsonWithin(entry.args ?? null, 32 * 1024) ||
+        !isJsonWithin(entry.value, 64 * 1024)
+      ) {
+        continue;
+      }
       const room = entry.room ?? this.options.defaultRoom ?? DEFAULT_ROOM;
-      const key = subscriptionKey(entry.query, argsKeyOf(entry.args), room);
+      if (typeof room !== 'string' || room.length === 0 || room.length > 512) continue;
+      let key: string;
+      try {
+        key = subscriptionKey(entry.query, argsKeyOf(entry.args), room);
+      } catch {
+        continue;
+      }
       if (this.registry.has(key)) continue;
-      const state = createSubscriptionState(entry.query, entry.args, room);
-      state.serverBase = entry.value;
-      state.hasBase = true;
-      state.lastValue = entry.value;
-      state.serverCursor = entry.cursor;
-      state.serverEpoch = entry.epoch;
+      let args: unknown;
+      try {
+        args = structuredClone(entry.args);
+      } catch {
+        continue;
+      }
+      const state = createSubscriptionState(entry.query, args, room);
+      if (applySnapshotFrame(state, entry.value, entry.cursor, entry.epoch) !== 'notify') continue;
       this.registry.set(key, state);
     }
   }
@@ -338,6 +462,15 @@ export class LiveClient<C extends LiveContract = LiveContract> {
   close(): void {
     this.coordinator?.stop();
     this.queue?.clear();
+    for (const active of this.activeOfflineMutations.values()) {
+      if (active.settled) continue;
+      active.settled = true;
+      active.controller.abort();
+      active.entry.reject(
+        new VelaLiveError('CLIENT_CLOSED', 'client closed before the queued write replayed'),
+      );
+    }
+    this.activeOfflineMutations.clear();
     for (const connection of this.connections.values()) connection.close();
   }
 
@@ -403,13 +536,9 @@ export class LiveClient<C extends LiveContract = LiveContract> {
   ): void => {
     const state = this.registry.get(key);
     if (!state) return;
-    state.serverBase = value;
-    state.hasBase = true;
-    if (cursor !== undefined) state.serverCursor = cursor;
-    if (epoch !== undefined) state.serverEpoch = epoch;
-    dropConfirmedLayers(state, cursor, epoch);
-    refold(state);
-    notify(state);
+    const effect = applySnapshotFrame(state, value, cursor, epoch);
+    if (effect === 'notify') notify(state);
+    if (effect === 'resubscribe') this.coordinator?.want(key, specFor(state));
   };
 
   private readonly onFrameError = (
@@ -504,34 +633,58 @@ export class LiveClient<C extends LiveContract = LiveContract> {
     if (!queue) {
       return Promise.reject(new VelaLiveError('OFFLINE_DISABLED', 'no offline queue configured'));
     }
+    const identity = this.options.identity?.();
+    if (typeof identity !== 'string' || identity.length === 0) {
+      this.rollbackAll(handles);
+      return Promise.reject(
+        new VelaLiveError(
+          'OFFLINE_IDENTITY_REQUIRED',
+          'offline mutations require a non-empty authenticated identity',
+        ),
+      );
+    }
+    if (this.retiredOfflineIdentities.has(identity)) {
+      this.rollbackAll(handles);
+      return Promise.reject(
+        new VelaLiveError(
+          'OFFLINE_IDENTITY_PURGED',
+          'offline mutations cannot be queued for a retired account epoch',
+        ),
+      );
+    }
     return new Promise<R>((resolve, reject) => {
-      queue.enqueue({
-        path,
-        body,
-        method: mutateOptions?.method,
-        headers: mutateOptions?.headers,
-        room: mutateOptions?.room,
-        identity: this.options.identity ? (this.options.identity() ?? null) : undefined,
-        precondition: mutateOptions?.precondition,
-        hadAwaiter: true,
-        resolve: (value) => resolve(value as R),
-        reject: (error) => {
-          this.rollbackAll(handles);
-          reject(error);
-        },
-        onCommit: (stamp) => {
-          for (const { state, handle } of handles) {
-            if (handle.confirm(stamp) && refold(state)) notify(state);
-          }
-        },
-      });
+      try {
+        queue.enqueue({
+          path,
+          body,
+          method: mutateOptions?.method,
+          headers: withoutAuthorization(mutateOptions?.headers),
+          room: mutateOptions?.room,
+          identity,
+          precondition: mutateOptions?.precondition,
+          hadAwaiter: true,
+          resolve: (value) => resolve(value as R),
+          reject: (error) => {
+            this.rollbackAll(handles);
+            reject(error);
+          },
+          onCommit: (stamp) => {
+            for (const { state, handle } of handles) {
+              if (handle.confirm(stamp) && refold(state)) notify(state);
+            }
+          },
+        });
+      } catch (error) {
+        this.rollbackAll(handles);
+        reject(error);
+      }
     });
   }
 
   private async flushOnce(queue: MutationQueue): Promise<void> {
     // 1. Precondition conflicts — a queued write whose assumed value changed.
     for (const entry of queue.drainConflict()) {
-      queue.forget(entry.id);
+      queue.forget(entry.id, entry.identity);
       this.emitSettled(entry, 'dropped', 'OFFLINE_PRECONDITION_FAILED');
       entry.reject(
         new VelaLiveError('OFFLINE_PRECONDITION_FAILED', 'queued mutation precondition failed'),
@@ -543,12 +696,16 @@ export class LiveClient<C extends LiveContract = LiveContract> {
     if (pending.length === 0) return;
 
     // 3. Identity gate (only when an identity provider is configured).
-    const identityGated = this.options.identity !== undefined;
     const currentIdentity = this.options.identity?.() ?? null;
     const runnable: QueuedMutation[] = [];
     for (const entry of pending) {
-      if (identityGated && entry.identity !== undefined && entry.identity !== currentIdentity) {
-        queue.forget(entry.id);
+      if (
+        typeof currentIdentity !== 'string' ||
+        currentIdentity.length === 0 ||
+        entry.identity !== currentIdentity ||
+        this.retiredOfflineIdentities.has(entry.identity)
+      ) {
+        queue.forget(entry.id, entry.identity);
         this.emitSettled(entry, 'dropped', 'OFFLINE_IDENTITY_MISMATCH');
         entry.reject(
           new VelaLiveError(
@@ -561,45 +718,157 @@ export class LiveClient<C extends LiveContract = LiveContract> {
       }
     }
 
+    // Register the whole drained batch synchronously before replaying its first
+    // request. An identity transition can then abort/reject both the in-flight
+    // entry and later entries that are no longer present in MutationQueue.
+    for (const entry of runnable) {
+      this.activeOfflineMutations.set(entry.id, {
+        entry,
+        controller: new AbortController(),
+        settled: false,
+      });
+    }
+
     // 4 + 5. Sequential FIFO replay (Vela has no batch endpoint).
     for (const [index, entry] of runnable.entries()) {
+      const active = this.activeOfflineMutations.get(entry.id);
+      if (active === undefined || active.settled) {
+        this.activeOfflineMutations.delete(entry.id);
+        continue;
+      }
+      const latestIdentity = this.options.identity?.();
+      if (this.retiredOfflineIdentities.has(entry.identity)) {
+        this.settlePurgedActiveMutation(active, queue);
+        this.activeOfflineMutations.delete(entry.id);
+        continue;
+      }
+      if (latestIdentity !== entry.identity) {
+        this.settleMismatchedActiveMutation(active, queue);
+        this.activeOfflineMutations.delete(entry.id);
+        continue;
+      }
+
       let encodedBody: string | undefined;
       try {
         encodedBody = entry.body === undefined ? undefined : JSON.stringify(entry.body);
       } catch {
         // Deterministic failure — reject terminally, never requeue (no loop).
-        queue.forget(entry.id);
+        queue.forget(entry.id, entry.identity);
         this.emitSettled(entry, 'rejected', 'OFFLINE_UNSERIALIZABLE');
         entry.reject(
           new VelaLiveError('OFFLINE_UNSERIALIZABLE', 'queued mutation body is not serializable'),
         );
+        active.settled = true;
+        this.activeOfflineMutations.delete(entry.id);
         continue;
       }
 
       let response: Response;
       try {
-        response = await this.sendMutation(entry.path, encodedBody, entry.method, entry.headers);
+        response = await this.sendMutation(
+          entry.path,
+          encodedBody,
+          entry.method,
+          entry.headers,
+          active.controller.signal,
+        );
       } catch {
+        if (active.settled || this.retiredOfflineIdentities.has(entry.identity)) {
+          this.activeOfflineMutations.delete(entry.id);
+          continue;
+        }
+        if (this.options.identity?.() !== entry.identity) {
+          this.settleMismatchedActiveMutation(active, queue);
+          this.activeOfflineMutations.delete(entry.id);
+          continue;
+        }
         // Transport error — keep the write durable, requeue in order and STOP.
-        queue.requeue([entry, ...runnable.slice(index + 1)]);
+        const retry = [entry, ...runnable.slice(index + 1)].filter((candidate) => {
+          const candidateActive = this.activeOfflineMutations.get(candidate.id);
+          this.activeOfflineMutations.delete(candidate.id);
+          return candidateActive !== undefined && !candidateActive.settled;
+        });
+        queue.requeue(retry);
         return;
+      }
+
+      // A fetch implementation may ignore AbortSignal. Never settle or expose a
+      // response after the account epoch was retired while it was in flight.
+      if (active.settled || this.retiredOfflineIdentities.has(entry.identity)) {
+        this.activeOfflineMutations.delete(entry.id);
+        continue;
+      }
+      if (this.options.identity?.() !== entry.identity) {
+        this.settleMismatchedActiveMutation(active, queue);
+        this.activeOfflineMutations.delete(entry.id);
+        continue;
       }
 
       if (!response.ok) {
         const error = await toMutationError(response);
-        queue.forget(entry.id);
+        if (active.settled || this.retiredOfflineIdentities.has(entry.identity)) {
+          this.activeOfflineMutations.delete(entry.id);
+          continue;
+        }
+        if (this.options.identity?.() !== entry.identity) {
+          this.settleMismatchedActiveMutation(active, queue);
+          this.activeOfflineMutations.delete(entry.id);
+          continue;
+        }
+        queue.forget(entry.id, entry.identity);
         this.emitSettled(entry, 'rejected', error.code);
         entry.reject(error);
+        active.settled = true;
+        this.activeOfflineMutations.delete(entry.id);
         continue;
       }
 
       const stamp = readCommitStamp(response);
-      entry.onCommit?.(stamp);
       const value = await parseBody(response);
-      queue.forget(entry.id);
+      if (active.settled || this.retiredOfflineIdentities.has(entry.identity)) {
+        this.activeOfflineMutations.delete(entry.id);
+        continue;
+      }
+      if (this.options.identity?.() !== entry.identity) {
+        this.settleMismatchedActiveMutation(active, queue);
+        this.activeOfflineMutations.delete(entry.id);
+        continue;
+      }
+      entry.onCommit?.(stamp);
+      queue.forget(entry.id, entry.identity);
       this.emitSettled(entry, 'committed');
       entry.resolve(value);
+      active.settled = true;
+      this.activeOfflineMutations.delete(entry.id);
     }
+  }
+
+  private settlePurgedActiveMutation(active: ActiveOfflineMutation, queue: MutationQueue): void {
+    if (active.settled) return;
+    active.settled = true;
+    active.controller.abort();
+    queue.forget(active.entry.id, active.entry.identity);
+    this.emitSettled(active.entry, 'dropped', 'OFFLINE_IDENTITY_PURGED');
+    active.entry.reject(
+      new VelaLiveError(
+        'OFFLINE_IDENTITY_PURGED',
+        'queued mutation was purged during an account identity transition',
+      ),
+    );
+  }
+
+  private settleMismatchedActiveMutation(
+    active: ActiveOfflineMutation,
+    queue: MutationQueue,
+  ): void {
+    if (active.settled) return;
+    active.settled = true;
+    active.controller.abort();
+    queue.forget(active.entry.id, active.entry.identity);
+    this.emitSettled(active.entry, 'dropped', 'OFFLINE_IDENTITY_MISMATCH');
+    active.entry.reject(
+      new VelaLiveError('OFFLINE_IDENTITY_MISMATCH', 'queued mutation identity no longer matches'),
+    );
   }
 
   private emitSettled(entry: QueuedMutation, status: MutationVerdict, code?: string): void {
@@ -614,6 +883,31 @@ export class LiveClient<C extends LiveContract = LiveContract> {
         listener(event);
       } catch {
         // A misbehaving observer must not stall the flush loop.
+      }
+    }
+  }
+
+  private emitInvalidHydrated(record: unknown): void {
+    const currentIdentity = this.options.identity?.();
+    const candidate =
+      record !== null && typeof record === 'object'
+        ? (record as Partial<import('./types').PersistedMutation>)
+        : {};
+    const code =
+      candidate.identity !== currentIdentity
+        ? 'OFFLINE_IDENTITY_MISMATCH'
+        : 'OFFLINE_INVALID_PERSISTED_MUTATION';
+    const event: MutationSettledEvent = {
+      path: typeof candidate.path === 'string' ? candidate.path : '',
+      status: 'dropped',
+      code,
+      hadAwaiter: false,
+    };
+    for (const listener of [...this.settledListeners]) {
+      try {
+        listener(event);
+      } catch {
+        // A misbehaving observer must not stall hydration.
       }
     }
   }
@@ -639,19 +933,62 @@ export class LiveClient<C extends LiveContract = LiveContract> {
     encodedBody: string | undefined,
     method: string | undefined,
     extraHeaders: Record<string, string> | undefined,
+    signal?: AbortSignal,
   ): Promise<Response> {
     const doFetch = this.options.fetch ?? fetch;
     const token = await this.options.authToken?.();
     const headers: Record<string, string> = {
       ...(encodedBody === undefined ? {} : { 'content-type': 'application/json' }),
-      ...(token === undefined ? {} : { authorization: `Bearer ${token}` }),
       ...extraHeaders,
+      ...(token === undefined ? {} : { authorization: `Bearer ${token}` }),
     };
     return doFetch(new URL(path, this.options.url).toString(), {
       method: method ?? 'POST',
       headers,
       ...(encodedBody === undefined ? {} : { body: encodedBody }),
+      ...(signal === undefined ? {} : { signal }),
     });
+  }
+
+  private assertSameOriginMutationPath(path: string): void {
+    let base: URL;
+    let target: URL;
+    try {
+      base = new URL(this.options.url);
+      target = new URL(path, base);
+    } catch {
+      throw new VelaLiveError('INVALID_MUTATION_TARGET', 'mutation path is not a valid URL path');
+    }
+    if (
+      path.length === 0 ||
+      /^[A-Za-z][A-Za-z\d+.-]*:/.test(path) ||
+      path.startsWith('//') ||
+      target.origin !== base.origin
+    ) {
+      throw new VelaLiveError(
+        'INVALID_MUTATION_TARGET',
+        'mutation targets must be relative and same-origin',
+      );
+    }
+  }
+
+  private isSafePersistedMutation(record: import('./types').PersistedMutation): boolean {
+    const identity = this.options.identity?.();
+    if (typeof identity !== 'string' || identity.length === 0 || record.identity !== identity) {
+      return false;
+    }
+    if (
+      record.headers !== undefined &&
+      Object.keys(record.headers).some((name) => name.toLowerCase() === 'authorization')
+    ) {
+      return false;
+    }
+    try {
+      this.assertSameOriginMutationPath(record.path);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private makeStore(
@@ -700,7 +1037,7 @@ export class LiveClient<C extends LiveContract = LiveContract> {
             }
             return new WS(socketUrl) as never;
           }),
-        authToken: this.options.authToken,
+        socketTicket: () => this.options.socketTicket?.(room),
         heartbeatIntervalMs: this.options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_MS,
         reconnect: this.options.reconnect,
         onStatusChange: () => {
@@ -734,7 +1071,9 @@ function readCommitStamp(response: Response): CommitStamp | undefined {
   const epoch = response.headers.get(COMMIT_EPOCH_HEADER);
   if (cursor === null || epoch === null) return undefined;
   const parsed = Number(cursor);
-  return Number.isFinite(parsed) ? { cursor: parsed, epoch } : undefined;
+  return Number.isSafeInteger(parsed) && parsed >= 0 && epoch.length > 0 && epoch.length <= 256
+    ? { cursor: parsed, epoch }
+    : undefined;
 }
 
 async function parseBody(response: Response): Promise<unknown> {
@@ -758,4 +1097,13 @@ const defaultQueueOnError: NonNullable<OfflineQueueOptions['onError']> = (ctx) =
     `[velajs/client] offline mutation store ${ctx.operation} failed`,
     ctx.error,
   );
+};
+
+const isJsonWithin = (value: unknown, maxBytes: number): boolean => {
+  try {
+    const serialized = JSON.stringify(value);
+    return serialized !== undefined && new TextEncoder().encode(serialized).byteLength <= maxBytes;
+  } catch {
+    return false;
+  }
 };

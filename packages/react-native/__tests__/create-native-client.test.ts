@@ -39,6 +39,7 @@ describe('createNativeClient', () => {
       WebSocket: sockets.factory,
       fetch,
       reconnect: SLOW_RECONNECT,
+      identity: () => 'userA',
     });
 
     await goOffline(client, sockets);
@@ -50,7 +51,7 @@ describe('createNativeClient', () => {
     expect(calls).toHaveLength(0); // enqueued, not fetched
 
     const stored = JSON.parse(
-      storage.map.get(DEFAULT_MUTATION_STORE_KEY) ?? '[]',
+      storage.map.get(`${DEFAULT_MUTATION_STORE_KEY}:userA`) ?? '[]',
     ) as PersistedMutation[];
     expect(stored).toHaveLength(1);
     expect(stored[0]?.path).toBe('/todos');
@@ -73,18 +74,20 @@ describe('createNativeClient', () => {
     client.close();
   });
 
-  it('threads the bearer token onto the WebSocket connect URL (authToken passthrough)', async () => {
+  it('uses a short-lived socket ticket instead of the HTTP bearer token', async () => {
     const sockets = makeSocketFactory();
     const client = createNativeClient<AppLive>({
       url: 'http://api.test',
       authToken: () => 'tok123',
+      socketTicket: () => 'ticket123',
       WebSocket: sockets.factory,
     });
 
     client.subscribe('todos.list', { listId: 'l1' }, () => {});
     await tick();
 
-    expect(sockets.last().url).toContain('?token=tok123');
+    expect(sockets.last().url).toContain('?ticket=ticket123');
+    expect(sockets.last().url).not.toContain('tok123');
     client.close();
   });
 
@@ -99,6 +102,7 @@ describe('createNativeClient', () => {
       WebSocket: sockets.factory,
       fetch: makeFetch().fetch,
       reconnect: SLOW_RECONNECT,
+      identity: () => 'userA',
     });
 
     await goOffline(client, sockets);
@@ -108,7 +112,7 @@ describe('createNativeClient', () => {
 
     expect(client.pendingMutations()).toBe(1);
     expect(storage.map.size).toBe(0); // storage-derived store never created
-    expect(await explicit.load()).toHaveLength(1); // explicit store got the write
+    expect(await explicit.load({ account: 'userA' })).toHaveLength(1); // explicit store got the write
 
     client.close();
   });
@@ -139,7 +143,11 @@ describe('createNativeClient', () => {
     acceptsQueryOptions();
 
     const storage: AsyncStorageLike = makeAsyncStorage();
-    const options: CreateNativeClientOptions = { url: 'http://api.test', storage };
+    const options: CreateNativeClientOptions = {
+      url: 'http://api.test',
+      storage,
+      identity: () => 'userA',
+    };
     const client: LiveClient<AppLive> = createNativeClient<AppLive>(options);
 
     expect(client).toBeInstanceOf(LiveClient);

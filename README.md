@@ -40,6 +40,8 @@ Together these are exactly what a future `@velajs/react-native` plugs (an `Async
 
 Opt in with `offline`. Writes issued while proven offline are painted optimistically, persisted (if a `mutationStore` is given), and replayed **FIFO, at-least-once** on reconnect — a record is dropped from the store only after the server settles it.
 
+Offline mode requires `identity`, a stable non-secret account **and login-epoch** fingerprint. Every `MutationStore` operation receives that authenticated partition, so records from another account/epoch are never loaded. Persisted writes accept only relative same-origin paths and never store authorization headers. Hydration validates record schema/depth/bytes and rewrites oversized queues to the configured cap.
+
 ```ts
 import { LiveClient } from '@velajs/client';
 import { createMemoryMutationStore, createSnapshotPrecondition } from '@velajs/client/offline';
@@ -47,9 +49,9 @@ import { createMemoryMutationStore, createSnapshotPrecondition } from '@velajs/c
 const client = new LiveClient<AppLive>({
   url: 'https://api.example.com',
   offline: { maxItems: 1000, queueBeforeFirstConnect: true },
+  identity: () => `${currentSession?.user.id}:${currentSession?.loginEpoch}`,
   mutationStore: createMemoryMutationStore(), // swap for an IndexedDB / AsyncStorage store
   persistenceVersion: 'v3', // stale-version records are purged on reload
-  identity: () => currentUserId(), // replay is identity-gated across a reload
 });
 
 await client.mutate('/todos/t1', { done: true }, {
@@ -62,14 +64,27 @@ client.onMutationSettled((e) => report(e)); // committed | rejected | dropped, i
 await client.flush(); // force a replay (e.g. from a `navigator.onLine` handler)
 ```
 
+On logout or account switch, first change/clear the identity provider and then retire the exact previous fingerprint through the client. This rejects its pending writes with `OFFLINE_IDENTITY_PURGED`, aborts a replay already in flight, and serializes the final partition clear behind earlier appends. The active identity cannot be purged accidentally.
+
+```ts
+const previousIdentity = `${currentSession.user.id}:${currentSession.loginEpoch}`;
+currentSession = undefined; // identity() must stop returning the previous epoch first
+await client.purgeOfflineMutations(previousIdentity);
+```
+
+`client.close()` rejects live awaiters but deliberately leaves durable records intact for reload recovery; it is not a logout operation. Never call a backing store's unscoped/global clear from authentication code.
+
 Guards on replay: a failing `precondition` drops with `OFFLINE_PRECONDITION_FAILED`; a stale `persistenceVersion` or mismatched `identity` drops on hydrate/replay; an un-encodable body rejects terminally (never loops); a transport error requeues the write in order and retries on the next flush. `onMutationSettled` is the only channel for a hydrated (post-reload, awaiter-less) write's outcome — `hadAwaiter` distinguishes it from a live `mutate()` promise.
 
 ## Cross-tab coordination
 
-Opt in with `crossTab`. One tab is elected **leader** (BroadcastChannel, `tabId` tie-break) and owns the live sockets; every other tab is a **follower** that forwards its subscription intent and renders the leader's relayed snapshots — so N tabs share **one** connection instead of N. The leader relays each subscription's `serverBase` + cursor/epoch, so follower optimistic updates stay cursor-gated identically to the leader's. On leader death a follower promotes and resubscribes from the last relayed cursor (the server resumes, no cold re-run). Where `BroadcastChannel` is unavailable (SSR, Node, React Native) the coordinator is a no-op and the tab is sole leader, so subscriptions never silently break.
+Cross-tab coordination is disabled by default. Opt in with an explicit app, authenticated-session, and account-epoch namespace. One tab is elected **leader** and owns the live sockets; every message is schema/size validated and messages cannot cross login epochs.
 
 ```ts
-const client = new LiveClient<AppLive>({ url, crossTab: true });
+const client = new LiveClient<AppLive>({
+  url,
+  crossTab: { appId: 'dashboard', sessionId: session.fingerprint, accountEpoch: loginEpoch },
+});
 client.isLeader(); // true when this tab owns the sockets (always true when crossTab is off)
 ```
 
@@ -87,13 +102,10 @@ const filter = createClientQuery<'all' | 'active'>('todos.filter', 'all');
 
 ## Local development
 
-Cross-repo deps resolve from npm. To develop against local checkouts before a release train, add temporary overrides to the workspace root `package.json` (do not commit them):
-
-```jsonc
-"pnpm": { "overrides": {
-  "@velajs/live-protocol": "link:../live-protocol",
-  "@velajs/vela": "link:../vela"
-} }
-```
+Cross-repo dependencies target the published Live Protocol 1.1 and Vela 1.21
+releases. Before that release train is public, use packed prerelease tarballs
+only in a disposable integration checkout. The committed manifest and lockfile
+must continue to describe the last registry-resolvable graph; regenerate them
+from npm after each coordinated release phase.
 
 `pnpm test` runs unit + protocol-conformance suites and an in-memory e2e against the real `@velajs/vela/live` engine.

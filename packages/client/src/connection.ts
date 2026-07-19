@@ -1,10 +1,13 @@
 import {
   LIVE_PROTOCOL,
+  MAX_LIVE_FRAME_BYTES,
+  MAX_PRESENCE_METADATA_BYTES,
   encodeLiveEnvelope,
   isServerLiveFrame,
   readLiveEnvelope,
 } from '@velajs/live-protocol';
 import type { ClientLiveFrame } from '@velajs/live-protocol';
+import { VelaLiveError } from './errors';
 import { applyServerFrame } from './frame-reducer';
 import { nextReconnectDelay, resetReconnect } from './reconnect';
 import type { ReconnectState } from './reconnect';
@@ -13,10 +16,21 @@ import type { SubscriptionState } from './subscription';
 import type { ConnectionStatus, ReconnectOptions, WebSocketFactory } from './types';
 
 const OPEN = 1;
+const MAX_SOCKET_TICKET_BYTES = 8 * 1024;
+const FORBIDDEN_WEBSOCKET_CREDENTIAL_PARAMS = new Set([
+  'access_token',
+  'api_key',
+  'apikey',
+  'auth',
+  'authorization',
+  'bearer',
+  'jwt',
+  'token',
+]);
 
 export interface ConnectionDeps {
   makeSocket: WebSocketFactory;
-  authToken?: () => string | undefined | Promise<string | undefined>;
+  socketTicket?: () => string | undefined | Promise<string | undefined>;
   heartbeatIntervalMs: number;
   reconnect?: ReconnectOptions;
   onStatusChange: () => void;
@@ -50,7 +64,9 @@ export class RoomConnection {
   constructor(
     private readonly url: string,
     private readonly deps: ConnectionDeps,
-  ) {}
+  ) {
+    assertSafeWebSocketUrl(url);
+  }
 
   register(state: SubscriptionState): void {
     this.bySub.set(state.sub, state);
@@ -67,6 +83,12 @@ export class RoomConnection {
   }
 
   sendPresence(room: string, meta?: unknown): void {
+    if (jsonByteLength(meta ?? null) > MAX_PRESENCE_METADATA_BYTES) {
+      throw new VelaLiveError(
+        'PRESENCE_METADATA_TOO_LARGE',
+        `presence metadata exceeds ${MAX_PRESENCE_METADATA_BYTES} bytes`,
+      );
+    }
     this.ensureConnected();
     this.sendFrame({ t: 'presence', room, meta });
   }
@@ -89,21 +111,26 @@ export class RoomConnection {
     this.setStatus('connecting');
     const generation = ++this.generation;
 
-    let token: string | undefined;
+    let ticket: string | undefined;
     try {
-      token = await this.deps.authToken?.();
+      ticket = await this.deps.socketTicket?.();
     } catch {
-      // A failing token provider is treated as a connection failure: back off
+      // A failing ticket provider is treated as a connection failure: back off
       // and retry — the next attempt re-invokes it (rotation-friendly).
       if (generation === this.generation) this.scheduleReconnect();
       return;
     }
     if (generation !== this.generation || this.closedByUser) return;
 
-    const url =
-      token === undefined
-        ? this.url
-        : `${this.url}${this.url.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`;
+    let url: string;
+    try {
+      url = socketUrlWithTicket(this.url, ticket);
+    } catch {
+      // Invalid tickets never reach the URL or the WebSocket implementation.
+      // Retry through the provider so a rotated ticket can recover naturally.
+      this.scheduleReconnect();
+      return;
+    }
     let socket: ReturnType<WebSocketFactory>;
     try {
       socket = this.deps.makeSocket(url);
@@ -143,6 +170,10 @@ export class RoomConnection {
   }
 
   private handleMessage(raw: string): void {
+    if (new TextEncoder().encode(raw).byteLength > MAX_LIVE_FRAME_BYTES) {
+      this.socket?.close(1009, 'frame too large');
+      return;
+    }
     let envelope: unknown;
     try {
       envelope = JSON.parse(raw);
@@ -213,7 +244,12 @@ export class RoomConnection {
   private sendFrame(frame: ClientLiveFrame): void {
     if (this.socket?.readyState !== OPEN) return; // onopen resends subscriptions
     try {
-      this.socket.send(encodeLiveEnvelope(frame));
+      const encoded = encodeLiveEnvelope(frame);
+      if (new TextEncoder().encode(encoded).byteLength > MAX_LIVE_FRAME_BYTES) {
+        this.socket.close(1009, 'frame too large');
+        return;
+      }
+      this.socket.send(encoded);
     } catch {
       // socket died between the readyState check and send — onclose recovers
     }
@@ -260,3 +296,39 @@ export class RoomConnection {
     this.deps.onStatusChange();
   }
 }
+
+const jsonByteLength = (value: unknown): number => {
+  try {
+    return new TextEncoder().encode(JSON.stringify(value) ?? 'null').byteLength;
+  } catch {
+    return Number.POSITIVE_INFINITY;
+  }
+};
+
+const socketUrlWithTicket = (base: string, ticket: string | undefined): string => {
+  const url = assertSafeWebSocketUrl(base);
+  if (ticket === undefined) return url.toString();
+  if (
+    ticket.length === 0 ||
+    !/^[\x21-\x7e]+$/.test(ticket) ||
+    new TextEncoder().encode(ticket).byteLength > MAX_SOCKET_TICKET_BYTES
+  ) {
+    throw new Error('socket ticket must be a non-empty bounded ASCII token');
+  }
+  url.searchParams.set('ticket', ticket);
+  return url.toString();
+};
+
+const assertSafeWebSocketUrl = (value: string): URL => {
+  const url = new URL(value);
+  if ((url.protocol !== 'ws:' && url.protocol !== 'wss:') || url.username || url.password) {
+    throw new Error('WebSocket URL must use ws/wss and must not contain credentials');
+  }
+  for (const key of url.searchParams.keys()) {
+    const normalized = key.toLowerCase();
+    if (normalized === 'ticket' || FORBIDDEN_WEBSOCKET_CREDENTIAL_PARAMS.has(normalized)) {
+      throw new Error('WebSocket credentials must come from the socketTicket provider');
+    }
+  }
+  return url;
+};

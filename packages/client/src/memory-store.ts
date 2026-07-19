@@ -8,20 +8,29 @@ import type { MutationStore, PersistedMutation } from './types';
  * (the default when no `mutationStore` is supplied) is lost on reload.
  */
 export function createMemoryMutationStore(): MutationStore {
-  const records: PersistedMutation[] = [];
+  const partitions = new Map<string, PersistedMutation[]>();
+  const recordsFor = (account: string): PersistedMutation[] => {
+    let records = partitions.get(account);
+    if (records === undefined) {
+      records = [];
+      partitions.set(account, records);
+    }
+    return records;
+  };
   return {
-    async append(record) {
-      records.push(clone(record));
+    async append(record, { account }) {
+      recordsFor(account).push(clone(record));
     },
-    async load() {
-      return records.map(clone);
+    async load({ account }) {
+      return recordsFor(account).map(clone);
     },
-    async remove(id) {
+    async remove(id, { account }) {
+      const records = recordsFor(account);
       const index = records.findIndex((record) => record.id === id);
       if (index !== -1) records.splice(index, 1);
     },
-    async clear() {
-      records.length = 0;
+    async clear({ account }) {
+      partitions.delete(account);
     },
   };
 }

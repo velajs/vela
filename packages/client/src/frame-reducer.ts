@@ -14,6 +14,22 @@ import type { SubscriptionState } from './subscription';
  */
 export type FrameEffect = 'none' | 'notify' | 'resubscribe' | 'error';
 
+/** Apply a full snapshot from SSR/cross-tab through the same state machine as the socket. */
+export function applySnapshotFrame(
+  state: SubscriptionState,
+  snapshot: unknown,
+  cursor?: number,
+  epoch?: string,
+): FrameEffect {
+  if (!isCursorEpochPair(cursor, epoch)) return 'resubscribe';
+  return applyServerFrame(state, {
+    t: 'data',
+    sub: state.sub,
+    snapshot,
+    ...(cursor === undefined ? {} : { cursor, epoch: epoch! }),
+  });
+}
+
 /**
  * The pure per-subscription frame state machine (adapts lunora's
  * `handleDataMessage`/`handleResumeMessage`/`handleSettledMessage`).
@@ -29,6 +45,8 @@ export function applyServerFrame(state: SubscriptionState, frame: ServerLiveFram
       return 'error';
 
     case 'resume': {
+      if (epochForked(state, frame.epoch)) return 'resubscribe';
+      if (watermarkRegressed(state, frame.cursor, frame.epoch)) return 'none';
       // Nothing relevant changed while away: keep the cached value, advance
       // the watermark. Confirmed layers the new cursor covers still drop.
       state.serverCursor = frame.cursor;
@@ -38,6 +56,10 @@ export function applyServerFrame(state: SubscriptionState, frame: ServerLiveFram
     }
 
     case 'settled': {
+      if (epochForked(state, frame.epoch) || missingWatermark(state, frame.cursor)) {
+        return 'resubscribe';
+      }
+      if (watermarkRegressed(state, frame.cursor, frame.epoch)) return 'none';
       // Byte-identical re-run: no payload, but the cursor advance is what
       // drops optimistic layers for writes that didn't change this query.
       advanceWatermark(state, frame.cursor, frame.epoch);
@@ -46,12 +68,16 @@ export function applyServerFrame(state: SubscriptionState, frame: ServerLiveFram
     }
 
     case 'data': {
+      if (missingWatermark(state, frame.cursor)) return 'resubscribe';
+      if (watermarkRegressed(state, frame.cursor, frame.epoch)) return 'none';
       if (epochForked(state, frame.epoch)) {
         // New timeline: every optimistic gate is void. The snapshot itself is
         // authoritative, so apply it as a cold first frame.
         state.layers = [];
       }
-      state.serverBase = frame.snapshot;
+      const snapshot = safeClone(frame.snapshot);
+      if (snapshot === CLONE_FAILED) return 'resubscribe';
+      state.serverBase = snapshot;
       state.hasBase = true;
       advanceWatermark(state, frame.cursor, frame.epoch);
       dropConfirmedLayers(state, frame.cursor, frame.epoch);
@@ -63,10 +89,19 @@ export function applyServerFrame(state: SubscriptionState, frame: ServerLiveFram
       // A delta diffs against the baseline the server believes we confirmed —
       // across an epoch fork or without a base that belief is wrong by
       // construction: start over.
-      if (epochForked(state, frame.epoch) || !state.hasBase) return 'resubscribe';
+      if (
+        epochForked(state, frame.epoch) ||
+        !state.hasBase ||
+        missingWatermark(state, frame.cursor)
+      ) {
+        return 'resubscribe';
+      }
+      if (watermarkRegressed(state, frame.cursor, frame.epoch)) return 'none';
       const merged = applyListDelta(state.serverBase, frame.ops, state.key ?? DEFAULT_KEY_FIELD);
       if (merged === undefined) return 'resubscribe';
-      state.serverBase = merged;
+      const snapshot = safeClone(merged);
+      if (snapshot === CLONE_FAILED) return 'resubscribe';
+      state.serverBase = snapshot;
       advanceWatermark(state, frame.cursor, frame.epoch);
       dropConfirmedLayers(state, frame.cursor, frame.epoch);
       refold(state);
@@ -77,6 +112,35 @@ export function applyServerFrame(state: SubscriptionState, frame: ServerLiveFram
 
 const epochForked = (state: SubscriptionState, epoch?: string): boolean =>
   epoch !== undefined && state.serverEpoch !== undefined && epoch !== state.serverEpoch;
+
+const missingWatermark = (state: SubscriptionState, cursor?: number): boolean =>
+  state.serverCursor !== undefined && cursor === undefined;
+
+const watermarkRegressed = (state: SubscriptionState, cursor?: number, epoch?: string): boolean =>
+  cursor !== undefined &&
+  state.serverCursor !== undefined &&
+  epoch !== undefined &&
+  epoch === state.serverEpoch &&
+  cursor < state.serverCursor;
+
+export const isCursorEpochPair = (cursor?: number, epoch?: string): boolean =>
+  (cursor === undefined && epoch === undefined) ||
+  (typeof cursor === 'number' &&
+    Number.isSafeInteger(cursor) &&
+    cursor >= 0 &&
+    typeof epoch === 'string' &&
+    epoch.length > 0 &&
+    epoch.length <= 256);
+
+const CLONE_FAILED = Symbol('clone failed');
+
+const safeClone = (value: unknown): unknown | typeof CLONE_FAILED => {
+  try {
+    return structuredClone(value);
+  } catch {
+    return CLONE_FAILED;
+  }
+};
 
 function advanceWatermark(state: SubscriptionState, cursor?: number, epoch?: string): void {
   if (cursor !== undefined) state.serverCursor = cursor;

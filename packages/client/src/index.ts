@@ -1,7 +1,7 @@
 export { LiveClient } from './live-client';
 export { RoomConnection } from './connection';
 export type { ConnectionDeps } from './connection';
-export { applyServerFrame } from './frame-reducer';
+export { applyServerFrame, applySnapshotFrame, isCursorEpochPair } from './frame-reducer';
 export type { FrameEffect } from './frame-reducer';
 export { applyOptimisticLayer, dropConfirmedLayers, foldOptimistic } from './optimistic';
 export type { CommitStamp, LayerHandle, OptimisticHost, OptimisticLayer } from './optimistic';
@@ -36,6 +36,7 @@ export type {
   MutateOptions,
   MutationSettledEvent,
   MutationStore,
+  MutationStoreScope,
   MutationVerdict,
   OfflineQueueOptions,
   OptimisticTarget,

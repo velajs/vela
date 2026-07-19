@@ -10,10 +10,10 @@ const SESSION_TOKEN_NAME = 'session_token';
  *
  * The Expo plugin persists the session as a cookie string in `SecureStore` and
  * exposes it via `getCookie()`; this pulls the `session_token` value out. Vela
- * carries that value as an `Authorization: Bearer …` header on HTTP mutations
- * and a `?token=` query param on the live socket — never a `Cookie` — so the
- * native client authenticates without the header the runtime CSRF guard rejects
- * on an `Origin`-less native request. Returns `null` when signed out.
+ * carries that value as an `Authorization: Bearer …` header on HTTP mutations.
+ * WebSockets deliberately require a separate short-lived `socketTicket`
+ * provider, so bearer credentials never appear in URLs. Returns `null` when
+ * signed out.
  *
  * Cookie parsing is split-on-`;` then split-on-the-first-`=`; a name matches
  * when it equals `session_token` or ends with `.session_token` (covering the
@@ -37,10 +37,9 @@ export function expoBearerToken(authClient: { getCookie: () => string }): string
 
 /**
  * Adapt {@link expoBearerToken} into a `LiveClientOptions.authToken` provider —
- * a single function that threads the current session token onto BOTH the HTTP
- * Bearer header and the WebSocket `?token=` param. Because the core re-invokes
- * it on every mutation and every (re)connect, a rotated token is picked up
- * automatically. Returns `undefined` when signed out.
+ * a function that threads the current session token onto the HTTP Bearer
+ * header. The core re-invokes it on every mutation, so a rotated token is
+ * picked up automatically. Returns `undefined` when signed out.
  *
  * ```ts
  * const client = createNativeClient({ url, authToken: expoAuthToken(authClient) });

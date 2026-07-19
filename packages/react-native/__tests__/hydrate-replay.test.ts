@@ -13,9 +13,11 @@ describe('createNativeClient — hydrate + replay over the AsyncStorage adapter'
         body: { text: 'hi' },
         method: 'POST',
         headers: { 'x-test': '1' },
+        identity: 'userA',
       },
     ];
-    const storage = makeAsyncStorage({ [DEFAULT_MUTATION_STORE_KEY]: JSON.stringify(seeded) });
+    const partitionKey = `${DEFAULT_MUTATION_STORE_KEY}:userA`;
+    const storage = makeAsyncStorage({ [partitionKey]: JSON.stringify(seeded) });
     const sockets = makeSocketFactory();
     const { fetch, calls, response } = makeFetch();
     response.headers = { 'Vela-Commit-Cursor': '5', 'Vela-Commit-Epoch': 'e1' };
@@ -28,6 +30,7 @@ describe('createNativeClient — hydrate + replay over the AsyncStorage adapter'
       offline: true,
       fetch,
       WebSocket: sockets.factory,
+      identity: () => 'userA',
     });
 
     const settled = new Promise<MutationSettledEvent>((resolve) => {
@@ -50,9 +53,7 @@ describe('createNativeClient — hydrate + replay over the AsyncStorage adapter'
 
     // Durable store emptied (remove called after the commit).
     await tick();
-    const remaining = JSON.parse(
-      storage.map.get(DEFAULT_MUTATION_STORE_KEY) ?? '[]',
-    ) as PersistedMutation[];
+    const remaining = JSON.parse(storage.map.get(partitionKey) ?? '[]') as PersistedMutation[];
     expect(remaining).toEqual([]);
 
     client.close();

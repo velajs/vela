@@ -75,15 +75,15 @@ importers:
   packages/client:
     dependencies:
       '@velajs/live-protocol':
-        specifier: ^1.0.0
-        version: 1.0.0
+        specifier: 1.1.0
+        version: 1.1.0
     devDependencies:
       '@swc/core':
         specifier: 'catalog:'
         version: 1.15.43
       '@velajs/vela':
-        specifier: ^1.17.0
-        version: 1.17.0
+        specifier: ^1.21.0
+        version: 1.21.0
       tsdown:
         specifier: 'catalog:'
         version: 0.22.5(@arethetypeswrong/core@0.18.5)(publint@0.3.21)(typescript@7.0.2)
@@ -1060,13 +1060,17 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@velajs/live-protocol@1.0.0':
-    resolution: {integrity: sha512-TBEHd8XODRyvVUbjh6IUeH44coZ6rzBgS1XvIsGcQCKTMp39ywPbDrf1fH51stXVaAymFBkucJGb+UjY9h2qCg==}
-    engines: {node: '>=20'}
+  '@velajs/errors@1.1.0':
+    resolution: {integrity: sha512-o9keDgzCCoUwzS8dwQJxzanc8pqlgQrNi1ikvwkDx1EYkdA/4TCvF6Q8fBZF9bxl17IVkTnDXFZQgxGMGmx+yA==}
+    engines: {node: '>=24'}
 
-  '@velajs/vela@1.17.0':
-    resolution: {integrity: sha512-OiDC66ULVaGKzPJiiS1y+dOjuZU7HzuYjMNIEfaDWprb6THEfMKr7fjndYOcrqaTCOEBC5uks1TJTG8zQvo7Vw==}
-    engines: {node: '>=20'}
+  '@velajs/live-protocol@1.1.0':
+    resolution: {integrity: sha512-ynRgROK+QjEJny18p8gFTP9ug94RvP/wc5KG1ki2+KzxlwFoOT6ZsgyLs67I7uEDnaBCr+Ki3rYM6MYtJIfimw==}
+    engines: {node: '>=24'}
+
+  '@velajs/vela@1.21.0':
+    resolution: {integrity: sha512-RPMkf+s9g0G3uhGoMA7C271x+aC54NU8ktzlbj+1MvdQYC5geQqHTRSKruocxym26k0ckkINEU75E3cJbrGwIQ==}
+    engines: {node: '>=24'}
     peerDependencies:
       intl-messageformat: '>=10'
     peerDependenciesMeta:
@@ -2981,11 +2985,14 @@ snapshots:
   '@typescript/typescript-win32-x64@7.0.2':
     optional: true
 
-  '@velajs/live-protocol@1.0.0': {}
+  '@velajs/errors@1.1.0': {}
 
-  '@velajs/vela@1.17.0':
+  '@velajs/live-protocol@1.1.0': {}
+
+  '@velajs/vela@1.21.0':
     dependencies:
-      '@velajs/live-protocol': 1.0.0
+      '@velajs/errors': 1.1.0
+      '@velajs/live-protocol': 1.1.0
       hono: 4.12.28
 
   '@vitest/expect@4.1.10':
