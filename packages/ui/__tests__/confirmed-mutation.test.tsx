@@ -11,14 +11,23 @@ describe('readConfirmChallenge', () => {
   it('decodes a well-formed 428 challenge', () => {
     const error = new AdminError(
       makeErrorBody('STUDIO_CONFIRM_REQUIRED', 428, {
-        details: { confirmToken: 't1', expiresAt: '2026-01-01T00:00:00.000Z', summary: 'do it' },
+        details: { confirmToken: 't1', expiresAt: 1_767_225_600_000, summary: 'do it' },
       }),
     );
     expect(readConfirmChallenge(error)).toEqual({
       confirmToken: 't1',
       summary: 'do it',
-      expiresAt: '2026-01-01T00:00:00.000Z',
+      expiresAt: 1_767_225_600_000,
     });
+  });
+
+  it('returns null when expiresAt is not a number (protocol shape guard)', () => {
+    const error = new AdminError(
+      makeErrorBody('STUDIO_CONFIRM_REQUIRED', 428, {
+        details: { confirmToken: 't1', expiresAt: '2026-01-01T00:00:00.000Z', summary: 'do it' },
+      }),
+    );
+    expect(readConfirmChallenge(error)).toBeNull();
   });
 
   it('returns null for a non-428 error', () => {

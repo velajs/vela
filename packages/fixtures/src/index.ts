@@ -11,3 +11,4 @@ export * from './fake-transport';
 export * from './fixtures';
 export * from './panel-fixtures';
 export * from './data-fixtures';
+export * from './time-travel-fixtures';

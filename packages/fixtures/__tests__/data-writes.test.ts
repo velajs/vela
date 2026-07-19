@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import type { ConfirmChallengeDetails } from '../src/index';
+import type { StudioConfirmChallenge } from '@velajs/studio-protocol';
 import { FakeAdminError, FakeAdminTransport, GENERATE_ROWS_MAX, fakeTable } from '../src/index';
 
 /** Narrow a thrown value to the 428 confirm challenge it must carry. */
-function challengeOf(err: unknown): ConfirmChallengeDetails {
+function challengeOf(err: unknown): StudioConfirmChallenge {
   expect(err).toBeInstanceOf(FakeAdminError);
   const fake = err as FakeAdminError;
   expect(fake.status).toBe(428);
   expect(fake.body.code).toBe('STUDIO_CONFIRM_REQUIRED');
-  const details = fake.body.details as ConfirmChallengeDetails;
+  const details = fake.body.details as StudioConfirmChallenge;
   expect(typeof details.confirmToken).toBe('string');
-  expect(typeof details.expiresAt).toBe('string');
+  expect(typeof details.expiresAt).toBe('number');
   expect(typeof details.summary).toBe('string');
   return details;
 }

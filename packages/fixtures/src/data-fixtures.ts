@@ -9,7 +9,7 @@
  * The WRITE responders (`data.writeRow`/`deleteRows`/`clearTable`/`generateRows`)
  * simulate the server's M7a behaviour: a destructive op (delete/clear) called
  * without a valid `confirmToken` throws a 428 `STUDIO_CONFIRM_REQUIRED` carrying a
- * single-use `details.{confirmToken,expiresAt,summary}`; re-sending the identical
+ * single-use {@link StudioConfirmChallenge} on `details`; re-sending the identical
  * args WITH that token succeeds; the token is then spent, so a repeat re-issues a
  * fresh challenge. `generateRows` is clamped at {@link GENERATE_ROWS_MAX}.
  */
@@ -18,6 +18,7 @@ import type {
   FacetsResponse,
   ListRowsRequest,
   StudioColumn,
+  StudioConfirmChallenge,
   StudioGridFilter,
   StudioModelDescriptor,
   StudioModelInfo,
@@ -286,38 +287,29 @@ export function readDataRow(model: string, id: string): Row | null {
 /** The server clamps `data.generateRows` at this many rows per call. */
 export const GENERATE_ROWS_MAX = 1000;
 
-/** The single-use confirm challenge carried on a 428 `STUDIO_CONFIRM_REQUIRED`. */
-export interface ConfirmChallengeDetails {
-  confirmToken: string;
-  expiresAt: string;
-  summary: string;
-}
-
 /**
  * A single-use confirm-token ledger. `issue` mints a fresh valid token for a
- * human `summary`; `consume` spends a token exactly once (an unknown, empty, or
- * already-spent token is rejected, forcing a fresh challenge) — the generic
- * server behaviour M7b drives.
+ * human `summary` as a {@link StudioConfirmChallenge} — the canonical protocol
+ * shape the real server puts on a 428 `details` — and `consume` spends a token
+ * exactly once (an unknown, empty, or already-spent token is rejected, forcing a
+ * fresh challenge). This is the generic destructive-confirm behaviour M7b drives;
+ * M8b's `timeTravel.*` destructive ops reuse the same ledger contract.
  */
 export interface ConfirmStore {
-  issue(summary: string): ConfirmChallengeDetails;
+  issue(summary: string): StudioConfirmChallenge;
   consume(token: string | undefined): boolean;
 }
 
-function makeConfirmStore(): ConfirmStore {
+export function makeConfirmStore(prefix = 'confirm'): ConfirmStore {
   const valid = new Set<string>();
   let counter = 0;
   return {
     issue(summary) {
       counter += 1;
-      const confirmToken = `confirm_${counter}`;
+      const confirmToken = `${prefix}_${counter}`;
       valid.add(confirmToken);
-      return {
-        confirmToken,
-        // A fixed +5m window keeps the fixture deterministic.
-        expiresAt: new Date(BASE_TS + 300_000).toISOString(),
-        summary,
-      };
+      // A fixed +5m window (epoch-ms, per the protocol) keeps this deterministic.
+      return { confirmToken, expiresAt: BASE_TS + 300_000, summary };
     },
     consume(token) {
       if (token === undefined || token === '' || !valid.has(token)) return false;
@@ -327,7 +319,7 @@ function makeConfirmStore(): ConfirmStore {
   };
 }
 
-function confirmRequired(challenge: ConfirmChallengeDetails): FakeAdminError {
+export function confirmRequired(challenge: StudioConfirmChallenge): FakeAdminError {
   return new FakeAdminError(
     makeErrorBody('STUDIO_CONFIRM_REQUIRED', 428, {
       title: 'Confirmation required',

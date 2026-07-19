@@ -1,45 +1,44 @@
 /**
  * `useConfirmedMutation` — the 428 confirm-challenge-aware mutation wrapper.
  *
- * A destructive Studio op (e.g. `data.deleteRows`, `data.clearTable`) called
- * without a valid token answers with a 428 `STUDIO_CONFIRM_REQUIRED` carrying a
- * single-use `details.{confirmToken,summary}`. This hook drives the state
- * machine: fire the op; on a 428, surface `details.summary` through
- * `pendingConfirm`; on `confirm()`, re-fire the IDENTICAL args plus the token;
- * on `cancel()`, abort. Any non-428 failure passes through verbatim as an
- * {@link AdminError}. M7b's delete/clear/generate flows and M8b's time-travel
- * restore/prune all wrap their destructive op in this one hook.
+ * A destructive Studio op (e.g. `data.deleteRows`, `data.clearTable`,
+ * `timeTravel.armRestore`) called without a valid token answers with a 428
+ * `STUDIO_CONFIRM_REQUIRED` carrying a single-use {@link StudioConfirmChallenge}
+ * on `details`. This hook drives the state machine: fire the op; on a 428,
+ * surface `details.summary` through `pendingConfirm`; on `confirm()`, re-fire the
+ * IDENTICAL args plus the token; on `cancel()`, abort. Any non-428 failure passes
+ * through verbatim as an {@link AdminError}. M7b's delete/clear/generate flows and
+ * M8b's time-travel restore/undo/prune all wrap their destructive op in this one
+ * hook — it is op-agnostic.
  */
 import { useCallback, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { StudioOp, StudioOpReq, StudioOpRes } from '@velajs/studio-protocol';
+import type {
+  StudioConfirmChallenge,
+  StudioOp,
+  StudioOpReq,
+  StudioOpRes,
+} from '@velajs/studio-protocol';
 import { toAdminError } from '../client/admin-client';
 import type { AdminError } from '../client/admin-client';
 import { useAdminTransport } from './context';
 
-/** The confirm challenge decoded from a 428 `STUDIO_CONFIRM_REQUIRED` error. */
-export interface ConfirmChallenge {
-  confirmToken: string;
-  summary: string;
-  expiresAt?: string;
-}
-
 /**
- * Decode the confirm challenge from an {@link AdminError}, or `null` when the
- * error is not a well-formed 428 `STUDIO_CONFIRM_REQUIRED`. Kept pure and
+ * Decode the {@link StudioConfirmChallenge} from an {@link AdminError}, or `null`
+ * when the error is not a well-formed 428 `STUDIO_CONFIRM_REQUIRED`. The decode
+ * target is the protocol type — the SAME shape the server (and the fixtures)
+ * emit on `details` — so producer and consumer cannot drift. Kept pure and
  * exported so the state machine (and its tests) can assert on it directly.
  */
-export function readConfirmChallenge(error: AdminError): ConfirmChallenge | null {
+export function readConfirmChallenge(error: AdminError): StudioConfirmChallenge | null {
   if (error.status !== 428 || error.code !== 'STUDIO_CONFIRM_REQUIRED') return null;
   const details = error.body.details;
   if (typeof details !== 'object' || details === null) return null;
   const record: Record<string, unknown> = details as Record<string, unknown>;
-  const token = record.confirmToken;
-  const summary = record.summary;
-  if (typeof token !== 'string' || typeof summary !== 'string') return null;
-  const challenge: ConfirmChallenge = { confirmToken: token, summary };
-  if (typeof record.expiresAt === 'string') challenge.expiresAt = record.expiresAt;
-  return challenge;
+  const { confirmToken, summary, expiresAt } = record;
+  if (typeof confirmToken !== 'string' || typeof summary !== 'string') return null;
+  if (typeof expiresAt !== 'number') return null;
+  return { confirmToken, expiresAt, summary };
 }
 
 /** The pending confirmation surfaced to a confirm dialog. */

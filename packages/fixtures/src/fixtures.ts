@@ -20,6 +20,7 @@ import { STUDIO_FEATURE_KEYS } from '@velajs/studio-protocol';
 import type { FakeTransportTable } from './fake-transport';
 import { dataResponders } from './data-fixtures';
 import { panelResponders } from './panel-fixtures';
+import { timeTravelCapabilitiesPortable, timeTravelResponders } from './time-travel-fixtures';
 
 const featureMap = (value: boolean): Record<StudioFeatureKey, boolean> =>
   // fromEntries widens to string keys; the derived record type is exact.
@@ -41,17 +42,7 @@ const writeGates = (value: boolean): StudioWriteGates => ({
 export const capabilitiesAllOn: StudioCapabilities = {
   features: featureMap(true),
   writes: writeGates(true),
-  timeTravel: {
-    markByTime: true,
-    list: true,
-    undo: true,
-    inPlace: true,
-    restartRequired: false,
-    portableExport: true,
-    createOnDemand: true,
-    granularity: 'snapshot+cdc',
-    scopeNote: 'Portable snapshot + CDC replay across all managed tables.',
-  },
+  timeTravel: timeTravelCapabilitiesPortable,
 };
 
 /**
@@ -133,6 +124,7 @@ export function fakeTable(overrides: FakeTransportTable = {}): FakeTransportTabl
     'app.entrypoints': entrypoints,
     ...dataResponders(),
     ...panelResponders(),
+    ...timeTravelResponders(),
     ...overrides,
   };
 }

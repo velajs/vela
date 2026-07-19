@@ -3,9 +3,9 @@
  * `lazy(() => import('../panels/<x>'))` boundary, so the bundler emits one chunk
  * per panel and the routed `<Outlet>`'s `<Suspense>` is a real code-split seam.
  *
- * `timeTravel` (M8) and `transfer` (M9) intentionally keep a lightweight stub —
- * their panels land in later milestones; the stub still resolves through `lazy`,
- * so the router treats every tab uniformly.
+ * `transfer` (M9) intentionally keeps a lightweight stub — its panel lands in a
+ * later milestone; the stub still resolves through `lazy`, so the router treats
+ * every tab uniformly. `timeTravel` (M8b) is now a real code-split panel.
  */
 import { lazy } from 'react';
 import type { ComponentType, LazyExoticComponent } from 'react';
@@ -47,7 +47,7 @@ const PANELS = {
   entrypoints: lazy(() => import('../panels/entrypoints')),
   api: lazy(() => import('../panels/api/index')),
   data: lazy(() => import('../panels/data/index')),
-  timeTravel: stubLazy('timeTravel'),
+  timeTravel: lazy(() => import('../panels/time-travel')),
   transfer: stubLazy('transfer'),
   users: lazy(() => import('../panels/users')),
   sessions: lazy(() => import('../panels/sessions')),

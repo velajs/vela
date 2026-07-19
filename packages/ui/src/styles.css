@@ -1300,3 +1300,67 @@
   justify-content: flex-end;
   gap: 8px;
 }
+
+/* ---- time travel -------------------------------------------------------- */
+
+.vela-tt {
+  display: grid;
+  gap: 14px;
+}
+.vela-tt__scope {
+  margin: 0;
+}
+.vela-tt__caps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.vela-tt__section {
+  display: grid;
+  gap: 10px;
+}
+.vela-tt__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.vela-tt__mark-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.vela-tt__mark-label {
+  font-weight: 600;
+}
+.vela-tt__mark-time {
+  color: var(--vela-fg-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+.vela-tt__preview {
+  display: grid;
+  gap: 10px;
+}
+.vela-tt__ok {
+  margin: 0;
+  color: var(--vela-fg-muted);
+  font-size: 13px;
+}
+.vela-tt__preview-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.vela-tt__restore {
+  display: grid;
+  gap: 8px;
+}
+.vela-tt__outcome {
+  margin: 0;
+  font-size: 13px;
+}
+.vela-tt__keep {
+  width: 80px;
+}
