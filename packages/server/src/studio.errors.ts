@@ -27,9 +27,34 @@ const STUDIO_ONLY_CATALOG = defineErrorCatalog({
 /** Composed catalog: core codes (for redaction fallbacks) + Studio codes. */
 export const STUDIO_CATALOG = composeCatalogs(CORE_CATALOG, STUDIO_ONLY_CATALOG);
 
-/** Construct a branded Studio error (status resolved from the catalog). */
-export function studioError(code: StudioErrorCode, message?: string): VelaError {
-  return STUDIO_CATALOG.error(code, message !== undefined ? { message } : {});
+/**
+ * Construct a branded Studio error (status resolved from the catalog).
+ * `data` rides the wire as `WireErrorObject.details` (the 428 confirm challenge
+ * carries `{ confirmToken, expiresAt, summary }` there — no new wire shape).
+ */
+export function studioError(code: StudioErrorCode, message?: string, data?: unknown): VelaError {
+  return STUDIO_CATALOG.error(code, {
+    ...(message !== undefined ? { message } : {}),
+    ...(data !== undefined ? { data } : {}),
+  });
+}
+
+/**
+ * A 409 CONFLICT via the composed core `conflict` code — the Studio catalog has
+ * no data-specific conflict code and the frozen protocol adds none, so writes
+ * reuse the core code (wire `code: 'conflict'`, status 409). Used for
+ * uniqueness violations and soft-delete-on-a-non-soft-delete model.
+ */
+export function studioConflict(message: string, hint?: string): VelaError {
+  return STUDIO_CATALOG.error('conflict', {
+    message,
+    ...(hint !== undefined ? { hint } : {}),
+  });
+}
+
+/** A 404 NOT FOUND via the composed core `not_found` code (an addressed row is absent). */
+export function studioNotFound(message: string): VelaError {
+  return STUDIO_CATALOG.error('not_found', { message });
 }
 
 /**

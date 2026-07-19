@@ -33,6 +33,25 @@ export interface EditableFlags {
   transfer: boolean;
 }
 
+/**
+ * Server-only impersonation identity for write dispatches. A STRUCTURAL MIRROR
+ * of `@velajs/crud`'s kernel `EngineRequestVars` (mirrored, never imported — the
+ * core `.` entry stays crud-free per the optional-peer discipline). A
+ * kernel-backed source would thread this straight into `EngineRequest.vars` so
+ * policies/multi-tenant evaluate as the impersonated actor; the current
+ * adapter-direct source records only the resolved subject in the audit and does
+ * NOT policy-scope (see the M7a report's investigation table). Either way the
+ * value is configuration — it NEVER crosses the wire.
+ */
+export interface StudioRunAsIdentity {
+  user?: unknown;
+  tenantId?: string;
+  organizationId?: string;
+  userId?: string;
+  agentId?: string;
+  agentRunId?: string;
+}
+
 /** Options accepted by `StudioModule.forRoot` (override env). */
 export interface StudioModuleOptions {
   /** Force-disable even when a token is present. Default: enabled iff a token is configured. */
@@ -67,6 +86,12 @@ export interface StudioModuleOptions {
   rateLimit?: { windowMs: number; max: number } | false;
   /** WS sub-token lifetime in seconds. Default 300. */
   subTokenTtlSec?: number;
+  /**
+   * Impersonation identity applied to data WRITES, honored only when the
+   * `identity` editable gate is open. Server-only; never serialized. See
+   * {@link StudioRunAsIdentity}.
+   */
+  runAsIdentity?: StudioRunAsIdentity;
 }
 
 /** Fully-resolved config (env merged under options), the shape providers inject. */
@@ -84,6 +109,8 @@ export interface ResolvedStudioConfig {
   subTokenTtlSec: number;
   auditBufferSize: number;
   logBufferSize: number;
+  /** Impersonation identity for writes (server-only; see {@link StudioModuleOptions.runAsIdentity}). */
+  runAsIdentity?: StudioRunAsIdentity;
 }
 
 /** The authenticated admin caller. M2 authenticates the master bearer only. */
@@ -120,6 +147,38 @@ export interface AdminOpContext {
 
 /** An `@AdminRpc` handler: receives the op context and the op's typed args. */
 export type AdminRpcHandler = (ctx: AdminOpContext, args: unknown) => unknown | Promise<unknown>;
+
+/**
+ * Metadata carried by `@AdminConfirmSummary`. Names the destructive `op` whose
+ * 428 challenge this method summarizes. The method — `(ctx, args) => string` —
+ * supplies the human `summary` the registry embeds in the challenge details
+ * (e.g. "hard-delete 3 rows from users"); it must derive purely from the args,
+ * as it runs on the pre-handler challenge path.
+ */
+export interface AdminConfirmSummaryMeta {
+  op: StudioOp | (string & {});
+}
+
+/** An `@AdminConfirmSummary` provider: turns an op's args into a human confirm line. */
+export type AdminConfirmSummarizer = (
+  ctx: AdminOpContext,
+  args: unknown,
+) => string | Promise<string>;
+
+/**
+ * The `error.details` payload of a 428 `STUDIO_CONFIRM_REQUIRED` challenge. Rides
+ * the existing `WireErrorObject.details` (typed `unknown` on the wire — this is
+ * the server-side view of that slot, not a new wire shape). The client re-sends
+ * the identical args plus `confirmToken` to complete the destructive op.
+ */
+export interface StudioConfirmChallenge {
+  /** A fresh single-use token bound to (op, payload-minus-token). */
+  confirmToken: string;
+  /** Absolute token expiry (epoch ms). */
+  expiresAt: number;
+  /** Human summary of the pending destructive action. */
+  summary: string;
+}
 
 /**
  * Metadata carried by `@AdminRpc`. `op` is the ONLY classification stored here;

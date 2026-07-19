@@ -36,8 +36,11 @@ import type {
 import type {
   CascadePreviewRequest,
   CascadePreviewResponse,
+  ClearTableRequest,
+  DeleteRowsRequest,
   FacetsRequest,
   FacetsResponse,
+  GenerateRowsRequest,
   ListRowsRequest,
   StudioColumn,
   StudioGridFilter,
@@ -45,12 +48,26 @@ import type {
   StudioModelInfo,
   StudioPageInfo,
   StudioRowPage,
+  WriteRowRequest,
 } from '@velajs/studio-protocol';
 import { STUDIO_MODEL_SOURCE } from '../data/model-source.port';
-import type { StudioModelSource } from '../data/model-source.port';
-import { studioError } from '../studio.errors';
+import type {
+  StudioDeleteRowsOutcome,
+  StudioGenerateRowsOutcome,
+  StudioModelSource,
+  StudioWriteContext,
+  StudioWriteRowOutcome,
+} from '../data/model-source.port';
+import { studioConflict, studioError, studioNotFound } from '../studio.errors';
 import { STUDIO_RESOLVED_CONFIG } from '../tokens';
+import { StudioDataWriteOps } from '../data/data.write.ops';
 import type { ResolvedStudioConfig } from '../studio.types';
+
+/** Cap on per-row audit images (delete before-images / generate sample). */
+const MAX_AUDIT_IMAGES = 50;
+
+/** One untyped row image. */
+type Row = Record<string, unknown>;
 
 /** Default rows-per-page when a request omits `perPage`. */
 const DEFAULT_PER_PAGE = 20;
@@ -225,6 +242,67 @@ function toRelation(
 }
 
 // ---------------------------------------------------------------------------
+// Adapter-direct write helpers (managed-field stamping, synthetic seeding)
+//
+// This is the honest fallback the M7a investigation settled on: the crud KERNEL
+// re-derives DTOs and re-validates the body against the model's REAL Zod schema,
+// which the studio fixtures deliberately fake — so writes go straight to the
+// adapter contract (M5's read posture, extended). What the kernel would give for
+// free is replicated here to the extent the model metadata allows: id generation
+// + timestamp stamping, soft-delete-aware delete, and a unique pre-check → 409.
+// What it does NOT replicate — policy/tenant evaluation and validation against
+// the live schema — is documented in the report as the kernel-path deferral.
+// ---------------------------------------------------------------------------
+
+/** Generate a primary key for a create, or `undefined` when the db/caller assigns it. */
+function generateId(strategy: Model['id']): string | undefined {
+  if (typeof strategy === 'function') {
+    const value = strategy();
+    return typeof value === 'string' ? value : String(value);
+  }
+  return strategy === 'uuid' ? crypto.randomUUID() : undefined;
+}
+
+/** Build a create input: caller patch + generated id (if absent) + stamped timestamps. */
+function stampCreate(model: Model, patch: Row, pk: string, now: number): Row {
+  const input: Row = { ...patch };
+  if (input[pk] === undefined) {
+    const id = generateId(model.id);
+    if (id !== undefined) input[pk] = id;
+  }
+  const { createdAt, updatedAt } = model.timestamps;
+  if (createdAt !== false && input[createdAt] === undefined) input[createdAt] = now;
+  if (updatedAt !== false && input[updatedAt] === undefined) input[updatedAt] = now;
+  return input;
+}
+
+/** Build an update patch: caller patch + a refreshed `updatedAt` stamp. */
+function stampUpdate(model: Model, patch: Row, now: number): Row {
+  const out: Row = { ...patch };
+  const { updatedAt } = model.timestamps;
+  if (updatedAt !== false) out[updatedAt] = now;
+  return out;
+}
+
+/** A deterministic synthetic value for a column, by wire type (no RNG — no seed in the protocol). */
+function syntheticValue(type: StudioColumn['type'], name: string, n: number, now: number): unknown {
+  switch (type) {
+    case 'string':
+      return `${name}-${n}`;
+    case 'number':
+      return n;
+    case 'boolean':
+      return n % 2 === 0;
+    case 'date':
+      return now - n * 86_400_000; // now minus n days (epoch ms)
+    case 'json':
+      return {};
+    default:
+      return null; // unknown
+  }
+}
+
+// ---------------------------------------------------------------------------
 // The crud-backed model source
 // ---------------------------------------------------------------------------
 
@@ -388,6 +466,219 @@ export class CrudStudioModelSource implements StudioModelSource {
     return { relations };
   }
 
+  // --- writes (adapter-direct; see the write-helpers header above) ---------
+
+  async writeRow(
+    model: string,
+    request: WriteRowRequest,
+    _ctx: StudioWriteContext,
+  ): Promise<StudioWriteRowOutcome> {
+    const entry = this.entryFor(model);
+    const pk = entry.model.primaryKeys[0] ?? 'id';
+    const now = Date.now();
+
+    if (request.id !== undefined) {
+      const lookup: Lookup = { field: pk, value: String(request.id) };
+      const before = await entry.adapter.transaction((scope: AdapterScope) =>
+        entry.adapter.readOne(lookup, { withDeleted: true }, scope),
+      );
+      if (before === null) throw studioNotFound(`row '${request.id}' not found in '${model}'`);
+      const patch = stampUpdate(entry.model, request.patch, now);
+      await this.assertUnique(entry, { ...before, ...patch }, String(request.id));
+      const after = await entry.adapter.transaction((scope: AdapterScope) =>
+        entry.adapter.update(lookup, patch, scope),
+      );
+      if (after === null) throw studioNotFound(`row '${request.id}' not found in '${model}'`);
+      return { after, before };
+    }
+
+    const input = stampCreate(entry.model, request.patch, pk, now);
+    await this.assertUnique(entry, input, undefined);
+    const after = await entry.adapter.transaction((scope: AdapterScope) =>
+      entry.adapter.create(input, scope),
+    );
+    return { after, before: null };
+  }
+
+  async deleteRows(
+    model: string,
+    request: DeleteRowsRequest,
+    _ctx: StudioWriteContext,
+  ): Promise<StudioDeleteRowsOutcome> {
+    const entry = this.entryFor(model);
+    const soft = request.mode === 'soft';
+    if (soft && entry.model.softDeleteField === undefined) {
+      throw studioConflict(`model '${model}' has no soft-delete column`, 'use mode: "hard"');
+    }
+    const pk = entry.model.primaryKeys[0] ?? 'id';
+    const softField = soft ? entry.model.softDeleteField : undefined;
+    const before: Row[] = [];
+    let beforeCapped = false;
+    let deleted = 0;
+
+    await entry.adapter.transaction(async (scope: AdapterScope) => {
+      for (const id of request.ids) {
+        const lookup: Lookup = { field: pk, value: String(id) };
+        const existing = await entry.adapter.readOne(lookup, { withDeleted: true }, scope);
+        const removed = await entry.adapter.delete(
+          lookup,
+          softField !== undefined ? { softDeleteField: softField } : {},
+          scope,
+        );
+        if (removed === null) continue;
+        deleted++;
+        if (before.length < MAX_AUDIT_IMAGES) before.push(existing ?? removed);
+        else beforeCapped = true;
+      }
+    });
+
+    return { deleted, before, beforeCapped };
+  }
+
+  async clearTable(
+    model: string,
+    _request: ClearTableRequest,
+    _ctx: StudioWriteContext,
+  ): Promise<{ deleted: number }> {
+    const entry = this.entryFor(model);
+    const pk = entry.model.primaryKeys[0] ?? 'id';
+    const perPage = 500;
+    let deleted = 0;
+
+    await entry.adapter.transaction(async (scope: AdapterScope) => {
+      // Drain the table by repeatedly reading (incl. tombstones) and hard-deleting
+      // the first page; stop when a batch removes nothing (empty or unremovable).
+      for (;;) {
+        const page = await entry.adapter.list(
+          { filters: [], options: { page: 1, per_page: perPage, withDeleted: true } },
+          scope,
+        );
+        const rows = page.result;
+        if (rows.length === 0) break;
+        let batch = 0;
+        for (const row of rows) {
+          const removed = await entry.adapter.delete(
+            { field: pk, value: String(row[pk]) },
+            {},
+            scope,
+          );
+          if (removed !== null) {
+            deleted++;
+            batch++;
+          }
+        }
+        if (batch === 0) break;
+      }
+    });
+
+    return { deleted };
+  }
+
+  async generateRows(
+    model: string,
+    request: GenerateRowsRequest,
+    _ctx: StudioWriteContext,
+  ): Promise<StudioGenerateRowsOutcome> {
+    const entry = this.entryFor(model);
+    const columns = deriveColumns(entry.model);
+    const pk = entry.model.primaryKeys[0] ?? 'id';
+    const count = Math.max(0, Math.floor(request.count));
+    const fkPools = await this.fkPools(columns);
+    const now = Date.now();
+    const sample: Row[] = [];
+    let sampleCapped = false;
+    let inserted = 0;
+
+    await entry.adapter.transaction(async (scope: AdapterScope) => {
+      for (let n = 0; n < count; n++) {
+        const input: Row = {};
+        for (const col of columns) {
+          if (col.pk || col.managed) continue; // id + timestamps stamped below
+          if (col.fk !== undefined) {
+            const pool = fkPools.get(col.name);
+            if (pool !== undefined && pool.length > 0) input[col.name] = pool[n % pool.length];
+            continue; // no parent rows → leave unset (honest FK behavior)
+          }
+          input[col.name] = syntheticValue(col.type, col.name, n, now);
+        }
+        // Caller overrides win over synthesized values.
+        Object.assign(input, request.overrides ?? {});
+        const row = await entry.adapter.create(stampCreate(entry.model, input, pk, now), scope);
+        inserted++;
+        if (sample.length < MAX_AUDIT_IMAGES) sample.push(row);
+        else sampleCapped = true;
+      }
+    });
+
+    return { inserted, sample, sampleCapped };
+  }
+
+  /**
+   * Assert the row does not violate any single/composite unique tuple (nor the
+   * primary key), excluding the row's own id on update. Checks LIVE rows only —
+   * a tombstoned duplicate does not block (partial-unique parity). Tuples with a
+   * null/undefined member are skipped (SQL uniqueness ignores nulls).
+   */
+  private async assertUnique(
+    entry: ManagedEntry,
+    row: Row,
+    excludeId: string | undefined,
+  ): Promise<void> {
+    const pk = entry.model.primaryKeys[0] ?? 'id';
+    const tuples: string[][] = [entry.model.primaryKeys, ...(entry.model.unique ?? [])];
+    for (const tuple of tuples) {
+      if (tuple.length === 0) continue;
+      const filters: FilterCondition[] = [];
+      let skip = false;
+      for (const col of tuple) {
+        const value = row[col];
+        if (value === undefined || value === null) {
+          skip = true;
+          break;
+        }
+        filters.push({ field: col, operator: 'eq', value });
+      }
+      if (skip) continue;
+      const page = await entry.adapter.transaction((scope: AdapterScope) =>
+        entry.adapter.list({ filters, options: { page: 1, per_page: 2 } }, scope),
+      );
+      const clash = page.result.some((r) => excludeId === undefined || String(r[pk]) !== excludeId);
+      if (clash) {
+        throw studioConflict(
+          `unique constraint on (${tuple.join(', ')}) violated in '${entry.model.name}'`,
+          'change the conflicting value(s) or update the existing row',
+        );
+      }
+    }
+  }
+
+  /** Gather existing parent-id pools for each fk column so generated rows stay fk-valid. */
+  private async fkPools(columns: StudioColumn[]): Promise<Map<string, unknown[]>> {
+    const index = this.index();
+    const pools = new Map<string, unknown[]>();
+    for (const col of columns) {
+      const fk = col.fk;
+      if (fk === undefined) continue;
+      let parent: ManagedEntry | undefined;
+      for (const entry of index.values()) {
+        if (entry.model.tableName === fk.table || entry.model.name === fk.table) {
+          parent = entry;
+          break;
+        }
+      }
+      if (parent === undefined) continue;
+      const parentPk = parent.model.primaryKeys[0] ?? 'id';
+      const page = await parent.adapter.transaction((scope: AdapterScope) =>
+        parent.adapter.list({ filters: [], options: { page: 1, per_page: 100 } }, scope),
+      );
+      const ids = page.result
+        .map((r) => r[parentPk])
+        .filter((v): v is unknown => v !== undefined && v !== null);
+      pools.set(col.name, ids);
+    }
+    return pools;
+  }
+
   /** Serve an inline-search page off the adapter's native search. */
   private async searchPage(
     entry: ManagedEntry,
@@ -497,6 +788,10 @@ const { ConfigurableModuleClass } = defineModule<StudioCrudModuleOptions>({
           new CrudStudioModelSource(discovery, container),
         inject: [DiscoveryService, Container],
       },
+      // The data WRITE ops. Registered here (not on core StudioModule) because a
+      // write is meaningless without a bound source; the dispatch registry
+      // discovers their `@AdminRpc`/`@AdminConfirmSummary` methods across the graph.
+      StudioDataWriteOps,
     ],
     exports: [STUDIO_MODEL_SOURCE],
   }),

@@ -22,13 +22,58 @@ import { InjectionToken } from '@velajs/vela';
 import type {
   CascadePreviewRequest,
   CascadePreviewResponse,
+  ClearTableRequest,
+  DeleteRowsRequest,
   FacetsRequest,
   FacetsResponse,
+  GenerateRowsRequest,
   ListRowsRequest,
   StudioModelDescriptor,
   StudioModelInfo,
   StudioRowPage,
+  WriteRowRequest,
 } from '@velajs/studio-protocol';
+import type { StudioRunAsIdentity } from '../studio.types';
+
+/** A single untyped row image. */
+type Row = Record<string, unknown>;
+
+/**
+ * Per-write dispatch context threaded from the op handler into the source. The
+ * `identity` is the resolved {@link StudioRunAsIdentity} (present only when the
+ * `identity` gate is open). A kernel-backed source would forward it into
+ * `EngineRequest.vars`; the adapter-direct source ignores it for execution and
+ * the handler audits its subject.
+ */
+export interface StudioWriteContext {
+  identity?: StudioRunAsIdentity;
+}
+
+/** Outcome of a `writeRow`: the post-write row plus the pre-write image for audit. */
+export interface StudioWriteRowOutcome {
+  /** Post-write row — the wire result AND the audit `after` image. */
+  after: Row;
+  /** Pre-write row: `null` on create, the prior row on update. */
+  before: Row | null;
+}
+
+/** Outcome of a `deleteRows`: the deleted count plus a bounded set of before-images. */
+export interface StudioDeleteRowsOutcome {
+  deleted: number;
+  /** Before-images of deleted rows, capped by the source (see the cap note). */
+  before: Row[];
+  /** True when `before` was truncated below the true `deleted` count. */
+  beforeCapped: boolean;
+}
+
+/** Outcome of a `generateRows`: the inserted count plus a bounded row sample for audit. */
+export interface StudioGenerateRowsOutcome {
+  inserted: number;
+  /** Inserted rows, capped by the source (audit sample). */
+  sample: Row[];
+  /** True when `sample` was truncated below `inserted`. */
+  sampleCapped: boolean;
+}
 
 /**
  * A bindable source of model metadata + row reads for the data browser. All
@@ -47,6 +92,34 @@ export interface StudioModelSource {
   facets?(request: FacetsRequest): Promise<FacetsResponse>;
   /** Cascade-delete impact preview — present only on relation-aware sources. */
   cascadePreview?(request: CascadePreviewRequest): Promise<CascadePreviewResponse>;
+
+  // --- writes (present only on write-capable sources; a read-only BYO source
+  // omits them and the write ops report FEATURE_UNCONFIGURED) ---------------
+
+  /** Create (id absent) or patch-update (id present) a row. Unknown model ⇒ `STUDIO_UNKNOWN_MODEL`. */
+  writeRow?(
+    model: string,
+    request: WriteRowRequest,
+    ctx: StudioWriteContext,
+  ): Promise<StudioWriteRowOutcome>;
+  /** Soft- or hard-delete rows by id. Soft on a non-soft-delete model ⇒ 409. */
+  deleteRows?(
+    model: string,
+    request: DeleteRowsRequest,
+    ctx: StudioWriteContext,
+  ): Promise<StudioDeleteRowsOutcome>;
+  /** Hard-delete every row of the model. Returns the deleted count. */
+  clearTable?(
+    model: string,
+    request: ClearTableRequest,
+    ctx: StudioWriteContext,
+  ): Promise<{ deleted: number }>;
+  /** Insert `count` synthetic rows derived from column metadata (fk-valid). */
+  generateRows?(
+    model: string,
+    request: GenerateRowsRequest,
+    ctx: StudioWriteContext,
+  ): Promise<StudioGenerateRowsOutcome>;
 }
 
 /**

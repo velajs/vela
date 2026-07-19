@@ -128,6 +128,70 @@ describe('ConfirmTokenSigner', () => {
     const { token } = await signer.issue('data.deleteRows', { id: '1' });
     expect(await signer.verify('data.deleteRows', { id: '1' }, `${token}z`)).toBe(false);
   });
+
+  it('mints a distinct token per issue (the single-use nonce)', async () => {
+    const signer = new ConfirmTokenSigner('master-secret');
+    const payload = { model: 'User', ids: ['1'] };
+    const a = await signer.issue('data.deleteRows', payload);
+    const b = await signer.issue('data.deleteRows', payload);
+    // Same op + payload + exp, yet different tokens: the nonce differs.
+    expect(a.token).not.toBe(b.token);
+    // Both are individually valid.
+    expect(await signer.verify('data.deleteRows', payload, a.token)).toBe(true);
+    expect(await signer.verify('data.deleteRows', payload, b.token)).toBe(true);
+  });
+});
+
+describe('ConfirmTokenSigner single-use (replay protection)', () => {
+  it('verifyAndConsume succeeds once, then rejects the replayed token', async () => {
+    const signer = new ConfirmTokenSigner('master-secret');
+    const payload = { model: 'User', ids: ['1', '2'] };
+    const { token } = await signer.issue('data.deleteRows', payload);
+    // First spend succeeds...
+    expect(await signer.verifyAndConsume('data.deleteRows', payload, token)).toBe(true);
+    // ...the identical token cannot be spent again.
+    expect(await signer.verifyAndConsume('data.deleteRows', payload, token)).toBe(false);
+  });
+
+  it('verify() stays stateless — it never consumes the nonce', async () => {
+    const signer = new ConfirmTokenSigner('master-secret');
+    const payload = { model: 'User' };
+    const { token } = await signer.issue('data.clearTable', payload);
+    // Stateless validity check is idempotent...
+    expect(await signer.verify('data.clearTable', payload, token)).toBe(true);
+    expect(await signer.verify('data.clearTable', payload, token)).toBe(true);
+    // ...and does not spend the token, so a later consume still works exactly once.
+    expect(await signer.verifyAndConsume('data.clearTable', payload, token)).toBe(true);
+    expect(await signer.verifyAndConsume('data.clearTable', payload, token)).toBe(false);
+  });
+
+  it('an invalid token never poisons the used-set', async () => {
+    const signer = new ConfirmTokenSigner('master-secret');
+    const payload = { model: 'User', ids: ['1'] };
+    const { token } = await signer.issue('data.deleteRows', payload);
+    // A consume against the WRONG payload fails and records nothing...
+    expect(
+      await signer.verifyAndConsume('data.deleteRows', { model: 'User', ids: ['2'] }, token),
+    ).toBe(false);
+    // ...so the genuine (op, payload) can still be spent once.
+    expect(await signer.verifyAndConsume('data.deleteRows', payload, token)).toBe(true);
+    expect(await signer.verifyAndConsume('data.deleteRows', payload, token)).toBe(false);
+  });
+
+  it('bounds the used-nonce set (oldest-eviction under a flood)', async () => {
+    const signer = new ConfirmTokenSigner('master-secret', { maxUsedNonces: 8 });
+    for (let i = 0; i < 100; i++) {
+      const payload = { model: 'User', ids: [String(i)] };
+      const { token } = await signer.issue('data.deleteRows', payload);
+      expect(await signer.verifyAndConsume('data.deleteRows', payload, token)).toBe(true);
+    }
+    // The oldest nonces have been evicted; a just-spent token is not resurrected
+    // as spendable (the LAST consume above already proved single-use holds).
+    const payload = { model: 'User', ids: ['fresh'] };
+    const { token } = await signer.issue('data.deleteRows', payload);
+    expect(await signer.verifyAndConsume('data.deleteRows', payload, token)).toBe(true);
+    expect(await signer.verifyAndConsume('data.deleteRows', payload, token)).toBe(false);
+  });
 });
 
 describe('RateLimiter', () => {

@@ -16,13 +16,16 @@ import { Container, DiscoveryService, Inject, Injectable } from '@velajs/vela';
 import type { OnApplicationBootstrap, Token, Type } from '@velajs/vela';
 import { STUDIO_OP_META, STUDIO_OPS } from '@velajs/studio-protocol';
 import type { AdminRpcRequest, AdminRpcResponse, StudioOp } from '@velajs/studio-protocol';
-import { AdminRpc } from './admin-rpc.decorator';
+import { AdminConfirmSummary, AdminRpc } from './admin-rpc.decorator';
 import { deriveWriteGates } from '../studio.types';
 import type {
   AdminAuditDetail,
+  AdminConfirmSummarizer,
+  AdminConfirmSummaryMeta,
   AdminOpContext,
   AdminRpcHandler,
   AdminRpcMeta,
+  StudioConfirmChallenge,
 } from '../studio.types';
 import { studioError, toAdminErrorBody } from '../studio.errors';
 import { ConfirmTokenSigner } from '../security/confirm-token';
@@ -40,6 +43,8 @@ const DEFAULT_OP_META = { mode: 'read', feature: 'app' } as const;
 @Injectable()
 export class StudioDispatchRegistry implements OnApplicationBootstrap {
   private readonly handlers = new Map<string, HandlerEntry>();
+  /** op → the `@AdminConfirmSummary` method that supplies its challenge summary. */
+  private readonly summarizers = new Map<string, HandlerEntry>();
 
   constructor(
     @Inject(Container) private readonly container: Container,
@@ -68,6 +73,18 @@ export class StudioDispatchRegistry implements OnApplicationBootstrap {
         );
       }
       this.handlers.set(op, { token: found.class.metatype, methodName: String(found.methodName) });
+    }
+
+    // Confirm-summary providers: one per op at most (last wins is a config
+    // error, but the map naturally de-dupes; the op need not be a real handler
+    // here — the challenge is raised generically for any destructive op).
+    for (const found of this.discovery.methodsWithMeta<AdminConfirmSummaryMeta>(
+      AdminConfirmSummary,
+    )) {
+      this.summarizers.set(found.meta.op, {
+        token: found.class.metatype,
+        methodName: String(found.methodName),
+      });
     }
   }
 
@@ -98,7 +115,7 @@ export class StudioDispatchRegistry implements OnApplicationBootstrap {
       if (!entry) throw studioError('STUDIO_UNKNOWN_OP');
 
       this.enforceGate(meta, ctx);
-      await this.enforceConfirm(op, meta, req);
+      await this.enforceConfirm(op, meta, req, handlerCtx);
 
       const instance = this.container.resolve(entry.token) as Record<string, AdminRpcHandler>;
       const handler = instance[entry.methodName];
@@ -126,17 +143,52 @@ export class StudioDispatchRegistry implements OnApplicationBootstrap {
     }
   }
 
+  /**
+   * The 428 challenge-response gate for destructive ops. A valid, unspent
+   * `confirmToken` bound to (op, payload-minus-token) is consumed (single-use)
+   * and the op proceeds. Otherwise a fresh token is minted BOUND to the same
+   * (op, payload) and thrown as `STUDIO_CONFIRM_REQUIRED` (428) whose
+   * `error.details = { confirmToken, expiresAt, summary }` — the summary
+   * supplied by the op's `@AdminConfirmSummary` provider. Generic: any op
+   * flagged `destructive` in `STUDIO_OP_META` gets this flow.
+   */
   private async enforceConfirm(
     op: string,
     meta: AdminRpcMetaLike,
     req: AdminRpcRequest,
+    ctx: AdminOpContext,
   ): Promise<void> {
     if (!meta.destructive) return;
     const args = (req.args ?? {}) as Record<string, unknown>;
     const { confirmToken, ...payload } = args;
-    const ok =
-      typeof confirmToken === 'string' && (await this.confirm.verify(op, payload, confirmToken));
-    if (!ok) throw studioError('STUDIO_CONFIRM_REQUIRED');
+    if (
+      typeof confirmToken === 'string' &&
+      confirmToken.length > 0 &&
+      (await this.confirm.verifyAndConsume(op, payload, confirmToken))
+    ) {
+      return;
+    }
+    const { token, exp } = await this.confirm.issue(op, payload);
+    const details: StudioConfirmChallenge = {
+      confirmToken: token,
+      expiresAt: exp * 1000,
+      summary: await this.summarize(op, ctx, payload),
+    };
+    throw studioError('STUDIO_CONFIRM_REQUIRED', undefined, details);
+  }
+
+  /** Resolve the op's confirm-summary provider, or a generic fallback line. */
+  private async summarize(
+    op: string,
+    ctx: AdminOpContext,
+    payload: Record<string, unknown>,
+  ): Promise<string> {
+    const entry = this.summarizers.get(op);
+    if (entry === undefined) return `Confirm ${op}`;
+    const instance = this.container.resolve(entry.token) as Record<string, AdminConfirmSummarizer>;
+    const fn = instance[entry.methodName];
+    if (typeof fn !== 'function') return `Confirm ${op}`;
+    return fn.call(instance, ctx, payload);
   }
 
   private recordAudit(

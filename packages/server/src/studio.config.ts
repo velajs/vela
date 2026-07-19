@@ -79,5 +79,8 @@ export function resolveStudioConfig(
     subTokenTtlSec: options.subTokenTtlSec ?? 300,
     auditBufferSize: options.auditBufferSize ?? 500,
     logBufferSize: options.logBufferSize ?? 1000,
+    // Server-only impersonation identity (no env source — never read from the
+    // environment, and never serialized).
+    ...(options.runAsIdentity !== undefined ? { runAsIdentity: options.runAsIdentity } : {}),
   };
 }

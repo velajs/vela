@@ -22,16 +22,20 @@ export type {
   EditableFlags,
   StudioModuleOptions,
   ResolvedStudioConfig,
+  StudioRunAsIdentity,
   AdminPrincipal,
   AdminOpContext,
   AdminAuditDetail,
   AdminRpcHandler,
   AdminRpcMeta,
+  AdminConfirmSummaryMeta,
+  AdminConfirmSummarizer,
+  StudioConfirmChallenge,
 } from './studio.types';
 export { deriveWriteGates } from './studio.types';
 
 // RPC surface
-export { AdminRpc } from './rpc/admin-rpc.decorator';
+export { AdminRpc, AdminConfirmSummary } from './rpc/admin-rpc.decorator';
 export { StudioDispatchRegistry } from './rpc/dispatch.registry';
 
 // Injection tokens + metadata key
@@ -78,6 +82,16 @@ export { StudioCapabilitiesOps } from './ops/studio.ops';
 export { StudioDataOps } from './data/data.ops';
 export { STUDIO_MODEL_SOURCE } from './data/model-source.port';
 export type { StudioModelSource } from './data/model-source.port';
+
+// M7a data browser — the WRITE ops provider + the write seam types. The provider
+// is crud-free (authored against the port) but registered by StudioCrudModule.
+export { StudioDataWriteOps } from './data/data.write.ops';
+export type {
+  StudioWriteContext,
+  StudioWriteRowOutcome,
+  StudioDeleteRowsOutcome,
+  StudioGenerateRowsOutcome,
+} from './data/model-source.port';
 
 // HTTP
 export { RateLimiter, FixedWindowCounter, DEFAULT_MAX_ENTRIES } from './http/middleware/rate-limit';
