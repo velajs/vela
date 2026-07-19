@@ -1,0 +1,151 @@
+import { describe, expect, it } from 'vitest';
+import { timingSafeEqual } from '../src/security/token-compare';
+import { AdminSubTokenSigner } from '../src/security/sub-token.signer';
+import { ConfirmTokenSigner } from '../src/security/confirm-token';
+import { RateLimiter } from '../src/http/middleware/rate-limit';
+import { base64UrlDecode, base64UrlEncode, canonicalJson } from '../src/security/crypto';
+
+describe('timingSafeEqual', () => {
+  it('is true for identical strings', async () => {
+    expect(await timingSafeEqual('s3cr3t-token', 's3cr3t-token')).toBe(true);
+  });
+
+  it('is false for different strings (equal length)', async () => {
+    expect(await timingSafeEqual('aaaaaaaa', 'aaaaaaab')).toBe(false);
+  });
+
+  it('is false for different-length strings without leaking length', async () => {
+    expect(await timingSafeEqual('short', 'a-much-longer-secret')).toBe(false);
+  });
+
+  it('is true for empty vs empty', async () => {
+    expect(await timingSafeEqual('', '')).toBe(true);
+  });
+});
+
+describe('base64url', () => {
+  it('round-trips arbitrary bytes', () => {
+    const bytes = new Uint8Array([0, 1, 2, 250, 251, 255]);
+    const decoded = base64UrlDecode(base64UrlEncode(bytes));
+    expect(decoded).not.toBeNull();
+    expect([...(decoded ?? [])]).toEqual([...bytes]);
+  });
+
+  it('returns null on malformed input', () => {
+    expect(base64UrlDecode('!!!not base64!!!')).not.toBe(undefined);
+  });
+
+  it('canonicalizes object key order', () => {
+    expect(canonicalJson({ b: 1, a: 2 })).toBe(canonicalJson({ a: 2, b: 1 }));
+  });
+});
+
+describe('AdminSubTokenSigner', () => {
+  it('mint -> verify round-trips claims', async () => {
+    const signer = new AdminSubTokenSigner('master-secret');
+    const { token, exp } = await signer.mint({ scope: 'live', room: 'room-42' });
+    const claims = await signer.verify(token);
+    expect(claims).not.toBeNull();
+    expect(claims?.scope).toBe('live');
+    expect(claims?.room).toBe('room-42');
+    expect(claims?.exp).toBe(exp);
+    expect(typeof claims?.nonce).toBe('string');
+  });
+
+  it('rejects an expired token', async () => {
+    let now = 1_000_000_000_000;
+    const signer = new AdminSubTokenSigner('master-secret', { ttlSec: 60, now: () => now });
+    const { token } = await signer.mint({ scope: 'live' });
+    now += 61_000; // advance past expiry
+    expect(await signer.verify(token)).toBeNull();
+  });
+
+  it('rejects a tampered signature', async () => {
+    const signer = new AdminSubTokenSigner('master-secret');
+    const { token } = await signer.mint({ scope: 'live', room: 'r' });
+    const tampered = `${token.slice(0, -2)}xy`;
+    expect(await signer.verify(tampered)).toBeNull();
+  });
+
+  it('rejects a token signed by a different master', async () => {
+    const a = new AdminSubTokenSigner('secret-a');
+    const b = new AdminSubTokenSigner('secret-b');
+    const { token } = await a.mint({ scope: 'live' });
+    expect(await b.verify(token)).toBeNull();
+  });
+
+  it('rejects garbage', async () => {
+    const signer = new AdminSubTokenSigner('master-secret');
+    expect(await signer.verify('not-a-token')).toBeNull();
+    expect(await signer.verify('')).toBeNull();
+  });
+});
+
+describe('ConfirmTokenSigner', () => {
+  it('issue -> verify succeeds for the same op + payload', async () => {
+    const signer = new ConfirmTokenSigner('master-secret');
+    const payload = { model: 'User', ids: ['1', '2'] };
+    const { token } = await signer.issue('data.deleteRows', payload);
+    expect(await signer.verify('data.deleteRows', payload, token)).toBe(true);
+  });
+
+  it('verify is order-insensitive on payload keys', async () => {
+    const signer = new ConfirmTokenSigner('master-secret');
+    const { token } = await signer.issue('data.clearTable', { model: 'User', hard: true });
+    expect(await signer.verify('data.clearTable', { hard: true, model: 'User' }, token)).toBe(true);
+  });
+
+  it('rejects a token bound to a different op', async () => {
+    const signer = new ConfirmTokenSigner('master-secret');
+    const { token } = await signer.issue('data.deleteRows', { id: '1' });
+    expect(await signer.verify('data.clearTable', { id: '1' }, token)).toBe(false);
+  });
+
+  it('rejects when the payload was tampered', async () => {
+    const signer = new ConfirmTokenSigner('master-secret');
+    const { token } = await signer.issue('data.deleteRows', { ids: ['1'] });
+    expect(await signer.verify('data.deleteRows', { ids: ['1', '2'] }, token)).toBe(false);
+  });
+
+  it('rejects an expired confirm-token', async () => {
+    let now = 2_000_000_000_000;
+    const signer = new ConfirmTokenSigner('master-secret', { ttlSec: 30, now: () => now });
+    const { token } = await signer.issue('data.deleteRows', { id: '1' });
+    now += 31_000;
+    expect(await signer.verify('data.deleteRows', { id: '1' }, token)).toBe(false);
+  });
+
+  it('rejects a tampered signature', async () => {
+    const signer = new ConfirmTokenSigner('master-secret');
+    const { token } = await signer.issue('data.deleteRows', { id: '1' });
+    expect(await signer.verify('data.deleteRows', { id: '1' }, `${token}z`)).toBe(false);
+  });
+});
+
+describe('RateLimiter', () => {
+  it('allows up to max then denies', () => {
+    let now = 0;
+    const limiter = new RateLimiter({ windowMs: 60_000, max: 3 }, () => now);
+    expect(limiter.check('ip-1')).toBe(true);
+    expect(limiter.check('ip-1')).toBe(true);
+    expect(limiter.check('ip-1')).toBe(true);
+    expect(limiter.check('ip-1')).toBe(false);
+  });
+
+  it('buckets are per-key', () => {
+    let now = 0;
+    const limiter = new RateLimiter({ windowMs: 60_000, max: 1 }, () => now);
+    expect(limiter.check('ip-1')).toBe(true);
+    expect(limiter.check('ip-1')).toBe(false);
+    expect(limiter.check('ip-2')).toBe(true);
+  });
+
+  it('refills over time', () => {
+    let now = 0;
+    const limiter = new RateLimiter({ windowMs: 1000, max: 1 }, () => now);
+    expect(limiter.check('ip-1')).toBe(true);
+    expect(limiter.check('ip-1')).toBe(false);
+    now += 1000; // one full window later -> one token back
+    expect(limiter.check('ip-1')).toBe(true);
+  });
+});

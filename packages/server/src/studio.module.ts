@@ -1,0 +1,89 @@
+/**
+ * `StudioModule` — mounts the reserved `/_vela/admin` surface with its full
+ * security chain, the `@AdminRpc` dispatch registry (empty catalog in M2), and
+ * the token/sub-token/confirm-token primitives.
+ *
+ * Authored 100% against the public `@velajs/vela` barrel (the openness rule — an
+ * audit test asserts no deep `../` imports into vela internals). EAGER by design:
+ * the dispatch registry's `onApplicationBootstrap` builds the op map and the
+ * route contributor mounts routes at build time.
+ */
+import { Container, defineModule } from '@velajs/vela';
+import type { ProviderOptions, Type } from '@velajs/vela';
+import { resolveStudioConfig, studioConfig } from './studio.config';
+import type { StudioModuleOptions } from './studio.types';
+import type { StudioEnvConfig } from './studio.config';
+import { ADMIN_AUDIT_SINK, STUDIO_RESOLVED_CONFIG } from './tokens';
+import type { AdminAuditSink } from './tokens';
+import { AdminSubTokenSigner } from './security/sub-token.signer';
+import { ConfirmTokenSigner } from './security/confirm-token';
+import { AdminAuditLog } from './audit/audit-log';
+import { AdminLogBuffer } from './logs/log-buffer';
+import { StudioDispatchRegistry } from './rpc/dispatch.registry';
+import { StudioFeaturesService } from './features/features.service';
+// Importing the marker controller pulls the route-contributor module (and its
+// import-time `registerRouteContributor` side effect) into the graph.
+import { StudioAdminController } from './http/route-contributor';
+import type { ResolvedStudioConfig } from './studio.types';
+
+function resolveSink(container: Container): AdminAuditSink | undefined {
+  return container.has(ADMIN_AUDIT_SINK) ? container.resolve(ADMIN_AUDIT_SINK) : undefined;
+}
+
+const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<StudioModuleOptions>({
+  name: 'Studio',
+  setup: ({ OPTIONS }) => {
+    const providers: Array<Type | ProviderOptions> = [
+      // Env-derived config slice (reads VELA_STUDIO_* via CONFIG_ENV).
+      studioConfig.asProvider(),
+      // Resolved config = env UNDER module options.
+      {
+        provide: STUDIO_RESOLVED_CONFIG,
+        useFactory: (env: StudioEnvConfig, options: StudioModuleOptions) =>
+          resolveStudioConfig(env, options),
+        inject: [studioConfig.KEY, OPTIONS],
+      },
+      {
+        provide: AdminSubTokenSigner,
+        useFactory: (config: ResolvedStudioConfig) =>
+          new AdminSubTokenSigner(config.token ?? '', { ttlSec: config.subTokenTtlSec }),
+        inject: [STUDIO_RESOLVED_CONFIG],
+      },
+      {
+        provide: ConfirmTokenSigner,
+        useFactory: (config: ResolvedStudioConfig) => new ConfirmTokenSigner(config.token ?? ''),
+        inject: [STUDIO_RESOLVED_CONFIG],
+      },
+      {
+        provide: AdminAuditLog,
+        useFactory: (config: ResolvedStudioConfig, container: Container) =>
+          new AdminAuditLog(config.auditBufferSize, resolveSink(container)),
+        inject: [STUDIO_RESOLVED_CONFIG, Container],
+      },
+      {
+        provide: AdminLogBuffer,
+        useFactory: (config: ResolvedStudioConfig) => new AdminLogBuffer(config.logBufferSize),
+        inject: [STUDIO_RESOLVED_CONFIG],
+      },
+      StudioFeaturesService,
+      StudioDispatchRegistry,
+    ];
+
+    return {
+      providers,
+      controllers: [StudioAdminController],
+      exports: [
+        STUDIO_RESOLVED_CONFIG,
+        AdminSubTokenSigner,
+        ConfirmTokenSigner,
+        AdminAuditLog,
+        AdminLogBuffer,
+        StudioFeaturesService,
+        StudioDispatchRegistry,
+      ],
+    };
+  },
+});
+
+export class StudioModule extends ConfigurableModuleClass {}
+export { MODULE_OPTIONS_TOKEN as STUDIO_MODULE_OPTIONS };
