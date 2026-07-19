@@ -103,6 +103,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.3
+      '@velajs/studio-ui':
+        specifier: workspace:^
+        version: link:../ui
       tsdown:
         specifier: 'catalog:'
         version: 0.22.9(@arethetypeswrong/core@0.18.5)(publint@0.3.21)(typescript@7.0.2)
@@ -198,6 +201,9 @@ importers:
       '@velajs/studio-fixtures':
         specifier: workspace:^
         version: link:../fixtures
+      esbuild:
+        specifier: ^0.28.1
+        version: 0.28.1
       happy-dom:
         specifier: ^20.0.0
         version: 20.10.6

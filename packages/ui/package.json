@@ -42,10 +42,13 @@
     "./standalone": {
       "types": "./dist/standalone/index.d.ts",
       "import": "./dist/standalone/index.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "scripts": {
-    "build": "tsdown",
+    "build": "tsdown && node scripts/build-standalone.mjs",
+    "build:lib": "tsdown",
+    "build:standalone": "node scripts/build-standalone.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
@@ -63,6 +66,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@velajs/studio-fixtures": "workspace:^",
+    "esbuild": "^0.28.1",
     "happy-dom": "^20.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
