@@ -195,15 +195,9 @@ describe('StudioModule — dispatch', () => {
 
 describe('StudioModule — write gating & confirm', () => {
   it('write op with its gate closed -> 403 STUDIO_OP_FORBIDDEN', async () => {
-    @Injectable()
-    class ApiOps {
-      @AdminRpc({ op: 'api.tryit' })
-      tryit() {
-        return { status: 200 };
-      }
-    }
-    // api.tryit is mode:write gate:opsEditable; ops disabled by default.
-    const app = await makeApp({ token: TOKEN }, [ApiOps]);
+    // api.tryit is a real StudioModule handler (mode:write gate:opsEditable);
+    // ops is disabled by default, so the gate closes before the handler runs.
+    const app = await makeApp({ token: TOKEN });
     const res = await app.getHonoApp().request(`${BASE}/rpc/api.tryit`, authed({ args: {} }));
     expect(res.status).toBe(403);
     expect((await res.json()).error.code).toBe('STUDIO_OP_FORBIDDEN');

@@ -189,6 +189,42 @@ describe('app.openapi', () => {
   });
 });
 
+describe('api.tryit', () => {
+  it('executes a real app route through the app and returns its status/body', async () => {
+    // opsEditable open so the write gate lets the proxy run.
+    const app = await makeApp({ editable: { ops: true } });
+    const r = await rpc(app, 'api.tryit', { method: 'GET', path: '/status' });
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error('expected ok');
+    // The real StatusController#status handler produced this — not a mock.
+    expect(r.data.status).toBe(200);
+    expect(r.data.body).toBe('ok');
+  });
+
+  it('is gated: opsEditable off ⇒ 403 STUDIO_OP_FORBIDDEN', async () => {
+    // ops disabled by default → the dispatch registry's write gate closes first.
+    const app = await makeApp();
+    const r = await rpc(app, 'api.tryit', { method: 'GET', path: '/status' });
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error('expected error');
+    expect(r.status).toBe(403);
+    expect(r.error.code).toBe('STUDIO_OP_FORBIDDEN');
+  });
+
+  it('refuses to proxy the reserved admin surface (recursive-admin guard)', async () => {
+    // opsEditable is OPEN here, so the gate passes — a 403 can ONLY be the guard.
+    const app = await makeApp({ editable: { ops: true } });
+    const r = await rpc(app, 'api.tryit', {
+      method: 'POST',
+      path: `${BASE}/rpc/data.clearTable`,
+    });
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error('expected error');
+    expect(r.status).toBe(403);
+    expect(r.error.code).toBe('STUDIO_OP_FORBIDDEN');
+  });
+});
+
 describe('logs.tail', () => {
   it('honors the level filter and the limit', async () => {
     const app = await makeApp();
