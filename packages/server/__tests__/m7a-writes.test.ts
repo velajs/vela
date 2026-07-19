@@ -13,7 +13,7 @@ import type {
   Page,
   ReadOptions,
 } from '@velajs/crud/adapter';
-import { StudioModule } from '../src';
+import { MAX_GENERATE_ROWS, StudioModule } from '../src';
 import type { StudioConfirmChallenge, StudioModuleOptions } from '../src';
 import { StudioCrudModule } from '../src/crud';
 import type {
@@ -537,6 +537,31 @@ describe('data.generateRows', () => {
     if (res.ok) throw new Error('expected error');
     expect(res.status).toBe(403);
     expect(res.error.code).toBe('DATA_EDIT_DISABLED');
+  });
+
+  it('accepts a count AT the cap (MAX_GENERATE_ROWS)', async () => {
+    const app = await makeApp({ editable: { data: true } });
+    const res = ok(
+      await rpc(app, 'data.generateRows', { model: 'post', count: MAX_GENERATE_ROWS }),
+    );
+    expect(res.inserted).toBe(MAX_GENERATE_ROWS);
+  });
+
+  it('rejects a count OVER the cap with a 400 + hint naming the cap', async () => {
+    const app = await makeApp({ editable: { data: true } });
+    const res = await rpc(app, 'data.generateRows', {
+      model: 'post',
+      count: MAX_GENERATE_ROWS + 1,
+    });
+    expect(res.ok).toBe(false);
+    if (res.ok) throw new Error('expected error');
+    expect(res.status).toBe(400);
+    expect(res.error.code).toBe('bad_request');
+    expect(res.error.hint).toContain(String(MAX_GENERATE_ROWS));
+
+    // Nothing was inserted — the 3 seeded posts stand.
+    const all = ok(await rpc(app, 'data.listRows', { model: 'post' }));
+    expect(all.info.total_count).toBe(3);
   });
 });
 

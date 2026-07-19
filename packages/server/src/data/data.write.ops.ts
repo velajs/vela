@@ -14,8 +14,11 @@
  *
  * `runAsIdentity`: when the `identity` editable gate is open and an identity is
  * configured, it is threaded into the source write context (a kernel-ready seam)
- * and its subject is stamped on the audit row. The adapter-direct source does
- * not policy-scope by it — see the M7a report.
+ * and its subject is stamped on the audit row. M1: in THIS adapter-direct path
+ * runAsIdentity is audit-subject-only — the subject is recorded on the audit row
+ * but the write is NOT policy-scoped by it (no per-identity authorization or row
+ * filtering); policy-scoped impersonation lands with the kernel path (matches
+ * the M7a report ledger).
  */
 import { Container, Inject, Injectable } from '@velajs/vela';
 import type {
@@ -27,10 +30,19 @@ import type {
 } from '@velajs/studio-protocol';
 import { AdminConfirmSummary, AdminRpc } from '../rpc/admin-rpc.decorator';
 import type { AdminOpContext, ResolvedStudioConfig, StudioRunAsIdentity } from '../studio.types';
-import { studioError } from '../studio.errors';
+import { studioBadRequest, studioError } from '../studio.errors';
 import { STUDIO_RESOLVED_CONFIG } from '../tokens';
 import { STUDIO_MODEL_SOURCE } from './model-source.port';
 import type { StudioModelSource, StudioWriteContext } from './model-source.port';
+
+/**
+ * Hard upper bound on the number of synthetic rows a single `data.generateRows`
+ * call may insert. The source clamps the LOWER bound (floor to 0); this caps the
+ * upper bound so an unbounded `count` cannot exhaust memory or hammer the DB. A
+ * request over the cap is rejected as a 400 client error rather than silently
+ * clamped, so the caller learns their number was not honored.
+ */
+export const MAX_GENERATE_ROWS = 1000;
 
 @Injectable()
 export class StudioDataWriteOps {
@@ -110,11 +122,33 @@ export class StudioDataWriteOps {
 
   // ---- generateRows (synthetic seed) --------------------------------------
 
+  /**
+   * Insert `count` synthetic rows derived from column metadata.
+   *
+   * M2 stopgap: synthetic rows are built column-by-column and inserted WITHOUT
+   * uniqueness or schema validation. A synthesized value that collides with a
+   * unique column is NOT caught here — on the in-memory source `create` is a
+   * pk-keyed upsert so a colliding row may OVERWRITE the existing one, while a
+   * SQL source rejects with a driver uniqueness ERROR. `args.overrides` are
+   * applied verbatim and CAN set a fixed primary key (every generated row then
+   * targets that same pk). A validating generator lands with the kernel path.
+   *
+   * I2: `count` is hard-capped at {@link MAX_GENERATE_ROWS}; over the cap is a
+   * 400, not a silent clamp. runAsIdentity is audit-subject-only here (see the
+   * file header) — the adapter-direct path does not policy-scope the write.
+   */
   @AdminRpc({ op: 'data.generateRows' })
   async generateRows(
     ctx: AdminOpContext,
     args: GenerateRowsRequest,
   ): Promise<GenerateRowsResponse> {
+    const requested = Math.floor(args.count);
+    if (requested > MAX_GENERATE_ROWS) {
+      throw studioBadRequest(
+        `generateRows count ${requested} exceeds the maximum of ${MAX_GENERATE_ROWS}`,
+        `request at most ${MAX_GENERATE_ROWS} synthetic rows per call`,
+      );
+    }
     const source = this.writableSource();
     const generate = source.generateRows!.bind(source);
     const { ctx: writeCtx, subject } = this.identity(ctx);

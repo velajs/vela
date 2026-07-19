@@ -85,7 +85,7 @@ export type { StudioModelSource } from './data/model-source.port';
 
 // M7a data browser — the WRITE ops provider + the write seam types. The provider
 // is crud-free (authored against the port) but registered by StudioCrudModule.
-export { StudioDataWriteOps } from './data/data.write.ops';
+export { StudioDataWriteOps, MAX_GENERATE_ROWS } from './data/data.write.ops';
 export type {
   StudioWriteContext,
   StudioWriteRowOutcome,

@@ -47,9 +47,28 @@ export interface ConfirmTokenSignerOptions {
 const HKDF_INFO = 'vela:studio:confirm-token:v1';
 const DEFAULT_MAX_USED_NONCES = 1024;
 
+/**
+ * I1 — posture. The confirm token is a payload-bound "are-you-sure" guard, NOT
+ * an authorization boundary: the master admin token is the real boundary and is
+ * checked independently. A confirm token only proves the caller already saw the
+ * destructive summary for exactly this `(op, payload)`; it grants no access on
+ * its own.
+ *
+ * The single-use guarantee is PER-INSTANCE / IN-MEMORY. {@link usedNonces} lives
+ * on this signer instance, so replay protection holds only within one process.
+ * Under horizontal scaling a token spent on instance A is still fresh to
+ * instance B, so the same confirm could be re-spent cross-instance. A shared
+ * store (e.g. Redis with the nonce as a set key + TTL = token expiry) is
+ * required to make single-use hold across instances; the payload binding + short
+ * TTL bound the blast radius until then.
+ */
 export class ConfirmTokenSigner {
   private keyPromise?: Promise<CryptoKey>;
-  /** Spent nonces → their expiry (unix seconds), for single-use enforcement. */
+  /**
+   * Spent nonces → their expiry (unix seconds), for single-use enforcement.
+   * PER-INSTANCE / in-memory (see the class doc): a shared store is needed for
+   * cross-instance single-use under horizontal scaling.
+   */
   private readonly usedNonces = new Map<string, number>();
 
   constructor(

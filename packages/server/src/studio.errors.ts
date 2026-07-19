@@ -58,6 +58,20 @@ export function studioNotFound(message: string): VelaError {
 }
 
 /**
+ * A 400 BAD REQUEST via the composed core `bad_request` code — the Studio
+ * catalog has no request-shape code and the frozen protocol adds none, so
+ * request-validation guards reuse the core code (wire `code: 'bad_request'`,
+ * status 400). Used for the `data.generateRows` count cap (a request over the
+ * cap is a client error, not a silently clamped success).
+ */
+export function studioBadRequest(message: string, hint?: string): VelaError {
+  return STUDIO_CATALOG.error('bad_request', {
+    message,
+    ...(hint !== undefined ? { hint } : {}),
+  });
+}
+
+/**
  * THE Studio error edge. Redacts through `toErrorBody`, then enriches the wire
  * object with the `title`/`status` the UI renders. Returns `redacted` so the
  * caller can log the raw error server-side.
