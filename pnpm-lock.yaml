@@ -42,8 +42,8 @@ importers:
         specifier: 'catalog:'
         version: 2.31.0
       '@velajs/vela':
-        specifier: ^1.19.0
-        version: 1.19.0
+        specifier: ^1.21.0
+        version: 1.21.0
       oxfmt:
         specifier: 'catalog:'
         version: 0.58.0
@@ -689,13 +689,13 @@ packages:
     resolution: {integrity: sha512-e7pjXJrb52FN+/A6SdENyYIQHW3qu+LbvkNAUaX1kSTrwRAlz5C8wlnLlLj5ki1IWAEfoC0D052AMpsMSBId2w==}
     engines: {node: '>=20'}
 
-  '@velajs/live-protocol@1.0.0':
-    resolution: {integrity: sha512-TBEHd8XODRyvVUbjh6IUeH44coZ6rzBgS1XvIsGcQCKTMp39ywPbDrf1fH51stXVaAymFBkucJGb+UjY9h2qCg==}
-    engines: {node: '>=20'}
+  '@velajs/live-protocol@1.1.0':
+    resolution: {integrity: sha512-ynRgROK+QjEJny18p8gFTP9ug94RvP/wc5KG1ki2+KzxlwFoOT6ZsgyLs67I7uEDnaBCr+Ki3rYM6MYtJIfimw==}
+    engines: {node: '>=24'}
 
-  '@velajs/vela@1.19.0':
-    resolution: {integrity: sha512-2eSOfmKSQFWLHpRFoMa7FAe4DmJhLCYjvqFpRPw+G9ujuRjWIiO1H+W28WwRzgYwpZ+w81q0vR+eT94rmofvxw==}
-    engines: {node: '>=20'}
+  '@velajs/vela@1.21.0':
+    resolution: {integrity: sha512-RPMkf+s9g0G3uhGoMA7C271x+aC54NU8ktzlbj+1MvdQYC5geQqHTRSKruocxym26k0ckkINEU75E3cJbrGwIQ==}
+    engines: {node: '>=24'}
     peerDependencies:
       intl-messageformat: '>=10'
     peerDependenciesMeta:
@@ -2230,12 +2230,12 @@ snapshots:
 
   '@velajs/errors@1.0.0': {}
 
-  '@velajs/live-protocol@1.0.0': {}
+  '@velajs/live-protocol@1.1.0': {}
 
-  '@velajs/vela@1.19.0':
+  '@velajs/vela@1.21.0':
     dependencies:
       '@velajs/errors': 1.0.0
-      '@velajs/live-protocol': 1.0.0
+      '@velajs/live-protocol': 1.1.0
       hono: 4.12.29
 
   '@vitest/expect@4.1.10':

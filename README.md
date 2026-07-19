@@ -40,6 +40,10 @@ await authz.can({ roles: ['admin'] }, 'anything:at:all'); // true (wildcard)
 
 ```ts
 interface Identity {
+  issuer?: string;
+  subject?: string;
+  principalType?: 'user' | 'service';
+  /** @deprecated compatibility alias for subject */
   userId?: string;
   roles?: string[];
   claims?: Record<string, unknown>;
@@ -49,6 +53,8 @@ interface PermissionResolver {
   grants(identity: Identity): Set<string> | Promise<Set<string>>;
 }
 ```
+
+Authenticated adapters should populate `{ issuer, subject, principalType }`. Treat the `(issuer, subject)` pair as the durable principal key: OIDC subjects are issuer-local and can collide across identity providers. `userId` remains as a compatibility alias while applications migrate.
 
 `anonymous` is the zero-privilege identity (`{ roles: [] }`, frozen) — the fail-closed default when no session is present.
 
