@@ -32,6 +32,27 @@ export interface AdminErrorBody {
 }
 
 /**
+ * The structured payload carried on {@link AdminErrorBody.details} of a
+ * `STUDIO_CONFIRM_REQUIRED` (428) error — the server's challenge for a
+ * destructive op. The client re-sends the identical op args plus
+ * {@link StudioConfirmChallenge.confirmToken} to complete the op.
+ *
+ * The token is single-use and payload-bound (see the server confirm signer);
+ * `summary` is a human line the op handler supplies for the confirm dialog.
+ * This is the canonical wire shape for the challenge — producers (server,
+ * test fixtures) and consumers (UI decode) MUST use this type rather than
+ * re-declaring it, so the two ends cannot drift.
+ */
+export interface StudioConfirmChallenge {
+  /** Single-use, op+payload-bound token to echo back on the confirmed retry. */
+  confirmToken: string;
+  /** Epoch-ms after which the token is rejected. */
+  expiresAt: number;
+  /** Human-readable description of what the confirmed op will do. */
+  summary: string;
+}
+
+/**
  * The closed set of Studio-specific error codes. `const` array + derived union
  * so the compile-time type and any runtime membership check can never drift.
  * Parenthetical statuses document the intended HTTP mapping (the wire carries
