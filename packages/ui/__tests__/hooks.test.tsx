@@ -5,7 +5,7 @@ import {
   FakeAdminTransport,
   fakeTable,
   makeErrorBody,
-} from '../../fixtures/src/index';
+} from '@velajs/studio-fixtures';
 import { useAdminMutation, useAdminQuery } from '../src/data/query';
 import { useStudioCapabilities } from '../src/data/capabilities';
 import { AdminClientProvider } from '../src/data/context';

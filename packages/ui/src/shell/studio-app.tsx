@@ -19,17 +19,28 @@ import { createStudioRouter } from './router';
 import { readStoredToken, writeStoredToken } from './session-token';
 
 export interface StudioProps {
-  basePath?: string;
+  /**
+   * Router basepath — the sub-path the SPA itself is mounted under in the
+   * browser (fed straight to the router). This is NOT the server admin-mount
+   * prefix; defaults to `'/'`.
+   */
+  routerBasePath?: string;
   history?: RouterHistory;
   initialPath?: string;
   theme?: StudioTheme;
   onSignOut?: () => void;
 }
 
-export function Studio({ basePath, history, initialPath, theme, onSignOut }: StudioProps) {
+export function Studio({
+  routerBasePath = '/',
+  history,
+  initialPath,
+  theme,
+  onSignOut,
+}: StudioProps) {
   const router = useMemo(
-    () => createStudioRouter({ basePath, history, initialPath }),
-    [basePath, history, initialPath],
+    () => createStudioRouter({ routerBasePath, history, initialPath }),
+    [routerBasePath, history, initialPath],
   );
   const chrome = useMemo(() => ({ theme: theme ?? 'dark', onSignOut }), [theme, onSignOut]);
   return (
@@ -42,7 +53,18 @@ export function Studio({ basePath, history, initialPath, theme, onSignOut }: Stu
 export interface StudioAppProps {
   /** Origin the admin surface is served from. Defaults to same-origin (`''`). */
   baseUrl?: string;
-  basePath?: string;
+  /**
+   * Server admin-mount prefix — where the Studio admin API is mounted on the
+   * server. Fed only to the {@link AdminClient} (RPC/health URLs); defaults to
+   * `STUDIO_DEFAULT_PATH`. Independent of {@link routerBasePath}.
+   */
+  adminBasePath?: string;
+  /**
+   * Router basepath — the sub-path this SPA is mounted under in the browser.
+   * Fed only to the router; defaults to `'/'`. Independent of
+   * {@link adminBasePath}.
+   */
+  routerBasePath?: string;
   /** Seed a token (skips the login screen when set). */
   adminToken?: string;
   theme?: StudioTheme;
@@ -52,7 +74,16 @@ export interface StudioAppProps {
 }
 
 export function StudioApp(props: StudioAppProps) {
-  const { baseUrl = '', basePath, adminToken, fetchImpl, theme, history, initialPath } = props;
+  const {
+    baseUrl = '',
+    adminBasePath,
+    routerBasePath,
+    adminToken,
+    fetchImpl,
+    theme,
+    history,
+    initialPath,
+  } = props;
   const [token, setToken] = useState<string | undefined>(() => adminToken ?? readStoredToken());
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -61,8 +92,8 @@ export function StudioApp(props: StudioAppProps) {
   // candidate token is pushed onto the current client via `setToken` for the
   // health probe, before it is committed to state (and a fresh client built).
   const client = useMemo(
-    () => new AdminClient({ baseUrl, basePath, adminToken: token, fetchImpl }),
-    [baseUrl, basePath, fetchImpl, token],
+    () => new AdminClient({ baseUrl, basePath: adminBasePath, adminToken: token, fetchImpl }),
+    [baseUrl, adminBasePath, fetchImpl, token],
   );
 
   const handleSubmit = useCallback(
@@ -96,13 +127,13 @@ export function StudioApp(props: StudioAppProps) {
   }, [client]);
 
   if (token === undefined || token === '') {
-    return <LoginScreen onSubmit={handleSubmit} error={error} pending={pending} />;
+    return <LoginScreen onSubmit={handleSubmit} error={error} pending={pending} theme={theme} />;
   }
 
   return (
     <AdminClientProvider transport={client} client={client}>
       <Studio
-        basePath={basePath}
+        routerBasePath={routerBasePath}
         history={history}
         initialPath={initialPath}
         theme={theme}

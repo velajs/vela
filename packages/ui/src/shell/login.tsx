@@ -3,18 +3,21 @@
  * hands it to `onSubmit`, which health-probes the server before accepting it.
  */
 import { useState } from 'react';
+import type { StudioTheme } from './chrome';
 
 export interface LoginScreenProps {
   onSubmit: (token: string) => void | Promise<void>;
   error?: string | null;
   pending?: boolean;
+  /** Theme threaded from the shell; defaults to the shell default (`'dark'`). */
+  theme?: StudioTheme;
 }
 
-export function LoginScreen({ onSubmit, error, pending }: LoginScreenProps) {
+export function LoginScreen({ onSubmit, error, pending, theme }: LoginScreenProps) {
   const [token, setToken] = useState('');
   const trimmed = token.trim();
   return (
-    <div className="vela-studio vela-login" data-theme="dark">
+    <div className="vela-studio vela-login" data-theme={theme ?? 'dark'}>
       <form
         className="vela-login__form"
         onSubmit={(event) => {

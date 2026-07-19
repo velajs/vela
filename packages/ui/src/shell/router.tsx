@@ -37,8 +37,11 @@ function RedirectHome() {
 }
 
 export interface StudioRouterOptions {
-  /** Router basepath (e.g. mounting the SPA under a sub-path). */
-  basePath?: string;
+  /**
+   * Router basepath — the sub-path the SPA is mounted under in the browser.
+   * This is the SPA mount path, never the server admin-mount prefix.
+   */
+  routerBasePath?: string;
   /** Supply a history; defaults to a memory history at {@link initialPath}. */
   history?: RouterHistory;
   /** Initial path for the default memory history (tests / deep links). */
@@ -64,7 +67,7 @@ export function createStudioRouter(options: StudioRouterOptions = {}) {
   return createRouter({
     routeTree,
     history,
-    basepath: options.basePath,
+    basepath: options.routerBasePath,
     defaultPreload: false,
   });
 }

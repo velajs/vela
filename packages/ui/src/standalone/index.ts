@@ -2,7 +2,9 @@
  * `@velajs/studio-ui/standalone` — the full-page mount entry. `mountStudio`
  * creates a React root and renders {@link StudioApp}, merging the
  * `window.__VELA_BASE_PATH__` / `window.__VELA_ADMIN_TOKEN__` globals when the
- * corresponding options are omitted.
+ * corresponding options are omitted. `__VELA_BASE_PATH__` is the SPA mount path
+ * (where the standalone bundle is served), so it feeds `routerBasePath` — not
+ * the server admin-mount prefix (`adminBasePath`).
  */
 import { createElement } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -43,12 +45,14 @@ function resolveElement(element: MountStudioOptions['element']): HTMLElement {
 export function mountStudio(options: MountStudioOptions = {}): StudioHandle {
   const { element, ...appProps } = options;
   const globals = typeof window === 'undefined' ? undefined : window;
-  const basePath = appProps.basePath ?? globals?.['__VELA_BASE_PATH__'];
+  // `__VELA_BASE_PATH__` is the SPA mount path, so it feeds the router basepath
+  // (`routerBasePath`), never the server admin-mount prefix (`adminBasePath`).
+  const routerBasePath = appProps.routerBasePath ?? globals?.['__VELA_BASE_PATH__'];
   const adminToken = appProps.adminToken ?? globals?.['__VELA_ADMIN_TOKEN__'];
 
   const container = resolveElement(element);
   const root = createRoot(container);
-  root.render(createElement(StudioApp, { ...appProps, basePath, adminToken }));
+  root.render(createElement(StudioApp, { ...appProps, routerBasePath, adminToken }));
 
   return { root, unmount: () => root.unmount() };
 }

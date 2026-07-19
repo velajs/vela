@@ -8,8 +8,8 @@ import { useNavigate } from '@tanstack/react-router';
 import { TAB_META, tabPath } from './nav';
 import type { StudioTab } from './nav';
 
-/** Case-insensitive subsequence match (`rte` matches `Routes`). */
-export function fuzzyMatch(query: string, text: string): boolean {
+/** Case-insensitive subsequence match (`rte` matches `Routes`). Module-private. */
+function fuzzyMatch(query: string, text: string): boolean {
   const needle = query.toLowerCase().replace(/\s+/g, '');
   if (needle === '') return true;
   const haystack = text.toLowerCase();

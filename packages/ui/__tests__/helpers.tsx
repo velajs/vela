@@ -7,9 +7,6 @@
 import type { ReactElement, ReactNode } from 'react';
 import { render } from '@testing-library/react';
 import type { RenderResult } from '@testing-library/react';
-// The fixtures package is not a declared devDependency of `@velajs/studio-ui`
-// (that would need a package.json change out of this task's lane), so tests
-// import it by relative source path. See the report's "protocol friction" note.
 import {
   capabilitiesAllOn,
   entrypoints,
@@ -18,7 +15,7 @@ import {
   modules,
   routes,
   scheduleJobs,
-} from '../../fixtures/src/index';
+} from '@velajs/studio-fixtures';
 import { AdminClientProvider } from '../src/data/context';
 
 export function wrapperFor(transport: FakeAdminTransport) {

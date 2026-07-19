@@ -84,10 +84,17 @@ type MutuallyAssignable<A, B> = [A] extends [B] ? ([B] extends [A] ? true : neve
 /**
  * Compile-time exhaustiveness: the flattened group tabs must equal the
  * `StudioTab` union in both directions. If a tab is added to the type but not
- * grouped (or vice-versa), this stops being assignable to `true`. Exported so it
- * counts as used.
+ * grouped (or vice-versa), this stops being assignable to `true`. Module-private
+ * (not part of the public export surface); the runtime reference below keeps it
+ * from being pruned as dead code.
  */
-export const NAV_TABS_EXHAUSTIVE: MutuallyAssignable<StudioTab, GroupedTab> = true;
+const NAV_TABS_EXHAUSTIVE: MutuallyAssignable<StudioTab, GroupedTab> = true;
+
+// The real guard is the type annotation above (enforced at compile time); this
+// reference exists only so the sentinel is never flagged as unused/dead code.
+if (!NAV_TABS_EXHAUSTIVE) {
+  throw new Error('unreachable: NAV_TABS_EXHAUSTIVE');
+}
 
 const TAB_IDS = new Set<string>(Object.keys(TAB_META));
 
