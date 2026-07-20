@@ -14,7 +14,9 @@
     "attw": "pnpm --filter @velajs/studio-protocol --filter @velajs/studio --filter @velajs/studio-ui --filter @velajs/studio-host --no-bail exec attw --pack . --profile esm-only",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm -r test && pnpm publint && pnpm attw"
+    "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm -r test && pnpm publint && pnpm attw",
+    "release:check": "node scripts/check-release-lock.mjs && pnpm verify",
+    "release": "pnpm release:check && changeset publish"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "catalog:",
