@@ -43,6 +43,7 @@ catalogs:
 overrides:
   picomatch@>=4.0.0 <4.0.4: ^4.0.4
   vite@>=7.0.0 <7.3.5: ^7.3.5
+  '@velajs/cloudflare': link:../cloudflare
 
 importers:
 
@@ -179,6 +180,9 @@ importers:
 
   packages/server:
     dependencies:
+      '@velajs/cloudflare':
+        specifier: link:../../../cloudflare
+        version: link:../../../cloudflare
       '@velajs/errors':
         specifier: ^1.1.0
         version: 1.1.0
@@ -189,9 +193,6 @@ importers:
       '@velajs/better-auth':
         specifier: ^0.6.1
         version: 0.6.1(@velajs/vela@1.20.0)(better-auth@1.6.23(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.10(@types/node@26.1.1)(happy-dom@20.10.6)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0))))(hono@4.12.30)
-      '@velajs/cloudflare':
-        specifier: link:../../../cloudflare
-        version: link:../../../cloudflare
       '@velajs/crud':
         specifier: ^1.19.1
         version: 1.19.1(@velajs/vela@1.20.0)(hono@4.12.30)(zod@4.4.3)

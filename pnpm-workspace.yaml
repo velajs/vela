@@ -24,6 +24,10 @@ catalog:
 overrides:
   'picomatch@>=4.0.0 <4.0.4': ^4.0.4
   'vite@>=7.0.0 <7.3.5': ^7.3.5
+  # @velajs/cloudflare 1.11.0 (do-pitr) is not yet on npm — the manifest declares
+  # the honest ^1.11.0 (publish-clean) while local dev resolves the sibling repo.
+  # Remove this override once @velajs/cloudflare@1.11.0 publishes.
+  '@velajs/cloudflare': link:../cloudflare
 
 onlyBuiltDependencies:
   - '@parcel/watcher'

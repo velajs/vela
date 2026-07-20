@@ -79,7 +79,7 @@
   },
   "devDependencies": {
     "@velajs/better-auth": "^0.6.1",
-    "@velajs/cloudflare": "link:../../../cloudflare",
+    "@velajs/cloudflare": "^1.11.0",
     "@velajs/crud": "^1.19.1",
     "@velajs/feature-flags": "^0.1.1",
     "@velajs/vela": "^1.20.0",
