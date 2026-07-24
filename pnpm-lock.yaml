@@ -58,7 +58,7 @@ importers:
         version: 1.1.0
       hono:
         specifier: ^4.12.26
-        version: 4.12.26
+        version: 4.12.27
     devDependencies:
       '@arethetypeswrong/cli':
         specifier: 'catalog:'
@@ -1818,8 +1818,8 @@ packages:
   highlight.js@10.7.3:
     resolution: {integrity: sha512-tzcUFauisWKNHaRkN4Wjl/ZA07gENAjFl3J/c480dprkGTg5EQstgaNFqBfUqCq54kZRIEcreTsAgF/m2quD7A==}
 
-  hono@4.12.26:
-    resolution: {integrity: sha512-uyZtpnYxM9CmQ7QsQknM4zN8EftNqhON1qYeIKM0Se67CCEe2c44xyGURwB0axX2fBDu1dqHrHAc1hmNT8ITkw==}
+  hono@4.12.27:
+    resolution: {integrity: sha512-1yrb/+w6HWQJrUCLkJ2IF5jNIPvvFkblV5RNOYl6bV+OA6p9GLcMpHFFGTosSvHvcAUibuUukRqhlYI4z32C7Q==}
     engines: {node: '>=16.9.0'}
 
   hookable@6.1.1:
@@ -3899,7 +3899,7 @@ snapshots:
 
   highlight.js@10.7.3: {}
 
-  hono@4.12.26: {}
+  hono@4.12.27: {}
 
   hookable@6.1.1: {}
 
