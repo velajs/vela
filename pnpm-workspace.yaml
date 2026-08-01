@@ -19,7 +19,7 @@ catalog:
   '@changesets/cli': ^2.31.0
   '@swc/core': ^1.15.43
   unplugin-swc: ^1.5.9
-  '@types/node': ^24.13.3
+  '@types/node': ^26.1.2
   '@vitest/runner': ^4.1.10
   '@vitest/snapshot': ^4.1.10
   zod: ^4.4.3
