@@ -16,7 +16,7 @@
     "typecheck": "pnpm run sync:vela && tsc --noEmit && tsc -p tsconfig.test.json"
   },
   "dependencies": {
-    "@hono/node-server": "^1.19.0",
+    "@hono/node-server": "^1.19.15",
     "@velajs/vela": "file:../..",
     "hono": "^4",
     "zod": "^4"
