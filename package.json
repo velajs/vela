@@ -113,7 +113,7 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "catalog:",
     "@changesets/cli": "catalog:",
-    "@cloudflare/vitest-pool-workers": "^0.16.18",
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
     "@swc/core": "catalog:",
     "@types/bun": "latest",
     "@vitest/runner": "catalog:",
