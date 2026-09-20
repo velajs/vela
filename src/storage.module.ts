@@ -1,10 +1,12 @@
 import {
   defineModule,
+  defineProvider,
   lazyProvider,
   stableHash,
   type DynamicModule,
   type InferTokens,
   type Token,
+  type TypedToken,
   type Type,
 } from '@velajs/vela';
 import { createStorageController, type ResolvedHttpOptions } from './storage.controller';
@@ -47,10 +49,8 @@ export interface StorageModuleOptions {
   http?: StorageHttpOptions;
 }
 
-export interface StorageModuleAsyncOptions<
-  Inject extends readonly Token<unknown>[] = readonly Token<unknown>[],
-> {
-  inject?: Inject;
+export interface StorageModuleAsyncOptions<Inject extends readonly Token[] = readonly Token[]> {
+  inject: Inject;
   imports?: DynamicModule['imports'];
   useFactory: (...deps: InferTokens<Inject>) => StorageDriver;
   name?: string;
@@ -87,7 +87,7 @@ let nextIdentity = 1;
 /** Process-local identity avoids source-code and presence-only collisions for stateful options. */
 function instanceIdentity(value: unknown): string {
   if ((typeof value === 'object' && value !== null) || typeof value === 'function') {
-    const key = value as object;
+    const key = value;
     let id = objectIdentities.get(key);
     if (id === undefined) {
       id = nextIdentity++;
@@ -169,7 +169,7 @@ function optionalPositiveInteger(value: number | undefined, label: string): numb
 
 function buildControllers(
   name: string,
-  serviceToken: Token<StorageService>,
+  serviceToken: TypedToken<StorageService>,
   http: StorageHttpOptions | undefined,
 ): Type[] {
   if (!http || http.mountController === false) return [];
@@ -229,11 +229,10 @@ const { ConfigurableModuleClass } = defineModule<StorageSetupOptions>({
           inject: [OPTIONS],
           useFactory: (o: StorageSetupOptions) => o.driver(),
         }),
-        {
-          provide: serviceToken,
-          useFactory: (build: () => StorageDriver) => new StorageService(build, svcOptions),
+        defineProvider(serviceToken, {
+          useFactory: (build) => new StorageService(build, svcOptions),
           inject: [builderToken],
-        },
+        }),
       ],
       controllers: buildControllers(name, serviceToken, options.http),
       exports: [serviceToken, builderToken],
@@ -262,7 +261,7 @@ export class StorageModule {
   }
 
   /** Deferred / DI-driven registration — `useFactory` runs lazily on first use. */
-  static forRootAsync<const Inject extends readonly Token<unknown>[] = readonly Token<unknown>[]>(
+  static forRootAsync<const Inject extends readonly Token[] = readonly Token[]>(
     options: StorageModuleAsyncOptions<Inject>,
   ): DynamicModule {
     const { useFactory, inject, imports, key, ...structural } = options;

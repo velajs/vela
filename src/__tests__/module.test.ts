@@ -60,9 +60,9 @@ describe('StorageModule', () => {
   it('includes async factory identity in the dynamic-module key', () => {
     const factoryA = () => memoryDriver();
     const factoryB = () => memoryDriver();
-    const first = StorageModule.forRootAsync({ useFactory: factoryA });
-    const same = StorageModule.forRootAsync({ useFactory: factoryA });
-    const other = StorageModule.forRootAsync({ useFactory: factoryB });
+    const first = StorageModule.forRootAsync({ inject: [], useFactory: factoryA });
+    const same = StorageModule.forRootAsync({ inject: [], useFactory: factoryA });
+    const other = StorageModule.forRootAsync({ inject: [], useFactory: factoryB });
 
     expect(same.key).toBe(first.key);
     expect(other.key).not.toBe(first.key);
@@ -73,6 +73,7 @@ describe('StorageModule', () => {
     const moduleRef = await Test.createTestingModule({
       imports: [
         StorageModule.forRootAsync({
+          inject: [],
           useFactory: () => {
             calls += 1;
             return memoryDriver();
@@ -127,7 +128,8 @@ describe('StorageModule', () => {
   });
 
   it('overrideProvider(StorageService).useValue(stub) swaps the surface', async () => {
-    const stub = { upload: vi.fn().mockResolvedValue({ key: 'k', size: 1, contentType: 'x' }) };
+    const stub = new StorageService(() => memoryDriver(), { name: 'test' });
+    vi.spyOn(stub, 'upload').mockResolvedValue({ key: 'k', size: 1, contentType: 'x' });
     const moduleRef = await Test.createTestingModule({
       imports: [StorageModule.forRoot({ driver: memoryDriver() })],
     })

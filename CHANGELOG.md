@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.0
+
+Native Workers bindings and checked schema boundaries; validated against real workerd bindings.
+
+Requires the coordinated Vela 2.0 package set. See the workspace migration guide.
+
 ## 0.3.2
 
 ### Patch Changes

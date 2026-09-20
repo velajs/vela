@@ -1,6 +1,6 @@
 {
   "name": "@velajs/storage",
-  "version": "0.3.2",
+  "version": "2.0.0",
   "description": "Edge-first, driver-based object/file storage for the Vela framework",
   "keywords": [
     "cloudflare-workers",
@@ -95,13 +95,13 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "catalog:",
     "@changesets/cli": "catalog:",
-    "@cloudflare/vitest-pool-workers": "^0.16.18",
-    "@cloudflare/workers-types": "^4.20260624.1",
+    "@cloudflare/vitest-plugin": "catalog:",
+    "@cloudflare/workers-types": "catalog:",
     "@swc/core": "catalog:",
-    "@velajs/testing": "^1.0.0",
-    "@velajs/vela": "^1.21.0",
+    "@velajs/testing": "workspace:*",
+    "@velajs/vela": "workspace:*",
     "aws4fetch": "^1.0.20",
-    "hono": "^4.12.27",
+    "hono": "catalog:",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",
     "publint": "catalog:",
@@ -112,7 +112,7 @@
   },
   "peerDependencies": {
     "@cloudflare/workers-types": ">=4",
-    "@velajs/vela": ">=1.21.0 <2",
+    "@velajs/vela": "workspace:^",
     "hono": ">=4"
   },
   "peerDependenciesMeta": {
@@ -123,5 +123,8 @@
   "engines": {
     "node": ">=24"
   },
-  "packageManager": "pnpm@11.11.0"
+  "packageManager": "pnpm@11.11.0",
+  "publishConfig": {
+    "access": "public"
+  }
 }

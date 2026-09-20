@@ -5,7 +5,7 @@ import {
   Injectable,
   Post,
   Req,
-  type Token,
+  type TypedToken,
   type Type,
 } from '@velajs/vela';
 import type { Context } from 'hono';
@@ -65,7 +65,7 @@ export interface ResolvedHttpOptions {
  */
 export function createStorageController(
   basePath: string,
-  serviceToken: Token<StorageService>,
+  serviceToken: TypedToken<StorageService>,
   http: ResolvedHttpOptions,
 ): Type {
   @Controller(basePath)

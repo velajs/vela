@@ -24,23 +24,31 @@ pnpm add @velajs/storage
 ```ts
 import { StorageModule, StorageService } from '@velajs/storage';
 import { s3Driver } from '@velajs/storage/drivers/s3';
+import { InjectionToken, Module } from '@velajs/vela';
+
+interface Env { AWS_KEY: string; AWS_SECRET: string }
+const ENV = new InjectionToken<Env>('app.env');
 
 @Module({
   imports: [
     StorageModule.forRootAsync({
-      inject: [EnvService],
+      inject: [ENV],
       useFactory: (env) =>
         s3Driver({
           endpoint: 'https://s3.us-east-1.amazonaws.com',
           region: 'us-east-1',
           bucket: 'my-bucket',
-          credentials: { accessKeyId: env.get('AWS_KEY'), secretAccessKey: env.get('AWS_SECRET') },
+          credentials: { accessKeyId: env.AWS_KEY, secretAccessKey: env.AWS_SECRET },
         }),
     }),
   ],
 })
 class AppModule {}
 ```
+
+Supply `ENV` through `createCloudflareWorker(AppModule, { envToken: ENV })` from
+`@velajs/cloudflare`. Async registrations require the actual `inject` tuple;
+use `inject: []` for a factory with no dependencies.
 
 ## Secure HTTP multipart uploads
 

@@ -1,4 +1,4 @@
-// @ts-expect-error - virtual module provided by @cloudflare/vitest-pool-workers
+// @ts-expect-error - virtual module provided by @cloudflare/vitest-plugin
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import { createStorage } from '../../index';
