@@ -70,12 +70,38 @@ export interface FeatureFlagDriver {
   getBoolean(key: string, fallback: boolean, ctx?: FlagContext): Promise<boolean>;
   getString(key: string, fallback: string, ctx?: FlagContext): Promise<string>;
   getNumber(key: string, fallback: number, ctx?: FlagContext): Promise<number>;
-  getObject<T extends object>(key: string, fallback: T, ctx?: FlagContext): Promise<T>;
+  getObject(key: string, fallback: object, ctx?: FlagContext): Promise<unknown>;
 }
 ```
 
 A driver returns the caller's `fallback` (never throws) when it can't resolve a key; the service
 additionally absorbs any thrown error into the same fallback and logs a warning.
+
+## Validating object flags
+
+Object drivers return `unknown`. Pass a parser and an explicit typed fallback to
+the service; its result type is inferred from the parser. A failed read or parse
+returns the fallback, and `getObjectDetails` reports parser failures as `ERROR`.
+
+```ts
+const parseLayout = (value: unknown): { columns: number } => {
+  if (
+    typeof value !== 'object' || value === null ||
+    !('columns' in value) || typeof value.columns !== 'number'
+  ) {
+    throw new TypeError('layout.columns must be a number');
+  }
+  return { columns: value.columns };
+};
+
+const layout = await flags.getObjectValue('layout', parseLayout, { columns: 2 });
+const details = await flags.getObjectDetails('layout', parseLayout, { columns: 2 });
+```
+
+A schema's `.parse` function can be passed directly. Object evaluations require
+the fallback because an absent flag cannot produce an arbitrary application type.
+Primitive reads still use matching manifest defaults. `all()` evaluates manifest
+objects as broad object values; use a parsed object method for domain-specific fields.
 
 ## Typed flag keys
 

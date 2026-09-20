@@ -1,5 +1,4 @@
 import {
-  Container,
   ForbiddenException,
   Inject,
   Injectable,
@@ -58,7 +57,7 @@ export class FeatureFlagGuard implements CanActivate {
   /** The current request context, via the child container on the Hono context. */
   private requestContext(context: ExecutionContext): RequestContext | undefined {
     try {
-      const container = context.getContext().get('container') as Container | undefined;
+      const container = context.getContainer();
       return container?.resolve(REQUEST_CONTEXT);
     } catch {
       return undefined;

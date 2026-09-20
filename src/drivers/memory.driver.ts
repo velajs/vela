@@ -51,23 +51,23 @@ export class MemoryFlagDriver implements FeatureFlagDriver {
   }
 
   getBoolean(key: string, fallback: boolean, _ctx?: FlagContext): Promise<boolean> {
-    return Promise.resolve(this.read(key, fallback));
+    const value = this.store.get(key);
+    return Promise.resolve(typeof value === 'boolean' ? value : fallback);
   }
 
   getString(key: string, fallback: string, _ctx?: FlagContext): Promise<string> {
-    return Promise.resolve(this.read(key, fallback));
+    const value = this.store.get(key);
+    return Promise.resolve(typeof value === 'string' ? value : fallback);
   }
 
   getNumber(key: string, fallback: number, _ctx?: FlagContext): Promise<number> {
-    return Promise.resolve(this.read(key, fallback));
+    const value = this.store.get(key);
+    return Promise.resolve(typeof value === 'number' && Number.isFinite(value) ? value : fallback);
   }
 
-  getObject<T extends object>(key: string, fallback: T, _ctx?: FlagContext): Promise<T> {
-    return Promise.resolve(this.read(key, fallback));
-  }
-
-  private read<T extends FlagValue>(key: string, fallback: T): T {
-    return this.store.has(key) ? (this.store.get(key) as T) : fallback;
+  getObject(key: string, fallback: object, _ctx?: FlagContext): Promise<unknown> {
+    const value = this.store.get(key);
+    return Promise.resolve(typeof value === 'object' && value !== null ? value : fallback);
   }
 }
 

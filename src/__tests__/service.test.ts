@@ -28,7 +28,7 @@ class ThrowingDriver implements FeatureFlagDriver {
   getNumber(): Promise<number> {
     return Promise.reject(new Error('binding down'));
   }
-  getObject<T extends object>(): Promise<T> {
+  getObject(): Promise<unknown> {
     return Promise.reject(new Error('binding down'));
   }
 }
@@ -49,13 +49,25 @@ class RecordingDriver implements FeatureFlagDriver {
     this.lastContext = ctx;
     return Promise.resolve(fallback);
   }
-  getObject<T extends object>(_k: string, fallback: T, ctx?: FlagContext): Promise<T> {
+  getObject(_k: string, fallback: object, ctx?: FlagContext): Promise<unknown> {
     this.lastContext = ctx;
     return Promise.resolve(fallback);
   }
 }
 
 const mockRequest = (id: string): RequestContext => ({ id }) as unknown as RequestContext;
+
+const parseTheme = (value: unknown): { theme: string } => {
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    !('theme' in value) ||
+    typeof value.theme !== 'string'
+  ) {
+    throw new TypeError('theme must be a string');
+  }
+  return { theme: value.theme };
+};
 
 describe('FeatureFlagsService', () => {
   describe('manifest defaults', () => {
@@ -80,6 +92,87 @@ describe('FeatureFlagsService', () => {
         manifest: { 'new-checkout': true },
       });
       expect(await flags.getBooleanValue('new-checkout')).toBe(false);
+    });
+
+    it('ignores manifest defaults of the wrong primitive type', async () => {
+      const flags = service({ manifest: { bool: 'yes', text: false, count: { value: 1 } } });
+      expect(await flags.getBooleanValue('bool')).toBe(false);
+      expect(await flags.getStringValue('text')).toBe('');
+      expect(await flags.getNumberValue('count')).toBe(0);
+      expect((await flags.getBooleanDetails('bool')).value).toBe(false);
+      expect((await flags.getStringDetails('text')).value).toBe('');
+      expect((await flags.getNumberDetails('count')).value).toBe(0);
+    });
+  });
+
+  describe('parsed object values', () => {
+    beforeEach(() => Logger.setWriter(() => {}));
+    afterEach(() => Logger.resetWriter());
+
+    it('returns the parser output rather than asserting the stored payload shape', async () => {
+      const flags = service({
+        drivers: [new MemoryFlagDriver({ values: { layout: { theme: 'dark', extra: 1 } } })],
+      });
+      expect(await flags.getObjectValue('layout', parseTheme, { theme: 'light' })).toEqual({
+        theme: 'dark',
+      });
+      expect(await flags.getObjectDetails('layout', parseTheme, { theme: 'light' })).toEqual({
+        flagKey: 'layout',
+        value: { theme: 'dark' },
+        reason: 'STATIC',
+      });
+    });
+
+    it('returns the typed fallback when the object payload fails validation', async () => {
+      const flags = service({
+        drivers: [new MemoryFlagDriver({ values: { layout: { theme: 42 } } })],
+      });
+      const fallback = { theme: 'light' };
+      expect(await flags.getObjectValue('layout', parseTheme, fallback)).toBe(fallback);
+      expect(await flags.getObjectDetails('layout', parseTheme, fallback)).toEqual({
+        flagKey: 'layout',
+        value: fallback,
+        reason: 'ERROR',
+        errorMessage: 'theme must be a string',
+      });
+    });
+
+    it('preserves the fallback on missing flags, driver failures, and context failures', async () => {
+      const fallback = { theme: 'light' };
+      expect(await service({}).getObjectValue('layout', parseTheme, fallback)).toEqual(fallback);
+      const brokenDriver = service({ drivers: [new ThrowingDriver()] });
+      expect(await brokenDriver.getObjectValue('layout', parseTheme, fallback)).toBe(fallback);
+
+      const brokenContext = service({
+        context: () => {
+          throw new Error('context unavailable');
+        },
+      }).forRequest(mockRequest('r'));
+      expect(await brokenContext.getObjectValue('layout', parseTheme, fallback)).toBe(fallback);
+    });
+
+    it('merges targeting context before reading an object flag', async () => {
+      const driver = new RecordingDriver();
+      const flags = service({
+        drivers: [driver],
+        context: () => ({ plan: 'free', userId: 'u1' }),
+      }).forRequest(mockRequest('r'));
+      await flags.getObjectValue('layout', parseTheme, { theme: 'light' }, { plan: 'pro' });
+      expect(driver.lastContext).toEqual({ plan: 'pro', userId: 'u1' });
+    });
+
+    it('allows array-shaped object flags when the parser validates them', async () => {
+      const flags = service({
+        drivers: [new MemoryFlagDriver({ values: { themes: ['dark', 'light'] } })],
+      });
+      const parseThemes = (value: unknown): string[] => {
+        if (!Array.isArray(value)) throw new TypeError('themes must be an array');
+        return value.map((theme: unknown) => {
+          if (typeof theme !== 'string') throw new TypeError('theme must be a string');
+          return theme;
+        });
+      };
+      expect(await flags.getObjectValue('themes', parseThemes, [])).toEqual(['dark', 'light']);
     });
   });
 

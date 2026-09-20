@@ -1,4 +1,10 @@
-import { InjectionToken, MetadataRegistry, Module, runInEntrypointScope } from '@velajs/vela';
+import {
+  InjectionToken,
+  MetadataRegistry,
+  Module,
+  defineProvider,
+  runInEntrypointScope,
+} from '@velajs/vela';
 import { Test } from '@velajs/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -63,7 +69,7 @@ describe('FeatureFlagsModule', () => {
     const CONFIG = new InjectionToken<{ enabled: boolean }>('test:config');
 
     @Module({
-      providers: [{ provide: CONFIG, useValue: { enabled: true } }],
+      providers: [defineProvider(CONFIG, { useValue: { enabled: true } })],
       exports: [CONFIG],
     })
     class ConfigModule {}

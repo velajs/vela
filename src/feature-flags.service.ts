@@ -23,6 +23,11 @@ import type {
   FlagValue,
 } from './feature-flags.types';
 
+const isBoolean = (value: unknown): value is boolean => typeof value === 'boolean';
+const isString = (value: unknown): value is string => typeof value === 'string';
+const isNumber = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value);
+
 /**
  * Safely read the current request context. Returns `undefined` outside a
  * request or when ambient access isn't enabled — never throws — so the service
@@ -108,7 +113,7 @@ export class FeatureFlagsService {
     defaultValue?: boolean,
     context?: FlagContext,
   ): Promise<boolean> {
-    const fallback = this.fallback(flagKey, defaultValue, false);
+    const fallback = this.fallback(flagKey, defaultValue, false, isBoolean);
     return this.safe(
       flagKey,
       async () => this.driver.getBoolean(flagKey, fallback, await this.context(context)),
@@ -122,7 +127,7 @@ export class FeatureFlagsService {
     defaultValue?: string,
     context?: FlagContext,
   ): Promise<string> {
-    const fallback = this.fallback(flagKey, defaultValue, '');
+    const fallback = this.fallback(flagKey, defaultValue, '', isString);
     return this.safe(
       flagKey,
       async () => this.driver.getString(flagKey, fallback, await this.context(context)),
@@ -136,7 +141,7 @@ export class FeatureFlagsService {
     defaultValue?: number,
     context?: FlagContext,
   ): Promise<number> {
-    const fallback = this.fallback(flagKey, defaultValue, 0);
+    const fallback = this.fallback(flagKey, defaultValue, 0, isNumber);
     return this.safe(
       flagKey,
       async () => this.driver.getNumber(flagKey, fallback, await this.context(context)),
@@ -144,16 +149,20 @@ export class FeatureFlagsService {
     );
   }
 
-  /** Evaluate a flag as a typed object. */
+  /**
+   * Parse an unknown object flag into the parser's result type. A valid typed
+   * fallback is required; a driver/context/parser failure returns it unchanged.
+   */
   async getObjectValue<T extends object>(
     flagKey: FlagKey,
-    defaultValue?: T,
+    parse: (value: unknown) => T,
+    fallback: NoInfer<T>,
     context?: FlagContext,
   ): Promise<T> {
-    const fallback = this.fallback(flagKey, defaultValue, {} as T);
     return this.safe(
       flagKey,
-      async () => this.driver.getObject<T>(flagKey, fallback, await this.context(context)),
+      async () =>
+        parse(await this.driver.getObject(flagKey, fallback, await this.context(context))),
       () => fallback,
     );
   }
@@ -164,7 +173,7 @@ export class FeatureFlagsService {
     defaultValue?: boolean,
     context?: FlagContext,
   ): Promise<FlagEvaluationDetails<boolean>> {
-    const fallback = this.fallback(flagKey, defaultValue, false);
+    const fallback = this.fallback(flagKey, defaultValue, false, isBoolean);
     return this.safe(
       flagKey,
       async () =>
@@ -182,7 +191,7 @@ export class FeatureFlagsService {
     defaultValue?: string,
     context?: FlagContext,
   ): Promise<FlagEvaluationDetails<string>> {
-    const fallback = this.fallback(flagKey, defaultValue, '');
+    const fallback = this.fallback(flagKey, defaultValue, '', isString);
     return this.safe(
       flagKey,
       async () =>
@@ -200,7 +209,7 @@ export class FeatureFlagsService {
     defaultValue?: number,
     context?: FlagContext,
   ): Promise<FlagEvaluationDetails<number>> {
-    const fallback = this.fallback(flagKey, defaultValue, 0);
+    const fallback = this.fallback(flagKey, defaultValue, 0, isNumber);
     return this.safe(
       flagKey,
       async () =>
@@ -215,16 +224,16 @@ export class FeatureFlagsService {
   /** Evaluate a typed object flag with synthesized evaluation metadata. */
   async getObjectDetails<T extends object>(
     flagKey: FlagKey,
-    defaultValue?: T,
+    parse: (value: unknown) => T,
+    fallback: NoInfer<T>,
     context?: FlagContext,
   ): Promise<FlagEvaluationDetails<T>> {
-    const fallback = this.fallback(flagKey, defaultValue, {} as T);
     return this.safe(
       flagKey,
       async () =>
         this.details(
           flagKey,
-          await this.driver.getObject<T>(flagKey, fallback, await this.context(context)),
+          parse(await this.driver.getObject(flagKey, fallback, await this.context(context))),
         ),
       (error) => this.errorDetails(flagKey, fallback, error),
     );
@@ -237,7 +246,6 @@ export class FeatureFlagsService {
    * taking the batch down.
    */
   async all(context?: FlagContext): Promise<Record<string, FlagValue>> {
-    const keys = Object.keys(this.manifest);
     let merged: FlagContext | undefined;
     try {
       merged = await this.context(context);
@@ -248,14 +256,12 @@ export class FeatureFlagsService {
       );
       return { ...this.manifest };
     }
-    const values = await Promise.all(
-      keys.map((key) => this.evaluate(key, this.manifest[key]!, merged)),
+    const entries = await Promise.all(
+      Object.entries(this.manifest).map(
+        async ([key, declared]) => [key, await this.evaluate(key, declared, merged)] as const,
+      ),
     );
-    const result: Record<string, FlagValue> = {};
-    keys.forEach((key, i) => {
-      result[key] = values[i]!;
-    });
-    return result;
+    return Object.fromEntries(entries);
   }
 
   // ==================== INTERNAL ====================
@@ -283,10 +289,15 @@ export class FeatureFlagsService {
   }
 
   /** Pick the default: explicit arg, then manifest, then the type's zero value. */
-  private fallback<T extends FlagValue>(flagKey: string, provided: T | undefined, zero: T): T {
+  private fallback<T extends FlagValue>(
+    flagKey: string,
+    provided: T | undefined,
+    zero: T,
+    accepts: (value: unknown) => value is T,
+  ): T {
     if (provided !== undefined) return provided;
-    if (flagKey in this.manifest) return this.manifest[flagKey] as T;
-    return zero;
+    const declared = this.manifest[flagKey];
+    return accepts(declared) ? declared : zero;
   }
 
   /** Evaluate a single flag, choosing the method from the declared default's type. */
@@ -317,7 +328,10 @@ export class FeatureFlagsService {
       default:
         return this.safe(
           flagKey,
-          () => this.driver.getObject(flagKey, declared as object, context),
+          async () => {
+            const value = await this.driver.getObject(flagKey, declared, context);
+            return typeof value === 'object' && value !== null ? value : declared;
+          },
           () => declared,
         );
     }

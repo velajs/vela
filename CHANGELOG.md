@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.0
+
+Parser-backed flag values and the checked Vela provider contracts.
+
+Requires the coordinated Vela 2.0 package set. See the workspace migration guide.
+
 ## 0.1.1
 
 ### Patch Changes

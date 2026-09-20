@@ -1,6 +1,6 @@
 {
   "name": "@velajs/feature-flags",
-  "version": "0.1.1",
+  "version": "2.0.0",
   "description": "Edge-first, driver-based feature flags for the Vela framework",
   "keywords": [
     "cloudflare-workers",
@@ -59,9 +59,9 @@
     "@arethetypeswrong/cli": "catalog:",
     "@changesets/cli": "catalog:",
     "@swc/core": "catalog:",
-    "@velajs/testing": "^0.4.0",
-    "@velajs/vela": "^1.12.0",
-    "hono": "^4.12.27",
+    "@velajs/testing": "workspace:*",
+    "@velajs/vela": "workspace:*",
+    "hono": "catalog:",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",
     "publint": "catalog:",
@@ -71,11 +71,14 @@
     "vitest": "catalog:"
   },
   "peerDependencies": {
-    "@velajs/vela": ">=1.11.0",
+    "@velajs/vela": "workspace:^",
     "hono": ">=4"
   },
   "engines": {
     "node": ">=24"
   },
-  "packageManager": "pnpm@11.11.0"
+  "packageManager": "pnpm@11.11.0",
+  "publishConfig": {
+    "access": "public"
+  }
 }

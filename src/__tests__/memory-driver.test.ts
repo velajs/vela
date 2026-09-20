@@ -18,6 +18,17 @@ describe('MemoryFlagDriver', () => {
     expect(await driver.getString('name', '')).toBe('v2');
   });
 
+  it('returns the fallback when a stored value has the wrong evaluation type', async () => {
+    const driver = memoryFlagDriver({
+      values: { boolean: 'true', text: 123, number: true, object: 'not an object', nan: NaN },
+    });
+    expect(await driver.getBoolean('boolean', false)).toBe(false);
+    expect(await driver.getString('text', 'fallback')).toBe('fallback');
+    expect(await driver.getNumber('number', 7)).toBe(7);
+    expect(await driver.getNumber('nan', 7)).toBe(7);
+    expect(await driver.getObject('object', { fallback: true })).toEqual({ fallback: true });
+  });
+
   it('set / delete / reset mutate the store (chainable)', async () => {
     const driver = new MemoryFlagDriver({ values: { a: true } });
     expect(driver.set('b', 'hi').has('b')).toBe(true);

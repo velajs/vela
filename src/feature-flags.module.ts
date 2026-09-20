@@ -1,4 +1,4 @@
-import { APP_GUARD, Scope, defineModule } from '@velajs/vela';
+import { APP_GUARD, Scope, defineModule, defineProvider } from '@velajs/vela';
 import { buildDriverRegistry } from './drivers/registry';
 import { FeatureFlagGuard } from './guards/feature-flag.guard';
 import { FeatureFlagsService } from './feature-flags.service';
@@ -24,32 +24,30 @@ const { ConfigurableModuleClass } = defineModule<FeatureFlagsOptions>({
   optionsToken: FEATURE_FLAG_TOKENS.Options,
   lazy: true,
   transform: (definition, extras) =>
-    (extras as { isGlobal?: boolean }).isGlobal
+    extras.isGlobal
       ? {
           ...definition,
           global: true,
           providers: [
             ...(definition.providers ?? []),
-            { provide: APP_GUARD, useExisting: FeatureFlagGuard },
+            defineProvider(APP_GUARD, { useExisting: FeatureFlagGuard }),
           ],
         }
       : definition,
   setup: ({ OPTIONS }) => ({
     providers: [
-      {
-        provide: FEATURE_FLAG_TOKENS.DriverRegistry,
-        useFactory: (options: FeatureFlagsOptions) => buildDriverRegistry(options),
+      defineProvider(FEATURE_FLAG_TOKENS.DriverRegistry, {
+        useFactory: (options) => buildDriverRegistry(options),
         inject: [OPTIONS],
-      },
+      }),
       // Transient: a fresh service per injection, so `use()`/`forRequest()`
       // clones and per-request context stay isolated. The service never injects
       // REQUEST_CONTEXT, so it does not bubble to request scope and remains
       // resolvable in queue / scheduled / global scope.
-      {
-        provide: FEATURE_FLAG_TOKENS.Service,
+      defineProvider(FEATURE_FLAG_TOKENS.Service, {
         useClass: FeatureFlagsService,
         scope: Scope.TRANSIENT,
-      },
+      }),
       FeatureFlagGuard,
     ],
     exports: [
