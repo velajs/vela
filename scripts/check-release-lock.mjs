@@ -187,6 +187,18 @@ function inspectLockfile(inputPath) {
   }
 }
 
+const manifestPath = resolve('package.json');
+const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+if (manifest.devDependencies?.['@velajs/vela'] !== '^1.22.0') {
+  report(
+    manifestPath,
+    'release requires the @velajs/vela ^1.22.0 test target; publish it first, then pin it and regenerate the lockfile from the registry',
+  );
+}
+if (manifest.peerDependencies?.['@velajs/vela'] !== '>=1.22.0 <2') {
+  report(manifestPath, 'the reserved heartbeat fallback requires @velajs/vela >=1.22.0 <2');
+}
+
 for (const lockPath of lockPaths) {
   inspectLockfile(lockPath);
 }

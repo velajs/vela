@@ -1,28 +1,23 @@
-import { Inject, Injectable, type AsyncCacheStore } from '@velajs/vela';
-import { KVService } from './kv.service';
+import { type AsyncCacheStore } from '@velajs/vela';
 
 /**
  * Cloudflare KV-backed {@link CacheStore}. Values are JSON-encoded. Intended as
  * the slow tier under a `TieredCacheStore` (memory L1 → KV L2), but usable
- * standalone as `CacheModule.forRootAsync({ inject: [KVService], useFactory: (kv) => ({ store: new KVCacheStore(kv) }) })`.
+ * standalone from a typed environment factory: `new KVCacheStore(env.CACHE)`.
+ * Reads return unknown JSON; validate values at the consuming boundary.
  *
  * Note: Cloudflare KV requires `expirationTtl >= 60s`, so sub-minute TTLs are
  * clamped up. Keep short TTLs on the memory tier; use KV for longer-lived entries.
  */
-@Injectable()
 export class KVCacheStore implements AsyncCacheStore {
-  constructor(@Inject(KVService) private readonly kv: KVService) {}
+  constructor(private readonly ns: KVNamespace) {}
 
-  private get ns(): KVNamespace {
-    return this.kv.namespace;
-  }
-
-  async get<T = unknown>(key: string): Promise<T | undefined> {
-    const value = await this.ns.get<T>(key, 'json');
+  async get(key: string): Promise<unknown> {
+    const value = await this.ns.get(key, 'json');
     return value === null ? undefined : value;
   }
 
-  async set<T = unknown>(key: string, value: T, ttl?: number): Promise<void> {
+  async set(key: string, value: unknown, ttl?: number): Promise<void> {
     // KV enforces a 60s minimum expirationTtl; clamp up. Omit for no-TTL.
     const options =
       ttl !== undefined ? { expirationTtl: Math.max(60, Math.floor(ttl)) } : undefined;

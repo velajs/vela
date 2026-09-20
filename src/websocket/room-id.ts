@@ -37,7 +37,7 @@ export function durableObjectRoomName(gatewayPath: string, roomId: string): stri
 
 /** One Durable Object instance per gateway + room, addressed by name. */
 export function roomToDurableId(
-  ns: DurableObjectNamespace,
+  ns: Pick<DurableObjectNamespace, 'idFromName'>,
   gatewayPath: string,
   roomId: string,
 ): DurableObjectId {

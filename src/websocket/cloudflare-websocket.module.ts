@@ -1,4 +1,4 @@
-import type { DynamicModule, ProviderOptions, Type } from '@velajs/vela';
+import { defineProvider, type DynamicModule } from '@velajs/vela';
 import { WsDispatcher, WS_SERVER } from '@velajs/vela/websocket';
 import { WsServerHolder } from './ws-server-holder';
 
@@ -11,10 +11,7 @@ import { WsServerHolder } from './ws-server-holder';
  */
 export class CloudflareWebSocketModule {
   static forRoot(): DynamicModule {
-    const providers: Array<Type | ProviderOptions> = [
-      { provide: WS_SERVER, useClass: WsServerHolder },
-      WsDispatcher,
-    ];
+    const providers = [defineProvider(WS_SERVER, { useClass: WsServerHolder }), WsDispatcher];
 
     return {
       module: CloudflareWebSocketModule,

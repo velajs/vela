@@ -1,12 +1,15 @@
 import type { Container } from '@velajs/vela';
-import { LIVE_CURSOR_LOG, LIVE_DRIVER, readPersistedLiveSubscriptions } from '@velajs/vela/live';
+import {
+  LIVE_CURSOR_LOG,
+  LIVE_DRIVER,
+  LiveEngine,
+  readPersistedLiveSubscriptions,
+} from '@velajs/vela/live';
 import type {
   CommitStamp,
   CursorLog,
   InvalidationCommand,
   LiveDriver,
-  LiveEngine,
-  LiveEntrypointMeta,
   LiveInvalidationSink,
   ResumeVerdict,
 } from '@velajs/vela/live';
@@ -83,7 +86,8 @@ export class DoCursorLog implements CursorLog {
     } catch {
       cursor = 0;
     }
-    return { cursor, epoch: this.epoch as string };
+    if (!this.epoch) throw new Error('DoCursorLog epoch is not initialized.');
+    return { cursor, epoch: this.epoch };
   }
 
   evaluateResume(
@@ -112,7 +116,11 @@ export class DoCursorLog implements CursorLog {
       } catch {
         return 'snapshot';
       }
-      if (Array.isArray(tags) && tags.some((tag) => subTags.has(tag as string))) return 'rerun';
+      if (
+        Array.isArray(tags) &&
+        tags.some((tag: unknown) => typeof tag === 'string' && subTags.has(tag))
+      )
+        return 'rerun';
     }
     return 'resume';
   }
@@ -130,109 +138,64 @@ export class DoCursorLog implements CursorLog {
 }
 
 export interface DurableObjectLiveOptions {
-  /** The wrangler binding name of the WebSocket DO namespace (e.g. `'CHAT_ROOM'`). */
-  binding: string;
+  /** Native, RPC-typed namespace supplied by the application's environment. */
+  namespace: LiveNamespace;
   /** Exact `@WebSocketGateway()` path sharing this room/log namespace. */
   gatewayPath: string;
   /** Room used when an invalidation names none. Matches the client default. */
   defaultRoom?: string;
 }
 
-interface LiveInvalidateStub {
+export interface LiveInvalidateStub {
   invalidate(cmd: InvalidationCommand): Promise<CommitStamp | undefined>;
 }
 
-export interface CfLiveDriver extends LiveDriver {
-  /** @internal — Worker isolate: capture `env` so the namespace binding resolves per dispatch. */
-  _initializeEnv(env: Record<string, unknown>): void;
-  /** @internal — DO isolate: deliver invalidations straight to this DO's engine. */
-  _setLocalMode(): void;
+/** Only the native namespace operations required for live invalidation. */
+export interface LiveNamespace {
+  idFromName(name: string): DurableObjectId;
+  get(id: DurableObjectId): LiveInvalidateStub;
 }
 
-/**
- * The Cloudflare `LiveDriver`. Dual-mode, because the SAME app module
- * bootstraps in both isolates:
- *
- * - **Worker** (HTTP mutations, queue consumers, crons): route the command to
- *   the room's Durable Object over the `invalidate` RPC — the same canonical
- *   `roomToDurableId` mapping the upgrade route and `broadcastToRoom` use —
- *   and return THAT log scope's commit stamp (what `Vela-Commit-Cursor`
- *   must carry).
- * - **DO** (writes issued from inside the object): apply to the local engine.
- */
-export function durableObjectLive(options: DurableObjectLiveOptions): CfLiveDriver {
-  let sink: LiveInvalidationSink | undefined;
-  let env: Record<string, unknown> | undefined;
-  let localMode = false;
+/** One driver per application; construct from a LiveModule driver factory. */
+export class CfLiveDriver implements LiveDriver {
+  readonly kind = 'durable-object';
+  private sink: LiveInvalidationSink | undefined;
+  private localMode = false;
 
-  return {
-    kind: 'durable-object',
-    bind(boundSink) {
-      sink = boundSink;
-    },
-    _initializeEnv(capturedEnv) {
-      env = capturedEnv;
-    },
-    _setLocalMode() {
-      localMode = true;
-    },
-    dispatch(cmd) {
-      if (localMode) return sink?.applyInvalidation(cmd);
-      const namespace = env?.[options.binding] as DurableObjectNamespace | undefined;
-      if (!namespace) {
-        throw new Error(
-          `durableObjectLive: binding '${options.binding}' is not available. In a Worker, ` +
-            'createCloudflareApp() captures env on the first request; check the wrangler binding name.',
-        );
-      }
-      const room = cmd.room ?? options.defaultRoom ?? DEFAULT_ROOM;
-      const stub = namespace.get(
-        roomToDurableId(namespace, options.gatewayPath, room),
-      ) as unknown as LiveInvalidateStub;
-      return stub.invalidate({ ...cmd, room });
-    },
-  };
-}
+  constructor(private readonly options: DurableObjectLiveOptions) {}
 
-const isCfLiveDriver = (value: unknown): value is CfLiveDriver =>
-  typeof value === 'object' &&
-  value !== null &&
-  typeof (value as CfLiveDriver)._setLocalMode === 'function' &&
-  typeof (value as CfLiveDriver)._initializeEnv === 'function';
-
-/** Worker-side wiring, called from `cloudflareAdapter`'s first-request middleware. */
-export function initializeWorkerLive(container: Container, env: Record<string, unknown>): void {
-  let driver: unknown;
-  try {
-    driver = container.resolve(LIVE_DRIVER);
-  } catch {
-    return; // LiveModule not imported
+  bind(sink: LiveInvalidationSink): void {
+    this.sink = sink;
   }
-  if (isCfLiveDriver(driver)) driver._initializeEnv(env);
+
+  /** @internal — a DO dispatches to its own engine and SQLite log. */
+  _setLocalMode(): void {
+    this.localMode = true;
+  }
+
+  dispatch(cmd: InvalidationCommand): Promise<CommitStamp | undefined> | CommitStamp | undefined {
+    if (this.localMode) return this.sink?.applyInvalidation(cmd);
+    const { namespace, gatewayPath, defaultRoom } = this.options;
+    const room = cmd.room ?? defaultRoom ?? DEFAULT_ROOM;
+    return namespace
+      .get(roomToDurableId(namespace, gatewayPath, room))
+      .invalidate({ ...cmd, room });
+  }
+}
+
+/** Use in LiveModule.forRootAsync: driver: () => durableObjectLive({ namespace: env.ROOMS, ... }). */
+export function durableObjectLive(options: DurableObjectLiveOptions): CfLiveDriver {
+  return new CfLiveDriver(options);
 }
 
 /** The app-facing surface of the engine reached through `app.entrypoints.ofKind('live')`. */
 interface EntrypointsApp {
-  entrypoints: { ofKind<M>(kind: string): Array<{ meta: M }> };
+  entrypoints: { ofKind(kind: string): Array<{ meta: unknown }> };
 }
 
-/**
- * DO-side wiring, called from `buildDoRuntime`: initialize the SQLite cursor
- * log, flip the driver to local mode, and replay every hibernation-persisted
- * subscription into the (fresh) engine so an eviction is invisible to
- * subscribers. Returns the engine for the `invalidate` RPC, or undefined when
- * the app doesn't use LiveModule.
- */
-export function initDoLive(
-  app: EntrypointsApp,
-  container: Container,
-  ctx: DoStateLike,
-): LiveEngine | undefined {
-  const entry = app.entrypoints.ofKind<LiveEntrypointMeta>('live')[0];
-  if (!entry) return undefined;
-  const engine = entry.meta.engine as LiveEngine;
-
-  try {
+/** @internal — prepare per-DO resources before user lifecycle hooks can invalidate. */
+export function initializeDoLiveResources(container: Container, ctx: DoStateLike): void {
+  if (container.has(LIVE_CURSOR_LOG)) {
     const log = container.resolve(LIVE_CURSOR_LOG);
     if (log instanceof DoCursorLog) {
       const sql = ctx.storage?.sql;
@@ -240,24 +203,34 @@ export function initDoLive(
         throw new Error(
           'DoCursorLog requires a SQLite-backed Durable Object: add this class to ' +
             "wrangler's `migrations[].new_sqlite_classes`. Falling back is not possible — " +
-            'either enable SQLite or drop the `log: durableObjectCursorLog()` option ' +
+            'either enable SQLite or drop the `log: () => durableObjectCursorLog()` option ' +
             '(snapshot-on-reconnect semantics).',
         );
       }
       log._initialize(sql);
     }
-  } catch (err) {
-    // Surface misconfiguration loudly — a silently un-initialized log would
-    // throw on the first subscribe instead.
-    if (err instanceof Error && err.message.includes('new_sqlite_classes')) throw err;
   }
 
-  try {
+  if (container.has(LIVE_DRIVER)) {
     const driver = container.resolve(LIVE_DRIVER);
-    if (isCfLiveDriver(driver)) driver._setLocalMode();
-  } catch {
-    // LiveModule always provides LIVE_DRIVER when the engine exists; defensive only.
+    if (driver instanceof CfLiveDriver) driver._setLocalMode();
   }
+}
+
+/**
+ * DO-side wiring after lifecycle, called from `buildDoRuntime`: replay every hibernation-persisted
+ * subscription into the (fresh) engine so an eviction is invisible to
+ * subscribers. Returns the engine for the `invalidate` RPC, or undefined when
+ * the app doesn't use LiveModule.
+ */
+export function initDoLive(app: EntrypointsApp, ctx: DoStateLike): LiveEngine | undefined {
+  const entry = app.entrypoints.ofKind('live')[0];
+  if (!entry) return undefined;
+  if (typeof entry.meta !== 'object' || entry.meta === null || !('engine' in entry.meta)) {
+    throw new Error('Invalid live entrypoint metadata.');
+  }
+  const engine = entry.meta.engine;
+  if (!(engine instanceof LiveEngine)) throw new Error('Invalid live entrypoint engine.');
 
   // Wake-time replay: subscriptions ride the hibernation attachments.
   for (const ws of ctx.getWebSockets()) {
@@ -281,11 +254,11 @@ export function durableObjectCursorLog(maxRows?: number): DoCursorLog {
  * scope's commit stamp for `Vela-Commit-Cursor` stamping.
  */
 export async function liveInvalidateToRoom(
-  ns: DurableObjectNamespace,
+  ns: LiveNamespace,
   gatewayPath: string,
   room: string,
   tags: string[],
 ): Promise<CommitStamp | undefined> {
-  const stub = ns.get(roomToDurableId(ns, gatewayPath, room)) as unknown as LiveInvalidateStub;
+  const stub = ns.get(roomToDurableId(ns, gatewayPath, room));
   return stub.invalidate({ room, tags });
 }

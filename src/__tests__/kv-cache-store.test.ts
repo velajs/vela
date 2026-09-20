@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { KVCacheStore } from '../services/kv-cache.store';
-import type { KVService } from '../services/kv.service';
 
 function fakeKVService() {
   const store = new Map<string, string>();
@@ -26,7 +25,7 @@ function fakeKVService() {
     },
   };
   // Only `.namespace` is used by KVCacheStore.
-  return { service: { namespace } as unknown as KVService, store, ttls };
+  return { service: namespace as unknown as KVNamespace, store, ttls };
 }
 
 describe('KVCacheStore', () => {

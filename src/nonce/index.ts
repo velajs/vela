@@ -1,4 +1,4 @@
-export { durableObjectNonceStore, VelaNonceDurableObject } from './durable-object-nonce.store';
+export { durableObjectNonceStore } from './durable-object-nonce.store';
 export type {
   DurableObjectNonceNamespace,
   DurableObjectNonceStoreOptions,

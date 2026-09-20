@@ -12,7 +12,7 @@ export interface FlagshipBinding {
   getBooleanValue(key: string, defaultValue: boolean, context?: FlagContext): Promise<boolean>;
   getStringValue(key: string, defaultValue: string, context?: FlagContext): Promise<string>;
   getNumberValue(key: string, defaultValue: number, context?: FlagContext): Promise<number>;
-  getObjectValue<T extends object>(key: string, defaultValue: T, context?: FlagContext): Promise<T>;
+  getObjectValue(key: string, defaultValue: object, context?: FlagContext): Promise<unknown>;
 }
 
 export interface FlagshipFlagDriverOptions {
@@ -30,16 +30,12 @@ export interface FlagshipFlagDriverOptions {
  * dev-proxy tunnel dropping) propagates — `@velajs/feature-flags`'s service owns
  * the never-throw guarantee.
  *
- * The binding only exists per request in a Worker, so pass a lazy accessor when
- * wiring from a bootstrap factory (mirroring how {@link EnvService} reads are
- * deferred); a resolved binding may be passed directly in tests.
+ * Build the driver inside a provider factory with the native environment:
  *
  * ```ts
  * FeatureFlagsModule.forRootAsync({
- *   inject: [EnvService],
- *   useFactory: (env: EnvService) => ({
- *     drivers: [flagshipFlagDriver(() => env.get<FlagshipBinding>('FLAGS')!)],
- *   }),
+ *   inject: [ENV],
+ *   useFactory: (env: WorkerEnv) => ({ drivers: [flagshipFlagDriver(env.FLAGS)] }),
  * });
  * ```
  *
@@ -71,8 +67,8 @@ export class FlagshipFlagDriver implements FeatureFlagDriver {
     return this.resolve().getNumberValue(key, fallback, ctx);
   }
 
-  getObject<T extends object>(key: string, fallback: T, ctx?: FlagContext): Promise<T> {
-    return this.resolve().getObjectValue<T>(key, fallback, ctx);
+  getObject(key: string, fallback: object, ctx?: FlagContext): Promise<unknown> {
+    return this.resolve().getObjectValue(key, fallback, ctx);
   }
 }
 

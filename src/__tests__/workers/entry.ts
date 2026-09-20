@@ -1,13 +1,13 @@
-import { Module } from '@velajs/vela';
+import { VelaWebSocketDurableObject } from '../../durable-objects';
+import { InjectionToken, Module } from '@velajs/vela';
 import {
   CloudflareWebSocketModule,
   ConnectedSocket,
   MessageBody,
   SubscribeMessage,
-  VelaWebSocketDurableObject,
   WebSocketGateway,
   WebSocketServer,
-  createCloudflareApp,
+  createCloudflareWorker,
   type OnGatewayConnection,
   type WsClient,
   type WsServer,
@@ -58,18 +58,13 @@ class TestGateway implements OnGatewayConnection {
 @Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [TestGateway] })
 class TestModule {}
 
-export class TestRoom extends VelaWebSocketDurableObject(TestModule) {}
+export interface TestEnv {
+  TEST_ROOM: DurableObjectNamespace<TestRoom>;
+  CACHE: KVNamespace;
+  DB: D1Database;
+  FILES: R2Bucket;
+}
+export const TEST_ENV = new InjectionToken<TestEnv>('Worker bindings');
+export class TestRoom extends VelaWebSocketDurableObject(TestModule, { envToken: TEST_ENV }) {}
 
-let appPromise: ReturnType<typeof createCloudflareApp> | undefined;
-
-export default {
-  async fetch(request: Request, env: unknown, ctx: unknown): Promise<Response> {
-    appPromise ??= createCloudflareApp(TestModule);
-    const app = await appPromise;
-    return (app.fetch as (r: Request, e: unknown, c: unknown) => Promise<Response>)(
-      request,
-      env,
-      ctx,
-    );
-  },
-};
+export default createCloudflareWorker(TestModule, { envToken: TEST_ENV });

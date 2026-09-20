@@ -1,8 +1,8 @@
+import { VelaNonceDurableObject } from '../nonce/nonce.durable-object';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   durableObjectNonceStore,
-  VelaNonceDurableObject,
   type DurableObjectNonceNamespace,
 } from '../nonce/durable-object-nonce.store';
 

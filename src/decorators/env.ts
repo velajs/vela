@@ -9,16 +9,15 @@ import { createParamDecorator } from '@velajs/vela';
  * @example
  * ```ts
  * @Get()
- * handle(@Env() env: CloudflareEnv) { ... }
+ * handle(@Env() env: WorkerEnv) { ... }
  *
  * @Get()
  * handle(@Env('MY_KV') kv: KVNamespace) { ... }
  * ```
  */
-export const Env = createParamDecorator<string | undefined>((bindingName, ctx) => {
+export const Env = createParamDecorator<string | undefined>((bindingName, ctx): unknown => {
   // Hono Context has .env on Cloudflare Workers
-  const c = ctx.getContext<{ env?: Record<string, unknown> }>();
-  const env = c.env;
-  if (!env) return undefined;
-  return bindingName ? env[bindingName] : env;
+  const env: unknown = ctx.getContext().env;
+  if (typeof env !== 'object' || env === null) return undefined;
+  return bindingName ? Reflect.get(env, bindingName) : env;
 });

@@ -1,3 +1,6 @@
+import { InjectionToken } from '@velajs/vela';
+const env = {};
+const envToken = new InjectionToken<object>('test environment');
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Controller, Get, Module, MetadataRegistry } from '@velajs/vela';
 import type { OpenApiDocument } from '@velajs/vela';
@@ -38,11 +41,11 @@ describe('CloudflareApplication.mountOpenApi', () => {
     class AppModule {}
 
     const document = buildMinimalDoc();
-    const app = await createCloudflareApp(AppModule);
+    const app = await createCloudflareApp(AppModule, { env, envToken });
     app.mountOpenApi({ document, ui: 'scalar' });
     const hono = app.getHonoApp();
 
-    const jsonRes = await hono.request('/openapi.json', undefined, {});
+    const jsonRes = await hono.request('/openapi.json', undefined, env);
     expect(jsonRes.status).toBe(200);
     expect(jsonRes.headers.get('content-type')).toMatch(/application\/json/);
     expect(await jsonRes.json()).toEqual(document);
@@ -61,11 +64,11 @@ describe('CloudflareApplication.mountOpenApi', () => {
     class AppModule {}
 
     const document = buildMinimalDoc();
-    const app = await createCloudflareApp(AppModule);
+    const app = await createCloudflareApp(AppModule, { env, envToken });
     app.mountOpenApi({ document, ui: 'scalar' });
     const hono = app.getHonoApp();
 
-    const uiRes = await hono.request('/scalar', undefined, {});
+    const uiRes = await hono.request('/scalar', undefined, env);
     expect(uiRes.status).toBe(200);
     expect(uiRes.headers.get('content-type')).toMatch(/text\/html/);
 
@@ -81,7 +84,7 @@ describe('CloudflareApplication.mountOpenApi', () => {
     @Module({})
     class AppModule {}
 
-    const app = await createCloudflareApp(AppModule);
+    const app = await createCloudflareApp(AppModule, { env, envToken });
     const result = app.mountOpenApi({ document: buildMinimalDoc(), ui: 'scalar' });
     expect(result).toBe(app);
   });
@@ -91,7 +94,7 @@ describe('CloudflareApplication.mountOpenApi', () => {
     class AppModule {}
 
     const document = buildMinimalDoc();
-    const app = await createCloudflareApp(AppModule);
+    const app = await createCloudflareApp(AppModule, { env, envToken });
     app.mountOpenApi({
       document,
       path: '/openapi.json',
@@ -100,11 +103,11 @@ describe('CloudflareApplication.mountOpenApi', () => {
     });
     const hono = app.getHonoApp();
 
-    const jsonRes = await hono.request('/openapi.json', undefined, {});
+    const jsonRes = await hono.request('/openapi.json', undefined, env);
     expect(jsonRes.status).toBe(200);
     expect(await jsonRes.json()).toEqual(document);
 
-    const uiRes = await hono.request('/reference', undefined, {});
+    const uiRes = await hono.request('/reference', undefined, env);
     expect(uiRes.status).toBe(200);
     const html = await uiRes.text();
     expect(html).toContain('data-url="/openapi.json"');

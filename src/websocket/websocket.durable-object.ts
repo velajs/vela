@@ -1,15 +1,26 @@
 import { DurableObject } from 'cloudflare:workers';
-import type { Type } from '@velajs/vela';
+import type { InjectionToken } from '@velajs/vela';
 import type { BroadcastCommand } from '@velajs/vela/websocket';
-import type { CommitStamp, InvalidationCommand, LiveEngine } from '@velajs/vela/live';
+import type {
+  CommitStamp,
+  InvalidationCommand,
+  LiveEngine,
+  LiveInspection,
+} from '@velajs/vela/live';
 import { buildDoRuntime } from './do-bootstrap';
 import { DoWebSocketHost, type WsConnectionPrincipal } from './do-websocket-host';
-import type { WsLike } from './do-state';
 import { armDoPitr, readDoPitrBookmark } from './do-pitr';
-import type { DoPitrArmOptions, DoPitrArmResult, DoPitrBookmarkRead } from './do-pitr';
+import { resolveCloudflareRoot } from '../root-module';
+import type { CloudflareRoot } from '../root-module';
+import type {
+  DoPitrArmOptions,
+  DoPitrArmResult,
+  DoPitrBookmarkRead,
+  VelaDoPitrRpc,
+} from './do-pitr';
 
-const PING = '{"event":"ping"}';
-const PONG = '{"event":"pong"}';
+const PING = '{"event":"$ping"}';
+const PONG = '{"event":"$pong"}';
 const MAX_IDENTITY_FIELD_BYTES = 2048;
 const encoder = new TextEncoder();
 
@@ -33,18 +44,24 @@ function isIdentityField(value: string | null): value is string {
  * bridge DO hibernation) and forwards every event into the runtime-agnostic
  * `WsDispatcher` via {@link DoWebSocketHost}.
  */
-export function VelaWebSocketDurableObject(
-  rootModule: Type,
+export function VelaWebSocketDurableObject<T extends object>(
+  rootModule: CloudflareRoot<NoInfer<T>>,
+  options: { envToken: InjectionToken<T> },
 ): new (
   ctx: DurableObjectState,
-  env: Record<string, unknown>,
-) => DurableObject<Record<string, unknown>> {
-  return class VelaWsDurableObject extends DurableObject<Record<string, unknown>> {
+  env: T,
+) => DurableObject<T> &
+  VelaDoPitrRpc & {
+    broadcast(cmd: BroadcastCommand): Promise<void>;
+    invalidate(cmd: InvalidationCommand): Promise<CommitStamp | undefined>;
+    inspectLive(): Promise<LiveInspection>;
+  } {
+  return class VelaWsDurableObject extends DurableObject<T> {
     private host!: DoWebSocketHost;
     private liveEngine?: LiveEngine;
     private readonly ready: Promise<void>;
 
-    constructor(ctx: DurableObjectState, env: Record<string, unknown>) {
+    constructor(ctx: DurableObjectState, env: T) {
       super(ctx, env);
       // Application-level ping/pong answered WITHOUT waking a hibernated DO.
       try {
@@ -53,7 +70,10 @@ export function VelaWebSocketDurableObject(
         // Older runtimes without auto-response — fine, protocol pings still work.
       }
       this.ready = ctx.blockConcurrencyWhile(async () => {
-        const runtime = await buildDoRuntime(rootModule, ctx, env);
+        const runtime = await buildDoRuntime(resolveCloudflareRoot(rootModule, env), ctx, {
+          ...options,
+          env,
+        });
         this.host = new DoWebSocketHost(
           ctx,
           runtime.dispatcher,
@@ -62,6 +82,12 @@ export function VelaWebSocketDurableObject(
         );
         this.liveEngine = runtime.live;
       });
+    }
+
+    /** Intra-worker RPC only; HTTP fetch never exposes this admin snapshot. */
+    async inspectLive(): Promise<LiveInspection> {
+      await this.ready;
+      return this.liveEngine?.inspect() ?? { subscriptions: [], rooms: [] };
     }
 
     override async fetch(request: Request): Promise<Response> {
@@ -115,7 +141,7 @@ export function VelaWebSocketDurableObject(
 
       const { 0: client, 1: server } = new WebSocketPair();
       const accepted = await this.host.accept(
-        server as unknown as WsLike,
+        server,
         path,
         roomId,
         userId,
@@ -128,17 +154,17 @@ export function VelaWebSocketDurableObject(
 
     override async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
       await this.ready;
-      await this.host.onMessage(ws as unknown as WsLike, message);
+      await this.host.onMessage(ws, message);
     }
 
     override async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
       await this.ready;
-      await this.host.onClose(ws as unknown as WsLike, code, reason);
+      await this.host.onClose(ws, code, reason);
     }
 
     override async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
       await this.ready;
-      await this.host.onError(ws as unknown as WsLike, error);
+      await this.host.onError(ws, error);
     }
 
     /** DO RPC — server-initiated broadcast forwarded from a Worker (see `broadcastToRoom`). */

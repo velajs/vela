@@ -1,36 +1,41 @@
-import { Module, Controller, Get } from '@velajs/vela';
+import { VelaWebSocketDurableObject } from "../../dist/durable-objects.js";
+import { Module, Controller, Get, InjectionToken } from "@velajs/vela";
 import {
-  createCloudflareApp,
-  VelaWebSocketDurableObject,
+  createCloudflareWorker,
   CloudflareWebSocketModule,
   WebSocketGateway,
   SubscribeMessage,
   MessageBody,
   ConnectedSocket,
   WebSocketServer,
-} from '../../dist/index.js';
-import type { WsClient, WsServer, OnGatewayConnection, OnGatewayDisconnect } from '../../dist/index.js';
+} from "../../dist/index.js";
+import type {
+  WsClient,
+  WsServer,
+  OnGatewayConnection,
+  OnGatewayDisconnect,
+} from "../../dist/index.js";
 
 // ---- Gateway: one Durable Object per room; broadcast to everyone in it ----
 
-@WebSocketGateway({ path: '/rooms/:id/ws', roomParam: 'id', binding: 'CHAT_ROOM' })
+@WebSocketGateway({ path: "/rooms/:id/ws", roomParam: "id", binding: "CHAT_ROOM" })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(@WebSocketServer() private readonly server: WsServer) {}
 
   handleConnection(client: WsClient) {
     const who = client.id.slice(0, 8);
-    client.send('system', { text: `you are ${who}` });
-    void this.server.emit('system', { text: `${who} joined` });
+    client.send("system", { text: `you are ${who}` });
+    void this.server.emit("system", { text: `${who} joined` });
   }
 
   handleDisconnect(client: WsClient) {
-    void this.server.emit('system', { text: `${client.id.slice(0, 8)} left` });
+    void this.server.emit("system", { text: `${client.id.slice(0, 8)} left` });
   }
 
-  @SubscribeMessage('chat')
+  @SubscribeMessage("chat")
   onChat(@MessageBody() body: { text: string }, @ConnectedSocket() client: WsClient) {
-    void this.server.emit('chat', { from: client.id.slice(0, 8), text: body.text });
-    return { event: 'ack', data: { ok: true } }; // echoed back to the sender only
+    void this.server.emit("chat", { from: client.id.slice(0, 8), text: body.text });
+    return { event: "ack", data: { ok: true } }; // echoed back to the sender only
   }
 }
 
@@ -75,9 +80,9 @@ const PAGE = /* html */ `<!doctype html>
 
 @Controller()
 export class PageController {
-  @Get('/')
+  @Get("/")
   index() {
-    return new Response(PAGE, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+    return new Response(PAGE, { headers: { "content-type": "text/html; charset=utf-8" } });
   }
 }
 
@@ -90,15 +95,10 @@ export class PageController {
 })
 export class AppModule {}
 
-// The Durable Object class (name must match wrangler `class_name`).
-export class ChatRoom extends VelaWebSocketDurableObject(AppModule) {}
+interface WorkerEnv {
+  CHAT_ROOM: DurableObjectNamespace<ChatRoom>;
+}
+const WORKER_ENV = new InjectionToken<WorkerEnv>("chat environment");
+export class ChatRoom extends VelaWebSocketDurableObject(AppModule, { envToken: WORKER_ENV }) {}
 
-let appPromise: ReturnType<typeof createCloudflareApp> | undefined;
-
-export default {
-  async fetch(request: Request, env: unknown, ctx: unknown): Promise<Response> {
-    appPromise ??= createCloudflareApp(AppModule);
-    const app = await appPromise;
-    return (app.fetch as (r: Request, e: unknown, c: unknown) => Promise<Response>)(request, env, ctx);
-  },
-};
+export default createCloudflareWorker(AppModule, { envToken: WORKER_ENV });

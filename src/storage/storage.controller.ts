@@ -1,7 +1,8 @@
 import { Controller, Get, Inject, Req } from '@velajs/vela';
 import { joinStoragePath, STORAGE_SIGNED_URL_PURPOSE, verifySignedUrl } from '@velajs/vela/storage';
 import type { Context } from 'hono';
-import { EnvService } from '../services/env.service';
+import { STORAGE_OPTIONS } from './storage.tokens';
+import type { StorageModuleOptions } from './storage.types';
 import { StorageManagerService } from './storage-manager.service';
 import { decodeStorageKeyClaim, isStorageKeyWithinRoot } from './storage-key-claim';
 
@@ -17,12 +18,12 @@ import { decodeStorageKeyClaim, isStorageKeyWithinRoot } from './storage-key-cla
 export class StorageController {
   constructor(
     @Inject(StorageManagerService) private readonly manager: StorageManagerService,
-    @Inject(EnvService) private readonly env: EnvService,
+    @Inject(STORAGE_OPTIONS) private readonly options: StorageModuleOptions,
   ) {}
 
   @Get('/:disk')
   async download(@Req() c: Context): Promise<Response> {
-    const secret = this.env.get<string>('APP_SECRET');
+    const secret = this.options.secret;
     if (!secret) return new Response('Storage signing is not configured', { status: 500 });
 
     // Verify the complete path/query capability before inspecting the disk or

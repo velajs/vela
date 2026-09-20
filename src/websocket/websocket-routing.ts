@@ -1,5 +1,5 @@
-import type { Context, Hono } from 'hono';
-import { getMetadata, REQUEST_CONTEXT } from '@velajs/vela';
+import type { VelaContext as Context, VelaHono as Hono } from '@velajs/vela';
+import { getMetadata, getTrustedRequestIdentity } from '@velajs/vela';
 import {
   authenticateWebSocketUpgrade,
   resolveGatewayRoomId,
@@ -9,7 +9,7 @@ import {
   type WebSocketGatewayOptions,
   type WebSocketUpgradeIdentity,
 } from '@velajs/vela/websocket';
-import { roomToDurableId } from './room-id';
+import { durableObjectRoomName } from './room-id';
 
 export interface WsGatewayRoute {
   path: string;
@@ -17,7 +17,6 @@ export interface WsGatewayRoute {
   options: WebSocketGatewayOptions;
 }
 
-const ACCESS_IDENTITY_KEY = Symbol.for('vela.cloudflare-access.identity');
 const MAX_IDENTITY_FIELD_BYTES = 2048;
 const encoder = new TextEncoder();
 
@@ -33,14 +32,6 @@ interface ForwardedIdentity extends WebSocketUpgradeIdentity {
   expiresAtMs: number;
 }
 
-interface RequestContextLike {
-  get<T>(key: PropertyKey): T | undefined;
-}
-
-interface ContainerLike {
-  resolve<T>(token: unknown): T;
-}
-
 function isIdentityField(value: unknown): value is string {
   return (
     typeof value === 'string' &&
@@ -53,37 +44,19 @@ function isIdentityField(value: unknown): value is string {
 
 /** `null` means an identity was present but violated the transport contract. */
 function accessIdentity(c: Context): ForwardedIdentity | null | undefined {
-  const container = c.get('container' as never) as ContainerLike | undefined;
-  if (!container) return undefined;
-  try {
-    const value = container
-      .resolve<RequestContextLike>(REQUEST_CONTEXT)
-      .get<unknown>(ACCESS_IDENTITY_KEY);
-    if (value === undefined) return undefined;
-    if (!value || typeof value !== 'object') return null;
-
-    const candidate = value as Record<string, unknown>;
-    const { issuer, subject, principalType, tenantId, expiresAtMs, userId } = candidate;
-    if (
-      !isIdentityField(issuer) ||
-      !isIdentityField(subject) ||
-      (principalType !== 'user' && principalType !== 'service') ||
-      !isIdentityField(tenantId) ||
-      typeof expiresAtMs !== 'number' ||
-      !Number.isSafeInteger(expiresAtMs) ||
-      expiresAtMs <= 0 ||
-      (userId !== undefined && userId !== subject)
-    ) {
-      return null;
-    }
-    return {
-      principal: { issuer, subject, principalType },
-      tenantId,
-      expiresAtMs,
-    };
-  } catch {
+  const value = getTrustedRequestIdentity(c.req.raw);
+  if (!value) return undefined;
+  const { principal, tenantId, expiresAtMs } = value;
+  if (
+    !isIdentityField(principal.issuer) ||
+    !isIdentityField(principal.subject) ||
+    !isIdentityField(tenantId) ||
+    typeof expiresAtMs !== 'number' ||
+    !Number.isSafeInteger(expiresAtMs) ||
+    expiresAtMs <= 0
+  )
     return null;
-  }
+  return { principal, tenantId, expiresAtMs };
 }
 
 /** `null` means two independently verified identities disagree. */
@@ -92,7 +65,7 @@ function combineIdentities(
   upgradeIdentity: WebSocketUpgradeIdentity | undefined,
 ): ForwardedIdentity | null | undefined {
   if (!requestIdentity && !upgradeIdentity) return undefined;
-  if (!requestIdentity) return upgradeIdentity as ForwardedIdentity;
+  if (!requestIdentity) return upgradeIdentity;
   if (!upgradeIdentity) return requestIdentity;
   if (
     requestIdentity.principal.issuer !== upgradeIdentity.principal.issuer ||
@@ -106,14 +79,13 @@ function combineIdentities(
     principal: { ...upgradeIdentity.principal },
     tenantId: upgradeIdentity.tenantId,
     expiresAtMs: Math.min(requestIdentity.expiresAtMs, upgradeIdentity.expiresAtMs),
-  } as ForwardedIdentity;
+  };
 }
 
 /** Read `@WebSocketGateway({ path, binding })` off a resolved instance (CF-hosted gateways only). */
 export function collectWsGatewayRoutes(instance: object): WsGatewayRoute[] {
-  const options = getMetadata(WS_GATEWAY_METADATA, instance.constructor) as
-    | WebSocketGatewayOptions
-    | undefined;
+  // Decorator metadata is the framework's explicit reflection boundary.
+  const options = getMetadata<WebSocketGatewayOptions>(WS_GATEWAY_METADATA, instance.constructor);
   if (!options?.path || !options?.binding) return [];
   resolveGatewayRoomParam(options);
   resolveMaxFrameBytes(options);
@@ -168,15 +140,6 @@ export function registerWebSocketRoutes(hono: Hono, routes: WsGatewayRoute[]): v
         return c.text('WebSocket identity expired', 403);
       }
 
-      const ns = (c.env as Record<string, unknown>)[route.binding] as
-        | DurableObjectNamespace
-        | undefined;
-      if (!ns) {
-        return c.text(`Durable Object binding '${route.binding}' is not configured`, 500);
-      }
-
-      const stub = ns.get(roomToDurableId(ns, route.path, roomId));
-
       // Populate the ticket-free forwarding request with trusted server values.
       const forwardHeaders = new Headers(upgrade.request.headers);
       forwardHeaders.set('x-vela-room', roomId);
@@ -190,7 +153,46 @@ export function registerWebSocketRoutes(hono: Hono, routes: WsGatewayRoute[]): v
         forwardHeaders.set('x-vela-expires-at-ms', String(identity.expiresAtMs));
       }
 
-      return stub.fetch(new Request(upgrade.request, { headers: forwardHeaders }));
+      return forwardToRoom(
+        c.env,
+        route.binding,
+        route.path,
+        roomId,
+        new Request(upgrade.request, { headers: forwardHeaders }),
+      );
     });
   }
+}
+
+/**
+ * Gateway metadata contains a runtime binding name, so the native type is
+ * erased. Validate only the operations consumed here and their observable
+ * results; never assert that an arbitrary value implements a native namespace.
+ */
+async function forwardToRoom(
+  env: unknown,
+  binding: string,
+  path: string,
+  room: string,
+  request: Request,
+): Promise<Response> {
+  if (typeof env !== 'object' || env === null) throw new Error('Worker environment is missing');
+  const namespace: unknown = Reflect.get(env, binding);
+  if (typeof namespace !== 'object' || namespace === null) {
+    return new Response(`Durable Object binding '${binding}' is not configured`, { status: 500 });
+  }
+  const idFromName: unknown = Reflect.get(namespace, 'idFromName');
+  const get: unknown = Reflect.get(namespace, 'get');
+  if (typeof idFromName !== 'function' || typeof get !== 'function') {
+    throw new Error('Invalid Durable Object namespace');
+  }
+  const id: unknown = Reflect.apply(idFromName, namespace, [durableObjectRoomName(path, room)]);
+  const stub: unknown = Reflect.apply(get, namespace, [id]);
+  if (typeof stub !== 'object' || stub === null) throw new Error('Invalid Durable Object stub');
+  const fetch: unknown = Reflect.get(stub, 'fetch');
+  if (typeof fetch !== 'function') throw new Error('Durable Object stub has no fetch operation');
+  const response: unknown = await Reflect.apply(fetch, stub, [request]);
+  if (!(response instanceof Response))
+    throw new Error('Durable Object returned an invalid response');
+  return response;
 }

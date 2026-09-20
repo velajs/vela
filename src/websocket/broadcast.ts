@@ -6,8 +6,13 @@ import {
 import type { BroadcastCommand } from '@velajs/vela/websocket';
 import { roomToDurableId } from './room-id';
 
-interface WsBroadcastStub {
+export interface WsBroadcastStub {
   broadcast(cmd: BroadcastCommand): Promise<void>;
+}
+
+export interface BroadcastNamespace {
+  idFromName(name: string): DurableObjectId;
+  get(id: DurableObjectId): WsBroadcastStub;
 }
 
 /**
@@ -18,12 +23,12 @@ interface WsBroadcastStub {
  *
  * @example
  * ```ts
- * // In a controller — ns from DurableObjectService.namespace
+ * // In a controller — ns from the typed Worker environment
  * await broadcastToRoom(ns, '/orgs/:orgId/ws', `org:${id}`, 'order.created', order);
  * ```
  */
 export async function broadcastToRoom(
-  ns: DurableObjectNamespace,
+  ns: BroadcastNamespace,
   gatewayPath: string,
   room: string,
   event: string,
@@ -39,6 +44,6 @@ export async function broadcastToRoom(
     maxFrameBytes: options?.maxFrameBytes ?? DEFAULT_WS_MAX_FRAME_BYTES,
   });
   assertBroadcastCommandFits(cmd, maxFrameBytes);
-  const stub = ns.get(roomToDurableId(ns, gatewayPath, room)) as unknown as WsBroadcastStub;
+  const stub = ns.get(roomToDurableId(ns, gatewayPath, room));
   await stub.broadcast(cmd);
 }

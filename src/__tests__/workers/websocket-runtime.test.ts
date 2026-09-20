@@ -1,4 +1,4 @@
-// @ts-expect-error virtual module supplied by @cloudflare/vitest-pool-workers
+// @ts-expect-error virtual module supplied by @cloudflare/vitest-plugin
 import { SELF } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 

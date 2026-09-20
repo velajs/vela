@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "lib": [
+      "ES2024",
+      "DOM"
+    ],
+    "types": []
+  },
+  "include": [
+    "web/**/*.ts",
+    "src/contracts.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ],
+  "extends": "./tsconfig.json"
+}

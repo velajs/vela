@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.0
+
+Native binding tokens, per-environment application lifetime, environment-created module graphs, isolated live drivers, and Durable Object live inspection. Includes a complete D1/auth/CRUD/live/Studio starter.
+
+Requires the coordinated Vela 2.0 package set. See the workspace migration guide.
+
 ## 1.10.1
 
 ### Patch Changes

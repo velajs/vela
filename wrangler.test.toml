@@ -12,3 +12,16 @@ class_name = "TestRoom"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["TestRoom"]
+
+[[kv_namespaces]]
+binding = "CACHE"
+id = "test-cache"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "test-db"
+database_id = "00000000-0000-0000-0000-000000000001"
+
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "test-files"

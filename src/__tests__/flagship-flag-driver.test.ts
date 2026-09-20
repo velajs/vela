@@ -17,7 +17,7 @@ function makeBinding() {
     getStringValue,
     getNumberValue,
     getObjectValue,
-  } as unknown as FlagshipBinding;
+  } satisfies FlagshipBinding;
   return { binding, getBooleanValue, getStringValue, getNumberValue, getObjectValue };
 }
 

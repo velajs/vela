@@ -1,4 +1,4 @@
-import type { Hono } from 'hono';
+import type { ExecutionContext } from 'hono';
 import {
   CRON_METADATA,
   PipelineRunner,
@@ -8,13 +8,10 @@ import {
   shouldFilterCatch,
   type VelaApplication,
 } from '@velajs/vela';
-import type { CronMetadata, Entrypoint, Type } from '@velajs/vela';
+import type { Entrypoint } from '@velajs/vela';
 import { ComponentManager } from '@velajs/vela/internal';
-import { dispatchInboundEmail, parseInboundEmail } from '@velajs/mail';
-import type { ScheduledMetadata } from './decorators/scheduled';
-import type { QueueConsumerMetadata } from './decorators/queue-consumer';
 import { collectWsGatewayRoutes, type WsGatewayRoute } from './websocket/websocket-routing';
-import type { CloudflareEnv } from './types';
+import { assertCloudflareEnvironment } from './environment';
 
 // vela's own @Cron jobs run via the same Workers cron trigger — declare an
 // entrypoint kind over vela's metadata key (the open-kind system makes
@@ -30,14 +27,21 @@ registerEntrypointKind({ kind: 'cf:vela-cron', metaKey: CRON_METADATA, level: 'm
  */
 export type MountOpenApiOptions = Parameters<VelaApplication['mountOpenApi']>[0];
 
-type Method = (...args: unknown[]) => unknown;
-
 function invoke(instance: object, methodName: string, args: unknown[]): unknown {
-  const method = (instance as Record<string, unknown>)[methodName];
+  // Decorator metadata names an instance method; inspect it before invoking.
+  const method: unknown = Reflect.get(instance, methodName);
   if (typeof method !== 'function') {
     throw new Error(`Method '${methodName}' is not a function on ${instance.constructor.name}`);
   }
-  return (method as Method).apply(instance, args);
+  return Reflect.apply(method, instance, args);
+}
+
+function entrypointString(meta: unknown, property: string): string {
+  if (typeof meta !== 'object' || meta === null) throw new Error('Invalid entrypoint metadata.');
+  const value: unknown = Reflect.get(meta, property);
+  if (typeof value !== 'string')
+    throw new Error(`Invalid entrypoint metadata: ${property} must be a string.`);
+  return value;
 }
 
 /**
@@ -46,59 +50,64 @@ function invoke(instance: object, methodName: string, args: unknown[]): unknown 
  * - `scheduled` — Cron trigger handler (matches `@Scheduled()` decorators
  *                 AND vela's own `@Cron()` jobs)
  * - `queue` — Queue consumer handler (matches `@QueueConsumer()` decorators)
- * - `email` — Email Routing handler (dispatches `@OnInboundEmail()` handlers
- *             from `@velajs/mail` after fail-closed verdict gating)
  * - `mountOpenApi` — Serve an OpenAPI document (and optional Scalar UI) on
  *                    the underlying Hono app
  *
  * @example
  * ```ts
- * const app = await createCloudflareApp(AppModule);
+ * const app = await createCloudflareApp(AppModule, { env, envToken: ENV });
  * export default {
  *   fetch: app.fetch,
  *   scheduled: app.scheduled.bind(app),
  *   queue: app.queue.bind(app),
- *   email: app.email.bind(app),
  * };
  * ```
  *
  * @example
  * ```ts
  * // Serve OpenAPI docs alongside your routes
- * const app = await createCloudflareApp(AppModule);
+ * const app = await createCloudflareApp(AppModule, { env, envToken: ENV });
  * const document = createOpenApiDocument(AppModule);
  * app.mountOpenApi({ document, ui: 'scalar' });
  * // GET /openapi.json -> JSON document
  * // GET /scalar       -> Scalar UI (loads from CDN)
  * ```
  */
-export class CloudflareApplication {
+export class CloudflareApplication<T extends object = object> {
   private wsGatewayRoutes: WsGatewayRoute[] = [];
 
-  constructor(private app: VelaApplication) {}
-
-  get fetch(): Hono['fetch'] {
-    return this.app.fetch;
+  constructor(
+    private app: VelaApplication,
+    readonly env: T,
+  ) {
+    this.get = app.get.bind(app);
   }
 
-  getHonoApp(): Hono {
+  readonly fetch = async (request: Request, env: T, ctx?: ExecutionContext): Promise<Response> => {
+    assertCloudflareEnvironment(this.env, env);
+    return this.app.fetch(request, env, ctx);
+  };
+
+  getHonoApp(): ReturnType<VelaApplication['getHonoApp']> {
     return this.app.getHonoApp();
   }
 
   /**
    * Resolve a provider from the application's DI container (delegates to
    * `VelaApplication.get`). Handy for grabbing a service — e.g. an auth service —
-   * to use inside `createCloudflareApp({ middleware: [...] })` request middleware,
+   * to use inside `createCloudflareApp({ middleware: env => [...] })` request middleware,
    * which runs outside the DI request pipeline.
    *
    * @example
    * ```ts
-   * const app = await createCloudflareApp(AppModule);
-   * const auth = app.get<BetterAuthService>(BetterAuthService);
+   * const app = await createCloudflareApp(AppModule, { env, envToken: ENV });
+   * const auth = app.get(BetterAuthService);
    * ```
    */
-  get<T>(token: Parameters<VelaApplication['get']>[0]): T {
-    return this.app.get(token) as T;
+  readonly get: VelaApplication['get'];
+
+  get entrypoints(): VelaApplication['entrypoints'] {
+    return this.app.entrypoints;
   }
 
   /**
@@ -112,7 +121,7 @@ export class CloudflareApplication {
    * ```ts
    * import { createOpenApiDocument } from '@velajs/vela';
    *
-   * const app = await createCloudflareApp(AppModule);
+   * const app = await createCloudflareApp(AppModule, { env, envToken: ENV });
    * const document = createOpenApiDocument(AppModule, {
    *   info: { title: 'My API', version: '1.0.0' },
    * });
@@ -152,16 +161,17 @@ export class CloudflareApplication {
    */
   async scheduled(
     event: { cron: string; scheduledTime?: number },
-    env: CloudflareEnv,
+    env: T,
     ctx: { waitUntil: (promise: Promise<unknown>) => void },
   ): Promise<void> {
+    assertCloudflareEnvironment(this.env, env);
     const handlers = [
       ...this.app.entrypoints
-        .ofKind<ScheduledMetadata>('cf:scheduled')
-        .map((ep) => ({ ep, cron: ep.meta.cron })),
+        .ofKind('cf:scheduled')
+        .map((ep) => ({ ep, cron: entrypointString(ep.meta, 'cron') })),
       ...this.app.entrypoints
-        .ofKind<CronMetadata>('cf:vela-cron')
-        .map((ep) => ({ ep, cron: ep.meta.expression })),
+        .ofKind('cf:vela-cron')
+        .map((ep) => ({ ep, cron: entrypointString(ep.meta, 'expression') })),
     ].filter((h) => h.cron === event.cron);
 
     await Promise.all(handlers.map(({ ep }) => this.dispatchEntrypoint(ep, [event, env, ctx])));
@@ -176,12 +186,16 @@ export class CloudflareApplication {
    * so the platform's retry semantics stay intact.
    */
   private async dispatchEntrypoint(ep: Entrypoint, args: unknown[]): Promise<void> {
-    const targetClass = ep.token as Type;
+    const targetClass = ep.token;
+    if (typeof targetClass !== 'function') throw new Error('Entrypoint token must be a class.');
     const methodName = String(ep.methodName);
     const context = buildEntrypointExecutionContext(ep.kind, targetClass, methodName, args[0]);
 
     await runInEntrypointScope(this.app.getContainer(), async (scope) => {
-      const instance = scope.resolve(ep.token) as object;
+      const instance: unknown = scope.resolve(ep.token);
+      if (typeof instance !== 'object' || instance === null) {
+        throw new Error('Entrypoint must resolve to an object.');
+      }
       const guards = ComponentManager.resolveGuards(
         ComponentManager.getScopedComponents('guard', targetClass, methodName),
         scope,
@@ -223,47 +237,16 @@ export class CloudflareApplication {
    * child (request-scoped providers rebuild per batch — no boot-time captives).
    */
   async queue(
-    batch: { queue: string; messages: unknown[] },
-    env: CloudflareEnv,
+    batch: { queue: string; messages: readonly unknown[] },
+    env: T,
     ctx: { waitUntil: (promise: Promise<unknown>) => void },
   ): Promise<void> {
+    assertCloudflareEnvironment(this.env, env);
     const handlers = this.app.entrypoints
-      .ofKind<QueueConsumerMetadata>('cf:queue')
-      .filter((ep) => ep.meta.queueName === batch.queue);
+      .ofKind('cf:queue')
+      .filter((ep) => entrypointString(ep.meta, 'queueName') === batch.queue);
 
     await Promise.all(handlers.map((ep) => this.dispatchEntrypoint(ep, [batch, env, ctx])));
-  }
-
-  /**
-   * Handle Cloudflare Email Routing events (the Worker's `email` handler).
-   * Reads the RAW byte stream for message content, but trusts neither raw
-   * `Authentication-Results` nor `message.headers`: ForwardableEmailMessage has
-   * no out-of-band verified authentication verdict. Only the platform-supplied
-   * SMTP envelope (`from`/`to`) is passed as trusted adapter data. Verdict
-   * gating and the handler pipeline live in `@velajs/mail`.
-   *
-   * When the app gate rejects the message, `dispatchInboundEmail` runs NO
-   * handler (privileged inbound handlers never see an ungated message) and this
-   * hook returns a permanent SMTP reject with a FIXED, generic reason — never a
-   * verdict name or internal detail, since the sender may be the attacker.
-   * A gate-passed message with no matching handler is dropped (the default).
-   */
-  async email(
-    message: ForwardableEmailMessage,
-    _env: CloudflareEnv,
-    _ctx: { waitUntil: (promise: Promise<unknown>) => void },
-  ): Promise<void> {
-    const bytes = new Uint8Array(await new Response(message.raw).arrayBuffer());
-    // Cloudflare's ForwardableEmailMessage exposes no out-of-band verified
-    // authentication verdict. Preserve only the trusted SMTP envelope; raw
-    // Authentication-Results remains untrusted and the mail gate fails closed.
-    const email = parseInboundEmail(bytes, {
-      envelope: { from: message.from, to: message.to },
-    });
-    const result = await dispatchInboundEmail(this.app.getContainer(), this.app.entrypoints, email);
-    if (result.gated) {
-      message.setReject('message could not be processed');
-    }
   }
 
   async close(signal?: string): Promise<void> {

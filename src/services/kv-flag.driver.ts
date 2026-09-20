@@ -1,6 +1,4 @@
-import { Inject, Injectable } from '@velajs/vela';
 import type { FeatureFlagDriver, FlagContext } from '@velajs/feature-flags';
-import { KVService } from './kv.service';
 
 export interface KvFlagDriverOptions {
   /** Driver name used for `use(name)` / default-driver selection. Default `"kv"`. */
@@ -21,30 +19,25 @@ export interface KvFlagDriverOptions {
  * guarantee lives in `@velajs/feature-flags`'s service layer.
  *
  * Placed like {@link KVCacheStore}: construct it in a wiring factory over a
- * resolved {@link KVService}.
+ * resolved {@link KVNamespace}.
  *
  * ```ts
  * FeatureFlagsModule.forRootAsync({
- *   inject: [KVService],
- *   useFactory: (kv: KVService) => ({ drivers: [new KvFlagDriver(kv, { prefix: 'flag:' })] }),
+ *   inject: [ENV],
+ *   useFactory: (env: WorkerEnv) => ({ drivers: [new KvFlagDriver(env.CACHE, { prefix: 'flag:' })] }),
  * });
  * ```
  */
-@Injectable()
 export class KvFlagDriver implements FeatureFlagDriver {
   readonly name: string;
   private readonly prefix: string;
 
   constructor(
-    @Inject(KVService) private readonly kv: KVService,
+    private readonly ns: KVNamespace,
     options: KvFlagDriverOptions = {},
   ) {
     this.name = options.name ?? 'kv';
     this.prefix = options.prefix ?? '';
-  }
-
-  private get ns(): KVNamespace {
-    return this.kv.namespace;
   }
 
   getBoolean(key: string, fallback: boolean, _ctx?: FlagContext): Promise<boolean> {
@@ -59,7 +52,7 @@ export class KvFlagDriver implements FeatureFlagDriver {
     return this.read(key, fallback, (v) => typeof v === 'number');
   }
 
-  getObject<T extends object>(key: string, fallback: T, _ctx?: FlagContext): Promise<T> {
+  getObject(key: string, fallback: object, _ctx?: FlagContext): Promise<unknown> {
     return this.read(key, fallback, (v) => typeof v === 'object' && v !== null);
   }
 
@@ -71,15 +64,15 @@ export class KvFlagDriver implements FeatureFlagDriver {
   private async read<T>(
     key: string,
     fallback: T,
-    matches: (value: unknown) => boolean,
+    matches: (value: unknown) => value is T,
   ): Promise<T> {
     const value = await this.ns.get(this.prefix + key, 'json');
     if (value === null || value === undefined) return fallback;
-    return matches(value) ? (value as T) : fallback;
+    return matches(value) ? value : fallback;
   }
 }
 
 /** Convenience factory for {@link KvFlagDriver}. */
-export function kvFlagDriver(kv: KVService, options?: KvFlagDriverOptions): KvFlagDriver {
+export function kvFlagDriver(kv: KVNamespace, options?: KvFlagDriverOptions): KvFlagDriver {
   return new KvFlagDriver(kv, options);
 }

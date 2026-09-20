@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
 import { KvFlagDriver, kvFlagDriver } from '../services/kv-flag.driver';
-import type { KVService } from '../services/kv.service';
 
 /**
  * Map-backed KV double storing JSON strings, mirroring the KVCacheStore test
@@ -15,7 +14,7 @@ function fakeKVService(initial: Record<string, unknown> = {}) {
     return type === 'json' ? JSON.parse(raw) : raw;
   });
   const namespace = { get };
-  return { service: { namespace } as unknown as KVService, store, get };
+  return { service: namespace as unknown as KVNamespace, store, get };
 }
 
 describe('KvFlagDriver', () => {

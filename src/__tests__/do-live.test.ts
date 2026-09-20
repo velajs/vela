@@ -1,8 +1,18 @@
+import { InjectionToken } from '@velajs/vela';
+const envToken = new InjectionToken<object>('test environment');
 import { describe, it, expect, beforeEach } from 'vitest';
+import { z } from 'zod';
 import { DatabaseSync } from 'node:sqlite';
 import { Injectable, MetadataRegistry, Module, WebSocketModule } from '@velajs/vela';
 import { WebSocketGateway } from '@velajs/vela/websocket';
-import { LIVE_PROTOCOL, LiveModule, LiveQuery, LiveResolver } from '@velajs/vela/live';
+import {
+  defineLiveQuery,
+  LIVE_PROTOCOL,
+  LiveInvalidation,
+  LiveModule,
+  LiveQuery,
+  LiveResolver,
+} from '@velajs/vela/live';
 import type { CommitStamp, InvalidationCommand, LiveInvalidationSink } from '@velajs/vela/live';
 import { buildDoRuntime } from '../websocket/do-bootstrap';
 import { DoCursorLog, durableObjectCursorLog, durableObjectLive } from '../websocket/do-live';
@@ -122,6 +132,15 @@ describe('DoCursorLog (SQLite)', () => {
   });
 });
 
+const unusedNamespace = {
+  idFromName(): never {
+    throw new Error('unexpected remote access');
+  },
+  get(): never {
+    throw new Error('unexpected remote access');
+  },
+};
+
 describe('durableObjectLive driver', () => {
   it('routes Worker-side dispatches to the room DO and returns its stamp', async () => {
     const calls: Array<{ id: string; cmd: InvalidationCommand }> = [];
@@ -136,11 +155,10 @@ describe('durableObjectLive driver', () => {
     } as never;
 
     const driver = durableObjectLive({
-      binding: 'ROOM',
+      namespace: ns,
       gatewayPath: '/rooms/:id/ws',
       defaultRoom: 'lobby',
     });
-    driver._initializeEnv({ ROOM: ns });
 
     const stamp = await driver.dispatch({ tags: ['crud:todos'] });
     expect(stamp).toEqual({ cursor: 7, epoch: 'do-epoch' });
@@ -150,10 +168,10 @@ describe('durableObjectLive driver', () => {
     });
 
     await driver.dispatch({ tags: ['x'], room: 'org:1' });
-    expect(calls[1].id).toBe('id:vela:ws:v2:%2Frooms%2F%3Aid%2Fws:org%3A1');
+    expect(calls[1]?.id).toBe('id:vela:ws:v2:%2Frooms%2F%3Aid%2Fws:org%3A1');
   });
 
-  it('applies locally inside the DO (local mode) and fails loudly without env', async () => {
+  it('applies locally inside the DO (local mode) without using its remote namespace', async () => {
     const applied: InvalidationCommand[] = [];
     const sink: LiveInvalidationSink = {
       applyInvalidation: async (cmd) => {
@@ -161,25 +179,29 @@ describe('durableObjectLive driver', () => {
         return { cursor: 1, epoch: 'e' };
       },
     };
-    const driver = durableObjectLive({ binding: 'ROOM', gatewayPath: '/rooms/:id/ws' });
+    const driver = durableObjectLive({ namespace: unusedNamespace, gatewayPath: '/rooms/:id/ws' });
     driver.bind(sink);
     driver._setLocalMode();
     await driver.dispatch({ tags: ['t'] });
     expect(applied).toEqual([{ tags: ['t'] }]);
 
-    const cold = durableObjectLive({ binding: 'ROOM', gatewayPath: '/rooms/:id/ws' });
-    expect(() => cold.dispatch({ tags: ['t'] })).toThrow(/binding 'ROOM'/);
+    const cold = durableObjectLive({ namespace: unusedNamespace, gatewayPath: '/rooms/:id/ws' });
+    expect(() => cold.dispatch({ tags: ['t'] })).toThrow('unexpected remote access');
   });
 });
 
 describe('live queries inside the Durable Object', () => {
   const PATH = '/rooms/:id/ws';
+  const todoList = defineLiveQuery({
+    args: z.object({}),
+    result: z.array(z.object({ id: z.string(), text: z.string() })),
+  });
 
   function makeModule(todos: Array<{ id: string; text: string }>) {
     @LiveResolver()
     @Injectable()
     class TodoLive {
-      @LiveQuery('todos.list', { tags: ['crud:todos'] })
+      @LiveQuery('todos.list', todoList, { tags: ['crud:todos'] })
       list() {
         return todos;
       }
@@ -190,10 +212,10 @@ describe('live queries inside the Durable Object', () => {
 
     @Module({
       imports: [
-        WebSocketModule.forRoot(),
+        WebSocketModule.forRoot({}),
         LiveModule.forRoot({
-          log: durableObjectCursorLog(),
-          driver: durableObjectLive({ binding: 'ROOM', gatewayPath: PATH }),
+          log: () => durableObjectCursorLog(),
+          driver: () => durableObjectLive({ namespace: unusedNamespace, gatewayPath: PATH }),
         }),
       ],
       providers: [RoomsGateway, TodoLive],
@@ -215,7 +237,7 @@ describe('live queries inside the Durable Object', () => {
     const { AppModule } = makeModule(todos);
 
     // --- first DO lifetime -------------------------------------------------
-    const runtime = await buildDoRuntime(AppModule, ctx, {});
+    const runtime = await buildDoRuntime(AppModule, ctx, { env: {}, envToken });
     expect(runtime.live).toBeDefined();
     const host = new DoWebSocketHost(
       ctx,
@@ -231,7 +253,8 @@ describe('live queries inside the Durable Object', () => {
     const frames = ws.liveFrames();
     expect(frames[0]).toEqual({ t: 'ack', sub: 's1' });
     expect(frames[1]).toMatchObject({ t: 'data', sub: 's1', cursor: 0 });
-    const epoch = frames[1].epoch as string;
+    const epoch = frames[1]?.epoch;
+    if (typeof epoch !== 'string') throw new Error('Expected a live epoch');
 
     const stamp = await runtime.live!.applyInvalidation({ tags: ['crud:todos'] });
     expect(stamp).toEqual({ cursor: 1, epoch });
@@ -241,7 +264,7 @@ describe('live queries inside the Durable Object', () => {
     // --- eviction: fresh runtime over the same ctx/storage ------------------
     MetadataRegistry.clear();
     const { AppModule: AppModule2 } = makeModule(todos);
-    const woken = await buildDoRuntime(AppModule2, ctx, {});
+    const woken = await buildDoRuntime(AppModule2, ctx, { env: {}, envToken });
 
     todos.push({ id: 't2', text: 'second' });
     const stamp2 = await woken.live!.applyInvalidation({ tags: ['crud:todos'] });
@@ -263,7 +286,7 @@ describe('live queries inside the Durable Object', () => {
     const storage = { sql: sqlStorage() };
     const ctx = new FakeDoState(storage);
     const { AppModule } = makeModule(todos);
-    const runtime = await buildDoRuntime(AppModule, ctx, {});
+    const runtime = await buildDoRuntime(AppModule, ctx, { env: {}, envToken });
     const host = new DoWebSocketHost(
       ctx,
       runtime.dispatcher,
@@ -274,7 +297,8 @@ describe('live queries inside the Durable Object', () => {
     const first = new FakeWs();
     await expect(acceptTrusted(host, first)).resolves.toBe(true);
     await host.onMessage(first, subEnvelope('s1', 'todos.list'));
-    const epoch = first.liveFrames()[1].epoch as string;
+    const epoch = first.liveFrames()[1]?.epoch;
+    if (typeof epoch !== 'string') throw new Error('Expected a live epoch');
 
     await runtime.live!.applyInvalidation({ tags: ['unrelated'] }); // cursor 1
     await runtime.live!.whenIdle();
@@ -300,5 +324,37 @@ describe('live queries inside the Durable Object', () => {
       subEnvelope('r2', 'todos.list', { sinceCursor: 0, sinceEpoch: epoch }),
     );
     expect(third.liveFrames()[1]).toMatchObject({ t: 'data', sub: 'r2', cursor: 2 });
+  });
+});
+
+describe('Durable Object lifecycle bindings', () => {
+  it('initializes the local live log before user lifecycle invalidations', async () => {
+    let stamp: CommitStamp | undefined;
+    @Injectable()
+    class Startup {
+      constructor(private readonly live: LiveInvalidation) {}
+      async onModuleInit() {
+        stamp = await this.live.invalidate({ tags: ['startup'] });
+      }
+    }
+    @Module({
+      imports: [
+        WebSocketModule.forRoot({}),
+        LiveModule.forRoot({
+          driver: () =>
+            durableObjectLive({ namespace: unusedNamespace, gatewayPath: '/rooms/:id/ws' }),
+          log: () => durableObjectCursorLog(),
+        }),
+      ],
+      providers: [Startup],
+    })
+    class App {}
+    const runtime = await buildDoRuntime(App, new FakeDoState({ sql: sqlStorage() }), {
+      env: {},
+      envToken,
+    });
+    expect(stamp?.cursor).toBe(1);
+    expect(stamp?.epoch).toBeTypeOf('string');
+    await runtime.close();
   });
 });

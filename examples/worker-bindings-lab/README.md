@@ -1,20 +1,23 @@
 # Worker Bindings Lab
 
-Fake consumer project for `@velajs/cloudflare` installed through `file:../..` and `@velajs/vela` installed through `file:../../../vela`.
+Consumer example linked to the shared API workspace. It exercises native typed
+Worker environments through the package's public API, with in-memory bindings
+for fast Node tests. The main package's Workers suite additionally tests real
+KV, D1, R2, and Durable Objects.
 
-It simulates a Cloudflare Worker with mocked bindings rather than calling package internals directly.
+From the workspace root:
 
 ```sh
-pnpm --dir examples/worker-bindings-lab install
-pnpm --dir examples/worker-bindings-lab typecheck
-pnpm --dir examples/worker-bindings-lab test
-pnpm --dir examples/worker-bindings-lab smoke
+pnpm --dir cloudflare/examples/worker-bindings-lab typecheck
+pnpm --dir cloudflare/examples/worker-bindings-lab test
+pnpm --dir cloudflare/examples/worker-bindings-lab smoke
 ```
 
-Covered behaviors:
+`WORKER_ENV` carries the environment type into DI. `createWorkerBindingsLabApp(env)`
+constructs an explicit application for tests; the Worker entry uses
+`createCloudflareWorker` for lazy per-environment bootstrap.
 
-- `createCloudflareApp()` and `CloudflareApplication`.
-- Worker-shaped `fetch`, `scheduled`, and `queue` handlers.
-- `KVModule`, `D1Module`, `R2Module`, `QueueModule`, `DurableObjectModule`, `AIModule`, `VectorizeModule`, and `HyperdriveModule`.
-- All corresponding service wrappers.
-- `@Env`, `@Scheduled`, `@QueueConsumer`, and Vela `@Cron` handling in a Worker runtime shape.
+The example covers KV, D1, R2, typed queues, Durable Objects, AI, Vectorize,
+Hyperdrive, HTTP environment parameters, scheduled triggers, Vela cron handlers,
+and queue consumers. Native bindings are injected directly; no binding wrapper
+modules or services are required.
