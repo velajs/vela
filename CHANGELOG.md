@@ -6,6 +6,12 @@ Provider-independent authorization consumes the shared verified identity, includ
 
 Requires the coordinated Vela 2.0 package set. See the workspace migration guide.
 
+## 1.1.0
+
+### Minor Changes
+
+- d36de0e: Add issuer-scoped `subject` and `principalType` fields to the identity contract while retaining `userId` as a compatibility alias.
+
 ## 1.0.1
 
 ### Patch Changes
