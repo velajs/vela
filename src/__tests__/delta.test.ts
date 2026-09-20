@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import { applyListDelta, encodeListDelta } from '../delta';
-import type { RowOp } from '../frames';
 
 describe('encodeListDelta', () => {
   it('returns an empty op list when nothing changed at row granularity', () => {
@@ -13,14 +12,15 @@ describe('encodeListDelta', () => {
     const ops = encodeListDelta(
       [{ id: 'a' }, { id: 'b' }, { id: 'c' }],
       [{ id: 'b', n: 2 }, { id: 'c' }, { id: 'd' }],
-    ) as RowOp[];
-    expect(ops.map((op) => op.op)).toEqual(['delete', 'update', 'insert']);
+    );
+    expect(ops?.map((op) => op.op)).toEqual(['delete', 'update', 'insert']);
   });
 
-  it('bails when the op count exceeds the next length (rule 5)', () => {
-    expect(
-      encodeListDelta([{ id: 'a' }, { id: 'b' }], [{ id: 'b', n: 2 }, { id: 'c' }]),
-    ).toBeUndefined();
+  it('does not use operation count as a wire-cost heuristic', () => {
+    expect(encodeListDelta([{ id: 'a' }, { id: 'b' }, { id: 'keep' }], [{ id: 'keep' }])).toEqual([
+      { op: 'delete', key: 'a' },
+      { op: 'delete', key: 'b' },
+    ]);
   });
 
   it('anchors an insert to the nearest following survivor', () => {
@@ -33,7 +33,7 @@ describe('encodeListDelta', () => {
 
   it('bails when a row cannot be JSON-serialized', () => {
     const previous = [{ id: 'a', n: 1 }];
-    const next = [{ id: 'a', n: BigInt(2) as unknown as number }];
+    const next = [{ id: 'a', n: BigInt(2) }];
     expect(encodeListDelta(previous, next)).toBeUndefined();
   });
 

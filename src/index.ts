@@ -1,4 +1,6 @@
 export { LIVE_PROTOCOL } from './version';
+export { defineLiveQuery } from './query';
+export type { LiveQueryDefinition } from './query';
 export {
   COMMIT_CURSOR_HEADER,
   COMMIT_EPOCH_HEADER,

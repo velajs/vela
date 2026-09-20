@@ -38,21 +38,20 @@ export interface DeltaCodec {
 
 const REFERENCE_CODEC: DeltaCodec = { encodeListDelta, applyListDelta };
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
 const deepEqual = (a: unknown, b: unknown): boolean => {
   if (a === b) return true;
   if (Array.isArray(a) || Array.isArray(b)) {
     if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
     return a.every((value, index) => deepEqual(value, b[index]));
   }
-  if (typeof a === 'object' && typeof b === 'object' && a !== null && b !== null) {
-    const aKeys = Object.keys(a as Record<string, unknown>);
-    const bKeys = Object.keys(b as Record<string, unknown>);
+  if (isRecord(a) && isRecord(b)) {
+    const aKeys = Object.keys(a);
+    const bKeys = Object.keys(b);
     if (aKeys.length !== bKeys.length) return false;
-    return aKeys.every(
-      (key) =>
-        key in (b as Record<string, unknown>) &&
-        deepEqual((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]),
-    );
+    return aKeys.every((key) => Object.hasOwn(b, key) && deepEqual(a[key], b[key]));
   }
   return false;
 };
@@ -74,8 +73,8 @@ interface GeneratedCase {
 /**
  * Generate a mergeable previous/next pair: start from a random keyed list,
  * then delete a random subset, update random payloads, and insert fresh keys
- * at random positions — survivor order is preserved by construction, so the
- * encoder may only bail via the op-count cap (rule 5).
+ * at random positions. Survivor order is preserved by construction, so every
+ * generated case is expressible as a delta.
  */
 const generateCase = (random: () => number, caseIndex: number): GeneratedCase => {
   const previousLength = Math.floor(random() * 8);
@@ -121,7 +120,8 @@ export const runProtocolConformance = (codec: DeltaCodec = REFERENCE_CODEC): Con
       );
       continue;
     }
-    const frame = readLiveEnvelope(JSON.parse(fixture.wire));
+    const envelope: unknown = JSON.parse(fixture.wire);
+    const frame = readLiveEnvelope(envelope);
     if (frame === undefined) {
       failures.push(`frame "${fixture.name}": readLiveEnvelope did not recognize the envelope`);
       continue;
@@ -179,11 +179,7 @@ export const runProtocolConformance = (codec: DeltaCodec = REFERENCE_CODEC): Con
     const ops = codec.encodeListDelta(previous, next);
 
     if (ops === undefined) {
-      // Survivor order is preserved by construction, so only rule 5 may bail.
-      const referenceOps = encodeListDelta(previous, next);
-      if (referenceOps !== undefined) {
-        failures.push(`random #${caseIndex}: codec bailed where the reference codec succeeds`);
-      }
+      failures.push(`random #${caseIndex}: codec bailed on an expressible list change`);
       continue;
     }
 

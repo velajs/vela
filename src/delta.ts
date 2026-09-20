@@ -26,9 +26,11 @@
  *    be JSON-serialized);
  * 3. a duplicate key appears in either array;
  * 4. rows present in BOTH arrays changed relative order (the merge replaces
- *    survivors in place and never reorders them);
- * 5. the op count exceeds the next array's length (a near-total change is
- *    cheaper as a snapshot).
+ *    survivors in place and never reorders them).
+ *
+ * These are correctness conditions only. The codec deliberately does not use
+ * operation count as a cost heuristic: callers that can send either encoding
+ * must compare the completed delta and snapshot wire frames instead.
  *
  * Op ordering inside a delta: deletes first (previous order), then
  * inserts/updates (next order) — the merge never sees a transient over-length
@@ -44,16 +46,12 @@ export const DEFAULT_KEY_FIELD = 'id';
 
 type Row = Record<string, unknown>;
 
-interface RowIndex {
-  byKey: Map<string, Row>;
-  order: string[];
-}
+type RowIndex = Map<string, Row>;
 
 const isPlainObject = (value: unknown): value is Row =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-const readRowKey = (row: unknown, keyField: string): string | undefined => {
-  if (!isPlainObject(row)) return undefined;
+const readRowKey = (row: Row, keyField: string): string | undefined => {
   const key = row[keyField];
   return typeof key === 'string' ? key : undefined;
 };
@@ -65,14 +63,13 @@ const readRowKey = (row: unknown, keyField: string): string | undefined => {
  */
 const indexRows = (rows: unknown[], keyField: string): RowIndex | undefined => {
   const byKey = new Map<string, Row>();
-  const order: string[] = [];
   for (const row of rows) {
+    if (!isPlainObject(row)) return undefined;
     const key = readRowKey(row, keyField);
     if (key === undefined || byKey.has(key)) return undefined;
-    byKey.set(key, row as Row);
-    order.push(key);
+    byKey.set(key, row);
   }
-  return { byKey, order };
+  return byKey;
 };
 
 /**
@@ -81,15 +78,16 @@ const indexRows = (rows: unknown[], keyField: string): RowIndex | undefined => {
  * survivor that moved cannot be expressed as deltas.
  */
 const survivorsKeepOrder = (previous: RowIndex, next: RowIndex): boolean => {
-  const survivingPrevious = previous.order.filter((key) => next.byKey.has(key));
-  const survivingNext = next.order.filter((key) => previous.byKey.has(key));
+  const survivingPrevious = [...previous.keys()].filter((key) => next.has(key));
+  const survivingNext = [...next.keys()].filter((key) => previous.has(key));
   if (survivingPrevious.length !== survivingNext.length) return false;
   return survivingPrevious.every((key, index) => survivingNext[index] === key);
 };
 
 /**
- * Diff `previous` vs `next` into row ops, or `undefined` when any bail rule
- * holds and the caller must send a full snapshot instead.
+ * Diff `previous` vs `next` into row ops, or `undefined` when any correctness
+ * bail rule holds and the caller must send a full snapshot instead. Whether a
+ * valid delta is cheaper than that snapshot is a delivery-layer decision.
  *
  * An empty array is a valid result (no row-level change — typically the server
  * catches byte-identical results earlier and sends `settled` instead).
@@ -110,8 +108,8 @@ export const encodeListDelta = (
     const ops: RowOp[] = [];
 
     // Deletes first, in previous order.
-    for (const key of previousIndex.order) {
-      if (!nextIndex.byKey.has(key)) ops.push({ op: 'delete', key });
+    for (const key of previousIndex.keys()) {
+      if (!nextIndex.has(key)) ops.push({ op: 'delete', key });
     }
 
     // The `before` anchor for an insert at position i is the nearest FOLLOWING
@@ -120,32 +118,27 @@ export const encodeListDelta = (
     // in place) plus earlier inserts; splicing sequentially before the anchor
     // therefore reproduces next's ordering exactly — inserts sharing an anchor
     // stack in emission order, trailing inserts append in emission order.
-    const followingSurvivor: (string | null)[] = new Array(nextIndex.order.length);
+    const followingSurvivor = new Map<string, string | null>();
     let anchor: string | null = null;
-    for (let index = nextIndex.order.length - 1; index >= 0; index -= 1) {
-      followingSurvivor[index] = anchor;
-      const key = nextIndex.order[index] as string;
-      if (previousIndex.byKey.has(key)) anchor = key;
+    for (const key of [...nextIndex.keys()].toReversed()) {
+      followingSurvivor.set(key, anchor);
+      if (previousIndex.has(key)) anchor = key;
     }
 
     // Inserts/updates in next order. Each row is fingerprinted with a single
     // JSON.stringify reused for the changed-row compare; an unserializable row
     // throws and the whole encode bails to snapshot (rule 2).
-    for (const [index, key] of nextIndex.order.entries()) {
-      const nextRow = nextIndex.byKey.get(key) as Row;
-      const previousRow = previousIndex.byKey.get(key);
+    for (const [key, nextRow] of nextIndex) {
+      const previousRow = previousIndex.get(key);
       const nextFingerprint = JSON.stringify(nextRow);
       if (previousRow === undefined) {
-        ops.push({ op: 'insert', key, row: nextRow, before: followingSurvivor[index] ?? null });
+        ops.push({ op: 'insert', key, row: nextRow, before: followingSurvivor.get(key) ?? null });
         continue;
       }
       if (JSON.stringify(previousRow) !== nextFingerprint) {
         ops.push({ op: 'update', key, row: nextRow });
       }
     }
-
-    // Bail rule 5: a near-total change is better sent as one snapshot.
-    if (ops.length > next.length) return undefined;
 
     return ops;
   } catch {
@@ -172,39 +165,47 @@ export const applyListDelta = (
   const rows: Row[] = [];
   const seen = new Set<string>();
   for (const element of current) {
+    if (!isPlainObject(element)) return undefined;
     const key = readRowKey(element, keyField);
     if (key === undefined || seen.has(key)) return undefined;
     seen.add(key);
-    rows.push(element as Row);
+    rows.push(element);
   }
 
-  let next = [...rows];
+  const next = [...rows];
   for (const op of ops) {
     const existingIndex = next.findIndex((row) => row[keyField] === op.key);
 
-    if (op.op === 'delete') {
-      if (existingIndex !== -1) next.splice(existingIndex, 1);
-      continue;
-    }
-
-    if (existingIndex !== -1) {
-      // Present → replace in place. Covers `update`, and an `insert` whose row
-      // a snapshot already delivered (replay idempotency).
-      next[existingIndex] = op.row;
-      continue;
-    }
-
-    if (op.op === 'insert' && op.before !== null) {
-      const anchorIndex = next.findIndex((row) => row[keyField] === op.before);
-      if (anchorIndex !== -1) {
-        next.splice(anchorIndex, 0, op.row);
+    switch (op.op) {
+      case 'delete':
+        if (existingIndex !== -1) next.splice(existingIndex, 1);
         continue;
+      case 'insert':
+      case 'update':
+        if (existingIndex !== -1) {
+          // Present → replace in place. Covers `update`, and an `insert` whose
+          // row a snapshot already delivered (replay idempotency).
+          next[existingIndex] = op.row;
+          continue;
+        }
+
+        if (op.op === 'insert' && op.before !== null) {
+          const anchorIndex = next.findIndex((row) => row[keyField] === op.before);
+          if (anchorIndex !== -1) {
+            next.splice(anchorIndex, 0, op.row);
+            continue;
+          }
+        }
+
+        // `insert` with a null/missing anchor, or an `update` for a row this page
+        // never held (degraded replay) → append.
+        next.push(op.row);
+        continue;
+      default: {
+        const unexpected: never = op;
+        throw new TypeError(`Unknown live row operation: ${JSON.stringify(unexpected)}`);
       }
     }
-
-    // `insert` with a null/missing anchor, or an `update` for a row this page
-    // never held (degraded replay) → append.
-    next = [...next, op.row];
   }
 
   return next;

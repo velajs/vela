@@ -180,19 +180,28 @@ export const DELTA_FIXTURES: DeltaFixture[] = [
     keyField: '_key',
     expected: [{ op: 'update', key: 'a', row: { _key: 'a', n: 2 } }],
   },
-  // ---- bail cases (expected: null → full snapshot) ----
   {
-    name: 'bail: clear list (rule 5)',
+    name: 'clear list remains expressible regardless of op count',
     previous: [{ id: 'a' }, { id: 'b' }],
     next: [],
-    expected: null,
+    expected: [
+      { op: 'delete', key: 'a' },
+      { op: 'delete', key: 'b' },
+    ],
   },
   {
-    name: 'bail: near-total change (rule 5)',
+    name: 'near-total change remains expressible regardless of op count',
     previous: [{ id: 'a' }, { id: 'b' }],
     next: [{ id: 'c' }, { id: 'd' }, { id: 'e' }],
-    expected: null,
+    expected: [
+      { op: 'delete', key: 'a' },
+      { op: 'delete', key: 'b' },
+      { op: 'insert', key: 'c', row: { id: 'c' }, before: null },
+      { op: 'insert', key: 'd', row: { id: 'd' }, before: null },
+      { op: 'insert', key: 'e', row: { id: 'e' }, before: null },
+    ],
   },
+  // ---- bail cases (expected: null → full snapshot) ----
   {
     name: 'bail: previous not array (rule 1)',
     previous: { id: 'a' },

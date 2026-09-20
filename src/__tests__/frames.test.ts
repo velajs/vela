@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import {
   LIVE_EVENT,
+  MAX_LIVE_FRAME_BYTES,
   encodeLiveEnvelope,
   encodeLiveFrame,
   isClientLiveFrame,
+  isRowOp,
+  isRowOps,
   isServerLiveFrame,
   liveEnvelope,
   readLiveEnvelope,
@@ -43,6 +46,23 @@ describe('envelope', () => {
     expect(() => encodeLiveFrame({ t: 'presence', room: 'r', meta: 'x'.repeat(5000) })).toThrow(
       /invalid or oversized/,
     );
+
+    const emptyFrame = {
+      t: 'data',
+      sub: 's1',
+      snapshot: '',
+      cursor: 1,
+      epoch: 'e',
+    } as const;
+    const emptyFrameBytes = new TextEncoder().encode(encodeLiveFrame(emptyFrame)).byteLength;
+    const envelopeOnlyOversized = {
+      ...emptyFrame,
+      snapshot: 'x'.repeat(MAX_LIVE_FRAME_BYTES - emptyFrameBytes),
+    };
+    expect(new TextEncoder().encode(encodeLiveFrame(envelopeOnlyOversized)).byteLength).toBe(
+      MAX_LIVE_FRAME_BYTES,
+    );
+    expect(() => encodeLiveEnvelope(envelopeOnlyOversized)).toThrow(/oversized live envelope/);
   });
 });
 
@@ -92,6 +112,58 @@ describe('guards', () => {
   it('requires resume to carry cursor and epoch', () => {
     expect(isServerLiveFrame({ t: 'resume', sub: 's1', cursor: 1, epoch: 'e' })).toBe(true);
     expect(isServerLiveFrame({ t: 'resume', sub: 's1' })).toBe(false);
+  });
+
+  it('rejects object and array accessors without executing application code', () => {
+    let reads = 0;
+    const payload = {
+      get value(): never {
+        reads += 1;
+        throw new Error('getter must not run');
+      },
+    };
+    const array: unknown[] = [];
+    Object.defineProperty(array, 0, {
+      enumerable: true,
+      get() {
+        reads += 1;
+        throw new Error('getter must not run');
+      },
+    });
+
+    expect(isServerLiveFrame({ t: 'data', sub: 's1', snapshot: payload })).toBe(false);
+    expect(isServerLiveFrame({ t: 'data', sub: 's1', snapshot: array })).toBe(false);
+    expect(reads).toBe(0);
+  });
+
+  it('uses the same inert JSON boundary for standalone row operation guards', () => {
+    let reads = 0;
+    const operation = {
+      op: 'delete',
+      get key(): never {
+        reads += 1;
+        throw new Error('getter must not run');
+      },
+    };
+
+    expect(isRowOp(operation)).toBe(false);
+    expect(isRowOps([operation])).toBe(false);
+    expect(reads).toBe(0);
+  });
+
+  it('rejects values whose JSON representation hides or changes own properties', () => {
+    const frame = { t: 'data', sub: 's1' };
+    Object.defineProperty(frame, 'snapshot', { value: [] });
+    const customArray = Object.assign([], { toJSON: () => 'different payload' });
+    const sparseArray: unknown[] = [];
+    sparseArray.length = 2;
+
+    expect(isServerLiveFrame(frame)).toBe(false);
+    expect(isServerLiveFrame({ t: 'data', sub: 's1', snapshot: customArray })).toBe(false);
+    expect(isServerLiveFrame({ t: 'data', sub: 's1', snapshot: sparseArray })).toBe(false);
+    expect(isServerLiveFrame({ t: 'data', sub: 's1', snapshot: { [Symbol('hidden')]: 1 } })).toBe(
+      false,
+    );
   });
 
   it('validates delta ops structurally', () => {

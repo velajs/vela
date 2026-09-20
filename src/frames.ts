@@ -3,7 +3,7 @@
  *
  * Live frames ride Vela's existing WebSocket envelope `{ event, data }` under
  * the single reserved event name `$live`; the frame itself is the envelope's
- * `data`, discriminated on `t`. Classic gateway events, `ping`→`pong`
+ * `data`, discriminated on `t`. Classic gateway events, `$ping`→`$pong`
  * keepalive, and live frames coexist on one socket. The `$` prefix is reserved
  * for the framework: app gateways must never register a `$…` event.
  *
@@ -106,9 +106,6 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const isCursor = (value: unknown): value is number =>
   typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 
-const isOptionalCursor = (value: unknown): value is number | undefined =>
-  value === undefined || isCursor(value);
-
 const isBoundedString = (value: unknown, max: number, allowEmpty = false): value is string =>
   typeof value === 'string' && (allowEmpty || value.length > 0) && value.length <= max;
 
@@ -123,11 +120,17 @@ const hasCursorPair = (value: Record<string, unknown>, cursor: string, epoch: st
 
 /** Structural guard for a single {@link RowOp}. Unknown extra fields are tolerated. */
 export const isRowOp = (value: unknown): value is RowOp => {
-  if (!isRecord(value) || !isBoundedString(value['key'], 512)) return false;
+  if (
+    !isRecord(value) ||
+    !isJsonWithin(value, MAX_LIVE_FRAME_BYTES) ||
+    !isBoundedString(value['key'], 512)
+  ) {
+    return false;
+  }
   const op = value['op'];
   if (op === 'delete') return true;
   if (op !== 'insert' && op !== 'update') return false;
-  if (!isRecord(value['row']) || !isJsonWithin(value['row'], MAX_LIVE_FRAME_BYTES)) return false;
+  if (!isRecord(value['row'])) return false;
   if (op === 'insert') {
     const before = value['before'];
     return before === null || isBoundedString(before, 512);
@@ -136,7 +139,10 @@ export const isRowOp = (value: unknown): value is RowOp => {
 };
 
 export const isRowOps = (value: unknown): value is RowOp[] =>
-  Array.isArray(value) && value.length <= MAX_DELTA_OPS && value.every(isRowOp);
+  Array.isArray(value) &&
+  value.length <= MAX_DELTA_OPS &&
+  isJsonWithin(value, MAX_LIVE_FRAME_BYTES) &&
+  value.every(isRowOp);
 
 /**
  * Structural guard for a client frame. Frames with an unknown `t` return
@@ -222,12 +228,13 @@ export const readLiveEnvelope = (envelope: unknown): unknown => {
 };
 
 const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+const UTF8_ENCODER = new TextEncoder();
 
 const isJsonWithin = (value: unknown, maxBytes: number): boolean => {
-  if (!isJsonValue(value, new WeakSet(), { nodes: 0 }, 0)) return false;
   try {
+    if (!isJsonValue(value, new WeakSet(), { nodes: 0 }, 0)) return false;
     const serialized = JSON.stringify(value);
-    return serialized !== undefined && new TextEncoder().encode(serialized).byteLength <= maxBytes;
+    return serialized !== undefined && UTF8_ENCODER.encode(serialized).byteLength <= maxBytes;
   } catch {
     return false;
   }
@@ -248,14 +255,37 @@ const isJsonValue = (
 
   const values: unknown[] = [];
   if (Array.isArray(value)) {
-    values.push(...value);
-  } else {
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Array.prototype && prototype !== null) return false;
+    if (value.length > 10_000 - budget.nodes) return false;
+    for (const key of Reflect.ownKeys(value)) {
+      if (key === 'length') continue;
+      if (typeof key !== 'string' || !/^(0|[1-9]\d*)$/.test(key)) return false;
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (descriptor === undefined || !descriptor.enumerable || !('value' in descriptor)) {
+        return false;
+      }
+      const child: unknown = descriptor.value;
+      values.push(child);
+    }
+    // Sparse arrays serialize holes as null, which changes the source value.
+    if (values.length !== value.length) return false;
+  } else if (isRecord(value)) {
     const prototype = Object.getPrototypeOf(value);
     if (prototype !== Object.prototype && prototype !== null) return false;
-    for (const key of Object.keys(value)) {
-      if (DANGEROUS_KEYS.has(key)) return false;
-      values.push((value as Record<string, unknown>)[key]);
+    for (const key of Reflect.ownKeys(value)) {
+      if (typeof key !== 'string' || DANGEROUS_KEYS.has(key)) return false;
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      // Wire JSON has data properties. Never execute application getters while
+      // checking an unknown value; they can throw or change between reads.
+      if (descriptor === undefined || !descriptor.enumerable || !('value' in descriptor)) {
+        return false;
+      }
+      const child: unknown = descriptor.value;
+      values.push(child);
     }
+  } else {
+    return false;
   }
 
   for (const child of values) {
@@ -271,27 +301,21 @@ export const liveEnvelope = (frame: LiveFrame): { event: typeof LIVE_EVENT; data
   data: frame,
 });
 
-const CANONICAL_KEYS: Record<string, readonly string[]> = {
-  sub: ['t', 'sub', 'query', 'args', 'sinceCursor', 'sinceEpoch', 'key', 'v'],
-  unsub: ['t', 'sub'],
-  presence: ['t', 'room', 'meta'],
-  ack: ['t', 'sub'],
-  data: ['t', 'sub', 'snapshot', 'cursor', 'epoch'],
-  delta: ['t', 'sub', 'ops', 'cursor', 'epoch'],
-  settled: ['t', 'sub', 'cursor', 'epoch'],
-  resume: ['t', 'sub', 'cursor', 'epoch'],
-  error: ['t', 'sub', 'code', 'message', 'fatal'],
+const unreachableVariant = (value: never): never => {
+  throw new TypeError(`Unknown live protocol variant: ${JSON.stringify(value)}`);
 };
 
-const ROW_OP_KEYS = ['op', 'key', 'row', 'before'] as const;
-
-const canonicalRowOp = (op: RowOp): Record<string, unknown> => {
-  const source = op as unknown as Record<string, unknown>;
-  const out: Record<string, unknown> = {};
-  for (const key of ROW_OP_KEYS) {
-    if (source[key] !== undefined) out[key] = source[key];
+const canonicalRowOp = (op: RowOp): RowOp => {
+  switch (op.op) {
+    case 'insert':
+      return { op: op.op, key: op.key, row: op.row, before: op.before };
+    case 'update':
+      return { op: op.op, key: op.key, row: op.row };
+    case 'delete':
+      return { op: op.op, key: op.key };
+    default:
+      return unreachableVariant(op);
   }
-  return out;
 };
 
 /**
@@ -299,20 +323,64 @@ const canonicalRowOp = (op: RowOp): Record<string, unknown> => {
  * `JSON.stringify` of the result is the frame's canonical wire form — the one
  * the golden fixtures pin byte-for-byte.
  */
-export const canonicalLiveFrame = (frame: LiveFrame): Record<string, unknown> => {
-  const source = frame as unknown as Record<string, unknown>;
-  const keys = CANONICAL_KEYS[frame.t];
-  if (keys === undefined) {
-    throw new Error(`Unknown live frame type: ${String(frame.t)}`);
+export const canonicalLiveFrame = (frame: LiveFrame): LiveFrame => {
+  switch (frame.t) {
+    case 'sub':
+      return {
+        t: frame.t,
+        sub: frame.sub,
+        query: frame.query,
+        ...(frame.args === undefined ? {} : { args: frame.args }),
+        ...(frame.sinceCursor === undefined ? {} : { sinceCursor: frame.sinceCursor }),
+        ...(frame.sinceEpoch === undefined ? {} : { sinceEpoch: frame.sinceEpoch }),
+        ...(frame.key === undefined ? {} : { key: frame.key }),
+        v: frame.v,
+      };
+    case 'unsub':
+    case 'ack':
+      return { t: frame.t, sub: frame.sub };
+    case 'presence':
+      return {
+        t: frame.t,
+        room: frame.room,
+        ...(frame.meta === undefined ? {} : { meta: frame.meta }),
+      };
+    case 'data':
+      return {
+        t: frame.t,
+        sub: frame.sub,
+        snapshot: frame.snapshot,
+        ...(frame.cursor === undefined ? {} : { cursor: frame.cursor }),
+        ...(frame.epoch === undefined ? {} : { epoch: frame.epoch }),
+      };
+    case 'delta':
+      return {
+        t: frame.t,
+        sub: frame.sub,
+        ops: frame.ops.map(canonicalRowOp),
+        ...(frame.cursor === undefined ? {} : { cursor: frame.cursor }),
+        ...(frame.epoch === undefined ? {} : { epoch: frame.epoch }),
+      };
+    case 'settled':
+      return {
+        t: frame.t,
+        sub: frame.sub,
+        ...(frame.cursor === undefined ? {} : { cursor: frame.cursor }),
+        ...(frame.epoch === undefined ? {} : { epoch: frame.epoch }),
+      };
+    case 'resume':
+      return { t: frame.t, sub: frame.sub, cursor: frame.cursor, epoch: frame.epoch };
+    case 'error':
+      return {
+        t: frame.t,
+        ...(frame.sub === undefined ? {} : { sub: frame.sub }),
+        code: frame.code,
+        message: frame.message,
+        fatal: frame.fatal,
+      };
+    default:
+      return unreachableVariant(frame);
   }
-  const out: Record<string, unknown> = {};
-  for (const key of keys) {
-    const value = source[key];
-    if (value === undefined) continue;
-    out[key] =
-      frame.t === 'delta' && key === 'ops' ? (value as RowOp[]).map(canonicalRowOp) : value;
-  }
-  return out;
 };
 
 /** Canonical JSON encoding of a bare frame (no envelope). */
@@ -323,6 +391,15 @@ export const encodeLiveFrame = (frame: LiveFrame): string => {
   return JSON.stringify(canonicalLiveFrame(frame));
 };
 
-/** Canonical JSON encoding of the full `$live` envelope — what actually goes on the socket. */
-export const encodeLiveEnvelope = (frame: LiveFrame): string =>
-  `{"event":${JSON.stringify(LIVE_EVENT)},"data":${encodeLiveFrame(frame)}}`;
+/**
+ * Canonical JSON encoding of the full `$live` envelope — what actually goes
+ * on the socket. The shared 64 KiB limit applies to this complete wire value,
+ * matching {@link readLiveEnvelope} and receiver-side raw-frame checks.
+ */
+export const encodeLiveEnvelope = (frame: LiveFrame): string => {
+  const encoded = `{"event":${JSON.stringify(LIVE_EVENT)},"data":${encodeLiveFrame(frame)}}`;
+  if (UTF8_ENCODER.encode(encoded).byteLength > MAX_LIVE_FRAME_BYTES) {
+    throw new TypeError('Cannot encode an oversized live envelope.');
+  }
+  return encoded;
+};
