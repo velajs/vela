@@ -12,7 +12,7 @@
     "start:cf": "pnpm run build && pnpm run bundle:web && wrangler dev --port 8789"
   },
   "dependencies": {
-    "@hono/node-server": "^1.19.0",
+    "@hono/node-server": "^2.1.1",
     "@hono/node-ws": "^1.2.0",
     "@velajs/client": "workspace:*",
     "@velajs/cloudflare": "workspace:*",

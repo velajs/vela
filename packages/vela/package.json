@@ -118,7 +118,7 @@
     "@types/bun": "latest",
     "@vitest/runner": "catalog:",
     "@vitest/snapshot": "catalog:",
-    "intl-messageformat": "^11.2.9",
+    "intl-messageformat": "^12.1.0",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",
     "publint": "catalog:",
