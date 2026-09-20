@@ -30,6 +30,8 @@ export interface CreateAccessResolverOptions {
   preset: IssuerPreset;
   /** Required application audience tag(s). Fail-closed when empty. */
   aud: string | string[];
+  /** Signed claim carrying tenant membership. Defaults to tenantId. */
+  tenantClaim?: string;
   /** Add non-security identity fields derived from verified claims. */
   mapClaims?: (claims: AccessClaims) => Record<string, unknown>;
   /** Explicitly map external identity-provider groups to application-local roles. */
@@ -57,6 +59,7 @@ const SECURITY_FIELDS = new Set([
   'exp',
   'expiresAtMs',
   'groups',
+  'tenantId',
   'issuer',
   'principalType',
   'prototype',
@@ -137,6 +140,7 @@ const buildResolvedIdentity = (
   groups: string[] | undefined,
   roles: string[],
   overrides: Record<string, unknown>,
+  tenantClaim: string,
 ): ResolvedIdentity => {
   const issuer = nonEmptyString(claims.iss);
   const expiresAtMs = typeof claims.exp === 'number' ? claims.exp * 1000 : Number.NaN;
@@ -151,6 +155,12 @@ const buildResolvedIdentity = (
     expiresAtMs,
     claims,
   };
+  if (claims[tenantClaim] !== undefined) {
+    const tenantId = nonEmptyString(claims[tenantClaim]);
+    if (tenantId === undefined)
+      throw new Error('@velajs/cloudflare-access: invalid tenantId claim');
+    resolved.tenantId = tenantId;
+  }
   if (claims.email !== undefined) resolved.email = claims.email;
   if (claims.common_name !== undefined) resolved.commonName = claims.common_name;
   if (groups !== undefined) resolved.groups = groups;
@@ -177,6 +187,7 @@ const toResolvedIdentity = (
   mapClaims?: (claims: AccessClaims) => Record<string, unknown>,
   groupRoles?: GroupRoleMapping,
   declaredSubjectClaim?: string,
+  tenantClaim = 'tenantId',
 ): ResolvedIdentity | null => {
   const overrides = mapClaims ? mapClaims(structuredClone(claims)) : {};
   if (typeof overrides !== 'object' || overrides === null || Array.isArray(overrides)) {
@@ -191,6 +202,7 @@ const toResolvedIdentity = (
     groups,
     rolesFromGroups(groups, groupRoles),
     overrides,
+    tenantClaim,
   );
 };
 
@@ -208,6 +220,9 @@ const toResolvedIdentity = (
 export const createAccessResolver = (options: CreateAccessResolverOptions): ResolveIdentity => {
   assertVerifyOptions(options);
   assertGroupRoleMapping(options.groupRoles);
+  if (options.tenantClaim !== undefined && !nonEmptyString(options.tenantClaim)) {
+    throw new Error('@velajs/cloudflare-access: tenantClaim must be non-empty');
+  }
 
   const verifyOptions: RequestVerifyOptions = {
     preset: options.preset,
@@ -244,6 +259,7 @@ export const createAccessResolver = (options: CreateAccessResolverOptions): Reso
       options.mapClaims,
       options.groupRoles,
       options.identity?.subjectClaim,
+      options.tenantClaim,
     );
   };
 };

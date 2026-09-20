@@ -1,4 +1,4 @@
-import { jwtVerify } from 'jose';
+import { jwtVerify, type JWTPayload } from 'jose';
 import { getRemoteJwks } from './jwks-cache';
 import { readToken } from './read-token';
 import type { AccessClaims, RequestVerifyOptions, VerifyAccessJwtOptions } from './types';
@@ -73,11 +73,14 @@ export const verifyAccessJwt = async (
       : { clockTolerance: options.clockToleranceSec }),
   };
 
-  const { payload } = await jwtVerify(
-    token,
-    keySet as Parameters<typeof jwtVerify>[1],
-    verifyOptions,
-  );
+  // jose exposes separate key and key-resolver overloads; narrow before calling.
+  const { payload } =
+    typeof keySet === 'function'
+      ? await jwtVerify(token, keySet, verifyOptions)
+      : await jwtVerify(token, keySet, verifyOptions);
+  if (!validAccessClaims(payload)) {
+    throw new Error('@velajs/cloudflare-access: invalid Access claim shape');
+  }
   const expiresAtMs = typeof payload.exp === 'number' ? payload.exp * 1000 : Number.NaN;
   if (!Number.isSafeInteger(expiresAtMs) || expiresAtMs <= 0) {
     throw new Error('@velajs/cloudflare-access: a finite exp claim is required');
@@ -111,3 +114,27 @@ export const verifyRequest = async (
     return undefined;
   }
 };
+
+/** Validate the complete declared shape, including optional fields jose need not inspect. */
+function validAccessClaims(payload: JWTPayload): payload is AccessClaims {
+  for (const key of ['iss', 'sub', 'jti', 'email', 'common_name', 'country', 'type']) {
+    if (payload[key] !== undefined && typeof payload[key] !== 'string') return false;
+  }
+  for (const key of ['exp', 'nbf', 'iat']) {
+    const value = payload[key];
+    if (value !== undefined && (typeof value !== 'number' || !Number.isFinite(value))) return false;
+  }
+  if (
+    payload.aud !== undefined &&
+    typeof payload.aud !== 'string' &&
+    !(
+      Array.isArray(payload.aud) && payload.aud.every((entry: unknown) => typeof entry === 'string')
+    )
+  )
+    return false;
+  return (
+    payload.groups === undefined ||
+    (Array.isArray(payload.groups) &&
+      payload.groups.every((group: unknown) => typeof group === 'string'))
+  );
+}

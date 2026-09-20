@@ -69,16 +69,17 @@ describe('createAccessResolver', () => {
       preset,
       aud: AUD,
       keySet: keys.jwks,
-      mapClaims: () => ({ tenantId: 't-9' }),
+      mapClaims: () => ({ displayLabel: 'Ada' }),
     });
     const identity = await custom(
       requestWithHeader(preset.header, await tokenRequest({}, 'user-42')),
     );
     expect(identity?.userId).toBe('user-42');
-    expect(identity?.tenantId).toBe('t-9');
+    expect(identity?.displayLabel).toBe('Ada');
   });
 
   it.each([
+    'tenantId',
     'userId',
     'subject',
     'issuer',
@@ -109,7 +110,7 @@ describe('createAccessResolver', () => {
         claims.sub = 'attacker';
         claims.exp = Number(claims.exp) + 86_400;
         claims.groups = ['admin'];
-        return { tenantId: 't-9' };
+        return { displayLabel: 'Ada' };
       },
     });
     const identity = await custom(
@@ -175,5 +176,34 @@ describe('composeResolvers', () => {
     const composed = composeResolvers(found, later);
     await composed(new Request('https://app.example.com/'));
     expect(laterCalled).toBe(false);
+  });
+});
+
+describe('verified tenant mapping', () => {
+  it('selects tenant membership only from the configured signed claim', async () => {
+    const resolve = createAccessResolver({
+      preset,
+      aud: AUD,
+      keySet: keys.jwks,
+      tenantClaim: 'organization',
+    });
+    const request = requestWithHeader(
+      preset.header,
+      await tokenRequest({ organization: 'tenant-9' }, 'user-1'),
+    );
+    expect(await resolve(request)).toMatchObject({ tenantId: 'tenant-9', subject: 'user-1' });
+  });
+
+  it('rejects malformed optional fields rather than claiming a typed AccessClaims value', async () => {
+    for (const claims of [
+      { email: 42 },
+      { groups: ['editor', 42] },
+      { common_name: {} },
+      { sub: 42, email: 'valid@example.com' },
+      { jti: 42, email: 'valid@example.com' },
+    ]) {
+      const request = requestWithHeader(preset.header, await tokenRequest(claims));
+      expect(await resolver()(request)).toBeNull();
+    }
   });
 });

@@ -109,6 +109,8 @@ export interface ResolvedIdentity {
   userId: string;
   /** Verified absolute credential expiry in epoch milliseconds. */
   expiresAtMs: number;
+  /** Tenant membership from the verified JWT tenantId claim. */
+  tenantId?: string;
   /** Verified email for an SSO caller. */
   email?: string;
   /** Service-token label (`common_name`) for a machine caller. */

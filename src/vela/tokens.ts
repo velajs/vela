@@ -8,33 +8,6 @@ import type {
   ResolveIdentity,
 } from '../types';
 
-/**
- * RequestContext key under which {@link CloudflareAccessGuard} stashes the
- * verified {@link import('../types').ResolvedIdentity}. `Symbol.for` so any
- * package (a decorator, a downstream guard) can read it by the same global
- * symbol without importing this one — the identity handoff stays structural.
- */
-export const ACCESS_IDENTITY_KEY: unique symbol = Symbol.for('vela.cloudflare-access.identity');
-
-/**
- * RequestContext key carrying the credential expiry the guard resolved
- * (`expiresAtMs`, always epoch milliseconds). This is the data a
- * WebSocket-upgrade route reads to drive DO socket expiry.
- */
-export const ACCESS_EXP_KEY: unique symbol = Symbol.for('vela.cloudflare-access.exp');
-
-/**
- * The `Symbol.for` key `@velajs/better-auth` writes its user under. The guard
- * projects an Access identity here only when `betterAuthInterop` is enabled, so
- * the unchanged better-auth `PermissionGuard` can consume an Access caller. Kept
- * as a raw `Symbol.for` — no `@velajs/better-auth` import.
- */
-export const BETTER_AUTH_USER_KEY: unique symbol = Symbol.for('vela.better-auth.user');
-export const BETTER_AUTH_ISSUER_KEY: unique symbol = Symbol.for('vela.better-auth.issuer');
-export const BETTER_AUTH_PRINCIPAL_TYPE_KEY: unique symbol = Symbol.for(
-  'vela.better-auth.principal-type',
-);
-
 /** How the guard treats an anonymous (unverified) caller. */
 export type CloudflareAccessMode = 'required' | 'optional';
 
@@ -48,6 +21,8 @@ export interface CloudflareAccessModuleOptions {
   mode?: CloudflareAccessMode;
   /** Optional declared claim contract run over the verified claims before an identity is minted. */
   identity?: IdentityContract;
+  /** Signed tenant membership claim; defaults to tenantId. */
+  tenantClaim?: string;
   /** Remap verified claims into extra identity fields. */
   mapClaims?: (claims: AccessClaims) => Record<string, unknown>;
   /** Explicitly map external IdP groups to application-local roles. */
@@ -58,12 +33,6 @@ export interface CloudflareAccessModuleOptions {
   keySet?: AccessKeySet;
   /** Observe present-but-invalid tokens. */
   onError?: (error: unknown, request: Request) => void;
-  /**
-   * When `true`, also project the Access identity under {@link BETTER_AUTH_USER_KEY}
-   * as `{ id, role }` so the unchanged better-auth `PermissionGuard` consumes it.
-   * Off by default (opt-in interop shim).
-   */
-  betterAuthInterop?: boolean;
 }
 
 /** The auto-provided options bag passed to {@link CloudflareAccessModule}. */

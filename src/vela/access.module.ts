@@ -1,4 +1,4 @@
-import { defineModule } from '@velajs/vela';
+import { defineModule, defineProvider } from '@velajs/vela';
 import { createAccessResolver, type CreateAccessResolverOptions } from '../resolver';
 import { CloudflareAccessGuard } from './access.guard';
 import {
@@ -16,6 +16,7 @@ const toResolverOptions = (
 ): CreateAccessResolverOptions => ({
   preset: options.preset,
   aud: options.aud,
+  ...(options.tenantClaim === undefined ? {} : { tenantClaim: options.tenantClaim }),
   ...(options.mapClaims === undefined ? {} : { mapClaims: options.mapClaims }),
   ...(options.groupRoles === undefined ? {} : { groupRoles: options.groupRoles }),
   ...(options.identity === undefined ? {} : { identity: options.identity }),
@@ -41,12 +42,11 @@ const { ConfigurableModuleClass } = defineModule<CloudflareAccessModuleOptions>(
   optionsToken: ACCESS_MODULE_OPTIONS,
   setup: () => ({
     providers: [
-      {
-        provide: ACCESS_RESOLVER,
+      defineProvider(ACCESS_RESOLVER, {
         useFactory: (options: CloudflareAccessModuleOptions) =>
           createAccessResolver(toResolverOptions(options)),
         inject: [ACCESS_MODULE_OPTIONS],
-      },
+      }),
       CloudflareAccessGuard,
     ],
     exports: [ACCESS_RESOLVER, ACCESS_MODULE_OPTIONS, CloudflareAccessGuard],

@@ -95,24 +95,22 @@ interface ResolvedIdentity {
 
 ## Vela integration (`@velajs/cloudflare-access/vela`)
 
-The subpath ships the framework glue behind the optional `@velajs/vela` (and `@velajs/authz`) peers. Identity is handed off structurally — writes into the per-request `RequestContext` under `Symbol.for(...)` keys, so downstream code reads it by the same global symbol without importing this package.
+The guard publishes through core's `setTrustedRequestIdentity`. Authorization, `@CurrentIdentity()`, throttling, and WebSocket upgrade checks all consume this canonical state.
 
-- **`CloudflareAccessModule.forRoot(options)` / `.forRootAsync(options)`** — built on `defineModule`. Provides the `ResolveIdentity` (from `preset` + `aud` + optional contract) under the exported `ACCESS_RESOLVER` token, the guard, and the options bag. `forRootAsync` supports binding-time env config (`env.CF_ACCESS_TEAM_DOMAIN` / `AUD`). The resolver token is exported so an app can inject it and `composeResolvers(...)` it with other schemes.
-- **`CloudflareAccessGuard`** — verifies via the configured resolver; on success writes the identity to `ACCESS_IDENTITY_KEY`, the expiry to `ACCESS_EXP_KEY`, and the `userId` to the Hono `userId` variable the CF WebSocket routing already forwards. `required` mode (default) rejects an anonymous caller with `UnauthorizedException`; `optional` mode passes them through. Fail-closed on every abnormal path.
-- **`CurrentAccessIdentity()`** — parameter decorator yielding the verified identity for the request (or `undefined` when anonymous).
-- **`identityFromAccess(identity)`** — bridges stable principal fields and explicitly mapped local `roles` into `@velajs/authz`. Raw external groups are never promoted to roles.
-- **`AccessPermissionGuard` + `@RequireAccessPermission([...])`** — enforces `@velajs/authz` permissions (require-ALL / AND) against the mapped identity, resolving `AUTHZ` at **request time** from the container so it works whether or not `AuthzModule` is global. Fail-closed: denies when `AUTHZ` is unresolved, when no identity is present, or when any required permission is not granted.
-- **Opt-in better-auth interop** — set `betterAuthInterop: true` to also project the identity as `{ id, role }` under `Symbol.for('vela.better-auth.user')`, so the unchanged `@velajs/better-auth` `PermissionGuard` can consume an Access caller. Off by default.
+- `CloudflareAccessModule.forRoot(options)` / `.forRootAsync(options)` provide the verified resolver, guard, and options. Async registration constructs the resolver from resolved injected options.
+- `CloudflareAccessGuard` clears prior identity before verification. Required mode rejects anonymous callers; optional mode passes them through with no identity. Invalid, expired, or throwing credentials cannot retain an old identity.
+- Import `PermissionGuard`, `RequirePermission`, `RolesGuard`, `Roles`, and `CurrentIdentity` from `@velajs/authz/vela`. These are the same guards Better Auth uses. Exactly one authorization engine must be visible to the declaring route module.
+- Tenant membership comes from a signed `tenantId` claim, or the signed claim selected by `tenantClaim`. `mapClaims` enriches non-authority fields only and cannot replace tenant, issuer, subject, expiry, claims, or roles. Explicit `groupRoles` maps external groups into local roles.
+- `identityFromAccess` is a pure projection for direct authz use; it does not authenticate a request.
 
 ```ts
 import { cloudflareAccessIssuer } from '@velajs/cloudflare-access';
 import {
   CloudflareAccessGuard,
   CloudflareAccessModule,
-  AccessPermissionGuard,
-  RequireAccessPermission,
-  CurrentAccessIdentity,
 } from '@velajs/cloudflare-access/vela';
+import { AuthzModule, PermissionGuard, RequirePermission, CurrentIdentity } from '@velajs/authz/vela';
+import type { TrustedRequestIdentity } from '@velajs/vela';
 
 @Module({
   imports: [
@@ -128,12 +126,12 @@ import {
 class AppModule {}
 
 @Controller('/posts')
-@UseGuards(CloudflareAccessGuard, AccessPermissionGuard)
+@UseGuards(CloudflareAccessGuard, PermissionGuard)
 class PostsController {
   @Post()
-  @RequireAccessPermission(['posts:write'])
-  create(@CurrentAccessIdentity() identity: ResolvedIdentity) {
-    return { author: identity.userId };
+  @RequirePermission(['posts:write'])
+  create(@CurrentIdentity() identity: TrustedRequestIdentity) {
+    return { author: identity.principal.subject };
   }
 }
 ```
@@ -154,4 +152,10 @@ The verification key source is injectable (`keySet`), so tests self-host a JWKS 
 ## API
 
 - Core: `verifyAccessJwt`, `verifyRequest`, `assertVerifyOptions`, `normalizeAudiences`, `readToken`, `cloudflareAccessIssuer`, `genericOidcIssuer`, `getRemoteJwks`, `clearJwksCache`, `jwksCacheSize`, `JWKS_CACHE_MAX`, `defineIdentity`, `createAccessResolver`, `composeResolvers`, `IdentityRejectedError`, and the `AccessClaims` / `IssuerPreset` / `ResolvedIdentity` / `ResolveIdentity` / `IdentityContract` / `StandardSchemaV1` types.
-- `@velajs/cloudflare-access/vela`: `CloudflareAccessModule`, `CloudflareAccessGuard`, `AccessPermissionGuard`, `RequireAccessPermission`, `CurrentAccessIdentity`, `identityFromAccess`, and the `ACCESS_RESOLVER` / `ACCESS_IDENTITY_KEY` / `ACCESS_EXP_KEY` tokens.
+- `@velajs/cloudflare-access/vela`: `CloudflareAccessModule`, `CloudflareAccessGuard`, `CurrentAccessIdentity`, `identityFromAccess`, `ACCESS_RESOLVER`, and `ACCESS_MODULE_OPTIONS`.
+
+## Migration
+
+Remove `betterAuthInterop` and all Access/Better Auth compatibility symbol reads. Replace provider-specific permission guards/decorators with `@velajs/authz/vela` exports. `CurrentIdentity` supplies common authorization state. `CurrentAccessIdentity` remains the provider-specific payload accessor, including `mapClaims` enrichment, and is tied to the exact current core identity so clearing, replacement and expiry invalidate it. Read expiry and tenant from the canonical top-level identity. For custom tenant field names, configure `tenantClaim` instead of assigning `mapClaims().tenantId`.
+
+The guard no longer writes an ambient Hono `userId`; use the issuer-qualified principal. WebSocket upgrade code must read core's trusted identity and require both tenant and finite expiry before allocating a socket.

@@ -1,6 +1,6 @@
 {
   "name": "@velajs/cloudflare-access",
-  "version": "0.1.0",
+  "version": "2.0.0",
   "description": "Zero Trust / OIDC identity for Vela: RS256-pinned JWKS verification, fail-closed resolveIdentity + composeResolvers, an issuer-preset generic JWKS adapter, and a Vela guard/module bridge into @velajs/authz",
   "keywords": [
     "access",
@@ -64,8 +64,8 @@
     "@arethetypeswrong/cli": "catalog:",
     "@changesets/cli": "catalog:",
     "@swc/core": "catalog:",
-    "@velajs/authz": "^1.1.0",
-    "@velajs/vela": "^1.21.0",
+    "@velajs/authz": "workspace:*",
+    "@velajs/vela": "workspace:*",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",
     "publint": "catalog:",
@@ -75,8 +75,8 @@
     "vitest": "catalog:"
   },
   "peerDependencies": {
-    "@velajs/authz": ">=1.1.0 <2",
-    "@velajs/vela": ">=1.21.0 <2"
+    "@velajs/authz": "workspace:^",
+    "@velajs/vela": "workspace:^"
   },
   "peerDependenciesMeta": {
     "@velajs/authz": {
@@ -89,5 +89,8 @@
   "engines": {
     "node": ">=24"
   },
-  "packageManager": "pnpm@11.11.0"
+  "packageManager": "pnpm@11.11.0",
+  "publishConfig": {
+    "access": "public"
+  }
 }

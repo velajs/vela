@@ -10,9 +10,6 @@ import type { ResolvedIdentity } from '../types';
  * dependency edge — the structural twin of better-auth's `identityFromUser`.
  */
 export const identityFromAccess = (identity: ResolvedIdentity): Identity => {
-  // Keep compiling against the previous authz peer while the coordinated
-  // release adds these stable fields to Identity. Structural assignability
-  // permits the richer object without an unsafe assertion.
   const mapped = {
     issuer: identity.issuer,
     subject: identity.subject,
@@ -20,6 +17,8 @@ export const identityFromAccess = (identity: ResolvedIdentity): Identity => {
     userId: identity.userId,
     roles: identity.roles ?? [],
     claims: identity.claims,
+    expiresAtMs: identity.expiresAtMs,
+    ...(identity.tenantId === undefined ? {} : { tenantId: identity.tenantId }),
   };
   return mapped;
 };
