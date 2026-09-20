@@ -1,6 +1,6 @@
 {
   "name": "@velajs/errors",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "description": "Unified error layer for Vela: branded VelaError, composable error catalogs, and the single toErrorBody wire-redaction seam",
   "keywords": [
     "error-catalog",
@@ -67,5 +67,8 @@
   "engines": {
     "node": ">=24"
   },
-  "packageManager": "pnpm@11.11.0"
+  "packageManager": "pnpm@11.11.0",
+  "publishConfig": {
+    "access": "public"
+  }
 }

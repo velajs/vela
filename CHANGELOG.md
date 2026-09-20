@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.0
+
+Coordinated Vela 2.0 toolchain and package release. The standalone error behavior is unchanged.
+
+Requires the coordinated Vela 2.0 package set. See the workspace migration guide.
+
 ## 1.1.0
 
 ### Minor Changes
