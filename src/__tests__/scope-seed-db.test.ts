@@ -5,7 +5,9 @@ import {
   Module,
   Scope,
   REQUEST_CONTEXT,
+  RequestContextKey,
   MetadataRegistry,
+  getRequestContainer,
   type RequestContext,
 } from '@velajs/vela';
 import { Seeder, SeederModule, type ISeeder } from '@velajs/vela/seeder';
@@ -53,6 +55,24 @@ describe('module.runInRequestScope', () => {
     const module = await Test.createTestingModule({ imports: [ProbeModule] }).compile();
     const result = await module.runInRequestScope(async () => 42);
     expect(result).toBe(42);
+  });
+
+  it('uses production request context storage and isolates successive scopes', async () => {
+    const key = new RequestContextKey<string>('trace');
+    const module = await Test.createTestingModule({ imports: [ProbeModule] }).compile();
+
+    await module.runInRequestScope((container) => {
+      const context = container.resolve(REQUEST_CONTEXT);
+      expect(context.request).toBe(context.hono.req.raw);
+      expect(getRequestContainer(context.hono)).toBe(container);
+      context.set(key, 'first');
+      expect(context.get(key)).toBe('first');
+      expect(context.has(key)).toBe(true);
+    });
+    await module.runInRequestScope((container) => {
+      expect(container.resolve(REQUEST_CONTEXT).has(key)).toBe(false);
+    });
+    await module.close();
   });
 });
 

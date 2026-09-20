@@ -22,9 +22,7 @@ describe('Lab testing harness consumer project', () => {
     const moduleRef = await builder.compile();
     expect(moduleRef).toBeInstanceOf(TestingModule);
 
-    const readings = moduleRef.get<{ list(): Array<{ source: string; mode: string }> }>(
-      fixture.ReadingService,
-    );
+    const readings = moduleRef.get(fixture.ReadingService);
     expect(readings.list()).toEqual([
       { id: 'reading-1', source: 'real-probe', mode: 'real' },
     ]);
@@ -46,13 +44,12 @@ describe('Lab testing harness consumer project', () => {
       .useClass(fixture.FakeProbeClient)
       .overrideProvider(fixture.LAB_CONFIG)
       .useFactory({
+        inject: [],
         factory: () => ({ mode: 'factory' } satisfies LabConfig),
       })
       .compile();
 
-    const readings = moduleRef.get<{ list(): Array<{ source: string; mode: string }> }>(
-      fixture.ReadingService,
-    );
+    const readings = moduleRef.get(fixture.ReadingService);
     expect(readings.list()).toEqual([
       { id: 'reading-1', source: 'fake-probe', mode: 'factory' },
     ]);
@@ -68,9 +65,7 @@ describe('Lab testing harness consumer project', () => {
       .compile();
 
     expect(
-      valueModule.get<{ list(): Array<{ source: string }> }>(
-        fixtureWithValue.ReadingService,
-      ).list(),
+      valueModule.get(fixtureWithValue.ReadingService).list(),
     ).toEqual([{ id: 'reading-1', source: 'value-probe', mode: 'real' }]);
 
     await valueModule.close('value-override-complete');

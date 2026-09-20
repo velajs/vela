@@ -12,6 +12,7 @@ import {
   UseGuards,
   UseInterceptors,
   UsePipes,
+  defineProvider,
 } from '@velajs/vela';
 import type {
   ArgumentMetadata,
@@ -37,9 +38,9 @@ export class LabFailure extends Error {}
 
 export interface LabFixture {
   LabModule: Type;
-  ProbeClient: Type;
-  FakeProbeClient: Type;
-  ReadingService: Type;
+  ProbeClient: Type<{ read(): string }>;
+  FakeProbeClient: Type<{ read(): string }>;
+  ReadingService: Type<{ list(): Array<{ id: string; source: string; mode: string }> }>;
   AuthGuard: Type<CanActivate>;
   NormalizePipe: Type<PipeTransform>;
   EnvelopeInterceptor: Type<NestInterceptor>;
@@ -177,8 +178,8 @@ export function defineLabTestingFixture(): LabFixture {
       EnvelopeInterceptor,
       LabErrorFilter,
       LabLifecycle,
-      { provide: LAB_CONFIG, useValue: { mode: 'real' } },
-      { provide: LIFECYCLE_LOG, useValue: lifecycleLog },
+      defineProvider(LAB_CONFIG, { useValue: { mode: 'real' } }),
+      defineProvider(LIFECYCLE_LOG, { useValue: lifecycleLog }),
     ],
     controllers: [LabController],
   })

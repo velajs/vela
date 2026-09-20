@@ -20,12 +20,8 @@ let peersAvailable = false;
 try {
   await import('@hono/node-ws');
   await import('@hono/node-server');
-  // openClient needs a client socket: global WebSocket (Node >=22) or the ws package.
+  // This header-free client path uses the runtime's WebSocket (Node >=22).
   peersAvailable = typeof WebSocket !== 'undefined';
-  if (!peersAvailable) {
-    await import('ws');
-    peersAvailable = true;
-  }
 } catch {
   peersAvailable = false;
 }
@@ -48,7 +44,7 @@ describe.skipIf(!peersAvailable)('module.ws (Node transport)', () => {
       }
     }
 
-    @Module({ imports: [WebSocketModule.forRoot()], providers: [RoomGateway] })
+    @Module({ imports: [WebSocketModule.forRoot({})], providers: [RoomGateway] })
     class AppModule {}
 
     const module = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -57,10 +53,7 @@ describe.skipIf(!peersAvailable)('module.ws (Node transport)', () => {
     ws.send(JSON.stringify({ event: 'echo', data: { text: 'hi' } }));
 
     const reply = await ws.waitForMessage();
-    const parsed = JSON.parse(typeof reply === 'string' ? reply : '') as {
-      event: string;
-      data: unknown;
-    };
+    const parsed: unknown = JSON.parse(typeof reply === 'string' ? reply : '');
     expect(parsed).toEqual({ event: 'echo', data: 'HI' });
 
     ws.close();

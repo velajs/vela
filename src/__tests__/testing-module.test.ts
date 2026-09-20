@@ -7,9 +7,11 @@ import {
   Module,
   InjectionToken,
   REQUEST_CONTEXT,
+  RequestContextKey,
   UseGuards,
   MetadataRegistry,
   createLazyParamDecorator,
+  defineProvider,
 } from '@velajs/vela';
 import type { CanActivate, ExecutionContext, OnModuleInit, OnModuleDestroy } from '@velajs/vela';
 import { Test } from '../test.js';
@@ -96,7 +98,7 @@ describe('Test.createTestingModule', () => {
     const DB_URL = new InjectionToken<string>('DB_URL');
 
     @Module({
-      providers: [{ provide: DB_URL, useValue: 'postgres://prod' }],
+      providers: [defineProvider(DB_URL, { useValue: 'postgres://prod' })],
     })
     class DbModule {}
 
@@ -159,7 +161,7 @@ describe('Test.createTestingModule', () => {
     }
 
     @Module({
-      providers: [EnvService, { provide: CONFIG, useValue: { env: 'production' } }],
+      providers: [EnvService, defineProvider(CONFIG, { useValue: { env: 'production' } })],
     })
     class ConfigModule {}
 
@@ -168,7 +170,7 @@ describe('Test.createTestingModule', () => {
     })
       .overrideProvider(CONFIG)
       .useFactory({
-        factory: (envService: EnvService) => ({ env: envService.getEnv() }),
+        factory: (envService) => ({ env: envService.getEnv() }),
         inject: [EnvService],
       })
       .compile();
@@ -390,42 +392,34 @@ describe('Test.createTestingModule', () => {
   // request-scoped registration. This pins the behavior.
 
   it('supports guards + lazy param decorators backed by REQUEST_CONTEXT', async () => {
-    const USER_KEY = Symbol.for('test.user');
+    const USER_KEY = new RequestContextKey<{ id: string }>('test.user');
 
     // The canonical vela pattern: a guard resolves REQUEST_CONTEXT from the
     // per-request child container (seeded by RouteManager via
     // setRequestInstance) and writes into its bag. A lazy parameter decorator
-    // reads the same bag *after* guards run — createLazyParamDecorator defers
-    // factory execution past the args-before-guards ordering hazard.
+    // reads the same bag when the handler invokes its lazy function. Both
+    // ordinary and lazy parameter decorators execute after guards.
     @Injectable()
     class GuardThatPopulates implements CanActivate {
       async canActivate(context: ExecutionContext): Promise<boolean> {
-        const honoCtx = context.getContext() as {
-          get: (k: string) => { resolve<T>(t: unknown): T };
-        };
-        const reqCtx = honoCtx
-          .get('container')
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          .resolve<any>(REQUEST_CONTEXT);
+        const container = context.getContainer();
+        if (!container) throw new Error('Missing request container');
+        const reqCtx = container.resolve(REQUEST_CONTEXT);
         reqCtx.set(USER_KEY, { id: 'u-1' });
         return true;
       }
     }
 
     const CurrentUser = createLazyParamDecorator((_data, ctx: ExecutionContext) => {
-      const honoCtx = ctx.getContext() as {
-        get: (k: string) => { resolve<T>(t: unknown): T };
-      };
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return honoCtx.get('container').resolve<any>(REQUEST_CONTEXT).get(USER_KEY);
+      return ctx.getContainer()?.resolve(REQUEST_CONTEXT).get(USER_KEY);
     });
 
     @Controller('/me')
     @UseGuards(GuardThatPopulates)
     class MeController {
       @Get()
-      me(@CurrentUser() user: { id: string }) {
-        return { id: user.id };
+      me(@CurrentUser() loadUser: () => { id: string } | undefined) {
+        return { id: loadUser()?.id };
       }
     }
 

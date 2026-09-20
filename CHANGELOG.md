@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.0
+
+Typed override descriptors and production-equivalent request and environment scope.
+
+Requires the coordinated Vela 2.0 package set. See the workspace migration guide.
+
 ## 0.6.0
 
 ### Minor Changes

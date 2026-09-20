@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { TestResponse } from '../http/test-response.js';
 
 function jsonResponse(body: unknown, init?: ResponseInit): TestResponse {
@@ -44,6 +44,7 @@ describe('TestResponse JSON assertions', () => {
 
   it('assertJson matches top-level keys', async () => {
     await jsonResponse({ ok: true, n: 2 }).assertJson({ ok: true, n: 2 });
+    await jsonResponse({ 'data.id': 7, data: { id: 2 } }).assertJson({ 'data.id': 7 });
   });
 
   it('assertJsonPath reads deep values', async () => {
@@ -87,6 +88,39 @@ describe('TestResponse JSON assertions', () => {
     const first = await r.json();
     const second = await r.json();
     expect(first).toBe(second);
+  });
+
+  it('reads JSON once for concurrent calls, including a null body', async () => {
+    const response = new Response('null');
+    const clone = vi.spyOn(response, 'clone');
+    const wrapped = new TestResponse(response);
+
+    expect(await Promise.all([wrapped.json(), wrapped.json()])).toEqual([null, null]);
+    expect(await wrapped.json()).toBeNull();
+    expect(clone).toHaveBeenCalledTimes(1);
+  });
+
+  it('validates each requested parser against the cached raw value', async () => {
+    const wrapped = jsonResponse('42');
+    const parser = {
+      parse(value: unknown): number {
+        if (typeof value !== 'string') throw new TypeError('Expected string');
+        return Number(value);
+      },
+    };
+    expect(await wrapped.json(parser)).toBe(42);
+    expect(await wrapped.json()).toBe('42');
+    await expect(jsonResponse(false).json(parser)).rejects.toThrow('Expected string');
+  });
+
+  it('rejects JSON assertions whose runtime shape is incompatible', async () => {
+    await expect(jsonResponse(null).assertJson({ id: 1 })).rejects.toThrow('object');
+    await expect(jsonResponse([]).assertJsonStructure(['id'])).rejects.toThrow('object');
+    await expect(jsonResponse({ id: 1 }).assertJsonPathContains('id', '1')).rejects.toThrow(
+      'string',
+    );
+    await expect(jsonResponse({ id: 1 }).assertJsonPathIncludes('id', 1)).rejects.toThrow('array');
+    await expect(jsonResponse({ id: 1 }).assertJsonPathCount('id', 1)).rejects.toThrow('array');
   });
 });
 

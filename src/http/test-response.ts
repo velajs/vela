@@ -1,7 +1,12 @@
 // Ported from @stratal/testing (MIT, © Temitayo Fadojutimi), minus Macroable —
 // vela has no Macroable, so TestResponse is a plain class.
 import { expect } from 'vitest';
+import type { SchemaParser } from '@velajs/vela';
 import { getValueAtPath, hasValueAtPath } from './path-utils.js';
+
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 /**
  * TestResponse
@@ -18,7 +23,7 @@ import { getValueAtPath, hasValueAtPath } from './path-utils.js';
  * ```
  */
 export class TestResponse {
-  private jsonData: unknown = null;
+  private jsonData: Promise<unknown> | undefined;
   private textData: string | null = null;
 
   constructor(private readonly response: Response) {}
@@ -38,12 +43,13 @@ export class TestResponse {
     return this.response.headers;
   }
 
-  /** Parse (and cache) the response body as JSON. */
-  async json<T = unknown>(): Promise<T> {
-    if (this.jsonData === null) {
-      this.jsonData = await this.response.clone().json();
-    }
-    return this.jsonData as T;
+  /** Read JSON as unknown, or infer validated output from a supplied parser. */
+  json(): Promise<unknown>;
+  json<Value>(parser: SchemaParser<Value>): Promise<Value>;
+  async json<Value>(parser?: SchemaParser<Value>): Promise<unknown> {
+    this.jsonData ??= this.response.clone().json();
+    const value = await this.jsonData;
+    return parser === undefined ? value : parser.parse(value);
   }
 
   /** Read (and cache) the response body as text. */
@@ -124,7 +130,10 @@ export class TestResponse {
 
   /** Assert each key in `expected` equals the corresponding top-level value. */
   async assertJson(expected: Record<string, unknown>): Promise<this> {
-    const actual = await this.json<Record<string, unknown>>();
+    const actual = await this.json();
+    if (!isJsonObject(actual)) {
+      expect.fail('Expected JSON body to be an object.');
+    }
 
     for (const [key, value] of Object.entries(expected)) {
       expect(
@@ -166,7 +175,10 @@ export class TestResponse {
 
   /** Assert the top-level JSON object has every key in `structure`. */
   async assertJsonStructure(structure: string[]): Promise<this> {
-    const json = await this.json<Record<string, unknown>>();
+    const json = await this.json();
+    if (!isJsonObject(json)) {
+      expect.fail('Expected JSON body to be an object.');
+    }
 
     for (const key of structure) {
       expect(
@@ -214,13 +226,12 @@ export class TestResponse {
     const json = await this.json();
     const value = getValueAtPath(json, path);
 
-    expect(
-      typeof value === 'string',
-      `Expected JSON path "${path}" to be a string, got ${typeof value}`,
-    ).toBe(true);
+    if (typeof value !== 'string') {
+      expect.fail(`Expected JSON path "${path}" to be a string, got ${typeof value}`);
+    }
 
     expect(
-      (value as string).includes(substring),
+      value.includes(substring),
       `Expected JSON path "${path}" to contain "${substring}", got "${String(value)}"`,
     ).toBe(true);
 
@@ -232,13 +243,12 @@ export class TestResponse {
     const json = await this.json();
     const value = getValueAtPath(json, path);
 
-    expect(
-      Array.isArray(value),
-      `Expected JSON path "${path}" to be an array, got ${typeof value}`,
-    ).toBe(true);
+    if (!Array.isArray(value)) {
+      expect.fail(`Expected JSON path "${path}" to be an array, got ${typeof value}`);
+    }
 
     expect(
-      (value as unknown[]).includes(item),
+      value.includes(item),
       `Expected JSON path "${path}" to include ${JSON.stringify(item)}`,
     ).toBe(true);
 
@@ -250,14 +260,13 @@ export class TestResponse {
     const json = await this.json();
     const value = getValueAtPath(json, path);
 
-    expect(
-      Array.isArray(value),
-      `Expected JSON path "${path}" to be an array, got ${typeof value}`,
-    ).toBe(true);
+    if (!Array.isArray(value)) {
+      expect.fail(`Expected JSON path "${path}" to be an array, got ${typeof value}`);
+    }
 
     expect(
-      (value as unknown[]).length,
-      `Expected JSON path "${path}" to have ${count} items, got ${(value as unknown[]).length}`,
+      value.length,
+      `Expected JSON path "${path}" to have ${count} items, got ${value.length}`,
     ).toBe(count);
 
     return this;

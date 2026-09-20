@@ -1,47 +1,55 @@
-import { type ModuleOptions, type ProviderOptions, type Token, type Type } from '@velajs/vela';
+import {
+  defineProvider,
+  type CanActivate,
+  type DependencyToken,
+  type ExceptionFilter,
+  type InferToken,
+  type InferTokens,
+  type ModuleOptions,
+  type NestInterceptor,
+  type PipeTransform,
+  type ProviderDefinition,
+  type Token,
+  type Type,
+} from '@velajs/vela';
 import { MetadataRegistry, VelaApplication, bootstrap } from '@velajs/vela/internal';
 import { TestingModule } from './testing-module.js';
 
 interface OverrideEntry {
   token: Token;
-  provider: ProviderOptions;
+  provider: ProviderDefinition;
 }
 
-export class OverrideBy {
+// Keep the same token proof required by core provider authoring. An erased
+// registry identity can be resolved, but cannot authorize a typed replacement.
+type OverrideToken<Key extends Token> = Parameters<typeof defineProvider<Key>>[0];
+
+export class OverrideBy<Key extends Token> {
   constructor(
-    private readonly builder: TestingModuleBuilder,
-    private readonly token: Token,
+    private readonly commit: (provider: ProviderDefinition) => TestingModuleBuilder,
+    private readonly token: OverrideToken<Key>,
   ) {}
 
-  useValue(value: unknown): TestingModuleBuilder {
-    this.builder['addOverride']({
-      token: this.token,
-      provider: { provide: this.token, useValue: value },
-    });
-    return this.builder;
+  useValue(value: NoInfer<InferToken<Key>>): TestingModuleBuilder {
+    return this.commit(defineProvider<Key>(this.token, { useValue: value }));
   }
 
-  useClass(cls: Type): TestingModuleBuilder {
-    this.builder['addOverride']({
-      token: this.token,
-      provider: { provide: this.token, useClass: cls },
-    });
-    return this.builder;
+  useClass(cls: Type<NoInfer<InferToken<Key>>>): TestingModuleBuilder {
+    return this.commit(defineProvider<Key>(this.token, { useClass: cls }));
   }
 
-  useFactory(options: {
-    factory: (...args: unknown[]) => unknown;
-    inject?: Token[];
+  useFactory<const Inject extends readonly DependencyToken[] = readonly []>(options: {
+    factory: (
+      ...args: InferTokens<Inject>
+    ) => NoInfer<InferToken<Key>> | Promise<NoInfer<InferToken<Key>>>;
+    inject: Inject;
   }): TestingModuleBuilder {
-    this.builder['addOverride']({
-      token: this.token,
-      provider: {
-        provide: this.token,
+    return this.commit(
+      defineProvider<Key, Inject>(this.token, {
         useFactory: options.factory,
         inject: options.inject,
-      },
-    });
-    return this.builder;
+      }),
+    );
   }
 }
 
@@ -50,24 +58,35 @@ export class TestingModuleBuilder {
 
   constructor(private readonly metadata: ModuleOptions) {}
 
-  overrideProvider(token: Token): OverrideBy {
-    return new OverrideBy(this, token);
+  overrideProvider<const Key extends Token>(token: OverrideToken<Key>): OverrideBy<Key> {
+    return new OverrideBy<Key>((provider) => {
+      this.addOverride({ token, provider });
+      return this;
+    }, token);
   }
 
-  overrideGuard(guard: Type): OverrideBy {
-    return new OverrideBy(this, guard);
+  overrideGuard<const Guard extends Type<CanActivate>>(
+    guard: OverrideToken<Guard>,
+  ): OverrideBy<Guard> {
+    return this.overrideProvider<Guard>(guard);
   }
 
-  overridePipe(pipe: Type): OverrideBy {
-    return new OverrideBy(this, pipe);
+  overridePipe<const Pipe extends Type<PipeTransform>>(
+    pipe: OverrideToken<Pipe>,
+  ): OverrideBy<Pipe> {
+    return this.overrideProvider<Pipe>(pipe);
   }
 
-  overrideInterceptor(interceptor: Type): OverrideBy {
-    return new OverrideBy(this, interceptor);
+  overrideInterceptor<const Interceptor extends Type<NestInterceptor>>(
+    interceptor: OverrideToken<Interceptor>,
+  ): OverrideBy<Interceptor> {
+    return this.overrideProvider<Interceptor>(interceptor);
   }
 
-  overrideFilter(filter: Type): OverrideBy {
-    return new OverrideBy(this, filter);
+  overrideFilter<const Filter extends Type<ExceptionFilter>>(
+    filter: OverrideToken<Filter>,
+  ): OverrideBy<Filter> {
+    return this.overrideProvider<Filter>(filter);
   }
 
   private addOverride(entry: OverrideEntry): void {

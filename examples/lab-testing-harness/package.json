@@ -5,25 +5,19 @@
   "type": "module",
   "description": "Fictional sensor lab test harness used as a real @velajs/testing example project.",
   "scripts": {
-    "build:vela": "pnpm --dir ../../../vela build",
-    "build:testing": "pnpm --dir ../.. build",
-    "sync:deps": "pnpm run build:vela && pnpm run build:testing && pnpm install",
-    "test": "pnpm run sync:deps && vitest run",
-    "typecheck": "pnpm run sync:deps && tsc --noEmit && tsc -p tsconfig.test.json"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json"
   },
   "dependencies": {
-    "@velajs/vela": "file:../../../vela",
-    "hono": "^4"
+    "@velajs/vela": "workspace:*",
+    "hono": "catalog:"
   },
   "devDependencies": {
-    "@swc/core": "^1.15.11",
-    "@types/node": "^22",
-    "@velajs/testing": "file:../..",
-    "typescript": "^5",
-    "unplugin-swc": "^1.5.9",
-    "vitest": "^4.0.18"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": ["@swc/core", "esbuild"]
+    "@swc/core": "catalog:",
+    "@types/node": "catalog:",
+    "@velajs/testing": "workspace:*",
+    "typescript": "catalog:",
+    "unplugin-swc": "catalog:",
+    "vitest": "catalog:"
   }
 }

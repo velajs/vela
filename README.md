@@ -54,11 +54,13 @@ const moduleRef = await Test.createTestingModule({ imports: [UsersModule] })
 
 `useValue`, `useClass`, and `useFactory` are all supported. Same builder for `overrideGuard`, `overridePipe`, `overrideInterceptor`, `overrideFilter`.
 
+`get(token)` and overrides infer their value contract from a class or `InjectionToken<Value>`. An incompatible mock fails typechecking. Raw string/symbol tokens resolve to `unknown`; use an injection token when the contract matters.
+
 ```ts
 .overrideGuard(AuthGuard).useValue({ canActivate: () => true })
 .overrideInterceptor(LogInterceptor).useClass(NoopInterceptor)
 .overrideProvider(CONFIG).useFactory({
-  factory: (env: EnvService) => ({ env: env.getEnv() }),
+  factory: (env) => ({ env: env.getEnv() }),
   inject: [EnvService],
 })
 ```
@@ -67,9 +69,11 @@ Inline providers (skip importing a module):
 
 ```ts
 const moduleRef = await Test.createTestingModule({
-  providers: [InlineService],
+  providers: [InlineService, defineProvider(CONFIG, { useValue: { env: 'test' } })],
 }).compile();
 ```
+
+Import `defineProvider` from `@velajs/vela`. Factory dependency types come from the required `inject` tuple; use `inject: []` for factories without dependencies.
 
 ## HTTP testing
 
@@ -81,6 +85,16 @@ const res = await app.getHonoApp().request('/items');
 expect(res.status).toBe(200);
 expect(await res.json()).toEqual([{ id: 1, name: 'Item 1' }]);
 ```
+
+The fluent HTTP client returns `TestResponse`. Its `json()` method returns `unknown`; pass a schema or `defineDto` descriptor to validate the body and infer its output:
+
+```ts
+const response = await moduleRef.http.get('/items').send();
+const items = await response.json(z.array(z.object({ id: z.number(), name: z.string() })));
+expect(items[0]?.name).toBe('Item 1');
+```
+
+`runInRequestScope(callback)` creates a real framework request context, including typed `RequestContextKey` storage, and disposes its child container when the callback finishes.
 
 ## Lifecycle
 

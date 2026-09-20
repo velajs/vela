@@ -1,12 +1,12 @@
 import { Context } from 'hono';
 import {
   REQUEST_CONTEXT,
-  type RequestContext,
+  type InferToken,
   type Token,
   type Type,
   type VelaApplication,
 } from '@velajs/vela';
-import type { Container } from '@velajs/vela/internal';
+import { createRequestContext, setRequestContainer, type Container } from '@velajs/vela/internal';
 import { SeederRegistry, type ISeeder } from '@velajs/vela/seeder';
 import { expect } from 'vitest';
 import type { TestDatabase } from './db/test-database.js';
@@ -55,7 +55,7 @@ export class TestingModule {
   ) {}
 
   /** Resolve a provider from the root container. */
-  get<T>(token: Token<T>): T {
+  get<const Key extends Token>(token: Key): InferToken<Key> {
     return this.container.resolve(token);
   }
 
@@ -85,9 +85,9 @@ export class TestingModule {
    * Drive a `Request` through the full Hono pipeline. The Hono app is built
    * once and reused across requests.
    */
-  async fetch(request: Request, env?: unknown, ctx?: unknown): Promise<Response> {
+  async fetch(...args: Parameters<HonoApp['fetch']>): Promise<Response> {
     const hono = await this.ensureHono();
-    return hono.fetch(request, env as never, ctx as never);
+    return hono.fetch(...args);
   }
 
   /**
@@ -105,13 +105,15 @@ export class TestingModule {
   }
 
   /**
-   * Run `callback` inside a request-scoped child container seeded with a mock
-   * {@link RequestContext}, so REQUEST-scoped providers (and anything injecting
+   * Run `callback` inside a request-scoped child container seeded with a real
+   * RequestContext, so REQUEST-scoped providers (and anything injecting
    * `REQUEST_CONTEXT`) resolve. The child is disposed afterwards.
    */
   async runInRequestScope<T>(callback: (container: Container) => T | Promise<T>): Promise<T> {
     const child = this.container.createChild();
-    child.setRequestInstance(REQUEST_CONTEXT, this.createMockRequestContext());
+    const hono = new Context(new Request('http://localhost/'));
+    setRequestContainer(hono, child);
+    child.setRequestInstance(REQUEST_CONTEXT, createRequestContext(hono));
     try {
       return await callback(child);
     } finally {
@@ -136,7 +138,7 @@ export class TestingModule {
         );
       }
       await this.runInRequestScope(async (child) => {
-        const instance = child.resolve<ISeeder>(SeederClass);
+        const instance = child.resolve(SeederClass);
         await instance.run();
       });
     }
@@ -181,31 +183,5 @@ export class TestingModule {
       this.honoApp = app.getHonoApp();
     }
     return this.honoApp;
-  }
-
-  /**
-   * Build a minimal, functional {@link RequestContext} for out-of-band request
-   * scopes. Vela has no `createMockRouterContext`; a real (empty) Hono `Context`
-   * backs the `hono` field so nothing dangles.
-   */
-  private createMockRequestContext(): RequestContext {
-    const bag = new Map<string | symbol, unknown>();
-    const request = new Request('http://localhost/');
-    const hono = new Context(request);
-    return {
-      id: crypto.randomUUID(),
-      receivedAt: new Date(),
-      request,
-      hono,
-      set(key, value) {
-        bag.set(key, value);
-      },
-      get<V>(key: string | symbol): V | undefined {
-        return bag.get(key) as V | undefined;
-      },
-      has(key) {
-        return bag.has(key);
-      },
-    };
   }
 }
