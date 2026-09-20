@@ -1,0 +1,57 @@
+{
+  "name": "@velajs/studio-protocol",
+  "version": "2.0.1",
+  "description": "Vela Studio wire contract, operation schemas, envelopes, and capabilities",
+  "keywords": [
+    "admin",
+    "protocol",
+    "studio",
+    "vela"
+  ],
+  "homepage": "https://github.com/velajs/vela/tree/main/packages/studio-protocol#readme",
+  "bugs": {
+    "url": "https://github.com/velajs/vela/issues"
+  },
+  "license": "MIT",
+  "author": "ksh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/velajs/vela.git",
+    "directory": "packages/studio-protocol"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

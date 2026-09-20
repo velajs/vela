@@ -2,8 +2,10 @@
 
 `velajs/vela` now owns the API framework, Cloudflare adapter, CLI, clients,
 authentication/authorization, CRUD, storage, feature flags, testing, and Studio.
-The package paths remain stable in this conversion; development uses a single
-root Git repository, pnpm workspace, lockfile, CI, and Changesets configuration.
+The first conversion preserved package paths. The subsequent layout migration
+places libraries in `packages/`, maintained examples in `apps/`, shared tooling
+in `tools/`, and conformance suites in `tests/`. Development uses a single root
+Git repository, pnpm workspace, lockfile, CI, and Changesets configuration.
 
 ## History
 
@@ -42,10 +44,10 @@ metadata are ignored.
 
 ## Historical examples
 
-The workspace explicitly lists maintained examples. Older standalone examples
+The workspace includes maintained applications through `apps/*`. Older standalone examples
 (`auth-lab`, `auth-lab-plugins`, `harbor-crud-api`, `multi-tenant-wiring`,
-`di-playground-api`, `evergreen-market-api`, and `scheduler-node-jobs`) remain as
+`di-playground-api`, `evergreen-market-api`, and `scheduler-node-jobs`) remain under `examples/legacy` as
 historical source. Their old independent lockfiles remain in imported history,
 so the working tree has only the root lockfile. These examples are
 not part of the 2.0 verification or release. Start new work from the maintained
-`cloudflare/examples/api-starter` rather than those historical examples.
+`apps/api-starter` rather than those historical examples.

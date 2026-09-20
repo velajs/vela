@@ -1,0 +1,84 @@
+{
+  "name": "@velajs/react-native",
+  "version": "2.0.1",
+  "description": "React Native / Expo binding for Vela live queries: an AsyncStorage-backed offline mutation store, a native-tuned client factory (bearer fetch + WebSocket auth channel), the react-dom-free @velajs/react hook surface, and a better-auth Expo bridge",
+  "keywords": [
+    "expo",
+    "hooks",
+    "live-queries",
+    "react-native",
+    "realtime",
+    "vela",
+    "websocket"
+  ],
+  "homepage": "https://github.com/velajs/vela/tree/main/packages/react-native#readme",
+  "bugs": {
+    "url": "https://github.com/velajs/vela/issues"
+  },
+  "license": "MIT",
+  "author": "ksh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/velajs/vela.git",
+    "directory": "packages/react-native"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./auth": {
+      "types": "./dist/auth.d.ts",
+      "import": "./dist/auth.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@velajs/client": "workspace:*",
+    "@velajs/react": "workspace:*"
+  },
+  "devDependencies": {
+    "@better-auth/expo": "^1.6.0",
+    "@swc/core": "catalog:",
+    "@types/react": "^19.0.0",
+    "better-auth": "^1.6.0",
+    "react": "^19.0.0",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "unplugin-swc": "catalog:",
+    "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "@better-auth/expo": "^1.6",
+    "better-auth": "^1.6",
+    "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "@better-auth/expo": {
+      "optional": true
+    },
+    "better-auth": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

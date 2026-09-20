@@ -1,0 +1,101 @@
+{
+  "name": "@velajs/testing",
+  "version": "2.0.1",
+  "description": "Testing utilities for Vela framework",
+  "keywords": [
+    "edge",
+    "framework",
+    "mock",
+    "override",
+    "test",
+    "testing",
+    "vela"
+  ],
+  "homepage": "https://github.com/velajs/vela/tree/main/packages/testing#readme",
+  "bugs": {
+    "url": "https://github.com/velajs/vela/issues"
+  },
+  "license": "MIT",
+  "author": "ksh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/velajs/vela.git",
+    "directory": "packages/testing"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "type": "module",
+  "sideEffects": [
+    "./dist/websocket-node/index.js"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./websocket-node": {
+      "types": "./dist/websocket-node/index.d.ts",
+      "import": "./dist/websocket-node/index.js"
+    },
+    "./eval": {
+      "types": "./dist/eval/index.d.ts",
+      "import": "./dist/eval/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "typecheck:tests": "tsc --noEmit -p tsconfig.test.json",
+    "lint": "oxlint .",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "publint": "publint",
+    "attw": "attw --pack . --profile esm-only",
+    "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm typecheck:tests && pnpm test && pnpm publint && pnpm attw"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "catalog:",
+    "@changesets/cli": "catalog:",
+    "@hono/node-server": "^1.19.9",
+    "@hono/node-ws": "^1.3.1",
+    "@swc/core": "catalog:",
+    "@types/node": "catalog:",
+    "@velajs/vela": "workspace:*",
+    "hono": "catalog:",
+    "oxfmt": "catalog:",
+    "oxlint": "catalog:",
+    "publint": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "unplugin-swc": "catalog:",
+    "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "@hono/node-server": ">=1",
+    "@hono/node-ws": ">=1",
+    "@velajs/vela": "workspace:^",
+    "hono": ">=4",
+    "vitest": ">=3"
+  },
+  "peerDependenciesMeta": {
+    "@hono/node-ws": {
+      "optional": true
+    },
+    "@hono/node-server": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -12,6 +12,15 @@ Studio. All packages share one Git history, pnpm workspace, lockfile, and CI.
 See [the migration record](docs/migration/monorepo.md) for the imported histories
 and [MODERNIZATION.md](MODERNIZATION.md) for implementation and validation history.
 
+## Workspace layout
+
+- `packages/*`: publishable libraries and shared Studio test fixtures.
+- `apps/*`: runnable Workers applications and integration examples.
+- `tools/docs`: isolated API documentation tooling.
+- `tools/tsconfig`: shared compiler configurations.
+- `tests/crud`: cross-adapter conformance; `tests/release`: release safety checks.
+- `examples/legacy`: historical examples excluded from the workspace.
+
 ## Development
 
 Use Node 24 or later and pnpm 11.11.0. From this directory:
@@ -19,6 +28,7 @@ Use Node 24 or later and pnpm 11.11.0. From this directory:
 ```sh
 pnpm install --frozen-lockfile
 pnpm build
+pnpm lint
 pnpm verify
 ```
 
@@ -33,6 +43,18 @@ pnpm --filter @velajs/vela test
 pnpm --filter @velajs/cloudflare test:workers
 pnpm test:conformance
 ```
+
+## Tooling
+
+TypeScript **7.0.2** checks all active packages and applications. Oxlint and Oxfmt
+provide Rust-based linting and formatting; tsdown uses Rolldown/Oxc, and SWC
+preserves the decorator metadata used by dependency injection. TypeScript 7's
+native compiler is written in Go. Root `lint`, `format`, and `format:check`
+commands share one configuration, and dependency versions use the pnpm catalog.
+
+TypeDoc still requires the TypeScript 6 compiler API, so its compatibility
+dependency is isolated in `tools/docs`. It does not compile or typecheck shipped
+packages. See [the tooling comparison](docs/tooling.md).
 
 ## Authoring model
 
@@ -54,16 +76,16 @@ pnpm test:conformance
 
 Schema descriptors replace DTO constructors that claimed uninitialized fields.
 Cache reads and other unvalidated values return `unknown`; parser-based helpers
-infer their real output. See [the core type guide](vela/TYPE_CONTRACTS.md).
+infer their real output. See [the core type guide](packages/vela/TYPE_CONTRACTS.md).
 
 ## Runnable examples
 
-- [Complete auth, D1 CRUD, generated client, live and Studio starter](cloudflare/examples/api-starter/README.md)
-- [Native Workers bindings](cloudflare/examples/worker-bindings-lab/README.md)
-- [Live todos on Workers and Node](vela/examples/live-todo/README.md)
-- [Better Auth with D1](auth/examples/auth-lab-d1/README.md)
-- [Studio demonstration](studio/examples/demo/README.md)
-- [Testing harness](testing/examples/lab-testing-harness/README.md)
+- [Complete auth, D1 CRUD, generated client, live and Studio starter](apps/api-starter/README.md)
+- [Native Workers bindings](apps/worker-bindings-lab/README.md)
+- [Live todos on Workers and Node](apps/live-todo/README.md)
+- [Better Auth with D1](apps/auth-lab-d1/README.md)
+- [Studio demonstration](apps/studio-demo/README.md)
+- [Testing harness](apps/lab-testing-harness/README.md)
 
 AI, agents, email, and workflow packages remain outside this API workspace.
 
