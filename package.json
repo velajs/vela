@@ -31,7 +31,7 @@
     "@changesets/cli": "catalog:",
     "@cloudflare/vitest-plugin": "catalog:",
     "@cloudflare/workers-types": "catalog:",
-    "@libsql/client": "^0.17.4",
+    "@libsql/client": "^0.18.0",
     "@swc/core": "catalog:",
     "@types/node": "catalog:",
     "@velajs/vela": "workspace:*",

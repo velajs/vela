@@ -25,7 +25,7 @@
     "@swc/cli": "^0.8.0",
     "@swc/core": "catalog:",
     "@types/node": "catalog:",
-    "esbuild": "^0.25.0",
+    "esbuild": "^0.28.2",
     "typescript": "catalog:",
     "wrangler": "catalog:",
     "@cloudflare/workers-types": "catalog:"

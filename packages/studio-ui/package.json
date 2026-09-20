@@ -67,7 +67,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@velajs/studio-fixtures": "workspace:*",
-    "esbuild": "^0.28.1",
+    "esbuild": "^0.28.2",
     "happy-dom": "^20.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
