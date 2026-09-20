@@ -4,9 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "build": "pnpm build:server && pnpm client:generate && esbuild web/main.ts --bundle --format=esm --outfile=public/main.js && node scripts/copy-web.mjs",
+    "build": "npm run build:server && npm run client:generate && esbuild web/main.ts --bundle --format=esm --outfile=public/main.js && node scripts/copy-web.mjs",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.web.json",
-    "dev": "pnpm build && wrangler dev --port 8790",
+    "dev": "npm run build && wrangler dev --port 8790",
     "db:migrate": "wrangler d1 migrations apply vela-api-starter --local",
     "client:generate": "node scripts/client.mjs",
     "client:check": "node scripts/client.mjs --check",

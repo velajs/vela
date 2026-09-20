@@ -30,7 +30,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm verify
       - run: pnpm release:pack
-      - run: pnpm release:consumer
+      - run: node scripts/release-consumer.mjs
       - run: pnpm release:preflight
 
   test:
