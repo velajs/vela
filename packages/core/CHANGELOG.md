@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.0
+
+Schema-bound resources and hooks, compound cursor pagination, explicit adapter capabilities, and honest shaped output boundaries.
+
+Requires the coordinated Vela 2.0 package set. See the workspace migration guide.
+
 ## 1.19.1
 
 ### Patch Changes

@@ -370,8 +370,12 @@ export function parseListFilters(query: RawQuery, config: ParseListQueryOptions 
       continue;
     }
 
-    // Simple field=value → equality (fail-closed on unallowed field).
-    if (Object.hasOwn(allowedFilters, key) && Array.isArray(allowedFilters[key])) {
+    // Bare equality follows the same per-field operator allow-list as [eq].
+    if (
+      Object.hasOwn(allowedFilters, key) &&
+      Array.isArray(allowedFilters[key]) &&
+      allowedFilters[key].includes('eq')
+    ) {
       filters.push({ field: key, operator: 'eq', value });
     }
   }

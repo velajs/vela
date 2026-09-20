@@ -195,14 +195,13 @@ function assertBatchSize(count: number, max: number): void {
  */
 async function runItemHook<V>(
   mode: HookMode,
-  hook: ((ctx: HookContext, item: V, index: number) => unknown) | undefined,
+  hook: ((ctx: HookContext, item: V, index: number) => V | void | Promise<V | void>) | undefined,
   ctx: HookContext,
   item: V,
   index: number,
 ): Promise<V> {
   if (!hook) return item;
-  const result = await runBeforeChain(mode, [(c, d) => hook(c, d as V, index)], ctx, item);
-  return result as V;
+  return runBeforeChain(mode, [(c, d) => hook(c, d, index)], ctx, item);
 }
 
 /**

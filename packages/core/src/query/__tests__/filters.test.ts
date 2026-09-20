@@ -149,6 +149,34 @@ describe('parseListFilters', () => {
     expect(filters).toEqual([{ field: 'role', operator: 'eq', value: 'admin' }]);
   });
 
+  it('requires equality to be allowed for both bare and bracket filters', () => {
+    for (const query of [{ age: '5' }, { 'age[eq]': '5' }]) {
+      expect(parseListFilters(query, config).filters).toEqual([]);
+    }
+
+    const equalityConfig = { filterConfig: { age: ['eq'] } } as const;
+    for (const query of [{ age: '5' }, { 'age[eq]': '5' }]) {
+      expect(parseListFilters(query, equalityConfig).filters).toEqual([
+        { field: 'age', operator: 'eq', value: '5' },
+      ]);
+    }
+  });
+
+  it('lets filterConfig disable equality granted by filterFields', () => {
+    const narrowedConfig = { filterFields: ['age'], filterConfig: { age: ['gte'] } as const };
+    expect(parseListFilters({ age: '5' }, narrowedConfig).filters).toEqual([]);
+    expect(parseListFilters({ 'age[gte]': '5' }, narrowedConfig).filters).toEqual([
+      { field: 'age', operator: 'gte', value: '5' },
+    ]);
+  });
+
+  it('disables both equality syntaxes with an empty operator allow-list', () => {
+    const disabledConfig = { filterFields: ['age'], filterConfig: { age: [] } };
+    for (const query of [{ age: '5' }, { 'age[eq]': '5' }]) {
+      expect(parseListFilters(query, disabledConfig).filters).toEqual([]);
+    }
+  });
+
   it('parses bracket operator syntax', () => {
     const { filters } = parseListFilters({ 'age[gte]': '18' }, config);
     expect(filters).toEqual([{ field: 'age', operator: 'gte', value: '18' }]);

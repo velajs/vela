@@ -19,7 +19,11 @@ export { CrudCtx, type CrudRequestContext } from './crud-context.decorator';
 // Module + tokens
 export { CrudModule, CRUD_MODULE_OPTIONS, type CrudModuleOptions } from './crud.module';
 export { CRUD_DEFAULT_ADAPTER, crudResourceToken } from './crud.tokens';
-export { synthesizeController, type CrudFeatureResource } from './synthesize-controller';
+export {
+  defineCrudFeature,
+  synthesizeController,
+  type CrudFeatureResource,
+} from './synthesize-controller';
 
 // Consumer config surface
 export { MissingTenantResolverError, resourceNames, type CrudConfig } from './crud.types';
@@ -54,7 +58,16 @@ export {
 } from './kernel/resource';
 export type { EngineRequest, EngineResult } from './kernel/engine-request';
 export { generateETag, matchesIfMatch, matchesIfNoneMatch } from './kernel/etag';
-export type { CrudHooks, HookContext, HookMode, HookModeConfig } from './kernel/hook-types';
+export type {
+  CrudHooks,
+  HookContext,
+  HookMode,
+  HookModeConfig,
+  SchemaHooks,
+  SchemaRow,
+  SchemaWrite,
+  SchemaShaped,
+} from './kernel/hook-types';
 export {
   CrudException,
   InputValidationException,

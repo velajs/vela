@@ -1,25 +1,10 @@
-/**
- * Pagination: offset (page / per_page) and keyset (opaque cursor) modes.
- *
- * Ports hono-crud 0.13's `core/cursor.ts` (`encodeCursor` / `decodeCursor` /
- * `buildOffsetPageInfo` / `buildCursorPage`) and the offset clamping from
- * `parseListFilters`. Contracts preserved:
- *
- *  - **Defaults.** `per_page` defaults to 20, clamped to `[1, 100]`.
- *  - **Opaque cursor codec.** `btoa`/`atob` base64 (edge-safe — no Buffer).
- *  - **Next-only cursor walks (Stripe-style).** The cursor-mode `PageInfo` is
- *    exactly `{ page: 0, per_page, total_count?, has_next_page, has_prev_page,
- *    next_cursor? }` — no `total_pages`, no `prev_cursor`. `next_cursor`
- *    encodes the boundary (last returned) row's cursor field, present only when
- *    there is a next page.
- *
- * Divergence from hono-crud (tracked): `decodeCursor` still returns `null` on a
- * malformed cursor (source-faithful), but the engine-facing {@link resolveCursor}
- * throws {@link InputValidationException} instead of silently treating garbage
- * as page one — the native engine fails loud on bad client input.
+/** Offset metadata and engine-validated compound keyset pagination.
+ * Tokens carry the entire ordered tuple (configured field plus primary keys).
+ * Scalar encode/decode helpers are standalone utilities, not engine tokens.
+ * Next-only walks retain page 0, optional totals and no total_pages/prev_cursor.
  */
 
-import { type PageInfo } from '../adapter/query-types';
+import { type CursorValue, type Keyset, type PageInfo } from '../adapter/query-types';
 import { InputValidationException } from '../envelope/errors';
 import { type RawQuery } from './filters';
 
@@ -29,17 +14,6 @@ export const DEFAULT_PER_PAGE = 20;
 export const MAX_PER_PAGE = 100;
 /** Default keyset column when none is configured. */
 export const CURSOR_KEYSET_DEFAULT = 'id';
-
-/**
- * `btoa`/`atob` are edge-runtime globals (present on Workers, Deno, browsers,
- * and Node >=18) but absent from the `ES2022` lib typings. Reference them
- * through a typed `globalThis` view so this module type-checks without pulling
- * the DOM lib into the shared config.
- */
-const webBase64 = globalThis as unknown as {
-  btoa: (data: string) => string;
-  atob: (data: string) => string;
-};
 
 // ---------------------------------------------------------------------------
 // Offset pagination
@@ -108,7 +82,7 @@ export function buildOffsetPageInfo(page: number, perPage: number, totalCount: n
 
 /** Encode a cursor value to an opaque base64 string (edge-safe `btoa`). */
 export function encodeCursor(value: string | number): string {
-  return webBase64.btoa(String(value));
+  return btoa(String(value));
 }
 
 /**
@@ -118,7 +92,7 @@ export function encodeCursor(value: string | number): string {
  */
 export function decodeCursor(cursor: string): string | null {
   try {
-    return webBase64.atob(cursor);
+    return atob(cursor);
   } catch {
     return null;
   }
@@ -182,8 +156,131 @@ export function buildCursorPageInfo<T extends Record<string, unknown>>(
     result_info.total_count = totalCount;
   }
   if (hasNextPage && boundary !== undefined) {
-    result_info.next_cursor = encodeCursor(boundary[cursorField] as string | number);
+    result_info.next_cursor = encodeCursor(String(boundary[cursorField]));
   }
 
   return { items, result_info };
+}
+
+/** Versioned compound cursors bind the token to its complete ordering. */
+export function encodeKeyset(keyset: Keyset, row: Record<string, unknown>): string {
+  const values = keyset.fields.map((field) => cursorValue(row[field]));
+  const payload = JSON.stringify({
+    v: 1,
+    fields: keyset.fields,
+    direction: keyset.direction,
+    values: values.map((value) => (value instanceof Date ? { date: value.toISOString() } : value)),
+  });
+  return btoa(
+    Array.from(new TextEncoder().encode(payload), (byte) => String.fromCharCode(byte)).join(''),
+  );
+}
+
+export function cursorValue(value: unknown): CursorValue {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (value instanceof Date && Number.isFinite(value.getTime())) return value;
+  throw new InputValidationException('Cursor fields must contain finite scalar values or dates');
+}
+
+function decodeValue(value: unknown): CursorValue {
+  if (
+    typeof value === 'object' &&
+    value !== null &&
+    'date' in value &&
+    typeof value.date === 'string'
+  ) {
+    return cursorValue(new Date(value.date));
+  }
+  return cursorValue(value);
+}
+
+export function resolveKeyset(
+  cursor: string | undefined,
+  fields: string[],
+  direction: 'asc' | 'desc',
+): Keyset {
+  const keyset: Keyset = { fields, direction };
+  if (cursor === undefined) return keyset;
+  try {
+    if (cursor.length === 0 || cursor.length > 16384) throw new Error('Invalid length');
+    const json = new TextDecoder('utf-8', { fatal: true }).decode(
+      Uint8Array.from(atob(cursor), (char) => char.charCodeAt(0)),
+    );
+    const value: unknown = JSON.parse(json);
+    if (
+      typeof value !== 'object' ||
+      value === null ||
+      !('v' in value) ||
+      value.v !== 1 ||
+      !('fields' in value) ||
+      !Array.isArray(value.fields) ||
+      value.fields.length !== fields.length ||
+      !value.fields.every((field, index) => field === fields[index]) ||
+      !('direction' in value) ||
+      value.direction !== direction ||
+      !('values' in value) ||
+      !Array.isArray(value.values) ||
+      value.values.length !== fields.length
+    ) {
+      throw new Error('Invalid shape or order');
+    }
+    keyset.after = value.values.map(decodeValue);
+    return keyset;
+  } catch {
+    throw new InputValidationException('Invalid cursor');
+  }
+}
+
+/** Identical null-first ascending / null-last descending order across adapters. */
+export function compareCursorValues(left: CursorValue, right: CursorValue): number {
+  if (left === right) return 0;
+  if (left === null) return -1;
+  if (right === null) return 1;
+  const a = left instanceof Date ? left.getTime() : left;
+  const b = right instanceof Date ? right.getTime() : right;
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+export function compareKeysetRows(
+  keyset: Keyset,
+  left: Record<string, unknown>,
+  right: Record<string, unknown>,
+): number {
+  for (const field of keyset.fields) {
+    const result = compareCursorValues(cursorValue(left[field]), cursorValue(right[field]));
+    if (result) return keyset.direction === 'asc' ? result : -result;
+  }
+  return 0;
+}
+
+export function isAfterKeyset(keyset: Keyset, row: Record<string, unknown>): boolean {
+  if (keyset.after === undefined) return true;
+  for (const [index, field] of keyset.fields.entries()) {
+    const result = compareCursorValues(cursorValue(row[field]), keyset.after[index]);
+    if (result) return keyset.direction === 'asc' ? result > 0 : result < 0;
+  }
+  return false;
+}
+
+export function buildKeysetPage<T extends Record<string, unknown>>(
+  limit: number,
+  rows: T[],
+  keyset: Keyset,
+  totalCount?: number,
+): { result: T[]; result_info: PageInfo } {
+  const result = rows.slice(0, limit);
+  const last = result.at(-1);
+  const hasNext = rows.length > limit;
+  return {
+    result,
+    result_info: {
+      page: 0,
+      per_page: limit,
+      total_count: totalCount,
+      has_next_page: hasNext,
+      has_prev_page: keyset.after !== undefined,
+      ...(hasNext && last ? { next_cursor: encodeKeyset(keyset, last) } : {}),
+    },
+  };
 }

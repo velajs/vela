@@ -14,11 +14,11 @@
 
 import type { HookContext, HookMode } from './hook-types';
 
-/** Any hook. `never[]` params let a heterogeneously-typed hook array unify. */
-type AnyHookFn = (...args: never[]) => unknown;
+/** Hooks in one dispatch share their exact argument tuple. */
+type HookFn<Args extends unknown[]> = (...args: Args) => unknown;
 
 /** A before-hook: `(ctx, data) => maybe-replacement`. */
-type BeforeHookFn = (ctx: HookContext, data: unknown) => unknown;
+type BeforeHookFn<T> = (ctx: HookContext, data: T) => T | void | Promise<T | void>;
 
 /**
  * Report a swallowed `fire-and-forget` hook failure without letting it affect
@@ -33,9 +33,9 @@ function warnSwallowed(error: unknown): void {
  * a synchronous throw and an async rejection (warning on each). Returns
  * immediately.
  */
-function invokeFireAndForget(fn: AnyHookFn, args: unknown[]): void {
+function invokeFireAndForget<Args extends unknown[]>(fn: HookFn<Args>, args: Args): void {
   try {
-    const result = (fn as (...a: unknown[]) => unknown)(...args);
+    const result = fn(...args);
     if (result instanceof Promise) {
       result.catch(warnSwallowed);
     }
@@ -53,18 +53,22 @@ function invokeFireAndForget(fn: AnyHookFn, args: unknown[]): void {
  *
  * Return values are discarded — use {@link runBeforeChain} to thread data.
  */
-export async function runHooks(mode: HookMode, fns: AnyHookFn[], args: unknown[]): Promise<void> {
+export async function runHooks<Args extends unknown[]>(
+  mode: HookMode,
+  fns: HookFn<Args>[],
+  args: Args,
+): Promise<void> {
   if (fns.length === 0) return;
 
   switch (mode) {
     case 'sequential': {
       for (const fn of fns) {
-        await (fn as (...a: unknown[]) => unknown)(...args);
+        await fn(...args);
       }
       return;
     }
     case 'parallel': {
-      await Promise.all(fns.map((fn) => (fn as (...a: unknown[]) => unknown)(...args)));
+      await Promise.all(fns.map((fn) => fn(...args)));
       return;
     }
     case 'fire-and-forget': {
@@ -92,12 +96,12 @@ export async function runHooks(mode: HookMode, fns: AnyHookFn[], args: unknown[]
  * the "parallel ignores returns" rule the way hono-crud treats concurrent
  * before-hooks.
  */
-export async function runBeforeChain(
+export async function runBeforeChain<T>(
   mode: HookMode,
-  fns: BeforeHookFn[],
+  fns: BeforeHookFn<T>[],
   ctx: HookContext,
-  data: unknown,
-): Promise<unknown> {
+  data: T,
+): Promise<T> {
   if (fns.length === 0) return data;
 
   switch (mode) {
@@ -117,7 +121,7 @@ export async function runBeforeChain(
     }
     case 'fire-and-forget': {
       for (const fn of fns) {
-        invokeFireAndForget(fn as AnyHookFn, [ctx, data]);
+        invokeFireAndForget(fn, [ctx, data]);
       }
       return data;
     }

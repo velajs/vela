@@ -1,35 +1,34 @@
-/**
- * Headless resources: `CrudModule.forFeature([{ path, model, ... }])`
- * synthesizes a controller class per resource — no hand-written class needed.
- * The synthesized class goes through the exact same stamping as a decorated
- * one, so `vela route list`, `urlFor`, OpenAPI, and the pipeline see no
- * difference.
- */
-
+/** Headless features compile each schema before entering a heterogeneous module list. */
 import { Controller, type Type } from '@velajs/vela';
-import { resourceNames, type CrudConfig } from './crud.types';
+import type { ZodRawShape } from 'zod';
+import {
+  compileCrudConfig,
+  resourceNames,
+  type CrudConfig,
+  type RuntimeCrudConfig,
+} from './crud.types';
 import { stampCrudRoutes } from './stamp-routes';
 
-export interface CrudFeatureResource<
-  Row extends Record<string, unknown> = Record<string, unknown>,
-> extends CrudConfig<Row> {
-  /** Mount path for the resource's routes (`'/users'`). */
+export interface CrudFeatureResource {
   path: string;
+  config: RuntimeCrudConfig;
+}
+
+export function defineCrudFeature<Shape extends ZodRawShape>(
+  feature: CrudConfig<Shape> & { path: string },
+): CrudFeatureResource {
+  const { path, ...config } = feature;
+  return { path, config: compileCrudConfig(config) };
 }
 
 const pascal = (s: string): string =>
   s.replace(/(?:^|[^a-zA-Z0-9]+)([a-zA-Z0-9])/g, (_m, c: string) => c.toUpperCase());
 
 export function synthesizeController(feature: CrudFeatureResource): Type {
-  const { path, ...config } = feature;
-  const names = resourceNames(config);
-
+  const names = resourceNames(feature.config);
   const cls = class {};
-  // NamedEvaluation idiom: a stable class name for stack traces, route list,
-  // and OpenAPI (`CrudUsersController`).
   Object.defineProperty(cls, 'name', { value: `Crud${pascal(names.plural)}Controller` });
-
-  Controller(path)(cls);
-  stampCrudRoutes(cls as unknown as new (...args: never[]) => unknown, config);
-  return cls as Type;
+  Controller(feature.path)(cls);
+  stampCrudRoutes(cls, feature.config);
+  return cls;
 }

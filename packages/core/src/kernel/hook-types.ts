@@ -1,20 +1,7 @@
-/**
- * The lifecycle-hooks contract for the native Vela CRUD kernel.
- *
- * This is the CTX-FIRST hook surface (`(ctx, ...payload)`): every hook takes
- * the engine-built {@link HookContext} as its first argument, then the
- * verb-specific payload. It is the native replacement for the old hono-crud
- * bridge, whose flat `CrudHooks` (see `../types.ts`) already exposed a
- * ctx-first shape to downstream consumers. The names and arities
- * that existed on the bridge are kept compatible; the surface is EXTENDED with
- * everything hono-crud supported that the bridge lacked (upsert hooks, per-item
- * batch hooks, per-verb `transform`), plus a per-verb hook-mode config.
- *
- * Payload shapes are ported from hono-crud's `config/index.ts` per-verb hook
- * documentation. Intentional divergences from hono-crud / the old bridge are
- * called out in the doc comment of each hook.
- */
+/** Schema-bound lifecycle hooks for the native CRUD kernel. */
 
+import type { output, ZodRawShape } from 'zod';
+import type { createHookSchemas } from './compile-hooks';
 import type { Page } from '../adapter/query-types';
 
 /**
@@ -64,8 +51,8 @@ export interface HookModeConfig {
 /**
  * A hook that may replace the value it receives. Returning a value substitutes
  * it (for the next hook, in sequential before-chains, or for the write/response
- * payload); returning `void`/`undefined` leaves the value unchanged. Both sync
- * and async are accepted.
+ * payload). Returning `void`/`undefined` keeps the supplied value, including
+ * validated in-place mutations. Both sync and async are accepted.
  */
 type Mutator<In, Out = In> = (ctx: HookContext, value: In) => Out | void | Promise<Out | void>;
 
@@ -76,9 +63,11 @@ type Mutator<In, Out = In> = (ctx: HookContext, value: In) => Out | void | Promi
  * (model-level + route-level) into the arrays it hands to `runHooks` /
  * `runBeforeChain`.
  *
- * @typeParam T - the resource's row type.
+ * @typeParam T - the validated persisted row type.
+ * @typeParam Write - a validated partial write; generated fields may be absent.
+ * @typeParam Shaped - a partial row after field masking or projection.
  */
-export interface CrudHooks<T = unknown> {
+export interface CrudHooks<T = unknown, Write = Partial<T>, Shaped = Partial<T>> {
   // -------------------------------------------------------------------------
   // create
   // -------------------------------------------------------------------------
@@ -87,7 +76,7 @@ export interface CrudHooks<T = unknown> {
    * may return a replacement payload (the returned object is persisted).
    * Parity: hono-crud `CreateHooks.before(data, ctx)`, ctx moved to front.
    */
-  beforeCreate?: Mutator<T>;
+  beforeCreate?: Mutator<Write>;
   /**
    * After an INSERT. Receives the persisted row; may return a replacement used
    * for the response. Parity: hono-crud `CreateHooks.after(data, ctx)`.
@@ -107,11 +96,7 @@ export interface CrudHooks<T = unknown> {
    * `beforeUpdate(ctx, data)` also lacked `prior`; existing 2-arg callers stay
    * valid (the extra parameter is ignored by hooks that don't declare it).
    */
-  beforeUpdate?: (
-    ctx: HookContext,
-    patch: Partial<T>,
-    prior: T,
-  ) => Partial<T> | void | Promise<Partial<T> | void>;
+  beforeUpdate?: (ctx: HookContext, patch: Write, prior: T) => Write | void | Promise<Write | void>;
   /**
    * After an UPDATE. Receives the pre-mutation `prior` AND post-mutation
    * `current` snapshots (both observed inside the parent transaction), so
@@ -153,16 +138,19 @@ export interface CrudHooks<T = unknown> {
    *
    * DIVERGENCE: hono-crud's `ListHooks.after` (and the old bridge's
    * `afterList`) received the bare items array. The native surface passes the
-   * full `Page<T>` so a hook can adjust pagination metadata alongside the rows.
+   * full `Page<unknown>` because per-row transforms may return arbitrary values.
    * Per-row shaping belongs in {@link transformList}.
    */
-  afterList?: (ctx: HookContext, page: Page<T>) => Page<T> | void | Promise<Page<T> | void>;
+  afterList?: (
+    ctx: HookContext,
+    page: Page<unknown>,
+  ) => Page<unknown> | void | Promise<Page<unknown> | void>;
   /**
-   * Per-row output transform for LIST. Runs once per row after `afterList`.
+   * Per-row output transform for LIST. Runs once per row after masking and before `afterList`.
    * Parity: hono-crud `ListHooks.transform(item)` — ctx-first here (the old
    * bridge had no list transform).
    */
-  transformList?: (ctx: HookContext, item: T) => unknown | Promise<unknown>;
+  transformList?: (ctx: HookContext, item: Shaped) => unknown | Promise<unknown>;
 
   // -------------------------------------------------------------------------
   // read
@@ -182,7 +170,7 @@ export interface CrudHooks<T = unknown> {
    * Per-row output transform for READ. Parity: hono-crud
    * `ReadHooks.transform(item)` — ctx-first (the old bridge lacked it).
    */
-  transformRead?: (ctx: HookContext, item: T) => unknown | Promise<unknown>;
+  transformRead?: (ctx: HookContext, item: Shaped) => unknown | Promise<unknown>;
 
   // -------------------------------------------------------------------------
   // upsert
@@ -195,9 +183,9 @@ export interface CrudHooks<T = unknown> {
    */
   beforeUpsert?: (
     ctx: HookContext,
-    data: Partial<T>,
+    data: Write,
     isCreate: boolean,
-  ) => Partial<T> | void | Promise<Partial<T> | void>;
+  ) => Write | void | Promise<Write | void>;
   /**
    * After an UPSERT. Receives the persisted row plus `created` — whether a row
    * was INSERTED (`true`) rather than UPDATED. May return a replacement.
@@ -214,11 +202,11 @@ export interface CrudHooks<T = unknown> {
   // batch — the native surface makes them per-item like the other batch verbs.
   // -------------------------------------------------------------------------
   /** Before each item of a batch INSERT. May return a replacement item. */
-  beforeBatchCreate?: BatchMutator<Partial<T>>;
+  beforeBatchCreate?: BatchMutator<Write>;
   /** After each item of a batch INSERT. May return a replacement row. */
   afterBatchCreate?: BatchMutator<T>;
   /** Before each item of a batch UPDATE. May return a replacement patch. */
-  beforeBatchUpdate?: BatchMutator<Partial<T>>;
+  beforeBatchUpdate?: BatchMutator<Write>;
   /** After each item of a batch UPDATE. May return a replacement row. */
   afterBatchUpdate?: BatchMutator<T>;
   /** Before each item of a batch DELETE. Receives the pre-mutation row. */
@@ -230,7 +218,7 @@ export interface CrudHooks<T = unknown> {
   /** After each item of a batch RESTORE. May return a replacement row. */
   afterBatchRestore?: BatchMutator<T>;
   /** Before each item of a batch UPSERT. May return a replacement item. */
-  beforeBatchUpsert?: BatchMutator<Partial<T>>;
+  beforeBatchUpsert?: BatchMutator<Write>;
   /** After each item of a batch UPSERT. May return a replacement row. */
   afterBatchUpsert?: BatchMutator<T>;
 
@@ -258,10 +246,31 @@ export interface CrudHooks<T = unknown> {
 
 /**
  * A per-item batch hook: receives the item and its 0-based `index`, may return
- * a replacement item. `void`/`undefined` leaves the item unchanged.
+ * a replacement item. `void`/`undefined` keeps validated in-place mutations.
  */
 export type BatchMutator<V> = (
   ctx: HookContext,
   item: V,
   index: number,
 ) => V | void | Promise<V | void>;
+
+/** Persisted records, including relation/computed fields not declared in the schema. */
+export type SchemaRow<Shape extends ZodRawShape> = output<
+  ReturnType<typeof createHookSchemas<Shape>>['persisted']
+>;
+
+/** The actual output of Zod's partial passthrough parser; no generic cast is needed. */
+export type SchemaWrite<Shape extends ZodRawShape> = output<
+  ReturnType<typeof createHookSchemas<Shape>>['partial']
+>;
+
+/** Fields removed by policies or serialization profiles are genuinely optional. */
+export type SchemaShaped<Shape extends ZodRawShape> = SchemaWrite<Shape>;
+
+/** Author-facing hooks retain their schema-derived types until compilation. */
+export type SchemaHooks<Shape extends ZodRawShape> = CrudHooks<
+  SchemaRow<Shape>,
+  SchemaWrite<Shape>,
+  SchemaShaped<Shape>
+> &
+  HookModeConfig;

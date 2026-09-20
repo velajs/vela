@@ -1,3 +1,4 @@
+import { bindAdapter } from '../../../adapter/contract';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import type { AdapterCapability, AdapterScope, CrudAdapter } from '../../../adapter/contract';
@@ -33,8 +34,11 @@ function fakeAdapter(store: Map<string, Row>, softDeleteField?: string): CrudAda
   const caps: AdapterCapability[] = [];
   if (softDeleteField !== undefined) caps.push('softDelete');
 
-  return {
+  return bindAdapter({
     capabilities: new Set(caps),
+    async requestScope(fn) {
+      return fn({ tx: undefined });
+    },
     async transaction(fn) {
       return fn(scopeSentinel);
     },
@@ -86,7 +90,7 @@ function fakeAdapter(store: Map<string, Row>, softDeleteField?: string): CrudAda
         },
       };
     },
-  };
+  });
 }
 
 const docSchema = z.object({

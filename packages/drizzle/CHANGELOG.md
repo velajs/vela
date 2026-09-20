@@ -1,5 +1,11 @@
 # @velajs/crud-drizzle
 
+## 2.0.0
+
+Typed Drizzle adapter and native D1 conformance. Unsupported D1 callback transactions fail before side effects.
+
+Requires the coordinated Vela 2.0 package set. See the workspace migration guide.
+
 ## 1.19.1
 
 ### Patch Changes

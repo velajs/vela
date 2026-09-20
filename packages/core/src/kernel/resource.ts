@@ -7,7 +7,7 @@
 
 import type { ZodObject, ZodRawShape } from 'zod';
 import { assertAdapterSatisfies, type CapabilityRequirement } from '../adapter/capabilities';
-import type { CrudAdapter } from '../adapter/contract';
+import type { CrudAdapter, RuntimeAdapter } from '../adapter/contract';
 import type { FilterConfig, SortSpec } from '../adapter/query-types';
 import type { AggregateBuildConfig } from '../query/aggregate';
 import type { SearchFieldConfig } from '../query/search';
@@ -20,8 +20,10 @@ import type { VersioningStore } from '../versioning/index';
 import type { AuditStore } from '../audit/index';
 import type { CrudEndpointName } from '../verb-table';
 import { EXTENDED_EXECUTORS } from './extended/registry';
-import type { CrudHooks, HookModeConfig } from './hook-types';
+import type { CrudHooks, HookModeConfig, SchemaHooks } from './hook-types';
 import type { EngineRequest, EngineResult } from './engine-request';
+import { compileHooks } from './compile-hooks';
+import { validateAdapterRows } from './validate-adapter';
 import { buildPolicyContext, requireTenantContext } from './verb-helpers';
 import { canPerformOperation } from '../policies/evaluate';
 import { executeCreate, executeDelete, executeList, executeRead, executeUpdate } from './verbs';
@@ -34,10 +36,10 @@ export interface ResourcePaginationConfig {
   cursor?: { enabled: boolean; field?: string };
 }
 
-export interface ResourceConfig<Row extends Record<string, unknown> = Record<string, unknown>> {
+export interface RuntimeResourceConfig {
   model: Model;
-  adapter: CrudAdapter<Row>;
-  hooks?: CrudHooks<Row> & HookModeConfig;
+  adapter: RuntimeAdapter;
+  hooks?: CrudHooks<Record<string, unknown>> & HookModeConfig;
   /** Filterable fields; `filterConfig` narrows operators per field. */
   filterFields?: string[];
   filterConfig?: FilterConfig;
@@ -97,10 +99,20 @@ export interface ResourceConfig<Row extends Record<string, unknown> = Record<str
   errorMappers?: ErrorMapper[];
 }
 
-export interface CrudResource<Row extends Record<string, unknown> = Record<string, unknown>> {
+/** Authoring preserves schema-derived hook types; the engine receives a validated runtime view. */
+export interface ResourceConfig<Shape extends ZodRawShape = ZodRawShape> extends Omit<
+  RuntimeResourceConfig,
+  'model' | 'adapter' | 'hooks'
+> {
+  model: Model<ZodObject<Shape>>;
+  adapter: Pick<CrudAdapter, 'runtime'>;
+  hooks?: SchemaHooks<Shape>;
+}
+
+export interface CrudResource {
   readonly name: string;
   readonly model: Model;
-  readonly config: ResourceConfig<Row>;
+  readonly config: RuntimeResourceConfig;
   /** Derived (or dto-overridden) request body schemas — the DTO bridge. */
   readonly createSchema: ZodObject<ZodRawShape>;
   readonly updateSchema: ZodObject<ZodRawShape>;
@@ -109,7 +121,7 @@ export interface CrudResource<Row extends Record<string, unknown> = Record<strin
 
 /** Derives the capability demands a resource config places on its adapter. */
 export function deriveCapabilityRequirements(
-  config: ResourceConfig<never>,
+  config: Pick<RuntimeResourceConfig, 'model' | 'pagination'>,
 ): CapabilityRequirement[] {
   const requirements: CapabilityRequirement[] = [];
   if (config.pagination?.cursor?.enabled) {
@@ -129,15 +141,21 @@ export function deriveCapabilityRequirements(
   return requirements;
 }
 
-export function defineResource<Row extends Record<string, unknown>>(
+export function defineResource<Shape extends ZodRawShape>(
   name: string,
-  config: ResourceConfig<Row>,
-): CrudResource<Row> {
-  assertAdapterSatisfies(
-    name,
-    deriveCapabilityRequirements(config as ResourceConfig<never>),
-    config.adapter as CrudAdapter<never>,
-  );
+  config: ResourceConfig<Shape>,
+): CrudResource {
+  return compileResource(name, {
+    ...config,
+    adapter: config.adapter.runtime,
+    hooks: compileHooks(config.model.schema, config.hooks),
+  });
+}
+
+/** Internal entry for an already-compiled @Crud configuration. */
+export function compileResource(name: string, config: RuntimeResourceConfig): CrudResource {
+  config = { ...config, adapter: validateAdapterRows(config.adapter, config.model.schema) };
+  assertAdapterSatisfies(name, deriveCapabilityRequirements(config), config.adapter);
   if ((config.allowedIncludes?.length ?? 0) > 0 && config.adapter.relations === undefined) {
     throw new ConfigurationException(
       `Resource '${name}': allowedIncludes configured but the adapter has no relation loader`,
@@ -231,19 +249,16 @@ export function defineResource<Row extends Record<string, unknown>>(
   const updateSchema =
     config.dto?.update ?? deriveUpdateSchema(config.model, config.updateFields ?? {});
 
-  const resource: CrudResource<Row> = {
+  const resource: CrudResource = {
     name,
     model: config.model,
     config,
     createSchema,
     updateSchema,
     async execute(verb: CrudEndpointName, req: EngineRequest): Promise<EngineResult> {
-      // Executors operate on the type-erased resource (rows are records
-      // internally); the generic is a compile-time convenience for callers.
-      const erased = resource as unknown as import('./verbs').AnyResource;
       try {
-        requireTenantContext(erased, req);
-        const policies = erased.model.policies;
+        requireTenantContext(resource, req);
+        const policies = resource.model.policies;
         if (verb === 'aggregate' && policies?.operation === undefined) {
           throw new ForbiddenException(
             'Aggregate requires an explicit operation authorization policy',
@@ -254,15 +269,15 @@ export function defineResource<Row extends Record<string, unknown>>(
         }
         switch (verb) {
           case 'create':
-            return await executeCreate(erased, req);
+            return await executeCreate(resource, req);
           case 'read':
-            return await executeRead(erased, req);
+            return await executeRead(resource, req);
           case 'update':
-            return await executeUpdate(erased, req);
+            return await executeUpdate(resource, req);
           case 'delete':
-            return await executeDelete(erased, req);
+            return await executeDelete(resource, req);
           case 'list':
-            return await executeList(erased, req);
+            return await executeList(resource, req);
           default: {
             const executor = EXTENDED_EXECUTORS[verb];
             if (!executor) {
@@ -270,7 +285,7 @@ export function defineResource<Row extends Record<string, unknown>>(
                 `Verb '${verb}' is not implemented by the native engine yet`,
               );
             }
-            return await executor(erased, req);
+            return await executor(resource, req);
           }
         }
       } catch (error) {
@@ -290,8 +305,6 @@ export function defineResource<Row extends Record<string, unknown>>(
 }
 
 /** The resource's active envelope (custom or the canonical default). */
-export function envelopeOf<Row extends Record<string, unknown>>(
-  resource: CrudResource<Row>,
-): ResponseEnvelope {
+export function envelopeOf(resource: CrudResource): ResponseEnvelope {
   return resource.config.envelope ?? defaultEnvelope;
 }

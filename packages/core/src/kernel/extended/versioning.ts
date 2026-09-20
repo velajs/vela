@@ -100,9 +100,8 @@ function versioningStoreOf(resource: AnyResource): VersioningStore {
  */
 async function requireOwnedRecord(resource: AnyResource, req: EngineRequest): Promise<Row> {
   const lookup = buildLookup(resource, req);
-  const found = await resource.config.adapter.transaction(
-    async (scope) =>
-      (await resource.config.adapter.readOne(lookup, { withDeleted: true }, scope)) as Row | null,
+  const found = await resource.config.adapter.requestScope(
+    (scope) => resource.config.adapter.readOne(lookup, { withDeleted: true }, scope),
     txCtx(req),
   );
   if (!found) throw new NotFoundException(resource.model.name, lookup.value);

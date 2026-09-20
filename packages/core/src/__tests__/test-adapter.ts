@@ -1,3 +1,4 @@
+import { bindAdapter } from '../adapter/contract';
 import type { AdapterScope, CrudAdapter } from '../adapter/contract';
 import type { ListQuery, Lookup, Page } from '../adapter/query-types';
 
@@ -24,8 +25,11 @@ export function testAdapter(store: Map<string, Row>, softDeleteField?: string): 
     return null;
   };
 
-  return {
+  return bindAdapter({
     capabilities: new Set(softDeleteField !== undefined ? (['softDelete'] as const) : []),
+    async requestScope(fn) {
+      return fn({ tx: undefined });
+    },
     async transaction(fn) {
       return fn(scope);
     },
@@ -84,5 +88,5 @@ export function testAdapter(store: Map<string, Row>, softDeleteField?: string): 
         },
       };
     },
-  };
+  });
 }

@@ -199,7 +199,7 @@ export interface ConformanceRecord {
   email: string;
   role: string;
   age?: number | null;
-  deletedAt?: string | null;
+  deletedAt?: number | null;
   createdAt?: number | string;
   updatedAt?: number | string;
   [field: string]: unknown;

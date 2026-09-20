@@ -14,6 +14,6 @@ export interface CrudRequestContext {
 }
 
 export const CrudCtx = createParamDecorator((_data, ctx): CrudRequestContext => {
-  const c = ctx.getContext<Context>();
+  const c = ctx.getContext();
   return { c, container: getRequestContainer(c) };
 });

@@ -1,3 +1,4 @@
+import { bindAdapter } from '../../adapter/contract';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type {
@@ -36,8 +37,11 @@ function fakeAdapter(store: Map<string, Row>, softDeleteField?: string): CrudAda
     return null;
   };
 
-  return {
+  return bindAdapter({
     capabilities: new Set(softDeleteField !== undefined ? (['softDelete'] as const) : []),
+    async requestScope(fn) {
+      return fn({ tx: undefined });
+    },
     async transaction(fn) {
       return fn(scopeSentinel);
     },
@@ -90,7 +94,7 @@ function fakeAdapter(store: Map<string, Row>, softDeleteField?: string): CrudAda
         },
       };
     },
-  };
+  });
 }
 
 const itemSchema = z.object({
@@ -224,17 +228,17 @@ describe('transaction context', () => {
   // Proves the engine threads the request tenant into adapter.transaction at
   // every tx open (the RLS seam) — memory/libsql can't enforce RLS, so the
   // assertion is seam invocation, not database isolation.
-  it('passes the request tenant to adapter.transaction at tx open', async () => {
+  it('passes the request tenant to adapter request scopes', async () => {
     const store = new Map<string, Row>();
     const inner = fakeAdapter(store);
     const seen: Array<TransactionContext | undefined> = [];
-    const adapter: CrudAdapter<Row> = {
-      ...inner,
-      transaction: (fn, ctx) => {
+    const adapter = bindAdapter({
+      ...inner.runtime,
+      requestScope: (fn, ctx) => {
         seen.push(ctx);
-        return inner.transaction(fn, ctx);
+        return inner.requestScope(fn, ctx);
       },
-    };
+    });
     const model = defineModel({
       name: 'item',
       tableName: 'items',
@@ -290,8 +294,8 @@ describe('nested writes (create/update dispatch)', () => {
     const calls: Array<{ kind: string; relation: string; parentId: unknown; payload: unknown }> =
       [];
     const inner = fakeAdapter(store);
-    const adapter: CrudAdapter<Row> = {
-      ...inner,
+    const adapter = bindAdapter({
+      ...inner.runtime,
       capabilities: new Set<AdapterCapability>([...inner.capabilities, 'nestedWrites']),
       nested: {
         async inspectNestedTargets(_parent, _relation, operations) {
@@ -317,7 +321,7 @@ describe('nested writes (create/update dispatch)', () => {
           });
         },
       },
-    };
+    });
     const model = defineModel({
       name: 'item',
       tableName: 'items',
@@ -411,14 +415,14 @@ describe('nested writes (create/update dispatch)', () => {
   it('rejects a legacy nested driver that cannot inspect targets', () => {
     const store = new Map<string, Row>();
     const inner = fakeAdapter(store);
-    const adapter: CrudAdapter<Row> = {
-      ...inner,
+    const adapter = bindAdapter({
+      ...inner.runtime,
       capabilities: new Set<AdapterCapability>([...inner.capabilities, 'nestedWrites']),
       nested: {
         async createNested() {},
         async applyNested() {},
       } as unknown as NestedWriteDriver<Row>,
-    };
+    });
     const model = defineModel({
       name: 'item',
       tableName: 'items',
@@ -442,8 +446,8 @@ describe('nested writes (create/update dispatch)', () => {
     const store = new Map<string, Row>();
     const captured: Row[][] = [];
     const inner = fakeAdapter(store);
-    const adapter: CrudAdapter<Row> = {
-      ...inner,
+    const adapter = bindAdapter({
+      ...inner.runtime,
       capabilities: new Set<AdapterCapability>([...inner.capabilities, 'nestedWrites']),
       nested: {
         async inspectNestedTargets() {
@@ -461,7 +465,7 @@ describe('nested writes (create/update dispatch)', () => {
         },
         async applyNested() {},
       },
-    };
+    });
     const model = defineModel({
       name: 'item',
       tableName: 'items',
@@ -598,8 +602,8 @@ describe('nested writes (create/update dispatch)', () => {
     ]);
     const inner = fakeAdapter(parents);
     const applyNested = vi.fn();
-    const adapter: CrudAdapter<Row> = {
-      ...inner,
+    const adapter = bindAdapter({
+      ...inner.runtime,
       capabilities: new Set<AdapterCapability>([...inner.capabilities, 'nestedWrites']),
       nested: {
         async inspectNestedTargets(parent, _relation, operations) {
@@ -633,7 +637,7 @@ describe('nested writes (create/update dispatch)', () => {
         async createNested() {},
         applyNested,
       },
-    };
+    });
     const model = defineModel({
       name: 'item',
       tableName: 'items',
@@ -691,8 +695,8 @@ describe('nested writes (create/update dispatch)', () => {
     const inner = fakeAdapter(parents);
     const createNested = vi.fn();
     const applyNested = vi.fn();
-    const adapter: CrudAdapter<Row> = {
-      ...inner,
+    const adapter = bindAdapter({
+      ...inner.runtime,
       capabilities: new Set<AdapterCapability>([...inner.capabilities, 'nestedWrites']),
       nested: {
         async inspectNestedTargets() {
@@ -708,7 +712,7 @@ describe('nested writes (create/update dispatch)', () => {
         createNested,
         applyNested,
       },
-    };
+    });
     const model = defineModel({
       name: 'item',
       tableName: 'items',
@@ -812,14 +816,14 @@ describe('etag (optimistic concurrency)', () => {
   it('include-reads and bare reads share the tag (relation embeds never hash)', async () => {
     const store = new Map<string, Row>();
     const inner = fakeAdapter(store);
-    const adapter: CrudAdapter<Row> = {
-      ...inner,
+    const adapter = bindAdapter({
+      ...inner.runtime,
       relations: {
         async load(rows) {
           return new Map(rows.map((row) => [row.id, [{ id: 'p1', title: 'X' }]]));
         },
       },
-    };
+    });
     const model = defineModel({
       name: 'item',
       tableName: 'items',
@@ -867,14 +871,14 @@ describe('etag (optimistic concurrency)', () => {
   it('rejects cross-model includes without an explicit response authorization contract', () => {
     const store = new Map<string, Row>();
     const inner = fakeAdapter(store);
-    const adapter: CrudAdapter<Row> = {
-      ...inner,
+    const adapter = bindAdapter({
+      ...inner.runtime,
       relations: {
         async load() {
           return new Map();
         },
       },
-    };
+    });
     const model = defineModel({
       name: 'item',
       tableName: 'items',
@@ -893,8 +897,8 @@ describe('etag (optimistic concurrency)', () => {
   it('filters and masks included rows with target relation response policies', async () => {
     const store = new Map<string, Row>();
     const inner = fakeAdapter(store);
-    const adapter: CrudAdapter<Row> = {
-      ...inner,
+    const adapter = bindAdapter({
+      ...inner.runtime,
       relations: {
         async load(rows) {
           return new Map(
@@ -908,7 +912,7 @@ describe('etag (optimistic concurrency)', () => {
           );
         },
       },
-    };
+    });
     const model = defineModel({
       name: 'item',
       tableName: 'items',
@@ -959,7 +963,7 @@ describe('etag (optimistic concurrency)', () => {
           ]),
         ),
     );
-    const adapter: CrudAdapter<Row> = { ...inner, relations: { load } };
+    const adapter = bindAdapter({ ...inner.runtime, relations: { load } });
     const model = defineModel({
       name: 'item',
       tableName: 'items',

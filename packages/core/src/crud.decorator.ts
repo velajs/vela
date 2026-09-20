@@ -7,19 +7,26 @@
  * ones and can never be shadowed.
  */
 
-import { getMetadata, METADATA_KEYS } from '@velajs/vela';
+import type { ZodRawShape } from 'zod';
 import { stampCrudRoutes } from './stamp-routes';
-import type { CrudConfig } from './crud.types';
+import {
+  compileCrudConfig,
+  registeredCrudConfig,
+  type CrudConfig,
+  type RuntimeCrudConfig,
+} from './crud.types';
 
-export function Crud<Row extends Record<string, unknown> = Record<string, unknown>>(
-  config: CrudConfig<Row>,
-): ClassDecorator {
-  return (target) => {
-    stampCrudRoutes(target as unknown as new (...args: never[]) => unknown, config as CrudConfig);
+export function Crud<Shape extends ZodRawShape>(config: CrudConfig<Shape>) {
+  const runtime = compileCrudConfig(config);
+  return <T extends { new (...args: never[]): unknown; readonly prototype: object }>(
+    target: T,
+  ): T => {
+    stampCrudRoutes(target, runtime);
+    return target;
   };
 }
 
-/** The `CrudConfig` stamped on a class by `@Crud()`, if any. */
-export function getCrudConfig(target: object): CrudConfig | undefined {
-  return getMetadata(METADATA_KEYS.CRUD, target) as CrudConfig | undefined;
+/** The validated runtime configuration registered when the class is decorated. */
+export function getCrudConfig(target: object): RuntimeCrudConfig | undefined {
+  return registeredCrudConfig(target);
 }

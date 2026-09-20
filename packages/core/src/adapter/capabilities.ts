@@ -5,7 +5,12 @@
  * returning nothing (hono-crud `requireAdapter` parity).
  */
 
-import { CAPABILITY_MEMBERS, type AdapterCapability, type CrudAdapter } from './contract';
+import {
+  ADAPTER_CAPABILITIES,
+  CAPABILITY_MEMBERS,
+  type AdapterCapability,
+  type RuntimeAdapter,
+} from './contract';
 import { ConfigurationException } from '../envelope/errors';
 
 /** One capability demand plus the config that raised it (for the error text). */
@@ -28,7 +33,7 @@ export interface CapabilityRequirement {
 export function assertAdapterSatisfies(
   resourceName: string,
   requirements: CapabilityRequirement[],
-  adapter: CrudAdapter<never>,
+  adapter: RuntimeAdapter,
 ): void {
   const problems: string[] = [];
 
@@ -38,9 +43,9 @@ export function assertAdapterSatisfies(
     }
   }
 
-  for (const [capability, member] of Object.entries(CAPABILITY_MEMBERS) as Array<
-    [AdapterCapability, keyof CrudAdapter<never>]
-  >) {
+  for (const capability of ADAPTER_CAPABILITIES) {
+    const member = CAPABILITY_MEMBERS[capability];
+    if (member === undefined) continue;
     const declared = adapter.capabilities.has(capability);
     const present = adapter[member] !== undefined;
     if (declared && !present) {

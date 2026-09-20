@@ -1,3 +1,4 @@
+import { resolveKeyset } from '@velajs/crud/query';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -391,7 +392,10 @@ describe('drizzleAdapter list', () => {
   it('walks keyset cursors next-only with page 0', async () => {
     const adapter = makeAdapter();
     const first = await scopeOf((s) =>
-      adapter.list({ filters: [], options: { limit: 2, order_by: 'id' } }, s),
+      adapter.list(
+        { filters: [], options: { limit: 2, keyset: resolveKeyset(undefined, ['id'], 'asc') } },
+        s,
+      ),
     );
     expect(first.result.map((r) => r.id)).toEqual(['a', 'b']);
     expect(first.result_info).toMatchObject({ page: 0, has_next_page: true, has_prev_page: false });
@@ -400,7 +404,10 @@ describe('drizzleAdapter list', () => {
       adapter.list(
         {
           filters: [],
-          options: { limit: 2, order_by: 'id', cursor: first.result_info.next_cursor },
+          options: {
+            limit: 2,
+            keyset: resolveKeyset(first.result_info.next_cursor, ['id'], 'asc'),
+          },
         },
         s,
       ),

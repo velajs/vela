@@ -18,7 +18,7 @@ import type { Context } from 'hono';
 import { getRequestContainer } from '@velajs/vela';
 import { LiveInvalidation, stampCommitHeaders } from '@velajs/vela/live';
 import type { EngineResult } from './kernel/engine-request';
-import type { CrudConfig, CrudLiveConfig } from './crud.types';
+import type { RuntimeCrudConfig, CrudLiveConfig } from './crud.types';
 
 const WRITE_METHODS = new Set(['post', 'put', 'patch', 'delete']);
 
@@ -35,7 +35,7 @@ export type LiveStamper = (c: Context, result: EngineResult, method: string) => 
  * request child container) and degrades to a one-time warning when
  * `LiveModule` isn't imported — live is an enhancement, never a crash.
  */
-export function buildLiveStamper(config: CrudConfig): LiveStamper | undefined {
+export function buildLiveStamper(config: RuntimeCrudConfig): LiveStamper | undefined {
   if (!config.live) return undefined;
 
   const tableName = config.model.tableName;

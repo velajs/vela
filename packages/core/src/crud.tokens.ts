@@ -11,24 +11,26 @@ import type { VersioningStore } from './versioning/index';
 import type { AuditStore } from './audit/index';
 
 /** The app-wide default adapter, provided by `CrudModule.forRoot`. */
-export const CRUD_DEFAULT_ADAPTER: InjectionToken<CrudAdapter> =
-  moduleToken<CrudAdapter>('crud:default-adapter');
+export const CRUD_DEFAULT_ADAPTER =
+  moduleToken<Pick<CrudAdapter, 'runtime'>>('crud:default-adapter');
 
 /** The app-wide default version-history store, provided by `CrudModule.forRoot`. */
-export const CRUD_DEFAULT_VERSIONING_STORE: InjectionToken<VersioningStore> =
-  moduleToken<VersioningStore>('crud:default-versioning-store');
+export const CRUD_DEFAULT_VERSIONING_STORE: InjectionToken<VersioningStore | undefined> =
+  moduleToken<VersioningStore | undefined>('crud:default-versioning-store');
 
 /** The app-wide default audit-log store, provided by `CrudModule.forRoot`. */
-export const CRUD_DEFAULT_AUDIT_STORE: InjectionToken<AuditStore> = moduleToken<AuditStore>(
-  'crud:default-audit-store',
-);
+export const CRUD_DEFAULT_AUDIT_STORE: InjectionToken<AuditStore | undefined> = moduleToken<
+  AuditStore | undefined
+>('crud:default-audit-store');
 
-const RESOURCE_TOKENS = Symbol.for('velajs:crud:resource-tokens:v1');
+declare global {
+  // The registry contains only tokens created by crudResourceToken. Declaring
+  // its actual global slot keeps HMR identity without asserting unknown data.
+  var __velajsCrudResourceTokensV1: Map<string, InjectionToken<CrudResource>> | undefined;
+}
 
 function tokenStore(): Map<string, InjectionToken<CrudResource>> {
-  const holder = globalThis as { [RESOURCE_TOKENS]?: Map<string, InjectionToken<CrudResource>> };
-  holder[RESOURCE_TOKENS] ??= new Map();
-  return holder[RESOURCE_TOKENS];
+  return (globalThis.__velajsCrudResourceTokensV1 ??= new Map());
 }
 
 /** The compiled `CrudResource` for a named resource (forFeature registers it). */

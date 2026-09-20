@@ -10,8 +10,14 @@
  * read-shaping → envelope.
  */
 
+import { safeParse } from 'zod';
 import type { Page } from '../adapter/query-types';
-import { ConflictException, NotFoundException } from '../envelope/errors';
+import {
+  ConflictException,
+  CrudException,
+  InputValidationException,
+  NotFoundException,
+} from '../envelope/errors';
 import { applyComputedFields, applyComputedFieldsToArray } from '../model/computed-fields';
 import { applyProfile, applyProfileToArray } from '../model/serialization-profile';
 import { generateETag, matchesIfMatch, matchesIfNoneMatch } from './etag';
@@ -30,7 +36,14 @@ import { applyManagedInsertFields, applyManagedUpdateFields } from '../model/man
 import { filterReadable, maskFields } from '../policies/evaluate';
 import { parseListFilters } from '../query/filters';
 import { applyFieldSelectionToArray } from '../query/field-selection';
-import { buildCursorPageInfo, buildOffsetPageInfo, resolveCursor } from '../query/pagination';
+import {
+  buildKeysetPage,
+  buildOffsetPageInfo,
+  compareKeysetRows,
+  cursorValue,
+  isAfterKeyset,
+  resolveKeyset,
+} from '../query/pagination';
 import type { EngineRequest, EngineResult } from './engine-request';
 import { captureAudit, captureVersion } from './capture';
 import { runBeforeChain, runHooks } from './run-hooks';
@@ -81,18 +94,26 @@ export async function executeCreate(
   const nestedDriver = nested.size > 0 ? requireNestedDriver(resource) : undefined;
   const policyCtx = buildPolicyContext(req);
 
-  const record = await config.adapter.transaction(async (scope) => {
+  // A single INSERT is atomic on D1. After-hooks/nested writes require rollback.
+  const createScope =
+    config.adapter.capabilities.has('transactions') ||
+    nestedDriver ||
+    config.hooks?.beforeCreate ||
+    config.hooks?.afterCreate
+      ? config.adapter.transaction.bind(config.adapter)
+      : config.adapter.requestScope.bind(config.adapter);
+  const record = await createScope(async (scope) => {
     const ctx = buildHookContext(req, scope);
     const managed = applyManagedInsertFields(model, main, {
       databaseGeneratedId: config.adapter.capabilities.has('databaseGeneratedId'),
       tenantId: req.vars?.tenantId,
     });
-    const input = (await runBeforeChain(
+    const input = await runBeforeChain(
       config.hooks?.beforeMode ?? 'sequential',
-      config.hooks?.beforeCreate ? [config.hooks.beforeCreate as never] : [],
+      config.hooks?.beforeCreate ? [config.hooks.beforeCreate] : [],
       ctx,
       managed,
-    )) as Row;
+    );
     await assertCreateAllowed(resource, policyCtx, input);
 
     const preparedNested = new Map<string, Row[]>();
@@ -101,7 +122,7 @@ export async function executeCreate(
         const records = stampNestedCreates(
           model,
           name,
-          (Array.isArray(value) ? value : [value]) as Row[],
+          Array.isArray(value) ? value : [value],
           req.vars?.tenantId,
         );
         await assertNestedCreatesAllowed(model, name, policyCtx, records);
@@ -117,18 +138,18 @@ export async function executeCreate(
     }
     if (config.hooks?.afterCreate) {
       const replaced = await runBeforeChain(
-        config.hooks.afterMode ?? 'sequential',
-        [config.hooks.afterCreate as never],
+        config.hooks?.afterMode ?? 'sequential',
+        [config.hooks.afterCreate],
         ctx,
         created,
       );
-      created = replaced as Row;
+      created = replaced;
     }
     return created;
   }, txCtx(req));
 
   await captureAudit(resource, req, 'create', {
-    recordId: record[model.primaryKeys[0] ?? 'id'] as string | number,
+    recordId: recordId(record, model.primaryKeys[0] ?? 'id'),
     record,
   });
 
@@ -153,7 +174,7 @@ async function etagFor(
   const bare: Row = { ...row };
   for (const name of Object.keys(resource.model.relations ?? {})) delete bare[name];
   let shaped = await applyComputedFields(resource.model, bare);
-  shaped = maskFields(policyCtx, shaped, resource.model.policies) as Row;
+  shaped = maskFields(policyCtx, shaped, resource.model.policies);
   shaped = applyProfile(resource.model, shaped);
   return generateETag(shaped);
 }
@@ -167,8 +188,8 @@ export async function executeRead(
   const lookup = buildLookup(resource, req);
   const includes = parseIncludeParam(req, config.allowedIncludes);
 
-  const row = await config.adapter.transaction(async (scope) => {
-    const found = (await config.adapter.readOne(lookup, {}, scope)) as Row | null;
+  const row = await config.adapter.requestScope(async (scope) => {
+    const found = await config.adapter.readOne(lookup, {}, scope);
     if (found) await attachIncludes(resource, req, includes, [found], scope);
     return found;
   }, txCtx(req));
@@ -176,19 +197,20 @@ export async function executeRead(
   if (!row) throw new NotFoundException(resource.model.name, lookup.value);
   await assertReadAllowed(resource, policyCtx, row, lookup.value);
 
-  let shaped = await shapeOne(resource, policyCtx, req, row);
+  const shaped = await shapeOne(resource, policyCtx, req, row);
+  let output: unknown = shaped;
   if (config.hooks?.transformRead) {
     const ctx = buildHookContext(req, { tx: undefined });
-    shaped = (await config.hooks.transformRead(ctx, shaped as never)) as Row;
+    output = await config.hooks.transformRead(ctx, shaped);
   }
   if (config.etag) {
     const tag = await etagFor(resource, policyCtx, row);
     if (matchesIfNoneMatch(req.request?.headers.get('If-None-Match'), tag)) {
       return { status: 304, body: null, headers: { ETag: tag } };
     }
-    return { status: 200, body: envelopeOf(resource).success(shaped), headers: { ETag: tag } };
+    return { status: 200, body: envelopeOf(resource).success(output), headers: { ETag: tag } };
   }
-  return { status: 200, body: envelopeOf(resource).success(shaped) };
+  return { status: 200, body: envelopeOf(resource).success(output) };
 }
 
 export async function executeUpdate(
@@ -206,9 +228,39 @@ export async function executeUpdate(
   const { main: patchMain, nested } = splitNested(patch, nestedUpdateRelations(model));
   const nestedDriver = nested.size > 0 ? requireNestedDriver(resource) : undefined;
 
+  if (
+    !config.adapter.capabilities.has('transactions') &&
+    config.adapter.capabilities.has('atomicMutations')
+  ) {
+    if (
+      nestedDriver ||
+      model.policies?.write ||
+      model.versioning ||
+      model.audit ||
+      config.etag ||
+      config.hooks?.beforeUpdate ||
+      config.hooks?.afterUpdate
+    ) {
+      throw new CrudException(
+        'This update requires callback transactions',
+        400,
+        'TRANSACTION_UNSUPPORTED',
+      );
+    }
+    const current = await config.adapter.requestScope(
+      (scope) => config.adapter.update(lookup, applyManagedUpdateFields(model, patchMain), scope),
+      txCtx(req),
+    );
+    if (!current) throw new NotFoundException(model.name, lookup.value);
+    return {
+      status: 200,
+      body: envelopeOf(resource).success(await shapeOne(resource, policyCtx, req, current)),
+    };
+  }
+
   const { prior, current } = await config.adapter.transaction(async (scope) => {
     const ctx = buildHookContext(req, scope);
-    const prior = (await config.adapter.readOne(lookup, {}, scope)) as Row | null;
+    const prior = await config.adapter.readOne(lookup, {}, scope);
     if (!prior) throw new NotFoundException(model.name, lookup.value);
     await assertWriteAllowed(resource, policyCtx, prior);
 
@@ -226,7 +278,7 @@ export async function executeUpdate(
       for (const [name, value] of nested) {
         const ops = toNestedOps(value, nestedTargetScope(model, name, req.vars?.tenantId));
         if (ops.create) {
-          ops.create = stampNestedCreates(model, name, ops.create as Row[], req.vars?.tenantId);
+          ops.create = stampNestedCreates(model, name, ops.create, req.vars?.tenantId);
         }
         await assertNestedOperationsAllowed(
           model,
@@ -241,16 +293,16 @@ export async function executeUpdate(
       }
     }
 
-    const managed = applyManagedUpdateFields(model, patchMain);
+    let managed = applyManagedUpdateFields(model, patchMain);
     // Version snapshot BEFORE the write: captures the pre-update state and
     // stamps the incremented version field onto `managed` (no-op when the
     // model does not version).
     await captureVersion(resource, prior, managed, req);
     if (config.hooks?.beforeUpdate) {
-      await config.hooks.beforeUpdate(ctx, managed as never, prior as never);
+      managed = (await config.hooks.beforeUpdate(ctx, managed, prior)) ?? managed;
     }
 
-    const current = (await config.adapter.update(lookup, managed as never, scope)) as Row | null;
+    let current = await config.adapter.update(lookup, managed, scope);
     if (!current) throw new NotFoundException(model.name, lookup.value);
 
     if (nestedDriver) {
@@ -259,18 +311,20 @@ export async function executeUpdate(
       }
     }
 
-    if (config.hooks?.afterUpdate) {
-      await runHooks(
-        config.hooks.afterMode ?? 'sequential',
-        [() => config.hooks!.afterUpdate!(ctx, prior as never, current as never)],
-        [],
+    const afterUpdate = config.hooks?.afterUpdate;
+    if (afterUpdate) {
+      current = await runBeforeChain(
+        config.hooks?.afterMode ?? 'sequential',
+        [(hookCtx, record) => afterUpdate(hookCtx, prior, record)],
+        ctx,
+        current,
       );
     }
     return { prior, current };
   }, txCtx(req));
 
   await captureAudit(resource, req, 'update', {
-    recordId: current[model.primaryKeys[0] ?? 'id'] as string | number,
+    recordId: recordId(current, model.primaryKeys[0] ?? 'id'),
     previousRecord: prior,
     record: current,
   });
@@ -295,16 +349,42 @@ export async function executeDelete(
   const policyCtx = buildPolicyContext(req);
   const lookup = buildLookup(resource, req);
 
+  if (
+    !config.adapter.capabilities.has('transactions') &&
+    config.adapter.capabilities.has('atomicMutations')
+  ) {
+    if (
+      model.policies?.write ||
+      model.versioning ||
+      model.audit ||
+      config.hooks?.beforeDelete ||
+      config.hooks?.afterDelete ||
+      Object.values(model.relations ?? {}).some((relation) => relation.cascade)
+    ) {
+      throw new CrudException(
+        'This delete requires callback transactions',
+        400,
+        'TRANSACTION_UNSUPPORTED',
+      );
+    }
+    const deleted = await config.adapter.requestScope(
+      (scope) => config.adapter.delete(lookup, { softDeleteField: model.softDeleteField }, scope),
+      txCtx(req),
+    );
+    if (!deleted) throw new NotFoundException(model.name, lookup.value);
+    return { status: 200, body: envelopeOf(resource).success({ deleted: true }) };
+  }
+
   const prior = await config.adapter.transaction(async (scope) => {
     const ctx = buildHookContext(req, scope);
-    const prior = (await config.adapter.readOne(lookup, {}, scope)) as Row | null;
+    const prior = await config.adapter.readOne(lookup, {}, scope);
     if (!prior) throw new NotFoundException(model.name, lookup.value);
     await assertWriteAllowed(resource, policyCtx, prior);
 
     // Snapshot the pre-delete state (no-op when the model does not version);
     // no write payload to stamp — the row is being removed.
     await captureVersion(resource, prior, undefined, req);
-    if (config.hooks?.beforeDelete) await config.hooks.beforeDelete(ctx, prior as never);
+    if (config.hooks?.beforeDelete) await config.hooks.beforeDelete(ctx, prior);
 
     const deleted = await config.adapter.delete(
       lookup,
@@ -316,7 +396,7 @@ export async function executeDelete(
     if (config.hooks?.afterDelete) {
       await runHooks(
         config.hooks.afterMode ?? 'sequential',
-        [() => config.hooks!.afterDelete!(ctx, prior as never)],
+        [() => config.hooks!.afterDelete!(ctx, prior)],
         [],
       );
     }
@@ -324,7 +404,7 @@ export async function executeDelete(
   }, txCtx(req));
 
   await captureAudit(resource, req, 'delete', {
-    recordId: prior[model.primaryKeys[0] ?? 'id'] as string | number,
+    recordId: recordId(prior, model.primaryKeys[0] ?? 'id'),
     previousRecord: prior,
   });
 
@@ -340,13 +420,36 @@ export async function executeList(
 
   const parsed = parseListFilters(req.query ?? {}, listParseOptions(resource));
   const scoped = scopeListQuery(resource, req, policyCtx, parsed);
+  if (scoped.options.cursor !== undefined || scoped.options.limit !== undefined) {
+    const fields = [
+      ...new Set([
+        scoped.options.order_by ?? resource.model.primaryKeys[0] ?? 'id',
+        ...resource.model.primaryKeys,
+      ]),
+    ];
+    const keyset = resolveKeyset(
+      scoped.options.cursor,
+      fields,
+      scoped.options.order_by_direction ?? 'asc',
+    );
+    if (keyset.after) {
+      keyset.after = keyset.after.map((value, index) => {
+        const schema = resource.model.schema.shape[fields[index]];
+        const parsedValue = schema ? safeParse(schema, value) : undefined;
+        if (!parsedValue?.success) throw new InputValidationException('Invalid cursor field value');
+        return cursorValue(parsedValue.data);
+      });
+    }
+    scoped.options.keyset = keyset;
+    scoped.options.cursor = undefined;
+  }
 
   if (config.hooks?.beforeList) {
     await config.hooks.beforeList(buildHookContext(req, { tx: undefined }));
   }
 
   const enumerateForReadPolicy = resource.model.policies?.read !== undefined;
-  const page = await config.adapter.transaction(async (scope) => {
+  const page = await config.adapter.requestScope(async (scope) => {
     const fetched = enumerateForReadPolicy
       ? {
           result: await listFallbackRows(
@@ -358,6 +461,7 @@ export async function executeList(
                 page: 1,
                 per_page: undefined,
                 cursor: undefined,
+                keyset: undefined,
                 limit: undefined,
               },
             },
@@ -371,7 +475,7 @@ export async function executeList(
             has_prev_page: false,
           },
         }
-      : ((await config.adapter.list(scoped as never, scope)) as Page<Row>);
+      : await config.adapter.list(scoped, scope);
     await attachIncludes(resource, req, scoped.options.include, fetched.result, scope, {
       withDeleted: scoped.options.withDeleted ?? false,
     });
@@ -386,22 +490,15 @@ export async function executeList(
   let visiblePage: Page<Row> = page;
   if (enumerateForReadPolicy) {
     const options = scoped.options;
-    if (options.cursor !== undefined || options.limit !== undefined) {
-      const cursorField = options.order_by ?? resource.model.primaryKeys[0] ?? 'id';
-      const decoded = options.cursor === undefined ? undefined : resolveCursor(options.cursor);
-      const window =
-        decoded === undefined
-          ? readable
-          : readable.filter((row) => {
-              const value = row[cursorField];
-              return typeof value === 'number' ? value > Number(decoded) : String(value) > decoded;
-            });
-      const limit = options.limit ?? options.per_page ?? 20;
-      const cursorPage = buildCursorPageInfo(limit, window, cursorField, {
-        totalCount: readable.length,
-        cursorApplied: decoded !== undefined,
-      });
-      visiblePage = { result: cursorPage.items, result_info: cursorPage.result_info };
+    if (options.keyset) {
+      const ordered = [...readable].sort((a, b) => compareKeysetRows(options.keyset!, a, b));
+      const window = ordered.filter((row) => isAfterKeyset(options.keyset!, row));
+      visiblePage = buildKeysetPage(
+        options.limit ?? options.per_page ?? 20,
+        window,
+        options.keyset,
+        readable.length,
+      );
     } else {
       const currentPage = options.page ?? 1;
       const perPage = options.per_page ?? 20;
@@ -416,25 +513,39 @@ export async function executeList(
   }
 
   let rows = await applyComputedFieldsToArray(resource.model, visiblePage.result);
-  rows = rows.map((row) => maskFields(policyCtx, row, resource.model.policies) as Row);
+  rows = rows.map((row) => maskFields(policyCtx, row, resource.model.policies));
   rows = applyProfileToArray(resource.model, rows);
+  let output: unknown[] = rows;
   if (config.hooks?.transformList) {
     const ctx = buildHookContext(req, { tx: undefined });
-    rows = (await Promise.all(
-      rows.map((row) => config.hooks!.transformList!(ctx, row as never)),
-    )) as Row[];
+    output = await Promise.all(rows.map((row) => config.hooks!.transformList!(ctx, row)));
   }
   const selection = resolveSelection(resource, req);
-  if (selection) rows = applyFieldSelectionToArray(rows, selection) as Row[];
+  if (selection?.isActive && selection.fields.length > 0)
+    output = applyFieldSelectionToArray(output.map(parseRecord), selection);
 
-  const result: Page<Row> = { result: rows, result_info: visiblePage.result_info };
+  let result: Page<unknown> = { result: output, result_info: visiblePage.result_info };
   if (config.hooks?.afterList) {
     const ctx = buildHookContext(req, { tx: undefined });
-    await config.hooks.afterList(ctx, result as never);
+    result = (await config.hooks.afterList(ctx, result)) ?? result;
   }
 
   return {
     status: 200,
     body: envelopeOf(resource).success(result.result, result.result_info),
   };
+}
+
+function parseRecord(value: unknown): Row {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error('CRUD row transforms must return an object');
+  }
+  return Object.fromEntries(Object.entries(value));
+}
+
+function recordId(row: Row, field: string): string | number {
+  const value = row[field];
+  if (typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value)))
+    return value;
+  throw new Error(`Invalid primary key '${field}' returned by adapter`);
 }

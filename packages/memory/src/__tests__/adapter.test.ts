@@ -1,3 +1,4 @@
+import { resolveKeyset } from '@velajs/crud/query';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { AdapterScope } from '@velajs/crud/adapter';
 import { MEMORY_NOOP_TX, memoryAdapter } from '../adapter';
@@ -310,13 +311,19 @@ describe('memoryAdapter list', () => {
 
   it('walks pages with a keyset cursor (next-only, strictly-after boundary)', async () => {
     const adapter = users();
-    const first = await adapter.list({ filters: [], options: { limit: 2, order_by: 'id' } }, scope);
+    const first = await adapter.list(
+      { filters: [], options: { limit: 2, keyset: resolveKeyset(undefined, ['id'], 'asc') } },
+      scope,
+    );
     expect(first.result.map((r) => r.id)).toEqual(['a', 'b']);
     expect(first.result_info.has_next_page).toBe(true);
     expect(first.result_info.next_cursor).toBeDefined();
 
     const second = await adapter.list(
-      { filters: [], options: { limit: 2, order_by: 'id', cursor: first.result_info.next_cursor } },
+      {
+        filters: [],
+        options: { limit: 2, keyset: resolveKeyset(first.result_info.next_cursor, ['id'], 'asc') },
+      },
       scope,
     );
     expect(second.result.map((r) => r.id)).toEqual(['c']);

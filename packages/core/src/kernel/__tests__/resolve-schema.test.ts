@@ -1,3 +1,4 @@
+import { bindAdapter } from '../../adapter/contract';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { AdapterScope, CrudAdapter } from '../../adapter/contract';
@@ -16,8 +17,11 @@ function fakeAdapter(store: Map<string, Row>): CrudAdapter<Row> {
     }
     return null;
   };
-  return {
+  return bindAdapter({
     capabilities: new Set(),
+    async requestScope(fn) {
+      return fn({ tx: undefined });
+    },
     async transaction(fn) {
       return fn(scope);
     },
@@ -48,7 +52,7 @@ function fakeAdapter(store: Map<string, Row>): CrudAdapter<Row> {
         result_info: { page: 1, per_page: 20, has_next_page: false, has_prev_page: false },
       };
     },
-  };
+  });
 }
 
 const baseSchema = z.object({

@@ -1,3 +1,4 @@
+import { defineCrudFeature } from '@velajs/crud';
 /**
  * Harbor inventory API — the full-surface @velajs/crud example.
  *
@@ -116,7 +117,7 @@ export class ContainersController {
       adapter: memoryAdapter({ tableName: 'berths', softDeleteField: 'deletedAt' }),
     }),
     CrudModule.forFeature([
-      { path: '/berths', model: Berth, only: ['create', 'list', 'read', 'delete'] },
+      defineCrudFeature({ path: '/berths', model: Berth, only: ['create', 'list', 'read', 'delete'] }),
     ]),
   ],
 })

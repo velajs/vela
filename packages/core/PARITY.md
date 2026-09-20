@@ -351,10 +351,10 @@ stores are **DI seams decoupled from the data adapter**: `VersioningStore` /
   a leg when a consumer needs it).
 - libsql caveat: transactions open a new connection, so `:memory:` databases
   are per-connection — tests use file-backed temp DBs.
-- Workers-pool conformance leg DEFERRED: the drizzle leg cannot run in
-  workerd (libsql client), and the edge guarantee is already machine-verified
-  by the openness/edge import audits over product sources. Revisit if a
-  D1-flavored adapter lands.
+- **D1**: basic scoped CRUD, compound cursors and read operations use ordinary
+  request scopes and atomic SQL statements. Real workerd D1 regression tests
+  run through Miniflare. JavaScript callback transactions are unsupported;
+  dependent multi-write/policy/hook workflows reject before writes.
 
 ## Gaps surfaced by downstream integration testing (2026-07-09)
 

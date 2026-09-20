@@ -1,3 +1,4 @@
+import { encodeKeyset, resolveKeyset, isAfterKeyset } from '../pagination';
 import { describe, expect, it } from 'vitest';
 import { InputValidationException } from '../../envelope/errors';
 import {
@@ -116,5 +117,37 @@ describe('buildCursorPageInfo', () => {
     const { result_info } = buildCursorPageInfo(3, rows, 'id');
     expect('total_count' in result_info).toBe(false);
     expect(result_info.has_prev_page).toBe(false);
+  });
+});
+
+// Compound tokens are the engine format; scalar utilities cannot forge one.
+describe('compound keyset tokens', () => {
+  it('roundtrips Unicode, dates, booleans and null boundaries', () => {
+    const date = new Date('2026-09-20T00:00:00Z');
+    const fields = ['name', 'time', 'flag', 'empty', 'id'];
+    const token = encodeKeyset(
+      { fields, direction: 'desc' },
+      { name: '東京🚀', time: date, flag: true, empty: null, id: 'a' },
+    );
+    expect(resolveKeyset(token, fields, 'desc').after).toEqual(['東京🚀', date, true, null, 'a']);
+  });
+
+  it('compares full tuples in both directions, with explicit null ordering', () => {
+    const asc = { fields: ['rank', 'id'], direction: 'asc' as const, after: [1, 'a'] };
+    expect(isAfterKeyset(asc, { rank: 1, id: 'b' })).toBe(true);
+    expect(isAfterKeyset(asc, { rank: 1, id: 'a' })).toBe(false);
+    expect(isAfterKeyset(asc, { rank: null, id: 'z' })).toBe(false);
+    expect(isAfterKeyset({ ...asc, direction: 'desc' }, { rank: null, id: 'z' })).toBe(true);
+  });
+
+  it('rejects wrong order, wrong arity, invalid dates and non-scalars', () => {
+    for (const values of [[1], [1, {}], [1, { date: 'bad' }]]) {
+      const token = btoa(
+        JSON.stringify({ v: 1, fields: ['rank', 'id'], direction: 'asc', values }),
+      );
+      expect(() => resolveKeyset(token, ['rank', 'id'], 'asc')).toThrow('Invalid cursor');
+    }
+    const token = encodeKeyset({ fields: ['rank', 'id'], direction: 'asc' }, { rank: 1, id: 'a' });
+    expect(() => resolveKeyset(token, ['rank', 'id'], 'desc')).toThrow('Invalid cursor');
   });
 });

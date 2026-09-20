@@ -8,12 +8,11 @@
  * Reads: parse → tenant scope + policy pushdown → adapter op → read-policy
  * (row filter/404 + field mask) → read-shaping → envelope.
  *
- * Every adapter call runs inside `adapter.transaction()` — the only scope
- * source. Memory's scope is a free no-op sentinel; SQL adapters get the
- * atomicity the hook contract promises (two-snapshot after-hooks observe
- * pre-mutation state in the same transaction).
+ * Read calls use `adapter.requestScope()`. Operations requiring rollback use
+ * `adapter.transaction()`; D1 rejects unsupported callback transactions.
  */
 
+import type { ZodObject, ZodRawShape } from 'zod';
 import type { AdapterScope, TransactionContext } from '../adapter/contract';
 import type { FilterCondition, ListQuery, Lookup, Page } from '../adapter/query-types';
 import {
@@ -42,13 +41,8 @@ import type { CrudResource } from './resource';
 
 type Row = Record<string, unknown>;
 
-/**
- * Executors are written against the type-erased resource: internally every
- * row is a `Record<string, unknown>`, and `execute()` erases once at its
- * boundary (adapter method parameter positions make `CrudResource<T>`
- * effectively invariant, so `CrudResource<never>` is not a usable bottom).
- */
-export type AnyResource = CrudResource<Row>;
+/** Runtime resources have schema-validated row and hook boundaries. */
+export type AnyResource = CrudResource;
 
 /** Hard ceiling for any engine-side scan used to emulate a native operation. */
 export const MAX_FALLBACK_SCAN = 1_000;
@@ -179,19 +173,10 @@ export function passesPushdown(row: Row, conditions: FilterCondition[]): boolean
   return conditions.every((condition) => matchesFilter(row[condition.field], condition));
 }
 
-export function parseBody(
-  schema: { safeParse(v: unknown): { success: boolean; data?: unknown; error?: unknown } },
-  body: unknown,
-): Row {
+export function parseBody(schema: ZodObject<ZodRawShape>, body: unknown): Row {
   const parsed = schema.safeParse(body ?? {});
-  if (!parsed.success) {
-    throw InputValidationException.fromZodError(
-      parsed.error as {
-        issues: Array<{ path: Array<PropertyKey>; message: string; code: string }>;
-      },
-    );
-  }
-  return parsed.data as Row;
+  if (!parsed.success) throw InputValidationException.fromZodError(parsed.error);
+  return parsed.data;
 }
 
 /**
@@ -211,10 +196,10 @@ export async function shapeOne(
   const primaryKey = resource.model.primaryKeys[0] ?? 'id';
   await assertReadAllowed(resource, policyCtx, row, String(row[primaryKey] ?? ''));
   let shaped = await applyComputedFields(resource.model, row);
-  shaped = maskFields(policyCtx, shaped, resource.model.policies) as Row;
+  shaped = maskFields(policyCtx, shaped, resource.model.policies);
   shaped = applyProfile(resource.model, shaped);
   const selection = resolveSelection(resource, req);
-  if (selection) shaped = applyFieldSelection(shaped, selection) as Row;
+  if (selection) shaped = applyFieldSelection(shaped, selection);
   return shaped;
 }
 
@@ -292,7 +277,7 @@ export async function attachIncludes(
     const policyCtx = buildPolicyContext(req);
     for (const row of rows) {
       const bucket = loaded.get(row[parentJoinField]) ?? [];
-      let shaped = (bucket as Row[]).filter((record) => {
+      let shaped = bucket.filter((record) => {
         if (
           targetTenantField !== undefined &&
           (!Object.hasOwn(record, targetTenantField) ||
@@ -312,9 +297,7 @@ export async function attachIncludes(
         );
         shaped = await filterReadable(policyCtx, shaped, responseModel.policies);
         shaped = await applyComputedFieldsToArray(responseModel, shaped);
-        shaped = shaped.map(
-          (record) => maskFields(policyCtx, record, responseModel.policies) as Row,
-        );
+        shaped = shaped.map((record) => maskFields(policyCtx, record, responseModel.policies));
         shaped = applyProfileToArray(responseModel, shaped);
       }
       row[name] = relation.type === 'hasMany' ? shaped : (shaped[0] ?? null);
@@ -369,13 +352,13 @@ export async function listFallbackRows(
   query: ListQuery,
   scope: AdapterScope,
 ): Promise<Row[]> {
-  const page = (await resource.config.adapter.list(
+  const page = await resource.config.adapter.list(
     {
       filters: query.filters,
       options: { ...query.options, page: 1, per_page: MAX_FALLBACK_SCAN },
     },
     scope,
-  )) as Page<Row>;
+  );
   const total = page.result_info.total_count;
   if (
     (typeof total === 'number' && total > MAX_FALLBACK_SCAN) ||

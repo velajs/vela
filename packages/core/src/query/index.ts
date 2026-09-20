@@ -29,6 +29,13 @@ export {
 
 export {
   buildCursorPageInfo,
+  buildKeysetPage,
+  compareKeysetRows,
+  compareCursorValues,
+  cursorValue,
+  encodeKeyset,
+  isAfterKeyset,
+  resolveKeyset,
   buildOffsetPageInfo,
   CURSOR_KEYSET_DEFAULT,
   decodeCursor,

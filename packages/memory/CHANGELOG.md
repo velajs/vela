@@ -1,5 +1,11 @@
 # @velajs/crud-memory
 
+## 2.0.0
+
+Memory adapter aligned with Vela 2.0 CRUD contracts and compound cursor conformance.
+
+Requires the coordinated Vela 2.0 package set. See the workspace migration guide.
+
 ## 1.19.1
 
 ### Patch Changes

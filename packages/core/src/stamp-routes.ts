@@ -6,11 +6,11 @@
  * and OpenAPI via the ordinary controller walk. No RouteContributor.
  *
  * Synthesized methods have no `design:paramtypes`, so each stamped parameter
- * carries its DTO class as an explicit `metatype` (vela >= 1.18 reads it in
+ * carries its DTO descriptor as an explicit `metatype` (Vela reads it in
  * ValidationPipe and the OpenAPI walk).
  */
 
-import type { Context } from 'hono';
+import { Context } from 'hono';
 import {
   ApiDoc,
   ApiResponse,
@@ -23,14 +23,17 @@ import {
   Post,
   Put,
   UseGuards,
+  defineDto,
   defineMetadata,
   getMetadata,
   getRequestContainer,
   METADATA_KEYS,
+  type DtoDefinition,
+  type InjectionToken,
 } from '@velajs/vela';
-import type { CrudAdapter } from './adapter/contract';
+import type { RuntimeAdapter } from './adapter/contract';
 import { ConfigurationException } from './envelope/errors';
-import { defineResource, type CrudResource, type ResourceConfig } from './kernel/resource';
+import { compileResource, type CrudResource, type RuntimeResourceConfig } from './kernel/resource';
 import { deriveCreateSchema, deriveUpdateSchema } from './model/schema-derive';
 import { deriveRouteName, deriveVerbNaming } from './naming';
 import { buildEngineRequest, toResponse } from './request-flow';
@@ -39,19 +42,35 @@ import {
   CRUD_DEFAULT_AUDIT_STORE,
   CRUD_DEFAULT_VERSIONING_STORE,
 } from './crud.tokens';
-import { MissingTenantResolverError, resourceNames, type CrudConfig } from './crud.types';
+import {
+  MissingTenantResolverError,
+  registerCrudConfig,
+  resourceNames,
+  type RuntimeCrudConfig,
+} from './crud.types';
 import { buildLiveStamper, type LiveStamper } from './live-bridge';
 import { implementedEndpoints } from './kernel/extended/registry';
 import { CRUD_ROUTES, resolveEnabledEndpoints, type CrudEndpointName } from './verb-table';
-import { createZodDto } from '@velajs/vela';
 
 const OVERRIDES_KEY = 'velajs:crud:overrides';
 
 /** Read the `@Override(verb)` map stamped on a controller class. */
 export function getOverrides(target: object): Partial<Record<CrudEndpointName, string | symbol>> {
-  return (
-    (getMetadata(OVERRIDES_KEY, target) as Partial<Record<CrudEndpointName, string | symbol>>) ?? {}
-  );
+  const metadata = getMetadata(OVERRIDES_KEY, target);
+  if (metadata === undefined) return {};
+  if (metadata === null || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    throw new ConfigurationException('CRUD override metadata must be an endpoint-to-method map');
+  }
+  const overrides: Partial<Record<CrudEndpointName, string | symbol>> = {};
+  const entries: [string, unknown][] = Object.entries(metadata);
+  for (const [name, method] of entries) {
+    const endpoint = CRUD_ROUTES.find(([candidate]) => candidate === name)?.[0];
+    if (endpoint === undefined || (typeof method !== 'string' && typeof method !== 'symbol')) {
+      throw new ConfigurationException(`Invalid CRUD override metadata for '${name}'`);
+    }
+    overrides[endpoint] = method;
+  }
+  return overrides;
 }
 
 export function recordOverride(
@@ -67,14 +86,17 @@ const ROUTE_DECORATORS = { get: Get, post: Post, put: Put, patch: Patch, delete:
 const pascal = (s: string): string =>
   s.replace(/(?:^|[^a-zA-Z0-9]+)([a-zA-Z0-9])/g, (_m, c: string) => c.toUpperCase());
 
-type Ctor = new (...args: never[]) => unknown;
+type Ctor = {
+  new (...args: never[]): unknown;
+  readonly prototype: object;
+};
 
 /**
  * Applies the full CRUD stamping to a controller class. Called by the
  * `@Crud()` class decorator and by `synthesizeController` (headless
  * resources) — one implementation, two entry points.
  */
-export function stampCrudRoutes(controller: Ctor, config: CrudConfig): void {
+export function stampCrudRoutes(controller: Ctor, config: RuntimeCrudConfig): void {
   const model = config.model;
   const names = resourceNames(config);
 
@@ -100,10 +122,10 @@ export function stampCrudRoutes(controller: Ctor, config: CrudConfig): void {
 
   // DTO bridge — derived once per class, adapter-independent.
   const base = pascal(names.singular);
-  const createDto = createZodDto(config.dto?.create ?? deriveCreateSchema(model), {
+  const createDto = defineDto(config.dto?.create ?? deriveCreateSchema(model), {
     name: `Create${base}Dto`,
   });
-  const updateDto = createZodDto(
+  const updateDto = defineDto(
     config.dto?.update ?? deriveUpdateSchema(model, config.updateFields ?? {}),
     { name: `Update${base}Dto` },
   );
@@ -115,19 +137,20 @@ export function stampCrudRoutes(controller: Ctor, config: CrudConfig): void {
     if (compiled) return compiled;
     const adapter =
       config.adapter ??
-      tryResolveDefaultAdapter(c) ??
+      tryResolveDefault(c, CRUD_DEFAULT_ADAPTER)?.runtime ??
       raiseNoAdapter(controller.name, names.singular);
     const engineConfig = toEngineConfig(config, adapter);
     // Fall back to the forRoot default stores (like the adapter) when the
     // resource does not provide its own.
     engineConfig.versioningStore ??= tryResolveDefault(c, CRUD_DEFAULT_VERSIONING_STORE);
     engineConfig.auditStore ??= tryResolveDefault(c, CRUD_DEFAULT_AUDIT_STORE);
-    compiled = defineResource(names.singular, engineConfig);
+    compiled = compileResource(names.singular, engineConfig);
     return compiled;
   };
 
   const overrides = getOverrides(controller);
   const liveStamper = buildLiveStamper(config);
+  registerCrudConfig(controller, config);
   defineMetadata(METADATA_KEYS.CRUD, config, controller);
   ApiTags(...(config.tags ?? [names.plural]))(controller);
 
@@ -138,35 +161,36 @@ export function stampCrudRoutes(controller: Ctor, config: CrudConfig): void {
     const handlerName = overrideMethod ?? `crud$${endpoint}`;
 
     if (overrideMethod === undefined) {
-      defineHandler(
-        controller,
-        handlerName as string,
-        endpoint,
-        method,
-        resolveResource,
-        liveStamper,
-      );
-      stampParams(controller, handlerName as string, endpoint, createDto, updateDto);
+      defineHandler(controller, handlerName, endpoint, method, resolveResource, liveStamper);
+      stampParams(controller, handlerName, endpoint, createDto, updateDto);
     }
 
     // Route (real metadata → RouteManager first pass) + name for urlFor.
     const decorate = ROUTE_DECORATORS[method];
+    const proto = controller.prototype;
+    const handler: unknown = Reflect.get(proto, handlerName);
+    if (typeof handler !== 'function') {
+      throw new ConfigurationException(
+        `${controller.name}: CRUD override '${String(handlerName)}' must be a method`,
+      );
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(proto, handlerName) ?? {
+      value: handler,
+      writable: true,
+      configurable: true,
+    };
     decorate(subPath, { name: deriveRouteName(names.singular, endpoint) })(
-      controller.prototype as object,
+      proto,
       handlerName,
-      Object.getOwnPropertyDescriptor(controller.prototype, handlerName) ?? {
-        value: (controller.prototype as Record<string | symbol, unknown>)[handlerName],
-        writable: true,
-        configurable: true,
-      },
+      descriptor,
     );
 
     const naming = deriveVerbNaming(endpoint, names.singular, names.plural);
     if (naming) {
       ApiDoc({ operationId: naming.operationId, summary: naming.summary })(
-        controller.prototype as object,
+        proto,
         handlerName,
-        Object.getOwnPropertyDescriptor(controller.prototype, handlerName) as never,
+        descriptor,
       );
     }
 
@@ -174,21 +198,18 @@ export function stampCrudRoutes(controller: Ctor, config: CrudConfig): void {
     // success (201 create, 200 otherwise), 404 for id-addressed verbs, and
     // 400 for body-validated ones.
     const shape = VERB_SHAPES[endpoint];
-    const descriptor = () =>
-      Object.getOwnPropertyDescriptor(controller.prototype, handlerName) as never;
-    const proto = controller.prototype as object;
     ApiResponse(endpoint === 'create' ? 201 : 200, {
       description: naming?.summary ?? `${endpoint} ${names.singular}`,
-    })(proto, handlerName, descriptor());
+    })(proto, handlerName, descriptor);
     if (shape.id) {
       ApiResponse(404, { description: `${names.singular} not found` })(
         proto,
         handlerName,
-        descriptor(),
+        descriptor,
       );
     }
     if (shape.body) {
-      ApiResponse(400, { description: 'Validation failed' })(proto, handlerName, descriptor());
+      ApiResponse(400, { description: 'Validation failed' })(proto, handlerName, descriptor);
     }
 
     // Per-endpoint guards: the same metadata a hand-written @UseGuards on this
@@ -203,7 +224,7 @@ export function stampCrudRoutes(controller: Ctor, config: CrudConfig): void {
 
 function defineHandler(
   controller: Ctor,
-  handlerName: string,
+  handlerName: string | symbol,
   endpoint: CrudEndpointName,
   method: string,
   resolveResource: (c: Context) => CrudResource,
@@ -261,7 +282,10 @@ function buildVerbHandler(
     const id = shape.id ? String(args[cursor++]) : undefined;
     const version = shape.version ? String(args[cursor++]) : undefined;
     const body = shape.body ? args[cursor++] : undefined;
-    const ctx = args[cursor] as Context;
+    const ctx = args[cursor];
+    if (!(ctx instanceof Context)) {
+      throw new ConfigurationException('A generated CRUD handler requires a Hono Context');
+    }
     const resource = resolveResource(ctx);
     const result = await resource.execute(
       endpoint,
@@ -279,13 +303,13 @@ function buildVerbHandler(
 
 function stampParams(
   controller: Ctor,
-  handlerName: string,
+  handlerName: string | symbol,
   endpoint: CrudEndpointName,
-  createDto: unknown,
-  updateDto: unknown,
+  createDto: DtoDefinition<unknown>,
+  updateDto: DtoDefinition<unknown>,
 ): void {
   const add = (param: { index: number; type: string; name?: string; metatype?: unknown }): void =>
-    MetadataRegistry.addParameter(controller as never, handlerName, param as never);
+    MetadataRegistry.addParameter(controller, handlerName, param);
 
   const shape = VERB_SHAPES[endpoint];
   let index = 0;
@@ -302,24 +326,10 @@ function stampParams(
   add({ index, type: ParamType.REQUEST });
 }
 
-function tryResolveDefaultAdapter(c: Context): CrudAdapter | undefined {
-  try {
-    return getRequestContainer(c).resolve(CRUD_DEFAULT_ADAPTER);
-  } catch {
-    return undefined;
-  }
-}
-
 /** Resolve a forRoot default store from the request container, or `undefined`. */
-function tryResolveDefault<T>(
-  c: Context,
-  token: Parameters<ReturnType<typeof getRequestContainer>['resolve']>[0],
-): T | undefined {
-  try {
-    return getRequestContainer(c).resolve(token) as T | undefined;
-  } catch {
-    return undefined;
-  }
+function tryResolveDefault<T>(c: Context, token: InjectionToken<T>): T | undefined {
+  const container = getRequestContainer(c);
+  return container.has(token) ? container.resolve(token) : undefined;
 }
 
 function raiseNoAdapter(controllerName: string, resource: string): never {
@@ -329,8 +339,11 @@ function raiseNoAdapter(controllerName: string, resource: string): never {
   );
 }
 
-/** Maps the consumer config onto the engine's `ResourceConfig`. */
-export function toEngineConfig(config: CrudConfig, adapter: CrudAdapter): ResourceConfig {
+/** Maps the validated consumer config onto the engine's runtime configuration. */
+export function toEngineConfig(
+  config: RuntimeCrudConfig,
+  adapter: RuntimeAdapter,
+): RuntimeResourceConfig {
   return {
     model: config.model,
     adapter,

@@ -4,6 +4,8 @@
 
 export {
   ADAPTER_CAPABILITIES,
+  bindAdapter,
+  type RuntimeAdapter,
   CAPABILITY_MEMBERS,
   type AdapterCapability,
   type AdapterScope,

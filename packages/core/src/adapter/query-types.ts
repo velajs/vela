@@ -93,6 +93,15 @@ export type AggregateOperation = (typeof AGGREGATE_OPERATIONS)[number];
 // List queries and pages
 // ---------------------------------------------------------------------------
 
+export type CursorValue = string | number | boolean | null | Date;
+
+/** Engine-validated keyset order, including every primary key as a tie-breaker. */
+export interface Keyset {
+  fields: string[];
+  direction: SortDirection;
+  after?: CursorValue[];
+}
+
 /** Options accompanying a list query (parity: hono-crud `ListOptions`). */
 export interface ListOptions {
   page?: number;
@@ -110,6 +119,8 @@ export interface ListOptions {
   fields?: string[];
   /** Opaque cursor for keyset pagination. */
   cursor?: string;
+  /** Decoded at the engine boundary; adapters never parse client cursors. */
+  keyset?: Keyset;
   /** Maximum items to return (cursor pagination). */
   limit?: number;
   /**

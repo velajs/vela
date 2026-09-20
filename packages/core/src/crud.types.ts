@@ -6,11 +6,11 @@
  * the surface downstream translators emit.
  */
 
-import type { CrudAdapter } from './adapter/contract';
+import type { CrudAdapter, RuntimeAdapter } from './adapter/contract';
 import type { FilterConfig, SortSpec } from './adapter/query-types';
 import type { ErrorMapper, ResponseEnvelope } from './envelope/envelope';
-import type { CrudHooks, HookModeConfig } from './kernel/hook-types';
-import type { ResourceConfig, ResourcePaginationConfig } from './kernel/resource';
+import type { CrudHooks, HookModeConfig, SchemaHooks } from './kernel/hook-types';
+import type { RuntimeResourceConfig, ResourcePaginationConfig } from './kernel/resource';
 import type { Model } from './model/model.types';
 import type { VersioningStore } from './versioning/index';
 import type { AuditStore } from './audit/index';
@@ -18,6 +18,7 @@ import type { CrudEndpointName } from './verb-table';
 import type { GuardType } from '@velajs/vela';
 import type { Context } from 'hono';
 import type { ZodObject, ZodRawShape } from 'zod';
+import { compileHooks } from './kernel/compile-hooks';
 
 /** Extra invalidation tags / room scoping for a live resource. */
 export interface CrudLiveConfig {
@@ -27,14 +28,14 @@ export interface CrudLiveConfig {
   room?: (c: Context) => string;
 }
 
-export interface CrudConfig<Row extends Record<string, unknown> = Record<string, unknown>> {
+export interface RuntimeCrudConfig {
   /** The normalized model (from `defineModel` / `defineModels`). */
   model: Model;
   /**
    * The data adapter. Optional when `CrudModule.forRoot({ adapter })`
    * provides a default — resolved per request from the DI container.
    */
-  adapter?: CrudAdapter<Row>;
+  adapter?: RuntimeAdapter;
   /**
    * Resource name for route names, operationIds, and tags. Defaults to
    * `model.name`; `namePlural` defaults to `model.namePlural`.
@@ -55,29 +56,29 @@ export interface CrudConfig<Row extends Record<string, unknown> = Record<string,
    * Programmatic `resource.execute` dispatch bypasses HTTP guards by design.
    */
   guards?: Partial<Record<CrudEndpointName, GuardType[]>>;
-  hooks?: CrudHooks<Row> & HookModeConfig;
+  hooks?: CrudHooks<Record<string, unknown>> & HookModeConfig;
   filterFields?: string[];
   filterConfig?: FilterConfig;
   sortFields?: string[];
   defaultSort?: SortSpec;
   searchFields?: string[];
   allowedIncludes?: string[];
-  fieldSelection?: ResourceConfig<Row>['fieldSelection'];
+  fieldSelection?: RuntimeResourceConfig['fieldSelection'];
   pagination?: ResourcePaginationConfig;
   /** ETag/If-Match optimistic concurrency (read ETag + 304; update If-Match → 409). */
-  etag?: ResourceConfig<Row>['etag'];
+  etag?: RuntimeResourceConfig['etag'];
   /** Insert-or-update conflict target for the upsert family. */
-  upsert?: ResourceConfig<Row>['upsert'];
+  upsert?: RuntimeResourceConfig['upsert'];
   /** Source fields cleared before a clone insert (model/db defaults reapply). */
-  clone?: ResourceConfig<Row>['clone'];
+  clone?: RuntimeResourceConfig['clone'];
   /** Batch verb limits. */
-  batch?: ResourceConfig<Row>['batch'];
+  batch?: RuntimeResourceConfig['batch'];
   /** Filtered bulk patch limits + confirmation threshold. */
-  bulkPatch?: ResourceConfig<Row>['bulkPatch'];
+  bulkPatch?: RuntimeResourceConfig['bulkPatch'];
   /** /search weighted-field configuration (falls back to `searchFields`). */
-  search?: ResourceConfig<Row>['search'];
+  search?: RuntimeResourceConfig['search'];
   /** /aggregate validation configuration. */
-  aggregate?: ResourceConfig<Row>['aggregate'];
+  aggregate?: RuntimeResourceConfig['aggregate'];
   /** Request-body schema overrides (else derived from the model schema). */
   dto?: { create?: ZodObject<ZodRawShape>; update?: ZodObject<ZodRawShape> };
   updateFields?: { allowed?: string[]; blocked?: string[] };
@@ -110,6 +111,34 @@ export interface CrudConfig<Row extends Record<string, unknown> = Record<string,
   tenantResolverMounted?: boolean;
 }
 
+/** Schema-bound public authoring surface. Hooks are compiled before metadata storage. */
+export interface CrudConfig<Shape extends ZodRawShape = ZodRawShape> extends Omit<
+  RuntimeCrudConfig,
+  'model' | 'adapter' | 'hooks'
+> {
+  model: Model<ZodObject<Shape>>;
+  adapter?: Pick<CrudAdapter, 'runtime'>;
+  hooks?: SchemaHooks<Shape>;
+}
+
+export function compileCrudConfig<Shape extends ZodRawShape>(
+  config: CrudConfig<Shape>,
+): RuntimeCrudConfig {
+  return {
+    ...config,
+    adapter: config.adapter?.runtime,
+    hooks: compileHooks(config.model.schema, config.hooks),
+  };
+}
+
+const compiledConfigs = new WeakMap<object, RuntimeCrudConfig>();
+export function registerCrudConfig(target: object, config: RuntimeCrudConfig): void {
+  compiledConfigs.set(target, config);
+}
+export function registeredCrudConfig(target: object): RuntimeCrudConfig | undefined {
+  return compiledConfigs.get(target);
+}
+
 /**
  * Thrown at decoration/definition time when a tenant-scoped model is mounted
  * without affirming `tenantResolverMounted: true` (previous-bridge parity —
@@ -134,7 +163,7 @@ export class MissingTenantResolverError extends Error {
 }
 
 /** Resolved singular/plural naming for a resource config. */
-export function resourceNames(config: Pick<CrudConfig, 'model' | 'name' | 'namePlural'>): {
+export function resourceNames(config: Pick<RuntimeCrudConfig, 'model' | 'name' | 'namePlural'>): {
   singular: string;
   plural: string;
 } {

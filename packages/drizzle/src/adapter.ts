@@ -1,11 +1,12 @@
+import { bindAdapter } from '@velajs/crud/adapter';
 /**
  * `@velajs/crud-drizzle` — Drizzle ORM `CrudAdapter` (sqlite / pg / mysql).
  *
  * Cross-adapter semantics mirror the memory reference adapter: soft-delete
  * visibility, literal-needle inline search, strictly-after keyset cursors
- * with `page: 0`, lenient malformed-cursor fallback. All methods operate on
+ * with `page: 0` and engine-validated compound boundaries. All methods operate on
  * `(scope.tx ?? db)` so everything the engine wraps in `transaction()` is
- * atomic.
+ * atomic. D1 uses ordinary request scopes and single-statement mutations.
  *
  * Capability honesty:
  * - NO `nativeSearch` — hono-crud's drizzle search was LIKE-based; the
@@ -17,7 +18,17 @@
  *   follows hono-crud's insertId pattern but is NOT exercised by tests.
  */
 
-import { asc as drizzleAsc, desc as drizzleDesc, eq, isNull, sql } from 'drizzle-orm';
+import {
+  asc as drizzleAsc,
+  desc as drizzleDesc,
+  eq,
+  gt,
+  lt,
+  isNotNull,
+  isNull,
+  sql,
+} from 'drizzle-orm';
+import type { DrizzleD1Database } from 'drizzle-orm/d1';
 import type {
   AdapterCapability,
   AdapterScope,
@@ -31,17 +42,18 @@ import type {
   NestedWriteDriver,
   NestedWriteOperations,
   Page,
-  PageInfo,
   ReadOptions,
   RelationLoadScope,
   RelationLoader,
   TransactionContext,
 } from '@velajs/crud/adapter';
-import { ConflictException } from '@velajs/crud';
-import { decodeCursor, encodeCursor } from '@velajs/crud/query';
+import { ConflictException, CrudException } from '@velajs/crud';
+import { buildKeysetPage } from '@velajs/crud/query';
 import {
   asDatabase,
+  readRow,
   type DrizzleDatabase,
+  type DrizzleHandle,
   type DrizzleDialect,
   type DrizzleSql,
   type DrizzleTable,
@@ -69,33 +81,39 @@ export interface DrizzleRelation {
   localKey?: string;
 }
 
-export interface DrizzleAdapterConfig {
-  /** A Drizzle database client (sqlite, pg, or mysql flavor). */
-  db: unknown;
-  /** @default 'sqlite' */
-  dialect?: DrizzleDialect;
+interface DrizzleAdapterOptions {
   table: DrizzleTable;
   /** @default 'id' */
   primaryKey?: string;
   /** Soft-delete column, when the model soft-deletes. */
   softDeleteField?: string;
   relations?: Record<string, DrizzleRelation>;
-  /**
-   * Called at the open of every ENGINE-opened transaction (the engine passes
-   * a `TransactionContext` on all verb dispatches), before any statement runs
-   * — the seam for per-transaction session state, e.g. a Postgres RLS GUC:
-   * `SELECT set_config('app.tenant_id', <tenant>, true)` via `tx.execute(...)`.
-   * CAUTION: `ctx.tenantId` is undefined on untenanted requests and
-   * non-tenant models — guard the GUC write
-   * (`if (ctx.tenantId !== undefined) ...`) or the RLS predicate gets a
-   * NULL/empty setting. Receives the raw Drizzle transaction handle. Not
-   * invoked for direct adapter calls that omit the context.
-   */
-  onOpenTransaction?: (tx: unknown, ctx: TransactionContext) => void | Promise<void>;
 }
+
+export type DrizzleAdapterConfig = DrizzleAdapterOptions &
+  (
+    | {
+        driver: 'd1';
+        dialect?: 'sqlite';
+        db: Pick<
+          DrizzleD1Database,
+          'select' | 'insert' | 'update' | 'delete' | 'batch' | 'transaction'
+        >;
+        onOpenTransaction?: never;
+      }
+    | {
+        driver?: 'transactional';
+        dialect?: DrizzleDialect;
+        db: DrizzleHandle;
+        /** Sets transaction-local context (including RLS); read scopes open a
+         * real transaction when configured, preserving tenant isolation. */
+        onOpenTransaction?: (tx: unknown, ctx: TransactionContext) => void | Promise<void>;
+      }
+  );
 
 const CAPABILITIES: ReadonlySet<AdapterCapability> = new Set([
   'transactions',
+  'atomicMutations',
   'databaseGeneratedId',
   'cursor',
   'aggregate',
@@ -119,8 +137,12 @@ function isUniqueViolation(err: unknown): boolean {
   // signal lives down the `cause` chain, so walk it.
   let current: unknown = err;
   for (let depth = 0; current !== null && current !== undefined && depth < 5; depth++) {
-    const e = current as { message?: unknown; code?: unknown; errno?: unknown; cause?: unknown };
-    const message = String(e.message ?? '');
+    if (typeof current !== 'object') break;
+    const e = readRow(current);
+    const message = 'message' in current ? String(current.message) : '';
+    if ('code' in current) e.code = current.code;
+    if ('errno' in current) e.errno = current.errno;
+    if ('cause' in current) e.cause = current.cause;
     if (
       message.includes('UNIQUE constraint failed') ||
       message.includes('duplicate key value violates unique constraint') || // pg message shape
@@ -142,7 +164,53 @@ function rethrowMapped(err: unknown): never {
   throw err;
 }
 
-export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig): CrudAdapter<R> {
+export function drizzleAdapter<R extends Row>(
+  config: DrizzleAdapterConfig & { parseRow: (value: unknown) => R },
+): CrudAdapter<R>;
+export function drizzleAdapter(config: DrizzleAdapterConfig): CrudAdapter<Row>;
+export function drizzleAdapter(
+  config: DrizzleAdapterConfig & { parseRow?: (value: unknown) => Row },
+): CrudAdapter<Row> {
+  const parseRow = config.parseRow ?? readRow;
+  if (
+    config.driver === 'd1' &&
+    ((config.dialect && config.dialect !== 'sqlite') || config.onOpenTransaction)
+  ) {
+    throw new Error('D1 requires sqlite and cannot use onOpenTransaction');
+  }
+  const capabilities =
+    config.driver === 'd1'
+      ? new Set(
+          [...CAPABILITIES].filter(
+            (cap) => cap !== 'transactions' && cap !== 'nestedWrites' && cap !== 'cascade',
+          ),
+        )
+      : config.dialect === 'mysql'
+        ? new Set([...CAPABILITIES].filter((cap) => cap !== 'atomicMutations'))
+        : CAPABILITIES;
+  const requestScope = async <T>(
+    fn: (scope: AdapterScope) => Promise<T>,
+    ctx?: TransactionContext,
+  ): Promise<T> => {
+    // Postgres RLS transaction-local settings must still govern reads.
+    if (config.onOpenTransaction) return transaction(fn, ctx);
+    return fn({ tx: undefined });
+  };
+  const transaction = async <T>(
+    fn: (scope: AdapterScope) => Promise<T>,
+    ctx?: TransactionContext,
+  ): Promise<T> => {
+    if (config.driver === 'd1')
+      throw new CrudException(
+        'D1 does not support callback transactions required by this operation',
+        400,
+        'TRANSACTION_UNSUPPORTED',
+      );
+    return rootDb.transaction(async (tx) => {
+      if (ctx !== undefined) await config.onOpenTransaction?.(tx, ctx);
+      return fn({ tx });
+    });
+  };
   const dialect: DrizzleDialect = config.dialect ?? 'sqlite';
   const table = config.table;
   const primaryKey = config.primaryKey ?? 'id';
@@ -170,16 +238,16 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
   const selectOne = async (
     db: DrizzleDatabase,
     where: DrizzleSql | undefined,
-  ): Promise<R | null> => {
-    const rows = (await db.select().from(table).where(where).limit(1)) as R[];
-    return rows[0] ?? null;
+  ): Promise<Row | null> => {
+    const rows = await db.select().from(table).where(where).limit(1);
+    return rows[0] ? parseRow(rows[0]) : null;
   };
 
-  const nested: NestedWriteDriver<R> = {
+  const nested: NestedWriteDriver<Row> = {
     async inspectNestedTargets(parent, relation, operations, scope) {
       const rel = requireRelation(config, relation);
       const db = handle(scope);
-      const parentKey = (parent as Row)[rel.localKey ?? primaryKey];
+      const parentKey = parent[rel.localKey ?? primaryKey];
       const fk = getColumn(rel.table, rel.foreignKey);
       const scopedWhere = (where: Row, mustBelongToParent: boolean): DrizzleSql | undefined =>
         andAll(
@@ -188,26 +256,26 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
           ),
           mustBelongToParent ? eq(fk, parentKey) : undefined,
         );
-      const find = async (where: Row, mustBelongToParent: boolean): Promise<R | null> => {
-        const rows = (await db
+      const find = async (where: Row, mustBelongToParent: boolean): Promise<Row | null> => {
+        const rows = await db
           .select()
           .from(rel.table)
           .where(scopedWhere(where, mustBelongToParent))
-          .limit(1)) as R[];
+          .limit(1);
         return rows[0] ?? null;
       };
       const inspect = async (
         selectors: Row[],
         mustBelongToParent: boolean,
-      ): Promise<Array<R | null>> => {
-        const rows: Array<R | null> = [];
+      ): Promise<Array<Row | null>> => {
+        const rows: Array<Row | null> = [];
         for (const selector of selectors) rows.push(await find(selector, mustBelongToParent));
         return rows;
       };
       const setDisconnect =
         operations.set === undefined
           ? []
-          : ((await db.select().from(rel.table).where(eq(fk, parentKey))) as R[]);
+          : await db.select().from(rel.table).where(eq(fk, parentKey));
       return {
         update: await inspect(
           (operations.update ?? []).map(({ where }) => where),
@@ -225,7 +293,7 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
     async createNested(parent, relation, records, scope) {
       const rel = requireRelation(config, relation);
       const db = handle(scope);
-      const parentKey = (parent as Row)[rel.localKey ?? primaryKey];
+      const parentKey = parent[rel.localKey ?? primaryKey];
       try {
         for (const record of records) {
           const row = {
@@ -242,7 +310,7 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
     async applyNested(parent, relation, operations: NestedWriteOperations, scope) {
       const rel = requireRelation(config, relation);
       const db = handle(scope);
-      const parentKey = (parent as Row)[rel.localKey ?? primaryKey];
+      const parentKey = parent[rel.localKey ?? primaryKey];
       const fk = getColumn(rel.table, rel.foreignKey);
       const matches = (where: Row): DrizzleSql | undefined =>
         andAll(
@@ -303,10 +371,10 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
   const cascade: CascadeDriver = {
     async countRelated(relation, parentKey, scope) {
       const rel = requireRelation(config, relation);
-      const rows = (await handle(scope)
+      const rows = await handle(scope)
         .select({ count: sql`count(*)` })
         .from(rel.table)
-        .where(eq(getColumn(rel.table, rel.foreignKey), parentKey))) as Array<{ count: unknown }>;
+        .where(eq(getColumn(rel.table, rel.foreignKey), parentKey));
       return Number(rows[0]?.count) || 0;
     },
     async deleteRelated(relation, parentKey, scope) {
@@ -328,14 +396,14 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
     },
   };
 
-  const relations: RelationLoader<R> = {
+  const relations: RelationLoader<Row> = {
     async load(rows, relation, loadScope: RelationLoadScope, scope) {
       const rel = requireRelation(config, relation);
       const db = handle(scope);
       const relatedJoinField = rel.type === 'belongsTo' ? (rel.localKey ?? 'id') : rel.foreignKey;
       const parentJoinField =
         rel.type === 'belongsTo' ? rel.foreignKey : (rel.localKey ?? primaryKey);
-      const wanted = [...new Set(rows.map((r) => (r as Row)[parentJoinField]))].filter(
+      const wanted = [...new Set(rows.map((r) => r[parentJoinField]))].filter(
         (v) => v !== null && v !== undefined,
       );
 
@@ -352,7 +420,7 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
           ? isNull(getColumn(rel.table, loadScope.excludeDeletedField))
           : undefined,
       );
-      const related = (await db.select().from(rel.table).where(conditions)) as Row[];
+      const related = await db.select().from(rel.table).where(conditions);
       for (const row of related) {
         const key = row[relatedJoinField];
         const bucket = grouped.get(key);
@@ -363,18 +431,10 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
     },
   };
 
-  return {
-    capabilities: CAPABILITIES,
-
-    async transaction<T>(
-      fn: (scope: AdapterScope) => Promise<T>,
-      ctx?: TransactionContext,
-    ): Promise<T> {
-      return rootDb.transaction(async (tx) => {
-        if (ctx !== undefined) await config.onOpenTransaction?.(tx, ctx);
-        return fn({ tx });
-      });
-    },
+  return bindAdapter({
+    capabilities,
+    requestScope,
+    transaction,
 
     async create(input, scope) {
       const db = handle(scope);
@@ -382,16 +442,16 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
         if (dialect === 'mysql') {
           // mysql has no RETURNING: insert then re-select by PK (client-supplied)
           // or insertId (database-generated). Written per hono-crud; UNTESTED.
-          const result = (await db.insert(table).values(input)) as { insertId?: number | string };
-          const pk = (input as Row)[primaryKey] ?? result.insertId;
+          const result = readRow(await db.insert(table).values(input));
+          const pk = input[primaryKey] ?? result.insertId;
           const row = await selectOne(db, eq(pkColumn(), pk));
           if (!row) throw new Error('drizzleAdapter: created row not found after insert');
           return row;
         }
-        const rows = (await db.insert(table).values(input).returning()) as R[];
+        const rows = await db.insert(table).values(input).returning();
         const created = rows[0];
         if (!created) throw new Error('drizzleAdapter: insert returned no row');
-        return created;
+        return parseRow(created);
       } catch (err) {
         rethrowMapped(err);
       }
@@ -404,6 +464,14 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
     async update(lookup, patch, scope) {
       const db = handle(scope);
       const where = lookupWhere(lookup, false);
+      if (dialect !== 'mysql') {
+        try {
+          const rows = await db.update(table).set(patch).where(where).returning();
+          return rows[0] ? parseRow(rows[0]) : null;
+        } catch (err) {
+          rethrowMapped(err);
+        }
+      }
       const existing = await selectOne(db, where);
       if (!existing) return null;
       try {
@@ -411,12 +479,23 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
       } catch (err) {
         rethrowMapped(err);
       }
-      return selectOne(db, eq(pkColumn(), (existing as Row)[primaryKey]));
+      return selectOne(db, eq(pkColumn(), existing[primaryKey]));
     },
 
     async delete(lookup, opts: DeleteOptions, scope) {
       const db = handle(scope);
       const where = lookupWhere(lookup, false);
+      if (dialect !== 'mysql') {
+        const rows =
+          opts.softDeleteField !== undefined
+            ? await db
+                .update(table)
+                .set({ [opts.softDeleteField]: Date.now() })
+                .where(where)
+                .returning()
+            : await db.delete(table).where(where).returning();
+        return rows[0] ? parseRow(rows[0]) : null;
+      }
       const existing = await selectOne(db, where);
       if (!existing) return null;
       if (opts.softDeleteField !== undefined) {
@@ -424,7 +503,7 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
           .update(table)
           .set({ [opts.softDeleteField]: Date.now() })
           .where(where);
-        return selectOne(db, eq(pkColumn(), (existing as Row)[primaryKey]));
+        return selectOne(db, eq(pkColumn(), existing[primaryKey]));
       }
       await db.delete(table).where(where);
       return existing;
@@ -433,20 +512,31 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
     async restore(lookup, scope) {
       if (config.softDeleteField === undefined) return null;
       const db = handle(scope);
+      if (dialect !== 'mysql') {
+        const rows = await db
+          .update(table)
+          .set({ [config.softDeleteField]: null })
+          .where(
+            andAll(lookupWhere(lookup, true), isNotNull(getColumn(table, config.softDeleteField))),
+          )
+          .returning();
+        return rows[0] ? parseRow(rows[0]) : null;
+      }
       // Deleted-aware lookup: match soft-deleted rows too.
       const existing = await selectOne(db, lookupWhere(lookup, true));
       if (!existing) return null;
-      if ((existing as Row)[config.softDeleteField] == null) return null; // not deleted
+      if (existing[config.softDeleteField] == null) return null; // not deleted
       await db
         .update(table)
         .set({ [config.softDeleteField]: null })
-        .where(eq(pkColumn(), (existing as Row)[primaryKey]));
-      return selectOne(db, eq(pkColumn(), (existing as Row)[primaryKey]));
+        .where(eq(pkColumn(), existing[primaryKey]));
+      return selectOne(db, eq(pkColumn(), existing[primaryKey]));
     },
 
-    async list(query: ListQuery, scope): Promise<Page<R>> {
+    async list(query: ListQuery, scope): Promise<Page<Row>> {
       const db = handle(scope);
       const { options } = query;
+      const searchTerm = options.search;
 
       const visibility =
         config.softDeleteField !== undefined
@@ -462,57 +552,64 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
         options.search && options.searchFields && options.searchFields.length > 0
           ? orAll(
               ...options.searchFields.map((field) =>
-                substringMatch(getColumn(table, field), options.search as string, dialect),
+                substringMatch(getColumn(table, field), searchTerm!, dialect),
               ),
             )
           : undefined;
 
       const where = andAll(buildWhere(table, query.filters, dialect), visibility, search);
 
-      const countRows = (await db
+      const countRows = await db
         .select({ count: sql`count(*)` })
         .from(table)
-        .where(where)) as Array<{ count: unknown }>;
+        .where(where);
       const totalCount = Number(countRows[0]?.count) || 0;
 
-      // Keyset cursor pagination (next-only, strictly-after, page 0).
-      if (options.cursor !== undefined || options.limit !== undefined) {
-        const cursorField = options.order_by ?? primaryKey;
+      if (options.cursor !== undefined || (options.limit !== undefined && !options.keyset))
+        throw new Error('Adapter cursors must be decoded by the engine');
+      if (options.keyset) {
+        const keyset = options.keyset;
         const limit = options.limit ?? options.per_page ?? 20;
-        let decoded: string | null = null;
-        if (options.cursor !== undefined) {
-          try {
-            decoded = decodeCursor(options.cursor);
-          } catch {
-            decoded = null; // start from the beginning (cross-adapter parity)
-          }
-        }
-        const column = getColumn(table, cursorField);
-        const windowWhere = andAll(
-          where,
-          decoded !== null ? sql`${column} > ${decoded}` : undefined,
-        );
-        const rows = (await db
+        const after = keyset.after;
+        const boundary =
+          after === undefined
+            ? undefined
+            : orAll(
+                ...keyset.fields.map((field, index) => {
+                  const column = getColumn(table, field);
+                  const value = after[index];
+                  const comparison =
+                    keyset.direction === 'asc'
+                      ? value === null
+                        ? isNotNull(column)
+                        : gt(column, value)
+                      : value === null
+                        ? sql`false`
+                        : orAll(lt(column, value), isNull(column));
+                  return andAll(
+                    ...keyset.fields
+                      .slice(0, index)
+                      .map((prefix, i) =>
+                        after[i] === null
+                          ? isNull(getColumn(table, prefix))
+                          : eq(getColumn(table, prefix), after[i]),
+                      ),
+                    comparison,
+                  );
+                }),
+              );
+        const order = keyset.fields.flatMap((field) => {
+          const column = getColumn(table, field);
+          const sort = keyset.direction === 'asc' ? drizzleAsc : drizzleDesc;
+          return [sort(sql`case when ${column} is null then 0 else 1 end`), sort(column)];
+        });
+        const rows = await db
           .select()
           .from(table)
-          .where(windowWhere)
-          .orderBy(drizzleAsc(column))
-          .limit(limit + 1)) as R[];
-
-        const pageItems = rows.slice(0, limit);
-        const hasNext = rows.length > limit;
-        const last = pageItems[pageItems.length - 1] as Row | undefined;
-        const info: PageInfo = {
-          page: 0,
-          per_page: limit,
-          total_count: totalCount,
-          has_next_page: hasNext,
-          has_prev_page: decoded !== null,
-          ...(hasNext && last !== undefined
-            ? { next_cursor: encodeCursor(String(last[cursorField])) }
-            : {}),
-        };
-        return { result: pageItems, result_info: info };
+          .where(andAll(where, boundary))
+          .orderBy(...order)
+          .limit(limit + 1);
+        return buildKeysetPage(limit, rows.map(parseRow), keyset, totalCount);
       }
 
       // Offset pagination.
@@ -525,10 +622,10 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
           options.order_by_direction === 'desc' ? drizzleDesc(column) : drizzleAsc(column),
         );
       }
-      const rows = (await builder.limit(perPage).offset((page - 1) * perPage)) as R[];
+      const rows = await builder.limit(perPage).offset((page - 1) * perPage);
       const totalPages = Math.ceil(totalCount / perPage);
       return {
-        result: rows,
+        result: rows.map(parseRow),
         result_info: {
           page,
           per_page: perPage,
@@ -544,7 +641,7 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
       const db = handle(scope);
       const where = buildWhere(table, spec.filters, dialect);
 
-      const fields = Object.create(null) as Record<string, DrizzleSql>;
+      const fields: Record<string, DrizzleSql> = {};
       const aggregations = spec.aggregations ?? [
         { operation: spec.operation, field: spec.field ?? '*' },
       ];
@@ -571,12 +668,12 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
       if (groupBy.length > 0) {
         builder = builder.groupBy(...groupBy.map((g) => getColumn(table, g)));
       }
-      const buckets = (await builder) as Array<Record<string, unknown>>;
+      const buckets = await builder;
       const aliases = aggregations.map((agg) => agg.alias ?? deriveAlias(agg.operation, agg.field));
 
       if (groupBy.length === 0) {
-        const first = buckets[0] ?? Object.create(null);
-        const values = Object.create(null) as Record<string, number | null>;
+        const first: Row = buckets[0] ?? {};
+        const values: Record<string, number | null> = {};
         for (const alias of aliases) {
           const value = Object.hasOwn(first, alias) ? first[alias] : undefined;
           values[alias] = value == null ? null : Number(value);
@@ -585,9 +682,9 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
       }
 
       const groups = buckets.map((bucket) => {
-        const key = Object.create(null) as Record<string, unknown>;
+        const key: Record<string, unknown> = {};
         for (const g of groupBy) key[g] = Object.hasOwn(bucket, g) ? bucket[g] : undefined;
-        const values = Object.create(null) as Record<string, number | null>;
+        const values: Record<string, number | null> = {};
         for (const alias of aliases) {
           const value = Object.hasOwn(bucket, alias) ? bucket[alias] : undefined;
           values[alias] = value == null ? null : Number(value);
@@ -597,23 +694,31 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
       return { groups, totalGroups: groups.length };
     },
 
-    async updateWhere(filters: FilterCondition[], patch, scope): Promise<BulkOutcome<R>> {
+    async updateWhere(filters: FilterCondition[], patch, scope): Promise<BulkOutcome<Row>> {
       const db = handle(scope);
       const visibility = softDeleteVisibility(false);
       const where = andAll(buildWhere(table, filters, dialect), visibility);
-      const matched = (await db.select().from(table).where(where)) as R[];
+      if (dialect !== 'mysql') {
+        try {
+          const rows = await db.update(table).set(patch).where(where).returning();
+          return { count: rows.length, records: rows.map(parseRow) };
+        } catch (err) {
+          rethrowMapped(err);
+        }
+      }
+      const matched = await db.select().from(table).where(where);
       if (matched.length === 0) return { count: 0, records: [] };
       try {
         await db.update(table).set(patch).where(where);
       } catch (err) {
         rethrowMapped(err);
       }
-      const pks = matched.map((row) => (row as Row)[primaryKey]);
-      const updated = (await db
+      const pks = matched.map((row) => row[primaryKey]);
+      const updated = await db
         .select()
         .from(table)
-        .where(orAll(...pks.map((pk) => eq(pkColumn(), pk))))) as R[];
-      return { count: updated.length, records: updated };
+        .where(orAll(...pks.map((pk) => eq(pkColumn(), pk))));
+      return { count: updated.length, records: updated.map(parseRow) };
     },
 
     async createMany(rows, scope) {
@@ -622,25 +727,24 @@ export function drizzleAdapter<R extends Row = Row>(config: DrizzleAdapterConfig
       try {
         if (dialect === 'mysql') {
           // Per-row insert + re-select (no RETURNING). UNTESTED.
-          const out: R[] = [];
+          const out: Row[] = [];
           for (const row of rows) {
             await db.insert(table).values(row);
-            const pk = (row as Row)[primaryKey];
+            const pk = row[primaryKey];
             const created = await selectOne(db, eq(pkColumn(), pk));
             if (created) out.push(created);
           }
           return out;
         }
-        return (await db.insert(table).values(rows).returning()) as R[];
+        return (await db.insert(table).values(rows).returning()).map(parseRow);
       } catch (err) {
         rethrowMapped(err);
       }
     },
 
-    nested,
-    cascade,
+    ...(config.driver === 'd1' ? {} : { nested, cascade }),
     relations,
-  };
+  });
 }
 
 function requireRelation(config: DrizzleAdapterConfig, relation: string): DrizzleRelation {

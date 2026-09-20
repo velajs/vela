@@ -36,7 +36,7 @@ export const conformanceSchema = z.object({
   email: z.email(),
   role: z.enum(CONFORMANCE_ROLES).default('user'),
   age: z.number().int().nullable().optional(),
-  deletedAt: z.string().nullable().optional(),
+  deletedAt: z.number().nullable().optional(),
   createdAt: z.number().optional(),
   updatedAt: z.number().optional(),
 });

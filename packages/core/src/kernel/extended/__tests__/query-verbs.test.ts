@@ -1,3 +1,4 @@
+import { bindAdapter, type RuntimeAdapter } from '../../../adapter/contract';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { AdapterCapability, AdapterScope, CrudAdapter } from '../../../adapter/contract';
@@ -71,8 +72,11 @@ function fakeAdapter(store: Map<string, Row>, opts: FakeOptions = {}) {
     return computeAggregateFallback(rows, spec);
   });
 
-  const adapter: CrudAdapter<Row> = {
+  const adapter: RuntimeAdapter = {
     capabilities: new Set(caps),
+    async requestScope(fn) {
+      return fn({ tx: undefined });
+    },
     async transaction(fn) {
       return fn(scopeSentinel);
     },
@@ -145,7 +149,7 @@ function fakeAdapter(store: Map<string, Row>, opts: FakeOptions = {}) {
   if (opts.nativeSearch) adapter.search = search;
   if (opts.nativeAggregate) adapter.aggregate = aggregate;
 
-  return { adapter, search, aggregate };
+  return { adapter: bindAdapter(adapter), search, aggregate };
 }
 
 const itemSchema = z.object({

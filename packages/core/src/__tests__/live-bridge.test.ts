@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { Controller, MetadataRegistry, Module, VelaFactory } from '@velajs/vela';
+import { Controller, MetadataRegistry, Module, VelaFactory, defineProvider } from '@velajs/vela';
 import { LiveInvalidation } from '@velajs/vela/live';
 import type { InvalidationCommand } from '@velajs/vela/live';
 import { Crud } from '../crud.decorator';
 import { crudLiveTag } from '../live-bridge';
 import { defineModel } from '../model/define-model';
 import { testAdapter } from './test-adapter';
+import type { CrudLiveConfig } from '../crud.types';
 
 type Row = Record<string, unknown>;
 
@@ -16,19 +17,22 @@ const itemSchema = z.object({
   deletedAt: z.number().nullable().optional(),
 });
 
-/** Duck-typed LiveInvalidation stand-in (the bridge deliberately avoids instanceof). */
+/** Real service instance, with a driver whose dispatched commands are observable. */
 function fakeInvalidation() {
   const calls: InvalidationCommand[] = [];
-  return {
-    calls,
-    invalidate: vi.fn(async (cmd: InvalidationCommand) => {
+  const service = new LiveInvalidation({
+    kind: 'local',
+    bind() {},
+    async dispatch(cmd) {
       calls.push(cmd);
       return { cursor: 42, epoch: 'epoch-1' };
-    }),
-  };
+    },
+  });
+  vi.spyOn(service, 'invalidate');
+  return Object.assign(service, { calls });
 }
 
-async function makeApp(live: boolean | object, withProvider = true) {
+async function makeApp(live: boolean | CrudLiveConfig, withProvider = true) {
   const store = new Map<string, Row>();
   const invalidation = fakeInvalidation();
 
@@ -41,13 +45,13 @@ async function makeApp(live: boolean | object, withProvider = true) {
       softDelete: true,
     }),
     adapter: testAdapter(store, 'deletedAt'),
-    live: live as never,
+    live,
   })
   class LiveItemsController {}
 
   @Module({
     controllers: [LiveItemsController],
-    providers: withProvider ? [{ provide: LiveInvalidation, useValue: invalidation }] : [],
+    providers: withProvider ? [defineProvider(LiveInvalidation, { useValue: invalidation })] : [],
   })
   class AppModule {}
 

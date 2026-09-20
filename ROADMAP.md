@@ -30,9 +30,10 @@ Downstream follow-ups unlocked by 1.19.0: delete
    adapter: decide crud-core vs sibling package vs vela-core per family.
    MCP is likely covered by `@velajs/cli mcp serve` — confirm, then won't-do
    here.
-3. **Workers-pool conformance leg** — deferred: the drizzle leg cannot run in
-   workerd (libsql client) and the edge guarantee is machine-verified by the
-   openness/edge import audits; revisit if a D1-flavored adapter lands.
+3. **D1 integration** — ordinary request scopes and single-statement CRUD now
+   run against real workerd D1 through Miniflare. Callback-transaction workflows
+   reject before writes. Full 22-verb D1 support requires dedicated atomic SQL
+   operations; D1 batches cannot implement JavaScript callback transactions.
 4. **mysql dialect leg** — written per hono-crud but UNTESTED (no embeddable
    server); add when a consumer needs the dialect.
 5. **Serialization-profile extensions** — hono-crud's `include`/

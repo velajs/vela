@@ -141,7 +141,12 @@ describe('runBeforeChain — parallel IGNORES returns (locked parity)', () => {
   it('returns the original data even though hooks return replacements', async () => {
     const original = { original: true };
     const replace = () => ({ replaced: true });
-    const out = await runBeforeChain('parallel', [replace, replace], ctx, original);
+    const out = await runBeforeChain<Record<string, boolean>>(
+      'parallel',
+      [replace, replace],
+      ctx,
+      original,
+    );
     expect(out).toBe(original); // same reference — no threading
   });
 

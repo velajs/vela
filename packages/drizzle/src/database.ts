@@ -1,35 +1,88 @@
 /**
- * The minimal structural surface this adapter needs from a Drizzle database.
- *
- * Drizzle's dialect-generic types are deliberately NOT threaded through here:
- * a single laundering boundary (this file) keeps the adapter source strictly
- * typed while accepting any of the three dialect clients (sqlite/pg/mysql) —
- * the exact pattern hono-crud's drizzle package used (`helpers.ts cast()`).
+ * Explicit reflection boundary for Drizzle's dialect-specific fluent builders.
+ * Only this module erases builder generics: Drizzle dynamically changes the
+ * builder type after each call, and its sqlite/pg/mysql clients have incompatible
+ * overloads. Rows stay records here; callers must decode before claiming a
+ * narrower row type. SQL and columns retain the upstream types.
  */
-
-/* eslint-disable @typescript-eslint/no-explicit-any */
+import type { AnyColumn, SQL, SQLWrapper, Table } from 'drizzle-orm';
+import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
+import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
+import type {
+  MySqlDatabase,
+  MySqlQueryResultHKT,
+  PreparedQueryHKTBase,
+} from 'drizzle-orm/mysql-core';
 
 export type DrizzleDialect = 'sqlite' | 'pg' | 'mysql';
+export type DrizzleTable = Table;
+export type DrizzleColumn = AnyColumn;
+export type DrizzleSql = SQLWrapper;
+type Row = Record<string, unknown>;
 
-/** A Drizzle table object (dialect-specific classes share this shape). */
-export type DrizzleTable = Record<string, unknown>;
-
-/** A Drizzle column, as returned by `getTableColumns(table)[name]`. */
-export type DrizzleColumn = any;
-
-/** SQL fragment / condition produced by drizzle operators. */
-export type DrizzleSql = any;
-
-/** The query-builder surface shared by db handles AND transaction handles. */
+interface SelectBuilder extends PromiseLike<Row[]> {
+  from(table: Table): SelectBuilder;
+  where(condition: SQLWrapper | undefined): SelectBuilder;
+  orderBy(...order: SQLWrapper[]): SelectBuilder;
+  groupBy(...columns: SQLWrapper[]): SelectBuilder;
+  limit(value: number): SelectBuilder;
+  offset(value: number): SelectBuilder;
+}
+interface MutationBuilder extends PromiseLike<unknown> {
+  where(condition: SQLWrapper | undefined): MutationBuilder;
+  returning(): PromiseLike<Row[]>;
+}
+interface InsertBuilder {
+  values(values: Row | Row[]): MutationBuilder;
+}
+interface UpdateBuilder {
+  set(values: Row): MutationBuilder;
+}
 export interface DrizzleDatabase {
-  select(fields?: any): any;
-  insert(table: any): any;
-  update(table: any): any;
-  delete(table: any): any;
-  transaction<T>(fn: (tx: any) => Promise<T>): Promise<T>;
+  select(fields?: Record<string, SQL | AnyColumn | SQLWrapper>): SelectBuilder;
+  insert(table: Table): InsertBuilder;
+  update(table: Table): UpdateBuilder;
+  delete(table: Table): MutationBuilder;
+  transaction<T>(fn: (tx: unknown) => Promise<T>): Promise<T>;
 }
 
-/** Launder an opaque scope.tx / db into the structural surface. */
+/** Trusted ORM reflection only. Never call with request payloads. */
 export function asDatabase(handle: unknown): DrizzleDatabase {
+  if (
+    typeof handle !== 'object' ||
+    handle === null ||
+    !('select' in handle) ||
+    typeof handle.select !== 'function' ||
+    !('insert' in handle) ||
+    typeof handle.insert !== 'function' ||
+    !('update' in handle) ||
+    typeof handle.update !== 'function' ||
+    !('delete' in handle) ||
+    typeof handle.delete !== 'function' ||
+    !('transaction' in handle) ||
+    typeof handle.transaction !== 'function'
+  ) {
+    throw new Error('Expected a Drizzle database handle');
+  }
+  // Deliberate ORM overload erasure, not a type guard proving builder signatures.
   return handle as DrizzleDatabase;
 }
+
+export function readRow(value: unknown): Row {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error('Expected a database row');
+  }
+  return Object.fromEntries(Object.entries(value));
+}
+
+/** Public clients are checked against upstream methods before overload erasure. */
+export type DrizzleHandle =
+  | Pick<
+      BaseSQLiteDatabase<'sync' | 'async', unknown>,
+      'select' | 'insert' | 'update' | 'delete' | 'transaction'
+    >
+  | Pick<PgDatabase<PgQueryResultHKT>, 'select' | 'insert' | 'update' | 'delete' | 'transaction'>
+  | Pick<
+      MySqlDatabase<MySqlQueryResultHKT, PreparedQueryHKTBase>,
+      'select' | 'insert' | 'update' | 'delete' | 'transaction'
+    >;

@@ -1,3 +1,4 @@
+import { defineCrudFeature } from '../synthesize-controller';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
@@ -233,7 +234,11 @@ describe('per-endpoint guards (config.guards)', () => {
       imports: [
         CrudModule.forRoot({ adapter: testAdapter(store, 'deletedAt') }),
         CrudModule.forFeature([
-          { path: '/things', model: makeModel({ name: 'thing' }), guards: { read: [DenyGuard] } },
+          defineCrudFeature({
+            path: '/things',
+            model: makeModel({ name: 'thing' }),
+            guards: { read: [DenyGuard] },
+          }),
         ]),
       ],
     })
@@ -295,10 +300,16 @@ describe('per-endpoint guards (config.guards)', () => {
   it('forwards clone.fieldsToReset to the engine (@Crud over HTTP)', async () => {
     const store = new Map<string, Row>();
     store.set('a', { id: 'a', name: 'Source', qty: 7 });
+    const cloneModel = defineModel({
+      name: 'item',
+      tableName: 'items',
+      schema: itemSchema.extend({ qty: itemSchema.shape.qty.optional() }),
+      softDelete: true,
+    });
 
     @Controller('/items')
     @Crud({
-      model: makeModel(),
+      model: cloneModel,
       adapter: testAdapter(store, 'deletedAt'),
       only: ['clone'],
       clone: { fieldsToReset: ['qty'] },
@@ -392,7 +403,9 @@ describe('CrudModule', () => {
     @Module({
       imports: [
         CrudModule.forRoot({ adapter: testAdapter(store, 'deletedAt') }),
-        CrudModule.forFeature([{ path: '/things', model: makeModel({ name: 'thing' }) }]),
+        CrudModule.forFeature([
+          defineCrudFeature({ path: '/things', model: makeModel({ name: 'thing' }) }),
+        ]),
       ],
     })
     class AppModule {}
@@ -422,11 +435,11 @@ describe('CrudModule', () => {
       imports: [
         CrudModule.forRoot({ adapter: testAdapter(defaultStore, 'deletedAt') }),
         CrudModule.forFeature([
-          {
+          defineCrudFeature({
             path: '/owned',
             model: makeModel({ name: 'owned' }),
             adapter: testAdapter(ownStore, 'deletedAt'),
-          },
+          }),
         ]),
       ],
     })

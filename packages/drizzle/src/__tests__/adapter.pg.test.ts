@@ -1,3 +1,4 @@
+import { resolveKeyset } from '@velajs/crud/query';
 /**
  * pg-dialect leg over PGlite (in-process Postgres): exercises the branches
  * the sqlite/libsql leg cannot — the pg substringMatch predicates
@@ -143,7 +144,10 @@ describe('drizzleAdapter pg leg (PGlite)', () => {
       await scopeOf((s) => adapter.create({ id, name: `Row ${id}` }, s));
     }
     const first = await scopeOf((s) =>
-      adapter.list({ filters: [], options: { limit: 2, cursorField: 'id' } }, s),
+      adapter.list(
+        { filters: [], options: { limit: 2, keyset: resolveKeyset(undefined, ['id'], 'asc') } },
+        s,
+      ),
     );
     expect(first.result.map((r) => r.id)).toEqual(['c1', 'c2']);
     expect(first.result_info.page).toBe(0);

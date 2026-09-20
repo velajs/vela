@@ -1,10 +1,10 @@
+import { bindAdapter } from '@velajs/crud/adapter';
 import type {
   AdapterCapability,
   AdapterScope,
   CascadeDriver,
   CrudAdapter,
   DeleteOptions,
-  FilterCondition,
   ListQuery,
   Lookup,
   NestedWriteDriver,
@@ -17,7 +17,13 @@ import type {
   TransactionContext,
 } from '@velajs/crud/adapter';
 import { ConflictException } from '@velajs/crud';
-import { decodeCursor, encodeCursor } from '@velajs/crud/query';
+import {
+  buildKeysetPage,
+  compareKeysetRows,
+  compareCursorValues,
+  cursorValue,
+  isAfterKeyset,
+} from '@velajs/crud/query';
 import { matchesFilter } from './filter';
 import { getStore } from './storage';
 
@@ -78,9 +84,21 @@ const CAPABILITIES: ReadonlySet<AdapterCapability> = new Set([
  * five core methods. Storage is module-level and shared across instances so
  * relations spanning tables resolve.
  */
-export function memoryAdapter<Row extends Record<string, unknown> = Record<string, unknown>>(
-  config: MemoryAdapterConfig,
+type Row = Record<string, unknown>;
+export function memoryAdapter<R extends Row>(
+  config: MemoryAdapterConfig & { parseRow: (value: unknown) => R },
+): CrudAdapter<R>;
+export function memoryAdapter(config: MemoryAdapterConfig): CrudAdapter<Row>;
+export function memoryAdapter(
+  config: MemoryAdapterConfig & { parseRow?: (value: unknown) => Row },
 ): CrudAdapter<Row> {
+  const parseRow =
+    config.parseRow ??
+    ((value: unknown): Row => {
+      if (typeof value !== 'object' || value === null || Array.isArray(value))
+        throw new Error('Invalid stored row');
+      return Object.fromEntries(Object.entries(value));
+    });
   const primaryKey = config.primaryKey ?? 'id';
   const table = () => getStore(config.tableName);
 
@@ -100,12 +118,14 @@ export function memoryAdapter<Row extends Record<string, unknown> = Record<strin
     const store = table();
     const candidates =
       lookup.field === primaryKey
-        ? ([store.get(lookup.value)].filter(Boolean) as Array<Record<string, unknown>>)
+        ? store.has(lookup.value)
+          ? [store.get(lookup.value)!]
+          : []
         : Array.from(store.values());
     for (const row of candidates) {
       if (!matchesLookup(row, lookup)) continue;
       if (!withDeleted && isSoftDeleted(row)) return null;
-      return row as Row;
+      return parseRow(row);
     }
     return null;
   };
@@ -114,12 +134,12 @@ export function memoryAdapter<Row extends Record<string, unknown> = Record<strin
     async inspectNestedTargets(parent, relation, operations, _scope) {
       const rel = requireRelation(config, relation);
       const relatedStore = getStore(rel.table);
-      const parentKey = (parent as Record<string, unknown>)[rel.localKey ?? primaryKey];
+      const parentKey = parent[rel.localKey ?? primaryKey];
       const find = (where: Record<string, unknown>, mustBelongToParent: boolean): Row | null => {
         for (const row of relatedStore.values()) {
           if (!rowMatches(row, where) || !rowMatches(row, operations.targetScope ?? {})) continue;
           if (mustBelongToParent && row[rel.foreignKey] !== parentKey) continue;
-          return { ...row } as Row;
+          return { ...row };
         }
         return null;
       };
@@ -136,13 +156,13 @@ export function memoryAdapter<Row extends Record<string, unknown> = Record<strin
             ? []
             : Array.from(relatedStore.values())
                 .filter((row) => row[rel.foreignKey] === parentKey)
-                .map((row) => ({ ...row }) as Row),
+                .map((row) => ({ ...row })),
       };
     },
     async createNested(parent, relation, records, _scope) {
       const rel = requireRelation(config, relation);
       const relatedStore = getStore(rel.table);
-      const parentKey = (parent as Record<string, unknown>)[rel.localKey ?? primaryKey];
+      const parentKey = parent[rel.localKey ?? primaryKey];
       for (const record of records) {
         const row = {
           ...record,
@@ -155,7 +175,7 @@ export function memoryAdapter<Row extends Record<string, unknown> = Record<strin
     async applyNested(parent, relation, operations: NestedWriteOperations, _scope) {
       const rel = requireRelation(config, relation);
       const relatedStore = getStore(rel.table);
-      const parentKey = (parent as Record<string, unknown>)[rel.localKey ?? primaryKey];
+      const parentKey = parent[rel.localKey ?? primaryKey];
       const scopedMatch = (row: Record<string, unknown>, where: Record<string, unknown>): boolean =>
         rowMatches(row, where) && rowMatches(row, operations.targetScope ?? {});
 
@@ -249,7 +269,7 @@ export function memoryAdapter<Row extends Record<string, unknown> = Record<strin
       const relatedJoinField = rel.type === 'belongsTo' ? (rel.localKey ?? 'id') : rel.foreignKey;
       const parentJoinField =
         rel.type === 'belongsTo' ? rel.foreignKey : (rel.localKey ?? primaryKey);
-      const wanted = new Set(rows.map((r) => (r as Record<string, unknown>)[parentJoinField]));
+      const wanted = new Set(rows.map((r) => r[parentJoinField]));
 
       const grouped = new Map<unknown, Array<Record<string, unknown>>>();
       for (const row of store.values()) {
@@ -286,7 +306,7 @@ export function memoryAdapter<Row extends Record<string, unknown> = Record<strin
       for (const [key, row] of table()) {
         if (excludeKey !== undefined && key === excludeKey) continue;
         const collides = tuple.every((column, i) => {
-          const rowValue = (row as Row)[column];
+          const rowValue = row[column];
           if (rowValue === null || rowValue === undefined) return false;
           return String(rowValue) === String(values[i]);
         });
@@ -305,8 +325,12 @@ export function memoryAdapter<Row extends Record<string, unknown> = Record<strin
       ? CAPABILITIES
       : new Set([...CAPABILITIES].filter((cap) => cap !== 'uniqueConstraints'));
 
-  return {
+  return bindAdapter({
     capabilities,
+
+    async requestScope(fn) {
+      return fn(NOOP_SCOPE);
+    },
 
     async transaction<T>(
       fn: (scope: AdapterScope) => Promise<T>,
@@ -316,8 +340,8 @@ export function memoryAdapter<Row extends Record<string, unknown> = Record<strin
     },
 
     async create(input, _scope) {
-      const row = { ...input } as Row;
-      const id = String((row as Record<string, unknown>)[primaryKey]);
+      const row = parseRow({ ...input });
+      const id = String(row[primaryKey]);
       // A duplicate PK must never silently overwrite (reachable since
       // id:'client' hands PK generation to the caller) — conflict like a
       // database unique constraint would.
@@ -341,8 +365,8 @@ export function memoryAdapter<Row extends Record<string, unknown> = Record<strin
     async update(lookup, patch, _scope) {
       const existing = findOne(lookup, false);
       if (!existing) return null;
-      const updated = { ...existing, ...patch } as Row;
-      const existingKey = String((existing as Record<string, unknown>)[primaryKey]);
+      const updated = parseRow({ ...existing, ...patch });
+      const existingKey = String(existing[primaryKey]);
       const violated = violatedUnique(updated, existingKey);
       if (violated) {
         throw new ConflictException(`Unique constraint violated on (${violated.join(', ')})`);
@@ -355,9 +379,9 @@ export function memoryAdapter<Row extends Record<string, unknown> = Record<strin
       const existing = findOne(lookup, false);
       if (!existing) return null;
       const store = table();
-      const id = String((existing as Record<string, unknown>)[primaryKey]);
+      const id = String(existing[primaryKey]);
       if (opts.softDeleteField !== undefined) {
-        const stamped = { ...existing, [opts.softDeleteField]: Date.now() } as Row;
+        const stamped = parseRow({ ...existing, [opts.softDeleteField]: Date.now() });
         store.set(id, stamped);
         return stamped;
       }
@@ -374,8 +398,8 @@ export function memoryAdapter<Row extends Record<string, unknown> = Record<strin
       if (field === undefined) return null;
       const existing = findOne(lookup, true);
       if (!existing || !isSoftDeleted(existing)) return null;
-      const restored = { ...existing, [field]: null } as Row;
-      table().set(String((existing as Record<string, unknown>)[primaryKey]), restored);
+      const restored = parseRow({ ...existing, [field]: null });
+      table().set(String(existing[primaryKey]), restored);
       return restored;
     },
 
@@ -384,58 +408,26 @@ export function memoryAdapter<Row extends Record<string, unknown> = Record<strin
       const totalCount = items.length;
       const { options } = query;
 
-      // Keyset cursor pagination (next-only): strictly-after-the-boundary
-      // window, tolerant of a deleted boundary row. An invalid cursor starts
-      // from the beginning (SQL adapter parity). Rows are already ordered by
-      // the cursor field ascending — the engine forces order_by on a walk.
-      if (options.cursor !== undefined || options.limit !== undefined) {
-        const cursorField = options.order_by ?? primaryKey;
-        const limit = options.limit ?? options.per_page ?? 20;
-        // The engine validates cursors loudly at parse time; if a malformed
-        // one still reaches the adapter, start from the beginning (SQL
-        // adapter parity) instead of crashing mid-walk.
-        let decoded: string | null = null;
-        if (options.cursor !== undefined) {
-          try {
-            decoded = decodeCursor(options.cursor);
-          } catch {
-            decoded = null;
-          }
-        }
-
-        const window =
-          decoded === null
-            ? items
-            : items.filter((item) => {
-                const value = (item as Record<string, unknown>)[cursorField];
-                return typeof value === 'number'
-                  ? value > Number(decoded)
-                  : String(value) > String(decoded);
-              });
-
-        const pageItems = window.slice(0, limit) as Row[];
-        const hasNext = window.length > limit;
-        const last = pageItems[pageItems.length - 1] as Record<string, unknown> | undefined;
-        const info: PageInfo = {
-          // Next-only cursor walks have no page number (Stripe-style): the
-          // engine's buildCursorPageInfo pins page 0, and adapters must agree.
-          page: 0,
-          per_page: limit,
-          total_count: totalCount,
-          has_next_page: hasNext,
-          has_prev_page: decoded !== null,
-          ...(hasNext && last !== undefined
-            ? { next_cursor: encodeCursor(String(last[cursorField])) }
-            : {}),
-        };
-        return { result: pageItems, result_info: info };
+      if (options.cursor !== undefined || (options.limit !== undefined && !options.keyset))
+        throw new Error('Adapter cursors must be decoded by the engine');
+      if (options.keyset) {
+        const keyset = options.keyset;
+        const window = items
+          .sort((a, b) => compareKeysetRows(keyset, a, b))
+          .filter((row) => isAfterKeyset(keyset, row));
+        return buildKeysetPage(
+          options.limit ?? options.per_page ?? 20,
+          window.map(parseRow),
+          keyset,
+          totalCount,
+        );
       }
 
       // Offset pagination (default).
       const page = options.page ?? 1;
       const perPage = options.per_page ?? 20;
       const start = (page - 1) * perPage;
-      const pageItems = items.slice(start, start + perPage) as Row[];
+      const pageItems = items.slice(start, start + perPage).map(parseRow);
       const totalPages = Math.ceil(totalCount / perPage);
       const info: PageInfo = {
         page,
@@ -451,7 +443,7 @@ export function memoryAdapter<Row extends Record<string, unknown> = Record<strin
     nested,
     cascade,
     relations,
-  };
+  });
 }
 
 function requireRelation(config: MemoryAdapterConfig, relation: string): MemoryRelation {
@@ -496,7 +488,7 @@ function runQuery(
     }
   }
 
-  for (const filter of query.filters as FilterCondition[]) {
+  for (const filter of query.filters) {
     items = items.filter((item) => matchesFilter(item[filter.field], filter));
   }
 
@@ -514,11 +506,10 @@ function runQuery(
     const orderBy = options.order_by;
     const direction = options.order_by_direction === 'desc' ? -1 : 1;
     items.sort((a, b) => {
-      const aVal = a[orderBy] as string | number;
-      const bVal = b[orderBy] as string | number;
-      if (aVal < bVal) return -1 * direction;
-      if (aVal > bVal) return 1 * direction;
-      return 0;
+      return (
+        direction *
+        compareCursorValues(cursorValue(a[orderBy] ?? null), cursorValue(b[orderBy] ?? null))
+      );
     });
   }
 

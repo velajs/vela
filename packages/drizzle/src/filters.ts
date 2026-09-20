@@ -42,7 +42,7 @@ export function orAll(...conditions: Array<DrizzleSql | undefined>): DrizzleSql 
 }
 
 export function getColumn(table: DrizzleTable, field: string): DrizzleColumn {
-  const columns = getTableColumns(table as never) as Record<string, DrizzleColumn>;
+  const columns = getTableColumns(table);
   if (!Object.hasOwn(columns, field)) {
     throw new Error(`drizzleAdapter: table has no column '${field}'`);
   }

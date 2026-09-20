@@ -38,6 +38,8 @@ import type {
 export const ADAPTER_CAPABILITIES = [
   /** Real transactional scope (memory adapters use a no-op sentinel instead). */
   'transactions',
+  /** Core update/delete return rows from the same atomic SQL statement. */
+  'atomicMutations',
   /** `id: 'database'` — the database generates primary keys (RETURNING/serial). */
   'databaseGeneratedId',
   /** Keyset (cursor) pagination in `list`. Never emulated: absent = loud error. */
@@ -121,7 +123,7 @@ export interface NestedWriteDriver<Row = Record<string, unknown>> {
     relation: string,
     operations: NestedWriteOperations,
     scope: AdapterScope,
-  ): Promise<NestedWriteInspection<Row>>;
+  ): Promise<NestedWriteInspection>;
   /** Create related records referenced by a parent create/update payload. */
   createNested(
     parent: Row,
@@ -198,6 +200,9 @@ export interface RelationLoader<Row = Record<string, unknown>> {
 // ---------------------------------------------------------------------------
 
 export interface CrudAdapter<Row = Record<string, unknown>> {
+  /** Explicit dynamic engine view. Typed facades never erase their input types. */
+  readonly runtime: RuntimeAdapter;
+
   /**
    * Declared capability set. Must agree with which optional members exist —
    * declaring a capability without its method (or vice versa) is a
@@ -205,16 +210,14 @@ export interface CrudAdapter<Row = Record<string, unknown>> {
    */
   readonly capabilities: ReadonlySet<AdapterCapability>;
 
-  /**
-   * Run `fn` inside a transactional scope. Adapters without real transactions
-   * (memory) pass a frozen no-op sentinel scope; adapters with `transactions`
-   * roll back when `fn` throws. The engine decides when a verb needs a scope
-   * (any mutation with hooks, nested writes, cascade, or versioning).
-   *
-   * The engine passes the request's `TransactionContext` so SQL adapters can
-   * set per-transaction session state (RLS GUCs) at tx open; ignoring it is
-   * always valid.
-   */
+  /** Ordinary request scope; no rollback guarantee. RLS adapters may open a real
+   * transaction here to keep transaction-local tenant settings on reads. */
+  requestScope<T>(fn: (scope: AdapterScope) => Promise<T>, ctx?: TransactionContext): Promise<T>;
+
+  /** Callback transaction. SQL adapters declaring `transactions` roll back on
+   * rejection. D1 rejects without invoking the callback. Memory retains its
+   * explicitly non-atomic prototype scope and does not declare transactions.
+   * Both scope methods receive the request's trusted tenant context. */
   transaction<T>(fn: (scope: AdapterScope) => Promise<T>, ctx?: TransactionContext): Promise<T>;
 
   // -- Required core (everything else can be synthesized from these) --------
@@ -260,7 +263,7 @@ export interface CrudAdapter<Row = Record<string, unknown>> {
 }
 
 /** Maps each capability to the optional member whose presence it implies. */
-export const CAPABILITY_MEMBERS: Partial<Record<AdapterCapability, keyof CrudAdapter>> = {
+export const CAPABILITY_MEMBERS: Partial<Record<AdapterCapability, keyof RuntimeAdapter>> = {
   aggregate: 'aggregate',
   nativeSearch: 'search',
   upsert: 'upsertOne',
@@ -270,3 +273,11 @@ export const CAPABILITY_MEMBERS: Partial<Record<AdapterCapability, keyof CrudAda
   nestedWrites: 'nested',
   cascade: 'cascade',
 };
+
+/** Adapter data plane used after the engine validates request schemas. */
+export type RuntimeAdapter = Omit<CrudAdapter<Record<string, unknown>>, 'runtime'>;
+
+/** Package a custom dynamic adapter without claiming a narrower row schema. */
+export function bindAdapter(runtime: RuntimeAdapter): CrudAdapter {
+  return Object.assign(runtime, { runtime });
+}

@@ -1,3 +1,4 @@
+import { bindAdapter, type RuntimeAdapter } from '../../../adapter/contract';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { AdapterCapability, AdapterScope, CrudAdapter } from '../../../adapter/contract';
@@ -64,8 +65,11 @@ function fakeAdapter(store: Map<string, Row>, opts: FakeOptions = {}): CrudAdapt
   if (hasNativeBatch) caps.push('nativeBatch');
   if (hasBulkPatch) caps.push('bulkPatch', 'transactions');
 
-  const adapter: CrudAdapter<Row> = {
+  const adapter: RuntimeAdapter = {
     capabilities: new Set(caps),
+    async requestScope(fn) {
+      return fn({ tx: undefined });
+    },
     async transaction(fn) {
       return fn(scopeSentinel);
     },
@@ -172,7 +176,7 @@ function fakeAdapter(store: Map<string, Row>, opts: FakeOptions = {}): CrudAdapt
     };
   }
 
-  return adapter;
+  return bindAdapter(adapter);
 }
 
 const itemSchema = z.object({

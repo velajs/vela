@@ -4,7 +4,7 @@
  *
  * Pipeline mirrors the read-shaped core verbs (`../verbs.ts` `executeList`):
  * filters are parsed, tenant-scoped, and policy-pushed via `scopeListQuery`;
- * every adapter call runs inside `config.adapter.transaction()`; the returned
+ * every adapter call runs inside `config.adapter.requestScope()`; the returned
  * rows are read-policy filtered (`filterReadable`) then shaped (computed → mask
  * → selection). The adapter's native capability is used when declared
  * (`nativeSearch` → `search`, `aggregate` → `aggregate`); otherwise the engine
@@ -173,8 +173,8 @@ async function executeSearch(resource: AnyResource, req: EngineRequest): Promise
   const adapterSearch = config.adapter.search;
   const hits: Array<SearchHit<Row>> =
     config.adapter.capabilities.has('nativeSearch') && adapterSearch
-      ? await config.adapter.transaction((scope) => adapterSearch(searchQuery, scope), txCtx(req))
-      : await config.adapter.transaction(async (scope) => {
+      ? await config.adapter.requestScope((scope) => adapterSearch(searchQuery, scope), txCtx(req))
+      : await config.adapter.requestScope(async (scope) => {
           const rows = await listFallbackRows(resource, scoped, scope);
           return runSearchFallback(rows, searchQuery);
         }, txCtx(req));
@@ -267,7 +267,7 @@ async function executeAggregate(resource: AnyResource, req: EngineRequest): Prom
   }
 
   const adapterAggregate = config.adapter.aggregate;
-  const result = await config.adapter.transaction(async (scope) => {
+  const result = await config.adapter.requestScope(async (scope) => {
     if (
       config.adapter.capabilities.has('aggregate') &&
       adapterAggregate &&
@@ -314,7 +314,7 @@ async function executeExport(resource: AnyResource, req: EngineRequest): Promise
   const parsed = parseListFilters(req.query ?? {}, listParseOptions(resource));
   const scoped = scopeListQuery(resource, req, policyCtx, parsed);
 
-  const rows = await config.adapter.transaction(async (scope) => {
+  const rows = await config.adapter.requestScope(async (scope) => {
     // Arbitrary read predicates execute in-process and must use the mandatory
     // 1,000-row authorization window. Export's larger serialization cap must
     // never become an alternate policy-scan path.
