@@ -1,3 +1,4 @@
+import { defineProvider } from '../container/types';
 import { Module } from '../module/decorators';
 import { ConfigurableModuleBuilder } from '../module/configurable-module.builder';
 import { HttpService, HTTP_MODULE_OPTIONS } from './fetch.service';
@@ -11,7 +12,7 @@ const { ConfigurableModuleClass } = new ConfigurableModuleBuilder<HttpModuleOpti
 @Module({
   providers: [
     // Default for bare `imports: [HttpModule]`; forRoot(options) overrides via merge.
-    { provide: HTTP_MODULE_OPTIONS, useValue: {} },
+    defineProvider(HTTP_MODULE_OPTIONS, { useValue: {} }),
     HttpService,
   ],
   exports: [HttpService, HTTP_MODULE_OPTIONS],

@@ -50,7 +50,8 @@ Parameter decorators no longer execute before guards. Move authentication and
 other authority-producing work into middleware or guards, then read the
 guard-populated request state with an ordinary `createParamDecorator`. Optional
 identity decorators must return the real `undefined` value for anonymous
-requests; do not use a lazy proxy when callers rely on truthiness.
+requests. Lazy decorators inject explicit functions: call the function before
+checking its returned identity, rather than checking the function's truthiness.
 
 Denied guards therefore run before JSON parsing and validation pipes. A guard
 that intentionally verifies the raw body, such as `@SignedInvocation()`, may

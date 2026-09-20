@@ -7,7 +7,8 @@ import {
   Body,
   Module,
   MetadataRegistry,
-  createZodDto,
+  defineDto,
+  ValidationPipe,
   createOpenApiDocument,
   ApiResponse,
 } from '../index.js';
@@ -16,15 +17,17 @@ beforeEach(() => {
   MetadataRegistry.clear();
 });
 
-describe('OpenAPI — $ref components for DTO classes', () => {
+describe('OpenAPI — $ref components for DTO descriptors', () => {
   it('@Body() DTO produces a $ref and registers the schema under components', () => {
     const UserSchema = z.object({ name: z.string(), email: z.string().email() });
-    class CreateUserDto extends createZodDto(UserSchema, { name: 'CreateUserDto' }) {}
+    const CreateUserDto = defineDto(UserSchema, { name: 'CreateUserDto' });
 
     @Controller('/users')
     class UsersController {
       @Post()
-      create(@Body() _dto: CreateUserDto) {
+      create(
+        @Body(new ValidationPipe(CreateUserDto)) _dto: ReturnType<typeof CreateUserDto.parse>,
+      ) {
         return {};
       }
     }
@@ -43,7 +46,7 @@ describe('OpenAPI — $ref components for DTO classes', () => {
 
   it('DTO used as response schema produces a $ref and registers components', () => {
     const UserSchema = z.object({ id: z.string(), name: z.string() });
-    class UserDto extends createZodDto(UserSchema, { name: 'UserDto' }) {}
+    const UserDto = defineDto(UserSchema, { name: 'UserDto' });
 
     @Controller('/users')
     class UsersController {
@@ -66,12 +69,12 @@ describe('OpenAPI — $ref components for DTO classes', () => {
 
   it('same DTO used in multiple places produces one components entry; refs share it', () => {
     const UserSchema = z.object({ id: z.string() });
-    class UserDto extends createZodDto(UserSchema, { name: 'UserDto' }) {}
+    const UserDto = defineDto(UserSchema, { name: 'UserDto' });
 
     @Controller('/users')
     class UsersController {
       @Post()
-      create(@Body() _dto: UserDto) {
+      create(@Body(new ValidationPipe(UserDto)) _dto: ReturnType<typeof UserDto.parse>) {
         return {};
       }
 
@@ -96,18 +99,20 @@ describe('OpenAPI — $ref components for DTO classes', () => {
   });
 
   it('two distinct DTOs produce two components entries', () => {
-    class CreateUserDto extends createZodDto(z.object({ name: z.string() }), {
+    const CreateUserDto = defineDto(z.object({ name: z.string() }), {
       name: 'CreateUserDto',
-    }) {}
-    class UserDto extends createZodDto(z.object({ id: z.string(), name: z.string() }), {
+    });
+    const UserDto = defineDto(z.object({ id: z.string(), name: z.string() }), {
       name: 'UserDto',
-    }) {}
+    });
 
     @Controller('/users')
     class UsersController {
       @Post()
       @ApiResponse(201, { description: 'Created', schema: UserDto })
-      create(@Body() _dto: CreateUserDto) {
+      create(
+        @Body(new ValidationPipe(CreateUserDto)) _dto: ReturnType<typeof CreateUserDto.parse>,
+      ) {
         return {};
       }
     }
@@ -119,12 +124,11 @@ describe('OpenAPI — $ref components for DTO classes', () => {
     expect(Object.keys(doc.components!.schemas!).sort()).toEqual(['CreateUserDto', 'UserDto']);
   });
 
-  it('name collision: two classes with same name get suffixed unique keys', () => {
+  it('name collision: two descriptors with same name get suffixed unique keys', () => {
     // Two different schemas both named "Thing" via the { name } option.
-    // Use @ApiResponse to reference them (accepts runtime values, unlike
-    // @Body() which requires a TypeScript class type for design:paramtypes).
-    const A = createZodDto(z.object({ a: z.string() }), { name: 'Thing' });
-    const B = createZodDto(z.object({ b: z.number() }), { name: 'Thing' });
+    // Use the same descriptors for documentation and runtime parsing.
+    const A = defineDto(z.object({ a: z.string() }), { name: 'Thing' });
+    const B = defineDto(z.object({ b: z.number() }), { name: 'Thing' });
 
     @Controller('/a')
     class AController {
@@ -158,7 +162,7 @@ describe('OpenAPI — $ref components for DTO classes', () => {
     expect(aRef).not.toBe(bRef);
   });
 
-  it('raw Zod schema (not a DTO class) is inlined, not componentized', () => {
+  it('raw Zod schema (not a DTO descriptor) is inlined, not componentized', () => {
     @Controller('/items')
     class ItemsController {
       @Post()

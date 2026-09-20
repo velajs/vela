@@ -1,3 +1,4 @@
+import { defineProvider } from '../container/types';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   Controller,
@@ -122,7 +123,7 @@ describe('Module visibility', () => {
       static forRoot(): DynamicModule {
         return {
           module: FeatureModule,
-          providers: [{ provide: TOKEN, useValue: 'shared-value' }],
+          providers: [defineProvider(TOKEN, {useValue: 'shared-value'})],
           exports: [TOKEN],
           global: true,
         };
@@ -168,7 +169,7 @@ describe('Module visibility', () => {
     // ModB declares the alias but the alias targets ModA's invisible HiddenImpl
     @Module({
       imports: [ModA],
-      providers: [Consumer, { provide: ALIAS, useExisting: HiddenImpl }],
+      providers: [Consumer, defineProvider(ALIAS, {useExisting: HiddenImpl})],
     })
     class ModB {}
 
@@ -231,7 +232,7 @@ describe('Module visibility', () => {
     }
 
     @Module({
-      providers: [{ provide: NAME, useValue: 'alice' }],
+      providers: [defineProvider(NAME, {useValue: 'alice'})],
       exports: [NAME],
     })
     class ConfigModule {}

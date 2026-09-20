@@ -10,12 +10,17 @@ export type { BootstrapOptions, BootstrapResult } from './factory/bootstrap';
 // OpenAPI
 export {
   createOpenApiDocument,
+  defineEndpoint,
+  Endpoint,
   ApiDoc,
   ApiTags,
   ApiResponse,
   zodToJsonSchema,
 } from './openapi/index';
 export type {
+  EndpointDefinition,
+  EndpointRequest,
+  EndpointSchema,
   OpenApiDocument,
   OpenApiInfo,
   OpenApiOperation,
@@ -46,14 +51,17 @@ export {
   ROOT_MODULE_ID,
   mixin,
   describeToken,
+  defineProvider,
 } from './container/index';
 export type {
   Type,
   Token,
+  TypedToken,
+  DependencyToken,
   InferToken,
   InferTokens,
   InjectableOptions,
-  ProviderOptions,
+  ProviderDefinition,
   ModuleScope,
   ModuleDescription,
   ContainerOptions,
@@ -154,7 +162,7 @@ export {
 export type { InvocationClaim, VerifyInvocationOptions } from './crypto/invocation';
 
 // Request-scoped context primitive
-export { REQUEST_CONTEXT } from './http/request-context';
+export { REQUEST_CONTEXT, RequestContextKey } from './http/request-context';
 export type { RequestContext } from './http/request-context';
 export {
   clearTrustedRequestIdentity,
@@ -353,7 +361,6 @@ export {
   ConfigurableModuleBuilder,
   defineConfigurableModule,
   defineModule,
-  buildAsyncOptionsProviders,
   lazyProvider,
   moduleToken,
   provideGlobal,
@@ -456,6 +463,7 @@ export type { PipelineRunOptions, ResolvedComponentMap } from './pipeline/index'
 // Pipeline Types
 export type {
   HttpArgumentsHost,
+  HttpExecutionContext,
   ExecutionContext,
   CanActivate,
   CallHandler,
@@ -551,8 +559,14 @@ export type {
 export { MetadataRegistry } from './registry/metadata.registry';
 
 // Validation
-export { createZodDto, ValidationPipe } from './validation/index';
-export type { CreateZodDtoOptions } from './validation/index';
+export { defineDto, ValidationPipe } from './validation/index';
+export type {
+  DtoDefinition,
+  DtoOptions,
+  DtoSchema,
+  RuntimeParser,
+  SchemaParser,
+} from './validation/index';
 
 // Serialization
 export { Serialize, SerializerInterceptor, SERIALIZE_METADATA } from './serialization/index';
@@ -560,4 +574,5 @@ export { Serialize, SerializerInterceptor, SERIALIZE_METADATA } from './serializ
 // Testing utilities live in @velajs/testing — see https://github.com/velajs/testing
 
 // Hono Adapter Utilities
+export type { VelaContext, VelaHono, VelaHonoEnv, VelaMiddlewareHandler } from './http/hono.types';
 export { getRuntimeKey, env } from 'hono/adapter';

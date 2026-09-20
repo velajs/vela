@@ -1,3 +1,4 @@
+import { defineProvider } from '../container/types';
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   APP_INTERCEPTOR,
@@ -45,7 +46,7 @@ describe('REQUEST_CONTEXT injectable', () => {
     @Module({
       providers: [
         CapturingInterceptor,
-        { provide: APP_INTERCEPTOR, useExisting: CapturingInterceptor },
+        defineProvider(APP_INTERCEPTOR, {useExisting: CapturingInterceptor}),
       ],
       controllers: [C],
     })
@@ -89,7 +90,7 @@ describe('REQUEST_CONTEXT injectable', () => {
     }
 
     @Module({
-      providers: [IdInterceptor, { provide: APP_INTERCEPTOR, useExisting: IdInterceptor }],
+      providers: [IdInterceptor, defineProvider(APP_INTERCEPTOR, {useExisting: IdInterceptor})],
       controllers: [C],
     })
     class AppModule {}
@@ -130,7 +131,7 @@ describe('REQUEST_CONTEXT injectable', () => {
     @Module({
       providers: [
         PeekingInterceptor,
-        { provide: APP_INTERCEPTOR, useExisting: PeekingInterceptor },
+        defineProvider(APP_INTERCEPTOR, {useExisting: PeekingInterceptor}),
       ],
       controllers: [C],
     })

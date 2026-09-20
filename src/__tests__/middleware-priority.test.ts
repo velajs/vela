@@ -1,3 +1,4 @@
+import { defineProvider } from '../container/types';
 import { describe, it, expect, beforeEach } from 'vitest';
 import type { Context, Next } from 'hono';
 import {
@@ -205,8 +206,8 @@ describe('Middleware priority — APP_MIDDLEWARE (static priority)', () => {
         WrapperMw,
         // DefaultMw registered BEFORE WrapperMw — registration order has
         // default coming first. Priority should force WrapperMw to the outside.
-        { provide: APP_MIDDLEWARE, useExisting: DefaultMw },
-        { provide: APP_MIDDLEWARE, useExisting: WrapperMw },
+        defineProvider(APP_MIDDLEWARE, {useExisting: DefaultMw}),
+        defineProvider(APP_MIDDLEWARE, {useExisting: WrapperMw}),
       ],
       controllers: [AppMwController],
     })

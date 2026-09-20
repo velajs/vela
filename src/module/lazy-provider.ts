@@ -1,12 +1,13 @@
 import {
   InjectionToken,
+  defineProvider,
   type InferTokens,
-  type ProviderOptions,
+  type ProviderDefinition,
   type Token,
   type Type,
 } from '../container/types';
 import { Module } from './decorators';
-import type { ComponentType, DynamicModule } from '../registry/types';
+import type { ComponentType, ComponentTypeMap, DynamicModule } from '../registry/types';
 import {
   APP_FILTER,
   APP_GUARD,
@@ -17,11 +18,11 @@ import {
 import type { ModuleContributions } from './define-module';
 import { stableHash } from './stable-hash';
 
-export interface LazyProviderSpec<T, Inject extends readonly Token<unknown>[]> {
+export interface LazyProviderSpec<T, Inject extends readonly Token[]> {
   /** Token under which the memoized thunk `() => T` is provided. */
-  provide: Token<() => T>;
-  inject?: Inject;
-  useFactory: (...deps: InferTokens<Inject>) => T;
+  provide: InjectionToken<() => T>;
+  inject: Inject;
+  useFactory: (...deps: InferTokens<Inject>) => NoInfer<T>;
   /** Memoize the first call's result (default true). */
   memoize?: boolean;
 }
@@ -43,30 +44,20 @@ export interface LazyProviderSpec<T, Inject extends readonly Token<unknown>[]> {
  * })
  * ```
  */
-export function lazyProvider<
-  T,
-  const Inject extends readonly Token<unknown>[] = readonly Token<unknown>[],
->(spec: LazyProviderSpec<T, Inject>): ProviderOptions {
+export function lazyProvider<T, const Inject extends readonly Token[] = readonly Token[]>(
+  spec: LazyProviderSpec<T, Inject>,
+): ProviderDefinition {
   const memoize = spec.memoize ?? true;
-  return {
-    provide: spec.provide as Token,
-    inject: [...(spec.inject ?? [])] as Token[],
-    useFactory: (...deps: unknown[]) => {
-      const build = () => (spec.useFactory as (...a: unknown[]) => T)(...deps);
+  return defineProvider<InjectionToken<() => T>, Inject>(spec.provide, {
+    inject: spec.inject,
+    useFactory: (...deps) => {
+      const build = () => spec.useFactory(...deps);
       if (!memoize) return build;
       let cached: { value: T } | undefined;
       return () => (cached ??= { value: build() }).value;
     },
-  };
+  });
 }
-
-const GLOBAL_COMPONENT_TOKENS: Record<ComponentType, InjectionToken<unknown>> = {
-  guard: APP_GUARD,
-  pipe: APP_PIPE,
-  interceptor: APP_INTERCEPTOR,
-  filter: APP_FILTER,
-  middleware: APP_MIDDLEWARE,
-};
 
 /**
  * The one idiom for registering an app-wide component from a module's
@@ -80,15 +71,34 @@ const GLOBAL_COMPONENT_TOKENS: Record<ComponentType, InjectionToken<unknown>> = 
  * (so DI constructs them with their dependencies); instances via `useValue`.
  * Inside `defineModule`, prefer the equivalent `global:` contribution slot.
  */
-export function provideGlobal(
-  kind: ComponentType,
-  component: Type | object,
-): Array<Type | ProviderOptions> {
-  const token = GLOBAL_COMPONENT_TOKENS[kind];
+function componentProviders<T>(
+  token: InjectionToken<T>,
+  component: Type<T> | T,
+): Array<Type | ProviderDefinition> {
   if (typeof component === 'function') {
-    return [component as Type, { provide: token, useExisting: component as Token }];
+    const componentClass = component as Type<T>;
+    return [componentClass, defineProvider(token, { useExisting: componentClass })];
   }
-  return [{ provide: token, useValue: component }];
+  return [defineProvider(token, { useValue: component })];
+}
+
+export function provideGlobal(
+  ...[kind, component]: {
+    [K in ComponentType]: [kind: K, component: ComponentTypeMap[K]];
+  }[ComponentType]
+): Array<Type | ProviderDefinition> {
+  switch (kind) {
+    case 'guard':
+      return componentProviders(APP_GUARD, component);
+    case 'pipe':
+      return componentProviders(APP_PIPE, component);
+    case 'interceptor':
+      return componentProviders(APP_INTERCEPTOR, component);
+    case 'filter':
+      return componentProviders(APP_FILTER, component);
+    case 'middleware':
+      return componentProviders(APP_MIDDLEWARE, component);
+  }
 }
 
 /**

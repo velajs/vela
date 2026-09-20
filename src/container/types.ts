@@ -1,7 +1,7 @@
 import type { Scope } from '../constants';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type Type<T = any> = new (...args: any[]) => T;
+export type Type<T = unknown> = new (...args: any[]) => T;
 
 // Broader: matches concrete and abstract classes. Used for metadata keying,
 // where any class reference is acceptable.
@@ -9,38 +9,57 @@ export type Type<T = any> = new (...args: any[]) => T;
 export type Constructor<T = unknown> = abstract new (...args: any[]) => T;
 
 export interface InjectionTokenOptions<T> {
-  factory?: () => T;
+  readonly factory?: () => T;
 }
 
-export class InjectionToken<T = unknown> {
+// Runtime identity is intentionally separate from the invariant authoring token.
+// Heterogeneous registries may erase T without gaining permission to rebind it.
+class InjectionTokenIdentity {
+  readonly options?: Readonly<InjectionTokenOptions<unknown>>;
   constructor(
     private readonly description: string,
-    public readonly options?: InjectionTokenOptions<T>,
-  ) {}
+    options?: InjectionTokenOptions<unknown>,
+  ) {
+    this.options = options && Object.freeze({ ...options });
+  }
 
   toString(): string {
     return `InjectionToken(${this.description})`;
   }
 }
 
-export class ForwardRef<T = unknown> {
-  constructor(public readonly factory: () => Token<T>) {}
+export class InjectionToken<T = unknown> extends InjectionTokenIdentity {
+  // Protected preserves this invariant function type in emitted declarations;
+  // TypeScript erases the type of private fields in .d.ts output.
+  declare protected readonly valueType: (value: T) => T;
+  declare readonly options?: InjectionTokenOptions<T>;
+
+  constructor(description: string, options?: InjectionTokenOptions<T>) {
+    super(description, options);
+    Object.freeze(this);
+  }
 }
 
-export function forwardRef<T>(factory: () => Token<T>): ForwardRef<T> {
+export class ForwardRef<K extends Token = Token> {
+  constructor(public readonly factory: () => K) {}
+}
+
+export function forwardRef<K extends Token>(factory: () => K): ForwardRef<K> {
   return new ForwardRef(factory);
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type Token<T = any> = Type<T> | InjectionToken<T> | string | symbol;
+export type TypedToken<T> = Type<T> | InjectionToken<T>;
+export type Token = Type | InjectionTokenIdentity | string | symbol;
+
+export type DependencyToken = Token | ForwardRef;
 
 /**
- * Maps a single DI `Token<T>` to its resolved value type at the type level:
+ * Maps a DI token to its resolved value type at the type level:
  * - `InjectionToken<T>`           → `T`
  * - `Type<T>` / `Constructor<T>`  → `T` (the instance type)
- * - `ForwardRef<T>`               → `T`
+ * - `ForwardRef<K>`               → `InferToken<K>`
  * - `string` / `symbol`           → `unknown` (runtime-only tokens carry no
- *                                   static type info; the consumer asserts).
+ *                                   static type info).
  *
  * Used by `AsyncModuleOptions` to give `useFactory` parameters their real
  * types based on the literal `inject` tuple — without `as const` at the call
@@ -50,7 +69,7 @@ export type InferToken<T> =
   T extends InjectionToken<infer U>
     ? U
     : T extends ForwardRef<infer U>
-      ? U
+      ? InferToken<U>
       : // eslint-disable-next-line @typescript-eslint/no-explicit-any
         T extends abstract new (...args: any[]) => infer U
         ? U
@@ -58,7 +77,7 @@ export type InferToken<T> =
 
 /**
  * Map every position of a `Token[]` tuple to its resolved value type.
- * Pairs with `const Inject extends readonly Token<unknown>[]` generics to
+ * Pairs with `const Inject extends readonly Token[]` generics to
  * give `useFactory(...deps)` parameter types inferred from the literal
  * `inject` array.
  */
@@ -77,22 +96,121 @@ export interface InjectMetadata {
 }
 
 export interface ProviderOptions<T = unknown> {
-  provide?: Token<T>;
+  provide?: Token;
   scope?: Scope;
-  useValue?: T;
+  useValue?: NoInfer<T>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  useFactory?: (...args: any[]) => T | Promise<T>;
-  useClass?: Type<T>;
+  useFactory?: (...args: any[]) => NoInfer<T> | Promise<NoInfer<T>>;
+  useClass?: Type<NoInfer<T>>;
   // Accepts both mutable and readonly token arrays — the latter is what
   // const-tuple-inferred `AsyncModuleOptions.inject` produces when threaded
   // through to module-internal provider registrations. Behavior is identical
   // at runtime; the container iterates and resolves.
-  inject?: readonly Token[];
-  useExisting?: Token<T>;
+  inject?: readonly DependencyToken[];
+  useExisting?: Token;
+}
+
+// The implementation class is deliberately not exported. Private state makes
+// descriptors nominal: spreading one into a different object loses its proof.
+class CheckedProvider<T> {
+  readonly #options: Readonly<ProviderOptions<T>>;
+
+  constructor(
+    readonly provide: Token,
+    options: ProviderOptions<T>,
+  ) {
+    this.#options = Object.freeze({
+      ...options,
+      provide,
+      inject: options.inject && Object.freeze([...options.inject]),
+    });
+    Object.freeze(this);
+  }
+
+  get scope(): Scope | undefined {
+    return this.#options.scope;
+  }
+  get useValue(): T | undefined {
+    return this.#options.useValue;
+  }
+  get useClass(): Type<T> | undefined {
+    return this.#options.useClass;
+  }
+  get useExisting(): Token | undefined {
+    return this.#options.useExisting;
+  }
+  get inject(): readonly DependencyToken[] | undefined {
+    return this.#options.inject;
+  }
+  // Reflection can inspect identity but cannot call an erased factory through
+  // the public descriptor without recovering its actual dependency contract.
+  get useFactory(): unknown {
+    return this.#options.useFactory;
+  }
+
+  static read<T>(provider: CheckedProvider<T>): Readonly<ProviderOptions<T>> {
+    return provider.#options;
+  }
+}
+
+/** A nominal provider checked by defineProvider before entering a module graph. */
+export type ProviderDefinition<T = unknown> = CheckedProvider<T>;
+
+/** @internal Only the container and module loader consume erased runtime options. */
+export function getProviderOptions<T>(
+  provider: ProviderDefinition<T>,
+): Readonly<ProviderOptions<T>> {
+  return CheckedProvider.read(provider);
+}
+
+type ProviderStrategy<T, Inject extends readonly DependencyToken[]> =
+  | {
+      useValue: NoInfer<T>;
+      useClass?: never;
+      useFactory?: never;
+      useExisting?: never;
+      inject?: never;
+    }
+  | {
+      useClass: Type<NoInfer<T>>;
+      useValue?: never;
+      useFactory?: never;
+      useExisting?: never;
+      inject?: never;
+    }
+  | {
+      useExisting: Type<NoInfer<T>> | InjectionToken<NoInfer<T>>;
+      useValue?: never;
+      useClass?: never;
+      useFactory?: never;
+      inject?: never;
+    }
+  | {
+      useFactory: (...dependencies: InferTokens<Inject>) => NoInfer<T> | Promise<NoInfer<T>>;
+      inject: Inject;
+      useValue?: never;
+      useClass?: never;
+      useExisting?: never;
+    };
+
+/** Infer factory dependencies from tokens; all strategies must produce the provided token's value. */
+/** @internal Erasing an invariant token removes the capability to bind a value. */
+export type AuthoringToken<K extends Token> = K extends InjectionTokenIdentity
+  ? InjectionToken<InferToken<K>>
+  : K;
+
+export function defineProvider<
+  const K extends Token,
+  const Inject extends readonly DependencyToken[] = readonly [],
+>(
+  provide: K & AuthoringToken<K>,
+  options: ProviderStrategy<InferToken<K>, Inject> & { scope?: Scope },
+): ProviderDefinition<InferToken<K>> {
+  return new CheckedProvider(provide, options);
 }
 
 export interface ProviderRegistration<T = unknown> {
-  provide: Token<T>;
+  provide: Token;
   /** The declared scope (from `@Injectable`/`@Controller`/provider options). */
   scope: Scope;
   /**
@@ -108,13 +226,14 @@ export interface ProviderRegistration<T = unknown> {
    * registrations land in the `"__root__"` bucket.
    */
   declaringModuleId: string;
-  instance?: T;
-  useValue?: T;
+  instance?: { readonly value: T };
+  /** The cell distinguishes a declared undefined value from no value provider. */
+  value?: { readonly value: T };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   useFactory?: (...args: any[]) => T | Promise<T>;
   useClass?: Type<T>;
-  inject?: readonly Token[];
-  useExisting?: Token<T>;
+  inject?: readonly DependencyToken[];
+  useExisting?: Token;
 }
 
 // Module visibility

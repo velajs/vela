@@ -1,5 +1,7 @@
-import type { MiddlewareHandler } from 'hono';
-import type { Context } from 'hono';
+import type {
+  VelaContext as Context,
+  VelaMiddlewareHandler as MiddlewareHandler,
+} from '../http/hono.types';
 import type { VelaApplication } from '../application';
 import type { Container } from '../container/container';
 import type { DiscoveryService } from '../discovery/discovery.service';
@@ -27,6 +29,8 @@ export interface AdapterContext {
  *
  * - `requestMiddleware` is prepended to the global middleware chain (runs
  *   before consumer middleware — e.g. capture `c.env` for binding services).
+ * - `configureContainer` runs before module loading and provider construction,
+ *   so platform services are available to module factories and lifecycle hooks.
  * - `onBootstrap` runs after DI + lifecycle hooks, with `app.entrypoints`
  *   available, BEFORE routes are built — register platform services here.
  * - `onRoutesBuilt` runs after the Hono app exists — mount platform routes
@@ -40,6 +44,7 @@ export interface AdapterContext {
  */
 export interface RuntimeAdapter {
   name: string;
+  configureContainer?(container: Container): void | Promise<void>;
   /** Platform-attested client address resolver used by @Ip() and default throttling. */
   getClientIp?: (c: Context) => string | null;
   requestMiddleware?: MiddlewareHandler[];

@@ -13,6 +13,6 @@ export type {
   RouteDefinition,
   ParameterMetadata,
   ModuleOptions,
-  ProviderOptions,
+  ProviderDefinition,
   InjectionToken,
 } from './types';

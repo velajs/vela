@@ -1,10 +1,10 @@
-import type { Context } from 'hono';
+import type { VelaContext as Context } from './hono.types';
 import { InjectionToken } from '../container/types';
 
 // Per-request injectable populated by RouteManager. Carries a stable
 // request id, the raw Request, the Hono Context (escape hatch), and a
-// free-form bag for cross-cutting metadata that doesn't merit its own
-// injection token (locale, feature flags, trace ids, …). No
+// typed keys for cross-cutting metadata (locale, feature flags, trace ids, …).
+// Raw string/symbol keys are available when the value is intentionally unknown. No
 // AsyncLocalStorage — request scope is carried by the per-request child
 // container.
 export interface RequestContext {
@@ -12,9 +12,33 @@ export interface RequestContext {
   readonly receivedAt: Date;
   readonly request: Request;
   readonly hono: Context;
-  set<T>(key: string | symbol, value: T): void;
-  get<T>(key: string | symbol): T | undefined;
-  has(key: string | symbol): boolean;
+  set<Value>(key: RequestContextKey<Value>, value: NoInfer<Value>): void;
+  set(key: string | symbol, value: unknown): void;
+  get<Value>(key: RequestContextKey<Value>): Value | undefined;
+  get(key: string | symbol): unknown;
+  has<Value>(key: RequestContextKey<Value> | string | symbol): boolean;
+}
+
+/**
+ * An identity-based key for a request-local value. Reusing a description does
+ * not alias another key. Each key owns its typed storage, so retrieval never
+ * needs to reinterpret an unknown value from a heterogeneous map.
+ */
+export class RequestContextKey<Value> {
+  private readonly values = new WeakMap<RequestContext, Value>();
+
+  constructor(readonly description: string) {}
+
+  /** @internal Read by RequestContext.get(). */
+  readonly read = (context: RequestContext): Value | undefined => this.values.get(context);
+
+  /** @internal Write by RequestContext.set(). A function property keeps Value invariant. */
+  readonly write = (context: RequestContext, value: Value): void => {
+    this.values.set(context, value);
+  };
+
+  /** @internal Read by RequestContext.has(). */
+  readonly contains = (context: RequestContext): boolean => this.values.has(context);
 }
 
 export const REQUEST_CONTEXT = new InjectionToken<RequestContext>('vela.RequestContext');
@@ -23,19 +47,30 @@ export function createRequestContext(c: Context): RequestContext {
   const bag = new Map<string | symbol, unknown>();
   const inboundId = c.req.raw.headers.get('x-request-id');
   const id = inboundId && inboundId.length > 0 ? inboundId : crypto.randomUUID();
-  return {
+
+  function set<Value>(key: RequestContextKey<Value>, value: NoInfer<Value>): void;
+  function set(key: string | symbol, value: unknown): void;
+  function set<Value>(key: RequestContextKey<Value> | string | symbol, value: Value): void {
+    if (key instanceof RequestContextKey) key.write(context, value);
+    else bag.set(key, value);
+  }
+
+  function get<Value>(key: RequestContextKey<Value>): Value | undefined;
+  function get(key: string | symbol): unknown;
+  function get<Value>(key: RequestContextKey<Value> | string | symbol): unknown {
+    return key instanceof RequestContextKey ? key.read(context) : bag.get(key);
+  }
+
+  const context: RequestContext = {
     id,
     receivedAt: new Date(),
     request: c.req.raw,
     hono: c,
-    set(key, value) {
-      bag.set(key, value);
-    },
-    get<T>(key: string | symbol): T | undefined {
-      return bag.get(key) as T | undefined;
-    },
+    set,
+    get,
     has(key) {
-      return bag.has(key);
+      return key instanceof RequestContextKey ? key.contains(context) : bag.has(key);
     },
   };
+  return context;
 }

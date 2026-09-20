@@ -1,4 +1,5 @@
 import { HttpMethod, ParamType, Scope } from '../constants';
+import type { RedirectStatusCode, StatusCode } from 'hono/utils/http-status';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import { normalizePath } from '../registry/paths';
 import type { Constructor, PipeType, Type } from '../registry/types';
@@ -210,6 +211,8 @@ export function RawBody(): ParameterDecorator {
 
 /**
  * Factory for creating custom parameter decorators.
+ * Data may be omitted only when the factory accepts `undefined`.
+ * Factories run after guards and before parameter pipes.
  *
  * @example
  * ```ts
@@ -235,10 +238,19 @@ export function RawBody(): ParameterDecorator {
  * handle(@Header('x-request-id') requestId: string) { ... }
  * ```
  */
+export type CustomParamDecorator<TData> = (
+  ...args: undefined extends TData
+    ? [data?: TData, ...pipes: PipeType[]]
+    : [data: TData, ...pipes: PipeType[]]
+) => ParameterDecorator;
+
 export function createParamDecorator<TData = unknown>(
   factory: (data: TData, ctx: ExecutionContext) => unknown,
-): (data?: TData, ...pipes: PipeType[]) => ParameterDecorator {
-  return (data?: TData, ...pipes: PipeType[]): ParameterDecorator => {
+): CustomParamDecorator<TData>;
+export function createParamDecorator<TData>(
+  factory: (data: TData, ctx: ExecutionContext) => unknown,
+): (data: TData, ...pipes: PipeType[]) => ParameterDecorator {
+  return (data: TData, ...pipes: PipeType[]): ParameterDecorator => {
     return (target: object, propertyKey: string | symbol | undefined, parameterIndex: number) => {
       if (propertyKey === undefined) {
         throw new Error('Parameter decorators can only be used on method parameters');
@@ -248,10 +260,9 @@ export function createParamDecorator<TData = unknown>(
         index: parameterIndex,
         type: CUSTOM_PARAM_TYPE,
         name: undefined,
-        factory: (_unused: unknown, ctx: unknown) => {
-          const honoCtx = ctx as import('hono').Context;
-          const execCtx = buildExecutionContext(honoCtx, target.constructor as Type, propertyKey);
-          return factory(data as TData, execCtx);
+        factory: (_unused, ctx) => {
+          const execCtx = buildExecutionContext(ctx, target.constructor as Type, propertyKey);
+          return factory(data, execCtx);
         },
         ...(pipes.length > 0 ? { pipes } : {}),
       });
@@ -271,7 +282,7 @@ export function createParamDecorator<TData = unknown>(
  * create(@Body() data: CreateDto) { return data; }
  * ```
  */
-export function HttpCode(statusCode: number): MethodDecorator {
+export function HttpCode(statusCode: StatusCode): MethodDecorator {
   return (target: object, propertyKey: string | symbol, _descriptor: PropertyDescriptor) => {
     MetadataRegistry.setHandlerHttpMeta(target.constructor as Constructor, propertyKey, {
       httpCode: statusCode,
@@ -316,7 +327,7 @@ export function Header(name: string, value: string): MethodDecorator {
  * }
  * ```
  */
-export function Redirect(url: string, statusCode = 302): MethodDecorator {
+export function Redirect(url: string, statusCode: RedirectStatusCode = 302): MethodDecorator {
   return (target: object, propertyKey: string | symbol, _descriptor: PropertyDescriptor) => {
     MetadataRegistry.setHandlerHttpMeta(target.constructor as Constructor, propertyKey, {
       redirect: { url, statusCode },
@@ -326,7 +337,7 @@ export function Redirect(url: string, statusCode = 302): MethodDecorator {
 
 // Metadata readers (used by RouteManager)
 
-export function getHttpCode(target: Constructor, method: string | symbol): number | undefined {
+export function getHttpCode(target: Constructor, method: string | symbol): StatusCode | undefined {
   return MetadataRegistry.getHandlerHttpMeta(target, method)?.httpCode;
 }
 
@@ -340,7 +351,7 @@ export function getResponseHeaders(
 export function getRedirect(
   target: Constructor,
   method: string | symbol,
-): { url: string; statusCode: number } | undefined {
+): { url: string; statusCode: RedirectStatusCode } | undefined {
   return MetadataRegistry.getHandlerHttpMeta(target, method)?.redirect;
 }
 

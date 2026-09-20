@@ -20,9 +20,9 @@ export class TieredCacheStore implements AsyncCacheStore {
     this.tiers = tiers;
   }
 
-  async get<T = unknown>(key: string): Promise<T | undefined> {
+  async get(key: string): Promise<unknown> {
     for (let i = 0; i < this.tiers.length; i++) {
-      const value = (await this.tiers[i]!.get<T>(key)) as T | undefined;
+      const value = await this.tiers[i]!.get(key);
       if (value !== undefined) {
         // Backfill nearer (faster) tiers that missed.
         for (let j = 0; j < i; j++) {
@@ -34,7 +34,7 @@ export class TieredCacheStore implements AsyncCacheStore {
     return undefined;
   }
 
-  async set<T = unknown>(key: string, value: T, ttl?: number): Promise<void> {
+  async set(key: string, value: unknown, ttl?: number): Promise<void> {
     await Promise.all(this.tiers.map((tier) => tier.set(key, value, ttl)));
   }
 

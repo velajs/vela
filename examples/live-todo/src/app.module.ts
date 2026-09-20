@@ -3,9 +3,11 @@ import {
   Body,
   Controller,
   Delete,
+  defineProvider,
   Get,
   Inject,
   Injectable,
+  InjectionToken,
   Module,
   Param,
   Post,
@@ -13,6 +15,7 @@ import {
   WebSocketGateway,
   WebSocketModule,
 } from '@velajs/vela';
+import type { DynamicModule, ModuleImport, ProviderDefinition, Type } from '@velajs/vela';
 import {
   LiveInvalidation,
   LiveModule,
@@ -21,12 +24,10 @@ import {
   stampCommitHeaders,
 } from '@velajs/vela/live';
 import type { LiveModuleOptions } from '@velajs/vela/live';
+import { todoListDefinition } from './live-contract';
+import type { Todo } from './live-contract';
 
-export interface Todo {
-  id: string;
-  text: string;
-  createdAt: number;
-}
+export type { Todo } from './live-contract';
 
 const SEED: Todo[] = [{ id: 'seed-1', text: 'Try opening this page in a second tab', createdAt: 0 }];
 
@@ -43,7 +44,7 @@ export interface TodoStore {
   remove(id: string): Promise<boolean>;
 }
 
-export const TODO_STORE = 'demo:todo-store';
+export const TODO_STORE = new InjectionToken<TodoStore>('demo:todo-store');
 
 /** node variant: one process, one memory. */
 export class MemoryTodoStore implements TodoStore {
@@ -90,7 +91,7 @@ export class TodosService {
 export class TodoLive {
   constructor(@Inject(TodosService) private readonly todos: TodosService) {}
 
-  @LiveQuery('todos.list', { tags: ['todos'] })
+  @LiveQuery('todos.list', todoListDefinition, { tags: ['todos'] })
   list(): Promise<Todo[]> {
     return this.todos.all();
   }
@@ -146,17 +147,23 @@ export class RoomsGateway {}
 
 export interface MakeAppModuleOptions {
   live?: LiveModuleOptions;
+  liveModule?: DynamicModule;
+  websocketModule?: DynamicModule;
   /** Extra imports (e.g. Cloudflare's KVModule) and the TodoStore provider. */
-  imports?: unknown[];
-  storeProvider?: unknown;
+  imports?: ModuleImport[];
+  storeProvider?: Type | ProviderDefinition;
 }
 
 export function makeAppModule(options: MakeAppModuleOptions = {}): new () => object {
-  const storeProvider = options.storeProvider ?? { provide: TODO_STORE, useValue: new MemoryTodoStore() };
+  const storeProvider = options.storeProvider ?? defineProvider(TODO_STORE, { useClass: MemoryTodoStore });
   @Module({
-    imports: [WebSocketModule.forRoot({}), LiveModule.forRoot(options.live ?? {}), ...((options.imports ?? []) as never[])],
+    imports: [
+      options.websocketModule ?? WebSocketModule.forRoot({}),
+      options.liveModule ?? LiveModule.forRoot(options.live ?? {}),
+      ...(options.imports ?? []),
+    ],
     controllers: [TodosController],
-    providers: [RoomsGateway, storeProvider as never, TodosService, TodoLive],
+    providers: [RoomsGateway, storeProvider, TodosService, TodoLive],
   })
   class AppModule {}
   return AppModule;

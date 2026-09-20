@@ -1,73 +1,53 @@
-# Validation & Serialization
+# Validation & serialization
 
-Vela validates with **Zod** (no `class-validator`, no `class-transformer`). Everything here is on `@velajs/vela`. `zod` is your dependency; core only calls `.parse()` structurally, so it never imports zod itself.
+Core accepts structural parsers (`parse(unknown)`), so Zod stays an application dependency. Prefer one schema-bound endpoint when request validation, handler types, output validation, OpenAPI, and Hono RPC types must agree.
 
-## DTOs with `createZodDto`
-
-Wrap a Zod schema into a DTO class. The class carries a static `.schema` and is used as a `@Body()` type:
+## Endpoint contract
 
 ```ts
+import { Controller, Endpoint, Post, defineEndpoint } from '@velajs/vela';
 import { z } from 'zod';
-import { createZodDto } from '@velajs/vela';
 
-const CreateProductSchema = z.object({
-  name: z.string().min(1),
-  price: z.number().positive(),
-  tags: z.array(z.string()).default([]),
+const createProduct = defineEndpoint({
+  input: z.object({ json: z.object({ name: z.string().min(1) }) }),
+  output: z.object({ id: z.string(), name: z.string() }),
+  status: 201,
 });
 
-class CreateProductDto extends createZodDto(CreateProductSchema, { name: 'CreateProductDto' }) {}
-```
-
-`createZodDto(schema, { name? })` — `name` overrides the generated class name (surfaces in OpenAPI schema names and traces). The DTO's inferred output type is the body type.
-
-## Validating request bodies — `ValidationPipe`
-
-`ValidationPipe` reads the DTO's static `.schema` off the parameter's metatype and validates automatically. Register it globally (once) so every `createZodDto`-typed `@Body()` is validated:
-
-```ts
-import { ValidationPipe, APP_PIPE } from '@velajs/vela';
-
-// Option A: provider token
-@Module({ providers: [{ provide: APP_PIPE, useClass: ValidationPipe }] })
-class AppModule {}
-
-// Option B: app method
-app.useGlobalPipes(new ValidationPipe());
-
-// Option C: scoped to a handler/controller
-@Post()
-@UsePipes(new ValidationPipe())
-create(@Body() body: CreateProductDto) { ... }
-```
-
-On a Zod failure it throws `BadRequestException` with `{ statusCode: 400, message: 'Validation failed', errors: [...zod issues] }`. If the metatype has no `.schema`, the value passes through untouched.
-
-> `ValidationPipe` (from `@velajs/vela`, metatype-driven, structured 400) is distinct from `ZodValidationPipe` (a simpler pipe that calls `schema.parse(value)` on a schema you pass explicitly, with raw errors and no metatype lookup). Use `ValidationPipe` for DTO bodies.
-
-Neither is auto-registered — add it yourself.
-
-## Serialization — `@Serialize`
-
-`@Serialize(dto)` runs the handler result through `dto.schema.parse`, stripping fields not in the schema (great for hiding internal fields). It only takes effect when `SerializerInterceptor` is active:
-
-```ts
-import { Serialize, SerializerInterceptor, UseInterceptors, createZodDto } from '@velajs/vela';
-
-class PublicProductDto extends createZodDto(
-  z.object({ id: z.number(), name: z.string(), price: z.number() }),
-  { name: 'PublicProductDto' },
-) {}
-
-@Controller('/catalog')
-@UseInterceptors(SerializerInterceptor)   // activate the interceptor (controller or global)
-class CatalogController {
-  @Get('/items/:id')
-  @Serialize(PublicProductDto)            // strips fields not in PublicProductDto (e.g. `secret`)
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.products.find(id);        // returns full Product incl. secret
+@Controller('/products')
+class ProductsController {
+  @Post()
+  @Endpoint(createProduct)
+  create(input: ReturnType<typeof createProduct.input.parse>) {
+    return { id: crypto.randomUUID(), name: input.json.name };
   }
 }
 ```
 
-`@Serialize` is method-only and silently no-ops if `SerializerInterceptor` is not applied. For arrays, each element is parsed. Register `SerializerInterceptor` via `@UseInterceptors(SerializerInterceptor)`, or globally with `{ provide: APP_INTERCEPTOR, useClass: SerializerInterceptor }`.
+Schemas need `parse` and `toJSONSchema`; Zod 4.4+ supplies both. Input groups are `param`, `query`, `header`, and `json`. The dispatcher validates input after guards and validates the final result after interceptors. Invalid input returns 400; invalid output returns 500. An endpoint owns its status and argument parsing, so do not combine it with parameter decorators, `@HttpCode`, or `@Redirect` on the same method. JSON is the default, even for strings and null; string outputs can opt into `format: 'text'`.
+
+## Parameter decorators with named descriptors
+
+```ts
+import { Body, Post, ValidationPipe, defineDto } from '@velajs/vela';
+
+const CreateProduct = defineDto(z.object({ name: z.string().min(1) }), { name: 'CreateProduct' });
+type CreateProduct = ReturnType<typeof CreateProduct.parse>;
+
+@Post()
+create(@Body(new ValidationPipe(CreateProduct)) body: CreateProduct) {
+  return body;
+}
+```
+
+`defineDto` returns a frozen descriptor (`name`, `schema`, `parse`, `toJSONSchema`), not a constructor. Its parse result may be an object, array, scalar, or transformed value. JSON-schema export delegates to the supplied schema and fails explicitly when unavailable.
+
+Type aliases disappear from reflection. Supply the parser explicitly as above; a global `ValidationPipe` cannot infer it from a body type annotation. Programmatic routes can put the descriptor in parameter `metatype`. `ValidationPipe.parser` exposes the same parser to OpenAPI. The standalone pipe does not check that the method's TypeScript annotation matches its schema; `@Endpoint` supplies that stronger contract.
+
+`ValidationPipe` maps schema issues to `BadRequestException`. `ZodValidationPipe(schema)` directly delegates to `schema.parse` and leaves its errors unchanged.
+
+## Output serialization
+
+`@Serialize(descriptor)` parses handler output through `descriptor.schema` when `SerializerInterceptor` is active; arrays are parsed element-by-element. Choose a schema that strips unwanted fields. Apply `@UseInterceptors(SerializerInterceptor)` or register `defineProvider(APP_INTERCEPTOR, { useClass: SerializerInterceptor })`. The decorator alone does not activate the interceptor.
+
+See `openapi.md` for generated HTTP contracts and the core package's `TYPE_CONTRACTS.md` for the runtime/type boundary.

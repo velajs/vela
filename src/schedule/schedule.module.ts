@@ -1,3 +1,4 @@
+import { defineProvider } from '../container/types';
 import { Module } from '../module/decorators';
 import { stableHash } from '../module/stable-hash';
 import type { DynamicModule } from '../module/types';
@@ -49,7 +50,7 @@ export class ScheduleModule {
     return {
       module: ScheduleDispatchHost,
       key: stableHash({ dispatch: dispatch.kind }),
-      providers: [{ provide: SCHEDULE_DISPATCH, useValue: dispatch }],
+      providers: [defineProvider(SCHEDULE_DISPATCH, { useValue: dispatch })],
       exports: [SCHEDULE_DISPATCH],
       global: true,
     };

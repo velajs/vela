@@ -1,3 +1,4 @@
+import { defineProvider } from '../container/types';
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   VelaFactory,
@@ -35,9 +36,9 @@ beforeEach(() => {
 @Global()
 @Module({
   providers: [
-    { provide: URL_SIGNING_SECRET, useValue: SECRET },
+    defineProvider(URL_SIGNING_SECRET, {useValue: SECRET}),
     // Silence the report-first edge for the deliberate 5xx route.
-    { provide: APP_EXCEPTION_HANDLER, useValue: { report() {} } },
+    defineProvider(APP_EXCEPTION_HANDLER, {useValue: { report() {} }}),
   ],
   exports: [URL_SIGNING_SECRET, APP_EXCEPTION_HANDLER],
 })

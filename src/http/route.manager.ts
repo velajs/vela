@@ -1,4 +1,10 @@
-import { type Context, type MiddlewareHandler, type Next, Hono } from 'hono';
+import { type Next, Hono } from 'hono';
+import type {
+  VelaContext as Context,
+  VelaHono as HonoApp,
+  VelaHonoEnv,
+  VelaMiddlewareHandler as MiddlewareHandler,
+} from './hono.types';
 import { bodyLimit as honoBodyLimit } from 'hono/body-limit';
 import { contextStorage } from 'hono/context-storage';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
@@ -6,7 +12,7 @@ import { HttpMethod } from '../constants';
 import { HttpException } from '../errors/http-exception';
 import { getMetadata } from '../metadata';
 import type { Container } from '../container/container';
-import type { Token, Type } from '../container/types';
+import type { Token, TypedToken, Type } from '../container/types';
 import type { MiddlewareRouteDefinition } from '../module/middleware';
 import { joinPaths } from '../registry/paths';
 import { ArgumentResolver } from './argument-resolver';
@@ -15,6 +21,7 @@ import { buildMiddlewareExecutionContext } from './execution-context';
 import { HandlerExecutor } from './handler-executor';
 import { instantiate, instantiateMany } from './instantiate';
 import { REQUEST_CONTEXT, createRequestContext } from './request-context';
+import { findRequestContainer, setRequestContainer } from './request-container';
 import { mapResponse } from './response-mapper';
 import { ComponentManager } from '../pipeline/component.manager';
 import { shouldFilterCatch } from '../pipeline/decorators';
@@ -46,7 +53,7 @@ import {
 } from './security-options';
 
 type MethodRegistrar = (
-  app: Hono,
+  app: HonoApp,
   path: string,
   h: (c: Context) => Response | Promise<Response>,
 ) => void;
@@ -159,11 +166,11 @@ export class RouteManager {
   ]);
 
   private controllers: ControllerRegistration[] = [];
-  private globalMiddleware: Array<MiddlewareType | Token<NestMiddleware>> = [];
-  private globalPipes: Array<PipeType | Token<PipeTransform>> = [];
-  private globalGuards: Array<GuardType | Token<CanActivate>> = [];
-  private globalInterceptors: Array<InterceptorType | Token<NestInterceptor>> = [];
-  private globalFilters: Array<FilterType | Token<ExceptionFilter>> = [];
+  private globalMiddleware: Array<MiddlewareType | TypedToken<NestMiddleware>> = [];
+  private globalPipes: Array<PipeType | TypedToken<PipeTransform>> = [];
+  private globalGuards: Array<GuardType | TypedToken<CanActivate>> = [];
+  private globalInterceptors: Array<InterceptorType | TypedToken<NestInterceptor>> = [];
+  private globalFilters: Array<FilterType | TypedToken<ExceptionFilter>> = [];
   private globalPrefix = '';
   private consumerMiddlewareDefinitions: MiddlewareRouteDefinition[] = [];
   private routeDescriptions: RouteDescription[] = [];
@@ -251,10 +258,10 @@ export class RouteManager {
    * filters as HTTP routes, read live so late registrations propagate.
    */
   getGlobalComponents(): {
-    guards: Array<GuardType | Token<CanActivate>>;
-    pipes: Array<PipeType | Token<PipeTransform>>;
-    interceptors: Array<InterceptorType | Token<NestInterceptor>>;
-    filters: Array<FilterType | Token<ExceptionFilter>>;
+    guards: Array<GuardType | TypedToken<CanActivate>>;
+    pipes: Array<PipeType | TypedToken<PipeTransform>>;
+    interceptors: Array<InterceptorType | TypedToken<NestInterceptor>>;
+    filters: Array<FilterType | TypedToken<ExceptionFilter>>;
   } {
     return {
       guards: this.globalGuards,
@@ -329,7 +336,7 @@ export class RouteManager {
     return this;
   }
 
-  useGlobalMiddlewareTokens(...middlewareTokens: Array<Token<NestMiddleware>>): this {
+  useGlobalMiddlewareTokens(...middlewareTokens: Array<TypedToken<NestMiddleware>>): this {
     this.globalMiddleware.push(...middlewareTokens);
     return this;
   }
@@ -339,7 +346,7 @@ export class RouteManager {
     return this;
   }
 
-  useGlobalPipeTokens(...pipeTokens: Array<Token<PipeTransform>>): this {
+  useGlobalPipeTokens(...pipeTokens: Array<TypedToken<PipeTransform>>): this {
     this.globalPipes.push(...pipeTokens);
     return this;
   }
@@ -349,7 +356,7 @@ export class RouteManager {
     return this;
   }
 
-  useGlobalGuardTokens(...guardTokens: Array<Token<CanActivate>>): this {
+  useGlobalGuardTokens(...guardTokens: Array<TypedToken<CanActivate>>): this {
     this.globalGuards.push(...guardTokens);
     return this;
   }
@@ -359,7 +366,7 @@ export class RouteManager {
     return this;
   }
 
-  useGlobalInterceptorTokens(...interceptorTokens: Array<Token<NestInterceptor>>): this {
+  useGlobalInterceptorTokens(...interceptorTokens: Array<TypedToken<NestInterceptor>>): this {
     this.globalInterceptors.push(...interceptorTokens);
     return this;
   }
@@ -369,7 +376,7 @@ export class RouteManager {
     return this;
   }
 
-  useGlobalFilterTokens(...filterTokens: Array<Token<ExceptionFilter>>): this {
+  useGlobalFilterTokens(...filterTokens: Array<TypedToken<ExceptionFilter>>): this {
     this.globalFilters.push(...filterTokens);
     return this;
   }
@@ -392,7 +399,7 @@ export class RouteManager {
     if (this.container.isLazyPending(entry as Token)) return 0;
     try {
       const resolved = instantiate<NestMiddleware>(
-        entry as MiddlewareType | Token<NestMiddleware>,
+        entry as MiddlewareType | TypedToken<NestMiddleware>,
         this.container,
       );
       if (resolved && typeof resolved === 'object') {
@@ -408,14 +415,14 @@ export class RouteManager {
   }
 
   private getRequestContainer(c: Context): Container {
-    const existing = c.get('container') as Container | undefined;
+    const existing = findRequestContainer(c);
     if (existing) {
       return existing;
     }
 
     const child = this.container.createChild();
     child.setRequestInstance(REQUEST_CONTEXT, createRequestContext(c));
-    c.set('container', child);
+    setRequestContainer(c, child);
     return child;
   }
 
@@ -509,8 +516,8 @@ export class RouteManager {
     return this.globalPrefix;
   }
 
-  async build(): Promise<Hono> {
-    const app = new Hono();
+  async build(): Promise<HonoApp> {
+    const app = new Hono<VelaHonoEnv>();
     this.routeDescriptions = [];
 
     // Outermost: dispose the per-request child container once the request is
@@ -526,7 +533,7 @@ export class RouteManager {
         threw = true;
         throw error;
       } finally {
-        const child = c.get('container') as Container | undefined;
+        const child = findRequestContainer(c);
         if (child?.hasDisposables()) {
           const body = threw ? null : (c.res?.body ?? null);
           if (body) {
@@ -762,7 +769,7 @@ export class RouteManager {
   }
 
   private registerRoute(
-    app: Hono,
+    app: HonoApp,
     method: HttpMethod | string,
     path: string,
     handler: (c: Context) => Response | Promise<Response>,

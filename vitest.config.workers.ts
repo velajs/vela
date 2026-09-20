@@ -1,4 +1,5 @@
-import { cloudflareTest } from '@cloudflare/vitest-pool-workers';
+import swc from 'unplugin-swc';
+import { cloudflareTest } from '@cloudflare/vitest-plugin';
 import { defineConfig } from 'vitest/config';
 
 // Workers-runtime smoke tests for vela. Boots the framework inside
@@ -10,12 +11,23 @@ import { defineConfig } from 'vitest/config';
 // resolve conditions for the workerd target. The wrangler.toml at the
 // repo root drives miniflare; its `main` entry boots a vela app.
 export default defineConfig({
+  oxc: false,
   test: {
     globals: false,
     include: ['src/__tests__/workers/**/*.test.ts'],
     setupFiles: ['./src/metadata.ts'],
   },
   plugins: [
+    swc.vite({
+      tsconfigFile: false,
+      swcrc: false,
+      jsc: {
+        target: 'es2022',
+        parser: { syntax: 'typescript', decorators: true },
+        transform: { legacyDecorator: true, decoratorMetadata: true },
+        keepClassNames: true,
+      },
+    }),
     cloudflareTest({
       wrangler: { configPath: './wrangler.toml' },
     }),

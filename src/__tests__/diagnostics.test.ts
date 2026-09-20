@@ -17,7 +17,7 @@ afterEach(() => {
 });
 
 describe('Diagnostics', () => {
-  it("default 'log': discovery failures emit a warning, app still boots", async () => {
+  it("default 'log': provider construction failures abort bootstrap", async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     @Injectable()
@@ -30,14 +30,11 @@ describe('Diagnostics', () => {
     @Module({ providers: [FailsInCtor] })
     class App {}
 
-    const app = await VelaFactory.create(App);
-    expect(app).toBeDefined();
-    expect(warn).toHaveBeenCalled();
-    const messages = warn.mock.calls.map((c) => String(c[0]));
-    expect(messages.some((m) => m.includes('[vela]'))).toBe(true);
+    await expect(VelaFactory.create(App)).rejects.toThrow('intentional ctor failure');
+    expect(warn).not.toHaveBeenCalled();
   });
 
-  it("'silent' suppresses discovery warnings entirely", async () => {
+  it("'silent' suppresses diagnostics but still rejects a partial application", async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     @Injectable()
@@ -50,7 +47,7 @@ describe('Diagnostics', () => {
     @Module({ providers: [FailsInCtor] })
     class App {}
 
-    await VelaFactory.create(App, { diagnostics: 'silent' });
+    await expect(VelaFactory.create(App, { diagnostics: 'silent' })).rejects.toThrow('intentional ctor failure');
     const velaWarnings = warn.mock.calls
       .map((c) => String(c[0]))
       .filter((m) => m.includes('[vela]'));

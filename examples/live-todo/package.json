@@ -5,9 +5,7 @@
   "type": "module",
   "description": "Realtime todo + presence demo for @velajs/vela/live: node transport and Cloudflare Durable Object variants, driven by the published @velajs/client.",
   "scripts": {
-    "build:vela": "pnpm --dir ../.. build",
-    "sync:deps": "pnpm run build:vela && pnpm install",
-    "build": "rm -rf dist && swc src -d dist --strip-leading-paths && tsc --noEmit",
+    "build": "swc src -d dist --strip-leading-paths",
     "bundle:web": "esbuild web/main.ts --bundle --format=esm --outfile=web/main.js",
     "start": "pnpm run build && pnpm run bundle:web && node dist/server-node.js",
     "typecheck": "tsc --noEmit",
@@ -16,26 +14,20 @@
   "dependencies": {
     "@hono/node-server": "^1.19.0",
     "@hono/node-ws": "^1.2.0",
-    "@velajs/client": "^1.0.0",
-    "@velajs/cloudflare": "^1.11.0",
-    "@velajs/mail": "^1.0.0",
-    "@velajs/vela": "file:../..",
-    "@velajs/workflow": "^0.1.0",
-    "hono": "^4",
-    "zod": "^3.25.76"
+    "@velajs/client": "workspace:*",
+    "@velajs/cloudflare": "workspace:*",
+    "@velajs/vela": "workspace:*",
+    "hono": "catalog:",
+    "zod": "catalog:",
+    "@velajs/live-protocol": "workspace:*"
   },
   "devDependencies": {
     "@swc/cli": "^0.8.0",
-    "@swc/core": "^1.15.11",
-    "@types/node": "^22",
+    "@swc/core": "catalog:",
+    "@types/node": "catalog:",
     "esbuild": "^0.25.0",
-    "typescript": "^5",
-    "wrangler": "^4.107.1"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@swc/core",
-      "esbuild"
-    ]
+    "typescript": "catalog:",
+    "wrangler": "catalog:",
+    "@cloudflare/workers-types": "catalog:"
   }
 }

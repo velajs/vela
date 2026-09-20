@@ -7,7 +7,7 @@
     "declarationMap": false,
     "sourceMap": false,
     "outDir": "./dist",
-    "rootDir": "./src",
+    "rootDir": ".",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -16,9 +16,22 @@
     "emitDecoratorMetadata": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "lib": ["ES2022", "DOM"],
-    "types": ["node"]
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    "types": [
+      "node",
+      "@cloudflare/workers-types"
+    ]
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "test"]
+  "include": [
+    "src/**/*.ts",
+    "web/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "test"
+  ]
 }

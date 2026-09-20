@@ -8,17 +8,20 @@ export {
   MultipleProvidersFoundError,
   ROOT_MODULE_ID,
   describeToken,
+  defineProvider,
 } from './types';
 export { ModuleRef } from './module-ref';
 export { mixin } from './mixin';
 export type {
   Type,
   Token,
+  TypedToken,
+  DependencyToken,
   InferToken,
   InferTokens,
   InjectableOptions,
   InjectMetadata,
-  ProviderOptions,
+  ProviderDefinition,
   ProviderRegistration,
   InjectionTokenOptions,
   ModuleScope,

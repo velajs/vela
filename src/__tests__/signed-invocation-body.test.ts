@@ -1,3 +1,4 @@
+import { defineProvider } from '../container/types';
 import { describe, it, expect } from 'vitest';
 import {
   VelaFactory,
@@ -32,7 +33,7 @@ const bareHits: string[] = [];
 
 @Global()
 @Module({
-  providers: [{ provide: URL_SIGNING_SECRET, useValue: SECRET }],
+  providers: [defineProvider(URL_SIGNING_SECRET, {useValue: SECRET})],
   exports: [URL_SIGNING_SECRET],
 })
 class SecretModule {}

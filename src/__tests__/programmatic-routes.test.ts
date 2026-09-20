@@ -10,7 +10,7 @@ import {
   Injectable,
   MetadataRegistry,
   ParamType,
-  createZodDto,
+  defineDto,
   ValidationPipe,
   createOpenApiDocument,
   createParamDecorator,
@@ -59,7 +59,8 @@ function synthesizeRoute(
 describe('explicit param metatype on programmatic routes', () => {
   it('ValidationPipe validates a synthesized @Body param via explicit metatype', async () => {
     const CreateItemSchema = z.object({ name: z.string(), qty: z.number().int().positive() });
-    class CreateItemDto extends createZodDto(CreateItemSchema) {}
+    const CreateItemDto = defineDto(CreateItemSchema, { name: 'CreateItemDto' });
+    type CreateItemDto = ReturnType<typeof CreateItemDto.parse>;
 
     @Controller('/items')
     class ItemsController {}
@@ -105,7 +106,8 @@ describe('explicit param metatype on programmatic routes', () => {
     const ListQuerySchema = z.object({
       page: z.coerce.number().int().min(1).default(1),
     });
-    class ItemListQuery extends createZodDto(ListQuerySchema) {}
+    const ItemListQuery = defineDto(ListQuerySchema, { name: 'ItemListQuery' });
+    type ItemListQuery = ReturnType<typeof ItemListQuery.parse>;
 
     @Controller('/items')
     class ItemsController {}
@@ -138,7 +140,8 @@ describe('explicit param metatype on programmatic routes', () => {
 
   it('OpenAPI surfaces the explicit metatype as a named component schema', () => {
     const CreateItemSchema = z.object({ name: z.string() });
-    class CreateItemDto extends createZodDto(CreateItemSchema, { name: 'CreateItemDto' }) {}
+    const CreateItemDto = defineDto(CreateItemSchema, { name: 'CreateItemDto' });
+    type CreateItemDto = ReturnType<typeof CreateItemDto.parse>;
 
     @Controller('/items')
     class ItemsController {}
@@ -167,7 +170,8 @@ describe('explicit param metatype on programmatic routes', () => {
 
   it('falls back to design:paramtypes when no explicit metatype is present (regression)', async () => {
     const schema = z.object({ email: z.string().email() });
-    class SignupDto extends createZodDto(schema) {}
+    const SignupDto = defineDto(schema, { name: 'SignupDto' });
+    type SignupDto = ReturnType<typeof SignupDto.parse>;
 
     @Injectable()
     class Noop {}
@@ -175,7 +179,7 @@ describe('explicit param metatype on programmatic routes', () => {
     @Controller('/signup')
     class SignupController {
       @Post()
-      create(@Body() dto: SignupDto) {
+      create(@Body(new ValidationPipe(SignupDto)) dto: SignupDto) {
         return dto;
       }
     }

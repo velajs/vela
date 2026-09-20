@@ -1,135 +1,56 @@
-import { ParamType } from '../constants';
-import { MetadataRegistry } from '../registry/metadata.registry';
-import type { Constructor, PipeType, Type } from '../registry/types';
 import type { ExecutionContext } from '../pipeline/types';
-import { buildExecutionContext } from './execution-context';
-
-const CUSTOM_PARAM_TYPE = 'custom';
+import { createParamDecorator } from './decorators';
 
 /**
- * Factory for parameter decorators whose value materializes lazily — the
- * factory does not run during argument extraction; it runs the first time
- * the handler reads a property on the resolved value.
+ * Injects a memoized function. Calling it explicitly runs the factory once;
+ * later calls return the same value or Promise, or rethrow the same error.
+ * A factory may return a primitive, object, undefined, null or Promise.
  *
- * Vela runs guards before argument extraction, so both eager and lazy custom
- * decorators can observe guard-populated state. This variant defers expensive
- * materialization until first property access and avoids work when the handler
- * never reads the parameter.
- *
- * Do not use this helper for optional identities or any value whose absence is
- * tested by truthiness: the proxy itself is always truthy. Use
- * `createParamDecorator` so an absent value remains the real `undefined`.
- *
- * The proxy explicitly short-circuits `prop === 'then'` so `await value`
- * does not consider the proxy a thenable, which would otherwise trigger
- * eager resolution. This single invariant is what makes the helper safe to
- * pass through `async` boundaries without surprise.
+ * Guards run before argument extraction for both ordinary and lazy parameter
+ * decorators. Use this variant only to defer work that a handler may not need.
+ * Apply validation to the factory result rather than attaching parameter pipes
+ * to the injected function.
  *
  * @example
  * ```ts
  * const DeferredProfile = createLazyParamDecorator(
- *   (_data: unknown, ctx: ExecutionContext) => {
- *     const reqCtx = ctx.getContext().get('container').resolve(REQUEST_CONTEXT);
- *     return reqCtx.get('user');     // populated by AuthGuard
- *   },
+ *   (_data: undefined, ctx: ExecutionContext) => loadProfile(ctx.getRequest()),
  * );
  *
- * @UseGuards(AuthGuard)
  * @Get('/me')
- * me(@DeferredProfile() profile: User) {
- *   return { id: profile.id };       // factory runs here, after AuthGuard
+ * async me(@DeferredProfile() load: () => Promise<User | undefined>) {
+ *   const user = await load();
+ *   return { id: user?.id };
  * }
  * ```
  */
 export function createLazyParamDecorator<TData = unknown>(
   factory: (data: TData, ctx: ExecutionContext) => unknown,
-): (data?: TData, ...pipes: PipeType[]) => ParameterDecorator {
-  return (data?: TData, ...pipes: PipeType[]): ParameterDecorator => {
-    return (target: object, propertyKey: string | symbol | undefined, parameterIndex: number) => {
-      if (propertyKey === undefined) {
-        throw new Error('Parameter decorators can only be used on method parameters');
-      }
-
-      MetadataRegistry.addParameter(target.constructor as Constructor, propertyKey, {
-        index: parameterIndex,
-        type: CUSTOM_PARAM_TYPE,
-        name: undefined,
-        factory: (_unused: unknown, ctx: unknown) => {
-          const honoCtx = ctx as import('hono').Context;
-          const execCtx = buildExecutionContext(honoCtx, target.constructor as Type, propertyKey);
-          return createLazyProxy(() => factory(data as TData, execCtx));
-        },
-        ...(pipes.length > 0 ? { pipes } : {}),
-      });
-    };
-  };
+): (...args: undefined extends TData ? [data?: TData] : [data: TData]) => ParameterDecorator;
+export function createLazyParamDecorator<TData>(
+  factory: (data: TData, ctx: ExecutionContext) => unknown,
+): (data: TData) => ParameterDecorator {
+  const decorator = createParamDecorator((data: TData, ctx) => memoize(() => factory(data, ctx)));
+  return (data: TData) => decorator(data);
 }
 
-// Single-shot resolution: the factory runs at most once; subsequent reads
-// share the cached real value. The proxy's traps all funnel through
-// `materialize` to keep that invariant in one place.
-function createLazyProxy<T>(produce: () => T): T {
-  let resolved = false;
-  let value: unknown;
+type LazyState<T> =
+  | { status: 'pending' }
+  | { status: 'resolved'; value: T }
+  | { status: 'rejected'; error: unknown };
 
-  const materialize = (): unknown => {
-    if (!resolved) {
-      value = produce();
-      resolved = true;
+function memoize<T>(produce: () => T): () => T {
+  let state: LazyState<T> = { status: 'pending' };
+  return () => {
+    if (state.status === 'resolved') return state.value;
+    if (state.status === 'rejected') throw state.error;
+    try {
+      const value = produce();
+      state = { status: 'resolved', value };
+      return value;
+    } catch (error) {
+      state = { status: 'rejected', error };
+      throw error;
     }
-    return value;
   };
-
-  // Target is an empty null-prototype object — proxies still need a
-  // backing target for the runtime to forward to, but using a real object
-  // would leak its own properties (`hasOwnProperty`, etc.) into trap
-  // results. `Object.create(null)` keeps the namespace clean.
-  const target = Object.create(null) as object;
-
-  const handler: ProxyHandler<object> = {
-    get(_t, prop, receiver) {
-      // Critical: do NOT report the proxy as thenable. If we let the JS
-      // runtime read `then` (during `await proxy`), the engine would
-      // observe a function-shaped value, treat the proxy as a promise,
-      // call `then(resolve, reject)` and trigger eager resolution before
-      // the consumer ever touches a real property. Returning `undefined`
-      // here makes `await proxy` return the proxy itself, untouched.
-      if (prop === 'then') return undefined;
-
-      const real = materialize();
-      if (real === null || real === undefined) return undefined;
-
-      const descriptor = Reflect.get(real as object, prop, receiver);
-      // Bind functions back to the real target so `this` works as the
-      // consumer expects on instance methods.
-      if (typeof descriptor === 'function') {
-        return descriptor.bind(real);
-      }
-      return descriptor;
-    },
-
-    has(_t, prop) {
-      const real = materialize();
-      return real !== null && real !== undefined && Reflect.has(real as object, prop);
-    },
-
-    ownKeys() {
-      const real = materialize();
-      if (real === null || real === undefined) return [];
-      return Reflect.ownKeys(real as object);
-    },
-
-    getOwnPropertyDescriptor(_t, prop) {
-      const real = materialize();
-      if (real === null || real === undefined) return undefined;
-      const descriptor = Reflect.getOwnPropertyDescriptor(real as object, prop);
-      // Proxy invariants require returned descriptors to be configurable
-      // when the underlying target lacks the property, which is always
-      // true for our null-prototype empty target.
-      if (descriptor) descriptor.configurable = true;
-      return descriptor;
-    },
-  };
-
-  return new Proxy(target, handler) as T;
 }

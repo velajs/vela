@@ -36,6 +36,13 @@ export interface RunInit {
   ttlSeconds?: number;
   /** OPTIONAL observability label carried in the claim's `iss`; never authz. */
   iss?: string;
+  /** Abort when the caller's signal fires, preserving its abort reason. */
+  signal?: AbortSignal;
+  /**
+   * Abort the transport and response-body read after this many milliseconds.
+   * Must be finite and greater than zero. Defaults to 30 seconds.
+   */
+  timeoutMs?: number;
 }
 
 /**

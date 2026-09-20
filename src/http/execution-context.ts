@@ -1,6 +1,7 @@
 import type { Context } from 'hono';
 import type { Type } from '../container/types';
-import type { ExecutionContext } from '../pipeline/types';
+import type { HttpExecutionContext } from '../pipeline/types';
+import { findRequestContainer } from './request-container';
 
 // Private request-local bridge for custom param decorators, which construct
 // their own ExecutionContext from the same Hono Context after guards run.
@@ -14,21 +15,20 @@ export function buildExecutionContext(
   controller: Type,
   handlerName: string | symbol,
   moduleId?: string,
-): ExecutionContext {
+): HttpExecutionContext {
   if (moduleId !== undefined) moduleIdByContext.set(c, moduleId);
   const ownerModuleId = moduleId ?? moduleIdByContext.get(c);
   return {
-    getType: <T extends string = 'http'>() => 'http' as T,
+    getType: () => 'http',
     getClass: () => controller,
     getHandler: () => handlerName,
     getModuleId: () => ownerModuleId,
-    getContainer: <T = unknown>() =>
-      (c as unknown as { get: (key: string) => unknown }).get('container') as T | undefined,
-    getContext: <T = Context>() => c as T,
+    getContainer: () => findRequestContainer(c),
+    getContext: () => c,
     getRequest: () => c.req.raw,
     switchToHttp: () => ({
-      getRequest: <T = Request>() => c.req.raw as T,
-      getResponse: <T = Context>() => c as T,
+      getRequest: () => c.req.raw,
+      getResponse: () => c,
     }),
     switchToWs: () => {
       throw new Error(
@@ -53,6 +53,6 @@ export class VelaMiddlewareHost {}
 // authors can pattern-match against if needed.
 export const VELA_MIDDLEWARE_HANDLER: unique symbol = Symbol.for('vela.middleware');
 
-export function buildMiddlewareExecutionContext(c: Context): ExecutionContext {
-  return buildExecutionContext(c, VelaMiddlewareHost as unknown as Type, VELA_MIDDLEWARE_HANDLER);
+export function buildMiddlewareExecutionContext(c: Context): HttpExecutionContext {
+  return buildExecutionContext(c, VelaMiddlewareHost, VELA_MIDDLEWARE_HANDLER);
 }

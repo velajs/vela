@@ -126,7 +126,7 @@ export interface ApiDocMetadata {
 
 export interface ApiResponseOptions {
   description: string;
-  /** Zod schema, DTO class (from createZodDto), or raw JSON Schema. */
+  /** Zod schema, named defineDto descriptor, or raw JSON Schema. */
   schema?: unknown;
 }
 

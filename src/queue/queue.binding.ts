@@ -1,9 +1,10 @@
 import { EntrypointRegistry, InternalDispatcher, resolveErrorReporter } from '../index';
 import type { Container, DiscoveryService } from '../index';
 import { dispatchJobToEntries } from './queue.dispatch';
+import { readProcessorMetadata } from './queue.decorators';
 import type { QueueEntry } from './queue.dispatch';
 import { PROCESSOR_METADATA, queueToken } from './queue.tokens';
-import type { ProcessorMetadata, QueueDispatchMode, QueueDriver, QueueJob } from './queue.types';
+import type { QueueDispatchMode, QueueDriver, QueueJob } from './queue.types';
 
 /**
  * Wires a `QueueModule` instance's driver to the app: binds in-process
@@ -63,11 +64,11 @@ export class QueueDispatchBinding {
     const entries: QueueEntry[] = this.container.has(EntrypointRegistry)
       ? this.container
           .resolve(EntrypointRegistry)
-          .ofKind<ProcessorMetadata>('queue')
+          .ofKind('queue', readProcessorMetadata)
           .map((ep) => ({ token: ep.token, meta: ep.meta }))
       : this.discovery
-          .providersWithMeta<ProcessorMetadata>(PROCESSOR_METADATA, { deferLazy: true })
-          .map((found) => ({ token: found.token, meta: found.meta }));
+          .providersWithMeta(PROCESSOR_METADATA, { deferLazy: true })
+          .map((found) => ({ token: found.token, meta: readProcessorMetadata(found.meta) }));
 
     await dispatchJobToEntries(this.container, entries, job);
   }

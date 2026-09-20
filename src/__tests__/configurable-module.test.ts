@@ -1,3 +1,4 @@
+import { defineProvider } from '../container/types';
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   VelaFactory,
@@ -34,7 +35,7 @@ describe('ConfigurableModuleBuilder', () => {
       expect(typeof dyn.key).toBe('string');
       expect(dyn.global).toBeUndefined();
       expect(dyn.providers).toEqual([
-        { provide: MODULE_OPTIONS_TOKEN, useValue: { color: 'red' } },
+        defineProvider(MODULE_OPTIONS_TOKEN, {useValue: { color: 'red' }}),
       ]);
     });
 
@@ -108,7 +109,8 @@ describe('ConfigurableModuleBuilder', () => {
       const dyn = WidgetModule.forRootAsync({ useFactory: fn, inject: [], imports: [] });
       expect(dyn.module).toBe(WidgetModule);
       expect(dyn.providers).toEqual([
-        { provide: MODULE_OPTIONS_TOKEN, useFactory: fn, inject: [] },
+        defineProvider(MODULE_OPTIONS_TOKEN, {useFactory: fn,
+inject: []}),
       ]);
       expect(dyn.imports).toEqual([]);
     });
@@ -200,10 +202,13 @@ describe('ConfigurableModuleBuilder', () => {
       @Module({ providers: [WidgetService], exports: [WidgetService] })
       class WidgetModule extends ConfigurableModuleClass {}
 
+      @Module({ providers: [ColorProvider], exports: [ColorProvider] })
+      class ColorModule {}
+
       @Module({
-        providers: [ColorProvider],
         imports: [
           WidgetModule.forRootAsync({
+            imports: [ColorModule],
             inject: [ColorProvider],
             useFactory: (cp: ColorProvider) => ({ color: cp.get() }),
           }),

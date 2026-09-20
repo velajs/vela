@@ -1,36 +1,31 @@
 import { Injectable, Inject } from '../container/decorators';
 import { ConfigStore } from './config.store';
-import type { ConfigPath, ConfigPathValue } from './config.types';
 
-/**
- * Typed, dot-notation reads over the merged config. Stays a singleton (NestJS
- * parity); delegates to the {@link ConfigStore}. Pass `ConfigType<[...]>` as the
- * generic to type namespaced paths (`cfg.get('database.url')` → `string`).
- */
+/** Runtime config reads are unknown until a schema validates them. For an already
+ * typed namespace, inject or resolve its declared namespace.KEY token. */
 @Injectable()
-export class ConfigService<T extends Record<string, unknown> = Record<string, unknown>> {
+export class ConfigService {
   constructor(@Inject(ConfigStore) private readonly store: ConfigStore) {}
 
-  /** Read a config value; `undefined` when absent, or the supplied default. */
-  get<P extends ConfigPath<T>>(path: P): ConfigPathValue<T, P> | undefined;
-  get<P extends ConfigPath<T>>(path: P, defaultValue: ConfigPathValue<T, P>): ConfigPathValue<T, P>;
   get(path: string, defaultValue?: unknown): unknown {
     const value = this.store.get(path);
     return value === undefined ? defaultValue : value;
   }
 
-  /** Read a config value; throws when the path is absent. */
-  getOrThrow<P extends ConfigPath<T>>(path: P): ConfigPathValue<T, P> {
-    return this.store.getOrThrow(path) as ConfigPathValue<T, P>;
+  getOrThrow(path: string): unknown {
+    return this.store.getOrThrow(path);
   }
 
-  /** Whether a config path resolves to a defined value. */
-  has<P extends ConfigPath<T>>(path: P): boolean {
+  /** Parse a config value at an explicit validation boundary. */
+  parse<T>(path: string, schema: { parse(value: unknown): T }): T {
+    return schema.parse(this.store.get(path));
+  }
+
+  has(path: string): boolean {
     return this.store.has(path);
   }
 
-  /** The full merged config object (flat record + resolved namespaces). */
-  getAll(): T {
-    return this.store.all() as T;
+  getAll(): Record<string, unknown> {
+    return this.store.all();
   }
 }

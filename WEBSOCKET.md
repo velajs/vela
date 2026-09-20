@@ -19,7 +19,7 @@ Every message is a JSON envelope:
 - The server routes by `event` to the matching `@SubscribeMessage('event')` handler.
 - A handler that returns a value replies to the **sender only**, echoing `id`. Return a `WsResponse` (`{ event, data }`) to control the reply event; return any other value to reply on the same `event`; return `undefined`/`void` for no reply.
 - Errors are framed as `{ "event": "exception", "data": { ... } }`.
-- Application-level keepalive: send `{"event":"ping"}` → the server replies `{"event":"pong"}` (on Cloudflare this is answered *without waking* a hibernated Durable Object).
+- Framework keepalive: send the reserved `{"event":"$ping"}` → the server replies `{"event":"$pong"}` (on Cloudflare this is answered *without waking* a hibernated Durable Object). Application gateways cannot register `$…` events.
 
 Client side is just the browser `WebSocket`:
 

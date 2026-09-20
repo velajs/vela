@@ -1,3 +1,4 @@
+import { defineProvider } from '../../container/types';
 import type { Context } from 'hono';
 import {
   APP_GUARD,
@@ -19,6 +20,7 @@ import {
   UrlGeneratorService,
   VelaFactory,
   createOpenApiDocument,
+  getRequestContainer,
   type CallHandler,
   type CanActivate,
   type ExecutionContext,
@@ -33,20 +35,18 @@ import type { VelaApplication } from '../../application';
 // Smoke-test app for the workerd live-runtime suite. Each route exercises
 // a different slice of the framework end-to-end.
 
-const TRACE_KEY = '__velaTrace';
+const traces = new WeakMap<Request, string[]>();
 
-interface TracedRequest {
-  [TRACE_KEY]?: string[];
-}
-
-function pushTrace(req: TracedRequest, label: string): void {
-  (req[TRACE_KEY] ??= []).push(label);
+function pushTrace(req: Request, label: string): void {
+  const trace = traces.get(req) ?? [];
+  trace.push(label);
+  traces.set(req, trace);
 }
 
 @Injectable()
 class TraceGuard implements CanActivate {
   canActivate(ctx: ExecutionContext): boolean {
-    pushTrace(ctx.switchToHttp().getRequest<TracedRequest>(), 'guard');
+    pushTrace(ctx.switchToHttp().getRequest(), 'guard');
     return true;
   }
 }
@@ -65,7 +65,7 @@ class TracePipe implements PipeTransform {
 @Injectable()
 class TraceInterceptor implements NestInterceptor {
   async intercept(ctx: ExecutionContext, next: CallHandler): Promise<unknown> {
-    const req = ctx.switchToHttp().getRequest<TracedRequest>();
+    const req = ctx.switchToHttp().getRequest();
     if ((globalThis as { __velaPipeFired?: boolean }).__velaPipeFired) {
       pushTrace(req, 'pipe');
       delete (globalThis as { __velaPipeFired?: boolean }).__velaPipeFired;
@@ -107,9 +107,9 @@ class WhoAmIController {
 class OrderTestController {
   @Get()
   handle(@Req() c: Context) {
-    const req = c.req.raw as TracedRequest;
+    const req = c.req.raw;
     pushTrace(req, 'handler');
-    return { trace: req[TRACE_KEY] ?? [] };
+    return { trace: traces.get(req) ?? [] };
   }
 }
 
@@ -122,8 +122,7 @@ class OrderTestController {
 class RequestContextController {
   @Get()
   handle(@Req() c: Context) {
-    const container = c.get('container') as { resolve<T>(t: unknown): T };
-    const ctx = container.resolve<RequestContext>(REQUEST_CONTEXT);
+    const ctx = getRequestContainer(c).resolve(REQUEST_CONTEXT);
     return {
       id: ctx.id,
       receivedAt: ctx.receivedAt.toISOString(),
@@ -187,7 +186,7 @@ const WORKERS_SIGNING_SECRET = 'workerd-signing-secret';
 
 @Global()
 @Module({
-  providers: [{ provide: URL_SIGNING_SECRET, useValue: WORKERS_SIGNING_SECRET }],
+  providers: [defineProvider(URL_SIGNING_SECRET, { useValue: WORKERS_SIGNING_SECRET })],
   exports: [URL_SIGNING_SECRET],
 })
 class SigningModule {}
@@ -232,9 +231,9 @@ class SignedUrlDemoController {
     TraceGuard,
     TracePipe,
     TraceInterceptor,
-    { provide: APP_GUARD, useClass: TraceGuard },
-    { provide: APP_PIPE, useClass: TracePipe },
-    { provide: APP_INTERCEPTOR, useClass: TraceInterceptor },
+    defineProvider(APP_GUARD, { useClass: TraceGuard }),
+    defineProvider(APP_PIPE, { useClass: TracePipe }),
+    defineProvider(APP_INTERCEPTOR, { useClass: TraceInterceptor }),
   ],
 })
 class SmokeAppModule {}

@@ -1,3 +1,4 @@
+import { defineProvider } from '../container/types';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   Inject,
@@ -128,7 +129,7 @@ describe('Plugin manifest', () => {
     const TOKEN_A = new InjectionToken<string>('TOK_A');
 
     @Module({
-      providers: [{ provide: TOKEN_A, useValue: 'from-a' }],
+      providers: [defineProvider(TOKEN_A, {useValue: 'from-a'})],
       exports: [TOKEN_A],
     })
     class APlugin {}

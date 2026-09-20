@@ -65,7 +65,7 @@ describe('InferToken / InferTokens', () => {
     // instance fields fails to compile if inference broke).
     function _forRootAsync<
       T,
-      const Inject extends readonly Token<unknown>[] = readonly Token<unknown>[],
+      const Inject extends readonly Token[] = readonly Token[],
     >(opts: AsyncModuleOptions<T, Inject>): AsyncModuleOptions<T, Inject> {
       return opts;
     }
@@ -89,7 +89,7 @@ describe('InferToken / InferTokens', () => {
   it('falls back to unknown[] when inject is not a literal tuple', () => {
     type Opts = AsyncModuleOptions<{ ok: true }>;
     // Default Inject — `useFactory` accepts variadic unknown[] (backwards-compat).
-    const opts: Opts = {
+    const opts: Opts = { inject: [],
       useFactory: (...args: unknown[]) => {
         void args;
         return { ok: true } as const;

@@ -1,6 +1,7 @@
 import {
   LIVE_ERROR_CODES,
   LIVE_PROTOCOL,
+  MAX_LIVE_FRAME_BYTES,
   encodeLiveEnvelope,
   isClientLiveFrame,
 } from '@velajs/live-protocol';
@@ -26,13 +27,14 @@ import type {
   Entrypoint,
   OnApplicationBootstrap,
   ReservedWsEventHandler,
-  Token,
   Type,
   WsClient,
   WsMessage,
 } from '../index';
 import { getLiveQueries } from './live.decorators';
+import { liveCoalescingKey } from './live.coalescing';
 import { encodeSubscriptionUpdate } from './live.delta';
+import { readPersistedSubscriptionRecords } from './live.persistence';
 import {
   LIVE_CURSOR_LOG,
   LIVE_DRIVER,
@@ -49,7 +51,8 @@ import type {
   LiveInvalidationSink,
   LiveModuleOptions,
   LiveQueryContext,
-  LiveQueryOptions,
+  LiveQueryMetadata,
+  PreparedLiveQuery,
   LiveResolverMetadata,
   SubscriptionRecord,
 } from './live.types';
@@ -61,19 +64,122 @@ const DEFAULT_MAX_SUBSCRIPTIONS_PER_SOCKET = 100;
 const DEFAULT_MAX_REFRESH_FANOUT = 10_000;
 const DEFAULT_MAX_TAGS = 100;
 const MAX_TAG_BYTES = 256;
+// A pass may contain 10k distinct subscriptions. Bound both key cardinality
+// and fulfilled-result retention so opt-in sharing cannot become an isolate-
+// memory multiplier when most partitions are unique.
+const MAX_COALESCED_EXECUTIONS_PER_PASS = 256;
+const MAX_COALESCED_RESULT_BYTES = 64 * 1024;
+const MAX_COALESCED_RETAINED_BYTES = 2 * 1024 * 1024;
 const textEncoder = new TextEncoder();
 
-interface RegisteredQuery {
-  token: Type;
+interface RegisteredQuery extends LiveQueryMetadata {
+  token: Type<unknown>;
   moduleId: string;
-  methodName: string | symbol;
-  options: LiveQueryOptions;
 }
 
 interface ConnectionEntry {
   client: WsClient;
   path: string;
+  connectedAt: number;
   subs: Map<string, SubscriptionRecord>;
+}
+
+/** Read-only operational metadata; excludes query arguments, results and identity claims. */
+export interface LiveInspection {
+  subscriptions: Array<{
+    id: string;
+    query: string;
+    room: string;
+    clientId: string;
+    tags: string[];
+    /** When this engine attached the connection, including after hibernation. */
+    connectedAt: number;
+  }>;
+  rooms: Array<{ room: string; count: number; members: string[] }>;
+}
+
+interface QueryExecution {
+  json: string;
+  result: unknown;
+}
+
+interface CachedQueryExecution {
+  promise: Promise<QueryExecution>;
+  retainedBytes?: number;
+}
+
+interface QueryExecutionCache {
+  entries: Map<string, CachedQueryExecution>;
+  retainedBytes: number;
+}
+
+function removeCachedExecution(
+  cache: QueryExecutionCache,
+  key: string,
+  entry: CachedQueryExecution,
+): void {
+  if (cache.entries.get(key) !== entry) return;
+  cache.entries.delete(key);
+  cache.retainedBytes -= entry.retainedBytes ?? 0;
+}
+
+function evictOldestSettledExecution(cache: QueryExecutionCache): boolean {
+  for (const [key, entry] of cache.entries) {
+    if (entry.retainedBytes === undefined) continue;
+    removeCachedExecution(cache, key, entry);
+    return true;
+  }
+  return false;
+}
+
+function resolveCachedExecution(
+  cache: QueryExecutionCache,
+  key: string,
+  execute: () => Promise<QueryExecution>,
+): Promise<QueryExecution> {
+  const cached = cache.entries.get(key);
+  if (cached !== undefined) {
+    // Promote hits so the bounded fulfilled-result set behaves as an LRU.
+    cache.entries.delete(key);
+    cache.entries.set(key, cached);
+    return cached.promise;
+  }
+
+  while (
+    cache.entries.size >= MAX_COALESCED_EXECUTIONS_PER_PASS &&
+    evictOldestSettledExecution(cache)
+  ) {
+    // Keep pending work joinable; evict only already-consumed results.
+  }
+  if (cache.entries.size >= MAX_COALESCED_EXECUTIONS_PER_PASS) return execute();
+
+  const entry: CachedQueryExecution = { promise: execute() };
+  cache.entries.set(key, entry);
+  void entry.promise.then(
+    (execution): undefined => {
+      if (cache.entries.get(key) !== entry) return undefined;
+      const resultBytes = textEncoder.encode(execution.json).byteLength;
+      if (resultBytes > MAX_COALESCED_RESULT_BYTES) {
+        removeCachedExecution(cache, key, entry);
+        return undefined;
+      }
+
+      entry.retainedBytes = resultBytes;
+      cache.retainedBytes += resultBytes;
+      while (
+        cache.retainedBytes > MAX_COALESCED_RETAINED_BYTES &&
+        evictOldestSettledExecution(cache)
+      ) {
+        // Oldest fulfilled groups leave first; pending executions stay joinable.
+      }
+      return undefined;
+    },
+    (): undefined => {
+      removeCachedExecution(cache, key, entry);
+      return undefined;
+    },
+  );
+  return entry.promise;
 }
 
 /**
@@ -87,22 +193,18 @@ export const LIVE_SUBS_DATA_KEY = '__velaLiveSubs';
 
 /** Read the subscription records a transport persisted for a connection (wake/restore path). */
 export function readPersistedLiveSubscriptions(client: WsClient): SubscriptionRecord[] {
-  const raw = (client.data as Record<string, unknown> | undefined)?.[LIVE_SUBS_DATA_KEY];
-  if (!Array.isArray(raw)) return [];
-  return raw.filter(
-    (record): record is SubscriptionRecord =>
-      typeof record === 'object' &&
-      record !== null &&
-      typeof (record as SubscriptionRecord).sub === 'string' &&
-      typeof (record as SubscriptionRecord).query === 'string' &&
-      Array.isArray((record as SubscriptionRecord).tags),
-  );
+  return readPersistedSubscriptionRecords(client.data?.[LIVE_SUBS_DATA_KEY]);
 }
 
 const defaultIdentity = (client: WsClient): LiveIdentity | undefined => {
-  const data = client.data as Record<string, unknown> | undefined;
+  const data = client.data;
   if (!data || Object.keys(data).length === 0) return undefined;
-  return { ...data } as LiveIdentity;
+  const { [LIVE_SUBS_DATA_KEY]: _subscriptions, expiresAtMs, ...claims } = data;
+  if (expiresAtMs === undefined) return claims;
+  if (typeof expiresAtMs !== 'number' || !Number.isSafeInteger(expiresAtMs) || expiresAtMs < 0) {
+    throw new TypeError('live identity expiry must be a nonnegative safe integer');
+  }
+  return { ...claims, expiresAtMs };
 };
 
 async function runPool<T>(
@@ -153,6 +255,7 @@ export class LiveEngine
     LiveInvalidationSink
 {
   private readonly queries = new Map<string, RegisteredQuery>();
+  private readonly preparedQueries = new WeakMap<SubscriptionRecord, PreparedLiveQuery>();
   private readonly connections = new Map<string, ConnectionEntry>();
   private readonly pendingTags = new Set<string>();
   private drainChain: Promise<void> = Promise.resolve();
@@ -203,10 +306,9 @@ export class LiveEngine
           continue;
         }
         this.queries.set(declared.name, {
+          ...declared,
           token: found.metatype,
           moduleId: found.moduleIds[0]!,
-          methodName: declared.methodName,
-          options: declared.options,
         });
       }
     }
@@ -217,7 +319,7 @@ export class LiveEngine
     return [
       {
         kind: 'live',
-        token: LiveEngine as unknown as Token,
+        token: LiveEngine,
         instance: this,
         meta: { engine: this },
       },
@@ -225,6 +327,28 @@ export class LiveEngine
   }
 
   // ---- ReservedWsEventHandler ----
+
+  /** Snapshot of this engine's scope only. Expose through an authenticated admin surface. */
+  inspect(): LiveInspection {
+    const subscriptions: LiveInspection['subscriptions'] = [];
+    for (const connection of this.connections.values()) {
+      const expiry = connection.client.data.expiresAtMs;
+      if (typeof expiry === 'number' && expiry <= Date.now()) continue;
+      for (const record of connection.subs.values()) {
+        for (const room of connection.client.rooms) {
+          subscriptions.push({
+            id: JSON.stringify([connection.path, room, connection.client.id, record.sub]),
+            query: record.query,
+            room,
+            clientId: connection.client.id,
+            tags: [...record.tags],
+            connectedAt: connection.connectedAt,
+          });
+        }
+      }
+    }
+    return { subscriptions, rooms: this.presence?.inspectRooms() ?? [] };
+  }
 
   async handleReservedEvent(path: string, client: WsClient, message: WsMessage): Promise<void> {
     const frame = message.data;
@@ -303,7 +427,25 @@ export class LiveEngine
       void this.revokeConnection(conn, 'invalid persisted live subscription');
       return;
     }
-    conn.subs.set(record.sub, record);
+    try {
+      const registered = this.queries.get(record.query);
+      if (!registered) throw new Error('unknown persisted live query');
+      const prepared = registered.prepare(record.args);
+      const tags = prepared.tags();
+      this.assertTags(tags, 'restored subscription');
+      const restored: SubscriptionRecord = {
+        sub: record.sub,
+        query: record.query,
+        args: prepared.args,
+        tags,
+        key: record.key ?? registered.key,
+        identity: record.identity,
+      };
+      this.preparedQueries.set(restored, prepared);
+      conn.subs.set(restored.sub, restored);
+    } catch {
+      void this.revokeConnection(conn, 'invalid persisted live subscription');
+    }
   }
 
   // ---- subscribe path ----
@@ -348,21 +490,20 @@ export class LiveEngine
       return;
     }
 
-    let args: unknown = frame.args;
-    if (registered.options.parse) {
-      try {
-        args = registered.options.parse(frame.args);
-      } catch (err) {
-        this.sendFrame(client, {
-          t: 'error',
-          sub: frame.sub,
-          code: LIVE_ERROR_CODES.BAD_ARGS,
-          message: err instanceof Error ? err.message : 'invalid subscription args',
-          fatal: true,
-        });
-        return;
-      }
+    let prepared: PreparedLiveQuery;
+    try {
+      prepared = registered.prepare(frame.args);
+    } catch (err) {
+      this.sendFrame(client, {
+        t: 'error',
+        sub: frame.sub,
+        code: LIVE_ERROR_CODES.BAD_ARGS,
+        message: err instanceof Error ? err.message : 'invalid subscription args',
+        fatal: true,
+      });
+      return;
     }
+    const args = prepared.args;
 
     // Resolver-tier guards run here and again before server-initiated delivery.
     // App-wide guards already protected the inbound reserved-event path.
@@ -378,11 +519,9 @@ export class LiveEngine
     }
 
     const identity = (this.options.identity ?? defaultIdentity)(client);
-    const tags =
-      typeof registered.options.tags === 'function'
-        ? registered.options.tags(args)
-        : registered.options.tags;
+    let tags: string[];
     try {
+      tags = prepared.tags();
       this.assertTags(tags, `subscription '${frame.query}'`);
     } catch (err) {
       resolveErrorReporter(this.container).report(err, {
@@ -404,9 +543,10 @@ export class LiveEngine
       query: frame.query,
       args,
       tags,
-      key: frame.key ?? registered.options.key,
+      key: frame.key ?? registered.key,
       identity,
     };
+    this.preparedQueries.set(record, prepared);
     if (!(await this.authorizeRecord(record, client, false))) {
       await this.revokeConnection(conn, 'live authorization revoked');
       return;
@@ -519,8 +659,11 @@ export class LiveEngine
       );
 
       const authorizedWork = work.filter(({ conn }) => !overflow.has(conn));
+      // Fresh for every pass: explicit tags still decide which records enter
+      // this work set, and no result can survive into a later invalidation cut.
+      const runCache: QueryExecutionCache = { entries: new Map(), retainedBytes: 0 };
       await runPool(authorizedWork, REFRESH_POOL_SIZE, async ({ conn, record }) => {
-        await this.push(conn, record, stamp, { initial: false });
+        await this.push(conn, record, stamp, { initial: false, runCache });
       });
     }
   }
@@ -542,7 +685,7 @@ export class LiveEngine
     conn: ConnectionEntry,
     record: SubscriptionRecord,
     stamp: CommitStamp,
-    { initial }: { initial: boolean },
+    { initial, runCache }: { initial: boolean; runCache?: QueryExecutionCache },
   ): Promise<void> {
     // Outbound expiry enforcement — the only place expiry CAN be enforced for
     // a passive subscriber.
@@ -562,14 +705,9 @@ export class LiveEngine
       return;
     }
 
-    let json: string;
-    let result: unknown;
+    let execution: QueryExecution;
     try {
-      result = await this.runQuery(record, conn.client);
-      // `undefined` has no JSON form — normalize so the frame always carries
-      // an explicit `snapshot` and the baseline stays a string.
-      if (result === undefined) result = null;
-      json = JSON.stringify(result);
+      execution = await this.resolveQueryExecution(record, conn.client, runCache);
     } catch (err) {
       if (initial) {
         // Close the leak: an initial-subscribe resolver failure is REDACTED
@@ -595,29 +733,98 @@ export class LiveEngine
       return;
     }
 
-    const frame = encodeSubscriptionUpdate(record, json, result, stamp, initial);
+    const frame = encodeSubscriptionUpdate(
+      record,
+      execution.json,
+      execution.result,
+      stamp,
+      initial,
+    );
     if (this.sendFrame(conn.client, frame)) {
-      record.lastJson = json;
+      record.lastJson = execution.json;
       record.lastCursor = stamp.cursor;
     }
   }
 
-  private async runQuery(record: SubscriptionRecord, client: WsClient): Promise<unknown> {
+  private liveQueryContext(record: SubscriptionRecord, client: WsClient): LiveQueryContext {
+    return {
+      identity: record.identity,
+      clientId: client.id,
+      rooms: [...client.rooms],
+    };
+  }
+
+  private async resolveQueryExecution(
+    record: SubscriptionRecord,
+    client: WsClient,
+    runCache: QueryExecutionCache | undefined,
+  ): Promise<QueryExecution> {
+    const registered = this.queries.get(record.query);
+    if (!registered) throw new Error(`live query '${record.query}' disappeared from the registry`);
+
+    let cacheKey: string | undefined;
+    let liveContext: LiveQueryContext | undefined;
+    const prepared = this.preparedQuery(record);
+    if (runCache && prepared.coalesceBy) {
+      try {
+        liveContext = this.liveQueryContext(record, client);
+        const partition = prepared.coalesceBy(liveContext);
+        if (typeof partition === 'string') {
+          cacheKey = liveCoalescingKey(record.query, record.args, partition);
+        }
+      } catch {
+        // App partitioning is an optimization assertion, never a delivery
+        // dependency. A faulty key function fails closed to an independent run.
+      }
+    }
+
+    if (cacheKey === undefined || runCache === undefined) {
+      return this.executeQuery(record, client, liveContext);
+    }
+
+    // Store the in-flight Promise, not just its result: workers reaching the
+    // same group concurrently join the first resolver execution. Fulfilled
+    // groups remain pass-local but are held behind strict count/byte budgets.
+    return resolveCachedExecution(runCache, cacheKey, () =>
+      this.executeQuery(record, client, liveContext),
+    );
+  }
+
+  private async executeQuery(
+    record: SubscriptionRecord,
+    client: WsClient,
+    liveContext?: LiveQueryContext,
+  ): Promise<QueryExecution> {
+    const registered = this.queries.get(record.query);
+    if (!registered) throw new Error(`live query '${record.query}' disappeared from the registry`);
+    const result = registered.definition.result.parse(
+      await this.runQuery(record, client, liveContext),
+    );
+    const json = JSON.stringify(result);
+    if (json === undefined)
+      throw new TypeError('A live query result must have a JSON representation.');
+    // Delivery is a JSON protocol. Retain and fan out the canonical parsed
+    // wire value rather than the resolver's raw object graph: non-enumerable,
+    // symbol, alias, and custom-instance state must not bypass cache budgets or
+    // make the baseline differ from the snapshot that actually gets encoded.
+    const wireResult: unknown = JSON.parse(json);
+    return { json, result: wireResult };
+  }
+
+  private async runQuery(
+    record: SubscriptionRecord,
+    client: WsClient,
+    liveContext?: LiveQueryContext,
+  ): Promise<unknown> {
     const registered = this.queries.get(record.query);
     if (!registered) throw new Error(`live query '${record.query}' disappeared from the registry`);
 
     return runInEntrypointScope(this.container, async (scope) => {
       // Async seam: lazy resolver modules materialize, request-scoped
       // resolvers rebuild per run (mirrors queue dispatch).
-      const instance = (await scope.resolveAsync(registered.token)) as Record<
-        string | symbol,
-        unknown
-      >;
-      const liveContext: LiveQueryContext = {
-        identity: record.identity,
-        clientId: client.id,
-        rooms: [...client.rooms],
-      };
+      const instance = await scope.resolveAsync(registered.token);
+      const prepared = this.preparedQuery(record);
+      const queryContext = liveContext ?? this.liveQueryContext(record, client);
       const context = buildEntrypointExecutionContext(
         'live',
         registered.token,
@@ -639,11 +846,8 @@ export class LiveEngine
         context,
         guards: [],
         interceptors,
-        resolveArgs: async () => [record.args, liveContext],
-        invoke: async (args) => {
-          const method = instance[registered.methodName] as (...a: unknown[]) => unknown;
-          return method.apply(instance, args);
-        },
+        resolveArgs: async () => [record.args, queryContext],
+        invoke: async () => prepared.invoke(instance, queryContext),
       });
     });
   }
@@ -656,11 +860,16 @@ export class LiveEngine
    * baseline just means the next relevant change sends a full snapshot.
    */
   private async persistSubscriptions(conn: ConnectionEntry): Promise<void> {
-    const records = [...conn.subs.values()].map(
-      ({ lastJson: _lastJson, lastCursor: _lastCursor, ...persisted }) => persisted,
-    );
+    const records = [...conn.subs.values()].map((record) => ({
+      sub: record.sub,
+      query: record.query,
+      args: this.preparedQuery(record).input,
+      tags: record.tags,
+      key: record.key,
+      identity: record.identity,
+    }));
     try {
-      (conn.client.data as Record<string, unknown>)[LIVE_SUBS_DATA_KEY] = records;
+      conn.client.data[LIVE_SUBS_DATA_KEY] = records;
       await conn.client.commit();
     } catch (err) {
       if (this.container.getDiagnostics() !== 'silent') {
@@ -672,10 +881,16 @@ export class LiveEngine
     }
   }
 
+  private preparedQuery(record: SubscriptionRecord): PreparedLiveQuery {
+    const prepared = this.preparedQueries.get(record);
+    if (!prepared) throw new Error(`live query '${record.query}' has not parsed its input`);
+    return prepared;
+  }
+
   private ensureConnection(path: string, client: WsClient): ConnectionEntry {
     let conn = this.connections.get(client.id);
     if (!conn) {
-      conn = { client, path, subs: new Map() };
+      conn = { client, path, connectedAt: Date.now(), subs: new Map() };
       this.connections.set(client.id, conn);
     }
     return conn;
@@ -785,25 +1000,30 @@ export class LiveEngine
     value: unknown,
   ): value is { t: 'sub'; sub: string; query: string; v: number } {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-    const frame = value as Record<string, unknown>;
     return (
-      frame.t === 'sub' &&
-      typeof frame.sub === 'string' &&
-      frame.sub.length > 0 &&
-      frame.sub.length <= 256 &&
-      typeof frame.query === 'string' &&
-      frame.query.length > 0 &&
-      frame.query.length <= 256 &&
-      typeof frame.v === 'number' &&
-      Number.isSafeInteger(frame.v) &&
-      frame.v > 0 &&
-      frame.v !== LIVE_PROTOCOL
+      't' in value &&
+      value.t === 'sub' &&
+      'sub' in value &&
+      typeof value.sub === 'string' &&
+      value.sub.length > 0 &&
+      value.sub.length <= 256 &&
+      'query' in value &&
+      typeof value.query === 'string' &&
+      value.query.length > 0 &&
+      value.query.length <= 256 &&
+      'v' in value &&
+      typeof value.v === 'number' &&
+      Number.isSafeInteger(value.v) &&
+      value.v > 0 &&
+      value.v !== LIVE_PROTOCOL
     );
   }
 
   private sendFrame(client: WsClient, frame: ServerLiveFrame): boolean {
     try {
-      client.sendRaw(encodeLiveEnvelope(frame));
+      const encoded = encodeLiveEnvelope(frame);
+      if (textEncoder.encode(encoded).byteLength > MAX_LIVE_FRAME_BYTES) return false;
+      client.sendRaw(encoded);
       return true;
     } catch {
       return false;

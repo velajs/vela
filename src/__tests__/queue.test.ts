@@ -1,3 +1,4 @@
+import { defineProvider } from '../container/types';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   APP_EXCEPTION_HANDLER,
@@ -399,7 +400,7 @@ describe('queue tokens and module identity', () => {
 
     @Module({
       imports: [
-        QueueModule.forRootAsync({
+        QueueModule.forRootAsync({ inject: [],
           queues: ['async-q'],
           useFactory: async () => ({ driver }),
         }),
@@ -416,7 +417,7 @@ describe('queue tokens and module identity', () => {
   });
 
   it('forRootAsync without structural queues fails fast at call time', () => {
-    expect(() => QueueModule.forRootAsync({ useFactory: async () => ({}) })).toThrow(
+    expect(() => QueueModule.forRootAsync({ inject: [], useFactory: async () => ({}) })).toThrow(
       /queues.*structural/,
     );
   });
@@ -595,7 +596,7 @@ describe('error reporter edge (report-then-rethrow)', () => {
 
     @Module({
       imports: [QueueModule.forRoot({ queues: ['reportq'], driver })],
-      providers: [ThrowingProcessor, { provide: APP_EXCEPTION_HANDLER, useValue: { report } }],
+      providers: [ThrowingProcessor, defineProvider(APP_EXCEPTION_HANDLER, {useValue: { report }})],
     })
     class App {}
 
@@ -626,7 +627,7 @@ describe('error reporter edge (report-then-rethrow)', () => {
 
     @Module({
       imports: [QueueModule.forRoot({ queues: ['inlinereport'] })], // default inline() immediate
-      providers: [BoomProcessor, { provide: APP_EXCEPTION_HANDLER, useValue: { report } }],
+      providers: [BoomProcessor, defineProvider(APP_EXCEPTION_HANDLER, {useValue: { report }})],
     })
     class App {}
 

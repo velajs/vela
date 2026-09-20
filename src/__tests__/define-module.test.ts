@@ -1,3 +1,4 @@
+import { defineProvider } from '../container/types';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   APP_GUARD,
@@ -41,7 +42,7 @@ describe('defineModule', () => {
     expect(dyn.module).toBe(WidgetModule);
     expect(dyn.key).toBe(stableHash({ color: 'red' }));
     expect(MODULE_OPTIONS_TOKEN).toBe(WIDGET_OPTIONS);
-    expect(dyn.providers).toContainEqual({ provide: WIDGET_OPTIONS, useValue: { color: 'red' } });
+    expect(dyn.providers).toContainEqual(defineProvider(WIDGET_OPTIONS, {useValue: { color: 'red' }}));
 
     // Identical options dedup; distinct coexist; explicit key wins.
     expect(WidgetModule.forRoot({ color: 'red' }).key).toBe(dyn.key);
@@ -74,11 +75,8 @@ describe('defineModule', () => {
       name: 'Widget',
       setup: ({ OPTIONS, options }) => ({
         providers: [
-          {
-            provide: SIZE,
-            useFactory: (o: WidgetOptions) => (o.size ?? 0) * 2,
-            inject: [OPTIONS],
-          },
+          defineProvider(SIZE, {useFactory: (o: WidgetOptions) => (o.size ?? 0) * 2,
+inject: [OPTIONS]}),
         ],
         exports: [SIZE],
         global: options.size !== undefined ? { guards: [WidgetGuard] } : undefined,
@@ -90,7 +88,7 @@ describe('defineModule', () => {
     expect(dyn.exports).toContain(SIZE);
     // global slot: class registered as provider + APP_GUARD useExisting
     expect(dyn.providers).toContain(WidgetGuard);
-    expect(dyn.providers).toContainEqual({ provide: APP_GUARD, useExisting: WidgetGuard });
+    expect(dyn.providers).toContainEqual(defineProvider(APP_GUARD, {useExisting: WidgetGuard}));
   });
 
   it('forRootAsync merges structural fields under the resolved options', async () => {
@@ -107,7 +105,7 @@ describe('defineModule', () => {
     class WidgetModule extends ConfigurableModuleClass {}
 
     @Module({
-      imports: [WidgetModule.forRootAsync({ size: 7, useFactory: () => ({ color: 'green' }) })],
+      imports: [WidgetModule.forRootAsync({ inject: [], size: 7, useFactory: () => ({ color: 'green' }) })],
     })
     class AppModule {}
 
@@ -124,11 +122,8 @@ describe('defineModule', () => {
       name: 'Widget',
       setup: ({ OPTIONS }) => ({
         providers: [
-          {
-            provide: LABEL,
-            useFactory: (o: WidgetOptions) => `widget:${o.color}`,
-            inject: [OPTIONS],
-          },
+          defineProvider(LABEL, {useFactory: (o: WidgetOptions) => `widget:${o.color}`,
+inject: [OPTIONS]}),
         ],
         exports: [LABEL],
       }),
@@ -149,7 +144,7 @@ describe('lazyProvider', () => {
     const THUNK = new InjectionToken<() => { id: number }>('LAZY_TEST');
 
     @Module({
-      providers: [lazyProvider({ provide: THUNK, useFactory: () => build() })],
+      providers: [lazyProvider(defineProvider(THUNK, { inject: [],useFactory: () => build()}))],
       exports: [THUNK],
       isGlobal: true,
     })
@@ -173,7 +168,7 @@ describe('lazyProvider', () => {
     const THUNK = new InjectionToken<() => object>('LAZY_NO_MEMO_TEST');
 
     @Module({
-      providers: [lazyProvider({ provide: THUNK, useFactory: () => build(), memoize: false })],
+      providers: [lazyProvider({ inject: [], provide: THUNK, useFactory: () => build(), memoize: false })],
       exports: [THUNK],
       isGlobal: true,
     })
@@ -197,17 +192,17 @@ describe('provideGlobal / sideEffectModule / moduleToken / moduleKey', () => {
         return true;
       }
     }
-    expect(provideGlobal('guard', G)).toEqual([G, { provide: APP_GUARD, useExisting: G }]);
+    expect(provideGlobal('guard', G)).toEqual([G, defineProvider(APP_GUARD, {useExisting: G})]);
 
     const instance = { canActivate: () => true };
-    expect(provideGlobal('guard', instance)).toEqual([{ provide: APP_GUARD, useValue: instance }]);
+    expect(provideGlobal('guard', instance)).toEqual([defineProvider(APP_GUARD, {useValue: instance})]);
   });
 
   it('sideEffectModule mints a named module whose identical contributions dedup', async () => {
     const MSGS = new InjectionToken<string[]>('SIDE_EFFECT_MSGS_TEST');
     const contribution = (): DynamicModule =>
       sideEffectModule('TestMessages', {
-        providers: [{ provide: MSGS, useValue: ['hello'] }],
+        providers: [defineProvider(MSGS, {useValue: ['hello']})],
         exports: [MSGS],
       });
 

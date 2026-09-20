@@ -7,7 +7,7 @@ import {
   shouldFilterCatch,
 } from '../index';
 import type { Container, EntrypointRegistry, Token, Type } from '../index';
-import { getProcessHandlers } from './queue.decorators';
+import { getProcessHandlers, readProcessorMetadata } from './queue.decorators';
 import type { ProcessMetadata, ProcessorMetadata, QueueJob } from './queue.types';
 
 export interface QueueDispatchResult {
@@ -66,7 +66,7 @@ export async function dispatchQueueJob(
   job: QueueJob,
 ): Promise<QueueDispatchResult> {
   const entries = entrypoints
-    .ofKind<ProcessorMetadata>('queue')
+    .ofKind('queue', readProcessorMetadata)
     .map((ep) => ({ token: ep.token, meta: ep.meta }));
   return dispatchJobToEntries(container, entries, job);
 }
@@ -131,6 +131,8 @@ async function dispatchToProcessor(
       processorClass,
       handler.methodName,
       job,
+      undefined,
+      scope,
     );
 
     const guards = resolveScopedComponents('guard', processorClass, handler.methodName, scope);

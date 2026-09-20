@@ -10,12 +10,6 @@ export interface PipelineRunOptions {
   resolveArgs: () => Promise<unknown[]>;
   /** Call the actual handler. */
   invoke: (args: unknown[]) => Promise<unknown>;
-  /**
-   * Compatibility escape hatch for non-HTTP/custom transports that explicitly
-   * need argument extraction before guards. HTTP and WebSocket both use the
-   * secure default (`false`: guards first).
-   */
-  argsBeforeGuards?: boolean;
   /** Error thrown when a guard rejects (default `ForbiddenException`). */
   onGuardReject?: () => Error;
 }
@@ -29,12 +23,6 @@ export interface PipelineRunOptions {
  */
 export class PipelineRunner {
   static async run(options: PipelineRunOptions): Promise<unknown> {
-    let args: unknown[] | undefined;
-
-    if (options.argsBeforeGuards) {
-      args = await options.resolveArgs();
-    }
-
     for (const guard of options.guards) {
       const canActivate = await guard.canActivate(options.context);
       if (!canActivate) {
@@ -42,8 +30,7 @@ export class PipelineRunner {
       }
     }
 
-    args ??= await options.resolveArgs();
-    const resolvedArgs = args;
+    const resolvedArgs = await options.resolveArgs();
 
     return PipelineRunner.chainInterceptors(options.interceptors, options.context, () =>
       options.invoke(resolvedArgs),

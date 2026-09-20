@@ -5,7 +5,7 @@ Controllers, method/param decorators, versioning, named routes, URL generation, 
 ## Controllers & method decorators
 
 ```ts
-import { Controller, Get, Post, Param, Body, Query } from '@velajs/vela';
+import { Controller, Get, Post, Param, Body, Query, ParseIntPipe, ValidationPipe } from '@velajs/vela';
 
 @Controller('/users')            // or @Controller({ path: '/users', version: 1 })
 class UsersController {
@@ -22,7 +22,7 @@ class UsersController {
   }
 
   @Post()
-  create(@Body() body: CreateUserDto) {
+  create(@Body(new ValidationPipe(CreateUser)) body: ReturnType<typeof CreateUser.parse>) {
     return this.users.create(body);
   }
 }
@@ -43,9 +43,9 @@ Return a plain value (JSON) or a `Response`. Response-shaping method decorators:
 | `@Cookie(name?)` / `@Cookies()` | cookie(s) |
 | `@Ip()` | client IP (see `getClientIp` create-option) |
 | `@RawBody()` | raw body as `Uint8Array` |
-| `@Req()` / `@Res()` | the Hono `Context` (req+res unified) |
+| `@Req()` / `@Res()` | `VelaContext` (the Hono request/response context) |
 
-Pipes attach positionally: `@Param('id', ParseIntPipe)`, `@Query('mode', new ParseEnumPipe(Mode))`. See `pipeline.md` for the pipe list. For custom decorators use `createParamDecorator` / `createLazyParamDecorator` (the lazy form defers resolution until after guards run — needed when the value depends on guard-populated state).
+Pipes attach positionally: `@Param('id', ParseIntPipe)`, `@Query('mode', new ParseEnumPipe(Mode))`. See `pipeline.md` for the pipe list. Custom factories run after guards. Use `createParamDecorator` with the actual required data argument; `createLazyParamDecorator` injects an explicit memoized thunk: declare the parameter as `() => User | undefined` and call it in the handler. Validate inside the factory; lazy decorators do not take parameter pipes. Type annotations alone do not validate the value.
 
 ## Global prefix & versioning
 
@@ -118,11 +118,11 @@ declare module '@velajs/vela' {
 Protect a route with `@SignedUrl()` (adds `SignedUrlGuard`), generate signed links with `UrlGeneratorService.signedUrl`, and provide the secret via the `URL_SIGNING_SECRET` token or `CONFIG_ENV['URL_SIGNING_SECRET']`:
 
 ```ts
-import { Controller, Get, SignedUrl, URL_SIGNING_SECRET, UrlGeneratorService, verifySignedUrl } from '@velajs/vela';
+import { Controller, Get, SignedUrl, URL_SIGNING_SECRET, UrlGeneratorService, verifySignedUrl, defineProvider } from '@velajs/vela';
 
 @Global()
 @Module({
-  providers: [{ provide: URL_SIGNING_SECRET, useValue: mySigningSecret }],
+  providers: [defineProvider(URL_SIGNING_SECRET, { useValue: mySigningSecret })],
   exports: [URL_SIGNING_SECRET],
 })
 class SecretModule {}

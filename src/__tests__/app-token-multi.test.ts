@@ -1,3 +1,4 @@
+import { defineProvider } from '../container/types';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   APP_GUARD,
@@ -35,12 +36,12 @@ describe('APP_* providers across multiple modules', () => {
     }
 
     @Module({
-      providers: [GuardA, { provide: APP_GUARD, useExisting: GuardA }],
+      providers: [GuardA, defineProvider(APP_GUARD, {useExisting: GuardA})],
     })
     class FeatureA {}
 
     @Module({
-      providers: [GuardB, { provide: APP_GUARD, useExisting: GuardB }],
+      providers: [GuardB, defineProvider(APP_GUARD, {useExisting: GuardB})],
     })
     class FeatureB {}
 

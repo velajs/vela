@@ -1,3 +1,4 @@
+import { defineProvider } from '../container/types';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   Controller,
@@ -540,7 +541,7 @@ describe('lazy cold-start init — entrypoints', () => {
     const app = await VelaFactory.create(AppModule);
 
     // Snapshot has the entry, metadata intact, no instance — nothing constructed.
-    const eps = app.entrypoints.ofKind<{ queue: string }>('cs:queue');
+    const eps = app.entrypoints.ofKind('cs:queue');
     expect(eps).toHaveLength(1);
     expect(eps[0]!.meta).toEqual({ queue: 'jobs' });
     expect(eps[0]!.instance).toBeUndefined();
@@ -602,7 +603,7 @@ describe('lazy cold-start init — entrypoints', () => {
       module: NamedModule,
       key,
       lazy: true,
-      providers: [{ provide: token, useFactory: () => new Named() }],
+      providers: [defineProvider(token, { inject: [],useFactory: () => new Named()})],
       exports: [token as never],
     });
 

@@ -207,6 +207,9 @@ describe('ConfigModule', () => {
         }
       }
 
+      @Module({ providers: [EnvProvider], exports: [EnvProvider] })
+      class EnvModule {}
+
       @Controller('/async-cfg')
       class AsyncCfgController {
         constructor(private config: ConfigService) {}
@@ -219,13 +222,13 @@ describe('ConfigModule', () => {
       @Module({
         imports: [
           ConfigModule.forRootAsync({
+            imports: [EnvModule],
             useFactory: (env: EnvProvider) => ({
               config: { APP_NAME: env.get('APP_NAME') },
             }),
             inject: [EnvProvider],
           }),
         ],
-        providers: [EnvProvider],
         controllers: [AsyncCfgController],
       })
       class AppModule {}

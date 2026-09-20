@@ -10,9 +10,22 @@ import type { ProcessMetadata, ProcessorMetadata } from './queue.types';
 const ProcessorMeta = createDiscoverableDecorator<ProcessorMetadata>(PROCESSOR_METADATA);
 
 // The open entrypoint kind: adapters enumerate processors via
-// `app.entrypoints.ofKind<ProcessorMetadata>('queue')`. Declared at import
+// `app.entrypoints.ofKind('queue', readProcessorMetadata)`. Declared at import
 // time next to the decorator — zero kernel involvement.
 registerEntrypointKind({ kind: 'queue', metaKey: PROCESSOR_METADATA, level: 'class' });
+
+/** Validate metadata recovered from the open entrypoint registry. */
+export function readProcessorMetadata(value: unknown): ProcessorMetadata {
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    !('queueName' in value) ||
+    typeof value.queueName !== 'string'
+  ) {
+    throw new Error('Invalid queue entrypoint metadata: queueName must be a string.');
+  }
+  return { queueName: value.queueName };
+}
 
 /**
  * Marks a provider class as a processor for one queue:

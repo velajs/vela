@@ -1,3 +1,4 @@
+import { defineProvider } from '../container/types';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   Controller,
@@ -160,7 +161,7 @@ describe('bootstrap()', () => {
     }
 
     @Module({
-      providers: [{ provide: TOKEN, useValue: 'x' }],
+      providers: [defineProvider(TOKEN, {useValue: 'x'})],
       // Note: TOKEN is NOT exported
     })
     class ModA {}

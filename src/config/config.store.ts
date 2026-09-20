@@ -48,7 +48,7 @@ export class ConfigStore {
     private readonly validateSchema?: ConfigSchema,
   ) {
     for (const ns of namespaces) {
-      this.namespaceKeys.set(ns.namespace, ns.KEY as unknown as Token);
+      this.namespaceKeys.set(ns.namespace, ns.KEY);
     }
   }
 

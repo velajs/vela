@@ -13,6 +13,7 @@ import type { InvocationClaim } from '../crypto/invocation';
 import type { RouteName } from '../http/route-map';
 import { URL_SIGNING_SECRET, resolveSigningSecret } from '../http/url/signing-secret';
 import { UrlGeneratorService } from '../http/url/url-generator.service';
+import { abortDeadline } from './abort-deadline';
 import { INVOCATION_HEADER, INVOCATION_SIGNING_SECRET, INVOCATION_TRANSPORT } from './tokens';
 import type {
   InvocationPathTarget,
@@ -24,6 +25,9 @@ import type {
 // Only pathname + search matter to routing and to the guard, so the origin is
 // arbitrary — but it must be a valid absolute base for `new URL`/`new Request`.
 const INVOCATION_ORIGIN = 'http://vela.internal';
+
+/** Default bound for the transport plus its complete response-body read. */
+const DEFAULT_DISPATCH_TIMEOUT_MS = 30_000;
 
 interface WireError {
   code?: string;
@@ -45,6 +49,88 @@ function extractWireError(body: unknown): WireError | undefined {
   if (typeof e.docsUrl === 'string') wire.docsUrl = e.docsUrl;
   if ('details' in e) wire.details = e.details;
   return wire;
+}
+
+/**
+ * Race an operation against `signal`. The operation keeps its rejection
+ * handler after an abort, so a late failure cannot become unhandled.
+ */
+function raceWithAbort<T>(
+  operation: Promise<T>,
+  signal: AbortSignal | undefined,
+  onAbort?: (reason: unknown) => void | PromiseLike<void>,
+): Promise<T> {
+  if (signal === undefined) return operation;
+  signal.throwIfAborted();
+
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+
+    const settle = (continuation: () => void) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener('abort', handleAbort);
+      continuation();
+    };
+
+    const handleAbort = () => {
+      settle(() => {
+        try {
+          void Promise.resolve(onAbort?.(signal.reason)).catch(() => {});
+        } catch {
+          // Cancellation is best-effort; the abort reason remains authoritative.
+        }
+        reject(signal.reason);
+      });
+    };
+
+    signal.addEventListener('abort', handleAbort, { once: true });
+    operation.then(
+      (value) => settle(() => resolve(value)),
+      (error: unknown) => settle(() => reject(error)),
+    );
+  });
+}
+
+/** Read and decode the body while actively cancelling its reader on abort. */
+async function readResponseText(response: Response, signal: AbortSignal | undefined) {
+  const body = response.body;
+  if (body === null) {
+    signal?.throwIfAborted();
+    return '';
+  }
+
+  if (signal?.aborted === true) {
+    await body.cancel(signal.reason).catch(() => {});
+    signal.throwIfAborted();
+  }
+
+  const reader = body.getReader();
+  const readAll = async () => {
+    const decoder = new TextDecoder();
+    const chunks: string[] = [];
+
+    while (true) {
+      // Body chunks are ordered; each read necessarily waits for the previous one.
+      // eslint-disable-next-line no-await-in-loop
+      const { done, value } = await reader.read();
+      if (done) {
+        chunks.push(decoder.decode());
+        return chunks.join('');
+      }
+      chunks.push(decoder.decode(value, { stream: true }));
+    }
+  };
+
+  try {
+    return await raceWithAbort(readAll(), signal, (reason) => reader.cancel(reason));
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      // A cancellation may still be settling; the reader was already cancelled.
+    }
+  }
 }
 
 /**
@@ -79,12 +165,21 @@ export class InternalDispatcher {
    *
    * @throws if a named route is unknown or a required param is missing
    *   (`UrlGeneratorService.urlFor`), if no signing secret is configured
-   *   (`resolveSigningSecret`), or if the response is non-2xx / non-JSON.
+   *   (`resolveSigningSecret`), if `timeoutMs` is invalid, if the caller aborts,
+   *   or if the dispatch times out / returns a non-2xx or non-JSON response.
    */
   async run<T = unknown, N extends RouteName = RouteName>(
     target: InvocationRouteTarget<N> | InvocationPathTarget,
     init: RunInit = {},
   ): Promise<T> {
+    const timeoutMs = init.timeoutMs ?? DEFAULT_DISPATCH_TIMEOUT_MS;
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+      throw new RangeError(
+        'InternalDispatcher.run() timeoutMs must be a finite number greater than zero.',
+      );
+    }
+    init.signal?.throwIfAborted();
+
     const requestedPath =
       'route' in target ? this.urls.urlFor(target.route, target.params) : target.path;
 
@@ -117,14 +212,37 @@ export class InternalDispatcher {
       headers.set('content-type', 'application/json');
     }
 
-    const request = new Request(url, {
-      method,
-      headers,
-      ...(hasBody ? { body: bodyText } : {}),
-    });
+    const deadline = abortDeadline(
+      init.signal,
+      timeoutMs,
+      () => new DOMException('Internal dispatch deadline exceeded.', 'TimeoutError'),
+    );
 
-    const response = await this.resolveTransport()(request);
-    return this.parseResponse<T>(response);
+    try {
+      deadline.signal?.throwIfAborted();
+      const request = new Request(url, {
+        method,
+        headers,
+        signal: deadline.signal,
+        ...(hasBody ? { body: bodyText } : {}),
+      });
+      const transport = this.resolveTransport();
+      const response = await raceWithAbort(
+        Promise.resolve().then(() => transport(request)),
+        deadline.signal,
+      );
+      return await this.parseResponse<T>(response, deadline.signal);
+    } catch (error: unknown) {
+      if (deadline.timedOut()) {
+        throw new VelaError('gateway_timeout', {
+          message: `Internal invocation timed out after ${timeoutMs}ms.`,
+          cause: error,
+        });
+      }
+      throw error;
+    } finally {
+      deadline.dispose();
+    }
   }
 
   private resolveTransport(): InvocationTransport {
@@ -139,9 +257,10 @@ export class InternalDispatcher {
     }
   }
 
-  private async parseResponse<T>(response: Response): Promise<T> {
+  private async parseResponse<T>(response: Response, signal: AbortSignal | undefined): Promise<T> {
+    const text = await readResponseText(response, signal);
+
     if (response.ok) {
-      const text = await response.text();
       if (text === '') return undefined as T;
       try {
         return JSON.parse(text) as T;
@@ -154,7 +273,7 @@ export class InternalDispatcher {
 
     let body: unknown;
     try {
-      body = await response.json();
+      body = JSON.parse(text);
     } catch {
       body = undefined;
     }

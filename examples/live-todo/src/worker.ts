@@ -1,15 +1,22 @@
-import { Inject, Injectable } from '@velajs/vela';
+import { defineProvider, Inject, Injectable, InjectionToken } from '@velajs/vela';
+import { LiveModule } from '@velajs/vela/live';
 import {
-  createCloudflareApp,
+  CloudflareWebSocketModule,
+  createCloudflareWorker,
   durableObjectCursorLog,
   durableObjectLive,
-  KVModule,
-  KVService,
-  VelaWebSocketDurableObject,
 } from '@velajs/cloudflare';
-import type { CloudflareApplication } from '@velajs/cloudflare';
+import { VelaWebSocketDurableObject } from '@velajs/cloudflare/durable-objects';
 import { makeAppModule, TODO_STORE } from './app.module';
 import type { Todo, TodoStore } from './app.module';
+import { todoListDefinition } from './live-contract';
+
+interface WorkerEnv {
+  TODOS: KVNamespace;
+  CHAT_ROOM: DurableObjectNamespace<LiveRoom>;
+}
+
+const ENV = new InjectionToken<WorkerEnv>('live-todo environment');
 
 const SEED: Todo[] = [{ id: 'seed-1', text: 'Try opening this page in a second tab', createdAt: 0 }];
 const KV_KEY = 'todos';
@@ -21,17 +28,19 @@ const KV_KEY = 'todos';
  */
 @Injectable()
 class KvTodoStore implements TodoStore {
-  constructor(@Inject(KVService) private readonly kv: KVService) {}
+  constructor(@Inject(ENV) private readonly env: WorkerEnv) {}
 
   async all(): Promise<Todo[]> {
-    const raw = await this.kv.namespace.get(KV_KEY);
-    return raw ? (JSON.parse(raw) as Todo[]) : [...SEED];
+    const raw = await this.env.TODOS.get(KV_KEY);
+    if (raw === null) return [...SEED];
+    const parsed: unknown = JSON.parse(raw);
+    return todoListDefinition.result.parse(parsed);
   }
 
   async add(text: string): Promise<Todo> {
     const todos = await this.all();
     const todo: Todo = { id: crypto.randomUUID(), text, createdAt: Date.now() };
-    await this.kv.namespace.put(KV_KEY, JSON.stringify([...todos, todo]));
+    await this.env.TODOS.put(KV_KEY, JSON.stringify([...todos, todo]));
     return todo;
   }
 
@@ -39,7 +48,7 @@ class KvTodoStore implements TodoStore {
     const todos = await this.all();
     const next = todos.filter((todo) => todo.id !== id);
     if (next.length === todos.length) return false;
-    await this.kv.namespace.put(KV_KEY, JSON.stringify(next));
+    await this.env.TODOS.put(KV_KEY, JSON.stringify(next));
     return true;
   }
 }
@@ -48,23 +57,18 @@ class KvTodoStore implements TodoStore {
 // invalidations route to the room DO over the `invalidate` RPC and return the
 // DO's commit stamp) and the Durable Object (sockets, cursor log, re-runs).
 const AppModule = makeAppModule({
-  live: {
-    log: durableObjectCursorLog(),
-    driver: durableObjectLive({ binding: 'CHAT_ROOM', gatewayPath: '/rooms/:id/ws' }),
-  },
-  imports: [KVModule.forRoot({ binding: 'TODOS' })],
-  storeProvider: { provide: TODO_STORE, useClass: KvTodoStore },
+  liveModule: LiveModule.forRootAsync({
+    inject: [ENV],
+    useFactory: (env) => ({
+      log: () => durableObjectCursorLog(),
+      driver: () => durableObjectLive({ namespace: env.CHAT_ROOM, gatewayPath: '/rooms/:id/ws' }),
+    }),
+  }),
+  websocketModule: CloudflareWebSocketModule.forRoot(),
+  storeProvider: defineProvider(TODO_STORE, { useClass: KvTodoStore }),
 });
 
 /** wrangler `class_name` — must be in `migrations[].new_sqlite_classes` (the cursor log lives in DO SQLite). */
-export class LiveRoom extends VelaWebSocketDurableObject(AppModule) {}
+export class LiveRoom extends VelaWebSocketDurableObject(AppModule, { envToken: ENV }) {}
 
-let appPromise: Promise<CloudflareApplication> | undefined;
-
-export default {
-  async fetch(request: Request, env: Record<string, unknown>, ctx: unknown): Promise<Response> {
-    appPromise ??= createCloudflareApp(AppModule);
-    const app = await appPromise;
-    return app.fetch(request, env as never, ctx as never);
-  },
-};
+export default createCloudflareWorker(AppModule, { envToken: ENV });

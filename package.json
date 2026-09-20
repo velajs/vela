@@ -1,6 +1,6 @@
 {
   "name": "@velajs/vela",
-  "version": "1.20.0",
+  "version": "2.0.0",
   "description": "NestJS-compatible framework for edge runtimes, powered by Hono",
   "keywords": [
     "bun",
@@ -86,10 +86,14 @@
   },
   "scripts": {
     "build": "tsdown",
+    "api:check": "node scripts/api-snapshot.mjs check",
+    "api:update": "node scripts/api-snapshot.mjs update",
+    "worker-size:check": "node scripts/check-worker-size.mjs",
+    "worker-size:update": "node scripts/check-worker-size.mjs --update",
     "test": "vitest run",
     "test:workers": "vitest run --config vitest.config.workers.ts",
     "test:workers:als": "vitest run --config vitest.config.workers-als.ts",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.type-tests.json && tsc --noEmit -p tsconfig.dispatch-tests.json",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.type-tests.json && tsc --noEmit -p tsconfig.dispatch-tests.json && tsc --noEmit -p tsconfig.package-tests.json",
     "check:skill": "node scripts/check-skill.mjs",
     "docs": "pnpm --dir tools/docs docs",
     "docs:check": "pnpm --dir tools/docs docs:check",
@@ -100,20 +104,20 @@
     "attw": "attw --pack . --profile esm-only",
     "changeset": "changeset",
     "version-packages": "changeset version && node scripts/sync-skill-version.mjs",
-    "release:preflight": "npm view @velajs/live-protocol@1.1.0 version",
+    "release:preflight": "npm view @velajs/live-protocol@1.1.1 version",
     "release:check": "node scripts/check-release-lock.mjs && pnpm verify && pnpm audit --audit-level=high",
     "release": "pnpm release:preflight && pnpm release:check && changeset publish",
-    "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm check:skill && pnpm docs:check && pnpm test && pnpm test:workers && pnpm test:workers:als && pnpm publint && pnpm attw"
+    "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm api:check && pnpm worker-size:check && pnpm typecheck && pnpm check:skill && pnpm docs:check && pnpm test && pnpm test:workers && pnpm test:workers:als && pnpm publint && pnpm attw"
   },
   "dependencies": {
-    "@velajs/errors": "^1.0.0",
-    "@velajs/live-protocol": "1.1.0",
-    "hono": "^4.12.26"
+    "@velajs/errors": "workspace:*",
+    "@velajs/live-protocol": "workspace:*",
+    "hono": "catalog:"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "catalog:",
     "@changesets/cli": "catalog:",
-    "@cloudflare/vitest-pool-workers": "^0.16.18",
+    "@cloudflare/vitest-plugin": "catalog:",
     "@swc/core": "catalog:",
     "@types/bun": "latest",
     "@vitest/runner": "catalog:",
@@ -126,6 +130,7 @@
     "typescript": "catalog:",
     "unplugin-swc": "catalog:",
     "vitest": "catalog:",
+    "wrangler": "catalog:",
     "zod": "catalog:"
   },
   "peerDependencies": {
@@ -139,5 +144,8 @@
   "engines": {
     "node": ">=24"
   },
-  "packageManager": "pnpm@11.11.0"
+  "packageManager": "pnpm@11.11.0",
+  "publishConfig": {
+    "access": "public"
+  }
 }

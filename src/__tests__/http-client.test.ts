@@ -285,15 +285,18 @@ describe('HttpModule', () => {
       }
     }
 
+    @Module({ providers: [ApiConfigService], exports: [ApiConfigService] })
+    class ApiConfigModule {}
+
     @Module({
       imports: [
         HttpModule.forRootAsync({
-          imports: [],
+          imports: [ApiConfigModule],
           useFactory: (cfg: ApiConfigService) => ({ baseURL: cfg.getBaseUrl() }),
           inject: [ApiConfigService],
         }),
       ],
-      providers: [ApiConfigService, AsyncApiService],
+      providers: [AsyncApiService],
       controllers: [AsyncController],
     })
     class AppModule {}

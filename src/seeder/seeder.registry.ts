@@ -4,7 +4,7 @@ import type { OnApplicationBootstrap } from '../lifecycle/index';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import type { Constructor } from '../registry/types';
 import { SEEDER_METADATA } from './seeder.tokens';
-import type { RegisteredSeeder, Seeder, SeederMetadata, SeederResult } from './seeder.types';
+import type { RegisteredSeeder, SeederMetadata, SeederResult } from './seeder.types';
 
 /**
  * Discovers `@Seeder()` providers at bootstrap and runs them on demand.
@@ -49,7 +49,7 @@ export class SeederRegistry implements OnApplicationBootstrap {
       const child = this.container.createChild();
       let failed = false;
       try {
-        const instance = child.resolve<Seeder>(seeder.target);
+        const instance = child.resolve(seeder.target);
         await instance.run();
         results.push({ name: seeder.name, ok: true });
       } catch (error) {

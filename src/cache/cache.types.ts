@@ -22,12 +22,12 @@ export interface CacheModuleOptions {
 }
 
 /**
- * Synchronous cache backing store. This is the original, stable contract used by
- * `CacheService` and `CacheInterceptor` — unchanged.
+ * Synchronous cache backing store. Reads return unknown; validate persisted
+ * values at the consuming boundary. Undefined represents a cache miss.
  */
 export interface CacheStore {
-  get<T = unknown>(key: string): T | undefined;
-  set<T = unknown>(key: string, value: T, ttl?: number): void;
+  get(key: string): unknown;
+  set(key: string, value: unknown, ttl?: number): void;
   del(key: string): void;
   clear(): void;
 }
@@ -39,8 +39,8 @@ export interface CacheStore {
  * under your own token — rather than as the synchronous `CACHE_MANAGER`.
  */
 export interface AsyncCacheStore {
-  get<T = unknown>(key: string): Promise<T | undefined>;
-  set<T = unknown>(key: string, value: T, ttl?: number): Promise<void>;
+  get(key: string): Promise<unknown>;
+  set(key: string, value: unknown, ttl?: number): Promise<void>;
   del(key: string): Promise<void>;
   clear(): Promise<void>;
 }

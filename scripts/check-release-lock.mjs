@@ -187,6 +187,15 @@ function inspectLockfile(inputPath) {
   }
 }
 
+const manifestPath = resolve('package.json');
+const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+if (manifest.dependencies?.['@velajs/live-protocol'] !== '1.1.1') {
+  report(
+    manifestPath,
+    'release requires @velajs/live-protocol 1.1.1; publish it first, then pin the dependency and regenerate the lockfile from the registry',
+  );
+}
+
 for (const lockPath of lockPaths) {
   inspectLockfile(lockPath);
 }

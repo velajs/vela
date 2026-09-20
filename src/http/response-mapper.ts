@@ -1,14 +1,20 @@
 import type { Context } from 'hono';
-import type { ContentfulStatusCode } from 'hono/utils/http-status';
+import type { RedirectStatusCode, StatusCode } from 'hono/utils/http-status';
 
 interface RedirectOverride {
   url: string;
-  statusCode?: number;
+  statusCode?: RedirectStatusCode;
 }
 
 export interface ResponseRedirect {
   url: string;
-  statusCode: number;
+  statusCode: RedirectStatusCode;
+}
+
+// Hono's redirect union is the integer range 300–308, including deprecated
+// codes. Dynamic handler results must satisfy that same runtime contract.
+function isRedirectStatus(status: unknown): status is RedirectStatusCode {
+  return typeof status === 'number' && Number.isInteger(status) && status >= 300 && status <= 308;
 }
 
 // A handler returning `{ url, statusCode? }` may override the @Redirect-decorator
@@ -17,29 +23,47 @@ function parseRedirectResult(result: unknown): RedirectOverride | undefined {
   if (typeof result !== 'object' || result === null) return undefined;
   if (!('url' in result)) return undefined;
 
-  const obj = result as { url: unknown; statusCode?: unknown };
-  if (typeof obj.url !== 'string') return undefined;
+  if (typeof result.url !== 'string') return undefined;
+  const status = 'statusCode' in result ? result.statusCode : undefined;
+  if (status !== undefined && !isRedirectStatus(status)) {
+    throw new RangeError('Redirect statusCode must be an integer from 300 to 308.');
+  }
 
   return {
-    url: obj.url,
-    ...(typeof obj.statusCode === 'number' ? { statusCode: obj.statusCode } : {}),
+    url: result.url,
+    statusCode: status,
   };
 }
 
 // Maps a controller return value to a Hono Response. `null`/`undefined` → 204
 // (empty body); strings → text; anything else → JSON. A pre-built Response
 // passes through unchanged.
-export function mapResponse(c: Context, result: unknown, statusCode?: number): Response {
+export function mapResponse(c: Context, result: unknown, statusCode?: StatusCode): Response {
   if (result instanceof Response) {
     return result;
   }
-  if (result === null || result === undefined) {
-    return c.body(null, (statusCode ?? 204) as ContentfulStatusCode);
+  const status = statusCode ?? (result === null || result === undefined ? 204 : 200);
+  // Ordinary Fetch responses cannot carry informational/upgrade statuses.
+  // A transport-owned upgrade Response passed through above stays untouched.
+  if (status === 101) {
+    throw new RangeError('HTTP upgrades must return a transport-created Response.');
+  }
+  if (!Number.isInteger(status) || status < 200 || status > 599) {
+    throw new RangeError('HTTP response status must be an integer from 200 to 599.');
+  }
+  if (
+    result === null ||
+    result === undefined ||
+    status === 204 ||
+    status === 205 ||
+    status === 304
+  ) {
+    return c.body(null, status);
   }
   if (typeof result === 'string') {
-    return c.text(result, (statusCode ?? 200) as ContentfulStatusCode);
+    return c.text(result, status);
   }
-  return c.json(result as object, (statusCode ?? 200) as ContentfulStatusCode);
+  return c.json(result, status);
 }
 
 // Honors @Redirect on the handler. If the handler returned `{ url, statusCode? }`,
@@ -48,7 +72,10 @@ export function mapRedirect(c: Context, result: unknown, redirect: ResponseRedir
   const overrides = parseRedirectResult(result);
   const finalUrl = overrides?.url ?? redirect.url;
   const finalStatus = overrides?.statusCode ?? redirect.statusCode;
-  return c.redirect(finalUrl, finalStatus as 301 | 302 | 303 | 307 | 308);
+  if (!isRedirectStatus(finalStatus)) {
+    throw new RangeError('Redirect statusCode must be an integer from 300 to 308.');
+  }
+  return c.redirect(finalUrl, finalStatus);
 }
 
 export function applyResponseHeaders(

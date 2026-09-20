@@ -1,3 +1,4 @@
+import { defineProvider } from '../container/types';
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   APP_GUARD,
@@ -46,7 +47,7 @@ describe('HTTP request scope', () => {
       providers: [
         RequestContextValue,
         RequestScopedGuard,
-        { provide: APP_GUARD, useExisting: RequestScopedGuard },
+        defineProvider(APP_GUARD, {useExisting: RequestScopedGuard}),
       ],
       controllers: [TestController],
     })

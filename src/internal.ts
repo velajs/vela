@@ -38,3 +38,5 @@ export {
   PLUGIN_REGISTRY_TOKEN,
 } from './plugin/plugin';
 export type { Plugin } from './plugin/plugin';
+export { createRequestContext } from './http/request-context';
+export { setRequestContainer } from './http/request-container';

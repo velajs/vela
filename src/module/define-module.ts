@@ -1,4 +1,10 @@
-import { InjectionToken, type ProviderOptions, type Token, type Type } from '../container/types';
+import {
+  defineProvider,
+  InjectionToken,
+  type ProviderDefinition,
+  type Token,
+  type Type,
+} from '../container/types';
 import {
   APP_FILTER,
   APP_GUARD,
@@ -6,7 +12,15 @@ import {
   APP_MIDDLEWARE,
   APP_PIPE,
 } from '../pipeline/tokens';
-import type { ComponentInstance, DynamicModule, ModuleImport } from '../registry/types';
+import type {
+  GuardType,
+  PipeType,
+  InterceptorType,
+  FilterType,
+  MiddlewareType,
+  DynamicModule,
+  ModuleImport,
+} from '../registry/types';
 import type {
   ConfigurableModuleAsyncOptions,
   ConfigurableModuleClassType,
@@ -18,19 +32,19 @@ import { stableHash } from './stable-hash';
 
 /** The `global:` slot's component groups, lowered to `APP_*` registrations. */
 export interface GlobalComponentSlot {
-  guards?: Array<Type | ComponentInstance>;
-  pipes?: Array<Type | ComponentInstance>;
-  interceptors?: Array<Type | ComponentInstance>;
-  filters?: Array<Type | ComponentInstance>;
-  middleware?: Array<Type | ComponentInstance>;
+  guards?: GuardType[];
+  pipes?: PipeType[];
+  interceptors?: InterceptorType[];
+  filters?: FilterType[];
+  middleware?: MiddlewareType[];
 }
 
 /** What a module instance contributes, computed from its call-time options. */
 export interface ModuleContributions {
-  providers?: Array<Type | ProviderOptions>;
+  providers?: Array<Type | ProviderDefinition>;
   controllers?: Type[];
   imports?: ModuleImport[];
-  exports?: Array<Type | InjectionToken>;
+  exports?: Token[];
   /**
    * Standardized global-component registration — the one idiom replacing both
    * the `@Module({ providers: [{ provide: APP_GUARD, useExisting: X }] })`
@@ -102,27 +116,26 @@ const DEFAULT_TRANSFORM: ConfigurableModuleExtrasTransform<{ isGlobal?: boolean 
   extras,
 ) => (extras.isGlobal ? { ...def, global: true } : def);
 
-const GLOBAL_SLOT_TOKENS = {
-  guards: APP_GUARD,
-  pipes: APP_PIPE,
-  interceptors: APP_INTERCEPTOR,
-  filters: APP_FILTER,
-  middleware: APP_MIDDLEWARE,
-} as const;
-
-/** Lower a `global:` slot to `APP_*` provider registrations. */
-function lowerGlobalSlot(slot: GlobalComponentSlot): Array<Type | ProviderOptions> {
-  const out: Array<Type | ProviderOptions> = [];
-  for (const kind of Object.keys(GLOBAL_SLOT_TOKENS) as Array<keyof GlobalComponentSlot>) {
-    for (const component of slot[kind] ?? []) {
-      const token = GLOBAL_SLOT_TOKENS[kind];
+/** Lower typed component slots before the module's heterogeneous provider list. */
+function lowerGlobalSlot(slot: GlobalComponentSlot): Array<Type | ProviderDefinition> {
+  const out: Array<Type | ProviderDefinition> = [];
+  function append<T>(token: InjectionToken<T>, components: readonly (Type<T> | T)[]): void {
+    for (const component of components) {
       if (typeof component === 'function') {
-        out.push(component as Type, { provide: token, useExisting: component as Token });
+        // Component slots accept constructor classes or instances. The runtime
+        // constructor branch is the same reflection boundary as decorators.
+        const componentClass = component as Type<T>;
+        out.push(componentClass, defineProvider(token, { useExisting: componentClass }));
       } else {
-        out.push({ provide: token, useValue: component });
+        out.push(defineProvider(token, { useValue: component }));
       }
     }
   }
+  append(APP_GUARD, slot.guards ?? []);
+  append(APP_PIPE, slot.pipes ?? []);
+  append(APP_INTERCEPTOR, slot.interceptors ?? []);
+  append(APP_FILTER, slot.filters ?? []);
+  append(APP_MIDDLEWARE, slot.middleware ?? []);
   return out;
 }
 
@@ -222,7 +235,7 @@ export function defineModule<
       const definition: DynamicModule = {
         module: this as DynamicModule['module'],
         key,
-        providers: [{ provide: optionsToken as Token, useValue: rest }],
+        providers: [defineProvider(optionsToken, { useValue: rest as Opts })],
       };
       return applyLazy(
         transform(applyContributions(definition, rest, key), {
@@ -238,8 +251,12 @@ export function defineModule<
     configurable: true,
     writable: true,
     enumerable: false,
-    value(this: unknown, options: ConfigurableModuleAsyncOptions<Opts> = {}): DynamicModule {
-      const bag = options as ConfigurableModuleAsyncOptions<Opts> & Record<string, unknown>;
+    value(
+      this: unknown,
+      options: ConfigurableModuleAsyncOptions<Opts, FactoryMethodKey>,
+    ): DynamicModule {
+      const bag = options as ConfigurableModuleAsyncOptions<Opts, FactoryMethodKey> &
+        Record<string, unknown>;
       const structural: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(bag)) {
         if (!ASYNC_OPTION_KEYS.has(k)) structural[k] = v;
@@ -263,8 +280,8 @@ export function defineModule<
         module: this as DynamicModule['module'],
         key,
         imports: bag.imports ?? [],
-        providers: buildAsyncOptionsProviders<Opts>(
-          optionsToken as Token,
+        providers: buildAsyncOptionsProviders<Opts, string>(
+          optionsToken,
           factoryMethodName,
           bag,
           structural,
@@ -300,15 +317,15 @@ export function defineModule<
  * options (`{ ...structural, ...resolved }`) so sync-declared fields act as
  * defaults and the factory stays authoritative.
  */
-export function buildAsyncOptionsProviders<Opts>(
-  optionsToken: Token,
-  factoryMethodName: string,
+function buildAsyncOptionsProviders<Opts, MethodKey extends string>(
+  optionsToken: InjectionToken<Opts>,
+  factoryMethodName: MethodKey,
   async: Pick<
-    ConfigurableModuleAsyncOptions<Opts>,
+    ConfigurableModuleAsyncOptions<Opts, MethodKey>,
     'inject' | 'useFactory' | 'useClass' | 'useExisting'
   >,
   structural: Record<string, unknown> = {},
-): Array<ProviderOptions> {
+): Array<Type | ProviderDefinition> {
   const hasStructural = Object.keys(structural).length > 0;
   const merge = (resolved: Opts | Promise<Opts>): Opts | Promise<Opts> =>
     resolved instanceof Promise
@@ -318,38 +335,28 @@ export function buildAsyncOptionsProviders<Opts>(
   if (async.useFactory) {
     const factory = async.useFactory;
     return [
-      {
-        provide: optionsToken,
-        // No structural fields → pass the caller's factory through untouched
-        // (function identity preserved; nothing to merge).
-        useFactory: hasStructural
-          ? (...deps: unknown[]) =>
-              merge((factory as (...a: unknown[]) => Opts | Promise<Opts>)(...deps))
-          : (factory as (...deps: unknown[]) => Opts | Promise<Opts>),
-        inject: (async.inject ?? []) as Token[],
-      },
+      defineProvider(optionsToken, {
+        useFactory: hasStructural ? (...deps: unknown[]) => merge(factory(...deps)) : factory,
+        inject: async.inject ?? [],
+      }),
     ];
   }
   if (async.useClass) {
     const factoryClass = async.useClass;
     return [
-      factoryClass as unknown as ProviderOptions,
-      {
-        provide: optionsToken,
-        useFactory: (instance: Record<string, () => Opts | Promise<Opts>>) =>
-          merge(instance[factoryMethodName]!()),
-        inject: [factoryClass as unknown as Token],
-      },
+      factoryClass,
+      defineProvider(optionsToken, {
+        useFactory: (instance) => merge(instance[factoryMethodName]()),
+        inject: [factoryClass],
+      }),
     ];
   }
   if (async.useExisting) {
     return [
-      {
-        provide: optionsToken,
-        useFactory: (instance: Record<string, () => Opts | Promise<Opts>>) =>
-          merge(instance[factoryMethodName]!()),
-        inject: [async.useExisting as unknown as Token],
-      },
+      defineProvider(optionsToken, {
+        useFactory: (instance) => merge(instance[factoryMethodName]()),
+        inject: [async.useExisting],
+      }),
     ];
   }
   throw new Error(

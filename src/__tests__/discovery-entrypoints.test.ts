@@ -1,3 +1,4 @@
+import { defineProvider } from '../container/types';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   Controller,
@@ -141,12 +142,9 @@ describe('DiscoveryService', () => {
 
     const app = await VelaFactory.create(AppModule, { diagnostics: 'throw' });
     // Re-register with a factory that throws, simulating a broken provider.
-    app.getContainer().replaceProvider({
-      provide: NeedsMissing,
-      useFactory: () => {
+    app.getContainer().replaceProvider(defineProvider(NeedsMissing, { inject: [],useFactory: () => {
         throw new Error('boom');
-      },
-    });
+      }}));
     // Bust the memoized singleton so discovery re-resolves.
     const discovery = new DiscoveryService(app.getContainer());
 
@@ -175,9 +173,9 @@ describe('EntrypointRegistry', () => {
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
-    const eps = app.entrypoints.ofKind<ConsumerMeta>('queue');
+    const eps = app.entrypoints.ofKind('queue');
     expect(eps).toHaveLength(1);
-    expect(eps[0].meta.queue).toBe('emails');
+    expect(eps[0].meta).toEqual({ queue: 'emails' });
     expect(eps[0].instance).toBeInstanceOf(EmailConsumer);
   });
 
@@ -200,7 +198,7 @@ describe('EntrypointRegistry', () => {
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
-    const eps = app.entrypoints.ofKind<TickMeta>('tick');
+    const eps = app.entrypoints.ofKind('tick');
     expect(eps.map((e) => String(e.methodName)).sort()).toEqual(['five', 'ten']);
   });
 
@@ -285,7 +283,7 @@ describe('Container.replaceProvider', () => {
   it('replaces the token in every bucket that already holds it, plus root', async () => {
     const TOKEN = new InjectionToken<string>('REPLACE_TEST');
 
-    @Module({ providers: [{ provide: TOKEN, useValue: 'original' }], exports: [TOKEN] })
+    @Module({ providers: [defineProvider(TOKEN, {useValue: 'original'})], exports: [TOKEN] })
     class FeatureModule {}
 
     @Injectable()
@@ -299,7 +297,7 @@ describe('Container.replaceProvider', () => {
     const app = await VelaFactory.create(AppModule);
     const container = app.getContainer() as Container;
 
-    container.replaceProvider({ provide: TOKEN, useValue: 'override' });
+    container.replaceProvider(defineProvider(TOKEN, {useValue: 'override'}));
 
     // Root/no-requester view AND module-scoped view both see the override.
     expect(container.resolve(TOKEN)).toBe('override');
@@ -314,7 +312,7 @@ describe('factory dependency visibility (declaringModuleId threading)', () => {
     const DEP = new InjectionToken<string>('SCOPED_DEP_TEST');
     const OUT = new InjectionToken<string>('SCOPED_OUT_TEST');
 
-    @Module({ providers: [{ provide: DEP, useValue: 'from-import' }], exports: [DEP] })
+    @Module({ providers: [defineProvider(DEP, {useValue: 'from-import'})], exports: [DEP] })
     class DepModule {}
 
     // FeatureModule imports DepModule; its factory injects DEP — visible only
@@ -322,11 +320,8 @@ describe('factory dependency visibility (declaringModuleId threading)', () => {
     @Module({
       imports: [DepModule],
       providers: [
-        {
-          provide: OUT,
-          useFactory: (dep: string) => `got:${dep}`,
-          inject: [DEP],
-        },
+        defineProvider(OUT, {useFactory: (dep: string) => `got:${dep}`,
+inject: [DEP]}),
       ],
       exports: [OUT],
       isGlobal: true,

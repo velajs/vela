@@ -1,4 +1,4 @@
-# CRUD (@velajs/crud >= 1.18 — the native engine)
+# CRUD (`@velajs/crud`)
 
 `@velajs/crud` is Vela's native CRUD engine (the hono-crud bridge is gone as of 1.18).
 `@Crud()` stamps REAL controller routes: named routes (`urlFor`), guards/pipes/
@@ -38,13 +38,13 @@ const User = defineModel({
 @Crud({
   model: User,
   adapter: memoryAdapter({ tableName: 'users', softDeleteField: 'deletedAt' }),
-  except: ['clone', 'import'],
+  only: ['create', 'list', 'read', 'update', 'delete'],
   filterFields: ['email', 'name'],
   sortFields: ['email'],
   searchFields: ['name'],
   upsert: { keys: ['email'] },              // enables the upsert family
   hooks: {
-    beforeCreate: (ctx, data) => ({ ...data, name: data.name.trim() }),
+    beforeCreate: (ctx, data) => ({ ...data, name: data.name?.trim() }),
     afterUpdate: (ctx, prior, current) => audit(ctx, prior, current), // two-snapshot, in-tx
   },
 })
@@ -63,12 +63,14 @@ OpenAPI operationIds (`listUsers`, `getUser`).
 ## Headless resources + app-wide defaults
 
 ```ts
+import { CrudModule, defineCrudFeature } from '@velajs/crud';
+
 @Module({
   imports: [
-    CrudModule.forRoot({ adapter: drizzleAdapter({ db, dialect: 'sqlite', table: users }) }),
+    CrudModule.forRoot({ adapter: memoryAdapter({ tableName: 'users' }) }),
     CrudModule.forFeature([
-      { path: '/users', model: User },
-      { path: '/posts', model: Post, only: ['create', 'list', 'read'] },
+      defineCrudFeature({ path: '/users', model: User }),
+      defineCrudFeature({ path: '/posts', model: Post, only: ['create', 'list', 'read'] }),
     ]),
   ],
 })
@@ -78,9 +80,13 @@ class AppModule {}
 `crudResourceToken(name)` injects the compiled engine (`resource.execute(verb, req)`)
 for programmatic dispatch. `forRoot` also takes `versioningStore`/`auditStore` defaults.
 
+`defineCrudFeature` compiles each model's hooks before heterogeneous features enter the module list. Extracted configs use `satisfies CrudConfig<typeof Schema.shape>` or `ResourceConfig<typeof Schema.shape>`. `defineResource` builds the same headless contract; compiled resources do not accept a caller-selected row type.
+
+The engine validates persisted adapter rows against the model. Before-write hooks receive partial schema-validated writes; persisted-row hooks receive complete records; projection/masking transforms receive partial rows and can return unknown output. Do not assert a projected row is the full stored type.
+
 ## The 22 verbs
 
-Core five + `restore`/`clone`/`upsert`, batch family (`/batch`, `/batch/restore`,
+The default exposes only create/list/read/update/delete. Extended verbs require explicit `only` opt-in. Available operations include the core five + `restore`/`clone`/`upsert`, batch family (`/batch`, `/batch/restore`,
 `/batch/upsert`) + `bulkPatch` (`PATCH /bulk`, `X-Confirm-Bulk` above the confirm
 threshold), `search` (weighted fields, any|all|phrase), `aggregate` (multi-op:
 `?count&sum=amount&avg=age`, camelCase aliases, groupBy/having/ordering), `export`
@@ -92,32 +98,23 @@ Envelopes: success `{ success: true, result[, result_info] }`, errors
 `{ deleted: true }`, upsert carries a `created` flag). Override with
 `responseEnvelope: { success, error }`.
 
-## Multi-tenant
+## Multi-tenant and policies
 
-```ts
-import { multiTenant } from '@velajs/crud';
-// model: multiTenant: true; the config MUST affirm tenantResolverMounted: true
-// (else MissingTenantResolverError at decoration — silent tenant loss is data loss).
-// Mount the resolver UPSTREAM of the Vela app (routes build at create() time):
-outer.use('*', multiTenant());               // X-Tenant-ID by default; path/query/jwt/custom too
-outer.route('/', app.getHonoApp());
-```
+Tenant models require a nonempty trusted tenant context. Header/path/query/custom selectors require a `multiTenant({ validate })` membership check; a tenant header alone is not authority. Mount selection middleware upstream of the built Vela routes and validate against the authenticated identity. There is no trust-bypass flag.
 
-The engine scopes every lookup/list and stamps the tenant on create from the
-resolved context var.
+Every operation evaluates `model.policies.operation` before parsing/storage. Aggregation also requires an explicit operation policy and per-operation field allowlists. Nested writes inspect tenant ownership and target create/write policies before mutation. Policy fallback scans are bounded; large operations need database-enforced isolation. Versioning keys include tenant plus the complete primary-key tuple.
 
 ## Live queries
 
 `live: true` (or `{ tags?: (c) => string[], room?: (c) => string }`) invalidates
 `crud:<tableName>` and stamps `Vela-Commit-Cursor`/`Epoch` headers after 2xx writes —
-post-commit, pre-flush. Pairs with `@LiveQuery({ tags: ['crud:users'] })`. Degrades to
+post-commit, pre-flush. Pairs with `@LiveQuery('users.list', definition, { tags: ['crud:users'] })`. Degrades to
 a warn-once if `LiveModule` isn't imported.
 
 ## Adapters
 
-One plain-object `CrudAdapter`: `transaction()` + five core methods + optional native
-methods declared via `capabilities` (loud `ConfigurationException` on mismatch at
-definition time). Adapters that soft-delete must implement `restore`. See
-`@velajs/crud/adapter` to write one; `packages/core/PARITY.md` in the crud repo tracks
-deviations from hono-crud 0.13 and the families intentionally not ported (cache,
-rate-limit, idempotency, MCP, events, encryption, serialization profiles, prisma).
+Adapters separate ordinary `requestScope` from rollback-capable `transaction`, and advertise supported capabilities. Reads do not start transactions merely to obtain a request scope. D1/HTTP adapters must not pretend callback rollback exists. Consult each adapter's capability declaration before enabling atomic operations.
+
+Custom adapters use `bindAdapter` from `@velajs/crud/adapter`. Override `base.runtime` and rebind; spreading a bound adapter leaves its old runtime reference intact. Narrow row types require runtime evidence such as `parseRow`. Cursor tokens are validated at the engine boundary and adapters receive decoded keyset tuples, including all primary keys for stable ties.
+
+Read the CRUD package README plus `packages/core/README.md` and the selected adapter README for capability and migration details.

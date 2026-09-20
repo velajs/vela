@@ -10,7 +10,7 @@ import {
   Module,
   Injectable,
   MetadataRegistry,
-  createZodDto,
+  defineDto,
   ValidationPipe,
 } from '../index.js';
 
@@ -19,29 +19,29 @@ beforeEach(() => {
 });
 
 // =============================================================================
-// createZodDto
+// defineDto
 // =============================================================================
 
-describe('createZodDto', () => {
-  it('should create a class with static schema property', () => {
+describe('defineDto', () => {
+  it('creates a descriptor that retains its runtime schema', () => {
     const schema = z.object({ name: z.string() });
-    const Dto = createZodDto(schema);
+    const Dto = defineDto(schema);
 
     expect(Dto.schema).toBe(schema);
-    expect(typeof Dto).toBe('function');
+    expect(typeof Dto).toBe('object');
   });
 
-  it('should be instantiable', () => {
+  it('produces validated data through parse', () => {
     const schema = z.object({ name: z.string() });
-    const Dto = createZodDto(schema);
-    const instance = new Dto();
+    const Dto = defineDto(schema);
+    const value = Dto.parse({ name: 'Alice' });
 
-    expect(instance).toBeDefined();
+    expect(value).toEqual({ name: 'Alice' });
   });
 
   it('should work with mapped types (partial)', () => {
     const schema = z.object({ name: z.string(), email: z.string().email() });
-    const PartialDto = createZodDto(schema.partial());
+    const PartialDto = defineDto(schema.partial());
 
     const result = PartialDto.schema.parse({});
     expect(result).toEqual({});
@@ -49,7 +49,7 @@ describe('createZodDto', () => {
 
   it('should work with mapped types (pick)', () => {
     const schema = z.object({ name: z.string(), email: z.string().email() });
-    const PickDto = createZodDto(schema.pick({ name: true }));
+    const PickDto = defineDto(schema.pick({ name: true }));
 
     const result = PickDto.schema.parse({ name: 'Alice' });
     expect(result).toEqual({ name: 'Alice' });
@@ -57,7 +57,7 @@ describe('createZodDto', () => {
 
   it('should work with mapped types (omit)', () => {
     const schema = z.object({ name: z.string(), password: z.string() });
-    const OmitDto = createZodDto(schema.omit({ password: true }));
+    const OmitDto = defineDto(schema.omit({ password: true }));
 
     const result = OmitDto.schema.parse({ name: 'Alice' });
     expect(result).toEqual({ name: 'Alice' });
@@ -81,20 +81,20 @@ describe('ValidationPipe', () => {
     const value = 'hello';
     const result = pipe.transform(value, {
       type: 'body',
-      metatype: String as any,
+      metatype: String,
     });
     expect(result).toBe(value);
   });
 
   it('should validate and return parsed value', () => {
     const schema = z.object({ name: z.string() });
-    const Dto = createZodDto(schema);
+    const Dto = defineDto(schema);
 
     const result = pipe.transform(
       { name: 'Alice' },
       {
         type: 'body',
-        metatype: Dto as any,
+        metatype: Dto,
       },
     );
     expect(result).toEqual({ name: 'Alice' });
@@ -102,13 +102,13 @@ describe('ValidationPipe', () => {
 
   it('should strip unknown keys via Zod strict/strip behavior', () => {
     const schema = z.object({ name: z.string() });
-    const Dto = createZodDto(schema);
+    const Dto = defineDto(schema);
 
     const result = pipe.transform(
       { name: 'Alice', extra: true },
       {
         type: 'body',
-        metatype: Dto as any,
+        metatype: Dto,
       },
     );
     expect(result).toEqual({ name: 'Alice' });
@@ -116,14 +116,14 @@ describe('ValidationPipe', () => {
 
   it('should throw BadRequestException with Zod issues on invalid data', () => {
     const schema = z.object({ name: z.string(), email: z.string().email() });
-    const Dto = createZodDto(schema);
+    const Dto = defineDto(schema);
 
     expect(() =>
       pipe.transform(
         { name: 123, email: 'bad' },
         {
           type: 'body',
-          metatype: Dto as any,
+          metatype: Dto,
         },
       ),
     ).toThrow();
@@ -133,15 +133,11 @@ describe('ValidationPipe', () => {
         { name: 123, email: 'bad' },
         {
           type: 'body',
-          metatype: Dto as any,
+          metatype: Dto,
         },
       );
-    } catch (err: any) {
-      expect(err.statusCode).toBe(400);
-      const response = err.getResponse() as any;
-      expect(response.message).toBe('Validation failed');
-      expect(response.errors).toBeDefined();
-      expect(Array.isArray(response.errors)).toBe(true);
+    } catch (error: unknown) {
+      expect(error).toMatchObject({ statusCode: 400 });
     }
   });
 
@@ -154,11 +150,11 @@ describe('ValidationPipe', () => {
       name: z.string(),
       address: addressSchema,
     });
-    const Dto = createZodDto(schema);
+    const Dto = defineDto(schema);
 
     const result = pipe.transform(
       { name: 'Alice', address: { street: '123 Main', city: 'NYC' } },
-      { type: 'body', metatype: Dto as any },
+      { type: 'body', metatype: Dto },
     );
     expect(result).toEqual({
       name: 'Alice',
@@ -171,14 +167,14 @@ describe('ValidationPipe', () => {
       name: z.string(),
       address: z.object({ street: z.string() }),
     });
-    const Dto = createZodDto(schema);
+    const Dto = defineDto(schema);
 
     expect(() =>
       pipe.transform(
         { name: 'Alice', address: { street: 123 } },
         {
           type: 'body',
-          metatype: Dto as any,
+          metatype: Dto,
         },
       ),
     ).toThrow();
@@ -190,12 +186,13 @@ describe('ValidationPipe', () => {
 // =============================================================================
 
 describe('ValidationPipe integration', () => {
-  it('should auto-validate @Body() with Zod DTO via global pipe', async () => {
+  it('validates an explicit body descriptor alongside global pipes', async () => {
     const CreateUserSchema = z.object({
       name: z.string(),
       email: z.string().email(),
     });
-    class CreateUserDto extends createZodDto(CreateUserSchema) {}
+    const CreateUserDto = defineDto(CreateUserSchema, { name: 'CreateUserDto' });
+    type CreateUserDto = ReturnType<typeof CreateUserDto.parse>;
 
     @Injectable()
     class UserService {
@@ -209,7 +206,7 @@ describe('ValidationPipe integration', () => {
       constructor(private userService: UserService) {}
 
       @Post()
-      create(@Body() dto: CreateUserDto) {
+      create(@Body(new ValidationPipe(CreateUserDto)) dto: CreateUserDto) {
         return this.userService.create(dto);
       }
     }
@@ -242,9 +239,10 @@ describe('ValidationPipe integration', () => {
       body: JSON.stringify({ name: 'Alice', email: 'not-an-email' }),
     });
     expect(invalidRes.status).toBe(400);
-    const errorBody = (await invalidRes.json()) as any;
-    expect(errorBody.message).toBe('Validation failed');
-    expect(errorBody.errors).toBeDefined();
+    expect(await invalidRes.json()).toMatchObject({
+      message: 'Validation failed',
+      errors: expect.any(Array),
+    });
   });
 
   it('should pass through params without Zod schemas', async () => {
@@ -273,12 +271,13 @@ describe('ValidationPipe integration', () => {
       name: z.string(),
       email: z.string().email(),
     });
-    class UpdateUserDto extends createZodDto(CreateSchema.partial()) {}
+    const UpdateUserDto = defineDto(CreateSchema.partial(), { name: 'UpdateUserDto' });
+    type UpdateUserDto = ReturnType<typeof UpdateUserDto.parse>;
 
     @Controller('/users')
     class UserController {
       @Post('/update')
-      update(@Body() dto: UpdateUserDto) {
+      update(@Body(new ValidationPipe(UpdateUserDto)) dto: UpdateUserDto) {
         return dto;
       }
     }

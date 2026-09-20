@@ -73,7 +73,9 @@ class WsDispatcher implements ContributesEntrypoints {
 }
 
 // A transport / runtime adapter reads them:
-for (const ep of app.entrypoints.ofKind<WsEntrypointMeta>('websocket')) { /* mount */ }
+for (const ep of app.entrypoints.ofKind('websocket')) { /* validate ep.meta with the transport's parser before use */ }
 ```
+
+`ofKind(kind)` returns unknown metadata; `ofKind(kind, parseMeta)` infers validated metadata from the parser. A kind string alone does not establish a metadata type.
 
 `app.entrypoints` throws if accessed before bootstrap completes. Custom dispatchers reuse the shared pipeline via `PipelineRunner.run(...)` and `resolveScopedComponents(...)`; whether app-wide `APP_*` components apply is a transport decision (WebSocket merges them; queue/scheduled dispatch deliberately applies none). For the full authoring contract see the repo's `MODULE_AUTHORING.md`.

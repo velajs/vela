@@ -1,12 +1,15 @@
+import type { Container } from '../container/container';
 import type { Type } from '../container/types';
 import type { WsArgumentsHost } from '../pipeline/types';
 import type { WsClient, WsExecutionContext } from './websocket.types';
 
-const HTTP_ON_WS = (accessor: string) => () => {
-  throw new Error(
-    `${accessor} called on a WebSocket ExecutionContext. This handler runs over a gateway message, not HTTP — use switchToWs().`,
-  );
-};
+const HTTP_ON_WS =
+  (accessor: string): (() => never) =>
+  () => {
+    throw new Error(
+      `${accessor} called on a WebSocket ExecutionContext. This handler runs over a gateway message, not HTTP — use switchToWs().`,
+    );
+  };
 
 /**
  * WebSocket sibling of `buildExecutionContext` (`http/execution-context.ts`).
@@ -21,23 +24,23 @@ export function buildWsExecutionContext(
   handlerName: string | symbol,
   pattern: string,
   moduleId?: string,
-  container?: unknown,
+  container?: Container,
 ): WsExecutionContext {
   const host: WsArgumentsHost = {
-    getClient: <T = unknown>() => client as T,
-    getData: <T = unknown>() => data as T,
-    getPattern: <T = string>() => pattern as T,
+    getClient: () => client,
+    getData: () => data,
+    getPattern: () => pattern,
   };
 
   return {
-    getType: <T extends string = 'ws'>() => 'ws' as T,
+    getType: () => 'ws',
     getClass: () => controller,
     getHandler: () => handlerName,
     getModuleId: () => moduleId,
-    getContainer: <T = unknown>() => container as T | undefined,
-    getContext: HTTP_ON_WS('getContext()') as never,
-    getRequest: HTTP_ON_WS('getRequest()') as never,
-    switchToHttp: HTTP_ON_WS('switchToHttp()') as never,
+    getContainer: () => container,
+    getContext: HTTP_ON_WS('getContext()'),
+    getRequest: HTTP_ON_WS('getRequest()'),
+    switchToHttp: HTTP_ON_WS('switchToHttp()'),
     switchToWs: () => host,
   };
 }

@@ -1,6 +1,7 @@
+import { defineProvider } from './types';
 import { Scope } from '../constants';
 import { Injectable } from './decorators';
-import type { Token, Type } from './types';
+import type { InferToken, Token, Type } from './types';
 import type { Container } from './container';
 
 @Injectable()
@@ -11,7 +12,7 @@ export class ModuleRef {
    * Retrieve a provider instance from the DI container.
    * Returns the existing singleton (or cached value) for the token.
    */
-  get<T>(token: Token<T>): T {
+  get<K extends Token>(token: K): InferToken<K> {
     return this.container.resolve(token);
   }
 
@@ -19,7 +20,7 @@ export class ModuleRef {
    * Resolve a provider, creating a new instance for TRANSIENT-scoped providers.
    * For SINGLETON-scoped providers this is equivalent to get().
    */
-  resolve<T>(token: Token<T>): T {
+  resolve<K extends Token>(token: K): InferToken<K> {
     return this.container.resolve(token);
   }
 
@@ -29,7 +30,7 @@ export class ModuleRef {
    */
   create<T>(type: Type<T>): T {
     const sandbox = this.container.createDetached();
-    sandbox.register({ provide: type, useClass: type, scope: Scope.TRANSIENT });
+    sandbox.register(defineProvider(type, { useClass: type, scope: Scope.TRANSIENT }));
     return sandbox.resolve(type);
   }
 }

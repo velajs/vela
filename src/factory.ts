@@ -1,5 +1,6 @@
 import { VelaApplication } from './application';
 import type { Type } from './container/types';
+import { defineProvider } from './container/types';
 import { DiscoveryService } from './discovery/discovery.service';
 import { INVOCATION_TRANSPORT } from './dispatch/tokens';
 import type { InvocationTransport } from './dispatch/types';
@@ -42,6 +43,14 @@ export const VelaFactory = {
       bootstrapOptions.middleware = [...adapterMiddleware, ...(bootstrapOptions.middleware ?? [])];
     }
 
+    const configureContainer = bootstrapOptions.configureContainer;
+    bootstrapOptions.configureContainer = async (container) => {
+      for (const adapter of adapters) {
+        await adapter.configureContainer?.(container);
+      }
+      await configureContainer?.(container);
+    };
+
     const { container, routeManager, loader } = await bootstrap(rootModule, bootstrapOptions);
 
     const app = new VelaApplication(container, routeManager);
@@ -78,7 +87,7 @@ export const VelaFactory = {
         (found, a) => found ?? a.invocationTransport?.(adapterContext),
         undefined,
       ) ?? (async (request: Request) => app.fetch(request));
-    container.register({ provide: INVOCATION_TRANSPORT, useValue: invocationTransport });
+    container.register(defineProvider(INVOCATION_TRANSPORT, { useValue: invocationTransport }));
     container.markGlobalToken(INVOCATION_TRANSPORT);
 
     return app;

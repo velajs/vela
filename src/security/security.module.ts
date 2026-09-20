@@ -1,3 +1,4 @@
+import { defineProvider } from '../container/types';
 import { defineModule } from '../module/define-module';
 import { APP_MIDDLEWARE } from '../pipeline/tokens';
 import type { DynamicModule } from '../registry/types';
@@ -10,11 +11,10 @@ const { ConfigurableModuleClass } = defineModule<SecurityModuleOptions>({
   optionsToken: SECURITY_OPTIONS,
   setup: ({ OPTIONS }) => ({
     providers: [
-      {
-        provide: APP_MIDDLEWARE,
+      defineProvider(APP_MIDDLEWARE, {
         useFactory: (options: SecurityModuleOptions) => buildSecurityMiddleware(options),
         inject: [OPTIONS],
-      },
+      }),
     ],
     exports: [OPTIONS],
   }),

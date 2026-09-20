@@ -23,7 +23,7 @@ export class SignedUrlGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest<Request>();
+    const request = context.switchToHttp().getRequest();
     const secret = resolveSigningSecret(undefined, this.secretToken, this.env);
     const valid = await verifySignedUrl(request.url, secret, {
       method: request.method,

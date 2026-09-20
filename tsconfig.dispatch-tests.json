@@ -8,6 +8,7 @@
     "src/__tests__/signed-invocation-guard.test.ts",
     "src/__tests__/signed-invocation-body.test.ts",
     "src/__tests__/internal-dispatch-adopter.test.ts",
+    "src/__tests__/internal-dispatch-deadline.test.ts",
     "src/__tests__/queue-signed-dispatch.test.ts",
     "src/__tests__/schedule-signed-dispatch.test.ts",
     "src/__tests__/message-disposition.test.ts"

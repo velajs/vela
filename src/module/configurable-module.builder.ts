@@ -1,4 +1,3 @@
-import { InjectionToken } from '../container/types';
 import type { DynamicModule } from '../registry/types';
 import type {
   ConfigurableModuleBuilderOptions,
@@ -7,7 +6,7 @@ import type {
   ConfigurableModuleHost,
   DefineConfigurableModuleSpec,
 } from './configurable-module.types';
-import { defineModule } from './define-module';
+import { defineModule, type DefineModuleSpec } from './define-module';
 import { stableHash } from './stable-hash';
 
 /**
@@ -17,6 +16,43 @@ import { stableHash } from './stable-hash';
  * Alias of {@link stableHash} with a module-authoring name.
  */
 export const moduleKey: (options: unknown) => string = stableHash;
+
+/** Immutable typed state shared by the fluent builder's returned branches. */
+class ConfiguredModuleBuilder<
+  Opts,
+  MethodKey extends string,
+  FactoryMethodKey extends string,
+  Extras extends ConfigurableModuleExtras,
+> {
+  constructor(private readonly spec: DefineModuleSpec<Opts, Extras, MethodKey, FactoryMethodKey>) {}
+
+  setExtras<NewExtras extends ConfigurableModuleExtras>(
+    defaults: NewExtras,
+    transform: ConfigurableModuleExtrasTransform<NewExtras>,
+  ): ConfiguredModuleBuilder<Opts, MethodKey, FactoryMethodKey, NewExtras> {
+    return new ConfiguredModuleBuilder({
+      ...this.spec,
+      extras: { ...defaults },
+      transform,
+    });
+  }
+
+  setClassMethodName<NewMethodKey extends string>(
+    name: NewMethodKey,
+  ): ConfiguredModuleBuilder<Opts, NewMethodKey, FactoryMethodKey, Extras> {
+    return new ConfiguredModuleBuilder({ ...this.spec, methodName: name });
+  }
+
+  setFactoryMethodName<NewFactoryMethodKey extends string>(
+    name: NewFactoryMethodKey,
+  ): ConfiguredModuleBuilder<Opts, MethodKey, NewFactoryMethodKey, Extras> {
+    return new ConfiguredModuleBuilder({ ...this.spec, factoryMethodName: name });
+  }
+
+  build(): ConfigurableModuleHost<Opts, MethodKey, FactoryMethodKey, Extras> {
+    return defineModule(this.spec);
+  }
+}
 
 /**
  * NestJS-parity builder that generates `forRoot`/`forRootAsync` (and `key`,
@@ -41,68 +77,18 @@ export const moduleKey: (options: unknown) => string = stableHash;
  * export class FooModule extends ConfigurableModuleClass {}
  * ```
  */
-export class ConfigurableModuleBuilder<
+export class ConfigurableModuleBuilder<Opts> extends ConfiguredModuleBuilder<
   Opts,
-  MethodKey extends string = 'forRoot',
-  FactoryMethodKey extends string = 'create',
-  Extras extends ConfigurableModuleExtras = { isGlobal?: boolean },
+  'forRoot',
+  'create',
+  { isGlobal?: boolean }
 > {
-  private classMethodName = 'forRoot';
-  private factoryMethodName = 'create';
-  private extrasDefaults: ConfigurableModuleExtras | undefined;
-  private extrasTransform: ConfigurableModuleExtrasTransform<ConfigurableModuleExtras> | undefined;
-
-  constructor(private readonly options: ConfigurableModuleBuilderOptions = {}) {}
-
-  /** Declare extra call-site keys (e.g. `isGlobal`) + how they reshape the definition. */
-  setExtras<NewExtras extends ConfigurableModuleExtras>(
-    defaults: NewExtras,
-    transform: ConfigurableModuleExtrasTransform<NewExtras>,
-  ): ConfigurableModuleBuilder<Opts, MethodKey, FactoryMethodKey, NewExtras> {
-    this.extrasDefaults = defaults;
-    this.extrasTransform = transform as ConfigurableModuleExtrasTransform<ConfigurableModuleExtras>;
-    return this as unknown as ConfigurableModuleBuilder<
-      Opts,
-      MethodKey,
-      FactoryMethodKey,
-      NewExtras
-    >;
-  }
-
-  /** Rename the sync static (default `forRoot`); the async static becomes `<name>Async`. */
-  setClassMethodName<NewMethodKey extends string>(
-    name: NewMethodKey,
-  ): ConfigurableModuleBuilder<Opts, NewMethodKey, FactoryMethodKey, Extras> {
-    this.classMethodName = name;
-    return this as unknown as ConfigurableModuleBuilder<
-      Opts,
-      NewMethodKey,
-      FactoryMethodKey,
-      Extras
-    >;
-  }
-
-  /** Rename the method a `useClass`/`useExisting` options factory must implement (default `create`). */
-  setFactoryMethodName<NewFactoryMethodKey extends string>(
-    name: NewFactoryMethodKey,
-  ): ConfigurableModuleBuilder<Opts, MethodKey, NewFactoryMethodKey, Extras> {
-    this.factoryMethodName = name;
-    return this as unknown as ConfigurableModuleBuilder<
-      Opts,
-      MethodKey,
-      NewFactoryMethodKey,
-      Extras
-    >;
-  }
-
-  build(): ConfigurableModuleHost<Opts, MethodKey, FactoryMethodKey, Extras> {
-    return defineModule<Opts, Extras, MethodKey, FactoryMethodKey>({
-      name: this.options.moduleName ?? 'ConfigurableModule',
-      optionsToken: this.options.optionsInjectionToken as InjectionToken<Opts> | undefined,
-      extras: this.extrasDefaults as Extras | undefined,
-      transform: this.extrasTransform as ConfigurableModuleExtrasTransform<Extras> | undefined,
-      methodName: this.classMethodName as MethodKey,
-      factoryMethodName: this.factoryMethodName as FactoryMethodKey,
+  constructor(options: ConfigurableModuleBuilderOptions<Opts> = {}) {
+    super({
+      name: options.moduleName ?? 'ConfigurableModule',
+      optionsToken: options.optionsInjectionToken,
+      methodName: 'forRoot',
+      factoryMethodName: 'create',
     });
   }
 }

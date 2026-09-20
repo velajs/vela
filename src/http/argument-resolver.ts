@@ -2,7 +2,6 @@ import { getCookie } from 'hono/cookie';
 import type { Context } from 'hono';
 import { ParamType } from '../constants';
 import type { Container } from '../container/container';
-import type { Type } from '../container/types';
 import { BadRequestException } from '../errors/http-exception';
 import type { ArgumentMetadata, PipeTransform } from '../pipeline/types';
 import { instantiate } from './instantiate';
@@ -65,7 +64,7 @@ export class ArgumentResolver {
       const metadata: ArgumentMetadata = {
         type: param.type,
         data: param.name,
-        metatype: (param.metatype ?? paramTypes?.[param.index]) as Type | undefined,
+        metatype: param.metatype ?? paramTypes?.[param.index],
       };
 
       for (const pipe of pipes) {

@@ -1,3 +1,4 @@
+import { defineProvider } from '../container/types';
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   VelaFactory,
@@ -295,7 +296,7 @@ describe('DI Container', () => {
     }
 
     @Module({
-      providers: [ApiService, { provide: CONFIG, useValue: { apiUrl: 'https://api.example.com' } }],
+      providers: [ApiService, defineProvider(CONFIG, {useValue: { apiUrl: 'https://api.example.com' }})],
       controllers: [ApiController],
     })
     class AppModule {}

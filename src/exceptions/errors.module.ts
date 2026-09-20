@@ -1,5 +1,5 @@
 import { CORE_CATALOG, composeCatalogs, type Catalog } from '@velajs/errors';
-import type { ProviderOptions, Type } from '../container/types';
+import { defineProvider, type ProviderDefinition, type Type } from '../container/types';
 import { defineModule } from '../module/define-module';
 import { APP_EXCEPTION_HANDLER, ERROR_CATALOG } from '../pipeline/tokens';
 import type { ExceptionHandler } from './exception-handler';
@@ -24,19 +24,18 @@ export interface ErrorsModuleOptions {
 }
 
 /** Lower a `handler` option to an {@link APP_EXCEPTION_HANDLER} provider. */
-const handlerProvider = (handler: Type<ExceptionHandler> | ExceptionHandler): ProviderOptions =>
+const handlerProvider = (handler: Type<ExceptionHandler> | ExceptionHandler): ProviderDefinition =>
   typeof handler === 'function'
-    ? { provide: APP_EXCEPTION_HANDLER, useClass: handler }
-    : { provide: APP_EXCEPTION_HANDLER, useValue: handler };
+    ? defineProvider(APP_EXCEPTION_HANDLER, { useClass: handler })
+    : defineProvider(APP_EXCEPTION_HANDLER, { useValue: handler });
 
 const { ConfigurableModuleClass } = defineModule<ErrorsModuleOptions>({
   name: 'Errors',
   setup: ({ options }) => {
-    const providers: ProviderOptions[] = [
-      {
-        provide: ERROR_CATALOG,
+    const providers: ProviderDefinition[] = [
+      defineProvider(ERROR_CATALOG, {
         useValue: composeCatalogs(CORE_CATALOG, ...(options.catalogs ?? [])),
-      },
+      }),
     ];
     const exports: Array<typeof ERROR_CATALOG | typeof APP_EXCEPTION_HANDLER> = [ERROR_CATALOG];
     if (options.handler) {

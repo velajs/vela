@@ -3,7 +3,6 @@ import type { CursorLog, LiveDriver, LiveModuleOptions } from './live.types';
 
 // Free-form metadata keys — same string-token convention as the queue module.
 export const LIVE_RESOLVER_METADATA = 'vela:live:resolver';
-export const LIVE_QUERY_METADATA = 'vela:live:query';
 
 /** The invalidation driver in effect for a `LiveModule` instance (`localLive()` by default). */
 export const LIVE_DRIVER = new InjectionToken<LiveDriver>('vela:live:driver');

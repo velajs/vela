@@ -33,28 +33,45 @@ export type ConfigurableModuleOptionsFactory<Opts, MethodName extends string> = 
  * `useClass`/`useExisting` while preserving the headline `const Inject` tuple
  * inference for `useFactory` params (no `as const` needed at the call site).
  */
-export interface ConfigurableModuleAsyncOptions<
+export type ConfigurableModuleAsyncOptions<
   Opts,
   MethodName extends string = 'create',
-  Inject extends readonly Token<unknown>[] = readonly Token<unknown>[],
-> {
+  Inject extends readonly Token[] = readonly Token[],
+> = {
   imports?: ModuleImport[];
-  inject?: Inject;
-  useFactory?: (...args: InferTokens<Inject>) => Opts | Promise<Opts>;
-  useClass?: Type<ConfigurableModuleOptionsFactory<Opts, MethodName>>;
-  useExisting?: Token<ConfigurableModuleOptionsFactory<Opts, MethodName>>;
   /** Explicit instance discriminator (see {@link DynamicModule.key}). */
   key?: string;
-}
+} & (
+  | {
+      inject: Inject;
+      useFactory: (...args: InferTokens<Inject>) => Opts | Promise<Opts>;
+      useClass?: never;
+      useExisting?: never;
+    }
+  | {
+      useClass: Type<ConfigurableModuleOptionsFactory<Opts, MethodName>>;
+      useFactory?: never;
+      useExisting?: never;
+      inject?: never;
+    }
+  | {
+      useExisting:
+        | InjectionToken<ConfigurableModuleOptionsFactory<Opts, MethodName>>
+        | Type<ConfigurableModuleOptionsFactory<Opts, MethodName>>;
+      useFactory?: never;
+      useClass?: never;
+      inject?: never;
+    }
+);
 
-export interface ConfigurableModuleBuilderOptions {
+export interface ConfigurableModuleBuilderOptions<Opts = unknown> {
   /** Names the generated base class + the auto-minted options token, and feeds diagnostics. */
   moduleName?: string;
   /**
    * Reuse an existing options token instead of minting one. **Critical for
    * migrations** so the module's public token keeps its identity.
    */
-  optionsInjectionToken?: InjectionToken<unknown>;
+  optionsInjectionToken?: InjectionToken<Opts>;
 }
 
 /**
@@ -71,7 +88,7 @@ export type ConfigurableModuleClassType<
   Record<MethodKey, (options: Opts & Partial<Extras> & { key?: string }) => DynamicModule> &
   Record<
     `${MethodKey}Async`,
-    <const Inject extends readonly Token<unknown>[]>(
+    <const Inject extends readonly Token[]>(
       options: ConfigurableModuleAsyncOptions<Opts, FactoryMethodKey, Inject> &
         Partial<Extras> & { key?: string },
     ) => DynamicModule

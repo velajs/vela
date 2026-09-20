@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import type { RedirectStatusCode, StatusCode } from 'hono/utils/http-status';
 import type {
   CanActivate,
   ExceptionFilter,
@@ -12,7 +13,7 @@ import type {
   InferToken,
   InferTokens,
   InjectionToken,
-  ProviderOptions,
+  ProviderDefinition,
   Token,
   Type,
 } from '../container/types';
@@ -23,7 +24,7 @@ export type {
   InferToken,
   InferTokens,
   InjectionToken,
-  ProviderOptions,
+  ProviderDefinition,
   Token,
   Type,
 };
@@ -75,9 +76,9 @@ export interface ParameterMetadata {
 }
 
 export interface HttpHandlerMeta {
-  httpCode?: number;
+  httpCode?: StatusCode;
   responseHeaders?: Array<[string, string]>;
-  redirect?: { url: string; statusCode: number };
+  redirect?: { url: string; statusCode: RedirectStatusCode };
 }
 
 // Module shapes — canonical home (was duplicated in module/types.ts).
@@ -99,17 +100,15 @@ export type ModuleImport = Type | DynamicModule | ForwardRef;
  * });
  * ```
  *
- * Backwards compatible: when `inject` isn't a literal tuple (or is omitted),
- * `Inject` falls back to `readonly Token<unknown>[]`, `InferTokens` resolves
- * to `unknown[]`, and `useFactory` accepts variadic `unknown[]` — the prior
- * loose-typing behavior. Existing callers don't break.
+ * Factories always declare their runtime dependency tuple. Use `inject: []`
+ * when there are no dependencies; a type argument cannot supply runtime values.
  */
 export interface AsyncModuleOptions<
   T = unknown,
-  Inject extends readonly Token<unknown>[] = readonly Token<unknown>[],
+  Inject extends readonly Token[] = readonly Token[],
 > {
   imports?: ModuleImport[];
-  inject?: Inject;
+  inject: Inject;
   useFactory: (...args: InferTokens<Inject>) => T | Promise<T>;
 }
 
@@ -127,9 +126,9 @@ export interface DynamicModule {
    */
   key?: string;
   imports?: ModuleImport[];
-  providers?: Array<Type | ProviderOptions>;
+  providers?: Array<Type | ProviderDefinition>;
   controllers?: Type[];
-  exports?: Array<Type | InjectionToken>;
+  exports?: Token[];
   global?: boolean;
   /**
    * Defer this module instance's providers/controllers to first use: nothing
@@ -141,20 +140,20 @@ export interface DynamicModule {
 }
 
 export interface ModuleOptions {
-  providers?: Array<Type | ProviderOptions>;
+  providers?: Array<Type | ProviderDefinition>;
   controllers?: Type[];
   imports?: ModuleImport[];
-  exports?: Array<Type | InjectionToken>;
+  exports?: Token[];
   isGlobal?: boolean;
   /** Defer to first use (see {@link DynamicModule.lazy}). */
   lazy?: boolean;
 }
 
 export interface ModuleMetadata {
-  providers: Array<Type | ProviderOptions>;
+  providers: Array<Type | ProviderDefinition>;
   controllers: Type[];
   imports: ModuleImport[];
-  exports: Array<Type | InjectionToken>;
+  exports: Token[];
   isGlobal: boolean;
   lazy: boolean;
 }

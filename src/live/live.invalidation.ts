@@ -22,55 +22,6 @@ export function localLive(): LiveDriver {
 }
 
 /**
- * Per-app wrapper around a (possibly SHARED) driver instance.
- *
- * A driver passed to `LiveModule.forRoot({ driver })` is a plain config object
- * — and on Cloudflare the SAME app module (thus the same driver object)
- * bootstraps in the Worker isolate AND inside each Durable Object, often
- * within one isolate. Mutable per-app state must therefore never live on the
- * driver itself: the DO flipping a shared `durableObjectLive()` into local
- * mode would otherwise poison the Worker's engine, which then executes the
- * DO's storage handle in the wrong request context ("Cannot perform I/O on
- * behalf of a different request").
- *
- * The wrapper owns the per-app sink and the per-app local-mode flag; isolate-
- * wide concerns (env capture) forward to the underlying driver. Platform init
- * hooks (`_setLocalMode`, `_initializeEnv`) are exposed pass-through so
- * platform packages can keep type-guarding on their presence.
- */
-export function perAppLiveDriver(underlying: LiveDriver): LiveDriver {
-  let ownSink: LiveInvalidationSink | undefined;
-  let localMode = false;
-  const cfHooks = underlying as Partial<{
-    _setLocalMode(): void;
-    _initializeEnv(env: Record<string, unknown>): void;
-  }>;
-
-  return {
-    get kind() {
-      return underlying.kind;
-    },
-    bind(sink) {
-      ownSink = sink;
-      underlying.bind(sink);
-    },
-    dispatch(cmd) {
-      if (localMode && ownSink) return ownSink.applyInvalidation(cmd);
-      return underlying.dispatch(cmd);
-    },
-    start: underlying.start ? () => underlying.start?.() : undefined,
-    stop: underlying.stop ? () => underlying.stop?.() : undefined,
-    // Platform hooks (Cloudflare): local mode is PER APP; env is per isolate.
-    _setLocalMode() {
-      localMode = true;
-    },
-    _initializeEnv(env: Record<string, unknown>) {
-      cfHooks._initializeEnv?.(env);
-    },
-  } as LiveDriver;
-}
-
-/**
  * The injectable invalidation surface for custom (non-CRUD) write paths:
  *
  * ```ts

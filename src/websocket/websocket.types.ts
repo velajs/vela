@@ -59,6 +59,10 @@ export interface WsServer {
 
 /** An `ExecutionContext` whose transport is a WebSocket gateway. `switchToWs()` is guaranteed present. */
 export interface WsExecutionContext extends ExecutionContext {
+  getType(): 'ws';
+  getContext(): never;
+  getRequest(): never;
+  switchToHttp(): never;
   switchToWs(): WsArgumentsHost;
 }
 

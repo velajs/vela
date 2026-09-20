@@ -1,8 +1,15 @@
-import { createDiscoverableDecorator, defineMetadata, getMetadata } from '../index';
-import { LIVE_QUERY_METADATA, LIVE_RESOLVER_METADATA } from './live.tokens';
-import type { LiveQueryMetadata, LiveQueryOptions, LiveResolverMetadata } from './live.types';
+import type { LiveQueryDefinition } from '@velajs/live-protocol';
+import { createDiscoverableDecorator } from '../index';
+import { LIVE_RESOLVER_METADATA } from './live.tokens';
+import type {
+  LiveQueryContext,
+  LiveQueryMetadata,
+  LiveQueryOptions,
+  LiveResolverMetadata,
+} from './live.types';
 
 const LiveResolverMeta = createDiscoverableDecorator<LiveResolverMetadata>(LIVE_RESOLVER_METADATA);
+const declarations = new WeakMap<object, LiveQueryMetadata[]>();
 
 /**
  * Marks a provider class as a live-query resolver:
@@ -13,7 +20,7 @@ const LiveResolverMeta = createDiscoverableDecorator<LiveResolverMetadata>(LIVE_
  * class TodoLive {
  *   constructor(private readonly todos: TodoService) {}
  *
- *   @LiveQuery('todos.list', { tags: (a: { listId: string }) => [`todos:${a.listId}`] })
+ *   @LiveQuery('todos.list', todoListDefinition, { tags: (args) => [`todos:${args.listId}`] })
  *   list(args: { listId: string }, ctx: LiveQueryContext) {
  *     return this.todos.byList(args.listId, ctx.identity?.userId);
  *   }
@@ -26,29 +33,62 @@ const LiveResolverMeta = createDiscoverableDecorator<LiveResolverMetadata>(LIVE_
  * like `@Processor`.
  */
 export function LiveResolver(): ClassDecorator {
-  return LiveResolverMeta({}) as ClassDecorator;
+  return LiveResolverMeta({});
 }
 
 /**
  * Declares a live query on a resolver method. The handler receives
- * `(args, ctx: LiveQueryContext)` positionally — args are validated once at
- * subscribe (via `options.parse`), then replayed verbatim into every re-run
- * under the subscriber's captured identity.
+ * `(args, ctx: LiveQueryContext)` positionally. The portable definition parses
+ * args once at subscribe/restore and validates the final result after all
+ * interceptors. Bound closures preserve the parsed type across erased metadata.
  */
-export function LiveQuery<A = unknown>(
+export function LiveQuery<Args, Result>(
   name: string,
-  options: LiveQueryOptions<A>,
-): MethodDecorator {
-  return (target: object, propertyKey: string | symbol) => {
+  definition: LiveQueryDefinition<Args, Result>,
+  options: LiveQueryOptions<NoInfer<Args>>,
+): <Handler extends (args: Args, context: LiveQueryContext) => Result | Promise<Result>>(
+  target: object,
+  propertyKey: string | symbol,
+  descriptor: TypedPropertyDescriptor<Handler>,
+) => void {
+  return (target, propertyKey, descriptor) => {
+    const handler = descriptor.value;
+    if (!handler) throw new TypeError('@LiveQuery can only decorate a method.');
     const ctor = target.constructor;
-    const existing =
-      (getMetadata(LIVE_QUERY_METADATA, ctor) as LiveQueryMetadata[] | undefined) ?? [];
-    existing.push({ name, methodName: propertyKey, options: options as LiveQueryOptions });
-    defineMetadata(LIVE_QUERY_METADATA, existing, ctor);
+    const coalesceBy = options.coalesceBy;
+    const metadata: LiveQueryMetadata = {
+      name,
+      methodName: propertyKey,
+      definition,
+      ...(options.key === undefined ? {} : { key: options.key }),
+      prepare(input) {
+        const args = definition.args.parse(input);
+        return {
+          input,
+          args,
+          tags: () => (typeof options.tags === 'function' ? options.tags(args) : options.tags),
+          ...(coalesceBy === undefined
+            ? {}
+            : {
+                coalesceBy: (context: LiveQueryContext) => coalesceBy(args, context),
+              }),
+          invoke: (instance, context) => handler.call(instance, args, context),
+        };
+      },
+    };
+    declarations.set(ctor, [...getLiveQueries(ctor), metadata]);
   };
 }
 
 /** `@LiveQuery` entries declared on a resolver class (declaration order). */
 export function getLiveQueries(resolverClass: object): LiveQueryMetadata[] {
-  return (getMetadata(LIVE_QUERY_METADATA, resolverClass) as LiveQueryMetadata[] | undefined) ?? [];
+  for (
+    let current: object | null = resolverClass;
+    current !== null;
+    current = Reflect.getPrototypeOf(current)
+  ) {
+    const own = declarations.get(current);
+    if (own) return [...own];
+  }
+  return [];
 }

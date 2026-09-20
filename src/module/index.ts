@@ -7,7 +7,6 @@ export {
 } from './configurable-module.builder';
 export {
   defineModule,
-  buildAsyncOptionsProviders,
   type DefineModuleSpec,
   type GlobalComponentSlot,
   type ModuleContributions,

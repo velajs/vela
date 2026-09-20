@@ -1,90 +1,55 @@
-# Authentication (`@velajs/better-auth`)
+# Authentication and authorization
 
-Wraps [better-auth](https://better-auth.com) as a Vela module: mount its handler, guard routes, and inject the current user/session through DI. Subpaths: `.` and `./testing`. Peer: `better-auth >=1.2.0` (plus `@velajs/vela`, `hono`).
+`@velajs/better-auth` mounts Better Auth's handler and authenticates Vela requests. Shared permission/role decisions live in `@velajs/authz/vela`, so every authentication provider uses the same trusted identity.
 
-## Setup — `BetterAuthModule.forRoot`
+## Better Auth setup
 
-You construct the better-auth `auth` instance yourself and pass it in:
+Construct a Better Auth instance and pass it to `BetterAuthModule.forRoot({ auth, issuer, basePath?, isGlobal?, mountHandler? })`. The default `/api/auth/*` catch-all is explicitly public and the authentication guard is global by default. Keep the Better Auth and Vela base paths aligned. Custom paths must be canonical absolute paths without wildcards, trailing slashes, or dot segments.
 
-```ts
-import { betterAuth } from 'better-auth';
-import { BetterAuthModule } from '@velajs/better-auth';
-
-const auth = betterAuth({ /* your better-auth config, incl. basePath */ });
-
-@Module({ imports: [BetterAuthModule.forRoot({ auth, isGlobal: true })] })
-class AppModule {}
-```
-
-`BetterAuthModuleOptions` (+ `isGlobal?`, `key?` on `forRoot`):
-
-| Option | Default | Notes |
-|---|---|---|
-| `auth` | — (required) | a built `BetterAuthInstance` (`Auth<any>`) |
-| `basePath` | `'/api/auth'` | where the catch-all handler mounts (relative to vela's `globalPrefix`) |
-| `isGlobal` | `true` | register `AuthGuard` app-wide; disable only when an equivalent global guard is installed |
-| `defaultPolicy` | `'deny'` | deny-only compatibility field; anonymous routes must be explicit |
-| `mountHandler` | `true` | `false` skips mounting the `/api/auth/*` routes |
-
-`forRootAsync({ inject, imports, useFactory, ... })` builds the instance lazily — its `useFactory` **returns the `BetterAuthInstance` directly** (not `{ auth }`), and construction is deferred to first `.auth`/`.handler` access (so a runtime adapter can capture `env` first — e.g. on Cloudflare).
-
-## The auto-mounted `/api/auth/*` handler
-
-With `mountHandler` on (the default), the module registers a `@Public` catch-all controller at `basePath` whose `@All('/*')` route delegates every request to better-auth's own web handler (`auth.handler(request)`). `basePath` must line up with `globalPrefix + basePath` of your `betterAuth({ basePath })`. Set `mountHandler: false` to wire the handler yourself. `createBetterAuthCatchallController(basePath)` is exported if you need to build it manually.
-
-## Guarding routes — `AuthGuard`
-
-`BetterAuthModule` registers `AuthGuard` app-wide by default. On each request it:
-
-1. Passes through immediately only for explicitly `@Public` handlers. The generated auth catch-all controller carries that metadata; URL prefixes are not trusted.
-2. Calls `auth.api.getSession({ headers })`; on a session it attaches `user` and `session` to the request context (readable via the decorators below) and allows.
-3. With no session: allows only when the handler is `@OptionalAuth`; otherwise throws `UnauthorizedException`.
+For Workers, use `forRootAsync({ inject: [ENV], useFactory: env => betterAuth(...) })`; the factory returns the auth instance directly. The explicit dependency tuple is required, even when empty. Native environment bindings are available before factories run and auth instances are isolated per environment.
 
 ```ts
-import { AuthGuard, CurrentUser, CurrentSession, Public, OptionalAuth, Roles } from '@velajs/better-auth';
-import type { User, Session } from '@velajs/better-auth';
+import { Controller, Get, Module } from '@velajs/vela';
+import { BetterAuthModule, CurrentUser, Public, OptionalAuth, type User } from '@velajs/better-auth';
 
-@UseGuards(AuthGuard)
 @Controller('/me')
 class MeController {
   @Get()
-  me(@CurrentUser() user: User, @CurrentSession() session: Session) {
-    return { id: user.id, session: session.id };
-  }
+  me(@CurrentUser() user: User) { return { id: user.id }; }
 
-  @Public()                    // bypasses AuthGuard entirely
   @Get('/health')
+  @Public(true)
   health() { return { ok: true }; }
 
-  @OptionalAuth()              // populates user if present, never 401s
-  @Get('/maybe')
-  maybe(@CurrentUser() user: User | undefined) { return { anon: !user }; }
+  @Get('/optional')
+  @OptionalAuth(true)
+  optional(@CurrentUser() user: User | undefined) { return { authenticated: Boolean(user) }; }
 }
+
+@Module({ imports: [BetterAuthModule.forRoot({ auth, issuer: 'my-app' })], controllers: [MeController] })
+class AppModule {}
 ```
 
-- `@CurrentUser()` / `@CurrentSession()` are ordinary post-guard parameter decorators. Optional authentication returns the real `undefined`, so normal truthiness checks are safe.
-- `@Public()` and `@OptionalAuth()` are `Reflector` boolean decorators; apply at method or controller level.
-- `@Roles(['admin', 'editor'])` + `RolesGuard` gate on `user.role` (comma-normalized). The decorator is `Reflector.createDecorator<string[]>` — it takes a single array argument.
+`@CurrentUser()` / `@CurrentSession()` return validated data only while it is bound to the current trusted identity. Expiry, logout, public routes, rejected sessions, or identity replacement clear that access. Authentication is deny-by-default; there is no permissive `defaultPolicy` mode. Disable global authentication only when installing an equivalent guard.
 
-Exported tokens/keys: `BETTER_AUTH_OPTIONS`, `AUTH_USER_KEY`, `AUTH_SESSION_KEY`. Types: `BetterAuthInstance`, `BetterAuthModuleOptions`, `User`, `Session`.
+## One authorization layer
 
-## Testing — `@velajs/better-auth/testing`
+Import `AuthzModule`, `PermissionGuard`, `RequirePermission`, `RolesGuard`, `Roles`, and `CurrentIdentity` from `@velajs/authz/vela`. Authenticate before authorization. `RequirePermission(['posts:write'])` requires every permission; `Roles(['admin', 'editor'])` allows any listed verified local role. Guards do not trust user headers, Hono variables, Better Auth metadata, or arbitrary socket role fields.
 
-`actingAs` is a ready `ActingAsResolver` for `@velajs/testing`: it finds-or-creates the principal's user, mints a signed session, and returns a `Cookie` header — so authenticated requests just work:
+Core's trusted identity is keyed by issuer/subject/type and carries tenant, explicit roles, and expiry. Permission decisions fail closed for missing identity/engine, expired credentials, ambiguity, or resolver errors. WebSocket and live delivery use the same verified principal model.
+
+## Preserving provider-specific API types
+
+`BetterAuthInstance` is the minimal framework contract. If application code needs plugin-specific APIs, expose the actual configured instance through a typed token:
 
 ```ts
-import { actingAs } from '@velajs/better-auth/testing';
-
-// as the module default resolver:
-module.setAuthResolver(actingAs);
-await module.http.get('/me').actingAs({ email: 'ada@example.com' }).send();
-
-// or per request (reuse an existing user by id):
-await module.http.get('/me').actingAs({ id: existingUserId }, actingAs).send();
-
-// or call it directly to get headers for a raw request:
-const headers = await actingAs(moduleRef, { email: 'ada@example.com', name: 'Ada' });
-const res = await app.getHonoApp().request('/me', { headers });
+const AUTH = new InjectionToken<typeof auth>('configured auth');
+const provider = defineProvider(AUTH, { useValue: auth });
+// Register/export provider; app.get(AUTH) preserves this instance's plugin types.
 ```
 
-`actingAs(module, principal)` requires the principal to carry a resolvable `id` or `email`; extra fields (e.g. `role`) are forwarded to user creation. Its `(module, principal) => Promise<Headers>` shape is exactly `@velajs/testing`'s `ActingAsResolver` (declared structurally, so the subpath carries no hard dependency on the testing package). See `references/testing.md` for the harness side.
+The unparameterized `BetterAuthService` exposes the framework's minimal operations. Removed identity symbols are not an integration seam; use current-user/session decorators or the trusted identity reader.
+
+## Tests
+
+`actingAs` from `@velajs/better-auth/testing` creates/signs a real session and returns headers. Set `module.setAuthResolver(actingAs)` then call `module.http.get('/me').actingAs({ email: 'ada@example.com' }).send()`. Principals need a resolvable id or email. See `testing.md` and the auth/authz package READMEs for provider construction and permission policy details.

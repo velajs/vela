@@ -27,6 +27,6 @@ export class I18nService implements II18nService {
   }
 
   getLocale(): string {
-    return this.ctx.get<string>(I18N_LOCALE_KEY) ?? this.options.defaultLocale ?? 'en';
+    return this.ctx.get(I18N_LOCALE_KEY) ?? this.options.defaultLocale ?? 'en';
   }
 }

@@ -1,7 +1,7 @@
 import type { Context, Next } from 'hono';
-import type { Container } from '../container/container';
+import { findRequestContainer } from '../http/request-container';
 import { Inject, Injectable } from '../container/decorators';
-import { REQUEST_CONTEXT, type RequestContext } from '../http/request-context';
+import { REQUEST_CONTEXT } from '../http/request-context';
 import type { NestMiddleware } from '../pipeline/types';
 import {
   resolveI18nOptions,
@@ -26,9 +26,9 @@ export class I18nLocaleMiddleware implements NestMiddleware {
   }
 
   async use(c: Context, next: Next): Promise<Response | void> {
-    const container = c.get('container') as Container | undefined;
+    const container = findRequestContainer(c);
     if (container) {
-      const ctx = container.resolve<RequestContext>(REQUEST_CONTEXT);
+      const ctx = container.resolve(REQUEST_CONTEXT);
       ctx.set(I18N_LOCALE_KEY, detectLocale(c, this.resolved));
     }
     return next();

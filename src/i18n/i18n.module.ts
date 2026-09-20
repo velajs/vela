@@ -1,3 +1,4 @@
+import { defineProvider } from '../container/types';
 import type { DynamicModule } from '../module/types';
 import { Module } from '../module/decorators';
 import { ConfigurableModuleBuilder } from '../module/configurable-module.builder';
@@ -37,7 +38,7 @@ class I18nMessagesModule {}
     I18nService,
     I18nLocaleMiddleware,
     // Register the locale middleware globally (NestJS APP_MIDDLEWARE convention).
-    { provide: APP_MIDDLEWARE, useExisting: I18nLocaleMiddleware },
+    defineProvider(APP_MIDDLEWARE, { useExisting: I18nLocaleMiddleware }),
   ],
   exports: [I18nService, MessageLoaderService, I18N_OPTIONS],
 })

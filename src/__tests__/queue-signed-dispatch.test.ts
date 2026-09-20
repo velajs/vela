@@ -1,3 +1,4 @@
+import { defineProvider } from '../container/types';
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   VelaFactory,
@@ -28,7 +29,7 @@ describe('QueueModule signed re-entry dispatch (opt-in)', () => {
 
     @Global()
     @Module({
-      providers: [{ provide: URL_SIGNING_SECRET, useValue: SECRET }],
+      providers: [defineProvider(URL_SIGNING_SECRET, {useValue: SECRET})],
       exports: [URL_SIGNING_SECRET],
     })
     class SecretModule {}

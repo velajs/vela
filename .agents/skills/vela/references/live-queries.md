@@ -1,59 +1,71 @@
-# Live queries (`@velajs/vela/live`)
+# Live queries
 
-Tag-based realtime reactivity: `@LiveQuery` methods declare dependency tags; invalidating a tag re-runs affected WebSocket subscriptions and pushes results (keyed deltas when possible). Wire contract: `@velajs/live-protocol` (`$live` reserved envelope event, `LIVE_PROTOCOL = 1`); browser: `@velajs/client` + `@velajs/react`. Full doc: `LIVE.md`.
+Share runtime query schemas between server and browser. The wire format is `@velajs/live-protocol` version 2 under the reserved `$live` WebSocket event; do not maintain a separate result-only interface or a local codec copy.
+
+```ts
+// shared/live.ts — portable, imported by server and browser
+import { defineLiveQuery } from '@velajs/live-protocol';
+import { z } from 'zod';
+
+export const todoList = defineLiveQuery({
+  args: z.object({ listId: z.string() }),
+  result: z.array(z.object({ id: z.string(), text: z.string() })),
+});
+export const queries = { 'todos.list': todoList };
+```
 
 ## Server
 
 ```ts
-import { LiveModule, LiveQuery, LiveResolver, LiveInvalidation } from '@velajs/vela/live';
-import type { LiveQueryContext } from '@velajs/vela/live';
+import { LiveModule, LiveQuery, LiveResolver, type LiveQueryContext } from '@velajs/vela/live';
 
-@LiveResolver()               // stack with @Injectable, like @Processor
+@LiveResolver()
 @Injectable()
 class TodoLive {
-  @LiveQuery('todos.list', {
-    tags: (a: { listId: string }) => ['crud:todos', `todos:${a.listId}`], // string[] or (args) => string[]
-    key: 'id',                // delta key field (default 'id')
-    parse: (a) => Args.parse(a), // validated ONCE at subscribe; throw -> bad_args error frame
-  })
-  list(args: { listId: string }, ctx: LiveQueryContext) { /* ctx.identity, ctx.clientId, ctx.rooms */ }
+  constructor(private readonly todos: TodoService) {}
+
+  @LiveQuery('todos.list', todoList, { tags: (args) => [`todos:${args.listId}`] })
+  list(args: ReturnType<typeof todoList.args.parse>, ctx: LiveQueryContext) {
+    return this.todos.byList(args.listId, ctx.identity);
+  }
 }
 
-@Module({ imports: [WebSocketModule.forRoot(), LiveModule.forRoot()], providers: [TodoLive] })
+@Module({ imports: [WebSocketModule.forRoot({}), LiveModule.forRoot({})], providers: [TodoLive, TodoService, RoomsGateway] })
 class AppModule {}
 ```
 
-- `LiveModule.forRoot({ driver?, log?, identity?, presence? })` — EAGER module (self-driving). `identity` defaults to a shallow copy of `client.data` (your WS auth's stamp); `identity.expiresAt` (epoch ms) is enforced outbound. `presence: false` drops the preset.
-- Handlers receive `(args, ctx)` positionally — no param decorators. Resolver `@UseGuards` run once at subscribe; re-runs replay the captured identity, guard-free.
-- Explicit invalidation: inject `LiveInvalidation`; `await live.invalidate({ tags, room? })` returns `{ cursor, epoch }`. Stamp mutation responses via `stampCommitHeaders(c, stamp)` (automatic with ambientContainer or the CRUD bridge).
-- Native CRUD (`@velajs/crud` >= 1.18): `@Crud({ ..., live: true })` — successful write verbs invalidate `crud:<tableName>` and stamp `Vela-Commit-Cursor`/`Vela-Commit-Epoch`. `live: { tags?, room? }` derives extras from the Hono context.
-- Presence preset: `{ t:'presence' }` heartbeats + built-in `$presence.roster` query (`PRESENCE_ROSTER_QUERY`); immediate departure on close; TTL filtered at read (no timers).
-- The `$` WS event prefix is reserved (`@ReservedWsEvent`); gateways registering `$…` events are rejected at bootstrap.
+The definition checks method inputs/results and parses arguments and final output at runtime. Register the resolver as a provider. Handlers receive `(args, context)` positionally. Core/gateway/resolver authorization and identity expiry are rechecked on delivery and resume; invalid identities lose their subscriptions. Restored hibernation arguments are parsed again through the same schema.
 
-## Transports
+Inject `LiveInvalidation` to call `invalidate({ tags, room? })`; it returns the log's `{ cursor, epoch }`. Stamp mutation responses with `stampCommitHeaders(context, stamp)`. CRUD `live: true` bridges successful writes to `crud:<tableName>` tags and commit headers. Extra tags and room selectors can be configured explicitly.
 
-| Where | Setup | Resume |
-|---|---|---|
-| node/bun/deno | default (`localLive()` + in-memory log) | within process lifetime; restart ⇒ snapshot |
-| multi-node | `LiveModule.forRoot({ driver: redisLive({ pub, sub }) })` (`@velajs/vela/websocket-node`) | always snapshot across instances |
-| Cloudflare | `LiveModule.forRoot({ log: durableObjectCursorLog(), driver: durableObjectLive({ binding }) })` (`@velajs/cloudflare`); DO class needs wrangler `new_sqlite_classes` | REAL — SQLite log survives hibernation/eviction; subs replay from attachments |
-
-`liveInvalidateToRoom(ns, room, tags)` = imperative worker-side invalidation (sibling of `broadcastToRoom`).
-
-## Client (`@velajs/client`, `@velajs/react`)
+## Client and React
 
 ```ts
-const client = new LiveClient<AppLive>({ url });        // AppLive: { [query]: { args; result } }
-client.subscribe('todos.list', { listId }, cb);          // dedupes identical (query,args,room)
-await client.mutate('/todos', body, { optimistic: { query, args, apply: (v) => next } });
-// React: <LiveProvider client={...}> + useLiveQuery / useLiveMutation / usePresence / useConnectionStatus
+import { createLiveClient } from '@velajs/client';
+import { queries } from './shared/live.js';
+
+const client = createLiveClient({ url: 'https://api.example.com', queries });
+client.subscribe('todos.list', { listId: 'one' }, (todos) => render(todos));
 ```
 
-Optimistic layers re-fold over unrelated updates and drop when a frame's cursor passes the mutation's `Vela-Commit-Cursor` (never on HTTP timing). Reconnects resubscribe with cursor+epoch → `resume` (untouched) / `data` (touched) / snapshot (epoch fork).
+Query names, args, and results infer from the parser map. Incoming snapshots, merged deltas, hydration, and cross-tab data are validated before committing state; invalid data preserves the last valid value/cursor. `subscribeRaw` and `peekRaw` expose dynamic tool queries as unknown. Mutations return unknown unless `parseResult` validates their response.
 
-## Gotchas
+```ts
+import { createLiveHooks } from '@velajs/react';
+import type { InferLiveContract } from '@velajs/client';
 
-- Every re-run of N identical subscriptions runs N times (tag granularity; row-level cache is future work).
-- One room per subscription; `durableObjectLive` routes invalidations by `room` (`defaultRoom` fallback `'default'`).
-- `redisLive`/`localLive` cursors are per-instance — cross-instance optimistic gating degrades to one-shot (headers from a different scope's epoch are dropped).
-- Openness: `src/live/*` imports only the public barrel + `@velajs/live-protocol` + `hono/context-storage` (machine-verified, `live-openness.test.ts`).
+export const { LiveProvider, useLiveQuery, useLiveMutation } =
+  createLiveHooks<InferLiveContract<typeof queries>>();
+```
+
+Create that factory once at module scope; use its matching provider and hooks together. Optimistic layers rebase onto incoming state and retire at the mutation's commit cursor. Offline queues and cross-tab coordination require explicit authenticated account/session partitions; follow the client README for persistence and logout behavior.
+
+## Transports and limits
+
+- Local drivers/logs resume within one process lifetime; restart falls back to a snapshot.
+- Redis fanout does not provide a shared log, so cross-instance resume falls back to snapshots.
+- Cloudflare DO logs persist in SQLite. Construct `driver`/`log` with factories per application and supply a typed native namespace to `durableObjectLive`; see `cloudflare.md`.
+- One room per subscription. Query work is per subscription unless `coalesceBy` declares an equivalent authorization/result partition; authorization and result baselines remain per subscriber.
+- Presence uses `$presence.roster`, heartbeat TTLs, and immediate departure on close; disable with `presence: false`.
+
+For protocol guarantees, delivery/coalescing limits, and commit semantics consult the core `LIVE.md`, protocol package README, and client README. HTTP RPC is separate: `@velajs/client/http` re-exports Hono `hc`; see `openapi.md`.

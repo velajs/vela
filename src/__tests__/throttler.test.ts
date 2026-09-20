@@ -1,3 +1,4 @@
+import { defineProvider } from '../container/types';
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   APP_GUARD,
@@ -390,7 +391,7 @@ describe('ThrottlerModule', () => {
     @Module({
       providers: [
         VerifiedIdentityGuard,
-        { provide: APP_GUARD, useExisting: VerifiedIdentityGuard },
+        defineProvider(APP_GUARD, {useExisting: VerifiedIdentityGuard}),
       ],
     })
     class IdentityModule {}

@@ -1,4 +1,5 @@
 import { Container } from '../container/container';
+import { defineProvider } from '../container/types';
 import type { DynamicModule } from '../module/types';
 import { defineModule } from '../module/define-module';
 import { ConfigService } from './config.service';
@@ -48,29 +49,27 @@ function namespacesSubModule(load: AnyConfigNamespace[], key: string): DynamicMo
 const { ConfigurableModuleClass } = defineModule<ConfigModuleOptions>({
   name: 'Config',
   setup: ({ OPTIONS, options, key }) => {
-    const load = (options.load ?? []) as AnyConfigNamespace[];
+    const load = options.load ?? [];
     const { validateSchema } = options;
     return {
       // Lazy sub-module carries the KEY providers; re-exported below so direct
       // `@Inject(ns.KEY)` and `ConfigStore`'s container lookup both reach them.
       imports: load.length > 0 ? [namespacesSubModule(load, key)] : [],
       providers: [
-        {
+        defineProvider(CONFIG_OPTIONS, {
           // Flat config record. `validate` is applied here for the async path;
           // `forRoot` pre-validates eagerly and strips it (see the override).
-          provide: CONFIG_OPTIONS,
-          useFactory: (opts: ConfigModuleOptions) =>
+          useFactory: (opts) =>
             opts.validate ? opts.validate(opts.config ?? {}) : (opts.config ?? {}),
           inject: [OPTIONS],
-        },
-        {
+        }),
+        defineProvider(ConfigStore, {
           // Factory-provided so the store closes over the namespace list +
           // schema; it resolves each namespace's KEY lazily via the container.
-          provide: ConfigStore,
-          useFactory: (container: Container, config: Record<string, unknown>) =>
+          useFactory: (container, config) =>
             new ConfigStore(container, config, load, validateSchema),
           inject: [Container, CONFIG_OPTIONS],
-        },
+        }),
         ConfigService,
       ],
       exports: [ConfigService, ConfigStore, CONFIG_OPTIONS, ...load.map((n) => n.KEY)],
@@ -80,22 +79,18 @@ const { ConfigurableModuleClass } = defineModule<ConfigModuleOptions>({
 
 export class ConfigModule extends ConfigurableModuleClass {
   /**
-   * Preserve (a) per-call generic inference over the flat config record and
-   * (b) the eager-validation contract: `validate` runs at call time so bad
+   * Preserve eager validation: `validate` runs at call time so bad
    * config fails fast, then is stripped so the derived `CONFIG_OPTIONS`
    * provider is a passthrough (no double validation). `validateSchema` (the
    * merged-config schema) is deferred to first read — its input needs env.
    */
-  static forRoot<T extends Record<string, unknown>>(
-    options: ConfigModuleOptions<T> & { isGlobal?: boolean; key?: string } = {},
+  static forRoot(
+    options: ConfigModuleOptions & { isGlobal?: boolean; key?: string } = {},
   ): DynamicModule {
     const validatedConfig = options.validate
-      ? options.validate(options.config ?? ({} as T))
+      ? options.validate(options.config ?? {})
       : options.config;
     const { validate: _validate, ...rest } = options;
-    return super.forRoot({ ...rest, config: validatedConfig } as ConfigModuleOptions & {
-      isGlobal?: boolean;
-      key?: string;
-    });
+    return super.forRoot({ ...rest, config: validatedConfig });
   }
 }

@@ -10,7 +10,8 @@ import {
   Body,
   Module,
   MetadataRegistry,
-  createZodDto,
+  defineDto,
+  ValidationPipe,
   createOpenApiDocument,
   ApiDoc,
   ApiTags,
@@ -134,17 +135,19 @@ describe('createOpenApiDocument — routes', () => {
     expect(searchParam!.required).toBe(false);
   });
 
-  it('includes body schema from a Zod DTO class (emitted as $ref into components)', () => {
+  it('includes body schema from a Zod DTO descriptor (emitted as $ref into components)', () => {
     const CreateUserSchema = z.object({
       name: z.string(),
       email: z.string().email(),
     });
-    class CreateUserDto extends createZodDto(CreateUserSchema) {}
+    const CreateUserDto = defineDto(CreateUserSchema, { name: 'CreateUserDto' });
 
     @Controller('/users')
     class UsersController {
       @Post()
-      create(@Body() _dto: CreateUserDto) {
+      create(
+        @Body(new ValidationPipe(CreateUserDto)) _dto: ReturnType<typeof CreateUserDto.parse>,
+      ) {
         return {};
       }
     }

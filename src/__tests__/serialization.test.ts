@@ -10,7 +10,7 @@ import {
   Injectable,
   MetadataRegistry,
   UseInterceptors,
-  createZodDto,
+  defineDto,
   ValidationPipe,
   Serialize,
   SerializerInterceptor,
@@ -32,7 +32,10 @@ describe('Serialization', () => {
       password: z.string(),
     });
 
-    class UserResponseDto extends createZodDto(UserSchema.omit({ password: true })) {}
+    const UserResponseDto = defineDto(UserSchema.omit({ password: true }), {
+      name: 'UserResponseDto',
+    });
+    type UserResponseDto = ReturnType<typeof UserResponseDto.parse>;
 
     @Injectable()
     class UserService {
@@ -75,7 +78,10 @@ describe('Serialization', () => {
       name: z.string(),
       password: z.string(),
     });
-    class UserResponseDto extends createZodDto(UserSchema.omit({ password: true })) {}
+    const UserResponseDto = defineDto(UserSchema.omit({ password: true }), {
+      name: 'UserResponseDto',
+    });
+    type UserResponseDto = ReturnType<typeof UserResponseDto.parse>;
 
     @Controller('/users')
     @UseInterceptors(SerializerInterceptor)
@@ -135,14 +141,16 @@ describe('Serialization', () => {
       email: z.string().email(),
       password: z.string().min(6),
     });
-    class CreateUserDto extends createZodDto(CreateUserSchema) {}
+    const CreateUserDto = defineDto(CreateUserSchema, { name: 'CreateUserDto' });
+    type CreateUserDto = ReturnType<typeof CreateUserDto.parse>;
 
     const UserResponseSchema = z.object({
       id: z.number(),
       name: z.string(),
       email: z.string(),
     });
-    class UserResponseDto extends createZodDto(UserResponseSchema) {}
+    const UserResponseDto = defineDto(UserResponseSchema, { name: 'UserResponseDto' });
+    type UserResponseDto = ReturnType<typeof UserResponseDto.parse>;
 
     @Injectable()
     class UserService {
@@ -158,7 +166,7 @@ describe('Serialization', () => {
 
       @Post()
       @Serialize(UserResponseDto)
-      create(@Body() dto: CreateUserDto) {
+      create(@Body(new ValidationPipe(CreateUserDto)) dto: CreateUserDto) {
         return this.userService.create(dto as any);
       }
     }

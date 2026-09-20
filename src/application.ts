@@ -1,9 +1,10 @@
-import type { Hono } from 'hono';
+import type { VelaHono as Hono } from './http/hono.types';
 import { HTTPException } from 'hono/http-exception';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { toErrorBody } from '@velajs/errors';
 import type { Container } from './container/container';
-import type { Token, Type } from './container/types';
+import type { InferToken, Token, Type } from './container/types';
+import { defineProvider } from './container/types';
 import { APP_EXCEPTION_HANDLER } from './pipeline/tokens';
 import type { ExceptionHandler } from './exceptions/exception-handler';
 import { resolveErrorReporter } from './exceptions/reporter';
@@ -118,7 +119,7 @@ export class VelaApplication {
     for (const i of instances) this.knownInstances.add(i);
   }
 
-  get<T>(token: Token<T>): T {
+  get<K extends Token>(token: K): InferToken<K> {
     return this.container.resolve(token);
   }
 
@@ -178,8 +179,8 @@ export class VelaApplication {
   useGlobalExceptionHandler(handler: Type<ExceptionHandler> | ExceptionHandler): this {
     this.container.register(
       typeof handler === 'function'
-        ? { provide: APP_EXCEPTION_HANDLER, useClass: handler }
-        : { provide: APP_EXCEPTION_HANDLER, useValue: handler },
+        ? defineProvider(APP_EXCEPTION_HANDLER, { useClass: handler })
+        : defineProvider(APP_EXCEPTION_HANDLER, { useValue: handler }),
     );
     return this;
   }
@@ -334,7 +335,9 @@ export class VelaApplication {
     // binding) resolve it instead of needing a back-reference to the app.
     // Registered AFTER build so anything resolving it sees the final registry;
     // pre-bootstrap resolution attempts fail the `has()` probe and defer.
-    this.container.register({ provide: EntrypointRegistry, useValue: this.entrypointRegistry });
+    this.container.register(
+      defineProvider(EntrypointRegistry, { useValue: this.entrypointRegistry }),
+    );
     this.container.markGlobalToken(EntrypointRegistry);
   }
 

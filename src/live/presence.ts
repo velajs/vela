@@ -1,4 +1,4 @@
-import { MAX_PRESENCE_METADATA_BYTES } from '@velajs/live-protocol';
+import { MAX_PRESENCE_METADATA_BYTES, defineLiveQuery } from '@velajs/live-protocol';
 import { Inject, Injectable, assertWebSocketRoomId } from '../index';
 import { LiveQuery, LiveResolver } from './live.decorators';
 import type { LiveQueryContext } from './live.types';
@@ -21,6 +21,44 @@ export interface PresenceMember {
   meta?: unknown;
   lastSeen: number;
 }
+
+const presenceRosterDefinition = defineLiveQuery({
+  args: {
+    parse(value: unknown): { room: string } {
+      const room =
+        typeof value === 'object' && value !== null && 'room' in value ? value.room : undefined;
+      try {
+        assertWebSocketRoomId(room);
+      } catch {
+        throw new Error("presence roster args require a non-empty 'room' string");
+      }
+      return { room };
+    },
+  },
+  result: {
+    parse(value: unknown): PresenceMember[] {
+      if (!Array.isArray(value)) throw new TypeError('presence roster must be an array');
+      return value.map((member: unknown) => {
+        if (
+          typeof member !== 'object' ||
+          member === null ||
+          !('id' in member) ||
+          typeof member.id !== 'string' ||
+          !('lastSeen' in member) ||
+          typeof member.lastSeen !== 'number' ||
+          !Number.isSafeInteger(member.lastSeen)
+        ) {
+          throw new TypeError('invalid presence roster member');
+        }
+        return {
+          id: member.id,
+          lastSeen: member.lastSeen,
+          ...('meta' in member ? { meta: member.meta } : {}),
+        };
+      });
+    },
+  },
+});
 
 interface RoomState {
   members: Map<string, { meta?: unknown; lastSeen: number }>;
@@ -114,6 +152,14 @@ export class PresenceService {
       .filter(([, member]) => member.lastSeen >= oldestAlive)
       .map(([id, member]) => ({ id, meta: member.meta, lastSeen: member.lastSeen }));
   }
+
+  /** Occupied rooms in this service's scope. Expired memberships and metadata are omitted. */
+  inspectRooms(): Array<{ room: string; count: number; members: string[] }> {
+    return [...this.rooms.keys()].flatMap((room) => {
+      const members = this.roster(room).map((member) => member.id);
+      return members.length ? [{ room, count: members.length, members }] : [];
+    });
+  }
 }
 
 /** The built-in resolver backing `$presence.roster`. Registered by `LiveModule` unless presence is disabled. */
@@ -122,17 +168,8 @@ export class PresenceService {
 export class PresenceResolver {
   constructor(@Inject(PresenceService) private readonly presence: PresenceService) {}
 
-  @LiveQuery(PRESENCE_ROSTER_QUERY, {
-    tags: (args: { room: string }) => [presenceTag(args.room)],
-    parse: (args: unknown) => {
-      const room = (args as { room?: unknown } | undefined)?.room;
-      try {
-        assertWebSocketRoomId(room);
-      } catch {
-        throw new Error("presence roster args require a non-empty 'room' string");
-      }
-      return { room };
-    },
+  @LiveQuery(PRESENCE_ROSTER_QUERY, presenceRosterDefinition, {
+    tags: (args) => [presenceTag(args.room)],
   })
   roster(args: { room: string }, context: LiveQueryContext): PresenceMember[] {
     if (!context.rooms.includes(args.room)) {

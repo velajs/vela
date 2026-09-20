@@ -1,3 +1,4 @@
+import { defineProvider, InjectionToken } from '../../container/types';
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import {
@@ -19,16 +20,19 @@ interface WorkersEnv {
   CONFIG_DATABASE_URL?: string;
 }
 
-const dbConfig = registerAs('database', (e: WorkersEnv) => ({
+const WORKER_ENV = new InjectionToken<WorkersEnv>('worker env', { factory: () => ({}) });
+
+const dbConfig = registerAs('database', WORKER_ENV, (e: WorkersEnv) => ({
   url: e.CONFIG_DATABASE_URL ?? 'unset',
 }));
 
-// A @Global module provides CONFIG_ENV from the Workers env — how a platform
+// A @Global module provides a typed token from the Workers env — how a platform
 // adapter would wire it. `env` here is the miniflare-provided binding bag.
+const databaseUrl: unknown = Reflect.get(env, 'CONFIG_DATABASE_URL');
 @Global()
 @Module({
-  providers: [{ provide: CONFIG_ENV, useValue: env as unknown as Record<string, unknown> }],
-  exports: [CONFIG_ENV],
+  providers: [defineProvider(WORKER_ENV, {useValue: { CONFIG_DATABASE_URL: typeof databaseUrl === 'string' ? databaseUrl : undefined }})],
+  exports: [WORKER_ENV],
 })
 class WorkersEnvModule {}
 

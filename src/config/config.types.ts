@@ -18,13 +18,13 @@ export type ConfigSchema =
  * supported there (async namespaces are out of scope; declare them via
  * `forRoot`).
  */
-export interface ConfigModuleOptions<T extends Record<string, unknown> = Record<string, unknown>> {
+export interface ConfigModuleOptions {
   /** Flat config record — the pre-namespace `config` path (still supported). */
-  config?: T;
+  config?: Record<string, unknown>;
   /** Config namespaces created via `registerAs()`, merged under their namespace name. `forRoot`-only. */
   load?: AnyConfigNamespace[];
   /** Eager validator for the flat `config` record; runs at `forRoot()` call time. */
-  validate?: (config: T) => T;
+  validate?: (config: Record<string, unknown>) => Record<string, unknown>;
   /** Schema validating the MERGED config (flat + namespaces); runs lazily on first read. `forRoot`-only. */
   validateSchema?: ConfigSchema;
   isGlobal?: boolean;

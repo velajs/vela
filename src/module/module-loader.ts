@@ -2,11 +2,11 @@ import { Scope } from '../constants';
 import type { Container } from '../container/container';
 import {
   ForwardRef,
+  defineProvider,
+  getProviderOptions,
   InjectionToken,
-  ModuleVisibilityError,
-  MultipleProvidersFoundError,
 } from '../container/types';
-import type { ProviderOptions, Token, Type } from '../container/types';
+import type { ProviderDefinition, Token, TypedToken, Type } from '../container/types';
 import type { RouteManager } from '../http/route.manager';
 import {
   APP_FILTER,
@@ -45,7 +45,7 @@ export interface LazyModuleGroupSpec {
  * deliberately string-coupled to the interface's method name so the loader
  * does not import from `entrypoint/` (layering).
  */
-function declaresEntrypointContributor(provider: Type | ProviderOptions): boolean {
+function declaresEntrypointContributor(provider: Type | ProviderDefinition): boolean {
   const cls = typeof provider === 'function' ? provider : provider.useClass;
   if (typeof cls !== 'function') return false;
   const proto = (cls as Type).prototype as Record<string, unknown> | undefined;
@@ -68,7 +68,7 @@ function implementsNestModule(cls: Type): cls is Type<NestModule> {
   return typeof cls.prototype?.configure === 'function';
 }
 
-function tokenOfProvider(provider: Type | ProviderOptions): Token | undefined {
+function tokenOfProvider(provider: Type | ProviderDefinition): Token | undefined {
   return typeof provider === 'function' ? provider : provider.provide;
 }
 
@@ -77,7 +77,7 @@ function keyOfImport(entry: Type | DynamicModule): string {
 }
 
 /**
- * `ForwardRef.factory` is typed to return the broader `Token<T>` because the
+ * `ForwardRef.factory` is typed to return the broader `TypedToken<T>` because the
  * primitive is shared with provider injection. In module-imports position the
  * runtime contract narrows: the factory must yield a module class or a
  * `DynamicModule`. This helper validates the contract AND narrows the type
@@ -144,7 +144,7 @@ export class ModuleLoader {
       lazyManager.registerGroup(group);
     }
     this.container.setLazyHook(lazyManager);
-    this.container.register({ provide: LazyModuleManager, useValue: lazyManager });
+    this.container.register(defineProvider(LazyModuleManager, { useValue: lazyManager }));
   }
 
   private getModuleId(moduleClass: Type, key: string): string {
@@ -201,8 +201,8 @@ export class ModuleLoader {
     let moduleClass: Type;
     let extraImports: ModuleImport[] = [];
     let extraControllers: Type[] = [];
-    let extraProviders: Array<Type | ProviderOptions> = [];
-    let extraExports: Array<Type | InjectionToken> = [];
+    let extraProviders: Array<Type | ProviderDefinition> = [];
+    let extraExports: Token[] = [];
     let key: string = DEFAULT_KEY;
 
     if (isDynamicModule(moduleClassOrDynamic)) {
@@ -410,7 +410,10 @@ export class ModuleLoader {
   }
 
   /** Registers the provider and returns the token it was registered under. */
-  private registerProvider(provider: Type | ProviderOptions, moduleId: string): Token | undefined {
+  private registerProvider(
+    provider: Type | ProviderDefinition,
+    moduleId: string,
+  ): Token | undefined {
     if (typeof provider === 'function') {
       // Per-module bucket: the same class can be registered in multiple
       // modules' buckets simultaneously without collision.
@@ -431,7 +434,28 @@ export class ModuleLoader {
       // Map. Across buckets, `container.resolveAll(APP_GUARD)` walks
       // every bucket — no need to mark synthetic tokens global.
       const syntheticToken = new InjectionToken(`${token.toString()}:${this.appProviderCounter++}`);
-      this.container.register({ ...provider, provide: syntheticToken }, moduleId);
+      const options = getProviderOptions(provider);
+      const scope = options.scope;
+      const syntheticProvider =
+        'useValue' in options
+          ? defineProvider(syntheticToken, { useValue: options.useValue, scope })
+          : options.useClass
+            ? defineProvider(syntheticToken, { useClass: options.useClass, scope })
+            : options.useFactory
+              ? defineProvider(syntheticToken, {
+                  useFactory: options.useFactory,
+                  inject: options.inject ?? [],
+                  scope,
+                })
+              : options.useExisting
+                ? defineProvider(syntheticToken, {
+                    useFactory: (value) => value,
+                    inject: [options.useExisting],
+                    scope,
+                  })
+                : undefined;
+      if (!syntheticProvider) throw new Error('Invalid global component provider');
+      this.container.register(syntheticProvider, moduleId);
       this.registeredProviders.push(syntheticToken);
       getOrCreateArray(this.appProviderTokens, token).push(syntheticToken);
       return syntheticToken;
@@ -447,8 +471,8 @@ export class ModuleLoader {
   }
 
   private buildExportSet(
-    exports: Array<Type | InjectionToken>,
-    providers: Array<Type | ProviderOptions>,
+    exports: Token[],
+    providers: Array<Type | ProviderDefinition>,
     importedProviders: Set<Token>,
   ): Set<Token> {
     const exportSet = new Set<Token>();
@@ -483,8 +507,10 @@ export class ModuleLoader {
     return [...this.registeredProviders];
   }
 
-  getAppProviderTokens(token: Token): Token[] {
-    return [...(this.appProviderTokens.get(token) ?? [])];
+  getAppProviderTokens<T>(token: TypedToken<T>): TypedToken<T>[] {
+    // Synthetic tokens alias registrations under this APP_* token. The map
+    // erases that key/value correlation; restore it only at this boundary.
+    return [...(this.appProviderTokens.get(token) ?? [])] as TypedToken<T>[];
   }
 
   getConsumerMiddlewareDefinitions(): MiddlewareRouteDefinition[] {
@@ -513,45 +539,15 @@ export class ModuleLoader {
   }
 
   async resolveAllInstances(): Promise<unknown[]> {
-    const instanceSet = new Set<unknown>();
-
-    for (const token of this.registeredProviders) {
-      try {
-        if (this.container.getProviderScope(token) === Scope.REQUEST) {
-          continue;
-        }
-        if (this.isLazyOnlyToken(token)) {
-          continue;
-        }
-        const instance = await this.container.resolveAsync(token);
-        instanceSet.add(instance);
-      } catch (err) {
-        if (err instanceof ModuleVisibilityError || err instanceof MultipleProvidersFoundError) {
-          throw err;
-        }
-        this.routeError(err, `resolve provider`);
-      }
+    const instances = new Set<unknown>();
+    for (const token of [...this.registeredProviders, ...this.collectedControllers]) {
+      if (this.container.getProviderScope(token) === Scope.REQUEST || this.isLazyOnlyToken(token))
+        continue;
+      // Construction failures abort bootstrap. Logging and continuing would
+      // leave a partial application and could repeat provider side effects.
+      instances.add(await this.container.resolveAsync(token));
     }
-
-    for (const controller of this.collectedControllers) {
-      try {
-        if (this.container.getProviderScope(controller) === Scope.REQUEST) {
-          continue;
-        }
-        if (this.isLazyOnlyToken(controller)) {
-          continue;
-        }
-        const instance = await this.container.resolveAsync(controller);
-        instanceSet.add(instance);
-      } catch (err) {
-        if (err instanceof ModuleVisibilityError || err instanceof MultipleProvidersFoundError) {
-          throw err;
-        }
-        this.routeError(err, `resolve controller ${controller.name}`);
-      }
-    }
-
-    return [...instanceSet];
+    return [...instances];
   }
 
   private routeError(err: unknown, context: string): void {

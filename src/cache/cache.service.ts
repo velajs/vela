@@ -6,11 +6,17 @@ import type { CacheStore } from './cache.types';
 export class CacheService {
   constructor(@Inject(CACHE_MANAGER) private store: CacheStore) {}
 
-  get<T = unknown>(key: string): T | undefined {
-    return this.store.get<T>(key);
+  get(key: string): unknown {
+    return this.store.get(key);
   }
 
-  set<T = unknown>(key: string, value: T, ttl?: number): void {
+  /** Infer the domain type from a parser. Invalid stored values throw from the parser. */
+  getParsed<T>(key: string, parse: (value: unknown) => T): T | undefined {
+    const value = this.store.get(key);
+    return value === undefined ? undefined : parse(value);
+  }
+
+  set(key: string, value: unknown, ttl?: number): void {
     this.store.set(key, value, ttl);
   }
 

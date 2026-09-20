@@ -15,11 +15,11 @@ Vela mirrors NestJS's authoring surface, so most decorators and interfaces port 
 
 | NestJS | Vela | Notes |
 |---|---|---|
-| class-validator + class-transformer DTOs | **Zod** via `createZodDto(schema)` + `ValidationPipe` | core never imports class-validator — see `references/validation.md` |
+| class-validator + class-transformer DTOs | **Schemas** via `defineEndpoint` or `defineDto(schema)` + explicit `ValidationPipe` | core never imports class-validator — see `references/validation.md` |
 | `ConfigurableModuleBuilder` for dynamic modules | **`defineModule`** (the engine; `ConfigurableModuleBuilder` adapts it) | see `references/modules-and-di.md` + `MODULE_AUTHORING.md` |
 | `app.setGlobalPrefix('/api')` | `globalPrefix` create-option; read back via `app.getGlobalPrefix()` | there is **no** `setGlobalPrefix` method on the app |
 | `app.enableVersioning({...})` | decorator-driven `@Controller({ version })` / `@Version(2)` | no `enableVersioning`/`VersioningType` |
-| `app.enableCors()` | `middleware: [cors()]` create-option, or `CorsModule.forRoot()` | no `enableCors` method |
+| `app.enableCors()` | `middleware: [cors()]` create-option, or `CorsModule.forRoot({})` | no `enableCors` method |
 | `logger` bootstrap option / `NestFactory.create(m, { logger })` | inject the `Logger`/`LoggerService` provider | no create-time `logger` option |
 | `app.listen(port)` | export the `fetch` handler (`export default app`) or `serve({ fetch: app.fetch })` on Node | Vela is a fetch handler, not a server |
 

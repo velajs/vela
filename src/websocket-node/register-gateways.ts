@@ -6,9 +6,10 @@ import {
   authenticateWebSocketUpgrade,
   resolveMaxFrameBytes,
   resolveGatewayRoomId,
+  readWsEntrypointMeta,
   WS_ROOM_REGISTRY,
 } from '../websocket/index';
-import type { RoomRegistry, WsEntrypointMeta } from '../websocket/index';
+import type { RoomRegistry } from '../websocket/index';
 import { NodeWsClient } from './node-ws-client';
 
 function toFrame(data: WSMessageReceive): string | ArrayBuffer | undefined {
@@ -45,8 +46,8 @@ export function registerWebSocketGateways(
   const hono = app.getHonoApp();
   const registry = app.get(WS_ROOM_REGISTRY) as RoomRegistry;
 
-  const deliveryDispatcher =
-    app.entrypoints.ofKind<WsEntrypointMeta>('websocket')[0]?.meta.dispatcher;
+  const deliveryDispatcher = app.entrypoints.ofKind('websocket', readWsEntrypointMeta)[0]?.meta
+    .dispatcher;
   if (deliveryDispatcher) {
     registry.setDeliveryAuthorizer?.((client) => {
       const path = (client as NodeWsClient).path;
@@ -54,7 +55,7 @@ export function registerWebSocketGateways(
     });
   }
 
-  for (const { meta } of app.entrypoints.ofKind<WsEntrypointMeta>('websocket')) {
+  for (const { meta } of app.entrypoints.ofKind('websocket', readWsEntrypointMeta)) {
     const { path, dispatcher, options } = meta;
     hono.get(
       path,

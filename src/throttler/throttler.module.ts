@@ -1,4 +1,5 @@
 import { Module } from '../module/decorators';
+import { defineProvider } from '../container/types';
 import { ConfigurableModuleBuilder } from '../module/configurable-module.builder';
 import { APP_GUARD } from '../pipeline/tokens';
 import { ThrottlerGuard } from './throttler.guard';
@@ -14,13 +15,12 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } =
 
 @Module({
   providers: [
-    {
-      provide: THROTTLER_STORAGE,
-      useFactory: (options: ThrottlerModuleOptions) => options.storage ?? new ThrottlerStorage(),
+    defineProvider(THROTTLER_STORAGE, {
+      useFactory: (options) => options.storage ?? new ThrottlerStorage(),
       inject: [MODULE_OPTIONS_TOKEN],
-    },
+    }),
     ThrottlerGuard,
-    { provide: APP_GUARD, useExisting: ThrottlerGuard },
+    defineProvider(APP_GUARD, { useExisting: ThrottlerGuard }),
   ],
   exports: [THROTTLER_OPTIONS, THROTTLER_STORAGE, ThrottlerGuard],
 })

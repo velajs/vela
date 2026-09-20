@@ -1,4 +1,5 @@
 import { cors } from 'hono/cors';
+import { defineProvider } from '../container/types';
 import { defineModule } from '../module/define-module';
 import type { NestMiddleware } from '../pipeline/types';
 import { APP_MIDDLEWARE } from '../pipeline/tokens';
@@ -22,11 +23,10 @@ const { ConfigurableModuleClass } = defineModule<CorsOptions>({
   optionsToken: CORS_OPTIONS,
   setup: ({ OPTIONS }) => ({
     providers: [
-      {
-        provide: APP_MIDDLEWARE,
-        useFactory: (options: CorsOptions) => buildCorsMiddleware(options),
+      defineProvider(APP_MIDDLEWARE, {
+        useFactory: (options) => buildCorsMiddleware(options),
         inject: [OPTIONS],
-      },
+      }),
     ],
     exports: [OPTIONS],
   }),

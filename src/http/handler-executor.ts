@@ -2,8 +2,9 @@ import { STATUS_TO_CODE, toErrorBody } from '@velajs/errors';
 import type { Context } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { Container } from '../container/container';
-import type { Token, Type } from '../container/types';
+import type { TypedToken, Type } from '../container/types';
 import { HttpException } from '../errors/http-exception';
+import { getEndpointDefinition } from '../openapi/endpoint';
 import { resolveErrorReporter } from '../exceptions/reporter';
 import { ComponentManager } from '../pipeline/component.manager';
 import { shouldFilterCatch } from '../pipeline/decorators';
@@ -25,15 +26,16 @@ import type {
 import type { ArgumentResolver } from './argument-resolver';
 import { getHttpCode, getRedirect, getResponseHeaders } from './decorators';
 import { buildExecutionContext } from './execution-context';
+import { extractEndpointInput, mapEndpointResponse } from './endpoint-executor';
 import { instantiateMany } from './instantiate';
 import { applyResponseHeaders, mapRedirect, mapResponse } from './response-mapper';
 import type { ParamMetadata, RouteMetadata } from './types';
 
 export interface HandlerGlobals {
-  guards: Array<GuardType | Token<CanActivate>>;
-  pipes: Array<PipeType | Token<PipeTransform>>;
-  interceptors: Array<InterceptorType | Token<NestInterceptor>>;
-  filters: Array<FilterType | Token<ExceptionFilter>>;
+  guards: Array<GuardType | TypedToken<CanActivate>>;
+  pipes: Array<PipeType | TypedToken<PipeTransform>>;
+  interceptors: Array<InterceptorType | TypedToken<NestInterceptor>>;
+  filters: Array<FilterType | TypedToken<ExceptionFilter>>;
 }
 
 // Builds the per-request closure that runs guards, pipes, interceptors, the
@@ -86,6 +88,12 @@ export class HandlerExecutor {
     const httpCode = getHttpCode(controller, route.handlerName);
     const responseHeaders = getResponseHeaders(controller, route.handlerName);
     const redirect = getRedirect(controller, route.handlerName);
+    const endpoint = getEndpointDefinition(controller, route.handlerName);
+    if (endpoint && (paramMetadata.length > 0 || redirect || httpCode !== undefined)) {
+      throw new Error(
+        `${controller.name}.${String(route.handlerName)}: @Endpoint owns its single input argument and response status; remove parameter decorators, @HttpCode, and @Redirect`,
+      );
+    }
 
     return async (c: Context) => {
       // Combine global + method at request time so post-create registrations propagate.
@@ -118,8 +126,11 @@ export class HandlerExecutor {
 
       try {
         const instance = requestContainer.resolve(controller, moduleId);
+        if ((typeof instance !== 'object' || instance === null) && typeof instance !== 'function') {
+          throw new Error(`Controller ${controller.name} did not resolve to an object`);
+        }
 
-        const method = Reflect.get(instance, route.handlerName);
+        const method: unknown = Reflect.get(instance, route.handlerName);
         if (typeof method !== 'function') {
           throw new Error(`Method ${String(route.handlerName)} not found on controller`);
         }
@@ -132,9 +143,23 @@ export class HandlerExecutor {
           guards,
           interceptors,
           resolveArgs: () =>
-            this.argumentResolver.extract(c, paramMetadata, pipes, requestContainer, paramTypes),
+            endpoint
+              ? extractEndpointInput(c, endpoint, pipes)
+              : this.argumentResolver.extract(
+                  c,
+                  paramMetadata,
+                  pipes,
+                  requestContainer,
+                  paramTypes,
+                ),
           invoke: async (args) => Reflect.apply(method, instance, args),
         });
+
+        if (endpoint) {
+          const response = mapEndpointResponse(c, endpoint, result);
+          applyResponseHeaders(response, responseHeaders);
+          return response;
+        }
 
         if (redirect) {
           return mapRedirect(c, result, redirect);

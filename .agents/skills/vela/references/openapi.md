@@ -36,7 +36,7 @@ class CatalogController {
 
 - `@ApiTags(...tags)` — class or method; tags merge and de-dupe.
 - `@ApiDoc({ summary?, description?, operationId?, deprecated?, tags? })` — class or method.
-- `@ApiResponse(status, { description, schema? })` — method; stackable for multiple statuses. `schema` accepts a Zod schema, a `createZodDto` class, or raw JSON Schema.
+- `@ApiResponse(status, { description, schema? })` — method; stackable for multiple statuses. `schema` accepts a Zod schema, a `defineDto` descriptor, or checked raw JSON Schema.
 
 ### operationId from the route name
 
@@ -65,3 +65,20 @@ app.mountOpenApi({ document, ui: 'all' });                       // swagger + sc
 | `title` | — | UI page title |
 
 Each UI is a self-contained HTML shell (CDN-loaded), so mounting docs adds no server bundling and stays edge-safe. (`path`/`uiPath` are deprecated aliases for `specPath`/single-UI path.)
+
+## Schema-bound Hono RPC
+
+Use `defineEndpoint({ input, output, status? })` plus `@Endpoint(definition)` for one runtime-validated contract; see `validation.md`. A parameter parser in `@Body(new ValidationPipe(dto))` also supplies request schema metadata. `@ApiResponse` documents a result but does not validate it; TypeScript interfaces alone carry no schema.
+
+```sh
+vela client generate --out src/api.generated.ts --strict
+vela client generate --out src/api.generated.ts --strict --check
+```
+
+```ts
+import { hc } from '@velajs/client/http';
+import type { AppType } from './api.generated.js';
+const api = hc<AppType>('https://api.example.com');
+```
+
+Use the server origin: generated paths already include prefix/version segments. The client entrypoint re-exports Hono's client/types; do not cast the runtime Vela Hono instance into a fabricated route schema. Missing schemas become unknown or fail `--strict`; raw Hono mounts require their own contract. Read the client package's `HTTP.md` for supported wire formats and global error responses.

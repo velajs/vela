@@ -1,121 +1,68 @@
-# Cloudflare (`@velajs/cloudflare`)
+# Cloudflare Workers
 
-The Cloudflare Workers adapter: run a Vela app on Workers with typed bindings (KV/D1/R2/Queues/DO/AI/Vectorize/Hyperdrive), `@Scheduled`/`@QueueConsumer` entrypoints, Durable-Object WebSocket hibernation, and CF-backed feature-flag drivers. Single export `.`. Peers: `@cloudflare/workers-types`, `@velajs/vela`, `hono` (and `@velajs/feature-flags`, optional).
+Use native platform bindings through a typed environment token. `@velajs/cloudflare` supplies HTTP, queue, cron, and live transports; its root entrypoint is safe for Node tooling. Native Durable Object classes live in `@velajs/cloudflare/durable-objects`.
 
-## Bootstrapping
-
-```ts
-import { createCloudflareApp } from '@velajs/cloudflare';
-import { AppModule } from './app.module';
-
-const app = await createCloudflareApp(AppModule);   // options?: { globalPrefix?, middleware? }
-
-export default {
-  fetch: app.fetch,
-  scheduled: app.scheduled.bind(app),   // only if you use @Scheduled / @Cron
-  queue: app.queue.bind(app),           // only if you use @QueueConsumer
-};
-```
-
-`createCloudflareApp(rootModule, options?)` is `VelaFactory.create` with `adapters: [cloudflareAdapter()]` prewired. If you build the app yourself, add the adapter explicitly: `VelaFactory.create(AppModule, { adapters: [cloudflareAdapter()] })`. The returned `CloudflareApplication` adds `scheduled(event, env, ctx)` and `queue(batch, env, ctx)` to the usual `fetch` / `getHonoApp()` / `get(token)` / `mountOpenApi(options)` / `close()` surface.
-
-## Bindings — per-binding modules
-
-Each Cloudflare binding gets a module whose only option is the wrangler `binding` name; import the module, inject its service:
+## Worker and environment
 
 ```ts
-import { KVModule, KVService, D1Module, D1Service } from '@velajs/cloudflare';
+import { Inject, Injectable, InjectionToken, Module } from '@velajs/vela';
+import { createCloudflareWorker } from '@velajs/cloudflare';
 
-@Module({ imports: [KVModule.forRoot({ binding: 'CACHE' }), D1Module.forRoot({ binding: 'DB' })] })
-class AppModule {}
+interface WorkerEnv { DB: D1Database; CACHE: KVNamespace; FILES: R2Bucket }
+export const ENV = new InjectionToken<WorkerEnv>('app.Env');
 
 @Injectable()
 class UsersService {
-  constructor(private readonly kv: KVService, private readonly d1: D1Service) {}
-  async get(id: string) { return this.d1.database.prepare('select * from users where id=?').bind(id).first(); }
-}
-```
-
-| Module | `.forRoot` | Service (accessor) |
-|---|---|---|
-| `KVModule` | `{ binding }` | `KVService` → `.namespace: KVNamespace` |
-| `D1Module` | `{ binding }` | `D1Service` → `.database: D1Database` |
-| `R2Module` | `{ binding }` | `R2Service` → `.bucket: R2Bucket` |
-| `QueueModule` | `{ binding }` | `QueueService` → `.queue: Queue` (producer) |
-| `DurableObjectModule` | `{ binding }` | `DurableObjectService` → `.namespace: DurableObjectNamespace` |
-| `AIModule` | `{ binding }` | `AIService` → `.binding: Ai` |
-| `VectorizeModule` | `{ binding }` | `VectorizeService` → `.index: VectorizeIndex` |
-| `HyperdriveModule` | `{ binding }` | `HyperdriveService` → `.binding` + `.connectionString`/`.host`/… |
-| `EnvModule` | `()` (global, no options) | `EnvService` → `.env`, `.get(key)` |
-
-These modules expose **only `forRoot`** (no `forRootAsync`). Bindings resolve lazily from the request `env` the adapter captures — reads throw until the first request initializes them. `EnvService` is the wildcard for reading arbitrary vars (and for feeding `forRootAsync` factories of other modules). Note: `@velajs/cloudflare`'s `QueueModule` is the Cloudflare Queues **producer** binding — distinct from `@velajs/vela/queue`'s in-core job `QueueModule`.
-
-## Scheduled tasks & queue consumers
-
-Declare handlers as methods on `@Injectable()` providers:
-
-```ts
-import { Scheduled, QueueConsumer } from '@velajs/cloudflare';
-
-@Injectable()
-class Workers {
-  @Scheduled('0 * * * *')
-  async hourly() { /* cron tick */ }
-
-  @QueueConsumer('email-queue')
-  async onEmail(batch: MessageBatch) { for (const m of batch.messages) m.ack(); }
-}
-```
-
-`@Scheduled(cron)` and `@QueueConsumer(queueName)` register `cf:scheduled` / `cf:queue` entrypoints. `app.scheduled()` fires matching `@Scheduled` handlers (and vela's own `@Cron`) by cron; `app.queue()` dispatches a batch by queue name. Both run in a fresh request scope through the shared `PipelineRunner`: **handler-scoped** guards/interceptors/filters apply; app-wide HTTP `APP_*` components do not (parity with the queue dispatcher — see `references/queues.md`).
-
-## WebSocket over Durable Objects (hibernation)
-
-The same gateway code as `references/websocket.md`; on Cloudflare the socket lives in a Durable Object with hibernation:
-
-```ts
-import { CloudflareWebSocketModule, VelaWebSocketDurableObject, WebSocketGateway, SubscribeMessage } from '@velajs/cloudflare';
-
-@WebSocketGateway({ path: '/rooms/:id/ws', binding: 'CHAT_ROOM' })
-class ChatGateway {
-  @SubscribeMessage('message') onMessage(/* … */) {}
+  constructor(@Inject(ENV) private readonly env: WorkerEnv) {}
+  find(id: string) {
+    return this.env.DB.prepare('select * from users where id = ?').bind(id).first();
+  }
 }
 
-@Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [ChatGateway] })
+@Module({ providers: [UsersService] })
 class AppModule {}
-
-// The DO class — its name must match the wrangler `class_name`.
-export class ChatRoom extends VelaWebSocketDurableObject(AppModule) {}
+export default createCloudflareWorker(AppModule, { envToken: ENV });
 ```
 
-`CloudflareWebSocketModule.forRoot()` replaces the core `WebSocketModule.forRoot()` (it provides the CF `WsServer`). `VelaWebSocketDurableObject(rootModule)` is a **factory** returning a `DurableObject` class that owns the `WebSocketPair`/101 upgrade and the hibernation `webSocketMessage/Close/Error` handlers. Push from outside a socket with `broadcastToRoom(namespace, room, event, data?)`. The gateway decorators are re-exported from `@velajs/vela/websocket`, so you import everything from `@velajs/cloudflare`.
+Generate native environment types with the application's Wrangler configuration. Inject `ENV` directly or derive a narrower binding token with `defineProvider(TOKEN, { inject: [ENV], useFactory: env => env.DB })`. Binding wrapper modules/services are not part of the API.
 
-## Feature-flag drivers
+The worker exposes `fetch`, `queue`, and `scheduled`. Applications are cached by environment object identity; concurrent first events share bootstrap, different environments get separate applications, and failed bootstrap retries on the next event. For explicit construction use `createCloudflareApp(AppModule, { env, envToken: ENV })` or `cloudflareAdapter({ env, envToken: ENV })`. Bindings exist before DI factories run; binding I/O still belongs inside a platform event. An explicitly constructed app rejects events from another environment.
 
-`@velajs/cloudflare` ships two `FeatureFlagDriver`s (see `references/feature-flags.md`) — wire them through `FeatureFlagsModule.forRootAsync`:
+## Queue and cron handlers
+
+Register `@Injectable()` providers with `@QueueConsumer('queue-name')` or `@Scheduled('cron expression')`. Core `@Cron` also runs on scheduled triggers. Parse `MessageBatch<unknown>` bodies before reading application fields. Each dispatch uses a fresh scope and its declared guards/interceptors/filters; unhandled errors reach the platform for retry. These cold entrypoints receive the same native bindings as HTTP.
+
+## Durable Objects and live queries
 
 ```ts
-import { flagshipFlagDriver, kvFlagDriver, EnvService, KVService } from '@velajs/cloudflare';
-import { FeatureFlagsModule } from '@velajs/feature-flags';
+import { LiveModule } from '@velajs/vela/live';
+import { CloudflareWebSocketModule, durableObjectCursorLog, durableObjectLive } from '@velajs/cloudflare';
+import { VelaWebSocketDurableObject } from '@velajs/cloudflare/durable-objects';
 
-FeatureFlagsModule.forRootAsync({
-  inject: [EnvService, KVService],
-  useFactory: (env: EnvService, kv: KVService) => ({
-    drivers: [
-      flagshipFlagDriver(() => env.get('FLAGS')!),   // Cloudflare Flagship binding (lazy accessor)
-      kvFlagDriver(kv, { prefix: 'flag:' }),          // KV-backed JSON flags
-    ],
-  }),
-});
+// ENV includes ROOMS: DurableObjectNamespace<Room>.
+@Module({
+  imports: [
+    CloudflareWebSocketModule.forRoot(),
+    LiveModule.forRootAsync({
+      inject: [ENV],
+      useFactory: (env) => ({
+        driver: () => durableObjectLive({ namespace: env.ROOMS, gatewayPath: '/rooms/:room/ws' }),
+        log: () => durableObjectCursorLog(),
+      }),
+    }),
+  ],
+  providers: [RoomsGateway, TodoLive],
+})
+class RoomModule {}
+export class Room extends VelaWebSocketDurableObject(RoomModule, { envToken: ENV }) {}
 ```
 
-`flagshipFlagDriver(binding | () => binding, { name? })` maps onto a Flagship binding; `kvFlagDriver(kv: KVService, { name?, prefix? })` reads JSON values from KV. Both return the caller's fallback on a miss.
+Import native classes only in Worker entry files. Configure the namespace and `new_sqlite_classes` migration in Wrangler. Gateway options declare `path`, `roomParam`, `binding`, origins, and upgrade authentication. Core trusted identity, tenant, and expiry cross the upgrade boundary; caller-supplied identity headers are not authority. Driver/log factories return fresh state per application. Read `live-queries.md` for shared query schemas and delivery authorization.
 
-## wrangler notes
+## Storage, caches, and flags
 
-Declare bindings in `wrangler.toml`/`.jsonc` under their names, and set compatibility flags where needed:
+R2 storage options contain actual bucket values (`disks: [{ disk: 'uploads', bucket: env.FILES }]`) and an explicit signing `secret`; resolve them with `StorageModule.forRootAsync({ inject: [ENV], useFactory: ... })`.
 
-- **Durable-Object WebSockets** need `compatibility_flags = ["nodejs_compat"]` plus the DO binding + a `new_sqlite_classes` migration for the hibernation DO.
-- **Ambient container / ALS** (`ambientContainer: true`, `getCurrentContainer()`) needs `nodejs_als` (or `nodejs_compat`). It is off by default — the per-request child container is the default DI path.
+Use `new KVCacheStore(env.CACHE)`, `kvFlagDriver(env.CACHE, options)`, and `flagshipFlagDriver(nativeBinding, options)`. Cache/object flag values remain unknown until parsed. There is no generic binding accessor that invents their value type.
 
-(`@velajs/cloudflare` also ships its own R2-backed `StorageModule`/`StorageService`/`R2StorageDriver`, configured via `.forRoot({ disks, defaultDisk, presignedUrl? })` — distinct from the standalone `@velajs/storage` package in `references/storage.md`.)
+Keep `nodejs_compat` where native DO dependencies need it. Ambient container access is optional and needs `nodejs_als` or `nodejs_compat`; per-request DI works without ambient state. On Workers stamp live commit headers explicitly instead of relying on ALS across DO RPC. See the Cloudflare package README and its `examples/live-todo` for the complete deployed wiring.

@@ -1,3 +1,4 @@
+import { defineProvider } from '../container/types';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   MetadataRegistry,
@@ -257,6 +258,21 @@ describe('WsDispatcher', () => {
     const client = new FakeClient();
     await app.get(WsDispatcher).dispatchMessage('/u', client, frame('nope', {}));
     expect(client.sent).toEqual([]);
+  });
+
+  it('answers the reserved framework heartbeat without an application handler', async () => {
+    @WebSocketGateway({ path: '/heartbeat' })
+    class HeartbeatGateway {}
+    @Module({ imports: [WebSocketModule.forRoot()], providers: [HeartbeatGateway] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const client = new FakeClient();
+    await app
+      .get(WsDispatcher)
+      .dispatchMessage('/heartbeat', client, JSON.stringify({ event: '$ping' }));
+
+    expect(client.sent).toEqual([{ event: '$pong', data: undefined, id: undefined }]);
   });
 
   it('closes oversized frames with 1009 before parsing or dispatch', async () => {
@@ -648,7 +664,7 @@ describe('WsDispatcher — code-review regressions', () => {
 
     @Module({
       imports: [WebSocketModule.forRoot()],
-      providers: [Gateway, { provide: APP_GUARD, useClass: GlobalDenyGuard }],
+      providers: [Gateway, defineProvider(APP_GUARD, {useClass: GlobalDenyGuard})],
     })
     class AppModule {}
 

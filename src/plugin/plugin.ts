@@ -1,3 +1,4 @@
+import { defineProvider } from '../container/types';
 import { InjectionToken } from '../container/types';
 import type { Type } from '../container/types';
 import { Module } from '../module/decorators';
@@ -105,7 +106,7 @@ export function composePlugins(plugins: readonly Plugin[]): DynamicModule {
   return {
     module: PluginRootModule,
     imports: sorted.map((p) => p.module),
-    providers: [{ provide: PLUGIN_REGISTRY_TOKEN, useValue: registry }],
+    providers: [defineProvider(PLUGIN_REGISTRY_TOKEN, { useValue: registry })],
     exports: [PLUGIN_REGISTRY_TOKEN],
     global: true,
   };

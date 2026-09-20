@@ -6,12 +6,8 @@
 export { LiveModule } from './live.module';
 export { LiveResolver, LiveQuery, getLiveQueries } from './live.decorators';
 export { LiveEngine, LIVE_SUBS_DATA_KEY, readPersistedLiveSubscriptions } from './live.engine';
-export {
-  LiveInvalidation,
-  localLive,
-  perAppLiveDriver,
-  stampCommitHeaders,
-} from './live.invalidation';
+export type { LiveInspection } from './live.engine';
+export { LiveInvalidation, localLive, stampCommitHeaders } from './live.invalidation';
 export { InMemoryCursorLog } from './live.cursor';
 export { encodeSubscriptionUpdate } from './live.delta';
 export { PresenceService, PresenceResolver, presenceTag, PRESENCE_ROSTER_QUERY } from './presence';
@@ -21,7 +17,6 @@ export {
   LIVE_CURSOR_LOG,
   LIVE_MODULE_OPTIONS,
   LIVE_RESOLVER_METADATA,
-  LIVE_QUERY_METADATA,
 } from './live.tokens';
 export type {
   CommitStamp,
@@ -36,6 +31,7 @@ export type {
   LivePresenceOptions,
   LiveQueryContext,
   LiveQueryMetadata,
+  PreparedLiveQuery,
   LiveQueryOptions,
   LiveResolverMetadata,
   ResumeVerdict,
@@ -45,6 +41,7 @@ export type {
 // The wire contract (frames, delta codec, headers) is re-exported so app code
 // and transports need a single import surface.
 export {
+  defineLiveQuery,
   LIVE_PROTOCOL,
   LIVE_EVENT,
   LIVE_ERROR_CODES,
@@ -59,4 +56,10 @@ export {
   encodeListDelta,
   applyListDelta,
 } from '@velajs/live-protocol';
-export type { ClientLiveFrame, LiveFrame, RowOp, ServerLiveFrame } from '@velajs/live-protocol';
+export type {
+  ClientLiveFrame,
+  LiveFrame,
+  LiveQueryDefinition,
+  RowOp,
+  ServerLiveFrame,
+} from '@velajs/live-protocol';

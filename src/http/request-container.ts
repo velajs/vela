@@ -1,6 +1,19 @@
 import type { Context } from 'hono';
 import type { Container } from '../container/container';
 
+// Framework request state cannot collide with application-defined Hono keys.
+const containers = new WeakMap<Context, Container>();
+
+/** @internal Seeded only by the runtime and the first-party testing harness. */
+export function setRequestContainer(context: Context, container: Container): void {
+  containers.set(context, container);
+}
+
+/** @internal Optional lookup for lifecycle and execution-context plumbing. */
+export function findRequestContainer(context: Context): Container | undefined {
+  return containers.get(context);
+}
+
 /**
  * Returns the request-scoped child container for the current request.
  *
@@ -15,7 +28,7 @@ import type { Container } from '../container/container';
  * child (mirrors the REQUEST_CONTEXT fail-fast).
  */
 export function getRequestContainer(c: Context): Container {
-  const container = c.get('container') as Container | undefined;
+  const container = findRequestContainer(c);
   if (!container) {
     throw new Error(
       'getRequestContainer(c) can only be called inside a Vela-managed request — ' +

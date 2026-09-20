@@ -5,12 +5,12 @@ Vela's DI is NestJS-compatible: decorator metadata drives constructor injection,
 ## Modules
 
 ```ts
-import { Module } from '@velajs/vela';
+import { Module, defineProvider } from '@velajs/vela';
 
 @Module({
   imports: [OtherModule],       // modules whose exports you need
   controllers: [UserController],
-  providers: [UserService, { provide: TOKEN, useValue: cfg }],
+  providers: [UserService, defineProvider(TOKEN, { useValue: cfg })],
   exports: [UserService],       // what importers of THIS module can resolve
 })
 class UserModule {}
@@ -38,14 +38,18 @@ class ProductService {
 Provider kinds:
 
 ```ts
-{ provide: TOKEN, useValue: instance }
-{ provide: TOKEN, useClass: Impl }
-{ provide: TOKEN, useFactory: (dep) => build(dep), inject: [DEP_TOKEN] }
-{ provide: ALIAS, useExisting: TOKEN }   // same instance under a second token
-ProductService                            // shorthand for { provide: ProductService, useClass: ProductService }
+defineProvider(TOKEN, { useValue: instance })
+defineProvider(TOKEN, { useClass: Impl })
+defineProvider(TOKEN, { useFactory: (dep) => build(dep), inject: [DEP_TOKEN] })
+defineProvider(ALIAS, { useExisting: TOKEN })   // same instance under a second token
+ProductService // class-provider shorthand
 ```
 
+Import `defineProvider` from `@velajs/vela`. Descriptors are checked before entering heterogeneous module arrays; do not replace them with raw objects or spread them to modify their registration. Factory `inject` is mandatory, including `[]` for zero dependencies.
+
 Tokens: mint with `new InjectionToken<T>('NAME')` (optionally `{ factory: () => default }` to self-provide when unregistered).
+
+`InjectionToken<Value>` is invariant. `Token` denotes erased runtime identity; `TypedToken<Value>` denotes a typed authoring token. Resolution infers from the actual class/token; raw string/symbol reads return unknown. Do not select a result generic or widen a typed token to authorize an incompatible provider.
 
 ## Scopes
 
@@ -56,7 +60,7 @@ Tokens: mint with `new InjectionToken<T>('NAME')` (optionally `{ factory: () => 
 class RequestMarker { readonly id = crypto.randomUUID(); }
 ```
 
-**Request-scope bubbling:** any singleton that transitively depends on a request-scoped provider is automatically rebuilt per request (its effective scope becomes REQUEST). Each HTTP request gets a child container; request-scoped instances live there and are disposed at request end. Inject `REQUEST_CONTEXT` to read/write per-request state.
+**Request-scope bubbling:** any singleton that transitively depends on a request-scoped provider is automatically rebuilt per request (its effective scope becomes REQUEST). Each HTTP request gets a child container; request-scoped instances live there and are disposed at request end. Inject `REQUEST_CONTEXT` to read/write per-request state. Use `new RequestContextKey<Value>(description)` with `context.set(key, value)` / `context.get(key)`; raw string/symbol reads return unknown.
 
 ## `@Inject`, `@Optional`, `forwardRef`
 
@@ -114,7 +118,7 @@ Same options dedup (via a `stableHash(options)` key); distinct options coexist. 
 `defineModule` is THE module-authoring engine: one spec generates `forRoot` **and** `forRootAsync`, a deterministic instance key, and options-derived contributions:
 
 ```ts
-import { defineModule, InjectionToken, stableHash } from '@velajs/vela';
+import { defineModule, defineProvider, InjectionToken } from '@velajs/vela';
 
 const STORAGE_OPTIONS = new InjectionToken<StorageOptions>('STORAGE_OPTIONS');
 
@@ -122,7 +126,7 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<StorageOp
   name: 'Storage',
   optionsToken: STORAGE_OPTIONS,
   setup: ({ OPTIONS, options }) => ({
-    providers: [{ provide: DRIVER, useFactory: (o: StorageOptions) => o.driver(), inject: [OPTIONS] }],
+    providers: [defineProvider(DRIVER, { useFactory: (o) => o.driver(), inject: [OPTIONS] })],
     controllers: options.http ? [StorageController] : [],
     exports: [DRIVER],
     global: { guards: [StorageGuard] },   // app-wide APP_* wiring, one idiom
@@ -131,4 +135,4 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<StorageOp
 export class StorageModule extends ConfigurableModuleClass {}
 ```
 
-`ConfigurableModuleBuilder` (NestJS parity) is a thin adapter over the same engine. For the full authoring contract (keys, `lazyProvider`, `provideGlobal`, `sideEffectModule`, discovery, entrypoints, route contributors), read the repo's `MODULE_AUTHORING.md`.
+`ConfigurableModuleBuilder` is an adapter over the same engine; retain the returned builder from each configuration step. Prefer the single-spec `defineModule` API for new modules. For the full authoring contract (keys, `lazyProvider`, `provideGlobal`, `sideEffectModule`, discovery, entrypoints, route contributors), read the repo's `MODULE_AUTHORING.md`.

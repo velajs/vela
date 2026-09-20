@@ -159,56 +159,56 @@ class MyModule {
 
 ## Custom parameter decorators with deferred resolution
 
-Vela follows the secure request order (`middleware → guards → extract
-args/pipes → interceptors → handler`), so a custom parameter decorator can
-observe request state populated by a guard. Use `createLazyParamDecorator` only
-for a guaranteed object whose construction is expensive or should materialize
-only if the handler actually reads it. Its factory runs on first property
-access:
+Vela runs `middleware → guards → extract args/pipes → interceptors → handler`.
+An ordinary `createParamDecorator` can read state populated by a guard. Its data
+argument is required when the factory excludes `undefined`: a factory accepting
+`string` produces `@Header('x-id')`; a factory accepting `undefined` supports
+`@CurrentUser()`.
+
+Use `createLazyParamDecorator` when a handler may not need an expensive value.
+It injects a function the handler calls explicitly. The function caches the
+returned value or Promise, or the thrown error, and never reruns the factory.
+Primitives, `undefined`, objects and promises retain their real semantics.
 
 ```ts
 import {
   createLazyParamDecorator,
-  Inject,
   Injectable,
   REQUEST_CONTEXT,
-  Scope,
+  RequestContextKey,
   UseGuards,
 } from '@velajs/vela';
-import type { CanActivate, ExecutionContext, RequestContext } from '@velajs/vela';
+import type { CanActivate, ExecutionContext } from '@velajs/vela';
 
-const USER_KEY = Symbol.for('app.user');
+const USER = new RequestContextKey<{ id: string; name: string }>('app.user');
 
-@Injectable({ scope: Scope.REQUEST })
+@Injectable()
 class AuthGuard implements CanActivate {
-  constructor(@Inject(REQUEST_CONTEXT) private readonly ctx: RequestContext) {}
-  canActivate(_e: ExecutionContext): boolean {
-    this.ctx.set(USER_KEY, { id: 'u-1', name: 'ada' });   // populated here
+  canActivate(context: ExecutionContext): boolean {
+    const request = context.getContainer()?.resolve(REQUEST_CONTEXT);
+    if (!request) throw new Error('Missing request context');
+    request.set(USER, { id: 'u-1', name: 'ada' });
     return true;
   }
 }
 
-const DeferredProfile = createLazyParamDecorator((_data, ctx: ExecutionContext) => {
-  const reqCtx = ctx
-    .getContext()
-    .get('container')
-    .resolve<RequestContext>(REQUEST_CONTEXT);
-  return reqCtx.get(USER_KEY);
-});
+const DeferredProfile = createLazyParamDecorator(
+  (_data: undefined, context: ExecutionContext) =>
+    context.getContainer()?.resolve(REQUEST_CONTEXT).get(USER),
+);
 
 @UseGuards(AuthGuard)
 @Get('/me')
-me(@DeferredProfile() profile: { id: string; name: string }) {
-  return { id: profile.id };        // factory runs here, AFTER AuthGuard
+me(@DeferredProfile() loadProfile: () => { id: string; name: string } | undefined) {
+  const profile = loadProfile();
+  return { id: profile?.id };
 }
 ```
 
-The proxy short-circuits `then` on its `get` trap so `await value` returns the proxy itself rather than triggering eager resolution. Method results are auto-bound to the resolved real target, so detached method calls keep `this`. `JSON.stringify(value)` works after one access (the proxy implements `ownKeys` + `getOwnPropertyDescriptor`).
-
-Do not use a lazy decorator for optional authentication identities: a proxy is
-always truthy even when its eventual value is absent. Identity integrations
-must use ordinary post-guard parameter decorators so anonymous callers receive
-the real `undefined` value.
+For an async factory, annotate the injected parameter as `() => Promise<User>`
+and call `await loadUser()`. Lazy decorators do not accept parameter pipes:
+validate the produced value in the factory. Ordinary decorators continue to
+accept pipes after their data argument.
 
 ## Companion packages
 

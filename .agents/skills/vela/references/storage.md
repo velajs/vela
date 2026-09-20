@@ -23,7 +23,7 @@ import { s3Driver } from '@velajs/storage/drivers/s3';
 class AppModule {}
 ```
 
-`StorageModuleOptions`: `driver` (a built `StorageDriver`, required), `name?` (default `'default'`), `prefix?`, `readonly?`, `hooks?`, and `http?` (mounts the HTTP controller). `forRootAsync({ inject, imports, useFactory, name?, prefix?, readonly?, hooks?, http?, key? })` — its `useFactory` returns the `StorageDriver` (so you can pull credentials from config/`EnvService`). The `driver` is a value, not a string — there is no name-based selector.
+`StorageModuleOptions`: `driver` (a built `StorageDriver`, required), `name?` (default `'default'`), `prefix?`, `readonly?`, `hooks?`, and `http?` (mounts the HTTP controller). `forRootAsync({ inject, imports, useFactory, name?, prefix?, readonly?, hooks?, http?, key? })` — its `useFactory` returns the `StorageDriver` (so you can pull credentials from config or the typed environment token). The `driver` is a value, not a string — there is no name-based selector.
 
 `StorageHttpOptions` (when `http` is set): `basePath` (default `/api/storage`), `authorize`, `defaultPolicy` (`'deny'` default), `download` (`'redirect'` default | `'proxy'`), `mountController`, `defaultExpiresIn`, `maxExpiresIn`, `maxUploadSize`, `maxListLimit`, `deleteConcurrency`.
 

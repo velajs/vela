@@ -17,7 +17,7 @@ const moduleRef = await Test.createTestingModule({ imports: [CatsModule] })
 const service = moduleRef.get(CatsService);   // resolve from the root container
 ```
 
-`Test.createTestingModule(metadata)` takes the same `ModuleOptions` as `@Module` (`imports/controllers/providers/exports`) and returns a builder. Override methods each return an `OverrideBy` with `.useValue(value)`, `.useClass(cls)`, and `.useFactory({ factory, inject? })`:
+`Test.createTestingModule(metadata)` takes the same `ModuleOptions` as `@Module` (`imports/controllers/providers/exports`) and returns a builder. Override methods each return an `OverrideBy` with `.useValue(value)`, `.useClass(cls)`, and `.useFactory({ factory, inject })`:
 
 | Override | Targets |
 |---|---|
@@ -26,6 +26,8 @@ const service = moduleRef.get(CatsService);   // resolve from the root container
 | `overridePipe(Pipe)` | a pipe class |
 | `overrideInterceptor(Interceptor)` | an interceptor class |
 | `overrideFilter(Filter)` | an exception-filter class |
+
+Overrides infer their value/class/result contract from the token. Factory dependency tuples are required (`inject: []` for none); erased runtime identities cannot authorize typed replacements.
 
 `.compile()` returns `Promise<TestingModule>`. (There is no `overrideMiddleware`.)
 
@@ -42,7 +44,7 @@ const service = moduleRef.get(CatsService);   // resolve from the root container
 | `ws(path)` | `TestWsRequest` (needs the websocket-node transport, below) |
 | `fetch(request, env?, ctx?)` | drive the full Hono pipeline with a raw `Request` |
 | `setAuthResolver(resolver)` / `getAuthResolver()` | module-default `actingAs` resolver |
-| `runInRequestScope(cb)` | `cb(container)` inside a fresh request-scoped child container |
+| `runInRequestScope(cb)` | `cb(container)` inside a fresh child with the production request context and typed request-key storage |
 | `seed(...SeederClasses)` | run registered `@Seeder` classes in request scope |
 | `assertDatabaseHas/Missing/Count(db, ...)` | DB assertions against a `TestDatabase` |
 | `close(signal?)` | dispose the app |
@@ -59,7 +61,7 @@ await res.assertJsonPath('name', 'A');
 
 `TestHttpClient`: `forHost(host)` and `withHeaders(headers)` return **new** immutable clients; `get/post/put/patch/delete(path)` return a `TestHttpRequest`. Build the request with `withBody(data)` (JSON-serialized, auto `Content-Type: application/json`), `withHeaders(headers)`, `asJson()`, `actingAs(principal, resolver?)`, then `send()` → `TestResponse`. Query strings go in the path (there is no `withQuery`).
 
-`TestResponse` exposes `status`, `headers`, `raw`, and cached `json<T>()` / `text()`. Assertion methods (status/header ones are sync and return `this`; JSON ones are async and return `Promise<this>`):
+`TestResponse` exposes `status`, `headers`, `raw`, and cached `json(): Promise<unknown>` / `text()`. Pass a schema to `json(schema)` to validate and infer its output. Assertion methods (status/header ones are sync and return `this`; JSON ones are async and return `Promise<this>`):
 
 - **Status:** `assertOk` (200), `assertCreated` (201), `assertNoContent` (204), `assertBadRequest` (400), `assertUnauthorized` (401), `assertForbidden` (403), `assertNotFound` (404), `assertUnprocessable` (422), `assertServerError` (500), `assertStatus(n)`, `assertSuccessful` (2xx).
 - **JSON:** `assertJson(obj)` (top-level equality), `assertJsonPath(path, expected)`, `assertJsonPaths(map)`, `assertJsonStructure(keys[])`, `assertJsonPathExists(path)`, `assertJsonPathMissing(path)`, `assertJsonPathMatches(path, fn)`, `assertJsonPathContains(path, substr)`, `assertJsonPathIncludes(path, item)`, `assertJsonPathCount(path, n)` — paths are dot-notation.

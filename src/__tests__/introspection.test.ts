@@ -1,3 +1,4 @@
+import { defineProvider } from '../container/types';
 import { describe, expect, it } from 'vitest';
 import {
   Controller,
@@ -105,7 +106,7 @@ describe('Container.getModuleDescriptions', () => {
     class LazyMod {}
 
     @Module({
-      providers: [{ provide: SHARED, useValue: 'x' }],
+      providers: [defineProvider(SHARED, {useValue: 'x'})],
       exports: [SHARED],
     })
     class SharedMod {}

@@ -1,5 +1,5 @@
 import { MetadataRegistry } from '../registry/metadata.registry';
-import type { Constructor } from '../registry/types';
+import { isRecord } from './json-schema';
 import type { ApiDocMetadata, ApiResponseEntry, ApiResponseOptions } from './types';
 
 export const API_DOC_METADATA = 'vela:openapi:doc';
@@ -19,13 +19,13 @@ export function ApiDoc(metadata: ApiDocMetadata): MethodDecorator & ClassDecorat
   return (target: object, propertyKey?: string | symbol) => {
     if (propertyKey !== undefined) {
       MetadataRegistry.setCustomHandlerMeta(
-        target.constructor as Constructor,
+        target.constructor,
         propertyKey,
         API_DOC_METADATA,
         metadata,
       );
     } else {
-      MetadataRegistry.setCustomClassMeta(target as Constructor, API_DOC_METADATA, metadata);
+      MetadataRegistry.setCustomClassMeta(target, API_DOC_METADATA, metadata);
     }
   };
 }
@@ -38,13 +38,13 @@ export function ApiTags(...tags: string[]): MethodDecorator & ClassDecorator {
   return (target: object, propertyKey?: string | symbol) => {
     if (propertyKey !== undefined) {
       MetadataRegistry.setCustomHandlerMeta(
-        target.constructor as Constructor,
+        target.constructor,
         propertyKey,
         API_TAGS_METADATA,
         tags,
       );
     } else {
-      MetadataRegistry.setCustomClassMeta(target as Constructor, API_TAGS_METADATA, tags);
+      MetadataRegistry.setCustomClassMeta(target, API_TAGS_METADATA, tags);
     }
   };
 }
@@ -53,29 +53,40 @@ export function getApiDoc(
   target: object,
   propertyKey?: string | symbol,
 ): ApiDocMetadata | undefined {
-  if (propertyKey !== undefined) {
-    return MetadataRegistry.getCustomHandlerMeta(
-      target as Constructor,
-      propertyKey,
-      API_DOC_METADATA,
-    ) as ApiDocMetadata | undefined;
+  const value =
+    propertyKey === undefined
+      ? MetadataRegistry.getCustomClassMeta(target, API_DOC_METADATA)
+      : MetadataRegistry.getCustomHandlerMeta(target, propertyKey, API_DOC_METADATA);
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) throw new Error('Invalid OpenAPI documentation metadata');
+  const metadata: ApiDocMetadata = {};
+  for (const key of ['summary', 'description', 'operationId'] as const) {
+    if (value[key] === undefined) continue;
+    if (typeof value[key] !== 'string') throw new Error(`Invalid OpenAPI ${key}`);
+    metadata[key] = value[key];
   }
-  return MetadataRegistry.getCustomClassMeta(target as Constructor, API_DOC_METADATA) as
-    | ApiDocMetadata
-    | undefined;
+  if (value.deprecated !== undefined) {
+    if (typeof value.deprecated !== 'boolean') throw new Error('Invalid OpenAPI deprecated');
+    metadata.deprecated = value.deprecated;
+  }
+  if (value.tags !== undefined) metadata.tags = parseTags(value.tags);
+  return metadata;
+}
+
+function parseTags(value: unknown): string[] {
+  if (!Array.isArray(value)) throw new Error('Invalid OpenAPI tags');
+  return value.map((tag: unknown) => {
+    if (typeof tag !== 'string') throw new Error('Invalid OpenAPI tag');
+    return tag;
+  });
 }
 
 export function getApiTags(target: object, propertyKey?: string | symbol): string[] | undefined {
-  if (propertyKey !== undefined) {
-    return MetadataRegistry.getCustomHandlerMeta(
-      target as Constructor,
-      propertyKey,
-      API_TAGS_METADATA,
-    ) as string[] | undefined;
-  }
-  return MetadataRegistry.getCustomClassMeta(target as Constructor, API_TAGS_METADATA) as
-    | string[]
-    | undefined;
+  const value =
+    propertyKey === undefined
+      ? MetadataRegistry.getCustomClassMeta(target, API_TAGS_METADATA)
+      : MetadataRegistry.getCustomHandlerMeta(target, propertyKey, API_TAGS_METADATA);
+  return value === undefined ? undefined : parseTags(value);
 }
 
 /**
@@ -91,12 +102,11 @@ export function getApiTags(target: object, propertyKey?: string | symbol): strin
  */
 export function ApiResponse(status: number | string, options: ApiResponseOptions): MethodDecorator {
   return (target: object, propertyKey: string | symbol) => {
-    MetadataRegistry.appendCustomHandlerMeta<ApiResponseEntry>(
-      target.constructor as Constructor,
-      propertyKey,
-      API_RESPONSES_METADATA,
+    const responses = getApiResponses(target.constructor, propertyKey) ?? [];
+    MetadataRegistry.setCustomHandlerMeta(target.constructor, propertyKey, API_RESPONSES_METADATA, [
+      ...responses,
       { status, ...options },
-    );
+    ]);
   };
 }
 
@@ -104,9 +114,20 @@ export function getApiResponses(
   target: object,
   propertyKey: string | symbol,
 ): ApiResponseEntry[] | undefined {
-  return MetadataRegistry.getCustomHandlerMeta(
-    target as Constructor,
-    propertyKey,
-    API_RESPONSES_METADATA,
-  ) as ApiResponseEntry[] | undefined;
+  const value = MetadataRegistry.getCustomHandlerMeta(target, propertyKey, API_RESPONSES_METADATA);
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) throw new Error('Invalid OpenAPI responses');
+  return value.map((entry: unknown): ApiResponseEntry => {
+    if (
+      !isRecord(entry) ||
+      typeof entry.description !== 'string' ||
+      (typeof entry.status !== 'string' && typeof entry.status !== 'number')
+    )
+      throw new Error('Invalid OpenAPI response');
+    return {
+      status: entry.status,
+      description: entry.description,
+      ...(entry.schema === undefined ? {} : { schema: entry.schema }),
+    };
+  });
 }

@@ -1,6 +1,7 @@
 import { getConstructorDependencies, getInjectMetadata } from '../container/decorators';
 import type { Container } from '../container/container';
-import type { Token, Type } from '../container/types';
+import type { TypedToken, Type } from '../container/types';
+import { InjectionToken } from '../container/types';
 
 // Resolve a class/token through the container if registered, otherwise treat
 // the input as a plain instance. Used by RouteManager and HandlerExecutor to
@@ -19,9 +20,13 @@ import type { Token, Type } from '../container/types';
 // OR a non-empty `design:paramtypes` (the SWC/TS emit for any constructor
 // parameter). `@Injectable()` alone is NOT sufficient — `mixin()` and many
 // parameterless guards are `@Injectable()` and still safe to `new` directly.
-export function instantiate<T>(classOrInstance: Type<T> | Token<T> | T, container: Container): T {
+export function instantiate<T>(
+  classOrInstance: Type<T> | TypedToken<T> | T,
+  container: Container,
+): T;
+export function instantiate(classOrInstance: unknown, container: Container): unknown {
   if (typeof classOrInstance === 'function') {
-    const clazz = classOrInstance as Type<T>;
+    const clazz = classOrInstance as Type;
     if (container.has(clazz)) {
       return container.resolve(clazz);
     }
@@ -40,11 +45,15 @@ export function instantiate<T>(classOrInstance: Type<T> | Token<T> | T, containe
     return new clazz();
   }
 
-  if (container.has(classOrInstance as Token<T>)) {
-    return container.resolve(classOrInstance as Token<T>);
+  if (
+    typeof classOrInstance === 'string' ||
+    typeof classOrInstance === 'symbol' ||
+    classOrInstance instanceof InjectionToken
+  ) {
+    return container.resolve(classOrInstance);
   }
 
-  return classOrInstance as T;
+  return classOrInstance;
 }
 
 // True when calling `new clazz()` would leave an injected slot `undefined`:
@@ -57,7 +66,7 @@ function constructorExpectsDependencies(clazz: Type<unknown>): boolean {
 }
 
 export function instantiateMany<T>(
-  items: Array<Type<T> | Token<T> | T>,
+  items: Array<Type<T> | TypedToken<T> | T>,
   container: Container,
 ): T[] {
   return items.map((item) => instantiate(item, container));

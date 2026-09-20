@@ -14,7 +14,7 @@ import { QueueModule } from '@velajs/vela/queue';
 class AppModule {}
 ```
 
-`QueueModuleOptions`: `queues?: string[]` (must be known at `forRoot`/`forRootAsync` call time; missing/empty throws) and `driver?: QueueDriver` (defaults to the in-core `inline()` driver). `forRootAsync({ queues: [...], useFactory: () => ({ driver }) })` is also available — pass `queues` alongside the factory.
+`QueueModuleOptions`: `queues?: string[]` (must be known at `forRoot`/`forRootAsync` call time; missing/empty throws) and `driver?: QueueDriver` (defaults to the in-core `inline()` driver). `forRootAsync({ queues: [...], inject: [], useFactory: () => ({ driver }) })` is also available — pass `queues` alongside the factory.
 
 ## Processors — `@Processor` / `@Process`
 

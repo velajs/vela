@@ -2,6 +2,7 @@ import type { Context, MiddlewareHandler } from 'hono';
 import { contextStorage, getContext } from 'hono/context-storage';
 import type { Container } from '../container/container';
 import { REQUEST_CONTEXT, type RequestContext } from './request-context';
+import { findRequestContainer } from './request-container';
 
 // Opt-in ambient access to the per-request DI container / RequestContext,
 // for deep code that lacks the Hono `Context` (services, standalone helpers).
@@ -41,7 +42,7 @@ function tryGetContext(): Context | undefined {
  */
 export function getCurrentContainer(): Container {
   const context = tryGetContext();
-  const container = context?.get('container') as Container | undefined;
+  const container = context ? findRequestContainer(context) : undefined;
   if (!container) {
     throw new Error(
       'getCurrentContainer() is unavailable: enable ambient access via ' +

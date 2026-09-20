@@ -1,34 +1,36 @@
 ---
 name: vela
-description: "Build NestJS-compatible APIs for edge runtimes with the Vela framework (@velajs/vela), powered by Hono. Use when code imports from '@velajs/vela' or its subpaths ('@velajs/vela/i18n', '/queue', '/live', '/seeder', '/storage', '/schedule-node', '/websocket', '/websocket-node', '/streaming', '/internal'), or from sibling packages (@velajs/cloudflare, @velajs/crud, @velajs/better-auth, @velajs/storage, @velajs/testing, @velajs/cli, @velajs/feature-flags); when creating modules, controllers, services, providers, guards, pipes, interceptors, filters, WebSocket gateways, queue processors, cron jobs, seeders, or config namespaces; or when the user says 'create a vela module', 'add a controller/endpoint', 'add a gateway', 'set up config', 'add named routes', 'sign a URL', 'add CRUD', 'deploy to cloudflare', 'run NestJS on the edge', 'add validation', 'generate OpenAPI docs', or 'write a seeder'. Covers dependency injection, dynamic modules (defineModule/forRoot/forRootAsync), routing with named routes + signed URLs, the guard/pipe/interceptor/filter pipeline, Zod validation, OpenAPI, config with registerAs namespaces, events, scheduling, queues, i18n, health/throttling/caching, and WebSocket gateways. Do NOT use for plain Hono apps, raw Cloudflare Workers, or actual NestJS (Node-only) projects."
+description: "Build NestJS-style APIs with Vela (@velajs/vela), Hono, and Cloudflare Workers. Use for Vela modules, DI, controllers, schema-bound endpoints, guards/pipes/interceptors, typed configuration, CRUD, authentication/authorization, WebSocket/live queries, queues, cron, storage, testing, OpenAPI, and Hono RPC clients. Applies when code imports @velajs/vela or its subpaths, or sibling packages @velajs/cloudflare, @velajs/crud, @velajs/better-auth, @velajs/authz, @velajs/client, @velajs/testing, @velajs/cli, and @velajs/feature-flags. Also use for requests to add Vela endpoints/modules, deploy Vela to Workers, generate API contracts, or modernize a Vela application. Do not use for plain Hono, raw Workers, or actual NestJS projects."
 license: MIT
 metadata:
-  version: "1.20.0"
+  version: "1.21.0"
 ---
 
 # Vela Framework
 
-Vela (`@velajs/vela`) is a NestJS-compatible framework for **edge runtimes**, built on [Hono](https://hono.dev). Same decorators, DI, modules, and pipeline as NestJS, but it runs on Cloudflare Workers, Deno, Bun, Vercel Edge, and Node 20+ — anywhere with Web Standard APIs.
+Vela (`@velajs/vela`) provides a NestJS-style framework for **edge runtimes**, built on [Hono](https://hono.dev). NestJS-style decorators, DI, modules, and pipeline run on Cloudflare Workers, Deno, Bun, Vercel Edge, and Node 24+ — anywhere with Web Standard APIs.
 
 - The **main export** `@velajs/vela` is edge-safe by contract (no `node:*`, `Buffer`, `process`, `setInterval`) — enforced in CI.
 - Subpaths: `@velajs/vela/i18n`, `/queue`, `/live`, `/seeder`, `/storage`, `/schedule-node` (Node/Bun only), `/websocket`, `/websocket-node`, `/streaming`, `/internal` (plugin authors).
-- Sibling packages: `@velajs/cloudflare` (Workers adapter: KV/D1/R2/Queues/DO), `@velajs/crud`, `@velajs/better-auth`, `@velajs/storage`, `@velajs/testing`, `@velajs/cli`, `@velajs/feature-flags`.
+- Sibling packages: `@velajs/cloudflare` (Workers adapter: KV/D1/R2/Queues/DO), `@velajs/crud`, `@velajs/better-auth`, `@velajs/authz`, `@velajs/client` / `@velajs/react`, `@velajs/storage`, `@velajs/testing`, `@velajs/cli`, `@velajs/feature-flags`.
 
 ## Critical Rules
 
 Breaking these causes runtime or build failures.
 
-1. **The main export is edge-pure.** Never add `node:*` imports, `Buffer`, `process` (`process.env`), `__dirname`, `fs`/`path`/`os`, `setInterval`, or `Bun.serve()` to code that imports `@velajs/vela`. Use Web Crypto, `Uint8Array` + `TextEncoder`/`TextDecoder`, `URL`, and `fetch`. Read environment via the config layer (`CONFIG_ENV` / `ConfigService`), never `process.env`. The one exception is `@velajs/vela/schedule-node`, an opt-in Node/Bun adapter — do not import it on edge runtimes.
+1. **The main export is edge-pure.** Never add `node:*` imports, `Buffer`, `process` (`process.env`), `__dirname`, `fs`/`path`/`os`, `setInterval`, or `Bun.serve()` to the edge-safe core entrypoint or shared Worker code. Use Web Crypto, `Uint8Array` + `TextEncoder`/`TextDecoder`, `URL`, and `fetch`. Read application environment through its declared `InjectionToken<Env>`; on Workers pass it to `createCloudflareWorker`. Parse dynamic config reads instead of casting them. Runtime-specific Node adapters belong behind their own entrypoints; do not import them in Worker code.
 
 2. **`experimentalDecorators` and `emitDecoratorMetadata` must both be `true`** in `tsconfig.json`. `emitDecoratorMetadata` powers constructor auto-injection. Vela ships its own `reflect-metadata` polyfill (imported by the main entry) — do **not** add an external `reflect-metadata` dependency.
 
 3. **DI auto-resolves class-type params; use `@Inject(token)` for everything else.** `constructor(private svc: MyService)` works with no decorator. `@Inject(TOKEN)` is required for `InjectionToken`/string/symbol tokens, `forwardRef`, and any type imported with `import type` (type-only imports are stripped and break metadata — use a runtime `import` for DI tokens).
 
-4. **Validate with Zod, not class-validator.** Wrap schemas with `createZodDto(schema)` and validate via `ValidationPipe`. `zod` is your dependency; core never imports it.
+4. **Schemas carry runtime evidence.** Prefer `defineEndpoint` + `@Endpoint` to bind handler inputs/outputs, validation, OpenAPI, and Hono RPC. For parameter decorators use `defineDto(schema)` + `@Body(new ValidationPipe(dto))`; DTO descriptors are not classes. `zod` is an application dependency; core uses structural parsers.
 
 5. **`defineModule` is THE module-authoring engine.** Configurable modules (`forRoot`/`forRootAsync`) are generated by `defineModule` (or its thin `ConfigurableModuleBuilder` adapter). Register app-wide guards/pipes/etc. via `APP_*` tokens or the module `global:` slot — never hand-wire globals elsewhere.
 
-6. **Lazy modules must be fully synchronous.** A `lazy: true` module defers to first use. `app.get()` and the request pipeline resolve synchronously — if a lazy module's providers or lifecycle hooks are async, a sync trigger throws (reach it via `app.materializeLazyModules()` or an async provider path instead). Keep lazy modules sync, or don't mark them lazy.
+6. **Use checked providers and inferred tokens.** Register values/classes/factories/aliases with `defineProvider(TOKEN, strategy)`; every factory declares `inject` (use `[]` for none). Resolve with `get(TOKEN)`; use `RequestContextKey<Value>` for typed request state. Raw values remain unknown until parsed.
+
+7. **Keep synchronous resolution paths synchronous.** A `lazy: true` module defers to first use. `app.get()` and the request pipeline resolve synchronously — if a lazy module's providers or lifecycle hooks are async, a sync trigger throws (reach it via `app.materializeLazyModules()` or an async provider path instead). Keep lazy modules sync, or don't mark them lazy.
 
 ## Vela CLI (`@velajs/cli`)
 
@@ -39,6 +41,7 @@ Install as a dev dependency (`pnpm add -D @velajs/cli`) and add a `vela.config.{
 | `vela route list` | List all HTTP routes (paths incl. prefix/version, named routes, contributed/CRUD routes) |
 | `vela module graph` | Print the module import graph with `global`/`lazy` flags and provider counts (`--json`) |
 | `vela entrypoint list` | List declared entrypoint kinds (websocket, queue, cron, …) and their entries |
+| `vela client generate --out src/api.generated.ts --strict` | Generate the Hono RPC contract; `--check` detects drift |
 | `vela openapi dump` | Emit the OpenAPI document (needs `rootModule`; `--out`, `--title`, `--api-version`, `--global-prefix`) |
 | `vela db seed` | Build the app and run all `@Seeder()` classes in order (`--continue-on-error`) |
 | `vela mcp serve` | Serve app introspection to MCP clients over stdio — tools `route_list`, `module_graph`, `entrypoint_list`, `openapi_dump`, `token_describe` + resource `vela://openapi` |
@@ -61,17 +64,17 @@ export default app;   // { fetch } handler — runs on Workers, Deno, Bun, Node
 - `VelaApplication` methods: `get(token)`, `getHonoApp()` (for `.request()` in tests), `describeRoutes()`, `mountOpenApi(opts)`, `useGlobal*(...)`, `materializeLazyModules()`, `entrypoints`, `close(signal?)`, `dispose()`.
 - Convention: examples export an `async function createXApp()` factory (calls `MetadataRegistry.clear()` first for test isolation). The `@velajs/cli` reads a `vela.config.ts` with a `createApp()` factory — Vela itself has no `createApp` API.
 
-New projects: read `assets/project-scaffold.md`.
+For Cloudflare use `createCloudflareWorker(AppModule, { envToken: ENV })`; it supplies bindings before bootstrap and isolates applications by environment. Read `references/cloudflare.md`. New projects: read `assets/project-scaffold.md`.
 
 ## Module System
 
 ```ts
-import { Module } from '@velajs/vela';
+import { Module, defineProvider } from '@velajs/vela';
 
 @Module({
   imports: [ConfigModule.forRoot({ config: { app: { name: 'api' } } }), OtherModule],
   controllers: [UserController],
-  providers: [UserService, { provide: TOKEN, useValue: cfg }],
+  providers: [UserService, defineProvider(TOKEN, { useValue: cfg })],
   exports: [UserService],
 })
 class AppModule {}
@@ -82,7 +85,7 @@ class AppModule {}
 ## Controllers & Routing
 
 ```ts
-import { Controller, Get, Post, Param, Body, SignedUrl } from '@velajs/vela';
+import { Controller, Get, Post, Param, Body, SignedUrl, ParseIntPipe, ValidationPipe } from '@velajs/vela';
 
 @Controller({ path: '/users', version: 1 })     // options: { path?, version? } only
 class UsersController {
@@ -90,7 +93,7 @@ class UsersController {
   show(@Param('id', ParseIntPipe) id: number) { return { id }; }
 
   @Post()
-  create(@Body() body: CreateUserDto) { return body; }
+  create(@Body(new ValidationPipe(CreateUser)) body: ReturnType<typeof CreateUser.parse>) { return body; }
 
   @Get('download', { name: 'file.download' })
   @SignedUrl()                                    // requires a valid HMAC signature
@@ -116,9 +119,9 @@ src/
     users.controller.ts
     users.service.ts
     dto/
-      create-user.dto.ts   # createZodDto(schema)
+      create-user.dto.ts   # defineDto(schema) or shared endpoint schemas
   config/
-    database.config.ts     # registerAs('database', (env) => ({...}))
+    database.config.ts     # registerAs('database', ENV, env => ({...}))
 vela.config.ts          # optional — for @velajs/cli
 wrangler.toml           # Cloudflare only
 ```
@@ -127,13 +130,13 @@ Use `.js` extensions on relative imports (ESM). Feature modules bundle their con
 
 ## Example Interactions
 
-**"Create a users module with CRUD endpoints"** → Create `src/users/` with `users.module.ts`, `users.controller.ts` (`@Controller('/users')` + `@Get/@Post/...`), `users.service.ts` (`@Injectable()`), and Zod DTOs via `createZodDto`. Register `UsersModule` in the root `imports`. Run `vela route list` to verify. Read `references/controllers-and-routing.md` + `references/validation.md`.
+**"Create a users module with CRUD endpoints"** → Create `src/users/` with `users.module.ts`, `users.controller.ts` (`@Controller('/users')` + `@Get/@Post/...`), `users.service.ts` (`@Injectable()`), and schema-bound endpoints or descriptors via `defineDto`. Register `UsersModule` in the root `imports`. Run `vela route list` to verify. Read `references/controllers-and-routing.md` + `references/validation.md`.
 
-**"Add typed config with a database namespace"** → Use `registerAs('database', (env) => ({ url: env.DATABASE_URL }))`, load it with `ConfigModule.forRoot({ load: [dbConfig], isGlobal: true })`, seed `CONFIG_ENV` from the platform env, and inject `dbConfig.KEY` or read `config.get('database.url')`. Read `references/config.md`.
+**"Add typed config with a database namespace"** → Use `registerAs('database', ENV, env => ({ url: env.DATABASE_URL }))`, load it with `ConfigModule.forRoot({ load: [dbConfig], isGlobal: true })`, and inject `dbConfig.KEY`. `ENV` is the typed platform token; dynamic `ConfigService` reads return unknown unless parsed. Read `references/config.md`.
 
 **"Add signed download URLs"** → Name the route (`@Get('download', { name: 'file.download' })`), add `@SignedUrl()`, provide `URL_SIGNING_SECRET`, and generate links with `UrlGeneratorService.signedUrl('file.download', {}, { expiresIn })`. Read `references/controllers-and-routing.md`.
 
-**"Deploy to Cloudflare Workers"** → Add `@velajs/cloudflare` + `wrangler`, wire KV/D1/R2/Queue/DO bindings, and enable `nodejs_compat` if using ambient container / ALS. Read `references/cloudflare.md`.
+**"Deploy to Cloudflare Workers"** → Add `@velajs/cloudflare` + `wrangler`, export `createCloudflareWorker(AppModule, { envToken: ENV })` and inject native KV/D1/R2/Queue/DO bindings from `ENV`, and enable `nodejs_compat` if using ambient container / ALS. Read `references/cloudflare.md`.
 
 ## Reference Loading Guide
 
@@ -145,9 +148,9 @@ Load a reference when the task needs its depth. **This table is the contract** �
 | `references/lazy-and-lifecycle.md` | Lifecycle hooks + order, lazy modules (claim/drain, sync-seam, `materializeLazyModules`), entrypoints (`app.entrypoints`) |
 | `references/controllers-and-routing.md` | Controllers, method/param decorators, versioning, global prefix, named routes, `UrlGeneratorService`, signed URLs, `VelaRouteMap` |
 | `references/pipeline.md` | Guards/pipes/interceptors/filters/middleware, `APP_*` tokens, execution order, built-in pipes, `Reflector`, `@Catch` |
-| `references/validation.md` | `createZodDto`, `ValidationPipe` vs `ZodValidationPipe`, `@Serialize`, `SerializerInterceptor` |
+| `references/validation.md` | `defineEndpoint`/`@Endpoint`, `defineDto`, `ValidationPipe` vs `ZodValidationPipe`, `@Serialize`, `SerializerInterceptor` |
 | `references/openapi.md` | `createOpenApiDocument`, `@ApiDoc`/`@ApiTags`/`@ApiResponse`, operationId-from-route-name, `app.mountOpenApi` (Swagger/Scalar/ReDoc) |
-| `references/config.md` | `ConfigModule.forRoot`, `registerAs`, `ConfigType`/`InferConfigType`, `CONFIG_ENV`, typed dot-notation, `forRoot`-only caveat |
+| `references/config.md` | `ConfigModule.forRoot`, `registerAs`, `ConfigType`/`InferConfigType`, typed environment tokens, parser-validated dynamic paths, `forRoot`-only caveat |
 | `references/websocket.md` | Gateways, `@SubscribeMessage`, `WsServer`/rooms, `WebSocketModule`, transports (core / websocket-node / CF DO) |
 | `references/queues.md` | `@velajs/vela/queue`: `QueueModule`, `@Processor`/`@Process`, `queueToken`/`QueueClient`, inline driver, `dispatchQueueJob` |
 | `references/live-queries.md` | `@velajs/vela/live`: `LiveModule`, `@LiveResolver`/`@LiveQuery` + tags, `LiveInvalidation`, resume/cursors, CRUD `live: true` bridge, `@velajs/client` hooks |
@@ -160,9 +163,9 @@ Load a reference when the task needs its depth. **This table is the contract** �
 | `references/cli-and-introspection.md` | `@velajs/cli` commands, `vela.config`, route/module/entrypoint/openapi introspection |
 | `references/cloudflare.md` | `@velajs/cloudflare`: Workers adapter, KV/D1/R2/Queues/Durable Objects, `wrangler.toml`, `nodejs_compat` |
 | `references/crud.md` | `@velajs/crud`: generated CRUD controllers, `RouteContributor` |
-| `references/auth.md` | `@velajs/better-auth`: authentication, guards, sessions |
+| `references/auth.md` | `@velajs/better-auth` authentication and shared `@velajs/authz/vela` authorization |
 | `references/storage.md` | `@velajs/storage` / `@velajs/vela/storage`: file storage, signed URLs |
-| `references/feature-flags.md` | `@velajs/feature-flags`: flags, evaluation, React hooks |
+| `references/feature-flags.md` | `@velajs/feature-flags`: flags, parser-validated evaluation, drivers |
 | `references/incremental-adoption.md` | Mounting Vela into an existing Hono app; migrating from NestJS |
 | `assets/project-scaffold.md` | New project template (package.json, tsconfig, module/controller, main.ts) |
 

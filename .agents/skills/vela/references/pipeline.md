@@ -9,10 +9,12 @@ interface CanActivate     { canActivate(ctx: ExecutionContext): boolean | Promis
 interface PipeTransform<T, R> { transform(value: T, meta: ArgumentMetadata): R | Promise<R>; }
 interface NestInterceptor { intercept(ctx: ExecutionContext, next: CallHandler): Promise<unknown>; }
 interface ExceptionFilter<T> { catch(exception: T, ctx: ExecutionContext): unknown | Promise<unknown>; }
-interface NestMiddleware  { use(c: Context, next: Next): Promise<Response | void>; }  // Hono Context
+interface NestMiddleware  { use(c: VelaContext, next: Next): Promise<Response | void>; }  // Hono Context
 ```
 
-`ExecutionContext`: `getClass()`, `getHandler()`, `getRequest(): Request`, `getContext<T = Context>()` (the Hono context), `getType()` (`'http' | 'ws'`), `switchToHttp()`, `switchToWs()`. `CallHandler.handle(): Promise<unknown>`. `ArgumentMetadata`: `{ type, metatype?, data? }`.
+`VelaHonoEnv`, `VelaContext`, and `VelaHono` preserve Hono types with unknown-valued context variables and object bindings. Resolve the request container with `getRequestContainer(context)` or the execution-context accessor; it is private runtime state, not a Hono variable. Inject native bindings through the declared environment token.
+
+`ExecutionContext`: `getClass()`, `getHandler()`, `getRequest(): Request`, `getContext(): VelaContext`, `getContainer(): Container | undefined`, `getType(): string` (including custom entrypoint kinds), `switchToHttp()`, `switchToWs()`. `CallHandler.handle(): Promise<unknown>`. `ArgumentMetadata`: `{ type, metatype?: unknown, data? }`. WebSocket payloads and custom entrypoint payloads remain unknown until parsed; accessors do not accept result generics.
 
 ## Applying components
 
@@ -25,10 +27,9 @@ Decorators work on a controller class or a method, and accept **classes** (DI-re
 class OrdersController {
   @Post()
   @UseGuards(new ApiKeyGuard())
-  @UsePipes(new ValidationPipe())
   @UseInterceptors(EnvelopeInterceptor)
   @UseFilters(ClientErrorFilter)
-  create(@Body() body: CreateOrderDto) {}
+  create(@Body(new ValidationPipe(CreateOrder)) body: ReturnType<typeof CreateOrder.parse>) {}
 }
 ```
 
@@ -36,18 +37,20 @@ class OrdersController {
 
 ## Global (app-wide) components
 
-Two equivalent ways to register globals:
+Three ways to register globals:
 
 ```ts
+import { defineProvider } from '@velajs/vela';
+
 // 1. APP_* provider tokens (multiple providers per token all run)
 @Module({
   providers: [
     AuthGuard,
-    { provide: APP_GUARD, useExisting: AuthGuard },
-    { provide: APP_PIPE, useClass: ValidationPipe },
-    { provide: APP_INTERCEPTOR, useClass: SerializerInterceptor },
-    { provide: APP_FILTER, useClass: AllExceptionsFilter },
-    { provide: APP_MIDDLEWARE, useExisting: TraceMiddleware },
+    defineProvider(APP_GUARD, { useExisting: AuthGuard }),
+    defineProvider(APP_PIPE, { useClass: ValidationPipe }),
+    defineProvider(APP_INTERCEPTOR, { useClass: SerializerInterceptor }),
+    defineProvider(APP_FILTER, { useClass: AllExceptionsFilter }),
+    defineProvider(APP_MIDDLEWARE, { useExisting: TraceMiddleware }),
   ],
 })
 class AppModule {}
@@ -69,10 +72,10 @@ providers: [AuthGuard, ...provideGlobal('guard', AuthGuard)]
 Per HTTP request:
 
 ```
-extract args (pipes run here) → guards → interceptors (onion) → handler → [on throw] filters
+guards → extract args (pipes run here) → interceptors (onion) → handler → [on throw] filters
 ```
 
-Vela extracts arguments **before** guards run (`args → guards → handler`). A param decorator that needs guard-populated state must use `createLazyParamDecorator` (see `controllers-and-routing.md`).
+Guards run before argument factories and pipes. Ordinary custom parameter factories can read guard-populated state. A lazy factory injects an explicit memoized thunk; the handler calls it to perform deferred work. It does not proxy a user value. Required custom-decorator data must be passed explicitly (see `controllers-and-routing.md`).
 
 Merge order when combining global + controller + method:
 - **Guards / pipes / interceptors** run in declaration order: **global → controller → method**.
@@ -92,19 +95,21 @@ class AppModule implements NestModule {
 }
 ```
 
+For authorization use the shared guards in `@velajs/authz/vela`; raw request headers are not proof of a role or permission.
+
 ## Reflector — reading metadata
 
 Attach metadata with `@SetMetadata(key, value)` (or `Reflector.createDecorator()`), read it in a guard/interceptor:
 
 ```ts
-const RequireScope = (scope: string) => SetMetadata('scope', scope);
+const RequireScope = Reflector.createDecorator<string>();
 
 class ScopeGuard implements CanActivate {
   private readonly reflector = new Reflector();
   canActivate(ctx: ExecutionContext): boolean {
-    const required = this.reflector.getAllAndOverride<string>('scope', ctx);
+    const required = this.reflector.getAllAndOverride(RequireScope, ctx);
     if (!required) return true;
-    return ctx.getRequest().headers.get('x-scope')?.split(' ').includes(required) ?? false;
+    return getTrustedRequestIdentity(ctx.getRequest())?.roles?.includes(required) ?? false;
   }
 }
 ```

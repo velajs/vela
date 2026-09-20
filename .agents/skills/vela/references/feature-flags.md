@@ -14,7 +14,7 @@ import { FeatureFlagsModule, memoryFlagDriver } from '@velajs/feature-flags';
     FeatureFlagsModule.forRoot({
       drivers: [memoryFlagDriver({ values: { 'new-checkout': false } })],
       manifest: { 'new-checkout': false, layout: 'v1' },
-      context: (ctx) => ({ userId: ctx.get('userId') }),   // merged into every evaluation
+      context: (ctx) => ({ requestId: ctx.id }),   // merged into every evaluation
     }),
   ],
 })
@@ -52,7 +52,7 @@ class CheckoutService {
 }
 ```
 
-Value methods: `getBooleanValue`, `getStringValue`, `getNumberValue`, `getObjectValue<T>` — each `(flagKey, defaultValue?, context?)`. `Details` variants (`getBooleanDetails`, …) return `FlagEvaluationDetails<T>` = `{ flagKey, value, reason: 'STATIC' | 'DEFAULT' | 'ERROR', errorMessage? }` (the service currently only emits `STATIC`/`ERROR`). The **fallback** for each read is: explicit `defaultValue` arg → manifest default → the type's zero value (`false` / `''` / `0` / `{}`).
+Primitive reads `getBooleanValue`, `getStringValue`, and `getNumberValue` take `(key, defaultValue?, context?)`. Their fallback order is explicit default → matching manifest value → the primitive zero value. Object reads require runtime evidence: `getObjectValue(key, parse, fallback, context?)` and `getObjectDetails(key, parse, fallback, context?)` infer from `parse(unknown)` and use the required typed fallback on driver/context/parser failure. For example, `flags.getObjectValue('layout', value => LayoutSchema.parse(value), { columns: 1 })`. Details contain `{ flagKey, value, reason, errorMessage? }`; current reasons are `STATIC`/`ERROR`.
 
 - `all(context?)` evaluates every manifest key (method chosen from each declared default's type) → `{ key: value }`.
 - `use(name)` returns a **new** immutable service bound to a different registered driver (throws `FeatureFlagError` on unknown name).
@@ -87,7 +87,7 @@ export interface FeatureFlagDriver {
   getBoolean(key: string, fallback: boolean, ctx?: FlagContext): Promise<boolean>;
   getString(key: string, fallback: string, ctx?: FlagContext): Promise<string>;
   getNumber(key: string, fallback: number, ctx?: FlagContext): Promise<number>;
-  getObject<T extends object>(key: string, fallback: T, ctx?: FlagContext): Promise<T>;
+  getObject(key: string, fallback: object, ctx?: FlagContext): Promise<unknown>;
 }
 ```
 

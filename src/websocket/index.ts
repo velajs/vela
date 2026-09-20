@@ -13,7 +13,7 @@ export { WebSocketModule } from './websocket.module';
 export type { WebSocketModuleOptions } from './websocket.module';
 
 // Dispatcher (injected/called by transports) + the 'websocket' entrypoint meta
-export { WsDispatcher, type WsEntrypointMeta } from './ws-dispatcher';
+export { WsDispatcher, readWsEntrypointMeta, type WsEntrypointMeta } from './ws-dispatcher';
 export {
   DEFAULT_WS_MAX_FRAME_BYTES,
   DEFAULT_WS_MAX_JOINED_ROOMS,

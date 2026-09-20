@@ -1,4 +1,5 @@
 import { Module } from '../module/decorators';
+import { defineProvider } from '../container/types';
 import { ConfigurableModuleBuilder } from '../module/configurable-module.builder';
 import { APP_INTERCEPTOR } from '../pipeline/tokens';
 import { CacheInterceptor } from './cache.interceptor';
@@ -22,7 +23,7 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } =
             ...definition,
             providers: [
               ...(definition.providers ?? []),
-              { provide: APP_INTERCEPTOR, useExisting: CacheInterceptor },
+              defineProvider(APP_INTERCEPTOR, { useExisting: CacheInterceptor }),
             ],
           }
         : definition,
@@ -36,12 +37,11 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } =
     // One options-injecting provider serves BOTH forRoot and forRootAsync.
     // A custom `store` (e.g. TieredCacheStore / KVCacheStore) overrides the
     // default in-memory store.
-    {
-      provide: CACHE_MANAGER,
-      useFactory: (options: CacheModuleOptions) =>
+    defineProvider(CACHE_MANAGER, {
+      useFactory: (options) =>
         options.store ?? new MemoryCacheStore(options.ttl ?? 5, options.max ?? 100),
       inject: [MODULE_OPTIONS_TOKEN],
-    },
+    }),
   ],
   exports: [CACHE_MANAGER, CACHE_MODULE_OPTIONS, CacheService, CacheInterceptor],
 })

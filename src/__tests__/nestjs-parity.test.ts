@@ -1,3 +1,4 @@
+import { defineProvider } from '../container/types';
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { z } from 'zod';
 import {
@@ -52,7 +53,7 @@ import {
   createParamDecorator,
   Serialize,
   SerializerInterceptor,
-  createZodDto,
+  defineDto,
   ValidationPipe,
   HttpException,
   NotFoundException,
@@ -403,7 +404,7 @@ describe('APP_* tokens', () => {
     }
 
     @Module({
-      providers: [ApiKeyGuard, { provide: APP_GUARD, useExisting: ApiKeyGuard }],
+      providers: [ApiKeyGuard, defineProvider(APP_GUARD, { useExisting: ApiKeyGuard })],
       controllers: [GuardedController],
     })
     class AppModule {}
@@ -438,7 +439,10 @@ describe('APP_* tokens', () => {
     }
 
     @Module({
-      providers: [WrapInterceptor, { provide: APP_INTERCEPTOR, useExisting: WrapInterceptor }],
+      providers: [
+        WrapInterceptor,
+        defineProvider(APP_INTERCEPTOR, { useExisting: WrapInterceptor }),
+      ],
       controllers: [InterceptedController],
     })
     class AppModule {}
@@ -469,7 +473,7 @@ describe('APP_* tokens', () => {
     }
 
     @Module({
-      providers: [TrimPipe, { provide: APP_PIPE, useExisting: TrimPipe }],
+      providers: [TrimPipe, defineProvider(APP_PIPE, { useExisting: TrimPipe })],
       controllers: [TrimmedController],
     })
     class AppModule {}
@@ -514,8 +518,8 @@ describe('APP_* tokens', () => {
       providers: [
         FirstGuard,
         SecondGuard,
-        { provide: APP_GUARD, useExisting: FirstGuard },
-        { provide: APP_GUARD, useExisting: SecondGuard },
+        defineProvider(APP_GUARD, { useExisting: FirstGuard }),
+        defineProvider(APP_GUARD, { useExisting: SecondGuard }),
       ],
       controllers: [GuardedController],
     })
@@ -1004,7 +1008,7 @@ describe('ModuleRef', () => {
     }
 
     @Module({
-      providers: [{ provide: MY_TOKEN, useValue: 'token-value' }],
+      providers: [defineProvider(MY_TOKEN, { useValue: 'token-value' })],
       controllers: [TokenController],
     })
     class AppModule {}
@@ -1529,7 +1533,7 @@ describe('APP_FILTER global exception filter', () => {
     }
 
     @Module({
-      providers: [GlobalFilter, { provide: APP_FILTER, useExisting: GlobalFilter }],
+      providers: [GlobalFilter, defineProvider(APP_FILTER, { useExisting: GlobalFilter })],
       controllers: [FilterController],
     })
     class AppModule {}
@@ -1565,7 +1569,7 @@ describe('APP_FILTER global exception filter', () => {
     }
 
     @Module({
-      providers: [DomainFilter, { provide: APP_FILTER, useExisting: DomainFilter }],
+      providers: [DomainFilter, defineProvider(APP_FILTER, { useExisting: DomainFilter })],
       controllers: [DomainController],
     })
     class AppModule {}
@@ -1736,7 +1740,7 @@ describe('APP_MIDDLEWARE global middleware token', () => {
     @Module({
       providers: [
         RequestIdMiddleware,
-        { provide: APP_MIDDLEWARE, useExisting: RequestIdMiddleware },
+        defineProvider(APP_MIDDLEWARE, { useExisting: RequestIdMiddleware }),
       ],
       controllers: [MwController, MwController2],
     })
@@ -1786,8 +1790,8 @@ describe('APP_MIDDLEWARE global middleware token', () => {
       providers: [
         MiddlewareA,
         MiddlewareB,
-        { provide: APP_MIDDLEWARE, useExisting: MiddlewareA },
-        { provide: APP_MIDDLEWARE, useExisting: MiddlewareB },
+        defineProvider(APP_MIDDLEWARE, { useExisting: MiddlewareA }),
+        defineProvider(APP_MIDDLEWARE, { useExisting: MiddlewareB }),
       ],
       controllers: [OrderController],
     })
@@ -2167,7 +2171,7 @@ describe('HttpException hierarchy', () => {
     }
 
     @Module({
-      providers: [HttpExcFilter, { provide: APP_FILTER, useExisting: HttpExcFilter }],
+      providers: [HttpExcFilter, defineProvider(APP_FILTER, { useExisting: HttpExcFilter })],
       controllers: [FilteredController],
     })
     class AppModule {}
@@ -2370,7 +2374,8 @@ describe('@Req() raw request decorator', () => {
 describe('Serialize / SerializerInterceptor', () => {
   it('strips fields not in the DTO schema', async () => {
     const Schema = z.object({ id: z.number(), name: z.string() });
-    class ResponseDto extends createZodDto(Schema) {}
+    const ResponseDto = defineDto(Schema, { name: 'ResponseDto' });
+    type ResponseDto = ReturnType<typeof ResponseDto.parse>;
 
     @Controller('/serialize')
     @UseInterceptors(SerializerInterceptor)
@@ -2395,7 +2400,8 @@ describe('Serialize / SerializerInterceptor', () => {
 
   it('works with array responses', async () => {
     const Schema = z.object({ id: z.number(), name: z.string() });
-    class ResponseDto extends createZodDto(Schema) {}
+    const ResponseDto = defineDto(Schema, { name: 'ResponseDto' });
+    type ResponseDto = ReturnType<typeof ResponseDto.parse>;
 
     @Controller('/serialize-arr')
     @UseInterceptors(SerializerInterceptor)
@@ -2454,18 +2460,19 @@ describe('APP_PIPE with ValidationPipe', () => {
       name: z.string(),
       email: z.string().email(),
     });
-    class CreateDto extends createZodDto(CreateSchema) {}
+    const CreateDto = defineDto(CreateSchema, { name: 'CreateDto' });
+    type CreateDto = ReturnType<typeof CreateDto.parse>;
 
     @Controller('/app-pipe-val')
     class ValController {
       @Post()
-      create(@Body() dto: CreateDto) {
+      create(@Body(new ValidationPipe(CreateDto)) dto: CreateDto) {
         return { ok: true, name: (dto as { name: string }).name };
       }
     }
 
     @Module({
-      providers: [{ provide: APP_PIPE, useClass: ValidationPipe }],
+      providers: [defineProvider(APP_PIPE, { useClass: ValidationPipe })],
       controllers: [ValController],
     })
     class AppModule {}
@@ -2500,7 +2507,7 @@ describe('APP_PIPE with ValidationPipe', () => {
     }
 
     @Module({
-      providers: [{ provide: APP_PIPE, useClass: ValidationPipe }],
+      providers: [defineProvider(APP_PIPE, { useClass: ValidationPipe })],
       controllers: [PlainController],
     })
     class AppModule {}
@@ -3354,6 +3361,12 @@ describe('HttpModule / HttpService', () => {
 
     const BASE_URL = new InjectionToken<string>('BASE_URL');
 
+    @Module({
+      providers: [defineProvider(BASE_URL, { useValue: 'https://async-api.com' })],
+      exports: [BASE_URL],
+    })
+    class BaseUrlModule {}
+
     @Injectable()
     class RemoteService {
       constructor(private http: HttpService) {}
@@ -3374,11 +3387,12 @@ describe('HttpModule / HttpService', () => {
     @Module({
       imports: [
         HttpModule.forRootAsync({
+          imports: [BaseUrlModule],
           useFactory: (url: string) => ({ baseURL: url }),
           inject: [BASE_URL],
         }),
       ],
-      providers: [{ provide: BASE_URL, useValue: 'https://async-api.com' }, RemoteService],
+      providers: [RemoteService],
       controllers: [AsyncHttpController],
     })
     class AppModule {}
@@ -3638,7 +3652,7 @@ describe('useExisting provider alias', () => {
     }
 
     @Module({
-      providers: [RealService, { provide: ALIAS, useExisting: RealService }],
+      providers: [RealService, defineProvider(ALIAS, { useExisting: RealService })],
       controllers: [AliasController],
     })
     class AppModule {}
@@ -3679,8 +3693,8 @@ describe('useExisting provider alias', () => {
     @Module({
       providers: [
         LoggerService,
-        { provide: LOGGER, useExisting: LoggerService },
-        { provide: APP_LOGGER, useExisting: LoggerService },
+        defineProvider(LOGGER, { useExisting: LoggerService }),
+        defineProvider(APP_LOGGER, { useExisting: LoggerService }),
       ],
       controllers: [MultiAliasController],
     })
@@ -3752,6 +3766,12 @@ describe('forRootAsync() dynamic module pattern', () => {
   it('async factory receives injected dependency before module initializes', async () => {
     const CONFIG_VAL = new InjectionToken<string>('CONFIG_VAL');
 
+    @Module({
+      providers: [defineProvider(CONFIG_VAL, { useValue: 'injected-factory' })],
+      exports: [CONFIG_VAL],
+    })
+    class FactoryConfigModule {}
+
     @Injectable()
     class CheckService {
       constructor(private http: HttpService) {}
@@ -3772,11 +3792,12 @@ describe('forRootAsync() dynamic module pattern', () => {
     @Module({
       imports: [
         HttpModule.forRootAsync({
+          imports: [FactoryConfigModule],
           useFactory: (val: string) => ({ baseURL: `https://${val}.test` }),
           inject: [CONFIG_VAL],
         }),
       ],
-      providers: [{ provide: CONFIG_VAL, useValue: 'injected-factory' }, CheckService],
+      providers: [CheckService],
       controllers: [FactoryOrderController],
     })
     class AppModule {}
@@ -4555,7 +4576,7 @@ describe('@Optional() in HTTP context', () => {
     }
 
     @Module({
-      providers: [{ provide: OPTIONAL_TOKEN2, useValue: { msg: () => 'found' } }],
+      providers: [defineProvider(OPTIONAL_TOKEN2, { useValue: { msg: () => 'found' } })],
       controllers: [OptPresentController],
     })
     class AppModule {}
@@ -4692,7 +4713,7 @@ describe('Scope.TRANSIENT providers', () => {
     }
 
     @Module({
-      providers: [{ provide: Base, useClass: Base, scope: Scope.TRANSIENT }],
+      providers: [defineProvider(Base, { useClass: Base, scope: Scope.TRANSIENT })],
       controllers: [TransOptsController],
     })
     class AppModule {}
@@ -4930,7 +4951,7 @@ describe('useClass provider substitution', () => {
     }
 
     @Module({
-      providers: [{ provide: MAILER_TOKEN, useClass: SmtpMailer }],
+      providers: [defineProvider(MAILER_TOKEN, { useClass: SmtpMailer })],
       controllers: [MailController],
     })
     class AppModule {}
@@ -4965,7 +4986,7 @@ describe('useClass provider substitution', () => {
     }
 
     @Module({
-      providers: [{ provide: BaseNotifier, useClass: SlackNotifier }],
+      providers: [defineProvider(BaseNotifier, { useClass: SlackNotifier })],
       controllers: [NotifyController],
     })
     class AppModule {}
@@ -5008,7 +5029,7 @@ describe('useClass provider substitution', () => {
     }
 
     @Module({
-      providers: [Config, SmsNotifier, { provide: AbstractNotifier, useClass: SmsNotifier }],
+      providers: [Config, SmsNotifier, defineProvider(AbstractNotifier, { useClass: SmsNotifier })],
       controllers: [SmsController],
     })
     class AppModule {}
@@ -5067,7 +5088,7 @@ describe('@Catch() with multiple exception types', () => {
 
     @Module({
       controllers: [MultiCatchController],
-      providers: [{ provide: APP_FILTER, useClass: MultiCatchFilter }],
+      providers: [defineProvider(APP_FILTER, { useClass: MultiCatchFilter })],
     })
     class AppModule {}
 
@@ -5110,7 +5131,7 @@ describe('@Catch() with multiple exception types', () => {
 
     @Module({
       controllers: [CatchAllController],
-      providers: [{ provide: APP_FILTER, useClass: CatchAllFilter }],
+      providers: [defineProvider(APP_FILTER, { useClass: CatchAllFilter })],
     })
     class AppModule {}
 
@@ -5729,7 +5750,7 @@ describe('@UseFilters() at method level', () => {
     }
 
     @Module({
-      providers: [{ provide: APP_FILTER, useClass: GlobalFilter }],
+      providers: [defineProvider(APP_FILTER, { useClass: GlobalFilter })],
       controllers: [MethodFilterController],
     })
     class AppModule {}
@@ -5801,13 +5822,12 @@ describe('useFactory async inline providers', () => {
 
     @Module({
       providers: [
-        {
-          provide: DB_CONNECTION,
+        defineProvider(DB_CONNECTION, { inject: [],
           useFactory: async () => {
             await new Promise((r) => setTimeout(r, 5));
             return { ping: () => 'pong' };
           },
-        },
+        }),
       ],
       controllers: [AsyncFactoryController],
     })
@@ -5833,15 +5853,14 @@ describe('useFactory async inline providers', () => {
 
     @Module({
       providers: [
-        { provide: API_KEY, useValue: 'https://api.example.com' },
-        {
-          provide: HTTP_CLIENT,
+        defineProvider(API_KEY, { useValue: 'https://api.example.com' }),
+        defineProvider(HTTP_CLIENT, {
           useFactory: async (key: string) => {
             await Promise.resolve();
             return { baseUrl: key };
           },
           inject: [API_KEY],
-        },
+        }),
       ],
       controllers: [AsyncInjectController],
     })
@@ -5874,12 +5893,12 @@ describe('Custom dynamic module', () => {
       static register(opts: { bucket: string }) {
         const moduleClass: Type = { StorageDynamicModule: class {} }.StorageDynamicModule;
         MetadataRegistry.setModuleOptions(moduleClass, {
-          providers: [{ provide: STORAGE_OPTIONS, useValue: opts }, StorageService],
+          providers: [defineProvider(STORAGE_OPTIONS, { useValue: opts }), StorageService],
           exports: [StorageService],
         });
         return {
           module: moduleClass,
-          providers: [{ provide: STORAGE_OPTIONS, useValue: opts }, StorageService],
+          providers: [defineProvider(STORAGE_OPTIONS, { useValue: opts }), StorageService],
         };
       }
     }
@@ -5919,14 +5938,14 @@ describe('Custom dynamic module', () => {
       static forRoot(config: { apiUrl: string }) {
         const moduleClass: Type = { AppConfigDynModule: class {} }.AppConfigDynModule;
         MetadataRegistry.setModuleOptions(moduleClass, {
-          providers: [{ provide: APP_CONFIG, useValue: config }, AppConfigService],
+          providers: [defineProvider(APP_CONFIG, { useValue: config }), AppConfigService],
           exports: [AppConfigService],
           isGlobal: true,
         });
         return {
           module: moduleClass,
           global: true,
-          providers: [{ provide: APP_CONFIG, useValue: config }, AppConfigService],
+          providers: [defineProvider(APP_CONFIG, { useValue: config }), AppConfigService],
         };
       }
     }
@@ -6376,7 +6395,7 @@ describe('HttpException.getStatus() / getResponse()', () => {
     }
 
     @Module({
-      providers: [{ provide: APP_FILTER, useClass: StatusCheckFilter }],
+      providers: [defineProvider(APP_FILTER, { useClass: StatusCheckFilter })],
       controllers: [StatusCheckController],
     })
     class AppModule {}
@@ -6630,7 +6649,7 @@ describe('InjectionToken with default factory', () => {
     }
 
     @Module({
-      providers: [{ provide: CONFIG_TOKEN, useValue: 'overridden-value' }],
+      providers: [defineProvider(CONFIG_TOKEN, { useValue: 'overridden-value' })],
       controllers: [OverrideFactoryController],
     })
     class AppModule {}
@@ -6892,7 +6911,7 @@ describe('@Catch() with no args — catch-all filter', () => {
     }
 
     @Module({
-      providers: [{ provide: APP_FILTER, useClass: CatchAllFilter }],
+      providers: [defineProvider(APP_FILTER, { useClass: CatchAllFilter })],
       controllers: [TestController],
     })
     class AppModule {}
@@ -6923,7 +6942,7 @@ describe('@Catch() with no args — catch-all filter', () => {
     }
 
     @Module({
-      providers: [{ provide: APP_FILTER, useClass: AllFilter }],
+      providers: [defineProvider(APP_FILTER, { useClass: AllFilter })],
       controllers: [TestController],
     })
     class AppModule {}
@@ -7143,8 +7162,8 @@ describe('APP_INTERCEPTOR ordering with multiple global interceptors', () => {
       providers: [
         FirstInterceptor,
         SecondInterceptor,
-        { provide: APP_INTERCEPTOR, useExisting: FirstInterceptor },
-        { provide: APP_INTERCEPTOR, useExisting: SecondInterceptor },
+        defineProvider(APP_INTERCEPTOR, { useExisting: FirstInterceptor }),
+        defineProvider(APP_INTERCEPTOR, { useExisting: SecondInterceptor }),
       ],
       controllers: [TestController],
     })
@@ -7566,7 +7585,7 @@ describe('Middleware sets context variable, guard reads it', () => {
     }
 
     @Module({
-      providers: [TagMiddleware, { provide: APP_MIDDLEWARE, useExisting: TagMiddleware }],
+      providers: [TagMiddleware, defineProvider(APP_MIDDLEWARE, { useExisting: TagMiddleware })],
       controllers: [TestController],
     })
     class AppModule {}
@@ -7611,8 +7630,8 @@ describe('Middleware sets context variable, guard reads it', () => {
       providers: [
         MwOne,
         MwTwo,
-        { provide: APP_MIDDLEWARE, useExisting: MwOne },
-        { provide: APP_MIDDLEWARE, useExisting: MwTwo },
+        defineProvider(APP_MIDDLEWARE, { useExisting: MwOne }),
+        defineProvider(APP_MIDDLEWARE, { useExisting: MwTwo }),
       ],
       controllers: [TestController],
     })
@@ -7687,11 +7706,10 @@ describe('forwardRef() in factory inject array', () => {
     @Module({
       providers: [
         ConfigSvc,
-        {
-          provide: GREETING,
+        defineProvider(GREETING, {
           useFactory: (cfg: ConfigSvc) => `${cfg.prefix}-world`,
           inject: [forwardRef(() => ConfigSvc)],
-        },
+        }),
       ],
       controllers: [TestController],
     })
@@ -8125,8 +8143,8 @@ describe('APP_GUARD and APP_FILTER interaction', () => {
       providers: [
         BlockingGuard,
         ForbiddenCatcher,
-        { provide: APP_GUARD, useExisting: BlockingGuard },
-        { provide: APP_FILTER, useExisting: ForbiddenCatcher },
+        defineProvider(APP_GUARD, { useExisting: BlockingGuard }),
+        defineProvider(APP_FILTER, { useExisting: ForbiddenCatcher }),
       ],
     })
     class AppModule {}
@@ -8151,11 +8169,10 @@ describe('useFactory with Scope.TRANSIENT creates a new instance on each resolve
 
     @Module({
       providers: [
-        {
-          provide: COUNTER_TOKEN,
+        defineProvider(COUNTER_TOKEN, { inject: [],
           useFactory: () => ({ id: ++callCount }),
           scope: Scope.TRANSIENT,
-        },
+        }),
       ],
       exports: [COUNTER_TOKEN],
     })
@@ -8185,7 +8202,7 @@ describe('Module re-exports a provider from an imported module', () => {
     const VALUE_TOKEN = new InjectionToken<string>('reexport-value');
 
     @Module({
-      providers: [{ provide: VALUE_TOKEN, useValue: 'from-inner' }],
+      providers: [defineProvider(VALUE_TOKEN, { useValue: 'from-inner' })],
       exports: [VALUE_TOKEN],
     })
     class InnerModule {}
@@ -8397,7 +8414,7 @@ describe('REQUEST scope — child container isolation', () => {
     }
 
     @Module({
-      providers: [ReqValue, ReqGuard, { provide: APP_GUARD, useExisting: ReqGuard }],
+      providers: [ReqValue, ReqGuard, defineProvider(APP_GUARD, { useExisting: ReqGuard })],
       controllers: [TestController],
     })
     class AppModule {}
@@ -8506,14 +8523,14 @@ describe('Circular module imports resolved with forwardRef', () => {
 
     @Module({
       imports: [forwardRef(() => ModuleARef)],
-      providers: [{ provide: TOKEN_B, useValue: 'from-b' }],
+      providers: [defineProvider(TOKEN_B, { useValue: 'from-b' })],
       exports: [TOKEN_B],
     })
     class ModuleB {}
 
     @Module({
       imports: [ModuleB],
-      providers: [{ provide: TOKEN_A, useValue: 'from-a' }],
+      providers: [defineProvider(TOKEN_A, { useValue: 'from-a' })],
       exports: [TOKEN_A],
     })
     class ModuleA {}
@@ -8829,7 +8846,7 @@ describe('RequiredPipe rejects absent or empty values with 400', () => {
 
 describe('@Serialize() with SerializerInterceptor strips extra fields via Zod', () => {
   it('omits fields not in the DTO schema', async () => {
-    const UserDto = createZodDto(z.object({ id: z.number(), name: z.string() }));
+    const UserDto = defineDto(z.object({ id: z.number(), name: z.string() }));
 
     @Controller('/serialize-dto')
     class TestController {
@@ -8853,7 +8870,7 @@ describe('@Serialize() with SerializerInterceptor strips extra fields via Zod', 
   });
 
   it('serializes each element when the handler returns an array', async () => {
-    const ItemDto = createZodDto(z.object({ id: z.number() }));
+    const ItemDto = defineDto(z.object({ id: z.number() }));
 
     @Controller('/serialize-arr-dto')
     class TestController {

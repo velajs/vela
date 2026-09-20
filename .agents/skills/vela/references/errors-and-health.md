@@ -19,7 +19,7 @@ The base `HttpException(response, statusCode)` takes the **response first, statu
 
 ## Exception filters
 
-`@Catch(...ErrorTypes)` + an `ExceptionFilter` intercepts matching errors. Zero args = catch-all. Apply with `@UseFilters` (controller/method) or globally via `{ provide: APP_FILTER, useClass: X }`:
+`@Catch(...ErrorTypes)` + an `ExceptionFilter` intercepts matching errors. Zero args = catch-all. Apply with `@UseFilters` (controller/method) or globally via `defineProvider(APP_FILTER, { useClass: X })`:
 
 ```ts
 import { Catch, ExceptionFilter, ExecutionContext, HttpException } from '@velajs/vela';
@@ -81,7 +81,7 @@ class ApiController {
 }
 ```
 
-`ThrottlerModuleOptions`: `limit`, `ttl` (**milliseconds**), optional `storage`, `getTracker(request)` (default `x-forwarded-for`), `generateKey`. It sets `X-RateLimit-*` headers and throws `TooManyRequestsException` (429) with `Retry-After` when the limit is exceeded. Custom stores implement `ThrottlerStore` (`increment(key, ttlMs)`, `reset(key)`); the default is in-memory.
+`ThrottlerModuleOptions`: `limit`, `ttl` (**milliseconds**), optional `storage`, `getTracker(request)` (application override), `generateKey`. It sets `X-RateLimit-*` headers and throws `TooManyRequestsException` (429) with `Retry-After` when the limit is exceeded. Custom stores implement `ThrottlerStore` (`increment(key, ttlMs)`, `reset(key)`); the default is in-memory.
 
 ## Caching — `CacheModule`
 
@@ -105,11 +105,12 @@ class ReportsController {
 
   @Get('/manual')
   manual() {
-    const hit = this.cache.get<number>('n') ?? 0;
+    const value = this.cache.get('n');
+    const hit = typeof value === 'number' ? value : 0;
     this.cache.set('n', hit + 1);      // set(key, value, ttl?)
     return { count: hit + 1 };
   }
 }
 ```
 
-`CacheModuleOptions`: `ttl` (**seconds**, default 5), `max` (default 100), `isGlobal?` (registers `CacheInterceptor` app-wide), `store?`. `CacheService`: `get(key)`, `set(key, value, ttl?)`, `del(key)`, `clear()`. `CacheInterceptor` caches GET only; the key is `@CacheKey` or `cache:GET:<path>`. Stores: `MemoryCacheStore` (default) and `TieredCacheStore` (multi-tier, async).
+`CacheModuleOptions`: `ttl` (**seconds**, default 5), `max` (default 100), `isGlobal?` (registers `CacheInterceptor` app-wide), `store?`. `CacheService`: raw unknown `get(key)`, parser-inferred `getParsed(key, schema)`, `set(key, value, ttl?)`, `del(key)`, `clear()`. `CacheInterceptor` caches GET only; the key is `@CacheKey` or `cache:GET:<path>`. Stores: `MemoryCacheStore` (default) and `TieredCacheStore` (multi-tier, async).

@@ -1,4 +1,5 @@
 import type { WsClient } from '../index';
+import type { LiveQueryDefinition } from '@velajs/live-protocol';
 
 /**
  * Identity captured at subscribe time and replayed into every re-run of the
@@ -33,17 +34,34 @@ export interface LiveQueryOptions<A = unknown> {
   /** Key field for incremental list deltas (default `'id'`). */
   key?: string;
   /**
-   * Args validator, run ONCE at subscribe (a zod schema's `.parse` slots in
-   * directly). A throw rejects the subscription with a `bad_args` error frame.
+   * Opt into flush-local resolver execution coalescing. Vela always prefixes
+   * this partition with the query name and canonical parsed args. Returning the
+   * same key asserts that the resolver AND its interceptors produce the same
+   * result for those subscribers despite client/identity/room differences.
+   *
+   * Expiry, guards, and delivery authorization still run per subscription.
+   * Return `undefined` to execute independently. Throws, empty/control-bearing
+   * keys, and keys over 256 UTF-8 bytes also fail closed to an independent run.
    */
-  parse?: (args: unknown) => A;
+  coalesceBy?: (args: A, context: LiveQueryContext) => string | undefined;
 }
 
 /** One `@LiveQuery` declaration on a `@LiveResolver` class. */
 export interface LiveQueryMetadata {
   name: string;
   methodName: string | symbol;
-  options: LiveQueryOptions;
+  definition: LiveQueryDefinition<unknown, unknown>;
+  key?: string;
+  prepare(input: unknown): PreparedLiveQuery;
+}
+
+/** Bound typed callbacks after one successful parse of this subscription's input. */
+export interface PreparedLiveQuery {
+  readonly input: unknown;
+  readonly args: unknown;
+  tags(): string[];
+  coalesceBy?: (context: LiveQueryContext) => string | undefined;
+  invoke(instance: unknown, context: LiveQueryContext): unknown | Promise<unknown>;
 }
 
 /** Class-level marker meta written by `@LiveResolver()`. */
@@ -135,10 +153,15 @@ export interface LivePresenceOptions {
 }
 
 export interface LiveModuleOptions {
-  /** Cross-boundary invalidation driver. Defaults to `localLive()`. */
-  driver?: LiveDriver;
-  /** Ordered invalidation log. Defaults to the in-memory per-process log. */
-  log?: CursorLog;
+  /**
+   * Construct this application's invalidation driver. Called once per app;
+   * always return a fresh instance so sinks and platform bindings cannot leak
+   * between a Worker and its Durable Objects. Defaults to `localLive`.
+   * Resolve dependencies with `LiveModule.forRootAsync` and capture them here.
+   */
+  driver?: () => LiveDriver | Promise<LiveDriver>;
+  /** Construct this application's ordered log. Defaults to a fresh in-memory log. */
+  log?: () => CursorLog | Promise<CursorLog>;
   /**
    * Identity capture at subscribe. Default: a shallow copy of `client.data`
    * (whatever the app's upgrade/`handleConnection` auth stamped there), or

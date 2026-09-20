@@ -4,10 +4,10 @@ import { MemoryCacheStore, TieredCacheStore, type AsyncCacheStore } from '../cac
 // Minimal async store to exercise the promise path (mimics a KV-backed tier).
 class AsyncMapStore implements AsyncCacheStore {
   private readonly map = new Map<string, unknown>();
-  async get<T = unknown>(key: string): Promise<T | undefined> {
-    return this.map.get(key) as T | undefined;
+  async get(key: string): Promise<unknown> {
+    return this.map.get(key);
   }
-  async set<T = unknown>(key: string, value: T): Promise<void> {
+  async set(key: string, value: unknown): Promise<void> {
     this.map.set(key, value);
   }
   async del(key: string): Promise<void> {

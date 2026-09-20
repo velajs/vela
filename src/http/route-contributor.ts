@@ -1,4 +1,4 @@
-import type { Hono } from 'hono';
+import type { VelaHono as Hono } from './hono.types';
 import type { Container } from '../container/container';
 import type { Type } from '../container/types';
 import type { OpenApiPathItem } from '../openapi/types';

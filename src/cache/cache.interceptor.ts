@@ -78,9 +78,11 @@ export class CacheInterceptor implements NestInterceptor {
 
     // Check cache
     const cached = this.cacheStore.get(cacheKey);
-    if (cached !== undefined) {
+    if (isCacheValue(cached)) {
       return cached;
     }
+
+    if (cached !== undefined) this.cacheStore.del(cacheKey);
 
     // Execute handler
     const result = await next.handle();
@@ -92,7 +94,7 @@ export class CacheInterceptor implements NestInterceptor {
     // Hono lets a handler stage headers on its Context while returning a plain
     // object. That object must not enter a shared cache when the staged response
     // creates/rotates a session cookie.
-    const response = context.switchToHttp().getResponse<{ res?: Response }>().res;
+    const response = context.switchToHttp().getResponse().res;
     if (response?.headers.has('set-cookie')) return result;
 
     // Determine TTL
@@ -100,8 +102,38 @@ export class CacheInterceptor implements NestInterceptor {
     const ttl = customTtl ?? this.options.ttl ?? 5;
 
     // Store in cache
-    this.cacheStore.set(cacheKey, result, ttl);
+    if (isCacheValue(result)) this.cacheStore.set(cacheKey, result, ttl);
 
     return result;
+  }
+}
+
+/** JSON replay boundary: reject streams, responses, class instances, accessors and cycles. */
+type CacheValue = null | boolean | number | string | CacheValue[] | { [key: string]: CacheValue };
+function isCacheValue(
+  value: unknown,
+  parents = new WeakSet<object>(),
+  depth = 0,
+): value is CacheValue {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (typeof value !== 'object' || depth > 128 || parents.has(value)) return false;
+  if (
+    !Array.isArray(value) &&
+    Object.getPrototypeOf(value) !== Object.prototype &&
+    Object.getPrototypeOf(value) !== null
+  )
+    return false;
+  parents.add(value);
+  try {
+    for (const [key, property] of Object.entries(Object.getOwnPropertyDescriptors(value))) {
+      if (Array.isArray(value) && key === 'length') continue;
+      if (!('value' in property)) return false;
+      const child: unknown = property.value;
+      if (!isCacheValue(child, parents, depth + 1)) return false;
+    }
+    return true;
+  } finally {
+    parents.delete(value);
   }
 }

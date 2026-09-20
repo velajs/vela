@@ -1,3 +1,4 @@
+import { defineProvider } from '../container/types';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Container } from '../container/container.js';
 import { Injectable, Inject, Optional } from '../container/decorators.js';
@@ -49,17 +50,11 @@ describe('DI Container', () => {
       const TOKEN_A = new InjectionToken('A');
       const TOKEN_B = new InjectionToken('B');
 
-      container.register({
-        provide: TOKEN_A,
-        useFactory: (b: unknown) => ({ name: 'A', dep: b }),
-        inject: [TOKEN_B],
-      });
+      container.register(defineProvider(TOKEN_A, {useFactory: (b: unknown) => ({ name: 'A', dep: b }),
+inject: [TOKEN_B]}));
 
-      container.register({
-        provide: TOKEN_B,
-        useFactory: (a: unknown) => ({ name: 'B', dep: a }),
-        inject: [TOKEN_A],
-      });
+      container.register(defineProvider(TOKEN_B, {useFactory: (a: unknown) => ({ name: 'B', dep: a }),
+inject: [TOKEN_A]}));
 
       expect(() => container.resolve(TOKEN_A)).toThrow(/Circular dependency detected/);
     });
@@ -69,23 +64,14 @@ describe('DI Container', () => {
       const TOKEN_B = new InjectionToken('B');
       const TOKEN_C = new InjectionToken('C');
 
-      container.register({
-        provide: TOKEN_A,
-        useFactory: (b: unknown) => ({ name: 'A', dep: b }),
-        inject: [TOKEN_B],
-      });
+      container.register(defineProvider(TOKEN_A, {useFactory: (b: unknown) => ({ name: 'A', dep: b }),
+inject: [TOKEN_B]}));
 
-      container.register({
-        provide: TOKEN_B,
-        useFactory: (c: unknown) => ({ name: 'B', dep: c }),
-        inject: [TOKEN_C],
-      });
+      container.register(defineProvider(TOKEN_B, {useFactory: (c: unknown) => ({ name: 'B', dep: c }),
+inject: [TOKEN_C]}));
 
-      container.register({
-        provide: TOKEN_C,
-        useFactory: (a: unknown) => ({ name: 'C', dep: a }),
-        inject: [TOKEN_A],
-      });
+      container.register(defineProvider(TOKEN_C, {useFactory: (a: unknown) => ({ name: 'C', dep: a }),
+inject: [TOKEN_A]}));
 
       expect(() => container.resolve(TOKEN_A)).toThrow(/Circular dependency detected/);
     });
@@ -95,10 +81,7 @@ describe('DI Container', () => {
     it('should create instance via factory function', () => {
       const CONFIG = new InjectionToken<{ port: number }>('CONFIG');
 
-      container.register({
-        provide: CONFIG,
-        useFactory: () => ({ port: 3000 }),
-      });
+      container.register(defineProvider(CONFIG, { inject: [],useFactory: () => ({ port: 3000 })}));
 
       const config = container.resolve(CONFIG);
       expect(config).toEqual({ port: 3000 });
@@ -108,16 +91,10 @@ describe('DI Container', () => {
       const DB_URL = new InjectionToken<string>('DB_URL');
       const DB = new InjectionToken<{ url: string; connected: boolean }>('DB');
 
-      container.register({
-        provide: DB_URL,
-        useValue: 'postgres://localhost/mydb',
-      });
+      container.register(defineProvider(DB_URL, {useValue: 'postgres://localhost/mydb'}));
 
-      container.register({
-        provide: DB,
-        useFactory: (url: string) => ({ url, connected: true }),
-        inject: [DB_URL],
-      });
+      container.register(defineProvider(DB, {useFactory: (url: string) => ({ url, connected: true }),
+inject: [DB_URL]}));
 
       const db = container.resolve(DB);
       expect(db).toEqual({ url: 'postgres://localhost/mydb', connected: true });
@@ -127,10 +104,7 @@ describe('DI Container', () => {
       let callCount = 0;
       const COUNTER = new InjectionToken<number>('COUNTER');
 
-      container.register({
-        provide: COUNTER,
-        useFactory: () => ++callCount,
-      });
+      container.register(defineProvider(COUNTER, { inject: [],useFactory: () => ++callCount}));
 
       const a = container.resolve(COUNTER);
       const b = container.resolve(COUNTER);
@@ -144,11 +118,8 @@ describe('DI Container', () => {
       let callCount = 0;
       const COUNTER = new InjectionToken<number>('COUNTER');
 
-      container.register({
-        provide: COUNTER,
-        scope: Scope.TRANSIENT,
-        useFactory: () => ++callCount,
-      });
+      container.register(defineProvider(COUNTER, { inject: [],scope: Scope.TRANSIENT,
+useFactory: () => ++callCount}));
 
       const a = container.resolve(COUNTER);
       const b = container.resolve(COUNTER);
@@ -162,13 +133,10 @@ describe('DI Container', () => {
     it('should resolve async factory providers', async () => {
       const ASYNC_DATA = new InjectionToken<string>('ASYNC_DATA');
 
-      container.register({
-        provide: ASYNC_DATA,
-        useFactory: async () => {
+      container.register(defineProvider(ASYNC_DATA, { inject: [],useFactory: async () => {
           // Simulate async operation
           return 'loaded';
-        },
-      });
+        }}));
 
       const data = await container.resolveAsync(ASYNC_DATA);
       expect(data).toBe('loaded');
@@ -178,10 +146,7 @@ describe('DI Container', () => {
       let callCount = 0;
       const ASYNC_COUNTER = new InjectionToken<number>('ASYNC_COUNTER');
 
-      container.register({
-        provide: ASYNC_COUNTER,
-        useFactory: async () => ++callCount,
-      });
+      container.register(defineProvider(ASYNC_COUNTER, { inject: [],useFactory: async () => ++callCount}));
 
       const a = await container.resolveAsync(ASYNC_COUNTER);
       const b = await container.resolveAsync(ASYNC_COUNTER);
@@ -194,7 +159,7 @@ describe('DI Container', () => {
   describe('useValue and useExisting', () => {
     it('should resolve useValue providers directly', () => {
       const TOKEN = new InjectionToken<string>('TOKEN');
-      container.register({ provide: TOKEN, useValue: 'hello' });
+      container.register(defineProvider(TOKEN, {useValue: 'hello'}));
       expect(container.resolve(TOKEN)).toBe('hello');
     });
 
@@ -207,7 +172,7 @@ describe('DI Container', () => {
       const ALIAS = new InjectionToken<RealService>('ALIAS');
 
       container.register(RealService);
-      container.register({ provide: ALIAS, useExisting: RealService });
+      container.register(defineProvider(ALIAS, {useExisting: RealService}));
 
       const fromAlias = container.resolve(ALIAS);
       const fromReal = container.resolve(RealService);
@@ -236,10 +201,7 @@ describe('DI Container', () => {
 
     it('should throw for sync resolve of async factory', () => {
       const TOKEN = new InjectionToken('ASYNC');
-      container.register({
-        provide: TOKEN,
-        useFactory: async () => 'data',
-      });
+      container.register(defineProvider(TOKEN, { inject: [],useFactory: async () => 'data'}));
 
       expect(() => container.resolve(TOKEN)).toThrow(/returned a Promise/);
     });
@@ -374,8 +336,8 @@ describe('DI Container', () => {
         }
       }
 
-      container.register({ provide: TOKEN_A, useClass: ServiceA });
-      container.register({ provide: TOKEN_B, useClass: ServiceB });
+      container.register(defineProvider(TOKEN_A, {useClass: ServiceA}));
+      container.register(defineProvider(TOKEN_B, {useClass: ServiceB}));
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const a = container.resolve<any>(TOKEN_A);
@@ -397,7 +359,7 @@ describe('DI Container', () => {
     // explicit @Inject tokens. The container must still resolve the constructor.
     it('resolves explicit-token constructors when paramtypes metadata is absent', () => {
       const DEP = new InjectionToken<string>('DEP');
-      container.register({ provide: DEP, useValue: 'injected-value' });
+      container.register(defineProvider(DEP, {useValue: 'injected-value'}));
 
       class NoParamtypesService {
         constructor(public dep: string) {}
@@ -415,8 +377,8 @@ describe('DI Container', () => {
     it('resolves multiple explicit tokens by index without paramtypes', () => {
       const A = new InjectionToken<string>('A');
       const B = new InjectionToken<string>('B');
-      container.register({ provide: A, useValue: 'a-value' });
-      container.register({ provide: B, useValue: 'b-value' });
+      container.register(defineProvider(A, {useValue: 'a-value'}));
+      container.register(defineProvider(B, {useValue: 'b-value'}));
 
       class TwoDeps {
         constructor(

@@ -8,20 +8,24 @@ The wire contract lives in **`@velajs/live-protocol`** (frames, the shared delta
 
 ```ts
 // server — resolvers are ordinary providers
-import { LiveModule, LiveQuery, LiveResolver } from '@velajs/vela/live';
+import { LiveModule, LiveQuery, LiveResolver, defineLiveQuery } from '@velajs/vela/live';
 import type { LiveQueryContext } from '@velajs/vela/live';
+
+// Put this definition in a portable module imported by both server and browser.
+const todoListDefinition = defineLiveQuery({ args: TodoListArgs, result: TodoListResult });
 
 @LiveResolver()
 @Injectable()
 class TodoLive {
   constructor(private readonly todos: TodoService) {}
 
-  @LiveQuery('todos.list', {
-    tags: (args: { listId: string }) => [`crud:todos`, `todos:${args.listId}`],
-    parse: (args) => TodoListArgs.parse(args), // zod slots straight in; validated ONCE at subscribe
+  @LiveQuery('todos.list', todoListDefinition, {
+    tags: (args) => [`crud:todos`, `todos:${args.listId}`],
   })
   list(args: { listId: string }, ctx: LiveQueryContext) {
-    return this.todos.byList(args.listId, ctx.identity?.userId as string);
+    const userId = ctx.identity?.userId;
+    if (typeof userId !== 'string') throw new Error('authenticated user required');
+    return this.todos.byList(args.listId, userId);
   }
 }
 
@@ -34,7 +38,12 @@ class AppModule {}
 
 ```ts
 // browser — @velajs/client (or the @velajs/react hooks)
-const client = new LiveClient<AppLive>({ url: 'https://api.example.com' });
+import { createLiveClient } from '@velajs/client';
+
+const client = createLiveClient({
+  url: 'https://api.example.com',
+  queries: { 'todos.list': todoListDefinition },
+});
 client.subscribe('todos.list', { listId }, (todos) => render(todos));
 
 await client.mutate('/todos', { text: 'ship it' }, {
@@ -50,10 +59,29 @@ const stamp = await this.live.invalidate({ tags: [`todos:${listId}`] }); // inje
 
 ## How it works
 
-- Live frames ride the normal WebSocket envelope under the reserved `$live` event (the `$` prefix is framework-reserved; gateways cannot subscribe to it). One socket serves classic gateway events AND live frames.
-- Subscribing runs app-wide guards (dispatcher tier) plus the resolver's own `@UseGuards`; args are validated once; the subscriber's **identity** (from `client.data`, i.e. whatever your upgrade/`handleConnection` auth stamped) is captured and replayed into every re-run. Before resume or invalidation delivery, app-wide/gateway delivery authorization, resolver guards, optional `authorizeDelivery`, and `identity.expiresAtMs` are rechecked. Revocation purges subscriptions and closes with 1008.
-- On invalidation the engine coalesces bursts, re-runs affected queries (bounded concurrency), and pushes: `settled` when the result is byte-identical (the cursor still advances — that is what drops optimistic layers), a batched keyed `delta` when the shared codec can diff, else a full `data` snapshot. Baselines advance only when a frame actually left the socket (at-least-once; deltas are idempotent).
+- Live frames ride the normal WebSocket envelope under the reserved `$live` event (the `$` prefix is framework-reserved; gateways cannot subscribe to it). One socket serves classic gateway events AND live frames. The same dispatcher answers the reserved `$ping`/`$pong` liveness exchange on every transport; Cloudflare can auto-respond without waking a hibernated Durable Object, and clients enable the silence watchdog only after a peer proves support.
+- Subscribing runs app-wide guards (dispatcher tier) plus the resolver's own `@UseGuards`; the shared definition parses args once and binds them to the handler, tags, and coalescing callbacks. Final results are parsed after interceptors, before caching or delta encoding. The subscriber's **identity** (from trusted `client.data`) is captured and replayed into every re-run. Before resume or invalidation delivery, app-wide/gateway delivery authorization, resolver guards, optional `authorizeDelivery`, and `identity.expiresAtMs` are rechecked. Revocation purges subscriptions and closes with 1008.
+- On invalidation the engine coalesces bursts, re-runs affected queries (bounded concurrency), and pushes: `settled` when the result is byte-identical (the cursor still advances — that is what drops optimistic layers), otherwise the smaller of a valid batched keyed `delta` and a full `data` snapshot measured from their actual canonical UTF-8 WebSocket envelopes (ties use the snapshot). Baselines advance only when a frame actually left the socket (at-least-once; deltas are idempotent).
 - Every frame carries a **cursor + epoch** identifying a position in the *log scope*'s ordered invalidation log. Reconnecting clients resubscribe with their last watermark; untouched subscriptions get a tiny `resume` instead of a re-run.
+
+### High-fanout execution coalescing
+
+Resolver runs remain per subscription by default. A side-effect-free query can opt into flush-local sharing with `coalesceBy`; Vela automatically combines the returned authorization/result partition with the query name and canonical parsed args:
+
+```ts
+@LiveQuery('todos.list', todoListDefinition, {
+  tags: (args) => [`todos:${args.listId}`],
+  coalesceBy: (_args, { identity }) =>
+    typeof identity?.tenantId === 'string' ? identity.tenantId : undefined,
+})
+list(args: { listId: string }, ctx: LiveQueryContext) {
+  const tenantId = ctx.identity?.tenantId;
+  if (typeof tenantId !== 'string') throw new Error('tenant required');
+  return this.todos.byList(args.listId, tenantId);
+}
+```
+
+Returning the same partition is an application assertion that the complete resolver/interceptor result is equivalent for those subscribers, including any state reachable through `identity`, `clientId`, rooms, or the interceptor execution context. Expiry, WebSocket delivery authorization, resolver guards, and `authorizeDelivery` still run per subscription before sharing; explicit BYO-DB tags still decide which subscriptions enter a pass; and each recipient still diffs against and advances its own baseline/cursor. The Promise cache exists for one drain pass only and is capped at 256 groups, 64 KiB per retained result, and 2 MiB of retained serialized results; overflow executes independently. `undefined`, a thrown callback, an empty/control-bearing partition, a partition over 256 UTF-8 bytes, exotic args, or canonical args over 4 KiB all fail closed to an independent run.
 
 ## Cursors, resume, and transports
 
@@ -67,8 +95,8 @@ const stamp = await this.live.invalidate({ tags: [`todos:${listId}`] }); // inje
 
 ```ts
 LiveModule.forRoot({
-  log: durableObjectCursorLog(),                 // SQLite-backed cursor log (per room DO)
-  driver: durableObjectLive({
+  log: () => durableObjectCursorLog(),           // SQLite-backed cursor log (per room DO)
+  driver: () => durableObjectLive({
     binding: 'CHAT_ROOM',
     gatewayPath: '/rooms/:id/ws',
     defaultRoom: 'lobby',
@@ -76,9 +104,15 @@ LiveModule.forRoot({
 })
 ```
 
+`driver` and `log` are factories, called once per application. Return fresh instances:
+the same module definition can bootstrap a Worker and multiple Durable Objects, each
+with its own environment, sink, cursor, and epoch. Factories may be asynchronous.
+When construction needs injected dependencies, use `LiveModule.forRootAsync` to
+resolve them and return factories that capture those application-local values.
+
 - The DO class **must** be SQLite-backed: add it to wrangler `migrations[].new_sqlite_classes`.
 - Worker-side `invalidate()` (HTTP mutations, crons, queue consumers) routes to the gateway + room DO's `invalidate` RPC and returns *that* log scope's stamp; inside the DO it applies locally. `liveInvalidateToRoom(ns, gatewayPath, room, tags)` is the imperative sibling of `broadcastToRoom`.
-- Subscriptions are persisted in the hibernation attachment and replayed on wake — an eviction is invisible to subscribers (their next update arrives as a snapshot, since the diff baseline is deliberately not persisted).
+- Subscriptions persist their original args in the hibernation attachment. Restore validates record fields and data-only identity claims, reparses args through the query definition, and recomputes dependency tags. An eviction is invisible to subscribers; the next update is a snapshot because cached result/cursor baselines are never restored.
 
 ## Optimistic updates
 
@@ -96,19 +130,19 @@ All may be lowered; the first three have explicit bounded module options.
 
 - **Data locality**: the Worker and each Durable Object bootstrap SEPARATE app instances of the same module. State that live queries read and mutations write must live in a shared store (D1/KV/external DB) — per-isolate memory makes writes invisible to re-runs. See `examples/live-todo`'s `TodoStore` seam.
 - **Commit headers on Workers**: stamp them explicitly (`stampCommitHeaders(c, stamp)`; the CRUD bridge does it automatically). Do NOT rely on `ambientContainer`: awaiting a Durable Object RPC inside hono's ALS `contextStorage()` middleware hangs the response under workerd.
-- Driver/log option objects are shared between those app instances by construction; vela wraps the driver per app (`perAppLiveDriver`) so per-app sink/local-mode state never leaks across instances — custom drivers should keep instance state to isolate-wide concerns only.
+- Driver/log factories run once in each application container. Keep state on the returned instance and return a new instance each time; shared mutable drivers or logs would leak environment bindings, sinks, or cursor state between applications.
 
 ## Guarantees & limits (v1)
 
 - At-least-once frames; per-subscription total order within a log scope; coalescing may collapse bursts but every committed invalidation is observed by a re-run that starts after it.
-- Tag granularity: N identical subscriptions re-run N times per invalidation. A row-level memoized reactive cache (lunora's `reactive-cache`/`dependency-tracker` design) is the planned optimization.
+- Tag granularity remains explicit. N identical subscriptions re-run N times unless their query opts into `coalesceBy`; one matching `(query, canonical args, partition)` then executes once per pass and fans out through N independent delivery baselines.
 - A subscription lives in exactly one room; cross-room live queries are out of scope.
 - Resume, invalidation re-runs, and delivery re-check identity expiry plus the
   app/gateway/resolver authorization chain. A revoked identity removes the
   subscription and closes the socket with 1008.
-- A typed client generated from OpenAPI operationIds + live metadata (`vela codegen`) is a planned CLI addition; v1 uses a hand-written `LiveContract` interface shaped to be codegen-compatible.
+- Server and client import the same `defineLiveQuery({ args, result })` definitions. The typed decorator checks handler args/results; `createLiveClient({ queries })` infers its contract from the parser map. No separately maintained live result interface is needed.
 
 ## Design notes
 
-- The wire protocol is normative in `@velajs/live-protocol` (`LIVE_PROTOCOL = 1`); both sides run the same golden fixtures, so codec drift fails a test. Any wire change bumps the constant and releases in lockstep: live-protocol → vela → cloudflare → client.
+- The wire protocol is normative in `@velajs/live-protocol` (`LIVE_PROTOCOL = 2`); both sides run the same golden fixtures, so codec drift fails a test. Any wire change bumps the constant and releases in lockstep: live-protocol → vela → cloudflare → client.
 - lunora's zero-dependency error-catalog design (one error class + central code catalog + a single wire-redaction seam, renderer split out for tree-shaking) is the recommended shape for Vela's planned exception-handler layer — noted here so the roadmap item starts from it.

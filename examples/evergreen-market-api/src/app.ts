@@ -89,7 +89,7 @@ import {
   applyDecorators,
   createOpenApiDocument,
   createParamDecorator,
-  createZodDto,
+  defineDto,
 } from '@velajs/vela';
 import type {
   ArgumentMetadata,
@@ -154,19 +154,18 @@ const ProductBodySchema = z.object({
   tags: z.array(z.string()).default([]),
 });
 
-class CreateProductDto extends createZodDto(ProductBodySchema, {
+const CreateProductDto = defineDto(ProductBodySchema, {
   name: 'CreateProductDto',
-}) {}
+});
+type CreateProductDto = ReturnType<typeof CreateProductDto.parse>;
 
-class PublicProductDto extends createZodDto(
-  z.object({
+const PublicProductDto = defineDto(z.object({
     id: z.number(),
     name: z.string(),
     price: z.number(),
     tags: z.array(z.string()),
-  }),
-  { name: 'PublicProductDto' },
-) {}
+  }), { name: 'PublicProductDto' });
+type PublicProductDto = ReturnType<typeof PublicProductDto.parse>;
 
 enum VisibilityMode {
   Public = 'public',
@@ -493,7 +492,7 @@ export async function createEvergreenMarketApp(
     @UseGuards(new ApiKeyGuard())
     @UsePipes(new ValidationPipe(), new UppercaseNamePipe())
     @ApiResponse(201, { description: 'Created product', schema: PublicProductDto })
-    async create(@Body() body: CreateProductDto) {
+    async create(@Body(new ValidationPipe(CreateProductDto)) body: CreateProductDto) {
       const product = this.products.create(body);
       await this.events.emit('product.created', { id: product.id, name: product.name });
       return product;
@@ -502,7 +501,7 @@ export async function createEvergreenMarketApp(
     @Put('/items/:id')
     @UseGuards(new ApiKeyGuard())
     @UsePipes(new ValidationPipe())
-    replace(@Param('id', ParseIntPipe) id: number, @Body() body: CreateProductDto) {
+    replace(@Param('id', ParseIntPipe) id: number, @Body(new ValidationPipe(CreateProductDto)) body: CreateProductDto) {
       return this.products.replace(id, body);
     }
 

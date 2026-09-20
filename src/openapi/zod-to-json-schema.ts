@@ -1,4 +1,5 @@
 import type { JsonSchema } from './types';
+import { parseJsonSchema } from './json-schema';
 
 // Zod v4 exposes `schema.toJSONSchema()` on every schema instance — an
 // authoritative, zero-cost converter. We delegate to it when present and
@@ -7,41 +8,38 @@ import type { JsonSchema } from './types';
 // method) we return an empty (permissive) schema.
 
 function stripOpenApiIncompatible(schema: JsonSchema): JsonSchema {
-  const out = { ...schema } as Record<string, unknown>;
+  const out: JsonSchema = { ...schema };
   delete out.$schema;
   // Zod v4 emits `additionalProperties: false` by default; users rarely
   // want that constraint in their published OpenAPI doc, so leave it in
   // — it's a faithful reflection of the schema. No change here.
 
-  if (Array.isArray(out.properties)) {
-    // shouldn't happen, but guard
-  } else if (out.properties && typeof out.properties === 'object') {
-    const props = out.properties as Record<string, JsonSchema>;
+  if (out.properties) {
     const cleaned: Record<string, JsonSchema> = {};
-    for (const [key, val] of Object.entries(props)) {
+    for (const [key, val] of Object.entries(out.properties)) {
       cleaned[key] = stripOpenApiIncompatible(val);
     }
     out.properties = cleaned;
   }
   if (out.items && typeof out.items === 'object') {
-    out.items = stripOpenApiIncompatible(out.items as JsonSchema);
+    out.items = stripOpenApiIncompatible(out.items);
   }
-  return out as JsonSchema;
+  return out;
 }
 
 export function zodToJsonSchema(schema: unknown): JsonSchema {
   if (!schema || typeof schema !== 'object') return {};
 
-  const maybe = (schema as { toJSONSchema?: unknown }).toJSONSchema;
-  if (typeof maybe === 'function') {
+  if ('toJSONSchema' in schema && typeof schema.toJSONSchema === 'function') {
+    let result: unknown;
     try {
-      const result = (maybe as () => unknown).call(schema);
-      if (result && typeof result === 'object') {
-        return stripOpenApiIncompatible(result as JsonSchema);
-      }
+      result = schema.toJSONSchema();
     } catch {
-      // Zod may refuse to convert certain schemas; fall through.
+      // A schema library may not support export (e.g. transforms). Preserve
+      // the missing-schema diagnostic rather than inventing its type.
+      return {};
     }
+    return stripOpenApiIncompatible(parseJsonSchema(result, 'toJSONSchema() result'));
   }
 
   return {};
@@ -52,7 +50,8 @@ export function zodToJsonSchema(schema: unknown): JsonSchema {
 // depending on internal `_def` shape.
 function ctorName(schema: unknown): string | undefined {
   if (!schema || typeof schema !== 'object') return undefined;
-  return (schema as { constructor?: { name?: string } }).constructor?.name;
+  const constructor: unknown = schema.constructor;
+  return typeof constructor === 'function' ? constructor.name : undefined;
 }
 
 export function isOptional(schema: unknown): boolean {

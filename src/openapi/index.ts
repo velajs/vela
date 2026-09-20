@@ -1,4 +1,11 @@
 export { createOpenApiDocument } from './document';
+export { defineEndpoint, Endpoint, getEndpointDefinition } from './endpoint';
+export type {
+  EndpointSchema,
+  EndpointRequest,
+  EndpointDefinition,
+  RuntimeEndpointDefinition,
+} from './endpoint';
 export {
   ApiDoc,
   ApiTags,

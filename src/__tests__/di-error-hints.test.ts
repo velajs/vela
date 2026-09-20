@@ -42,7 +42,7 @@ describe('DI error hints — import type mistake', () => {
     // helpful error because Object is the fingerprint of a stripped type.
     let caught: Error | undefined;
     try {
-      container.resolve(Object as unknown as InjectionToken<unknown>);
+      container.resolve(Object as unknown as InjectionToken);
     } catch (err) {
       caught = err as Error;
     }

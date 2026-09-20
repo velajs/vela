@@ -1,3 +1,4 @@
+import { defineProvider } from '../container/types';
 import { defineModule } from '../module/define-module';
 import { WsDispatcher } from './ws-dispatcher';
 import { WsServerImpl } from './ws-server';
@@ -39,25 +40,22 @@ const { ConfigurableModuleClass } = defineModule<WebSocketModuleOptions>({
   key: (options) => `ws#${options.sync?.kind ?? 'local'}`,
   setup: ({ OPTIONS }) => ({
     providers: [
-      {
-        provide: WS_ROOM_REGISTRY,
+      defineProvider(WS_ROOM_REGISTRY, {
         useFactory: (o: WebSocketModuleOptions) => o.registry ?? new InMemoryRoomRegistry(),
         inject: [OPTIONS],
-      },
-      {
-        provide: WS_SYNC_DRIVER,
+      }),
+      defineProvider(WS_SYNC_DRIVER, {
         useFactory: (o: WebSocketModuleOptions, registry: RoomRegistry) => {
           const driver = o.sync ?? local();
           driver.bind(registry);
           return driver;
         },
         inject: [OPTIONS, WS_ROOM_REGISTRY],
-      },
-      {
-        provide: WS_SERVER,
+      }),
+      defineProvider(WS_SERVER, {
         useFactory: (driver: SyncDriver) => new WsServerImpl(driver),
         inject: [WS_SYNC_DRIVER],
-      },
+      }),
       WsDispatcher,
     ],
     exports: [WS_SERVER, WS_SYNC_DRIVER, WS_ROOM_REGISTRY, WsDispatcher],

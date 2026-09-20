@@ -57,7 +57,7 @@ export class SignedInvocationGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest<Request>();
+    const request = context.switchToHttp().getRequest();
 
     const token = request.headers.get(INVOCATION_HEADER);
     if (!token) throw new ForbiddenException(INVALID);

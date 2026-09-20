@@ -3,6 +3,7 @@ import { Container } from '../container/container';
 import { ModuleRef } from '../container/module-ref';
 import { DiscoveryService } from '../discovery/discovery.service';
 import type { Diagnostics, Type } from '../container/types';
+import { defineProvider } from '../container/types';
 import { InternalDispatcher } from '../dispatch/internal-dispatcher';
 import { MemoryNonceStore } from '../dispatch/nonce-store';
 import { SignedInvocationGuard } from '../dispatch/signed-invocation.guard';
@@ -14,7 +15,6 @@ import { UrlGeneratorService } from '../http/url/url-generator.service';
 import { SignedUrlGuard } from '../http/url/signed-url.guard';
 import { ModuleLoader } from '../module/module-loader';
 import { bindAppProviders } from '../pipeline/app-providers';
-import { ComponentManager } from '../pipeline/component.manager';
 import {
   APP_EXCEPTION_HANDLER,
   APP_FILTER,
@@ -28,6 +28,8 @@ import type { NestMiddleware } from '../pipeline/types';
 
 export interface BootstrapOptions extends RouteManagerOptions {
   diagnostics?: Diagnostics;
+  /** Configure platform/application providers before modules load or construct providers. */
+  configureContainer?(container: Container): void | Promise<void>;
 }
 
 export interface BootstrapResult {
@@ -53,22 +55,24 @@ export async function bootstrap(
     diagnostics: options.diagnostics,
   });
 
-  container.register({ provide: Container, useValue: container });
+  container.register(defineProvider(Container, { useValue: container }));
   container.markGlobalToken(Container);
 
-  container.register({
-    provide: ModuleRef,
-    useFactory: (c: Container) => new ModuleRef(c),
-    inject: [Container],
-  });
+  container.register(
+    defineProvider(ModuleRef, {
+      useFactory: (c) => new ModuleRef(c),
+      inject: [Container],
+    }),
+  );
   container.markGlobalToken(ModuleRef);
 
   // Decorator-driven discovery — global so any provider can inject it.
-  container.register({
-    provide: DiscoveryService,
-    useFactory: (c: Container) => new DiscoveryService(c),
-    inject: [Container],
-  });
+  container.register(
+    defineProvider(DiscoveryService, {
+      useFactory: (c) => new DiscoveryService(c),
+      inject: [Container],
+    }),
+  );
   container.markGlobalToken(DiscoveryService);
 
   for (const t of [
@@ -87,22 +91,24 @@ export async function bootstrap(
   // before any handler resolves it (see route.manager.ts:getRequestContainer).
   // The factory throws so misuse outside the request path surfaces immediately
   // instead of materializing a phantom context.
-  container.register({
-    provide: REQUEST_CONTEXT,
-    scope: Scope.REQUEST,
-    useFactory: () => {
-      throw new Error(
-        'REQUEST_CONTEXT can only be resolved inside a request — ' +
-          'it is seeded by RouteManager when the request enters the pipeline.',
-      );
-    },
-  });
+  container.register(
+    defineProvider(REQUEST_CONTEXT, {
+      inject: [],
+      scope: Scope.REQUEST,
+      useFactory: () => {
+        throw new Error(
+          'REQUEST_CONTEXT can only be resolved inside a request — ' +
+            'it is seeded by RouteManager when the request enters the pipeline.',
+        );
+      },
+    }),
+  );
   container.markGlobalToken(REQUEST_CONTEXT);
 
   const routeManager = new RouteManager(container, options);
   // Resolvable so non-HTTP transports (the WebSocket dispatcher) can read the
   // same global-tier components (APP_* + app.useGlobalX()).
-  container.register({ provide: RouteManager, useValue: routeManager });
+  container.register(defineProvider(RouteManager, { useValue: routeManager }));
   container.markGlobalToken(RouteManager);
 
   // Named-route URL generation + signed-URL verification are app-level
@@ -124,8 +130,10 @@ export async function bootstrap(
   container.markGlobalToken(InternalDispatcher);
   container.register(SignedInvocationGuard);
   container.markGlobalToken(SignedInvocationGuard);
-  container.register({ provide: NONCE_STORE, useClass: MemoryNonceStore });
+  container.register(defineProvider(NONCE_STORE, { useClass: MemoryNonceStore }));
   container.markGlobalToken(NONCE_STORE);
+
+  await options.configureContainer?.(container);
 
   const loader = new ModuleLoader(container, routeManager);
   // loader.load() also arms the deferred-init seam (LazyModuleManager) — kept

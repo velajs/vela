@@ -1,3 +1,4 @@
+import { defineProvider } from '../container/types';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   Controller,
@@ -343,7 +344,7 @@ describe('Dynamic module identity (audit #2)', () => {
     }
 
     @Module({
-      providers: [{ provide: SECRET, useValue: 'hidden' }, Hider],
+      providers: [defineProvider(SECRET, {useValue: 'hidden'}), Hider],
       // no exports
     })
     class HiddenModule {}

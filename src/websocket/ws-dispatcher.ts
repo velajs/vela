@@ -82,6 +82,9 @@ interface ReservedEntry {
   moduleId: string;
 }
 
+const HEARTBEAT_PING_EVENT = '$ping';
+const HEARTBEAT_PONG_EVENT = '$pong';
+
 function hasAfterInit(x: unknown): x is OnGatewayInit {
   return typeof (x as OnGatewayInit)?.afterInit === 'function';
 }
@@ -105,6 +108,27 @@ export interface WsEntrypointMeta {
   options: WebSocketGatewayOptions;
   /** Stable container module bucket that declares the gateway. */
   moduleId: string;
+}
+
+/** Recover gateway metadata from its owning dispatcher, rather than trusting
+ * arbitrary option objects contributed under the open "websocket" kind. */
+export function readWsEntrypointMeta(value: unknown): WsEntrypointMeta {
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    !('path' in value) ||
+    typeof value.path !== 'string' ||
+    !('dispatcher' in value) ||
+    !(value.dispatcher instanceof WsDispatcher)
+  ) {
+    throw new Error('Invalid WebSocket entrypoint metadata.');
+  }
+  const entry = value.dispatcher
+    .collectEntrypoints()
+    .find((candidate) => candidate.meta.path === value.path);
+  if (!entry)
+    throw new Error(`WebSocket entrypoint path '${value.path}' is not owned by its dispatcher.`);
+  return entry.meta;
 }
 
 /**
@@ -319,6 +343,15 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
       message = this.parse(raw);
     } catch {
       this.trySend(client, entry.maxFrameBytes, 'exception', { message: 'Invalid message' });
+      return;
+    }
+
+    // Framework heartbeat: transport-independent and deliberately outside the
+    // application pipeline. The `$` namespace makes it impossible for an app
+    // gateway to collide with this liveness exchange; Cloudflare intercepts
+    // the same exact pair before waking a hibernated Durable Object.
+    if (message.event === HEARTBEAT_PING_EVENT) {
+      this.trySend(client, entry.maxFrameBytes, HEARTBEAT_PONG_EVENT, undefined);
       return;
     }
 

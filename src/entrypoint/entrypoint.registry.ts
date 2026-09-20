@@ -111,8 +111,13 @@ export class EntrypointRegistry {
     else this.byKind.set(ep.kind, [ep]);
   }
 
-  ofKind<M = unknown>(kind: string): Entrypoint<M>[] {
-    return (this.byKind.get(kind) ?? []) as Entrypoint<M>[];
+  ofKind(kind: string): Entrypoint[];
+  ofKind<M>(kind: string, parseMeta: (meta: unknown) => M): Entrypoint<M>[];
+  ofKind(kind: string, parseMeta?: (meta: unknown) => unknown): Entrypoint[] {
+    const entries = this.byKind.get(kind) ?? [];
+    return parseMeta
+      ? entries.map((entry) => ({ ...entry, meta: parseMeta(entry.meta) }))
+      : [...entries];
   }
 
   kinds(): string[] {

@@ -6,7 +6,7 @@ import {
   Post,
   Module,
   MetadataRegistry,
-  createZodDto,
+  defineDto,
   createOpenApiDocument,
   ApiResponse,
 } from '../index.js';
@@ -18,7 +18,7 @@ beforeEach(() => {
 describe('@ApiResponse', () => {
   it('registers a response with description and a Zod DTO schema (via $ref)', () => {
     const UserSchema = z.object({ id: z.string(), name: z.string() });
-    class UserDto extends createZodDto(UserSchema) {}
+    const UserDto = defineDto(UserSchema, { name: 'UserDto' });
 
     @Controller('/users')
     class UsersController {
@@ -46,7 +46,7 @@ describe('@ApiResponse', () => {
 
   it('supports multiple @ApiResponse on one handler for different status codes', () => {
     const ErrorSchema = z.object({ message: z.string() });
-    class ErrorDto extends createZodDto(ErrorSchema) {}
+    const ErrorDto = defineDto(ErrorSchema, { name: 'ErrorDto' });
 
     @Controller('/users')
     class UsersController {
@@ -73,7 +73,7 @@ describe('@ApiResponse', () => {
     expect(op.responses['500']!.description).toBe('Server error');
   });
 
-  it('accepts a raw Zod schema (not a DTO class)', () => {
+  it('accepts a raw Zod schema (not a DTO descriptor)', () => {
     @Controller('/items')
     class ItemsController {
       @Post()

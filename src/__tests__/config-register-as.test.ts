@@ -1,3 +1,4 @@
+import { defineProvider, InjectionToken } from '../container/types';
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   VelaFactory,
@@ -22,23 +23,23 @@ interface TestEnv {
   MAIL_FROM?: string;
 }
 
-// Namespaces are declared once at module scope — `Symbol.for` keeps their KEY
-// identity stable across re-evaluation, exactly the property registerAs relies on.
-const dbConfig = registerAs('database', (env: TestEnv) => ({
+const TEST_ENV = new InjectionToken<TestEnv>('test env', { factory: () => ({}) });
+
+const dbConfig = registerAs('database', TEST_ENV, (env: TestEnv) => ({
   url: env.DATABASE_URL ?? 'sqlite::memory:',
   pool: 10,
 }));
 
-const mailConfig = registerAs('mail', (env: TestEnv) => ({
+const mailConfig = registerAs('mail', TEST_ENV, (env: TestEnv) => ({
   from: env.MAIL_FROM ?? 'noreply@example.com',
 }));
 
 /** A @Global module that seeds CONFIG_ENV — how a platform adapter provides env. */
-function seedEnv(env: Record<string, unknown>) {
+function seedEnv(env: TestEnv) {
   @Global()
   @Module({
-    providers: [{ provide: CONFIG_ENV, useValue: env }],
-    exports: [CONFIG_ENV],
+    providers: [defineProvider(TEST_ENV, {useValue: env})],
+    exports: [TEST_ENV],
   })
   class EnvModule {}
   return EnvModule;
@@ -50,17 +51,17 @@ beforeEach(() => {
 
 describe('registerAs config namespaces', () => {
   describe('registerAs()', () => {
-    it('mints a stable Symbol.for KEY and captures namespace + factory', () => {
-      expect(dbConfig.KEY as unknown as symbol).toBe(Symbol.for('vela:config:database'));
+    it('creates a concrete typed token and captures namespace + factory', () => {
+      expect(dbConfig.KEY).toBeInstanceOf(InjectionToken);
       expect(dbConfig.namespace).toBe('database');
       expect(dbConfig.factory({ DATABASE_URL: 'x' })).toEqual({ url: 'x', pool: 10 });
     });
 
-    it('asProvider() yields a factory provider injecting CONFIG_ENV', () => {
+    it('asProvider() yields a factory provider injecting its declared environment token', () => {
       const provider = dbConfig.asProvider();
       expect(provider.provide).toBe(dbConfig.KEY);
       expect(provider.useFactory).toBe(dbConfig.factory);
-      expect(provider.inject).toEqual([CONFIG_ENV]);
+      expect(provider.inject).toEqual([TEST_ENV]);
     });
   });
 
@@ -172,7 +173,7 @@ describe('registerAs config namespaces', () => {
   describe('lazy namespace resolution', () => {
     it('runs a namespace factory only on its first read — not at bootstrap, not on app.get(ConfigService)', async () => {
       let calls = 0;
-      const spyNs = registerAs('spy', (env: TestEnv) => {
+      const spyNs = registerAs('spy', TEST_ENV, (env: TestEnv) => {
         calls++;
         return { url: env.DATABASE_URL ?? 'fallback' };
       });
@@ -213,7 +214,7 @@ describe('registerAs config namespaces', () => {
       // options factory and throw.
       @Module({
         imports: [
-          ConfigModule.forRootAsync({
+          ConfigModule.forRootAsync({ inject: [],
             useFactory: async () => {
               await Promise.resolve();
               return { config: { APP_NAME: 'async-app', nested: { n: 1 } } };
@@ -231,7 +232,7 @@ describe('registerAs config namespaces', () => {
     });
 
     it('ConfigStore resolves a namespace via the container once, then caches', () => {
-      const ns = registerAs('svc', (env: TestEnv) => ({ url: env.DATABASE_URL }));
+      const ns = registerAs('svc', TEST_ENV, (env: TestEnv) => ({ url: env.DATABASE_URL }));
       let resolves = 0;
       const fakeContainer = {
         resolve: (_token: unknown) => {

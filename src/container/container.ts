@@ -8,17 +8,21 @@ import {
 } from './decorators';
 import type {
   ContainerOptions,
+  AuthoringToken,
   Diagnostics,
+  InferToken,
   LazyResolutionHook,
   ModuleDescription,
   ModuleScope,
   ProviderOptions,
+  ProviderDefinition,
   ProviderRegistration,
   Token,
   Type,
 } from './types';
 import {
   describeToken,
+  getProviderOptions,
   ForwardRef,
   InjectionToken,
   ModuleVisibilityError,
@@ -53,7 +57,8 @@ export class Container {
   private providers = new Map<string, Map<Token, ProviderRegistration>>();
   private exporterIndex = new Map<Token, Set<string>>();
   private resolutionStack = new Set<Token>();
-  private requestInstances = new Map<Token, unknown>();
+  private requestInstances = new Map<Token, { readonly value: unknown }>();
+  private pendingInstances = new Map<ProviderRegistration, Promise<unknown>>();
   private scopes = new Map<string, ModuleScope>();
   private globals = new Set<Token>();
   private diagnostics: Diagnostics;
@@ -104,12 +109,12 @@ export class Container {
     hook.drainSync();
   }
 
-  register<T>(provider: Type<T> | ProviderOptions<T>, declaringModuleId?: string): this {
+  register<T>(provider: Type<T> | ProviderDefinition<T>, declaringModuleId?: string): this {
     const moduleId = declaringModuleId ?? ROOT_MODULE_ID;
     if (typeof provider === 'function') {
       this.registerClass(provider, moduleId);
     } else {
-      this.registerOptions(provider, moduleId);
+      this.registerOptions(getProviderOptions(provider), moduleId);
     }
     return this;
   }
@@ -131,21 +136,21 @@ export class Container {
     });
   }
 
-  private registerOptions<T>(options: ProviderOptions<T>, moduleId: string): void {
+  private registerOptions(options: ProviderOptions, moduleId: string): void {
     const token = options.provide;
     if (!token) {
       throw new Error('Provider registration requires a token');
     }
 
-    const registration: ProviderRegistration<T> = {
+    const registration: ProviderRegistration = {
       provide: token,
       scope: options.scope ?? Scope.SINGLETON,
       declaringModuleId: moduleId,
     };
 
-    if (options.useValue !== undefined) {
-      registration.useValue = options.useValue;
-      registration.instance = options.useValue;
+    if ('useValue' in options) {
+      registration.value = { value: options.useValue };
+      registration.instance = { value: options.useValue };
     } else if (options.useFactory) {
       registration.useFactory = options.useFactory;
       registration.inject = options.inject;
@@ -202,15 +207,25 @@ export class Container {
   // Used by RouteManager to populate framework-provided request-scope
   // values (REQUEST_CONTEXT) before any handler resolution runs, so the
   // provider's factory never fires on the request path.
-  setRequestInstance(token: Token, value: unknown): void {
-    this.requestInstances.set(token, value);
+  setRequestInstance<K extends Token>(
+    token: K & AuthoringToken<K>,
+    value: NoInfer<InferToken<K>>,
+  ): void {
+    this.requestInstances.set(token, { value });
   }
 
   getDiagnostics(): Diagnostics {
     return this.diagnostics;
   }
 
-  resolve<T>(token: Token<T>, requestingModuleId?: string): T {
+  resolve<K extends Token>(token: K, requestingModuleId?: string): InferToken<K>;
+  resolve(token: Token, requestingModuleId?: string): unknown {
+    return this.resolveToken(token, requestingModuleId);
+  }
+
+  // Heterogeneous provider storage erases its token/value correlation. Keep
+  // this generic resolution boundary private; callers infer from the token.
+  private resolveToken<T>(token: Token, requestingModuleId?: string): T {
     const registration = this.findRegistration<T>(token, requestingModuleId);
     if (registration) {
       const instance = this.resolveRegistration(registration, requestingModuleId);
@@ -248,14 +263,18 @@ export class Container {
     // InjectionToken default factories are explicit user declarations
     // attached to the token at construction — self-providing singletons.
     if (token instanceof InjectionToken && token.options?.factory) {
-      this.register({ provide: token, useFactory: token.options.factory });
-      return this.resolve(token, requestingModuleId);
+      this.registerOptions(
+        { inject: [], provide: token, useFactory: token.options.factory },
+        ROOT_MODULE_ID,
+      );
+      return this.resolveToken<T>(token, requestingModuleId);
     }
 
     throw new Error(`No provider found for token: ${this.tokenToString(token)}`);
   }
 
-  resolveAll<T>(token: Token<T>, requestingModuleId?: string): T[] {
+  resolveAll<K extends Token>(token: K, requestingModuleId?: string): InferToken<K>[];
+  resolveAll<T>(token: Token, requestingModuleId?: string): T[] {
     const registrations = this.findAllRegistrations<T>(token, requestingModuleId);
     const instances = registrations.map((r) => this.resolveRegistration(r, requestingModuleId));
     this.maybeDrainSync();
@@ -271,7 +290,7 @@ export class Container {
    * `MultipleProvidersFoundError` if the imports walk yields more than one.
    */
   private findRegistration<T>(
-    token: Token<T>,
+    token: Token,
     requestingModuleId?: string,
   ): ProviderRegistration<T> | undefined {
     // No requester OR no scope for this requester: framework-internal /
@@ -331,10 +350,7 @@ export class Container {
   }
 
   /** Typed bucket lookup — single seam where the Map<Token, Registration> erases T. */
-  private lookupInBucket<T>(
-    moduleId: string,
-    token: Token<T>,
-  ): ProviderRegistration<T> | undefined {
+  private lookupInBucket<T>(moduleId: string, token: Token): ProviderRegistration<T> | undefined {
     return this.providers.get(moduleId)?.get(token) as ProviderRegistration<T> | undefined;
   }
 
@@ -345,7 +361,7 @@ export class Container {
    */
   private collectFromImports<T>(
     scope: ModuleScope,
-    token: Token<T>,
+    token: Token,
     visited: Set<string>,
     candidates: ProviderRegistration<T>[],
     candidateModuleIds: string[],
@@ -370,7 +386,7 @@ export class Container {
   }
 
   private findAllRegistrations<T>(
-    token: Token<T>,
+    token: Token,
     requestingModuleId?: string,
   ): ProviderRegistration<T>[] {
     if (requestingModuleId === undefined) {
@@ -442,7 +458,7 @@ export class Container {
    * - `string[]`: exactly these bucket ids.
    */
   replaceProvider<T>(
-    provider: Type<T> | ProviderOptions<T>,
+    provider: Type<T> | ProviderDefinition<T>,
     options: { buckets?: 'all-existing' | 'root' | string[] } = {},
   ): this {
     const buckets = options.buckets ?? 'all-existing';
@@ -522,7 +538,7 @@ export class Container {
     const out: unknown[] = [];
     for (const bucket of this.providers.values()) {
       for (const reg of bucket.values()) {
-        if (reg.useValue !== undefined) out.push(reg.useValue);
+        if (reg.value) out.push(reg.value.value);
       }
     }
     return out;
@@ -737,7 +753,7 @@ export class Container {
       // so a rebuilt graph starts clean.
       for (const bucket of this.providers.values()) {
         for (const registration of bucket.values()) {
-          if (registration.scope === Scope.SINGLETON && registration.useValue === undefined) {
+          if (registration.scope === Scope.SINGLETON && registration.value === undefined) {
             registration.instance = undefined;
           }
         }
@@ -749,18 +765,18 @@ export class Container {
     registration: ProviderRegistration<T>,
     requestingModuleId?: string,
   ): T {
-    if (registration.useValue !== undefined) {
+    if (registration.value) {
       // Deliberately BEFORE the lazy claim: reading a lazy module's useValue
       // (options tokens) has no construction cost to defer and must not
       // materialize the group.
-      return registration.useValue;
+      return registration.value.value;
     }
 
     this.claimLazyModule(registration.declaringModuleId);
 
     if (registration.useExisting) {
       // Pass through the original requester to catch alias leaks
-      return this.resolve(registration.useExisting, requestingModuleId);
+      return this.resolveToken(registration.useExisting, requestingModuleId);
     }
 
     // Effective scope accounts for request-scope bubbling: a SINGLETON that
@@ -770,15 +786,24 @@ export class Container {
 
     // Singleton: return cached from registration (shared across all containers)
     if (scope === Scope.SINGLETON && registration.instance !== undefined) {
-      return registration.instance;
+      return registration.instance.value;
     }
 
     // Request: return cached from this child's requestInstances
     if (scope === Scope.REQUEST) {
-      const cached = this.requestInstances.get(registration.provide) as T | undefined;
+      const cached = this.requestInstances.get(registration.provide) as
+        | { readonly value: T }
+        | undefined;
       if (cached !== undefined) {
-        return cached;
+        return cached.value;
       }
+    }
+
+    const asyncOwner = scope === Scope.SINGLETON ? this.root : this;
+    if (asyncOwner.pendingInstances.has(registration)) {
+      throw new Error(
+        `Provider ${this.tokenToString(registration.provide)} is resolving asynchronously. Use resolveAsync().`,
+      );
     }
 
     if (this.resolutionStack.has(registration.provide)) {
@@ -794,9 +819,7 @@ export class Container {
       let instance: T;
 
       if (registration.useFactory) {
-        // Factory inject deps resolve from the declaring module's scope first
-        // (visibility-correct for forRootAsync), with the legacy no-requester
-        // lookup kept as fallback — see resolveFactoryDependency.
+        // Factory dependencies follow the same module visibility as constructors.
         instance = this.resolveFactory(registration);
       } else if (registration.useClass) {
         instance = this.resolveClass(registration.useClass, registration.declaringModuleId);
@@ -807,12 +830,12 @@ export class Container {
       }
 
       if (scope === Scope.SINGLETON) {
-        registration.instance = instance;
+        registration.instance = { value: instance };
         // Track for disposal on the ROOT — a singleton outlives the request
         // child that may have first constructed it.
         if (isDisposable(instance)) this.root.disposables.push(instance);
       } else if (scope === Scope.REQUEST) {
-        this.requestInstances.set(registration.provide, instance);
+        this.requestInstances.set(registration.provide, { value: instance });
         if (isDisposable(instance)) this.disposables.push(instance);
       }
 
@@ -871,39 +894,6 @@ export class Container {
     return new target(...dependencies);
   }
 
-  /**
-   * Resolve one factory `inject` dependency. Since 1.11 the declaring module's
-   * scope is consulted FIRST (proper visibility semantics — a `forRootAsync`
-   * factory can inject providers reachable through its module's imports); on
-   * any failure the legacy no-requester lookup (root bucket, then first
-   * exporter) is kept as fallback, so every previously-resolving graph still
-   * resolves.
-   */
-  private resolveFactoryDependency(token: Token, declaringModuleId: string): unknown {
-    if (declaringModuleId !== ROOT_MODULE_ID && this.scopes.has(declaringModuleId)) {
-      try {
-        return this.resolve(token, declaringModuleId);
-      } catch {
-        // Fall through to the legacy escape hatch below.
-      }
-    }
-    return this.resolve(token);
-  }
-
-  private async resolveFactoryDependencyAsync(
-    token: Token,
-    declaringModuleId: string,
-  ): Promise<unknown> {
-    if (declaringModuleId !== ROOT_MODULE_ID && this.scopes.has(declaringModuleId)) {
-      try {
-        return await this.resolveAsync(token, declaringModuleId);
-      } catch {
-        // Fall through to the legacy escape hatch below.
-      }
-    }
-    return this.resolveAsync(token);
-  }
-
   private resolveFactory<T>(registration: ProviderRegistration<T>): T {
     if (!registration.useFactory) {
       throw new Error('Factory function is missing');
@@ -911,7 +901,7 @@ export class Container {
 
     const dependencies = (registration.inject || []).map((token) => {
       const resolved = token instanceof ForwardRef ? token.factory() : token;
-      return this.resolveFactoryDependency(resolved, registration.declaringModuleId);
+      return this.resolve(resolved, registration.declaringModuleId);
     });
     const result = registration.useFactory(...dependencies);
 
@@ -925,7 +915,8 @@ export class Container {
     return result;
   }
 
-  async resolveAsync<T>(token: Token<T>, requestingModuleId?: string): Promise<T> {
+  resolveAsync<K extends Token>(token: K, requestingModuleId?: string): Promise<InferToken<K>>;
+  async resolveAsync<T>(token: Token, requestingModuleId?: string): Promise<T> {
     const root = this.root;
     root.asyncDepth++;
     let result: T;
@@ -940,9 +931,12 @@ export class Container {
     return result;
   }
 
-  private async resolveAsyncInner<T>(token: Token<T>, requestingModuleId?: string): Promise<T> {
+  private async resolveAsyncInner<T>(
+    token: Token,
+    requestingModuleId?: string,
+    ancestors: ReadonlySet<ProviderRegistration> = new Set(),
+  ): Promise<T> {
     const registration = this.findRegistration<T>(token, requestingModuleId);
-
     if (!registration) {
       if (
         requestingModuleId !== undefined &&
@@ -951,48 +945,113 @@ export class Container {
       ) {
         throw new ModuleVisibilityError(requestingModuleId, token);
       }
-      if (typeof token === 'function') {
-        throw new Error(
-          `No provider found for token: ${this.tokenToString(token)}. ` +
-            `Declare it in a module's providers.`,
-        );
-      }
       if (token instanceof InjectionToken && token.options?.factory) {
-        this.register({ provide: token, useFactory: token.options.factory });
-        return this.resolveAsync(token, requestingModuleId);
+        this.registerOptions(
+          { inject: [], provide: token, useFactory: token.options.factory },
+          ROOT_MODULE_ID,
+        );
+        return this.resolveAsyncInner(token, requestingModuleId, ancestors);
       }
-      throw new Error(`No provider found for token: ${this.tokenToString(token)}`);
-    }
-
-    if (registration.useFactory) {
-      const scope = registration.effectiveScope ?? registration.scope;
-      if (scope === Scope.SINGLETON && registration.instance !== undefined) {
-        return registration.instance;
-      }
-
-      this.claimLazyModule(registration.declaringModuleId);
-
-      // Module scope first, legacy no-requester fallback — same policy as the
-      // sync resolveFactory path.
-      const dependencies = await Promise.all(
-        (registration.inject || []).map((t) => {
-          const resolved = t instanceof ForwardRef ? t.factory() : t;
-          return this.resolveFactoryDependencyAsync(resolved, registration.declaringModuleId);
-        }),
+      throw new Error(
+        `No provider found for token: ${this.tokenToString(token)}. Declare it in a module's providers.`,
       );
-
-      const instance = await registration.useFactory(...dependencies);
-
-      if (scope === Scope.SINGLETON) {
-        registration.instance = instance;
-        // Track for disposal on the ROOT, matching the sync resolveRegistration path.
-        if (isDisposable(instance)) this.root.disposables.push(instance);
-      }
-
-      return instance;
     }
+    if (registration.value) return registration.value.value;
+    if (ancestors.has(registration)) {
+      const chain = [...ancestors, registration]
+        .map((entry) => this.tokenToString(entry.provide))
+        .join(' -> ');
+      throw new Error(`Circular dependency detected: ${chain}`);
+    }
+    const next = new Set([...ancestors, registration]);
+    this.claimLazyModule(registration.declaringModuleId);
+    if (registration.useExisting) {
+      return this.resolveAsyncInner(registration.useExisting, requestingModuleId, next);
+    }
+    const scope = registration.effectiveScope ?? registration.scope;
+    if (scope === Scope.SINGLETON && registration.instance) return registration.instance.value;
+    if (scope === Scope.REQUEST) {
+      // This cache is written only through checked token values or this same registration.
+      const cached = this.requestInstances.get(registration.provide) as
+        | { readonly value: T }
+        | undefined;
+      if (cached) return cached.value;
+    }
+    const owner = scope === Scope.SINGLETON ? this.root : this;
+    if (scope !== Scope.TRANSIENT) {
+      // In-flight entries share the registration's value type, erased by the heterogeneous map.
+      const pending = owner.pendingInstances.get(registration) as Promise<T> | undefined;
+      if (pending) return pending;
+    }
+    const pending = this.constructAsync(registration, next).then((instance) => {
+      if (scope === Scope.SINGLETON) {
+        registration.instance = { value: instance };
+        if (isDisposable(instance)) this.root.disposables.push(instance);
+      } else if (scope === Scope.REQUEST) {
+        this.requestInstances.set(registration.provide, { value: instance });
+        if (isDisposable(instance)) this.disposables.push(instance);
+      }
+      return instance;
+    });
+    if (scope !== Scope.TRANSIENT) owner.pendingInstances.set(registration, pending);
+    try {
+      return await pending;
+    } finally {
+      if (owner.pendingInstances.get(registration) === pending)
+        owner.pendingInstances.delete(registration);
+    }
+  }
 
-    return this.resolve(token, requestingModuleId);
+  private async constructAsync<T>(
+    registration: ProviderRegistration<T>,
+    ancestors: ReadonlySet<ProviderRegistration>,
+  ): Promise<T> {
+    const moduleId = registration.declaringModuleId;
+    if (registration.useFactory) {
+      const dependencies = await Promise.all(
+        (registration.inject ?? []).map((token) =>
+          this.resolveAsyncInner(
+            token instanceof ForwardRef ? token.factory() : token,
+            moduleId,
+            ancestors,
+          ),
+        ),
+      );
+      return registration.useFactory(...dependencies);
+    }
+    const target = registration.useClass;
+    if (!target)
+      throw new Error(
+        `Invalid provider registration for: ${this.tokenToString(registration.provide)}`,
+      );
+    const paramTypes = getConstructorDependencies(target);
+    const metadata = getInjectMetadata(target);
+    const inject = new Map(metadata.map((entry) => [entry.index, entry]));
+    const arity = Math.max(
+      paramTypes.length,
+      metadata.reduce((max, entry) => Math.max(max, entry.index + 1), 0),
+    );
+    const dependencies = await Promise.all(
+      Array.from({ length: arity }, async (_unused, index) => {
+        const entry = inject.get(index);
+        const rawToken = entry?.token;
+        const token =
+          rawToken instanceof ForwardRef ? rawToken.factory() : (rawToken ?? paramTypes[index]);
+        if (!token || isErasedTypeToken(token)) {
+          if (entry?.optional) return undefined;
+          throw new Error(
+            `Cannot resolve dependency at index ${index} for ${target.name}. ` + IMPORT_TYPE_HINT,
+          );
+        }
+        if (entry?.optional && !this.has(token)) return undefined;
+        if (rawToken instanceof ForwardRef) {
+          const dependency = this.findRegistration(token, moduleId);
+          if (dependency && ancestors.has(dependency)) return this.createLazyProxy(token, moduleId);
+        }
+        return this.resolveAsyncInner(token, moduleId, ancestors);
+      }),
+    );
+    return new target(...dependencies);
   }
 
   private createLazyProxy(token: Token, requestingModuleId?: string): object {
@@ -1000,14 +1059,20 @@ export class Container {
     const target: object = Object.create(null);
     return new Proxy(target, {
       get(_target, prop) {
-        const instance = container.resolve<object>(token, requestingModuleId);
+        const instance = container.resolve(token, requestingModuleId);
+        if ((typeof instance !== 'object' || instance === null) && typeof instance !== 'function') {
+          throw new Error('A circular dependency must resolve to an object');
+        }
         // Annotate `unknown` to contain `Reflect.get`'s `any` return so the
         // typeof-narrows-to-Function guard below stays honest.
         const value: unknown = Reflect.get(instance, prop, instance);
         return typeof value === 'function' ? value.bind(instance) : value;
       },
       set(_target, prop, value) {
-        const instance = container.resolve<object>(token, requestingModuleId);
+        const instance = container.resolve(token, requestingModuleId);
+        if ((typeof instance !== 'object' || instance === null) && typeof instance !== 'function') {
+          throw new Error('A circular dependency must resolve to an object');
+        }
         // `Reflect.set` returns whether the assignment succeeded — that's the
         // spec-correct Proxy `set` return, vs returning `true` unconditionally.
         return Reflect.set(instance, prop, value);

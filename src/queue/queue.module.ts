@@ -1,5 +1,5 @@
-import { Container, defineModule, DiscoveryService, stableHash } from '../index';
-import type { ProviderOptions } from '../index';
+import { Container, defineModule, defineProvider, DiscoveryService, stableHash } from '../index';
+import type { ProviderDefinition } from '../index';
 import { inline } from './inline.driver';
 import { QueueClient } from './queue.client';
 import { QueueDispatchBinding } from './queue.binding';
@@ -51,26 +51,25 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<QueueModu
       );
     }
 
-    const clientProviders: ProviderOptions[] = queues.map((name) => ({
-      provide: queueToken(name),
-      useFactory: (driver: QueueDriver, _binding: QueueDispatchBinding) =>
-        new QueueClient(name, driver),
-      inject: [QUEUE_DRIVER, QueueDispatchBinding],
-    }));
+    const clientProviders: ProviderDefinition[] = queues.map((name) =>
+      defineProvider(queueToken(name), {
+        useFactory: (driver: QueueDriver, _binding: QueueDispatchBinding) =>
+          new QueueClient(name, driver),
+        inject: [QUEUE_DRIVER, QueueDispatchBinding],
+      }),
+    );
 
     return {
       providers: [
-        {
-          provide: QUEUE_DRIVER,
+        defineProvider(QUEUE_DRIVER, {
           useFactory: (o: QueueModuleOptions) => o.driver ?? inline(),
           inject: [OPTIONS],
-        },
-        {
-          provide: QueueDispatchBinding,
+        }),
+        defineProvider(QueueDispatchBinding, {
           useFactory: (container: Container, discovery: DiscoveryService, driver: QueueDriver) =>
             new QueueDispatchBinding(container, discovery, driver, queues, dispatch),
           inject: [Container, DiscoveryService, QUEUE_DRIVER],
-        },
+        }),
         ...clientProviders,
       ],
       exports: [QUEUE_DRIVER, QueueDispatchBinding, ...queues.map((name) => queueToken(name))],

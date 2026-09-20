@@ -10,17 +10,17 @@ export class MemoryCacheStore implements CacheStore {
     this.max = max;
   }
 
-  get<T = unknown>(key: string): T | undefined {
+  get(key: string): unknown {
     const entry = this.store.get(key);
     if (!entry) return undefined;
     if (Date.now() > entry.expiresAt) {
       this.store.delete(key);
       return undefined;
     }
-    return entry.value as T;
+    return entry.value;
   }
 
-  set<T = unknown>(key: string, value: T, ttl?: number): void {
+  set(key: string, value: unknown, ttl?: number): void {
     // Evict if at capacity
     if (!this.store.has(key) && this.store.size >= this.max) {
       this.evict();

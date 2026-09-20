@@ -1,8 +1,13 @@
 // Config-namespace registration. Design ported from stratal's `registerAs`
 // (MIT, © Temitayo Fadojutimi) and reworked for vela's multi-runtime DI: env
-// enters through the `CONFIG_ENV` token instead of a Cloudflare-specific one.
-import type { InjectionToken, ProviderOptions } from '../container/types';
-import { CONFIG_ENV } from './config.tokens';
+// enters through the namespace's declared typed environment token.
+import {
+  defineProvider,
+  InjectionToken,
+  type ProviderDefinition,
+  type Token,
+  type Type,
+} from '../container/types';
 
 /**
  * The result of {@link registerAs}: a namespaced config factory plus the DI
@@ -13,31 +18,33 @@ export interface ConfigNamespace<
   TEnv = Record<string, unknown>,
   TConfig extends object = object,
 > {
-  /** Injection token for this namespace's resolved config (`Symbol.for('vela:config:<ns>')`). */
+  /** The concrete injection token for this namespace's resolved config. */
   readonly KEY: InjectionToken<TConfig>;
   /** The namespace name (e.g. `'database'`). */
   readonly namespace: TKey;
   /** Factory receiving the ambient env and returning the namespace config. */
   readonly factory: (env: TEnv) => TConfig;
-  /** Provider registration injecting {@link CONFIG_ENV} — spread into a module's providers. */
-  asProvider(): ProviderOptions<TConfig>;
+  /** Checked registration injecting the namespace's declared environment token. */
+  asProvider(): ProviderDefinition<TConfig>;
 }
 
-/** Any config namespace — structural typing for the module `load` list. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type AnyConfigNamespace = ConfigNamespace<string, any, object>;
+/** Runtime namespace metadata does not need access to its environment factory. */
+export interface AnyConfigNamespace {
+  readonly KEY: Token;
+  readonly namespace: string;
+  asProvider(): ProviderDefinition<object>;
+}
 
 /**
  * Create a namespaced configuration factory (NestJS `registerAs` parity).
  *
- * The `KEY` is minted with `Symbol.for` so it keeps a stable identity across
- * module re-evaluation (HMR / repeated imports) — a fresh `InjectionToken`
- * would mint a new identity each eval and break dedup. It is typed as
- * `InjectionToken<TConfig>` purely for injection-site DX.
+ * Environment input comes from an explicit typed token; no reader-selected
+ * environment type is fabricated from the ambient binding record. Declare a
+ * namespace once and import that declaration wherever its KEY is consumed.
  *
  * @example
  * ```ts
- * export const dbConfig = registerAs('database', (env: Env) => ({
+ * export const dbConfig = registerAs('database', ENV_TOKEN, (env) => ({
  *   url: env.DATABASE_URL,
  *   pool: 10,
  * }));
@@ -48,15 +55,16 @@ export type AnyConfigNamespace = ConfigNamespace<string, any, object>;
  */
 export function registerAs<TKey extends string, TEnv, TConfig extends object>(
   namespace: TKey,
-  factory: (env: TEnv) => TConfig,
+  envToken: InjectionToken<TEnv> | Type<TEnv>,
+  factory: (env: NoInfer<TEnv>) => TConfig,
 ): ConfigNamespace<TKey, TEnv, TConfig> {
-  const KEY = Symbol.for(`vela:config:${namespace}`) as unknown as InjectionToken<TConfig>;
+  const KEY = new InjectionToken<TConfig>(`vela:config:${namespace}`);
   return {
     KEY,
     namespace,
     factory,
-    asProvider(): ProviderOptions<TConfig> {
-      return { provide: KEY, useFactory: factory, inject: [CONFIG_ENV] };
+    asProvider(): ProviderDefinition<TConfig> {
+      return defineProvider(KEY, { useFactory: factory, inject: [envToken] });
     },
   };
 }
@@ -66,14 +74,13 @@ export function registerAs<TKey extends string, TEnv, TConfig extends object>(
  *
  * @example `type Db = InferConfigType<typeof dbConfig>` → `{ url: string; pool: number }`
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type InferConfigType<T> = T extends ConfigNamespace<string, any, infer C> ? C : never;
+export type InferConfigType<T> = T extends { readonly KEY: InjectionToken<infer C> } ? C : never;
 
 /**
  * Zero-codegen typed config shape from a tuple of namespaces — pass as the
- * `ConfigService` generic to type dot-notation reads.
+ * a type annotation for separately validated aggregate configuration.
  *
- * @example `ConfigService<ConfigType<[typeof dbConfig, typeof mailConfig]>>`
+ * For typed runtime access prefer resolving each declared namespace's KEY.
  */
 export type ConfigType<L extends readonly AnyConfigNamespace[]> = {
   [N in L[number] as N['namespace']]: InferConfigType<N>;
