@@ -22,4 +22,4 @@ export const STUDIO_EXPORT_SUFFIX = '/export';
 export const STUDIO_TOKEN_HEADER = 'authorization';
 
 /** The wire protocol version. Bumped only on a breaking envelope change. */
-export const STUDIO_PROTOCOL_VERSION = 1;
+export const STUDIO_PROTOCOL_VERSION = 2;

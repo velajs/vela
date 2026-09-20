@@ -364,11 +364,7 @@ export const openapiDoc = {
 export function panelResponders(): FakeTransportTable {
   return {
     'app.openapi': openapiDoc,
-    'api.tryit': (args) => ({
-      status: 200,
-      headers: { 'content-type': 'application/json' },
-      body: { echo: { method: args.method, path: args.path, query: args.query ?? {} } },
-    }),
+    'api.authorizeTryIt': () => ({ authorized: true }),
     'auth.users': (args) => {
       const q = args.q?.toLowerCase();
       const rows =

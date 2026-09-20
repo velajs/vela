@@ -14,7 +14,7 @@
  * (dynamic import fails, or the token is unbound) invalidation NO-OPS gracefully:
  * a restore must never fail because live queries aren't wired.
  */
-import type { Container, Token } from '@velajs/vela';
+import type { Container } from '@velajs/vela';
 
 /**
  * The invalidation port the adapter depends on (so tests can assert with a fake).
@@ -24,11 +24,6 @@ export interface LiveInvalidatorPort {
   invalidateTables(tables: readonly string[]): Promise<void>;
 }
 
-/** Structural view of `@velajs/vela/live`'s `LiveInvalidation` (avoids a static subpath import). */
-interface LiveInvalidationLike {
-  invalidate(cmd: { tags: string[]; room?: string; origin?: string }): Promise<unknown>;
-}
-
 /** A no-op invalidator (the default when no container/live layer is available). */
 export class NoopLiveInvalidator implements LiveInvalidatorPort {
   async invalidateTables(): Promise<void> {
@@ -36,16 +31,18 @@ export class NoopLiveInvalidator implements LiveInvalidatorPort {
   }
 }
 
-let liveTokenPromise: Promise<Token<LiveInvalidationLike> | null> | undefined;
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- preserve the optional runtime subpath boundary
+type LiveToken = typeof import('@velajs/vela/live').LiveInvalidation;
+let liveTokenPromise: Promise<LiveToken | null> | undefined;
 
 /**
  * Lazily resolve the `LiveInvalidation` class token from `@velajs/vela/live` via
  * a runtime `import()`. Cached across calls; resolves to `null` when the subpath
  * cannot be loaded (live layer not installed).
  */
-function loadLiveToken(): Promise<Token<LiveInvalidationLike> | null> {
+function loadLiveToken(): Promise<LiveToken | null> {
   return (liveTokenPromise ??= import('@velajs/vela/live')
-    .then((mod) => mod.LiveInvalidation as unknown as Token<LiveInvalidationLike>)
+    .then((mod) => mod.LiveInvalidation)
     .catch(() => null));
 }
 

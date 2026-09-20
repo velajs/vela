@@ -1,3 +1,5 @@
+import { bindAdapter } from '@velajs/crud/adapter';
+import { defineProvider } from '@velajs/vela';
 import { describe, expect, it } from 'vitest';
 import { Controller, METADATA_KEYS, Module, VelaFactory, defineMetadata } from '@velajs/vela';
 import type { CrudConfig } from '@velajs/crud';
@@ -109,7 +111,7 @@ class FakeModelSource implements StudioModelSource {
       columns: m.columns,
       relations: [],
       flags: { softDelete: false, multiTenant: false, versioning: false, audit: false },
-      supports: { facets: false, search: false, cascade: false },
+      supports: { bulkWrites: true, facets: false, search: false, cascade: false },
     };
   }
 
@@ -614,8 +616,11 @@ function memoryAdapter(model: Model, db: MemoryDb): CrudAdapter<Row> {
       (acc, f) => acc.filter((r) => matchFilter(r[f.field], f.operator, f.value)),
       rows,
     );
-  return {
-    capabilities: new Set(),
+  return bindAdapter({
+    capabilities: new Set(['transactions']),
+    async requestScope<T>(fn: (s: AdapterScope) => Promise<T>): Promise<T> {
+      return fn(scope);
+    },
     async transaction<T>(fn: (s: AdapterScope) => Promise<T>): Promise<T> {
       return fn(scope);
     },
@@ -658,7 +663,7 @@ function memoryAdapter(model: Model, db: MemoryDb): CrudAdapter<Row> {
         },
       };
     },
-  };
+  });
 }
 
 type App = Awaited<ReturnType<typeof VelaFactory.create>>;
@@ -681,7 +686,7 @@ async function makeApp(
   );
 
   const imports = [StudioModule.forRoot({ token: TOKEN, ...studio }), StudioCrudModule.forRoot({})];
-  if (tt !== 'off') imports.push(StudioTimeTravelModule.forRoot(tt));
+  if (tt !== 'off') imports.push(StudioTimeTravelModule.forRoot({ ...tt, imports: [...imports] }));
 
   @Module({ imports, controllers: [WidgetsController] })
   class AppModule {}
@@ -866,7 +871,7 @@ class BrokenTimeTravelPort implements TimeTravelPort {
 
 async function brokenPortApp(): Promise<App> {
   @Module({
-    providers: [{ provide: TIME_TRAVEL_PORT, useValue: new BrokenTimeTravelPort() }],
+    providers: [defineProvider(TIME_TRAVEL_PORT, { useValue: new BrokenTimeTravelPort() })],
     exports: [TIME_TRAVEL_PORT],
   })
   class BrokenTimeTravelModule {}

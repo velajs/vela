@@ -42,8 +42,7 @@ export interface ResolvedOptions {
   readonly adminPath: string;
   /** Normalised SPA base path (leading slash, or `''` for root). */
   readonly basePath: string;
-  readonly editable: boolean;
-  /** NON-secret per-server browser session token (never the master admin token). */
+  /** Per-server browser session credential (never the master admin token). */
   readonly sessionToken: string;
   readonly resolveFrom: string;
   readonly fetchImpl?: typeof fetch;
@@ -52,18 +51,27 @@ export interface ResolvedOptions {
 
 /** Apply defaults + derive per-server values (the session token) once. */
 export function resolveOptions(options: StudioHostOptions): ResolvedOptions {
+  const origin = new URL(options.workerOrigin);
+  if (
+    !['http:', 'https:'].includes(origin.protocol) ||
+    origin.username ||
+    origin.password ||
+    origin.pathname !== '/' ||
+    origin.search ||
+    origin.hash
+  ) {
+    throw new Error(
+      'workerOrigin must be an HTTP(S) origin without credentials, path, query, or fragment.',
+    );
+  }
   return {
     cwd: options.cwd ?? process.cwd(),
     host: options.host ?? DEFAULT_HOST,
     port: options.port ?? 0,
-    workerOrigin: options.workerOrigin,
+    workerOrigin: origin.origin,
     adminToken: options.adminToken,
     adminPath: normaliseAdminPath(options.adminPath ?? DEFAULT_ADMIN_PATH),
     basePath: normaliseBasePath(options.basePath ?? DEFAULT_BASE_PATH),
-    // Opt-IN: the editable affordances (auto-auth + edit UI) stay OFF unless the
-    // caller explicitly enables them. The loopback dev host / CLI passes
-    // `editable: true`; a bare mount is read-only by default.
-    editable: options.editable ?? false,
     sessionToken: randomUUID(),
     resolveFrom: options.resolveFrom ?? import.meta.url,
     fetchImpl: options.fetchImpl,

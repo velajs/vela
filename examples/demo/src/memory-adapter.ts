@@ -1,8 +1,7 @@
 /**
  * A tiny in-memory `CrudAdapter` — the demo's BYO datastore.
  *
- * crud is BYO-DB and ships no memory adapter, so (like the server package's own
- * tests) the demo authors a compact, correct in-memory adapter over a shared
+ * The demo authors a compact in-memory adapter over a shared
  * multi-table `MemoryDb`. It implements the full read/write contract the Studio
  * data browser + time-travel exercise, and advertises the optional capabilities
  * (`aggregate`/`nativeSearch`/`cascade`) each model opts into so Studio's honest
@@ -25,6 +24,7 @@ import type {
   SearchQuery,
 } from '@velajs/crud/adapter';
 import type { Model } from '@velajs/crud/model';
+import { bindAdapter } from '@velajs/crud/adapter';
 
 /** One untyped row image. */
 export type Row = Record<string, unknown>;
@@ -32,6 +32,30 @@ export type Row = Record<string, unknown>;
 /** A minimal multi-table in-memory "database" shared by the per-model adapters. */
 export class MemoryDb {
   readonly tables = new Map<string, Map<string, Row>>();
+  #pending = Promise.resolve();
+
+  /** Serialize adapter scopes; transactions restore every table on failure. */
+  async scoped<T>(fn: (scope: AdapterScope) => Promise<T>, rollback: boolean): Promise<T> {
+    const previous = this.#pending;
+    let release = () => {};
+    this.#pending = new Promise<void>((resolve) => { release = resolve; });
+    await previous;
+    let snapshot: Map<string, Map<string, Row>> | undefined;
+    try {
+      snapshot = rollback ? structuredClone(this.tables) : undefined;
+      return await fn({ tx: null });
+    } catch (error) {
+      if (snapshot !== undefined) {
+        for (const [name, table] of this.tables) {
+          table.clear();
+          for (const [id, row] of snapshot.get(name) ?? []) table.set(id, row);
+        }
+      }
+      throw error;
+    } finally {
+      release();
+    }
+  }
 
   table(name: string): Map<string, Row> {
     let t = this.tables.get(name);
@@ -94,20 +118,23 @@ export function memoryAdapter(
   const store = db.table(model.tableName);
   const sd = model.softDeleteField;
   const scope: AdapterScope = { tx: null };
-  const capabilities = new Set<AdapterCapability>(caps);
+  const capabilities = new Set<AdapterCapability>(['transactions', ...caps]);
 
   const applyFilters = (rows: Row[], filters: FilterCondition[]): Row[] =>
     filters.reduce((acc, f) => acc.filter((r) => matchFilter(r[f.field], f.operator, f.value)), rows);
   const visibleLive = (rows: Row[]): Row[] =>
     sd === undefined ? rows : rows.filter((r) => r[sd] == null);
 
-  const adapter: CrudAdapter<Row> = {
+  const adapter = bindAdapter({
     capabilities,
+    requestScope<T>(fn: (s: AdapterScope) => Promise<T>): Promise<T> {
+      return db.scoped(fn, false);
+    },
     async transaction<T>(fn: (s: AdapterScope) => Promise<T>): Promise<T> {
-      return fn(scope);
+      return db.scoped(fn, true);
     },
     async create(input: Partial<Row>): Promise<Row> {
-      const row = { ...input } as Row;
+      const row = { ...input };
       store.set(String(row.id), row);
       return row;
     },
@@ -170,7 +197,7 @@ export function memoryAdapter(
         },
       };
     },
-  };
+  });
 
   if (capabilities.has('aggregate')) {
     adapter.aggregate = async (spec: AggregateSpec): Promise<AggregateResult> => {

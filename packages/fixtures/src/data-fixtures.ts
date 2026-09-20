@@ -103,7 +103,7 @@ export const userDescriptor: StudioModelDescriptor = {
     { name: 'posts', type: 'hasMany', target: 'post', foreignKey: 'authorId', cascade: 'setNull' },
   ],
   flags: { softDelete: true, multiTenant: false, versioning: false, audit: true },
-  supports: { facets: true, search: true, cascade: true },
+  supports: { bulkWrites: true, facets: true, search: true, cascade: true },
 };
 
 /** The `post` model descriptor — FK back to `user`, no soft-delete. */
@@ -121,7 +121,7 @@ export const postDescriptor: StudioModelDescriptor = {
   ],
   relations: [{ name: 'author', type: 'belongsTo', target: 'user', foreignKey: 'authorId' }],
   flags: { softDelete: false, multiTenant: false, versioning: false, audit: false },
-  supports: { facets: true, search: true, cascade: false },
+  supports: { bulkWrites: true, facets: true, search: true, cascade: false },
 };
 
 /** The model listing (`data.listModels`). */

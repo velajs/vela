@@ -1,10 +1,11 @@
+import type { StudioConnection } from '@velajs/studio-protocol';
 /**
  * The two entry components:
  *  - {@link Studio}: the provider-inheriting embed — assumes an
  *    `<AdminClientProvider>` is already above it, and just mounts the routed
  *    shell (router + chrome).
  *  - {@link StudioApp}: the full app — owns token state (memory + sessionStorage),
- *    shows the login screen until a token health-probes clean, then wraps
+ *    shows login until an authenticated capability request succeeds, then wraps
  *    {@link Studio} in its own `<AdminClientProvider>`.
  */
 import { useCallback, useMemo, useState } from 'react';
@@ -51,6 +52,8 @@ export function Studio({
 }
 
 export interface StudioAppProps {
+  /** Validated local host bootstrap; its session is never persisted as a master token. */
+  connection?: StudioConnection;
   /** Origin the admin surface is served from. Defaults to same-origin (`''`). */
   baseUrl?: string;
   /**
@@ -76,9 +79,10 @@ export interface StudioAppProps {
 export function StudioApp(props: StudioAppProps) {
   const {
     baseUrl = '',
-    adminBasePath,
-    routerBasePath,
-    adminToken,
+    connection,
+    adminBasePath = connection?.adminBasePath,
+    routerBasePath = connection?.routerBasePath,
+    adminToken = connection?.sessionToken,
     fetchImpl,
     theme,
     history,
@@ -92,21 +96,34 @@ export function StudioApp(props: StudioAppProps) {
   // candidate token is pushed onto the current client via `setToken` for the
   // health probe, before it is committed to state (and a fresh client built).
   const client = useMemo(
-    () => new AdminClient({ baseUrl, basePath: adminBasePath, adminToken: token, fetchImpl }),
-    [baseUrl, adminBasePath, fetchImpl, token],
+    () =>
+      new AdminClient({
+        baseUrl,
+        basePath: adminBasePath,
+        adminToken: token,
+        fetchImpl,
+        apiRequestPath: connection?.apiRequestPath,
+      }),
+    [baseUrl, adminBasePath, fetchImpl, token, connection?.apiRequestPath],
   );
 
   const handleSubmit = useCallback(
     async (candidate: string) => {
       setPending(true);
       setError(null);
-      client.setToken(candidate);
       try {
-        const health = await client.health();
+        const candidateClient = new AdminClient({
+          baseUrl,
+          basePath: adminBasePath,
+          adminToken: candidate,
+          fetchImpl,
+        });
+        const health = await candidateClient.health();
         if (!health.enabled) {
           setError('Studio is disabled on this server.');
           return;
         }
+        await candidateClient.rpc('studio.capabilities', {});
         writeStoredToken(candidate);
         setToken(candidate);
       } catch (err) {
@@ -117,7 +134,7 @@ export function StudioApp(props: StudioAppProps) {
         setPending(false);
       }
     },
-    [client],
+    [baseUrl, adminBasePath, fetchImpl],
   );
 
   const handleSignOut = useCallback(() => {
@@ -137,7 +154,7 @@ export function StudioApp(props: StudioAppProps) {
         history={history}
         initialPath={initialPath}
         theme={theme}
-        onSignOut={handleSignOut}
+        onSignOut={connection === undefined ? handleSignOut : undefined}
       />
     </AdminClientProvider>
   );

@@ -49,7 +49,7 @@ export function studioFetch(options?: {
   requests?: Array<{ url: string; init?: RequestInit }>;
 }): typeof fetch {
   const responses = options?.responses ?? cannedResponses;
-  const health = options?.health ?? { enabled: true, protocolVersion: 1 };
+  const health = options?.health ?? { enabled: true, protocolVersion: 2 };
   const impl = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = typeof input === 'string' ? input : input.toString();
     options?.requests?.push({ url, init });

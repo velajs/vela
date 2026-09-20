@@ -175,17 +175,19 @@ export async function createApp(options: CreateAppOptions = {}): Promise<DemoApp
   })
   class ApiModule {}
 
-  @Module({
-    imports: [
-      ApiModule,
-      StudioModule.forRoot({
+  const studioModule = StudioModule.forRoot({
         path: ADMIN_BASE_PATH,
         token,
         rootModule: ApiModule,
         editable,
-      }),
-      StudioCrudModule.forRoot({}),
-      StudioTimeTravelModule.forRoot({}),
+      });
+  const modelSourceModule = StudioCrudModule.forRoot({});
+  @Module({
+    imports: [
+      ApiModule,
+      studioModule,
+      modelSourceModule,
+      StudioTimeTravelModule.forRoot({ imports: [studioModule, modelSourceModule] }),
       FeatureFlagsModule.forRoot({ manifest: { ...FLAG_MANIFEST }, isGlobal: true }),
       StudioFlagsModule.forRoot({}),
       ScheduleModule,

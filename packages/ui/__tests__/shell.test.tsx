@@ -24,6 +24,67 @@ async function sidebar(): Promise<ReturnType<typeof within>> {
 }
 
 describe('StudioApp login gate', () => {
+  it('boots a local connection without login or persisting its session token', async () => {
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    render(
+      <StudioApp
+        baseUrl="http://host"
+        connection={{
+          protocolVersion: 2,
+          adminBasePath: '/custom/admin',
+          routerBasePath: '/',
+          apiRequestPath: '/custom/admin/api-request',
+          sessionToken: 'host-session',
+        }}
+        fetchImpl={studioFetch({ requests })}
+        initialPath="/"
+      />,
+    );
+    await sidebar();
+    expect(screen.queryByLabelText('Admin token')).toBeNull();
+    expect(sessionStorage.length).toBe(0);
+    expect(requests.every((request) => request.url.startsWith('http://host/custom/admin/'))).toBe(
+      true,
+    );
+    expect(
+      requests.every(
+        (request) =>
+          new Headers(request.init?.headers).get('authorization') === 'Bearer host-session',
+      ),
+    ).toBe(true);
+  });
+
+  it('rejects an invalid token even when the unauthenticated health probe is enabled', async () => {
+    render(
+      <StudioApp
+        baseUrl="http://host"
+        initialPath="/"
+        fetchImpl={async (input) => {
+          if (String(input).endsWith('/health'))
+            return Response.json({ enabled: true, protocolVersion: 2 });
+          return Response.json(
+            {
+              ok: false,
+              op: 'studio.capabilities',
+              status: 401,
+              error: {
+                code: 'STUDIO_UNAUTHORIZED',
+                status: 401,
+                title: 'Unauthorized',
+                message: 'Invalid admin token',
+              },
+            },
+            { status: 401 },
+          );
+        }}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Admin token'), { target: { value: 'wrong' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Invalid admin token');
+    expect(sessionStorage.length).toBe(0);
+    expect(screen.queryByRole('navigation', { name: 'Studio sections' })).toBeNull();
+  });
   it('shows the login screen with no token, then flips to the shell after submit', async () => {
     render(<StudioApp baseUrl="http://host" fetchImpl={studioFetch()} initialPath="/" />);
 

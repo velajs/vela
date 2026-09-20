@@ -1,3 +1,4 @@
+import { bindAdapter } from '@velajs/crud/adapter';
 import { describe, expect, it } from 'vitest';
 import { Controller, METADATA_KEYS, Module, VelaFactory, defineMetadata } from '@velajs/vela';
 import type { CrudConfig } from '@velajs/crud';
@@ -143,8 +144,11 @@ function memoryAdapter(model: Model, db: MemoryDb): CrudAdapter<Row> {
       rows,
     );
 
-  const adapter: CrudAdapter<Row> = {
-    capabilities: new Set(),
+  const adapter: CrudAdapter<Row> = bindAdapter({
+    capabilities: new Set(['transactions']),
+    async requestScope<T>(fn: (s: AdapterScope) => Promise<T>): Promise<T> {
+      return fn(scope);
+    },
     async transaction<T>(fn: (s: AdapterScope) => Promise<T>): Promise<T> {
       return fn(scope);
     },
@@ -199,7 +203,7 @@ function memoryAdapter(model: Model, db: MemoryDb): CrudAdapter<Row> {
         },
       };
     },
-  };
+  });
   return adapter;
 }
 

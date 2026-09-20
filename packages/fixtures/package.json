@@ -26,7 +26,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@velajs/studio-protocol": "workspace:^"
+    "@velajs/studio-protocol": "workspace:*"
   },
   "devDependencies": {
     "tsdown": "catalog:",

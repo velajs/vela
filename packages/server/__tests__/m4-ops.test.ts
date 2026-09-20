@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Controller, Get, Injectable, Module, ScheduleModule, VelaFactory } from '@velajs/vela';
-import type { ProviderOptions, Type } from '@velajs/vela';
+import type { ProviderDefinition, Type } from '@velajs/vela';
 import { AdminRpc, AdminLogBuffer, StudioModule } from '../src';
 import type { StudioModuleOptions } from '../src';
 import type {
@@ -40,7 +40,7 @@ type App = Awaited<ReturnType<typeof VelaFactory.create>>;
 /** Build a real app: the fixture ApiModule + StudioModule + any extra providers. */
 async function makeApp(
   studio: Partial<StudioModuleOptions> = {},
-  extra: Array<Type | ProviderOptions> = [],
+  extra: Array<Type | ProviderDefinition> = [],
   imports: Type[] = [],
 ): Promise<App> {
   @Module({
@@ -189,22 +189,20 @@ describe('app.openapi', () => {
   });
 });
 
-describe('api.tryit', () => {
-  it('executes a real app route through the app and returns its status/body', async () => {
+describe('api.authorizeTryIt', () => {
+  it('authorizes HTTP execution by the local host', async () => {
     // opsEditable open so the write gate lets the proxy run.
     const app = await makeApp({ editable: { ops: true } });
-    const r = await rpc(app, 'api.tryit', { method: 'GET', path: '/status' });
+    const r = await rpc(app, 'api.authorizeTryIt', { method: 'GET', path: '/status' });
     expect(r.ok).toBe(true);
     if (!r.ok) throw new Error('expected ok');
-    // The real StatusController#status handler produced this — not a mock.
-    expect(r.data.status).toBe(200);
-    expect(r.data.body).toBe('ok');
+    expect(r.data).toEqual({ authorized: true });
   });
 
   it('is gated: opsEditable off ⇒ 403 STUDIO_OP_FORBIDDEN', async () => {
     // ops disabled by default → the dispatch registry's write gate closes first.
     const app = await makeApp();
-    const r = await rpc(app, 'api.tryit', { method: 'GET', path: '/status' });
+    const r = await rpc(app, 'api.authorizeTryIt', { method: 'GET', path: '/status' });
     expect(r.ok).toBe(false);
     if (r.ok) throw new Error('expected error');
     expect(r.status).toBe(403);
@@ -214,7 +212,7 @@ describe('api.tryit', () => {
   it('refuses to proxy the reserved admin surface (recursive-admin guard)', async () => {
     // opsEditable is OPEN here, so the gate passes — a 403 can ONLY be the guard.
     const app = await makeApp({ editable: { ops: true } });
-    const r = await rpc(app, 'api.tryit', {
+    const r = await rpc(app, 'api.authorizeTryIt', {
       method: 'POST',
       path: `${BASE}/rpc/data.clearTable`,
     });
@@ -222,6 +220,22 @@ describe('api.tryit', () => {
     if (r.ok) throw new Error('expected error');
     expect(r.status).toBe(403);
     expect(r.error.code).toBe('STUDIO_OP_FORBIDDEN');
+  });
+
+  it('protects a custom admin mount including encoded paths and rejects unresolved or external targets', async () => {
+    const app = await makeApp({ path: '/custom/admin', editable: { ops: true } });
+    for (const path of [
+      '/custom/admin/health',
+      '/custom/%61dmin/health',
+      '/x/../custom/admin/health',
+      'https://example.com',
+      '/users/{id}',
+    ]) {
+      const response = await app
+        .getHonoApp()
+        .request('/custom/admin/rpc/api.authorizeTryIt', authed({ args: { method: 'GET', path } }));
+      expect(response.status).toBe(403);
+    }
   });
 });
 
@@ -324,14 +338,14 @@ describe('studio.capabilities', () => {
     expect(r.data.features.openapi).toBe(true);
   });
 
-  it('detects schedule from a container probe when ScheduleModule is wired', async () => {
+  it('does not advertise schedule without registered Studio handlers', async () => {
     const app = await makeApp({}, [], [ScheduleModule]);
     const r = await rpc(app, 'studio.capabilities');
     expect(r.ok).toBe(true);
     if (!r.ok) throw new Error('expected ok');
     // Real detection: the (lazy) ScheduleModule registers ScheduleRegistry, a
     // public barrel token the probe table checks.
-    expect(r.data.features.schedule).toBe(true);
+    expect(r.data.features.schedule).toBe(false);
     // ...and an unrelated optional feature stays false.
     expect(r.data.features.queue).toBe(false);
   });

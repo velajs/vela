@@ -6,8 +6,7 @@
  * each op for dispatch (read/write), feature negotiation, write-gating, and
  * destructive-confirm handling.
  *
- * Later milestones may ADD ops, never rename or remove — this is the frozen
- * coupling point between server (M2), UI transport (M3), and adapters (M11).
+ * Breaking changes increment STUDIO_PROTOCOL_VERSION and update all consumers.
  */
 import type { StudioCapabilities, StudioFeatureKey, StudioWriteGates } from './capabilities';
 import type {
@@ -25,7 +24,7 @@ import type {
   StudioRowPage,
   WriteRowRequest,
 } from './data';
-import type { EntrypointRow, ModuleNode, RouteRow, TryItRequest, TryItResponse } from './app';
+import type { EntrypointRow, ModuleNode, RouteRow, TryItRequest } from './app';
 import type {
   AdminAuditEntry,
   AdminLogEntry,
@@ -74,7 +73,7 @@ export interface StudioRpcMap {
   'app.modules': { req: EmptyArgs; res: ModuleNode[] };
   'app.entrypoints': { req: EmptyArgs; res: EntrypointRow[] };
   'app.openapi': { req: EmptyArgs; res: unknown };
-  'api.tryit': { req: TryItRequest; res: TryItResponse };
+  'api.authorizeTryIt': { req: TryItRequest; res: { authorized: true } };
 
   // data browser
   'data.listModels': { req: EmptyArgs; res: StudioModelInfo[] };
@@ -190,14 +189,8 @@ export const STUDIO_OP_META = {
   'app.modules': { mode: 'read', feature: 'app' },
   'app.entrypoints': { mode: 'read', feature: 'app' },
   'app.openapi': { mode: 'read', feature: 'openapi' },
-  /**
-   * `api.tryit` proxies an arbitrary HTTP verb (GET/POST/DELETE/...) through the
-   * app, so it is classified `write`, not `read`: a read-only Studio (with
-   * `opsEditable` closed) must never execute it, and its audit rows must record
-   * `mode: 'write'`. It is NOT destructive, though — no persistent Studio-side
-   * mutation to confirm — so it carries no `confirmToken`.
-   */
-  'api.tryit': { mode: 'write', feature: 'openapi', gate: 'opsEditable' },
+  /** Authorizes a host HTTP request; server gates and audits this operational action. */
+  'api.authorizeTryIt': { mode: 'write', feature: 'openapi', gate: 'opsEditable' },
 
   'data.listModels': { mode: 'read', feature: 'data' },
   'data.describeModel': { mode: 'read', feature: 'data' },
@@ -279,7 +272,7 @@ export const STUDIO_OPS = [
   'app.modules',
   'app.entrypoints',
   'app.openapi',
-  'api.tryit',
+  'api.authorizeTryIt',
   'data.listModels',
   'data.describeModel',
   'data.listRows',

@@ -23,11 +23,11 @@ Studio monorepo.
 reports `FEATURE_UNCONFIGURED` and `features.auth` stays `false` — an acceptable
 demo state. **Live/presence** are likewise not wired.
 
-The models are authored with the **real crud surface** — `defineModels` over real
-`zod` schemas + the `@Crud` decorator. crud is BYO-DB and ships no memory adapter
-(there is no `@velajs/crud-memory` package), so the demo supplies a small
-in-memory `CrudAdapter` in `src/memory-adapter.ts`, exactly as the server
-package's own tests do.
+The models use `defineModels` over Zod schemas and the `@Crud` decorator. The demo
+supplies a small in-memory adapter through `bindAdapter` in `src/memory-adapter.ts`.
+It serializes request scopes and rolls back failed transactions across tables, so
+Studio can expose bulk writes with a real rollback guarantee. Time-travel modules
+explicitly import the configured Studio and model-source modules.
 
 ## Run the app
 
@@ -49,8 +49,12 @@ vela studio --url http://localhost:8787
 The walkthrough is the durable test. It boots the app + the loopback host
 **in-process**, drives every op via `app.request`, asserts the time-travel
 snapshot → restore → undo round-trip and the 428 confirm flows, and confirms the
-host serves the SPA shell + standalone bundle, injects the master bearer
-server-side, and 403s a gate rejection.
+host serves the SPA shell and standalone bundle, authenticates its browser session,
+injects the master bearer server-side, and rejects an invalid transport request.
+Every admin response passes through the shared operation-specific protocol parser.
+The host package separately verifies API Explorer execution against actual
+Miniflare/Workerd HTTP with native bindings and execution context; the Node demo
+does not substitute for that Worker integration test.
 
 ```bash
 # As the CI conformance gate (vitest):

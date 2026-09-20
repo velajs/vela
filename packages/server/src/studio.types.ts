@@ -4,7 +4,7 @@
  * here — they come from `@velajs/studio-protocol`.
  */
 import type { Context } from 'hono';
-import type { Token, Type } from '@velajs/vela';
+import type { InferToken, Token, Type } from '@velajs/vela';
 import type { StudioConfirmChallenge, StudioOp, StudioWriteGates } from '@velajs/studio-protocol';
 import type { AdminAuditEntry } from '@velajs/studio-protocol';
 
@@ -25,7 +25,7 @@ export interface EditableFlags {
   schema: boolean;
   /** Run-as / identity-scoped reads and writes. */
   identity: boolean;
-  /** Operational actions (queue send/replay, schedule run-now, session revoke, api.tryit). */
+  /** Operational actions (queue send/replay, schedule run-now, session revoke, api.authorizeTryIt). */
   ops: boolean;
   /** Time-travel restore / undo / prune. */
   timeTravel: boolean;
@@ -142,7 +142,7 @@ export interface AdminOpContext {
   /** Attach detail to this op's audit row (best-effort). */
   audit(detail: AdminAuditDetail): void;
   /** Resolve a provider from the app container. */
-  get<T>(token: Token<T>): T;
+  get<K extends Token>(token: K): InferToken<K>;
 }
 
 /** An `@AdminRpc` handler: receives the op context and the op's typed args. */

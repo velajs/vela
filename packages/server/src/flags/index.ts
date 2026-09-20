@@ -75,7 +75,16 @@ export class StudioFlagsOps {
       case 'string':
         return service.getStringDetails(key, declared, context);
       case 'object':
-        return service.getObjectDetails(key, declared, context);
+        return service.getObjectDetails(
+          key,
+          (value: unknown): object => {
+            if (typeof value !== 'object' || value === null)
+              throw new Error('Expected an object flag');
+            return value;
+          },
+          declared,
+          context,
+        );
       case 'boolean':
         return service.getBooleanDetails(key, declared, context);
       default:

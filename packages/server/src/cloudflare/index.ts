@@ -1,3 +1,5 @@
+import { defineProvider } from '@velajs/vela';
+import type { ModuleImport } from '@velajs/vela';
 /**
  * `@velajs/studio/cloudflare` — the CF-NATIVE time-travel tier: a
  * {@link CloudflareDoTimeTravelPort} that binds `TIME_TRAVEL_PORT` to a SQLite
@@ -250,6 +252,8 @@ export class CloudflareDoTimeTravelPort implements TimeTravelPort {
 
 /** Options for {@link StudioCloudflareTimeTravelModule}. */
 export interface StudioCloudflareTimeTravelModuleOptions {
+  /** Module exporting the Studio confirmation signer. */
+  imports?: ModuleImport[];
   /** The Durable Object namespace binding whose stubs expose the PITR RPC. */
   namespace: DoPitrNamespace;
   /**
@@ -262,10 +266,10 @@ export interface StudioCloudflareTimeTravelModuleOptions {
 const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } =
   defineModule<StudioCloudflareTimeTravelModuleOptions>({
     name: 'StudioCloudflareTimeTravel',
-    setup: ({ OPTIONS }) => ({
+    setup: ({ OPTIONS, options: moduleOptions }) => ({
+      imports: moduleOptions.imports,
       providers: [
-        {
-          provide: TIME_TRAVEL_PORT,
+        defineProvider(TIME_TRAVEL_PORT, {
           useFactory: (
             confirm: ConfirmTokenSigner,
             options: StudioCloudflareTimeTravelModuleOptions,
@@ -276,7 +280,7 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } =
               ...(options.shardKey !== undefined ? { shardKey: options.shardKey } : {}),
             }),
           inject: [ConfirmTokenSigner, OPTIONS],
-        },
+        }),
       ],
       exports: [TIME_TRAVEL_PORT],
     }),
@@ -284,8 +288,8 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } =
 
 /**
  * Binds {@link CloudflareDoTimeTravelPort} to `TIME_TRAVEL_PORT`. Import it with
- * `StudioCloudflareTimeTravelModule.forRoot({ namespace: env.ROOM })` ALONGSIDE
- * `StudioModule` in a Cloudflare app whose SQLite Durable Object extends
+ * `StudioCloudflareTimeTravelModule.forRoot({ namespace: env.ROOM, imports: [studio] })`
+ * alongside the same configured `studio = StudioModule.forRoot(...)` instance in a Cloudflare app whose SQLite Durable Object extends
  * `VelaWebSocketDurableObject`. It needs no `STUDIO_MODEL_SOURCE` (unlike the
  * portable tier) — it restores the DO's own storage, not managed crud models.
  */

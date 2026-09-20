@@ -1,3 +1,4 @@
+import type { StudioOp } from './ops';
 /**
  * Capability negotiation shapes. Studio's `studio.capabilities` op returns this
  * derived, wire-facing view: which feature namespaces are live, which write
@@ -57,6 +58,8 @@ export interface StudioWriteGates {
  * `timeTravel` is `null` when no {@link TimeTravelPort} is bound.
  */
 export interface StudioCapabilities {
+  /** Registered operations with a usable implementation; write permission is separate. */
+  operations: StudioOp[];
   features: Record<StudioFeatureKey, boolean>;
   writes: StudioWriteGates;
   timeTravel: TimeTravelCapabilities | null;

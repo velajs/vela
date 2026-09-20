@@ -4,7 +4,7 @@
  * merge into {@link ResolvedStudioConfig} lives in the module (env under
  * options).
  */
-import { registerAs } from '@velajs/vela';
+import { CONFIG_ENV, registerAs } from '@velajs/vela';
 import { STUDIO_DEFAULT_PATH } from '@velajs/studio-protocol';
 import type { EditableFlags, ResolvedStudioConfig, StudioModuleOptions } from './studio.types';
 
@@ -29,8 +29,8 @@ export interface StudioEnvConfig {
 }
 
 /** Parse a boolean-ish env flag: `'1'` / `'true'` (case-insensitive) → true. */
-function envBool(raw: string | undefined): boolean | undefined {
-  if (raw === undefined) return undefined;
+function envBool(raw: unknown): boolean | undefined {
+  if (typeof raw !== 'string') return undefined;
   const v = raw.trim().toLowerCase();
   if (v === '1' || v === 'true') return true;
   if (v === '0' || v === 'false' || v === '') return false;
@@ -39,8 +39,9 @@ function envBool(raw: string | undefined): boolean | undefined {
 
 export const studioConfig = registerAs(
   'studio',
-  (env: StudioEnv): StudioEnvConfig => ({
-    token: env.VELA_STUDIO_TOKEN,
+  CONFIG_ENV,
+  (env): StudioEnvConfig => ({
+    token: typeof env.VELA_STUDIO_TOKEN === 'string' ? env.VELA_STUDIO_TOKEN : undefined,
     data: envBool(env.VELA_STUDIO_DATA_EDITABLE),
     schema: envBool(env.VELA_STUDIO_SCHEMA_EDITABLE),
     ops: envBool(env.VELA_STUDIO_OPS_EDITABLE),

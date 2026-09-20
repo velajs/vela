@@ -10,13 +10,8 @@
  * the barrel `createOpenApiDocument` for the spec.
  */
 import { Container, Inject, Injectable, createOpenApiDocument } from '@velajs/vela';
-import type {
-  EntrypointRow,
-  ModuleNode,
-  RouteRow,
-  TryItRequest,
-  TryItResponse,
-} from '@velajs/studio-protocol';
+import type { EntrypointRow, ModuleNode, RouteRow } from '@velajs/studio-protocol';
+import { parseTryItRequest } from '@velajs/studio-protocol';
 import { AdminRpc } from '../rpc/admin-rpc.decorator';
 import { STUDIO_RESOLVED_CONFIG } from '../tokens';
 import type { AdminOpContext, ResolvedStudioConfig } from '../studio.types';
@@ -24,12 +19,7 @@ import { studioError } from '../studio.errors';
 import { StudioAppHolder } from '../introspect/app-holder';
 import { collectEntrypoints, collectModules, collectRoutes } from '../introspect/collect';
 
-/**
- * Synthetic origin for the `api.tryit` sub-request URL. Only its pathname/search
- * reaches Hono's router (the origin is discarded), but a valid absolute URL is
- * required to resolve a caller-supplied relative `path` and to canonicalize any
- * `..`/`.` segments before the reserved-surface guard inspects it.
- */
+/** Canonicalize paths for authorization; no request is dispatched against this origin. */
 const TRYIT_ORIGIN = 'http://studio.tryit.internal';
 
 /** Drop a single trailing slash so prefix comparisons are exact (`''` stays `''`). */
@@ -42,25 +32,6 @@ function isUnder(pathname: string, prefix: string): boolean {
   const base = stripTrailingSlash(prefix);
   const target = stripTrailingSlash(pathname);
   return target === base || target.startsWith(`${base}/`);
-}
-
-/**
- * Read a captured sub-response body: JSON when the response says so (falling back
- * to raw text on a parse error), plain text otherwise, and `null` for an empty
- * body. Mirrors what the UI's `JsonBlock` renders.
- */
-async function readTryItBody(res: Response): Promise<unknown> {
-  const text = await res.text();
-  if (text === '') return null;
-  const contentType = res.headers.get('content-type') ?? '';
-  if (contentType.includes('application/json') || contentType.includes('+json')) {
-    try {
-      return JSON.parse(text) as unknown;
-    } catch {
-      return text;
-    }
-  }
-  return text;
 }
 
 @Injectable()
@@ -102,63 +73,28 @@ export class StudioAppOps {
     return createOpenApiDocument(root, { globalPrefix: this.holder.globalPrefix });
   }
 
-  /**
-   * `api.tryit` — dispatch an arbitrary request THROUGH the app's own captured
-   * Hono instance and return the real status/headers/body it produced. This is
-   * the API explorer's "try it": it exercises the app's actual composed routes
-   * (with all their middleware), not a mock.
-   *
-   * Gating is applied by the dispatch registry AROUND this handler: the op is
-   * `mode: 'write', gate: 'opsEditable'`, so a read-only Studio (opsEditable off)
-   * gets a 403 before we run, and every call is audited. It is admin-token-gated
-   * too (the whole RPC surface is behind the master bearer).
-   *
-   * SECURITY — recursive-admin guard: because this proxies ANY verb at ANY path,
-   * a caller could otherwise aim it at Studio's OWN reserved admin surface
-   * (`/rpc/:op`, `/export`, `/ws-token`, `/health`) and drive the admin API
-   * through itself — a confused-deputy path that could, e.g., re-enter a
-   * different op whose own gate we do NOT want reached this way. We refuse: any
-   * `path` resolving under the reserved admin base (or the bare reserved path, as
-   * defense-in-depth against a missing/foreign global prefix) is rejected with
-   * `STUDIO_OP_FORBIDDEN` (403) BEFORE the sub-request is made. `api.tryit` is a
-   * tool for the app's routes only; the admin surface is off-limits to it.
-   */
-  @AdminRpc({ op: 'api.tryit' })
-  async tryit(ctx: AdminOpContext, args: TryItRequest): Promise<TryItResponse> {
-    const app = this.holder.app;
-    if (app === null) {
-      throw studioError('FEATURE_UNCONFIGURED', 'the app route table has not been captured yet');
+  /** Authorize the host's HTTP request without re-entering Hono outside Worker context. */
+  @AdminRpc({ op: 'api.authorizeTryIt' })
+  authorizeTryIt(ctx: AdminOpContext, input: unknown): { authorized: true } {
+    let args: ReturnType<typeof parseTryItRequest>;
+    try {
+      args = parseTryItRequest(input);
+    } catch {
+      throw studioError('STUDIO_OP_FORBIDDEN', 'Invalid API request');
     }
-
-    const method = (args.method ?? 'GET').toUpperCase();
-    const url = new URL(args.path && args.path !== '' ? args.path : '/', TRYIT_ORIGIN);
-    if (args.query !== undefined) {
-      for (const [key, value] of Object.entries(args.query)) url.searchParams.set(key, value);
+    const url = new URL(args.path, TRYIT_ORIGIN);
+    let pathname: string;
+    try {
+      pathname = new URL(decodeURIComponent(url.pathname), TRYIT_ORIGIN).pathname;
+    } catch {
+      throw studioError('STUDIO_OP_FORBIDDEN', 'Invalid API path');
     }
-
-    // Refuse to proxy the reserved admin surface (recursive-admin guard).
-    this.assertNotAdminSurface(url.pathname);
-
-    const headers = new Headers(args.headers ?? {});
-    const init: RequestInit = { method, headers };
-    // A body is only meaningful (and legal for `fetch`) on non-GET/HEAD verbs.
-    if (method !== 'GET' && method !== 'HEAD' && args.body !== undefined) {
-      init.body = typeof args.body === 'string' ? args.body : JSON.stringify(args.body);
-      if (!headers.has('content-type')) headers.set('content-type', 'application/json');
-    }
-
-    const res = await app.request(url.toString(), init);
-    const outHeaders: Record<string, string> = {};
-    res.headers.forEach((value, key) => {
-      outHeaders[key] = value;
-    });
-    const body = await readTryItBody(res);
-
+    this.assertNotAdminSurface(pathname);
     ctx.audit({
-      target: `${method} ${url.pathname}`,
-      summary: `try-it ${method} ${url.pathname} → ${res.status}`,
+      target: `${args.method} ${url.pathname}`,
+      summary: 'Authorized host HTTP request',
     });
-    return { status: res.status, headers: outHeaders, body };
+    return { authorized: true };
   }
 
   /**
@@ -175,7 +111,7 @@ export class StudioAppOps {
     if (isUnder(pathname, base) || isUnder(pathname, path)) {
       throw studioError(
         'STUDIO_OP_FORBIDDEN',
-        'api.tryit may not target the reserved Studio admin surface',
+        'API requests may not target the reserved Studio admin surface',
       );
     }
   }

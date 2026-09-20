@@ -17,19 +17,19 @@
     "walkthrough": "node scripts/walkthrough.mjs"
   },
   "dependencies": {
-    "@velajs/crud": "^1.19.1",
-    "@velajs/feature-flags": "^0.1.1",
-    "@velajs/studio": "workspace:^",
-    "@velajs/studio-host": "workspace:^",
-    "@velajs/studio-protocol": "workspace:^",
-    "@velajs/vela": "^1.20.0",
-    "hono": "^4",
-    "zod": "^4.4.3"
+    "@velajs/crud": "workspace:*",
+    "@velajs/feature-flags": "workspace:*",
+    "@velajs/studio": "workspace:*",
+    "@velajs/studio-host": "workspace:*",
+    "@velajs/studio-protocol": "workspace:*",
+    "@velajs/vela": "workspace:*",
+    "hono": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@swc/core": "catalog:",
     "@types/node": "catalog:",
-    "@velajs/studio-ui": "workspace:^",
+    "@velajs/studio-ui": "workspace:*",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "unplugin-swc": "catalog:",

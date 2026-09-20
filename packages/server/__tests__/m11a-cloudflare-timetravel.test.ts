@@ -324,10 +324,11 @@ async function makeCfApp(
   namespace: DoPitrNamespace,
   studio: Partial<StudioModuleOptions> = {},
 ): Promise<App> {
+  const studioModule = StudioModule.forRoot({ token: TOKEN, ...studio });
   @Module({
     imports: [
-      StudioModule.forRoot({ token: TOKEN, ...studio }),
-      StudioCloudflareTimeTravelModule.forRoot({ namespace }),
+      studioModule,
+      StudioCloudflareTimeTravelModule.forRoot({ namespace, imports: [studioModule] }),
     ],
   })
   class AppModule {}

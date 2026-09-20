@@ -1,6 +1,6 @@
 {
   "name": "@velajs/studio",
-  "version": "0.1.0",
+  "version": "2.0.0",
   "description": "Vela Studio admin module: reserved /_vela/admin surface, @AdminRpc ops, time-travel port",
   "keywords": [
     "admin",
@@ -74,27 +74,27 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json"
   },
   "dependencies": {
-    "@velajs/errors": "^1.1.0",
-    "@velajs/studio-protocol": "workspace:^"
+    "@velajs/errors": "workspace:*",
+    "@velajs/studio-protocol": "workspace:*"
   },
   "devDependencies": {
-    "@velajs/better-auth": "^0.6.1",
-    "@velajs/cloudflare": "^1.11.0",
-    "@velajs/crud": "^1.19.1",
-    "@velajs/feature-flags": "^0.1.1",
-    "@velajs/vela": "^1.20.0",
+    "@velajs/better-auth": "workspace:*",
+    "@velajs/cloudflare": "workspace:*",
+    "@velajs/crud": "workspace:*",
+    "@velajs/feature-flags": "workspace:*",
+    "@velajs/vela": "workspace:*",
     "better-auth": "^1.2.0",
-    "hono": "^4",
+    "hono": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   },
   "peerDependencies": {
-    "@velajs/better-auth": ">=0.6.0 <1",
-    "@velajs/cloudflare": ">=1.11.0 <2",
-    "@velajs/crud": ">=1.19.0 <2",
-    "@velajs/feature-flags": ">=0.1.1 <1",
-    "@velajs/vela": ">=1.20.0 <2",
+    "@velajs/better-auth": "workspace:^",
+    "@velajs/cloudflare": "workspace:^",
+    "@velajs/crud": "workspace:^",
+    "@velajs/feature-flags": "workspace:^",
+    "@velajs/vela": "workspace:^",
     "better-auth": ">=1.2.0",
     "hono": ">=4"
   },
@@ -117,5 +117,8 @@
   },
   "engines": {
     "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

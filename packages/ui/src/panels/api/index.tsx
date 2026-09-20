@@ -1,14 +1,12 @@
-/**
- * The API explorer: an OpenAPI reference over `app.openapi`. Operations are
- * grouped by tag; selecting one shows its parameters, request body, and
- * responses. A "try it" form calls `api.tryit` — but the execute affordance is
- * gated on `writes.opsEditable` (hidden entirely in a read-only Studio), and a
- * missing `rootModule` surfaces as the calm FEATURE_UNCONFIGURED render.
- */
+/** OpenAPI reference and local host HTTP explorer. Worker authorization gates execution. */
+import { useMutation } from '@tanstack/react-query';
+import { parseTryItRequest } from '@velajs/studio-protocol';
+import { useAdminClient } from '../../data/context';
+import { toAdminError } from '../../client/admin-client';
 import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useStudioCapabilities } from '../../data/capabilities';
-import { useAdminQuery, useAdminMutation } from '../../data/query';
+import { useAdminQuery } from '../../data/query';
 import { Panel, QueryView, Badge, JsonBlock } from '../shared';
 import type { BadgeTone } from '../shared';
 import { groupByTag, readInfo, readOperations } from './openapi';
@@ -34,7 +32,25 @@ function TryIt({
   canExecute: boolean;
 }): ReactNode {
   const [body, setBody] = useState('');
-  const mutation = useAdminMutation('api.tryit');
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [headersText, setHeadersText] = useState('{}');
+  const [formError, setFormError] = useState<string | null>(null);
+  const client = useAdminClient();
+  const mutation = useMutation({
+    mutationFn: async (args: ReturnType<typeof parseTryItRequest>) => {
+      if (client === undefined) throw new Error('Connect through the local Studio host.');
+      return client.tryIt(args);
+    },
+  });
+  const pathNames = [...operation.path.matchAll(/\{([^}]+)\}/g)].flatMap((match) =>
+    match[1] ? [match[1]] : [],
+  );
+  const parameters = [
+    ...pathNames.map((name) => ({ name, in: 'path', required: true })),
+    ...operation.parameters.filter(
+      (parameter) => parameter.in === 'query' || parameter.in === 'header',
+    ),
+  ];
 
   const execute = (): void => {
     let parsedBody: unknown;
@@ -45,12 +61,55 @@ function TryIt({
         parsedBody = body;
       }
     }
-    mutation.mutate({ method: operation.method, path: operation.path, body: parsedBody });
+    try {
+      let path = operation.path;
+      const query: Record<string, string> = {};
+      const extraHeaders: Record<string, string> = {};
+      for (const parameter of parameters) {
+        const value = values[`${parameter.in}:${parameter.name}`] ?? '';
+        if (parameter.required && !value) throw new Error(`Enter ${parameter.name}.`);
+        if (parameter.in === 'path')
+          path = path.replaceAll(`{${parameter.name}}`, encodeURIComponent(value));
+        else if (parameter.in === 'query' && value) query[parameter.name] = value;
+        else if (parameter.in === 'header' && value) extraHeaders[parameter.name] = value;
+      }
+      const args = parseTryItRequest({
+        method: operation.method,
+        path,
+        query,
+        headers: JSON.parse(headersText),
+        body: parsedBody,
+      });
+      args.headers = { ...args.headers, ...extraHeaders };
+      setFormError(null);
+      mutation.mutate(args);
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'Invalid request.');
+    }
   };
 
   return (
     <div className="vela-tryit">
       <h3 className="vela-tryit__title">Try it</h3>
+      {parameters.map((parameter) => (
+        <label key={`${parameter.in}:${parameter.name}`}>
+          {parameter.name} ({parameter.in})
+          <input
+            aria-label={`${parameter.name} (${parameter.in})`}
+            className="vela-input"
+            value={values[`${parameter.in}:${parameter.name}`] ?? ''}
+            onChange={(event) =>
+              setValues({ ...values, [`${parameter.in}:${parameter.name}`]: event.target.value })
+            }
+          />
+        </label>
+      ))}
+      <textarea
+        className="vela-textarea"
+        aria-label="API headers (JSON)"
+        value={headersText}
+        onChange={(event) => setHeadersText(event.target.value)}
+      />
       {operation.method !== 'GET' ? (
         <textarea
           className="vela-textarea"
@@ -61,15 +120,23 @@ function TryIt({
         />
       ) : null}
       {canExecute ? (
-        <button type="button" className="vela-btn vela-btn--primary" onClick={execute}>
+        <button
+          type="button"
+          className="vela-btn vela-btn--primary"
+          onClick={execute}
+          disabled={mutation.isPending}
+        >
           Execute
         </button>
       ) : (
-        <p className="vela-note">Read-only Studio — execution is disabled (opsEditable is off).</p>
+        <p className="vela-note">
+          Read-only Studio or no local host connection — execution is disabled.
+        </p>
       )}
+      {formError ? <p role="alert">{formError}</p> : null}
       {mutation.error !== null ? (
         <p className="vela-state__message" role="alert">
-          {mutation.error.body.message}
+          {toAdminError(mutation.error).body.message}
         </p>
       ) : null}
       {mutation.data !== undefined ? (
@@ -150,7 +217,7 @@ function OperationDetail({
         </ul>
       )}
 
-      <TryIt operation={operation} canExecute={canExecute} />
+      <TryIt key={opKey(operation)} operation={operation} canExecute={canExecute} />
     </div>
   );
 }
@@ -204,7 +271,11 @@ function ApiReference({ doc, canExecute }: { doc: unknown; canExecute: boolean }
 
 export default function ApiPanel(): ReactNode {
   const { capabilities } = useStudioCapabilities();
-  const canExecute = capabilities.writes.opsEditable;
+  const client = useAdminClient();
+  const canExecute =
+    capabilities.writes.opsEditable &&
+    capabilities.operations.includes('api.authorizeTryIt') &&
+    client?.apiRequestPath !== undefined;
   const result = useAdminQuery('app.openapi', {});
   return (
     <Panel title="API Explorer" description="The app's OpenAPI reference, with an optional try-it.">

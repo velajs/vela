@@ -1,11 +1,5 @@
-/**
- * `@velajs/studio-ui/standalone` — the full-page mount entry. `mountStudio`
- * creates a React root and renders {@link StudioApp}, merging the
- * `window.__VELA_BASE_PATH__` / `window.__VELA_ADMIN_TOKEN__` globals when the
- * corresponding options are omitted. `__VELA_BASE_PATH__` is the SPA mount path
- * (where the standalone bundle is served), so it feeds `routerBasePath` — not
- * the server admin-mount prefix (`adminBasePath`).
- */
+import { parseStudioConnection } from '@velajs/studio-protocol';
+/** Standalone mount using the validated local host connection contract. */
 import { createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { Root } from 'react-dom/client';
@@ -14,8 +8,7 @@ import type { StudioAppProps } from '../shell/studio-app';
 
 declare global {
   interface Window {
-    __VELA_BASE_PATH__?: string;
-    __VELA_ADMIN_TOKEN__?: string;
+    __VELA_STUDIO__?: unknown;
   }
 }
 
@@ -45,14 +38,15 @@ function resolveElement(element: MountStudioOptions['element']): HTMLElement {
 export function mountStudio(options: MountStudioOptions = {}): StudioHandle {
   const { element, ...appProps } = options;
   const globals = typeof window === 'undefined' ? undefined : window;
-  // `__VELA_BASE_PATH__` is the SPA mount path, so it feeds the router basepath
-  // (`routerBasePath`), never the server admin-mount prefix (`adminBasePath`).
-  const routerBasePath = appProps.routerBasePath ?? globals?.['__VELA_BASE_PATH__'];
-  const adminToken = appProps.adminToken ?? globals?.['__VELA_ADMIN_TOKEN__'];
+  const connection =
+    appProps.connection ??
+    (globals?.['__VELA_STUDIO__'] === undefined
+      ? undefined
+      : parseStudioConnection(globals['__VELA_STUDIO__']));
 
   const container = resolveElement(element);
   const root = createRoot(container);
-  root.render(createElement(StudioApp, { ...appProps, routerBasePath, adminToken }));
+  root.render(createElement(StudioApp, { ...appProps, connection }));
 
   return { root, unmount: () => root.unmount() };
 }

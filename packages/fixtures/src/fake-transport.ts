@@ -6,6 +6,7 @@
  * if the wire contract moves.
  */
 import type { AdminErrorBody, StudioOp, StudioOpReq, StudioOpRes } from '@velajs/studio-protocol';
+import { parseStudioResponse } from '@velajs/studio-protocol';
 
 /** A canned responder for one op: a value, or a (possibly async) function of args. */
 export type FakeResponder<Op extends StudioOp> =
@@ -105,18 +106,10 @@ export class FakeAdminTransport {
     const forced = this.#options.errors?.[op];
     if (forced !== undefined) throw new FakeAdminError(forced);
 
-    // Generic indexed access into a mapped type can't be correlated by the
-    // compiler; the value is known to be `FakeResponder<Op> | undefined`.
-    const responder = this.#table[op] as FakeResponder<Op> | undefined;
+    const responder = this.#table[op];
     if (responder === undefined) throw new FakeAdminError(unknownOpBody(op));
 
-    if (typeof responder === 'function') {
-      const fn = responder as (a: StudioOpReq<Op>) => StudioOpRes<Op> | Promise<StudioOpRes<Op>>;
-      return await fn(args);
-    }
-    // Value branch. An explicit index avoids control-flow narrowing computing
-    // `Exclude<FakeResponder<Op>, Function>`, which explodes over the op union
-    // (TS2590 "union type too complex").
-    return responder as StudioOpRes<Op>;
+    const value: unknown = typeof responder === 'function' ? await responder(args) : responder;
+    return parseStudioResponse(op, value);
   }
 }

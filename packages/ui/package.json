@@ -1,6 +1,6 @@
 {
   "name": "@velajs/studio-ui",
-  "version": "0.1.0",
+  "version": "2.0.0",
   "description": "Vela Studio admin panel UI (React)",
   "keywords": [
     "admin",
@@ -57,15 +57,16 @@
     "@tanstack/react-router": "^1.170.18",
     "@tanstack/react-table": "^8.21.3",
     "@tanstack/react-virtual": "^3.14.6",
-    "@velajs/studio-protocol": "workspace:^"
+    "@velajs/studio-protocol": "workspace:*"
   },
   "devDependencies": {
     "@swc/core": "catalog:",
     "@tailwindcss/cli": "^4.3.3",
+    "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "@velajs/studio-fixtures": "workspace:^",
+    "@velajs/studio-fixtures": "workspace:*",
     "esbuild": "^0.28.1",
     "happy-dom": "^20.0.0",
     "react": "^19.0.0",
@@ -82,5 +83,8 @@
   },
   "engines": {
     "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

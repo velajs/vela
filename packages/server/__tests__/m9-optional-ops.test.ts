@@ -1,3 +1,4 @@
+import { defineProvider } from '@velajs/vela';
 import { describe, expect, it } from 'vitest';
 import {
   Controller,
@@ -8,7 +9,7 @@ import {
   ScheduleModule,
   VelaFactory,
 } from '@velajs/vela';
-import type { ModuleImport, ProviderOptions, Type } from '@velajs/vela';
+import type { ModuleImport, ProviderDefinition, Type } from '@velajs/vela';
 import { Process, Processor, QueueModule } from '@velajs/vela/queue';
 import { FeatureFlagsModule } from '@velajs/feature-flags';
 import { BetterAuthService } from '@velajs/better-auth';
@@ -135,7 +136,7 @@ class FakeModelSource implements StudioModelSource {
       ],
       relations: [],
       flags: { softDelete: false, multiTenant: false, versioning: false, audit: false },
-      supports: { facets: false, search: false, cascade: false },
+      supports: { bulkWrites: true, facets: false, search: false, cascade: false },
     };
   }
 
@@ -200,7 +201,7 @@ class FakeModelSource implements StudioModelSource {
 
 function sourceModule(source: StudioModelSource): Type {
   @Module({
-    providers: [{ provide: STUDIO_MODEL_SOURCE, useValue: source }],
+    providers: [defineProvider(STUDIO_MODEL_SOURCE, { useValue: source })],
     exports: [STUDIO_MODEL_SOURCE],
   })
   class SourceModule {}
@@ -210,7 +211,7 @@ function sourceModule(source: StudioModelSource): Type {
 async function makeApp(
   studio: Partial<StudioModuleOptions> = {},
   imports: ModuleImport[] = [],
-  extra: Array<Type | ProviderOptions> = [],
+  extra: Array<Type | ProviderDefinition> = [],
 ): Promise<App> {
   @Module({
     imports: [StudioModule.forRoot({ token: TOKEN, ...studio }), ...imports],
@@ -413,7 +414,7 @@ class FakeAuthSource implements StudioAuthSource {
 
 function authModule(source: StudioAuthSource): Type {
   @Module({
-    providers: [{ provide: STUDIO_AUTH_SOURCE, useValue: source }],
+    providers: [defineProvider(STUDIO_AUTH_SOURCE, { useValue: source })],
     exports: [STUDIO_AUTH_SOURCE],
   })
   class FakeAuthModule {}
@@ -512,8 +513,14 @@ describe('auth ops (over real better-auth via the trusted data layer)', () => {
   it('lists users/detail/sessions/orgs + revokes a session through the trusted path', async () => {
     const auth = realBetterAuth(seededDb());
     const ctx = await auth.$context;
-    const u1 = await ctx.internalAdapter.createUser({ email: 'ann@x.io', name: 'Ann' });
-    const u2 = await ctx.internalAdapter.createUser({ email: 'bob@x.io', name: 'Bob' });
+    const u1 = await ctx.internalAdapter.createUser(
+      { email: 'ann@x.io', name: 'Ann' },
+      { method: 'admin' },
+    );
+    const u2 = await ctx.internalAdapter.createUser(
+      { email: 'bob@x.io', name: 'Bob' },
+      { method: 'admin' },
+    );
     const session = await ctx.internalAdapter.createSession(u1.id, false, {
       ipAddress: '10.0.0.9',
       userAgent: 'vela-studio-test',
@@ -645,6 +652,11 @@ describe('queue ops (@velajs/studio/queue)', () => {
     expect(typeof sent.id).toBe('string');
 
     // Per-op typed calls (no `as never`): each degrades honestly.
+    const caps = ok(await rpc(app, 'studio.capabilities'));
+    expect(caps.operations).toContain('queue.send');
+    expect(caps.operations).not.toContain('queue.depths');
+    expect(caps.operations).not.toContain('queue.dlq');
+    expect(caps.operations).not.toContain('queue.replay');
     expectUnconfigured(await rpc(app, 'queue.depths', {}));
     expectUnconfigured(await rpc(app, 'queue.dlq', { queue: 'email' }));
     expectUnconfigured(await rpc(app, 'queue.replay', { queue: 'email', ids: [] }));
@@ -702,15 +714,50 @@ describe('schedule ops (@velajs/studio/schedule)', () => {
 });
 
 // ===========================================================================
-// Live / presence — honest degradation (no public enumeration in vela 1.20)
+// Live / presence — explicit inspection sources and default-closed capabilities
 // ===========================================================================
 
 describe('live / presence ops (@velajs/studio/live)', () => {
-  it('lights live + presence by op-registration; both ops degrade honestly', async () => {
-    const app = await makeApp({}, [StudioLiveModule.forRoot({})]);
+  it('advertises a configured source and protects its snapshots with admin authentication', async () => {
+    const snapshot = {
+      subscriptions: [
+        { id: 'sub-1', room: 'default', tags: ['todos'], connectedAt: 100, clientId: 'client-1' },
+      ],
+      rooms: [{ room: 'default', count: 1, members: ['client-1'] }],
+    };
+    let reads = 0;
+    const app = await makeApp({}, [
+      StudioLiveModule.forRoot({
+        source: {
+          inspect: async () => {
+            reads++;
+            return structuredClone(snapshot);
+          },
+        },
+      }),
+    ]);
     const caps = ok(await rpc(app, 'studio.capabilities'));
     expect(caps.features.live).toBe(true);
     expect(caps.features.presence).toBe(true);
+    const denied = await app.getHonoApp().request(`${BASE}/rpc/live.subscriptions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    });
+    expect(denied.status).toBe(401);
+    expect(reads).toBe(0);
+    expect(ok(await rpc(app, 'live.subscriptions'))).toEqual(snapshot.subscriptions);
+    expect(ok(await rpc(app, 'presence.rooms'))).toEqual(snapshot.rooms);
+    await app.close();
+  });
+
+  it('does not advertise live + presence handlers without introspection support', async () => {
+    const app = await makeApp({}, [StudioLiveModule.forRoot({})]);
+    const caps = ok(await rpc(app, 'studio.capabilities'));
+    expect(caps.features.live).toBe(false);
+    expect(caps.features.presence).toBe(false);
+    expect(caps.operations).not.toContain('live.subscriptions');
+    expect(caps.operations).not.toContain('presence.rooms');
 
     for (const op of ['live.subscriptions', 'presence.rooms'] as const) {
       const res = await rpc(app, op, {});

@@ -6,15 +6,19 @@
  */
 import type {
   AdminErrorBody,
-  AdminRpcResponse,
   StudioOp,
   StudioRpcMap,
+  TryItRequest,
+  TryItResponse,
 } from '@velajs/studio-protocol';
 import {
   STUDIO_DEFAULT_PATH,
   STUDIO_HEALTH_SUFFIX,
   STUDIO_PROTOCOL_VERSION,
   STUDIO_RPC_SUFFIX,
+  isRecord,
+  parseTryItResponse,
+  parseStudioRpcResponse,
 } from '@velajs/studio-protocol';
 
 /**
@@ -32,6 +36,8 @@ export interface TransportLike {
 
 /** Construction options for {@link AdminClient}. */
 export interface AdminClientOptions {
+  /** Local host endpoint; absent for direct server connections where HTTP execution is unavailable. */
+  apiRequestPath?: string;
   /** Origin the admin surface is served from (e.g. `https://app.example.com`). */
   baseUrl: string;
   /** The master bearer token; may be set later via {@link AdminClient.setToken}. */
@@ -81,9 +87,17 @@ interface ErrorBodyCarrier {
 }
 
 function isErrorBodyCarrier(err: unknown): err is ErrorBodyCarrier {
-  if (typeof err !== 'object' || err === null || !('body' in err)) return false;
-  const body = (err as { body: unknown }).body;
-  return typeof body === 'object' && body !== null && 'code' in body && 'status' in body;
+  if (!isRecord(err) || !isRecord(err.body)) return false;
+  const body = err.body;
+  return (
+    typeof body.code === 'string' &&
+    typeof body.status === 'number' &&
+    typeof body.title === 'string' &&
+    typeof body.message === 'string' &&
+    (body.hint === undefined || typeof body.hint === 'string') &&
+    (body.docsUrl === undefined || typeof body.docsUrl === 'string') &&
+    (err.status === undefined || typeof err.status === 'number')
+  );
 }
 
 /**
@@ -114,12 +128,38 @@ export class AdminClient implements TransportLike {
   #basePath: string;
   #token: string | undefined;
   #fetch: typeof fetch;
+  readonly apiRequestPath: string | undefined;
 
   constructor(options: AdminClientOptions) {
     this.#baseUrl = stripTrailingSlash(options.baseUrl);
     this.#basePath = options.basePath ?? STUDIO_DEFAULT_PATH;
     this.#token = options.adminToken;
     this.#fetch = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
+    this.apiRequestPath = options.apiRequestPath;
+  }
+
+  async tryIt(args: TryItRequest): Promise<TryItResponse> {
+    if (this.apiRequestPath === undefined)
+      throw new Error('Connect through the local Studio host to execute API requests.');
+    try {
+      const response = await this.#fetch(`${this.#baseUrl}${this.apiRequestPath}`, {
+        method: 'POST',
+        credentials: 'omit',
+        headers: this.#headers(),
+        body: JSON.stringify(args),
+      });
+      const payload: unknown = await response.json();
+      if (!response.ok) {
+        throw new Error(
+          isRecord(payload) && typeof payload.message === 'string'
+            ? payload.message
+            : 'API request failed.',
+        );
+      }
+      return parseTryItResponse(payload);
+    } catch (error) {
+      throw toAdminError(error);
+    }
   }
 
   /** Replace the bearer token (or clear it with `undefined`). */
@@ -148,6 +188,7 @@ export class AdminClient implements TransportLike {
     try {
       response = await this.#fetch(url, {
         method: 'POST',
+        credentials: 'omit',
         headers: this.#headers(),
         body: JSON.stringify({ args }),
         signal: opts?.signal,
@@ -174,20 +215,26 @@ export class AdminClient implements TransportLike {
         status,
       );
     }
-    if (payload !== null && typeof payload === 'object' && 'ok' in payload) {
-      const envelope = payload as AdminRpcResponse<StudioRpcMap[Op]['res']>;
-      if (envelope.ok) return envelope.data;
-      throw new AdminError(envelope.error, envelope.status);
-    }
-    throw new AdminError(
-      syntheticBody(
-        'STUDIO_BAD_RESPONSE',
+    try {
+      const envelope = parseStudioRpcResponse(op, payload);
+      if (!envelope.ok) {
+        if (envelope.status !== status) throw new Error('Inconsistent HTTP error status.');
+        throw new AdminError(envelope.error, envelope.status);
+      }
+      if (!response.ok) throw new Error('Success envelope on an unsuccessful HTTP response.');
+      return envelope.data;
+    } catch (error) {
+      if (error instanceof AdminError) throw error;
+      throw new AdminError(
+        syntheticBody(
+          'STUDIO_BAD_RESPONSE',
+          status,
+          'Malformed response',
+          `Invalid response for "${op}".`,
+        ),
         status,
-        'Malformed response',
-        `Missing ok envelope for "${op}".`,
-      ),
-      status,
-    );
+      );
+    }
   }
 
   /** Unauthenticated health probe (`GET {prefix}/health`). */
@@ -195,7 +242,11 @@ export class AdminClient implements TransportLike {
     const url = `${this.#baseUrl}${this.#basePath}${STUDIO_HEALTH_SUFFIX}`;
     let response: Response;
     try {
-      response = await this.#fetch(url, { method: 'GET', headers: { accept: 'application/json' } });
+      response = await this.#fetch(url, {
+        method: 'GET',
+        credentials: 'omit',
+        headers: this.#headers(),
+      });
     } catch (err) {
       throw toAdminError(err);
     }
@@ -214,11 +265,22 @@ export class AdminClient implements TransportLike {
         status,
       );
     }
-    const body = (payload ?? {}) as Partial<{ enabled: boolean; protocolVersion: number }>;
-    return {
-      enabled: Boolean(body.enabled),
-      protocolVersion:
-        typeof body.protocolVersion === 'number' ? body.protocolVersion : STUDIO_PROTOCOL_VERSION,
-    };
+    if (
+      !response.ok ||
+      !isRecord(payload) ||
+      typeof payload.enabled !== 'boolean' ||
+      payload.protocolVersion !== STUDIO_PROTOCOL_VERSION
+    ) {
+      throw new AdminError(
+        syntheticBody(
+          'STUDIO_BAD_RESPONSE',
+          status,
+          'Invalid health response',
+          'Studio protocol mismatch or invalid health response.',
+        ),
+        status,
+      );
+    }
+    return { enabled: payload.enabled, protocolVersion: payload.protocolVersion };
   }
 }

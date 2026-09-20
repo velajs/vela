@@ -1,3 +1,5 @@
+import { parseStudioConnection } from '@velajs/studio-protocol';
+import type { StudioMiddleware } from '../src/middleware';
 import { describe, expect, it } from 'vitest';
 import { studioMiddleware } from '../src/middleware';
 import type { StudioMiddlewareContext, StudioMiddlewareOptions } from '../src/middleware';
@@ -31,6 +33,20 @@ const baseOptions = (fetchImpl: typeof fetch): StudioMiddlewareOptions => ({
   fetchImpl,
 });
 
+async function authenticatedRequest(middleware: StudioMiddleware): Promise<Request> {
+  const html = await (
+    await middleware(
+      ctx(new Request('http://localhost/', { headers: { host: 'localhost' } })),
+      async () => {},
+    )
+  )?.text();
+  const serialized = html?.match(/window\.__VELA_STUDIO__=(.*?);<\/script>/)?.[1];
+  const connection = parseStudioConnection(JSON.parse(serialized ?? 'null'));
+  const request = adminRequest();
+  request.headers.set('authorization', `Bearer ${connection.sessionToken}`);
+  return request;
+}
+
 describe('studioMiddleware fail-closed peer verification', () => {
   it('rejects 403 and NEVER forwards the master token when no getRemoteAddress and no opt-out', async () => {
     const { calls, fetchImpl } = recordingFetch();
@@ -48,7 +64,7 @@ describe('studioMiddleware fail-closed peer verification', () => {
   it('passes when getRemoteAddress reports a loopback peer (peer verified)', async () => {
     const { calls, fetchImpl } = recordingFetch();
     const mw = studioMiddleware({ ...baseOptions(fetchImpl), getRemoteAddress: () => '127.0.0.1' });
-    const res = await mw(ctx(adminRequest()), async () => {});
+    const res = await mw(ctx(await authenticatedRequest(mw)), async () => {});
     expect(res?.status).toBe(200);
     // Admitted → the proxy forwarded with the master bearer injected server-side.
     expect(calls).toEqual([{ authorization: `Bearer ${MASTER}` }]);
@@ -68,7 +84,7 @@ describe('studioMiddleware fail-closed peer verification', () => {
   it('passes with the explicit loopbackOnly:false opt-out (caller owns the trust boundary)', async () => {
     const { calls, fetchImpl } = recordingFetch();
     const mw = studioMiddleware({ ...baseOptions(fetchImpl), loopbackOnly: false });
-    const res = await mw(ctx(adminRequest()), async () => {});
+    const res = await mw(ctx(await authenticatedRequest(mw)), async () => {});
     expect(res?.status).toBe(200);
     expect(calls).toEqual([{ authorization: `Bearer ${MASTER}` }]);
   });

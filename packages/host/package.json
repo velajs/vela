@@ -1,6 +1,6 @@
 {
   "name": "@velajs/studio-host",
-  "version": "0.1.0",
+  "version": "2.0.0",
   "description": "Loopback dev host serving the Vela Studio SPA and proxying the admin API",
   "keywords": [
     "admin",
@@ -41,15 +41,19 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "@velajs/studio-protocol": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "catalog:",
-    "@velajs/studio-ui": "workspace:^",
+    "@velajs/studio-ui": "workspace:*",
+    "miniflare": "5.20260918.0-alpha",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   },
   "peerDependencies": {
-    "@velajs/studio-ui": ">=0.1.0"
+    "@velajs/studio-ui": "workspace:^"
   },
   "peerDependenciesMeta": {
     "@velajs/studio-ui": {
@@ -58,5 +62,8 @@
   },
   "engines": {
     "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -1,3 +1,4 @@
+import { defineProvider } from '@velajs/vela';
 /**
  * `StudioModule` — mounts the reserved `/_vela/admin` surface with its full
  * security chain, the `@AdminRpc` dispatch registry (empty catalog in M2), and
@@ -9,7 +10,7 @@
  * route contributor mounts routes at build time.
  */
 import { Container, defineModule } from '@velajs/vela';
-import type { ProviderOptions, Type } from '@velajs/vela';
+import type { ProviderDefinition, Type } from '@velajs/vela';
 import { resolveStudioConfig, studioConfig } from './studio.config';
 import type { StudioModuleOptions } from './studio.types';
 import type { StudioEnvConfig } from './studio.config';
@@ -41,38 +42,33 @@ function resolveSink(container: Container): AdminAuditSink | undefined {
 const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<StudioModuleOptions>({
   name: 'Studio',
   setup: ({ OPTIONS }) => {
-    const providers: Array<Type | ProviderOptions> = [
+    const providers: Array<Type | ProviderDefinition> = [
       // Env-derived config slice (reads VELA_STUDIO_* via CONFIG_ENV).
       studioConfig.asProvider(),
       // Resolved config = env UNDER module options.
-      {
-        provide: STUDIO_RESOLVED_CONFIG,
+      defineProvider(STUDIO_RESOLVED_CONFIG, {
         useFactory: (env: StudioEnvConfig, options: StudioModuleOptions) =>
           resolveStudioConfig(env, options),
         inject: [studioConfig.KEY, OPTIONS],
-      },
-      {
-        provide: AdminSubTokenSigner,
+      }),
+      defineProvider(AdminSubTokenSigner, {
         useFactory: (config: ResolvedStudioConfig) =>
           new AdminSubTokenSigner(config.token ?? '', { ttlSec: config.subTokenTtlSec }),
         inject: [STUDIO_RESOLVED_CONFIG],
-      },
-      {
-        provide: ConfirmTokenSigner,
+      }),
+      defineProvider(ConfirmTokenSigner, {
         useFactory: (config: ResolvedStudioConfig) => new ConfirmTokenSigner(config.token ?? ''),
         inject: [STUDIO_RESOLVED_CONFIG],
-      },
-      {
-        provide: AdminAuditLog,
+      }),
+      defineProvider(AdminAuditLog, {
         useFactory: (config: ResolvedStudioConfig, container: Container) =>
           new AdminAuditLog(config.auditBufferSize, resolveSink(container)),
         inject: [STUDIO_RESOLVED_CONFIG, Container],
-      },
-      {
-        provide: AdminLogBuffer,
+      }),
+      defineProvider(AdminLogBuffer, {
         useFactory: (config: ResolvedStudioConfig) => new AdminLogBuffer(config.logBufferSize),
         inject: [STUDIO_RESOLVED_CONFIG],
-      },
+      }),
       StudioFeaturesService,
       StudioDispatchRegistry,
       // Introspection seam + the M4 op providers. The dispatch registry

@@ -1,6 +1,7 @@
+import { defineProvider } from '@velajs/vela';
 import { describe, expect, it } from 'vitest';
 import { Injectable, Module, VelaFactory } from '@velajs/vela';
-import type { ProviderOptions, Type } from '@velajs/vela';
+import type { ProviderDefinition, Type } from '@velajs/vela';
 import {
   AdminRpc,
   ConfirmTokenSigner,
@@ -17,7 +18,7 @@ const BASE = '/_vela/admin';
 
 async function makeApp(
   options: StudioModuleOptions,
-  extra: Array<Type | ProviderOptions> = [],
+  extra: Array<Type | ProviderDefinition> = [],
 ): Promise<Awaited<ReturnType<typeof VelaFactory.create>>> {
   @Module({ imports: [StudioModule.forRoot(options)], providers: extra })
   class AppModule {}
@@ -135,7 +136,7 @@ describe('StudioModule — dispatch', () => {
     }
     const app = await makeApp({ token: TOKEN }, [
       FakeOps,
-      { provide: STUDIO_TEST_ONLY_OPS, useValue: ['test.echo'] },
+      defineProvider(STUDIO_TEST_ONLY_OPS, { useValue: ['test.echo'] }),
     ]);
     const res = await app
       .getHonoApp()
@@ -195,10 +196,12 @@ describe('StudioModule — dispatch', () => {
 
 describe('StudioModule — write gating & confirm', () => {
   it('write op with its gate closed -> 403 STUDIO_OP_FORBIDDEN', async () => {
-    // api.tryit is a real StudioModule handler (mode:write gate:opsEditable);
+    // api.authorizeTryIt is a real StudioModule handler (mode:write gate:opsEditable);
     // ops is disabled by default, so the gate closes before the handler runs.
     const app = await makeApp({ token: TOKEN });
-    const res = await app.getHonoApp().request(`${BASE}/rpc/api.tryit`, authed({ args: {} }));
+    const res = await app
+      .getHonoApp()
+      .request(`${BASE}/rpc/api.authorizeTryIt`, authed({ args: {} }));
     expect(res.status).toBe(403);
     expect((await res.json()).error.code).toBe('STUDIO_OP_FORBIDDEN');
   });
@@ -353,6 +356,7 @@ describe('StudioModule — forRootAsync', () => {
     @Module({
       imports: [
         StudioModule.forRootAsync({
+          inject: [],
           useFactory: (): StudioModuleOptions => ({ token: TOKEN }),
         }),
       ],
@@ -375,6 +379,7 @@ describe('StudioModule — forRootAsync', () => {
     @Module({
       imports: [
         StudioModule.forRootAsync({
+          inject: [],
           useFactory: async (): Promise<StudioModuleOptions> => {
             await Promise.resolve();
             return { token: TOKEN, editable: { data: true } };

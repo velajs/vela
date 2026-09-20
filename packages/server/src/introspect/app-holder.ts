@@ -14,7 +14,7 @@
  *   - `app.routes`       → ONLY reachable here (RouteManager is internal).
  */
 import { Injectable } from '@velajs/vela';
-import type { Hono } from 'hono';
+import type { VelaHono as Hono } from '@velajs/vela';
 import type { RouteDescription } from '@velajs/vela';
 
 /**

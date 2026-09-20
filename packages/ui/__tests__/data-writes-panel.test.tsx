@@ -2,7 +2,12 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { createMemoryHistory } from '@tanstack/react-router';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { DeleteRowsRequest, WriteRowRequest } from '@velajs/studio-protocol';
-import { FakeAdminTransport, capabilitiesReadOnly, fakeTable } from '@velajs/studio-fixtures';
+import {
+  FakeAdminTransport,
+  capabilitiesReadOnly,
+  fakeTable,
+  userDescriptor,
+} from '@velajs/studio-fixtures';
 import { Studio } from '../src/shell/studio-app';
 import { AdminClientProvider } from '../src/data/context';
 
@@ -21,6 +26,23 @@ const callsFor = (t: FakeAdminTransport, op: string) => t.calls.filter((c) => c.
 const gridRows = (): HTMLElement[] => screen.queryAllByTestId('data-grid-row');
 
 describe('data panel — write affordances', () => {
+  it('keeps single-row creation available while disabling unsupported bulk actions', async () => {
+    const transport = new FakeAdminTransport(
+      fakeTable({
+        'data.describeModel': {
+          ...userDescriptor,
+          supports: { ...userDescriptor.supports, bulkWrites: false },
+        },
+      }),
+    );
+    renderData('/data?model=user', transport);
+    await screen.findByText('user000@example.com');
+    expect(screen.getByRole('button', { name: 'New row' })).toHaveProperty('disabled', false);
+    expect(screen.getByRole('button', { name: 'Generate rows' })).toHaveProperty('disabled', true);
+    expect(screen.getByRole('button', { name: 'Clear table' })).toHaveProperty('disabled', true);
+    fireEvent.click(screen.getByLabelText('Select row u_000'));
+    expect(screen.getByRole('button', { name: 'Delete (1)' })).toHaveProperty('disabled', true);
+  });
   it('creates a row: form → writeRow with no id → list invalidated', async () => {
     const transport = new FakeAdminTransport(fakeTable());
     renderData('/data?model=user', transport);

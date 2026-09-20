@@ -1,3 +1,4 @@
+import { isRecord } from '@velajs/studio-protocol';
 /**
  * A defensive narrowing layer over `app.openapi` (whose wire type is `unknown`).
  * These local shapes are NOT wire types — they are the UI's read model of a
@@ -36,9 +37,7 @@ export interface OpenApiInfo {
 const HTTP_METHODS = ['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace'];
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
+  return isRecord(value) ? value : undefined;
 }
 
 function asString(value: unknown): string | undefined {
@@ -96,7 +95,13 @@ export function readOperations(doc: unknown): OpenApiOperation[] {
         operationId: asString(op.operationId),
         summary: asString(op.summary),
         tags,
-        parameters: parseParameters(op.parameters),
+        parameters: [
+          ...new Map(
+            [...parseParameters(pathItem.parameters), ...parseParameters(op.parameters)].map(
+              (parameter) => [`${parameter.in}:${parameter.name}`, parameter],
+            ),
+          ).values(),
+        ],
         requestBody: op.requestBody,
         responses: parseResponses(op.responses),
       });

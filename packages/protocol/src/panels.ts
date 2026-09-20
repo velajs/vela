@@ -107,7 +107,7 @@ export interface CronTriggerRow {
 /**
  * A value a feature flag can resolve to. A local structural mirror of
  * `@velajs/feature-flags`' `FlagValue` (`boolean | string | number | object`) —
- * mirrored, never imported, so this contract stays dependency-free.
+ * mirrored, never imported, so the wire contract is independent of that package.
  */
 export type FlagValue = boolean | string | number | object;
 

@@ -17,6 +17,7 @@
  */
 import { AdminLogBuffer, MAX_GENERATE_ROWS } from '@velajs/studio';
 import { startStudioServer } from '@velajs/studio-host';
+import { parseStudioConnection, parseStudioRpcResponse, isRecord } from '@velajs/studio-protocol';
 import type {
   AdminRpcResponse,
   StudioConfirmChallenge,
@@ -74,7 +75,7 @@ async function rpc<Op extends StudioOp>(
     `${ADMIN_BASE_PATH}/rpc/${op}`,
     authed(token, args !== undefined ? { args } : {}),
   );
-  return (await res.json()) as AdminRpcResponse<StudioOpRes<Op>>;
+  return parseStudioRpcResponse(op, await res.json());
 }
 
 /** Unwrap a successful envelope, else throw with the error body. */
@@ -87,7 +88,9 @@ function unwrap<T>(res: AdminRpcResponse<T>): T {
 function asChallenge<T>(res: AdminRpcResponse<T>): StudioConfirmChallenge {
   if (res.ok) throw new Error(`expected a 428 challenge, got ${JSON.stringify(res)}`);
   assert(res.status === 428, `expected 428, got ${res.status}`);
-  return res.error.details as StudioConfirmChallenge;
+  const details = res.error.details;
+  assert(isRecord(details) && typeof details.confirmToken === 'string' && typeof details.expiresAt === 'number' && typeof details.summary === 'string', 'valid confirmation challenge');
+  return { confirmToken: details.confirmToken, expiresAt: details.expiresAt, summary: details.summary };
 }
 
 /**
@@ -173,8 +176,8 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
     const names = list.map((m) => m.name).toSorted();
     assert(JSON.stringify(names) === JSON.stringify(['author', 'book', 'tag']), `models ${names.join(',')}`);
     const author = list.find((m) => m.name === 'author');
-    assert(JSON.stringify([...(author?.capabilities ?? [])].toSorted()) === JSON.stringify(['aggregate', 'cascade']), 'author caps');
-    return `3 models [author, book, tag]; author caps=[aggregate,cascade], book caps=[nativeSearch]`;
+    assert(JSON.stringify([...(author?.capabilities ?? [])].toSorted()) === JSON.stringify(['aggregate', 'cascade', 'transactions']), 'author caps');
+    return `3 models [author, book, tag]; author caps=[aggregate,cascade,transactions], book caps=[nativeSearch,transactions]`;
   });
 
   await step('data.describeModel', async () => {
@@ -467,7 +470,6 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
   const host = await startStudioServer({
     workerOrigin: 'http://demo.app.internal',
     adminToken: token,
-    editable: true,
     resolveFrom: import.meta.url,
     // Route the proxy's forward straight into the running app (in-process).
     fetchImpl: (input, init) => {
@@ -476,12 +478,15 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
     },
   });
 
+  let sessionToken = '';
   try {
     await step('host: serves the SPA shell', async () => {
       const res = await fetch(host.url);
       assert(res.status === 200, `shell status ${res.status}`);
       const html = await res.text();
-      assert(html.includes('window.__VELA_BASE_PATH__'), 'boots the SPA base path');
+      const bootstrap = html.match(/window\.__VELA_STUDIO__=(.+);/);
+      assert(bootstrap?.[1], 'boots the Studio connection');
+      sessionToken = parseStudioConnection(JSON.parse(bootstrap[1])).sessionToken;
       assert(html.includes('<script type="module" src="/studio.js">'), 'references the standalone bundle');
       assert(!html.includes(token), 'master token never in the browser document');
       return `GET ${host.url} -> 200 text/html shell (script /studio.js; master token absent)`;
@@ -495,16 +500,16 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
     });
 
     await step('host: proxy injects the master bearer server-side', async () => {
-      // The browser sends NO Authorization; the host injects the master token.
+      // The browser authenticates with the local session; the host holds the master token.
       const res = await fetch(new URL(`${ADMIN_BASE_PATH}/rpc/studio.capabilities`, host.url), {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'sec-fetch-site': 'same-origin' },
+        headers: { 'content-type': 'application/json', 'sec-fetch-site': 'same-origin', authorization: `Bearer ${sessionToken}` },
         body: JSON.stringify({ args: {} }),
       });
       assert(res.status === 200, `proxied status ${res.status}`);
-      const body = (await res.json()) as { ok: boolean };
+      const body = parseStudioRpcResponse('studio.capabilities', await res.json());
       assert(body.ok === true, 'app authorized the bearer-injected request');
-      return `browser sent no auth; host injected Bearer -> app authorized (ok:true)`;
+      return `browser session authenticated; host injected master Bearer -> app authorized (ok:true)`;
     });
 
     await step('host: gate rejection 403s', async () => {

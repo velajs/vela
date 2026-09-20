@@ -1,3 +1,4 @@
+import { defineProvider } from '@velajs/vela';
 /**
  * `@velajs/studio/auth` — the OPTIONAL better-auth binding for the auth panels.
  *
@@ -172,7 +173,7 @@ export class BetterAuthStudioSource implements StudioAuthSource {
    */
   private pluginIds(): Set<string> {
     try {
-      const plugins = rec(this.service.auth.options)?.plugins;
+      const plugins = rec(rec(this.service.auth)?.options)?.plugins;
       if (!Array.isArray(plugins)) return new Set();
       const ids = new Set<string>();
       for (const plugin of plugins) {
@@ -304,12 +305,11 @@ const { ConfigurableModuleClass } = defineModule<StudioAuthModuleOptions>({
   name: 'StudioAuth',
   setup: () => ({
     providers: [
-      {
-        provide: STUDIO_AUTH_SOURCE,
+      defineProvider(STUDIO_AUTH_SOURCE, {
         useFactory: (container: Container) =>
           new BetterAuthStudioSource(container.resolve(BetterAuthService)),
         inject: [Container],
-      },
+      }),
     ],
     exports: [STUDIO_AUTH_SOURCE],
   }),

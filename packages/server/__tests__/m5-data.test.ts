@@ -1,3 +1,4 @@
+import { bindAdapter } from '@velajs/crud/adapter';
 import { describe, expect, it } from 'vitest';
 import { Controller, METADATA_KEYS, Module, VelaFactory, defineMetadata } from '@velajs/vela';
 import type { CrudConfig } from '@velajs/crud';
@@ -21,6 +22,7 @@ import type {
 import { StudioModule } from '../src';
 import type { StudioModuleOptions } from '../src';
 import { StudioCrudModule } from '../src/crud';
+import { STUDIO_MODEL_SOURCE } from '../src/data/model-source.port';
 import type {
   AdminRpcResponse,
   StudioModelDescriptor,
@@ -195,9 +197,13 @@ function memoryAdapter(model: Model, db: MemoryDb, caps: AdapterCapability[]): C
   const visibleLive = (rows: Row[]): Row[] =>
     sd === undefined ? rows : rows.filter((r) => r[sd] == null);
 
-  const adapter: CrudAdapter<Row> = {
+  const adapter: CrudAdapter<Row> = bindAdapter({
     capabilities,
+    async requestScope<T>(fn: (s: AdapterScope) => Promise<T>): Promise<T> {
+      return fn(scope);
+    },
     async transaction<T>(fn: (s: AdapterScope) => Promise<T>): Promise<T> {
+      if (!capabilities.has('transactions')) throw new Error('Callback transactions unavailable');
       return fn(scope);
     },
     async create(input: Partial<Row>): Promise<Row> {
@@ -264,7 +270,7 @@ function memoryAdapter(model: Model, db: MemoryDb, caps: AdapterCapability[]): C
         },
       };
     },
-  };
+  });
 
   if (capabilities.has('aggregate')) {
     adapter.aggregate = async (spec: AggregateSpec): Promise<AggregateResult> => {
@@ -552,13 +558,23 @@ describe('data.describeModel', () => {
     ]);
     expect(post.flags.softDelete).toBe(true);
     expect(post.flags.multiTenant).toBe(false);
-    expect(post.supports).toEqual({ facets: false, search: true, cascade: false });
+    expect(post.supports).toEqual({
+      bulkWrites: false,
+      facets: false,
+      search: true,
+      cascade: false,
+    });
 
     const user: StudioModelDescriptor = ok(await rpc(app, 'data.describeModel', { model: 'user' }));
     expect(user.relations).toEqual([
       { name: 'posts', type: 'hasMany', target: 'posts', foreignKey: 'authorId' },
     ]);
-    expect(user.supports).toEqual({ facets: true, search: false, cascade: true });
+    expect(user.supports).toEqual({
+      bulkWrites: false,
+      facets: true,
+      search: false,
+      cascade: true,
+    });
   });
 
   it('derives unique per-column: single-column unique yes, composite members no, pk yes', async () => {
@@ -588,6 +604,29 @@ describe('data.describeModel', () => {
 });
 
 describe('data.listRows', () => {
+  it('reads and writes one row without transactions, and rejects bulk mutations before changing rows', async () => {
+    const app = await makeCrudApp();
+    const source = app.getContainer().resolve(STUDIO_MODEL_SOURCE);
+    expect(source.describe('user').supports.bulkWrites).toBe(false);
+    const before = await source.list('user', { model: 'user' });
+    const created = await source.writeRow?.(
+      'user',
+      { model: 'user', patch: { email: 'new@x.io' } },
+      {},
+    );
+    expect(created?.after.email).toBe('new@x.io');
+    await expect(
+      source.deleteRows?.(
+        'user',
+        { model: 'user', ids: ['u1'], mode: 'hard', confirmToken: '' },
+        {},
+      ),
+    ).rejects.toThrow('requires an adapter with transactions');
+    expect((await source.list('user', { model: 'user' })).rows).toHaveLength(
+      before.rows.length + 1,
+    );
+    expect(await source.readOne('user', 'u1')).not.toBeNull();
+  });
   it('applies eq/like/in filters, sort, and page/perPage with page info', async () => {
     const app = await makeCrudApp();
 

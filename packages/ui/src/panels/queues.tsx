@@ -65,10 +65,14 @@ function DlqDrawer({
 export default function QueuesPanel(): ReactNode {
   const { capabilities } = useStudioCapabilities();
   const canOps = capabilities.writes.opsEditable;
+  const canDepths = capabilities.operations.includes('queue.depths');
+  const canDlq = capabilities.operations.includes('queue.dlq');
+  const canSend = canOps && capabilities.operations.includes('queue.send');
+  const canReplay = canOps && capabilities.operations.includes('queue.replay');
   const [dlqQueue, setDlqQueue] = useState<string | null>(null);
 
   const list = useAdminQuery('queue.list', {});
-  const depths = useAdminQuery('queue.depths', {}, { refetchInterval: 3_000 });
+  const depths = useAdminQuery('queue.depths', {}, { refetchInterval: 3_000, enabled: canDepths });
   const send = useAdminMutation('queue.send', { invalidates: ['queue.depths'] });
 
   const depthByName = new Map((depths.data ?? []).map((d) => [d.name, d]));
@@ -96,17 +100,19 @@ export default function QueuesPanel(): ReactNode {
                     <td>
                       <Badge tone="neutral">{row.kind}</Badge>
                     </td>
-                    <td>{live?.depth ?? row.depth ?? 0}</td>
+                    <td>{live?.depth ?? row.depth ?? '—'}</td>
                     <td>{live?.inFlight ?? '—'}</td>
                     <td className="vela-actions">
-                      <button
-                        type="button"
-                        className="vela-btn"
-                        onClick={() => setDlqQueue(row.name)}
-                      >
-                        Dead letters
-                      </button>
-                      {canOps ? (
+                      {canDlq ? (
+                        <button
+                          type="button"
+                          className="vela-btn"
+                          onClick={() => setDlqQueue(row.name)}
+                        >
+                          Dead letters
+                        </button>
+                      ) : null}
+                      {canSend ? (
                         <button
                           type="button"
                           className="vela-btn"
@@ -124,7 +130,7 @@ export default function QueuesPanel(): ReactNode {
           </table>
         )}
       </QueryView>
-      <DlqDrawer queue={dlqQueue} canReplay={canOps} onClose={() => setDlqQueue(null)} />
+      <DlqDrawer queue={dlqQueue} canReplay={canReplay} onClose={() => setDlqQueue(null)} />
     </Panel>
   );
 }

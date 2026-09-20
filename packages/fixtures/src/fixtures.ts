@@ -1,3 +1,4 @@
+import { STUDIO_OPS } from '@velajs/studio-protocol';
 /**
  * Realistic canned data for Studio tests, typed entirely by
  * `@velajs/studio-protocol`. Because every value is annotated with a protocol
@@ -40,6 +41,7 @@ const writeGates = (value: boolean): StudioWriteGates => ({
 
 /** Every feature live, every write gate open, full time-travel power. */
 export const capabilitiesAllOn: StudioCapabilities = {
+  operations: [...STUDIO_OPS],
   features: featureMap(true),
   writes: writeGates(true),
   timeTravel: timeTravelCapabilitiesPortable,
@@ -52,6 +54,7 @@ export const capabilitiesAllOn: StudioCapabilities = {
  * tabs to assert against.
  */
 export const capabilitiesDegraded: StudioCapabilities = {
+  operations: [...STUDIO_OPS],
   features: { ...featureMap(true), data: false, timeTravel: false },
   writes: writeGates(false),
   timeTravel: null,
@@ -63,6 +66,7 @@ export const capabilitiesDegraded: StudioCapabilities = {
  * (try-it execute, session revoke, queue send/replay, schedule run-now).
  */
 export const capabilitiesReadOnly: StudioCapabilities = {
+  operations: [...STUDIO_OPS],
   features: featureMap(true),
   writes: writeGates(false),
   timeTravel: capabilitiesAllOn.timeTravel,

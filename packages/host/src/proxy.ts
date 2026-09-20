@@ -33,7 +33,12 @@ function buildForwardHeaders(source: Headers, adminToken: string | undefined): H
     // `host` is set by fetch from the target URL; hop-by-hop headers describe
     // the browser↔host hop only. The client's `authorization` is discarded — the
     // master token is added below, never trusted from the browser.
-    if (name === 'host' || name === 'authorization' || HOP_BY_HOP_HEADERS.has(name)) {
+    if (
+      name === 'host' ||
+      name === 'authorization' ||
+      name === 'cookie' ||
+      HOP_BY_HOP_HEADERS.has(name)
+    ) {
       continue;
     }
     headers.append(key, value);
@@ -51,7 +56,12 @@ function buildResponseHeaders(source: Headers): Headers {
     const name = key.toLowerCase();
     // `content-encoding`/`content-length` describe the upstream (already-decoded
     // by fetch) body; forwarding them over a re-chunked stream corrupts it.
-    if (HOP_BY_HOP_HEADERS.has(name) || name === 'content-encoding' || name === 'content-length') {
+    if (
+      HOP_BY_HOP_HEADERS.has(name) ||
+      name === 'content-encoding' ||
+      name === 'content-length' ||
+      name === 'set-cookie'
+    ) {
       continue;
     }
     headers.append(key, value);

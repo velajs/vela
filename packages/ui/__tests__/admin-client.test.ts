@@ -5,6 +5,54 @@ const jsonResponse = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
 describe('AdminClient', () => {
+  it.each([
+    [{ ok: 'true', op: 'app.routes', data: [] }, 200],
+    [
+      { ok: true, op: 'app.modules', data: [], meta: { ms: 1, op: 'app.modules', mode: 'read' } },
+      200,
+    ],
+    [
+      {
+        ok: true,
+        op: 'app.routes',
+        data: [{ method: 'GET', path: 123, handler: 'X', source: 'controller' }],
+        meta: { ms: 1, op: 'app.routes', mode: 'read' },
+      },
+      200,
+    ],
+    [
+      { ok: true, op: 'app.routes', data: [], meta: { ms: 1, op: 'app.routes', mode: 'read' } },
+      500,
+    ],
+    [
+      {
+        ok: false,
+        op: 'app.routes',
+        status: 403,
+        error: { code: 'X', title: 'Error', message: 7, status: 403 },
+      },
+      403,
+    ],
+    [
+      {
+        ok: false,
+        op: 'app.routes',
+        status: 403,
+        error: { code: 'X', title: 'Error', message: 'Error', status: 403 },
+      },
+      401,
+    ],
+  ] as const)('rejects malformed wire responses %#', async (payload, status) => {
+    const client = new AdminClient({
+      baseUrl: 'http://host',
+      fetchImpl: async () => jsonResponse(payload, status),
+    });
+    await expect(client.rpc('app.routes', {})).rejects.toMatchObject({
+      code: 'STUDIO_BAD_RESPONSE',
+      status,
+    });
+  });
+
   it('unwraps an ok envelope to its data', async () => {
     const fetchImpl = (async () =>
       jsonResponse({
@@ -58,13 +106,13 @@ describe('AdminClient', () => {
       sentAuth = headers.get('authorization');
       return jsonResponse({
         ok: true,
-        op: 'studio.capabilities',
-        data: {},
-        meta: { ms: 1, op: 'studio.capabilities', mode: 'read' },
+        op: 'app.routes',
+        data: [],
+        meta: { ms: 1, op: 'app.routes', mode: 'read' },
       });
     }) as typeof fetch;
     const client = new AdminClient({ baseUrl: 'http://host', fetchImpl });
-    await client.rpc('studio.capabilities', {});
+    await client.rpc('app.routes', {});
     expect(sentAuth).toBeNull();
   });
 
@@ -122,10 +170,10 @@ describe('AdminClient', () => {
 
   it('health() reports enabled + protocolVersion', async () => {
     const fetchImpl = (async () =>
-      new Response(JSON.stringify({ enabled: true, protocolVersion: 1 }), {
+      new Response(JSON.stringify({ enabled: true, protocolVersion: 2 }), {
         status: 200,
       })) as typeof fetch;
     const client = new AdminClient({ baseUrl: 'http://host', fetchImpl });
-    await expect(client.health()).resolves.toEqual({ enabled: true, protocolVersion: 1 });
+    await expect(client.health()).resolves.toEqual({ enabled: true, protocolVersion: 2 });
   });
 });

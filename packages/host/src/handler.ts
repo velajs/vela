@@ -1,3 +1,5 @@
+import { STUDIO_PROTOCOL_VERSION } from '@velajs/studio-protocol';
+import { executeApiRequest } from './try-it';
 /**
  * The transport-agnostic request core shared by {@link startStudioServer} (a
  * `node:http` server) and {@link studioMiddleware} (a Hono middleware). It takes
@@ -66,15 +68,19 @@ export function createStudioHandler(resolved: ResolvedOptions): StudioRequestHan
       return textResponse(503, renderMissingAssetsHtml(), 'text/html; charset=utf-8');
     }
     cachedHtml ??= renderStudioHtml({
-      basePath: resolved.basePath === '' ? '/' : resolved.basePath,
+      connection: {
+        protocolVersion: STUDIO_PROTOCOL_VERSION,
+        routerBasePath: resolved.basePath || '/',
+        adminBasePath: resolved.adminPath,
+        apiRequestPath: `${resolved.adminPath}/api-request`,
+        sessionToken: resolved.sessionToken,
+      },
       scriptSrc,
       styleHref,
-      // The browser session token (never the master token) — auto-auth through
-      // the proxy, injected only under the editable opt-in.
-      adminToken: resolved.sessionToken,
-      editable: resolved.editable,
     });
-    return textResponse(200, cachedHtml, 'text/html; charset=utf-8');
+    const response = textResponse(200, cachedHtml, 'text/html; charset=utf-8');
+    response.headers.set('cache-control', 'no-store');
+    return response;
   };
 
   const assetResponse = (fileName: string): Response => {
@@ -125,6 +131,12 @@ export function createStudioHandler(resolved: ResolvedOptions): StudioRequestHan
           JSON.stringify({ ok: false, error: csrfReason }),
           'application/json; charset=utf-8',
         );
+      }
+      if (request.headers.get('authorization') !== `Bearer ${resolved.sessionToken}`) {
+        return forbidden('Invalid Studio host session. Reload Studio to reconnect.');
+      }
+      if (pathname === `${resolved.adminPath}/api-request`) {
+        return executeApiRequest(request, resolved);
       }
       return proxyToWorker(request, {
         workerOrigin: resolved.workerOrigin,

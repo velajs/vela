@@ -114,7 +114,12 @@ export function DataWrites({
       <button type="button" className="vela-btn" onClick={() => setCreating(true)}>
         New row
       </button>
-      <button type="button" className="vela-btn" onClick={() => setGenerating(true)}>
+      <button
+        type="button"
+        className="vela-btn"
+        onClick={() => setGenerating(true)}
+        disabled={!descriptor.supports.bulkWrites}
+      >
         Generate rows
       </button>
 
@@ -136,7 +141,7 @@ export function DataWrites({
       <button
         type="button"
         className="vela-btn vela-btn--danger"
-        disabled={ids.length === 0 || del.isPending}
+        disabled={!descriptor.supports.bulkWrites || ids.length === 0 || del.isPending}
         onClick={() => del.mutate({ model, ids, mode: deleteMode, confirmToken: '' })}
       >
         Delete{ids.length > 0 ? ` (${ids.length})` : ''}
@@ -144,12 +149,15 @@ export function DataWrites({
       <button
         type="button"
         className="vela-btn vela-btn--danger"
-        disabled={clear.isPending}
+        disabled={!descriptor.supports.bulkWrites || clear.isPending}
         onClick={() => clear.mutate({ model, confirmToken: '' })}
       >
         Clear table
       </button>
 
+      {!descriptor.supports.bulkWrites ? (
+        <p className="vela-note">Bulk actions are unavailable for this model.</p>
+      ) : null}
       {del.error !== null ? (
         <p className="vela-state__message" role="alert">
           {del.error.hint ?? del.error.body.message}

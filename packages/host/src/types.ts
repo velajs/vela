@@ -27,21 +27,13 @@ export interface StudioHostOptions {
    * The MASTER admin bearer token. It lives ONLY in the host process: the proxy
    * adds `Authorization: Bearer <token>` server-side when forwarding to
    * {@link workerOrigin}, so the browser NEVER receives it. Omit for an app that
-   * needs no admin auth.
+   * needs no admin auth. The bundled StudioModule requires a configured token.
    */
   adminToken?: string;
   /** Server admin-mount prefix proxied to the app; defaults to `/_vela/admin`. */
   adminPath?: string;
   /** SPA router base path the Studio mounts under in the browser; defaults to `/`. */
   basePath?: string;
-  /**
-   * Enable the developer-only editable affordances (auto-auth + edit UI).
-   * Opt-IN: defaults to `false` (read-only). The loopback dev host / CLI passes
-   * `editable: true` explicitly. When on, a NON-secret browser session token is
-   * injected so the Studio skips the login screen; the master token is never
-   * injected into the page.
-   */
-  editable?: boolean;
   /**
    * Where `@velajs/studio-ui/standalone` is resolved from; defaults to this
    * module's own URL. Tests point it elsewhere to exercise the missing-assets path.

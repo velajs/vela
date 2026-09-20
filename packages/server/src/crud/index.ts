@@ -1,3 +1,4 @@
+import { defineProvider } from '@velajs/vela';
 /**
  * `@velajs/studio/crud` — the OPTIONAL crud binding for the data browser.
  *
@@ -27,7 +28,7 @@ import type { Model } from '@velajs/crud/model';
 import type {
   AdapterScope,
   AggregateSpec,
-  CrudAdapter,
+  RuntimeAdapter,
   FilterCondition,
   ListQuery,
   Lookup,
@@ -79,7 +80,7 @@ const DEFAULT_PER_PAGE = 20;
 /** One discovered, adapter-backed managed model. */
 interface ManagedEntry {
   model: Model;
-  adapter: CrudAdapter;
+  adapter: RuntimeAdapter;
   /** Fields the inline `search` needle applies to (from `CrudConfig.searchFields`). */
   searchFields: string[];
 }
@@ -312,8 +313,8 @@ function syntheticValue(type: StudioColumn['type'], name: string, n: number, now
 
 /**
  * A {@link StudioModelSource} over discovered `@Crud` resources. Reads are
- * served directly against the {@link CrudAdapter} contract inside a
- * `transaction()` scope (a no-op for memory adapters). Capability-degrades
+ * served directly against the {@link RuntimeAdapter} contract inside a
+ * `requestScope()` scope. Capability-degrades
  * cleanly: `facets` requires the adapter's `aggregate` capability (else
  * `FEATURE_UNCONFIGURED`), inline `search` requires `nativeSearch` (else the
  * needle is ignored and a plain page is returned), `cursor` requires the
@@ -349,6 +350,7 @@ export class CrudStudioModelSource implements StudioModelSource {
         audit: m.audit,
       },
       supports: {
+        bulkWrites: adapter.capabilities.has('transactions'),
         facets: adapter.capabilities.has('aggregate'),
         search: adapter.capabilities.has('nativeSearch'),
         cascade: adapter.capabilities.has('cascade'),
@@ -384,11 +386,11 @@ export class CrudStudioModelSource implements StudioModelSource {
           : {}),
       },
     };
-    const result = await entry.adapter.transaction((scope: AdapterScope) =>
+    const result = await entry.adapter.requestScope((scope: AdapterScope) =>
       entry.adapter.list(query, scope),
     );
     return {
-      rows: result.result as Array<Record<string, unknown>>,
+      rows: result.result,
       info: toPageInfo(result.result_info),
     };
   }
@@ -398,10 +400,10 @@ export class CrudStudioModelSource implements StudioModelSource {
     const pk = entry.model.primaryKeys[0] ?? 'id';
     const lookup: Lookup = { field: pk, value: String(id) };
     // Admin reads see soft-deleted rows too (row inspection, not a live query).
-    const row = await entry.adapter.transaction((scope: AdapterScope) =>
+    const row = await entry.adapter.requestScope((scope: AdapterScope) =>
       entry.adapter.readOne(lookup, { withDeleted: true }, scope),
     );
-    return (row ?? null) as Record<string, unknown> | null;
+    return row ?? null;
   }
 
   async facets(request: FacetsRequest): Promise<FacetsResponse> {
@@ -420,7 +422,9 @@ export class CrudStudioModelSource implements StudioModelSource {
       filters: mapFilters(request.filters),
       ...(request.limit !== undefined ? { limit: request.limit } : {}),
     };
-    const result = await entry.adapter.transaction((scope: AdapterScope) => aggregate(spec, scope));
+    const result = await entry.adapter.requestScope((scope: AdapterScope) =>
+      aggregate(spec, scope),
+    );
     const buckets = (result.groups ?? []).map((group) => ({
       value: group.key[request.field],
       count: firstCount(group.values),
@@ -460,7 +464,7 @@ export class CrudStudioModelSource implements StudioModelSource {
       let affected = 0;
       if (cascade !== undefined) {
         for (const id of request.ids) {
-          affected += await entry.adapter.transaction((scope: AdapterScope) =>
+          affected += await entry.adapter.requestScope((scope: AdapterScope) =>
             cascade.countRelated(name, id, scope),
           );
         }
@@ -483,13 +487,13 @@ export class CrudStudioModelSource implements StudioModelSource {
 
     if (request.id !== undefined) {
       const lookup: Lookup = { field: pk, value: String(request.id) };
-      const before = await entry.adapter.transaction((scope: AdapterScope) =>
+      const before = await entry.adapter.requestScope((scope: AdapterScope) =>
         entry.adapter.readOne(lookup, { withDeleted: true }, scope),
       );
       if (before === null) throw studioNotFound(`row '${request.id}' not found in '${model}'`);
       const patch = stampUpdate(entry.model, request.patch, now);
       await this.assertUnique(entry, { ...before, ...patch }, String(request.id));
-      const after = await entry.adapter.transaction((scope: AdapterScope) =>
+      const after = await entry.adapter.requestScope((scope: AdapterScope) =>
         entry.adapter.update(lookup, patch, scope),
       );
       if (after === null) throw studioNotFound(`row '${request.id}' not found in '${model}'`);
@@ -498,7 +502,7 @@ export class CrudStudioModelSource implements StudioModelSource {
 
     const input = stampCreate(entry.model, request.patch, pk, now);
     await this.assertUnique(entry, input, undefined);
-    const after = await entry.adapter.transaction((scope: AdapterScope) =>
+    const after = await entry.adapter.requestScope((scope: AdapterScope) =>
       entry.adapter.create(input, scope),
     );
     return { after, before: null };
@@ -520,6 +524,12 @@ export class CrudStudioModelSource implements StudioModelSource {
     let beforeCapped = false;
     let deleted = 0;
 
+    if (!entry.adapter.capabilities.has('transactions')) {
+      throw studioError(
+        'FEATURE_UNCONFIGURED',
+        'This bulk operation requires an adapter with transactions.',
+      );
+    }
     await entry.adapter.transaction(async (scope: AdapterScope) => {
       for (const id of request.ids) {
         const lookup: Lookup = { field: pk, value: String(id) };
@@ -549,6 +559,12 @@ export class CrudStudioModelSource implements StudioModelSource {
     const perPage = 500;
     let deleted = 0;
 
+    if (!entry.adapter.capabilities.has('transactions')) {
+      throw studioError(
+        'FEATURE_UNCONFIGURED',
+        'This bulk operation requires an adapter with transactions.',
+      );
+    }
     await entry.adapter.transaction(async (scope: AdapterScope) => {
       // Drain the table by repeatedly reading (incl. tombstones) and hard-deleting
       // the first page; stop when a batch removes nothing (empty or unremovable).
@@ -593,6 +609,12 @@ export class CrudStudioModelSource implements StudioModelSource {
     let sampleCapped = false;
     let inserted = 0;
 
+    if (!entry.adapter.capabilities.has('transactions')) {
+      throw studioError(
+        'FEATURE_UNCONFIGURED',
+        'This bulk operation requires an adapter with transactions.',
+      );
+    }
     await entry.adapter.transaction(async (scope: AdapterScope) => {
       for (let n = 0; n < count; n++) {
         const input: Row = {};
@@ -643,7 +665,7 @@ export class CrudStudioModelSource implements StudioModelSource {
         filters.push({ field: col, operator: 'eq', value });
       }
       if (skip) continue;
-      const page = await entry.adapter.transaction((scope: AdapterScope) =>
+      const page = await entry.adapter.requestScope((scope: AdapterScope) =>
         entry.adapter.list({ filters, options: { page: 1, per_page: 2 } }, scope),
       );
       const clash = page.result.some((r) => excludeId === undefined || String(r[pk]) !== excludeId);
@@ -672,7 +694,7 @@ export class CrudStudioModelSource implements StudioModelSource {
       }
       if (parent === undefined) continue;
       const parentPk = parent.model.primaryKeys[0] ?? 'id';
-      const page = await parent.adapter.transaction((scope: AdapterScope) =>
+      const page = await parent.adapter.requestScope((scope: AdapterScope) =>
         parent.adapter.list({ filters: [], options: { page: 1, per_page: 100 } }, scope),
       );
       const ids = page.result
@@ -702,8 +724,8 @@ export class CrudStudioModelSource implements StudioModelSource {
         ...(request.withDeleted === true ? { withDeleted: true } : {}),
       },
     };
-    const hits = await entry.adapter.transaction((scope: AdapterScope) => search(spec, scope));
-    const rows = hits.map((hit) => hit.record as Record<string, unknown>);
+    const hits = await entry.adapter.requestScope((scope: AdapterScope) => search(spec, scope));
+    const rows = hits.map((hit) => hit.record);
     return {
       rows,
       info: {
@@ -739,7 +761,7 @@ export class CrudStudioModelSource implements StudioModelSource {
     for (const found of this.discovery.providersWithMeta<CrudConfig>(METADATA_KEYS.CRUD)) {
       const crudConfig = found.meta;
       if (crudConfig?.model === undefined) continue;
-      const adapter = crudConfig.adapter ?? this.defaultAdapter();
+      const adapter = crudConfig.adapter?.runtime ?? this.defaultAdapter();
       if (adapter === undefined) continue;
       const { name, tableName } = crudConfig.model;
       if (
@@ -755,16 +777,16 @@ export class CrudStudioModelSource implements StudioModelSource {
       }
       map.set(name, {
         model: crudConfig.model,
-        adapter: adapter as CrudAdapter,
+        adapter,
         searchFields: crudConfig.searchFields ?? [],
       });
     }
     return map;
   }
 
-  private defaultAdapter(): CrudAdapter | undefined {
+  private defaultAdapter(): RuntimeAdapter | undefined {
     return this.container.has(CRUD_DEFAULT_ADAPTER)
-      ? this.container.resolve(CRUD_DEFAULT_ADAPTER)
+      ? this.container.resolve(CRUD_DEFAULT_ADAPTER).runtime
       : undefined;
   }
 
@@ -786,12 +808,11 @@ const { ConfigurableModuleClass } = defineModule<StudioCrudModuleOptions>({
   name: 'StudioCrud',
   setup: () => ({
     providers: [
-      {
-        provide: STUDIO_MODEL_SOURCE,
+      defineProvider(STUDIO_MODEL_SOURCE, {
         useFactory: (discovery: DiscoveryService, container: Container) =>
           new CrudStudioModelSource(discovery, container),
         inject: [DiscoveryService, Container],
-      },
+      }),
       // The data WRITE ops. Registered here (not on core StudioModule) because a
       // write is meaningless without a bound source; the dispatch registry
       // discovers their `@AdminRpc`/`@AdminConfirmSummary` methods across the graph.

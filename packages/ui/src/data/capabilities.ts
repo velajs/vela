@@ -42,6 +42,7 @@ const WRITES_CLOSED: StudioWriteGates = {
 /** The defaults-shown capability snapshot used until the server answers. */
 export const DEFAULT_CAPABILITIES: StudioCapabilities = {
   features: FEATURES_SHOWN,
+  operations: [],
   writes: WRITES_CLOSED,
   timeTravel: null,
 };

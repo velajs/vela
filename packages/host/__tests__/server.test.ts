@@ -1,3 +1,4 @@
+import { parseStudioConnection } from '@velajs/studio-protocol';
 import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -78,7 +79,7 @@ describe('token-injection proxy (security crux)', () => {
           'sec-fetch-site': 'same-origin',
           // The browser never legitimately holds the master token; even a forged
           // Authorization must be discarded and replaced server-side.
-          authorization: 'Bearer BROWSER-FORGED-JUNK',
+          authorization: `Bearer ${resolved.sessionToken}`,
         },
         body: '{"args":{}}',
       }),
@@ -98,7 +99,10 @@ describe('token-injection proxy (security crux)', () => {
     const handle = createStudioHandler(resolved);
     const res = await handle(
       new Request('http://127.0.0.1:9999/_vela/admin/health', {
-        headers: { 'sec-fetch-site': 'same-origin' },
+        headers: {
+          'sec-fetch-site': 'same-origin',
+          authorization: `Bearer ${resolved.sessionToken}`,
+        },
       }),
       '127.0.0.1',
     );
@@ -170,7 +174,6 @@ describe('startStudioServer (end-to-end over a real socket)', () => {
     const server = await startStudioServer({
       workerOrigin: origin.origin,
       adminToken: MASTER,
-      editable: true,
       resolveFrom: FROM,
     });
     servers.push(server);
@@ -179,12 +182,12 @@ describe('startStudioServer (end-to-end over a real socket)', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('text/html');
     const html = await res.text();
-    expect(html).toContain('window.__VELA_BASE_PATH__');
+    expect(html).toContain('window.__VELA_STUDIO__');
     expect(html).toContain('<script type="module" src="/studio.js">');
     // The master admin token must NEVER appear in the browser-facing document.
     expect(html).not.toContain(MASTER);
     // A NON-secret session token is injected for auto-auth (editable opt-in).
-    expect(html).toContain('window.__VELA_ADMIN_TOKEN__');
+    expect(html).toContain('sessionToken');
   });
 
   it('serves the built studio.js bundle and a code-split chunk', async () => {
@@ -232,8 +235,14 @@ describe('startStudioServer (end-to-end over a real socket)', () => {
     });
     servers.push(server);
 
+    const html = await (await fetch(server.url)).text();
+    const serialized = html.match(/window\.__VELA_STUDIO__=(.*?);<\/script>/)?.[1];
+    const connection = parseStudioConnection(JSON.parse(serialized ?? 'null'));
     const res = await fetch(new URL('/_vela/admin/health', server.url), {
-      headers: { 'sec-fetch-site': 'same-origin' },
+      headers: {
+        'sec-fetch-site': 'same-origin',
+        authorization: `Bearer ${connection.sessionToken}`,
+      },
     });
     expect(res.status).toBe(200);
     expect(origin.requests).toHaveLength(1);

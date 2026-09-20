@@ -74,7 +74,7 @@ export interface StudioModelDescriptor {
     cascade?: string;
   }>;
   flags: { softDelete: boolean; multiTenant: boolean; versioning: boolean; audit: boolean };
-  supports: { facets: boolean; search: boolean; cascade: boolean };
+  supports: { bulkWrites: boolean; facets: boolean; search: boolean; cascade: boolean };
 }
 
 /** Request to list rows of a model. */
