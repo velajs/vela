@@ -14,6 +14,7 @@ const changed = before.flatMap(({ path, manifest }) => {
   return [{ name: next.name, path: relative(root, path), version: next.version, summary: `See ${relative(root, path)}/CHANGELOG.md.` }];
 });
 if (changed.length) {
+  execFileSync('pnpm', ['install', '--lockfile-only'], { cwd: root, stdio: 'inherit' });
   const versions = new Set(changed.map(entry => entry.version));
   const version = versions.size === 1 ? changed[0].version : new Date().toISOString().slice(0, 10);
   writeFileSync(join(root, 'release-plan.json'), JSON.stringify({ version, packages: changed }, null, 2) + '\n');
