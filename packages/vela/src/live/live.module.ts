@@ -35,7 +35,7 @@ function liveReferenceId(value: unknown): string {
  * App code declares `@LiveResolver` classes with `@LiveQuery(name, definition, { tags })`
  * methods; clients subscribe over the `$live` reserved WebSocket event; writes
  * invalidate tags via `LiveInvalidation` (the `@velajs/crud` bridge does it
- * automatically per table). See `LIVE.md` for the wire protocol, delivery
+ * automatically per table). See `docs/live-queries.md` for the wire protocol, delivery
  * guarantees, and the resume story.
  *
  * Deliberately EAGER (like WebSocketModule): the engine self-drives — it

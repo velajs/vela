@@ -4,7 +4,7 @@ import { EventEmitterSubscriber } from './event-emitter.subscriber';
 
 // Lazy: the whole subsystem (emitter + @OnEvent wiring pass) materializes on
 // first EventEmitter resolution — an HTTP-only worker that never emits pays
-// nothing at cold start. See MODULE_AUTHORING.md "Lazy modules".
+// nothing at cold start. See docs/modules.md "Lazy modules".
 @Module({
   lazy: true,
   providers: [EventEmitter, EventEmitterSubscriber],

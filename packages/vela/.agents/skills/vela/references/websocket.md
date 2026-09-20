@@ -65,4 +65,4 @@ The gateway + module are identical across runtimes; you only choose the wiring:
 
 On Node/Bun/Deno, pass the runtime's Hono `upgradeWebSocket` factory (`@hono/node-ws`, `hono/bun`, or `hono/deno`); `registerWebSocketGateways` iterates `app.entrypoints.ofKind('websocket')` and mounts each gateway route (auto-joining the room from a `:id` path param). On Cloudflare, the Durable Object owns the raw socket via `WebSocketPair` + hibernation (`ctx.acceptWebSocket`), which Hono's `upgradeWebSocket` cannot bridge — one DO per room gives native horizontal scale.
 
-For the full transport walkthrough, read the repo's `WEBSOCKET.md`.
+For the full transport walkthrough, read the repo's `docs/websockets.md`.

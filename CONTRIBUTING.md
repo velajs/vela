@@ -18,7 +18,8 @@ Libraries live in `packages/`, runnable examples in `apps/`, shared tooling in
 Shared tool versions belong in the `pnpm-workspace.yaml` catalog.
 
 The [API starter](apps/api-starter/README.md) demonstrates the complete Workers
-development flow. Package READMEs document their own public APIs.
+development flow. Package READMEs cover installation and package APIs; shared
+guides live in [docs/](docs/README.md).
 
 ## Making a change
 

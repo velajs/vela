@@ -12,7 +12,8 @@ Node entrypoints. Ambient context is opt-in through Hono context storage.
 
 Preserve per-application module boundaries and per-request container ownership.
 Use the public module, discovery, and entrypoint APIs when adding integrations.
-See MODULE_AUTHORING.md, TYPE_CONTRACTS.md, and SECURITY.md for their contracts.
+See the [module](../../docs/modules.md), [type](../../docs/types.md), and
+[security](../../docs/security.md) guides for their contracts.
 
 ## Validation
 

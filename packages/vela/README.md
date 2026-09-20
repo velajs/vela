@@ -12,6 +12,9 @@ NestJS-compatible framework for edge runtimes, powered by [Hono](https://hono.de
 pnpm add @velajs/vela
 ```
 
+See the [documentation index](https://github.com/velajs/vela/blob/main/docs/README.md)
+for module authoring, runtime types, security, WebSockets, and live queries.
+
 ## Quick Start
 
 ```typescript
@@ -49,7 +52,7 @@ default, enforced before application middleware, signed-body capture, guards,
 and parameter parsing. Configure global and narrow streaming limits with
 `VelaFactory.create(AppModule, { security: { body: ..., query: ... } })`.
 Guards run before parameter decorators and pipes, and malformed JSON passed to
-`@Body()` produces a 400 response. See the [security guide](https://github.com/velajs/vela/blob/main/packages/vela/SECURITY.md)
+`@Body()` produces a 400 response. See the [security guide](https://github.com/velajs/vela/blob/main/docs/security.md)
 for caching, signed URLs, browser headers, client identity, and WebSockets.
 
 Rate limiting prefers identity explicitly published by trusted authentication

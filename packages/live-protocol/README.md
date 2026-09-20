@@ -33,4 +33,5 @@ malformed row operations. Defaults are 64 KiB per envelope, 1,000 delta operatio
 and 4 KiB of presence metadata. Clients ignore regressive cursors and cold-resubscribe
 when an epoch or watermark cannot continue safely.
 
-See `vela/LIVE.md` in the main framework repo for the full feature documentation.
+See the [live-query guide](https://github.com/velajs/vela/blob/main/docs/live-queries.md)
+for the full feature documentation.

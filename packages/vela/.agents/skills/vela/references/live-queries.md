@@ -68,4 +68,4 @@ Create that factory once at module scope; use its matching provider and hooks to
 - One room per subscription. Query work is per subscription unless `coalesceBy` declares an equivalent authorization/result partition; authorization and result baselines remain per subscriber.
 - Presence uses `$presence.roster`, heartbeat TTLs, and immediate departure on close; disable with `presence: false`.
 
-For protocol guarantees, delivery/coalescing limits, and commit semantics consult the core `LIVE.md`, protocol package README, and client README. HTTP RPC is separate: `@velajs/client/http` re-exports Hono `hc`; see `openapi.md`.
+For protocol guarantees, delivery/coalescing limits, and commit semantics consult the repository's `docs/live-queries.md`, protocol package README, and client README. HTTP RPC is separate: `@velajs/client/http` re-exports Hono `hc`; see `openapi.md`.

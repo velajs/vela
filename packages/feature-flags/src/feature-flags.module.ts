@@ -13,7 +13,7 @@ import type { FeatureFlagsOptions } from './feature-flags.types';
  * `lazy: true` is valid here: every provider is sync-constructible (a factory
  * for the driver registry, a sync-constructor service, a guard) and there are
  * no async lifecycle hooks — so the module defers to first use without
- * violating the sync-seam rule (see vela `MODULE_AUTHORING.md`).
+ * violating the sync-seam rule (see `docs/modules.md`).
  *
  * `isGlobal: true` makes the module globally visible AND registers
  * {@link FeatureFlagGuard} app-wide (`APP_GUARD`) so every `@FeatureFlag()`

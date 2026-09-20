@@ -1,7 +1,7 @@
 /**
  * `CrudModule` — defineModule-based (the queue-module template), EAGER by
  * design: adapter capability checks, tenant affirmations, and schema
- * derivation are load-time fail-fast wiring, exactly what MODULE_AUTHORING
+ * derivation are load-time fail-fast wiring, exactly what docs/modules.md
  * says not to defer.
  *
  * - `forRoot({ adapter })` / `forRootAsync` provide the app-wide default

@@ -247,5 +247,5 @@ pnpm --filter @velajs/cloudflare typecheck
 ```
 
 The Workers suite uses real KV, D1, R2, WebSockets, SQLite Durable Objects, and
-cold event dispatch. See the [security guide](https://github.com/velajs/vela/blob/main/packages/cloudflare/SECURITY.md) for trusted identity,
+cold event dispatch. See the [security guide](https://github.com/velajs/vela/blob/main/docs/cloudflare-security.md) for trusted identity,
 URL signing, and WebSocket boundaries.

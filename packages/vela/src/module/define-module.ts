@@ -105,7 +105,7 @@ export interface DefineModuleSpec<
    * Default every generated module instance to deferred (first-use)
    * materialization. Call sites can also opt in per instance by passing
    * `lazy: true` alongside the options (recognized like `isGlobal`).
-   * See MODULE_AUTHORING.md "Lazy modules".
+   * See docs/modules.md "Lazy modules".
    */
   lazy?: boolean;
 }

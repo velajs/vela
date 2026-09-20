@@ -27,7 +27,7 @@ use the current APIs described below. Release titles use plain versions, such as
   Live and presence inspection require an explicit `StudioLiveSource`. On
   Cloudflare it addresses known room stubs; it does not enumerate every DO.
 
-See [the core type guide](packages/vela/TYPE_CONTRACTS.md) and the
+See [the core type guide](docs/types.md) and the
 [complete starter](apps/api-starter/README.md).
 
 ## Verification and artifacts

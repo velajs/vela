@@ -50,4 +50,4 @@ Type aliases disappear from reflection. Supply the parser explicitly as above; a
 
 `@Serialize(descriptor)` parses handler output through `descriptor.schema` when `SerializerInterceptor` is active; arrays are parsed element-by-element. Choose a schema that strips unwanted fields. Apply `@UseInterceptors(SerializerInterceptor)` or register `defineProvider(APP_INTERCEPTOR, { useClass: SerializerInterceptor })`. The decorator alone does not activate the interceptor.
 
-See `openapi.md` for generated HTTP contracts and the core package's `TYPE_CONTRACTS.md` for the runtime/type boundary.
+See `openapi.md` for generated HTTP contracts and the repository's `docs/types.md` for the runtime/type boundary.

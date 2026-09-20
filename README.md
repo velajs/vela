@@ -13,7 +13,8 @@ pnpm add @velajs/vela @velajs/cloudflare
 Start with the [framework guide](packages/vela/README.md) and
 [Cloudflare integration](packages/cloudflare/README.md). The
 [API starter](apps/api-starter/README.md) is a runnable example with authentication,
-D1, live queries, and Studio.
+D1, live queries, and Studio. Browse the [documentation](docs/README.md) for
+module authoring, types, security, WebSockets, and live-query guides.
 
 For development setup, testing, and pull requests, see
 [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -81,7 +82,7 @@ the shared TypeScript 7 toolchain. See [the tooling guide](docs/tooling.md).
 
 Schema descriptors validate data at runtime and infer parsed result types.
 Cache reads and other unvalidated values return `unknown`; parser-based helpers
-infer their real output. See [the core type guide](packages/vela/TYPE_CONTRACTS.md).
+infer their real output. See [the core type guide](docs/types.md).
 
 ## Runnable examples
 

@@ -128,7 +128,7 @@ All may be lowered; the first three have explicit bounded module options.
 
 ## Cloudflare gotchas
 
-- **Data locality**: the Worker and each Durable Object bootstrap SEPARATE app instances of the same module. State that live queries read and mutations write must live in a shared store (D1/KV/external DB) — per-isolate memory makes writes invisible to re-runs. See the [live todo example](../../apps/live-todo/README.md).
+- **Data locality**: the Worker and each Durable Object bootstrap SEPARATE app instances of the same module. State that live queries read and mutations write must live in a shared store (D1/KV/external DB) — per-isolate memory makes writes invisible to re-runs. See the [live todo example](../apps/live-todo/README.md).
 - **Commit headers on Workers**: stamp them explicitly (`stampCommitHeaders(c, stamp)`; the CRUD bridge does it automatically). Do NOT rely on `ambientContainer`: awaiting a Durable Object RPC inside hono's ALS `contextStorage()` middleware hangs the response under workerd.
 - Driver/log factories run once in each application container. Keep state on the returned instance and return a new instance each time; shared mutable drivers or logs would leak environment bindings, sinks, or cursor state between applications.
 

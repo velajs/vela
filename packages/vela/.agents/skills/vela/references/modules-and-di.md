@@ -135,4 +135,4 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<StorageOp
 export class StorageModule extends ConfigurableModuleClass {}
 ```
 
-`ConfigurableModuleBuilder` is an adapter over the same engine; retain the returned builder from each configuration step. Prefer the single-spec `defineModule` API for new modules. For the full authoring contract (keys, `lazyProvider`, `provideGlobal`, `sideEffectModule`, discovery, entrypoints, route contributors), read the repo's `MODULE_AUTHORING.md`.
+`ConfigurableModuleBuilder` is an adapter over the same engine; retain the returned builder from each configuration step. Prefer the single-spec `defineModule` API for new modules. For the full authoring contract (keys, `lazyProvider`, `provideGlobal`, `sideEffectModule`, discovery, entrypoints, route contributors), read the repo's `docs/modules.md`.

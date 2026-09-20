@@ -16,7 +16,7 @@ Vela mirrors NestJS's authoring surface, so most decorators and interfaces port 
 | NestJS | Vela | Notes |
 |---|---|---|
 | class-validator + class-transformer DTOs | **Schemas** via `defineEndpoint` or `defineDto(schema)` + explicit `ValidationPipe` | core never imports class-validator — see `references/validation.md` |
-| `ConfigurableModuleBuilder` for dynamic modules | **`defineModule`** (the engine; `ConfigurableModuleBuilder` adapts it) | see `references/modules-and-di.md` + `MODULE_AUTHORING.md` |
+| `ConfigurableModuleBuilder` for dynamic modules | **`defineModule`** (the engine; `ConfigurableModuleBuilder` adapts it) | see `references/modules-and-di.md` + `docs/modules.md` |
 | `app.setGlobalPrefix('/api')` | `globalPrefix` create-option; read back via `app.getGlobalPrefix()` | there is **no** `setGlobalPrefix` method on the app |
 | `app.enableVersioning({...})` | decorator-driven `@Controller({ version })` / `@Version(2)` | no `enableVersioning`/`VersioningType` |
 | `app.enableCors()` | `middleware: [cors()]` create-option, or `CorsModule.forRoot({})` | no `enableCors` method |

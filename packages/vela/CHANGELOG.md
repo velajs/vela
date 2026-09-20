@@ -223,7 +223,7 @@ cost it nothing at bootstrap.
   tokens) do not trigger. Sync seams (`app.get`, the request pipeline) throw
   a descriptive error for lazy modules with async providers/hooks — reach
   those through `app.materializeLazyModules()` (the new warmup escape hatch)
-  or keep them sync. Authoring contract: MODULE_AUTHORING.md "Lazy modules".
+  or keep them sync. Authoring contract: docs/modules.md "Lazy modules".
 - **`app.materializeLazyModules()`** — materialize every still-pending lazy
   module (async-safe); warmup/eager-everything escape hatch.
 - **`Container.isLazyPending(token)` / `Container.isInstantiated(token)`** —
@@ -259,7 +259,7 @@ undefined`, mirroring the request-scoped convention) instead of forcing the
 
 The module-model release: one blessed authoring path plus public kernel
 extension points, so feature modules (websocket, storage, queue, …) are built
-entirely on the public API. See `MODULE_AUTHORING.md` for the author contract.
+entirely on the public API. See `docs/modules.md` for the author contract.
 Contains deliberate breaking changes (no deprecation shims); coordinated
 releases of `@velajs/{storage,better-auth,testing,crud,cloudflare}` accompany
 this version.

@@ -162,7 +162,7 @@ queue/scheduled dispatch deliberately applies none. Exception-filter terminal
 behavior stays transport-specific.
 
 The worked example for ALL of this is the first-party queue module
-(`src/queue/`, `@velajs/vela/queue`): decorators via
+(`packages/vela/src/queue/`, `@velajs/vela/queue`): decorators via
 `createDiscoverableDecorator`, the `'queue'` entrypoint kind, per-job
 `runInEntrypointScope` + async-seam re-resolution (lazy-module compatible),
 `defineModule({ lazy: true })` with options-derived per-queue providers, and
@@ -234,7 +234,7 @@ read gateway instances at wiring time).
 
 ## Cross-runtime modules (the WebSocket triad pattern)
 
-1. **Edge-safe core** (`src/websocket/`): decorators + dispatcher + pluggable
+1. **Edge-safe core** (`packages/vela/src/websocket/`): decorators + dispatcher + pluggable
    driver interfaces. No `node:*`, ever — CI-audited.
 2. **Runtime transports** consume `app.entrypoints`, never module internals:
    `websocket-node` mounts Hono `upgradeWebSocket` routes; `@velajs/cloudflare`

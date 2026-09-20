@@ -134,7 +134,7 @@ export interface DynamicModule {
    * Defer this module instance's providers/controllers to first use: nothing
    * constructs at bootstrap; the first resolution of any of its tokens
    * materializes the whole group and replays its lifecycle hooks (memoized).
-   * See MODULE_AUTHORING.md "Lazy modules" for the contract.
+   * See docs/modules.md "Lazy modules" for the contract.
    */
   lazy?: boolean;
 }
