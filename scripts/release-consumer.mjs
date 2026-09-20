@@ -10,7 +10,7 @@ const artifacts = JSON.parse(await readFile(join(artifactDir, "manifest.json"), 
 const tarballs = Object.fromEntries(
   artifacts.packages.map((entry) => [entry.name, `file:${join(artifactDir, entry.filename)}`]),
 );
-const sample = new URL("cloudflare/examples/api-starter/", root);
+const sample = new URL("apps/api-starter/", root);
 const consumer = await mkdtemp(join(tmpdir(), "vela-release-consumer-"));
 for (const file of [
   "src",

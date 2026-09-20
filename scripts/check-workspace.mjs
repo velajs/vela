@@ -4,29 +4,71 @@ import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const projects = JSON.parse(execFileSync('pnpm', ['list', '-r', '--depth', '-1', '--json'], { cwd: root, encoding: 'utf8' }));
-const packages = projects.map(project => ({ ...JSON.parse(readFileSync(join(project.path, 'package.json'), 'utf8')), path: project.path }));
-const names = new Set(packages.map(pkg => pkg.name));
+const projects = JSON.parse(
+  execFileSync('pnpm', ['list', '-r', '--depth', '-1', '--json'], { cwd: root, encoding: 'utf8' }),
+);
+const packages = projects.map((project) => ({
+  ...JSON.parse(readFileSync(join(project.path, 'package.json'), 'utf8')),
+  path: project.path,
+}));
+const names = new Set(packages.map((pkg) => pkg.name));
 const errors = [];
-const lockfiles = execFileSync('git', ['ls-files', '*pnpm-lock.yaml'], { cwd: root, encoding: 'utf8' }).trim().split('\n');
+const lockfiles = execFileSync('git', ['ls-files', '*pnpm-lock.yaml'], {
+  cwd: root,
+  encoding: 'utf8',
+})
+  .trim()
+  .split('\n');
 for (const path of lockfiles) {
-  if (path !== 'pnpm-lock.yaml' && existsSync(join(root, path))) errors.push(`${path} duplicates the root lockfile`);
+  if (path !== 'pnpm-lock.yaml' && existsSync(join(root, path)))
+    errors.push(`${path} duplicates the root lockfile`);
 }
 for (const pkg of packages) {
   const path = relative(root, pkg.path);
   if (!path) continue;
-  for (const file of ['.git', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', '.changeset', '.github/workflows']) {
+  if (!/^(packages|apps)\/[^/]+$/.test(path) && path !== 'tools/docs')
+    errors.push(`${path} is outside the workspace layout`);
+  if (path.startsWith('apps/') && !pkg.private)
+    errors.push(`${path} must remain a private application`);
+  if (!pkg.private && !path.startsWith('packages/'))
+    errors.push(`${path} must publish from packages/`);
+  if (
+    path !== 'tools/docs' &&
+    pkg.devDependencies?.typescript &&
+    pkg.devDependencies.typescript !== 'catalog:'
+  )
+    errors.push(`${path} must use the shared TypeScript 7 catalog`);
+  for (const file of [
+    '.git',
+    'pnpm-lock.yaml',
+    'pnpm-workspace.yaml',
+    '.changeset',
+    '.github/workflows',
+  ]) {
     if (existsSync(join(pkg.path, file))) errors.push(`${path}/${file} duplicates root ownership`);
   }
-  for (const field of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
+  for (const field of [
+    'dependencies',
+    'devDependencies',
+    'optionalDependencies',
+    'peerDependencies',
+  ]) {
     for (const [name, range] of Object.entries(pkg[field] ?? {})) {
-      if (names.has(name) && !range.startsWith('workspace:')) errors.push(`${pkg.name}: ${field}.${name} must use workspace:`);
-      if (/^(file|link):/.test(range)) errors.push(`${pkg.name}: ${field}.${name} uses a local filesystem range`);
+      if (names.has(name) && !range.startsWith('workspace:'))
+        errors.push(`${pkg.name}: ${field}.${name} must use workspace:`);
+      if (/^(file|link):/.test(range))
+        errors.push(`${pkg.name}: ${field}.${name} uses a local filesystem range`);
     }
   }
-  if (!pkg.private && (pkg.repository?.url !== 'git+https://github.com/velajs/vela.git' || pkg.repository?.directory !== path)) {
+  if (
+    !pkg.private &&
+    (pkg.repository?.url !== 'git+https://github.com/velajs/vela.git' ||
+      pkg.repository?.directory !== path)
+  ) {
     errors.push(`${pkg.name}: repository metadata must point to this monorepo directory`);
   }
 }
 if (errors.length) throw new Error(errors.join('\n'));
-console.log(`Verified one workspace: ${packages.filter(pkg => !pkg.private).length} public packages, shared lockfile and local dependency ranges.`);
+console.log(
+  `Verified one workspace: ${packages.filter((pkg) => !pkg.private).length} public packages, shared lockfile and local dependency ranges.`,
+);

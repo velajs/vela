@@ -4,7 +4,8 @@ The user's clarified product target and independent acceptance criteria are in
 [DESIGN.md](DESIGN.md). The archives below are a verified implementation snapshot;
 their package count and passing tests do not settle the public product structure.
 
-This release coordinates the 21 public API workspace packages at **2.0.0**.
+The initial 2.0.0 release coordinated 21 public API workspace packages.
+The 2.0.1 follow-up updates workspace paths and release tooling.
 `release-plan.json` is the package/version manifest. Deferred AI, agent, mail,
 workflow, event-source, and site repositories are not part of this release.
 
@@ -28,15 +29,15 @@ workflow, event-source, and site repositories are not part of this release.
   Live and presence inspection require an explicit `StudioLiveSource`. On
   Cloudflare it addresses known room stubs; it does not enumerate every DO.
 
-See [the type migration guide](vela/TYPE_CONTRACTS.md) and the
-[complete starter](cloudflare/examples/api-starter/README.md).
+See [the type migration guide](packages/vela/TYPE_CONTRACTS.md) and the
+[complete starter](apps/api-starter/README.md).
 
 ## Verification and artifacts
 
 ```sh
 pnpm install --frozen-lockfile
 pnpm verify
-pnpm --dir vela api:check
+pnpm --dir packages/vela api:check
 pnpm peers check
 node scripts/release-pack.mjs
 node scripts/release-consumer.mjs
@@ -51,28 +52,51 @@ Artifacts live in `.modernization/release-artifacts/`. Keep this exact directory
 once publishing begins: rebuilding a partial release changes archive integrity
 and intentionally blocks an ambiguous retry.
 
-## Publication
+## Publication through GitHub OIDC
+
+The root `release.yml` workflow runs on `main` and can also be dispatched manually.
+It installs the pinned toolchain and runs the full verification gate. The organization currently disables bot-created pull requests, so prepare
+versions with `pnpm version-packages` and merge a normal PR. Merging version
+changes publishes the exact
+archives that passed the external consumer check. The action creates package
+Git tags and GitHub releases. `release-plan.json` contains only changed packages.
+
+Each public npm package trusts GitHub repository `velajs/vela`, workflow
+`release.yml`, environment `release`. The GitHub environment permits only `main`.
+The job has `id-token: write`; no npm token or setup-node registry auth file is
+needed. npm 11.19.0 performs the OIDC exchange. Because npm OIDC authorizes
+publication rather than standalone dist-tag edits, CI publishes validated stable
+versions directly to `latest`, in dependency order. A failure can leave a partial
+set published; it cannot roll back immutable versions.
+
+This repository is private. npm trusted publishing works, but npm provenance
+requires a public source repository. The workflow enables provenance only when
+GitHub reports the repository public; it does not change repository visibility.
+
+For subsequent changes, run `pnpm changeset` and commit the note. At release time,
+run `pnpm version-packages`, review the generated changes, and merge them. A main
+branch with unversioned changesets is verified but not published.
+Versioning updates changelogs, the core skill version, the shared lockfile, and
+the release plan. All active packages use the TypeScript 7 catalog; the isolated
+TypeDoc compatibility dependency is documented in `docs/tooling.md`.
+
+## Interactive recovery
 
 ```sh
 npm login
-node scripts/release-publish.mjs
+node scripts/release-publish.mjs /absolute/path/to/tested-artifacts
 ```
 
-The publish script verifies the tested artifact manifest and each archive, then
-publishes in dependency order under `next`. Only after verifying all registry
-integrities does it promote the set to `latest`. It resumes a partial run only
-when existing versions match the recorded artifacts.
+The interactive publisher stages the set under `next`, verifies every registry
+checksum, then promotes `latest`. It journals accepted submissions and waits for
+npm's asynchronous registry processing before checking integrity. Keep the exact
+artifacts and journal after an interruption. A different archive at an existing
+version is a hard failure. The pack script refuses to overwrite an existing
+artifact manifest; choose a fresh destination for new builds.
 
-All releases originate in `velajs/vela`. CI and Changesets configuration live at
-the repository root. Package manifests point to their monorepo directories.
-Pushing commits does not publish packages. The manual Prepare release workflow
-builds and validates artifacts for download; publication uses the explicit command
-above with an authenticated npm account.
-
-For subsequent changes, run `pnpm changeset`, then `pnpm version-packages`.
-Versioning updates the affected package changelogs, the core skill version, and
-a release plan containing only changed public packages. Commit the generated
-changes and root lockfile, run `pnpm release:check`, then publish those exact archives.
+GitHub retains release artifacts and the consumer proof for 30 days, including
+on failed publication. Do not rebuild a partially published release from changed
+source. Use those artifacts for recovery, and verify all versions before tagging.
 
 ## Validation on 2026-09-20
 

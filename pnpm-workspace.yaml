@@ -1,26 +1,7 @@
 packages:
-  - vela
-  - vela/tools/docs
-  - vela/examples/live-todo
-  - errors
-  - live-protocol
-  - auth
-  - auth/examples/auth-lab-d1
-  - authz
-  - cloudflare-access
-  - cloudflare
-  - cli
-  - feature-flags
-  - testing
-  - testing/examples/lab-testing-harness
-  - storage
-  - crud/packages/*
-  - client/packages/*
-  - studio/packages/*
-  - studio/examples/demo
-  - cloudflare/examples/api-starter
-  - cloudflare/examples/worker-bindings-lab
-  - cloudflare/example
+  - packages/*
+  - apps/*
+  - tools/docs
 
 catalog:
   typescript: 7.0.2

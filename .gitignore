@@ -12,7 +12,7 @@ coverage/
 !.dev.vars.example
 *.tgz
 .superpowers/
-/client/packages/client/__tests__/schema-fixtures.d.ts
+/packages/client/__tests__/schema-fixtures.d.ts
 /.claude/
 /.worktrees/
 /.pnpm-store/

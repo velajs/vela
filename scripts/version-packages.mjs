@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const projects = JSON.parse(execFileSync('pnpm', ['list', '-r', '--depth', '-1', '--json'], { cwd: root, encoding: 'utf8' }));
 const before = projects.map(project => ({ path: project.path, manifest: JSON.parse(readFileSync(join(project.path, 'package.json'), 'utf8')) }));
 execFileSync('pnpm', ['exec', 'changeset', 'version'], { cwd: root, stdio: 'inherit' });
-execFileSync('node', ['vela/scripts/sync-skill-version.mjs'], { cwd: root, stdio: 'inherit' });
+execFileSync('node', ['packages/vela/scripts/sync-skill-version.mjs'], { cwd: root, stdio: 'inherit' });
 const changed = before.flatMap(({ path, manifest }) => {
   const next = JSON.parse(readFileSync(join(path, 'package.json'), 'utf8'));
   if (next.private || next.version === manifest.version) return [];

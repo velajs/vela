@@ -1,35 +1,67 @@
-name: Prepare release
+name: Release
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+  id-token: write
 
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  prepare:
+  release:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
+    environment: release
     steps:
       - uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
         with:
           egress-policy: audit
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      # No registry-url: a generated _authToken entry would interfere with OIDC.
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 24
           cache: pnpm
+      - name: Install npm with trusted publishing support
+        run: npm install --global npm@11.19.0
       - run: pnpm install --frozen-lockfile
-      - run: pnpm release:check
+      - run: pnpm verify
+      - run: pnpm peers check
+      - run: pnpm audit --audit-level=high
+      - name: Check for unversioned changesets
+        id: versions
+        run: |
+          node --input-type=module -e 'import fs from "node:fs"; const pending = fs.readdirSync(".changeset").filter(name => name.endsWith(".md") && name !== "README.md"); fs.appendFileSync(process.env.GITHUB_OUTPUT, "ready=" + (pending.length === 0) + "\n");'
+      - name: Explain pending version preparation
+        if: steps.versions.outputs.ready != 'true'
+        run: echo 'Run pnpm version-packages and merge the resulting version changes to publish. Organization policy disables bot-created release PRs.'
+      - name: Publish tested archives through OIDC
+        if: steps.versions.outputs.ready == 'true'
+        uses: changesets/action@8488615a623b1b9c987934bb89eae8af6a946ac1 # v2.1.1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          version-script: pnpm version-packages
+          publish-script: node scripts/release-ci.mjs
+          create-github-releases: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # npm provenance is not supported for private source repositories.
+          NPM_CONFIG_PROVENANCE: ${{ github.event.repository.private == false }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
         with:
           name: release-${{ github.sha }}
           path: .modernization/release-artifacts/
           include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 14
+          if-no-files-found: ignore
+          retention-days: 30
