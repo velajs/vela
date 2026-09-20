@@ -1,0 +1,58 @@
+import { fileURLToPath } from 'node:url';
+import swc from 'unplugin-swc';
+import { defineConfig } from 'vitest/config';
+
+/** Absolute path relative to this config file. */
+const r = (p: string): string => fileURLToPath(new URL(p, import.meta.url));
+
+export default defineConfig({
+  oxc: false,
+  // Run the ported conformance suite directly against the ENGINE SOURCE (not
+  // the built dist), mirroring how @velajs/crud's own subpath exports resolve.
+  // Order matters: longest keys first so `@velajs/crud/adapter` matches before
+  // the bare `@velajs/crud` (first alias entry wins in @rollup/plugin-alias).
+  resolve: {
+    alias: [
+      { find: '@velajs/crud/adapter', replacement: r('../../packages/crud/src/adapter/index.ts') },
+      { find: '@velajs/crud/model', replacement: r('../../packages/crud/src/model/index.ts') },
+      { find: '@velajs/crud/query', replacement: r('../../packages/crud/src/query/index.ts') },
+      { find: '@velajs/crud/envelope', replacement: r('../../packages/crud/src/envelope/index.ts') },
+      { find: '@velajs/crud/policies', replacement: r('../../packages/crud/src/policies/index.ts') },
+      { find: '@velajs/crud/kernel', replacement: r('../../packages/crud/src/kernel/index.ts') },
+      {
+        find: '@velajs/crud/multi-tenant',
+        replacement: r('../../packages/crud/src/multi-tenant/index.ts'),
+      },
+      {
+        find: '@velajs/crud/versioning',
+        replacement: r('../../packages/crud/src/versioning/index.ts'),
+      },
+      { find: '@velajs/crud/audit', replacement: r('../../packages/crud/src/audit/index.ts') },
+      { find: '@velajs/crud', replacement: r('../../packages/crud/src/index.ts') },
+      { find: '@velajs/crud-memory', replacement: r('../../packages/crud-memory/src/index.ts') },
+      { find: '@velajs/crud-drizzle', replacement: r('../../packages/crud-drizzle/src/index.ts') },
+    ],
+  },
+  test: {
+    globals: false,
+    include: ['tests/crud/**/*.test.ts'],
+  },
+  plugins: [
+    swc.vite({
+      tsconfigFile: false,
+      swcrc: false,
+      jsc: {
+        target: 'es2022',
+        parser: {
+          syntax: 'typescript',
+          decorators: true,
+        },
+        transform: {
+          legacyDecorator: true,
+          decoratorMetadata: true,
+        },
+        keepClassNames: true,
+      },
+    }),
+  ],
+});

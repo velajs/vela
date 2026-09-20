@@ -1,0 +1,8 @@
+# Test-only Wrangler config for the OPT-IN ambient-container path, which relies
+# on AsyncLocalStorage (via Hono's contextStorage). Unlike the bare edge config
+# (wrangler.toml), this enables `nodejs_als` — the documented requirement for
+# `VelaFactory.create(module, { ambientContainer: true })` on Cloudflare Workers.
+name = "vela-edge-als-test"
+main = "src/__tests__/workers-als/entry-als.ts"
+compatibility_date = "2026-05-01"
+compatibility_flags = ["nodejs_als"]

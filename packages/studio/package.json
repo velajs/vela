@@ -1,0 +1,124 @@
+{
+  "name": "@velajs/studio",
+  "version": "1.22.1",
+  "description": "Vela Studio admin module: reserved /_vela/admin surface, @AdminRpc ops, time-travel port",
+  "keywords": [
+    "admin",
+    "edge",
+    "hono",
+    "studio",
+    "vela"
+  ],
+  "homepage": "https://github.com/velajs/vela/tree/main/packages/studio#readme",
+  "bugs": {
+    "url": "https://github.com/velajs/vela/issues"
+  },
+  "license": "MIT",
+  "author": "ksh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/velajs/vela.git",
+    "directory": "packages/studio"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./auth": {
+      "types": "./dist/auth/index.d.ts",
+      "import": "./dist/auth/index.js"
+    },
+    "./flags": {
+      "types": "./dist/flags/index.d.ts",
+      "import": "./dist/flags/index.js"
+    },
+    "./queue": {
+      "types": "./dist/queue/index.d.ts",
+      "import": "./dist/queue/index.js"
+    },
+    "./live": {
+      "types": "./dist/live/index.d.ts",
+      "import": "./dist/live/index.js"
+    },
+    "./schedule": {
+      "types": "./dist/schedule/index.d.ts",
+      "import": "./dist/schedule/index.js"
+    },
+    "./timetravel": {
+      "types": "./dist/timetravel/index.d.ts",
+      "import": "./dist/timetravel/index.js"
+    },
+    "./crud": {
+      "types": "./dist/crud/index.d.ts",
+      "import": "./dist/crud/index.js"
+    },
+    "./cloudflare": {
+      "types": "./dist/cloudflare/index.d.ts",
+      "import": "./dist/cloudflare/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json"
+  },
+  "dependencies": {
+    "@velajs/errors": "workspace:*",
+    "@velajs/studio-protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@velajs/better-auth": "workspace:*",
+    "@velajs/cloudflare": "workspace:*",
+    "@velajs/crud": "workspace:*",
+    "@velajs/feature-flags": "workspace:*",
+    "@velajs/vela": "workspace:*",
+    "better-auth": "^1.2.0",
+    "hono": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "@velajs/better-auth": "workspace:^",
+    "@velajs/cloudflare": "workspace:^",
+    "@velajs/crud": "workspace:^",
+    "@velajs/feature-flags": "workspace:^",
+    "@velajs/vela": "workspace:^",
+    "better-auth": ">=1.2.0",
+    "hono": ">=4"
+  },
+  "peerDependenciesMeta": {
+    "@velajs/better-auth": {
+      "optional": true
+    },
+    "@velajs/cloudflare": {
+      "optional": true
+    },
+    "@velajs/crud": {
+      "optional": true
+    },
+    "@velajs/feature-flags": {
+      "optional": true
+    },
+    "better-auth": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

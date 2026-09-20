@@ -1,0 +1,90 @@
+{
+  "name": "@velajs/cli",
+  "version": "1.22.1",
+  "description": "CLI for Vela apps — seeding and project tasks (Node-side; not bundled into the edge Worker)",
+  "keywords": [
+    "cli",
+    "cloudflare-workers",
+    "edge",
+    "seeder",
+    "vela"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/velajs/vela.git",
+    "directory": "packages/cli"
+  },
+  "bin": {
+    "vela": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    "./client": {
+      "types": "./dist/client-contract.d.ts",
+      "import": "./dist/client-contract.js"
+    },
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./config": {
+      "types": "./dist/config.d.ts",
+      "import": "./dist/config.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "oxlint .",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "publint": "publint",
+    "attw": "attw --pack . --profile esm-only",
+    "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm test && pnpm publint && pnpm attw"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "clipanion": "^4.0.0-rc.4",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "catalog:",
+    "@changesets/cli": "catalog:",
+    "@swc/core": "catalog:",
+    "@types/node": "catalog:",
+    "@velajs/client": "workspace:*",
+    "@velajs/vela": "workspace:*",
+    "hono": "catalog:",
+    "oxfmt": "catalog:",
+    "oxlint": "catalog:",
+    "publint": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "unplugin-swc": "catalog:",
+    "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "@velajs/vela": "workspace:^"
+  },
+  "optionalDependencies": {
+    "@velajs/studio-host": "workspace:*"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "homepage": "https://github.com/velajs/vela/tree/main/packages/cli#readme",
+  "bugs": {
+    "url": "https://github.com/velajs/vela/issues"
+  }
+}

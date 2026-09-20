@@ -1,0 +1,36 @@
+packages:
+  - packages/*
+  - apps/*
+  - tools/docs
+
+catalog:
+  typescript: 7.0.2
+  tsdown: 0.23.0
+  vitest: 4.1.10
+  oxlint: 1.73.0
+  oxfmt: 0.58.0
+  publint: 0.3.21
+  "@arethetypeswrong/cli": 0.18.5
+  "@changesets/cli": 3.0.1
+  "@swc/core": 1.15.43
+  unplugin-swc: 1.5.9
+  "@types/node": 24.13.3
+  "@vitest/runner": 4.1.10
+  "@vitest/snapshot": 4.1.10
+  hono: 4.13.8
+  zod: 4.4.3
+  "@cloudflare/vitest-plugin": 1.1.13
+  "@cloudflare/workers-types": 5.20260920.1
+  wrangler: 4.135.0
+
+allowBuilds:
+  "@swc/core": true
+  "@parcel/watcher": true
+  esbuild: true
+  sharp: true
+  workerd: true
+
+autoInstallPeers: false
+strictPeerDependencies: false
+minimumReleaseAgeExclude:
+  - "@cloudflare/workers-types@5.20260920.1"

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>vela live-todo</title>
+<style>
+  :root { color-scheme: light dark; font-family: ui-sans-serif, system-ui, sans-serif; }
+  body { margin: 0; padding: 24px; max-width: 720px; margin-inline: auto; }
+  h1 { font-size: 18px; display: flex; align-items: center; gap: 10px; }
+  #status-dot { width: 10px; height: 10px; border-radius: 50%; background: #888; display: inline-block; }
+  #status-dot.connected { background: #29c76f; }
+  #status-dot.offline, #status-dot.connecting { background: #e5a50a; }
+  #presence { font-size: 13px; opacity: 0.85; margin: 6px 0 18px; }
+  form { display: flex; gap: 8px; margin-bottom: 14px; }
+  input[type=text] { flex: 1; padding: 8px 10px; border-radius: 8px; border: 1px solid #8884; background: transparent; color: inherit; }
+  button { padding: 8px 14px; border-radius: 8px; border: 1px solid #8884; background: #4363d811; cursor: pointer; color: inherit; }
+  ul { list-style: none; padding: 0; margin: 0 0 22px; }
+  li { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; border-bottom: 1px solid #8883; }
+  li.optimistic { opacity: 0.5; font-style: italic; }
+  li button { padding: 2px 9px; font-size: 12px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.6; }
+  #wire { font: 11px/1.5 ui-monospace, monospace; background: #8881; border-radius: 8px; padding: 10px 12px; max-height: 220px; overflow-y: auto; white-space: pre; }
+  .out { color: #4363d8; } .in { color: #29a06f; }
+</style>
+</head>
+<body>
+  <h1><span id="status-dot"></span> vela live-todo <span id="status-text" style="font-weight: normal; font-size: 13px; opacity: .7">idle</span></h1>
+  <div id="presence">presence: —</div>
+  <form id="add-form">
+    <input id="add-input" type="text" placeholder="What needs doing?" autocomplete="off" />
+    <button type="submit">Add</button>
+  </form>
+  <ul id="todos"></ul>
+  <h2>wire ($live frames) <button id="blip" type="button" style="font-size:11px; margin-left:8px">simulate network blip</button></h2>
+  <div id="wire"></div>
+  <script type="module" src="/main.js"></script>
+</body>
+</html>

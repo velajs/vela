@@ -1,0 +1,91 @@
+{
+  "name": "@velajs/cloudflare-access",
+  "version": "1.22.1",
+  "description": "Zero Trust / OIDC identity for Vela: RS256-pinned JWKS verification, fail-closed resolveIdentity + composeResolvers, an issuer-preset generic JWKS adapter, and a Vela guard/module bridge into @velajs/authz",
+  "keywords": [
+    "access",
+    "cloudflare",
+    "jwks",
+    "jwt",
+    "oidc",
+    "vela",
+    "zero-trust"
+  ],
+  "homepage": "https://github.com/velajs/vela/tree/main/packages/cloudflare-access#readme",
+  "bugs": {
+    "url": "https://github.com/velajs/vela/issues"
+  },
+  "license": "MIT",
+  "author": "ksh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/velajs/vela.git",
+    "directory": "packages/cloudflare-access"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./vela": {
+      "types": "./dist/vela/index.d.ts",
+      "import": "./dist/vela/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.test.json",
+    "lint": "oxlint .",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "publint": "publint",
+    "attw": "attw --pack . --profile esm-only",
+    "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm test && pnpm publint && pnpm attw"
+  },
+  "dependencies": {
+    "jose": "^6.2.3"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "catalog:",
+    "@changesets/cli": "catalog:",
+    "@swc/core": "catalog:",
+    "@velajs/authz": "workspace:*",
+    "@velajs/vela": "workspace:*",
+    "oxfmt": "catalog:",
+    "oxlint": "catalog:",
+    "publint": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "unplugin-swc": "catalog:",
+    "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "@velajs/authz": "workspace:^",
+    "@velajs/vela": "workspace:^"
+  },
+  "peerDependenciesMeta": {
+    "@velajs/authz": {
+      "optional": true
+    },
+    "@velajs/vela": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

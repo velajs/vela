@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "live-todo",
+  "main": "src/worker.ts",
+  "compatibility_date": "2025-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  // Static UI (index.html + the esbuild bundle). API + upgrade routes fall through to the worker.
+  "assets": { "directory": "./web" },
+  "kv_namespaces": [{ "binding": "TODOS", "id": "todos-local-dev" }],
+  "durable_objects": {
+    "bindings": [{ "name": "CHAT_ROOM", "class_name": "LiveRoom" }]
+  },
+  "migrations": [
+    // SQLite-backed DO: required for the durable live cursor log (real resume).
+    { "tag": "v1", "new_sqlite_classes": ["LiveRoom"] }
+  ]
+}

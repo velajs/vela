@@ -1,0 +1,131 @@
+{
+  "version": "1.22.1",
+  "packages": [
+    {
+      "name": "@velajs/authz",
+      "path": "packages/authz",
+      "version": "1.22.1",
+      "summary": "See packages/authz/CHANGELOG.md."
+    },
+    {
+      "name": "@velajs/better-auth",
+      "path": "packages/better-auth",
+      "version": "1.22.1",
+      "summary": "See packages/better-auth/CHANGELOG.md."
+    },
+    {
+      "name": "@velajs/cli",
+      "path": "packages/cli",
+      "version": "1.22.1",
+      "summary": "See packages/cli/CHANGELOG.md."
+    },
+    {
+      "name": "@velajs/client",
+      "path": "packages/client",
+      "version": "1.22.1",
+      "summary": "See packages/client/CHANGELOG.md."
+    },
+    {
+      "name": "@velajs/cloudflare",
+      "path": "packages/cloudflare",
+      "version": "1.22.1",
+      "summary": "See packages/cloudflare/CHANGELOG.md."
+    },
+    {
+      "name": "@velajs/cloudflare-access",
+      "path": "packages/cloudflare-access",
+      "version": "1.22.1",
+      "summary": "See packages/cloudflare-access/CHANGELOG.md."
+    },
+    {
+      "name": "@velajs/crud",
+      "path": "packages/crud",
+      "version": "1.22.1",
+      "summary": "See packages/crud/CHANGELOG.md."
+    },
+    {
+      "name": "@velajs/crud-drizzle",
+      "path": "packages/crud-drizzle",
+      "version": "1.22.1",
+      "summary": "See packages/crud-drizzle/CHANGELOG.md."
+    },
+    {
+      "name": "@velajs/crud-memory",
+      "path": "packages/crud-memory",
+      "version": "1.22.1",
+      "summary": "See packages/crud-memory/CHANGELOG.md."
+    },
+    {
+      "name": "@velajs/errors",
+      "path": "packages/errors",
+      "version": "1.22.1",
+      "summary": "See packages/errors/CHANGELOG.md."
+    },
+    {
+      "name": "@velajs/feature-flags",
+      "path": "packages/feature-flags",
+      "version": "1.22.1",
+      "summary": "See packages/feature-flags/CHANGELOG.md."
+    },
+    {
+      "name": "@velajs/live-protocol",
+      "path": "packages/live-protocol",
+      "version": "1.22.1",
+      "summary": "See packages/live-protocol/CHANGELOG.md."
+    },
+    {
+      "name": "@velajs/react",
+      "path": "packages/react",
+      "version": "1.22.1",
+      "summary": "See packages/react/CHANGELOG.md."
+    },
+    {
+      "name": "@velajs/react-native",
+      "path": "packages/react-native",
+      "version": "1.22.1",
+      "summary": "See packages/react-native/CHANGELOG.md."
+    },
+    {
+      "name": "@velajs/storage",
+      "path": "packages/storage",
+      "version": "1.22.1",
+      "summary": "See packages/storage/CHANGELOG.md."
+    },
+    {
+      "name": "@velajs/studio",
+      "path": "packages/studio",
+      "version": "1.22.1",
+      "summary": "See packages/studio/CHANGELOG.md."
+    },
+    {
+      "name": "@velajs/studio-host",
+      "path": "packages/studio-host",
+      "version": "1.22.1",
+      "summary": "See packages/studio-host/CHANGELOG.md."
+    },
+    {
+      "name": "@velajs/studio-protocol",
+      "path": "packages/studio-protocol",
+      "version": "1.22.1",
+      "summary": "See packages/studio-protocol/CHANGELOG.md."
+    },
+    {
+      "name": "@velajs/studio-ui",
+      "path": "packages/studio-ui",
+      "version": "1.22.1",
+      "summary": "See packages/studio-ui/CHANGELOG.md."
+    },
+    {
+      "name": "@velajs/testing",
+      "path": "packages/testing",
+      "version": "1.22.1",
+      "summary": "See packages/testing/CHANGELOG.md."
+    },
+    {
+      "name": "@velajs/vela",
+      "path": "packages/vela",
+      "version": "1.22.1",
+      "summary": "See packages/vela/CHANGELOG.md."
+    }
+  ]
+}

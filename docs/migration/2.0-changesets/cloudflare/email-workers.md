@@ -1,0 +1,10 @@
+---
+"@velajs/cloudflare": minor
+---
+
+Add Cloudflare Email Workers adapters over `@velajs/mail`'s edge-neutral core.
+
+- **Outbound** — `CloudflareEmailModule.forRoot({ binding })` (default `SEND_EMAIL`) provides `@velajs/mail`'s `MAIL_TRANSPORT` as a **global** token, so a `MailModule.forRoot({ from })` in another module resolves the transport across module boundaries. The transport (`createCloudflareEmailTransport`) reads the `send_email` binding lazily from a `BindingRef` (auto-initialized by the existing adapter binding-init path), assembles RFC 822 bytes with `renderRawMessage` **above** the transport seam, and constructs one `EmailMessage` (`cloudflare:email`) per envelope recipient (single-recipient binding → fan-out). Provider errors are redacted to a fixed `MailError('provider_error', …, { internal: true })`; the raw platform error rides `MailError.cause` only.
+- **Inbound** — an `email()` host hook on `CloudflareApplication` (sibling of `queue()`/`scheduled()`). It reads the raw byte stream for message content, but forwards only Cloudflare's platform SMTP envelope as trusted adapter data. Neither raw `Authentication-Results` nor `message.headers` is promoted into a verified verdict. Because `ForwardableEmailMessage` exposes no out-of-band verdict, the fail-closed default DMARC gate rejects; no handler runs and `setReject` receives a fixed generic reason. Applications may install an explicit gate for a separately justified trust boundary, but there is no configuration-only authentication bypass. The `mail:inbound` `EntrypointKind` and `@OnInboundEmail` decorator are declared in `@velajs/mail`; this package only adapts `ForwardableEmailMessage` and re-exports the inbound authoring surface (`OnInboundEmail`, `InboundEmail`, `MailInboundGate`) for one-import DX.
+
+Adds `@velajs/mail` as a peer dependency plus a `cloudflare:email` test shim and Vitest alias. Release wiring targets the published Mail 1 and Vela 2 packages so standalone installs do not depend on linked sibling checkouts.

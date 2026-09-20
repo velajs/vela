@@ -1,0 +1,27 @@
+# Test-only configuration. This suite intentionally runs without nodejs_compat
+# so the primary Worker/Durable Object security boundary is exercised by the
+# real workerd WebSocket and hibernation APIs.
+name = "vela-cloudflare-security-test"
+main = "src/__tests__/workers/entry.ts"
+compatibility_date = "2026-07-01"
+
+[[durable_objects.bindings]]
+name = "TEST_ROOM"
+class_name = "TestRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["TestRoom"]
+
+[[kv_namespaces]]
+binding = "CACHE"
+id = "test-cache"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "test-db"
+database_id = "00000000-0000-0000-0000-000000000001"
+
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "test-files"

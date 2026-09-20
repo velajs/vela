@@ -1,0 +1,45 @@
+{
+  "name": "vela-api-starter",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "npm run build:server && npm run client:generate && esbuild web/main.ts --bundle --format=esm --outfile=public/main.js && node scripts/copy-web.mjs",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.web.json",
+    "dev": "npm run build && wrangler dev --port 8790",
+    "db:migrate": "wrangler d1 migrations apply vela-api-starter --local",
+    "client:generate": "node scripts/client.mjs",
+    "client:check": "node scripts/client.mjs --check",
+    "studio": "vela studio --url http://localhost:8790 --port 8791",
+    "smoke": "node scripts/smoke.mjs",
+    "build:server": "swc src -d dist --strip-leading-paths"
+  },
+  "dependencies": {
+    "@velajs/vela": "workspace:*",
+    "@velajs/cloudflare": "workspace:*",
+    "@velajs/better-auth": "workspace:*",
+    "@velajs/crud": "workspace:*",
+    "@velajs/crud-drizzle": "workspace:*",
+    "@velajs/client": "workspace:*",
+    "@velajs/live-protocol": "workspace:*",
+    "@velajs/studio": "workspace:*",
+    "better-auth": "^1.7.5",
+    "@better-auth/drizzle-adapter": "^1.7.5",
+    "drizzle-orm": "^0.45.2",
+    "hono": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@swc/core": "catalog:",
+    "@types/node": "catalog:",
+    "@cloudflare/workers-types": "catalog:",
+    "typescript": "catalog:",
+    "wrangler": "catalog:",
+    "@swc/cli": "^0.8.0",
+    "esbuild": "^0.28.1",
+    "@velajs/cli": "workspace:*",
+    "@velajs/studio-host": "workspace:*",
+    "@velajs/studio-ui": "workspace:*",
+    "ws": "^8.18.3"
+  }
+}
