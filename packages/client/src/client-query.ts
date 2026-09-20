@@ -1,50 +1,49 @@
 import type { ClientQueryRef, Unsubscribe } from './types';
 
-/**
- * A tiny local-only reactive key/value store, keyed by {@link ClientQueryRef}.
- * Client-owned UI state (filters, drafts, view toggles) that wants the same
- * `useSyncExternalStore` subscription mechanics as a live query but never
- * touches the wire. Snapshots are referentially stable between writes (the
- * stored value, or the ref's `defaultValue` when unset) so React never sees an
- * undefined flash and never tears.
- */
+/** One typed reference owns a separate cell per client; keys are diagnostic labels. */
 export function createClientQuery<T>(key: string, defaultValue: T): ClientQueryRef<T> {
-  return { key, defaultValue };
+  const cells = new WeakMap<object, { value: T; listeners: Set<() => void> }>();
+  const cell = (owner: object) => {
+    let value = cells.get(owner);
+    if (!value) {
+      value = { value: defaultValue, listeners: new Set() };
+      cells.set(owner, value);
+    }
+    return value;
+  };
+  return Object.freeze({
+    key,
+    defaultValue,
+    read: (owner: object): T => cell(owner).value,
+    write(owner: object, value: T): void {
+      const target = cell(owner);
+      target.value = value;
+      for (const listener of [...target.listeners]) {
+        try {
+          listener();
+        } catch {
+          /* One observer cannot block others. */
+        }
+      }
+    },
+    observe(owner: object, listener: () => void): Unsubscribe {
+      const target = cell(owner);
+      target.listeners.add(listener);
+      return () => {
+        target.listeners.delete(listener);
+      };
+    },
+  });
 }
 
 export class ClientQueryStore {
-  private readonly values = new Map<string, unknown>();
-  private readonly listeners = new Map<string, Set<() => void>>();
-
   get<T>(ref: ClientQueryRef<T>): T {
-    return this.values.has(ref.key) ? (this.values.get(ref.key) as T) : ref.defaultValue;
+    return ref.read(this);
   }
-
   set<T>(ref: ClientQueryRef<T>, value: T): void {
-    this.values.set(ref.key, value);
-    const subscribers = this.listeners.get(ref.key);
-    if (subscribers === undefined) return;
-    for (const listener of [...subscribers]) {
-      try {
-        listener();
-      } catch {
-        // A misbehaving subscriber must not stall the others.
-      }
-    }
+    ref.write(this, value);
   }
-
   subscribe<T>(ref: ClientQueryRef<T>, listener: () => void): Unsubscribe {
-    let subscribers = this.listeners.get(ref.key);
-    if (subscribers === undefined) {
-      subscribers = new Set();
-      this.listeners.set(ref.key, subscribers);
-    }
-    subscribers.add(listener);
-    return () => {
-      const set = this.listeners.get(ref.key);
-      if (set === undefined) return;
-      set.delete(listener);
-      if (set.size === 0) this.listeners.delete(ref.key);
-    };
+    return ref.observe(this, listener);
   }
 }

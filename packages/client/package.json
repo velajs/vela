@@ -1,6 +1,6 @@
 {
   "name": "@velajs/client",
-  "version": "0.2.0",
+  "version": "2.0.0",
   "description": "Framework-neutral client for Vela live queries: live subscriptions over WebSocket, keyed deltas, cursor-gated optimistic updates, reconnect with resume",
   "keywords": [
     "client",
@@ -32,6 +32,10 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
+    "./http": {
+      "types": "./dist/http.d.ts",
+      "import": "./dist/http.js"
+    },
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
@@ -51,11 +55,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@velajs/live-protocol": "1.1.0"
+    "@velajs/live-protocol": "workspace:*",
+    "hono": "catalog:"
   },
   "devDependencies": {
     "@swc/core": "catalog:",
-    "@velajs/vela": "^1.21.0",
+    "@velajs/vela": "workspace:*",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "unplugin-swc": "catalog:",
@@ -63,5 +68,8 @@
   },
   "engines": {
     "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

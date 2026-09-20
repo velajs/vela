@@ -1,6 +1,6 @@
 {
   "name": "@velajs/react",
-  "version": "0.2.0",
+  "version": "2.0.0",
   "description": "React hooks for Vela live queries: useLiveQuery, useLiveMutation, usePresence, useConnectionStatus on useSyncExternalStore",
   "keywords": [
     "hooks",
@@ -43,10 +43,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@velajs/client": "workspace:^"
+    "@velajs/client": "workspace:*"
   },
   "devDependencies": {
     "@swc/core": "catalog:",
+    "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.0",
     "@types/react": "^19.0.0",
     "happy-dom": "^20.0.0",
@@ -62,5 +63,8 @@
   },
   "engines": {
     "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createClientQuery, LiveClient } from '../src/index';
 
-const clientFor = () => new LiveClient({ url: 'http://api.test' });
+const clientFor = () => new LiveClient({ queries: {}, url: 'http://api.test' });
 
 describe('client-query store', () => {
   it('returns the default value until set', () => {
@@ -62,3 +62,22 @@ describe('client-query store', () => {
     expect(seen).toEqual([true]);
   });
 });
+
+it('isolates same-label references and the same reference in different clients', () => {
+  const a = clientFor();
+  const b = clientFor();
+  const number = createClientQuery('same', 0);
+  const text = createClientQuery('same', '');
+  a.setClientQuery(number, 42);
+  expect(a.getClientQuery(text)).toBe('');
+  expect(b.getClientQuery(number)).toBe(0);
+});
+function negativeTypes() {
+  const client = clientFor();
+  const ref = createClientQuery('count', 0);
+  // @ts-expect-error caller cannot widen a reference to accept another value type
+  client.setClientQuery<number | string>(ref, 'invalid');
+  // @ts-expect-error the reference determines the read type
+  client.getClientQuery<string>(ref);
+}
+void negativeTypes;

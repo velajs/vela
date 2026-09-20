@@ -20,6 +20,8 @@ export interface SubscriptionState {
   callbacks: Set<(value: unknown) => void>;
   errorCallbacks: Set<(error: { code: string; message: string; fatal: boolean }) => void>;
   layers: OptimisticLayer[];
+  validateResult?: (value: unknown) => void;
+  validationError?: string;
   /** Authoritative value with NO optimistic overlay. */
   serverBase: unknown;
   /** Distinguishes "no value yet" from an authoritative `undefined`-shaped value. */
@@ -72,6 +74,11 @@ export function refold(state: SubscriptionState): boolean {
   const next =
     state.layers.length === 0 && state.hasBase ? state.serverBase : foldOptimistic(state);
   if (next === state.lastValue) return false;
+  const hasValue = state.hasBase || state.layers.length > 0;
+  if (hasValue && !validateSnapshot(state, next)) {
+    reportSchemaError(state);
+    return false;
+  }
   state.lastValue = next;
   return true;
 }
@@ -80,4 +87,25 @@ export function notify(state: SubscriptionState): void {
   for (const callback of state.callbacks) {
     callback(state.lastValue);
   }
+}
+
+/** Check before mutating authoritative state or publishing optimistic values. */
+export function validateSnapshot(state: SubscriptionState, value: unknown): boolean {
+  try {
+    state.validateResult?.(value);
+    state.validationError = undefined;
+    return true;
+  } catch (error) {
+    state.validationError = error instanceof Error ? error.message : String(error);
+    return false;
+  }
+}
+
+export function reportSchemaError(state: SubscriptionState): void {
+  for (const callback of state.errorCallbacks)
+    callback({
+      code: 'LIVE_SCHEMA_INVALID',
+      message: state.validationError ?? 'Invalid live result',
+      fatal: false,
+    });
 }

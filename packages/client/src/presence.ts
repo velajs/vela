@@ -1,5 +1,5 @@
 import type { LiveClient } from './live-client';
-import type { LiveContract, Unsubscribe } from './types';
+import type { Unsubscribe } from './types';
 
 /**
  * The built-in roster query name served by `@velajs/vela/live`'s presence
@@ -37,7 +37,7 @@ export interface PresenceHandle {
  * close — the heartbeat/TTL pair only covers ungraceful drops.
  */
 export function createPresence(
-  client: LiveClient<LiveContract>,
+  client: Pick<LiveClient, 'presenceBeat' | 'subscribeRaw'>,
   options: PresenceOptions,
 ): PresenceHandle {
   const intervalMs = options.heartbeatIntervalMs ?? 10_000;
@@ -47,8 +47,7 @@ export function createPresence(
 
   const beat = (): void => {
     if (stopped) return;
-    const meta =
-      typeof options.meta === 'function' ? (options.meta as () => unknown)() : options.meta;
+    const meta = typeof options.meta === 'function' ? options.meta() : options.meta;
     client.presenceBeat(options.room, meta);
   };
 
@@ -59,11 +58,11 @@ export function createPresence(
     timer = setTimeout(tick, intervalMs);
   };
 
-  const unsubscribe: Unsubscribe = client.subscribe(
+  const unsubscribe: Unsubscribe = client.subscribeRaw(
     PRESENCE_ROSTER_QUERY,
     { room: options.room },
     (value) => {
-      members = (value ?? []) as PresenceMember[];
+      members = parsePresenceMembers(value ?? []);
       options.onRoster?.(members);
     },
     { room: options.room },
@@ -82,4 +81,21 @@ export function createPresence(
       unsubscribe();
     },
   };
+}
+
+function parsePresenceMembers(value: unknown): PresenceMember[] {
+  if (!Array.isArray(value)) throw new Error('Invalid presence roster');
+  return value.map((row: unknown) => {
+    if (
+      typeof row !== 'object' ||
+      row === null ||
+      !('id' in row) ||
+      typeof row.id !== 'string' ||
+      !('lastSeen' in row) ||
+      typeof row.lastSeen !== 'number' ||
+      !Number.isFinite(row.lastSeen)
+    )
+      throw new Error('Invalid presence member');
+    return { id: row.id, lastSeen: row.lastSeen, ...('meta' in row ? { meta: row.meta } : {}) };
+  });
 }

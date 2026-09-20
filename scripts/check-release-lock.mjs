@@ -187,6 +187,21 @@ function inspectLockfile(inputPath) {
   }
 }
 
+const clientManifestPath = resolve('packages/client/package.json');
+const clientManifest = JSON.parse(readFileSync(clientManifestPath, 'utf8'));
+if (clientManifest.dependencies?.['@velajs/live-protocol'] !== '1.1.1') {
+  report(
+    clientManifestPath,
+    'release requires @velajs/live-protocol 1.1.1; publish it first, then pin the dependency and regenerate the lockfile from the registry',
+  );
+}
+if (clientManifest.devDependencies?.['@velajs/vela'] !== '^1.22.0') {
+  report(
+    clientManifestPath,
+    'release requires the @velajs/vela ^1.22.0 integration target; publish it first, then pin it and regenerate the lockfile from the registry',
+  );
+}
+
 for (const lockPath of lockPaths) {
   inspectLockfile(lockPath);
 }

@@ -1,17 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { createElement } from 'react';
 import type { ReactNode } from 'react';
 import { createClientQuery, LiveClient } from '@velajs/client';
 import type { ConnectionStatus, MutateOptions } from '@velajs/client';
-import {
+import { createLiveHooks } from '../src/index';
+const {
   LiveProvider,
   useClientQuery,
   useConnectionStatus,
   useLiveMutation,
   useLiveQuery,
   usePresence,
-} from '../src/index';
+} = createLiveHooks();
 
 interface Entry {
   value: unknown;
@@ -32,7 +33,7 @@ function makeFakeClient() {
   const keyOf = (query: string, args: unknown, room?: string): string =>
     `${room ?? 'default'}|${query}|${JSON.stringify(args ?? null)}`;
 
-  const client = {
+  const behavior = {
     subscribe(
       query: string,
       args: unknown,
@@ -63,7 +64,20 @@ function makeFakeClient() {
       return () => statusListeners.delete(listener);
     },
     connectionStatus: () => status,
-  } as unknown as LiveClient;
+  };
+  const client = new LiveClient({
+    queries: {
+      'todos.list': { args: { parse: (v: unknown) => v }, result: { parse: (v: unknown) => v } },
+    },
+    url: 'https://api.test',
+  });
+  vi.spyOn(client, 'subscribe').mockImplementation(behavior.subscribe);
+  vi.spyOn(client, 'subscribeRaw').mockImplementation(behavior.subscribe);
+  vi.spyOn(client, 'peek').mockImplementation(behavior.peek);
+  vi.spyOn(client, 'mutate').mockImplementation(behavior.mutate);
+  vi.spyOn(client, 'presenceBeat').mockImplementation(behavior.presenceBeat);
+  vi.spyOn(client, 'onConnectionStatus').mockImplementation(behavior.onConnectionStatus);
+  vi.spyOn(client, 'connectionStatus').mockImplementation(behavior.connectionStatus);
 
   return {
     client,
@@ -144,7 +158,7 @@ describe('useLiveMutation', () => {
     await act(async () => {
       await expect(result.current.mutate()).rejects.toThrow('boom');
     });
-    expect((result.current.error as Error).message).toBe('boom');
+    expect(result.current.error).toEqual(new Error('boom'));
   });
 });
 
@@ -162,7 +176,12 @@ describe('useConnectionStatus', () => {
 
 describe('useClientQuery', () => {
   it('returns [value, setter] with no undefined flash, re-renders on set, shared across consumers', () => {
-    const client = new LiveClient({ url: 'http://api.test' });
+    const client = new LiveClient({
+      queries: {
+        'todos.list': { args: { parse: (v: unknown) => v }, result: { parse: (v: unknown) => v } },
+      },
+      url: 'http://api.test',
+    });
     const filter = createClientQuery('ui.filter', 'all');
 
     const first = renderHook(() => useClientQuery(filter), { wrapper: wrapperFor(client) });
@@ -221,5 +240,63 @@ describe('usePresence', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('contract-bound hooks', () => {
+  it('parses mutation results through the live client and records parser failures', async () => {
+    const client = new LiveClient({
+      queries: {
+        'todos.list': { args: { parse: (v: unknown) => v }, result: { parse: (v: unknown) => v } },
+      },
+      url: 'https://api.test',
+      fetch: async () => Response.json({ id: 'u1' }),
+    });
+    const parseResult = (value: unknown) => {
+      if (
+        typeof value !== 'object' ||
+        value === null ||
+        !('id' in value) ||
+        typeof value.id !== 'string'
+      )
+        throw new Error('Invalid user');
+      return value.id;
+    };
+    const { result } = renderHook(() => useLiveMutation('/users', { parseResult }), {
+      wrapper: wrapperFor(client),
+    });
+    await act(async () => {
+      expect(await result.current.mutate({ name: 'Ada' })).toBe('u1');
+    });
+    expect(result.current.data).toBe('u1');
+    expect(result.current.pending).toBe(false);
+    const bad = renderHook(
+      () =>
+        useLiveMutation('/users', {
+          parseResult: () => {
+            throw new Error('Invalid output');
+          },
+        }),
+      { wrapper: wrapperFor(client) },
+    );
+    await act(async () => {
+      await expect(bad.result.current.mutate()).rejects.toThrow('Invalid output');
+    });
+    expect(bad.result.current.error).toEqual(new Error('Invalid output'));
+    client.close();
+  });
+
+  it('does not read another hook family provider', () => {
+    const other = createLiveHooks();
+    const client = new LiveClient({
+      queries: {
+        'todos.list': { args: { parse: (v: unknown) => v }, result: { parse: (v: unknown) => v } },
+      },
+      url: 'https://api.test',
+    });
+    expect(() => renderHook(() => other.useLiveClient(), { wrapper: wrapperFor(client) })).toThrow(
+      'same createLiveHooks()',
+    );
+    client.close();
   });
 });

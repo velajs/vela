@@ -1,7 +1,7 @@
 import { DEFAULT_KEY_FIELD, applyListDelta } from '@velajs/live-protocol';
 import type { ServerLiveFrame } from '@velajs/live-protocol';
 import { dropConfirmedLayers } from './optimistic';
-import { refold } from './subscription';
+import { refold, validateSnapshot } from './subscription';
 import type { SubscriptionState } from './subscription';
 
 /**
@@ -12,7 +12,7 @@ import type { SubscriptionState } from './subscription';
  * - `error` — an error frame; route to error callbacks;
  * - `none` — bookkeeping only.
  */
-export type FrameEffect = 'none' | 'notify' | 'resubscribe' | 'error';
+export type FrameEffect = 'none' | 'notify' | 'resubscribe' | 'error' | 'invalid';
 
 /** Apply a full snapshot from SSR/cross-tab through the same state machine as the socket. */
 export function applySnapshotFrame(
@@ -70,13 +70,10 @@ export function applyServerFrame(state: SubscriptionState, frame: ServerLiveFram
     case 'data': {
       if (missingWatermark(state, frame.cursor)) return 'resubscribe';
       if (watermarkRegressed(state, frame.cursor, frame.epoch)) return 'none';
-      if (epochForked(state, frame.epoch)) {
-        // New timeline: every optimistic gate is void. The snapshot itself is
-        // authoritative, so apply it as a cold first frame.
-        state.layers = [];
-      }
       const snapshot = safeClone(frame.snapshot);
       if (snapshot === CLONE_FAILED) return 'resubscribe';
+      if (!validateSnapshot(state, snapshot)) return 'invalid';
+      if (epochForked(state, frame.epoch)) state.layers = [];
       state.serverBase = snapshot;
       state.hasBase = true;
       advanceWatermark(state, frame.cursor, frame.epoch);
@@ -101,6 +98,7 @@ export function applyServerFrame(state: SubscriptionState, frame: ServerLiveFram
       if (merged === undefined) return 'resubscribe';
       const snapshot = safeClone(merged);
       if (snapshot === CLONE_FAILED) return 'resubscribe';
+      if (!validateSnapshot(state, snapshot)) return 'invalid';
       state.serverBase = snapshot;
       advanceWatermark(state, frame.cursor, frame.epoch);
       dropConfirmedLayers(state, frame.cursor, frame.epoch);

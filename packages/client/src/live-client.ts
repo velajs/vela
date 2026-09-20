@@ -13,26 +13,30 @@ import {
   argsKeyOf,
   createSubscriptionState,
   notify,
+  reportSchemaError,
   refold,
   subscriptionKey,
 } from './subscription';
 import type { SubscriptionState } from './subscription';
 import type {
-  ArgsOf,
   ClientQueryRef,
   ConnectionStatus,
   CrossTabOptions,
   HydrationEntry,
   LiveClientOptions,
   LiveContract,
+  LiveContractShape,
+  LiveQuerySchemas,
+  InferLiveContract,
   LiveStore,
   MutateOptions,
+  MutationResultOptions,
   MutationSettledEvent,
   MutationVerdict,
   OfflineQueueOptions,
-  ResultOf,
   SubscribeOptions,
   Unsubscribe,
+  WebSocketLike,
 } from './types';
 
 const DEFAULT_WS_PATH = '/rooms/:room/ws';
@@ -60,7 +64,7 @@ const withoutAuthorization = (
  * The framework-neutral Vela live client.
  *
  * ```ts
- * const client = new LiveClient<AppLive>({ url: 'https://api.example.com' });
+ * const client = createLiveClient({ url: 'https://api.example.com', queries });
  * const stop = client.subscribe('todos.list', { listId: 'l1' }, (todos) => render(todos));
  * await client.mutate('/todos', { text: 'hi' }, {
  *   optimistic: { query: 'todos.list', args: { listId: 'l1' }, apply: (t = []) => [...t, temp] },
@@ -78,7 +82,15 @@ const withoutAuthorization = (
  * own the sockets while followers render relayed snapshots; and a local-only
  * client-query store.
  */
-export class LiveClient<C extends LiveContract = LiveContract> {
+export class LiveClient<C extends LiveContractShape<C> = LiveContract> {
+  private readonly decoded: {
+    [Q in keyof C]?: Map<
+      string,
+      { raw: unknown; value: C[Q]['result'] | undefined; error?: Error }
+    >;
+  } = {};
+  private readonly argumentParsers = new Map<string, { parse(value: unknown): unknown }>();
+  private readonly resultParsers = new Map<string, { parse(value: unknown): unknown }>();
   private readonly registry = new Map<string, SubscriptionState>();
   private readonly connections = new Map<string, RoomConnection>();
   private readonly statusListeners = new Set<(status: ConnectionStatus) => void>();
@@ -105,7 +117,11 @@ export class LiveClient<C extends LiveContract = LiveContract> {
   /** Leader-side: subscription key → set of follower tab ids wanting it. */
   private readonly wanters = new Map<string, Set<string>>();
 
-  constructor(private readonly options: LiveClientOptions) {
+  constructor(private readonly options: LiveClientOptions<C>) {
+    for (const query in options.queries) {
+      this.resultParsers.set(query, options.queries[query].result);
+      this.argumentParsers.set(query, options.queries[query].args);
+    }
     if (options.offline) {
       if (options.identity === undefined) {
         throw new VelaLiveError(
@@ -171,8 +187,37 @@ export class LiveClient<C extends LiveContract = LiveContract> {
 
   subscribe<Q extends keyof C & string>(
     query: Q,
-    args: ArgsOf<C, Q>,
-    callback: (value: ResultOf<C, Q> | undefined) => void,
+    args: C[Q]['args'],
+    callback: (value: C[Q]['result'] | undefined) => void,
+    subscribeOptions?: SubscribeOptions,
+  ): Unsubscribe {
+    const parsedArgs = this.querySchema(query).args.parse(args);
+    const room = subscribeOptions?.room ?? this.options.defaultRoom ?? DEFAULT_ROOM;
+    const key = subscriptionKey(query, argsKeyOf(parsedArgs), room);
+    return this.subscribeRaw(
+      query,
+      parsedArgs,
+      (raw) => {
+        const parsed = this.parseSnapshot(query, key, raw);
+        if (parsed.error) {
+          subscribeOptions?.onError?.({
+            code: 'LIVE_SCHEMA_INVALID',
+            message: parsed.error.message,
+            fatal: false,
+          });
+          return;
+        }
+        callback(parsed.value);
+      },
+      subscribeOptions,
+    );
+  }
+
+  /** Dynamic protocol access: values remain unknown until the caller parses them. */
+  subscribeRaw(
+    query: string,
+    args: unknown,
+    callback: (value: unknown) => void,
     subscribeOptions?: SubscribeOptions,
   ): Unsubscribe {
     const room = subscribeOptions?.room ?? this.options.defaultRoom ?? DEFAULT_ROOM;
@@ -181,12 +226,12 @@ export class LiveClient<C extends LiveContract = LiveContract> {
     let state = this.registry.get(key);
     let fresh = state?.callbacks.size === 0;
     if (!state) {
-      state = createSubscriptionState(query, args, room, subscribeOptions?.key);
+      state = this.createState(query, args, room, subscribeOptions?.key);
       this.registry.set(key, state);
       fresh = true;
     }
 
-    const cb = callback as (value: unknown) => void;
+    const cb = callback;
     state.callbacks.add(cb);
     if (subscribeOptions?.onError) state.errorCallbacks.add(subscribeOptions.onError);
 
@@ -200,21 +245,90 @@ export class LiveClient<C extends LiveContract = LiveContract> {
       if (subscribeOptions?.onError) state.errorCallbacks.delete(subscribeOptions.onError);
       if (state.callbacks.size === 0) {
         this.registry.delete(key);
+        for (const query in this.decoded) this.decoded[query]?.delete(key);
         this.detachTransport(state, key);
       }
     };
   }
 
-  /** The current cached (folded) value — referentially stable between notifications. */
+  private createState(query: string, args: unknown, room: string, key?: string): SubscriptionState {
+    const state = createSubscriptionState(query, args, room, key);
+    const parser = this.resultParsers.get(query);
+    if (parser)
+      state.validateResult = (value) => {
+        parser.parse(value);
+      };
+    return state;
+  }
+
+  private querySchema<Q extends keyof C & string>(query: Q) {
+    const schema = this.options.queries[query];
+    if (!schema)
+      throw new VelaLiveError(
+        'LIVE_SCHEMA_MISSING',
+        `No schema registered for live query ${query}`,
+      );
+    return schema;
+  }
+
+  private parseSnapshot<Q extends keyof C & string>(query: Q, key: string, raw: unknown) {
+    const entries = (this.decoded[query] ??= new Map());
+    const previous = entries.get(key);
+    if (previous && Object.is(previous.raw, raw)) return previous;
+    let parsed: { raw: unknown; value: C[Q]['result'] | undefined; error?: Error };
+    try {
+      parsed = {
+        raw,
+        value: raw === undefined ? undefined : this.querySchema(query).result.parse(raw),
+      };
+    } catch (error) {
+      parsed = {
+        raw,
+        value: previous?.value,
+        error: error instanceof Error ? error : new Error(String(error)),
+      };
+    }
+    entries.set(key, parsed);
+    return parsed;
+  }
+
+  /** Validated cached value, stable between updates even when parsers clone. */
   peek<Q extends keyof C & string>(
     query: Q,
-    args: ArgsOf<C, Q>,
+    args: C[Q]['args'],
     room?: string,
-  ): ResultOf<C, Q> | undefined {
-    const state = this.registry.get(
-      subscriptionKey(query, argsKeyOf(args), room ?? this.options.defaultRoom ?? DEFAULT_ROOM),
+  ): C[Q]['result'] | undefined {
+    const parsedArgs = this.querySchema(query).args.parse(args);
+    const key = subscriptionKey(
+      query,
+      argsKeyOf(parsedArgs),
+      room ?? this.options.defaultRoom ?? DEFAULT_ROOM,
     );
-    return state?.lastValue as ResultOf<C, Q> | undefined;
+    const state = this.registry.get(key);
+    return state ? this.parseSnapshot(query, key, state.lastValue).value : undefined;
+  }
+
+  peekRaw(query: string, args: unknown, room?: string): unknown {
+    return this.registry.get(
+      subscriptionKey(query, argsKeyOf(args), room ?? this.options.defaultRoom ?? DEFAULT_ROOM),
+    )?.lastValue;
+  }
+
+  /** Subscription presence is separate from an initial undefined value. */
+  peekActiveQuerySnapshot<Q extends keyof C & string>(
+    query: Q,
+    args: C[Q]['args'],
+    room?: string,
+  ): { present: false; value: undefined } | { present: true; value: C[Q]['result'] | undefined } {
+    const parsedArgs = this.querySchema(query).args.parse(args);
+    const key = subscriptionKey(
+      query,
+      argsKeyOf(parsedArgs),
+      room ?? this.options.defaultRoom ?? DEFAULT_ROOM,
+    );
+    const state = this.registry.get(key);
+    if (!state || state.callbacks.size === 0) return { present: false, value: undefined };
+    return { present: true, value: this.parseSnapshot(query, key, state.lastValue).value };
   }
 
   /**
@@ -228,11 +342,28 @@ export class LiveClient<C extends LiveContract = LiveContract> {
    * transport error on a direct attempt falls back to the queue rather than
    * rejecting; a coded HTTP error still rolls back and rejects.
    */
-  async mutate<R = unknown>(
+  mutate<Result>(
+    path: string,
+    body: unknown,
+    options: MutationResultOptions<Result>,
+  ): Promise<Awaited<Result>>;
+  mutate(path: string, body?: unknown, options?: MutateOptions): Promise<unknown>;
+  async mutate(
+    path: string,
+    body?: unknown,
+    options?: MutateOptions & { parseResult?: (value: unknown) => unknown },
+  ): Promise<unknown> {
+    const value = await this.mutateRaw(path, body, options);
+    // Parsing occurs after the transport/commit lifecycle. A parser failure
+    // must never enqueue an already committed write or roll back server state.
+    return options?.parseResult ? options.parseResult(value) : value;
+  }
+
+  private async mutateRaw(
     path: string,
     body?: unknown,
     mutateOptions?: MutateOptions,
-  ): Promise<R> {
+  ): Promise<unknown> {
     this.assertSameOriginMutationPath(path);
     const handles: Array<{ state: SubscriptionState; handle: LayerHandle }> = [];
     const paint = (state: SubscriptionState, transform: (current: unknown) => unknown): void => {
@@ -251,7 +382,7 @@ export class LiveClient<C extends LiveContract = LiveContract> {
         ),
       );
       // No live subscription for the target ⇒ nothing displays it: no-op.
-      if (state) paint(state, target.apply as (current: unknown) => unknown);
+      if (state) paint(state, target.apply);
     }
     if (mutateOptions?.optimisticUpdate) {
       mutateOptions.optimisticUpdate(this.makeStore(mutateOptions, paint));
@@ -262,7 +393,7 @@ export class LiveClient<C extends LiveContract = LiveContract> {
 
     // Eager offline queueing: proven offline (or offline-first before connect).
     if (queue && !forceDirect && this.shouldQueueEagerly()) {
-      return this.enqueueMutation<R>(path, body, mutateOptions, handles);
+      return this.enqueueMutation(path, body, mutateOptions, handles);
     }
 
     let encodedBody: string | undefined;
@@ -286,7 +417,7 @@ export class LiveClient<C extends LiveContract = LiveContract> {
       for (const { state, handle } of handles) {
         if (handle.confirm(stamp) && refold(state)) notify(state);
       }
-      const value = (await parseBody(response)) as R;
+      const value = await parseBody(response);
       // Opportunistically drain any writes that queued while we were offline.
       if (queue && queue.size > 0) void this.flush();
       return value;
@@ -294,7 +425,7 @@ export class LiveClient<C extends LiveContract = LiveContract> {
       // A transport/network failure with a queue configured is not terminal —
       // enqueue as a durable fallback and keep the optimistic layers pending.
       if (queue && !forceDirect && !isVelaLiveError(error)) {
-        return this.enqueueMutation<R>(path, body, mutateOptions, handles);
+        return this.enqueueMutation(path, body, mutateOptions, handles);
       }
       this.rollbackAll(handles);
       throw error;
@@ -427,19 +558,16 @@ export class LiveClient<C extends LiveContract = LiveContract> {
       const room = entry.room ?? this.options.defaultRoom ?? DEFAULT_ROOM;
       if (typeof room !== 'string' || room.length === 0 || room.length > 512) continue;
       let key: string;
+      let args: unknown;
       try {
-        key = subscriptionKey(entry.query, argsKeyOf(entry.args), room);
+        const parser = this.argumentParsers.get(entry.query);
+        args = structuredClone(parser ? parser.parse(entry.args) : entry.args);
+        key = subscriptionKey(entry.query, argsKeyOf(args), room);
       } catch {
         continue;
       }
       if (this.registry.has(key)) continue;
-      let args: unknown;
-      try {
-        args = structuredClone(entry.args);
-      } catch {
-        continue;
-      }
-      const state = createSubscriptionState(entry.query, args, room);
+      const state = this.createState(entry.query, args, room);
       if (applySnapshotFrame(state, entry.value, entry.cursor, entry.epoch) !== 'notify') continue;
       this.registry.set(key, state);
     }
@@ -538,6 +666,7 @@ export class LiveClient<C extends LiveContract = LiveContract> {
     if (!state) return;
     const effect = applySnapshotFrame(state, value, cursor, epoch);
     if (effect === 'notify') notify(state);
+    if (effect === 'invalid') reportSchemaError(state);
     if (effect === 'resubscribe') this.coordinator?.want(key, specFor(state));
   };
 
@@ -573,7 +702,7 @@ export class LiveClient<C extends LiveContract = LiveContract> {
     }
 
     // Synthesize a shadow subscription sharing the room's socket.
-    const shadow = createSubscriptionState(spec.query, spec.args, spec.room, spec.keyField);
+    const shadow = this.createState(spec.query, spec.args, spec.room, spec.keyField);
     this.wireRelayError(shadow, key);
     this.relayStates.set(key, shadow);
     this.connectionFor(spec.room).register(shadow);
@@ -623,12 +752,12 @@ export class LiveClient<C extends LiveContract = LiveContract> {
     return this.offlineQueueBeforeFirstConnect && !this.everConnected;
   }
 
-  private enqueueMutation<R>(
+  private enqueueMutation(
     path: string,
     body: unknown,
     mutateOptions: MutateOptions | undefined,
     handles: Array<{ state: SubscriptionState; handle: LayerHandle }>,
-  ): Promise<R> {
+  ): Promise<unknown> {
     const queue = this.queue;
     if (!queue) {
       return Promise.reject(new VelaLiveError('OFFLINE_DISABLED', 'no offline queue configured'));
@@ -652,7 +781,7 @@ export class LiveClient<C extends LiveContract = LiveContract> {
         ),
       );
     }
-    return new Promise<R>((resolve, reject) => {
+    return new Promise<unknown>((resolve, reject) => {
       try {
         queue.enqueue({
           path,
@@ -663,7 +792,7 @@ export class LiveClient<C extends LiveContract = LiveContract> {
           identity,
           precondition: mutateOptions?.precondition,
           hadAwaiter: true,
-          resolve: (value) => resolve(value as R),
+          resolve,
           reject: (error) => {
             this.rollbackAll(handles);
             reject(error);
@@ -889,16 +1018,18 @@ export class LiveClient<C extends LiveContract = LiveContract> {
 
   private emitInvalidHydrated(record: unknown): void {
     const currentIdentity = this.options.identity?.();
-    const candidate =
-      record !== null && typeof record === 'object'
-        ? (record as Partial<import('./types').PersistedMutation>)
-        : {};
+    const identity =
+      record !== null && typeof record === 'object' && 'identity' in record
+        ? record.identity
+        : undefined;
+    const path =
+      record !== null && typeof record === 'object' && 'path' in record ? record.path : undefined;
     const code =
-      candidate.identity !== currentIdentity
+      identity !== currentIdentity
         ? 'OFFLINE_IDENTITY_MISMATCH'
         : 'OFFLINE_INVALID_PERSISTED_MUTATION';
     const event: MutationSettledEvent = {
-      path: typeof candidate.path === 'string' ? candidate.path : '',
+      path: typeof path === 'string' ? path : '',
       status: 'dropped',
       code,
       hadAwaiter: false,
@@ -1009,7 +1140,7 @@ export class LiveClient<C extends LiveContract = LiveContract> {
         const state = resolve(query, args, room);
         if (!state) return;
         const transform =
-          typeof next === 'function' ? (next as (current: unknown) => unknown) : () => next;
+          typeof next === 'function' ? (current: unknown) => next(current) : () => next;
         paint(state, transform);
       },
     };
@@ -1029,13 +1160,30 @@ export class LiveClient<C extends LiveContract = LiveContract> {
         makeSocket:
           this.options.WebSocket ??
           ((socketUrl: string) => {
-            const WS = (globalThis as { WebSocket?: new (u: string) => unknown }).WebSocket;
-            if (!WS) {
+            const WS = globalThis.WebSocket;
+            if (typeof WS !== 'function')
               throw new Error(
                 'No WebSocket implementation available — pass one via LiveClientOptions.WebSocket',
               );
-            }
-            return new WS(socketUrl) as never;
+            const socket = new WS(socketUrl);
+            const adapter: WebSocketLike = {
+              onopen: null,
+              onmessage: null,
+              onclose: null,
+              onerror: null,
+              get readyState() {
+                return socket.readyState;
+              },
+              send: (data) => socket.send(data),
+              close: (code, reason) => socket.close(code, reason),
+            };
+            socket.addEventListener('open', (event) => adapter.onopen?.(event));
+            socket.addEventListener('message', (event) =>
+              adapter.onmessage?.({ data: event.data }),
+            );
+            socket.addEventListener('close', (event) => adapter.onclose?.(event));
+            socket.addEventListener('error', (event) => adapter.onerror?.(event));
+            return adapter;
           }),
         socketTicket: () => this.options.socketTicket?.(room),
         heartbeatIntervalMs: this.options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_MS,
@@ -1093,7 +1241,7 @@ const specFor = (state: SubscriptionState): WantSpec => ({
 });
 
 const defaultQueueOnError: NonNullable<OfflineQueueOptions['onError']> = (ctx) => {
-  (globalThis as { console?: { warn?: (...args: unknown[]) => void } }).console?.warn?.(
+  globalThis.console?.warn?.(
     `[velajs/client] offline mutation store ${ctx.operation} failed`,
     ctx.error,
   );
@@ -1107,3 +1255,13 @@ const isJsonWithin = (value: unknown, maxBytes: number): boolean => {
     return false;
   }
 };
+
+/** Infer each query's argument and result types from its runtime parsers. */
+export function createLiveClient<const S extends LiveQuerySchemas<LiveContract>>(
+  options: Omit<LiveClientOptions, 'queries'> & { queries: S },
+): LiveClient<InferLiveContract<S>>;
+export function createLiveClient(options: LiveClientOptions): LiveClient {
+  // The public signature projects this exact parser map. The implementation
+  // keeps dynamic dispatch unknown; LiveClient parses before typed publication.
+  return new LiveClient(options);
+}

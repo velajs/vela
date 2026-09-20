@@ -17,8 +17,7 @@ browser SDK.
   `MutationStore` on its own, over one account-epoch-partitioned JSON-array key (FIFO,
   corruption-tolerant).
 - **The full `@velajs/react` hook surface** re-exported unchanged
-  (`LiveProvider`, `useLiveQuery`, `useLiveMutation`, `usePresence`,
-  `useConnectionStatus`, `useClientQuery`, `usePendingMutations`, …). Those hooks
+  through `createLiveHooks<Contract>()`, which returns the provider and its typed hooks. Those hooks
   import only from `react` — no `react-dom`, no required browser global — so
   they run as-is on native.
 - **`@velajs/react-native/auth`** — a better-auth Expo bridge behind optional
@@ -36,8 +35,10 @@ stable, non-secret `identity` account+login-epoch fingerprint.
 import { createNativeClient } from '@velajs/react-native';
 import { expoAuthToken } from '@velajs/react-native/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { queries } from './shared/live';
 
 const client = createNativeClient({
+  queries,
   url: 'https://api.example.com',
   storage: AsyncStorage,
   authToken: expoAuthToken(authClient), // reads the better-auth session token

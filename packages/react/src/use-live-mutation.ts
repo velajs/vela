@@ -1,6 +1,10 @@
 import { useCallback, useRef, useState } from 'react';
-import type { MutateOptions } from '@velajs/client';
-import { useLiveClient } from './context';
+import type {
+  LiveClient,
+  LiveContractShape,
+  MutateOptions,
+  MutationResultOptions,
+} from '@velajs/client';
 
 export interface UseLiveMutationResult<R> {
   /** Fire the mutation. Per-call options (optimistic targets, method, …) merge over the hook defaults. */
@@ -24,37 +28,52 @@ export interface UseLiveMutationResult<R> {
  * the mutation's `Vela-Commit-Cursor` (see @velajs/client); failures roll it
  * back and reject.
  */
-export function useLiveMutation<R = unknown>(
-  path: string,
-  defaults?: MutateOptions,
-): UseLiveMutationResult<R> {
-  const client = useLiveClient();
-  const [state, setState] = useState<{ pending: number; data?: R; error?: unknown }>({
-    pending: 0,
-  });
-  const defaultsRef = useRef(defaults);
-  defaultsRef.current = defaults;
+export function createUseLiveMutation<C extends LiveContractShape<C>>(
+  useLiveClient: () => LiveClient<C>,
+) {
+  function useLiveMutation<Result>(
+    path: string,
+    defaults: MutationResultOptions<Result>,
+  ): UseLiveMutationResult<Awaited<Result>>;
+  function useLiveMutation(path: string, defaults?: MutateOptions): UseLiveMutationResult<unknown>;
+  function useLiveMutation(
+    path: string,
+    defaults?: MutateOptions & { parseResult?: (value: unknown) => unknown },
+  ): UseLiveMutationResult<unknown> {
+    const client = useLiveClient();
+    const [state, setState] = useState<{ pending: number; data?: unknown; error?: unknown }>({
+      pending: 0,
+    });
+    const defaultsRef = useRef(defaults);
+    defaultsRef.current = defaults;
 
-  const mutate = useCallback(
-    async (body?: unknown, options?: MutateOptions): Promise<R> => {
-      setState((current) => ({ ...current, pending: current.pending + 1 }));
-      try {
-        const data = await client.mutate<R>(path, body, { ...defaultsRef.current, ...options });
-        setState((current) => ({ pending: current.pending - 1, data, error: undefined }));
-        return data;
-      } catch (error) {
-        setState((current) => ({ ...current, pending: current.pending - 1, error }));
-        throw error;
-      }
-    },
-    [client, path],
-  );
+    const mutate = useCallback(
+      async (body?: unknown, options?: MutateOptions): Promise<unknown> => {
+        setState((current) => ({ ...current, pending: current.pending + 1 }));
+        try {
+          const requestOptions = {
+            ...defaultsRef.current,
+            ...options,
+            parseResult: defaultsRef.current?.parseResult,
+          };
+          const data = await client.mutate(path, body, requestOptions);
+          setState((current) => ({ pending: current.pending - 1, data, error: undefined }));
+          return data;
+        } catch (error) {
+          setState((current) => ({ ...current, pending: current.pending - 1, error }));
+          throw error;
+        }
+      },
+      [client, path],
+    );
 
-  return {
-    mutate,
-    pending: state.pending > 0,
-    data: state.data,
-    error: state.error,
-    reset: useCallback(() => setState({ pending: 0 }), []),
-  };
+    return {
+      mutate,
+      pending: state.pending > 0,
+      data: state.data,
+      error: state.error,
+      reset: useCallback(() => setState({ pending: 0 }), []),
+    };
+  }
+  return useLiveMutation;
 }

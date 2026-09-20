@@ -72,6 +72,7 @@ function makeHarness(): Harness {
   let nextResponse: Response = new Response('{}', { status: 200 });
 
   const client = new LiveClient({
+    queries: {},
     url: 'http://api.test',
     WebSocket: (url) => new FakeSocket(url),
     reconnect: { baseMs: 1, capMs: 2 },
@@ -106,11 +107,11 @@ describe('LiveClient subscriptions', () => {
     ]);
     value[0]!.id = 'mutated-after-hydrate';
 
-    expect(h.client.peek('todos.list', {})).toEqual([{ id: 'safe' }]);
-    expect(h.client.peek('invalid.list', {})).toBeUndefined();
-    expect(h.client.peek('fractional.list', {})).toBeUndefined();
+    expect(h.client.peekRaw('todos.list', {})).toEqual([{ id: 'safe' }]);
+    expect(h.client.peekRaw('invalid.list', {})).toBeUndefined();
+    expect(h.client.peekRaw('fractional.list', {})).toBeUndefined();
 
-    h.client.subscribe('todos.list', {}, () => {});
+    h.client.subscribeRaw('todos.list', {}, () => {});
     await tick();
     h.socket().open();
     expect(h.socket().liveFrames()[0]).toMatchObject({ sinceCursor: 4, sinceEpoch: 'e1' });
@@ -119,13 +120,14 @@ describe('LiveClient subscriptions', () => {
   it('uses a socket ticket and never places the HTTP bearer token in the WebSocket URL', async () => {
     FakeSocket.instances = [];
     const client = new LiveClient({
+      queries: {},
       url: 'https://api.test',
       WebSocket: (url) => new FakeSocket(url),
       authToken: () => 'long-lived-bearer',
       socketTicket: () => 'single-use-ticket',
     });
 
-    client.subscribe('todos.list', {}, () => {});
+    client.subscribeRaw('todos.list', {}, () => {});
     await tick();
 
     expect(FakeSocket.instances[0]?.url).toContain('ticket=single-use-ticket');
@@ -137,13 +139,14 @@ describe('LiveClient subscriptions', () => {
   it('rejects malformed socket tickets before constructing a WebSocket', async () => {
     FakeSocket.instances = [];
     const client = new LiveClient({
+      queries: {},
       url: 'https://api.test',
       WebSocket: (url) => new FakeSocket(url),
       socketTicket: () => 'contains whitespace',
       reconnect: { baseMs: 60_000, capMs: 60_000 },
     });
 
-    client.subscribe('todos.list', {}, () => {});
+    client.subscribeRaw('todos.list', {}, () => {});
     await tick();
 
     expect(FakeSocket.instances).toHaveLength(0);
@@ -152,12 +155,13 @@ describe('LiveClient subscriptions', () => {
 
   it('rejects preloaded bearer credentials in a WebSocket URL', () => {
     const client = new LiveClient({
+      queries: {},
       url: 'https://api.test',
       wsPath: '/rooms/:room/ws?access_token=long-lived-secret',
       WebSocket: (url) => new FakeSocket(url),
     });
 
-    expect(() => client.subscribe('todos.list', {}, () => {})).toThrow(
+    expect(() => client.subscribeRaw('todos.list', {}, () => {})).toThrow(
       /credentials must come from the socketTicket provider/,
     );
     client.close();
@@ -173,7 +177,7 @@ describe('LiveClient subscriptions', () => {
   it('subscribes with the protocol version, dedupes identical subscriptions, replays cached values', async () => {
     const h = makeHarness();
     const seen: unknown[] = [];
-    h.client.subscribe('todos.list', { listId: 'l1' }, (v) => seen.push(v));
+    h.client.subscribeRaw('todos.list', { listId: 'l1' }, (v) => seen.push(v));
     await tick();
     h.socket().open();
 
@@ -193,7 +197,7 @@ describe('LiveClient subscriptions', () => {
 
     // Args key is order-insensitive; the second subscriber joins the state.
     const late: unknown[] = [];
-    h.client.subscribe('todos.list', { listId: 'l1' }, (v) => late.push(v));
+    h.client.subscribeRaw('todos.list', { listId: 'l1' }, (v) => late.push(v));
     await tick();
     expect(late).toEqual([[{ id: 'a' }]]); // synchronous replay
     expect(h.socket().liveFrames()).toHaveLength(1); // still one wire registration
@@ -202,7 +206,7 @@ describe('LiveClient subscriptions', () => {
   it('merges deltas, ignores settled, keeps values across resume', async () => {
     const h = makeHarness();
     const seen: unknown[] = [];
-    h.client.subscribe('todos.list', {}, (v) => seen.push(v));
+    h.client.subscribeRaw('todos.list', {}, (v) => seen.push(v));
     await tick();
     h.socket().open();
     const sub = (h.socket().liveFrames()[0] as { sub: string }).sub;
@@ -226,7 +230,7 @@ describe('LiveClient subscriptions', () => {
     const count = seen.length;
     h.socket().receive({ t: 'settled', sub, cursor: 3, epoch: 'e1' });
     expect(seen.length).toBe(count); // no value change, no notify
-    expect(h.client.peek('todos.list', {})).toEqual([
+    expect(h.client.peekRaw('todos.list', {})).toEqual([
       { id: 'a', n: 9 },
       { id: 'b', n: 2 },
     ]);
@@ -235,7 +239,7 @@ describe('LiveClient subscriptions', () => {
   it('resubscribes with the last cursor on reconnect and keeps the value on resume', async () => {
     const h = makeHarness();
     const seen: unknown[] = [];
-    h.client.subscribe('todos.list', {}, (v) => seen.push(v));
+    h.client.subscribeRaw('todos.list', {}, (v) => seen.push(v));
     await tick();
     h.socket().open();
     const first = h.socket();
@@ -257,13 +261,13 @@ describe('LiveClient subscriptions', () => {
     });
 
     second.receive({ t: 'resume', sub, cursor: 9, epoch: 'e1' });
-    expect(h.client.peek('todos.list', {})).toEqual([{ id: 'a' }]); // cache kept
+    expect(h.client.peekRaw('todos.list', {})).toEqual([{ id: 'a' }]); // cache kept
     expect(seen.at(-1)).toEqual([{ id: 'a' }]);
   });
 
   it('starts cold (unsub + sub) when a delta cannot be merged', async () => {
     const h = makeHarness();
-    h.client.subscribe('todos.list', {}, () => {});
+    h.client.subscribeRaw('todos.list', {}, () => {});
     await tick();
     h.socket().open();
     const sub = (h.socket().liveFrames()[0] as { sub: string }).sub;
@@ -286,7 +290,7 @@ describe('LiveClient subscriptions', () => {
   it('drops optimistic gates and cache on an epoch fork', async () => {
     const h = makeHarness();
     const seen: unknown[] = [];
-    h.client.subscribe('todos.list', {}, (v) => seen.push(v));
+    h.client.subscribeRaw('todos.list', {}, (v) => seen.push(v));
     await tick();
     h.socket().open();
     const sub = (h.socket().liveFrames()[0] as { sub: string }).sub;
@@ -304,23 +308,23 @@ describe('LiveClient subscriptions', () => {
         },
       },
     );
-    expect((h.client.peek('todos.list', {}) as unknown[]).length).toBe(2); // overlay pending (cursor 9 > 5)
+    expect((h.client.peekRaw('todos.list', {}) as unknown[]).length).toBe(2); // overlay pending (cursor 9 > 5)
 
     // Server restarted: new epoch. The stale gate must not survive the fork.
     h.socket().receive({ t: 'data', sub, snapshot: [{ id: 'z' }], cursor: 1, epoch: 'e2' });
-    expect(h.client.peek('todos.list', {})).toEqual([{ id: 'z' }]);
+    expect(h.client.peekRaw('todos.list', {})).toEqual([{ id: 'z' }]);
   });
 
   it('ignores regressive cursors and cold-resubscribes on an invalid epoch resume', async () => {
     const h = makeHarness();
-    h.client.subscribe('todos.list', {}, () => {});
+    h.client.subscribeRaw('todos.list', {}, () => {});
     await tick();
     h.socket().open();
     const sub = (h.socket().liveFrames()[0] as { sub: string }).sub;
 
     h.socket().receive({ t: 'data', sub, snapshot: [{ id: 'new' }], cursor: 5, epoch: 'e1' });
     h.socket().receive({ t: 'data', sub, snapshot: [{ id: 'stale' }], cursor: 4, epoch: 'e1' });
-    expect(h.client.peek('todos.list', {})).toEqual([{ id: 'new' }]);
+    expect(h.client.peekRaw('todos.list', {})).toEqual([{ id: 'new' }]);
 
     h.socket().receive({ t: 'resume', sub, cursor: 6, epoch: 'e2' });
     expect(h.socket().liveFrames().at(-2)).toEqual({ t: 'unsub', sub });
@@ -331,7 +335,7 @@ describe('LiveClient subscriptions', () => {
 describe('optimistic mutations', () => {
   async function subscribed(h: Harness): Promise<{ sub: string; values: unknown[] }> {
     const values: unknown[] = [];
-    h.client.subscribe('todos.list', {}, (v) => values.push(v));
+    h.client.subscribeRaw('todos.list', {}, (v) => values.push(v));
     await tick();
     h.socket().open();
     const sub = (h.socket().liveFrames()[0] as { sub: string }).sub;
@@ -356,7 +360,7 @@ describe('optimistic mutations', () => {
       },
     );
     // Painted synchronously.
-    expect((h.client.peek('todos.list', {}) as unknown[]).at(-1)).toEqual({
+    expect((h.client.peekRaw('todos.list', {}) as unknown[]).at(-1)).toEqual({
       id: 'tmp',
       text: 'new',
     });
@@ -370,7 +374,7 @@ describe('optimistic mutations', () => {
       cursor: 3,
       epoch: 'e1',
     });
-    const rebased = h.client.peek('todos.list', {}) as unknown[];
+    const rebased = h.client.peekRaw('todos.list', {}) as unknown[];
     expect(rebased.map((row) => (row as { id: string }).id)).toEqual(['a', 'b', 'tmp']);
 
     // The covering frame (cursor 5) carries the authoritative row: layer drops.
@@ -381,7 +385,7 @@ describe('optimistic mutations', () => {
       cursor: 5,
       epoch: 'e1',
     });
-    const settled = h.client.peek('todos.list', {}) as unknown[];
+    const settled = h.client.peekRaw('todos.list', {}) as unknown[];
     expect(settled.map((row) => (row as { id: string }).id)).toEqual(['a', 'b', 'real']);
   });
 
@@ -407,7 +411,7 @@ describe('optimistic mutations', () => {
     await mutation;
 
     // Base never changed (settled), so after the drop the raw base shows.
-    expect(h.client.peek('todos.list', {})).toEqual([{ id: 'a' }]);
+    expect(h.client.peekRaw('todos.list', {})).toEqual([{ id: 'a' }]);
   });
 
   it('degrades to one-shot optimism without commit headers and rolls back on failure', async () => {
@@ -434,7 +438,7 @@ describe('optimistic mutations', () => {
         },
       ),
     ).rejects.toMatchObject({ code: 'boom', status: 500 });
-    expect(h.client.peek('todos.list', {})).toEqual([{ id: 'a' }]); // rolled back
+    expect(h.client.peekRaw('todos.list', {})).toEqual([{ id: 'a' }]); // rolled back
   });
 
   it('updates several subscriptions through optimisticUpdate and sends auth on mutations', async () => {
@@ -455,7 +459,7 @@ describe('optimistic mutations', () => {
         },
       },
     );
-    expect((h.client.peek('todos.list', {}) as unknown[]).at(-1)).toEqual({ id: 'multi' });
+    expect((h.client.peekRaw('todos.list', {}) as unknown[]).at(-1)).toEqual({ id: 'multi' });
 
     const call = h.fetchCalls[0];
     expect(call?.url).toBe('http://api.test/todos');

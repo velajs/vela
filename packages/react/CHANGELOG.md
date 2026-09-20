@@ -1,5 +1,18 @@
 # @velajs/react
 
+## 2.0.0
+
+Query-isolated React hooks using shared live contracts and the Vela 2.0 client.
+
+Requires the coordinated Vela 2.0 package set. See the workspace migration guide.
+
+## 1.0.0
+
+### Patch Changes
+
+- Updated dependencies [f31ac66]
+  - @velajs/client@1.0.0
+
 ## 0.2.0
 
 ### Minor Changes

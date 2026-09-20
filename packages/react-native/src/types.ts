@@ -1,4 +1,4 @@
-import type { LiveClientOptions } from '@velajs/client';
+import type { LiveClientOptions, LiveContract, LiveContractShape } from '@velajs/client';
 
 /**
  * The async key/value slice the native mutation store needs — structurally the
@@ -27,7 +27,9 @@ export interface AsyncStorageLike {
  * {@link LiveClientOptions.authToken} for mutations and
  * {@link LiveClientOptions.socketTicket} for short-lived socket tickets.
  */
-export interface CreateNativeClientOptions extends LiveClientOptions {
+export interface CreateNativeClientOptions<
+  C extends LiveContractShape<C> = LiveContract,
+> extends LiveClientOptions<C> {
   /**
    * React Native `AsyncStorage` (or any {@link AsyncStorageLike} store). When
    * supplied and no explicit `mutationStore` is given, the offline mutation

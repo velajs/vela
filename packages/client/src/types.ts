@@ -1,22 +1,19 @@
-/**
- * The app-supplied typing contract: one entry per live query, keyed by the
- * server's `@LiveQuery(name)`. Hand-written in v1; shaped so a future
- * `vela codegen` emission (from OpenAPI operationIds + live metadata) is a
- * drop-in replacement.
- *
- * ```ts
- * interface AppLive {
- *   'todos.list': { args: { listId: string }; result: Todo[] };
- * }
- * const client = new LiveClient<AppLive>({ url });
- * ```
- */
+import type { LiveQueryDefinition } from '@velajs/live-protocol';
+/** The value contract projected from a shared live-query schema map. */
 export interface LiveContract {
   [query: string]: { args: unknown; result: unknown };
 }
 
-export type ArgsOf<C, Q extends keyof C> = C[Q] extends { args: infer A } ? A : never;
-export type ResultOf<C, Q extends keyof C> = C[Q] extends { result: infer R } ? R : never;
+/** Validate named interfaces without requiring an open string index signature. */
+export type LiveContractShape<C> = { [Query in keyof C]: { args: unknown; result: unknown } };
+
+/** Typed mutation results require runtime evidence at the HTTP boundary. */
+export interface MutationResultOptions<Result> extends MutateOptions {
+  parseResult(value: unknown): Result;
+}
+
+export type ArgsOf<C extends LiveContractShape<C>, Q extends keyof C> = C[Q]['args'];
+export type ResultOf<C extends LiveContractShape<C>, Q extends keyof C> = C[Q]['result'];
 
 export type ConnectionStatus = 'idle' | 'connecting' | 'connected' | 'offline' | 'closed';
 
@@ -40,7 +37,14 @@ export interface ReconnectOptions {
   capMs?: number;
 }
 
-export interface LiveClientOptions {
+export type LiveQueryParsers<Args, Result> = LiveQueryDefinition<Args, Result>;
+export type LiveQuerySchemas<C extends LiveContractShape<C>> = {
+  [Q in keyof C]: LiveQueryParsers<C[Q]['args'], C[Q]['result']>;
+};
+
+export interface LiveClientOptions<C extends LiveContractShape<C> = LiveContract> {
+  /** Runtime evidence for every typed query. Share these schemas with the server. */
+  queries: LiveQuerySchemas<C>;
   /** HTTP(S) base of the Vela app, e.g. `https://api.example.com`. */
   url: string;
   /** WS(S) base override; derived from `url` (http→ws) when omitted. */
@@ -71,7 +75,12 @@ export interface LiveClientOptions {
    */
   socketTicket?: (room: string) => string | undefined | Promise<string | undefined>;
 
-  /** App-level `{event:'ping'}` keepalive cadence (default 30 000 ms; CF answers without waking the DO). */
+  /**
+   * Framework `$ping` keepalive cadence (default 30 000 ms; Cloudflare answers
+   * without waking the Durable Object). Also drives half-open socket detection;
+   * the watchdog activates after the peer proves support with `$pong`, so older
+   * Vela servers remain compatible. Set to `0` or less to disable both.
+   */
   heartbeatIntervalMs?: number;
   reconnect?: ReconnectOptions;
 
@@ -258,4 +267,15 @@ export interface CrossTabOptions {
 export interface ClientQueryRef<T> {
   readonly key: string;
   readonly defaultValue: T;
+  readonly read: (owner: object) => T;
+  readonly write: (owner: object, value: T) => void;
+  readonly observe: (owner: object, listener: () => void) => Unsubscribe;
 }
+
+/** Project the values produced by a schema map into the client's query contract. */
+export type InferLiveContract<S extends LiveQuerySchemas<LiveContract>> = {
+  [Q in keyof S]: {
+    args: ReturnType<S[Q]['args']['parse']>;
+    result: ReturnType<S[Q]['result']['parse']>;
+  };
+};

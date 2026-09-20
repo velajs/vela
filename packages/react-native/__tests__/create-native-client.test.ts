@@ -1,3 +1,4 @@
+import { todoSchema } from '../../client/__tests__/schema-fixtures';
 import { describe, expect, it } from 'vitest';
 import { LiveClient } from '@velajs/client';
 import type { PersistedMutation } from '@velajs/client';
@@ -33,7 +34,8 @@ describe('createNativeClient', () => {
     const storage = makeAsyncStorage();
     const sockets = makeSocketFactory();
     const { fetch, calls } = makeFetch();
-    const client = createNativeClient<AppLive>({
+    const client = createNativeClient({
+      queries: { 'todos.list': todoSchema },
       url: 'http://api.test',
       storage,
       WebSocket: sockets.factory,
@@ -61,7 +63,8 @@ describe('createNativeClient', () => {
 
   it('threads the bearer token onto the HTTP mutation (authToken passthrough)', async () => {
     const { fetch, calls } = makeFetch();
-    const client = createNativeClient<AppLive>({
+    const client = createNativeClient({
+      queries: { 'todos.list': todoSchema },
       url: 'http://api.test',
       authToken: () => 'tok123',
       fetch,
@@ -76,7 +79,8 @@ describe('createNativeClient', () => {
 
   it('uses a short-lived socket ticket instead of the HTTP bearer token', async () => {
     const sockets = makeSocketFactory();
-    const client = createNativeClient<AppLive>({
+    const client = createNativeClient({
+      queries: { 'todos.list': todoSchema },
       url: 'http://api.test',
       authToken: () => 'tok123',
       socketTicket: () => 'ticket123',
@@ -95,7 +99,8 @@ describe('createNativeClient', () => {
     const storage = makeAsyncStorage();
     const explicit = createMemoryMutationStore();
     const sockets = makeSocketFactory();
-    const client = createNativeClient<AppLive>({
+    const client = createNativeClient({
+      queries: { 'todos.list': todoSchema },
       url: 'http://api.test',
       storage,
       mutationStore: explicit,
@@ -121,7 +126,8 @@ describe('createNativeClient', () => {
     const storage = makeAsyncStorage();
     const sockets = makeSocketFactory();
     const { fetch, calls } = makeFetch();
-    const client = createNativeClient<AppLive>({
+    const client = createNativeClient({
+      queries: { 'todos.list': todoSchema },
       url: 'http://api.test',
       storage,
       offline: false,
@@ -143,12 +149,13 @@ describe('createNativeClient', () => {
     acceptsQueryOptions();
 
     const storage: AsyncStorageLike = makeAsyncStorage();
-    const options: CreateNativeClientOptions = {
+    const options: CreateNativeClientOptions<AppLive> = {
+      queries: { 'todos.list': todoSchema },
       url: 'http://api.test',
       storage,
       identity: () => 'userA',
     };
-    const client: LiveClient<AppLive> = createNativeClient<AppLive>(options);
+    const client: LiveClient<AppLive> = createNativeClient(options);
 
     expect(client).toBeInstanceOf(LiveClient);
     client.close();

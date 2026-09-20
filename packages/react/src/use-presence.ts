@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPresence } from '@velajs/client/presence';
 import type { PresenceMember } from '@velajs/client/presence';
-import { useLiveClient } from './context';
+import type { LiveClient, LiveContractShape } from '@velajs/client';
 
 export interface UsePresenceOptions {
   /** Payload attached to this connection's roster entry (latest render's value rides each beat). */
@@ -19,33 +19,39 @@ export interface UsePresenceOptions {
  * const people = usePresence(roomId, { meta: { name: user.name } });
  * ```
  */
-export function usePresence(room: string, options?: UsePresenceOptions): PresenceMember[] {
-  const client = useLiveClient();
-  const [members, setMembers] = useState<PresenceMember[]>([]);
-  const metaRef = useRef(options?.meta);
-  metaRef.current = options?.meta;
-  const heartbeatIntervalMs = options?.heartbeatIntervalMs;
+export function createUsePresence<C extends LiveContractShape<C>>(
+  useLiveClient: () => LiveClient<C>,
+) {
+  function usePresence(room: string, options?: UsePresenceOptions): PresenceMember[] {
+    const client = useLiveClient();
+    const [members, setMembers] = useState<PresenceMember[]>([]);
+    const metaRef = useRef(options?.meta);
+    metaRef.current = options?.meta;
+    const heartbeatIntervalMs = options?.heartbeatIntervalMs;
 
-  useEffect(() => {
-    const handle = createPresence(client, {
-      room,
-      meta: () => metaRef.current,
-      heartbeatIntervalMs,
-      onRoster: setMembers,
-    });
+    useEffect(() => {
+      const handle = createPresence(client, {
+        room,
+        meta: () => metaRef.current,
+        heartbeatIntervalMs,
+        onRoster: setMembers,
+      });
 
-    const doc = (globalThis as { document?: Document }).document;
-    const onVisibility = (): void => {
-      if (doc?.visibilityState === 'visible') handle.beat();
-    };
-    doc?.addEventListener?.('visibilitychange', onVisibility);
+      const doc = globalThis.document;
+      const onVisibility = (): void => {
+        if (doc?.visibilityState === 'visible') handle.beat();
+      };
+      doc?.addEventListener?.('visibilitychange', onVisibility);
 
-    return () => {
-      doc?.removeEventListener?.('visibilitychange', onVisibility);
-      handle.stop();
-      setMembers([]);
-    };
-  }, [client, room, heartbeatIntervalMs]);
+      return () => {
+        doc?.removeEventListener?.('visibilitychange', onVisibility);
+        handle.stop();
+        setMembers([]);
+      };
+    }, [client, room, heartbeatIntervalMs]);
 
-  return members;
+    return members;
+  }
+
+  return usePresence;
 }

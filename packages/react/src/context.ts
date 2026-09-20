@@ -1,29 +1,40 @@
 import { createContext, createElement, useContext } from 'react';
 import type { ReactNode } from 'react';
-import type { LiveClient } from '@velajs/client';
-import type { LiveContract } from '@velajs/client';
+import type { LiveClient, LiveContract, LiveContractShape } from '@velajs/client';
+import { createUseLiveQuery } from './use-live-query';
+import { createUseLiveMutation } from './use-live-mutation';
+import { createUseClientQuery } from './use-client-query';
+import { createUseConnectionStatus } from './use-connection-status';
+import { createUsePendingMutations } from './use-pending-mutations';
+import { createUsePresence } from './use-presence';
 
-// Deliberately `any`-typed inside the context: the contract generic is
-// re-applied at the useLiveClient() boundary. One provider serves any app.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const LiveClientContext = createContext<LiveClient<any> | null>(null);
-
-export interface LiveProviderProps {
-  client: LiveClient<LiveContract>;
+export interface LiveProviderProps<C extends LiveContractShape<C>> {
+  client: LiveClient<C>;
   children?: ReactNode;
 }
 
-/** Provides the LiveClient to the hook tree. `createElement`-based — no JSX toolchain required. */
-export function LiveProvider(props: LiveProviderProps): ReturnType<typeof createElement> {
-  return createElement(LiveClientContext.Provider, { value: props.client }, props.children);
-}
-
-export function useLiveClient<C extends LiveContract = LiveContract>(): LiveClient<C> {
-  const client = useContext(LiveClientContext);
-  if (!client) {
-    throw new Error(
-      'useLiveClient: no LiveClient in context — wrap the tree in <LiveProvider client={…}>.',
-    );
+/** Create one contract-bound provider and hook family per application. */
+export function createLiveHooks<C extends LiveContractShape<C> = LiveContract>() {
+  const context = createContext<LiveClient<C> | null>(null);
+  function LiveProvider(props: LiveProviderProps<C>): ReturnType<typeof createElement> {
+    return createElement(context.Provider, { value: props.client }, props.children);
   }
-  return client as LiveClient<C>;
+  function useLiveClient(): LiveClient<C> {
+    const client = useContext(context);
+    if (!client)
+      throw new Error(
+        'useLiveClient: wrap the tree in the LiveProvider returned by the same createLiveHooks() call.',
+      );
+    return client;
+  }
+  return {
+    LiveProvider,
+    useLiveClient,
+    useLiveQuery: createUseLiveQuery(useLiveClient),
+    useLiveMutation: createUseLiveMutation(useLiveClient),
+    useClientQuery: createUseClientQuery(useLiveClient),
+    useConnectionStatus: createUseConnectionStatus(useLiveClient),
+    usePendingMutations: createUsePendingMutations(useLiveClient),
+    usePresence: createUsePresence(useLiveClient),
+  };
 }

@@ -1,3 +1,4 @@
+import { emptyListSchema, emptyArgs, doneRows } from './schema-fixtures';
 import { describe, expect, it } from 'vitest';
 import {
   createMemoryMutationStore,
@@ -51,7 +52,8 @@ function makeClient(options: HarnessOptions = {}) {
     });
   }) as typeof fetch;
 
-  const liveOptions: LiveClientOptions = {
+  const liveOptions: LiveClientOptions<Live> = {
+    queries: { 'todos.list': emptyListSchema },
     url: 'http://api.test',
     WebSocket: sockets.factory,
     reconnect: { baseMs: 1, capMs: 2 },
@@ -243,6 +245,7 @@ describe('offline mutation queue — replay guards', () => {
     expect(
       () =>
         new LiveClient<Live>({
+          queries: { 'todos.list': emptyListSchema },
           url: 'http://api.test',
           offline: true,
         }),

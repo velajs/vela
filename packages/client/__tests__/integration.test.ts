@@ -18,7 +18,9 @@ import {
   LiveQuery,
   LiveResolver,
 } from '@velajs/vela/live';
-import { LiveClient } from '../src/live-client';
+import { createLiveClient } from '../src/live-client';
+import { defineLiveQuery } from '@velajs/live-protocol';
+import { emptyArgs } from './schema-fixtures';
 import type { WebSocketLike } from '../src/types';
 
 /**
@@ -69,10 +71,31 @@ describe('client ↔ vela live e2e (in-memory transport)', () => {
   async function makeStack() {
     const todos: Array<{ id: string; text: string }> = [{ id: 't1', text: 'first' }];
 
+    const todoList = defineLiveQuery({
+      args: { parse: emptyArgs },
+      result: {
+        parse(value: unknown) {
+          if (!Array.isArray(value)) throw new Error('Expected todos');
+          return value.map((row: unknown) => {
+            if (
+              typeof row !== 'object' ||
+              row === null ||
+              !('id' in row) ||
+              typeof row.id !== 'string' ||
+              !('text' in row) ||
+              typeof row.text !== 'string'
+            )
+              throw new Error('Invalid todo');
+            return { id: row.id, text: row.text };
+          });
+        },
+      },
+    });
+
     @LiveResolver()
     @Injectable()
     class TodoLive {
-      @LiveQuery('todos.list', { tags: ['crud:todos'] })
+      @LiveQuery('todos.list', todoList, { tags: ['crud:todos'] })
       list() {
         return todos;
       }
@@ -165,7 +188,8 @@ describe('client ↔ vela live e2e (in-memory transport)', () => {
       });
     }) as typeof fetch;
 
-    const client = new LiveClient({
+    const client = createLiveClient({
+      queries: { 'todos.list': todoList },
       url: 'http://in-memory.test',
       WebSocket: makeSocket,
       fetch: serverFetch,

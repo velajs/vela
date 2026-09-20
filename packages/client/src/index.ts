@@ -1,4 +1,4 @@
-export { LiveClient } from './live-client';
+export { LiveClient, createLiveClient } from './live-client';
 export { RoomConnection } from './connection';
 export type { ConnectionDeps } from './connection';
 export { applyServerFrame, applySnapshotFrame, isCursorEpochPair } from './frame-reducer';
@@ -32,8 +32,13 @@ export type {
   HydrationEntry,
   LiveClientOptions,
   LiveContract,
+  LiveContractShape,
+  LiveQueryParsers,
+  LiveQuerySchemas,
+  InferLiveContract,
   LiveStore,
   MutateOptions,
+  MutationResultOptions,
   MutationSettledEvent,
   MutationStore,
   MutationStoreScope,
@@ -51,6 +56,7 @@ export type {
 
 // The wire contract, re-exported for tooling/tests.
 export {
+  defineLiveQuery,
   COMMIT_CURSOR_HEADER,
   COMMIT_EPOCH_HEADER,
   LIVE_EVENT,
@@ -58,4 +64,9 @@ export {
   applyListDelta,
   encodeListDelta,
 } from '@velajs/live-protocol';
-export type { ClientLiveFrame, RowOp, ServerLiveFrame } from '@velajs/live-protocol';
+export type {
+  ClientLiveFrame,
+  RowOp,
+  ServerLiveFrame,
+  LiveQueryDefinition,
+} from '@velajs/live-protocol';

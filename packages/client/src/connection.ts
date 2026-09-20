@@ -11,12 +11,17 @@ import { VelaLiveError } from './errors';
 import { applyServerFrame } from './frame-reducer';
 import { nextReconnectDelay, resetReconnect } from './reconnect';
 import type { ReconnectState } from './reconnect';
-import { notify } from './subscription';
+import { reportSchemaError, notify } from './subscription';
 import type { SubscriptionState } from './subscription';
 import type { ConnectionStatus, ReconnectOptions, WebSocketFactory } from './types';
 
 const OPEN = 1;
 const MAX_SOCKET_TICKET_BYTES = 8 * 1024;
+// `$`-prefixed envelopes are framework-reserved. Cloudflare answers this pair
+// without waking a hibernated Durable Object; the shared dispatcher answers it
+// for every other Vela WebSocket transport.
+const HEARTBEAT_PING = '{"event":"$ping"}';
+const HEARTBEAT_PONG = '{"event":"$pong"}';
 const FORBIDDEN_WEBSOCKET_CREDENTIAL_PARAMS = new Set([
   'access_token',
   'api_key',
@@ -48,8 +53,8 @@ export interface ConnectionDeps {
  * param's room; Cloudflare is one-DO≈one-room), multiplexing every live
  * subscription for that room. Owns: connect/reconnect (decorrelated jitter),
  * resubscribe-with-cursor on open, app-level ping keepalive (self-rescheduling
- * setTimeout — never setInterval), and inbound `$live` frame routing into the
- * pure frame reducer.
+ * setTimeout — never setInterval), an inbound-frame watchdog for half-open
+ * sockets, and `$live` frame routing into the pure frame reducer.
  */
 export class RoomConnection {
   status: ConnectionStatus = 'idle';
@@ -58,6 +63,8 @@ export class RoomConnection {
   private readonly reconnectState: ReconnectState = {};
   private reconnectTimer?: ReturnType<typeof setTimeout>;
   private heartbeatTimer?: ReturnType<typeof setTimeout>;
+  private lastFrameAt = 0;
+  private heartbeatAcknowledged = false;
   private closedByUser = false;
   private generation = 0;
 
@@ -141,27 +148,32 @@ export class RoomConnection {
     this.socket = socket;
 
     socket.onopen = () => {
-      if (generation !== this.generation) return;
+      if (generation !== this.generation || this.socket !== socket) return;
+      // A reconnect gets a fresh liveness window; never carry the previous
+      // socket's silence into this attempt.
+      this.lastFrameAt = Date.now();
+      this.heartbeatAcknowledged = false;
       resetReconnect(this.reconnectState);
       this.setStatus('connected');
       // Resubscribe everything with resume watermarks — the server answers
       // each with data (re-run), resume (untouched), or a cold snapshot.
       for (const state of this.bySub.values()) this.sendSub(state);
-      this.scheduleHeartbeat();
+      this.scheduleHeartbeat(socket, generation);
     };
 
     socket.onmessage = (event) => {
+      // A late frame from a superseded socket must not keep the current socket
+      // alive. Any frame from the current one does count, including binary,
+      // malformed JSON, gateway events, and the non-live pong envelope.
+      if (generation !== this.generation || this.socket !== socket) return;
+      this.lastFrameAt = Date.now();
+      if (event.data === HEARTBEAT_PONG) this.heartbeatAcknowledged = true;
       if (typeof event.data !== 'string') return;
       this.handleMessage(event.data);
     };
 
     socket.onclose = () => {
-      if (generation !== this.generation) return;
-      this.clearTimers();
-      this.socket = undefined;
-      if (this.closedByUser) return;
-      this.setStatus('offline');
-      this.scheduleReconnect();
+      this.disconnect(socket, generation);
     };
 
     socket.onerror = () => {
@@ -192,6 +204,9 @@ export class RoomConnection {
       case 'notify':
         notify(state);
         break;
+      case 'invalid':
+        reportSchemaError(state);
+        return;
       case 'error':
         if (frame.t === 'error') {
           for (const callback of state.errorCallbacks) {
@@ -268,19 +283,48 @@ export class RoomConnection {
     }, delay);
   }
 
-  private scheduleHeartbeat(): void {
-    if (this.heartbeatTimer) return;
+  private scheduleHeartbeat(socket: ReturnType<WebSocketFactory>, generation: number): void {
+    const intervalMs = this.deps.heartbeatIntervalMs;
+    if (this.heartbeatTimer || intervalMs <= 0) return;
     const tick = () => {
       this.heartbeatTimer = undefined;
-      if (this.socket?.readyState !== OPEN) return;
-      try {
-        this.socket.send('{"event":"ping"}');
-      } catch {
+      if (generation !== this.generation || this.socket !== socket || socket.readyState !== OPEN) {
         return;
       }
-      this.heartbeatTimer = setTimeout(tick, this.deps.heartbeatIntervalMs);
+
+      // `readyState === OPEN` does not prove the path is live: a swallowed RST
+      // or stuck proxy can leave a socket half-open indefinitely. Activate only
+      // after this peer has answered `$ping`, preserving older-server support;
+      // once active, any inbound frame refreshes the liveness window.
+      if (this.heartbeatAcknowledged && Date.now() - this.lastFrameAt > intervalMs * 2.5) {
+        try {
+          socket.close();
+        } catch {
+          // A broken implementation may throw while closing. The explicit
+          // disconnect below still moves through the normal reconnect path.
+        }
+        this.disconnect(socket, generation);
+        return;
+      }
+
+      try {
+        socket.send(HEARTBEAT_PING);
+      } catch {
+        // Keep checking liveness even if a broken socket throws without
+        // emitting close; the watchdog will recycle it on a later tick.
+      }
+      this.heartbeatTimer = setTimeout(tick, intervalMs);
     };
-    this.heartbeatTimer = setTimeout(tick, this.deps.heartbeatIntervalMs);
+    this.heartbeatTimer = setTimeout(tick, intervalMs);
+  }
+
+  private disconnect(socket: ReturnType<WebSocketFactory>, generation: number): void {
+    if (generation !== this.generation || this.socket !== socket) return;
+    this.clearTimers();
+    this.socket = undefined;
+    if (this.closedByUser) return;
+    this.setStatus('offline');
+    this.scheduleReconnect();
   }
 
   private clearTimers(): void {
