@@ -1,0 +1,2 @@
+BETTER_AUTH_SECRET="local-development-only-change-before-deployment-123456"
+VELA_STUDIO_TOKEN="local-studio-only-change-before-deployment-123456"

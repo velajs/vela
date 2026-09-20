@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [
+    "src/__tests__/route-map.test.ts",
+    "src/__tests__/container-types.test.ts",
+    "src/__tests__/config-type-boundaries.test.ts",
+    "src/__tests__/module-entrypoint-contract.test.ts",
+    "src/__tests__/endpoint-http.test.ts",
+    "src/__tests__/cache-value-safety.test.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
+}

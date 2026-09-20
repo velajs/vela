@@ -1,0 +1,38 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "warn",
+    "suspicious": "warn",
+    "perf": "warn"
+  },
+  "plugins": ["typescript", "unicorn", "oxc", "promise", "import"],
+  "rules": {
+    "typescript/no-explicit-any": "off",
+    "typescript/consistent-type-imports": "warn",
+    "no-console": ["warn", { "allow": ["warn", "error"] }],
+    "eqeqeq": "warn",
+    "promise/no-return-wrap": "error"
+  },
+  "overrides": [
+    {
+      "files": ["**/*.test.ts", "**/__tests__/**", "tests/**"],
+      "rules": {
+        "typescript/consistent-type-imports": "off",
+        "typescript/no-unused-vars": "off",
+        "no-unused-vars": "off",
+        "eqeqeq": "off",
+        "oxc/only-used-in-recursion": "off",
+        "unicorn/no-useless-fallback-in-spread": "off"
+      }
+    }
+  ],
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/node_modules/**",
+    "coverage/**",
+    "docs/**",
+    "references/**",
+    "examples/**",
+    ".superpowers/**"
+  ]
+}

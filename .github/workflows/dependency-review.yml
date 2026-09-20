@@ -10,7 +10,7 @@ name: 'Dependency Review'
 on:
   pull_request:
     paths:
-      - 'package.json'
+      - '**/package.json'
       - 'pnpm-lock.yaml'
 
 permissions:

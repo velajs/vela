@@ -1,35 +1,20 @@
-# Vela Framework
+# Vela monorepo
 
-NestJS-compatible framework for edge runtimes, powered by Hono.
+Use Node 24+ and pnpm 11.11.0 from this root. All active packages share
+`pnpm-workspace.yaml` and `pnpm-lock.yaml`. Do not create package-local lockfiles
+or release workflows. Use `pnpm --filter <package> <command>` for focused work.
 
-## Edge Runtime Rules
+`DESIGN.md` defines the intended NestJS-style developer experience on Cloudflare
+Workers independently of the existing implementation and package count.
 
-This framework MUST be compatible with all edge runtimes (Cloudflare Workers, Deno Deploy, Vercel Edge, Bun, Node.js).
+Keep portable framework runtime code on Web APIs. Node APIs belong only in
+explicit Node entrypoints, CLI/Studio host, build scripts, and tests. Cloudflare
+modules may use native Workers APIs. Preserve request/environment isolation and
+validate external values before assigning domain types.
 
-### Forbidden APIs
-- No `node:*` imports (no `node:fs`, `node:path`, `node:crypto`, etc.)
-- No `Buffer` — use `Uint8Array` + `TextEncoder`/`TextDecoder`
-- No `process` (no `process.env`, `process.on`, `process.exit`)
-- No `__dirname`, `__filename`
-- No `fs`, `path`, `os`, `child_process`
-- No `setInterval` (not available in all edge runtimes)
-- No `Bun.serve()` or any runtime-specific server APIs
+Run relevant package types/tests when editing behavior. `pnpm verify` is the
+integration gate. Before publishing, run `pnpm release:check` and test the exact
+packed archives with `pnpm release:consumer`; see `RELEASING.md`.
 
-### Use Instead
-- Web Crypto API instead of Node crypto
-- `Uint8Array` + `TextEncoder`/`TextDecoder` instead of Buffer
-- `URL` and string manipulation instead of `path`
-- `fetch` for HTTP calls
-- Hono's `app.fetch` for the universal entry point
-
-## Architecture
-
-- **MetadataRegistry**: Central static store for all framework metadata
-- **Container**: DI container with scopes (singleton, transient)
-- **ComponentManager**: Unified component management (guards, pipes, interceptors, filters) with 3-level hierarchy (global → controller → handler)
-- **RouteManager**: Builds Hono routes from registered controllers with full request pipeline
-- **ModuleLoader**: Depth-first recursive module tree processing
-
-## Testing
-
-Run tests with `pnpm test`. Use Hono's `app.request()` for integration tests.
+Deferred agent/AI/mail/workflow/event-source/site repositories and local backups
+are outside this monorepo. Do not add or modify them as part of API changes.

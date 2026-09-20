@@ -29,6 +29,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm verify
+      - run: pnpm release:pack
+      - run: pnpm release:consumer
+      - run: pnpm release:preflight
 
   test:
     name: test (${{ matrix.os }}, node ${{ matrix.node }})

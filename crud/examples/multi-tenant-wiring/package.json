@@ -1,0 +1,19 @@
+{
+  "name": "multi-tenant-wiring",
+  "version": "0.0.4",
+  "private": true,
+  "type": "module",
+  "description": "Canonical tenant-resolver wiring for a tenant-scoped @velajs/crud resource.",
+  "scripts": {
+    "build": "tsdown",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json"
+  },
+  "dependencies": {
+    "@velajs/crud": "workspace:*",
+    "@velajs/crud-memory": "workspace:*",
+    "@velajs/vela": "^1.21.0",
+    "hono": "^4",
+    "zod": "^4"
+  }
+}

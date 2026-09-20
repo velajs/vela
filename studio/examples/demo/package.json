@@ -1,0 +1,41 @@
+{
+  "name": "@velajs/studio-demo",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Runnable Vela Studio demo app wiring the whole product, plus an end-to-end conformance walkthrough.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/create-app.d.ts",
+      "import": "./dist/create-app.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "walkthrough": "node scripts/walkthrough.mjs"
+  },
+  "dependencies": {
+    "@velajs/crud": "workspace:*",
+    "@velajs/feature-flags": "workspace:*",
+    "@velajs/studio": "workspace:*",
+    "@velajs/studio-host": "workspace:*",
+    "@velajs/studio-protocol": "workspace:*",
+    "@velajs/vela": "workspace:*",
+    "hono": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@swc/core": "catalog:",
+    "@types/node": "catalog:",
+    "@velajs/studio-ui": "workspace:*",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "unplugin-swc": "catalog:",
+    "vitest": "catalog:"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

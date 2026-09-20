@@ -1,239 +1,70 @@
-# @velajs/vela
+# Vela
 
-[![npm version](https://img.shields.io/npm/v/@velajs/vela)](https://www.npmjs.com/package/@velajs/vela)
-[![CI](https://github.com/velajs/vela/actions/workflows/ci.yml/badge.svg)](https://github.com/velajs/vela/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/npm/l/@velajs/vela)](https://github.com/velajs/vela/blob/main/LICENSE)
+Nest-style modules, controllers, dependency injection, and request pipelines on
+Cloudflare Workers. Hono owns HTTP routing and the HTTP RPC client. Studio operates
+the running API; the live subsystem owns subscriptions, deltas, and reconnects.
 
-NestJS-compatible framework for edge runtimes, powered by [Hono](https://hono.dev).
+[DESIGN.md](DESIGN.md) defines the intended developer experience and its acceptance
+criteria independently of the current package/repository layout.
 
-## Install
+This is the development monorepo for Vela, its Cloudflare adapter, clients, and
+Studio. All packages share one Git history, pnpm workspace, lockfile, and CI.
+See [the migration record](docs/migration/monorepo.md) for the imported histories
+and [MODERNIZATION.md](MODERNIZATION.md) for implementation and validation history.
 
-```bash
-pnpm add @velajs/vela
+## Development
+
+Use Node 24 or later and pnpm 11.11.0. From this directory:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm build
+pnpm verify
 ```
 
-## Quick Start
+`pnpm verify` builds packages in dependency order, checks types, runs package
+suites and CRUD conformance, then runs real Workers tests. Platform tests use the
+installed Cloudflare Vitest plugin and Workerd, without a runtime override.
 
-```typescript
-import { VelaFactory, Controller, Get, Module, Injectable } from '@velajs/vela';
+Package commands use the shared root lockfile. For focused work:
 
-@Injectable()
-class AppService {
-  getHello() {
-    return { message: 'Hello from the edge!' };
-  }
-}
-
-@Controller('/app')
-class AppController {
-  constructor(private appService: AppService) {}
-
-  @Get('/')
-  hello() {
-    return this.appService.getHello();
-  }
-}
-
-@Module({
-  controllers: [AppController],
-  providers: [AppService],
-})
-class AppModule {}
-
-const app = await VelaFactory.create(AppModule);
-export default app; // Works on Cloudflare Workers, Deno, Bun, etc.
+```sh
+pnpm --filter @velajs/vela test
+pnpm --filter @velajs/cloudflare test:workers
+pnpm test:conformance
 ```
 
-HTTP requests have a 1 MiB body ceiling plus bounded query size/count/depth by
-default, enforced before application middleware, signed-body capture, guards,
-and parameter parsing. Configure global and narrow streaming limits with
-`VelaFactory.create(AppModule, { security: { body: ..., query: ... } })`.
-Guards run before parameter decorators and pipes, and malformed JSON passed to
-`@Body()` produces a 400 response. See the [2.0 security migration](./SECURITY_MIGRATION.md)
-for caching, signed URL, browser-header, client-IP, and WebSocket changes.
+## Authoring model
 
-Rate limiting prefers identity explicitly published by trusted authentication
-through `setTrustedRequestIdentity()` (principal plus verified tenant), then a
-configured tracker, then the runtime-attested client address. Core never derives
-a tracker from forwarding headers. Authentication guards must be registered
-before `ThrottlerModule`.
+- **Application modules:** classes or checked `defineProvider` descriptors,
+  explicit imports/exports, and token-inferred resolution.
+- **Native platform:** an `InjectionToken<Env>` makes generated Workers bindings
+  available before providers and lifecycle hooks run. `createCloudflareWorker`
+  exports the Worker handlers and shares bootstrap per environment identity.
+- **HTTP contract:** `defineEndpoint` connects a controller's input and output
+  schemas to runtime validation, OpenAPI, and upstream Hono `hc` types.
+- **CRUD:** model schemas determine row types, adapters validate returned rows,
+  and D1 distinguishes request scope from atomic transaction capability.
+- **Authentication:** one verified request identity drives provider-independent
+  permission guards and tenant/expiry checks.
+- **Live contract:** shared argument/result parsers are consumed by server query
+  handlers and the client, with per-application drivers and cursor logs.
+- **Studio:** its host authorizes a local operation and sends try-it through the
+  actual API HTTP boundary. Operation responses are validated by shared schemas.
 
-## Features
+Schema descriptors replace DTO constructors that claimed uninitialized fields.
+Cache reads and other unvalidated values return `unknown`; parser-based helpers
+infer their real output. See [the core type guide](vela/TYPE_CONTRACTS.md).
 
-- **Decorator-based controllers** — `@Controller`, `@Get`, `@Post`, `@Put`, `@Patch`, `@Delete`
-- **Dependency injection** — `@Injectable`, `@Inject`, `InjectionToken`, singleton/transient/request scopes
-- **Modules** — `@Module` with imports, exports, controllers, providers
-- **Guards** — `@UseGuards` with `CanActivate` interface
-- **Pipes** — `@UsePipes`, built-in `ParseIntPipe`, `ParseBoolPipe`, `ZodValidationPipe`, etc.
-- **Interceptors** — `@UseInterceptors` with `NestInterceptor` interface
-- **Exception filters** — `@UseFilters`, `@Catch`, built-in HTTP exceptions
-- **Middleware** — `@UseMiddleware` for Hono-native middleware
-- **Custom metadata** — `@SetMetadata` + `Reflector`
-- **Custom param decorators** — `createParamDecorator`
-- **Route versioning** — `@Controller({ version: '1' })` + `@Version('2')`
-- **Global prefix** — `app.setGlobalPrefix('/api')`
-- **Lifecycle hooks** — `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`
-- **CRUD integration** — Optional [`@velajs/crud`](https://github.com/velajs/crud) package
+## Runnable examples
 
-## Edge Runtime Compatibility
+- [Complete auth, D1 CRUD, generated client, live and Studio starter](cloudflare/examples/api-starter/README.md)
+- [Native Workers bindings](cloudflare/examples/worker-bindings-lab/README.md)
+- [Live todos on Workers and Node](vela/examples/live-todo/README.md)
+- [Better Auth with D1](auth/examples/auth-lab-d1/README.md)
+- [Studio demonstration](studio/examples/demo/README.md)
+- [Testing harness](testing/examples/lab-testing-harness/README.md)
 
-Vela runs on any runtime that supports the Web Standards API:
+AI, agents, email, and workflow packages remain outside this API workspace.
 
-- Cloudflare Workers
-- Deno Deploy
-- Bun
-- Node.js 20+
-- Vercel Edge Functions
-
-No Node.js-specific APIs (`node:fs`, `Buffer`, `process`) are used.
-
-### Edge-safe contract
-
-The **main export** (`@velajs/vela`) is edge-safe by contract — no `node:*` imports, no `Buffer`, no `process`, no `setInterval`, no `Bun.serve`. This is enforced in CI by [`src/__tests__/edge-runtime-audit.test.ts`](src/__tests__/edge-runtime-audit.test.ts), which fails the build if any file under `src/` references a forbidden API.
-
-One subpath, **`@velajs/vela/schedule-node`**, is an opt-in Node/Bun adapter for `setInterval`-based job execution. It uses runtime-specific APIs by design and is **excluded from the edge-runtime audit**. Edge runtimes (Cloudflare Workers, Deno Deploy, Vercel Edge) should not import it — use platform cron triggers instead (e.g., `@velajs/cloudflare` ≥ 0.2.0 dispatches `@Cron` jobs via the Workers `scheduled()` handler).
-
-```ts
-// Node / Bun only — opt-in
-import { ScheduleNodeModule } from '@velajs/vela/schedule-node';
-```
-
-The other subpaths (`@velajs/vela/internal`, `@velajs/vela/streaming`) follow the main export's edge-safe contract.
-
-## Dynamic modules
-
-Configurable modules use `forRoot` (sync) and `forRootAsync` (DI-resolved):
-
-```ts
-@Module({
-  imports: [
-    CacheModule.forRoot({ ttl: 60 }),
-    HttpModule.forRoot({ baseURL: 'https://api.example.com' }),
-    ConfigModule.forRootAsync({
-      useFactory: async (loader: ConfigLoader) => loader.load(),
-      inject: [ConfigLoader],
-    }),
-  ],
-})
-class AppModule {}
-```
-
-### Identity model
-
-Each `DynamicModule` has an optional `key?: string` that discriminates one instance from another. First-party modules derive `key: stableHash(options)` automatically inside `forRoot` — so the same options always dedup, and distinct options register as distinct instances:
-
-```ts
-// Same options → dedup (one CacheModule instance, ttl: 60)
-imports: [
-  CacheModule.forRoot({ ttl: 60 }),
-  CacheModule.forRoot({ ttl: 60 }),
-]
-
-// Different options → two distinct instances coexist
-imports: [
-  CacheModule.forRoot({ ttl: 60 }),
-  CacheModule.forRoot({ ttl: 120 }),
-]
-```
-
-When a consumer module imports two instances both exporting the same logical token, the resolver throws `MultipleProvidersFoundError` with both candidate ids — resolve the ambiguity by importing only one, or use a per-instance accessor exposed by the module. Most apps with a single instance never hit this.
-
-Custom modules can use the same pattern via the public helpers:
-
-```ts
-import { defineDynamicModule, stableHash } from '@velajs/vela';
-
-class MyModule {
-  static forRoot(options: MyOptions): DynamicModule {
-    return defineDynamicModule({
-      module: MyModule,
-      key: stableHash(options),    // or pass an explicit key
-      providers: [/* ... */],
-      exports: [/* ... */],
-    });
-  }
-}
-```
-
-`forRootAsync` callers should pass `key` explicitly when the same module needs multiple async instances — factories aren't structurally hashable.
-
-## Custom parameter decorators with deferred resolution
-
-Vela follows the secure request order (`middleware → guards → extract
-args/pipes → interceptors → handler`), so a custom parameter decorator can
-observe request state populated by a guard. Use `createLazyParamDecorator` only
-for a guaranteed object whose construction is expensive or should materialize
-only if the handler actually reads it. Its factory runs on first property
-access:
-
-```ts
-import {
-  createLazyParamDecorator,
-  Inject,
-  Injectable,
-  REQUEST_CONTEXT,
-  Scope,
-  UseGuards,
-} from '@velajs/vela';
-import type { CanActivate, ExecutionContext, RequestContext } from '@velajs/vela';
-
-const USER_KEY = Symbol.for('app.user');
-
-@Injectable({ scope: Scope.REQUEST })
-class AuthGuard implements CanActivate {
-  constructor(@Inject(REQUEST_CONTEXT) private readonly ctx: RequestContext) {}
-  canActivate(_e: ExecutionContext): boolean {
-    this.ctx.set(USER_KEY, { id: 'u-1', name: 'ada' });   // populated here
-    return true;
-  }
-}
-
-const DeferredProfile = createLazyParamDecorator((_data, ctx: ExecutionContext) => {
-  const reqCtx = ctx
-    .getContext()
-    .get('container')
-    .resolve<RequestContext>(REQUEST_CONTEXT);
-  return reqCtx.get(USER_KEY);
-});
-
-@UseGuards(AuthGuard)
-@Get('/me')
-me(@DeferredProfile() profile: { id: string; name: string }) {
-  return { id: profile.id };        // factory runs here, AFTER AuthGuard
-}
-```
-
-The proxy short-circuits `then` on its `get` trap so `await value` returns the proxy itself rather than triggering eager resolution. Method results are auto-bound to the resolved real target, so detached method calls keep `this`. `JSON.stringify(value)` works after one access (the proxy implements `ownKeys` + `getOwnPropertyDescriptor`).
-
-Do not use a lazy decorator for optional authentication identities: a proxy is
-always truthy even when its eventual value is absent. Identity integrations
-must use ordinary post-guard parameter decorators so anonymous callers receive
-the real `undefined` value.
-
-## Companion packages
-
-| Package | Purpose |
-|---|---|
-| [`@velajs/cloudflare`](https://github.com/velajs/cloudflare) | Cloudflare Workers adapter — typed services for KV, D1, R2, Queues, DO, AI, Vectorize, Hyperdrive |
-| [`@velajs/crud`](https://github.com/velajs/crud) | NestJS-style CRUD controllers on top of `hono-crud` |
-| [`@velajs/testing`](https://github.com/velajs/testing) | `Test.createTestingModule()` with `overrideProvider/Guard/Pipe/Interceptor/Filter` |
-
-```bash
-pnpm add @velajs/testing -D
-pnpm add @velajs/cloudflare @cloudflare/workers-types
-pnpm add @velajs/crud hono-crud @hono/zod-openapi zod
-```
-
-## `/internal` subpath (for plugin authors)
-
-Framework primitives — `MetadataRegistry`, `Container`, `RouteManager`, `ModuleLoader`, `ComponentManager`, `VelaApplication`, `bindAppProviders`, `APP_*` tokens — are exposed at `@velajs/vela/internal`. This is the stable target for plugin packages that need to reach below the public API.
-
-```ts
-import { MetadataRegistry, Container } from '@velajs/vela/internal';
-```
-
-The public root barrel still exports `MetadataRegistry` (used by tests for `clear()` between cases). Everything else lives at `/internal` only.
-
-## License
-
-MIT
+The coordinated 2.0 release process and migration notes are in [RELEASING.md](RELEASING.md).

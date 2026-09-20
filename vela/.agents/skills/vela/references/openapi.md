@@ -1,0 +1,84 @@
+# OpenAPI
+
+Generate an OpenAPI 3.1 document from your modules and serve it with Swagger UI, Scalar, or ReDoc. All on `@velajs/vela`.
+
+## Generating the document
+
+`createOpenApiDocument` takes the **root module class** (not the app) and reflects controller routes:
+
+```ts
+import { createOpenApiDocument } from '@velajs/vela';
+
+const app = await VelaFactory.create(AppModule, { globalPrefix: '/api' });
+
+const document = createOpenApiDocument(AppModule, {
+  info: { title: 'Evergreen Market API', version: '1.0.0' },
+  globalPrefix: '/api',            // match the app's global prefix so paths line up
+});
+```
+
+`CreateOpenApiDocumentOptions`: `info?` (`{ title?, version?, description? }`), `globalPrefix?`, `tags?` (`[{ name, description? }]`), `servers?`, `securitySchemes?`, `security?`. Defaults: `openapi: '3.1.0'`, title `'Vela API'`, version `'1.0.0'`. Paths are derived from controllers (`:id` → `{id}`); `@velajs/crud` (>= 1.18) stamps real controller routes so its paths, operationIds, and DTO component schemas come through this same walk. `RouteContributor` packages fold additional generated paths in.
+
+## Documenting operations
+
+```ts
+import { ApiDoc, ApiTags, ApiResponse } from '@velajs/vela';
+
+@Controller({ path: '/catalog', version: 1 })
+@ApiTags('catalog')
+class CatalogController {
+  @Get('/items', { name: 'catalog.list' })
+  @ApiDoc({ summary: 'List products', operationId: 'listProducts' })
+  @ApiResponse(200, { description: 'Product list', schema: PublicProductDto })
+  list() { return this.products.list(); }
+}
+```
+
+- `@ApiTags(...tags)` — class or method; tags merge and de-dupe.
+- `@ApiDoc({ summary?, description?, operationId?, deprecated?, tags? })` — class or method.
+- `@ApiResponse(status, { description, schema? })` — method; stackable for multiple statuses. `schema` accepts a Zod schema, a `defineDto` descriptor, or checked raw JSON Schema.
+
+### operationId from the route name
+
+If a route is named (`@Get(path, { name })`), that name becomes the OpenAPI `operationId` automatically. An explicit `@ApiDoc({ operationId })` overrides it. Naming routes therefore gives you stable, human-readable operation ids for free — see `controllers-and-routing.md`.
+
+## Serving the docs UI
+
+`app.mountOpenApi(options)` serves the JSON spec and one or more UIs:
+
+```ts
+app.mountOpenApi({ document, specPath: '/openapi.json' });        // default UI: Scalar at /scalar
+app.mountOpenApi({ document, ui: 'swagger' });                   // Swagger UI at /docs
+app.mountOpenApi({ document, ui: 'all' });                       // swagger + scalar + redoc
+```
+
+`MountOpenApiOptions`:
+
+| Field | Default | Notes |
+|---|---|---|
+| `document` | — | required — the object from `createOpenApiDocument` |
+| `specPath` | `/openapi.json` | where the JSON spec is served |
+| `ui` | `'scalar'` | `'swagger' \| 'scalar' \| 'redoc'`, an array, or `'all'` |
+| `swaggerPath` | `/docs` | Swagger UI path |
+| `scalarPath` | `/scalar` | Scalar path |
+| `redocPath` | `/redoc` | ReDoc path |
+| `title` | — | UI page title |
+
+Each UI is a self-contained HTML shell (CDN-loaded), so mounting docs adds no server bundling and stays edge-safe. (`path`/`uiPath` are deprecated aliases for `specPath`/single-UI path.)
+
+## Schema-bound Hono RPC
+
+Use `defineEndpoint({ input, output, status? })` plus `@Endpoint(definition)` for one runtime-validated contract; see `validation.md`. A parameter parser in `@Body(new ValidationPipe(dto))` also supplies request schema metadata. `@ApiResponse` documents a result but does not validate it; TypeScript interfaces alone carry no schema.
+
+```sh
+vela client generate --out src/api.generated.ts --strict
+vela client generate --out src/api.generated.ts --strict --check
+```
+
+```ts
+import { hc } from '@velajs/client/http';
+import type { AppType } from './api.generated.js';
+const api = hc<AppType>('https://api.example.com');
+```
+
+Use the server origin: generated paths already include prefix/version segments. The client entrypoint re-exports Hono's client/types; do not cast the runtime Vela Hono instance into a fabricated route schema. Missing schemas become unknown or fail `--strict`; raw Hono mounts require their own contract. Read the client package's `HTTP.md` for supported wire formats and global error responses.

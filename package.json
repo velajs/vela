@@ -1,124 +1,41 @@
 {
-  "name": "@velajs/vela",
-  "version": "1.21.0",
-  "description": "NestJS-compatible framework for edge runtimes, powered by Hono",
-  "keywords": [
-    "bun",
-    "cloudflare-workers",
-    "decorators",
-    "deno",
-    "dependency-injection",
-    "edge",
-    "framework",
-    "hono",
-    "nestjs",
-    "typescript"
-  ],
-  "homepage": "https://github.com/velajs/vela#readme",
-  "bugs": {
-    "url": "https://github.com/velajs/vela/issues"
-  },
-  "license": "MIT",
-  "author": "ksh",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/velajs/vela.git"
-  },
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE",
-    "CHANGELOG.md"
-  ],
+  "name": "@velajs/workspace",
+  "private": true,
   "type": "module",
-  "sideEffects": [
-    "./dist/index.js",
-    "./dist/metadata.js",
-    "./dist/schedule-node/index.js"
-  ],
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    },
-    "./internal": {
-      "types": "./dist/internal.d.ts",
-      "import": "./dist/internal.js"
-    },
-    "./streaming": {
-      "types": "./dist/streaming/index.d.ts",
-      "import": "./dist/streaming/index.js"
-    },
-    "./schedule-node": {
-      "types": "./dist/schedule-node/index.d.ts",
-      "import": "./dist/schedule-node/index.js"
-    },
-    "./websocket": {
-      "types": "./dist/websocket/index.d.ts",
-      "import": "./dist/websocket/index.js"
-    },
-    "./websocket-node": {
-      "types": "./dist/websocket-node/index.d.ts",
-      "import": "./dist/websocket-node/index.js"
-    },
-    "./i18n": {
-      "types": "./dist/i18n/index.d.ts",
-      "import": "./dist/i18n/index.js"
-    },
-    "./queue": {
-      "types": "./dist/queue/index.d.ts",
-      "import": "./dist/queue/index.js"
-    },
-    "./live": {
-      "types": "./dist/live/index.d.ts",
-      "import": "./dist/live/index.js"
-    },
-    "./storage": {
-      "types": "./dist/storage/index.d.ts",
-      "import": "./dist/storage/index.js"
-    },
-    "./seeder": {
-      "types": "./dist/seeder/index.d.ts",
-      "import": "./dist/seeder/index.js"
-    }
-  },
   "scripts": {
-    "build": "tsdown",
-    "test": "vitest run",
-    "test:workers": "vitest run --config vitest.config.workers.ts",
-    "test:workers:als": "vitest run --config vitest.config.workers-als.ts",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.type-tests.json && tsc --noEmit -p tsconfig.dispatch-tests.json",
-    "check:skill": "node scripts/check-skill.mjs",
-    "docs": "pnpm --dir tools/docs docs",
-    "docs:check": "pnpm --dir tools/docs docs:check",
-    "lint": "oxlint .",
-    "format": "oxfmt .",
-    "format:check": "oxfmt --check .",
-    "publint": "publint",
-    "attw": "attw --pack . --profile esm-only",
+    "build": "pnpm -r --workspace-concurrency=1 run build",
+    "typecheck": "pnpm -r --workspace-concurrency=1 run typecheck",
+    "test": "pnpm -r --workspace-concurrency=1 run test",
+    "test:workers": "pnpm -r --workspace-concurrency=1 --if-present run test:workers && pnpm --dir vela run test:workers:als",
+    "verify": "pnpm check:workspace && pnpm build && pnpm api:check && pnpm typecheck && pnpm check:skill && pnpm docs:check && pnpm test && pnpm test:conformance && pnpm test:workers",
+    "test:conformance": "pnpm --dir crud exec vitest run tests",
+    "check:workspace": "node scripts/check-workspace.mjs",
+    "api:check": "pnpm --dir vela api:check",
+    "docs": "pnpm --dir vela docs",
+    "docs:check": "pnpm --dir vela docs:check",
+    "check:skill": "pnpm --dir vela check:skill",
     "changeset": "changeset",
-    "version-packages": "changeset version && node scripts/sync-skill-version.mjs",
-    "release:preflight": "npm view @velajs/live-protocol@1.1.0 version",
-    "release:check": "node scripts/check-release-lock.mjs && pnpm verify && pnpm audit --audit-level=high",
-    "release": "pnpm release:preflight && pnpm release:check && changeset publish",
-    "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm check:skill && pnpm docs:check && pnpm test && pnpm test:workers && pnpm test:workers:als && pnpm publint && pnpm attw"
-  },
-  "dependencies": {
-    "@velajs/errors": "^1.0.0",
-    "@velajs/live-protocol": "1.1.0",
-    "hono": "^4.12.26"
+    "version-packages": "node scripts/version-packages.mjs",
+    "release:pack": "node scripts/release-pack.mjs",
+    "release:consumer": "node scripts/release-consumer.mjs",
+    "release:preflight": "node scripts/release-publish.mjs --dry-run",
+    "release:publish": "node scripts/release-publish.mjs",
+    "release:check": "pnpm verify && pnpm peers check && pnpm audit --audit-level=high && pnpm release:pack && pnpm release:consumer && pnpm release:preflight"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "catalog:",
     "@changesets/cli": "catalog:",
-    "@cloudflare/vitest-pool-workers": "^0.16.18",
+    "@cloudflare/vitest-plugin": "catalog:",
+    "@cloudflare/workers-types": "catalog:",
+    "@libsql/client": "^0.17.4",
     "@swc/core": "catalog:",
-    "@types/bun": "latest",
+    "@types/node": "catalog:",
+    "@velajs/vela": "workspace:*",
     "@vitest/runner": "catalog:",
     "@vitest/snapshot": "catalog:",
-    "intl-messageformat": "^11.2.9",
+    "drizzle-orm": "^0.45.2",
+    "hono": "catalog:",
+    "miniflare": "5.20260918.0-alpha",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",
     "publint": "catalog:",
@@ -126,15 +43,8 @@
     "typescript": "catalog:",
     "unplugin-swc": "catalog:",
     "vitest": "catalog:",
+    "wrangler": "catalog:",
     "zod": "catalog:"
-  },
-  "peerDependencies": {
-    "intl-messageformat": ">=10"
-  },
-  "peerDependenciesMeta": {
-    "intl-messageformat": {
-      "optional": true
-    }
   },
   "engines": {
     "node": ">=24"

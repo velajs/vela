@@ -1,0 +1,35 @@
+{
+  "name": "@velajs/client-workspace",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Workspace for the Vela client SDK (@velajs/client) and framework bindings (@velajs/react)",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "pnpm --filter @velajs/react-native --filter @velajs/client --filter @velajs/react --workspace-concurrency=1 run build",
+    "test": "pnpm --filter @velajs/react-native --filter @velajs/client --filter @velajs/react --workspace-concurrency=1 run test",
+    "typecheck": "pnpm --filter @velajs/react-native --filter @velajs/client --filter @velajs/react --workspace-concurrency=1 run typecheck",
+    "lint": "oxlint .",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "publint": "pnpm -r --no-bail exec publint",
+    "attw": "pnpm -r --no-bail exec attw --pack . --profile esm-only",
+    "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm test && pnpm publint && pnpm attw"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "catalog:",
+    "@changesets/cli": "catalog:",
+    "@swc/core": "catalog:",
+    "oxfmt": "catalog:",
+    "oxlint": "catalog:",
+    "publint": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "unplugin-swc": "catalog:",
+    "vitest": "catalog:"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@11.11.0"
+}

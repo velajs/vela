@@ -1,0 +1,233 @@
+[
+  {
+    "repo": "auth",
+    "head": "29c44440eeee10cc57274a25700b290689d5b889",
+    "branch": "agent/edge-security-remediation",
+    "main": "450c0f6a9fbe1e9f6b06cc195ad00233526b4010",
+    "mergeBase": "29c44440eeee10cc57274a25700b290689d5b889",
+    "remoteChanges": [
+      ".changeset/secure-identity-boundaries.md",
+      "CHANGELOG.md",
+      "package.json"
+    ],
+    "remote": "git@github.com:velajs/better-auth.git",
+    "checkpoint": "01a2224d725a69773e608dadf2123ba8ce353908",
+    "importHead": "de18127b879135f9f0b9ac35e85a02b74deb7ba1"
+  },
+  {
+    "repo": "authz",
+    "head": "242953dcbeed56e2912fb37a2c690fddad4d9490",
+    "branch": "agent/edge-security-remediation",
+    "main": "93d85bc2e50dacd00ea8f228df3aab0291ea4aa6",
+    "mergeBase": "242953dcbeed56e2912fb37a2c690fddad4d9490",
+    "remoteChanges": [
+      ".changeset/stable-principals.md",
+      "CHANGELOG.md",
+      "package.json"
+    ],
+    "remote": "git@github.com:velajs/authz.git",
+    "checkpoint": "bd74901c8b41b16410eb01906f01370d453a6c76",
+    "importHead": "070eae34d647f414a8ffbebf23152fd763bb9c81"
+  },
+  {
+    "repo": "cli",
+    "head": "02ceb0147288e4ddc9f811cf0d5326ce02e62469",
+    "branch": "agent/edge-security-remediation",
+    "main": "8b268a654798f01660d0d315043d68ea798f053a",
+    "mergeBase": "222f9af06c7fb685f2a45d6906da276f82ca711c",
+    "remoteChanges": [
+      ".changeset/vela-security-peer.md",
+      "CHANGELOG.md",
+      "package.json"
+    ],
+    "remote": "git@github.com:velajs/cli.git",
+    "checkpoint": "bdf256f22c887bd272b5e84c18721640a2014d22",
+    "importHead": "7e227f5ba569f02be07e982dc434b1ece8a5544b"
+  },
+  {
+    "repo": "client",
+    "head": "5004af757372c14fe50e25cb82759028abbaa086",
+    "branch": "agent/edge-security-remediation",
+    "main": "1403da418d3535570845306f548fa46f423ec81a",
+    "mergeBase": "5004af757372c14fe50e25cb82759028abbaa086",
+    "remoteChanges": [
+      ".changeset/secure-realtime-client.md",
+      "packages/client/CHANGELOG.md",
+      "packages/client/package.json",
+      "packages/react-native/CHANGELOG.md",
+      "packages/react-native/package.json",
+      "packages/react/CHANGELOG.md",
+      "packages/react/package.json"
+    ],
+    "remote": "git@github.com:velajs/client.git",
+    "checkpoint": "ff31fd1ffb4971cbe1d7b5a326cd1080a5a085bd",
+    "importHead": "431a4d630a46afef68b9471036e07b31d30283bd"
+  },
+  {
+    "repo": "cloudflare",
+    "head": "94fa7d29095b2ce68248acf82034ffca64855f93",
+    "branch": "agent/edge-security-remediation",
+    "main": "533b75384821816c3d13168641d6337cb4f7d588",
+    "mergeBase": "533b75384821816c3d13168641d6337cb4f7d588",
+    "remoteChanges": [],
+    "remote": "git@github.com:velajs/cloudflare.git",
+    "checkpoint": "4f45b64dffa3c8833e58d0ff6c1c67f9a3631f55",
+    "importHead": "4f45b64dffa3c8833e58d0ff6c1c67f9a3631f55"
+  },
+  {
+    "repo": "cloudflare-access",
+    "head": "61e330dea28d18ccf484ae51e4a136874b283ef4",
+    "branch": "agent/edge-security-remediation",
+    "main": "a65a146478e4a3269ad33002c95909da419265a0",
+    "mergeBase": "120d6bbef20ed21e7fc466446b4972fb30fc8ffb",
+    "remoteChanges": [
+      ".changeset/verified-principals.md",
+      ".github/workflows/ci.yml",
+      ".github/workflows/release.yml",
+      ".github/workflows/security.yml",
+      "README.md",
+      "package.json",
+      "pnpm-lock.yaml",
+      "pnpm-workspace.yaml",
+      "scripts/check-release-lock.mjs",
+      "src/__tests__/resolver.test.ts",
+      "src/__tests__/types.test.ts",
+      "src/__tests__/vela.test.ts",
+      "src/__tests__/verify.test.ts",
+      "src/index.ts",
+      "src/resolver.ts",
+      "src/types.ts",
+      "src/vela/access.guard.ts",
+      "src/vela/access.module.ts",
+      "src/vela/authz-bridge.ts",
+      "src/vela/current-identity.decorator.ts",
+      "src/vela/index.ts",
+      "src/vela/permission.guard.ts",
+      "src/vela/tokens.ts",
+      "src/verify.ts"
+    ],
+    "remote": "git@github.com:velajs/cloudflare-access.git",
+    "checkpoint": "3781eb3889023414f242e440a5d8816cc9796596",
+    "importHead": "0b9997002cd19fa6db63409f423cede9675be323"
+  },
+  {
+    "repo": "crud",
+    "head": "cae86788b20944733a54823b1c742fdca0e160f6",
+    "branch": "agent/edge-security-remediation",
+    "main": "c361caef2c588b8266d21b48daf6ce4ee41f0b34",
+    "mergeBase": "cae86788b20944733a54823b1c742fdca0e160f6",
+    "remoteChanges": [],
+    "remote": "git@github.com:velajs/crud.git",
+    "checkpoint": "2b2b0dc499d2a395b3a4fb6266d5a5ba26665778",
+    "importHead": "d419f0d4bb4e04b82191826008c6d9f4c5c3c9d1"
+  },
+  {
+    "repo": "errors",
+    "head": "5a6d0143709e395a25ec0ca5446c16e546420d82",
+    "branch": "agent/linux-only-ci",
+    "main": "f675d2b70039aeba0e0d81a2dde1c83de4062973",
+    "mergeBase": "5a6d0143709e395a25ec0ca5446c16e546420d82",
+    "remoteChanges": [],
+    "remote": "git@github.com:velajs/errors.git",
+    "checkpoint": "44a82cdaf455e93050ab660718d82a5336e6532e",
+    "importHead": "5fd8a649d79bc35082fcc74ca53a3b6ad06533a1"
+  },
+  {
+    "repo": "feature-flags",
+    "head": "8fb03a6f66213d6c6b9f0f4ca9a5e58f6aba00ee",
+    "branch": "agent/linux-only-ci",
+    "main": "b31c188a88673a45c58f333c61c582b59e0c4c4d",
+    "mergeBase": "8fb03a6f66213d6c6b9f0f4ca9a5e58f6aba00ee",
+    "remoteChanges": [
+      ".github/workflows/release.yml",
+      ".github/workflows/security.yml",
+      "CHANGELOG.md",
+      "README.md",
+      "package.json",
+      "pnpm-lock.yaml",
+      "pnpm-workspace.yaml",
+      "scripts/check-release-lock.mjs",
+      "src/__tests__/guard.test.ts",
+      "src/__tests__/service.test.ts",
+      "src/feature-flags.service.ts",
+      "src/feature-flags.types.ts",
+      "src/guards/feature-flag.guard.ts"
+    ],
+    "remote": "git@github.com:velajs/feature-flags.git",
+    "checkpoint": "e4ae6f98af5cb5019e471404a972efb7b327d959",
+    "importHead": "1f185803d39f03b2fb957f64b0dd9742a4c2c827"
+  },
+  {
+    "repo": "live-protocol",
+    "head": "f6e6f7dafe0251dadfdb997139c56d3f4b7d606f",
+    "branch": "agent/keep-live-protocol-1x",
+    "main": "e980f7bb8c02c494d25bd954bb7c728566df2fee",
+    "mergeBase": "f6e6f7dafe0251dadfdb997139c56d3f4b7d606f",
+    "remoteChanges": [
+      ".changeset/bounded-live-protocol.md",
+      "CHANGELOG.md",
+      "package.json"
+    ],
+    "remote": "git@github.com:velajs/live-protocol.git",
+    "checkpoint": "95831b0245f8c51916b5f3f2800c45643430f5c3",
+    "importHead": "039b2448ffd14cd92e9c69b6529fb8ecf1759aaf"
+  },
+  {
+    "repo": "storage",
+    "head": "76a0b7d0c2969c51eb9ce8aadb9141a5b040beeb",
+    "branch": "agent/edge-security-remediation",
+    "main": "6f5a7c9906da89e9e67e82ddb3ca3b201af6e443",
+    "mergeBase": "76a0b7d0c2969c51eb9ce8aadb9141a5b040beeb",
+    "remoteChanges": [
+      ".changeset/secure-multipart-grants.md",
+      "CHANGELOG.md",
+      "package.json"
+    ],
+    "remote": "git@github.com:velajs/storage.git",
+    "checkpoint": "aa19fdca923c6767561b8d6ffe25e5c0e762c5e5",
+    "importHead": "08ab968e53351e21b54d36817834ac3625964acf"
+  },
+  {
+    "repo": "studio",
+    "head": "e2d371d2cd3d5a19903921f071dc50b35402188b",
+    "branch": "main",
+    "main": "e2d371d2cd3d5a19903921f071dc50b35402188b",
+    "mergeBase": "e2d371d2cd3d5a19903921f071dc50b35402188b",
+    "remoteChanges": [],
+    "remote": "git@github.com:velajs/studio.git",
+    "checkpoint": "1fbe92a26c062a92f3e1e3cefbbffae234f61764",
+    "importHead": "1fbe92a26c062a92f3e1e3cefbbffae234f61764"
+  },
+  {
+    "repo": "testing",
+    "head": "2ed3ffd0f7b67ca863866714a422705a11ac1981",
+    "branch": "agent/edge-security-remediation",
+    "main": "2eb60d7c879913ddcc0e6373b158b063c9805d63",
+    "mergeBase": "2ed3ffd0f7b67ca863866714a422705a11ac1981",
+    "remoteChanges": [
+      ".changeset/vela-security-bootstrap.md",
+      "CHANGELOG.md",
+      "package.json"
+    ],
+    "remote": "git@github.com:velajs/testing.git",
+    "checkpoint": "0f1d48257b8622595ad5890453afae512a0d9a19",
+    "importHead": "565b8a3a85a7e65f8426d844d9f2ee490e124813"
+  },
+  {
+    "repo": "vela",
+    "head": "0b4526d9578580ab82fa72e5955305719c89b1c4",
+    "branch": "agent/edge-security-remediation",
+    "main": "ad1bbfaa13d2825d9b9a186f3eb7d517f3668e6d",
+    "mergeBase": "0b4526d9578580ab82fa72e5955305719c89b1c4",
+    "remoteChanges": [
+      ".agents/skills/vela/SKILL.md",
+      ".changeset/security-boundaries.md",
+      ".changeset/websocket-socket-tickets.md",
+      "CHANGELOG.md",
+      "package.json"
+    ],
+    "remote": "git@github.com:velajs/vela.git",
+    "checkpoint": "ab4fbeed2a6289dff9ec4c47d9e48aed60c5856e",
+    "importHead": "d39015695b0fe533ebe0ca1e741771a0474fb427"
+  }
+]

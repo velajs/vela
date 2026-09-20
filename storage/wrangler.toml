@@ -1,0 +1,15 @@
+# Test-only Wrangler config — drives the workerd runtime that backs
+# `pnpm test:workers`. NOT used for production deployments. The `main`
+# entry boots a smoke-test vela app with the R2 native-binding driver
+# (see src/__tests__/workers/entry.ts).
+#
+# Notably absent: `nodejs_compat`. The point is to lock the edge-runtime
+# contract — the R2 binding driver must run under bare workerd.
+
+name = "vela-storage-edge-test"
+main = "src/__tests__/workers/entry.ts"
+compatibility_date = "2026-05-01"
+
+[[r2_buckets]]
+binding = "TEST_BUCKET"
+bucket_name = "vela-storage-test"

@@ -1,0 +1,27 @@
+# Source
+src/
+tsconfig.json
+bunfig.toml
+.swcrc
+
+# Claude Code
+.claude/
+CLAUDE.md
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+
+# Lockfiles
+bun.lockb
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Env
+.env*
+
+# Git
+.git/
+.gitignore
