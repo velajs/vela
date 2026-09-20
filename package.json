@@ -1,6 +1,6 @@
 {
   "name": "@velajs/authz",
-  "version": "1.0.1",
+  "version": "2.0.0",
   "description": "Framework-agnostic permission/role engine for Vela: defineRole, fail-closed can(), composition + masking helpers",
   "keywords": [
     "authorization",
@@ -59,7 +59,7 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "catalog:",
     "@changesets/cli": "catalog:",
-    "@velajs/vela": "^1.21.0",
+    "@velajs/vela": "workspace:*",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",
     "publint": "catalog:",
@@ -68,7 +68,7 @@
     "vitest": "catalog:"
   },
   "peerDependencies": {
-    "@velajs/vela": ">=1.21.0 <2"
+    "@velajs/vela": "workspace:^"
   },
   "peerDependenciesMeta": {
     "@velajs/vela": {
@@ -78,5 +78,8 @@
   "engines": {
     "node": ">=24"
   },
-  "packageManager": "pnpm@11.11.0"
+  "packageManager": "pnpm@11.11.0",
+  "publishConfig": {
+    "access": "public"
+  }
 }

@@ -1,4 +1,4 @@
-import { defineModule } from '@velajs/vela';
+import { defineModule, defineProvider } from '@velajs/vela';
 import { createAuthz } from '../authz';
 import type { CreateAuthzOptions } from '../authz';
 import { AUTHZ, AUTHZ_OPTIONS } from './tokens';
@@ -6,16 +6,17 @@ import { AUTHZ, AUTHZ_OPTIONS } from './tokens';
 /**
  * Built on `@velajs/vela`'s `defineModule` engine (the same pattern as vela's
  * own `ErrorsModule`). `defineModule` mints the `forRoot`/`forRootAsync`
- * statics and auto-provides the options bag under {@link AUTHZ_OPTIONS}; `setup`
- * turns those options into the built {@link AUTHZ} instance and exports it.
+ * statics and auto-provides the options bag under {@link AUTHZ_OPTIONS}. The
+ * authorization provider consumes the resolved bag so both entry points use
+ * the same construction path, including DI-driven async options.
  */
 const { ConfigurableModuleClass } = defineModule<CreateAuthzOptions>({
   name: 'Authz',
   // Reuse the public AUTHZ_OPTIONS token for the auto-provided options bag,
   // kept DISTINCT from the AUTHZ instance token below.
   optionsToken: AUTHZ_OPTIONS,
-  setup: ({ options }) => ({
-    providers: [{ provide: AUTHZ, useValue: createAuthz(options) }],
+  setup: ({ OPTIONS }) => ({
+    providers: [defineProvider(AUTHZ, { useFactory: createAuthz, inject: [OPTIONS] })],
     exports: [AUTHZ],
   }),
 });

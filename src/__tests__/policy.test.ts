@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import { createAuthz } from '../authz';
 import { defineRole } from '../roles';
 import { anyOf, allOf, hasPerm, mask } from '../policy';
@@ -48,4 +48,16 @@ describe('mask (fail-closed)', () => {
       })({}, {}),
     ).toBeNull();
   });
+});
+
+it('preserves context and resource types through composed policies', () => {
+  const policy = anyOf(
+    (ctx: { tenant: string }, record: { tenant: string; title: string }) =>
+      ctx.tenant === record.tenant,
+  );
+  expectTypeOf(policy).parameters.toEqualTypeOf<
+    [{ tenant: string }, { tenant: string; title: string }]
+  >();
+  // @ts-expect-error composed policies require the resource fields their inputs require.
+  void policy({ tenant: 'a' }, { tenant: 'a' });
 });

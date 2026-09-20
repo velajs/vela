@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { MetadataRegistry, Module, VelaFactory } from '@velajs/vela';
-import { defineRole } from '../../roles';
-import type { Authz } from '../../authz';
+import { definePermission, defineRole } from '../../roles';
 import { AUTHZ, AuthzModule } from '../index';
 
 beforeEach(() => {
@@ -20,7 +19,7 @@ describe('AuthzModule.forRoot', () => {
     })(AppModule);
 
     const app = await VelaFactory.create(AppModule);
-    const authz = app.get<Authz>(AUTHZ);
+    const authz = app.get(AUTHZ);
 
     expect(await authz.can({ roles: ['editor'] }, 'posts:write')).toBe(true);
     expect(await authz.can({ roles: [] }, 'posts:write')).toBe(false);
@@ -37,7 +36,7 @@ describe('AuthzModule.forRoot', () => {
     })(AppModule);
 
     const app = await VelaFactory.create(AppModule);
-    const authz = app.get<Authz>(AUTHZ);
+    const authz = app.get(AUTHZ);
 
     // AUTHZ and AUTHZ_OPTIONS are two different tokens for two different values.
     expect(AUTHZ).not.toBe(AUTHZ_OPTIONS);
@@ -45,5 +44,51 @@ describe('AuthzModule.forRoot', () => {
     expect(await authz.can({ roles: ['viewer'] }, 'posts:write')).toBe(false);
 
     await app.dispose();
+  });
+});
+
+describe('AuthzModule.forRootAsync', () => {
+  it('builds authorization from roles and permissions returned by the async factory', async () => {
+    class AppModule {}
+    Module({
+      imports: [
+        AuthzModule.forRootAsync({
+          inject: [],
+          useFactory: async () => ({
+            roles: [defineRole('editor', ['posts:write'])],
+            permissions: [definePermission('posts:write')],
+          }),
+        }),
+      ],
+    })(AppModule);
+
+    const app = await VelaFactory.create(AppModule);
+    try {
+      const authz = app.get(AUTHZ);
+      expect(await authz.can({ roles: ['editor'] }, 'posts:write')).toBe(true);
+      expect(await authz.can({ roles: ['editor'] }, 'posts:delete')).toBe(false);
+      expect(await authz.can({ roles: [] }, 'posts:write')).toBe(false);
+    } finally {
+      await app.dispose();
+    }
+  });
+
+  it('rejects undeclared role permissions returned by the async factory', async () => {
+    class AppModule {}
+    Module({
+      imports: [
+        AuthzModule.forRootAsync({
+          inject: [],
+          useFactory: async () => ({
+            roles: [defineRole('editor', ['posts:write'])],
+            permissions: [definePermission('posts:read')],
+          }),
+        }),
+      ],
+    })(AppModule);
+
+    await expect(VelaFactory.create(AppModule, { diagnostics: 'throw' })).rejects.toThrow(
+      "undeclared permission 'posts:write'",
+    );
   });
 });

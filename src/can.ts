@@ -19,9 +19,17 @@ export const can = async (
   resolver: PermissionResolver,
 ): Promise<boolean> => {
   try {
+    if (expired(identity)) return false;
     const grants = await resolver.grants(identity);
-    return granted(grants, permission);
+    return !expired(identity) && granted(grants, permission);
   } catch {
     return false;
   }
 };
+
+function expired(identity: Identity): boolean {
+  return (
+    identity.expiresAtMs !== undefined &&
+    (!Number.isSafeInteger(identity.expiresAtMs) || identity.expiresAtMs <= Date.now())
+  );
+}

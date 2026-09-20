@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.0
+
+Provider-independent authorization consumes the shared verified identity, including tenant and expiry checks.
+
+Requires the coordinated Vela 2.0 package set. See the workspace migration guide.
+
 ## 1.0.1
 
 ### Patch Changes

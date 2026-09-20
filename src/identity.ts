@@ -10,13 +10,15 @@ export interface Identity {
   principalType?: PrincipalType;
   /** @deprecated Compatibility alias for `subject`. */
   userId?: string;
-  roles?: string[];
-  claims?: Record<string, unknown>;
+  tenantId?: string;
+  expiresAtMs?: number;
+  roles?: readonly string[];
+  claims?: Readonly<Record<string, unknown>>;
 }
 
 /** The zero-privilege identity. Fail-closed default when no session is present. */
 export const anonymous: Identity = Object.freeze({
-  roles: Object.freeze([] as string[]) as string[],
+  roles: Object.freeze([]),
 });
 
 export interface PermissionResolver {

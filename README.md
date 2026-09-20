@@ -120,6 +120,24 @@ lastFour({}, { ssn: '123456789' }); // '6789'
 
 Optional. `@velajs/authz/vela` wires the engine into a Vela app. `@velajs/vela` is an **optional** peer dependency — the core engine has no framework coupling and runs anywhere (edge, Node, Workers, Deno, Bun).
 
+The framework entrypoint owns the shared `PermissionGuard` / `RequirePermission` (all permissions), `RolesGuard` / `Roles` (any local role), and `CurrentIdentity` decorator. Authentication providers publish verified state into core; these guards never infer identity from request headers, Hono variables, compatibility symbols, or Better Auth user metadata.
+
+`getContextIdentity(context)` reads core's unexpired HTTP identity, or the normalized WebSocket connection principal/tenant/expiry. Socket role or claim fields are not authority; a permission resolver can look up grants using the connection principal and tenant. HTTP role/claim snapshots cannot be mutated after publication.
+
+The permission guard resolves exactly one `AUTHZ` engine visible from the route module, then rechecks identity after asynchronous decisions to reject expiry or replacement during resolution. `can()` also rejects expired identities before and after invoking its resolver. Missing identity, missing/ambiguous engine, and resolver exceptions deny access.
+
+```ts
+import { AuthzModule, PermissionGuard, RequirePermission } from '@velajs/authz/vela';
+
+@UseGuards(CloudflareAccessGuard, PermissionGuard) // or AuthGuard, PermissionGuard
+@Controller('/posts')
+class PostsController {
+  @Post()
+  @RequirePermission(['posts:write'])
+  create() { /* ... */ }
+}
+```
+
 ## License
 
 MIT © Kauan Guesser

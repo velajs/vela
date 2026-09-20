@@ -6,13 +6,9 @@ export type Policy<C = { identity: Identity }, R = unknown> = (
   resource: R,
 ) => boolean | Promise<boolean>;
 
-const runSafe = async (
-  p: Policy<{ identity: Identity }, never>,
-  ctx: unknown,
-  resource: unknown,
-): Promise<boolean> => {
+const runSafe = async <C, R>(p: Policy<C, R>, ctx: C, resource: R): Promise<boolean> => {
   try {
-    return (await (p as Policy<unknown, unknown>)(ctx, resource)) === true;
+    return (await p(ctx, resource)) === true;
   } catch {
     return false; // a throwing policy never allows
   }
@@ -20,7 +16,7 @@ const runSafe = async (
 
 /** OR — read semantics. Any policy granting → allowed. Empty → denied. */
 export const anyOf =
-  (...policies: Policy<{ identity: Identity }, never>[]): Policy =>
+  <C = { identity: Identity }, R = unknown>(...policies: Policy<C, R>[]): Policy<C, R> =>
   async (ctx, resource) => {
     for (const p of policies) if (await runSafe(p, ctx, resource)) return true;
     return false;
@@ -28,7 +24,7 @@ export const anyOf =
 
 /** AND — write semantics. All must allow. Empty → allowed (vacuous truth). */
 export const allOf =
-  (...policies: Policy<{ identity: Identity }, never>[]): Policy =>
+  <C = { identity: Identity }, R = unknown>(...policies: Policy<C, R>[]): Policy<C, R> =>
   async (ctx, resource) => {
     for (const p of policies) if (!(await runSafe(p, ctx, resource))) return false;
     return true;
