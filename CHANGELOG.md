@@ -6,6 +6,12 @@ Parser-backed flag values and the checked Vela provider contracts.
 
 Requires the coordinated Vela 2.0 package set. See the workspace migration guide.
 
+## 1.0.0
+
+### Major Changes
+
+- 588bd9f: Accept only literal boolean driver results, use own-property manifest lookup, preserve trusted identity fields, and make guards fail closed when context or evaluation is unavailable.
+
 ## 0.1.1
 
 ### Patch Changes

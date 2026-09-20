@@ -2,7 +2,8 @@ import { Controller, Get, MetadataRegistry, UseGuards } from '@velajs/vela';
 import { Test } from '@velajs/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { FeatureFlag, FeatureFlagGuard, FeatureFlagsModule, memoryFlagDriver } from '../index';
-import type { MemoryFlagDriver } from '../index';
+import type { FeatureFlagDriver } from '../drivers/driver';
+import type { FlagManifest } from '../feature-flags.types';
 
 /** Fresh decorated controller per test (metadata is re-applied on each build). */
 function guardedController() {
@@ -31,8 +32,8 @@ function guardedController() {
 
 async function appWith(
   controller: ReturnType<typeof guardedController>,
-  driver: MemoryFlagDriver,
-  moduleOpts: { isGlobal?: boolean } = {},
+  driver: FeatureFlagDriver,
+  moduleOpts: { isGlobal?: boolean; manifest?: FlagManifest } = {},
 ) {
   const moduleRef = await Test.createTestingModule({
     controllers: [controller],
@@ -83,6 +84,35 @@ describe('FeatureFlagGuard (integration)', () => {
     expect((await app.request('/checkout/v2')).status).toBe(404);
     driver.set('new-checkout', true);
     expect((await app.request('/checkout/v2')).status).toBe(200);
+  });
+
+  it('fails closed when evaluation errors even if the manifest fallback is true', async () => {
+    const broken: FeatureFlagDriver = {
+      name: 'broken',
+      getBoolean: () => Promise.reject(new Error('down')),
+      getString: (_key, fallback) => Promise.resolve(fallback),
+      getNumber: (_key, fallback) => Promise.resolve(fallback),
+      getObject: (_key, fallback) => Promise.resolve(fallback),
+    };
+    const app = await appWith(guardedController(), broken, {
+      manifest: { 'new-checkout': true },
+    });
+    expect((await app.request('/checkout/v2')).status).toBe(404);
+  });
+
+  it('denies a non-boolean driver verdict end-to-end even when the manifest fallback is true', async () => {
+    const malformed: FeatureFlagDriver = {
+      name: 'malformed',
+      getBoolean: () => Promise.resolve('yes' as unknown as boolean),
+      getString: (_key, fallback) => Promise.resolve(fallback),
+      getNumber: (_key, fallback) => Promise.resolve(fallback),
+      getObject: (_key, fallback) => Promise.resolve(fallback),
+    };
+    const app = await appWith(guardedController(), malformed, {
+      manifest: { 'new-checkout': true },
+    });
+
+    expect((await app.request('/checkout/v2')).status).toBe(404);
   });
 
   it('gates app-wide via the isGlobal APP_GUARD (no @UseGuards on the controller)', async () => {

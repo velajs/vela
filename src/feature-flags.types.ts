@@ -74,7 +74,9 @@ export interface FeatureFlagsOptions {
   manifest?: FlagManifest;
   /**
    * Resolves a per-request evaluation context (for example `{ userId }`) merged
-   * into every evaluation. Per-call context passed to a method overrides these.
+   * into every evaluation. Per-call context may override targeting fields, but
+   * trusted identity keys (`userId`, tenant/org/account ids, subject) from this
+   * resolver always win.
    * Receives the current request context; skipped outside request scope.
    */
   context?: (ctx: RequestContext) => FlagContext | Promise<FlagContext>;

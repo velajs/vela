@@ -6,6 +6,7 @@ import {
   REQUEST_CONTEXT,
   Reflector,
   type CanActivate,
+  type Container,
   type ExecutionContext,
   type RequestContext,
 } from '@velajs/vela';
@@ -18,8 +19,9 @@ import { FEATURE_FLAG_TOKENS } from '../feature-flags.tokens';
 
 /**
  * Route gate for `@FeatureFlag()`. Reads the handler/controller metadata, then
- * `getBooleanValue(key)`; when the flag is off it throws `NotFoundException`
- * (the route appears hidden) or `ForbiddenException` per the decorator option.
+ * `getBooleanDetails(key)`; only an explicit `true` without an evaluation
+ * error opens the route. Disabled, malformed, or failed evaluations throw
+ * `NotFoundException` (route hidden) or `ForbiddenException` per the decorator.
  * Handlers with no `@FeatureFlag()` metadata pass through untouched, so the
  * guard is safe to register app-wide (`FeatureFlagsModule.forRoot({ isGlobal:
  * true })`) or per-route via `@UseGuards(FeatureFlagGuard)`.
@@ -44,10 +46,14 @@ export class FeatureFlagGuard implements CanActivate {
     if (!meta) return true;
 
     const requestContext = this.requestContext(context);
-    const flags = requestContext ? this.flags.forRequest(requestContext) : this.flags;
-    const enabled = await flags.getBooleanValue(meta.key);
-    if (enabled) return true;
+    if (!requestContext) return this.deny(meta);
+    const details = await this.flags.forRequest(requestContext).getBooleanDetails(meta.key, false);
+    if (details.reason !== 'ERROR' && details.value === true) return true;
 
+    return this.deny(meta);
+  }
+
+  private deny(meta: FeatureFlagMetadata): never {
     if (meta.onDisabled === 'forbidden') {
       throw new ForbiddenException(`Feature "${meta.key}" is not enabled.`);
     }

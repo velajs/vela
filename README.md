@@ -59,6 +59,18 @@ class CheckoutController {
 
 Or gate every `@FeatureFlag()` route app-wide with `FeatureFlagsModule.forRoot({ isGlobal: true })`.
 
+The route guard opens only when the driver returns the literal boolean `true`
+and evaluation completed without error. Non-boolean driver output, a missing
+request context, a throwing context resolver, or an unavailable evaluator all
+deny with the decorator's configured 404/403 behavior. Manifest keys use
+own-property lookup, and per-call targeting cannot replace trusted identity
+fields supplied by the request-context resolver.
+
+Feature flags control rollout and presentation; they do **not** grant authority.
+Keep authentication, tenant membership, ownership checks, and permission guards
+on every flagged operation. A client able to guess or observe a flag value must
+still be unable to perform an unauthorized action.
+
 ## Drivers
 
 The in-memory driver ships here; runtime-specific drivers live in their platform packages

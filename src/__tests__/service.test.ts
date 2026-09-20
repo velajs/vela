@@ -33,6 +33,12 @@ class ThrowingDriver implements FeatureFlagDriver {
   }
 }
 
+class MalformedBooleanDriver extends MemoryFlagDriver {
+  override getBoolean(): Promise<boolean> {
+    return Promise.resolve('false' as unknown as boolean);
+  }
+}
+
 /** A driver that records the evaluation context it was handed. */
 class RecordingDriver implements FeatureFlagDriver {
   readonly name = 'recording';
@@ -92,6 +98,17 @@ describe('FeatureFlagsService', () => {
         manifest: { 'new-checkout': true },
       });
       expect(await flags.getBooleanValue('new-checkout')).toBe(false);
+    });
+
+    it('ignores inherited manifest keys', async () => {
+      const prototype = Object.prototype as Record<string, unknown>;
+      prototype.pollutedFlag = true;
+      try {
+        const flags = service({ drivers: [new MemoryFlagDriver()], manifest: {} });
+        expect(await flags.getBooleanValue('pollutedFlag')).toBe(false);
+      } finally {
+        delete prototype.pollutedFlag;
+      }
     });
 
     it('ignores manifest defaults of the wrong primitive type', async () => {
@@ -207,6 +224,16 @@ describe('FeatureFlagsService', () => {
       expect(details.errorMessage).toContain('binding down');
     });
 
+    it('rejects a non-boolean driver value into a typed fallback', async () => {
+      Logger.setWriter(() => {});
+      const flags = service({ drivers: [new MalformedBooleanDriver()] });
+      expect(await flags.getBooleanValue('x', false)).toBe(false);
+      expect(await flags.getBooleanDetails('x', false)).toMatchObject({
+        value: false,
+        reason: 'ERROR',
+      });
+    });
+
     it('details synthesize a STATIC reason on success', async () => {
       const flags = service({ drivers: [new MemoryFlagDriver({ values: { x: true } })] });
       expect(await flags.getBooleanDetails('x', false)).toMatchObject({
@@ -282,7 +309,11 @@ describe('FeatureFlagsService', () => {
       await flags.getBooleanValue('x');
       expect(recording.lastContext).toEqual({ userId: 'user-42', plan: 'free' });
 
-      await flags.getBooleanValue('x', false, { plan: 'pro', extra: 1 });
+      await flags.getBooleanValue('x', false, {
+        userId: 'attacker',
+        plan: 'pro',
+        extra: 1,
+      });
       expect(recording.lastContext).toEqual({ userId: 'user-42', plan: 'pro', extra: 1 });
     });
 
