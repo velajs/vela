@@ -6,6 +6,12 @@ Typed override descriptors and production-equivalent request and environment sco
 
 Requires the coordinated Vela 2.0 package set. See the workspace migration guide.
 
+## 1.0.0
+
+### Major Changes
+
+- 02bb42e: Target the published Vela 1.21 security release and use Vela's production bootstrap primitive so request context, global providers, and request-scoped test execution cannot drift from the real runtime. Standalone CI no longer relies on a sibling `link:../vela` checkout.
+
 ## 0.6.0
 
 ### Minor Changes
