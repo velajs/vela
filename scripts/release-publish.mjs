@@ -164,7 +164,10 @@ export async function publishRelease(directory, { dryRun = false, oidc = false }
         npm(['view', entry.name, 'dist-tags.latest', '--json', '--prefer-online']),
       );
       if (latest !== entry.version)
-        npm(['dist-tag', 'add', `${entry.name}@${entry.version}`, 'latest']);
+        execFileSync('npm', ['dist-tag', 'add', `${entry.name}@${entry.version}`, 'latest'], {
+          env: npmEnv(),
+          stdio: 'inherit',
+        });
     }
   }
   for (const entry of order) {

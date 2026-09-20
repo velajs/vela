@@ -88,7 +88,8 @@ node scripts/release-publish.mjs /absolute/path/to/tested-artifacts
 ```
 
 The interactive publisher stages the set under `next`, verifies every registry
-checksum, then promotes `latest`. It journals accepted submissions and waits for
+checksum, then promotes `latest` (npm may require a separate passkey approval for tag
+changes). It journals accepted submissions and waits for
 npm's asynchronous registry processing before checking integrity. Keep the exact
 artifacts and journal after an interruption. A different archive at an existing
 version is a hard failure. The pack script refuses to overwrite an existing
