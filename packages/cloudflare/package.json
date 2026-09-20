@@ -73,7 +73,7 @@
     "typescript": "catalog:",
     "unplugin-swc": "catalog:",
     "vitest": "catalog:",
-    "zod": "^3.25.76"
+    "zod": "^4.6.5"
   },
   "peerDependencies": {
     "@cloudflare/workers-types": ">=4",
