@@ -19,7 +19,6 @@ and [MODERNIZATION.md](MODERNIZATION.md) for implementation and validation histo
 - `tools/docs`: isolated API documentation tooling.
 - `tools/tsconfig`: shared compiler configurations.
 - `tests/crud`: cross-adapter conformance; `tests/release`: release safety checks.
-- `examples/legacy`: historical examples excluded from the workspace.
 
 ## Development
 
@@ -89,4 +88,5 @@ infer their real output. See [the core type guide](packages/vela/TYPE_CONTRACTS.
 
 AI, agents, email, and workflow packages remain outside this API workspace.
 
-The coordinated 2.0 release process and migration notes are in [RELEASING.md](RELEASING.md).
+Packages remain on the 1.x release line. The release process and current API
+requirements are in [RELEASING.md](RELEASING.md).

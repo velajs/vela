@@ -1,9 +1,14 @@
 # Product direction: the NestJS experience on Cloudflare Workers
 
 The user's objective is the starting point. Existing repositories, package names,
-abstractions, tests, and the prepared 2.0 archives are implementation evidence;
+abstractions, tests, and prepared release archives are implementation evidence;
 they are not requirements to preserve. A change earns its place by improving
 application authoring, runtime correctness, or development feedback.
+
+The active release line is 1.x. Breaking API changes are acceptable while this
+developer experience takes shape. Update the maintained applications with the
+framework; do not retain obsolete examples or compatibility layers solely to
+preserve earlier APIs.
 
 ## The application author's experience
 

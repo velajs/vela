@@ -1,6 +1,6 @@
 {
   "name": "@velajs/studio-protocol",
-  "version": "2.0.1",
+  "version": "1.22.0",
   "description": "Vela Studio wire contract, operation schemas, envelopes, and capabilities",
   "keywords": [
     "admin",

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { publicationOrder, waitForIntegrity } from '../../scripts/release-publish.mjs';
 
-const entry = { name: '@velajs/example', version: '2.0.1', integrity: 'sha512-tested' };
+const entry = { name: '@velajs/example', version: '1.22.0', integrity: 'sha512-tested' };
 test('npm may accept a version before it is visible; wait without resubmitting', async () => {
   let reads = 0;
   let pauses = 0;

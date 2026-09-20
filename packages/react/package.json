@@ -1,6 +1,6 @@
 {
   "name": "@velajs/react",
-  "version": "2.0.1",
+  "version": "1.22.0",
   "description": "React hooks for Vela live queries: useLiveQuery, useLiveMutation, usePresence, useConnectionStatus on useSyncExternalStore",
   "keywords": [
     "hooks",

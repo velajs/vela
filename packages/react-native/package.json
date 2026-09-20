@@ -1,6 +1,6 @@
 {
   "name": "@velajs/react-native",
-  "version": "2.0.1",
+  "version": "1.22.0",
   "description": "React Native / Expo binding for Vela live queries: an AsyncStorage-backed offline mutation store, a native-tuned client factory (bearer fetch + WebSocket auth channel), the react-dom-free @velajs/react hook surface, and a better-auth Expo bridge",
   "keywords": [
     "expo",

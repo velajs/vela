@@ -6,6 +6,8 @@ or release workflows. Use `pnpm --filter <package> <command>` for focused work.
 
 `DESIGN.md` defines the intended NestJS-style developer experience on Cloudflare
 Workers independently of the existing implementation and package count.
+Keep the current release on 1.x. Breaking API changes are allowed; update the
+maintained apps rather than preserving obsolete examples or compatibility layers.
 
 Keep portable framework runtime code on Web APIs. Node APIs belong only in
 explicit Node entrypoints, CLI/Studio host, build scripts, and tests. Cloudflare

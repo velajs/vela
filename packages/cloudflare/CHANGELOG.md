@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.22.0
+
+### Minor Changes
+
+- Continue the coordinated framework release on the 1.x line with the current checked provider, endpoint, identity, CRUD, live, and Studio APIs. Breaking API changes are accepted during this development phase; maintained applications use the current contracts.
+- Publish from the pnpm packages workspace with TypeScript 7 and GitHub OIDC. Obsolete standalone examples have been removed; runnable applications live in apps/.
+- Updated workspace dependencies
+  - @velajs/feature-flags@1.22.0
+  - @velajs/vela@1.22.0
+
 ## 2.0.1
 
 ### Patch Changes

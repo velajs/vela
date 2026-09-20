@@ -34,20 +34,18 @@ consumer outside the workspace. The separate TypeDoc toolchain is a private
 workspace project and uses the same lockfile. Root security workflows retain
 secret scanning and dependency advisory checks.
 
-Existing pending changeset notes are consumed by the coordinated 2.0 release and
-archived in `2.0-changesets/`. Future changesets belong in the root `.changeset/`.
+The original migration's changeset notes were consumed and archived in
+`2.0-changesets/`. The active release line is now 1.x. Future changesets belong in
+the root `.changeset/`.
 No package-local publication workflow remains. See `RELEASING.md`.
 
 Agent, AI, mail, workflow, event-source and site repositories remain deferred and
 excluded. Local secrets, generated artifacts, package caches and original Git
 metadata are ignored.
 
-## Historical examples
+## Applications
 
-The workspace includes maintained applications through `apps/*`. Older standalone examples
-(`auth-lab`, `auth-lab-plugins`, `harbor-crud-api`, `multi-tenant-wiring`,
-`di-playground-api`, `evergreen-market-api`, and `scheduler-node-jobs`) remain under `examples/legacy` as
-historical source. Their old independent lockfiles remain in imported history,
-so the working tree has only the root lockfile. These examples are
-not part of the 2.0 verification or release. Start new work from the maintained
-`apps/api-starter` rather than those historical examples.
+Maintained applications live in `apps/*`. Obsolete standalone examples were
+removed; their source remains available through Git history. Start new work from
+`apps/api-starter`. Breaking changes should update these maintained applications
+alongside the framework.

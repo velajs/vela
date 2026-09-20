@@ -1,15 +1,22 @@
-# Vela 2.0 release
+# Vela releases
 
 The user's clarified product target and independent acceptance criteria are in
 [DESIGN.md](DESIGN.md). The archives below are a verified implementation snapshot;
 their package count and passing tests do not settle the public product structure.
 
-The initial 2.0.0 release coordinated 21 public API workspace packages.
-The 2.0.1 follow-up updates workspace paths and release tooling.
+The active release line is 1.x. Version 1.22.0 coordinates all 21 public workspace
+packages, the apps/packages layout, TypeScript 7, and npm OIDC publication.
+Breaking changes are accepted during this development phase; applications should
+use the current APIs described below. Release titles use plain versions, such as
+`Vela 1.22.0`, without layout or migration suffixes.
+
+Earlier 2.x versions were already submitted to npm before the release-line
+decision changed. Those versions remain historical registry entries; the 1.x
+release is published explicitly to `latest`.
 `release-plan.json` is the package/version manifest. Deferred AI, agent, mail,
 workflow, event-source, and site repositories are not part of this release.
 
-## Migration
+## Current API requirements
 
 - Use checked provider descriptors with explicit dependency tuples, including
   `inject: []` for factories without dependencies. Token handles infer resolved
