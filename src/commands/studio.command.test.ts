@@ -7,8 +7,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 /**
  * `vela studio` command tests. Spawns the BUILT CLI so the clipanion wiring +
  * the lazy optional-peer import are exercised end-to-end. `@velajs/studio-host`
- * is an optional dependency that isn't installed in this repo, so the
- * peer-absent install-hint path is the natural default.
+ * is optional; a loader makes its absence deterministic even in a workspace.
  */
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -30,9 +29,28 @@ interface RunResult {
   stderr: string;
 }
 
-function runStudio(args: string[]): Promise<RunResult> {
+function runStudio(args: string[], omitHost = false): Promise<RunResult> {
   return new Promise((resolvePromise) => {
-    const child = spawn('node', [cliEntry, 'studio', ...args], {
+    // Isolate this optional-peer test from the parent workspace's packages.
+    const loader =
+      'data:text/javascript,' +
+      encodeURIComponent(`
+      export function resolve(specifier, context, nextResolve) {
+        if (specifier === '@velajs/studio-host') {
+          const error = new Error('Cannot find package @velajs/studio-host');
+          error.code = 'ERR_MODULE_NOT_FOUND';
+          throw error;
+        }
+        return nextResolve(specifier, context);
+      }
+    `);
+    const register =
+      'data:text/javascript,' +
+      encodeURIComponent(
+        `import { register } from 'node:module'; register(${JSON.stringify(loader)});`,
+      );
+    const nodeArgs = omitHost ? ['--import', register] : [];
+    const child = spawn(process.execPath, [...nodeArgs, cliEntry, 'studio', ...args], {
       cwd: rootDir,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -71,7 +89,7 @@ describe('vela studio', () => {
   });
 
   it('prints an install hint when the optional @velajs/studio-host peer is absent', async () => {
-    const result = await runStudio(['--url', 'http://127.0.0.1:9999']);
+    const result = await runStudio(['--url', 'http://127.0.0.1:9999'], true);
     expect(result.code).toBe(1);
     expect(result.stderr).toContain('@velajs/studio-host');
     expect(result.stderr.toLowerCase()).toContain('install');

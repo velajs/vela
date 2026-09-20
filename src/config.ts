@@ -23,7 +23,7 @@ export interface VelaConfig {
   createApp(): Promise<VelaApplication> | VelaApplication;
   /**
    * The app's root module class — needed only by commands that work from
-   * module metadata rather than the built app (`vela openapi dump`).
+   * module metadata rather than the built app (`vela openapi dump`, `vela client generate`).
    */
   rootModule?: Type;
 }

@@ -19,7 +19,7 @@ const cliEntry = join(rootDir, 'dist', 'index.js');
 
 /** Fixture config source — compiled to `.mjs` and loaded by the spawned CLI. */
 const FIXTURE_SOURCE = `
-import { Controller, Get, Head, Injectable, InjectionToken, Module, VelaFactory } from '@velajs/vela';
+import { Controller, Get, Head, Injectable, InjectionToken, defineProvider, Module, VelaFactory } from '@velajs/vela';
 import { Process, Processor, QueueModule } from '@velajs/vela/queue';
 
 const SHARED = new InjectionToken('cli-test:shared');
@@ -36,7 +36,7 @@ class UsersController {
 class EmailProcessor { @Process('welcome') welcome() {} }
 
 @Module({ lazy: true, providers: [LazyThing] }) class LazyMod {}
-@Module({ providers: [{ provide: SHARED, useValue: 'x' }], exports: [SHARED] }) class SharedMod {}
+@Module({ providers: [defineProvider(SHARED, { useValue: 'x' })], exports: [SHARED] }) class SharedMod {}
 
 @Module({
   imports: [SharedMod, LazyMod, QueueModule.forRoot({ queues: ['email'] })],

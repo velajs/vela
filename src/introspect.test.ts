@@ -5,6 +5,7 @@ import {
   Head,
   Injectable,
   InjectionToken,
+  defineProvider,
   Module,
   VelaFactory,
 } from '@velajs/vela';
@@ -47,7 +48,7 @@ async function fixtureApp(): Promise<VelaApplication> {
   @Module({ lazy: true, providers: [LazyThing] })
   class LazyMod {}
 
-  @Module({ providers: [{ provide: SHARED, useValue: 'x' }], exports: [SHARED] })
+  @Module({ providers: [defineProvider(SHARED, { useValue: 'x' })], exports: [SHARED] })
   class SharedMod {}
 
   @Module({

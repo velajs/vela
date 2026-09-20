@@ -1,7 +1,7 @@
 {
   "name": "@velajs/cli",
-  "version": "0.3.2",
-  "description": "CLI for Vela apps — seeding and project tasks (Node-side; not bundled into the edge Worker)",
+  "version": "2.0.0",
+  "description": "CLI for Vela apps \u2014 seeding and project tasks (Node-side; not bundled into the edge Worker)",
   "keywords": [
     "cli",
     "cloudflare-workers",
@@ -25,6 +25,10 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
+    "./client": {
+      "types": "./dist/client-contract.d.ts",
+      "import": "./dist/client-contract.js"
+    },
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
@@ -53,14 +57,16 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "clipanion": "^4.0.0-rc.4",
-    "zod": "^3.25.76"
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "catalog:",
     "@changesets/cli": "catalog:",
     "@swc/core": "catalog:",
     "@types/node": "catalog:",
-    "@velajs/vela": "^1.21.0",
+    "@velajs/client": "workspace:*",
+    "@velajs/vela": "workspace:*",
+    "hono": "catalog:",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",
     "publint": "catalog:",
@@ -70,13 +76,16 @@
     "vitest": "catalog:"
   },
   "peerDependencies": {
-    "@velajs/vela": ">=1.21.0 <2"
+    "@velajs/vela": "workspace:^"
   },
   "optionalDependencies": {
-    "@velajs/studio-host": ">=0.1.0"
+    "@velajs/studio-host": "workspace:*"
   },
   "engines": {
     "node": ">=24"
   },
-  "packageManager": "pnpm@11.11.0"
+  "packageManager": "pnpm@11.11.0",
+  "publishConfig": {
+    "access": "public"
+  }
 }

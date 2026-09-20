@@ -9,6 +9,7 @@ import {
 import { McpServeCommand } from './commands/mcp.command.js';
 import { SeedCommand } from './commands/seed.command.js';
 import { StudioCommand } from './commands/studio.command.js';
+import { ClientGenerateCommand } from './commands/client.command.js';
 
 const cli = new Cli({
   binaryName: 'vela',
@@ -25,6 +26,7 @@ cli.register(EntrypointListCommand);
 cli.register(OpenApiDumpCommand);
 cli.register(McpServeCommand);
 cli.register(StudioCommand);
+cli.register(ClientGenerateCommand);
 
 void cli.runExit(process.argv.slice(2));
 
@@ -37,6 +39,9 @@ export {
 } from './commands/introspect.commands.js';
 export { McpServeCommand } from './commands/mcp.command.js';
 export { StudioCommand } from './commands/studio.command.js';
+export { ClientGenerateCommand } from './commands/client.command.js';
+export { generateClientContract } from './client-contract.js';
+export type { GeneratedClientContract } from './client-contract.js';
 export {
   collectRoutes,
   collectModules,
