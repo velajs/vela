@@ -53,8 +53,8 @@ native compiler is written in Go. Root `lint`, `format`, and `format:check`
 commands share one configuration, and dependency versions use the pnpm catalog.
 
 TypeDoc still requires the TypeScript 6 compiler API, so its compatibility
-dependency is isolated in `tools/docs`. It does not compile or typecheck shipped
-packages. See [the tooling comparison](docs/tooling.md).
+dependency is isolated in `tools/docs`. It is used only for API documentation; package builds and typechecks use
+the shared TypeScript 7 toolchain. See [the tooling comparison](docs/tooling.md).
 
 ## Authoring model
 

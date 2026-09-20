@@ -13,6 +13,11 @@ const packages = projects.map((project) => ({
 }));
 const names = new Set(packages.map((pkg) => pkg.name));
 const errors = [];
+const changesetsVersion = JSON.parse(
+  readFileSync(join(root, 'node_modules/@changesets/cli/package.json'), 'utf8'),
+).version;
+if (!changesetsVersion.startsWith('3.'))
+  errors.push('Changesets action v2 requires Changesets CLI v3');
 const lockfiles = execFileSync('git', ['ls-files', '*pnpm-lock.yaml'], {
   cwd: root,
   encoding: 'utf8',
