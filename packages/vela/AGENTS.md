@@ -1,35 +1,21 @@
-# Vela Framework
+# Vela core
 
-NestJS-compatible framework for edge runtimes, powered by Hono.
+Follow the root contributor and release guides. The core provides NestJS-style
+modules and request pipelines using Hono and Web APIs.
 
-## Edge Runtime Rules
+## Runtime boundaries
 
-This framework MUST be compatible with all edge runtimes (Cloudflare Workers, Deno Deploy, Vercel Edge, Bun, Node.js).
+Keep portable exports free of Node-specific imports, `Buffer`, `process`, and
+runtime-specific server APIs. Use Web Crypto, `Uint8Array`, `TextEncoder`, `URL`,
+and `fetch`. Node scheduling and WebSocket adapters belong in their explicit
+Node entrypoints. Ambient context is opt-in through Hono context storage.
 
-### Forbidden APIs
-- No `node:*` imports (no `node:fs`, `node:path`, `node:crypto`, etc.)
-- No `Buffer` — use `Uint8Array` + `TextEncoder`/`TextDecoder`
-- No `process` (no `process.env`, `process.on`, `process.exit`)
-- No `__dirname`, `__filename`
-- No `fs`, `path`, `os`, `child_process`
-- No `setInterval` (not available in all edge runtimes)
-- No `Bun.serve()` or any runtime-specific server APIs
+Preserve per-application module boundaries and per-request container ownership.
+Use the public module, discovery, and entrypoint APIs when adding integrations.
+See MODULE_AUTHORING.md, TYPE_CONTRACTS.md, and SECURITY.md for their contracts.
 
-### Use Instead
-- Web Crypto API instead of Node crypto
-- `Uint8Array` + `TextEncoder`/`TextDecoder` instead of Buffer
-- `URL` and string manipulation instead of `path`
-- `fetch` for HTTP calls
-- Hono's `app.fetch` for the universal entry point
+## Validation
 
-## Architecture
-
-- **MetadataRegistry**: Central static store for all framework metadata
-- **Container**: DI container with scopes (singleton, transient)
-- **ComponentManager**: Unified component management (guards, pipes, interceptors, filters) with 3-level hierarchy (global → controller → handler)
-- **RouteManager**: Builds Hono routes from registered controllers with full request pipeline
-- **ModuleLoader**: Depth-first recursive module tree processing
-
-## Testing
-
-Run tests with `pnpm test`. Use Hono's `app.request()` for integration tests.
+Use `pnpm --filter @velajs/vela test` for core tests and the Workers suites for
+runtime-specific behavior. Review public API snapshot changes, keep authoring
+examples and the bundled Vela skill accurate, and run the root verification gate.

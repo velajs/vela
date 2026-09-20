@@ -1,4 +1,0 @@
-# Exact historical fixture findings reviewed during the monorepo import.
-# Fake provider error token and example-only harbor-secret curl header.
-fc35095c2214be8879c1ce35fadb3e567936dfed:src/__tests__/controller.test.ts:generic-api-key:53
-550edcaddedc60b6448d9eafb9f53009e3e550a8:examples/harbor-crud-api/scripts/curl-all.sh:curl-auth-header:109

@@ -1,20 +1,8 @@
 #!/usr/bin/env node
 // Validates the @velajs/vela agent skill (.agents/skills/vela).
 //
-// Behavior (chosen per task brief):
-//   - HARD FAIL (exit 1) on:
-//       * metadata.version in SKILL.md != package.json version
-//       * a "@velajs/vela/<subpath>" mentioned in SKILL.md that is NOT in
-//         package.json#exports
-//       * missing/unparseable SKILL.md frontmatter or version
-//   - WARN ONLY (exit 0) for reference/asset docs listed in the SKILL.md
-//     Reference Loading Guide that do not yet exist on disk — the ecosystem
-//     references (testing, cloudflare, crud, auth, ...) are landed by a sibling
-//     task (C1b), so their absence must not fail this check until then.
-//
-// The Reference Loading Guide table is the shared contract between the core
-// skill task and the ecosystem-references task; this script enforces the
-// version/subpath invariants both must respect.
+// Require matching package metadata, valid public subpaths, and complete,
+// Git-tracked reference documentation.
 
 import { readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -28,7 +16,6 @@ const skillPath = join(skillDir, 'SKILL.md');
 const pkgPath = join(repoRoot, 'package.json');
 
 const errors = [];
-const warnings = [];
 
 function fail(msg) {
   console.error(`check-skill: ${msg}`);
@@ -61,11 +48,8 @@ if (!fmMatch) {
   }
 }
 
-// --- 2. Reference Loading Guide doc paths (warn if missing) -------------------
-// A missing doc is only a warning (a sibling task may still land it). But a doc
-// that DOES exist on disk yet is NOT git-tracked is a hard FAIL: the `.gitignore`
-// root `references/` rule silently swallows .agents/skills/vela/references/*, so
-// docs can exist locally and never ship. Guard against that regression here.
+// --- 2. Reference Loading Guide doc paths ------------------------------------
+// References must be present in a clean checkout, not only on a local machine.
 const docPaths = new Set();
 for (const m of skill.matchAll(/`(references\/[\w.-]+\.md|assets\/[\w.-]+\.md)`/g)) {
   docPaths.add(m[1]);
@@ -86,19 +70,15 @@ function isGitTracked(absPath) {
   }
 }
 
-let missing = 0;
 for (const rel of [...docPaths].sort()) {
   const abs = join(skillDir, rel);
   if (!existsSync(abs)) {
-    missing += 1;
-    warnings.push(`referenced doc not found yet (sibling task may add it): ${rel}`);
+    errors.push(`referenced doc not found: ${rel}`);
     continue;
   }
   if (!isGitTracked(abs)) {
     errors.push(
-      `reference doc exists but is NOT git-tracked: ${rel} — likely swallowed by ` +
-        `the root \`references/\` .gitignore rule; add a scoped \`!.agents/skills/vela/references/\` ` +
-        `negation and \`git add\` it so the skill actually ships.`,
+      `reference doc exists but is NOT git-tracked: ${rel}; add it to Git so the skill ships with its references.`,
     );
   }
 }
@@ -116,10 +96,6 @@ for (const sp of [...subpaths].sort()) {
 }
 
 // --- Report ------------------------------------------------------------------
-if (warnings.length) {
-  console.warn('check-skill: warnings:');
-  for (const w of warnings) console.warn(`  - ${w}`);
-}
 if (errors.length) {
   console.error('check-skill: FAILED:');
   for (const e of errors) console.error(`  - ${e}`);
@@ -128,6 +104,6 @@ if (errors.length) {
 
 console.log(
   `check-skill: OK — version ${pkgVersion}; ` +
-    `${docPaths.size} docs referenced (${missing} pending sibling task); ` +
+    `${docPaths.size} reference docs verified; ` +
     `${subpaths.size} subpaths verified against package.json#exports.`,
 );

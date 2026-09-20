@@ -1,6 +1,6 @@
 # New Vela API scaffold
 
-Use the workspace's aligned Vela/Hono versions. For Workers, start with the Cloudflare package's `examples/live-todo` when live queries or Durable Objects are required; the small HTTP-only shape below needs no binding wrapper modules.
+Use the workspace's aligned Vela/Hono versions. For Workers, start with `apps/live-todo` when live queries or Durable Objects are required; the small HTTP-only shape below needs no binding wrapper modules.
 
 ## Build configuration
 

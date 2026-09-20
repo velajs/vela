@@ -10,7 +10,7 @@ From the workspace root:
 ```sh
 pnpm install --frozen-lockfile
 pnpm --filter vela-api-starter... build
-cd cloudflare/examples/api-starter
+cd apps/api-starter
 cp .dev.vars.example .dev.vars
 pnpm db:migrate
 pnpm dev

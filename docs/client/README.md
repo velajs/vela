@@ -1,10 +1,10 @@
 # Vela client SDK
 
-Workspace for the Vela HTTP and live-query client packages:
+HTTP and live-query clients for Vela applications.
 
 For an `hc` HTTP client with generated request/response types, see [Typed HTTP client](HTTP.md).
 
-- **`@velajs/client`** (`packages/client`) — the framework-neutral core: live subscriptions over WebSocket (`$live` frames per [`@velajs/live-protocol`](https://github.com/velajs/live-protocol)), keyed delta merging, rebaseable cursor-gated optimistic updates, reconnect with cursor resume, presence preset (`@velajs/client/presence`). The live entry imports only the protocol package; the optional `@velajs/client/http` entry uses Hono's client. `WebSocket`/`fetch` are injectable (SSR/edge safe).
+- **`@velajs/client`** (`packages/client`) — the framework-neutral core: live subscriptions over WebSocket (`$live` frames per [`@velajs/live-protocol`](https://github.com/velajs/vela/tree/main/packages/live-protocol)), keyed delta merging, rebaseable cursor-gated optimistic updates, reconnect with cursor resume, presence preset (`@velajs/client/presence`). The live entry imports only the protocol package; the optional `@velajs/client/http` entry uses Hono's client. `WebSocket`/`fetch` are injectable (SSR/edge safe).
 - **`@velajs/react`** (`packages/react`) — React hooks (`useLiveQuery`, `useLiveMutation`, `usePresence`, `useConnectionStatus`, `useClientQuery`, `usePendingMutations`) on `useSyncExternalStore`.
 
 ```ts
@@ -63,7 +63,7 @@ The client factory takes three structural seams — zero new runtime deps, all o
 - `fetch?: typeof fetch` — the mutation transport (defaults to `globalThis.fetch`).
 - `mutationStore?: MutationStore` — the durable offline-queue backing store (see below).
 
-Together these are exactly what a future `@velajs/react-native` plugs (an `AsyncStorage`-backed `MutationStore`, a credentialed `fetch`, an RN `WebSocket` wrapper) with no core change.
+The [React Native integration](../../packages/react-native/README.md) supplies native storage, authentication, and connection adapters.
 
 ## Offline mutation queue (`@velajs/client/offline`)
 
@@ -120,7 +120,7 @@ const client = createLiveClient({
 client.isLeader(); // true when this tab owns the sockets (always true when crossTab is off)
 ```
 
-> Cross-tab uses BroadcastChannel. A service-worker relay (for browsers where BroadcastChannel is unavailable but service workers are) is a future additive `@velajs/client/sw` subpath — it needs a separately compiled worker script served as a static file plus framework-specific registration, so it does not land as a small additive adapter here. The no-op-without-BroadcastChannel fallback keeps those environments correct (sole-leader) meanwhile.
+Cross-tab coordination uses BroadcastChannel. When it is unavailable, each client owns its own sockets; coordination is disabled.
 
 ## Client queries (local-only reactive state)
 
@@ -136,6 +136,6 @@ const filter = createClientQuery<'all' | 'active'>('todos.filter', 'all');
 
 ## Local development
 
-Use the coordinated Vela workspace to build the protocol and core before the client packages. HTTP imports use the workspace's aligned Hono version.
+Run `pnpm build` from the workspace root to build packages in dependency order. HTTP imports use the workspace's aligned Hono version.
 
 `pnpm test` runs unit + protocol-conformance suites and an in-memory e2e against the real `@velajs/vela/live` engine.

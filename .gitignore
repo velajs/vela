@@ -16,11 +16,5 @@ coverage/
 /.claude/
 /.worktrees/
 /.pnpm-store/
-/.modernization/
-/agent/
-/ai/
-/event-source/
-/mail/
-/workflow/
-/site/
-/references/
+/.artifacts/
+/.cache/

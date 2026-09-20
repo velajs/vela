@@ -43,8 +43,7 @@ missing guarantee. See [D1 batch semantics](https://developers.cloudflare.com/d1
 Cursor tokens contain the configured cursor field plus all model primary keys.
 The engine validates them before database access. Direct adapter callers pass
 `options.keyset` from `resolveKeyset`, rather than a raw `options.cursor`.
-Tokens from the previous scalar format must be discarded.
 
 The SQLite and PostgreSQL legs have regression coverage. MySQL remains
 untested against a real server. D1 tests use a real workerd D1 binding through
-Miniflare (`tests/d1.test.ts`).
+Miniflare (`tests/crud/d1.test.ts` in the workspace).

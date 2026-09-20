@@ -8,9 +8,9 @@ KV, D1, R2, and Durable Objects.
 From the workspace root:
 
 ```sh
-pnpm --dir cloudflare/examples/worker-bindings-lab typecheck
-pnpm --dir cloudflare/examples/worker-bindings-lab test
-pnpm --dir cloudflare/examples/worker-bindings-lab smoke
+pnpm --dir apps/worker-bindings-lab typecheck
+pnpm --dir apps/worker-bindings-lab test
+pnpm --dir apps/worker-bindings-lab smoke
 ```
 
 `WORKER_ENV` carries the environment type into DI. `createWorkerBindingsLabApp(env)`

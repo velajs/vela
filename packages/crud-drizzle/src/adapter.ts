@@ -13,7 +13,7 @@ import { bindAdapter } from '@velajs/crud/adapter';
  *   engine's scoring fallback is equivalent and keeps one code path.
  * - NO `upsert` — the engine's find→(restore+update | create) synthesis runs
  *   inside a REAL transaction here, is atomic, and keeps the `created` flag
- *   exact. hono-crud used ON CONFLICT; the tradeoff is recorded in PARITY.md.
+ *   exact without relying on ON CONFLICT.
  * - `databaseGeneratedId` relies on RETURNING (sqlite/pg). The mysql branch
  *   follows hono-crud's insertId pattern but is NOT exercised by tests.
  */

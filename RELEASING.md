@@ -5,7 +5,7 @@ GitHub Actions OIDC with signed provenance from this public source repository.
 `release-plan.json` records the packages and versions in each release.
 Breaking changes are accepted during this development phase; applications should
 use the current APIs described below. Release titles use plain versions, such as
-`Vela 1.22.1`, without layout or migration suffixes.
+`Vela 1.22.1`.
 
 ## Current API requirements
 
@@ -46,7 +46,7 @@ runtime dependency paths, and records a SHA-512 for each archive. The consumer
 check installs the tarballs with npm outside the workspace, builds and typechecks
 the complete starter, checks client generation, and bundles its Worker.
 
-Artifacts live in `.modernization/release-artifacts/`. Keep this exact directory
+Artifacts live in `.artifacts/release/`. Keep this exact directory
 once publishing begins: rebuilding a partial release changes archive integrity
 and intentionally blocks an ambiguous retry.
 

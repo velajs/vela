@@ -2,7 +2,7 @@
 
 Vela Studio — local admin panel + data time travel for Vela.js.
 
-This repository is a pnpm workspace:
+Studio is composed of these workspace packages:
 
 | Package | Description |
 | --- | --- |

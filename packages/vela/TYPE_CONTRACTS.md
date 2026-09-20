@@ -35,7 +35,7 @@ The key is a runtime identity, like an `InjectionToken` for a provider. Two keys
 
 ## Schema descriptors
 
-`defineDto` replaces generated DTO constructors with a named schema descriptor. Call `parse` to produce validated data:
+`defineDto` creates a named schema descriptor. Call `parse` to produce validated data:
 
 ```ts
 import { z } from 'zod';

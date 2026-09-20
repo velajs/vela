@@ -68,11 +68,10 @@ import { expoBearerToken, expoAuthToken, expoClient } from '@velajs/react-native
 `@better-auth/expo` and `better-auth` are optional peers — only the `./auth`
 subpath needs them.
 
-## Not in v0.1
+## Connection lifecycle
 
-Reconnect-on-foreground (`AppState`) is deferred: it needs a small additive
-`LiveClient.reconnect()` core lever first. The existing auto-reconnect covers the
-clean-close case.
+The client retries closed connections automatically. The native adapter does not
+integrate with React Native's `AppState` foreground events.
 
 ## License
 

@@ -8,7 +8,7 @@ relations, hooks, policies, multi-tenant, versioning/audit, OpenAPI, and live qu
 pnpm add @velajs/crud @velajs/crud-memory   # or @velajs/crud-drizzle
 ```
 
-See the [repository README](https://github.com/velajs/crud#readme) for the full guide.
+See the [CRUD guide](https://github.com/velajs/vela/blob/main/docs/crud/README.md) for the full guide.
 
 ## Schema-bound resources and features
 
@@ -93,7 +93,7 @@ Hook replacement values and in-place mutations are validated before they
 re-enter the engine. Database defaults belong in the adapter/database contract;
 schema parsing does not persist a missing database value.
 
-## Custom adapter migration
+## Custom adapters
 
 Adapters expose an explicit `runtime` capability view for the engine. Build
 custom dynamic adapters with `bindAdapter()` from `@velajs/crud/adapter`. When
@@ -120,7 +120,7 @@ reference, leaving engine calls attached to the original implementation.
 `bindAdapter()` describes dynamic record operations; narrower persisted-row
 types require a real parser, such as a typed adapter's `parseRow` option.
 
-## Request scopes and cursor migration
+## Request scopes and pagination
 
 Custom adapters must implement `requestScope(fn, context)` separately from
 `transaction(fn, context)`. Read, list, search, aggregate, and export use ordinary
@@ -129,11 +129,10 @@ trusted request tenant. A request scope may internally open a transaction when
 needed for database session isolation.
 
 Cursor pagination validates versioned tokens at the engine boundary and adds
-all primary keys after the configured cursor field. Ties no longer skip rows.
-The existing next-only ascending cursor ordering and offset sorting remain.
+all primary keys after the configured cursor field to disambiguate ties.
+Cursor pagination uses next-only ascending ordering; offset pagination supports sorting.
 Null cursor values sort first; compound tokens retain scalar/date types and
-Unicode. Invalid, old scalar, wrong-field, and wrong-type tokens fail with 400.
-Clients must restart pagination after this migration.
+Unicode. Invalid, wrong-field, and wrong-type tokens fail with 400.
 
 Adapters receive `options.keyset` (fields, direction, decoded boundary), never
 an unvalidated client token. Custom adapters must order and compare the full

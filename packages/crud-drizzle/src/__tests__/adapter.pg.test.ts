@@ -5,8 +5,7 @@ import { resolveKeyset } from '@velajs/crud/query';
  * (POSITION/LOWER), real-Postgres RETURNING, unique violations surfacing as
  * `23505` / "duplicate key value violates unique constraint" → 409, plus the
  * dialect-generic paths (core five, restore, nested driver, tx rollback).
- * The mysql branches remain UNTESTED (no embeddable server) — documented in
- * PARITY.md.
+ * This suite does not exercise the MySQL branches.
  */
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';

@@ -117,4 +117,4 @@ Adapters separate ordinary `requestScope` from rollback-capable `transaction`, a
 
 Custom adapters use `bindAdapter` from `@velajs/crud/adapter`. Override `base.runtime` and rebind; spreading a bound adapter leaves its old runtime reference intact. Narrow row types require runtime evidence such as `parseRow`. Cursor tokens are validated at the engine boundary and adapters receive decoded keyset tuples, including all primary keys for stable ties.
 
-Read the CRUD package README plus `packages/core/README.md` and the selected adapter README for capability and migration details.
+Read `packages/crud/README.md` and the selected adapter README for their APIs and capabilities.

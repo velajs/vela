@@ -49,8 +49,8 @@ default, enforced before application middleware, signed-body capture, guards,
 and parameter parsing. Configure global and narrow streaming limits with
 `VelaFactory.create(AppModule, { security: { body: ..., query: ... } })`.
 Guards run before parameter decorators and pipes, and malformed JSON passed to
-`@Body()` produces a 400 response. See the [2.0 security migration](SECURITY_MIGRATION.md)
-for caching, signed URL, browser-header, client-IP, and WebSocket changes.
+`@Body()` produces a 400 response. See the [security guide](https://github.com/velajs/vela/blob/main/packages/vela/SECURITY.md)
+for caching, signed URLs, browser headers, client identity, and WebSockets.
 
 Rate limiting prefers identity explicitly published by trusted authentication
 through `setTrustedRequestIdentity()` (principal plus verified tenant), then a
@@ -73,7 +73,7 @@ before `ThrottlerModule`.
 - **Route versioning** — `@Controller({ version: '1' })` + `@Version('2')`
 - **Global prefix** — `app.setGlobalPrefix('/api')`
 - **Lifecycle hooks** — `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`
-- **CRUD integration** — Optional [`@velajs/crud`](https://github.com/velajs/crud) package
+- **CRUD integration** — Optional [`@velajs/crud`](https://github.com/velajs/vela/tree/main/packages/crud) package
 
 ## Edge Runtime Compatibility
 
@@ -82,7 +82,7 @@ Vela runs on any runtime that supports the Web Standards API:
 - Cloudflare Workers
 - Deno Deploy
 - Bun
-- Node.js 20+
+- Node.js 24+
 - Vercel Edge Functions
 
 No Node.js-specific APIs (`node:fs`, `Buffer`, `process`) are used.
@@ -91,7 +91,7 @@ No Node.js-specific APIs (`node:fs`, `Buffer`, `process`) are used.
 
 The **main export** (`@velajs/vela`) is edge-safe by contract — no `node:*` imports, no `Buffer`, no `process`, no `setInterval`, no `Bun.serve`. This is enforced in CI by [`src/__tests__/edge-runtime-audit.test.ts`](src/__tests__/edge-runtime-audit.test.ts), which fails the build if any file under `src/` references a forbidden API.
 
-One subpath, **`@velajs/vela/schedule-node`**, is an opt-in Node/Bun adapter for `setInterval`-based job execution. It uses runtime-specific APIs by design and is **excluded from the edge-runtime audit**. Edge runtimes (Cloudflare Workers, Deno Deploy, Vercel Edge) should not import it — use platform cron triggers instead (e.g., `@velajs/cloudflare` ≥ 0.2.0 dispatches `@Cron` jobs via the Workers `scheduled()` handler).
+One subpath, **`@velajs/vela/schedule-node`**, is an opt-in Node/Bun adapter for `setInterval`-based job execution. It uses runtime-specific APIs by design and is **excluded from the edge-runtime audit**. Edge runtimes (Cloudflare Workers, Deno Deploy, Vercel Edge) should not import it — use platform cron triggers instead (e.g., `@velajs/cloudflare` dispatches `@Cron` jobs via the Workers `scheduled()` handler).
 
 ```ts
 // Node / Bun only — opt-in
@@ -214,9 +214,9 @@ accept pipes after their data argument.
 
 | Package | Purpose |
 |---|---|
-| [`@velajs/cloudflare`](https://github.com/velajs/cloudflare) | Cloudflare Workers adapter — typed services for KV, D1, R2, Queues, DO, AI, Vectorize, Hyperdrive |
-| [`@velajs/crud`](https://github.com/velajs/crud) | NestJS-style CRUD controllers on top of `hono-crud` |
-| [`@velajs/testing`](https://github.com/velajs/testing) | `Test.createTestingModule()` with `overrideProvider/Guard/Pipe/Interceptor/Filter` |
+| [`@velajs/cloudflare`](https://github.com/velajs/vela/tree/main/packages/cloudflare) | Native Workers bindings, HTTP/queue/scheduled handlers, and Durable Object integrations |
+| [`@velajs/crud`](https://github.com/velajs/vela/tree/main/packages/crud) | Schema-bound CRUD controllers with memory and Drizzle adapters |
+| [`@velajs/testing`](https://github.com/velajs/vela/tree/main/packages/testing) | `Test.createTestingModule()` with `overrideProvider/Guard/Pipe/Interceptor/Filter` |
 
 ```bash
 pnpm add @velajs/testing -D

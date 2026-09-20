@@ -154,8 +154,8 @@ The verification key source is injectable (`keySet`), so tests self-host a JWKS 
 - Core: `verifyAccessJwt`, `verifyRequest`, `assertVerifyOptions`, `normalizeAudiences`, `readToken`, `cloudflareAccessIssuer`, `genericOidcIssuer`, `getRemoteJwks`, `clearJwksCache`, `jwksCacheSize`, `JWKS_CACHE_MAX`, `defineIdentity`, `createAccessResolver`, `composeResolvers`, `IdentityRejectedError`, and the `AccessClaims` / `IssuerPreset` / `ResolvedIdentity` / `ResolveIdentity` / `IdentityContract` / `StandardSchemaV1` types.
 - `@velajs/cloudflare-access/vela`: `CloudflareAccessModule`, `CloudflareAccessGuard`, `CurrentAccessIdentity`, `identityFromAccess`, `ACCESS_RESOLVER`, and `ACCESS_MODULE_OPTIONS`.
 
-## Migration
+## Shared authorization
 
-Remove `betterAuthInterop` and all Access/Better Auth compatibility symbol reads. Replace provider-specific permission guards/decorators with `@velajs/authz/vela` exports. `CurrentIdentity` supplies common authorization state. `CurrentAccessIdentity` remains the provider-specific payload accessor, including `mapClaims` enrichment, and is tied to the exact current core identity so clearing, replacement and expiry invalidate it. Read expiry and tenant from the canonical top-level identity. For custom tenant field names, configure `tenantClaim` instead of assigning `mapClaims().tenantId`.
+Use the permission guards and decorators from `@velajs/authz/vela`. `CurrentIdentity` supplies common authorization state. `CurrentAccessIdentity` remains the provider-specific payload accessor, including `mapClaims` enrichment, and is tied to the exact current core identity so clearing, replacement and expiry invalidate it. Read expiry and tenant from the canonical top-level identity. For custom tenant field names, configure `tenantClaim` instead of assigning `mapClaims().tenantId`.
 
-The guard no longer writes an ambient Hono `userId`; use the issuer-qualified principal. WebSocket upgrade code must read core's trusted identity and require both tenant and finite expiry before allocating a socket.
+Use the issuer-qualified principal for authorization. WebSocket upgrade code must read core's trusted identity and require both tenant and finite expiry before allocating a socket.

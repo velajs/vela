@@ -61,7 +61,7 @@ jobs:
         if: always()
         with:
           name: release-${{ github.sha }}
-          path: .modernization/release-artifacts/
+          path: .artifacts/release/
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 30

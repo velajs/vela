@@ -24,7 +24,7 @@ if (!missing.length && !unreleased.length) {
   console.log('Every version in the release plan has an npm and GitHub release.');
   process.exit(0);
 }
-const directory = resolve('.modernization/release-artifacts');
+const directory = resolve('.artifacts/release');
 const run = (args) => execFileSync('node', args, { stdio: 'inherit' });
 run(['scripts/release-pack.mjs', directory]);
 run(['scripts/release-consumer.mjs', directory]);

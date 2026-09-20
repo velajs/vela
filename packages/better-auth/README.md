@@ -189,17 +189,17 @@ When using `ThrottlerModule`, import Better Auth first. Vela then rate-limits by
 the verified issuer, subject, principal type, and active organization before it
 falls back to a platform-attested client address.
 
-`BETTER_AUTH_OPTIONS` now contains only runtime configuration; read the auth instance from `BetterAuthService`. The obsolete `defaultPolicy` option and default-path controller constant were removed. Use `createBetterAuthCatchallController()` for a manually mounted catch-all.
+`BETTER_AUTH_OPTIONS` contains runtime configuration; read the auth instance from `BetterAuthService`. Use `createBetterAuthCatchallController()` for a manually mounted catch-all.
 
 ## Trusted identity and typing
 
-`@CurrentUser()` and `@CurrentSession()` expose only validated Better Auth data tied to the exact current trusted identity. Public routes, missing/rejected sessions, logout, expiry, and another provider replacing the identity invalidate those values. Hono user variables and removed compatibility symbols cannot grant roles or permissions.
+`@CurrentUser()` and `@CurrentSession()` expose only validated Better Auth data tied to the exact current trusted identity. Public routes, missing/rejected sessions, logout, expiry, and another provider replacing the identity invalidate those values. Hono user variables cannot grant roles or permissions.
 
 Core `getTrustedRequestIdentity(request)` and authz `@CurrentIdentity()` return the verified issuer/subject/type, optional tenant, explicit roles, and credential expiry. WebSocket guards consume only the normalized server connection attachment and do not consult HTTP cookies or arbitrary socket role metadata.
 
 The integration accepts the minimal `BetterAuthInstance` contract instead of `Auth<any>`. `new BetterAuthService(() => auth)` infers the concrete instance and retains plugin API/result types. For an injected service, annotate `BetterAuthService<typeof auth>` with the same configured instance type. The unparameterized service intentionally exposes only the operations the framework itself requires.
 
-Migration: identity symbols (`AUTH_USER_KEY`, `AUTH_SESSION_KEY`, issuer/type keys) were removed. Use validated parameter decorators or core's trusted identity reader. Authorization imports moved to `@velajs/authz/vela`; the module no longer registers duplicate provider-specific permission guards.
+Use validated parameter decorators or core's trusted identity reader for authentication state. Import shared permission guards and decorators from `@velajs/authz/vela`.
 
 ## Edge-safe DB adapters
 

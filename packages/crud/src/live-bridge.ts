@@ -11,7 +11,7 @@
  * invalidate nothing.
  *
  * `@Override` handlers bypass the bridge (they own their responses); they can
- * inject `LiveInvalidation` and stamp manually — see PARITY.md.
+ * inject `LiveInvalidation` and stamp commit headers manually.
  */
 
 import type { Context } from 'hono';

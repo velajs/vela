@@ -5,7 +5,7 @@
  * before `/:id`) with named routes, DTO-validated bodies, and OpenAPI
  * metadata — everything flows through Vela's ordinary pipeline. The engine
  * beneath is adapter-based (`@velajs/crud-memory`, `@velajs/crud-drizzle`)
- * with behavior parity to hono-crud 0.13 (see PARITY.md).
+ * with shared cross-adapter conformance tests.
  *
  * Feature families live on subpaths: `@velajs/crud/adapter`, `/model`,
  * `/query`, `/envelope`, `/policies`, `/kernel`.

@@ -34,9 +34,8 @@ import type { AnyResource } from './verb-helpers';
 type Row = Record<string, unknown>;
 
 /**
- * The version-counter column. hono-crud makes this configurable via the
- * versioning config object; the native `Model.versioning` flag is a boolean
- * (PARITY.md), so the column is fixed to hono-crud's `'version'` default.
+ * The version-counter column is fixed to `version`; `Model.versioning`
+ * enables capture without changing the column name.
  */
 export const VERSION_FIELD = 'version';
 

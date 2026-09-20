@@ -65,4 +65,4 @@ R2 storage options contain actual bucket values (`disks: [{ disk: 'uploads', buc
 
 Use `new KVCacheStore(env.CACHE)`, `kvFlagDriver(env.CACHE, options)`, and `flagshipFlagDriver(nativeBinding, options)`. Cache/object flag values remain unknown until parsed. There is no generic binding accessor that invents their value type.
 
-Keep `nodejs_compat` where native DO dependencies need it. Ambient container access is optional and needs `nodejs_als` or `nodejs_compat`; per-request DI works without ambient state. On Workers stamp live commit headers explicitly instead of relying on ALS across DO RPC. See the Cloudflare package README and its `examples/live-todo` for the complete deployed wiring.
+Keep `nodejs_compat` where native DO dependencies need it. Ambient container access is optional and needs `nodejs_als` or `nodejs_compat`; per-request DI works without ambient state. On Workers stamp live commit headers explicitly instead of relying on ALS across DO RPC. See the Cloudflare package README and `apps/live-todo` for the complete deployed wiring.

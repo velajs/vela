@@ -23,7 +23,7 @@
  *    the tx and returns the resource envelope of the rolled-back row, whose
  *    version field is `currentVersion + 1`.
  *
- * DELIBERATE DIVERGENCE (PARITY.md): hono-crud's rollback does NOT snapshot the
+ * Rollback behavior: hono-crud's rollback does NOT snapshot the
  * pre-rollback state and numbers the new version as `getLatestVersion()+1`.
  * The native rollback SNAPSHOTS the pre-rollback state (like an update) and
  * numbers it `currentVersion+1`. In the pinned rollback test the two coincide

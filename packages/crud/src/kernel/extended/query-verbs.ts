@@ -16,7 +16,7 @@
  *  - export   → `endpoints/export.ts` + `utils/csv.ts`.
  *  - import   → `endpoints/import.ts` + `utils/csv.ts`.
  *
- * Intentional deviations from hono-crud (see PARITY.md), all HARDENING:
+ * Security boundaries beyond the hono-crud reference:
  *  - search + export APPLY read-policy row filtering + field masking (hono-crud
  *    omitted both — a documented leak vs. list/read).
  *  - import injects + scopes the request tenant (hono-crud import had no tenant

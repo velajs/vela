@@ -1,7 +1,7 @@
 # @velajs/testing
 
 [![npm version](https://img.shields.io/npm/v/@velajs/testing)](https://www.npmjs.com/package/@velajs/testing)
-[![License: MIT](https://img.shields.io/npm/l/@velajs/testing)](https://github.com/velajs/testing/blob/main/LICENSE)
+[![License: MIT](https://img.shields.io/npm/l/@velajs/testing)](https://github.com/velajs/vela/blob/main/packages/testing/LICENSE)
 
 Test-module builder for [Vela](https://github.com/velajs/vela). Compose modules in isolation, override providers/guards/pipes/interceptors/filters, and exercise controllers via Hono's `app.request()`. Testing uses the same bootstrap primitive as production so request scope and framework-global providers cannot drift.
 

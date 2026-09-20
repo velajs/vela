@@ -128,7 +128,7 @@ All may be lowered; the first three have explicit bounded module options.
 
 ## Cloudflare gotchas
 
-- **Data locality**: the Worker and each Durable Object bootstrap SEPARATE app instances of the same module. State that live queries read and mutations write must live in a shared store (D1/KV/external DB) — per-isolate memory makes writes invisible to re-runs. See `examples/live-todo`'s `TodoStore` seam.
+- **Data locality**: the Worker and each Durable Object bootstrap SEPARATE app instances of the same module. State that live queries read and mutations write must live in a shared store (D1/KV/external DB) — per-isolate memory makes writes invisible to re-runs. See the [live todo example](../../apps/live-todo/README.md).
 - **Commit headers on Workers**: stamp them explicitly (`stampCommitHeaders(c, stamp)`; the CRUD bridge does it automatically). Do NOT rely on `ambientContainer`: awaiting a Durable Object RPC inside hono's ALS `contextStorage()` middleware hangs the response under workerd.
 - Driver/log factories run once in each application container. Keep state on the returned instance and return a new instance each time; shared mutable drivers or logs would leak environment bindings, sinks, or cursor state between applications.
 
@@ -142,7 +142,6 @@ All may be lowered; the first three have explicit bounded module options.
   subscription and closes the socket with 1008.
 - Server and client import the same `defineLiveQuery({ args, result })` definitions. The typed decorator checks handler args/results; `createLiveClient({ queries })` infers its contract from the parser map. No separately maintained live result interface is needed.
 
-## Design notes
+## Protocol compatibility
 
 - The wire protocol is normative in `@velajs/live-protocol` (`LIVE_PROTOCOL = 2`); both sides run the same golden fixtures, so codec drift fails a test. Any wire change bumps the constant and releases in lockstep: live-protocol → vela → cloudflare → client.
-- lunora's zero-dependency error-catalog design (one error class + central code catalog + a single wire-redaction seam, renderer split out for tree-shaking) is the recommended shape for Vela's planned exception-handler layer — noted here so the roadmap item starts from it.

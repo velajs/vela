@@ -1,6 +1,6 @@
 # @velajs/crud-memory
 
-In-memory adapter for [`@velajs/crud`](https://github.com/velajs/crud) — tests, prototypes,
+In-memory adapter for [`@velajs/crud`](https://github.com/velajs/vela/tree/main/packages/crud) — tests, prototypes,
 and examples. No persistence, no transactions (no-op scope), edge-safe.
 
 ```bash

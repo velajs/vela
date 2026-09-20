@@ -1,9 +1,7 @@
 /**
  * Cell 12 — finalize pipeline (serialization profile + computed fields).
  *
- * Reconstructed from the hono-crud 0.13 finalize-pipeline cell per the
- * PARITY.md port notes (the original port was deferred until a
- * `serializationProfile` authoring surface landed): `/profile-items` carries
+ * Based on the hono-crud 0.13 finalize-pipeline contract. `/profile-items` carries
  * a computed `nameUpper` and `serializationProfile: { exclude: ['age'] }`.
  *
  * Contracts pinned:

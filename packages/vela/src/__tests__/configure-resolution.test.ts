@@ -7,7 +7,7 @@ beforeEach(() => {
   MetadataRegistry.clear();
 });
 
-// Regression coverage for audit #4: NestModule.configure() must (1) run with
+// NestModule.configure() must (1) run with
 // constructor-injected deps resolved through the container, and (2) propagate
 // failures from configure() / DI to the caller — never silently skip middleware
 // configuration.

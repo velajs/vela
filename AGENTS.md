@@ -4,10 +4,9 @@ Use Node 24+ and pnpm 11.11.0 from this root. All active packages share
 `pnpm-workspace.yaml` and `pnpm-lock.yaml`. Do not create package-local lockfiles
 or release workflows. Use `pnpm --filter <package> <command>` for focused work.
 
-Build a NestJS-style developer experience on Cloudflare Workers. Evaluate API
-design by application authoring needs, independently of the existing package count.
-Keep the current release on 1.x. Breaking API changes are allowed; update the
-maintained apps rather than preserving obsolete examples or compatibility layers.
+Build a NestJS-style developer experience on Cloudflare Workers. Keep application
+authoring simple and optional integrations independently usable. The release line
+is 1.x. Breaking API changes must update affected examples and documentation.
 
 Keep portable framework runtime code on Web APIs. Node APIs belong only in
 explicit Node entrypoints, CLI/Studio host, build scripts, and tests. Cloudflare
@@ -18,5 +17,5 @@ Run relevant package types/tests when editing behavior. `pnpm verify` is the
 integration gate. Before publishing, run `pnpm release:check` and test the exact
 packed archives with `pnpm release:consumer`; see `RELEASING.md`.
 
-Deferred agent/AI/mail/workflow/event-source/site repositories and local backups
-are outside this monorepo. Do not add or modify them as part of API changes.
+Use CONTRIBUTING.md for contributor workflow and RELEASING.md for publication.
+Keep task plans, session notes, and generated reports out of the repository.

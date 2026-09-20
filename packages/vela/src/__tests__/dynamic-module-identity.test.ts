@@ -24,7 +24,7 @@ beforeEach(() => {
   MetadataRegistry.clear();
 });
 
-describe('Dynamic module identity (audit #2)', () => {
+describe('Dynamic module identity', () => {
   // -------------------------------------------------------------------------
   // Case A — static module imported once → registers once
   // -------------------------------------------------------------------------

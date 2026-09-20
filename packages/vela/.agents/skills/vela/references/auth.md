@@ -48,7 +48,7 @@ const provider = defineProvider(AUTH, { useValue: auth });
 // Register/export provider; app.get(AUTH) preserves this instance's plugin types.
 ```
 
-The unparameterized `BetterAuthService` exposes the framework's minimal operations. Removed identity symbols are not an integration seam; use current-user/session decorators or the trusted identity reader.
+The unparameterized `BetterAuthService` exposes the framework's minimal operations. Use current-user/session decorators or the trusted identity reader for authentication state.
 
 ## Tests
 

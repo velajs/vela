@@ -43,7 +43,7 @@ export async function waitForIntegrity(
 
 const npmEnv = () => ({
   ...process.env,
-  npm_config_cache: resolve('.modernization/npm-cache'),
+  npm_config_cache: resolve('.cache/npm'),
   npm_config_progress: 'false',
 });
 const npm = (args) => execFileSync('npm', args, { encoding: 'utf8', env: npmEnv() });
@@ -181,8 +181,7 @@ export async function publishRelease(directory, { dryRun = false, oidc = false }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const directory = resolve(
-    process.argv.slice(2).find((value) => !value.startsWith('--')) ??
-      '.modernization/release-artifacts',
+    process.argv.slice(2).find((value) => !value.startsWith('--')) ?? '.artifacts/release',
   );
   await publishRelease(directory, {
     dryRun: process.argv.includes('--dry-run'),

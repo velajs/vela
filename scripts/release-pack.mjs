@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 
 const root = new URL('../', import.meta.url);
 const plan = JSON.parse(await readFile(new URL('release-plan.json', root), 'utf8'));
-const destination = resolve(process.argv[2] ?? '.modernization/release-artifacts');
+const destination = resolve(process.argv[2] ?? '.artifacts/release');
 try {
   await access(resolve(destination, 'manifest.json'));
   throw new Error(

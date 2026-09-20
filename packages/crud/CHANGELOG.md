@@ -149,8 +149,7 @@ string[] }` on `CrudConfig` and `ResourceConfig` (previously read via an
     headers post-commit/pre-flush.
   - NOT ported in this release: response cache, rate-limit, idempotency, MCP,
     swagger/scalar UIs, prisma adapter, api-version, health, logging middleware,
-    events/webhooks, field encryption, serialization profiles. See
-    packages/core/PARITY.md for the full deviation ledger.
+    events/webhooks, field encryption, serialization profiles.
 
 ## 1.6.0 (2026-07-04)
 

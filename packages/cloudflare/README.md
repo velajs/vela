@@ -236,25 +236,16 @@ object-valued flag reads return `unknown`; validate them with an application
 parser. Core `CacheService.getParsed(key, parser)` infers the result from that
 parser. Memory and tiered cache reads use the same unknown-value contract.
 
-## Migration
+## Development
 
-This release intentionally changes the APIs:
+From the repository root:
 
-- Replace `BindingRef`, `EnvRef`, `EnvModule`, `EnvService`, all per-binding
-  modules, and all per-binding services with a typed `InjectionToken<Env>`.
-- Pass `{ env, envToken }` to `createCloudflareApp`, or export
-  `createCloudflareWorker(AppModule, { envToken })`.
-- Use `app.get(TOKEN)` without a caller-selected generic.
-- Replace storage disk `binding: 'FILES'` with `bucket: env.FILES`, and pass the
-  storage signing secret explicitly through module options.
-- Build live `driver` and `log` through per-application factories. Pass a typed
-  `namespace` to `durableObjectLive` instead of a binding name.
-- Import native Durable Object classes from `@velajs/cloudflare/durable-objects`
-  and pass `{ envToken }` to `VelaWebSocketDurableObject`.
-- Cache `get<T>` was removed. Use raw `unknown` reads and a parser.
-- Email and workflow integrations are outside this API package. Their deferred
-  standalone packages are not required to import, build, test, or install it.
+```sh
+pnpm --filter @velajs/cloudflare test
+pnpm --filter @velajs/cloudflare test:workers
+pnpm --filter @velajs/cloudflare typecheck
+```
 
-Use `pnpm --dir cloudflare test`, `pnpm --dir cloudflare test:workers`, and
-`pnpm --dir cloudflare typecheck` from the shared API workspace. The Workers suite
-uses real KV, D1, R2, WebSockets, SQLite Durable Objects, and cold event dispatch.
+The Workers suite uses real KV, D1, R2, WebSockets, SQLite Durable Objects, and
+cold event dispatch. See the [security guide](https://github.com/velajs/vela/blob/main/packages/cloudflare/SECURITY.md) for trusted identity,
+URL signing, and WebSocket boundaries.
