@@ -45,6 +45,7 @@ metadata are ignored.
 The workspace explicitly lists maintained examples. Older standalone examples
 (`auth-lab`, `auth-lab-plugins`, `harbor-crud-api`, `multi-tenant-wiring`,
 `di-playground-api`, `evergreen-market-api`, and `scheduler-node-jobs`) remain as
-historical source with their original independent dependency snapshots. They are
+historical source. Their old independent lockfiles remain in imported history,
+so the working tree has only the root lockfile. These examples are
 not part of the 2.0 verification or release. Start new work from the maintained
 `cloudflare/examples/api-starter` rather than those historical examples.

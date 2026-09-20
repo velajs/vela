@@ -8,6 +8,10 @@ const projects = JSON.parse(execFileSync('pnpm', ['list', '-r', '--depth', '-1',
 const packages = projects.map(project => ({ ...JSON.parse(readFileSync(join(project.path, 'package.json'), 'utf8')), path: project.path }));
 const names = new Set(packages.map(pkg => pkg.name));
 const errors = [];
+const lockfiles = execFileSync('git', ['ls-files', '*pnpm-lock.yaml'], { cwd: root, encoding: 'utf8' }).trim().split('\n');
+for (const path of lockfiles) {
+  if (path !== 'pnpm-lock.yaml' && existsSync(join(root, path))) errors.push(`${path} duplicates the root lockfile`);
+}
 for (const pkg of packages) {
   const path = relative(root, pkg.path);
   if (!path) continue;
