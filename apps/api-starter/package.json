@@ -36,7 +36,7 @@
     "typescript": "catalog:",
     "wrangler": "catalog:",
     "@swc/cli": "^0.8.0",
-    "esbuild": "^0.28.1",
+    "esbuild": "^0.28.2",
     "@velajs/cli": "workspace:*",
     "@velajs/studio-host": "workspace:*",
     "@velajs/studio-ui": "workspace:*",
