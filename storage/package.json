@@ -1,0 +1,126 @@
+{
+  "name": "@velajs/storage",
+  "version": "2.0.0",
+  "description": "Edge-first, driver-based object/file storage for the Vela framework",
+  "keywords": [
+    "cloudflare-workers",
+    "edge",
+    "framework",
+    "multipart",
+    "object-storage",
+    "presigned-url",
+    "r2",
+    "s3",
+    "storage",
+    "vela"
+  ],
+  "homepage": "https://github.com/velajs/vela/tree/main/storage#readme",
+  "bugs": {
+    "url": "https://github.com/velajs/vela/issues"
+  },
+  "license": "MIT",
+  "author": "ksh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/velajs/vela.git",
+    "directory": "storage"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./dist/client/index.d.ts",
+      "import": "./dist/client/index.js"
+    },
+    "./drivers/memory": {
+      "types": "./dist/drivers/memory/index.d.ts",
+      "import": "./dist/drivers/memory/index.js"
+    },
+    "./drivers/s3": {
+      "types": "./dist/drivers/s3/index.d.ts",
+      "import": "./dist/drivers/s3/index.js"
+    },
+    "./drivers/r2": {
+      "types": "./dist/drivers/r2/index.d.ts",
+      "import": "./dist/drivers/r2/index.js"
+    },
+    "./drivers/r2-http": {
+      "types": "./dist/drivers/r2-http/index.d.ts",
+      "import": "./dist/drivers/r2-http/index.js"
+    },
+    "./middleware": {
+      "types": "./dist/middleware/index.d.ts",
+      "import": "./dist/middleware/index.js"
+    },
+    "./storagesdk": {
+      "types": "./dist/storagesdk/index.d.ts",
+      "import": "./dist/storagesdk/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "test": "vitest run",
+    "test:workers": "vitest run --config vitest.config.workers.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint .",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "publint": "publint",
+    "attw": "attw --pack . --profile esm-only",
+    "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm test && pnpm test:workers && pnpm publint && pnpm attw"
+  },
+  "dependencies": {
+    "aws4fetch": "^1.0.20"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "catalog:",
+    "@changesets/cli": "catalog:",
+    "@cloudflare/vitest-plugin": "catalog:",
+    "@cloudflare/workers-types": "catalog:",
+    "@swc/core": "catalog:",
+    "@velajs/testing": "workspace:*",
+    "@velajs/vela": "workspace:*",
+    "aws4fetch": "^1.0.20",
+    "hono": "catalog:",
+    "oxfmt": "catalog:",
+    "oxlint": "catalog:",
+    "publint": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "unplugin-swc": "catalog:",
+    "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "@cloudflare/workers-types": ">=4",
+    "@velajs/vela": "workspace:^",
+    "hono": ">=4"
+  },
+  "peerDependenciesMeta": {
+    "@cloudflare/workers-types": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@11.11.0",
+  "publishConfig": {
+    "access": "public"
+  }
+}

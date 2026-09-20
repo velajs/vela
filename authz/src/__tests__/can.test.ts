@@ -1,0 +1,80 @@
+import { describe, expect, it } from 'vitest';
+import { anonymous } from '../identity';
+import { defineRole, definePermission } from '../roles';
+import { can } from '../can';
+import { createAuthz } from '../authz';
+
+const editor = defineRole('editor', ['posts:read', 'posts:write']);
+const admin = defineRole('admin', ['*']);
+const mod = defineRole('mod', ['posts:*']);
+
+describe('createAuthz + can (role-backed default resolver)', () => {
+  const authz = createAuthz({ roles: [editor, admin, mod] });
+
+  it('grants an exact permission the role holds', async () => {
+    expect(await authz.can({ roles: ['editor'] }, 'posts:write')).toBe(true);
+    expect(await authz.can({ roles: ['editor'] }, 'posts:delete')).toBe(false);
+  });
+  it('* grants everything', async () => {
+    expect(await authz.can({ roles: ['admin'] }, 'anything:at:all')).toBe(true);
+  });
+  it('resource:* grants any action under the resource', async () => {
+    expect(await authz.can({ roles: ['mod'] }, 'posts:delete')).toBe(true);
+    expect(await authz.can({ roles: ['mod'] }, 'users:delete')).toBe(false);
+  });
+  it('FAIL-CLOSED: unknown role grants nothing', async () => {
+    expect(await authz.can({ roles: ['ghost'] }, 'posts:read')).toBe(false);
+  });
+  it('FAIL-CLOSED: anonymous / no roles grants nothing', async () => {
+    expect(await authz.can(anonymous, 'posts:read')).toBe(false);
+    expect(await authz.can({}, 'posts:read')).toBe(false);
+  });
+  it('accepts stable issuer-scoped principals without changing role semantics', async () => {
+    const identity = {
+      issuer: 'https://issuer.example',
+      subject: 'user-1',
+      principalType: 'user' as const,
+      userId: 'user-1',
+      roles: ['editor'],
+    };
+    expect(await authz.can(identity, 'posts:write')).toBe(true);
+  });
+  it('FAIL-CLOSED: a throwing resolver denies (never allows on error)', async () => {
+    const boom = {
+      grants() {
+        throw new Error('resolver down');
+      },
+    };
+    expect(await can({ roles: ['admin'] }, 'posts:read', boom)).toBe(false);
+  });
+  it('createAuthz flags a role granting an undeclared permission when permissions are declared', () => {
+    expect(() =>
+      createAuthz({
+        roles: [defineRole('x', ['posts:frobnicate'])],
+        permissions: [definePermission('posts:read')],
+      }),
+    ).toThrow(/undeclared permission 'posts:frobnicate'/);
+  });
+});
+
+it('rejects expired identities before and after resolving grants', async () => {
+  const identity = { roles: ['admin'], expiresAtMs: Date.now() - 1 };
+  let calls = 0;
+  const resolver = {
+    grants() {
+      calls++;
+      return new Set(['*']);
+    },
+  };
+  expect(await can(identity, 'posts:read', resolver)).toBe(false);
+  expect(calls).toBe(0);
+  const valid = { roles: ['admin'], expiresAtMs: Date.now() + 30_000 };
+  expect(
+    await can(valid, 'posts:read', {
+      grants() {
+        valid.expiresAtMs = 0;
+        return new Set(['*']);
+      },
+    }),
+  ).toBe(false);
+});

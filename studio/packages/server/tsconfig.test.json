@@ -1,0 +1,14 @@
+{
+  // Test-scoped typecheck. The `__tests__` fs-scanning suites read `src/` off
+  // disk (node:fs / node:url / node:path), so Node globals are visible HERE
+  // only. The package-wide `tsconfig.json` deliberately omits `types: ["node"]`
+  // so `src/` compiles without Node globals — the compiler then backstops the
+  // edge-safety rule (a stray `process`/`Buffer` in `src/` fails to typecheck).
+  // `pnpm typecheck` runs both configs.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "__tests__/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

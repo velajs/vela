@@ -1,0 +1,18 @@
+{
+  // Include runtime integration regressions in addition to the library source.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "files": [
+    "src/__tests__/entrypoint-bindings.test.ts",
+    "src/__tests__/durable-object-nonce-store.test.ts",
+    "src/__tests__/do-pitr.test.ts",
+    "src/__tests__/workers/entry.ts",
+    "src/__tests__/workers/entrypoint-bindings-runtime.test.ts",
+    "src/__tests__/workers/websocket-runtime.test.ts",
+    "src/__tests__/workers/pitr-runtime.test.ts"
+  ],
+  "include": ["src/**/*.ts", "test-shims/**/*.ts"],
+  "exclude": ["node_modules", "dist", "src/__tests__"]
+}

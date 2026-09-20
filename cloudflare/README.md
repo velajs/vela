@@ -1,0 +1,260 @@
+# @velajs/cloudflare
+
+Nest-style modules, dependency injection, controllers, queue consumers, cron triggers,
+and live WebSockets on Cloudflare Workers. HTTP routing uses Hono. Bindings use the
+platform's native types.
+
+## Native environment and application lifetime
+
+Define one typed token for your generated Workers environment. Inject that token
+wherever bindings or secrets are needed, including async provider factories.
+
+```ts
+import { Controller, Get, Inject, InjectionToken, Module } from '@velajs/vela';
+import { createCloudflareWorker } from '@velajs/cloudflare';
+
+interface WorkerEnv {
+  CACHE: KVNamespace;
+  DB: D1Database;
+  FILES: R2Bucket;
+  JOBS: Queue<{ taskId: string }>;
+  SERVICE_NAME: string;
+  APP_SECRET: string;
+}
+export const ENV = new InjectionToken<WorkerEnv>('Worker environment');
+
+@Controller('/status')
+class StatusController {
+  constructor(@Inject(ENV) private readonly env: WorkerEnv) {}
+
+  @Get()
+  async status() {
+    return { message: await this.env.CACHE.get('status') };
+  }
+}
+
+@Module({ controllers: [StatusController] })
+class AppModule {}
+
+export default createCloudflareWorker(AppModule, { envToken: ENV });
+```
+
+The worker exposes `fetch`, `queue`, and `scheduled`. Its first event builds an
+application with that event's environment. Concurrent events for the same
+environment object share construction. Different environment objects receive
+separate applications, including separate providers, lifecycle state, and live
+drivers. A failed construction is evicted and the next event retries.
+
+When module configuration itself needs bindings, pass `{ create: (env) => AppModule }`
+instead of a static class. The callback receives the native environment inferred
+from `envToken` and runs once per successful environment bootstrap. The same form
+works with `VelaWebSocketDurableObject` for authenticated live gateways. See the
+[complete API starter](examples/api-starter/README.md) for D1, Better Auth, CRUD,
+the generated Hono client, live updates, and Studio inspection in one application.
+
+The cache uses weak object keys: it does not permanently retain replaced
+environments or secrets. Providers with request scope still rebuild per HTTP
+request or queue/cron dispatch. Do not retain request objects or authentication
+state in singleton providers.
+
+For explicit construction inside a platform event:
+
+```ts
+const app = await createCloudflareApp(AppModule, {
+  env,
+  envToken: ENV,
+  globalPrefix: '/api',
+  middleware: (bindings) => [async (context, next) => {
+    context.header('x-service', bindings.SERVICE_NAME);
+    await next();
+  }],
+});
+const bindings = app.get(ENV); // WorkerEnv, inferred from ENV
+return app.fetch(request, env, executionContext);
+```
+
+`env` is registered before provider factories and lifecycle hooks. Referencing a
+binding inside `middleware(env)` is typed from that same token; request callbacks
+capture the native environment without retyping Hono's context. Referencing a
+binding is safe during construction; platform I/O must still happen inside a
+Workers event or Durable Object context. An explicitly built application rejects
+requests or events carrying another environment object, including calls through
+the underlying Hono app. Internal `ctx.run` reentry retains the application's
+environment.
+
+`cloudflareAdapter({ env, envToken })` provides the same bootstrap and request
+contract when composing `VelaFactory.create` directly.
+
+## Typed provider factories
+
+Bindings retain their full native API and generic parameters. There are no
+binding-name wrappers to initialize or cast.
+
+```ts
+import { defineProvider, InjectionToken, Module } from '@velajs/vela';
+
+const TASK_QUEUE = new InjectionToken<Queue<{ taskId: string }>>('task queue');
+
+@Module({
+  providers: [defineProvider(TASK_QUEUE, {
+    inject: [ENV],
+    useFactory: (env) => env.JOBS,
+  })],
+  exports: [TASK_QUEUE],
+})
+class JobsModule {}
+```
+
+Every `useFactory` strategy declares its dependencies with `inject`, including
+`inject: []` for factories without dependencies. This also applies to
+`lazyProvider` and `forRootAsync` factory options.
+
+Use native `env.DB`, `env.CACHE`, `env.FILES`, `env.JOBS`, `env.AI`,
+`env.VECTORIZE`, or `env.HYPERDRIVE` directly. `@Env()` remains available for HTTP
+handler parameters; typed token injection also works outside HTTP.
+
+## Queues and cron
+
+```ts
+import { Inject, Injectable } from '@velajs/vela';
+import { QueueConsumer, Scheduled } from '@velajs/cloudflare';
+
+@Injectable()
+class Jobs {
+  constructor(@Inject(ENV) private readonly env: WorkerEnv) {}
+
+  @Scheduled('0 * * * *')
+  async refresh() {
+    await this.env.CACHE.put('last-refresh', new Date().toISOString());
+  }
+
+  @QueueConsumer('jobs')
+  async consume(batch: MessageBatch<unknown>) {
+    for (const message of batch.messages) {
+      // Validate message.body before interpreting its application shape.
+    }
+  }
+}
+```
+
+Core `@Cron()` also runs on Workers scheduled triggers. Consumers use fresh
+request scopes and their declared guards, interceptors, and filters. Unclaimed
+errors propagate to the platform for retry. Cold queue and cron events have the
+same native bindings and live invalidation capabilities as HTTP.
+
+## WebSockets, live queries, and Durable Objects
+
+Use the native Durable Object entrypoint only in your Worker entry file:
+
+```ts
+import { InjectionToken, Module } from '@velajs/vela';
+import { LiveModule } from '@velajs/vela/live';
+import {
+  CloudflareWebSocketModule,
+  createCloudflareWorker,
+  durableObjectCursorLog,
+  durableObjectLive,
+} from '@velajs/cloudflare';
+import { VelaWebSocketDurableObject } from '@velajs/cloudflare/durable-objects';
+
+interface RoomEnv { ROOMS: DurableObjectNamespace<Room> }
+const ROOM_ENV = new InjectionToken<RoomEnv>('room environment');
+
+@Module({
+  imports: [
+    CloudflareWebSocketModule.forRoot(),
+    LiveModule.forRootAsync({
+      inject: [ROOM_ENV],
+      useFactory: (env) => ({
+        driver: () => durableObjectLive({
+          namespace: env.ROOMS,
+          gatewayPath: '/rooms/:room/ws',
+        }),
+        log: () => durableObjectCursorLog(),
+      }),
+    }),
+  ],
+  // Add your @WebSocketGateway and @LiveResolver classes here.
+  providers: [],
+})
+class RoomModule {}
+
+export class Room extends VelaWebSocketDurableObject(RoomModule, { envToken: ROOM_ENV }) {}
+export default createCloudflareWorker(RoomModule, { envToken: ROOM_ENV });
+```
+
+Declare gateways with `@WebSocketGateway({ path, roomParam, binding, ... })` and
+configure origins and upgrade authentication for your application. Upgrade
+routing consumes the core trusted request identity, checks conflicts with the
+upgrade credential, and forwards issuer, subject, tenant, and expiry to the DO.
+Client-supplied internal identity headers are stripped before authorization.
+
+Declare live query argument and result schemas once with `defineLiveQuery({ args,
+result })` from `@velajs/vela/live`. Both entries accept a parser object such as a
+Zod schema. Use `@LiveQuery('todos.list', definition, { tags: ['todos'] })` on the
+resolver and share the definition with its client. Restored hibernation arguments
+and final query results use the same validation boundary.
+
+Each application constructs its own driver and cursor log. Workers send
+invalidations through the typed DO namespace; the DO uses its own live engine
+and SQLite cursor log. Configure the class in Wrangler `new_sqlite_classes` to
+retain cursor/epoch state across hibernation. Hibernated subscriptions are
+restored on wake; the shared live protocol handles resume or snapshot fallback.
+
+The DO class preserves its RPC types, so `DurableObjectNamespace<Room>` exposes
+`invalidate`, `broadcast`, and PITR methods without assertions. `broadcastToRoom`,
+`liveInvalidateToRoom`, and the PITR helpers remain available from the root
+package. `VelaNonceDurableObject` is exported from `/durable-objects`; its
+`durableObjectNonceStore` factory remains on the root entrypoint.
+
+The root package contains no runtime `cloudflare:workers` import and can be
+loaded by Node tooling. Native classes belong to `/durable-objects`.
+
+## R2 storage and caches
+
+Configure named disks from an async factory using actual bucket values:
+
+```ts
+StorageModule.forRootAsync({
+  inject: [ENV],
+  useFactory: (env) => ({
+    defaultDisk: 'uploads',
+    secret: env.APP_SECRET,
+    disks: [{ disk: 'uploads', bucket: env.FILES, root: 'uploads/{year}' }],
+    presignedUrl: { defaultExpiry: 3600, maxExpiry: 86400 },
+  }),
+});
+```
+
+`StorageService` supports upload, download, delete, existence checks, and expiring
+signed download URLs. The proxy validates signatures, HTTP method, expiry, and
+the configured root; returned files download as attachments.
+
+Construct `KVCacheStore` and `KvFlagDriver` with a native namespace:
+`new KVCacheStore(env.CACHE)` and `new KvFlagDriver(env.CACHE)`. Cache reads and
+object-valued flag reads return `unknown`; validate them with an application
+parser. Core `CacheService.getParsed(key, parser)` infers the result from that
+parser. Memory and tiered cache reads use the same unknown-value contract.
+
+## Migration
+
+This release intentionally changes the APIs:
+
+- Replace `BindingRef`, `EnvRef`, `EnvModule`, `EnvService`, all per-binding
+  modules, and all per-binding services with a typed `InjectionToken<Env>`.
+- Pass `{ env, envToken }` to `createCloudflareApp`, or export
+  `createCloudflareWorker(AppModule, { envToken })`.
+- Use `app.get(TOKEN)` without a caller-selected generic.
+- Replace storage disk `binding: 'FILES'` with `bucket: env.FILES`, and pass the
+  storage signing secret explicitly through module options.
+- Build live `driver` and `log` through per-application factories. Pass a typed
+  `namespace` to `durableObjectLive` instead of a binding name.
+- Import native Durable Object classes from `@velajs/cloudflare/durable-objects`
+  and pass `{ envToken }` to `VelaWebSocketDurableObject`.
+- Cache `get<T>` was removed. Use raw `unknown` reads and a parser.
+- Email and workflow integrations are outside this API package. Their deferred
+  standalone packages are not required to import, build, test, or install it.
+
+Use `pnpm --dir cloudflare test`, `pnpm --dir cloudflare test:workers`, and
+`pnpm --dir cloudflare typecheck` from the shared API workspace. The Workers suite
+uses real KV, D1, R2, WebSockets, SQLite Durable Objects, and cold event dispatch.

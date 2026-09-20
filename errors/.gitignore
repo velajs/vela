@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.npm-cache/
+.wrangler/
+.claude/
+references/
+*.log
+.DS_Store

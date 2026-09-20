@@ -1,0 +1,131 @@
+{
+  "version": "2.0.0",
+  "packages": [
+    {
+      "name": "@velajs/vela",
+      "path": "vela",
+      "version": "2.0.0",
+      "summary": "Checked dependency injection, schema-bound HTTP endpoints and live queries, immutable verified identity, typed context boundaries, and read-only live inspection. Existing provider, context, lazy-loader, and live APIs require migration."
+    },
+    {
+      "name": "@velajs/errors",
+      "path": "errors",
+      "version": "2.0.0",
+      "summary": "Coordinated Vela 2.0 toolchain and package release. The standalone error behavior is unchanged."
+    },
+    {
+      "name": "@velajs/live-protocol",
+      "path": "live-protocol",
+      "version": "2.0.0",
+      "summary": "Shared runtime argument/result parsers and validated live frame contracts used by the server and every client."
+    },
+    {
+      "name": "@velajs/better-auth",
+      "path": "auth",
+      "version": "2.0.0",
+      "summary": "Native environment configuration and one immutable verified identity shared with provider-independent authorization."
+    },
+    {
+      "name": "@velajs/authz",
+      "path": "authz",
+      "version": "2.0.0",
+      "summary": "Provider-independent authorization consumes the shared verified identity, including tenant and expiry checks."
+    },
+    {
+      "name": "@velajs/cloudflare-access",
+      "path": "cloudflare-access",
+      "version": "2.0.0",
+      "summary": "Cloudflare Access authentication integrated with the shared Vela identity and authorization contracts."
+    },
+    {
+      "name": "@velajs/cloudflare",
+      "path": "cloudflare",
+      "version": "2.0.0",
+      "summary": "Native binding tokens, per-environment application lifetime, environment-created module graphs, isolated live drivers, and Durable Object live inspection. Includes a complete D1/auth/CRUD/live/Studio starter."
+    },
+    {
+      "name": "@velajs/cli",
+      "path": "cli",
+      "version": "2.0.0",
+      "summary": "Schema-driven Hono client generation and the local Vela Studio host command. Generated contracts preserve unknown types where a response schema is absent."
+    },
+    {
+      "name": "@velajs/feature-flags",
+      "path": "feature-flags",
+      "version": "2.0.0",
+      "summary": "Parser-backed flag values and the checked Vela provider contracts."
+    },
+    {
+      "name": "@velajs/testing",
+      "path": "testing",
+      "version": "2.0.0",
+      "summary": "Typed override descriptors and production-equivalent request and environment scope."
+    },
+    {
+      "name": "@velajs/storage",
+      "path": "storage",
+      "version": "2.0.0",
+      "summary": "Native Workers bindings and checked schema boundaries; validated against real workerd bindings."
+    },
+    {
+      "name": "@velajs/react-native",
+      "path": "client/packages/react-native",
+      "version": "2.0.0",
+      "summary": "React Native bindings aligned with the Vela 2.0 client and shared live contracts."
+    },
+    {
+      "name": "@velajs/client",
+      "path": "client/packages/client",
+      "version": "2.0.0",
+      "summary": "Upstream Hono HTTP client exports and schema-validated live snapshots, deltas, hydration, optimistic updates and rollback."
+    },
+    {
+      "name": "@velajs/react",
+      "path": "client/packages/react",
+      "version": "2.0.0",
+      "summary": "Query-isolated React hooks using shared live contracts and the Vela 2.0 client."
+    },
+    {
+      "name": "@velajs/crud",
+      "path": "crud/packages/core",
+      "version": "2.0.0",
+      "summary": "Schema-bound resources and hooks, compound cursor pagination, explicit adapter capabilities, and honest shaped output boundaries."
+    },
+    {
+      "name": "@velajs/crud-memory",
+      "path": "crud/packages/memory",
+      "version": "2.0.0",
+      "summary": "Memory adapter aligned with Vela 2.0 CRUD contracts and compound cursor conformance."
+    },
+    {
+      "name": "@velajs/crud-drizzle",
+      "path": "crud/packages/drizzle",
+      "version": "2.0.0",
+      "summary": "Typed Drizzle adapter and native D1 conformance. Unsupported D1 callback transactions fail before side effects."
+    },
+    {
+      "name": "@velajs/studio-ui",
+      "path": "studio/packages/ui",
+      "version": "2.0.0",
+      "summary": "Initial coordinated release: packaged Studio interface, standalone assets, model browser, API try-it, and live/presence panels."
+    },
+    {
+      "name": "@velajs/studio-host",
+      "path": "studio/packages/host",
+      "version": "2.0.0",
+      "summary": "Initial coordinated release: loopback Studio host with separate host, admin and application request credentials."
+    },
+    {
+      "name": "@velajs/studio",
+      "path": "studio/packages/server",
+      "version": "2.0.0",
+      "summary": "Initial coordinated release: authenticated admin operations, checked wire schemas, native Worker try-it boundaries, and opt-in read-only live/presence inspection."
+    },
+    {
+      "name": "@velajs/studio-protocol",
+      "path": "studio/packages/protocol",
+      "version": "2.0.0",
+      "summary": "Initial coordinated release of the Studio operation catalog, capabilities and response schemas."
+    }
+  ]
+}

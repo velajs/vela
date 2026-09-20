@@ -1,0 +1,10 @@
+{
+  "name": "vela-ws-chat",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@velajs/cloudflare": "workspace:*",
+    "@velajs/vela": "workspace:*",
+    "hono": "catalog:"
+  }
+}

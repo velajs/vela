@@ -1,0 +1,75 @@
+{
+  "name": "@velajs/client",
+  "version": "2.0.0",
+  "description": "Framework-neutral client for Vela live queries: live subscriptions over WebSocket, keyed deltas, cursor-gated optimistic updates, reconnect with resume",
+  "keywords": [
+    "client",
+    "live-queries",
+    "optimistic-updates",
+    "realtime",
+    "vela",
+    "websocket"
+  ],
+  "homepage": "https://github.com/velajs/vela/tree/main/client/packages/client#readme",
+  "bugs": {
+    "url": "https://github.com/velajs/vela/issues"
+  },
+  "license": "MIT",
+  "author": "ksh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/velajs/vela.git",
+    "directory": "client/packages/client"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    "./http": {
+      "types": "./dist/http.d.ts",
+      "import": "./dist/http.js"
+    },
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./presence": {
+      "types": "./dist/presence.d.ts",
+      "import": "./dist/presence.js"
+    },
+    "./offline": {
+      "types": "./dist/offline.d.ts",
+      "import": "./dist/offline.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@velajs/live-protocol": "workspace:*",
+    "hono": "catalog:"
+  },
+  "devDependencies": {
+    "@swc/core": "catalog:",
+    "@velajs/vela": "workspace:*",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "unplugin-swc": "catalog:",
+    "vitest": "catalog:"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
