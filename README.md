@@ -4,14 +4,6 @@ Nest-style modules, controllers, dependency injection, and request pipelines on
 Cloudflare Workers. Hono owns HTTP routing and the HTTP RPC client. Studio operates
 the running API; the live subsystem owns subscriptions, deltas, and reconnects.
 
-[DESIGN.md](DESIGN.md) defines the intended developer experience and its acceptance
-criteria independently of the current package/repository layout.
-
-This is the development monorepo for Vela, its Cloudflare adapter, clients, and
-Studio. All packages share one Git history, pnpm workspace, lockfile, and CI.
-See [the migration record](docs/migration/monorepo.md) for the imported histories
-and [MODERNIZATION.md](MODERNIZATION.md) for implementation and validation history.
-
 ## Workspace layout
 
 - `packages/*`: publishable libraries and shared Studio test fixtures.
@@ -85,8 +77,6 @@ infer their real output. See [the core type guide](packages/vela/TYPE_CONTRACTS.
 - [Better Auth with D1](apps/auth-lab-d1/README.md)
 - [Studio demonstration](apps/studio-demo/README.md)
 - [Testing harness](apps/lab-testing-harness/README.md)
-
-AI, agents, email, and workflow packages remain outside this API workspace.
 
 Packages remain on the 1.x release line. The release process and current API
 requirements are in [RELEASING.md](RELEASING.md).

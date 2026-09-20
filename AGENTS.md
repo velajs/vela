@@ -4,8 +4,8 @@ Use Node 24+ and pnpm 11.11.0 from this root. All active packages share
 `pnpm-workspace.yaml` and `pnpm-lock.yaml`. Do not create package-local lockfiles
 or release workflows. Use `pnpm --filter <package> <command>` for focused work.
 
-`DESIGN.md` defines the intended NestJS-style developer experience on Cloudflare
-Workers independently of the existing implementation and package count.
+Build a NestJS-style developer experience on Cloudflare Workers. Evaluate API
+design by application authoring needs, independently of the existing package count.
 Keep the current release on 1.x. Breaking API changes are allowed; update the
 maintained apps rather than preserving obsolete examples or compatibility layers.
 

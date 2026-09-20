@@ -16,8 +16,7 @@ coverage/
 /.claude/
 /.worktrees/
 /.pnpm-store/
-/.modernization/*
-!/.modernization/reports/
+/.modernization/
 /agent/
 /ai/
 /event-source/
