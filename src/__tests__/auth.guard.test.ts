@@ -1,3 +1,5 @@
+import { sessionFixture } from './fixtures';
+import { RolesGuard, Roles } from '@velajs/authz/vela';
 import {
   Controller,
   Get,
@@ -14,37 +16,28 @@ import type { ExecutionContext } from '@velajs/vela';
 import {
   AuthGuard,
   BetterAuthModule,
+  BetterAuthService,
   CurrentSession,
   CurrentUser,
   OptionalAuth,
   Public,
-  Roles,
-  RolesGuard,
 } from '../index';
 import type { BetterAuthInstance } from '../better-auth.types';
 
-const SESSION_OK = {
-  user: { id: 'u-1', email: 'ada@example.com', role: 'admin' },
-  session: {
-    id: 's-1',
-    userId: 'u-1',
-    token: 't-1',
-    activeOrganizationId: 'tenant-1',
-  },
-};
+const SESSION_OK = sessionFixture('u-1', 'admin');
 
 function mockAuth(session: typeof SESSION_OK | null) {
   return {
     api: { getSession: vi.fn().mockResolvedValue(session) },
     handler: vi.fn().mockResolvedValue(new Response('ok')),
-  } as unknown as BetterAuthInstance;
+  } satisfies BetterAuthInstance;
 }
 
 describe('AuthGuard', () => {
   beforeEach(() => MetadataRegistry.clear());
   afterEach(() => MetadataRegistry.clear());
 
-  it('populates REQUEST_CONTEXT and lets @CurrentUser observe guard-set state', async () => {
+  it('publishes validated session state and lets @CurrentUser observe guard-set state', async () => {
     const auth = mockAuth(SESSION_OK);
 
     @Controller('/me')
@@ -99,6 +92,8 @@ describe('AuthGuard', () => {
         principalType: 'user',
       },
       tenantId: 'tenant-1',
+      roles: ['admin'],
+      expiresAtMs: SESSION_OK.session.expiresAt.getTime(),
     });
   });
 
@@ -108,19 +103,11 @@ describe('AuthGuard', () => {
         getSession: vi.fn(async ({ headers }: { headers: Headers }) => {
           const id = headers.get('x-test-verified-user');
           if (!id) return null;
-          return {
-            user: { id, email: `${id}@example.com` },
-            session: {
-              id: `session-${id}`,
-              userId: id,
-              token: `token-${id}`,
-              activeOrganizationId: 'tenant-1',
-            },
-          };
+          return sessionFixture(id);
         }),
       },
       handler: vi.fn().mockResolvedValue(new Response('ok')),
-    } as unknown as BetterAuthInstance;
+    } satisfies BetterAuthInstance;
 
     @Controller('/identity-throttle')
     class IdentityThrottleController {
@@ -171,7 +158,7 @@ describe('AuthGuard', () => {
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/session');
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ sessionId: 's-1', token: 't-1' });
+    expect(await res.json()).toEqual({ sessionId: 'session-u-1', token: 'token-u-1' });
   });
 
   it('throws 401 when no session and policy is deny (default)', async () => {
@@ -297,8 +284,17 @@ describe('AuthGuard', () => {
 
   it('accepts only the trusted finite-lived WebSocket attachment without using HTTP accessors', async () => {
     const auth = mockAuth(null);
-    const guard = new AuthGuard(auth as never, {} as never);
+    const guard = new AuthGuard(new BetterAuthService(() => auth), {});
     const client = {
+      id: 'socket-1',
+      rooms: new Set<string>(),
+      raw: undefined,
+      send() {},
+      sendRaw() {},
+      join() {},
+      leave() {},
+      commit() {},
+      close() {},
       data: {
         principal: { issuer: 'issuer', subject: 'u-1', principalType: 'user' },
         tenantId: 't-1',
@@ -310,6 +306,7 @@ describe('AuthGuard', () => {
       getClass: () => class Gateway {},
       getHandler: () => 'message',
       getModuleId: () => 'GatewayModule',
+      getContainer: () => undefined,
       getContext: () => {
         throw new Error('HTTP accessor called');
       },
@@ -324,7 +321,7 @@ describe('AuthGuard', () => {
         getData: () => undefined,
         getPattern: () => 'message',
       }),
-    } as unknown as ExecutionContext;
+    } satisfies ExecutionContext;
 
     await expect(guard.canActivate(context)).resolves.toBe(true);
     expect(auth.api.getSession).not.toHaveBeenCalled();

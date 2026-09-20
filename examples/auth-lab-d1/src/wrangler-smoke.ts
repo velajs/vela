@@ -72,7 +72,7 @@ function check(name: string, ok: boolean, detail?: string): void {
 }
 
 try {
-  // 1. Public health route — proves D1Module loaded cleanly even without sign-up.
+  // 1. Public health route — proves the native environment was registered even without sign-up.
   {
     const res = await call('GET', '/healthz');
     check('GET /healthz → 200', res.status === 200);

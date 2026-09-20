@@ -1,3 +1,4 @@
+import { sessionFixture } from './fixtures';
 import { Controller, Get, Inject, MetadataRegistry, UseGuards } from '@velajs/vela';
 import { Test } from '@velajs/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -9,7 +10,7 @@ function makeAuth(label: string) {
     api: { getSession: vi.fn().mockResolvedValue(null) },
     handler: vi.fn().mockResolvedValue(new Response(label)),
     __label__: label,
-  } as unknown as BetterAuthInstance & { __label__: string };
+  } satisfies BetterAuthInstance & { __label__: string };
 }
 
 // Verifies the canonical NestJS-style override path:
@@ -22,11 +23,7 @@ describe('Test.createTestingModule — BetterAuthService override', () => {
 
   it('overrideProvider(BetterAuthService).useValue(stub) — resolved via moduleRef.get', async () => {
     const real = makeAuth('real');
-    const stub = {
-      auth: makeAuth('stub'),
-      api: makeAuth('stub').api,
-      handler: makeAuth('stub').handler,
-    };
+    const stub = new BetterAuthService(() => makeAuth('stub'));
 
     const moduleRef = await Test.createTestingModule({
       imports: [BetterAuthModule.forRoot({ auth: real })],
@@ -37,16 +34,13 @@ describe('Test.createTestingModule — BetterAuthService override', () => {
 
     const resolved = moduleRef.get(BetterAuthService);
     expect(resolved).toBe(stub);
-    expect((resolved.auth as BetterAuthInstance & { __label__: string }).__label__).toBe('stub');
+    expect(resolved.auth).toMatchObject({ __label__: 'stub' });
   });
 
   it('AuthGuard sees the overridden service end-to-end through the request pipeline', async () => {
     const real = makeAuth('real');
     const mock = makeAuth('mock-with-session');
-    mock.api.getSession = vi.fn().mockResolvedValue({
-      user: { id: 'mock-user', email: 'mock@example.com', name: 'Mock' },
-      session: { id: 'mock-sess', userId: 'mock-user' },
-    });
+    mock.api.getSession = vi.fn().mockResolvedValue(sessionFixture('mock-user'));
 
     @Controller('/me')
     @UseGuards(AuthGuard)
@@ -65,15 +59,7 @@ describe('Test.createTestingModule — BetterAuthService override', () => {
       controllers: [MeController],
     })
       .overrideProvider(BetterAuthService)
-      .useValue({
-        auth: mock,
-        get api() {
-          return mock.api;
-        },
-        get handler() {
-          return mock.handler;
-        },
-      })
+      .useValue(new BetterAuthService(() => mock))
       .compile();
 
     const app = await moduleRef.createApplication();
@@ -106,7 +92,7 @@ describe('Test.createTestingModule — BetterAuthService override', () => {
       controllers: [PrivateController],
     })
       .overrideProvider(BetterAuthService)
-      .useValue({ auth: mock, api: mock.api, handler: mock.handler })
+      .useValue(new BetterAuthService(() => mock))
       .compile();
 
     const app = await moduleRef.createApplication();
@@ -124,11 +110,15 @@ describe('Test.createTestingModule — BetterAuthService override', () => {
     @Controller('/probe')
     @Public(true)
     class ProbeController {
-      constructor(@Inject(BetterAuthService) private readonly svc: BetterAuthService) {}
+      constructor(
+        @Inject(BetterAuthService) private readonly svc: BetterAuthService<
+          ReturnType<typeof makeAuth>
+        >,
+      ) {}
 
       @Get()
       identity() {
-        return { label: (this.svc.auth as BetterAuthInstance & { __label__: string }).__label__ };
+        return { label: this.svc.auth.__label__ };
       }
     }
 
@@ -137,7 +127,7 @@ describe('Test.createTestingModule — BetterAuthService override', () => {
       controllers: [ProbeController],
     })
       .overrideProvider(BetterAuthService)
-      .useValue({ auth: mock, api: mock.api, handler: mock.handler })
+      .useValue(new BetterAuthService(() => mock))
       .compile();
 
     const app = await moduleRef.createApplication();

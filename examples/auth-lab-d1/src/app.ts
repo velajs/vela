@@ -4,8 +4,8 @@ import { betterAuth } from 'better-auth';
 // auth-lab encountered with memoryAdapter).
 import { drizzleAdapter } from '@better-auth/drizzle-adapter';
 import { drizzle } from 'drizzle-orm/d1';
-import { Controller, Get, Module } from '@velajs/vela';
-import { D1Module, D1Service, createCloudflareApp } from '@velajs/cloudflare';
+import { Controller, Get, InjectionToken, Module } from '@velajs/vela';
+import { createCloudflareWorker } from '@velajs/cloudflare';
 import {
   BetterAuthModule,
   CurrentUser,
@@ -13,6 +13,9 @@ import {
   type User,
 } from '@velajs/better-auth';
 import { schema } from './schema';
+
+interface WorkerEnv { DB: D1Database; }
+const WORKER_ENV = new InjectionToken<WorkerEnv>('auth-lab-d1.Env');
 
 @Controller('/me')
 class MeController {
@@ -31,16 +34,13 @@ class HealthController {
   }
 }
 
-// forRootAsync defers `useFactory` until first `BetterAuthService.auth`
-// access. That happens inside `AuthGuard.canActivate` (or the catch-all
-// `/api/auth/*` handler), by which point `@velajs/cloudflare`'s
-// middleware has populated env.DB and `d1.database` is safe to read.
+// The worker installs this event's native environment before DI runs. The auth
+// service builds once within that environment's application, with the typed D1 binding.
 @Module({
   imports: [
-    D1Module.forRoot({ binding: 'DB' }),
     BetterAuthModule.forRootAsync({
-      inject: [D1Service],
-      useFactory: (d1: D1Service) =>
+      inject: [WORKER_ENV],
+      useFactory: (env) =>
         betterAuth({
           secret: 'auth-lab-d1-demo-secret-32-bytes-please-rotate',
           baseURL: 'http://localhost',
@@ -48,7 +48,7 @@ class HealthController {
           // to typed tables — required on D1 so Date columns are encoded via
           // drizzle's `{ mode: 'timestamp' }` (a bare adapter throws
           // D1_TYPE_ERROR when better-auth writes a Date).
-          database: drizzleAdapter(drizzle(d1.database, { schema }), {
+          database: drizzleAdapter(drizzle(env.DB, { schema }), {
             provider: 'sqlite',
             schema,
           }),
@@ -62,9 +62,4 @@ class HealthController {
 })
 class AppModule {}
 
-export async function createApp() {
-  // `createCloudflareApp` installs the one-time middleware that captures
-  // `env` on first fetch and initializes every BindingRef (D1, KV, R2, ...).
-  // Without it, `d1.database` throws `binding not initialized`.
-  return await createCloudflareApp(AppModule);
-}
+export const worker = createCloudflareWorker(AppModule, { envToken: WORKER_ENV });

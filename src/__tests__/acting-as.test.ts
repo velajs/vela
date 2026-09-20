@@ -1,4 +1,11 @@
-import { Controller, Get, MetadataRegistry, UseGuards } from '@velajs/vela';
+import {
+  Controller,
+  Get,
+  MetadataRegistry,
+  UseGuards,
+  getTrustedRequestIdentity,
+  setTrustedRequestIdentity,
+} from '@velajs/vela';
 import { Test } from '@velajs/testing';
 import { betterAuth } from 'better-auth';
 import { memoryAdapter } from 'better-auth/adapters/memory';
@@ -79,7 +86,7 @@ describe('actingAs (@velajs/better-auth/testing)', () => {
 
     const headers = await actingAs(moduleRef, { email: 'grace@example.com' });
 
-    const data = await moduleRef.get(BetterAuthService).auth.api.getSession({ headers });
+    const data = await auth.api.getSession({ headers });
     expect(data).not.toBeNull();
     expect(data?.user.email).toBe('grace@example.com');
     expect(data?.session.token).toBeTruthy();
@@ -91,14 +98,17 @@ describe('actingAs (@velajs/better-auth/testing)', () => {
       imports: [BetterAuthModule.forRoot({ auth })],
     }).compile();
 
-    const ctx = await moduleRef.get(BetterAuthService).auth.$context;
-    const existing = await ctx.internalAdapter.createUser({
-      email: 'alan@example.com',
-      name: 'Alan Turing',
-    });
+    const ctx = await auth.$context;
+    const existing = await ctx.internalAdapter.createUser(
+      {
+        email: 'alan@example.com',
+        name: 'Alan Turing',
+      },
+      { method: 'admin' },
+    );
 
     const headers = await actingAs(moduleRef, { id: existing.id });
-    const data = await moduleRef.get(BetterAuthService).auth.api.getSession({ headers });
+    const data = await auth.api.getSession({ headers });
     expect(data?.user.id).toBe(existing.id);
     expect(data?.user.email).toBe('alan@example.com');
   });
@@ -110,5 +120,31 @@ describe('actingAs (@velajs/better-auth/testing)', () => {
     }).compile();
 
     await expect(actingAs(moduleRef, { role: 'admin' })).rejects.toThrow(/email|id/);
+  });
+});
+
+describe('logout identity lifecycle', () => {
+  beforeEach(() => MetadataRegistry.clear());
+  afterEach(() => MetadataRegistry.clear());
+
+  it('the public sign-out handler clears request identity and invalidates the real session', async () => {
+    const auth = makeRealAuth();
+    const moduleRef = await Test.createTestingModule({
+      imports: [BetterAuthModule.forRoot({ auth })],
+      controllers: [MeController],
+    }).compile();
+    const app = await moduleRef.createApplication();
+    const headers = await actingAs(moduleRef, { email: 'logout@example.com' });
+    headers.set('origin', 'http://localhost');
+    const request = new Request('http://localhost/api/auth/sign-out', { method: 'POST', headers });
+    setTrustedRequestIdentity(request, {
+      principal: { issuer: 'prior', subject: 'user', principalType: 'user' },
+      roles: ['admin'],
+    });
+    const response = await app.getHonoApp().fetch(request);
+    expect(response.status).toBe(200);
+    expect(getTrustedRequestIdentity(request)).toBeUndefined();
+    expect((await app.getHonoApp().request('/me', { headers })).status).toBe(401);
+    await app.dispose();
   });
 });

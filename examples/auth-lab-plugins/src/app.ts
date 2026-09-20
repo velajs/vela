@@ -47,8 +47,8 @@ class HealthController {
     BetterAuthModule.forRootAsync({
       imports: [MagicLinkAuthModule],
       inject: [MAGIC_LINK_PLUGIN],
-      useFactory: (magicLinkPlugin: unknown) => ({
-        auth: betterAuth({
+      useFactory: (magicLinkPlugin) =>
+        betterAuth({
           secret: 'auth-lab-plugins-demo-secret-32-bytes-please-rotate',
           baseURL: 'http://localhost',
           database: memoryAdapter(memory),
@@ -56,10 +56,9 @@ class HealthController {
           // uses an existing user identity by default.
           emailAndPassword: { enabled: true, autoSignIn: true },
           trustedOrigins: ['http://localhost:8787', 'http://localhost'],
-          plugins: [magicLinkPlugin as never],
+          plugins: [magicLinkPlugin],
         }),
-        isGlobal: true,
-      }),
+      isGlobal: true,
     }),
   ],
   controllers: [MeController, HealthController],

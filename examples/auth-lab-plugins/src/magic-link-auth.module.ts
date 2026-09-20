@@ -1,4 +1,4 @@
-import { InjectionToken, Module } from '@velajs/vela';
+import { defineProvider, InjectionToken, Module } from '@velajs/vela';
 import { magicLink } from 'better-auth/plugins';
 import { EmailService } from './email.service.js';
 
@@ -6,19 +6,14 @@ import { EmailService } from './email.service.js';
 // imports MagicLinkAuthModule and pulls MAGIC_LINK_PLUGIN into its forRootAsync
 // inject list to compose the plugin into the betterAuth() instance.
 //
-// Note: typing here uses `unknown` because better-auth's plugin objects are
-// runtime-shaped and not exported as a typed interface. The wiring is what
-// matters; the betterAuth() factory at the call site does the final shape
-// check.
-export const MAGIC_LINK_PLUGIN = new InjectionToken<unknown>(
+export const MAGIC_LINK_PLUGIN = new InjectionToken<ReturnType<typeof magicLink>>(
   'auth-lab.MagicLinkPlugin',
 );
 
 @Module({
   providers: [
     EmailService,
-    {
-      provide: MAGIC_LINK_PLUGIN,
+    defineProvider(MAGIC_LINK_PLUGIN, {
       // The plugin's sendMagicLink callback is closed over a DI'd EmailService.
       // No global state, no top-level wiring — the plugin gets vela's full DI
       // graph at construction time.
@@ -28,7 +23,7 @@ export const MAGIC_LINK_PLUGIN = new InjectionToken<unknown>(
           sendMagicLink: (data) =>
             email.send({ email: data.email, url: data.url, token: data.token }),
         }),
-    },
+    }),
   ],
   exports: [MAGIC_LINK_PLUGIN, EmailService],
 })

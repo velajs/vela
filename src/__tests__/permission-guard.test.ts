@@ -1,39 +1,19 @@
+import { sessionFixture } from './fixtures';
+import { PermissionGuard, RequirePermission } from '@velajs/authz/vela';
 import { Controller, Get, MetadataRegistry, Module, UseGuards, VelaFactory } from '@velajs/vela';
 import { AuthzModule } from '@velajs/authz/vela';
 import { defineRole } from '@velajs/authz';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  AuthGuard,
-  BetterAuthModule,
-  OptionalAuth,
-  PermissionGuard,
-  RequirePermission,
-} from '../index';
+import { AuthGuard, BetterAuthModule, OptionalAuth } from '../index';
 import type { BetterAuthInstance } from '../better-auth.types';
 
-interface SessionUser {
-  id: string;
-  email: string;
-  role: string;
-}
+const sessionWithRole = (role: string) => sessionFixture('u-1', role);
 
-interface SessionShape {
-  user: SessionUser;
-  session: { id: string; userId: string; token: string };
-}
-
-function sessionWithRole(role: string): SessionShape {
-  return {
-    user: { id: 'u-1', email: 'ada@example.com', role },
-    session: { id: 's-1', userId: 'u-1', token: 't-1' },
-  };
-}
-
-function mockAuth(session: SessionShape | null): BetterAuthInstance {
+function mockAuth(session: ReturnType<typeof sessionWithRole> | null): BetterAuthInstance {
   return {
     api: { getSession: vi.fn().mockResolvedValue(session) },
     handler: vi.fn().mockResolvedValue(new Response('ok')),
-  } as unknown as BetterAuthInstance;
+  } satisfies BetterAuthInstance;
 }
 
 describe('PermissionGuard (e2e)', () => {

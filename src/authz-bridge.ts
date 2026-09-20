@@ -6,7 +6,7 @@ import type { User } from './better-auth.types';
  * admin plugin. `role` may be a single role, a comma-separated list, or an
  * array — {@link identityFromUser} normalizes all three.
  */
-export type AuthUser = User & { role?: string | string[] | null };
+export type AuthUser = Pick<User, 'id'> & { role?: string | string[] | null };
 
 /** Stable issuer namespace used for better-auth session principals. */
 export const BETTER_AUTH_ISSUER = 'better-auth';
@@ -23,7 +23,8 @@ const normalizeRoles = (role: string | string[] | null | undefined): string[] =>
 };
 
 /**
- * Adapts a better-auth user into a stable `@velajs/authz` {@link Identity}.
+ * Pure authorization projection; this does not authenticate or publish trusted state.
+ * Adapts an already verified better-auth user into a stable `@velajs/authz` {@link Identity}.
  * The issuer scopes `user.id` as both `subject` and the compatibility `userId`;
  * the admin-plugin `role` field supplies local roles.
  *

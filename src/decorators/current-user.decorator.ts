@@ -5,6 +5,6 @@ import type { User } from '../better-auth.types';
 export const CurrentUser = createParamDecorator(
   (_data: unknown, ctx: ExecutionContext): User | undefined => {
     const state = getAuthRequestState(ctx);
-    return state.authenticated ? state.user : undefined;
+    return state?.user;
   },
 );

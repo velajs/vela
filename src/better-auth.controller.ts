@@ -35,10 +35,3 @@ export function createBetterAuthCatchallController(basePath: string = '/api/auth
   }
   return BetterAuthCatchallController;
 }
-
-/**
- * Default-path (`/api/auth`) catch-all controller. Retained for back-compat;
- * `BetterAuthModule` now mounts {@link createBetterAuthCatchallController} with
- * the configured `basePath`. Prefer the factory for a custom base path.
- */
-export const BetterAuthCatchallController = createBetterAuthCatchallController();

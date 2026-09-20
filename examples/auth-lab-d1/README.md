@@ -1,8 +1,8 @@
 # auth-lab-d1
 
 Cloudflare D1-backed end-to-end smoke for `@velajs/better-auth`. Demonstrates
-**Pattern B** wiring: `BetterAuthModule.forRootAsync` injects `D1Service` from
-`@velajs/cloudflare`, hands the `D1Database` to `drizzle-orm/d1`, and passes
+**Pattern B** wiring: `BetterAuthModule.forRootAsync` injects a typed native
+Workers environment, hands `env.DB` to `drizzle-orm/d1`, and passes
 the resulting drizzle instance into `better-auth`'s `drizzleAdapter`.
 
 ```bash
@@ -20,19 +20,23 @@ through D1.
 
 ```ts
 import { schema } from './schema';
+import { InjectionToken } from '@velajs/vela';
+import { createCloudflareWorker } from '@velajs/cloudflare';
+
+interface WorkerEnv { DB: D1Database; }
+const WORKER_ENV = new InjectionToken<WorkerEnv>('auth-lab-d1.Env');
 
 @Module({
   imports: [
-    D1Module.forRoot({ binding: 'DB' }),
     BetterAuthModule.forRootAsync({
-      inject: [D1Service],
+      inject: [WORKER_ENV],
       // useFactory returns the betterAuth() instance directly.
-      useFactory: (d1: D1Service) =>
+      useFactory: (env) =>
         betterAuth({
           // Pass `schema` so the adapter maps better-auth's models to typed
           // drizzle tables — required on D1 (Date columns use `{ mode:
           // 'timestamp' }`; a bare adapter throws D1_TYPE_ERROR on a Date).
-          database: drizzleAdapter(drizzle(d1.database, { schema }), {
+          database: drizzleAdapter(drizzle(env.DB, { schema }), {
             provider: 'sqlite',
             schema,
           }),
@@ -45,10 +49,9 @@ import { schema } from './schema';
 class AppModule {}
 ```
 
-`D1Module.forRoot` provides `D1Service` (a thin wrapper over `env.DB` resolved
-at request time). `forRootAsync.inject: [D1Service]` propagates that into the
-auth construction factory, which can't run at module-load because the D1
-binding only exists once a fetch event has populated `env`.
+`createCloudflareWorker(AppModule, { envToken: WORKER_ENV })` registers the native
+platform environment before DI factories run. Each environment owns its own app
+and auth instance. No binding wrapper or first-request capture is required.
 
 ## Schema + migrations
 

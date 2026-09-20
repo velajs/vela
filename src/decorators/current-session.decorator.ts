@@ -5,6 +5,6 @@ import type { Session } from '../better-auth.types';
 export const CurrentSession = createParamDecorator(
   (_data: unknown, ctx: ExecutionContext): Session | undefined => {
     const state = getAuthRequestState(ctx);
-    return state.authenticated ? state.session : undefined;
+    return state?.session;
   },
 );

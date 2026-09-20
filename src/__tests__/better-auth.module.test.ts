@@ -14,7 +14,7 @@ function makeMockAuth(session: { user: unknown; session: unknown } | null = null
       getSession: vi.fn().mockResolvedValue(session),
     },
     handler: vi.fn().mockResolvedValue(new Response('better-auth-ok')),
-  } as unknown as BetterAuthInstance;
+  } satisfies BetterAuthInstance;
 }
 
 describe('BetterAuthModule', () => {
@@ -34,7 +34,6 @@ describe('BetterAuthModule', () => {
     expect(app.get(BETTER_AUTH_OPTIONS)).toMatchObject({
       basePath: '/api/auth',
       issuer: 'better-auth:/api/auth',
-      defaultPolicy: 'deny',
       isGlobal: true,
       mountHandler: true,
     });
@@ -48,8 +47,8 @@ describe('BetterAuthModule', () => {
 
   it('keys same-source async closures by factory identity', () => {
     const makeFactory = () => () => makeMockAuth();
-    const first = BetterAuthModule.forRootAsync({ useFactory: makeFactory() });
-    const second = BetterAuthModule.forRootAsync({ useFactory: makeFactory() });
+    const first = BetterAuthModule.forRootAsync({ inject: [], useFactory: makeFactory() });
+    const second = BetterAuthModule.forRootAsync({ inject: [], useFactory: makeFactory() });
     expect(first.key).not.toBe(second.key);
   });
 
@@ -107,7 +106,7 @@ describe('BetterAuthModule', () => {
     expect(service.api).toBe(auth.api);
     expect(factoryCalls).toBe(1);
 
-    expect(app.get(BETTER_AUTH_OPTIONS).defaultPolicy).toBe('deny');
+    expect(app.get(BETTER_AUTH_OPTIONS).isGlobal).toBe(true);
   });
 
   it('mounts the catch-all controller at /api/auth/* by default', async () => {
@@ -147,7 +146,9 @@ describe('BetterAuthModule', () => {
     const auth = makeMockAuth();
 
     @Module({
-      imports: [BetterAuthModule.forRootAsync({ useFactory: () => auth, basePath: '/auth' })],
+      imports: [
+        BetterAuthModule.forRootAsync({ inject: [], useFactory: () => auth, basePath: '/auth' }),
+      ],
     })
     class AppModule {}
 
@@ -192,13 +193,5 @@ describe('BetterAuthModule', () => {
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/items');
     expect(res.status).toBe(401);
-  });
-
-  it('rejects the removed allow-by-default compatibility policy at runtime', () => {
-    const options = { auth: makeMockAuth(), defaultPolicy: 'allow' } as unknown as Parameters<
-      typeof BetterAuthModule.forRoot
-    >[0];
-
-    expect(() => BetterAuthModule.forRoot(options)).toThrow(/deny-only/);
   });
 });

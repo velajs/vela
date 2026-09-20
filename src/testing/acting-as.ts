@@ -14,7 +14,7 @@ import { BetterAuthService } from '../better-auth.service';
  * it, and the resolver stays assignable to `@velajs/testing`'s `ActingAsResolver`.
  */
 export interface TestModuleLike {
-  get<T>(token: unknown): T;
+  get(token: typeof BetterAuthService): BetterAuthService;
 }
 
 /**
@@ -58,8 +58,10 @@ export async function actingAs(
   module: TestModuleLike,
   principal: ActingAsPrincipal,
 ): Promise<Headers> {
-  const auth = module.get<BetterAuthService>(BetterAuthService).auth;
+  const auth = module.get(BetterAuthService).auth;
   const ctx = await auth.$context;
+  if (!ctx)
+    throw new Error('actingAs: the configured authentication provider has no Better Auth context');
   const internalAdapter = ctx.internalAdapter;
 
   const id = typeof principal.id === 'string' ? principal.id : undefined;
@@ -82,12 +84,15 @@ export async function actingAs(
       );
     }
     const { id: _id, email: _email, name: _name, ...extra } = principal;
-    user = await internalAdapter.createUser({
-      ...extra,
-      email,
-      name: name ?? email,
-      ...(id ? { id } : {}),
-    });
+    user = await internalAdapter.createUser(
+      {
+        ...extra,
+        email,
+        name: name ?? email,
+        ...(id ? { id } : {}),
+      },
+      { method: 'admin' },
+    );
   }
 
   const session = await internalAdapter.createSession(user.id, false, {

@@ -1,6 +1,6 @@
 {
   "name": "@velajs/better-auth",
-  "version": "0.6.1",
+  "version": "2.0.0",
   "description": "better-auth integration for the Vela framework",
   "keywords": [
     "auth",
@@ -59,16 +59,16 @@
     "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm typecheck && pnpm test && pnpm publint && pnpm attw"
   },
   "dependencies": {
-    "@velajs/authz": "^1.1.0"
+    "@velajs/authz": "workspace:*"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "catalog:",
     "@changesets/cli": "catalog:",
     "@swc/core": "catalog:",
-    "@velajs/testing": "^1.0.0",
-    "@velajs/vela": "^1.21.0",
+    "@velajs/testing": "workspace:*",
+    "@velajs/vela": "workspace:*",
     "better-auth": "^1.6.20",
-    "hono": "^4.12.26",
+    "hono": "catalog:",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",
     "publint": "catalog:",
@@ -79,12 +79,15 @@
     "vitest": "catalog:"
   },
   "peerDependencies": {
-    "@velajs/vela": ">=1.21.0 <2",
+    "@velajs/vela": "workspace:^",
     "better-auth": ">=1.2.0",
     "hono": ">=4"
   },
   "engines": {
     "node": ">=24"
   },
-  "packageManager": "pnpm@11.11.0"
+  "packageManager": "pnpm@11.11.0",
+  "publishConfig": {
+    "access": "public"
+  }
 }

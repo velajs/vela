@@ -4,33 +4,29 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build:auth": "pnpm --dir ../.. build",
-    "sync:auth": "pnpm run build:auth && pnpm install",
-    "build": "pnpm run sync:auth && rm -rf dist && swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
+    "build": "swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
     "db:reset": "rm -rf .wrangler/state/v3/d1 && wrangler d1 execute velajs_better_auth_d1 --local --file=migrations/0000_initial.sql",
     "dev": "pnpm run build && wrangler dev --local --port 8789",
     "wrangler:smoke": "pnpm run db:reset && pnpm run build && node dist/wrangler-smoke.js",
-    "typecheck": "pnpm run sync:auth && tsc --noEmit",
+    "typecheck": "tsc --noEmit",
     "deploy": "pnpm run build && wrangler deploy"
   },
   "dependencies": {
-    "@better-auth/drizzle-adapter": "^1.6.10",
-    "@velajs/better-auth": "file:../..",
-    "@velajs/cloudflare": "^1.11.0",
-    "@velajs/mail": "^1.0.0",
-    "@velajs/vela": "^1.21.0",
-    "@velajs/workflow": "^0.1.0",
-    "better-auth": "^1.6.0",
-    "drizzle-orm": "^0.36.0",
-    "hono": "^4",
-    "zod": "^3.25.76"
+    "@better-auth/drizzle-adapter": "^1.7.5",
+    "@velajs/better-auth": "workspace:*",
+    "@velajs/cloudflare": "workspace:*",
+    "@velajs/vela": "workspace:*",
+    "better-auth": "^1.7.5",
+    "drizzle-orm": "^0.45.2",
+    "hono": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4",
+    "@cloudflare/workers-types": "catalog:",
     "@swc/cli": "^0.8.0",
-    "@swc/core": "^1.15.11",
-    "@types/node": "^20",
-    "typescript": "^5",
-    "wrangler": "^3"
+    "@swc/core": "catalog:",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "wrangler": "catalog:"
   }
 }

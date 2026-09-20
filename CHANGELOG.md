@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.0
+
+Native environment configuration and one immutable verified identity shared with provider-independent authorization.
+
+Requires the coordinated Vela 2.0 package set. See the workspace migration guide.
+
 ## 0.6.1
 
 ### Patch Changes

@@ -1,9 +1,7 @@
+import { RequirePermission } from '@velajs/authz/vela';
 import { MetadataRegistry } from '@velajs/vela';
 import { describe, expect, it } from 'vitest';
-import {
-  REQUIRE_PERMISSION_KEY,
-  RequirePermission,
-} from '../decorators/require-permission.decorator';
+import { REQUIRE_PERMISSION_KEY } from '@velajs/authz/vela';
 
 describe('RequirePermission', () => {
   it('uses the stable authz permissions metadata key', () => {
@@ -24,7 +22,9 @@ describe('RequirePermission', () => {
     class PostsController {
       remove() {}
     }
-    RequirePermission(['posts:delete'])(PostsController.prototype, 'remove');
+    const descriptor = Object.getOwnPropertyDescriptor(PostsController.prototype, 'remove');
+    if (!descriptor) throw new Error('missing method fixture');
+    RequirePermission(['posts:delete'])(PostsController.prototype, 'remove', descriptor);
     expect(
       MetadataRegistry.getCustomHandlerMeta(PostsController, 'remove', REQUIRE_PERMISSION_KEY),
     ).toEqual(['posts:delete']);
