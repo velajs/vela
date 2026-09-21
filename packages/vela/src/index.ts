@@ -643,3 +643,24 @@ export type {
   ScopedEventDispatcher,
   EventListenerDecorator,
 } from './event-emitter/index';
+
+// Application-owned structured logging (optional; legacy Logger/Writer unchanged).
+export {
+  ApplicationLogger,
+  StructuredLogger,
+  consoleLogSink,
+  APP_LOGGER,
+  LoggingModule,
+  serializeLogValue,
+  parseLogDirective,
+} from './logging/index';
+export type {
+  LogValue,
+  LogRecord,
+  LogSink,
+  LogFields,
+  LogSerializationOptions,
+  ApplicationLoggerOptions,
+  LogDeliveryContext,
+  LogThresholds,
+} from './logging/index';
