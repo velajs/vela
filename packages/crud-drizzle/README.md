@@ -65,6 +65,9 @@ authorization, write values and pagination parameters. Oversized ordinary
 queries and writes fail with `QUERY_PARAMETER_LIMIT` before execution; they are
 not split into separate operations that could change pagination or atomicity.
 Each statement in an atomic upsert is checked before the batch starts.
+Statements are prepared once so runtime defaults and update generators execute
+once, and the budget covers the exact statement sent to D1. Schema-aware native
+Drizzle handles are accepted without erasing their schema at the call site.
 
 Relation includes split distinct join keys into bounded `IN` queries. Every
 chunk repeats the complete tenant, authorization and soft-delete scope, and

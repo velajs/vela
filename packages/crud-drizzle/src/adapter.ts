@@ -28,7 +28,6 @@ import {
   isNull,
   sql,
 } from 'drizzle-orm';
-import type { DrizzleD1Database } from 'drizzle-orm/d1';
 import type {
   AdapterCapability,
   AdapterScope,
@@ -56,6 +55,7 @@ import {
   readRow,
   type DrizzleDatabase,
   type DrizzleHandle,
+  type DrizzleD1Handle,
   type DrizzleDialect,
   type DrizzleSql,
   type DrizzleTable,
@@ -64,6 +64,7 @@ import {
   assertD1ParameterCount,
   D1_MAX_BOUND_PARAMETERS,
   queryParameterCount,
+  checkedD1Query,
   andAll,
   buildPredicate,
   buildWhere,
@@ -114,10 +115,7 @@ export type DrizzleAdapterConfig = DrizzleAdapterOptions &
     | {
         driver: 'd1';
         dialect?: 'sqlite';
-        db: Pick<
-          DrizzleD1Database,
-          'select' | 'insert' | 'update' | 'delete' | 'batch' | 'transaction'
-        >;
+        db: DrizzleD1Handle;
         onOpenTransaction?: never;
       }
     | {
@@ -254,10 +252,8 @@ export function drizzleAdapter(
 
   // Preserve the fluent builder and its lazy execution. All D1 paths check the
   // final statement rather than guessing from request/filter field counts.
-  const checked = <T>(query: T): T => {
-    if (config.driver === 'd1') assertD1ParameterCount(queryParameterCount(query));
-    return query;
-  };
+  const checked = (query: PromiseLike<Row[]>): PromiseLike<Row[]> =>
+    config.driver === 'd1' ? checkedD1Query(query) : query;
 
   const pkColumn = () => getColumn(table, primaryKey);
 
@@ -461,10 +457,12 @@ export function drizzleAdapter(
       // concatenating their groups does not change row selection or pagination.
       const fixed = andAll(
         loadScope.predicate ? buildPredicate(rel.table, loadScope.predicate, dialect) : undefined,
-        loadScope.tenantField != null && loadScope.tenantValue != null
+        loadScope.tenantField !== undefined &&
+          loadScope.tenantValue !== undefined &&
+          loadScope.tenantValue !== null
           ? eq(getColumn(rel.table, loadScope.tenantField), loadScope.tenantValue)
           : undefined,
-        loadScope.excludeDeletedField != null
+        loadScope.excludeDeletedField !== undefined
           ? isNull(getColumn(rel.table, loadScope.excludeDeletedField))
           : undefined,
       );
@@ -479,6 +477,8 @@ export function drizzleAdapter(
       for (let offset = 0; offset < wanted.length; offset += chunkSize) {
         const keys = wanted.slice(offset, offset + chunkSize);
         const conditions = andAll(fixed, inArray(getColumn(rel.table, relatedJoinField), keys));
+        // Bound concurrent work on one connection as well as statement size.
+        // oxlint-disable-next-line eslint/no-await-in-loop
         const related = await checked(db.select().from(rel.table).where(conditions));
         for (const row of related) {
           const key = row[relatedJoinField];

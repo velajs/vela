@@ -24,7 +24,13 @@ import {
 } from 'drizzle-orm';
 import { CrudException } from '@velajs/crud';
 import { assertNever, type FilterCondition, type QueryPredicate } from '@velajs/crud/adapter';
-import type { DrizzleColumn, DrizzleDialect, DrizzleSql, DrizzleTable } from './database';
+import {
+  readRow,
+  type DrizzleColumn,
+  type DrizzleDialect,
+  type DrizzleSql,
+  type DrizzleTable,
+} from './database';
 
 /** `and` that tolerates undefined members and collapses to undefined. */
 export function andAll(...conditions: Array<DrizzleSql | undefined>): DrizzleSql | undefined {
@@ -231,7 +237,10 @@ export function queryParameterCount(query: unknown): number {
     typeof query.toSQL !== 'function'
   )
     throw new TypeError('Expected a compilable Drizzle query');
-  const compiled: unknown = query.toSQL();
+  return compiledParameterCount(query.toSQL());
+}
+
+function compiledParameterCount(compiled: unknown): number {
   if (
     !compiled ||
     typeof compiled !== 'object' ||
@@ -249,4 +258,43 @@ export function assertD1ParameterCount(count: number): void {
       400,
       'QUERY_PARAMETER_LIMIT',
     );
+}
+
+/** Prepare once, then budget and execute that exact compiled statement. This
+ * avoids calling Drizzle runtime defaults again between inspection and execution.
+ * The opaque _prepare slot is the Drizzle D1 batch protocol: it receives the
+ * same prepared query, preserving the driver's row mapper and atomic batching. */
+export function checkedD1Query(
+  query: unknown,
+): PromiseLike<Record<string, unknown>[]> & { _prepare(): unknown } {
+  if (
+    !query ||
+    typeof query !== 'object' ||
+    !('prepare' in query) ||
+    typeof query.prepare !== 'function'
+  )
+    throw new TypeError('Expected a preparable Drizzle query');
+  const prepared: unknown = query.prepare();
+  if (
+    !prepared ||
+    typeof prepared !== 'object' ||
+    !('getQuery' in prepared) ||
+    typeof prepared.getQuery !== 'function' ||
+    !('execute' in prepared) ||
+    typeof prepared.execute !== 'function'
+  )
+    throw new TypeError('Expected a prepared Drizzle query');
+  assertD1ParameterCount(compiledParameterCount(prepared.getQuery()));
+  const executePrepared = prepared.execute.bind(prepared);
+  const execute = async (): Promise<Record<string, unknown>[]> => {
+    const result: unknown = await executePrepared();
+    if (!Array.isArray(result)) throw new TypeError('Expected Drizzle result rows');
+    return result.map(readRow);
+  };
+  return {
+    _prepare: () => prepared,
+    // Deliberately implement Drizzle's lazy PromiseLike query contract.
+    // oxlint-disable-next-line unicorn/no-thenable
+    then: (fulfilled, rejected) => execute().then(fulfilled, rejected),
+  };
 }

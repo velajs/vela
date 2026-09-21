@@ -38,6 +38,7 @@ const runtime = new Miniflare({
 const database = await runtime.getD1Database('DB');
 const statements: { sql: string; count: number }[] = [];
 const db = drizzle(database, {
+  schema: { parents, children },
   logger: {
     logQuery(sql, params) {
       statements.push({ sql, count: params.length });
@@ -93,7 +94,7 @@ describe('D1 parameter budgets', () => {
         scope,
       ),
     );
-    expect([...grouped.keys()].sort()).toEqual(rows.map((row) => row.id).sort());
+    expect([...grouped.keys()].toSorted()).toEqual(rows.map((row) => row.id).toSorted());
     for (const row of rows)
       expect(grouped.get(row.id)?.map((child) => child.id)).toEqual([`${row.id}-a`]);
     expect(statements).toHaveLength(2);
@@ -284,4 +285,41 @@ describe('D1 parameter budgets', () => {
     ).rejects.toMatchObject({ code: 'QUERY_PARAMETER_LIMIT' });
     expect(statements).toEqual([]);
   });
+});
+
+it('compiles generated insert defaults once and executes the checked statement', async () => {
+  let defaults = 0;
+  const generated = sqliteTable('generated', {
+    id: text()
+      .primaryKey()
+      .$defaultFn(() => 'generated-' + ++defaults),
+  });
+  await database.exec('CREATE TABLE generated (id TEXT PRIMARY KEY)');
+  const generatedAdapter = drizzleAdapter({ driver: 'd1', db, table: generated });
+  const row = await generatedAdapter.requestScope((scope) => generatedAdapter.create({}, scope));
+  expect(defaults).toBe(1);
+  expect(row).toEqual({ id: 'generated-1' });
+});
+
+it('preserves prepared defaults and row mapping through atomic upsert batches', async () => {
+  let defaults = 0;
+  const generated = sqliteTable('batch_defaults', {
+    id: text().primaryKey(),
+    value: integer().notNull(),
+    stamp: text().$defaultFn(() => 'stamp-' + ++defaults),
+  });
+  await database.exec(
+    'CREATE TABLE batch_defaults (id TEXT PRIMARY KEY, value INTEGER, stamp TEXT)',
+  );
+  const atomic = drizzleAdapter({ driver: 'd1', db, table: generated, atomicUpsert: true });
+  const created = await atomic.requestScope((scope) =>
+    atomic.upsertOne!({ values: { id: 'one', value: 1 }, conflictTarget: ['id'] }, scope),
+  );
+  expect(defaults).toBe(1);
+  expect(created).toEqual({ created: true, row: { id: 'one', value: 1, stamp: 'stamp-1' } });
+  const updated = await atomic.requestScope((scope) =>
+    atomic.upsertOne!({ values: { id: 'one', value: 2 }, conflictTarget: ['id'] }, scope),
+  );
+  expect(defaults).toBe(2);
+  expect(updated).toEqual({ created: false, row: { id: 'one', value: 2, stamp: 'stamp-1' } });
 });
