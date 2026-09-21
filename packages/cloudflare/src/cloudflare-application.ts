@@ -13,6 +13,7 @@ import {
   type VelaApplication,
 } from '@velajs/vela';
 import type { Entrypoint, ExceptionFilter } from '@velajs/vela';
+import { readWsEntrypointMeta } from '@velajs/vela/websocket';
 import { collectWsGatewayRoutes, type WsGatewayRoute } from './websocket/websocket-routing';
 import { assertCloudflareEnvironment } from './environment';
 
@@ -89,22 +90,24 @@ async function settleEntrypoints(work: readonly Promise<void>[]): Promise<void> 
  * ```
  */
 export class CloudflareApplication<T extends object = object> {
-  private wsGatewayRoutes: WsGatewayRoute[] = [];
+  readonly #wsGatewayRoutes: WsGatewayRoute[] = [];
+  readonly #app: VelaApplication;
 
   constructor(
-    private app: VelaApplication,
+    app: VelaApplication,
     readonly env: T,
   ) {
+    this.#app = app;
     this.get = app.get.bind(app);
   }
 
   readonly fetch = async (request: Request, env: T, ctx?: ExecutionContext): Promise<Response> => {
     assertCloudflareEnvironment(this.env, env);
-    return this.app.fetch(request, env, ctx);
+    return this.#app.fetch(request, env, ctx);
   };
 
   getHonoApp(): ReturnType<VelaApplication['getHonoApp']> {
-    return this.app.getHonoApp();
+    return this.#app.getHonoApp();
   }
 
   /**
@@ -122,7 +125,7 @@ export class CloudflareApplication<T extends object = object> {
   readonly get: VelaApplication['get'];
 
   get entrypoints(): VelaApplication['entrypoints'] {
-    return this.app.entrypoints;
+    return this.#app.entrypoints;
   }
 
   /**
@@ -146,26 +149,40 @@ export class CloudflareApplication<T extends object = object> {
    * ```
    */
   mountOpenApi(options: MountOpenApiOptions): this {
-    this.app.mountOpenApi(options);
+    this.#app.mountOpenApi(options);
     return this;
   }
 
   /**
-   * @internal — scans instances for `@WebSocketGateway({ path, binding })`
-   * upgrade routes. Queue/scheduled handlers are NOT scanned anymore: they
-   * come from `app.entrypoints` (`cf:queue` / `cf:scheduled` / `cf:vela-cron`
-   * kinds) at dispatch time.
+   * @internal Upgrade routes come from validated gateway entrypoints, including
+   * request-scoped gateways without a bootstrap instance. Retain the instance
+   * scan for legacy applications that only declare forwarding metadata.
    */
   scanInstances(instances: unknown[]): void {
+    const routes = new Map<string, WsGatewayRoute>();
+    for (const ep of this.#app.entrypoints.ofKind('websocket')) {
+      if (typeof ep.meta !== 'object' || ep.meta === null || !('dispatcher' in ep.meta)) continue;
+      const meta = readWsEntrypointMeta(ep.meta);
+      if (meta.options.binding) {
+        routes.set(meta.path, {
+          path: meta.path,
+          binding: meta.options.binding,
+          options: { ...meta.options },
+        });
+      }
+    }
     for (const instance of instances) {
       if (!instance || typeof instance !== 'object') continue;
-      this.wsGatewayRoutes.push(...collectWsGatewayRoutes(instance));
+      for (const route of collectWsGatewayRoutes(instance)) {
+        if (!routes.has(route.path)) routes.set(route.path, route);
+      }
     }
+    this.#wsGatewayRoutes.splice(0, this.#wsGatewayRoutes.length, ...routes.values());
   }
 
-  /** @internal — upgrade routes discovered from `@WebSocketGateway({ path, binding })`. */
+  /** @internal — upgrade routes discovered from the application's gateways. */
   getWsGatewayRoutes(): WsGatewayRoute[] {
-    return this.wsGatewayRoutes;
+    return [...this.#wsGatewayRoutes];
   }
 
   /**
@@ -181,10 +198,10 @@ export class CloudflareApplication<T extends object = object> {
   ): Promise<void> {
     assertCloudflareEnvironment(this.env, env);
     const handlers = [
-      ...this.app.entrypoints
+      ...this.#app.entrypoints
         .ofKind('cf:scheduled')
         .map((ep) => ({ ep, cron: entrypointString(ep.meta, 'cron') })),
-      ...this.app.entrypoints
+      ...this.#app.entrypoints
         .ofKind('cf:vela-cron')
         .map((ep) => ({ ep, cron: entrypointString(ep.meta, 'expression') })),
     ].filter((h) => h.cron === event.cron);
@@ -216,7 +233,7 @@ export class CloudflareApplication<T extends object = object> {
     };
     let reported: { error: unknown } | undefined;
     try {
-      await runInEntrypointScope(this.app.getContainer(), async (scope, lifetime) => {
+      await runInEntrypointScope(this.#app.getContainer(), async (scope, lifetime) => {
         const moduleId = getEntrypointModuleId(scope, ep);
         const context = buildEntrypointExecutionContext(
           ep.kind,
@@ -287,7 +304,7 @@ export class CloudflareApplication<T extends object = object> {
           reported && error instanceof AggregateError && error.errors[0] === reported.error
             ? error.errors[1]
             : error;
-        resolveErrorReporter(this.app.getContainer()).report(completionError, reportContext);
+        resolveErrorReporter(this.#app.getContainer()).report(completionError, reportContext);
       }
       throw error;
     }
@@ -305,7 +322,7 @@ export class CloudflareApplication<T extends object = object> {
     ctx: { waitUntil: (promise: Promise<unknown>) => void },
   ): Promise<void> {
     assertCloudflareEnvironment(this.env, env);
-    const handlers = this.app.entrypoints
+    const handlers = this.#app.entrypoints
       .ofKind('cf:queue')
       .filter((ep) => entrypointString(ep.meta, 'queueName') === batch.queue);
 
@@ -313,6 +330,6 @@ export class CloudflareApplication<T extends object = object> {
   }
 
   async close(signal?: string): Promise<void> {
-    return this.app.close(signal);
+    return this.#app.close(signal);
   }
 }
