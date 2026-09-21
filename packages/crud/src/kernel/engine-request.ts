@@ -1,3 +1,4 @@
+import type { CrudTransactionScope } from './transaction';
 /**
  * The engine's transport-neutral request/result shapes. The Vela integration
  * layer builds an `EngineRequest` from the Hono context (validated DTO body,
@@ -17,6 +18,8 @@ export interface EngineRequestVars {
 }
 
 export interface EngineRequest {
+  /** Explicit same-database callback scope; never inferred from ambient state. */
+  transaction?: CrudTransactionScope;
   /** Raw query params (list parsing, withDeleted, include, ...). */
   query?: Record<string, string | string[]>;
   /** Request body. Validated again by the engine against the derived schema. */

@@ -55,6 +55,7 @@ export function transactionalMemoryAdapter(
     memoryAdapter({ ...config, store: config.store.inScope(scope) }).runtime;
   const runtime: RuntimeAdapter = {
     ...adapter,
+    transactionOwner: config.store,
     capabilities: new Set([...adapter.capabilities, 'transactions']),
     requestScope: (fn) => config.store.transaction(fn),
     transaction: (fn) => config.store.transaction(fn),

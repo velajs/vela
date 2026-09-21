@@ -25,7 +25,10 @@ const WRITE_METHODS = new Set(['post', 'put', 'patch', 'delete']);
 const warnedMissingLive = new Set<string>();
 
 /** The invalidation tag a live CRUD resource emits: matches `@LiveQuery({ tags: ['crud:<table>'] })`. */
-export const crudLiveTag = (tableName: string): string => `crud:${tableName}`;
+export const crudLiveTag = (tableName: string, database?: string): string =>
+  database === undefined
+    ? `crud:${tableName}`
+    : `crud:database:${JSON.stringify([database, tableName])}`;
 
 export type LiveStamper = (c: Context, result: EngineResult, method: string) => Promise<void>;
 
@@ -40,7 +43,7 @@ export function buildLiveStamper(config: RuntimeCrudConfig): LiveStamper | undef
 
   const tableName = config.model.tableName;
   const live: CrudLiveConfig = typeof config.live === 'object' ? config.live : {};
-  const baseTag = crudLiveTag(tableName);
+  const baseTag = crudLiveTag(tableName, config.database);
   // Nested writes mutate RELATED tables inside parent writes — invalidate
   // their tags on every write too (over-invalidation on nested-free writes is
   // a harmless refetch; missing invalidation is silent staleness).
@@ -49,7 +52,7 @@ export function buildLiveStamper(config: RuntimeCrudConfig): LiveStamper | undef
       (rel) =>
         rel.nestedWrites !== undefined && rel.type !== 'belongsTo' && rel.target !== undefined,
     )
-    .map((rel) => crudLiveTag(rel.target as string));
+    .map((rel) => crudLiveTag(rel.target as string, config.database));
 
   return async (c, result, method) => {
     if (!WRITE_METHODS.has(method.toLowerCase())) return;

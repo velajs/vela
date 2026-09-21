@@ -1,3 +1,4 @@
+import { CrudTransactionScope } from './transaction';
 import type { CursorCodec } from '../query/cursor-codec';
 import { prepareOperation, type AuthorizationPlan, type CommitEvent } from './operation-scope';
 import type { PolicyContext } from '../policies/types';
@@ -43,6 +44,8 @@ export interface ResourcePaginationConfig {
 }
 
 export interface RuntimeResourceConfig {
+  /** Selected database namespace, when registered through CrudModule. */
+  database?: string;
   model: Model;
   contracts?: CrudContracts;
   /** Server-owned mapping from persisted field to parent route parameter. */
@@ -328,6 +331,8 @@ export function compileResource(name: string, config: RuntimeResourceConfig): Cr
           }
         }
       } catch (error) {
+        if (req.transaction instanceof CrudTransactionScope)
+          CrudTransactionScope.fail(req.transaction, error);
         // With a CUSTOM envelope the engine owns error formatting (the
         // envelope's error() shapes the body). Without one, rethrow so the
         // CrudException renders natively through Vela's exception pipeline —

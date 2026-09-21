@@ -1,3 +1,4 @@
+import { CrudTransactionScope } from './transaction';
 /**
  * VERSIONING + AUDIT capture helpers, factored out so the mutation executors
  * stay one-line-ish. Two families, two placements:
@@ -180,7 +181,9 @@ export async function captureAudit(
 ): Promise<void> {
   if (!resource.model.audit) return;
   const store = requireAuditStore(resource);
-  await store.log(buildAuditEntry(resource.model, req, action, parts));
+  const entry = buildAuditEntry(resource.model, req, action, parts);
+  if (req.transaction) CrudTransactionScope.defer(req.transaction, () => store.log(entry));
+  else await store.log(entry);
 }
 
 /**
@@ -196,7 +199,8 @@ export async function captureAuditBatch(
   if (!resource.model.audit || items.length === 0) return;
   const store = requireAuditStore(resource);
   const entries = items.map((item) => buildAuditEntry(resource.model, req, action, item));
-  await store.logBatch(entries);
+  if (req.transaction) CrudTransactionScope.defer(req.transaction, () => store.logBatch(entries));
+  else await store.logBatch(entries);
 }
 
 /** Resolve the primary-key value of a row for batch audit entry building. */

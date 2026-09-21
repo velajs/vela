@@ -18,3 +18,5 @@ export {
 export { executeCreate, executeDelete, executeList, executeRead, executeUpdate } from './verbs';
 export * from './hook-types';
 export { runBeforeChain, runHooks } from './run-hooks';
+
+export { crudTransaction, type CrudTransactionScope } from './transaction';

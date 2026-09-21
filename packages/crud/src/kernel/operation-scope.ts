@@ -13,6 +13,7 @@ import type { EngineRequest } from './engine-request';
 import type { CrudResource } from './resource';
 import { buildHookContext, buildPolicyContext } from './verb-helpers';
 import { parseIdentifier } from './identifier';
+import { CrudTransactionScope } from './transaction';
 
 type Row = Record<string, unknown>;
 export type AuthorizationPlan =
@@ -26,6 +27,7 @@ export type CommitMutation =
     }
   | { readonly operation: 'updateMany'; readonly count: number };
 export interface CommitEvent {
+  readonly database?: string;
   readonly resource: string;
   readonly verb: CrudEndpointName;
   readonly tenantId?: string;
@@ -63,6 +65,15 @@ export async function prepareOperation(
     req = { ...req, id: await parseIdentifier(base, input) };
   }
   const cfg = base.config;
+  if (req.transaction) {
+    if (!(req.transaction instanceof CrudTransactionScope))
+      throw new TypeError('Invalid CRUD transaction');
+    CrudTransactionScope.assert(req.transaction, cfg.adapter, { tenantId: req.vars.tenantId });
+    if (base.model.versioning)
+      throw new TypeError(
+        'Versioning stores cannot join a CRUD transaction; use a transaction-aware native workflow',
+      );
+  }
   const fixed: Row = {};
   if (base.model.tenantField && req.vars.tenantId !== undefined)
     fixed[base.model.tenantField] = req.vars.tenantId;
@@ -146,32 +157,40 @@ export async function prepareOperation(
     context?: Parameters<RuntimeAdapter['requestScope']>[1],
   ): Promise<T> => {
     let mutations: CommitMutation[] = [];
-    const result = await method(async (scope) => {
+    const invoke = async (scope: AdapterScope): Promise<T> => {
       events.set(scope, mutations);
       try {
         return await work(scope);
       } finally {
         events.delete(scope);
       }
-    }, context);
-    if (cfg.afterCommit && mutations.length) {
-      const event: CommitEvent = Object.freeze({
-        resource: base.name,
-        verb,
-        ...(req.vars.tenantId === undefined ? {} : { tenantId: req.vars.tenantId }),
-        mutations: Object.freeze(mutations),
-      });
-      try {
-        await cfg.afterCommit(event);
-      } catch (error) {
+    };
+    const result = req.transaction
+      ? await CrudTransactionScope.join(req.transaction, adapter, context ?? {}, invoke)
+      : await method(invoke, context);
+    const deliver = async (): Promise<void> => {
+      if (cfg.afterCommit && mutations.length) {
+        const event: CommitEvent = Object.freeze({
+          resource: base.name,
+          ...(cfg.database === undefined ? {} : { database: cfg.database }),
+          verb,
+          ...(req.vars.tenantId === undefined ? {} : { tenantId: req.vars.tenantId }),
+          mutations: Object.freeze(mutations),
+        });
         try {
-          if (cfg.onAfterCommitError) await cfg.onAfterCommitError(error, event);
-          else console.error('[crud] committed write delivery failed', error);
-        } catch (reportError) {
-          console.error('[crud] post-commit error reporter failed', reportError);
+          await cfg.afterCommit(event);
+        } catch (error) {
+          try {
+            if (cfg.onAfterCommitError) await cfg.onAfterCommitError(error, event);
+            else console.error('[crud] committed write delivery failed', error);
+          } catch (reportError) {
+            console.error('[crud] post-commit error reporter failed', reportError);
+          }
         }
       }
-    }
+    };
+    if (req.transaction) CrudTransactionScope.defer(req.transaction, deliver);
+    else await deliver();
     return result;
   };
   const wrapped: RuntimeAdapter = {

@@ -18,7 +18,7 @@ export { CrudCtx, type CrudRequestContext } from './crud-context.decorator';
 
 // Module + tokens
 export { CrudModule, CRUD_MODULE_OPTIONS, type CrudModuleOptions } from './crud.module';
-export { CRUD_DEFAULT_ADAPTER, crudResourceToken } from './crud.tokens';
+export { CRUD_DATABASES, CRUD_DEFAULT_ADAPTER, crudResourceToken } from './crud.tokens';
 export {
   defineCrudFeature,
   synthesizeController,
@@ -115,3 +115,15 @@ export type {
 } from './schema/contracts';
 export { defineStandardModel } from './model/standard-model';
 export type { StandardModelConfig, StandardModel } from './model/standard-model';
+
+export { crudTransaction, type CrudTransactionScope } from './kernel/transaction';
+export {
+  defineCrudDatabase,
+  createCrudDatabaseRegistry,
+  CrudDatabaseRegistry,
+  databaseResource,
+  type CrudDatabase,
+  type CrudDatabaseResource,
+} from './databases';
+export { resolveCrudDatabase } from './resolve-database';
+export type { RuntimeCrudConfig } from './crud.types';
