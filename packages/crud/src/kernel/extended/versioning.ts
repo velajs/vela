@@ -1,3 +1,4 @@
+import { rowIdentifier } from '../verb-helpers';
 /**
  * Version-verb family: versionHistory / versionRead / versionCompare /
  * versionRollback. Executors register in `versioningExecutors` and surface
@@ -173,7 +174,6 @@ async function executeVersionHistory(
 ): Promise<EngineResult> {
   const store = versioningStoreOf(resource);
   const record = await requireOwnedRecord(resource, req);
-  const recordId = record[resource.model.primaryKeys[0] ?? 'id'] as string | number;
   const recordKey = versionRecordKeyFor(resource.model, record, req);
 
   const limitRaw = firstParam(req.query, 'limit');
@@ -214,7 +214,7 @@ async function executeVersionRead(
   const store = versioningStoreOf(resource);
   const version = parseVersionParam(req);
   const record = await requireOwnedRecord(resource, req);
-  const recordId = record[resource.model.primaryKeys[0] ?? 'id'] as string | number;
+  const recordId = rowIdentifier(resource, record);
   const recordKey = versionRecordKeyFor(resource.model, record, req);
 
   const entry = await store.get(resource.model.tableName, recordKey, version);
@@ -254,7 +254,7 @@ async function executeVersionCompare(
   const from = parseCompareParam(req, 'from');
   const to = parseCompareParam(req, 'to');
   const record = await requireOwnedRecord(resource, req);
-  const recordId = record[resource.model.primaryKeys[0] ?? 'id'] as string | number;
+  const recordId = rowIdentifier(resource, record);
   const recordKey = versionRecordKeyFor(resource.model, record, req);
 
   const [entryFrom, entryTo] = await Promise.all([
@@ -313,7 +313,7 @@ async function executeVersionRollback(
     await assertReadAllowed(resource, policyCtx, current, lookup.value);
     await assertWriteAllowed(resource, policyCtx, current);
 
-    const recordId = current[model.primaryKeys[0] ?? 'id'] as string | number;
+    const recordId = rowIdentifier(resource, current);
     const recordKey = versionRecordKeyFor(model, current, req);
     const entry = await store.get(model.tableName, recordKey, version);
     if (!entry) throw new NotFoundException(`version ${version}`, String(recordId));

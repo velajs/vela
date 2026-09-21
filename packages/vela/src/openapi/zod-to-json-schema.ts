@@ -1,5 +1,6 @@
 import type { JsonSchema } from './types';
 import { parseJsonSchema } from './json-schema';
+import { standardJsonSchema } from '../validation/standard-schema';
 
 // Zod v4 exposes `schema.toJSONSchema()` on every schema instance — an
 // authoritative, zero-cost converter. We delegate to it when present and
@@ -27,13 +28,25 @@ function stripOpenApiIncompatible(schema: JsonSchema): JsonSchema {
   return out;
 }
 
-export function zodToJsonSchema(schema: unknown): JsonSchema {
+export function zodToJsonSchema(
+  schema: unknown,
+  direction: 'input' | 'output' = 'output',
+): JsonSchema {
   if (!schema || typeof schema !== 'object') return {};
+
+  let standard: unknown;
+  try {
+    standard = standardJsonSchema(schema, direction);
+  } catch {
+    return {};
+  }
+  if (standard !== undefined)
+    return stripOpenApiIncompatible(parseJsonSchema(standard, 'Standard JSON Schema result'));
 
   if ('toJSONSchema' in schema && typeof schema.toJSONSchema === 'function') {
     let result: unknown;
     try {
-      result = schema.toJSONSchema();
+      result = 'schema' in schema ? schema.toJSONSchema(direction) : schema.toJSONSchema();
     } catch {
       // A schema library may not support export (e.g. transforms). Preserve
       // the missing-schema diagnostic rather than inventing its type.

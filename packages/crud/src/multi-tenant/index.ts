@@ -64,6 +64,8 @@ export interface MultiTenantMiddlewareConfig<E extends Env = Env> {
   validate?: (tenantId: string, ctx: Context<E>) => boolean | Promise<boolean>;
   /** @default 'Invalid tenant ID' */
   invalidMessage?: string;
+  /** Compatibility seam for an authoritative tenant service. Return its canonical ID. */
+  admission?: { admit(selector: string, request: Request): Promise<{ readonly id: string }> };
 }
 
 /**
@@ -96,6 +98,7 @@ export function multiTenant<E extends Env = Env>(
     onMissing,
     validate,
     invalidMessage = 'Invalid tenant ID',
+    admission,
   } = options;
 
   // `source: 'custom'` without an extractor would extract undefined on every
@@ -110,7 +113,7 @@ export function multiTenant<E extends Env = Env>(
   // A client-selected tenant id is only a selector, never proof that the
   // caller belongs to that tenant. Make the authorization boundary explicit
   // instead of shipping an insecure header default that silently trusts input.
-  if (source !== 'jwt' && !validate) {
+  if (source !== 'jwt' && !validate && !admission) {
     throw new Error(
       `multiTenant: source '${source}' requires a \`validate\` membership check. ` +
         'Client-provided tenant selectors are never trusted by configuration.',
@@ -138,7 +141,7 @@ export function multiTenant<E extends Env = Env>(
   };
 
   return async (ctx, next) => {
-    const tenantId = await extractors[source](ctx);
+    let tenantId = await extractors[source](ctx);
 
     if (!tenantId) {
       if (required) {
@@ -154,6 +157,7 @@ export function multiTenant<E extends Env = Env>(
         throw new CrudException(invalidMessage, 400, 'INVALID_TENANT');
       }
     }
+    if (admission) tenantId = (await admission.admit(tenantId, ctx.req.raw)).id;
 
     // The key is dynamic (`contextKey`), so this one write stays untyped —
     // the PUBLIC read side is typed via `TenantEnv`.

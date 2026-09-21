@@ -1,3 +1,6 @@
+import { rowIdentifier } from './verb-helpers';
+import type { CursorBinding } from '../query/cursor-codec';
+import { projectPage, responseContract } from './operation-scope';
 /**
  * The five core verb executors (create/read/update/delete/list). Extended
  * verbs live in `./extended/` family modules registered through
@@ -82,7 +85,7 @@ export async function executeCreate(
 ): Promise<EngineResult> {
   const config = resource.config;
   const model = resource.model;
-  const data = parseBody(await createSchemaFor(resource, req), req.body);
+  const data = await parseBody(await createSchemaFor(resource, req), req.body);
 
   if (model.tenantField !== undefined && req.vars?.tenantId !== undefined) {
     data[model.tenantField] = req.vars.tenantId;
@@ -149,7 +152,7 @@ export async function executeCreate(
   }, txCtx(req));
 
   await captureAudit(resource, req, 'create', {
-    recordId: recordId(record, model.primaryKeys[0] ?? 'id'),
+    recordId: rowIdentifier(resource, record),
     record,
   });
 
@@ -197,12 +200,14 @@ export async function executeRead(
   if (!row) throw new NotFoundException(resource.model.name, lookup.value);
   await assertReadAllowed(resource, policyCtx, row, lookup.value);
 
-  const shaped = await shapeOne(resource, policyCtx, req, row);
+  const shaped = await shapeOne(resource, policyCtx, req, row, false);
   let output: unknown = shaped;
   if (config.hooks?.transformRead) {
     const ctx = buildHookContext(req, { tx: undefined });
     output = await config.hooks.transformRead(ctx, shaped);
   }
+  if (config.contracts?.response ?? resource.model.contracts?.response)
+    output = await responseContract(resource, parseRecord(output));
   if (config.etag) {
     const tag = await etagFor(resource, policyCtx, row);
     if (matchesIfNoneMatch(req.request?.headers.get('If-None-Match'), tag)) {
@@ -221,7 +226,7 @@ export async function executeUpdate(
   const model = resource.model;
   const policyCtx = buildPolicyContext(req);
   const lookup = buildLookup(resource, req);
-  const patch = parseBody(await updateSchemaFor(resource, req), req.body);
+  const patch = await parseBody(await updateSchemaFor(resource, req), req.body);
 
   // Nested ops envelopes split off the patch and apply inside the SAME
   // transaction, after the parent row is updated.
@@ -324,7 +329,7 @@ export async function executeUpdate(
   }, txCtx(req));
 
   await captureAudit(resource, req, 'update', {
-    recordId: recordId(current, model.primaryKeys[0] ?? 'id'),
+    recordId: rowIdentifier(resource, current),
     previousRecord: prior,
     record: current,
   });
@@ -404,7 +409,7 @@ export async function executeDelete(
   }, txCtx(req));
 
   await captureAudit(resource, req, 'delete', {
-    recordId: recordId(prior, model.primaryKeys[0] ?? 'id'),
+    recordId: rowIdentifier(resource, prior),
     previousRecord: prior,
   });
 
@@ -420,6 +425,8 @@ export async function executeList(
 
   const parsed = parseListFilters(req.query ?? {}, listParseOptions(resource));
   const scoped = scopeListQuery(resource, req, policyCtx, parsed);
+  const codec = config.pagination?.cursor?.codec;
+  let cursorBinding: CursorBinding | undefined;
   if (scoped.options.cursor !== undefined || scoped.options.limit !== undefined) {
     const fields = [
       ...new Set([
@@ -427,8 +434,24 @@ export async function executeList(
         ...resource.model.primaryKeys,
       ]),
     ];
+    cursorBinding = {
+      resource: resource.name,
+      ordering: fields.map((field) => ({
+        field,
+        direction: scoped.options.order_by_direction ?? 'asc',
+      })),
+      ...(req.vars?.tenantId === undefined ? {} : { tenantId: req.vars.tenantId }),
+      parents: Object.fromEntries(
+        Object.entries(config.collection?.parents ?? {}).map(([field, param]) => [
+          field,
+          req.params?.[param] ?? '',
+        ]),
+      ),
+    };
     const keyset = resolveKeyset(
-      scoped.options.cursor,
+      codec && scoped.options.cursor
+        ? await codec.decode(scoped.options.cursor, cursorBinding)
+        : scoped.options.cursor,
       fields,
       scoped.options.order_by_direction ?? 'asc',
     );
@@ -512,7 +535,16 @@ export async function executeList(
     visiblePage = { ...page, result: readable };
   }
 
-  let rows = await applyComputedFieldsToArray(resource.model, visiblePage.result);
+  if (codec && cursorBinding && visiblePage.result_info.next_cursor)
+    visiblePage.result_info.next_cursor = await codec.encode(
+      visiblePage.result_info.next_cursor,
+      cursorBinding,
+    );
+
+  let rows = await applyComputedFieldsToArray(
+    resource.model,
+    await projectPage(resource, req, visiblePage.result),
+  );
   rows = rows.map((row) => maskFields(policyCtx, row, resource.model.policies));
   rows = applyProfileToArray(resource.model, rows);
   let output: unknown[] = rows;
@@ -524,6 +556,10 @@ export async function executeList(
   if (selection?.isActive && selection.fields.length > 0)
     output = applyFieldSelectionToArray(output.map(parseRecord), selection);
 
+  if (resource.config.contracts?.response ?? resource.model.contracts?.response)
+    output = await Promise.all(
+      output.map((value) => responseContract(resource, parseRecord(value))),
+    );
   let result: Page<unknown> = { result: output, result_info: visiblePage.result_info };
   if (config.hooks?.afterList) {
     const ctx = buildHookContext(req, { tx: undefined });
@@ -541,11 +577,4 @@ function parseRecord(value: unknown): Row {
     throw new Error('CRUD row transforms must return an object');
   }
   return Object.fromEntries(Object.entries(value));
-}
-
-function recordId(row: Row, field: string): string | number {
-  const value = row[field];
-  if (typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value)))
-    return value;
-  throw new Error(`Invalid primary key '${field}' returned by adapter`);
 }

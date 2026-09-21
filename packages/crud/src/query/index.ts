@@ -1,3 +1,11 @@
+export { hmacCursorCodec, type CursorCodec, type CursorBinding } from './cursor-codec';
+export {
+  validatePredicate,
+  matchesPredicate,
+  predicateFilter,
+  type QueryPredicate,
+  type PredicateValue,
+} from './predicate';
 /**
  * Query layer barrel: filter parsing + operator evaluation, sort resolution,
  * field selection, offset/keyset pagination, search scoring + fallback, and

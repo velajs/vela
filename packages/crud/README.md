@@ -142,3 +142,9 @@ tuple ordering, retaining tenant-scoped totals.
 ## License
 
 MIT
+
+## Standard Schema and edge capabilities
+
+See the [edge capabilities guide](../../docs/edge-capabilities.md) for asynchronous
+validation, tenant admission, Cedar authorization, compound IDs, scoped cursors,
+commit hooks, encryption, and backend guarantees.

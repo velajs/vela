@@ -1,3 +1,4 @@
+export type { AuthorizationPlan, CommitEvent, CommitMutation } from './operation-scope';
 /**
  * `@velajs/crud/kernel` — the transport-neutral engine: compiled resources,
  * verb executors, and the hook contract.

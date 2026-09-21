@@ -22,7 +22,9 @@ export interface EngineRequest {
   /** Request body. Validated again by the engine against the derived schema. */
   body?: unknown;
   /** Path id param for point verbs. */
-  id?: string;
+  id?: string | Readonly<Record<string, string | number>>;
+  /** A verified tenant capability supplied by an admitted event/request scope. */
+  tenant?: { requireTenantId(): string };
   /** Additional path params (`:version` on the version verbs). */
   params?: Record<string, string>;
   /** The underlying Web Request, when available (policies/hooks receive it). */

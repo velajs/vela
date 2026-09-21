@@ -1,3 +1,5 @@
+import { lookupFromRow, rowIdentifier } from '../verb-helpers';
+import { deriveCreateSchema } from '../../model/schema-derive';
 /**
  * Point-verb family: restore, clone, upsert. Executors register here and
  * surface through `./registry` — see that file for the composition contract.
@@ -16,8 +18,8 @@
  *    `upsert-restore` cell (match-and-restore).
  */
 
-import type { FilterCondition, ListQuery, Lookup } from '../../adapter/query-types';
-import { ConfigurationException, NotFoundException } from '../../envelope/errors';
+import type { FilterCondition, ListQuery } from '../../adapter/query-types';
+import { ConfigurationException, CrudException, NotFoundException } from '../../envelope/errors';
 import {
   applyManagedInsertFields,
   applyManagedUpdateFields,
@@ -39,7 +41,6 @@ import {
   createSchemaFor,
   parseBody,
   shapeOne,
-  tenantFilters,
   txCtx,
   type AnyResource,
 } from '../verb-helpers';
@@ -100,7 +101,7 @@ async function executeRestore(resource: AnyResource, req: EngineRequest): Promis
   if (!restored) throw new NotFoundException(model.name, lookup.value);
 
   await captureAudit(resource, req, 'restore', {
-    recordId: (restored as Row)[model.primaryKeys[0] ?? 'id'] as string | number,
+    recordId: rowIdentifier(resource, restored),
     record: restored as Row,
   });
 
@@ -131,7 +132,11 @@ async function executeClone(resource: AnyResource, req: EngineRequest): Promise<
 
   // Overrides validate against the create schema made fully optional — the
   // create schema already excludes engine-managed fields (PKs/timestamps/tenant).
-  const overrides = parseBody((await createSchemaFor(resource, req)).partial(), req.body);
+  const overrideSchema =
+    resource.config.contracts?.clone ??
+    resource.model.contracts?.clone ??
+    (resource.config.dto?.create ?? deriveCreateSchema(model)).partial();
+  const overrides = await parseBody(overrideSchema, req.body);
   assertNoNestedWrites(model, overrides, 'clone');
   const fieldsToReset = config.clone?.fieldsToReset ?? [];
   const databaseGeneratedId = config.adapter.capabilities.has('databaseGeneratedId');
@@ -218,7 +223,10 @@ async function executeUpsert(resource: AnyResource, req: EngineRequest): Promise
     );
   }
 
-  const values = parseBody(await createSchemaFor(resource, req), req.body);
+  const values = await parseBody(
+    config.contracts?.upsert ?? model.contracts?.upsert ?? (await createSchemaFor(resource, req)),
+    req.body,
+  );
   assertNoNestedWrites(model, values, 'upsert');
   // Tenant is injected before find + before-hook so a created row is scoped and
   // the find never crosses tenants (hono-crud injects tenant pre-find).
@@ -226,6 +234,37 @@ async function executeUpsert(resource: AnyResource, req: EngineRequest): Promise
     values[model.tenantField] = req.vars.tenantId;
   }
   const databaseGeneratedId = caps.has('databaseGeneratedId');
+
+  if (!caps.has('transactions') && caps.has('scopedUpsert') && adapter.upsertOne) {
+    if (
+      config.hooks?.beforeUpsert ||
+      config.hooks?.afterUpsert ||
+      model.policies?.read ||
+      model.policies?.write ||
+      model.versioning ||
+      model.audit ||
+      model.softDeleteField
+    ) {
+      throw new CrudException(
+        'This upsert requires callback transactions',
+        400,
+        'TRANSACTION_UNSUPPORTED',
+      );
+    }
+    const input = applyManagedInsertFields(model, values, {
+      databaseGeneratedId,
+      tenantId: req.vars?.tenantId,
+    });
+    await assertCreateAllowed(resource, policyCtx, input);
+    const outcome = await adapter.requestScope(
+      (scope) => adapter.upsertOne!({ conflictTarget: keys, values: input }, scope),
+      txCtx(req),
+    );
+    return {
+      status: outcome.created ? 201 : 200,
+      body: envelopeOf(resource).success(await shapeOne(resource, policyCtx, req, outcome.row)),
+    };
+  }
 
   const outcome = await adapter.transaction<{
     record: Row;
@@ -257,7 +296,7 @@ async function executeUpsert(resource: AnyResource, req: EngineRequest): Promise
     if (
       caps.has('upsert') &&
       adapter.upsertOne !== undefined &&
-      model.tenantField === undefined &&
+      (model.tenantField === undefined || caps.has('scopedUpsert')) &&
       model.policies?.create === undefined &&
       model.policies?.read === undefined &&
       model.policies?.write === undefined
@@ -279,12 +318,7 @@ async function executeUpsert(resource: AnyResource, req: EngineRequest): Promise
       // Synthesis UPDATE branch (+ match-and-restore). `adapter.update` is blind
       // to soft-deleted rows, so a deleted match is un-deleted via `restore`
       // FIRST (making it visible), then patched.
-      const pk = model.primaryKeys[0] ?? 'id';
-      const existingLookup: Lookup = {
-        field: pk,
-        value: String(existing[pk]),
-        filters: tenantFilters(resource, req),
-      };
+      const existingLookup = lookupFromRow(resource, req, existing);
       if (isSoftDeleted(model, existing)) {
         if (!caps.has('restore') || adapter.restore === undefined) {
           throw new ConfigurationException(
@@ -325,7 +359,7 @@ async function executeUpsert(resource: AnyResource, req: EngineRequest): Promise
   }, txCtx(req));
 
   await captureAudit(resource, req, 'upsert', {
-    recordId: outcome.record[model.primaryKeys[0] ?? 'id'] as string | number,
+    recordId: rowIdentifier(resource, outcome.record),
     record: outcome.record,
     ...(outcome.previous !== null ? { previousRecord: outcome.previous } : {}),
     metadata: { created: outcome.created },

@@ -25,6 +25,7 @@ import type {
 } from '@velajs/crud/adapter';
 import type { Model } from '@velajs/crud/model';
 import { bindAdapter } from '@velajs/crud/adapter';
+import { matchesPredicate } from '@velajs/crud/query';
 
 /** One untyped row image. */
 export type Row = Record<string, unknown>;
@@ -38,7 +39,9 @@ export class MemoryDb {
   async scoped<T>(fn: (scope: AdapterScope) => Promise<T>, rollback: boolean): Promise<T> {
     const previous = this.#pending;
     let release = () => {};
-    this.#pending = new Promise<void>((resolve) => { release = resolve; });
+    this.#pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     await previous;
     let snapshot: Map<string, Map<string, Row>> | undefined;
     try {
@@ -121,7 +124,15 @@ export function memoryAdapter(
   const capabilities = new Set<AdapterCapability>(['transactions', ...caps]);
 
   const applyFilters = (rows: Row[], filters: FilterCondition[]): Row[] =>
-    filters.reduce((acc, f) => acc.filter((r) => matchFilter(r[f.field], f.operator, f.value)), rows);
+    filters.reduce(
+      (acc, f) =>
+        acc.filter((r) =>
+          f.operator === 'predicate'
+            ? matchesPredicate(r, f.value)
+            : matchFilter(r[f.field], f.operator, f.value),
+        ),
+      rows,
+    );
   const visibleLive = (rows: Row[]): Row[] =>
     sd === undefined ? rows : rows.filter((r) => r[sd] == null);
 

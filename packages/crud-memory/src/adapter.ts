@@ -24,8 +24,10 @@ import {
   cursorValue,
   isAfterKeyset,
 } from '@velajs/crud/query';
+import { matchesPredicate } from '@velajs/crud/query';
 import { matchesFilter } from './filter';
 import { getStore } from './storage';
+import type { MemoryStore } from './transactional';
 
 /**
  * Sentinel scope for memory writes. There is no real transaction machinery:
@@ -54,6 +56,9 @@ export interface MemoryAdapterConfig {
   tableName: string;
   /** Primary key column (default 'id'). Rows are keyed by its string value. */
   primaryKey?: string;
+  primaryKeys?: readonly string[];
+  /** Explicit instance storage; use transactionalMemoryAdapter for rollback. */
+  store?: MemoryStore;
   /** Soft-delete column, when the model soft-deletes. */
   softDeleteField?: string;
   relations?: Record<string, MemoryRelation>;
@@ -67,6 +72,8 @@ export interface MemoryAdapterConfig {
 }
 
 const CAPABILITIES: ReadonlySet<AdapterCapability> = new Set([
+  'structuredPredicates',
+  'nestedPredicates',
   'softDelete',
   'restore',
   'cursor',
@@ -99,8 +106,14 @@ export function memoryAdapter(
         throw new Error('Invalid stored row');
       return Object.fromEntries(Object.entries(value));
     });
-  const primaryKey = config.primaryKey ?? 'id';
-  const table = () => getStore(config.tableName);
+  const keys = config.primaryKeys ?? [config.primaryKey ?? 'id'];
+  const primaryKey = keys[0] ?? 'id';
+  const identity = (row: Row) =>
+    keys.length === 1
+      ? String(row[primaryKey])
+      : JSON.stringify(keys.map((key) => String(row[key])));
+  const storageTable = (name: string) => (config.store ? config.store.table(name) : getStore(name));
+  const table = () => storageTable(config.tableName);
 
   const isSoftDeleted = (row: Record<string, unknown>): boolean =>
     config.softDeleteField !== undefined && row[config.softDeleteField] != null;
@@ -110,14 +123,14 @@ export function memoryAdapter(
     for (const [field, value] of Object.entries(lookup.filters ?? {})) {
       if (String(row[field]) !== value) return false;
     }
-    return true;
+    return !lookup.predicate || matchesPredicate(row, lookup.predicate);
   };
 
   /** Point lookup honoring the PK fast path, extra filters, and visibility. */
   const findOne = (lookup: Lookup, withDeleted: boolean): Row | null => {
     const store = table();
     const candidates =
-      lookup.field === primaryKey
+      lookup.field === primaryKey && keys.length === 1
         ? store.has(lookup.value)
           ? [store.get(lookup.value)!]
           : []
@@ -133,11 +146,16 @@ export function memoryAdapter(
   const nested: NestedWriteDriver<Row> = {
     async inspectNestedTargets(parent, relation, operations, _scope) {
       const rel = requireRelation(config, relation);
-      const relatedStore = getStore(rel.table);
+      const relatedStore = storageTable(rel.table);
       const parentKey = parent[rel.localKey ?? primaryKey];
       const find = (where: Record<string, unknown>, mustBelongToParent: boolean): Row | null => {
         for (const row of relatedStore.values()) {
-          if (!rowMatches(row, where) || !rowMatches(row, operations.targetScope ?? {})) continue;
+          if (
+            !rowMatches(row, where) ||
+            !rowMatches(row, operations.targetScope ?? {}) ||
+            (operations.targetPredicate && !matchesPredicate(row, operations.targetPredicate))
+          )
+            continue;
           if (mustBelongToParent && row[rel.foreignKey] !== parentKey) continue;
           return { ...row };
         }
@@ -161,7 +179,7 @@ export function memoryAdapter(
     },
     async createNested(parent, relation, records, _scope) {
       const rel = requireRelation(config, relation);
-      const relatedStore = getStore(rel.table);
+      const relatedStore = storageTable(rel.table);
       const parentKey = parent[rel.localKey ?? primaryKey];
       for (const record of records) {
         const row = {
@@ -174,10 +192,12 @@ export function memoryAdapter(
     },
     async applyNested(parent, relation, operations: NestedWriteOperations, _scope) {
       const rel = requireRelation(config, relation);
-      const relatedStore = getStore(rel.table);
+      const relatedStore = storageTable(rel.table);
       const parentKey = parent[rel.localKey ?? primaryKey];
       const scopedMatch = (row: Record<string, unknown>, where: Record<string, unknown>): boolean =>
-        rowMatches(row, where) && rowMatches(row, operations.targetScope ?? {});
+        rowMatches(row, where) &&
+        rowMatches(row, operations.targetScope ?? {}) &&
+        (!operations.targetPredicate || matchesPredicate(row, operations.targetPredicate));
 
       for (const record of operations.create ?? []) {
         const row = {
@@ -215,7 +235,7 @@ export function memoryAdapter(
       if (operations.set) {
         // set = disconnect everything, then connect the listed records.
         for (const [id, row] of relatedStore) {
-          if (row[rel.foreignKey] === parentKey && rowMatches(row, operations.targetScope ?? {})) {
+          if (row[rel.foreignKey] === parentKey && scopedMatch(row, {})) {
             relatedStore.set(id, { ...row, [rel.foreignKey]: null });
           }
         }
@@ -232,11 +252,11 @@ export function memoryAdapter(
   const cascade: CascadeDriver = {
     async countRelated(relation, parentKey, _scope) {
       const rel = requireRelation(config, relation);
-      return relatedRows(rel, parentKey).length;
+      return relatedRows(rel, parentKey, storageTable(rel.table)).length;
     },
     async deleteRelated(relation, parentKey, _scope) {
       const rel = requireRelation(config, relation);
-      const store = getStore(rel.table);
+      const store = storageTable(rel.table);
       let count = 0;
       for (const [id, row] of store) {
         if (row[rel.foreignKey] === parentKey) {
@@ -248,7 +268,7 @@ export function memoryAdapter(
     },
     async nullifyRelated(relation, parentKey, _scope) {
       const rel = requireRelation(config, relation);
-      const store = getStore(rel.table);
+      const store = storageTable(rel.table);
       let count = 0;
       for (const [id, row] of store) {
         if (row[rel.foreignKey] === parentKey) {
@@ -263,7 +283,7 @@ export function memoryAdapter(
   const relations: RelationLoader<Row> = {
     async load(rows, relation, loadScope: RelationLoadScope, _scope) {
       const rel = requireRelation(config, relation);
-      const store = getStore(rel.table);
+      const store = storageTable(rel.table);
       // Join value on the RELATED side: FK column for hasOne/hasMany, the
       // target key for belongsTo (parent rows carry the FK).
       const relatedJoinField = rel.type === 'belongsTo' ? (rel.localKey ?? 'id') : rel.foreignKey;
@@ -273,6 +293,7 @@ export function memoryAdapter(
 
       const grouped = new Map<unknown, Array<Record<string, unknown>>>();
       for (const row of store.values()) {
+        if (loadScope.predicate && !matchesPredicate(row, loadScope.predicate)) continue;
         const key = row[relatedJoinField];
         if (!wanted.has(key)) continue;
         if (
@@ -341,7 +362,7 @@ export function memoryAdapter(
 
     async create(input, _scope) {
       const row = parseRow({ ...input });
-      const id = String(row[primaryKey]);
+      const id = identity(row);
       // A duplicate PK must never silently overwrite (reachable since
       // id:'client' hands PK generation to the caller) — conflict like a
       // database unique constraint would.
@@ -366,7 +387,7 @@ export function memoryAdapter(
       const existing = findOne(lookup, false);
       if (!existing) return null;
       const updated = parseRow({ ...existing, ...patch });
-      const existingKey = String(existing[primaryKey]);
+      const existingKey = identity(existing);
       const violated = violatedUnique(updated, existingKey);
       if (violated) {
         throw new ConflictException(`Unique constraint violated on (${violated.join(', ')})`);
@@ -379,7 +400,7 @@ export function memoryAdapter(
       const existing = findOne(lookup, false);
       if (!existing) return null;
       const store = table();
-      const id = String(existing[primaryKey]);
+      const id = identity(existing);
       if (opts.softDeleteField !== undefined) {
         const stamped = parseRow({ ...existing, [opts.softDeleteField]: Date.now() });
         store.set(id, stamped);
@@ -399,7 +420,7 @@ export function memoryAdapter(
       const existing = findOne(lookup, true);
       if (!existing || !isSoftDeleted(existing)) return null;
       const restored = parseRow({ ...existing, [field]: null });
-      table().set(String(existing[primaryKey]), restored);
+      table().set(identity(existing), restored);
       return restored;
     },
 
@@ -456,9 +477,13 @@ function requireRelation(config: MemoryAdapterConfig, relation: string): MemoryR
   return rel;
 }
 
-function relatedRows(rel: MemoryRelation, parentKey: unknown): Array<Record<string, unknown>> {
+function relatedRows(
+  rel: MemoryRelation,
+  parentKey: unknown,
+  store: Map<string, Record<string, unknown>>,
+): Array<Record<string, unknown>> {
   const rows: Array<Record<string, unknown>> = [];
-  for (const row of getStore(rel.table).values()) {
+  for (const row of store.values()) {
     if (row[rel.foreignKey] === parentKey) rows.push(row);
   }
   return rows;
@@ -489,7 +514,9 @@ function runQuery(
   }
 
   for (const filter of query.filters) {
-    items = items.filter((item) => matchesFilter(item[filter.field], filter));
+    items = items.filter((item) =>
+      matchesFilter(filter.operator === 'predicate' ? item : item[filter.field], filter),
+    );
   }
 
   // Inline search: literal substring, case-insensitive (the like/ilike

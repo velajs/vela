@@ -1,3 +1,4 @@
+export type { QueryPredicate, PredicateValue } from '../query/predicate';
 /**
  * `@velajs/crud/adapter` — the contract adapter authors implement.
  */

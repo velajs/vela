@@ -44,3 +44,5 @@ HTTP client, live queries, and Studio in a runnable Workers application.
 - [Contributor guide](../CONTRIBUTING.md): setup, changes, and validation.
 - [Development tooling](tooling.md): compilers, linting, tests, and API docs.
 - [Release guide](../RELEASING.md): versions, package checks, and OIDC publication.
+
+- [Tenant, Cedar, encryption and scoped CRUD](edge-capabilities.md)

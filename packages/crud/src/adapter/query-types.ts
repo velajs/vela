@@ -1,3 +1,4 @@
+import type { QueryPredicate } from '../query/predicate';
 /**
  * Query-side contracts shared by the engine and every adapter.
  *
@@ -55,11 +56,15 @@ export type FilterConfig = {
 };
 
 /** A parsed filter condition, post allow-list validation. */
-export interface FilterCondition {
+export interface FieldFilterCondition {
   field: string;
   operator: FilterOperator;
   value: unknown;
 }
+
+export type FilterCondition =
+  | FieldFilterCondition
+  | { field: ''; operator: 'predicate'; value: QueryPredicate };
 
 /**
  * Compile-time exhaustiveness guard for closed unions: call from a `default`
@@ -169,6 +174,7 @@ export interface Page<T> {
  * scoping arrives merged into `filters`.
  */
 export interface Lookup {
+  predicate?: QueryPredicate;
   /** Lookup column (usually the primary key). */
   field: string;
   value: string;
@@ -192,6 +198,8 @@ export interface DeleteOptions {
 }
 
 export interface UpsertInput<Row> {
+  /** Must constrain the UPDATE leg atomically; unsupported scopes must reject. */
+  scope?: FilterCondition[];
   /** Column(s) whose conflict triggers update-instead-of-insert. */
   conflictTarget: string[];
   values: Partial<Row>;

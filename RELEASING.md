@@ -83,6 +83,11 @@ publication plan unchanged. It checks strict declarations, RAG/mail integration,
 persisted approvals, duplicate delivery, and imports without optional runtime
 peers. Run `node scripts/agent-consumer.mjs /absolute/path/to/artifacts` directly.
 
+The edge-capabilities consumer checks exact tenant, Cedar, crypto, CRUD and adapter
+archives, optional imports, Standard Schema type inference, and Wrangler WASM
+bundling without Node compatibility. It records companion archives by integrity.
+Run `node scripts/edge-consumer.mjs /absolute/artifact/path` independently.
+
 Artifacts live in `.artifacts/release/`. Keep this exact directory
 once publishing begins: rebuilding a partial release changes archive integrity
 and intentionally blocks an ambiguous retry.
@@ -130,6 +135,14 @@ npm's asynchronous registry processing before checking integrity. Keep the exact
 artifacts and journal after an interruption. A different archive at an existing
 version is a hard failure. The pack script refuses to overwrite an existing
 artifact manifest; choose a fresh destination for new builds.
+
+The release workflow preserves a verified `.sigstore.json` provenance bundle beside
+each tested archive before attempting npm publication. Interactive recovery requires
+these CI bundles and passes them to npm's `--provenance-file` verifier; it cannot
+publish unsigned local builds. This also supports first publication of new package
+names, which npm requires before configuring their trusted publisher. The bundle
+generator uses the workflow's pinned npm 11.19.0 implementation; revalidate that
+integration when updating npm.
 
 GitHub retains release artifacts and the consumer proof for 30 days, including
 on failed publication. Do not rebuild a partially published release from changed

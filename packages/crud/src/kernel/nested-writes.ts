@@ -24,6 +24,8 @@ import type { Model } from '../model/model.types';
 import { canCreate, canWrite } from '../policies/evaluate';
 import type { ModelPolicies, PolicyContext } from '../policies/types';
 import type { AnyResource } from './verb-helpers';
+import { matchesPredicate, validatePredicate, type QueryPredicate } from '../query/predicate';
+import type { CrudEndpointName } from '../verb-table';
 
 type Row = Record<string, unknown>;
 
@@ -218,10 +220,31 @@ export async function assertNestedCreatesAllowed(
   policyCtx: PolicyContext,
   records: Row[],
 ): Promise<void> {
-  const policies = relationFor(model, relationName).response?.policies;
+  const relation = relationFor(model, relationName);
+  const policies = relation.response?.policies;
+  const predicate = await nestedPredicate(relation, policyCtx, 'create');
   for (const record of records) {
+    if (predicate && !matchesPredicate(record, predicate)) throw new ForbiddenException();
     if (!(await canCreate(policyCtx, record, policies))) throw new ForbiddenException();
   }
+}
+
+async function nestedPredicate(
+  relation: NonNullable<Model['relations']>[string],
+  context: PolicyContext,
+  verb: CrudEndpointName,
+): Promise<QueryPredicate | undefined> {
+  const authorization = relation.response?.authorization;
+  if (authorization === undefined) return undefined;
+  const plan = await authorization(context, verb);
+  if (!plan || typeof plan !== 'object') throw new TypeError('Invalid nested authorization plan');
+  if (plan.kind === 'allow') return undefined;
+  if (plan.kind === 'deny') throw new ForbiddenException();
+  if (plan.kind !== 'conditional') throw new TypeError('Invalid nested authorization plan');
+  return validatePredicate(
+    plan.predicate,
+    relation.schema ? new Set(Object.keys(relation.schema.shape)) : undefined,
+  );
 }
 
 const INSPECTION_ARRAYS = [
@@ -302,6 +325,29 @@ export async function assertNestedOperationsAllowed(
 ): Promise<void> {
   const relation = relationFor(model, relationName);
   const policies = relation.response?.policies;
+  const predicates: QueryPredicate[] = [];
+  if (operations.delete?.length) {
+    const p = await nestedPredicate(relation, policyCtx, 'delete');
+    if (p) predicates.push(p);
+  }
+  if (
+    operations.update?.length ||
+    operations.connect?.length ||
+    operations.disconnect?.length ||
+    operations.set
+  ) {
+    const p = await nestedPredicate(relation, policyCtx, 'update');
+    if (p) predicates.push(p);
+  }
+  if (predicates.length) operations.targetPredicate = { op: 'and', args: predicates };
+  for (const { data } of operations.update ?? []) {
+    for (const [key, value] of Object.entries(operations.targetScope ?? {}))
+      if (Object.hasOwn(data, key) && !scalarEqual(data[key], value))
+        throw new ForbiddenException();
+    for (const key of [relation.foreignKey, ...(relation.response?.primaryKeys ?? ['id'])])
+      if (Object.hasOwn(data, key))
+        throw new ForbiddenException('Nested updates cannot change identity or parent');
+  }
   const targetSoftDeleteField =
     relation.target === model.tableName
       ? model.softDeleteField
@@ -338,6 +384,11 @@ export async function assertNestedOperationsAllowed(
     { selectors: operations.set ?? [], rows: inspection.setConnect },
   ];
   const targetScope = operations.targetScope ?? {};
+  for (const rows of Object.values(inspection))
+    for (const row of rows) {
+      if (row && operations.targetPredicate && !matchesPredicate(row, operations.targetPredicate))
+        throw new ForbiddenException();
+    }
   for (const { selectors, rows } of aligned) {
     if (selectors.length !== rows.length) {
       throw new ConfigurationException(
@@ -375,6 +426,13 @@ export async function assertNestedOperationsAllowed(
 /** The adapter's nested driver — loud when nesting is configured without it. */
 export function requireNestedDriver(resource: AnyResource): NestedWriteDriver<Row> {
   const adapter = resource.config.adapter;
+  if (
+    Object.values(resource.model.relations ?? {}).some((rel) => rel.response?.authorization) &&
+    (!adapter.capabilities.has('nestedPredicates') || !adapter.capabilities.has('transactions'))
+  )
+    throw new ConfigurationException(
+      'Nested authorization requires transactional predicate support',
+    );
   if (
     !adapter.capabilities.has('nestedWrites') ||
     adapter.nested === undefined ||

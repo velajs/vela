@@ -1,4 +1,4 @@
-import type { ZodObject, ZodRawShape } from 'zod';
+import { validateSchema, type StandardSchemaV1 } from '@velajs/vela';
 import type { RuntimeAdapter } from '../adapter/contract';
 
 type Row = Record<string, unknown>;
@@ -7,11 +7,16 @@ type Row = Record<string, unknown>;
  * Passthrough retains managed, computed and driver extension fields as unknown. */
 export function validateAdapterRows(
   adapter: RuntimeAdapter,
-  schema: ZodObject<ZodRawShape>,
+  schema: StandardSchemaV1,
 ): RuntimeAdapter {
-  const rowSchema = schema.passthrough();
-  const row = (value: unknown): Row => rowSchema.parse(value);
-  const nullable = (value: unknown): Row | null => (value === null ? null : row(value));
+  const row = async (value: unknown): Promise<Row> => {
+    const parsed = await validateSchema(schema, value);
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))
+      throw new TypeError('Persisted row must be a record');
+    return Object.fromEntries(Object.entries(parsed));
+  };
+  const nullable = async (value: unknown): Promise<Row | null> =>
+    value === null ? null : row(value);
   const { restore, createMany, upsertOne, updateWhere, search } = adapter;
   return {
     ...adapter,
@@ -23,7 +28,7 @@ export function validateAdapterRows(
       nullable(await adapter.delete(lookup, options, scope)),
     list: async (query, scope) => {
       const page = await adapter.list(query, scope);
-      return { ...page, result: page.result.map(row) };
+      return { ...page, result: await Promise.all(page.result.map(row)) };
     },
     ...(restore
       ? { restore: async (...args: Parameters<typeof restore>) => nullable(await restore(...args)) }
@@ -31,14 +36,14 @@ export function validateAdapterRows(
     ...(createMany
       ? {
           createMany: async (...args: Parameters<typeof createMany>) =>
-            (await createMany(...args)).map(row),
+            Promise.all((await createMany(...args)).map(row)),
         }
       : {}),
     ...(upsertOne
       ? {
           upsertOne: async (...args: Parameters<typeof upsertOne>) => {
             const result = await upsertOne(...args);
-            return { ...result, row: row(result.row) };
+            return { ...result, row: await row(result.row) };
           },
         }
       : {}),
@@ -46,14 +51,22 @@ export function validateAdapterRows(
       ? {
           updateWhere: async (...args: Parameters<typeof updateWhere>) => {
             const result = await updateWhere(...args);
-            return { ...result, records: result.records?.map(row) };
+            return {
+              ...result,
+              records: result.records ? await Promise.all(result.records.map(row)) : undefined,
+            };
           },
         }
       : {}),
     ...(search
       ? {
           search: async (...args: Parameters<typeof search>) =>
-            (await search(...args)).map((hit) => ({ ...hit, record: row(hit.record) })),
+            Promise.all(
+              (await search(...args)).map(async (hit) => ({
+                ...hit,
+                record: await row(hit.record),
+              })),
+            ),
         }
       : {}),
   };

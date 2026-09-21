@@ -26,7 +26,7 @@ export function buildEngineRequest(
     body: parts.body,
     id: parts.id,
     // Extra path params (`:version` on the version verbs) forwarded verbatim.
-    ...(parts.params !== undefined ? { params: parts.params } : {}),
+    params: { ...c.req.param(), ...parts.params },
     request: c.req.raw,
     vars,
   };

@@ -1,3 +1,4 @@
+import { matchesPredicate } from './predicate';
 /**
  * Query-string filter parsing + in-memory operator evaluation.
  *
@@ -98,7 +99,15 @@ function unknownOperator(_operator: never): false {
  * handling in the memory adapter and in the search / aggregate fallbacks.
  */
 export function matchesFilter(value: unknown, filter: FilterCondition): boolean {
-  switch (filter.operator) {
+  const operator = filter.operator;
+  switch (operator) {
+    case 'predicate':
+      return (
+        typeof value === 'object' &&
+        value !== null &&
+        !Array.isArray(value) &&
+        matchesPredicate(Object.fromEntries(Object.entries(value)), filter.value)
+      );
     case 'eq':
       return String(value) === String(filter.value);
     case 'ne':
@@ -128,7 +137,7 @@ export function matchesFilter(value: unknown, filter: FilterCondition): boolean 
       return Number(value) >= Number(min) && Number(value) <= Number(max);
     }
     default:
-      return unknownOperator(filter.operator);
+      return unknownOperator(operator);
   }
 }
 
@@ -138,7 +147,9 @@ export function applyFilters<T extends Record<string, unknown>>(
   filters: FilterCondition[],
 ): T[] {
   if (filters.length === 0) return rows;
-  return rows.filter((row) => filters.every((f) => matchesFilter(row[f.field], f)));
+  return rows.filter((row) =>
+    filters.every((f) => matchesFilter(f.operator === 'predicate' ? row : row[f.field], f)),
+  );
 }
 
 // ---------------------------------------------------------------------------
