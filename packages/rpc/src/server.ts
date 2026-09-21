@@ -67,7 +67,14 @@ interface Entry {
 /** Adapter instances contain configuration only; each application owns its own registry. */
 export function rpcAdapter(options: RpcAdapterOptions): RuntimeAdapter {
   const path = options.path ?? '/rpc';
-  if (!/^\/(?:[A-Za-z0-9_-]+\/?)*$/.test(path) || path.endsWith('/') || path.includes('//'))
+  // Separate boundary/separator checks from the character scan to avoid
+  // ambiguous segment repetition and backtracking on long invalid paths.
+  if (
+    !path.startsWith('/') ||
+    path.endsWith('/') ||
+    path.includes('//') ||
+    /[^A-Za-z0-9_/-]/.test(path)
+  )
     throw new TypeError('RPC path must be a concrete absolute path without a trailing slash');
   const authorize = options.authorize;
   if (authorize !== 'public' && typeof authorize !== 'function')
