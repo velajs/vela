@@ -22,6 +22,7 @@ import {
   or as drizzleOr,
   sql,
 } from 'drizzle-orm';
+import { CrudException } from '@velajs/crud';
 import { assertNever, type FilterCondition, type QueryPredicate } from '@velajs/crud/adapter';
 import type { DrizzleColumn, DrizzleDialect, DrizzleSql, DrizzleTable } from './database';
 
@@ -215,4 +216,37 @@ export function buildWhere(
   dialect: DrizzleDialect,
 ): DrizzleSql | undefined {
   return andAll(...filters.map((f) => buildWhereCondition(table, f, dialect)));
+}
+
+/** D1's per-statement limit also applies to every member of a batch. */
+export const D1_MAX_BOUND_PARAMETERS = 100;
+
+/** Trusted Drizzle reflection boundary. Count the compiled statement, including
+ * column encoders, fixed predicates, defaults, and pagination parameters. */
+export function queryParameterCount(query: unknown): number {
+  if (
+    !query ||
+    typeof query !== 'object' ||
+    !('toSQL' in query) ||
+    typeof query.toSQL !== 'function'
+  )
+    throw new TypeError('Expected a compilable Drizzle query');
+  const compiled: unknown = query.toSQL();
+  if (
+    !compiled ||
+    typeof compiled !== 'object' ||
+    !('params' in compiled) ||
+    !Array.isArray(compiled.params)
+  )
+    throw new TypeError('Expected Drizzle query parameters');
+  return compiled.params.length;
+}
+
+export function assertD1ParameterCount(count: number): void {
+  if (count > D1_MAX_BOUND_PARAMETERS)
+    throw new CrudException(
+      `D1 query exceeds ${D1_MAX_BOUND_PARAMETERS} bound parameters`,
+      400,
+      'QUERY_PARAMETER_LIMIT',
+    );
 }

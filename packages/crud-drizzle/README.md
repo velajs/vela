@@ -56,3 +56,22 @@ The engine validates them before database access. Direct adapter callers pass
 The SQLite and PostgreSQL legs have regression coverage. MySQL remains
 untested against a real server. D1 tests use a real workerd D1 binding through
 Miniflare (`tests/crud/d1.test.ts` in the workspace).
+
+### D1 query budgets
+
+The adapter checks compiled D1 statements against the [100 bound parameter
+limit](https://developers.cloudflare.com/d1/platform/limits/), including tenant,
+authorization, write values and pagination parameters. Oversized ordinary
+queries and writes fail with `QUERY_PARAMETER_LIMIT` before execution; they are
+not split into separate operations that could change pagination or atomicity.
+Each statement in an atomic upsert is checked before the batch starts.
+
+Relation includes split distinct join keys into bounded `IN` queries. Every
+chunk repeats the complete tenant, authorization and soft-delete scope, and
+results retain the original grouping and page metadata. An authorization
+predicate that consumes the entire budget fails before any relation query.
+
+Use the adapter's `requestScope` or `transaction` callback for direct data calls.
+Adapters sharing the same native Drizzle handle can share an active callback
+scope. Fabricated scopes, foreign handles and scopes retained after the callback
+returns are rejected before accessing the database.

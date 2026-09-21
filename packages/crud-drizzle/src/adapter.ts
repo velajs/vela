@@ -21,6 +21,7 @@ import {
   asc as drizzleAsc,
   desc as drizzleDesc,
   eq,
+  inArray,
   gt,
   lt,
   isNotNull,
@@ -50,6 +51,8 @@ import { ConflictException, CrudException } from '@velajs/crud';
 import { buildKeysetPage } from '@velajs/crud/query';
 import {
   asDatabase,
+  withDrizzleScope,
+  databaseForScope,
   readRow,
   type DrizzleDatabase,
   type DrizzleHandle,
@@ -57,7 +60,17 @@ import {
   type DrizzleSql,
   type DrizzleTable,
 } from './database';
-import { andAll, buildPredicate, buildWhere, getColumn, orAll, substringMatch } from './filters';
+import {
+  assertD1ParameterCount,
+  D1_MAX_BOUND_PARAMETERS,
+  queryParameterCount,
+  andAll,
+  buildPredicate,
+  buildWhere,
+  getColumn,
+  orAll,
+  substringMatch,
+} from './filters';
 
 type Row = Record<string, unknown>;
 
@@ -81,6 +94,9 @@ export interface DrizzleRelation {
 }
 
 interface DrizzleAdapterOptions {
+  /** Shared native transaction boundary (e.g. one Durable Object storage).
+   * Defaults to db. Only share across handles for that same physical boundary. */
+  transactionOwner?: object;
   table: DrizzleTable;
   /** @default 'id' */
   primaryKey?: string;
@@ -179,6 +195,7 @@ export function drizzleAdapter(
   config: DrizzleAdapterConfig & { parseRow?: (value: unknown) => Row },
 ): CrudAdapter<Row> {
   const parseRow = config.parseRow ?? readRow;
+  const owner = config.transactionOwner ?? config.db;
   if (config.atomicUpsert && config.dialect === 'mysql')
     throw new TypeError('Atomic upsert requires SQLite or PostgreSQL');
   if (
@@ -210,7 +227,7 @@ export function drizzleAdapter(
   ): Promise<T> => {
     // Postgres RLS transaction-local settings must still govern reads.
     if (config.onOpenTransaction) return transaction(fn, ctx);
-    return fn({ tx: undefined });
+    return withDrizzleScope(owner, undefined, fn);
   };
   const transaction = async <T>(
     fn: (scope: AdapterScope) => Promise<T>,
@@ -224,7 +241,7 @@ export function drizzleAdapter(
       );
     return rootDb.transaction(async (tx) => {
       if (ctx !== undefined) await config.onOpenTransaction?.(tx, ctx);
-      return fn({ tx });
+      return withDrizzleScope(owner, tx, fn);
     });
   };
   const dialect: DrizzleDialect = config.dialect ?? 'sqlite';
@@ -233,8 +250,14 @@ export function drizzleAdapter(
   const primaryKeys = config.primaryKeys ?? [primaryKey];
   const rootDb = asDatabase(config.db);
 
-  const handle = (scope: AdapterScope): DrizzleDatabase =>
-    scope.tx != null ? asDatabase(scope.tx) : rootDb;
+  const handle = (scope: AdapterScope): DrizzleDatabase => databaseForScope(owner, scope, rootDb);
+
+  // Preserve the fluent builder and its lazy execution. All D1 paths check the
+  // final statement rather than guessing from request/filter field counts.
+  const checked = <T>(query: T): T => {
+    if (config.driver === 'd1') assertD1ParameterCount(queryParameterCount(query));
+    return query;
+  };
 
   const pkColumn = () => getColumn(table, primaryKey);
 
@@ -257,7 +280,7 @@ export function drizzleAdapter(
     db: DrizzleDatabase,
     where: DrizzleSql | undefined,
   ): Promise<Row | null> => {
-    const rows = await db.select().from(table).where(where).limit(1);
+    const rows = await checked(db.select().from(table).where(where).limit(1));
     return rows[0] ? parseRow(rows[0]) : null;
   };
 
@@ -434,10 +457,10 @@ export function drizzleAdapter(
       const grouped = new Map<unknown, Row[]>();
       if (wanted.length === 0) return grouped;
 
-      // WHERE pushdown of the owner scope (tenant + soft-delete exclusion).
-      const conditions = andAll(
+      // Fixed predicates belong to EVERY chunk. Join keys are disjoint, so
+      // concatenating their groups does not change row selection or pagination.
+      const fixed = andAll(
         loadScope.predicate ? buildPredicate(rel.table, loadScope.predicate, dialect) : undefined,
-        orAll(...wanted.map((v) => eq(getColumn(rel.table, relatedJoinField), v))),
         loadScope.tenantField != null && loadScope.tenantValue != null
           ? eq(getColumn(rel.table, loadScope.tenantField), loadScope.tenantValue)
           : undefined,
@@ -445,12 +468,24 @@ export function drizzleAdapter(
           ? isNull(getColumn(rel.table, loadScope.excludeDeletedField))
           : undefined,
       );
-      const related = await db.select().from(rel.table).where(conditions);
-      for (const row of related) {
-        const key = row[relatedJoinField];
-        const bucket = grouped.get(key);
-        if (bucket) bucket.push(row);
-        else grouped.set(key, [row]);
+      let chunkSize = wanted.length;
+      if (config.driver === 'd1') {
+        const fixedCount = queryParameterCount(db.select().from(rel.table).where(fixed));
+        // Even one parent needs one bound value. Fail before issuing any query
+        // if the fixed scope leaves no budget for a join key.
+        assertD1ParameterCount(fixedCount + 1);
+        chunkSize = D1_MAX_BOUND_PARAMETERS - fixedCount;
+      }
+      for (let offset = 0; offset < wanted.length; offset += chunkSize) {
+        const keys = wanted.slice(offset, offset + chunkSize);
+        const conditions = andAll(fixed, inArray(getColumn(rel.table, relatedJoinField), keys));
+        const related = await checked(db.select().from(rel.table).where(conditions));
+        for (const row of related) {
+          const key = row[relatedJoinField];
+          const bucket = grouped.get(key);
+          if (bucket) bucket.push(row);
+          else grouped.set(key, [row]);
+        }
       }
       return grouped;
     },
@@ -458,6 +493,7 @@ export function drizzleAdapter(
 
   return bindAdapter({
     capabilities,
+    transactionOwner: owner,
     ...(config.atomicUpsert !== true
       ? {}
       : {
@@ -500,7 +536,7 @@ export function drizzleAdapter(
                 .set(patch)
                 .where(andAll(where, sql`changes() = 0`))
                 .returning();
-              const result = await db.batch([insert, update]);
+              const result = await db.batch([checked(insert), checked(update)]);
               const created = result[0]?.[0],
                 updated = result[1]?.[0];
               if (!created && !updated)
@@ -529,7 +565,7 @@ export function drizzleAdapter(
           if (!row) throw new Error('drizzleAdapter: created row not found after insert');
           return row;
         }
-        const rows = await db.insert(table).values(input).returning();
+        const rows = await checked(db.insert(table).values(input).returning());
         const created = rows[0];
         if (!created) throw new Error('drizzleAdapter: insert returned no row');
         return parseRow(created);
@@ -547,7 +583,7 @@ export function drizzleAdapter(
       const where = lookupWhere(lookup, false);
       if (dialect !== 'mysql') {
         try {
-          const rows = await db.update(table).set(patch).where(where).returning();
+          const rows = await checked(db.update(table).set(patch).where(where).returning());
           return rows[0] ? parseRow(rows[0]) : null;
         } catch (err) {
           rethrowMapped(err);
@@ -569,12 +605,14 @@ export function drizzleAdapter(
       if (dialect !== 'mysql') {
         const rows =
           opts.softDeleteField !== undefined
-            ? await db
-                .update(table)
-                .set({ [opts.softDeleteField]: Date.now() })
-                .where(where)
-                .returning()
-            : await db.delete(table).where(where).returning();
+            ? await checked(
+                db
+                  .update(table)
+                  .set({ [opts.softDeleteField]: Date.now() })
+                  .where(where)
+                  .returning(),
+              )
+            : await checked(db.delete(table).where(where).returning());
         return rows[0] ? parseRow(rows[0]) : null;
       }
       const existing = await selectOne(db, where);
@@ -594,13 +632,18 @@ export function drizzleAdapter(
       if (config.softDeleteField === undefined) return null;
       const db = handle(scope);
       if (dialect !== 'mysql') {
-        const rows = await db
-          .update(table)
-          .set({ [config.softDeleteField]: null })
-          .where(
-            andAll(lookupWhere(lookup, true), isNotNull(getColumn(table, config.softDeleteField))),
-          )
-          .returning();
+        const rows = await checked(
+          db
+            .update(table)
+            .set({ [config.softDeleteField]: null })
+            .where(
+              andAll(
+                lookupWhere(lookup, true),
+                isNotNull(getColumn(table, config.softDeleteField)),
+              ),
+            )
+            .returning(),
+        );
         return rows[0] ? parseRow(rows[0]) : null;
       }
       // Deleted-aware lookup: match soft-deleted rows too.
@@ -640,11 +683,12 @@ export function drizzleAdapter(
 
       const where = andAll(buildWhere(table, query.filters, dialect), visibility, search);
 
-      const countRows = await db
-        .select({ count: sql`count(*)` })
-        .from(table)
-        .where(where);
-      const totalCount = Number(countRows[0]?.count) || 0;
+      const countQuery = checked(
+        db
+          .select({ count: sql`count(*)` })
+          .from(table)
+          .where(where),
+      );
 
       if (options.cursor !== undefined || (options.limit !== undefined && !options.keyset))
         throw new Error('Adapter cursors must be decoded by the engine');
@@ -684,12 +728,17 @@ export function drizzleAdapter(
           const sort = keyset.direction === 'asc' ? drizzleAsc : drizzleDesc;
           return [sort(sql`case when ${column} is null then 0 else 1 end`), sort(column)];
         });
-        const rows = await db
-          .select()
-          .from(table)
-          .where(andAll(where, boundary))
-          .orderBy(...order)
-          .limit(limit + 1);
+        const pageQuery = checked(
+          db
+            .select()
+            .from(table)
+            .where(andAll(where, boundary))
+            .orderBy(...order)
+            .limit(limit + 1),
+        );
+        const countRows = await countQuery;
+        const totalCount = Number(countRows[0]?.count) || 0;
+        const rows = await pageQuery;
         return buildKeysetPage(limit, rows.map(parseRow), keyset, totalCount);
       }
 
@@ -703,7 +752,10 @@ export function drizzleAdapter(
           options.order_by_direction === 'desc' ? drizzleDesc(column) : drizzleAsc(column),
         );
       }
-      const rows = await builder.limit(perPage).offset((page - 1) * perPage);
+      const pageQuery = checked(builder.limit(perPage).offset((page - 1) * perPage));
+      const countRows = await countQuery;
+      const totalCount = Number(countRows[0]?.count) || 0;
+      const rows = await pageQuery;
       const totalPages = Math.ceil(totalCount / perPage);
       return {
         result: rows.map(parseRow),
@@ -749,7 +801,7 @@ export function drizzleAdapter(
       if (groupBy.length > 0) {
         builder = builder.groupBy(...groupBy.map((g) => getColumn(table, g)));
       }
-      const buckets = await builder;
+      const buckets = await checked(builder);
       const aliases = aggregations.map((agg) => agg.alias ?? deriveAlias(agg.operation, agg.field));
 
       if (groupBy.length === 0) {
@@ -781,7 +833,7 @@ export function drizzleAdapter(
       const where = andAll(buildWhere(table, filters, dialect), visibility);
       if (dialect !== 'mysql') {
         try {
-          const rows = await db.update(table).set(patch).where(where).returning();
+          const rows = await checked(db.update(table).set(patch).where(where).returning());
           return { count: rows.length, records: rows.map(parseRow) };
         } catch (err) {
           rethrowMapped(err);
@@ -817,7 +869,7 @@ export function drizzleAdapter(
           }
           return out;
         }
-        return (await db.insert(table).values(rows).returning()).map(parseRow);
+        return (await checked(db.insert(table).values(rows).returning())).map(parseRow);
       } catch (err) {
         rethrowMapped(err);
       }
