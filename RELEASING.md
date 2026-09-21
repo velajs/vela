@@ -102,6 +102,12 @@ inferred native storage bindings. Missing companion packages are packed for
 verification only. A package's future release must include compatible framework
 peer floors; successful companion checks do not publish those dependencies.
 
+The API-capabilities consumer also installs the exact core, HTTP client, CLI,
+CRUD, and Drizzle adapter archives outside the workspace. It checks form request
+contracts, generated client types, scoped asynchronous caching, and atomic writes
+with audit records. Run it independently with
+`node scripts/api-capabilities-consumer.mjs /absolute/artifact/path`.
+
 Artifacts live in `.artifacts/release/`. Keep this exact directory
 once publishing begins: rebuilding a partial release changes archive integrity
 and intentionally blocks an ambiguous retry.

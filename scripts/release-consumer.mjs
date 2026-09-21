@@ -14,6 +14,7 @@ import { ensureConsumerArchives } from './consumer-companions.mjs';
 import { verifyTestingPackage } from './testing-consumer.mjs';
 import { verifyRpcPackage } from './rpc-consumer.mjs';
 import { verifyGraphqlPackage } from './graphql-consumer.mjs';
+import { verifyApiCapabilities } from './api-capabilities-consumer.mjs';
 
 const root = new URL('../', import.meta.url);
 const artifactDir = resolve(process.argv[2] ?? '.artifacts/release');
@@ -120,6 +121,7 @@ const edgePackages =
 const testingPackage = await verifyTestingPackage(tarballs);
 const rpcPackage = await verifyRpcPackage(tarballs);
 const graphqlPackage = await verifyGraphqlPackage(tarballs);
+const apiCapabilities = await verifyApiCapabilities(tarballs);
 await writeFile(
   join(artifactDir, 'consumer.json'),
   JSON.stringify(
@@ -136,6 +138,7 @@ await writeFile(
       testingPackage,
       rpcPackage,
       graphqlPackage,
+      apiCapabilities,
       consumerCompanions,
       manifestIntegrity: `sha512-${createHash('sha512')
         .update(await readFile(join(artifactDir, 'manifest.json')))
