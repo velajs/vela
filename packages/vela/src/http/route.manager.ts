@@ -52,11 +52,7 @@ import {
   type VelaSecurityOptions,
 } from './security-options';
 
-type MethodRegistrar = (
-  app: HonoApp,
-  path: string,
-  h: (c: Context) => Response | Promise<Response>,
-) => void;
+type MethodRegistrar = (app: HonoApp, path: string, handler: MiddlewareHandler) => void;
 
 /**
  * One explicit controller route as the framework registered it — recorded by
@@ -152,17 +148,20 @@ function disposeStreamWhenDone(
 
 export class RouteManager {
   private static readonly METHOD_REGISTRAR = new Map<string, MethodRegistrar>([
-    [HttpMethod.GET, (app, p, h) => app.get(p, h)],
-    [HttpMethod.POST, (app, p, h) => app.post(p, h)],
-    [HttpMethod.PUT, (app, p, h) => app.put(p, h)],
-    [HttpMethod.PATCH, (app, p, h) => app.patch(p, h)],
-    [HttpMethod.DELETE, (app, p, h) => app.delete(p, h)],
-    [HttpMethod.OPTIONS, (app, p, h) => app.options(p, h)],
+    [HttpMethod.GET, (app, p, handler) => app.get(p, handler)],
+    [HttpMethod.POST, (app, p, handler) => app.post(p, handler)],
+    [HttpMethod.PUT, (app, p, handler) => app.put(p, handler)],
+    [HttpMethod.PATCH, (app, p, handler) => app.patch(p, handler)],
+    [HttpMethod.DELETE, (app, p, handler) => app.delete(p, handler)],
+    [HttpMethod.OPTIONS, (app, p, handler) => app.options(p, handler)],
     [
       HttpMethod.HEAD,
-      (app, p, h) => app.get(p, (c, next) => (c.req.method === 'HEAD' ? h(c) : next())),
+      // Hono dispatches HEAD through GET. Every member of a HEAD chain must
+      // skip ordinary GET requests, including its scoped middleware.
+      (app, p, handler) =>
+        app.get(p, (c, next) => (c.req.method === 'HEAD' ? handler(c, next) : next())),
     ],
-    [HttpMethod.ALL, (app, p, h) => app.all(p, h)],
+    [HttpMethod.ALL, (app, p, handler) => app.all(p, handler)],
   ]);
 
   private controllers: ControllerRegistration[] = [];
@@ -697,21 +696,18 @@ export class RouteManager {
             allParamMetadata,
           );
 
+          const middleware = middlewareItems.map((middlewareItem) =>
+            this.wrapMiddlewareWithFilters((c, next) => {
+              const requestContainer = this.getRequestContainer(c);
+              const resolved = instantiate<NestMiddleware>(middlewareItem, requestContainer);
+              return resolved.use(c, next);
+            }),
+          );
+
           for (const [pathIndex, fullPath] of versionedPaths.entries()) {
-            for (const middlewareItem of middlewareItems) {
-              app.use(
-                fullPath,
-                this.wrapMiddlewareWithFilters((c, next) => {
-                  const requestContainer = this.getRequestContainer(c);
-                  const resolved = instantiate<NestMiddleware>(
-                    middlewareItem as Type<NestMiddleware> | NestMiddleware,
-                    requestContainer,
-                  );
-                  return resolved.use(c, next);
-                }),
-              );
-            }
-            this.registerRoute(app, route.method, fullPath, handler);
+            // Register the onion with its method and terminal handler. A
+            // path-only app.use() also matches sibling methods/controllers.
+            this.registerRoute(app, route.method, fullPath, ...middleware, handler);
             this.routeDescriptions.push({
               method: String(route.method),
               path: fullPath || '/',
@@ -772,14 +768,16 @@ export class RouteManager {
     app: HonoApp,
     method: HttpMethod | string,
     path: string,
-    handler: (c: Context) => Response | Promise<Response>,
+    ...handlers: MiddlewareHandler[]
   ): void {
     const normalizedPath = path || '/';
     const registrar = RouteManager.METHOD_REGISTRAR.get(method);
-    if (registrar) {
-      registrar(app, normalizedPath, handler);
-    } else {
-      app.on(method, normalizedPath, handler);
+    for (const handler of handlers) {
+      if (registrar) {
+        registrar(app, normalizedPath, handler);
+      } else {
+        app.on(method, normalizedPath, handler);
+      }
     }
   }
 

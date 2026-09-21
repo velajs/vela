@@ -174,6 +174,13 @@ class MyModule {
 ## Custom parameter decorators with deferred resolution
 
 Vela runs `middleware → guards → extract args/pipes → interceptors → handler`.
+Controller and handler middleware runs only for its matched HTTP method and route,
+including before/after `await next()` behavior. HEAD retains Hono's GET fallback;
+HEAD-only middleware is skipped for ordinary GET requests. Request-scoped
+controllers are resolved when the handler is invoked, after guards and pipes
+succeed. Singleton construction and bootstrap lifecycle hooks are unchanged.
+Pipeline component construction failures are reported before handler exception
+filters render them; filters are resolved only when an error needs handling.
 An ordinary `createParamDecorator` can read state populated by a guard. Its data
 argument is required when the factory excludes `undefined`: a factory accepting
 `string` produces `@Header('x-id')`; a factory accepting `undefined` supports

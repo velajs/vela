@@ -27,7 +27,7 @@ import type { ArgumentResolver } from './argument-resolver';
 import { getHttpCode, getRedirect, getResponseHeaders } from './decorators';
 import { buildExecutionContext } from './execution-context';
 import { extractEndpointInput, mapEndpointResponse } from './endpoint-executor';
-import { instantiateMany } from './instantiate';
+import { instantiate, instantiateMany } from './instantiate';
 import { applyResponseHeaders, mapRedirect, mapResponse } from './response-mapper';
 import type { ParamMetadata, RouteMetadata } from './types';
 
@@ -44,11 +44,19 @@ export interface HandlerGlobals {
 // post-create additions (`useGlobalGuards`, etc.) propagate to subsequent
 // requests without rebuilding routes.
 export class HandlerExecutor {
+  readonly #argumentResolver: ArgumentResolver;
+  readonly #getGlobals: () => HandlerGlobals;
+  readonly #getRequestContainer: (c: Context) => Container;
+
   constructor(
-    private readonly argumentResolver: ArgumentResolver,
-    private readonly getGlobals: () => HandlerGlobals,
-    private readonly getRequestContainer: (c: Context) => Container,
-  ) {}
+    argumentResolver: ArgumentResolver,
+    getGlobals: () => HandlerGlobals,
+    getRequestContainer: (c: Context) => Container,
+  ) {
+    this.#argumentResolver = argumentResolver;
+    this.#getGlobals = getGlobals;
+    this.#getRequestContainer = getRequestContainer;
+  }
 
   create(
     route: RouteMetadata,
@@ -97,25 +105,8 @@ export class HandlerExecutor {
 
     return async (c: Context) => {
       // Combine global + method at request time so post-create registrations propagate.
-      const requestContainer = this.getRequestContainer(c);
-      const globals = this.getGlobals();
-
-      const guards = [
-        ...instantiateMany<CanActivate>(globals.guards, requestContainer),
-        ...instantiateMany<CanActivate>(methodGuards, requestContainer),
-      ];
-      const pipes = [
-        ...instantiateMany<PipeTransform>(globals.pipes, requestContainer),
-        ...instantiateMany<PipeTransform>(methodPipes, requestContainer),
-      ];
-      const interceptors = [
-        ...instantiateMany<NestInterceptor>(globals.interceptors, requestContainer),
-        ...instantiateMany<NestInterceptor>(methodInterceptors, requestContainer),
-      ];
-      const filters = [
-        ...instantiateMany<ExceptionFilter>(methodFilters, requestContainer),
-        ...instantiateMany<ExceptionFilter>(globals.filters, requestContainer),
-      ];
+      const requestContainer = this.#getRequestContainer(c);
+      const globals = this.#getGlobals();
 
       const executionContext: ExecutionContext = buildExecutionContext(
         c,
@@ -125,16 +116,18 @@ export class HandlerExecutor {
       );
 
       try {
-        const instance = requestContainer.resolve(controller, moduleId);
-        if ((typeof instance !== 'object' || instance === null) && typeof instance !== 'function') {
-          throw new Error(`Controller ${controller.name} did not resolve to an object`);
-        }
-
-        const method: unknown = Reflect.get(instance, route.handlerName);
-        if (typeof method !== 'function') {
-          throw new Error(`Method ${String(route.handlerName)} not found on controller`);
-        }
-
+        const guards = [
+          ...instantiateMany<CanActivate>(globals.guards, requestContainer),
+          ...instantiateMany<CanActivate>(methodGuards, requestContainer),
+        ];
+        const pipes = [
+          ...instantiateMany<PipeTransform>(globals.pipes, requestContainer),
+          ...instantiateMany<PipeTransform>(methodPipes, requestContainer),
+        ];
+        const interceptors = [
+          ...instantiateMany<NestInterceptor>(globals.interceptors, requestContainer),
+          ...instantiateMany<NestInterceptor>(methodInterceptors, requestContainer),
+        ];
         // Guards → args + pipes → interceptor chain → handler, via the shared
         // runner. Authentication/authorization therefore rejects before body
         // parsing and validation work, matching Nest's request lifecycle.
@@ -145,18 +138,34 @@ export class HandlerExecutor {
           resolveArgs: () =>
             endpoint
               ? extractEndpointInput(c, endpoint, pipes)
-              : this.argumentResolver.extract(
+              : this.#argumentResolver.extract(
                   c,
                   paramMetadata,
                   pipes,
                   requestContainer,
                   paramTypes,
                 ),
-          invoke: async (args) => Reflect.apply(method, instance, args),
+          invoke: async (args) => {
+            // Singleton lifecycle is owned by bootstrap. Request-scoped
+            // controllers need not exist when a guard/pipe/interceptor rejects.
+            const instance = requestContainer.resolve(controller, moduleId);
+            if (
+              (typeof instance !== 'object' || instance === null) &&
+              typeof instance !== 'function'
+            ) {
+              throw new Error(`Controller ${controller.name} did not resolve to an object`);
+            }
+
+            const method: unknown = Reflect.get(instance, route.handlerName);
+            if (typeof method !== 'function') {
+              throw new Error(`Method ${String(route.handlerName)} not found on controller`);
+            }
+            return Reflect.apply(method, instance, args);
+          },
         });
 
         if (endpoint) {
-          const response = mapEndpointResponse(c, endpoint, result);
+          const response = await mapEndpointResponse(c, endpoint, result);
           applyResponseHeaders(response, responseHeaders);
           return response;
         }
@@ -175,21 +184,22 @@ export class HandlerExecutor {
         // concern; a filter claiming the error must not make it invisible.
         reporter.report(error, { edge: 'http', source });
 
-        for (const filter of filters) {
-          if (shouldFilterCatch(filter, error)) {
-            try {
+        // Resolve filters only on failure. Construction itself belongs to
+        // this boundary; a broken filter must not hide the original error.
+        for (const entry of [...methodFilters, ...globals.filters]) {
+          try {
+            const filter = instantiate<ExceptionFilter>(entry, requestContainer);
+            if (shouldFilterCatch(filter, error)) {
               const filtered = await filter.catch(error, executionContext);
               return mapResponse(c, filtered);
-            } catch (filterError) {
-              // A broken filter is itself a bug worth logs — then fall through
-              // to the default render instead of silently dying here.
-              reporter.report(filterError, {
-                edge: 'http',
-                source,
-                note: 'exception filter threw',
-              });
-              break;
             }
+          } catch (filterError) {
+            reporter.report(filterError, {
+              edge: 'http',
+              source,
+              note: 'exception filter construction or execution threw',
+            });
+            break;
           }
         }
 
