@@ -184,6 +184,13 @@ filters render them; filters are resolved only when an error needs handling.
 Controller-scoped and handler-scoped middleware, guards, pipes, interceptors,
 and filters resolve asynchronous providers in their declaring module. Parameter
 pipes use the same owner. Application-wide components retain their global scope.
+
+Every HTTP request, including adapter-mounted routes, owns one execution lifetime.
+Inject `EXECUTION_LIFETIME` to register `defer(() => work())` or `waitUntil(promise)`.
+Deferred callbacks start after the middleware/handler chain settles; disposal waits
+for both managed work and response EOF, error, or cancellation. Native Workers
+`waitUntil` retains asynchronous cleanup. HEAD responses cancel their untransmitted
+body before cleanup; WebSocket upgrade responses retain their native fields.
 An ordinary `createParamDecorator` can read state populated by a guard. Its data
 argument is required when the factory excludes `undefined`: a factory accepting
 `string` produces `@Header('x-id')`; a factory accepting `undefined` supports

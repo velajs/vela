@@ -10,6 +10,8 @@ import { contextStorage } from 'hono/context-storage';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { HttpMethod } from '../constants';
 import { HttpException } from '../errors/http-exception';
+import { createExecutionScope, finishExecutionScope } from '../entrypoint/execution-scope';
+import { resolveErrorReporter } from '../exceptions/reporter';
 import { getMetadata } from '../metadata';
 import type { Container } from '../container/container';
 import type { Token, TypedToken, Type } from '../container/types';
@@ -109,41 +111,54 @@ export const DEFAULT_BODY_LIMIT_BYTES = 1024 * 1024;
 // them. Core therefore has no default client identity.
 const defaultGetClientIp = (_c: Context): string | null => null;
 
-// Mirror a response body stream, invoking `onDone` exactly once when it is fully
-// read, errors, or is cancelled. Lets request-scoped resources be disposed only
-// after the body has drained — never mid-stream.
-function disposeStreamWhenDone(
-  body: ReadableStream<Uint8Array>,
-  onDone: () => void,
-): ReadableStream<Uint8Array> {
+// Track the transmitted body without owning the invocation's deferred work.
+// Cancellation finishes only after the producer's cancellation settles, so it
+// can still use request-scoped resources while releasing its own handles.
+function trackResponseStream(body: ReadableStream<Uint8Array>): {
+  body: ReadableStream<Uint8Array>;
+  done: Promise<void>;
+} {
   const reader = body.getReader();
+  const completion = Promise.withResolvers<void>();
   let finished = false;
+  let cancelling = false;
   const finish = (): void => {
-    if (!finished) {
-      finished = true;
-      onDone();
-    }
+    if (finished) return;
+    finished = true;
+    reader.releaseLock();
+    completion.resolve();
   };
-  return new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      try {
-        const { done, value } = await reader.read();
-        if (done) {
-          controller.close();
-          finish();
-          return;
+  return {
+    done: completion.promise,
+    body: new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        try {
+          const { done, value } = await reader.read();
+          if (done) {
+            if (!cancelling) {
+              controller.close();
+              finish();
+            }
+          } else {
+            controller.enqueue(value);
+          }
+        } catch (error) {
+          if (!cancelling) {
+            controller.error(error);
+            finish();
+          }
         }
-        controller.enqueue(value);
-      } catch (error) {
-        controller.error(error);
-        finish();
-      }
-    },
-    cancel(reason) {
-      finish();
-      return reader.cancel(reason);
-    },
-  });
+      },
+      async cancel(reason) {
+        cancelling = true;
+        try {
+          await reader.cancel(reason);
+        } finally {
+          finish();
+        }
+      },
+    }),
+  };
 }
 
 export class RouteManager {
@@ -419,7 +434,7 @@ export class RouteManager {
       return existing;
     }
 
-    const child = this.container.createChild();
+    const { container: child } = createExecutionScope(this.container, { signal: c.req.raw.signal });
     child.setRequestInstance(REQUEST_CONTEXT, createRequestContext(c));
     setRequestContainer(c, child);
     return child;
@@ -535,36 +550,43 @@ export class RouteManager {
     const app = new Hono<VelaHonoEnv>();
     this.routeDescriptions = [];
 
-    // Outermost: dispose the per-request child container once the request is
-    // fully done. Fast-paths out when the child has no request-scoped
-    // disposables (the common case → zero overhead / no behavior change).
-    // Streaming-safe: when a response body is present, disposal is deferred
-    // until the body is fully read (or errors/cancels), never mid-stream.
+    // HTTP owns one lifetime through both response transmission and managed
+    // deferred work. Native waitUntil also retains asynchronous disposal.
     app.use('*', async (c: Context, next: Next) => {
-      let threw = false;
+      // Adapter-mounted routes share this same child even without controllers.
+      const child = this.getRequestContainer(c);
       try {
         await next();
-      } catch (error) {
-        threw = true;
-        throw error;
       } finally {
-        const child = findRequestContainer(c);
-        if (child?.hasDisposables()) {
-          const body = threw ? null : (c.res?.body ?? null);
-          if (body) {
-            // Defer disposal to when the runtime finishes reading the body.
-            c.res = new Response(
-              disposeStreamWhenDone(body, () => void child.dispose()),
-              {
-                status: c.res.status,
-                statusText: c.res.statusText,
-                headers: c.res.headers,
-              },
-            );
-          } else {
-            // No body (or error path) — nothing streaming, dispose now.
-            await child.dispose();
+        const response = c.res;
+        // Hono suppresses HEAD bodies outside the middleware chain. Cancel
+        // the untransmitted producer here instead of awaiting a drain that
+        // can never happen. Native upgrades must retain their Response.
+        if (c.req.method === 'HEAD' && response.body && response.status !== 101) {
+          await finishExecutionScope(child, response.body.cancel());
+        } else if (response.body && response.status !== 101) {
+          const stream = trackResponseStream(response.body);
+          c.res = new Response(stream.body, response);
+          const reporter = resolveErrorReporter(child);
+          const completion = finishExecutionScope(child, stream.done);
+          // Observe failures on portable runtimes as well as Workers. Keep
+          // the original rejecting promise for the native lifetime owner.
+          void completion.catch((error: unknown) => {
+            reporter.report(error, {
+              edge: 'http',
+              source: `${c.req.method} ${c.req.path}`,
+              note: 'request completion failed',
+            });
+          });
+          let executionCtx;
+          try {
+            executionCtx = c.executionCtx;
+          } catch {
+            // Hono throws when invoked without a native execution context.
           }
+          executionCtx?.waitUntil(completion);
+        } else {
+          await finishExecutionScope(child);
         }
       }
     });
