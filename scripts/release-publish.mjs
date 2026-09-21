@@ -46,6 +46,12 @@ const npmEnv = () => ({
   npm_config_cache: resolve('.cache/npm'),
   npm_config_progress: 'false',
 });
+/** npm treats even an explicit provenance=false as conflicting with a file.
+ * A signed bundle is verified by npm; remove only automatic-generation config. */
+export const provenanceFileEnvironment = (environment = process.env) =>
+  Object.fromEntries(
+    Object.entries(environment).filter(([key]) => key.toLowerCase() !== 'npm_config_provenance'),
+  );
 const npm = (args) => execFileSync('npm', args, { encoding: 'utf8', env: npmEnv() });
 export function registryIntegrity(entry) {
   try {
@@ -155,11 +161,13 @@ export async function publishRelease(directory, { dryRun = false, oidc = false }
             'public',
             '--tag',
             oidc ? 'latest' : 'next',
-            '--provenance=false',
             '--provenance-file',
             provenanceFile,
           ],
-          { env: npmEnv(), stdio: oidc ? ['inherit', 'pipe', 'pipe'] : 'inherit' },
+          {
+            env: provenanceFileEnvironment(npmEnv()),
+            stdio: oidc ? ['inherit', 'pipe', 'pipe'] : 'inherit',
+          },
         );
       } catch (error) {
         // A prior process can die after npm accepts the archive but before our
