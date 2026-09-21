@@ -3,7 +3,12 @@ import { createHash } from 'node:crypto';
 import { cp, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { verifyAgentPackage } from './agent-consumer.mjs';
+import { verifyAiPackage } from './ai-consumer.mjs';
 import { verifyNewProject } from './cli-consumer.mjs';
+import { verifyEventSourcePackage } from './event-source-consumer.mjs';
+import { verifyMailPackage } from './mail-consumer.mjs';
+import { verifyWorkflowPackage } from './workflow-consumer.mjs';
 
 const root = new URL('../', import.meta.url);
 const artifactDir = resolve(process.argv[2] ?? '.artifacts/release');
@@ -70,6 +75,23 @@ run('npx', ['--no-install', 'wrangler', 'deploy', '--dry-run', '--outdir', 'work
 const generatedProject = tarballs['@velajs/cli']
   ? await verifyNewProject(join(consumer, 'node_modules/@velajs/cli/dist/index.js'))
   : undefined;
+const eventSourceArchive = artifacts.packages.find(
+  (entry) => entry.name === '@velajs/event-source',
+);
+const eventSource = eventSourceArchive
+  ? await verifyEventSourcePackage(
+      join(artifactDir, eventSourceArchive.filename),
+      eventSourceArchive.integrity,
+    )
+  : undefined;
+const aiPackage = tarballs['@velajs/ai']
+  ? await verifyAiPackage(tarballs['@velajs/ai'].slice('file:'.length))
+  : undefined;
+const workflowConsumer = tarballs['@velajs/workflow']
+  ? await verifyWorkflowPackage(tarballs)
+  : undefined;
+const mailPackage = tarballs['@velajs/mail'] ? await verifyMailPackage(tarballs) : undefined;
+const agentPackage = tarballs['@velajs/agent'] ? await verifyAgentPackage(tarballs) : undefined;
 await writeFile(
   join(artifactDir, 'consumer.json'),
   JSON.stringify(
@@ -77,6 +99,11 @@ await writeFile(
       path: consumer,
       status: 'passed',
       generatedProject,
+      eventSource,
+      agentPackage,
+      aiPackage,
+      workflowConsumer,
+      mailPackage,
       manifestIntegrity: `sha512-${createHash('sha512')
         .update(await readFile(join(artifactDir, 'manifest.json')))
         .digest('base64')}`,

@@ -35,6 +35,9 @@ For development setup, testing, and pull requests, see
 - `tools/tsconfig`: shared compiler configurations.
 - `tests/crud`: cross-adapter conformance; `tests/release`: release safety checks.
 
+The website lives in the separate [velajs/site](https://github.com/velajs/site)
+repository. A local `site/` checkout is ignored and stays outside this workspace.
+
 ## Development
 
 Use Node 24 or later and pnpm 11.11.0. From this directory:
@@ -101,6 +104,7 @@ infer their real output. See [the core type guide](docs/types.md).
 - [Better Auth with D1](apps/auth-lab-d1/README.md)
 - [Studio demonstration](apps/studio-demo/README.md)
 - [Testing harness](apps/lab-testing-harness/README.md)
+- [Inventory from domain history](apps/event-sourcing-inventory/README.md)
 
 Packages use the 1.x release line. The release process and current API
 requirements are in [RELEASING.md](RELEASING.md).

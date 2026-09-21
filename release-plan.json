@@ -1,11 +1,35 @@
 {
-  "version": "1.23.0",
+  "version": "1.0.1",
   "packages": [
     {
-      "name": "@velajs/cli",
-      "path": "packages/cli",
-      "version": "1.23.0",
-      "summary": "See packages/cli/CHANGELOG.md."
+      "name": "@velajs/agent",
+      "path": "packages/agent",
+      "version": "1.0.1",
+      "summary": "See packages/agent/CHANGELOG.md."
+    },
+    {
+      "name": "@velajs/ai",
+      "path": "packages/ai",
+      "version": "1.0.1",
+      "summary": "See packages/ai/CHANGELOG.md."
+    },
+    {
+      "name": "@velajs/event-source",
+      "path": "packages/event-source",
+      "version": "1.0.1",
+      "summary": "See packages/event-source/CHANGELOG.md."
+    },
+    {
+      "name": "@velajs/mail",
+      "path": "packages/mail",
+      "version": "1.0.1",
+      "summary": "See packages/mail/CHANGELOG.md."
+    },
+    {
+      "name": "@velajs/workflow",
+      "path": "packages/workflow",
+      "version": "1.0.1",
+      "summary": "See packages/workflow/CHANGELOG.md."
     }
   ]
 }
