@@ -1,4 +1,4 @@
-import { validateSchema } from '../index';
+import { parseSchemaAsync } from '../index';
 import type { StandardSchemaV1 } from '../index';
 import type { QueueJobDefinition } from './queue.definition';
 import type { AddJobOptions, QueueDriver, QueueJob } from './queue.types';
@@ -44,7 +44,7 @@ export class QueueClient {
       // Keep wire input separate from transformed output. Snapshot before awaiting
       // validation so neither caller nor validator mutations change the sent job.
       wire = structuredClone(data);
-      await validateSchema(jobName.schema, structuredClone(wire));
+      await parseSchemaAsync(jobName.schema, structuredClone(wire));
     }
     const job: QueueJob<T> = {
       id: crypto.randomUUID(),

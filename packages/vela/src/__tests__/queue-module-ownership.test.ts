@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  Catch,
+  UseFilters,
   defineProvider,
   getExecutionLifetime,
   Inject,
@@ -156,5 +158,54 @@ it('resolves an async guard from the processor owner rather than a neighboring m
   const app = await VelaFactory.create(App);
   await dispatchQueueJob(app.getContainer(), app.entrypoints, job);
   expect(seen.toSorted()).toEqual(['left', 'right']);
+  await app.close();
+});
+
+it('routes asynchronous component-construction failures through scoped filters', async () => {
+  const claimed: unknown[] = [];
+  class GuardFailure extends Error {}
+  @Injectable()
+  class BrokenGuard {
+    canActivate() {
+      return true;
+    }
+  }
+  @Catch(GuardFailure)
+  @Injectable()
+  class Filter {
+    catch(error: unknown) {
+      claimed.push(error);
+    }
+  }
+  @Processor('owners')
+  @Injectable()
+  class Consumer {
+    @UseGuards(BrokenGuard)
+    @UseFilters(Filter)
+    @Process()
+    handle() {
+      throw new Error('guard must prevent invocation');
+    }
+  }
+  @Module({
+    providers: [
+      Consumer,
+      Filter,
+      defineProvider(BrokenGuard, {
+        inject: [],
+        scope: Scope.REQUEST,
+        useFactory: async () => {
+          throw new GuardFailure('async guard construction');
+        },
+      }),
+    ],
+  })
+  class App {}
+  const app = await VelaFactory.create(App);
+  await expect(dispatchQueueJob(app.getContainer(), app.entrypoints, job)).resolves.toEqual({
+    handled: 1,
+  });
+  expect(claimed).toHaveLength(1);
+  expect(claimed[0]).toBeInstanceOf(GuardFailure);
   await app.close();
 });

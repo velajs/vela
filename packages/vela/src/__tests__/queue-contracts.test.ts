@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
 import { Module, Injectable, VelaFactory } from '../index';
 import type { StandardSchemaV1 } from '../index';
@@ -146,4 +147,38 @@ describe('validated queue contracts', () => {
     ).resolves.toEqual({ handled: 0 });
     await app.close();
   });
+});
+
+it('runs an async Zod transform once per producer and consumer boundary', async () => {
+  let calls = 0;
+  const definition = defineQueueJob(
+    'async-transform',
+    z.string().transform(async (wire) => {
+      calls++;
+      await Promise.resolve();
+      return Number(wire);
+    }),
+  );
+  const seen: number[] = [];
+  @Injectable()
+  @Processor('transform')
+  class Consumer {
+    @Process(definition) handle(job: QueueJob<QueueJobOutput<typeof definition>>) {
+      seen.push(job.data);
+    }
+  }
+  const driver = inline({ mode: 'manual' });
+  @Module({
+    imports: [QueueModule.forRoot({ queues: ['transform'], driver })],
+    providers: [Consumer],
+  })
+  class App {}
+  const app = await VelaFactory.create(App);
+  const accepted = await app.get(queueToken('transform')).add(definition, '12');
+  expect(calls).toBe(1);
+  expect(accepted.data).toBe('12');
+  await driver.flush();
+  expect(calls).toBe(2);
+  expect(seen).toEqual([12]);
+  await app.close();
 });

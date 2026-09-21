@@ -54,10 +54,10 @@ export class QueueDispatchBinding {
           'Queue driver already belongs to an application. Use a driver factory for isolated reuse.',
         );
       }
-      const unbind = driver.bind((job) => this.#deliver(job), {
+      driver.bind((job) => this.#deliver(job), {
         onError: (error, job) => this.#routeError(error, job),
       });
-      this.#unbind = typeof unbind === 'function' ? unbind : undefined;
+      this.#unbind = () => driver.unbind?.();
       ownedDrivers.add(driver);
     }
   }

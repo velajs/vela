@@ -7,9 +7,9 @@ import {
   resolveScopedComponentsAsync,
   runInEntrypointScope,
   shouldFilterCatch,
-  validateSchema,
+  parseSchemaAsync,
 } from '../index';
-import type { Container, EntrypointRegistry, Token, Type } from '../index';
+import type { Container, EntrypointRegistry, ExceptionFilter, Token, Type } from '../index';
 import { getProcessHandlers, readProcessorMetadata } from './queue.decorators';
 import type { ProcessMetadata, ProcessorMetadata, QueueJob } from './queue.types';
 
@@ -160,39 +160,39 @@ async function dispatchToProcessor(
       scope,
     );
 
-    const guards = await resolveScopedComponentsAsync(
-      'guard',
-      processorClass,
-      handler.methodName,
-      scope,
-      moduleId,
-    );
-    const interceptors = await resolveScopedComponentsAsync(
-      'interceptor',
-      processorClass,
-      handler.methodName,
-      scope,
-      moduleId,
-    );
-    // Closest-first: handler/class filters reversed by the caller (WS/CF convention).
-    const filters = (
-      await resolveScopedComponentsAsync(
-        'filter',
+    let filters: ExceptionFilter[] = [];
+    try {
+      // Closest-first, matching native queue filter semantics.
+      filters = (
+        await resolveScopedComponentsAsync(
+          'filter',
+          processorClass,
+          handler.methodName,
+          scope,
+          moduleId,
+        )
+      ).toReversed();
+      const guards = await resolveScopedComponentsAsync(
+        'guard',
         processorClass,
         handler.methodName,
         scope,
         moduleId,
-      )
-    ).toReversed();
-
-    try {
+      );
+      const interceptors = await resolveScopedComponentsAsync(
+        'interceptor',
+        processorClass,
+        handler.methodName,
+        scope,
+        moduleId,
+      );
       await PipelineRunner.run({
         context,
         guards,
         interceptors,
         resolveArgs: async () => [
           handler.schema
-            ? { ...job, data: await validateSchema(handler.schema, structuredClone(job.data)) }
+            ? { ...job, data: await parseSchemaAsync(handler.schema, structuredClone(job.data)) }
             : job,
         ],
         invoke: async (args) => {

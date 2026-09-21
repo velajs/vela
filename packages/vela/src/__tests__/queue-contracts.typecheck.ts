@@ -37,3 +37,11 @@ const zodOutput: QueueJobOutput<typeof zodJob> = { value: 42 };
 const badZodOutput: QueueJobOutput<typeof zodJob> = { value: '42' };
 void zodOutput;
 void badZodOutput;
+
+// Legacy bind implementations may return ignored values; the void contract stays intact.
+const legacyDriver: import('../queue').QueueDriver = {
+  kind: 'legacy',
+  enqueue: async () => {},
+  bind: () => 42,
+};
+void legacyDriver;

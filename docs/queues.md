@@ -86,12 +86,13 @@ trusted principal or tenant identity.
 ## Cloudflare bridge
 
 Native `Queue<T>` bindings and `@QueueConsumer` remain independently usable. The
-optional helpers connect native delivery to portable processors:
+optional `@velajs/cloudflare/queue` helpers connect native delivery to portable processors:
 
 ```ts
 import { Container, EntrypointRegistry, Inject, Injectable } from '@velajs/vela';
 import { QueueModule, dispatchQueueJob } from '@velajs/vela/queue';
-import { cloudflareQueueDriver, consumeQueueBatch, QueueConsumer } from '@velajs/cloudflare';
+import { QueueConsumer } from '@velajs/cloudflare';
+import { cloudflareQueueDriver, consumeQueueBatch } from '@velajs/cloudflare/queue';
 
 // ENV is an InjectionToken for the native Workers environment.
 QueueModule.forRootAsync({

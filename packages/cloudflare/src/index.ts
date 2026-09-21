@@ -106,10 +106,3 @@ export type {
 // Strict global single-use nonces (SQLite Durable Object)
 export { durableObjectNonceStore } from './nonce/index';
 export type { DurableObjectNonceNamespace, DurableObjectNonceStoreOptions } from './nonce/index';
-
-export { cloudflareQueueDriver, consumeQueueBatch } from './queue/cloudflare-queue';
-export type {
-  CloudflareQueueBindings,
-  CloudflareQueueProducer,
-  ConsumeQueueBatchOptions,
-} from './queue/cloudflare-queue';

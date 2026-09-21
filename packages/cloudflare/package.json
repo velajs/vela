@@ -43,7 +43,14 @@
     "./durable-objects": {
       "types": "./dist/durable-objects.d.ts",
       "import": "./dist/durable-objects.js"
+    },
+    "./queue": {
+      "types": "./dist/queue.d.ts",
+      "import": "./dist/queue.js"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsdown",
@@ -88,8 +95,5 @@
   },
   "engines": {
     "node": ">=24"
-  },
-  "publishConfig": {
-    "access": "public"
   }
 }

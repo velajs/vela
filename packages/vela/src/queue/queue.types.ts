@@ -44,7 +44,9 @@ export interface QueueDriverBindHooks {
 export interface QueueDriver {
   readonly kind: string;
   enqueue(job: QueueJob, options?: AddJobOptions): Promise<void>;
-  bind?(dispatch: QueueDispatchFn, hooks?: QueueDriverBindHooks): void | (() => void);
+  bind?(dispatch: QueueDispatchFn, hooks?: QueueDriverBindHooks): void;
+  /** Release an application's binding at disposal. Optional for legacy drivers. */
+  unbind?(): void;
 }
 
 /**

@@ -76,7 +76,7 @@ export function inline(options: InlineQueueOptions = {}): InlineQueueDriver {
       deliverDetached(job);
     },
 
-    bind(fn: QueueDispatchFn, hooks?: QueueDriverBindHooks): () => void {
+    bind(fn: QueueDispatchFn, hooks?: QueueDriverBindHooks): void {
       if (dispatch || closed) {
         throw new Error(
           'inline() driver already belongs to an application. Use driver: () => inline() for isolated reuse.',
@@ -87,12 +87,13 @@ export function inline(options: InlineQueueOptions = {}): InlineQueueDriver {
       if (mode === 'immediate' && buffer.length > 0) {
         for (const job of buffer.splice(0)) deliverDetached(job);
       }
-      return () => {
-        closed = true;
-        dispatch = undefined;
-        onError = undefined;
-        buffer.length = 0;
-      };
+    },
+
+    unbind(): void {
+      closed = true;
+      dispatch = undefined;
+      onError = undefined;
+      buffer.length = 0;
     },
 
     async flush(): Promise<number> {
