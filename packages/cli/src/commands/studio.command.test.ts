@@ -96,4 +96,23 @@ describe('vela studio', () => {
     // It reached the lazy import (URL + port validation passed) before failing.
     expect(result.stderr).not.toContain('valid origin');
   });
+
+  it.each(['4000junk', '1.5', '1e3', '0x10', '-1', '65536', '', ' 4000'])(
+    'rejects invalid port %j before loading the optional host',
+    async (port) => {
+      const result = await runStudio(['--url', 'http://127.0.0.1:9999', `--port=${port}`], true);
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain('--port must be a decimal integer');
+      expect(result.stderr).not.toContain('needs the optional');
+    },
+  );
+
+  it.each(['0', '4000', '65535'])(
+    'accepts decimal port %s and reaches optional-host loading',
+    async (port) => {
+      const result = await runStudio(['--url', 'http://127.0.0.1:9999', `--port=${port}`], true);
+      expect(result.stderr).toContain('needs the optional');
+      expect(result.stderr).not.toContain('--port must');
+    },
+  );
 });

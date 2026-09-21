@@ -9,6 +9,7 @@ const files = [
   'tsconfig.json',
   '.swcrc',
   'wrangler.jsonc',
+  'vela.config.mjs',
   'gitignore',
   'README.md',
   'src/worker.ts',

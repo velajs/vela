@@ -21,7 +21,8 @@ interface StudioHostModule {
 
 /** True for a failed dynamic `import()` of a missing module (ESM or CJS code). */
 function isModuleNotFound(error: unknown, specifier: string): boolean {
-  const code = (error as { code?: string }).code;
+  const code =
+    error !== null && typeof error === 'object' && 'code' in error ? error.code : undefined;
   if (code === 'ERR_MODULE_NOT_FOUND' || code === 'MODULE_NOT_FOUND') {
     return true;
   }
@@ -88,10 +89,10 @@ export class StudioCommand extends Command {
 
     let port: number | undefined;
     if (this.port !== undefined) {
-      port = Number.parseInt(this.port, 10);
-      if (Number.isNaN(port) || port < 0 || port > 65_535) {
+      port = Number(this.port);
+      if (!/^\d+$/.test(this.port) || !Number.isInteger(port) || port < 0 || port > 65_535) {
         this.context.stderr.write(
-          `vela studio: --port must be a number 0-65535, got: ${this.port}\n`,
+          `vela studio: --port must be a decimal integer 0-65535, got: ${this.port}\n`,
         );
         return 1;
       }

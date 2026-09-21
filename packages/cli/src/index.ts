@@ -12,6 +12,7 @@ import { SeedCommand } from './commands/seed.command.js';
 import { StudioCommand } from './commands/studio.command.js';
 import { ClientGenerateCommand } from './commands/client.command.js';
 import { NewCommand } from './commands/new.command.js';
+import { DoctorCommand } from './commands/doctor.command.js';
 
 const cli = new Cli({
   binaryName: 'vela',
@@ -30,6 +31,7 @@ cli.register(OpenApiDumpCommand);
 cli.register(McpServeCommand);
 cli.register(StudioCommand);
 cli.register(ClientGenerateCommand);
+cli.register(DoctorCommand);
 
 void cli.runExit(process.argv.slice(2));
 
@@ -44,6 +46,7 @@ export {
 export { McpServeCommand } from './commands/mcp.command.js';
 export { StudioCommand } from './commands/studio.command.js';
 export { ClientGenerateCommand } from './commands/client.command.js';
+export { DoctorCommand } from './commands/doctor.command.js';
 export { generateClientContract } from './client-contract.js';
 export type { GeneratedClientContract } from './client-contract.js';
 export {
@@ -54,6 +57,6 @@ export {
 } from './introspect.js';
 export type { RouteRow, EntrypointRow } from './introspect.js';
 export { renderTable } from './format.js';
-export { loadConfig, defineVelaConfig } from './config.js';
-export type { VelaConfig } from './config.js';
+export { loadConfig, defineVelaConfig, resolveConfig } from './config.js';
+export type { VelaConfig, ConfigResolution } from './config.js';
 export { formatSeedResults } from './format.js';
