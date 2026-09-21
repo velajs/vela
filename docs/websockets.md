@@ -415,3 +415,26 @@ and malformed records fail closed. Application `data` still needs its own schema
 a generic `WsClient<TData>` type is not runtime validation. Attachments retain the
 16 KiB platform limit; use DO storage for larger state. Send queues and invocation
 containers are never serialized.
+
+### Invocation scope
+
+Gateways default to singleton scope. Stack `@Injectable({ scope: Scope.REQUEST })`
+with `@WebSocketGateway()` for a new gateway instance on each connection hook,
+message, and disconnect hook. Keep durable connection state in `client.data`
+and rooms; request-scoped gateway fields last for one invocation. `afterInit`
+runs once for each resolved gateway instance before its callback runs.
+
+A message's guards, body pipes, interceptors, exception filters, and gateway
+resolve asynchronously in the same child container and retain their declaring
+module's provider bindings. A rejected guard does not construct the request-scoped
+gateway. `context.getContainer()` exposes that child; managed work registered
+through its execution lifetime settles before request-scoped providers dispose.
+No HTTP request context is synthesized for a socket callback. Body pipes prefer
+the optional `transformAsync` entry point, so async schema transforms run once.
+
+Reserved handlers receive the same invocation context as an optional fourth
+argument. Live subscriptions and each refresh share a child between authorization
+and resolver execution. Discovery includes request-scoped and lazy providers;
+registering the same gateway or reserved handler in multiple module owners fails
+instead of selecting an owner's dependencies implicitly. Live query names must
+be unique across owners.

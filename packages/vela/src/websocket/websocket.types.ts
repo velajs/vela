@@ -165,7 +165,12 @@ export interface ReservedWsEventMetadata {
  * every closing socket so the handler can drop per-connection state.
  */
 export interface ReservedWsEventHandler {
-  handleReservedEvent(path: string, client: WsClient, message: WsMessage): void | Promise<void>;
+  handleReservedEvent(
+    path: string,
+    client: WsClient,
+    message: WsMessage,
+    context?: WsExecutionContext,
+  ): void | Promise<void>;
   handleSocketClose?(path: string, client: WsClient): void | Promise<void>;
 }
 
