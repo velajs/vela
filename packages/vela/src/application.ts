@@ -29,7 +29,7 @@ export class VelaApplication {
   private instances: unknown[] = [];
   private honoApp: Hono | null = null;
   private entrypointRegistry: EntrypointRegistry | null = null;
-  private disposed = false;
+  #disposal: Promise<void> | undefined;
   private readonly lazyManager: LazyModuleManager | undefined;
   // Identity guard for the instance flow: a token registered by BOTH a lazy
   // and an eager module reaches us through the eager pass AND the absorbed
@@ -396,13 +396,28 @@ export class VelaApplication {
    * On runtimes/TS supporting explicit resource management this is also exposed
    * as `Symbol.asyncDispose`, enabling `await using app = await VelaFactory.create(...)`.
    */
-  async dispose(signal?: string): Promise<void> {
-    // Idempotent: `await using` + an explicit dispose(), or repeated shutdown
-    // signals, must not re-run shutdown lifecycle hooks.
-    if (this.disposed) return;
-    this.disposed = true;
-    await this.close(signal);
-    await this.container.dispose();
+  dispose(signal?: string): Promise<void> {
+    // Share completion, including a failure, with every concurrent shutdown caller.
+    this.#disposal ??= Promise.resolve().then(async () => {
+      const failures: unknown[] = [];
+      try {
+        await this.close(signal);
+      } catch (error) {
+        failures.push(error);
+      }
+      try {
+        await this.container.dispose();
+      } catch (error) {
+        failures.push(error);
+      }
+      if (failures.length === 1) throw failures[0];
+      if (failures.length > 1)
+        throw new AggregateError(failures, 'Application cleanup failed', {
+          cause: failures[0],
+        });
+      return undefined;
+    });
+    return this.#disposal;
   }
 }
 

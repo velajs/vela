@@ -12,7 +12,7 @@ import {
   type Token,
   type Type,
 } from '@velajs/vela';
-import { MetadataRegistry, VelaApplication, bootstrap } from '@velajs/vela/internal';
+import { MetadataRegistry, bootstrap, finalizeApplication } from '@velajs/vela/internal';
 import { TestingModule } from './testing-module.js';
 
 interface OverrideEntry {
@@ -54,9 +54,12 @@ export class OverrideBy<Key extends Token> {
 }
 
 export class TestingModuleBuilder {
-  private overrides: OverrideEntry[] = [];
+  #overrides: OverrideEntry[] = [];
+  readonly #metadata: ModuleOptions;
 
-  constructor(private readonly metadata: ModuleOptions) {}
+  constructor(metadata: ModuleOptions) {
+    this.#metadata = metadata;
+  }
 
   overrideProvider<const Key extends Token>(token: OverrideToken<Key>): OverrideBy<Key> {
     return new OverrideBy<Key>((provider) => {
@@ -90,27 +93,28 @@ export class TestingModuleBuilder {
   }
 
   private addOverride(entry: OverrideEntry): void {
-    const idx = this.overrides.findIndex((o) => o.token === entry.token);
+    const idx = this.#overrides.findIndex((o) => o.token === entry.token);
     if (idx !== -1) {
-      this.overrides[idx] = entry;
+      this.#overrides[idx] = entry;
     } else {
-      this.overrides.push(entry);
+      this.#overrides.push(entry);
     }
   }
 
   async compile(): Promise<TestingModule> {
     class TestRootModule {}
     MetadataRegistry.setModuleOptions(TestRootModule, {
-      imports: this.metadata.imports,
-      providers: this.metadata.providers,
-      controllers: this.metadata.controllers,
-      exports: this.metadata.exports,
+      imports: this.#metadata.imports,
+      providers: this.#metadata.providers,
+      controllers: this.#metadata.controllers,
+      exports: this.#metadata.exports,
     });
 
     // Use the framework's single bootstrap primitive. Hand-copying its
     // registrations caused test applications to drift from production (most
     // critically REQUEST_CONTEXT token/request-child behavior).
-    const { container, routeManager, loader } = await bootstrap(TestRootModule);
+    const prepared = await bootstrap(TestRootModule);
+    const { container } = prepared;
 
     // Force-apply overrides into every module bucket that already holds the
     // token (plus root). Without this, controller constructor-injection (which
@@ -118,17 +122,11 @@ export class TestingModuleBuilder {
     // registration first and never consults the root override. The default
     // 'all-existing' buckets replace every non-root bucket holding the token
     // and re-register at root — the supported form of the old private loop.
-    for (const override of this.overrides) {
+    for (const override of this.#overrides) {
       container.replaceProvider(override.provider);
     }
 
-    const app = new VelaApplication(container, routeManager);
-    const instances = await loader.resolveAllInstances();
-    app.setInstances(instances);
-
-    await app.callOnModuleInit();
-    await app.callOnApplicationBootstrap();
-    await app.initRoutes();
+    const app = await finalizeApplication(prepared);
 
     return new TestingModule(app, container);
   }

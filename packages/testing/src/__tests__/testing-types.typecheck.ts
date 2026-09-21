@@ -89,3 +89,26 @@ async function responseContracts(response: TestResponse): Promise<void> {
 }
 
 void [providerContracts, responseContracts];
+
+interface DatabasePort {
+  read(id: string): Promise<string>;
+}
+class Database implements DatabasePort {
+  #prefix = 'record';
+  async read(id: string): Promise<string> {
+    return `${this.#prefix}:${id}`;
+  }
+}
+const DATABASE = new InjectionToken<DatabasePort>('database-port');
+const databaseFake = { read: async (id: string) => id } satisfies DatabasePort;
+const portBuilder = Test.createTestingModule({
+  providers: [defineProvider(DATABASE, { useClass: Database })],
+});
+portBuilder.overrideProvider(DATABASE).useValue(databaseFake);
+portBuilder
+  .overrideProvider(DATABASE)
+  .useFactory({ inject: [], factory: async () => databaseFake });
+// @ts-expect-error A fake must implement the whole injected port.
+portBuilder.overrideProvider(DATABASE).useValue({});
+// @ts-expect-error Return values must honor the port, including asynchronous results.
+portBuilder.overrideProvider(DATABASE).useValue({ read: () => 'unvalidated' });

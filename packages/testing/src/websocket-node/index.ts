@@ -15,6 +15,8 @@
  * WebSockets are exercised via `@velajs/cloudflare` + the workerd pool, not
  * this adapter.
  */
+import type { Server } from 'node:http';
+import type { Socket } from 'node:net';
 import type { VelaApplication } from '@velajs/vela';
 import type { UpgradeWebSocket } from 'hono/ws';
 import type { TestingModule } from '../testing-module.js';
@@ -27,12 +29,13 @@ interface NodeServerModule {
   serve: (
     options: { fetch: unknown; port: number },
     onListening?: (info: { port: number }) => void,
-  ) => unknown;
+  ) => Server;
 }
 interface NodeWsModule {
   createNodeWebSocket: (options: { app: unknown }) => {
     injectWebSocket: (server: unknown) => void;
     upgradeWebSocket: UpgradeWebSocket;
+    wss?: { close(callback: (error?: Error) => void): void };
   };
 }
 interface VelaWsNodeModule {
@@ -80,25 +83,66 @@ async function ensureServer(module: TestingModule): Promise<RunningServer> {
     const app = await module.createApplication();
     const hono = app.getHonoApp();
 
-    const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app: hono });
+    const { injectWebSocket, upgradeWebSocket, wss } = createNodeWebSocket({ app: hono });
     registerWebSocketGateways(app, upgradeWebSocket);
 
-    const { server, port } = await new Promise<{ server: unknown; port: number }>((resolve) => {
-      const s = serve({ fetch: hono.fetch, port: 0 }, (info) => {
-        resolve({ server: s, port: info.port });
+    const sockets = new Set<Socket>();
+    let server: Server | undefined;
+    const cleanup = async (): Promise<void> => {
+      serversByModule.delete(module);
+      // Upgraded sockets are not closed by HTTP server.close(). Track all sockets.
+      for (const socket of sockets) socket.destroy();
+      const outcomes = await Promise.allSettled([
+        new Promise<void>((resolve, reject) => {
+          if (!server?.listening) return resolve();
+          server.close((error) => {
+            if (error) reject(error);
+            else resolve();
+          });
+        }),
+        new Promise<void>((resolve, reject) => {
+          if (!wss) return resolve();
+          wss.close((error) => {
+            if (error) reject(error);
+            else resolve();
+          });
+        }),
+      ]);
+      const failures = outcomes.flatMap((outcome) =>
+        outcome.status === 'rejected' ? [outcome.reason] : [],
+      );
+      if (failures.length === 1) throw failures[0];
+      if (failures.length > 1)
+        throw new AggregateError(failures, 'WebSocket server cleanup failed');
+    };
+    try {
+      const port = await new Promise<number>((resolve, reject) => {
+        server = serve({ fetch: hono.fetch, port: 0 }, (info) => resolve(info.port));
+        server.on('error', reject);
+        server.on('connection', (socket) => {
+          sockets.add(socket);
+          socket.on('close', () => sockets.delete(socket));
+        });
       });
-    });
-
-    injectWebSocket(server);
-    // Never let the test server keep the process alive; the runtime reclaims it
-    // on exit. Tests don't need an explicit server teardown hook this way.
-    (server as { unref?: () => void }).unref?.();
-
-    return { port };
+      if (!server) throw new Error('WebSocket test server did not start');
+      injectWebSocket(server);
+      // Guard a close racing the asynchronous server startup; never orphan the listener.
+      module.onClose(cleanup);
+      server.unref();
+      return { port };
+    } catch (error) {
+      await cleanup();
+      throw error;
+    }
   })();
 
   serversByModule.set(module, started);
-  return started;
+  try {
+    return await started;
+  } catch (error) {
+    serversByModule.delete(module);
+    throw error;
+  }
 }
 
 async function openClient(url: string, headers: Headers): Promise<WebSocket> {

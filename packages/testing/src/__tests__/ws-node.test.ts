@@ -56,7 +56,12 @@ describe.skipIf(!peersAvailable)('module.ws (Node transport)', () => {
     const parsed: unknown = JSON.parse(typeof reply === 'string' ? reply : '');
     expect(parsed).toEqual({ event: 'echo', data: 'HI' });
 
-    ws.close();
-    await module.close();
+    const url = new URL(ws.raw.url);
+    url.protocol = 'http:';
+    const closed = ws.waitForClose();
+    await Promise.all([module.close(), module.close()]);
+    await closed;
+    await expect(fetch(url)).rejects.toThrow();
+    await expect(module.ws('/rooms/room1/ws').connect()).rejects.toThrow(/closed/);
   });
 });

@@ -3,7 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/@velajs/testing)](https://www.npmjs.com/package/@velajs/testing)
 [![License: MIT](https://img.shields.io/npm/l/@velajs/testing)](https://github.com/velajs/vela/blob/main/packages/testing/LICENSE)
 
-Test-module builder for [Vela](https://github.com/velajs/vela). Compose modules in isolation, override providers/guards/pipes/interceptors/filters, and exercise controllers via Hono's `app.request()`. Testing uses the same bootstrap primitive as production so request scope and framework-global providers cannot drift.
+Test-module builder for [Vela](https://github.com/velajs/vela). Compose modules in isolation, override providers/guards/pipes/interceptors/filters, and exercise controllers via Hono's `app.request()`. Testing uses the production bootstrap and finalization path, including signed internal dispatch and lifecycle hooks.
 
 ## Install
 
@@ -46,7 +46,17 @@ describe('CatsService', () => {
 
 Keep module decorators registered until the test completes. Clearing
 `MetadataRegistry` after declaring a module removes the metadata that `compile()`
-needs. Close each compiled module to run its shutdown hooks.
+needs. Close each compiled module to run its shutdown hooks and dispose constructed
+providers. Concurrent calls to \`close()\` await the same completion. Register owned
+fixtures with \`moduleRef.onClose(async () => { /* cleanup */ })\`; callbacks run in
+reverse order, and cleanup continues after a failure. The Node WebSocket adapter
+registers its server automatically, so closing the module closes active sockets
+and the listening port. A closed module rejects new requests and scopes.
+
+\`runInRequestScope\` uses a managed invocation lifetime, seeds \`REQUEST_CONTEXT\`,
+and drains deferred work before disposing the child. Module shutdown waits for
+already-running scope callbacks. Always await HTTP response bodies and close
+SSE connections before tearing down a test that consumes streaming responses.
 
 ## Overriding providers
 
@@ -81,7 +91,25 @@ const moduleRef = await Test.createTestingModule({
 }).compile();
 ```
 
-Import `defineProvider` from `@velajs/vela`. Factory dependency types come from the required `inject` tuple; use `inject: []` for factories without dependencies.
+Import \`defineProvider\` from \`@velajs/vela\`. Factory dependency types come from the required \`inject\` tuple; use \`inject: []\` for factories without dependencies.
+Overrides recompute request-scope propagation, including dependencies introduced
+or removed by a replacement factory. Compile separate testing modules to keep
+application/environment-specific replacements independent.
+
+For implementations with private state, inject a small interface token rather
+than casting a partial object to the concrete class:
+
+\`\`\`ts
+interface Database { read(id: string): Promise<string>; }
+const DATABASE = new InjectionToken<Database>('database');
+const fake = { read: async (id: string) => id } satisfies Database;
+const moduleRef = await Test.createTestingModule({
+  providers: [defineProvider(DATABASE, { useValue: fake })],
+}).compile();
+\`\`\`
+
+Direct constructor tests remain useful when no module graph or request pipeline
+is involved. No mock superclass or assertion cast is required.
 
 ## HTTP testing
 
