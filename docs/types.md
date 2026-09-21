@@ -68,7 +68,9 @@ Programmatic routes supply the descriptor directly as `ParamMetadata.metatype`. 
 Standard Schema, a legacy parser, or a DTO descriptor. The first preserves a
 synchronous result when the validator is synchronous; the second always returns
 a promise. Both prefer Standard Schema validation, then legacy `parseAsync`, then
-`parse`, and invoke that boundary once. Import them from `@velajs/vela/validation`
+`parse`. The async helper uses Zod’s public `safeParseAsync` when available to
+avoid the Standard adapter’s synchronous probe followed by an asynchronous retry.
+Use the async helper at dispatch boundaries with asynchronous Zod refinements. Import them from `@velajs/vela/validation`
 when you only need validation without the framework bootstrap.
 
 `SchemaInput<typeof schema>` retains Standard Schema wire input types, while

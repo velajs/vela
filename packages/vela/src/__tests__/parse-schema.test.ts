@@ -18,6 +18,20 @@ describe('shared schema boundary', () => {
     await expect(dto.parseAsync('no')).rejects.toBeInstanceOf(SchemaValidationError);
   });
 
+  it('runs async Zod refinements and transforms once, without a speculative sync parse', async () => {
+    const transform = vi.fn(async (value: string) => Number(value));
+    const schema = z.object({ value: z.string().transform(transform) });
+    expect(await parseSchemaAsync(schema, { value: '4' })).toEqual({ value: 4 });
+    expect(transform).toHaveBeenCalledTimes(1);
+    const failure = Object.assign(new Error('offline'), {
+      issues: [{ message: 'not input data' }],
+    });
+    const broken = z.string().transform(async () => {
+      throw failure;
+    });
+    await expect(parseSchemaAsync(broken, 'value')).rejects.toBe(failure);
+  });
+
   it('parses Standard-only descriptors once, including transformations', async () => {
     const transform = vi.fn(async (value: string) => Number(value));
     const schema = v.pipeAsync(v.string(), v.transformAsync(transform));

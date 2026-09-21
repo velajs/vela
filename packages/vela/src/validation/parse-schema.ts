@@ -102,9 +102,35 @@ export function parseSchema(schema: ValidationSchema, value: unknown): unknown {
   }
 }
 
-export async function parseSchemaAsync<S extends ValidationSchema>(
+/** Async boundaries avoid Zod's sync-probe/retry Standard adapter by using its
+ * public safeParseAsync result. No Zod runtime dependency or internal fields. */
+export function parseSchemaAsync<S extends ValidationSchema>(
   schema: S,
   value: unknown,
-): Promise<SchemaOutput<S>> {
+): Promise<SchemaOutput<S>>;
+export async function parseSchemaAsync(schema: ValidationSchema, value: unknown): Promise<unknown> {
+  const resolved = resolveValidationSchema(schema);
+  if (
+    resolved &&
+    isStandardSchema(resolved) &&
+    resolved['~standard'].vendor === 'zod' &&
+    'safeParseAsync' in resolved &&
+    typeof resolved.safeParseAsync === 'function'
+  ) {
+    const result: unknown = await resolved.safeParseAsync(value);
+    if (!result || typeof result !== 'object' || !('success' in result))
+      throw new TypeError('Invalid safeParseAsync result');
+    if (result.success === true && 'data' in result) return result.data;
+    if (
+      result.success === false &&
+      'error' in result &&
+      result.error !== null &&
+      typeof result.error === 'object' &&
+      'issues' in result.error &&
+      Array.isArray(result.error.issues)
+    )
+      throw new SchemaValidationError(result.error.issues);
+    throw new TypeError('Invalid safeParseAsync result');
+  }
   return await parseSchema(schema, value);
 }
