@@ -4,6 +4,7 @@ import { cp, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { verifyAiPackage } from './ai-consumer.mjs';
+import { verifyAgentPackage } from './agent-consumer.mjs';
 import { verifyNewProject } from './cli-consumer.mjs';
 import { verifyWorkflowPackage } from './workflow-consumer.mjs';
 
@@ -82,6 +83,7 @@ const workflowConsumer = tarballs['@velajs/workflow']
   : undefined;
 
 const mailPackage = tarballs['@velajs/mail'] ? await verifyMailPackage(tarballs) : undefined;
+const agentPackage = tarballs['@velajs/agent'] ? await verifyAgentPackage(tarballs) : undefined;
 await writeFile(
   join(artifactDir, 'consumer.json'),
   JSON.stringify(
@@ -89,6 +91,7 @@ await writeFile(
       path: consumer,
       status: 'passed',
       generatedProject,
+      agentPackage,
       aiPackage,
 
       workflowConsumer,

@@ -34,6 +34,9 @@ HTTP client, live queries, and Studio in a runnable Workers application.
 - [Portable workflows](../packages/workflow/README.md): reusable validated steps, execution
   adapter boundaries, and the replay harness.
 
+- [Durable agents](../packages/agent/README.md): model-directed tool workflows,
+  scoped run claims, human approvals, and the runnable approval example.
+
 ## Contributing
 
 - [Contributor guide](../CONTRIBUTING.md): setup, changes, and validation.

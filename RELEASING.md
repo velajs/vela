@@ -69,6 +69,14 @@ main entry, injection types, queue delivery, and inbound scope disposal. This
 coverage runs even though mail is not an API starter dependency. It can also be
 run directly with `node scripts/mail-consumer.mjs /absolute/path/to/artifacts`.
 
+When agent is present, its dedicated consumer checks root, `/mcp`, and `/testing`
+with the migrated AI, workflow, and mail packages. The release agent archive is
+used unchanged; absent companion archives are packed from the built workspace
+for testing only and recorded by integrity in the proof. This leaves the
+publication plan unchanged. It checks strict declarations, RAG/mail integration,
+persisted approvals, duplicate delivery, and imports without optional runtime
+peers. Run `node scripts/agent-consumer.mjs /absolute/path/to/artifacts` directly.
+
 Artifacts live in `.artifacts/release/`. Keep this exact directory
 once publishing begins: rebuilding a partial release changes archive integrity
 and intentionally blocks an ambiguous retry.

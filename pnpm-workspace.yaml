@@ -21,6 +21,7 @@ catalog:
   hono: 4.13.8
   zod: 4.4.3
   ai: 7.0.26
+  "@cfworker/json-schema": 4.1.1
   "@cloudflare/vitest-plugin": 1.1.13
   "@cloudflare/workers-types": 5.20260920.1
   wrangler: 4.135.0
