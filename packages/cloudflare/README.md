@@ -233,6 +233,11 @@ loaded by Node tooling. Native classes belong to `/durable-objects`.
 
 ## R2 storage and caches
 
+For new object/file storage, prefer the independently imported
+[`@velajs/storage`](../storage/README.md#portable-storage-and-the-cloudflare-proxy)
+with a native R2 or hybrid driver. The storage module below remains the supported
+1.x Worker HMAC proxy API; its signed routes differ from provider-signed URLs.
+
 Configure named disks from an async factory using actual bucket values:
 
 ```ts

@@ -41,9 +41,11 @@ export function r2HttpDriver(o: R2HttpOptions): StorageDriver {
   });
 }
 
-export interface R2HybridOptions extends R2HttpOptions {
+export interface R2HybridOptions<Bucket extends R2BucketLike = R2BucketLike> extends R2HttpOptions {
   /** The Workers `R2Bucket` binding used for reads/writes (no egress). */
-  binding: R2BucketLike;
+  binding: Bucket;
+  /** Include content type/custom metadata in native R2 listings. */
+  includeMetadata?: boolean;
 }
 
 /**
@@ -52,11 +54,14 @@ export interface R2HybridOptions extends R2HttpOptions {
  * server-side `copy()` use the S3 HTTP signer. The best of both for Workers
  * that need browser-facing presigned URLs.
  */
-export function r2HybridDriver(o: R2HybridOptions): StorageDriver {
+export function r2HybridDriver<Bucket extends R2BucketLike>(
+  o: R2HybridOptions<Bucket>,
+): StorageDriver<Bucket> {
   const binding = r2Driver({
     bucket: o.binding,
     publicBaseUrl: o.publicBaseUrl,
     name: 'r2-hybrid',
+    includeMetadata: o.includeMetadata,
   });
   const http = r2HttpDriver(o);
   return {

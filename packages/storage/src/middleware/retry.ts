@@ -1,7 +1,7 @@
 import { isStream } from '../internal/body';
 import { runWithRetry } from '../internal/retry';
 import type { OperationOptions, RetryOptions } from '../storage.types';
-import { passthrough, type Middleware } from './wrap';
+import { passthrough, type RawPreservingMiddleware } from './wrap';
 
 export interface RetryMiddlewareOptions {
   /** Default retry policy for driver operations. Per-call `opts.retries` wins. */
@@ -15,7 +15,7 @@ export interface RetryMiddlewareOptions {
  * `OperationOptions.retries` — use this middleware when driving a driver
  * directly, or set the facade's retries to 0 to avoid compounding.
  */
-export function retry(opts: RetryMiddlewareOptions = {}): Middleware {
+export function retry(opts: RetryMiddlewareOptions = {}): RawPreservingMiddleware {
   const base = opts.retries ?? 3;
   const run = <T>(o: OperationOptions | undefined, fn: (s?: AbortSignal) => Promise<T>) =>
     runWithRetry(fn, { retries: o?.retries ?? base, timeout: o?.timeout, signal: o?.signal });

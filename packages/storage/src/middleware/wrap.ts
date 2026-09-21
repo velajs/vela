@@ -3,6 +3,9 @@ import type { StorageDriver } from '../storage.types';
 /** A driver middleware: wraps a driver, returns a driver. */
 export type Middleware = (inner: StorageDriver) => StorageDriver;
 
+/** Built-in wrappers keep the primary native handle intact. */
+export type RawPreservingMiddleware = <Raw>(inner: StorageDriver<Raw>) => StorageDriver<Raw>;
+
 /**
  * Build a driver that delegates to `inner`, applying `over` overrides and
  * omitting the methods in `omit`. Explicit delegation (not spread) keeps
@@ -10,15 +13,15 @@ export type Middleware = (inner: StorageDriver) => StorageDriver;
  * inner driver has them (so `presence == capability` is preserved), unless
  * omitted (e.g. a body-transforming middleware suppresses multipart/presign).
  */
-export function passthrough(
-  inner: StorageDriver,
+export function passthrough<Raw = unknown>(
+  inner: StorageDriver<Raw>,
   over: Partial<StorageDriver> = {},
   omit: ReadonlyArray<keyof StorageDriver> = [],
-): StorageDriver {
+): StorageDriver<Raw> {
   const omitted = new Set<keyof StorageDriver>(omit);
   const has = (k: keyof StorageDriver) => !omitted.has(k);
 
-  const d: StorageDriver = {
+  const d: StorageDriver<Raw> = {
     name: over.name ?? inner.name,
     raw: inner.raw,
     reportsUploadProgress: over.reportsUploadProgress ?? inner.reportsUploadProgress,

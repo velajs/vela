@@ -99,7 +99,8 @@ export interface DownloadOptions extends OperationOptions {
   range?: ByteRange;
 }
 
-export interface StoredFile {
+/** Object metadata only: reading these values never fetches the object body. */
+export interface StoredFileMetadata {
   key: string;
   name: string;
   size: number;
@@ -107,6 +108,9 @@ export interface StoredFile {
   lastModified?: number;
   etag?: string;
   metadata?: Record<string, string>;
+}
+
+export interface StoredFile extends StoredFileMetadata {
   arrayBuffer(): Promise<ArrayBuffer>;
   text(): Promise<string>;
   blob(): Promise<Blob>;
@@ -133,6 +137,12 @@ export interface ListResult {
   /** Continuation cursor; absent when the listing is exhausted. */
   cursor?: string;
 }
+
+/** Metadata-only pagination; continue while `hasMore`, even for an empty page. */
+export type MetadataListResult = {
+  items: StoredFileMetadata[];
+  prefixes?: string[];
+} & ({ hasMore: true; cursor: string } | { hasMore: false; cursor?: never });
 
 // ---------------------------------------------------------------------------
 // Bulk delete (native primitive or facade fan-out).
@@ -323,8 +333,8 @@ export interface StorageHooks {
   }) => void;
 }
 
-export interface StorageOptions extends OperationOptions {
-  driver: StorageDriver;
+export interface StorageOptions<Raw = unknown> extends OperationOptions {
+  driver: StorageDriver<Raw>;
   /** Sub-scopes the keyspace within a bucket; normalized (no leading/trailing '/'). */
   prefix?: string;
   /** Reject all mutating operations. */

@@ -16,7 +16,7 @@ import type {
   UploadResult,
   UrlOptions,
 } from '../../storage.types';
-import type { R2BucketLike, R2DriverOptions, R2ObjectLike, R2PutValue } from './r2.types';
+import type { R2BucketLike, R2DriverOptions, R2ObjectLike } from './r2.types';
 
 export type {
   R2BucketLike,
@@ -49,7 +49,9 @@ function metaOf(obj: R2ObjectLike) {
  * It cannot presign (`signedUploadUrl` throws; `url()` needs `publicBaseUrl`).
  * For presigned URLs use `@velajs/storage/drivers/r2-http` (HTTP or hybrid mode).
  */
-export function r2Driver(options: R2DriverOptions): StorageDriver<R2BucketLike> {
+export function r2Driver<Bucket extends R2BucketLike>(
+  options: R2DriverOptions<Bucket>,
+): StorageDriver<Bucket> {
   const bucket = options.bucket;
   // Native bindings do not accept AbortSignal. End the caller's wait, observe
   // late settlements, and never retry a write whose outcome is unknown.
@@ -79,7 +81,7 @@ export function r2Driver(options: R2DriverOptions): StorageDriver<R2BucketLike> 
     async upload(key: string, body: Body, opts?: UploadOptions): Promise<UploadResult> {
       const obj = await native(
         () =>
-          bucket.put(key, body as R2PutValue, {
+          bucket.put(key, body, {
             httpMetadata: { contentType: opts?.contentType, cacheControl: opts?.cacheControl },
             customMetadata: opts?.metadata,
           }),
@@ -101,7 +103,9 @@ export function r2Driver(options: R2DriverOptions): StorageDriver<R2BucketLike> 
         (!Number.isSafeInteger(opts.range.start) ||
           opts.range.start < 0 ||
           (opts.range.end !== undefined &&
-            (!Number.isSafeInteger(opts.range.end) || opts.range.end < opts.range.start)))
+            (!Number.isSafeInteger(opts.range.end) ||
+              opts.range.end < opts.range.start ||
+              !Number.isSafeInteger(opts.range.end - opts.range.start + 1))))
       )
         throw new StorageError(
           'InvalidRequest',
@@ -174,6 +178,7 @@ export function r2Driver(options: R2DriverOptions): StorageDriver<R2BucketLike> 
             cursor: opts?.cursor,
             limit: opts?.limit,
             delimiter: opts?.delimiter,
+            include: options.includeMetadata ? ['httpMetadata', 'customMetadata'] : undefined,
           }),
         opts,
       );
@@ -221,7 +226,7 @@ export function r2Driver(options: R2DriverOptions): StorageDriver<R2BucketLike> 
         key,
         uploadId: mpu.uploadId,
         async uploadPart(partNumber: number, part: PartBody, o?: OperationOptions) {
-          const up = await native(() => mpu.uploadPart(partNumber, part as R2PutValue), o);
+          const up = await native(() => mpu.uploadPart(partNumber, part), o);
           return { partNumber: up.partNumber, etag: up.etag };
         },
         async complete(parts, o) {

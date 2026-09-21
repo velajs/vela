@@ -226,4 +226,28 @@ describe('operation controls', () => {
     pending.resolve({ key: 'a', uploadId: '1', uploadPart: vi.fn(), complete: vi.fn(), abort });
     await vi.waitFor(() => expect(abort).toHaveBeenCalledTimes(1));
   });
+  it('cancels multipart input on part failure before asking for another chunk', async () => {
+    const cancel = vi.fn();
+    const abort = vi.fn(async () => {});
+    const uploadPart = vi.fn(async () => {
+      throw new StorageError('Provider', 'failed');
+    });
+    const complete = vi.fn();
+    const driver = {
+      ...memoryDriver(),
+      createMultipartUpload: async () => ({ key: 'a', uploadId: '1', uploadPart, complete, abort }),
+    };
+    const input = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array([1]));
+      },
+      cancel,
+    });
+    await expect(
+      createStorage({ driver }).upload('a', input, { multipart: { partSize: 1, concurrency: 1 } }),
+    ).rejects.toMatchObject({ code: 'Provider' });
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(abort).toHaveBeenCalledTimes(1);
+    expect(complete).not.toHaveBeenCalled();
+  });
 });

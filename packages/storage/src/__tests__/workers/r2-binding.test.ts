@@ -48,6 +48,31 @@ describe('r2Driver under workerd (native binding)', () => {
     await s.delete('range-size.txt');
   });
 
+  it('returns metadata-only native listings with explicit metadata inclusion', async () => {
+    const bucket = (env as { TEST_BUCKET: R2BucketLike }).TEST_BUCKET;
+    const s = createStorage({ driver: r2Driver({ bucket, includeMetadata: true }) });
+    await s.upload('metadata/a.txt', 'abc', {
+      contentType: 'text/plain',
+      metadata: { owner: 'one' },
+    });
+    const page = await s.listMetadata({ prefix: 'metadata/' });
+    expect(page.items).toHaveLength(1);
+    expect(page.items[0]).toMatchObject({
+      key: 'metadata/a.txt',
+      type: 'text/plain',
+      size: 3,
+      metadata: { owner: 'one' },
+    });
+    expect(page.items[0]).not.toHaveProperty('stream');
+    expect(page.hasMore).toBe(false);
+    expect(await s.stat('metadata/a.txt')).toMatchObject({
+      type: 'text/plain',
+      metadata: { owner: 'one' },
+    });
+    expect(await (await s.download('metadata/a.txt')).text()).toBe('abc');
+    await s.delete('metadata/a.txt');
+  });
+
   it('runs a native multipart upload', async () => {
     const s = storage();
     const mp = await s.createMultipartUpload('multi.bin');

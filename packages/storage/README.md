@@ -2,7 +2,7 @@
 
 Edge-first, driver-based object/file storage for the [Vela](https://github.com/velajs/vela) framework.
 
-Runs on Cloudflare Workers, Deno, Bun, Node 20+, and Vercel Edge — **no AWS SDK, ever**. S3/R2
+Runs on Cloudflare Workers, Deno, Bun, Node 24+, and Vercel Edge — **no AWS SDK, ever**. S3/R2
 requests are signed with [`aws4fetch`](https://github.com/mhart/aws4fetch) (`fetch` + Web Crypto),
 so the whole default path passes Vela's `edge-runtime-audit` gate.
 
@@ -121,3 +121,64 @@ readers; those later reads are separate from the original operation's deadline.
 
 R2 range reads report the returned byte length, including ranges clipped at EOF,
 without buffering the stream. Invalid ranges fail before binding I/O.
+
+## Metadata and native binding types
+
+Use `stat(key)` or `listMetadata(options)` when browsing metadata. They return
+plain `StoredFileMetadata` snapshots without body readers, while `head()` and
+`list()` keep their existing 1.x lazy readers. Fetch bytes explicitly through
+`download(key, { signal, timeout })` when a later read needs operation controls.
+Metadata methods do not issue extra per-object GET or HEAD requests.
+
+```ts
+import { createStorage } from '@velajs/storage';
+import { r2Driver } from '@velajs/storage/drivers/r2';
+
+// env.FILES uses the R2Bucket type from your generated Workers environment.
+const files = createStorage({
+  driver: r2Driver({ bucket: env.FILES, includeMetadata: true }),
+  prefix: 'uploads',
+});
+const meta = await files.stat('report.csv');
+const page = await files.listMetadata({ delimiter: '/', limit: 100 });
+if (page.hasMore) {
+  const next = await files.listMetadata({ delimiter: '/', cursor: page.cursor });
+}
+```
+
+`includeMetadata: true` is an R2 binding/hybrid driver option requesting HTTP and
+custom metadata in listings. Without it, R2 list results may omit custom metadata
+and use the fallback content type. Other drivers return the metadata already
+available from their listings. Metadata-rich pages can be shorter; follow
+`hasMore` and `cursor`, including when a page contains only folder prefixes.
+
+`files.raw` retains the exact supplied native binding type. `readonly()` views,
+`lazyDriver()`, directly constructed `StorageService` instances, and built-in
+middleware composition preserve that type. Custom `Middleware` remains supported;
+its composition returns unknown raw types unless it implements the additive
+`RawPreservingMiddleware` contract. `raw` is the original handle and bypasses
+prefixes, readonly checks, middleware, and facade controls; use native keys there.
+Named module injection still exposes `StorageService<unknown>`; inject your typed
+`ENV` token when an injected consumer needs full native methods.
+
+## Portable storage and the Cloudflare proxy
+
+For new file/object storage, use `StorageModule` from `@velajs/storage` and choose
+a driver through its independent import. Keep native `env.CACHE`, `env.DB`, and
+Durable Object storage for KV, SQL and per-object transactions; these are separate
+capabilities, not file-storage backends.
+
+`@velajs/cloudflare` also exports an older `StorageModule` and `StorageService`.
+That API stays supported in 1.x and signs Worker proxy routes with an application
+HMAC secret. Its signed URLs are not interchangeable with S3/R2 provider-signed
+URLs from the portable package. Migration is explicit:
+
+| Cloudflare proxy API | Portable package |
+| --- | --- |
+| Configure `disks` with native buckets | Register a named `StorageModule` per driver |
+| Driver `upload(body, path, { mimeType })` | `upload(key, body, { contentType })` |
+| `download(path).toStream()` | `(await download(key)).stream()` |
+| Worker HMAC `getPresignedUrl()` routes | Provider signing through S3 or R2 HTTP/hybrid drivers; optional authorized HTTP controller |
+
+Keep existing proxy routes and issued URL handling during a migration. Neither
+package requires migrating the other, and the legacy runtime/signatures are unchanged.

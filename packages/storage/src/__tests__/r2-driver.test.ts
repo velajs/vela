@@ -36,7 +36,7 @@ function makeR2Stub(): R2BucketLike & { store: Map<string, Entry> } {
       const e = store.get(key);
       if (!e) return null;
       let out = e.bytes;
-      if (options?.range?.offset != null) {
+      if (options?.range && 'offset' in options.range && options.range.offset != null) {
         const off = options.range.offset;
         out = e.bytes.subarray(
           off,
@@ -131,6 +131,7 @@ describe('r2Driver (binding mode)', () => {
     { start: NaN },
     { start: 3, end: 2 },
     { start: 0, end: Infinity },
+    { start: 0, end: Number.MAX_SAFE_INTEGER },
   ])('rejects invalid range %j before binding I/O', async (range) => {
     const bucket = makeR2Stub();
     const get = vi.spyOn(bucket, 'get');
@@ -163,6 +164,47 @@ describe('r2Driver (binding mode)', () => {
     release();
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(put).not.toHaveBeenCalled();
+  });
+
+  it('requests listing metadata only when explicitly configured', async () => {
+    const bucket = makeR2Stub();
+    const list = vi.spyOn(bucket, 'list');
+    const get = vi.spyOn(bucket, 'get');
+    const head = vi.spyOn(bucket, 'head');
+    await r2Driver({ bucket }).list();
+    expect(list.mock.calls[0]?.[0]?.include).toBeUndefined();
+    await r2Driver({ bucket, includeMetadata: true }).list();
+    expect(list.mock.calls[1]?.[0]?.include).toEqual(['httpMetadata', 'customMetadata']);
+    expect(get).not.toHaveBeenCalled();
+    expect(head).not.toHaveBeenCalled();
+  });
+
+  it('enforces direct native-write deadlines while allowing one late commit', async () => {
+    vi.useFakeTimers();
+    try {
+      const bucket = makeR2Stub();
+      const nativePut = bucket.put;
+      let release!: () => void;
+      const ready = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      bucket.put = vi.fn(async (...args: Parameters<R2BucketLike['put']>) => {
+        await ready;
+        return nativePut(...args);
+      });
+      const rejected = expect(
+        r2Driver({ bucket }).upload('a', 'abc', { timeout: 5, retries: 3 }),
+      ).rejects.toMatchObject({ code: 'Timeout', retryable: false });
+      await vi.advanceTimersByTimeAsync(5);
+      await rejected;
+      expect(bucket.store.has('a')).toBe(false);
+      release();
+      await vi.runAllTimersAsync();
+      expect(bucket.store.has('a')).toBe(true);
+      expect(bucket.put).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('round-trips through the native binding', async () => {

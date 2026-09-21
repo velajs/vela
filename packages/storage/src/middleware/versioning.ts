@@ -1,6 +1,6 @@
 import { StorageError } from '../storage.error';
 import type { StorageDriver } from '../storage.types';
-import { passthrough, type Middleware } from './wrap';
+import { passthrough, type RawPreservingMiddleware } from './wrap';
 
 export interface VersionInfo {
   versionId: string;
@@ -37,7 +37,7 @@ export interface VersioningOptions {
  * `signedUploadUrl` throws. Reach `listVersions`/`restore`/`deleteVersion` via
  * {@link unwrapVersioning}.
  */
-export function versioning(opts: VersioningOptions = {}): Middleware {
+export function versioning(opts: VersioningOptions = {}): RawPreservingMiddleware {
   const prefix = opts.prefix ?? '.vela-versions/';
   let seq = 0;
   const vid = opts.versionId ?? (() => `${Date.now().toString(36)}-${(seq++).toString(36)}`);

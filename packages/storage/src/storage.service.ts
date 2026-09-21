@@ -7,12 +7,14 @@ import type {
   DownloadOptions,
   ListOptions,
   ListResult,
+  MetadataListResult,
   OperationOptions,
   SignedUpload,
   SignUploadOptions,
   StorageDriver,
   StorageHooks,
   StoredFile,
+  StoredFileMetadata,
   UploadOptions,
   UploadResult,
   UrlOptions,
@@ -26,10 +28,10 @@ import type {
  *
  * Functions are bound to the built driver so class-based drivers keep `this`.
  */
-export function lazyDriver(build: () => StorageDriver): StorageDriver {
-  let built: StorageDriver | undefined;
-  const ensure = (): StorageDriver => (built ??= build());
-  return new Proxy({} as StorageDriver, {
+export function lazyDriver<Raw = unknown>(build: () => StorageDriver<Raw>): StorageDriver<Raw> {
+  let built: StorageDriver<Raw> | undefined;
+  const ensure = (): StorageDriver<Raw> => (built ??= build());
+  return new Proxy({} as StorageDriver<Raw>, {
     get(_target, prop) {
       const driver = ensure() as unknown as Record<string | symbol, unknown>;
       const value = driver[prop];
@@ -60,11 +62,11 @@ export interface StorageServiceOptions {
  * and inject with `@InjectStorage(name)`.
  */
 @Injectable()
-export class StorageService {
-  readonly storage: Storage;
+export class StorageService<Raw = unknown> {
+  readonly storage: Storage<Raw>;
   readonly name: string;
 
-  constructor(build: () => StorageDriver, options: StorageServiceOptions) {
+  constructor(build: () => StorageDriver<Raw>, options: StorageServiceOptions) {
     this.name = options.name;
     this.storage = createStorage({
       driver: lazyDriver(build),
@@ -83,6 +85,9 @@ export class StorageService {
   head(key: string, opts?: OperationOptions): Promise<StoredFile> {
     return this.storage.head(key, opts);
   }
+  stat(key: string, opts?: OperationOptions): Promise<StoredFileMetadata> {
+    return this.storage.stat(key, opts);
+  }
   exists(key: string, opts?: OperationOptions): Promise<boolean> {
     return this.storage.exists(key, opts);
   }
@@ -100,6 +105,9 @@ export class StorageService {
   }
   list(opts?: ListOptions): Promise<ListResult> {
     return this.storage.list(opts);
+  }
+  listMetadata(opts?: ListOptions): Promise<MetadataListResult> {
+    return this.storage.listMetadata(opts);
   }
   url(key: string, opts?: UrlOptions): Promise<string> {
     return this.storage.url(key, opts);

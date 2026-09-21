@@ -11,6 +11,7 @@ import type {
   DownloadOptions,
   ListOptions,
   ListResult,
+  MetadataListResult,
   MultipartOptions,
   MultipartUpload,
   OperationOptions,
@@ -22,6 +23,7 @@ import type {
   StorageDriver,
   StorageOptions,
   StoredFile,
+  StoredFileMetadata,
   UploadedPart,
   UploadOptions,
   UploadResult,
@@ -44,24 +46,24 @@ const MULTIPART_THRESHOLD = 16 * 1024 * 1024;
  *
  * Framework-free — `StorageService` builds and caches one of these per bucket.
  */
-export class Storage {
-  readonly #driver: StorageDriver;
+export class Storage<Raw = unknown> {
+  readonly #driver: StorageDriver<Raw>;
   readonly #prefix: string;
   readonly #readonly: boolean;
-  readonly #opts: StorageOptions;
+  readonly #opts: StorageOptions<Raw>;
 
-  constructor(opts: StorageOptions) {
+  constructor(opts: StorageOptions<Raw>) {
     this.#opts = opts;
     this.#driver = opts.driver;
     this.#prefix = normalizePrefix(opts.prefix);
     this.#readonly = opts.readonly ?? false;
   }
 
-  get raw(): unknown {
+  get raw(): Raw {
     return this.#driver.raw;
   }
 
-  get driver(): StorageDriver {
+  get driver(): StorageDriver<Raw> {
     return this.#driver;
   }
 
@@ -148,10 +150,13 @@ export class Storage {
       let uploadedBytes = 0;
       let partNumber = 0;
       let failure: { error: unknown } | undefined;
+      const assertPartsSucceeded = () => {
+        if (failure) throw failure.error;
+      };
 
       for await (const chunk of chunkStream(toStream(body), partSize, opts?.signal)) {
         throwIfAborted(opts?.signal);
-        if (failure) throw failure.error;
+        assertPartsSucceeded();
         partNumber += 1;
         if (partNumber > MAX_MULTIPART_PARTS) {
           throw new StorageError('InvalidRequest', 'multipart upload exceeds 10,000 parts');
@@ -172,10 +177,13 @@ export class Storage {
           })
           .finally(() => inflight.delete(tracked));
         inflight.add(tracked);
-        if (inflight.size >= concurrency) await Promise.race(inflight);
+        if (inflight.size >= concurrency) {
+          await Promise.race(inflight);
+          assertPartsSucceeded();
+        }
       }
       await Promise.all(inflight);
-      if (failure) throw failure.error;
+      assertPartsSucceeded();
       throwIfAborted(opts?.signal);
       return await upload.complete(parts, { signal: opts?.signal });
     } catch (e) {
@@ -205,6 +213,11 @@ export class Storage {
       this.#driver.head(this.#path(key), { ...opts, signal }),
     );
     return this.#relabel(file, key);
+  }
+
+  /** Metadata snapshot without lazy body readers. Use download() for controlled I/O. */
+  async stat(key: string, opts?: OperationOptions): Promise<StoredFileMetadata> {
+    return metadataOf(await this.head(key, opts));
   }
 
   exists(key: string, opts?: OperationOptions): Promise<boolean> {
@@ -252,7 +265,8 @@ export class Storage {
       let index = 0;
       let stopped = false;
       const worker = async () => {
-        while (index < keys.length && !stopped && !signal?.aborted) {
+        while (index < keys.length && !stopped) {
+          if (signal?.aborted) break;
           const key = keys[index++];
           try {
             await d.delete(this.#path(key!), { signal });
@@ -313,6 +327,15 @@ export class Storage {
       prefixes: res.prefixes?.map((p) => this.#strip(p)),
       cursor: res.cursor,
     };
+  }
+
+  /** Project listing metadata without accessing any body or doing extra HEADs. */
+  async listMetadata(opts?: ListOptions): Promise<MetadataListResult> {
+    const page = await this.list(opts);
+    const metadata = { items: page.items.map(metadataOf), prefixes: page.prefixes };
+    return page.cursor === undefined
+      ? { ...metadata, hasMore: false }
+      : { ...metadata, hasMore: true, cursor: page.cursor };
   }
 
   async *listAll(opts?: ListOptions): AsyncGenerator<StoredFile> {
@@ -429,7 +452,7 @@ export class Storage {
   }
 
   /** A read-only clone of this handle (mutations throw `ReadOnly`). */
-  readonly(): Storage {
+  readonly(): Storage<Raw> {
     return new Storage({ ...this.#opts, readonly: true });
   }
 
@@ -553,6 +576,18 @@ export interface FileHandle {
   signedUploadUrl(opts: SignUploadOptions): Promise<SignedUpload>;
 }
 
-export function createStorage(opts: StorageOptions): Storage {
+export function createStorage<Raw = unknown>(opts: StorageOptions<Raw>): Storage<Raw> {
   return new Storage(opts);
+}
+
+function metadataOf(file: StoredFile): StoredFileMetadata {
+  return {
+    key: file.key,
+    name: file.name,
+    size: file.size,
+    type: file.type,
+    lastModified: file.lastModified,
+    etag: file.etag,
+    metadata: file.metadata ? { ...file.metadata } : undefined,
+  };
 }

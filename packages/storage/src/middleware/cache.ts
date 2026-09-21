@@ -1,6 +1,6 @@
 import { createStoredFile } from '../internal/stored-file';
 import type { OperationOptions, StorageDriver, StoredFile } from '../storage.types';
-import { passthrough, type Middleware } from './wrap';
+import { passthrough, type RawPreservingMiddleware } from './wrap';
 
 export interface CachedMeta {
   key: string;
@@ -82,7 +82,7 @@ function toMeta(f: StoredFile): CachedMeta {
  * hit still lazily fetches on body access), and `list` is not cached
  * (cross-prefix invalidation is intractable). Writes invalidate the key.
  */
-export function cache(opts: CacheOptions = {}): Middleware {
+export function cache(opts: CacheOptions = {}): RawPreservingMiddleware {
   const now = opts.now ?? Date.now;
   const store = opts.store ?? new MapCacheStore(1000, now);
   const ttl = opts.ttlMs ?? 60_000;
