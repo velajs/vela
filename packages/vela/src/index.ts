@@ -649,6 +649,7 @@ export {
   ApplicationLogger,
   StructuredLogger,
   consoleLogSink,
+  loggerForScope,
   APP_LOGGER,
   LoggingModule,
   serializeLogValue,

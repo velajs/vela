@@ -115,10 +115,12 @@ export function createLogSerializer(options: LogSerializationOptions = {}): LogS
         }
       }
       function property(owner: object, key: string, depth: number): LogValue {
-        if (redact.has(key.toLowerCase())) return REDACTED;
+        if (redact.has(key.toLowerCase())) return visit(REDACTED, depth + 1);
         const descriptor = Object.getOwnPropertyDescriptor(owner, key);
-        if (!descriptor) return '[Undefined]';
-        return 'value' in descriptor ? visit(descriptor.value, depth + 1) : '[Accessor]';
+        if (!descriptor) return visit('[Undefined]', depth + 1);
+        return 'value' in descriptor
+          ? visit(descriptor.value, depth + 1)
+          : visit('[Accessor]', depth + 1);
       }
       return visit(value, 0);
     },

@@ -160,12 +160,14 @@ export class ApplicationLogger {
     fields: LogFields = {},
     delivery: LogDeliveryContext = {},
   ): StructuredLogger {
+    if (typeof category !== 'string') throw new TypeError('Log category must be a string.');
     const context: LogDeliveryContext = {
       fields: this.#snapshot(delivery.fields ?? {}),
       waitUntil: delivery.waitUntil,
+      isActive: delivery.isActive,
     };
     return new StructuredLogger(
-      this.#serializer.text(category),
+      category,
       fields,
       context,
       this.#emit,
@@ -212,6 +214,10 @@ export class ApplicationLogger {
     }
     this.#emitting = true;
     try {
+      if (delivery.isActive && !delivery.isActive()) {
+        this.#dropped++;
+        return;
+      }
       const first = this.#serializer.serialize(message);
       const args = this.#serializer.serialize(
         typeof message === 'string' ? rest : [message, ...rest],
@@ -219,7 +225,7 @@ export class ApplicationLogger {
       const record: LogRecord = Object.freeze({
         timestamp: Date.now(),
         level,
-        category,
+        category: this.#serializer.text(category),
         message:
           typeof first === 'string'
             ? first

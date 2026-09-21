@@ -21,6 +21,7 @@ HTTP client, live queries, and Studio in a runnable Workers application.
 - [Scheduling](scheduling.md): cron dialects and invocation-owned execution.
 - [Security configuration](security.md): request limits, browser origins,
   identity, response caching, signed URLs, and WebSocket boundaries.
+- [Logging](logging.md): application-owned records, redaction, sinks, and invocation correlation.
 - [WebSockets](websockets.md): gateways, transports, rooms, and authentication.
 - [Live queries](live-queries.md): subscriptions, invalidation, reconnects,
   delivery guarantees, and runtime limits.

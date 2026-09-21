@@ -50,4 +50,6 @@ export interface ApplicationLoggerOptions extends LogSerializationOptions {
 export interface LogDeliveryContext {
   readonly fields?: LogFields;
   readonly waitUntil?: (promise: Promise<void>) => void;
+  /** Stop emission after the owning invocation closes. */
+  readonly isActive?: () => boolean;
 }

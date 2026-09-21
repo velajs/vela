@@ -3,6 +3,8 @@ import { HTTPException } from 'hono/http-exception';
 import type { Container } from '../container/container';
 import { HttpException } from '../errors/http-exception';
 import { APP_EXCEPTION_HANDLER, ERROR_CATALOG } from '../pipeline/tokens';
+import { APP_LOGGER } from '../logging/logging.module';
+import { logDeliveryForScope } from '../logging/scoped-logger';
 import { matchesAny, type ErrorReportContext, type ExceptionHandler } from './exception-handler';
 
 /**
@@ -31,6 +33,21 @@ export const resolveErrorReporter = (container: Container): ErrorReporter => {
     ? container.resolve(ERROR_CATALOG)
     : CORE_CATALOG;
 
+  // Capture before disposal so completion failures can still carry inert correlation.
+  // The reporter must not resolve request-owned services from an already closed child.
+  const delivery = logDeliveryForScope(container);
+  const diagnostics = container.getDiagnostics();
+  const structured = container.has(APP_LOGGER);
+  const logging = structured ? container.resolve(APP_LOGGER) : undefined;
+  const logger = logging?.createLogger(
+    'exception',
+    {},
+    {
+      fields: delivery.fields,
+      waitUntil: delivery.waitUntil,
+    },
+  );
+
   return {
     catalog,
     report(error, ctx) {
@@ -41,18 +58,29 @@ export const resolveErrorReporter = (container: Container): ErrorReporter => {
         // A broken matcher must never mask the original error — treat as no match.
       }
       if (suppressed) return;
-      const merged = handler?.context ? { ...ctx, ...safeContext(handler, error, ctx) } : ctx;
+      const merged = { ...ctx, ...safeContext(handler, error, ctx), ...delivery.fields };
       if (handler?.report) {
         try {
-          void Promise.resolve(handler.report(error, merged)).catch(() => {});
+          // oxlint-disable-next-line promise/no-promise-in-callback -- Reporting hooks support async completion.
+          const completion = Promise.resolve(handler.report(error, merged)).catch(() => {});
+          // Reporting failures remain contained; invocation resources stay alive until settled.
+          delivery.waitUntil?.(completion);
         } catch {
           // A broken reporter must never mask the original error.
         }
         return;
       }
-      if (container.getDiagnostics() !== 'silent') {
+      if (diagnostics !== 'silent') {
         const status = clientFaultStatus(error);
         if (status !== undefined && status >= 400 && status < 500) return; // client fault — not server-error log noise
+        if (structured) {
+          try {
+            logger?.withFields(merged).error(error);
+          } catch {
+            // Never fall back to the raw error if structured logging is configured.
+          }
+          return;
+        }
         console.error(
           `[vela] ${merged.edge} error${merged.source ? ` in ${merged.source}` : ''}${merged.note ? ` (${merged.note})` : ''}:`,
           error,
@@ -78,19 +106,23 @@ export const resolveErrorReporter = (container: Container): ErrorReporter => {
  * mute client faults; a custom `handler.report` still receives everything.
  */
 const clientFaultStatus = (error: unknown): number | undefined => {
-  if (isVelaError(error)) return error.status;
-  if (error instanceof HttpException) return error.getStatus();
-  if (error instanceof HTTPException) return error.status; // hono
+  try {
+    if (isVelaError(error)) return error.status;
+    if (error instanceof HttpException) return error.getStatus();
+    if (error instanceof HTTPException) return error.status;
+  } catch {
+    // An uninspectable error remains reportable rather than hiding the failure.
+  }
   return undefined;
 };
 
 const safeContext = (
-  handler: ExceptionHandler,
+  handler: ExceptionHandler | undefined,
   error: unknown,
   ctx: ErrorReportContext,
 ): Record<string, unknown> => {
   try {
-    return handler.context?.(error, ctx) ?? {};
+    return { ...handler?.context?.(error, ctx) };
   } catch {
     return {};
   }

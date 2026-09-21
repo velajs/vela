@@ -12,3 +12,4 @@ export type {
   ApplicationLoggerOptions,
   LogDeliveryContext,
 } from './log.types';
+export { loggerForScope } from './scoped-logger';

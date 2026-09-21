@@ -16,6 +16,8 @@ const sink: LogSink = (record) => {
   void fields;
   // @ts-expect-error sink records are immutable
   record.message = 'replacement';
+  // @ts-expect-error context fields are immutable
+  record.fields.requestId = 'replacement';
   // @ts-expect-error fields must remain JSON-safe
   const invalid: LogValue = () => record.message;
   void invalid;
@@ -29,6 +31,8 @@ const consumer = defineProvider('logging-consumer', {
   inject: [APP_LOGGER],
   useFactory: (logging) => {
     const service: LoggerService = logging.createLogger('test');
+    // @ts-expect-error checked provider injection retains ApplicationLogger, never any
+    logging.notALoggerMethod();
     return service;
   },
 });

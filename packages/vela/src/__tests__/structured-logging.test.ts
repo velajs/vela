@@ -158,6 +158,9 @@ describe('application-owned structured logging', () => {
     expect(() => app.configure('off,http=constructor')).toThrow();
     http.debug('still enabled');
     expect(records).toHaveLength(1);
+    const truncated = capture({ maxStringLength: 3, directive: 'error,long-category=debug' });
+    truncated.app.createLogger('long-category').debug('visible');
+    expect(truncated.records[0]?.category).toBe('lon[Truncated]');
     app.configure('http=error');
     http.warn('hidden');
     expect(records).toHaveLength(1);
@@ -239,6 +242,10 @@ describe('bounded log serialization', () => {
     });
     expect(serializeLogValue([1, 2, 3], { maxEntries: 2 })).toEqual([1, 2, '[Truncated]']);
     expect(serializeLogValue([1, 2, 3], { maxNodes: 2 })).toEqual([1, '[Truncated]']);
+    expect(serializeLogValue({ password: 'a', token: 'b' }, { maxNodes: 2 })).toEqual({
+      password: '[Redacted]',
+      '[Truncated]': true,
+    });
     expect(serializeLogValue('abcdef', { maxStringLength: 3 })).toBe('abc[Truncated]');
     expect(() => serializeLogValue({}, { maxDepth: Infinity })).toThrow();
     expect(() => new ApplicationLogger({ maxPending: 0 })).toThrow();

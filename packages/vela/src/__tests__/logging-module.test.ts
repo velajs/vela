@@ -4,6 +4,8 @@ import { APP_LOGGER, LoggingModule } from '../logging/logging.module';
 import { Controller, Get, Inject, Module } from '../index';
 import { ApplicationLogger } from '../logging/application-logger';
 import { VelaFactory } from '../factory';
+import { Container } from '../container/container';
+import { defineProvider, forwardRef } from '../container/types';
 import type { LogRecord } from '../logging/log.types';
 
 @Controller('/logs')
@@ -85,5 +87,31 @@ describe('LoggingModule', () => {
     } finally {
       await app.close();
     }
+  });
+  it('preserves runtime-private logger receivers through the existing lazy DI proxy', () => {
+    const records: LogRecord[] = [];
+    class Consumer {
+      constructor(@Inject(forwardRef(() => APP_LOGGER)) readonly logging: ApplicationLogger) {}
+    }
+    const container = new Container();
+    container.register(Consumer);
+    container.register(
+      defineProvider(APP_LOGGER, {
+        inject: [Consumer],
+        useFactory: (consumer) => {
+          void consumer;
+          return new ApplicationLogger({
+            sinks: [
+              (r) => {
+                records.push(r);
+              },
+            ],
+          });
+        },
+      }),
+    );
+    container.resolve(APP_LOGGER);
+    container.resolve(Consumer).logging.createLogger('proxy').log('works');
+    expect(records[0]?.category).toBe('proxy');
   });
 });

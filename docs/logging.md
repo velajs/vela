@@ -91,3 +91,53 @@ An explicit third `createLogger` argument `{ fields, waitUntil }` binds protecte
 invocation metadata and a completion callback. These fields override ordinary
 child fields; asynchronous deliveries are passed to `waitUntil`. Adapters can
 supply a managed invocation lifetime without introducing global request state.
+
+## Invocation correlation and exceptions
+
+Use `loggerForScope` with the existing invocation child to attach the generated
+`invocationId` and, for HTTP, the current `REQUEST_CONTEXT.id` as `requestId`:
+
+```ts
+import { loggerForScope, runInEntrypointScope } from '@velajs/vela';
+
+await runInEntrypointScope(app.getContainer(), async (scope) => {
+  loggerForScope(scope, 'orders', { source: 'Orders.process' }).log('processing');
+});
+```
+
+A controller interceptor or custom transport can pass `executionContext.getContainer()`
+when it exists. Do not pass the application root and expect request context to
+appear. The helper uses the shared execution lifetime and existing HTTP context;
+it does not parse headers, create a second invocation, or infer tenant identity.
+Request ID acceptance remains the HTTP context's compatibility policy. These IDs
+are correlation metadata, never authentication claims. Optional tenant/trace
+fields require deliberate projection by their owning adapters.
+
+The scope helper protects correlation fields from `withFields` overrides, tracks
+async sink delivery through `ExecutionLifetime.waitUntil`, and stops retained
+loggers once the invocation closes. Creating another scoped logger from a closed
+managed container throws. Outside managed scopes, explicitly call `flush()` or
+supply a completion callback; an application logger alone cannot prolong a
+platform invocation. Optional `isActive` on the explicit delivery context allows
+custom adapters to enforce their own ownership lifetime.
+
+`resolveErrorReporter` sends default server-error reports to `APP_LOGGER` when
+installed, including source/edge and correlation fields. It preserves default
+4xx and `diagnostics: 'silent'` suppression. No raw console fallback bypasses
+redaction when a sink fails. Without `LoggingModule`, existing console reporting
+continues unchanged.
+
+A custom `ExceptionHandler.report` remains a replacement: it receives the original
+error once and no default structured record is also sent. `dontReport` still
+suppresses delivery; context hooks may enrich metadata but cannot overwrite the
+scope helper's correlation. Custom asynchronous reporting is retained by managed
+invocation completion; its failures remain contained. Rendering/client error
+redaction is unchanged. Transport adapters must call the reporter once at their
+error boundary; this does not install new global error listeners.
+
+A reporter captured before `scope.finish()` keeps inert correlation metadata for
+completion failures. It can report them after child disposal without resolving
+request-owned services again. Such late asynchronous deliveries are owned by the
+application logger; adapters must explicitly flush/register that work with their
+platform lifetime when required. This exception-report path does not reactivate
+ordinary retained scoped loggers.
