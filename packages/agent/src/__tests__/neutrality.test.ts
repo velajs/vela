@@ -94,13 +94,15 @@ describe('edge-neutrality gate', () => {
     ) as {
       dependencies?: Record<string, string>;
       peerDependencies?: Record<string, string>;
+      peerDependenciesMeta?: Record<string, { optional?: boolean }>;
       devDependencies?: Record<string, string>;
     };
 
-    // No framework dependency, and mail is a type-only dev dependency.
+    // No framework dependency, and mail remains an optional, type-only integration.
     expect(pkg.dependencies ?? {}).not.toHaveProperty('@velajs/vela');
     expect(pkg.dependencies ?? {}).not.toHaveProperty('@velajs/mail');
-    expect(pkg.peerDependencies ?? {}).toHaveProperty('@velajs/mail', 'workspace:^1.0.0');
+    expect(pkg.peerDependencies?.['@velajs/mail']).toMatch(/^workspace:\^/);
+    expect(pkg.peerDependenciesMeta?.['@velajs/mail']?.optional).toBe(true);
 
     // Runtime deps: the durable-workflow core and the stable error layer.
     expect(pkg.dependencies ?? {}).toHaveProperty('@velajs/workflow');
