@@ -243,6 +243,36 @@ describe('WsDispatcher', () => {
     expect(client.sent).toEqual([{ event: 'rev', data: 'olleh', id: undefined }]);
   });
 
+  it.each([null, 7, {}, [], true].map((id) => ({ id })))(
+    'rejects a malformed correlation id: %j',
+    async ({ id }) => {
+      let calls = 0;
+      @WebSocketGateway({ path: '/envelope' })
+      class Gateway {
+        @SubscribeMessage('echo')
+        echo() {
+          calls++;
+          return 'ok';
+        }
+      }
+      @Module({ imports: [WebSocketModule.forRoot()], providers: [Gateway] })
+      class App {}
+      const app = await VelaFactory.create(App);
+      try {
+        const client = new FakeClient();
+        await app
+          .get(WsDispatcher)
+          .dispatchMessage('/envelope', client, JSON.stringify({ event: 'echo', id }));
+        expect(calls).toBe(0);
+        expect(client.sent).toEqual([
+          { event: 'exception', data: { message: 'Invalid message' }, id: undefined },
+        ]);
+      } finally {
+        await app.close();
+      }
+    },
+  );
+
   it('ignores unknown events', async () => {
     @WebSocketGateway({ path: '/u' })
     class UGateway {
@@ -664,7 +694,7 @@ describe('WsDispatcher — code-review regressions', () => {
 
     @Module({
       imports: [WebSocketModule.forRoot()],
-      providers: [Gateway, defineProvider(APP_GUARD, {useClass: GlobalDenyGuard})],
+      providers: [Gateway, defineProvider(APP_GUARD, { useClass: GlobalDenyGuard })],
     })
     class AppModule {}
 

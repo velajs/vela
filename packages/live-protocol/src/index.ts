@@ -26,3 +26,8 @@ export { runProtocolConformance } from './conformance';
 export type { ConformanceReport, DeltaCodec } from './conformance';
 export { DELTA_FIXTURES, FRAME_FIXTURES } from './fixtures';
 export type { DeltaFixture, FrameFixture } from './fixtures';
+
+export { readWebSocketEnvelope } from './envelope';
+export type { WebSocketEnvelope } from './envelope';
+export { WebSocketSendGate } from './send';
+export type { WebSocketSendPolicy, WebSocketSendResult, WebSocketSender } from './send';

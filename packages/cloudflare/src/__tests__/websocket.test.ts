@@ -217,7 +217,7 @@ describe('CfWsClient', () => {
 describe('CfRoomRegistry.deliverLocal', () => {
   function socket(att: Record<string, unknown>, tags: string[], ctx: FakeDoState): FakeWs {
     const ws = new FakeWs();
-    ws.serializeAttachment(att);
+    ws.serializeAttachment({ path: '/chat', data: {}, ...att });
     ctx.acceptWebSocket(ws, tags);
     return ws;
   }

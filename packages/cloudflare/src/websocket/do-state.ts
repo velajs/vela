@@ -6,6 +6,8 @@
 export const MAX_WS_ATTACHMENT_BYTES = 16_384;
 
 export interface WsLike {
+  readonly readyState?: number;
+  readonly bufferedAmount?: number;
   send(message: string | ArrayBuffer): void;
   close(code?: number, reason?: string): void;
   serializeAttachment(value: unknown): void;
@@ -28,6 +30,8 @@ export interface DoStateLike {
 
 /** Per-connection metadata persisted in the hibernation attachment (≤ 16 KiB). */
 export interface WsAttachment {
+  /** Absent on 1.x attachments created before versioned validation. */
+  version?: 1;
   connId: string;
   /** Only active sockets may dispatch frames or receive fan-out. */
   state: 'pending' | 'active' | 'rejected';

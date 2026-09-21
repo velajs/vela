@@ -66,6 +66,9 @@ export async function buildDoRuntime<T extends object>(
   // callOnApplicationBootstrap(), so this slim no-routes path has it too.
   const wsEntrypoints = app.entrypoints.ofKind('websocket', readWsEntrypointMeta);
   const dispatcher = wsEntrypoints[0]?.meta.dispatcher ?? app.get(WsDispatcher);
+  registry.setSendPolicyResolver(
+    (path) => wsEntrypoints.find((entry) => entry.meta.path === path)?.meta.options.sendPolicy,
+  );
   registry.setFrameLimitResolver((path) => dispatcher.getGatewayMaxFrameBytes(path));
   registry.setDeliveryAuthorizer((client) => {
     const path = client instanceof CfWsClient ? client.path : '';
@@ -74,7 +77,7 @@ export async function buildDoRuntime<T extends object>(
 
   // Live queries: wire the SQLite cursor log + local driver mode and replay
   // hibernation-persisted subscriptions into the fresh engine.
-  const live = initDoLive(app, ctx);
+  const live = initDoLive(app, ctx, registry);
 
   return {
     // Zero gateways still yields a live dispatcher (module imported, nothing

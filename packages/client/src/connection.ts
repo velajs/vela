@@ -1,12 +1,13 @@
 import {
   LIVE_PROTOCOL,
+  WebSocketSendGate,
   MAX_LIVE_FRAME_BYTES,
   MAX_PRESENCE_METADATA_BYTES,
   encodeLiveEnvelope,
   isServerLiveFrame,
   readLiveEnvelope,
 } from '@velajs/live-protocol';
-import type { ClientLiveFrame } from '@velajs/live-protocol';
+import type { WebSocketSendPolicy, ClientLiveFrame } from '@velajs/live-protocol';
 import { VelaLiveError } from './errors';
 import { applyServerFrame } from './frame-reducer';
 import { nextReconnectDelay, resetReconnect } from './reconnect';
@@ -38,6 +39,7 @@ export interface ConnectionDeps {
   socketTicket?: () => string | undefined | Promise<string | undefined>;
   heartbeatIntervalMs: number;
   reconnect?: ReconnectOptions;
+  sendPolicy?: WebSocketSendPolicy;
   onStatusChange: () => void;
   /**
    * Called after every applied server frame that advanced the authoritative
@@ -58,6 +60,7 @@ export interface ConnectionDeps {
  */
 export class RoomConnection {
   status: ConnectionStatus = 'idle';
+  #sendGate: WebSocketSendGate;
   private socket?: ReturnType<WebSocketFactory>;
   private readonly bySub = new Map<string, SubscriptionState>();
   private readonly reconnectState: ReconnectState = {};
@@ -73,6 +76,7 @@ export class RoomConnection {
     private readonly deps: ConnectionDeps,
   ) {
     assertSafeWebSocketUrl(url);
+    this.#sendGate = new WebSocketSendGate(deps.sendPolicy);
   }
 
   register(state: SubscriptionState): void {
@@ -146,6 +150,7 @@ export class RoomConnection {
       return;
     }
     this.socket = socket;
+    this.#sendGate = new WebSocketSendGate(this.deps.sendPolicy);
 
     socket.onopen = () => {
       if (generation !== this.generation || this.socket !== socket) return;
@@ -264,7 +269,7 @@ export class RoomConnection {
         this.socket.close(1009, 'frame too large');
         return;
       }
-      this.socket.send(encoded);
+      this.#sendGate.trySend(this.socket, encoded, MAX_LIVE_FRAME_BYTES);
     } catch {
       // socket died between the readyState check and send — onclose recovers
     }
@@ -308,7 +313,7 @@ export class RoomConnection {
       }
 
       try {
-        socket.send(HEARTBEAT_PING);
+        this.#sendGate.trySend(socket, HEARTBEAT_PING, MAX_LIVE_FRAME_BYTES);
       } catch {
         // Keep checking liveness even if a broken socket throws without
         // emitting close; the watchdog will recycle it on a later tick.

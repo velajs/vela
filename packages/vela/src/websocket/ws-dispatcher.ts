@@ -1,3 +1,5 @@
+import { WsMessageQueue } from './ws-message-queue';
+import { WebSocketSendGate, readWebSocketEnvelope } from '@velajs/live-protocol';
 import { Container } from '../container/container';
 import { Inject, Injectable, Optional } from '../container/decorators';
 import type { Type } from '../container/types';
@@ -552,8 +554,8 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
 
   private parse(raw: string | ArrayBuffer): WsMessage {
     const text = typeof raw === 'string' ? raw : new TextDecoder().decode(raw);
-    const parsed = JSON.parse(text) as WsMessage;
-    if (!parsed || typeof parsed !== 'object' || typeof parsed.event !== 'string') {
+    const parsed = readWebSocketEnvelope(JSON.parse(text));
+    if (!parsed) {
       throw new Error('Invalid WebSocket message envelope');
     }
     return parsed;
@@ -572,6 +574,8 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
     // Validate security-sensitive routing at bootstrap rather than silently
     // collapsing rooms when a transport receives its first request.
     resolveGatewayRoomParam(options);
+    new WebSocketSendGate(options.sendPolicy);
+    new WsMessageQueue(() => {}, options.maxPendingMessages, options.maxPendingBytes);
     if (options.allowedOrigins === '*' && shouldWarnProductionSecurity()) {
       console.warn(
         `[vela] security warning: WebSocket gateway ${gatewayClass.name} allows every browser ` +

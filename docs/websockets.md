@@ -377,3 +377,41 @@ Delivery guarantees (honest): at-most-once, no ordering across publishers, no re
 - Inbound and outbound frames default to a **64 KiB** limit. The per-gateway value follows each connection through local or Redis fan-out and Cloudflare hibernation. Raise `maxFrameBytes` only after considering isolate memory, synchronization traffic, and validation cost.
 - Protocol is **JSON text frames only** — binary frames and backpressure signalling are out of scope.
 - Not yet implemented: Worker-isolate `@WebSocketServer()` emit (use `broadcastToRoom` from a controller instead), cross-DO global `server.emit()`, per-user-DO direct messages.
+
+## Admission and slow peers
+
+`WsClient.trySendRaw(payload)` is an optional additive transport capability. It
+returns `accepted`, `closed`, `too-large`, or `backpressure`. `accepted` means the
+local transport accepted the frame; it is not an acknowledgment from the remote
+application. Existing `send()` and `sendRaw()` remain `void`. Integrations can use
+`trySendWebSocketFrame(client, payload)` to honor a connection's frame ceiling and
+explicit rejection, with a fallback for legacy clients. Live-query baselines advance
+only on local admission, so a refused snapshot is never treated as delivered.
+
+Gateways may configure `sendPolicy: { maxBufferedBytes, maxBytesPerSecond }`.
+Both budgets default to 1 MiB. Native `bufferedAmount`, when available, bounds the
+queued bytes plus the next frame. A separate fixed one-second byte budget works
+without timers on every adapter. Exceeding either budget closes with 1013; frames
+above `maxFrameBytes` close with 1009. There is no outgoing retry queue. Cloudflare
+does not guarantee a native queued-byte signal: its byte-rate budget bounds
+admission, not hidden network buffers. Budgets restart after DO hibernation.
+The live client accepts the same `sendPolicy` option and reconnects after closure.
+
+Native adapters process each connection's messages in arrival order. Configure
+`maxPendingMessages` (default 64) and `maxPendingBytes` (default 1 MiB) to bound
+active plus queued work, including the Node connection-setup barrier. Overload
+closes with 1013 and discards pending work; already-running work is allowed to
+settle. Connections keep independent queues. No server timers are introduced.
+
+Envelopes require an own string `event` and, when present, an own string `id`.
+Payloads remain unknown until application validation runs. Extra fields remain
+forward compatible, and existing empty string IDs stay valid. Malformed IDs no
+longer reach handlers or appear in replies.
+
+Hibernation attachments now carry `version: 1`; existing unversioned 1.x
+attachments remain readable. Framework routing, rooms, identity field types and
+connection state are validated before restoration or fanout. Unknown versions
+and malformed records fail closed. Application `data` still needs its own schema;
+a generic `WsClient<TData>` type is not runtime validation. Attachments retain the
+16 KiB platform limit; use DO storage for larger state. Send queues and invocation
+containers are never serialized.

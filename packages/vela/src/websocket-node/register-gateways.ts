@@ -8,6 +8,7 @@ import {
   resolveGatewayRoomId,
   readWsEntrypointMeta,
   WS_ROOM_REGISTRY,
+  WsMessageQueue,
 } from '../websocket/index';
 import type { RoomRegistry } from '../websocket/index';
 import { NodeWsClient } from './node-ws-client';
@@ -71,6 +72,17 @@ export function registerWebSocketGateways(
           throw new HTTPException(403, { message: 'WebSocket upgrade forbidden' });
         }
         let client: NodeWsClient;
+        const messages = new WsMessageQueue(
+          () => {
+            try {
+              client?.close(1013, 'WebSocket message budget exceeded');
+            } catch {
+              /* Closed. */
+            }
+          },
+          options.maxPendingMessages,
+          options.maxPendingBytes,
+        );
         // Connection-setup barrier: messages queue behind join + handleConnection
         // so an auth check in handleConnection runs before any message dispatches.
         let ready: Promise<boolean> = Promise.resolve(false);
@@ -78,6 +90,7 @@ export function registerWebSocketGateways(
           if (client) void dispatcher.handleError(path, client, err).catch(() => {});
         };
         const failSetup = (err: unknown): false => {
+          messages.stop();
           reportError(err);
           try {
             client.close(1008, 'Connection rejected');
@@ -89,7 +102,13 @@ export function registerWebSocketGateways(
         };
         return {
           onOpen: (_evt, ws) => {
-            client = new NodeWsClient(ws, registry, path, resolveMaxFrameBytes(options));
+            client = new NodeWsClient(
+              ws,
+              registry,
+              path,
+              resolveMaxFrameBytes(options),
+              options.sendPolicy,
+            );
             client.data = {
               principal: { ...upgrade.identity.principal },
               tenantId: upgrade.identity.tenantId,
@@ -105,13 +124,14 @@ export function registerWebSocketGateways(
           onMessage: (evt) => {
             const frame = toFrame(evt.data);
             if (frame === undefined) return;
-            void ready
-              .then((accepted) =>
-                accepted ? dispatcher.dispatchMessage(path, client, frame) : undefined,
-              )
+            void messages
+              .run(frame, async () => {
+                if (await ready) await dispatcher.dispatchMessage(path, client, frame);
+              })
               .catch(reportError);
           },
           onClose: (evt) => {
+            messages.stop();
             const code = (evt as CloseEvent).code || 1000;
             const reason = (evt as CloseEvent).reason || '';
             void Promise.resolve(dispatcher.handleClose(path, client, code, reason))

@@ -1,4 +1,5 @@
-import { assertBroadcastCommandFits } from '@velajs/vela/websocket';
+import { socketAttachment } from './ws-attachment';
+import { WsMessageQueue, assertBroadcastCommandFits } from '@velajs/vela/websocket';
 import type { BroadcastCommand, WsDispatcher } from '@velajs/vela/websocket';
 import type { CfRoomRegistry } from './cf-room-registry';
 import {
@@ -22,6 +23,7 @@ export interface WsConnectionPrincipal {
  * `VelaWebSocketDurableObject` shell forwards its hibernation callbacks here.
  */
 export class DoWebSocketHost {
+  readonly #messages = new WeakMap<WsLike, WsMessageQueue>();
   constructor(
     private readonly ctx: DoStateLike,
     private readonly dispatcher: WsDispatcher,
@@ -68,6 +70,7 @@ export class DoWebSocketHost {
 
     const connId = crypto.randomUUID();
     const attachment: WsAttachment = {
+      version: 1,
       connId,
       state: 'pending',
       userId,
@@ -141,11 +144,27 @@ export class DoWebSocketHost {
       this.reject(ws, 'Connection is not authorized');
       return;
     }
-    const client = this.registry.clientFor(ws);
-    await this.dispatcher.dispatchMessage(client.path, client, message);
+    let queue = this.#messages.get(ws);
+    if (!queue) {
+      const path = socketAttachment(ws)?.path;
+      const options = this.dispatcher.collectEntrypoints().find((entry) => entry.meta.path === path)
+        ?.meta.options;
+      queue = new WsMessageQueue(
+        () => this.reject(ws, 'WebSocket message budget exceeded', 1013),
+        options?.maxPendingMessages,
+        options?.maxPendingBytes,
+      );
+      this.#messages.set(ws, queue);
+    }
+    await queue.run(message, async () => {
+      if (!this.isActive(ws)) return;
+      const client = this.registry.clientFor(ws);
+      await this.dispatcher.dispatchMessage(client.path, client, message);
+    });
   }
 
   async onClose(ws: WsLike, code: number, reason: string): Promise<void> {
+    this.#messages.get(ws)?.stop();
     if (!this.isActive(ws, false)) {
       this.transition(ws, 'rejected');
       try {
@@ -189,7 +208,7 @@ export class DoWebSocketHost {
     expectedState?: WsAttachment['state'],
   ): boolean {
     try {
-      const attachment = ws.deserializeAttachment() as WsAttachment | null;
+      const attachment = socketAttachment(ws);
       if (!attachment) return false;
       if (expectedState !== undefined && attachment.state !== expectedState) return false;
       attachment.state = state;
@@ -202,7 +221,7 @@ export class DoWebSocketHost {
 
   private isActive(ws: WsLike, checkExpiry = true): boolean {
     try {
-      const attachment = ws.deserializeAttachment() as WsAttachment | null;
+      const attachment = socketAttachment(ws);
       if (!attachment || attachment.state !== 'active') return false;
       return (
         !checkExpiry ||
@@ -214,10 +233,11 @@ export class DoWebSocketHost {
     }
   }
 
-  private reject(ws: WsLike, reason: string): void {
+  private reject(ws: WsLike, reason: string, code = 1008): void {
+    this.#messages.get(ws)?.stop();
     this.transition(ws, 'rejected');
     try {
-      ws.close(1008, reason);
+      ws.close(code, reason);
     } catch {
       // already closed
     }

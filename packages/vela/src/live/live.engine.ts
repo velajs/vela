@@ -1,3 +1,4 @@
+import { trySendWebSocketFrame } from '../websocket/ws-send';
 import {
   LIVE_ERROR_CODES,
   LIVE_PROTOCOL,
@@ -1023,8 +1024,7 @@ export class LiveEngine
     try {
       const encoded = encodeLiveEnvelope(frame);
       if (textEncoder.encode(encoded).byteLength > MAX_LIVE_FRAME_BYTES) return false;
-      client.sendRaw(encoded);
-      return true;
+      return trySendWebSocketFrame(client, encoded) === 'accepted';
     } catch {
       return false;
     }

@@ -158,6 +158,33 @@ describe('LiveModule (tag-based live queries)', () => {
     return { app, dispatcher, engine, invalidation, client, dispatch, todos };
   }
 
+  it('does not advance a baseline when the connection rejects a smaller gateway frame limit', async () => {
+    const { app, dispatcher, engine, invalidation } = await makeTodoApp();
+    class LimitedClient extends FakeClient {
+      maxFrameBytes = 48;
+      override sendRaw(payload: string): void {
+        if (new TextEncoder().encode(payload).byteLength > this.maxFrameBytes) return;
+        super.sendRaw(payload);
+      }
+    }
+    const client = new LimitedClient();
+    try {
+      await dispatcher.dispatchMessage(
+        '/rooms/:id/ws',
+        client,
+        subFrame('s1', 'todos.list', { listId: 'l1' }),
+      );
+      expect(client.live().filter((frame) => frame.t === 'data')).toEqual([]);
+      client.maxFrameBytes = 65536;
+      client.clear();
+      await invalidation.invalidate({ tags: ['todos:l1'] });
+      await engine.whenIdle();
+      expect(client.live()).toEqual([expect.objectContaining({ t: 'data' })]);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('inspects isolated subscription metadata without exposing arguments, values or claims', async () => {
     const { app, engine, client, dispatch } = await makeTodoApp();
     client.join('l1');
