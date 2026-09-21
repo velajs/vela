@@ -1,5 +1,8 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
+import { InjectionToken } from '../container/types';
+import { defineModule } from '../module/define-module';
 import { Container } from '../container/container';
+import { createDiscoverableDecorator } from '../discovery/discoverable.decorator';
 import { DiscoveryService } from '../discovery/discovery.service';
 import { EntrypointRegistry } from '../entrypoint/entrypoint.registry';
 import { ConfigurableModuleBuilder } from '../module/configurable-module.builder';
@@ -115,3 +118,62 @@ describe('entrypoint metadata evidence', () => {
     );
   });
 });
+
+function configurableAuthoringTypes(): void {
+  const COUNT = new InjectionToken<number>('count');
+  const {
+    ConfigurableModuleClass: Feature,
+    OPTIONS_TYPE,
+    ASYNC_OPTIONS_TYPE,
+  } = defineModule<{ color: string; size?: number }>({ name: 'TypedFeature' });
+  Feature.forRoot({ color: 'red', lazy: true });
+  Feature.forRootAsync({
+    inject: [COUNT],
+    size: 7,
+    lazy: true,
+    useFactory: (count) => {
+      expectTypeOf(count).toEqualTypeOf<number>();
+      return { color: String(count) };
+    },
+  });
+  const sync: typeof OPTIONS_TYPE = { color: 'red', lazy: true };
+  const asyncOptions: typeof ASYNC_OPTIONS_TYPE = {
+    inject: [],
+    size: 4,
+    lazy: true,
+    useFactory: () => ({ color: 'red' }),
+  };
+  void sync;
+  void asyncOptions;
+  // @ts-expect-error Registration laziness is boolean.
+  Feature.forRoot({ color: 'red', lazy: 'yes' });
+  // @ts-expect-error Structural fields retain their option type.
+  Feature.forRootAsync({ inject: [], size: 'big', useFactory: () => ({ color: 'red' }) });
+  // @ts-expect-error Misspelled structural fields are rejected.
+  Feature.forRootAsync({ inject: [], colour: 'red', useFactory: () => ({ color: 'red' }) });
+  // @ts-expect-error Factory results still satisfy all required options.
+  Feature.forRootAsync({ inject: [], color: 'red', useFactory: () => ({ size: 3 }) });
+  // @ts-expect-error Factory choices remain exclusive.
+  Feature.forRootAsync({
+    inject: [],
+    useFactory: () => ({ color: 'red' }),
+    useClass: class {
+      create() {
+        return { color: 'red' };
+      }
+    },
+  });
+}
+void configurableAuthoringTypes;
+
+function registrationDiscoveryTypes(discovery: DiscoveryService): void {
+  const Marker = createDiscoverableDecorator<{ queue: string }>('typed:module:marker');
+  const registration = discovery.registrationsWithMeta(Marker, { metadataOnly: true })[0]!;
+  expectTypeOf(registration.moduleId).toEqualTypeOf<string>();
+  expectTypeOf(registration.meta.queue).toEqualTypeOf<string>();
+  const method = discovery.registeredMethodsWithMeta(Marker)[0]!;
+  expectTypeOf(method.class.moduleId).toEqualTypeOf<string>();
+  expectTypeOf(method.meta.queue).toEqualTypeOf<string>();
+  expectTypeOf(discovery.registeredMethodsWithMeta('untyped')[0]!.meta).toEqualTypeOf<unknown>();
+}
+void registrationDiscoveryTypes;

@@ -104,8 +104,8 @@ export function provideGlobal(
 /**
  * A first-class side-effect-only module: contributes providers/exports without
  * being a configurable module — the supported form of the "empty marker
- * module" trick (i18n's `registerMessages`). Content-derived `key` makes
- * identical contributions dedup (HMR-idempotent) while distinct ones coexist.
+ * module" trick (i18n's `registerMessages`). Pass a stable module class to
+ * deduplicate identical contributions; a string creates a fresh isolated owner.
  *
  * ```ts
  * export function registerMessages(messages: Messages): DynamicModule {
@@ -117,14 +117,14 @@ export function provideGlobal(
  * ```
  */
 export function sideEffectModule(
-  name: string,
+  owner: string | Type,
   contributions: Omit<ModuleContributions, 'global'> & { key?: string } = {},
 ): DynamicModule {
   const { key, ...rest } = contributions;
   // Computed-property-name idiom: mints a class whose .name is `name` without
   // dynamic code evaluation (edge-safe; no `new Function`).
-  const moduleClass = { [name]: class {} }[name] as Type;
-  Module({})(moduleClass);
+  const moduleClass = typeof owner === 'string' ? ({ [owner]: class {} }[owner] as Type) : owner;
+  if (typeof owner === 'string') Module({})(moduleClass);
   return {
     module: moduleClass,
     key: key ?? stableHash(rest),

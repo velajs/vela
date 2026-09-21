@@ -23,6 +23,7 @@ import type {
 } from '../registry/types';
 import type {
   ConfigurableModuleAsyncOptions,
+  ConfigurableModuleAsyncFactory,
   ConfigurableModuleClassType,
   ConfigurableModuleExtras,
   ConfigurableModuleExtrasTransform,
@@ -320,7 +321,7 @@ function buildAsyncOptionsProviders<Opts, MethodKey extends string>(
   optionsToken: InjectionToken<Opts>,
   factoryMethodName: MethodKey,
   async: Pick<
-    ConfigurableModuleAsyncOptions<Opts, MethodKey>,
+    ConfigurableModuleAsyncFactory<Opts, MethodKey>,
     'inject' | 'useFactory' | 'useClass' | 'useExisting'
   >,
   structural: Record<string, unknown> = {},

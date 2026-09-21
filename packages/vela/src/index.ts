@@ -386,6 +386,7 @@ export type {
   DynamicModule,
   AsyncModuleOptions,
   ModuleImport,
+  ModuleRegistrationOptions,
   ConfigurableModuleAsyncOptions,
   ConfigurableModuleBuilderOptions,
   ConfigurableModuleClassType,

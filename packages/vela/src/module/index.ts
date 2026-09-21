@@ -20,6 +20,7 @@ export {
   type LazyProviderSpec,
 } from './lazy-provider';
 export type {
+  ModuleRegistrationOptions,
   ConfigurableModuleAsyncOptions,
   ConfigurableModuleBuilderOptions,
   ConfigurableModuleClassType,
