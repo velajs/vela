@@ -479,7 +479,7 @@ export class RouteManager {
     throw error;
   }
 
-  registerController(controller: Type): this {
+  registerController(controller: Type, moduleId?: string): this {
     const prefix = MetadataRegistry.getControllerPath(controller);
     const options = MetadataRegistry.getControllerOptions(controller);
     const routes = MetadataRegistry.getRoutes(controller);
@@ -487,12 +487,28 @@ export class RouteManager {
     // The ModuleLoader registers controllers in their owning module's bucket;
     // fall back to a `__root__` registration only for controllers that arrive
     // here outside the module-loading flow (test harnesses, custom adapters).
-    if (!this.container.has(controller)) {
+    if (moduleId === undefined && !this.container.has(controller)) {
       this.container.register(controller);
     }
-    const moduleId = this.container.getOwnerModuleIds(controller)[0];
-    if (!moduleId) {
-      throw new Error(`Cannot register controller ${controller.name}: no declaring module bucket`);
+    const owners = this.container.getOwnerModuleIds(controller);
+    if (moduleId === undefined) {
+      if (owners.length !== 1) {
+        throw new Error(
+          `Cannot register controller ${controller.name}: specify its declaring module ` +
+            `(found ${owners.length} owners)`,
+        );
+      }
+      moduleId = owners[0]!;
+    } else if (!owners.includes(moduleId)) {
+      throw new Error(`Controller ${controller.name} is not registered in module ${moduleId}`);
+    }
+
+    const mounted = this.controllers.find((entry) => entry.controller === controller);
+    if (mounted && mounted.moduleId !== moduleId) {
+      throw new Error(
+        `Controller ${controller.name} is already mounted by module ${mounted.moduleId}; ` +
+          `cannot mount the same routes for module ${moduleId}. Use distinct controller classes.`,
+      );
     }
 
     this.controllers.push({
