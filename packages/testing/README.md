@@ -180,6 +180,37 @@ Each scorer returns a `[0, 1]` score (auto-clamped) with an optional reason. `ev
 
 `@velajs/testing` consumes vela's framework primitives via `@velajs/vela/internal` (`MetadataRegistry`, `Container`, `RouteManager`, `ModuleLoader`, `ComponentManager`, `VelaApplication`, `bindAppProviders`). The same `bindAppProviders` that `VelaFactory.create` uses, so test-mode and run-mode app construction stay in lockstep automatically.
 
+## HTTP transports and schema validation
+
+Use the same response assertions against an existing remote Worker or an injected
+fetch handler. Each client owns its headers; there is no global environment,
+automatic cookie jar, implicit authentication, or request retry.
+
+```ts
+import { createTestHttpClient } from '@velajs/testing';
+
+const remote = createTestHttpClient({ baseUrl: 'https://staging.example.com/' })
+  .withHeaders({ authorization: 'Bearer test-session' });
+(await remote.get('/health').send()).assertOk();
+
+// A native Workers test can inject SELF.fetch using an explicit closure.
+const native = createTestHttpClient({
+  baseUrl: 'https://worker.test/',
+  fetch: request => SELF.fetch(request),
+});
+(await native.get('/health').send()).assertOk();
+```
+
+`actingAs` needs a local `TestingModule`; remote clients use explicit headers.
+`forHost` preserves the base URL scheme while replacing its host and Host header.
+Relative paths resolve against `baseUrl` using standard URL rules.
+
+`response.json(schema)` accepts Standard Schema v1, `defineDto` descriptors, and
+legacy parsers (including `parseAsync`). It awaits validation and infers the
+transformed output. The cached value remains the raw JSON: a later `json()` call
+still returns `unknown`, and each requested schema runs against that original
+value. Validator exceptions propagate; invalid payloads fail the test.
+
 ## License
 
 MIT

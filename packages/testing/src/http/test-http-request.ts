@@ -3,6 +3,7 @@
 // @velajs/testing stays free of optional-package dependencies.
 import type { ActingAsResolver, TestPrincipal, TestingModule } from '../testing-module.js';
 import { TestResponse } from './test-response.js';
+import type { TestHttpTransport } from './test-http-client.js';
 
 /**
  * TestHttpRequest
@@ -30,7 +31,7 @@ export class TestHttpRequest {
     private readonly method: string,
     private readonly path: string,
     headers: Headers,
-    private readonly module: TestingModule,
+    private readonly module: TestingModule | TestHttpTransport,
     private readonly host: string | null = null,
   ) {
     this.requestHeaders = new Headers(headers);
@@ -78,7 +79,11 @@ export class TestHttpRequest {
       this.requestHeaders.set('Content-Type', 'application/json');
     }
 
-    const url = new URL(this.path, `http://${this.host ?? 'localhost'}`);
+    const base = new URL(
+      ('baseUrl' in this.module ? this.module.baseUrl : undefined) ?? 'http://localhost/',
+    );
+    if (this.host) base.host = this.host;
+    const url = new URL(this.path, base);
     const request = new Request(url.toString(), {
       method: this.method,
       headers: this.requestHeaders,
@@ -92,6 +97,11 @@ export class TestHttpRequest {
   private async applyAuthentication(): Promise<void> {
     if (!this.principal) return;
 
+    if (!('getAuthResolver' in this.module)) {
+      throw new Error(
+        'actingAs() requires a TestingModule; use explicit headers for a remote client.',
+      );
+    }
     const resolver = this.resolver ?? this.module.getAuthResolver();
     if (!resolver) {
       throw new Error(

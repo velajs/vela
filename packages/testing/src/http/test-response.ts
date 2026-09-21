@@ -2,6 +2,11 @@
 // vela has no Macroable, so TestResponse is a plain class.
 import { expect } from 'vitest';
 import type { SchemaParser } from '@velajs/vela';
+import {
+  parseSchemaAsync,
+  type SchemaOutput,
+  type ValidationSchema,
+} from '@velajs/vela/validation';
 import { getValueAtPath, hasValueAtPath } from './path-utils.js';
 
 function isJsonObject(value: unknown): value is Record<string, unknown> {
@@ -45,11 +50,12 @@ export class TestResponse {
 
   /** Read JSON as unknown, or infer validated output from a supplied parser. */
   json(): Promise<unknown>;
+  json<Schema extends ValidationSchema>(parser: Schema): Promise<SchemaOutput<Schema>>;
   json<Value>(parser: SchemaParser<Value>): Promise<Value>;
-  async json<Value>(parser?: SchemaParser<Value>): Promise<unknown> {
+  async json(parser?: ValidationSchema): Promise<unknown> {
     this.jsonData ??= this.response.clone().json();
     const value = await this.jsonData;
-    return parser === undefined ? value : parser.parse(value);
+    return parser === undefined ? value : parseSchemaAsync(parser, value);
   }
 
   /** Read (and cache) the response body as text. */

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { defineDto, type StandardSchemaV1 } from '@velajs/vela';
 import { TestResponse } from '../http/test-response.js';
 
 function jsonResponse(body: unknown, init?: ResponseInit): TestResponse {
@@ -138,4 +139,52 @@ describe('TestResponse header assertions', () => {
   it('assertHeaderMissing passes when absent', () => {
     jsonResponse({}).assertHeaderMissing('X-Absent');
   });
+});
+
+it('validates transformed async Standard Schema responses once per requested parse', async () => {
+  let calls = 0;
+  const schema: StandardSchemaV1<string, number> = {
+    '~standard': {
+      version: 1,
+      vendor: 'test',
+      async validate(value) {
+        calls++;
+        return typeof value === 'string'
+          ? { value: Number(value) }
+          : { issues: [{ message: 'Expected string' }] };
+      },
+    },
+  };
+  const response = jsonResponse('42');
+  const result: number = await response.json(schema);
+  expect(result).toBe(42);
+  expect(calls).toBe(1);
+  expect(await response.json()).toBe('42');
+  expect(await response.json(defineDto(schema))).toBe(42);
+  expect(calls).toBe(2);
+  await expect(jsonResponse(false).json(schema)).rejects.toThrow('Validation failed');
+});
+
+it('uses asynchronous legacy parsers without speculative sync parsing', async () => {
+  const parser = {
+    parse() {
+      throw new Error('sync parse must not run');
+    },
+    async parseAsync(value: unknown): Promise<number> {
+      if (typeof value !== 'string') throw new TypeError('Expected string');
+      return Number(value);
+    },
+  };
+  expect(await jsonResponse('12').json(parser)).toBe(12);
+  const failure = new Error('validator unavailable');
+  const schema: StandardSchemaV1 = {
+    '~standard': {
+      version: 1,
+      vendor: 'test',
+      validate() {
+        throw failure;
+      },
+    },
+  };
+  await expect(jsonResponse('12').json(schema)).rejects.toBe(failure);
 });
