@@ -66,6 +66,7 @@ export class ModuleLoader {
   #processedModules = new Map<Type, Set<string>>();
   #processingStack = new Set<string>();
   #collectedControllers = new Set<Type>();
+  #controllerOwners = new Map<Type, Set<string>>();
   #registeredProviders: Token[] = [];
   // (class, key) → exported tokens
   #moduleExportsCache = new Map<Type, Map<string, Set<Token>>>();
@@ -96,7 +97,9 @@ export class ModuleLoader {
     this.processModule(rootModule);
 
     for (const controller of this.#collectedControllers) {
-      this.router.registerController(controller);
+      for (const moduleId of this.#controllerOwners.get(controller) ?? []) {
+        this.router.registerController(controller, moduleId);
+      }
     }
 
     // Arm the deferred-init seam HERE — at the end of load(), not in
@@ -184,15 +187,19 @@ export class ModuleLoader {
       moduleClass = moduleClassOrDynamic;
     }
 
+    const moduleId = this.getModuleId(moduleClass, key);
     if (this.isProcessed(moduleClass, key)) {
       // Even if already processed, still collect extra controllers from dynamic module
       for (const controller of extraControllers) {
-        this.#collectedControllers.add(controller);
+        if (this.registerController(controller, moduleId)) {
+          MetadataRegistry.propagateControllerComponents(moduleClass, controller);
+        }
+        const group = this.#lazyGroups.get(moduleId);
+        if (group && !group.tokens.includes(controller)) group.tokens.push(controller);
       }
       return this.getCachedExports(moduleClass, key) ?? new Set();
     }
 
-    const moduleId = this.getModuleId(moduleClass, key);
     if (this.#processingStack.has(moduleId)) {
       const chain = [...this.#processingStack, moduleId].join(' -> ');
       throw new Error(`Circular module dependency detected: ${chain}`);
@@ -308,8 +315,7 @@ export class ModuleLoader {
       for (const controller of allControllers) {
         // Register the controller in its owning module's bucket so its
         // dependencies resolve from the module's POV (vs `__root__`'s).
-        this.container.register(controller, moduleId);
-        this.#collectedControllers.add(controller);
+        this.registerController(controller, moduleId);
         if (isLazy) lazyTokens.push(controller);
       }
 
@@ -356,6 +362,16 @@ export class ModuleLoader {
     } finally {
       this.#processingStack.delete(moduleId);
     }
+  }
+
+  private registerController(controller: Type, moduleId: string): boolean {
+    const owners = this.#controllerOwners.get(controller) ?? new Set<string>();
+    if (owners.has(moduleId)) return false;
+    owners.add(moduleId);
+    this.#controllerOwners.set(controller, owners);
+    this.container.register(controller, moduleId);
+    this.#collectedControllers.add(controller);
+    return true;
   }
 
   private warnOnMixedDefaultAndKeyed(

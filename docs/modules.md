@@ -63,7 +63,14 @@ For `forRootAsync`, read resolved options through the `OPTIONS` token: the
 `DynamicModule.key` decides instance identity: same `(class, key)` dedups
 (while the constructor identity is retained), different keys coexist. A display
 name is not identity: distinct classes with the same name remain independent.
-The loader and OpenAPI metadata walker use the same class/key distinction. Rules:
+The loader and OpenAPI metadata walker use the same class/key distinction.
+An HTTP controller class can be mounted by only one module owner: registering
+its identical routes through two owners now fails with a clear diagnostic.
+Use distinct controller classes when keyed instances need separate HTTP routes.
+A class registered only as another module's provider does not change the actual
+HTTP owner. Middleware configured through `configure()` also retains its owner.
+
+Rules:
 
 1. Default `stableHash(options)` is right for value-shaped options.
 2. Options carrying **stateful instances** (drivers, registries, sockets)
