@@ -69,7 +69,9 @@ export class ArgumentResolver {
       };
 
       for (const pipe of pipes) {
-        value = await pipe.transform(value, metadata);
+        value = await (pipe.transformAsync
+          ? pipe.transformAsync(value, metadata)
+          : pipe.transform(value, metadata));
       }
 
       if (param.pipes && param.pipes.length > 0) {
@@ -79,7 +81,9 @@ export class ArgumentResolver {
             requestContainer,
             moduleId,
           );
-          value = await pipeInstance.transform(value, metadata);
+          value = await (pipeInstance.transformAsync
+            ? pipeInstance.transformAsync(value, metadata)
+            : pipeInstance.transform(value, metadata));
         }
       }
 
