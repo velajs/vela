@@ -2,6 +2,9 @@ import { cloudflareTest } from '@cloudflare/vitest-plugin';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
-  test: { globals: false, include: ['src/__tests__/workers/**/*.test.ts'] },
+  test: {
+    globals: false,
+    include: ['src/__tests__/workers/**/*.test.ts', 'src/__tests__/security.test.ts'],
+  },
   plugins: [cloudflareTest({ wrangler: { configPath: './wrangler.test.toml' } })],
 });
