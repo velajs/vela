@@ -157,6 +157,27 @@ describe('portable RPC client', () => {
     ).rejects.toBeInstanceOf(RpcError);
     expect(fetch).toHaveBeenCalledTimes(1);
   });
+  it('does not treat a miscorrelated error frame as a retryable gateway failure', async () => {
+    const fetch = vi.fn(async (request: Request) => {
+      const rpc = (await request.json()) as RpcRequest;
+      return Response.json(
+        {
+          version: 1,
+          id: 'foreign',
+          procedure: rpc.procedure,
+          ok: false,
+          error: { code: 'busy', message: 'Busy', status: 503 },
+        },
+        { status: 503 },
+      );
+    });
+    await expect(
+      createRpcClient({ url: 'https://rpc.test/rpc', fetch }).call(query, '', {
+        retry: { maxAttempts: 3 },
+      }),
+    ).rejects.toBeInstanceOf(RpcProtocolError);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
   it('bounds a fetch that ignores cancellation and releases a late response', async () => {
     vi.useFakeTimers();
     let release!: (r: Response) => void;

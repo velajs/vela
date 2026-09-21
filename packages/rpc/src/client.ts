@@ -195,7 +195,13 @@ export class RpcClient {
     try {
       envelope = parseRpcResponse(body, rpc);
     } catch (error) {
-      if (!response.ok) throw new RpcHttpError(response.status);
+      // An apparent RPC frame with a wrong ID/version/outcome is a protocol
+      // failure, even on a gateway status. Do not retry a miscorrelated reply.
+      const framed =
+        body !== null &&
+        typeof body === 'object' &&
+        ('version' in body || 'id' in body || 'procedure' in body || 'ok' in body);
+      if (!response.ok && !framed) throw new RpcHttpError(response.status);
       throw error;
     }
     if (!envelope.ok) {
