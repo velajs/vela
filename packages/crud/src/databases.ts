@@ -1,3 +1,4 @@
+import { DatabaseAdapterOwner } from './database-owner';
 import type { CrudAdapter } from './adapter/contract';
 import type { Model } from './model/model.types';
 import type { AuditStore } from './audit/index';
@@ -102,7 +103,7 @@ export class CrudDatabaseRegistry<
   /** Each application gets its own registration claims even if it reuses configuration. */
   forApplication(): CrudDatabaseRegistry {
     const databases = [...this.#databases.values()].map((database): CrudDatabase => {
-      const owner = Object.freeze({});
+      const owner = new DatabaseAdapterOwner();
       return {
         ...database,
         resources: Object.fromEntries(
@@ -110,12 +111,7 @@ export class CrudDatabaseRegistry<
             key,
             {
               ...resource,
-              adapter: {
-                runtime: {
-                  ...resource.adapter.runtime,
-                  ...(resource.adapter.runtime.transactionOwner ? { transactionOwner: owner } : {}),
-                },
-              },
+              adapter: { runtime: owner.bind(resource.adapter.runtime) },
             },
           ]),
         ),

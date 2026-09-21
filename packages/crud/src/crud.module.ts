@@ -16,6 +16,7 @@ import type { DynamicModule } from '@velajs/vela';
 import type { CrudAdapter } from './adapter/contract';
 import { ConfigurationException } from './envelope/errors';
 import type { CrudDatabaseRegistry } from './databases';
+import { missingDefaultAdapter } from './missing-adapter';
 import { resolveCrudDatabase } from './resolve-database';
 import { compileResource } from './kernel/resource';
 import {
@@ -57,13 +58,7 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<CrudModul
       }),
       defineProvider(CRUD_DEFAULT_ADAPTER, {
         useFactory: (options) => {
-          return (
-            options.adapter ?? {
-              get runtime(): never {
-                throw new ConfigurationException('No default adapter; select a named database');
-              },
-            }
-          );
+          return options.adapter ?? missingDefaultAdapter;
         },
         inject: [OPTIONS],
       }),

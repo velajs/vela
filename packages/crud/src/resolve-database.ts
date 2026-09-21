@@ -1,3 +1,4 @@
+import { missingDefaultAdapter } from './missing-adapter';
 import type { Container, InjectionToken } from '@velajs/vela';
 import {
   CRUD_DATABASES,
@@ -59,7 +60,7 @@ function defaults(
   versioningStore?: VersioningStore,
   auditStore?: AuditStore,
 ): Resolved {
-  if (!adapter)
+  if (!adapter || adapter === missingDefaultAdapter.runtime)
     throw new ConfigurationException(
       'No adapter — pass adapter on the resource or import CrudModule.forRoot({ adapter })',
     );

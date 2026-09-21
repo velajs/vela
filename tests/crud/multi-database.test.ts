@@ -60,6 +60,7 @@ function memoryDatabase(name: string, model = item, store = new MemoryStore()) {
 async function appFor(
   databases: ReturnType<typeof createCrudDatabaseRegistry>,
   defaultMapping = false,
+  withCache = false,
 ) {
   @Module({
     imports: [
@@ -68,6 +69,9 @@ async function appFor(
         [
           defineCrudFeature({ path: '/main/items', model: item }),
           defineCrudFeature({ path: '/other/items', model: item, database: 'other' }),
+          ...(withCache
+            ? [defineCrudFeature({ path: '/cache/items', model: item, database: 'cache' })]
+            : []),
         ],
         defaultMapping ? {} : { database: 'main' },
       ),
@@ -113,9 +117,11 @@ describe('named databases', () => {
       ).toThrow('Unknown database');
       const ar = a.getContainer().resolve(crudResourceToken('item', 'main'));
       const br = b.getContainer().resolve(crudResourceToken('item', 'main'));
-      await crudTransaction({ runtime: ar.config.adapter }, {}, async (transaction) => {
-        await expect(br.execute('list', { transaction })).rejects.toThrow('Foreign');
-      }).catch((error: Error) => expect(error.message).toContain('rolled back'));
+      await expect(
+        crudTransaction({ runtime: ar.config.adapter }, {}, async (transaction) => {
+          await expect(br.execute('list', { transaction })).rejects.toThrow('Foreign');
+        }),
+      ).rejects.toThrow('rolled back');
     } finally {
       await a.close();
       await b.close();
@@ -237,6 +243,11 @@ describe('named databases', () => {
       expect(a.getContainer().resolve(CRUD_DATABASES)).not.toBe(
         b.getContainer().resolve(CRUD_DATABASES),
       );
+      await first.config.adapter.requestScope(async (scope) => {
+        await expect(
+          second.config.adapter.readOne({ field: 'id', value: '1' }, {}, scope),
+        ).rejects.toThrow('Foreign');
+      });
     } finally {
       await a.close();
       await b.close();
@@ -427,13 +438,21 @@ it('maps multiple SQLite handles and a memory adapter simultaneously', async () 
       sql('other', b),
       memoryDatabase('cache'),
     ]);
-    const app = await appFor(registry);
+    const app = await appFor(registry, false, true);
     try {
       await app.getHonoApp().request('/main/items', json({ id: 'same', title: 'first' }));
       await app.getHonoApp().request('/other/items', json({ id: 'same', title: 'second' }));
       expect((await first.execute('SELECT title FROM items')).rows[0]?.title).toBe('first');
       expect((await second.execute('SELECT title FROM items')).rows[0]?.title).toBe('second');
       expect(registry.resolve('cache').handle).toBeInstanceOf(MemoryStore);
+      const cached = await app
+        .getHonoApp()
+        .request('/cache/items', json({ id: 'same', title: 'cached' }));
+      expect(cached.status).toBe(201);
+      expect(await (await app.getHonoApp().request('/cache/items/same')).json()).toMatchObject({
+        result: { title: 'cached' },
+      });
+      expect((await first.execute('SELECT title FROM items')).rows[0]?.title).toBe('first');
     } finally {
       await app.close();
     }
@@ -560,4 +579,80 @@ it('commits and rolls back two SQLite resources on one native owner', async () =
     client.close();
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+it('composes registered resources while isolating raw application scope namespaces', async () => {
+  const { a, b, first, second, store } = pair();
+  const database = defineCrudDatabase('main', {
+    handle: store,
+    resources: {
+      a: { model: first.model, adapter: a },
+      b: { model: second.model, adapter: b },
+    },
+  });
+  const registry = createCrudDatabaseRegistry([database]).forApplication();
+  const registered = registry.resolve('main');
+  const aResource = defineResource('a', {
+    model: first.model,
+    adapter: registered.resources.a!.adapter,
+  });
+  const bResource = defineResource('b', {
+    model: second.model,
+    adapter: registered.resources.b!.adapter,
+  });
+  await crudTransaction(registered.resources.a!.adapter, {}, async (transaction) => {
+    await aResource.execute('create', { transaction, body: { id: 'a', title: 'registered' } });
+    await bResource.execute('create', { transaction, body: { id: 'b', title: 'registered' } });
+  });
+  expect(store.table('a').size).toBe(1);
+  expect(store.table('b').size).toBe(1);
+  const adapter = registered.resources.a!.adapter.runtime;
+  const escaped = await adapter.requestScope(async (scope) => scope);
+  expect(() => adapter.readOne({ field: 'id', value: 'a' }, {}, escaped)).toThrow(
+    'expired database registration',
+  );
+});
+
+it('rejects duplicate identities across feature modules and missing database-specific stores', async () => {
+  const database = memoryDatabase('main');
+  @Module({
+    imports: [
+      CrudModule.forRoot({ databases: createCrudDatabaseRegistry([database]) }),
+      CrudModule.forFeature([defineCrudFeature({ path: '/one', model: item, database: 'main' })]),
+      CrudModule.forFeature([defineCrudFeature({ path: '/two', model: item, database: 'main' })]),
+    ],
+  })
+  class Duplicates {}
+  const duplicateError = await VelaFactory.create(Duplicates).then(
+    async (app) => {
+      await app.close();
+      return undefined;
+    },
+    (error: unknown) => error,
+  );
+  expect(duplicateError instanceof Error ? duplicateError.message : 'resolved').toContain(
+    'Duplicate CRUD resource',
+  );
+
+  const audited = defineModel({
+    name: 'item',
+    tableName: 'items',
+    schema,
+    id: 'client',
+    timestamps: false,
+    audit: true,
+  });
+  @Module({
+    imports: [
+      CrudModule.forRoot({
+        databases: createCrudDatabaseRegistry([memoryDatabase('main', audited)]),
+        auditStore: new MemoryAuditStore(),
+      }),
+      CrudModule.forFeature([
+        defineCrudFeature({ path: '/one', model: audited, database: 'main' }),
+      ]),
+    ],
+  })
+  class MissingStore {}
+  await expect(VelaFactory.create(MissingStore)).rejects.toThrow('no auditStore');
 });
