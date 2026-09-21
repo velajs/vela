@@ -51,7 +51,11 @@ before disposal; registering more work after closure throws.
 `REQUEST_CONTEXT` remains an HTTP primitive. Non-HTTP scopes do not manufacture
 requests or inherit trusted principal/tenant authority. A trusted transport may
 explicitly establish its own operation context through the relevant integration.
-Optional packages can use these helpers without ambient context storage.
+These helpers do not enable ambient context storage. Ambient accessors remain
+an HTTP read path: starting a nested non-HTTP invocation does not switch the
+inherited HTTP ambient context. Pass the invocation's child container explicitly.
+The existing package root still loads Hono's context-storage module, so disabling
+ambient reads does not remove that module's runtime ALS requirement.
 
 ## Custom transport integration
 

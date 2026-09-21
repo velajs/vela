@@ -22,6 +22,8 @@ HTTP client, live queries, and Studio in a runnable Workers application.
 - [Queues](queues.md): validated job contracts, owned dispatch, and native
   Cloudflare producers and consumers.
 - [Scheduling](scheduling.md): cron dialects and invocation-owned execution.
+- [Execution scopes](execution-scopes.md): invocation ownership, deferred work,
+  streaming completion, and transport integration.
 - [Security configuration](security.md): request limits, browser origins,
   identity, response caching, signed URLs, and WebSocket boundaries.
 - [Logging](logging.md): application-owned records, redaction, sinks, and invocation correlation.
