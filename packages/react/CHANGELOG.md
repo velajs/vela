@@ -1,5 +1,12 @@
 # @velajs/react
 
+## 1.22.2
+
+### Patch Changes
+
+- Updated dependencies [5205e58]
+  - @velajs/client@1.23.0
+
 ## 1.22.1
 
 ### Patch Changes

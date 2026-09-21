@@ -1,5 +1,52 @@
 # Changelog
 
+## 1.25.0
+
+### Minor Changes
+
+- a66a3cb: Add typed named database registrations, explicit module/resource routing, database-qualified resource identities and isolated default stores. Preserve single-database authoring and native handle inference.
+
+  Add explicit same-owner resource transaction composition with tenant/lifetime checks, rollback after caught operation errors, draining of accepted work, and ordered outer-commit notifications. Validate native Drizzle scopes and preserve genuine Durable Object transactions. D1 callbacks, cross-database atomicity and composition with non-transaction-aware versioning stores fail explicitly.
+- cc0dcfd: Add bindCrudService and the @velajs/crud/service entrypoint for schema-inferred
+  headless create/read/update/delete/list calls. Bindings verify the resource's
+  actual contracts, preserve the existing policy/tenant pipeline and keep input
+  transformations distinct from projected response types, status and pagination.
+
+### Patch Changes
+
+- 6588211: Normalize generated CRUD names and storage prefixes in linear passes so long
+  separator runs cannot cause regular-expression backtracking. Preserve existing
+  operation IDs, controller/DTO names, and prefix scoping behavior.
+- de4e57e: Validate generated CRUD request bodies once in the engine, preserving schema metadata for OpenAPI without storing global validation receipts. Headless calls validate raw input independently. Keep consumeValidated as a deprecated compatibility method that returns false. Awaited CRUD identifier, body, persisted-row and response contracts use the shared async parser to avoid speculative Zod transforms. ValidationPipe adds transformAsync while preserving its synchronous transform API.
+- Updated dependencies [c6a43a6]
+- Updated dependencies [bbe62d4]
+- Updated dependencies [a6ef933]
+- Updated dependencies [dae3654]
+- Updated dependencies [77cca9e]
+- Updated dependencies [b9f75f5]
+- Updated dependencies [df47ea8]
+- Updated dependencies [af019bf]
+- Updated dependencies [6df1059]
+- Updated dependencies [bdd90a1]
+- Updated dependencies [8a3923f]
+- Updated dependencies [c7d108b]
+- Updated dependencies [1c7f635]
+- Updated dependencies [636ffbc]
+- Updated dependencies [54f8864]
+- Updated dependencies [f49db45]
+- Updated dependencies [4fde903]
+- Updated dependencies [6a1b5b3]
+- Updated dependencies [a95951a]
+- Updated dependencies [9e82187]
+- Updated dependencies [c5a3cb0]
+- Updated dependencies [363fb71]
+- Updated dependencies [de4e57e]
+- Updated dependencies [0765aaa]
+- Updated dependencies [6b7cf23]
+- Updated dependencies [5205e58]
+- Updated dependencies [ae45689]
+  - @velajs/vela@1.25.0
+
 ## 1.24.0
 
 ### Minor Changes

@@ -1,5 +1,55 @@
 # @velajs/cli
 
+## 1.24.0
+
+### Minor Changes
+
+- 2c1cac6: Add read-only `vela doctor` config provenance and opt-in application snapshots.
+  Validate imported configs and Studio ports and preserve inferred config subtypes.
+  Generate a Node-side config
+  that imports the starter's SWC output, and explain the decorator/compiler boundary.
+- 50358a1: Add read-only `vela deploy check` for explicit Wrangler environments and saved entrypoint snapshots. Validate configuration, cron and queue alignment, and WebSocket Durable Object bindings; report redacted target information and git/input provenance without constructing applications, running custom builds or uploading code.
+- 4fde903: Discover seeders per owning module registration and await async resolution inside
+  managed invocation scopes. Preserve sequential ordering and stop/continue behavior
+  while settling deferred work before disposal. Add optional module ownership to
+  seeder inventories and expose it through `vela db seed --list --json` without
+  executing seeders.
+
+### Patch Changes
+
+- 6d33ac9: Dispose applications after seeder registry or command failures, preserving the
+  primary result when cleanup fails. Share command lifetime handling across
+  introspection, client generation and MCP, including cleanup of older 1.x apps
+  whose shutdown hooks throw.
+- Updated dependencies [c6a43a6]
+- Updated dependencies [bbe62d4]
+- Updated dependencies [a6ef933]
+- Updated dependencies [dae3654]
+- Updated dependencies [77cca9e]
+- Updated dependencies [b9f75f5]
+- Updated dependencies [df47ea8]
+- Updated dependencies [af019bf]
+- Updated dependencies [6df1059]
+- Updated dependencies [bdd90a1]
+- Updated dependencies [8a3923f]
+- Updated dependencies [c7d108b]
+- Updated dependencies [1c7f635]
+- Updated dependencies [636ffbc]
+- Updated dependencies [54f8864]
+- Updated dependencies [f49db45]
+- Updated dependencies [4fde903]
+- Updated dependencies [6a1b5b3]
+- Updated dependencies [a95951a]
+- Updated dependencies [9e82187]
+- Updated dependencies [c5a3cb0]
+- Updated dependencies [363fb71]
+- Updated dependencies [de4e57e]
+- Updated dependencies [0765aaa]
+- Updated dependencies [6b7cf23]
+- Updated dependencies [5205e58]
+- Updated dependencies [ae45689]
+  - @velajs/vela@1.25.0
+
 ## 1.23.0
 
 ### Minor Changes

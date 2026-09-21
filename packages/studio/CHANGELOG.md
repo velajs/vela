@@ -1,5 +1,57 @@
 # @velajs/studio
 
+## 1.23.0
+
+### Minor Changes
+
+- c5d98a7: Use the shared CRUD database resolver for Studio resources, expose qualified database/resource identities, and reject ambiguous legacy names or invalid explicit selections. Keep relation inspection and generated foreign keys within the selected database. Preserve native compiled CRUD adapters and fail before writes when time-based CDC replay would require an unavailable database-aware change source.
+- 8b3ba80: Add optional application-owned structured log capture and handler completion timing through `@velajs/studio/logging`. Expose additive module ownership, effective provider scopes, and invocation metadata in Studio protocol v2 and the UI. Bound and copy log snapshots, preserve older protocol responses, and document Worker/test debugger workflows.
+
+### Patch Changes
+
+- 7a4b7bc: Bound Studio entrypoint metadata snapshots, make bigint and cycles JSON-safe, and avoid traversing getters or live class instances. Copy route descriptions at the inspection boundary and avoid duplicate GET rows for attributed HEAD handlers.
+- 9638591: Report caught admin RPC errors once through the configured application logger and exception policy, preserving invocation correlation while keeping raw error details out of the client response.
+- 8f6b19e: Discover admin handlers without constructing them, reject duplicate confirmation summaries, and resolve handlers and summaries asynchronously in their owning module and invocation scope. Preserve symbol methods and private receivers while enforcing write gates before construction.
+- Updated dependencies [c6a43a6]
+- Updated dependencies [bbe62d4]
+- Updated dependencies [a6ef933]
+- Updated dependencies [dae3654]
+- Updated dependencies [26fe8bf]
+- Updated dependencies [77cca9e]
+- Updated dependencies [b9f75f5]
+- Updated dependencies [df47ea8]
+- Updated dependencies [af019bf]
+- Updated dependencies [6df1059]
+- Updated dependencies [bdd90a1]
+- Updated dependencies [8a3923f]
+- Updated dependencies [c7d108b]
+- Updated dependencies [6588211]
+- Updated dependencies [1c7f635]
+- Updated dependencies [636ffbc]
+- Updated dependencies [54f8864]
+- Updated dependencies [f49db45]
+- Updated dependencies [a66a3cb]
+- Updated dependencies [4fde903]
+- Updated dependencies [6a1b5b3]
+- Updated dependencies [a95951a]
+- Updated dependencies [9e82187]
+- Updated dependencies [c5a3cb0]
+- Updated dependencies [363fb71]
+- Updated dependencies [de4e57e]
+- Updated dependencies [c5d98a7]
+- Updated dependencies [8b3ba80]
+- Updated dependencies [0765aaa]
+- Updated dependencies [cc0dcfd]
+- Updated dependencies [6b7cf23]
+- Updated dependencies [5205e58]
+- Updated dependencies [ae45689]
+  - @velajs/vela@1.25.0
+  - @velajs/cloudflare@1.23.0
+  - @velajs/crud@1.25.0
+  - @velajs/better-auth@1.22.2
+  - @velajs/studio-protocol@1.23.0
+  - @velajs/feature-flags@1.22.1
+
 ## 1.22.1
 
 ### Patch Changes

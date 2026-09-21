@@ -1,5 +1,112 @@
 # Changelog
 
+## 1.25.0
+
+### Minor Changes
+
+- c6a43a6: Add optional application-owned structured logging with typed immutable records,
+  bounded serialization, Error causes, redaction before sinks, category thresholds,
+  and lifecycle-managed subscriptions and async delivery. Existing Logger and text
+  Writer behavior remains unchanged. Add GraphQL and RPC exception-report contexts.
+
+  Bind logging to existing invocation lifetimes with protected correlation fields,
+  track asynchronous sink/custom-report completion, and route default exceptions
+  through the configured application logger without duplicate custom reporting.
+- bbe62d4: Await typed endpoint input and output schemas, retaining distinct wire input, parsed handler input, domain result and serialized output types. Generate directional OpenAPI contracts and preserve validator implementation errors as internal failures instead of mapping every exception to 400.
+- dae3654: Add portable async-aware schema parsing, inferred schema input/output helpers and DTO parseAsync while preserving synchronous DTO parsing. Normalize validation issues without forwarding vendor input values or treating validator implementation failures as client input errors.
+- b9f75f5: Add read-only visible provider snapshots for module-aware wiring audits. Introspection exposes provider
+  kind, class/alias wiring, effective scope and existing values without running factories, constructing
+  request providers or materializing lazy modules.
+- 6df1059: Add `defineSerializer` to validate domain inputs, project an explicit public
+  representation and validate wire outputs with inferred types, including domain
+  classes with JavaScript private state. Input and output transformations retain
+  their separate source and result types.
+- bdd90a1: Consume once listeners before invocation, including recursive and overlapping dispatch. Add opt-in complete event settlement while preserving the existing emit policy.
+
+  Add schema-inferred event definitions, scoped decorated dispatch and managed deferred delivery. Resolve legacy request-scoped event listeners per invocation and preserve their declaring module.
+- 1c7f635: Add explicit managed execution scopes with injectable deferred-work lifetimes,
+  observable completion errors, stream-boundary coordination, and owner-qualified
+  asynchronous entrypoint and pipeline component resolution. Expose the existing HTTP
+  execution-context builder for optional adapters. Keep HTTP request identity separate from
+  non-HTTP work, and hide typed request-key storage with JavaScript private state.
+- 636ffbc: Add a stable class-owner form of `sideEffectModule` for deduplicated contributions,
+  and type call-site lazy controls and asynchronous structural module options while
+  preserving inferred DI factory dependencies. Document selective integration
+  composition and owner-aware discovery/dispatch.
+
+  Preserve explicit undefined values in forwarded async structural-option bags for
+  consumers using exactOptionalPropertyTypes.
+- f49db45: Preserve module constructor/key identity in dependency cycles and OpenAPI traversal,
+  initialize each owned provider registration, and carry module ownership through
+  additive metadata-only discovery APIs and entrypoint records. Existing token-level
+  discovery remains supported.
+
+  Preserve the declaring module for configured middleware and controller mounts.
+  Ambiguous mounts of the same controller class in different module instances now
+  fail explicitly instead of selecting the first owner.
+- 4fde903: Discover seeders per owning module registration and await async resolution inside
+  managed invocation scopes. Preserve sequential ordering and stop/continue behavior
+  while settling deferred work before disposal. Add optional module ownership to
+  seeder inventories and expose it through `vela db seed --list --json` without
+  executing seeders.
+- 6a1b5b3: Correct queue disposition observation to retain the first successful ack/retry, count the initial delivery separately from retries, and distinguish unknown DLQ configuration. Add per-application queue driver factories, reject unsafe rebinding, and dispose inline bindings without retaining pending jobs.
+- a95951a: Add explicit Unix/Cloudflare cron dialects, UTC selection and validated schedule metadata for deployment introspection. Fix Sunday-ending ranges and numeric coercion, reject invalid timer delays, and provide native scheduled handler types while preserving exact Workers trigger matching and Node local-time defaults.
+- 9e82187: Resolve Node scheduled providers asynchronously inside a fresh module-owned invocation scope for each firing. Expose typed cooperative cancellation, stop timers and drain in-flight/deferred work before shutdown disposal, and observe strict diagnostic failures through application close. Keep direct method execution, singleton lifetimes, signed re-entry and legacy instance introspection compatible.
+- c5a3cb0: Preserve authentication payload through verified tenant admission while retaining
+  invalidation on expiry, clear and reauthentication. Add explicit HTTP-backed
+  execution-context identity binding for custom dispatchers, and add a redacting
+  Secret value with runtime-private signing
+  credentials. Existing authentication and signing entrypoints remain compatible.
+- 6b7cf23: Add Standard Schema job definitions with inferred producer input and validated processor output. Preserve original wire input across transport, await all processor outcomes, and offer opt-in strict unmatched routing. Add awaited Cloudflare producer and per-message consumer bridge helpers that validate envelopes, use native attempts, and preserve explicit ack/retry semantics.
+
+  Preserve processor module ownership through discovery and dispatch, resolve scoped components asynchronously, and finish managed invocation work before settling delivery.
+- 5205e58: Validate WebSocket correlation envelopes and hibernation attachments, preserve live baselines after refused sends, and add bounded connection-local send admission and incoming work. Existing void send APIs and unversioned 1.x attachments remain supported.
+
+  Drop frames still waiting on Node connection setup after overload or close. Use browser-valid private close codes and reconnect after client-side send admission failures.
+- ae45689: Resolve WebSocket callbacks and live queries in managed invocation scopes with module-owned async pipeline components. Preserve explicit request-scoped gateways, discover providers without requiring bootstrap instances, share live authorization and resolver state, and use asynchronous body validation without repeating transforms. Reject ambiguous gateway and live query ownership.
+
+### Patch Changes
+
+- a6ef933: Await output serialization for legacy async parsers and Standard Schema DTOs,
+  including array items, and reject malformed serializer metadata instead of
+  passing unfiltered responses through. Existing item-per-array semantics remain.
+- 77cca9e: Resolve useExisting targets from the alias's declaring module after checking visibility of the alias.
+  Exported aliases can reference their module's private implementation, consumer shadowing no longer
+  rewires aliases, and unqualified aliases in different modules retain their respective targets.
+  Aliases to another module's unexported providers remain rejected.
+- df47ea8: Keep request provider instances and synchronous cycle detection isolated by module registration,
+  including after provider replacement. Detect synchronous alias cycles without overflowing the stack.
+  Add optional exact-owner module IDs to provider scope, lazy-state and instance diagnostics while
+  preserving explicit request seeds and asynchronous construction deduplication.
+- af019bf: Dispose transient providers with their retaining request or singleton graph, preserving caller-owned
+  values and seeds. Wait for owned asynchronous construction before disposal, coalesce concurrent
+  teardowns and prevent new resolution during teardown while retaining container reuse after disposal.
+  Keep factory-returned existing resources with their original owner and dispose each only once.
+  Protect mutable container state with JavaScript private fields.
+- 8a3923f: Scope controller and handler middleware to its HTTP method and route, preserving Hono onion and HEAD behavior. Defer request-scoped controller construction until handler invocation and route pipeline component construction errors through the HTTP reporting/filter boundary.
+
+  Resolve asynchronous controller and scoped pipeline dependencies in their declaring module, including parameter pipes, without selecting another module's registration of the same class.
+
+  Give every HTTP request and adapter route a managed invocation lifetime. Start deferred work after dispatch and wait for work plus response completion before disposing resources; retain async cleanup with native waitUntil and correctly finish HEAD/cancelled streams.
+
+  Preserve configured middleware owners and short-circuit responses, use explicit async pipe hooks without speculative synchronous parsing, and report middleware failures before filtering using the existing request scope. Reject ambiguous controller owners instead of selecting the first registration.
+- c7d108b: Capture the HTTP request context after body-limit normalization so middleware, guards, controllers, and adapters share the same readable Request and trusted identity. Keep request lifetimes active through oversized-body and body-read error reporting and cleanup.
+- 54f8864: Preserve `APP_*` useExisting registrations as aliases, including their declaring
+  module and inspectable target metadata. Global aliases retain singleton identity
+  and request reuse, and now correctly resolve transient targets freshly instead
+  of accidentally caching them in a synthetic singleton factory. Use an explicit
+  singleton target when shared global state is intended.
+- 363fb71: Honor originProtection.allowMissingOrigin for non-browser credentialed requests.
+  The default policy and rejection of present invalid origins and invalid CORS
+  preflights remain unchanged.
+- de4e57e: Validate generated CRUD request bodies once in the engine, preserving schema metadata for OpenAPI without storing global validation receipts. Headless calls validate raw input independently. Keep consumeValidated as a deprecated compatibility method that returns false. Awaited CRUD identifier, body, persisted-row and response contracts use the shared async parser to avoid speculative Zod transforms. ValidationPipe adds transformAsync while preserving its synchronous transform API.
+- 0765aaa: Use shared application finalization in testing, recalculate request scope after
+  provider overrides, and dispose resources on failed startup and shutdown. Await
+  concurrent disposal and managed test scopes. Add onClose fixture cleanup and close
+  Node WebSocket test servers with their owning testing module.
+- Updated dependencies [5205e58]
+  - @velajs/live-protocol@1.23.0
+
 ## 1.24.0
 
 ### Minor Changes

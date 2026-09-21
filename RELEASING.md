@@ -116,7 +116,11 @@ archives that passed the external consumer check. The action creates package
 Git tags and GitHub releases. `release-plan.json` contains only changed packages.
 
 Each public npm package trusts GitHub repository `velajs/vela`, workflow
-`release.yml`, environment `release`. The GitHub environment permits only `main`.
+`release.yml`, environment `release`. Enable the trusted publisher's direct
+`npm publish` permission; new configurations may allow only staged publishing by
+default, which this workflow does not use. See npm's
+[trusted publisher setup](https://docs.npmjs.com/trusted-publishers/).
+The GitHub environment permits only `main`.
 The job has `id-token: write`; no npm token or setup-node registry auth file is
 needed. npm 11.19.0 performs the OIDC exchange. Because npm OIDC authorizes
 publication rather than standalone dist-tag edits, CI publishes validated stable

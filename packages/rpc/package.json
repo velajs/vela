@@ -1,6 +1,6 @@
 {
   "name": "@velajs/rpc",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Schema-inferred method RPC over HTTP and service-binding fetch for Vela",
   "license": "MIT",
   "author": "ksh",
@@ -12,7 +12,8 @@
   "files": [
     "dist",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "type": "module",
   "sideEffects": false,

@@ -1,5 +1,56 @@
 # Changelog
 
+## 1.23.0
+
+### Minor Changes
+
+- a95951a: Add explicit Unix/Cloudflare cron dialects, UTC selection and validated schedule metadata for deployment introspection. Fix Sunday-ending ranges and numeric coercion, reject invalid timer delays, and provide native scheduled handler types while preserving exact Workers trigger matching and Node local-time defaults.
+- 6b7cf23: Add Standard Schema job definitions with inferred producer input and validated processor output. Preserve original wire input across transport, await all processor outcomes, and offer opt-in strict unmatched routing. Add awaited Cloudflare producer and per-message consumer bridge helpers that validate envelopes, use native attempts, and preserve explicit ack/retry semantics.
+
+  Preserve processor module ownership through discovery and dispatch, resolve scoped components asynchronously, and finish managed invocation work before settling delivery.
+- 5205e58: Validate WebSocket correlation envelopes and hibernation attachments, preserve live baselines after refused sends, and add bounded connection-local send admission and incoming work. Existing void send APIs and unversioned 1.x attachments remain supported.
+
+  Drop frames still waiting on Node connection setup after overload or close. Use browser-valid private close codes and reconnect after client-side send admission failures.
+
+### Patch Changes
+
+- 26fe8bf: Resolve queue and scheduled handlers and their pipeline components asynchronously
+  in the owning module's child scope. Seed execution context ownership, defer
+  handler construction until guards pass, track native waitUntil work through
+  provider disposal, and await every matching handler before returning failures.
+
+  Read validated WebSocket entrypoint metadata for upgrade routes so scoped gateways
+  do not require a bootstrap instance; retain legacy forwarding metadata scanning.
+- Updated dependencies [c6a43a6]
+- Updated dependencies [bbe62d4]
+- Updated dependencies [a6ef933]
+- Updated dependencies [dae3654]
+- Updated dependencies [77cca9e]
+- Updated dependencies [b9f75f5]
+- Updated dependencies [df47ea8]
+- Updated dependencies [af019bf]
+- Updated dependencies [6df1059]
+- Updated dependencies [bdd90a1]
+- Updated dependencies [8a3923f]
+- Updated dependencies [c7d108b]
+- Updated dependencies [1c7f635]
+- Updated dependencies [636ffbc]
+- Updated dependencies [54f8864]
+- Updated dependencies [f49db45]
+- Updated dependencies [4fde903]
+- Updated dependencies [6a1b5b3]
+- Updated dependencies [a95951a]
+- Updated dependencies [9e82187]
+- Updated dependencies [c5a3cb0]
+- Updated dependencies [363fb71]
+- Updated dependencies [de4e57e]
+- Updated dependencies [0765aaa]
+- Updated dependencies [6b7cf23]
+- Updated dependencies [5205e58]
+- Updated dependencies [ae45689]
+  - @velajs/vela@1.25.0
+  - @velajs/feature-flags@1.22.1
+
 ## 1.22.1
 
 ### Patch Changes
