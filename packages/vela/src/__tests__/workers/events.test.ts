@@ -15,7 +15,15 @@ import {
 
 describe('Workers event delivery', () => {
   it('preserves private listener state and deferred scope disposal in workerd', async () => {
-    const event = defineEvent('worker.event', z.string().transform(Number));
+    let validations = 0;
+    const event = defineEvent(
+      'worker.event',
+      z.string().transform(async (value) => {
+        validations++;
+        await Promise.resolve();
+        return Number(value);
+      }),
+    );
     const seen: number[] = [];
     let disposed = 0;
     @Injectable({ scope: Scope.REQUEST })
@@ -37,6 +45,7 @@ describe('Workers event delivery', () => {
     expect(seen).toEqual([]);
     await scope.finish();
     expect(seen).toEqual([42]);
+    expect(validations).toBe(1);
     expect(disposed).toBe(1);
     await app.dispose();
   });

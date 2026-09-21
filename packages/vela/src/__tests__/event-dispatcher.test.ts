@@ -34,7 +34,10 @@ const events = defineEventVocabulary({
 
 describe('scoped event dispatch', () => {
   it('validates transformed input once and defers construction of scoped listeners', async () => {
-    const validate = vi.fn((s: string) => Number(s));
+    const validate = vi.fn(async (s: string) => {
+      await Promise.resolve();
+      return Number(s);
+    });
     const event = defineEvent('counted', z.string().transform(validate));
     const seen: number[] = [];
     let constructed = 0;
