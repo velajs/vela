@@ -1,6 +1,6 @@
 {
   "name": "@velajs/crud-durable-objects",
-  "version": "1.22.1",
+  "version": "1.23.0",
   "description": "Durable Object SQLite adapter for Vela CRUD",
   "keywords": [
     "cloudflare-workers",

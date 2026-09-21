@@ -1,6 +1,6 @@
 {
   "name": "@velajs/authz-cedar",
-  "version": "1.22.1",
+  "version": "1.23.0",
   "description": "Portable authz-cedar for Vela and Cloudflare Workers",
   "keywords": [
     "authz-cedar",
