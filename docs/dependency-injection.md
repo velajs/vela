@@ -24,3 +24,43 @@ requesting module's visibility rules.
 
 Circular dependencies through `useExisting` produce a circular-dependency error on both synchronous
 and asynchronous resolution. Separate registrations sharing a token do not constitute a cycle.
+
+## Resource lifetime
+
+The container disposes constructed resources in reverse creation order. It prefers
+`Symbol.asyncDispose`, then `Symbol.dispose`, then a `dispose()` method. Errors from one disposer
+are logged according to the container's diagnostics setting and do not skip other resources.
+
+- Singleton instances and the transient dependencies constructed for them belong to the application
+  root, even if a request first resolves that graph.
+- Request-scoped instances and their transient dependencies belong to the request child. A transient
+  resolved directly from a child also belongs to that child. Each transient resolution still creates a
+  fresh instance.
+- Values registered with `useValue` and explicit request seeds remain caller-owned. A factory returning
+  an already-owned dependency does not transfer ownership or arrange a second disposal.
+
+```ts
+const child = container.createChild();
+try {
+  const operation = await child.resolveAsync(OPERATION, moduleId);
+  await operation.run();
+} finally {
+  await child.dispose();
+}
+```
+
+`dispose()` waits for construction already owned by that container, including transient factories and
+dependencies still completing after a sibling fails. Concurrent disposal calls share the same teardown.
+`hasDisposables()` also reports pending owned construction because it may produce resources later.
+New resolutions during teardown fail; factories must settle for disposal to complete. Framework
+invocation scopes should drain managed work and finish streaming before disposing the child.
+
+For 1.x compatibility, the container can be reused after `await dispose()`: registrations remain, cached
+constructed values and request seeds are cleared, and new resolution constructs a fresh graph.
+`dispose()` does not permanently close an invocation; adapters must enforce that lifetime themselves.
+Root disposal is not a substitute for finishing/disposal of every active request child. `clear()` is a
+registration reset rather than resource teardown; dispose resources before clearing a container.
+
+Container caches and ownership state use JavaScript `#private` fields. Use the public diagnostic and
+resolution methods instead of inspecting mutable internals. Constructor-injected classes can also use
+`#private` fields; circular `forwardRef` proxies preserve private method and getter receivers.

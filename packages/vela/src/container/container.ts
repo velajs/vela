@@ -41,7 +41,11 @@ const IMPORT_TYPE_HINT =
  * is `Object` (or nullish) is the fingerprint of a stripped type.
  */
 function isErasedTypeToken(token: unknown): boolean {
-  return token === Object || token == null;
+  return token === Object || token === null || token === undefined;
+}
+
+function isReference(value: unknown): value is object {
+  return (typeof value === 'object' && value !== null) || typeof value === 'function';
 }
 
 /**
@@ -54,58 +58,64 @@ function isErasedTypeToken(token: unknown): boolean {
  * supply a `declaringModuleId`.
  */
 export class Container {
-  private providers = new Map<string, Map<Token, ProviderRegistration>>();
-  private exporterIndex = new Map<Token, Set<string>>();
-  private resolutionStack = new Set<ProviderRegistration>();
-  private requestInstances = new Map<ProviderRegistration, { readonly value: unknown }>();
-  private requestSeeds = new Map<Token, { readonly value: unknown }>();
-  private pendingInstances = new Map<ProviderRegistration, Promise<unknown>>();
-  private scopes = new Map<string, ModuleScope>();
-  private globals = new Set<Token>();
-  private diagnostics: Diagnostics;
+  #providers = new Map<string, Map<Token, ProviderRegistration>>();
+  #exporterIndex = new Map<Token, Set<string>>();
+  #resolutionStack = new Set<ProviderRegistration>();
+  #requestInstances = new Map<ProviderRegistration, { readonly value: unknown }>();
+  #requestSeeds = new Map<Token, { readonly value: unknown }>();
+  #pendingInstances = new Map<ProviderRegistration, Promise<unknown>>();
+  #scopes = new Map<string, ModuleScope>();
+  #globals = new Set<Token>();
+  #diagnostics: Diagnostics;
   // The root container that owns shared state; a request child points back here
   // so container-constructed SINGLETONs are tracked (and disposed) at the root,
   // never by the ephemeral child that happened to first resolve them.
-  private root: Container = this;
+  #root: Container = this;
   // Container-constructed instances in creation order, for LIFO disposal.
   // useValue providers are never tracked (they return before construction).
-  private disposables: unknown[] = [];
-  // Lazy-module seam (root-owned; children reach it via this.root). A
+  #disposables = new Set<unknown>();
+  // Root-owned identity ledger: null denotes a caller-owned value/seed. A
+  // factory returning an existing dependency cannot transfer its ownership.
+  #disposalOwners = new WeakMap<object, Container | null>();
+  #pendingConstructions = new Set<Promise<unknown>>();
+  #disposing?: Promise<void>;
+  #constructionOwner: Container = this;
+  // Lazy-module seam (root-owned; children reach it via this.#root). A
   // resolution of a deferred registration CLAIMS its module; claimed groups
   // are completed (constructed + hooks replayed) only when the resolution
   // stack has unwound and no resolveAsync cascade is in flight — running the
   // replay mid-construction could force-resolve a class currently on the
   // resolution stack (discovery cascades) and mint a spurious
   // circular-dependency error.
-  private lazyHook?: LazyResolutionHook;
-  private asyncDepth = 0;
+  #lazyHook?: LazyResolutionHook;
+  #asyncDepth = 0;
 
   constructor(options: ContainerOptions = {}) {
-    this.diagnostics = options.diagnostics ?? 'log';
+    this.#diagnostics = options.diagnostics ?? 'log';
   }
 
   /** Install the lazy-module seam (bootstrap-time; root container only). */
   setLazyHook(hook: LazyResolutionHook): void {
-    this.root.lazyHook = hook;
+    this.#root.#lazyHook = hook;
   }
 
   private claimLazyModule(declaringModuleId: string): void {
-    const hook = this.root.lazyHook;
+    const hook = this.#root.#lazyHook;
     if (hook?.isPending(declaringModuleId)) {
       hook.claim(declaringModuleId);
     }
   }
 
   private maybeDrainSync(): void {
-    const root = this.root;
-    const hook = root.lazyHook;
+    const root = this.#root;
+    const hook = root.#lazyHook;
     if (!hook?.hasClaimed()) return;
     // Never replay hooks while construction is in flight; an async cascade
     // drains (with await) at its own end instead. A running drain picks
     // pending claims up itself — re-entering it is at best a no-op and on
     // the async path a self-deadlock.
-    if (this.resolutionStack.size > 0) return;
-    if (root.asyncDepth > 0) return;
+    if (this.#resolutionStack.size > 0) return;
+    if (root.#asyncDepth > 0) return;
     if (hook.isDraining()) return;
     hook.drainSync();
   }
@@ -150,6 +160,7 @@ export class Container {
     };
 
     if ('useValue' in options) {
+      this.rememberCallerOwned(options.useValue);
       registration.value = { value: options.useValue };
       registration.instance = { value: options.useValue };
     } else if (options.useFactory) {
@@ -171,36 +182,36 @@ export class Container {
     token: Token,
     registration: ProviderRegistration,
   ): void {
-    let bucket = this.providers.get(moduleId);
+    let bucket = this.#providers.get(moduleId);
     if (!bucket) {
       bucket = new Map();
-      this.providers.set(moduleId, bucket);
+      this.#providers.set(moduleId, bucket);
     }
     bucket.set(token, registration);
 
-    let exporters = this.exporterIndex.get(token);
+    let exporters = this.#exporterIndex.get(token);
     if (!exporters) {
       exporters = new Set();
-      this.exporterIndex.set(token, exporters);
+      this.#exporterIndex.set(token, exporters);
     }
     exporters.add(moduleId);
   }
 
   registerScope(scope: ModuleScope): void {
-    this.scopes.set(scope.moduleId, scope);
-    if (!this.providers.has(scope.moduleId)) {
-      this.providers.set(scope.moduleId, new Map());
+    this.#scopes.set(scope.moduleId, scope);
+    if (!this.#providers.has(scope.moduleId)) {
+      this.#providers.set(scope.moduleId, new Map());
     }
     if (scope.isGlobal) {
       // Match NestJS / the loader's existing globalExports semantic: only
       // exported tokens become globally visible. Non-exported providers of
       // a @Global module still need explicit imports.
-      for (const token of scope.exportedTokens) this.globals.add(token);
+      for (const token of scope.exportedTokens) this.#globals.add(token);
     }
   }
 
   markGlobalToken(token: Token): void {
-    this.globals.add(token);
+    this.#globals.add(token);
   }
 
   // Explicit seeds override constructed REQUEST values for this token, but
@@ -213,15 +224,17 @@ export class Container {
     token: K & AuthoringToken<K>,
     value: NoInfer<InferToken<K>>,
   ): void {
-    this.requestSeeds.set(token, { value });
+    this.rememberCallerOwned(value);
+    this.#requestSeeds.set(token, { value });
   }
 
   getDiagnostics(): Diagnostics {
-    return this.diagnostics;
+    return this.#diagnostics;
   }
 
   resolve<K extends Token>(token: K, requestingModuleId?: string): InferToken<K>;
   resolve(token: Token, requestingModuleId?: string): unknown {
+    this.assertNotDisposing();
     return this.resolveToken(token, requestingModuleId);
   }
 
@@ -240,8 +253,8 @@ export class Container {
     // their wiring is wrong, not that the token doesn't exist.
     if (
       requestingModuleId !== undefined &&
-      this.scopes.has(requestingModuleId) &&
-      this.exporterIndex.has(token)
+      this.#scopes.has(requestingModuleId) &&
+      this.#exporterIndex.has(token)
     ) {
       throw new ModuleVisibilityError(requestingModuleId, token);
     }
@@ -277,6 +290,7 @@ export class Container {
 
   resolveAll<K extends Token>(token: K, requestingModuleId?: string): InferToken<K>[];
   resolveAll<T>(token: Token, requestingModuleId?: string): T[] {
+    this.assertNotDisposing();
     const registrations = this.findAllRegistrations<T>(token, requestingModuleId);
     const instances = registrations.map((r) => this.resolveRegistration(r, requestingModuleId));
     this.maybeDrainSync();
@@ -299,10 +313,10 @@ export class Container {
     // sandbox lookup. Prefer the `__root__` bucket so sandbox-registered
     // transients (ModuleRef.create) and bootstrap primitives win over module
     // buckets that may hold the same token under SINGLETON scope.
-    if (requestingModuleId === undefined || !this.scopes.has(requestingModuleId)) {
+    if (requestingModuleId === undefined || !this.#scopes.has(requestingModuleId)) {
       const rootHit = this.lookupInBucket<T>(ROOT_MODULE_ID, token);
       if (rootHit) return rootHit;
-      const exporters = this.exporterIndex.get(token);
+      const exporters = this.#exporterIndex.get(token);
       if (!exporters) return undefined;
       for (const owner of exporters) {
         const hit = this.lookupInBucket<T>(owner, token);
@@ -316,8 +330,8 @@ export class Container {
     if (local) return local;
 
     // 2. Global tokens — registration still lives in some module's bucket.
-    if (this.globals.has(token)) {
-      const exporters = this.exporterIndex.get(token);
+    if (this.#globals.has(token)) {
+      const exporters = this.#exporterIndex.get(token);
       if (exporters && exporters.size > 0) {
         if (exporters.size > 1) {
           throw new MultipleProvidersFoundError(requestingModuleId, token, [...exporters]);
@@ -336,7 +350,7 @@ export class Container {
     }
 
     // 4. Imported modules' exports — walk transitively so re-exports work.
-    const scope = this.scopes.get(requestingModuleId);
+    const scope = this.#scopes.get(requestingModuleId);
     if (!scope) return undefined;
 
     const candidates: ProviderRegistration<T>[] = [];
@@ -353,7 +367,7 @@ export class Container {
 
   /** Typed bucket lookup — single seam where the Map<Token, Registration> erases T. */
   private lookupInBucket<T>(moduleId: string, token: Token): ProviderRegistration<T> | undefined {
-    return this.providers.get(moduleId)?.get(token) as ProviderRegistration<T> | undefined;
+    return this.#providers.get(moduleId)?.get(token) as ProviderRegistration<T> | undefined;
   }
 
   /**
@@ -371,7 +385,7 @@ export class Container {
     for (const importedId of scope.importedModules) {
       if (visited.has(importedId)) continue;
       visited.add(importedId);
-      const imported = this.scopes.get(importedId);
+      const imported = this.#scopes.get(importedId);
       if (!imported?.exportedTokens.has(token)) continue;
 
       const direct = this.lookupInBucket<T>(importedId, token);
@@ -392,7 +406,7 @@ export class Container {
     requestingModuleId?: string,
   ): ProviderRegistration<T>[] {
     if (requestingModuleId === undefined) {
-      const exporters = this.exporterIndex.get(token);
+      const exporters = this.#exporterIndex.get(token);
       if (!exporters) return [];
       return [...exporters]
         .map((id) => this.lookupInBucket<T>(id, token))
@@ -408,8 +422,8 @@ export class Container {
       seen.add(local);
     }
 
-    if (this.globals.has(token)) {
-      for (const owner of this.exporterIndex.get(token) ?? []) {
+    if (this.#globals.has(token)) {
+      for (const owner of this.#exporterIndex.get(token) ?? []) {
         const reg = this.lookupInBucket<T>(owner, token);
         if (reg && !seen.has(reg)) {
           out.push(reg);
@@ -418,10 +432,10 @@ export class Container {
       }
     }
 
-    const scope = this.scopes.get(requestingModuleId);
+    const scope = this.#scopes.get(requestingModuleId);
     if (scope) {
       for (const importedId of scope.importedModules) {
-        const imported = this.scopes.get(importedId);
+        const imported = this.#scopes.get(importedId);
         if (!imported?.exportedTokens.has(token)) continue;
         const reg = this.lookupInBucket<T>(importedId, token);
         if (reg && !seen.has(reg)) {
@@ -436,17 +450,17 @@ export class Container {
 
   /** True if any bucket has a registration for `token`. Sandbox-friendly. */
   has(token: Token): boolean {
-    return this.exporterIndex.has(token);
+    return this.#exporterIndex.has(token);
   }
 
   /** True if the specified module's bucket has a registration for `token`. */
   hasInScope(token: Token, moduleId: string): boolean {
-    return this.providers.get(moduleId)?.has(token) ?? false;
+    return this.#providers.get(moduleId)?.has(token) ?? false;
   }
 
   /** Module buckets that hold a registration for `token` (registration order). */
   getOwnerModuleIds(token: Token): string[] {
-    return [...(this.exporterIndex.get(token) ?? [])];
+    return [...(this.#exporterIndex.get(token) ?? [])];
   }
 
   /**
@@ -475,7 +489,7 @@ export class Container {
     if (!token) {
       throw new Error('replaceProvider requires a token (`provide`)');
     }
-    for (const [moduleId, bucket] of this.providers) {
+    for (const [moduleId, bucket] of this.#providers) {
       if (moduleId === ROOT_MODULE_ID) continue;
       if (bucket.has(token)) this.register(provider, moduleId);
     }
@@ -490,10 +504,10 @@ export class Container {
    * moduleId inspects only that owner's registration, without visibility fallback.
    */
   isLazyPending(token: Token, moduleId?: string): boolean {
-    const hook = this.root.lazyHook;
+    const hook = this.#root.#lazyHook;
     if (!hook) return false;
     if (moduleId !== undefined) return this.hasInScope(token, moduleId) && hook.isPending(moduleId);
-    const owners = this.exporterIndex.get(token);
+    const owners = this.#exporterIndex.get(token);
     if (!owners || owners.size === 0) return false;
     for (const owner of owners) {
       if (!hook.isPending(owner)) return false;
@@ -508,10 +522,10 @@ export class Container {
    */
   isInstantiated(token: Token, moduleId?: string): boolean {
     if (moduleId !== undefined) {
-      return this.providers.get(moduleId)?.get(token)?.instance !== undefined;
+      return this.#providers.get(moduleId)?.get(token)?.instance !== undefined;
     }
-    for (const owner of this.exporterIndex.get(token) ?? []) {
-      const reg = this.providers.get(owner)?.get(token);
+    for (const owner of this.#exporterIndex.get(token) ?? []) {
+      const reg = this.#providers.get(owner)?.get(token);
       if (reg && reg.instance !== undefined) return true;
     }
     return false;
@@ -520,13 +534,13 @@ export class Container {
   /** Declared/effective scope; a moduleId inspects that exact owner only. */
   getProviderScope(token: Token, moduleId?: string): Scope | undefined {
     if (moduleId !== undefined) {
-      const registration = this.providers.get(moduleId)?.get(token);
+      const registration = this.#providers.get(moduleId)?.get(token);
       return registration?.effectiveScope ?? registration?.scope;
     }
-    const exporters = this.exporterIndex.get(token);
+    const exporters = this.#exporterIndex.get(token);
     if (!exporters) return undefined;
     for (const owner of exporters) {
-      const reg = this.providers.get(owner)?.get(token);
+      const reg = this.#providers.get(owner)?.get(token);
       if (reg) return reg.effectiveScope ?? reg.scope;
     }
     return undefined;
@@ -534,7 +548,7 @@ export class Container {
 
   getTokens(): Token[] {
     const out = new Set<Token>();
-    for (const bucket of this.providers.values()) {
+    for (const bucket of this.#providers.values()) {
       for (const token of bucket.keys()) out.add(token);
     }
     return [...out];
@@ -548,7 +562,7 @@ export class Container {
    */
   getUseValues(): unknown[] {
     const out: unknown[] = [];
-    for (const bucket of this.providers.values()) {
+    for (const bucket of this.#providers.values()) {
       for (const reg of bucket.values()) {
         if (reg.value) out.push(reg.value.value);
       }
@@ -564,17 +578,17 @@ export class Container {
    */
   getModuleDescriptions(): ModuleDescription[] {
     const out: ModuleDescription[] = [];
-    for (const scope of this.scopes.values()) {
+    for (const scope of this.#scopes.values()) {
       out.push({
         moduleId: scope.moduleId,
         imports: [...scope.importedModules],
         isGlobal: scope.isGlobal,
         lazy: scope.lazy === true,
-        providers: [...(this.providers.get(scope.moduleId)?.keys() ?? [])].map(describeToken),
+        providers: [...(this.#providers.get(scope.moduleId)?.keys() ?? [])].map(describeToken),
         exports: [...scope.exportedTokens].map(describeToken),
       });
     }
-    const rootBucket = this.providers.get(ROOT_MODULE_ID);
+    const rootBucket = this.#providers.get(ROOT_MODULE_ID);
     if (rootBucket && rootBucket.size > 0) {
       out.push({
         moduleId: ROOT_MODULE_ID,
@@ -601,7 +615,7 @@ export class Container {
     // cycle-independent (a node flips to REQUEST at most once), avoiding the
     // finalize-during-in-progress-cycle hazard of a recursive DFS.
     const regs: ProviderRegistration[] = [];
-    for (const bucket of this.providers.values()) {
+    for (const bucket of this.#providers.values()) {
       for (const reg of bucket.values()) {
         reg.effectiveScope = reg.scope;
         regs.push(reg);
@@ -678,94 +692,132 @@ export class Container {
    * instances separately per child (per request).
    */
   createChild(): Container {
-    const child = new Container({ diagnostics: this.diagnostics });
+    const child = new Container({ diagnostics: this.#diagnostics });
     // Share state by reference — request-scope children must see the same
     // module graph as the root.
-    child.providers = this.providers;
-    child.exporterIndex = this.exporterIndex;
-    child.scopes = this.scopes;
-    child.globals = this.globals;
+    child.#providers = this.#providers;
+    child.#exporterIndex = this.#exporterIndex;
+    child.#scopes = this.#scopes;
+    child.#globals = this.#globals;
     // SINGLETON disposal is owned by the root; the child keeps only its own
     // REQUEST-scoped disposables (cleared when the request ends).
-    child.root = this.root;
+    child.#root = this.#root;
     return child;
   }
 
   createDetached(): Container {
-    const child = new Container({ diagnostics: this.diagnostics });
+    const child = new Container({ diagnostics: this.#diagnostics });
     // Deep-clone provider buckets so sandbox writes don't leak back to the
     // parent. Inner ProviderRegistration objects are shallow-shared (we only
     // mutate `instance` cache, and per-bucket clones already give per-sandbox
     // singleton isolation when needed).
     const clonedProviders = new Map<string, Map<Token, ProviderRegistration>>();
-    for (const [moduleId, bucket] of this.providers) {
+    for (const [moduleId, bucket] of this.#providers) {
       clonedProviders.set(moduleId, new Map(bucket));
     }
-    child.providers = clonedProviders;
+    child.#providers = clonedProviders;
 
     const clonedIndex = new Map<Token, Set<string>>();
-    for (const [token, owners] of this.exporterIndex) {
+    for (const [token, owners] of this.#exporterIndex) {
       clonedIndex.set(token, new Set(owners));
     }
-    child.exporterIndex = clonedIndex;
+    child.#exporterIndex = clonedIndex;
 
-    child.scopes = this.scopes;
-    child.globals = this.globals;
+    child.#scopes = this.#scopes;
+    child.#globals = this.#globals;
     // Registration objects are shallow-shared, so a sandbox resolve of a lazy
     // module's singleton caches onto the SHARED registration. Point the
     // sandbox at the real root so that resolution claims the module and
     // replays its hooks like any other trigger — otherwise ModuleRef.create
     // would leave a hook-less instance poisoning the shared cache (and its
     // disposables tracked on an ephemeral root).
-    child.root = this.root;
+    child.#root = this.#root;
     return child;
   }
 
   clear(): void {
-    this.providers.clear();
-    this.exporterIndex.clear();
-    this.resolutionStack.clear();
-    this.requestInstances.clear();
-    this.requestSeeds.clear();
-    this.scopes.clear();
-    this.globals.clear();
-    this.disposables = [];
+    this.#providers.clear();
+    this.#exporterIndex.clear();
+    this.#resolutionStack.clear();
+    this.#requestInstances.clear();
+    this.#requestSeeds.clear();
+    this.#scopes.clear();
+    this.#globals.clear();
+    this.#disposables.clear();
   }
 
-  /** Whether this container has any tracked disposables (cheap request-path check). */
+  /** Whether teardown has owned resources or construction to drain. */
   hasDisposables(): boolean {
-    return this.disposables.length > 0;
+    return (
+      this.#disposables.size > 0 ||
+      this.#pendingConstructions.size > 0 ||
+      this.#disposing !== undefined
+    );
+  }
+
+  private assertNotDisposing(): void {
+    if (this.#disposing || this.#root.#disposing) {
+      throw new Error('Cannot resolve providers while the container is disposing');
+    }
+  }
+
+  private rememberCallerOwned(value: unknown): void {
+    if (isReference(value) && !this.#root.#disposalOwners.has(value)) {
+      this.#root.#disposalOwners.set(value, null);
+    }
+  }
+
+  private trackDisposable(instance: unknown, owner: Container): void {
+    if (!isReference(instance) || !isDisposable(instance)) return;
+    if (this.#root.#disposalOwners.has(instance)) return;
+    this.#root.#disposalOwners.set(instance, owner);
+    owner.#disposables.add(instance);
   }
 
   /**
-   * Dispose container-constructed instances (Symbol.asyncDispose /
-   * Symbol.dispose / .dispose()) in reverse creation order (LIFO). Errors are
-   * logged and skipped so one bad teardown never blocks the rest.
-   *
-   * A REQUEST child disposes only its own request-scoped instances; the root
-   * disposes shared SINGLETONs and clears their cached instance so a dev HMR
-   * generation cannot leak a stale graph. Shared provider maps are left intact
-   * for a request child (they belong to the root).
+   * Drain owned construction, then dispose owned instances in reverse creation
+   * order. Singleton graphs belong to the root; request/transient graphs belong
+   * to their retaining container. Caller-owned values/seeds are never tracked.
+   * Concurrent calls share teardown; after awaiting disposal the container may
+   * be reused, preserving the 1.x reset semantics. Do not start new work during
+   * teardown. Disposer errors are logged and do not interrupt the remaining work.
    */
-  async dispose(): Promise<void> {
-    const pending = this.disposables;
-    this.disposables = [];
+  dispose(): Promise<void> {
+    if (this.#disposing) return this.#disposing;
+    // Schedule after installing the guard, including before user disposers run.
+    const pending = Promise.resolve().then(() => this.disposeOwned());
+    this.#disposing = pending.finally(() => {
+      this.#disposing = undefined;
+    });
+    return this.#disposing;
+  }
+
+  private async disposeOwned(): Promise<void> {
+    // Failed parent construction can leave sibling dependencies in flight.
+    // Track every construction, including transients, independently of caching.
+    while (this.#pendingConstructions.size > 0) {
+      // Drain successive generations rather than abandoning late dependencies.
+      // eslint-disable-next-line no-await-in-loop
+      await Promise.allSettled(this.#pendingConstructions);
+    }
+    const pending = [...this.#disposables];
+    this.#disposables.clear();
     for (let i = pending.length - 1; i >= 0; i--) {
+      const instance = pending[i];
       try {
-        await disposeInstance(pending[i]);
+        // A consumer must finish disposing before its dependencies do.
+        // eslint-disable-next-line no-await-in-loop
+        await disposeInstance(instance);
       } catch (error) {
-        if (this.diagnostics !== 'silent') {
-          console.error('Error disposing instance:', error);
-        }
+        if (this.#diagnostics !== 'silent') console.error('Error disposing instance:', error);
+      } finally {
+        if (isReference(instance)) this.#root.#disposalOwners.delete(instance);
       }
     }
-    this.requestInstances.clear();
-    this.requestSeeds.clear();
-
-    if (this.root === this) {
-      // Drop cached singleton instances (except useValue, which the app owns)
-      // so a rebuilt graph starts clean.
-      for (const bucket of this.providers.values()) {
+    this.#requestInstances.clear();
+    this.#requestSeeds.clear();
+    if (this.#root === this) {
+      for (const bucket of this.#providers.values()) {
         for (const registration of bucket.values()) {
           if (registration.scope === Scope.SINGLETON && registration.value === undefined) {
             registration.instance = undefined;
@@ -790,12 +842,12 @@ export class Container {
 
     if (registration.useExisting) {
       this.assertNoSyncCycle(registration);
-      this.resolutionStack.add(registration);
+      this.#resolutionStack.add(registration);
       try {
         // Preserve the requester's visibility and alias target's seed/cache semantics.
         return this.resolveToken(registration.useExisting, requestingModuleId);
       } finally {
-        this.resolutionStack.delete(registration);
+        this.#resolutionStack.delete(registration);
       }
     }
 
@@ -811,22 +863,26 @@ export class Container {
 
     // Request: return cached from this child's requestInstances
     if (scope === Scope.REQUEST) {
-      const cached = (this.requestSeeds.get(registration.provide) ??
-        this.requestInstances.get(registration)) as { readonly value: T } | undefined;
+      const cached = (this.#requestSeeds.get(registration.provide) ??
+        this.#requestInstances.get(registration)) as { readonly value: T } | undefined;
       if (cached !== undefined) {
         return cached.value;
       }
     }
 
-    const asyncOwner = scope === Scope.SINGLETON ? this.root : this;
-    if (asyncOwner.pendingInstances.has(registration)) {
+    const asyncOwner = scope === Scope.SINGLETON ? this.#root : this;
+    if (asyncOwner.#pendingInstances.has(registration)) {
       throw new Error(
         `Provider ${this.tokenToString(registration.provide)} is resolving asynchronously. Use resolveAsync().`,
       );
     }
 
     this.assertNoSyncCycle(registration);
-    this.resolutionStack.add(registration);
+    this.#resolutionStack.add(registration);
+    const previousOwner = this.#constructionOwner;
+    const owner =
+      scope === Scope.SINGLETON ? this.#root : scope === Scope.REQUEST ? this : previousOwner;
+    this.#constructionOwner = owner;
 
     try {
       let instance: T;
@@ -844,23 +900,21 @@ export class Container {
 
       if (scope === Scope.SINGLETON) {
         registration.instance = { value: instance };
-        // Track for disposal on the ROOT — a singleton outlives the request
-        // child that may have first constructed it.
-        if (isDisposable(instance)) this.root.disposables.push(instance);
       } else if (scope === Scope.REQUEST) {
-        this.requestInstances.set(registration, { value: instance });
-        if (isDisposable(instance)) this.disposables.push(instance);
+        this.#requestInstances.set(registration, { value: instance });
       }
+      this.trackDisposable(instance, owner);
 
       return instance;
     } finally {
-      this.resolutionStack.delete(registration);
+      this.#constructionOwner = previousOwner;
+      this.#resolutionStack.delete(registration);
     }
   }
 
   private assertNoSyncCycle(registration: ProviderRegistration): void {
-    if (!this.resolutionStack.has(registration)) return;
-    const chain = [...this.resolutionStack, registration]
+    if (!this.#resolutionStack.has(registration)) return;
+    const chain = [...this.#resolutionStack, registration]
       .map((entry) => this.tokenToString(entry.provide))
       .join(' -> ');
     throw new Error(`Circular dependency detected: ${chain}`);
@@ -907,7 +961,7 @@ export class Container {
       // forwardRef with circular dep — break the cycle with a lazy Proxy
       if (isForwardRef) {
         const dependency = this.findRegistration(token, ownerModuleId);
-        if (dependency && this.resolutionStack.has(dependency)) {
+        if (dependency && this.#resolutionStack.has(dependency)) {
           return this.createLazyProxy(token, ownerModuleId);
         }
       }
@@ -941,16 +995,17 @@ export class Container {
 
   resolveAsync<K extends Token>(token: K, requestingModuleId?: string): Promise<InferToken<K>>;
   async resolveAsync<T>(token: Token, requestingModuleId?: string): Promise<T> {
-    const root = this.root;
-    root.asyncDepth++;
+    this.assertNotDisposing();
+    const root = this.#root;
+    root.#asyncDepth++;
     let result: T;
     try {
       result = await this.resolveAsyncInner<T>(token, requestingModuleId);
     } finally {
-      root.asyncDepth--;
+      root.#asyncDepth--;
     }
-    if (root.asyncDepth === 0 && root.lazyHook?.hasClaimed() && !root.lazyHook.isDraining()) {
-      await root.lazyHook.drainAsync();
+    if (root.#asyncDepth === 0 && root.#lazyHook?.hasClaimed() && !root.#lazyHook.isDraining()) {
+      await root.#lazyHook.drainAsync();
     }
     return result;
   }
@@ -959,13 +1014,14 @@ export class Container {
     token: Token,
     requestingModuleId?: string,
     ancestors: ReadonlySet<ProviderRegistration> = new Set(),
+    retainingOwner: Container = this,
   ): Promise<T> {
     const registration = this.findRegistration<T>(token, requestingModuleId);
     if (!registration) {
       if (
         requestingModuleId !== undefined &&
-        this.scopes.has(requestingModuleId) &&
-        this.exporterIndex.has(token)
+        this.#scopes.has(requestingModuleId) &&
+        this.#exporterIndex.has(token)
       ) {
         throw new ModuleVisibilityError(requestingModuleId, token);
       }
@@ -974,7 +1030,7 @@ export class Container {
           { inject: [], provide: token, useFactory: token.options.factory },
           ROOT_MODULE_ID,
         );
-        return this.resolveAsyncInner(token, requestingModuleId, ancestors);
+        return this.resolveAsyncInner(token, requestingModuleId, ancestors, retainingOwner);
       }
       throw new Error(
         `No provider found for token: ${this.tokenToString(token)}. Declare it in a module's providers.`,
@@ -990,44 +1046,52 @@ export class Container {
     const next = new Set([...ancestors, registration]);
     this.claimLazyModule(registration.declaringModuleId);
     if (registration.useExisting) {
-      return this.resolveAsyncInner(registration.useExisting, requestingModuleId, next);
+      return this.resolveAsyncInner(
+        registration.useExisting,
+        requestingModuleId,
+        next,
+        retainingOwner,
+      );
     }
     const scope = registration.effectiveScope ?? registration.scope;
     if (scope === Scope.SINGLETON && registration.instance) return registration.instance.value;
     if (scope === Scope.REQUEST) {
       // This cache is written only through checked token values or this same registration.
-      const cached = (this.requestSeeds.get(registration.provide) ??
-        this.requestInstances.get(registration)) as { readonly value: T } | undefined;
+      const cached = (this.#requestSeeds.get(registration.provide) ??
+        this.#requestInstances.get(registration)) as { readonly value: T } | undefined;
       if (cached) return cached.value;
     }
-    const owner = scope === Scope.SINGLETON ? this.root : this;
+    const owner =
+      scope === Scope.SINGLETON ? this.#root : scope === Scope.REQUEST ? this : retainingOwner;
     if (scope !== Scope.TRANSIENT) {
       // In-flight entries share the registration's value type, erased by the heterogeneous map.
-      const pending = owner.pendingInstances.get(registration) as Promise<T> | undefined;
+      const pending = owner.#pendingInstances.get(registration) as Promise<T> | undefined;
       if (pending) return pending;
     }
-    const pending = this.constructAsync(registration, next).then((instance) => {
+    const pending = this.constructAsync(registration, next, owner).then((instance) => {
       if (scope === Scope.SINGLETON) {
         registration.instance = { value: instance };
-        if (isDisposable(instance)) this.root.disposables.push(instance);
       } else if (scope === Scope.REQUEST) {
-        this.requestInstances.set(registration, { value: instance });
-        if (isDisposable(instance)) this.disposables.push(instance);
+        this.#requestInstances.set(registration, { value: instance });
       }
+      this.trackDisposable(instance, owner);
       return instance;
     });
-    if (scope !== Scope.TRANSIENT) owner.pendingInstances.set(registration, pending);
+    owner.#pendingConstructions.add(pending);
+    if (scope !== Scope.TRANSIENT) owner.#pendingInstances.set(registration, pending);
     try {
       return await pending;
     } finally {
-      if (owner.pendingInstances.get(registration) === pending)
-        owner.pendingInstances.delete(registration);
+      owner.#pendingConstructions.delete(pending);
+      if (owner.#pendingInstances.get(registration) === pending)
+        owner.#pendingInstances.delete(registration);
     }
   }
 
   private async constructAsync<T>(
     registration: ProviderRegistration<T>,
     ancestors: ReadonlySet<ProviderRegistration>,
+    owner: Container,
   ): Promise<T> {
     const moduleId = registration.declaringModuleId;
     if (registration.useFactory) {
@@ -1037,6 +1101,7 @@ export class Container {
             token instanceof ForwardRef ? token.factory() : token,
             moduleId,
             ancestors,
+            owner,
           ),
         ),
       );
@@ -1071,18 +1136,17 @@ export class Container {
           const dependency = this.findRegistration(token, moduleId);
           if (dependency && ancestors.has(dependency)) return this.createLazyProxy(token, moduleId);
         }
-        return this.resolveAsyncInner(token, moduleId, ancestors);
+        return this.resolveAsyncInner(token, moduleId, ancestors, owner);
       }),
     );
     return new target(...dependencies);
   }
 
   private createLazyProxy(token: Token, requestingModuleId?: string): object {
-    const container = this;
     const target: object = Object.create(null);
     return new Proxy(target, {
-      get(_target, prop) {
-        const instance = container.resolve(token, requestingModuleId);
+      get: (_target, prop) => {
+        const instance = this.resolve(token, requestingModuleId);
         if ((typeof instance !== 'object' || instance === null) && typeof instance !== 'function') {
           throw new Error('A circular dependency must resolve to an object');
         }
@@ -1091,8 +1155,8 @@ export class Container {
         const value: unknown = Reflect.get(instance, prop, instance);
         return typeof value === 'function' ? value.bind(instance) : value;
       },
-      set(_target, prop, value) {
-        const instance = container.resolve(token, requestingModuleId);
+      set: (_target, prop, value) => {
+        const instance = this.resolve(token, requestingModuleId);
         if ((typeof instance !== 'object' || instance === null) && typeof instance !== 'function') {
           throw new Error('A circular dependency must resolve to an object');
         }

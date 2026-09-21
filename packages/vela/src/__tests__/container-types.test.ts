@@ -128,6 +128,10 @@ describe('typed provider definitions', () => {
     expectTypeOf(container.resolve(count)).toEqualTypeOf<number>();
     expectTypeOf(container.resolve(Service)).toEqualTypeOf<Service>();
     expectTypeOf(container.resolveAsync(count)).toEqualTypeOf<Promise<number>>();
+    expectTypeOf(container.resolve(count, 'owner')).toEqualTypeOf<number>();
+    expectTypeOf(container.resolveAsync(count, 'owner')).toEqualTypeOf<Promise<number>>();
+    expectTypeOf(container.isLazyPending(count, 'owner')).toEqualTypeOf<boolean>();
+    expectTypeOf(container.isInstantiated(count, 'owner')).toEqualTypeOf<boolean>();
     expectTypeOf(container.resolveAll(count)).toEqualTypeOf<number[]>();
     expectTypeOf<ReturnType<typeof container.resolve<'runtime'>>>().toEqualTypeOf<unknown>();
     expect(container.resolve(label)).toBe('service:2');
