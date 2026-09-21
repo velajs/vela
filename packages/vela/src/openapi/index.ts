@@ -2,6 +2,10 @@ export { createOpenApiDocument } from './document';
 export { defineEndpoint, Endpoint, getEndpointDefinition } from './endpoint';
 export type {
   EndpointSchema,
+  EndpointBodyOptions,
+  EndpointBodyContract,
+  EndpointFormLimits,
+  EndpointFormField,
   EndpointRequest,
   EndpointDefinition,
   EndpointHandlerOutput,

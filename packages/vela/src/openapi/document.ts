@@ -228,7 +228,7 @@ function buildOperation(
     const groups = endpoint.inputSchema.properties ?? {};
     const requiredGroups = new Set(endpoint.inputSchema.required ?? []);
     for (const group of Object.keys(groups)) {
-      if (!['param', 'query', 'header', 'json'].includes(group))
+      if (!['param', 'query', 'header', 'json', 'form'].includes(group))
         throw new Error(`Unsupported endpoint input group: ${group}`);
     }
     for (const [group, location] of [
@@ -259,7 +259,25 @@ function buildOperation(
       requestBody = {
         required: requiredGroups.has('json'),
         content: { 'application/json': { schema: groups.json } },
+        ...(endpoint.body?.maxBytes !== undefined
+          ? { 'x-vela-body-limits': { maxBytes: endpoint.body.maxBytes } }
+          : {}),
       };
+    if (groups.form && endpoint.body && endpoint.body.contentType !== 'application/json') {
+      const { fields: _fields, contentType, ...limits } = endpoint.body;
+      requestBody = {
+        required: requiredGroups.has('form'),
+        content: {
+          [contentType]: {
+            schema: { ...groups.form, additionalProperties: false },
+            encoding: Object.fromEntries(
+              endpoint.body.fields.map(({ name }) => [name, { style: 'form', explode: true }]),
+            ),
+          },
+        },
+        'x-vela-body-limits': limits,
+      };
+    }
   }
 
   const docMeta = getApiDoc(controller, handlerName);

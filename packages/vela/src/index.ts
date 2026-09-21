@@ -19,6 +19,10 @@ export {
 } from './openapi/index';
 export type {
   EndpointDefinition,
+  EndpointBodyOptions,
+  EndpointBodyContract,
+  EndpointFormLimits,
+  EndpointFormField,
   EndpointHandlerOutput,
   EndpointRequest,
   EndpointSchema,

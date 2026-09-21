@@ -22,11 +22,12 @@ export interface GeneratedClientContract {
   warnings: string[];
 }
 
-/** Generate a type-only contract for Hono's hc. No application imports escape into it. */
+/** Generate hc types and optional form encoding metadata, without application imports. */
 export function generateClientContract(input: unknown): GeneratedClientContract {
   const document = parseClientContractDocument(input);
   const warnings = new Set<string>();
   const components = document.components?.schemas ?? {};
+  const formEncodings: { path: string; method: string; contentType: string }[] = [];
   let usesHttpStatus = false;
   const warn = (message: string): void => {
     warnings.add(message);
@@ -127,7 +128,7 @@ export function generateClientContract(input: unknown): GeneratedClientContract 
     } else if (schema.type === 'array') {
       parts.push(`Array<${schemaType(schema.items, `${at}[]`)}>`);
     } else if (schema.type === 'string') {
-      parts.push('string');
+      parts.push(schema.format === 'binary' ? 'File | Blob' : 'string');
     } else if (schema.type === 'number' || schema.type === 'integer') {
       parts.push('number');
     } else if (schema.type === 'boolean' || schema.type === 'null') {
@@ -141,6 +142,134 @@ export function generateClientContract(input: unknown): GeneratedClientContract 
     }
     const value = parts.map((part) => `(${part})`).join(' & ');
     return schema.nullable ? `(${value}) | null` : value;
+  }
+
+  function resolveFormSchema(
+    value: ContractSchema | undefined,
+    at: string,
+    seen = new Set<string>(),
+  ): Exclude<ContractSchema, boolean> {
+    if (!value || typeof value !== 'object')
+      throw new Error(`${at}: form fields require concrete schemas.`);
+    if (!value.$ref) return value;
+    const prefix = '#/components/schemas/';
+    const name = value.$ref.startsWith(prefix)
+      ? value.$ref.slice(prefix.length).replace(/~1/g, '/').replace(/~0/g, '~')
+      : '';
+    if (!Object.hasOwn(components, name))
+      throw new Error(`${at}: unsupported or unresolved reference ${value.$ref}.`);
+    if (seen.has(value.$ref)) throw new Error(`${at}: recursive form schemas are unsupported.`);
+    if (Object.keys(value).some((key) => !['$ref', 'description', 'title'].includes(key)))
+      throw new Error(`${at}: form references with schema siblings are unsupported.`);
+    return resolveFormSchema(components[name], at, new Set(seen).add(value.$ref));
+  }
+
+  function formType(
+    value: ContractSchema | undefined,
+    encoding: unknown,
+    contentType: string,
+    at: string,
+  ): string {
+    const schema = resolveFormSchema(value, at);
+    schemaType(schema, at); // Retain the generator's structural-keyword checks.
+    if (
+      schema.type !== 'object' ||
+      !schema.properties ||
+      schema.oneOf ||
+      schema.anyOf ||
+      schema.allOf ||
+      schema.nullable ||
+      (schema.additionalProperties !== undefined && schema.additionalProperties !== false)
+    )
+      throw new Error(
+        `${at}: form bodies require an object with named fields and no additionalProperties schema.`,
+      );
+    if (encoding !== undefined) {
+      if (encoding === null || typeof encoding !== 'object' || Array.isArray(encoding))
+        throw new Error(`${at}: invalid form encoding.`);
+      for (const [name, entry] of Object.entries(encoding)) {
+        if (
+          !Object.hasOwn(schema.properties, name) ||
+          !entry ||
+          typeof entry !== 'object' ||
+          Array.isArray(entry) ||
+          Object.entries(entry).some(
+            ([key, value]) =>
+              !((key === 'style' && value === 'form') || (key === 'explode' && value === true)),
+          )
+        )
+          throw new Error(
+            `${at}: unsupported form serialization for ${name}; use repeated fields with style form and explode true.`,
+          );
+      }
+    }
+    const fieldType = (value: ContractSchema | undefined, name: string, array = false): string => {
+      const field = resolveFormSchema(value, `${at}.${name}`);
+      schemaType(field, `${at}.${name}`);
+      if (
+        field.oneOf ||
+        field.anyOf ||
+        field.allOf ||
+        field.nullable ||
+        field.readOnly ||
+        field.writeOnly
+      )
+        throw new Error(`${at}.${name}: ambiguous form wire schema.`);
+      if (field.type === 'array' && !array) return `Array<${fieldType(field.items, name, true)}>`;
+      if (field.type !== 'string')
+        throw new Error(
+          `${at}.${name}: form wire fields must be strings, binary files, or arrays of these.`,
+        );
+      const file = field.format === 'binary';
+      if (file && contentType !== 'multipart/form-data')
+        throw new Error(`${at}.${name}: files require multipart/form-data.`);
+      if (field.contentEncoding !== undefined && !(file && field.contentEncoding === 'binary'))
+        throw new Error(`${at}.${name}: unsupported contentEncoding.`);
+      if (
+        (field.enum && field.enum.some((entry) => typeof entry !== 'string')) ||
+        ('const' in field && typeof field.const !== 'string') ||
+        (file && (field.enum || 'const' in field))
+      )
+        throw new Error(`${at}.${name}: invalid form scalar literal.`);
+      return schemaType(field, `${at}.${name}`);
+    };
+    const required = new Set(schema.required ?? []);
+    const fields = Object.entries(schema.properties)
+      .toSorted(([a], [b]) => a.localeCompare(b))
+      .map(
+        ([name, value]) =>
+          `${quote(name)}${required.has(name) ? '' : '?'}: ${fieldType(value, name)};`,
+      );
+    return fields.length ? `{ ${fields.join(' ')} }` : 'Record<string, never>';
+  }
+
+  function rejectBinaryJson(
+    value: ContractSchema | undefined,
+    at: string,
+    seen = new Set<string>(),
+  ): void {
+    if (!value || typeof value !== 'object') return;
+    if (value.format === 'binary')
+      throw new Error(
+        `${at}: binary files require multipart form fields; JSON/text serialization is unsupported.`,
+      );
+    if (value.$ref && !seen.has(value.$ref)) {
+      seen.add(value.$ref);
+      const name = value.$ref
+        .slice('#/components/schemas/'.length)
+        .replace(/~1/g, '/')
+        .replace(/~0/g, '~');
+      rejectBinaryJson(components[name], at, seen);
+    }
+    for (const child of [
+      ...Object.values(value.properties ?? {}),
+      value.items,
+      typeof value.additionalProperties === 'object' ? value.additionalProperties : undefined,
+      ...(value.oneOf ?? []),
+      ...(value.anyOf ?? []),
+      ...(value.allOf ?? []),
+    ])
+      rejectBinaryJson(child, at, seen);
   }
 
   function wireType(
@@ -181,7 +310,12 @@ export function generateClientContract(input: unknown): GeneratedClientContract 
     return 'string';
   }
 
-  function inputType(path: string, operation: ContractOperation, at: string): string {
+  function inputType(
+    path: string,
+    operation: ContractOperation,
+    at: string,
+    method: string,
+  ): string {
     const parameters = [...(operation.parameters ?? [])];
     for (const p of parameters) {
       if (!['path', 'query', 'header', 'cookie'].includes(p.in) || typeof p.name !== 'string')
@@ -215,11 +349,31 @@ export function generateClientContract(input: unknown): GeneratedClientContract 
         throw new Error(`${at}: resolve requestBody references before generating a client.`);
       const content = body.content ?? {};
       const media = Object.keys(content);
-      if (media.length !== 1 || media[0] !== 'application/json')
-        throw new Error(`${at}: request bodies must declare exactly application/json.`);
-      fields.push(
-        `json${body.required ? '' : '?'}: ${schemaType(content['application/json']?.schema, `${at} request body`)};`,
-      );
+      const contentType = media[0];
+      if (
+        media.length !== 1 ||
+        !contentType ||
+        !['application/json', 'multipart/form-data', 'application/x-www-form-urlencoded'].includes(
+          contentType,
+        )
+      )
+        throw new Error(
+          `${at}: request bodies must declare exactly one supported media type: application/json, multipart/form-data, or application/x-www-form-urlencoded.`,
+        );
+      if (method === 'get' || method === 'head')
+        throw new Error(`${at}: hc cannot send a request body for GET or HEAD.`);
+      const entry = content[contentType];
+      if (contentType === 'application/json') {
+        rejectBinaryJson(entry?.schema, `${at} request body`);
+        fields.push(
+          `json${body.required ? '' : '?'}: ${schemaType(entry?.schema, `${at} request body`)};`,
+        );
+      } else {
+        fields.push(
+          `form${body.required ? '' : '?'}: ${formType(entry?.schema, entry?.encoding, contentType, `${at} request body`)};`,
+        );
+        formEncodings.push({ path, method: method.toUpperCase(), contentType });
+      }
     }
     return fields.length ? `{ ${fields.join(' ')} }` : '{}';
   }
@@ -272,7 +426,7 @@ export function generateClientContract(input: unknown): GeneratedClientContract 
       const at = `${method.toUpperCase()} ${path}`;
       const unsupported = operation['x-vela-client-unsupported'];
       if (unsupported?.length) throw new Error(`${at}: ${unsupported.join(' ')}`);
-      const input = inputType(path, operation, at);
+      const input = inputType(path, operation, at, method);
       const explicitStatuses = Object.keys(operation.responses).filter((s) => /^\d{3}$/.test(s));
       const variants: string[] = [];
       for (const [status, response] of Object.entries(operation.responses).toSorted(([a], [b]) =>
@@ -301,6 +455,7 @@ export function generateClientContract(input: unknown): GeneratedClientContract 
         )
           throw new Error(`${at}: responses must declare one JSON or text media type.`);
         const format = media[0] === 'text/plain' ? 'text' : 'json';
+        rejectBinaryJson(content[media[0] ?? '']?.schema, `${at} response ${status}`);
         const bodyType =
           ['101', '204', '205', '304'].includes(status) || method === 'head'
             ? 'never'
@@ -326,11 +481,19 @@ export function generateClientContract(input: unknown): GeneratedClientContract 
     .map(([name, schema]) => `  ${quote(name)}: ${schemaType(schema, `schema ${name}`)};`);
   const source = [
     '// Generated by vela client generate. Do not edit.',
-    `import type { HttpApp${usesHttpStatus ? ', HttpStatus' : ''} } from '@velajs/client/http';`,
+    `import type { HttpApp${usesHttpStatus ? ', HttpStatus' : ''}${formEncodings.length ? ', HttpFormEncoding' : ''} } from '@velajs/client/http';`,
     '',
     `export type Schemas = {\n${schemas.join('\n')}\n};`,
     '',
     `export type AppType = HttpApp<{\n${paths.join('\n')}\n}>;`,
+    ...(formEncodings.length
+      ? [
+          '',
+          '// hc sends multipart by default. Use fetch: withFormEncoding(formEncodings, yourFetch)',
+          '// from @velajs/client/http to honor URL-encoded routes. Wrap per-call fetch overrides too.',
+          `export const formEncodings = ${JSON.stringify(formEncodings, null, 2)} as const satisfies readonly HttpFormEncoding[];`,
+        ]
+      : []),
     '',
   ].join('\n');
   return { source, warnings: [...warnings] };

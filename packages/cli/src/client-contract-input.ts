@@ -69,7 +69,9 @@ const parameter = z
   .passthrough();
 export type ContractParameter = z.infer<typeof parameter>;
 
-const media = z.object({ schema: schema.optional() }).passthrough();
+const media = z
+  .object({ schema: schema.optional(), encoding: z.unknown().optional() })
+  .passthrough();
 const content = z.record(z.string(), media);
 const requestBody = z
   .object({

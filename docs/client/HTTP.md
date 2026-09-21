@@ -1,6 +1,6 @@
 # Typed HTTP client
 
-`@velajs/client/http` exports Hono's `hc` client and its response helpers. Generate a type-only contract from Vela's OpenAPI metadata, then import it in your frontend. No server modules are included in the browser bundle.
+`@velajs/client/http` exports Hono's `hc` client and its response helpers. Generate a contract from Vela's OpenAPI metadata, then import it in your frontend. JSON-only contracts contain only types; form contracts also export encoding metadata. No server modules are included in the browser bundle.
 
 ```sh
 # In the API project (rootModule and createApp in vela.config)
@@ -46,7 +46,7 @@ type CreatedUser = InferResponseType<typeof client.users.$post, 201>;
 
 ## Describe the server contract
 
-Use a schema-bearing endpoint definition for both runtime validation and generated types. The method receives one parsed object with `param`, `query`, `header`, and `json` groups. With Zod 4.4 or later:
+Use a schema-bearing endpoint definition for both runtime validation and generated types. The method receives one parsed object with `param`, `query`, `header`, and either `json` or `form` groups. With Zod 4.4 or later:
 
 ```ts
 import { Controller, Endpoint, Post, defineEndpoint } from '@velajs/vela';
@@ -74,7 +74,7 @@ Ordinary parameter decorators can use named descriptors: `const BodyDto = define
 
 The generated `AppType` uses Hono's schema types. `Schemas` exports named DTO/component types. Missing schemas become `unknown` with diagnostics on stderr; `--strict` fails instead. Unsupported path syntax, parameter serialization, or media types fail generation. `@Endpoint` supplies runtime validation; documentation-only schemas remain declarations. Imported OpenAPI files are decoded before generation, and malformed nested fields fail with a path diagnostic.
 
-The generator currently supports JSON request bodies, JSON/text responses, component schema references, object properties, arrays, enums, unions/intersections, and nullable values. Use object DTOs for whole-query parameters and whole-body DTOs for request bodies. Use separate input/output definitions for `readOnly` or `writeOnly` fields. Multipart uploads, cookie parameters, external references and custom parameter serialization require a separately authored contract. Paths with a trailing slash (other than `/`) or reserved `hc` segments such as `index` and `then` are rejected; use `@Get()` for a controller's base route. Contributed routes need OpenAPI metadata from their contributor; raw Hono mounts are not inferred.
+The generator supports JSON, multipart, and URL-encoded request bodies, JSON/text responses, component schema references, object properties, arrays, enums, unions/intersections, and nullable JSON values. Form fields have the concrete wire shapes described below. Use separate input/output definitions for `readOnly` or `writeOnly` fields. Cookie parameters, external references and custom parameter serialization require a separately authored contract. Paths with a trailing slash (other than `/`) or reserved `hc` segments such as `index` and `then` are rejected; use `@Get()` for a controller's base route. GET/HEAD request bodies are rejected because `hc` does not send them. Contributed routes need OpenAPI metadata from their contributor; raw Hono mounts are not inferred.
 
 Declare global guard/filter responses explicitly when needed:
 
@@ -88,3 +88,111 @@ const authenticated = hc<ApiWithErrors>('https://api.example.com');
 ```
 
 HTTP calls through `hc` are ordinary requests. Continue using `LiveClient.mutate()` for cursor-gated optimistic updates and offline replay; live subscription contracts remain separate.
+
+## Form bodies and uploads
+
+Use `input.form` and an explicit `body.contentType`. The same schema supplies the
+handler's parsed types and OpenAPI's wire types:
+
+```ts
+const upload = defineEndpoint({
+  input: z.object({
+    form: z.object({
+      title: z.string().min(1),
+      tags: z.array(z.string()),
+      revision: z.string().regex(/^\d+$/).transform(Number),
+      file: z.file(),
+      attachments: z.array(z.file()).optional(),
+      note: z.string().optional(),
+    }),
+  }),
+  output: z.object({ name: z.string(), revision: z.number() }),
+  body: {
+    contentType: 'multipart/form-data',
+    maxBytes: 1024 * 1024,
+    maxFields: 20,
+    maxFieldBytes: 16 * 1024,
+    maxFiles: 4,
+    maxFileBytes: 256 * 1024,
+  },
+});
+
+@Controller('/uploads')
+class UploadsController {
+  @Post()
+  @Endpoint(upload)
+  create(input: z.output<typeof upload.input>) {
+    // A native File and a number; validation/transformation ran once.
+    return { name: input.form.file.name, revision: input.form.revision };
+  }
+}
+```
+
+Form schemas describe flat, named text or binary fields and arrays of those
+fields. Use wire strings plus schema transforms for numbers, booleans, dates,
+or other handler values. `z.file()` exports a binary schema; other schema
+libraries can use `defineDto` with a directional converter describing each file
+as `{ type: 'string', format: 'binary' }` and a parser that validates native
+`File` values. Files are not JSON/base64 strings. Nested objects, mixed text/file
+unions, and open dictionaries are rejected as ambiguous form contracts.
+
+An array uses repeated exact keys: `tags=one&tags=two`; a single entry still
+becomes an array. Keys such as `tags[]` are literal, with no bracket/dot nesting.
+Missing fields stay absent. Required arrays need at least one entry on the wire;
+an empty client array sends no entries. Make fields optional in the schema, and
+make the `form` group optional to allow an absent body. Duplicate scalar fields,
+unknown names, and the wrong text/file kind return 400. A malformed multipart
+body returns 400; the wrong media type returns 415. URL-encoded text follows
+native `URLSearchParams` decoding. Schema errors use the existing endpoint error
+envelope; transforms run once, after guards.
+
+All forms have finite defaults: 1 MiB of encoded body bytes (including multipart
+overhead), 100 text entries, 64 KiB per text entry including its UTF-8 key, 10
+files, and 1 MiB per file. Repeated entries count individually. Limits must be
+positive safe integers; exceeding one returns 413. The body-byte bound is checked
+before native parsing; part limits are checked before schema validation. These
+limits supplement `security.body.maxBytes` and its route overrides. Configure
+both when accepting larger uploads. Parsing buffers a bounded body and creates
+native files; streaming storage is a separate concern. JSON endpoints retain
+their existing behavior and can add `body: { contentType: 'application/json',
+maxBytes: 4096 }` for a tighter endpoint limit. OpenAPI exports resolved limits
+as `requestBody['x-vela-body-limits']`.
+
+For URL-encoded forms, use `body: { contentType:
+'application/x-www-form-urlencoded' }` with text fields and text arrays. Files
+require multipart. The CLI emits `formEncodings` for form routes, alongside the
+full `AppType` request and response types:
+
+```ts
+import { hc, withFormEncoding } from '@velajs/client/http';
+import { formEncodings, type AppType } from './api.generated';
+
+const client = hc<AppType>('https://api.example.com', {
+  fetch: withFormEncoding(formEncodings, globalThis.fetch),
+});
+await client.uploads.$post({
+  form: {
+    title: 'Document', tags: ['public'], revision: '2',
+    file: new File(['hello'], 'document.txt', { type: 'text/plain' }),
+  },
+});
+```
+
+Hono always builds `FormData` for `form` inputs. `withFormEncoding` converts it
+to `URLSearchParams` only for the declared URL-encoded routes, preserving repeated
+keys. Multipart calls use native fetch boundaries; omit `Content-Type` when
+sending files. The adapter rejects conflicting media headers and URL-encoded
+files. Generated file inputs accept `File | Blob` (including arrays); a Blob
+uses the native default filename, so use a File when its name matters. Generated
+URL-encoded calls require the adapter; using bare `hc` sends multipart and the
+server rejects it with 415.
+
+Overlapping route templates with different form media types are rejected by the
+adapter when their resolved paths collide. Use disjoint paths or an explicit
+transport for those routes.
+
+Pass a browser/native fetch implementation as the second argument, binding its
+receiver if needed. Signals, credentials, shared headers, and other request
+options pass through. If a call overrides `fetch`, wrap that override too.
+Native callers can also send their own `FormData` or `URLSearchParams` directly
+with fetch. This entrypoint has no Expo dependency.

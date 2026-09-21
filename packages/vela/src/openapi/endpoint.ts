@@ -8,6 +8,17 @@ import {
   type SchemaOutput,
 } from '../validation/parse-schema';
 import { standardJsonSchema, type StandardSchemaV1 } from '../validation/standard-schema';
+import {
+  resolveEndpointBody,
+  type EndpointBodyOptions,
+  type EndpointBodyContract,
+} from './endpoint-body';
+export type {
+  EndpointBodyOptions,
+  EndpointBodyContract,
+  EndpointFormLimits,
+  EndpointFormField,
+} from './endpoint-body';
 
 /** A runtime parser and its serializable contract travel together. */
 export interface EndpointSchema<Value> {
@@ -21,6 +32,7 @@ export interface EndpointRequest {
   query?: unknown;
   header?: unknown;
   json?: unknown;
+  form?: unknown;
 }
 
 /** A transforming output schema accepts handler values before producing wire output. */
@@ -46,6 +58,7 @@ export interface EndpointDefinition<
   readonly outputSchema: JsonSchema;
   readonly format: 'json' | 'text';
   readonly hasJsonBody: boolean;
+  readonly body?: EndpointBodyContract;
   readonly queryParameters: readonly { name: string; multiple: boolean }[];
   /** Bind once: handler types cannot widen the schema-selected input/output. */
   bind<This>(
@@ -63,6 +76,7 @@ export function defineEndpoint<
   input: Input & (SchemaOutput<Input> extends EndpointRequest ? unknown : never);
   output: Output;
   status?: ContentfulStatusCode;
+  body?: EndpointBodyOptions;
   format?: SchemaOutput<Output> extends string ? 'json' | 'text' : 'json';
 }): EndpointDefinition<
   Extract<SchemaOutput<Input>, EndpointRequest>,
@@ -76,19 +90,22 @@ export function defineEndpoint<Input extends EndpointRequest, Output>(options: {
   input: EndpointSchema<Input>;
   output: EndpointSchema<Output>;
   status?: ContentfulStatusCode;
+  body?: EndpointBodyOptions;
   format?: Output extends string ? 'json' | 'text' : 'json';
 }): EndpointDefinition<Input, Output>;
 export function defineEndpoint(options: {
   input: ValidationSchema;
   output: ValidationSchema;
   status?: ContentfulStatusCode;
+  body?: EndpointBodyOptions;
   format?: 'json' | 'text';
-}) {
+}): RuntimeEndpointDefinition {
   const { input, output } = options;
   const inputSchema = endpointJsonSchema(input, 'input');
   const outputSchema = endpointJsonSchema(output, 'output');
   if (inputSchema.type !== 'object')
-    throw new Error('Endpoint input must be an object with param/query/header/json groups.');
+    throw new Error('Endpoint input must be an object with param/query/header/json/form groups.');
+  const body = resolveEndpointBody(inputSchema, options.body);
   const querySchema = inputSchema.properties?.query;
   if (querySchema && querySchema.type !== 'object')
     throw new Error('Endpoint query group must export an object schema.');
@@ -104,6 +121,7 @@ export function defineEndpoint(options: {
     outputSchema,
     format: options.format ?? 'json',
     hasJsonBody: inputSchema.properties?.json !== undefined,
+    body,
     queryParameters: Object.freeze(queryParameters),
     status: options.status ?? 200,
     bind<This>(handler: (this: This, input: unknown) => unknown) {
@@ -124,6 +142,7 @@ export interface RuntimeEndpointDefinition {
   readonly outputSchema: JsonSchema;
   readonly format: 'json' | 'text';
   readonly hasJsonBody: boolean;
+  readonly body?: EndpointBodyContract;
   readonly queryParameters: readonly { name: string; multiple: boolean }[];
 }
 
