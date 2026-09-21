@@ -24,6 +24,16 @@ Portable and Cloudflare time-travel modules accept `imports` for the configured
 Studio/model-source modules that export their dependencies. Async module factories
 must supply `inject`, including `inject: []` when no dependencies are needed.
 
+## Diagnostic snapshots
+
+Application inspection reads public module, route and entrypoint snapshots. It does
+not enumerate provider internals. Entrypoint metadata is bounded to depth 8, 64
+items per collection, 256 visited values and 16 KiB of text (2 KiB per string).
+Bigints become strings such as `42n`; cycles, accessors, functions, instances and
+truncated data use explicit markers. Getters and `toJSON` are never called.
+These are diagnostic summaries, not a data export format. Captured route
+descriptions are copied so inspection cannot mutate the stored descriptions.
+
 ## License
 
 MIT

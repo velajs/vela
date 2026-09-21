@@ -1,27 +1,11 @@
-/**
- * Edge-safe reimplementation of the `@velajs/cli` `introspect.ts` collectors,
- * rebuilt over the seams a provider/route-contributor can reach in vela 1.20.0
- * **public exports only** (no `@velajs/cli` import, no vela subpaths).
- *
- * Source-of-truth per collector (see the M4 report's investigation table):
- *   - routes       ← the Hono app captured in {@link StudioAppHolder}. The rich
- *                    `Controller#handler` / `source:'controller'` labeling from
- *                    `VelaApplication.describeRoutes()` is UNREACHABLE (that
- *                    lives on `RouteManager`, which the barrel keeps internal),
- *                    so every row degrades honestly to `handler:'(mounted)'`,
- *                    `source:'mounted'`.
- *   - modules      ← `Container.getModuleDescriptions()` (public) — field-for-
- *                    field parity with the CLI, no degradation.
- *   - entrypoints  ← the per-app `EntrypointRegistry` (public global token) —
- *                    same object the CLI reaches via `app.entrypoints`. Uses the
- *                    app-scoped registry only (never the process-global
- *                    `getEntrypointKinds()`), so a kind another app/test
- *                    imported can never leak in.
- */
+/** Portable collectors over public per-application inspection APIs. Controller
+ * attribution is supplied by studioRuntimeAdapter; contributed routes retain
+ * their mounted label. Module snapshots never resolve providers. */
 import { EntrypointRegistry, describeToken } from '@velajs/vela';
 import type { Container, ModuleDescription } from '@velajs/vela';
 import type { EntrypointRow, ModuleNode, RouteRow } from '@velajs/studio-protocol';
 import type { StudioAppHolder } from './app-holder';
+import { diagnosticSnapshot } from './snapshot';
 
 /**
  * The app route table. Two tiers, deduped by `method path` and sorted for a
@@ -55,6 +39,10 @@ export function collectRoutes(holder: StudioAppHolder): RouteRow[] {
         handler: `${route.controller}#${route.handler}`,
         source: 'controller',
       });
+    }
+    // Only suppress mounted aliases, never a separately declared GET handler.
+    for (const route of described) {
+      if (route.method === 'HEAD') seen.add(`GET ${route.path}`);
     }
   }
 
@@ -117,30 +105,9 @@ export function collectEntrypoints(container: Container): EntrypointRow[] {
       rows.push({
         kind,
         target: `${describeToken(ep.token)}${method}`,
-        meta: toJsonSafe(ep.meta),
+        meta: diagnosticSnapshot(ep.meta),
       });
     }
   }
   return rows;
-}
-
-/**
- * Project a value onto a JSON-safe clone so a pathological entrypoint `meta`
- * (a function, a class instance, a cycle) can never crash the op's response
- * serialization. Functions and cycles collapse to a string marker; everything
- * else is structurally cloned. Kept structural (not stringified) so the wire
- * `meta?: unknown` stays useful to the UI.
- */
-function toJsonSafe(value: unknown, seen: WeakSet<object> = new WeakSet()): unknown {
-  if (value === null || typeof value !== 'object') {
-    return typeof value === 'function' ? '[function]' : value;
-  }
-  if (seen.has(value)) return '[circular]';
-  seen.add(value);
-
-  if (Array.isArray(value)) return value.map((item) => toJsonSafe(item, seen));
-
-  const out: Record<string, unknown> = {};
-  for (const [key, val] of Object.entries(value)) out[key] = toJsonSafe(val, seen);
-  return out;
 }
