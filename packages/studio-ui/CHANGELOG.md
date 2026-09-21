@@ -1,5 +1,17 @@
 # @velajs/studio-ui
 
+## 1.23.0
+
+### Minor Changes
+
+- 8b3ba80: Add optional application-owned structured log capture and handler completion timing through `@velajs/studio/logging`. Expose additive module ownership, effective provider scopes, and invocation metadata in Studio protocol v2 and the UI. Bound and copy log snapshots, preserve older protocol responses, and document Worker/test debugger workflows.
+
+### Patch Changes
+
+- Updated dependencies [c5d98a7]
+- Updated dependencies [8b3ba80]
+  - @velajs/studio-protocol@1.23.0
+
 ## 1.22.1
 
 ### Patch Changes

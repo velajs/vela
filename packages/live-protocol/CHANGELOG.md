@@ -1,5 +1,13 @@
 # @velajs/live-protocol
 
+## 1.23.0
+
+### Minor Changes
+
+- 5205e58: Validate WebSocket correlation envelopes and hibernation attachments, preserve live baselines after refused sends, and add bounded connection-local send admission and incoming work. Existing void send APIs and unversioned 1.x attachments remain supported.
+
+  Drop frames still waiting on Node connection setup after overload or close. Use browser-valid private close codes and reconnect after client-side send admission failures.
+
 ## 1.22.1
 
 ### Patch Changes

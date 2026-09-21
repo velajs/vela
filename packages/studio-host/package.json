@@ -1,6 +1,6 @@
 {
   "name": "@velajs/studio-host",
-  "version": "1.22.1",
+  "version": "1.22.2",
   "description": "Loopback dev host serving the Vela Studio SPA and proxying the admin API",
   "keywords": [
     "admin",

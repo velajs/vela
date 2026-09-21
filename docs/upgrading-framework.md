@@ -1,12 +1,11 @@
 # Upgrading framework integrations
 
-This guide covers the DI, execution, schema, transport and database changes after
-the 1.24.0 baseline. The implementation ships through the pending changesets;
-consult the generated package changelogs for the released versions. Update the
-core and affected integrations together using their published dependency ranges.
-The new RPC and GraphQL packages require the corresponding updated core APIs;
-their presence in this workspace does not make older published core versions
-compatible.
+This guide covers the DI, execution, schema, transport and database APIs that
+require core 1.25.0. RPC and GraphQL 1.1.0 require this core version, and named
+databases require CRUD 1.25.0 with compatible adapters. Update the core and affected
+integrations together using their published dependency ranges; consult each
+package's changelog for its version. A prepared version in this repository becomes
+installable only after publication to npm.
 
 ## Dependency injection and module ownership
 

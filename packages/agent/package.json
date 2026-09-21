@@ -87,7 +87,7 @@
   "peerDependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
     "@velajs/ai": "workspace:^1.0.1",
-    "@velajs/mail": "workspace:^1.0.1",
+    "@velajs/mail": "workspace:^1.0.2",
     "ai": "^7.0.26",
     "zod": "^4.4.3"
   },

@@ -1,5 +1,46 @@
 # Changelog
 
+## 1.23.0
+
+### Minor Changes
+
+- 5bbbe6b: Add metadata-only stat/listMetadata access and preserve exact native raw binding types through storage facades, services, R2/hybrid drivers, and built-in middleware. Add explicit R2 listing metadata inclusion and Workers-native type coverage. Clarify portable storage versus the compatible legacy Cloudflare HMAC proxy API.
+
+### Patch Changes
+
+- 6588211: Normalize generated CRUD names and storage prefixes in linear passes so long
+  separator runs cannot cause regular-expression backtracking. Preserve existing
+  operation IDs, controller/DTO names, and prefix scoping behavior.
+- 4bf9081: Report actual native R2 range lengths and reject invalid ranges before I/O. Enforce storage deadlines and cancellation without retrying abandoned operations whose writes may still commit. Dispose late download bodies and multipart handles, stop follow-up mutations after cancellation, and document provider-side uncertainty and stream ownership.
+- Updated dependencies [c6a43a6]
+- Updated dependencies [bbe62d4]
+- Updated dependencies [a6ef933]
+- Updated dependencies [dae3654]
+- Updated dependencies [77cca9e]
+- Updated dependencies [b9f75f5]
+- Updated dependencies [df47ea8]
+- Updated dependencies [af019bf]
+- Updated dependencies [6df1059]
+- Updated dependencies [bdd90a1]
+- Updated dependencies [8a3923f]
+- Updated dependencies [c7d108b]
+- Updated dependencies [1c7f635]
+- Updated dependencies [636ffbc]
+- Updated dependencies [54f8864]
+- Updated dependencies [f49db45]
+- Updated dependencies [4fde903]
+- Updated dependencies [6a1b5b3]
+- Updated dependencies [a95951a]
+- Updated dependencies [9e82187]
+- Updated dependencies [c5a3cb0]
+- Updated dependencies [363fb71]
+- Updated dependencies [de4e57e]
+- Updated dependencies [0765aaa]
+- Updated dependencies [6b7cf23]
+- Updated dependencies [5205e58]
+- Updated dependencies [ae45689]
+  - @velajs/vela@1.25.0
+
 ## 1.22.1
 
 ### Patch Changes
