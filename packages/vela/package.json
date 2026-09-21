@@ -101,7 +101,7 @@
     "test": "vitest run",
     "test:workers": "vitest run --config vitest.config.workers.ts",
     "test:workers:als": "vitest run --config vitest.config.workers-als.ts",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.type-tests.json && tsc --noEmit -p tsconfig.dispatch-tests.json && tsc --noEmit -p tsconfig.package-tests.json",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.type-tests.json && tsc --noEmit -p tsconfig.dispatch-tests.json && tsc --noEmit -p tsconfig.package-tests.json && tsc --noEmit -p tsconfig.queue-tests.json",
     "check:skill": "node scripts/check-skill.mjs",
     "lint": "oxlint .",
     "format": "oxfmt .",

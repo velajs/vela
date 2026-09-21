@@ -80,3 +80,18 @@ describe('queue driver application ownership', () => {
     await first.close();
   });
 });
+
+it('does not silently deduplicate different driver instances with the same kind', async () => {
+  const a = inline({ mode: 'manual' });
+  const b = inline({ mode: 'manual' });
+  @Module({
+    imports: [
+      QueueModule.forRoot({ queues: ['collision'], driver: a }),
+      QueueModule.forRoot({ queues: ['collision'], driver: b }),
+    ],
+  })
+  class App {}
+  const app = await VelaFactory.create(App);
+  expect(() => app.get(queueToken('collision'))).toThrow(/Multiple providers|provided by multiple/);
+  await app.close();
+});

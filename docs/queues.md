@@ -137,3 +137,14 @@ Keep all delivery-critical work awaited by the callback. The bridge does not
 schedule background sends, claim exactly-once delivery, configure retries/DLQs,
 or implement a durable outbox. [Cloudflare settlement rules](https://developers.cloudflare.com/queues/configuration/batching-retries/)
 and native queue configuration determine redelivery.
+
+
+## Module and invocation isolation
+
+Processor discovery retains each owning module, including multiple keyed
+instances of the same module/processor class. Async options and declared guards,
+interceptors, and filters resolve from that owner. Processors with request scope
+are constructed after guards pass. Each matching processor runs inside the
+shared managed invocation scope: registered deferred work finishes before scope
+disposal and before delivery succeeds or fails. A deferred failure rejects the
+delivery; it is not hidden behind acknowledgement.

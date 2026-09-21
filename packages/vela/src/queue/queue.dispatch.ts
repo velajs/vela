@@ -1,8 +1,10 @@
 import {
   buildEntrypointExecutionContext,
+  getEntrypointModuleId,
+  resolveEntrypoint,
   PipelineRunner,
   resolveErrorReporter,
-  resolveScopedComponents,
+  resolveScopedComponentsAsync,
   runInEntrypointScope,
   shouldFilterCatch,
   validateSchema,
@@ -24,6 +26,7 @@ export interface QueueDispatchResult {
 /** One dispatchable processor: its class token + `@Processor` meta. */
 export interface QueueEntry {
   token: Token;
+  moduleId?: string;
   meta: ProcessorMetadata;
 }
 
@@ -74,7 +77,7 @@ export async function dispatchQueueJob(
 ): Promise<QueueDispatchResult> {
   const entries = entrypoints
     .ofKind('queue', readProcessorMetadata)
-    .map((ep) => ({ token: ep.token, meta: ep.meta }));
+    .map((ep) => ({ token: ep.token, meta: ep.meta, moduleId: ep.moduleId }));
   return dispatchJobToEntries(container, entries, job, options);
 }
 
@@ -104,9 +107,9 @@ export async function dispatchJobToEntries(
 
   // Await every processor before acknowledging or rejecting a platform message.
   const outcomes = await Promise.allSettled(
-    processors.map((entry) => dispatchToProcessor(container, entry.token as Type, job)),
+    processors.map((entry) => dispatchToProcessor(container, entry, job)),
   );
-  const errors = outcomes.flatMap((outcome) =>
+  const errors: unknown[] = outcomes.flatMap((outcome) =>
     outcome.status === 'rejected' ? [outcome.reason] : [],
   );
   if (errors.length === 1) throw errors[0];
@@ -122,9 +125,12 @@ export async function dispatchJobToEntries(
 
 async function dispatchToProcessor(
   container: Container,
-  processorClass: Type,
+  entry: QueueEntry,
   job: QueueJob,
 ): Promise<boolean> {
+  const processorClass = entry.token;
+  if (typeof processorClass !== 'function')
+    throw new TypeError('Queue processor token must be a class.');
   const handler = selectHandler(
     container,
     processorClass,
@@ -144,30 +150,40 @@ async function dispatchToProcessor(
   return runInEntrypointScope(container, async (scope) => {
     // Async seam: materializes lazy processor modules (drainAsync awaits
     // their async providers/hooks) and rebuilds request-scoped processors.
-    const instance = (await scope.resolveAsync(processorClass)) as Record<string | symbol, unknown>;
+    const moduleId = getEntrypointModuleId(scope, entry);
     const context = buildEntrypointExecutionContext(
       'queue',
       processorClass,
       handler.methodName,
       job,
-      undefined,
+      moduleId,
       scope,
     );
 
-    const guards = resolveScopedComponents('guard', processorClass, handler.methodName, scope);
-    const interceptors = resolveScopedComponents(
+    const guards = await resolveScopedComponentsAsync(
+      'guard',
+      processorClass,
+      handler.methodName,
+      scope,
+      moduleId,
+    );
+    const interceptors = await resolveScopedComponentsAsync(
       'interceptor',
       processorClass,
       handler.methodName,
       scope,
+      moduleId,
     );
     // Closest-first: handler/class filters reversed by the caller (WS/CF convention).
-    const filters = resolveScopedComponents(
-      'filter',
-      processorClass,
-      handler.methodName,
-      scope,
-    ).reverse();
+    const filters = (
+      await resolveScopedComponentsAsync(
+        'filter',
+        processorClass,
+        handler.methodName,
+        scope,
+        moduleId,
+      )
+    ).toReversed();
 
     try {
       await PipelineRunner.run({
@@ -180,8 +196,13 @@ async function dispatchToProcessor(
             : job,
         ],
         invoke: async (args) => {
-          const method = instance[handler.methodName] as (...a: unknown[]) => unknown;
-          return method.apply(instance, args);
+          const instance = await resolveEntrypoint(scope, { token: processorClass, moduleId });
+          if (typeof instance !== 'object' || instance === null)
+            throw new TypeError('Queue processor must resolve to an object.');
+          const method: unknown = Reflect.get(instance, handler.methodName);
+          if (typeof method !== 'function')
+            throw new TypeError('Queue processor handler must be a function.');
+          return Reflect.apply(method, instance, args);
         },
       });
       return true;

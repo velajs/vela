@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { StandardSchemaV1 } from '../index';
 import { defineQueueJob, Process, QueueClient } from '../queue';
 import type { QueueJob, QueueJobInput, QueueJobOutput } from '../queue';
@@ -26,3 +27,13 @@ class Consumer {
   }
 }
 void Consumer;
+
+const zodJob = defineQueueJob('zod', z.object({ value: z.string().transform(Number) }));
+void client.add(zodJob, { value: '42' });
+// @ts-expect-error actual Zod schema input remains a string
+void client.add(zodJob, { value: 42 });
+const zodOutput: QueueJobOutput<typeof zodJob> = { value: 42 };
+// @ts-expect-error actual Zod schema output is transformed
+const badZodOutput: QueueJobOutput<typeof zodJob> = { value: '42' };
+void zodOutput;
+void badZodOutput;

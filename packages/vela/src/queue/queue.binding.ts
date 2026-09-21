@@ -17,7 +17,7 @@ const ownedDrivers = new WeakSet<QueueDriver>();
  * exists (registered into the container at the end of
  * `callOnApplicationBootstrap`); deliveries that arrive earlier (a producer's
  * `onModuleInit` calling `add()`) fall back to `DiscoveryService` with
- * `deferLazy` — identical entries, no buffering, no lost jobs.
+ * `metadataOnly` — identical owners, no buffering, no lost jobs.
  *
  * Every `QueueClient` injects this binding, so the driver is always bound
  * before the first `add()` — including when the module materializes lazily.
@@ -91,10 +91,14 @@ export class QueueDispatchBinding {
       ? this.#container
           .resolve(EntrypointRegistry)
           .ofKind('queue', readProcessorMetadata)
-          .map((ep) => ({ token: ep.token, meta: ep.meta }))
+          .map((ep) => ({ token: ep.token, meta: ep.meta, moduleId: ep.moduleId }))
       : this.#discovery
-          .providersWithMeta(PROCESSOR_METADATA, { deferLazy: true })
-          .map((found) => ({ token: found.token, meta: readProcessorMetadata(found.meta) }));
+          .registrationsWithMeta(PROCESSOR_METADATA, { metadataOnly: true })
+          .map((found) => ({
+            token: found.token,
+            meta: readProcessorMetadata(found.meta),
+            moduleId: found.moduleId,
+          }));
 
     await dispatchJobToEntries(this.#container, entries, job);
   }
