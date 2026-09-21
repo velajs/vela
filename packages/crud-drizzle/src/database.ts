@@ -101,10 +101,10 @@ class OwnedDrizzleScope implements AdapterScope {
     this.tx = tx;
   }
 
-  database(owner: object): DrizzleDatabase {
+  database(owner: object, fallback?: DrizzleDatabase): DrizzleDatabase {
     if (!this.#active || this.#owner !== owner)
       throw new TypeError('Foreign or expired Drizzle database scope');
-    return asDatabase(this.tx ?? owner);
+    return this.tx == null ? (fallback ?? asDatabase(owner)) : asDatabase(this.tx);
   }
 
   close(): void {
@@ -127,8 +127,8 @@ export async function withDrizzleScope<T>(
 }
 
 /** Reject fabricated, foreign and expired scopes before using their native tx. */
-export function databaseForScope(owner: object, scope: AdapterScope): DrizzleDatabase {
+export function databaseForScope(owner: object, scope: AdapterScope, fallback?: DrizzleDatabase): DrizzleDatabase {
   if (!(scope instanceof OwnedDrizzleScope))
     throw new TypeError('Foreign or expired Drizzle database scope');
-  return scope.database(owner);
+  return scope.database(owner, fallback);
 }
