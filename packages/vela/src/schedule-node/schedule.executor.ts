@@ -96,7 +96,10 @@ export class ScheduleExecutor
       'expression' in meta
         ? { kind: 'cron', expression: meta.expression, scheduledTime, signal: controller.signal }
         : { kind: 'interval', ms: meta.ms, scheduledTime, signal: controller.signal };
-    const job: ScheduleJobRef = { ...tick, methodName: meta.methodName };
+    const job: ScheduleJobRef =
+      tick.kind === 'cron'
+        ? { kind: 'cron', expression: tick.expression, methodName: meta.methodName }
+        : { kind: 'interval', ms: tick.ms, methodName: meta.methodName };
     const pending = this.#invoke(entry, job, tick);
     this.#active.set(pending, controller);
     // Observe immediately; no detached rejection escapes a timer callback.

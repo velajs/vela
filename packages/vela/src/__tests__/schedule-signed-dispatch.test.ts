@@ -11,7 +11,7 @@ import {
   SignedInvocation,
   URL_SIGNING_SECRET,
 } from '../index.js';
-import { ScheduleModule, Interval } from '../schedule/index.js';
+import { ScheduleModule, Interval, type ScheduleJobRef } from '../schedule/index.js';
 import { ScheduleNodeModule } from '../schedule-node/index.js';
 
 const SECRET = 'schedule-signed-dispatch-secret';
@@ -33,11 +33,12 @@ describe('ScheduleModule signed re-entry dispatch (opt-in)', () => {
   // fake timers cannot reliably flush inside the executor's detached dispatch.
   it('signed mode re-enters a route when a scheduled job fires (direct method bypassed)', async () => {
     const routeHits: string[] = [];
+    const jobs: ScheduleJobRef[] = [];
     let directCalls = 0;
 
     @Global()
     @Module({
-      providers: [defineProvider(URL_SIGNING_SECRET, {useValue: SECRET})],
+      providers: [defineProvider(URL_SIGNING_SECRET, { useValue: SECRET })],
       exports: [URL_SIGNING_SECRET],
     })
     class SecretModule {}
@@ -66,7 +67,13 @@ describe('ScheduleModule signed re-entry dispatch (opt-in)', () => {
       imports: [
         SecretModule,
         ScheduleModule.forRoot({
-          dispatch: { kind: 'signed', target: () => ({ route: 'inv.tick' }) },
+          dispatch: {
+            kind: 'signed',
+            target: (job) => {
+              jobs.push(job);
+              return { route: 'inv.tick' };
+            },
+          },
         }),
         ScheduleNodeModule.forRoot(),
       ],
@@ -83,6 +90,7 @@ describe('ScheduleModule signed re-entry dispatch (opt-in)', () => {
     expect(routeHits.length).toBeGreaterThanOrEqual(1);
     expect(routeHits.every((hit) => hit === 'tick')).toBe(true);
     expect(directCalls).toBe(0);
+    expect(jobs[0]).toEqual({ kind: 'interval', ms: 20, methodName: 'tick' });
   });
 
   it('default forRoot() calls the decorated method directly (unchanged)', async () => {

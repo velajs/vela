@@ -25,8 +25,9 @@ class Reports {
 ```
 
 The Cloudflare dialect uses UTC and numbers weekdays from 1 (Sunday) through 7
-(Saturday). It accepts named months/weekdays, lists, ranges, steps, and calendar
-forms `L`, `LW`, `nW`, `nL` and `n#k`. Cloudflare with `timeZone: 'local'` is
+(Saturday). When both day fields are restricted, either may match. It accepts
+named months/weekdays, lists, ranges including wrap-around, steps, and calendar
+forms `L`, `LW`, `L-n`, `L-nW`, `nW`, `nL` and `n#k`. Cloudflare with `timeZone: 'local'` is
 invalid. Unix schedules can set `timeZone: 'UTC'` explicitly without changing
 weekday numbering. `parseCron(expression, options)` returns a matcher or `null`.
 It rejects malformed decimal fields instead of coercing values such as `0x10`.
@@ -65,6 +66,12 @@ structural types for native handlers. `ScheduledEvent` retains optional
 unchanged; call `controller.noRetry()` on the controller rather than extracting
 an unbound method.
 
+Each native delivery waits for every matching handler and its managed deferred
+work to settle before completing. One failing handler does not cut off sibling
+handlers or dispose their resources early. A single failure is preserved; multiple
+failures are reported together as an `AggregateError`. Calls to the supplied
+context's `waitUntil()` also extend the invocation resource lifetime.
+
 For deployment tools, entrypoints expose `schedule:cron` metadata
 `{ expression, methodName, dialect?, timeZone? }` and `schedule:interval` metadata
 `{ ms, methodName }`. Cloudflare also exposes its existing `cf:scheduled` and
@@ -87,8 +94,9 @@ Signed dispatch remains opt-in for work that should use the request pipeline.
 Closing the application stops future timers, aborts active invocation signals,
 and waits for direct handlers and managed deferred work to settle before disposing
 invocation resources. Signed dispatch forwards cancellation to its transport;
-cancelling the caller cannot guarantee that remote side effects stop. Handlers must cooperate with cancellation or finish on
-their own; shutdown does not dispose resources underneath running code. Overlap
+cancelling the caller cannot guarantee that remote side effects stop. Handlers
+must cooperate with cancellation or finish on their own; shutdown does not
+dispose resources underneath running code. Overlap
 between ticks remains allowed. There is no implicit catch-up or automatic retry.
 Failures are reported through the existing exception reporter. With
 `diagnostics: 'throw'`, the first failure stops new timers and is rethrown by
@@ -103,6 +111,7 @@ exactly-once side effects. Native Workflow schedules can avoid an intermediate
 cron handler when the workflow needs no custom trigger processing.
 
 See Cloudflare's [cron syntax](https://developers.cloudflare.com/workers/configuration/cron-triggers/),
+[Saffron parser](https://github.com/cloudflare/saffron),
 [scheduled handler contract](https://developers.cloudflare.com/workers/runtime-apis/handlers/scheduled/),
 and [Workflow schedules](https://developers.cloudflare.com/workflows/build/trigger-workflows/)
 for deployment constraints and current platform behavior.

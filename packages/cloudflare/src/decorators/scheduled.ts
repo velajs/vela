@@ -19,7 +19,6 @@ export interface ScheduledEvent {
 
 /** Native controller passed unchanged to a Worker handler. Call noRetry on its receiver. */
 export interface ScheduledController extends ScheduledEvent {
-  readonly type: 'scheduled';
   readonly scheduledTime: number;
   noRetry(): void;
 }

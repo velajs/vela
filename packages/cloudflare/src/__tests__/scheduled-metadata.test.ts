@@ -50,7 +50,6 @@ describe('native scheduled metadata', () => {
     let noRetry = false;
     const event: ScheduledController = {
       cron: '0  9 * * MON',
-      type: 'scheduled',
       scheduledTime: Date.UTC(2024, 0, 8, 9),
       noRetry() {
         expect(this).toBe(event);

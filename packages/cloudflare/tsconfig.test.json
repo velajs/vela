@@ -7,6 +7,9 @@
   "files": [
     "src/__tests__/queue-bridge.test.ts",
     "src/__tests__/workers/queue-bridge-runtime.test.ts",
+    "src/__tests__/scheduled-metadata.test.ts",
+    "src/__tests__/scheduled-completion.test.ts",
+    "src/__tests__/workers/scheduled-runtime.test.ts",
     "src/__tests__/entrypoint-bindings.test.ts",
     "src/__tests__/durable-object-nonce-store.test.ts",
     "src/__tests__/do-pitr.test.ts",

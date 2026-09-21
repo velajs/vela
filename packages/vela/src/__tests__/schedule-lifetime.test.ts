@@ -58,6 +58,7 @@ describe('Node scheduled invocation ownership', () => {
         Job,
         defineProvider(resource, {
           scope: Scope.REQUEST,
+          inject: [],
           useFactory: async () => {
             await hold.promise;
             return {
@@ -125,7 +126,11 @@ describe('Node scheduled invocation ownership', () => {
     @Module({
       imports: [ScheduleNodeModule],
       providers: [
-        defineProvider(value, { scope: Scope.REQUEST, useFactory: async () => ++serial }),
+        defineProvider(value, {
+          scope: Scope.REQUEST,
+          inject: [],
+          useFactory: async () => ++serial,
+        }),
         Job,
       ],
     })
