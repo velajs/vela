@@ -28,7 +28,7 @@ it('drains pending asynchronous transient construction before a testing scope cl
   let pending: Promise<Resource> | undefined;
   try {
     await module.runInRequestScope((child) => {
-      pending = child.resolveAsync<Resource>(RESOURCE);
+      pending = child.resolveAsync(RESOURCE);
     });
     if (!pending) throw new Error('Scope did not start construction');
     const instance = await pending;

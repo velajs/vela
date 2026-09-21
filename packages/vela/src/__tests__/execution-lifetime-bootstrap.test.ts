@@ -23,7 +23,7 @@ it('makes the managed lifetime injectable from feature modules without root reso
     await Promise.all(
       [1, 2].map(() =>
         runInEntrypointScope(app.getContainer(), async (child) => {
-          const consumer = await child.resolveAsync<Consumer>(Consumer);
+          const consumer = await child.resolveAsync(Consumer);
           expect(consumer.lifetime.active).toBe(true);
           lifetimes.push(consumer.lifetime);
         }),

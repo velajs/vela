@@ -35,7 +35,7 @@ export async function finalizeApplication(
         undefined,
       ) ??
       (container.has(INVOCATION_TRANSPORT)
-        ? await container.resolveAsync<InvocationTransport>(INVOCATION_TRANSPORT)
+        ? await container.resolveAsync(INVOCATION_TRANSPORT)
         : async (request: Request) => app.fetch(request));
     container.register(defineProvider(INVOCATION_TRANSPORT, { useValue: transport }));
     container.markGlobalToken(INVOCATION_TRANSPORT);
