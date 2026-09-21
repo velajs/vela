@@ -4,7 +4,7 @@
 [![CI](https://github.com/velajs/vela/actions/workflows/ci.yml/badge.svg)](https://github.com/velajs/vela/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/npm/l/@velajs/vela)](https://github.com/velajs/vela/blob/main/LICENSE)
 
-NestJS-compatible framework for edge runtimes, powered by [Hono](https://hono.dev).
+Nest-style modules, controllers, and dependency injection for edge runtimes, powered by [Hono](https://hono.dev).
 
 ## Install
 
@@ -44,8 +44,17 @@ class AppController {
 class AppModule {}
 
 const app = await VelaFactory.create(AppModule);
-export default app; // Works on Cloudflare Workers, Deno, Bun, etc.
+export default app; // Fetch-compatible application
 ```
+
+This example serves `GET /app/` and returns `{ "message": "Hello from the edge!" }`.
+
+Build decorated TypeScript with SWC using legacy decorators and emitted decorator
+metadata. See the [tooling guide](https://github.com/velajs/vela/blob/main/docs/tooling.md)
+and [API starter](https://github.com/velajs/vela/tree/main/apps/api-starter) for
+working compiler and runtime configuration. For native Workers bindings, use
+`createCloudflareWorker` from
+[`@velajs/cloudflare`](https://github.com/velajs/vela/tree/main/packages/cloudflare).
 
 HTTP requests have a 1 MiB body ceiling plus bounded query size/count/depth by
 default, enforced before application middleware, signed-body capture, guards,
@@ -101,7 +110,9 @@ One subpath, **`@velajs/vela/schedule-node`**, is an opt-in Node/Bun adapter for
 import { ScheduleNodeModule } from '@velajs/vela/schedule-node';
 ```
 
-The other subpaths (`@velajs/vela/internal`, `@velajs/vela/streaming`) follow the main export's edge-safe contract.
+WebSocket transports for Node, Bun, and Deno are exposed separately through
+`@velajs/vela/websocket-node`. On Workers, use `@velajs/cloudflare` and its native
+Durable Object entrypoint. See the [WebSocket guide](https://github.com/velajs/vela/blob/main/docs/websockets.md).
 
 ## Dynamic modules
 
@@ -224,18 +235,20 @@ accept pipes after their data argument.
 ```bash
 pnpm add @velajs/testing -D
 pnpm add @velajs/cloudflare @cloudflare/workers-types
-pnpm add @velajs/crud hono-crud @hono/zod-openapi zod
+pnpm add @velajs/crud @velajs/crud-memory zod
 ```
 
-## `/internal` subpath (for plugin authors)
+## Advanced framework integration
 
-Framework primitives — `MetadataRegistry`, `Container`, `RouteManager`, `ModuleLoader`, `ComponentManager`, `VelaApplication`, `bindAppProviders`, `APP_*` tokens — are exposed at `@velajs/vela/internal`. This is the stable target for plugin packages that need to reach below the public API.
+Application and module authors should use the public root and feature subpaths.
+`Container`, `ModuleRef`, `VelaApplication`, and `MetadataRegistry` are available
+from `@velajs/vela`. The [module authoring guide](https://github.com/velajs/vela/blob/main/docs/modules.md)
+covers public discovery, entrypoint, and route integration APIs.
 
-```ts
-import { MetadataRegistry, Container } from '@velajs/vela/internal';
-```
-
-The public root barrel still exports `MetadataRegistry` (used by tests for `clear()` between cases). Everything else lives at `/internal` only.
+`@velajs/vela/internal` also exposes lower-level bootstrap and routing machinery,
+such as `RouteManager`, `ModuleLoader`, `ComponentManager`, and `bindAppProviders`.
+It is used by framework integrations such as `@velajs/testing`; these internals
+can change independently of the public module-authoring contract.
 
 ## License
 

@@ -21,7 +21,7 @@ const FORBIDDEN = [
   { name: "import 'path'", re: /from\s+['"]path['"]/g },
   { name: "import 'os'", re: /from\s+['"]os['"]/g },
   { name: "import 'child_process'", re: /from\s+['"]child_process['"]/g },
-  // setInterval (CLAUDE.md: not in all edge runtimes)
+  // setInterval is isolated to the opt-in Node scheduling adapter.
   { name: 'setInterval', re: /(?<![A-Za-z_])setInterval\s*\(/g },
   // Bun-only global server APIs
   { name: 'Bun.serve()', re: /(?<![A-Za-z_])Bun\.serve\b/g },

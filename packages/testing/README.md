@@ -9,7 +9,7 @@ Test-module builder for [Vela](https://github.com/velajs/vela). Compose modules 
 
 ```bash
 pnpm add -D @velajs/testing
-# Peer (already in your project): @velajs/vela >=1.21 <2, hono >=4
+# Required peers: @velajs/vela ^1.22.1, hono >=4, vitest >=3
 ```
 
 No `reflect-metadata` needed — Vela ships its own polyfill.
@@ -17,9 +17,8 @@ No `reflect-metadata` needed — Vela ships its own polyfill.
 ## Quick Start
 
 ```ts
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { Test } from '@velajs/testing';
-import { MetadataRegistry } from '@velajs/vela';
 import { Injectable, Module } from '@velajs/vela';
 
 @Injectable()
@@ -30,18 +29,24 @@ class CatsService {
 @Module({ providers: [CatsService] })
 class CatsModule {}
 
-beforeEach(() => MetadataRegistry.clear());
-
 describe('CatsService', () => {
   it('returns cats', async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [CatsModule],
     }).compile();
 
-    expect(moduleRef.get(CatsService).findAll()).toEqual(['cat1', 'cat2']);
+    try {
+      expect(moduleRef.get(CatsService).findAll()).toEqual(['cat1', 'cat2']);
+    } finally {
+      await moduleRef.close();
+    }
   });
 });
 ```
+
+Keep module decorators registered until the test completes. Clearing
+`MetadataRegistry` after declaring a module removes the metadata that `compile()`
+needs. Close each compiled module to run its shutdown hooks.
 
 ## Overriding providers
 
@@ -60,10 +65,13 @@ const moduleRef = await Test.createTestingModule({ imports: [UsersModule] })
 .overrideGuard(AuthGuard).useValue({ canActivate: () => true })
 .overrideInterceptor(LogInterceptor).useClass(NoopInterceptor)
 .overrideProvider(CONFIG).useFactory({
-  factory: (env) => ({ env: env.getEnv() }),
-  inject: [EnvService],
+  factory: (env) => ({ env: env.APP_ENV }),
+  inject: [ENV],
 })
 ```
+
+Here `ENV` is a registered `InjectionToken<{ APP_ENV: string }>` and `CONFIG`
+is an `InjectionToken<{ env: string }>`.
 
 Inline providers (skip importing a module):
 

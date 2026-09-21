@@ -4,33 +4,47 @@ The contract for building a Vela feature module — first-party or third-party.
 Everything here is public API from `@velajs/vela`; a module never needs
 `@velajs/vela/internal`.
 
-## The blessed path: `defineModule`
+## Configurable modules with `defineModule`
 
-One engine generates `forRoot` **and** `forRootAsync`, derives a
-deterministic instance `key`, and lets every contribution be a function of
-the options:
+`defineModule` generates `forRoot` and `forRootAsync`, derives an instance key,
+and registers providers from the module's options. Use `defineProvider` to check
+each provider against its token and infer factory dependencies:
 
 ```ts
-import { defineModule, InjectionToken, stableHash } from '@velajs/vela';
+import { defineModule, defineProvider, InjectionToken, stableHash } from '@velajs/vela';
 
-export interface StorageOptions { name?: string; driver: () => StorageDriver; http?: boolean }
+export interface StorageDriver {
+  read(key: string): Promise<string | undefined>;
+}
+
+export interface StorageOptions {
+  name: string;
+  driver: () => StorageDriver;
+}
+
 export const STORAGE_OPTIONS = new InjectionToken<StorageOptions>('STORAGE_OPTIONS');
+export const DRIVER = new InjectionToken<StorageDriver>('STORAGE_DRIVER');
 
-const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<StorageOptions>({
+const { ConfigurableModuleClass } = defineModule<StorageOptions>({
   name: 'Storage',
-  optionsToken: STORAGE_OPTIONS,               // keep token identity across refactors
-  key: (o) => stableHash({ name: o.name }),    // optional; default stableHash(options)
-  setup: ({ OPTIONS, options, key }) => ({     // runs once per instance, at call time
-    providers: [
-      { provide: DRIVER, useFactory: (o: StorageOptions) => o.driver(), inject: [OPTIONS] },
-    ],
-    controllers: options.http ? [createStorageController(options)] : [],
+  optionsToken: STORAGE_OPTIONS,
+  key: (options) => stableHash({ name: options.name }),
+  setup: ({ OPTIONS }) => ({
+    providers: [defineProvider(DRIVER, {
+      inject: [OPTIONS],
+      useFactory: (options) => options.driver(),
+    })],
     exports: [DRIVER],
-    global: { guards: [StorageGuard] },        // one idiom for APP_* wiring
   }),
 });
+
 export class StorageModule extends ConfigurableModuleClass {}
 ```
+
+Consumers import `StorageModule.forRoot({ name, driver })` into their application
+module. Factories declare `inject`, including `inject: []` for zero dependencies.
+For `forRootAsync`, read resolved options through the `OPTIONS` token: the
+`setup` callback only sees structural options supplied at the call site.
 
 - `forRootAsync({ inject, useFactory })` comes free, with typed factory
   params inferred from the `inject` tuple. Structural fields passed alongside
@@ -38,7 +52,8 @@ export class StorageModule extends ConfigurableModuleClass {}
 - `ConfigurableModuleBuilder` (NestJS parity) is a thin adapter over
   `defineModule` — same engine, either entry.
 - `defineConfigurableModule` remains the low-level engine for
-  runtime-generated module classes (Cloudflare binding modules).
+  runtime-generated module classes. Workers bindings use a typed environment
+  token; see the [Cloudflare integration](../packages/cloudflare/README.md).
 
 ### Keys (multi-instance dedup)
 
@@ -61,8 +76,8 @@ downstream `@Inject(...)` keeps working.
 ### Companion primitives
 
 - `lazyProvider({ provide, inject, useFactory, memoize? })` — provides a
-  memoized thunk `() => T` whose factory runs on first call (for values not
-  live at bootstrap, e.g. Cloudflare bindings).
+  memoized thunk `() => T` whose factory runs on first use. Workers bindings are
+  available before provider initialization; lazy construction does not create an I/O context.
 - `provideGlobal(kind, component)` — spread into `providers:` to register an
   app-wide guard/pipe/interceptor/filter/middleware outside `defineModule`.
 - `sideEffectModule(name, contributions)` — a contribution-only dynamic
@@ -113,8 +128,11 @@ class WsDispatcher implements ContributesEntrypoints {
 }
 
 // A transport / runtime adapter:
-for (const ep of app.entrypoints.ofKind<WsEntrypointMeta>('websocket')) { ... }
+for (const ep of app.entrypoints.ofKind('websocket')) { ... }
 ```
+
+`entry.meta` is `unknown` by default. Pass a metadata parser as the second
+argument to `ofKind(kind, parseMeta)` to validate it and infer its result type.
 
 The registry is per-application, built at the end of
 `callOnApplicationBootstrap()` — available on slim bootstrap paths (the
@@ -122,8 +140,8 @@ Cloudflare Durable Object) that never build HTTP routes.
 
 ## Routes: contributing generated routes
 
-Metadata-claimed route generators (what `@Crud()` does) implement
-`RouteContributor` and register at import time:
+Custom metadata-based route generators can implement `RouteContributor` and
+register at import time:
 
 ```ts
 registerRouteContributor({
@@ -143,11 +161,11 @@ named-route `urlFor` support. For **first-class** generated routes, synthesize
 real routes instead: define a prototype method, stamp it with the standard
 verb decorators (`Get(path, { name })(proto, key, descriptor)`), and attach
 params via `MetadataRegistry.addParameter(ctor, key, { index, type, metatype })`.
-Synthesized methods have no `design:paramtypes`, so carry the DTO class as the
+Synthesized methods have no `design:paramtypes`, so carry the schema descriptor as the
 explicit `metatype` — `ValidationPipe` and the OpenAPI walk read it. Inside a
 handler or `createParamDecorator` factory, `getRequestContainer(ctx.getContext())`
 returns the request-scoped child container (plain `@Inject(Container)` yields
-the root). This is the pattern the native `@velajs/crud` (>=1.18) uses.
+the root). This is the pattern the native `@velajs/crud` uses.
 
 ## Dispatch: reusing the pipeline
 
@@ -253,7 +271,7 @@ read gateway instances at wiring time).
 - [ ] Discovery via `DiscoveryService` / `createDiscoverableDecorator`.
 - [ ] Non-HTTP surface exposed as entrypoints (`registerEntrypointKind` or
       `ContributesEntrypoints`).
-- [ ] Generated routes via `RouteContributor`.
+- [ ] Generated routes use standard route metadata or `RouteContributor`.
 - [ ] No `@velajs/vela/internal` imports; no `node:*` in edge code
       (`pnpm test` runs the edge audit).
 - [ ] Two instances of your module in one app either dedup intentionally or

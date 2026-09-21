@@ -149,7 +149,7 @@ const ASYNC_OPTION_KEYS = new Set([
 ]);
 
 /**
- * The one blessed module-authoring engine. Generates `forRoot` AND
+ * Generates configurable modules with `forRoot` and
  * `forRootAsync` statics with: `stableHash` key derivation (multi-instance
  * dedup that survives HMR), typed `inject` tuple inference on the async
  * factory, an `isGlobal` extra, and — the piece `ConfigurableModuleBuilder`
@@ -160,11 +160,10 @@ const ASYNC_OPTION_KEYS = new Set([
  * const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<CorsOptions>({
  *   name: 'Cors',
  *   setup: ({ OPTIONS }) => ({
- *     providers: [{
- *       provide: APP_MIDDLEWARE,
- *       useFactory: (o: CorsOptions) => buildCorsMiddleware(o),
+ *     providers: [defineProvider(APP_MIDDLEWARE, {
+ *       useFactory: (options) => buildCorsMiddleware(options),
  *       inject: [OPTIONS],
- *     }],
+ *     })],
  *     exports: [OPTIONS],
  *   }),
  * });

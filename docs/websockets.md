@@ -34,30 +34,50 @@ ws.onopen = () => ws.send(JSON.stringify({ event: 'chat', data: { text: 'hi' } }
 ## Quick start — the gateway (same on every runtime)
 
 ```ts
+// chat.gateway.ts
+import { z } from 'zod';
 import {
-  WebSocketGateway, SubscribeMessage, MessageBody, ConnectedSocket, WebSocketServer,
+  WebSocketGateway, SubscribeMessage, MessageBody, ConnectedSocket, WebSocketServer, WsException,
 } from '@velajs/vela/websocket';
 import type { WsClient, WsServer, OnGatewayConnection, OnGatewayDisconnect } from '@velajs/vela/websocket';
+import { authenticateChatUpgrade } from './auth.js';
 
-@WebSocketGateway({ path: '/rooms/:id/ws', roomParam: 'id', binding: 'CHAT_ROOM' })
+const chatMessage = z.object({ text: z.string().min(1).max(2000) });
+
+@WebSocketGateway({
+  path: '/rooms/:id/ws',
+  roomParam: 'id',
+  binding: 'CHAT_ROOM',
+  authenticateUpgrade: authenticateChatUpgrade,
+})
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   // Constructor injection only (the DI container has no property-injection pass).
   constructor(@WebSocketServer() private readonly server: WsServer) {}
 
   handleConnection(client: WsClient) {
-    this.server.emit('system', { text: `${client.id.slice(0, 8)} joined` });
+    return this.server.emit('system', { text: `${client.id.slice(0, 8)} joined` });
   }
   handleDisconnect(client: WsClient) {
-    this.server.emit('system', { text: `${client.id.slice(0, 8)} left` });
+    return this.server.emit('system', { text: `${client.id.slice(0, 8)} left` });
   }
 
   @SubscribeMessage('chat')
-  onChat(@MessageBody() body: { text: string }, @ConnectedSocket() client: WsClient) {
-    this.server.to([...client.rooms][0]).emit('chat', { from: client.id.slice(0, 8), text: body.text });
+  async onChat(@MessageBody() input: unknown, @ConnectedSocket() client: WsClient) {
+    const parsed = chatMessage.safeParse(input);
+    if (!parsed.success) throw new WsException('Invalid chat message');
+    const room = [...client.rooms][0];
+    if (!room) throw new WsException('Missing chat room');
+    await this.server.to(room).emit('chat', { from: client.id.slice(0, 8), text: parsed.data.text });
     return { event: 'ack', data: { ok: true } }; // WsResponse → replies to the sender
   }
 }
 ```
+
+Install `zod` for the message schema. `authenticateChatUpgrade` is your application's
+session or socket-ticket verifier: it must verify the credential and access to the
+resolved room, then return `{ principal, tenantId, expiresAtMs }` or `false`.
+Its type is `NonNullable<WebSocketGatewayOptions['authenticateUpgrade']>` from
+`@velajs/vela/websocket`. See [connection security](#connection-security) below.
 
 `@WebSocketGateway(options)`:
 - `path` — the route the upgrade is served on (supports params, e.g. `:id`).
@@ -65,7 +85,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 - `roomParam` — the path parameter used as the room id. It is required for every parameterized path; bootstrap rejects missing or non-existent parameter names.
 - `allowedOrigins` — browser Origin allowlist. Omitted means same-origin; clients without an Origin header are allowed. Use `'*'` only as an explicit opt-out.
 - `authorizeUpgrade(request)` — optional lightweight authentication/authorization hook that runs before socket allocation. It must return exactly `true`; errors fail closed.
-- `authenticateUpgrade(request, context)` — cookie/socket-ticket authenticator. It receives the resolved room and optional short-lived `ticket`, and must return a canonical `{ principal, tenantId, expiresAtMs }` identity. Invalid results and errors fail closed.
+- `authenticateUpgrade(request, context)` — required for successful connections. It receives the resolved room and optional short-lived `ticket`, and must return a canonical `{ principal, tenantId, expiresAtMs }` identity. Missing authenticators, invalid results, and errors fail closed.
 - `authorizeDelivery(client)` — optional mutable authorization/revocation hook re-run for every server-initiated recipient. App-wide guards are also re-run; denial closes with 1008.
 - `maxFrameBytes` — inbound and outbound frame ceiling, defaulting to 64 KiB. Oversized inbound frames close with code 1009 before JSON decoding; oversized replies, direct sends, and broadcasts close the affected recipient with 1009 without writing the frame.
 
@@ -116,21 +136,26 @@ Broadcasting builds a serializable `BroadcastCommand` (`{ rooms, exceptRooms?, e
 Vela's existing pipeline is reused. A component that reads `getClass()`/`getHandler()` or calls `switchToWs()` works unchanged on both HTTP and WS.
 
 ```ts
+import { Injectable } from '@velajs/vela';
+import type { CanActivate, ExecutionContext } from '@velajs/vela';
+import { normalizeWebSocketUpgradeIdentity } from '@velajs/vela/websocket';
+
 @Injectable()
-class WsAuthGuard implements CanActivate {
+export class WsAuthGuard implements CanActivate {
   canActivate(ctx: ExecutionContext): boolean {
     if (ctx.getType() !== 'ws') return true;
-    const client = ctx.switchToWs().getClient<WsClient>();
-    return Boolean(client.data.userId);
+    const client = ctx.switchToWs().getClient();
+    return normalizeWebSocketUpgradeIdentity(client.data) !== false;
   }
 }
-
-@SubscribeMessage('secret')
-@UseGuards(WsAuthGuard)          // deny → { event: 'exception', data: { message: 'Forbidden' } }
-onSecret() { /* ... */ }
 ```
 
-- `ExecutionContext.getType()` is now `'http' | 'ws'`. On a WS context, `switchToHttp()` / `getRequest()` / `getContext()` **throw** (there is no HTTP request) — rewrite HTTP-request-reading guards to use `switchToWs().getClient()`.
+Apply `@UseGuards(WsAuthGuard)` (from `@velajs/vela`) to a gateway or handler.
+The example checks the trusted identity installed by `authenticateUpgrade`;
+add application-specific permission checks for protected actions. Never treat
+identity fields supplied in a message body as authentication.
+
+- `ExecutionContext.getType()` identifies the transport, including `'http'`, `'ws'`, and custom entrypoint kinds. On a WS context, `switchToHttp()` / `getRequest()` / `getContext()` **throw** (there is no HTTP request) — rewrite HTTP-request-reading guards to use `switchToWs().getClient()`.
 - **Global components apply to gateways.** `APP_GUARD` / `APP_PIPE` / `APP_INTERCEPTOR` / `APP_FILTER` providers (and `app.useGlobalGuards()` etc.) run on WS messages, exactly as on HTTP routes — so an app-wide auth guard protects both transports.
 - Throw `WsException(stringOrObject)` from a guard/handler to send a client-facing error frame. Register a `@Catch(WsException)` `ExceptionFilter` to customize it.
 - **Note:** request-scoped (`Scope.REQUEST`) providers that depend on the HTTP request are not available in gateways.
@@ -142,11 +167,11 @@ Origin, `authorizeUpgrade`, and `authenticateUpgrade` checks run before the runt
 guards still run for every accepted frame. If `handleConnection` throws, the
 transport closes with policy code 1008 and never dispatches queued messages.
 
-Authentication middleware can attach an epoch-millisecond `expiresAtMs` value to
-`client.data`; the dispatcher closes expired identities with code 1008 before
-handling another frame. The Cloudflare Access integration forwards its verified
-credential expiry into the hibernation attachment and rejects already-expired
-upgrades before Durable Object allocation.
+`authenticateUpgrade` establishes a canonical principal, tenant, and finite
+epoch-millisecond `expiresAtMs`. The transport stores that identity in
+`client.data` (and the Cloudflare hibernation attachment). The dispatcher checks
+it before every frame and server-initiated delivery, closing invalid or expired
+identities with code 1008. Origin checks alone do not authenticate a connection.
 
 #### Short-lived socket tickets
 
@@ -220,34 +245,39 @@ The gateway + module is identical; only the transport wiring differs.
 
 ```ts
 // app.module.ts
+import { Module } from '@velajs/vela';
 import { CloudflareWebSocketModule } from '@velajs/cloudflare';
-import { DurableObjectModule } from '@velajs/cloudflare';
+import { ChatGateway } from './chat.gateway.js';
 
 @Module({
-  imports: [
-    CloudflareWebSocketModule.forRoot(),
-    DurableObjectModule.forRoot({ binding: 'CHAT_ROOM' }), // for server-initiated emits from controllers
-  ],
+  imports: [CloudflareWebSocketModule.forRoot()],
   providers: [ChatGateway],
 })
 export class AppModule {}
 ```
 
 ```ts
-// worker entry (src/index.ts)
-import { createCloudflareApp, VelaWebSocketDurableObject } from '@velajs/cloudflare';
-import { AppModule } from './app.module';
+// env.ts — use Wrangler's generated binding types in your application.
+import { InjectionToken } from '@velajs/vela';
+import type { ChatRoom } from './index.js';
+
+export interface Env {
+  CHAT_ROOM: DurableObjectNamespace<ChatRoom>;
+}
+export const ENV = new InjectionToken<Env>('worker environment');
+```
+
+```ts
+// Worker entry (src/index.ts)
+import { createCloudflareWorker } from '@velajs/cloudflare';
+import { VelaWebSocketDurableObject } from '@velajs/cloudflare/durable-objects';
+import { AppModule } from './app.module.js';
+import { ENV } from './env.js';
 
 // The DO class name must match wrangler `class_name`.
-export class ChatRoom extends VelaWebSocketDurableObject(AppModule) {}
+export class ChatRoom extends VelaWebSocketDurableObject(AppModule, { envToken: ENV }) {}
 
-let appPromise: ReturnType<typeof createCloudflareApp> | undefined;
-export default {
-  async fetch(request: Request, env: unknown, ctx: unknown) {
-    appPromise ??= createCloudflareApp(AppModule);
-    return (await appPromise).fetch(request, env, ctx);
-  },
-};
+export default createCloudflareWorker(AppModule, { envToken: ENV });
 ```
 
 ```toml
@@ -271,18 +301,19 @@ Server-initiated push from an HTTP controller / cron / queue:
 
 ```ts
 import { broadcastToRoom } from '@velajs/cloudflare';
-// ns = DurableObjectService.namespace
-await broadcastToRoom(ns, '/orgs/:orgId/ws', `org:${orgId}`, 'order.created', order);
+// env is the native Worker environment, injected with @Inject(ENV).
+await broadcastToRoom(env.CHAT_ROOM, '/rooms/:id/ws', roomId, 'order.created', order);
 ```
 
 ### Node.js
 
 ```ts
 import { serve } from '@hono/node-server';
-import { createNodeWebSocket } from '@hono/node-ws'; // or @hono/node-server v2 built-in upgradeWebSocket
-import { VelaFactory } from '@velajs/vela';
+import { createNodeWebSocket } from '@hono/node-ws';
+import { Module, VelaFactory } from '@velajs/vela';
 import { WebSocketModule } from '@velajs/vela/websocket';
 import { registerWebSocketGateways } from '@velajs/vela/websocket-node';
+import { ChatGateway } from './chat.gateway.js';
 
 @Module({ imports: [WebSocketModule.forRoot()], providers: [ChatGateway] })
 class AppModule {}

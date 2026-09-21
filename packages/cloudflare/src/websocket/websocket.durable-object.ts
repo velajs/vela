@@ -37,7 +37,7 @@ function isIdentityField(value: string | null): value is string {
  * (matching their `wrangler.toml` `class_name`) built from their `AppModule`:
  *
  * ```ts
- * export class ChatRoom extends VelaWebSocketDurableObject(AppModule) {}
+ * export class ChatRoom extends VelaWebSocketDurableObject(AppModule, { envToken: ENV }) {}
  * ```
  *
  * It owns the raw hibernation socket lifecycle (Hono's `upgradeWebSocket` cannot
