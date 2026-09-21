@@ -23,6 +23,7 @@ export type {
   InjectMetadata,
   ProviderDefinition,
   ProviderRegistration,
+  ProviderSnapshot,
   InjectionTokenOptions,
   ModuleScope,
   ModuleDescription,

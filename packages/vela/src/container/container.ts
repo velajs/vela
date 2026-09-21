@@ -17,6 +17,7 @@ import type {
   ProviderOptions,
   ProviderDefinition,
   ProviderRegistration,
+  ProviderSnapshot,
   Token,
   Type,
 } from './types';
@@ -295,6 +296,43 @@ export class Container {
     const instances = registrations.map((r) => this.resolveRegistration(r, requestingModuleId));
     this.maybeDrainSync();
     return instances;
+  }
+
+  /**
+   * The same visible candidates as resolveAll(), without constructing anything
+   * or claiming lazy modules. Snapshots/cells are frozen; application instances
+   * stay referenced and are deliberately not frozen or coerced to domain types.
+   */
+  getVisibleProviderSnapshots(
+    token: Token,
+    requestingModuleId?: string,
+  ): readonly ProviderSnapshot[] {
+    return Object.freeze(
+      this.findAllRegistrations(token, requestingModuleId).map((registration): ProviderSnapshot => {
+        const scope = registration.effectiveScope ?? registration.scope;
+        const instance =
+          registration.value ??
+          (scope === Scope.REQUEST
+            ? (this.#requestSeeds.get(registration.provide) ??
+              this.#requestInstances.get(registration))
+            : registration.instance);
+        return Object.freeze({
+          token: registration.provide,
+          moduleId: registration.declaringModuleId,
+          scope,
+          kind: registration.value
+            ? 'value'
+            : registration.useExisting
+              ? 'existing'
+              : registration.useFactory
+                ? 'factory'
+                : 'class',
+          useClass: registration.useClass,
+          useExisting: registration.useExisting,
+          instance: instance && Object.freeze({ value: instance.value }),
+        });
+      }),
+    );
   }
 
   /**

@@ -62,6 +62,7 @@ export type {
   InferTokens,
   InjectableOptions,
   ProviderDefinition,
+  ProviderSnapshot,
   ModuleScope,
   ModuleDescription,
   ContainerOptions,

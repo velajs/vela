@@ -184,4 +184,68 @@ describe('provider registration identity', () => {
     expect(container.isInstantiated(token, 'B')).toBe(false);
     expect(container.isInstantiated(token, 'importer')).toBe(false);
   });
+
+  it('returns frozen visible wiring snapshots without constructing providers or claiming lazy modules', () => {
+    const token = new InjectionToken<{ count: number }>('audit candidate');
+    const alias = new InjectionToken<{ count: number }>('audit alias');
+    const hidden = new InjectionToken<object>('private');
+    const root = new Container();
+    scope(root, 'A', [token, alias, hidden]);
+    scope(root, 'B', [token]);
+    scope(root, 'consumer', [], ['A', 'B']);
+    root.registerScope({
+      moduleId: 'A',
+      localProviders: new Set([token, alias, hidden]),
+      exportedTokens: new Set([token, alias]),
+      importedModules: new Set(),
+      isGlobal: false,
+    });
+    const value = { count: 1 };
+    root.register(defineProvider(token, { useValue: value }), 'A');
+    root.register(defineProvider(alias, { useExisting: token }), 'A');
+    root.register(defineProvider(hidden, { useValue: {} }), 'A');
+    let calls = 0;
+    let claims = 0;
+    root.register(
+      defineProvider(token, {
+        scope: Scope.REQUEST,
+        inject: [],
+        useFactory: () => ({ count: ++calls }),
+      }),
+      'B',
+    );
+    root.setLazyHook({
+      isPending: () => true,
+      claim: () => {
+        claims++;
+      },
+      hasClaimed: () => false,
+      isDraining: () => false,
+      drainSync: () => {},
+      drainAsync: async () => {},
+    });
+    const child = root.createChild();
+    const snapshots = child.getVisibleProviderSnapshots(token, 'consumer');
+    expect(
+      snapshots.map(({ moduleId, scope: lifetime, kind }) => ({ moduleId, scope: lifetime, kind })),
+    ).toEqual([
+      { moduleId: 'A', scope: Scope.SINGLETON, kind: 'value' },
+      { moduleId: 'B', scope: Scope.REQUEST, kind: 'factory' },
+    ]);
+    expect(snapshots[0]?.instance?.value).toBe(value);
+    expect(snapshots[1]?.instance).toBeUndefined();
+    expect(child.getVisibleProviderSnapshots(hidden, 'consumer')).toEqual([]);
+    expect(child.getVisibleProviderSnapshots(alias, 'consumer')[0]?.useExisting).toBe(token);
+    expect(Object.isFrozen(snapshots)).toBe(true);
+    expect(Object.isFrozen(snapshots[0])).toBe(true);
+    expect(Object.isFrozen(snapshots[0]?.instance)).toBe(true);
+    expect(Object.isFrozen(value)).toBe(false);
+    expect(snapshots[1]).not.toHaveProperty('useFactory');
+    expect(snapshots[1]).not.toHaveProperty('inject');
+    expect([calls, claims]).toEqual([0, 0]);
+    const instance = child.resolve(token, 'B');
+    expect(child.getVisibleProviderSnapshots(token, 'B')[0]?.instance?.value).toBe(instance);
+    expect(snapshots[1]?.instance).toBeUndefined();
+    expect(root.getVisibleProviderSnapshots(token, 'B')[0]?.instance).toBeUndefined();
+  });
 });

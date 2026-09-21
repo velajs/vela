@@ -236,6 +236,19 @@ export interface ProviderRegistration<T = unknown> {
   useExisting?: Token;
 }
 
+/** Read-only wiring evidence; inspecting a snapshot never constructs a provider. */
+export interface ProviderSnapshot {
+  readonly token: Token;
+  readonly moduleId: string;
+  /** Effective scope, including request-scope bubbling. */
+  readonly scope: Scope;
+  readonly kind: 'value' | 'factory' | 'class' | 'existing';
+  readonly useClass?: Type;
+  readonly useExisting?: Token;
+  /** A frozen cell, present only for a value already available in this container. */
+  readonly instance?: { readonly value: unknown };
+}
+
 // Module visibility
 export interface ModuleScope {
   moduleId: string;

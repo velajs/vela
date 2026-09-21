@@ -22,6 +22,14 @@ provider. They do not follow imports or global fallback. Omitting `moduleId` ret
 behavior. Resolve using `resolve(token, moduleId)` or `resolveAsync(token, moduleId)` to apply the
 requesting module's visibility rules.
 
+`getVisibleProviderSnapshots(token, requestingModuleId?)` inspects the same candidate registrations as
+`resolveAll`, including their declaring module, effective scope, provider kind, class/alias wiring and
+any value already available in that container. It never invokes a factory, constructs a request provider
+or materializes a lazy module. The returned array, snapshots and instance cells are frozen; application
+values are referenced as `unknown` and remain under application control. Factories and dependency
+arrays are not exposed. Use this for startup wiring audits; a missing instance is not permission to
+assume an opaque factory's output type or to construct it during the audit.
+
 Circular dependencies through `useExisting` produce a circular-dependency error on both synchronous
 and asynchronous resolution. Separate registrations sharing a token do not constitute a cycle.
 
