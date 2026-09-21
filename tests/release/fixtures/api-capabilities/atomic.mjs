@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createClient } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
@@ -7,7 +10,9 @@ import { DrizzleAuditStore, drizzleAdapter } from '@velajs/crud-drizzle';
 import { z } from 'zod';
 
 export async function verifyAtomicWrites() {
-  const client = createClient({ url: 'file::memory:' });
+  // Native libsql transactions may use another connection; share a temporary file.
+  const directory = await mkdtemp(join(tmpdir(), 'vela-packed-atomic-'));
+  const client = createClient({ url: `file:${join(directory, 'atomic.db')}` });
   try {
     await client.executeMultiple(`
       CREATE TABLE records (id TEXT PRIMARY KEY, label TEXT NOT NULL);
@@ -119,5 +124,6 @@ export async function verifyAtomicWrites() {
     assert.equal(entries[0].previousRecord, undefined);
   } finally {
     client.close();
+    await rm(directory, { recursive: true, force: true });
   }
 }
