@@ -12,11 +12,11 @@ import {
   SignedInvocation,
   Scope,
   InternalDispatcher,
-  INVOCATION_TRANSPORT,
   URL_SIGNING_SECRET,
   defineProvider,
 } from '@velajs/vela';
 import { Test } from '../test.js';
+import { INVOCATION_TRANSPORT } from '@velajs/vela/internal';
 
 describe('testing application lifecycle parity', () => {
   it('dispatches signed internal requests through the real pipeline', async () => {
