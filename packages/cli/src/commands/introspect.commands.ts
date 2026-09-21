@@ -3,6 +3,7 @@ import { createOpenApiDocument } from '@velajs/vela';
 import type { VelaApplication } from '@velajs/vela';
 import { Command, Option } from 'clipanion';
 import { loadConfig } from '../config.js';
+import { withApp } from '../with-app.js';
 import { renderTable } from '../format.js';
 import {
   collectEntrypoints,
@@ -20,19 +21,13 @@ abstract class AppCommand extends Command {
 
   async execute(): Promise<number> {
     const velaConfig = await loadConfig(process.cwd(), this.config);
-    const app = await velaConfig.createApp();
-    try {
-      return await this.run(app);
-    } finally {
-      const dispose = (app as { dispose?: () => Promise<void> }).dispose;
-      if (typeof dispose === 'function') {
-        try {
-          await dispose.call(app);
-        } catch (error) {
-          this.context.stderr.write(`Warning: teardown failed: ${String(error)}\n`);
-        }
-      }
-    }
+    return withApp(
+      velaConfig,
+      (app) => this.run(app),
+      (message) => {
+        this.context.stderr.write(`${message}\n`);
+      },
+    );
   }
 
   protected print(text: string): void {
@@ -167,34 +162,29 @@ export class OpenApiDumpCommand extends Command {
       return 1;
     }
 
-    const app = await velaConfig.createApp();
-    try {
-      const info: Record<string, string> = {};
-      if (this.title) info.title = this.title;
-      if (this.apiVersion) info.version = this.apiVersion;
+    const rootModule = velaConfig.rootModule;
+    return withApp(
+      velaConfig,
+      async (app) => {
+        const info: Record<string, string> = {};
+        if (this.title) info.title = this.title;
+        if (this.apiVersion) info.version = this.apiVersion;
 
-      const document = createOpenApiDocument(velaConfig.rootModule, {
-        globalPrefix: this.globalPrefix ?? app.getGlobalPrefix(),
-        ...(Object.keys(info).length > 0 ? { info } : {}),
-      });
+        const document = createOpenApiDocument(rootModule, {
+          globalPrefix: this.globalPrefix ?? app.getGlobalPrefix(),
+          ...(Object.keys(info).length > 0 ? { info } : {}),
+        });
 
-      const text = JSON.stringify(document, null, 2);
-      if (this.out) {
-        await writeFile(this.out, `${text}\n`, 'utf8');
-        this.context.stdout.write(`Wrote ${this.out}\n`);
-      } else {
-        this.context.stdout.write(`${text}\n`);
-      }
-      return 0;
-    } finally {
-      const dispose = (app as { dispose?: () => Promise<void> }).dispose;
-      if (typeof dispose === 'function') {
-        try {
-          await dispose.call(app);
-        } catch (error) {
-          this.context.stderr.write(`Warning: teardown failed: ${String(error)}\n`);
+        const text = JSON.stringify(document, null, 2);
+        if (this.out) {
+          await writeFile(this.out, `${text}\n`, 'utf8');
+          this.context.stdout.write(`Wrote ${this.out}\n`);
+        } else {
+          this.context.stdout.write(`${text}\n`);
         }
-      }
-    }
+        return 0;
+      },
+      (message) => this.context.stderr.write(`${message}\n`),
+    );
   }
 }

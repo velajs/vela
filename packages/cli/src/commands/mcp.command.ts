@@ -6,6 +6,7 @@ import type { Type, VelaApplication } from '@velajs/vela';
 import { Command, Option } from 'clipanion';
 import { z } from 'zod';
 import { loadConfig } from '../config.js';
+import { withApp } from '../with-app.js';
 import {
   collectEntrypoints,
   collectModules,
@@ -84,10 +85,8 @@ function describeToken(app: VelaApplication, token: string): unknown {
  * introspection as the `route`/`module`/`entrypoint`/`openapi` commands, so an
  * AI agent can query a Vela app's shape over the Model Context Protocol.
  *
- * Deliberately does NOT extend `AppCommand`: that base disposes the app in its
- * `finally` the moment `run()` returns, but an MCP server must stay alive until
- * the transport closes. stdout is reserved for JSON-RPC framing; every human
- * message goes to stderr.
+ * The application lifetime includes the transport's close promise. stdout is
+ * reserved for JSON-RPC framing; every human message goes to stderr.
  */
 export class McpServeCommand extends Command {
   static override paths = [['mcp', 'serve']];
@@ -116,135 +115,129 @@ export class McpServeCommand extends Command {
     };
 
     const velaConfig = await loadConfig(process.cwd(), this.config);
-    const app = await velaConfig.createApp();
     const rootModule: Type | undefined = velaConfig.rootModule;
 
-    try {
-      const identity = await readCliIdentity();
-      const server = new McpServer(identity);
+    return withApp(
+      velaConfig,
+      async (app) => {
+        const identity = await readCliIdentity();
+        const server = new McpServer(identity);
 
-      server.registerTool(
-        'route_list',
-        {
-          description:
-            "The app's HTTP route table: framework-composed controller routes (method, full " +
-            'path, Controller#handler) plus everything else mounted on the router, labeled ' +
-            '(mounted). Empty when the app builds no HTTP routes.',
-          inputSchema: {},
-        },
-        () => jsonText(collectRoutes(app) ?? []),
-      );
-
-      server.registerTool(
-        'module_graph',
-        {
-          description:
-            'The loaded module graph as serializable descriptions (providers, exports, imports, ' +
-            'global/lazy flags). Pass tree=true to also get the rendered import tree lines.',
-          inputSchema: { tree: z.boolean().optional() },
-        },
-        ({ tree }) => {
-          const modules = collectModules(app);
-          return jsonText(tree ? { modules, tree: renderModuleTree(modules) } : modules);
-        },
-      );
-
-      server.registerTool(
-        'entrypoint_list',
-        {
-          description:
-            'Every declared entrypoint kind (websocket, queue, cron, …) with its entries and ' +
-            'metadata — including kinds with zero entries. Lazy modules stay unmaterialized.',
-          inputSchema: {},
-        },
-        () => jsonText(collectEntrypoints(app)),
-      );
-
-      server.registerTool(
-        'openapi_dump',
-        {
-          description:
-            'The OpenAPI 3.1 document for the app. Requires a rootModule in vela.config. ' +
-            'globalPrefix/title/apiVersion override the defaults (the app global prefix and ' +
-            'the module-derived info).',
-          inputSchema: {
-            globalPrefix: z.string().optional(),
-            title: z.string().optional(),
-            apiVersion: z.string().optional(),
+        server.registerTool(
+          'route_list',
+          {
+            description:
+              "The app's HTTP route table: framework-composed controller routes (method, full " +
+              'path, Controller#handler) plus everything else mounted on the router, labeled ' +
+              '(mounted). Empty when the app builds no HTTP routes.',
+            inputSchema: {},
           },
-        },
-        ({ globalPrefix, title, apiVersion }) => {
-          if (!rootModule) {
-            return toolError(
-              'openapi_dump needs the root module. Add `rootModule: AppModule` to your vela.config.',
-            );
-          }
-          const info: Record<string, string> = {};
-          if (title) info.title = title;
-          if (apiVersion) info.version = apiVersion;
-          const document = createOpenApiDocument(rootModule, {
-            globalPrefix: globalPrefix ?? app.getGlobalPrefix(),
-            ...(Object.keys(info).length > 0 ? { info } : {}),
-          });
-          return jsonText(document);
-        },
-      );
-
-      server.registerTool(
-        'token_describe',
-        {
-          description:
-            'Look a DI token STRING LABEL up across the module graph: which modules provide/export ' +
-            'it and their scope flags, plus whether the string names a module. Read-only string ' +
-            'match — does not resolve or construct the token.',
-          inputSchema: { token: z.string() },
-        },
-        ({ token }) => jsonText(describeToken(app, token)),
-      );
-
-      if (rootModule) {
-        server.registerResource(
-          'openapi',
-          OPENAPI_URI,
-          { description: 'The OpenAPI 3.1 document for the app.', mimeType: 'application/json' },
-          () => ({
-            contents: [
-              {
-                uri: OPENAPI_URI,
-                mimeType: 'application/json',
-                text: JSON.stringify(
-                  createOpenApiDocument(rootModule, { globalPrefix: app.getGlobalPrefix() }),
-                  null,
-                  2,
-                ),
-              },
-            ],
-          }),
+          () => jsonText(collectRoutes(app) ?? []),
         );
-      }
 
-      const transport = new StdioServerTransport();
-      const closed = new Promise<void>((resolvePromise) => {
-        transport.onclose = resolvePromise;
-      });
-      await server.connect(transport);
-      log(
-        `vela mcp serve — ready (5 tools${rootModule ? ' + vela://openapi resource' : ''}). ` +
-          'Awaiting client on stdio; stdout is JSON-RPC only.',
-      );
+        server.registerTool(
+          'module_graph',
+          {
+            description:
+              'The loaded module graph as serializable descriptions (providers, exports, imports, ' +
+              'global/lazy flags). Pass tree=true to also get the rendered import tree lines.',
+            inputSchema: { tree: z.boolean().optional() },
+          },
+          ({ tree }) => {
+            const modules = collectModules(app);
+            return jsonText(tree ? { modules, tree: renderModuleTree(modules) } : modules);
+          },
+        );
 
-      // Keep the process alive until the client disconnects; only then dispose.
-      await closed;
-      return 0;
-    } finally {
-      const dispose = (app as { dispose?: () => Promise<void> }).dispose;
-      if (typeof dispose === 'function') {
-        try {
-          await dispose.call(app);
-        } catch (error) {
-          this.context.stderr.write(`Warning: teardown failed: ${String(error)}\n`);
+        server.registerTool(
+          'entrypoint_list',
+          {
+            description:
+              'Every declared entrypoint kind (websocket, queue, cron, …) with its entries and ' +
+              'metadata — including kinds with zero entries. Lazy modules stay unmaterialized.',
+            inputSchema: {},
+          },
+          () => jsonText(collectEntrypoints(app)),
+        );
+
+        server.registerTool(
+          'openapi_dump',
+          {
+            description:
+              'The OpenAPI 3.1 document for the app. Requires a rootModule in vela.config. ' +
+              'globalPrefix/title/apiVersion override the defaults (the app global prefix and ' +
+              'the module-derived info).',
+            inputSchema: {
+              globalPrefix: z.string().optional(),
+              title: z.string().optional(),
+              apiVersion: z.string().optional(),
+            },
+          },
+          ({ globalPrefix, title, apiVersion }) => {
+            if (!rootModule) {
+              return toolError(
+                'openapi_dump needs the root module. Add `rootModule: AppModule` to your vela.config.',
+              );
+            }
+            const info: Record<string, string> = {};
+            if (title) info.title = title;
+            if (apiVersion) info.version = apiVersion;
+            const document = createOpenApiDocument(rootModule, {
+              globalPrefix: globalPrefix ?? app.getGlobalPrefix(),
+              ...(Object.keys(info).length > 0 ? { info } : {}),
+            });
+            return jsonText(document);
+          },
+        );
+
+        server.registerTool(
+          'token_describe',
+          {
+            description:
+              'Look a DI token STRING LABEL up across the module graph: which modules provide/export ' +
+              'it and their scope flags, plus whether the string names a module. Read-only string ' +
+              'match — does not resolve or construct the token.',
+            inputSchema: { token: z.string() },
+          },
+          ({ token }) => jsonText(describeToken(app, token)),
+        );
+
+        if (rootModule) {
+          server.registerResource(
+            'openapi',
+            OPENAPI_URI,
+            { description: 'The OpenAPI 3.1 document for the app.', mimeType: 'application/json' },
+            () => ({
+              contents: [
+                {
+                  uri: OPENAPI_URI,
+                  mimeType: 'application/json',
+                  text: JSON.stringify(
+                    createOpenApiDocument(rootModule, { globalPrefix: app.getGlobalPrefix() }),
+                    null,
+                    2,
+                  ),
+                },
+              ],
+            }),
+          );
         }
-      }
-    }
+
+        const transport = new StdioServerTransport();
+        const closed = new Promise<void>((resolvePromise) => {
+          transport.onclose = resolvePromise;
+        });
+        await server.connect(transport);
+        log(
+          `vela mcp serve — ready (5 tools${rootModule ? ' + vela://openapi resource' : ''}). ` +
+            'Awaiting client on stdio; stdout is JSON-RPC only.',
+        );
+
+        // Keep the process alive until the client disconnects; only then dispose.
+        await closed;
+        return 0;
+      },
+      log,
+    );
   }
 }
