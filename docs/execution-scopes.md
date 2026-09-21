@@ -63,7 +63,14 @@ owners and ambiguous omissions fail before dispatch.
 
 Custom adapters can construct pipeline contexts inside that child using
 `buildEntrypointExecutionContext(kind, token, method, payload, moduleId, container)`.
-Decide explicitly which global or handler-scoped pipeline components apply.
+Use `resolveScopedComponentsAsync(kind, token, method, container, moduleId)`
+for handler-declared components and `resolvePipelineComponents(kind, entries,
+container)` for explicit application-global lists. They preserve order, typed
+provider inference, and asynchronous factory/lazy-module resolution. Reverse
+filters when applying the closest-first convention. Decide explicitly which
+global or handler-scoped pipeline components apply. HTTP-backed optional
+adapters can use `buildHttpExecutionContext` with the original Hono context and
+child container instead of manufacturing a second HTTP request.
 Call `finish()` on both success and failure, or use `runInEntrypointScope` to own
 that lifecycle automatically. An injected lifetime requires the framework's
 request-scoped `EXECUTION_LIFETIME` provider; bare custom containers must register

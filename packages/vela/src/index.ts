@@ -177,6 +177,7 @@ export type {
 // Explicit request-child container access (for programmatic-route authors,
 // param-decorator factories, and scoped middleware)
 export { getRequestContainer } from './http/request-container';
+export { buildExecutionContext as buildHttpExecutionContext } from './http/execution-context';
 
 // Opt-in ambient container access (ALS via hono/context-storage)
 export {
@@ -461,6 +462,9 @@ export {
   getCatchTypes,
   shouldFilterCatch,
   resolveScopedComponents,
+  resolveScopedComponentsAsync,
+  resolvePipelineComponents,
+  type PipelineComponentEntry,
   APP_GUARD,
   APP_PIPE,
   APP_INTERCEPTOR,

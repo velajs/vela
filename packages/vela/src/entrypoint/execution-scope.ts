@@ -99,11 +99,13 @@ class ManagedLifetime implements ExecutionLifetime {
         () => {
           boundarySettled = true;
           this.#notify();
+          return undefined;
         },
         (error: unknown) => {
           errors.push(error);
           boundarySettled = true;
           this.#notify();
+          return undefined;
         },
       );
     }
@@ -115,6 +117,8 @@ class ManagedLifetime implements ExecutionLifetime {
       this.#pending = [];
       for (const work of pending) {
         try {
+          // Deferred callbacks are ordered and may append later callbacks.
+          // eslint-disable-next-line no-await-in-loop
           await work();
         } catch (error) {
           errors.push(error);
@@ -122,6 +126,8 @@ class ManagedLifetime implements ExecutionLifetime {
       }
       if (this.#pending.length > 0) continue;
       if (boundarySettled) break;
+      // Sleep until new managed work or the transport boundary settles.
+      // eslint-disable-next-line no-await-in-loop
       await new Promise<void>((resolve) => {
         this.#wake = resolve;
       });
@@ -197,7 +203,9 @@ export async function runInEntrypointScope<T>(
     try {
       await scope.finish();
     } catch (completionError) {
-      throw new AggregateError([error, completionError], 'Invocation and completion failed.');
+      throw new AggregateError([error, completionError], 'Invocation and completion failed.', {
+        cause: error,
+      });
     }
     throw error;
   }

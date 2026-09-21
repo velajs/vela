@@ -95,6 +95,7 @@ describe('managed execution lifetime', () => {
     let finished = false;
     void completion.then(() => {
       finished = true;
+      return undefined;
     });
     expect(finished).toBe(false);
     release.resolve();
