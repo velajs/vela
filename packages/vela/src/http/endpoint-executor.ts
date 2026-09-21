@@ -1,6 +1,8 @@
 import type { Context } from 'hono';
 import { BadRequestException } from '../errors/http-exception';
 import type { RuntimeEndpointDefinition } from '../openapi/endpoint';
+import { parseSchemaAsync } from '../validation/parse-schema';
+import { SchemaValidationError } from '../validation/standard-schema';
 import type { PipeTransform } from '../pipeline/types';
 
 /** Extract HTTP wire values before the endpoint parser establishes their types. */
@@ -44,22 +46,31 @@ export async function extractEndpointInput(
   for (const pipe of pipes) {
     // This route owns validation. Leaving metatype absent prevents a global
     // ValidationPipe from applying a transforming parser a second time.
-    input = await pipe.transform(input, { type: 'custom' });
+    input = await (pipe.transformAsync
+      ? pipe.transformAsync(input, { type: 'custom' })
+      : pipe.transform(input, { type: 'custom' }));
   }
   try {
-    return [endpoint.input.parse(input)];
-  } catch {
-    throw new BadRequestException('Endpoint input validation failed');
+    return [await parseSchemaAsync(endpoint.input, input)];
+  } catch (error) {
+    if (error instanceof SchemaValidationError) {
+      throw new BadRequestException({
+        statusCode: 400,
+        message: 'Endpoint input validation failed',
+        errors: error.issues,
+      });
+    }
+    throw error;
   }
 }
 
 /** Validate the final interceptor result, not only the controller return value. */
-export function mapEndpointResponse(
+export async function mapEndpointResponse(
   context: Context,
   endpoint: RuntimeEndpointDefinition,
   result: unknown,
-): Response {
-  const value = endpoint.output.parse(result);
+): Promise<Response> {
+  const value = await parseSchemaAsync(endpoint.output, result);
   if (endpoint.format === 'text') {
     if (typeof value !== 'string') throw new Error('Text endpoint output must be a string');
     return context.text(value, endpoint.status);

@@ -93,7 +93,12 @@ export function standardJsonSchema(
   direction: 'input' | 'output' = 'output',
   target = 'draft-2020-12',
 ): unknown {
-  if (schema === null || typeof schema !== 'object' || !('~standard' in schema)) return undefined;
+  if (
+    schema === null ||
+    (typeof schema !== 'object' && typeof schema !== 'function') ||
+    !('~standard' in schema)
+  )
+    return undefined;
   const props = schema['~standard'];
   if (!props || typeof props !== 'object' || !('jsonSchema' in props)) return undefined;
   const converter = props.jsonSchema;

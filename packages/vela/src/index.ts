@@ -19,6 +19,7 @@ export {
 } from './openapi/index';
 export type {
   EndpointDefinition,
+  EndpointHandlerOutput,
   EndpointRequest,
   EndpointSchema,
   OpenApiDocument,

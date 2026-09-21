@@ -4,6 +4,7 @@ export type {
   EndpointSchema,
   EndpointRequest,
   EndpointDefinition,
+  EndpointHandlerOutput,
   RuntimeEndpointDefinition,
 } from './endpoint';
 export {

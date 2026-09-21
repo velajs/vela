@@ -85,3 +85,31 @@ Exceptions thrown by Standard validators are preserved, even if they contain an
 `issues` property. Legacy parsers retain their structured `issues` error
 convention. Map validation failures to client errors only at input boundaries;
 output validation failures indicate a server-side contract failure.
+
+### Endpoint input and output transformations
+
+`defineEndpoint` accepts both synchronous and asynchronous schemas. A handler
+receives the input schema's parsed output and returns the output schema's input;
+the dispatcher awaits the final output transformation after interceptors. This
+supports projecting domain instances with JavaScript `#private` state into plain
+wire data without reflective hydration. Legacy parser endpoints keep their
+existing inferred handler result type.
+
+```ts
+const endpoint = defineEndpoint({
+  input: defineDto(z.object({ json: z.object({
+    amount: z.string().transform(async (value) => Number(value)),
+  }) })),
+  output: defineDto(z.number().transform(async (value) => String(value)), {
+    jsonSchema: { type: 'string' },
+  }),
+});
+const execute = endpoint.bind(({ json }) => json.amount);
+// execute({ json: { amount: '42' } }) resolves to the wire string '42'.
+```
+
+OpenAPI reads input-direction schemas for wire requests and output-direction
+schemas for responses. Supply `schemaConverter(direction)` or an explicit
+`jsonSchema` for projections the schema library cannot represent. Async schema
+validation failures at input remain 400; exceptions thrown by validators and
+output-contract failures remain server errors.

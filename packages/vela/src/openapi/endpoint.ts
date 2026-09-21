@@ -1,6 +1,13 @@
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { JsonSchema } from './types';
 import { parseJsonSchema } from './json-schema';
+import {
+  parseSchemaAsync,
+  type ValidationSchema,
+  type SchemaInput,
+  type SchemaOutput,
+} from '../validation/parse-schema';
+import { standardJsonSchema, type StandardSchemaV1 } from '../validation/standard-schema';
 
 /** A runtime parser and its serializable contract travel together. */
 export interface EndpointSchema<Value> {
@@ -16,10 +23,25 @@ export interface EndpointRequest {
   json?: unknown;
 }
 
-export interface EndpointDefinition<Input extends EndpointRequest, Output> {
+/** A transforming output schema accepts handler values before producing wire output. */
+export type EndpointHandlerOutput<S extends ValidationSchema> = S extends {
+  readonly schema: infer Inner extends ValidationSchema;
+}
+  ? EndpointHandlerOutput<Inner>
+  : S extends StandardSchemaV1
+    ? SchemaInput<S>
+    : SchemaOutput<S>;
+
+export interface EndpointDefinition<
+  Input extends EndpointRequest,
+  Output,
+  HandlerOutput = Output,
+  InputSchema extends ValidationSchema = EndpointSchema<Input>,
+  OutputSchema extends ValidationSchema = EndpointSchema<Output>,
+> {
   readonly status: ContentfulStatusCode;
-  readonly input: EndpointSchema<Input>;
-  readonly output: EndpointSchema<Output>;
+  readonly input: InputSchema;
+  readonly output: OutputSchema;
   readonly inputSchema: JsonSchema;
   readonly outputSchema: JsonSchema;
   readonly format: 'json' | 'text';
@@ -27,19 +49,44 @@ export interface EndpointDefinition<Input extends EndpointRequest, Output> {
   readonly queryParameters: readonly { name: string; multiple: boolean }[];
   /** Bind once: handler types cannot widen the schema-selected input/output. */
   bind<This>(
-    handler: (this: This, input: NoInfer<Input>) => NoInfer<Output> | Promise<NoInfer<Output>>,
+    handler: (
+      this: This,
+      input: NoInfer<Input>,
+    ) => NoInfer<HandlerOutput> | Promise<NoInfer<HandlerOutput>>,
   ): (this: This, input: unknown) => Promise<Output>;
 }
 
+export function defineEndpoint<
+  Input extends ValidationSchema,
+  Output extends ValidationSchema,
+>(options: {
+  input: Input & (SchemaOutput<Input> extends EndpointRequest ? unknown : never);
+  output: Output;
+  status?: ContentfulStatusCode;
+  format?: SchemaOutput<Output> extends string ? 'json' | 'text' : 'json';
+}): EndpointDefinition<
+  Extract<SchemaOutput<Input>, EndpointRequest>,
+  SchemaOutput<Output>,
+  EndpointHandlerOutput<Output>,
+  Input,
+  Output
+>;
+/** Explicit 1.x generic arguments remain available for synchronous parser contracts. */
 export function defineEndpoint<Input extends EndpointRequest, Output>(options: {
   input: EndpointSchema<Input>;
   output: EndpointSchema<Output>;
   status?: ContentfulStatusCode;
   format?: Output extends string ? 'json' | 'text' : 'json';
-}): EndpointDefinition<Input, Output> {
+}): EndpointDefinition<Input, Output>;
+export function defineEndpoint(options: {
+  input: ValidationSchema;
+  output: ValidationSchema;
+  status?: ContentfulStatusCode;
+  format?: 'json' | 'text';
+}) {
   const { input, output } = options;
-  const inputSchema = parseJsonSchema(input.toJSONSchema(), 'endpoint input schema');
-  const outputSchema = parseJsonSchema(output.toJSONSchema(), 'endpoint output schema');
+  const inputSchema = endpointJsonSchema(input, 'input');
+  const outputSchema = endpointJsonSchema(output, 'output');
   if (inputSchema.type !== 'object')
     throw new Error('Endpoint input must be an object with param/query/header/json groups.');
   const querySchema = inputSchema.properties?.query;
@@ -59,12 +106,10 @@ export function defineEndpoint<Input extends EndpointRequest, Output>(options: {
     hasJsonBody: inputSchema.properties?.json !== undefined,
     queryParameters: Object.freeze(queryParameters),
     status: options.status ?? 200,
-    bind<This>(
-      handler: (this: This, input: NoInfer<Input>) => NoInfer<Output> | Promise<NoInfer<Output>>,
-    ) {
-      return async function (this: This, raw: unknown): Promise<Output> {
-        const value = input.parse(raw);
-        return output.parse(await handler.call(this, value));
+    bind<This>(handler: (this: This, input: unknown) => unknown) {
+      return async function (this: This, raw: unknown): Promise<unknown> {
+        const value = await parseSchemaAsync(input, raw);
+        return parseSchemaAsync(output, await handler.call(this, value));
       };
     },
   });
@@ -73,8 +118,8 @@ export function defineEndpoint<Input extends EndpointRequest, Output>(options: {
 /** Erased only at framework dispatch; both boundaries remain runtime parsers. */
 export interface RuntimeEndpointDefinition {
   readonly status: ContentfulStatusCode;
-  readonly input: EndpointSchema<unknown>;
-  readonly output: EndpointSchema<unknown>;
+  readonly input: ValidationSchema;
+  readonly output: ValidationSchema;
   readonly inputSchema: JsonSchema;
   readonly outputSchema: JsonSchema;
   readonly format: 'json' | 'text';
@@ -89,10 +134,14 @@ const definitions = new WeakMap<object, Map<string | symbol, RuntimeEndpointDefi
  * The dispatcher must parse the HTTP input and handler result using this same
  * definition. This decorator records metadata; it does not wrap another route.
  */
-export function Endpoint<Input extends EndpointRequest, Output>(
-  definition: EndpointDefinition<Input, Output>,
+export function Endpoint<Input extends ValidationSchema, Output extends ValidationSchema>(
+  definition: RuntimeEndpointDefinition & { readonly input: Input; readonly output: Output },
 ) {
-  return <Handler extends (input: NoInfer<Input>) => NoInfer<Output> | Promise<NoInfer<Output>>>(
+  return <
+    Handler extends (
+      input: NoInfer<SchemaOutput<Input>>,
+    ) => NoInfer<EndpointHandlerOutput<Output>> | Promise<NoInfer<EndpointHandlerOutput<Output>>>,
+  >(
     target: object,
     key: string | symbol,
     descriptor: TypedPropertyDescriptor<Handler>,
@@ -119,4 +168,21 @@ export function getEndpointDefinition(
     current = Object.getPrototypeOf(current);
   }
   return undefined;
+}
+
+/** Conversion is directional and independent from runtime parsing. */
+function endpointJsonSchema(schema: ValidationSchema, direction: 'input' | 'output'): JsonSchema {
+  let result = standardJsonSchema(schema, direction);
+  if (
+    result === undefined &&
+    'toJSONSchema' in schema &&
+    typeof schema.toJSONSchema === 'function'
+  ) {
+    result = 'schema' in schema ? schema.toJSONSchema(direction) : schema.toJSONSchema();
+  }
+  if (result === undefined)
+    throw new TypeError(
+      `Endpoint ${direction} schema needs JSON Schema conversion; wrap it with defineDto and an explicit converter.`,
+    );
+  return parseJsonSchema(result, `endpoint ${direction} schema`);
 }
