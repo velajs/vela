@@ -7,3 +7,5 @@ Scope controller and handler middleware to its HTTP method and route, preserving
 Resolve asynchronous controller and scoped pipeline dependencies in their declaring module, including parameter pipes, without selecting another module's registration of the same class.
 
 Give every HTTP request and adapter route a managed invocation lifetime. Start deferred work after dispatch and wait for work plus response completion before disposing resources; retain async cleanup with native waitUntil and correctly finish HEAD/cancelled streams.
+
+Preserve configured middleware owners and short-circuit responses, use explicit async pipe hooks without speculative synchronous parsing, and report middleware failures before filtering using the existing request scope. Reject ambiguous controller owners instead of selecting the first registration.

@@ -1,4 +1,5 @@
 import type { VelaHono as Hono } from './http/hono.types';
+import { findRequestContainer } from './http/request-container';
 import { HTTPException } from 'hono/http-exception';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { toErrorBody } from '@velajs/errors';
@@ -69,7 +70,7 @@ export class VelaApplication {
     // unredacted. `onError` funnels it through the same report-first + canonical
     // redacted body path every other edge uses.
     this.honoApp.onError((err, c) => {
-      const reporter = resolveErrorReporter(this.container);
+      const reporter = resolveErrorReporter(findRequestContainer(c) ?? this.container);
       // Hono's own HTTPException (e.g. `bodyLimit`'s 413) carries a deliberate,
       // author-intended client response — honor it exactly as Hono's default
       // error handler would, without treating it as a server fault to redact.

@@ -56,6 +56,7 @@ describe('pipeline component ownership', () => {
       });
       container.register(
         defineProvider(VALUE, {
+          inject: [],
           useFactory: async () => {
             await Promise.resolve();
             order.push(`value:${moduleId}`);

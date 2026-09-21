@@ -293,11 +293,9 @@ describe('HTTP construction boundary', () => {
           throw new Error('unreachable');
         }
       }
-      const descriptor = Object.getOwnPropertyDescriptor(Routes.prototype, 'get')!;
       ({ guard: UseGuards, pipe: UsePipes, interceptor: UseInterceptors })[kind](BrokenComponent)(
         Routes.prototype,
         'get',
-        descriptor,
       );
       @Module({ controllers: [Routes], providers: [BrokenComponent] })
       class App {}
@@ -395,7 +393,11 @@ describe('module-qualified async HTTP components', () => {
         controllers: [Routes],
         providers: [
           Boundary,
-          defineProvider(OWNER, { scope: Scope.REQUEST, useFactory: async () => owner }),
+          defineProvider(OWNER, {
+            scope: Scope.REQUEST,
+            inject: [],
+            useFactory: async () => owner,
+          }),
         ],
       })
       class Feature {}

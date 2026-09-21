@@ -1,4 +1,6 @@
 import { type Next, Hono } from 'hono';
+import { HTTPException } from 'hono/http-exception';
+import { toErrorBody } from '@velajs/errors';
 import type {
   VelaContext as Context,
   VelaHono as HonoApp,
@@ -467,31 +469,40 @@ export class RouteManager {
 
   private async mapMiddlewareError(c: Context, error: unknown): Promise<Response> {
     const requestContainer = this.getRequestContainer(c);
-    const filters = instantiateMany<ExceptionFilter>(this.globalFilters, requestContainer);
     const host = buildMiddlewareExecutionContext(c);
+    const reporter = resolveErrorReporter(requestContainer);
+    const source = `${c.req.method} ${c.req.path}`;
+    reporter.report(error, { edge: 'http', source, note: 'middleware failed' });
 
-    for (const filter of filters) {
-      if (shouldFilterCatch(filter, error)) {
-        try {
-          const filtered = await filter.catch(error, host);
-          return mapResponse(c, filtered);
-        } catch {
-          // Filter itself threw — fall through to default error mapping.
-          break;
+    for (const entry of this.globalFilters) {
+      try {
+        const filter = await instantiateAsync<ExceptionFilter>(entry, requestContainer);
+        if (shouldFilterCatch(filter, error)) {
+          return mapResponse(c, await filter.catch(error, host));
         }
+      } catch (filterError) {
+        reporter.report(filterError, { edge: 'http', source, note: 'middleware filter failed' });
+        break;
       }
     }
 
-    if (error instanceof HttpException) {
-      const response = error.getResponse();
-      const status = error.getStatus() as ContentfulStatusCode;
-      return c.json(response, status);
-    }
+    const rendered = reporter.render(error, host);
+    if (rendered instanceof Response) return rendered;
+    if (rendered) return c.json(rendered.body, rendered.status as ContentfulStatusCode);
 
-    // Non-HttpException with no catching filter: re-throw so Hono's
-    // outer error handler produces the same default-500 response it
-    // produced before this wrapping was introduced.
-    throw error;
+    if (error instanceof HttpException) {
+      // Preserve the 1.x middleware exception envelope.
+      return c.json(error.getResponse(), error.getStatus() as ContentfulStatusCode);
+    }
+    if (error instanceof HTTPException) {
+      if (error.status < 500) return error.getResponse();
+      return c.json(
+        { error: { code: 'internal', message: 'Internal Server Error' } },
+        error.status as ContentfulStatusCode,
+      );
+    }
+    const { body, status } = toErrorBody(error, { catalog: reporter.catalog });
+    return c.json(body, status as ContentfulStatusCode);
   }
 
   registerController(controller: Type, moduleId?: string): this {
@@ -685,11 +696,15 @@ export class RouteManager {
           if (!matchRoute(path, method) || matchExclude(path, method)) return next();
 
           const requestContainer = this.getRequestContainer(c);
-          const runChain = (index: number): Promise<void> => {
+          const runChain = async (index: number): Promise<void> => {
             if (index >= def.middleware.length) return next();
-            const instance = instantiate<NestMiddleware>(def.middleware[index]!, requestContainer);
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            return (instance.use(c, () => runChain(index + 1)) as Promise<any>).then(() => {});
+            const instance = await instantiateAsync<NestMiddleware>(
+              def.middleware[index]!,
+              requestContainer,
+              def.moduleId,
+            );
+            const response = await instance.use(c, () => runChain(index + 1));
+            if (response instanceof Response) c.res = response;
           };
 
           return runChain(0);
