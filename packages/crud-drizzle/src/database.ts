@@ -6,6 +6,7 @@
  * narrower row type. SQL and columns retain the upstream types.
  */
 import type { AnyColumn, SQL, SQLWrapper, Table } from 'drizzle-orm';
+import type { AdapterScope } from '@velajs/crud/adapter';
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import type {
@@ -88,3 +89,46 @@ export type DrizzleHandle =
       MySqlDatabase<MySqlQueryResultHKT, PreparedQueryHKTBase>,
       'select' | 'insert' | 'update' | 'delete' | 'transaction'
     >;
+
+/** A scope belongs to one exact native handle and only to its callback lifetime. */
+class OwnedDrizzleScope implements AdapterScope {
+  #active = true;
+  readonly #owner: object;
+  readonly tx: unknown;
+
+  constructor(owner: object, tx: unknown) {
+    this.#owner = owner;
+    this.tx = tx;
+  }
+
+  database(owner: object): DrizzleDatabase {
+    if (!this.#active || this.#owner !== owner)
+      throw new TypeError('Foreign or expired Drizzle database scope');
+    return asDatabase(this.tx ?? owner);
+  }
+
+  close(): void {
+    this.#active = false;
+  }
+}
+
+/** Adapter-internal scope factory; no ambient or global connection state. */
+export async function withDrizzleScope<T>(
+  owner: object,
+  tx: unknown,
+  work: (scope: AdapterScope) => Promise<T>,
+): Promise<T> {
+  const scope = new OwnedDrizzleScope(owner, tx);
+  try {
+    return await work(scope);
+  } finally {
+    scope.close();
+  }
+}
+
+/** Reject fabricated, foreign and expired scopes before using their native tx. */
+export function databaseForScope(owner: object, scope: AdapterScope): DrizzleDatabase {
+  if (!(scope instanceof OwnedDrizzleScope))
+    throw new TypeError('Foreign or expired Drizzle database scope');
+  return scope.database(owner);
+}
