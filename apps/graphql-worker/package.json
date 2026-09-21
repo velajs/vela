@@ -1,0 +1,26 @@
+{
+  "name": "graphql-worker",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Executable GraphQL schema with Vela resolver DI on Cloudflare Workers",
+  "type": "module",
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit",
+    "dev": "wrangler dev"
+  },
+  "dependencies": {
+    "@velajs/cloudflare": "workspace:*",
+    "@velajs/graphql": "workspace:*",
+    "@velajs/vela": "workspace:*",
+    "graphql": "16.14.2",
+    "graphql-yoga": "5.24.1",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "wrangler": "catalog:"
+  }
+}
