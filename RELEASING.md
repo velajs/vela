@@ -51,6 +51,12 @@ with pnpm, checks types and builds, and verifies HTTP, constructor injection,
 and source rebuilds under local Wrangler. CLI argument and destination failure
 cases run against that same installed archive.
 
+When the release includes `@velajs/event-source`, a separate clean consumer installs
+its archive and checks the root runtime/type exports and inventory checkpoint
+example. It records its own integrity proof in `consumer.json`; the API starter
+does not depend on this optional package. New public subpaths require extending
+that check.
+
 Artifacts live in `.artifacts/release/`. Keep this exact directory
 once publishing begins: rebuilding a partial release changes archive integrity
 and intentionally blocks an ambiguous retry.
