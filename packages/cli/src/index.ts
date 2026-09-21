@@ -13,6 +13,7 @@ import { StudioCommand } from './commands/studio.command.js';
 import { ClientGenerateCommand } from './commands/client.command.js';
 import { NewCommand } from './commands/new.command.js';
 import { DoctorCommand } from './commands/doctor.command.js';
+import { DeployCheckCommand } from './commands/deploy-check.command.js';
 
 const cli = new Cli({
   binaryName: 'vela',
@@ -32,6 +33,7 @@ cli.register(McpServeCommand);
 cli.register(StudioCommand);
 cli.register(ClientGenerateCommand);
 cli.register(DoctorCommand);
+cli.register(DeployCheckCommand);
 
 void cli.runExit(process.argv.slice(2));
 
@@ -47,6 +49,7 @@ export { McpServeCommand } from './commands/mcp.command.js';
 export { StudioCommand } from './commands/studio.command.js';
 export { ClientGenerateCommand } from './commands/client.command.js';
 export { DoctorCommand } from './commands/doctor.command.js';
+export { DeployCheckCommand } from './commands/deploy-check.command.js';
 export { generateClientContract } from './client-contract.js';
 export type { GeneratedClientContract } from './client-contract.js';
 export {
