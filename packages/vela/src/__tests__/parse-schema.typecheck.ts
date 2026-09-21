@@ -1,6 +1,13 @@
 import { z } from 'zod';
 import * as v from 'valibot';
-import { defineDto, parseSchemaAsync, type SchemaInput, type SchemaOutput } from '../validation';
+import {
+  defineDto,
+  parseSchemaAsync,
+  type SchemaInput,
+  type SchemaOutput,
+  type DtoDefinition,
+  type StandardDtoDefinition,
+} from '../validation';
 
 const transformed = defineDto(z.string().transform((value) => value.length));
 const standard = defineDto(v.pipe(v.string(), v.transform(Number)));
@@ -31,3 +38,17 @@ export async function checkSharedSchemaTypes(): Promise<void> {
     wrongParsed,
   ];
 }
+
+// 1.x consumers may have authored descriptor objects without an async method.
+export const legacyDescriptor: DtoDefinition<number> = {
+  name: 'Legacy',
+  schema: { parse: () => 1 },
+  parse: () => 1,
+  toJSONSchema: () => ({ type: 'number' }),
+};
+export const standardDescriptor: StandardDtoDefinition<string, number> = {
+  name: 'Standard',
+  schema: standard.schema,
+  parse: () => 1,
+  toJSONSchema: () => ({ type: 'number' }),
+};

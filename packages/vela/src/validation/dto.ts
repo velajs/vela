@@ -29,7 +29,6 @@ export interface DtoDefinition<
 > extends SchemaParser<Value> {
   readonly name: string;
   readonly schema: S;
-  parseAsync(value: unknown): Promise<Awaited<Value>>;
   toJSONSchema(direction?: 'input' | 'output'): unknown;
 }
 
@@ -41,27 +40,32 @@ export interface StandardDtoDefinition<
   readonly name: string;
   readonly schema: S;
   parse(value: unknown): Output | Promise<Output>;
-  parseAsync(value: unknown): Promise<Output>;
+  parseAsync?(value: unknown): Promise<Output>;
   toJSONSchema(direction?: 'input' | 'output'): unknown;
 }
+
+// Existing hand-authored descriptor interfaces remain structurally compatible;
+// factory-created descriptors always expose the additive asynchronous method.
+type AsyncParser<Value> = { parseAsync(value: unknown): Promise<Awaited<Value>> };
 
 export function defineDto<S extends DtoSchema<unknown>>(
   schema: S,
   options?: DtoOptions,
-): DtoDefinition<ReturnType<S['parse']>, S>;
+): DtoDefinition<ReturnType<S['parse']>, S> & AsyncParser<ReturnType<S['parse']>>;
 export function defineDto<S extends StandardSchemaV1>(
   schema: S,
   options?: DtoOptions,
-): StandardDtoDefinition<StandardSchemaV1.InferInput<S>, StandardSchemaV1.InferOutput<S>, S>;
+): StandardDtoDefinition<StandardSchemaV1.InferInput<S>, StandardSchemaV1.InferOutput<S>, S> &
+  AsyncParser<StandardSchemaV1.InferOutput<S>>;
 // Preserve explicit 1.x value/input/output type arguments.
 export function defineDto<Value>(
   schema: DtoSchema<Value>,
   options?: DtoOptions,
-): DtoDefinition<Value>;
+): DtoDefinition<Value> & AsyncParser<Value>;
 export function defineDto<Input, Output>(
   schema: StandardSchemaV1<Input, Output>,
   options?: DtoOptions,
-): StandardDtoDefinition<Input, Output>;
+): StandardDtoDefinition<Input, Output> & AsyncParser<Output>;
 export function defineDto(schema: DtoSchema<unknown> | StandardSchemaV1, options: DtoOptions = {}) {
   const name = options.name ?? 'Dto';
   const toJSONSchema = (direction: 'input' | 'output' = 'output'): unknown => {
