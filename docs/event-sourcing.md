@@ -78,3 +78,76 @@ callback throws, recursively emits, or overlaps another emission. `off` still
 accepts the original callback, and a once callback may register its next delivery.
 These are process-local notifications: successful completion does not persist an
 event or provide an outbox.
+
+## Scoped, validated events
+
+Import `EventEmitterModule` and declare a shared vocabulary. A schema-bearing
+`@OnEvent` decorator checks the listener's transformed payload type and opts into
+`EventDispatcher` dispatch. It does not also subscribe to the string emitter.
+
+```ts
+import {
+  EventDispatcher, EventEmitterModule, Injectable, Module, OnEvent, Scope,
+  defineEventVocabulary, VelaFactory, getRequestContainer, type EventPayload,
+} from '@velajs/vela';
+import { z } from 'zod';
+
+const events = defineEventVocabulary({
+  'account.created': z.object({ id: z.string().transform(Number) }),
+});
+
+@Injectable({ scope: Scope.REQUEST })
+class AccountListener {
+  @OnEvent(events['account.created'])
+  async created(payload: EventPayload<typeof events['account.created']>) {
+    // payload.id is a number; use an injected invocation-scoped service here.
+  }
+}
+
+@Module({ imports: [EventEmitterModule], providers: [AccountListener] })
+class AppModule {}
+
+const app = await VelaFactory.create(AppModule);
+await app.get(EventDispatcher).emit(events['account.created'], { id: '42' });
+```
+
+`defineEvent(name, schema)` declares a single event. Standard Schema input and
+output types remain separate, and asynchronous validation runs once per dispatch.
+`defineEventVocabulary` preserves exact property names; share the same schema
+objects across producers/listeners. Conflicting schemas for the same dispatched
+name reject before listener effects. Every matching listener is attempted and
+settled; one failure is rethrown unchanged, multiple failures are aggregated.
+Invalid input rejects before listener construction, even when no listener exists.
+
+`EventDispatcher.emit` owns a fresh managed invocation. It does not inherit an
+HTTP request or authenticated tenant from its caller. To react inside a current
+invocation, bind explicitly:
+
+```ts
+const scoped = app.get(EventDispatcher).inScope(getRequestContainer(context));
+await scoped.emit(events['account.created'], { id: '42' });
+await scoped.emitUnknown(events['account.created'], externalValue);
+scoped.defer(events['account.created'], { id: '43' });
+```
+
+The HTTP adapter owns that scope's completion. Outside HTTP, use
+`createExecutionScope(app.getContainer())`, bind its `container`, and await
+`finish()` after work completes. Closed, unmanaged, or foreign application scopes
+are rejected. `defer` queues validation and dispatch for managed completion;
+listener dependencies stay alive until delivery settles, and failures reject the
+completion promise. Await immediate `emit` calls before finishing their scope.
+Payload objects supplied to `defer` must not be mutated before completion.
+
+Existing `@OnEvent('name')` methods keep the `EventEmitter` path. Singleton and
+transient providers keep their application subscription instance; request-scoped
+providers, including consumers of request dependencies, now resolve in a fresh
+managed invocation for each listener delivery. These independent invocations do
+not copy HTTP authority. Every listener is resolved from its declaring module,
+including duplicate class tokens in keyed modules. For several listeners sharing
+one existing tenant/request context, use schema definitions with `inScope`.
+
+Deferred notifications and CRUD `afterCommit` remain best-effort invocation work.
+They provide no durable outbox, atomic database-plus-event write, or cross-worker
+delivery. Keep durable adapters and pure replay reducers separate from local
+listener side effects; `@velajs/event-source` remains independent of the core DI
+and dispatcher APIs.

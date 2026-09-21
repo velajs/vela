@@ -625,3 +625,13 @@ export type { SerializationDescriptor, SerializerDefinition } from './serializat
 // Hono Adapter Utilities
 export type { VelaContext, VelaHono, VelaHonoEnv, VelaMiddlewareHandler } from './http/hono.types';
 export { getRuntimeKey, env } from 'hono/adapter';
+
+export { defineEvent, defineEventVocabulary, EventDispatcher } from './event-emitter/index';
+export type {
+  EventDefinition,
+  EventVocabulary,
+  EventInput,
+  EventPayload,
+  ScopedEventDispatcher,
+  EventListenerDecorator,
+} from './event-emitter/index';
