@@ -76,7 +76,16 @@ describe('deployment alignment', () => {
   });
 
   it('accepts Cloudflare Sunday and Quartz-style extensions with the shared parser', () => {
-    const crons = ['0 0 * * 1', '59 23 LW * *', '0 18 * * 6L', '0 0 * * MON#2'];
+    // Native last-day offsets are documented by Cloudflare's Saffron parser article.
+    const crons = [
+      '0 0 * * 1',
+      '59 23 LW * *',
+      '0 18 * * 6L',
+      '0 0 * * MON#2',
+      '0 0 L-1 FEB *',
+      '0 0 L-1W FEB *',
+      '55-5/5 20-4/2 * NOV-FEB FRI-MON',
+    ];
     expect(
       checkDeployment(
         config({ triggers: { crons } }),

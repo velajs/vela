@@ -36,7 +36,14 @@ async function gitProvenance(cwd: string) {
       exec('git', ['rev-parse', '--verify', 'HEAD'], options),
       exec(
         'git',
-        ['--no-optional-locks', 'status', '--porcelain=v1', '--untracked-files=normal'],
+        [
+          '--no-optional-locks',
+          '-c',
+          'core.fsmonitor=false',
+          'status',
+          '--porcelain=v1',
+          '--untracked-files=normal',
+        ],
         options,
       ),
     ]);

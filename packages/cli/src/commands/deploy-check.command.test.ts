@@ -103,7 +103,7 @@ describe('read-only deploy check command', () => {
     expect((await run(['--json'])).output).toContain('1 MiB');
   });
 
-  it('uses git state at the config location, reporting clean and dirty honestly', async () => {
+  it('reports git state without running repository filesystem-monitor hooks', async () => {
     const git = (...args: string[]) => execFileSync('git', args, { cwd: directory, stdio: 'pipe' });
     git('init');
     git('add', '.');
@@ -119,8 +119,14 @@ describe('read-only deploy check command', () => {
     const clean = JSON.parse((await run(['--json'])).output);
     expect(clean.provenance.dirty).toBe(false);
     expect(clean.provenance.commit).toBe(git('rev-parse', 'HEAD').toString().trim());
+    const hook = join(directory, '.git', 'preflight-monitor');
+    await writeFile(hook, '#!/bin/sh\nprintf invoked > "$(dirname "$0")/monitor-ran"\n', {
+      mode: 0o700,
+    });
+    git('config', 'core.fsmonitor', hook);
     await writeFile(join(directory, 'untracked.txt'), 'dirty');
     expect(JSON.parse((await run(['--json'])).output).provenance.dirty).toBe(true);
+    expect(await readdir(join(directory, '.git'))).not.toContain('monitor-ran');
   });
 
   it('prints a visible target, provenance and safe shell-quoted follow-up', async () => {

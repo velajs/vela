@@ -18,7 +18,8 @@ invalid input or an alignment failure; code 0 means the static checks passed.
 
 The command reads the two files and git provenance. It does not import your
 application, call `createApp`, load credentials, execute build hooks, run Wrangler,
-apply migrations or upload code. Its printed Wrangler command is a suggested next
+apply migrations or upload code. Git's repository filesystem monitor is disabled
+for provenance reads. Its printed Wrangler command is a suggested next
 step, not an executed operation. Inputs are limited to 1 MiB each.
 
 ## Prepare the snapshot
@@ -70,6 +71,8 @@ Cron validation uses the core Cloudflare dialect and UTC. Equivalent expressions
 such as `0 0 * * SUN` and `0 0 * * 1` must still match literally because Vela's
 Workers dispatcher matches the delivered expression. See Cloudflare's
 [cron syntax](https://developers.cloudflare.com/workers/configuration/cron-triggers/#supported-cron-expressions).
+The shared parser also accepts native last-day offsets such as `0 0 L-1W FEB *`,
+described in Cloudflare's [Saffron parser article](https://blog.cloudflare.com/using-one-cron-parser-everywhere-with-rust-and-saffron/).
 
 ## Configure staging
 
