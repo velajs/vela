@@ -46,6 +46,12 @@ const npmEnv = () => ({
   npm_config_cache: resolve('.cache/npm'),
   npm_config_progress: 'false',
 });
+/** npm treats even an explicit provenance=false as conflicting with a file.
+ * A signed bundle is verified by npm; remove only automatic-generation config. */
+export const provenanceFileEnvironment = (environment = process.env) =>
+  Object.fromEntries(
+    Object.entries(environment).filter(([key]) => key.toLowerCase() !== 'npm_config_provenance'),
+  );
 const npm = (args) => execFileSync('npm', args, { encoding: 'utf8', env: npmEnv() });
 export function registryIntegrity(entry) {
   try {
@@ -139,13 +145,29 @@ export async function publishRelease(directory, { dryRun = false, oidc = false }
   }
   for (const entry of order) {
     if (registryIntegrity(entry) === undefined && !journal.accepted[entry.name]) {
+      const provenanceFile = `${entry.tarball}.sigstore.json`;
+      // npm verifies the signed bundle's subject and digest before submitting it.
+      // Recovery must reuse actual CI provenance, never assert a local build was CI.
+      await readFile(provenanceFile);
       try {
         // OIDC authorizes publish, not dist-tag updates. Publish stable CI releases
         // directly to latest; interactive coordinated releases use next first.
         execFileSync(
           'npm',
-          ['publish', entry.tarball, '--access', 'public', '--tag', oidc ? 'latest' : 'next'],
-          { env: npmEnv(), stdio: oidc ? ['inherit', 'pipe', 'pipe'] : 'inherit' },
+          [
+            'publish',
+            entry.tarball,
+            '--access',
+            'public',
+            '--tag',
+            oidc ? 'latest' : 'next',
+            '--provenance-file',
+            provenanceFile,
+          ],
+          {
+            env: provenanceFileEnvironment(npmEnv()),
+            stdio: oidc ? ['inherit', 'pipe', 'pipe'] : 'inherit',
+          },
         );
       } catch (error) {
         // A prior process can die after npm accepts the archive but before our

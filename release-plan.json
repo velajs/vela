@@ -1,52 +1,52 @@
 {
-  "version": "1.23.0",
+  "version": "1.24.0",
   "packages": [
     {
       "name": "@velajs/authz-cedar",
       "path": "packages/authz-cedar",
-      "version": "1.23.0",
+      "version": "1.24.0",
       "summary": "See packages/authz-cedar/CHANGELOG.md."
     },
     {
       "name": "@velajs/crud",
       "path": "packages/crud",
-      "version": "1.23.0",
+      "version": "1.24.0",
       "summary": "See packages/crud/CHANGELOG.md."
     },
     {
       "name": "@velajs/crud-drizzle",
       "path": "packages/crud-drizzle",
-      "version": "1.23.0",
+      "version": "1.24.0",
       "summary": "See packages/crud-drizzle/CHANGELOG.md."
     },
     {
       "name": "@velajs/crud-durable-objects",
       "path": "packages/crud-durable-objects",
-      "version": "1.23.0",
+      "version": "1.24.0",
       "summary": "See packages/crud-durable-objects/CHANGELOG.md."
     },
     {
       "name": "@velajs/crud-memory",
       "path": "packages/crud-memory",
-      "version": "1.23.0",
+      "version": "1.24.0",
       "summary": "See packages/crud-memory/CHANGELOG.md."
     },
     {
       "name": "@velajs/crypto",
       "path": "packages/crypto",
-      "version": "1.23.0",
+      "version": "1.24.0",
       "summary": "See packages/crypto/CHANGELOG.md."
     },
     {
       "name": "@velajs/tenant",
       "path": "packages/tenant",
-      "version": "1.23.0",
+      "version": "1.24.0",
       "summary": "See packages/tenant/CHANGELOG.md."
     },
     {
       "name": "@velajs/vela",
       "path": "packages/vela",
-      "version": "1.23.0",
+      "version": "1.24.0",
       "summary": "See packages/vela/CHANGELOG.md."
     }
   ]

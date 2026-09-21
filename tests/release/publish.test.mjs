@@ -1,6 +1,25 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { publicationOrder, waitForIntegrity } from '../../scripts/release-publish.mjs';
+import { provenanceFileEnvironment } from '../../scripts/release-publish.mjs';
+import { execFileSync } from 'node:child_process';
+
+test('file provenance does not conflict with workflow automatic-generation settings', () => {
+  const environment = provenanceFileEnvironment({
+    ...process.env,
+    NPM_CONFIG_PROVENANCE: 'true',
+    npm_config_provenance: 'false',
+  });
+  assert.equal(environment.NPM_CONFIG_PROVENANCE, undefined);
+  assert.equal(environment.npm_config_provenance, undefined);
+  const file = '/tmp/vela-provenance-config-test.json';
+  const configured = execFileSync(
+    'npm',
+    ['config', 'get', 'provenance-file', '--provenance-file', file],
+    { env: environment, encoding: 'utf8' },
+  );
+  assert.equal(configured.trim(), file);
+});
 
 const entry = { name: '@velajs/example', version: '1.22.0', integrity: 'sha512-tested' };
 test('npm may accept a version before it is visible; wait without resubmitting', async () => {

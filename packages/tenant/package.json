@@ -1,6 +1,6 @@
 {
   "name": "@velajs/tenant",
-  "version": "1.23.0",
+  "version": "1.24.0",
   "description": "Portable tenant for Vela and Cloudflare Workers",
   "keywords": [
     "cloudflare-workers",
