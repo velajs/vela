@@ -31,6 +31,9 @@ HTTP client, live queries, and Studio in a runnable Workers application.
 - [AI and retrieval](../packages/ai/README.md): provider-neutral model defaults,
   tenant-scoped RAG, adapter requirements, and a runnable local example.
 
+- [Portable workflows](../packages/workflow/README.md): reusable validated steps, execution
+  adapter boundaries, and the replay harness.
+
 ## Contributing
 
 - [Contributor guide](../CONTRIBUTING.md): setup, changes, and validation.

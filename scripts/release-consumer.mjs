@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { verifyAiPackage } from './ai-consumer.mjs';
 import { verifyNewProject } from './cli-consumer.mjs';
+import { verifyWorkflowPackage } from './workflow-consumer.mjs';
 
 const root = new URL('../', import.meta.url);
 const artifactDir = resolve(process.argv[2] ?? '.artifacts/release');
@@ -74,6 +75,9 @@ const generatedProject = tarballs['@velajs/cli']
 const aiPackage = tarballs['@velajs/ai']
   ? await verifyAiPackage(tarballs['@velajs/ai'].slice('file:'.length))
   : undefined;
+const workflowConsumer = tarballs['@velajs/workflow']
+  ? await verifyWorkflowPackage(tarballs)
+  : undefined;
 await writeFile(
   join(artifactDir, 'consumer.json'),
   JSON.stringify(
@@ -82,6 +86,8 @@ await writeFile(
       status: 'passed',
       generatedProject,
       aiPackage,
+
+      workflowConsumer,
       manifestIntegrity: `sha512-${createHash('sha512')
         .update(await readFile(join(artifactDir, 'manifest.json')))
         .digest('base64')}`,

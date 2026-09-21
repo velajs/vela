@@ -57,6 +57,12 @@ checks both the base and `/rag` exports, TypeScript/AI SDK/Zod compatibility,
 tenant isolation, tool validation, and re-sync. Run it independently with
 `node scripts/ai-consumer.mjs /absolute/path/to/velajs-ai-<version>.tgz`.
 
+When the release includes `@velajs/workflow`, the consumer gate also installs its
+archive in an independent project, checks the root and `/harness` declarations
+with Zod 4, and runs the approval/retry/replay example. This coverage does not
+depend on the API starter importing workflow. For a prepared archive manifest,
+run it directly with `node scripts/workflow-consumer.mjs /absolute/artifact/path`.
+
 Artifacts live in `.artifacts/release/`. Keep this exact directory
 once publishing begins: rebuilding a partial release changes archive integrity
 and intentionally blocks an ambiguous retry.
