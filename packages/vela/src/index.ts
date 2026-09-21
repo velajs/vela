@@ -392,6 +392,8 @@ export type { MiddlewareConsumer, NestModule, RouteInfo } from './http/index';
 export { DiscoveryService, createDiscoverableDecorator } from './discovery/index';
 export type {
   DiscoveredClass,
+  DiscoveredRegistration,
+  DiscoveredRegisteredMethodMeta,
   DiscoveredMethodMeta,
   DiscoveryFilter,
   DiscoverableDecorator,

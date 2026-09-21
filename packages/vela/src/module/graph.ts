@@ -1,16 +1,7 @@
-import { ForwardRef } from '../container/types';
 import type { Type } from '../container/types';
 import { getModuleMetadata } from './decorators';
 import type { DynamicModule, ModuleImport } from '../registry/types';
-
-function isDynamicModuleLike(value: unknown): value is DynamicModule {
-  return (
-    !!value &&
-    typeof value === 'object' &&
-    'module' in value &&
-    typeof (value as DynamicModule).module === 'function'
-  );
-}
+import { isDynamicModule, moduleKeyOf, unwrapModuleImport } from './module-identity';
 
 /**
  * Walks the module dependency graph from a root, unwrapping ForwardRef and
@@ -21,18 +12,25 @@ function isDynamicModuleLike(value: unknown): value is DynamicModule {
  * controller list without bootstrapping the application.
  */
 export function collectControllers(rootModule: Type): Type[] {
-  const visited = new Set<Type>();
+  const visited = new Map<Type, Set<string>>();
   const controllers = new Set<Type>();
 
   const visit = (entry: ModuleImport | Type | DynamicModule): void => {
-    const unwrapped =
-      entry instanceof ForwardRef ? (entry.factory() as Type | DynamicModule) : entry;
-    const moduleClass = isDynamicModuleLike(unwrapped) ? unwrapped.module : (unwrapped as Type);
-    const extraControllers = isDynamicModuleLike(unwrapped) ? (unwrapped.controllers ?? []) : [];
-    const extraImports = isDynamicModuleLike(unwrapped) ? (unwrapped.imports ?? []) : [];
+    const unwrapped = unwrapModuleImport(entry);
+    const moduleClass = isDynamicModule(unwrapped) ? unwrapped.module : (unwrapped as Type);
+    const extraControllers = isDynamicModule(unwrapped) ? (unwrapped.controllers ?? []) : [];
+    const extraImports = isDynamicModule(unwrapped) ? (unwrapped.imports ?? []) : [];
 
-    if (typeof moduleClass !== 'function' || visited.has(moduleClass)) return;
-    visited.add(moduleClass);
+    if (typeof moduleClass !== 'function') return;
+    const key = moduleKeyOf(unwrapped);
+    if (visited.get(moduleClass)?.has(key)) {
+      // Match the loader: repeated definitions still contribute controllers.
+      for (const controller of extraControllers) controllers.add(controller);
+      return;
+    }
+    const keys = visited.get(moduleClass) ?? new Set<string>();
+    keys.add(key);
+    visited.set(moduleClass, keys);
 
     const metadata = getModuleMetadata(moduleClass);
     if (metadata) {

@@ -42,50 +42,50 @@ function isThenable(x: unknown): x is PromiseLike<unknown> {
  * `resolveAsync`) or stay eager.
  */
 export class LazyModuleManager implements LazyResolutionHook {
-  private readonly pending = new Map<string, LazyModuleGroup>();
-  private readonly claimed: LazyModuleGroup[] = [];
-  private readonly absorbed: unknown[] = [];
-  private phase: 'bootstrap' | 'live' = 'bootstrap';
-  private draining = false;
+  readonly #pending = new Map<string, LazyModuleGroup>();
+  readonly #claimed: LazyModuleGroup[] = [];
+  readonly #absorbed: unknown[] = [];
+  #phase: 'bootstrap' | 'live' = 'bootstrap';
+  #draining = false;
   // In-flight async drain: concurrent drainAsync callers must await the SAME
   // completion (the running loop picks their claims up), never resolve early
   // with a group's hooks still pending.
-  private drainPromise?: Promise<void>;
-  private onMaterialized?: (instances: unknown[]) => void;
+  #drainPromise?: Promise<void>;
+  #onMaterialized?: (instances: unknown[]) => void;
 
   constructor(private readonly container: Container) {}
 
   registerGroup(group: LazyModuleGroup): void {
-    this.pending.set(group.moduleId, group);
+    this.#pending.set(group.moduleId, group);
   }
 
   /** Application sink for live-phase materializations (shutdown symmetry). */
   setOnMaterialized(sink: (instances: unknown[]) => void): void {
-    this.onMaterialized = sink;
+    this.#onMaterialized = sink;
   }
 
   setPhaseLive(): void {
-    this.phase = 'live';
+    this.#phase = 'live';
   }
 
   isPending(moduleId: string): boolean {
-    return this.pending.has(moduleId);
+    return this.#pending.has(moduleId);
   }
 
   /** Tokens whose owning modules are ALL still pending are deferred. */
   hasPendingModules(): boolean {
-    return this.pending.size > 0;
+    return this.#pending.size > 0;
   }
 
   claim(moduleId: string): void {
-    const group = this.pending.get(moduleId);
+    const group = this.#pending.get(moduleId);
     if (!group) return;
-    this.pending.delete(moduleId);
-    this.claimed.push(group);
+    this.#pending.delete(moduleId);
+    this.#claimed.push(group);
   }
 
   hasClaimed(): boolean {
-    return this.claimed.length > 0;
+    return this.#claimed.length > 0;
   }
 
   /**
@@ -97,18 +97,18 @@ export class LazyModuleManager implements LazyResolutionHook {
    * draining are picked up by the running loop instead.
    */
   isDraining(): boolean {
-    return this.draining;
+    return this.#draining;
   }
 
   /** Instances constructed during the bootstrap phase, owed their hooks. */
   takeAbsorbed(): unknown[] {
-    if (this.absorbed.length === 0) return [];
-    return this.absorbed.splice(0, this.absorbed.length);
+    if (this.#absorbed.length === 0) return [];
+    return this.#absorbed.splice(0, this.#absorbed.length);
   }
 
   drainSync(): void {
-    if (this.draining) return;
-    this.draining = true;
+    if (this.#draining) return;
+    this.#draining = true;
     try {
       // Construct-all-then-hook, batch by batch: a cascade's groups arrive in
       // consumer-before-dependency claim order (the consumer's token resolves
@@ -116,44 +116,44 @@ export class LazyModuleManager implements LazyResolutionHook {
       // REVERSED batch — dependency-before-consumer, matching what the eager
       // bootstrap would have produced. Hooks can claim further groups
       // (discovery cascades) → outer loop.
-      while (this.claimed.length > 0) {
+      while (this.#claimed.length > 0) {
         const batch: Array<{ group: LazyModuleGroup; instances: unknown[] }> = [];
-        while (this.claimed.length > 0) {
-          const group = this.claimed.shift()!;
+        while (this.#claimed.length > 0) {
+          const group = this.#claimed.shift()!;
           batch.push({ group, instances: this.constructGroupSync(group) });
         }
         this.finishBatchSync(batch);
       }
     } finally {
-      this.draining = false;
+      this.#draining = false;
     }
   }
 
   drainAsync(): Promise<void> {
-    if (this.draining) {
+    if (this.#draining) {
       // External concurrent callers await the in-flight completion (its loop
       // picks their claims up). Callers INSIDE the drain's own await chain
       // never reach here — the container skips its post-resolution drain
       // while isDraining() (self-await would deadlock).
-      return this.drainPromise ?? Promise.resolve();
+      return this.#drainPromise ?? Promise.resolve();
     }
-    this.draining = true;
+    this.#draining = true;
     const run = (async () => {
       try {
-        while (this.claimed.length > 0) {
+        while (this.#claimed.length > 0) {
           const batch: Array<{ group: LazyModuleGroup; instances: unknown[] }> = [];
-          while (this.claimed.length > 0) {
-            const group = this.claimed.shift()!;
+          while (this.#claimed.length > 0) {
+            const group = this.#claimed.shift()!;
             batch.push({ group, instances: await this.constructGroupAsync(group) });
           }
           await this.finishBatchAsync(batch);
         }
       } finally {
-        this.draining = false;
-        this.drainPromise = undefined;
+        this.#draining = false;
+        this.#drainPromise = undefined;
       }
     })();
-    this.drainPromise = run;
+    this.#drainPromise = run;
     return run;
   }
 
@@ -165,7 +165,7 @@ export class LazyModuleManager implements LazyResolutionHook {
    * eager — is the documented price of contributing computed entrypoints.
    */
   async materializeContributors(): Promise<void> {
-    for (const group of [...this.pending.values()]) {
+    for (const group of [...this.#pending.values()]) {
       if (group.hasEntrypointContributor) this.claim(group.moduleId);
     }
     await this.drainAsync();
@@ -173,12 +173,14 @@ export class LazyModuleManager implements LazyResolutionHook {
 
   /** Materialize everything still pending (warmup / tests / node runtimes). */
   async materializeAll(): Promise<void> {
-    for (const moduleId of [...this.pending.keys()]) this.claim(moduleId);
+    for (const moduleId of [...this.#pending.keys()]) this.claim(moduleId);
     await this.drainAsync();
   }
 
   private groupTokensToConstruct(group: LazyModuleGroup): Token[] {
-    return group.tokens.filter((token) => this.container.getProviderScope(token) !== Scope.REQUEST);
+    return group.tokens.filter(
+      (token) => this.container.getProviderScope(token, group.moduleId) !== Scope.REQUEST,
+    );
   }
 
   private constructGroupSync(group: LazyModuleGroup): unknown[] {
@@ -215,8 +217,8 @@ export class LazyModuleManager implements LazyResolutionHook {
 
   private finishBatchSync(batch: Array<{ group: LazyModuleGroup; instances: unknown[] }>): void {
     const ordered = this.orderBatch(batch);
-    if (this.phase === 'bootstrap') {
-      for (const { instances } of ordered) this.absorbed.push(...instances);
+    if (this.#phase === 'bootstrap') {
+      for (const { instances } of ordered) this.#absorbed.push(...instances);
       return;
     }
     for (const { group, instances } of ordered) {
@@ -233,15 +235,15 @@ export class LazyModuleManager implements LazyResolutionHook {
         }
       }
     }
-    this.onMaterialized?.(ordered.flatMap((b) => b.instances));
+    this.#onMaterialized?.(ordered.flatMap((b) => b.instances));
   }
 
   private async finishBatchAsync(
     batch: Array<{ group: LazyModuleGroup; instances: unknown[] }>,
   ): Promise<void> {
     const ordered = this.orderBatch(batch);
-    if (this.phase === 'bootstrap') {
-      for (const { instances } of ordered) this.absorbed.push(...instances);
+    if (this.#phase === 'bootstrap') {
+      for (const { instances } of ordered) this.#absorbed.push(...instances);
       return;
     }
     for (const { instances } of ordered) {
@@ -254,7 +256,7 @@ export class LazyModuleManager implements LazyResolutionHook {
         if (hasOnApplicationBootstrap(instance)) await instance.onApplicationBootstrap();
       }
     }
-    this.onMaterialized?.(ordered.flatMap((b) => b.instances));
+    this.#onMaterialized?.(ordered.flatMap((b) => b.instances));
   }
 
   private describeSyncFailure(moduleId: string, cause?: unknown): Error {

@@ -52,7 +52,7 @@ export function _resetEntrypointKinds(): void {
  * own registry from their own container.
  */
 export class EntrypointRegistry {
-  private readonly byKind = new Map<string, Entrypoint[]>();
+  readonly #byKind = new Map<string, Entrypoint[]>();
 
   static async build(
     discovery: DiscoveryService,
@@ -67,19 +67,21 @@ export class EntrypointRegistry {
 
     for (const kind of getEntrypointKinds()) {
       if (kind.level === 'class') {
-        for (const found of discovery.providersWithMeta(kind.metaKey, filter)) {
+        for (const found of discovery.registrationsWithMeta(kind.metaKey, filter)) {
           registry.add({
             kind: kind.kind,
             token: found.token,
+            moduleId: found.moduleId,
             instance: found.instance,
             meta: found.meta,
           });
         }
       } else {
-        for (const found of discovery.methodsWithMeta(kind.metaKey, filter)) {
+        for (const found of discovery.registeredMethodsWithMeta(kind.metaKey, filter)) {
           registry.add({
             kind: kind.kind,
             token: found.class.token,
+            moduleId: found.class.moduleId,
             instance: found.class.instance,
             methodName: found.methodName,
             meta: found.meta,
@@ -98,7 +100,7 @@ export class EntrypointRegistry {
       contributed.push(...(await instance.collectEntrypoints(discovery)));
     }
     for (const kind of new Set(contributed.map((ep) => ep.kind))) {
-      registry.byKind.delete(kind);
+      registry.#byKind.delete(kind);
     }
     for (const ep of contributed) registry.add(ep);
 
@@ -106,25 +108,25 @@ export class EntrypointRegistry {
   }
 
   private add(ep: Entrypoint): void {
-    const list = this.byKind.get(ep.kind);
+    const list = this.#byKind.get(ep.kind);
     if (list) list.push(ep);
-    else this.byKind.set(ep.kind, [ep]);
+    else this.#byKind.set(ep.kind, [ep]);
   }
 
   ofKind(kind: string): Entrypoint[];
   ofKind<M>(kind: string, parseMeta: (meta: unknown) => M): Entrypoint<M>[];
   ofKind(kind: string, parseMeta?: (meta: unknown) => unknown): Entrypoint[] {
-    const entries = this.byKind.get(kind) ?? [];
+    const entries = this.#byKind.get(kind) ?? [];
     return parseMeta
       ? entries.map((entry) => ({ ...entry, meta: parseMeta(entry.meta) }))
       : [...entries];
   }
 
   kinds(): string[] {
-    return [...this.byKind.keys()];
+    return [...this.#byKind.keys()];
   }
 
   all(): Entrypoint[] {
-    return [...this.byKind.values()].flat();
+    return [...this.#byKind.values()].flat();
   }
 }
