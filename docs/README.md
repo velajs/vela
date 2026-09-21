@@ -8,6 +8,8 @@ HTTP client, live queries, and Studio in a runnable Workers application.
 
 ## Framework guides
 
+- [Upgrading framework integrations](upgrading-framework.md): behavior changes,
+  compatibility boundaries, and migration steps after the 1.24.0 baseline.
 - [Debugging](debugging.md): Worker and test breakpoints, structured Studio logs,
   handler timing, and module ownership snapshots.
 
