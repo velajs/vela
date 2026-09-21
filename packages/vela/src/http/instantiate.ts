@@ -23,12 +23,17 @@ import { InjectionToken } from '../container/types';
 export function instantiate<T>(
   classOrInstance: Type<T> | TypedToken<T> | T,
   container: Container,
+  moduleId?: string,
 ): T;
-export function instantiate(classOrInstance: unknown, container: Container): unknown {
+export function instantiate(
+  classOrInstance: unknown,
+  container: Container,
+  moduleId?: string,
+): unknown {
   if (typeof classOrInstance === 'function') {
     const clazz = classOrInstance as Type;
     if (container.has(clazz)) {
-      return container.resolve(clazz);
+      return container.resolve(clazz, moduleId);
     }
     if (constructorExpectsDependencies(clazz)) {
       throw new Error(
@@ -50,7 +55,7 @@ export function instantiate(classOrInstance: unknown, container: Container): unk
     typeof classOrInstance === 'symbol' ||
     classOrInstance instanceof InjectionToken
   ) {
-    return container.resolve(classOrInstance);
+    return container.resolve(classOrInstance, moduleId);
   }
 
   return classOrInstance;
@@ -66,8 +71,44 @@ function constructorExpectsDependencies(clazz: Type<unknown>): boolean {
 }
 
 export function instantiateMany<T>(
-  items: Array<Type<T> | TypedToken<T> | T>,
+  items: readonly (Type<T> | TypedToken<T> | T)[],
   container: Container,
+  moduleId?: string,
 ): T[] {
-  return items.map((item) => instantiate(item, container));
+  return items.map((item) => instantiate(item, container, moduleId));
+}
+
+/** Async DI counterpart with the same explicit-instance and safe helper fallbacks. */
+export function instantiateAsync<T>(
+  classOrInstance: Type<T> | TypedToken<T> | T,
+  container: Container,
+  moduleId?: string,
+): Promise<T>;
+export async function instantiateAsync(
+  classOrInstance: unknown,
+  container: Container,
+  moduleId?: string,
+): Promise<unknown> {
+  if (typeof classOrInstance === 'function' && container.has(classOrInstance as Type)) {
+    return container.resolveAsync(classOrInstance as Type, moduleId);
+  }
+  if (
+    typeof classOrInstance === 'string' ||
+    typeof classOrInstance === 'symbol' ||
+    classOrInstance instanceof InjectionToken
+  ) {
+    return container.resolveAsync(classOrInstance, moduleId);
+  }
+  return instantiate(classOrInstance, container, moduleId);
+}
+
+/** Preserve declaration order and stop construction at the first failed component. */
+export async function instantiateManyAsync<T>(
+  items: readonly (Type<T> | TypedToken<T> | T)[],
+  container: Container,
+  moduleId?: string,
+): Promise<T[]> {
+  const resolved: T[] = [];
+  for (const item of items) resolved.push(await instantiateAsync(item, container, moduleId));
+  return resolved;
 }
