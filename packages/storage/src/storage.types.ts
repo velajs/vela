@@ -29,9 +29,16 @@ export interface RetryBackoffContext {
 export type RetryOptions = number | { max: number; backoff?: (ctx: RetryBackoffContext) => number };
 
 export interface OperationOptions {
-  /** Abort the operation when this signal fires. */
+  /**
+   * Stop waiting and signal the driver. Native I/O may still complete; a local
+   * cancellation is never retried. After a download resolves, its body belongs
+   * to the caller and is not cancelled by these operation controls.
+   */
   signal?: AbortSignal;
-  /** Per-attempt timeout in ms. `0` or negative disables timeout handling. */
+  /**
+   * Per-attempt deadline in ms. Local expiry is not retried: provider side effects
+   * may still commit. `0` or negative disables timeout handling.
+   */
   timeout?: number;
   /** Retry transient failures. A number is treated as `{ max: number }`. */
   retries?: RetryOptions;

@@ -33,6 +33,8 @@ export interface R2ObjectLike {
   uploaded: Date;
   httpMetadata?: R2HttpMetadataLike;
   customMetadata?: Record<string, string>;
+  /** The range actually returned by R2, which may be clipped at EOF. */
+  range?: { offset?: number; length?: number; suffix?: number };
 }
 
 export interface R2ObjectBodyLike extends R2ObjectLike {

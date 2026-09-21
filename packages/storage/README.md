@@ -101,3 +101,23 @@ For DI/integration tests, register the same driver instead: `StorageModule.forRo
 
 See the docs site for presigned uploads, the HTTP upload controller + browser client, middleware,
 multi-bucket, and the full capability matrix.
+
+## Deadlines and stream ownership
+
+`timeout` bounds the wait for an operation; `signal` stops that wait when aborted.
+Both signal cooperative drivers, but native R2 binding I/O can still complete,
+including a write whose caller has already received `Timeout` or `Aborted`.
+Locally timed-out or cancelled operations are never retried, even with `retries`
+or the retry middleware enabled. A rejected write is not proof that no write
+occurred; reconcile its key before deciding whether to issue another mutation.
+Settled retryable provider errors retain the configured retry policy.
+
+Controls end when the operation returns. A successfully delivered download body
+belongs to the caller: consume or cancel it explicitly. Abandoned downloads cancel
+a body if it arrives later; multipart upload cancellation stops scheduling parts
+and attempts to abort the upload. Cleanup cannot guarantee that an already-issued
+native operation was rolled back. `head()` and `list()` retain their 1.x lazy body
+readers; those later reads are separate from the original operation's deadline.
+
+R2 range reads report the returned byte length, including ranges clipped at EOF,
+without buffering the stream. Invalid ranges fail before binding I/O.

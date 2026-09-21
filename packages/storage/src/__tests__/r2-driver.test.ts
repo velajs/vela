@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { r2Driver } from '../drivers/r2';
 import type { R2BucketLike, R2ObjectLike, R2PutValue } from '../drivers/r2/r2.types';
 import { toBytes } from '../internal/body';
@@ -99,6 +99,72 @@ function makeR2Stub(): R2BucketLike & { store: Map<string, Entry> } {
 }
 
 describe('r2Driver (binding mode)', () => {
+  it('reports the returned byte count for a range clipped at EOF', async () => {
+    const d = r2Driver({ bucket: makeR2Stub() });
+    await d.upload('short', 'abc');
+    const file = await d.download('short', { range: { start: 1, end: 99 } });
+    expect(file.size).toBe(2);
+    expect((await file.arrayBuffer()).byteLength).toBe(file.size);
+  });
+
+  it('uses provider returned range metadata without reading the body', async () => {
+    const bucket = makeR2Stub();
+    const stream = new ReadableStream<Uint8Array>();
+    bucket.get = vi.fn(async () => ({
+      key: 'a',
+      size: 100,
+      etag: 'e',
+      uploaded: new Date(0),
+      range: { offset: 10, length: 2 },
+      body: stream,
+      arrayBuffer: vi.fn(),
+    }));
+    const file = await r2Driver({ bucket }).download('a', { range: { start: 10, end: 50 } });
+    expect(file.size).toBe(2);
+    expect(file.stream()).toBe(stream);
+    await stream.cancel();
+  });
+
+  it.each([
+    { start: -1 },
+    { start: 1.5 },
+    { start: NaN },
+    { start: 3, end: 2 },
+    { start: 0, end: Infinity },
+  ])('rejects invalid range %j before binding I/O', async (range) => {
+    const bucket = makeR2Stub();
+    const get = vi.spyOn(bucket, 'get');
+    await expect(r2Driver({ bucket }).download('a', { range })).rejects.toMatchObject({
+      code: 'InvalidRequest',
+    });
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it('honors direct-driver cancellation without starting the write after copy read', async () => {
+    const bucket = makeR2Stub();
+    const original = bucket.get;
+    let release!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    bucket.get = async (key) => {
+      await ready;
+      return original(key);
+    };
+    const d = r2Driver({ bucket });
+    await d.upload('a', 'abc');
+    const put = vi.spyOn(bucket, 'put');
+    const controller = new AbortController();
+    const rejected = expect(d.copy('a', 'b', { signal: controller.signal })).rejects.toMatchObject({
+      code: 'Aborted',
+    });
+    controller.abort();
+    await rejected;
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(put).not.toHaveBeenCalled();
+  });
+
   it('round-trips through the native binding', async () => {
     const bucket = makeR2Stub();
     const d = r2Driver({ bucket });

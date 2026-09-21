@@ -32,6 +32,22 @@ describe('r2Driver under workerd (native binding)', () => {
     expect(await s.exists('greeting.txt')).toBe(false);
   });
 
+  it('reports native clipped and open-ended range sizes', async () => {
+    const s = storage();
+    await s.upload('range-size.txt', 'abc');
+    for (const range of [
+      { start: 0, end: 99 },
+      { start: 1, end: 99 },
+      { start: 1 },
+      { start: 2, end: 2 },
+    ]) {
+      const file = await s.download('range-size.txt', { range });
+      expect(file.size).toBe(3 - range.start);
+      expect((await file.arrayBuffer()).byteLength).toBe(file.size);
+    }
+    await s.delete('range-size.txt');
+  });
+
   it('runs a native multipart upload', async () => {
     const s = storage();
     const mp = await s.createMultipartUpload('multi.bin');
