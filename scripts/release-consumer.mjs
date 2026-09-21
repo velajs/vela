@@ -10,14 +10,31 @@ import { verifyNewProject } from './cli-consumer.mjs';
 import { verifyEventSourcePackage } from './event-source-consumer.mjs';
 import { verifyMailPackage } from './mail-consumer.mjs';
 import { verifyWorkflowPackage } from './workflow-consumer.mjs';
+import { ensureConsumerArchives } from './consumer-companions.mjs';
+import { verifyTestingPackage } from './testing-consumer.mjs';
+import { verifyRpcPackage } from './rpc-consumer.mjs';
+import { verifyGraphqlPackage } from './graphql-consumer.mjs';
 
 const root = new URL('../', import.meta.url);
 const artifactDir = resolve(process.argv[2] ?? '.artifacts/release');
 const artifacts = JSON.parse(await readFile(join(artifactDir, 'manifest.json'), 'utf8'));
-const tarballs = Object.fromEntries(
+const releaseTarballs = Object.fromEntries(
   artifacts.packages.map((entry) => [entry.name, `file:${join(artifactDir, entry.filename)}`]),
 );
 const sample = new URL('apps/api-starter/', root);
+const manifest = JSON.parse(await readFile(new URL('package.json', sample), 'utf8'));
+const samplePackages = Object.entries({ ...manifest.dependencies, ...manifest.devDependencies })
+  .filter(([, range]) => range.startsWith('workspace:'))
+  .map(([name]) => name);
+const { tarballs, companions: consumerCompanions } = await ensureConsumerArchives(releaseTarballs, [
+  ...samplePackages,
+  '@velajs/testing',
+  '@velajs/cli',
+  '@velajs/storage',
+  '@velajs/mail',
+  '@velajs/rpc',
+  '@velajs/graphql',
+]);
 const consumer = await mkdtemp(join(tmpdir(), 'vela-release-consumer-'));
 for (const file of [
   'src',
@@ -31,7 +48,6 @@ for (const file of [
 ]) {
   await cp(new URL(file, sample), join(consumer, file), { recursive: true });
 }
-const manifest = JSON.parse(await readFile(new URL('package.json', sample), 'utf8'));
 const installed = JSON.parse(
   execFileSync('pnpm', ['--filter', manifest.name, 'list', '--depth', '0', '--json'], {
     cwd: sample,
@@ -101,6 +117,9 @@ const edgePackages =
   tarballs['@velajs/crud-durable-objects']
     ? await verifyEdgePackages(tarballs)
     : undefined;
+const testingPackage = await verifyTestingPackage(tarballs);
+const rpcPackage = await verifyRpcPackage(tarballs);
+const graphqlPackage = await verifyGraphqlPackage(tarballs);
 await writeFile(
   join(artifactDir, 'consumer.json'),
   JSON.stringify(
@@ -114,6 +133,10 @@ await writeFile(
       aiPackage,
       workflowConsumer,
       mailPackage,
+      testingPackage,
+      rpcPackage,
+      graphqlPackage,
+      consumerCompanions,
       manifestIntegrity: `sha512-${createHash('sha512')
         .update(await readFile(join(artifactDir, 'manifest.json')))
         .digest('base64')}`,

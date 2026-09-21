@@ -41,7 +41,14 @@ export async function verifyTestingPackage(tarballs) {
     ) + '\n',
   );
   const run = (command, args) => execFileSync(command, args, { cwd: consumer, stdio: 'inherit' });
-  run('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund']);
+  run('npm', [
+    'install',
+    '--ignore-scripts',
+    '--no-audit',
+    '--no-fund',
+    '--cache',
+    join(consumer, '.npm-cache'),
+  ]);
   run('npx', ['--no-install', 'tsc', '--noEmit']);
   run('npx', ['--no-install', 'vitest', 'run', '--maxWorkers=1']);
   return { path: consumer, status: 'passed', optionalNodePeersAbsent: true, packages };

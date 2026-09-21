@@ -30,7 +30,15 @@ export async function verifyMailPackage(tarballs) {
   const save = () =>
     writeFile(join(consumer, 'package.json'), JSON.stringify(manifest, null, 2) + '\n');
   const run = (command, args) => execFileSync(command, args, { cwd: consumer, stdio: 'inherit' });
-  const install = () => run('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund']);
+  const install = () =>
+    run('npm', [
+      'install',
+      '--ignore-scripts',
+      '--no-audit',
+      '--no-fund',
+      '--cache',
+      join(consumer, '.npm-cache'),
+    ]);
   await cp(new URL('tests/release/fixtures/mail/', root), consumer, { recursive: true });
   await save();
   install();
