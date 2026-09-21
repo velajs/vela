@@ -36,6 +36,8 @@ HTTP client, live queries, and Studio in a runnable Workers application.
 - [Cloudflare security](cloudflare-security.md): platform identity, signed R2
   URLs, and Durable Object WebSockets.
 - [HTTP clients](client/HTTP.md): generated contracts and Hono RPC.
+- [Method RPC](../packages/rpc/README.md): shared procedure contracts and typed HTTP/Fetcher calls.
+- [GraphQL](../packages/graphql/README.md): explicit schemas, scoped resolvers, and operation loaders.
 - [Live clients](client/README.md): subscriptions, optimistic updates, offline
   mutations, and React integration.
 - [CRUD](crud/README.md): resources, adapters, authorization, and data safety.
