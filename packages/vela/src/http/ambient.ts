@@ -1,6 +1,7 @@
 import type { Context, MiddlewareHandler } from 'hono';
 import { contextStorage, getContext } from 'hono/context-storage';
 import type { Container } from '../container/container';
+import { assertExecutionScopeActive } from '../entrypoint/execution-scope';
 import { REQUEST_CONTEXT, type RequestContext } from './request-context';
 import { findRequestContainer } from './request-container';
 
@@ -50,6 +51,7 @@ export function getCurrentContainer(): Container {
         'and only call it within a request.',
     );
   }
+  assertExecutionScopeActive(container);
   return container;
 }
 
