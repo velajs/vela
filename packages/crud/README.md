@@ -148,3 +148,13 @@ MIT
 See the [edge capabilities guide](../../docs/edge-capabilities.md) for asynchronous
 validation, tenant admission, Cedar authorization, compound IDs, scoped cursors,
 commit hooks, encryption, and backend guarantees.
+
+## Typed headless services
+
+`bindCrudService(resource, contracts)` from `@velajs/crud/service` provides typed
+create/read/update/delete/list methods over the same validated, policy-aware
+resource engine. Input and response types stay distinct through transformations;
+results retain status, headers and pagination. Pass the actual resource contracts
+and an explicit admitted context per invocation. See
+[typed headless services](../../docs/crud/services.md) for authoring and DI examples,
+conditional reads, and the default-envelope/afterList compatibility boundary.

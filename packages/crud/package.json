@@ -75,7 +75,14 @@
     "./audit": {
       "types": "./dist/audit/index.d.ts",
       "import": "./dist/audit/index.js"
+    },
+    "./service": {
+      "types": "./dist/service/index.d.ts",
+      "import": "./dist/service/index.js"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsdown",
@@ -98,8 +105,5 @@
   },
   "engines": {
     "node": ">=24"
-  },
-  "publishConfig": {
-    "access": "public"
   }
 }

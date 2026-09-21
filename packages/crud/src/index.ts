@@ -127,3 +127,5 @@ export {
 } from './databases';
 export { resolveCrudDatabase } from './resolve-database';
 export type { RuntimeCrudConfig } from './crud.types';
+
+export * from './service/index';
