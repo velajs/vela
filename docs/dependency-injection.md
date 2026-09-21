@@ -32,6 +32,11 @@ assume an opaque factory's output type or to construct it during the audit.
 
 Circular dependencies through `useExisting` produce a circular-dependency error on both synchronous
 and asynchronous resolution. Separate registrations sharing a token do not constitute a cycle.
+An alias must be visible to its consumer, then its target resolves from the alias's declaring module.
+An exported public alias can therefore expose its own module's private implementation without making
+the implementation token public. An alias cannot access another module's unexported provider, and a
+consumer's same-token provider cannot change the alias's declared target. The target determines the
+instance lifetime; an alias does not independently cache a transient target.
 
 ## Resource lifetime
 

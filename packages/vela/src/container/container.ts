@@ -244,7 +244,7 @@ export class Container {
   private resolveToken<T>(token: Token, requestingModuleId?: string): T {
     const registration = this.findRegistration<T>(token, requestingModuleId);
     if (registration) {
-      const instance = this.resolveRegistration(registration, requestingModuleId);
+      const instance = this.resolveRegistration(registration);
       this.maybeDrainSync();
       return instance;
     }
@@ -293,7 +293,7 @@ export class Container {
   resolveAll<T>(token: Token, requestingModuleId?: string): T[] {
     this.assertNotDisposing();
     const registrations = this.findAllRegistrations<T>(token, requestingModuleId);
-    const instances = registrations.map((r) => this.resolveRegistration(r, requestingModuleId));
+    const instances = registrations.map((r) => this.resolveRegistration(r));
     this.maybeDrainSync();
     return instances;
   }
@@ -865,10 +865,7 @@ export class Container {
     }
   }
 
-  private resolveRegistration<T>(
-    registration: ProviderRegistration<T>,
-    requestingModuleId?: string,
-  ): T {
+  private resolveRegistration<T>(registration: ProviderRegistration<T>): T {
     if (registration.value) {
       // Deliberately BEFORE the lazy claim: reading a lazy module's useValue
       // (options tokens) has no construction cost to defer and must not
@@ -882,8 +879,9 @@ export class Container {
       this.assertNoSyncCycle(registration);
       this.#resolutionStack.add(registration);
       try {
-        // Preserve the requester's visibility and alias target's seed/cache semantics.
-        return this.resolveToken(registration.useExisting, requestingModuleId);
+        // The requester already passed the alias visibility check. Its target
+        // is part of the declaring module's wiring, just like factory inject.
+        return this.resolveToken(registration.useExisting, registration.declaringModuleId);
       } finally {
         this.#resolutionStack.delete(registration);
       }
@@ -1086,7 +1084,7 @@ export class Container {
     if (registration.useExisting) {
       return this.resolveAsyncInner(
         registration.useExisting,
-        requestingModuleId,
+        registration.declaringModuleId,
         next,
         retainingOwner,
       );

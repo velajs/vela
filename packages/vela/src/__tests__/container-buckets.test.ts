@@ -194,7 +194,7 @@ describe('Container per-module buckets', () => {
     expect(instance.dep.label()).toBe('dep-from-A');
   });
 
-  it("useExisting alias delegates to the original requester's scope", () => {
+  it("useExisting alias delegates to its declaring module's target", () => {
     @Injectable()
     class Real {}
     const ALIAS = new InjectionToken<Real>('ALIAS');

@@ -146,6 +146,82 @@ describe('provider registration identity', () => {
     expect(container.resolve(a)).toBe('fixed');
   });
 
+  it.each(['sync', 'async'] as const)(
+    'binds aliases to their declaring module (%s)',
+    async (mode) => {
+      const target = new InjectionToken<{ owner: string }>('private implementation');
+      const aliasA = new InjectionToken<{ owner: string }>('public alias A');
+      const aliasB = new InjectionToken<{ owner: string }>('public alias B');
+      const root = new Container();
+      for (const [moduleId, alias] of [
+        ['A', aliasA],
+        ['B', aliasB],
+      ] as const) {
+        root.registerScope({
+          moduleId,
+          localProviders: new Set([target, alias]),
+          exportedTokens: new Set([alias]),
+          importedModules: new Set(),
+          isGlobal: false,
+        });
+        root.register(
+          defineProvider(target, {
+            scope: Scope.REQUEST,
+            inject: [],
+            useFactory: () => ({ owner: moduleId }),
+          }),
+          moduleId,
+        );
+        root.register(defineProvider(alias, { useExisting: target }), moduleId);
+      }
+      scope(root, 'consumer', [target], ['A', 'B']);
+      root.register(defineProvider(target, { useValue: { owner: 'shadow' } }), 'consumer');
+      root.computeEffectiveScopes();
+      expect(root.getProviderScope(aliasA, 'A')).toBe(Scope.REQUEST);
+      expect(root.getProviderScope(aliasB, 'B')).toBe(Scope.REQUEST);
+      const child = root.createChild();
+      const resolve = (token: typeof aliasA, requester?: string) =>
+        mode === 'sync' ? child.resolve(token, requester) : child.resolveAsync(token, requester);
+      const a = await resolve(aliasA);
+      const b = await resolve(aliasB);
+      expect([a.owner, b.owner]).toEqual(['A', 'B']);
+      expect(await resolve(aliasA, 'consumer')).toBe(a);
+      expect(await resolve(aliasB, 'consumer')).toBe(b);
+      expect(child.resolve(target, 'consumer').owner).toBe('shadow');
+      scope(root, 'alias-only-consumer', [], ['A']);
+      expect(await resolve(aliasA, 'alias-only-consumer')).toBe(a);
+      expect(() => child.resolve(target, 'alias-only-consumer')).toThrow(ModuleVisibilityError);
+      scope(root, 'unrelated', []);
+      if (mode === 'sync')
+        expect(() => child.resolve(aliasA, 'unrelated')).toThrow(ModuleVisibilityError);
+      else
+        await expect(child.resolveAsync(aliasA, 'unrelated')).rejects.toThrow(
+          ModuleVisibilityError,
+        );
+    },
+  );
+
+  it.each(['sync', 'async'] as const)(
+    'rejects an alias targeting another module private provider (%s)',
+    async (mode) => {
+      const target = new InjectionToken<string>('hidden implementation');
+      const alias = new InjectionToken<string>('bad alias');
+      const root = new Container();
+      root.registerScope({
+        moduleId: 'hidden',
+        localProviders: new Set([target]),
+        exportedTokens: new Set(),
+        importedModules: new Set(),
+        isGlobal: false,
+      });
+      scope(root, 'alias-owner', [alias], ['hidden']);
+      root.register(defineProvider(target, { useValue: 'private' }), 'hidden');
+      root.register(defineProvider(alias, { useExisting: target }), 'alias-owner');
+      if (mode === 'sync') expect(() => root.resolve(alias)).toThrow(ModuleVisibilityError);
+      else await expect(root.resolveAsync(alias)).rejects.toThrow(ModuleVisibilityError);
+    },
+  );
+
   it('observes exact owner scope, instance and lazy state without resolving', () => {
     const token = new InjectionToken<number>('owned');
     const container = new Container();
