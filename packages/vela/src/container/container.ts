@@ -56,8 +56,9 @@ function isErasedTypeToken(token: unknown): boolean {
 export class Container {
   private providers = new Map<string, Map<Token, ProviderRegistration>>();
   private exporterIndex = new Map<Token, Set<string>>();
-  private resolutionStack = new Set<Token>();
-  private requestInstances = new Map<Token, { readonly value: unknown }>();
+  private resolutionStack = new Set<ProviderRegistration>();
+  private requestInstances = new Map<ProviderRegistration, { readonly value: unknown }>();
+  private requestSeeds = new Map<Token, { readonly value: unknown }>();
   private pendingInstances = new Map<ProviderRegistration, Promise<unknown>>();
   private scopes = new Map<string, ModuleScope>();
   private globals = new Set<Token>();
@@ -202,8 +203,9 @@ export class Container {
     this.globals.add(token);
   }
 
-  // Pre-seed the per-request cache. Only meaningful on a child container
-  // produced by createChild() — the root's requestInstances map is unused.
+  // Explicit seeds override constructed REQUEST values for this token, but
+  // never create registrations or bypass the requester's module visibility.
+  // Keep them separate from the registration-keyed constructed-instance cache.
   // Used by RouteManager to populate framework-provided request-scope
   // values (REQUEST_CONTEXT) before any handler resolution runs, so the
   // provider's factory never fires on the request path.
@@ -211,7 +213,7 @@ export class Container {
     token: K & AuthoringToken<K>,
     value: NoInfer<InferToken<K>>,
   ): void {
-    this.requestInstances.set(token, { value });
+    this.requestSeeds.set(token, { value });
   }
 
   getDiagnostics(): Diagnostics {
@@ -484,11 +486,13 @@ export class Container {
    * True when the token belongs exclusively to lazy modules that have not
    * been materialized yet — resolving it would trigger materialization.
    * Build-time probes (route-manager middleware priority, entrypoint
-   * snapshots) use this to defer instead of forcing the group.
+   * snapshots) use this to defer instead of forcing the group. Supplying a
+   * moduleId inspects only that owner's registration, without visibility fallback.
    */
-  isLazyPending(token: Token): boolean {
+  isLazyPending(token: Token, moduleId?: string): boolean {
     const hook = this.root.lazyHook;
     if (!hook) return false;
+    if (moduleId !== undefined) return this.hasInScope(token, moduleId) && hook.isPending(moduleId);
     const owners = this.exporterIndex.get(token);
     if (!owners || owners.size === 0) return false;
     for (const owner of owners) {
@@ -500,9 +504,12 @@ export class Container {
   /**
    * True when any registration of the token holds a constructed instance.
    * Diagnostic helper (cold-start tests): checks WITHOUT resolving, so it
-   * never triggers lazy materialization.
+   * never triggers lazy materialization. A moduleId restricts the check to that owner.
    */
-  isInstantiated(token: Token): boolean {
+  isInstantiated(token: Token, moduleId?: string): boolean {
+    if (moduleId !== undefined) {
+      return this.providers.get(moduleId)?.get(token)?.instance !== undefined;
+    }
     for (const owner of this.exporterIndex.get(token) ?? []) {
       const reg = this.providers.get(owner)?.get(token);
       if (reg && reg.instance !== undefined) return true;
@@ -510,7 +517,12 @@ export class Container {
     return false;
   }
 
-  getProviderScope(token: Token): Scope | undefined {
+  /** Declared/effective scope; a moduleId inspects that exact owner only. */
+  getProviderScope(token: Token, moduleId?: string): Scope | undefined {
+    if (moduleId !== undefined) {
+      const registration = this.providers.get(moduleId)?.get(token);
+      return registration?.effectiveScope ?? registration?.scope;
+    }
     const exporters = this.exporterIndex.get(token);
     if (!exporters) return undefined;
     for (const owner of exporters) {
@@ -714,6 +726,7 @@ export class Container {
     this.exporterIndex.clear();
     this.resolutionStack.clear();
     this.requestInstances.clear();
+    this.requestSeeds.clear();
     this.scopes.clear();
     this.globals.clear();
     this.disposables = [];
@@ -747,6 +760,7 @@ export class Container {
       }
     }
     this.requestInstances.clear();
+    this.requestSeeds.clear();
 
     if (this.root === this) {
       // Drop cached singleton instances (except useValue, which the app owns)
@@ -775,8 +789,14 @@ export class Container {
     this.claimLazyModule(registration.declaringModuleId);
 
     if (registration.useExisting) {
-      // Pass through the original requester to catch alias leaks
-      return this.resolveToken(registration.useExisting, requestingModuleId);
+      this.assertNoSyncCycle(registration);
+      this.resolutionStack.add(registration);
+      try {
+        // Preserve the requester's visibility and alias target's seed/cache semantics.
+        return this.resolveToken(registration.useExisting, requestingModuleId);
+      } finally {
+        this.resolutionStack.delete(registration);
+      }
     }
 
     // Effective scope accounts for request-scope bubbling: a SINGLETON that
@@ -791,9 +811,8 @@ export class Container {
 
     // Request: return cached from this child's requestInstances
     if (scope === Scope.REQUEST) {
-      const cached = this.requestInstances.get(registration.provide) as
-        | { readonly value: T }
-        | undefined;
+      const cached = (this.requestSeeds.get(registration.provide) ??
+        this.requestInstances.get(registration)) as { readonly value: T } | undefined;
       if (cached !== undefined) {
         return cached.value;
       }
@@ -806,14 +825,8 @@ export class Container {
       );
     }
 
-    if (this.resolutionStack.has(registration.provide)) {
-      const chain = [...this.resolutionStack, registration.provide]
-        .map((t) => this.tokenToString(t))
-        .join(' -> ');
-      throw new Error(`Circular dependency detected: ${chain}`);
-    }
-
-    this.resolutionStack.add(registration.provide);
+    this.assertNoSyncCycle(registration);
+    this.resolutionStack.add(registration);
 
     try {
       let instance: T;
@@ -835,14 +848,22 @@ export class Container {
         // child that may have first constructed it.
         if (isDisposable(instance)) this.root.disposables.push(instance);
       } else if (scope === Scope.REQUEST) {
-        this.requestInstances.set(registration.provide, { value: instance });
+        this.requestInstances.set(registration, { value: instance });
         if (isDisposable(instance)) this.disposables.push(instance);
       }
 
       return instance;
     } finally {
-      this.resolutionStack.delete(registration.provide);
+      this.resolutionStack.delete(registration);
     }
+  }
+
+  private assertNoSyncCycle(registration: ProviderRegistration): void {
+    if (!this.resolutionStack.has(registration)) return;
+    const chain = [...this.resolutionStack, registration]
+      .map((entry) => this.tokenToString(entry.provide))
+      .join(' -> ');
+    throw new Error(`Circular dependency detected: ${chain}`);
   }
 
   private resolveClass<T>(target: Type<T>, ownerModuleId: string): T {
@@ -884,8 +905,11 @@ export class Container {
       }
 
       // forwardRef with circular dep — break the cycle with a lazy Proxy
-      if (isForwardRef && this.resolutionStack.has(token)) {
-        return this.createLazyProxy(token, ownerModuleId);
+      if (isForwardRef) {
+        const dependency = this.findRegistration(token, ownerModuleId);
+        if (dependency && this.resolutionStack.has(dependency)) {
+          return this.createLazyProxy(token, ownerModuleId);
+        }
       }
 
       return this.resolve(token, ownerModuleId);
@@ -972,9 +996,8 @@ export class Container {
     if (scope === Scope.SINGLETON && registration.instance) return registration.instance.value;
     if (scope === Scope.REQUEST) {
       // This cache is written only through checked token values or this same registration.
-      const cached = this.requestInstances.get(registration.provide) as
-        | { readonly value: T }
-        | undefined;
+      const cached = (this.requestSeeds.get(registration.provide) ??
+        this.requestInstances.get(registration)) as { readonly value: T } | undefined;
       if (cached) return cached.value;
     }
     const owner = scope === Scope.SINGLETON ? this.root : this;
@@ -988,7 +1011,7 @@ export class Container {
         registration.instance = { value: instance };
         if (isDisposable(instance)) this.root.disposables.push(instance);
       } else if (scope === Scope.REQUEST) {
-        this.requestInstances.set(registration.provide, { value: instance });
+        this.requestInstances.set(registration, { value: instance });
         if (isDisposable(instance)) this.disposables.push(instance);
       }
       return instance;
