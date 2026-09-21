@@ -17,14 +17,20 @@ import { URL_SIGNING_SECRET, resolveSigningSecret } from './signing-secret';
  */
 @Injectable()
 export class SignedUrlGuard implements CanActivate {
+  readonly #secretToken: string | undefined;
+  readonly #env: Record<string, unknown>;
+
   constructor(
-    @Optional() @Inject(URL_SIGNING_SECRET) private readonly secretToken?: string,
-    @Optional() @Inject(CONFIG_ENV) private readonly env: Record<string, unknown> = {},
-  ) {}
+    @Optional() @Inject(URL_SIGNING_SECRET) secretToken?: string,
+    @Optional() @Inject(CONFIG_ENV) env: Record<string, unknown> = {},
+  ) {
+    this.#secretToken = secretToken;
+    this.#env = env;
+  }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
-    const secret = resolveSigningSecret(undefined, this.secretToken, this.env);
+    const secret = resolveSigningSecret(undefined, this.#secretToken, this.#env);
     const valid = await verifySignedUrl(request.url, secret, {
       method: request.method,
       purpose: HTTP_SIGNED_URL_PURPOSE,

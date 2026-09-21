@@ -49,12 +49,20 @@ async function hashLiveBody(request: Request): Promise<string> {
  */
 @Injectable()
 export class SignedInvocationGuard implements CanActivate {
+  readonly #invocationSecret: string | undefined;
+  readonly #urlSecret: string | undefined;
+  readonly #env: Record<string, unknown>;
+
   constructor(
-    @Optional() @Inject(INVOCATION_SIGNING_SECRET) private readonly invocationSecret?: string,
-    @Optional() @Inject(URL_SIGNING_SECRET) private readonly urlSecret?: string,
+    @Optional() @Inject(INVOCATION_SIGNING_SECRET) invocationSecret?: string,
+    @Optional() @Inject(URL_SIGNING_SECRET) urlSecret?: string,
     @Optional() @Inject(NONCE_STORE) private readonly nonceStore?: NonceStore,
-    @Optional() @Inject(CONFIG_ENV) private readonly env: Record<string, unknown> = {},
-  ) {}
+    @Optional() @Inject(CONFIG_ENV) env: Record<string, unknown> = {},
+  ) {
+    this.#invocationSecret = invocationSecret;
+    this.#urlSecret = urlSecret;
+    this.#env = env;
+  }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
@@ -62,7 +70,7 @@ export class SignedInvocationGuard implements CanActivate {
     const token = request.headers.get(INVOCATION_HEADER);
     if (!token) throw new ForbiddenException(INVALID);
 
-    const secret = resolveSigningSecret(this.invocationSecret, this.urlSecret, this.env);
+    const secret = resolveSigningSecret(this.#invocationSecret, this.#urlSecret, this.#env);
 
     // Verifies parse → aud → expiry → signature (constant-time), fail-closed.
     const claim = await verifyInvocation(token, secret);

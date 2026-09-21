@@ -39,13 +39,19 @@ export interface SignedUrlGenerateOptions {
  */
 @Injectable()
 export class UrlGeneratorService {
+  readonly #secretToken: string | undefined;
+  readonly #env: Record<string, unknown>;
+
   private routeMap: Map<string, RouteDescription> | null = null;
 
   constructor(
     @Inject(RouteManager) private readonly routeManager: RouteManager,
-    @Optional() @Inject(URL_SIGNING_SECRET) private readonly secretToken?: string,
-    @Optional() @Inject(CONFIG_ENV) private readonly env: Record<string, unknown> = {},
-  ) {}
+    @Optional() @Inject(URL_SIGNING_SECRET) secretToken?: string,
+    @Optional() @Inject(CONFIG_ENV) env: Record<string, unknown> = {},
+  ) {
+    this.#secretToken = secretToken;
+    this.#env = env;
+  }
 
   /**
    * Build the path for a named route, filling `:param` placeholders from
@@ -106,7 +112,7 @@ export class UrlGeneratorService {
     if (method === 'ALL') {
       throw new Error(`signedUrl('${String(name)}') requires options.method for an @All() route`);
     }
-    const secret = resolveSigningSecret(options.secret, this.secretToken, this.env);
+    const secret = resolveSigningSecret(options.secret, this.#secretToken, this.#env);
     return signUrl(url, secret, {
       expiresIn: options.expiresIn,
       method,

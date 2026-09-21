@@ -159,3 +159,7 @@ The verification key source is injectable (`keySet`), so tests self-host a JWKS 
 Use the permission guards and decorators from `@velajs/authz/vela`. `CurrentIdentity` supplies common authorization state. `CurrentAccessIdentity` remains the provider-specific payload accessor, including `mapClaims` enrichment, and is tied to the exact current core identity so clearing, replacement and expiry invalidate it. Read expiry and tenant from the canonical top-level identity. For custom tenant field names, configure `tenantClaim` instead of assigning `mapClaims().tenantId`.
 
 Use the issuer-qualified principal for authorization. WebSocket upgrade code must read core's trusted identity and require both tenant and finite expiry before allocating a socket.
+
+## Authentication composition
+
+Admitted tenant enrichment preserves CurrentAccessIdentity. That decorator returns verified provider payload, while core CurrentIdentity carries the admitted tenant. Explicitly bound custom HTTP contexts consume existing verified payload; they do not reverify tokens or clear authority across parallel resolver fields.

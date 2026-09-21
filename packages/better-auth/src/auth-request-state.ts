@@ -1,15 +1,15 @@
 import {
   clearTrustedRequestIdentity,
-  getTrustedRequestIdentity,
+  createTrustedRequestIdentityStore,
+  getTrustedContextRequest,
   setTrustedRequestIdentity,
   type ExecutionContext,
-  type TrustedRequestIdentity,
 } from '@velajs/vela';
 import type { SessionData } from './session-data';
 
 // This map stores provider payload, never a second authentication authority.
 // A clear, expiry, or identity replacement makes the payload unreachable.
-const sessions = new WeakMap<TrustedRequestIdentity, SessionData>();
+const sessions = createTrustedRequestIdentityStore<SessionData>();
 
 export function beginAuthRequest(context: ExecutionContext): void {
   clearTrustedRequestIdentity(context.getRequest());
@@ -27,12 +27,10 @@ export function authenticateRequest(
     roles: data.roles,
     ...(data.tenantId === undefined ? {} : { tenantId: data.tenantId }),
   });
-  const identity = getTrustedRequestIdentity(request);
-  if (identity) sessions.set(identity, data);
+  sessions.set(request, data);
 }
 
 export function getAuthRequestState(context: ExecutionContext): SessionData | undefined {
-  if (context.getType() !== 'http') return undefined;
-  const identity = getTrustedRequestIdentity(context.getRequest());
-  return identity && sessions.get(identity);
+  const request = getTrustedContextRequest(context);
+  return request ? sessions.get(request) : undefined;
 }

@@ -43,6 +43,9 @@
       "import": "./dist/testing/index.js"
     }
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsdown",
     "test": "vitest run",
@@ -61,6 +64,7 @@
     "@arethetypeswrong/cli": "catalog:",
     "@changesets/cli": "catalog:",
     "@swc/core": "catalog:",
+    "@velajs/tenant": "workspace:*",
     "@velajs/testing": "workspace:*",
     "@velajs/vela": "workspace:*",
     "better-auth": "^1.6.20",
@@ -81,8 +85,5 @@
   },
   "engines": {
     "node": ">=24"
-  },
-  "publishConfig": {
-    "access": "public"
   }
 }

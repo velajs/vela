@@ -1,10 +1,11 @@
-import { attachAccessPayload } from './access-request-state';
+import { attachAccessPayload, getAccessRequestIdentity } from './access-request-state';
 import {
   Inject,
   Injectable,
   UnauthorizedException,
   clearTrustedRequestIdentity,
   setTrustedRequestIdentity,
+  getTrustedContextRequest,
   type CanActivate,
   type ExecutionContext,
 } from '@velajs/vela';
@@ -26,8 +27,14 @@ export class CloudflareAccessGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     // Access is an HTTP verifier; established frames must use the authenticated
     // socket attachment through authz, never re-run token extraction.
-    if (context.getType() !== 'http')
+    if (context.getType() !== 'http') {
+      if (
+        getTrustedContextRequest(context) &&
+        (getAccessRequestIdentity(context) || this.options.mode === 'optional')
+      )
+        return true;
       throw new UnauthorizedException('Access requires HTTP authentication');
+    }
     const request = context.getRequest();
     clearTrustedRequestIdentity(request);
     try {

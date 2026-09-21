@@ -147,13 +147,21 @@ async function readResponseText(response: Response, signal: AbortSignal | undefi
  */
 @Injectable()
 export class InternalDispatcher {
+  readonly #invocationSecret: string | undefined;
+  readonly #urlSecret: string | undefined;
+  readonly #env: Record<string, unknown>;
+
   constructor(
     @Inject(UrlGeneratorService) private readonly urls: UrlGeneratorService,
     @Inject(Container) private readonly container: Container,
-    @Optional() @Inject(INVOCATION_SIGNING_SECRET) private readonly invocationSecret?: string,
-    @Optional() @Inject(URL_SIGNING_SECRET) private readonly urlSecret?: string,
-    @Optional() @Inject(CONFIG_ENV) private readonly env: Record<string, unknown> = {},
-  ) {}
+    @Optional() @Inject(INVOCATION_SIGNING_SECRET) invocationSecret?: string,
+    @Optional() @Inject(URL_SIGNING_SECRET) urlSecret?: string,
+    @Optional() @Inject(CONFIG_ENV) env: Record<string, unknown> = {},
+  ) {
+    this.#invocationSecret = invocationSecret;
+    this.#urlSecret = urlSecret;
+    this.#env = env;
+  }
 
   /**
    * Sign and dispatch an internal invocation, returning the parsed JSON body.
@@ -188,7 +196,7 @@ export class InternalDispatcher {
     const url = new URL(requestedPath, INVOCATION_ORIGIN);
     const path = `${url.pathname}${url.search}`;
 
-    const secret = resolveSigningSecret(this.invocationSecret, this.urlSecret, this.env);
+    const secret = resolveSigningSecret(this.#invocationSecret, this.#urlSecret, this.#env);
 
     const method = (init.method ?? 'POST').toUpperCase();
     const hasBody = init.body !== undefined;

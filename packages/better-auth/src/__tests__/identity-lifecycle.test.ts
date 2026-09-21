@@ -8,13 +8,22 @@ import {
   clearTrustedRequestIdentity,
   getTrustedRequestIdentity,
   setTrustedRequestIdentity,
+  bindTrustedRequestContext,
+  buildEntrypointExecutionContext,
   type CanActivate,
   type ExecutionContext,
 } from '@velajs/vela';
 import { AuthzModule, PermissionGuard, RequirePermission } from '@velajs/authz/vela';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AuthGuard, BetterAuthModule, CurrentUser, OptionalAuth, Public } from '../index';
-import { getAuthRequestState } from '../auth-request-state';
+import {
+  AuthGuard,
+  BetterAuthModule,
+  BetterAuthService,
+  CurrentUser,
+  OptionalAuth,
+  Public,
+} from '../index';
+import { authenticateRequest, getAuthRequestState } from '../auth-request-state';
 import { validateSessionData } from '../session-data';
 import { sessionFixture } from './fixtures';
 
@@ -65,6 +74,36 @@ describe('validated Better Auth boundary', () => {
 });
 
 describe('canonical identity lifecycle', () => {
+  it('authorizes bound custom contexts without reauthentication and observes revocation', async () => {
+    class Resolver {}
+    const request = new Request('https://test.invalid/graphql');
+    const context = {
+      ...buildEntrypointExecutionContext('graphql', Resolver, 'read', {}),
+      getRequest: () => request,
+    };
+    const getSession = vi.fn(async () => sessionFixture());
+    const guard = new AuthGuard(
+      new BetterAuthService(() => ({
+        api: { getSession },
+        handler: async () => new Response(),
+      })),
+      {},
+    );
+    const data = validateSessionData(sessionFixture());
+    if (!data) throw new Error('Expected valid fixture');
+    authenticateRequest(context, data, 'accounts');
+    await expect(guard.canActivate(context)).rejects.toThrow('Authentication required');
+    bindTrustedRequestContext(context, request);
+    await expect(
+      Promise.all([guard.canActivate(context), guard.canActivate(context)]),
+    ).resolves.toEqual([true, true]);
+    expect(getSession).not.toHaveBeenCalled();
+    expect(getAuthRequestState(context)?.user.id).toBe('u-1');
+    clearTrustedRequestIdentity(request);
+    await expect(guard.canActivate(context)).rejects.toThrow('Authentication required');
+    expect(getAuthRequestState(context)).toBeUndefined();
+  });
+
   it('invalidates provider payload after replacement and clearing', async () => {
     const checks: boolean[] = [];
     class ReplaceIdentity implements CanActivate {

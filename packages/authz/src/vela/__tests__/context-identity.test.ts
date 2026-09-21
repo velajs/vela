@@ -1,4 +1,12 @@
-import { Container, defineProvider, type ExecutionContext } from '@velajs/vela';
+import {
+  Container,
+  defineProvider,
+  bindTrustedRequestContext,
+  getTrustedRequestIdentity,
+  setTrustedRequestIdentity,
+  clearTrustedRequestIdentity,
+  type ExecutionContext,
+} from '@velajs/vela';
 import { createAuthz } from '../../authz';
 import { AUTHZ } from '../tokens';
 import { PermissionGuard } from '../permission.guard';
@@ -50,6 +58,39 @@ const attachment = () => ({
   principal: { issuer: 'issuer', subject: 'user', principalType: 'user' },
   tenantId: 'tenant',
   expiresAtMs: Date.now() + 60_000,
+});
+
+it('requires explicit HTTP backing for custom contexts and observes identity invalidation', async () => {
+  const request = new Request('https://test.invalid');
+  setTrustedRequestIdentity(request, {
+    principal: { issuer: 'accounts', subject: 'alice', principalType: 'user' },
+  });
+  const container = new Container();
+  let replace = false;
+  container.register(
+    defineProvider(AUTHZ, {
+      useValue: createAuthz({
+        resolver: {
+          grants: async () => {
+            await Promise.resolve();
+            if (replace) setTrustedRequestIdentity(request, getTrustedRequestIdentity(request)!);
+            return new Set(['read']);
+          },
+        },
+      }),
+    }),
+  );
+  const ctx = { ...context({}, container), getType: () => 'graphql', getRequest: () => request };
+  RequirePermission(['read'])(ctx.getClass());
+  expect(getContextIdentity(ctx)).toBeUndefined();
+  await expect(new PermissionGuard().canActivate(ctx)).rejects.toThrow('Access denied');
+  bindTrustedRequestContext(ctx, request);
+  expect(getContextIdentity(ctx)?.principal.subject).toBe('alice');
+  await expect(new PermissionGuard().canActivate(ctx)).resolves.toBe(true);
+  replace = true;
+  await expect(new PermissionGuard().canActivate(ctx)).rejects.toThrow('Access denied');
+  clearTrustedRequestIdentity(request);
+  expect(getContextIdentity(ctx)).toBeUndefined();
 });
 
 describe('WebSocket authorization isolation', () => {

@@ -1,5 +1,6 @@
 import {
   getTrustedRequestIdentity,
+  getTrustedContextRequest,
   type ExecutionContext,
   type TrustedRequestIdentity,
 } from '@velajs/vela';
@@ -23,7 +24,8 @@ function nonEmptyString(value: unknown): value is string {
  * a resolver can look up grants using the verified principal and tenant.
  */
 export function getContextIdentity(context: ExecutionContext): TrustedRequestIdentity | undefined {
-  if (context.getType() === 'http') return getTrustedRequestIdentity(context.getRequest());
+  const request = getTrustedContextRequest(context);
+  if (request) return getTrustedRequestIdentity(request);
   if (context.getType() !== 'ws') return undefined;
   try {
     // WsClient is framework-owned and may implement data as a class getter.

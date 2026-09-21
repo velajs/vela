@@ -95,3 +95,7 @@ without superuser/BYPASSRLS; keep administrative credentials separate.
 Do not use KV, background polling, replica reads, or Hyperdrive query caches as
 admission authority. Native bindings, SQL migrations, and membership stores are
 application dependencies, never global framework state.
+
+## Authentication composition
+
+Run AuthGuard or CloudflareAccessGuard before TenantGuard, then permission guards and throttling. Admission preserves authentication provider payload while publishing a new immutable tenant-bound identity. Clearing, replacement, or expiry invalidates both identity payload and the admitted request reader. For concurrent HTTP-backed resolver fields, admit the tenant once at the outer HTTP boundary and consume the request reader in each field.

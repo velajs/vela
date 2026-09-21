@@ -1,5 +1,6 @@
 import {
   ForbiddenException,
+  getTrustedContextRequest,
   Reflector,
   type CanActivate,
   type ExecutionContext,
@@ -37,7 +38,7 @@ export class PermissionGuard implements CanActivate {
     const current = getContextIdentity(context);
     if (
       !current ||
-      (context.getType() === 'http' && current !== trusted) ||
+      (getTrustedContextRequest(context) !== undefined && current !== trusted) ||
       current.principal.issuer !== trusted.principal.issuer ||
       current.principal.subject !== trusted.principal.subject ||
       current.principal.principalType !== trusted.principal.principalType ||

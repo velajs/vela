@@ -168,10 +168,15 @@ export {
   clearTrustedRequestIdentity,
   getTrustedRequestIdentity,
   setTrustedRequestIdentity,
+  setTrustedRequestTenant,
+  createTrustedRequestIdentityStore,
+  bindTrustedRequestContext,
+  getTrustedContextRequest,
 } from './http/trusted-request-identity';
 export type {
   TrustedRequestIdentity,
   TrustedRequestPrincipal,
+  TrustedRequestIdentityStore,
 } from './http/trusted-request-identity';
 
 // Explicit request-child container access (for programmatic-route authors,
@@ -201,7 +206,12 @@ export {
 } from './config/index';
 
 // Browser/HTTP hardening
-export { SecurityModule, SECURITY_OPTIONS, buildSecurityMiddleware } from './security/index';
+export {
+  SecurityModule,
+  SECURITY_OPTIONS,
+  buildSecurityMiddleware,
+  Secret,
+} from './security/index';
 export type {
   SecurityModuleOptions,
   SecurityCorsOptions,
