@@ -28,7 +28,7 @@ const warnedMissingLive = new Set<string>();
 export const crudLiveTag = (tableName: string, database?: string): string =>
   database === undefined
     ? `crud:${tableName}`
-    : `crud:database:${JSON.stringify([database, tableName])}`;
+    : `crud-database:${JSON.stringify([database, tableName])}`;
 
 export type LiveStamper = (c: Context, result: EngineResult, method: string) => Promise<void>;
 

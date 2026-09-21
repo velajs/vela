@@ -291,58 +291,63 @@ export function compileResource(name: string, config: RuntimeResourceConfig): Cr
     createSchema,
     updateSchema,
     async execute(verb: CrudEndpointName, req: EngineRequest): Promise<EngineResult> {
-      try {
-        const operation = await prepareOperation(resource, req, verb);
-        const scoped = operation.resource;
-        req = operation.request;
-        requireTenantContext(scoped, req);
-        const policies = resource.model.policies;
-        if (
-          verb === 'aggregate' &&
-          policies?.operation === undefined &&
-          config.authorization === undefined
-        ) {
-          throw new ForbiddenException(
-            'Aggregate requires an explicit operation authorization policy',
-          );
-        }
-        if (!(await canPerformOperation(buildPolicyContext(req), verb, policies))) {
-          throw new ForbiddenException(`Operation '${verb}' is not permitted`);
-        }
-        switch (verb) {
-          case 'create':
-            return await executeCreate(scoped, req);
-          case 'read':
-            return await executeRead(scoped, req);
-          case 'update':
-            return await executeUpdate(scoped, req);
-          case 'delete':
-            return await executeDelete(scoped, req);
-          case 'list':
-            return await executeList(scoped, req);
-          default: {
-            const executor = EXTENDED_EXECUTORS[verb];
-            if (!executor) {
-              throw new ConfigurationException(
-                `Verb '${verb}' is not implemented by the native engine yet`,
-              );
-            }
-            return await executor(scoped, req);
+      const run = async (): Promise<EngineResult> => {
+        try {
+          const operation = await prepareOperation(resource, req, verb);
+          const scoped = operation.resource;
+          req = operation.request;
+          requireTenantContext(scoped, req);
+          const policies = resource.model.policies;
+          if (
+            verb === 'aggregate' &&
+            policies?.operation === undefined &&
+            config.authorization === undefined
+          ) {
+            throw new ForbiddenException(
+              'Aggregate requires an explicit operation authorization policy',
+            );
           }
+          if (!(await canPerformOperation(buildPolicyContext(req), verb, policies))) {
+            throw new ForbiddenException(`Operation '${verb}' is not permitted`);
+          }
+          switch (verb) {
+            case 'create':
+              return await executeCreate(scoped, req);
+            case 'read':
+              return await executeRead(scoped, req);
+            case 'update':
+              return await executeUpdate(scoped, req);
+            case 'delete':
+              return await executeDelete(scoped, req);
+            case 'list':
+              return await executeList(scoped, req);
+            default: {
+              const executor = EXTENDED_EXECUTORS[verb];
+              if (!executor) {
+                throw new ConfigurationException(
+                  `Verb '${verb}' is not implemented by the native engine yet`,
+                );
+              }
+              return await executor(scoped, req);
+            }
+          }
+        } catch (error) {
+          if (req.transaction instanceof CrudTransactionScope)
+            CrudTransactionScope.fail(req.transaction, error);
+          // With a CUSTOM envelope the engine owns error formatting (the
+          // envelope's error() shapes the body). Without one, rethrow so the
+          // CrudException renders natively through Vela's exception pipeline —
+          // its getResponse() already emits the canonical default envelope.
+          if (config.envelope !== undefined) {
+            const { structured, status } = resolveStructuredError(error, config.errorMappers);
+            return { status, body: config.envelope.error(structured) };
+          }
+          throw error;
         }
-      } catch (error) {
-        if (req.transaction instanceof CrudTransactionScope)
-          CrudTransactionScope.fail(req.transaction, error);
-        // With a CUSTOM envelope the engine owns error formatting (the
-        // envelope's error() shapes the body). Without one, rethrow so the
-        // CrudException renders natively through Vela's exception pipeline —
-        // its getResponse() already emits the canonical default envelope.
-        if (config.envelope !== undefined) {
-          const { structured, status } = resolveStructuredError(error, config.errorMappers);
-          return { status, body: config.envelope.error(structured) };
-        }
-        throw error;
-      }
+      };
+      return req.transaction instanceof CrudTransactionScope
+        ? CrudTransactionScope.execute(req.transaction, run)
+        : run();
     },
   };
   return resource;

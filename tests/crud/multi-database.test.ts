@@ -61,7 +61,7 @@ async function appFor(
 ) {
   @Module({
     imports: [
-      CrudModule.forRootAsync({ useFactory: async () => ({ databases }) }),
+      CrudModule.forRootAsync({ inject: [], useFactory: async () => ({ databases }) }),
       CrudModule.forFeature(
         [
           defineCrudFeature({ path: '/main/items', model: item }),
@@ -83,6 +83,10 @@ describe('named databases', () => {
     const b = await appFor(create());
     try {
       expect(crudResourceToken('item', 'main')).not.toBe(crudResourceToken('item', 'other'));
+      expect(crudResourceToken('item', 'main')).not.toBe(
+        crudResourceToken('database:["main","item"]'),
+      );
+      expect(crudResourceToken('item', 'main')).not.toBe(crudResourceToken('["main","item"]'));
       expect(crudResourceToken('item', 'main')).toBe(crudResourceToken('item', 'main'));
       expect(
         (await a.getHonoApp().request('/main/items', json({ id: '1', title: 'main-A' }))).status,
@@ -426,6 +430,124 @@ it('maps multiple SQLite handles and a memory adapter simultaneously', async () 
   } finally {
     first.close();
     second.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+it.each([false, true])(
+  'drains an accepted native write before rollback (callback throws: %s)',
+  async (callbackThrows) => {
+    const directory = mkdtempSync(join(tmpdir(), 'vela-multidb-drain-'));
+    const client = createClient({ url: `file:${join(directory, 'db.sqlite')}` });
+    try {
+      await client.execute('CREATE TABLE items (id text PRIMARY KEY, title text NOT NULL)');
+      const table = sqliteTable('items', { id: text().primaryKey(), title: text().notNull() });
+      const adapter = drizzleAdapter({ db: drizzle(client), table });
+      const entered = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      const callbackDone = Promise.withResolvers<void>();
+      let hookFinished = false;
+      let transactionFinished = false;
+      let operation: Promise<unknown> | undefined;
+      const events: string[] = [];
+      const resource = defineResource('item', {
+        model: item,
+        adapter,
+        afterCommit: () => {
+          events.push('commit');
+        },
+        hooks: {
+          afterCreate: async () => {
+            entered.resolve();
+            await release.promise;
+            hookFinished = true;
+          },
+        },
+      });
+      const result = crudTransaction(adapter, {}, async (transaction) => {
+        operation = resource.execute('create', {
+          transaction,
+          body: { id: 'late', title: 'write' },
+        });
+        void operation.catch(() => {});
+        await entered.promise;
+        callbackDone.resolve();
+        if (callbackThrows) throw new Error('primary callback error');
+      }).finally(() => {
+        transactionFinished = true;
+      });
+      void result.catch(() => {});
+      await callbackDone.promise;
+      await Promise.resolve();
+      expect(transactionFinished).toBe(false);
+      expect(hookFinished).toBe(false);
+      release.resolve();
+      await expect(result).rejects.toThrow(
+        callbackThrows ? 'primary callback error' : 'rolled back',
+      );
+      await operation;
+      expect(hookFinished).toBe(true);
+      expect((await client.execute('SELECT * FROM items')).rows).toEqual([]);
+      expect(events).toEqual([]);
+    } finally {
+      client.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  },
+);
+
+it('commits and rolls back two SQLite resources on one native owner', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'vela-multidb-sql-'));
+  const client = createClient({ url: `file:${join(directory, 'db.sqlite')}` });
+  try {
+    await client.execute('CREATE TABLE items (id text PRIMARY KEY, title text NOT NULL)');
+    await client.execute('CREATE TABLE entries (id text PRIMARY KEY, title text NOT NULL)');
+    const db = drizzle(client);
+    const adapter = drizzleAdapter({
+      db,
+      table: sqliteTable('items', { id: text().primaryKey(), title: text().notNull() }),
+    });
+    const otherAdapter = drizzleAdapter({
+      db,
+      table: sqliteTable('entries', { id: text().primaryKey(), title: text().notNull() }),
+    });
+    const events: string[] = [];
+    const first = defineResource('item', {
+      model: item,
+      adapter,
+      afterCommit: async () => {
+        expect((await client.execute('SELECT * FROM entries')).rows).toHaveLength(1);
+        events.push('first');
+        throw new Error('delivery failure');
+      },
+      onAfterCommitError: () => {
+        events.push('reported');
+      },
+    });
+    const second = defineResource('entry', {
+      model: item2,
+      adapter: otherAdapter,
+      afterCommit: () => {
+        events.push('second');
+      },
+    });
+    const write = async (transaction: CrudTransactionScope, id: string) => {
+      await first.execute('create', { transaction, body: { id, title: 'first' } });
+      await second.execute('create', { transaction, body: { id, title: 'second' } });
+    };
+    await expect(
+      crudTransaction(adapter, {}, async (transaction) => {
+        await write(transaction, 'rollback');
+        throw new Error('abort');
+      }),
+    ).rejects.toThrow('abort');
+    expect((await client.execute('SELECT * FROM items')).rows).toHaveLength(0);
+    expect((await client.execute('SELECT * FROM entries')).rows).toHaveLength(0);
+    expect(events).toEqual([]);
+    await crudTransaction(adapter, {}, (transaction) => write(transaction, 'commit'));
+    expect(events).toEqual(['first', 'reported', 'second']);
+  } finally {
+    client.close();
     rmSync(directory, { recursive: true, force: true });
   }
 });

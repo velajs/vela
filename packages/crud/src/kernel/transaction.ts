@@ -12,6 +12,8 @@ export class CrudTransactionScope {
   readonly #scope: AdapterScope;
   readonly #tenantId: string | undefined;
   readonly #deliveries: Array<() => Promise<void>> = [];
+  readonly #pending = new Set<Promise<unknown>>();
+  #accepting = true;
   #active = true;
   #failure: unknown;
   #failed = false;
@@ -61,14 +63,24 @@ export class CrudTransactionScope {
     }
   }
 
-  #finish(): void {
-    if (this.#busy) this.#fail(new TypeError('Unawaited CRUD transaction operation'));
+  async #drain(): Promise<void> {
+    this.#accepting = false;
+    if (this.#pending.size) {
+      this.#fail(new TypeError('Unawaited CRUD transaction operation'));
+      await Promise.allSettled(this.#pending);
+    }
+  }
+
+  async #finish(): Promise<void> {
+    await this.#drain();
     this.#active = false;
     if (this.#failed) throw new Error('CRUD transaction rolled back', { cause: this.#failure });
   }
 
   #close(): void {
+    this.#accepting = false;
     this.#active = false;
+    this.#deliveries.length = 0;
   }
 
   async #deliver(): Promise<void> {
@@ -80,6 +92,29 @@ export class CrudTransactionScope {
         console.error('[crud] committed write delivery failed', error);
       }
     }
+  }
+
+  static execute<T>(scope: CrudTransactionScope, work: () => Promise<T>): Promise<T> {
+    if (!scope.#active || !scope.#accepting)
+      return Promise.reject(new TypeError('Expired CRUD transaction'));
+    if (scope.#pending.size) {
+      const error = new TypeError('Await each operation in a CRUD transaction');
+      scope.#fail(error);
+      return Promise.reject(error);
+    }
+    const pending = work();
+    scope.#pending.add(pending);
+    // Observe without creating an unhandled rejection from a detached finally().
+    void pending.then(
+      () => {
+        scope.#pending.delete(pending);
+      },
+      (error: unknown) => {
+        scope.#fail(error);
+        scope.#pending.delete(pending);
+      },
+    );
+    return pending;
   }
 
   static assert(
@@ -118,14 +153,21 @@ export class CrudTransactionScope {
     try {
       const result = await runtime.transaction(async (scope) => {
         transaction = new CrudTransactionScope(owner, scope, context);
-        const result = await work(transaction);
-        transaction.#finish();
-        return result;
+        try {
+          const result = await work(transaction);
+          await transaction.#finish();
+          return result;
+        } catch (error) {
+          transaction.#fail(error);
+          await transaction.#drain();
+          transaction.#close();
+          throw error;
+        }
       }, context);
       if (transaction) await transaction.#deliver();
       return result;
     } finally {
-      transaction && transaction.#close();
+      if (transaction) transaction.#close();
     }
   }
 }

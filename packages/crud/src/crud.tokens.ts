@@ -29,6 +29,7 @@ export const CRUD_DEFAULT_AUDIT_STORE: InjectionToken<AuditStore | undefined> = 
 declare global {
   // The registry contains only tokens created by crudResourceToken. Declaring
   // its actual global slot keeps HMR identity without asserting unknown data.
+  var __velajsCrudDatabaseResourceTokensV1: Map<string, InjectionToken<CrudResource>> | undefined;
   var __velajsCrudResourceTokensV1: Map<string, InjectionToken<CrudResource>> | undefined;
 }
 
@@ -38,8 +39,11 @@ function tokenStore(): Map<string, InjectionToken<CrudResource>> {
 
 /** The compiled `CrudResource` for a named resource (forFeature registers it). */
 export function crudResourceToken(name: string, database?: string): InjectionToken<CrudResource> {
-  const store = tokenStore();
-  const key = database === undefined ? name : `database:${JSON.stringify([database, name])}`;
+  const store =
+    database === undefined
+      ? tokenStore()
+      : (globalThis.__velajsCrudDatabaseResourceTokensV1 ??= new Map());
+  const key = database === undefined ? name : JSON.stringify([database, name]);
   let token = store.get(key);
   if (!token) {
     token = moduleToken<CrudResource>(`crud:resource:${key}`);

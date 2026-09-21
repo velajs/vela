@@ -4,14 +4,22 @@ import { bindAdapter, type CrudAdapter } from '@velajs/crud/adapter';
 
 /** One object's SQLite storage is the complete transaction boundary. */
 export function durableObjectSqliteAdapter(
-  options: Omit<DrizzleAdapterConfig, 'db' | 'driver' | 'dialect' | 'onOpenTransaction'> & {
+  options: Omit<
+    DrizzleAdapterConfig,
+    'db' | 'driver' | 'dialect' | 'onOpenTransaction' | 'transactionOwner'
+  > & {
     storage: DurableObjectStorage;
   },
 ): CrudAdapter {
   const { storage, ...config } = options;
   const db = drizzle(storage);
-  const base = drizzleAdapter({ ...config, db, dialect: 'sqlite' }).runtime;
+  const base = drizzleAdapter({
+    ...config,
+    db,
+    dialect: 'sqlite',
+    transactionOwner: storage,
+  }).runtime;
   const transaction: typeof base.transaction = (work) =>
-    storage.transaction(() => work({ tx: db }));
+    storage.transaction(() => base.requestScope(work));
   return bindAdapter({ ...base, requestScope: transaction, transaction });
 }

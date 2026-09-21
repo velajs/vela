@@ -104,6 +104,7 @@ class OwnedDrizzleScope implements AdapterScope {
   constructor(owner: object, tx: unknown) {
     this.#owner = owner;
     this.tx = tx;
+    Object.freeze(this);
   }
 
   database(owner: object, fallback?: DrizzleDatabase): DrizzleDatabase {
