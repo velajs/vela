@@ -63,6 +63,12 @@ with Zod 4, and runs the approval/retry/replay example. This coverage does not
 depend on the API starter importing workflow. For a prepared archive manifest,
 run it directly with `node scripts/workflow-consumer.mjs /absolute/artifact/path`.
 
+When mail is present, a separate consumer installs its archive without Vela and
+checks the transport/catcher/testing subpaths, then installs Vela to check the
+main entry, injection types, queue delivery, and inbound scope disposal. This
+coverage runs even though mail is not an API starter dependency. It can also be
+run directly with `node scripts/mail-consumer.mjs /absolute/path/to/artifacts`.
+
 Artifacts live in `.artifacts/release/`. Keep this exact directory
 once publishing begins: rebuilding a partial release changes archive integrity
 and intentionally blocks an ambiguous retry.

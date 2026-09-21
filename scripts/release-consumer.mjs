@@ -7,6 +7,8 @@ import { verifyAiPackage } from './ai-consumer.mjs';
 import { verifyNewProject } from './cli-consumer.mjs';
 import { verifyWorkflowPackage } from './workflow-consumer.mjs';
 
+import { verifyMailPackage } from './mail-consumer.mjs';
+
 const root = new URL('../', import.meta.url);
 const artifactDir = resolve(process.argv[2] ?? '.artifacts/release');
 const artifacts = JSON.parse(await readFile(join(artifactDir, 'manifest.json'), 'utf8'));
@@ -78,6 +80,8 @@ const aiPackage = tarballs['@velajs/ai']
 const workflowConsumer = tarballs['@velajs/workflow']
   ? await verifyWorkflowPackage(tarballs)
   : undefined;
+
+const mailPackage = tarballs['@velajs/mail'] ? await verifyMailPackage(tarballs) : undefined;
 await writeFile(
   join(artifactDir, 'consumer.json'),
   JSON.stringify(
@@ -88,6 +92,8 @@ await writeFile(
       aiPackage,
 
       workflowConsumer,
+
+      mailPackage,
       manifestIntegrity: `sha512-${createHash('sha512')
         .update(await readFile(join(artifactDir, 'manifest.json')))
         .digest('base64')}`,
