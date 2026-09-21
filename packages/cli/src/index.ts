@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { Builtins, Cli } from 'clipanion';
+import manifest from '../package.json' with { type: 'json' };
 import {
   EntrypointListCommand,
   ModuleGraphCommand,
@@ -10,15 +11,17 @@ import { McpServeCommand } from './commands/mcp.command.js';
 import { SeedCommand } from './commands/seed.command.js';
 import { StudioCommand } from './commands/studio.command.js';
 import { ClientGenerateCommand } from './commands/client.command.js';
+import { NewCommand } from './commands/new.command.js';
 
 const cli = new Cli({
   binaryName: 'vela',
   binaryLabel: 'Vela CLI',
-  binaryVersion: '0.2.0',
+  binaryVersion: manifest.version,
 });
 
 cli.register(Builtins.HelpCommand);
 cli.register(Builtins.VersionCommand);
+cli.register(NewCommand);
 cli.register(SeedCommand);
 cli.register(RouteListCommand);
 cli.register(ModuleGraphCommand);
@@ -31,6 +34,7 @@ cli.register(ClientGenerateCommand);
 void cli.runExit(process.argv.slice(2));
 
 export { SeedCommand } from './commands/seed.command.js';
+export { NewCommand } from './commands/new.command.js';
 export {
   EntrypointListCommand,
   ModuleGraphCommand,

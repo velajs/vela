@@ -45,6 +45,11 @@ Packing converts workspace/catalog ranges to public versions, rejects local
 runtime dependency paths, and records a SHA-512 for each archive. The consumer
 check installs the tarballs with npm outside the workspace, builds and typechecks
 the complete starter, checks client generation, and bundles its Worker.
+When the release includes the CLI, it also runs the installed packed `vela new`
+outside the workspace, installs the generated project's published dependencies
+with pnpm, checks types and builds, and verifies HTTP, constructor injection,
+and source rebuilds under local Wrangler. CLI argument and destination failure
+cases run against that same installed archive.
 
 Artifacts live in `.artifacts/release/`. Keep this exact directory
 once publishing begins: rebuilding a partial release changes archive integrity

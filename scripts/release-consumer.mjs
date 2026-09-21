@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { cp, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { verifyNewProject } from './cli-consumer.mjs';
 
 const root = new URL('../', import.meta.url);
 const artifactDir = resolve(process.argv[2] ?? '.artifacts/release');
@@ -66,12 +67,16 @@ run('npm', ['run', 'build']);
 run('npm', ['run', 'typecheck']);
 run('npm', ['run', 'client:check']);
 run('npx', ['--no-install', 'wrangler', 'deploy', '--dry-run', '--outdir', 'worker-bundle']);
+const generatedProject = tarballs['@velajs/cli']
+  ? await verifyNewProject(join(consumer, 'node_modules/@velajs/cli/dist/index.js'))
+  : undefined;
 await writeFile(
   join(artifactDir, 'consumer.json'),
   JSON.stringify(
     {
       path: consumer,
       status: 'passed',
+      generatedProject,
       manifestIntegrity: `sha512-${createHash('sha512')
         .update(await readFile(join(artifactDir, 'manifest.json')))
         .digest('base64')}`,

@@ -14,6 +14,7 @@ pnpm add -D @velajs/cli
 
 | Command | What it does |
 | --- | --- |
+| `vela new my-api` | Create a minimal Workers project with a module, controller, injected service, and a working local development setup. |
 | `vela db seed` | Build the app and run all `@Seeder()` classes in order. |
 | `vela route list` | HTTP route table: framework-composed controller routes (`Controller#handler`, full paths incl. prefix/version) plus `(mounted)` extras (CRUD/contributed, doc UIs). |
 | `vela module graph` | Module graph: imports tree with `global`/`lazy` flags and provider counts (`--json` for the raw graph). |
@@ -23,6 +24,34 @@ pnpm add -D @velajs/cli
 | `vela mcp serve` | Run a Model Context Protocol stdio server exposing the introspection above as read-only tools (`route_list`, `module_graph`, `entrypoint_list`, `openapi_dump`, `token_describe`) plus a `vela://openapi` resource — for AI agents. |
 
 All introspection commands take `--config <path>`; the four listing/dump commands also take `--json`.
+
+### Create a project
+
+Requires Node.js 24+ and pnpm 11.11.0:
+
+```sh
+pnpm dlx @velajs/cli@latest new my-api
+cd my-api
+pnpm install
+pnpm typecheck
+pnpm build
+pnpm dev
+```
+
+Request `http://localhost:8787` to receive `{"message":"Hello from Vela!"}`.
+The greeting comes from a constructor-injected service. SWC emits decorator
+metadata, and Wrangler rebuilds source changes during local development.
+The generated application uses published npm dependencies and requires no
+Cloudflare login, authentication integration, D1, Studio, or live queries.
+
+With an installed CLI, use `vela new my-api`. Names start with a lowercase letter
+and contain lowercase letters, digits, or single hyphens (at most 63 characters).
+Paths and reserved device names are rejected. Existing empty directories are
+accepted; nonempty directories, files, and symbolic links are rejected without
+overwriting them. Creation does not install dependencies or initialize Git.
+
+See the [project creation guide](https://github.com/velajs/vela/blob/main/docs/getting-started.md).
+Module, controller, service, and resource generators are not included yet.
 
 ### MCP server
 

@@ -7,10 +7,19 @@ the running API; the live subsystem owns subscriptions, deltas, and reconnects.
 ## Getting started
 
 ```sh
-pnpm add @velajs/vela @velajs/cloudflare
+pnpm dlx @velajs/cli@latest new my-api
+cd my-api
+pnpm install
+pnpm dev
 ```
 
-Start with the [framework guide](packages/vela/README.md) and
+With Node.js 24+ and pnpm 11.11.0, this creates a small module, controller, and
+injected service. Request `http://localhost:8787` to see its JSON greeting;
+local development needs no Cloudflare login. See the
+[project creation guide](docs/getting-started.md) for typechecking, builds,
+and the generated project structure.
+
+Continue with the [framework guide](packages/vela/README.md) and
 [Cloudflare integration](packages/cloudflare/README.md). The
 [API starter](apps/api-starter/README.md) is a runnable example with authentication,
 D1, live queries, and Studio. Browse the [documentation](docs/README.md) for

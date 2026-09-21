@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "__PROJECT_NAME__",
+  "main": "dist/worker.js",
+  "compatibility_date": "2026-09-20",
+  "compatibility_flags": ["nodejs_compat"],
+  "build": {
+    "command": "pnpm build",
+    "watch_dir": ["src", ".swcrc"],
+  },
+  "dev": { "port": 8787 },
+}

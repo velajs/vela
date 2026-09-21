@@ -1,6 +1,7 @@
 # Vela documentation
 
-Start with the [framework quick start](../packages/vela/README.md) and
+Start with [Create a Workers API](getting-started.md), then the
+[framework guide](../packages/vela/README.md) and
 [Cloudflare integration](../packages/cloudflare/README.md). The
 [API starter](../apps/api-starter/README.md) combines authentication, D1, a typed
 HTTP client, live queries, and Studio in a runnable Workers application.
