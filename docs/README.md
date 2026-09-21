@@ -28,6 +28,9 @@ HTTP client, live queries, and Studio in a runnable Workers application.
 - [CRUD](crud/README.md): resources, adapters, authorization, and data safety.
 - [Studio](studio/README.md): the admin module, local host, and inspection UI.
 
+- [AI and retrieval](../packages/ai/README.md): provider-neutral model defaults,
+  tenant-scoped RAG, adapter requirements, and a runnable local example.
+
 ## Contributing
 
 - [Contributor guide](../CONTRIBUTING.md): setup, changes, and validation.

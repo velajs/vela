@@ -51,6 +51,12 @@ with pnpm, checks types and builds, and verifies HTTP, constructor injection,
 and source rebuilds under local Wrangler. CLI argument and destination failure
 cases run against that same installed archive.
 
+When `@velajs/ai` is in the release, the consumer gate additionally installs its
+exact archive in an independent fixture, without Vela or a provider package. It
+checks both the base and `/rag` exports, TypeScript/AI SDK/Zod compatibility,
+tenant isolation, tool validation, and re-sync. Run it independently with
+`node scripts/ai-consumer.mjs /absolute/path/to/velajs-ai-<version>.tgz`.
+
 Artifacts live in `.artifacts/release/`. Keep this exact directory
 once publishing begins: rebuilding a partial release changes archive integrity
 and intentionally blocks an ambiguous retry.
