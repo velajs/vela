@@ -9,6 +9,8 @@ export interface RouteInfo {
 }
 
 export interface MiddlewareRouteDefinition {
+  /** Module that configured these middleware registrations. */
+  readonly moduleId?: string;
   middleware: Array<Type<NestMiddleware> | NestMiddleware>;
   routes: RouteInfo[];
   excludes: RouteInfo[];

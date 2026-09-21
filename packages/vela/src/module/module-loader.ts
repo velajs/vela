@@ -347,7 +347,9 @@ export class ModuleLoader {
         const instance = this.container.resolve(moduleClass, moduleId);
         const builder = new MiddlewareBuilder();
         instance.configure(builder);
-        this.#consumerMiddlewareDefinitions.push(...builder.getDefinitions());
+        this.#consumerMiddlewareDefinitions.push(
+          ...builder.getDefinitions().map((definition) => ({ ...definition, moduleId })),
+        );
       }
 
       return exports;
