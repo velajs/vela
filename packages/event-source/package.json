@@ -1,6 +1,6 @@
 {
   "name": "@velajs/event-source",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Zero-dependency, platform-neutral event-sourcing runtime for Vela: append-only EventLog, reducer-driven EventSource, typed event/materializer DSLs, and pure table-diff helpers",
   "keywords": [
     "event-log",

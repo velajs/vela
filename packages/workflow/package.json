@@ -1,6 +1,6 @@
 {
   "name": "@velajs/workflow",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Portable workflow definitions, validated reusable steps, and an in-memory replay harness for Vela.",
   "keywords": [
     "cloudflare-workflows",

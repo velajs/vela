@@ -1,6 +1,6 @@
 {
   "name": "@velajs/ai",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Provider-neutral model resolution and tenant-scoped retrieval for Vela and the AI SDK",
   "keywords": [
     "ai",
