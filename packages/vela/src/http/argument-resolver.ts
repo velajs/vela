@@ -4,7 +4,7 @@ import { ParamType } from '../constants';
 import type { Container } from '../container/container';
 import { BadRequestException } from '../errors/http-exception';
 import type { ArgumentMetadata, PipeTransform } from '../pipeline/types';
-import { instantiate } from './instantiate';
+import { instantiateAsync } from './instantiate';
 import type { ParamMetadata } from './types';
 
 type ParamExtractor = (c: Context, param: ParamMetadata) => unknown | Promise<unknown>;
@@ -50,6 +50,7 @@ export class ArgumentResolver {
     pipes: PipeTransform[],
     requestContainer: Container,
     paramTypes?: unknown[],
+    moduleId?: string,
   ): Promise<unknown[]> {
     if (paramMetadata.length === 0) {
       return [c];
@@ -73,7 +74,11 @@ export class ArgumentResolver {
 
       if (param.pipes && param.pipes.length > 0) {
         for (const paramPipe of param.pipes) {
-          const pipeInstance = instantiate<PipeTransform>(paramPipe, requestContainer);
+          const pipeInstance = await instantiateAsync<PipeTransform>(
+            paramPipe,
+            requestContainer,
+            moduleId,
+          );
           value = await pipeInstance.transform(value, metadata);
         }
       }

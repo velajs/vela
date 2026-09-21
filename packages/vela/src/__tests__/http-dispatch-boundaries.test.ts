@@ -7,6 +7,10 @@ import {
   Get,
   Head,
   Injectable,
+  Inject,
+  InjectionToken,
+  Query,
+  defineProvider,
   Module,
   Post,
   Req,
@@ -339,6 +343,81 @@ describe('HTTP construction boundary', () => {
         error: { code: 'internal', message: 'Internal Server Error' },
       });
       expect(report).toHaveBeenCalledTimes(2);
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+describe('module-qualified async HTTP components', () => {
+  it('uses each route owner for middleware, guards, parameter pipes, interceptors, filters and controllers', async () => {
+    const OWNER = new InjectionToken<string>('owner');
+    @Injectable()
+    class Boundary {
+      constructor(@Inject(OWNER) readonly owner: string) {}
+      async use(context: Context, next: Next) {
+        context.header('x-owner', this.owner);
+        await next();
+      }
+      canActivate(context: ExecutionContext) {
+        return new URL(context.switchToHttp().getRequest().url).pathname.startsWith(
+          `/${this.owner}/`,
+        );
+      }
+      transform(value: unknown) {
+        return `${String(value)}:${this.owner}`;
+      }
+      async intercept(_context: ExecutionContext, next: CallHandler) {
+        return { interceptor: this.owner, result: await next.handle() };
+      }
+      catch() {
+        return Response.json({ filter: this.owner }, { status: 422 });
+      }
+    }
+    function feature(owner: string) {
+      @Controller(`/${owner}`)
+      @UseMiddleware(Boundary)
+      @UseGuards(Boundary)
+      @UseInterceptors(Boundary)
+      @UseFilters(Boundary)
+      class Routes {
+        constructor(@Inject(OWNER) readonly owner: string) {}
+        @Get('/ok')
+        get(@Query('value', Boundary) value: string) {
+          return { controller: this.owner, value };
+        }
+        @Get('/error')
+        error() {
+          throw new Error('handled');
+        }
+      }
+      @Module({
+        controllers: [Routes],
+        providers: [
+          Boundary,
+          defineProvider(OWNER, { scope: Scope.REQUEST, useFactory: async () => owner }),
+        ],
+      })
+      class Feature {}
+      return Feature;
+    }
+    @Module({ imports: [feature('a'), feature('b')] })
+    class App {}
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const app = await VelaFactory.create(App);
+    try {
+      for (const owner of ['b', 'a']) {
+        const response = await app.getHonoApp().request(`/${owner}/ok?value=input`);
+        expect(response.status).toBe(200);
+        expect(response.headers.get('x-owner')).toBe(owner);
+        expect(await response.json()).toEqual({
+          interceptor: owner,
+          result: { controller: owner, value: `input:${owner}` },
+        });
+        const error = await app.getHonoApp().request(`/${owner}/error`);
+        expect(error.status).toBe(422);
+        expect(await error.json()).toEqual({ filter: owner });
+      }
     } finally {
       await app.close();
     }

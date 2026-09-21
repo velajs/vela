@@ -19,7 +19,7 @@ import { ArgumentResolver } from './argument-resolver';
 import { getRouteContributors } from './route-contributor';
 import { buildMiddlewareExecutionContext } from './execution-context';
 import { HandlerExecutor } from './handler-executor';
-import { instantiate, instantiateMany } from './instantiate';
+import { instantiate, instantiateMany, instantiateAsync } from './instantiate';
 import { REQUEST_CONTEXT, createRequestContext } from './request-context';
 import { findRequestContainer, setRequestContainer } from './request-container';
 import { mapResponse } from './response-mapper';
@@ -622,9 +622,9 @@ export class RouteManager {
     for (const { entry } of sortedGlobal) {
       app.use(
         '*',
-        this.wrapMiddlewareWithFilters((c, next) => {
+        this.wrapMiddlewareWithFilters(async (c, next) => {
           const requestContainer = this.getRequestContainer(c);
-          const resolved = instantiate<NestMiddleware>(entry, requestContainer);
+          const resolved = await instantiateAsync<NestMiddleware>(entry, requestContainer);
           return resolved.use(c, next);
         }),
       );
@@ -697,9 +697,13 @@ export class RouteManager {
           );
 
           const middleware = middlewareItems.map((middlewareItem) =>
-            this.wrapMiddlewareWithFilters((c, next) => {
+            this.wrapMiddlewareWithFilters(async (c, next) => {
               const requestContainer = this.getRequestContainer(c);
-              const resolved = instantiate<NestMiddleware>(middlewareItem, requestContainer);
+              const resolved = await instantiateAsync<NestMiddleware>(
+                middlewareItem,
+                requestContainer,
+                moduleId,
+              );
               return resolved.use(c, next);
             }),
           );

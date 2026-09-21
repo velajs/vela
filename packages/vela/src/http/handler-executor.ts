@@ -27,7 +27,7 @@ import type { ArgumentResolver } from './argument-resolver';
 import { getHttpCode, getRedirect, getResponseHeaders } from './decorators';
 import { buildExecutionContext } from './execution-context';
 import { extractEndpointInput, mapEndpointResponse } from './endpoint-executor';
-import { instantiate, instantiateMany } from './instantiate';
+import { instantiateAsync, instantiateManyAsync } from './instantiate';
 import { applyResponseHeaders, mapRedirect, mapResponse } from './response-mapper';
 import type { ParamMetadata, RouteMetadata } from './types';
 
@@ -117,16 +117,20 @@ export class HandlerExecutor {
 
       try {
         const guards = [
-          ...instantiateMany<CanActivate>(globals.guards, requestContainer),
-          ...instantiateMany<CanActivate>(methodGuards, requestContainer),
+          ...(await instantiateManyAsync<CanActivate>(globals.guards, requestContainer)),
+          ...(await instantiateManyAsync<CanActivate>(methodGuards, requestContainer, moduleId)),
         ];
         const pipes = [
-          ...instantiateMany<PipeTransform>(globals.pipes, requestContainer),
-          ...instantiateMany<PipeTransform>(methodPipes, requestContainer),
+          ...(await instantiateManyAsync<PipeTransform>(globals.pipes, requestContainer)),
+          ...(await instantiateManyAsync<PipeTransform>(methodPipes, requestContainer, moduleId)),
         ];
         const interceptors = [
-          ...instantiateMany<NestInterceptor>(globals.interceptors, requestContainer),
-          ...instantiateMany<NestInterceptor>(methodInterceptors, requestContainer),
+          ...(await instantiateManyAsync<NestInterceptor>(globals.interceptors, requestContainer)),
+          ...(await instantiateManyAsync<NestInterceptor>(
+            methodInterceptors,
+            requestContainer,
+            moduleId,
+          )),
         ];
         // Guards → args + pipes → interceptor chain → handler, via the shared
         // runner. Authentication/authorization therefore rejects before body
@@ -144,11 +148,12 @@ export class HandlerExecutor {
                   pipes,
                   requestContainer,
                   paramTypes,
+                  moduleId,
                 ),
           invoke: async (args) => {
             // Singleton lifecycle is owned by bootstrap. Request-scoped
             // controllers need not exist when a guard/pipe/interceptor rejects.
-            const instance = requestContainer.resolve(controller, moduleId);
+            const instance = await requestContainer.resolveAsync(controller, moduleId);
             if (
               (typeof instance !== 'object' || instance === null) &&
               typeof instance !== 'function'
@@ -186,9 +191,13 @@ export class HandlerExecutor {
 
         // Resolve filters only on failure. Construction itself belongs to
         // this boundary; a broken filter must not hide the original error.
-        for (const entry of [...methodFilters, ...globals.filters]) {
+        const filterEntries = [
+          ...methodFilters.map((entry) => ({ entry, owner: moduleId })),
+          ...globals.filters.map((entry) => ({ entry, owner: undefined })),
+        ];
+        for (const { entry, owner } of filterEntries) {
           try {
-            const filter = instantiate<ExceptionFilter>(entry, requestContainer);
+            const filter = await instantiateAsync<ExceptionFilter>(entry, requestContainer, owner);
             if (shouldFilterCatch(filter, error)) {
               const filtered = await filter.catch(error, executionContext);
               return mapResponse(c, filtered);

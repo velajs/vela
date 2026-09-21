@@ -181,6 +181,9 @@ controllers are resolved when the handler is invoked, after guards and pipes
 succeed. Singleton construction and bootstrap lifecycle hooks are unchanged.
 Pipeline component construction failures are reported before handler exception
 filters render them; filters are resolved only when an error needs handling.
+Controller-scoped and handler-scoped middleware, guards, pipes, interceptors,
+and filters resolve asynchronous providers in their declaring module. Parameter
+pipes use the same owner. Application-wide components retain their global scope.
 An ordinary `createParamDecorator` can read state populated by a guard. Its data
 argument is required when the factory excludes `undefined`: a factory accepting
 `string` produces `@Header('x-id')`; a factory accepting `undefined` supports
