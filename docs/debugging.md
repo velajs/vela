@@ -1,0 +1,139 @@
+# Debugging Vela applications
+
+Use Studio for application snapshots and structured logs, and the runtime inspector
+for breakpoints. Both work with the ordinary Vela module and handler APIs.
+
+## Local Worker breakpoints
+
+Run your application's existing Wrangler development script from a VS Code
+JavaScript Debug Terminal. Set a breakpoint inside a controller method and send
+an HTTP request to that route. Wrangler connects the Worker inspector to that
+terminal automatically. The CLI Worker template builds TypeScript with SWC before
+Wrangler loads `dist/worker.js`.
+
+For a manual attachment, start the application from its package directory:
+
+```sh
+pnpm exec wrangler dev --inspector-port 9229
+```
+
+Add this configuration to the application's `.vscode/launch.json`:
+
+```json
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Vela Worker",
+      "type": "node",
+      "request": "attach",
+      "port": 9229,
+      "cwd": "/",
+      "resolveSourceMapLocations": null,
+      "attachExistingChildren": false,
+      "autoAttachChildProcesses": false,
+      "sourceMaps": true
+    }
+  ]
+}
+```
+
+Start **Vela Worker** in Run and Debug, then request the route. Use a different
+inspector port for a second development process. These attachment settings follow
+[Cloudflare's breakpoint guide](https://developers.cloudflare.com/workers/observability/dev-tools/breakpoints/).
+
+If a TypeScript breakpoint stays unbound, check that the running build has source
+maps and that Wrangler's `main` points to that build. The CLI template's `.swcrc`
+sets `sourceMaps: true`, `legacyDecorator: true`, `decoratorMetadata: true`, and
+`keepClassNames: true`. Keep those settings when customizing compilation; rebuild
+before attaching. Source maps must survive every transform, including your own
+bundling steps. A breakpoint in an imported file cannot bind until that module
+has loaded; exercise a lazy module's entrypoint first.
+
+## Debug one test
+
+For a normal Node Vitest suite in this workspace:
+
+```sh
+pnpm --filter @velajs/studio exec vitest run __tests__/logging.test.ts --inspect-brk --no-file-parallelism
+```
+
+Attach a Node debugger to port 9229 and resume the initial pause. Selecting one
+file and disabling file parallelism keeps the inspector attached to one test
+worker. See [Vitest's debugging guide](https://vitest.dev/guide/debugging).
+
+For the core suite running **inside workerd**, use its Workers configuration:
+
+```sh
+pnpm --filter @velajs/vela exec vitest run --config vitest.config.workers.ts src/__tests__/workers/basic.test.ts --inspect --no-file-parallelism
+```
+
+Attach to the Workers inspector using the Worker attachment configuration above.
+The Node test runner and the Worker are separate debugging targets. See
+[Cloudflare's Vitest debugging guide](https://developers.cloudflare.com/workers/testing/vitest-integration/debugging/).
+
+## Capture structured logs in Studio
+
+Configure one logging module and one Studio module per application, then pass those
+same configured instances into the optional capture module:
+
+```ts
+import { LoggingModule, Module } from '@velajs/vela';
+import { StudioModule } from '@velajs/studio';
+import { StudioLoggingModule } from '@velajs/studio/logging';
+
+const logging = LoggingModule.forRoot({ directive: 'debug' });
+const studio = StudioModule.forRoot({ logBufferSize: 1000 });
+
+@Module({
+  imports: [
+    logging,
+    studio,
+    StudioLoggingModule.forRoot({ imports: [logging, studio], timings: true }),
+  ],
+})
+export class AppModule {}
+```
+
+Provide `VELA_STUDIO_TOKEN` through the application's environment configuration;
+Studio stays closed without a token. Use the [Studio local host](studio/README.md)
+to view the logs. Capture subscribes to `APP_LOGGER`; write through its
+`createLogger(category, fields)` API or the scoped logger described in
+[Logging](logging.md). Records reach Studio after normalization and redaction.
+Legacy `Logger`, `console.log`, and platform logs are separate sources. Capture
+unsubscribes when the application closes. Set `sinks: []` on `LoggingModule` if you
+want subscription-only delivery.
+
+The buffer is application-owned and bounded. It evicts the oldest entries, copies
+returned data, and limits diagnostic fields. Capacity zero disables retention.
+It is an in-memory view for the current application instance, not a durable or
+fleet-wide log store. `logs.tail` remains behind Studio authentication. Its level
+filter works over records that already passed the logger's level configuration.
+
+`timings` defaults to false. When enabled, the interceptor measures `next.handle()`:
+handler execution plus inner interceptors. It excludes guards, argument validation,
+response-body streaming, and deferred work. A returned `Response` marks handler
+completion before its body finishes. `outcome: 'threw'` means an exception left that
+boundary; an outer filter may still turn it into a response. Only transports that
+run Vela interceptors contribute these rows. Invocation IDs are present when the
+execution context has a managed lifetime; they are correlation labels, not identity
+or authorization. Error payloads are reported separately by the transport reporter.
+
+## Inspect ownership and dependency scope
+
+Wire `studioRuntimeAdapter` into `VelaFactory.create(AppModule, { adapters: [...] })`
+to attribute controller routes to their handler and module. Contributor-mounted
+routes retain the `(mounted)` label when no controller descriptor exists.
+
+Studio's Modules panel shows the public import/export graph and effective scopes
+for class-token registrations. Request scope can propagate from a dependency to
+its consumer. Entrypoints show their exact owner and scope when supplied by the
+registry. These are metadata snapshots: inspection does not construct providers,
+activate lazy modules, or inspect private fields. Entrypoint metadata uses bounded
+JSON summaries, with markers for cycles, accessors, class instances, and truncation.
+
+For a missing dependency, compare the consumer's owner with the module exporting
+the token. Import that module or export its public token. Use a runtime class import
+for constructor injection, or explicit `@Inject(TOKEN)` for interfaces and symbols;
+`import type` cannot provide a runtime token. See [Modules](modules.md) and
+[Runtime values and types](types.md).

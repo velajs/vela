@@ -8,6 +8,9 @@ HTTP client, live queries, and Studio in a runnable Workers application.
 
 ## Framework guides
 
+- [Debugging](debugging.md): Worker and test breakpoints, structured Studio logs,
+  handler timing, and module ownership snapshots.
+
 - [Module authoring](modules.md): configurable modules, dependency injection,
   discovery, entrypoints, and lazy initialization.
 - [Runtime values and types](types.md): schema descriptors, request context,

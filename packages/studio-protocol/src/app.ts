@@ -4,8 +4,7 @@ import { isRecord } from './connection';
  * Application-introspection wire contract (the `app.*` and `api.authorizeTryIt` ops).
  *
  * `RouteRow` mirrors `@velajs/cli` `introspect.ts` `RouteRow`, and `ModuleNode`
- * mirrors vela's `ModuleDescription` (`vela/src/container/types.ts`) field-for-
- * field. `EntrypointRow` intentionally carries `meta?: unknown` (the wire shape)
+ * extends vela's public `ModuleDescription` with optional scope summaries. `EntrypointRow` intentionally carries `meta?: unknown` (the wire shape)
  * rather than the CLI's serialized `meta: string`. See the report for sources.
  */
 
@@ -16,11 +15,12 @@ export interface RouteRow {
   /** `Controller#handler`, or `(mounted)` for routes vela did not compose itself. */
   handler: string;
   source: 'controller' | 'mounted';
+  /** Declaring module when the runtime supplied controller attribution. */
+  moduleId?: string;
 }
 
 /**
- * One module instance in the loaded graph. Structural mirror of vela's
- * `ModuleDescription` (`Container.getModuleDescriptions()`).
+ * One loaded module's public description, optionally enriched with class-token scopes.
  */
 export interface ModuleNode {
   moduleId: string;
@@ -32,13 +32,20 @@ export interface ModuleNode {
   providers: string[];
   /** Token labels this instance exports. */
   exports: string[];
+  /** Effective scopes of class registrations; factories/values may be absent. */
+  providerScopes?: Array<{ token: string; scope: StudioProviderScope }>;
 }
+
+export type StudioProviderScope = 'singleton' | 'transient' | 'request';
 
 /** One entrypoint entry (queue/cron/etc.). Wire shape: `meta` is optional/unknown. */
 export interface EntrypointRow {
   kind: string;
   target: string;
   meta?: unknown;
+  /** Exact owner, when supplied by the entrypoint's public descriptor. */
+  moduleId?: string;
+  scope?: StudioProviderScope;
 }
 
 /** An API "try it" request proxied against the app. */

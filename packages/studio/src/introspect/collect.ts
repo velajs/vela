@@ -1,7 +1,7 @@
 /** Portable collectors over public per-application inspection APIs. Controller
  * attribution is supplied by studioRuntimeAdapter; contributed routes retain
  * their mounted label. Module snapshots never resolve providers. */
-import { EntrypointRegistry, describeToken } from '@velajs/vela';
+import { DiscoveryService, EntrypointRegistry, describeToken } from '@velajs/vela';
 import type { Container, ModuleDescription } from '@velajs/vela';
 import type { EntrypointRow, ModuleNode, RouteRow } from '@velajs/studio-protocol';
 import type { StudioAppHolder } from './app-holder';
@@ -38,6 +38,7 @@ export function collectRoutes(holder: StudioAppHolder): RouteRow[] {
         path: route.path,
         handler: `${route.controller}#${route.handler}`,
         source: 'controller',
+        moduleId: route.moduleId,
       });
     }
     // Only suppress mounted aliases, never a separately declared GET handler.
@@ -66,16 +67,29 @@ export function collectRoutes(holder: StudioAppHolder): RouteRow[] {
 }
 
 /**
- * Every loaded module instance as the container describes it. `ModuleNode` is a
- * field-for-field structural mirror of vela's `ModuleDescription`; the explicit
- * projection keeps the wire shape pinned (a drift in either interface fails to
- * compile here) without an `as` cast.
+ * Public module metadata plus effective scopes for class-token registrations.
+ * Metadata-only discovery never constructs providers or activates lazy modules.
  */
 export function collectModules(container: Container): ModuleNode[] {
-  return container.getModuleDescriptions().map(toModuleNode);
+  const scopes = new Map<string, NonNullable<ModuleNode['providerScopes']>>();
+  if (container.has(DiscoveryService)) {
+    for (const entry of container
+      .resolve(DiscoveryService)
+      .getRegistrations({ metadataOnly: true })) {
+      const rows = scopes.get(entry.moduleId) ?? [];
+      rows.push({ token: describeToken(entry.token), scope: entry.scope });
+      scopes.set(entry.moduleId, rows);
+    }
+  }
+  return container
+    .getModuleDescriptions()
+    .map((desc) => toModuleNode(desc, scopes.get(desc.moduleId) ?? []));
 }
 
-function toModuleNode(desc: ModuleDescription): ModuleNode {
+function toModuleNode(
+  desc: ModuleDescription,
+  providerScopes: NonNullable<ModuleNode['providerScopes']>,
+): ModuleNode {
   return {
     moduleId: desc.moduleId,
     imports: desc.imports,
@@ -83,6 +97,7 @@ function toModuleNode(desc: ModuleDescription): ModuleNode {
     lazy: desc.lazy,
     providers: desc.providers,
     exports: desc.exports,
+    providerScopes,
   };
 }
 
@@ -102,10 +117,14 @@ export function collectEntrypoints(container: Container): EntrypointRow[] {
   for (const kind of registry.kinds()) {
     for (const ep of registry.ofKind(kind)) {
       const method = ep.methodName !== undefined ? `#${String(ep.methodName)}` : '';
+      const scope =
+        ep.moduleId === undefined ? undefined : container.getProviderScope(ep.token, ep.moduleId);
       rows.push({
         kind,
         target: `${describeToken(ep.token)}${method}`,
         meta: diagnosticSnapshot(ep.meta),
+        ...(ep.moduleId === undefined ? {} : { moduleId: ep.moduleId }),
+        ...(scope === undefined ? {} : { scope }),
       });
     }
   }

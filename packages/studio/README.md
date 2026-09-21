@@ -3,7 +3,7 @@
 The edge-safe [Vela Studio](https://github.com/velajs/vela/tree/main/packages/studio) admin module: mounts the
 reserved `/_vela/admin` surface, hosts `@AdminRpc` operations, and exposes the time-travel
 port. Subpath exports (`./auth`, `./flags`, `./queue`, `./live`, `./schedule`,
-`./timetravel`) scope the per-feature admin surfaces.
+`./timetravel`, `./logging`) scope the per-feature admin surfaces.
 
 Protocol v2 exposes the usable operation catalog through `studio.capabilities`.
 Only configured Studio handlers enable their features. Queue depth/DLQ/replay
@@ -33,6 +33,23 @@ Bigints become strings such as `42n`; cycles, accessors, functions, instances an
 truncated data use explicit markers. Getters and `toJSON` are never called.
 These are diagnostic summaries, not a data export format. Captured route
 descriptions are copied so inspection cannot mutate the stored descriptions.
+
+## Structured logs and timings
+
+Import `StudioLoggingModule` from `@velajs/studio/logging` and configure it with
+`{ imports: [configuredStudio, configuredLogging], timings: true }`. Capture reads
+only that application's `APP_LOGGER` records after normalization and redaction;
+it unsubscribes on application shutdown. It never patches global console methods.
+Timing is optional and defaults off. Rows measure handler/inner-interceptor
+completion, excluding guards, argument validation, streaming, and deferred work.
+They include module ownership and managed invocation IDs when available.
+
+`AdminLogBuffer` copies input and output snapshots, bounds fields and messages,
+and accepts capacity zero to disable retention. Records are per application
+instance and ephemeral. The Modules and Entrypoints panels also display available
+ownership and effective class-token scopes without constructing providers.
+
+See the [debugging guide](../../docs/debugging.md) for setup and debugger recipes.
 
 ## License
 

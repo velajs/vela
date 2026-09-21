@@ -1,8 +1,24 @@
 import { describe, expect, it, vi } from 'vitest';
-import { Controller, Head, Injectable, Module, VelaFactory } from '@velajs/vela';
+import {
+  Container,
+  DiscoveryService,
+  Scope,
+  defineProvider,
+  Controller,
+  Head,
+  Injectable,
+  Module,
+  VelaFactory,
+} from '@velajs/vela';
 import type { ContributesEntrypoints, RouteDescription } from '@velajs/vela';
 import { parseStudioRpcResponse } from '@velajs/studio-protocol';
-import { StudioAppHolder, StudioModule, collectRoutes, studioRuntimeAdapter } from '../src';
+import {
+  StudioAppHolder,
+  StudioModule,
+  collectModules,
+  collectRoutes,
+  studioRuntimeAdapter,
+} from '../src';
 import { diagnosticSnapshot } from '../src/introspect/snapshot';
 
 describe('bounded diagnostic snapshots', () => {
@@ -155,10 +171,55 @@ describe('public route snapshots', () => {
     try {
       const rows = collectRoutes(app.get(StudioAppHolder)).filter((row) => row.path === '/head');
       expect(rows).toEqual([
-        { method: 'HEAD', path: '/head', handler: 'Heads#head', source: 'controller' },
+        {
+          method: 'HEAD',
+          path: '/head',
+          handler: 'Heads#head',
+          source: 'controller',
+          moduleId: 'App#default',
+        },
       ]);
     } finally {
       await app.close();
     }
+  });
+});
+
+describe('registration scope snapshots', () => {
+  it('reports exact owners and effective scopes without constructing providers', () => {
+    const container = new Container();
+    const constructed = vi.fn();
+    @Injectable()
+    class Shared {
+      constructor() {
+        constructed();
+      }
+    }
+    container.register(Shared, 'singleton-owner');
+    container.register(
+      defineProvider(Shared, { useClass: Shared, scope: Scope.REQUEST }),
+      'request-owner',
+    );
+    for (const moduleId of ['singleton-owner', 'request-owner']) {
+      container.registerScope({
+        moduleId,
+        localProviders: new Set([Shared]),
+        importedModules: new Set(),
+        exportedTokens: new Set(),
+        isGlobal: false,
+        lazy: true,
+      });
+    }
+    container.register(
+      defineProvider(DiscoveryService, { useValue: new DiscoveryService(container) }),
+    );
+    const rows = collectModules(container);
+    expect(rows.find((row) => row.moduleId === 'singleton-owner')?.providerScopes).toEqual([
+      { token: 'Shared', scope: 'singleton' },
+    ]);
+    expect(rows.find((row) => row.moduleId === 'request-owner')?.providerScopes).toEqual([
+      { token: 'Shared', scope: 'request' },
+    ]);
+    expect(constructed).not.toHaveBeenCalled();
   });
 });
