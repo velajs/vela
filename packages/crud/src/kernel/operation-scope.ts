@@ -1,4 +1,4 @@
-import { validateSchema, getTrustedRequestIdentity } from '@velajs/vela';
+import { parseSchemaAsync, getTrustedRequestIdentity } from '@velajs/vela';
 import type { AdapterScope, RuntimeAdapter } from '../adapter/contract';
 import type { FilterCondition, Lookup } from '../adapter/query-types';
 import { CrudException, ForbiddenException, InputValidationException } from '../envelope/errors';
@@ -280,7 +280,7 @@ export async function prepareOperation(
 export async function responseContract(resource: CrudResource, row: Row): Promise<Row> {
   const schema = resource.config.contracts?.response ?? resource.model.contracts?.response;
   if (!schema) return row;
-  const value = await validateSchema(schema, row);
+  const value = await parseSchemaAsync(schema, row);
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new TypeError('Response contract must produce a record');
   return Object.fromEntries(Object.entries(value));

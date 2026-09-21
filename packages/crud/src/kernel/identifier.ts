@@ -1,4 +1,4 @@
-import { validateSchema, SchemaValidationError } from '@velajs/vela';
+import { parseSchemaAsync, SchemaValidationError } from '@velajs/vela';
 import { InputValidationException } from '../envelope/errors';
 import type { EngineRequest } from './engine-request';
 import type { CrudResource } from './resource';
@@ -18,7 +18,7 @@ export async function parseIdentifier(
     }
   }
   try {
-    const parsed = schema ? await validateSchema(schema, input) : input;
+    const parsed = schema ? await parseSchemaAsync(schema, input) : input;
     if (typeof parsed === 'string' || (typeof parsed === 'number' && Number.isFinite(parsed)))
       return String(parsed);
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {

@@ -5,7 +5,8 @@ export type { StandardSchemaV1, StandardJSONSchemaV1 } from '@standard-schema/sp
 
 /** A validation failure, distinct from an exception thrown by validator code. */
 export class SchemaValidationError extends Error {
-  readonly issues: readonly ValidationIssue[];
+  // Keep the 1.x public path union; runtime normalization selects safe wire fields.
+  readonly issues: readonly StandardSchemaV1.Issue[];
 
   constructor(issues: readonly StandardSchemaV1.Issue[]) {
     super('Validation failed');

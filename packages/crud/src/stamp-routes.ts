@@ -333,12 +333,17 @@ function stampParams(
   if (shape.id) add({ index: index++, type: ParamType.PARAM, name: 'id' });
   if (shape.version) add({ index: index++, type: ParamType.PARAM, name: 'version' });
   if (shape.body) {
-    // create/update carry their derived DTOs (ValidationPipe + OpenAPI);
+    // create/update document their derived DTOs; the engine owns validation.
+    // Passing raw input avoids repeated transforms and cross-request receipts.
     // extended verbs validate in the engine — their body docs land with the
     // OpenAPI parity pass (M6).
     const metatype =
       endpoint === 'create' ? createDto : endpoint === 'update' ? updateDto : undefined;
-    add({ index: index++, type: ParamType.BODY, ...(metatype ? { metatype } : {}) });
+    add({
+      index: index++,
+      type: ParamType.BODY,
+      ...(metatype ? { metatype: Object.freeze({ ...metatype, validationOwner: 'handler' }) } : {}),
+    });
   }
   add({ index, type: ParamType.REQUEST });
 }

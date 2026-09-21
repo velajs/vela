@@ -13,8 +13,10 @@ NestM runtime, ORM façade, or mandatory Node compatibility flag is introduced.
 validation and transformed output. Existing parser DTOs and `ZodValidationPipe`
 remain supported. Standard issues become HTTP 400 responses with normalized
 paths; exceptions thrown by a validator remain server errors. Generated CRUD
-routes consume an unchanged pipe result once, avoiding duplicate transforms.
-Middleware changes to that result require validation again.
+routes retain DTO metadata for OpenAPI and let the engine validate the raw body
+once, including after middleware changes. No global validation receipts are
+stored. Pass raw contract input to headless `resource.execute` calls, rather than
+feeding a previously transformed pipe result back into the input schema.
 
 Standard JSON Schema is a separate conversion interface. `defineDto` accepts
 `jsonSchema` or `schemaConverter(direction)` when a validator has no converter.
