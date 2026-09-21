@@ -8,6 +8,7 @@ import { InternalDispatcher } from '../dispatch/internal-dispatcher';
 import { MemoryNonceStore } from '../dispatch/nonce-store';
 import { SignedInvocationGuard } from '../dispatch/signed-invocation.guard';
 import { NONCE_STORE } from '../dispatch/tokens';
+import { EXECUTION_LIFETIME } from '../entrypoint/execution-scope';
 import { REQUEST_CONTEXT } from '../http/request-context';
 import { RouteManager } from '../http/route.manager';
 import type { RouteManagerOptions } from '../http/route.manager';
@@ -104,6 +105,17 @@ export async function bootstrap(
     }),
   );
   container.markGlobalToken(REQUEST_CONTEXT);
+
+  container.register(
+    defineProvider(EXECUTION_LIFETIME, {
+      inject: [],
+      scope: Scope.REQUEST,
+      useFactory: () => {
+        throw new Error('EXECUTION_LIFETIME can only be resolved inside a managed invocation');
+      },
+    }),
+  );
+  container.markGlobalToken(EXECUTION_LIFETIME);
 
   const routeManager = new RouteManager(container, options);
   // Resolvable so non-HTTP transports (the WebSocket dispatcher) can read the
