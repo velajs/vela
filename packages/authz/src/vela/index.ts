@@ -6,3 +6,8 @@ export { RequirePermission, REQUIRE_PERMISSION_KEY } from './require-permission.
 export { Roles, ROLES_KEY } from './roles.decorator';
 export { CurrentIdentity } from './current-identity.decorator';
 export { getContextIdentity, identityFromTrusted } from './context-identity';
+export { authorizationAudit, inspectAuthorizationWiring } from './authorization-audit';
+export type {
+  AuthorizationAuditOptions,
+  AuthorizationWiringDiagnostic,
+} from './authorization-audit';
