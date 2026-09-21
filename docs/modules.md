@@ -118,6 +118,20 @@ construction. Runtime providers should inject `OPTIONS` for the resolved bag.
 This controls registration; excluding code from a bundle requires separate
 imports/entrypoints. There is no global mutable module configuration.
 
+### Global component aliases
+
+An `APP_*` provider declared with `useExisting` remains an alias to the target
+in its declaring module. The target can stay private, and keyed modules can
+each alias their own registration of the same guard or middleware class.
+Provider snapshots retain `kind: 'existing'` and `useExisting`, so metadata
+audits can follow the alias without constructing request-scoped components.
+
+Aliases follow the target lifetime: singleton identity and request reuse are
+preserved; a transient target is resolved freshly on each use and disposed by
+the container that owns that resolution. Earlier synthetic `APP_*` factory
+wrappers could accidentally cache a transient target. Applications relying on
+that sharing should register the target as a singleton explicitly.
+
 ## Discovery: finding decorated providers
 
 Never hand-roll a `container.getTokens()` scan. Declare a decorator, then ask

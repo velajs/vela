@@ -432,10 +432,10 @@ export class ModuleLoader {
                   inject: options.inject ?? [],
                   scope,
                 })
-              : options.useExisting
+              : typeof options.useExisting === 'function' ||
+                  options.useExisting instanceof InjectionToken
                 ? defineProvider(syntheticToken, {
-                    useFactory: (value) => value,
-                    inject: [options.useExisting],
+                    useExisting: options.useExisting,
                     scope,
                   })
                 : undefined;
