@@ -7,16 +7,6 @@ For application-isolated structured logs, import `LoggingModule` once at the roo
 import { APP_LOGGER, Inject, Injectable, LoggingModule, Module } from '@velajs/vela';
 import type { ApplicationLogger, LogRecord } from '@velajs/vela';
 
-const records: LogRecord[] = [];
-@Module({
-  imports: [LoggingModule.forRoot({
-    directive: 'warn,orders=debug',
-    redactKeys: ['paymentReference'],
-    sinks: [(record) => { records.push(record); }],
-  })],
-})
-class AppModule {}
-
 @Injectable()
 class Orders {
   constructor(@Inject(APP_LOGGER) private readonly logging: ApplicationLogger) {}
@@ -26,6 +16,17 @@ class Orders {
     log.debug('saving order');
   }
 }
+
+const records: LogRecord[] = [];
+@Module({
+  imports: [LoggingModule.forRoot({
+    directive: 'warn,orders=debug',
+    redactKeys: ['paymentReference'],
+    sinks: [(record) => { records.push(record); }],
+  })],
+  providers: [Orders],
+})
+class AppModule {}
 ```
 
 The provider is global **within that application** by default. It never changes
