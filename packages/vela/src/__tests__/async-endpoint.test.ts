@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import * as v from 'valibot';
 import { z } from 'zod';
 import {
+  Body,
   Controller,
   Endpoint,
   Module,
@@ -190,6 +191,30 @@ it('executes async Zod endpoint transforms once and preserves directional conver
     expect(await response.json()).toBe('4');
     expect(inputTransform).toHaveBeenCalledTimes(1);
     expect(outputTransform).toHaveBeenCalledTimes(1);
+  } finally {
+    await app.close();
+  }
+});
+
+it('prefers the async ValidationPipe entry for decorated HTTP body parameters', async () => {
+  const transform = vi.fn(async (value: string) => Number(value));
+  const schema = z.object({ amount: z.string().transform(transform) });
+  @Controller('/pipe-async')
+  class Piped {
+    @Post()
+    create(@Body(new ValidationPipe(schema)) input: { amount: number }) {
+      return input.amount;
+    }
+  }
+  @Module({ controllers: [Piped] })
+  class App {}
+  const app = await VelaFactory.create(App);
+  try {
+    const response = await app.fetch(
+      new Request('https://test/pipe-async', { method: 'POST', body: '{"amount":"4"}' }),
+    );
+    expect(await response.json()).toBe(4);
+    expect(transform).toHaveBeenCalledTimes(1);
   } finally {
     await app.close();
   }
