@@ -125,7 +125,7 @@ export {
   type CrudDatabase,
   type CrudDatabaseResource,
 } from './databases';
-export { resolveCrudDatabase } from './resolve-database';
+export { resolveCrudDatabase, resolveCrudDatabaseSync } from './resolve-database';
 export type { RuntimeCrudConfig } from './crud.types';
 
 export * from './service/index';

@@ -8,6 +8,8 @@ import { drizzle } from 'drizzle-orm/libsql';
 import { sqliteTable, text } from 'drizzle-orm/sqlite-core';
 import { Module, VelaFactory } from '@velajs/vela';
 import {
+  resolveCrudDatabase,
+  resolveCrudDatabaseSync,
   CrudModule,
   CRUD_DATABASES,
   crudResourceToken,
@@ -101,6 +103,14 @@ describe('named databases', () => {
         result: { title: 'other-A' },
       });
       expect((await b.getHonoApp().request('/main/items/1')).status).toBe(404);
+      const config = { model: item, database: 'main' };
+      const asyncSelection = await resolveCrudDatabase(a.getContainer(), config);
+      const syncSelection = resolveCrudDatabaseSync(a.getContainer(), config);
+      expect(syncSelection.adapter).toBe(asyncSelection.adapter);
+      expect(syncSelection.database).toBe('main');
+      expect(() =>
+        resolveCrudDatabaseSync(a.getContainer(), { model: item, database: 'missing' }),
+      ).toThrow('Unknown database');
       const ar = a.getContainer().resolve(crudResourceToken('item', 'main'));
       const br = b.getContainer().resolve(crudResourceToken('item', 'main'));
       await crudTransaction({ runtime: ar.config.adapter }, {}, async (transaction) => {
