@@ -1,6 +1,6 @@
 # @velajs/crypto
 
-## 1.23.0
+## 1.24.0
 
 ### Minor Changes
 
@@ -9,8 +9,8 @@
 ### Patch Changes
 
 - Updated dependencies [fe7587f]
-  - @velajs/vela@1.23.0
-  - @velajs/tenant@1.23.0
+  - @velajs/vela@1.24.0
+  - @velajs/tenant@1.24.0
 
 ## Unreleased
 

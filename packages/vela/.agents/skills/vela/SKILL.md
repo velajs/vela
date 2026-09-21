@@ -3,7 +3,7 @@ name: vela
 description: "Build NestJS-style APIs with Vela (@velajs/vela), Hono, and Cloudflare Workers. Use for Vela modules, DI, controllers, schema-bound endpoints, guards/pipes/interceptors, typed configuration, CRUD, authentication/authorization, WebSocket/live queries, queues, cron, storage, testing, OpenAPI, and Hono RPC clients. Applies when code imports @velajs/vela or its subpaths, or sibling packages @velajs/cloudflare, @velajs/crud, @velajs/better-auth, @velajs/authz, @velajs/client, @velajs/testing, @velajs/cli, and @velajs/feature-flags. Also use for requests to add Vela endpoints/modules, deploy Vela to Workers, generate API contracts, or modernize a Vela application. Do not use for plain Hono, raw Workers, or actual NestJS projects."
 license: MIT
 metadata:
-  version: "1.23.0"
+  version: "1.24.0"
 ---
 
 # Vela Framework

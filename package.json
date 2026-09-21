@@ -46,7 +46,7 @@
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "unplugin-swc": "catalog:",
-    "valibot": "1.1.0",
+    "valibot": "catalog:",
     "vitest": "catalog:",
     "wrangler": "catalog:",
     "zod": "catalog:"

@@ -1,6 +1,6 @@
 {
   "name": "@velajs/vela",
-  "version": "1.23.0",
+  "version": "1.24.0",
   "description": "NestJS-compatible framework for edge runtimes, powered by Hono",
   "keywords": [
     "bun",
@@ -127,7 +127,7 @@
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "unplugin-swc": "catalog:",
-    "valibot": "1.1.0",
+    "valibot": "catalog:",
     "vitest": "catalog:",
     "wrangler": "catalog:",
     "zod": "catalog:"

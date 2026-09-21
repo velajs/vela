@@ -1,6 +1,6 @@
 # @velajs/crud-memory
 
-## 1.23.0
+## 1.24.0
 
 ### Minor Changes
 
@@ -9,7 +9,7 @@
 ### Patch Changes
 
 - Updated dependencies [fe7587f]
-  - @velajs/crud@1.23.0
+  - @velajs/crud@1.24.0
 
 ## 1.22.1
 
