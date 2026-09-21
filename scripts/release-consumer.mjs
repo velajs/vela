@@ -4,6 +4,7 @@ import { cp, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { verifyNewProject } from './cli-consumer.mjs';
+import { verifyEventSourcePackage } from './event-source-consumer.mjs';
 
 const root = new URL('../', import.meta.url);
 const artifactDir = resolve(process.argv[2] ?? '.artifacts/release');
@@ -70,6 +71,15 @@ run('npx', ['--no-install', 'wrangler', 'deploy', '--dry-run', '--outdir', 'work
 const generatedProject = tarballs['@velajs/cli']
   ? await verifyNewProject(join(consumer, 'node_modules/@velajs/cli/dist/index.js'))
   : undefined;
+const eventSourceArchive = artifacts.packages.find(
+  (entry) => entry.name === '@velajs/event-source',
+);
+const eventSource = eventSourceArchive
+  ? await verifyEventSourcePackage(
+      join(artifactDir, eventSourceArchive.filename),
+      eventSourceArchive.integrity,
+    )
+  : undefined;
 await writeFile(
   join(artifactDir, 'consumer.json'),
   JSON.stringify(
@@ -77,6 +87,7 @@ await writeFile(
       path: consumer,
       status: 'passed',
       generatedProject,
+      eventSource,
       manifestIntegrity: `sha512-${createHash('sha512')
         .update(await readFile(join(artifactDir, 'manifest.json')))
         .digest('base64')}`,

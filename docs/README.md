@@ -26,6 +26,8 @@ HTTP client, live queries, and Studio in a runnable Workers application.
 - [Live clients](client/README.md): subscriptions, optimistic updates, offline
   mutations, and React integration.
 - [CRUD](crud/README.md): resources, adapters, authorization, and data safety.
+- [Domain event sourcing](event-sourcing.md): replayable business history, projections,
+  checkpoints, and boundaries with CRUD/live queries.
 - [Studio](studio/README.md): the admin module, local host, and inspection UI.
 
 ## Contributing
