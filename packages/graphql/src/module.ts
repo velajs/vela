@@ -73,7 +73,13 @@ export interface GraphqlModuleOptions extends GraphqlOptions {
 export class GraphqlModule {
   static forRoot(options: GraphqlModuleOptions): DynamicModule {
     const path = options.path ?? '/graphql';
-    if (!/^\/(?:[A-Za-z0-9_-]+\/?)*$/.test(path) || (path.endsWith('/') && path !== '/')) {
+    // Independent linear scans avoid backtracking between segments and optional separators.
+    if (
+      !path.startsWith('/') ||
+      (path.length > 1 && path.endsWith('/')) ||
+      path.includes('//') ||
+      /[^A-Za-z0-9_/-]/.test(path)
+    ) {
       throw new TypeError(
         'GraphQL path must be an absolute literal route without a trailing slash',
       );
