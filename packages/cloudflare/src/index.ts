@@ -32,7 +32,7 @@ export type { KvFlagDriverOptions } from './services/kv-flag.driver';
 
 // Decorators
 export { Env } from './decorators/env';
-export { Scheduled } from './decorators/scheduled';
+export { Scheduled, parseScheduledMetadata } from './decorators/scheduled';
 export { QueueConsumer } from './decorators/queue-consumer';
 
 // WebSocket (Durable Object transport for the Vela WebSocketModule)
@@ -87,7 +87,13 @@ export type {
 } from '@velajs/vela/websocket';
 
 // Types
-export type { ScheduledMetadata } from './decorators/scheduled';
+export type {
+  ScheduledMetadata,
+  ScheduledEvent,
+  ScheduledController,
+  ScheduledContext,
+  ScheduledHandler,
+} from './decorators/scheduled';
 export type { QueueConsumerMetadata } from './decorators/queue-consumer';
 
 // Distributed abuse control (Cloudflare Workers Rate Limiting binding)

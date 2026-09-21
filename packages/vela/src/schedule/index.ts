@@ -8,6 +8,8 @@ export type {
   IntervalMetadata,
   ScheduleDispatchMode,
   ScheduleJobRef,
+  ScheduleInvocation,
 } from './schedule.types';
 export { parseCron } from './cron-matcher';
-export type { CronMatcher } from './cron-matcher';
+export type { CronMatcher, CronOptions } from './cron-matcher';
+export { parseCronMetadata, parseIntervalMetadata } from './schedule.metadata';

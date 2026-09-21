@@ -279,6 +279,8 @@ export {
   Cron,
   Interval,
   parseCron,
+  parseCronMetadata,
+  parseIntervalMetadata,
   CRON_METADATA,
   INTERVAL_METADATA,
   SCHEDULE_DISPATCH,
@@ -289,6 +291,8 @@ export type {
   CronMetadata,
   IntervalMetadata,
   CronMatcher,
+  CronOptions,
+  ScheduleInvocation,
   ScheduleDispatchMode,
   ScheduleJobRef,
 } from './schedule/index';

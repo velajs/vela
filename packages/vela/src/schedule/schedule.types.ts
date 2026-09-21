@@ -1,6 +1,7 @@
 import type { InvocationTarget } from '../dispatch/index';
+import type { CronOptions } from './cron-matcher';
 
-export interface CronMetadata {
+export interface CronMetadata extends CronOptions {
   expression: string;
   methodName: string;
 }
@@ -9,6 +10,21 @@ export interface IntervalMetadata {
   ms: number;
   methodName: string;
 }
+
+/** Passed to Node handlers; cancellation is cooperative and close awaits completion. */
+export type ScheduleInvocation =
+  | {
+      readonly kind: 'cron';
+      readonly expression: string;
+      readonly scheduledTime: number;
+      readonly signal: AbortSignal;
+    }
+  | {
+      readonly kind: 'interval';
+      readonly ms: number;
+      readonly scheduledTime: number;
+      readonly signal: AbortSignal;
+    };
 
 /**
  * A fired scheduled job, as passed to a signed-dispatch `target`. Enough to
