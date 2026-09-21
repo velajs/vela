@@ -63,7 +63,7 @@ describe('resendTransport', () => {
   });
 
   it('throws a redacted provider_error on a non-2xx response', async () => {
-    const secret = 'PROVIDER SAID: invalid api key sk_live_supersecret';
+    const secret = 'PROVIDER SAID: invalid api key test-only-supersecret';
     const fetchMock = vi.fn<typeof fetch>(async () => new Response(secret, { status: 422 }));
     const transport = resendTransport({ apiKey: 'k', fetch: fetchMock });
 
