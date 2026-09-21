@@ -80,6 +80,25 @@ class AppModule {}
 `crudResourceToken(name)` injects the compiled engine (`resource.execute(verb, req)`)
 for programmatic dispatch. `forRoot` also takes `versioningStore`/`auditStore` defaults.
 
+Use `defineCrudDatabase(name, { handle, resources })` and the application-owned
+database registry for multiple connections. Select the database explicitly with
+`databaseResource(database, resourceName)` or a configured default. Named
+resource tokens use `crudResourceToken(name, databaseName)`. Never select a
+database through mutable process-global state; same-named resources on separate
+databases must keep distinct identities, stores, and live invalidation tags.
+
+`bindCrudService` from `@velajs/crud/service` exposes typed headless operations
+against a resource's actual create/update/response contracts. Pass raw input and
+explicit invocation context; the engine owns schema transformations and policy
+checks. Custom envelopes and post-response replacements stay on `execute()`.
+
+`crudTransaction(adapter, context, async transaction => ...)` joins explicitly
+passed resource operations sharing the same registered owner and tenant. Await
+each operation. Foreign/expired scopes and cross-database composition fail;
+accepted unawaited work is drained before rollback. D1 does not gain callback
+transactions from this API. Native scopes also expire with their owning
+application registration; retaining the raw handle does not transfer a scope.
+
 `defineCrudFeature` compiles each model's hooks before heterogeneous features enter the module list. Extracted configs use `satisfies CrudConfig<typeof Schema.shape>` or `ResourceConfig<typeof Schema.shape>`. `defineResource` builds the same headless contract; compiled resources do not accept a caller-selected row type.
 
 The engine validates persisted adapter rows against the model. Before-write hooks receive partial schema-validated writes; persisted-row hooks receive complete records; projection/masking transforms receive partial rows and can return unknown output. Do not assert a projected row is the full stored type.

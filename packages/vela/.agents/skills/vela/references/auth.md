@@ -38,6 +38,19 @@ Import `AuthzModule`, `PermissionGuard`, `RequirePermission`, `RolesGuard`, `Rol
 
 Core's trusted identity is keyed by issuer/subject/type and carries tenant, explicit roles, and expiry. Permission decisions fail closed for missing identity/engine, expired credentials, ambiguity, or resolver errors. WebSocket and live delivery use the same verified principal model.
 
+Tenant enrichment of the same identity preserves validated provider payloads;
+identity replacement invalidates them. Custom HTTP-backed execution contexts
+must bind the original request through `bindTrustedRequestContext`, retaining
+expiry and replacement checks. Queue or socket payload fields cannot establish
+this bridge.
+
+The opt-in `authorizationAudit()` runtime adapter from `@velajs/authz/vela`
+checks mounted HTTP role/permission metadata against visible guards at startup.
+It reads provider snapshots without constructing request providers. Its default
+mode throws on missing or unverifiable wiring; `mode: 'warn'` reports diagnostics.
+Opaque factories may be unverifiable. An audit supplements runtime guards; it
+does not grant authority or prove a custom guard's implementation.
+
 ## Preserving provider-specific API types
 
 `BetterAuthInstance` is the minimal framework contract. If application code needs plugin-specific APIs, expose the actual configured instance through a typed token:
