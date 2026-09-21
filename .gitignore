@@ -18,3 +18,6 @@ coverage/
 /.pnpm-store/
 /.artifacts/
 /.cache/
+
+# Independent website repository; outside the monorepo workspace.
+/site/

@@ -36,6 +36,9 @@ For development setup, testing, and pull requests, see
 - `tools/tsconfig`: shared compiler configurations.
 - `tests/crud`: cross-adapter conformance; `tests/release`: release safety checks.
 
+The website lives in the separate [velajs/site](https://github.com/velajs/site)
+repository. A local `site/` checkout is ignored and stays outside this workspace.
+
 ## Development
 
 Use Node 24 or later and pnpm 11.11.0. From this directory:
