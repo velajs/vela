@@ -57,6 +57,32 @@ example. It records its own integrity proof in `consumer.json`; the API starter
 does not depend on this optional package. New public subpaths require extending
 that check.
 
+When `@velajs/ai` is in the release, the consumer gate additionally installs its
+exact archive in an independent fixture, without Vela or a provider package. It
+checks both the base and `/rag` exports, TypeScript/AI SDK/Zod compatibility,
+tenant isolation, tool validation, and re-sync. Run it independently with
+`node scripts/ai-consumer.mjs /absolute/path/to/velajs-ai-<version>.tgz`.
+
+When the release includes `@velajs/workflow`, the consumer gate also installs its
+archive in an independent project, checks the root and `/harness` declarations
+with Zod 4, and runs the approval/retry/replay example. This coverage does not
+depend on the API starter importing workflow. For a prepared archive manifest,
+run it directly with `node scripts/workflow-consumer.mjs /absolute/artifact/path`.
+
+When mail is present, a separate consumer installs its archive without Vela and
+checks the transport/catcher/testing subpaths, then installs Vela to check the
+main entry, injection types, queue delivery, and inbound scope disposal. This
+coverage runs even though mail is not an API starter dependency. It can also be
+run directly with `node scripts/mail-consumer.mjs /absolute/path/to/artifacts`.
+
+When agent is present, its dedicated consumer checks root, `/mcp`, and `/testing`
+with the migrated AI, workflow, and mail packages. The release agent archive is
+used unchanged; absent companion archives are packed from the built workspace
+for testing only and recorded by integrity in the proof. This leaves the
+publication plan unchanged. It checks strict declarations, RAG/mail integration,
+persisted approvals, duplicate delivery, and imports without optional runtime
+peers. Run `node scripts/agent-consumer.mjs /absolute/path/to/artifacts` directly.
+
 Artifacts live in `.artifacts/release/`. Keep this exact directory
 once publishing begins: rebuilding a partial release changes archive integrity
 and intentionally blocks an ambiguous retry.

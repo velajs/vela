@@ -1,0 +1,20 @@
+{
+  "name": "vela-mail-example",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsdown src/index.ts --format esm --platform neutral --out-dir dist",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/index.js",
+    "test": "node dist/index.js"
+  },
+  "dependencies": {
+    "@velajs/mail": "workspace:*",
+    "@velajs/vela": "workspace:*"
+  },
+  "devDependencies": {
+    "tsdown": "catalog:",
+    "typescript": "catalog:"
+  }
+}

@@ -15,10 +15,13 @@ catalog:
   "@swc/core": 1.15.43
   unplugin-swc: 1.5.9
   "@types/node": 24.13.3
+  "@types/json-schema": 7.0.15
   "@vitest/runner": 4.1.10
   "@vitest/snapshot": 4.1.10
   hono: 4.13.8
   zod: 4.4.3
+  ai: 7.0.26
+  "@cfworker/json-schema": 4.1.1
   "@cloudflare/vitest-plugin": 1.1.13
   "@cloudflare/workers-types": 5.20260920.1
   wrangler: 4.135.0
