@@ -11,7 +11,7 @@ metadata:
 Vela (`@velajs/vela`) provides a NestJS-style framework for **edge runtimes**, built on [Hono](https://hono.dev). NestJS-style decorators, DI, modules, and pipeline run on Cloudflare Workers, Deno, Bun, Vercel Edge, and Node 24+ — anywhere with Web Standard APIs.
 
 - The **main export** `@velajs/vela` is edge-safe by contract (no `node:*`, `Buffer`, `process`, `setInterval`) — enforced in CI.
-- Subpaths: `@velajs/vela/i18n`, `/queue`, `/live`, `/seeder`, `/storage`, `/schedule-node` (Node/Bun only), `/websocket`, `/websocket-node`, `/streaming`, `/internal` (plugin authors).
+- Subpaths: `@velajs/vela/validation` (portable schemas), `/i18n`, `/queue`, `/live`, `/seeder`, `/storage`, `/schedule-node` (Node/Bun only), `/websocket`, `/websocket-node`, `/streaming`, `/internal` (plugin authors).
 - Sibling packages: `@velajs/cloudflare` (Workers adapter: KV/D1/R2/Queues/DO), `@velajs/crud`, `@velajs/better-auth`, `@velajs/authz`, `@velajs/client` / `@velajs/react`, `@velajs/storage`, `@velajs/testing`, `@velajs/cli`, `@velajs/feature-flags`.
 
 ## Critical Rules
@@ -30,7 +30,7 @@ Breaking these causes runtime or build failures.
 
 6. **Use checked providers and inferred tokens.** Register values/classes/factories/aliases with `defineProvider(TOKEN, strategy)`; every factory declares `inject` (use `[]` for none). Resolve with `get(TOKEN)`; use `RequestContextKey<Value>` for typed request state. Raw values remain unknown until parsed.
 
-7. **Keep synchronous resolution paths synchronous.** A `lazy: true` module defers to first use. `app.get()` and the request pipeline resolve synchronously — if a lazy module's providers or lifecycle hooks are async, a sync trigger throws (reach it via `app.materializeLazyModules()` or an async provider path instead). Keep lazy modules sync, or don't mark them lazy.
+7. **Choose the correct resolution path.** `app.get()` and `Container.resolve()` are synchronous; async providers and lazy initialization require `resolveAsync()` or `app.materializeLazyModules()`. The HTTP pipeline awaits provider construction. Custom dispatchers must retain the registration's `moduleId` when resolving both handlers and scoped pipeline components.
 
 ## Vela CLI (`@velajs/cli`)
 
@@ -146,6 +146,7 @@ Load a reference when the task needs its depth. **This table is the contract** �
 |---|---|
 | `references/modules-and-di.md` | Providers, scopes, request-scope bubbling, `@Inject`/`@Optional`/`forwardRef`, `ModuleRef`, visibility/exports, `defineModule`, `forRoot`/`forRootAsync` |
 | `references/lazy-and-lifecycle.md` | Lifecycle hooks + order, lazy modules (claim/drain, sync-seam, `materializeLazyModules`), entrypoints (`app.entrypoints`) |
+| `references/invocation-scopes.md` | Owner-aware discovery, async dispatch, managed deferred work, streaming disposal, and transport trust boundaries |
 | `references/controllers-and-routing.md` | Controllers, method/param decorators, versioning, global prefix, named routes, `UrlGeneratorService`, signed URLs, `VelaRouteMap` |
 | `references/pipeline.md` | Guards/pipes/interceptors/filters/middleware, `APP_*` tokens, execution order, built-in pipes, `Reflector`, `@Catch` |
 | `references/validation.md` | `defineEndpoint`/`@Endpoint`, `defineDto`, `ValidationPipe` vs `ZodValidationPipe`, `@Serialize`, `SerializerInterceptor` |
@@ -182,7 +183,7 @@ Load a reference when the task needs its depth. **This table is the contract** �
 
 **`Multiple providers found for 'X' ...`** (`MultipleProvidersFoundError`) → Two module instances export the same token (e.g. `CacheModule.forRoot({ ttl: 60 })` and `forRoot({ ttl: 120 })`). Import only one, or use a per-instance accessor.
 
-**`lazy module 'X' has async providers or lifecycle hooks and was triggered through a synchronous resolution path.`** → A `lazy: true` module has async work but was reached via `app.get()`/the request pipeline. Reach it through `app.materializeLazyModules()` or an async provider, or drop `lazy: true`.
+**`lazy module 'X' has async providers or lifecycle hooks and was triggered through a synchronous resolution path.`** → A `lazy: true` module has async work but was reached via `app.get()` or another synchronous resolver. Use `resolveAsync()` or `app.materializeLazyModules()`. The HTTP pipeline supports async resolution.
 
 **Routes missing from `vela route list`** → Controller not in a module's `controllers`, or the module not imported in the root.
 

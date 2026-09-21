@@ -14,6 +14,11 @@ HTTP client, live queries, and Studio in a runnable Workers application.
   validation, and typed contracts.
 - [Response serialization](serialization.md): async output schemas and explicit
   projections for domain objects, including private state.
+- [Dependency injection](dependency-injection.md): registration ownership,
+  async construction, provider scopes, and diagnostic snapshots.
+- [Queues](queues.md): validated job contracts, owned dispatch, and native
+  Cloudflare producers and consumers.
+- [Scheduling](scheduling.md): cron dialects and invocation-owned execution.
 - [Security configuration](security.md): request limits, browser origins,
   identity, response caching, signed URLs, and WebSocket boundaries.
 - [WebSockets](websockets.md): gateways, transports, rooms, and authentication.
