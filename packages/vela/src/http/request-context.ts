@@ -25,20 +25,20 @@ export interface RequestContext {
  * needs to reinterpret an unknown value from a heterogeneous map.
  */
 export class RequestContextKey<Value> {
-  private readonly values = new WeakMap<RequestContext, Value>();
+  readonly #values = new WeakMap<RequestContext, Value>();
 
   constructor(readonly description: string) {}
 
   /** @internal Read by RequestContext.get(). */
-  readonly read = (context: RequestContext): Value | undefined => this.values.get(context);
+  readonly read = (context: RequestContext): Value | undefined => this.#values.get(context);
 
   /** @internal Write by RequestContext.set(). A function property keeps Value invariant. */
   readonly write = (context: RequestContext, value: Value): void => {
-    this.values.set(context, value);
+    this.#values.set(context, value);
   };
 
   /** @internal Read by RequestContext.has(). */
-  readonly contains = (context: RequestContext): boolean => this.values.has(context);
+  readonly contains = (context: RequestContext): boolean => this.#values.has(context);
 }
 
 export const REQUEST_CONTEXT = new InjectionToken<RequestContext>('vela.RequestContext');

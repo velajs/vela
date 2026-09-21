@@ -62,6 +62,8 @@ class RequestMarker { readonly id = crypto.randomUUID(); }
 
 **Request-scope bubbling:** any singleton that transitively depends on a request-scoped provider is automatically rebuilt per request (its effective scope becomes REQUEST). Each HTTP request gets a child container; request-scoped instances live there and are disposed at request end. Inject `REQUEST_CONTEXT` to read/write per-request state. Use `new RequestContextKey<Value>(description)` with `context.set(key, value)` / `context.get(key)`; raw string/symbol reads return unknown.
 
+Constructed request instances are keyed by provider registration, so the same token in two module buckets resolves independently. Explicit `setRequestInstance(token, value)` seeds remain token-wide within the child and require a visible request-scoped registration; they do not create providers or bypass visibility. Retain `moduleId` from registration-oriented discovery instead of choosing `moduleIds[0]`. See `invocation-scopes.md` for dispatch and cleanup.
+
 ## `@Inject`, `@Optional`, `forwardRef`
 
 Circular dependencies (provider↔provider or module↔module) resolve with `forwardRef`:

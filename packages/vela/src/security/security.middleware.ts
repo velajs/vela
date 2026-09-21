@@ -228,7 +228,7 @@ export function buildSecurityMiddleware(options: SecurityModuleOptions): Priorit
         if (
           credentialed &&
           normalized.originProtection.unsafeMethods.includes(c.req.method.toUpperCase()) &&
-          ((!origin && !normalized.originProtection.allowMissingOrigin) || !originAllowed)
+          (hasOrigin ? !originAllowed : !normalized.originProtection.allowMissingOrigin)
         ) {
           const response = forbidden(c, 'Credentialed state change requires an allowed Origin');
           applySecurityHeaders(c, normalized.headers);

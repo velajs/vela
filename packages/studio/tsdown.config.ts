@@ -7,6 +7,7 @@ export default defineConfig({
     'src/flags/index.ts',
     'src/queue/index.ts',
     'src/live/index.ts',
+    'src/logging/index.ts',
     'src/schedule/index.ts',
     'src/timetravel/index.ts',
     'src/crud/index.ts',

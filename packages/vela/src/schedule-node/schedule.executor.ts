@@ -1,130 +1,179 @@
 import { Inject, Injectable, Optional } from '../container/index';
 import { Container } from '../container/container';
 import { InternalDispatcher } from '../dispatch/index';
+import { resolveEntrypoint } from '../entrypoint/execution-context';
+import { runInEntrypointScope } from '../entrypoint/execution-scope';
+import type { Entrypoint } from '../entrypoint/entrypoint.types';
 import { resolveErrorReporter } from '../exceptions/reporter';
-import type { OnApplicationBootstrap, OnModuleDestroy } from '../lifecycle/index';
-import { parseCron, type CronMatcher } from '../schedule/cron-matcher';
+import type {
+  BeforeApplicationShutdown,
+  OnApplicationBootstrap,
+  OnModuleDestroy,
+} from '../lifecycle/index';
+import { parseCron } from '../schedule/cron-matcher';
 import { ScheduleRegistry } from '../schedule/schedule.registry';
 import { SCHEDULE_DISPATCH } from '../schedule/schedule.tokens';
-import type { ScheduleDispatchMode, ScheduleJobRef } from '../schedule/schedule.types';
+import type {
+  CronMetadata,
+  IntervalMetadata,
+  ScheduleDispatchMode,
+  ScheduleInvocation,
+  ScheduleJobRef,
+} from '../schedule/schedule.types';
 
 @Injectable()
-export class ScheduleExecutor implements OnApplicationBootstrap, OnModuleDestroy {
-  private intervalTimers: ReturnType<typeof setInterval>[] = [];
-  private cronTimers: ReturnType<typeof setInterval>[] = [];
-  private cronMatcherCache = new Map<string, CronMatcher | null>();
-  private lastCronMinute = new Map<string, number>();
-  private running = true;
+export class ScheduleExecutor
+  implements OnApplicationBootstrap, BeforeApplicationShutdown, OnModuleDestroy
+{
+  readonly #registry: ScheduleRegistry;
+  readonly #container: Container;
+  readonly #dispatch: ScheduleDispatchMode | undefined;
+  readonly #dispatcher: InternalDispatcher | undefined;
+  #timers: ReturnType<typeof setInterval>[] = [];
+  readonly #active = new Map<Promise<void>, AbortController>();
+  #running = true;
+  #started = false;
+  #shutdown: Promise<void> | undefined;
+  #failure: { error: unknown } | undefined;
 
   constructor(
-    private registry: ScheduleRegistry,
-    @Inject(Container) private container: Container,
-    @Optional() @Inject(SCHEDULE_DISPATCH) private readonly dispatch?: ScheduleDispatchMode,
-    @Optional() @Inject(InternalDispatcher) private readonly dispatcher?: InternalDispatcher,
-  ) {}
+    @Inject(ScheduleRegistry) registry: ScheduleRegistry,
+    @Inject(Container) container: Container,
+    @Optional() @Inject(SCHEDULE_DISPATCH) dispatch?: ScheduleDispatchMode,
+    @Optional() @Inject(InternalDispatcher) dispatcher?: InternalDispatcher,
+  ) {
+    this.#registry = registry;
+    this.#container = container;
+    this.#dispatch = dispatch;
+    this.#dispatcher = dispatcher;
+  }
 
   onApplicationBootstrap(): void {
+    if (this.#started || !this.#running) return;
     if (typeof setInterval !== 'function') {
       throw new Error(
-        '@velajs/vela/schedule-node requires Node or Bun. Use a platform cron adapter on edge runtimes (e.g. CloudflareApplication.scheduled).',
+        '@velajs/vela/schedule-node requires Node or Bun. Use a platform cron adapter on edge runtimes.',
       );
     }
-
-    for (const job of this.registry.getIntervalJobs()) {
-      this.scheduleInterval(job.instance, job.methodName, job.ms);
+    if (this.#dispatch?.kind === 'signed' && !this.#dispatcher) {
+      throw new Error('Signed schedule dispatch requires InternalDispatcher.');
     }
-
-    const cronJobs = this.registry.getCronJobs();
-    for (let i = 0; i < cronJobs.length; i++) {
-      const job = cronJobs[i];
-      this.scheduleCron(job!.instance, job!.methodName, job!.expression, i);
+    // Validate the entire plan before creating any timer, including when a later
+    // cron is malformed. Invalid configuration cannot leave background work alive.
+    const intervals = this.#registry.getIntervalEntrypoints();
+    const crons = this.#registry.getCronEntrypoints().map((entry) => {
+      const matcher = parseCron(entry.meta.expression, entry.meta);
+      if (!matcher)
+        throw new TypeError(
+          `Invalid cron expression for ${entry.meta.methodName}: ${entry.meta.expression}`,
+        );
+      return { entry, matcher, lastMinute: undefined as number | undefined };
+    });
+    this.#started = true;
+    for (const entry of intervals) {
+      this.#timers.push(setInterval(() => this.#start(entry, Date.now()), entry.meta.ms));
+    }
+    if (crons.length > 0) {
+      this.#timers.push(
+        setInterval(() => {
+          const now = new Date();
+          const minute = Math.floor(now.getTime() / 60_000);
+          for (const job of crons) {
+            if (job.lastMinute === minute || !job.matcher(now)) continue;
+            job.lastMinute = minute;
+            this.#start(job.entry, minute * 60_000);
+          }
+        }, 1000),
+      );
     }
   }
 
-  private scheduleInterval(instance: unknown, methodName: string, ms: number): void {
-    if (!this.running) return;
-
-    const timer = setInterval(() => {
-      void this.invoke(instance, { kind: 'interval', methodName, ms });
-    }, ms);
-    this.intervalTimers.push(timer);
+  #start(entry: Entrypoint<CronMetadata | IntervalMetadata>, scheduledTime: number): void {
+    if (!this.#running) return;
+    const controller = new AbortController();
+    const meta = entry.meta;
+    const tick: ScheduleInvocation =
+      'expression' in meta
+        ? { kind: 'cron', expression: meta.expression, scheduledTime, signal: controller.signal }
+        : { kind: 'interval', ms: meta.ms, scheduledTime, signal: controller.signal };
+    const job: ScheduleJobRef =
+      tick.kind === 'cron'
+        ? { kind: 'cron', expression: tick.expression, methodName: meta.methodName }
+        : { kind: 'interval', ms: tick.ms, methodName: meta.methodName };
+    const pending = this.#invoke(entry, job, tick);
+    this.#active.set(pending, controller);
+    // Observe immediately; no detached rejection escapes a timer callback.
+    void pending.then(
+      () => {
+        this.#active.delete(pending);
+      },
+      (error: unknown) => {
+        this.#active.delete(pending);
+        // diagnostics:throw has an awaitable failure boundary at shutdown. Keep
+        // only its first failure and stop timers rather than growing a job log.
+        this.#failure ??= { error };
+        this.#stop();
+      },
+    );
   }
 
-  private scheduleCron(
-    instance: unknown,
-    methodName: string,
-    expression: string,
-    index: number,
-  ): void {
-    if (!this.running) return;
-
-    const matcher = this.getMatcher(expression);
-    if (!matcher) return;
-
-    const jobKey = `${index}:${methodName}:${expression}`;
-    const timer = setInterval(() => {
-      const now = new Date();
-      const minuteKey = Math.floor(now.getTime() / 60_000);
-
-      if (this.lastCronMinute.get(jobKey) === minuteKey) return;
-      if (!matcher(now)) return;
-
-      this.lastCronMinute.set(jobKey, minuteKey);
-      void this.invoke(instance, { kind: 'cron', methodName, expression });
-    }, 1000);
-
-    this.cronTimers.push(timer);
-  }
-
-  private async invoke(instance: unknown, job: ScheduleJobRef): Promise<void> {
+  async #invoke(entry: Entrypoint, job: ScheduleJobRef, tick: ScheduleInvocation): Promise<void> {
     try {
-      if (this.dispatch?.kind === 'signed' && this.dispatcher) {
-        // Opt-in signed re-entry: the fired job re-enters a user-authored
-        // `@SignedInvocation()` route through `ctx.run`, running the full
-        // request pipeline instead of a bare in-isolate method call. The
-        // node/bun in-isolate transport (app.fetch) still verifies the claim.
-        const dispatch = this.dispatch;
-        await this.dispatcher.run(dispatch.target(job), {
-          method: dispatch.method,
-          ttlSeconds: dispatch.ttlSeconds,
+      if (this.#dispatch?.kind === 'signed') {
+        if (!this.#dispatcher)
+          throw new Error('Signed schedule dispatch requires InternalDispatcher.');
+        await this.#dispatcher.run(this.#dispatch.target(job), {
+          method: this.#dispatch.method,
+          ttlSeconds: this.#dispatch.ttlSeconds,
           iss: `schedule:${job.methodName}`,
+          signal: tick.signal,
         });
       } else {
-        const method = (instance as Record<string, Function>)[job.methodName];
-        if (typeof method === 'function') {
-          await method.call(instance);
-        }
+        await runInEntrypointScope(
+          this.#container,
+          async (scope) => {
+            const instance: unknown = await resolveEntrypoint(scope, entry);
+            tick.signal.throwIfAborted();
+            if (typeof instance !== 'object' || instance === null)
+              throw new TypeError('Schedule provider must resolve to an object.');
+            const method: unknown = Reflect.get(instance, job.methodName);
+            if (typeof method !== 'function')
+              throw new TypeError(`Scheduled method ${job.methodName} is not callable.`);
+            await Reflect.apply(method, instance, [tick]);
+          },
+          { signal: tick.signal },
+        );
       }
-    } catch (err) {
-      // Report BEFORE the rethrow below — the exception handler sees every
-      // scheduled-job error, and its default reporter logs it (unless silent),
-      // replacing the previous bare console.warn.
-      resolveErrorReporter(this.container).report(err, {
+    } catch (error) {
+      // A cooperative shutdown acknowledgement is not a failed job. Unrelated
+      // errors remain reportable even when shutdown happened concurrently.
+      if (tick.signal.aborted && error === tick.signal.reason) return;
+      resolveErrorReporter(this.#container).report(error, {
         edge: 'schedule',
         source: job.methodName,
       });
-      // Runtime job error — keep the scheduler running by default. Users
-      // can opt into rethrowing by setting diagnostics: 'throw'.
-      const mode = this.container.getDiagnostics();
-      if (mode === 'throw') throw err;
+      if (this.#container.getDiagnostics() === 'throw') throw error;
     }
   }
 
-  private getMatcher(expression: string): CronMatcher | null {
-    if (this.cronMatcherCache.has(expression)) {
-      return this.cronMatcherCache.get(expression) ?? null;
-    }
-    const matcher = parseCron(expression);
-    this.cronMatcherCache.set(expression, matcher);
-    return matcher;
+  #stop(): void {
+    this.#running = false;
+    for (const timer of this.#timers) clearInterval(timer);
+    this.#timers = [];
+    for (const controller of this.#active.values()) controller.abort();
   }
 
-  onModuleDestroy(): void {
-    this.running = false;
-    for (const timer of this.intervalTimers) clearInterval(timer);
-    for (const timer of this.cronTimers) clearInterval(timer);
-    this.intervalTimers = [];
-    this.cronTimers = [];
-    this.lastCronMinute.clear();
+  /** Stop and drain before providers' onModuleDestroy hooks release their resources. */
+  beforeApplicationShutdown(): Promise<void> {
+    return this.onModuleDestroy();
+  }
+
+  onModuleDestroy(): Promise<void> {
+    this.#stop();
+    this.#shutdown ??= (async () => {
+      await Promise.allSettled(this.#active.keys());
+      if (this.#failure) throw this.#failure.error;
+    })();
+    return this.#shutdown;
   }
 }

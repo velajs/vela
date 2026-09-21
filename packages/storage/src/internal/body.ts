@@ -1,4 +1,5 @@
 import type { Body } from '../storage.types';
+import { throwIfAborted } from './retry';
 
 const encoder = new TextEncoder();
 
@@ -90,12 +91,21 @@ export function concatChunks(chunks: Uint8Array[]): Uint8Array {
 export async function* chunkStream(
   src: ReadableStream<Uint8Array>,
   partSize: number,
+  signal?: AbortSignal,
 ): AsyncGenerator<Uint8Array> {
+  throwIfAborted(signal);
   const reader = src.getReader();
+  const onAbort = () => {
+    void reader.cancel(signal?.reason).catch(() => {});
+  };
+  signal?.addEventListener('abort', onAbort, { once: true });
+  let completed = false;
   let buffer: Uint8Array = new Uint8Array(0);
   try {
     for (;;) {
+      throwIfAborted(signal);
       const { done, value } = await reader.read();
+      throwIfAborted(signal);
       if (done) break;
       buffer = buffer.length === 0 ? value : concatChunks([buffer, value]);
       while (buffer.byteLength >= partSize) {
@@ -104,7 +114,10 @@ export async function* chunkStream(
       }
     }
     if (buffer.byteLength > 0) yield buffer;
+    completed = true;
   } finally {
+    signal?.removeEventListener('abort', onAbort);
+    if (!completed) await reader.cancel().catch(() => {});
     reader.releaseLock();
   }
 }

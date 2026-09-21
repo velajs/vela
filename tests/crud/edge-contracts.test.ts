@@ -5,7 +5,6 @@ import { defineModel, defineStandardModel, defineResource } from '@velajs/crud';
 import type { AuthorizationPlan } from '@velajs/crud/kernel';
 import { hmacCursorCodec } from '@velajs/crud/query';
 import { MemoryStore, transactionalMemoryAdapter } from '@velajs/crud-memory';
-import { ValidationPipe, defineDto } from '@velajs/vela';
 const schema = z.object({
   part: z.string(),
   id: z.string(),
@@ -234,10 +233,7 @@ describe('edge CRUD contracts', () => {
       model: standard,
       adapter: transactionalMemoryAdapter({ store: new MemoryStore(), tableName: 'standard' }),
     });
-    const body = await new ValidationPipe(defineDto(create)).transform(
-      { id: 'one', amount: '42' },
-      { type: 'body' },
-    );
+    const body = { id: 'one', amount: '42' };
     expect((await resource.execute('create', { body })).body).toEqual({
       success: true,
       result: { id: 'one', amount: 42 },

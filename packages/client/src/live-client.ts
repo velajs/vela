@@ -1188,6 +1188,7 @@ export class LiveClient<C extends LiveContractShape<C> = LiveContract> {
         socketTicket: () => this.options.socketTicket?.(room),
         heartbeatIntervalMs: this.options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_MS,
         reconnect: this.options.reconnect,
+        sendPolicy: this.options.sendPolicy,
         onStatusChange: () => {
           const status = this.connectionStatus();
           if (status === 'connected') this.everConnected = true;

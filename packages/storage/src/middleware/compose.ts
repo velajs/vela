@@ -1,5 +1,5 @@
 import type { StorageDriver } from '../storage.types';
-import type { Middleware } from './wrap';
+import type { Middleware, RawPreservingMiddleware } from './wrap';
 
 /**
  * Compose middlewares over a base driver. Listed innermost → outermost:
@@ -10,6 +10,11 @@ import type { Middleware } from './wrap';
  * There is deliberately NO default preset — each middleware is opt-in, so you
  * never accidentally ship, e.g., compress-then-encrypt (a CRIME/BREACH vector).
  */
+export function compose<Raw>(
+  base: StorageDriver<Raw>,
+  ...middlewares: RawPreservingMiddleware[]
+): StorageDriver<Raw>;
+export function compose(base: StorageDriver, ...middlewares: Middleware[]): StorageDriver;
 export function compose(base: StorageDriver, ...middlewares: Middleware[]): StorageDriver {
   return middlewares.reduce((driver, wrap) => wrap(driver), base);
 }

@@ -56,6 +56,17 @@ class AvatarsService {
 
 Service methods: `upload(key, body, opts?)`, `download(key, opts?)`, `head(key, opts?)`, `exists(key, opts?)`, `delete(key, opts?)`, `deleteMany(keys, opts?)`, `copy(from, to, opts?)`, `move(from, to, opts?)`, `list(opts?)`, `url(key, opts?)`, `signedUploadUrl(key, opts)`. The richer facade (multipart, `listAll()` async iteration, `file(key)` handles, `signedMultipart`) is reachable via `service.storage`.
 
+Use `stat(key)` and `listMetadata(opts?)` for frozen metadata snapshots without
+body streams or mutable native objects. Native R2 range results distinguish the
+returned byte length from the full object's size. `createStorage`, its service,
+and middleware preserve the driver's generic raw binding type; keep native
+bindings inferred instead of widening them to the structural driver constraint.
+
+Operation aborts and deadlines stop waiting and are terminal for retry
+middleware. An already-issued native write may still complete. Do not retry an
+uncertain write automatically or describe cancellation as rollback. The legacy
+Cloudflare `StorageModule` remains a separate compatibility surface.
+
 ## Presigned URLs
 
 Signing runs on `aws4fetch` + Web Crypto (edge-safe). `url(key, { expiresIn?, responseContentDisposition? })` returns a download URL (a public `publicBaseUrl` link when possible, else a presigned GET). `signedUploadUrl(key, { expiresIn, contentType?, maxSize?, minSize? })` returns a `SignedUpload` — either `{ method: 'PUT', url, headers? }`, or, when size bounds are set, a POST-policy `{ method: 'POST', url, fields }` your client submits directly.

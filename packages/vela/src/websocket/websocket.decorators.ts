@@ -19,7 +19,7 @@ import type {
 
 /**
  * Marks a class as a WebSocket gateway. Mirrors `@Controller` for the socket
- * transport: registers the class as an injectable singleton and stores its
+ * transport: registers the class as injectable (singleton by default) and stores its
  * routing options (`path`, Cloudflare `binding`).
  *
  * @example
@@ -33,7 +33,7 @@ export function WebSocketGateway(options: WebSocketGatewayOptions = {}): ClassDe
     const ctor = target as unknown as Constructor;
     MetadataRegistry.setCustomClassMeta(ctor, WS_GATEWAY_METADATA, options);
     MetadataRegistry.markInjectable(ctor);
-    MetadataRegistry.setScope(ctor, Scope.SINGLETON);
+    MetadataRegistry.setScope(ctor, MetadataRegistry.getScope(ctor) ?? Scope.SINGLETON);
   };
 }
 

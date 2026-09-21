@@ -41,7 +41,7 @@ If the trigger happens *during* bootstrap (an eager consumer injects a lazy expo
 
 ### The sync-seam rule
 
-`app.get()` and the request pipeline resolve **synchronously**. A lazy module whose providers or hooks are **async** is only reachable through an async seam — `app.materializeLazyModules()` (the warmup escape hatch) or an async provider path. A sync trigger against an async lazy module throws a descriptive error rather than silently skipping hooks:
+`app.get()` and `Container.resolve()` resolve **synchronously**. The HTTP pipeline and owner-aware async dispatchers use `resolveAsync()`. A lazy module whose providers or hooks are async needs one of these async paths or `app.materializeLazyModules()` for explicit warmup. A sync trigger against an async lazy module throws a descriptive error rather than silently skipping hooks:
 
 ```
 [vela] lazy module 'X' has async providers or lifecycle hooks and was triggered
@@ -49,7 +49,7 @@ through a synchronous resolution path. Reach it through an async seam first
 (app.materializeLazyModules(), an async provider) or remove lazy: true.
 ```
 
-Keep lazy modules fully sync, or don't mark them lazy.
+Keep providers and hooks synchronous when callers need a synchronous lookup, or materialize the module through an async path first.
 
 ### What can't be lazy
 
@@ -78,4 +78,4 @@ for (const ep of app.entrypoints.ofKind('websocket')) { /* validate ep.meta with
 
 `ofKind(kind)` returns unknown metadata; `ofKind(kind, parseMeta)` infers validated metadata from the parser. A kind string alone does not establish a metadata type.
 
-`app.entrypoints` throws if accessed before bootstrap completes. Custom dispatchers reuse the shared pipeline via `PipelineRunner.run(...)` and `resolveScopedComponents(...)`; whether app-wide `APP_*` components apply is a transport decision (WebSocket merges them; queue/scheduled dispatch deliberately applies none). For the full authoring contract see the repo's `docs/modules.md`.
+`app.entrypoints` throws if accessed before bootstrap completes. Decorator-derived records include their owning `moduleId`. Custom contributors should supply that owner too; `resolveEntrypoint(scope, entry)` rejects an omitted owner when the token has multiple registrations. Reuse `PipelineRunner.run(...)` and `resolveScopedComponentsAsync(kind, target, method, scope, moduleId)`; global component policy remains transport-specific. See `invocation-scopes.md` and the repo's `docs/modules.md`.

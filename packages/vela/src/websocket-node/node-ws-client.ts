@@ -1,10 +1,14 @@
+import {
+  WebSocketSendGate,
+  type WebSocketSendPolicy,
+  type WebSocketSendResult,
+} from '@velajs/live-protocol';
 import type { WSContext } from 'hono/ws';
 import type { RoomRegistry, WsClient } from '../websocket/index';
 import {
   assertWebSocketRoomId,
   DEFAULT_WS_MAX_FRAME_BYTES,
   DEFAULT_WS_MAX_JOINED_ROOMS,
-  webSocketFrameFits,
 } from '../websocket/gateway-routing';
 
 /**
@@ -17,17 +21,21 @@ export class NodeWsClient<
 > implements WsClient<TData> {
   readonly id: string = crypto.randomUUID();
   data: TData = {} as TData;
-  private readonly _rooms = new Set<string>();
+  readonly #sendGate: WebSocketSendGate;
+  readonly #rooms = new Set<string>();
 
   constructor(
     private readonly ws: WSContext,
     private readonly registry: RoomRegistry,
     readonly path: string,
     readonly maxFrameBytes: number = DEFAULT_WS_MAX_FRAME_BYTES,
-  ) {}
+    sendPolicy?: WebSocketSendPolicy,
+  ) {
+    this.#sendGate = new WebSocketSendGate(sendPolicy);
+  }
 
   get rooms(): ReadonlySet<string> {
-    return this._rooms;
+    return this.#rooms;
   }
 
   get raw(): unknown {
@@ -39,24 +47,41 @@ export class NodeWsClient<
   }
 
   sendRaw(payload: string): void {
-    if (!webSocketFrameFits(payload, this.maxFrameBytes)) {
-      this.close(1009, 'Message too large');
-      return;
-    }
-    this.ws.send(payload);
+    this.trySendRaw(payload);
+  }
+
+  trySendRaw(payload: string): WebSocketSendResult {
+    const raw = this.ws.raw;
+    const bufferedAmount =
+      raw &&
+      typeof raw === 'object' &&
+      'bufferedAmount' in raw &&
+      typeof raw.bufferedAmount === 'number'
+        ? raw.bufferedAmount
+        : undefined;
+    return this.#sendGate.trySend(
+      {
+        readyState: this.ws.readyState,
+        bufferedAmount,
+        send: (frame) => this.ws.send(frame),
+        close: (code, reason) => this.close(code, reason),
+      },
+      payload,
+      this.maxFrameBytes,
+    );
   }
 
   join(room: string): void | Promise<void> {
     assertWebSocketRoomId(room);
-    if (!this._rooms.has(room) && this._rooms.size >= DEFAULT_WS_MAX_JOINED_ROOMS) {
+    if (!this.#rooms.has(room) && this.#rooms.size >= DEFAULT_WS_MAX_JOINED_ROOMS) {
       throw new Error(`A WebSocket may join at most ${DEFAULT_WS_MAX_JOINED_ROOMS} rooms`);
     }
-    this._rooms.add(room);
+    this.#rooms.add(room);
     return this.registry.join(this, room);
   }
 
   leave(room: string): void | Promise<void> {
-    this._rooms.delete(room);
+    this.#rooms.delete(room);
     return this.registry.leave(this, room);
   }
 

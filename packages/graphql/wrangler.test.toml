@@ -1,0 +1,6 @@
+name = "vela-graphql-test"
+main = "../../apps/graphql-worker/src/index.ts"
+compatibility_date = "2026-09-21"
+
+[vars]
+APP_LABEL = "native"

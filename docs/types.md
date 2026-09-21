@@ -61,3 +61,55 @@ The descriptor exposes `name`, the original `schema`, `parse`, and `toJSONSchema
 `ValidationPipe.parser` exposes an explicitly supplied parser to route introspection. A global `ValidationPipe` can also read a schema descriptor from explicit parameter metadata. TypeScript type aliases do not survive reflection, so use the explicit parser shown above for ordinary parameter decorators. For a single checked contract spanning handler inputs, outputs, validation, and generated Hono RPC types, use `defineEndpoint` and `@Endpoint`; a standalone body parser does not check a method's TypeScript annotation against its schema.
 
 Programmatic routes supply the descriptor directly as `ParamMetadata.metatype`. The extractor passes that value through as `unknown`; validation narrows it to a callable parser. Real classes carrying static schema metadata are also readable, but class instances are not treated as schema output.
+
+### Shared asynchronous schema boundaries
+
+`parseSchema(schema, unknown)` and `parseSchemaAsync(schema, unknown)` accept a
+Standard Schema, a legacy parser, or a DTO descriptor. The first preserves a
+synchronous result when the validator is synchronous; the second always returns
+a promise. Both prefer Standard Schema validation, then legacy `parseAsync`, then
+`parse`. The async helper uses Zod’s public `safeParseAsync` when available to
+avoid the Standard adapter’s synchronous probe followed by an asynchronous retry.
+Use the async helper at dispatch boundaries with asynchronous Zod refinements. Import them from `@velajs/vela/validation`
+when you only need validation without the framework bootstrap.
+
+`SchemaInput<typeof schema>` retains Standard Schema wire input types, while
+`SchemaOutput<typeof schema>` retains parsed output types, including transforms.
+Legacy parsers without an input contract have `unknown` input. DTO descriptors
+retain the concrete underlying schema. Existing synchronous DTO `parse` calls
+stay synchronous; use `dto.parseAsync(value)` for asynchronous refinements.
+
+Invalid data throws `SchemaValidationError` with message, segmented path, and an
+optional validation code. Vendor issue extensions and input values are omitted.
+Exceptions thrown by Standard validators are preserved, even if they contain an
+`issues` property. Legacy parsers retain their structured `issues` error
+convention. Map validation failures to client errors only at input boundaries;
+output validation failures indicate a server-side contract failure.
+
+### Endpoint input and output transformations
+
+`defineEndpoint` accepts both synchronous and asynchronous schemas. A handler
+receives the input schema's parsed output and returns the output schema's input;
+the dispatcher awaits the final output transformation after interceptors. This
+supports projecting domain instances with JavaScript `#private` state into plain
+wire data without reflective hydration. Legacy parser endpoints keep their
+existing inferred handler result type.
+
+```ts
+const endpoint = defineEndpoint({
+  input: defineDto(z.object({ json: z.object({
+    amount: z.string().transform(async (value) => Number(value)),
+  }) })),
+  output: defineDto(z.number().transform(async (value) => String(value)), {
+    jsonSchema: { type: 'string' },
+  }),
+});
+const execute = endpoint.bind(({ json }) => json.amount);
+// execute({ json: { amount: '42' } }) resolves to the wire string '42'.
+```
+
+OpenAPI reads input-direction schemas for wire requests and output-direction
+schemas for responses. Supply `schemaConverter(direction)` or an explicit
+`jsonSchema` for projections the schema library cannot represent. Async schema
+validation failures at input remain 400; exceptions thrown by validators and
+output-contract failures remain server errors.

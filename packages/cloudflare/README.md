@@ -85,6 +85,27 @@ environment.
 `cloudflareAdapter({ env, envToken })` provides the same bootstrap and request
 contract when composing `VelaFactory.create` directly.
 
+## Managed queue and cron work
+
+Each matching queue/cron handler receives its original event and environment,
+plus a context whose `waitUntil(promise)` delegates to the platform and retains
+that handler's DI scope until the promise settles. Class/method guards,
+interceptors and filters resolve asynchronously from the handler's declaring
+module. The execution context exposes that same child via `getContainer()` and
+its owner via `getModuleId()`; `REQUEST_CONTEXT` remains HTTP-only.
+
+Inject `EXECUTION_LIFETIME` from `@velajs/vela` to schedule deferred callbacks
+with `lifetime.defer(work)` or register already-started work with
+`lifetime.waitUntil(promise)`. The handler, managed work and asynchronous provider
+disposal finish before queue/cron dispatch returns. Unclaimed failures reject
+for the platform to observe; they are not silently converted into success. When
+several handlers match, every handler settles before a single failure or
+`AggregateError` is returned. Background failure does not undo completed writes;
+handlers still need the idempotency appropriate to their delivery semantics.
+
+See [execution scopes](../../docs/execution-scopes.md) for lifetime ownership,
+stream boundaries, cancellation and optional transport integration.
+
 ## Typed provider factories
 
 Bindings retain their full native API and generic parameters. There are no
@@ -211,6 +232,11 @@ The root package contains no runtime `cloudflare:workers` import and can be
 loaded by Node tooling. Native classes belong to `/durable-objects`.
 
 ## R2 storage and caches
+
+For new object/file storage, prefer the independently imported
+[`@velajs/storage`](../storage/README.md#portable-storage-and-the-cloudflare-proxy)
+with a native R2 or hybrid driver. The storage module below remains the supported
+1.x Worker HMAC proxy API; its signed routes differ from provider-signed URLs.
 
 Configure named disks from an async factory using actual bucket values:
 

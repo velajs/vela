@@ -5,10 +5,13 @@
  */
 
 import { moduleToken, type InjectionToken } from '@velajs/vela';
+import type { CrudDatabaseRegistry } from './databases';
 import type { CrudAdapter } from './adapter/contract';
 import type { CrudResource } from './kernel/resource';
 import type { VersioningStore } from './versioning/index';
 import type { AuditStore } from './audit/index';
+
+export const CRUD_DATABASES = moduleToken<CrudDatabaseRegistry | undefined>('crud:databases');
 
 /** The app-wide default adapter, provided by `CrudModule.forRoot`. */
 export const CRUD_DEFAULT_ADAPTER =
@@ -26,6 +29,7 @@ export const CRUD_DEFAULT_AUDIT_STORE: InjectionToken<AuditStore | undefined> = 
 declare global {
   // The registry contains only tokens created by crudResourceToken. Declaring
   // its actual global slot keeps HMR identity without asserting unknown data.
+  var __velajsCrudDatabaseResourceTokensV1: Map<string, InjectionToken<CrudResource>> | undefined;
   var __velajsCrudResourceTokensV1: Map<string, InjectionToken<CrudResource>> | undefined;
 }
 
@@ -34,12 +38,16 @@ function tokenStore(): Map<string, InjectionToken<CrudResource>> {
 }
 
 /** The compiled `CrudResource` for a named resource (forFeature registers it). */
-export function crudResourceToken(name: string): InjectionToken<CrudResource> {
-  const store = tokenStore();
-  let token = store.get(name);
+export function crudResourceToken(name: string, database?: string): InjectionToken<CrudResource> {
+  const store =
+    database === undefined
+      ? tokenStore()
+      : (globalThis.__velajsCrudDatabaseResourceTokensV1 ??= new Map());
+  const key = database === undefined ? name : JSON.stringify([database, name]);
+  let token = store.get(key);
   if (!token) {
-    token = moduleToken<CrudResource>(`crud:resource:${name}`);
-    store.set(name, token);
+    token = moduleToken<CrudResource>(`crud:resource:${key}`);
+    store.set(key, token);
   }
   return token;
 }

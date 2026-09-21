@@ -73,11 +73,14 @@
       "import": "./dist/testing/index.js"
     }
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsdown",
     "test": "vitest run",
     "test:workers": "vitest run --config vitest.config.workers.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.workers-typecheck.json",
     "lint": "oxlint .",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
@@ -118,8 +121,5 @@
   },
   "engines": {
     "node": ">=24"
-  },
-  "publishConfig": {
-    "access": "public"
   }
 }

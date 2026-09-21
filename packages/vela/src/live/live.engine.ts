@@ -18,7 +18,9 @@ import {
   buildEntrypointExecutionContext,
   isVelaError,
   resolveErrorReporter,
-  resolveScopedComponents,
+  resolveEntrypoint,
+  resolveScopedComponentsAsync,
+  trySendWebSocketFrame,
   runInEntrypointScope,
   toErrorBody,
 } from '../index';
@@ -30,6 +32,7 @@ import type {
   Type,
   WsClient,
   WsMessage,
+  WsExecutionContext,
 } from '../index';
 import { getLiveQueries } from './live.decorators';
 import { liveCoalescingKey } from './live.coalescing';
@@ -292,23 +295,21 @@ export class LiveEngine
   }
 
   async onApplicationBootstrap(): Promise<void> {
-    for (const found of this.discovery.providersWithMeta<LiveResolverMetadata>(
+    for (const found of this.discovery.registrationsWithMeta<LiveResolverMetadata>(
       LIVE_RESOLVER_METADATA,
+      { metadataOnly: true },
     )) {
-      if (!found.instance) continue;
       for (const declared of getLiveQueries(found.metatype)) {
         if (this.queries.has(declared.name)) {
           const msg =
             `[vela] duplicate @LiveQuery('${declared.name}') ` +
-            `(${found.metatype.name}); keeping the first.`;
-          if (this.container.getDiagnostics() === 'throw') throw new Error(msg);
-          console.warn(msg);
-          continue;
+            `(${found.metatype.name}, owner ${found.moduleId}); query names must be unique.`;
+          throw new Error(msg);
         }
         this.queries.set(declared.name, {
           ...declared,
           token: found.metatype,
-          moduleId: found.moduleIds[0]!,
+          moduleId: found.moduleId,
         });
       }
     }
@@ -350,7 +351,12 @@ export class LiveEngine
     return { subscriptions, rooms: this.presence?.inspectRooms() ?? [] };
   }
 
-  async handleReservedEvent(path: string, client: WsClient, message: WsMessage): Promise<void> {
+  async handleReservedEvent(
+    path: string,
+    client: WsClient,
+    message: WsMessage,
+    context?: WsExecutionContext,
+  ): Promise<void> {
     const frame = message.data;
     if (this.isUnsupportedSubscribeFrame(frame)) {
       this.sendFrame(client, {
@@ -367,7 +373,7 @@ export class LiveEngine
 
     switch (frame.t) {
       case 'sub':
-        await this.onSubscribe(path, client, frame);
+        await this.onSubscribe(path, client, frame, context?.getContainer());
         return;
       case 'unsub': {
         const conn = this.connections.get(client.id);
@@ -454,7 +460,13 @@ export class LiveEngine
     path: string,
     client: WsClient,
     frame: Extract<ClientLiveFrame, { t: 'sub' }>,
+    invocationScope?: Container,
   ): Promise<void> {
+    if (!invocationScope)
+      return runInEntrypointScope(this.container, (scope) =>
+        this.onSubscribe(path, client, frame, scope),
+      );
+
     const conn = this.ensureConnection(path, client);
     if (conn.subs.has(frame.sub)) {
       this.sendFrame(client, {
@@ -507,7 +519,7 @@ export class LiveEngine
 
     // Resolver-tier guards run here and again before server-initiated delivery.
     // App-wide guards already protected the inbound reserved-event path.
-    if (!(await this.runSubscribeGuards(registered, client, frame.query, args))) {
+    if (!(await this.runSubscribeGuards(registered, client, frame.query, args, invocationScope))) {
       this.sendFrame(client, {
         t: 'error',
         sub: frame.sub,
@@ -547,7 +559,7 @@ export class LiveEngine
       identity,
     };
     this.preparedQueries.set(record, prepared);
-    if (!(await this.authorizeRecord(record, client, false))) {
+    if (!(await this.authorizeRecord(record, client, false, invocationScope))) {
       await this.revokeConnection(conn, 'live authorization revoked');
       return;
     }
@@ -577,7 +589,10 @@ export class LiveEngine
       }
     }
 
-    await this.push(conn, record, await this.log.current(), { initial: true });
+    await this.push(conn, record, await this.log.current(), {
+      initial: true,
+      scope: invocationScope,
+    });
   }
 
   private async runSubscribeGuards(
@@ -585,29 +600,25 @@ export class LiveEngine
     client: WsClient,
     query: string,
     args: unknown,
+    scope: Container,
   ): Promise<boolean> {
-    const guards = resolveScopedComponents(
-      'guard',
-      registered.token,
-      registered.methodName,
-      this.container,
-    );
-    if (guards.length === 0) return true;
     const context = buildEntrypointExecutionContext(
       'live',
       registered.token,
       registered.methodName,
-      {
-        query,
-        args,
-        client,
-      },
+      { query, args, client },
       registered.moduleId,
+      scope,
     );
     try {
-      for (const guard of guards) {
-        if (!(await guard.canActivate(context))) return false;
-      }
+      const guards = await resolveScopedComponentsAsync(
+        'guard',
+        registered.token,
+        registered.methodName,
+        scope,
+        registered.moduleId,
+      );
+      for (const guard of guards) if (!(await guard.canActivate(context))) return false;
       return true;
     } catch {
       return false;
@@ -685,8 +696,16 @@ export class LiveEngine
     conn: ConnectionEntry,
     record: SubscriptionRecord,
     stamp: CommitStamp,
-    { initial, runCache }: { initial: boolean; runCache?: QueryExecutionCache },
+    {
+      initial,
+      runCache,
+      scope,
+    }: { initial: boolean; runCache?: QueryExecutionCache; scope?: Container },
   ): Promise<void> {
+    if (!scope)
+      return runInEntrypointScope(this.container, (child) =>
+        this.push(conn, record, stamp, { initial, runCache, scope: child }),
+      );
     // Outbound expiry enforcement — the only place expiry CAN be enforced for
     // a passive subscriber.
     const expiresAtMs = record.identity?.expiresAtMs;
@@ -700,14 +719,14 @@ export class LiveEngine
       return;
     }
 
-    if (!initial && !(await this.authorizeRecord(record, conn.client, true))) {
+    if (!initial && !(await this.authorizeRecord(record, conn.client, true, scope))) {
       await this.revokeConnection(conn, 'live authorization revoked');
       return;
     }
 
     let execution: QueryExecution;
     try {
-      execution = await this.resolveQueryExecution(record, conn.client, runCache);
+      execution = await this.resolveQueryExecution(record, conn.client, runCache, scope);
     } catch (err) {
       if (initial) {
         // Close the leak: an initial-subscribe resolver failure is REDACTED
@@ -758,6 +777,7 @@ export class LiveEngine
     record: SubscriptionRecord,
     client: WsClient,
     runCache: QueryExecutionCache | undefined,
+    scope: Container,
   ): Promise<QueryExecution> {
     const registered = this.queries.get(record.query);
     if (!registered) throw new Error(`live query '${record.query}' disappeared from the registry`);
@@ -779,26 +799,27 @@ export class LiveEngine
     }
 
     if (cacheKey === undefined || runCache === undefined) {
-      return this.executeQuery(record, client, liveContext);
+      return this.executeQuery(record, client, scope, liveContext);
     }
 
     // Store the in-flight Promise, not just its result: workers reaching the
     // same group concurrently join the first resolver execution. Fulfilled
     // groups remain pass-local but are held behind strict count/byte budgets.
     return resolveCachedExecution(runCache, cacheKey, () =>
-      this.executeQuery(record, client, liveContext),
+      this.executeQuery(record, client, scope, liveContext),
     );
   }
 
   private async executeQuery(
     record: SubscriptionRecord,
     client: WsClient,
+    scope: Container,
     liveContext?: LiveQueryContext,
   ): Promise<QueryExecution> {
     const registered = this.queries.get(record.query);
     if (!registered) throw new Error(`live query '${record.query}' disappeared from the registry`);
     const result = registered.definition.result.parse(
-      await this.runQuery(record, client, liveContext),
+      await this.runQuery(record, client, scope, liveContext),
     );
     const json = JSON.stringify(result);
     if (json === undefined)
@@ -814,41 +835,40 @@ export class LiveEngine
   private async runQuery(
     record: SubscriptionRecord,
     client: WsClient,
+    scope: Container,
     liveContext?: LiveQueryContext,
   ): Promise<unknown> {
     const registered = this.queries.get(record.query);
     if (!registered) throw new Error(`live query '${record.query}' disappeared from the registry`);
 
-    return runInEntrypointScope(this.container, async (scope) => {
-      // Async seam: lazy resolver modules materialize, request-scoped
-      // resolvers rebuild per run (mirrors queue dispatch).
-      const instance = await scope.resolveAsync(registered.token);
-      const prepared = this.preparedQuery(record);
-      const queryContext = liveContext ?? this.liveQueryContext(record, client);
-      const context = buildEntrypointExecutionContext(
-        'live',
-        registered.token,
-        registered.methodName,
-        {
-          query: record.query,
-          args: record.args,
-          client,
-        },
-        registered.moduleId,
-      );
-      const interceptors = resolveScopedComponents(
-        'interceptor',
-        registered.token,
-        registered.methodName,
-        scope,
-      );
-      return PipelineRunner.run({
-        context,
-        guards: [],
-        interceptors,
-        resolveArgs: async () => [record.args, queryContext],
-        invoke: async () => prepared.invoke(instance, queryContext),
-      });
+    // Resolve the handler only after authorization and preserve its module owner.
+    const prepared = this.preparedQuery(record);
+    const queryContext = liveContext ?? this.liveQueryContext(record, client);
+    const context = buildEntrypointExecutionContext(
+      'live',
+      registered.token,
+      registered.methodName,
+      {
+        query: record.query,
+        args: record.args,
+        client,
+      },
+      registered.moduleId,
+      scope,
+    );
+    const interceptors = await resolveScopedComponentsAsync(
+      'interceptor',
+      registered.token,
+      registered.methodName,
+      scope,
+      registered.moduleId,
+    );
+    return PipelineRunner.run({
+      context,
+      guards: [],
+      interceptors,
+      resolveArgs: async () => [record.args, queryContext],
+      invoke: async () => prepared.invoke(await resolveEntrypoint(scope, registered), queryContext),
     });
   }
 
@@ -900,13 +920,18 @@ export class LiveEngine
     record: SubscriptionRecord,
     client: WsClient,
     rerunScopedGuards: boolean,
+    scope: Container,
   ): Promise<boolean> {
     const registered = this.queries.get(record.query);
     if (!registered) return false;
     try {
       const dispatcher = this.container.resolve(WsDispatcher);
       if (
-        !(await dispatcher.authorizeDelivery(this.connections.get(client.id)?.path ?? '', client))
+        !(await dispatcher.authorizeDelivery(
+          this.connections.get(client.id)?.path ?? '',
+          client,
+          scope,
+        ))
       ) {
         return false;
       }
@@ -915,7 +940,7 @@ export class LiveEngine
     }
     if (
       rerunScopedGuards &&
-      !(await this.runSubscribeGuards(registered, client, record.query, record.args))
+      !(await this.runSubscribeGuards(registered, client, record.query, record.args, scope))
     ) {
       return false;
     }
@@ -1023,8 +1048,7 @@ export class LiveEngine
     try {
       const encoded = encodeLiveEnvelope(frame);
       if (textEncoder.encode(encoded).byteLength > MAX_LIVE_FRAME_BYTES) return false;
-      client.sendRaw(encoded);
-      return true;
+      return trySendWebSocketFrame(client, encoded) === 'accepted';
     } catch {
       return false;
     }

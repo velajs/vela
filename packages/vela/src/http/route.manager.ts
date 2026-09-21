@@ -1,4 +1,6 @@
 import { type Next, Hono } from 'hono';
+import { HTTPException } from 'hono/http-exception';
+import { toErrorBody } from '@velajs/errors';
 import type {
   VelaContext as Context,
   VelaHono as HonoApp,
@@ -10,6 +12,8 @@ import { contextStorage } from 'hono/context-storage';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { HttpMethod } from '../constants';
 import { HttpException } from '../errors/http-exception';
+import { createExecutionScope, finishExecutionScope } from '../entrypoint/execution-scope';
+import { resolveErrorReporter } from '../exceptions/reporter';
 import { getMetadata } from '../metadata';
 import type { Container } from '../container/container';
 import type { Token, TypedToken, Type } from '../container/types';
@@ -19,7 +23,7 @@ import { ArgumentResolver } from './argument-resolver';
 import { getRouteContributors } from './route-contributor';
 import { buildMiddlewareExecutionContext } from './execution-context';
 import { HandlerExecutor } from './handler-executor';
-import { instantiate, instantiateMany } from './instantiate';
+import { instantiate, instantiateMany, instantiateAsync } from './instantiate';
 import { REQUEST_CONTEXT, createRequestContext } from './request-context';
 import { findRequestContainer, setRequestContainer } from './request-container';
 import { mapResponse } from './response-mapper';
@@ -52,11 +56,7 @@ import {
   type VelaSecurityOptions,
 } from './security-options';
 
-type MethodRegistrar = (
-  app: HonoApp,
-  path: string,
-  h: (c: Context) => Response | Promise<Response>,
-) => void;
+type MethodRegistrar = (app: HonoApp, path: string, handler: MiddlewareHandler) => void;
 
 /**
  * One explicit controller route as the framework registered it — recorded by
@@ -113,56 +113,72 @@ export const DEFAULT_BODY_LIMIT_BYTES = 1024 * 1024;
 // them. Core therefore has no default client identity.
 const defaultGetClientIp = (_c: Context): string | null => null;
 
-// Mirror a response body stream, invoking `onDone` exactly once when it is fully
-// read, errors, or is cancelled. Lets request-scoped resources be disposed only
-// after the body has drained — never mid-stream.
-function disposeStreamWhenDone(
-  body: ReadableStream<Uint8Array>,
-  onDone: () => void,
-): ReadableStream<Uint8Array> {
+// Track the transmitted body without owning the invocation's deferred work.
+// Cancellation finishes only after the producer's cancellation settles, so it
+// can still use request-scoped resources while releasing its own handles.
+function trackResponseStream(body: ReadableStream<Uint8Array>): {
+  body: ReadableStream<Uint8Array>;
+  done: Promise<void>;
+} {
   const reader = body.getReader();
+  const completion = Promise.withResolvers<void>();
   let finished = false;
+  let cancelling = false;
   const finish = (): void => {
-    if (!finished) {
-      finished = true;
-      onDone();
-    }
+    if (finished) return;
+    finished = true;
+    reader.releaseLock();
+    completion.resolve();
   };
-  return new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      try {
-        const { done, value } = await reader.read();
-        if (done) {
-          controller.close();
-          finish();
-          return;
+  return {
+    done: completion.promise,
+    body: new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        try {
+          const { done, value } = await reader.read();
+          if (done) {
+            if (!cancelling) {
+              controller.close();
+              finish();
+            }
+          } else {
+            controller.enqueue(value);
+          }
+        } catch (error) {
+          if (!cancelling) {
+            controller.error(error);
+            finish();
+          }
         }
-        controller.enqueue(value);
-      } catch (error) {
-        controller.error(error);
-        finish();
-      }
-    },
-    cancel(reason) {
-      finish();
-      return reader.cancel(reason);
-    },
-  });
+      },
+      async cancel(reason) {
+        cancelling = true;
+        try {
+          await reader.cancel(reason);
+        } finally {
+          finish();
+        }
+      },
+    }),
+  };
 }
 
 export class RouteManager {
   private static readonly METHOD_REGISTRAR = new Map<string, MethodRegistrar>([
-    [HttpMethod.GET, (app, p, h) => app.get(p, h)],
-    [HttpMethod.POST, (app, p, h) => app.post(p, h)],
-    [HttpMethod.PUT, (app, p, h) => app.put(p, h)],
-    [HttpMethod.PATCH, (app, p, h) => app.patch(p, h)],
-    [HttpMethod.DELETE, (app, p, h) => app.delete(p, h)],
-    [HttpMethod.OPTIONS, (app, p, h) => app.options(p, h)],
+    [HttpMethod.GET, (app, p, handler) => app.get(p, handler)],
+    [HttpMethod.POST, (app, p, handler) => app.post(p, handler)],
+    [HttpMethod.PUT, (app, p, handler) => app.put(p, handler)],
+    [HttpMethod.PATCH, (app, p, handler) => app.patch(p, handler)],
+    [HttpMethod.DELETE, (app, p, handler) => app.delete(p, handler)],
+    [HttpMethod.OPTIONS, (app, p, handler) => app.options(p, handler)],
     [
       HttpMethod.HEAD,
-      (app, p, h) => app.get(p, (c, next) => (c.req.method === 'HEAD' ? h(c) : next())),
+      // Hono dispatches HEAD through GET. Every member of a HEAD chain must
+      // skip ordinary GET requests, including its scoped middleware.
+      (app, p, handler) =>
+        app.get(p, (c, next) => (c.req.method === 'HEAD' ? handler(c, next) : next())),
     ],
-    [HttpMethod.ALL, (app, p, h) => app.all(p, h)],
+    [HttpMethod.ALL, (app, p, handler) => app.all(p, handler)],
   ]);
 
   private controllers: ControllerRegistration[] = [];
@@ -420,8 +436,13 @@ export class RouteManager {
       return existing;
     }
 
-    const child = this.container.createChild();
+    const child = this.createRequestContainer(c);
     child.setRequestInstance(REQUEST_CONTEXT, createRequestContext(c));
+    return child;
+  }
+
+  private createRequestContainer(c: Context): Container {
+    const { container: child } = createExecutionScope(this.container, { signal: c.req.raw.signal });
     setRequestContainer(c, child);
     return child;
   }
@@ -453,34 +474,43 @@ export class RouteManager {
 
   private async mapMiddlewareError(c: Context, error: unknown): Promise<Response> {
     const requestContainer = this.getRequestContainer(c);
-    const filters = instantiateMany<ExceptionFilter>(this.globalFilters, requestContainer);
     const host = buildMiddlewareExecutionContext(c);
+    const reporter = resolveErrorReporter(requestContainer);
+    const source = `${c.req.method} ${c.req.path}`;
+    reporter.report(error, { edge: 'http', source, note: 'middleware failed' });
 
-    for (const filter of filters) {
-      if (shouldFilterCatch(filter, error)) {
-        try {
-          const filtered = await filter.catch(error, host);
-          return mapResponse(c, filtered);
-        } catch {
-          // Filter itself threw — fall through to default error mapping.
-          break;
+    for (const entry of this.globalFilters) {
+      try {
+        const filter = await instantiateAsync<ExceptionFilter>(entry, requestContainer);
+        if (shouldFilterCatch(filter, error)) {
+          return mapResponse(c, await filter.catch(error, host));
         }
+      } catch (filterError) {
+        reporter.report(filterError, { edge: 'http', source, note: 'middleware filter failed' });
+        break;
       }
     }
 
-    if (error instanceof HttpException) {
-      const response = error.getResponse();
-      const status = error.getStatus() as ContentfulStatusCode;
-      return c.json(response, status);
-    }
+    const rendered = reporter.render(error, host);
+    if (rendered instanceof Response) return rendered;
+    if (rendered) return c.json(rendered.body, rendered.status as ContentfulStatusCode);
 
-    // Non-HttpException with no catching filter: re-throw so Hono's
-    // outer error handler produces the same default-500 response it
-    // produced before this wrapping was introduced.
-    throw error;
+    if (error instanceof HttpException) {
+      // Preserve the 1.x middleware exception envelope.
+      return c.json(error.getResponse(), error.getStatus() as ContentfulStatusCode);
+    }
+    if (error instanceof HTTPException) {
+      if (error.status < 500) return error.getResponse();
+      return c.json(
+        { error: { code: 'internal', message: 'Internal Server Error' } },
+        error.status as ContentfulStatusCode,
+      );
+    }
+    const { body, status } = toErrorBody(error, { catalog: reporter.catalog });
+    return c.json(body, status as ContentfulStatusCode);
   }
 
-  registerController(controller: Type): this {
+  registerController(controller: Type, moduleId?: string): this {
     const prefix = MetadataRegistry.getControllerPath(controller);
     const options = MetadataRegistry.getControllerOptions(controller);
     const routes = MetadataRegistry.getRoutes(controller);
@@ -488,12 +518,28 @@ export class RouteManager {
     // The ModuleLoader registers controllers in their owning module's bucket;
     // fall back to a `__root__` registration only for controllers that arrive
     // here outside the module-loading flow (test harnesses, custom adapters).
-    if (!this.container.has(controller)) {
+    if (moduleId === undefined && !this.container.has(controller)) {
       this.container.register(controller);
     }
-    const moduleId = this.container.getOwnerModuleIds(controller)[0];
-    if (!moduleId) {
-      throw new Error(`Cannot register controller ${controller.name}: no declaring module bucket`);
+    const owners = this.container.getOwnerModuleIds(controller);
+    if (moduleId === undefined) {
+      if (owners.length !== 1) {
+        throw new Error(
+          `Cannot register controller ${controller.name}: specify its declaring module ` +
+            `(found ${owners.length} owners)`,
+        );
+      }
+      moduleId = owners[0]!;
+    } else if (!owners.includes(moduleId)) {
+      throw new Error(`Controller ${controller.name} is not registered in module ${moduleId}`);
+    }
+
+    const mounted = this.controllers.find((entry) => entry.controller === controller);
+    if (mounted && mounted.moduleId !== moduleId) {
+      throw new Error(
+        `Controller ${controller.name} is already mounted by module ${mounted.moduleId}; ` +
+          `cannot mount the same routes for module ${moduleId}. Use distinct controller classes.`,
+      );
     }
 
     this.controllers.push({
@@ -520,36 +566,45 @@ export class RouteManager {
     const app = new Hono<VelaHonoEnv>();
     this.routeDescriptions = [];
 
-    // Outermost: dispose the per-request child container once the request is
-    // fully done. Fast-paths out when the child has no request-scoped
-    // disposables (the common case → zero overhead / no behavior change).
-    // Streaming-safe: when a response body is present, disposal is deferred
-    // until the body is fully read (or errors/cancels), never mid-stream.
+    // HTTP owns one lifetime through both response transmission and managed
+    // deferred work. Native waitUntil also retains asynchronous disposal.
     app.use('*', async (c: Context, next: Next) => {
-      let threw = false;
+      // Adapter-mounted routes share this same child even without controllers.
+      // Start the lifetime before input validation, but snapshot REQUEST_CONTEXT
+      // only after the body limiter has normalized the raw Request.
+      const child = this.createRequestContainer(c);
       try {
         await next();
-      } catch (error) {
-        threw = true;
-        throw error;
       } finally {
-        const child = findRequestContainer(c);
-        if (child?.hasDisposables()) {
-          const body = threw ? null : (c.res?.body ?? null);
-          if (body) {
-            // Defer disposal to when the runtime finishes reading the body.
-            c.res = new Response(
-              disposeStreamWhenDone(body, () => void child.dispose()),
-              {
-                status: c.res.status,
-                statusText: c.res.statusText,
-                headers: c.res.headers,
-              },
-            );
-          } else {
-            // No body (or error path) — nothing streaming, dispose now.
-            await child.dispose();
+        const response = c.res;
+        // Hono suppresses HEAD bodies outside the middleware chain. Cancel
+        // the untransmitted producer here instead of awaiting a drain that
+        // can never happen. Native upgrades must retain their Response.
+        if (c.req.method === 'HEAD' && response.body && response.status !== 101) {
+          await finishExecutionScope(child, response.body.cancel());
+        } else if (response.body && response.status !== 101) {
+          const stream = trackResponseStream(response.body);
+          c.res = new Response(stream.body, response);
+          const reporter = resolveErrorReporter(child);
+          const completion = finishExecutionScope(child, stream.done);
+          // Observe failures on portable runtimes as well as Workers. Keep
+          // the original rejecting promise for the native lifetime owner.
+          void completion.catch((error: unknown) => {
+            reporter.report(error, {
+              edge: 'http',
+              source: `${c.req.method} ${c.req.path}`,
+              note: 'request completion failed',
+            });
+          });
+          let executionCtx;
+          try {
+            executionCtx = c.executionCtx;
+          } catch {
+            // Hono throws when invoked without a native execution context.
           }
+          executionCtx?.waitUntil(completion);
+        } else {
+          await finishExecutionScope(child);
         }
       }
     });
@@ -557,9 +612,30 @@ export class RouteManager {
     // Security boundary: reject oversized input before any user middleware,
     // argument extraction, validation pipe, guard, or signed-body capture can
     // buffer/hash it. Hono also counts streaming bodies without Content-Length.
-    app.use('*', (c, next) => {
-      const maxSize = this.resolveBodyLimit(c.req.path, c.req.method);
-      return maxSize === false ? next() : honoBodyLimit({ maxSize })(c, next);
+    app.use('*', async (c, next) => {
+      let seeded = false;
+      const seedContext = (): void => {
+        if (seeded) return;
+        this.getRequestContainer(c).setRequestInstance(REQUEST_CONTEXT, createRequestContext(c));
+        seeded = true;
+      };
+      const normalizedNext = async (): Promise<void> => {
+        // Hono replaces bodyful requests without Content-Length. Guards,
+        // middleware, and injected context must share that exact Request.
+        seedContext();
+        await next();
+      };
+      try {
+        const maxSize = this.resolveBodyLimit(c.req.path, c.req.method);
+        return maxSize === false
+          ? await normalizedNext()
+          : await honoBodyLimit({ maxSize })(c, normalizedNext);
+      } finally {
+        // A rejected/failed body never reaches next(). Seed its original
+        // request before Hono's error reporter runs inside the active lifetime.
+        // Never replace a context already exposed to application code.
+        seedContext();
+      }
     });
 
     // Bound query parsing before user middleware or handler decorators see it.
@@ -623,9 +699,9 @@ export class RouteManager {
     for (const { entry } of sortedGlobal) {
       app.use(
         '*',
-        this.wrapMiddlewareWithFilters((c, next) => {
+        this.wrapMiddlewareWithFilters(async (c, next) => {
           const requestContainer = this.getRequestContainer(c);
-          const resolved = instantiate<NestMiddleware>(entry, requestContainer);
+          const resolved = await instantiateAsync<NestMiddleware>(entry, requestContainer);
           return resolved.use(c, next);
         }),
       );
@@ -648,11 +724,15 @@ export class RouteManager {
           if (!matchRoute(path, method) || matchExclude(path, method)) return next();
 
           const requestContainer = this.getRequestContainer(c);
-          const runChain = (index: number): Promise<void> => {
+          const runChain = async (index: number): Promise<void> => {
             if (index >= def.middleware.length) return next();
-            const instance = instantiate<NestMiddleware>(def.middleware[index]!, requestContainer);
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            return (instance.use(c, () => runChain(index + 1)) as Promise<any>).then(() => {});
+            const instance = await instantiateAsync<NestMiddleware>(
+              def.middleware[index]!,
+              requestContainer,
+              def.moduleId,
+            );
+            const response = await instance.use(c, () => runChain(index + 1));
+            if (response instanceof Response) c.res = response;
           };
 
           return runChain(0);
@@ -697,21 +777,22 @@ export class RouteManager {
             allParamMetadata,
           );
 
-          for (const [pathIndex, fullPath] of versionedPaths.entries()) {
-            for (const middlewareItem of middlewareItems) {
-              app.use(
-                fullPath,
-                this.wrapMiddlewareWithFilters((c, next) => {
-                  const requestContainer = this.getRequestContainer(c);
-                  const resolved = instantiate<NestMiddleware>(
-                    middlewareItem as Type<NestMiddleware> | NestMiddleware,
-                    requestContainer,
-                  );
-                  return resolved.use(c, next);
-                }),
+          const middleware = middlewareItems.map((middlewareItem) =>
+            this.wrapMiddlewareWithFilters(async (c, next) => {
+              const requestContainer = this.getRequestContainer(c);
+              const resolved = await instantiateAsync<NestMiddleware>(
+                middlewareItem,
+                requestContainer,
+                moduleId,
               );
-            }
-            this.registerRoute(app, route.method, fullPath, handler);
+              return resolved.use(c, next);
+            }),
+          );
+
+          for (const [pathIndex, fullPath] of versionedPaths.entries()) {
+            // Register the onion with its method and terminal handler. A
+            // path-only app.use() also matches sibling methods/controllers.
+            this.registerRoute(app, route.method, fullPath, ...middleware, handler);
             this.routeDescriptions.push({
               method: String(route.method),
               path: fullPath || '/',
@@ -772,14 +853,16 @@ export class RouteManager {
     app: HonoApp,
     method: HttpMethod | string,
     path: string,
-    handler: (c: Context) => Response | Promise<Response>,
+    ...handlers: MiddlewareHandler[]
   ): void {
     const normalizedPath = path || '/';
     const registrar = RouteManager.METHOD_REGISTRAR.get(method);
-    if (registrar) {
-      registrar(app, normalizedPath, handler);
-    } else {
-      app.on(method, normalizedPath, handler);
+    for (const handler of handlers) {
+      if (registrar) {
+        registrar(app, normalizedPath, handler);
+      } else {
+        app.on(method, normalizedPath, handler);
+      }
     }
   }
 

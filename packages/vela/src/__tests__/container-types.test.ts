@@ -98,6 +98,15 @@ function invalidWiring(container: Container, moduleRef: ModuleRef, app: VelaAppl
     providers: [{ provide: count, useValue: 'wrong' }],
   };
   const checked = defineProvider(count, { useValue: 1 });
+  const snapshots = container.getVisibleProviderSnapshots(count, 'owner');
+  const snapshot = snapshots[0]!;
+  // @ts-expect-error Snapshot identity and wiring are immutable.
+  snapshot.token = label;
+  // @ts-expect-error Runtime snapshots do not claim a token-correlated domain type.
+  const uncheckedNumber: number = snapshot.instance?.value;
+  // @ts-expect-error Runtime provider factories are not exposed by diagnostic snapshots.
+  snapshot.useFactory;
+  void uncheckedNumber;
   // @ts-expect-error A spread loses the private state that proves provider validation.
   Module({ providers: [{ ...checked, useValue: 'wrong' }] });
   // @ts-expect-error Definitions cannot be retargeted to a different token.
@@ -128,6 +137,10 @@ describe('typed provider definitions', () => {
     expectTypeOf(container.resolve(count)).toEqualTypeOf<number>();
     expectTypeOf(container.resolve(Service)).toEqualTypeOf<Service>();
     expectTypeOf(container.resolveAsync(count)).toEqualTypeOf<Promise<number>>();
+    expectTypeOf(container.resolve(count, 'owner')).toEqualTypeOf<number>();
+    expectTypeOf(container.resolveAsync(count, 'owner')).toEqualTypeOf<Promise<number>>();
+    expectTypeOf(container.isLazyPending(count, 'owner')).toEqualTypeOf<boolean>();
+    expectTypeOf(container.isInstantiated(count, 'owner')).toEqualTypeOf<boolean>();
     expectTypeOf(container.resolveAll(count)).toEqualTypeOf<number[]>();
     expectTypeOf<ReturnType<typeof container.resolve<'runtime'>>>().toEqualTypeOf<unknown>();
     expect(container.resolve(label)).toBe('service:2');

@@ -1,3 +1,5 @@
+import { WebSocketSendGate, type WebSocketSendPolicy } from '@velajs/vela/websocket';
+import { socketAttachment, rejectedAttachment } from './ws-attachment';
 import type { BroadcastCommand, RoomRegistry, WsClient } from '@velajs/vela/websocket';
 import type { DoStateLike, WsAttachment, WsLike } from './do-state';
 import { CfWsClient } from './cf-ws-client';
@@ -9,6 +11,13 @@ import { CfWsClient } from './cf-ws-client';
  * rehydration.
  */
 export class CfRoomRegistry implements RoomRegistry {
+  readonly #sendGates = new WeakMap<WsLike, WebSocketSendGate>();
+  #sendPolicyForPath?: (path: string) => WebSocketSendPolicy | undefined;
+
+  setSendPolicyResolver(resolve: (path: string) => WebSocketSendPolicy | undefined): void {
+    this.#sendPolicyForPath = resolve;
+  }
+
   private deliveryAuthorizer?: (client: WsClient) => boolean | Promise<boolean>;
   private frameLimitForPath?: (path: string) => number | undefined;
 
@@ -52,8 +61,6 @@ export class CfRoomRegistry implements RoomRegistry {
     const selected: Array<{ ws: WsLike; client: WsClient }> = [];
     for (const ws of targets) {
       const att = this.reconcileFrameLimit(ws, this.attachmentOf(ws));
-      if (seen.has(att.connId)) continue;
-      seen.add(att.connId);
       if (
         att.state !== 'active' ||
         (att.expiresAtMs !== undefined &&
@@ -68,9 +75,11 @@ export class CfRoomRegistry implements RoomRegistry {
         }
         continue;
       }
+      if (seen.has(att.connId)) continue;
+      seen.add(att.connId);
       if (excludeIds.has(att.connId)) continue;
       if (excludeRooms.some((r) => att.rooms.includes(r))) continue;
-      selected.push({ ws, client: new CfWsClient(this.ctx, ws) });
+      selected.push({ ws, client: this.clientFor(ws) });
     }
 
     if (!this.deliveryAuthorizer) {
@@ -106,21 +115,18 @@ export class CfRoomRegistry implements RoomRegistry {
   }
 
   private attachmentOf(ws: WsLike): WsAttachment {
-    return (
-      (ws.deserializeAttachment() as WsAttachment | null) ?? {
-        connId: '',
-        state: 'rejected',
-        path: '',
-        rooms: [],
-        data: {},
-      }
-    );
+    return socketAttachment(ws) ?? rejectedAttachment();
   }
 
   /** Reconstruct a `WsClient` for a raw socket (e.g. inside gateway lifecycle scans). */
   clientFor(ws: WsLike): CfWsClient {
     this.reconcileFrameLimit(ws, this.attachmentOf(ws));
-    return new CfWsClient(this.ctx, ws);
+    let gate = this.#sendGates.get(ws);
+    if (!gate) {
+      gate = new WebSocketSendGate(this.#sendPolicyForPath?.(this.attachmentOf(ws).path));
+      this.#sendGates.set(ws, gate);
+    }
+    return new CfWsClient(this.ctx, ws, gate);
   }
 
   private reconcileFrameLimit(ws: WsLike, attachment: WsAttachment): WsAttachment {

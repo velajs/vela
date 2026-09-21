@@ -4,7 +4,7 @@ Vela splits scheduling into an **edge-safe registry** (`ScheduleModule`, main ex
 
 ## Declaring jobs
 
-`@Cron(expression)` and `@Interval(ms)` are method decorators on any `@Injectable()` provider. Neither takes a name or options argument:
+`@Cron(expression, options?)` and `@Interval(ms)` are method decorators on any `@Injectable()` provider. Cron options select `dialect: 'unix' | 'cloudflare'` and `timeZone: 'local' | 'UTC'`:
 
 ```ts
 import { Cron, Interval } from '@velajs/vela';
@@ -19,7 +19,7 @@ class MaintenanceJobs {
 }
 ```
 
-Cron format is the standard 5 fields with lists (`,`), ranges (`a-b`), and steps (`*/n`); both `0` and `7` are Sunday.
+The default Unix dialect uses five fields with lists (`,`), ranges (`a-b`), and steps (`*/n`); both `0` and `7` are Sunday. It preserves the 1.x local-time default. Cloudflare uses UTC and weekday numbers `1` (Sunday) through `7` (Saturday). Select the dialect explicitly when sharing cron expressions with Wrangler, and let the parser reject unsupported expressions.
 
 ## Edge-safe registry (`ScheduleModule`)
 
@@ -35,6 +35,8 @@ class AppModule {}
 const registry = app.get(ScheduleRegistry);
 registry.getCronJobs();      // [{ expression, methodName, instance, target }]
 registry.getIntervalJobs();  // [{ ms, methodName, instance, target }]
+registry.getCronEntrypoints(); // owner-bearing metadata, including async/request providers
+registry.getIntervalEntrypoints();
 ```
 
 On Cloudflare Workers, `@velajs/cloudflare` (≥ 0.2.0) dispatches `@Cron` jobs from the Workers `scheduled()` handler — you configure the trigger in `wrangler.toml`, not `setInterval`.
@@ -57,6 +59,13 @@ const app = await VelaFactory.create(AppModule);
 ```
 
 `ScheduleExecutor` throws at bootstrap if `setInterval` is unavailable (message: *"@velajs/vela/schedule-node requires Node or Bun. Use a platform cron adapter on edge runtimes"*). Do **not** import this subpath in Cloudflare Workers / Deno Deploy / Vercel Edge — it is excluded from the edge-runtime audit by design.
+
+Node execution resolves each handler in a fresh managed child using its module
+owner. It awaits asynchronous providers and managed work, then disposes the
+child. Shutdown stops new timer admissions and drains accepted invocations.
+Native Workers dispatch uses the delivered trigger's exact expression and its
+own child/environment; it does not run a local timer matcher. Keep distributed
+locking and durable execution history explicit application integrations.
 
 ## Which to use
 

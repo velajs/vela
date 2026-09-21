@@ -1,3 +1,6 @@
+import { parseSchemaAsync } from '../index';
+import type { StandardSchemaV1 } from '../index';
+import type { QueueJobDefinition } from './queue.definition';
 import type { AddJobOptions, QueueDriver, QueueJob } from './queue.types';
 
 /**
@@ -13,24 +16,44 @@ import type { AddJobOptions, QueueDriver, QueueJob } from './queue.types';
  * microtask; platform drivers deliver in another isolate entirely).
  */
 export class QueueClient {
-  constructor(
-    private readonly queue: string,
-    private readonly driver: QueueDriver,
-  ) {}
+  readonly #queue: string;
+  readonly #driver: QueueDriver;
 
-  get name(): string {
-    return this.queue;
+  constructor(queue: string, driver: QueueDriver) {
+    this.#queue = queue;
+    this.#driver = driver;
   }
 
-  async add<T>(jobName: string, data: T, options: AddJobOptions = {}): Promise<QueueJob<T>> {
+  get name(): string {
+    return this.#queue;
+  }
+
+  add<S extends StandardSchemaV1>(
+    definition: QueueJobDefinition<S>,
+    data: StandardSchemaV1.InferInput<S>,
+    options?: AddJobOptions,
+  ): Promise<QueueJob<StandardSchemaV1.InferInput<S>>>;
+  add<T>(jobName: string, data: T, options?: AddJobOptions): Promise<QueueJob<T>>;
+  async add<T>(
+    jobName: string | QueueJobDefinition,
+    data: T,
+    options: AddJobOptions = {},
+  ): Promise<QueueJob<T>> {
+    let wire = data;
+    if (typeof jobName !== 'string') {
+      // Keep wire input separate from transformed output. Snapshot before awaiting
+      // validation so neither caller nor validator mutations change the sent job.
+      wire = structuredClone(data);
+      await parseSchemaAsync(jobName.schema, structuredClone(wire));
+    }
     const job: QueueJob<T> = {
       id: crypto.randomUUID(),
-      queue: this.queue,
-      name: jobName,
-      data,
+      queue: this.#queue,
+      name: typeof jobName === 'string' ? jobName : jobName.name,
+      data: wire,
       attempt: 1,
     };
-    await this.driver.enqueue(job, options);
+    await this.#driver.enqueue(job, options);
     return job;
   }
 }

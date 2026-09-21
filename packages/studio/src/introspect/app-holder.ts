@@ -33,33 +33,33 @@ import type { RouteDescription } from '@velajs/vela';
  */
 @Injectable()
 export class StudioAppHolder {
-  private honoApp: Hono | null = null;
-  private prefix = '';
-  private descriptions: RouteDescription[] | null = null;
+  #honoApp: Hono | null = null;
+  #prefix = '';
+  #descriptions: RouteDescription[] | null = null;
 
   /** Called once by the route contributor's `buildRoutes`. */
   capture(app: Hono, globalPrefix: string): void {
-    this.honoApp = app;
-    this.prefix = globalPrefix;
+    this.#honoApp = app;
+    this.#prefix = globalPrefix;
   }
 
   /** Called by {@link studioRuntimeAdapter}'s `onRoutesBuilt` when the adapter is wired. */
   captureRouteDescriptions(descriptions: RouteDescription[]): void {
-    this.descriptions = descriptions;
+    this.#descriptions = descriptions.map((description) => ({ ...description }));
   }
 
   /** The live Hono app, or null before the contributor has mounted. */
   get app(): Hono | null {
-    return this.honoApp;
+    return this.#honoApp;
   }
 
   /** The app's normalized global prefix ('' when none), or '' before capture. */
   get globalPrefix(): string {
-    return this.prefix;
+    return this.#prefix;
   }
 
   /** The fully-attributed route descriptions, or null when the adapter isn't wired. */
   get routeDescriptions(): RouteDescription[] | null {
-    return this.descriptions;
+    return this.#descriptions?.map((description) => ({ ...description })) ?? null;
   }
 }

@@ -4,7 +4,8 @@ export type { ActingAsResolver, TestPrincipal } from './testing-module.js';
 export { TestingModuleBuilder, OverrideBy } from './testing-module.builder.js';
 
 // HTTP
-export { TestHttpClient } from './http/test-http-client.js';
+export { TestHttpClient, createTestHttpClient } from './http/test-http-client.js';
+export type { TestHttpTransport, TestHttpClientOptions } from './http/test-http-client.js';
 export { TestHttpRequest } from './http/test-http-request.js';
 export { TestResponse } from './http/test-response.js';
 export { getValueAtPath, hasValueAtPath } from './http/path-utils.js';

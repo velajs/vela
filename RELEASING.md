@@ -45,7 +45,13 @@ Packing converts workspace/catalog ranges to public versions, rejects local
 runtime dependency paths, and records a SHA-512 for each archive. The consumer
 check installs the tarballs with npm outside the workspace, builds and typechecks
 the complete starter, checks client generation, and bundles its Worker.
-When the release includes the CLI, it also runs the installed packed `vela new`
+The consumer packs any missing starter dependencies and their recursive workspace
+companions from the assembled build. These test-only archives and their hashes
+are recorded in `consumer.json`; they do not expand the publication plan. This
+ensures the starter uses the current framework, adapters, and Studio packages
+together instead of silently installing older registry versions.
+
+The consumer also runs the installed packed `vela new`
 outside the workspace, installs the generated project's published dependencies
 with pnpm, checks types and builds, and verifies HTTP, constructor injection,
 and source rebuilds under local Wrangler. CLI argument and destination failure
@@ -87,6 +93,14 @@ The edge-capabilities consumer checks exact tenant, Cedar, crypto, CRUD and adap
 archives, optional imports, Standard Schema type inference, and Wrangler WASM
 bundling without Node compatibility. It records companion archives by integrity.
 Run `node scripts/edge-consumer.mjs /absolute/artifact/path` independently.
+
+Dedicated consumers always check the exact testing, RPC, and GraphQL archives.
+They cover typed overrides and lifecycle cleanup, RPC server/browser boundaries,
+GraphQL operation resources, optional-peer removal, and native Worker bundling.
+The edge consumer also checks named-database and typed service declarations plus
+inferred native storage bindings. Missing companion packages are packed for
+verification only. A package's future release must include compatible framework
+peer floors; successful companion checks do not publish those dependencies.
 
 Artifacts live in `.artifacts/release/`. Keep this exact directory
 once publishing begins: rebuilding a partial release changes archive integrity

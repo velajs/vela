@@ -12,11 +12,15 @@
  */
 
 import { Container, defineModule, defineProvider, stableHash } from '@velajs/vela';
-import type { DynamicModule, InjectionToken } from '@velajs/vela';
-import type { CrudAdapter, RuntimeAdapter } from './adapter/contract';
+import type { DynamicModule } from '@velajs/vela';
+import type { CrudAdapter } from './adapter/contract';
 import { ConfigurationException } from './envelope/errors';
+import type { CrudDatabaseRegistry } from './databases';
+import { missingDefaultAdapter } from './missing-adapter';
+import { resolveCrudDatabase } from './resolve-database';
 import { compileResource } from './kernel/resource';
 import {
+  CRUD_DATABASES,
   CRUD_DEFAULT_ADAPTER,
   CRUD_DEFAULT_AUDIT_STORE,
   CRUD_DEFAULT_VERSIONING_STORE,
@@ -30,7 +34,9 @@ import type { AuditStore } from './audit/index';
 
 export interface CrudModuleOptions {
   /** The app-wide default `CrudAdapter` (per-resource `adapter` overrides it). */
-  adapter: Pick<CrudAdapter, 'runtime'>;
+  adapter?: Pick<CrudAdapter, 'runtime'>;
+  /** Named database registrations; construct from environment-specific providers. */
+  databases?: CrudDatabaseRegistry;
   /** App-wide default version-history store (per-resource `versioningStore` overrides it). */
   versioningStore?: VersioningStore;
   /** App-wide default audit-log store (per-resource `auditStore` overrides it). */
@@ -42,14 +48,17 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<CrudModul
   key: () => stableHash({ module: 'crud-root' }),
   setup: ({ OPTIONS }) => ({
     providers: [
+      defineProvider(CRUD_DATABASES, {
+        useFactory: (options) => {
+          if (!options.adapter && !options.databases)
+            throw new ConfigurationException('CrudModule.forRoot requires adapter or databases');
+          return options.databases?.forApplication();
+        },
+        inject: [OPTIONS],
+      }),
       defineProvider(CRUD_DEFAULT_ADAPTER, {
         useFactory: (options) => {
-          if (!options.adapter) {
-            throw new ConfigurationException(
-              'CrudModule.forRoot requires an adapter: forRoot({ adapter: memoryAdapter(...) })',
-            );
-          }
-          return options.adapter;
+          return options.adapter ?? missingDefaultAdapter;
         },
         inject: [OPTIONS],
       }),
@@ -64,7 +73,12 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<CrudModul
         inject: [OPTIONS],
       }),
     ],
-    exports: [CRUD_DEFAULT_ADAPTER, CRUD_DEFAULT_VERSIONING_STORE, CRUD_DEFAULT_AUDIT_STORE],
+    exports: [
+      CRUD_DATABASES,
+      CRUD_DEFAULT_ADAPTER,
+      CRUD_DEFAULT_VERSIONING_STORE,
+      CRUD_DEFAULT_AUDIT_STORE,
+    ],
   }),
 });
 
@@ -75,21 +89,33 @@ export class CrudModule extends ConfigurableModuleClass {
    * under `crudResourceToken(name)` for anything that wants to dispatch verbs
    * programmatically.
    */
-  static forFeature(resources: CrudFeatureResource[]): DynamicModule {
+  static forFeature(
+    features: CrudFeatureResource[],
+    options: { database?: string } = {},
+  ): DynamicModule {
+    const resources = features.map((feature) => ({
+      ...feature,
+      config: { ...feature.config, database: feature.config.database ?? options.database },
+    }));
+    const identities = new Set<string>();
+    for (const feature of resources) {
+      const name = resourceNames(feature.config).singular;
+      const key = JSON.stringify([feature.config.database, name]);
+      if (identities.has(key))
+        throw new ConfigurationException(`Duplicate CRUD resource '${name}'`);
+      identities.add(key);
+    }
     const controllers = resources.map((feature) => synthesizeController(feature));
     const providers = resources.map((feature) => {
       const config = feature.config;
       const names = resourceNames(config);
-      return defineProvider(crudResourceToken(names.singular), {
-        useFactory: (container) => {
-          const adapter = config.adapter ?? resolveDefault(container, names.singular);
-          const engineConfig = toEngineConfig(config, adapter);
-          engineConfig.versioningStore ??= resolveOptional(
-            container,
-            CRUD_DEFAULT_VERSIONING_STORE,
-          );
-          engineConfig.auditStore ??= resolveOptional(container, CRUD_DEFAULT_AUDIT_STORE);
-          return compileResource(names.singular, engineConfig);
+      return defineProvider(crudResourceToken(names.singular, config.database), {
+        useFactory: async (container) => {
+          const resolved = await resolveCrudDatabase(container, config, {
+            name: names.singular,
+            identity: feature,
+          });
+          return compileResource(names.singular, toEngineConfig(resolved, resolved.adapter));
         },
         inject: [Container],
       });
@@ -97,30 +123,14 @@ export class CrudModule extends ConfigurableModuleClass {
 
     return {
       module: CrudModule,
-      key: `feature:${resources.map((r) => r.path).join(',')}`,
+      key: `feature:${resources.map((r) => JSON.stringify([r.config.database, r.path])).join(',')}`,
       controllers,
       providers,
       exports: resources.map((feature) =>
-        crudResourceToken(resourceNames(feature.config).singular),
+        crudResourceToken(resourceNames(feature.config).singular, feature.config.database),
       ),
     };
   }
-}
-
-function resolveDefault(container: Container, resource: string): RuntimeAdapter {
-  if (!container.has(CRUD_DEFAULT_ADAPTER)) {
-    throw new ConfigurationException(
-      `CrudModule.forFeature('${resource}'): no adapter — pass 'adapter' on the resource or ` +
-        'import CrudModule.forRoot({ adapter }) first',
-    );
-  }
-  return container.resolve(CRUD_DEFAULT_ADAPTER).runtime;
-}
-
-/** Resolve an optional forRoot default store; `undefined` when unregistered. */
-function resolveOptional<T>(container: Container, token: InjectionToken<T>): T | undefined {
-  if (!container.has(token)) return undefined;
-  return container.resolve(token);
 }
 
 export { MODULE_OPTIONS_TOKEN as CRUD_MODULE_OPTIONS };

@@ -14,6 +14,7 @@
  * absent optionals are omitted entirely.
  */
 import { LIVE_PROTOCOL } from './version';
+import { readWebSocketEnvelope } from './envelope';
 
 /** The reserved envelope event every live frame rides under. */
 export const LIVE_EVENT = '$live';
@@ -218,6 +219,7 @@ export const isServerLiveFrame = (value: unknown): value is ServerLiveFrame => {
 export const readLiveEnvelope = (envelope: unknown): unknown => {
   if (
     !isRecord(envelope) ||
+    !readWebSocketEnvelope(envelope) ||
     envelope['event'] !== LIVE_EVENT ||
     !hasOwn(envelope, 'data') ||
     !isJsonWithin(envelope, MAX_LIVE_FRAME_BYTES)

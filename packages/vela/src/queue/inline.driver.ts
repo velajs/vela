@@ -42,10 +42,14 @@ export function inline(options: InlineQueueOptions = {}): InlineQueueDriver {
   let dispatch: QueueDispatchFn | undefined;
   let onError: QueueDriverBindHooks['onError'];
   let warnedDelay = false;
+  let closed = false;
 
   const deliverDetached = (job: QueueJob): void => {
+    const deliver = dispatch!;
+    const report = onError;
     queueMicrotask(() => {
-      void dispatch!(job).catch((error) => onError?.(error, job));
+      if (closed) return;
+      void deliver(job).catch((error) => report?.(error, job));
     });
   };
 
@@ -57,6 +61,8 @@ export function inline(options: InlineQueueOptions = {}): InlineQueueDriver {
     },
 
     async enqueue(job: QueueJob, addOptions?: AddJobOptions): Promise<void> {
+      // Preserve the legacy post-disposal no-op without retaining jobs or apps.
+      if (closed) return;
       if (addOptions?.delayMs !== undefined && !warnedDelay) {
         warnedDelay = true;
         console.warn(
@@ -71,6 +77,11 @@ export function inline(options: InlineQueueOptions = {}): InlineQueueDriver {
     },
 
     bind(fn: QueueDispatchFn, hooks?: QueueDriverBindHooks): void {
+      if (dispatch || closed) {
+        throw new Error(
+          'inline() driver already belongs to an application. Use driver: () => inline() for isolated reuse.',
+        );
+      }
       dispatch = fn;
       onError = hooks?.onError;
       if (mode === 'immediate' && buffer.length > 0) {
@@ -78,14 +89,23 @@ export function inline(options: InlineQueueOptions = {}): InlineQueueDriver {
       }
     },
 
+    unbind(): void {
+      closed = true;
+      dispatch = undefined;
+      onError = undefined;
+      buffer.length = 0;
+    },
+
     async flush(): Promise<number> {
       if (!dispatch) return 0;
+      const deliver = dispatch;
       const jobs = buffer.splice(0);
       const errors: unknown[] = [];
       let delivered = 0;
       for (const job of jobs) {
         try {
-          await dispatch(job);
+          if (closed) break;
+          await deliver(job);
           delivered++;
         } catch (error) {
           errors.push(error);

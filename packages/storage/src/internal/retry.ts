@@ -1,48 +1,91 @@
-import { StorageError, isAbort } from '../storage.error';
+import { StorageError } from '../storage.error';
 import type { RetryOptions } from '../storage.types';
 
-// Retry/timeout/abort plumbing. Deliberately does NOT use `AbortSignal.any`
-// (only added in Node 20.3 — `engines.node >= 20` allows 20.0–20.2) nor
-// `AbortSignal.timeout`; both are re-implemented from `AbortController` +
-// `setTimeout` so the package runs on every target from 20.0 up.
-
-/**
- * Combine multiple abort signals into one. The result aborts as soon as any
- * input aborts, adopting that input's reason. Listeners are cleaned up on
- * first abort. `undefined` inputs are ignored.
- */
-export function anySignal(signals: Array<AbortSignal | undefined>): AbortSignal {
-  const controller = new AbortController();
-  const live = signals.filter((s): s is AbortSignal => s != null);
-
-  const onAbort = (reason: unknown) => {
-    cleanup();
-    if (!controller.signal.aborted) controller.abort(reason);
-  };
-  const cleanup = () => {
-    for (const s of live) s.removeEventListener('abort', handlers.get(s)!);
-  };
-  const handlers = new Map<AbortSignal, () => void>();
-
-  for (const s of live) {
-    if (s.aborted) {
-      controller.abort(s.reason);
-      return controller.signal;
-    }
-    const h = () => onAbort(s.reason);
-    handlers.set(s, h);
-    s.addEventListener('abort', h, { once: true });
+/** Local cancellation ends the wait, not necessarily the provider operation. */
+export function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new StorageError('Aborted', 'operation aborted', {
+      cause: signal.reason,
+      retryable: false,
+    });
   }
-  return controller.signal;
 }
 
-/** A controller that aborts after `ms`; call `clear()` to cancel the timer. */
-export function timeoutController(ms: number): { controller: AbortController; clear: () => void } {
-  const controller = new AbortController();
-  const timer = setTimeout(() => {
-    controller.abort(new StorageError('Timeout', `operation timed out after ${ms}ms`));
-  }, ms);
-  return { controller, clear: () => clearTimeout(timer) };
+/** Observe both settlements after cancellation and dispose late resources. */
+function runAttempt<T>(
+  fn: (signal: AbortSignal | undefined) => Promise<T>,
+  opts: RunOptions,
+  onDiscard?: (value: T) => void | Promise<void>,
+): Promise<T> {
+  throwIfAborted(opts.signal);
+  const useTimeout = typeof opts.timeout === 'number' && opts.timeout > 0;
+  if (!opts.signal && !useTimeout) return fn(undefined);
+
+  return new Promise<T>((resolve, reject) => {
+    const controller = new AbortController();
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const cleanup = () => {
+      if (timer !== undefined) clearTimeout(timer);
+      opts.signal?.removeEventListener('abort', onAbort);
+    };
+    const cancel = (error: StorageError) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      // Settle before notifying a cooperative driver, so nested control layers
+      // preserve this operation's Timeout/Aborted classification.
+      reject(error);
+      controller.abort(error);
+    };
+    const onAbort = () =>
+      cancel(
+        new StorageError('Aborted', 'operation aborted', {
+          cause: opts.signal?.reason,
+          retryable: false,
+        }),
+      );
+    opts.signal?.addEventListener('abort', onAbort, { once: true });
+    if (useTimeout) {
+      timer = setTimeout(
+        () =>
+          cancel(
+            new StorageError('Timeout', `operation timed out after ${opts.timeout}ms`, {
+              retryable: false,
+            }),
+          ),
+        opts.timeout,
+      );
+    }
+    // Keep the handlers attached to the provider promise even after cancellation.
+    // A late rejection is observed; a late read body or upload handle is released.
+    try {
+      fn(controller.signal).then(
+        (value) => {
+          if (settled) {
+            void Promise.resolve()
+              .then(() => onDiscard?.(value))
+              .catch(() => {});
+            return;
+          }
+          settled = true;
+          cleanup();
+          resolve(value);
+        },
+        (error: unknown) => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          reject(error);
+        },
+      );
+    } catch (error) {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    }
+  });
 }
 
 /** Resolve after `ms`, or reject with `Aborted` if `signal` fires first. */
@@ -94,35 +137,26 @@ export interface RunOptions {
  * retryable-error backoff. `fn` receives the combined per-attempt signal.
  *
  * - Caller-abort (`opts.signal`) → `Aborted`, never retried.
- * - Per-attempt timeout → `Timeout` (retryable by default, within budget).
- * - Only errors with `error.retryable` are retried, up to `retries.max`.
+ * - Local timeout → `Timeout`, never retried: the provider may still commit.
+ * - Settled provider errors with `error.retryable` are retried, up to `retries.max`.
  */
 export async function runWithRetry<T>(
   fn: (signal: AbortSignal | undefined) => Promise<T>,
   opts: RunOptions,
   onRetry?: (info: { attempt: number; delayMs: number; error: StorageError }) => void,
+  onDiscard?: (value: T) => void | Promise<void>,
 ): Promise<T> {
   const { max, backoff } = normalizeRetry(opts.retries);
-  const useTimeout = typeof opts.timeout === 'number' && opts.timeout > 0;
-
   let attempt = 0;
   for (;;) {
-    if (opts.signal?.aborted) throw new StorageError('Aborted', 'operation aborted');
-
-    const to = useTimeout ? timeoutController(opts.timeout!) : undefined;
-    const signal = to ? anySignal([opts.signal, to.controller.signal]) : opts.signal;
-
     try {
-      return await fn(signal);
+      return await runAttempt(fn, opts, onDiscard);
     } catch (e) {
       // Hard caller cancellation: never retried.
       if (opts.signal?.aborted)
         throw new StorageError('Aborted', 'operation aborted', { cause: e });
 
-      const error =
-        to?.controller.signal.aborted && isAbort(e)
-          ? new StorageError('Timeout', `operation timed out after ${opts.timeout}ms`, { cause: e })
-          : StorageError.wrap(e);
+      const error = StorageError.wrap(e);
 
       if (attempt >= max || !error.retryable) throw error;
 
@@ -130,8 +164,6 @@ export async function runWithRetry<T>(
       const delayMs = Math.max(0, backoff({ attempt, error }));
       onRetry?.({ attempt, delayMs, error });
       await sleep(delayMs, opts.signal);
-    } finally {
-      to?.clear();
     }
   }
 }

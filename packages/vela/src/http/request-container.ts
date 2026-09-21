@@ -1,5 +1,6 @@
 import type { Context } from 'hono';
 import type { Container } from '../container/container';
+import { assertExecutionScopeActive } from '../entrypoint/execution-scope';
 
 // Framework request state cannot collide with application-defined Hono keys.
 const containers = new WeakMap<Context, Container>();
@@ -35,5 +36,6 @@ export function getRequestContainer(c: Context): Container {
         'the request child container is seeded by RouteManager when the request enters the pipeline.',
     );
   }
+  assertExecutionScopeActive(container);
   return container;
 }

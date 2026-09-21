@@ -8,6 +8,20 @@ import type { DynamicModule, ModuleImport } from '../registry/types';
  */
 export type ConfigurableModuleExtras = Record<string, unknown>;
 
+/** Controls shared by synchronous and asynchronous module registrations. */
+export interface ModuleRegistrationOptions {
+  key?: string;
+  lazy?: boolean;
+}
+
+/** Call-time structure excludes keys consumed by asynchronous DI wiring. */
+type StructuralModuleOptions<Opts> = {
+  [K in Exclude<
+    keyof Opts,
+    'imports' | 'key' | 'lazy' | 'inject' | 'useFactory' | 'useClass' | 'useExisting'
+  >]?: Opts[K] | undefined;
+};
+
 /**
  * Reshape the generated definition based on the resolved extras. Runs after the
  * options provider + `key` are computed; the return value is the final
@@ -39,9 +53,16 @@ export type ConfigurableModuleAsyncOptions<
   Inject extends readonly Token[] = readonly Token[],
 > = {
   imports?: ModuleImport[];
-  /** Explicit instance discriminator (see {@link DynamicModule.key}). */
-  key?: string;
-} & (
+} & ModuleRegistrationOptions &
+  StructuralModuleOptions<Opts> &
+  ConfigurableModuleAsyncFactory<Opts, MethodName, Inject>;
+
+/** DI factory alternatives kept separate from call-time structural options. */
+export type ConfigurableModuleAsyncFactory<
+  Opts,
+  MethodName extends string,
+  Inject extends readonly Token[] = readonly Token[],
+> =
   | {
       inject: Inject;
       useFactory: (...args: InferTokens<Inject>) => Opts | Promise<Opts>;
@@ -61,8 +82,7 @@ export type ConfigurableModuleAsyncOptions<
       useFactory?: never;
       useClass?: never;
       inject?: never;
-    }
-);
+    };
 
 export interface ConfigurableModuleBuilderOptions<Opts = unknown> {
   /** Names the generated base class + the auto-minted options token, and feeds diagnostics. */
@@ -85,12 +105,16 @@ export type ConfigurableModuleClassType<
   FactoryMethodKey extends string,
   Extras extends ConfigurableModuleExtras,
 > = (new () => object) &
-  Record<MethodKey, (options: Opts & Partial<Extras> & { key?: string }) => DynamicModule> &
+  Record<
+    MethodKey,
+    (options: Opts & Partial<Extras> & ModuleRegistrationOptions) => DynamicModule
+  > &
   Record<
     `${MethodKey}Async`,
     <const Inject extends readonly Token[]>(
       options: ConfigurableModuleAsyncOptions<Opts, FactoryMethodKey, Inject> &
-        Partial<Extras> & { key?: string },
+        Partial<Extras> &
+        ModuleRegistrationOptions,
     ) => DynamicModule
   >;
 
@@ -105,10 +129,11 @@ export interface ConfigurableModuleHost<
   /** The options token — inject it into derived providers (`inject: [MODULE_OPTIONS_TOKEN]`). */
   MODULE_OPTIONS_TOKEN: InjectionToken<Opts>;
   /** Type-only helper: the shape accepted by the sync `<method>` static. */
-  OPTIONS_TYPE: Opts & Partial<Extras> & { key?: string };
+  OPTIONS_TYPE: Opts & Partial<Extras> & ModuleRegistrationOptions;
   /** Type-only helper: the shape accepted by the `<method>Async` static. */
   ASYNC_OPTIONS_TYPE: ConfigurableModuleAsyncOptions<Opts, FactoryMethodKey> &
-    Partial<Extras> & { key?: string };
+    Partial<Extras> &
+    ModuleRegistrationOptions;
 }
 
 /**

@@ -377,3 +377,70 @@ Delivery guarantees (honest): at-most-once, no ordering across publishers, no re
 - Inbound and outbound frames default to a **64 KiB** limit. The per-gateway value follows each connection through local or Redis fan-out and Cloudflare hibernation. Raise `maxFrameBytes` only after considering isolate memory, synchronization traffic, and validation cost.
 - Protocol is **JSON text frames only** — binary frames and backpressure signalling are out of scope.
 - Not yet implemented: Worker-isolate `@WebSocketServer()` emit (use `broadcastToRoom` from a controller instead), cross-DO global `server.emit()`, per-user-DO direct messages.
+
+## Admission and slow peers
+
+`WsClient.trySendRaw(payload)` is an optional additive transport capability. It
+returns `accepted`, `closed`, `too-large`, or `backpressure`. `accepted` means the
+local transport accepted the frame; it is not an acknowledgment from the remote
+application. Existing `send()` and `sendRaw()` remain `void`. Integrations can use
+`trySendWebSocketFrame(client, payload)` to honor a connection's frame ceiling and
+explicit rejection, with a fallback for legacy clients. Live-query baselines advance
+only on local admission, so a refused snapshot is never treated as delivered.
+
+Gateways may configure `sendPolicy: { maxBufferedBytes, maxBytesPerSecond }`.
+Both budgets default to 1 MiB. Native `bufferedAmount`, when available, bounds the
+queued bytes plus the next frame. A separate fixed one-second byte budget works
+without timers on every adapter. Exceeding either budget closes with 1013; frames
+above `maxFrameBytes` close with 1009. There is no outgoing retry queue. Cloudflare
+does not guarantee a native queued-byte signal: its byte-rate budget bounds
+admission, not hidden network buffers. Budgets restart after DO hibernation.
+The live client accepts the same `sendPolicy` option and reconnects after closure.
+
+Native adapters process each connection's messages in arrival order. Configure
+`maxPendingMessages` (default 64) and `maxPendingBytes` (default 1 MiB) to bound
+active plus queued work, including the Node connection-setup barrier. Overload
+closes with 1013 and discards pending work; already-running work is allowed to
+settle. Connections keep independent queues. No server timers are introduced.
+
+Envelopes require an own string `event` and, when present, an own string `id`.
+Payloads remain unknown until application validation runs. Extra fields remain
+forward compatible, and existing empty string IDs stay valid. Malformed IDs no
+longer reach handlers or appear in replies.
+
+Hibernation attachments now carry `version: 1`; existing unversioned 1.x
+attachments remain readable. Framework routing, rooms, identity field types and
+connection state are validated before restoration or fanout. Unknown versions
+and malformed records fail closed. Application `data` still needs its own schema;
+a generic `WsClient<TData>` type is not runtime validation. Attachments retain the
+16 KiB platform limit; use DO storage for larger state. Send queues and invocation
+containers are never serialized.
+
+### Invocation scope
+
+Gateways default to singleton scope. Stack `@Injectable({ scope: Scope.REQUEST })`
+with `@WebSocketGateway()` for a new gateway instance on each connection hook,
+message, and disconnect hook. Keep durable connection state in `client.data`
+and rooms; request-scoped gateway fields last for one invocation. `afterInit`
+runs once for each resolved gateway instance before its callback runs.
+
+A message's guards, body pipes, interceptors, exception filters, and gateway
+resolve asynchronously in the same child container and retain their declaring
+module's provider bindings. A rejected guard does not construct the request-scoped
+gateway. `context.getContainer()` exposes that child; managed work registered
+through its execution lifetime settles before request-scoped providers dispose.
+No HTTP request context is synthesized for a socket callback. Body pipes prefer
+the optional `transformAsync` entry point, so async schema transforms run once.
+
+Reserved handlers receive the same invocation context as an optional fourth
+argument. Live subscriptions and each refresh share a child between authorization
+and resolver execution. Discovery includes request-scoped and lazy providers;
+registering the same gateway or reserved handler in multiple module owners fails
+instead of selecting an owner's dependencies implicitly. Live query names must
+be unique across owners.
+
+The browser live client uses private-use close codes `4009` (frame too large),
+`4011` (send failure), and `4013` (send budget). Browser JavaScript cannot send
+the corresponding reserved server codes through
+[`WebSocket.close()`](https://websockets.spec.whatwg.org/#dom-websocket-close).
+Local rejection enters reconnect even when a custom socket omits `onclose`.

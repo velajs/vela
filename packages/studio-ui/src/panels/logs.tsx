@@ -26,13 +26,14 @@ const LEVEL_TONE: Record<AdminLogEntry['level'], BadgeTone> = {
 function LogRow({ entry }: { entry: AdminLogEntry }): ReactNode {
   const [open, setOpen] = useState(false);
   const hasFields = entry.fields !== undefined && Object.keys(entry.fields).length > 0;
+  const hasDetails = hasFields || entry.invocation !== undefined;
   return (
     <li className="vela-log">
       <button
         type="button"
         className="vela-log__line"
-        aria-expanded={hasFields ? open : undefined}
-        onClick={() => hasFields && setOpen((prev) => !prev)}
+        aria-expanded={hasDetails ? open : undefined}
+        onClick={() => hasDetails && setOpen((prev) => !prev)}
       >
         <span className="vela-log__ts vela-mono">{formatClock(entry.ts)}</span>
         <Badge tone={LEVEL_TONE[entry.level]}>{entry.level}</Badge>
@@ -40,7 +41,25 @@ function LogRow({ entry }: { entry: AdminLogEntry }): ReactNode {
           <span className="vela-log__source">{entry.source}</span>
         ) : null}
         <span className="vela-log__msg vela-mono">{entry.msg}</span>
+        {entry.invocation !== undefined ? (
+          <Badge tone="neutral">{entry.invocation.elapsedMs.toFixed(2)} ms</Badge>
+        ) : null}
       </button>
+      {open && entry.invocation !== undefined ? (
+        <div className="vela-state__hint">
+          <p>
+            {entry.invocation.kind}: {entry.invocation.source} — {entry.invocation.outcome}
+          </p>
+          <p>
+            Invocation: {entry.invocation.invocationId ?? 'Unavailable'}; owner:{' '}
+            {entry.invocation.moduleId ?? 'Not supplied'}.
+          </p>
+          <p>
+            Handler and inner interceptor time. Excludes guards, argument validation, response
+            streaming and deferred work.
+          </p>
+        </div>
+      ) : null}
       {open && hasFields ? <JsonBlock value={entry.fields} /> : null}
     </li>
   );

@@ -3,6 +3,7 @@ import {
   Injectable,
   Reflector,
   UnauthorizedException,
+  getTrustedContextRequest,
   type CanActivate,
   type ExecutionContext,
 } from '@velajs/vela';
@@ -10,7 +11,7 @@ import { getContextIdentity } from '@velajs/authz/vela';
 import { BETTER_AUTH_OPTIONS } from '../better-auth.tokens';
 import { BetterAuthService } from '../better-auth.service';
 import type { BetterAuthRuntimeOptions } from '../better-auth.types';
-import { authenticateRequest, beginAuthRequest } from '../auth-request-state';
+import { authenticateRequest, beginAuthRequest, getAuthRequestState } from '../auth-request-state';
 import { validateSessionData } from '../session-data';
 import { OptionalAuth } from '../decorators/optional-auth.decorator';
 import { Public } from '../decorators/public.decorator';
@@ -29,6 +30,18 @@ export class AuthGuard implements CanActivate {
     // and request payload never become ambient WebSocket authentication.
     if (context.getType() === 'ws') {
       if (getContextIdentity(context)) return true;
+      throw new UnauthorizedException('Authentication required');
+    }
+    // Custom HTTP-backed dispatchers authenticate once at the outer boundary.
+    // Never re-read credentials or clear shared authority across sibling fields.
+    if (context.getType() !== 'http') {
+      if (
+        getTrustedContextRequest(context) &&
+        (getAuthRequestState(context) ||
+          this.reflector.getAllAndOverride(Public, context) ||
+          this.reflector.getAllAndOverride(OptionalAuth, context))
+      )
+        return true;
       throw new UnauthorizedException('Authentication required');
     }
     beginAuthRequest(context);

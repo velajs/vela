@@ -2,7 +2,7 @@
  * `StudioDispatchRegistry` — builds the op→handler map at bootstrap and runs
  * the security-gated dispatch for `POST {p}/rpc/:op`.
  *
- * Bootstrap (OnApplicationBootstrap): scan `discovery.methodsWithMeta(AdminRpc)`,
+ * Bootstrap (OnApplicationBootstrap): scan `discovery.registeredMethodsWithMeta(AdminRpc)`,
  * THROW on an op not in `STUDIO_OPS` (unless allowed via `STUDIO_TEST_ONLY_OPS`)
  * or a duplicate op.
  *
@@ -12,18 +12,25 @@
  * `{ ok, op, data, meta }`; thrown errors → redacted `AdminErrorBody`. Handler
  * providers are resolved PER CALL (lazy-safe), mirroring the queue dispatcher.
  */
-import { Container, DiscoveryService, Inject, Injectable } from '@velajs/vela';
-import type { OnApplicationBootstrap, Token, Type } from '@velajs/vela';
+import {
+  APP_LOGGER,
+  Container,
+  DiscoveryService,
+  Inject,
+  Injectable,
+  getRequestContainer,
+  runInEntrypointScope,
+  resolveErrorReporter,
+} from '@velajs/vela';
+import type { ErrorReporter, OnApplicationBootstrap, Token, Type } from '@velajs/vela';
 import { STUDIO_OP_META, STUDIO_OPS } from '@velajs/studio-protocol';
 import type { AdminRpcRequest, AdminRpcResponse, StudioOp } from '@velajs/studio-protocol';
 import { AdminConfirmSummary, AdminRpc } from './admin-rpc.decorator';
 import { deriveWriteGates } from '../studio.types';
 import type {
   AdminAuditDetail,
-  AdminConfirmSummarizer,
   AdminConfirmSummaryMeta,
   AdminOpContext,
-  AdminRpcHandler,
   AdminRpcMeta,
   StudioConfirmChallenge,
 } from '../studio.types';
@@ -34,7 +41,8 @@ import { STUDIO_TEST_ONLY_OPS } from '../tokens';
 
 interface HandlerEntry {
   token: Type;
-  methodName: string;
+  methodName: string | symbol;
+  moduleId: string;
 }
 
 /** Default meta for ops absent from the frozen catalog (test-only ops). */
@@ -57,7 +65,9 @@ export class StudioDispatchRegistry implements OnApplicationBootstrap {
     const allowed = new Set<string>(STUDIO_OPS as readonly string[]);
     for (const extra of this.testOnlyOps()) allowed.add(extra);
 
-    for (const found of this.discovery.methodsWithMeta<AdminRpcMeta>(AdminRpc)) {
+    for (const found of this.discovery.registeredMethodsWithMeta<AdminRpcMeta>(AdminRpc, {
+      metadataOnly: true,
+    })) {
       const { op } = found.meta;
       if (!allowed.has(op)) {
         throw new Error(
@@ -68,22 +78,28 @@ export class StudioDispatchRegistry implements OnApplicationBootstrap {
       if (this.handlers.has(op)) {
         const prior = this.handlers.get(op)!;
         throw new Error(
-          `@AdminRpc: duplicate handler for op '${op}' — ${prior.token.name}.${prior.methodName} and ` +
+          `@AdminRpc: duplicate handler for op '${op}' — ${prior.token.name}.${String(prior.methodName)} and ` +
             `${found.class.metatype.name}.${String(found.methodName)}. Each op maps to exactly one handler.`,
         );
       }
-      this.handlers.set(op, { token: found.class.metatype, methodName: String(found.methodName) });
+      this.handlers.set(op, {
+        token: found.class.metatype,
+        methodName: found.methodName,
+        moduleId: found.class.moduleId,
+      });
     }
 
-    // Confirm-summary providers: one per op at most (last wins is a config
-    // error, but the map naturally de-dupes; the op need not be a real handler
-    // here — the challenge is raised generically for any destructive op).
-    for (const found of this.discovery.methodsWithMeta<AdminConfirmSummaryMeta>(
+    for (const found of this.discovery.registeredMethodsWithMeta<AdminConfirmSummaryMeta>(
       AdminConfirmSummary,
+      { metadataOnly: true },
     )) {
+      if (this.summarizers.has(found.meta.op)) {
+        throw new Error(`@AdminConfirmSummary: duplicate summary for op '${found.meta.op}'.`);
+      }
       this.summarizers.set(found.meta.op, {
         token: found.class.metatype,
-        methodName: String(found.methodName),
+        methodName: found.methodName,
+        moduleId: found.class.moduleId,
       });
     }
   }
@@ -103,6 +119,7 @@ export class StudioDispatchRegistry implements OnApplicationBootstrap {
     const start = Date.now();
     const meta = (STUDIO_OP_META as Record<string, AdminRpcMetaLike>)[op] ?? DEFAULT_OP_META;
     let detail: AdminAuditDetail | undefined;
+    let reporter: ErrorReporter | undefined;
     const handlerCtx: AdminOpContext = {
       ...ctx,
       audit: (d) => {
@@ -111,26 +128,59 @@ export class StudioDispatchRegistry implements OnApplicationBootstrap {
     };
 
     try {
+      if (this.container.has(APP_LOGGER)) reporter = resolveErrorReporter(this.container);
       const entry = this.handlers.get(op);
       if (!entry) throw studioError('STUDIO_UNKNOWN_OP');
 
       this.enforceGate(meta, ctx);
-      await this.enforceConfirm(op, meta, req, handlerCtx);
-
-      const instance = this.container.resolve(entry.token) as Record<string, AdminRpcHandler>;
-      const handler = instance[entry.methodName];
-      if (typeof handler !== 'function') throw studioError('STUDIO_UNKNOWN_OP');
-      const data = await handler.call(instance, handlerCtx, req.args);
+      const data = await this.withScope(ctx, async (scope) => {
+        // Capture before disposal so completion errors retain inert correlation.
+        if (scope.has(APP_LOGGER)) reporter = resolveErrorReporter(scope);
+        await this.enforceConfirm(op, meta, req, handlerCtx, scope);
+        return this.invoke(scope, entry, handlerCtx, req.args);
+      });
 
       const ms = Date.now() - start;
       this.recordAudit(op, meta.mode, ctx, 200, ms, detail);
       return { ok: true, op, data, meta: { ms, op, mode: meta.mode } };
     } catch (error) {
+      reporter?.report(error, { edge: 'rpc', source: `studio.${op}` });
       const { body, status } = toAdminErrorBody(error);
       const ms = Date.now() - start;
       this.recordAudit(op, meta.mode, ctx, status, ms, detail);
       return { ok: false, op, error: body, status };
     }
+  }
+
+  private withScope<T>(ctx: AdminOpContext, run: (scope: Container) => Promise<T>): Promise<T> {
+    let requestScope: Container | undefined;
+    try {
+      requestScope = getRequestContainer(ctx.http);
+    } catch {
+      // Contributor-mounted routes may have no framework request child.
+    }
+    return requestScope === undefined
+      ? runInEntrypointScope(this.container, run, { signal: ctx.http.req.raw.signal })
+      : run(requestScope);
+  }
+
+  private async invoke(
+    scope: Container,
+    entry: HandlerEntry,
+    ctx: AdminOpContext,
+    args: unknown,
+  ): Promise<unknown> {
+    const instance = await scope.resolveAsync(entry.token, entry.moduleId);
+    if ((typeof instance !== 'object' || instance === null) && typeof instance !== 'function') {
+      throw studioError('STUDIO_UNKNOWN_OP');
+    }
+    const method: unknown = Reflect.get(instance, entry.methodName, instance);
+    if (typeof method !== 'function') throw studioError('STUDIO_UNKNOWN_OP');
+    const ownedContext: AdminOpContext = {
+      ...ctx,
+      get: (token) => scope.resolve(token, entry.moduleId),
+    };
+    return Reflect.apply(method, instance, [ownedContext, args]);
   }
 
   private enforceGate(meta: AdminRpcMetaLike, ctx: AdminOpContext): void {
@@ -164,6 +214,7 @@ export class StudioDispatchRegistry implements OnApplicationBootstrap {
     meta: AdminRpcMetaLike,
     req: AdminRpcRequest,
     ctx: AdminOpContext,
+    scope: Container,
   ): Promise<void> {
     if (!meta.destructive) return;
     const args = (req.args ?? {}) as Record<string, unknown>;
@@ -179,7 +230,7 @@ export class StudioDispatchRegistry implements OnApplicationBootstrap {
     const details: StudioConfirmChallenge = {
       confirmToken: token,
       expiresAt: exp * 1000,
-      summary: await this.summarize(op, ctx, payload),
+      summary: await this.summarize(op, ctx, payload, scope),
     };
     throw studioError('STUDIO_CONFIRM_REQUIRED', undefined, details);
   }
@@ -189,13 +240,14 @@ export class StudioDispatchRegistry implements OnApplicationBootstrap {
     op: string,
     ctx: AdminOpContext,
     payload: Record<string, unknown>,
+    scope: Container,
   ): Promise<string> {
     const entry = this.summarizers.get(op);
     if (entry === undefined) return `Confirm ${op}`;
-    const instance = this.container.resolve(entry.token) as Record<string, AdminConfirmSummarizer>;
-    const fn = instance[entry.methodName];
-    if (typeof fn !== 'function') return `Confirm ${op}`;
-    return fn.call(instance, ctx, payload);
+    const summary = await this.invoke(scope, entry, ctx, payload);
+    if (typeof summary !== 'string')
+      throw new TypeError('Studio confirm summary must be a string.');
+    return summary;
   }
 
   private recordAudit(

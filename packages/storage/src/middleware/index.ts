@@ -1,6 +1,6 @@
 export { compose } from './compose';
 export { passthrough } from './wrap';
-export type { Middleware } from './wrap';
+export type { Middleware, RawPreservingMiddleware } from './wrap';
 
 export { retry } from './retry';
 export type { RetryMiddlewareOptions } from './retry';

@@ -29,6 +29,10 @@ export interface CrudLiveConfig {
 }
 
 export interface RuntimeCrudConfig {
+  /** Named database; an explicit resource selection overrides the module selection. */
+  database?: string;
+  /** Registry key (defaults to model.name). */
+  databaseResource?: string;
   /** The normalized model (from `defineModel` / `defineModels`). */
   model: Model;
   /**

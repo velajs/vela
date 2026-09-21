@@ -6,6 +6,19 @@ import { QueueDispatchBinding } from './queue.binding';
 import { QUEUE_DRIVER, queueToken } from './queue.tokens';
 import type { QueueDriver, QueueModuleOptions } from './queue.types';
 
+// Stateful transport objects and factories must not dedup by their kind/source.
+// Default inline configuration still has a stable structural key.
+const driverIds = new WeakMap<object, number>();
+let nextDriverId = 0;
+function driverIdentity(driver: QueueModuleOptions['driver']): string | number {
+  if (driver === undefined) return 'default-inline';
+  const existing = driverIds.get(driver);
+  if (existing !== undefined) return existing;
+  const id = ++nextDriverId;
+  driverIds.set(driver, id);
+  return id;
+}
+
 /**
  * First-party queue module — authored 100% on vela's public API (the
  * roadmap's "openness proof"). Producers inject a per-queue `QueueClient`
@@ -37,7 +50,7 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<QueueModu
   key: (o) =>
     stableHash({
       queues: o.queues ?? [],
-      driver: o.driver?.kind ?? 'inline',
+      driver: driverIdentity(o.driver),
       dispatch: o.dispatch?.kind ?? 'direct',
     }),
   setup: ({ OPTIONS, options }) => {
@@ -62,7 +75,8 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<QueueModu
     return {
       providers: [
         defineProvider(QUEUE_DRIVER, {
-          useFactory: (o: QueueModuleOptions) => o.driver ?? inline(),
+          useFactory: (o: QueueModuleOptions) =>
+            typeof o.driver === 'function' ? o.driver() : (o.driver ?? inline()),
           inject: [OPTIONS],
         }),
         defineProvider(QueueDispatchBinding, {

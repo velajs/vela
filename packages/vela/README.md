@@ -174,6 +174,31 @@ class MyModule {
 ## Custom parameter decorators with deferred resolution
 
 Vela runs `middleware → guards → extract args/pipes → interceptors → handler`.
+Controller and handler middleware runs only for its matched HTTP method and route,
+including before/after `await next()` behavior. HEAD retains Hono's GET fallback;
+HEAD-only middleware is skipped for ordinary GET requests. Request-scoped
+controllers are resolved when the handler is invoked, after guards and pipes
+succeed. Singleton construction and bootstrap lifecycle hooks are unchanged.
+Pipeline component construction failures are reported before handler exception
+filters render them; filters are resolved only when an error needs handling.
+Controller-scoped and handler-scoped middleware, guards, pipes, interceptors,
+and filters resolve asynchronous providers in their declaring module. Parameter
+pipes use the same owner. Application-wide components retain their global scope. Middleware configured by a
+module resolves in that module, including async providers. Pipes may implement
+`transformAsync`; HTTP prefers it at awaited boundaries and otherwise calls
+`transform`.
+
+Every HTTP request, including adapter-mounted routes, owns one execution lifetime.
+Inject `EXECUTION_LIFETIME` to register `defer(() => work())` or `waitUntil(promise)`.
+Deferred callbacks start after the middleware/handler chain settles; disposal waits
+for both managed work and response EOF, error, or cancellation. Native Workers
+`waitUntil` retains asynchronous cleanup. HEAD responses cancel their untransmitted
+body before cleanup; WebSocket upgrade responses retain their native fields.
+`REQUEST_CONTEXT.request` captures the request after framework body-limit
+normalization and before application middleware runs. Guards, controllers, and
+adapters therefore use the same readable request and its trusted identity. The
+context remains a snapshot; replacing the request later does not transfer identity.
+Rejected bodies retain their original request context through reporting and cleanup.
 An ordinary `createParamDecorator` can read state populated by a guard. Its data
 argument is required when the factory excludes `undefined`: a factory accepting
 `string` produces `@Header('x-id')`; a factory accepting `undefined` supports

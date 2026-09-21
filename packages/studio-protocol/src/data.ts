@@ -53,6 +53,8 @@ export interface StudioColumn {
 
 /** Lightweight model listing entry. */
 export interface StudioModelInfo {
+  /** Named database namespace, when configured. */
+  database?: string;
   name: string;
   table: string;
   label: string;
@@ -62,6 +64,8 @@ export interface StudioModelInfo {
 
 /** Full descriptor for a single model. */
 export interface StudioModelDescriptor {
+  /** Named database namespace, when configured. */
+  database?: string;
   name: string;
   table: string;
   primaryKeys: string[];

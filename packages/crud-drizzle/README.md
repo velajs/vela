@@ -56,3 +56,35 @@ The engine validates them before database access. Direct adapter callers pass
 The SQLite and PostgreSQL legs have regression coverage. MySQL remains
 untested against a real server. D1 tests use a real workerd D1 binding through
 Miniflare (`tests/crud/d1.test.ts` in the workspace).
+
+### D1 query budgets
+
+The adapter checks compiled D1 statements against the [100 bound parameter
+limit](https://developers.cloudflare.com/d1/platform/limits/), including tenant,
+authorization, write values and pagination parameters. Oversized ordinary
+queries and writes fail with `QUERY_PARAMETER_LIMIT` before execution; they are
+not split into separate operations that could change pagination or atomicity.
+Each statement in an atomic upsert is checked before the batch starts.
+Statements are prepared once so runtime defaults and update generators execute
+once, and the budget covers the exact statement sent to D1. Schema-aware native
+Drizzle handles are accepted without erasing their schema at the call site.
+
+Relation includes split distinct join keys into bounded `IN` queries. Every
+chunk repeats the complete tenant, authorization and soft-delete scope, and
+results retain the original grouping and page metadata. An authorization
+predicate that consumes the entire budget fails before any relation query.
+
+Use the adapter's `requestScope` or `transaction` callback for direct data calls.
+Adapters sharing the same native Drizzle handle can share an active callback
+scope. Fabricated scopes, foreign handles and scopes retained after the callback
+returns are rejected before accessing the database.
+
+Database handles retain their original schema type when registered using
+`defineCrudDatabase` from `@velajs/crud`. Schema-aware Drizzle handles are accepted
+by the adapter's reflection boundary. Callback scopes are validated against the
+native owner and expire when their callback exits. Adapters sharing the exact
+handle can compose resource operations through `crudTransaction`; native storage
+wrappers may supply `transactionOwner` for a single shared physical boundary.
+D1 callback transactions remain unsupported. See
+[multiple databases](../../docs/multi-database.md) for registration, defaults,
+raw native access and migration ownership.

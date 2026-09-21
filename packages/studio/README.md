@@ -3,7 +3,7 @@
 The edge-safe [Vela Studio](https://github.com/velajs/vela/tree/main/packages/studio) admin module: mounts the
 reserved `/_vela/admin` surface, hosts `@AdminRpc` operations, and exposes the time-travel
 port. Subpath exports (`./auth`, `./flags`, `./queue`, `./live`, `./schedule`,
-`./timetravel`) scope the per-feature admin surfaces.
+`./timetravel`, `./logging`) scope the per-feature admin surfaces.
 
 Protocol v2 exposes the usable operation catalog through `studio.capabilities`.
 Only configured Studio handlers enable their features. Queue depth/DLQ/replay
@@ -23,6 +23,49 @@ their boundaries, including all operation-specific RPC response fields.
 Portable and Cloudflare time-travel modules accept `imports` for the configured
 Studio/model-source modules that export their dependencies. Async module factories
 must supply `inject`, including `inject: []` when no dependencies are needed.
+
+## Diagnostic snapshots
+
+Application inspection reads public module, route and entrypoint snapshots. It does
+not enumerate provider internals. Entrypoint metadata is bounded to depth 8, 64
+items per collection, 256 visited values and 16 KiB of text (2 KiB per string).
+Bigints become strings such as `42n`; cycles, accessors, functions, instances and
+truncated data use explicit markers. Getters and `toJSON` are never called.
+These are diagnostic summaries, not a data export format. Captured route
+descriptions are copied so inspection cannot mutate the stored descriptions.
+
+## Structured logs and timings
+
+Import `StudioLoggingModule` from `@velajs/studio/logging` and configure it with
+`{ imports: [configuredStudio, configuredLogging], timings: true }`. Capture reads
+only that application's `APP_LOGGER` records after normalization and redaction;
+it unsubscribes on application shutdown. It never patches global console methods.
+Timing is optional and defaults off. Rows measure handler/inner-interceptor
+completion, excluding guards, argument validation, streaming, and deferred work.
+They include module ownership and managed invocation IDs when available.
+
+`AdminLogBuffer` copies input and output snapshots, bounds fields and messages,
+and accepts capacity zero to disable retention. Records are per application
+instance and ephemeral. The Modules and Entrypoints panels also display available
+ownership and effective class-token scopes without constructing providers.
+
+See the [debugging guide](../../docs/debugging.md) for setup and debugger recipes.
+
+## Named databases
+
+The CRUD binding uses the same database selection as Vela CRUD. Named resources
+appear as `encodeURIComponent(database)::encodeURIComponent(resourceKey)`; a
+resource key defaults to the model name. Use that complete identity in row,
+transfer, snapshot and `managedModels` requests. Unique unnamed models retain
+their existing names. Model/table include or exclude rules still match all
+namespaces; use a qualified identity to select one. Missing named databases and
+colliding identities fail closed, without borrowing the default adapter.
+
+Descriptors retain the physical table and include optional `database` metadata.
+Relation targets and generated foreign keys stay within the selected namespace.
+Snapshots can restore qualified resources, but the current CDC source contract
+accepts only physical table names. Named-database time-based replay is therefore
+unavailable and rejected before restore writes; use an explicit snapshot mark.
 
 ## License
 

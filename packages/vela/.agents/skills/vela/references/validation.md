@@ -24,7 +24,10 @@ class ProductsController {
 }
 ```
 
-Schemas need `parse` and `toJSONSchema`; Zod 4.4+ supplies both. Input groups are `param`, `query`, `header`, and `json`. The dispatcher validates input after guards and validates the final result after interceptors. Invalid input returns 400; invalid output returns 500. An endpoint owns its status and argument parsing, so do not combine it with parameter decorators, `@HttpCode`, or `@Redirect` on the same method. JSON is the default, even for strings and null; string outputs can opt into `format: 'text'`.
+Schemas can use Standard Schema (including async refinements) or legacy parsers.
+JSON Schema conversion is separate: use `defineDto` with `jsonSchema` or
+`schemaConverter(direction)` when the library cannot export its wire shape.
+Endpoint input docs use the input direction; response docs use the output direction. Input groups are `param`, `query`, `header`, and `json`. The dispatcher validates input after guards and validates the final result after interceptors. Invalid input returns 400; invalid output returns 500. An endpoint owns its status and argument parsing, so do not combine it with parameter decorators, `@HttpCode`, or `@Redirect` on the same method. JSON is the default, even for strings and null; string outputs can opt into `format: 'text'`.
 
 ## Parameter decorators with named descriptors
 
@@ -40,7 +43,7 @@ create(@Body(new ValidationPipe(CreateProduct)) body: CreateProduct) {
 }
 ```
 
-`defineDto` returns a frozen descriptor (`name`, `schema`, `parse`, `toJSONSchema`), not a constructor. Its parse result may be an object, array, scalar, or transformed value. JSON-schema export delegates to the supplied schema and fails explicitly when unavailable.
+`defineDto` returns a frozen descriptor (`name`, `schema`, `parse`, `parseAsync`, `toJSONSchema`), not a constructor. Its parse result may be an object, array, scalar, or transformed value. JSON-schema export delegates to the supplied schema and fails explicitly when unavailable.
 
 Type aliases disappear from reflection. Supply the parser explicitly as above; a global `ValidationPipe` cannot infer it from a body type annotation. Programmatic routes can put the descriptor in parameter `metatype`. `ValidationPipe.parser` exposes the same parser to OpenAPI. The standalone pipe does not check that the method's TypeScript annotation matches its schema; `@Endpoint` supplies that stronger contract.
 
@@ -51,3 +54,21 @@ Type aliases disappear from reflection. Supply the parser explicitly as above; a
 `@Serialize(descriptor)` parses handler output through `descriptor.schema` when `SerializerInterceptor` is active; arrays are parsed element-by-element. Choose a schema that strips unwanted fields. Apply `@UseInterceptors(SerializerInterceptor)` or register `defineProvider(APP_INTERCEPTOR, { useClass: SerializerInterceptor })`. The decorator alone does not activate the interceptor.
 
 See `openapi.md` for generated HTTP contracts and the repository's `docs/types.md` for the runtime/type boundary.
+
+
+## Async boundaries and validation ownership
+
+Use `parseSchemaAsync` from `@velajs/vela/validation` for portable async boundaries;
+`SchemaInput<S>` and `SchemaOutput<S>` keep wire and transformed types distinct.
+`SchemaValidationError` identifies invalid input; thrown validator failures and
+invalid server output remain internal errors. Only safe issue fields are exposed.
+Existing DTO `parse` and pipe `transform` stay synchronous when their schema is
+synchronous. DTO `parseAsync` and pipe `transformAsync` use the async boundary;
+framework dispatch prefers the optional `transformAsync` pipe method. This avoids
+Zod's speculative synchronous validation before an asynchronous retry.
+
+Programmatic generated routes can attach `validationOwner: 'handler'` to their
+schema metatype: a global ValidationPipe then leaves raw input to the handler,
+while OpenAPI still uses the schema. Explicit schema pipes always validate.
+CRUD uses this metadata because its engine owns validation for HTTP and headless
+calls. Pass raw input to the engine; no global validation receipts are retained.

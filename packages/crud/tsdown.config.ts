@@ -3,6 +3,7 @@ import { defineConfig } from 'tsdown';
 export default defineConfig({
   entry: [
     'src/index.ts',
+    'src/service/index.ts',
     'src/adapter/index.ts',
     'src/model/index.ts',
     'src/query/index.ts',

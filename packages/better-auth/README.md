@@ -238,3 +238,7 @@ Pass `basePath: '/auth'` to `BetterAuthModule.forRoot` to mount the generated co
 ## License
 
 MIT
+
+## Authentication composition
+
+TenantGuard can run after AuthGuard without losing CurrentUser or CurrentSession. Provider payload survives tenant enrichment, but expires or disappears on clearing or reauthentication. Read the admitted tenant from core identity or CurrentTenant. HTTP-backed custom dispatchers must bind their execution context with bindTrustedRequestContext and authenticate at the outer boundary; AuthGuard then reads existing authentication without a second session lookup.

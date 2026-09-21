@@ -30,6 +30,21 @@ or `.swcrc` changes. Edit the service message and refresh to try it.
 `pnpm dev --port 8788` uses a different local port. Stop with Ctrl-C.
 Commit the generated `pnpm-lock.yaml` to keep dependency resolution repeatable.
 
+The included `vela.config.mjs` imports the SWC-built application for Node-side
+CLI tools. After `pnpm build`, inspect it with:
+
+```sh
+pnpm dlx @velajs/cli@latest doctor --app --json
+pnpm dlx @velajs/cli@latest route list
+```
+
+`doctor` without `--app` only explains which config file would be used. With
+`--app`, it runs the app's normal startup/shutdown hooks and reads graph
+descriptions. Node's native TypeScript stripping does not emit decorators or DI
+metadata, so keep the config pointed at `dist/` rather than decorated `src/`
+files. If you add Workers bindings, provide their local equivalents in this
+config; the Worker entrypoint and its environment remain separate.
+
 To deploy later, authenticate with `pnpm exec wrangler login` and run
 `pnpm run deploy`. Deployment uses your Cloudflare account; it is optional for
 local development.

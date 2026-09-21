@@ -78,6 +78,8 @@ export interface ArgumentMetadata {
 
 export interface PipeTransform<T = unknown, R = unknown> {
   transform(value: T, metadata: ArgumentMetadata): R | Promise<R>;
+  /** Optional async entry avoids sync-probe/retry in validators with async refinements. */
+  transformAsync?(value: T, metadata: ArgumentMetadata): Promise<R>;
 }
 
 export interface ExceptionFilter<T = unknown> {

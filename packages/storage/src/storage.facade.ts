@@ -1,5 +1,5 @@
 import { byteLengthOf, chunkStream, countingStream, isStream, toStream } from './internal/body';
-import { normalizeRetry, runWithRetry } from './internal/retry';
+import { normalizeRetry, runWithRetry, throwIfAborted } from './internal/retry';
 import { joinKey, normalizePrefix, sanitizeKey, stripPrefix } from './object-key';
 import { StorageError } from './storage.error';
 import type {
@@ -11,6 +11,7 @@ import type {
   DownloadOptions,
   ListOptions,
   ListResult,
+  MetadataListResult,
   MultipartOptions,
   MultipartUpload,
   OperationOptions,
@@ -22,6 +23,7 @@ import type {
   StorageDriver,
   StorageOptions,
   StoredFile,
+  StoredFileMetadata,
   UploadedPart,
   UploadOptions,
   UploadResult,
@@ -44,24 +46,24 @@ const MULTIPART_THRESHOLD = 16 * 1024 * 1024;
  *
  * Framework-free — `StorageService` builds and caches one of these per bucket.
  */
-export class Storage {
-  readonly #driver: StorageDriver;
+export class Storage<Raw = unknown> {
+  readonly #driver: StorageDriver<Raw>;
   readonly #prefix: string;
   readonly #readonly: boolean;
-  readonly #opts: StorageOptions;
+  readonly #opts: StorageOptions<Raw>;
 
-  constructor(opts: StorageOptions) {
+  constructor(opts: StorageOptions<Raw>) {
     this.#opts = opts;
     this.#driver = opts.driver;
     this.#prefix = normalizePrefix(opts.prefix);
     this.#readonly = opts.readonly ?? false;
   }
 
-  get raw(): unknown {
+  get raw(): Raw {
     return this.#driver.raw;
   }
 
-  get driver(): StorageDriver {
+  get driver(): StorageDriver<Raw> {
     return this.#driver;
   }
 
@@ -97,8 +99,8 @@ export class Storage {
       throw new StorageError('Unsupported', `${d.name}: multipart not supported`);
     }
     if ((wantsMultipart || unknownStream || bigKnown) && canMultipart) {
-      const result = await this.#exec('upload', key, false, opts, () =>
-        this.#putMultipart(path, body, opts),
+      const result = await this.#exec('upload', key, false, opts, (signal) =>
+        this.#putMultipart(path, body, { ...opts, signal }),
       );
       return { ...result, key };
     }
@@ -129,20 +131,32 @@ export class Storage {
     }
     const concurrency = Math.min(requestedConcurrency, MAX_MULTIPART_CONCURRENCY);
     const total = byteLengthOf(body);
-    const upload = await this.#driver.createMultipartUpload!(path, {
-      contentType: opts?.contentType,
-      cacheControl: opts?.cacheControl,
-      metadata: opts?.metadata,
-      signal: opts?.signal,
-    });
+    const upload = await runWithRetry(
+      (signal) =>
+        this.#driver.createMultipartUpload!(path, {
+          contentType: opts?.contentType,
+          cacheControl: opts?.cacheControl,
+          metadata: opts?.metadata,
+          signal,
+        }),
+      { signal: opts?.signal },
+      undefined,
+      (late) => late.abort(),
+    );
 
+    const inflight = new Set<Promise<void>>();
     try {
       const parts: UploadedPart[] = [];
       let uploadedBytes = 0;
       let partNumber = 0;
-      const inflight = new Set<Promise<void>>();
+      let failure: { error: unknown } | undefined;
+      const assertPartsSucceeded = () => {
+        if (failure) throw failure.error;
+      };
 
-      for await (const chunk of chunkStream(toStream(body), partSize)) {
+      for await (const chunk of chunkStream(toStream(body), partSize, opts?.signal)) {
+        throwIfAborted(opts?.signal);
+        assertPartsSucceeded();
         partNumber += 1;
         if (partNumber > MAX_MULTIPART_PARTS) {
           throw new StorageError('InvalidRequest', 'multipart upload exceeds 10,000 parts');
@@ -150,18 +164,30 @@ export class Storage {
         const n = partNumber;
         const size = chunk.byteLength;
         const task: Promise<void> = (async () => {
-          const up = await upload.uploadPart(n, chunk, { signal: opts?.signal });
+          const up = await runWithRetry((signal) => upload.uploadPart(n, chunk, { signal }), {
+            signal: opts?.signal,
+          });
           parts[n - 1] = { partNumber: n, etag: up.etag, size: up.size ?? size };
           uploadedBytes += size;
           opts?.onProgress?.({ loaded: uploadedBytes, total });
         })();
-        const tracked = task.finally(() => inflight.delete(tracked));
+        const tracked = task
+          .catch((error: unknown) => {
+            failure ??= { error };
+          })
+          .finally(() => inflight.delete(tracked));
         inflight.add(tracked);
-        if (inflight.size >= concurrency) await Promise.race(inflight);
+        if (inflight.size >= concurrency) {
+          await Promise.race(inflight);
+          assertPartsSucceeded();
+        }
       }
       await Promise.all(inflight);
+      assertPartsSucceeded();
+      throwIfAborted(opts?.signal);
       return await upload.complete(parts, { signal: opts?.signal });
     } catch (e) {
+      await Promise.all(inflight);
       await upload.abort().catch(() => {});
       throw StorageError.wrap(e);
     }
@@ -171,8 +197,13 @@ export class Storage {
 
   async download(key: string, opts?: DownloadOptions): Promise<StoredFile> {
     if (opts?.range) this.#assertRange();
-    const file = await this.#exec('download', key, true, opts, (signal) =>
-      this.#driver.download(this.#path(key), { ...opts, signal }),
+    const file = await this.#exec(
+      'download',
+      key,
+      true,
+      opts,
+      (signal) => this.#driver.download(this.#path(key), { ...opts, signal }),
+      (late) => late.stream().cancel(),
     );
     return this.#relabel(file, key);
   }
@@ -182,6 +213,11 @@ export class Storage {
       this.#driver.head(this.#path(key), { ...opts, signal }),
     );
     return this.#relabel(file, key);
+  }
+
+  /** Metadata snapshot without lazy body readers. Use download() for controlled I/O. */
+  async stat(key: string, opts?: OperationOptions): Promise<StoredFileMetadata> {
+    return metadataOf(await this.head(key, opts));
   }
 
   exists(key: string, opts?: OperationOptions): Promise<boolean> {
@@ -220,33 +256,37 @@ export class Storage {
         errors: res.errors?.map((e) => ({ key: this.#strip(e.key), error: e.error })),
       };
     }
-    // Generic bounded fan-out fallback.
-    const concurrency = Math.max(1, opts?.concurrency ?? 8);
-    const stopOnError = opts?.stopOnError ?? false;
-    const deleted: string[] = [];
-    const errors: DeleteManyError[] = [];
-    let index = 0;
-    let stopped = false;
-    const worker = async () => {
-      while (index < keys.length && !stopped) {
-        const key = keys[index++];
-        try {
-          await d.delete(this.#path(key!), { signal: opts?.signal });
-          deleted.push(key!);
-        } catch (e) {
-          const error = StorageError.wrap(e);
-          errors.push({ key: key!, error });
-          if (stopOnError) {
-            stopped = true;
-            throw error;
+    return this.#exec('deleteMany', undefined, false, opts, async (signal) => {
+      // Generic bounded fan-out fallback.
+      const concurrency = Math.max(1, opts?.concurrency ?? 8);
+      const stopOnError = opts?.stopOnError ?? false;
+      const deleted: string[] = [];
+      const errors: DeleteManyError[] = [];
+      let index = 0;
+      let stopped = false;
+      const worker = async () => {
+        while (index < keys.length && !stopped) {
+          if (signal?.aborted) break;
+          const key = keys[index++];
+          try {
+            await d.delete(this.#path(key!), { signal });
+            deleted.push(key!);
+          } catch (e) {
+            const error = StorageError.wrap(e);
+            errors.push({ key: key!, error });
+            if (stopOnError) {
+              stopped = true;
+              throw error;
+            }
           }
         }
-      }
-    };
-    const runners = Array.from({ length: Math.min(concurrency, keys.length) }, worker);
-    if (stopOnError) await Promise.all(runners);
-    else await Promise.allSettled(runners);
-    return { deleted, errors: errors.length ? errors : undefined };
+      };
+      const runners = Array.from({ length: Math.min(concurrency, keys.length) }, worker);
+      if (stopOnError) await Promise.all(runners);
+      else await Promise.allSettled(runners);
+      throwIfAborted(signal);
+      return { deleted, errors: errors.length ? errors : undefined };
+    });
   }
 
   async copy(from: string, to: string, opts?: OperationOptions): Promise<void> {
@@ -269,6 +309,7 @@ export class Storage {
     }
     await this.#exec('move', to, true, opts, async (signal) => {
       await this.#driver.copy(f, t, { ...opts, signal });
+      throwIfAborted(signal);
       await this.#driver.delete(f, { ...opts, signal });
     });
   }
@@ -286,6 +327,15 @@ export class Storage {
       prefixes: res.prefixes?.map((p) => this.#strip(p)),
       cursor: res.cursor,
     };
+  }
+
+  /** Project listing metadata without accessing any body or doing extra HEADs. */
+  async listMetadata(opts?: ListOptions): Promise<MetadataListResult> {
+    const page = await this.list(opts);
+    const metadata = { items: page.items.map(metadataOf), prefixes: page.prefixes };
+    return page.cursor === undefined
+      ? { ...metadata, hasMore: false }
+      : { ...metadata, hasMore: true, cursor: page.cursor };
   }
 
   async *listAll(opts?: ListOptions): AsyncGenerator<StoredFile> {
@@ -341,7 +391,15 @@ export class Storage {
     if (typeof this.#driver.createMultipartUpload !== 'function') {
       throw new StorageError('Unsupported', `${this.#driver.name}: multipart not supported`);
     }
-    return this.#driver.createMultipartUpload(this.#path(key), opts);
+    const upload = await this.#exec(
+      'createMultipartUpload',
+      key,
+      false,
+      opts,
+      (signal) => this.#driver.createMultipartUpload!(this.#path(key), { ...opts, signal }),
+      (late) => late.abort(),
+    );
+    return this.#multipart(upload);
   }
 
   resumeMultipartUpload(key: string, uploadId: string): MultipartUpload {
@@ -349,7 +407,32 @@ export class Storage {
     if (typeof this.#driver.resumeMultipartUpload !== 'function') {
       throw new StorageError('Unsupported', `${this.#driver.name}: multipart resume not supported`);
     }
-    return this.#driver.resumeMultipartUpload(this.#path(key), uploadId);
+    return this.#multipart(this.#driver.resumeMultipartUpload(this.#path(key), uploadId));
+  }
+
+  #multipart(upload: MultipartUpload): MultipartUpload {
+    const wrapped: MultipartUpload = {
+      key: upload.key,
+      uploadId: upload.uploadId,
+      uploadPart: (partNumber, body, opts) =>
+        this.#exec('uploadPart', upload.key, true, opts, (signal) =>
+          upload.uploadPart(partNumber, body, { ...opts, signal }),
+        ),
+      complete: (parts, opts) =>
+        this.#exec('completeMultipartUpload', upload.key, false, opts, (signal) =>
+          upload.complete(parts, { ...opts, signal }),
+        ),
+      abort: (opts) =>
+        this.#exec('abortMultipartUpload', upload.key, true, opts, (signal) =>
+          upload.abort({ ...opts, signal }),
+        ),
+    };
+    if (upload.listParts)
+      wrapped.listParts = (opts) =>
+        this.#exec('listParts', upload.key, true, opts, (signal) =>
+          upload.listParts!({ ...opts, signal }),
+        );
+    return wrapped;
   }
 
   // ---- ergonomics --------------------------------------------------------
@@ -369,7 +452,7 @@ export class Storage {
   }
 
   /** A read-only clone of this handle (mutations throw `ReadOnly`). */
-  readonly(): Storage {
+  readonly(): Storage<Raw> {
     return new Storage({ ...this.#opts, readonly: true });
   }
 
@@ -438,6 +521,7 @@ export class Storage {
     replayable: boolean,
     opts: OperationOptions | undefined,
     fn: (signal: AbortSignal | undefined) => Promise<T>,
+    onDiscard?: (value: T) => void | Promise<void>,
   ): Promise<T> {
     const started = Date.now();
     const retries: RetryOptions | undefined = replayable
@@ -462,6 +546,7 @@ export class Storage {
             delayMs: info.delayMs,
             error: info.error,
           }),
+        onDiscard,
       );
       hooks?.onOperation?.({ type, key, status: 'success', durationMs: Date.now() - started });
       return result;
@@ -491,6 +576,18 @@ export interface FileHandle {
   signedUploadUrl(opts: SignUploadOptions): Promise<SignedUpload>;
 }
 
-export function createStorage(opts: StorageOptions): Storage {
+export function createStorage<Raw = unknown>(opts: StorageOptions<Raw>): Storage<Raw> {
   return new Storage(opts);
+}
+
+function metadataOf(file: StoredFile): StoredFileMetadata {
+  return {
+    key: file.key,
+    name: file.name,
+    size: file.size,
+    type: file.type,
+    lastModified: file.lastModified,
+    etag: file.etag,
+    metadata: file.metadata ? { ...file.metadata } : undefined,
+  };
 }

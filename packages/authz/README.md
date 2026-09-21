@@ -124,6 +124,11 @@ The framework entrypoint owns the shared `PermissionGuard` / `RequirePermission`
 
 `getContextIdentity(context)` reads core's unexpired HTTP identity, or the normalized WebSocket connection principal/tenant/expiry. Socket role or claim fields are not authority; a permission resolver can look up grants using the connection principal and tenant. HTTP role/claim snapshots cannot be mutated after publication.
 
+HTTP-backed custom dispatchers must explicitly bind each execution context using core's
+`bindTrustedRequestContext(context, originalRequest)`. The guards then read live request
+authority, including tenant admission and later invalidation. Bind before dispatch and
+authenticate/admit once at the outer HTTP boundary before running concurrent fields.
+
 The permission guard resolves exactly one `AUTHZ` engine visible from the route module, then rechecks identity after asynchronous decisions to reject expiry or replacement during resolution. `can()` also rejects expired identities before and after invoking its resolver. Missing identity, missing/ambiguous engine, and resolver exceptions deny access.
 
 ```ts
@@ -137,6 +142,33 @@ class PostsController {
   create() { /* ... */ }
 }
 ```
+
+## Startup wiring audit
+
+Opt into the mounted HTTP route audit after all route/global-guard adapters:
+
+```ts
+import { authorizationAudit } from '@velajs/authz/vela';
+
+const app = await VelaFactory.create(AppModule, {
+  adapters: [authorizationAudit()],
+});
+```
+
+The audit checks effective class/method RequirePermission and Roles declarations,
+verifiable built-in guard wiring, and exactly one module-visible AUTHZ engine for
+permission checks. It follows provider aliases using read-only DI snapshots, respects
+empty method overrides, and uses mounted controller identity plus declaring module.
+It never invokes a factory, constructs a request provider, or audits an unused imported
+class. Unresolved factories and custom guard implementations cannot be proven to
+enforce the built-in declarations and produce an explicit unverified-guard diagnostic.
+
+Use `authorizationAudit({ mode: 'warn', onDiagnostic })` for adoption without changing
+startup behavior; the default opt-in mode throws on findings.
+`inspectAuthorizationWiring({ container, routeManager })` returns frozen diagnostics
+for tooling. This checks configuration, not application policy semantics. Authentication,
+Cedar, middleware-only authorization, non-HTTP dispatchers and later runtime rewiring
+need their own review; runtime guards continue checking authority and engine visibility.
 
 ## License
 

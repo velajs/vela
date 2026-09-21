@@ -33,8 +33,28 @@ const SLOT_NAMING: Partial<
   versionRollback: { verb: 'rollback', plural: false, suffix: 'Version', summaryNoun: 'version' },
 };
 
-const pascal = (s: string): string =>
-  s.replace(/(?:^|[^a-zA-Z0-9]+)([a-zA-Z0-9])/g, (_m, c: string) => c.toUpperCase());
+const isAsciiAlphanumeric = (code: number): boolean =>
+  (code >= 48 && code <= 57) || (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+
+/** Preserve generated names without retrying a separator suffix at every offset. */
+export function pascalResourceName(value: string): string {
+  const parts: string[] = [];
+  let cursor = 0;
+  while (cursor < value.length) {
+    const separators = cursor;
+    while (cursor < value.length && !isAsciiAlphanumeric(value.charCodeAt(cursor))) cursor++;
+    if (cursor === value.length) {
+      // Existing names retain punctuation that has no following word.
+      parts.push(value.slice(separators));
+      break;
+    }
+    parts.push(value.charAt(cursor).toUpperCase());
+    const remainder = ++cursor;
+    while (cursor < value.length && isAsciiAlphanumeric(value.charCodeAt(cursor))) cursor++;
+    parts.push(value.slice(remainder, cursor));
+  }
+  return parts.join('');
+}
 
 // "bulkDelete" -> "Bulk delete"
 const humanizeVerb = (verb: string): string => {
@@ -55,7 +75,7 @@ export function deriveVerbNaming(
   const naming = SLOT_NAMING[endpoint];
   if (!naming) return undefined;
   const noun = naming.plural ? plural : singular;
-  const operationId = `${naming.verb}${pascal(noun)}${naming.suffix ?? ''}`;
+  const operationId = `${naming.verb}${pascalResourceName(noun)}${naming.suffix ?? ''}`;
   const summary = naming.summaryNoun
     ? `${humanizeVerb(naming.verb)} ${singular} ${naming.summaryNoun}`
     : `${humanizeVerb(naming.verb)} ${naming.plural ? plural : `a ${singular}`}`;

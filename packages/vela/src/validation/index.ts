@@ -1,7 +1,9 @@
 export { defineDto } from './dto';
 export type { DtoDefinition, DtoOptions, DtoSchema, RuntimeParser, SchemaParser } from './dto';
 export { ValidationPipe } from './validation.pipe';
-export type { ValidationSchema } from './validation.pipe';
+export { parseSchema, parseSchemaAsync, isValidationSchema } from './parse-schema';
+export type { ValidationSchema, SchemaInput, SchemaOutput } from './parse-schema';
+export type { ValidationIssue } from './standard-schema';
 export type { StandardDtoDefinition } from './dto';
 export {
   isStandardSchema,

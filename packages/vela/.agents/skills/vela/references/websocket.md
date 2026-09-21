@@ -27,7 +27,7 @@ class ChatGateway implements OnGatewayConnection {
 }
 ```
 
-- `@WebSocketGateway({ path?, binding? })` — `path` is the upgrade route (supports `:params`, e.g. `/rooms/:id/ws`); `binding` is a Cloudflare-only Durable Object binding name (ignored elsewhere). The gateway is a singleton provider — register it in a module's `providers`.
+- `@WebSocketGateway({ path?, binding? })` — `path` is the upgrade route (supports `:params`, e.g. `/rooms/:id/ws`); `binding` is a Cloudflare-only Durable Object binding name (ignored elsewhere). Register the gateway in module `providers`. It defaults to singleton scope; stack `@Injectable({ scope: Scope.REQUEST })` for invocation-local state.
 - `@SubscribeMessage(event)` — handler for an inbound message event (stackable).
 - `@MessageBody()` injects an unknown wire payload; validate it with a pipe or schema before use; `@ConnectedSocket()` injects the `WsClient`. With no param decorators a handler receives `(client, data)` positionally.
 - `@WebSocketServer()` injects the `WsServer` for broadcasting.
@@ -52,7 +52,20 @@ import { WebSocketModule } from '@velajs/vela';
 class AppModule {}
 ```
 
-`WebSocketModuleOptions`: `sync?` (cross-instance broadcast driver — defaults to `local()` for a single instance) and `registry?` (room registry — defaults to in-memory). Use a real sync driver for horizontal scale (Redis on Node, native per-room Durable Objects on Cloudflare). `WebSocketModule` stays eager (transports read gateway instances at wiring time).
+`WebSocketModuleOptions`: `sync?` (cross-instance broadcast driver — defaults to `local()` for a single instance) and `registry?` (room registry — defaults to in-memory). Use a real sync driver for horizontal scale (Redis on Node, native per-room Durable Objects on Cloudflare). `WebSocketModule` stays eager; transport discovery reads owner-bearing metadata without constructing request gateways.
+
+Each handler invocation gets a managed child with the gateway's module owner;
+scoped guards/components and asynchronous providers use that child. Guards run
+before request-scoped gateway construction. Connection/room state belongs on
+the authenticated client or durable attachment; it does not survive in a
+request-scoped gateway instance. Socket invocations do not acquire HTTP
+`REQUEST_CONTEXT` or authority from frame payloads.
+
+Validate complete envelopes and correlation IDs. Configurable send admission
+limits bound local queued bytes and rates; rejection does not mean delivery.
+Live baselines advance only after local send acceptance. Native attachment
+validation and browser-valid closure/reconnect behavior preserve these limits
+through hibernation and setup failure.
 
 ## Transports
 

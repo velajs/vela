@@ -1,0 +1,19 @@
+{
+  "name": "vela-multi-database",
+  "main": "dist/worker.js",
+  "compatibility_date": "2026-09-20",
+  "d1_databases": [
+    {
+      "binding": "PRIMARY_DB",
+      "database_name": "vela-multi-primary",
+      "database_id": "local-multi-primary",
+      "migrations_dir": "migrations/primary",
+    },
+    {
+      "binding": "ANALYTICS_DB",
+      "database_name": "vela-multi-analytics",
+      "database_id": "local-multi-analytics",
+      "migrations_dir": "migrations/analytics",
+    },
+  ],
+}

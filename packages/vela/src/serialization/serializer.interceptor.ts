@@ -1,5 +1,6 @@
 import { MetadataRegistry } from '../registry/metadata.registry';
 import type { CallHandler, ExecutionContext, NestInterceptor } from '../pipeline/types';
+import { isValidationSchema, parseSchemaAsync } from '../validation';
 import { SERIALIZE_METADATA } from './serialize.decorator';
 
 export class SerializerInterceptor implements NestInterceptor {
@@ -8,16 +9,21 @@ export class SerializerInterceptor implements NestInterceptor {
     const controller = context.getClass();
     const handler = context.getHandler();
 
-    const dto = MetadataRegistry.getCustomHandlerMeta(controller, handler, SERIALIZE_METADATA) as
-      | { schema?: { parse(data: unknown): unknown } }
-      | undefined;
-
-    const schema = dto?.schema;
-    if (!schema?.parse) return result;
+    const dto = MetadataRegistry.getCustomHandlerMeta(controller, handler, SERIALIZE_METADATA);
+    if (dto === undefined) return result;
+    if (
+      dto === null ||
+      (typeof dto !== 'object' && typeof dto !== 'function') ||
+      !('schema' in dto) ||
+      !isValidationSchema(dto.schema)
+    ) {
+      throw new TypeError('Invalid @Serialize descriptor: expected a supported schema.');
+    }
+    const schema = dto.schema;
 
     if (Array.isArray(result)) {
-      return result.map((item) => schema.parse(item));
+      return Promise.all(result.map((item) => parseSchemaAsync(schema, item)));
     }
-    return schema.parse(result);
+    return parseSchemaAsync(schema, result);
   }
 }

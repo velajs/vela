@@ -32,6 +32,7 @@ function EntrypointGroups({ rows }: { rows: EntrypointRow[] }): ReactNode {
             <thead>
               <tr>
                 <th>Target</th>
+                <th>Owner / scope</th>
                 <th>Meta</th>
               </tr>
             </thead>
@@ -39,6 +40,10 @@ function EntrypointGroups({ rows }: { rows: EntrypointRow[] }): ReactNode {
               {entries.map((entry, index) => (
                 <tr key={`${entry.target}-${index}`}>
                   <td className="vela-mono">{entry.target}</td>
+                  <td>
+                    <span className="vela-mono">{entry.moduleId ?? 'Not supplied'}</span>
+                    {entry.scope !== undefined ? <Badge tone="neutral">{entry.scope}</Badge> : null}
+                  </td>
                   <td>
                     {entry.meta === undefined ? (
                       <span className="vela-state__hint">—</span>

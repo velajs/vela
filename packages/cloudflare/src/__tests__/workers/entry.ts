@@ -1,5 +1,5 @@
 import { VelaWebSocketDurableObject } from '../../durable-objects';
-import { InjectionToken, Module } from '@velajs/vela';
+import { InjectionToken, Module, Injectable, Scope } from '@velajs/vela';
 import {
   CloudflareWebSocketModule,
   ConnectedSocket,
@@ -33,7 +33,9 @@ const allowedOrigin = 'https://app.test';
     };
   },
 })
+@Injectable({ scope: Scope.REQUEST })
 class TestGateway implements OnGatewayConnection {
+  #messageCount = 0;
   constructor(@WebSocketServer() private readonly server: WsServer) {}
 
   async handleConnection(client: WsClient): Promise<void> {
@@ -41,12 +43,37 @@ class TestGateway implements OnGatewayConnection {
     // exercises the pending -> active race in the real runtime.
     await Promise.resolve();
     if (client.rooms.has('reject')) throw new Error('connection rejected');
+    client.data.connected = true;
+    client.commit();
     client.send('ready', { rooms: [...client.rooms] });
   }
 
   @SubscribeMessage('echo')
   echo(@MessageBody() body: unknown, @ConnectedSocket() client: WsClient) {
     return { event: 'echo', data: { body, tenantId: client.data.tenantId } };
+  }
+
+  @SubscribeMessage('scope')
+  scope(@ConnectedSocket() client: WsClient) {
+    client.data.messages = Number(client.data.messages ?? 0) + 1;
+    client.commit();
+    return {
+      invocationCalls: ++this.#messageCount,
+      connectionCalls: client.data.messages,
+      connected: client.data.connected,
+    };
+  }
+
+  @SubscribeMessage('attachment-limit')
+  attachmentLimit(@ConnectedSocket() client: WsClient) {
+    // Bypass the library precheck to exercise workerd's structured-clone ceiling.
+    if (!(client.raw instanceof WebSocket)) throw new Error('Expected native WebSocket');
+    try {
+      client.raw.serializeAttachment({ oversized: 'x'.repeat(32 * 1024) });
+    } catch {
+      return { rejected: true };
+    }
+    return { rejected: false };
   }
 
   @SubscribeMessage('room')

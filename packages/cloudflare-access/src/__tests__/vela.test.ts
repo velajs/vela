@@ -3,6 +3,7 @@ import { getAccessRequestIdentity } from '../vela/access-request-state';
 import {
   getTrustedRequestIdentity,
   setTrustedRequestIdentity,
+  setTrustedRequestTenant,
   provideGlobal,
   ThrottlerModule,
 } from '@velajs/vela';
@@ -53,6 +54,41 @@ const withHeader = (path: string, token?: string): Request =>
   });
 
 describe('CloudflareAccessGuard', () => {
+  it('preserves provider claims through admitted tenant enrichment', async () => {
+    class AdmitTenant implements CanActivate {
+      canActivate(context: ExecutionContext) {
+        const request = context.getRequest();
+        setTrustedRequestTenant(request, getTrustedRequestIdentity(request)!, 'tenant-a');
+        return true;
+      }
+    }
+    @Controller('/admitted')
+    @UseGuards(CloudflareAccessGuard, AdmitTenant)
+    class Routes {
+      @Get()
+      read(
+        @CurrentAccessIdentity() payload: ResolvedIdentity | undefined,
+        @CurrentIdentity() identity: TrustedRequestIdentity | undefined,
+      ) {
+        return { email: payload?.email, tenant: identity?.tenantId };
+      }
+    }
+    @Module({
+      imports: [CloudflareAccessModule.forRoot({ preset, aud: AUD, keySet: keys.jwks })],
+      controllers: [Routes],
+    })
+    class App {}
+    const app = await VelaFactory.create(App);
+    try {
+      const token = await tokenWith({ email: 'ada@example.com' });
+      const response = await app.getHonoApp().request(withHeader('/admitted', token));
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ email: 'ada@example.com', tenant: 'tenant-a' });
+    } finally {
+      await app.close();
+    }
+  });
+
   it('required mode: publishes one trusted identity and CurrentIdentity reads it', async () => {
     @Controller('/me')
     @UseGuards(CloudflareAccessGuard)

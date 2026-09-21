@@ -4,12 +4,16 @@ import {
   PipelineRunner,
   buildEntrypointExecutionContext,
   registerEntrypointKind,
+  getEntrypointModuleId,
+  resolveEntrypoint,
+  resolveScopedComponentsAsync,
+  resolveErrorReporter,
   runInEntrypointScope,
   shouldFilterCatch,
   type VelaApplication,
 } from '@velajs/vela';
-import type { Entrypoint } from '@velajs/vela';
-import { ComponentManager } from '@velajs/vela/internal';
+import type { Entrypoint, ExceptionFilter } from '@velajs/vela';
+import { readWsEntrypointMeta } from '@velajs/vela/websocket';
 import { collectWsGatewayRoutes, type WsGatewayRoute } from './websocket/websocket-routing';
 import { assertCloudflareEnvironment } from './environment';
 
@@ -27,11 +31,13 @@ registerEntrypointKind({ kind: 'cf:vela-cron', metaKey: CRON_METADATA, level: 'm
  */
 export type MountOpenApiOptions = Parameters<VelaApplication['mountOpenApi']>[0];
 
-function invoke(instance: object, methodName: string, args: unknown[]): unknown {
+function invoke(instance: object, methodName: string | symbol, args: unknown[]): unknown {
   // Decorator metadata names an instance method; inspect it before invoking.
   const method: unknown = Reflect.get(instance, methodName);
   if (typeof method !== 'function') {
-    throw new Error(`Method '${methodName}' is not a function on ${instance.constructor.name}`);
+    throw new Error(
+      `Method '${String(methodName)}' is not a function on ${instance.constructor.name}`,
+    );
   }
   return Reflect.apply(method, instance, args);
 }
@@ -42,6 +48,16 @@ function entrypointString(meta: unknown, property: string): string {
   if (typeof value !== 'string')
     throw new Error(`Invalid entrypoint metadata: ${property} must be a string.`);
   return value;
+}
+
+/** Wait for every matching handler, even when one fails before its siblings. */
+async function settleEntrypoints(work: readonly Promise<void>[]): Promise<void> {
+  const outcomes = await Promise.allSettled(work);
+  const errors = outcomes.flatMap((outcome) =>
+    outcome.status === 'rejected' ? [outcome.reason] : [],
+  );
+  if (errors.length === 1) throw errors[0];
+  if (errors.length > 1) throw new AggregateError(errors, 'Multiple entrypoint handlers failed.');
 }
 
 /**
@@ -74,22 +90,24 @@ function entrypointString(meta: unknown, property: string): string {
  * ```
  */
 export class CloudflareApplication<T extends object = object> {
-  private wsGatewayRoutes: WsGatewayRoute[] = [];
+  readonly #wsGatewayRoutes: WsGatewayRoute[] = [];
+  readonly #app: VelaApplication;
 
   constructor(
-    private app: VelaApplication,
+    app: VelaApplication,
     readonly env: T,
   ) {
+    this.#app = app;
     this.get = app.get.bind(app);
   }
 
   readonly fetch = async (request: Request, env: T, ctx?: ExecutionContext): Promise<Response> => {
     assertCloudflareEnvironment(this.env, env);
-    return this.app.fetch(request, env, ctx);
+    return this.#app.fetch(request, env, ctx);
   };
 
   getHonoApp(): ReturnType<VelaApplication['getHonoApp']> {
-    return this.app.getHonoApp();
+    return this.#app.getHonoApp();
   }
 
   /**
@@ -107,7 +125,7 @@ export class CloudflareApplication<T extends object = object> {
   readonly get: VelaApplication['get'];
 
   get entrypoints(): VelaApplication['entrypoints'] {
-    return this.app.entrypoints;
+    return this.#app.entrypoints;
   }
 
   /**
@@ -131,26 +149,40 @@ export class CloudflareApplication<T extends object = object> {
    * ```
    */
   mountOpenApi(options: MountOpenApiOptions): this {
-    this.app.mountOpenApi(options);
+    this.#app.mountOpenApi(options);
     return this;
   }
 
   /**
-   * @internal — scans instances for `@WebSocketGateway({ path, binding })`
-   * upgrade routes. Queue/scheduled handlers are NOT scanned anymore: they
-   * come from `app.entrypoints` (`cf:queue` / `cf:scheduled` / `cf:vela-cron`
-   * kinds) at dispatch time.
+   * @internal Upgrade routes come from validated gateway entrypoints, including
+   * request-scoped gateways without a bootstrap instance. Retain the instance
+   * scan for legacy applications that only declare forwarding metadata.
    */
   scanInstances(instances: unknown[]): void {
+    const routes = new Map<string, WsGatewayRoute>();
+    for (const ep of this.#app.entrypoints.ofKind('websocket')) {
+      if (typeof ep.meta !== 'object' || ep.meta === null || !('dispatcher' in ep.meta)) continue;
+      const meta = readWsEntrypointMeta(ep.meta);
+      if (meta.options.binding) {
+        routes.set(meta.path, {
+          path: meta.path,
+          binding: meta.options.binding,
+          options: { ...meta.options },
+        });
+      }
+    }
     for (const instance of instances) {
       if (!instance || typeof instance !== 'object') continue;
-      this.wsGatewayRoutes.push(...collectWsGatewayRoutes(instance));
+      for (const route of collectWsGatewayRoutes(instance)) {
+        if (!routes.has(route.path)) routes.set(route.path, route);
+      }
     }
+    this.#wsGatewayRoutes.splice(0, this.#wsGatewayRoutes.length, ...routes.values());
   }
 
-  /** @internal — upgrade routes discovered from `@WebSocketGateway({ path, binding })`. */
+  /** @internal — upgrade routes discovered from the application's gateways. */
   getWsGatewayRoutes(): WsGatewayRoute[] {
-    return this.wsGatewayRoutes;
+    return [...this.#wsGatewayRoutes];
   }
 
   /**
@@ -166,15 +198,15 @@ export class CloudflareApplication<T extends object = object> {
   ): Promise<void> {
     assertCloudflareEnvironment(this.env, env);
     const handlers = [
-      ...this.app.entrypoints
+      ...this.#app.entrypoints
         .ofKind('cf:scheduled')
         .map((ep) => ({ ep, cron: entrypointString(ep.meta, 'cron') })),
-      ...this.app.entrypoints
+      ...this.#app.entrypoints
         .ofKind('cf:vela-cron')
         .map((ep) => ({ ep, cron: entrypointString(ep.meta, 'expression') })),
     ].filter((h) => h.cron === event.cron);
 
-    await Promise.all(handlers.map(({ ep }) => this.dispatchEntrypoint(ep, [event, env, ctx])));
+    await settleEntrypoints(handlers.map(({ ep }) => this.dispatchEntrypoint(ep, event, env, ctx)));
   }
 
   /**
@@ -185,49 +217,97 @@ export class CloudflareApplication<T extends object = object> {
    * guard has no business rejecting a queue batch. Unclaimed errors rethrow
    * so the platform's retry semantics stay intact.
    */
-  private async dispatchEntrypoint(ep: Entrypoint, args: unknown[]): Promise<void> {
+  private async dispatchEntrypoint(
+    ep: Entrypoint,
+    payload: unknown,
+    env: T,
+    platformContext: { waitUntil: (promise: Promise<unknown>) => void },
+  ): Promise<void> {
     const targetClass = ep.token;
     if (typeof targetClass !== 'function') throw new Error('Entrypoint token must be a class.');
-    const methodName = String(ep.methodName);
-    const context = buildEntrypointExecutionContext(ep.kind, targetClass, methodName, args[0]);
-
-    await runInEntrypointScope(this.app.getContainer(), async (scope) => {
-      const instance: unknown = scope.resolve(ep.token);
-      if (typeof instance !== 'object' || instance === null) {
-        throw new Error('Entrypoint must resolve to an object.');
-      }
-      const guards = ComponentManager.resolveGuards(
-        ComponentManager.getScopedComponents('guard', targetClass, methodName),
-        scope,
-      );
-      const interceptors = ComponentManager.resolveInterceptors(
-        ComponentManager.getScopedComponents('interceptor', targetClass, methodName),
-        scope,
-      );
-      // Closest-first, mirroring the HTTP/WS dispatchers.
-      const filters = ComponentManager.resolveFilters(
-        [...ComponentManager.getScopedComponents('filter', targetClass, methodName)].reverse(),
-        scope,
-      );
-
-      try {
-        await PipelineRunner.run({
-          context,
-          guards,
-          interceptors,
-          resolveArgs: async () => args,
-          invoke: async (resolved) => invoke(instance, methodName, resolved),
-        });
-      } catch (error) {
-        for (const filter of filters) {
-          if (shouldFilterCatch(filter, error)) {
-            await filter.catch(error, context);
-            return;
+    if (ep.methodName === undefined) throw new Error('Entrypoint must declare a handler method.');
+    const methodName = ep.methodName;
+    const reportContext = {
+      edge: ep.kind === 'cf:queue' ? ('queue' as const) : ('schedule' as const),
+      source: `${targetClass.name}.${String(methodName)}`,
+    };
+    let reported: { error: unknown } | undefined;
+    try {
+      await runInEntrypointScope(this.#app.getContainer(), async (scope, lifetime) => {
+        const moduleId = getEntrypointModuleId(scope, ep);
+        const context = buildEntrypointExecutionContext(
+          ep.kind,
+          targetClass,
+          methodName,
+          payload,
+          moduleId,
+          scope,
+        );
+        const invocationContext = {
+          waitUntil(promise: Promise<unknown>): void {
+            lifetime.waitUntil(promise);
+            platformContext.waitUntil(promise);
+          },
+        };
+        let filters: ExceptionFilter[] = [];
+        try {
+          filters = (
+            await resolveScopedComponentsAsync('filter', targetClass, methodName, scope, moduleId)
+          ).toReversed();
+          const guards = await resolveScopedComponentsAsync(
+            'guard',
+            targetClass,
+            methodName,
+            scope,
+            moduleId,
+          );
+          const interceptors = await resolveScopedComponentsAsync(
+            'interceptor',
+            targetClass,
+            methodName,
+            scope,
+            moduleId,
+          );
+          await PipelineRunner.run({
+            context,
+            guards,
+            interceptors,
+            resolveArgs: async () => [payload, env, invocationContext],
+            invoke: async (args) => {
+              const instance = await resolveEntrypoint(scope, ep);
+              if (typeof instance !== 'object' || instance === null) {
+                throw new Error('Entrypoint must resolve to an object.');
+              }
+              return invoke(instance, methodName, args);
+            },
+          });
+        } catch (error) {
+          resolveErrorReporter(scope).report(error, reportContext);
+          for (const filter of filters) {
+            if (shouldFilterCatch(filter, error)) {
+              // Filters run closest-first; this is the framework catch hook.
+              // eslint-disable-next-line no-await-in-loop, promise/valid-params
+              await filter.catch(error, context);
+              return;
+            }
           }
+          reported = { error };
+          throw error;
         }
-        throw error;
+      });
+    } catch (error) {
+      // Managed completion happens after the handler's filter boundary. Report
+      // a new completion failure without reporting an already-observed handler
+      // failure twice; preserve both errors in the rejected invocation.
+      if (!reported || reported.error !== error) {
+        const completionError =
+          reported && error instanceof AggregateError && error.errors[0] === reported.error
+            ? error.errors[1]
+            : error;
+        resolveErrorReporter(this.#app.getContainer()).report(completionError, reportContext);
       }
-    });
+      throw error;
+    }
   }
 
   /**
@@ -242,14 +322,14 @@ export class CloudflareApplication<T extends object = object> {
     ctx: { waitUntil: (promise: Promise<unknown>) => void },
   ): Promise<void> {
     assertCloudflareEnvironment(this.env, env);
-    const handlers = this.app.entrypoints
+    const handlers = this.#app.entrypoints
       .ofKind('cf:queue')
       .filter((ep) => entrypointString(ep.meta, 'queueName') === batch.queue);
 
-    await Promise.all(handlers.map((ep) => this.dispatchEntrypoint(ep, [batch, env, ctx])));
+    await settleEntrypoints(handlers.map((ep) => this.dispatchEntrypoint(ep, batch, env, ctx)));
   }
 
   async close(signal?: string): Promise<void> {
-    return this.app.close(signal);
+    return this.#app.close(signal);
   }
 }

@@ -1,0 +1,164 @@
+import { parseCron, parseCronMetadata } from '@velajs/vela';
+import { z } from 'zod';
+import { selectDeploymentTarget, type DeploymentTarget } from './deploy-check.config.js';
+
+export interface DeploymentIssue {
+  readonly code: string;
+  readonly message: string;
+}
+
+const rowsSchema = z.array(
+  z.object({ kind: z.string().min(1), target: z.string().min(1), meta: z.unknown() }),
+);
+const metadataSchema = z.record(z.string(), z.unknown());
+
+/** Accept existing `vela entrypoint list --json` output without loading an application. */
+function entrypoints(value: unknown) {
+  const parsed = rowsSchema.safeParse(value);
+  if (!parsed.success)
+    throw new Error('Entrypoint snapshot must be an array of { kind, target, meta } rows.');
+  return parsed.data
+    .filter((row) => !(row.target === '(no entrypoints)' && row.meta === ''))
+    .map((row) => {
+      let meta: unknown = row.meta;
+      if (typeof meta === 'string') {
+        try {
+          meta = JSON.parse(meta);
+        } catch {
+          throw new Error('Invalid JSON metadata in entrypoint snapshot.');
+        }
+      }
+      // Unknown kinds can contain arbitrary metadata; known ones validate below.
+      return { kind: row.kind, meta };
+    });
+}
+
+export interface DeploymentPlan {
+  readonly status: 'passed' | 'failed';
+  readonly target: DeploymentTarget;
+  readonly errors: readonly DeploymentIssue[];
+  readonly warnings: readonly DeploymentIssue[];
+}
+
+/** Compare literal dispatch keys; equivalent cron expressions are not interchangeable. */
+export function checkDeployment(
+  rawConfig: unknown,
+  environment: string,
+  snapshot: unknown,
+): DeploymentPlan {
+  const target = selectDeploymentTarget(rawConfig, environment);
+  const errors: DeploymentIssue[] = [];
+  const warnings: DeploymentIssue[] = [];
+  const report = (code: string, message: string) => errors.push({ code, message });
+  const validateCron = (cron: string): void => {
+    if (!parseCron(cron, { dialect: 'cloudflare', timeZone: 'UTC' })) {
+      report('invalid-cron', 'A trigger or handler has an invalid Cloudflare cron expression.');
+    }
+  };
+  const crons = new Set(target.crons);
+  if (crons.size !== target.crons.length)
+    report('duplicate-cron', 'Duplicate cron trigger configuration.');
+  for (const cron of crons) validateCron(cron);
+  const handlerCrons = new Set<string>();
+  const handlerQueues = new Set<string>();
+  for (const row of entrypoints(snapshot)) {
+    if (row.kind === 'schedule:interval') {
+      report(
+        'unsupported-interval',
+        'Workers cannot drive @Interval handlers; use a scheduled trigger or a separate Node adapter.',
+      );
+      continue;
+    }
+    if (
+      !['cf:scheduled', 'cf:vela-cron', 'schedule:cron', 'cf:queue', 'websocket'].includes(row.kind)
+    )
+      continue;
+    const parsed = metadataSchema.safeParse(row.meta);
+    if (!parsed.success) {
+      report('invalid-metadata', `Invalid ${row.kind} metadata.`);
+      continue;
+    }
+    const meta = parsed.data;
+    if (row.kind === 'cf:vela-cron' || row.kind === 'schedule:cron') {
+      try {
+        const cron = parseCronMetadata(meta);
+        if (
+          (cron.dialect !== undefined && cron.dialect !== 'cloudflare') ||
+          (cron.timeZone !== undefined && cron.timeZone !== 'UTC')
+        ) {
+          report(
+            'incompatible-cron-options',
+            'A cron handler explicitly requests options incompatible with Cloudflare UTC delivery.',
+          );
+        }
+      } catch {
+        report('invalid-metadata', `Invalid ${row.kind} metadata.`);
+        continue;
+      }
+    }
+    if (row.kind === 'websocket') {
+      // WsDispatcher contributes { options, ... }; raw class metadata is options itself.
+      const options = Object.hasOwn(meta, 'options')
+        ? metadataSchema.safeParse(meta.options)
+        : parsed;
+      const binding = options.success ? options.data.binding : undefined;
+      if (
+        typeof binding !== 'string' ||
+        !target.bindings.some((b) => b.kind === 'durable_objects' && b.name === binding)
+      ) {
+        report(
+          'missing-durable-binding',
+          'A WebSocket gateway requires a Durable Object binding in the selected environment.',
+        );
+      }
+      continue;
+    }
+    const key =
+      row.kind === 'cf:scheduled' ? 'cron' : row.kind === 'cf:queue' ? 'queueName' : 'expression';
+    const value = meta[key];
+    if (typeof value !== 'string' || value.trim().length === 0) {
+      report('invalid-metadata', `Invalid ${row.kind}.${key} metadata.`);
+      continue;
+    }
+    if (row.kind === 'cf:queue') handlerQueues.add(value);
+    else {
+      handlerCrons.add(value);
+      validateCron(value);
+    }
+  }
+  for (const cron of handlerCrons)
+    if (!crons.has(cron))
+      report(
+        'missing-cron-trigger',
+        `No exact Wrangler trigger for handler cron ${JSON.stringify(cron)}.`,
+      );
+  for (const cron of crons)
+    if (!handlerCrons.has(cron))
+      report(
+        'unhandled-cron-trigger',
+        `No metadata handler for Wrangler cron ${JSON.stringify(cron)}.`,
+      );
+  for (const queue of handlerQueues)
+    if (!target.queueConsumers.includes(queue))
+      report(
+        'missing-queue-consumer',
+        `No selected queue consumer for handler queue ${JSON.stringify(queue)}.`,
+      );
+  for (const queue of target.queueConsumers)
+    if (!handlerQueues.has(queue))
+      report(
+        'unhandled-queue-consumer',
+        `No metadata handler for selected queue ${JSON.stringify(queue)}.`,
+      );
+  warnings.push({
+    code: 'static-only',
+    message:
+      'Snapshot freshness, custom platform handlers, deployed resources, secrets and bundle/runtime behavior are not verified. Run Wrangler and native tests separately.',
+  });
+  if (target.customBuild)
+    warnings.push({
+      code: 'custom-build',
+      message: 'Wrangler has a custom build command. It was not executed by this check.',
+    });
+  return { status: errors.length ? 'failed' : 'passed', target, errors, warnings };
+}

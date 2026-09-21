@@ -14,11 +14,22 @@ export interface DiscoveredClass<T = unknown> {
   moduleIds: string[];
   scope: Scope;
   /**
-   * Resolved instance. `undefined` only when the provider is request-scoped
-   * and `includeRequestScoped` was not set — request-scoped providers cannot
-   * be materialized at bootstrap without fabricating a phantom request.
+   * Resolved instance, or `undefined` when metadataOnly/deferLazy applies or
+   * a request-scoped provider is skipped. Request-scoped instances require
+   * an invocation container; bootstrap discovery does not fabricate one.
    */
   instance: T | undefined;
+}
+
+/** One class-token registration, with the exact module used for resolution. */
+export interface DiscoveredRegistration<T = unknown> extends DiscoveredClass<T> {
+  readonly moduleId: string;
+}
+
+export interface DiscoveredRegisteredMethodMeta<M = unknown> {
+  class: DiscoveredRegistration;
+  methodName: string | symbol;
+  meta: M;
 }
 
 export interface DiscoveredMethodMeta<M = unknown> {
@@ -28,6 +39,8 @@ export interface DiscoveredMethodMeta<M = unknown> {
 }
 
 export interface DiscoveryFilter {
+  /** Return metadata and ownership without constructing any provider. */
+  metadataOnly?: boolean;
   /** Restrict to providers declared by these module buckets. */
   moduleId?: string | string[];
   /**
@@ -93,15 +106,44 @@ function resolveKey(key: string | DiscoverableDecorator<unknown>): string {
  */
 @Injectable()
 export class DiscoveryService {
-  constructor(@Inject(Container) private readonly container: Container) {}
+  readonly #container: Container;
+
+  constructor(@Inject(Container) container: Container) {
+    this.#container = container;
+  }
 
   /** Every class-token provider registered in the container. */
   getProviders(filter?: DiscoveryFilter): DiscoveredClass[] {
     const out: DiscoveredClass[] = [];
-    for (const token of this.container.getTokens()) {
+    for (const token of this.#container.getTokens()) {
       if (typeof token !== 'function') continue;
       const entry = this.buildEntry(token as Type, filter, 'provider discovery');
       if (entry) out.push(entry);
+    }
+    return out;
+  }
+
+  /** Every owning registration of each class token, in registration order. */
+  getRegistrations(filter?: DiscoveryFilter): DiscoveredRegistration[] {
+    const out: DiscoveredRegistration[] = [];
+    for (const token of this.#container.getTokens()) {
+      if (typeof token !== 'function') continue;
+      out.push(...this.buildEntries(token, filter, 'registration discovery'));
+    }
+    return out;
+  }
+
+  registrationsWithMeta<M>(
+    key: string | DiscoverableDecorator<M>,
+    filter?: DiscoveryFilter,
+  ): Array<DiscoveredRegistration & { meta: M }> {
+    const metaKey = resolveKey(key as string | DiscoverableDecorator<unknown>);
+    const out: Array<DiscoveredRegistration & { meta: M }> = [];
+    for (const target of this.candidatesWithClassMeta(metaKey)) {
+      const meta = MetadataRegistry.getCustomClassMeta(target, metaKey) as M;
+      for (const entry of this.buildEntries(target as Type, filter, `discovery of '${metaKey}'`)) {
+        out.push({ ...entry, meta });
+      }
     }
     return out;
   }
@@ -138,29 +180,44 @@ export class DiscoveryService {
     key: string | DiscoverableDecorator<M>,
     filter?: DiscoveryFilter,
   ): DiscoveredMethodMeta<M>[] {
-    const metaKey = resolveKey(key as string | DiscoverableDecorator<unknown>);
-    const out: DiscoveredMethodMeta<M>[] = [];
+    return this.findMethods(key, (target, label) => {
+      const entry = this.buildEntry(target, filter, label);
+      return entry ? [entry] : [];
+    });
+  }
 
+  registeredMethodsWithMeta<M>(
+    key: string | DiscoverableDecorator<M>,
+    filter?: DiscoveryFilter,
+  ): DiscoveredRegisteredMethodMeta<M>[] {
+    return this.findMethods(key, (target, label) => this.buildEntries(target, filter, label));
+  }
+
+  private findMethods<M, T extends DiscoveredClass>(
+    key: string | DiscoverableDecorator<M>,
+    entries: (target: Type, label: string) => T[],
+  ): Array<{ class: T; methodName: string | symbol; meta: M }> {
+    const metaKey = resolveKey(key as string | DiscoverableDecorator<unknown>);
+    const out: Array<{ class: T; methodName: string | symbol; meta: M }> = [];
+    const label = `discovery of '${metaKey}'`;
     for (const target of this.candidatesWithClassMeta(metaKey)) {
       const classMeta = MetadataRegistry.getCustomClassMeta(target, metaKey);
       if (!Array.isArray(classMeta) || !classMeta.some(isMethodMetaItem)) continue;
-      const entry = this.buildEntry(target as Type, filter, `discovery of '${metaKey}'`);
-      if (!entry) continue;
-      for (const item of classMeta) {
-        if (!isMethodMetaItem(item)) continue;
-        out.push({ class: entry, methodName: item.methodName, meta: item as M });
+      for (const entry of entries(target as Type, label)) {
+        for (const item of classMeta) {
+          if (isMethodMetaItem(item))
+            out.push({ class: entry, methodName: item.methodName, meta: item as M });
+        }
       }
     }
-
     for (const target of MetadataRegistry.getClassesWithHandlerMeta(metaKey)) {
-      if (!this.container.has(target as Token)) continue;
-      const entry = this.buildEntry(target as Type, filter, `discovery of '${metaKey}'`);
-      if (!entry) continue;
-      for (const { handler, value } of MetadataRegistry.getHandlersWithMeta(target, metaKey)) {
-        out.push({ class: entry, methodName: handler, meta: value as M });
+      if (!this.#container.has(target as Token)) continue;
+      for (const entry of entries(target as Type, label)) {
+        for (const { handler, value } of MetadataRegistry.getHandlersWithMeta(target, metaKey)) {
+          out.push({ class: entry, methodName: handler, meta: value as M });
+        }
       }
     }
-
     return out;
   }
 
@@ -174,14 +231,34 @@ export class DiscoveryService {
   private candidatesWithClassMeta(metaKey: string): object[] {
     const indexed = MetadataRegistry.getClassesWithClassMeta(metaKey);
     if (indexed.size > 0) {
-      return [...indexed].filter((t) => this.container.has(t as Token));
+      return [...indexed].filter((t) => this.#container.has(t as Token));
     }
     const out: object[] = [];
-    for (const token of this.container.getTokens()) {
+    for (const token of this.#container.getTokens()) {
       if (typeof token !== 'function') continue;
       if (MetadataRegistry.getCustomClassMeta(token, metaKey) !== undefined) {
         out.push(token);
       }
+    }
+    return out;
+  }
+
+  private matchingOwners(moduleIds: string[], filter?: DiscoveryFilter): string[] {
+    if (filter?.moduleId === undefined) return moduleIds;
+    const wanted = Array.isArray(filter.moduleId) ? filter.moduleId : [filter.moduleId];
+    return moduleIds.filter((id) => wanted.includes(id));
+  }
+
+  private buildEntries(
+    metatype: Type,
+    filter: DiscoveryFilter | undefined,
+    label: string,
+  ): DiscoveredRegistration[] {
+    const moduleIds = this.#container.getOwnerModuleIds(metatype);
+    const out: DiscoveredRegistration[] = [];
+    for (const moduleId of this.matchingOwners(moduleIds, filter)) {
+      const entry = this.buildRegistration(metatype, moduleId, moduleIds, filter, label);
+      if (entry) out.push(entry);
     }
     return out;
   }
@@ -191,45 +268,44 @@ export class DiscoveryService {
     filter: DiscoveryFilter | undefined,
     label: string,
   ): DiscoveredClass | undefined {
-    const moduleIds = this.container.getOwnerModuleIds(metatype);
-    if (moduleIds.length === 0) return undefined;
+    const moduleIds = this.#container.getOwnerModuleIds(metatype);
+    const moduleId = this.matchingOwners(moduleIds, filter)[0];
+    if (moduleId === undefined) return undefined;
+    return this.buildRegistration(metatype, moduleId, moduleIds, filter, label);
+  }
 
-    if (filter?.moduleId !== undefined) {
-      const wanted = Array.isArray(filter.moduleId) ? filter.moduleId : [filter.moduleId];
-      if (!moduleIds.some((id) => wanted.includes(id))) return undefined;
+  private buildRegistration(
+    metatype: Type,
+    moduleId: string,
+    moduleIds: string[],
+    filter: DiscoveryFilter | undefined,
+    label: string,
+  ): DiscoveredRegistration | undefined {
+    const scope = this.#container.getProviderScope(metatype, moduleId) ?? Scope.SINGLETON;
+    const metadata = { token: metatype, metatype, moduleId, moduleIds, scope };
+    if (
+      filter?.metadataOnly ||
+      (filter?.deferLazy && this.#container.isLazyPending(metatype, moduleId))
+    ) {
+      return { ...metadata, instance: undefined };
     }
-
-    const scope = this.container.getProviderScope(metatype) ?? Scope.SINGLETON;
-
-    if (filter?.deferLazy && this.container.isLazyPending(metatype)) {
-      // Deliberate deferral — no diagnostics warning: the entry is complete
-      // metadata-wise and consumers re-resolve by token at dispatch time.
-      return { token: metatype, metatype, moduleIds, scope, instance: undefined };
-    }
-
     if (scope === Scope.REQUEST && !filter?.includeRequestScoped) {
-      if (this.container.getDiagnostics() === 'log') {
+      if (this.#container.getDiagnostics() === 'log') {
         console.warn(
-          `[vela] ${label}: ${metatype.name} is request-scoped and cannot be ` +
-            `materialized at bootstrap — skipped. Pass { includeRequestScoped: true } to override.`,
+          `[vela] ${label}: ${metatype.name} is request-scoped and cannot be materialized at bootstrap — skipped. Pass { includeRequestScoped: true } to override.`,
         );
       }
-      return { token: metatype, metatype, moduleIds, scope, instance: undefined };
+      return { ...metadata, instance: undefined };
     }
-
-    let instance: unknown;
     try {
-      instance = this.container.resolve(metatype);
+      return { ...metadata, instance: this.#container.resolve(metatype, moduleId) };
     } catch (err) {
-      const mode = this.container.getDiagnostics();
+      const mode = this.#container.getDiagnostics();
       if (mode === 'throw') throw err;
-      if (mode === 'log') {
-        console.warn(`[vela] ${label}: cannot resolve ${metatype.name}:`, err);
-      }
+      if (mode === 'log')
+        console.warn(`[vela] ${label}: cannot resolve ${metatype.name} in '${moduleId}':`, err);
       return undefined;
     }
-
-    return { token: metatype, metatype, moduleIds, scope, instance };
   }
 }
 

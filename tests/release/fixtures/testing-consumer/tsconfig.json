@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "module": "NodeNext",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": [],
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "noEmit": true
+  },
+  "include": ["types.ts"]
+}

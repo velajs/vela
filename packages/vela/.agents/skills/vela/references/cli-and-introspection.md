@@ -1,37 +1,38 @@
 # CLI & Introspection (`@velajs/cli`)
 
-`@velajs/cli` inspects a built Vela app — routes, module graph, entrypoints, OpenAPI, seeders — and serves the same surface to AI agents over MCP. Install as a dev dependency (`pnpm add -D @velajs/cli`); the binary is `vela` (space-separated commands). Peer: `@velajs/vela >=1.15.0`. Subpaths: `.` and `./config`.
+`@velajs/cli` inspects a built Vela app — routes, module graph, entrypoints, OpenAPI, seeders — and serves the same surface to AI agents over MCP. Install as a dev dependency (`pnpm add -D @velajs/cli`); the binary is `vela` (space-separated commands). Subpaths include `.` (command runtime), `./config` and `./client`. Config and client helpers can be imported without Studio or MCP runtime loading.
 
 ## Config — `defineVelaConfig`
 
-Add a `vela.config.{js,mjs,ts}` at the project root. The CLI tries those three names in that order (override with `--config <path>`); a `.ts` config needs a type-stripping runtime (Node 22+ `--experimental-strip-types`, tsx, or ts-node).
+Add a `vela.config.{js,mjs,ts}` at the project root. The CLI tries those three names in that order in the current directory (override with `--config <path>`; no parent search). Run the application's SWC build first and import compiled `.js` files with explicit extensions. Node 24 type stripping handles erasable `.ts` config syntax, but does not emit legacy decorators/DI metadata or resolve tsconfig aliases. The CLI installs no compiler hooks.
 
 ```ts
-// vela.config.ts
+// vela.config.mjs
 import { defineVelaConfig } from '@velajs/cli/config';
-import { AppModule } from './src/app.module';
-import { createApp } from './src/main';
+import { VelaFactory } from '@velajs/vela';
+import { AppModule } from './dist/app.module.js';
 
 export default defineVelaConfig({
-  createApp,           // () => Promise<VelaApplication> | VelaApplication  (required)
-  rootModule: AppModule, // only needed by `openapi dump` and the MCP OpenAPI surfaces
+  createApp: () => VelaFactory.create(AppModule),
+  rootModule: AppModule, // used by OpenAPI and client contract generation
 });
 ```
 
-`VelaConfig` has exactly two fields: `createApp` (required) and `rootModule` (optional). Every command builds the app through `createApp()`; `rootModule` is used solely for OpenAPI generation. Config may be a default export or a named `config` export.
+`VelaConfig` requires `createApp` and accepts optional `rootModule`; `defineVelaConfig` preserves inferred app subtypes and custom properties. Supply local binding equivalents inside the factory if required. Config may be a default export or a named `config` export. Loading validates callable `createApp` and constructable `rootModule`. `resolveConfig` from `./config` resolves `{path, source, candidates}` without importing code. Commands that bootstrap an app dispose it after success/failure; cleanup warnings preserve the primary result.
 
 ## Commands
 
 | Command | Flags | What it does |
 |---|---|---|
+| `vela doctor` | `--config`, `--app`, `--json` | Resolve config without import; opt-in `--app` bootstraps then snapshots app-local modules/routes/entrypoints without resolving lazy providers or emitting arbitrary metadata/values |
 | `vela route list` | `--config`, `--json` | List HTTP routes (paths incl. prefix/version, named + contributed/CRUD routes, plus `(mounted)` sub-apps) |
 | `vela module graph` | `--config`, `--json` | Print the module import graph with `global`/`lazy` flags, provider/export counts |
 | `vela entrypoint list` | `--config`, `--json` | List declared entrypoint kinds (websocket, queue, cron, cf:*, …) and their entries |
 | `vela openapi dump` | `--config`, `--out`, `--title`, `--api-version`, `--global-prefix` | Emit the OpenAPI document (needs `rootModule`); `--out` writes to a file, else stdout |
-| `vela db seed` | `--config`, `--continue-on-error` | Build the app and run all `@Seeder()` classes in order (exit 1 if any fail) |
+| `vela db seed` | `--config`, `--continue-on-error`, `--list`, `--json` | Run each seeder registration in order, or list names/orders/owners without executing seeders (`--json` requires `--list`) |
 | `vela mcp serve` | `--config` | Start the MCP server over stdio (see below) |
 
-Only the three `list`/`graph` commands take `--json`; `openapi dump`, `db seed`, and `mcp serve` do not.
+`openapi dump` emits JSON directly. `doctor --app` and seeder inventory still run application startup/shutdown hooks; send application logs to stderr when consuming JSON.
 
 ```bash
 vela route list

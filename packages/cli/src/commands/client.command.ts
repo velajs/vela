@@ -5,6 +5,7 @@ import type { OpenApiDocument } from '@velajs/vela';
 import { Command, Option } from 'clipanion';
 import { generateClientContract } from '../client-contract.js';
 import { loadConfig } from '../config.js';
+import { withApp } from '../with-app.js';
 
 export class ClientGenerateCommand extends Command {
   static override paths = [['client', 'generate']];
@@ -36,7 +37,7 @@ export class ClientGenerateCommand extends Command {
   async execute(): Promise<number> {
     if (this.input && this.config) throw new Error('Use either --input or --config, not both.');
     if (this.check && !this.out) throw new Error('--check requires --out.');
-    const document = this.input ? await this.readDocument(this.input) : await this.fromApp();
+    const document = this.input ? await this.#readDocument(this.input) : await this.#fromApp();
     const { source, warnings } = generateClientContract(document);
     for (const warning of warnings) this.context.stderr.write(`Warning: ${warning}\n`);
     if (this.strict && warnings.length) return 1;
@@ -63,42 +64,40 @@ export class ClientGenerateCommand extends Command {
     return 0;
   }
 
-  private async readDocument(file: string): Promise<unknown> {
+  async #readDocument(file: string): Promise<unknown> {
     const value: unknown = JSON.parse(await readFile(file, 'utf8'));
     // generateClientContract validates the complete consumed projection for
     // both file inputs and documents produced by the running application.
     return value;
   }
 
-  private async fromApp(): Promise<OpenApiDocument> {
+  async #fromApp(): Promise<OpenApiDocument> {
     const config = await loadConfig(process.cwd(), this.config);
     if (!config.rootModule)
       throw new Error(
         'client generate needs rootModule in vela.config, or pass --input openapi.json.',
       );
-    const app = await config.createApp();
-    try {
-      const document = createOpenApiDocument(config.rootModule, {
-        globalPrefix: app.getGlobalPrefix(),
-      });
-      // Detect older Vela exporters which omit versioned controller routes.
-      // Never silently ship a contract which points at a different endpoint.
-      for (const route of app.describeRoutes()) {
-        const path = route.path.replace(/:([A-Za-z_][A-Za-z0-9_]*)/g, '{$1}');
-        const item = document.paths[path];
-        if (!item || !Object.hasOwn(item, route.method.toLowerCase())) {
-          throw new Error(
-            `OpenAPI is missing ${route.method} ${route.path}. Update Vela or pass a complete document with --input.`,
-          );
+    const rootModule = config.rootModule;
+    return withApp(
+      config,
+      async (app) => {
+        const document = createOpenApiDocument(rootModule, {
+          globalPrefix: app.getGlobalPrefix(),
+        });
+        // Detect older Vela exporters which omit versioned controller routes.
+        // Never silently ship a contract which points at a different endpoint.
+        for (const route of app.describeRoutes()) {
+          const path = route.path.replace(/:([A-Za-z_][A-Za-z0-9_]*)/g, '{$1}');
+          const item = document.paths[path];
+          if (!item || !Object.hasOwn(item, route.method.toLowerCase())) {
+            throw new Error(
+              `OpenAPI is missing ${route.method} ${route.path}. Update Vela or pass a complete document with --input.`,
+            );
+          }
         }
-      }
-      return document;
-    } finally {
-      try {
-        await app.dispose();
-      } catch (error) {
-        this.context.stderr.write(`Warning: teardown failed: ${String(error)}\n`);
-      }
-    }
+        return document;
+      },
+      (message) => this.context.stderr.write(`${message}\n`),
+    );
   }
 }

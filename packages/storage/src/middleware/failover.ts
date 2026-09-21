@@ -1,6 +1,6 @@
 import { StorageError } from '../storage.error';
 import type { StorageDriver } from '../storage.types';
-import { passthrough, type Middleware } from './wrap';
+import { passthrough, type RawPreservingMiddleware } from './wrap';
 
 export interface FailoverOptions {
   /** Decide whether an error should trigger failover. Default: transient errors. */
@@ -28,7 +28,10 @@ function intersectCapabilities(chain: StorageDriver[]): Partial<StorageDriver> {
  * partial/divergent writes). Capabilities are the intersection so the facade
  * never routes a feature to a driver that can't serve it.
  */
-export function failover(fallbacks: StorageDriver[], opts: FailoverOptions = {}): Middleware {
+export function failover(
+  fallbacks: StorageDriver[],
+  opts: FailoverOptions = {},
+): RawPreservingMiddleware {
   const should = opts.shouldFailover ?? isTransient;
   return (primary) => {
     const chain = [primary, ...fallbacks];

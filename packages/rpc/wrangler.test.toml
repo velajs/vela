@@ -1,0 +1,4 @@
+name = "vela-rpc-test"
+main = "examples/worker.ts"
+compatibility_date = "2026-07-01"
+# Deliberately no nodejs_compat: RPC uses only portable Web APIs.

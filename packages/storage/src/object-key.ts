@@ -41,7 +41,11 @@ export function sanitizeKey(key: string): string {
 /** Normalize a prefix: drop leading/trailing slashes, collapse to '' when empty. */
 export function normalizePrefix(prefix: string | undefined): string {
   if (!prefix) return '';
-  return prefix.replace(/^\/+/, '').replace(/\/+$/, '');
+  let start = 0;
+  let end = prefix.length;
+  while (start < end && prefix.charCodeAt(start) === 47) start++;
+  while (end > start && prefix.charCodeAt(end - 1) === 47) end--;
+  return prefix.slice(start, end);
 }
 
 /** Join a normalized prefix and a key with a single '/'. */

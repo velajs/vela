@@ -4,12 +4,23 @@
     "noEmit": true
   },
   "include": [
+    "src/__tests__/cron-dialects.test.ts",
+    "src/__tests__/schedule-lifetime.test.ts",
     "src/__tests__/route-map.test.ts",
     "src/__tests__/container-types.test.ts",
     "src/__tests__/config-type-boundaries.test.ts",
     "src/__tests__/module-entrypoint-contract.test.ts",
     "src/__tests__/endpoint-http.test.ts",
-    "src/__tests__/cache-value-safety.test.ts"
+    "src/__tests__/cache-value-safety.test.ts",
+    "src/__tests__/async-endpoint.test.ts",
+    "src/__tests__/parse-schema.test.ts",
+    "src/__tests__/standard-schema.test.ts",
+    "src/__tests__/http-dispatch-boundaries.test.ts",
+    "src/__tests__/http-execution-lifetime.test.ts",
+    "src/__tests__/http-pipeline-integration.test.ts",
+    "src/__tests__/http-request-normalization.test.ts",
+    "src/__tests__/instantiate-ownership.test.ts",
+    "src/__tests__/http-controller-owner.test.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }

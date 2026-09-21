@@ -41,7 +41,9 @@ export async function resolveWsArgs(
         metatype: paramTypes?.[param.index] as Type | undefined,
       };
       for (const pipe of pipes) {
-        value = await pipe.transform(value, metadata);
+        value = await (pipe.transformAsync
+          ? pipe.transformAsync(value, metadata)
+          : pipe.transform(value, metadata));
       }
       args[param.index] = value;
       continue;

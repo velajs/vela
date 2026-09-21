@@ -19,3 +19,10 @@ an explicitly non-atomic test/prototype scope.
 Direct adapter list callers now pass `options.keyset`, produced by
 `resolveKeyset(cursor, fields, direction)` from `@velajs/crud/query`. Engine
 requests validate this automatically. Old scalar cursors must be discarded.
+
+`transactionalMemoryAdapter` instances sharing one `MemoryStore` can join a
+`crudTransaction` scope across resources. Distinct stores or application database
+registrations cannot reuse that capability. See the
+[multi-database guide](../../docs/multi-database.md) for explicit routing and
+transaction composition. The prototype `memoryAdapter` has no callback rollback
+guarantee and is not eligible for composition.

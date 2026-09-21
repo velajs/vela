@@ -15,6 +15,8 @@ pnpm add -D @velajs/cli
 | Command | What it does |
 | --- | --- |
 | `vela new my-api` | Create a minimal Workers project with a module, controller, injected service, and a working local development setup. |
+| `vela doctor` | Explain config resolution without importing it; `--app` opts into application graph snapshots and teardown. Supports `--json`. |
+| `vela deploy check` | Check an explicit Wrangler config/environment against a saved entrypoint snapshot without bootstrapping, building or deploying. See the [deployment guide](../../docs/deployment.md). |
 | `vela db seed` | Build the app and run all `@Seeder()` classes in order. |
 | `vela route list` | HTTP route table: framework-composed controller routes (`Controller#handler`, full paths incl. prefix/version) plus `(mounted)` extras (CRUD/contributed, doc UIs). |
 | `vela module graph` | Module graph: imports tree with `global`/`lazy` flags and provider counts (`--json` for the raw graph). |
@@ -22,8 +24,9 @@ pnpm add -D @velajs/cli
 | `vela openapi dump` | Emit the OpenAPI document (needs `rootModule` in the config; `--out`, `--title`, `--api-version`, `--global-prefix`). |
 | `vela client generate` | Generate an `AppType` for `hc` from the app or `--input openapi.json`; `--out`, `--strict`, and CI `--check`. |
 | `vela mcp serve` | Run a Model Context Protocol stdio server exposing the introspection above as read-only tools (`route_list`, `module_graph`, `entrypoint_list`, `openapi_dump`, `token_describe`) plus a `vela://openapi` resource — for AI agents. |
+| `vela studio` | Serve the optional Studio UI through a local host, proxying the app selected by `--url`. |
 
-All introspection commands take `--config <path>`; the four listing/dump commands also take `--json`.
+All introspection commands take `--config <path>`; the listing commands also take `--json`.
 
 ### Create a project
 
@@ -76,25 +79,74 @@ the client disconnects, then disposes the app.
 ## Configure
 
 Create a `vela.config.{js,mjs,ts}` at your project root that builds your app.
-Wire your runtime bindings here (e.g. via miniflare for Cloudflare, or a Node
-adapter):
+Import compiled application JavaScript, including its decorator metadata. The
+starter's SWC build produces these files in `dist/`; run `pnpm build` first.
+This minimal config uses the portable factory in Node:
 
-```ts
-// vela.config.ts
+```js
+// vela.config.mjs
 import { defineVelaConfig } from '@velajs/cli/config';
-import { AppModule } from './src/app.module';
+import { VelaFactory } from '@velajs/vela';
+import { AppModule } from './dist/app.module.js';
 
 export default defineVelaConfig({
   rootModule: AppModule, // needed by `vela openapi dump` and `vela client generate`
-  async createApp() {
-    const { createCloudflareApp } = await import('@velajs/cloudflare');
-    return createCloudflareApp(AppModule);
-  },
+  createApp: () => VelaFactory.create(AppModule),
 });
 ```
 
-> `.ts` configs require a runtime that strips types (Node 22+
-> `--experimental-strip-types`, or `tsx`). `.js`/`.mjs` load directly.
+Supply local runtime bindings inside `createApp` if the application needs them.
+Do not import the Worker entrypoint into Node when it uses native
+`cloudflare:workers` APIs. A plain default-exported object or named `config`
+export also works; `defineVelaConfig` preserves the inferred app subtype and
+custom fields. The loader validates `createApp` and optional `rootModule` before
+commands use them. Command teardown awaits application disposal even when work
+fails, and cleanup warnings do not replace the command's exit result.
+
+Node 24 can strip erasable types in a `.ts` config, but it does not transform
+legacy decorators, emit constructor metadata, or resolve `tsconfig` path
+aliases. A `.ts` config should therefore also import the compiled `.js` graph
+with explicit extensions. Use SWC's `legacyDecorator` and `decoratorMetadata`
+settings from the starter, or a compiler with equivalent output. The CLI adds
+no compiler hooks. See [Node's TypeScript documentation](https://nodejs.org/docs/latest-v24.x/api/typescript.html#typescript-features).
+
+The loader checks `vela.config.js`, then `.mjs`, then `.ts` in the current
+directory; it does not search parents. `--config` selects exactly that path,
+relative to the current directory or absolute, with no fallback to another file.
+`resolveConfig()` from `@velajs/cli/config` returns the selected absolute path,
+the `explicit`/`discovered` source and the candidates actually checked, without
+importing user code.
+
+### Diagnose configuration
+
+```sh
+vela doctor --json
+pnpm build
+vela doctor --app --config vela.config.mjs --json
+```
+
+The default only resolves the config file. `--app` imports it and runs normal
+application bootstrap and shutdown hooks, which may perform application-defined
+work. It then reads existing module, route and entrypoint descriptions without
+resolving providers or materializing lazy modules for inspection. Reports omit
+provider values, environment values and arbitrary entrypoint metadata, and show
+only entrypoints belonging to that app. `--json` uses `schemaVersion: 1`; missing
+configs, bootstrap/snapshot errors or cleanup warnings return exit code 1.
+Send application startup logs to stderr when consuming JSON output.
+
+For breakpoints and source maps, see the [debugging guide](../../docs/debugging.md).
+
+### Studio
+
+```sh
+vela studio --url http://127.0.0.1:8787 --port 4000
+```
+
+The optional `@velajs/studio-host` and `@velajs/studio-ui` packages provide the
+host and UI. `--port` accepts a decimal integer from 0 to 65535 (0 asks the OS
+for an available port). Tokens come from `--token` or `VELA_STUDIO_TOKEN` and are
+injected by the host. The CLI config and client-generation entrypoints remain
+usable without Studio installed.
 
 ## Commands
 
@@ -103,9 +155,14 @@ export default defineVelaConfig({
 vela db seed
 vela db seed --config ./config/vela.config.js
 vela db seed --continue-on-error
+# Inspect registration owners without running seeders:
+vela db seed --list --json
 ```
 
 Exit code is `0` when all seeders run and `1` if any fail.
+Seeders registered in multiple modules run once per owner, including async
+providers. Invocations finish their managed deferred work and dispose request
+resources before the next seeder starts. See [seeding](../../docs/seeding.md).
 
 ## Typed HTTP clients
 

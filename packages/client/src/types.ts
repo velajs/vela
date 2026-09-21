@@ -1,4 +1,4 @@
-import type { LiveQueryDefinition } from '@velajs/live-protocol';
+import type { WebSocketSendPolicy, LiveQueryDefinition } from '@velajs/live-protocol';
 /** The value contract projected from a shared live-query schema map. */
 export interface LiveContract {
   [query: string]: { args: unknown; result: unknown };
@@ -26,6 +26,7 @@ export interface WebSocketLike {
   send(data: string): void;
   close(code?: number, reason?: string): void;
   readyState: number;
+  readonly bufferedAmount?: number;
 }
 
 export type WebSocketFactory = (url: string) => WebSocketLike;
@@ -83,6 +84,8 @@ export interface LiveClientOptions<C extends LiveContractShape<C> = LiveContract
    */
   heartbeatIntervalMs?: number;
   reconnect?: ReconnectOptions;
+  /** Local outgoing admission; overload closes the socket and reconnects. */
+  sendPolicy?: WebSocketSendPolicy;
 
   /** Durable store for the offline mutation queue. Omit → in-memory queue (lost on reload). */
   mutationStore?: MutationStore;

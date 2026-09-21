@@ -61,7 +61,7 @@ describe('CRUD integration boundaries', () => {
     expect(app.get(CRUD_DEFAULT_VERSIONING_STORE)).toBe(versioningStore);
   });
 
-  it('uses schema descriptors as generated body metadata', () => {
+  it('documents generated bodies while the engine owns validation', () => {
     const adapter = testAdapter(new Map());
     @Controller('/boundary-items')
     @Crud({ model, adapter })
@@ -76,7 +76,9 @@ describe('CRUD integration boundaries', () => {
     expect(pipe.transform({ name: 'Valid' }, { type: 'body', metatype })).toEqual({
       name: 'Valid',
     });
-    expect(() => pipe.transform({ name: '' }, { type: 'body', metatype })).toThrow();
+    const invalid = { name: '' };
+    expect(pipe.transform(invalid, { type: 'body', metatype })).toBe(invalid);
+    expect(metatype).toMatchObject({ validationOwner: 'handler' });
   });
 
   it('preserves symbol-named override methods', async () => {

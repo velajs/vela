@@ -55,6 +55,23 @@ function ModuleRow({ node }: { node: ModuleNode }): ReactNode {
           <TokenList label="imports" tokens={node.imports} />
           <TokenList label="providers" tokens={node.providers} />
           <TokenList label="exports" tokens={node.exports} />
+          {node.providerScopes !== undefined ? (
+            <div className="vela-module__tokens">
+              <span className="vela-module__tokens-label">Effective class provider scopes</span>
+              <ul className="vela-module__token-list">
+                {node.providerScopes.map((provider, index) => (
+                  <li key={`${provider.token}-${index}`}>
+                    <span className="vela-mono">{provider.token}</span>{' '}
+                    <Badge tone="neutral">{provider.scope}</Badge>
+                  </li>
+                ))}
+              </ul>
+              <p className="vela-state__hint">
+                Effective scope includes request lifetime inherited from dependencies. Inspection
+                does not construct providers. Only registrations with class tokens are listed.
+              </p>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </li>

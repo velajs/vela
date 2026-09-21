@@ -7,7 +7,7 @@ import type {
   StoredFile,
   UploadOptions,
 } from '../storage.types';
-import { passthrough, type Middleware } from './wrap';
+import { passthrough, type RawPreservingMiddleware } from './wrap';
 
 export interface EncryptionOptions {
   /** A 256-bit AES-GCM key: a `CryptoKey` or 32 raw bytes. */
@@ -49,7 +49,7 @@ async function importKey(key: CryptoKey | Uint8Array): Promise<CryptoKey> {
  * Range reads, presigned URLs, and multipart are disabled (a signed URL would
  * hand out ciphertext / accept plaintext, defeating the invariant).
  */
-export function encryption(opts: EncryptionOptions): Middleware {
+export function encryption(opts: EncryptionOptions): RawPreservingMiddleware {
   const keyPromise = importKey(opts.key);
 
   return (inner) => {

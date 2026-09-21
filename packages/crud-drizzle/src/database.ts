@@ -6,6 +6,8 @@
  * narrower row type. SQL and columns retain the upstream types.
  */
 import type { AnyColumn, SQL, SQLWrapper, Table } from 'drizzle-orm';
+import type { AdapterScope } from '@velajs/crud/adapter';
+import type { DrizzleD1Database } from 'drizzle-orm/d1';
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import type {
@@ -77,14 +79,66 @@ export function readRow(value: unknown): Row {
   return Object.fromEntries(Object.entries(value));
 }
 
-/** Public clients are checked against upstream methods before overload erasure. */
-export type DrizzleHandle =
-  | Pick<
-      BaseSQLiteDatabase<'sync' | 'async', unknown>,
-      'select' | 'insert' | 'update' | 'delete' | 'transaction'
-    >
-  | Pick<PgDatabase<PgQueryResultHKT>, 'select' | 'insert' | 'update' | 'delete' | 'transaction'>
-  | Pick<
-      MySqlDatabase<MySqlQueryResultHKT, PreparedQueryHKTBase>,
-      'select' | 'insert' | 'update' | 'delete' | 'transaction'
-    >;
+/** Public clients retain upstream CRUD method checks. Transaction overloads depend
+ * on the caller's entire schema, so only that callable is erased at reflection.
+ * No calls can be made through this uninhabitable argument list. */
+type TransactionMethod = { transaction: (...args: never[]) => unknown };
+export type DrizzleHandle = TransactionMethod &
+  (
+    | Pick<BaseSQLiteDatabase<'sync' | 'async', unknown>, 'select' | 'insert' | 'update' | 'delete'>
+    | Pick<PgDatabase<PgQueryResultHKT>, 'select' | 'insert' | 'update' | 'delete'>
+    | Pick<
+        MySqlDatabase<MySqlQueryResultHKT, PreparedQueryHKTBase>,
+        'select' | 'insert' | 'update' | 'delete'
+      >
+  );
+export type DrizzleD1Handle = TransactionMethod &
+  Pick<DrizzleD1Database, 'select' | 'insert' | 'update' | 'delete' | 'batch'>;
+
+/** A scope belongs to one exact native handle and only to its callback lifetime. */
+class OwnedDrizzleScope implements AdapterScope {
+  #active = true;
+  readonly #owner: object;
+  readonly tx: unknown;
+
+  constructor(owner: object, tx: unknown) {
+    this.#owner = owner;
+    this.tx = tx;
+    Object.freeze(this);
+  }
+
+  database(owner: object, fallback?: DrizzleDatabase): DrizzleDatabase {
+    if (!this.#active || this.#owner !== owner)
+      throw new TypeError('Foreign or expired Drizzle database scope');
+    return this.tx == null ? (fallback ?? asDatabase(owner)) : asDatabase(this.tx);
+  }
+
+  close(): void {
+    this.#active = false;
+  }
+}
+
+/** Adapter-internal scope factory; no ambient or global connection state. */
+export async function withDrizzleScope<T>(
+  owner: object,
+  tx: unknown,
+  work: (scope: AdapterScope) => Promise<T>,
+): Promise<T> {
+  const scope = new OwnedDrizzleScope(owner, tx);
+  try {
+    return await work(scope);
+  } finally {
+    scope.close();
+  }
+}
+
+/** Reject fabricated, foreign and expired scopes before using their native tx. */
+export function databaseForScope(
+  owner: object,
+  scope: AdapterScope,
+  fallback?: DrizzleDatabase,
+): DrizzleDatabase {
+  if (!(scope instanceof OwnedDrizzleScope))
+    throw new TypeError('Foreign or expired Drizzle database scope');
+  return scope.database(owner, fallback);
+}

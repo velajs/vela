@@ -31,19 +31,14 @@ import {
   METADATA_KEYS,
   type DtoDefinition,
   type StandardDtoDefinition,
-  type InjectionToken,
 } from '@velajs/vela';
 import type { RuntimeAdapter } from './adapter/contract';
 import { ConfigurationException } from './envelope/errors';
 import { compileResource, type CrudResource, type RuntimeResourceConfig } from './kernel/resource';
 import { deriveCreateSchema, deriveUpdateSchema } from './model/schema-derive';
-import { deriveRouteName, deriveVerbNaming } from './naming';
+import { deriveRouteName, deriveVerbNaming, pascalResourceName } from './naming';
 import { buildEngineRequest, toResponse } from './request-flow';
-import {
-  CRUD_DEFAULT_ADAPTER,
-  CRUD_DEFAULT_AUDIT_STORE,
-  CRUD_DEFAULT_VERSIONING_STORE,
-} from './crud.tokens';
+import { resolveCrudDatabase } from './resolve-database';
 import {
   MissingTenantResolverError,
   registerCrudConfig,
@@ -85,9 +80,6 @@ export function recordOverride(
 
 const ROUTE_DECORATORS = { get: Get, post: Post, put: Put, patch: Patch, delete: Delete } as const;
 
-const pascal = (s: string): string =>
-  s.replace(/(?:^|[^a-zA-Z0-9]+)([a-zA-Z0-9])/g, (_m, c: string) => c.toUpperCase());
-
 type Ctor = {
   new (...args: never[]): unknown;
   readonly prototype: object;
@@ -123,7 +115,7 @@ export function stampCrudRoutes(controller: Ctor, config: RuntimeCrudConfig): vo
   const stamped = enabled.filter((name) => implemented.includes(name));
 
   // DTO bridge — derived once per class, adapter-independent.
-  const base = pascal(names.singular);
+  const base = pascalResourceName(names.singular);
   const createDto = defineDto(
     config.contracts?.create ??
       model.contracts?.create ??
@@ -143,12 +135,9 @@ export function stampCrudRoutes(controller: Ctor, config: RuntimeCrudConfig): vo
 
   // The compiled engine resource: lazy (the adapter may come from DI) and
   // resolved within the current request so environments never share bindings.
-  const resolveResource = (c: Context): CrudResource => {
-    const adapter =
-      config.adapter ??
-      tryResolveDefault(c, CRUD_DEFAULT_ADAPTER)?.runtime ??
-      raiseNoAdapter(controller.name, names.singular);
-    const engineConfig = toEngineConfig(config, adapter);
+  const resolveResource = async (c: Context): Promise<CrudResource> => {
+    const resolved = await resolveCrudDatabase(getRequestContainer(c), config);
+    const engineConfig = toEngineConfig(resolved, resolved.adapter);
     if (
       !model.resolveSchema &&
       isStandardSchema(createDto.schema) &&
@@ -160,10 +149,6 @@ export function stampCrudRoutes(controller: Ctor, config: RuntimeCrudConfig): vo
         create: createDto.schema,
         update: updateDto.schema,
       };
-    // Fall back to the forRoot default stores (like the adapter) when the
-    // resource does not provide its own.
-    engineConfig.versioningStore ??= tryResolveDefault(c, CRUD_DEFAULT_VERSIONING_STORE);
-    engineConfig.auditStore ??= tryResolveDefault(c, CRUD_DEFAULT_AUDIT_STORE);
     return compileResource(names.singular, engineConfig);
   };
 
@@ -202,13 +187,18 @@ export function stampCrudRoutes(controller: Ctor, config: RuntimeCrudConfig): vo
       config.model.primaryKeys.length > 1
         ? subPath.replace('/:id', config.model.primaryKeys.map((key) => `/:${key}`).join(''))
         : subPath;
-    decorate(path, { name: deriveRouteName(names.singular, endpoint) })(
-      proto,
-      handlerName,
-      descriptor,
-    );
+    decorate(path, {
+      name: deriveRouteName(
+        config.database === undefined ? names.singular : `${config.database}:${names.singular}`,
+        endpoint,
+      ),
+    })(proto, handlerName, descriptor);
 
-    const naming = deriveVerbNaming(endpoint, names.singular, names.plural);
+    const naming = deriveVerbNaming(
+      endpoint,
+      config.database === undefined ? names.singular : `${config.database}_${names.singular}`,
+      config.database === undefined ? names.plural : `${config.database}_${names.plural}`,
+    );
     if (naming) {
       ApiDoc({ operationId: naming.operationId, summary: naming.summary })(
         proto,
@@ -250,7 +240,7 @@ function defineHandler(
   handlerName: string | symbol,
   endpoint: CrudEndpointName,
   method: string,
-  resolveResource: (c: Context) => CrudResource,
+  resolveResource: (c: Context) => Promise<CrudResource>,
   liveStamper: LiveStamper | undefined,
 ): void {
   const handler = buildVerbHandler(endpoint, method, resolveResource, liveStamper);
@@ -295,7 +285,7 @@ const VERB_SHAPES: Record<CrudEndpointName, { id?: boolean; version?: boolean; b
 function buildVerbHandler(
   endpoint: CrudEndpointName,
   method: string,
-  resolveResource: (c: Context) => CrudResource,
+  resolveResource: (c: Context) => Promise<CrudResource>,
   liveStamper: LiveStamper | undefined,
 ): (...args: unknown[]) => Promise<Response> {
   const shape = VERB_SHAPES[endpoint];
@@ -310,7 +300,7 @@ function buildVerbHandler(
     if (!(ctx instanceof Context)) {
       throw new ConfigurationException('A generated CRUD handler requires a Hono Context');
     }
-    const resource = resolveResource(ctx);
+    const resource = await resolveResource(ctx);
     const result = await resource.execute(
       endpoint,
       buildEngineRequest(ctx, {
@@ -340,27 +330,19 @@ function stampParams(
   if (shape.id) add({ index: index++, type: ParamType.PARAM, name: 'id' });
   if (shape.version) add({ index: index++, type: ParamType.PARAM, name: 'version' });
   if (shape.body) {
-    // create/update carry their derived DTOs (ValidationPipe + OpenAPI);
+    // create/update document their derived DTOs; the engine owns validation.
+    // Passing raw input avoids repeated transforms and cross-request receipts.
     // extended verbs validate in the engine — their body docs land with the
     // OpenAPI parity pass (M6).
     const metatype =
       endpoint === 'create' ? createDto : endpoint === 'update' ? updateDto : undefined;
-    add({ index: index++, type: ParamType.BODY, ...(metatype ? { metatype } : {}) });
+    add({
+      index: index++,
+      type: ParamType.BODY,
+      ...(metatype ? { metatype: Object.freeze({ ...metatype, validationOwner: 'handler' }) } : {}),
+    });
   }
   add({ index, type: ParamType.REQUEST });
-}
-
-/** Resolve a forRoot default store from the request container, or `undefined`. */
-function tryResolveDefault<T>(c: Context, token: InjectionToken<T>): T | undefined {
-  const container = getRequestContainer(c);
-  return container.has(token) ? container.resolve(token) : undefined;
-}
-
-function raiseNoAdapter(controllerName: string, resource: string): never {
-  throw new ConfigurationException(
-    `${controllerName} ('${resource}'): no adapter available — pass 'adapter' in the @Crud() ` +
-      `config or provide a default via CrudModule.forRoot({ adapter })`,
-  );
 }
 
 /** Maps the validated consumer config onto the engine's runtime configuration. */
@@ -370,6 +352,7 @@ export function toEngineConfig(
 ): RuntimeResourceConfig {
   return {
     model: config.model,
+    database: config.database,
     adapter,
     hooks: config.hooks,
     filterFields: config.filterFields,

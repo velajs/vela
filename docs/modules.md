@@ -48,7 +48,10 @@ For `forRootAsync`, read resolved options through the `OPTIONS` token: the
 
 - `forRootAsync({ inject, useFactory })` comes free, with typed factory
   params inferred from the `inject` tuple. Structural fields passed alongside
-  the factory merge **under** the resolved options (factory wins).
+  the factory merge **under** the resolved options (factory wins). Their types
+  come from `Partial<Options>`; DI wiring keys are reserved. The factory must
+  still return the complete required options. `lazy?: boolean` is accepted
+  by both registration methods, alongside the explicit `key`.
 - `ConfigurableModuleBuilder` (NestJS parity) is a thin adapter over
   `defineModule` — same engine, either entry.
 - `defineConfigurableModule` remains the low-level engine for
@@ -58,7 +61,16 @@ For `forRootAsync`, read resolved options through the `OPTIONS` token: the
 ### Keys (multi-instance dedup)
 
 `DynamicModule.key` decides instance identity: same `(class, key)` dedups
-(HMR-idempotent), different keys coexist. Rules:
+(while the constructor identity is retained), different keys coexist. A display
+name is not identity: distinct classes with the same name remain independent.
+The loader and OpenAPI metadata walker use the same class/key distinction.
+An HTTP controller class can be mounted by only one module owner: registering
+its identical routes through two owners now fails with a clear diagnostic.
+Use distinct controller classes when keyed instances need separate HTTP routes.
+A class registered only as another module's provider does not change the actual
+HTTP owner. Middleware configured through `configure()` also retains its owner.
+
+Rules:
 
 1. Default `stableHash(options)` is right for value-shaped options.
 2. Options carrying **stateful instances** (drivers, registries, sockets)
@@ -80,9 +92,45 @@ downstream `@Inject(...)` keeps working.
   available before provider initialization; lazy construction does not create an I/O context.
 - `provideGlobal(kind, component)` — spread into `providers:` to register an
   app-wide guard/pipe/interceptor/filter/middleware outside `defineModule`.
-- `sideEffectModule(name, contributions)` — a contribution-only dynamic
-  module (the supported form of i18n's `registerMessages` pattern);
-  content-derived key so identical contributions dedup.
+- `sideEffectModule(OwnerClass, contributions)` — a contribution-only dynamic
+  module. Declare the owner class once in the library; repeated calls with the
+  same owner and content-derived key deduplicate. Different keys coexist.
+  The legacy `sideEffectModule(name, contributions)` form creates a fresh,
+  isolated class each call, even when names and keys match. It does not deduplicate.
+
+```ts
+class MessageContributions {}
+export function registerMessages(messages: string[]) {
+  return sideEffectModule(MessageContributions, {
+    providers: [defineProvider(MESSAGES, { useValue: messages })],
+    exports: [MESSAGES],
+  });
+}
+```
+
+### Optional integration contributions
+
+Keep deployment choices in the integration's own options. For example, an
+optional HTTP layer can compute `controllers` and companion `imports` in
+`setup` only when `options.http === true`. Pass this structural flag directly
+alongside `forRootAsync`'s factory, because resolved options arrive after graph
+construction. Runtime providers should inject `OPTIONS` for the resolved bag.
+This controls registration; excluding code from a bundle requires separate
+imports/entrypoints. There is no global mutable module configuration.
+
+### Global component aliases
+
+An `APP_*` provider declared with `useExisting` remains an alias to the target
+in its declaring module. The target can stay private, and keyed modules can
+each alias their own registration of the same guard or middleware class.
+Provider snapshots retain `kind: 'existing'` and `useExisting`, so metadata
+audits can follow the alias without constructing request-scoped components.
+
+Aliases follow the target lifetime: singleton identity and request reuse are
+preserved; a transient target is resolved freshly on each use and disposed by
+the container that owns that resolution. Earlier synthetic `APP_*` factory
+wrappers could accidentally cache a transient target. Applications relying on
+that sharing should register the target as a singleton explicitly.
 
 ## Discovery: finding decorated providers
 
@@ -109,7 +157,31 @@ class QueueRegistry implements OnApplicationBootstrap {
 the appended-list convention and true handler metadata) resolve instances
 through the container and honor its diagnostics mode (`throw`/`log`/`silent`)
 in one place. Discovery is kernel-level (not encapsulation-scoped);
-`DiscoveryFilter.moduleId` narrows when needed.
+`DiscoveryFilter.moduleId` narrows when needed. These legacy methods return one
+hit per class token; a filter resolves the first matching owner.
+
+Dispatchers that support multiple module instances should use
+`getRegistrations`, `registrationsWithMeta`, or `registeredMethodsWithMeta`.
+They return one hit per class-token registration with an exact `moduleId` and
+that owner's effective `scope`. Method hits carry ownership on `hit.class`.
+`moduleIds` remains the full owner list for diagnostics. Registrations whose
+provider token is a symbol/string rather than a class are not class discovery
+candidates. Use `{ metadataOnly: true }` to read all scopes without constructing
+providers or triggering lazy modules:
+
+```ts
+const handlers = discovery.registeredMethodsWithMeta(MyHandler, { metadataOnly: true });
+for (const hit of handlers) {
+  await runInEntrypointScope(container, async scope => {
+    const instance = await scope.resolveAsync(hit.class.token, hit.class.moduleId);
+    // Validate metadata and invoke through your transport's execution pipeline.
+  });
+}
+```
+
+`deferLazy` only defers pending lazy owners; `metadataOnly` defers every owner.
+Neither fabricates a request context. Discovery sees only the current
+application's registrations.
 
 ## Entrypoints: the open non-HTTP surface
 
@@ -130,6 +202,12 @@ class WsDispatcher implements ContributesEntrypoints {
 // A transport / runtime adapter:
 for (const ep of app.entrypoints.ofKind('websocket')) { ... }
 ```
+
+Decorator-derived entries carry `entry.moduleId`, including request-scoped and
+lazy registrations with `instance: undefined`. Resolve in the invocation's
+container using `resolveAsync(entry.token, entry.moduleId)`. Computed contributors
+should preserve the same owner field. It stays optional for existing 1.x
+contributors; omission retains legacy unscoped resolution.
 
 `entry.meta` is `unknown` by default. Pass a metadata parser as the second
 argument to `ofKind(kind, parseMeta)` to validate it and infer its result type.

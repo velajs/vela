@@ -11,7 +11,7 @@ import {
   ForbiddenException,
   BadRequestException,
   getTrustedRequestIdentity,
-  setTrustedRequestIdentity,
+  setTrustedRequestTenant,
   type CanActivate,
   type ExecutionContext,
 } from '@velajs/vela';
@@ -158,7 +158,7 @@ export class TenantGuard implements CanActivate {
     if (request) {
       if (!identity || getTrustedRequestIdentity(request) !== identity)
         throw new ForbiddenException('Identity changed during tenant admission');
-      setTrustedRequestIdentity(request, { ...identity, tenantId: tenant.id });
+      setTrustedRequestTenant(request, identity, tenant.id);
     }
     const admittedIdentity = request ? getTrustedRequestIdentity(request) : undefined;
     scopeState(container, moduleId).publish(

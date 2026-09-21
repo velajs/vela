@@ -14,12 +14,7 @@ import { validatePredicate, matchesPredicate } from '../query/predicate';
  * `adapter.transaction()`; D1 rejects unsupported callback transactions.
  */
 
-import {
-  ValidationPipe,
-  validateSchema,
-  SchemaValidationError,
-  type StandardSchemaV1,
-} from '@velajs/vela';
+import { parseSchemaAsync, SchemaValidationError, type StandardSchemaV1 } from '@velajs/vela';
 import type { AdapterScope, TransactionContext } from '../adapter/contract';
 import type { FilterCondition, ListQuery, Lookup } from '../adapter/query-types';
 import {
@@ -227,9 +222,7 @@ export function passesPushdown(row: Row, conditions: FilterCondition[]): boolean
 
 export async function parseBody(schema: StandardSchemaV1, body: unknown): Promise<Row> {
   try {
-    const parsed = ValidationPipe.consumeValidated(body, schema)
-      ? body
-      : await validateSchema(schema, body ?? {});
+    const parsed = await parseSchemaAsync(schema, body ?? {});
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
       throw new InputValidationException('CRUD input must validate to a record');
     }

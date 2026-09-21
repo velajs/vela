@@ -149,6 +149,19 @@ export interface AdminLogEntry {
   msg: string;
   source?: string;
   fields?: Record<string, unknown>;
+  /** Optional handler timing. Does not measure stream/background completion. */
+  invocation?: StudioInvocationDiagnostic;
+}
+
+/** An observation of the public interceptor boundary, never an authority token. */
+export interface StudioInvocationDiagnostic {
+  kind: string;
+  source: string;
+  moduleId?: string;
+  invocationId?: string;
+  elapsedMs: number;
+  outcome: 'returned' | 'threw';
+  boundary: 'handler';
 }
 
 // ---- live / presence ------------------------------------------------------

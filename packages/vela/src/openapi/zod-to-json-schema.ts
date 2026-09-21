@@ -32,7 +32,7 @@ export function zodToJsonSchema(
   schema: unknown,
   direction: 'input' | 'output' = 'output',
 ): JsonSchema {
-  if (!schema || typeof schema !== 'object') return {};
+  if (!schema || (typeof schema !== 'object' && typeof schema !== 'function')) return {};
 
   let standard: unknown;
   try {

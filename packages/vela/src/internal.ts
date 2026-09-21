@@ -27,6 +27,8 @@ export { getModuleMetadata, isModule } from './module/decorators';
 // Bootstrap primitive — used by VelaFactory.create, @velajs/testing, and any
 // non-HTTP consumer (CLI tools, custom runtimes).
 export { bootstrap } from './factory/bootstrap';
+export { finalizeApplication } from './factory/finalize';
+export { INVOCATION_TRANSPORT } from './dispatch/tokens';
 export type { BootstrapOptions, BootstrapResult } from './factory/bootstrap';
 
 // Plugin manifest + composer

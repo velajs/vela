@@ -1,10 +1,15 @@
+import { WsMessageQueue } from './ws-message-queue';
+import { WebSocketSendGate, readWebSocketEnvelope } from '@velajs/live-protocol';
+import { Scope } from '../constants';
+import { runInEntrypointScope } from '../entrypoint/execution-scope';
+import { resolveEntrypoint } from '../entrypoint/execution-context';
 import { Container } from '../container/container';
 import { Inject, Injectable, Optional } from '../container/decorators';
 import type { Type } from '../container/types';
 import { DiscoveryService } from '../discovery/discovery.service';
 import type { ContributesEntrypoints, Entrypoint } from '../entrypoint/entrypoint.types';
 import { resolveErrorReporter, type ErrorReporter } from '../exceptions/reporter';
-import { instantiateMany } from '../http/instantiate';
+import { instantiateManyAsync } from '../http/instantiate';
 import { RouteManager } from '../http/route.manager';
 import type { OnApplicationBootstrap } from '../lifecycle/index';
 import { ComponentManager } from '../pipeline/component.manager';
@@ -71,14 +76,14 @@ interface GatewayEntry {
   path: string;
   options: WebSocketGatewayOptions;
   maxFrameBytes: number;
-  instance: Record<string, unknown>;
+  instance: unknown;
   gatewayClass: Type;
   moduleId: string;
   handlers: Map<string, HandlerEntry>;
 }
 
 interface ReservedEntry {
-  handler: ReservedWsEventHandler;
+  token: Type;
   moduleId: string;
 }
 
@@ -142,30 +147,41 @@ export function readWsEntrypointMeta(value: unknown): WsEntrypointMeta {
  */
 @Injectable()
 export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoints {
-  private readonly gateways = new Map<string, GatewayEntry>();
-  private readonly reserved = new Map<string, ReservedEntry>();
+  readonly #gateways = new Map<string, GatewayEntry>();
+  readonly #reserved = new Map<string, ReservedEntry>();
+
+  readonly #initializing = new WeakMap<object, Promise<void>>();
+  readonly #container: Container;
+  readonly #discovery: DiscoveryService;
+  readonly #server?: WsServer;
+  readonly #routeManager?: RouteManager;
 
   constructor(
-    @Inject(Container) private readonly container: Container,
-    @Inject(DiscoveryService) private readonly discovery: DiscoveryService,
-    @Optional() @Inject(WS_SERVER) private readonly server?: WsServer,
-    @Optional() @Inject(RouteManager) private readonly routeManager?: RouteManager,
-  ) {}
+    @Inject(Container) container: Container,
+    @Inject(DiscoveryService) discovery: DiscoveryService,
+    @Optional() @Inject(WS_SERVER) server?: WsServer,
+    @Optional() @Inject(RouteManager) routeManager?: RouteManager,
+  ) {
+    this.#container = container;
+    this.#discovery = discovery;
+    this.#server = server;
+    this.#routeManager = routeManager;
+  }
 
   /** Paths of every discovered `@WebSocketGateway` — used by transports to register routes. */
   get gatewayPaths(): string[] {
-    return [...this.gateways.keys()];
+    return [...this.#gateways.keys()];
   }
 
   /** Validated per-gateway frame ceiling used by runtime transports. */
   getGatewayMaxFrameBytes(path: string): number | undefined {
-    return this.gateways.get(path)?.maxFrameBytes;
+    return this.#gateways.get(path)?.maxFrameBytes;
   }
 
   /** Largest explicitly configured gateway ceiling for cross-instance buses. */
   getMaximumGatewayFrameBytes(): number {
     let maximum: number | undefined;
-    for (const entry of this.gateways.values()) {
+    for (const entry of this.#gateways.values()) {
       maximum =
         maximum === undefined ? entry.maxFrameBytes : Math.max(maximum, entry.maxFrameBytes);
     }
@@ -175,50 +191,67 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
   async onApplicationBootstrap(): Promise<void> {
     // Reserved-event handlers first: modules claiming a `$…` event
     // (@ReservedWsEvent) receive those frames across every gateway path.
-    for (const found of this.discovery.providersWithMeta<ReservedWsEventMetadata>(
+    for (const found of this.#discovery.registrationsWithMeta<ReservedWsEventMetadata>(
       WS_RESERVED_METADATA,
+      { metadataOnly: true },
     )) {
-      if (!found.instance) continue;
       const event = found.meta.event;
-      if (this.reserved.has(event)) {
+      if (this.#reserved.get(event)?.token === found.metatype) {
+        throw new Error(
+          `[vela] ambiguous @ReservedWsEvent('${event}') registration across module owners`,
+        );
+      }
+      if (this.#reserved.has(event)) {
         const msg =
           `[vela] duplicate @ReservedWsEvent('${event}') ` +
           `(${found.metatype.name}); keeping the first.`;
-        if (this.container.getDiagnostics() === 'throw') throw new Error(msg);
+        if (this.#container.getDiagnostics() === 'throw') throw new Error(msg);
         console.warn(msg);
         continue;
       }
-      this.reserved.set(event, {
-        handler: found.instance as unknown as ReservedWsEventHandler,
-        moduleId: found.moduleIds[0]!,
+      this.#reserved.set(event, {
+        token: found.metatype,
+        moduleId: found.moduleId,
       });
     }
 
-    for (const found of this.discovery.providersWithMeta<WebSocketGatewayOptions>(
+    for (const found of this.#discovery.registrationsWithMeta<WebSocketGatewayOptions>(
       WS_GATEWAY_METADATA,
+      { metadataOnly: true },
     )) {
-      if (!found.instance) continue;
       const gatewayClass = found.metatype;
-      const instance = found.instance as Record<string, unknown>;
+      const instance =
+        found.scope === Scope.SINGLETON &&
+        !this.#container.isLazyPending(found.token, found.moduleId)
+          ? await resolveEntrypoint(this.#container, {
+              token: found.metatype,
+              moduleId: found.moduleId,
+            })
+          : undefined;
 
-      const entry = this.buildGatewayEntry(gatewayClass, found.meta, instance, found.moduleIds[0]!);
+      const entry = this.buildGatewayEntry(gatewayClass, found.meta, instance, found.moduleId);
 
       // Two gateways on the same path (or both defaulting to '') would silently
       // overwrite each other in the routing Map — surface it instead.
-      if (this.gateways.has(entry.path)) {
+      if (this.#gateways.get(entry.path)?.gatewayClass === gatewayClass) {
+        throw new Error(
+          `[vela] ambiguous @WebSocketGateway path '${entry.path}' registration across module owners`,
+        );
+      }
+      if (this.#gateways.has(entry.path)) {
         const msg =
           `[vela] duplicate @WebSocketGateway path '${entry.path}' ` +
           `(${gatewayClass.name}); keeping the first. Give each gateway a distinct path.`;
-        if (this.container.getDiagnostics() === 'throw') throw new Error(msg);
+        if (this.#container.getDiagnostics() === 'throw') throw new Error(msg);
         console.warn(msg);
         continue;
       }
-      this.gateways.set(entry.path, entry);
-      this.server?.setOutboundFrameLimit?.(entry.maxFrameBytes);
+      this.#gateways.set(entry.path, entry);
+      this.#server?.setOutboundFrameLimit?.(entry.maxFrameBytes);
 
-      if (this.server && hasAfterInit(instance)) {
+      if (this.#server && hasAfterInit(instance)) {
         try {
-          await instance.afterInit(this.server);
+          await this.initializeGateway(instance);
         } catch (err) {
           this.reportBootstrapError(gatewayClass.name, err);
         }
@@ -228,9 +261,10 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
 
   /** One `'websocket'` entrypoint per discovered gateway (authoritative). */
   collectEntrypoints(): Entrypoint<WsEntrypointMeta>[] {
-    return [...this.gateways.values()].map((entry) => ({
+    return [...this.#gateways.values()].map((entry) => ({
       kind: 'websocket',
       token: entry.gatewayClass,
+      moduleId: entry.moduleId,
       instance: entry.instance,
       meta: {
         path: entry.path,
@@ -241,27 +275,68 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
     }));
   }
 
-  async handleOpen(path: string, client: WsClient): Promise<void> {
-    const entry = this.gateways.get(path);
-    if (entry && hasHandleConnection(entry.instance)) {
-      await entry.instance.handleConnection(client);
+  private async initializeGateway(instance: OnGatewayInit): Promise<void> {
+    if (!this.#server) return;
+    let pending = this.#initializing.get(instance);
+    if (!pending) {
+      const server = this.#server;
+      pending = Promise.resolve().then(() => instance.afterInit(server));
+      this.#initializing.set(instance, pending);
     }
+    await pending;
+  }
+
+  private async resolveGateway(scope: Container, entry: GatewayEntry): Promise<unknown> {
+    const instance = await resolveEntrypoint(scope, {
+      token: entry.gatewayClass,
+      moduleId: entry.moduleId,
+    });
+    if (hasAfterInit(instance)) await this.initializeGateway(instance);
+    return instance;
+  }
+
+  async handleOpen(path: string, client: WsClient): Promise<void> {
+    const entry = this.#gateways.get(path);
+    if (!entry) return;
+    await runInEntrypointScope(this.#container, async (scope) => {
+      const instance = await this.resolveGateway(scope, entry);
+      if (hasHandleConnection(instance)) await instance.handleConnection(client);
+    });
   }
 
   async handleClose(path: string, client: WsClient, _code: number, _reason: string): Promise<void> {
-    // Reserved handlers drop per-connection state first (isolated per handler)
-    // so a throwing gateway handleDisconnect can't leak live subscriptions.
-    for (const { handler } of this.reserved.values()) {
+    for (const target of this.#reserved.values()) {
       try {
-        await handler.handleSocketClose?.(path, client);
+        await runInEntrypointScope(this.#container, async (scope) => {
+          const handler = await this.resolveReserved(scope, target);
+          await handler.handleSocketClose?.(path, client);
+        });
       } catch (err) {
         await this.handleError(path, client, err);
       }
     }
-    const entry = this.gateways.get(path);
-    if (entry && hasHandleDisconnect(entry.instance)) {
-      await entry.instance.handleDisconnect(client);
+    const entry = this.#gateways.get(path);
+    if (!entry) return;
+    await runInEntrypointScope(this.#container, async (scope) => {
+      const instance = await this.resolveGateway(scope, entry);
+      if (hasHandleDisconnect(instance)) await instance.handleDisconnect(client);
+    });
+  }
+
+  private async resolveReserved(
+    scope: Container,
+    target: ReservedEntry,
+  ): Promise<ReservedWsEventHandler> {
+    const handler = await resolveEntrypoint(scope, target);
+    if (
+      !handler ||
+      typeof handler !== 'object' ||
+      !('handleReservedEvent' in handler) ||
+      typeof handler.handleReservedEvent !== 'function'
+    ) {
+      throw new TypeError('Reserved WebSocket provider must implement handleReservedEvent');
     }
+    return handler as ReservedWsEventHandler;
   }
 
   async handleError(path: string, _client: WsClient, err: unknown): Promise<void> {
@@ -270,15 +345,19 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
     // them too — the default reporter console.errors and honors `'silent'`.
     // No client frame is sent for this path, by design: reserved frames own
     // their own client-facing responses, and there is no envelope id to reply to.
-    resolveErrorReporter(this.container).report(err, {
+    resolveErrorReporter(this.#container).report(err, {
       edge: 'ws',
       source: path ? `reserved-frame ${path}` : 'reserved-frame',
     });
   }
 
   /** Re-run app-wide and gateway delivery authorization for one push recipient. */
-  async authorizeDelivery(path: string, client: WsClient): Promise<boolean> {
-    const entry = this.gateways.get(path);
+  async authorizeDelivery(
+    path: string,
+    client: WsClient,
+    invocationScope?: Container,
+  ): Promise<boolean> {
+    const entry = this.#gateways.get(path);
     if (!entry) return false;
     if (normalizeWebSocketUpgradeIdentity(client.data) === false) {
       try {
@@ -289,35 +368,35 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
       return false;
     }
 
-    const context = buildWsExecutionContext(
-      client,
-      undefined,
-      entry.gatewayClass,
-      '__delivery__',
-      '$delivery',
-      entry.moduleId,
-      this.container,
-    );
-    const globals = this.routeManager?.getGlobalComponents();
-    const guards = instantiateMany<CanActivate>(globals?.guards ?? [], this.container);
     try {
-      for (const guard of guards) {
-        if (!(await guard.canActivate(context))) return false;
-      }
-      if (
-        entry.options.authorizeDelivery &&
-        (await entry.options.authorizeDelivery(client)) !== true
-      ) {
-        return false;
-      }
-      return true;
+      const authorize = async (scope: Container): Promise<boolean> => {
+        const context = buildWsExecutionContext(
+          client,
+          undefined,
+          entry.gatewayClass,
+          '__delivery__',
+          '$delivery',
+          entry.moduleId,
+          scope,
+        );
+        const globals = this.#routeManager?.getGlobalComponents();
+        const guards = await instantiateManyAsync<CanActivate>(globals?.guards ?? [], scope);
+        for (const guard of guards) if (!(await guard.canActivate(context))) return false;
+        return (
+          !entry.options.authorizeDelivery ||
+          (await entry.options.authorizeDelivery(client)) === true
+        );
+      };
+      return invocationScope
+        ? await authorize(invocationScope)
+        : await runInEntrypointScope(this.#container, authorize);
     } catch {
       return false;
     }
   }
 
   async dispatchMessage(path: string, client: WsClient, raw: string | ArrayBuffer): Promise<void> {
-    const entry = this.gateways.get(path);
+    const entry = this.#gateways.get(path);
     if (!entry) return;
 
     if (normalizeWebSocketUpgradeIdentity(client.data) === false) {
@@ -366,71 +445,97 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
     const handler = entry.handlers.get(message.event);
     if (!handler) return; // unknown event — ignored (NestJS parity)
 
-    const ctx = buildWsExecutionContext(
-      client,
-      message.data,
-      entry.gatewayClass,
-      handler.methodName,
-      message.event,
-      entry.moduleId,
-      this.container,
-    );
-
-    // App-wide global components (APP_* provider tokens + imperative
-    // app.useGlobalX()) run first, then controller/handler-tier — mirroring the
-    // HTTP HandlerExecutor so global guards/pipes/interceptors/filters protect
-    // gateway messages too. Read live so late registrations propagate.
-    const globals = this.routeManager?.getGlobalComponents();
-    const guards = [
-      ...instantiateMany<CanActivate>(globals?.guards ?? [], this.container),
-      ...instantiateMany<CanActivate>(handler.guards, this.container),
-    ];
-    const pipes = [
-      ...instantiateMany<PipeTransform>(globals?.pipes ?? [], this.container),
-      ...instantiateMany<PipeTransform>(handler.pipes, this.container),
-    ];
-    const interceptors = [
-      ...instantiateMany<NestInterceptor>(globals?.interceptors ?? [], this.container),
-      ...instantiateMany<NestInterceptor>(handler.interceptors, this.container),
-    ];
-    // Handler/controller filters first (closest), then global filters last.
-    const filters = [
-      ...instantiateMany<ExceptionFilter>(handler.filters, this.container),
-      ...instantiateMany<ExceptionFilter>(globals?.filters ?? [], this.container),
-    ];
-
     try {
-      const method = entry.instance[handler.methodName] as (...a: unknown[]) => unknown;
-
-      // Guards → args + pipes → interceptor chain → handler, via the shared
-      // runner (both HTTP and WS use guards-first).
-      const result = await PipelineRunner.run({
-        context: ctx,
-        guards,
-        interceptors,
-        resolveArgs: () =>
-          resolveWsArgs(handler.paramMeta, client, message.data, pipes, handler.paramTypes),
-        invoke: async (args) => method.apply(entry.instance, args),
-        onGuardReject: () => new WsException('Forbidden'),
+      await runInEntrypointScope(this.#container, async (scope) => {
+        const ctx = buildWsExecutionContext(
+          client,
+          message.data,
+          entry.gatewayClass,
+          handler.methodName,
+          message.event,
+          entry.moduleId,
+          scope,
+        );
+        const globals = this.#routeManager?.getGlobalComponents();
+        let filters: ExceptionFilter[] = [];
+        try {
+          filters = [
+            ...(await instantiateManyAsync<ExceptionFilter>(
+              handler.filters,
+              scope,
+              entry.moduleId,
+            )),
+            ...(await instantiateManyAsync<ExceptionFilter>(globals?.filters ?? [], scope)),
+          ];
+          const guards = [
+            ...(await instantiateManyAsync<CanActivate>(globals?.guards ?? [], scope)),
+            ...(await instantiateManyAsync<CanActivate>(handler.guards, scope, entry.moduleId)),
+          ];
+          const result = await PipelineRunner.run({
+            context: ctx,
+            guards,
+            // Resolve remaining components after guards have admitted this invocation.
+            resolveArgs: async () => {
+              const pipes = [
+                ...(await instantiateManyAsync<PipeTransform>(globals?.pipes ?? [], scope)),
+                ...(await instantiateManyAsync<PipeTransform>(
+                  handler.pipes,
+                  scope,
+                  entry.moduleId,
+                )),
+              ];
+              return resolveWsArgs(
+                handler.paramMeta,
+                client,
+                message.data,
+                pipes,
+                handler.paramTypes,
+              );
+            },
+            interceptors: [],
+            invoke: async (args) => {
+              const interceptors = [
+                ...(await instantiateManyAsync<NestInterceptor>(
+                  globals?.interceptors ?? [],
+                  scope,
+                )),
+                ...(await instantiateManyAsync<NestInterceptor>(
+                  handler.interceptors,
+                  scope,
+                  entry.moduleId,
+                )),
+              ];
+              return PipelineRunner.chainInterceptors(interceptors, ctx, async () => {
+                const instance = await this.resolveGateway(scope, entry);
+                if (!instance || typeof instance !== 'object')
+                  throw new TypeError('Invalid WebSocket gateway instance');
+                const method: unknown = Reflect.get(instance, handler.methodName);
+                if (typeof method !== 'function') throw new TypeError('Invalid WebSocket handler');
+                return Reflect.apply(method, instance, args);
+              });
+            },
+            onGuardReject: () => new WsException('Forbidden'),
+          });
+          this.reply(client, message, result, entry.maxFrameBytes);
+        } catch (error) {
+          const reporter = resolveErrorReporter(scope);
+          const source = `${entry.gatewayClass.name}.${handler.methodName}`;
+          reporter.report(error, { edge: 'ws', source });
+          await this.runFilters(
+            client,
+            message,
+            error,
+            filters,
+            ctx,
+            reporter,
+            source,
+            entry.maxFrameBytes,
+          );
+        }
       });
-
-      this.reply(client, message, result, entry.maxFrameBytes);
     } catch (error) {
-      const reporter = resolveErrorReporter(this.container);
-      const source = `${entry.gatewayClass.name}.${handler.methodName}`;
-      // Report FIRST, always — before any exception filter can claim (and thus
-      // hide) the error. Rendering is a separate concern (mirrors HandlerExecutor).
-      reporter.report(error, { edge: 'ws', source });
-      await this.runFilters(
-        client,
-        message,
-        error,
-        filters,
-        ctx,
-        reporter,
-        source,
-        entry.maxFrameBytes,
-      );
+      // Managed background work/disposal can fail after the handler's response.
+      await this.handleError(path, client, error);
     }
   }
 
@@ -446,34 +551,36 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
     client: WsClient,
     message: WsMessage,
   ): Promise<void> {
-    const reserved = this.reserved.get(message.event);
+    const reserved = this.#reserved.get(message.event);
     if (!reserved) return;
-    const { handler, moduleId } = reserved;
-    const maxFrameBytes = this.gateways.get(path)?.maxFrameBytes ?? resolveMaxFrameBytes({});
-
-    const ctx = buildWsExecutionContext(
-      client,
-      message.data,
-      handler.constructor as Type,
-      'handleReservedEvent',
-      message.event,
-      moduleId,
-      this.container,
-    );
-    const globals = this.routeManager?.getGlobalComponents();
-    const guards = instantiateMany<CanActivate>(globals?.guards ?? [], this.container);
+    const { token, moduleId } = reserved;
+    const maxFrameBytes = this.#gateways.get(path)?.maxFrameBytes ?? resolveMaxFrameBytes({});
     try {
-      for (const guard of guards) {
-        if (!(await guard.canActivate(ctx))) {
-          const frame = toErrorFrame(
-            new WsException('Forbidden'),
-            resolveErrorReporter(this.container).catalog,
-          );
-          this.trySend(client, maxFrameBytes, frame.event, frame.data, message.id);
-          return;
+      await runInEntrypointScope(this.#container, async (scope) => {
+        const ctx = buildWsExecutionContext(
+          client,
+          message.data,
+          token,
+          'handleReservedEvent',
+          message.event,
+          moduleId,
+          scope,
+        );
+        const globals = this.#routeManager?.getGlobalComponents();
+        const guards = await instantiateManyAsync<CanActivate>(globals?.guards ?? [], scope);
+        for (const guard of guards) {
+          if (!(await guard.canActivate(ctx))) {
+            const frame = toErrorFrame(
+              new WsException('Forbidden'),
+              resolveErrorReporter(scope).catalog,
+            );
+            this.trySend(client, maxFrameBytes, frame.event, frame.data, message.id);
+            return;
+          }
         }
-      }
-      await handler.handleReservedEvent(path, client, message);
+        const handler = await this.resolveReserved(scope, reserved);
+        await handler.handleReservedEvent(path, client, message, ctx);
+      });
     } catch (err) {
       await this.handleError(path, client, err);
     }
@@ -545,15 +652,15 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
   }
 
   private reportBootstrapError(name: string, err: unknown): void {
-    const mode = this.container.getDiagnostics();
+    const mode = this.#container.getDiagnostics();
     if (mode === 'throw') throw err;
     if (mode === 'log') console.warn(`[vela] websocket gateway ${name} afterInit failed:`, err);
   }
 
   private parse(raw: string | ArrayBuffer): WsMessage {
     const text = typeof raw === 'string' ? raw : new TextDecoder().decode(raw);
-    const parsed = JSON.parse(text) as WsMessage;
-    if (!parsed || typeof parsed !== 'object' || typeof parsed.event !== 'string') {
+    const parsed = readWebSocketEnvelope(JSON.parse(text));
+    if (!parsed) {
       throw new Error('Invalid WebSocket message envelope');
     }
     return parsed;
@@ -566,12 +673,14 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
   private buildGatewayEntry(
     gatewayClass: Type,
     options: WebSocketGatewayOptions,
-    instance: Record<string, unknown>,
+    instance: unknown,
     moduleId: string,
   ): GatewayEntry {
     // Validate security-sensitive routing at bootstrap rather than silently
     // collapsing rooms when a transport receives its first request.
     resolveGatewayRoomParam(options);
+    new WebSocketSendGate(options.sendPolicy);
+    new WsMessageQueue(() => {}, options.maxPendingMessages, options.maxPendingBytes);
     if (options.allowedOrigins === '*' && shouldWarnProductionSecurity()) {
       console.warn(
         `[vela] security warning: WebSocket gateway ${gatewayClass.name} allows every browser ` +
@@ -594,7 +703,7 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
         const msg =
           `[vela] @SubscribeMessage('${event}') on ${gatewayClass.name}: the ` +
           `'${RESERVED_WS_EVENT_PREFIX}' event prefix is reserved for framework modules — skipped.`;
-        if (this.container.getDiagnostics() === 'throw') throw new Error(msg);
+        if (this.#container.getDiagnostics() === 'throw') throw new Error(msg);
         console.warn(msg);
         continue;
       }

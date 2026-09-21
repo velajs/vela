@@ -31,3 +31,8 @@ function types(db: DrizzleD1Database, sqlite: LibSQLDatabase) {
   });
 }
 void types;
+
+function schemaAwareD1(db: DrizzleD1Database<{ table: typeof table }>) {
+  return drizzleAdapter({ driver: 'd1', db, table });
+}
+void schemaAwareD1;

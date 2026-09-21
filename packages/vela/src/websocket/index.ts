@@ -98,3 +98,8 @@ export type {
   OnGatewayConnection,
   OnGatewayDisconnect,
 } from './websocket.types';
+
+export { trySendWebSocketFrame } from './ws-send';
+export { WebSocketSendGate, readWebSocketEnvelope } from '@velajs/live-protocol';
+export type { WebSocketSendPolicy, WebSocketSendResult } from '@velajs/live-protocol';
+export { WsMessageQueue } from './ws-message-queue';

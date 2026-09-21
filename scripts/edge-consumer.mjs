@@ -14,6 +14,7 @@ const required = [
   '@velajs/tenant',
   '@velajs/authz-cedar',
   '@velajs/crypto',
+  '@velajs/storage',
 ];
 /** Exact archives, outside the workspace; companions are recorded without modifying the release plan. */
 export async function verifyEdgePackages(releaseTarballs) {
@@ -81,7 +82,8 @@ export async function verifyEdgePackages(releaseTarballs) {
     join(consumer, 'consumer.ts'),
     `
 import { defineDto, ValidationPipe } from '@velajs/vela';
-import { defineResource, defineStandardModel, type ContractInput, type ContractOutput } from '@velajs/crud';
+import { defineResource, defineStandardModel, defineCrudDatabase, createCrudDatabaseRegistry, type ContractInput, type ContractOutput } from '@velajs/crud';
+import { bindCrudService } from '@velajs/crud/service';
 import { hmacCursorCodec } from '@velajs/crud/query';
 import { MemoryStore, transactionalMemoryAdapter } from '@velajs/crud-memory';
 import { durableObjectSqliteAdapter } from '@velajs/crud-durable-objects';
@@ -104,16 +106,31 @@ import { CryptoModule } from '@velajs/crypto/vela';
 import { TenantCrypto } from '@velajs/crypto/tenant';
 import { fieldProtection } from '@velajs/crypto/fields';
 import { encryptToR2 } from '@velajs/crypto/files';
+import { createStorage } from '@velajs/storage';
+import { r2Driver } from '@velajs/storage/drivers/r2';
 import * as v from 'valibot';
 const schema=v.object({id:v.string(),amount:v.number()});
 const create=v.object({id:v.string(),amount:v.pipe(v.string(),v.transform(Number))});
-const model=defineStandardModel({name:'invoice',tableName:'invoices',schema,id:'client',timestamps:false,fields:{id:{type:'string'},amount:{type:'number'}},contracts:{create,update:v.partial(schema)}});
+const update=v.partial(schema);
+const contracts={create,update,response:schema};
+const model=defineStandardModel({name:'invoice',tableName:'invoices',schema,id:'client',timestamps:false,fields:{id:{type:'string'},amount:{type:'number'}},contracts});
 const input:ContractInput<typeof model.contracts.create>={id:'a',amount:'1'};
 const output:ContractOutput<typeof model.contracts.create>={id:'a',amount:1};
 const resource=defineResource('invoices',{model,adapter:transactionalMemoryAdapter({store:new MemoryStore(),tableName:'invoices'})});
 void resource.execute('create',{body:input});void output;
+const serviceBinding=bindCrudService(resource,contracts);
+void serviceBinding.create(input).then(result=>{const amount:number=result.data.amount;return amount;});
+const store=new MemoryStore();
+const database=defineCrudDatabase('main',{handle:store,resources:{invoices:{model,adapter:transactionalMemoryAdapter({store,tableName:'invoices'})}}});
+const registry=createCrudDatabaseRegistry([database] as const);
+const exactHandle:MemoryStore=registry.get('main').handle;void exactHandle;
+// @ts-expect-error The registry retains the literal database name.
+registry.get('missing');
 const dto=defineDto(create);new ValidationPipe(dto);
 declare const d1:D1Database, storage:DurableObjectStorage, bucket:R2Bucket;
+const nativeStorage=createStorage({driver:r2Driver({bucket})});
+const exactBucket:R2Bucket=nativeStorage.raw;void exactBucket;
+void nativeStorage.stat('key');void nativeStorage.listMetadata();
 new D1TenantRegistryStore(d1);new D1PolicyStore(d1);new DurableObjectTenantRegistryStore(storage);new DurableObjectPolicyStore(storage);
 const service=new CryptoService(await LocalKeyRing.fromRaw('v1',{v1:new Uint8Array(32)}));
 void encryptToR2(bucket,'key',new ReadableStream<Uint8Array>(),service.forContext({namespace:'app',purpose:'file'}));

@@ -16,6 +16,50 @@ afterEach(() => {
 });
 
 describe('SecurityModule', () => {
+  it('allows an absent Origin only when opted in, while rejecting invalid origins and preflights', async () => {
+    let mutations = 0;
+    @Controller('/compat')
+    class CompatController {
+      @Post()
+      mutate() {
+        return { mutations: ++mutations };
+      }
+    }
+    @Module({
+      imports: [SecurityModule.forRoot({ originProtection: { allowMissingOrigin: true } })],
+      controllers: [CompatController],
+    })
+    class App {}
+    const app = await VelaFactory.create(App);
+    try {
+      const hono = app.getHonoApp();
+      const accepted = await hono.request('https://api.example/compat', {
+        method: 'POST',
+        headers: { cookie: 'session=test' },
+      });
+      expect(accepted.status).toBe(200);
+      expect(accepted.headers.get('x-content-type-options')).toBe('nosniff');
+      for (const origin of ['', 'null', 'garbage', 'https://evil.example']) {
+        const response = await hono.request('https://api.example/compat', {
+          method: 'POST',
+          headers: { cookie: 'session=test', origin },
+        });
+        expect(response.status).toBe(403);
+      }
+      expect(
+        (
+          await hono.request('https://api.example/compat', {
+            method: 'OPTIONS',
+            headers: { 'access-control-request-method': 'POST' },
+          })
+        ).status,
+      ).toBe(403);
+      expect(mutations).toBe(1);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('adds restrictive browser security headers, including HSTS only on HTTPS', async () => {
     @Controller('/headers')
     class HeadersController {

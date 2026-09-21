@@ -3,9 +3,25 @@ import { STUDIO_FEATURE_KEYS } from './capabilities';
 import { STUDIO_OPS, STUDIO_OP_META } from './ops';
 import type { StudioOp, StudioOpRes } from './ops';
 import type { AdminRpcResponse } from './envelope';
+import type { StudioInvocationDiagnostic } from './panels';
 
 const row = z.record(z.string(), z.unknown());
 const strings = z.array(z.string());
+const providerScope = z.enum(['singleton', 'transient', 'request']);
+const invocationDiagnostic = z.object({
+  kind: z.string(),
+  source: z.string(),
+  moduleId: z.string().optional(),
+  invocationId: z.string().optional(),
+  elapsedMs: z.number().nonnegative(),
+  outcome: z.enum(['returned', 'threw']),
+  boundary: z.literal('handler'),
+});
+
+/** Validate a structured log detail before promoting it to invocation diagnostics. */
+export function parseStudioInvocationDiagnostic(value: unknown): StudioInvocationDiagnostic {
+  return invocationDiagnostic.parse(value);
+}
 const timeTravelCapabilities = z.object({
   markByTime: z.boolean(),
   list: z.boolean(),
@@ -84,6 +100,7 @@ export const STUDIO_RESPONSE_PARSERS: {
       path: z.string(),
       handler: z.string(),
       source: z.enum(['controller', 'mounted']),
+      moduleId: z.string().optional(),
     }),
   ).parse,
   'app.modules': z.array(
@@ -94,6 +111,7 @@ export const STUDIO_RESPONSE_PARSERS: {
       lazy: z.boolean(),
       providers: strings,
       exports: strings,
+      providerScopes: z.array(z.object({ token: z.string(), scope: providerScope })).optional(),
     }),
   ).parse,
   'app.entrypoints': z.array(
@@ -101,6 +119,8 @@ export const STUDIO_RESPONSE_PARSERS: {
       kind: z.string(),
       target: z.string(),
       meta: z.unknown().optional(),
+      moduleId: z.string().optional(),
+      scope: providerScope.optional(),
     }),
   ).parse,
   'app.openapi': z.unknown().parse,
@@ -111,12 +131,14 @@ export const STUDIO_RESPONSE_PARSERS: {
       table: z.string(),
       label: z.string(),
       capabilities: strings,
+      database: z.string().optional(),
     }),
   ).parse,
   'data.describeModel': z.object({
     name: z.string(),
     table: z.string(),
     primaryKeys: strings,
+    database: z.string().optional(),
     columns: z.array(
       z.object({
         name: z.string(),
@@ -258,6 +280,7 @@ export const STUDIO_RESPONSE_PARSERS: {
       msg: z.string(),
       source: z.string().optional(),
       fields: row.optional(),
+      invocation: invocationDiagnostic.optional(),
     }),
   ).parse,
   'live.subscriptions': z.array(

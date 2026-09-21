@@ -11,7 +11,7 @@
  * relation scoping) consume. Group-1 cells need only `timestampKind` (managed
  * fields) and `uniqueConstraints` (the deferred unique-conflict skip).
  */
-import { beforeAll, beforeEach, expect } from 'vitest';
+import { afterAll, beforeAll, beforeEach, expect } from 'vitest';
 
 // ============================================================================
 // Adapter descriptor
@@ -97,6 +97,10 @@ export function setupConformance(descriptor: AdapterDescriptor): CtxGetter {
       throw new Error(`conformance context for '${descriptor.name}' is not initialised`);
     }
     await context.reset();
+  });
+
+  afterAll(async () => {
+    await context?.teardown?.();
   });
 
   return () => {

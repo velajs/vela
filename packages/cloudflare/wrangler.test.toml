@@ -25,3 +25,7 @@ database_id = "00000000-0000-0000-0000-000000000001"
 [[r2_buckets]]
 binding = "FILES"
 bucket_name = "test-files"
+
+[[queues.producers]]
+binding = "QUEUE_BRIDGE"
+queue = "vela-queue-bridge-test"

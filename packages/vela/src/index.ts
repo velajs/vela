@@ -19,6 +19,7 @@ export {
 } from './openapi/index';
 export type {
   EndpointDefinition,
+  EndpointHandlerOutput,
   EndpointRequest,
   EndpointSchema,
   OpenApiDocument,
@@ -62,6 +63,7 @@ export type {
   InferTokens,
   InjectableOptions,
   ProviderDefinition,
+  ProviderSnapshot,
   ModuleScope,
   ModuleDescription,
   ContainerOptions,
@@ -168,15 +170,21 @@ export {
   clearTrustedRequestIdentity,
   getTrustedRequestIdentity,
   setTrustedRequestIdentity,
+  setTrustedRequestTenant,
+  createTrustedRequestIdentityStore,
+  bindTrustedRequestContext,
+  getTrustedContextRequest,
 } from './http/trusted-request-identity';
 export type {
   TrustedRequestIdentity,
   TrustedRequestPrincipal,
+  TrustedRequestIdentityStore,
 } from './http/trusted-request-identity';
 
 // Explicit request-child container access (for programmatic-route authors,
 // param-decorator factories, and scoped middleware)
 export { getRequestContainer } from './http/request-container';
+export { buildExecutionContext as buildHttpExecutionContext } from './http/execution-context';
 
 // Opt-in ambient container access (ALS via hono/context-storage)
 export {
@@ -200,7 +208,12 @@ export {
 } from './config/index';
 
 // Browser/HTTP hardening
-export { SecurityModule, SECURITY_OPTIONS, buildSecurityMiddleware } from './security/index';
+export {
+  SecurityModule,
+  SECURITY_OPTIONS,
+  buildSecurityMiddleware,
+  Secret,
+} from './security/index';
 export type {
   SecurityModuleOptions,
   SecurityCorsOptions,
@@ -259,7 +272,7 @@ export {
   OnEvent,
   ON_EVENT_METADATA,
 } from './event-emitter/index';
-export type { EventHandler, OnEventMetadata } from './event-emitter/index';
+export type { EventHandler, OnEventMetadata, EventEmitOptions } from './event-emitter/index';
 
 // Schedule
 export {
@@ -268,6 +281,8 @@ export {
   Cron,
   Interval,
   parseCron,
+  parseCronMetadata,
+  parseIntervalMetadata,
   CRON_METADATA,
   INTERVAL_METADATA,
   SCHEDULE_DISPATCH,
@@ -278,6 +293,8 @@ export type {
   CronMetadata,
   IntervalMetadata,
   CronMatcher,
+  CronOptions,
+  ScheduleInvocation,
   ScheduleDispatchMode,
   ScheduleJobRef,
 } from './schedule/index';
@@ -294,6 +311,7 @@ export {
   WsDispatcher,
   WsException,
   assertWebSocketRoomId,
+  trySendWebSocketFrame,
   WS_SERVER,
   RESERVED_WS_EVENT_PREFIX,
 } from './websocket/index';
@@ -371,6 +389,7 @@ export type {
   DynamicModule,
   AsyncModuleOptions,
   ModuleImport,
+  ModuleRegistrationOptions,
   ConfigurableModuleAsyncOptions,
   ConfigurableModuleBuilderOptions,
   ConfigurableModuleClassType,
@@ -392,6 +411,8 @@ export type { MiddlewareConsumer, NestModule, RouteInfo } from './http/index';
 export { DiscoveryService, createDiscoverableDecorator } from './discovery/index';
 export type {
   DiscoveredClass,
+  DiscoveredRegistration,
+  DiscoveredRegisteredMethodMeta,
   DiscoveredMethodMeta,
   DiscoveryFilter,
   DiscoverableDecorator,
@@ -405,6 +426,12 @@ export {
   getEntrypointKinds,
   contributesEntrypoints,
   runInEntrypointScope,
+  EXECUTION_LIFETIME,
+  createExecutionScope,
+  getExecutionLifetime,
+  finishExecutionScope,
+  getEntrypointModuleId,
+  resolveEntrypoint,
   buildEntrypointExecutionContext,
 } from './entrypoint/index';
 export type {
@@ -412,6 +439,9 @@ export type {
   Entrypoint,
   EntrypointKind,
   EntrypointExecutionContext,
+  ExecutionLifetime,
+  ExecutionScope,
+  ExecutionScopeOptions,
 } from './entrypoint/index';
 
 // Route contribution — metadata-claimed route generators (@Crud-style)
@@ -450,6 +480,9 @@ export {
   getCatchTypes,
   shouldFilterCatch,
   resolveScopedComponents,
+  resolveScopedComponentsAsync,
+  resolvePipelineComponents,
+  type PipelineComponentEntry,
   APP_GUARD,
   APP_PIPE,
   APP_INTERCEPTOR,
@@ -565,12 +598,18 @@ export {
   validateSchema,
   standardJsonSchema,
   SchemaValidationError,
+  parseSchema,
+  parseSchemaAsync,
+  isValidationSchema,
 } from './validation/index';
 export type {
   StandardSchemaV1,
   StandardJSONSchemaV1,
   StandardDtoDefinition,
   ValidationSchema,
+  SchemaInput,
+  SchemaOutput,
+  ValidationIssue,
 } from './validation/index';
 export type {
   DtoDefinition,
@@ -581,10 +620,48 @@ export type {
 } from './validation/index';
 
 // Serialization
-export { Serialize, SerializerInterceptor, SERIALIZE_METADATA } from './serialization/index';
+export {
+  Serialize,
+  SerializerInterceptor,
+  SERIALIZE_METADATA,
+  defineSerializer,
+} from './serialization/index';
+export type { SerializationDescriptor, SerializerDefinition } from './serialization/index';
 
 // Testing utilities live in @velajs/testing — see https://github.com/velajs/testing
 
 // Hono Adapter Utilities
 export type { VelaContext, VelaHono, VelaHonoEnv, VelaMiddlewareHandler } from './http/hono.types';
 export { getRuntimeKey, env } from 'hono/adapter';
+
+export { defineEvent, defineEventVocabulary, EventDispatcher } from './event-emitter/index';
+export type {
+  EventDefinition,
+  EventVocabulary,
+  EventInput,
+  EventPayload,
+  ScopedEventDispatcher,
+  EventListenerDecorator,
+} from './event-emitter/index';
+
+// Application-owned structured logging (optional; legacy Logger/Writer unchanged).
+export {
+  ApplicationLogger,
+  StructuredLogger,
+  consoleLogSink,
+  loggerForScope,
+  APP_LOGGER,
+  LoggingModule,
+  serializeLogValue,
+  parseLogDirective,
+} from './logging/index';
+export type {
+  LogValue,
+  LogRecord,
+  LogSink,
+  LogFields,
+  LogSerializationOptions,
+  ApplicationLoggerOptions,
+  LogDeliveryContext,
+  LogThresholds,
+} from './logging/index';

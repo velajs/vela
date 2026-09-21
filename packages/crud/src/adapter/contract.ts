@@ -206,6 +206,9 @@ export interface RelationLoader<Row = Record<string, unknown>> {
 // ---------------------------------------------------------------------------
 
 export interface CrudAdapter<Row = Record<string, unknown>> {
+  /** Identity of the database/store that owns scopes. Share only when native
+   * scopes are mutually usable; names and engine kinds are not identities. */
+  readonly transactionOwner?: object;
   /** Explicit dynamic engine view. Typed facades never erase their input types. */
   readonly runtime: RuntimeAdapter;
 

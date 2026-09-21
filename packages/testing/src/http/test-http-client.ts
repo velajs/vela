@@ -3,6 +3,29 @@
 import type { TestingModule } from '../testing-module.js';
 import { TestHttpRequest } from './test-http-request.js';
 
+/** A Web-API transport for a live worker, SELF.fetch, or an in-process app. */
+export interface TestHttpTransport {
+  fetch(request: Request): Response | Promise<Response>;
+  readonly baseUrl?: string;
+}
+
+export interface TestHttpClientOptions {
+  baseUrl: string;
+  fetch?: (request: Request) => Response | Promise<Response>;
+}
+
+/** Create an independent HTTP client. Headers are explicit; requests are never retried. */
+export function createTestHttpClient(options: TestHttpClientOptions): TestHttpClient {
+  const url = new URL(options.baseUrl);
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new TypeError('Test HTTP baseUrl must use http: or https:');
+  }
+  return new TestHttpClient({
+    baseUrl: url.toString(),
+    fetch: options.fetch ?? ((request: Request) => globalThis.fetch(request)),
+  });
+}
+
 /**
  * TestHttpClient
  *
@@ -21,7 +44,7 @@ import { TestHttpRequest } from './test-http-request.js';
  */
 export class TestHttpClient {
   constructor(
-    private readonly module: TestingModule,
+    private readonly module: TestingModule | TestHttpTransport,
     private readonly host: string | null = null,
     private readonly defaultHeaders: Headers = new Headers(),
   ) {}

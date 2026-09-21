@@ -12,6 +12,9 @@ Studio is composed of these workspace packages:
 | [`@velajs/studio-host`](../../packages/studio-host) | Loopback dev host serving the SPA and proxying the admin API |
 | `@velajs/studio-fixtures` | Shared test fixtures (private) |
 
+See [Debugging Vela applications](../debugging.md) for breakpoints, optional
+structured log capture, handler timings, and module scope inspection.
+
 ## Development
 
 ```bash

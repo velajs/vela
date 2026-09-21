@@ -7,7 +7,7 @@ import type {
   StoredFile,
   UploadOptions,
 } from '../storage.types';
-import { passthrough, type Middleware } from './wrap';
+import { passthrough, type RawPreservingMiddleware } from './wrap';
 
 export type CompressionFormat = 'gzip' | 'deflate' | 'deflate-raw';
 
@@ -32,7 +32,7 @@ function stripVela(meta: Record<string, string> | undefined): Record<string, str
  * objects pass through unharmed. Range reads / presigned URLs are disabled
  * (the byte stream is not seekable and a direct URL would serve gzip).
  */
-export function compression(opts: CompressionOptions = {}): Middleware {
+export function compression(opts: CompressionOptions = {}): RawPreservingMiddleware {
   const format = opts.format ?? 'gzip';
   const available =
     typeof CompressionStream !== 'undefined' && typeof DecompressionStream !== 'undefined';

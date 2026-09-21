@@ -129,3 +129,43 @@ the one path parameter that owns the room. Bootstrap rejects missing,
 non-existent, duplicate, or ambiguous parameters. Durable Object names include
 both the gateway path and validated room, so callers must also pass the exact
 gateway path to Cloudflare broadcast/live helpers.
+
+## Admitted tenants and authentication payload
+
+Authenticate before running `TenantGuard`, then apply authorization and throttling. Tenant
+admission preserves `CurrentUser`, `CurrentSession`, and `CurrentAccessIdentity` payloads.
+The core identity remains an immutable snapshot; use it (or `CurrentTenant`) for the admitted
+tenant rather than assuming an identity-provider payload contains the selected tenant.
+
+Custom authentication integrations can keep provider payload in
+`createTrustedRequestIdentityStore<Payload>()`. The store accepts data only after
+`setTrustedRequestIdentity(request, identity)` publishes verified authority. Its contents
+disappear after clear, expiry, or any ordinary identity replacement, including replacement
+with the same principal. Trusted tenant admission calls
+`setTrustedRequestTenant(request, expectedIdentity, tenantId)` only after checking membership.
+That operation requires the exact current live identity and cannot switch an already-bound tenant.
+It preserves the authentication payload without changing principal, roles, claims, or expiry.
+
+For an HTTP-backed custom dispatcher, call
+`bindTrustedRequestContext(context, originalRequest)` before running policy guards. This
+explicit association enables `getTrustedContextRequest(context)` and the authz identity
+bridge; it neither authenticates nor copies authority. Authenticate and admit the tenant
+once before concurrent resolver fields. Better Auth and Cloudflare Access guards on these
+bound custom contexts read existing provider payload instead of authenticating again.
+Queue and socket payloads never become HTTP authority through this mechanism.
+
+## Non-browser cookie clients
+
+`SecurityModule.forRoot({ originProtection: { allowMissingOrigin: true } })` permits an
+absent Origin for credentialed non-browser requests. The default still rejects it. An
+explicit empty, null, malformed or disallowed Origin is rejected even with the option,
+and CORS preflights still require an allowed Origin.
+
+## Secret values
+
+`new Secret(value)` keeps its value in a JavaScript `#private` field and renders
+`[Redacted]` through JSON, string conversion and inspection. Read the value explicitly
+with `.reveal()` only where needed. This is a representation boundary, not encryption
+or protection against code that can call `reveal()`. Existing signing APIs still accept
+strings. Custom structured loggers can recognize the own data descriptor
+`Symbol.for('vela.secret')` with value `true` without invoking serialization methods.

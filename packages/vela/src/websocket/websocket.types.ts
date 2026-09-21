@@ -1,3 +1,4 @@
+import type { WebSocketSendPolicy, WebSocketSendResult } from '@velajs/live-protocol';
 import type { ExecutionContext, WsArgumentsHost } from '../pipeline/types';
 
 export type { WsArgumentsHost };
@@ -30,6 +31,8 @@ export interface WsClient<TData = Record<string, unknown>> {
   send(event: string, data?: unknown, id?: string): void;
   /** Send an already-serialized string. Escape hatch for custom framing. */
   sendRaw(payload: string): void;
+  /** Optional explicit local admission result; accepted never means remote delivery. */
+  trySendRaw?(payload: string): WebSocketSendResult;
   join(room: string): void | Promise<void>;
   leave(room: string): void | Promise<void>;
   /** Persist `data`/room mutations made during a handler. */
@@ -134,6 +137,12 @@ export interface WebSocketGatewayOptions {
   authorizeDelivery?: (client: WsClient) => boolean | Promise<boolean>;
   /** Maximum inbound and outbound frame size in bytes (default 64 KiB). */
   maxFrameBytes?: number;
+  /** Connection-local outgoing byte budgets; overload closes with 1013. */
+  sendPolicy?: WebSocketSendPolicy;
+  /** Maximum active + queued messages per connection (default 64). */
+  maxPendingMessages?: number;
+  /** Maximum bytes in active + queued messages (default 1 MiB). */
+  maxPendingBytes?: number;
 }
 
 /** Stored per `@SubscribeMessage` — a flat class-level list, mirroring `@OnEvent`. */
@@ -156,7 +165,12 @@ export interface ReservedWsEventMetadata {
  * every closing socket so the handler can drop per-connection state.
  */
 export interface ReservedWsEventHandler {
-  handleReservedEvent(path: string, client: WsClient, message: WsMessage): void | Promise<void>;
+  handleReservedEvent(
+    path: string,
+    client: WsClient,
+    message: WsMessage,
+    context?: WsExecutionContext,
+  ): void | Promise<void>;
   handleSocketClose?(path: string, client: WsClient): void | Promise<void>;
 }
 

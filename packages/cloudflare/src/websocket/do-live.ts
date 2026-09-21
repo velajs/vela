@@ -1,3 +1,4 @@
+import type { CfRoomRegistry } from './cf-room-registry';
 import type { Container } from '@velajs/vela';
 import {
   LIVE_CURSOR_LOG,
@@ -223,7 +224,11 @@ export function initializeDoLiveResources(container: Container, ctx: DoStateLike
  * subscribers. Returns the engine for the `invalidate` RPC, or undefined when
  * the app doesn't use LiveModule.
  */
-export function initDoLive(app: EntrypointsApp, ctx: DoStateLike): LiveEngine | undefined {
+export function initDoLive(
+  app: EntrypointsApp,
+  ctx: DoStateLike,
+  registry?: CfRoomRegistry,
+): LiveEngine | undefined {
   const entry = app.entrypoints.ofKind('live')[0];
   if (!entry) return undefined;
   if (typeof entry.meta !== 'object' || entry.meta === null || !('engine' in entry.meta)) {
@@ -234,7 +239,8 @@ export function initDoLive(app: EntrypointsApp, ctx: DoStateLike): LiveEngine | 
 
   // Wake-time replay: subscriptions ride the hibernation attachments.
   for (const ws of ctx.getWebSockets()) {
-    const client = new CfWsClient(ctx, ws);
+    const client = registry?.clientFor(ws) ?? new CfWsClient(ctx, ws);
+    if (!client.id) continue;
     for (const record of readPersistedLiveSubscriptions(client)) {
       engine.restoreSubscription(client.path, client, record);
     }

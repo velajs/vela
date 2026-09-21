@@ -1,4 +1,4 @@
-import { validateSchema, type StandardSchemaV1 } from '@velajs/vela';
+import { parseSchemaAsync, type StandardSchemaV1 } from '@velajs/vela';
 import type { RuntimeAdapter } from '../adapter/contract';
 
 type Row = Record<string, unknown>;
@@ -10,7 +10,7 @@ export function validateAdapterRows(
   schema: StandardSchemaV1,
 ): RuntimeAdapter {
   const row = async (value: unknown): Promise<Row> => {
-    const parsed = await validateSchema(schema, value);
+    const parsed = await parseSchemaAsync(schema, value);
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))
       throw new TypeError('Persisted row must be a record');
     return Object.fromEntries(Object.entries(parsed));

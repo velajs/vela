@@ -1,0 +1,66 @@
+{
+  "name": "@velajs/rpc",
+  "version": "1.0.0",
+  "description": "Schema-inferred method RPC over HTTP and service-binding fetch for Vela",
+  "license": "MIT",
+  "author": "ksh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/velajs/vela.git",
+    "directory": "packages/rpc"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.test.json",
+    "test:workers": "vitest run --config vitest.config.workers.ts",
+    "test:consumer": "pnpm build && node scripts/check-consumer.mjs"
+  },
+  "dependencies": {
+    "@velajs/errors": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "catalog:",
+    "@swc/core": "catalog:",
+    "@types/node": "catalog:",
+    "@velajs/vela": "workspace:*",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "unplugin-swc": "catalog:",
+    "vitest": "catalog:",
+    "zod": "catalog:"
+  },
+  "peerDependencies": {
+    "@velajs/vela": "workspace:^"
+  },
+  "peerDependenciesMeta": {
+    "@velajs/vela": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

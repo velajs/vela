@@ -27,7 +27,7 @@ export type ErrorMatcher =
  * signature) let a handler's `context()` enrich the payload.
  */
 export interface ErrorReportContext {
-  edge: 'http' | 'ws' | 'live' | 'queue' | 'schedule' | 'hono';
+  edge: 'http' | 'ws' | 'live' | 'queue' | 'schedule' | 'hono' | 'graphql' | 'rpc';
   /** e.g. `'CatsController.findAll'` or a query name. */
   source?: string;
   /** e.g. `'exception filter threw'`. */

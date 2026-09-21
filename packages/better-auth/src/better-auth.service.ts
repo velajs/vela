@@ -31,9 +31,13 @@ export const BETTER_AUTH_BUILDER = new InjectionToken<() => BetterAuthInstance>(
  */
 @Injectable()
 export class BetterAuthService<TAuth extends BetterAuthInstance = BetterAuthInstance> {
-  private cached: TAuth | undefined;
+  #cached: TAuth | undefined;
 
-  constructor(@Inject(BETTER_AUTH_BUILDER) private readonly build: () => TAuth) {}
+  readonly #build: () => TAuth;
+
+  constructor(@Inject(BETTER_AUTH_BUILDER) build: () => TAuth) {
+    this.#build = build;
+  }
 
   /**
    * The underlying better-auth instance. Constructed once on first access.
@@ -41,8 +45,8 @@ export class BetterAuthService<TAuth extends BetterAuthInstance = BetterAuthInst
    * services invoked from handlers).
    */
   get auth(): TAuth {
-    if (!this.cached) this.cached = this.build();
-    return this.cached;
+    if (!this.#cached) this.#cached = this.#build();
+    return this.#cached;
   }
 
   /** Convenience accessor — equivalent to `service.auth.api`. */

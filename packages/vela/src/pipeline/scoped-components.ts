@@ -1,4 +1,6 @@
 import type { Container } from '../container/container';
+import type { TypedToken } from '../container/types';
+import { instantiateMany, instantiateManyAsync } from '../http/instantiate';
 import type { ComponentType, Constructor } from '../registry/types';
 import { ComponentManager } from './component.manager';
 import type {
@@ -17,39 +19,61 @@ export interface ResolvedComponentMap {
   middleware: NestMiddleware;
 }
 
-const RESOLVERS = {
-  guard: ComponentManager.resolveGuards.bind(ComponentManager),
-  pipe: ComponentManager.resolvePipes.bind(ComponentManager),
-  interceptor: ComponentManager.resolveInterceptors.bind(ComponentManager),
-  filter: ComponentManager.resolveFilters.bind(ComponentManager),
-  middleware: ComponentManager.resolveMiddleware.bind(ComponentManager),
-} as const;
+/** An instance or typed provider token for the selected pipeline component kind. */
+export type PipelineComponentEntry<T extends ComponentType> =
+  | ResolvedComponentMap[T]
+  | TypedToken<ResolvedComponentMap[T]>;
 
 /**
- * Public seam for custom dispatchers: the `@UseGuards`/`@UsePipes`/
- * `@UseInterceptors`/`@UseFilters` components scoped to a handler (class-level
- * then method-level, declaration order), resolved to instances through the
- * given container (classes constructed with DI; instances passed through).
- *
- * Order is preserved exactly as declared — conventions stay with the CALLER:
- * filters run closest-first, so dispatchers reverse them
- * (`resolveScopedComponents('filter', ...).reverse()`), and app-wide `APP_*`
- * components are a separate, transport-specific decision.
- *
- * Promoted to the public API by the QueueModule work (the "openness proof"):
- * it was the one capability custom entrypoint dispatchers needed that only
- * the internal `ComponentManager` provided.
+ * Resolve explicit lists (for example app-global components) asynchronously.
+ * Omitting moduleId preserves application-level lookup; scoped lists should
+ * supply their declaring owner. Resolution preserves declaration order.
+ */
+export function resolvePipelineComponents<T extends ComponentType>(
+  _type: T,
+  entries: readonly PipelineComponentEntry<NoInfer<T>>[],
+  container: Container,
+  moduleId?: string,
+): Promise<ResolvedComponentMap[T][]> {
+  return instantiateManyAsync<ResolvedComponentMap[T]>(entries, container, moduleId);
+}
+
+/**
+ * Class-level then method-level components. The caller owns ordering policy:
+ * reverse filters for closest-first handling, and choose transport globals
+ * separately. Synchronous resolution remains available for 1.x callers.
  */
 export function resolveScopedComponents<T extends ComponentType>(
   type: T,
   targetClass: Constructor,
   methodName: string | symbol,
   container: Container,
+  moduleId?: string,
 ): ResolvedComponentMap[T][] {
-  const scoped = ComponentManager.getScopedComponents(type, targetClass, methodName);
-  const resolve = RESOLVERS[type] as (
-    items: unknown[],
-    container: Container,
-  ) => ResolvedComponentMap[T][];
-  return resolve(scoped, container);
+  // MetadataRegistry's ComponentTypeMap and this result map share the same
+  // discriminant, but TypeScript cannot retain that indexed correlation.
+  const scoped = ComponentManager.getScopedComponents(
+    type,
+    targetClass,
+    methodName,
+  ) as PipelineComponentEntry<T>[];
+  return instantiateMany<ResolvedComponentMap[T]>(scoped, container, moduleId);
+}
+
+/** Async factories and lazy modules use the same ownership and metadata as sync dispatch. */
+export function resolveScopedComponentsAsync<T extends ComponentType>(
+  type: T,
+  targetClass: Constructor,
+  methodName: string | symbol,
+  container: Container,
+  moduleId?: string,
+): Promise<ResolvedComponentMap[T][]> {
+  // MetadataRegistry's ComponentTypeMap and this result map share the same
+  // discriminant, but TypeScript cannot retain that indexed correlation.
+  const scoped = ComponentManager.getScopedComponents(
+    type,
+    targetClass,
+    methodName,
+  ) as PipelineComponentEntry<T>[];
+  return instantiateManyAsync<ResolvedComponentMap[T]>(scoped, container, moduleId);
 }

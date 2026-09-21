@@ -1,4 +1,10 @@
-import { InjectionToken, defineProvider, forwardRef, type Token } from '@velajs/vela';
+import {
+  InjectionToken,
+  defineProvider,
+  forwardRef,
+  type Token,
+  type StandardSchemaV1,
+} from '@velajs/vela';
 import { Test } from '../test.js';
 import type { TestingModule } from '../testing-module.js';
 import type { TestResponse } from '../http/test-response.js';
@@ -89,3 +95,39 @@ async function responseContracts(response: TestResponse): Promise<void> {
 }
 
 void [providerContracts, responseContracts];
+
+interface DatabasePort {
+  read(id: string): Promise<string>;
+}
+class Database implements DatabasePort {
+  #prefix = 'record';
+  async read(id: string): Promise<string> {
+    return `${this.#prefix}:${id}`;
+  }
+}
+const DATABASE = new InjectionToken<DatabasePort>('database-port');
+const databaseFake = { read: async (id: string) => id } satisfies DatabasePort;
+const portBuilder = Test.createTestingModule({
+  providers: [defineProvider(DATABASE, { useClass: Database })],
+});
+portBuilder.overrideProvider(DATABASE).useValue(databaseFake);
+portBuilder
+  .overrideProvider(DATABASE)
+  .useFactory({ inject: [], factory: async () => databaseFake });
+// @ts-expect-error A fake must implement the whole injected port.
+portBuilder.overrideProvider(DATABASE).useValue({});
+// @ts-expect-error Return values must honor the port, including asynchronous results.
+portBuilder.overrideProvider(DATABASE).useValue({ read: () => 'unvalidated' });
+
+async function standardResponseContracts(
+  response: TestResponse,
+  schema: StandardSchemaV1<string, number>,
+) {
+  const transformed: number = await response.json(schema);
+  // @ts-expect-error A transformed response is the schema output, not its wire input.
+  const wire: string = await response.json(schema);
+  const asyncLegacy: number = await response.json({ parse: () => 0, parseAsync: async () => 42 });
+  const explicitLegacy: number = await response.json<number>({ parse: () => 42 });
+  void [transformed, wire, asyncLegacy, explicitLegacy];
+}
+void standardResponseContracts;

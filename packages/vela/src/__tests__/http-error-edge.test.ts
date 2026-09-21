@@ -217,7 +217,7 @@ describe('hono app.onError — hono/middleware errors cannot bypass report + red
   // This test only DOCUMENTS the observed behavior — it does not fix
   // route.manager.
   // ---------------------------------------------------------------------------
-  it('probe: route.manager global-middleware raw-error boundary reaches onError (redacted, no leak)', async () => {
+  it('vela global-middleware errors are reported and redacted without leaking details', async () => {
     @Controller('/probe')
     class ProbeController {
       @Get()
@@ -240,7 +240,7 @@ describe('hono app.onError — hono/middleware errors cannot bypass report + red
     const res = await app.getHonoApp().request('/probe');
     const body = await res.json();
 
-    // Documented observation: onError closes the raw-Error middleware boundary.
+    // The middleware boundary reports and renders raw errors exactly once.
     expect(res.status).toBe(500);
     expect(body).toEqual({ error: { code: 'internal', message: 'Internal Server Error' } });
     expect(JSON.stringify(body)).not.toContain('boundary secret');

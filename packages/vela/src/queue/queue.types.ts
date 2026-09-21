@@ -1,4 +1,4 @@
-import type { InvocationTarget } from '../index';
+import type { InvocationTarget, StandardSchemaV1 } from '../index';
 
 /**
  * One job as handed to `@Process` handlers and drivers. Ids are minted by the
@@ -45,6 +45,8 @@ export interface QueueDriver {
   readonly kind: string;
   enqueue(job: QueueJob, options?: AddJobOptions): Promise<void>;
   bind?(dispatch: QueueDispatchFn, hooks?: QueueDriverBindHooks): void;
+  /** Release an application's binding at disposal. Optional for legacy drivers. */
+  unbind?(): void;
 }
 
 /**
@@ -79,8 +81,8 @@ export interface QueueModuleOptions {
    * providers); `forRootAsync` callers pass it alongside the factory.
    */
   queues?: string[];
-  /** Defaults to the in-core `inline()` driver. */
-  driver?: QueueDriver;
+  /** Defaults to inline(). A factory creates a fresh driver per application. */
+  driver?: QueueDriver | (() => QueueDriver);
   /**
    * Opt-in signed re-entry for delivered jobs (default `direct`). STRUCTURAL —
    * like `queues`, pass it alongside the factory for `forRootAsync`. The
@@ -98,5 +100,7 @@ export interface ProcessorMetadata {
 /** Per-handler meta written by `@Process(jobName?)`. */
 export interface ProcessMetadata {
   jobName?: string;
+  /** Opt-in wire validation; parsed output is passed to the processor. */
+  schema?: StandardSchemaV1;
   methodName: string | symbol;
 }

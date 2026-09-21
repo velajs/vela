@@ -114,3 +114,31 @@ class ReportsController {
 ```
 
 `CacheModuleOptions`: `ttl` (**seconds**, default 5), `max` (default 100), `isGlobal?` (registers `CacheInterceptor` app-wide), `store?`. `CacheService`: raw unknown `get(key)`, parser-inferred `getParsed(key, schema)`, `set(key, value, ttl?)`, `del(key)`, `clear()`. `CacheInterceptor` caches GET only; the key is `@CacheKey` or `cache:GET:<path>`. Stores: `MemoryCacheStore` (default) and `TieredCacheStore` (multi-tier, async).
+
+
+## Application-owned structured logging
+
+Import `LoggingModule.forRoot({ directive: 'warn,orders=debug', sinks: [...] })`
+once per application and inject `APP_LOGGER` (`ApplicationLogger`).
+`createLogger(category, fields)` returns a `LoggerService`-compatible child;
+`withFields` snapshots extra context and `extend` changes the category.
+`subscribe(LogSink)` receives immutable, bounded, redacted JSON-safe `LogRecord`
+values and returns an unsubscribe function. No console patching is involved.
+Legacy `Logger` and text `Writer` settings remain independent.
+
+Use `loggerForScope(actualChildContainer, category, fields)` for automatic
+`invocationId`, HTTP `requestId`, and async delivery tracking through the existing
+execution lifetime. Passing the root does not establish request context. Scoped
+loggers stop at lifetime closure. `flush()` waits for currently pending sink
+work; delivery failures are contained and reported by logger diagnostics.
+
+Default exception reports use APP_LOGGER when installed. Custom
+`ExceptionHandler.report` remains a replacement, so installing logging does not
+double-report custom errors. Default 4xx/silent suppression and client rendering
+remain unchanged. Correlation conveys no identity authority.
+
+Serialization skips getters/toJSON and bounds depth, width, nodes and strings.
+Error causes are retained; accessor-backed stacks use `[Accessor]`. Add
+application `redactKeys`; default key redaction cannot discover credentials in
+free text. The own data marker `[Symbol.for('vela.secret')] === true` redacts
+an entire secret wrapper. Do not log request/environment objects wholesale.
