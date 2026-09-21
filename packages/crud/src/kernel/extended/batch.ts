@@ -1,3 +1,5 @@
+import { parseIdentifier } from '../identifier';
+import { lookupFromRow, rowIdentifier, buildLookup } from '../verb-helpers';
 /**
  * Batch family: batchCreate / batchUpdate / batchDelete / batchRestore /
  * batchUpsert + bulkPatch. Executors register in `batchExecutors` and surface
@@ -79,7 +81,6 @@ import {
   updateSchemaFor,
   scopeListQuery,
   shapeOne,
-  tenantFilters,
   txCtx,
   type AnyResource,
 } from '../verb-helpers';
@@ -102,13 +103,9 @@ function maxBatchSize(resource: AnyResource): number {
   return resource.config.batch?.maxBatchSize ?? DEFAULT_MAX_BATCH_SIZE;
 }
 
-function primaryKey(resource: AnyResource): string {
-  return resource.model.primaryKeys[0] ?? 'id';
-}
-
 /** A tenant-scoped point lookup for a client-supplied id. */
-function lookupFor(resource: AnyResource, req: EngineRequest, id: string): Lookup {
-  return { field: primaryKey(resource), value: id, filters: tenantFilters(resource, req) };
+async function lookupFor(resource: AnyResource, req: EngineRequest, id: string): Promise<Lookup> {
+  return buildLookup(resource, { ...req, id: await parseIdentifier(resource, id) });
 }
 
 /**
@@ -135,10 +132,10 @@ function extractItems(body: unknown): unknown[] {
 /** `{ ids: [...] }` body → the string-id array (loud on the wrong shape). */
 function extractIds(body: unknown): string[] {
   const ids = (body as { ids?: unknown } | null | undefined)?.ids;
-  if (!Array.isArray(ids) || !ids.every((id) => typeof id === 'string')) {
+  if (!Array.isArray(ids)) {
     throw new InputValidationException('Request body must include an "ids" array of strings');
   }
-  return ids as string[];
+  return ids.map(identifierText);
 }
 
 /** Bare-array body (batchUpsert) → the items array (loud on the wrong shape). */
@@ -158,7 +155,7 @@ interface UpdateItem {
 function extractUpdateItems(body: unknown): UpdateItem[] {
   return extractItems(body).map((raw, index) => {
     const item = raw as { id?: unknown; data?: unknown } | null | undefined;
-    if (typeof item?.id !== 'string' || item.id === '') {
+    if (item?.id === undefined) {
       throw new InputValidationException(
         `Batch update item at index ${index} is missing a string "id"`,
       );
@@ -169,7 +166,7 @@ function extractUpdateItems(body: unknown): UpdateItem[] {
         `Batch update item at index ${index} has a non-object "data"`,
       );
     }
-    return { id: item.id, data: (data ?? {}) as Row };
+    return { id: identifierText(item.id), data: (data ?? {}) as Row };
   });
 }
 
@@ -283,17 +280,19 @@ async function executeBatchCreate(
 
     // Validate + stamp every item first (all-or-nothing: an invalid item aborts
     // before any before-hook runs or any row is written).
-    const prepared: Row[] = rawItems.map((item) => {
-      const data = parseBody(createSchema, item);
-      assertNoNestedWrites(model, data, 'batchCreate');
-      if (model.tenantField !== undefined && req.vars?.tenantId !== undefined) {
-        data[model.tenantField] = req.vars.tenantId;
-      }
-      return applyManagedInsertFields(model, data, {
-        databaseGeneratedId,
-        tenantId: req.vars?.tenantId,
-      });
-    });
+    const prepared: Row[] = await Promise.all(
+      rawItems.map(async (item) => {
+        const data = await parseBody(createSchema, item);
+        assertNoNestedWrites(model, data, 'batchCreate');
+        if (model.tenantField !== undefined && req.vars?.tenantId !== undefined) {
+          data[model.tenantField] = req.vars.tenantId;
+        }
+        return applyManagedInsertFields(model, data, {
+          databaseGeneratedId,
+          tenantId: req.vars?.tenantId,
+        });
+      }),
+    );
 
     const inputs: Row[] = [];
     for (let i = 0; i < prepared.length; i++) {
@@ -326,7 +325,7 @@ async function executeBatchCreate(
     resource,
     req,
     'batch_create',
-    created.map((row) => ({ recordId: row[primaryKey(resource)] as string | number, record: row })),
+    created.map((row) => ({ recordId: rowIdentifier(resource, row), record: row })),
   );
 
   const policyCtx = buildPolicyContext(req);
@@ -363,16 +362,18 @@ async function executeBatchUpdate(
   const updateSchema = await updateSchemaFor(resource, req);
   const outcome = await config.adapter.transaction(async (scope) => {
     const ctx = buildHookContext(req, scope);
-    const patches = items.map((item) => {
-      const parsed = parseBody(updateSchema, item.data);
-      assertNoNestedWrites(model, parsed, 'batchUpdate');
-      return applyManagedUpdateFields(model, parsed);
-    });
+    const patches = await Promise.all(
+      items.map(async (item) => {
+        const parsed = await parseBody(updateSchema, item.data);
+        assertNoNestedWrites(model, parsed, 'batchUpdate');
+        return applyManagedUpdateFields(model, parsed);
+      }),
+    );
 
     const updated: Row[] = [];
     const notFound: string[] = [];
     for (let i = 0; i < items.length; i++) {
-      const lookup = lookupFor(resource, req, items[i].id);
+      const lookup = await lookupFor(resource, req, items[i].id);
       const prior = (await config.adapter.readOne(lookup, {}, scope)) as Row | null;
       if (!prior) {
         notFound.push(items[i].id);
@@ -401,7 +402,7 @@ async function executeBatchUpdate(
     req,
     'batch_update',
     outcome.updated.map((row) => ({
-      recordId: row[primaryKey(resource)] as string | number,
+      recordId: rowIdentifier(resource, row),
       record: row,
     })),
   );
@@ -442,7 +443,7 @@ async function executeBatchDelete(
     const deleted: Row[] = [];
     const notFound: string[] = [];
     for (let i = 0; i < ids.length; i++) {
-      const lookup = lookupFor(resource, req, ids[i]);
+      const lookup = await lookupFor(resource, req, ids[i]);
       const prior = (await config.adapter.readOne(lookup, {}, scope)) as Row | null;
       if (!prior) {
         notFound.push(ids[i]);
@@ -470,7 +471,7 @@ async function executeBatchDelete(
     req,
     'batch_delete',
     outcome.deleted.map((row) => ({
-      recordId: row[primaryKey(resource)] as string | number,
+      recordId: rowIdentifier(resource, row),
       previousRecord: row,
     })),
   );
@@ -526,7 +527,7 @@ async function executeBatchRestore(
     const restored: Row[] = [];
     const notFound: string[] = [];
     for (let i = 0; i < ids.length; i++) {
-      const lookup = lookupFor(resource, req, ids[i]);
+      const lookup = await lookupFor(resource, req, ids[i]);
       const prior = (await config.adapter.readOne(
         lookup,
         { withDeleted: true },
@@ -553,7 +554,7 @@ async function executeBatchRestore(
     req,
     'batch_restore',
     outcome.restored.map((row) => ({
-      recordId: row[primaryKey(resource)] as string | number,
+      recordId: rowIdentifier(resource, row),
       record: row,
     })),
   );
@@ -606,10 +607,10 @@ async function executeBatchUpsert(
   const beforeMode = config.hooks?.modes?.batchUpsert?.beforeMode ?? 'sequential';
   const afterMode = config.hooks?.modes?.batchUpsert?.afterMode ?? 'sequential';
   const databaseGeneratedId = caps.has('databaseGeneratedId');
-  const pk = primaryKey(resource);
   const upsertOne = adapter.upsertOne;
 
-  const upsertCreateSchema = await createSchemaFor(resource, req);
+  const upsertCreateSchema =
+    config.contracts?.upsert ?? model.contracts?.upsert ?? (await createSchemaFor(resource, req));
   const outcome = await adapter.transaction(async (scope) => {
     const ctx = buildHookContext(req, scope);
     const items: Array<{ record: Row; created: boolean; index: number }> = [];
@@ -617,7 +618,7 @@ async function executeBatchUpsert(
     let updatedCount = 0;
 
     for (let i = 0; i < rawItems.length; i++) {
-      const values = parseBody(upsertCreateSchema, rawItems[i]);
+      const values = await parseBody(upsertCreateSchema, rawItems[i]);
       assertNoNestedWrites(model, values, 'batchUpsert');
       if (model.tenantField !== undefined && req.vars?.tenantId !== undefined) {
         values[model.tenantField] = req.vars.tenantId;
@@ -639,7 +640,7 @@ async function executeBatchUpsert(
       if (
         caps.has('upsert') &&
         upsertOne &&
-        model.tenantField === undefined &&
+        (model.tenantField === undefined || caps.has('scopedUpsert')) &&
         model.policies?.create === undefined &&
         model.policies?.read === undefined &&
         model.policies?.write === undefined
@@ -654,11 +655,7 @@ async function executeBatchUpsert(
         record = res.row as Row;
         created = res.created;
       } else if (existing !== null) {
-        const existingLookup: Lookup = {
-          field: pk,
-          value: String(existing[pk]),
-          filters: tenantFilters(resource, req),
-        };
+        const existingLookup = lookupFromRow(resource, req, existing);
         if (isSoftDeleted(model, existing)) {
           const restore = adapter.restore;
           if (!caps.has('restore') || restore === undefined) {
@@ -703,7 +700,7 @@ async function executeBatchUpsert(
     req,
     'batch_upsert',
     outcome.items.map((item) => ({
-      recordId: item.record[primaryKey(resource)] as string | number,
+      recordId: rowIdentifier(resource, item.record),
       record: item.record,
     })),
   );
@@ -772,7 +769,7 @@ async function executeBulkPatch(resource: AnyResource, req: EngineRequest): Prom
       'EMPTY_BODY',
     );
   }
-  const patchFields = parseBody(await updateSchemaFor(resource, req), rawData);
+  const patchFields = await parseBody(await updateSchemaFor(resource, req), rawData);
   assertNoNestedWrites(model, patchFields, 'bulkPatch');
   const dryRun = isDryRun(req);
 
@@ -859,11 +856,7 @@ async function executeBulkPatch(resource: AnyResource, req: EngineRequest): Prom
 
     const records: Row[] = [];
     for (const row of fixedRows ?? []) {
-      const lookup: Lookup = {
-        field: primaryKey(resource),
-        value: String(row[primaryKey(resource)]),
-        filters: tenantFilters(resource, req),
-      };
+      const lookup = lookupFromRow(resource, req, row);
       const updated = (await adapter.update(lookup, patch, scope)) as Row | null;
       if (updated) records.push(updated);
     }
@@ -894,3 +887,18 @@ export const batchExecutors: Partial<Record<CrudEndpointName, VerbExecutor>> = {
   batchUpsert: executeBatchUpsert,
   bulkPatch: executeBulkPatch,
 };
+
+function identifierText(value: unknown): string {
+  if (typeof value === 'string' && value) return value;
+  if (
+    value &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    Object.keys(value).length &&
+    Object.values(value).every(
+      (v) => typeof v === 'string' || (typeof v === 'number' && Number.isFinite(v)),
+    )
+  )
+    return JSON.stringify(value);
+  throw new InputValidationException('Invalid batch identifier');
+}

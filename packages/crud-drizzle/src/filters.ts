@@ -22,7 +22,7 @@ import {
   or as drizzleOr,
   sql,
 } from 'drizzle-orm';
-import { assertNever, type FilterCondition } from '@velajs/crud/adapter';
+import { assertNever, type FilterCondition, type QueryPredicate } from '@velajs/crud/adapter';
 import type { DrizzleColumn, DrizzleDialect, DrizzleSql, DrizzleTable } from './database';
 
 /** `and` that tolerates undefined members and collapses to undefined. */
@@ -87,9 +87,11 @@ export function buildWhereCondition(
   filter: FilterCondition,
   dialect: DrizzleDialect,
 ): DrizzleSql {
+  if (filter.operator === 'predicate') return buildPredicate(table, filter.value, dialect);
   const column = getColumn(table, filter.field);
 
-  switch (filter.operator) {
+  const operator = filter.operator;
+  switch (operator) {
     case 'eq':
       return eq(column, filter.value);
     case 'ne':
@@ -122,7 +124,87 @@ export function buildWhereCondition(
     }
     default:
       // Operators are validated upstream; a new union member fails to compile.
-      return assertNever(filter.operator);
+      return assertNever(operator);
+  }
+}
+
+/** COALESCE makes negation two-valued, including nullable SQL columns. */
+export function buildPredicate(
+  table: DrizzleTable,
+  p: QueryPredicate,
+  dialect: DrizzleDialect,
+): DrizzleSql {
+  switch (p.op) {
+    case 'true':
+      return sql`TRUE`;
+    case 'false':
+      return sql`FALSE`;
+    case 'and':
+      return p.args.length
+        ? drizzleAnd(...p.args.map((v) => buildPredicate(table, v, dialect)))!
+        : sql`TRUE`;
+    case 'or':
+      return p.args.length
+        ? drizzleOr(...p.args.map((v) => buildPredicate(table, v, dialect)))!
+        : sql`FALSE`;
+    case 'not':
+      return sql`NOT (${buildPredicate(table, p.arg, dialect)})`;
+    default:
+      break;
+  }
+  const column = getColumn(table, p.field);
+  switch (p.op) {
+    // Relational rows have every mapped column, even when its value is null.
+    case 'has':
+      return sql`TRUE`;
+    case 'pattern': {
+      if (dialect === 'mysql')
+        throw new Error('Exact Cedar pattern matching is unsupported on MySQL');
+      const pattern = p.tokens
+        .map((token) =>
+          token === null
+            ? dialect === 'sqlite'
+              ? '*'
+              : '%'
+            : dialect === 'sqlite'
+              ? token.replace(/\[/g, '[[]').replace(/\*/g, '[*]').replace(/\?/g, '[?]')
+              : token.replace(/[!%_]/g, '!$&'),
+        )
+        .join('');
+      return dialect === 'sqlite'
+        ? sql`COALESCE(${column} GLOB ${pattern}, FALSE)`
+        : sql`COALESCE(${column} LIKE ${pattern} ESCAPE '!', FALSE)`;
+    }
+    case 'isNull':
+      return isNull(column);
+    case 'eq':
+      return p.value === null ? isNull(column) : sql`COALESCE(${eq(column, p.value)}, FALSE)`;
+    case 'in':
+      return p.values.length
+        ? drizzleOr(
+            ...p.values.map((v) =>
+              buildPredicate(table, { op: 'eq', field: p.field, value: v }, dialect),
+            ),
+          )!
+        : sql`FALSE`;
+    case 'lt':
+      return sql`COALESCE(${lt(column, p.value)}, FALSE)`;
+    case 'lte':
+      return sql`COALESCE(${lte(column, p.value)}, FALSE)`;
+    case 'gt':
+      return sql`COALESCE(${gt(column, p.value)}, FALSE)`;
+    case 'gte':
+      return sql`COALESCE(${gte(column, p.value)}, FALSE)`;
+    case 'contains':
+      return sql`COALESCE(${substringMatch(column, String(p.value), dialect, { caseSensitive: true })}, FALSE)`;
+    case 'startsWith':
+      return sql`COALESCE(SUBSTR(${column}, 1, ${[...String(p.value)].length}) = ${p.value}, FALSE)`;
+    case 'endsWith': {
+      const n = [...String(p.value)].length;
+      return n === 0
+        ? isNotNull(column)
+        : sql`COALESCE(SUBSTR(${column}, LENGTH(${column}) - ${n} + 1) = ${p.value}, FALSE)`;
+    }
   }
 }
 

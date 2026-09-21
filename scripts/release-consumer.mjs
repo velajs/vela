@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { cp, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { verifyEdgePackages } from './edge-consumer.mjs';
 import { verifyAgentPackage } from './agent-consumer.mjs';
 import { verifyAiPackage } from './ai-consumer.mjs';
 import { verifyNewProject } from './cli-consumer.mjs';
@@ -92,6 +93,14 @@ const workflowConsumer = tarballs['@velajs/workflow']
   : undefined;
 const mailPackage = tarballs['@velajs/mail'] ? await verifyMailPackage(tarballs) : undefined;
 const agentPackage = tarballs['@velajs/agent'] ? await verifyAgentPackage(tarballs) : undefined;
+const edgePackages =
+  tarballs['@velajs/crud'] ||
+  tarballs['@velajs/tenant'] ||
+  tarballs['@velajs/crypto'] ||
+  tarballs['@velajs/authz-cedar'] ||
+  tarballs['@velajs/crud-durable-objects']
+    ? await verifyEdgePackages(tarballs)
+    : undefined;
 await writeFile(
   join(artifactDir, 'consumer.json'),
   JSON.stringify(
@@ -101,6 +110,7 @@ await writeFile(
       generatedProject,
       eventSource,
       agentPackage,
+      edgePackages,
       aiPackage,
       workflowConsumer,
       mailPackage,

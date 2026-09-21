@@ -1,3 +1,4 @@
+import { matchesPredicate } from '@velajs/crud/query';
 import type { FilterCondition } from '@velajs/crud/adapter';
 
 /**
@@ -20,7 +21,15 @@ function unknownOperator(_operator: never): false {
  * case-sensitive in memory (collation-strict); `ilike` is case-insensitive.
  */
 export function matchesFilter(value: unknown, filter: FilterCondition): boolean {
-  switch (filter.operator) {
+  const operator = filter.operator;
+  switch (operator) {
+    case 'predicate':
+      return (
+        typeof value === 'object' &&
+        value !== null &&
+        !Array.isArray(value) &&
+        matchesPredicate(Object.fromEntries(Object.entries(value)), filter.value)
+      );
     case 'eq':
       return String(value) === String(filter.value);
     case 'ne':
@@ -50,6 +59,6 @@ export function matchesFilter(value: unknown, filter: FilterCondition): boolean 
       return Number(value) >= Number(min) && Number(value) <= Number(max);
     }
     default:
-      return unknownOperator(filter.operator);
+      return unknownOperator(operator);
   }
 }

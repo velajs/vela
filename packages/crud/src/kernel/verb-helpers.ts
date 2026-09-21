@@ -1,3 +1,5 @@
+import { responseContract } from './operation-scope';
+import { validatePredicate, matchesPredicate } from '../query/predicate';
 /**
  * The five core verb executors. Canonical stage order (mutations):
  *
@@ -12,9 +14,14 @@
  * `adapter.transaction()`; D1 rejects unsupported callback transactions.
  */
 
-import type { ZodObject, ZodRawShape } from 'zod';
+import {
+  ValidationPipe,
+  validateSchema,
+  SchemaValidationError,
+  type StandardSchemaV1,
+} from '@velajs/vela';
 import type { AdapterScope, TransactionContext } from '../adapter/contract';
-import type { FilterCondition, ListQuery, Lookup, Page } from '../adapter/query-types';
+import type { FilterCondition, ListQuery, Lookup } from '../adapter/query-types';
 import {
   CrudException,
   ForbiddenException,
@@ -55,7 +62,7 @@ export function requireId(req: EngineRequest): string {
   if (req.id === undefined || req.id === '') {
     throw new InputValidationException('Missing id path parameter');
   }
-  return req.id;
+  return typeof req.id === 'string' ? req.id : JSON.stringify(req.id);
 }
 
 export function buildHookContext(req: EngineRequest, scope: AdapterScope): HookContext {
@@ -161,22 +168,87 @@ export function txCtx(req: EngineRequest): TransactionContext {
 }
 
 export function buildLookup(resource: AnyResource, req: EngineRequest): Lookup {
+  const keys = resource.model.primaryKeys;
+  let source: unknown =
+    typeof req.id === 'object'
+      ? req.id
+      : keys.length > 1
+        ? req.params
+        : { [keys[0] ?? 'id']: requireId(req) };
+  if (keys.length > 1 && typeof req.id === 'string') {
+    try {
+      source = JSON.parse(req.id);
+    } catch {
+      throw new InputValidationException('Compound IDs must contain every primary key');
+    }
+  }
+  if (!source || typeof source !== 'object' || Array.isArray(source))
+    throw new InputValidationException('Invalid identifier');
+  const parts = Object.fromEntries(Object.entries(source));
+  const values: Record<string, string> = {};
+  for (const key of keys) {
+    const value = parts[key];
+    if (
+      (typeof value !== 'string' && typeof value !== 'number') ||
+      value === '' ||
+      (typeof value === 'number' && !Number.isFinite(value))
+    )
+      throw new InputValidationException(`Missing or invalid identifier '${key}'`);
+    values[key] = String(value);
+  }
+  const [field = 'id', ...rest] = keys;
   return {
-    field: resource.model.primaryKeys[0] ?? 'id',
-    value: requireId(req),
-    filters: tenantFilters(resource, req),
+    field,
+    value: values[field]!,
+    filters: {
+      ...Object.fromEntries(rest.map((key) => [key, values[key]!])),
+      ...tenantFilters(resource, req),
+    },
   };
+}
+
+export function lookupFromRow(resource: AnyResource, req: EngineRequest, row: Row): Lookup {
+  const id: Record<string, string | number> = {};
+  for (const key of resource.model.primaryKeys) {
+    const value = row[key];
+    if (typeof value !== 'string' && typeof value !== 'number')
+      throw new TypeError(`Invalid persisted identifier '${key}'`);
+    id[key] = value;
+  }
+  return buildLookup(resource, { ...req, id });
 }
 
 /** Engine-side re-check of pushdown conditions on point reads. */
 export function passesPushdown(row: Row, conditions: FilterCondition[]): boolean {
-  return conditions.every((condition) => matchesFilter(row[condition.field], condition));
+  return conditions.every((condition) =>
+    matchesFilter(condition.operator === 'predicate' ? row : row[condition.field], condition),
+  );
 }
 
-export function parseBody(schema: ZodObject<ZodRawShape>, body: unknown): Row {
-  const parsed = schema.safeParse(body ?? {});
-  if (!parsed.success) throw InputValidationException.fromZodError(parsed.error);
-  return parsed.data;
+export async function parseBody(schema: StandardSchemaV1, body: unknown): Promise<Row> {
+  try {
+    const parsed = ValidationPipe.consumeValidated(body, schema)
+      ? body
+      : await validateSchema(schema, body ?? {});
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      throw new InputValidationException('CRUD input must validate to a record');
+    }
+    return Object.fromEntries(Object.entries(parsed));
+  } catch (error) {
+    if (error instanceof SchemaValidationError) {
+      throw new InputValidationException(
+        'Validation failed',
+        error.issues.map((issue) => ({
+          path: (issue.path ?? [])
+            .map((part) => (typeof part === 'object' ? String(part.key) : String(part)))
+            .join('.'),
+          message: issue.message,
+          code: 'validation',
+        })),
+      );
+    }
+    throw error;
+  }
 }
 
 /**
@@ -192,6 +264,7 @@ export async function shapeOne(
   policyCtx: PolicyContext,
   req: EngineRequest,
   row: Row,
+  validateResponse = true,
 ): Promise<Row> {
   const primaryKey = resource.model.primaryKeys[0] ?? 'id';
   await assertReadAllowed(resource, policyCtx, row, String(row[primaryKey] ?? ''));
@@ -200,7 +273,7 @@ export async function shapeOne(
   shaped = applyProfile(resource.model, shaped);
   const selection = resolveSelection(resource, req);
   if (selection) shaped = applyFieldSelection(shaped, selection);
-  return shaped;
+  return validateResponse ? responseContract(resource, shaped) : shaped;
 }
 
 export function resolveSelection(resource: AnyResource, req: EngineRequest) {
@@ -252,6 +325,30 @@ export async function attachIncludes(
       : relation.response?.softDeleteField === false
         ? undefined
         : relation.response?.softDeleteField;
+    const authorization = sameModel
+      ? resource.config.authorization
+      : relation.response?.authorization;
+    const plan =
+      authorization === undefined
+        ? { kind: 'allow' as const }
+        : await authorization(buildPolicyContext(req), 'read');
+    if (!plan || (plan.kind !== 'deny' && plan.kind !== 'conditional' && plan.kind !== 'allow'))
+      throw new TypeError('Invalid relation authorization plan');
+    const predicate =
+      plan?.kind === 'deny'
+        ? { op: 'false' as const }
+        : plan?.kind === 'conditional'
+          ? validatePredicate(
+              plan.predicate,
+              relation.schema ? new Set(Object.keys(relation.schema.shape)) : undefined,
+            )
+          : undefined;
+    if (predicate && !resource.config.adapter.capabilities.has('structuredPredicates'))
+      throw new CrudException(
+        'Relation authorization requires structured predicate support',
+        500,
+        'PREDICATE_UNSUPPORTED',
+      );
     if (targetTenantField !== undefined && req.vars?.tenantId === undefined) {
       throw new CrudException('This relation requires a tenant context', 400, 'TENANT_REQUIRED');
     }
@@ -259,6 +356,7 @@ export async function attachIncludes(
       rows,
       name,
       {
+        ...(predicate ? { predicate } : {}),
         tenantField: targetTenantField,
         tenantValue: req.vars?.tenantId,
         ...(targetSoftDeleteField !== undefined && !opts.withDeleted
@@ -278,6 +376,7 @@ export async function attachIncludes(
     for (const row of rows) {
       const bucket = loaded.get(row[parentJoinField]) ?? [];
       let shaped = bucket.filter((record) => {
+        if (predicate && !matchesPredicate(record, predicate)) return false;
         if (
           targetTenantField !== undefined &&
           (!Object.hasOwn(record, targetTenantField) ||
@@ -398,7 +497,12 @@ export async function createSchemaFor(
   req: EngineRequest,
 ): Promise<AnyResource['createSchema']> {
   const model = resource.model;
-  if (resource.config.dto?.create !== undefined || model.resolveSchema === undefined) {
+  if (
+    resource.config.contracts?.create !== undefined ||
+    resource.model.contracts?.create !== undefined ||
+    resource.config.dto?.create !== undefined ||
+    model.resolveSchema === undefined
+  ) {
     return resource.createSchema;
   }
   const schema = await model.resolveSchema({ tenantId: req.vars?.tenantId });
@@ -411,9 +515,27 @@ export async function updateSchemaFor(
   req: EngineRequest,
 ): Promise<AnyResource['updateSchema']> {
   const model = resource.model;
-  if (resource.config.dto?.update !== undefined || model.resolveSchema === undefined) {
+  if (
+    resource.config.contracts?.update !== undefined ||
+    resource.model.contracts?.update !== undefined ||
+    resource.config.dto?.update !== undefined ||
+    model.resolveSchema === undefined
+  ) {
     return resource.updateSchema;
   }
   const schema = await model.resolveSchema({ tenantId: req.vars?.tenantId });
   return deriveUpdateSchema({ ...model, schema }, resource.config.updateFields ?? {});
+}
+
+/** Stable complete identifier for audit and legacy version-store display fields. */
+export function rowIdentifier(resource: AnyResource, row: Row): string | number {
+  const lookup = lookupFromRow(resource, {}, row);
+  if (resource.model.primaryKeys.length === 1) {
+    const value = row[lookup.field];
+    if (typeof value === 'number') return value;
+    return lookup.value;
+  }
+  return JSON.stringify(
+    Object.fromEntries(resource.model.primaryKeys.map((key) => [key, row[key]])),
+  );
 }

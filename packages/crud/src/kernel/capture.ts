@@ -29,7 +29,7 @@ import {
 } from '../audit/index';
 import type { VersioningStore, VersionRecordKey } from '../versioning/index';
 import type { EngineRequest } from './engine-request';
-import type { AnyResource } from './verb-helpers';
+import { rowIdentifier, type AnyResource } from './verb-helpers';
 
 type Row = Record<string, unknown>;
 
@@ -38,17 +38,6 @@ type Row = Record<string, unknown>;
  * enables capture without changing the column name.
  */
 export const VERSION_FIELD = 'version';
-
-function primaryKeyValue(model: Model, record: Row): string | number {
-  const pk = model.primaryKeys[0] ?? 'id';
-  const value = record[pk];
-  if (typeof value !== 'string' && (typeof value !== 'number' || !Number.isFinite(value))) {
-    throw new ConfigurationException(
-      `Model '${model.name}': versioned row has an invalid primary key '${pk}'`,
-    );
-  }
-  return value;
-}
 
 /**
  * Build the v2 version-store identity from trusted request tenancy and every
@@ -134,7 +123,7 @@ export async function captureVersion(
   const changedBy = req.vars?.userId;
   await store.save(model.tableName, versionRecordKeyFor(model, prior, req), {
     id: crypto.randomUUID(),
-    recordId: primaryKeyValue(model, prior),
+    recordId: rowIdentifier(resource, prior),
     version: currentVersion,
     data: { ...prior },
     createdAt: new Date(),
@@ -212,5 +201,11 @@ export async function captureAuditBatch(
 
 /** Resolve the primary-key value of a row for batch audit entry building. */
 export function auditRecordId(model: Model, record: Row): string | number {
-  return primaryKeyValue(model, record);
+  const key = model.primaryKeys[0] ?? 'id';
+  const value = record[key];
+  return model.primaryKeys.length > 1
+    ? JSON.stringify(Object.fromEntries(model.primaryKeys.map((k) => [k, record[k]])))
+    : typeof value === 'number'
+      ? value
+      : String(value ?? '');
 }

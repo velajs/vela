@@ -85,6 +85,9 @@
       "import": "./dist/seeder/index.js"
     }
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsdown",
     "api:check": "node scripts/api-snapshot.mjs check",
@@ -104,6 +107,7 @@
     "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm api:check && pnpm worker-size:check && pnpm typecheck && pnpm check:skill && pnpm test && pnpm test:workers && pnpm test:workers:als && pnpm publint && pnpm attw"
   },
   "dependencies": {
+    "@standard-schema/spec": "1.1.0",
     "@velajs/errors": "workspace:*",
     "@velajs/live-protocol": "workspace:*",
     "hono": "catalog:"
@@ -123,6 +127,7 @@
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "unplugin-swc": "catalog:",
+    "valibot": "1.1.0",
     "vitest": "catalog:",
     "wrangler": "catalog:",
     "zod": "catalog:"
@@ -137,8 +142,5 @@
   },
   "engines": {
     "node": ">=24"
-  },
-  "publishConfig": {
-    "access": "public"
   }
 }

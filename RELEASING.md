@@ -83,6 +83,11 @@ publication plan unchanged. It checks strict declarations, RAG/mail integration,
 persisted approvals, duplicate delivery, and imports without optional runtime
 peers. Run `node scripts/agent-consumer.mjs /absolute/path/to/artifacts` directly.
 
+The edge-capabilities consumer checks exact tenant, Cedar, crypto, CRUD and adapter
+archives, optional imports, Standard Schema type inference, and Wrangler WASM
+bundling without Node compatibility. It records companion archives by integrity.
+Run `node scripts/edge-consumer.mjs /absolute/artifact/path` independently.
+
 Artifacts live in `.artifacts/release/`. Keep this exact directory
 once publishing begins: rebuilding a partial release changes archive integrity
 and intentionally blocks an ambiguous retry.

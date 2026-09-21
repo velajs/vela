@@ -1,3 +1,9 @@
+import type { CursorCodec } from '../query/cursor-codec';
+import { prepareOperation, type AuthorizationPlan, type CommitEvent } from './operation-scope';
+import type { PolicyContext } from '../policies/types';
+import type { HookContext } from './hook-types';
+import type { StandardSchemaV1 } from '@velajs/vela';
+import type { CrudContracts } from '../schema/contracts';
 /**
  * `defineResource` compiles a model + adapter + per-resource configuration
  * into a `CrudResource`: derived body schemas, loud definition-time capability
@@ -33,11 +39,24 @@ export type CoreVerb = 'create' | 'read' | 'update' | 'delete' | 'list';
 export interface ResourcePaginationConfig {
   defaultPerPage?: number;
   maxPerPage?: number;
-  cursor?: { enabled: boolean; field?: string };
+  cursor?: { enabled: boolean; field?: string; codec?: CursorCodec };
 }
 
 export interface RuntimeResourceConfig {
   model: Model;
+  contracts?: CrudContracts;
+  /** Server-owned mapping from persisted field to parent route parameter. */
+  collection?: { parents: Readonly<Record<string, string>> };
+  authorization?: (
+    context: PolicyContext,
+    verb: CrudEndpointName,
+  ) => AuthorizationPlan | Promise<AuthorizationPlan>;
+  projectPage?: (
+    rows: readonly Readonly<Record<string, unknown>>[],
+    context: HookContext,
+  ) => Promise<readonly Record<string, unknown>[]>;
+  afterCommit?: (event: CommitEvent) => void | Promise<void>;
+  onAfterCommitError?: (error: unknown, event: CommitEvent) => void | Promise<void>;
   adapter: RuntimeAdapter;
   hooks?: CrudHooks<Record<string, unknown>> & HookModeConfig;
   /** Filterable fields; `filterConfig` narrows operators per field. */
@@ -114,8 +133,8 @@ export interface CrudResource {
   readonly model: Model;
   readonly config: RuntimeResourceConfig;
   /** Derived (or dto-overridden) request body schemas — the DTO bridge. */
-  readonly createSchema: ZodObject<ZodRawShape>;
-  readonly updateSchema: ZodObject<ZodRawShape>;
+  readonly createSchema: StandardSchemaV1;
+  readonly updateSchema: StandardSchemaV1;
   execute(verb: CrudEndpointName, req: EngineRequest): Promise<EngineResult>;
 }
 
@@ -154,7 +173,13 @@ export function defineResource<Shape extends ZodRawShape>(
 
 /** Internal entry for an already-compiled @Crud configuration. */
 export function compileResource(name: string, config: RuntimeResourceConfig): CrudResource {
-  config = { ...config, adapter: validateAdapterRows(config.adapter, config.model.schema) };
+  config = {
+    ...config,
+    adapter: validateAdapterRows(
+      config.adapter,
+      config.contracts?.row ?? config.model.contracts?.row ?? config.model.schema.passthrough(),
+    ),
+  };
   assertAdapterSatisfies(name, deriveCapabilityRequirements(config), config.adapter);
   if ((config.allowedIncludes?.length ?? 0) > 0 && config.adapter.relations === undefined) {
     throw new ConfigurationException(
@@ -237,17 +262,24 @@ export function compileResource(name: string, config: RuntimeResourceConfig): Cr
   // the PK on create — a custom dto.create that omits it would brick the
   // create verb at the insert seam (permanent 400) with no authoring signal.
   if (config.model.id === 'client' && config.dto?.create !== undefined) {
-    const pk = config.model.primaryKeys[0] ?? 'id';
-    if (!(pk in config.dto.create.shape)) {
-      throw new ConfigurationException(
-        `Resource '${name}': id:'client' requires the custom dto.create to include the primary key '${pk}'`,
-      );
-    }
+    for (const pk of config.model.primaryKeys)
+      if (!(pk in config.dto.create.shape)) {
+        throw new ConfigurationException(
+          `Resource '${name}': id:'client' requires the custom dto.create to include the primary key '${pk}'`,
+        );
+      }
   }
 
-  const createSchema = config.dto?.create ?? deriveCreateSchema(config.model);
+  const createSchema =
+    config.contracts?.create ??
+    config.model.contracts?.create ??
+    config.dto?.create ??
+    deriveCreateSchema(config.model);
   const updateSchema =
-    config.dto?.update ?? deriveUpdateSchema(config.model, config.updateFields ?? {});
+    config.contracts?.update ??
+    config.model.contracts?.update ??
+    config.dto?.update ??
+    deriveUpdateSchema(config.model, config.updateFields ?? {});
 
   const resource: CrudResource = {
     name,
@@ -257,9 +289,16 @@ export function compileResource(name: string, config: RuntimeResourceConfig): Cr
     updateSchema,
     async execute(verb: CrudEndpointName, req: EngineRequest): Promise<EngineResult> {
       try {
-        requireTenantContext(resource, req);
+        const operation = await prepareOperation(resource, req, verb);
+        const scoped = operation.resource;
+        req = operation.request;
+        requireTenantContext(scoped, req);
         const policies = resource.model.policies;
-        if (verb === 'aggregate' && policies?.operation === undefined) {
+        if (
+          verb === 'aggregate' &&
+          policies?.operation === undefined &&
+          config.authorization === undefined
+        ) {
           throw new ForbiddenException(
             'Aggregate requires an explicit operation authorization policy',
           );
@@ -269,15 +308,15 @@ export function compileResource(name: string, config: RuntimeResourceConfig): Cr
         }
         switch (verb) {
           case 'create':
-            return await executeCreate(resource, req);
+            return await executeCreate(scoped, req);
           case 'read':
-            return await executeRead(resource, req);
+            return await executeRead(scoped, req);
           case 'update':
-            return await executeUpdate(resource, req);
+            return await executeUpdate(scoped, req);
           case 'delete':
-            return await executeDelete(resource, req);
+            return await executeDelete(scoped, req);
           case 'list':
-            return await executeList(resource, req);
+            return await executeList(scoped, req);
           default: {
             const executor = EXTENDED_EXECUTORS[verb];
             if (!executor) {
@@ -285,7 +324,7 @@ export function compileResource(name: string, config: RuntimeResourceConfig): Cr
                 `Verb '${verb}' is not implemented by the native engine yet`,
               );
             }
-            return await executor(resource, req);
+            return await executor(scoped, req);
           }
         }
       } catch (error) {

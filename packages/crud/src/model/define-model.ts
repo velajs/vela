@@ -20,6 +20,7 @@
 
 import type { ZodObject, ZodRawShape } from 'zod';
 import { ConfigurationException } from '../envelope/errors';
+import { fieldMetadata } from './field-metadata';
 import type {
   Model,
   ModelConfig,
@@ -87,6 +88,11 @@ export function defineModel<
     namePlural: config.namePlural ?? `${config.name}s`,
     tableName: config.tableName,
     schema: config.schema,
+    fields: Object.freeze(
+      Object.fromEntries(
+        Object.entries(config.schema.shape).map(([key, field]) => [key, fieldMetadata(field)]),
+      ),
+    ),
     primaryKeys: config.primaryKeys ? [...config.primaryKeys] : ['id'],
     id: config.id ?? 'uuid',
     timestamps: normalizeTimestamps(config.timestamps),

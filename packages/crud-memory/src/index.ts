@@ -10,3 +10,4 @@ export {
 } from './adapter';
 export { matchesFilter } from './filter';
 export { clearMemoryStorage, getStore, storage } from './storage';
+export { MemoryStore, transactionalMemoryAdapter } from './transactional';

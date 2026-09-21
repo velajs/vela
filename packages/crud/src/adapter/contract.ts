@@ -36,6 +36,9 @@ import type {
  * support fails loudly, never silently (hono-crud `requireAdapter` parity).
  */
 export const ADAPTER_CAPABILITIES = [
+  'structuredPredicates',
+  'nestedPredicates',
+  'scopedUpsert',
   /** Real transactional scope (memory adapters use a no-op sentinel instead). */
   'transactions',
   /** Core update/delete return rows from the same atomic SQL statement. */
@@ -141,6 +144,8 @@ export interface NestedWriteDriver<Row = Record<string, unknown>> {
 }
 
 export interface NestedWriteOperations {
+  /** Authorization ANDed into inspection and every existing-row mutation. */
+  targetPredicate?: import('../query/predicate').QueryPredicate;
   /** Server-derived target-row scope (tenant isolation) ANDed into every nested match. */
   targetScope?: Record<string, unknown>;
   create?: Array<Record<string, unknown>>;
@@ -174,6 +179,7 @@ export interface CascadeDriver {
  * soft-deleted one is skipped at fetch time, not just re-filtered upstream.
  */
 export interface RelationLoadScope {
+  predicate?: import('../query/predicate').QueryPredicate;
   tenantField?: string;
   tenantValue?: string;
   /** Related rows with a non-null value in this field are excluded. */

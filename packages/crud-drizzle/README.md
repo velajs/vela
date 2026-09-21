@@ -40,6 +40,15 @@ D1 has atomic SQL batches; those do not provide a transaction that can pause
 for JavaScript policy checks or hooks. This adapter does not emulate that
 missing guarantee. See [D1 batch semantics](https://developers.cloudflare.com/d1/worker-api/d1-database/#batch).
 
+Set `atomicUpsert: true` to enable scoped native upserts on SQLite, PostgreSQL,
+or D1. Every configured conflict target must match a database PRIMARY KEY or
+UNIQUE constraint. PostgreSQL/SQLite use transaction-bound conflict handling;
+D1 uses a precomputed atomic insert/update batch and rejects hooks, soft-delete
+restoration, or policies requiring callback transactions. Without this option,
+existing transactional match/update/create behavior remains available. MySQL
+rejects the option. Tenant, parent, and authorization predicates also constrain
+the conflict update, which cannot rewrite any primary key.
+
 Cursor tokens contain the configured cursor field plus all model primary keys.
 The engine validates them before database access. Direct adapter callers pass
 `options.keyset` from `resolveKeyset`, rather than a raw `options.cursor`.

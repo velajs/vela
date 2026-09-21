@@ -2,8 +2,8 @@
 import type { HttpApp } from '@velajs/client/http';
 
 export type Schemas = {
-  "CreateTodoDto": ({ "done": (boolean); "title": (string); });
-  "UpdateTodoDto": ({ "done"?: (boolean); "title"?: (string); });
+  "CreateTodoDto": ({ "done"?: (boolean); "title": (string); [key: string]: unknown; });
+  "UpdateTodoDto": ({ "done"?: (boolean); "title"?: (string); [key: string]: unknown; });
 };
 
 export type AppType = HttpApp<{

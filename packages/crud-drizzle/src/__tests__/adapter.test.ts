@@ -269,6 +269,45 @@ describe('drizzleAdapter core', () => {
     ).rejects.toMatchObject({ statusCode: 409, code: 'CONFLICT' });
   });
 
+  it('requires explicit opt-in and a real unique constraint for native atomic upserts', async () => {
+    const legacy = drizzleAdapter({ db, table: uniqItems });
+    expect(legacy.capabilities.has('upsert')).toBe(false);
+    expect(legacy.runtime.upsertOne).toBeUndefined();
+    const atomic = drizzleAdapter({ db, table: uniqItems, atomicUpsert: true });
+    expect(atomic.capabilities.has('scopedUpsert')).toBe(true);
+    const first = await atomic.transaction((scope) =>
+      atomic.runtime.upsertOne!(
+        {
+          conflictTarget: ['email'],
+          values: { id: 'first', email: 'atomic@example.test' },
+        },
+        scope,
+      ),
+    );
+    const second = await atomic.transaction((scope) =>
+      atomic.runtime.upsertOne!(
+        {
+          conflictTarget: ['email'],
+          values: { id: 'second', email: 'atomic@example.test' },
+        },
+        scope,
+      ),
+    );
+    expect(first.created).toBe(true);
+    expect(second).toMatchObject({ created: false, row: { id: 'first' } });
+    await expect(
+      atomic.transaction((scope) =>
+        atomic.runtime.upsertOne!(
+          {
+            conflictTarget: ['authorId'],
+            values: { id: 'bad', authorId: 'no-unique-index', email: 'other@example.test' },
+          },
+          scope,
+        ),
+      ),
+    ).rejects.toThrow();
+  });
+
   it('nested-write driver maps unique violations to 409 too', async () => {
     const adapter = drizzleAdapter({
       db,

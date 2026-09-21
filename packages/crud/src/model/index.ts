@@ -74,3 +74,5 @@ export type { ApplyComputedFieldsOptions } from './computed-fields';
 
 // -- Serialization profile ---------------------------------------------------
 export { applyProfile, applyProfileToArray } from './serialization-profile';
+export { defineStandardModel } from './standard-model';
+export type { StandardModelConfig, StandardModel } from './standard-model';

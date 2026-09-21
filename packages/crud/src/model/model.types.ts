@@ -1,3 +1,4 @@
+import type { CrudContracts, CrudFieldMetadata } from '../schema/contracts';
 /**
  * The model authoring surface for the native Vela CRUD engine.
  *
@@ -148,6 +149,12 @@ export interface RelationConfig<TTable = unknown> {
 
 /** Target-model metadata needed to authorize and shape `?include=` rows. */
 export interface RelationResponseConfig {
+  authorization?: (
+    context: import('../policies/types').PolicyContext,
+    verb: import('../verb-table').CrudEndpointName,
+  ) =>
+    | import('../kernel/operation-scope').AuthorizationPlan
+    | Promise<import('../kernel/operation-scope').AuthorizationPlan>;
   computedFields?: ComputedFieldsConfig;
   serializationProfile?: SerializationProfile;
   policies?: ModelPolicies<Record<string, unknown>>;
@@ -332,6 +339,9 @@ export interface Model<
   namePlural: string;
   tableName: string;
   schema: T;
+  /** Normalized, validator-independent field metadata. */
+  fields?: Readonly<Record<string, CrudFieldMetadata>>;
+  contracts?: CrudContracts;
   primaryKeys: string[];
   id: IdStrategy;
   timestamps: NormalizedTimestamps;

@@ -95,7 +95,6 @@ export function applyManagedInsertFields<T extends Record<string, unknown>>(
   opts: { databaseGeneratedId: boolean; tenantId?: string },
 ): T & Record<string, unknown> {
   const out: Record<string, unknown> = { ...record };
-  const pk = model.primaryKeys[0];
 
   // A custom DTO may deliberately include fields omitted by the derived DTO.
   // Strip them again at the write boundary so validation overrides cannot turn
@@ -112,30 +111,32 @@ export function applyManagedInsertFields<T extends Record<string, unknown>>(
   if (createdAt) delete out[createdAt];
   if (updatedAt) delete out[updatedAt];
 
-  if (!pkSupplied(out[pk])) {
-    const strategy: IdStrategy = model.id;
-    if (typeof strategy === 'function') {
-      out[pk] = strategy();
-    } else if (strategy === 'database') {
-      if (!opts.databaseGeneratedId) {
-        throw new ConfigurationException(
-          "id:'database' requires an adapter with the 'databaseGeneratedId' capability (no database to generate the key)",
+  for (const pk of model.primaryKeys) {
+    if (!pkSupplied(out[pk])) {
+      const strategy: IdStrategy = model.id;
+      if (typeof strategy === 'function') {
+        out[pk] = strategy();
+      } else if (strategy === 'database') {
+        if (!opts.databaseGeneratedId) {
+          throw new ConfigurationException(
+            "id:'database' requires an adapter with the 'databaseGeneratedId' capability (no database to generate the key)",
+          );
+        }
+        // Omit the PK entirely: the DB/ORM column default fills it and the
+        // adapter reads the generated value back via its create-return.
+        delete out[pk];
+      } else if (strategy === 'client') {
+        // The caller owns PK generation; reaching here means none was supplied.
+        // The derived create schema keeps the PK, so a required PK 400s at
+        // validation — this seam catches optional-PK schemas and clone-without-
+        // override, which are caller input errors, not misconfiguration.
+        throw new InputValidationException(
+          "id:'client' requires a caller-supplied primary key in the create body",
         );
+      } else {
+        // 'uuid' or unset — the historical default.
+        out[pk] = crypto.randomUUID();
       }
-      // Omit the PK entirely: the DB/ORM column default fills it and the
-      // adapter reads the generated value back via its create-return.
-      delete out[pk];
-    } else if (strategy === 'client') {
-      // The caller owns PK generation; reaching here means none was supplied.
-      // The derived create schema keeps the PK, so a required PK 400s at
-      // validation — this seam catches optional-PK schemas and clone-without-
-      // override, which are caller input errors, not misconfiguration.
-      throw new InputValidationException(
-        "id:'client' requires a caller-supplied primary key in the create body",
-      );
-    } else {
-      // 'uuid' or unset — the historical default.
-      out[pk] = crypto.randomUUID();
     }
   }
 

@@ -1,3 +1,4 @@
+import { matchesPredicate } from '@velajs/crud/query';
 import { bindAdapter } from '@velajs/crud/adapter';
 import { defineProvider } from '@velajs/vela';
 import { describe, expect, it } from 'vitest';
@@ -613,7 +614,12 @@ function memoryAdapter(model: Model, db: MemoryDb): CrudAdapter<Row> {
   const scope: AdapterScope = { tx: null };
   const applyFilters = (rows: Row[], filters: FilterCondition[]): Row[] =>
     filters.reduce(
-      (acc, f) => acc.filter((r) => matchFilter(r[f.field], f.operator, f.value)),
+      (acc, f) =>
+        acc.filter((r) =>
+          f.operator === 'predicate'
+            ? matchesPredicate(r, f.value)
+            : matchFilter(r[f.field], f.operator, f.value),
+        ),
       rows,
     );
   return bindAdapter({

@@ -11,9 +11,8 @@ import { bindAdapter } from '@velajs/crud/adapter';
  * Capability honesty:
  * - NO `nativeSearch` — hono-crud's drizzle search was LIKE-based; the
  *   engine's scoring fallback is equivalent and keeps one code path.
- * - NO `upsert` — the engine's find→(restore+update | create) synthesis runs
- *   inside a REAL transaction here, is atomic, and keeps the `created` flag
- *   exact without relying on ON CONFLICT.
+ * - sqlite/pg can opt into scoped native upserts with `atomicUpsert`, using
+ *   real unique conflict targets. Legacy matching retains transaction synthesis.
  * - `databaseGeneratedId` relies on RETURNING (sqlite/pg). The mysql branch
  *   follows hono-crud's insertId pattern but is NOT exercised by tests.
  */
@@ -58,7 +57,7 @@ import {
   type DrizzleSql,
   type DrizzleTable,
 } from './database';
-import { andAll, buildWhere, getColumn, orAll, substringMatch } from './filters';
+import { andAll, buildPredicate, buildWhere, getColumn, orAll, substringMatch } from './filters';
 
 type Row = Record<string, unknown>;
 
@@ -85,6 +84,10 @@ interface DrizzleAdapterOptions {
   table: DrizzleTable;
   /** @default 'id' */
   primaryKey?: string;
+  primaryKeys?: readonly string[];
+  /** Opt into race-safe native upserts. Every conflict target must have a
+   * database PRIMARY KEY/UNIQUE constraint. Unsupported on MySQL. Default false. */
+  atomicUpsert?: boolean;
   /** Soft-delete column, when the model soft-deletes. */
   softDeleteField?: string;
   relations?: Record<string, DrizzleRelation>;
@@ -112,6 +115,10 @@ export type DrizzleAdapterConfig = DrizzleAdapterOptions &
   );
 
 const CAPABILITIES: ReadonlySet<AdapterCapability> = new Set([
+  'upsert',
+  'scopedUpsert',
+  'structuredPredicates',
+  'nestedPredicates',
   'transactions',
   'atomicMutations',
   'databaseGeneratedId',
@@ -172,22 +179,31 @@ export function drizzleAdapter(
   config: DrizzleAdapterConfig & { parseRow?: (value: unknown) => Row },
 ): CrudAdapter<Row> {
   const parseRow = config.parseRow ?? readRow;
+  if (config.atomicUpsert && config.dialect === 'mysql')
+    throw new TypeError('Atomic upsert requires SQLite or PostgreSQL');
   if (
     config.driver === 'd1' &&
     ((config.dialect && config.dialect !== 'sqlite') || config.onOpenTransaction)
   ) {
     throw new Error('D1 requires sqlite and cannot use onOpenTransaction');
   }
+  const nativeCapabilities = [...CAPABILITIES].filter(
+    (cap) => config.atomicUpsert === true || (cap !== 'upsert' && cap !== 'scopedUpsert'),
+  );
   const capabilities =
     config.driver === 'd1'
       ? new Set(
-          [...CAPABILITIES].filter(
+          nativeCapabilities.filter(
             (cap) => cap !== 'transactions' && cap !== 'nestedWrites' && cap !== 'cascade',
           ),
         )
       : config.dialect === 'mysql'
-        ? new Set([...CAPABILITIES].filter((cap) => cap !== 'atomicMutations'))
-        : CAPABILITIES;
+        ? new Set(
+            nativeCapabilities.filter(
+              (cap) => cap !== 'atomicMutations' && cap !== 'upsert' && cap !== 'scopedUpsert',
+            ),
+          )
+        : new Set(nativeCapabilities);
   const requestScope = async <T>(
     fn: (scope: AdapterScope) => Promise<T>,
     ctx?: TransactionContext,
@@ -214,6 +230,7 @@ export function drizzleAdapter(
   const dialect: DrizzleDialect = config.dialect ?? 'sqlite';
   const table = config.table;
   const primaryKey = config.primaryKey ?? 'id';
+  const primaryKeys = config.primaryKeys ?? [primaryKey];
   const rootDb = asDatabase(config.db);
 
   const handle = (scope: AdapterScope): DrizzleDatabase =>
@@ -232,6 +249,7 @@ export function drizzleAdapter(
       ...Object.entries(lookup.filters ?? {}).map(([field, value]) =>
         eq(getColumn(table, field), value),
       ),
+      lookup.predicate ? buildPredicate(table, lookup.predicate, dialect) : undefined,
       softDeleteVisibility(withDeleted),
     );
 
@@ -255,6 +273,9 @@ export function drizzleAdapter(
             eq(getColumn(rel.table, field), value),
           ),
           mustBelongToParent ? eq(fk, parentKey) : undefined,
+          operations.targetPredicate
+            ? buildPredicate(rel.table, operations.targetPredicate, dialect)
+            : undefined,
         );
       const find = async (where: Row, mustBelongToParent: boolean): Promise<Row | null> => {
         const rows = await db
@@ -317,6 +338,9 @@ export function drizzleAdapter(
           ...Object.entries({ ...where, ...(operations.targetScope ?? {}) }).map(([k, v]) =>
             eq(getColumn(rel.table, k), v),
           ),
+          operations.targetPredicate
+            ? buildPredicate(rel.table, operations.targetPredicate, dialect)
+            : undefined,
         );
       const targetScope = matches({});
 
@@ -412,6 +436,7 @@ export function drizzleAdapter(
 
       // WHERE pushdown of the owner scope (tenant + soft-delete exclusion).
       const conditions = andAll(
+        loadScope.predicate ? buildPredicate(rel.table, loadScope.predicate, dialect) : undefined,
         orAll(...wanted.map((v) => eq(getColumn(rel.table, relatedJoinField), v))),
         loadScope.tenantField != null && loadScope.tenantValue != null
           ? eq(getColumn(rel.table, loadScope.tenantField), loadScope.tenantValue)
@@ -433,6 +458,62 @@ export function drizzleAdapter(
 
   return bindAdapter({
     capabilities,
+    ...(config.atomicUpsert !== true
+      ? {}
+      : {
+          async upsertOne(
+            input: import('@velajs/crud/adapter').UpsertInput<Row>,
+            scope: AdapterScope,
+          ) {
+            if (
+              !input.conflictTarget.length ||
+              input.conflictTarget.some((key) => input.values[key] == null)
+            )
+              throw new CrudException(
+                'Upsert requires every conflict key',
+                400,
+                'VALIDATION_ERROR',
+              );
+            const db = handle(scope);
+            const insert = db
+              .insert(table)
+              .values(input.values)
+              .onConflictDoNothing({
+                target: input.conflictTarget.map((key) => getColumn(table, key)),
+              })
+              .returning();
+            const patch = Object.fromEntries(
+              Object.entries(input.values).filter(([key]) => !primaryKeys.includes(key)),
+            );
+            // Identity-only upserts still need a RETURNING row without rewriting a PK.
+            if (!Object.keys(patch).length)
+              throw new CrudException('Upsert requires a mutable field', 400, 'VALIDATION_ERROR');
+            const where = andAll(
+              ...input.conflictTarget.map((key) => eq(getColumn(table, key), input.values[key])),
+              buildWhere(table, input.scope ?? [], dialect),
+            );
+            if (config.driver === 'd1') {
+              if (!db.batch)
+                throw new CrudException('D1 batch unavailable', 500, 'CONFIGURATION_ERROR');
+              const update = db
+                .update(table)
+                .set(patch)
+                .where(andAll(where, sql`changes() = 0`))
+                .returning();
+              const result = await db.batch([insert, update]);
+              const created = result[0]?.[0],
+                updated = result[1]?.[0];
+              if (!created && !updated)
+                throw new CrudException('Upsert scope denied', 403, 'FORBIDDEN');
+              return { row: parseRow(created ?? updated), created: created !== undefined };
+            }
+            const created = (await insert)[0];
+            if (created) return { row: parseRow(created), created: true };
+            const updated = (await db.update(table).set(patch).where(where).returning())[0];
+            if (!updated) throw new CrudException('Upsert scope denied', 403, 'FORBIDDEN');
+            return { row: parseRow(updated), created: false };
+          },
+        }),
     requestScope,
     transaction,
 

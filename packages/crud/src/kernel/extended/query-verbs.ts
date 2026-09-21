@@ -1,3 +1,6 @@
+import { lookupFromRow } from '../verb-helpers';
+import { responseContract, projectPage } from '../operation-scope';
+import { parseBody } from '../verb-helpers';
 /**
  * Query-verb family: search, aggregate, export, import. Executors register
  * here and surface through `./registry`.
@@ -29,7 +32,6 @@ import type { AdapterScope } from '../../adapter/contract';
 import type {
   FilterCondition,
   ListQuery,
-  Lookup,
   Page,
   SearchHighlight,
   SearchHit,
@@ -70,7 +72,6 @@ import {
   MAX_FALLBACK_SCAN,
   scopeListQuery,
   shapeOne,
-  tenantFilters,
   txCtx,
   type AnyResource,
 } from '../verb-helpers';
@@ -332,9 +333,10 @@ async function executeExport(resource: AnyResource, req: EngineRequest): Promise
   }, txCtx(req));
 
   const readable = await filterReadable(policyCtx, rows, model.policies);
-  let shaped = await applyComputedFieldsToArray(model, readable);
+  let shaped = await applyComputedFieldsToArray(model, await projectPage(resource, req, readable));
   shaped = shaped.map((row) => maskFields(policyCtx, row, model.policies) as Row);
   shaped = applyProfileToArray(model, shaped);
+  shaped = await Promise.all(shaped.map((row) => responseContract(resource, row)));
 
   const filename = exportFilename(model.tableName, format);
   if (format === 'csv') {
@@ -465,18 +467,26 @@ async function processImportRow(
   const adapter = resource.config.adapter;
   const policyCtx = buildPolicyContext(req);
 
-  const parsed = createSchema.safeParse(data);
-  if (!parsed.success) {
-    const issues = (parsed.error as { issues: Array<{ path: PropertyKey[]; message: string }> })
-      .issues;
+  let values: Row;
+  try {
+    values = await parseBody(createSchema, data);
+  } catch (error) {
+    if (!(error instanceof InputValidationException)) throw error;
     return {
       rowNumber,
       status: skipInvalid ? 'skipped' : 'failed',
       error: 'Validation failed',
-      validationErrors: issues.map((iss) => ({ path: iss.path.join('.'), message: iss.message })),
+      validationErrors: Array.isArray(error.details)
+        ? error.details.filter(
+            (issue): issue is { path: string; message: string } =>
+              typeof issue === 'object' &&
+              issue !== null &&
+              typeof issue.path === 'string' &&
+              typeof issue.message === 'string',
+          )
+        : [],
     };
   }
-  const values = parsed.data as Row;
   assertNoNestedWrites(model, values, 'import');
   if (model.tenantField !== undefined && req.vars?.tenantId !== undefined) {
     values[model.tenantField] = req.vars.tenantId;
@@ -488,12 +498,7 @@ async function processImportRow(
     if (mode === 'upsert') {
       if (existing) {
         await assertWriteAllowed(resource, policyCtx, existing);
-        const pk = model.primaryKeys[0] ?? 'id';
-        const lookup: Lookup = {
-          field: pk,
-          value: String(existing[pk]),
-          filters: tenantFilters(resource, req),
-        };
+        const lookup = lookupFromRow(resource, req, existing);
         if (isSoftDeleted(model, existing) && adapter.restore) {
           await adapter.restore(lookup, scope);
         }

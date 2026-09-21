@@ -24,11 +24,13 @@ import {
   Put,
   UseGuards,
   defineDto,
+  isStandardSchema,
   defineMetadata,
   getMetadata,
   getRequestContainer,
   METADATA_KEYS,
   type DtoDefinition,
+  type StandardDtoDefinition,
   type InjectionToken,
 } from '@velajs/vela';
 import type { RuntimeAdapter } from './adapter/contract';
@@ -122,30 +124,47 @@ export function stampCrudRoutes(controller: Ctor, config: RuntimeCrudConfig): vo
 
   // DTO bridge — derived once per class, adapter-independent.
   const base = pascal(names.singular);
-  const createDto = defineDto(config.dto?.create ?? deriveCreateSchema(model), {
-    name: `Create${base}Dto`,
-  });
+  const createDto = defineDto(
+    config.contracts?.create ??
+      model.contracts?.create ??
+      config.dto?.create ??
+      deriveCreateSchema(model),
+    {
+      name: `Create${base}Dto`,
+    },
+  );
   const updateDto = defineDto(
-    config.dto?.update ?? deriveUpdateSchema(model, config.updateFields ?? {}),
+    config.contracts?.update ??
+      model.contracts?.update ??
+      config.dto?.update ??
+      deriveUpdateSchema(model, config.updateFields ?? {}),
     { name: `Update${base}Dto` },
   );
 
   // The compiled engine resource: lazy (the adapter may come from DI) and
-  // memoized per class.
-  let compiled: CrudResource | undefined;
+  // resolved within the current request so environments never share bindings.
   const resolveResource = (c: Context): CrudResource => {
-    if (compiled) return compiled;
     const adapter =
       config.adapter ??
       tryResolveDefault(c, CRUD_DEFAULT_ADAPTER)?.runtime ??
       raiseNoAdapter(controller.name, names.singular);
     const engineConfig = toEngineConfig(config, adapter);
+    if (
+      !model.resolveSchema &&
+      isStandardSchema(createDto.schema) &&
+      isStandardSchema(updateDto.schema)
+    )
+      engineConfig.contracts = {
+        ...model.contracts,
+        ...config.contracts,
+        create: createDto.schema,
+        update: updateDto.schema,
+      };
     // Fall back to the forRoot default stores (like the adapter) when the
     // resource does not provide its own.
     engineConfig.versioningStore ??= tryResolveDefault(c, CRUD_DEFAULT_VERSIONING_STORE);
     engineConfig.auditStore ??= tryResolveDefault(c, CRUD_DEFAULT_AUDIT_STORE);
-    compiled = compileResource(names.singular, engineConfig);
-    return compiled;
+    return compileResource(names.singular, engineConfig);
   };
 
   const overrides = getOverrides(controller);
@@ -179,7 +198,11 @@ export function stampCrudRoutes(controller: Ctor, config: RuntimeCrudConfig): vo
       writable: true,
       configurable: true,
     };
-    decorate(subPath, { name: deriveRouteName(names.singular, endpoint) })(
+    const path =
+      config.model.primaryKeys.length > 1
+        ? subPath.replace('/:id', config.model.primaryKeys.map((key) => `/:${key}`).join(''))
+        : subPath;
+    decorate(path, { name: deriveRouteName(names.singular, endpoint) })(
       proto,
       handlerName,
       descriptor,
@@ -279,7 +302,8 @@ function buildVerbHandler(
   // Arg order mirrors the stamped param order: [id?, version?, body?, ctx].
   return async function crudHandler(...args: unknown[]): Promise<Response> {
     let cursor = 0;
-    const id = shape.id ? String(args[cursor++]) : undefined;
+    const idValue = shape.id ? args[cursor++] : undefined;
+    const id = idValue === undefined ? undefined : String(idValue);
     const version = shape.version ? String(args[cursor++]) : undefined;
     const body = shape.body ? args[cursor++] : undefined;
     const ctx = args[cursor];
@@ -305,8 +329,8 @@ function stampParams(
   controller: Ctor,
   handlerName: string | symbol,
   endpoint: CrudEndpointName,
-  createDto: DtoDefinition<unknown>,
-  updateDto: DtoDefinition<unknown>,
+  createDto: DtoDefinition<unknown> | StandardDtoDefinition<unknown, unknown>,
+  updateDto: DtoDefinition<unknown> | StandardDtoDefinition<unknown, unknown>,
 ): void {
   const add = (param: { index: number; type: string; name?: string; metatype?: unknown }): void =>
     MetadataRegistry.addParameter(controller, handlerName, param);
@@ -364,6 +388,12 @@ export function toEngineConfig(
     search: config.search,
     aggregate: config.aggregate,
     dto: config.dto,
+    contracts: config.contracts,
+    collection: config.collection,
+    authorization: config.authorization,
+    projectPage: config.projectPage,
+    afterCommit: config.afterCommit,
+    onAfterCommitError: config.onAfterCommitError,
     updateFields: config.updateFields,
     versioningStore: config.versioningStore,
     auditStore: config.auditStore,

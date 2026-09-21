@@ -29,6 +29,7 @@ interface SelectBuilder extends PromiseLike<Row[]> {
   offset(value: number): SelectBuilder;
 }
 interface MutationBuilder extends PromiseLike<unknown> {
+  onConflictDoNothing(options: { target: AnyColumn[] }): MutationBuilder;
   where(condition: SQLWrapper | undefined): MutationBuilder;
   returning(): PromiseLike<Row[]>;
 }
@@ -39,6 +40,7 @@ interface UpdateBuilder {
   set(values: Row): MutationBuilder;
 }
 export interface DrizzleDatabase {
+  batch?(queries: readonly unknown[]): Promise<Row[][]>;
   select(fields?: Record<string, SQL | AnyColumn | SQLWrapper>): SelectBuilder;
   insert(table: Table): InsertBuilder;
   update(table: Table): UpdateBuilder;

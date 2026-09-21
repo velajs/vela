@@ -560,6 +560,18 @@ export { MetadataRegistry } from './registry/metadata.registry';
 
 // Validation
 export { defineDto, ValidationPipe } from './validation/index';
+export {
+  isStandardSchema,
+  validateSchema,
+  standardJsonSchema,
+  SchemaValidationError,
+} from './validation/index';
+export type {
+  StandardSchemaV1,
+  StandardJSONSchemaV1,
+  StandardDtoDefinition,
+  ValidationSchema,
+} from './validation/index';
 export type {
   DtoDefinition,
   DtoOptions,

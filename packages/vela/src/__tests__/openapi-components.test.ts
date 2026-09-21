@@ -67,7 +67,7 @@ describe('OpenAPI — $ref components for DTO descriptors', () => {
     expect(doc.components!.schemas!['UserDto']).toBeDefined();
   });
 
-  it('same DTO used in multiple places produces one components entry; refs share it', () => {
+  it('a DTO with different input/output constraints gets separate components', () => {
     const UserSchema = z.object({ id: z.string() });
     const UserDto = defineDto(UserSchema, { name: 'UserDto' });
 
@@ -89,13 +89,15 @@ describe('OpenAPI — $ref components for DTO descriptors', () => {
     class AppModule {}
 
     const doc = createOpenApiDocument(AppModule);
-    expect(Object.keys(doc.components!.schemas!)).toEqual(['UserDto']);
+    expect(Object.keys(doc.components!.schemas!)).toEqual(['UserDto', 'UserDto2']);
+    expect(doc.components!.schemas!.UserDto!.additionalProperties).toBeUndefined();
+    expect(doc.components!.schemas!.UserDto2!.additionalProperties).toBe(false);
     expect(doc.paths['/users']!.post!.requestBody!.content!['application/json']!.schema.$ref).toBe(
       '#/components/schemas/UserDto',
     );
     expect(
       doc.paths['/users/{id}']!.get!.responses['200']!.content!['application/json']!.schema.$ref,
-    ).toBe('#/components/schemas/UserDto');
+    ).toBe('#/components/schemas/UserDto2');
   });
 
   it('two distinct DTOs produce two components entries', () => {

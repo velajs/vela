@@ -80,6 +80,12 @@ export interface RuntimeCrudConfig {
   /** /aggregate validation configuration. */
   aggregate?: RuntimeResourceConfig['aggregate'];
   /** Request-body schema overrides (else derived from the model schema). */
+  contracts?: RuntimeResourceConfig['contracts'];
+  collection?: RuntimeResourceConfig['collection'];
+  authorization?: RuntimeResourceConfig['authorization'];
+  projectPage?: RuntimeResourceConfig['projectPage'];
+  afterCommit?: RuntimeResourceConfig['afterCommit'];
+  onAfterCommitError?: RuntimeResourceConfig['onAfterCommitError'];
   dto?: { create?: ZodObject<ZodRawShape>; update?: ZodObject<ZodRawShape> };
   updateFields?: { allowed?: string[]; blocked?: string[] };
   /**

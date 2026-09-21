@@ -21,6 +21,7 @@ import { isOptional, zodToJsonSchema } from './zod-to-json-schema';
 import { isRecord, parseJsonSchema } from './json-schema';
 import { getEndpointDefinition } from './endpoint';
 import { ValidationPipe } from '../validation/validation.pipe';
+import { isStandardSchema } from '../validation/standard-schema';
 import { isSchemaParser } from '../validation/dto';
 
 /**
@@ -29,10 +30,14 @@ import { isSchemaParser } from '../validation/dto';
  */
 class ComponentsRegistry {
   private schemas = new Map<string, JsonSchema>();
-  private descriptorToKey = new WeakMap<object, string>();
+  private descriptorToKey = new WeakMap<object, Map<'input' | 'output', string>>();
 
-  ref(descriptor: { schema: unknown; name?: string }): { $ref: string } {
-    const existing = this.descriptorToKey.get(descriptor);
+  ref(
+    descriptor: { schema: unknown; name?: string },
+    direction: 'input' | 'output' = 'output',
+  ): { $ref: string } {
+    const keys = this.descriptorToKey.get(descriptor) ?? new Map<'input' | 'output', string>();
+    const existing = keys.get(direction);
     if (existing) return { $ref: `#/components/schemas/${existing}` };
 
     const baseName = descriptor.name || 'Schema';
@@ -43,8 +48,18 @@ class ComponentsRegistry {
       key = `${baseName}${counter++}`;
     }
 
-    this.descriptorToKey.set(descriptor, key);
-    this.schemas.set(key, zodToJsonSchema(descriptor.schema));
+    const schema =
+      'toJSONSchema' in descriptor
+        ? zodToJsonSchema(descriptor, direction)
+        : zodToJsonSchema(descriptor.schema, direction);
+    for (const previous of keys.values())
+      if (JSON.stringify(this.schemas.get(previous)) === JSON.stringify(schema)) {
+        keys.set(direction, previous);
+        return { $ref: `#/components/schemas/${previous}` };
+      }
+    keys.set(direction, key);
+    this.descriptorToKey.set(descriptor, keys);
+    this.schemas.set(key, schema);
     return { $ref: `#/components/schemas/${key}` };
   }
 
@@ -92,9 +107,10 @@ function getParamSchema(
   registry: ComponentsRegistry,
 ): JsonSchema | undefined {
   const parser = parameterParser(param, paramtypes);
-  if (isNamedSchema(parser)) return registry.ref(parser);
+  if (isNamedSchema(parser)) return registry.ref(parser, 'input');
   const schema = schemaOf(parser);
-  if (isRecord(schema) && typeof schema.toJSONSchema === 'function') return zodToJsonSchema(schema);
+  if (isStandardSchema(schema) || (isRecord(schema) && typeof schema.toJSONSchema === 'function'))
+    return zodToJsonSchema(schema, 'input');
   return undefined;
 }
 
@@ -113,7 +129,7 @@ function resolveResponseSchema(
   if (isNamedSchema(input)) {
     return registry.ref(input);
   }
-  if (isRecord(input) && typeof input.toJSONSchema === 'function') {
+  if (isStandardSchema(input) || (isRecord(input) && typeof input.toJSONSchema === 'function')) {
     return zodToJsonSchema(input);
   }
   return parseJsonSchema(input, '@ApiResponse schema');

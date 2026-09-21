@@ -106,3 +106,12 @@ export {
   type TenantEnv,
   type TenantIdSource,
 } from './multi-tenant/index';
+export { defineCrudContracts } from './schema/contracts';
+export type {
+  CrudContracts,
+  CrudFieldMetadata,
+  ContractInput,
+  ContractOutput,
+} from './schema/contracts';
+export { defineStandardModel } from './model/standard-model';
+export type { StandardModelConfig, StandardModel } from './model/standard-model';
