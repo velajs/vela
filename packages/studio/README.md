@@ -51,6 +51,22 @@ ownership and effective class-token scopes without constructing providers.
 
 See the [debugging guide](../../docs/debugging.md) for setup and debugger recipes.
 
+## Named databases
+
+The CRUD binding uses the same database selection as Vela CRUD. Named resources
+appear as `encodeURIComponent(database)::encodeURIComponent(resourceKey)`; a
+resource key defaults to the model name. Use that complete identity in row,
+transfer, snapshot and `managedModels` requests. Unique unnamed models retain
+their existing names. Model/table include or exclude rules still match all
+namespaces; use a qualified identity to select one. Missing named databases and
+colliding identities fail closed, without borrowing the default adapter.
+
+Descriptors retain the physical table and include optional `database` metadata.
+Relation targets and generated foreign keys stay within the selected namespace.
+Snapshots can restore qualified resources, but the current CDC source contract
+accepts only physical table names. Named-database time-based replay is therefore
+unavailable and rejected before restore writes; use an explicit snapshot mark.
+
 ## License
 
 MIT

@@ -74,7 +74,7 @@ export interface StudioModuleOptions {
   /**
    * Restrict which discovered crud models the data browser manages. `include`
    * is an allow-list (only these surface); `exclude` is a deny-list. Each entry
-   * matches a model by its name OR its table name. Absent ⇒ every discovered
+   * matches a model by its qualified identity, name OR table name. Absent ⇒ every discovered
    * model is managed.
    */
   managedModels?: { include?: string[]; exclude?: string[] };

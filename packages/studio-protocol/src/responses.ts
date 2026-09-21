@@ -131,12 +131,14 @@ export const STUDIO_RESPONSE_PARSERS: {
       table: z.string(),
       label: z.string(),
       capabilities: strings,
+      database: z.string().optional(),
     }),
   ).parse,
   'data.describeModel': z.object({
     name: z.string(),
     table: z.string(),
     primaryKeys: strings,
+    database: z.string().optional(),
     columns: z.array(
       z.object({
         name: z.string(),

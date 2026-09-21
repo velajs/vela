@@ -75,3 +75,15 @@ describe('additive diagnostic wire fields', () => {
     ).toThrow();
   });
 });
+
+it('preserves optional database namespaces and rejects malformed namespaces', () => {
+  const model = {
+    name: 'alpha::user',
+    table: 'users',
+    database: 'alpha',
+    label: 'users',
+    capabilities: [],
+  };
+  expect(parseStudioResponse('data.listModels', [model])).toEqual([model]);
+  expect(() => parseStudioResponse('data.listModels', [{ ...model, database: 4 }])).toThrow();
+});

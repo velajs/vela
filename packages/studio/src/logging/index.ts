@@ -108,9 +108,7 @@ export class StudioTimingInterceptor implements NestInterceptor {
         .createLogger(
           'studio.invocation',
           { studioInvocation: invocation },
-          {
-            ...(lifetime === undefined ? {} : { waitUntil: (work) => lifetime.waitUntil(work) }),
-          },
+          lifetime === undefined ? {} : { waitUntil: (work) => lifetime.waitUntil(work) },
         )
         .log(`Handler ${outcome}`);
     }

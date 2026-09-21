@@ -9,9 +9,8 @@ import { defineProvider } from '@velajs/vela';
  * binds a {@link CrudStudioModelSource} to the core `STUDIO_MODEL_SOURCE` token.
  *
  * The source discovers `@Crud`-stamped controllers via the public
- * `DiscoveryService` (`providersWithMeta(METADATA_KEYS.CRUD)` → the stamped
- * `CrudConfig`), resolves each resource's adapter (`config.adapter` else the
- * `CRUD_DEFAULT_ADAPTER`), and serves READS straight off the adapter contract —
+ * `DiscoveryService` metadata and `getCrudConfig`, resolves each resource with
+ * the shared CRUD database selection contract, and serves READS off the adapter contract —
  * bypassing the HTTP engine (policies/tenant/`runAsIdentity` are M7). Model
  * metadata comes from the normalized `Model`; column shapes are introspected
  * from the model's Zod schema. Everything crossing the wire is a frozen
@@ -21,7 +20,7 @@ import { defineProvider } from '@velajs/vela';
  * `./adapter`, `./model`) — no deep imports.
  */
 import { Container, DiscoveryService, METADATA_KEYS, defineModule } from '@velajs/vela';
-import { CRUD_DEFAULT_ADAPTER } from '@velajs/crud';
+import { getCrudConfig, resolveCrudDatabaseSync } from '@velajs/crud';
 import type { CrudConfig } from '@velajs/crud';
 import type { AuditStore } from '@velajs/crud/audit';
 import type { Model } from '@velajs/crud/model';
@@ -79,6 +78,8 @@ const DEFAULT_PER_PAGE = 20;
 
 /** One discovered, adapter-backed managed model. */
 interface ManagedEntry {
+  identity: string;
+  database?: string;
   model: Model;
   adapter: RuntimeAdapter;
   /** Fields the inline `search` needle applies to (from `CrudConfig.searchFields`). */
@@ -328,7 +329,8 @@ export class CrudStudioModelSource implements StudioModelSource {
 
   listModels(): StudioModelInfo[] {
     return [...this.index().values()].map((entry) => ({
-      name: entry.model.name,
+      name: entry.identity,
+      database: entry.database,
       table: entry.model.tableName,
       label: entry.model.namePlural,
       capabilities: [...entry.adapter.capabilities],
@@ -336,13 +338,28 @@ export class CrudStudioModelSource implements StudioModelSource {
   }
 
   describe(model: string): StudioModelDescriptor {
-    const { model: m, adapter } = this.entryFor(model);
+    const index = this.index();
+    const entry = index.get(model);
+    if (entry === undefined) throw studioError('STUDIO_UNKNOWN_MODEL', `unknown model '${model}'`);
+    const { model: m, adapter } = entry;
     return {
-      name: m.name,
+      name: entry.identity,
+      ...(entry.database === undefined ? {} : { database: entry.database }),
       table: m.tableName,
       primaryKeys: m.primaryKeys,
-      columns: deriveColumns(m),
-      relations: Object.entries(m.relations ?? {}).map(([name, rel]) => toRelation(name, rel)),
+      columns: deriveColumns(m).map((column) => {
+        if (column.fk !== undefined && entry.database !== undefined) {
+          column.fk.table = this.relationIdentity(entry, column.fk.table, index);
+        }
+        return column;
+      }),
+      relations: Object.entries(m.relations ?? {}).map(([name, rel]) => {
+        const relation = toRelation(name, rel);
+        if (entry.database !== undefined) {
+          relation.target = this.relationIdentity(entry, relation.target, index);
+        }
+        return relation;
+      }),
       flags: {
         softDelete: m.softDeleteField !== undefined,
         multiTenant: m.tenantField !== undefined,
@@ -447,6 +464,7 @@ export class CrudStudioModelSource implements StudioModelSource {
     // to the sibling's `tableName`).
     const visibleTargets = new Set<string>();
     for (const managed of index.values()) {
+      if (managed.database !== entry.database) continue;
       visibleTargets.add(managed.model.name);
       visibleTargets.add(managed.model.tableName);
     }
@@ -469,7 +487,12 @@ export class CrudStudioModelSource implements StudioModelSource {
           );
         }
       }
-      relations.push({ relation: name, target: rel.target ?? '', action, affected });
+      relations.push({
+        relation: name,
+        target: this.relationIdentity(entry, rel.target ?? '', index),
+        action,
+        affected,
+      });
     }
     return { relations };
   }
@@ -603,7 +626,7 @@ export class CrudStudioModelSource implements StudioModelSource {
     const columns = deriveColumns(entry.model);
     const pk = entry.model.primaryKeys[0] ?? 'id';
     const count = Math.max(0, Math.floor(request.count));
-    const fkPools = await this.fkPools(columns);
+    const fkPools = await this.fkPools(columns, entry.database);
     const now = Date.now();
     const sample: Row[] = [];
     let sampleCapped = false;
@@ -679,7 +702,10 @@ export class CrudStudioModelSource implements StudioModelSource {
   }
 
   /** Gather existing parent-id pools for each fk column so generated rows stay fk-valid. */
-  private async fkPools(columns: StudioColumn[]): Promise<Map<string, unknown[]>> {
+  private async fkPools(
+    columns: StudioColumn[],
+    database: string | undefined,
+  ): Promise<Map<string, unknown[]>> {
     const index = this.index();
     const pools = new Map<string, unknown[]>();
     for (const col of columns) {
@@ -687,9 +713,10 @@ export class CrudStudioModelSource implements StudioModelSource {
       if (fk === undefined) continue;
       let parent: ManagedEntry | undefined;
       for (const entry of index.values()) {
+        if (entry.database !== database) continue;
         if (entry.model.tableName === fk.table || entry.model.name === fk.table) {
+          if (parent !== undefined) throw studioConflict(`Ambiguous related table '${fk.table}'`);
           parent = entry;
-          break;
         }
       }
       if (parent === undefined) continue;
@@ -737,6 +764,23 @@ export class CrudStudioModelSource implements StudioModelSource {
     };
   }
 
+  private relationIdentity(
+    entry: ManagedEntry,
+    target: string,
+    index: Map<string, ManagedEntry>,
+  ): string {
+    if (entry.database === undefined) return target;
+    const matches = [...index.values()].filter(
+      (candidate) =>
+        candidate.database === entry.database &&
+        (candidate.model.tableName === target || candidate.model.name === target),
+    );
+    if (matches.length > 1) throw studioConflict(`Ambiguous related table '${target}'`);
+    return (
+      matches[0]?.identity ?? `${encodeURIComponent(entry.database)}::${encodeURIComponent(target)}`
+    );
+  }
+
   /** The managed entry for `model`, or `STUDIO_UNKNOWN_MODEL`. */
   private entryFor(model: string): ManagedEntry {
     const entry = this.index().get(model);
@@ -748,46 +792,66 @@ export class CrudStudioModelSource implements StudioModelSource {
 
   /**
    * Discover every `@Crud` resource, resolve its adapter, and apply the
-   * `managedModels` include/exclude filter — keyed by model name (table name
-   * accepted as an alias). Rebuilt per call: cheap (singleton controllers
-   * re-resolve to their cached instance) and never stale against lazily
-   * materialized crud modules.
+   * `managedModels` filter. Named database resources use escaped database::resource
+   * identities; unnamed resources retain their model name. Metadata-only discovery
+   * preserves lazy modules. Ambiguous identities and invalid selections fail closed.
    */
   private index(): Map<string, ManagedEntry> {
     const config = this.resolvedConfig();
     const include = config?.managedModels?.include;
     const exclude = config?.managedModels?.exclude;
     const map = new Map<string, ManagedEntry>();
-    for (const found of this.discovery.providersWithMeta<CrudConfig>(METADATA_KEYS.CRUD)) {
-      const crudConfig = found.meta;
-      if (crudConfig?.model === undefined) continue;
-      const adapter = crudConfig.adapter?.runtime ?? this.defaultAdapter();
-      if (adapter === undefined) continue;
+    for (const found of this.discovery.registrationsWithMeta<CrudConfig>(METADATA_KEYS.CRUD, {
+      metadataOnly: true,
+    })) {
+      // Native @Crud records compiled runtime config. Keep metadata-only legacy
+      // integrations working without interpreting their authoring hooks.
+      const runtime =
+        getCrudConfig(found.metatype) ??
+        (found.meta?.model === undefined
+          ? undefined
+          : {
+              model: found.meta.model,
+              adapter: found.meta.adapter?.runtime,
+              database: found.meta.database,
+              databaseResource: found.meta.databaseResource,
+              searchFields: found.meta.searchFields,
+            });
+      if (runtime === undefined) continue;
+      const crudConfig = resolveCrudDatabaseSync(this.container, runtime);
+      const identity =
+        crudConfig.database === undefined
+          ? crudConfig.model.name
+          : `${encodeURIComponent(crudConfig.database)}::${encodeURIComponent(crudConfig.databaseResource ?? crudConfig.model.name)}`;
       const { name, tableName } = crudConfig.model;
       if (
         include !== undefined &&
         include.length > 0 &&
+        !include.includes(identity) &&
         !include.includes(name) &&
         !include.includes(tableName)
       ) {
         continue;
       }
-      if (exclude !== undefined && (exclude.includes(name) || exclude.includes(tableName))) {
+      if (
+        exclude !== undefined &&
+        (exclude.includes(identity) || exclude.includes(name) || exclude.includes(tableName))
+      ) {
         continue;
       }
-      map.set(name, {
+      if (map.has(identity))
+        throw studioConflict(
+          `Ambiguous Studio resource '${identity}'; use distinct named database resources.`,
+        );
+      map.set(identity, {
+        identity,
+        database: crudConfig.database,
         model: crudConfig.model,
-        adapter,
+        adapter: crudConfig.adapter,
         searchFields: crudConfig.searchFields ?? [],
       });
     }
     return map;
-  }
-
-  private defaultAdapter(): RuntimeAdapter | undefined {
-    return this.container.has(CRUD_DEFAULT_ADAPTER)
-      ? this.container.resolve(CRUD_DEFAULT_ADAPTER).runtime
-      : undefined;
   }
 
   private resolvedConfig(): ResolvedStudioConfig | undefined {

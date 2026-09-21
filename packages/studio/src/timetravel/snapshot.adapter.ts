@@ -128,7 +128,11 @@ export class SnapshotTimeTravelAdapter implements TimeTravelPort {
       restartRequired: false,
       portableExport: true,
       createOnDemand: true,
-      granularity: this.changeSource !== undefined ? 'snapshot+cdc' : 'snapshot',
+      granularity:
+        this.changeSource !== undefined &&
+        !this.source.listModels().some((model) => model.database !== undefined)
+          ? 'snapshot+cdc'
+          : 'snapshot',
       scopeNote: SCOPE_NOTE,
     };
   }
@@ -170,6 +174,7 @@ export class SnapshotTimeTravelAdapter implements TimeTravelPort {
 
   async preview(target: RestoreTarget, _scope?: TimeTravelScope): Promise<RestorePreview> {
     const manifest = await this.resolveTarget(target);
+    this.assertCdcDatabaseScope(target, manifest);
     const incompatibleTables = await this.incompatibleTables(manifest);
     const { token, exp } = await this.confirm.issue(
       'timeTravel.armRestore',
@@ -192,6 +197,7 @@ export class SnapshotTimeTravelAdapter implements TimeTravelPort {
     // registry's 428 gate (op `timeTravel.armRestore`); the adapter does not
     // re-verify — it owns only the restore itself.
     const manifest = await this.resolveTarget(req);
+    this.assertCdcDatabaseScope(req, manifest);
     const incompatible = await this.incompatibleTables(manifest);
     if (incompatible.length > 0 && req.force !== true) {
       throw studioError(
@@ -392,6 +398,27 @@ export class SnapshotTimeTravelAdapter implements TimeTravelPort {
     const t = toEpoch(req.time);
     if (Number.isNaN(t)) return null;
     return t > manifest.createdAt ? t : null;
+  }
+
+  private assertCdcDatabaseScope(target: RestoreTarget, manifest: SnapshotManifest): void {
+    if (
+      this.changeSource === undefined ||
+      target.time === undefined ||
+      toEpoch(target.time) <= manifest.createdAt
+    )
+      return;
+    const named = new Set(
+      this.source
+        .listModels()
+        .filter((model) => model.database !== undefined)
+        .map((model) => model.name),
+    );
+    if (manifest.tables.some((table) => named.has(table.table))) {
+      throw studioError(
+        'FEATURE_UNCONFIGURED',
+        'CDC replay for named databases requires a database-aware change source. Restore an explicit snapshot instead.',
+      );
+    }
   }
 
   /** Replay audit-backed changes in `(manifest.createdAt, toTs]` onto the reloaded tables. */

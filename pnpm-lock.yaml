@@ -1558,6 +1558,9 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 4.1.10(@types/node@26.6.2)(esbuild@0.28.2)(happy-dom@20.14.5)(jiti@2.7.0)(yaml@2.9.1)
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
 
   packages/studio-fixtures:
     dependencies:

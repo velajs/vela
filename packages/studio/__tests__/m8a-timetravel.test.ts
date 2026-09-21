@@ -995,3 +995,23 @@ describe('timeTravel ops — undo + markForTime through dispatch', () => {
     expect(before).toBeNull();
   });
 });
+
+it('rejects named-database CDC before any restore writes but keeps explicit snapshots usable', async () => {
+  const source = userSource();
+  const listModels = source.listModels.bind(source);
+  source.listModels = () => listModels().map((model) => ({ ...model, database: 'alpha' }));
+  const adapter = makeAdapter(source, { changeSource: new FakeChangeSource([]), now: () => 1000 });
+  expect(adapter.capabilities().granularity).toBe('snapshot');
+  const mark = await adapter.createSnapshot({});
+  source.models.get('user')!.rows.set('u1', { id: 'u1', email: 'after-snapshot' });
+  await expect(adapter.preview({ bookmark: mark.id, time: 2000 })).rejects.toThrow(
+    'CDC replay for named databases',
+  );
+  await expect(
+    adapter.armRestore({ bookmark: mark.id, time: 2000, confirmToken: 'test' }),
+  ).rejects.toThrow('CDC replay for named databases');
+  expect(source.models.get('user')!.rows.get('u1')?.email).toBe('after-snapshot');
+  expect((await adapter.listMarks()).marks).toHaveLength(1);
+  await adapter.armRestore({ bookmark: mark.id, confirmToken: 'test' });
+  expect(source.models.get('user')!.rows.get('u1')?.email).toBe('ann@x.io');
+});

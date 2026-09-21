@@ -1,7 +1,25 @@
+import { z } from 'zod';
 import { matchesPredicate } from '@velajs/crud/query';
 import { bindAdapter } from '@velajs/crud/adapter';
-import { describe, expect, it } from 'vitest';
-import { Controller, METADATA_KEYS, Module, VelaFactory, defineMetadata } from '@velajs/vela';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  Container,
+  DiscoveryService,
+  Injectable,
+  defineProvider,
+  Controller,
+  METADATA_KEYS,
+  Module,
+  VelaFactory,
+  defineMetadata,
+} from '@velajs/vela';
+import {
+  CRUD_DATABASES,
+  CRUD_DEFAULT_ADAPTER,
+  Crud,
+  createCrudDatabaseRegistry,
+  defineCrudDatabase,
+} from '@velajs/crud';
 import type { CrudConfig } from '@velajs/crud';
 import type { Model, RelationConfig } from '@velajs/crud/model';
 import type {
@@ -22,7 +40,9 @@ import type {
 } from '@velajs/crud/adapter';
 import { StudioModule } from '../src';
 import type { StudioModuleOptions } from '../src';
-import { StudioCrudModule } from '../src/crud';
+import { CrudStudioModelSource, StudioCrudModule } from '../src/crud';
+import { STUDIO_RESOLVED_CONFIG } from '../src/tokens';
+import { resolveStudioConfig } from '../src/studio.config';
 import { STUDIO_MODEL_SOURCE } from '../src/data/model-source.port';
 import type {
   AdminRpcResponse,
@@ -802,5 +822,191 @@ describe('capabilities + managedModels', () => {
     expect(models).toEqual([]);
     const caps = ok(await rpc(app, 'studio.capabilities'));
     expect(caps.features.data).toBe(false);
+  });
+});
+
+describe('database-qualified Studio resources', () => {
+  function fixture(options: { exclude?: string[]; defaultDatabase?: 'alpha' | 'beta' } = {}) {
+    const container = new Container();
+    const alpha = new MemoryDb();
+    const beta = new MemoryDb();
+    const constructed = vi.fn();
+    const bindings = [
+      defineCrudDatabase('alpha', {
+        handle: alpha,
+        resources: {
+          user: {
+            model: userModel,
+            adapter: memoryAdapter(userModel, alpha, ['transactions', 'cascade']),
+          },
+          post: { model: postModel, adapter: memoryAdapter(postModel, alpha, ['transactions']) },
+        },
+      }),
+      defineCrudDatabase('beta', {
+        handle: beta,
+        resources: {
+          user: {
+            model: userModel,
+            adapter: memoryAdapter(userModel, beta, ['transactions', 'cascade']),
+          },
+          post: { model: postModel, adapter: memoryAdapter(postModel, beta, ['transactions']) },
+        },
+      }),
+    ];
+    container.register(
+      defineProvider(CRUD_DATABASES, {
+        useValue: createCrudDatabaseRegistry(bindings, {
+          defaultDatabase: options.defaultDatabase,
+        }),
+      }),
+    );
+    // Beta deliberately first: relation lookup must not select first-by-table.
+    for (const database of ['beta', 'alpha'])
+      for (const model of [userModel, postModel]) {
+        @Injectable()
+        class Resource {
+          constructor() {
+            constructed();
+          }
+        }
+        defineMetadata(METADATA_KEYS.CRUD, { model, database } satisfies CrudConfig, Resource);
+        container.register(Resource, `${database}-${model.name}`);
+      }
+    if (options.exclude) {
+      container.register(
+        defineProvider(STUDIO_RESOLVED_CONFIG, {
+          useValue: resolveStudioConfig({}, { managedModels: { exclude: options.exclude } }),
+        }),
+      );
+    }
+    const source = new CrudStudioModelSource(new DiscoveryService(container), container);
+    return { source, alpha, beta, constructed, container, bindings };
+  }
+
+  it('reads and writes the selected database while keeping metadata inspection lazy', async () => {
+    const { source, alpha, beta, constructed } = fixture();
+    alpha.seed('users', [{ id: 'same', email: 'alpha@example.test' }]);
+    beta.seed('users', [{ id: 'same', email: 'beta@example.test' }]);
+    expect(
+      source
+        .listModels()
+        .map((entry) => entry.name)
+        .toSorted(),
+    ).toEqual(['alpha::post', 'alpha::user', 'beta::post', 'beta::user']);
+    expect((await source.list('alpha::user', { model: 'alpha::user' })).rows[0]?.email).toBe(
+      'alpha@example.test',
+    );
+    expect((await source.list('beta::user', { model: 'beta::user' })).rows[0]?.email).toBe(
+      'beta@example.test',
+    );
+    expect(() => source.describe('user')).toThrow('unknown model');
+    expect(source.describe('alpha::user').relations[0]?.target).toBe('alpha::post');
+    expect(
+      source.describe('alpha::post').columns.find((col) => col.name === 'authorId')?.fk?.table,
+    ).toBe('alpha::user');
+    await source.writeRow(
+      'alpha::user',
+      { model: 'alpha::user', id: 'same', patch: { email: 'updated@example.test' } },
+      {},
+    );
+    expect((await source.list('alpha::user', { model: 'alpha::user' })).rows[0]?.email).toBe(
+      'updated@example.test',
+    );
+    expect((await source.list('beta::user', { model: 'beta::user' })).rows[0]?.email).toBe(
+      'beta@example.test',
+    );
+    expect(constructed).not.toHaveBeenCalled();
+  });
+
+  it('limits generated foreign keys and cascade visibility to the same database', async () => {
+    const { source, alpha, beta } = fixture({ exclude: ['alpha::post'] });
+    alpha.seed('users', [{ id: 'alpha-parent', email: 'a' }]);
+    beta.seed('users', [{ id: 'beta-parent', email: 'b' }]);
+    expect(
+      (await source.cascadePreview({ model: 'alpha::user', ids: ['alpha-parent'] })).relations,
+    ).toEqual([]);
+    const unrestricted = fixture();
+    unrestricted.alpha.seed('users', [{ id: 'alpha-parent', email: 'a' }]);
+    unrestricted.beta.seed('users', [{ id: 'beta-parent', email: 'b' }]);
+    await unrestricted.source.generateRows('alpha::post', { model: 'alpha::post', count: 1 }, {});
+    expect(
+      (await unrestricted.source.list('alpha::post', { model: 'alpha::post' })).rows[0]?.authorId,
+    ).toBe('alpha-parent');
+    expect(
+      (await unrestricted.source.list('beta::post', { model: 'beta::post' })).rows,
+    ).toHaveLength(0);
+  });
+
+  it('rejects colliding legacy names and explicit missing database selections', () => {
+    const container = new Container();
+    const db = new MemoryDb();
+    const adapter = memoryAdapter(userModel, db, []);
+    for (const owner of ['one', 'two']) {
+      @Injectable()
+      class Resource {}
+      defineMetadata(
+        METADATA_KEYS.CRUD,
+        { model: userModel, adapter } satisfies CrudConfig,
+        Resource,
+      );
+      container.register(Resource, owner);
+    }
+    expect(() =>
+      new CrudStudioModelSource(new DiscoveryService(container), container).listModels(),
+    ).toThrow('Ambiguous Studio resource');
+    const missing = new Container();
+    missing.register(defineProvider(CRUD_DEFAULT_ADAPTER, { useValue: adapter }));
+    @Injectable()
+    class Resource {}
+    defineMetadata(
+      METADATA_KEYS.CRUD,
+      { model: userModel, database: 'missing' } satisfies CrudConfig,
+      Resource,
+    );
+    missing.register(Resource);
+    expect(() =>
+      new CrudStudioModelSource(new DiscoveryService(missing), missing).listModels(),
+    ).toThrow("Unknown database binding 'missing'");
+  });
+
+  it('consumes native compiled @Crud adapters and preserves a unique unnamed identity', async () => {
+    const db = new MemoryDb();
+    db.seed('users', [{ id: 'native', email: 'native@example.test' }]);
+    const model = {
+      ...userModel,
+      schema: z.object({
+        id: z.string(),
+        email: z.string(),
+        createdAt: z.number().optional(),
+        updatedAt: z.number().optional(),
+      }),
+    };
+    const adapter = memoryAdapter(model, db, []);
+    class NativeResource {}
+    Crud({ model, adapter, only: ['list'] })(NativeResource);
+    const container = new Container();
+    container.register(NativeResource);
+    const source = new CrudStudioModelSource(new DiscoveryService(container), container);
+    expect(source.listModels().map((entry) => entry.name)).toEqual(['user']);
+    expect((await source.list('user', { model: 'user' })).rows[0]?.id).toBe('native');
+  });
+
+  it('honors the application default database for implicit resources', () => {
+    const { bindings } = fixture();
+    const container = new Container();
+    container.register(
+      defineProvider(CRUD_DATABASES, {
+        useValue: createCrudDatabaseRegistry(bindings, { defaultDatabase: 'beta' }),
+      }),
+    );
+    @Injectable()
+    class Resource {}
+    defineMetadata(METADATA_KEYS.CRUD, { model: userModel } satisfies CrudConfig, Resource);
+    container.register(Resource);
+    expect(
+      new CrudStudioModelSource(new DiscoveryService(container), container)
+        .listModels()
+        .map((row) => row.name),
+    ).toEqual(['beta::user']);
   });
 });
