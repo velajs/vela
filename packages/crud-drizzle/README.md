@@ -78,3 +78,13 @@ Use the adapter's `requestScope` or `transaction` callback for direct data calls
 Adapters sharing the same native Drizzle handle can share an active callback
 scope. Fabricated scopes, foreign handles and scopes retained after the callback
 returns are rejected before accessing the database.
+
+Database handles retain their original schema type when registered using
+`defineCrudDatabase` from `@velajs/crud`. Schema-aware Drizzle handles are accepted
+by the adapter's reflection boundary. Callback scopes are validated against the
+native owner and expire when their callback exits. Adapters sharing the exact
+handle can compose resource operations through `crudTransaction`; native storage
+wrappers may supply `transactionOwner` for a single shared physical boundary.
+D1 callback transactions remain unsupported. See
+[multiple databases](../../docs/multi-database.md) for registration, defaults,
+raw native access and migration ownership.

@@ -1,0 +1,27 @@
+{
+  "name": "vela-multi-database",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc --outDir dist --noEmit false --declaration false",
+    "typecheck": "tsc --noEmit",
+    "dev": "pnpm build && wrangler dev --port 8792",
+    "db:primary": "wrangler d1 migrations apply vela-multi-primary --local",
+    "db:analytics": "wrangler d1 migrations apply vela-multi-analytics --local"
+  },
+  "dependencies": {
+    "@velajs/cloudflare": "workspace:*",
+    "@velajs/crud": "workspace:*",
+    "@velajs/crud-drizzle": "workspace:*",
+    "@velajs/vela": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "hono": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "catalog:",
+    "typescript": "catalog:",
+    "wrangler": "catalog:"
+  }
+}

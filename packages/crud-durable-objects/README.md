@@ -27,3 +27,10 @@ operation. It provides no cross-object, R2, queue, or D1 atomicity.
 
 Real workerd conformance lives in `tests/crud/edge-workerd.test.ts` at the monorepo
 root. See the [edge capabilities guide](../../docs/edge-capabilities.md).
+
+Resources created with the same object's `storage` share a transaction owner.
+Use `crudTransaction` from `@velajs/crud` and pass its scope in
+`EngineRequest.transaction` to compose sequential resource calls in one real
+`storage.transaction`. A different object, expired callback scope or failed joined
+operation is rejected. Commit notifications wait for the outer storage commit.
+See [multiple databases](../../docs/multi-database.md).

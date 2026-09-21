@@ -158,3 +158,19 @@ results retain status, headers and pagination. Pass the actual resource contract
 and an explicit admitted context per invocation. See
 [typed headless services](../../docs/crud/services.md) for authoring and DI examples,
 conditional reads, and the default-envelope/afterList compatibility boundary.
+
+## Named databases and composed transactions
+
+Use `defineCrudDatabase`, `createCrudDatabaseRegistry`, and
+`databaseResource(database, resourceKey)` to mount the same model against multiple
+application-owned databases. `CrudModule.forRoot({ databases })` and
+`forFeature(features, { database })` keep selection explicit; existing
+`forRoot({ adapter })` remains supported. Native handle and model types stay inferred.
+
+`crudTransaction(adapter, context, callback)` composes sequential resource calls
+through `EngineRequest.transaction` on one owned database, with outer-commit
+notifications and rollback on failed operations. D1 callback composition and
+cross-database atomicity are unsupported. See the
+[multi-database guide](../../docs/multi-database.md) and the
+[two-D1 Worker](../../apps/multi-database/README.md) for routing, transaction limits,
+and per-database migration ownership.

@@ -431,6 +431,40 @@ importers:
         specifier: 'catalog:'
         version: 7.0.2
 
+  apps/multi-database:
+    dependencies:
+      '@velajs/cloudflare':
+        specifier: workspace:*
+        version: link:../../packages/cloudflare
+      '@velajs/crud':
+        specifier: workspace:*
+        version: link:../../packages/crud
+      '@velajs/crud-drizzle':
+        specifier: workspace:*
+        version: link:../../packages/crud-drizzle
+      '@velajs/vela':
+        specifier: workspace:*
+        version: link:../../packages/vela
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(@cloudflare/workers-types@5.20260920.1)(@electric-sql/pglite@0.5.8)(@libsql/client@0.17.4)(@types/pg@8.23.1)(bun-types@1.4.2)(kysely@0.29.6)(pg@8.23.0)
+      hono:
+        specifier: 'catalog:'
+        version: 4.13.8
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: 'catalog:'
+        version: 5.20260920.1
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      wrangler:
+        specifier: 'catalog:'
+        version: 4.135.0(@cloudflare/workers-types@5.20260920.1)(@types/node@24.13.3)
+
   apps/studio-demo:
     dependencies:
       '@velajs/crud':
