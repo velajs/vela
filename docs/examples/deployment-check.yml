@@ -1,0 +1,31 @@
+# Opt-in example for a CONSUMING APPLICATION. This file is not an active workflow.
+# Provide snapshot:entrypoints using a local/test app config; it writes build/entrypoints.json.
+name: Check staging deployment
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm snapshot:entrypoints
+      - run: pnpm exec vela deploy check --config wrangler.jsonc --env staging --entrypoints build/entrypoints.json --json
+      # Wrangler bundling is separate; no actual upload or Cloudflare credentials.
+      - run: pnpm exec wrangler deploy --config wrangler.jsonc --env staging --dry-run

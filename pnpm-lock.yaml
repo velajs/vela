@@ -739,6 +739,12 @@ importers:
       clipanion:
         specifier: ^4.0.0-rc.4
         version: 4.0.0-rc.4
+      jsonc-parser:
+        specifier: 3.3.1
+        version: 3.3.1
+      smol-toml:
+        specifier: 1.8.0
+        version: 1.8.0
       zod:
         specifier: 'catalog:'
         version: 4.4.3
@@ -5535,6 +5541,10 @@ packages:
     resolution: {integrity: sha512-g9Q1haeby36OSStwb4ntCGGGaKsaVSjQ68fBxoQcutl5fS1vuY18H3wSt3jFyFtrkx+Kz0V1G85A4MyAdDMi2Q==}
     engines: {node: '>=8'}
 
+  smol-toml@1.8.0:
+    resolution: {integrity: sha512-kCZr2V3ch9i00x8zXRhjUNVcjG9ijES5dDudkXvUVCT5QlJNQWElSJdZqyPemffHoLNUYwOcou0Fy+ojN0uHSQ==}
+    engines: {node: '>= 18'}
+
   sort-keys-length@1.0.1:
     resolution: {integrity: sha512-GRbEOUqCxemTAk/b32F2xa8wDTs+Z1QHOkbhJDQTvv/6G3ZkbJ+frYWsTcc7cBB3Fu4wy4XlLCuNtJuMn7Gsvw==}
     engines: {node: '>=0.10.0'}
@@ -9246,6 +9256,8 @@ snapshots:
       unicode-emoji-modifier-base: 1.0.0
 
   slash@3.0.0: {}
+
+  smol-toml@1.8.0: {}
 
   sort-keys-length@1.0.1:
     dependencies:
