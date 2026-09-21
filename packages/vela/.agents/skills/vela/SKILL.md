@@ -149,6 +149,7 @@ Load a reference when the task needs its depth. **This table is the contract** â
 | `references/controllers-and-routing.md` | Controllers, method/param decorators, versioning, global prefix, named routes, `UrlGeneratorService`, signed URLs, `VelaRouteMap` |
 | `references/pipeline.md` | Guards/pipes/interceptors/filters/middleware, `APP_*` tokens, execution order, built-in pipes, `Reflector`, `@Catch` |
 | `references/validation.md` | `defineEndpoint`/`@Endpoint`, `defineDto`, `ValidationPipe` vs `ZodValidationPipe`, `@Serialize`, `SerializerInterceptor` |
+| `references/serialization.md` | Async output schemas, `defineSerializer`, explicit domain projections and private state |
 | `references/openapi.md` | `createOpenApiDocument`, `@ApiDoc`/`@ApiTags`/`@ApiResponse`, operationId-from-route-name, `app.mountOpenApi` (Swagger/Scalar/ReDoc) |
 | `references/config.md` | `ConfigModule.forRoot`, `registerAs`, `ConfigType`/`InferConfigType`, typed environment tokens, parser-validated dynamic paths, `forRoot`-only caveat |
 | `references/websocket.md` | Gateways, `@SubscribeMessage`, `WsServer`/rooms, `WebSocketModule`, transports (core / websocket-node / CF DO) |

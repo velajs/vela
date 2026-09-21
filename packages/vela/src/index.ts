@@ -602,8 +602,13 @@ export type {
 } from './validation/index';
 
 // Serialization
-export { Serialize, SerializerInterceptor, SERIALIZE_METADATA } from './serialization/index';
-export type { SerializationDescriptor } from './serialization/index';
+export {
+  Serialize,
+  SerializerInterceptor,
+  SERIALIZE_METADATA,
+  defineSerializer,
+} from './serialization/index';
+export type { SerializationDescriptor, SerializerDefinition } from './serialization/index';
 
 // Testing utilities live in @velajs/testing — see https://github.com/velajs/testing
 

@@ -12,6 +12,8 @@ HTTP client, live queries, and Studio in a runnable Workers application.
   discovery, entrypoints, and lazy initialization.
 - [Runtime values and types](types.md): schema descriptors, request context,
   validation, and typed contracts.
+- [Response serialization](serialization.md): async output schemas and explicit
+  projections for domain objects, including private state.
 - [Security configuration](security.md): request limits, browser origins,
   identity, response caching, signed URLs, and WebSocket boundaries.
 - [WebSockets](websockets.md): gateways, transports, rooms, and authentication.
