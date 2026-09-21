@@ -9,6 +9,10 @@
     "seeder",
     "vela"
   ],
+  "homepage": "https://github.com/velajs/vela/tree/main/packages/cli#readme",
+  "bugs": {
+    "url": "https://github.com/velajs/vela/issues"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -39,6 +43,9 @@
       "types": "./dist/config.d.ts",
       "import": "./dist/config.js"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsdown",
@@ -82,12 +89,5 @@
   },
   "engines": {
     "node": ">=24"
-  },
-  "publishConfig": {
-    "access": "public"
-  },
-  "homepage": "https://github.com/velajs/vela/tree/main/packages/cli#readme",
-  "bugs": {
-    "url": "https://github.com/velajs/vela/issues"
   }
 }

@@ -31,9 +31,10 @@ describe('deployment alignment', () => {
       @Cron('0 * * * *', { dialect: 'cloudflare', timeZone: 'UTC' })
       hourly() {}
     }
+    /* oxlint-disable typescript/no-extraneous-class -- The decorated class is the module's identity. */
     @Module({ providers: [Jobs] })
-    // eslint-disable-next-line @typescript-eslint/no-extraneous-class -- Decorated module identity is the fixture.
     class AppModule {}
+    /* oxlint-enable typescript/no-extraneous-class */
     const app = await VelaFactory.create(AppModule);
     try {
       const snapshot = JSON.parse(JSON.stringify(collectEntrypoints(app)));
