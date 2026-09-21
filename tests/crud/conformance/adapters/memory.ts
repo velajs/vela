@@ -198,6 +198,7 @@ async function setup(): Promise<AdapterContext> {
 
   return {
     app: { request: async (path, init) => outer.request(path, init) },
+    teardown: () => app.dispose(),
     reset: () => {
       clearMemoryStorage();
     },
