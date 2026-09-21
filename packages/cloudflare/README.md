@@ -275,3 +275,14 @@ pnpm --filter @velajs/cloudflare typecheck
 The Workers suite uses real KV, D1, R2, WebSockets, SQLite Durable Objects, and
 cold event dispatch. See the [security guide](https://github.com/velajs/vela/blob/main/docs/cloudflare-security.md) for trusted identity,
 URL signing, and WebSocket boundaries.
+
+### Asynchronous response caches
+
+`KVCacheStore` works directly in core `ResponseCacheModule` or as a tier beneath
+`TieredCacheStore`. The adapter retains absolute logical expiry in KV metadata;
+KV's minimum physical retention does not extend the requested TTL. For optional
+generic tags/scoped invalidation, configure `KVCacheInvalidationStore` with a
+separate dedicated KV namespace without TTLs or lifecycle cleanup. It is eventually
+consistent, including concurrent writes and cached negative reads, and does not
+promise globally strong invalidation. Construct both in an environment-injected
+factory. See the [caching guide](../../docs/caching.md).

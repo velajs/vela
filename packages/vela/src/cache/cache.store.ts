@@ -11,25 +11,29 @@ export class MemoryCacheStore implements CacheStore {
   }
 
   get(key: string): unknown {
+    return this.getEntry(key)?.value;
+  }
+
+  getEntry(key: string): CacheEntry | undefined {
     const entry = this.store.get(key);
     if (!entry) return undefined;
-    if (Date.now() > entry.expiresAt) {
+    if (Date.now() >= entry.expiresAt) {
       this.store.delete(key);
       return undefined;
     }
-    return entry.value;
+    return { ...entry };
   }
 
   set(key: string, value: unknown, ttl?: number): void {
+    this.setEntry(key, { value, expiresAt: Date.now() + (ttl ?? this.defaultTtl) * 1000 });
+  }
+
+  setEntry(key: string, entry: CacheEntry): void {
     // Evict if at capacity
     if (!this.store.has(key) && this.store.size >= this.max) {
       this.evict();
     }
-    const effectiveTtl = ttl ?? this.defaultTtl;
-    this.store.set(key, {
-      value,
-      expiresAt: Date.now() + effectiveTtl * 1000,
-    });
+    this.store.set(key, { ...entry });
   }
 
   del(key: string): void {

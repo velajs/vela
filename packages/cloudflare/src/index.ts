@@ -22,7 +22,7 @@ export {
 export type { StorageModuleOptions, DiskConfig, PresignedUrlConfig } from './storage/index';
 
 // Services
-export { KVCacheStore } from './services/kv-cache.store';
+export { KVCacheStore, KVCacheInvalidationStore } from './services/kv-cache.store';
 
 // Feature-flag drivers (implement @velajs/feature-flags' FeatureFlagDriver contract)
 export { FlagshipFlagDriver, flagshipFlagDriver } from './services/flagship-flag.driver';

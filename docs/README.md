@@ -17,6 +17,8 @@ HTTP client, live queries, and Studio in a runnable Workers application.
   discovery, entrypoints, and lazy initialization.
 - [Runtime values and types](types.md): schema descriptors, request context,
   validation, and typed contracts.
+- [Response caching](caching.md): asynchronous stores, trusted partitions, tags,
+  expiry, and explicit post-commit invalidation.
 - [Response serialization](serialization.md): async output schemas and explicit
   projections for domain objects, including private state.
 - [Dependency injection](dependency-injection.md): registration ownership,

@@ -1,17 +1,30 @@
-import { describe, it, expect } from 'vitest';
-import { KVCacheStore } from '../services/kv-cache.store';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { KVCacheStore, KVCacheInvalidationStore } from '../services/kv-cache.store';
 
 function fakeKVService() {
   const store = new Map<string, string>();
   const ttls = new Map<string, number | undefined>();
+  const metadata = new Map<string, unknown>();
   const namespace = {
+    async getWithMetadata(key: string) {
+      const raw = store.get(key);
+      return {
+        value: raw === undefined ? null : JSON.parse(raw),
+        metadata: metadata.get(key) ?? null,
+      };
+    },
     async get(key: string, type?: 'json') {
       const raw = store.get(key);
       if (raw === undefined) return null;
       return type === 'json' ? JSON.parse(raw) : raw;
     },
-    async put(key: string, value: string, options?: { expirationTtl?: number }) {
+    async put(
+      key: string,
+      value: string,
+      options?: { expirationTtl?: number; metadata?: unknown },
+    ) {
       store.set(key, value);
+      metadata.set(key, options?.metadata);
       ttls.set(key, options?.expirationTtl);
     },
     async delete(key: string) {
@@ -27,6 +40,8 @@ function fakeKVService() {
   // Only `.namespace` is used by KVCacheStore.
   return { service: namespace as unknown as KVNamespace, store, ttls };
 }
+
+afterEach(() => vi.useRealTimers());
 
 describe('KVCacheStore', () => {
   it('round-trips JSON values', async () => {
@@ -61,5 +76,36 @@ describe('KVCacheStore', () => {
     expect(store.has('a')).toBe(false);
     await kv.clear();
     expect(store.size).toBe(0);
+  });
+});
+
+describe('KV cache expiry and invalidation', () => {
+  it('honors sub-minute logical TTL even while KV physically retains the value', async () => {
+    vi.useFakeTimers();
+    const { service, store } = fakeKVService();
+    const kv = new KVCacheStore(service);
+    await kv.set('key', 1, 1);
+    expect(await kv.getEntry('key')).toEqual({ value: 1, expiresAt: Date.now() + 1000 });
+    vi.advanceTimersByTime(1000);
+    expect(store.has('key')).toBe(true);
+    expect(await kv.get('key')).toBeUndefined();
+    await kv.set('zero', 1, 0);
+    expect(await kv.get('zero')).toBeUndefined();
+    await expect(kv.set('invalid', 1, NaN)).rejects.toThrow('TTL');
+  });
+
+  it('retains unknown expiry for legacy values and publishes fresh persistent generations', async () => {
+    const { service, store, ttls } = fakeKVService();
+    store.set('legacy', JSON.stringify({ count: 1 }));
+    expect(await new KVCacheStore(service).getEntry('legacy')).toEqual({ value: { count: 1 } });
+    const versions = new KVCacheInvalidationStore(service);
+    expect(await versions.getVersion('scope')).toBe('initial');
+    await versions.invalidate('scope');
+    const first = await versions.getVersion('scope');
+    await versions.invalidate('scope');
+    expect(await versions.getVersion('scope')).not.toBe(first);
+    expect(ttls.get('scope')).toBeUndefined();
+    store.set('invalid', '42');
+    await expect(versions.getVersion('invalid')).rejects.toThrow('generation');
   });
 });

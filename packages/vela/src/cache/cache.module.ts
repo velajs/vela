@@ -35,8 +35,8 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } =
     CacheService,
     CacheInterceptor,
     // One options-injecting provider serves BOTH forRoot and forRootAsync.
-    // A custom `store` (e.g. TieredCacheStore / KVCacheStore) overrides the
-    // default in-memory store.
+    // A custom synchronous store overrides the default memory store. Async
+    // stores belong to the separate ResponseCacheModule authoring path.
     defineProvider(CACHE_MANAGER, {
       useFactory: (options) =>
         options.store ?? new MemoryCacheStore(options.ttl ?? 5, options.max ?? 100),

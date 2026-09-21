@@ -88,7 +88,7 @@ class ApiController {
 `CacheModule.forRoot({ ttl, max })` provides `CacheService` (manual) and `CacheInterceptor` (auto-cache GET responses):
 
 ```ts
-import { CacheModule, CacheService, CacheInterceptor, CacheKey, CacheTTL } from '@velajs/vela';
+import { CacheModule, CacheService, CacheInterceptor, Cacheable, CacheKey, CacheTTL } from '@velajs/vela';
 
 @Module({ imports: [CacheModule.forRoot({ ttl: 60, max: 100 })] }) // ttl in SECONDS
 class AppModule {}
@@ -99,6 +99,7 @@ class ReportsController {
 
   @Get('/summary')
   @UseInterceptors(CacheInterceptor)   // opt-in per route (or CacheModule.forRoot({ isGlobal: true }))
+  @Cacheable()
   @CacheKey('reports:summary')
   @CacheTTL(30)
   summary() { return this.buildSummary(); }
@@ -113,7 +114,13 @@ class ReportsController {
 }
 ```
 
-`CacheModuleOptions`: `ttl` (**seconds**, default 5), `max` (default 100), `isGlobal?` (registers `CacheInterceptor` app-wide), `store?`. `CacheService`: raw unknown `get(key)`, parser-inferred `getParsed(key, schema)`, `set(key, value, ttl?)`, `del(key)`, `clear()`. `CacheInterceptor` caches GET only; the key is `@CacheKey` or `cache:GET:<path>`. Stores: `MemoryCacheStore` (default) and `TieredCacheStore` (multi-tier, async).
+`CacheModuleOptions`: `ttl` (seconds, default 5), `max` (default 100), `isGlobal?`, `store?` (synchronous only), `varyBy?` (trusted principal/tenant partition). Routes require `@Cacheable()`. Custom keys are suffixes beneath host/path/canonical query. Credentialed requests need an explicit trusted variation. `CacheService` stays synchronous with unknown raw reads and parser-inferred `getParsed`.
+
+For asynchronous stores, use `ResponseCacheModule.forRoot({ namespace, store, scope, invalidation? })` and `@CacheResponse({ ttl, tags, key })`. This module installs its opt-in interceptor automatically. `scope(context)` runs after guards and returns `{ visibility: 'public' | 'private', partition }` from trusted identity/tenant data, or undefined to bypass. Guards authorize every hit. Never mix `@Cacheable` and `@CacheResponse` on one route.
+
+Inject `ResponseCacheService` and obtain `cache.scope(trustedScope)` for async `get`, `getParsed`, `set`, `remember`, `invalidateKey`, `invalidateTags`, and `invalidateAll`. Tags and whole-scope invalidation reach routes and custom values in that partition only. Invalidate after a successful commit. Invalidation resolves `{ ok: true }` or `{ ok: false, reason }`, so cache failures do not report a committed write as failed. Tags require optional `CacheInvalidationStore`; `MemoryCacheInvalidationStore` is process-local, and `KVCacheInvalidationStore` in `@velajs/cloudflare` is eventually consistent.
+
+The async path caches only bounded JSON snapshots, never responses, streams, cookie-setting output or authentication secrets. Generation stamps fence old fills, and absolute expiry prevents stale replay. `TieredCacheStore` promotes only known-expiry entries into destinations implementing `CacheEntryWriter`, preserving their absolute deadline. KV generations require a dedicated namespace without expiry/reset; successful KV invalidation is not a global read-after-write guarantee. See `docs/caching.md` in the repository for the complete contract.
 
 
 ## Application-owned structured logging

@@ -63,6 +63,8 @@ Import native classes only in Worker entry files. Configure the namespace and `n
 
 R2 storage options contain actual bucket values (`disks: [{ disk: 'uploads', bucket: env.FILES }]`) and an explicit signing `secret`; resolve them with `StorageModule.forRootAsync({ inject: [ENV], useFactory: ... })`.
 
+For response caching, use core `ResponseCacheModule` with `KVCacheStore` and optional `KVCacheInvalidationStore` in a separate non-expiring namespace. KV logical TTL is preserved in metadata; distributed invalidation remains eventually consistent.
+
 Use `new KVCacheStore(env.CACHE)`, `kvFlagDriver(env.CACHE, options)`, and `flagshipFlagDriver(nativeBinding, options)`. Cache/object flag values remain unknown until parsed. There is no generic binding accessor that invents their value type.
 
 Keep `nodejs_compat` where native DO dependencies need it. Ambient container access is optional and needs `nodejs_als` or `nodejs_compat`; per-request DI works without ambient state. On Workers stamp live commit headers explicitly instead of relying on ALS across DO RPC. See the Cloudflare package README and `apps/live-todo` for the complete deployed wiring.

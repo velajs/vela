@@ -83,6 +83,11 @@ a stable `varyBy(request)` principal/tenant value. Vela hashes that value before
 keying. `@CacheKey` is a suffix beneath host + canonical path/query, and
 responses that set cookies are never stored.
 
+For asynchronous stores and explicit scoped invalidation, use
+[`ResponseCacheModule` and `@CacheResponse`](caching.md). Its scope resolver runs
+after guards, private scopes require trusted identity/tenant dimensions, and
+cache failures cannot turn committed writes into reported rollbacks.
+
 ## Signed URLs
 
 Generic `signUrl` calls require `{ expiresIn, method, purpose }`, and
