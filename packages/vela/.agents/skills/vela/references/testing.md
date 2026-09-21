@@ -31,6 +31,13 @@ Overrides infer their value/class/result contract from the token. Factory depend
 
 `.compile()` returns `Promise<TestingModule>`. (There is no `overrideMiddleware`.)
 
+Compilation shares production finalization and recomputes effective scopes after
+overrides. Always await `close()` to run shutdown hooks and dispose owned
+resources, even when a hook fails. Concurrent closes share completion, and a
+closed harness rejects new requests/scopes. Consume or cancel response streams
+and await scope callbacks before shutdown; Node WebSocket servers/connectors
+registered with the harness are closed with it.
+
 **Convention:** call `MetadataRegistry.clear()` (from `@velajs/vela`) in `beforeEach` — the registry is `globalThis`-anchored, so re-declared classes leak between cases otherwise.
 
 ## The `TestingModule`
@@ -50,6 +57,11 @@ Overrides infer their value/class/result contract from the token. Factory depend
 | `close(signal?)` | dispose the app |
 
 (There is no public `.app` property — use `createApplication()`.)
+
+`createTestHttpClient` accepts a remote HTTP transport when an in-process module
+is unnecessary. Remote tests exercise the target server's authentication and
+cannot inject trusted identity through client-side flags. Response validation
+uses the shared async schema parser, preserving transformation output types.
 
 ## HTTP client — `module.http` + `TestResponse`
 
