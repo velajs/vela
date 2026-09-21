@@ -33,3 +33,8 @@ function registrations(discovery: DiscoveryService): DiscoveredRegistration[] {
   return discovery.getRegistrations({ metadataOnly: true });
 }
 void registrations;
+
+// Forwarded partial bags historically allow explicit undefined, even when the
+// consumer enables exactOptionalPropertyTypes. The factory still returns Opts.
+const structural: { http?: boolean | undefined } = { http: undefined };
+Feature.forRootAsync({ ...structural, inject: [], useFactory: () => ({ name: 'forwarded' }) });

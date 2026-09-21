@@ -15,9 +15,12 @@ export interface ModuleRegistrationOptions {
 }
 
 /** Call-time structure excludes keys consumed by asynchronous DI wiring. */
-type StructuralModuleOptions<Opts> = Partial<
-  Omit<Opts, 'imports' | 'key' | 'lazy' | 'inject' | 'useFactory' | 'useClass' | 'useExisting'>
->;
+type StructuralModuleOptions<Opts> = {
+  [K in Exclude<
+    keyof Opts,
+    'imports' | 'key' | 'lazy' | 'inject' | 'useFactory' | 'useClass' | 'useExisting'
+  >]?: Opts[K] | undefined;
+};
 
 /**
  * Reshape the generated definition based on the resolved extras. Runs after the
