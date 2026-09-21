@@ -1,6 +1,7 @@
 import type { Container } from '../container/container';
-import type { Type } from '../container/types';
+import type { InferToken, Token, Type } from '../container/types';
 import type { ExecutionContext } from '../pipeline/types';
+import { assertExecutionScopeActive } from './execution-scope';
 
 /** ExecutionContext flavor handed to components around entrypoint dispatch. */
 export interface EntrypointExecutionContext<Kind extends string = string> extends ExecutionContext {
@@ -50,4 +51,31 @@ export function buildEntrypointExecutionContext<const Kind extends string>(
     switchToHttp: WRONG_TRANSPORT('switchToHttp()', kind),
     switchToWs: WRONG_TRANSPORT('switchToWs()', kind),
   };
+}
+
+/** Resolve legacy entrypoints only when the owning registration is unambiguous. */
+export function getEntrypointModuleId(
+  container: Container,
+  target: { readonly token: Token; readonly moduleId?: string },
+): string | undefined {
+  assertExecutionScopeActive(container);
+  const owners = container.getOwnerModuleIds(target.token);
+  if (target.moduleId !== undefined) {
+    if (!owners.includes(target.moduleId)) {
+      throw new Error(`Entrypoint owner '${target.moduleId}' does not register its token.`);
+    }
+    return target.moduleId;
+  }
+  if (owners.length > 1) {
+    throw new Error('Entrypoint token has multiple module owners; supply moduleId.');
+  }
+  return owners[0];
+}
+
+/** Preserve token inference while materializing the exact owning module asynchronously. */
+export function resolveEntrypoint<K extends Token>(
+  container: Container,
+  target: { readonly token: K; readonly moduleId?: string },
+): Promise<InferToken<K>> {
+  return container.resolveAsync(target.token, getEntrypointModuleId(container, target));
 }

@@ -405,6 +405,12 @@ export {
   getEntrypointKinds,
   contributesEntrypoints,
   runInEntrypointScope,
+  EXECUTION_LIFETIME,
+  createExecutionScope,
+  getExecutionLifetime,
+  finishExecutionScope,
+  getEntrypointModuleId,
+  resolveEntrypoint,
   buildEntrypointExecutionContext,
 } from './entrypoint/index';
 export type {
@@ -412,6 +418,9 @@ export type {
   Entrypoint,
   EntrypointKind,
   EntrypointExecutionContext,
+  ExecutionLifetime,
+  ExecutionScope,
+  ExecutionScopeOptions,
 } from './entrypoint/index';
 
 // Route contribution — metadata-claimed route generators (@Crud-style)
