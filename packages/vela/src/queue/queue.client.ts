@@ -13,24 +13,27 @@ import type { AddJobOptions, QueueDriver, QueueJob } from './queue.types';
  * microtask; platform drivers deliver in another isolate entirely).
  */
 export class QueueClient {
-  constructor(
-    private readonly queue: string,
-    private readonly driver: QueueDriver,
-  ) {}
+  readonly #queue: string;
+  readonly #driver: QueueDriver;
+
+  constructor(queue: string, driver: QueueDriver) {
+    this.#queue = queue;
+    this.#driver = driver;
+  }
 
   get name(): string {
-    return this.queue;
+    return this.#queue;
   }
 
   async add<T>(jobName: string, data: T, options: AddJobOptions = {}): Promise<QueueJob<T>> {
     const job: QueueJob<T> = {
       id: crypto.randomUUID(),
-      queue: this.queue,
+      queue: this.#queue,
       name: jobName,
       data,
       attempt: 1,
     };
-    await this.driver.enqueue(job, options);
+    await this.#driver.enqueue(job, options);
     return job;
   }
 }

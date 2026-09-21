@@ -37,7 +37,7 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<QueueModu
   key: (o) =>
     stableHash({
       queues: o.queues ?? [],
-      driver: o.driver?.kind ?? 'inline',
+      driver: typeof o.driver === 'function' ? o.driver : (o.driver?.kind ?? 'inline'),
       dispatch: o.dispatch?.kind ?? 'direct',
     }),
   setup: ({ OPTIONS, options }) => {
@@ -62,7 +62,8 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<QueueModu
     return {
       providers: [
         defineProvider(QUEUE_DRIVER, {
-          useFactory: (o: QueueModuleOptions) => o.driver ?? inline(),
+          useFactory: (o: QueueModuleOptions) =>
+            typeof o.driver === 'function' ? o.driver() : (o.driver ?? inline()),
           inject: [OPTIONS],
         }),
         defineProvider(QueueDispatchBinding, {

@@ -42,25 +42,20 @@ export interface MessageDisposition {
   outcome: MessageOutcome;
   /** Present only when `retry({ delaySeconds })` supplied a delay. */
   retryDelaySeconds?: number;
+  /** Retry requested after the last allowed delivery (attempts are 1-based). */
+  retryExhausted?: boolean;
   /**
-   * Whether this message was (inferably) dead-lettered.
-   *
-   * A host `Message` does NOT expose its consumer's `max_retries`, so this can
-   * only be inferred when the observer SUPPLIES `maxRetries` (from its wrangler
-   * / consumer config). When `maxRetries` is unknown this is `undefined`
-   * ("unknown", never a misleading `false`); when known it is `true` iff the
-   * message was retried at or beyond the ceiling, else `false`.
+   * Inferred DLQ routing, never confirmation of delivery. Unknown unless both
+   * maxRetries and deadLetterQueue configuration are supplied.
    */
   deadLettered: boolean | undefined;
 }
 
 export interface ObserveMessageOptions {
-  /**
-   * The consumer's retry ceiling, supplied by the observer (the host does not
-   * expose it). Enables honest {@link MessageDisposition.deadLettered}
-   * inference; omit it to leave `deadLettered` `undefined`.
-   */
+  /** Retries after the initial delivery; maxRetries: 0 permits one attempt. */
   maxRetries?: number;
+  /** Whether a dead-letter queue is configured on the host consumer. */
+  deadLetterQueue?: boolean;
 }
 
 export interface ObservedMessage<Body = unknown> {
@@ -87,13 +82,13 @@ export interface ObservedBatch<Body = unknown> {
   report(): BatchDisposition;
 }
 
-function inferDeadLettered(
+function retryExhausted(
   outcome: MessageOutcome,
   attempts: number,
   maxRetries: number | undefined,
 ): boolean | undefined {
   if (maxRetries === undefined) return undefined;
-  return outcome === 'retried' && attempts >= maxRetries;
+  return outcome === 'retried' && attempts > maxRetries;
 }
 
 /**
@@ -118,6 +113,12 @@ export function observeMessage<Body = unknown>(
   message: QueueMessageLike<Body>,
   options: ObserveMessageOptions = {},
 ): ObservedMessage<Body> {
+  if (
+    options.maxRetries !== undefined &&
+    (!Number.isSafeInteger(options.maxRetries) || options.maxRetries < 0)
+  ) {
+    throw new RangeError('maxRetries must be a non-negative safe integer.');
+  }
   let outcome: MessageOutcome = 'unsettled';
   let retryDelaySeconds: number | undefined;
 
@@ -125,15 +126,17 @@ export function observeMessage<Body = unknown>(
     get(target, prop) {
       if (prop === 'ack') {
         return (): void => {
-          outcome = 'acked';
           target.ack();
+          if (outcome === 'unsettled') outcome = 'acked';
         };
       }
       if (prop === 'retry') {
         return (retryOptions?: { delaySeconds?: number }): void => {
-          outcome = 'retried';
-          retryDelaySeconds = retryOptions?.delaySeconds;
           target.retry(retryOptions);
+          if (outcome === 'unsettled') {
+            outcome = 'retried';
+            retryDelaySeconds = retryOptions?.delaySeconds;
+          }
         };
       }
       // Non-extensible-target invariant: return the target's own value for
@@ -145,11 +148,16 @@ export function observeMessage<Body = unknown>(
   return {
     message: proxy,
     disposition(): MessageDisposition {
+      const exhausted = retryExhausted(outcome, message.attempts, options.maxRetries);
       const result: MessageDisposition = {
         id: message.id,
         attempts: message.attempts,
         outcome,
-        deadLettered: inferDeadLettered(outcome, message.attempts, options.maxRetries),
+        retryExhausted: exhausted,
+        deadLettered:
+          exhausted === undefined || options.deadLetterQueue === undefined
+            ? undefined
+            : exhausted && options.deadLetterQueue,
       };
       if (retryDelaySeconds !== undefined) result.retryDelaySeconds = retryDelaySeconds;
       return result;

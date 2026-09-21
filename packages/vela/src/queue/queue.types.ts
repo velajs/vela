@@ -44,7 +44,7 @@ export interface QueueDriverBindHooks {
 export interface QueueDriver {
   readonly kind: string;
   enqueue(job: QueueJob, options?: AddJobOptions): Promise<void>;
-  bind?(dispatch: QueueDispatchFn, hooks?: QueueDriverBindHooks): void;
+  bind?(dispatch: QueueDispatchFn, hooks?: QueueDriverBindHooks): void | (() => void);
 }
 
 /**
@@ -79,8 +79,8 @@ export interface QueueModuleOptions {
    * providers); `forRootAsync` callers pass it alongside the factory.
    */
   queues?: string[];
-  /** Defaults to the in-core `inline()` driver. */
-  driver?: QueueDriver;
+  /** Defaults to inline(). A factory creates a fresh driver per application. */
+  driver?: QueueDriver | (() => QueueDriver);
   /**
    * Opt-in signed re-entry for delivered jobs (default `direct`). STRUCTURAL —
    * like `queues`, pass it alongside the factory for `forRootAsync`. The

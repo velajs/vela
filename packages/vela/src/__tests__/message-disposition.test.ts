@@ -101,9 +101,9 @@ describe('queue disposition harness — observeMessage', () => {
     expect(disposition.retryDelaySeconds).toBe(30);
   });
 
-  it('infers deadLettered true at/over the supplied retry ceiling', () => {
-    const host = frozenMessage({ id: 'm4', timestamp: new Date(0), body: 0, attempts: 3 });
-    const observed = observeMessage(host, { maxRetries: 3 });
+  it('infers DLQ routing after initial delivery plus configured retries', () => {
+    const host = frozenMessage({ id: 'm4', timestamp: new Date(0), body: 0, attempts: 4 });
+    const observed = observeMessage(host, { maxRetries: 3, deadLetterQueue: true });
 
     observed.message.retry();
 
@@ -114,7 +114,7 @@ describe('queue disposition harness — observeMessage', () => {
 
   it('reports deadLettered false (known) when retried below the ceiling', () => {
     const host = frozenMessage({ id: 'm5', timestamp: new Date(0), body: 0, attempts: 1 });
-    const observed = observeMessage(host, { maxRetries: 3 });
+    const observed = observeMessage(host, { maxRetries: 3, deadLetterQueue: true });
 
     observed.message.retry();
 
@@ -134,10 +134,13 @@ describe('queue disposition harness — observeMessage', () => {
 describe('queue disposition harness — observeBatch', () => {
   it('maps over the batch and aggregates the report', () => {
     const acked = frozenMessage({ id: 'a', timestamp: new Date(0), body: 0, attempts: 1 });
-    const retried = frozenMessage({ id: 'b', timestamp: new Date(0), body: 0, attempts: 3 });
+    const retried = frozenMessage({ id: 'b', timestamp: new Date(0), body: 0, attempts: 4 });
     const untouched = frozenMessage({ id: 'c', timestamp: new Date(0), body: 0, attempts: 1 });
 
-    const observed = observeBatch([acked, retried, untouched], { maxRetries: 3 });
+    const observed = observeBatch([acked, retried, untouched], {
+      maxRetries: 3,
+      deadLetterQueue: true,
+    });
     expect(observed.messages).toHaveLength(3);
 
     observed.messages[0]!.ack();
@@ -171,5 +174,53 @@ describe('queue disposition harness — exported type signatures', () => {
     expect(disposition.outcome).toBe('unsettled');
     expect(dead).toBeUndefined();
     expect(userId).toBe('u1');
+  });
+});
+
+describe('first successful settlement observation', () => {
+  it.each(['ack', 'retry'] as const)('keeps the first %s including its delay', (first) => {
+    const host = frozenMessage({ id: 'first', timestamp: new Date(0), body: null, attempts: 1 });
+    const observed = observeMessage(host);
+    if (first === 'ack') observed.message.ack();
+    else observed.message.retry({ delaySeconds: 7 });
+    observed.message.retry({ delaySeconds: 99 });
+    observed.message.ack();
+    expect(observed.disposition()).toMatchObject({
+      outcome: first === 'ack' ? 'acked' : 'retried',
+    });
+    expect(observed.disposition().retryDelaySeconds).toBe(first === 'ack' ? undefined : 7);
+  });
+
+  it('does not record a failed host call', () => {
+    const host = frozenMessage(
+      { id: 'throw', timestamp: new Date(0), body: null, attempts: 1 },
+      {
+        onRetry: () => {
+          throw new Error('invalid delay');
+        },
+      },
+    );
+    const observed = observeMessage(host);
+    expect(() => observed.message.retry()).toThrow('invalid delay');
+    expect(observed.disposition().outcome).toBe('unsettled');
+    observed.message.ack();
+    expect(observed.disposition().outcome).toBe('acked');
+  });
+
+  it('distinguishes retry exhaustion from DLQ configuration and includes the initial attempt', () => {
+    for (const [attempts, maxRetries, exhausted] of [
+      [1, 0, true],
+      [3, 3, false],
+      [4, 3, true],
+    ] as const) {
+      const host = frozenMessage({ id: 'limit', timestamp: new Date(0), body: null, attempts });
+      const unknown = observeMessage(host, { maxRetries });
+      unknown.message.retry();
+      expect(unknown.disposition().retryExhausted).toBe(exhausted);
+      expect(unknown.disposition().deadLettered).toBeUndefined();
+      const absent = observeMessage(host, { maxRetries, deadLetterQueue: false });
+      absent.message.retry();
+      expect(absent.disposition().deadLettered).toBe(false);
+    }
   });
 });
