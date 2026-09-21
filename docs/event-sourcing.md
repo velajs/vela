@@ -62,3 +62,19 @@ and rebuilding a new projection after changing a read model.
 
 See the [supported package API and migration notes](../packages/event-source/README.md)
 for replay, checkpoint parsing, errors, limits, and subscription cleanup.
+
+## Local notification delivery
+
+The core `EventEmitter.emit(name, ...args)` retains its 1.x delivery policy:
+exact handlers run concurrently, followed by matching wildcard groups. A rejected
+group rejects the call and skips later groups. Use
+`emitWithOptions(name, { settlement: 'complete' }, ...args)` to snapshot every
+matching listener, attempt them all, and await completion. One failure is rethrown
+unchanged; multiple failures become an `AggregateError` in registration order
+(exact handlers before wildcard groups).
+
+A `once` registration is consumed before its callback starts, including when the
+callback throws, recursively emits, or overlaps another emission. `off` still
+accepts the original callback, and a once callback may register its next delivery.
+These are process-local notifications: successful completion does not persist an
+event or provide an outbox.

@@ -259,7 +259,7 @@ export {
   OnEvent,
   ON_EVENT_METADATA,
 } from './event-emitter/index';
-export type { EventHandler, OnEventMetadata } from './event-emitter/index';
+export type { EventHandler, OnEventMetadata, EventEmitOptions } from './event-emitter/index';
 
 // Schedule
 export {

@@ -192,3 +192,117 @@ describe('EventEmitter', () => {
     });
   });
 });
+
+describe('event delivery lifetime', () => {
+  it.each(['test', '**'])(
+    'consumes %s once listeners before concurrent or throwing calls',
+    async (pattern) => {
+      const emitter = new EventEmitter();
+      let calls = 0;
+      emitter.once(pattern, async () => {
+        calls++;
+        await Promise.resolve();
+        throw new Error('listener failed');
+      });
+      await Promise.allSettled([emitter.emit('test'), emitter.emit('test')]);
+      await emitter.emit('test');
+      expect(calls).toBe(1);
+      expect(emitter.listenerCount('test')).toBe(0);
+    },
+  );
+
+  it('does not invoke a once listener twice through a recursive sibling snapshot', async () => {
+    const emitter = new EventEmitter();
+    let recursed = false;
+    let calls = 0;
+    emitter.on('test', async () => {
+      if (!recursed) {
+        recursed = true;
+        await emitter.emit('test');
+      }
+    });
+    emitter.once('test', () => {
+      calls++;
+    });
+    await emitter.emit('test');
+    expect(calls).toBe(1);
+  });
+
+  it('keeps off identity and permits a once callback to register its next delivery', async () => {
+    const emitter = new EventEmitter();
+    let calls = 0;
+    const callback = () => {
+      calls++;
+      emitter.once('test', callback);
+    };
+    emitter.once('test', callback);
+    await emitter.emit('test');
+    expect(calls).toBe(1);
+    await emitter.emit('test');
+    expect(calls).toBe(2);
+    emitter.off('test', callback);
+    await emitter.emit('test');
+    expect(calls).toBe(2);
+  });
+});
+
+describe('event settlement policy', () => {
+  it('preserves legacy rejection and skips later wildcard groups', async () => {
+    const emitter = new EventEmitter();
+    let wildcard = false;
+    emitter.on('test', () => {
+      throw Error('exact');
+    });
+    emitter.on('**', () => {
+      wildcard = true;
+    });
+    await expect(emitter.emit('test')).rejects.toThrow('exact');
+    expect(wildcard).toBe(false);
+  });
+
+  it('complete delivery attempts all groups and waits for slow failures', async () => {
+    const emitter = new EventEmitter();
+    const exact = Error('exact');
+    const wildcard = Error('wildcard');
+    let finish!: () => void;
+    const barrier = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    let settled = false;
+    let received = false;
+    emitter.on('test', () => {
+      throw exact;
+    });
+    emitter.on('**', async () => {
+      await barrier;
+      throw wildcard;
+    });
+    emitter.on('**', () => {
+      received = true;
+    });
+    const dispatch = emitter.emitWithOptions('test', { settlement: 'complete' });
+    const result = dispatch.catch((error: unknown) => {
+      settled = true;
+      return error;
+    });
+    await Promise.resolve();
+    expect(received).toBe(true);
+    expect(settled).toBe(false);
+    finish();
+    expect(await result).toMatchObject({ errors: [exact, wildcard] });
+  });
+
+  it('complete delivery snapshots subscriptions and preserves a single thrown value', async () => {
+    const emitter = new EventEmitter();
+    const reason = { code: 'failed' };
+    let lateCalls = 0;
+    emitter.on('test', () => {
+      emitter.on('**', () => {
+        lateCalls++;
+      });
+      throw reason;
+    });
+    await expect(emitter.emitWithOptions('test', { settlement: 'complete' })).rejects.toBe(reason);
+    expect(lateCalls).toBe(0);
+  });
+});

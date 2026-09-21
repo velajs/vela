@@ -4,3 +4,8 @@ export interface OnEventMetadata {
   event: string;
   methodName: string;
 }
+
+export interface EventEmitOptions {
+  /** Legacy fails fast between groups; complete awaits every matching listener. */
+  settlement?: 'legacy' | 'complete';
+}
