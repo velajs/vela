@@ -30,8 +30,10 @@ can also be registered globally through `APP_INTERCEPTOR` or
 
 Schemas may implement Standard Schema or the legacy `parse` API. Async validation,
 refinements and transformations are awaited, including each array item. Vela
-prefers Standard Schema validation when a schema supports both interfaces, and
-otherwise prefers a legacy `parseAsync` when present. A missing `@Serialize`
+uses the shared async validation boundary. Zod uses its asynchronous parser
+directly so async transforms do not run twice; other Standard Schema validators
+use the standard protocol, and legacy schemas prefer `parseAsync` when present.
+A missing `@Serialize`
 leaves the result unchanged; malformed serialization metadata fails instead of
 silently returning the unfiltered result. Output validation failures use the
 existing server-error pipeline, not input-validation 400 responses.

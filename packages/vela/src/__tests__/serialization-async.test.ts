@@ -80,6 +80,39 @@ describe('asynchronous response serialization', () => {
     expect(await (await app.getHonoApp().request('/standard/list')).json()).toEqual([{ id: 2 }]);
   });
 
+  it('invokes async Zod transforms once for each scalar and array item', async () => {
+    const transform = vi.fn(async (value: { id: number }) => ({ publicId: value.id }));
+    const dto = defineDto(z.object({ id: z.number() }).transform(transform));
+    @Controller('/transform')
+    @UseInterceptors(SerializerInterceptor)
+    class Transform {
+      @Get()
+      @Serialize(dto)
+      scalar() {
+        return { id: 1, secret: 'hidden' };
+      }
+
+      @Get('/list')
+      @Serialize(dto)
+      list() {
+        return [
+          { id: 2, secret: 'hidden' },
+          { id: 3, secret: 'hidden' },
+        ];
+      }
+    }
+    @Module({ controllers: [Transform] })
+    class App {}
+    const app = await VelaFactory.create(App);
+    apps.push(app);
+    expect(await (await app.getHonoApp().request('/transform')).json()).toEqual({ publicId: 1 });
+    expect(await (await app.getHonoApp().request('/transform/list')).json()).toEqual([
+      { publicId: 2 },
+      { publicId: 3 },
+    ]);
+    expect(transform.mock.calls.map(([value]) => value)).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
+  });
+
   it('awaits asynchronous schema refinements and treats invalid output as a server error', async () => {
     const dto = defineDto(
       z.object({ id: z.string().refine(async (value) => value !== 'invalid') }),

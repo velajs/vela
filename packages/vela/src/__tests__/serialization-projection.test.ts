@@ -104,6 +104,21 @@ describe('explicit domain serialization', () => {
     expect(project).toHaveBeenCalledExactlyOnceWith(21);
   });
 
+  it('executes async Zod input and output transforms once around the projection', async () => {
+    const inputTransform = vi.fn(async (id: string) => new Account(id, 'secret'));
+    const outputTransform = vi.fn(async (value: { id: string }) => ({ publicId: value.id }));
+    const project = vi.fn((account: Account) => account.publicDetails());
+    const serializer = defineSerializer({
+      input: z.string().transform(inputTransform),
+      output: z.object({ id: z.string() }).transform(outputTransform),
+      project,
+    });
+    expect(await serializer.serialize('a1')).toEqual({ publicId: 'a1' });
+    expect(inputTransform).toHaveBeenCalledTimes(1);
+    expect(project).toHaveBeenCalledTimes(1);
+    expect(outputTransform).toHaveBeenCalledTimes(1);
+  });
+
   it('uses the same complete projection for @Serialize scalar and array results', async () => {
     const serializer = defineSerializer({
       input: z.instanceof(Account),
