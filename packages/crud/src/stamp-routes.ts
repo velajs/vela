@@ -36,7 +36,7 @@ import type { RuntimeAdapter } from './adapter/contract';
 import { ConfigurationException } from './envelope/errors';
 import { compileResource, type CrudResource, type RuntimeResourceConfig } from './kernel/resource';
 import { deriveCreateSchema, deriveUpdateSchema } from './model/schema-derive';
-import { deriveRouteName, deriveVerbNaming } from './naming';
+import { deriveRouteName, deriveVerbNaming, pascalResourceName } from './naming';
 import { buildEngineRequest, toResponse } from './request-flow';
 import { resolveCrudDatabase } from './resolve-database';
 import {
@@ -80,9 +80,6 @@ export function recordOverride(
 
 const ROUTE_DECORATORS = { get: Get, post: Post, put: Put, patch: Patch, delete: Delete } as const;
 
-const pascal = (s: string): string =>
-  s.replace(/(?:^|[^a-zA-Z0-9]+)([a-zA-Z0-9])/g, (_m, c: string) => c.toUpperCase());
-
 type Ctor = {
   new (...args: never[]): unknown;
   readonly prototype: object;
@@ -118,7 +115,7 @@ export function stampCrudRoutes(controller: Ctor, config: RuntimeCrudConfig): vo
   const stamped = enabled.filter((name) => implemented.includes(name));
 
   // DTO bridge — derived once per class, adapter-independent.
-  const base = pascal(names.singular);
+  const base = pascalResourceName(names.singular);
   const createDto = defineDto(
     config.contracts?.create ??
       model.contracts?.create ??

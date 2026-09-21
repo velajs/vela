@@ -8,6 +8,7 @@ import {
   type RuntimeCrudConfig,
 } from './crud.types';
 import { stampCrudRoutes } from './stamp-routes';
+import { pascalResourceName } from './naming';
 
 export interface CrudFeatureResource {
   path: string;
@@ -21,13 +22,12 @@ export function defineCrudFeature<Shape extends ZodRawShape>(
   return { path, config: compileCrudConfig(config) };
 }
 
-const pascal = (s: string): string =>
-  s.replace(/(?:^|[^a-zA-Z0-9]+)([a-zA-Z0-9])/g, (_m, c: string) => c.toUpperCase());
-
 export function synthesizeController(feature: CrudFeatureResource): Type {
   const names = resourceNames(feature.config);
   const cls = class {};
-  Object.defineProperty(cls, 'name', { value: `Crud${pascal(names.plural)}Controller` });
+  Object.defineProperty(cls, 'name', {
+    value: `Crud${pascalResourceName(names.plural)}Controller`,
+  });
   Controller(feature.path)(cls);
   stampCrudRoutes(cls, feature.config);
   return cls;
