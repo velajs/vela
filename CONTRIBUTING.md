@@ -41,9 +41,14 @@ pnpm test:conformance
 ```
 
 Before submitting, run `pnpm lint` and `pnpm verify`. The verification gate checks
-the workspace, builds, API snapshot, types, documentation, package tests, release
-tests, CRUD conformance, and native Workers behavior. Review intentional core API
-changes with `pnpm --filter @velajs/vela api:update`.
+the workspace, builds, API snapshot, types, bundled skill documentation, package
+tests, release tests, CRUD conformance, and native Workers behavior. Review
+intentional core API changes with `pnpm --filter @velajs/vela api:update`.
+
+The Fumadocs website is maintained separately in the private
+[velajs/site](https://github.com/velajs/site) repository, with MDX content from
+[velajs/docs](https://github.com/velajs/docs). Run `pnpm check` from the site
+checkout for website or content changes; see [the tooling guide](docs/tooling.md).
 
 ## Versions and releases
 

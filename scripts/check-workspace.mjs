@@ -31,17 +31,13 @@ for (const path of lockfiles) {
 for (const pkg of packages) {
   const path = relative(root, pkg.path);
   if (!path) continue;
-  if (!/^(packages|apps)\/[^/]+$/.test(path) && path !== 'tools/docs')
+  if (!/^(packages|apps)\/[^/]+$/.test(path))
     errors.push(`${path} is outside the workspace layout`);
   if (path.startsWith('apps/') && !pkg.private)
     errors.push(`${path} must remain a private application`);
   if (!pkg.private && !path.startsWith('packages/'))
     errors.push(`${path} must publish from packages/`);
-  if (
-    path !== 'tools/docs' &&
-    pkg.devDependencies?.typescript &&
-    pkg.devDependencies.typescript !== 'catalog:'
-  )
+  if (pkg.devDependencies?.typescript && pkg.devDependencies.typescript !== 'catalog:')
     errors.push(`${path} must use the shared TypeScript 7 catalog`);
   for (const file of [
     '.git',

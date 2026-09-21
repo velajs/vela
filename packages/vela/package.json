@@ -96,14 +96,12 @@
     "test:workers:als": "vitest run --config vitest.config.workers-als.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.type-tests.json && tsc --noEmit -p tsconfig.dispatch-tests.json && tsc --noEmit -p tsconfig.package-tests.json",
     "check:skill": "node scripts/check-skill.mjs",
-    "docs": "pnpm --filter @velajs/docs-tooling run docs",
-    "docs:check": "pnpm --filter @velajs/docs-tooling run docs:check",
     "lint": "oxlint .",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "publint": "publint",
     "attw": "attw --pack . --profile esm-only",
-    "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm api:check && pnpm worker-size:check && pnpm typecheck && pnpm check:skill && pnpm docs:check && pnpm test && pnpm test:workers && pnpm test:workers:als && pnpm publint && pnpm attw"
+    "verify": "pnpm lint && pnpm format:check && pnpm build && pnpm api:check && pnpm worker-size:check && pnpm typecheck && pnpm check:skill && pnpm test && pnpm test:workers && pnpm test:workers:als && pnpm publint && pnpm attw"
   },
   "dependencies": {
     "@velajs/errors": "workspace:*",
