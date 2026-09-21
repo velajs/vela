@@ -13,6 +13,8 @@ export interface SeederMetadata {
 export interface RegisteredSeeder {
   name: string;
   order: number;
+  /** Exact registration owner; framework-discovered entries always include it. */
+  moduleId?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- constructor token
   target: new (...args: any[]) => Seeder;
 }

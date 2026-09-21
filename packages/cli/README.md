@@ -16,6 +16,7 @@ pnpm add -D @velajs/cli
 | --- | --- |
 | `vela new my-api` | Create a minimal Workers project with a module, controller, injected service, and a working local development setup. |
 | `vela doctor` | Explain config resolution without importing it; `--app` opts into application graph snapshots and teardown. Supports `--json`. |
+| `vela deploy check` | Check an explicit Wrangler config/environment against a saved entrypoint snapshot without bootstrapping, building or deploying. See the [deployment guide](../../docs/deployment.md). |
 | `vela db seed` | Build the app and run all `@Seeder()` classes in order. |
 | `vela route list` | HTTP route table: framework-composed controller routes (`Controller#handler`, full paths incl. prefix/version) plus `(mounted)` extras (CRUD/contributed, doc UIs). |
 | `vela module graph` | Module graph: imports tree with `global`/`lazy` flags and provider counts (`--json` for the raw graph). |
@@ -154,9 +155,14 @@ usable without Studio installed.
 vela db seed
 vela db seed --config ./config/vela.config.js
 vela db seed --continue-on-error
+# Inspect registration owners without running seeders:
+vela db seed --list --json
 ```
 
 Exit code is `0` when all seeders run and `1` if any fail.
+Seeders registered in multiple modules run once per owner, including async
+providers. Invocations finish their managed deferred work and dispose request
+resources before the next seeder starts. See [seeding](../../docs/seeding.md).
 
 ## Typed HTTP clients
 
