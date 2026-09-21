@@ -421,6 +421,61 @@ describe('websocket-node — code-review regressions', () => {
     expect(order).toEqual(['open', 'message']); // message waited for handleConnection
   });
 
+  it.each(['overflow', 'close'] as const)(
+    'drops frames waiting for setup after %s',
+    async (stop) => {
+      let release!: () => void;
+      const setup = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let hits = 0;
+      @WebSocketGateway({
+        path: '/setup-budget',
+        authenticateUpgrade: authenticateTestUpgrade,
+        maxPendingMessages: 1,
+      })
+      class Gateway {
+        async handleConnection() {
+          await setup;
+        }
+        @SubscribeMessage('go') go() {
+          hits++;
+        }
+      }
+      @Module({ imports: [WebSocketModule.forRoot()], providers: [Gateway] })
+      class App {}
+      const app = await VelaFactory.create(App);
+      try {
+        const { upgrade, captured } = capturingUpgrade();
+        registerWebSocketGateways(app, upgrade);
+        const events = await captured[0]({
+          req: { raw: new Request('http://localhost/setup-budget'), param: () => undefined },
+        });
+        const ws = new FakeWSContext();
+        events.onOpen?.(new Event('open'), ws as unknown as WSContext);
+        events.onMessage?.({ data: '{"event":"go"}' } as MessageEvent, ws as unknown as WSContext);
+        await new Promise((resolve) => setTimeout(resolve, 0)); // The first frame is already waiting inside the setup barrier.
+        if (stop === 'overflow') {
+          events.onMessage?.(
+            { data: '{"event":"go"}' } as MessageEvent,
+            ws as unknown as WSContext,
+          );
+          expect(ws.closed?.code).toBe(1013);
+        } else
+          events.onClose?.(
+            { code: 1000, reason: 'done' } as CloseEvent,
+            ws as unknown as WSContext,
+          );
+        release();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(hits).toBe(0);
+      } finally {
+        release();
+        await app.close();
+      }
+    },
+  );
+
   it('closes fail-closed and never dispatches when handleConnection rejects', async () => {
     let hits = 0;
 

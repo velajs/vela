@@ -72,8 +72,10 @@ export function registerWebSocketGateways(
           throw new HTTPException(403, { message: 'WebSocket upgrade forbidden' });
         }
         let client: NodeWsClient;
+        let stopped = false;
         const messages = new WsMessageQueue(
           () => {
+            stopped = true;
             try {
               client?.close(1013, 'WebSocket message budget exceeded');
             } catch {
@@ -90,6 +92,7 @@ export function registerWebSocketGateways(
           if (client) void dispatcher.handleError(path, client, err).catch(() => {});
         };
         const failSetup = (err: unknown): false => {
+          stopped = true;
           messages.stop();
           reportError(err);
           try {
@@ -117,8 +120,11 @@ export function registerWebSocketGateways(
             };
             registry.register(client);
             ready = Promise.resolve(client.join(roomId))
-              .then(() => dispatcher.handleOpen(path, client))
-              .then(() => true)
+              .then(() => {
+                if (!stopped) return dispatcher.handleOpen(path, client);
+                return undefined;
+              })
+              .then(() => !stopped)
               .catch(failSetup);
           },
           onMessage: (evt) => {
@@ -126,11 +132,13 @@ export function registerWebSocketGateways(
             if (frame === undefined) return;
             void messages
               .run(frame, async () => {
-                if (await ready) await dispatcher.dispatchMessage(path, client, frame);
+                if ((await ready) && !stopped)
+                  await dispatcher.dispatchMessage(path, client, frame);
               })
               .catch(reportError);
           },
           onClose: (evt) => {
+            stopped = true;
             messages.stop();
             const code = (evt as CloseEvent).code || 1000;
             const reason = (evt as CloseEvent).reason || '';

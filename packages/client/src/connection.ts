@@ -188,7 +188,16 @@ export class RoomConnection {
 
   private handleMessage(raw: string): void {
     if (new TextEncoder().encode(raw).byteLength > MAX_LIVE_FRAME_BYTES) {
-      this.socket?.close(1009, 'frame too large');
+      const socket = this.socket;
+      if (socket) {
+        try {
+          socket.close(4009, 'frame too large');
+        } catch {
+          // Recovery still runs when a custom transport fails while closing.
+        } finally {
+          this.disconnect(socket, this.generation);
+        }
+      }
       return;
     }
     let envelope: unknown;
@@ -265,14 +274,28 @@ export class RoomConnection {
     if (this.socket?.readyState !== OPEN) return; // onopen resends subscriptions
     try {
       const encoded = encodeLiveEnvelope(frame);
-      if (new TextEncoder().encode(encoded).byteLength > MAX_LIVE_FRAME_BYTES) {
-        this.socket.close(1009, 'frame too large');
-        return;
-      }
-      this.#sendGate.trySend(this.socket, encoded, MAX_LIVE_FRAME_BYTES);
+      this.sendAdmitted(this.socket, encoded);
     } catch {
       // socket died between the readyState check and send — onclose recovers
     }
+  }
+
+  private sendAdmitted(socket: ReturnType<WebSocketFactory>, payload: string): boolean {
+    const result = this.#sendGate.trySend(
+      {
+        readyState: socket.readyState,
+        bufferedAmount: socket.bufferedAmount,
+        send: (value) => socket.send(value),
+        // Browser close() only permits 1000 and 3000-4999. Use private-use
+        // equivalents for frame-size, send failure and budget rejection.
+        close: (code, reason) =>
+          socket.close(code === 1009 ? 4009 : code === 1013 ? 4013 : 4011, reason),
+      },
+      payload,
+      MAX_LIVE_FRAME_BYTES,
+    );
+    if (result !== 'accepted') this.disconnect(socket, this.generation);
+    return result === 'accepted';
   }
 
   private scheduleReconnect(): void {
@@ -290,7 +313,7 @@ export class RoomConnection {
 
   private scheduleHeartbeat(socket: ReturnType<WebSocketFactory>, generation: number): void {
     const intervalMs = this.deps.heartbeatIntervalMs;
-    if (this.heartbeatTimer || intervalMs <= 0) return;
+    if (this.heartbeatTimer || intervalMs <= 0 || this.socket !== socket) return;
     const tick = () => {
       this.heartbeatTimer = undefined;
       if (generation !== this.generation || this.socket !== socket || socket.readyState !== OPEN) {
@@ -313,7 +336,7 @@ export class RoomConnection {
       }
 
       try {
-        this.#sendGate.trySend(socket, HEARTBEAT_PING, MAX_LIVE_FRAME_BYTES);
+        if (!this.sendAdmitted(socket, HEARTBEAT_PING)) return;
       } catch {
         // Keep checking liveness even if a broken socket throws without
         // emitting close; the watchdog will recycle it on a later tick.

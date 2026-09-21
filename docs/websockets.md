@@ -438,3 +438,9 @@ and resolver execution. Discovery includes request-scoped and lazy providers;
 registering the same gateway or reserved handler in multiple module owners fails
 instead of selecting an owner's dependencies implicitly. Live query names must
 be unique across owners.
+
+The browser live client uses private-use close codes `4009` (frame too large),
+`4011` (send failure), and `4013` (send budget). Browser JavaScript cannot send
+the corresponding reserved server codes through
+[`WebSocket.close()`](https://websockets.spec.whatwg.org/#dom-websocket-close).
+Local rejection enters reconnect even when a custom socket omits `onclose`.

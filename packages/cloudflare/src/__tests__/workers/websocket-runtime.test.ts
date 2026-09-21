@@ -152,4 +152,30 @@ describe('Cloudflare WebSocket security under workerd', () => {
     oversized.send(JSON.stringify({ event: 'echo', data: 'x'.repeat(65 * 1024) }));
     expect((await oversizedClose).code).toBe(1009);
   });
+  it('discovers a request gateway and separates native message state from persisted connection state', async () => {
+    const first = await socketFor('scope'),
+      second = await socketFor('scope');
+    try {
+      for (const [reader, expected] of [
+        [first, 1],
+        [first, 2],
+        [second, 1],
+      ] as const) {
+        reader.socket.send('{"event":"scope"}');
+        expect(await reader.next()).toEqual({
+          event: 'scope',
+          data: { invocationCalls: 1, connectionCalls: expected, connected: true },
+        });
+      }
+      first.socket.send('{"event":"attachment-limit"}');
+      expect(await first.next()).toEqual({ event: 'attachment-limit', data: { rejected: true } });
+      first.socket.send('{"event":"scope"}');
+      expect(await first.next()).toMatchObject({
+        data: { invocationCalls: 1, connectionCalls: 3, connected: true },
+      });
+    } finally {
+      first.socket.close(1000, 'done');
+      second.socket.close(1000, 'done');
+    }
+  });
 });
