@@ -603,6 +603,7 @@ export type {
 
 // Serialization
 export { Serialize, SerializerInterceptor, SERIALIZE_METADATA } from './serialization/index';
+export type { SerializationDescriptor } from './serialization/index';
 
 // Testing utilities live in @velajs/testing — see https://github.com/velajs/testing
 
