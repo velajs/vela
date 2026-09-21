@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { MetadataRegistry, Module, VelaFactory } from '@velajs/vela';
+import { Injectable, MetadataRegistry, Module, Scope, VelaFactory } from '@velajs/vela';
 import { WebSocketGateway } from '@velajs/vela/websocket';
 import { CloudflareApplication } from '../cloudflare-application';
 import { CloudflareWebSocketModule } from '../websocket/cloudflare-websocket.module';
@@ -7,6 +7,34 @@ import { CloudflareWebSocketModule } from '../websocket/cloudflare-websocket.mod
 afterEach(() => MetadataRegistry.clear());
 
 describe('gateway entrypoint routes', () => {
+  it('discovers request-scoped gateway routes without constructing the gateway', async () => {
+    let constructed = 0;
+    @WebSocketGateway({ path: '/scoped/:room/ws', roomParam: 'room', binding: 'ROOMS' })
+    @Injectable({ scope: Scope.REQUEST })
+    class Gateway {
+      constructor() {
+        constructed++;
+      }
+    }
+    @Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [Gateway] })
+    class App {}
+    const vela = await VelaFactory.create(App, { diagnostics: 'silent' });
+    const app = new CloudflareApplication(vela, {});
+    try {
+      expect(constructed).toBe(0);
+      expect(vela.getInstances().some((instance) => instance instanceof Gateway)).toBe(false);
+      app.scanInstances(vela.getInstances());
+      expect(
+        app
+          .getWsGatewayRoutes()
+          .map(({ path, binding, options }) => ({ path, binding, roomParam: options.roomParam })),
+      ).toEqual([{ path: '/scoped/:room/ws', binding: 'ROOMS', roomParam: 'room' }]);
+      expect(constructed).toBe(0);
+    } finally {
+      await vela.dispose();
+    }
+  });
+
   it('reads validated dispatcher metadata without an instance list and deduplicates rescans', async () => {
     @WebSocketGateway({ path: '/rooms/:room/ws', roomParam: 'room', binding: 'ROOMS' })
     class Gateway {}

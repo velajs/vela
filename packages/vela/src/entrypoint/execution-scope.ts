@@ -203,6 +203,8 @@ export async function runInEntrypointScope<T>(
     try {
       await scope.finish();
     } catch (completionError) {
+      // Both caught failures are retained in AggregateError.errors.
+      // eslint-disable-next-line preserve-caught-error
       throw new AggregateError([error, completionError], 'Invocation and completion failed.', {
         cause: completionError,
       });
