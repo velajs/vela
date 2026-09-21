@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { publishRelease, registryIntegrity } from './release-publish.mjs';
+import { preserveReleaseProvenance } from './release-provenance.mjs';
 
 const plan = JSON.parse(await readFile('release-plan.json', 'utf8'));
 const output = process.env.CHANGESETS_OUTPUT;
@@ -28,6 +29,7 @@ const directory = resolve('.artifacts/release');
 const run = (args) => execFileSync('node', args, { stdio: 'inherit' });
 run(['scripts/release-pack.mjs', directory]);
 run(['scripts/release-consumer.mjs', directory]);
+await preserveReleaseProvenance(directory);
 await publishRelease(directory, { oidc: true });
 // Changesets action v2 consumes these events to push tags and create releases.
 const events = [];

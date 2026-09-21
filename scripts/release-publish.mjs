@@ -139,12 +139,26 @@ export async function publishRelease(directory, { dryRun = false, oidc = false }
   }
   for (const entry of order) {
     if (registryIntegrity(entry) === undefined && !journal.accepted[entry.name]) {
+      const provenanceFile = `${entry.tarball}.sigstore.json`;
+      // npm verifies the signed bundle's subject and digest before submitting it.
+      // Recovery must reuse actual CI provenance, never assert a local build was CI.
+      await readFile(provenanceFile);
       try {
         // OIDC authorizes publish, not dist-tag updates. Publish stable CI releases
         // directly to latest; interactive coordinated releases use next first.
         execFileSync(
           'npm',
-          ['publish', entry.tarball, '--access', 'public', '--tag', oidc ? 'latest' : 'next'],
+          [
+            'publish',
+            entry.tarball,
+            '--access',
+            'public',
+            '--tag',
+            oidc ? 'latest' : 'next',
+            '--provenance=false',
+            '--provenance-file',
+            provenanceFile,
+          ],
           { env: npmEnv(), stdio: oidc ? ['inherit', 'pipe', 'pipe'] : 'inherit' },
         );
       } catch (error) {

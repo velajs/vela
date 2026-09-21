@@ -136,6 +136,14 @@ artifacts and journal after an interruption. A different archive at an existing
 version is a hard failure. The pack script refuses to overwrite an existing
 artifact manifest; choose a fresh destination for new builds.
 
+The release workflow preserves a verified `.sigstore.json` provenance bundle beside
+each tested archive before attempting npm publication. Interactive recovery requires
+these CI bundles and passes them to npm's `--provenance-file` verifier; it cannot
+publish unsigned local builds. This also supports first publication of new package
+names, which npm requires before configuring their trusted publisher. The bundle
+generator uses the workflow's pinned npm 11.19.0 implementation; revalidate that
+integration when updating npm.
+
 GitHub retains release artifacts and the consumer proof for 30 days, including
 on failed publication. Do not rebuild a partially published release from changed
 source. Use those artifacts for recovery, and verify all versions before tagging.
