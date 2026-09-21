@@ -565,12 +565,18 @@ export {
   validateSchema,
   standardJsonSchema,
   SchemaValidationError,
+  parseSchema,
+  parseSchemaAsync,
+  isValidationSchema,
 } from './validation/index';
 export type {
   StandardSchemaV1,
   StandardJSONSchemaV1,
   StandardDtoDefinition,
   ValidationSchema,
+  SchemaInput,
+  SchemaOutput,
+  ValidationIssue,
 } from './validation/index';
 export type {
   DtoDefinition,

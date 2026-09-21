@@ -1,13 +1,53 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
+import { isPromiseLike } from './promise-like';
 
 export type { StandardSchemaV1, StandardJSONSchemaV1 } from '@standard-schema/spec';
 
 /** A validation failure, distinct from an exception thrown by validator code. */
 export class SchemaValidationError extends Error {
-  constructor(readonly issues: readonly StandardSchemaV1.Issue[]) {
+  readonly issues: readonly ValidationIssue[];
+
+  constructor(issues: readonly StandardSchemaV1.Issue[]) {
     super('Validation failed');
     this.name = 'SchemaValidationError';
+    this.issues = normalizeIssues(issues);
   }
+}
+
+/** Safe, transport-neutral issue fields. Paths preserve literal keys and array indices. */
+export interface ValidationIssue {
+  readonly message: string;
+  readonly path?: readonly (string | number)[];
+  readonly code?: string;
+}
+
+function normalizeIssues(issues: readonly unknown[]): readonly ValidationIssue[] {
+  return Object.freeze(
+    issues.map((issue) => {
+      if (
+        !issue ||
+        typeof issue !== 'object' ||
+        !('message' in issue) ||
+        typeof issue.message !== 'string'
+      )
+        throw new TypeError('Invalid schema issue');
+      let path: (string | number)[] | undefined;
+      if ('path' in issue && issue.path !== undefined) {
+        if (!Array.isArray(issue.path)) throw new TypeError('Invalid schema issue path');
+        path = issue.path.map((part: unknown) => {
+          const key = part !== null && typeof part === 'object' && 'key' in part ? part.key : part;
+          if (typeof key === 'string' || typeof key === 'number') return key;
+          if (typeof key === 'symbol') return String(key);
+          throw new TypeError('Invalid schema issue path segment');
+        });
+      }
+      return Object.freeze({
+        message: issue.message,
+        ...(path ? { path: Object.freeze(path) } : {}),
+        ...('code' in issue && typeof issue.code === 'string' ? { code: issue.code } : {}),
+      });
+    }),
+  );
 }
 
 export function isStandardSchema(value: unknown): value is StandardSchemaV1 {
@@ -43,7 +83,7 @@ export function validateSchema<Input, Output>(
   value: unknown,
 ): Output | Promise<Output> {
   const result = schema['~standard'].validate(value);
-  return result instanceof Promise ? result.then(validated) : validated(result);
+  return isPromiseLike(result) ? Promise.resolve(result).then(validated) : validated(result);
 }
 
 /** Conversion is independent of validation and never guesses a schema's shape. */
