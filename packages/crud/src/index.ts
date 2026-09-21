@@ -12,6 +12,13 @@
  */
 
 // Decorators
+export { executeAtomicBatch, requireAtomicBatch, AtomicBatchResultError } from './adapter/atomic';
+export type {
+  AtomicCommand,
+  AtomicResults,
+  AtomicBatchDriver,
+  AtomicWriteOptions,
+} from './adapter/atomic';
 export { Crud, getCrudConfig } from './crud.decorator';
 export { Override } from './override.decorator';
 export { CrudCtx, type CrudRequestContext } from './crud-context.decorator';

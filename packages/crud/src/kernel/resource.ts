@@ -1,4 +1,5 @@
 import { CrudTransactionScope } from './transaction';
+import { assertAtomicAuditConfig, executeAtomicAuditedMutation } from './atomic-audit';
 import type { CursorCodec } from '../query/cursor-codec';
 import { prepareOperation, type AuthorizationPlan, type CommitEvent } from './operation-scope';
 import type { PolicyContext } from '../policies/types';
@@ -117,6 +118,8 @@ export interface RuntimeResourceConfig {
    * Decoupled from the data adapter.
    */
   auditStore?: AuditStore;
+  /** Defaults to postCommit. Atomic mode explicitly omits record snapshots. */
+  auditPersistence?: import('../audit/index').AuditPersistence;
   envelope?: ResponseEnvelope;
   errorMappers?: ErrorMapper[];
 }
@@ -184,6 +187,7 @@ export function compileResource(name: string, config: RuntimeResourceConfig): Cr
     ),
   };
   assertAdapterSatisfies(name, deriveCapabilityRequirements(config), config.adapter);
+  assertAtomicAuditConfig(config);
   if ((config.allowedIncludes?.length ?? 0) > 0 && config.adapter.relations === undefined) {
     throw new ConfigurationException(
       `Resource '${name}': allowedIncludes configured but the adapter has no relation loader`,
@@ -309,6 +313,14 @@ export function compileResource(name: string, config: RuntimeResourceConfig): Cr
           }
           if (!(await canPerformOperation(buildPolicyContext(req), verb, policies))) {
             throw new ForbiddenException(`Operation '${verb}' is not permitted`);
+          }
+          if (config.auditPersistence?.mode === 'atomic') {
+            if (req.transaction)
+              throw new ConfigurationException('Atomic auditing cannot join callback transactions');
+            if (verb === 'create' || verb === 'update' || verb === 'delete')
+              return await executeAtomicAuditedMutation(scoped, req, verb);
+            if (!['read', 'list', 'search', 'aggregate', 'export'].includes(verb))
+              throw new ConfigurationException(`Atomic auditing does not support '${verb}'`);
           }
           switch (verb) {
             case 'create':

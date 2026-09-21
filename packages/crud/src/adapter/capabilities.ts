@@ -12,6 +12,7 @@ import {
   type RuntimeAdapter,
 } from './contract';
 import { ConfigurationException } from '../envelope/errors';
+import { requireAtomicBatch } from './atomic';
 
 /** One capability demand plus the config that raised it (for the error text). */
 export interface CapabilityRequirement {
@@ -36,6 +37,13 @@ export function assertAdapterSatisfies(
   adapter: RuntimeAdapter,
 ): void {
   const problems: string[] = [];
+  if (adapter.capabilities.has('atomicBatch')) {
+    try {
+      requireAtomicBatch(adapter);
+    } catch {
+      problems.push('atomicBatch driver is incomplete');
+    }
+  }
 
   for (const { capability, reason } of requirements) {
     if (!adapter.capabilities.has(capability)) {

@@ -43,6 +43,7 @@ HTTP client, live queries, and Studio in a runnable Workers application.
 - [Live clients](client/README.md): subscriptions, optimistic updates, offline
   mutations, and React integration.
 - [CRUD](crud/README.md): resources, adapters, authorization, and data safety.
+- [Atomic writes](atomic-writes.md): typed batches and optional atomic metadata-only audits.
 - [Multiple databases](multi-database.md): typed registration, resource routing,
   owned transactions, and separate migrations.
 - [Domain event sourcing](event-sourcing.md): replayable business history, projections,

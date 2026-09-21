@@ -82,6 +82,8 @@ export interface AuditQuery {
  * (Drizzle, KV, D1, ...). All methods are async and edge-safe.
  */
 export interface AuditStore {
+  /** Optional precomputed persistence on the same exact native database. */
+  readonly atomic?: AtomicAuditDriver;
   /** Persist one entry. */
   log(entry: AuditEntry): Promise<void>;
   /** Persist a set of entries (default: one `log` per entry). */
@@ -91,6 +93,17 @@ export interface AuditStore {
   /** Release resources (timers, connections). Optional, edge-safe. */
   destroy?(): void;
 }
+
+export interface AtomicAuditDriver {
+  readonly owner: object;
+  /** Supplied snapshots are caller data, never database-captured snapshots. */
+  prepare(entry: AuditEntry): import('../adapter/atomic').AtomicCommand<void>;
+}
+
+/** Atomic CRUD integration deliberately captures identity/context only. */
+export type AuditPersistence =
+  | { readonly mode: 'postCommit' }
+  | { readonly mode: 'atomic'; readonly snapshots: 'none' };
 
 /**
  * In-memory {@link AuditStore} backed by a plain array. Insertion order is

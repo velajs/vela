@@ -14,6 +14,7 @@ import type { CrudResource } from './resource';
 import { buildHookContext, buildPolicyContext } from './verb-helpers';
 import { parseIdentifier } from './identifier';
 import { CrudTransactionScope } from './transaction';
+import type { AtomicCommand } from '../adapter/atomic';
 
 type Row = Record<string, unknown>;
 export type AuthorizationPlan =
@@ -218,6 +219,47 @@ export async function prepareOperation(
   if (adapter.aggregate)
     wrapped.aggregate = (spec, scope) =>
       adapter.aggregate!({ ...spec, filters: filters(spec.filters ?? []) }, scope);
+  if (adapter.atomicBatch) {
+    const atomic = adapter.atomicBatch;
+    const operations = new WeakMap<AtomicCommand, 'create' | 'update' | 'delete'>();
+    const track = <T>(
+      command: AtomicCommand<T>,
+      operation: 'create' | 'update' | 'delete',
+    ): AtomicCommand<T> => {
+      operations.set(command, operation);
+      return command;
+    };
+    wrapped.atomicBatch = {
+      ...atomic,
+      owner: atomic.owner,
+      create: (row, options) => track(atomic.create(input(row, true), options), 'create'),
+      update: (key, row, options) =>
+        track(atomic.update(lookup(key), input(row), options), 'update'),
+      delete: (key, options, write) => track(atomic.delete(lookup(key), options, write), 'delete'),
+      execute: (commands, context) => {
+        if (req.transaction)
+          throw new TypeError('Atomic batches cannot join callback transactions');
+        return run(
+          (work) => work({ tx: undefined }),
+          async (scope) => {
+            const results = await atomic.execute(commands, context);
+            results.forEach((result, index) => {
+              const operation = operations.get(commands[index]!);
+              if (
+                operation &&
+                result !== null &&
+                typeof result === 'object' &&
+                !Array.isArray(result)
+              )
+                record(scope, operation, Object.fromEntries(Object.entries(result)));
+            });
+            return results;
+          },
+          context,
+        );
+      },
+    };
+  }
   if (adapter.search)
     wrapped.search = (spec, scope) =>
       adapter.search!({ ...spec, filters: filters(spec.filters ?? []) }, scope);

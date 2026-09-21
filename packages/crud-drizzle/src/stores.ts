@@ -15,6 +15,7 @@ import {
 } from '@velajs/crud/versioning';
 import { asDatabase, type DrizzleDatabase, type DrizzleTable } from './database';
 import { getColumn } from './filters';
+import { atomicAuditDriver } from './atomic';
 
 type Row = Record<string, unknown>;
 
@@ -157,12 +158,14 @@ export class DrizzleVersioningStore implements VersioningStore {
  */
 export class DrizzleAuditStore implements AuditStore {
   private readonly db: DrizzleDatabase;
+  readonly atomic: import('@velajs/crud/audit').AtomicAuditDriver;
 
   constructor(
     db: unknown,
     private readonly table: DrizzleTable,
   ) {
     this.db = asDatabase(db);
+    this.atomic = atomicAuditDriver(this.db, table);
   }
 
   private col(name: string) {

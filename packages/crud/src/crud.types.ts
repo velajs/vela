@@ -102,6 +102,7 @@ export interface RuntimeCrudConfig {
    * `CrudModule.forRoot({ auditStore })` default when omitted.
    */
   auditStore?: AuditStore;
+  auditPersistence?: import('./audit/index').AuditPersistence;
   /** Pluggable response envelope (default: `{ success, result[, result_info] }`). */
   responseEnvelope?: ResponseEnvelope;
   errorMappers?: ErrorMapper[];
