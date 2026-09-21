@@ -436,8 +436,13 @@ export class RouteManager {
       return existing;
     }
 
-    const { container: child } = createExecutionScope(this.container, { signal: c.req.raw.signal });
+    const child = this.createRequestContainer(c);
     child.setRequestInstance(REQUEST_CONTEXT, createRequestContext(c));
+    return child;
+  }
+
+  private createRequestContainer(c: Context): Container {
+    const { container: child } = createExecutionScope(this.container, { signal: c.req.raw.signal });
     setRequestContainer(c, child);
     return child;
   }
@@ -565,7 +570,9 @@ export class RouteManager {
     // deferred work. Native waitUntil also retains asynchronous disposal.
     app.use('*', async (c: Context, next: Next) => {
       // Adapter-mounted routes share this same child even without controllers.
-      const child = this.getRequestContainer(c);
+      // Start the lifetime before input validation, but snapshot REQUEST_CONTEXT
+      // only after the body limiter has normalized the raw Request.
+      const child = this.createRequestContainer(c);
       try {
         await next();
       } finally {
@@ -605,9 +612,30 @@ export class RouteManager {
     // Security boundary: reject oversized input before any user middleware,
     // argument extraction, validation pipe, guard, or signed-body capture can
     // buffer/hash it. Hono also counts streaming bodies without Content-Length.
-    app.use('*', (c, next) => {
-      const maxSize = this.resolveBodyLimit(c.req.path, c.req.method);
-      return maxSize === false ? next() : honoBodyLimit({ maxSize })(c, next);
+    app.use('*', async (c, next) => {
+      let seeded = false;
+      const seedContext = (): void => {
+        if (seeded) return;
+        this.getRequestContainer(c).setRequestInstance(REQUEST_CONTEXT, createRequestContext(c));
+        seeded = true;
+      };
+      const normalizedNext = async (): Promise<void> => {
+        // Hono replaces bodyful requests without Content-Length. Guards,
+        // middleware, and injected context must share that exact Request.
+        seedContext();
+        await next();
+      };
+      try {
+        const maxSize = this.resolveBodyLimit(c.req.path, c.req.method);
+        return maxSize === false
+          ? await normalizedNext()
+          : await honoBodyLimit({ maxSize })(c, normalizedNext);
+      } finally {
+        // A rejected/failed body never reaches next(). Seed its original
+        // request before Hono's error reporter runs inside the active lifetime.
+        // Never replace a context already exposed to application code.
+        seedContext();
+      }
     });
 
     // Bound query parsing before user middleware or handler decorators see it.

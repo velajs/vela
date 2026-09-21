@@ -4216,6 +4216,7 @@ declare class RouteManager {
   useGlobalFilterTokens(...filterTokens: Array<TypedToken<ExceptionFilter>>): this;
   private getMiddlewarePriority;
   private getRequestContainer;
+  private createRequestContainer;
   private wrapMiddlewareWithFilters;
   private mapMiddlewareError;
   registerController(controller: Type, moduleId?: string): this;

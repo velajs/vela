@@ -18,6 +18,7 @@
     "src/__tests__/http-dispatch-boundaries.test.ts",
     "src/__tests__/http-execution-lifetime.test.ts",
     "src/__tests__/http-pipeline-integration.test.ts",
+    "src/__tests__/http-request-normalization.test.ts",
     "src/__tests__/instantiate-ownership.test.ts",
     "src/__tests__/http-controller-owner.test.ts"
   ],

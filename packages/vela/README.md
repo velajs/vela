@@ -194,6 +194,11 @@ Deferred callbacks start after the middleware/handler chain settles; disposal wa
 for both managed work and response EOF, error, or cancellation. Native Workers
 `waitUntil` retains asynchronous cleanup. HEAD responses cancel their untransmitted
 body before cleanup; WebSocket upgrade responses retain their native fields.
+`REQUEST_CONTEXT.request` captures the request after framework body-limit
+normalization and before application middleware runs. Guards, controllers, and
+adapters therefore use the same readable request and its trusted identity. The
+context remains a snapshot; replacing the request later does not transfer identity.
+Rejected bodies retain their original request context through reporting and cleanup.
 An ordinary `createParamDecorator` can read state populated by a guard. Its data
 argument is required when the factory excludes `undefined`: a factory accepting
 `string` produces `@Header('x-id')`; a factory accepting `undefined` supports
