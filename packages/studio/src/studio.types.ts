@@ -141,7 +141,7 @@ export interface AdminOpContext {
   editable: EditableFlags;
   /** Attach detail to this op's audit row (best-effort). */
   audit(detail: AdminAuditDetail): void;
-  /** Resolve a provider from the app container. */
+  /** Resolve synchronously from this invocation and the handler's owning module. */
   get<K extends Token>(token: K): InferToken<K>;
 }
 
