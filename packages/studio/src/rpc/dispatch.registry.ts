@@ -13,14 +13,16 @@
  * providers are resolved PER CALL (lazy-safe), mirroring the queue dispatcher.
  */
 import {
+  APP_LOGGER,
   Container,
   DiscoveryService,
   Inject,
   Injectable,
   getRequestContainer,
   runInEntrypointScope,
+  resolveErrorReporter,
 } from '@velajs/vela';
-import type { OnApplicationBootstrap, Token, Type } from '@velajs/vela';
+import type { ErrorReporter, OnApplicationBootstrap, Token, Type } from '@velajs/vela';
 import { STUDIO_OP_META, STUDIO_OPS } from '@velajs/studio-protocol';
 import type { AdminRpcRequest, AdminRpcResponse, StudioOp } from '@velajs/studio-protocol';
 import { AdminConfirmSummary, AdminRpc } from './admin-rpc.decorator';
@@ -117,6 +119,7 @@ export class StudioDispatchRegistry implements OnApplicationBootstrap {
     const start = Date.now();
     const meta = (STUDIO_OP_META as Record<string, AdminRpcMetaLike>)[op] ?? DEFAULT_OP_META;
     let detail: AdminAuditDetail | undefined;
+    let reporter: ErrorReporter | undefined;
     const handlerCtx: AdminOpContext = {
       ...ctx,
       audit: (d) => {
@@ -125,11 +128,14 @@ export class StudioDispatchRegistry implements OnApplicationBootstrap {
     };
 
     try {
+      if (this.container.has(APP_LOGGER)) reporter = resolveErrorReporter(this.container);
       const entry = this.handlers.get(op);
       if (!entry) throw studioError('STUDIO_UNKNOWN_OP');
 
       this.enforceGate(meta, ctx);
       const data = await this.withScope(ctx, async (scope) => {
+        // Capture before disposal so completion errors retain inert correlation.
+        if (scope.has(APP_LOGGER)) reporter = resolveErrorReporter(scope);
         await this.enforceConfirm(op, meta, req, handlerCtx, scope);
         return this.invoke(scope, entry, handlerCtx, req.args);
       });
@@ -138,6 +144,7 @@ export class StudioDispatchRegistry implements OnApplicationBootstrap {
       this.recordAudit(op, meta.mode, ctx, 200, ms, detail);
       return { ok: true, op, data, meta: { ms, op, mode: meta.mode } };
     } catch (error) {
+      reporter?.report(error, { edge: 'rpc', source: `studio.${op}` });
       const { body, status } = toAdminErrorBody(error);
       const ms = Date.now() - start;
       this.recordAudit(op, meta.mode, ctx, status, ms, detail);

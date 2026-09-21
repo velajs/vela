@@ -1,8 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
+import { Context } from 'hono';
+import type { Token, InferToken } from '@velajs/vela';
 import {
   APP_LOGGER,
+  APP_EXCEPTION_HANDLER,
+  Injectable,
+  defineProvider,
   ApplicationLogger,
   Container,
+  DiscoveryService,
   Controller,
   Get,
   LoggingModule,
@@ -12,7 +18,10 @@ import {
   createExecutionScope,
 } from '@velajs/vela';
 import { parseStudioRpcResponse } from '@velajs/studio-protocol';
-import { AdminLogBuffer, StudioModule } from '../src';
+import { AdminLogBuffer, AdminRpc, StudioModule } from '../src';
+import { StudioDispatchRegistry } from '../src/rpc/dispatch.registry';
+import { ConfirmTokenSigner } from '../src/security/confirm-token';
+import { AdminAuditLog } from '../src/audit/audit-log';
 import { StudioLogCapture, StudioLoggingModule, StudioTimingInterceptor } from '../src/logging';
 
 const rpcOptions: RequestInit = {
@@ -195,6 +204,69 @@ describe('honest handler completion timing', () => {
       rows.every((row) => row.invocation!.elapsedMs >= 0 && row.invocation!.boundary === 'handler'),
     ).toBe(true);
     expect(JSON.stringify(rows)).not.toContain('private-error');
+    capture.onModuleDestroy();
+  });
+});
+
+describe('Studio exception boundary', () => {
+  it('reports a correlated server error once, redacts its wire body, and honors reporter policy', async () => {
+    const logging = new ApplicationLogger({ sinks: [] });
+    const buffer = new AdminLogBuffer(10);
+    const capture = new StudioLogCapture(logging, buffer);
+    capture.onModuleInit();
+    const error = new Error('private-server-message', { cause: { password: 'private-password' } });
+    @Injectable()
+    class Failing {
+      @AdminRpc({ op: 'app.routes' }) run() {
+        throw error;
+      }
+    }
+    const container = new Container();
+    container.register(Failing);
+    container.register(defineProvider(APP_LOGGER, { useValue: logging }));
+    const registry = new StudioDispatchRegistry(
+      container,
+      new DiscoveryService(container),
+      new ConfirmTokenSigner('token'),
+      new AdminAuditLog(10),
+    );
+    registry.onApplicationBootstrap();
+    const ctx = {
+      http: new Context(new Request('https://studio.test/')),
+      admin: { subject: 'master', via: 'master-token' as const, ip: null },
+      editable: {
+        data: false,
+        schema: false,
+        identity: false,
+        ops: false,
+        timeTravel: false,
+        transfer: false,
+      },
+      audit: () => {},
+      get: <K extends Token>(token: K): InferToken<K> => container.resolve(token),
+    };
+    const response = await registry.dispatch('app.routes', {}, ctx);
+    await logging.flush();
+    expect(response).toMatchObject({ ok: false, status: 500 });
+    expect(JSON.stringify(response)).not.toContain('private-server-message');
+    expect(buffer.tail()).toHaveLength(1);
+    expect(buffer.tail()[0]).toMatchObject({
+      source: 'exception',
+      level: 'error',
+      fields: { invocationId: expect.any(String), edge: 'rpc', source: 'studio.app.routes' },
+    });
+    expect(JSON.stringify(buffer.tail())).not.toContain('private-password');
+    const report = vi.fn();
+    container.register(defineProvider(APP_EXCEPTION_HANDLER, { useValue: { report } }));
+    await registry.dispatch('app.routes', {}, ctx);
+    expect(report).toHaveBeenCalledOnce();
+    expect(buffer.size).toBe(1);
+    container.register(
+      defineProvider(APP_EXCEPTION_HANDLER, { useValue: { report, dontReport: [() => true] } }),
+    );
+    await registry.dispatch('app.routes', {}, ctx);
+    expect(report).toHaveBeenCalledOnce();
+    expect(buffer.size).toBe(1);
     capture.onModuleDestroy();
   });
 });
