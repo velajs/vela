@@ -5,7 +5,9 @@ import {
   registerEntrypointKind,
 } from '../index';
 import { PROCESS_METADATA, PROCESSOR_METADATA } from './queue.tokens';
-import type { ProcessMetadata, ProcessorMetadata } from './queue.types';
+import type { StandardSchemaV1 } from '../index';
+import type { QueueJobDefinition } from './queue.definition';
+import type { QueueJob, ProcessMetadata, ProcessorMetadata } from './queue.types';
 
 const ProcessorMeta = createDiscoverableDecorator<ProcessorMetadata>(PROCESSOR_METADATA);
 
@@ -49,11 +51,28 @@ export function Processor(queueName: string): ClassDecorator {
  * handler). Named handlers win over the wildcard; a duplicate registration
  * for the same name is first-wins with a diagnostics warning at dispatch.
  */
-export function Process(jobName?: string): MethodDecorator {
+export type QueueProcessDecorator<Data> = <Handler extends (job: QueueJob<Data>) => unknown>(
+  target: object,
+  key: string | symbol,
+  descriptor: TypedPropertyDescriptor<Handler>,
+) => void;
+
+export function Process<S extends StandardSchemaV1>(
+  definition: QueueJobDefinition<S>,
+): QueueProcessDecorator<StandardSchemaV1.InferOutput<S>>;
+export function Process(jobName?: string): MethodDecorator;
+export function Process(jobName?: string | QueueJobDefinition): MethodDecorator {
   return (target: object, propertyKey: string | symbol) => {
     const ctor = target.constructor;
-    const existing = (getMetadata(PROCESS_METADATA, ctor) as ProcessMetadata[] | undefined) ?? [];
-    existing.push({ jobName, methodName: propertyKey });
+    const existing = [
+      ...((getMetadata(PROCESS_METADATA, ctor) as ProcessMetadata[] | undefined) ?? []),
+    ];
+    const definition = typeof jobName === 'object' ? jobName : undefined;
+    existing.push({
+      jobName: definition?.name ?? (typeof jobName === 'string' ? jobName : undefined),
+      schema: definition?.schema,
+      methodName: propertyKey,
+    });
     defineMetadata(PROCESS_METADATA, existing, ctor);
   };
 }

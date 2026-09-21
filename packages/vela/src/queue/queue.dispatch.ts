@@ -5,10 +5,16 @@ import {
   resolveScopedComponents,
   runInEntrypointScope,
   shouldFilterCatch,
+  validateSchema,
 } from '../index';
 import type { Container, EntrypointRegistry, Token, Type } from '../index';
 import { getProcessHandlers, readProcessorMetadata } from './queue.decorators';
 import type { ProcessMetadata, ProcessorMetadata, QueueJob } from './queue.types';
+
+export interface QueueDispatchOptions {
+  /** Legacy default is ignore. Platform adapters can reject unmatched jobs. */
+  unhandled?: 'ignore' | 'error';
+}
 
 export interface QueueDispatchResult {
   /** Processors that ran a handler for this job. */
@@ -64,11 +70,12 @@ export async function dispatchQueueJob(
   container: Container,
   entrypoints: EntrypointRegistry,
   job: QueueJob,
+  options: QueueDispatchOptions = {},
 ): Promise<QueueDispatchResult> {
   const entries = entrypoints
     .ofKind('queue', readProcessorMetadata)
     .map((ep) => ({ token: ep.token, meta: ep.meta }));
-  return dispatchJobToEntries(container, entries, job);
+  return dispatchJobToEntries(container, entries, job, options);
 }
 
 /**
@@ -81,10 +88,12 @@ export async function dispatchJobToEntries(
   container: Container,
   entries: QueueEntry[],
   job: QueueJob,
+  options: QueueDispatchOptions = {},
 ): Promise<QueueDispatchResult> {
   const processors = entries.filter((entry) => entry.meta.queueName === job.queue);
 
   if (processors.length === 0) {
+    if (options.unhandled === 'error') throw new Error(`No processor for queue '${job.queue}'.`);
     if (container.getDiagnostics() === 'log') {
       console.warn(
         `[vela] queue job '${job.name}' on '${job.queue}' has no @Processor('${job.queue}') — dropped.`,
@@ -93,12 +102,22 @@ export async function dispatchJobToEntries(
     return { handled: 0 };
   }
 
-  // All matching processors receive the job; the first unclaimed error
-  // rejects the whole dispatch (platform retries the delivery — CF parity).
-  const outcomes = await Promise.all(
+  // Await every processor before acknowledging or rejecting a platform message.
+  const outcomes = await Promise.allSettled(
     processors.map((entry) => dispatchToProcessor(container, entry.token as Type, job)),
   );
-  return { handled: outcomes.filter(Boolean).length };
+  const errors = outcomes.flatMap((outcome) =>
+    outcome.status === 'rejected' ? [outcome.reason] : [],
+  );
+  if (errors.length === 1) throw errors[0];
+  if (errors.length > 1) throw new AggregateError(errors, 'Queue processors failed.');
+  const handled = outcomes.filter(
+    (outcome) => outcome.status === 'fulfilled' && outcome.value,
+  ).length;
+  if (handled === 0 && options.unhandled === 'error') {
+    throw new Error(`No handler for job '${job.name}' on queue '${job.queue}'.`);
+  }
+  return { handled };
 }
 
 async function dispatchToProcessor(
@@ -155,7 +174,11 @@ async function dispatchToProcessor(
         context,
         guards,
         interceptors,
-        resolveArgs: async () => [job],
+        resolveArgs: async () => [
+          handler.schema
+            ? { ...job, data: await validateSchema(handler.schema, structuredClone(job.data)) }
+            : job,
+        ],
         invoke: async (args) => {
           const method = instance[handler.methodName] as (...a: unknown[]) => unknown;
           return method.apply(instance, args);

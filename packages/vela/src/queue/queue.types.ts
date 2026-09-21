@@ -1,4 +1,4 @@
-import type { InvocationTarget } from '../index';
+import type { InvocationTarget, StandardSchemaV1 } from '../index';
 
 /**
  * One job as handed to `@Process` handlers and drivers. Ids are minted by the
@@ -98,5 +98,7 @@ export interface ProcessorMetadata {
 /** Per-handler meta written by `@Process(jobName?)`. */
 export interface ProcessMetadata {
   jobName?: string;
+  /** Opt-in wire validation; parsed output is passed to the processor. */
+  schema?: StandardSchemaV1;
   methodName: string | symbol;
 }
