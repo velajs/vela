@@ -1,9 +1,3 @@
-import { instantiateManyAsync } from '../http/instantiate';
-import { ComponentManager } from '../pipeline/component.manager';
-import type { CanActivate, NestInterceptor } from '../pipeline/types';
-import { resolveEntrypoint } from '../entrypoint/execution-context';
-import type { WsExecutionContext } from '../websocket/websocket.types';
-import { trySendWebSocketFrame } from '../websocket/ws-send';
 import {
   LIVE_ERROR_CODES,
   LIVE_PROTOCOL,
@@ -24,6 +18,9 @@ import {
   buildEntrypointExecutionContext,
   isVelaError,
   resolveErrorReporter,
+  resolveEntrypoint,
+  resolveScopedComponentsAsync,
+  trySendWebSocketFrame,
   runInEntrypointScope,
   toErrorBody,
 } from '../index';
@@ -35,6 +32,7 @@ import type {
   Type,
   WsClient,
   WsMessage,
+  WsExecutionContext,
 } from '../index';
 import { getLiveQueries } from './live.decorators';
 import { liveCoalescingKey } from './live.coalescing';
@@ -613,8 +611,10 @@ export class LiveEngine
       scope,
     );
     try {
-      const guards = await instantiateManyAsync<CanActivate>(
-        ComponentManager.getScopedComponents('guard', registered.token, registered.methodName),
+      const guards = await resolveScopedComponentsAsync(
+        'guard',
+        registered.token,
+        registered.methodName,
         scope,
         registered.moduleId,
       );
@@ -856,8 +856,10 @@ export class LiveEngine
       registered.moduleId,
       scope,
     );
-    const interceptors = await instantiateManyAsync<NestInterceptor>(
-      ComponentManager.getScopedComponents('interceptor', registered.token, registered.methodName),
+    const interceptors = await resolveScopedComponentsAsync(
+      'interceptor',
+      registered.token,
+      registered.methodName,
       scope,
       registered.moduleId,
     );

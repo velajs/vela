@@ -311,6 +311,7 @@ export {
   WsDispatcher,
   WsException,
   assertWebSocketRoomId,
+  trySendWebSocketFrame,
   WS_SERVER,
   RESERVED_WS_EVENT_PREFIX,
 } from './websocket/index';
