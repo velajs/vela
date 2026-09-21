@@ -32,7 +32,6 @@ For development setup, testing, and pull requests, see
 
 - `packages/*`: publishable libraries and shared Studio test fixtures.
 - `apps/*`: runnable Workers applications and integration examples.
-- `tools/docs`: isolated API documentation tooling.
 - `tools/tsconfig`: shared compiler configurations.
 - `tests/crud`: cross-adapter conformance; `tests/release`: release safety checks.
 
@@ -70,9 +69,10 @@ preserves the decorator metadata used by dependency injection. TypeScript 7's
 native compiler is written in Go. Root `lint`, `format`, and `format:check`
 commands share one configuration, and dependency versions use the pnpm catalog.
 
-TypeDoc still requires the TypeScript 6 compiler API, so its compatibility
-dependency is isolated in `tools/docs`. It is used only for API documentation; package builds and typechecks use
-the shared TypeScript 7 toolchain. See [the tooling guide](docs/tooling.md).
+The documentation website uses Fumadocs and TypeScript 7 in the separate private
+[velajs/site](https://github.com/velajs/site) repository. It provides guides,
+selected API type tables, checked examples, and type hovers from published Vela
+packages. See [the tooling guide](docs/tooling.md) for coverage and validation.
 
 ## Authoring model
 

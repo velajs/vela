@@ -31,24 +31,37 @@ command also runs cross-package conformance and native Workers tests.
 
 ## API documentation
 
-TypeDoc uses the TypeScript compiler API. Its TypeScript 6 dependency is isolated
-in the private `tools/docs` project; package builds and typechecks use TypeScript
-7. Documentation uses the core package tsconfig, including its decorator settings.
+The documentation website uses Fumadocs in the separate private
+[velajs/site](https://github.com/velajs/site) repository. The TanStack Start and
+Cloudflare Workers application uses TypeScript 7 for site checking, build-time API
+tables, and Twoslash examples with type hovers. It reads exact published Vela
+package versions. The compiler runs only during the build; the deployed Worker
+does not include it.
 
-Run `pnpm docs` to generate API documentation and `pnpm docs:check` to validate it.
+The MDX guides live in the private [velajs/docs](https://github.com/velajs/docs)
+repository, pinned by the site as a Git submodule. From a site checkout with that
+content initialized, run:
 
-The public documentation website stays in the separate
-[velajs/site](https://github.com/velajs/site) repository. Its private Fumadocs app
-uses TypeScript 7 for site checking, build-time API tables, and Twoslash examples.
-It reads exact published Vela package versions rather than this workspace's source.
-The MDX guides live in [velajs/docs](https://github.com/velajs/docs), pinned by the
-site as a Git submodule. Updating the content revision and npm dependencies,
-checking the site, and deploying it are separate from publishing framework packages.
+```sh
+pnpm install --frozen-lockfile
+pnpm check
+```
 
-Fumadocs currently provides focused module and Worker option tables. Keep the
-complete TypeDoc reference for classes, decorators, overloads, and entrypoints
-until equivalent coverage is verified. Its isolated TypeScript 6 installation
-does not change the framework's or site's TypeScript 7 builds.
+This checks types and generated references, builds and prerenders the site, and
+runs local Worker smoke tests for pages, tables, hovers, search, and 404s. Commit
+and push content changes before updating the site's submodule pointer. Updating
+content and npm dependencies, checking the site, and deploying it are separate
+from publishing framework packages.
+
+The website provides guides and focused tables for module options, dynamic
+modules, and Worker options. It does not generate a page for every exported class,
+decorator, method, overload, or entrypoint. The standalone automatic API reference
+is no longer produced. Consult package READMEs, source-adjacent guides, and
+published TypeScript declarations for APIs beyond the selected tables.
+
+OpenAPI documents and typed HTTP clients are generated from application contracts
+independently of the website. Framework builds, decorator compilation, and API
+snapshot checks remain part of this workspace's validation.
 
 ## Release artifacts
 

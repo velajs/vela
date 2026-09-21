@@ -112,8 +112,9 @@ For subsequent changes, run `pnpm changeset` and commit the note. At release tim
 run `pnpm version-packages`, review the generated changes, and merge them. A main
 branch with unversioned changesets is verified but not published.
 Versioning updates changelogs, the core skill version, the shared lockfile, and
-the release plan. All active packages use the TypeScript 7 catalog; the isolated
-TypeDoc compatibility dependency is documented in `docs/tooling.md`.
+the release plan. All active packages use the TypeScript 7 catalog. The separate
+Fumadocs website uses published packages and has its own validation and deployment
+process, documented in [the tooling guide](docs/tooling.md).
 
 ## Interactive recovery
 
