@@ -4,12 +4,15 @@ import {
   PipelineRunner,
   buildEntrypointExecutionContext,
   registerEntrypointKind,
+  getEntrypointModuleId,
+  resolveEntrypoint,
+  resolveScopedComponentsAsync,
+  resolveErrorReporter,
   runInEntrypointScope,
   shouldFilterCatch,
   type VelaApplication,
 } from '@velajs/vela';
-import type { Entrypoint } from '@velajs/vela';
-import { ComponentManager } from '@velajs/vela/internal';
+import type { Entrypoint, ExceptionFilter } from '@velajs/vela';
 import { collectWsGatewayRoutes, type WsGatewayRoute } from './websocket/websocket-routing';
 import { assertCloudflareEnvironment } from './environment';
 
@@ -27,11 +30,13 @@ registerEntrypointKind({ kind: 'cf:vela-cron', metaKey: CRON_METADATA, level: 'm
  */
 export type MountOpenApiOptions = Parameters<VelaApplication['mountOpenApi']>[0];
 
-function invoke(instance: object, methodName: string, args: unknown[]): unknown {
+function invoke(instance: object, methodName: string | symbol, args: unknown[]): unknown {
   // Decorator metadata names an instance method; inspect it before invoking.
   const method: unknown = Reflect.get(instance, methodName);
   if (typeof method !== 'function') {
-    throw new Error(`Method '${methodName}' is not a function on ${instance.constructor.name}`);
+    throw new Error(
+      `Method '${String(methodName)}' is not a function on ${instance.constructor.name}`,
+    );
   }
   return Reflect.apply(method, instance, args);
 }
@@ -42,6 +47,16 @@ function entrypointString(meta: unknown, property: string): string {
   if (typeof value !== 'string')
     throw new Error(`Invalid entrypoint metadata: ${property} must be a string.`);
   return value;
+}
+
+/** Wait for every matching handler, even when one fails before its siblings. */
+async function settleEntrypoints(work: readonly Promise<void>[]): Promise<void> {
+  const outcomes = await Promise.allSettled(work);
+  const errors = outcomes.flatMap((outcome) =>
+    outcome.status === 'rejected' ? [outcome.reason] : [],
+  );
+  if (errors.length === 1) throw errors[0];
+  if (errors.length > 1) throw new AggregateError(errors, 'Multiple entrypoint handlers failed.');
 }
 
 /**
@@ -174,7 +189,7 @@ export class CloudflareApplication<T extends object = object> {
         .map((ep) => ({ ep, cron: entrypointString(ep.meta, 'expression') })),
     ].filter((h) => h.cron === event.cron);
 
-    await Promise.all(handlers.map(({ ep }) => this.dispatchEntrypoint(ep, [event, env, ctx])));
+    await settleEntrypoints(handlers.map(({ ep }) => this.dispatchEntrypoint(ep, event, env, ctx)));
   }
 
   /**
@@ -185,49 +200,97 @@ export class CloudflareApplication<T extends object = object> {
    * guard has no business rejecting a queue batch. Unclaimed errors rethrow
    * so the platform's retry semantics stay intact.
    */
-  private async dispatchEntrypoint(ep: Entrypoint, args: unknown[]): Promise<void> {
+  private async dispatchEntrypoint(
+    ep: Entrypoint,
+    payload: unknown,
+    env: T,
+    platformContext: { waitUntil: (promise: Promise<unknown>) => void },
+  ): Promise<void> {
     const targetClass = ep.token;
     if (typeof targetClass !== 'function') throw new Error('Entrypoint token must be a class.');
-    const methodName = String(ep.methodName);
-    const context = buildEntrypointExecutionContext(ep.kind, targetClass, methodName, args[0]);
-
-    await runInEntrypointScope(this.app.getContainer(), async (scope) => {
-      const instance: unknown = scope.resolve(ep.token);
-      if (typeof instance !== 'object' || instance === null) {
-        throw new Error('Entrypoint must resolve to an object.');
-      }
-      const guards = ComponentManager.resolveGuards(
-        ComponentManager.getScopedComponents('guard', targetClass, methodName),
-        scope,
-      );
-      const interceptors = ComponentManager.resolveInterceptors(
-        ComponentManager.getScopedComponents('interceptor', targetClass, methodName),
-        scope,
-      );
-      // Closest-first, mirroring the HTTP/WS dispatchers.
-      const filters = ComponentManager.resolveFilters(
-        [...ComponentManager.getScopedComponents('filter', targetClass, methodName)].reverse(),
-        scope,
-      );
-
-      try {
-        await PipelineRunner.run({
-          context,
-          guards,
-          interceptors,
-          resolveArgs: async () => args,
-          invoke: async (resolved) => invoke(instance, methodName, resolved),
-        });
-      } catch (error) {
-        for (const filter of filters) {
-          if (shouldFilterCatch(filter, error)) {
-            await filter.catch(error, context);
-            return;
+    if (ep.methodName === undefined) throw new Error('Entrypoint must declare a handler method.');
+    const methodName = ep.methodName;
+    const reportContext = {
+      edge: ep.kind === 'cf:queue' ? ('queue' as const) : ('schedule' as const),
+      source: `${targetClass.name}.${String(methodName)}`,
+    };
+    let reported: { error: unknown } | undefined;
+    try {
+      await runInEntrypointScope(this.app.getContainer(), async (scope, lifetime) => {
+        const moduleId = getEntrypointModuleId(scope, ep);
+        const context = buildEntrypointExecutionContext(
+          ep.kind,
+          targetClass,
+          methodName,
+          payload,
+          moduleId,
+          scope,
+        );
+        const invocationContext = {
+          waitUntil(promise: Promise<unknown>): void {
+            lifetime.waitUntil(promise);
+            platformContext.waitUntil(promise);
+          },
+        };
+        let filters: ExceptionFilter[] = [];
+        try {
+          filters = (
+            await resolveScopedComponentsAsync('filter', targetClass, methodName, scope, moduleId)
+          ).toReversed();
+          const guards = await resolveScopedComponentsAsync(
+            'guard',
+            targetClass,
+            methodName,
+            scope,
+            moduleId,
+          );
+          const interceptors = await resolveScopedComponentsAsync(
+            'interceptor',
+            targetClass,
+            methodName,
+            scope,
+            moduleId,
+          );
+          await PipelineRunner.run({
+            context,
+            guards,
+            interceptors,
+            resolveArgs: async () => [payload, env, invocationContext],
+            invoke: async (args) => {
+              const instance = await resolveEntrypoint(scope, ep);
+              if (typeof instance !== 'object' || instance === null) {
+                throw new Error('Entrypoint must resolve to an object.');
+              }
+              return invoke(instance, methodName, args);
+            },
+          });
+        } catch (error) {
+          resolveErrorReporter(scope).report(error, reportContext);
+          for (const filter of filters) {
+            if (shouldFilterCatch(filter, error)) {
+              // Filters run closest-first; this is the framework catch hook.
+              // eslint-disable-next-line no-await-in-loop, promise/valid-params
+              await filter.catch(error, context);
+              return;
+            }
           }
+          reported = { error };
+          throw error;
         }
-        throw error;
+      });
+    } catch (error) {
+      // Managed completion happens after the handler's filter boundary. Report
+      // a new completion failure without reporting an already-observed handler
+      // failure twice; preserve both errors in the rejected invocation.
+      if (!reported || reported.error !== error) {
+        const completionError =
+          reported && error instanceof AggregateError && error.errors[0] === reported.error
+            ? error.errors[1]
+            : error;
+        resolveErrorReporter(this.app.getContainer()).report(completionError, reportContext);
       }
-    });
+      throw error;
+    }
   }
 
   /**
@@ -246,7 +309,7 @@ export class CloudflareApplication<T extends object = object> {
       .ofKind('cf:queue')
       .filter((ep) => entrypointString(ep.meta, 'queueName') === batch.queue);
 
-    await Promise.all(handlers.map((ep) => this.dispatchEntrypoint(ep, [batch, env, ctx])));
+    await settleEntrypoints(handlers.map((ep) => this.dispatchEntrypoint(ep, batch, env, ctx)));
   }
 
   async close(signal?: string): Promise<void> {

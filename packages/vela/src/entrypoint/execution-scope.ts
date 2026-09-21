@@ -204,7 +204,7 @@ export async function runInEntrypointScope<T>(
       await scope.finish();
     } catch (completionError) {
       throw new AggregateError([error, completionError], 'Invocation and completion failed.', {
-        cause: error,
+        cause: completionError,
       });
     }
     throw error;
