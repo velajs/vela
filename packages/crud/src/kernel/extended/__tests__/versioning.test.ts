@@ -31,11 +31,12 @@ function fakeAdapter(store: Map<string, Row>, softDeleteField?: string): CrudAda
     return null;
   };
 
-  const caps: AdapterCapability[] = [];
+  const caps: AdapterCapability[] = ['transactions'];
   if (softDeleteField !== undefined) caps.push('softDelete');
 
   return bindAdapter({
     capabilities: new Set(caps),
+    transactionOwner: store,
     async requestScope(fn) {
       return fn({ tx: undefined });
     },
@@ -93,6 +94,12 @@ function fakeAdapter(store: Map<string, Row>, softDeleteField?: string): CrudAda
   });
 }
 
+// This fixture isolates endpoint/policy behavior; native rollback and lifetime
+// guarantees are exercised with real transactional adapters in integration tests.
+function bindHistory(owner: object, store: MemoryVersioningStore): MemoryVersioningStore {
+  return Object.assign(store, { transaction: { owner, bind: () => store } });
+}
+
 const docSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -131,7 +138,7 @@ function makeResource(opts: MakeOpts = {}) {
     model,
     adapter,
     filterFields: ['title'],
-    ...(opts.versioningStore ? { versioningStore: opts.versioningStore } : {}),
+    ...(opts.versioningStore ? { versioningStore: bindHistory(store, opts.versioningStore) } : {}),
     ...(opts.auditStore ? { auditStore: opts.auditStore } : {}),
   });
   return { store, model, adapter, resource };
@@ -343,6 +350,8 @@ describe('version verbs', () => {
 
   it('versionRollback → 200, writes the historical data back with version=current+1', async () => {
     const { resource, store, vstore } = versionedFixture();
+    await vstore.deleteAll('documents', keyFor('d1'));
+    seedHistory(vstore, 'd1', 2);
     const result = await resource.execute(
       'versionRollback',
       req({ id: 'd1', params: { version: '1' } }),
@@ -399,7 +408,7 @@ describe('serialization profile interplay', () => {
     const resource = defineResource('doc', {
       model,
       adapter: fakeAdapter(store),
-      versioningStore: vstore,
+      versioningStore: bindHistory(store, vstore),
       auditStore: astore,
     });
     store.set('d1', { id: 'd1', title: 'Original', content: 'Secret body', version: 1 });

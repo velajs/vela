@@ -9,6 +9,13 @@ type Tables = Map<string, Map<string, Record<string, unknown>>>;
 /** Explicit instance ownership. Share an instance across models in one database. */
 export class MemoryStore {
   #tables: Tables = new Map();
+  #participants = new Map<object, unknown>();
+  /** Internal store-author seam. A stable typed key owns its cloned transaction state. */
+  participant<T>(key: { create(): T }): T {
+    if (!this.#participants.has(key)) this.#participants.set(key, key.create());
+    // Entries are installed exclusively by this exact typed key's factory.
+    return this.#participants.get(key) as T;
+  }
   #tail: Promise<void> = Promise.resolve();
   readonly #scopes = new WeakMap<AdapterScope, MemoryStore>();
   table(name: string): Map<string, Record<string, unknown>> {
@@ -35,10 +42,18 @@ export class MemoryStore {
     const scope = Object.freeze({ tx: Object.freeze({ kind: 'memory-transaction' }) });
     try {
       snapshot.#tables = structuredClone(this.#tables);
+      snapshot.#participants = new Map(
+        [...this.#participants].map(([key, value]) => [key, structuredClone(value)]),
+      );
       this.#scopes.set(scope, snapshot);
       const result = await work(scope);
       // Detach committed state from values retained by hooks or the caller.
-      this.#tables = structuredClone(snapshot.#tables);
+      const committedTables = structuredClone(snapshot.#tables);
+      const committedParticipants = new Map(
+        [...snapshot.#participants].map(([key, value]) => [key, structuredClone(value)]),
+      );
+      this.#tables = committedTables;
+      this.#participants = committedParticipants;
       return result;
     } finally {
       this.#scopes.delete(scope);

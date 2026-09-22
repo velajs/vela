@@ -1,3 +1,4 @@
+import { validateAuditEntry } from '@velajs/crud/audit';
 import { getTableColumns, sql } from 'drizzle-orm';
 import {
   // oxlint-disable-next-line eslint/no-unused-vars -- used by the computed phantom result slot
@@ -112,9 +113,11 @@ export function atomicAuditDriver(owner: object, table: DrizzleTable): AtomicAud
   return Object.freeze({
     owner,
     prepare(entry: AuditEntry): AtomicCommand<void> {
+      validateAuditEntry(entry);
       const values = {
         id: entry.id,
         timestamp: entry.timestamp.getTime(),
+        tenantNamespace: entry.tenantNamespace ?? 'global',
         action: entry.action,
         tableName: entry.tableName,
         recordId: String(entry.recordId),

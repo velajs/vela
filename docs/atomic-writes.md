@@ -128,14 +128,16 @@ remain supported. There is no fallback to post-commit audit persistence.
 
 Without `auditPersistence`, or with `{ mode: 'postCommit' }`, existing behavior is
 unchanged: the engine captures the usual snapshots and awaits the audit store
-after commit. A failure there cannot roll back the already committed mutation.
+after commit. Failures are logged and cannot roll back the already committed mutation.
 
-The Drizzle audit table uses the existing ten columns: `id`, `timestamp`,
+The Drizzle audit table uses eleven columns: `id`, `tenantNamespace`, `timestamp`,
 `action`, `tableName`, `recordId`, `userId`, `record`, `previousRecord`, `changes`,
 `metadata`. Atomic preparation requires exactly these column keys; use the
 existing text/epoch-millisecond store schema and your own migrations. Other
 stores may implement `AuditStore.atomic` and a compatible adapter command
-issuer; `MemoryAuditStore` intentionally does not.
+issuer; `MemoryAuditStore` intentionally does not. See
+[transactional history](transactional-history.md) for the tenant namespace
+migration, legacy record isolation, and callback transaction auditing.
 
 ## Failure and result boundaries
 

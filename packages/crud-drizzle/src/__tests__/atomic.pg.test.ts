@@ -9,6 +9,7 @@ import { DrizzleAuditStore } from '../stores';
 
 const items = pgTable('atomic_items', { id: text().primaryKey(), value: integer().notNull() });
 const audit = pgTable('atomic_audit', {
+  tenantNamespace: text(),
   id: text().primaryKey(),
   timestamp: bigint({ mode: 'number' }).notNull(),
   action: text().notNull(),
@@ -43,7 +44,7 @@ const note = (id: string) =>
   });
 beforeAll(async () => {
   await client.exec(
-    'CREATE TABLE atomic_items (id TEXT PRIMARY KEY, value INTEGER NOT NULL CHECK(value >= 0)); CREATE TABLE atomic_audit (id TEXT PRIMARY KEY, timestamp BIGINT NOT NULL, action TEXT NOT NULL, "tableName" TEXT NOT NULL, "recordId" TEXT NOT NULL, "userId" TEXT, record TEXT, "previousRecord" TEXT, changes TEXT, metadata TEXT)',
+    'CREATE TABLE atomic_items (id TEXT PRIMARY KEY, value INTEGER NOT NULL CHECK(value >= 0)); CREATE TABLE atomic_audit ("tenantNamespace" TEXT,id TEXT PRIMARY KEY, timestamp BIGINT NOT NULL, action TEXT NOT NULL, "tableName" TEXT NOT NULL, "recordId" TEXT NOT NULL, "userId" TEXT, record TEXT, "previousRecord" TEXT, changes TEXT, metadata TEXT)',
   );
 });
 afterAll(async () => {

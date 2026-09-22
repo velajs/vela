@@ -1,3 +1,4 @@
+import type { TransactionContext } from '../adapter/contract';
 /**
  * The VERSIONING family: a DI-provided `VersioningStore` seam (decoupled from
  * the data adapter) plus a plain-`Map` `MemoryVersioningStore` for tests and
@@ -13,6 +14,7 @@
  * with the audit family. EDGE-SAFE.
  */
 
+import type { TransactionStoreBinding } from '../kernel/transaction';
 import type { FieldChange } from '../audit/index';
 
 export type { FieldChange } from '../audit/index';
@@ -72,6 +74,9 @@ export function serializeVersionRecordKey(key: VersionRecordKey): string {
  * over your store of choice; all methods are async and edge-safe.
  */
 export interface VersioningStore {
+  readonly transaction?: TransactionStoreBinding<VersioningStore>;
+  /** Verify migrated persistence constraints before a resource writes. */
+  validatePersistence?(): Promise<void>;
   /** Persist a version snapshot under `tableName`. */
   save(tableName: string, key: VersionRecordKey, entry: VersionEntry): Promise<void>;
   /** All snapshots for a record, NEWEST-FIRST, honoring `limit`/`offset`. */
@@ -97,7 +102,10 @@ export interface VersioningStore {
  * serialized v2 tenant/full-PK key. For tests and small deployments.
  */
 export class MemoryVersioningStore implements VersioningStore {
-  private versions = new Map<string, VersionEntry[]>();
+  private readonly storage = new Map<string, VersionEntry[]>();
+  protected get versions(): Map<string, VersionEntry[]> {
+    return this.storage;
+  }
 
   private keyFor(tableName: string, key: VersionRecordKey): string {
     return JSON.stringify([tableName, serializeVersionRecordKey(key)]);
@@ -106,7 +114,10 @@ export class MemoryVersioningStore implements VersioningStore {
   async save(tableName: string, recordKey: VersionRecordKey, entry: VersionEntry): Promise<void> {
     const key = this.keyFor(tableName, recordKey);
     const existing = this.versions.get(key) ?? [];
-    existing.push(entry);
+    validateVersionEntry(entry);
+    if (existing.some((stored) => stored.version === entry.version))
+      throw new VersionConflictError();
+    existing.push(structuredClone(entry));
     this.versions.set(key, existing);
   }
 
@@ -120,7 +131,8 @@ export class MemoryVersioningStore implements VersioningStore {
     const sorted = [...entries].sort((a, b) => b.version - a.version);
     const offset = options?.offset ?? 0;
     const limit = options?.limit ?? sorted.length;
-    return sorted.slice(offset, offset + limit);
+    validateHistoryPagination(options);
+    return structuredClone(sorted.slice(offset, offset + limit));
   }
 
   async get(
@@ -129,7 +141,8 @@ export class MemoryVersioningStore implements VersioningStore {
     version: number,
   ): Promise<VersionEntry | null> {
     const entries = this.versions.get(this.keyFor(tableName, recordKey)) ?? [];
-    return entries.find((entry) => entry.version === version) ?? null;
+    validateVersionNumber(version);
+    return structuredClone(entries.find((entry) => entry.version === version) ?? null);
   }
 
   async latest(tableName: string, recordKey: VersionRecordKey): Promise<number> {
@@ -139,6 +152,7 @@ export class MemoryVersioningStore implements VersioningStore {
   }
 
   async prune(tableName: string, recordKey: VersionRecordKey, keepCount: number): Promise<number> {
+    validateVersionNumber(keepCount);
     const key = this.keyFor(tableName, recordKey);
     const entries = this.versions.get(key) ?? [];
     if (entries.length <= keepCount) return 0;
@@ -159,11 +173,68 @@ export class MemoryVersioningStore implements VersioningStore {
   all(): VersionEntry[] {
     const out: VersionEntry[] = [];
     for (const entries of this.versions.values()) out.push(...entries);
-    return out;
+    return structuredClone(out);
   }
 
   /** Drop every stored entry (tests). */
   clear(): void {
     this.versions.clear();
   }
+}
+
+export function validateVersionNumber(version: number): void {
+  if (!Number.isSafeInteger(version) || version < 0)
+    throw new TypeError('Version must be a non-negative safe integer');
+}
+
+export function validateHistoryPagination(options?: { limit?: number; offset?: number }): void {
+  for (const value of [options?.limit, options?.offset])
+    if (value !== undefined && (!Number.isSafeInteger(value) || value < 0))
+      throw new TypeError('History pagination must use non-negative safe integers');
+}
+
+/** Namespace captured from a trusted server-side transaction context. */
+export function historyTenantNamespace(tenantId?: string): string {
+  if (tenantId === undefined) return 'global';
+  if (typeof tenantId !== 'string' || !tenantId.length || tenantId.length > 1024)
+    throw new TypeError('Invalid history tenant');
+  return `tenant:${JSON.stringify(tenantId)}`;
+}
+
+/** A concurrent mutation already captured this exact record version. */
+export class VersionConflictError extends Error {
+  constructor(options?: ErrorOptions) {
+    super('Version snapshot already exists', options);
+  }
+}
+
+export function validateVersionEntry(entry: VersionEntry): void {
+  validateVersionNumber(entry.version);
+  if (
+    typeof entry.id !== 'string' ||
+    !entry.id.length ||
+    (typeof entry.recordId !== 'string' &&
+      (typeof entry.recordId !== 'number' || !Number.isFinite(entry.recordId))) ||
+    (entry.changedBy !== undefined && typeof entry.changedBy !== 'string') ||
+    (entry.changeReason !== undefined && typeof entry.changeReason !== 'string') ||
+    !(entry.createdAt instanceof Date) ||
+    !Number.isFinite(entry.createdAt.getTime()) ||
+    !entry.data ||
+    typeof entry.data !== 'object' ||
+    Array.isArray(entry.data)
+  )
+    throw new TypeError('Invalid version entry');
+}
+
+/** Model-owned history scope, distinct from a transaction's authenticated tenant. */
+export interface HistoryStoreContext extends TransactionContext {
+  readonly historyNamespace?: 'global';
+}
+
+export function historyNamespaceFor(context: HistoryStoreContext): string {
+  // Always validate the original trusted tenant, including for global resources.
+  const tenantNamespace = historyTenantNamespace(context.tenantId);
+  if (context.historyNamespace !== undefined && context.historyNamespace !== 'global')
+    throw new TypeError('Invalid history namespace override');
+  return context.historyNamespace === 'global' ? 'global' : tenantNamespace;
 }

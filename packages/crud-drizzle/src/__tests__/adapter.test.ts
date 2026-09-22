@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { createClient, type Client } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
-import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 import type { AdapterScope } from '@velajs/crud/adapter';
 import { drizzleAdapter } from '../adapter';
 import { DrizzleAuditStore, DrizzleVersioningStore } from '../stores';
@@ -34,18 +34,23 @@ const uniqItems = sqliteTable('uniq_items', {
   deletedAt: integer('deletedAt'),
 });
 
-const versions = sqliteTable('versions', {
-  id: text('id').primaryKey(),
-  tableName: text('tableName').notNull(),
-  recordId: text('recordId').notNull(),
-  version: integer('version').notNull(),
-  data: text('data').notNull(),
-  createdAt: integer('createdAt').notNull(),
-  changedBy: text('changedBy'),
-  changeReason: text('changeReason'),
-});
+const versions = sqliteTable(
+  'versions',
+  {
+    id: text('id').primaryKey(),
+    tableName: text('tableName').notNull(),
+    recordId: text('recordId').notNull(),
+    version: integer('version').notNull(),
+    data: text('data').notNull(),
+    createdAt: integer('createdAt').notNull(),
+    changedBy: text('changedBy'),
+    changeReason: text('changeReason'),
+  },
+  (table) => [uniqueIndex('version_identity').on(table.tableName, table.recordId, table.version)],
+);
 
 const audits = sqliteTable('audits', {
+  tenantNamespace: text('tenantNamespace'),
   id: text('id').primaryKey(),
   timestamp: integer('timestamp').notNull(),
   action: text('action').notNull(),
@@ -91,10 +96,10 @@ async function freshDb() {
     'CREATE TABLE uniq_items (id TEXT PRIMARY KEY, name TEXT, email TEXT, authorId TEXT, deletedAt INTEGER, UNIQUE(email))',
   );
   await client.execute(
-    'CREATE TABLE versions (id TEXT PRIMARY KEY, tableName TEXT NOT NULL, recordId TEXT NOT NULL, version INTEGER NOT NULL, data TEXT NOT NULL, createdAt INTEGER NOT NULL, changedBy TEXT, changeReason TEXT)',
+    'CREATE TABLE versions (id TEXT PRIMARY KEY, tableName TEXT NOT NULL, recordId TEXT NOT NULL, version INTEGER NOT NULL, data TEXT NOT NULL, createdAt INTEGER NOT NULL, changedBy TEXT, changeReason TEXT, UNIQUE(tableName, recordId, version))',
   );
   await client.execute(
-    'CREATE TABLE audits (id TEXT PRIMARY KEY, timestamp INTEGER NOT NULL, action TEXT NOT NULL, tableName TEXT NOT NULL, recordId TEXT NOT NULL, userId TEXT, record TEXT, previousRecord TEXT, changes TEXT, metadata TEXT)',
+    'CREATE TABLE audits (tenantNamespace TEXT, id TEXT PRIMARY KEY, timestamp INTEGER NOT NULL, action TEXT NOT NULL, tableName TEXT NOT NULL, recordId TEXT NOT NULL, userId TEXT, record TEXT, previousRecord TEXT, changes TEXT, metadata TEXT)',
   );
 }
 

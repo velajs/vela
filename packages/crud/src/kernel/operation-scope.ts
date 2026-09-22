@@ -1,3 +1,5 @@
+import { assertHistoryPersistence, globalHistoryBinding } from './history';
+import { captureAudit, captureVersion, auditRecordId } from './capture';
 import { parseSchemaAsync, getTrustedRequestIdentity } from '@velajs/vela';
 import type { AdapterScope, RuntimeAdapter } from '../adapter/contract';
 import type { FilterCondition, Lookup } from '../adapter/query-types';
@@ -65,15 +67,32 @@ export async function prepareOperation(
         : (req.id ?? req.params?.[base.model.primaryKeys[0]!]);
     req = { ...req, id: await parseIdentifier(base, input) };
   }
-  const cfg = base.config;
+  const cfg = { ...base.config };
+  assertHistoryPersistence(cfg);
   if (req.transaction) {
     if (!(req.transaction instanceof CrudTransactionScope))
       throw new TypeError('Invalid CRUD transaction');
     CrudTransactionScope.assert(req.transaction, cfg.adapter, { tenantId: req.vars.tenantId });
-    if (base.model.versioning)
-      throw new TypeError(
-        'Versioning stores cannot join a CRUD transaction; use a transaction-aware native workflow',
+    if (base.model.versioning && cfg.versioningStore?.transaction)
+      cfg.versioningStore = CrudTransactionScope.bindStore(
+        req.transaction,
+        base.model.tenantField
+          ? cfg.versioningStore.transaction
+          : globalHistoryBinding(cfg.versioningStore.transaction),
+        { tenantId: req.vars.tenantId },
       );
+    if (cfg.auditPersistence?.mode === 'transaction' && cfg.auditStore?.transaction)
+      cfg.auditStore = CrudTransactionScope.bindStore(
+        req.transaction,
+        base.model.tenantField
+          ? cfg.auditStore.transaction
+          : globalHistoryBinding(cfg.auditStore.transaction),
+        { tenantId: req.vars.tenantId },
+      );
+  }
+  if (req.transaction) {
+    await cfg.versioningStore?.validatePersistence?.();
+    if (cfg.auditPersistence?.mode === 'transaction') await cfg.auditStore?.validatePersistence?.();
   }
   const fixed: Row = {};
   if (base.model.tenantField && req.vars.tenantId !== undefined)
@@ -194,23 +213,67 @@ export async function prepareOperation(
     else await deliver();
     return result;
   };
+  const additionalAudit =
+    cfg.auditPersistence?.mode === 'transaction' && ['clone', 'import', 'bulkPatch'].includes(verb);
+  const auditAdditional = async (
+    action: 'create' | 'update',
+    row: Row | null,
+    previousRecord?: Row,
+  ): Promise<void> => {
+    if (additionalAudit && row)
+      await captureAudit(resource, req, action, {
+        recordId: auditRecordId(base.model, row),
+        record: row,
+        previousRecord,
+        metadata: { verb },
+      });
+  };
   const wrapped: RuntimeAdapter = {
     ...adapter,
+    // Read/modify/write capture must not be bypassed by opaque bulk/upsert methods.
+    capabilities: new Set(
+      [...adapter.capabilities].filter(
+        (cap) =>
+          !(base.model.versioning && (cap === 'upsert' || cap === 'scopedUpsert')) &&
+          !(cap === 'bulkPatch' && (base.model.versioning || additionalAudit)),
+      ),
+    ),
     requestScope: (fn, ctx) => run(adapter.requestScope.bind(adapter), fn, ctx),
     transaction: (fn, ctx) => run(adapter.transaction.bind(adapter), fn, ctx),
     create: async (row, scope) => {
-      const result = await adapter.create(input(row, true), scope);
+      const values = input(row, true);
+      if (base.model.versioning) values.version = 1;
+      const result = await adapter.create(values, scope);
       record(scope, 'create', result);
+      await auditAdditional('create', result);
       return result;
     },
     readOne: (key, opts, scope) => adapter.readOne(lookup(key), opts, scope),
     update: async (key, row, scope) => {
-      const result = await adapter.update(lookup(key), input(row), scope);
+      const patch = input(row);
+      const prior =
+        base.model.versioning || additionalAudit
+          ? await adapter.readOne(lookup(key), {}, scope)
+          : undefined;
+      if ((base.model.versioning || additionalAudit) && !prior) return null;
+      if (base.model.versioning && prior) await captureVersion(resource, prior, patch, req);
+      const result = await adapter.update(lookup(key), patch, scope);
+      if (base.model.versioning && !result) throw new Error('Versioned row changed concurrently');
       record(scope, 'update', result);
+      await auditAdditional('update', result, prior ?? undefined);
       return result;
     },
     delete: async (key, opts, scope) => {
+      if (base.model.versioning) {
+        const prior = await adapter.readOne(lookup(key), {}, scope);
+        if (!prior) return null;
+        const versionPatch: Row | undefined = opts.softDeleteField ? {} : undefined;
+        await captureVersion(resource, prior, versionPatch, req);
+        if (versionPatch && !(await adapter.update(lookup(key), versionPatch, scope)))
+          throw new Error('Versioned row changed concurrently');
+      }
       const result = await adapter.delete(lookup(key), opts, scope);
+      if (base.model.versioning && !result) throw new Error('Versioned row changed concurrently');
       record(scope, 'delete', result);
       return result;
     },
@@ -265,14 +328,28 @@ export async function prepareOperation(
       adapter.search!({ ...spec, filters: filters(spec.filters ?? []) }, scope);
   if (adapter.restore)
     wrapped.restore = async (key, scope) => {
-      const row = await adapter.restore!(lookup(key), scope);
+      const patch: Row = {};
+      if (base.model.versioning) {
+        const prior = await adapter.readOne(lookup(key), { withDeleted: true }, scope);
+        if (!prior || (base.model.softDeleteField && prior[base.model.softDeleteField] == null))
+          return null;
+        await captureVersion(resource, prior, patch, req);
+      }
+      let row = await adapter.restore!(lookup(key), scope);
+      if (base.model.versioning) {
+        if (!row) throw new Error('Versioned row changed concurrently');
+        row = await adapter.update(lookup(key), patch, scope);
+        if (!row) throw new Error('Versioned row changed concurrently');
+      }
       record(scope, 'restore', row);
       return row;
     };
   if (adapter.createMany)
     wrapped.createMany = async (rows, scope) => {
       const result = await adapter.createMany!(
-        rows.map((row) => input(row, true)),
+        rows.map((row) =>
+          base.model.versioning ? { ...input(row, true), version: 1 } : input(row, true),
+        ),
         scope,
       );
       result.forEach((row) => record(scope, 'create', row));
@@ -297,6 +374,25 @@ export async function prepareOperation(
       record(scope, 'upsert', result.row);
       return result;
     };
+  // A persistence failure cannot become a partial success by being caught in
+  // an import loop or another trusted callback inside the transaction.
+  const checked =
+    <Args extends unknown[], Result>(fn: (...args: Args) => Promise<Result>) =>
+    async (...args: Args): Promise<Result> => {
+      try {
+        return await fn(...args);
+      } catch (error) {
+        if (req.transaction) CrudTransactionScope.fail(req.transaction, error);
+        throw error;
+      }
+    };
+  wrapped.create = checked(wrapped.create);
+  wrapped.update = checked(wrapped.update);
+  wrapped.delete = checked(wrapped.delete);
+  if (wrapped.restore) wrapped.restore = checked(wrapped.restore);
+  if (wrapped.upsertOne) wrapped.upsertOne = checked(wrapped.upsertOne);
+  if (wrapped.createMany) wrapped.createMany = checked(wrapped.createMany);
+  if (wrapped.updateWhere) wrapped.updateWhere = checked(wrapped.updateWhere);
   // Validate response contracts after authorization/field masking, at each row boundary.
   const model =
     cfg.authorization && base.model.relations

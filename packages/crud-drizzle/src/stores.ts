@@ -5,10 +5,25 @@
  * by the tests — consumers create the tables with their own migrations).
  */
 
-import { and, desc, eq, sql } from 'drizzle-orm';
-import type { AuditEntry, AuditQuery, AuditStore } from '@velajs/crud/audit';
+import { and, desc, eq, sql, gte, lte, is } from 'drizzle-orm';
+import {
+  parseAuditAction,
+  validateAuditEntry,
+  validateAuditQuery,
+  type AuditEntry,
+  type AuditQuery,
+  type AuditStore,
+} from '@velajs/crud/audit';
+import { PgTable, getTableConfig as pgTableConfig } from 'drizzle-orm/pg-core';
+import { SQLiteTable, getTableConfig as sqliteTableConfig } from 'drizzle-orm/sqlite-core';
+import { drizzleTransactionStore } from './transaction';
 import {
   serializeVersionRecordKey,
+  historyNamespaceFor,
+  validateHistoryPagination,
+  validateVersionNumber,
+  validateVersionEntry,
+  VersionConflictError,
   type VersionEntry,
   type VersioningStore,
   type VersionRecordKey,
@@ -26,12 +41,79 @@ type Row = Record<string, unknown>;
  */
 export class DrizzleVersioningStore implements VersioningStore {
   private readonly db: DrizzleDatabase;
+  readonly transaction?: NonNullable<VersioningStore['transaction']>;
 
   constructor(
     db: unknown,
     private readonly table: DrizzleTable,
   ) {
     this.db = asDatabase(db);
+    assertVersionUniqueness(table);
+    if (supportsHistoryTransactions(db, table))
+      this.transaction = drizzleTransactionStore(this.db, (run, context) => {
+        const keyInScope = (key: VersionRecordKey) => {
+          if (key.tenantNamespace !== historyNamespaceFor(context))
+            throw new TypeError('Version transaction tenant mismatch');
+          return key;
+        };
+        return {
+          validatePersistence: () =>
+            run((native) => new DrizzleVersioningStore(native, table).validatePersistence()),
+          save: (name, key, entry) =>
+            run((native) =>
+              new DrizzleVersioningStore(native, table).save(name, keyInScope(key), entry),
+            ),
+          list: (name, key, options) =>
+            run((native) =>
+              new DrizzleVersioningStore(native, table).list(name, keyInScope(key), options),
+            ),
+          get: (name, key, version) =>
+            run((native) =>
+              new DrizzleVersioningStore(native, table).get(name, keyInScope(key), version),
+            ),
+          latest: (name, key) =>
+            run((native) =>
+              new DrizzleVersioningStore(native, table).latest(name, keyInScope(key)),
+            ),
+          deleteAll: (name, key) =>
+            run((native) =>
+              new DrizzleVersioningStore(native, table).deleteAll(name, keyInScope(key)),
+            ),
+        };
+      });
+  }
+
+  async validatePersistence(): Promise<void> {
+    const columns = ['tableName', 'recordId', 'version'].map((name) => this.col(name).name).sort();
+    let valid;
+    if (is(this.table, PgTable)) {
+      const config = pgTableConfig(this.table);
+      const quote = (name: string) => `"${name.replaceAll('"', '""')}"`;
+      const name = config.schema
+        ? `${quote(config.schema)}.${quote(config.name)}`
+        : quote(config.name);
+      valid = sql`exists (
+        select 1 from pg_index i where i.indrelid = to_regclass(${name})
+        and i.indisunique and i.indisvalid and i.indimmediate and i.indpred is null and i.indexprs is null
+        and i.indnkeyatts = 3 and (
+          select array_agg(a.attname::text order by a.attname) from unnest(i.indkey) with ordinality k(attnum, pos)
+          join pg_attribute a on a.attrelid = i.indrelid and a.attnum = k.attnum where k.pos <= i.indnkeyatts
+        ) = array[${columns[0]}, ${columns[1]}, ${columns[2]}]::text[]
+      )`;
+    } else if (is(this.table, SQLiteTable)) {
+      const name = sqliteTableConfig(this.table).name;
+      valid = sql`exists (
+        select 1 from pragma_index_list(${name}) i where i."unique" = 1 and i.partial = 0
+        and (select count(*) from pragma_index_info(i.name)) = 3
+        and not exists (select 1 from pragma_index_info(i.name) c
+          where c.name is null or c.name not in (${columns[0]}, ${columns[1]}, ${columns[2]}))
+      )`;
+    } else throw new TypeError('Version history requires SQLite or PostgreSQL');
+    const rows = await this.db.select({ valid }).from(sql`(select 1) as history_constraint_check`);
+    if (rows[0]?.valid !== true && rows[0]?.valid !== 1)
+      throw new TypeError(
+        'Missing physical UNIQUE(tableName, recordId, version) history constraint',
+      );
   }
 
   private col(name: string) {
@@ -39,20 +121,27 @@ export class DrizzleVersioningStore implements VersioningStore {
   }
 
   async save(tableName: string, key: VersionRecordKey, entry: VersionEntry): Promise<void> {
-    await this.db.insert(this.table).values({
-      id: entry.id,
-      tableName,
-      recordId: serializeVersionRecordKey(key),
-      version: entry.version,
-      data: JSON.stringify({
-        __velaVersionEntry: 2,
-        recordId: entry.recordId,
-        data: entry.data,
-      }),
-      createdAt: entry.createdAt.getTime(),
-      changedBy: entry.changedBy ?? null,
-      changeReason: entry.changeReason ?? null,
-    });
+    await this.validatePersistence();
+    validateVersionEntry(entry);
+    try {
+      await this.db.insert(this.table).values({
+        id: entry.id,
+        tableName,
+        recordId: serializeVersionRecordKey(key),
+        version: entry.version,
+        data: JSON.stringify({
+          __velaVersionEntry: 2,
+          recordId: entry.recordId,
+          data: entry.data,
+        }),
+        createdAt: entry.createdAt.getTime(),
+        changedBy: entry.changedBy ?? null,
+        changeReason: entry.changeReason ?? null,
+      });
+    } catch (error) {
+      if (isVersionConflict(error)) throw new VersionConflictError({ cause: error });
+      throw error;
+    }
   }
 
   async list(
@@ -60,6 +149,7 @@ export class DrizzleVersioningStore implements VersioningStore {
     key: VersionRecordKey,
     options: { limit?: number; offset?: number } = {},
   ): Promise<VersionEntry[]> {
+    validateHistoryPagination(options);
     let builder = this.db
       .select()
       .from(this.table)
@@ -81,6 +171,7 @@ export class DrizzleVersioningStore implements VersioningStore {
     key: VersionRecordKey,
     version: number,
   ): Promise<VersionEntry | null> {
+    validateVersionNumber(version);
     const rows = (await this.db
       .select()
       .from(this.table)
@@ -159,23 +250,51 @@ export class DrizzleVersioningStore implements VersioningStore {
 export class DrizzleAuditStore implements AuditStore {
   private readonly db: DrizzleDatabase;
   readonly atomic: import('@velajs/crud/audit').AtomicAuditDriver;
+  readonly transaction?: NonNullable<AuditStore['transaction']>;
 
   constructor(
     db: unknown,
     private readonly table: DrizzleTable,
   ) {
     this.db = asDatabase(db);
+    getColumn(table, 'tenantNamespace');
     this.atomic = atomicAuditDriver(this.db, table);
+    if (supportsHistoryTransactions(db, table))
+      this.transaction = drizzleTransactionStore(this.db, (run, context) => {
+        const namespace = historyNamespaceFor(context);
+        const scoped = <T extends { tenantNamespace?: string }>(
+          value: T,
+        ): T & { tenantNamespace: string } => {
+          if (value.tenantNamespace !== undefined && value.tenantNamespace !== namespace)
+            throw new TypeError('Audit transaction tenant mismatch');
+          return { ...value, tenantNamespace: namespace };
+        };
+        return {
+          validatePersistence: () =>
+            run((native) => new DrizzleAuditStore(native, table).validatePersistence()),
+          log: (entry) => run((native) => new DrizzleAuditStore(native, table).log(scoped(entry))),
+          logBatch: (entries) =>
+            run((native) => new DrizzleAuditStore(native, table).logBatch(entries.map(scoped))),
+          query: (options = {}) =>
+            run((native) => new DrizzleAuditStore(native, table).query(scoped(options))),
+        };
+      });
   }
 
   private col(name: string) {
     return getColumn(this.table, name);
   }
 
+  async validatePersistence(): Promise<void> {
+    await this.db.select().from(this.table).limit(0);
+  }
+
   async log(entry: AuditEntry): Promise<void> {
+    validateAuditEntry(entry);
     await this.db.insert(this.table).values({
       id: entry.id,
       timestamp: entry.timestamp.getTime(),
+      tenantNamespace: entry.tenantNamespace ?? 'global',
       action: entry.action,
       tableName: entry.tableName,
       recordId: String(entry.recordId),
@@ -189,11 +308,20 @@ export class DrizzleAuditStore implements AuditStore {
   }
 
   async logBatch(entries: AuditEntry[]): Promise<void> {
+    entries.forEach(validateAuditEntry);
     for (const entry of entries) await this.log(entry);
   }
 
   async query(options: AuditQuery = {}): Promise<AuditEntry[]> {
+    validateAuditQuery(options);
     const conditions = [
+      eq(this.col('tenantNamespace'), options.tenantNamespace ?? 'global'),
+      options.startDate !== undefined
+        ? gte(this.col('timestamp'), options.startDate.getTime())
+        : undefined,
+      options.endDate !== undefined
+        ? lte(this.col('timestamp'), options.endDate.getTime())
+        : undefined,
       options.tableName !== undefined ? eq(this.col('tableName'), options.tableName) : undefined,
       options.recordId !== undefined
         ? eq(this.col('recordId'), String(options.recordId))
@@ -213,18 +341,99 @@ export class DrizzleAuditStore implements AuditStore {
     return rows.map((row) => ({
       id: String(row.id),
       timestamp: new Date(Number(row.timestamp)),
-      action: row.action as AuditEntry['action'],
+      tenantNamespace: String(row.tenantNamespace),
+      action: parseAuditAction(row.action),
       tableName: String(row.tableName),
       recordId: String(row.recordId),
       ...(row.userId != null ? { userId: String(row.userId) } : {}),
-      ...(row.record != null ? { record: JSON.parse(String(row.record)) as Row } : {}),
-      ...(row.previousRecord != null
-        ? { previousRecord: JSON.parse(String(row.previousRecord)) as Row }
-        : {}),
-      ...(row.changes != null
-        ? { changes: JSON.parse(String(row.changes)) as AuditEntry['changes'] }
-        : {}),
-      ...(row.metadata != null ? { metadata: JSON.parse(String(row.metadata)) as Row } : {}),
+      ...(row.record != null ? { record: parseRecord(row.record) } : {}),
+      ...(row.previousRecord != null ? { previousRecord: parseRecord(row.previousRecord) } : {}),
+      ...(row.changes != null ? { changes: parseChanges(row.changes) } : {}),
+      ...(row.metadata != null ? { metadata: parseRecord(row.metadata) } : {}),
     }));
   }
+}
+
+function supportsHistoryTransactions(db: unknown, table: DrizzleTable): boolean {
+  return (
+    is(table, PgTable) ||
+    (is(table, SQLiteTable) &&
+      typeof db === 'object' &&
+      db !== null &&
+      'resultKind' in db &&
+      db.resultKind === 'async')
+  );
+}
+
+/** Metadata must agree with the migrated physical uniqueness constraint. */
+function assertVersionUniqueness(table: DrizzleTable): void {
+  const config = is(table, PgTable)
+    ? pgTableConfig(table)
+    : is(table, SQLiteTable)
+      ? sqliteTableConfig(table)
+      : undefined;
+  if (!config) throw new TypeError('Version history requires SQLite or PostgreSQL');
+  const expected = ['tableName', 'recordId', 'version']
+    .map((name) => getColumn(table, name).name)
+    .sort();
+  const constraints = [
+    ...config.uniqueConstraints.map((constraint) => constraint.columns),
+    ...config.primaryKeys.map((constraint) => constraint.columns),
+    ...config.indexes
+      .filter((index) => index.config.unique && !index.config.where)
+      .map((index) => index.config.columns),
+  ];
+  if (
+    !constraints.some(
+      (columns) =>
+        columns.length === 3 &&
+        columns
+          .map((column) => ('name' in column ? column.name : undefined))
+          .sort()
+          .every((name, index) => name === expected[index]),
+    )
+  )
+    throw new TypeError('Version history requires UNIQUE(tableName, recordId, version)');
+}
+
+function parseRecord(value: unknown): Row {
+  const parsed: unknown = JSON.parse(String(value));
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+    throw new TypeError('Invalid audit record');
+  return Object.fromEntries(Object.entries(parsed));
+}
+function parseChanges(value: unknown): NonNullable<AuditEntry['changes']> {
+  const parsed: unknown = JSON.parse(String(value));
+  if (!Array.isArray(parsed)) throw new TypeError('Invalid audit changes');
+  return parsed.map((entry: unknown) => {
+    if (
+      !entry ||
+      typeof entry !== 'object' ||
+      !('field' in entry) ||
+      typeof entry.field !== 'string'
+    )
+      throw new TypeError('Invalid audit field change');
+    return {
+      field: entry.field,
+      ...('oldValue' in entry ? { oldValue: entry.oldValue } : {}),
+      ...('newValue' in entry ? { newValue: entry.newValue } : {}),
+    };
+  });
+}
+
+function isVersionConflict(error: unknown): boolean {
+  const seen = new Set<object>();
+  while (error && typeof error === 'object' && !seen.has(error)) {
+    seen.add(error);
+    if (
+      'code' in error &&
+      (error.code === '23505' ||
+        error.code === 'SQLITE_CONSTRAINT_UNIQUE' ||
+        error.code === 'SQLITE_CONSTRAINT_PRIMARYKEY')
+    )
+      return true;
+    if ('rawCode' in error && (error.rawCode === 2067 || error.rawCode === 1555)) return true;
+    error = 'cause' in error ? error.cause : undefined;
+  }
+  return false;
 }

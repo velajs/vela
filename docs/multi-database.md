@@ -128,15 +128,16 @@ Vela drains that operation inside the native callback and rolls back; it never
 releases the native scope while accepted work is still running. A callback's
 original exception remains the reported error.
 
-Commit events and audit delivery wait for the actual outer commit, run in
+Commit events and post-commit audit delivery wait for the actual outer commit, run in
 operation order, and do not fire after rollback. Delivery failure cannot reverse a
 commit; `onAfterCommitError` handles event delivery failures. Audit/event delivery
 is best effort, not a durable outbox. External side effects performed inside user
 hooks are not database writes and cannot be rolled back by Vela.
 
-Versioning stores currently have no transaction-scope parameter. Resources with
-versioning enabled therefore reject explicit composition, including reads. Use a
-native transaction-aware history workflow when atomic history is required.
+Versioned resources and explicit transactional audits bind their stores to the
+current owned transaction, including history reads. Unbound or foreign stores
+are rejected before writes. See [transactional history](transactional-history.md)
+for supported stores, native store bindings and required schema migrations.
 
 | Adapter | Callback composition |
 | --- | --- |
