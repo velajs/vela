@@ -52,11 +52,57 @@ describe('BetterAuthModule', () => {
     expect(first.key).not.toBe(second.key);
   });
 
-  it('rejects an explicit key rebound to a different auth registration', () => {
-    const key = 'security-test-explicit-conflict';
-    BetterAuthModule.forRoot({ auth: makeMockAuth(), key });
+  it('boots roots rebuilt with the same explicit key in one process', async () => {
+    // A root rebuilt per environment or per Durable Object creates new auth
+    // registrations under the same key in the same isolate.
+    const buildRoot = () => {
+      const auth = makeMockAuth();
+      const factory = () => auth;
+      @Module({
+        imports: [
+          BetterAuthModule.forRoot({ auth, key: 'rebuilt-auth' }),
+          BetterAuthModule.forRootAsync({
+            inject: [],
+            useFactory: factory,
+            key: 'rebuilt-async-auth',
+            basePath: '/internal-auth',
+            isGlobal: false,
+          }),
+        ],
+      })
+      class AppModule {}
+      return { AppModule, auth };
+    };
+    const first = buildRoot();
+    const second = buildRoot();
+
+    const [firstApp, secondApp] = await Promise.all([
+      VelaFactory.create(first.AppModule),
+      VelaFactory.create(second.AppModule),
+    ]);
+
+    expect(firstApp.get(BetterAuthService).auth).toBe(first.auth);
+    expect(secondApp.get(BetterAuthService).auth).toBe(second.auth);
+    await Promise.all([firstApp.close(), secondApp.close()]);
+  });
+
+  it('keys explicit registrations by name, options and auth identity', () => {
+    const auth = makeMockAuth();
+    const key = 'named-auth';
+    const registration = BetterAuthModule.forRoot({ auth, key });
+
+    // The same registration imported twice in one application deduplicates.
+    expect(BetterAuthModule.forRoot({ auth, key }).key).toBe(registration.key);
+    // A different registration never collapses into an existing instance.
+    expect(BetterAuthModule.forRoot({ auth: makeMockAuth(), key }).key).not.toBe(registration.key);
+    expect(BetterAuthModule.forRoot({ auth, key, basePath: '/auth' }).key).not.toBe(
+      registration.key,
+    );
+  });
+
+  it.each(['', ' padded'])('rejects the explicit key %j', (key) => {
     expect(() => BetterAuthModule.forRoot({ auth: makeMockAuth(), key })).toThrow(
-      /already bound to a different auth registration/,
+      /explicit module key must be a non-empty string/,
     );
   });
 
