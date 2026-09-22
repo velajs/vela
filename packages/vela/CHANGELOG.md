@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.27.0
+
+### Minor Changes
+
+- 2addbe3: Add binary, streaming and native Response endpoint contracts with explicit media types and OpenAPI metadata. Native responses preserve their status, headers and body; stream handling retains backpressure, cancellation and producer errors without buffering.
+  
+  Generate native HTTP client contracts with unknown JSON results and add response, blob and stream consumption helpers. Existing JSON/text responses and multipart/URL-encoded request contracts retain their behavior.
+- 2addbe3: Add optional Web API tracing and metrics with no-op defaults, validated W3C trace
+  propagation, explicit request-scope context, and an OpenTelemetry bridge that uses
+  application-owned tracers and meters without exporter dependencies or automatic
+  network activity. HTTP instrumentation records one completion through streaming,
+  cancellation, deferred work, and disposal using bounded default attributes.
+  Structural HTTP client and execution observers support independent integrations.
+- 2addbe3: Extend the HTTP client with injectable fetch transports, composed cancellation and timeouts, streaming response byte limits, schema-inferred response validation, and optional instrumentation hooks. Preserve URL prefix and generic-call compatibility while fixing query/fragment handling, case-insensitive headers, multipart boundaries, and Web request-body forwarding.
+
 ## 1.26.0
 
 ### Minor Changes

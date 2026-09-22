@@ -1,5 +1,20 @@
 # @velajs/cli
 
+## 1.26.0
+
+### Minor Changes
+
+- 2addbe3: Add binary, streaming and native Response endpoint contracts with explicit media types and OpenAPI metadata. Native responses preserve their status, headers and body; stream handling retains backpressure, cancellation and producer errors without buffering.
+  
+  Generate native HTTP client contracts with unknown JSON results and add response, blob and stream consumption helpers. Existing JSON/text responses and multipart/URL-encoded request contracts retain their behavior.
+
+### Patch Changes
+
+- Updated dependencies [2addbe3]
+- Updated dependencies [2addbe3]
+- Updated dependencies [2addbe3]
+  - @velajs/vela@1.27.0
+
 ## 1.25.0
 
 ### Minor Changes
