@@ -22,6 +22,8 @@
     "src/__tests__/workers/pitr-runtime.test.ts",
     "src/__tests__/queue.test.ts",
     "src/__tests__/signed-dispatch.test.ts",
+    "src/__tests__/root-module.test.ts",
+    "src/__tests__/workers/root-resolution-runtime.test.ts",
     "src/__tests__/workers/module-queue-runtime.test.ts"
   ],
   "include": ["src/**/*.ts", "test-shims/**/*.ts"],

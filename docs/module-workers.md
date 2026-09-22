@@ -24,10 +24,12 @@ class JobsModule {}
 
 Use `createCloudflareWorker(RootModule, { envToken: ENV })` for each entrypoint.
 A root may also be a dynamic module, or `{ create: async env => dynamicModule }`.
-Factories run once per successful environment bootstrap; concurrent events share
-construction, failed construction is evicted, and different environments remain
-isolated. Keep active database connections and authenticated identities in their
-invocation scopes, not in root factories or singleton providers.
+Factories run once per environment object in an isolate: the Worker and its
+Durable Object instances share the module graph, while each application keeps its
+own providers. Concurrent events share construction, failed construction is
+evicted and retried, and different environments remain isolated. Keep active
+database connections and authenticated identities in their invocation scopes, not
+in root factories or singleton providers.
 
 ## Native queues through QueueModule
 
