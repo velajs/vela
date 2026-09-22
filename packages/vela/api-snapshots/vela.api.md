@@ -4495,14 +4495,17 @@ interface MiddlewareRouteDefinition {
 
   readonly moduleId?: string;
   middleware: Array<Type<NestMiddleware> | NestMiddleware>;
-  routes: RouteInfo[];
+
+  routes: Array<RouteInfo | Constructor>;
   excludes: RouteInfo[];
 
   priority?: number;
 }
 interface MiddlewareConfigProxy {
+
   exclude(...routes: Array<string | RouteInfo>): MiddlewareConfigProxy;
   withPriority(priority: number): MiddlewareConfigProxy;
+
   forRoutes(...routes: Array<string | Constructor | RouteInfo>): MiddlewareConsumer;
 }
 interface MiddlewareConsumer {
@@ -4668,8 +4671,7 @@ declare class RouteManager {
   observeRequests(observer: HttpRequestObserver): () => void;
   build(): Promise<VelaHono>;
   private registerRoute;
-  private buildVersionedPaths;
-  private compilePathMatcher;
+  private composeRoutePaths;
   private compileRouteMatcher;
   getControllers(): ControllerRegistration[];
 }
