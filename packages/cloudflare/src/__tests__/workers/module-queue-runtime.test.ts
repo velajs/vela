@@ -6,6 +6,7 @@ import { Process, Processor, QueueModule, queueToken } from '@velajs/vela/queue'
 import type { QueueJob } from '@velajs/vela/queue';
 import { createCloudflareApp, createCloudflareWorker } from '../../cloudflare-factory';
 import { cloudflareQueueDriver } from '../../queue';
+import { QueueConsumer } from '../../decorators/queue-consumer';
 
 const ENV = new InjectionToken<{ QUEUE_BRIDGE: Queue<QueueJob> }>('queue environment');
 
@@ -68,5 +69,31 @@ describe('module dispatch in workerd', () => {
     const app = await createCloudflareApp(App, { envToken: ENV, env: bindings });
     await app.get(queueToken('tasks')).add('run', {});
     await app.close();
+  });
+
+  it('rejects an unclaimed native batch without acknowledging any message', async () => {
+    const handled: string[] = [];
+    @Injectable()
+    class Claimed {
+      @QueueConsumer('claimed-native')
+      async consume(batch: { messages: readonly unknown[] }) {
+        handled.push(`batch:${batch.messages.length}`);
+      }
+    }
+    @Module({ providers: [Claimed] })
+    class App {}
+    const worker = createCloudflareWorker(App, { envToken: ENV });
+    const batch = createMessageBatch('unclaimed-native', [
+      { id: 'lost-0', timestamp: new Date(), attempts: 1, body: { value: 1 } },
+    ]);
+    const context = createExecutionContext();
+
+    await expect(worker.queue(batch, { QUEUE_BRIDGE: env.QUEUE_BRIDGE }, context)).rejects.toThrow(
+      /No consumer claims queue 'unclaimed-native'/,
+    );
+    const result = await getQueueResult(batch, context);
+    expect(result.ackAll).toBe(false);
+    expect(result.explicitAcks).toEqual([]);
+    expect(handled).toEqual([]);
   });
 });

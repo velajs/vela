@@ -315,6 +315,8 @@ export class CloudflareApplication<T extends object = object> {
    * Matches the batch queue name to `@QueueConsumer()` handlers read from
    * `app.entrypoints`; each batch is processed inside a fresh request-scoped
    * child (request-scoped providers rebuild per batch — no boot-time captives).
+   * A batch no handler claims rejects: resolving would let Cloudflare
+   * acknowledge every message implicitly.
    */
   async queue(
     batch: { queue: string; messages: readonly unknown[] },
@@ -327,7 +329,14 @@ export class CloudflareApplication<T extends object = object> {
       ...this.#app.entrypoints.ofKind('cf:queue:module'),
     ].filter((ep) => entrypointString(ep.meta, 'queueName') === batch.queue);
 
-    if (handlers.length === 0) throw new Error(`No consumer for queue '${batch.queue}'.`);
+    if (handlers.length === 0) {
+      throw new Error(
+        `No consumer claims queue '${batch.queue}'. Add @QueueConsumer('${batch.queue}') to a ` +
+          `provider or map it in cloudflareQueueDriver({ consumers }). The batch is rejected ` +
+          `unacknowledged, so Cloudflare retries it and then routes it to the configured ` +
+          `dead-letter queue.`,
+      );
+    }
 
     await settleEntrypoints(handlers.map((ep) => this.dispatchEntrypoint(ep, batch, env, ctx)));
   }
