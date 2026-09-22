@@ -41,25 +41,43 @@ The generated project has four source files:
 | `src/app.service.ts` | Supplies the greeting through an injectable class. |
 | `src/worker.ts` | Exports Workers handlers with application initialization scoped to the native environment. |
 
-The controller uses ordinary constructor injection:
+The controller receives `AppService` through constructor injection:
 
 ```ts
+import { Controller, Get } from '@velajs/vela';
+// Keep the runtime import for SWC's constructor metadata.
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+import { AppService } from './app.service.js';
+
 @Controller('/')
 export class AppController {
-  constructor(private readonly appService: AppService) {}
+  readonly #appService: AppService;
+
+  constructor(appService: AppService) {
+    this.#appService = appService;
+  }
 
   @Get()
   getHello() {
-    return { message: this.appService.getHello() };
+    return { message: this.#appService.getHello() };
   }
 }
 ```
 
+`AppService` is imported as a value, not with `import type`: the constructor
+parameter metadata that SWC emits refers to the class at runtime.
+
 Edit the message in `AppService` and repeat the request. Wrangler reruns the SWC
-build when source files change, and the response reflects the new service code.
-SWC's `.swcrc` enables legacy decorators and constructor parameter metadata;
+build when `src/` or `.swcrc` changes, and the response reflects the new service
+code. SWC's `.swcrc` enables legacy decorators and constructor parameter metadata;
 TypeScript checks the source separately. `wrangler.jsonc` points to compiled
-JavaScript so Wrangler does not have to infer decorator metadata.
+JavaScript so Wrangler does not have to infer decorator metadata. Its
+`nodejs_compat` flag provides the `node:async_hooks` module that Vela's root
+entry imports; the flag is also on by default from compatibility date 2026-08-04.
+
+The project also includes `vela.config.mjs`, which loads the compiled
+application from `dist/` for Node-side CLI tools. After `pnpm build`, inspect
+the routes with `pnpm dlx @velajs/cli@latest route list`.
 
 Dependencies use pinned published npm versions. The generated
 `pnpm-workspace.yaml` allows the native build dependencies used by SWC and

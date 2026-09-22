@@ -23,9 +23,11 @@ export interface AdapterContext {
  *
  * ```ts
  * const app = await VelaFactory.create(AppModule, {
- *   adapters: [cloudflareAdapter({ bindings })],
+ *   adapters: [cloudflareAdapter({ env, envToken: APP_ENV })],
  * });
  * ```
+ *
+ * (`createCloudflareApp` and `createCloudflareWorker` register that adapter for you.)
  *
  * - `requestMiddleware` is prepended to the global middleware chain (runs
  *   before consumer middleware — e.g. capture `c.env` for binding services).

@@ -83,8 +83,8 @@ before `ThrottlerModule`.
 - **Middleware** — `@UseMiddleware` for Hono-native middleware
 - **Custom metadata** — `@SetMetadata` + `Reflector`
 - **Custom param decorators** — `createParamDecorator`
-- **Route versioning** — `@Controller({ version: '1' })` + `@Version('2')`
-- **Global prefix** — `app.setGlobalPrefix('/api')`
+- **Route versioning** — `@Controller({ path: '/users', version: 1 })` + `@Version(2)` (serves `/v1/users` and `/v2/users`)
+- **Global prefix** — `VelaFactory.create(AppModule, { globalPrefix: '/api' })`, read back with `app.getGlobalPrefix()`
 - **Lifecycle hooks** — `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`
 - **CRUD integration** — Optional [`@velajs/crud`](https://github.com/velajs/vela/tree/main/packages/crud) package
 

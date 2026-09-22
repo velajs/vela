@@ -137,7 +137,7 @@ Use `.js` extensions on relative imports (ESM). Feature modules bundle their con
 
 **"Add signed download URLs"** → Name the route (`@Get('download', { name: 'file.download' })`), add `@SignedUrl()`, provide `URL_SIGNING_SECRET`, and generate links with `UrlGeneratorService.signedUrl('file.download', {}, { expiresIn })`. Read `references/controllers-and-routing.md`.
 
-**"Deploy to Cloudflare Workers"** → Add `@velajs/cloudflare` + `wrangler`, export `createCloudflareWorker(AppModule, { envToken: ENV })` and inject native KV/D1/R2/Queue/DO bindings from `ENV`, and enable `nodejs_compat` if using ambient container / ALS. Read `references/cloudflare.md`.
+**"Deploy to Cloudflare Workers"** → Add `@velajs/cloudflare` + `wrangler`, export `createCloudflareWorker(AppModule, { envToken: ENV })` and inject native KV/D1/R2/Queue/DO bindings from `ENV`, and make sure `node:async_hooks` is available for the root entry's `hono/context-storage` import: `nodejs_compat` is default-on from compatibility date 2026-08-04; earlier dates need the `nodejs_als` flag. Read `references/cloudflare.md`.
 
 ## Reference Loading Guide
 
