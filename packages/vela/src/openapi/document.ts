@@ -1,6 +1,7 @@
 import { endpointResponseSchema } from './endpoint-response';
 import { ParamType } from '../constants';
 import type { Type } from '../container/types';
+import { DEFAULT_SUCCESS_STATUS, resolveSuccessStatus } from '../http/response-mapper';
 import { getRouteContributors } from '../http/route-contributor';
 import { getMetadata } from '../metadata';
 import { collectControllers } from '../module/graph';
@@ -119,6 +120,13 @@ function isParamOptional(param: ParameterMetadata, paramtypes?: unknown[]): bool
   const schema = schemaOf(parameterParser(param, paramtypes));
   if (isSchemaParser(schema)) return isOptional(schema);
   return true;
+}
+
+// A documented status is a number or a code string such as '201' or '2XX'.
+function isSuccessStatus(status: number | string): boolean {
+  return typeof status === 'number'
+    ? status >= 200 && status < 300
+    : /^2(?:\d\d|XX)$/i.test(status);
 }
 
 function resolveResponseSchema(
@@ -290,17 +298,15 @@ function buildOperation(
   const responses: Record<
     string,
     { description: string; content?: Record<string, { schema: JsonSchema }> }
-  > = {
-    [String(
-      endpoint?.status ??
-        MetadataRegistry.getHandlerHttpMeta(controller, handlerName)?.httpCode ??
-        200,
-    )]: {
-      description: 'OK',
-    },
-  };
+  > = {};
 
   const apiResponses = getApiResponses(controller, handlerName) ?? [];
+  // A declared status is what the handler sends. Without one, a documented 2xx
+  // (e.g. a generated create's 201 Response) replaces the default 200.
+  const successStatus = resolveSuccessStatus(controller, handlerName);
+  if (successStatus !== undefined || !apiResponses.some(({ status }) => isSuccessStatus(status))) {
+    responses[String(successStatus ?? DEFAULT_SUCCESS_STATUS)] = { description: 'OK' };
+  }
   for (const entry of apiResponses) {
     const key = String(entry.status);
     const resolved: { description: string; content?: Record<string, { schema: JsonSchema }> } = {

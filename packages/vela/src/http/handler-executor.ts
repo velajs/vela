@@ -29,7 +29,12 @@ import { getHttpCode, getRedirect, getResponseHeaders } from './decorators';
 import { buildExecutionContext } from './execution-context';
 import { extractEndpointInput, mapEndpointResponse } from './endpoint-executor';
 import { instantiateAsync, instantiateManyAsync } from './instantiate';
-import { applyResponseHeaders, mapRedirect, mapResponse } from './response-mapper';
+import {
+  applyResponseHeaders,
+  mapRedirect,
+  mapResponse,
+  resolveSuccessStatus,
+} from './response-mapper';
 import type { ParamMetadata, RouteMetadata } from './types';
 
 export interface HandlerGlobals {
@@ -122,6 +127,7 @@ export class HandlerExecutor {
         `${controller.name}.${String(route.handlerName)}: @Endpoint owns its single input argument and response status; remove parameter decorators, @HttpCode, and @Redirect`,
       );
     }
+    const successStatus = resolveSuccessStatus(controller, route.handlerName);
 
     return async (c: Context) => {
       // Combine global + method at request time so post-create registrations propagate.
@@ -199,7 +205,7 @@ export class HandlerExecutor {
           return mapRedirect(c, result, redirect);
         }
 
-        const response = mapResponse(c, result, httpCode);
+        const response = mapResponse(c, result, successStatus);
         applyResponseHeaders(response, responseHeaders);
         return response;
       } catch (error) {

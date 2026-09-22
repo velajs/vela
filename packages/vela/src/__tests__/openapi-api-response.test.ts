@@ -9,6 +9,7 @@ import {
   defineDto,
   createOpenApiDocument,
   ApiResponse,
+  HttpCode,
 } from '../index.js';
 
 beforeEach(() => {
@@ -149,5 +150,59 @@ describe('@ApiResponse', () => {
 
     const doc = createOpenApiDocument(AppModule);
     expect(doc.paths['/override']!.get!.responses['200']!.description).toBe('custom ok');
+  });
+
+  it('adds no default 200 beside a documented 2xx success response', () => {
+    @Controller('/created')
+    class CreatedController {
+      @Post()
+      @ApiResponse(201, { description: 'Created' })
+      @ApiResponse(400, { description: 'Validation failed' })
+      create() {
+        return {};
+      }
+    }
+
+    @Module({ controllers: [CreatedController] })
+    class AppModule {}
+
+    const responses = createOpenApiDocument(AppModule).paths['/created']!.post!.responses;
+    expect(Object.keys(responses).toSorted()).toEqual(['201', '400']);
+  });
+
+  it('keeps the default 200 when only error responses are documented', () => {
+    @Controller('/lookup')
+    class LookupController {
+      @Get()
+      @ApiResponse(404, { description: 'Not found' })
+      find() {
+        return {};
+      }
+    }
+
+    @Module({ controllers: [LookupController] })
+    class AppModule {}
+
+    const responses = createOpenApiDocument(AppModule).paths['/lookup']!.get!.responses;
+    expect(Object.keys(responses).toSorted()).toEqual(['200', '404']);
+  });
+
+  it('documents the @HttpCode status as the success response', () => {
+    @Controller('/accepted')
+    class AcceptedController {
+      @Post()
+      @HttpCode(202)
+      @ApiResponse(400, { description: 'Validation failed' })
+      enqueue() {
+        return {};
+      }
+    }
+
+    @Module({ controllers: [AcceptedController] })
+    class AppModule {}
+
+    const responses = createOpenApiDocument(AppModule).paths['/accepted']!.post!.responses;
+    expect(Object.keys(responses).toSorted()).toEqual(['202', '400']);
+    expect(responses['202']).toEqual({ description: 'OK' });
   });
 });
