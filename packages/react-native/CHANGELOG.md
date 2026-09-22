@@ -1,5 +1,13 @@
 # @velajs/react-native
 
+## 1.22.4
+
+### Patch Changes
+
+- Updated dependencies [2addbe3]
+  - @velajs/client@1.25.0
+  - @velajs/react@1.22.4
+
 ## 1.22.3
 
 ### Patch Changes
