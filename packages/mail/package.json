@@ -1,6 +1,6 @@
 {
   "name": "@velajs/mail",
-  "version": "3.0.0",
+  "version": "1.28.0",
   "description": "Edge-neutral mail for Vela: a render→validate→build→dispatch pipeline behind a one-method MailTransport seam with header-injection guards hoisted above every transport, a queue-backed send path, and inbound email as a verdict-gated entrypoint kind",
   "keywords": [
     "cloudflare-workers",

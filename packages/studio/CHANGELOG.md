@@ -1,5 +1,20 @@
 # @velajs/studio
 
+## 1.28.0
+
+### Minor Changes
+
+- Continue the module-based Workers APIs on the 1.x release line. Vela permits breaking changes in minor releases and does not retain compatibility layers. Upgrade the framework and integrations together for native queue dispatch, cron scheduling, RPC modules and asynchronous roots; see docs/module-workers.md.
+
+### Patch Changes
+
+- Updated dependencies
+  - @velajs/better-auth@1.28.0
+  - @velajs/cloudflare@1.28.0
+  - @velajs/crud@1.28.0
+  - @velajs/feature-flags@1.28.0
+  - @velajs/vela@1.28.0
+
 ## 3.0.0
 
 ### Major Changes

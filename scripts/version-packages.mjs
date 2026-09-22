@@ -1,7 +1,9 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { assertV1Releases } from './release-line.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 if (
@@ -19,6 +21,25 @@ const before = projects.map((project) => ({
   path: project.path,
   manifest: JSON.parse(readFileSync(join(project.path, 'package.json'), 'utf8')),
 }));
+const publicPackages = before.filter(({ manifest }) => !manifest.private);
+assertV1Releases(publicPackages.map(({ manifest }) => manifest));
+const publicNames = new Set(publicPackages.map(({ manifest }) => manifest.name));
+const temporary = mkdtempSync(join(tmpdir(), 'vela-release-plan-'));
+try {
+  const status = join(temporary, 'status.json');
+  execFileSync('pnpm', ['exec', 'changeset', 'status', '--output', status], {
+    cwd: root,
+    stdio: 'inherit',
+  });
+  const plan = JSON.parse(readFileSync(status, 'utf8'));
+  assertV1Releases(
+    plan.releases
+      .filter(({ name }) => publicNames.has(name))
+      .map(({ name, newVersion }) => ({ name, version: newVersion })),
+  );
+} finally {
+  rmSync(temporary, { recursive: true, force: true });
+}
 execFileSync('pnpm', ['exec', 'changeset', 'version'], { cwd: root, stdio: 'inherit' });
 execFileSync('node', ['packages/vela/scripts/sync-skill-version.mjs'], {
   cwd: root,

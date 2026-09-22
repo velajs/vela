@@ -85,15 +85,17 @@ bindings. It does not create resources. See the [four-worker example](../apps/mo
 
 ## Migration
 
-The modular Workers release starts at 3.0.0. Older experimental 2.0.0 packages already exist in the registry and do not contain these APIs; use the 3.x stable line.
+The modular Workers APIs are available on the active 1.x line from 1.28.0.
+Install the framework and affected integrations together at 1.28.0 or later.
+The earlier 2.x and 3.x publications are historical; the default release line is 1.x.
 
-Upgrade core, Cloudflare and integrations whose peer requirements move to the 3.x
-line together. These packages receive major versions even when their own runtime
-API is unchanged; existing 1.x users must not receive a peer-breaking patch.
+Vela permits breaking API changes in minor releases and does not retain
+compatibility layers. Follow the current module APIs and update application
+imports and configuration when upgrading.
 
 Queue transport configuration now initializes during bootstrap, including apps
 without a producer. Duplicate queue ownership fails at startup instead of the
 first client resolution. Job providers still follow their declared scopes.
 Cloudflare queue deliveries without a registered consumer now reject, rather than
 returning successfully and allowing implicit acknowledgement. These behavior
-changes require a major release; native decorators themselves remain supported.
+changes ship within 1.x; native decorators remain explicit escape hatches.

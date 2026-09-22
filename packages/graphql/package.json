@@ -1,6 +1,6 @@
 {
   "name": "@velajs/graphql",
-  "version": "3.0.0",
+  "version": "1.28.0",
   "description": "Optional executable-schema GraphQL integration for Vela",
   "keywords": [
     "cloudflare-workers",
