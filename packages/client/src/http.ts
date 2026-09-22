@@ -80,3 +80,43 @@ export function withFormEncoding(
     return transport(input, { ...init, headers, body: encoded });
   };
 }
+
+/** Native fetch response with an honest unknown JSON boundary, including clones. */
+export interface HttpResponse<Status extends number = number> extends Omit<
+  Response,
+  'json' | 'clone' | 'status'
+> {
+  readonly status: Status;
+  json(): Promise<unknown>;
+  clone(): HttpResponse<Status>;
+}
+
+/**
+ * Select a native response consumption mode. Response/stream modes never read,
+ * clone or buffer the body. Every HTTP status remains available to the caller;
+ * use response mode to inspect status and headers before choosing a body reader.
+ */
+export function readHttpResponse<Status extends number>(
+  response:
+    | (Response & { readonly status: Status })
+    | Promise<Response & { readonly status: Status }>,
+  mode: 'response',
+): Promise<HttpResponse<Status>>;
+export function readHttpResponse(
+  response: Response | Promise<Response>,
+  mode: 'blob',
+): Promise<Blob>;
+export function readHttpResponse(
+  response: Response | Promise<Response>,
+  mode: 'stream',
+): Promise<ReadableStream<Uint8Array> | null>;
+export async function readHttpResponse(
+  response: Response | Promise<Response>,
+  mode: 'response' | 'blob' | 'stream',
+): Promise<HttpResponse | Blob | ReadableStream<Uint8Array> | null> {
+  const value = await response;
+  if (mode === 'response') return value;
+  if (mode === 'stream') return value.body;
+  if (mode === 'blob') return value.blob();
+  throw new TypeError('Unknown HTTP response consumption mode');
+}

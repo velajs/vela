@@ -46,6 +46,16 @@ including its UTF-8 name, 10 files, 1 MiB per file. Override positive integers v
 body policy still applies. `defineDto` can supply a directional binary schema
 converter for other libraries. Native File values have no storage coupling.
 
+For native outputs, omit `output` and select `format: 'binary' | 'stream' |
+'response'` with optional `contentType`. Binary accepts Blob, ArrayBuffer,
+Uint8Array backed by ArrayBuffer, or Response; stream accepts byte ReadableStream
+or Response; response requires Response. Bare bodies use the declared status and
+media type (defaults 200 and application/octet-stream). Native Response objects
+keep their own status, headers and body. Locked/used bodies and invalid objects
+fail before handoff; chunk encoding belongs to the producer. The mapper never
+buffers or reads streams. Cancellation and producer errors remain body-reader
+behavior, with the existing request scope retained until the body settles.
+
 ## Parameter decorators with named descriptors
 
 ```ts

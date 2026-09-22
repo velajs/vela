@@ -1,5 +1,16 @@
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { JsonSchema } from './types';
+import {
+  endpointContentType,
+  endpointResponseSchema,
+  type EndpointResponseFormat,
+  type EndpointResponseOutput,
+} from './endpoint-response';
+export type {
+  EndpointResponseFormat,
+  EndpointResponseOutput,
+  EndpointBinaryBody,
+} from './endpoint-response';
 import { parseJsonSchema } from './json-schema';
 import {
   parseSchemaAsync,
@@ -56,7 +67,8 @@ export interface EndpointDefinition<
   readonly output: OutputSchema;
   readonly inputSchema: JsonSchema;
   readonly outputSchema: JsonSchema;
-  readonly format: 'json' | 'text';
+  readonly format: 'json' | 'text' | EndpointResponseFormat;
+  readonly contentType?: string;
   readonly hasJsonBody: boolean;
   readonly body?: EndpointBodyContract;
   readonly queryParameters: readonly { name: string; multiple: boolean }[];
@@ -69,6 +81,24 @@ export interface EndpointDefinition<
   ): (this: This, input: unknown) => Promise<Output>;
 }
 
+/** Declare native bodies without inventing a JSON output schema. */
+export function defineEndpoint<
+  Input extends ValidationSchema,
+  Format extends EndpointResponseFormat,
+>(options: {
+  input: Input & (SchemaOutput<Input> extends EndpointRequest ? unknown : never);
+  format: Format;
+  output?: never;
+  contentType?: string;
+  status?: ContentfulStatusCode;
+  body?: EndpointBodyOptions;
+}): EndpointDefinition<
+  Extract<SchemaOutput<Input>, EndpointRequest>,
+  EndpointResponseOutput<Format>,
+  EndpointResponseOutput<Format>,
+  Input,
+  EndpointSchema<EndpointResponseOutput<Format>>
+>;
 export function defineEndpoint<
   Input extends ValidationSchema,
   Output extends ValidationSchema,
@@ -95,12 +125,24 @@ export function defineEndpoint<Input extends EndpointRequest, Output>(options: {
 }): EndpointDefinition<Input, Output>;
 export function defineEndpoint(options: {
   input: ValidationSchema;
-  output: ValidationSchema;
+  output?: ValidationSchema;
   status?: ContentfulStatusCode;
   body?: EndpointBodyOptions;
-  format?: 'json' | 'text';
+  format?: 'json' | 'text' | EndpointResponseFormat;
+  contentType?: string;
 }): RuntimeEndpointDefinition {
-  const { input, output } = options;
+  const { input } = options;
+  const format = options.format ?? 'json';
+  const native = format === 'binary' || format === 'stream' || format === 'response';
+  if (!native && format !== 'json' && format !== 'text')
+    throw new TypeError('Unknown endpoint response format');
+  if (native && options.output !== undefined)
+    throw new TypeError('Native endpoint formats cannot declare a JSON output schema');
+  if (!native && options.contentType !== undefined)
+    throw new TypeError('Endpoint contentType requires a native response format');
+  const output = native ? endpointResponseSchema(format) : options.output;
+  if (!output) throw new TypeError('JSON/text endpoints require an output schema');
+  const contentType = native ? endpointContentType(options.contentType) : undefined;
   const inputSchema = endpointJsonSchema(input, 'input');
   const outputSchema = endpointJsonSchema(output, 'output');
   if (inputSchema.type !== 'object')
@@ -119,7 +161,8 @@ export function defineEndpoint(options: {
     output,
     inputSchema,
     outputSchema,
-    format: options.format ?? 'json',
+    format,
+    ...(contentType ? { contentType } : {}),
     hasJsonBody: inputSchema.properties?.json !== undefined,
     body,
     queryParameters: Object.freeze(queryParameters),
@@ -140,7 +183,8 @@ export interface RuntimeEndpointDefinition {
   readonly output: ValidationSchema;
   readonly inputSchema: JsonSchema;
   readonly outputSchema: JsonSchema;
-  readonly format: 'json' | 'text';
+  readonly format: 'json' | 'text' | EndpointResponseFormat;
+  readonly contentType?: string;
   readonly hasJsonBody: boolean;
   readonly body?: EndpointBodyContract;
   readonly queryParameters: readonly { name: string; multiple: boolean }[];

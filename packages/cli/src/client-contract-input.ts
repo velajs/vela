@@ -82,6 +82,7 @@ const requestBody = z
   .passthrough();
 const response = z
   .object({
+    'x-vela-response-format': z.enum(['binary', 'stream', 'response']).optional(),
     content: content.optional(),
     $ref: z.string().optional(),
   })

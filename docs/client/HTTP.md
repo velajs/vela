@@ -72,9 +72,9 @@ export class UsersController {
 
 Ordinary parameter decorators can use named descriptors: `const BodyDto = defineDto(schema, { name: 'CreateUser' })`, then `@Body(new ValidationPipe(BodyDto)) body: ReturnType<typeof BodyDto.parse>`. OpenAPI reads that same parser metadata. `@ApiResponse` accepts a descriptor, an exportable schema, or a checked raw JSON Schema; it documents a response without validating the handler's output. Erased TypeScript interfaces cannot supply schemas.
 
-The generated `AppType` uses Hono's schema types. `Schemas` exports named DTO/component types. Missing schemas become `unknown` with diagnostics on stderr; `--strict` fails instead. Unsupported path syntax, parameter serialization, or media types fail generation. `@Endpoint` supplies runtime validation; documentation-only schemas remain declarations. Imported OpenAPI files are decoded before generation, and malformed nested fields fail with a path diagnostic.
+The generated `AppType` uses Hono's schema types. `Schemas` exports named DTO/component types. Missing schemas become `unknown` with diagnostics on stderr; `--strict` fails instead. Unsupported path syntax and parameter serialization fail generation. Native response media types retain an unknown JSON boundary. `@Endpoint` supplies runtime validation; documentation-only schemas remain declarations. Imported OpenAPI files are decoded before generation, and malformed nested fields fail with a path diagnostic.
 
-The generator supports JSON, multipart, and URL-encoded request bodies, JSON/text responses, component schema references, object properties, arrays, enums, unions/intersections, and nullable JSON values. Form fields have the concrete wire shapes described below. Use separate input/output definitions for `readOnly` or `writeOnly` fields. Cookie parameters, external references and custom parameter serialization require a separately authored contract. Paths with a trailing slash (other than `/`) or reserved `hc` segments such as `index` and `then` are rejected; use `@Get()` for a controller's base route. GET/HEAD request bodies are rejected because `hc` does not send them. Contributed routes need OpenAPI metadata from their contributor; raw Hono mounts are not inferred.
+The generator supports JSON, multipart, and URL-encoded request bodies, JSON/text and native binary/stream responses, component schema references, object properties, arrays, enums, unions/intersections, and nullable JSON values. Form fields have the concrete wire shapes described below. Use separate input/output definitions for `readOnly` or `writeOnly` fields. Cookie parameters, external references and custom parameter serialization require a separately authored contract. Paths with a trailing slash (other than `/`) or reserved `hc` segments such as `index` and `then` are rejected; use `@Get()` for a controller's base route. GET/HEAD request bodies are rejected because `hc` does not send them. Contributed routes need OpenAPI metadata from their contributor; raw Hono mounts are not inferred.
 
 Declare global guard/filter responses explicitly when needed:
 
@@ -196,3 +196,96 @@ receiver if needed. Signals, credentials, shared headers, and other request
 options pass through. If a call overrides `fetch`, wrap that override too.
 Native callers can also send their own `FormData` or `URLSearchParams` directly
 with fetch. This entrypoint has no Expo dependency.
+
+## Binary, streaming and native responses
+
+Use a native response format when the handler returns bytes or owns the Fetch
+response. Omit `output`; these formats check the native object without parsing
+its body:
+
+```ts
+const download = defineEndpoint({
+  input: z.object({ param: z.object({ id: z.string() }) }),
+  format: 'binary',
+  contentType: 'application/pdf',
+});
+const events = defineEndpoint({
+  input: z.object({}),
+  format: 'stream',
+  contentType: 'text/event-stream',
+});
+const proxyResponse = defineEndpoint({
+  input: z.object({}),
+  format: 'response',
+  contentType: 'application/octet-stream',
+});
+```
+
+`binary` accepts `Blob`, `ArrayBuffer`, `Uint8Array` backed by an `ArrayBuffer`,
+or `Response`. `stream` accepts `ReadableStream<Uint8Array>` or `Response`.
+`response` requires a `Response`. The decorator and `.bind()` enforce these
+return types. Invalid objects, locked streams, and locked or consumed response
+bodies fail before handoff through the existing server-error pipeline. Stream
+producers are responsible for emitting byte chunks; Vela does not inspect or
+validate individual chunks or event records.
+
+For a bare body, Vela applies `status` (default 200) and `contentType` (default
+`application/octet-stream`). The media type must be concrete and have no
+parameters. A native `Response` keeps its own status, status text, headers and
+body; metadata does not override it. Set charset, multipart boundary, download
+filename, cache headers and range headers on the returned `Response` when needed.
+Document each possible status with `@ApiResponse`; the endpoint's status describes
+its primary response. For example, `@ApiResponse(206, { description: 'Partial
+content', format: 'binary', contentType: 'application/pdf' })` describes an
+additional native response without a JSON schema. Existing JSON error schemas
+can be declared on the same method.
+
+The mapper does not read, clone, tee, or buffer streaming bodies. The existing
+request-scope tracker forwards demand and cancellation with bounded prefetch;
+resources remain alive until the body finishes, fails, or cancellation settles.
+A producer error after headers is a rejected body read, not a replacement JSON
+500 response. Input validation and errors before headers retain the normal HTTP
+error handling. JSON/text endpoint validation and form request parsing retain
+their existing behavior.
+
+OpenAPI uses the declared media type and `x-vela-response-format` (`binary`,
+`stream`, or `response`). Binary/stream bodies use a binary string schema; it
+describes wire bytes, not an arbitrary JSON record. The CLI also recognizes
+binary media/schema declarations and event-stream/NDJSON media types in imported
+documents. Multiple response media types produce an unknown native response
+contract, so content negotiation cannot silently select a JSON schema.
+
+```ts
+import { hc, readHttpResponse } from '@velajs/client/http';
+import type { AppType } from './api.generated';
+
+const client = hc<AppType>('https://api.example.com');
+const response = await readHttpResponse(client.download.$get(), 'response');
+// Same native response; status and headers are available before consumption.
+if (response.ok) {
+  const file = await readHttpResponse(response, 'blob');
+  // blob() buffers the body, as with native fetch.
+}
+
+const streaming = await client.events.$get();
+const body = await readHttpResponse(streaming, 'stream');
+// No body reads, buffering or automatic status handling.
+const reader = body?.getReader();
+try {
+  const chunk = await reader?.read(); // Uint8Array | undefined
+} finally {
+  await reader?.cancel('finished');
+  reader?.releaseLock();
+}
+```
+
+Generated native response `.json()` results are `unknown`, even for a native
+`application/json` response. Validate decoded data before using domain fields.
+`readHttpResponse(..., 'response')` returns `HttpResponse<Status>`, preserving the
+status type and keeping JSON results unknown on both the response and its clones.
+Blob mode uses native `blob()`; stream mode returns `body`, including `null` for
+bodyless responses. These helpers leave unsuccessful HTTP statuses available
+without reading error bodies. Check status before consumption and keep JSON
+error responses documented for status narrowing. Use native readers or
+`readHttpResponse` for streams; Hono's `parseResponse` consumes the body and is
+intended for JSON/text calls. There is no automatic SSE or NDJSON record parser.

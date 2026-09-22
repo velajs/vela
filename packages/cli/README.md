@@ -196,4 +196,11 @@ bare `hc` always serializes forms as multipart. Wrap per-call fetch overrides to
 Custom part encodings, nested form values, and binary JSON bodies fail generation
 with diagnostics. See the [HTTP guide](../../docs/client/HTTP.md#form-bodies-and-uploads).
 
-Supported: JSON bodies, JSON/text responses with status narrowing, string path/query/header inputs, repeated query arrays, component references, object/array/enum/union/intersection/nullable schemas. Unsupported encodings, custom serialization and unresolved references fail with a diagnostic. Global middleware/error responses must be documented or added with Hono's `ApplyGlobalResponse`. Generation does not validate server responses at runtime. Raw Hono mounts and live-query resolver contracts are not inferred.
+Supported: JSON bodies, JSON/text and binary/stream/native responses with status narrowing, string path/query/header inputs, repeated query arrays, component references, object/array/enum/union/intersection/nullable schemas. Unsupported encodings, custom serialization and unresolved references fail with a diagnostic. Global middleware/error responses must be documented or added with Hono's `ApplyGlobalResponse`. Generation does not validate server responses at runtime. Raw Hono mounts and live-query resolver contracts are not inferred.
+
+Native endpoint formats export `x-vela-response-format` with the declared media
+type. Generated binary/stream calls expose blob/byte-stream consumption and keep
+`.json()` unknown. Imported event-stream/NDJSON media and binary schemas are
+recognized; multiple response media types use an unknown native contract. Use
+`readHttpResponse` from `@velajs/client/http` to retain the response, consume a
+blob, or access an unread stream. See the [HTTP guide](../../docs/client/HTTP.md).

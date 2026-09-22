@@ -61,6 +61,8 @@ export interface OpenApiRequestBody {
 
 export interface OpenApiResponse {
   description: string;
+  /** Native consumption; no JSON payload type is asserted. */
+  'x-vela-response-format'?: 'binary' | 'stream' | 'response';
   content?: Record<string, { schema: JsonSchema }>;
 }
 
@@ -139,6 +141,10 @@ export interface ApiDocMetadata {
 
 export interface ApiResponseOptions {
   description: string;
+  /** Concrete documented media type; defaults to JSON or native octet-stream. */
+  contentType?: string;
+  /** Document a native body without asserting a parsed JSON schema. */
+  format?: 'binary' | 'stream' | 'response';
   /** Zod schema, named defineDto descriptor, or raw JSON Schema. */
   schema?: unknown;
 }

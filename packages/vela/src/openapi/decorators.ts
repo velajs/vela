@@ -1,3 +1,4 @@
+import { endpointContentType } from './endpoint-response';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import { isRecord } from './json-schema';
 import type { ApiDocMetadata, ApiResponseEntry, ApiResponseOptions } from './types';
@@ -124,7 +125,22 @@ export function getApiResponses(
       (typeof entry.status !== 'string' && typeof entry.status !== 'number')
     )
       throw new Error('Invalid OpenAPI response');
+    if (entry.contentType !== undefined && typeof entry.contentType !== 'string')
+      throw new Error('Invalid OpenAPI response contentType');
+    if (
+      entry.format !== undefined &&
+      entry.format !== 'binary' &&
+      entry.format !== 'stream' &&
+      entry.format !== 'response'
+    )
+      throw new Error('Invalid OpenAPI response format');
+    if (entry.format !== undefined && entry.schema !== undefined)
+      throw new Error('Native OpenAPI responses cannot declare a JSON schema');
     return {
+      ...(entry.contentType === undefined
+        ? {}
+        : { contentType: endpointContentType(entry.contentType) }),
+      ...(entry.format === undefined ? {} : { format: entry.format }),
       status: entry.status,
       description: entry.description,
       ...(entry.schema === undefined ? {} : { schema: entry.schema }),
