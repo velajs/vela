@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.26.0
+
+### Minor Changes
+
+- 56e472e: Add optional atomic precomputed write batches with typed results, exact database ownership checks, and conditional audit commands. Drizzle supports native D1 batches and asynchronous SQLite/PostgreSQL transactions. CRUD resources can opt into atomic metadata-only auditing for core mutations; unsupported snapshot, hook, store, and adapter configurations fail before writes. Existing post-commit auditing remains the default.
+
+### Patch Changes
+
+- Updated dependencies [efdf854]
+- Updated dependencies [4a6f5df]
+  - @velajs/vela@1.26.0
+
 ## 1.25.0
 
 ### Minor Changes
