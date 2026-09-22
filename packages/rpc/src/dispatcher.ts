@@ -1,5 +1,5 @@
 /* eslint-disable no-await-in-loop -- Pipes and exception filters preserve declared pipeline order. */
-import { STATUS_TO_CODE, toErrorBody, VelaError } from '@velajs/errors';
+import { codeForStatus, toErrorBody, VelaError } from '@velajs/errors';
 import {
   buildHttpExecutionContext,
   createDiscoverableDecorator,
@@ -285,22 +285,22 @@ function failure(
   error: unknown,
   catalog?: ReturnType<typeof resolveErrorReporter>['catalog'],
 ): Response {
+  const options = catalog ? { catalog } : {};
   let mapped;
   if (error instanceof HttpException && error.getStatus() >= 400 && error.getStatus() < 500) {
+    // Only a 4xx is a client fault whose text is meant for the caller.
     const status = error.getStatus();
     const raw = error.getRawResponse();
-    mapped = {
-      status,
-      body: {
-        error: {
-          code: STATUS_TO_CODE[status] ?? 'bad_request',
-          message: typeof raw === 'string' ? raw : 'RPC request failed',
-        },
-      },
-    };
+    mapped = toErrorBody(
+      new VelaError(codeForStatus(status), {
+        message: typeof raw === 'string' ? raw : 'RPC request failed',
+        status,
+      }),
+      options,
+    );
   } else
     mapped = toErrorBody(error, {
-      ...(catalog ? { catalog } : {}),
+      ...options,
       ...(error instanceof HttpException ? { fallbackStatus: error.getStatus() } : {}),
     });
   const status = mapped.status >= 400 && mapped.status <= 599 ? mapped.status : 500;

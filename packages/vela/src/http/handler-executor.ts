@@ -1,10 +1,11 @@
-import { STATUS_TO_CODE, toErrorBody } from '@velajs/errors';
+import { toErrorBody } from '@velajs/errors';
 import type { Context } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { Container } from '../container/container';
 import type { TypedToken, Type } from '../container/types';
 import { HttpException } from '../errors/http-exception';
 import { getEndpointDefinition } from '../openapi/endpoint';
+import { httpExceptionBody } from '../exceptions/http-exception-body';
 import { resolveErrorReporter } from '../exceptions/reporter';
 import { ComponentManager } from '../pipeline/component.manager';
 import { shouldFilterCatch } from '../pipeline/decorators';
@@ -217,15 +218,8 @@ export class HandlerExecutor {
         if (rendered) return c.json(rendered.body, rendered.status as ContentfulStatusCode);
 
         if (error instanceof HttpException) {
-          const status = error.getStatus() as ContentfulStatusCode;
-          const raw = error.getRawResponse() ?? error.message;
-          if (typeof raw === 'string') {
-            return c.json(
-              { error: { code: STATUS_TO_CODE[status] ?? 'internal', message: raw } },
-              status,
-            );
-          }
-          return c.json(raw, status); // object responses ship verbatim (crud envelope compat)
+          const { body, status } = httpExceptionBody(error, reporter.catalog);
+          return c.json(body, status as ContentfulStatusCode);
         }
 
         const { body, status } = toErrorBody(error, { catalog: reporter.catalog });

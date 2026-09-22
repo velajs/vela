@@ -14,6 +14,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { HttpMethod } from '../constants';
 import { HttpException } from '../errors/http-exception';
 import { createExecutionScope, finishExecutionScope } from '../entrypoint/execution-scope';
+import { httpExceptionBody } from '../exceptions/http-exception-body';
 import { resolveErrorReporter } from '../exceptions/reporter';
 import { getMetadata } from '../metadata';
 import type { Container } from '../container/container';
@@ -506,8 +507,8 @@ export class RouteManager {
     if (rendered) return c.json(rendered.body, rendered.status as ContentfulStatusCode);
 
     if (error instanceof HttpException) {
-      // Preserve the 1.x middleware exception envelope.
-      return c.json(error.getResponse(), error.getStatus() as ContentfulStatusCode);
+      const { body, status } = httpExceptionBody(error, reporter.catalog);
+      return c.json(body, status as ContentfulStatusCode);
     }
     if (error instanceof HTTPException) {
       if (error.status < 500) return error.getResponse();
