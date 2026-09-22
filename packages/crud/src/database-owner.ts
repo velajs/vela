@@ -37,10 +37,26 @@ export class DatabaseAdapterOwner {
         const value: unknown = Reflect.get(store, key, store);
         return typeof value === 'function' ? value.bind(store) : value;
       },
+      set: (_target, key, value) => key !== 'transaction' && Reflect.set(store, key, value, store),
+      deleteProperty: (_target, key) => key !== 'transaction' && Reflect.deleteProperty(store, key),
+      defineProperty: (_target, key, descriptor) =>
+        key !== 'transaction' &&
+        descriptor.configurable !== false &&
+        Reflect.defineProperty(store, key, descriptor),
+      // The virtual target must stay extensible for forwarded own-property descriptors.
+      preventExtensions: () => false,
+      setPrototypeOf: () => false,
       has: (_target, key) => Reflect.has(store, key),
       ownKeys: () => Reflect.ownKeys(store),
       getOwnPropertyDescriptor: (_target, key) => {
         const descriptor = Reflect.getOwnPropertyDescriptor(store, key);
+        if (descriptor && key === 'transaction')
+          return {
+            value: transaction,
+            writable: false,
+            enumerable: descriptor.enumerable,
+            configurable: true,
+          };
         return descriptor ? { ...descriptor, configurable: true } : undefined;
       },
     });

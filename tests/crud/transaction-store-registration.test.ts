@@ -92,3 +92,44 @@ it('preserves failure poisoning through the registration wrapper when a caller c
   ).rejects.toThrow('rolled back');
   expect(await db.select().from(rows)).toEqual([]);
 });
+
+it('forwards writable state and private setters without replacing transaction ownership', () => {
+  class Store {
+    #enabled = true;
+    label = 'initial';
+    readonly transaction = drizzleTransactionStore(db, () => this);
+    get enabled() {
+      return this.#enabled;
+    }
+    set enabled(value: boolean) {
+      this.#enabled = value;
+    }
+  }
+  const original = new Store();
+  const application = registry.forApplication();
+  const bound = application.bindStore('main', original);
+  const transaction = bound.transaction;
+  bound.enabled = false;
+  bound.label = 'changed';
+  expect([bound.enabled, original.enabled, bound.label, original.label]).toEqual([
+    false,
+    false,
+    'changed',
+    'changed',
+  ]);
+  Object.defineProperty(bound, 'label', { value: 'defined', configurable: true });
+  expect([bound.label, original.label]).toEqual(['defined', 'defined']);
+  expect(Reflect.deleteProperty(bound, 'label')).toBe(true);
+  expect('label' in original).toBe(false);
+  expect('label' in bound).toBe(false);
+  expect(Reflect.set(bound, 'transaction', original.transaction)).toBe(false);
+  expect(Reflect.deleteProperty(bound, 'transaction')).toBe(false);
+  expect(Reflect.defineProperty(bound, 'transaction', { value: original.transaction })).toBe(false);
+  expect(Object.getOwnPropertyDescriptor(bound, 'transaction')?.value).toBe(transaction);
+  expect(bound.transaction).toBe(transaction);
+  expect(Reflect.preventExtensions(bound)).toBe(false);
+  expect(() => Object.keys(bound)).not.toThrow();
+  const frozen = application.bindStore('main', Object.freeze(new Store()));
+  expect(Reflect.set(frozen, 'label', 'changed')).toBe(false);
+  expect(frozen.label).toBe('initial');
+});
