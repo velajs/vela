@@ -192,3 +192,27 @@ integration when updating npm.
 GitHub retains release artifacts and the consumer proof for 30 days, including
 on failed publication. Do not rebuild a partially published release from changed
 source. Use those artifacts for recovery, and verify all versions before tagging.
+
+After any required first-name bootstrap, dispatch `release.yml` on `main` with
+`recovery_run_id` set to the original completed release run. The recovery mode
+downloads its retained artifact, verifies the GitHub archive digest, original
+source plan, consumer proof, package hashes and signed npm provenance, then
+resumes OIDC publication without rebuilding. It requires that release plan to
+remain current, and creates missing package tags and GitHub releases as the bot
+at the original source commit. It preserves the recovered artifacts and journal
+under a separate recovery artifact name. Keep using the original run ID when
+retrying; never substitute a recovery run's newer checkout as the package source.
+
+When bootstrapping only a new package name before OIDC recovery, publish its exact
+tested CI archive with its saved `--provenance-file`, `--access public` and
+`--tag latest`, then configure that package's trusted publisher. OIDC cannot
+promote a version previously staged under `next`; the interactive full-set
+publisher performs that promotion itself. Keep the original signed artifacts
+and wait for the first package's registry integrity before dispatching recovery.
+
+For an already published historical set, additionally select `metadata_only`.
+This checks each original npm archive and reconciles missing tags/releases,
+without publishing or changing npm's `latest` tags. Existing tags pointing to
+another commit are rejected rather than moved. Expired or missing original
+artifacts require a separately reviewed recovery; the workflow never substitutes
+a local rebuild. GitHub release-list ordering is left unchanged by reconciliation.
