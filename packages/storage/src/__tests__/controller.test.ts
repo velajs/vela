@@ -194,6 +194,43 @@ describe('StorageController', () => {
     expect(del.status).toBe(200);
   });
 
+  // Browsers send text/plain and form-encoded POSTs cross-site without a CORS
+  // preflight, so only a JSON media type may reach a state-changing handler.
+  it('refuses a text/plain body with 415 before deleting anything', async () => {
+    const driver = memoryDriver();
+    await driver.upload('a.txt', 'kept');
+    const authorize = vi.fn(() => true);
+    const app = await appWithDriver({ authorize }, driver);
+
+    const res = await app.request('/api/storage/delete', {
+      method: 'POST',
+      headers: { 'content-type': 'text/plain' },
+      body: JSON.stringify({ keys: ['a.txt'] }),
+    });
+
+    expect(res.status).toBe(415);
+    expect(await res.json()).toEqual({
+      error: { code: 'invalid_request', message: 'Expected application/json body' },
+    });
+    expect(authorize).not.toHaveBeenCalled();
+    expect(driver.raw.has('a.txt')).toBe(true);
+  });
+
+  it.each([
+    { name: 'malformed JSON', body: '{"keys":' },
+    { name: 'an empty body', body: undefined },
+    { name: 'a non-object body', body: '["a.txt"]' },
+  ])('rejects $name as invalid_request', async ({ body }) => {
+    const app = await appWith({ authorize: () => true }, true);
+    const res = await app.request('/api/storage/sign-download', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body,
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe('invalid_request');
+  });
+
   it('redirects downloads to a signed URL', async () => {
     const app = await appWith({ authorize: () => true, download: 'redirect' });
     const res = await app.request('/api/storage/download?key=a.txt');

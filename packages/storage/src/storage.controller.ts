@@ -1,10 +1,13 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   Inject,
   Injectable,
   Post,
+  readJsonBody,
   Req,
+  UnsupportedMediaTypeException,
   type TypedToken,
   type Type,
 } from '@velajs/vela';
@@ -90,7 +93,31 @@ export function createStorageController(
       return res;
     }
 
+    /**
+     * The request's JSON object body. Hono's `c.req.json()` ignores
+     * Content-Type, so a cross-site `text/plain` POST, which needs no CORS
+     * preflight, would reach the handler; `readJsonBody` refuses it with 415.
+     */
+    private async body<T extends object>(c: Context): Promise<T> {
+      let body: unknown;
+      try {
+        body = await readJsonBody(c);
+      } catch (error) {
+        if (error instanceof BadRequestException) {
+          throw new StorageError('InvalidRequest', 'request body is not valid JSON');
+        }
+        throw error;
+      }
+      if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+        throw new StorageError('InvalidRequest', 'request body must be a JSON object');
+      }
+      return body as T;
+    }
+
     private fail(c: Context, e: unknown): Response {
+      if (e instanceof UnsupportedMediaTypeException) {
+        return c.json({ error: { code: 'invalid_request', message: e.message } }, 415);
+      }
       const err = e instanceof StorageError ? e : StorageError.wrap(e);
       const { wire, status } = mapError(err.code);
       // Never echo a provider/transport/wrapped message to the client: those are
@@ -194,7 +221,7 @@ export function createStorageController(
     @Post('/sign-upload')
     async signUpload(@Req() c: Context): Promise<Response> {
       try {
-        const b = (await c.req.json()) as SignUploadRequest;
+        const b = await this.body<SignUploadRequest>(c);
         const ov = await this.authorize(c, {
           type: 'sign-upload',
           key: b.key,
@@ -227,7 +254,7 @@ export function createStorageController(
     @Post('/multipart/create')
     async multipartCreate(@Req() c: Context): Promise<Response> {
       try {
-        const b = (await c.req.json()) as MultipartCreateRequest;
+        const b = await this.body<MultipartCreateRequest>(c);
         const ov = await this.authorize(c, {
           type: 'multipart-create',
           key: b.key,
@@ -317,7 +344,7 @@ export function createStorageController(
     @Post('/multipart/sign-part')
     async multipartSignPart(@Req() c: Context): Promise<Response> {
       try {
-        const b = (await c.req.json()) as SignPartRequest;
+        const b = await this.body<SignPartRequest>(c);
         const ov = await this.authorize(c, {
           type: 'multipart-sign-part',
           key: b.key,
@@ -363,7 +390,7 @@ export function createStorageController(
     @Post('/multipart/complete')
     async multipartComplete(@Req() c: Context): Promise<Response> {
       try {
-        const b = (await c.req.json()) as MultipartCompleteRequest;
+        const b = await this.body<MultipartCompleteRequest>(c);
         const ov = await this.authorize(c, {
           type: 'multipart-complete',
           key: b.key,
@@ -428,7 +455,7 @@ export function createStorageController(
     @Post('/multipart/abort')
     async multipartAbort(@Req() c: Context): Promise<Response> {
       try {
-        const b = (await c.req.json()) as MultipartAbortRequest;
+        const b = await this.body<MultipartAbortRequest>(c);
         const ov = await this.authorize(c, {
           type: 'multipart-abort',
           key: b.key,
@@ -498,7 +525,7 @@ export function createStorageController(
     @Post('/delete')
     async delete(@Req() c: Context): Promise<Response> {
       try {
-        const b = (await c.req.json()) as DeleteRequest;
+        const b = await this.body<DeleteRequest>(c);
         const keys = b.keys.map((k) => this.userKey(k));
         const ov = await this.authorize(c, { type: 'delete', keys });
         const effective = (ov.keys ?? keys).map((k) => this.userKey(k));
@@ -557,7 +584,7 @@ export function createStorageController(
     @Post('/sign-download')
     async signDownload(@Req() c: Context): Promise<Response> {
       try {
-        const b = (await c.req.json()) as { key: string; expiresIn?: number };
+        const b = await this.body<{ key: string; expiresIn?: number }>(c);
         const ov = await this.authorize(c, { type: 'download', key: b.key });
         const key = this.userKey(ov.key ?? b.key);
         const expiresIn = clampExpiry(
