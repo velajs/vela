@@ -5,10 +5,26 @@ import { ForwardRef } from './types';
 
 export function Injectable(options: InjectableOptions = {}): ClassDecorator {
   return (target: object) => {
-    const { scope = Scope.SINGLETON } = options;
     MetadataRegistry.markInjectable(target);
-    MetadataRegistry.setScope(target, scope);
+    if (options.scope !== undefined) declareScope(target, options.scope);
   };
+}
+
+/**
+ * Record a scope that a class decorator received explicitly. Decorators given
+ * no scope write nothing and {@link getScope} applies the SINGLETON default on
+ * read, so the result never depends on decorator order. Two different explicit
+ * scopes on one class are a wiring error; repeating the same scope is fine.
+ */
+export function declareScope(target: object, scope: Scope): void {
+  const declared = MetadataRegistry.getScope(target);
+  if (declared !== undefined && declared !== scope) {
+    const name = typeof target === 'function' ? target.name : 'Provider';
+    throw new Error(
+      `${name} declares conflicting scopes "${declared}" and "${scope}"; declare its scope once.`,
+    );
+  }
+  MetadataRegistry.setScope(target, scope);
 }
 
 export function Optional(): ParameterDecorator {

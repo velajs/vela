@@ -175,6 +175,13 @@ export class Container {
       registration.useClass = token;
     }
 
+    // A constructed class keeps its declared @Injectable scope unless the
+    // provider overrides it; otherwise a REQUEST-scoped implementation would
+    // silently become a singleton shared across requests.
+    if (options.scope === undefined && registration.useClass) {
+      registration.scope = getScope(registration.useClass);
+    }
+
     this.writeRegistration(moduleId, token, registration);
   }
 

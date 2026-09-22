@@ -1,5 +1,6 @@
-import { HttpMethod, ParamType, Scope } from '../constants';
+import { HttpMethod, ParamType } from '../constants';
 import type { RedirectStatusCode, StatusCode } from 'hono/utils/http-status';
+import { declareScope } from '../container/decorators';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import { normalizePath } from '../registry/paths';
 import type { Constructor, PipeType, Type } from '../registry/types';
@@ -9,29 +10,31 @@ import { buildExecutionContext } from './execution-context';
 
 /**
  * Marks a class as a controller.
- * Accepts a path string or an options object with `path` and `version`.
+ * Accepts a path string or an options object with `path`, `version` and `scope`.
+ * Without a scope here or on `@Injectable`, the controller is a singleton.
  *
  * @example
  * ```ts
  * @Controller('/users')
  * @Controller({ path: '/users', version: 1 })
  * @Controller({ path: '/users', version: [1, 2] })
+ * @Controller({ path: '/users', scope: Scope.REQUEST })
  * ```
  */
 export function Controller(pathOrOptions?: string | ControllerOptions): ClassDecorator {
   return (target) => {
     const ctor = target as unknown as Constructor;
-    const path = typeof pathOrOptions === 'string' ? pathOrOptions : (pathOrOptions?.path ?? '');
-    const version = typeof pathOrOptions === 'object' ? pathOrOptions?.version : undefined;
+    const options = typeof pathOrOptions === 'object' ? pathOrOptions : undefined;
+    const path = typeof pathOrOptions === 'string' ? pathOrOptions : (options?.path ?? '');
 
     MetadataRegistry.setControllerPath(ctor, normalizePath(path));
 
-    if (version !== undefined) {
-      MetadataRegistry.setControllerOptions(ctor, { version });
+    if (options?.version !== undefined) {
+      MetadataRegistry.setControllerOptions(ctor, { version: options.version });
     }
 
     MetadataRegistry.markInjectable(ctor);
-    MetadataRegistry.setScope(ctor, Scope.SINGLETON);
+    if (options?.scope !== undefined) declareScope(ctor, options.scope);
   };
 }
 

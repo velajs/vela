@@ -7,7 +7,7 @@ Controllers, method/param decorators, versioning, named routes, URL generation, 
 ```ts
 import { Controller, Get, Post, Param, Body, Query, ParseIntPipe, ValidationPipe } from '@velajs/vela';
 
-@Controller('/users')            // or @Controller({ path: '/users', version: 1 })
+@Controller('/users')            // or @Controller({ path: '/users', version: 1, scope: Scope.REQUEST })
 class UsersController {
   constructor(private readonly users: UserService) {}
 

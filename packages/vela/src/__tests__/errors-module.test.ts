@@ -6,8 +6,11 @@ import {
   Module,
   MetadataRegistry,
   ErrorsModule,
+  Injectable,
+  Scope,
   defineErrorCatalog,
 } from '../index.js';
+import type { ExceptionHandler } from '../index.js';
 
 beforeEach(() => {
   MetadataRegistry.clear();
@@ -118,6 +121,42 @@ describe('app.useGlobalExceptionHandler', () => {
     const body = (await res.json()) as { error: { code: string; hint?: string } };
     expect(body.error.hint).toBe('Start a fresh order.');
     expect(report).toHaveBeenCalledTimes(1);
+
+    await app.dispose();
+  });
+
+  it('keeps the scope of a REQUEST-scoped handler class', async () => {
+    const reporters: number[] = [];
+
+    @Injectable({ scope: Scope.REQUEST })
+    class PerRequestHandler implements ExceptionHandler {
+      readonly id = Math.random();
+      report() {
+        reporters.push(this.id);
+      }
+    }
+
+    @Controller('/orders')
+    class OrdersController {
+      @Get('/checkout')
+      checkout() {
+        throw appCatalog.error('order_expired');
+      }
+    }
+
+    @Module({
+      imports: [ErrorsModule.forRoot({ catalogs: [appCatalog] })],
+      controllers: [OrdersController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    app.useGlobalExceptionHandler(PerRequestHandler);
+
+    expect((await app.getHonoApp().request('/orders/checkout')).status).toBe(410);
+    expect((await app.getHonoApp().request('/orders/checkout')).status).toBe(410);
+    expect(reporters).toHaveLength(2);
+    expect(reporters[0]).not.toBe(reporters[1]);
 
     await app.dispose();
   });

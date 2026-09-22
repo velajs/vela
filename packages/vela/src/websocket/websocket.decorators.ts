@@ -1,4 +1,3 @@
-import { Scope } from '../constants';
 import { Inject } from '../container/decorators';
 import { createDiscoverableDecorator } from '../discovery/index';
 import { MetadataRegistry } from '../registry/metadata.registry';
@@ -33,7 +32,6 @@ export function WebSocketGateway(options: WebSocketGatewayOptions = {}): ClassDe
     const ctor = target as unknown as Constructor;
     MetadataRegistry.setCustomClassMeta(ctor, WS_GATEWAY_METADATA, options);
     MetadataRegistry.markInjectable(ctor);
-    MetadataRegistry.setScope(ctor, MetadataRegistry.getScope(ctor) ?? Scope.SINGLETON);
   };
 }
 
