@@ -60,7 +60,7 @@ checkout for website or content changes; see [the tooling guide](docs/tooling.md
 
 For a change that needs a package release, run `pnpm changeset` and describe its
 effect on consumers. Documentation-only and repository-tooling changes do not
-require a version bump. The active release line is 2.x.
+require a version bump. The active release line is 3.x.
 
 Maintainers prepare versions and publish through the process in
 [RELEASING.md](RELEASING.md). CI verifies the exact package archives before public

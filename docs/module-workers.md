@@ -85,7 +85,9 @@ bindings. It does not create resources. See the [four-worker example](../apps/mo
 
 ## Migration
 
-Upgrade core, Cloudflare and integrations whose peer requirements move to the 2.x
+The modular Workers release starts at 3.0.0. Older experimental 2.0.0 packages already exist in the registry and do not contain these APIs; use the 3.x stable line.
+
+Upgrade core, Cloudflare and integrations whose peer requirements move to the 3.x
 line together. These packages receive major versions even when their own runtime
 API is unchanged; existing 1.x users must not receive a peer-breaking patch.
 

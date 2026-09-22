@@ -6,7 +6,7 @@ or release workflows. Use `pnpm --filter <package> <command>` for focused work.
 
 Build a NestJS-style developer experience on Cloudflare Workers. Keep application
 authoring simple and optional integrations independently usable. The release line
-is 2.x. Breaking API changes must update affected examples and documentation.
+is 3.x. Breaking API changes must update affected examples and documentation.
 
 Keep Vela independent of consuming applications. Framework changes must solve
 generic problems, with neutral synthetic reproductions, fixtures, and examples.
