@@ -90,12 +90,15 @@ export class VelaApplication {
         return err.getResponse();
       }
       reporter.report(err, { edge: 'hono', source: `${c.req.method} ${c.req.path}` });
-      // Vela's HttpException renders exactly as it does from a handler or a
-      // wrapped middleware: its status is kept, and 5xx text is redacted.
+      // Vela's HttpException keeps its status and, below 500, renders exactly
+      // as it does from a handler or a wrapped middleware. A 5xx is redacted
+      // to its status title even when its response is an object: this edge
+      // only sees raw throws, never a deliberate body such as a health 503.
+      const httpStatus = err instanceof HttpException ? err.getStatus() : 500;
       const { body, status } =
-        err instanceof HttpException
+        err instanceof HttpException && httpStatus < 500
           ? httpExceptionBody(err, reporter.catalog)
-          : toErrorBody(err, { catalog: reporter.catalog });
+          : toErrorBody(err, { catalog: reporter.catalog, fallbackStatus: httpStatus });
       return c.json(body, status as ContentfulStatusCode);
     });
   }

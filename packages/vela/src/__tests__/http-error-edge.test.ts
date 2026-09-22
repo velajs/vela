@@ -439,6 +439,55 @@ describe('string HttpException — redaction and status-class codes on every HTT
     });
   }
 
+  it('hono onError: object 5xx HttpException is redacted to the status title', async () => {
+    @Controller('/ok')
+    class OkController {
+      @Get()
+      handle() {
+        return { ok: true };
+      }
+    }
+
+    @Module({ controllers: [OkController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    app.getHonoApp().use('*', async (_c: Context, _next: Next) => {
+      throw new HttpException({ reason: 'db password=hunter2' }, 503);
+    });
+    const res = await app.getHonoApp().request('/boom');
+
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body).toEqual({
+      error: { code: 'service_unavailable', message: 'Service Unavailable' },
+    });
+    expect(JSON.stringify(body)).not.toContain('hunter2');
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('hono onError: object 4xx HttpException ships verbatim', async () => {
+    @Controller('/ok')
+    class OkController {
+      @Get()
+      handle() {
+        return { ok: true };
+      }
+    }
+
+    @Module({ controllers: [OkController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    app.getHonoApp().use('*', async (_c: Context, _next: Next) => {
+      throw new BadRequestException({ custom: 'shape' });
+    });
+    const res = await app.getHonoApp().request('/boom');
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ custom: 'shape' });
+  });
+
   it('vela middleware: object HttpException ships verbatim', async () => {
     @Controller('/edge')
     class EdgeController {
