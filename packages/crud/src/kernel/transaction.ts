@@ -9,9 +9,19 @@ import { ConfigurationException } from '../envelope/errors';
 /** Trusted adapter integration, configured by application code, never request input.
  * bind must return operations that validate scope lifetime on every invocation.
  */
+export interface TransactionStoreErrorObserver {
+  (error: unknown): void;
+  /** Store authors must wrap every asynchronous bound method when provided. */
+  track?<T>(work: () => Promise<T>): Promise<T>;
+}
+
 export interface TransactionStoreBinding<Store> {
   readonly owner: object;
-  bind(scope: AdapterScope, context: TransactionContext, onError: (error: unknown) => void): Store;
+  bind(
+    scope: AdapterScope,
+    context: TransactionContext,
+    onError: TransactionStoreErrorObserver,
+  ): Store;
 }
 
 export function assertTransactionContext(context: TransactionContext): void {
@@ -32,6 +42,7 @@ export class CrudTransactionScope {
   readonly #tenantId: string | undefined;
   readonly #deliveries: Array<() => Promise<void>> = [];
   readonly #pending = new Set<Promise<unknown>>();
+  readonly #storePending = new Set<Promise<unknown>>();
   #accepting = true;
   #active = true;
   #failure: unknown;
@@ -88,10 +99,34 @@ export class CrudTransactionScope {
 
   async #drain(): Promise<void> {
     this.#accepting = false;
-    if (this.#pending.size) {
+    if (this.#pending.size || this.#storePending.size) {
       this.#fail(new TypeError('Unawaited CRUD transaction operation'));
-      await Promise.allSettled(this.#pending);
+      await Promise.allSettled([...this.#pending, ...this.#storePending]);
     }
+  }
+
+  #trackStore<T>(work: () => Promise<T>): Promise<T> {
+    if (!this.#active || !this.#accepting)
+      return Promise.reject(new TypeError('Expired CRUD transaction'));
+    if (typeof work !== 'function') {
+      const error = new TypeError('Invalid transaction store operation');
+      this.#fail(error);
+      return Promise.reject(error);
+    }
+    if (this.#failed)
+      return Promise.reject(new Error('CRUD transaction has failed', { cause: this.#failure }));
+    const pending = Promise.resolve().then(work);
+    this.#storePending.add(pending);
+    void pending.then(
+      () => {
+        this.#storePending.delete(pending);
+      },
+      (error: unknown) => {
+        this.#fail(error);
+        this.#storePending.delete(pending);
+      },
+    );
+    return pending;
   }
 
   async #finish(): Promise<void> {
@@ -173,9 +208,12 @@ export class CrudTransactionScope {
       )
         throw new TypeError('Invalid transaction store binding');
       CrudTransactionScope.assert(scope, { transactionOwner: binding.owner }, context);
-      return binding.bind(scope.#scope, Object.freeze({ ...context }), (error) =>
-        scope.#fail(error),
+      const observer: TransactionStoreErrorObserver = Object.freeze(
+        Object.assign((error: unknown) => scope.#fail(error), {
+          track: <T>(work: () => Promise<T>) => scope.#trackStore(work),
+        }),
       );
+      return binding.bind(scope.#scope, Object.freeze({ ...context }), observer);
     } catch (error) {
       scope.#fail(error);
       throw error;

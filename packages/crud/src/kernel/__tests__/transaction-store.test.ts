@@ -113,3 +113,62 @@ it('rolls back when a bound store reports an error caught inside the helper call
   ).rejects.toThrow('rolled back');
   expect(committed()).toBe(false);
 });
+
+it('drains pending methods inside an awaited helper before rejecting the transaction', async () => {
+  const { adapter, binding, committed } = fixture();
+  let finished = false;
+  await expect(
+    crudTransaction(adapter, {}, async (transaction) => {
+      await withCrudTransactionStore(
+        transaction,
+        {
+          owner: binding.owner,
+          bind(_scope, _context, observer) {
+            expect(Object.isFrozen(observer)).toBe(true);
+            return {
+              save: () =>
+                observer.track!(async () => {
+                  await new Promise((resolve) => setTimeout(resolve, 10));
+                  finished = true;
+                }),
+            };
+          },
+        },
+        {},
+        async (store) => {
+          void store.save().catch(() => undefined);
+        },
+      );
+    }),
+  ).rejects.toThrow('rolled back');
+  expect(finished).toBe(true);
+  expect(committed()).toBe(false);
+});
+
+it.each(['sync', 'async'])('tracks a caught %s store failure', async (mode) => {
+  const { adapter, binding, committed } = fixture();
+  await expect(
+    crudTransaction(adapter, {}, async (transaction) => {
+      await withCrudTransactionStore(
+        transaction,
+        {
+          owner: binding.owner,
+          bind(_scope, _context, observer) {
+            return {
+              save: () =>
+                observer.track!(() => {
+                  if (mode === 'sync') throw new Error('failed');
+                  return Promise.reject(new Error('failed'));
+                }),
+            };
+          },
+        },
+        {},
+        async (store) => {
+          await store.save().catch(() => undefined);
+        },
+      );
+    }),
+  ).rejects.toThrow('rolled back');
+  expect(committed()).toBe(false);
+});
