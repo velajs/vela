@@ -1,6 +1,12 @@
 import { verifyFormsAndCache } from './forms-cache.mjs';
 import { verifyAtomicWrites } from './atomic.mjs';
+import { verifyTransportAndStreams } from './transport-streams.mjs';
+import { verifyTransactionalHistory } from './history.mjs';
 
 await verifyFormsAndCache();
 await verifyAtomicWrites();
-console.log('PASS: public HTTP form, cache isolation/invalidation and atomic audit behavior');
+await verifyTransportAndStreams();
+await verifyTransactionalHistory();
+console.log(
+  'PASS: public forms, streams, telemetry, cache isolation and transactional audit/history',
+);

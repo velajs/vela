@@ -104,9 +104,17 @@ peer floors; successful companion checks do not publish those dependencies.
 
 The API-capabilities consumer also installs the exact core, HTTP client, CLI,
 CRUD, and Drizzle adapter archives outside the workspace. It checks form request
-contracts, generated client types, scoped asynchronous caching, and atomic writes
-with audit records. Run it independently with
+contracts, generated binary/streaming client types, bounded outbound HTTP, telemetry,
+scoped asynchronous caching, atomic writes, and transactional audit/history rollback.
+Run it independently with
 `node scripts/api-capabilities-consumer.mjs /absolute/artifact/path`.
+
+The reliability consumer first installs the package without its optional framework
+and database peers, then verifies bounded HTTP replay, leases, deduplication and
+scheduling. A second install adds the exact CRUD and Drizzle archives and exercises
+independent SQLite claimers, restart recovery, named database ownership, transactional
+outbox admission and inbox completion with consumer writes. Run it independently
+with `node scripts/reliability-consumer.mjs /absolute/artifact/path`.
 
 Artifacts live in `.artifacts/release/`. Keep this exact directory
 once publishing begins: rebuilding a partial release changes archive integrity
