@@ -50,6 +50,10 @@ HTTP client, live queries, and Studio in a runnable Workers application.
   mutations, and React integration.
 - [CRUD](crud/README.md): resources, adapters, authorization, and data safety.
 - [Atomic writes](atomic-writes.md): typed batches and optional atomic metadata-only audits.
+- [Transactional history](transactional-history.md): owned version snapshots, scoped audits,
+  rollback guarantees, and schema migrations.
+- [Durable delivery](../packages/reliability/README.md): independent idempotency, outbox/inbox,
+  persistent one-off jobs, and fenced database execution.
 - [Multiple databases](multi-database.md): typed registration, resource routing,
   owned transactions, and separate migrations.
 - [Domain event sourcing](event-sourcing.md): replayable business history, projections,
