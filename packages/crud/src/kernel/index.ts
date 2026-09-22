@@ -24,4 +24,5 @@ export {
   withCrudTransactionStore,
   type CrudTransactionScope,
   type TransactionStoreBinding,
+  type TransactionStoreErrorObserver,
 } from './transaction';

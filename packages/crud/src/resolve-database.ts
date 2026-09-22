@@ -46,8 +46,12 @@ function named(
       ...config,
       database: name,
       adapter: resource.adapter.runtime,
-      versioningStore: config.versioningStore ?? database.versioningStore,
-      auditStore: config.auditStore ?? database.auditStore,
+      versioningStore: config.versioningStore
+        ? registry.bindStore(name, config.versioningStore)
+        : database.versioningStore,
+      auditStore: config.auditStore
+        ? registry.bindStore(name, config.auditStore)
+        : database.auditStore,
     };
   }
   if (config.databaseResource)

@@ -395,16 +395,13 @@ describe('explicit resource transaction composition', () => {
     });
     expect(await auditStore.query()).toHaveLength(1);
     const versioned = defineModel({ name: 'item', tableName: 'items', schema, versioning: true });
-    const v = defineResource('versioned', {
-      model: versioned,
-      adapter,
-      versioningStore: new MemoryVersioningStore(),
-    });
-    await expect(
-      crudTransaction(adapter, {}, async (transaction) => {
-        await v.execute('list', { transaction });
+    expect(() =>
+      defineResource('versioned', {
+        model: versioned,
+        adapter,
+        versioningStore: new MemoryVersioningStore(),
       }),
-    ).rejects.toThrow('Versioning stores cannot join');
+    ).toThrow('transaction-aware');
   });
 
   it('rejects adapters without real transactions before entering the callback', async () => {

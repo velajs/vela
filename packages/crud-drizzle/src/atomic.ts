@@ -100,8 +100,10 @@ export function drizzleInsertCommand<Result>(options: {
         (typeof result === 'object' || typeof result === 'function') &&
         'then' in result &&
         typeof result.then === 'function'
-      )
+      ) {
+        void Promise.resolve(result).catch(() => undefined);
         throw new TypeError('Atomic insert decoders must be synchronous');
+      }
       return result;
     },
     undefined,

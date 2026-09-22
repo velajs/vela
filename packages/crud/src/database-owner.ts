@@ -1,8 +1,52 @@
 import type { AdapterScope, RuntimeAdapter, TransactionContext } from './adapter/contract';
+import type { TransactionStoreBinding, TransactionStoreErrorObserver } from './kernel/transaction';
 
 /** One application registration's scope namespace, shared by its resource adapters. */
 export class DatabaseAdapterOwner {
   readonly #scopes = new WeakMap<AdapterScope, AdapterScope>();
+  readonly #nativeOwners = new Set<object>();
+  readonly #stores = new WeakMap<object, object>();
+
+  bindTransactionStore<Store>(
+    binding: TransactionStoreBinding<Store>,
+  ): TransactionStoreBinding<Store> {
+    if (binding.owner === this) return binding;
+    if (!this.#nativeOwners.has(binding.owner))
+      throw new TypeError('Foreign database registration store');
+    return Object.freeze({
+      owner: this,
+      bind: (
+        scope: AdapterScope,
+        context: TransactionContext,
+        onError: TransactionStoreErrorObserver,
+      ) => binding.bind(this.#native(scope), context, onError),
+    });
+  }
+
+  bindStore<Store extends { readonly transaction?: TransactionStoreBinding<Store> }>(
+    store: Store,
+  ): Store {
+    if (!store.transaction || store.transaction.owner === this) return store;
+    const previous = this.#stores.get(store);
+    if (previous) return previous as Store;
+    const transaction = this.bindTransactionStore(store.transaction);
+    // Preserve class-private state: methods and accessors use the original store.
+    const bound = new Proxy(Object.create(Object.getPrototypeOf(store)) as Store, {
+      get(_target, key) {
+        if (key === 'transaction') return transaction;
+        const value: unknown = Reflect.get(store, key, store);
+        return typeof value === 'function' ? value.bind(store) : value;
+      },
+      has: (_target, key) => Reflect.has(store, key),
+      ownKeys: () => Reflect.ownKeys(store),
+      getOwnPropertyDescriptor: (_target, key) => {
+        const descriptor = Reflect.getOwnPropertyDescriptor(store, key);
+        return descriptor ? { ...descriptor, configurable: true } : undefined;
+      },
+    });
+    this.#stores.set(store, bound);
+    return bound;
+  }
 
   #native(scope: AdapterScope): AdapterScope {
     const native = this.#scopes.get(scope);
@@ -27,6 +71,7 @@ export class DatabaseAdapterOwner {
   }
 
   bind(adapter: RuntimeAdapter): RuntimeAdapter {
+    if (adapter.transactionOwner) this.#nativeOwners.add(adapter.transactionOwner);
     const {
       aggregate,
       search,
