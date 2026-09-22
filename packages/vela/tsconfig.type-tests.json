@@ -12,6 +12,8 @@
     "src/__tests__/module-entrypoint-contract.test.ts",
     "src/__tests__/endpoint-http.test.ts",
     "src/__tests__/endpoint-form.test.ts",
+    "src/__tests__/endpoint-streaming.test.ts",
+    "src/__tests__/observability.test.ts",
     "src/__tests__/cache-value-safety.test.ts",
     "src/__tests__/async-endpoint.test.ts",
     "src/__tests__/parse-schema.test.ts",
