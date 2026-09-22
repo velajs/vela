@@ -70,7 +70,16 @@ export function checkDeployment(
       continue;
     }
     if (
-      !['cf:scheduled', 'cf:vela-cron', 'schedule:cron', 'cf:queue', 'websocket'].includes(row.kind)
+      ![
+        'cf:scheduled',
+        'cf:vela-cron',
+        'schedule:cron',
+        'cf:queue',
+        'cf:queue:module',
+        'cf:queue:producer',
+        'rpc:client',
+        'websocket',
+      ].includes(row.kind)
     )
       continue;
     const parsed = metadataSchema.safeParse(row.meta);
@@ -79,6 +88,30 @@ export function checkDeployment(
       continue;
     }
     const meta = parsed.data;
+    if (row.kind === 'cf:queue:producer' || row.kind === 'rpc:client') {
+      // HTTP RPC clients need no Worker binding; declared bindings are mandatory.
+      if (row.kind === 'rpc:client' && meta.binding === undefined) continue;
+      const binding = meta.binding;
+      const kind = row.kind === 'rpc:client' ? 'services' : 'queues';
+      if (
+        typeof binding !== 'string' ||
+        !binding ||
+        !target.bindings.some((b) => b.name === binding && b.kind === kind)
+      ) {
+        report(
+          row.kind === 'rpc:client' ? 'missing-service-binding' : 'missing-queue-producer',
+          `A declared ${kind} binding is missing from the selected environment.`,
+        );
+      }
+      continue;
+    }
+    if (
+      row.kind === 'cf:queue:module' &&
+      (typeof meta.logicalQueue !== 'string' || !meta.logicalQueue.trim())
+    ) {
+      report('invalid-queue-mapping', 'A native consumer mapping requires a logical queue name.');
+      continue;
+    }
     if (row.kind === 'cf:vela-cron' || row.kind === 'schedule:cron') {
       try {
         const cron = parseCronMetadata(meta);
@@ -114,13 +147,17 @@ export function checkDeployment(
       continue;
     }
     const key =
-      row.kind === 'cf:scheduled' ? 'cron' : row.kind === 'cf:queue' ? 'queueName' : 'expression';
+      row.kind === 'cf:scheduled'
+        ? 'cron'
+        : row.kind.startsWith('cf:queue')
+          ? 'queueName'
+          : 'expression';
     const value = meta[key];
     if (typeof value !== 'string' || value.trim().length === 0) {
       report('invalid-metadata', `Invalid ${row.kind}.${key} metadata.`);
       continue;
     }
-    if (row.kind === 'cf:queue') handlerQueues.add(value);
+    if (row.kind.startsWith('cf:queue')) handlerQueues.add(value);
     else {
       handlerCrons.add(value);
       validateCron(value);

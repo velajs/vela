@@ -91,7 +91,5 @@ it('does not silently deduplicate different driver instances with the same kind'
     ],
   })
   class App {}
-  const app = await VelaFactory.create(App);
-  expect(() => app.get(queueToken('collision'))).toThrow(/Multiple providers|provided by multiple/);
-  await app.close();
+  await expect(VelaFactory.create(App)).rejects.toThrow(/provided by multiple/);
 });

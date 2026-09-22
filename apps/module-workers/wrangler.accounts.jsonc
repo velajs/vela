@@ -1,0 +1,7 @@
+{
+  "name": "module-accounts",
+  "main": "dist/accounts.mjs",
+  "compatibility_date": "2026-09-22",
+  "workers_dev": false,
+  "preview_urls": false,
+}

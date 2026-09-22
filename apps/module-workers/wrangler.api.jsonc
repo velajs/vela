@@ -1,0 +1,25 @@
+{
+  "name": "module-api",
+  "main": "dist/api.mjs",
+  "compatibility_date": "2026-09-22",
+  "workers_dev": true,
+  "preview_urls": false,
+  "services": [
+    {
+      "binding": "CATALOG",
+      "service": "module-catalog",
+    },
+    {
+      "binding": "ACCOUNTS",
+      "service": "module-accounts",
+    },
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "TASKS",
+        "queue": "module-tasks",
+      },
+    ],
+  },
+}

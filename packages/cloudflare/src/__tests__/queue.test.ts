@@ -141,7 +141,9 @@ describe('@QueueConsumer() decorator', () => {
     const app = await createCloudflareApp(AppModule, { env, envToken });
     const ctx = { waitUntil: () => {} };
 
-    await app.queue({ queue: 'other-queue', messages: [{ body: 'test' }] }, env, ctx);
+    await expect(
+      app.queue({ queue: 'other-queue', messages: [{ body: 'test' }] }, env, ctx),
+    ).rejects.toThrow('No consumer');
 
     expect(processed).toEqual([]);
   });

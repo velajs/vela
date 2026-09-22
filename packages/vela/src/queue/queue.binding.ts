@@ -68,7 +68,13 @@ export class QueueDispatchBinding {
     this.#unbind = undefined;
   }
 
-  async #deliver(job: QueueJob): Promise<void> {
+  /** Platform delivery must reject an unhandled job instead of acknowledging it. */
+  async dispatch(job: QueueJob): Promise<void> {
+    if (this.#closed) throw new Error('Queue module is closed.');
+    await this.#deliver(job, true);
+  }
+
+  async #deliver(job: QueueJob, strict = false): Promise<void> {
     if (this.#closed) return;
     // Opt-in signed re-entry: the job re-enters a user-authored
     // `@SignedInvocation()` route through `ctx.run` instead of the direct
@@ -100,7 +106,9 @@ export class QueueDispatchBinding {
             moduleId: found.moduleId,
           }));
 
-    await dispatchJobToEntries(this.#container, entries, job);
+    await dispatchJobToEntries(this.#container, entries, job, {
+      unhandled: strict ? 'error' : 'ignore',
+    });
   }
 
   #routeError(error: unknown, job: QueueJob): void {

@@ -28,6 +28,7 @@ export type {
   QueueDispatchFn,
   QueueDispatchMode,
   QueueDriver,
+  QueueDriverEntrypoint,
   QueueDriverBindHooks,
   QueueJob,
   QueueModuleOptions,

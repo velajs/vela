@@ -13,6 +13,7 @@ import { verifyWorkflowPackage } from './workflow-consumer.mjs';
 import { ensureConsumerArchives } from './consumer-companions.mjs';
 import { verifyTestingPackage } from './testing-consumer.mjs';
 import { verifyRpcPackage } from './rpc-consumer.mjs';
+import { verifyModuleWorkers } from './module-workers-consumer.mjs';
 import { verifyGraphqlPackage } from './graphql-consumer.mjs';
 import { verifyApiCapabilities } from './api-capabilities-consumer.mjs';
 import { verifyReliabilityPackage } from './reliability-consumer.mjs';
@@ -121,6 +122,7 @@ const edgePackages =
     : undefined;
 const testingPackage = await verifyTestingPackage(tarballs);
 const rpcPackage = await verifyRpcPackage(tarballs);
+const moduleWorkers = await verifyModuleWorkers(tarballs);
 const graphqlPackage = await verifyGraphqlPackage(tarballs);
 const apiCapabilities = await verifyApiCapabilities(tarballs);
 const reliabilityPackage = await verifyReliabilityPackage(tarballs);
@@ -139,6 +141,7 @@ await writeFile(
       mailPackage,
       testingPackage,
       rpcPackage,
+      moduleWorkers,
       graphqlPackage,
       apiCapabilities,
       reliabilityPackage,

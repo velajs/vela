@@ -4,6 +4,10 @@
 inject `queueToken(name)`, and await `client.add(name, data)`. Acceptance means the
 driver accepted the job; it does not mean a processor has finished.
 
+Use [module-based native wiring](module-workers.md#native-queues-through-queuemodule)
+for Cloudflare delivery. Transport configuration initializes at bootstrap, even
+in consumer-only applications; processors retain their invocation scopes.
+
 ## Driver ownership
 
 The default inline driver is created separately for each application. When
@@ -83,7 +87,7 @@ Validation failures propagate through declared processor filters; a filter that
 claims an error treats that delivery as handled. A valid payload does not confer
 trusted principal or tenant identity.
 
-## Cloudflare bridge
+## Low-level Cloudflare bridge
 
 Native `Queue<T>` bindings and `@QueueConsumer` remain independently usable. The
 optional `@velajs/cloudflare/queue` helpers connect native delivery to portable processors:

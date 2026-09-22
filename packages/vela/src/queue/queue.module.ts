@@ -3,6 +3,7 @@ import type { ProviderDefinition } from '../index';
 import { inline } from './inline.driver';
 import { QueueClient } from './queue.client';
 import { QueueDispatchBinding } from './queue.binding';
+import { QueueTransportEntrypoints } from './queue.entrypoints';
 import { QUEUE_DRIVER, queueToken } from './queue.tokens';
 import type { QueueDriver, QueueModuleOptions } from './queue.types';
 
@@ -30,23 +31,17 @@ function driverIdentity(driver: QueueModuleOptions['driver']): string | number {
  * imports: [QueueModule.forRoot({ queues: ['email'] })]
  * ```
  *
- * `lazy: true` (dogfoods 1.13): the module materializes when an eager
- * producer injects a client (bootstrap — same structural reality that keeps
- * WebSocketModule eager) or, in consumer-only workers, at the first
- * delivered job.
+ * Transport configuration materializes at bootstrap, including consumer-only
+ * modules, so native routes and ownership are validated before accepting events.
+ * Job providers still retain their declared invocation/lazy lifetimes.
  *
  * `queues` is STRUCTURAL: clients are options-derived providers, so
  * `forRootAsync` callers pass it alongside the factory —
  * `forRootAsync({ queues: ['email'], useFactory: () => ({ driver }) })`.
- * Note that async options inherit the 1.13 lazy-module contract: the module
- * must first materialize through an async seam (an eager producer's injection
- * during the bootstrap sweep — the common case — or
- * `app.materializeLazyModules()`); a synchronous first touch throws the
- * descriptive sync-seam error.
+ * Async options are awaited during application initialization.
  */
 const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<QueueModuleOptions>({
   name: 'Queue',
-  lazy: true,
   key: (o) =>
     stableHash({
       queues: o.queues ?? [],
@@ -74,6 +69,7 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<QueueModu
 
     return {
       providers: [
+        QueueTransportEntrypoints,
         defineProvider(QUEUE_DRIVER, {
           useFactory: (o: QueueModuleOptions) =>
             typeof o.driver === 'function' ? o.driver() : (o.driver ?? inline()),

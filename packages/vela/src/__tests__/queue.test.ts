@@ -369,11 +369,9 @@ describe('queue tokens and module identity', () => {
     })
     class App {}
 
-    const app = await VelaFactory.create(App);
-    expect(() => app.get(queueToken('clash'))).toThrow(
-      /Multiple providers|provided by multiple QueueModule instances/,
+    await expect(VelaFactory.create(App)).rejects.toThrow(
+      /provided by multiple QueueModule instances/,
     );
-    await app.dispose();
   });
 
   it('forRootAsync takes queues structurally alongside the factory', async () => {
@@ -400,7 +398,8 @@ describe('queue tokens and module identity', () => {
 
     @Module({
       imports: [
-        QueueModule.forRootAsync({ inject: [],
+        QueueModule.forRootAsync({
+          inject: [],
           queues: ['async-q'],
           useFactory: async () => ({ driver }),
         }),
@@ -423,8 +422,8 @@ describe('queue tokens and module identity', () => {
   });
 });
 
-describe('laziness (dogfoods 1.13 lazy modules)', () => {
-  it('stays unmaterialized in consumer-only apps; platform dispatch needs no module', async () => {
+describe('transport initialization', () => {
+  it('initializes consumer-only transports at bootstrap so native routes are discoverable', async () => {
     let bound = false;
     const driver: QueueDriver = {
       kind: 'probe',
@@ -452,10 +451,9 @@ describe('laziness (dogfoods 1.13 lazy modules)', () => {
     class App {}
 
     const app = await VelaFactory.create(App);
-    // No producer injected a client → the module is still pending.
-    expect(bound).toBe(false);
+    expect(bound).toBe(true);
 
-    // Platform-style dispatch works without materializing QueueModule.
+    // Each delivery still resolves processors in a fresh invocation scope.
     const result = await dispatchQueueJob(app.getContainer(), app.entrypoints, {
       id: '1',
       queue: 'remote',
@@ -465,9 +463,9 @@ describe('laziness (dogfoods 1.13 lazy modules)', () => {
     });
     expect(result.handled).toBe(1);
     expect(handledJobs).toEqual(['platform-job']);
-    expect(bound).toBe(false);
+    expect(bound).toBe(true);
 
-    // First client resolution materializes the module (binds the driver).
+    // Client resolution reuses the configured transport.
     app.get(queueToken('remote'));
     expect(bound).toBe(true);
     await app.dispose();
@@ -596,7 +594,10 @@ describe('error reporter edge (report-then-rethrow)', () => {
 
     @Module({
       imports: [QueueModule.forRoot({ queues: ['reportq'], driver })],
-      providers: [ThrowingProcessor, defineProvider(APP_EXCEPTION_HANDLER, {useValue: { report }})],
+      providers: [
+        ThrowingProcessor,
+        defineProvider(APP_EXCEPTION_HANDLER, { useValue: { report } }),
+      ],
     })
     class App {}
 
@@ -627,7 +628,7 @@ describe('error reporter edge (report-then-rethrow)', () => {
 
     @Module({
       imports: [QueueModule.forRoot({ queues: ['inlinereport'] })], // default inline() immediate
-      providers: [BoomProcessor, defineProvider(APP_EXCEPTION_HANDLER, {useValue: { report }})],
+      providers: [BoomProcessor, defineProvider(APP_EXCEPTION_HANDLER, { useValue: { report } })],
     })
     class App {}
 

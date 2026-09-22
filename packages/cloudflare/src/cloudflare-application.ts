@@ -228,7 +228,7 @@ export class CloudflareApplication<T extends object = object> {
     if (ep.methodName === undefined) throw new Error('Entrypoint must declare a handler method.');
     const methodName = ep.methodName;
     const reportContext = {
-      edge: ep.kind === 'cf:queue' ? ('queue' as const) : ('schedule' as const),
+      edge: ep.kind.startsWith('cf:queue') ? ('queue' as const) : ('schedule' as const),
       source: `${targetClass.name}.${String(methodName)}`,
     };
     let reported: { error: unknown } | undefined;
@@ -322,9 +322,12 @@ export class CloudflareApplication<T extends object = object> {
     ctx: { waitUntil: (promise: Promise<unknown>) => void },
   ): Promise<void> {
     assertCloudflareEnvironment(this.env, env);
-    const handlers = this.#app.entrypoints
-      .ofKind('cf:queue')
-      .filter((ep) => entrypointString(ep.meta, 'queueName') === batch.queue);
+    const handlers = [
+      ...this.#app.entrypoints.ofKind('cf:queue'),
+      ...this.#app.entrypoints.ofKind('cf:queue:module'),
+    ].filter((ep) => entrypointString(ep.meta, 'queueName') === batch.queue);
+
+    if (handlers.length === 0) throw new Error(`No consumer for queue '${batch.queue}'.`);
 
     await settleEntrypoints(handlers.map((ep) => this.dispatchEntrypoint(ep, batch, env, ctx)));
   }
