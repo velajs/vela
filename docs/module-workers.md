@@ -85,6 +85,10 @@ bindings. It does not create resources. See the [four-worker example](../apps/mo
 
 ## Migration
 
+Upgrade core, Cloudflare and integrations whose peer requirements move to the 2.x
+line together. These packages receive major versions even when their own runtime
+API is unchanged; existing 1.x users must not receive a peer-breaking patch.
+
 Queue transport configuration now initializes during bootstrap, including apps
 without a producer. Duplicate queue ownership fails at startup instead of the
 first client resolution. Job providers still follow their declared scopes.
