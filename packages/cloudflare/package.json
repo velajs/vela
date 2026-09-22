@@ -1,6 +1,6 @@
 {
   "name": "@velajs/cloudflare",
-  "version": "3.0.0",
+  "version": "1.28.0",
   "description": "Cloudflare Workers integration for Vela framework",
   "keywords": [
     "cloudflare",

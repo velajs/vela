@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { assertV1Releases } from './release-line.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const projects = JSON.parse(
@@ -12,6 +13,7 @@ const packages = projects.map((project) => ({
   path: project.path,
 }));
 const names = new Set(packages.map((pkg) => pkg.name));
+assertV1Releases(packages.filter((pkg) => !pkg.private));
 const errors = [];
 const changesetsVersion = JSON.parse(
   readFileSync(join(root, 'node_modules/@changesets/cli/package.json'), 'utf8'),

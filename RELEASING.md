@@ -1,11 +1,13 @@
 # Vela releases
 
-The active release line is 3.x. Public workspace packages are published through
+The active release line is 1.x. Public workspace packages are published through
 GitHub Actions OIDC with signed provenance from this public source repository.
 `release-plan.json` records the packages and versions in each release.
-Breaking public API changes require a major version and migration documentation.
-Applications should use the current APIs described below. Release titles use plain versions, such as
-`Vela 3.0.0`.
+Breaking public API changes use minor releases within 1.x. Backward compatibility
+is not guaranteed; remove obsolete APIs instead of adding compatibility layers.
+Update affected examples and migration documentation with each API change.
+Applications should use the current APIs described below. Release titles use plain
+versions, such as `Vela 1.28.0`.
 
 ## Current API requirements
 
@@ -30,7 +32,7 @@ Applications should use the current APIs described below. Release titles use pla
 See [the core type guide](docs/types.md) and the
 [complete starter](apps/api-starter/README.md).
 
-See [module worker migration](docs/module-workers.md#migration) for the 3.x queue bootstrap and native delivery changes.
+See [module worker migration](docs/module-workers.md#migration) for the 1.x queue bootstrap and native delivery changes.
 
 ## Verification and artifacts
 

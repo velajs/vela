@@ -1,6 +1,6 @@
 {
   "name": "@velajs/reliability",
-  "version": "3.0.0",
+  "version": "1.28.0",
   "description": "Portable durable idempotency, outbox, inbox and one-off scheduling",
   "keywords": [
     "idempotency",
