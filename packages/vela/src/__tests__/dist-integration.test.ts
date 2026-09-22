@@ -56,7 +56,9 @@ describe('dist/ integration', () => {
     expect(vela.ParseBoolPipe).toBeDefined();
     expect(vela.DefaultValuePipe).toBeDefined();
     expect(vela.RequiredPipe).toBeDefined();
-    expect(vela.ZodValidationPipe).toBeDefined();
+    expect(vela.ValidationPipe).toBeDefined();
+    // ValidationPipe is the one schema pipe; the raw-parse Zod pipe answered 500.
+    expect('ZodValidationPipe' in vela).toBe(false);
 
     // Errors
     expect(vela.HttpException).toBeDefined();

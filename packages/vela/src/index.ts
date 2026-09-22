@@ -571,7 +571,6 @@ export {
   ParseArrayPipe,
   DefaultValuePipe,
   RequiredPipe,
-  ZodValidationPipe,
 } from './pipeline/index';
 export type { ParseUUIDPipeOptions, ParseArrayPipeOptions } from './pipeline/index';
 

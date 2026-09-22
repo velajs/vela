@@ -76,7 +76,7 @@ before `ThrottlerModule`.
 - **Dependency injection** — `@Injectable`, `@Inject`, `InjectionToken`, singleton/transient/request scopes
 - **Modules** — `@Module` with imports, exports, controllers, providers
 - **Guards** — `@UseGuards` with `CanActivate` interface
-- **Pipes** — `@UsePipes`, built-in `ParseIntPipe`, `ParseBoolPipe`, `ZodValidationPipe`, etc.
+- **Pipes** — `@UsePipes`, built-in `ParseIntPipe`, `ParseBoolPipe`, `ValidationPipe`, etc.
 - **Interceptors** — `@UseInterceptors` with `NestInterceptor` interface
 - **Exception filters** — `@UseFilters`, `@Catch`, built-in HTTP exceptions
 - **Middleware** — `@UseMiddleware` for Hono-native middleware

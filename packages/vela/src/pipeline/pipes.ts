@@ -54,14 +54,6 @@ export class RequiredPipe implements PipeTransform {
   }
 }
 
-export class ZodValidationPipe implements PipeTransform {
-  constructor(private readonly schema: { parse(data: unknown): unknown }) {}
-
-  transform(value: unknown, _metadata: ArgumentMetadata): unknown {
-    return this.schema.parse(value);
-  }
-}
-
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const UUID_VERSION_REGEX: Record<string, RegExp> = {
   '3': /^[0-9a-f]{8}-[0-9a-f]{4}-3[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,

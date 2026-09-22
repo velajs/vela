@@ -150,7 +150,7 @@ Load a reference when the task needs its depth. **This table is the contract** â
 | `references/invocation-scopes.md` | Owner-aware discovery, async dispatch, managed deferred work, streaming disposal, and transport trust boundaries |
 | `references/controllers-and-routing.md` | Controllers, method/param decorators, versioning, global prefix, named routes, `UrlGeneratorService`, signed URLs, `VelaRouteMap` |
 | `references/pipeline.md` | Guards/pipes/interceptors/filters/middleware, `APP_*` tokens, execution order, built-in pipes, `Reflector`, `@Catch` |
-| `references/validation.md` | `defineEndpoint`/`@Endpoint`, `defineDto`, `ValidationPipe` vs `ZodValidationPipe`, `@Serialize`, `SerializerInterceptor` |
+| `references/validation.md` | `defineEndpoint`/`@Endpoint`, `defineDto`, `ValidationPipe`, `@Serialize`, `SerializerInterceptor` |
 | `references/serialization.md` | Async output schemas, `defineSerializer`, explicit domain projections and private state |
 | `references/rpc-and-graphql.md` | Optional method RPC and executable-schema GraphQL, wire types, owner-aware providers, and operation resources |
 | `references/openapi.md` | `createOpenApiDocument`, `@ApiDoc`/`@ApiTags`/`@ApiResponse`, operationId-from-route-name, `app.mountOpenApi` (Swagger/Scalar/ReDoc) |
