@@ -31,7 +31,7 @@ class OrdersController {
   @UseGuards(new ApiKeyGuard())
   @UseInterceptors(EnvelopeInterceptor)
   @UseFilters(ClientErrorFilter)
-  create(@Body(new ValidationPipe(CreateOrder)) body: ReturnType<typeof CreateOrder.parse>) {}
+  create(@Body(CreateOrder) body: ReturnType<typeof CreateOrder.parse>) {}
 }
 ```
 

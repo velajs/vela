@@ -68,7 +68,7 @@ Each UI is a self-contained HTML shell (CDN-loaded), so mounting docs adds no se
 
 ## Schema-bound Hono RPC
 
-Use `defineEndpoint({ input, output, status? })` plus `@Endpoint(definition)` for one runtime-validated contract; see `validation.md`. A parameter parser in `@Body(new ValidationPipe(dto))` also supplies request schema metadata. `@ApiResponse` documents a result but does not validate it; TypeScript interfaces alone carry no schema.
+Use `defineEndpoint({ input, output, status? })` plus `@Endpoint(definition)` for one runtime-validated contract; see `validation.md`. A schema passed to a parameter decorator, such as `@Body(dto)` or `@Query('page', schema)`, also supplies request schema metadata. `@ApiResponse` documents a result but does not validate it; TypeScript interfaces alone carry no schema.
 
 ```sh
 vela client generate --out src/api.generated.ts --strict

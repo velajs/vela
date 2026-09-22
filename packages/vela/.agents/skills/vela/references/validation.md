@@ -59,20 +59,20 @@ behavior, with the existing request scope retained until the body settles.
 ## Parameter decorators with named descriptors
 
 ```ts
-import { Body, Post, ValidationPipe, defineDto } from '@velajs/vela';
+import { Body, Post, defineDto } from '@velajs/vela';
 
 const CreateProduct = defineDto(z.object({ name: z.string().min(1) }), { name: 'CreateProduct' });
 type CreateProduct = ReturnType<typeof CreateProduct.parse>;
 
 @Post()
-create(@Body(new ValidationPipe(CreateProduct)) body: CreateProduct) {
+create(@Body(CreateProduct) body: CreateProduct) {
   return body;
 }
 ```
 
 `defineDto` returns a frozen descriptor (`name`, `schema`, `parse`, `parseAsync`, `toJSONSchema`), not a constructor. Its parse result may be an object, array, scalar, or transformed value. JSON-schema export delegates to the supplied schema and fails explicitly when unavailable.
 
-Type aliases disappear from reflection. Supply the parser explicitly as above; a global `ValidationPipe` cannot infer it from a body type annotation. Programmatic routes can put the descriptor in parameter `metatype`. `ValidationPipe.parser` exposes the same parser to OpenAPI. The standalone pipe does not check that the method's TypeScript annotation matches its schema; `@Endpoint` supplies that stronger contract.
+`@Body`, `@Query`, `@Param`, `@Headers` and `@Cookie` turn a schema argument into `new ValidationPipe(schema)`; a Zod schema is detected by its Standard Schema marker, never run as a pipe. Type aliases disappear from reflection. Supply the schema explicitly as above; a global `ValidationPipe` cannot infer it from a body type annotation. Programmatic routes can put the descriptor in parameter `metatype`. `ValidationPipe.parser` exposes the same parser to OpenAPI. The standalone pipe does not check that the method's TypeScript annotation matches its schema; `@Endpoint` supplies that stronger contract.
 
 `ValidationPipe` maps schema issues to a 400 `BadRequestException` whose body carries `message: 'Validation failed'` and the normalized `errors`. It is the only schema pipe; exceptions thrown by a validator itself remain server errors.
 

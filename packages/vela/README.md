@@ -77,6 +77,7 @@ before `ThrottlerModule`.
 - **Modules** — `@Module` with imports, exports, controllers, providers
 - **Guards** — `@UseGuards` with `CanActivate` interface
 - **Pipes** — `@UsePipes`, built-in `ParseIntPipe`, `ParseBoolPipe`, `ValidationPipe`, etc.
+- **Schema-validated parameters** — `@Body(schema)`, `@Query('page', schema)`, `@Param('id', schema)` return 400 on invalid input and document the schema in OpenAPI
 - **Interceptors** — `@UseInterceptors` with `NestInterceptor` interface
 - **Exception filters** — `@UseFilters`, `@Catch`, built-in HTTP exceptions
 - **Middleware** — `@UseMiddleware` for Hono-native middleware

@@ -124,6 +124,7 @@ export {
 } from './http/index';
 export type {
   RouteOptions,
+  SchemaParamDecorator,
   ReadJsonBodyOptions,
   UrlForOptions,
   SignedUrlGenerateOptions,
