@@ -123,7 +123,12 @@ export type {
 export { defineStandardModel } from './model/standard-model';
 export type { StandardModelConfig, StandardModel } from './model/standard-model';
 
-export { crudTransaction, type CrudTransactionScope } from './kernel/transaction';
+export {
+  crudTransaction,
+  withCrudTransactionStore,
+  type CrudTransactionScope,
+  type TransactionStoreBinding,
+} from './kernel/transaction';
 export {
   defineCrudDatabase,
   createCrudDatabaseRegistry,
