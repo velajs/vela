@@ -314,6 +314,62 @@ describe('StudioModule — ws-token + rate limit', () => {
   });
 });
 
+describe('StudioModule — JSON request bodies', () => {
+  function plain(body: string, contentType?: string): RequestInit {
+    return {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${TOKEN}`,
+        'x-forwarded-for': '10.0.0.7',
+        ...(contentType === undefined ? {} : { 'content-type': contentType }),
+      },
+      body: new TextEncoder().encode(body),
+    };
+  }
+
+  @Injectable()
+  class QueueOps {
+    @AdminRpc({ op: 'queue.list' })
+    list() {
+      return [{ name: 'jobs' }];
+    }
+  }
+
+  for (const [path, op] of [
+    ['/rpc/queue.list', 'queue.list'],
+    ['/ws-token', 'studio.wsToken'],
+  ] as const) {
+    it(`${op} refuses a non-JSON body with the 415 envelope`, async () => {
+      const app = await makeApp({ token: TOKEN }, [QueueOps]);
+      for (const contentType of ['text/plain', 'application/x-www-form-urlencoded', undefined]) {
+        const res = await app.getHonoApp().request(`${BASE}${path}`, plain('{}', contentType));
+        expect(res.status, String(contentType)).toBe(415);
+        const body = (await res.json()) as {
+          ok: boolean;
+          op: string;
+          error: AdminErrorBody;
+          status: number;
+        };
+        expect(body.ok).toBe(false);
+        expect(body.op).toBe(op);
+        expect(body.status).toBe(415);
+        expect(body.error.code).toBe('unsupported_media_type');
+        expect(body.error.status).toBe(415);
+      }
+    });
+  }
+
+  it('dispatches a request without a body', async () => {
+    const app = await makeApp({ token: TOKEN }, [QueueOps]);
+    const res = await app.getHonoApp().request(`${BASE}/rpc/queue.list`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${TOKEN}`, 'x-forwarded-for': '10.0.0.8' },
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()).data).toEqual([{ name: 'jobs' }]);
+  });
+});
+
 describe('StudioModule — ws-token pre-dispatch error envelope', () => {
   it('carries the declared error branch shape with a stable pseudo-op', async () => {
     // /ws-token is not an @AdminRpc op, but its pre-dispatch errors must still be

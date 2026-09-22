@@ -4,6 +4,7 @@
  * with no token configured, `health` reports `{ enabled: false }` and every
  * other route 404s `STUDIO_DISABLED` (existence-hiding).
  */
+import { readJsonBody, UnsupportedMediaTypeException } from '@velajs/vela';
 import type { VelaContext as Context, VelaHono as Hono } from '@velajs/vela';
 import type { Container, RouteContributorContext } from '@velajs/vela';
 import {
@@ -17,7 +18,7 @@ import {
 import type { AdminRpcRequest, StudioErrorCode } from '@velajs/studio-protocol';
 import { STUDIO_RESOLVED_CONFIG } from '../tokens';
 import type { AdminOpContext, AdminPrincipal, ResolvedStudioConfig } from '../studio.types';
-import { studioError, toAdminErrorBody } from '../studio.errors';
+import { studioError, studioUnsupportedMediaType, toAdminErrorBody } from '../studio.errors';
 import { StudioDispatchRegistry } from '../rpc/dispatch.registry';
 import { AdminSubTokenSigner } from '../security/sub-token.signer';
 import { timingSafeEqual } from '../security/token-compare';
@@ -78,13 +79,21 @@ async function authenticate(
   return { subject: 'master', via: 'master-token', ip: clientIp(c) };
 }
 
-async function readBody(c: Context): Promise<Record<string, unknown>> {
+/**
+ * The JSON request body as an object; `{}` when absent, malformed or not an
+ * object. A body under a non-JSON media type gets the 415 envelope instead, so
+ * a form-style cross-site POST never reaches an admin op.
+ */
+async function readBody(c: Context, op: string): Promise<Record<string, unknown> | Response> {
+  let parsed: unknown;
   try {
-    const parsed = await c.req.json();
-    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
-  } catch {
-    return {};
+    parsed = await readJsonBody(c);
+  } catch (error) {
+    if (!(error instanceof UnsupportedMediaTypeException)) return {};
+    const { body, status } = toAdminErrorBody(studioUnsupportedMediaType(error.message));
+    return jsonResponse({ ok: false, op, error: body, status }, status);
   }
+  return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
 }
 
 /** Register the admin routes. Called by the route contributor's `buildRoutes`. */
@@ -138,7 +147,8 @@ export function mountAdminRouter(app: Hono, ctx: RouteContributorContext): void 
     const gated = await guard(c, op);
     if ('response' in gated) return gated.response;
 
-    const body = await readBody(c);
+    const body = await readBody(c, op);
+    if (body instanceof Response) return body;
     const request: AdminRpcRequest = { args: body.args };
     const registry = container.resolve(StudioDispatchRegistry);
     const opCtx = buildOpContext(c, gated.principal, config, container);
@@ -150,7 +160,8 @@ export function mountAdminRouter(app: Hono, ctx: RouteContributorContext): void 
     const gated = await guard(c, WS_TOKEN_PSEUDO_OP);
     if ('response' in gated) return gated.response;
 
-    const body = await readBody(c);
+    const body = await readBody(c, WS_TOKEN_PSEUDO_OP);
+    if (body instanceof Response) return body;
     const room = typeof body.room === 'string' ? body.room : undefined;
     const signer = container.resolve(AdminSubTokenSigner);
     const { token, exp } = await signer.mint({
