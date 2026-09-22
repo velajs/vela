@@ -66,15 +66,17 @@ identity decorators must return the real `undefined` value for anonymous
 requests. Lazy decorators inject explicit functions: call the function before
 checking its returned identity, rather than checking the function's truthiness.
 
+Denied guards therefore run before JSON/form parsing and validation pipes. A guard
+that intentionally verifies the raw body, such as `@SignedInvocation()`, may
+still read it through the framework's bounded capture seam.
+
+### Middleware route targets
+
 Middleware bound with `consumer.apply(...).forRoutes(...)` resolves its targets
 when routes are built. A controller target covers each of its routes and methods,
 including the global prefix and URI version. Path targets use Hono route patterns
 under the global prefix and also cover nested paths. `exclude()` patterns match
 exactly.
-
-Denied guards therefore run before JSON/form parsing and validation pipes. A guard
-that intentionally verifies the raw body, such as `@SignedInvocation()`, may
-still read it through the framework's bounded capture seam.
 
 ## Browser security
 
