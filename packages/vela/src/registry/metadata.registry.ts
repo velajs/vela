@@ -68,6 +68,9 @@ interface RegistryState {
   handlerMetaIndex: Map<string, Set<object>>;
   controllerComponents: ComponentByOwner<Constructor>;
   handlerComponents: HandlerComponentStore;
+  // Next default key for Reflector.createDecorator. Never reset: decorators
+  // created earlier keep their keys for the lifetime of the process.
+  nextDecoratorKey: number;
 }
 
 function createRegistryState(): RegistryState {
@@ -95,6 +98,7 @@ function createRegistryState(): RegistryState {
       interceptor: new Map(),
       filter: new Map(),
     },
+    nextDecoratorKey: 0,
   };
 }
 
@@ -117,7 +121,19 @@ function registryState(): RegistryState {
   // mixed package versions in one process) must not crash newer readers.
   state.classMetaIndex ??= new Map();
   state.handlerMetaIndex ??= new Map();
+  state.nextDecoratorKey ??= 0;
   return state;
+}
+
+/**
+ * Allocate a default metadata key for `Reflector.createDecorator`. The counter
+ * lives in the globalThis-anchored state, so duplicated package copies and HMR
+ * re-evaluation never hand out the same key twice. Unlike random values, it is
+ * also allowed in workerd's global scope, where decorators are declared.
+ */
+export function allocateDecoratorKey(): string {
+  const state = registryState();
+  return `vela:custom:${state.nextDecoratorKey++}`;
 }
 
 export class MetadataRegistry {

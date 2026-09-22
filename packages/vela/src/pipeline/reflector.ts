@@ -1,4 +1,4 @@
-import { MetadataRegistry } from '../registry/metadata.registry';
+import { MetadataRegistry, allocateDecoratorKey } from '../registry/metadata.registry';
 import type { Constructor } from '../registry/types';
 import type { ExecutionContext } from './types';
 
@@ -60,18 +60,25 @@ export function SetMetadata<V = unknown>(key: string, value: V) {
 export class Reflector {
   /**
    * Create a type-safe decorator that sets metadata with a typed key.
+   * Without `options.key`, the key is allocated from a process-wide counter,
+   * so declaring decorators at module scope is safe on Workers too.
    *
    * @example
    * ```ts
    * const Roles = Reflector.createDecorator<string[]>();
-   * // Roles(['admin']) — class or method decorator
-   * // reflector.get(Roles, context) — typed as string[] | undefined
+   *
+   * @Roles(['admin']) // class or method decorator
+   * @Controller('/admin')
+   * class AdminController {}
+   *
+   * // In a guard: typed as string[] | undefined
+   * const roles = new Reflector().get(Roles, context);
    * ```
    */
   static createDecorator<TParam = unknown>(
     options?: CreateDecoratorOptions,
   ): ReflectableDecorator<TParam> {
-    const key = options?.key ?? `vela:custom:${crypto.randomUUID()}`;
+    const key = options?.key ?? allocateDecoratorKey();
     const decorator = (value: TParam) => SetMetadata(key, value);
     (decorator as ReflectableDecorator<TParam>).KEY = key;
     return decorator as ReflectableDecorator<TParam>;
