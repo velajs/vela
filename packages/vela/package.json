@@ -129,6 +129,7 @@
     "@vitest/runner": "catalog:",
     "@vitest/snapshot": "catalog:",
     "intl-messageformat": "^11.2.9",
+    "miniflare": "5.20260918.0-alpha",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",
     "publint": "catalog:",
