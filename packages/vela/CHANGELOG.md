@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.26.0
+
+### Minor Changes
+
+- efdf854: Add opt-in asynchronous response caching with explicit trusted partitions, bounded JSON replay, and generic scoped generation-based invalidation. Preserve the synchronous CacheService API and provide an independent optional KV invalidation adapter with documented eventual-consistency limits. Preserve absolute expiry during tier backfill and KV physical retention, and fence fills that race with visible invalidation.
+- 4a6f5df: Add schema-bound multipart and URL-encoded endpoint bodies with native files,
+  repeated fields, explicit bounded parsing, and matching OpenAPI contracts. Generate
+  accurate form request types and encoding metadata, with an opt-in HTTP fetch adapter
+  that preserves caller transports and request options. Existing JSON endpoints and
+  Hono client exports remain compatible.
+
 ## 1.25.0
 
 ### Minor Changes

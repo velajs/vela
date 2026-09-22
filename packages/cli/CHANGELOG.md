@@ -1,5 +1,21 @@
 # @velajs/cli
 
+## 1.25.0
+
+### Minor Changes
+
+- 4a6f5df: Add schema-bound multipart and URL-encoded endpoint bodies with native files,
+  repeated fields, explicit bounded parsing, and matching OpenAPI contracts. Generate
+  accurate form request types and encoding metadata, with an opt-in HTTP fetch adapter
+  that preserves caller transports and request options. Existing JSON endpoints and
+  Hono client exports remain compatible.
+
+### Patch Changes
+
+- Updated dependencies [efdf854]
+- Updated dependencies [4a6f5df]
+  - @velajs/vela@1.26.0
+
 ## 1.24.0
 
 ### Minor Changes
