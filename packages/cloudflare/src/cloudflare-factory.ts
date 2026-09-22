@@ -71,8 +71,11 @@ export function cloudflareAdapter<T extends object>(
 
 /**
  * Build an application for one native Workers environment. Call inside a platform event.
- * A `{ create(env) }` root runs once per environment; applications built for the same
- * environment share its module graph but never its providers or lifecycle state.
+ * A `{ create(env) }` root runs once per environment, and every application built for
+ * that environment reuses its module graph. Values created in `create(env)`, such as
+ * `useValue` providers and module option objects, are therefore shared by all of those
+ * applications and Durable Object instances. Build per-application state in factories
+ * (`useFactory`, `forRootAsync`, `driver: () => ...`), which run for each application.
  */
 export async function createCloudflareApp<T extends object>(
   rootModule: CloudflareRoot<NoInfer<T>>,

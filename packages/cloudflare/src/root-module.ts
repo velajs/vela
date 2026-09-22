@@ -33,8 +33,9 @@ function forget(root: object, env: object, pending: Promise<Type>): void {
 
 /**
  * The module graph for one environment, shared by every application built
- * from it. Concurrent callers share one resolution; a rejected factory is
- * evicted so the next caller runs it again.
+ * from it, including the values `create(env)` placed in it. Concurrent callers
+ * share one resolution; a rejected factory is evicted so the next caller runs
+ * it again.
  */
 export function resolveCloudflareRoot<T extends object>(
   root: CloudflareRoot<T>,

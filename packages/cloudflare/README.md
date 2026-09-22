@@ -51,11 +51,13 @@ supported. The callback receives the native environment inferred
 from `envToken` and runs once per environment object in an isolate. The same form
 works with `VelaWebSocketDurableObject` for authenticated live gateways. The Worker
 and every Durable Object instance built from the same environment share the
-resulting module graph, but each application still gets its own providers and
-lifecycle state. A rejected factory or failed bootstrap is evicted, so the next
-event runs the factory again. Pass per-application objects that bind to one
-application, such as an in-process queue driver, as factories
-(`driver: () => inline()`). See the
+resulting module graph, including every value created inside `create(env)`:
+`useValue` providers, module option objects and anything they reference are the
+same objects in all of those applications. Only class and factory providers and
+lifecycle state are built per application. A rejected factory or failed bootstrap
+is evicted, so the next event runs the factory again. Build per-application state
+in factories: `useFactory` providers, `forRootAsync`, or driver factories such as
+`driver: () => inline()` for an in-process queue driver. See the
 [complete API starter](../../apps/api-starter/README.md) for D1, Better Auth, CRUD,
 the generated Hono client, live updates, and Studio inspection in one application.
 
