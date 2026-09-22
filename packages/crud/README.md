@@ -174,3 +174,13 @@ cross-database atomicity are unsupported. See the
 [multi-database guide](../../docs/multi-database.md) and the
 [two-D1 Worker](../../apps/multi-database/README.md) for routing, transaction limits,
 and per-database migration ownership.
+
+## Atomic write batches
+
+Optional `atomicBatch` adapters accept precomputed typed commands through
+`requireAtomicBatch` and `executeAtomicBatch`. Related writes and audit commands
+can share one database commit without callback transactions. CRUD resources may
+opt into **metadata-only** atomic auditing with
+`auditPersistence: { mode: 'atomic', snapshots: 'none' }`; ordinary post-commit
+auditing remains the default. See [atomic writes](../../docs/atomic-writes.md)
+for ownership, predicates, supported configurations, and committed error handling.

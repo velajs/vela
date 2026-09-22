@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   Controller,
+  ApiResponse,
   Endpoint,
   Get,
   Module,
@@ -40,6 +41,39 @@ it('runs generated hc calls through the actual schema-bound Vela endpoint pipeli
     output: schema(z.object({ id: z.string(), name: z.string() })),
     status: 201,
   });
+  let transforms = 0;
+  const uploadInput = z.object({
+    form: z.object({
+      title: z.string(),
+      tags: z.array(z.string()),
+      count: z.string().transform((value) => {
+        transforms++;
+        return Number(value);
+      }),
+      file: z.file(),
+      files: z.array(z.file()).optional(),
+    }),
+  });
+  const upload = defineEndpoint({
+    input: uploadInput,
+    output: z.object({
+      title: z.string(),
+      tags: z.array(z.string()),
+      count: z.number(),
+      names: z.array(z.string()),
+      contents: z.array(z.string()),
+    }),
+    body: { contentType: 'multipart/form-data', maxFileBytes: 1024 },
+    status: 201,
+  });
+  const encodedInput = z.object({
+    form: z.object({ title: z.string(), tags: z.array(z.string()).optional() }).optional(),
+  });
+  const encoded = defineEndpoint({
+    input: encodedInput,
+    output: z.object({ title: z.string(), tags: z.array(z.string()) }),
+    body: { contentType: 'application/x-www-form-urlencoded' },
+  });
   @Controller('/users')
   class Users {
     @Get('/:id')
@@ -51,6 +85,32 @@ it('runs generated hc calls through the actual schema-bound Vela endpoint pipeli
     @Endpoint(create)
     create(input: ReturnType<typeof create.input.parse>) {
       return { id: 'u1', name: input.json.name };
+    }
+    @Post('/upload')
+    @ApiResponse(400, {
+      description: 'Invalid input',
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { message: { type: 'string' } },
+        required: ['message'],
+      },
+    })
+    @Endpoint(upload)
+    async upload(input: z.output<typeof uploadInput>) {
+      const files = [input.form.file, ...(input.form.files ?? [])];
+      return {
+        title: input.form.title,
+        tags: input.form.tags,
+        count: input.form.count,
+        names: files.map((file) => file.name),
+        contents: await Promise.all(files.map((file) => file.text())),
+      };
+    }
+    @Post('/encoded')
+    @Endpoint(encoded)
+    encoded(input: z.output<typeof encodedInput>) {
+      return { title: input.form?.title ?? 'absent', tags: input.form?.tags ?? [] };
     }
   }
   @Module({ controllers: [Users] })
@@ -64,17 +124,43 @@ it('runs generated hc calls through the actual schema-bound Vela endpoint pipeli
     writeFileSync(
       join(dir, 'consumer.ts'),
       `
-      import { hc } from '@velajs/client/http';
+      import { hc, withFormEncoding } from '@velajs/client/http';
+      import { formEncodings } from './api.js';
       import type { AppType } from './api.js';
       export async function exercise(fetch: typeof globalThis.fetch) {
-        const client = hc<AppType>('https://api.test', { fetch });
+        const client = hc<AppType>('https://api.test', { fetch: withFormEncoding(formEncodings, fetch) });
         const response = await client.api.users[':id'].$get({ param: { id: 'u1' }, query: { tag: ['one', 'two'] }, header: { 'x-team': 'demo' } });
         const read = await response.json();
         const created = await client.api.users.$post({ json: { name: 'Ada' } });
         const status: 201 = created.status;
         const user = await created.json();
         user.name.toUpperCase();
-        return { read, user, status };
+        const uploaded = await client.api.users.upload.$post({ form: {
+          title: 'Files', tags: ['one', 'two'], count: '3',
+          file: new File(['a'], 'a.txt'), files: [new File(['b'], 'b.txt'), new Blob(['c'])],
+        } });
+        if (uploaded.status === 400) {
+          const message: string = (await uploaded.json()).message;
+          throw new Error(message);
+        }
+        const uploadStatus: 201 = uploaded.status;
+        const result = await uploaded.json();
+        const count: number = result.count;
+        const names: string[] = result.names;
+        const contents: string[] = result.contents;
+        const encoded = await (await client.api.users.encoded.$post({ form: { title: 'é & +', tags: ['a+b', 'c d'] } })).json();
+        const absent = await (await client.api.users.encoded.$post()).json();
+        if (false) {
+          // @ts-expect-error file fields must be files or blobs, never strings
+          client.api.users.upload.$post({ form: { title: 'Files', tags: [], count: '1', file: 'text' } });
+          // @ts-expect-error required file is missing
+          client.api.users.upload.$post({ form: { title: 'Files', tags: [], count: '1' } });
+          // @ts-expect-error transformed count is a string on the wire
+          client.api.users.upload.$post({ form: { title: 'Files', tags: [], count: 1, file: new Blob() } });
+          // @ts-expect-error repeated text fields do not accept a scalar
+          client.api.users.encoded.$post({ form: { title: 'Files', tags: 'one' } });
+        }
+        return { read, user, status, uploadStatus, count, names, contents, encoded, absent };
       }
     `,
     );
@@ -114,12 +200,26 @@ it('runs generated hc calls through the actual schema-bound Vela endpoint pipeli
       typeof consumer.exercise !== 'function'
     )
       throw new Error('Missing generated consumer');
-    const fetch: typeof globalThis.fetch = (input, init) => app.fetch(new Request(input, init));
+    const fetch: typeof globalThis.fetch = (input, init) => {
+      const request = new Request(input, init);
+      if (request.url.endsWith('/encoded') && request.body)
+        expect(request.headers.get('content-type')).toMatch(/^application\/x-www-form-urlencoded/);
+      if (request.url.endsWith('/upload'))
+        expect(request.headers.get('content-type')).toMatch(/^multipart\/form-data; boundary=/);
+      return app.fetch(request);
+    };
     expect(await consumer.exercise(fetch)).toEqual({
       read: { id: 'u1', tags: ['one', 'two'], team: 'demo' },
       user: { id: 'u1', name: 'Ada' },
       status: 201,
+      uploadStatus: 201,
+      count: 3,
+      names: ['a.txt', 'b.txt', 'blob'],
+      contents: ['a', 'b', 'c'],
+      encoded: { title: 'é & +', tags: ['a+b', 'c d'] },
+      absent: { title: 'absent', tags: [] },
     });
+    expect(transforms).toBe(1);
   } finally {
     await app.dispose();
     rmSync(dir, { recursive: true, force: true });

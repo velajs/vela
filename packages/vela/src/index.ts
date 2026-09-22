@@ -19,6 +19,10 @@ export {
 } from './openapi/index';
 export type {
   EndpointDefinition,
+  EndpointBodyOptions,
+  EndpointBodyContract,
+  EndpointFormLimits,
+  EndpointFormField,
   EndpointHandlerOutput,
   EndpointRequest,
   EndpointSchema,
@@ -241,6 +245,12 @@ export type { CorsOptions } from './cors/index';
 
 // Cache
 export {
+  ResponseCacheModule,
+  ResponseCacheService,
+  ResponseCacheInterceptor,
+  CacheResponse,
+  MemoryCacheInvalidationStore,
+  RESPONSE_CACHE_OPTIONS,
   CacheModule,
   CacheService,
   CacheInterceptor,
@@ -257,11 +267,20 @@ export {
 } from './cache/index';
 export type {
   Awaitable,
+  ResponseCacheScope,
+  CacheInvalidationStore,
+  CacheInvalidationResult,
+  ResponseCacheEntryOptions,
+  CacheResponseOptions,
+  ResponseCacheOptions,
+  ScopedResponseCache,
   CacheModuleOptions,
   CacheStore,
   AsyncCacheStore,
   AnyCacheStore,
   CacheEntry,
+  CacheEntryReader,
+  CacheEntryWriter,
 } from './cache/index';
 
 // Event Emitter

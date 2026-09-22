@@ -235,7 +235,7 @@ describe('generateClientContract', () => {
     document.paths['/users']!.post!.requestBody = {
       content: { 'multipart/form-data': { schema: { type: 'object' } } },
     };
-    expect(() => generateClientContract(document)).toThrow('application/json');
+    expect(() => generateClientContract(document)).toThrow('named fields');
   });
 
   it('keeps status ranges and default responses disjoint from explicit statuses', () => {

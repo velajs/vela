@@ -43,6 +43,8 @@ export const ADAPTER_CAPABILITIES = [
   'transactions',
   /** Core update/delete return rows from the same atomic SQL statement. */
   'atomicMutations',
+  /** Precomputed commands commit or roll back together; distinct from callbacks. */
+  'atomicBatch',
   /** `id: 'database'` — the database generates primary keys (RETURNING/serial). */
   'databaseGeneratedId',
   /** Keyset (cursor) pagination in `list`. Never emulated: absent = loud error. */
@@ -219,6 +221,8 @@ export interface CrudAdapter<Row = Record<string, unknown>> {
    */
   readonly capabilities: ReadonlySet<AdapterCapability>;
 
+  atomicBatch?: import('./atomic').AtomicBatchDriver<Row>;
+
   /** Ordinary request scope; no rollback guarantee. RLS adapters may open a real
    * transaction here to keep transaction-local tenant settings on reads. */
   requestScope<T>(fn: (scope: AdapterScope) => Promise<T>, ctx?: TransactionContext): Promise<T>;
@@ -273,6 +277,7 @@ export interface CrudAdapter<Row = Record<string, unknown>> {
 
 /** Maps each capability to the optional member whose presence it implies. */
 export const CAPABILITY_MEMBERS: Partial<Record<AdapterCapability, keyof RuntimeAdapter>> = {
+  atomicBatch: 'atomicBatch',
   aggregate: 'aggregate',
   nativeSearch: 'search',
   upsert: 'upsertOne',

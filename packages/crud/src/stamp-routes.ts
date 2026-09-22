@@ -380,6 +380,7 @@ export function toEngineConfig(
     updateFields: config.updateFields,
     versioningStore: config.versioningStore,
     auditStore: config.auditStore,
+    auditPersistence: config.auditPersistence,
     envelope: config.responseEnvelope,
     errorMappers: config.errorMappers,
   };

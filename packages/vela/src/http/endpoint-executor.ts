@@ -4,6 +4,7 @@ import type { RuntimeEndpointDefinition } from '../openapi/endpoint';
 import { parseSchemaAsync } from '../validation/parse-schema';
 import { SchemaValidationError } from '../validation/standard-schema';
 import type { PipeTransform } from '../pipeline/types';
+import { extractEndpointForm, limitEndpointBody } from './endpoint-body';
 
 /** Extract HTTP wire values before the endpoint parser establishes their types. */
 export async function extractEndpointInput(
@@ -30,18 +31,29 @@ export async function extractEndpointInput(
   let json: unknown;
   if (endpoint.hasJsonBody && context.req.raw.body !== null) {
     try {
-      json = await context.req.json();
+      json =
+        endpoint.body?.maxBytes !== undefined
+          ? JSON.parse(
+              new TextDecoder().decode(await limitEndpointBody(context, endpoint.body.maxBytes)),
+            )
+          : await context.req.json();
     } catch (error) {
       if (error instanceof SyntaxError) throw new BadRequestException('Malformed JSON body');
       throw error;
     }
   }
 
+  const form =
+    endpoint.body && endpoint.body.contentType !== 'application/json'
+      ? await extractEndpointForm(context, endpoint.body)
+      : undefined;
+
   let input: unknown = {
     ...(endpoint.inputSchema.properties?.param ? { param: context.req.param() } : {}),
     ...(endpoint.inputSchema.properties?.query ? { query } : {}),
     ...(endpoint.inputSchema.properties?.header ? { header: context.req.header() } : {}),
     ...(endpoint.hasJsonBody && json !== undefined ? { json } : {}),
+    ...(form !== undefined ? { form } : {}),
   };
   for (const pipe of pipes) {
     // This route owns validation. Leaving metatype absent prevents a global

@@ -29,6 +29,18 @@ a trusted outer proxy enforces an equivalent bound. Production Node runtimes
 raised above the secure defaults, when a streaming limit is disabled, or when a
 WebSocket gateway opts out of Origin isolation with `allowedOrigins: '*'`.
 
+`defineEndpoint` form contracts add bounded parsing after guards. Set
+`body.contentType` to `multipart/form-data` or `application/x-www-form-urlencoded`
+and optionally tighten `maxBytes`, `maxFields`, `maxFieldBytes`, `maxFiles`, and
+`maxFileBytes`. Defaults are 1 MiB encoded bytes, 100 text entries, 64 KiB per text
+entry (including its UTF-8 name), 10 files, and 1 MiB per file. Repeated entries
+count individually. Endpoint limits supplement the application policy; raise a
+route's outer limit too when accepting larger bodies. The encoded byte limit
+runs before native parsing; part limits run before schema validation. Unknown
+fields, duplicate scalar fields, and wrong text/file kinds return 400; a wrong
+media type returns 415; size/count violations return 413. See
+[form contracts](client/HTTP.md#form-bodies-and-uploads).
+
 ## Request execution order and parameters
 
 HTTP requests run in this order:
@@ -46,7 +58,7 @@ identity decorators must return the real `undefined` value for anonymous
 requests. Lazy decorators inject explicit functions: call the function before
 checking its returned identity, rather than checking the function's truthiness.
 
-Denied guards therefore run before JSON parsing and validation pipes. A guard
+Denied guards therefore run before JSON/form parsing and validation pipes. A guard
 that intentionally verifies the raw body, such as `@SignedInvocation()`, may
 still read it through the framework's bounded capture seam.
 
@@ -82,6 +94,11 @@ Credential-bearing requests bypass caching unless `CacheModule.forRoot` provides
 a stable `varyBy(request)` principal/tenant value. Vela hashes that value before
 keying. `@CacheKey` is a suffix beneath host + canonical path/query, and
 responses that set cookies are never stored.
+
+For asynchronous stores and explicit scoped invalidation, use
+[`ResponseCacheModule` and `@CacheResponse`](caching.md). Its scope resolver runs
+after guards, private scopes require trusted identity/tenant dimensions, and
+cache failures cannot turn committed writes into reported rollbacks.
 
 ## Signed URLs
 

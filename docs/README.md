@@ -17,6 +17,8 @@ HTTP client, live queries, and Studio in a runnable Workers application.
   discovery, entrypoints, and lazy initialization.
 - [Runtime values and types](types.md): schema descriptors, request context,
   validation, and typed contracts.
+- [Response caching](caching.md): asynchronous stores, trusted partitions, tags,
+  expiry, and explicit post-commit invalidation.
 - [Response serialization](serialization.md): async output schemas and explicit
   projections for domain objects, including private state.
 - [Dependency injection](dependency-injection.md): registration ownership,
@@ -43,6 +45,7 @@ HTTP client, live queries, and Studio in a runnable Workers application.
 - [Live clients](client/README.md): subscriptions, optimistic updates, offline
   mutations, and React integration.
 - [CRUD](crud/README.md): resources, adapters, authorization, and data safety.
+- [Atomic writes](atomic-writes.md): typed batches and optional atomic metadata-only audits.
 - [Multiple databases](multi-database.md): typed registration, resource routing,
   owned transactions, and separate migrations.
 - [Domain event sourcing](event-sourcing.md): replayable business history, projections,

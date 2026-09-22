@@ -7,3 +7,5 @@ export const CACHE_MODULE_OPTIONS = new InjectionToken<CacheModuleOptions>('CACH
 export const CACHEABLE_METADATA = 'vela:cacheable';
 export const CACHE_KEY_METADATA = 'vela:cache-key';
 export const CACHE_TTL_METADATA = 'vela:cache-ttl';
+
+export const RESPONSE_CACHE_METADATA = 'vela:response-cache';

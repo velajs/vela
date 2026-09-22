@@ -27,7 +27,24 @@ class ProductsController {
 Schemas can use Standard Schema (including async refinements) or legacy parsers.
 JSON Schema conversion is separate: use `defineDto` with `jsonSchema` or
 `schemaConverter(direction)` when the library cannot export its wire shape.
-Endpoint input docs use the input direction; response docs use the output direction. Input groups are `param`, `query`, `header`, and `json`. The dispatcher validates input after guards and validates the final result after interceptors. Invalid input returns 400; invalid output returns 500. An endpoint owns its status and argument parsing, so do not combine it with parameter decorators, `@HttpCode`, or `@Redirect` on the same method. JSON is the default, even for strings and null; string outputs can opt into `format: 'text'`.
+Endpoint input docs use the input direction; response docs use the output direction. Input groups are `param`, `query`, `header`, and either `json` or `form`. The dispatcher validates input after guards and validates the final result after interceptors. Invalid input returns 400; invalid output returns 500. An endpoint owns its status and argument parsing, so do not combine it with parameter decorators, `@HttpCode`, or `@Redirect` on the same method. JSON is the default response, even for strings and null; string outputs can opt into `format: 'text'`.
+
+For forms, use `defineEndpoint({ input: z.object({ form: z.object({ title:
+z.string(), tags: z.array(z.string()), file: z.file().optional() }) }), output,
+body: { contentType: 'multipart/form-data', maxBytes: 1048576, maxFiles: 4,
+maxFileBytes: 262144 } })`. URL-encoded bodies select
+`application/x-www-form-urlencoded` and cannot contain files. Input wire fields
+must be strings/binary files or arrays; use string transforms for handler numbers.
+Make fields or the whole form optional in the schema. Repeated exact keys become
+arrays even with one entry; missing fields remain absent. Required arrays need an
+entry; empty client arrays send none. No nested decoding or mixed text/file unions.
+Unknown fields, duplicate scalars and incorrect text/file kinds fail with 400.
+Malformed forms return 400, incorrect media types 415, exceeded limits 413.
+Defaults are 1 MiB total encoded bytes, 100 text entries, 64 KiB per text entry
+including its UTF-8 name, 10 files, 1 MiB per file. Override positive integers via
+`maxBytes`, `maxFields`, `maxFieldBytes`, `maxFiles`, `maxFileBytes`; the application
+body policy still applies. `defineDto` can supply a directional binary schema
+converter for other libraries. Native File values have no storage coupling.
 
 ## Parameter decorators with named descriptors
 

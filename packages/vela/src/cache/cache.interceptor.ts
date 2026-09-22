@@ -6,6 +6,7 @@ import {
   CACHE_MANAGER,
   CACHE_MODULE_OPTIONS,
   CACHEABLE_METADATA,
+  RESPONSE_CACHE_METADATA,
   CACHE_KEY_METADATA,
   CACHE_TTL_METADATA,
 } from './cache.tokens';
@@ -31,6 +32,10 @@ export class CacheInterceptor implements NestInterceptor {
     const cacheable = this.reflector.getAllAndOverride<boolean>(CACHEABLE_METADATA, context);
     if (cacheable !== true || request.method !== 'GET') {
       return next.handle();
+    }
+
+    if (this.reflector.getAllAndOverride(RESPONSE_CACHE_METADATA, context)) {
+      throw new TypeError('Use only @CacheResponse on async response-cache routes.');
     }
 
     const credentialed = Boolean(

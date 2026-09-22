@@ -1,4 +1,5 @@
 import { bindAdapter } from '@velajs/crud/adapter';
+import { atomicBatchDriver } from './atomic';
 /**
  * `@velajs/crud-drizzle` — Drizzle ORM `CrudAdapter` (sqlite / pg / mysql).
  *
@@ -135,6 +136,7 @@ const CAPABILITIES: ReadonlySet<AdapterCapability> = new Set([
   'nestedPredicates',
   'transactions',
   'atomicMutations',
+  'atomicBatch',
   'databaseGeneratedId',
   'cursor',
   'aggregate',
@@ -194,6 +196,12 @@ export function drizzleAdapter(
 ): CrudAdapter<Row> {
   const parseRow = config.parseRow ?? readRow;
   const owner = config.transactionOwner ?? config.db;
+  // Synchronous SQLite callbacks cannot contain awaited statements. They keep
+  // their native escape hatch but must not advertise this async batch driver.
+  const supportsAtomicBatch =
+    config.driver === 'd1' ||
+    config.dialect === 'pg' ||
+    (config.dialect !== 'mysql' && 'resultKind' in config.db && config.db.resultKind === 'async');
   if (config.atomicUpsert && config.dialect === 'mysql')
     throw new TypeError('Atomic upsert requires SQLite or PostgreSQL');
   if (
@@ -203,7 +211,9 @@ export function drizzleAdapter(
     throw new Error('D1 requires sqlite and cannot use onOpenTransaction');
   }
   const nativeCapabilities = [...CAPABILITIES].filter(
-    (cap) => config.atomicUpsert === true || (cap !== 'upsert' && cap !== 'scopedUpsert'),
+    (cap) =>
+      (cap !== 'atomicBatch' || supportsAtomicBatch) &&
+      (config.atomicUpsert === true || (cap !== 'upsert' && cap !== 'scopedUpsert')),
   );
   const capabilities =
     config.driver === 'd1'
@@ -215,7 +225,11 @@ export function drizzleAdapter(
       : config.dialect === 'mysql'
         ? new Set(
             nativeCapabilities.filter(
-              (cap) => cap !== 'atomicMutations' && cap !== 'upsert' && cap !== 'scopedUpsert',
+              (cap) =>
+                cap !== 'atomicBatch' &&
+                cap !== 'atomicMutations' &&
+                cap !== 'upsert' &&
+                cap !== 'scopedUpsert',
             ),
           )
         : new Set(nativeCapabilities);
@@ -552,6 +566,19 @@ export function drizzleAdapter(
         }),
     requestScope,
     transaction,
+    ...(!supportsAtomicBatch
+      ? {}
+      : {
+          atomicBatch: atomicBatchDriver({
+            owner: config.db,
+            driver: config.driver,
+            table,
+            primaryKeys,
+            where: (lookup) => lookupWhere(lookup, false),
+            parse: parseRow,
+            open: config.onOpenTransaction,
+          }),
+        }),
 
     async create(input, scope) {
       const db = handle(scope);

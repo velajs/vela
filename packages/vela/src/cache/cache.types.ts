@@ -15,8 +15,8 @@ export interface CacheModuleOptions {
   varyBy?: (request: Request) => Awaitable<string | undefined>;
   /**
    * Custom SYNC backing store (replaces the default in-memory store). For async
-   * (KV/tiered) caching use {@link AsyncCacheStore} + `TieredCacheStore`
-   * programmatically — the interceptor/CacheService path is synchronous.
+   * (KV/tiered) response caching use `ResponseCacheModule` + `@CacheResponse()`.
+   * The legacy CacheService/CacheInterceptor path stays synchronous.
    */
   store?: CacheStore;
 }
@@ -35,8 +35,8 @@ export interface CacheStore {
 /**
  * Asynchronous cache backing store (additive). Implemented by remote/tiered
  * stores (`TieredCacheStore`, and `KVCacheStore` in `@velajs/cloudflare`) where
- * reads/writes are inherently async. Use it programmatically — inject the store
- * under your own token — rather than as the synchronous `CACHE_MANAGER`.
+ * reads/writes are inherently async. Use ResponseCacheModule for response caching
+ * or inject it under your own token, never the synchronous CACHE_MANAGER.
  */
 export interface AsyncCacheStore {
   get(key: string): Promise<unknown>;
@@ -51,4 +51,14 @@ export type AnyCacheStore = CacheStore | AsyncCacheStore;
 export interface CacheEntry<T = unknown> {
   value: T;
   expiresAt: number;
+}
+
+/** Optional read capability used for expiry-preserving tier backfill. Unknown expiry is never backfilled. */
+export interface CacheEntryReader {
+  getEntry(key: string): Awaitable<{ value: unknown; expiresAt?: number } | undefined>;
+}
+
+/** Optional absolute-expiry write capability. Required on destination tiers for safe backfill. */
+export interface CacheEntryWriter {
+  setEntry(key: string, entry: CacheEntry): Awaitable<void>;
 }

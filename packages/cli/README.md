@@ -173,7 +173,7 @@ vela client generate --out src/api.generated.ts --strict --check
 vela client generate --input openapi.json --out src/api.generated.ts
 ```
 
-The generated file contains only types and imports `HttpApp` from `@velajs/client/http`. On the frontend:
+The generated file imports `HttpApp` from `@velajs/client/http`. JSON-only contracts contain only types; form contracts also export `formEncodings`. On the frontend:
 
 ```ts
 import { hc } from '@velajs/client/http';
@@ -185,5 +185,15 @@ const user = await response.json();
 ```
 
 Generate with the current Vela exporter to include global prefixes, route versions, `@HttpCode`, and query DTO fields. Use the server origin for `hc`; prefixes are already in the generated paths. `@Endpoint(defineEndpoint({ input, output, status }))` shares schemas with runtime validation. Named `defineDto` descriptors passed to `ValidationPipe` and `@ApiResponse` also supply documentation types; erased TypeScript interfaces and handler return types cannot be recovered from decorators. Missing schemas produce `unknown` and stderr warnings. `--strict` fails on these warnings before writing, and `--check` verifies the exact generated file without changing it.
+
+Form endpoints use `input.form` with `body.contentType` set to
+`multipart/form-data` or `application/x-www-form-urlencoded`. The generator emits
+string/file fields and repeated arrays with required/optional properties, retaining
+all response variants. Files become `File | Blob` only for multipart contracts.
+Use `fetch: withFormEncoding(formEncodings, suppliedFetch)` from
+`@velajs/client/http` so URL-encoded routes use their declared encoding;
+bare `hc` always serializes forms as multipart. Wrap per-call fetch overrides too.
+Custom part encodings, nested form values, and binary JSON bodies fail generation
+with diagnostics. See the [HTTP guide](../../docs/client/HTTP.md#form-bodies-and-uploads).
 
 Supported: JSON bodies, JSON/text responses with status narrowing, string path/query/header inputs, repeated query arrays, component references, object/array/enum/union/intersection/nullable schemas. Unsupported encodings, custom serialization and unresolved references fail with a diagnostic. Global middleware/error responses must be documented or added with Hono's `ApplyGlobalResponse`. Generation does not validate server responses at runtime. Raw Hono mounts and live-query resolver contracts are not inferred.

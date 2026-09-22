@@ -18,4 +18,20 @@ export type {
   AsyncCacheStore,
   AnyCacheStore,
   CacheEntry,
+  CacheEntryReader,
+  CacheEntryWriter,
 } from './cache.types';
+
+export { ResponseCacheModule } from './response-cache.module';
+export { ResponseCacheService, RESPONSE_CACHE_OPTIONS } from './response-cache.service';
+export { ResponseCacheInterceptor, CacheResponse } from './response-cache.interceptor';
+export { MemoryCacheInvalidationStore } from './cache-invalidation.store';
+export type {
+  ResponseCacheScope,
+  CacheInvalidationStore,
+  CacheInvalidationResult,
+  ResponseCacheEntryOptions,
+  CacheResponseOptions,
+  ResponseCacheOptions,
+  ScopedResponseCache,
+} from './response-cache.types';

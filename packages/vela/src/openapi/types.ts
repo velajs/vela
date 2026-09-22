@@ -43,7 +43,20 @@ export interface OpenApiParameter {
 export interface OpenApiRequestBody {
   description?: string;
   required?: boolean;
-  content?: Record<string, { schema: JsonSchema }>;
+  content?: Record<
+    string,
+    {
+      schema: JsonSchema;
+      encoding?: Record<string, { style?: string; explode?: boolean }>;
+    }
+  >;
+  'x-vela-body-limits'?: {
+    maxBytes?: number;
+    maxFields?: number;
+    maxFieldBytes?: number;
+    maxFiles?: number;
+    maxFileBytes?: number;
+  };
 }
 
 export interface OpenApiResponse {

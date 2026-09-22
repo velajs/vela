@@ -36,6 +36,7 @@ interface MutationBuilder extends PromiseLike<unknown> {
   returning(): PromiseLike<Row[]>;
 }
 interface InsertBuilder {
+  select(query: SQL): MutationBuilder;
   values(values: Row | Row[]): MutationBuilder;
 }
 interface UpdateBuilder {

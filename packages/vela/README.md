@@ -284,3 +284,12 @@ MIT
 See the [edge capabilities guide](../../docs/edge-capabilities.md) for asynchronous
 validation, tenant admission, Cedar authorization, compound IDs, scoped cursors,
 commit hooks, encryption, and backend guarantees.
+
+## Asynchronous response caching
+
+Use `ResponseCacheModule.forRoot({ namespace, store, scope, invalidation? })` and
+`@CacheResponse({ ttl, tags })` for async memory/tiered/remote response caching.
+Inject `ResponseCacheService` for scoped reads and post-commit invalidation.
+The legacy `CacheService` API stays synchronous. See the
+[caching guide](../../docs/caching.md) for trusted partitions, failure behavior,
+expiry and distributed consistency guarantees.

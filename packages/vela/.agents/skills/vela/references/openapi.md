@@ -82,3 +82,15 @@ const api = hc<AppType>('https://api.example.com');
 ```
 
 Use the server origin: generated paths already include prefix/version segments. The client entrypoint re-exports Hono's client/types; do not cast the runtime Vela Hono instance into a fabricated route schema. Missing schemas become unknown or fail `--strict`; raw Hono mounts require their own contract. Read the client package's `HTTP.md` for supported wire formats and global error responses.
+
+Form endpoints emit the declared multipart/URL-encoded media type, required fields,
+binary file schemas, repeated-field encoding, and `x-vela-body-limits` on the request
+body. CLI generation adds a `formEncodings` value beside `AppType`. Configure
+`hc<AppType>(origin, { fetch: withFormEncoding(formEncodings, suppliedFetch) })`
+using the adapter from `@velajs/client/http`; Hono otherwise sends every `form`
+as multipart. Wrap per-call fetch overrides too. File inputs are `File | Blob`,
+handler files are native File values, and URL-encoded inputs contain only text.
+Do not set multipart Content-Type yourself; fetch supplies the boundary. The
+adapter preserves cancellation, credentials and caller-supplied native/browser
+transports, without Expo dependencies. Custom encodings and binary JSON fail
+generation rather than producing inaccurate file/string types.

@@ -88,3 +88,17 @@ wrappers may supply `transactionOwner` for a single shared physical boundary.
 D1 callback transactions remain unsupported. See
 [multiple databases](../../docs/multi-database.md) for registration, defaults,
 raw native access and migration ownership.
+
+## Atomic write batches and auditing
+
+Drizzle adapters advertise `atomicBatch` for D1 and asynchronous SQLite/PostgreSQL
+handles. D1 uses one native batch; SQL uses a real transaction. MySQL and
+synchronous SQLite handles do not advertise this capability. Commands from
+related tables and `DrizzleAuditStore.atomic.prepare(entry)` must use the exact
+same native Drizzle handle. Attached audit commands are conditional on the write
+matching a row, and an audit failure rolls back the complete batch.
+
+CRUD's opt-in `auditPersistence: { mode: 'atomic', snapshots: 'none' }` captures
+identity/context only; it never claims a previous-record snapshot from an outside
+read. See the [atomic write guide](../../docs/atomic-writes.md) for typed service
+examples, schema requirements, and limitations.
