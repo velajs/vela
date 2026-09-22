@@ -1,7 +1,8 @@
 import type { ExecutionContext } from 'hono';
 import { getConnInfo } from 'hono/cloudflare-workers';
-import { VelaFactory } from '@velajs/vela';
+import { SCHEDULE_DISPATCH, VelaFactory } from '@velajs/vela';
 import type {
+  Container,
   InjectionToken,
   RuntimeAdapter,
   VelaMiddlewareHandler,
@@ -27,6 +28,22 @@ export interface CreateCloudflareAppOptions<T extends object> extends Cloudflare
   env: NoInfer<T>;
 }
 
+/**
+ * Scheduled events invoke `@Cron` handlers directly, so a signed schedule
+ * policy would silently skip the signed route and its global guards.
+ */
+async function rejectSignedScheduleDispatch(container: Container): Promise<void> {
+  if (!container.has(SCHEDULE_DISPATCH)) return;
+  const dispatch = await container.resolveAsync(SCHEDULE_DISPATCH);
+  if (dispatch.kind !== 'signed') return;
+  throw new Error(
+    'A signed ScheduleModule dispatch is not supported by the Cloudflare adapter yet: scheduled ' +
+      'events invoke @Cron handlers directly, which would skip the signed route and its global ' +
+      "guards. Remove dispatch: { kind: 'signed' } from ScheduleModule.forRoot(), or call " +
+      'InternalDispatcher.run() from the @Cron handler to re-enter the signed route explicitly.',
+  );
+}
+
 /** Bind an application to one environment before provider factories and lifecycle hooks. */
 export function cloudflareAdapter<T extends object>(
   options: CreateCloudflareAppOptions<T>,
@@ -47,6 +64,7 @@ export function cloudflareAdapter<T extends object>(
     configureContainer: (container) => {
       registerCloudflareEnvironment(container, { token: options.envToken, env: options.env });
     },
+    onBootstrap: ({ container }) => rejectSignedScheduleDispatch(container),
   };
 }
 

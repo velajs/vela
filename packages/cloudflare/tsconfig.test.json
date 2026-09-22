@@ -21,6 +21,7 @@
     "src/__tests__/workers/websocket-runtime.test.ts",
     "src/__tests__/workers/pitr-runtime.test.ts",
     "src/__tests__/queue.test.ts",
+    "src/__tests__/signed-dispatch.test.ts",
     "src/__tests__/workers/module-queue-runtime.test.ts"
   ],
   "include": ["src/**/*.ts", "test-shims/**/*.ts"],

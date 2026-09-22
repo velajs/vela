@@ -65,12 +65,20 @@ leases and application idempotency remain separate concerns.
 `@QueueConsumer`, native `Queue` objects and `consumeQueueBatch` remain available
 for applications needing direct native batch control.
 
+`QueueModule` signed dispatch (`dispatch: { kind: 'signed', target }`) re-enters the
+signed route for batches the module consumes, so global guards apply. It needs a
+`consumers` mapping: bootstrap rejects signed dispatch on a producer-only driver,
+because bridge deliveries would skip the signed route.
+
 ## Scheduling and RPC
 
 Use `ScheduleModule.forRoot()` and `@Cron(expression, { dialect: 'cloudflare' })`.
 Declare the exact expression in that Worker's Wrangler triggers. Workers do not
 start Node timers, and importing the module does not provision a trigger.
 `@Scheduled` remains available for direct native controller access.
+The Cloudflare adapter does not support signed `ScheduleModule` dispatch yet and
+rejects it at bootstrap. To run a scheduled job through a signed route, call
+`InternalDispatcher.run()` from the `@Cron` handler.
 
 `RpcModule.forRoot({ authorize })` and `forRootAsync` serve registered `@Rpc`
 procedures through the existing schema-validated HTTP dispatcher. Named clients

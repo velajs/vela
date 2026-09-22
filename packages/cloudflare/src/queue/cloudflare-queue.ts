@@ -1,5 +1,6 @@
 import { observeMessage, parseQueueJob } from '@velajs/vela/queue';
 import type {
+  QueueDispatchFn,
   QueueDispatchResult,
   QueueDriver,
   QueueJob,
@@ -56,7 +57,11 @@ function nativeBatch(payload: unknown): {
   return { queue: payload.queue, messages };
 }
 
-/** Native sends are awaited. No buffering, implicit retry, or deferred error handling. */
+/**
+ * Native sends are awaited. No buffering, implicit retry, or deferred error handling.
+ * Only a driver with `consumers` consumes through QueueModule, so signed module
+ * dispatch without a consumer mapping fails at bootstrap instead of being skipped.
+ */
 export function cloudflareQueueDriver(
   bindings: CloudflareQueueBindings,
   options: CloudflareQueueDriverOptions = {},
@@ -86,12 +91,16 @@ export function cloudflareQueueDriver(
         meta: { logicalQueue: queue, binding },
       })),
     ],
-    async consume(payload, dispatch) {
-      const batch = nativeBatch(payload);
-      const queue = consumers.get(batch.queue);
-      if (!queue) throw new Error(`No consumer mapping for queue '${batch.queue}'.`);
-      await consumeQueueBatch(batch, (job) => dispatch(job), { queue });
-    },
+    ...(consumers.size > 0
+      ? {
+          async consume(payload: unknown, dispatch: QueueDispatchFn): Promise<void> {
+            const batch = nativeBatch(payload);
+            const queue = consumers.get(batch.queue);
+            if (!queue) throw new Error(`No consumer mapping for queue '${batch.queue}'.`);
+            await consumeQueueBatch(batch, (job) => dispatch(job), { queue });
+          },
+        }
+      : {}),
     async enqueue(job, options) {
       const queue = queues.get(job.queue);
       if (!queue) throw new Error(`No Cloudflare producer binding for queue '${job.queue}'.`);
