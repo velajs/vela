@@ -17,6 +17,7 @@
     "src/__tests__/cache-value-safety.test.ts",
     "src/__tests__/async-endpoint.test.ts",
     "src/__tests__/http-error-edge.test.ts",
+    "src/__tests__/request-context.test.ts",
     "src/__tests__/parse-schema.test.ts",
     "src/__tests__/standard-schema.test.ts",
     "src/__tests__/http-dispatch-boundaries.test.ts",
