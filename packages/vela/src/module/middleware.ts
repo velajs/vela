@@ -6,6 +6,12 @@ import type { Constructor, Type } from '../registry/types';
 export interface RouteInfo {
   path: string;
   method?: HttpMethod;
+  /**
+   * Match `path` as written, without the global prefix. Use it for routes
+   * served outside the prefix, such as RPC, WebSocket upgrade and OpenAPI
+   * document routes, or routes added to the Hono app directly.
+   */
+  absolute?: boolean;
 }
 
 export interface MiddlewareRouteDefinition {

@@ -961,8 +961,9 @@ export class RouteManager {
 
   // Consumer targets compile into a Hono router so they match with the same
   // `:param` / `*` semantics that route the request. A controller expands to
-  // its composed routes; a pattern resolves under the global prefix and, for
-  // forRoutes(), also covers the paths beneath it. `'*'` matches everything.
+  // its composed routes; a pattern resolves under the global prefix unless it
+  // is `absolute` and, for forRoutes(), also covers the paths beneath it.
+  // `'*'` matches everything.
   private compileRouteMatcher(
     targets: Array<RouteInfo | Constructor>,
     coverDescendants: boolean,
@@ -1000,9 +1001,9 @@ export class RouteManager {
         continue;
       }
       const path = normalizePath(target.path);
-      const pattern = joinPaths(this.globalPrefix, path);
+      const pattern = target.absolute ? path || '/' : joinPaths(this.globalPrefix, path);
       const prefix = this.globalPrefix.replace(/\/+$/, '');
-      if (prefix && (path === prefix || path.startsWith(`${prefix}/`))) {
+      if (!target.absolute && prefix && (path === prefix || path.startsWith(`${prefix}/`))) {
         console.warn(
           `[vela] Middleware route '${path}' resolves under the global prefix to ` +
             `'${pattern}'. Remove '${prefix}' from the route.`,

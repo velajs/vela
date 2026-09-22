@@ -305,6 +305,71 @@ describe('forRoutes(string | RouteInfo) uses Hono route patterns', () => {
   });
 });
 
+// Platform routes such as an RPC endpoint, WebSocket upgrades and OpenAPI
+// documents are registered outside the global prefix.
+describe('absolute RouteInfo targets skip the global prefix', () => {
+  async function createPlatformApp(configure: (consumer: MiddlewareConsumer) => void) {
+    @Controller('/admin')
+    class AdminController {
+      @Get(':id')
+      one() {
+        return { ok: true };
+      }
+    }
+
+    @Module({ providers: [RecordingMiddleware], controllers: [AdminController] })
+    class AppModule implements NestModule {
+      configure(consumer: MiddlewareConsumer) {
+        configure(consumer);
+      }
+    }
+    const app = await VelaFactory.create(AppModule, { globalPrefix: '/api' });
+    const hono = app.getHonoApp();
+    hono.post('/rpc', (c) => c.json({ ok: true }));
+    hono.get('/rpc/manifest', (c) => c.json({ ok: true }));
+    return async (method: string, path: string): Promise<number> =>
+      (await hono.request(path, { method })).status;
+  }
+
+  it('matches a route served outside the global prefix, and the paths beneath it', async () => {
+    const request = await createPlatformApp((consumer) => {
+      consumer.apply(RecordingMiddleware).forRoutes({ path: '/rpc', absolute: true });
+    });
+
+    expect(await request('POST', '/rpc')).toBe(200);
+    expect(await request('GET', '/rpc/manifest')).toBe(200);
+    expect(await request('GET', '/api/admin/1')).toBe(200);
+    expect(seen).toEqual(['POST /rpc', 'GET /rpc/manifest']);
+  });
+
+  it('keeps a relative target under the global prefix', async () => {
+    const request = await createPlatformApp((consumer) => {
+      consumer.apply(RecordingMiddleware).forRoutes('/rpc');
+    });
+
+    expect(await request('POST', '/rpc')).toBe(200);
+    expect(seen).toEqual([]);
+  });
+
+  it('filters by method and accepts a path that starts with the global prefix', async () => {
+    const request = await createPlatformApp((consumer) => {
+      consumer
+        .apply(RecordingMiddleware)
+        .exclude({ path: '/api/admin/0', absolute: true })
+        .forRoutes(
+          { path: '/rpc', method: HttpMethod.POST, absolute: true },
+          { path: '/api/admin/:id', absolute: true },
+        );
+    });
+
+    expect(await request('POST', '/rpc')).toBe(200);
+    expect(await request('GET', '/rpc/manifest')).toBe(200);
+    expect(await request('GET', '/api/admin/0')).toBe(200);
+    expect(await request('GET', '/api/admin/7')).toBe(200);
+    expect(seen).toEqual(['POST /rpc', 'GET /api/admin/7']);
+  });
+});
+
 describe('exclude() is an exact route-pattern match', () => {
   it('does not exclude routes nested below an excluded path', async () => {
     @Controller('/files')

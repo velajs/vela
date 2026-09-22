@@ -78,6 +78,18 @@ including the global prefix and URI version. Path targets use Hono route pattern
 under the global prefix and also cover nested paths. `exclude()` patterns match
 exactly.
 
+Some routes are served outside the global prefix: `mountOpenApi()` documents
+(`/openapi.json`, `/scalar`, `/docs`, `/redoc`), the `RpcModule` endpoint
+(`/rpc`), Cloudflare WebSocket gateway upgrade paths, Studio mounted with
+`absolute: true`, and routes added to the Hono app directly. Target them with
+`absolute: true`, which matches the path as written:
+
+```ts
+consumer
+  .apply(AuditMiddleware)
+  .forRoutes({ path: '/rpc', method: HttpMethod.POST, absolute: true });
+```
+
 ## Browser security
 
 Import `SecurityModule` for exact-origin CORS, credentialed unsafe-method Origin

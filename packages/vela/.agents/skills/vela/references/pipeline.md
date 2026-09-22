@@ -104,6 +104,7 @@ Route targets use Hono route patterns (`:id`, `*`) and resolve at route build:
 - `forRoutes(UsersController)` matches each of the controller's routes with its method, under the global prefix and URI version. A controller that declares no routes throws.
 - A string or `{ path, method }` target gets the global prefix and also covers the paths beneath it: `forRoutes('/users')` under `globalPrefix: '/api'` matches `/api/users` and `/api/users/42`. Write it without the prefix.
 - `exclude()` targets get the global prefix and match exactly: `exclude('/users/me')` does not exclude `/users/me/keys`.
+- `{ path, method?, absolute: true }` matches the path as written, for routes outside the global prefix: `mountOpenApi()` documents, the `RpcModule` endpoint, Cloudflare WebSocket upgrades and raw Hono routes.
 - A `GET` target also matches `HEAD`, which Hono serves with the GET handler. `'*'` matches every request.
 
 For authorization use the shared guards in `@velajs/authz/vela`; raw request headers are not proof of a role or permission.

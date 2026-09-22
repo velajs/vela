@@ -4503,6 +4503,8 @@ declare function contributesEntrypoints(x: unknown): x is ContributesEntrypoints
 interface RouteInfo {
   path: string;
   method?: HttpMethod;
+
+  absolute?: boolean;
 }
 interface MiddlewareRouteDefinition {
 
