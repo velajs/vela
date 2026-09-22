@@ -10,10 +10,14 @@ of the same registration share a value; resolutions from another module's regist
 Concurrent `resolveAsync` calls share construction only for the same singleton or request registration.
 Provider replacement creates a new registration and does not reuse the previous request value.
 
-A class provider keeps the scope its class declares with `@Injectable({ scope })`, whether it is
-listed directly or registered through `useClass`, including `APP_*` providers and exception handler
-classes. A `scope` set on the provider overrides the class declaration. Value and factory providers
-default to `Scope.SINGLETON`.
+Declare a class's scope once, with `@Injectable({ scope })` or `@Controller({ path, scope })`. Class
+decorators given no scope, such as `@Controller('/path')` or `@WebSocketGateway()`, never override a
+declared scope, so decorator order does not matter. Two different scopes on one class throw when the
+class is decorated.
+
+A class provider keeps the scope its class declares, whether it is listed directly or registered
+through `useClass`, including `APP_*` providers and exception handler classes. A `scope` set on the
+provider overrides the class declaration. Value and factory providers default to `Scope.SINGLETON`.
 
 `setRequestInstance(token, value)` explicitly seeds a value in one container. It overrides constructed
 request values for that token, including an intentional `undefined`. The seed still requires a visible

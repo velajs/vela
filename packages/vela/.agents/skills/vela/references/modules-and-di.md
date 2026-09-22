@@ -60,6 +60,8 @@ Tokens: mint with `new InjectionToken<T>('NAME')` (optionally `{ factory: () => 
 class RequestMarker { readonly id = crypto.randomUUID(); }
 ```
 
+Declare a class's scope once, with `@Injectable({ scope })` or `@Controller({ path, scope })`; decorator order does not matter, a decorator given no scope never overrides one, and two different scopes on one class throw.
+
 A `useClass` provider (including `APP_*` providers) inherits the scope its class declares; set `scope` on the provider to override it: `defineProvider(TOKEN, { useClass: Impl, scope: Scope.SINGLETON })`.
 
 **Request-scope bubbling:** any singleton that transitively depends on a request-scoped provider is automatically rebuilt per request (its effective scope becomes REQUEST). Each HTTP request gets a child container; request-scoped instances live there and are disposed at request end. Inject `REQUEST_CONTEXT` to read/write per-request state. Use `new RequestContextKey<Value>(description)` with `context.set(key, value)` / `context.get(key)`; raw string/symbol reads return unknown.

@@ -4538,6 +4538,8 @@ interface RouteMetadata {
 interface ControllerOptions {
   path?: string;
   version?: number | number[];
+
+  scope?: Scope;
 }
 interface ControllerMetadata {
   prefix: string;

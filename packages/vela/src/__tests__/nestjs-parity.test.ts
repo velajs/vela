@@ -5414,7 +5414,6 @@ describe('Request-scoped controller', () => {
   it('@Injectable({ scope: Scope.REQUEST }) on a controller creates one per request', async () => {
     const ctrlIds: number[] = [];
 
-    // @Injectable must come BEFORE @Controller so it's applied LAST (overriding SINGLETON scope)
     @Injectable({ scope: Scope.REQUEST })
     @Controller('/req-ctrl')
     class ReqScopeCtrl {
@@ -5439,6 +5438,60 @@ describe('Request-scoped controller', () => {
 
     expect(r1.id).not.toBe(r2.id);
     expect(ctrlIds.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('keeps the REQUEST scope when @Controller is applied after @Injectable', async () => {
+    @Controller('/req-ctrl-below')
+    @Injectable({ scope: Scope.REQUEST })
+    class ReqScopeCtrl {
+      readonly id = Math.random();
+
+      @Get() handle() {
+        return { id: this.id };
+      }
+    }
+
+    @Module({ controllers: [ReqScopeCtrl] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    const r1 = (await (await hono.request('/req-ctrl-below')).json()) as { id: number };
+    const r2 = (await (await hono.request('/req-ctrl-below')).json()) as { id: number };
+
+    expect(r1.id).not.toBe(r2.id);
+  });
+
+  it('@Controller({ path, scope: Scope.REQUEST }) creates one per request', async () => {
+    @Controller({ path: '/req-ctrl-option', scope: Scope.REQUEST })
+    class ReqScopeCtrl {
+      readonly id = Math.random();
+
+      @Get() handle() {
+        return { id: this.id };
+      }
+    }
+
+    @Module({ controllers: [ReqScopeCtrl] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    const r1 = (await (await hono.request('/req-ctrl-option')).json()) as { id: number };
+    const r2 = (await (await hono.request('/req-ctrl-option')).json()) as { id: number };
+
+    expect(r1.id).not.toBe(r2.id);
+  });
+
+  it('rejects conflicting scopes declared on one controller', () => {
+    expect(() => {
+      @Controller({ path: '/req-ctrl-conflict', scope: Scope.REQUEST })
+      @Injectable({ scope: Scope.TRANSIENT })
+      class ConflictingCtrl {}
+      return ConflictingCtrl;
+    }).toThrow(/conflicting scopes/);
   });
 });
 

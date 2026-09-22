@@ -1,4 +1,4 @@
-import type { HttpMethod } from '../constants';
+import type { HttpMethod, Scope } from '../constants';
 import type { Type } from '../container/types';
 import type { PipeType } from '../registry/types';
 
@@ -14,6 +14,11 @@ export interface RouteMetadata {
 export interface ControllerOptions {
   path?: string;
   version?: number | number[];
+  /**
+   * Controller lifetime, like `@Injectable({ scope })`. Defaults to
+   * `Scope.SINGLETON`; declaring a different scope elsewhere on the class throws.
+   */
+  scope?: Scope;
 }
 
 export interface ControllerMetadata {

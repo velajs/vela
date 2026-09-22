@@ -87,7 +87,7 @@ class AppModule {}
 ```ts
 import { Controller, Get, Post, Param, Body, SignedUrl, ParseIntPipe, ValidationPipe } from '@velajs/vela';
 
-@Controller({ path: '/users', version: 1 })     // options: { path?, version? } only
+@Controller({ path: '/users', version: 1 })     // options: { path?, version?, scope? } only
 class UsersController {
   @Get(':id', { name: 'users.show' })            // named route → URL gen + OpenAPI operationId
   show(@Param('id', ParseIntPipe) id: number) { return { id }; }
@@ -105,6 +105,7 @@ class UsersController {
 - Param decorators: `@Param/@Query/@Body/@Headers/@Cookie/@Cookies/@Ip/@RawBody/@Req/@Res` (pipes attach positionally). Response decorators: `@HttpCode`, `@Header`, `@Redirect`.
 - Named routes drive `UrlGeneratorService.urlFor(name, params, { query })` and `signedUrl(name, params, { expiresIn })`; augment `VelaRouteMap` for typed names. Signed URLs use `@SignedUrl()` + `URL_SIGNING_SECRET`.
 - Versioning is decorator-driven (`@Controller({ version })` + `@Version(2)`); global prefix is the `globalPrefix` create-option.
+- Controllers are singletons unless `@Controller({ path, scope })` or `@Injectable({ scope })` declares a scope (decorator order does not matter; two different scopes on one class throw).
 
 See `references/controllers-and-routing.md`.
 
