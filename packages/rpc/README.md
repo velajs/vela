@@ -27,6 +27,41 @@ export const greet = defineProcedure({
 
 Names have at least two dot-separated identifier segments, such as `users.find`. Each segment starts with a letter and may contain letters, numbers, `_` and `-`; the whole name is limited to 160 characters. Names are unique within an application. Duplicate registrations fail startup, including registrations of the same procedure in two modules.
 
+## Module configuration
+
+Import `RpcModule` from `@velajs/rpc/server` into the root module:
+
+```ts
+@Module({
+  imports: [RpcModule.forRoot({ path: '/rpc', authorize: 'public' })],
+  providers: [Greetings],
+})
+class AppModule {}
+```
+
+`forRootAsync({ imports, inject, useFactory })` resolves server options through DI.
+The module uses the same dispatcher and explicit exposure policy as the low-level
+adapter below, without applying guards or interceptors twice. Use either the
+module or adapter for a given endpoint, not both.
+
+Named clients are registered and exported as ordinary providers:
+
+```ts
+RpcClientModule.registerAsync({
+  name: 'catalog',
+  binding: 'CATALOG',
+  inject: [ENV],
+  useFactory: env => ({ url: 'https://catalog/rpc', fetch: env.CATALOG }),
+});
+// constructor(@Inject(rpcClientToken('catalog')) private catalog: RpcClient) {}
+```
+
+`register({ name, ...clientOptions })` accepts synchronous options. `binding` is
+optional deployment metadata; when declared, a fetch transport is required and
+`vela deploy check` checks that service binding in the selected environment.
+The browser entrypoint remains independent of the framework. See the
+[four-worker example](../../apps/module-workers/README.md).
+
 ## Register an ordinary provider
 
 ```ts

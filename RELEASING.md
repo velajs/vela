@@ -1,11 +1,11 @@
 # Vela releases
 
-The active release line is 1.x. Public workspace packages are published through
+The active release line is 2.x. Public workspace packages are published through
 GitHub Actions OIDC with signed provenance from this public source repository.
 `release-plan.json` records the packages and versions in each release.
-Breaking changes are accepted during this development phase; applications should
-use the current APIs described below. Release titles use plain versions, such as
-`Vela 1.22.1`.
+Breaking public API changes require a major version and migration documentation.
+Applications should use the current APIs described below. Release titles use plain versions, such as
+`Vela 2.0.0`.
 
 ## Current API requirements
 
@@ -29,6 +29,8 @@ use the current APIs described below. Release titles use plain versions, such as
 
 See [the core type guide](docs/types.md) and the
 [complete starter](apps/api-starter/README.md).
+
+See [module worker migration](docs/module-workers.md#migration) for the 2.x queue bootstrap and native delivery changes.
 
 ## Verification and artifacts
 
@@ -101,6 +103,11 @@ The edge consumer also checks named-database and typed service declarations plus
 inferred native storage bindings. Missing companion packages are packed for
 verification only. A package's future release must include compatible framework
 peer floors; successful companion checks do not publish those dependencies.
+
+The module-workers consumer builds four separate Workers from the exact core,
+Cloudflare and RPC archives, then exercises service bindings, native queue
+delivery, cron execution and bundle isolation in workerd. Its integrity proof is
+recorded in `consumer.json`.
 
 The API-capabilities consumer also installs the exact core, HTTP client, CLI,
 CRUD, and Drizzle adapter archives outside the workspace. It checks form request

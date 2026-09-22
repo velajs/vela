@@ -43,10 +43,20 @@ export interface QueueDriverBindHooks {
  */
 export interface QueueDriver {
   readonly kind: string;
+  /** Platform routes contributed by QueueModule; no platform types enter core. */
+  readonly entrypoints?: readonly QueueDriverEntrypoint[];
+  /** Await native delivery and settlement, using the module's dispatch policy. */
+  consume?(payload: unknown, dispatch: QueueDispatchFn): Promise<void>;
   enqueue(job: QueueJob, options?: AddJobOptions): Promise<void>;
   bind?(dispatch: QueueDispatchFn, hooks?: QueueDriverBindHooks): void;
   /** Release an application's binding at disposal. Optional for legacy drivers. */
   unbind?(): void;
+}
+
+export interface QueueDriverEntrypoint {
+  readonly kind: string;
+  readonly queue: string;
+  readonly meta: Readonly<Record<string, unknown>>;
 }
 
 /**

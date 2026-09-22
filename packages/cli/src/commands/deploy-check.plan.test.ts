@@ -21,6 +21,26 @@ const row = (kind: string, meta: unknown) => ({
 });
 
 describe('deployment alignment', () => {
+  it('checks module queue mappings, producers and service bindings in the selected environment', () => {
+    const snapshot = [
+      row('cf:queue:module', { queueName: 'tasks-staging', logicalQueue: 'tasks' }),
+      row('cf:queue:producer', { logicalQueue: 'tasks', binding: 'TASKS' }),
+      row('rpc:client', { name: 'catalog', binding: 'CATALOG' }),
+    ];
+    const valid = config({
+      queues: {
+        producers: [{ binding: 'TASKS', queue: 'tasks-staging' }],
+        consumers: [{ queue: 'tasks-staging' }],
+      },
+      services: [{ binding: 'CATALOG', service: 'catalog-staging' }],
+    });
+    expect(checkDeployment(valid, 'staging', snapshot).errors).toEqual([]);
+    expect(
+      checkDeployment(config(), 'staging', snapshot)
+        .errors.map((x) => x.code)
+        .sort(),
+    ).toEqual(['missing-queue-consumer', 'missing-queue-producer', 'missing-service-binding']);
+  });
   it('consumes the actual Vela entrypoint-list projection without constructing another app', async () => {
     let constructed = 0;
     @Injectable()

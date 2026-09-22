@@ -261,7 +261,7 @@ The worked example for ALL of this is the first-party queue module
 (`packages/vela/src/queue/`, `@velajs/vela/queue`): decorators via
 `createDiscoverableDecorator`, the `'queue'` entrypoint kind, per-job
 `runInEntrypointScope` + async-seam re-resolution (lazy-module compatible),
-`defineModule({ lazy: true })` with options-derived per-queue providers, and
+`defineModule` with options-derived per-queue providers and native transport contributions, and
 an import-audit test (`queue-openness.test.ts`) proving it never leaves the
 public API. Dispatch one unit of platform work with
 `dispatchQueueJob(container, app.entrypoints, job)`; after bootstrap the
@@ -356,3 +356,5 @@ read gateway instances at wiring time).
       coexist — test both.
 - [ ] If `lazy: true`: providers and hooks are fully sync, nothing
       self-drives, and construction does no dispatching — see "Lazy modules".
+
+See [module-based Workers](module-workers.md) for queue, cron, RPC and deployment composition.

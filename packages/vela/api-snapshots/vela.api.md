@@ -410,10 +410,19 @@ interface QueueDriverBindHooks {
 
 interface QueueDriver {
   readonly kind: string;
+
+  readonly entrypoints?: readonly QueueDriverEntrypoint[];
+
+  consume?(payload: unknown, dispatch: QueueDispatchFn): Promise<void>;
   enqueue(job: QueueJob, options?: AddJobOptions): Promise<void>;
   bind?(dispatch: QueueDispatchFn, hooks?: QueueDriverBindHooks): void;
 
   unbind?(): void;
+}
+interface QueueDriverEntrypoint {
+  readonly kind: string;
+  readonly queue: string;
+  readonly meta: Readonly<Record<string, unknown>>;
 }
 
 type QueueDispatchMode = {
@@ -490,6 +499,8 @@ export declare class QueueDispatchBinding {
   #private;
   constructor(container: Container, discovery: DiscoveryService, driver: QueueDriver, queues: string[], dispatch?: QueueDispatchMode);
   dispose(): void;
+
+  dispatch(job: QueueJob): Promise<void>;
 }
 
 interface QueueDispatchOptions {
@@ -583,7 +594,7 @@ export declare function observeBatch<Body = unknown>(messages: readonly QueueMes
 
 export declare function parseQueueJob(value: unknown, deliveryAttempt?: number): QueueJob;
 
-export { type AddJobOptions, type BatchDisposition, type InlineQueueDriver, type InlineQueueOptions, type MessageDisposition, type MessageOutcome, type ObserveMessageOptions, type ObservedBatch, type ObservedMessage, type ProcessMetadata, type ProcessorMetadata, MODULE_OPTIONS_TOKEN as QUEUE_MODULE_OPTIONS, type QueueDispatchFn, type QueueDispatchMode, type QueueDispatchOptions, type QueueDispatchResult, type QueueDriver, type QueueDriverBindHooks, type QueueEntry, type QueueJob, type QueueJobDefinition, type QueueJobInput, type QueueJobOutput, type QueueMessageLike, type QueueModuleOptions, type QueueProcessDecorator };
+export { type AddJobOptions, type BatchDisposition, type InlineQueueDriver, type InlineQueueOptions, type MessageDisposition, type MessageOutcome, type ObserveMessageOptions, type ObservedBatch, type ObservedMessage, type ProcessMetadata, type ProcessorMetadata, MODULE_OPTIONS_TOKEN as QUEUE_MODULE_OPTIONS, type QueueDispatchFn, type QueueDispatchMode, type QueueDispatchOptions, type QueueDispatchResult, type QueueDriver, type QueueDriverBindHooks, type QueueDriverEntrypoint, type QueueEntry, type QueueJob, type QueueJobDefinition, type QueueJobInput, type QueueJobOutput, type QueueMessageLike, type QueueModuleOptions, type QueueProcessDecorator };
 ```
 
 ## `./schedule-node`
@@ -2380,6 +2391,8 @@ interface RouteContributorContext {
   globalPrefix: string;
 
   globalGuards: CanActivate[];
+
+  getGlobalComponents: () => ReturnType<RouteManager['getGlobalComponents']>;
 
   container: Container;
 

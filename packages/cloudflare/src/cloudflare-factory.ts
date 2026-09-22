@@ -55,13 +55,36 @@ export async function createCloudflareApp<T extends object>(
   rootModule: CloudflareRoot<NoInfer<T>>,
   options: CreateCloudflareAppOptions<T>,
 ): Promise<CloudflareApplication<T>> {
-  const velaApp = await VelaFactory.create(resolveCloudflareRoot(rootModule, options.env), {
+  const velaApp = await VelaFactory.create(await resolveCloudflareRoot(rootModule, options.env), {
     globalPrefix: options.globalPrefix,
     security: options.security,
     middleware: options.middleware?.(options.env),
     adapters: [cloudflareAdapter(options)],
   });
   const app = new CloudflareApplication(velaApp, options.env);
+  const consumers = new Map<string, string>();
+  for (const entry of [
+    ...app.entrypoints.ofKind('cf:queue'),
+    ...app.entrypoints.ofKind('cf:queue:module'),
+  ]) {
+    const meta = entry.meta;
+    if (
+      typeof meta !== 'object' ||
+      meta === null ||
+      !('queueName' in meta) ||
+      typeof meta.queueName !== 'string'
+    ) {
+      await app.close();
+      throw new TypeError('Invalid queue consumer metadata.');
+    }
+    const previous = consumers.get(meta.queueName);
+    // Existing native fan-out remains available; module routing owns a queue exclusively.
+    if (previous && (previous === 'cf:queue:module' || entry.kind === 'cf:queue:module')) {
+      await app.close();
+      throw new Error(`Ambiguous consumer ownership for queue '${meta.queueName}'.`);
+    }
+    consumers.set(meta.queueName, entry.kind);
+  }
   app.scanInstances(velaApp.getInstances());
   registerWebSocketRoutes(app.getHonoApp(), app.getWsGatewayRoutes());
   return app;

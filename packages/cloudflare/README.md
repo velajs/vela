@@ -46,7 +46,8 @@ separate applications, including separate providers, lifecycle state, and live
 drivers. A failed construction is evicted and the next event retries.
 
 When module configuration itself needs bindings, pass `{ create: (env) => AppModule }`
-instead of a static class. The callback receives the native environment inferred
+instead of a static class. Dynamic module roots and asynchronous factories are also
+supported. The callback receives the native environment inferred
 from `envToken` and runs once per successful environment bootstrap. The same form
 works with `VelaWebSocketDurableObject` for authenticated live gateways. See the
 [complete API starter](../../apps/api-starter/README.md) for D1, Better Auth, CRUD,
@@ -84,6 +85,15 @@ environment.
 
 `cloudflareAdapter({ env, envToken })` provides the same bootstrap and request
 contract when composing `VelaFactory.create` directly.
+
+## Module-based queues, cron and RPC
+
+Import `QueueModule` and configure `cloudflareQueueDriver` consumer mappings to
+connect native batches directly to `@Processor`/`@Process` providers. Use
+`ScheduleModule.forRoot()` and `@Cron()` for native scheduled work. The
+[module guide](../../docs/module-workers.md) covers producer-only and consumer-only
+Workers, RPC modules, migration, and deployment checks. Native decorators remain
+available as escape hatches.
 
 ## Managed queue and cron work
 

@@ -1,0 +1,27 @@
+{
+  "name": "@velajs/example-module-workers",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test:workers": "node scripts/proof.mjs",
+    "dev": "pnpm build && wrangler dev -c wrangler.api.jsonc -c wrangler.catalog.jsonc -c wrangler.accounts.jsonc -c wrangler.jobs.jsonc"
+  },
+  "dependencies": {
+    "@velajs/cloudflare": "workspace:*",
+    "@velajs/rpc": "workspace:*",
+    "@velajs/vela": "workspace:*",
+    "hono": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "catalog:",
+    "@swc/core": "catalog:",
+    "esbuild": "^0.28.1",
+    "miniflare": "5.20260918.0-alpha",
+    "typescript": "catalog:",
+    "wrangler": "catalog:"
+  }
+}

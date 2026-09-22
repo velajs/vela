@@ -70,7 +70,7 @@ export function VelaWebSocketDurableObject<T extends object>(
         // Older runtimes without auto-response — fine, protocol pings still work.
       }
       this.ready = ctx.blockConcurrencyWhile(async () => {
-        const runtime = await buildDoRuntime(resolveCloudflareRoot(rootModule, env), ctx, {
+        const runtime = await buildDoRuntime(await resolveCloudflareRoot(rootModule, env), ctx, {
           ...options,
           env,
         });

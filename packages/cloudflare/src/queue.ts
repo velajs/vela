@@ -4,4 +4,5 @@ export type {
   CloudflareQueueBindings,
   CloudflareQueueProducer,
   ConsumeQueueBatchOptions,
+  CloudflareQueueDriverOptions,
 } from './queue/cloudflare-queue';

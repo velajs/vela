@@ -434,6 +434,43 @@ importers:
         specifier: 'catalog:'
         version: 7.0.2
 
+  apps/module-workers:
+    dependencies:
+      '@velajs/cloudflare':
+        specifier: workspace:*
+        version: link:../../packages/cloudflare
+      '@velajs/rpc':
+        specifier: workspace:*
+        version: link:../../packages/rpc
+      '@velajs/vela':
+        specifier: workspace:*
+        version: link:../../packages/vela
+      hono:
+        specifier: 'catalog:'
+        version: 4.13.8
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: 'catalog:'
+        version: 5.20260920.1
+      '@swc/core':
+        specifier: 'catalog:'
+        version: 1.15.43
+      esbuild:
+        specifier: ^0.28.1
+        version: 0.28.2
+      miniflare:
+        specifier: 5.20260918.0-alpha
+        version: 5.20260918.0-alpha(@types/node@24.13.3)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      wrangler:
+        specifier: 'catalog:'
+        version: 4.135.0(@cloudflare/workers-types@5.20260920.1)(@types/node@24.13.3)
+
   apps/multi-database:
     dependencies:
       '@velajs/cloudflare':

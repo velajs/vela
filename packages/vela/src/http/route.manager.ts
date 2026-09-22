@@ -891,6 +891,8 @@ export class RouteManager {
     // `await import(variable)` as a runtime import Cloudflare Workers cannot
     // resolve.
     const contributors = getRouteContributors();
+    const resolveGlobalGuards = () =>
+      instantiateMany<CanActivate>(this.globalGuards, this.container);
     for (const { controller, metadata, routes } of this.controllers) {
       for (const contributor of contributors) {
         const meta = getMetadata(contributor.claimsMetaKey, controller);
@@ -901,7 +903,10 @@ export class RouteManager {
           controllerPrefix: metadata.prefix,
           meta,
           globalPrefix: this.globalPrefix,
-          globalGuards: instantiateMany<CanActivate>(this.globalGuards, this.container),
+          get globalGuards() {
+            return resolveGlobalGuards();
+          },
+          getGlobalComponents: () => this.getGlobalComponents(),
           container: this.container,
           joinPaths,
         });

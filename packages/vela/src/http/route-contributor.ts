@@ -3,6 +3,7 @@ import type { Container } from '../container/container';
 import type { Type } from '../container/types';
 import type { OpenApiPathItem } from '../openapi/types';
 import type { CanActivate } from '../pipeline/types';
+import type { RouteManager } from './route.manager';
 
 /**
  * Context passed to {@link RouteContributor.buildRoutes} for each controller
@@ -21,6 +22,8 @@ export interface RouteContributorContext {
   globalPrefix: string;
   /** Global guard instances, pre-resolved from the root container. */
   globalGuards: CanActivate[];
+  /** Unresolved component registrations, for one invocation-scoped pipeline. */
+  getGlobalComponents: () => ReturnType<RouteManager['getGlobalComponents']>;
   /** The app's root container — resolve controller/services from here. */
   container: Container;
   /** Path joiner used by the framework — handles slash normalization. */
