@@ -76,7 +76,8 @@ Middleware bound with `consumer.apply(...).forRoutes(...)` resolves its targets
 when routes are built. A controller target covers each of its routes and methods,
 including the global prefix and URI version. Path targets use Hono route patterns
 under the global prefix and also cover nested paths. `exclude()` patterns match
-exactly.
+exactly. A path target that already starts with the global prefix fails the
+build, because it would never match.
 
 Some routes are served outside the global prefix: `mountOpenApi()` documents
 (`/openapi.json`, `/scalar`, `/docs`, `/redoc`), the `RpcModule` endpoint

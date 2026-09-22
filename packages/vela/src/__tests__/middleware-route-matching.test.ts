@@ -288,9 +288,13 @@ describe('forRoutes(string | RouteInfo) uses Hono route patterns', () => {
     expect(seen).toEqual(['GET /api/admin', 'GET /elsewhere']);
   });
 
-  it('warns when a string route already carries the global prefix', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
+  // A target that repeats the prefix would resolve to '/api/api/...' and never
+  // match, so the build fails instead of leaving the routes unprotected.
+  it.each<{ name: string; routes: Array<string | RouteInfo> }>([
+    { name: 'a string route', routes: ['/api/admin'] },
+    { name: 'a RouteInfo', routes: [{ path: 'api/admin/:id', method: HttpMethod.GET }] },
+    { name: 'the bare prefix', routes: ['/api'] },
+  ])('rejects $name that already carries the global prefix', async ({ routes }) => {
     @Controller('/admin')
     class AdminController {
       @Get()
@@ -299,9 +303,46 @@ describe('forRoutes(string | RouteInfo) uses Hono route patterns', () => {
       }
     }
 
-    await createApp([AdminController], forRoutes('/api/admin'), { globalPrefix: '/api' });
+    await expect(
+      createApp([AdminController], forRoutes(...routes), { globalPrefix: '/api' }),
+    ).rejects.toThrow(/already includes the global prefix '\/api'.*absolute: true/);
+  });
 
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("'/api/admin'"));
+  it('rejects an exclude() target that already carries the global prefix', async () => {
+    @Controller('/admin')
+    class AdminController {
+      @Get()
+      list() {
+        return { ok: true };
+      }
+    }
+
+    await expect(
+      createApp(
+        [AdminController],
+        (consumer) => {
+          consumer.apply(RecordingMiddleware).exclude('/api/admin').forRoutes(AdminController);
+        },
+        { globalPrefix: '/api/' },
+      ),
+    ).rejects.toThrow(/'\/api\/admin' already includes the global prefix '\/api'/);
+  });
+
+  it('accepts a route that only shares leading characters with the global prefix', async () => {
+    @Controller('/api-keys')
+    class KeysController {
+      @Get()
+      list() {
+        return { ok: true };
+      }
+    }
+
+    const request = await createApp([KeysController], forRoutes('/api-keys'), {
+      globalPrefix: '/api',
+    });
+
+    expect(await request('GET', '/api/api-keys')).toBe(200);
+    expect(seen).toEqual(['GET /api/api-keys']);
   });
 });
 

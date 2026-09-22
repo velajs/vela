@@ -1001,14 +1001,17 @@ export class RouteManager {
         continue;
       }
       const path = normalizePath(target.path);
-      const pattern = target.absolute ? path || '/' : joinPaths(this.globalPrefix, path);
       const prefix = this.globalPrefix.replace(/\/+$/, '');
+      // A relative target that repeats the prefix would resolve to
+      // '<prefix><prefix>/...' and never match, leaving its routes unguarded.
       if (!target.absolute && prefix && (path === prefix || path.startsWith(`${prefix}/`))) {
-        console.warn(
-          `[vela] Middleware route '${path}' resolves under the global prefix to ` +
-            `'${pattern}'. Remove '${prefix}' from the route.`,
+        throw new Error(
+          `Middleware route '${path}' already includes the global prefix '${prefix}'. ` +
+            `Remove '${prefix}' from the route, or pass { path: '${path}', absolute: true } ` +
+            'to match it as written.',
         );
       }
+      const pattern = target.absolute ? path || '/' : joinPaths(this.globalPrefix, path);
       add(method, pattern);
       if (coverDescendants && !pattern.endsWith('*')) add(method, joinPaths(pattern, '/*'));
     }
