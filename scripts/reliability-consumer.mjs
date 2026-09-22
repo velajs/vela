@@ -53,7 +53,6 @@ export async function verifyReliabilityPackage(releaseTarballs) {
     'node_modules/typescript/bin/tsc',
     '--noEmit',
     '--strict',
-    '--skipLibCheck',
     '--module',
     'NodeNext',
     '--target',
