@@ -9,6 +9,7 @@ import type {
 } from './hono.types';
 import { bodyLimit as honoBodyLimit } from 'hono/body-limit';
 import { contextStorage } from 'hono/context-storage';
+import { routePath } from 'hono/route';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { HttpMethod } from '../constants';
 import { HttpException } from '../errors/http-exception';
@@ -26,6 +27,7 @@ import { HandlerExecutor } from './handler-executor';
 import { instantiate, instantiateMany, instantiateAsync } from './instantiate';
 import { REQUEST_CONTEXT, createRequestContext } from './request-context';
 import { findRequestContainer, setRequestContainer } from './request-container';
+import type { HttpRequestCompletion, HttpRequestObserver } from './request-observer';
 import { mapResponse } from './response-mapper';
 import { ComponentManager } from '../pipeline/component.manager';
 import { shouldFilterCatch } from '../pipeline/decorators';
@@ -116,7 +118,10 @@ const defaultGetClientIp = (_c: Context): string | null => null;
 // Track the transmitted body without owning the invocation's deferred work.
 // Cancellation finishes only after the producer's cancellation settles, so it
 // can still use request-scoped resources while releasing its own handles.
-function trackResponseStream(body: ReadableStream<Uint8Array>): {
+function trackResponseStream(
+  body: ReadableStream<Uint8Array>,
+  onFinish: (outcome: HttpRequestCompletion['outcome']) => void,
+): {
   body: ReadableStream<Uint8Array>;
   done: Promise<void>;
 } {
@@ -124,10 +129,11 @@ function trackResponseStream(body: ReadableStream<Uint8Array>): {
   const completion = Promise.withResolvers<void>();
   let finished = false;
   let cancelling = false;
-  const finish = (): void => {
+  const finish = (outcome: HttpRequestCompletion['outcome']): void => {
     if (finished) return;
     finished = true;
     reader.releaseLock();
+    onFinish(outcome);
     completion.resolve();
   };
   return {
@@ -139,7 +145,7 @@ function trackResponseStream(body: ReadableStream<Uint8Array>): {
           if (done) {
             if (!cancelling) {
               controller.close();
-              finish();
+              finish('success');
             }
           } else {
             controller.enqueue(value);
@@ -147,7 +153,7 @@ function trackResponseStream(body: ReadableStream<Uint8Array>): {
         } catch (error) {
           if (!cancelling) {
             controller.error(error);
-            finish();
+            finish('error');
           }
         }
       },
@@ -155,8 +161,11 @@ function trackResponseStream(body: ReadableStream<Uint8Array>): {
         cancelling = true;
         try {
           await reader.cancel(reason);
+        } catch (error) {
+          finish('error');
+          throw error;
         } finally {
-          finish();
+          finish('cancelled');
         }
       },
     }),
@@ -190,6 +199,7 @@ export class RouteManager {
   private globalPrefix = '';
   private consumerMiddlewareDefinitions: MiddlewareRouteDefinition[] = [];
   private routeDescriptions: RouteDescription[] = [];
+  private readonly requestObservers = new Set<HttpRequestObserver>();
 
   private readonly handlerExecutor: HandlerExecutor;
   private readonly ambientContainer: boolean;
@@ -562,6 +572,14 @@ export class RouteManager {
     return this.globalPrefix;
   }
 
+  /** Observe the existing request lifetime without taking ownership of its resources. */
+  observeRequests(observer: HttpRequestObserver): () => void {
+    this.requestObservers.add(observer);
+    return () => {
+      this.requestObservers.delete(observer);
+    };
+  }
+
   async build(): Promise<HonoApp> {
     const app = new Hono<VelaHonoEnv>();
     this.routeDescriptions = [];
@@ -573,20 +591,78 @@ export class RouteManager {
       // Start the lifetime before input validation, but snapshot REQUEST_CONTEXT
       // only after the body limiter has normalized the raw Request.
       const child = this.createRequestContainer(c);
+      const startedAt = performance.now();
+      const observations = [...this.requestObservers].flatMap((observer) => {
+        try {
+          const observation = observer(c, child);
+          if (observation && 'then' in observation) {
+            // JavaScript consumers can return a Promise despite the synchronous contract.
+            void Promise.resolve(observation).catch(() => {});
+            return [];
+          }
+          return observation ? [observation] : [];
+        } catch {
+          // Instrumentation must not change application behavior.
+          return [];
+        }
+      });
+      let failed = false;
       try {
         await next();
+      } catch (error) {
+        failed = true;
+        throw error;
       } finally {
         const response = c.res;
+        const route = routePath(c);
+        const streamsResponse =
+          c.req.method !== 'HEAD' && response.body !== null && response.status !== 101;
+        let status = failed ? undefined : response.status;
+        let outcome: HttpRequestCompletion['outcome'] = 'success';
+        const finish = async (waitFor?: Promise<unknown>): Promise<void> => {
+          try {
+            await finishExecutionScope(child, waitFor);
+          } catch (error) {
+            failed = true;
+            // A bodyless response can still be replaced by the outer error handler.
+            // Its eventual status is not known at this completion boundary.
+            if (!streamsResponse) status = undefined;
+            throw error;
+          } finally {
+            const completion: HttpRequestCompletion = Object.freeze({
+              status,
+              route: route && route !== '*' ? route : undefined,
+              outcome:
+                failed || outcome === 'error' || response.status >= 500
+                  ? 'error'
+                  : outcome === 'cancelled' || c.req.raw.signal.aborted
+                    ? 'cancelled'
+                    : 'success',
+              durationMs: Math.max(0, performance.now() - startedAt),
+            });
+            for (const observation of observations) {
+              try {
+                // Async functions are assignable to void callbacks. Observe accidental
+                // rejections without extending the already-finished request lifetime.
+                void Promise.resolve(observation.complete(completion)).catch(() => {});
+              } catch {
+                // Observer failures cannot replace a response or a completion error.
+              }
+            }
+          }
+        };
         // Hono suppresses HEAD bodies outside the middleware chain. Cancel
         // the untransmitted producer here instead of awaiting a drain that
         // can never happen. Native upgrades must retain their Response.
         if (c.req.method === 'HEAD' && response.body && response.status !== 101) {
-          await finishExecutionScope(child, response.body.cancel());
+          await finish(response.body.cancel());
         } else if (response.body && response.status !== 101) {
-          const stream = trackResponseStream(response.body);
+          const stream = trackResponseStream(response.body, (result) => {
+            outcome = result;
+          });
           c.res = new Response(stream.body, response);
           const reporter = resolveErrorReporter(child);
-          const completion = finishExecutionScope(child, stream.done);
+          const completion = finish(stream.done);
           // Observe failures on portable runtimes as well as Workers. Keep
           // the original rejecting promise for the native lifetime owner.
           void completion.catch((error: unknown) => {
@@ -604,7 +680,7 @@ export class RouteManager {
           }
           executionCtx?.waitUntil(completion);
         } else {
-          await finishExecutionScope(child);
+          await finish();
         }
       }
     });
