@@ -10,8 +10,8 @@
     "deploy": "wrangler deploy"
   },
   "dependencies": {
-    "@velajs/cloudflare": "1.22.1",
-    "@velajs/vela": "1.22.1",
+    "@velajs/cloudflare": "1.24.0",
+    "@velajs/vela": "1.27.0",
     "hono": "4.13.8"
   },
   "devDependencies": {
