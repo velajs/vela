@@ -19,7 +19,7 @@ import {
 } from '@velajs/crud';
 import type { AtomicCommand, CrudAdapter } from '@velajs/crud/adapter';
 import { MemoryAuditStore } from '@velajs/crud/audit';
-import { drizzleAdapter, DrizzleAuditStore } from '@velajs/crud-drizzle';
+import { drizzleAdapter, DrizzleAuditStore, drizzleInsertCommand } from '@velajs/crud-drizzle';
 
 const items = sqliteTable('items', {
   id: text().primaryKey(),
@@ -189,6 +189,59 @@ for (const database of databases)
       expect(await db.select().from(items)).toEqual([]);
       expect(await db.select().from(related)).toEqual([]);
       expect(await logs.query()).toEqual([]);
+    });
+    it('composes copied insert commands with business writes and rolls back both on SQL failure', async () => {
+      const values = { id: 'event', value: 1 };
+      const insert = drizzleInsertCommand({
+        db,
+        table: related,
+        values,
+        parseRows: (rows) => z.array(z.object({ id: z.string(), value: z.number() })).parse(rows),
+      });
+      values.value = -1;
+      const [, events] = await batch.execute([batch.create(item()), insert]);
+      expect(events).toEqual([{ id: 'event', value: 1 }]);
+      await expect(
+        batch.execute([
+          batch.create(item('rollback')),
+          drizzleInsertCommand({
+            db,
+            table: related,
+            values: { id: 'bad', value: -1 },
+            parseRows: () => undefined,
+          }),
+        ]),
+      ).rejects.toThrow();
+      expect((await db.select().from(items)).map((row) => row.id)).toEqual(['one']);
+      expect(await db.select().from(related)).toEqual([{ id: 'event', value: 1 }]);
+    });
+    it('rejects unknown insert fields before execution and preserves decoder commit semantics', async () => {
+      expect(() =>
+        drizzleInsertCommand({
+          db,
+          table: related,
+          values: { unknown: 1 },
+          parseRows: () => undefined,
+        }),
+      ).toThrow('Unknown');
+      const command = drizzleInsertCommand({
+        db,
+        table: related,
+        values: { id: 'event', value: 1 },
+        parseRows: () => {
+          throw new Error('decode failed');
+        },
+      });
+      const result = batch.execute([batch.create(item()), command]);
+      if (database.driver === 'd1') {
+        await expect(result).rejects.toBeInstanceOf(AtomicBatchResultError);
+        expect(await db.select().from(related)).toHaveLength(1);
+        expect(await db.select().from(items)).toHaveLength(1);
+      } else {
+        await expect(result).rejects.toThrow('decode failed');
+        expect(await db.select().from(related)).toEqual([]);
+        expect(await db.select().from(items)).toEqual([]);
+      }
     });
     it('rolls back all preceding writes when audit persistence fails', async () => {
       await logs.log({

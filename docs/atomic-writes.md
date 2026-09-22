@@ -1,5 +1,20 @@
 # Atomic writes and audit persistence
 
+## Additional insert commands
+
+`drizzleInsertCommand({ db, table, values, parseRows, onOpenTransaction? })` from
+`@velajs/crud-drizzle` prepares an unconditional insert for an existing atomic
+batch. It copies the values, rejects unknown columns, and authenticates the exact
+native database owner and transaction initializer before executing any writes.
+`parseRows` synchronously validates the returned rows. An insert can persist an
+outbox event alongside an unconditional business insert in the same batch.
+
+This command does not make its execution conditional on an earlier update finding
+a row. Use a real callback transaction for result-dependent admission. A decoder
+failure rolls back callback transactions; after a native D1 batch commits it
+raises `AtomicBatchResultError` with `committed: true`, so callers must not blindly
+retry the write. SQL constraint failures roll back the entire batch on both paths.
+
 `@velajs/crud` exposes an optional `atomicBatch` adapter capability for **precomputed
 writes**. Every command in a batch commits or rolls back together. This capability
 is separate from `transactions`, which permits interactive callback work, and

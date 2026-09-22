@@ -5,5 +5,6 @@
 
 export { drizzleAdapter, type DrizzleAdapterConfig, type DrizzleRelation } from './adapter';
 export { DrizzleAuditStore, DrizzleVersioningStore } from './stores';
+export { drizzleInsertCommand } from './atomic';
 export type { DrizzleDialect, DrizzleTable, DrizzleHandle, DrizzleD1Handle } from './database';
 export { buildWhere, buildWhereCondition, substringMatch } from './filters';

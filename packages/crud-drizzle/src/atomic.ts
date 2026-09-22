@@ -18,6 +18,7 @@ import {
   type DrizzleDatabase,
   type DrizzleSql,
   type DrizzleTable,
+  type DrizzleHandle,
   readRow,
 } from './database';
 import { checkedD1Query } from './filters';
@@ -61,6 +62,50 @@ function owned(command: AtomicCommand, owner: object): Command<unknown> {
 function decodeResult(command: Command<unknown>, result: unknown): unknown {
   if (!Array.isArray(result)) throw new TypeError('Expected atomic result rows');
   return command.decode(result.map(readRow));
+}
+
+/** Prepare a trusted, unconditional insert for the existing native atomic batch.
+ * Inputs are copied now; the decoder runs in the SQL transaction, or after a D1
+ * batch has committed. This is not a guard for another command's scoped miss.
+ */
+export function drizzleInsertCommand<Result>(options: {
+  db: DrizzleHandle;
+  table: DrizzleTable;
+  values: Readonly<Record<string, unknown>>;
+  parseRows: (rows: readonly Record<string, unknown>[]) => Result;
+  onOpenTransaction?: Open;
+}): AtomicCommand<Result> {
+  const owner = asDatabase(options.db);
+  const table = options.table;
+  if (typeof options.parseRows !== 'function') throw new TypeError('Expected an insert decoder');
+  if (options.onOpenTransaction !== undefined && typeof options.onOpenTransaction !== 'function')
+    throw new TypeError('Expected a transaction context initializer');
+  if (!options.values || typeof options.values !== 'object' || Array.isArray(options.values))
+    throw new TypeError('Expected insert values');
+  const columns = getTableColumns(table);
+  if (Object.keys(options.values).some((column) => !Object.hasOwn(columns, column)))
+    throw new TypeError('Unknown atomic insert column');
+  const values = structuredClone(options.values);
+  const parseRows = options.parseRows;
+  return new Command(
+    ISSUE_COMMAND,
+    owner,
+    'write',
+    (database) => database.insert(table).values(values).returning(),
+    (rows) => {
+      const result = parseRows(rows);
+      if (
+        result !== null &&
+        (typeof result === 'object' || typeof result === 'function') &&
+        'then' in result &&
+        typeof result.then === 'function'
+      )
+        throw new TypeError('Atomic insert decoders must be synchronous');
+      return result;
+    },
+    undefined,
+    options.onOpenTransaction,
+  );
 }
 
 export function atomicAuditDriver(owner: object, table: DrizzleTable): AtomicAuditDriver {
