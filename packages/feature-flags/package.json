@@ -1,6 +1,6 @@
 {
   "name": "@velajs/feature-flags",
-  "version": "1.22.1",
+  "version": "2.0.0",
   "description": "Edge-first, driver-based feature flags for the Vela framework",
   "keywords": [
     "cloudflare-workers",
