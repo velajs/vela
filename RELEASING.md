@@ -115,11 +115,21 @@ and intentionally blocks an ambiguous retry.
 ## Publication through GitHub OIDC
 
 The root `release.yml` workflow runs on `main` and can also be dispatched manually.
-It installs the pinned toolchain and runs the full verification gate. The organization currently disables bot-created pull requests, so prepare
-versions with `pnpm version-packages` and merge a normal PR. Merging version
-changes publishes the exact
-archives that passed the external consumer check. The action creates package
-Git tags and GitHub releases. `release-plan.json` contains only changed packages.
+It installs the pinned toolchain and runs the full verification gate. When changesets
+are pending, Changesets opens or updates a version PR as `github-actions[bot]`,
+using `pnpm version-packages` to update versions, changelogs, the lockfile, and the
+release plan. Review and merge that PR after its checks pass. If GitHub holds the
+bot-created PR's workflows for approval, approve those runs before merging.
+The following main-branch run publishes the exact archives that passed the
+external consumer check, then creates package Git tags and GitHub releases.
+`release-plan.json` contains only changed packages.
+
+Enable **Allow GitHub Actions to create and approve pull requests** under the
+repository's Actions settings; organization policy must permit it. The release
+workflow requests `contents: write`, `pull-requests: write`, and `id-token: write`
+explicitly. It uses `GITHUB_TOKEN` for version PRs and GitHub releases, and npm
+OIDC for package publication. Normal releases require no personal npm token or
+interactive npm login.
 
 Each public npm package trusts GitHub repository `velajs/vela`, workflow
 `release.yml`, environment `release`. Enable the trusted publisher's direct
@@ -137,9 +147,12 @@ This repository is public. The workflow requires npm provenance for every upload
 with `NPM_CONFIG_PROVENANCE=true`. npm signs the package's provenance using the
 GitHub Actions identity and records the source commit and workflow invocation.
 
-For subsequent changes, run `pnpm changeset` and commit the note. At release time,
-run `pnpm version-packages`, review the generated changes, and merge them. A main
-branch with unversioned changesets is verified but not published.
+For subsequent changes, run `pnpm changeset` and commit the note. The bot prepares
+the version PR after the changes reach `main`. A main branch with unversioned
+changesets updates that PR without publishing. Do not merge another version PR
+while an earlier release is only partially published; recover its exact artifacts
+first. Local `pnpm version-packages` remains available for inspecting the same
+versioning operation.
 Versioning updates changelogs, the core skill version, the shared lockfile, and
 the release plan. All active packages use the TypeScript 7 catalog. The separate
 Fumadocs website uses published packages and has its own validation and deployment

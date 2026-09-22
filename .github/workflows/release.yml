@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
   id-token: write
 
 concurrency:
@@ -38,19 +39,13 @@ jobs:
       - run: pnpm verify
       - run: pnpm peers check
       - run: pnpm audit --audit-level=high
-      - name: Check for unversioned changesets
-        id: versions
-        run: |
-          node --input-type=module -e 'import fs from "node:fs"; const pending = fs.readdirSync(".changeset").filter(name => name.endsWith(".md") && name !== "README.md"); fs.appendFileSync(process.env.GITHUB_OUTPUT, "ready=" + (pending.length === 0) + "\n");'
-      - name: Explain pending version preparation
-        if: steps.versions.outputs.ready != 'true'
-        run: echo 'Run pnpm version-packages and merge the resulting version changes to publish. Organization policy disables bot-created release PRs.'
-      - name: Publish tested archives through OIDC
-        if: steps.versions.outputs.ready == 'true'
+      - name: Create release PR or publish tested archives through OIDC
         uses: changesets/action@8488615a623b1b9c987934bb89eae8af6a946ac1 # v2.1.1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           version-script: pnpm version-packages
+          commit-message: 'chore: prepare package releases'
+          pr-title: 'chore: release packages'
           publish-script: node scripts/release-ci.mjs
           create-github-releases: true
         env:
