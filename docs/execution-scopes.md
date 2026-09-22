@@ -68,7 +68,8 @@ owners and ambiguous omissions fail before dispatch.
 Custom adapters can construct pipeline contexts inside that child using
 `buildEntrypointExecutionContext(kind, token, method, payload, moduleId, container)`.
 Use `resolveScopedComponentsAsync(kind, token, method, container, moduleId)`
-for handler-declared components and `resolvePipelineComponents(kind, entries,
+for handler-declared components (including the owning module's `@Use*`
+components for its controllers) and `resolvePipelineComponents(kind, entries,
 container)` for explicit application-global lists. They preserve order, typed
 provider inference, and asynchronous factory/lazy-module resolution. Reverse
 filters when applying the closest-first convention. Decide explicitly which

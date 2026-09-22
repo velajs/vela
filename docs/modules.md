@@ -251,8 +251,13 @@ Custom dispatchers (queue consumers, schedulers) run handlers through
 `PipelineRunner.run({ context, guards, interceptors, resolveArgs, invoke, onGuardReject })`
 — the same guard → pipe → interceptor core HTTP and WebSocket use. Scoped
 components come from the public
-`resolveScopedComponents(type, class, method, container)` (declaration order;
-reverse filters yourself for closest-first). Whether app-wide components
+`resolveScopedComponents(type, class, method, container, moduleId)`: class-level,
+then the owning module's `@Use*` components when the class is one of its
+controllers, then method-level (reverse filters yourself for closest-first).
+Module-level entries are read from that application's module graph, never
+copied onto the class, so repeated bootstraps in one isolate do not stack them.
+`getScopedComponents(...)` returns the same declared entries without
+constructing them, for audits and introspection. Whether app-wide components
 apply is a transport decision: WS merges `RouteManager.getGlobalComponents()`;
 queue/scheduled dispatch deliberately applies none. Exception-filter terminal
 behavior stays transport-specific.

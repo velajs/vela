@@ -4,6 +4,7 @@ import {
   type CallHandler,
   type CanActivate,
   Catch,
+  Controller,
   type ExceptionFilter,
   type ExecutionContext,
   Injectable,
@@ -217,6 +218,40 @@ describe('dispatchInboundEmail — routing & pipeline', () => {
     await dispatchInboundEmail(app.getContainer(), app.entrypoints, emailWith('pass'));
 
     expect(order).toEqual(['guard:mail:inbound', 'intercept:before', 'handler', 'intercept:after']);
+  });
+
+  it('applies module-level components to a controller that handles inbound email', async () => {
+    const order: string[] = [];
+
+    @Injectable()
+    class ModuleGuard implements CanActivate {
+      canActivate(ctx: ExecutionContext): boolean {
+        order.push(`guard:${ctx.getType()}`);
+        return true;
+      }
+    }
+
+    @Controller('/support')
+    class SupportController {
+      @OnInboundEmail()
+      handle(): void {
+        order.push('handler');
+      }
+    }
+
+    @UseGuards(ModuleGuard)
+    @Module({ providers: [ModuleGuard], controllers: [SupportController] })
+    class SupportModule {}
+
+    @Module({ imports: [SupportModule] })
+    class App {}
+
+    await VelaFactory.create(App).then((first) => first.dispose());
+    const app = await VelaFactory.create(App);
+    disposers.push(() => app.dispose());
+    await dispatchInboundEmail(app.getContainer(), app.entrypoints, emailWith('pass'));
+
+    expect(order).toEqual(['guard:mail:inbound', 'handler']);
   });
 
   it('lets a scoped filter claim a handler error (no rethrow)', async () => {

@@ -30,7 +30,8 @@ function isObject(value: unknown): value is Record<string, unknown> {
  * Component registration + resolution for the controller/handler tiers.
  * App-wide (global) components have exactly ONE source: the per-app
  * `RouteManager` (`APP_*` provider tokens + `useGlobalX()`) — callers merge
- * `routeManager.getGlobalComponents()` with {@link getScopedComponents}.
+ * `routeManager.getGlobalComponents()` with `getScopedComponents()`
+ * (`pipeline/scoped-components.ts`), which adds module-level components.
  *
  * Stateless by design: no process-global container (two apps in one process
  * never cross-talk) — every `resolve*` takes the resolving container.
@@ -57,20 +58,6 @@ export class ComponentManager {
     for (const component of components) {
       MetadataRegistry.registerHandler(type, controller, handlerName, component);
     }
-  }
-
-  // Scoped resolution: controller → handler. App-wide components come from
-  // RouteManager (APP_* tokens + useGlobalX()) — merged by the caller.
-
-  static getScopedComponents<T extends ComponentType>(
-    type: T,
-    controller: Constructor,
-    handlerName: string | symbol,
-  ): ComponentTypeMap[T][] {
-    return [
-      ...MetadataRegistry.getController(type, controller),
-      ...MetadataRegistry.getHandler(type, controller, handlerName),
-    ];
   }
 
   // Type-specific resolvers — explicit container, always.

@@ -518,6 +518,7 @@ export {
   PipelineRunner,
   getCatchTypes,
   shouldFilterCatch,
+  getScopedComponents,
   resolveScopedComponents,
   resolveScopedComponentsAsync,
   resolvePipelineComponents,

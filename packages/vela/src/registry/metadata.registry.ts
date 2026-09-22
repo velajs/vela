@@ -245,9 +245,11 @@ export class MetadataRegistry {
     getOrCreateArray(methodMap, methodName).push(param);
   }
 
-  // Component registration — controller-level. (There is deliberately NO
-  // global tier here: app-wide components live on the per-app RouteManager,
-  // one source, never process-global state.)
+  // Component registration — class-level, for controllers and modules alike.
+  // A module class's entries apply to that module's controllers through the
+  // per-app module scope (see getScopedComponents), never by copying them here.
+  // (There is deliberately NO global tier here: app-wide components live on
+  // the per-app RouteManager, one source, never process-global state.)
 
   static registerController<T extends ComponentType>(
     type: T,
@@ -499,19 +501,6 @@ export class MetadataRegistry {
 
   static getParamTypes(target: object, propertyKey?: string | symbol): unknown[] | undefined {
     return this.getReflectMetadata<unknown[]>(target, 'design:paramtypes', propertyKey);
-  }
-
-  // Propagate all controller-level components from one class to another.
-
-  static propagateControllerComponents(from: Constructor, to: Constructor): void {
-    for (const type of ['middleware', 'guard', 'pipe', 'interceptor', 'filter'] as const) {
-      const map = this.controllerComponents[type];
-      const components = map.get(from);
-      if (components && components.length > 0) {
-        const target = getOrCreateArray(map as Map<Constructor, unknown[]>, to) as unknown[];
-        target.push(...components);
-      }
-    }
   }
 
   // Clear app-time state. Decoration metadata persists — once a class is

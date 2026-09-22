@@ -211,6 +211,11 @@ export class Container {
     }
   }
 
+  /** The registered scope of one module instance (shared by request children). */
+  getModuleScope(moduleId: string): Readonly<ModuleScope> | undefined {
+    return this.#scopes.get(moduleId);
+  }
+
   markGlobalToken(token: Token): void {
     this.#globals.add(token);
   }

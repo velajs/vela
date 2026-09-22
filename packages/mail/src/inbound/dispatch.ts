@@ -4,7 +4,7 @@ import {
   type EntrypointRegistry,
   PipelineRunner,
   resolveErrorReporter,
-  MetadataRegistry,
+  resolveScopedComponentsAsync,
   runInEntrypointScope,
   shouldFilterCatch,
   type Type,
@@ -22,18 +22,6 @@ export interface InboundDispatchResult {
   handled: number;
   /** Mechanisms (and `'policy'`) that failed the gate; empty when not gated. */
   failed: string[];
-}
-
-async function resolveComponents<T>(
-  items: Array<T | Type<T>>,
-  scope: Container,
-  moduleId: string,
-): Promise<T[]> {
-  return Promise.all(
-    items.map((item) =>
-      typeof item === 'function' ? scope.resolveAsync(item as Type<T>, moduleId) : item,
-    ),
-  );
 }
 
 async function runHandler(
@@ -57,19 +45,17 @@ async function runHandler(
     );
 
     try {
-      const guards = await resolveComponents(
-        [
-          ...MetadataRegistry.getController('guard', token),
-          ...MetadataRegistry.getHandler('guard', token, methodName),
-        ],
+      const guards = await resolveScopedComponentsAsync(
+        'guard',
+        token,
+        methodName,
         scope,
         moduleId,
       );
-      const interceptors = await resolveComponents(
-        [
-          ...MetadataRegistry.getController('interceptor', token),
-          ...MetadataRegistry.getHandler('interceptor', token, methodName),
-        ],
+      const interceptors = await resolveScopedComponentsAsync(
+        'interceptor',
+        token,
+        methodName,
         scope,
         moduleId,
       );
@@ -106,11 +92,10 @@ async function runHandler(
         kind: 'mail:inbound',
         source: `${token.name}.${String(methodName)}`,
       });
-      const filters = await resolveComponents(
-        [
-          ...MetadataRegistry.getController('filter', token),
-          ...MetadataRegistry.getHandler('filter', token, methodName),
-        ],
+      const filters = await resolveScopedComponentsAsync(
+        'filter',
+        token,
+        methodName,
         scope,
         moduleId,
       );
