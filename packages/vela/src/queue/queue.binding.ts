@@ -47,6 +47,18 @@ export class QueueDispatchBinding {
         );
       }
     }
+    // Only bind() and consume() deliveries pass through this binding. Any other
+    // path reaches processors directly and would skip the signed route's guards.
+    if (dispatch?.kind === 'signed' && !driver.bind && !driver.consume) {
+      const names = queues.map((queue) => `'${queue}'`).join(', ');
+      throw new Error(
+        `QueueModule signed dispatch for queue ${names} cannot be honored: driver ` +
+          `'${driver.kind}' implements neither bind() nor consume(), so its jobs would reach ` +
+          `processors without the signed route and its global guards. Configure the driver to ` +
+          `consume through this module (for example with a consumer mapping), or remove ` +
+          `dispatch: { kind: 'signed' } where this module only produces jobs.`,
+      );
+    }
 
     if (driver.bind) {
       if (ownedDrivers.has(driver)) {

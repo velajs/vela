@@ -9,9 +9,17 @@ compatibility_date = "2026-07-01"
 name = "TEST_ROOM"
 class_name = "TestRoom"
 
+[[durable_objects.bindings]]
+name = "COUNTING_ROOM"
+class_name = "CountingRoom"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["TestRoom"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["CountingRoom"]
 
 [[kv_namespaces]]
 binding = "CACHE"

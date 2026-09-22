@@ -33,8 +33,9 @@ class ScheduleDispatchHost {}
  * `forRoot({ dispatch })` OPTS IN to signed re-entry for scheduled jobs
  * (`ctx.run`): it contributes a GLOBAL `SCHEDULE_DISPATCH` policy the
  * schedule-node executor reads `@Optional`ly (pair it with
- * `ScheduleNodeModule` for the node runtime). With no options the behavior is
- * unchanged (direct in-isolate method calls).
+ * `ScheduleNodeModule` for the node runtime). The Cloudflare adapter rejects a
+ * signed policy at bootstrap until its cron dispatch honors it. With no options
+ * the behavior is unchanged (direct in-isolate method calls).
  */
 @Module({
   // Lazy: the @Cron/@Interval discovery pass runs when ScheduleRegistry is

@@ -10,7 +10,7 @@ import type {
 import { buildDoRuntime } from './do-bootstrap';
 import { DoWebSocketHost, type WsConnectionPrincipal } from './do-websocket-host';
 import { armDoPitr, readDoPitrBookmark } from './do-pitr';
-import { resolveCloudflareRoot } from '../root-module';
+import { bootstrapCloudflareRoot } from '../root-module';
 import type { CloudflareRoot } from '../root-module';
 import type {
   DoPitrArmOptions,
@@ -70,10 +70,11 @@ export function VelaWebSocketDurableObject<T extends object>(
         // Older runtimes without auto-response — fine, protocol pings still work.
       }
       this.ready = ctx.blockConcurrencyWhile(async () => {
-        const runtime = await buildDoRuntime(await resolveCloudflareRoot(rootModule, env), ctx, {
-          ...options,
-          env,
-        });
+        // Instances in one isolate share the root resolved for their environment;
+        // resolving per instance would register new classes for every construction.
+        const runtime = await bootstrapCloudflareRoot(rootModule, env, (root) =>
+          buildDoRuntime(root, ctx, { ...options, env }),
+        );
         this.host = new DoWebSocketHost(
           ctx,
           runtime.dispatcher,

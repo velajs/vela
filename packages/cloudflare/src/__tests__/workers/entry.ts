@@ -87,11 +87,29 @@ class TestModule {}
 
 export interface TestEnv {
   TEST_ROOM: DurableObjectNamespace<TestRoom>;
+  COUNTING_ROOM: DurableObjectNamespace<CountingRoom>;
   CACHE: KVNamespace;
   DB: D1Database;
   FILES: R2Bucket;
 }
 export const TEST_ENV = new InjectionToken<TestEnv>('Worker bindings');
 export class TestRoom extends VelaWebSocketDurableObject(TestModule, { envToken: TEST_ENV }) {}
+
+// Every Durable Object instance in this isolate constructs from the same root.
+let rootResolutions = 0;
+const countingRoot = {
+  create: () => {
+    rootResolutions++;
+    return { module: TestModule };
+  },
+};
+export class CountingRoom extends VelaWebSocketDurableObject(countingRoot, {
+  envToken: TEST_ENV,
+}) {
+  /** Test-only RPC: how many times this isolate ran the root factory. */
+  async rootResolutions(): Promise<number> {
+    return rootResolutions;
+  }
+}
 
 export default createCloudflareWorker(TestModule, { envToken: TEST_ENV });

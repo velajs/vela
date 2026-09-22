@@ -13,7 +13,7 @@ import {
   URL_SIGNING_SECRET,
 } from '../index.js';
 import { QueueModule, Process, Processor, queueToken, inline } from '../queue/index.js';
-import type { QueueClient, QueueJob } from '../queue/index.js';
+import type { QueueClient, QueueDriver, QueueJob } from '../queue/index.js';
 
 const SECRET = 'queue-signed-dispatch-secret';
 
@@ -29,7 +29,7 @@ describe('QueueModule signed re-entry dispatch (opt-in)', () => {
 
     @Global()
     @Module({
-      providers: [defineProvider(URL_SIGNING_SECRET, {useValue: SECRET})],
+      providers: [defineProvider(URL_SIGNING_SECRET, { useValue: SECRET })],
       exports: [URL_SIGNING_SECRET],
     })
     class SecretModule {}
@@ -152,5 +152,33 @@ describe('QueueModule signed re-entry dispatch (opt-in)', () => {
 
     expect(processorHits).toEqual(['go']);
     await app.close();
+  });
+
+  it('rejects signed mode at bootstrap when the driver cannot deliver through the module', async () => {
+    const sent: QueueJob[] = [];
+    // Producer-only transport: deliveries would reach processors through an
+    // external bridge that never sees the signed policy.
+    const driver: QueueDriver = {
+      kind: 'remote',
+      async enqueue(job) {
+        sent.push(job);
+      },
+    };
+
+    @Module({
+      imports: [
+        QueueModule.forRoot({
+          queues: ['remote-q'],
+          driver,
+          dispatch: { kind: 'signed', target: () => ({ route: 'inv.run' }) },
+        }),
+      ],
+    })
+    class AppModule {}
+
+    await expect(VelaFactory.create(AppModule)).rejects.toThrow(
+      /signed dispatch for queue 'remote-q'.*driver 'remote' implements neither bind\(\) nor consume\(\)/,
+    );
+    expect(sent).toEqual([]);
   });
 });

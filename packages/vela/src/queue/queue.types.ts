@@ -97,7 +97,9 @@ export interface QueueModuleOptions {
    * Opt-in signed re-entry for delivered jobs (default `direct`). STRUCTURAL —
    * like `queues`, pass it alongside the factory for `forRootAsync`. The
    * `dispatch.kind` participates in the module dedup key, so a `signed`
-   * instance never dedups with a `direct` one.
+   * instance never dedups with a `direct` one. `signed` requires a driver
+   * that delivers through the module (`bind` or `consume`); bootstrap rejects
+   * any other driver instead of letting deliveries skip the signed route.
    */
   dispatch?: QueueDispatchMode;
 }

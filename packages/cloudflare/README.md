@@ -48,15 +48,24 @@ drivers. A failed construction is evicted and the next event retries.
 When module configuration itself needs bindings, pass `{ create: (env) => AppModule }`
 instead of a static class. Dynamic module roots and asynchronous factories are also
 supported. The callback receives the native environment inferred
-from `envToken` and runs once per successful environment bootstrap. The same form
-works with `VelaWebSocketDurableObject` for authenticated live gateways. See the
+from `envToken` and runs once per environment object in an isolate. The same form
+works with `VelaWebSocketDurableObject` for authenticated live gateways. The Worker
+and every Durable Object instance built from the same environment share the
+resulting module graph, but each application still gets its own providers and
+lifecycle state. A rejected factory or failed bootstrap is evicted, so the next
+event runs the factory again. Pass per-application objects that bind to one
+application, such as an in-process queue driver, as factories
+(`driver: () => inline()`). See the
 [complete API starter](../../apps/api-starter/README.md) for D1, Better Auth, CRUD,
 the generated Hono client, live updates, and Studio inspection in one application.
 
-The cache uses weak object keys: it does not permanently retain replaced
-environments or secrets. Providers with request scope still rebuild per HTTP
-request or queue/cron dispatch. Do not retain request objects or authentication
-state in singleton providers.
+The application cache uses weak object keys, so the cache itself does not keep a
+replaced environment alive. Module metadata does: classes declared while a root
+resolves stay registered for the life of the isolate, together with the values
+their module options capture. Build secret-bearing values in `forRootAsync`
+factories that inject `envToken` rather than capturing them in module options.
+Providers with request scope still rebuild per HTTP request or queue/cron dispatch.
+Do not retain request objects or authentication state in singleton providers.
 
 For explicit construction inside a platform event:
 

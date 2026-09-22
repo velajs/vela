@@ -24,10 +24,12 @@ class JobsModule {}
 
 Use `createCloudflareWorker(RootModule, { envToken: ENV })` for each entrypoint.
 A root may also be a dynamic module, or `{ create: async env => dynamicModule }`.
-Factories run once per successful environment bootstrap; concurrent events share
-construction, failed construction is evicted, and different environments remain
-isolated. Keep active database connections and authenticated identities in their
-invocation scopes, not in root factories or singleton providers.
+Factories run once per environment object in an isolate: the Worker and its
+Durable Object instances share the module graph, while each application keeps its
+own providers. Concurrent events share construction, failed construction is
+evicted and retried, and different environments remain isolated. Keep active
+database connections and authenticated identities in their invocation scopes, not
+in root factories or singleton providers.
 
 ## Native queues through QueueModule
 
@@ -65,12 +67,20 @@ leases and application idempotency remain separate concerns.
 `@QueueConsumer`, native `Queue` objects and `consumeQueueBatch` remain available
 for applications needing direct native batch control.
 
+`QueueModule` signed dispatch (`dispatch: { kind: 'signed', target }`) re-enters the
+signed route for batches the module consumes, so global guards apply. It needs a
+`consumers` mapping: bootstrap rejects signed dispatch on a producer-only driver,
+because bridge deliveries would skip the signed route.
+
 ## Scheduling and RPC
 
 Use `ScheduleModule.forRoot()` and `@Cron(expression, { dialect: 'cloudflare' })`.
 Declare the exact expression in that Worker's Wrangler triggers. Workers do not
 start Node timers, and importing the module does not provision a trigger.
 `@Scheduled` remains available for direct native controller access.
+The Cloudflare adapter does not support signed `ScheduleModule` dispatch yet and
+rejects it at bootstrap. To run a scheduled job through a signed route, call
+`InternalDispatcher.run()` from the `@Cron` handler.
 
 `RpcModule.forRoot({ authorize })` and `forRootAsync` serve registered `@Rpc`
 procedures through the existing schema-validated HTTP dispatcher. Named clients

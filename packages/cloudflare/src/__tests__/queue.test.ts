@@ -124,7 +124,7 @@ describe('@QueueConsumer() decorator', () => {
     expect(events).toEqual(['guard:cf:queue']);
   });
 
-  it('should not invoke consumers for non-matching queue', async () => {
+  it('rejects an unclaimed batch with guidance so the platform retries it', async () => {
     const processed: unknown[] = [];
 
     @Injectable()
@@ -141,9 +141,12 @@ describe('@QueueConsumer() decorator', () => {
     const app = await createCloudflareApp(AppModule, { env, envToken });
     const ctx = { waitUntil: () => {} };
 
-    await expect(
-      app.queue({ queue: 'other-queue', messages: [{ body: 'test' }] }, env, ctx),
-    ).rejects.toThrow('No consumer');
+    // Resolving would let Cloudflare acknowledge the whole batch implicitly.
+    const rejection = app.queue({ queue: 'other-queue', messages: [{ body: 'test' }] }, env, ctx);
+    await expect(rejection).rejects.toThrow(
+      /No consumer claims queue 'other-queue'.*@QueueConsumer\('other-queue'\)/,
+    );
+    await expect(rejection).rejects.toThrow(/retries it.*dead-letter queue/);
 
     expect(processed).toEqual([]);
   });

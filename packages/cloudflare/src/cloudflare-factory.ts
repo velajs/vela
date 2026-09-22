@@ -1,16 +1,18 @@
 import type { ExecutionContext } from 'hono';
 import { getConnInfo } from 'hono/cloudflare-workers';
-import { VelaFactory } from '@velajs/vela';
+import { SCHEDULE_DISPATCH, VelaFactory } from '@velajs/vela';
 import type {
+  Container,
   InjectionToken,
   RuntimeAdapter,
+  Type,
   VelaMiddlewareHandler,
   VelaSecurityOptions,
 } from '@velajs/vela';
 import { CloudflareApplication } from './cloudflare-application';
 import { assertCloudflareEnvironment, registerCloudflareEnvironment } from './environment';
 import { registerWebSocketRoutes } from './websocket/websocket-routing';
-import { resolveCloudflareRoot } from './root-module';
+import { bootstrapCloudflareRoot } from './root-module';
 import type { CloudflareRoot } from './root-module';
 
 export interface CloudflareWorkerOptions<T extends object> {
@@ -25,6 +27,22 @@ export interface CloudflareWorkerOptions<T extends object> {
 export interface CreateCloudflareAppOptions<T extends object> extends CloudflareWorkerOptions<T> {
   /** Supply the platform environment inside fetch/queue/scheduled or a DO constructor. */
   env: NoInfer<T>;
+}
+
+/**
+ * Scheduled events invoke `@Cron` handlers directly, so a signed schedule
+ * policy would silently skip the signed route and its global guards.
+ */
+async function rejectSignedScheduleDispatch(container: Container): Promise<void> {
+  if (!container.has(SCHEDULE_DISPATCH)) return;
+  const dispatch = await container.resolveAsync(SCHEDULE_DISPATCH);
+  if (dispatch.kind !== 'signed') return;
+  throw new Error(
+    'A signed ScheduleModule dispatch is not supported by the Cloudflare adapter yet: scheduled ' +
+      'events invoke @Cron handlers directly, which would skip the signed route and its global ' +
+      "guards. Remove dispatch: { kind: 'signed' } from ScheduleModule.forRoot(), or call " +
+      'InternalDispatcher.run() from the @Cron handler to re-enter the signed route explicitly.',
+  );
 }
 
 /** Bind an application to one environment before provider factories and lifecycle hooks. */
@@ -47,15 +65,29 @@ export function cloudflareAdapter<T extends object>(
     configureContainer: (container) => {
       registerCloudflareEnvironment(container, { token: options.envToken, env: options.env });
     },
+    onBootstrap: ({ container }) => rejectSignedScheduleDispatch(container),
   };
 }
 
-/** Build an application for one native Workers environment. Call inside a platform event. */
+/**
+ * Build an application for one native Workers environment. Call inside a platform event.
+ * A `{ create(env) }` root runs once per environment; applications built for the same
+ * environment share its module graph but never its providers or lifecycle state.
+ */
 export async function createCloudflareApp<T extends object>(
   rootModule: CloudflareRoot<NoInfer<T>>,
   options: CreateCloudflareAppOptions<T>,
 ): Promise<CloudflareApplication<T>> {
-  const velaApp = await VelaFactory.create(await resolveCloudflareRoot(rootModule, options.env), {
+  return bootstrapCloudflareRoot(rootModule, options.env, (root) =>
+    buildApplication(root, options),
+  );
+}
+
+async function buildApplication<T extends object>(
+  root: Type,
+  options: CreateCloudflareAppOptions<T>,
+): Promise<CloudflareApplication<T>> {
+  const velaApp = await VelaFactory.create(root, {
     globalPrefix: options.globalPrefix,
     security: options.security,
     middleware: options.middleware?.(options.env),
@@ -91,9 +123,12 @@ export async function createCloudflareApp<T extends object>(
 }
 
 /**
- * Worker entrypoint with one bootstrap per environment identity. Weak keys let
- * obsolete environments and secrets be collected. Concurrent cold events share
- * construction; failed construction is evicted so the next event can retry.
+ * Worker entrypoint with one bootstrap per environment identity. Concurrent cold
+ * events share construction; failed construction is evicted so the next event
+ * can retry. Weak keys stop this cache from retaining a replaced environment,
+ * but classes a root declares stay in the isolate-global metadata registry with
+ * the values their metadata captures, so roots resolve once per environment
+ * rather than once per application.
  */
 export function createCloudflareWorker<T extends object>(
   rootModule: CloudflareRoot<NoInfer<T>>,
