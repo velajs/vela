@@ -8,6 +8,15 @@ Build a NestJS-style developer experience on Cloudflare Workers. Keep applicatio
 authoring simple and optional integrations independently usable. The release line
 is 1.x. Breaking API changes must update affected examples and documentation.
 
+Keep Vela independent of consuming applications. Framework changes must solve
+generic problems, with neutral synthetic reproductions, fixtures, and examples.
+Do not mention consuming-product names, branding, repositories, infrastructure,
+private data, or business-specific policies in source, tests, docs, branches,
+commits, issues, pull requests, changesets, releases, or published artifacts.
+Keep product-to-framework traceability in the consuming repository only; do not
+add upstream backlinks to product tasks. Review changes and publication metadata
+for framework neutrality as well as correctness before sharing or releasing.
+
 Keep portable framework runtime code on Web APIs. Node APIs belong only in
 explicit Node entrypoints, CLI/Studio host, build scripts, and tests. Cloudflare
 modules may use native Workers APIs. Preserve request/environment isolation and
