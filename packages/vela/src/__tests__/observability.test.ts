@@ -524,6 +524,68 @@ describe('independent telemetry adapters', () => {
     expect(recording.metrics[4]?.attributes).not.toHaveProperty('http.response.status_code');
   });
 
+  it.each(['noop', 'throwing', 'invalid'] as const)(
+    'preserves caller trace headers with a %s client recorder',
+    (mode) => {
+      const telemetry: Telemetry =
+        mode === 'noop'
+          ? noopTelemetry
+          : {
+              ...noopTelemetry,
+              startSpan: () => {
+                if (mode === 'throwing') throw new Error('Recorder unavailable');
+                return { ...noopSpan, context: { ...parent, traceId: '0'.repeat(32) } };
+              },
+            };
+      const headers = new Headers({ traceparent, tracestate: 'vendor=caller' });
+      const observer = createHttpClientTelemetryObserver({ telemetry });
+      const observation = observer.onRequest({ method: 'GET', headers });
+      observation.onEnd();
+      expect(headers.get('traceparent')).toBe(traceparent);
+      expect(headers.get('tracestate')).toBe('vendor=caller');
+      // Explicit propagation still owns clearing when its caller asks for no context.
+      injectTraceContext(headers, undefined);
+      expect(headers.has('traceparent')).toBe(false);
+      expect(headers.has('tracestate')).toBe(false);
+    },
+  );
+
+  it.each([
+    ['get', 'GET'],
+    ['hEaD', 'HEAD'],
+    ['post', 'POST'],
+    ['put', 'PUT'],
+    ['delete', 'DELETE'],
+    ['options', 'OPTIONS'],
+    ['PATCH', 'PATCH'],
+  ])('labels authored %s like the native Request method', (method, expected) => {
+    const recording = recorder();
+    const observer = createHttpClientTelemetryObserver({ telemetry: recording.telemetry });
+    observer.onRequest({ method, headers: new Headers() }).onEnd();
+    observer
+      .onRequest({ method: new Request('https://test', { method }).method, headers: new Headers() })
+      .onEnd();
+    expect(recording.spans.map((span) => span.name)).toEqual([
+      `HTTP ${expected}`,
+      `HTTP ${expected}`,
+    ]);
+    expect(
+      recording.metrics.every((metric) => metric.attributes?.['http.request.method'] === expected),
+    ).toBe(true);
+  });
+
+  it('follows runtime PATCH casing while retaining custom-method fallback', () => {
+    const recording = recorder();
+    const observer = createHttpClientTelemetryObserver({ telemetry: recording.telemetry });
+    const nativeMethod = new Request('https://test', { method: 'patch' }).method;
+    observer.onRequest({ method: 'patch', headers: new Headers() }).onEnd();
+    observer.onRequest({ method: 'custom-method', headers: new Headers() }).onEnd();
+    expect(recording.spans.map((span) => span.name)).toEqual([
+      nativeMethod === 'PATCH' ? 'HTTP PATCH' : 'HTTP _OTHER',
+      'HTTP _OTHER',
+    ]);
+  });
+
   it('records independent execution operations once without job payloads', () => {
     const recording = recorder();
     const observer = createExecutionTelemetryObserver({

@@ -104,6 +104,9 @@ boundaries. Never construct an outbound context from a request ID or tenant ID.
 `createHttpClientTelemetryObserver({ telemetry, parent })` provides structural
 `onRequest({ method, headers })` hooks for HTTP clients. Each call starts a client
 span and returns `onResponse({ status })`, `onError(error)`, and `onEnd()` callbacks.
+If the recorder supplies no valid span context, existing caller trace headers are
+preserved. Standard method casing follows native Fetch normalization before the
+bounded method label is selected; custom methods retain the `_OTHER` fallback.
 The caller must invoke `onEnd` once after its chosen transport boundary, including
 errors and cancellation; repeated calls are harmless. The mutable headers must be
 the headers actually sent by the client. HTTP client status codes from 400 upward

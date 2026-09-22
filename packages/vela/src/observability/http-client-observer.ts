@@ -1,4 +1,4 @@
-import { injectTraceContext } from './trace-context';
+import { injectTraceContext, validateTraceContext } from './trace-context';
 import { safeTelemetry, telemetryHttpMethod } from './telemetry';
 import type { Telemetry, TelemetryAttributes, TelemetryOutcome, TraceContext } from './types';
 
@@ -43,7 +43,8 @@ export function createHttpClientTelemetryObserver(
         attributes: { 'http.request.method': method },
       });
       try {
-        injectTraceContext(request.headers, span.context);
+        const context = validateTraceContext(span.context);
+        if (context) injectTraceContext(request.headers, context);
       } catch {
         // A caller may supply immutable Headers; recording remains optional.
       }

@@ -92,11 +92,28 @@ export function safeTelemetry(telemetry: Telemetry = noopTelemetry): Telemetry {
   };
 }
 
-/** Default HTTP labels accept only the standard finite method set. */
+const HTTP_METHODS = new Set([
+  'GET',
+  'HEAD',
+  'POST',
+  'PUT',
+  'DELETE',
+  'CONNECT',
+  'OPTIONS',
+  'TRACE',
+  'PATCH',
+]);
+
+/** Match the runtime's Fetch normalization before applying the bounded label set. */
 export function telemetryHttpMethod(method: string): string {
-  return ['GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'CONNECT', 'OPTIONS', 'TRACE', 'PATCH'].includes(
-    method,
-  )
-    ? method
-    : '_OTHER';
+  if (HTTP_METHODS.has(method)) return method;
+  if (!HTTP_METHODS.has(method.toUpperCase())) return '_OTHER';
+  try {
+    // Only authored case variants need normalization. Constructing a Request
+    // does not send it; this also respects runtime differences such as PATCH.
+    const normalized = new Request('https://telemetry.invalid', { method }).method;
+    return HTTP_METHODS.has(normalized) ? normalized : '_OTHER';
+  } catch {
+    return '_OTHER';
+  }
 }
