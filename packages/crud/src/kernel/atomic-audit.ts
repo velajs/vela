@@ -1,3 +1,4 @@
+import { historyTenantNamespace } from '../versioning/index';
 import { parseSchemaAsync } from '@velajs/vela';
 import { AtomicBatchResultError, requireAtomicBatch } from '../adapter/atomic';
 import { ConfigurationException, NotFoundException } from '../envelope/errors';
@@ -21,6 +22,7 @@ export function assertAtomicAuditConfig(config: RuntimeResourceConfig): void {
   if (
     config.auditPersistence !== undefined &&
     config.auditPersistence.mode !== 'postCommit' &&
+    config.auditPersistence.mode !== 'transaction' &&
     config.auditPersistence.mode !== 'atomic'
   )
     throw new ConfigurationException('Unknown audit persistence mode');
@@ -94,6 +96,7 @@ export async function executeAtomicAuditedMutation(
   const audit = config.auditStore!.atomic!.prepare({
     id: crypto.randomUUID(),
     timestamp: new Date(),
+    tenantNamespace: historyTenantNamespace(model.tenantField ? req.vars?.tenantId : undefined),
     action: verb,
     tableName: model.tableName,
     recordId: rowIdentifier(resource, auditIdentity),

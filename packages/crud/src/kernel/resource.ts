@@ -1,3 +1,4 @@
+import { assertHistoryPersistence, needsHistoryTransaction } from './history';
 import { CrudTransactionScope } from './transaction';
 import { assertAtomicAuditConfig, executeAtomicAuditedMutation } from './atomic-audit';
 import type { CursorCodec } from '../query/cursor-codec';
@@ -265,6 +266,8 @@ export function compileResource(name: string, config: RuntimeResourceConfig): Cr
     );
   }
 
+  assertHistoryPersistence(config);
+
   // Loud, never silent: under id:'client' the caller must be able to supply
   // the PK on create — a custom dto.create that omits it would brick the
   // create verb at the insert seam (permanent 400) with no authoring signal.
@@ -301,6 +304,13 @@ export function compileResource(name: string, config: RuntimeResourceConfig): Cr
           const scoped = operation.resource;
           req = operation.request;
           requireTenantContext(scoped, req);
+          if (!req.transaction && needsHistoryTransaction(config)) {
+            return await CrudTransactionScope.run(
+              { runtime: config.adapter },
+              { tenantId: req.vars?.tenantId },
+              (transaction) => resource.execute(verb, { ...req, transaction }),
+            );
+          }
           const policies = resource.model.policies;
           if (
             verb === 'aggregate' &&

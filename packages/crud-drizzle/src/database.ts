@@ -23,7 +23,7 @@ export type DrizzleSql = SQLWrapper;
 type Row = Record<string, unknown>;
 
 interface SelectBuilder extends PromiseLike<Row[]> {
-  from(table: Table): SelectBuilder;
+  from(table: Table | SQLWrapper): SelectBuilder;
   where(condition: SQLWrapper | undefined): SelectBuilder;
   orderBy(...order: SQLWrapper[]): SelectBuilder;
   groupBy(...columns: SQLWrapper[]): SelectBuilder;

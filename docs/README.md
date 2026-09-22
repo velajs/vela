@@ -31,6 +31,8 @@ HTTP client, live queries, and Studio in a runnable Workers application.
 - [Security configuration](security.md): request limits, browser origins,
   identity, response caching, signed URLs, and WebSocket boundaries.
 - [Logging](logging.md): application-owned records, redaction, sinks, and invocation correlation.
+- [Observability](observability.md): optional request tracing, metrics, explicit context propagation,
+  and an OpenTelemetry bridge.
 - [WebSockets](websockets.md): gateways, transports, rooms, and authentication.
 - [Live queries](live-queries.md): subscriptions, invalidation, reconnects,
   delivery guarantees, and runtime limits.
@@ -40,12 +42,18 @@ HTTP client, live queries, and Studio in a runnable Workers application.
 - [Cloudflare security](cloudflare-security.md): platform identity, signed R2
   URLs, and Durable Object WebSockets.
 - [HTTP clients](client/HTTP.md): generated contracts and Hono RPC.
+- [Outbound HTTP](http-client.md): injectable transports, cancellation, byte limits,
+  and schema-validated responses.
 - [Method RPC](../packages/rpc/README.md): shared procedure contracts and typed HTTP/Fetcher calls.
 - [GraphQL](../packages/graphql/README.md): explicit schemas, scoped resolvers, and operation loaders.
 - [Live clients](client/README.md): subscriptions, optimistic updates, offline
   mutations, and React integration.
 - [CRUD](crud/README.md): resources, adapters, authorization, and data safety.
 - [Atomic writes](atomic-writes.md): typed batches and optional atomic metadata-only audits.
+- [Transactional history](transactional-history.md): owned version snapshots, scoped audits,
+  rollback guarantees, and schema migrations.
+- [Durable delivery](../packages/reliability/README.md): independent idempotency, outbox/inbox,
+  persistent one-off jobs, and fenced database execution.
 - [Multiple databases](multi-database.md): typed registration, resource routing,
   owned transactions, and separate migrations.
 - [Domain event sourcing](event-sourcing.md): replayable business history, projections,

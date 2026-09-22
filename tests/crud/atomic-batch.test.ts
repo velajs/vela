@@ -19,7 +19,8 @@ import {
 } from '@velajs/crud';
 import type { AtomicCommand, CrudAdapter } from '@velajs/crud/adapter';
 import { MemoryAuditStore } from '@velajs/crud/audit';
-import { drizzleAdapter, DrizzleAuditStore } from '@velajs/crud-drizzle';
+import { historyTenantNamespace } from '@velajs/crud/versioning';
+import { drizzleAdapter, DrizzleAuditStore, drizzleInsertCommand } from '@velajs/crud-drizzle';
 
 const items = sqliteTable('items', {
   id: text().primaryKey(),
@@ -30,6 +31,7 @@ const items = sqliteTable('items', {
 const related = sqliteTable('related', { id: text().primaryKey(), value: integer().notNull() });
 const audit = sqliteTable('audit', {
   id: text().primaryKey(),
+  tenantNamespace: text().notNull(),
   timestamp: integer().notNull(),
   action: text().notNull(),
   tableName: text().notNull(),
@@ -158,7 +160,7 @@ for (const database of databases)
         'CREATE TABLE related (id TEXT PRIMARY KEY, value INTEGER NOT NULL CHECK(value >= 0))',
       );
       await exec(
-        'CREATE TABLE audit (id TEXT PRIMARY KEY, timestamp INTEGER NOT NULL, action TEXT NOT NULL, tableName TEXT NOT NULL, recordId TEXT NOT NULL, userId TEXT, record TEXT, previousRecord TEXT, changes TEXT, metadata TEXT)',
+        'CREATE TABLE audit (id TEXT PRIMARY KEY, tenantNamespace TEXT NOT NULL, timestamp INTEGER NOT NULL, action TEXT NOT NULL, tableName TEXT NOT NULL, recordId TEXT NOT NULL, userId TEXT, record TEXT, previousRecord TEXT, changes TEXT, metadata TEXT)',
       );
     });
     beforeEach(async () => {
@@ -189,6 +191,77 @@ for (const database of databases)
       expect(await db.select().from(items)).toEqual([]);
       expect(await db.select().from(related)).toEqual([]);
       expect(await logs.query()).toEqual([]);
+    });
+    it('composes copied insert commands with business writes and rolls back both on SQL failure', async () => {
+      const values = { id: 'event', value: 1 };
+      const insert = drizzleInsertCommand({
+        db,
+        table: related,
+        values,
+        parseRows: (rows) => z.array(z.object({ id: z.string(), value: z.number() })).parse(rows),
+      });
+      values.value = -1;
+      const [, events] = await batch.execute([batch.create(item()), insert]);
+      expect(events).toEqual([{ id: 'event', value: 1 }]);
+      await expect(
+        batch.execute([
+          batch.create(item('rollback')),
+          drizzleInsertCommand({
+            db,
+            table: related,
+            values: { id: 'bad', value: -1 },
+            parseRows: () => undefined,
+          }),
+        ]),
+      ).rejects.toThrow();
+      expect((await db.select().from(items)).map((row) => row.id)).toEqual(['one']);
+      expect(await db.select().from(related)).toEqual([{ id: 'event', value: 1 }]);
+    });
+    it('rejects unknown insert fields before execution and preserves decoder commit semantics', async () => {
+      expect(() =>
+        drizzleInsertCommand({
+          db,
+          table: related,
+          values: { unknown: 1 },
+          parseRows: () => undefined,
+        }),
+      ).toThrow('Unknown');
+      const command = drizzleInsertCommand({
+        db,
+        table: related,
+        values: { id: 'event', value: 1 },
+        parseRows: () => {
+          throw new Error('decode failed');
+        },
+      });
+      const result = batch.execute([batch.create(item()), command]);
+      if (database.driver === 'd1') {
+        await expect(result).rejects.toBeInstanceOf(AtomicBatchResultError);
+        expect(await db.select().from(related)).toHaveLength(1);
+        expect(await db.select().from(items)).toHaveLength(1);
+      } else {
+        await expect(result).rejects.toThrow('decode failed');
+        expect(await db.select().from(related)).toEqual([]);
+        expect(await db.select().from(items)).toEqual([]);
+      }
+    });
+    it('rejects asynchronous insert decoders and observes rejected decoder promises', async () => {
+      const command = drizzleInsertCommand({
+        db,
+        table: related,
+        values: { id: 'async-decoder', value: 1 },
+        parseRows: async () => {
+          throw new Error('async decoder rejected');
+        },
+      });
+      const result = batch.execute([command]);
+      if (database.driver === 'd1') {
+        await expect(result).rejects.toBeInstanceOf(AtomicBatchResultError);
+        expect(await db.select().from(related)).toHaveLength(1);
+      } else {
+        await expect(result).rejects.toThrow('must be synchronous');
+        expect(await db.select().from(related)).toEqual([]);
+      }
     });
     it('rolls back all preceding writes when audit persistence fails', async () => {
       await logs.log({
@@ -304,7 +377,8 @@ for (const database of databases)
       ).rejects.toThrow();
       await scoped.execute('update', { id: 'one', body: { value: 2 }, vars: { tenantId: 'a' } });
       await scoped.execute('delete', { id: 'one', vars: { tenantId: 'a' } });
-      const entries = await logs.query();
+      expect(await logs.query()).toEqual([]);
+      const entries = await logs.query({ tenantNamespace: historyTenantNamespace('a') });
       expect(entries).toHaveLength(3);
       for (const entry of entries) {
         expect(entry.record).toBeUndefined();
@@ -393,7 +467,7 @@ for (const database of databases)
         (await scoped.execute('create', { body: { id: 'one', value: 1 }, vars: { tenantId: 'a' } }))
           .status,
       ).toBe(201);
-      expect(await logs.query()).toHaveLength(1);
+      expect(await logs.query({ tenantNamespace: historyTenantNamespace('a') })).toHaveLength(1);
       expect(await db.select().from(items)).toHaveLength(1);
       expect(afterCommit).toHaveBeenCalledOnce();
       expect(failure).toHaveBeenCalledOnce();

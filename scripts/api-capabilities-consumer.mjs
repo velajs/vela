@@ -71,7 +71,9 @@ export async function verifyApiCapabilities(releaseTarballs) {
   );
   const proof = { path: consumer, status: 'passed', archives, companions };
   await writeFile(join(consumer, 'proof.json'), JSON.stringify(proof, null, 2) + '\n');
-  console.log('PASS: packed HTTP forms, async caching, atomic writes and public declarations');
+  console.log(
+    'PASS: packed HTTP forms, streams, telemetry, caching, transactional history and atomic writes',
+  );
   return proof;
 }
 

@@ -449,19 +449,43 @@ export function generateClientContract(input: unknown): GeneratedClientContract 
         if (statusType.includes('HttpStatus')) usesHttpStatus = true;
         const content = response.content ?? {};
         const media = Object.keys(content);
-        if (
-          media.length > 1 ||
-          (media.length === 1 && media[0] !== 'application/json' && media[0] !== 'text/plain')
-        )
-          throw new Error(`${at}: responses must declare one JSON or text media type.`);
-        const format = media[0] === 'text/plain' ? 'text' : 'json';
-        rejectBinaryJson(content[media[0] ?? '']?.schema, `${at} response ${status}`);
+        const declaredFormat = response['x-vela-response-format'];
+        const mediaType = media[0];
+        const mediaSchema = content[mediaType ?? '']?.schema;
+        const binarySchema =
+          typeof mediaSchema === 'object' &&
+          mediaSchema.type === 'string' &&
+          mediaSchema.format === 'binary';
+        const format =
+          declaredFormat ??
+          (media.length > 1
+            ? 'response'
+            : mediaType === 'text/plain'
+              ? 'text'
+              : mediaType === 'text/event-stream' ||
+                  mediaType === 'application/x-ndjson' ||
+                  mediaType === 'application/ndjson'
+                ? 'stream'
+                : mediaType === 'application/octet-stream' ||
+                    (mediaType !== 'application/json' && mediaType !== 'text/plain' && binarySchema)
+                  ? 'binary'
+                  : mediaType && mediaType !== 'application/json'
+                    ? 'response'
+                    : 'json');
+        const native = format === 'binary' || format === 'stream' || format === 'response';
+        if (!native) rejectBinaryJson(content[mediaType ?? '']?.schema, `${at} response ${status}`);
         const bodyType =
           ['101', '204', '205', '304'].includes(status) || method === 'head'
             ? 'never'
-            : schemaType(content[media[0] ?? '']?.schema, `${at} response ${status}`);
-        // text() always returns a string, even if the document describes a
-        // numeric or unconstrained text payload. Preserve string literals.
+            : native
+              ? format === 'binary'
+                ? 'Blob'
+                : format === 'stream'
+                  ? 'ReadableStream<Uint8Array> | null'
+                  : 'unknown'
+              : schemaType(content[mediaType ?? '']?.schema, `${at} response ${status}`);
+        // Native formats deliberately leave json() unknown. A media type or
+        // streaming record schema cannot establish an arbitrary parsed JSON value.
         const output =
           format === 'text'
             ? `Extract<${bodyType}, string> extends never ? string : Extract<${bodyType}, string>`

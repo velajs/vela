@@ -24,11 +24,9 @@ import { rowIdentifier } from '../verb-helpers';
  *    the tx and returns the resource envelope of the rolled-back row, whose
  *    version field is `currentVersion + 1`.
  *
- * Rollback behavior: hono-crud's rollback does NOT snapshot the
- * pre-rollback state and numbers the new version as `getLatestVersion()+1`.
- * The native rollback SNAPSHOTS the pre-rollback state (like an update) and
- * numbers it `currentVersion+1`. In the pinned rollback test the two coincide
- * (both → 4) because the seeded latest version equals the live record's version.
+ * Rollback snapshots the pre-rollback state and advances the live row counter.
+ * A persisted snapshot for the current live version is a conflict, never an
+ * overwrite of an earlier history entry.
  */
 
 import {
@@ -45,7 +43,7 @@ import {
   type VersionRecordKey,
 } from '../../versioning/index';
 import type { CrudEndpointName } from '../../verb-table';
-import { captureVersion, versionRecordKeyFor } from '../capture';
+import { captureAudit, versionRecordKeyFor } from '../capture';
 import type { EngineRequest, EngineResult } from '../engine-request';
 import { envelopeOf } from '../resource';
 import {
@@ -284,8 +282,8 @@ async function executeVersionCompare(
 
 /**
  * Restore a record to a historical version. Reads the target snapshot (404 if
- * absent), snapshots the PRE-rollback state (`captureVersion`, which also
- * stamps the incremented version onto the write payload), then writes the
+ * absent), snapshots the PRE-rollback state at the adapter write boundary,
+ * stamps the incremented version onto the write payload, then writes the
  * historical data back via `adapter.update` inside the transaction. Response:
  * the resource envelope of the rolled-back row (its `version` = currentVersion
  * + 1). Tenant/owner-scoped: a foreign/missing record is a 404.
@@ -320,13 +318,17 @@ async function executeVersionRollback(
     assertVersionEntryScope(resource, req, recordKey, entry);
     await assertReadAllowed(resource, policyCtx, entry.data as Row, String(recordId));
 
-    // Snapshot the pre-rollback state and stamp the incremented version onto
-    // the historical data we are about to write back.
+    // The wrapped adapter snapshots the current row and stamps its next version.
     const writeData = applyManagedUpdateFields(model, entry.data as Row) as Row;
-    await captureVersion(resource, current, writeData, req);
 
     const updated = (await config.adapter.update(lookup, writeData, scope)) as Row | null;
     if (!updated) throw new NotFoundException(model.name, lookup.value);
+    await captureAudit(resource, req, 'update', {
+      recordId,
+      record: updated,
+      previousRecord: current,
+      metadata: { rollbackVersion: version },
+    });
     return updated;
   }, txCtx(req));
 

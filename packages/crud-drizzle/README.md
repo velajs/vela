@@ -102,3 +102,11 @@ CRUD's opt-in `auditPersistence: { mode: 'atomic', snapshots: 'none' }` captures
 identity/context only; it never claims a previous-record snapshot from an outside
 read. See the [atomic write guide](../../docs/atomic-writes.md) for typed service
 examples, schema requirements, and limitations.
+
+
+`DrizzleVersioningStore` and `DrizzleAuditStore` expose same-owner history bindings
+for asynchronous SQLite/libsql and PostgreSQL. Version tables require a declared
+and migrated `UNIQUE(tableName, recordId, version)`; audit tables require a
+`tenantNamespace` column without inferred attribution of legacy rows. See
+[transactional history](../../docs/transactional-history.md) for migrations and
+`drizzleTransactionStore` for trusted native store operations.

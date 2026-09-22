@@ -1,6 +1,7 @@
 import type { Context } from 'hono';
 import { BadRequestException } from '../errors/http-exception';
 import type { RuntimeEndpointDefinition } from '../openapi/endpoint';
+import { isEndpointBinaryBody } from '../openapi/endpoint-response';
 import { parseSchemaAsync } from '../validation/parse-schema';
 import { SchemaValidationError } from '../validation/standard-schema';
 import type { PipeTransform } from '../pipeline/types';
@@ -83,6 +84,20 @@ export async function mapEndpointResponse(
   result: unknown,
 ): Promise<Response> {
   const value = await parseSchemaAsync(endpoint.output, result);
+  if (
+    endpoint.format === 'binary' ||
+    endpoint.format === 'stream' ||
+    endpoint.format === 'response'
+  ) {
+    if (value instanceof Response) return value;
+    if (isEndpointBinaryBody(value) || value instanceof ReadableStream) {
+      return new Response(value, {
+        status: endpoint.status,
+        headers: { 'content-type': endpoint.contentType ?? 'application/octet-stream' },
+      });
+    }
+    throw new TypeError('Invalid native endpoint response');
+  }
   if (endpoint.format === 'text') {
     if (typeof value !== 'string') throw new Error('Text endpoint output must be a string');
     return context.text(value, endpoint.status);

@@ -184,3 +184,10 @@ opt into **metadata-only** atomic auditing with
 `auditPersistence: { mode: 'atomic', snapshots: 'none' }`; ordinary post-commit
 auditing remains the default. See [atomic writes](../../docs/atomic-writes.md)
 for ownership, predicates, supported configurations, and committed error handling.
+
+
+Version history and `auditPersistence: { mode: 'transaction' }` participate in
+owned CRUD transactions. Versioned resources require a same-owner transaction
+store; plain independent stores are rejected before writes. See
+[transactional history](../../docs/transactional-history.md) for schema migration,
+tenant isolation and the `withCrudTransactionStore` native integration helper.

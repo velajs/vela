@@ -535,7 +535,8 @@ async function processImportRow(
       status: 'created',
       data: await shapeOne(resource, policyCtx, req, created),
     };
-  } catch {
+  } catch (error) {
+    if (model.versioning || resource.config.auditPersistence?.mode === 'transaction') throw error;
     return { rowNumber, status: 'failed', error: 'Import operation failed' };
   }
 }

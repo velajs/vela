@@ -6,6 +6,7 @@ export default defineConfig({
     'src/validation/index.ts',
     'src/internal.ts',
     'src/streaming/index.ts',
+    'src/observability/index.ts',
     'src/schedule-node/index.ts',
     'src/websocket/index.ts',
     'src/websocket-node/index.ts',

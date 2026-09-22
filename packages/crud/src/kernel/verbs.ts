@@ -48,7 +48,7 @@ import {
   resolveKeyset,
 } from '../query/pagination';
 import type { EngineRequest, EngineResult } from './engine-request';
-import { captureAudit, captureVersion } from './capture';
+import { captureAudit } from './capture';
 import { runBeforeChain, runHooks } from './run-hooks';
 import { envelopeOf } from './resource';
 import {
@@ -302,7 +302,6 @@ export async function executeUpdate(
     // Version snapshot BEFORE the write: captures the pre-update state and
     // stamps the incremented version field onto `managed` (no-op when the
     // model does not version).
-    await captureVersion(resource, prior, managed, req);
     if (config.hooks?.beforeUpdate) {
       managed = (await config.hooks.beforeUpdate(ctx, managed, prior)) ?? managed;
     }
@@ -388,7 +387,6 @@ export async function executeDelete(
 
     // Snapshot the pre-delete state (no-op when the model does not version);
     // no write payload to stamp — the row is being removed.
-    await captureVersion(resource, prior, undefined, req);
     if (config.hooks?.beforeDelete) await config.hooks.beforeDelete(ctx, prior);
 
     const deleted = await config.adapter.delete(

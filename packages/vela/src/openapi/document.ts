@@ -1,3 +1,4 @@
+import { endpointResponseSchema } from './endpoint-response';
 import { ParamType } from '../constants';
 import type { Type } from '../container/types';
 import { getRouteContributors } from '../http/route-contributor';
@@ -305,19 +306,35 @@ function buildOperation(
     const resolved: { description: string; content?: Record<string, { schema: JsonSchema }> } = {
       description: entry.description,
     };
-    const schema = resolveResponseSchema(entry.schema, registry);
+    const schema = entry.format
+      ? parseJsonSchema(
+          endpointResponseSchema(entry.format).toJSONSchema(),
+          'native response schema',
+        )
+      : resolveResponseSchema(entry.schema, registry);
     if (schema) {
-      resolved.content = { 'application/json': { schema } };
+      resolved.content = {
+        [entry.contentType ?? (entry.format ? 'application/octet-stream' : 'application/json')]: {
+          schema,
+        },
+      };
     }
+    if (entry.format) Object.assign(resolved, { 'x-vela-response-format': entry.format });
     responses[key] = resolved;
   }
   if (endpoint) {
     responses[String(endpoint.status)] = {
       description: 'Success',
+      ...(endpoint.format === 'binary' ||
+      endpoint.format === 'stream' ||
+      endpoint.format === 'response'
+        ? { 'x-vela-response-format': endpoint.format }
+        : {}),
       content: {
-        [endpoint.format === 'text' ? 'text/plain' : 'application/json']: {
-          schema: endpoint.outputSchema,
-        },
+        [endpoint.contentType ?? (endpoint.format === 'text' ? 'text/plain' : 'application/json')]:
+          {
+            schema: endpoint.outputSchema,
+          },
       },
     };
   }

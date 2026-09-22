@@ -11,3 +11,4 @@ export {
 export { matchesFilter } from './filter';
 export { clearMemoryStorage, getStore, storage } from './storage';
 export { MemoryStore, transactionalMemoryAdapter } from './transactional';
+export { transactionalMemoryVersioningStore, transactionalMemoryAuditStore } from './history';

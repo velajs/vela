@@ -1,3 +1,6 @@
+import type { TransactionStoreBinding } from '../kernel/transaction';
+import { historyTenantNamespace, validateHistoryPagination } from '../versioning/index';
+
 /**
  * The AUDIT family: a DI-provided `AuditStore` seam (decoupled from the data
  * adapter) plus a plain-`Array` `MemoryAuditStore` for tests and small
@@ -40,6 +43,8 @@ export interface FieldChange {
  * `when` = {@link timestamp}. Ported from hono-crud `AuditLogEntry`.
  */
 export interface AuditEntry<T = Record<string, unknown>> {
+  /** Trusted namespace. Omission denotes standalone global records only. */
+  tenantNamespace?: string;
   /** Unique id for this entry. */
   id: string;
   /** When the action occurred. */
@@ -64,6 +69,8 @@ export interface AuditEntry<T = Record<string, unknown>> {
 
 /** Read-side filters for {@link AuditStore.query} (hono-crud `getAll` options). */
 export interface AuditQuery {
+  /** Defaults to global; never queries every tenant implicitly. */
+  tenantNamespace?: string;
   tableName?: string;
   recordId?: string | number;
   action?: AuditAction;
@@ -82,6 +89,8 @@ export interface AuditQuery {
  * (Drizzle, KV, D1, ...). All methods are async and edge-safe.
  */
 export interface AuditStore {
+  readonly transaction?: TransactionStoreBinding<AuditStore>;
+  validatePersistence?(): Promise<void>;
   /** Optional precomputed persistence on the same exact native database. */
   readonly atomic?: AtomicAuditDriver;
   /** Persist one entry. */
@@ -103,6 +112,7 @@ export interface AtomicAuditDriver {
 /** Atomic CRUD integration deliberately captures identity/context only. */
 export type AuditPersistence =
   | { readonly mode: 'postCommit' }
+  | { readonly mode: 'transaction' }
   | { readonly mode: 'atomic'; readonly snapshots: 'none' };
 
 /**
@@ -111,18 +121,28 @@ export type AuditPersistence =
  * single-instance deployments.
  */
 export class MemoryAuditStore implements AuditStore {
-  private entries: AuditEntry[] = [];
+  private readonly storage: AuditEntry[] = [];
+  protected get entries(): AuditEntry[] {
+    return this.storage;
+  }
 
   async log(entry: AuditEntry): Promise<void> {
-    this.entries.push(entry);
+    validateAuditEntry(entry);
+    this.entries.push(
+      structuredClone({ ...entry, tenantNamespace: entry.tenantNamespace ?? 'global' }),
+    );
   }
 
   async logBatch(entries: AuditEntry[]): Promise<void> {
-    for (const entry of entries) this.entries.push(entry);
+    entries.forEach(validateAuditEntry);
+    for (const entry of entries) await this.log(entry);
   }
 
   async query(options: AuditQuery = {}): Promise<AuditEntry[]> {
-    let filtered = this.entries;
+    validateAuditQuery(options);
+    let filtered = this.entries.filter(
+      (entry) => (entry.tenantNamespace ?? 'global') === (options.tenantNamespace ?? 'global'),
+    );
     if (options.tableName !== undefined) {
       filtered = filtered.filter((e) => e.tableName === options.tableName);
     }
@@ -145,17 +165,18 @@ export class MemoryAuditStore implements AuditStore {
     }
     const offset = options.offset ?? 0;
     const limit = options.limit ?? filtered.length;
-    return filtered.slice(offset, offset + limit);
+    filtered = [...filtered].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+    return structuredClone(filtered.slice(offset, offset + limit));
   }
 
   /** Every stored entry (tests). */
   all(): AuditEntry[] {
-    return [...this.entries];
+    return structuredClone(this.entries);
   }
 
   /** Drop every stored entry (tests). */
   clear(): void {
-    this.entries = [];
+    this.entries.length = 0;
   }
 }
 
@@ -185,4 +206,74 @@ export function calculateChanges(
     }
   }
   return changes;
+}
+
+const AUDIT_ACTIONS = new Set<AuditAction>([
+  'create',
+  'update',
+  'delete',
+  'restore',
+  'upsert',
+  'batch_create',
+  'batch_update',
+  'batch_delete',
+  'batch_restore',
+  'batch_upsert',
+]);
+
+export function validateAuditNamespace(value: string): void {
+  if (value === 'global') return;
+  if (typeof value !== 'string' || !value.startsWith('tenant:'))
+    throw new TypeError('Invalid audit tenant namespace');
+  let tenant: unknown;
+  try {
+    tenant = JSON.parse(value.slice(7));
+  } catch {
+    throw new TypeError('Invalid audit tenant namespace');
+  }
+  if (typeof tenant !== 'string' || historyTenantNamespace(tenant) !== value)
+    throw new TypeError('Invalid audit tenant namespace');
+}
+
+export function validateAuditQuery(options: AuditQuery): void {
+  validateAuditNamespace(options.tenantNamespace ?? 'global');
+  validateHistoryPagination(options);
+  for (const value of [options.tableName, options.userId])
+    if (value !== undefined && (typeof value !== 'string' || !value.length))
+      throw new TypeError('Invalid audit query text');
+  if (
+    options.recordId !== undefined &&
+    typeof options.recordId !== 'string' &&
+    (typeof options.recordId !== 'number' || !Number.isFinite(options.recordId))
+  )
+    throw new TypeError('Invalid audit record identifier');
+  if (options.action !== undefined && !AUDIT_ACTIONS.has(options.action))
+    throw new TypeError('Invalid audit action');
+  for (const value of [options.startDate, options.endDate])
+    if (value !== undefined && (!(value instanceof Date) || !Number.isFinite(value.getTime())))
+      throw new TypeError('Invalid audit date');
+  if (options.startDate && options.endDate && options.startDate > options.endDate)
+    throw new TypeError('Invalid audit date range');
+}
+
+export function validateAuditEntry(entry: AuditEntry): void {
+  validateAuditQuery({ ...entry, startDate: entry.timestamp });
+  if (
+    typeof entry.id !== 'string' ||
+    !entry.id.length ||
+    typeof entry.tableName !== 'string' ||
+    !entry.tableName.length ||
+    !AUDIT_ACTIONS.has(entry.action) ||
+    !(entry.timestamp instanceof Date) ||
+    !Number.isFinite(entry.timestamp.getTime()) ||
+    (typeof entry.recordId !== 'string' &&
+      (typeof entry.recordId !== 'number' || !Number.isFinite(entry.recordId)))
+  )
+    throw new TypeError('Invalid audit entry');
+}
+
+export function parseAuditAction(value: unknown): AuditAction {
+  if (typeof value !== 'string' || !(AUDIT_ACTIONS as ReadonlySet<string>).has(value))
+    throw new TypeError('Invalid audit action');
+  return value as AuditAction;
 }

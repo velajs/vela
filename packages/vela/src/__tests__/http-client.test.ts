@@ -251,8 +251,8 @@ describe('HttpModule', () => {
     const app = await VelaFactory.create(AppModule);
     await app.getHonoApp().request('/auth');
     const [, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit];
-    expect((init.headers as Record<string, string>)['Authorization']).toBe('Bearer token');
-    expect((init.headers as Record<string, string>)['X-Request-Id']).toBe('123');
+    expect(new Headers(init.headers).get('Authorization')).toBe('Bearer token');
+    expect(new Headers(init.headers).get('X-Request-Id')).toBe('123');
   });
 
   it('registerAsync() should resolve baseURL from an injected service', async () => {

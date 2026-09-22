@@ -1,0 +1,98 @@
+{
+  "name": "@velajs/reliability",
+  "version": "1.0.0",
+  "description": "Portable durable idempotency, outbox, inbox and one-off scheduling",
+  "keywords": [
+    "idempotency",
+    "outbox",
+    "scheduling",
+    "vela"
+  ],
+  "homepage": "https://github.com/velajs/vela/tree/main/packages/reliability#readme",
+  "bugs": {
+    "url": "https://github.com/velajs/vela/issues"
+  },
+  "license": "MIT",
+  "author": "ksh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/velajs/vela.git",
+    "directory": "packages/reliability"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./http": {
+      "types": "./dist/http/index.d.ts",
+      "import": "./dist/http/index.js"
+    },
+    "./drizzle": {
+      "types": "./dist/drizzle/index.d.ts",
+      "import": "./dist/drizzle/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit -p tsconfig.test.json",
+    "test": "vitest run",
+    "lint": "oxlint .",
+    "format:check": "oxfmt --check .",
+    "publint": "publint",
+    "attw": "attw --pack . --profile esm-only"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "catalog:",
+    "@electric-sql/pglite": "^0.5.4",
+    "@libsql/client": "^0.17.4",
+    "@types/node": "catalog:",
+    "@types/pg": "^8.23.1",
+    "@velajs/crud": "workspace:*",
+    "@velajs/crud-drizzle": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "oxfmt": "catalog:",
+    "oxlint": "catalog:",
+    "pg": "^8.23.0",
+    "publint": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "@velajs/crud": "workspace:^",
+    "@velajs/crud-drizzle": "workspace:^",
+    "drizzle-orm": ">=0.45.2"
+  },
+  "peerDependenciesMeta": {
+    "@velajs/crud": {
+      "optional": true
+    },
+    "@velajs/crud-drizzle": {
+      "optional": true
+    },
+    "drizzle-orm": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

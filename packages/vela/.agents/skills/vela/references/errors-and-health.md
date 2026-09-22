@@ -125,6 +125,14 @@ The async path caches only bounded JSON snapshots, never responses, streams, coo
 
 ## Application-owned structured logging
 
+Optional tracing and metrics live in `@velajs/vela/observability`. Install
+`observabilityAdapter({ telemetry })` with application-owned recorders; defaults
+are inert and do not create exporters. `getRequestTelemetry(requestContext)`
+provides explicit invocation-local state. `createHttpClientTelemetryObserver`
+connects to `HttpModule.forRoot({ observer })`; `createExecutionTelemetryObserver`
+is structurally usable by optional execution integrations. SDK setup and flushing
+remain application-owned. See `docs/observability.md` for the complete contracts.
+
 Import `LoggingModule.forRoot({ directive: 'warn,orders=debug', sinks: [...] })`
 once per application and inject `APP_LOGGER` (`ApplicationLogger`).
 `createLogger(category, fields)` returns a `LoggerService`-compatible child;

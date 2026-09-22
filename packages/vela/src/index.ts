@@ -24,6 +24,9 @@ export type {
   EndpointFormLimits,
   EndpointFormField,
   EndpointHandlerOutput,
+  EndpointResponseFormat,
+  EndpointResponseOutput,
+  EndpointBinaryBody,
   EndpointRequest,
   EndpointSchema,
   OpenApiDocument,
@@ -236,8 +239,25 @@ export type {
 } from './config/index';
 
 // HTTP Client
-export { HttpModule, HttpService, HTTP_MODULE_OPTIONS, HttpRequestException } from './fetch/index';
-export type { HttpModuleOptions, HttpResponse, HttpRequestConfig } from './fetch/index';
+export {
+  HttpModule,
+  HttpService,
+  HTTP_MODULE_OPTIONS,
+  HttpRequestException,
+  HttpResponseSizeException,
+} from './fetch/index';
+export type {
+  HttpModuleOptions,
+  HttpResponse,
+  HttpRequestConfig,
+  RequestConfig,
+  HttpFetch,
+  HttpTransport,
+  HttpClientRequest,
+  HttpClientResponse,
+  HttpClientRequestObserver,
+  HttpClientObserver,
+} from './fetch/index';
 
 // CORS
 export { CorsModule, CORS_OPTIONS } from './cors/index';

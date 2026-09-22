@@ -4,8 +4,18 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      recovery_run_id:
+        description: 'Original completed release run whose exact artifacts should be resumed'
+        type: string
+        default: ''
+      metadata_only:
+        description: 'Reconcile historical tags/releases without publishing or changing npm latest'
+        type: boolean
+        default: false
 
 permissions:
+  actions: read
   contents: write
   pull-requests: write
   id-token: write
@@ -36,10 +46,15 @@ jobs:
       - name: Install npm with trusted publishing support
         run: npm install --global npm@11.19.0
       - run: pnpm install --frozen-lockfile
+        if: ${{ !inputs.recovery_run_id }}
       - run: pnpm verify
+        if: ${{ !inputs.recovery_run_id }}
       - run: pnpm peers check
+        if: ${{ !inputs.recovery_run_id }}
       - run: pnpm audit --audit-level=high
+        if: ${{ !inputs.recovery_run_id }}
       - name: Create release PR or publish tested archives through OIDC
+        if: ${{ !inputs.recovery_run_id }}
         uses: changesets/action@8488615a623b1b9c987934bb89eae8af6a946ac1 # v2.1.1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -52,10 +67,17 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Require signed provenance from this public repository for every upload.
           NPM_CONFIG_PROVENANCE: 'true'
+      - name: Resume verified release artifacts without rebuilding
+        if: ${{ inputs.recovery_run_id }}
+        run: node scripts/release-resume.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RECOVERY_RUN_ID: ${{ inputs.recovery_run_id }}
+          RECOVERY_METADATA_ONLY: ${{ inputs.metadata_only }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
-          name: release-${{ github.sha }}
+          name: ${{ inputs.recovery_run_id && format('recovered-release-{0}-{1}', inputs.recovery_run_id, github.run_id) || format('release-{0}', github.sha) }}
           path: .artifacts/release/
           include-hidden-files: true
           if-no-files-found: ignore

@@ -19,4 +19,10 @@ export { executeCreate, executeDelete, executeList, executeRead, executeUpdate }
 export * from './hook-types';
 export { runBeforeChain, runHooks } from './run-hooks';
 
-export { crudTransaction, type CrudTransactionScope } from './transaction';
+export {
+  crudTransaction,
+  withCrudTransactionStore,
+  type CrudTransactionScope,
+  type TransactionStoreBinding,
+  type TransactionStoreErrorObserver,
+} from './transaction';

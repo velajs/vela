@@ -94,3 +94,38 @@ export function checkTransformEndpointTypes(): void {
   });
   void [output, wire, parsed, Correct, Incorrect, legacy];
 }
+
+export function checkNativeEndpointTypes(): void {
+  const input = z.object({ query: z.object({ id: z.string() }) });
+  const stream = defineEndpoint({ input, format: 'stream', contentType: 'text/event-stream' });
+  stream.bind((value) => new Response(value.query.id));
+  stream.bind(() => new ReadableStream<Uint8Array>());
+  // @ts-expect-error Streams require byte chunks.
+  stream.bind(() => new ReadableStream<string>());
+  // @ts-expect-error Stream endpoints cannot return JSON objects.
+  stream.bind(() => ({ value: 'json' }));
+  const binary = defineEndpoint({ input, format: 'binary' });
+  binary.bind(() => new Blob());
+  binary.bind(() => new Uint8Array(2));
+  binary.bind(() => new ArrayBuffer(2));
+  // @ts-expect-error Binary endpoints cannot return a plain string.
+  binary.bind(() => 'bytes');
+  const response = defineEndpoint({ input, format: 'response' });
+  response.bind(() => new Response());
+  // @ts-expect-error Native response endpoints require Response, not just its body.
+  response.bind(() => new Blob());
+  // @ts-expect-error A native output cannot pretend to parse a JSON schema.
+  defineEndpoint({ input, format: 'stream', output: z.string() });
+  class Native {
+    @Endpoint(stream)
+    valid(_input: z.output<typeof input>) {
+      return new ReadableStream<Uint8Array>();
+    }
+    // @ts-expect-error Decorators enforce the same native output boundary as bind.
+    @Endpoint(stream)
+    invalid(_input: z.output<typeof input>) {
+      return { arbitrary: 'json' };
+    }
+  }
+  void Native;
+}

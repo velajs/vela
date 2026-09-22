@@ -40,6 +40,12 @@ pnpm --filter @velajs/cloudflare test:workers
 pnpm test:conformance
 ```
 
+Live PostgreSQL integration tests run separately in CI. To run them locally, set
+`VELA_POSTGRES_URL` to a disposable PostgreSQL database and run `pnpm test:postgres`
+after building the workspace. This command fails if the URL is absent or invalid;
+it never substitutes an in-memory database. The test user must be able to create
+schemas and roles for the isolated transaction and row-level security checks.
+
 Before submitting, run `pnpm lint` and `pnpm verify`. The verification gate checks
 the workspace, builds, API snapshot, types, bundled skill documentation, package
 tests, release tests, CRUD conformance, and native Workers behavior. Review

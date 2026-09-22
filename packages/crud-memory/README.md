@@ -26,3 +26,10 @@ registrations cannot reuse that capability. See the
 [multi-database guide](../../docs/multi-database.md) for explicit routing and
 transaction composition. The prototype `memoryAdapter` has no callback rollback
 guarantee and is not eligible for composition.
+
+
+Use `transactionalMemoryVersioningStore(store)` and
+`transactionalMemoryAuditStore(store)` with that same `MemoryStore` for history
+that commits and rolls back with resource rows. The stores preserve standalone
+methods for seeding and administrative reads; use `withCrudTransactionStore` to
+join an existing transaction. See [transactional history](../../docs/transactional-history.md).

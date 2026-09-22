@@ -4,6 +4,7 @@ import type { Model } from './model/model.types';
 import type { AuditStore } from './audit/index';
 import type { VersioningStore } from './versioning/index';
 import { ConfigurationException } from './envelope/errors';
+import type { TransactionStoreBinding } from './kernel/transaction';
 
 export interface CrudDatabaseResource {
   readonly model: Model;
@@ -48,6 +49,7 @@ export class CrudDatabaseRegistry<
 > {
   readonly #databases = new Map<string, CrudDatabase>();
   readonly #registrations = new Map<string, object>();
+  readonly #storeOwners = new Map<string, DatabaseAdapterOwner>();
   readonly defaultDatabase: Databases[number]['name'] | undefined;
 
   constructor(databases: Databases, options: { defaultDatabase?: Databases[number]['name'] } = {}) {
@@ -102,8 +104,10 @@ export class CrudDatabaseRegistry<
 
   /** Each application gets its own registration claims even if it reuses configuration. */
   forApplication(): CrudDatabaseRegistry {
+    const storeOwners = new Map<string, DatabaseAdapterOwner>();
     const databases = [...this.#databases.values()].map((database): CrudDatabase => {
       const owner = new DatabaseAdapterOwner();
+      storeOwners.set(database.name, owner);
       return {
         ...database,
         resources: Object.fromEntries(
@@ -115,11 +119,35 @@ export class CrudDatabaseRegistry<
             },
           ]),
         ),
+        ...(database.auditStore ? { auditStore: owner.bindStore(database.auditStore) } : {}),
+        ...(database.versioningStore
+          ? { versioningStore: owner.bindStore(database.versioningStore) }
+          : {}),
       };
     });
-    return new CrudDatabaseRegistry<readonly CrudDatabase[]>(databases, {
+    const registry = new CrudDatabaseRegistry<readonly CrudDatabase[]>(databases, {
       defaultDatabase: this.defaultDatabase,
     });
+    for (const [name, owner] of storeOwners) registry.#storeOwners.set(name, owner);
+    return registry;
+  }
+
+  /** Bind a trusted native store to this application's database registration. */
+  bindTransactionStore<Store>(
+    name: string,
+    binding: TransactionStoreBinding<Store>,
+  ): TransactionStoreBinding<Store> {
+    this.resolve(name);
+    return this.#storeOwners.get(name)?.bindTransactionStore(binding) ?? binding;
+  }
+
+  /** Apply the same registration boundary to resource-specific store overrides. */
+  bindStore<Store extends { readonly transaction?: TransactionStoreBinding<Store> }>(
+    name: string,
+    store: Store,
+  ): Store {
+    this.resolve(name);
+    return this.#storeOwners.get(name)?.bindStore(store) ?? store;
   }
 
   registerResource(database: string, name: string, registration: object): void {

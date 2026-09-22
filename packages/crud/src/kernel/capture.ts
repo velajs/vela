@@ -1,26 +1,11 @@
 import { CrudTransactionScope } from './transaction';
-/**
- * VERSIONING + AUDIT capture helpers, factored out so the mutation executors
- * stay one-line-ish. Two families, two placements:
- *
- *  - Versioning: `captureVersion` snapshots the PRE-mutation record and (for
- *    update/rollback) stamps the incremented version number onto the write
- *    payload. Called INSIDE the write transaction, before the adapter write —
- *    hono-crud `update.ts` saves the version before the UPDATE and increments
- *    the row's version field (verified: `versioning.test.ts` "save version
- *    before update" pins the snapshot = pre-update state and the row → v2).
- *  - Audit: `captureAudit` / `captureAuditBatch` build who/what/when(+changes)
- *    entries and write them AFTER the mutation succeeds (post-transaction).
- *    hono-crud fires audit through `runAfterResponse` (fire-and-forget); the
- *    native engine AWAITS it so a caller (and a test) observes the entry
- *    without a timer — a deliberate, safe divergence.
- *
- * Stores are DI seams on `ResourceConfig` (`versioningStore` / `auditStore`),
- * validated present at `defineResource` time when the model enables the family;
- * these helpers re-check defensively (engine-level callers bypass definition).
+/** Transaction-bound version capture and configurable audit persistence.
+ * Resource execution binds history stores before mutation callbacks run.
+ * Transactional audits share the row transaction; post-commit audits remain
+ * best effort and are delivered only after the outer transaction commits.
  */
 
-import { ConfigurationException } from '../envelope/errors';
+import { ConfigurationException, ConflictException } from '../envelope/errors';
 import type { Model } from '../model/model.types';
 import {
   calculateChanges,
@@ -28,7 +13,13 @@ import {
   type AuditEntry,
   type AuditStore,
 } from '../audit/index';
-import type { VersioningStore, VersionRecordKey } from '../versioning/index';
+import {
+  historyTenantNamespace,
+  validateVersionNumber,
+  VersionConflictError,
+  type VersioningStore,
+  type VersionRecordKey,
+} from '../versioning/index';
 import type { EngineRequest } from './engine-request';
 import { rowIdentifier, type AnyResource } from './verb-helpers';
 
@@ -105,9 +96,8 @@ function requireAuditStore(resource: AnyResource): AuditStore {
  * persists the new version). No-op when the model does not version.
  *
  * The stored entry's `version` is the record's CURRENT version (the state
- * BEFORE this write); the returned/stamped number is that + 1 — mirroring
- * hono-crud `VersionManager.saveVersion` ("store the version BEFORE the update,
- * return the new one"). Called inside the write transaction.
+ * BEFORE this write); the stamped number is that + 1. The bound store saves
+ * inside the same transaction as the row mutation.
  */
 export async function captureVersion(
   resource: AnyResource,
@@ -119,17 +109,25 @@ export async function captureVersion(
   if (!model.versioning) return;
   const store = requireVersioningStore(resource);
 
-  const currentVersion =
-    (typeof prior[VERSION_FIELD] === 'number' ? (prior[VERSION_FIELD] as number) : 0) || 0;
+  const currentVersion = prior[VERSION_FIELD] ?? 0;
+  if (typeof currentVersion !== 'number') throw new TypeError('Invalid row version');
+  validateVersionNumber(currentVersion);
+  if (currentVersion >= Number.MAX_SAFE_INTEGER) throw new TypeError('Version counter exhausted');
   const changedBy = req.vars?.userId;
-  await store.save(model.tableName, versionRecordKeyFor(model, prior, req), {
-    id: crypto.randomUUID(),
-    recordId: rowIdentifier(resource, prior),
-    version: currentVersion,
-    data: { ...prior },
-    createdAt: new Date(),
-    ...(changedBy !== undefined ? { changedBy } : {}),
-  });
+  try {
+    await store.save(model.tableName, versionRecordKeyFor(model, prior, req), {
+      id: crypto.randomUUID(),
+      recordId: rowIdentifier(resource, prior),
+      version: currentVersion,
+      data: { ...prior },
+      createdAt: new Date(),
+      ...(changedBy !== undefined ? { changedBy } : {}),
+    });
+  } catch (error) {
+    if (error instanceof VersionConflictError)
+      throw new ConflictException('Record version changed concurrently');
+    throw error;
+  }
 
   if (writeData !== undefined) writeData[VERSION_FIELD] = currentVersion + 1;
 }
@@ -150,6 +148,7 @@ function buildAuditEntry(
   const entry: AuditEntry = {
     id: crypto.randomUUID(),
     timestamp: new Date(),
+    tenantNamespace: historyTenantNamespace(model.tenantField ? req.vars?.tenantId : undefined),
     action,
     tableName: model.tableName,
     recordId: parts.recordId,
@@ -166,7 +165,7 @@ function buildAuditEntry(
 
 /**
  * Write one audit entry for a single mutation. No-op when the model does not
- * audit. Call AFTER the mutation commits.
+ * audit. Transaction mode persists before commit; postCommit mode defers delivery.
  */
 export async function captureAudit(
   resource: AnyResource,
@@ -182,13 +181,27 @@ export async function captureAudit(
   if (!resource.model.audit) return;
   const store = requireAuditStore(resource);
   const entry = buildAuditEntry(resource.model, req, action, parts);
-  if (req.transaction) CrudTransactionScope.defer(req.transaction, () => store.log(entry));
-  else await store.log(entry);
+  if (resource.config.auditPersistence?.mode === 'transaction') {
+    if (!req.transaction)
+      throw new ConfigurationException('Transactional audit requires a CRUD transaction');
+    await store.log(entry);
+  } else {
+    const deliver = async () => {
+      try {
+        await store.log(entry);
+      } catch (error) {
+        console.error('[crud] post-commit audit failed', error);
+      }
+    };
+    if (req.transaction) CrudTransactionScope.defer(req.transaction, deliver);
+    else await deliver();
+  }
 }
 
 /**
  * Write a set of audit entries for a batch mutation via `logBatch`. No-op when
- * the model does not audit or the batch is empty. Call AFTER the batch commits.
+ * the model does not audit or the batch is empty. Transaction mode persists
+ * before commit; postCommit mode defers delivery.
  */
 export async function captureAuditBatch(
   resource: AnyResource,
@@ -199,8 +212,21 @@ export async function captureAuditBatch(
   if (!resource.model.audit || items.length === 0) return;
   const store = requireAuditStore(resource);
   const entries = items.map((item) => buildAuditEntry(resource.model, req, action, item));
-  if (req.transaction) CrudTransactionScope.defer(req.transaction, () => store.logBatch(entries));
-  else await store.logBatch(entries);
+  if (resource.config.auditPersistence?.mode === 'transaction') {
+    if (!req.transaction)
+      throw new ConfigurationException('Transactional audit requires a CRUD transaction');
+    await store.logBatch(entries);
+  } else {
+    const deliver = async () => {
+      try {
+        await store.logBatch(entries);
+      } catch (error) {
+        console.error('[crud] post-commit audit failed', error);
+      }
+    };
+    if (req.transaction) CrudTransactionScope.defer(req.transaction, deliver);
+    else await deliver();
+  }
 }
 
 /** Resolve the primary-key value of a row for batch audit entry building. */

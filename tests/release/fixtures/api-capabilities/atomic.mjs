@@ -18,7 +18,7 @@ export async function verifyAtomicWrites() {
       CREATE TABLE records (id TEXT PRIMARY KEY, label TEXT NOT NULL);
       CREATE TABLE links (id TEXT PRIMARY KEY, record_id TEXT NOT NULL REFERENCES records(id));
       CREATE TABLE audit_log (
-        id TEXT PRIMARY KEY, timestamp INTEGER NOT NULL, action TEXT NOT NULL,
+        id TEXT PRIMARY KEY, tenant_namespace TEXT NOT NULL, timestamp INTEGER NOT NULL, action TEXT NOT NULL,
         table_name TEXT NOT NULL, record_id TEXT NOT NULL, user_id TEXT,
         record TEXT, previous_record TEXT, changes TEXT, metadata TEXT
       );
@@ -32,6 +32,7 @@ export async function verifyAtomicWrites() {
     });
     const auditTable = sqliteTable('audit_log', {
       id: text().primaryKey(),
+      tenantNamespace: text('tenant_namespace').notNull(),
       timestamp: integer().notNull(),
       action: text().notNull(),
       tableName: text('table_name').notNull(),

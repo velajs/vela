@@ -94,3 +94,13 @@ Do not set multipart Content-Type yourself; fetch supplies the boundary. The
 adapter preserves cancellation, credentials and caller-supplied native/browser
 transports, without Expo dependencies. Custom encodings and binary JSON fail
 generation rather than producing inaccurate file/string types.
+
+Native endpoint formats (`binary`, `stream`, `response`) emit their `contentType`
+and `x-vela-response-format`. Binary/stream bodies have a binary wire schema;
+no parsed JSON record type is inferred. Additional statuses can use
+`@ApiResponse(206, { description: 'Partial content', format: 'binary', contentType:
+'application/pdf' })`. Generated native `.json()` results remain `unknown`.
+Use `readHttpResponse(call, 'response' | 'blob' | 'stream')` from
+`@velajs/client/http` to keep the native response, buffer a blob, or access its
+unread byte stream. Choose a literal mode per call. Document JSON errors for
+status narrowing; stream helpers never consume unsuccessful responses implicitly.
