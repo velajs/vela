@@ -1,6 +1,6 @@
 {
   "name": "@velajs/agent",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "Durable AI tool orchestration, scoped thread storage, and human approvals over Vela workflows.",
   "keywords": [
     "agent",
@@ -87,7 +87,7 @@
   "peerDependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
     "@velajs/ai": "workspace:^1.0.1",
-    "@velajs/mail": "workspace:^2.0.0",
+    "@velajs/mail": "workspace:^3.0.0",
     "ai": "^7.0.26",
     "zod": "^4.4.3"
   },

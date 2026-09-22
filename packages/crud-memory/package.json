@@ -1,6 +1,6 @@
 {
   "name": "@velajs/crud-memory",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "In-memory adapter for @velajs/crud \u2014 tests, prototypes, and examples",
   "keywords": [
     "adapter",

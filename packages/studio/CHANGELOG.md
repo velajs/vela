@@ -1,5 +1,20 @@
 # @velajs/studio
 
+## 3.0.0
+
+### Major Changes
+
+- Publish module-based Workers on the unused 3.x stable release line. Earlier experimental 2.0.0 registry versions are immutable and do not contain this release. Upgrade the framework and integrations together; see docs/module-workers.md for queue bootstrap, native delivery, RPC modules and async root migration details.
+
+### Patch Changes
+
+- Updated dependencies
+  - @velajs/better-auth@3.0.0
+  - @velajs/cloudflare@3.0.0
+  - @velajs/crud@3.0.0
+  - @velajs/feature-flags@3.0.0
+  - @velajs/vela@3.0.0
+
 ## 2.0.0
 
 ### Major Changes

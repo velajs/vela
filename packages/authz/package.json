@@ -1,6 +1,6 @@
 {
   "name": "@velajs/authz",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "Framework-agnostic permission/role engine for Vela: defineRole, fail-closed can(), composition + masking helpers",
   "keywords": [
     "authorization",

@@ -1,136 +1,136 @@
 {
-  "version": "2.0.0",
+  "version": "3.0.0",
   "packages": [
     {
       "name": "@velajs/agent",
       "path": "packages/agent",
-      "version": "2.0.0",
+      "version": "3.0.0",
       "summary": "See packages/agent/CHANGELOG.md."
     },
     {
       "name": "@velajs/authz",
       "path": "packages/authz",
-      "version": "2.0.0",
+      "version": "3.0.0",
       "summary": "See packages/authz/CHANGELOG.md."
     },
     {
       "name": "@velajs/authz-cedar",
       "path": "packages/authz-cedar",
-      "version": "2.0.0",
+      "version": "3.0.0",
       "summary": "See packages/authz-cedar/CHANGELOG.md."
     },
     {
       "name": "@velajs/better-auth",
       "path": "packages/better-auth",
-      "version": "2.0.0",
+      "version": "3.0.0",
       "summary": "See packages/better-auth/CHANGELOG.md."
     },
     {
       "name": "@velajs/cli",
       "path": "packages/cli",
-      "version": "2.0.0",
+      "version": "3.0.0",
       "summary": "See packages/cli/CHANGELOG.md."
     },
     {
       "name": "@velajs/cloudflare",
       "path": "packages/cloudflare",
-      "version": "2.0.0",
+      "version": "3.0.0",
       "summary": "See packages/cloudflare/CHANGELOG.md."
     },
     {
       "name": "@velajs/cloudflare-access",
       "path": "packages/cloudflare-access",
-      "version": "2.0.0",
+      "version": "3.0.0",
       "summary": "See packages/cloudflare-access/CHANGELOG.md."
     },
     {
       "name": "@velajs/crud",
       "path": "packages/crud",
-      "version": "2.0.0",
+      "version": "3.0.0",
       "summary": "See packages/crud/CHANGELOG.md."
     },
     {
       "name": "@velajs/crud-drizzle",
       "path": "packages/crud-drizzle",
-      "version": "2.0.0",
+      "version": "3.0.0",
       "summary": "See packages/crud-drizzle/CHANGELOG.md."
     },
     {
       "name": "@velajs/crud-durable-objects",
       "path": "packages/crud-durable-objects",
-      "version": "2.0.0",
+      "version": "3.0.0",
       "summary": "See packages/crud-durable-objects/CHANGELOG.md."
     },
     {
       "name": "@velajs/crud-memory",
       "path": "packages/crud-memory",
-      "version": "2.0.0",
+      "version": "3.0.0",
       "summary": "See packages/crud-memory/CHANGELOG.md."
     },
     {
       "name": "@velajs/crypto",
       "path": "packages/crypto",
-      "version": "2.0.0",
+      "version": "3.0.0",
       "summary": "See packages/crypto/CHANGELOG.md."
     },
     {
       "name": "@velajs/feature-flags",
       "path": "packages/feature-flags",
-      "version": "2.0.0",
+      "version": "3.0.0",
       "summary": "See packages/feature-flags/CHANGELOG.md."
     },
     {
       "name": "@velajs/graphql",
       "path": "packages/graphql",
-      "version": "2.0.0",
+      "version": "3.0.0",
       "summary": "See packages/graphql/CHANGELOG.md."
     },
     {
       "name": "@velajs/mail",
       "path": "packages/mail",
-      "version": "2.0.0",
+      "version": "3.0.0",
       "summary": "See packages/mail/CHANGELOG.md."
     },
     {
       "name": "@velajs/reliability",
       "path": "packages/reliability",
-      "version": "2.0.0",
+      "version": "3.0.0",
       "summary": "See packages/reliability/CHANGELOG.md."
     },
     {
       "name": "@velajs/rpc",
       "path": "packages/rpc",
-      "version": "2.0.0",
+      "version": "3.0.0",
       "summary": "See packages/rpc/CHANGELOG.md."
     },
     {
       "name": "@velajs/storage",
       "path": "packages/storage",
-      "version": "2.0.0",
+      "version": "3.0.0",
       "summary": "See packages/storage/CHANGELOG.md."
     },
     {
       "name": "@velajs/studio",
       "path": "packages/studio",
-      "version": "2.0.0",
+      "version": "3.0.0",
       "summary": "See packages/studio/CHANGELOG.md."
     },
     {
       "name": "@velajs/tenant",
       "path": "packages/tenant",
-      "version": "2.0.0",
+      "version": "3.0.0",
       "summary": "See packages/tenant/CHANGELOG.md."
     },
     {
       "name": "@velajs/testing",
       "path": "packages/testing",
-      "version": "2.0.0",
+      "version": "3.0.0",
       "summary": "See packages/testing/CHANGELOG.md."
     },
     {
       "name": "@velajs/vela",
       "path": "packages/vela",
-      "version": "2.0.0",
+      "version": "3.0.0",
       "summary": "See packages/vela/CHANGELOG.md."
     }
   ]
