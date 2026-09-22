@@ -29,6 +29,14 @@ a trusted outer proxy enforces an equivalent bound. Production Node runtimes
 raised above the secure defaults, when a streaming limit is disabled, or when a
 WebSocket gateway opts out of Origin isolation with `allowedOrigins: '*'`.
 
+JSON bodies read by `@Body()` and `defineEndpoint` `json` groups must use
+`application/json` or a `+json` media type such as `application/vnd.api+json`;
+parameters like `charset` are allowed. Any other body returns 415, because
+browsers send `text/plain` and form-encoded POSTs cross-site without a CORS
+preflight. A request without a body still reaches the handler as `undefined`.
+Routes registered directly on Hono can apply the same rule with
+`readJsonBody(c)`.
+
 `defineEndpoint` form contracts add bounded parsing after guards. Set
 `body.contentType` to `multipart/form-data` or `application/x-www-form-urlencoded`
 and optionally tighten `maxBytes`, `maxFields`, `maxFieldBytes`, `maxFiles`, and

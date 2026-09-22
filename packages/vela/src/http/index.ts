@@ -52,6 +52,8 @@ export {
 } from './decorators';
 export type { RouteOptions } from './decorators';
 export { createLazyParamDecorator } from './lazy-param.decorator';
+export { readJsonBody } from './json-body';
+export type { ReadJsonBodyOptions } from './json-body';
 
 // Named-route URL generation + signed URLs
 export { UrlGeneratorService, SignedUrlGuard, SignedUrl, URL_SIGNING_SECRET } from './url/index';

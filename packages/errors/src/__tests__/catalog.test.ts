@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { composeCatalogs, CORE_CATALOG, defineErrorCatalog, STATUS_TO_CODE } from '../catalog';
+import {
+  codeForStatus,
+  composeCatalogs,
+  CORE_CATALOG,
+  defineErrorCatalog,
+  STATUS_TO_CODE,
+} from '../catalog';
 import { VelaError } from '../error';
 
 describe('defineErrorCatalog', () => {
@@ -56,5 +62,34 @@ describe('STATUS_TO_CODE', () => {
   it('maps every core status back to its code', () => {
     expect(STATUS_TO_CODE[404]).toBe('not_found');
     expect(STATUS_TO_CODE[500]).toBe('internal');
+  });
+
+  it('covers the conditional-request and negotiation statuses', () => {
+    expect(STATUS_TO_CODE[406]).toBe('not_acceptable');
+    expect(STATUS_TO_CODE[408]).toBe('request_timeout');
+    expect(STATUS_TO_CODE[412]).toBe('precondition_failed');
+    expect(STATUS_TO_CODE[415]).toBe('unsupported_media_type');
+    expect(STATUS_TO_CODE[428]).toBe('precondition_required');
+  });
+});
+
+describe('codeForStatus', () => {
+  it('prefers the core mapping', () => {
+    expect(codeForStatus(404)).toBe('not_found');
+    expect(codeForStatus(406)).toBe('not_acceptable');
+    expect(codeForStatus(502)).toBe('bad_gateway');
+  });
+
+  it('derives unmapped codes from the status class', () => {
+    expect(codeForStatus(418)).toBe('bad_request');
+    expect(codeForStatus(499)).toBe('bad_request');
+    expect(codeForStatus(507)).toBe('internal');
+    expect(codeForStatus(599)).toBe('internal');
+  });
+
+  it('treats anything outside the error classes as internal', () => {
+    expect(codeForStatus(200)).toBe('internal');
+    expect(codeForStatus(302)).toBe('internal');
+    expect(codeForStatus(Number.NaN)).toBe('internal');
   });
 });

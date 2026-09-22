@@ -112,6 +112,7 @@ export {
   createParamDecorator,
   createLazyParamDecorator,
   applyDecorators,
+  readJsonBody,
   UrlGeneratorService,
   SignedUrlGuard,
   SignedUrl,
@@ -123,6 +124,7 @@ export {
 } from './http/index';
 export type {
   RouteOptions,
+  ReadJsonBodyOptions,
   UrlForOptions,
   SignedUrlGenerateOptions,
   VelaRouteMap,

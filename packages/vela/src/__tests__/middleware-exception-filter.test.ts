@@ -61,7 +61,7 @@ describe('Middleware exception filter coverage', () => {
 
     @Module({
       controllers: [M1Controller],
-      providers: [ThrowingMw, defineProvider(APP_FILTER, {useClass: CatchAllFilter})],
+      providers: [ThrowingMw, defineProvider(APP_FILTER, { useClass: CatchAllFilter })],
     })
     class AppModule implements NestModule {
       configure(consumer: MiddlewareConsumer) {
@@ -99,7 +99,7 @@ describe('Middleware exception filter coverage', () => {
 
     @Module({
       controllers: [G1Controller],
-      providers: [defineProvider(APP_FILTER, {useClass: CatchAllFilter})],
+      providers: [defineProvider(APP_FILTER, { useClass: CatchAllFilter })],
     })
     class AppModule {}
 
@@ -141,7 +141,7 @@ describe('Middleware exception filter coverage', () => {
 
     @Module({
       controllers: [R1Controller],
-      providers: [ThrowingMw, defineProvider(APP_FILTER, {useClass: PerRouteFilter})],
+      providers: [ThrowingMw, defineProvider(APP_FILTER, { useClass: PerRouteFilter })],
     })
     class AppModule implements NestModule {
       configure(consumer: MiddlewareConsumer) {
@@ -183,7 +183,7 @@ describe('Middleware exception filter coverage', () => {
 
     @Module({
       controllers: [TypedController],
-      providers: [ThrowingMw, defineProvider(APP_FILTER, {useClass: NotFoundOnlyFilter})],
+      providers: [ThrowingMw, defineProvider(APP_FILTER, { useClass: NotFoundOnlyFilter })],
     })
     class AppModule implements NestModule {
       configure(consumer: MiddlewareConsumer) {
@@ -198,11 +198,11 @@ describe('Middleware exception filter coverage', () => {
     expect(matched.status).toBe(200);
     expect(await matched.json()).toEqual({ caught: 'not-found-only', message: 'mw-nf' });
 
-    // ForbiddenException — not in @Catch types, falls through to default
-    // HttpException response (NestJS-parity: status from getStatus()).
+    // ForbiddenException — not in @Catch types, falls through to the canonical
+    // HttpException body (NestJS-parity: status from getStatus()).
     const skipped = await app.getHonoApp().request('/typed?which=fb');
     expect(skipped.status).toBe(403);
-    expect(await skipped.json()).toEqual({ statusCode: 403, message: 'mw-fb' });
+    expect(await skipped.json()).toEqual({ error: { code: 'forbidden', message: 'mw-fb' } });
   });
 
   it('returns the HttpException default response when no APP_FILTER is registered', async () => {
@@ -234,7 +234,7 @@ describe('Middleware exception filter coverage', () => {
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/no-filter');
     expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ statusCode: 400, message: 'no-filter' });
+    expect(await res.json()).toEqual({ error: { code: 'bad_request', message: 'no-filter' } });
   });
 
   it('regression: a per-route middleware that returns a Response short-circuits without invoking filters', async () => {
@@ -265,7 +265,7 @@ describe('Middleware exception filter coverage', () => {
 
     @Module({
       controllers: [ScController],
-      providers: [defineProvider(APP_FILTER, {useClass: TrackingFilter})],
+      providers: [defineProvider(APP_FILTER, { useClass: TrackingFilter })],
     })
     class AppModule {}
 
@@ -340,7 +340,7 @@ describe('Middleware exception filter coverage', () => {
 
     @Module({
       controllers: [PrecedenceController],
-      providers: [defineProvider(APP_FILTER, {useClass: GlobalFilter})],
+      providers: [defineProvider(APP_FILTER, { useClass: GlobalFilter })],
     })
     class AppModule {}
 
@@ -377,7 +377,7 @@ describe('Middleware exception filter coverage', () => {
 
     @Module({
       controllers: [PostController],
-      providers: [PostThrowMw, defineProvider(APP_FILTER, {useClass: PostFilter})],
+      providers: [PostThrowMw, defineProvider(APP_FILTER, { useClass: PostFilter })],
     })
     class AppModule implements NestModule {
       configure(consumer: MiddlewareConsumer) {
@@ -419,7 +419,7 @@ describe('Middleware exception filter coverage', () => {
 
     @Module({
       controllers: [SyncController],
-      providers: [SyncThrowMw, defineProvider(APP_FILTER, {useClass: SyncFilter})],
+      providers: [SyncThrowMw, defineProvider(APP_FILTER, { useClass: SyncFilter })],
     })
     class AppModule implements NestModule {
       configure(consumer: MiddlewareConsumer) {

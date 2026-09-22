@@ -45,6 +45,8 @@ Return a plain value (JSON) or a `Response`. Response-shaping method decorators:
 | `@RawBody()` | raw body as `Uint8Array` |
 | `@Req()` / `@Res()` | `VelaContext` (the Hono request/response context) |
 
+`@Body()` parses JSON only: a body must arrive as `application/json` or a `+json` media type (parameters like `charset` are fine), otherwise the request fails with 415 `unsupported_media_type`; malformed JSON is 400 and a request without a body yields `undefined`. Send `content-type: application/json` in tests (`@velajs/testing` does this for you). Raw Hono routes can use `readJsonBody(c)` for the same rule.
+
 Pipes attach positionally: `@Param('id', ParseIntPipe)`, `@Query('mode', new ParseEnumPipe(Mode))`. See `pipeline.md` for the pipe list. Custom factories run after guards. Use `createParamDecorator` with the actual required data argument; `createLazyParamDecorator` injects an explicit memoized thunk: declare the parameter as `() => User | undefined` and call it in the handler. Validate inside the factory; lazy decorators do not take parameter pipes. Type annotations alone do not validate the value.
 
 ## Global prefix & versioning

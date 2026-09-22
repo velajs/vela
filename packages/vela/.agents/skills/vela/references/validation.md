@@ -27,7 +27,7 @@ class ProductsController {
 Schemas can use Standard Schema (including async refinements) or legacy parsers.
 JSON Schema conversion is separate: use `defineDto` with `jsonSchema` or
 `schemaConverter(direction)` when the library cannot export its wire shape.
-Endpoint input docs use the input direction; response docs use the output direction. Input groups are `param`, `query`, `header`, and either `json` or `form`. The dispatcher validates input after guards and validates the final result after interceptors. Invalid input returns 400; invalid output returns 500. An endpoint owns its status and argument parsing, so do not combine it with parameter decorators, `@HttpCode`, or `@Redirect` on the same method. JSON is the default response, even for strings and null; string outputs can opt into `format: 'text'`.
+Endpoint input docs use the input direction; response docs use the output direction. Input groups are `param`, `query`, `header`, and either `json` or `form`. A `json` body must use `application/json` or a `+json` media type (else 415). The dispatcher validates input after guards and validates the final result after interceptors. Invalid input returns 400; invalid output returns 500. An endpoint owns its status and argument parsing, so do not combine it with parameter decorators, `@HttpCode`, or `@Redirect` on the same method. JSON is the default response, even for strings and null; string outputs can opt into `format: 'text'`.
 
 For forms, use `defineEndpoint({ input: z.object({ form: z.object({ title:
 z.string(), tags: z.array(z.string()), file: z.file().optional() }) }), output,

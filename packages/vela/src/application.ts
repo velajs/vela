@@ -8,7 +8,9 @@ import type { InferToken, Token, Type } from './container/types';
 import { defineProvider } from './container/types';
 import { APP_EXCEPTION_HANDLER } from './pipeline/tokens';
 import type { ExceptionHandler } from './exceptions/exception-handler';
+import { httpExceptionBody } from './exceptions/http-exception-body';
 import { resolveErrorReporter } from './exceptions/reporter';
+import { HttpException } from './errors/http-exception';
 import { DiscoveryService } from './discovery/discovery.service';
 import { EntrypointRegistry } from './entrypoint/entrypoint.registry';
 import { LazyModuleManager } from './module/lazy-modules';
@@ -88,7 +90,12 @@ export class VelaApplication {
         return err.getResponse();
       }
       reporter.report(err, { edge: 'hono', source: `${c.req.method} ${c.req.path}` });
-      const { body, status } = toErrorBody(err, { catalog: reporter.catalog });
+      // Vela's HttpException renders exactly as it does from a handler or a
+      // wrapped middleware: its status is kept, and 5xx text is redacted.
+      const { body, status } =
+        err instanceof HttpException
+          ? httpExceptionBody(err, reporter.catalog)
+          : toErrorBody(err, { catalog: reporter.catalog });
       return c.json(body, status as ContentfulStatusCode);
     });
   }

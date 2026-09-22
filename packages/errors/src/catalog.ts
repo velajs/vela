@@ -59,3 +59,11 @@ export const STATUS_TO_CODE: Readonly<Record<number, CoreErrorCode>> = Object.fr
     code,
   ]),
 ) as Record<number, CoreErrorCode>;
+
+/**
+ * The core code for an HTTP status: its catalog mapping, else one derived from
+ * the status class — an unmapped 4xx is `bad_request`, anything else is
+ * `internal` (and therefore redacted by `toErrorBody`).
+ */
+export const codeForStatus = (status: number): CoreErrorCode =>
+  STATUS_TO_CODE[status] ?? (status >= 400 && status < 500 ? 'bad_request' : 'internal');

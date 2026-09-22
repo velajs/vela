@@ -46,6 +46,7 @@ describe('schema-bound HTTP endpoints', () => {
     app.useGlobalPipes(new ValidationPipe());
     const response = await app.getHonoApp().request('/transform', {
       method: 'POST',
+      headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ count: '12' }),
     });
     expect(response.status).toBe(200);
@@ -163,14 +164,15 @@ describe('schema-bound HTTP endpoints', () => {
     @Module({ controllers: [Create] })
     class App {}
     const app = await VelaFactory.create(App);
+    const headers = { 'content-type': 'application/json' };
     for (const body of ['{bad', '{}', '{"name":42}']) {
-      expect((await app.getHonoApp().request('/create', { method: 'POST', body })).status).toBe(
-        400,
-      );
+      expect(
+        (await app.getHonoApp().request('/create', { method: 'POST', headers, body })).status,
+      ).toBe(400);
     }
     const response = await app
       .getHonoApp()
-      .request('/create', { method: 'POST', body: '{"name":"Ada"}' });
+      .request('/create', { method: 'POST', headers, body: '{"name":"Ada"}' });
     expect(response.status).toBe(201);
     expect(response.headers.get('content-type')).toContain('application/json');
     expect(await response.json()).toBe('Ada');

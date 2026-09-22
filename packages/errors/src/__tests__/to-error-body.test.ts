@@ -12,6 +12,22 @@ describe('toErrorBody', () => {
     expect(body.error.message).not.toContain('10.0.0.5');
   });
 
+  it('derives the redacted code and title for an unbranded fallback status from its class', () => {
+    const clientFault = toErrorBody(new Error('teapot detail'), { fallbackStatus: 418 });
+    expect(clientFault.status).toBe(418);
+    expect(clientFault.body.error).toStrictEqual({ code: 'bad_request', message: 'Bad Request' });
+
+    const serverFault = toErrorBody(new Error('storage detail'), { fallbackStatus: 507 });
+    expect(serverFault.status).toBe(507);
+    expect(serverFault.body.error).toStrictEqual({
+      code: 'internal',
+      message: 'Internal Server Error',
+    });
+
+    const mapped = toErrorBody(new Error('upstream detail'), { fallbackStatus: 502 });
+    expect(mapped.body.error).toStrictEqual({ code: 'bad_gateway', message: 'Bad Gateway' });
+  });
+
   it('redacts the plan-119 foreign error', () => {
     const foreign = Object.assign(new Error('internal driver detail: host=10.0.0.5'), {
       code: 'PROTOCOL_ERROR',

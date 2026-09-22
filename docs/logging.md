@@ -110,7 +110,8 @@ A controller interceptor or custom transport can pass `executionContext.getConta
 when it exists. Do not pass the application root and expect request context to
 appear. The helper uses the shared execution lifetime and existing HTTP context;
 it does not parse headers, create a second invocation, or infer tenant identity.
-Request ID acceptance remains the HTTP context's compatibility policy. These IDs
+The HTTP context mirrors an inbound `x-request-id` only when it matches
+`^[A-Za-z0-9._:-]{1,128}$`; any other value is replaced by a generated UUID. These IDs
 are correlation metadata, never authentication claims. Optional tenant/trace
 fields require deliberate projection by their owning adapters.
 

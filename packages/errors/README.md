@@ -104,5 +104,6 @@ fingerprintError({ functionPath, message: body.error.message, code: body.error.c
 - `toErrorBody`, `WireErrorObject`, `ErrorBodyResult`, `ToErrorBodyOptions` — the single wire-redaction seam.
 - `defineErrorCatalog`, `composeCatalogs`, `Catalog`, `ErrorCatalogEntry` — catalog authoring.
 - `CORE_CATALOG`, `CORE_ENTRIES`, `CoreErrorCode`, `STATUS_TO_CODE` — the core catalog and its lookups.
+- `codeForStatus(status)` — the core code for an HTTP status; an unmapped 4xx is `bad_request` and anything else unmapped is `internal`. `toErrorBody` uses it for the code and title of a redacted fallback status.
 - `invariant`, `unreachable` — internal-coded assertion helpers.
 - `@velajs/errors/fingerprint`: `fingerprintError`, `ErrorFingerprintInput`, `bucketMessage`, `FINGERPRINT_VERSION`, `sha256Hex` — the error-grouping subpath.
