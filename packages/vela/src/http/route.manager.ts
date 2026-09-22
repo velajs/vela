@@ -29,8 +29,8 @@ import { REQUEST_CONTEXT, createRequestContext } from './request-context';
 import { findRequestContainer, setRequestContainer } from './request-container';
 import type { HttpRequestCompletion, HttpRequestObserver } from './request-observer';
 import { mapResponse } from './response-mapper';
-import { ComponentManager } from '../pipeline/component.manager';
 import { shouldFilterCatch } from '../pipeline/decorators';
+import { getScopedComponents } from '../pipeline/scoped-components';
 import type {
   CanActivate,
   ExceptionFilter,
@@ -274,6 +274,7 @@ export class RouteManager {
         filters: this.globalFilters,
       }),
       (c) => this.getRequestContainer(c),
+      container,
     );
   }
 
@@ -841,10 +842,12 @@ export class RouteManager {
 
           // Scoped (controller/handler) middleware only — global middleware is
           // applied once by this manager's own global pass, never re-read here.
-          const middlewareItems = ComponentManager.getScopedComponents(
+          const middlewareItems = getScopedComponents(
             'middleware',
             controller,
             route.handlerName,
+            this.container,
+            moduleId,
           );
           const handler = this.handlerExecutor.create(
             route,

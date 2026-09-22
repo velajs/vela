@@ -6,9 +6,9 @@ import type { TypedToken, Type } from '../container/types';
 import { HttpException } from '../errors/http-exception';
 import { getEndpointDefinition } from '../openapi/endpoint';
 import { resolveErrorReporter } from '../exceptions/reporter';
-import { ComponentManager } from '../pipeline/component.manager';
 import { shouldFilterCatch } from '../pipeline/decorators';
 import { PipelineRunner } from '../pipeline/pipeline-runner';
+import { getScopedComponents } from '../pipeline/scoped-components';
 import type {
   CanActivate,
   ExceptionFilter,
@@ -42,20 +42,24 @@ export interface HandlerGlobals {
 // handler itself, and exception filters. Pure orchestration — Hono route
 // registration stays in RouteManager. Globals are read via a callback so
 // post-create additions (`useGlobalGuards`, etc.) propagate to subsequent
-// requests without rebuilding routes.
+// requests without rebuilding routes. Scoped lists (including module-level
+// components) are read from the owning application's container at build time.
 export class HandlerExecutor {
   readonly #argumentResolver: ArgumentResolver;
   readonly #getGlobals: () => HandlerGlobals;
   readonly #getRequestContainer: (c: Context) => Container;
+  readonly #container: Container;
 
   constructor(
     argumentResolver: ArgumentResolver,
     getGlobals: () => HandlerGlobals,
     getRequestContainer: (c: Context) => Container,
+    container: Container,
   ) {
     this.#argumentResolver = argumentResolver;
     this.#getGlobals = getGlobals;
     this.#getRequestContainer = getRequestContainer;
+    this.#container = container;
   }
 
   create(
@@ -77,21 +81,36 @@ export class HandlerExecutor {
       route.handlerName,
     ) as unknown[] | undefined;
 
-    const methodGuards = ComponentManager.getScopedComponents(
+    const container = this.#container;
+    const methodGuards = getScopedComponents(
       'guard',
       controller,
       route.handlerName,
+      container,
+      moduleId,
     );
-    const methodPipes = ComponentManager.getScopedComponents('pipe', controller, route.handlerName);
-    const methodInterceptors = ComponentManager.getScopedComponents(
+    const methodPipes = getScopedComponents(
+      'pipe',
+      controller,
+      route.handlerName,
+      container,
+      moduleId,
+    );
+    const methodInterceptors = getScopedComponents(
       'interceptor',
       controller,
       route.handlerName,
+      container,
+      moduleId,
     );
-    // Filters: reverse order (handler → controller → global) — closest to handler runs first
-    const methodFilters = [
-      ...ComponentManager.getScopedComponents('filter', controller, route.handlerName),
-    ].reverse();
+    // Filters: reverse order (handler → module → controller → global) — closest to handler runs first
+    const methodFilters = getScopedComponents(
+      'filter',
+      controller,
+      route.handlerName,
+      container,
+      moduleId,
+    ).toReversed();
 
     const httpCode = getHttpCode(controller, route.handlerName);
     const responseHeaders = getResponseHeaders(controller, route.handlerName);

@@ -258,6 +258,10 @@ export interface ModuleScope {
   isGlobal: boolean;
   /** Module instance opted into deferred (first-use) materialization. */
   lazy?: boolean;
+  /** Class this module instance was loaded from; carries module-level `@Use*` metadata. */
+  moduleClass?: Constructor;
+  /** Controllers declared by this module instance. */
+  controllers?: ReadonlySet<Constructor>;
 }
 
 /**

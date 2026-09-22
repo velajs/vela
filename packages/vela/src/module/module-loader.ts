@@ -87,6 +87,9 @@ export class ModuleLoader {
   // registration order. Consumed by LazyModuleManager via getLazyGroups().
   #lazyModuleIds = new Set<string>();
   #lazyGroups = new Map<string, LazyModuleGroupSpec>();
+  // moduleId → controllers it declares; the same Set backs the container's
+  // ModuleScope, which pipelines read to apply module-level @Use* components.
+  #moduleControllers = new Map<string, Set<Type>>();
 
   constructor(
     private container: Container,
@@ -192,7 +195,7 @@ export class ModuleLoader {
       // Even if already processed, still collect extra controllers from dynamic module
       for (const controller of extraControllers) {
         if (this.registerController(controller, moduleId)) {
-          MetadataRegistry.propagateControllerComponents(moduleClass, controller);
+          this.#moduleControllers.get(moduleId)?.add(controller);
         }
         const group = this.#lazyGroups.get(moduleId);
         if (group && !group.tokens.includes(controller)) group.tokens.push(controller);
@@ -292,6 +295,13 @@ export class ModuleLoader {
         metadata.lazy ||
         (isDynamicModule(moduleClassOrDynamic) && moduleClassOrDynamic.lazy === true);
 
+      // Module-level Use* decorators (@UseGuards, @UseInterceptors, etc.) stay
+      // on the module class; pipelines apply them to these controllers through
+      // this per-app scope. Copying them onto the controllers' process-global
+      // metadata would stack another copy on every bootstrap in the isolate.
+      const controllers = new Set<Type>(allControllers);
+      this.#moduleControllers.set(moduleId, controllers);
+
       this.container.registerScope({
         moduleId,
         localProviders,
@@ -299,6 +309,8 @@ export class ModuleLoader {
         exportedTokens: new Set<Token>(allExports),
         isGlobal,
         lazy: isLazy,
+        moduleClass,
+        controllers,
       });
 
       const lazyTokens: Token[] = [];
@@ -326,11 +338,6 @@ export class ModuleLoader {
           tokens: lazyTokens,
           hasEntrypointContributor,
         });
-      }
-
-      // Propagate module-level Use* decorators (@UseGuards, @UseInterceptors, etc.) to each controller
-      for (const controller of allControllers) {
-        MetadataRegistry.propagateControllerComponents(moduleClass, controller);
       }
 
       this.markProcessed(moduleClass, key);

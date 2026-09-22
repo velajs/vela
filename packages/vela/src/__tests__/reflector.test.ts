@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   VelaFactory,
   Controller,
@@ -218,6 +218,17 @@ describe('Reflector.createDecorator', () => {
     const Dec1 = Reflector.createDecorator<string>();
     const Dec2 = Reflector.createDecorator<string>();
     expect(Dec1.KEY).not.toBe(Dec2.KEY);
+  });
+
+  it('should keep default keys distinct across re-evaluated module copies', async () => {
+    const original = Array.from({ length: 3 }, () => Reflector.createDecorator<string>().KEY);
+    // A second evaluation of the module graph (duplicated package copy, HMR)
+    // shares the globalThis-anchored registry, so it must not reuse keys.
+    vi.resetModules();
+    const { Reflector: Reevaluated } = await import('../pipeline/reflector.js');
+    const copy = Array.from({ length: 3 }, () => Reevaluated.createDecorator<string>().KEY);
+    expect(Reevaluated).not.toBe(Reflector);
+    expect(new Set([...original, ...copy]).size).toBe(6);
   });
 
   it('should still work with string keys (backwards compat)', () => {
