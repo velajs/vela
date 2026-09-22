@@ -539,6 +539,44 @@ describe('APP_* tokens', () => {
     expect(allowed.status).toBe(200);
     expect(order).toEqual(['first', 'second']);
   });
+
+  it('APP_GUARD { useClass } keeps a REQUEST-scoped guard per request', async () => {
+    const seen: number[] = [];
+
+    @Injectable({ scope: Scope.REQUEST })
+    class PerRequestGuard implements CanActivate {
+      readonly id = Math.random();
+      #calls = 0;
+      canActivate(_context: ExecutionContext): boolean {
+        this.#calls++;
+        seen.push(this.id);
+        // A shared instance would carry state from the previous request.
+        return this.#calls === 1;
+      }
+    }
+
+    @Controller('/request-guard')
+    class GuardedController {
+      @Get()
+      handle() {
+        return { ok: true };
+      }
+    }
+
+    @Module({
+      providers: [defineProvider(APP_GUARD, { useClass: PerRequestGuard })],
+      controllers: [GuardedController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    expect((await hono.request('/request-guard')).status).toBe(200);
+    expect((await hono.request('/request-guard')).status).toBe(200);
+    expect(seen).toHaveLength(2);
+    expect(seen[0]).not.toBe(seen[1]);
+  });
 });
 
 // =============================================================================
@@ -5039,6 +5077,75 @@ describe('useClass provider substitution', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ result: 'sms:ping' });
   });
+
+  it('useClass inherits the REQUEST scope of the implementation class', async () => {
+    @Injectable({ scope: Scope.REQUEST })
+    class RequestBag {
+      readonly id = Math.random();
+      readonly items: string[] = [];
+    }
+    const BAG = new InjectionToken<RequestBag>('REQUEST_BAG');
+
+    @Controller('/use-class-scope')
+    class BagController {
+      constructor(@Inject(BAG) private bag: RequestBag) {}
+      @Get() handle() {
+        this.bag.items.push('item');
+        return { id: this.bag.id, size: this.bag.items.length };
+      }
+    }
+
+    @Module({
+      providers: [defineProvider(BAG, { useClass: RequestBag })],
+      controllers: [BagController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    const r1 = (await (await hono.request('/use-class-scope')).json()) as {
+      id: number;
+      size: number;
+    };
+    const r2 = (await (await hono.request('/use-class-scope')).json()) as {
+      id: number;
+      size: number;
+    };
+
+    expect(r1.id).not.toBe(r2.id);
+    expect(r1.size).toBe(1);
+    expect(r2.size).toBe(1);
+  });
+
+  it('an explicit provider scope overrides the implementation class scope', async () => {
+    @Injectable({ scope: Scope.REQUEST })
+    class Counter {
+      readonly id = Math.random();
+    }
+    const COUNTER = new InjectionToken<Counter>('COUNTER');
+
+    @Controller('/use-class-explicit-scope')
+    class CounterController {
+      constructor(@Inject(COUNTER) private counter: Counter) {}
+      @Get() handle() {
+        return { id: this.counter.id };
+      }
+    }
+
+    @Module({
+      providers: [defineProvider(COUNTER, { useClass: Counter, scope: Scope.SINGLETON })],
+      controllers: [CounterController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    const r1 = (await (await hono.request('/use-class-explicit-scope')).json()) as { id: number };
+    const r2 = (await (await hono.request('/use-class-explicit-scope')).json()) as { id: number };
+    expect(r1.id).toBe(r2.id);
+  });
 });
 
 // =============================================================================
@@ -5822,7 +5929,8 @@ describe('useFactory async inline providers', () => {
 
     @Module({
       providers: [
-        defineProvider(DB_CONNECTION, { inject: [],
+        defineProvider(DB_CONNECTION, {
+          inject: [],
           useFactory: async () => {
             await new Promise((r) => setTimeout(r, 5));
             return { ping: () => 'pong' };
@@ -8169,7 +8277,8 @@ describe('useFactory with Scope.TRANSIENT creates a new instance on each resolve
 
     @Module({
       providers: [
-        defineProvider(COUNTER_TOKEN, { inject: [],
+        defineProvider(COUNTER_TOKEN, {
+          inject: [],
           useFactory: () => ({ id: ++callCount }),
           scope: Scope.TRANSIENT,
         }),
