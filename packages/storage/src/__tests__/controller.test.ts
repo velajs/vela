@@ -360,8 +360,8 @@ describe('StorageController', () => {
       appWithDriver({ ...http, multipartGrantSecret: 'short' }, multipartDriver(10).driver),
     ).rejects.toThrow(/multipartGrantSecret must contain at least 32 bytes/);
 
-    // A factory secret fails its first use as a redacted server error, never a
-    // client error that names the setting.
+    // A factory secret fails every use until the factory succeeds, as a redacted
+    // server error, never a client error that names the setting.
     const fromFactory = multipartDriver(10);
     const moduleRef = await Test.createTestingModule({
       imports: [

@@ -67,8 +67,8 @@ export interface StorageAsyncResult {
   driver: StorageDriver;
   /**
    * HMAC key for stateless multipart grants, at least 32 bytes: a shorter one
-   * fails the factory's first use. Takes precedence over
-   * `http.multipartGrantSecret`.
+   * fails every storage operation until the factory returns a valid result.
+   * Takes precedence over `http.multipartGrantSecret`.
    */
   multipartGrantSecret?: string | Uint8Array;
 }
