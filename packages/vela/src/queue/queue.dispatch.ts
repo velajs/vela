@@ -14,7 +14,11 @@ import { getProcessHandlers } from './queue.decorators';
 import type { ProcessMetadata, ProcessorMetadata, QueueJob } from './queue.types';
 
 export interface QueueDispatchOptions {
-  /** Legacy default is ignore. Platform adapters can reject unmatched jobs. */
+  /**
+   * What a job no processor handles does: `'error'` (the default) rejects, so
+   * the transport retries it instead of acknowledging it; `'ignore'` resolves
+   * with `handled: 0`.
+   */
   unhandled?: 'ignore' | 'error';
 }
 

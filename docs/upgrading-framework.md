@@ -97,8 +97,10 @@ method decorators: annotate a handler's parameter as `CronInvocation` or
 
 `dispatchQueueJob` delivers through `QueueModule`'s dispatch policy when the
 application imports `QueueModule.forRoot()`: the job's queue must be registered
-and signed dispatch re-enters the signed route. `addBulk` entries are typed one
-by one and keep the `{ job, data, options }` shape of `add()`.
+and signed dispatch re-enters the signed route. It rejects a job no processor
+handles; pass `{ unhandled: 'ignore' }` to resolve with `handled: 0` instead.
+`addBulk` entries are typed one by one and keep the `{ job, data, options }`
+shape of `add()`.
 
 Storage aborts and deadlines stop follow-up work without retrying abandoned writes.
 An already-issued native write can still commit. Reconcile uncertain results at

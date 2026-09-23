@@ -113,7 +113,7 @@ successful ack/retry and does not prove that a DLQ received a delivery.
 
 ## Dispatching a single job
 
-`dispatchQueueJob(container, entrypoints, job)` is the delivery entry point for tests and for custom transports other than Cloudflare Queues (`cloudflareQueues()` delivers registered queues itself; never bridge a raw `@QueueConsumer` to processors with it). In an app with `QueueModule.forRoot()` it goes through `QueueDispatchBinding` exactly like a native delivery: the job's queue must be registered, and signed dispatch re-enters the signed route, so its global guards run and a custom transport cannot bypass them. Without a `QueueModule` it calls the processors directly:
+`dispatchQueueJob(container, entrypoints, job)` is the delivery entry point for tests and for custom transports other than Cloudflare Queues (`cloudflareQueues()` delivers registered queues itself; never bridge a raw `@QueueConsumer` to processors with it). In an app with `QueueModule.forRoot()` it goes through `QueueDispatchBinding`, the dispatcher native deliveries use: the job's queue must be registered, and signed dispatch re-enters the signed route, so its global guards run and a custom transport cannot bypass them. Without a `QueueModule` it calls the processors directly. It rejects a job no processor handles (a misspelled or removed job name) unless called with `{ unhandled: 'ignore' }`; a transport acks a message only when it resolves and retries it when it rejects:
 
 ```ts
 import { dispatchQueueJob } from '@velajs/vela/queue';

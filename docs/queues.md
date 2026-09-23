@@ -130,11 +130,15 @@ without a `bind` method can be shared if their own transport permits it.
 
 A transport that is not Cloudflare Queues, and a test, hands each job it
 receives to `dispatchQueueJob(container, entrypoints, job)` from
-`@velajs/vela/queue`. It goes through `QueueModule`'s dispatch policy exactly as
-a native delivery does: the job's queue must be registered, and signed dispatch
+`@velajs/vela/queue`. Like a native delivery, it goes through `QueueModule`'s
+dispatch policy: the job's queue must be registered, and signed dispatch
 re-enters the signed route, so its global guards run. Without a `QueueModule`,
-it calls the processors directly. Cloudflare Queues need no such code:
-`cloudflareQueues()` delivers registered queues itself.
+it calls the processors directly. It rejects a job that no processor handles,
+such as a misspelled or removed job name, unless you pass
+`{ unhandled: 'ignore' }`. Acknowledge a message only when `dispatchQueueJob`
+resolves, and let the transport retry it when it rejects, so no job is lost.
+Cloudflare Queues need no such code: `cloudflareQueues()` delivers registered
+queues itself.
 
 For deterministic tests, create `inline({ mode: 'manual' })` per application and
 await `flush()`. Failed jobs reject the flush after all buffered jobs are tried;

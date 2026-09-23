@@ -157,12 +157,17 @@ export class QueueDispatchBinding {
  * queues, so it is not a transport to bridge through this function.
  *
  * In an application that imports `QueueModule.forRoot()`, delivery goes
- * through the module's `QueueDispatchBinding`, exactly as a native delivery
- * does: the job's queue must be registered, and signed dispatch re-enters the
- * job's route, so the route's global guards run and cannot be bypassed.
- * Without a `QueueModule`, the job goes directly to the `@Processor` providers
- * listed in `entrypoints`. `options.unhandled` defaults to `'ignore'` (a job
- * no processor handles resolves with `handled: 0`).
+ * through the module's `QueueDispatchBinding`, the dispatcher native
+ * deliveries use: the job's queue must be registered, and signed dispatch
+ * re-enters the job's route, so the route's global guards run and cannot be
+ * bypassed. Without a `QueueModule`, the job goes directly to the
+ * `@Processor` providers listed in `entrypoints`.
+ *
+ * Like a native delivery, it rejects a job no processor handles (a misspelled
+ * or removed job name, or a queue without processors), so a transport that
+ * acknowledges a message when this resolves, and retries it when this
+ * rejects, never loses one. `options.unhandled: 'ignore'` opts into resolving
+ * with `handled: 0` instead.
  */
 export async function dispatchQueueJob(
   container: Container,
@@ -170,7 +175,7 @@ export async function dispatchQueueJob(
   job: QueueJob,
   options: QueueDispatchOptions = {},
 ): Promise<QueueDispatchResult> {
-  const unhandled = options.unhandled ?? 'ignore';
+  const unhandled = options.unhandled ?? 'error';
   if (container.has(QueueDispatchBinding)) {
     const binding = await container.resolveAsync(QueueDispatchBinding);
     return binding.dispatch(job, { unhandled });

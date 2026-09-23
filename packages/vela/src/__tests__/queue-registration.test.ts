@@ -19,6 +19,7 @@ import {
   QueueModule,
   QueueRegistry,
   defineQueueJob,
+  dispatchQueueJob,
   inline,
   Process,
   Processor,
@@ -332,6 +333,37 @@ describe('module dispatch', () => {
       await expect(binding.dispatch(job, { unhandled: 'ignore' })).resolves.toEqual({
         handled: 0,
       });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('dispatchQueueJob rejects a misspelled or removed job unless the caller ignores it', async () => {
+    @Processor('known')
+    @Injectable()
+    class Known {
+      @Process('welcome')
+      welcome() {}
+    }
+    @Module({
+      imports: [QueueModule.forRoot({}), QueueModule.registerQueue({ name: 'known' })],
+      providers: [Known],
+    })
+    class App {}
+    const app = await VelaFactory.create(App, { diagnostics: 'silent' });
+    const job = { id: 'j', queue: 'known', name: 'welcom', data: {}, attempt: 1 };
+    try {
+      // A custom transport acknowledges when this resolves, so it must not
+      // resolve for a job nothing handled.
+      await expect(dispatchQueueJob(app.getContainer(), app.entrypoints, job)).rejects.toThrow(
+        /No handler for job 'welcom' on queue 'known'/,
+      );
+      await expect(dispatchQueueJob(app.getContainer(), app.entrypoints, job, {})).rejects.toThrow(
+        /No handler for job 'welcom'/,
+      );
+      await expect(
+        dispatchQueueJob(app.getContainer(), app.entrypoints, job, { unhandled: 'ignore' }),
+      ).resolves.toEqual({ handled: 0 });
     } finally {
       await app.close();
     }

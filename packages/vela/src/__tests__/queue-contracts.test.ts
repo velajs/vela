@@ -145,8 +145,18 @@ describe('validated queue contracts', () => {
         { unhandled: 'error' },
       ),
     ).rejects.toThrow('No processor');
+    // A transport acknowledges when delivery resolves, so an unhandled job
+    // rejects unless the caller explicitly ignores it.
     await expect(
       dispatchQueueJob(app.getContainer(), app.entrypoints, { ...job, queue: 'missing' }),
+    ).rejects.toThrow('No processor');
+    await expect(
+      dispatchQueueJob(
+        app.getContainer(),
+        app.entrypoints,
+        { ...job, queue: 'missing' },
+        { unhandled: 'ignore' },
+      ),
     ).resolves.toEqual({ handled: 0 });
     await app.close();
   });
