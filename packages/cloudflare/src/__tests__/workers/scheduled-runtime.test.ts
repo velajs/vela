@@ -289,3 +289,11 @@ describe('scheduled jobs fired outside a trigger', () => {
     }
   });
 });
+
+describe('Durable Objects built from a graph with cron jobs', () => {
+  it('boots when a @Cron job injects CLOUDFLARE_SCHEDULED_EVENT', async () => {
+    const namespace = env.CRON_ROOM;
+    const room = namespace.get(namespace.idFromName('nightly'));
+    await expect(room.inspectLive()).resolves.toEqual({ subscriptions: [], rooms: [] });
+  });
+});

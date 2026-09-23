@@ -7,6 +7,7 @@ declare namespace Cloudflare {
     URL_SIGNING_SECRET: 'workerd-signing-secret';
     TEST_ROOM: DurableObjectNamespace<import('./entry').TestRoom>;
     COUNTING_ROOM: DurableObjectNamespace<import('./entry').CountingRoom>;
+    CRON_ROOM: DurableObjectNamespace<import('./entry').CronRoom>;
     CACHE: KVNamespace;
     DB: D1Database;
     FILES: R2Bucket;

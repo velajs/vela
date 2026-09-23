@@ -12,7 +12,7 @@ import type {
 import { CloudflareApplication } from './cloudflare-application';
 import { assertCloudflareEnvironment, registerCloudflareEnvironment } from './environment';
 import { reportCloudflareScheduleDiagnostics } from './schedule-diagnostics';
-import { registerCloudflareScheduledEvent, type ScheduledEvent } from './scheduled-event';
+import { registerScheduledEventSeed, type ScheduledEvent } from './scheduled-event';
 import { warnWorkerLocalLive } from './websocket/do-live';
 import { registerWebSocketRoutes } from './websocket/websocket-routing';
 import { bootstrapCloudflareRoot } from './root-module';
@@ -84,7 +84,7 @@ export function cloudflareAdapter(options: { env: VelaEnv }): RuntimeAdapter {
     getClientIp: (c) => getConnInfo(c).remote.address ?? null,
     configureContainer: (container) => {
       registerCloudflareEnvironment(container, env);
-      registerCloudflareScheduledEvent(container);
+      registerScheduledEventSeed(container);
     },
     onBootstrap: async ({ app, container }) => {
       assertQueueConsumerOwnership(app.entrypoints);

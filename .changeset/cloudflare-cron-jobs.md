@@ -4,7 +4,7 @@
 
 Cron triggers run core `@Cron()` jobs through `invokeScheduledJob`, the same primitive as the Node executor: the adapter runs every `@Cron` job whose expression is exactly the trigger string, in a fresh invocation scope, and the trigger settles after every matching job and its `EXECUTION_LIFETIME` work settle. Closing the application aborts the invocation signal of running jobs and waits for them.
 
-Add `CLOUDFLARE_SCHEDULED_EVENT`, a request-scoped token seeded into each job's invocation scope. Its `CloudflareScheduledEvent` value carries the trigger's `cron`, `scheduledTime` and a `noRetry()` already bound to the native controller. `ScheduledEvent` (the input of `scheduled()`) now also accepts the controller's optional `noRetry`.
+Add `CLOUDFLARE_SCHEDULED_EVENT`, a request-scoped token seeded into each job's invocation scope. Its `CloudflareScheduledEvent` value carries the trigger's `cron`, `scheduledTime` and a `noRetry()` already bound to the native controller. The token provides itself as request-scoped in every container, so a class that injects it is request-scoped wherever the module graph boots, including a `VelaWebSocketDurableObject`, `vela` CLI commands and `Test.createTestingModule()`, and is constructed per invocation instead of at bootstrap; resolving it outside a scheduled invocation throws. `ScheduledEvent` (the input of `scheduled()`) now also accepts the controller's optional `noRetry`.
 
 Signed `ScheduleModule` dispatch now works on Workers: the adapter's invocation transport re-enters the signed route, so its global guards run.
 

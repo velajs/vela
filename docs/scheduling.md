@@ -129,7 +129,12 @@ class Exports {
 ```
 
 `CLOUDFLARE_SCHEDULED_EVENT` is request-scoped and resolves only inside a
-scheduled invocation. It carries the trigger's `cron`, `scheduledTime` and a
+scheduled invocation. The token provides itself as request-scoped in every
+container, so a class that injects it is request-scoped wherever the module
+graph boots: the Worker, a Durable Object built from the same module, a `vela`
+CLI command or a testing module. The class is constructed for each invocation,
+never at bootstrap, and `@Injectable({ scope: Scope.REQUEST })` only states
+that explicitly. It carries the trigger's `cron`, `scheduledTime` and a
 `noRetry()` already bound to the native controller, so it can be destructured or
 passed on. A job fired outside a trigger, such as Studio's run-now, receives a
 synthetic event: `cron` is the job's expression, `scheduledTime` is the

@@ -36,6 +36,11 @@ export interface CloudflareScheduledEvent {
  * (Studio's run-now) receives a synthetic event: `cron` is the job's
  * expression and `noRetry()` does nothing.
  *
+ * The token provides itself as request-scoped in every container, so a class
+ * that injects it is request-scoped wherever the graph boots (a Worker, a
+ * Durable Object, the CLI or a testing module) and is built only for an
+ * invocation, never at bootstrap.
+ *
  * @example
  * ```ts
  * @Injectable({ scope: Scope.REQUEST })
@@ -51,6 +56,15 @@ export interface CloudflareScheduledEvent {
  */
 export const CLOUDFLARE_SCHEDULED_EVENT = new InjectionToken<CloudflareScheduledEvent>(
   '@velajs/cloudflare:scheduled-event',
+  {
+    scope: Scope.REQUEST,
+    factory: () => {
+      throw new Error(
+        'CLOUDFLARE_SCHEDULED_EVENT can only be resolved inside a scheduled invocation: ' +
+          'the Cloudflare adapter seeds it into each @Cron job scope for a cron trigger.',
+      );
+    },
+  },
 );
 
 /** @internal Freeze the injected view; `noRetry` keeps the native receiver. */
@@ -82,25 +96,10 @@ const seedScheduledEvent: ScheduleInvocationSeed = (scope, invocation) => {
 };
 
 /**
- * @internal Register the request-scoped placeholder so jobs can depend on the
- * token; each scheduled invocation seeds the real value into its own scope.
- * Also provides `SCHEDULE_INVOCATION_SEED`, so jobs fired on demand get a
- * synthetic event.
+ * @internal Provide `SCHEDULE_INVOCATION_SEED`, so jobs fired on demand get a
+ * synthetic event. Each trigger seeds the real event into its jobs' scopes.
  */
-export function registerCloudflareScheduledEvent(container: Container): void {
-  container.register(
-    defineProvider(CLOUDFLARE_SCHEDULED_EVENT, {
-      inject: [],
-      scope: Scope.REQUEST,
-      useFactory: () => {
-        throw new Error(
-          'CLOUDFLARE_SCHEDULED_EVENT can only be resolved inside a scheduled invocation: ' +
-            'the Cloudflare adapter seeds it into each @Cron job scope for a cron trigger.',
-        );
-      },
-    }),
-  );
-  container.markGlobalToken(CLOUDFLARE_SCHEDULED_EVENT);
+export function registerScheduledEventSeed(container: Container): void {
   container.register(defineProvider(SCHEDULE_INVOCATION_SEED, { useValue: seedScheduledEvent }));
   container.markGlobalToken(SCHEDULE_INVOCATION_SEED);
 }

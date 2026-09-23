@@ -1,5 +1,5 @@
 import { VelaWebSocketDurableObject } from '../../durable-objects';
-import { InjectEnv, Module, Injectable, Scope, type VelaEnv } from '@velajs/vela';
+import { Cron, Inject, InjectEnv, Module, Injectable, Scope, type VelaEnv } from '@velajs/vela';
 import {
   CloudflareWebSocketModule,
   ConnectedSocket,
@@ -8,6 +8,8 @@ import {
   WebSocketGateway,
   WebSocketServer,
   createCloudflareWorker,
+  CLOUDFLARE_SCHEDULED_EVENT,
+  type CloudflareScheduledEvent,
   type OnGatewayConnection,
   type WsClient,
   type WsServer,
@@ -113,5 +115,24 @@ export class CountingRoom extends VelaWebSocketDurableObject(countingRoot) {
     return rootResolutions;
   }
 }
+
+// A cron job beside the gateway: the Durable Object builds the same graph
+// without the Worker adapter, so the job must stay out of its bootstrap.
+@Injectable()
+class NightlyReports {
+  constructor(
+    @Inject(CLOUDFLARE_SCHEDULED_EVENT) private readonly trigger: CloudflareScheduledEvent,
+  ) {}
+
+  @Cron('30 2 * * *', { dialect: 'cloudflare' })
+  nightly(): void {
+    this.trigger.noRetry();
+  }
+}
+
+@Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [NightlyReports] })
+class CronRoomModule {}
+
+export class CronRoom extends VelaWebSocketDurableObject(CronRoomModule) {}
 
 export default createCloudflareWorker(TestModule);

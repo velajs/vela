@@ -14,6 +14,7 @@ import {
   type CronInvocation,
   type ScheduleInvocation,
 } from '@velajs/vela';
+import { Test } from '@velajs/testing';
 import * as cloudflare from '../index';
 import { cloudflareAdapter, createCloudflareApp } from '../cloudflare-factory';
 import {
@@ -27,6 +28,30 @@ const context = { waitUntil() {} };
 
 beforeEach(() => {
   MetadataRegistry.clear();
+});
+
+// A job that injects the trigger and declares no scope of its own.
+function defineReports(seen: CloudflareScheduledEvent[]) {
+  @Injectable()
+  class Reports {
+    constructor(@Inject(CLOUDFLARE_SCHEDULED_EVENT) readonly trigger: CloudflareScheduledEvent) {}
+    @Cron('30 2 * * *', { dialect: 'cloudflare' })
+    nightly() {
+      seen.push(this.trigger);
+    }
+  }
+  /* oxlint-disable typescript/no-extraneous-class -- The decorated class is the module's identity. */
+  @Module({ providers: [Reports] })
+  class AppModule {}
+  /* oxlint-enable typescript/no-extraneous-class */
+  return { Reports, AppModule };
+}
+
+const nightlyInvocation = (): CronInvocation => ({
+  kind: 'cron',
+  expression: '30 2 * * *',
+  scheduledTime: Date.UTC(2024, 0, 8, 2, 30),
+  signal: new AbortController().signal,
 });
 
 describe('@Cron on Workers scheduled triggers', () => {
@@ -214,6 +239,43 @@ describe('@Cron on Workers scheduled triggers', () => {
     await app.close();
     expect(events).toEqual(['aborted']);
     await expect(running).resolves.toBeUndefined();
+  });
+
+  describe('in a container the Cloudflare adapter did not configure', () => {
+    it('boots the plain factory the CLI uses and keeps the job request-scoped', async () => {
+      const seen: CloudflareScheduledEvent[] = [];
+      const { Reports, AppModule } = defineReports(seen);
+      const app = await VelaFactory.create(AppModule, { diagnostics: 'throw' });
+      try {
+        const container = app.getContainer();
+        expect(container.getResolvedScope(Reports)).toBe(Scope.REQUEST);
+        expect(() => app.get(CLOUDFLARE_SCHEDULED_EVENT)).toThrow('scheduled-event');
+        const [entry] = app.entrypoints.ofKind('schedule:cron', parseCronMetadata);
+        const trigger = Object.freeze({ cron: '30 2 * * *', scheduledTime: 1, noRetry() {} });
+        await invokeScheduledJob(container, entry!, nightlyInvocation(), {
+          seed: (scope) => scope.setRequestInstance(CLOUDFLARE_SCHEDULED_EVENT, trigger),
+        });
+        expect(seen).toEqual([trigger]);
+        await expect(invokeScheduledJob(container, entry!, nightlyInvocation())).rejects.toThrow(
+          'CLOUDFLARE_SCHEDULED_EVENT can only be resolved inside a scheduled invocation',
+        );
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('compiles a testing module around the job', async () => {
+      const { Reports, AppModule } = defineReports([]);
+      const module = await Test.createTestingModule({ imports: [AppModule] }).compile();
+      try {
+        expect(() => module.get(Reports)).toThrow('request-scoped');
+        await expect(module.resolveInRequest(Reports)).rejects.toThrow(
+          'CLOUDFLARE_SCHEDULED_EVENT can only be resolved inside a scheduled invocation',
+        );
+      } finally {
+        await module.close();
+      }
+    });
   });
 
   it('removes the Cloudflare-only cron decorator and its handler types', () => {
