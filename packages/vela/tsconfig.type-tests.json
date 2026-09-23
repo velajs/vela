@@ -24,6 +24,7 @@
     "src/__tests__/request-context.test.ts",
     "src/__tests__/json-body-media-type.test.ts",
     "src/__tests__/middleware-route-matching.test.ts",
+    "src/__tests__/middleware-route-fuzz.test.ts",
     "src/__tests__/parse-schema.test.ts",
     "src/__tests__/standard-schema.test.ts",
     "src/__tests__/http-dispatch-boundaries.test.ts",
