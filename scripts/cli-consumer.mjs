@@ -181,13 +181,13 @@ export async function verifyNewProject(cliEntrypoint, archives = {}) {
     const service = join(project, 'src/app.service.ts');
     const source = await readFile(service, 'utf8');
     // Only edit the injected service: proves metadata, DI and the dev reload.
-    await writeFile(
-      service,
-      source.replace('Hello from Vela!', 'Hello from the injected service!'),
-    );
-    await expectMessage('Hello from the injected service!');
-    await writeFile(service, source);
-    await expectMessage('Hello from Vela!');
+    // Each edit writes new content after the watcher settles; rewriting the
+    // original text right after a reload can be coalesced and never reported.
+    for (const message of ['Hello from the injected service!', 'Hello again from Vela!']) {
+      await delay(500);
+      await writeFile(service, source.replace('Hello from Vela!', message));
+      await expectMessage(message);
+    }
   } finally {
     const stop = (signal) => {
       if (!child.pid) return;
