@@ -30,6 +30,12 @@ It serializes request scopes and rolls back failed transactions across tables, s
 Studio can expose bulk writes with a real rollback guarantee. Time-travel modules
 explicitly import the configured Studio and model-source modules.
 
+Every class is declared once, at module scope. Each `createApp()` call seeds its
+own in-memory store and registers its adapters as the named crud database `demo`
+through `CrudModule.forRoot({ databases })`, so Studio names the models
+`demo::author`, `demo::book` and `demo::tag`, and building another application
+declares no new classes.
+
 ## Run the app
 
 ```bash

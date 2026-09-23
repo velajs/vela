@@ -12,6 +12,11 @@
  *  - `StudioQueueModule` + `QueueModule` — the queues panel (a `@Processor`).
  *  - `studioRuntimeAdapter` — opt-in route attribution (real `Controller#handler`).
  *
+ * Every class is declared once, at module scope. Each `createApp()` call builds
+ * its own in-memory store and hands its adapters to the graph through
+ * `CrudModule.forRoot({ databases })`, so building another application declares
+ * no new classes.
+ *
  * Auth is intentionally NOT wired (it needs better-auth + a DB); the auth panel
  * therefore reports `FEATURE_UNCONFIGURED` / stays dark — an acceptable demo
  * state the brief permits.
@@ -24,11 +29,12 @@ import {
   Module,
   ScheduleModule,
   VelaFactory,
+  type DynamicModule,
   type VelaEnv,
 } from '@velajs/vela';
 import { Process, Processor, QueueModule } from '@velajs/vela/queue';
 import { FeatureFlagsModule } from '@velajs/feature-flags';
-import { Crud } from '@velajs/crud';
+import { Crud, CrudModule, createCrudDatabaseRegistry, defineCrudDatabase } from '@velajs/crud';
 import { StudioModule, readStudioEnv, studioRuntimeAdapter } from '@velajs/studio';
 import type { EditableFlags } from '@velajs/studio';
 import { StudioCrudModule } from '@velajs/studio/crud';
@@ -57,6 +63,16 @@ export const DEMO_QUEUE = 'welcome-email';
 
 /** The `@Cron` job method name (what `schedule.runNow` addresses). */
 export const CRON_JOB_ID = 'nightlyReport';
+
+/** The named crud database each application registers its in-memory store under. */
+export const DEMO_DATABASE = 'demo';
+
+/** Studio's identity for each model: `<database>::<resource>` for a named database. */
+export const MODEL_IDS = {
+  author: `${DEMO_DATABASE}::author`,
+  book: `${DEMO_DATABASE}::book`,
+  tag: `${DEMO_DATABASE}::tag`,
+} as const;
 
 /** Stable seed identities the walkthrough asserts against. */
 export const SEED = {
@@ -117,6 +133,87 @@ function seed(db: MemoryDb): void {
   ]);
 }
 
+@Controller('/authors')
+@Crud({ model: models.author })
+class AuthorsController {}
+
+@Controller('/books')
+@Crud({ model: models.book, searchFields: ['title'] })
+class BooksController {}
+
+@Controller('/tags')
+@Crud({ model: models.tag })
+class TagsController {}
+
+// A hand-written controller with real HTTP handlers, so `app.routes` can show
+// real `Controller#handler` attribution once `studioRuntimeAdapter` is wired.
+@Controller('/info')
+class InfoController {
+  @Get('/')
+  root() {
+    return { app: 'vela-studio-demo' };
+  }
+
+  @Get('/health', { name: 'health' })
+  health() {
+    return { ok: true };
+  }
+}
+
+@Injectable()
+class Reports {
+  ran = 0;
+  @Cron('0 0 * * *')
+  nightlyReport() {
+    this.ran += 1;
+  }
+}
+
+@Module({ providers: [Reports] })
+class ReportsModule {}
+
+@Processor(DEMO_QUEUE)
+class WelcomeEmailProcessor {
+  handled = 0;
+  @Process()
+  handle() {
+    this.handled += 1;
+  }
+}
+
+@Module({ providers: [WelcomeEmailProcessor] })
+class EmailProcessorModule {}
+
+// `registerQueue` declares its module class per call: register the queue once.
+const demoQueueModule = QueueModule.registerQueue({ name: DEMO_QUEUE });
+
+@Module({
+  controllers: [AuthorsController, BooksController, TagsController, InfoController],
+})
+class ApiModule {}
+
+/** Seed a fresh store and register its per-model adapters as the demo database. */
+function demoDatabase(): DynamicModule {
+  const db = new MemoryDb();
+  seed(db);
+  const database = defineCrudDatabase(DEMO_DATABASE, {
+    handle: db,
+    resources: {
+      // author: aggregate (facets on `role`) + cascade (preview author→books).
+      author: {
+        model: models.author,
+        adapter: memoryAdapter(models.author, db, ['aggregate', 'cascade']),
+      },
+      // book: nativeSearch (inline search on title) + soft-delete (from the model).
+      book: { model: models.book, adapter: memoryAdapter(models.book, db, ['nativeSearch']) },
+      tag: { model: models.tag, adapter: memoryAdapter(models.tag, db, []) },
+    },
+  });
+  return CrudModule.forRoot({
+    databases: createCrudDatabaseRegistry([database], { defaultDatabase: DEMO_DATABASE }),
+  });
+}
+
 /** Options for {@link createApp}. */
 export interface CreateAppOptions {
   /** Master admin bearer. Default: `VELA_STUDIO_TOKEN` from `env`, else {@link DEV_TOKEN}. */
@@ -128,6 +225,38 @@ export interface CreateAppOptions {
   env?: VelaEnv;
   /** Editable-gate overrides. Default: data + timeTravel + transfer + ops open. */
   editable?: Partial<EditableFlags>;
+}
+
+/** The demo's root: static classes, with each application's values in `forRoot`. */
+class DemoAppModule {
+  static forRoot(token: string | undefined, editable: Partial<EditableFlags>): DynamicModule {
+    const studioModule = StudioModule.forRoot({
+      path: ADMIN_BASE_PATH,
+      ...(token === undefined ? {} : { token }),
+      rootModule: ApiModule,
+      editable,
+    });
+    const modelSourceModule = StudioCrudModule.forRoot({});
+    return {
+      module: DemoAppModule,
+      imports: [
+        demoDatabase(),
+        ApiModule,
+        studioModule,
+        modelSourceModule,
+        StudioTimeTravelModule.forRoot({ imports: [studioModule, modelSourceModule] }),
+        FeatureFlagsModule.forRoot({ manifest: { ...FLAG_MANIFEST }, isGlobal: true }),
+        StudioFlagsModule.forRoot({}),
+        ScheduleModule,
+        ReportsModule,
+        StudioScheduleModule.forRoot({}),
+        QueueModule.forRoot(),
+        demoQueueModule,
+        EmailProcessorModule,
+        StudioQueueModule.forRoot({}),
+      ],
+    };
+  }
 }
 
 /** The concrete application type `VelaFactory.create` resolves to. */
@@ -149,96 +278,8 @@ export async function createApp(options: CreateAppOptions = {}): Promise<DemoApp
     ...options.editable,
   };
 
-  const db = new MemoryDb();
-  seed(db);
-
-  // author: aggregate (facets on `role`) + cascade (preview author→books).
-  const authorsAdapter = memoryAdapter(models.author, db, ['aggregate', 'cascade']);
-  // book: nativeSearch (inline search on title) + soft-delete (from the model).
-  const booksAdapter = memoryAdapter(models.book, db, ['nativeSearch']);
-  const tagsAdapter = memoryAdapter(models.tag, db, []);
-
-  @Controller('/authors')
-  @Crud({ model: models.author, adapter: authorsAdapter })
-  class AuthorsController {}
-
-  @Controller('/books')
-  @Crud({ model: models.book, adapter: booksAdapter, searchFields: ['title'] })
-  class BooksController {}
-
-  @Controller('/tags')
-  @Crud({ model: models.tag, adapter: tagsAdapter })
-  class TagsController {}
-
-  // A hand-written controller with real HTTP handlers, so `app.routes` can show
-  // real `Controller#handler` attribution once `studioRuntimeAdapter` is wired.
-  @Controller('/info')
-  class InfoController {
-    @Get('/')
-    root() {
-      return { app: 'vela-studio-demo' };
-    }
-
-    @Get('/health', { name: 'health' })
-    health() {
-      return { ok: true };
-    }
-  }
-
-  @Injectable()
-  class Reports {
-    ran = 0;
-    @Cron('0 0 * * *')
-    nightlyReport() {
-      this.ran += 1;
-    }
-  }
-
-  @Module({ providers: [Reports] })
-  class ReportsModule {}
-
-  @Processor(DEMO_QUEUE)
-  class WelcomeEmailProcessor {
-    handled = 0;
-    @Process()
-    handle() {
-      this.handled += 1;
-    }
-  }
-
-  @Module({ providers: [WelcomeEmailProcessor] })
-  class EmailProcessorModule {}
-
-  @Module({
-    controllers: [AuthorsController, BooksController, TagsController, InfoController],
-  })
-  class ApiModule {}
-
-  const studioModule = StudioModule.forRoot({
-    path: ADMIN_BASE_PATH,
-    ...(token === undefined ? {} : { token }),
-    rootModule: ApiModule,
-    editable,
+  return VelaFactory.create(DemoAppModule.forRoot(token, editable), {
+    env,
+    adapters: [studioRuntimeAdapter],
   });
-  const modelSourceModule = StudioCrudModule.forRoot({});
-  @Module({
-    imports: [
-      ApiModule,
-      studioModule,
-      modelSourceModule,
-      StudioTimeTravelModule.forRoot({ imports: [studioModule, modelSourceModule] }),
-      FeatureFlagsModule.forRoot({ manifest: { ...FLAG_MANIFEST }, isGlobal: true }),
-      StudioFlagsModule.forRoot({}),
-      ScheduleModule,
-      ReportsModule,
-      StudioScheduleModule.forRoot({}),
-      QueueModule.forRoot(),
-      QueueModule.registerQueue({ name: DEMO_QUEUE }),
-      EmailProcessorModule,
-      StudioQueueModule.forRoot({}),
-    ],
-  })
-  class AppModule {}
-
-  return VelaFactory.create(AppModule, { env, adapters: [studioRuntimeAdapter] });
 }

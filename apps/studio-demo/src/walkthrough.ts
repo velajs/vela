@@ -25,7 +25,7 @@ import type {
   StudioOpReq,
   StudioOpRes,
 } from '@velajs/studio-protocol';
-import { ADMIN_BASE_PATH, CRON_JOB_ID, DEMO_QUEUE, SEED, createApp } from './create-app';
+import { ADMIN_BASE_PATH, CRON_JOB_ID, DEMO_QUEUE, MODEL_IDS, SEED, createApp } from './create-app';
 import type { DemoApp } from './create-app';
 
 /** One recorded operation result. */
@@ -228,10 +228,10 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
     const list = unwrap(await call('data.listModels'));
     const names = list.map((m) => m.name).toSorted();
     assert(
-      JSON.stringify(names) === JSON.stringify(['author', 'book', 'tag']),
+      JSON.stringify(names) === JSON.stringify([MODEL_IDS.author, MODEL_IDS.book, MODEL_IDS.tag]),
       `models ${names.join(',')}`,
     );
-    const author = list.find((m) => m.name === 'author');
+    const author = list.find((m) => m.name === MODEL_IDS.author);
     assert(
       JSON.stringify([...(author?.capabilities ?? [])].toSorted()) ===
         JSON.stringify(['aggregate', 'cascade', 'transactions']),
@@ -241,14 +241,15 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
   });
 
   await step('data.describeModel', async () => {
-    const book = unwrap(await call('data.describeModel', { model: 'book' }));
+    const book = unwrap(await call('data.describeModel', { model: MODEL_IDS.book }));
     assert(
       book.table === 'books' && JSON.stringify(book.primaryKeys) === JSON.stringify(['id']),
       'book pk',
     );
     const authorId = book.columns.find((c) => c.name === 'authorId');
     assert(
-      JSON.stringify(authorId?.fk) === JSON.stringify({ table: 'authors', relation: 'author' }),
+      JSON.stringify(authorId?.fk) ===
+        JSON.stringify({ table: MODEL_IDS.author, relation: 'author' }),
       'authorId FK',
     );
     const deletedAt = book.columns.find((c) => c.name === 'deletedAt');
@@ -263,7 +264,7 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
   await step('data.listRows', async () => {
     const published = unwrap(
       await call('data.listRows', {
-        model: 'book',
+        model: MODEL_IDS.book,
         filters: [{ field: 'status', operator: 'eq', value: 'published' }],
         sort: { field: 'createdAt', order: 'asc' },
       }),
@@ -272,14 +273,14 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
       JSON.stringify(published.rows.map((r) => r.id)) === JSON.stringify(['b1', 'b3']),
       'filter+sort',
     );
-    const live = unwrap(await call('data.listRows', { model: 'book' }));
+    const live = unwrap(await call('data.listRows', { model: MODEL_IDS.book }));
     assert(!live.rows.some((r) => r.id === SEED.softDeletedBook), 'soft-deleted hidden by default');
-    const all = unwrap(await call('data.listRows', { model: 'book', withDeleted: true }));
+    const all = unwrap(await call('data.listRows', { model: MODEL_IDS.book, withDeleted: true }));
     assert(
       all.rows.some((r) => r.id === SEED.softDeletedBook),
       'withDeleted reveals tombstone',
     );
-    const search = unwrap(await call('data.listRows', { model: 'book', search: 'Draft' }));
+    const search = unwrap(await call('data.listRows', { model: MODEL_IDS.book, search: 'Draft' }));
     assert(
       JSON.stringify(search.rows.map((r) => r.id)) === JSON.stringify(['b2']),
       'inline search',
@@ -288,15 +289,15 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
   });
 
   await step('data.readRow', async () => {
-    const found = unwrap(await call('data.readRow', { model: 'author', id: 'a1' }));
+    const found = unwrap(await call('data.readRow', { model: MODEL_IDS.author, id: 'a1' }));
     assert(found?.email === 'ada@x.io', 'a1 email');
-    const missing = unwrap(await call('data.readRow', { model: 'author', id: 'nope' }));
+    const missing = unwrap(await call('data.readRow', { model: MODEL_IDS.author, id: 'nope' }));
     assert(missing === null, 'missing -> null');
     return `readRow(author a1)=ada@x.io; unknown id -> null`;
   });
 
   await step('data.facets', async () => {
-    const facets = unwrap(await call('data.facets', { model: 'author', field: 'role' }));
+    const facets = unwrap(await call('data.facets', { model: MODEL_IDS.author, field: 'role' }));
     const byValue = new Map(facets.buckets.map((b) => [b.value, b.count]));
     assert(
       byValue.get('member') === 2 && byValue.get('admin') === 1,
@@ -306,7 +307,9 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
   });
 
   await step('data.cascadePreview', async () => {
-    const preview = unwrap(await call('data.cascadePreview', { model: 'author', ids: ['a1'] }));
+    const preview = unwrap(
+      await call('data.cascadePreview', { model: MODEL_IDS.author, ids: ['a1'] }),
+    );
     const books = preview.relations.find((r) => r.relation === 'books');
     assert(books?.affected === 2, `expected 2 live child books, got ${books?.affected}`);
     return `cascadePreview(author a1): books relation affects 2 live rows (b4 tombstoned skipped)`;
@@ -316,7 +319,7 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
   await step('data.writeRow', async () => {
     const created = unwrap(
       await call('data.writeRow', {
-        model: 'author',
+        model: MODEL_IDS.author,
         patch: { name: 'Dee', email: 'dee@x.io', role: 'member' },
       }),
     );
@@ -325,7 +328,7 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
       'create stamps id+timestamps',
     );
     const updated = unwrap(
-      await call('data.writeRow', { model: 'author', id: 'a2', patch: { role: 'owner' } }),
+      await call('data.writeRow', { model: MODEL_IDS.author, id: 'a2', patch: { role: 'owner' } }),
     );
     assert(
       updated.role === 'owner' && updated.email === 'bo@x.io',
@@ -336,7 +339,7 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
 
   await step('data.deleteRows', async () => {
     const first = await call('data.deleteRows', {
-      model: 'book',
+      model: MODEL_IDS.book,
       ids: ['b2', 'b3'],
       mode: 'hard',
       confirmToken: '',
@@ -345,17 +348,17 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
     assert(challenge.summary.toLowerCase().includes('delete'), 'challenge summary');
     const done = unwrap(
       await call('data.deleteRows', {
-        model: 'book',
+        model: MODEL_IDS.book,
         ids: ['b2', 'b3'],
         mode: 'hard',
         confirmToken: challenge.confirmToken,
       }),
     );
     assert(done.deleted === 2, `deleted ${done.deleted}`);
-    const gone = unwrap(await call('data.readRow', { model: 'book', id: 'b2' }));
+    const gone = unwrap(await call('data.readRow', { model: MODEL_IDS.book, id: 'b2' }));
     assert(gone === null, 'b2 gone');
     const replay = await call('data.deleteRows', {
-      model: 'book',
+      model: MODEL_IDS.book,
       ids: ['b2', 'b3'],
       mode: 'hard',
       confirmToken: challenge.confirmToken,
@@ -366,10 +369,11 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
   });
 
   await step('data.generateRows', async () => {
-    const before = unwrap(await call('data.listRows', { model: 'book' })).info.total_count ?? 0;
-    const res = unwrap(await call('data.generateRows', { model: 'book', count: 3 }));
+    const before =
+      unwrap(await call('data.listRows', { model: MODEL_IDS.book })).info.total_count ?? 0;
+    const res = unwrap(await call('data.generateRows', { model: MODEL_IDS.book, count: 3 }));
     assert(res.inserted === 3, `inserted ${res.inserted}`);
-    const after = unwrap(await call('data.listRows', { model: 'book', perPage: 100 }));
+    const after = unwrap(await call('data.listRows', { model: MODEL_IDS.book, perPage: 100 }));
     assert((after.info.total_count ?? 0) === before + 3, 'live count grew by 3');
     assert(
       after.rows.every((r) => typeof r.authorId === 'string' && String(r.authorId).length > 0),
@@ -379,7 +383,10 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
   });
 
   await step('data.generateRows (over-cap reject)', async () => {
-    const res = await call('data.generateRows', { model: 'book', count: MAX_GENERATE_ROWS + 1 });
+    const res = await call('data.generateRows', {
+      model: MODEL_IDS.book,
+      count: MAX_GENERATE_ROWS + 1,
+    });
     assert(!res.ok, 'over-cap should reject');
     if (res.ok) throw new Error('unreachable');
     assert(res.status === 400 && res.error.code === 'bad_request', `status ${res.status}`);
@@ -400,20 +407,22 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
   const ttSnapshotTitle = 'Portable Time';
   let snapshotMarkId = '';
   await step('timeTravel.createSnapshot', async () => {
-    const before = unwrap(await call('data.readRow', { model: 'book', id: 'b1' }));
+    const before = unwrap(await call('data.readRow', { model: MODEL_IDS.book, id: 'b1' }));
     assert(before?.title === ttSnapshotTitle, `b1 title baseline ${String(before?.title)}`);
     const mark = unwrap(await call('timeTravel.createSnapshot', {}));
     snapshotMarkId = mark.id;
     const tables = mark.tables ?? [];
-    assert(tables.includes('book'), 'snapshot captures the book table');
+    assert(tables.includes(MODEL_IDS.book), 'snapshot captures the book table');
     return `snapshot ${mark.id} captured tables [${tables.join(', ')}] at baseline (b1='${ttSnapshotTitle}')`;
   });
 
   await step('timeTravel.preview + armRestore (428) restores rows', async () => {
     // Mutate b1, then preview the restore to the snapshot.
-    unwrap(await call('data.writeRow', { model: 'book', id: 'b1', patch: { title: 'MUTATED' } }));
+    unwrap(
+      await call('data.writeRow', { model: MODEL_IDS.book, id: 'b1', patch: { title: 'MUTATED' } }),
+    );
     assert(
-      unwrap(await call('data.readRow', { model: 'book', id: 'b1' }))?.title === 'MUTATED',
+      unwrap(await call('data.readRow', { model: MODEL_IDS.book, id: 'b1' }))?.title === 'MUTATED',
       'b1 mutated',
     );
 
@@ -440,7 +449,7 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
       outcome.applied === true && outcome.undoMark !== undefined,
       'restore applied + undo mark',
     );
-    const restored = unwrap(await call('data.readRow', { model: 'book', id: 'b1' }));
+    const restored = unwrap(await call('data.readRow', { model: MODEL_IDS.book, id: 'b1' }));
     assert(
       restored?.title === ttSnapshotTitle,
       `b1 restored to '${ttSnapshotTitle}', got '${String(restored?.title)}'`,
@@ -459,7 +468,7 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
       await call('timeTravel.undo', { undoMark: undoMarkId, confirmToken: challenge.confirmToken }),
     );
     assert(undone.applied === true, 'undo applied');
-    const back = unwrap(await call('data.readRow', { model: 'book', id: 'b1' }));
+    const back = unwrap(await call('data.readRow', { model: MODEL_IDS.book, id: 'b1' }));
     assert(back?.title === 'MUTATED', `undo returns b1 to 'MUTATED', got '${String(back?.title)}'`);
     return `undo rode 428; b1 back to 'MUTATED' — snapshot->restore->undo round-trip closed`;
   });
@@ -561,8 +570,11 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
 
   // -- transfer: export -> import round-trip (through the 428) --------------
   await step('transfer.export + /export route', async () => {
-    const { exportUrl } = unwrap(await call('transfer.export', { model: 'book' }));
-    assert(exportUrl === `${ADMIN_BASE_PATH}/export?model=book`, `exportUrl ${exportUrl}`);
+    const { exportUrl } = unwrap(await call('transfer.export', { model: MODEL_IDS.book }));
+    assert(
+      exportUrl === `${ADMIN_BASE_PATH}/export?model=${encodeURIComponent(MODEL_IDS.book)}`,
+      `exportUrl ${exportUrl}`,
+    );
     const res = await hono.request(exportUrl, {
       method: 'GET',
       headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': '10.0.0.1' },
@@ -582,32 +594,41 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
     // Wipe the book table so the re-import is a clean create (no unique clash) —
     // the export -> clear -> import round-trip.
     const challenge = asChallenge(
-      await call('data.clearTable', { model: 'book', confirmToken: '' }),
+      await call('data.clearTable', { model: MODEL_IDS.book, confirmToken: '' }),
     );
     assert(challenge.summary.toLowerCase().includes('clear'), 'clear challenge');
     const cleared = unwrap(
-      await call('data.clearTable', { model: 'book', confirmToken: challenge.confirmToken }),
+      await call('data.clearTable', {
+        model: MODEL_IDS.book,
+        confirmToken: challenge.confirmToken,
+      }),
     );
     assert(cleared.deleted >= exportedCount, `cleared ${cleared.deleted}`);
-    const empty = unwrap(await call('data.listRows', { model: 'book', withDeleted: true }));
+    const empty = unwrap(await call('data.listRows', { model: MODEL_IDS.book, withDeleted: true }));
     assert((empty.info.total_count ?? 0) === 0, 'table wiped');
     return `428 clear -> wiped ${cleared.deleted} rows; book table now empty`;
   });
 
   await step('transfer.import (428)', async () => {
     const challenge = asChallenge(
-      await call('transfer.import', { model: 'book', ndjson: exportedNdjson, confirmToken: '' }),
+      await call('transfer.import', {
+        model: MODEL_IDS.book,
+        ndjson: exportedNdjson,
+        confirmToken: '',
+      }),
     );
     assert(challenge.summary.toLowerCase().includes('import'), 'import challenge');
     const result = unwrap(
       await call('transfer.import', {
-        model: 'book',
+        model: MODEL_IDS.book,
         ndjson: exportedNdjson,
         confirmToken: challenge.confirmToken,
       }),
     );
     assert(result.imported === exportedCount, `imported ${result.imported} of ${exportedCount}`);
-    const restored = unwrap(await call('data.listRows', { model: 'book', withDeleted: true }));
+    const restored = unwrap(
+      await call('data.listRows', { model: MODEL_IDS.book, withDeleted: true }),
+    );
     assert((restored.info.total_count ?? 0) === exportedCount, 'rows restored from NDJSON');
     return `428 mint -> confirm -> imported ${result.imported} rows; book table restored (export->clear->import round-trip)`;
   });
