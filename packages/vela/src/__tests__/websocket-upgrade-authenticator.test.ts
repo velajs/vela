@@ -200,6 +200,45 @@ describe('WebSocket upgrade authenticators', () => {
     }
   });
 
+  it('constructs an authenticator that another module registers without exporting', async () => {
+    const built: string[] = [];
+
+    @Injectable()
+    class ScopedAuthenticator implements UpgradeAuthenticator {
+      constructor() {
+        built.push('authenticator');
+      }
+      authenticate(): WebSocketUpgradeIdentity {
+        return identity('scoped-user');
+      }
+    }
+
+    @Module({ providers: [ScopedAuthenticator] })
+    class SessionsModule {}
+
+    @WebSocketGateway({ path: '/scoped', authenticator: ScopedAuthenticator })
+    class ScopedGateway {}
+
+    @Module({
+      imports: [WebSocketModule.forRoot({}), SessionsModule],
+      providers: [ScopedGateway],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    try {
+      const opened = serve(app);
+      const response = await app.fetch(new Request('http://localhost/scoped'));
+
+      expect(response.status).toBe(200);
+      expect(opened).toHaveLength(1);
+      // The private provider and the gateway's own instance.
+      expect(built).toEqual(['authenticator', 'authenticator']);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('reads allowedOrigins from ENV once per application', async () => {
     let reads = 0;
 

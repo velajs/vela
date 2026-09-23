@@ -109,9 +109,10 @@ export class ChatUpgradeAuthenticator implements UpgradeAuthenticator {
 ```
 
 Each application resolves the authenticator once, through dependency injection,
-from the module that declares the gateway: a class registered there as a
-provider is reused, and an unregistered class is constructed with what that
-module can inject (here `SessionService`, or `ENV` with `@InjectEnv()`). The
+from the module that declares the gateway: a provider that module can see is
+reused, and any other class, including one another module registers without
+exporting it, is constructed with what that module can inject (here
+`SessionService`, or `ENV` with `@InjectEnv()`). The
 gateway declaration stays static; there is no closure-based authentication
 option. `BetterAuthUpgradeAuthenticator` (`@velajs/better-auth`) and
 `CloudflareAccessUpgradeAuthenticator` (`@velajs/cloudflare-access/vela`) are

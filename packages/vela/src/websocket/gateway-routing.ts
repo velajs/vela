@@ -189,11 +189,13 @@ async function resolveUpgradePolicy(
       : allowed;
   const type = options.authenticator;
   if (type === undefined) return { allowedOrigins };
-  // A registered provider keeps its registration; any other class is built
-  // with what the declaring module can inject.
-  const authenticator: unknown = container.has(type)
-    ? await container.resolveAsync(type, moduleId)
-    : await container.construct(type, moduleId);
+  // A provider the declaring module can see keeps its registration; any other
+  // class, including one another module keeps private, is built with what the
+  // declaring module can inject.
+  const authenticator: unknown =
+    container.getResolvedScope(type, moduleId) === undefined
+      ? await container.construct(type, moduleId)
+      : await container.resolveAsync(type, moduleId);
   // A provider registered under the class token may hold any value.
   if (!isUpgradeAuthenticator(authenticator)) {
     throw new TypeError(`${type.name} must implement UpgradeAuthenticator.authenticate()`);
