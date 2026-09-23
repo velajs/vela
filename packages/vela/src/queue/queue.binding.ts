@@ -1,6 +1,6 @@
 import { EntrypointRegistry, InternalDispatcher, resolveErrorReporter } from '../index';
 import type { Container, DiscoveryService } from '../index';
-import { dispatchJobToProcessors } from './queue.dispatch';
+import { dispatchJobToProcessors, unreportedQueueFailures } from './queue.dispatch';
 import { readProcessorMetadata } from './queue.decorators';
 import type { QueueDispatchOptions, QueueDispatchResult, QueueEntry } from './queue.dispatch';
 import type { QueueRegistry } from './queue.registry';
@@ -138,12 +138,15 @@ export class QueueDispatchBinding {
     }
     // Fire-and-forget (inline `immediate`) deliveries have no awaiter to rethrow
     // into — route their unclaimed errors to the exception handler instead of a
-    // bare console.error.
-    resolveErrorReporter(this.#container).report(error, {
-      edge: 'queue',
-      source: `${job.queue}/${job.name}`,
-      note: 'inline driver',
-    });
+    // bare console.error. A processor already reported its own failure.
+    const reporter = resolveErrorReporter(this.#container);
+    for (const failure of unreportedQueueFailures(error)) {
+      reporter.report(failure, {
+        edge: 'queue',
+        source: `${job.queue}/${job.name}`,
+        note: 'inline driver',
+      });
+    }
   }
 }
 

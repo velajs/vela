@@ -39,9 +39,37 @@ const warnedDuplicates = new WeakSet<object>();
 // several deliveries reports each failure once.
 const reportedFailures = new WeakSet<object>();
 
-/** @internal Whether a processor failure was already reported on the queue edge. */
-export function isReportedQueueFailure(error: unknown): boolean {
-  return typeof error === 'object' && error !== null && reportedFailures.has(error);
+/** Whether a processor failure was already reported on the queue edge. */
+function isReportedQueueFailure(error: unknown): boolean {
+  return (
+    ((typeof error === 'object' && error !== null) || typeof error === 'function') &&
+    reportedFailures.has(error)
+  );
+}
+
+/**
+ * @internal The failures in a delivery rejection that no processor already
+ * reported, looking inside the `AggregateError` several processors (or a
+ * batch of deliveries) reject with.
+ */
+export function unreportedQueueFailures(error: unknown): unknown[] {
+  if (isReportedQueueFailure(error)) return [];
+  if (error instanceof AggregateError) return error.errors.flatMap(unreportedQueueFailures);
+  return [error];
+}
+
+/**
+ * Mark a reported processor failure so transports do not report it again. A
+ * thrown primitive (`throw 'boom'`) cannot be remembered by identity, so it is
+ * rethrown wrapped in an `Error` whose `cause` is the thrown value.
+ */
+function markReported(error: unknown, source: string): unknown {
+  const failure =
+    (typeof error === 'object' && error !== null) || typeof error === 'function'
+      ? error
+      : new Error(`Queue processor ${source} threw ${String(error)}`, { cause: error });
+  reportedFailures.add(failure);
+  return failure;
 }
 
 function selectHandler(
@@ -211,18 +239,16 @@ async function dispatchToProcessor(
       // Report BEFORE the filter loop and BEFORE any rethrow — every dispatch
       // error reaches the exception handler, whether a scoped filter claims it
       // or it rethrows to preserve platform retry semantics.
-      resolveErrorReporter(scope).report(error, {
-        edge: 'queue',
-        source: `${processorClass.name}.${String(handler.methodName)}`,
-      });
-      if (typeof error === 'object' && error !== null) reportedFailures.add(error);
+      const source = `${processorClass.name}.${String(handler.methodName)}`;
+      resolveErrorReporter(scope).report(error, { edge: 'queue', source });
+      const reported = markReported(error, source);
       for (const filter of filters) {
         if (shouldFilterCatch(filter, error)) {
           await filter.catch(error, context);
           return true;
         }
       }
-      throw error; // unclaimed → platform retry semantics stay intact
+      throw reported; // unclaimed → platform retry semantics stay intact
     }
   });
 }

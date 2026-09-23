@@ -618,7 +618,7 @@ describe('error reporter edge (report-then-rethrow)', () => {
     await app.dispose();
   });
 
-  it('routes the inline driver fire-and-forget error through APP_EXCEPTION_HANDLER, not console.error', async () => {
+  it('reports a detached inline delivery failure once through APP_EXCEPTION_HANDLER, not console.error', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const report = vi.fn();
 
@@ -641,13 +641,87 @@ describe('error reporter edge (report-then-rethrow)', () => {
     await app.get<QueueClient>(queueToken('inlinereport')).add('ping', {});
     await settle();
 
-    // The binding's fire-and-forget default arm reports instead of bare console.error.
+    // The processor reported its failure; the binding's fire-and-forget arm
+    // does not report it again, and nothing reaches a bare console.error.
+    expect(report).toHaveBeenCalledOnce();
     expect(report).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ edge: 'queue', note: 'inline driver' }),
+      expect.objectContaining({ message: 'detached-boom' }),
+      expect.objectContaining({ edge: 'queue', source: 'BoomProcessor.run' }),
     );
     expect(errorSpy).not.toHaveBeenCalled();
     errorSpy.mockRestore();
+    await app.dispose();
+  });
+
+  it('reports each failed processor of a detached inline delivery once, thrown values included', async () => {
+    const reports: unknown[] = [];
+
+    @Processor('inlinemany')
+    @Injectable()
+    class First {
+      @Process()
+      run() {
+        throw new Error('first failed');
+      }
+    }
+    @Processor('inlinemany')
+    @Injectable()
+    class Second {
+      @Process()
+      run() {
+        // A careless processor may throw a value that is not an Error.
+        throw 'second failed';
+      }
+    }
+
+    @Module({
+      imports: [QueueModule.forRoot(), QueueModule.registerQueue({ name: 'inlinemany' })],
+      providers: [
+        First,
+        Second,
+        defineProvider(APP_EXCEPTION_HANDLER, {
+          useValue: { report: (error: unknown) => reports.push(error) },
+        }),
+      ],
+    })
+    class App {}
+
+    const app = await VelaFactory.create(App);
+    await app.get<QueueClient>(queueToken('inlinemany')).add('ping', {});
+    await settle();
+
+    expect(reports).toHaveLength(2);
+    expect(reports).toContainEqual(expect.objectContaining({ message: 'first failed' }));
+    expect(reports).toContain('second failed');
+    await app.dispose();
+  });
+
+  it('reports a detached delivery failure no processor reported, noting the inline driver', async () => {
+    const report = vi.fn();
+    let onError: ((error: unknown, job: QueueJob) => void) | undefined;
+    const driver: QueueDriver = {
+      kind: 'detached',
+      async enqueue() {},
+      bind(_dispatch, hooks) {
+        onError = hooks?.onError;
+      },
+    };
+
+    @Module({
+      imports: [QueueModule.forRoot({ driver }), QueueModule.registerQueue({ name: 'detached' })],
+      providers: [defineProvider(APP_EXCEPTION_HANDLER, { useValue: { report } })],
+    })
+    class App {}
+
+    const app = await VelaFactory.create(App);
+    const job = { id: 'j', queue: 'detached', name: 'ping', data: {}, attempt: 1 };
+    onError?.(new Error('transport failed'), job);
+
+    expect(report).toHaveBeenCalledOnce();
+    expect(report).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'transport failed' }),
+      expect.objectContaining({ edge: 'queue', source: 'detached/ping', note: 'inline driver' }),
+    );
     await app.dispose();
   });
 });

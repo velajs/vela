@@ -536,6 +536,51 @@ describe('cloudflareQueues() native delivery', () => {
     ]);
   });
 
+  it('reports a processor that throws a non-object value once', async () => {
+    const reports: unknown[] = [];
+    @Processor('email')
+    @Injectable()
+    class Email {
+      @Process() handle() {
+        // A careless processor may throw a value that is not an Error.
+        throw 'email failed';
+      }
+    }
+    @Processor('email')
+    @Injectable()
+    class Audit {
+      @Process() handle() {
+        throw 42;
+      }
+    }
+    @Module({
+      imports: [
+        QueueModule.forRoot({ driver: cloudflareQueues() }),
+        QueueModule.registerQueue({ name: 'email' }),
+      ],
+      providers: [
+        Email,
+        Audit,
+        defineProvider(APP_EXCEPTION_HANDLER, {
+          useValue: {
+            report(error: unknown) {
+              reports.push(error);
+            },
+          },
+        }),
+      ],
+    })
+    class App {}
+    const worker = createCloudflareWorker(App);
+
+    const failed = message(envelope('email', 'welcome'));
+    await expect(
+      worker.queue({ queue: 'reports-production', messages: [failed] }, {}, context),
+    ).rejects.toBeInstanceOf(AggregateError);
+    expect(reports.toSorted()).toEqual([42, 'email failed']);
+    expect(failed.ack).not.toHaveBeenCalled();
+  });
+
   it('warns once when a raw consumer receives jobs of a queue QueueModule registers', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const received: number[] = [];

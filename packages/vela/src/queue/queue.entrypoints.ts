@@ -1,7 +1,7 @@
 import { Container, Inject, Injectable, resolveErrorReporter } from '../index';
 import type { DiscoveryService, Entrypoint } from '../index';
 import { QueueDispatchBinding } from './queue.binding';
-import { isReportedQueueFailure } from './queue.dispatch';
+import { unreportedQueueFailures } from './queue.dispatch';
 import { QueueRegistry } from './queue.registry';
 import { QUEUE_DRIVER, queueToken } from './queue.tokens';
 import type { QueueDriver } from './queue.types';
@@ -69,17 +69,10 @@ export class QueueTransportEntrypoints {
       });
     } catch (error) {
       const reporter = resolveErrorReporter(this.container);
-      for (const failure of unreported(error)) {
+      for (const failure of unreportedQueueFailures(error)) {
         reporter.report(failure, { edge: 'queue', source: 'QueueTransportEntrypoints.consume' });
       }
       throw error;
     }
   }
-}
-
-/** The failures in a batch rejection that no processor already reported. */
-function unreported(error: unknown): unknown[] {
-  if (isReportedQueueFailure(error)) return [];
-  if (error instanceof AggregateError) return error.errors.flatMap(unreported);
-  return [error];
 }
