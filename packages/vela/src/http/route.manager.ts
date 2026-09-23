@@ -9,7 +9,7 @@ import type {
 } from './hono.types';
 import { bodyLimit as honoBodyLimit } from 'hono/body-limit';
 import { contextStorage } from 'hono/context-storage';
-import { matchedRoutes, routePath } from 'hono/route';
+import { baseRoutePath, matchedRoutes, routePath } from 'hono/route';
 import { TrieRouter } from 'hono/router/trie-router';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { HttpMethod, Scope } from '../constants';
@@ -26,7 +26,15 @@ import type { MiddlewareRouteDefinition, RouteInfo } from '../module/middleware'
 import { joinPaths } from '../registry/paths';
 import { ArgumentResolver } from './argument-resolver';
 import { getRouteContributors } from './route-contributor';
-import { samplePaths, toHonoPattern, withDescendants } from './route-target';
+import {
+  matchTarget,
+  parseTarget,
+  samplePaths,
+  segmentsBeneath,
+  segmentsUnder,
+  withDescendants,
+  type RouteTarget,
+} from './route-target';
 import { buildMiddlewareExecutionContext } from './execution-context';
 import { HandlerExecutor } from './handler-executor';
 import { instantiate, instantiateMany, instantiateAsync } from './instantiate';
@@ -210,6 +218,12 @@ function methodReaches(method: string, registered: string): boolean {
     registered === method ||
     (method === HttpMethod.HEAD && registered === HttpMethod.GET)
   );
+}
+
+// A resolved path target and the method it accepts. No target matches every path.
+interface PathTarget {
+  method: string;
+  target?: RouteTarget;
 }
 
 function isTokenEntry(entry: unknown): entry is Token {
@@ -858,22 +872,16 @@ export class RouteManager {
       );
     }
 
-    // Path targets register their markers before any consumer middleware, so
-    // a request that no route serves still ends on a '*' middleware.
     const sortedConsumer = this.consumerMiddlewareDefinitions
       .map((def, index) => ({ def, index, priority: def.priority ?? 0 }))
-      .sort((a, b) => a.priority - b.priority || a.index - b.index)
-      .map(({ def }) => ({
-        def,
-        matchRoute: this.registerTargets(app, def.routes, true),
-        matchExclude: this.registerTargets(app, def.excludes, false),
-      }));
+      .sort((a, b) => a.priority - b.priority || a.index - b.index);
 
-    for (const { def, matchRoute, matchExclude } of sortedConsumer) {
+    for (const { def } of sortedConsumer) {
+      const matches = this.compileTargets(def);
       app.use(
         '*',
         this.wrapMiddlewareWithFilters((c, next) => {
-          if (!matchRoute(c) || matchExclude(c)) return next();
+          if (!matches(c)) return next();
 
           const requestContainer = this.getRequestContainer(c);
           const runChain = async (index: number): Promise<void> => {
@@ -1004,11 +1012,12 @@ export class RouteManager {
   // route served outside it (a contributor's RPC endpoint, say) would match
   // nothing and leave that route without its middleware. Checked once this
   // build has registered every route: a target that reaches no route under the
-  // prefix but does without it throws. A forRoutes() target that reaches no
-  // route at all is reported, because the route may still be added to the Hono
-  // app after startup (mountOpenApi(), WebSocket upgrades, raw Hono routes).
-  // A target reaches a route through a concrete path, shaped like either of
-  // them, that Hono's TrieRouter matches with both.
+  // prefix but reaches one outside it throws. A forRoutes() target that
+  // reaches no route at all is reported, because the route may still be added
+  // to the Hono app after startup (mountOpenApi(), WebSocket upgrades, raw Hono
+  // routes). A target reaches a route through a concrete path, shaped like
+  // either of them, that the target and Hono's TrieRouter both match. These
+  // samples only drive this check, never a request's decision.
   private checkMiddlewareTargets(
     registered: ReadonlyArray<{ method: string; path: string }>,
   ): void {
@@ -1017,28 +1026,25 @@ export class RouteManager {
     const routes = registered.filter(
       ({ method, path }) => method !== HttpMethod.ALL || (path !== '*' && path !== '/*'),
     );
-    const router = new TrieRouter<string>();
-    for (const { method, path } of routes) router.add(HttpMethod.ALL, path, method);
-    const served = (patterns: string[], method: string): boolean => {
-      const target = new TrieRouter<string>();
-      for (const pattern of patterns) target.add(HttpMethod.ALL, pattern, pattern);
-      return routes.some(({ path }) =>
-        [
-          ...patterns.flatMap((pattern) => samplePaths(pattern, path)),
-          ...samplePaths(path, patterns[0]!),
-        ].some(
-          (sample) =>
-            target.match(HttpMethod.ALL, sample)[0].length > 0 &&
-            router
-              .match(HttpMethod.ALL, sample)[0]
-              .some(
-                ([routeMethod]) => method === HttpMethod.ALL || methodReaches(method, routeMethod),
-              ),
-        ),
+    const router = new TrieRouter<{ method: string; path: string }>();
+    for (const route of routes) router.add(HttpMethod.ALL, route.path, route);
+    const prefix = this.globalPrefix.replace(/\/+$/, '');
+    const served = (target: RouteTarget, method: string, outside?: boolean): boolean => {
+      const shape = `/${[...target.parts, ...(target.tail ? [target.tail === '*' ? '*' : ':_'] : [])].join('/')}`;
+      const reaches = (route: { method: string; path: string }) =>
+        !(outside && (route.path === prefix || route.path.startsWith(`${prefix}/`))) &&
+        (method === HttpMethod.ALL || methodReaches(method, route.method));
+      return routes.some(
+        (route) =>
+          reaches(route) &&
+          [...samplePaths(shape, route.path), ...samplePaths(route.path, shape)].some(
+            (sample) =>
+              matchTarget(target, segmentsBeneath(sample.split('/'), 1)!) &&
+              router.match(HttpMethod.ALL, sample)[0].some(([other]) => reaches(other)),
+          ),
       );
     };
 
-    const prefix = this.globalPrefix.replace(/\/+$/, '');
     for (const definition of this.consumerMiddlewareDefinitions) {
       const targets = [
         ...definition.routes.map((target) => ({ target, forRoutes: true })),
@@ -1046,14 +1052,13 @@ export class RouteManager {
       ];
       for (const { target, forRoutes } of targets) {
         if (typeof target === 'function' || target.absolute) continue;
-        const path = toHonoPattern(target.path);
+        const { method, target: resolved } = this.resolveTarget(target, forRoutes);
         // `'*'`, `'/*'` and `'{*splat}'` match every request.
-        if (path === '/*') continue;
-        const method = target.method ?? HttpMethod.ALL;
+        if (!resolved || served(resolved, method)) continue;
+        const path = `/${target.path.replace(/^\//, '')}`;
         const pattern = joinPaths(prefix, path);
-        const resolve = (resolved: string) => (forRoutes ? withDescendants(resolved) : [resolved]);
-        if (served(resolve(pattern), method)) continue;
-        if (prefix && served(resolve(path), method)) {
+        const outside = this.resolveTarget({ ...target, absolute: true }, forRoutes).target!;
+        if (prefix && served(outside, method, true)) {
           throw new Error(
             `Middleware route '${target.path}' resolves to '${pattern}' under the global prefix ` +
               `'${prefix}', which serves no route, but '${path}' is served outside the prefix. ` +
@@ -1106,71 +1111,84 @@ export class RouteManager {
     }));
   }
 
-  // A controller target matches when one of its handlers serves the request:
-  // the first controller route after the running middleware in the chain Hono
-  // matched (a HEAD route is registered on GET and passes GET requests on).
-  // Each path target is registered on the app as a marker route that does
-  // nothing, under the global prefix unless it is `absolute`, and matches when
-  // Hono matches its marker for the request with a method the target accepts:
-  // Hono's router then applies a parent app's base path, decoding and pattern
-  // syntax exactly as it does for routes. A forRoutes() target also covers the
-  // paths beneath it. `'*'`, `'/*'` and `'{*splat}'` match every request.
-  private registerTargets(
-    app: HonoApp,
-    targets: Array<RouteInfo | Constructor>,
-    coverDescendants: boolean,
-  ): (c: Context) => boolean {
+  // Whether a consumer middleware definition applies to the request. A
+  // controller target matches when one of its handlers serves the request: the
+  // first controller route after the running middleware in the chain Hono
+  // matched (a HEAD route is registered on GET and passes GET requests on). A
+  // path target (see route-target.ts) matches the request path beneath the
+  // base a parent app mounted this app under, with a method it accepts. When
+  // that base cannot be measured, path targets count as matching for
+  // forRoutes() and as not matching for exclude(), so the middleware runs.
+  private compileTargets({ routes, excludes }: MiddlewareRouteDefinition): (c: Context) => boolean {
     const controllers = new Set<Constructor>();
-    const markers = new Map<unknown, string>();
-    const prefix = this.globalPrefix.replace(/\/+$/, '');
-
-    for (const target of targets) {
-      if (typeof target === 'function') {
-        if (MetadataRegistry.getRoutes(target).length === 0) {
-          throw new Error(
-            `Cannot apply middleware to ${target.name}: ${target.name} declares no routes. ` +
-              'Target contributed routes by path instead.',
-          );
-        }
+    const included: PathTarget[] = [];
+    for (const target of routes) {
+      if (typeof target !== 'function') {
+        included.push(this.resolveTarget(target, true));
+      } else if (MetadataRegistry.getRoutes(target).length === 0) {
+        throw new Error(
+          `Cannot apply middleware to ${target.name}: ${target.name} declares no routes. ` +
+            'Target contributed routes by path instead.',
+        );
+      } else {
         controllers.add(target);
-        continue;
-      }
-
-      let pattern = toHonoPattern(target.path);
-      if (!target.absolute && pattern !== '/*') {
-        // A relative target that repeats the prefix would resolve to
-        // '<prefix><prefix>/...' and never match, leaving its routes unguarded.
-        if (prefix && (pattern === prefix || pattern.startsWith(`${prefix}/`))) {
-          throw new Error(
-            `Middleware route '${pattern}' already includes the global prefix '${prefix}'. ` +
-              `Remove '${prefix}' from the route, or pass { path: '${pattern}', absolute: true } ` +
-              'to match it as written.',
-          );
-        }
-        pattern = joinPaths(prefix, pattern);
-      }
-      for (const marker of coverDescendants ? withDescendants(pattern) : [pattern]) {
-        app.use(marker, (_c, next) => next());
-        markers.set(app.routes.at(-1)!.handler, target.method ?? HttpMethod.ALL);
       }
     }
+    const excluded = excludes.map((target) => this.resolveTarget(target, false));
 
     return (c) => {
       const method = c.req.method;
-      if (controllers.size) {
+      let measured = false;
+      let segments: string[] | undefined;
+      const hit = ({ method: accepted, target }: PathTarget, forRoutes: boolean): boolean => {
+        if (!methodReaches(method, accepted)) return false;
+        if (!target) return true;
+        if (!measured) {
+          measured = true;
+          segments = segmentsUnder(c.req.path, baseRoutePath(c) || '/', (name) =>
+            c.req.param(name),
+          );
+        }
+        return segments ? matchTarget(target, segments) : forRoutes;
+      };
+      let matched = included.some((target) => hit(target, true));
+      if (!matched && controllers.size) {
         for (const route of matchedRoutes(c).slice(c.req.routeIndex + 1)) {
           const owner = findOwner(this.routeOwners, route.handler);
           if (owner && (owner[1] !== HttpMethod.HEAD || method === HttpMethod.HEAD)) {
-            if (controllers.has(owner[0])) return true;
+            matched = controllers.has(owner[0]);
             break;
           }
         }
       }
-      return matchedRoutes(c).some((route) => {
-        const target = findOwner(markers, route.handler);
-        return target !== undefined && methodReaches(method, target);
-      });
+      return matched && !excluded.some((target) => hit(target, false));
     };
+  }
+
+  // A path target under the global prefix unless it is absolute, covering the
+  // paths beneath it for forRoutes(). `'*'`, `'/*'` and `'{*splat}'` match
+  // every path, never under the prefix.
+  private resolveTarget(
+    { path, method = HttpMethod.ALL, absolute }: RouteInfo,
+    forRoutes: boolean,
+  ): PathTarget {
+    let target = parseTarget(path);
+    if (!target.parts.length && target.tail === '*') return { method };
+    const prefix = this.globalPrefix.replace(/\/+$/, '');
+    if (prefix && !absolute) {
+      const written = `/${path.replace(/^\//, '')}`;
+      // A relative target that repeats the prefix would resolve to
+      // '<prefix><prefix>/...' and never match, leaving its routes unguarded.
+      if (written === prefix || written.startsWith(`${prefix}/`)) {
+        throw new Error(
+          `Middleware route '${written}' already includes the global prefix '${prefix}'. ` +
+            `Remove '${prefix}' from the route, or pass { path: '${written}', absolute: true } ` +
+            'to match it as written.',
+        );
+      }
+      target = parseTarget(joinPaths(prefix, written));
+    }
+    return { method, target: forRoutes ? withDescendants(target) : target };
   }
 
   getControllers(): ControllerRegistration[] {

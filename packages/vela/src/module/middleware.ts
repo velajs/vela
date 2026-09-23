@@ -2,7 +2,12 @@ import type { HttpMethod } from '../constants';
 import type { NestMiddleware } from '../pipeline/types';
 import type { Constructor, Type } from '../registry/types';
 
-/** A Hono route pattern (`:param`, `*`), resolved under the global prefix. */
+/**
+ * A middleware path target, resolved under the global prefix: literal and
+ * `:name` segments, optionally ending in `*`, `{*name}`, `*name` or `(.*)`.
+ * Other pattern syntax, such as `{regex}` constraints or optional `?`
+ * segments, fails the route build.
+ */
 export interface RouteInfo {
   path: string;
   method?: HttpMethod;
@@ -31,7 +36,7 @@ export interface MiddlewareConfigProxy {
   withPriority(priority: number): MiddlewareConfigProxy;
   /**
    * Run whenever Hono dispatches a request to one of a controller's handlers,
-   * or for a pattern and the paths beneath it. `'*'` matches every request.
+   * or for a path target and the paths beneath it. `'*'` matches every request.
    */
   forRoutes(...routes: Array<string | Constructor | RouteInfo>): MiddlewareConsumer;
 }

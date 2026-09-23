@@ -1217,7 +1217,8 @@ declare class RouteManager {
   private checkMiddlewareTargets;
   private registerRoute;
   private composeRoutePaths;
-  private registerTargets;
+  private compileTargets;
+  private resolveTarget;
   getControllers(): ControllerRegistration[];
 }
 

@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Hono, type Context, type Next } from 'hono';
+import { LinearRouter } from 'hono/router/linear-router';
+import { RegExpRouter } from 'hono/router/reg-exp-router';
 import {
   All,
   Controller,
@@ -237,7 +239,7 @@ describe('forRoutes(Controller) expands to the composed routes', () => {
   });
 });
 
-describe('forRoutes(string | RouteInfo) uses Hono route patterns', () => {
+describe('forRoutes(string | RouteInfo) uses literal and parameter segments', () => {
   it('applies the global prefix to string routes', async () => {
     @Controller('/admin')
     class AdminController {
@@ -623,82 +625,210 @@ describe('an app mounted under a parent base path', () => {
     expect(await request('GET', `${prefix}/users/7`)).toBe(200);
     expect(seen).toEqual([`GET ${prefix}/auth/login`]);
   });
+
+  async function createModule(configure: (consumer: MiddlewareConsumer) => void) {
+    @Module({
+      providers: [RecordingMiddleware],
+      controllers: [AuthController, SecretsController, UsersController],
+    })
+    class AppModule implements NestModule {
+      configure(consumer: MiddlewareConsumer) {
+        configure(consumer);
+      }
+    }
+    return (await VelaFactory.create(AppModule)).getHonoApp();
+  }
+
+  function excludeUser(consumer: MiddlewareConsumer) {
+    consumer.apply(RecordingMiddleware).exclude('users/:id').forRoutes('*');
+  }
+
+  it('matches relative to each base when two nested parents mount the app', async () => {
+    const app = await createModule(excludeUser);
+    const outer = new Hono().route('/outer', new Hono().route('/:tenant', app));
+
+    for (const path of [
+      '/outer/acme/users/7',
+      '/outer/acme/admin/secrets',
+      '/outer/users/users/7',
+    ]) {
+      expect((await outer.request(path)).status).toBe(200);
+    }
+    expect(seen).toEqual(['GET /outer/acme/admin/secrets']);
+  });
+
+  it('matches relative to the base of the mount that serves the request', async () => {
+    const app = await createModule(excludeUser);
+    const parent = new Hono().route('/a', app).route('/:tenant{[a-z]+}/b', app);
+
+    for (const path of ['/a/users/7', '/x/b/users/7', '/a/admin/secrets', '/x/b/auth/login']) {
+      expect((await parent.request(path)).status).toBe(200);
+    }
+    expect(seen).toEqual(['GET /a/admin/secrets', 'GET /x/b/auth/login']);
+  });
+
+  // A decoded parameter no longer spells the path it was matched from, so the
+  // base cannot be measured and exclude() targets are not trusted.
+  it.each(['/a%3Ab', '/a%25b', '/a%2Fb'])(
+    'runs the middleware, ignoring exclude() targets, under a base parameter %s',
+    async (tenant) => {
+      const app = await createModule(excludeUser);
+      const parent = new Hono().route('/:tenant', app);
+
+      expect((await parent.request(`${tenant}/users/7`)).status).toBe(200);
+      expect((await parent.request('/acme/users/7')).status).toBe(200);
+      expect(seen).toEqual([`GET ${tenant}/users/7`]);
+    },
+  );
+
+  // A trailing-slash base puts the app's root at '/m/', so '/m' lies outside it.
+  it("runs the middleware for the base itself under a trailing-slash base '/m/'", async () => {
+    @Controller()
+    class CatchAllController {
+      @Get('*')
+      any() {
+        return { ok: true };
+      }
+    }
+
+    const request = await createApp(
+      [CatchAllController],
+      (consumer) => {
+        consumer.apply(RecordingMiddleware).exclude('/', 'x').forRoutes('*');
+      },
+      undefined,
+      '/m/',
+    );
+
+    expect(await request('GET', '/m')).toBe(200);
+    expect(await request('GET', '/m/')).toBe(200);
+    expect(await request('GET', '/m/x')).toBe(200);
+    expect(await request('GET', '/m/y')).toBe(200);
+    expect(seen).toEqual(['GET /m', 'GET /m/y']);
+  });
+
+  // Path targets no longer register routes on the Vela app, so a parent app
+  // on any of Hono's routers can mount it.
+  it.each([
+    ['RegExpRouter', () => new Hono({ router: new RegExpRouter() })],
+    ['LinearRouter', () => new Hono({ router: new LinearRouter() })],
+  ] as const)('is mounted by a parent app on the %s', async (_name, createParent) => {
+    const app = await createModule((consumer) => {
+      consumer.apply(RecordingMiddleware).exclude('users/:id').forRoutes('users', 'auth/login');
+    });
+    const parent = createParent().route('/m', app);
+
+    for (const path of ['/m/users/7', '/m/auth/login', '/m/admin/secrets']) {
+      expect((await parent.request(path)).status).toBe(200);
+    }
+    expect(seen).toEqual(['GET /m/auth/login']);
+  });
 });
 
-// Each target is registered on the Hono app as a route that does nothing, so
-// whichever router Hono picks decides what it matches, exactly as it decides
-// which route serves the request.
-describe('targets match the requests Hono dispatches their patterns for', () => {
-  it("runs for a value a '|' constraint accepts only unanchored, as Hono serves it", async () => {
-    @Controller('/users')
-    class UsersController {
-      @Get(':id{\\d+|me}')
-      one() {
+// Path targets are decided by Vela's own matcher, never by routes added to the
+// application: the app keeps the router its own routes choose.
+describe('path targets leave the application routes alone', () => {
+  // A literal beside ':id' would make Hono fall back to its TrieRouter.
+  @Controller('/users')
+  class UsersController {
+    @Get(':id')
+    one() {
+      return { ok: true };
+    }
+
+    @Get(':id/posts/:post')
+    post() {
+      return { ok: true };
+    }
+  }
+
+  async function createModuleApp(configure: (consumer: MiddlewareConsumer) => void) {
+    @Module({ providers: [RecordingMiddleware], controllers: [UsersController] })
+    class AppModule implements NestModule {
+      configure(consumer: MiddlewareConsumer) {
+        configure(consumer);
+      }
+    }
+    return (await VelaFactory.create(AppModule, { globalPrefix: '/api' })).getHonoApp();
+  }
+
+  it('registers no route for a target and keeps the RegExpRouter', async () => {
+    const plain = await createModuleApp((consumer) => {
+      consumer.apply(RecordingMiddleware).forRoutes(UsersController);
+    });
+    const app = await createModuleApp((consumer) => {
+      consumer
+        .apply(RecordingMiddleware)
+        .exclude('users/me', { path: '/rpc', absolute: true })
+        .forRoutes('users', 'users/:id/posts', { path: '/rpc', absolute: true });
+    });
+
+    expect(app.routes.map(({ method, path }) => `${method} ${path}`)).toEqual(
+      plain.routes.map(({ method, path }) => `${method} ${path}`),
+    );
+    expect((await app.request('/api/users/7/posts/9')).status).toBe(200);
+    expect((await app.request('/api/users/me')).status).toBe(200);
+    expect(app.router.name).toBe('SmartRouter + RegExpRouter');
+    expect(seen).toEqual(['GET /api/users/7/posts/9']);
+  });
+
+  it("keeps exclude('auth/login') exact beside a longer segment", async () => {
+    @Controller('/auth')
+    class AuthController {
+      @Get('login')
+      login() {
         return { ok: true };
       }
 
-      // A literal beside the parameter makes Hono fall back to its TrieRouter,
-      // which anchors only the first and last alternative.
-      @Get('static')
-      fixed() {
+      @Get('login-as/:id')
+      impersonate() {
         return { ok: true };
       }
     }
 
-    const request = await createApp([UsersController], forRoutes('users/:id{\\d+|me}'));
+    const request = await createApp([AuthController], (consumer) => {
+      consumer.apply(RecordingMiddleware).exclude('auth/login', 'auth/register').forRoutes('*');
+    });
 
-    expect(await request('GET', '/users/12abc')).toBe(200);
-    expect(await request('GET', '/users/me')).toBe(200);
-    expect(await request('GET', '/users/static')).toBe(200);
-    expect(seen).toEqual(['GET /users/12abc', 'GET /users/me']);
+    expect(await request('GET', '/auth/login')).toBe(200);
+    expect(await request('GET', '/auth/login-as/42')).toBe(200);
+    expect(seen).toEqual(['GET /auth/login-as/42']);
   });
 
-  it("runs for an empty segment that a '*' before the last segment accepts", async () => {
-    @Controller('/files')
-    class FilesController {
-      @Get('*/raw')
-      raw() {
-        return { ok: true };
-      }
+  // A route contributor may refuse to register over an existing route, as the
+  // RPC endpoint does, so a target for its path must not be a route itself.
+  it('lets a contributor register a route that an absolute target names', async () => {
+    const CONFLICT_CHECKED = 'test:middleware-conflict-checked-route';
+    registerRouteContributor({
+      id: CONFLICT_CHECKED,
+      claimsMetaKey: CONFLICT_CHECKED,
+      buildRoutes(app, context) {
+        const path = String(context.meta);
+        if (app.routes.some((route) => route.path === path && route.method === 'ALL')) {
+          throw new Error(`Route conflicts with existing route '${path}'`);
+        }
+        app.post(path, (c) => c.json({ ok: true }));
+      },
+    });
+    @Controller('')
+    class RpcEndpoint {}
+    defineMetadata(CONFLICT_CHECKED, '/rpc', RpcEndpoint);
 
-      @Get('static/raw')
-      fixed() {
-        return { ok: true };
-      }
+    for (const globalPrefix of [undefined, '/api']) {
+      seen = [];
+      const request = await createApp(
+        [RpcEndpoint],
+        forRoutes({ path: '/rpc', absolute: true }),
+        globalPrefix === undefined ? undefined : { globalPrefix },
+      );
+      expect(await request('POST', '/rpc')).toBe(200);
+      expect(seen).toEqual(['POST /rpc']);
     }
-
-    const request = await createApp([FilesController], forRoutes('files/*/raw'));
-
-    expect(await request('GET', '/files//raw')).toBe(200);
-    expect(await request('GET', '/files/a/raw')).toBe(200);
-    expect(seen).toEqual(['GET /files//raw', 'GET /files/a/raw']);
   });
+});
 
-  it("covers the parent of a '*' before a trailing ':id?', as Hono's '/files/*' does", async () => {
-    @Controller('/files')
-    class FilesController {
-      @Get()
-      list() {
-        return { ok: true };
-      }
-
-      @Get(':a/:b')
-      nested() {
-        return { ok: true };
-      }
-    }
-
-    const request = await createApp([FilesController], forRoutes('files/*/:id?'));
-
-    expect(await request('GET', '/files')).toBe(200);
-    expect(await request('GET', '/files/a/b')).toBe(200);
-    expect(seen).toEqual(['GET /files', 'GET /files/a/b']);
-  });
-
-  // Hono's RegExpRouter applies a path ending in '*' to the routes whose
-  // pattern text it matches, and compares a '*' before the last segment as
-  // text, so neither side may rely on that comparison.
-  it("runs beneath a '*' or ':id' target for a deeper route written the other way", async () => {
+describe('parameter targets match one whole segment', () => {
+  it("runs beneath a ':id' target for a deeper route written with '*'", async () => {
     @Controller('/users')
     class PostsController {
       @Get(':id/posts/:post')
@@ -717,7 +847,7 @@ describe('targets match the requests Hono dispatches their patterns for', () => 
 
     const request = await createApp(
       [PostsController, RawController],
-      forRoutes('users/*/posts', 'files/:id/raw'),
+      forRoutes('users/:id/posts', 'files/:id/raw'),
     );
 
     expect(await request('GET', '/users/7/posts/9')).toBe(200);
@@ -725,46 +855,116 @@ describe('targets match the requests Hono dispatches their patterns for', () => 
     expect(seen).toEqual(['GET /users/7/posts/9', 'GET /files/7/raw/9']);
   });
 
-  it("keeps running middleware on a single segment when '*/*' is excluded", async () => {
-    @Controller()
-    class RootController {
-      @Get(':a')
-      one() {
-        return { ok: true };
-      }
-    }
-
-    const request = await createApp([RootController], (consumer) => {
-      consumer.apply(RecordingMiddleware).exclude('*/*').forRoutes('*');
-    });
-
-    expect(await request('GET', '/x')).toBe(200);
-    expect(seen).toEqual(['GET /x']);
-  });
-
-  it('leaves constraints that span segments to Hono instead of backtracking over the path', async () => {
-    // ':a' beside the constrained target makes Hono fall back to its
-    // TrieRouter, which tries each constraint once where it starts.
+  it("never matches an empty segment with ':id'", async () => {
+    // A literal beside '*' makes Hono fall back to its TrieRouter, where '*'
+    // before the last segment also matches an empty segment.
     @Controller('/files')
     class FilesController {
-      @Get(':a')
-      one() {
+      @Get('*/raw')
+      raw() {
+        return { ok: true };
+      }
+
+      @Get('static/raw')
+      fixed() {
         return { ok: true };
       }
     }
 
-    const request = await createApp(
-      [FilesController],
-      forRoutes('files/:a{[\\s\\S]+}/:b{[\\s\\S]+}/:c{[\\s\\S]+}/:d{[\\s\\S]+}/x'),
-      { diagnostics: 'silent' },
-    );
+    const request = await createApp([FilesController], (consumer) => {
+      consumer.apply(RecordingMiddleware).exclude('files/:id/raw').forRoutes('*');
+    });
 
-    const startedAt = performance.now();
-    expect(await request('GET', `/files/${'a/'.repeat(600)}b`)).toBe(404);
-    expect(performance.now() - startedAt).toBeLessThan(500);
-    expect(await request('GET', '/files/a')).toBe(200);
-    expect(seen).toEqual([]);
+    expect(await request('GET', '/files//raw')).toBe(200);
+    expect(await request('GET', '/files/a/raw')).toBe(200);
+    expect(seen).toEqual(['GET /files//raw']);
   });
+});
+
+// Path targets use a grammar that Hono's routers agree on and that Vela
+// matches segment by segment: literal segments, ':name' and a trailing
+// wildcard. Everything else fails the route build with its cause instead of
+// matching what one router or another makes of it.
+describe('target syntax outside the grammar fails the route build', () => {
+  @Controller('/files')
+  class FilesController {
+    @Get(':a/:b/:c')
+    nested() {
+      return { ok: true };
+    }
+  }
+
+  async function expectRejected(target: string, message: string) {
+    const expected = `Middleware route '${target}' ${message}`;
+    await expect(createApp([FilesController], forRoutes(target))).rejects.toThrow(expected);
+    await expect(
+      createApp([FilesController], (consumer) => {
+        consumer.apply(RecordingMiddleware).exclude(target).forRoutes('*');
+      }),
+    ).rejects.toThrow(expected);
+  }
+
+  // Hono's TrieRouter anchors only the first and last alternative of a
+  // top-level '|', so 'auth/:action{login|register}' also matched
+  // '/auth/login-as/42', and constraints that span segments backtrack there.
+  it.each([
+    'auth/:action{login|register}',
+    'users/:id{\\d+|me}',
+    'cats/:id{[0-9]+}',
+    'users/:id{[0-9]+}',
+    'files/:a{[\\s\\S]+}/:b{[\\s\\S]+}/x',
+    'cats/:id{[0-9}',
+    'cats/:id{[0-9]*}',
+  ])("rejects the '{regex}' constraint in '%s'", async (target) => {
+    await expectRejected(
+      target,
+      "uses a '{regex}' constraint: constraints are not supported in middleware targets; " +
+        "use ':name' or target the controller",
+    );
+  });
+
+  it.each([':id?', 'users/:id?', 'files/*/:id?', 'files/a?b'])(
+    "rejects the optional '?' in '%s'",
+    async (target) => {
+      await expectRejected(target, "uses an optional '?'");
+    },
+  );
+
+  it.each([
+    'files/*/raw',
+    '*/*',
+    'users/*/posts',
+    'files/*a/*b',
+    'files/(.*)/(.*)',
+    'files/*a/{*b}',
+    'files/(.*)/x/*b',
+    'files/*a/*',
+    'files/*a/b*',
+  ])("rejects the wildcard before the last segment of '%s'", async (target) => {
+    await expectRejected(target, 'has a wildcard before its last segment');
+  });
+
+  // Hono's routers disagree on whether 'abc:name' is text or a parameter.
+  it.each(['admin/us*', 'cats/ab*cd', 'files/abc:name', 'files/:a/abc:name', 'a:b', 'files/v1:*'])(
+    "rejects the '*' or ':' inside a segment of '%s'",
+    async (target) => {
+      await expectRejected(target, "puts '*' or ':' inside a segment");
+    },
+  );
+
+  it.each(['cats/:id(\\d+)', 'cats{/:id}', 'cats/(a|b)', 'cats/{id}', 'cats/{*}'])(
+    "rejects the group in '%s'",
+    async (target) => {
+      await expectRejected(target, 'uses a group');
+    },
+  );
+
+  it.each(['cats//toys', '//cats', 'cats//'])(
+    "rejects the empty segment in '%s'",
+    async (target) => {
+      await expectRejected(target, 'has an empty segment');
+    },
+  );
 });
 
 // A route contributor registers its routes during route build, outside the
@@ -947,29 +1147,24 @@ describe('Nest wildcard targets', () => {
     expect(seen).toEqual(['GET /dogs/1']);
   });
 
-  // Hono has no pattern for a wildcard that spans segments before the last
-  // one, so these targets, which used to match one or more segments in place,
-  // now fail the route build instead of matching something else.
+  // A wildcard that spans segments before the last one would need
+  // backtracking, so these targets fail the route build instead of matching
+  // something else.
   it.each([
     'cats/*path/toys',
     'cats/(.*)/toys',
     'files/*path/:id',
     'files/(.*)/:id',
     'users/*id/admin',
+    'cats/{*splat}/toys',
   ])("rejects the Nest wildcard before the last segment of '%s'", async (target) => {
-    const message = `Middleware route '${target}' uses pattern syntax that Hono does not match`;
+    const message = `Middleware route '${target}' has a wildcard before its last segment`;
     await expect(createApp([CatsWithIndexController], forRoutes(target))).rejects.toThrow(message);
     await expect(
       createApp([CatsWithIndexController], (consumer) => {
         consumer.apply(RecordingMiddleware).exclude(target).forRoutes('*');
       }),
     ).rejects.toThrow(message);
-  });
-
-  it('rejects an optional wildcard before the last segment', async () => {
-    await expect(
-      createApp([CatsWithIndexController], forRoutes('cats/{*splat}/toys')),
-    ).rejects.toThrow("Middleware route 'cats/{*splat}/toys' uses pattern syntax");
   });
 
   it('reports a Nest wildcard target that only the parent route would match', async () => {
@@ -981,10 +1176,9 @@ describe('Nest wildcard targets', () => {
       }
     }
 
-    // '*path' now becomes '[\\s\\S]+', which also matches decoded line terminators.
     await expect(
       createApp([CatsIndexOnlyController], forRoutes('cats/*path'), { diagnostics: 'throw' }),
-    ).rejects.toThrow("[vela] Middleware route 'cats/*path' resolves to '/cats/:path{[\\s\\S]+}'");
+    ).rejects.toThrow("[vela] Middleware route 'cats/*path' resolves to '/cats/*path'");
   });
 
   it('translates a Nest wildcard in an exclude() target', async () => {
@@ -997,26 +1191,10 @@ describe('Nest wildcard targets', () => {
     expect(seen).toEqual(['GET /dogs/1']);
   });
 
-  it('keeps Hono regex-constrained parameters', async () => {
-    const request = await createApp([CatsController], forRoutes('cats/:id{[0-9]+}'));
-
-    expect(await request('GET', '/cats/42')).toBe(200);
-    expect(await request('GET', '/cats/tom')).toBe(200);
-    expect(seen).toEqual(['GET /cats/42']);
-  });
-
-  // Hono compiles a constraint only for its first request, and its default
-  // router fails on a parameter that captures nothing.
-  it.each([
-    'cats/:id(\\d+)',
-    'cats/ab*cd',
-    'cats{/:id}',
-    'cats/(a|b)',
-    'cats/:id{[0-9}',
-    'cats/:id{[0-9]*}',
-  ])("rejects '%s', which no Hono pattern matches", async (target) => {
-    await expect(createApp([CatsController], forRoutes(target))).rejects.toThrow(
-      `Middleware route '${target}' uses pattern syntax that Hono does not match`,
+  it("rejects a constrained parameter such as 'cats/:id{[0-9]+}', naming the controller form", async () => {
+    await expect(createApp([CatsController], forRoutes('cats/:id{[0-9]+}'))).rejects.toThrow(
+      "Middleware route 'cats/:id{[0-9]+}' uses a '{regex}' constraint: constraints are not " +
+        "supported in middleware targets; use ':name' or target the controller",
     );
   });
 
@@ -1078,7 +1256,7 @@ describe('Nest wildcard targets', () => {
     ).rejects.toThrow("[vela] Middleware route 'files/:a/*path' resolves to");
   });
 
-  it('reports a constrained target that no constrained route value satisfies', async () => {
+  it('accepts a parameter target for a regex-constrained route', async () => {
     @Controller('/users')
     class SlugController {
       @Get(':slug{[a-z]+}')
@@ -1087,16 +1265,18 @@ describe('Nest wildcard targets', () => {
       }
     }
 
-    await expect(
-      createApp([SlugController], forRoutes('users/:id{[0-9]+}'), { diagnostics: 'throw' }),
-    ).rejects.toThrow("[vela] Middleware route 'users/:id{[0-9]+}' resolves to");
+    const request = await createApp([SlugController], forRoutes('users/:slug'), {
+      diagnostics: 'throw',
+    });
+    expect(await request('GET', '/users/abc')).toBe(200);
+    expect(seen).toEqual(['GET /users/abc']);
   });
 });
 
 // Hono decodes %0A, %0D, %E2%80%A8 and %E2%80%A9 into c.req.path, and a
-// ':id' segment accepts them, so every fragment Vela generates must match them
-// too or the route is served without its middleware.
-describe('generated patterns match decoded line terminators', () => {
+// ':id' segment accepts them, so ':name' segments and wildcards match them too
+// or the route is served without its middleware.
+describe('targets match decoded line terminators', () => {
   @Controller('admin')
   class AdminUsersController {
     @Delete('users/:id')
@@ -1105,10 +1285,18 @@ describe('generated patterns match decoded line terminators', () => {
     }
   }
 
+  const TERMINATORS = ['%0A', '%0D', '%E2%80%A8', '%E2%80%A9'];
+
   it.each(
-    ['admin', 'admin/*', 'admin/*path', 'admin/{*path}', 'admin/(.*)', 'admin/us*'].flatMap(
-      (target) => ['%0A', '%0D', '%E2%80%A8', '%E2%80%A9'].map((encoded) => [target, encoded]),
-    ),
+    [
+      'admin',
+      'admin/*',
+      'admin/*path',
+      'admin/{*path}',
+      'admin/(.*)',
+      'admin/users/:id',
+      'admin/:section',
+    ].flatMap((target) => TERMINATORS.map((encoded) => [target, encoded])),
   )("runs forRoutes('%s') middleware for a path that decodes %s", async (target, encoded) => {
     const request = await createApp([AdminUsersController], forRoutes(target), {
       globalPrefix: '/api',
@@ -1117,6 +1305,20 @@ describe('generated patterns match decoded line terminators', () => {
 
     expect(await request('DELETE', `/api/admin/users/7${encoded}`)).toBe(200);
     expect(seen).toEqual([`DELETE /api/admin/users/7${decodeURI(encoded)}`]);
+  });
+
+  it.each(
+    ['admin/users/:id', 'admin/*path', 'admin/*'].flatMap((target) =>
+      TERMINATORS.map((encoded) => [target, encoded]),
+    ),
+  )("skips exclude('%s') for a path that decodes %s", async (target, encoded) => {
+    const request = await createApp([AdminUsersController], (consumer) => {
+      consumer.apply(RecordingMiddleware).exclude(target).forRoutes('*');
+    });
+
+    expect(await request('DELETE', `/admin/users/${encoded}7`)).toBe(200);
+    expect(await request('DELETE', '/admin')).toBe(404);
+    expect(seen).toEqual(target === 'admin/*' ? [] : ['DELETE /admin']);
   });
 
   it.each(['%0A', '%0D', '%E2%80%A8', '%E2%80%A9'])(
@@ -1130,32 +1332,6 @@ describe('generated patterns match decoded line terminators', () => {
       expect(seen).toEqual([`DELETE /api/admin/users/7${decodeURI(encoded)}`]);
     },
   );
-});
-
-describe('a lone optional parameter target', () => {
-  it("excludes the root path, as Hono matches '/:id?' on '/'", async () => {
-    @Controller()
-    class RootController {
-      @Get(':id?')
-      one() {
-        return { ok: true };
-      }
-
-      @Get(':id/details')
-      details() {
-        return { ok: true };
-      }
-    }
-
-    const request = await createApp([RootController], (consumer) => {
-      consumer.apply(RecordingMiddleware).exclude(':id?').forRoutes('*');
-    });
-
-    expect(await request('GET', '/')).toBe(200);
-    expect(await request('GET', '/7')).toBe(200);
-    expect(await request('GET', '/7/details')).toBe(200);
-    expect(seen).toEqual(['GET /7/details']);
-  });
 });
 
 describe('request methods match method-scoped targets as Hono routes them', () => {
@@ -1193,93 +1369,6 @@ describe('request methods match method-scoped targets as Hono routes them', () =
     expect(await request('HEAD', '/hooks')).toBe(200);
     expect(seen).toEqual(['GET /hooks', 'HEAD /hooks']);
   });
-});
-
-describe('target syntax that cannot be matched safely fails the route build', () => {
-  @Controller('/files')
-  class FilesController {
-    @Get(':a/:b/:c')
-    nested() {
-      return { ok: true };
-    }
-  }
-
-  // A Nest wildcard before the last segment has no Hono equivalent. These used
-  // to be rejected because two of them backtrack polynomially on long paths.
-  it.each([
-    'files/*a/*b',
-    'files/(.*)/(.*)',
-    'files/*a/{*b}',
-    'files/(.*)/x/*b',
-    'files/*a/*',
-    'files/*a/b*',
-  ])("rejects '%s', which has more than one multi-segment wildcard", async (target) => {
-    const message = `Middleware route '${target}' uses pattern syntax that Hono does not match`;
-    await expect(createApp([FilesController], forRoutes(target))).rejects.toThrow(message);
-    await expect(
-      createApp([FilesController], (consumer) => {
-        consumer.apply(RecordingMiddleware).exclude(target).forRoutes('*');
-      }),
-    ).rejects.toThrow(message);
-  });
-
-  // Hono's routers disagree on whether 'abc:name' is text or a parameter. A
-  // target is now whatever the router in use makes of it, exactly as the route
-  // with the same pattern is, so these no longer fail the route build.
-  it.each(['files/abc:name', 'files/:a/abc:name', 'a:b', 'files/v1:*'])(
-    "matches '%s', with ':' inside a literal segment, wherever its own route serves",
-    async (target) => {
-      @Controller()
-      class TargetController {
-        @Get(target)
-        serve() {
-          return { ok: true };
-        }
-      }
-
-      // A literal beside a parameter makes Hono fall back to its TrieRouter.
-      @Controller('/elsewhere')
-      class TrieOnlyController {
-        @Get('static')
-        fixed() {
-          return { ok: true };
-        }
-
-        @Get(':id')
-        one() {
-          return { ok: true };
-        }
-      }
-
-      const paths = [
-        '/files/abc:name',
-        '/files/abcX',
-        '/files/d/abc:name',
-        '/files/d/abcX',
-        '/a:b',
-        '/aX',
-        '/files/v1:x',
-        '/files/v1x',
-      ];
-      for (const controllers of [[TargetController], [TargetController, TrieOnlyController]]) {
-        for (const excluded of [false, true]) {
-          seen = [];
-          const request = await createApp(controllers, (consumer) => {
-            if (excluded) consumer.apply(RecordingMiddleware).exclude(target).forRoutes('*');
-            else consumer.apply(RecordingMiddleware).forRoutes(target);
-          });
-          const served: string[] = [];
-          const missed: string[] = [];
-          for (const path of paths) {
-            if ((await request('GET', path)) === 200) served.push(`GET ${path}`);
-            else missed.push(`GET ${path}`);
-          }
-          expect(served.length).toBeGreaterThan(0);
-          expect(seen).toEqual(excluded ? missed : served);
-        }
-      }
-    },
-  );
 });
 
 // forRoutes(Controller) asks Hono which handler serves the request, so the
