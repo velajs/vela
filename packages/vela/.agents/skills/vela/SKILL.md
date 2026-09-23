@@ -175,6 +175,8 @@ Load a reference when the task needs its depth. **This table is the contract** �
 
 ## Troubleshooting
 
+**`Cannot resolve UsersController(?, AuditService) in UsersModule. Argument #0 UsersService is declared in DataModule but not exported (add it to DataModule.exports)`** (`UnresolvedDependencyError`) → The `?` marks the constructor argument no visible provider supplies. Follow the reason: export it from the declaring module, import the module that exports it (`is exported by X, which Y does not import`), or add a provider (`is not provided in Y or its imports`). `error.reason`, `error.token` and `error.cause` carry the details.
+
 **`No provider found for token: X. Declare it in a module's providers.`** → The provider isn't in any module's `providers`, or its module isn't imported.
 
 **`Module 'X' cannot resolve 'Y': not declared in providers, not imported from another module's exports, not @Global.`** (`ModuleVisibilityError`) → The token exists but isn't visible. Add it to the declaring module's `exports` (and import that module), or mark the module `@Global()`.

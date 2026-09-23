@@ -62,6 +62,7 @@ export {
   ModuleVisibilityError,
   MultipleProvidersFoundError,
   ROOT_MODULE_ID,
+  UnresolvedDependencyError,
   mixin,
   describeToken,
   defineProvider,
@@ -81,6 +82,8 @@ export type {
   ContainerOptions,
   Diagnostics,
   MissingInjectionMetadataReason,
+  UnresolvedDependency,
+  UnresolvedDependencyReason,
   ModuleRefContext,
   ModuleRefLookupOptions,
 } from './container/index';

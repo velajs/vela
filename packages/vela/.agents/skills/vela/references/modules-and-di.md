@@ -105,7 +105,7 @@ Each module gets its own `ModuleRef`: a singleton's is owned by the root, a requ
 
 ## Visibility & exports
 
-A provider is private to its declaring module unless listed in that module's `exports`. Importers then resolve it. Re-export works transitively (import a module and list its token in your own `exports`). Violations throw `ModuleVisibilityError`; importing two instances that export the same token throws `MultipleProvidersFoundError` (see `SKILL.md` Troubleshooting).
+A provider is private to its declaring module unless listed in that module's `exports`. Importers then resolve it. Re-export works transitively (import a module and list its token in your own `exports`). A constructor argument without a visible provider throws `UnresolvedDependencyError` naming the class, module, argument and fix (`Cannot resolve UsersController(?, AuditService) in UsersModule. Argument #0 UsersService is declared in DataModule but not exported (add it to DataModule.exports)`), with the `ModuleVisibilityError` as `cause`; direct `resolve()` calls and factory `inject` lists throw `ModuleVisibilityError` itself. Importing two instances that export the same token throws `MultipleProvidersFoundError` (see `SKILL.md` Troubleshooting).
 
 ## Dynamic modules — `forRoot` / `forRootAsync`
 

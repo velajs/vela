@@ -24,6 +24,7 @@ import type {
   ProviderSnapshot,
   Token,
   Type,
+  UnresolvedDependencyReason,
 } from './types';
 import {
   describeToken,
@@ -33,6 +34,7 @@ import {
   ModuleVisibilityError,
   MultipleProvidersFoundError,
   ROOT_MODULE_ID,
+  UnresolvedDependencyError,
 } from './types';
 
 const IMPORT_TYPE_HINT =
@@ -1005,10 +1007,82 @@ export class Container {
         }
       }
 
-      return this.resolve(token, ownerModuleId);
+      try {
+        return this.resolve(token, ownerModuleId);
+      } catch (error) {
+        throw this.unresolvedDependency(error, registration, target, index, token);
+      }
     });
 
     return new target(...dependencies);
+  }
+
+  /**
+   * Name the constructor whose argument has no visible provider. Only the
+   * innermost class wraps: when the argument's own token is visible, the error
+   * came from deeper construction and passes through unchanged.
+   */
+  private unresolvedDependency(
+    error: unknown,
+    registration: ProviderRegistration,
+    target: Type,
+    parameterIndex: number,
+    token: Token,
+  ): unknown {
+    const moduleId = registration.declaringModuleId;
+    if (!this.isUnresolvable(token, moduleId)) return error;
+    return new UnresolvedDependencyError(
+      {
+        className: target.name,
+        moduleId,
+        parameters: this.constructorPlan(registration).map(({ token: raw }) =>
+          this.describeParameter(raw),
+        ),
+        parameterIndex,
+        token,
+        reason: this.unresolvedReason(token, moduleId),
+      },
+      { cause: error },
+    );
+  }
+
+  // Ambiguity (MultipleProvidersFoundError) and InjectionToken default
+  // factories are resolvable tokens whose own errors stay as they are.
+  private isUnresolvable(token: Token, requestingModuleId: string): boolean {
+    if (token === ModuleRef || (token instanceof InjectionToken && token.options?.factory)) {
+      return false;
+    }
+    try {
+      return this.findRegistration(token, requestingModuleId) === undefined;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Built from the declarer index and the declaring modules' exported tokens. */
+  private unresolvedReason(token: Token, requestingModuleId: string): UnresolvedDependencyReason {
+    const declarers = [...(this.#exporterIndex.get(token) ?? [])].filter((moduleId) =>
+      this.#scopes.has(moduleId),
+    );
+    if (!this.#scopes.has(requestingModuleId) || declarers.length === 0) {
+      return { kind: 'not-provided' };
+    }
+    const exporters = declarers.filter((moduleId) =>
+      this.#scopes.get(moduleId)?.exportedTokens.has(token),
+    );
+    return exporters.length > 0
+      ? { kind: 'not-imported', modules: exporters }
+      : { kind: 'not-exported', modules: declarers };
+  }
+
+  private describeParameter(raw: Token | ForwardRef | undefined): string {
+    if (raw === undefined) return 'undefined';
+    if (!(raw instanceof ForwardRef)) return describeToken(raw);
+    try {
+      return describeToken(raw.factory());
+    } catch {
+      return 'forwardRef';
+    }
   }
 
   /** The registration-time constructor plan; every class registration carries one. */
@@ -1219,7 +1293,11 @@ export class Container {
           const resolved = this.findRegistration(token, moduleId);
           if (resolved && ancestors.has(resolved)) return this.createLazyProxy(token, moduleId);
         }
-        return this.resolveAsyncInner(token, moduleId, ancestors, owner);
+        try {
+          return await this.resolveAsyncInner(token, moduleId, ancestors, owner);
+        } catch (error) {
+          throw this.unresolvedDependency(error, registration, target, index, token);
+        }
       }),
     );
     return new target(...dependencies);

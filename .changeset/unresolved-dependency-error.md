@@ -1,0 +1,7 @@
+---
+"@velajs/vela": minor
+---
+
+**Behavior change:** a class constructor argument without a provider visible to the resolving module now fails with the new `UnresolvedDependencyError`, which names the class, its module, the argument and the fix, for example `Cannot resolve UsersController(?, AuditService) in UsersModule. Argument #0 UsersService is declared in DataModule but not exported (add it to DataModule.exports)`. The other reasons read `is exported by DataModule, which UsersModule does not import (add DataModule to UsersModule.imports)` and `is not provided in UsersModule or its imports`. Previously the same failure threw a `ModuleVisibilityError` or a plain "No provider found" error that named only the token. The original lookup error stays available as `cause`, and the error exposes `className`, `moduleId`, `parameters`, `parameterIndex`, `token` and `reason` (`not-exported`, `not-imported` or `not-provided`, with the module instance ids involved).
+
+Only the innermost constructor reports: an error raised while building one of the argument's own dependencies passes through unchanged. It covers bootstrap, request-time resolution and `ModuleRef.create()`. Direct `container.resolve(token)` calls, provider factory `inject` lists, `useExisting` aliases, `forwardRef` proxies and hidden `@Optional()` dependencies keep their existing errors. Code that caught `ModuleVisibilityError` around a class resolution should catch `UnresolvedDependencyError` and read `cause`.

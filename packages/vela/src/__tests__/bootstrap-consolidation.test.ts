@@ -161,7 +161,7 @@ describe('bootstrap()', () => {
     }
 
     @Module({
-      providers: [defineProvider(TOKEN, {useValue: 'x'})],
+      providers: [defineProvider(TOKEN, { useValue: 'x' })],
       // Note: TOKEN is NOT exported
     })
     class ModA {}
@@ -169,6 +169,8 @@ describe('bootstrap()', () => {
     @Module({ imports: [ModA], providers: [Consumer] })
     class ModB {}
 
-    await expect(VelaFactory.create(ModB)).rejects.toThrow(/cannot resolve/);
+    await expect(VelaFactory.create(ModB)).rejects.toThrow(
+      /^Cannot resolve Consumer\(\?\) in ModB\. Argument #0 InjectionToken\(TOK\) is declared in ModA but not exported/,
+    );
   });
 });

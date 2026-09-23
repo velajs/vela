@@ -11,6 +11,7 @@ import {
   Module,
   ModuleRef,
   ModuleVisibilityError,
+  UnresolvedDependencyError,
   VelaFactory,
 } from '../index.js';
 import { Container } from '../internal.js';
@@ -34,7 +35,10 @@ describe('Module visibility', () => {
     @Module({ imports: [ModA], providers: [ServiceB] })
     class ModB {}
 
-    await expect(VelaFactory.create(ModB)).rejects.toThrow(ModuleVisibilityError);
+    await expect(VelaFactory.create(ModB)).rejects.toSatisfy(
+      (error) =>
+        error instanceof UnresolvedDependencyError && error.cause instanceof ModuleVisibilityError,
+    );
   });
 
   it('allows resolution when token is exported by an imported module', async () => {
@@ -108,7 +112,9 @@ describe('Module visibility', () => {
     @Module({ imports: [ModG], providers: [Consumer] })
     class ModC {}
 
-    await expect(VelaFactory.create(ModC)).rejects.toThrow(ModuleVisibilityError);
+    await expect(VelaFactory.create(ModC)).rejects.toThrow(
+      /Argument #0 HiddenSvc is declared in ModG but not exported \(add it to ModG\.exports\)/,
+    );
   });
 
   it('dynamic module global: true makes its exports visible cross-module', async () => {

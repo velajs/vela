@@ -3,7 +3,7 @@ import {
   Injectable,
   MetadataRegistry,
   Module,
-  ModuleVisibilityError,
+  UnresolvedDependencyError,
   VelaFactory,
 } from '../index.js';
 import { Container } from '../internal.js';
@@ -47,7 +47,9 @@ describe('Diagnostics', () => {
     @Module({ providers: [FailsInCtor] })
     class App {}
 
-    await expect(VelaFactory.create(App, { diagnostics: 'silent' })).rejects.toThrow('intentional ctor failure');
+    await expect(VelaFactory.create(App, { diagnostics: 'silent' })).rejects.toThrow(
+      'intentional ctor failure',
+    );
     const velaWarnings = warn.mock.calls
       .map((c) => String(c[0]))
       .filter((m) => m.includes('[vela]'));
@@ -70,7 +72,7 @@ describe('Diagnostics', () => {
     );
   });
 
-  it('ModuleVisibilityError ALWAYS propagates regardless of diagnostics mode', async () => {
+  it('visibility failures ALWAYS propagate regardless of diagnostics mode', async () => {
     @Injectable()
     class ServiceA {}
     @Injectable()
@@ -85,7 +87,7 @@ describe('Diagnostics', () => {
 
     // Even with 'silent', module-visibility violations must throw.
     await expect(VelaFactory.create(ModB, { diagnostics: 'silent' })).rejects.toThrow(
-      ModuleVisibilityError,
+      UnresolvedDependencyError,
     );
 
     MetadataRegistry.clear();
@@ -97,7 +99,7 @@ describe('Diagnostics', () => {
 
     // Same with 'log'.
     await expect(VelaFactory.create(ModB2, { diagnostics: 'log' })).rejects.toThrow(
-      ModuleVisibilityError,
+      UnresolvedDependencyError,
     );
   });
 
