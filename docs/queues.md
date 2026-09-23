@@ -229,8 +229,9 @@ A physical queue cannot be both a `@QueueConsumer` queue and a pinned `consumer`
 of a registration: bootstrap fails. When a `@QueueConsumer` receives jobs of a
 registered queue, the adapter warns once per physical and logical queue (unless
 diagnostics are silent), and `vela deploy check` fails with
-`queue-consumer-claimed-by-raw` when a processed queue's physical queue is
-claimed by a `@QueueConsumer`.
+`queue-consumer-claimed-by-raw` when a `@QueueConsumer` claims the physical
+queue a registered queue's producer binding sends to, whether or not the Worker
+processes that queue.
 
 `consumeQueueBatch` from `@velajs/cloudflare/queues` applies the per-message
 settlement described above to a raw batch: each message is acknowledged after

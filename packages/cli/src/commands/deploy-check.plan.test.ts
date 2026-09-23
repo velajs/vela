@@ -269,6 +269,32 @@ describe('deployment alignment', () => {
     ]);
   });
 
+  it('flags the producer queue of a registration this Worker only produces to a raw consumer', () => {
+    const queues = {
+      producers: [{ binding: 'EMAIL_QUEUE', queue: 'email-staging' }],
+      consumers: [{ queue: 'email-staging' }],
+    };
+    // No @Processor('email') runs here, but the Worker's own raw consumer
+    // claims the physical queue the binding sends every email job to.
+    const snapshot = [
+      row('cf:queue:module', { consumers: [] }),
+      row('queue:registration', { name: 'email', binding: 'EMAIL_QUEUE', consumers: [] }),
+      row('cf:queue', { queueName: 'email-staging' }),
+    ];
+    expect(checkDeployment(config({ queues }), 'staging', snapshot).errors).toEqual([
+      {
+        code: 'queue-consumer-claimed-by-raw',
+        message: expect.stringMatching(/"email-staging".*@QueueConsumer.*"email"/),
+      },
+    ]);
+    // A Worker whose driver publishes no module consumer is checked the same way.
+    expect(
+      checkDeployment(config({ queues }), 'staging', snapshot.slice(1)).errors.map(
+        (error) => error.code,
+      ),
+    ).toEqual(['queue-consumer-claimed-by-raw']);
+  });
+
   it('does not require consumers for processors an in-process driver delivers', () => {
     const result = checkDeployment(config(), 'staging', [
       row('queue:registration', { name: 'email', consumers: [] }),

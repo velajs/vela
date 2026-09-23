@@ -287,6 +287,40 @@ export function checkDeployment(
         'missing-queue-consumer',
         `No selected queue consumer for handler queue ${JSON.stringify(queue)}.`,
       );
+  // A raw @QueueConsumer owns its physical queue's batches, so the module
+  // consumer never receives them (bootstrap rejects a pinned one too), and a
+  // registered queue's jobs that land there never reach their @Processor.
+  const claimed = new Map<string, Set<string>>();
+  const claim = (queue: string, name?: string): void => {
+    if (!rawQueues.has(queue)) return;
+    const names = claimed.get(queue) ?? new Set<string>();
+    if (name !== undefined) names.add(name);
+    claimed.set(queue, names);
+  };
+  if (moduleConsumer) {
+    for (const queue of modulePins) claim(queue);
+    for (const [name, registration] of registrations)
+      for (const queue of registration.consumers) claim(queue, name);
+  }
+  // Every registered producer's queue, processed here or not, pinned or not:
+  // a raw consumer there takes every job the binding sends.
+  for (const [name, { binding }] of registrations) {
+    const produced = binding === undefined ? undefined : producers.get(binding);
+    if (produced !== undefined) claim(produced, name);
+  }
+  for (const [queue, names] of claimed) {
+    const jobs = [...names].map((name) => JSON.stringify(name)).join(', ');
+    const missed = moduleConsumer ? ['the QueueModule consumer never receives them'] : [];
+    if (jobs) missed.push(`${jobs} jobs sent to it never reach their @Processor`);
+    report(
+      'queue-consumer-claimed-by-raw',
+      `Queue ${JSON.stringify(queue)} is claimed by @QueueConsumer(${JSON.stringify(queue)}), ` +
+        `which receives its batches whole, so ${missed.join(' and ')}. Remove the ` +
+        '@QueueConsumer, or route the registered queues through a physical queue that no ' +
+        '@QueueConsumer claims.',
+    );
+  }
+
   // A native QueueModule consumer receives each processed queue from the
   // physical queues its registration pins, or else from its producer's queue.
   const moduleQueues = new Set<string>();
@@ -324,38 +358,6 @@ export function checkDeployment(
               `${JSON.stringify(name)} jobs.`,
           );
       }
-    }
-
-    // A raw @QueueConsumer owns its physical queue's batches, so the module
-    // consumer never receives them (bootstrap rejects a pinned one too).
-    const claimed = new Map<string, Set<string>>();
-    const claim = (queue: string, name?: string): void => {
-      if (!rawQueues.has(queue)) return;
-      const names = claimed.get(queue) ?? new Set<string>();
-      if (name !== undefined) names.add(name);
-      claimed.set(queue, names);
-    };
-    for (const queue of modulePins) claim(queue);
-    for (const [name, registration] of registrations)
-      for (const queue of registration.consumers) claim(queue, name);
-    // A processed queue's producer queue, pinned or not: a raw consumer there
-    // takes the jobs the binding sends before the module consumer sees them.
-    for (const name of processedQueues) {
-      const registration = registrations.get(name);
-      const produced =
-        registration?.binding === undefined ? undefined : producers.get(registration.binding);
-      if (produced !== undefined) claim(produced, name);
-    }
-    for (const [queue, names] of claimed) {
-      const jobs = [...names].map((name) => JSON.stringify(name)).join(', ');
-      report(
-        'queue-consumer-claimed-by-raw',
-        `Queue ${JSON.stringify(queue)} is claimed by @QueueConsumer(${JSON.stringify(queue)}), ` +
-          'so the QueueModule consumer never receives its batches' +
-          (jobs ? ` and ${jobs} jobs sent to it never reach their @Processor` : '') +
-          '. Remove the @QueueConsumer, or route the registered queues through a physical ' +
-          'queue that no @QueueConsumer claims.',
-      );
     }
 
     // A physical queue pinned by registrations accepts only their jobs, so an

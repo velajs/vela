@@ -85,8 +85,9 @@ expects fails with `unhandled-queue-consumer`.
 
 A `@QueueConsumer` owns its physical queue's batches, so the module consumer
 never sees them. A physical queue that a `@QueueConsumer` claims and that a
-registration pins with `consumer`, or that a processed queue's producer binding
-sends to, fails with `queue-consumer-claimed-by-raw`. A physical queue pinned by
+registration pins with `consumer`, or that any registered queue's producer
+binding sends to, whether or not the Worker processes that queue, fails with
+`queue-consumer-claimed-by-raw`. A physical queue pinned by
 registrations accepts only their jobs, so an unpinned registered queue whose
 producer binding sends to it fails with `queue-sent-to-pinned-queue`: pin that
 queue to the same physical queue, or send it through another one. Likewise, a
