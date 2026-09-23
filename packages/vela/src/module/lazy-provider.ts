@@ -1,10 +1,12 @@
 import {
   InjectionToken,
+  assertFactoryInject,
   defineProvider,
   type InferTokens,
   type ProviderDefinition,
   type Token,
   type Type,
+  type ZeroArgumentFactory,
 } from '../container/types';
 import { Module } from './decorators';
 import type { ComponentType, ComponentTypeMap, DynamicModule } from '../registry/types';
@@ -19,23 +21,21 @@ import type { ModuleContributions } from './define-module';
 import { attachModuleIdentity } from './module-identity';
 import { stableHash } from './stable-hash';
 
-export interface LazyProviderSpec<T, Inject extends readonly Token[]> {
+export type LazyProviderSpec<T, Inject extends readonly Token[]> = {
   /** Token under which the memoized thunk `() => T` is provided. */
   provide: InjectionToken<() => T>;
-  inject: Inject;
-  useFactory: (...deps: InferTokens<Inject>) => NoInfer<T>;
   /** Memoize the first call's result (default true). */
   memoize?: boolean;
-}
+} & (
+  | { inject: Inject; useFactory: (...deps: InferTokens<Inject>) => NoInfer<T> }
+  | ZeroArgumentFactory<Inject, NoInfer<T>>
+);
 
 /**
  * Provide a zero-arg thunk `() => T` whose factory runs on FIRST CALL, not at
  * provider construction — for values that don't exist yet when the module
- * graph is built (Cloudflare bindings are only live at request time).
- *
- * The shared primitive replacing the hand-rolled
- * `useFactory: (...deps) => () => build(...deps)` closure that auth and
- * storage each copy-pasted.
+ * graph is built, such as a binding read from `ENV` at request time. A factory
+ * without parameters may omit `inject`.
  *
  * ```ts
  * lazyProvider({
@@ -48,15 +48,21 @@ export interface LazyProviderSpec<T, Inject extends readonly Token[]> {
 export function lazyProvider<T, const Inject extends readonly Token[] = readonly Token[]>(
   spec: LazyProviderSpec<T, Inject>,
 ): ProviderDefinition {
+  assertFactoryInject(spec.provide, spec.useFactory, spec.inject);
   const memoize = spec.memoize ?? true;
+  const thunk = (build: () => T): (() => T) => {
+    if (!memoize) return build;
+    let cached: { value: T } | undefined;
+    return () => (cached ??= { value: build() }).value;
+  };
+  if (!spec.inject) {
+    const factory = spec.useFactory;
+    return defineProvider(spec.provide, { useFactory: () => thunk(() => factory()) });
+  }
+  const factory = spec.useFactory;
   return defineProvider<InjectionToken<() => T>, Inject>(spec.provide, {
     inject: spec.inject,
-    useFactory: (...deps) => {
-      const build = () => spec.useFactory(...deps);
-      if (!memoize) return build;
-      let cached: { value: T } | undefined;
-      return () => (cached ??= { value: build() }).value;
-    },
+    useFactory: (...deps: InferTokens<Inject>) => thunk(() => factory(...deps)),
   });
 }
 

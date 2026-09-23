@@ -17,6 +17,7 @@ import { UrlGeneratorService } from '../http/url/url-generator.service';
 import { SignedUrlGuard } from '../http/url/signed-url.guard';
 import { ModuleLoader } from '../module/module-loader';
 import { bindAppProviders } from '../pipeline/app-providers';
+import { Reflector } from '../pipeline/reflector';
 import {
   APP_EXCEPTION_HANDLER,
   APP_FILTER,
@@ -84,6 +85,10 @@ export async function bootstrap(
     }),
   );
   container.markGlobalToken(DiscoveryService);
+
+  // Stateless metadata reader for guards and interceptors, as in Nest.
+  container.register(Reflector);
+  container.markGlobalToken(Reflector);
 
   for (const t of [
     APP_GUARD,

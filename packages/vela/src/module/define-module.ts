@@ -1,4 +1,5 @@
 import {
+  assertFactoryInject,
   defineProvider,
   InjectionToken,
   type ProviderDefinition,
@@ -342,6 +343,7 @@ function buildAsyncOptionsProviders<Opts, MethodKey extends string>(
 
   if (async.useFactory) {
     const factory = async.useFactory;
+    assertFactoryInject(optionsToken, factory, async.inject);
     return [
       defineProvider(optionsToken, {
         useFactory: hasStructural ? (...deps: unknown[]) => merge(factory(...deps)) : factory,

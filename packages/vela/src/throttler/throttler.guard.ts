@@ -22,12 +22,11 @@ import type {
 
 @Injectable()
 export class ThrottlerGuard implements CanActivate {
-  private reflector = new Reflector();
-
   constructor(
     @Inject(THROTTLER_OPTIONS) private options: ThrottlerModuleOptions,
     @Inject(THROTTLER_STORAGE) private storage: ThrottlerStore,
     @Inject(RouteManager) private routeManager: RouteManager,
+    private reflector: Reflector,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {

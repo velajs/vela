@@ -16,6 +16,7 @@ import type {
   ProviderDefinition,
   Token,
   Type,
+  ZeroArgumentFactory,
 } from '../container/types';
 
 export type {
@@ -100,17 +101,16 @@ export type ModuleImport = Type | DynamicModule | ForwardRef;
  * });
  * ```
  *
- * Factories always declare their runtime dependency tuple. Use `inject: []`
- * when there are no dependencies; a type argument cannot supply runtime values.
+ * A factory with parameters declares their runtime dependency tuple; a type
+ * argument cannot supply runtime values. A factory without parameters may
+ * omit `inject`.
  */
-export interface AsyncModuleOptions<
-  T = unknown,
-  Inject extends readonly Token[] = readonly Token[],
-> {
+export type AsyncModuleOptions<T = unknown, Inject extends readonly Token[] = readonly Token[]> = {
   imports?: ModuleImport[];
-  inject: Inject;
-  useFactory: (...args: InferTokens<Inject>) => T | Promise<T>;
-}
+} & (
+  | { inject: Inject; useFactory: (...args: InferTokens<Inject>) => T | Promise<T> }
+  | ZeroArgumentFactory<Inject, T | Promise<T>>
+);
 
 export interface DynamicModule {
   module: Type;

@@ -16,11 +16,10 @@ const MAX_CACHE_VARIATION_BYTES = 2048;
 
 @Injectable()
 export class CacheInterceptor implements NestInterceptor {
-  private reflector = new Reflector();
-
   constructor(
     @Inject(CACHE_MANAGER) private cacheStore: CacheStore,
     @Inject(CACHE_MODULE_OPTIONS) private options: CacheModuleOptions,
+    private reflector: Reflector,
   ) {}
 
   async intercept(context: ExecutionContext, next: CallHandler): Promise<unknown> {

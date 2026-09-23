@@ -127,6 +127,7 @@ class CheckedProvider<T> {
     readonly provide: Token,
     options: ProviderOptions<T>,
   ) {
+    assertFactoryInject(provide, options.useFactory, options.inject);
     this.#options = Object.freeze({
       ...options,
       provide,
@@ -180,6 +181,19 @@ export function isProviderDefinition(value: unknown): value is ProviderDefinitio
   return CheckedProvider.is(value);
 }
 
+/**
+ * @internal `inject` may be omitted only for a factory that takes no
+ * arguments; otherwise its parameters would silently receive `undefined`.
+ */
+export function assertFactoryInject(provide: Token, useFactory: unknown, inject: unknown): void {
+  if (typeof useFactory === 'function' && useFactory.length > 0 && inject === undefined) {
+    throw new Error(
+      `${describeToken(provide)}: useFactory declares parameters but no inject tokens. ` +
+        'List the tokens that supply them in inject.',
+    );
+  }
+}
+
 type ProviderStrategy<T, Inject extends readonly DependencyToken[]> =
   | {
       useValue: NoInfer<T>;
@@ -208,7 +222,16 @@ type ProviderStrategy<T, Inject extends readonly DependencyToken[]> =
       useValue?: never;
       useClass?: never;
       useExisting?: never;
-    };
+    }
+  | ZeroArgumentFactory<Inject, NoInfer<T> | Promise<NoInfer<T>>>;
+
+/**
+ * A factory without parameters may omit `inject`, unless an explicit
+ * dependency tuple says it has parameters.
+ */
+export type ZeroArgumentFactory<Inject extends readonly unknown[], R> = [] extends Inject
+  ? { useFactory: () => R; inject?: never; useValue?: never; useClass?: never; useExisting?: never }
+  : never;
 
 /** Infer factory dependencies from tokens; all strategies must produce the provided token's value. */
 /** @internal Erasing an invariant token removes the capability to bind a value. */
