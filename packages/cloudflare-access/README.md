@@ -105,17 +105,29 @@ The guard publishes through core's `setTrustedRequestIdentity`. Authorization, `
 - `CloudflareAccessUpgradeAuthenticator` authenticates WebSocket upgrades: `@WebSocketGateway({ authenticator: CloudflareAccessUpgradeAuthenticator })`. It is resolved from the module that declares the gateway, which must import `CloudflareAccessModule`, and verifies with the same resolver as the guard. Upgrades always need a verified identity, whatever the module `mode`, and a token without the signed tenant claim is refused.
 
 ```ts
+import { defineRole } from '@velajs/authz';
+import { AuthzModule, PermissionGuard, RequirePermission, CurrentIdentity } from '@velajs/authz/vela';
 import { cloudflareAccessIssuer } from '@velajs/cloudflare-access';
 import {
   CloudflareAccessGuard,
   CloudflareAccessModule,
 } from '@velajs/cloudflare-access/vela';
-import { AuthzModule, PermissionGuard, RequirePermission, CurrentIdentity } from '@velajs/authz/vela';
-import { ENV, type TrustedRequestIdentity } from '@velajs/vela';
+import { Controller, ENV, Module, Post, UseGuards, type TrustedRequestIdentity } from '@velajs/vela';
+
+@Controller('/posts')
+@UseGuards(CloudflareAccessGuard, PermissionGuard)
+class PostsController {
+  @Post()
+  @RequirePermission(['posts:write'])
+  create(@CurrentIdentity() identity: TrustedRequestIdentity) {
+    return { author: identity.principal.subject };
+  }
+}
 
 @Module({
   imports: [
-    // The Access team domain and audience come from the runtime environment.
+    // The Access team domain and audience come from the runtime environment,
+    // which `wrangler types` types for ENV through @velajs/cloudflare.
     CloudflareAccessModule.forRootAsync({
       inject: [ENV],
       useFactory: (env) => ({
@@ -129,16 +141,6 @@ import { ENV, type TrustedRequestIdentity } from '@velajs/vela';
   controllers: [PostsController],
 })
 class AppModule {}
-
-@Controller('/posts')
-@UseGuards(CloudflareAccessGuard, PermissionGuard)
-class PostsController {
-  @Post()
-  @RequirePermission(['posts:write'])
-  create(@CurrentIdentity() identity: TrustedRequestIdentity) {
-    return { author: identity.principal.subject };
-  }
-}
 ```
 
 ## Security posture
