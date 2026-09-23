@@ -24,8 +24,11 @@ Vite and Vitest configs share that setting. `pnpm types` regenerates
 `worker-configuration.d.ts` from `wrangler.jsonc`, which types `CHAT_ROOM` with
 the `ChatRoom` class.
 
-The gateway admits every upgrade as an anonymous visitor through a demo
-`authenticateUpgrade`. A real application verifies a session cookie or a
-short-lived socket ticket there instead. `pnpm run deploy` builds with Vite and
-uploads `dist/` with Wrangler; do not pass `--config` to `wrangler deploy`,
-which would bundle the source itself, without decorator metadata.
+The gateway admits every upgrade as an anonymous visitor through
+`authenticator: AnonymousDemoAuthenticator`, a demo `UpgradeAuthenticator` class
+the Worker resolves through dependency injection. A real application verifies a
+session cookie or a short-lived socket ticket there instead, for example with
+`BetterAuthUpgradeAuthenticator` from `@velajs/better-auth`. `pnpm run deploy`
+builds with Vite and uploads `dist/` with Wrangler; do not pass `--config` to
+`wrangler deploy`, which would bundle the source itself, without decorator
+metadata.

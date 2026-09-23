@@ -1,5 +1,5 @@
 import { VelaWebSocketDurableObject } from '@velajs/cloudflare/durable-objects';
-import { Module, Controller, Get } from '@velajs/vela';
+import { Module, Controller, Get, Injectable } from '@velajs/vela';
 import {
   createCloudflareWorker,
   CloudflareWebSocketModule,
@@ -15,26 +15,31 @@ import type {
   OnGatewayConnection,
   OnGatewayDisconnect,
 } from '@velajs/cloudflare';
-import type { WebSocketUpgradeIdentity } from '@velajs/vela/websocket';
+import type { UpgradeAuthenticator, WebSocketUpgradeIdentity } from '@velajs/vela/websocket';
 
 // ---- Upgrade authentication (DEMO ONLY) ----
 
 /**
  * DEMO ONLY: admits every upgrade as a fresh anonymous visitor so the example
- * runs without an auth stack. Gateways reject upgrades that have no
- * `authenticateUpgrade`; a real application verifies a session cookie or a
- * short-lived socket ticket here and returns that user's identity.
+ * runs without an auth stack. Gateways reject upgrades that name no
+ * `authenticator`; a real application verifies a session cookie or a
+ * short-lived socket ticket here and returns that user's identity. The Worker
+ * resolves this class through dependency injection, so a real authenticator
+ * can inject its session service.
  */
-function anonymousDemoUpgrade(options: { tenantId: string; ttlMs: number }) {
-  return (): WebSocketUpgradeIdentity => ({
-    principal: {
-      issuer: 'vela-ws-chat-demo',
-      subject: `anonymous:${crypto.randomUUID()}`,
-      principalType: 'user',
-    },
-    tenantId: options.tenantId,
-    expiresAtMs: Date.now() + options.ttlMs,
-  });
+@Injectable()
+export class AnonymousDemoAuthenticator implements UpgradeAuthenticator {
+  authenticate(): WebSocketUpgradeIdentity {
+    return {
+      principal: {
+        issuer: 'vela-ws-chat-demo',
+        subject: `anonymous:${crypto.randomUUID()}`,
+        principalType: 'user',
+      },
+      tenantId: 'demo',
+      expiresAtMs: Date.now() + 60 * 60 * 1000,
+    };
+  }
 }
 
 // ---- Gateway: one Durable Object per room; broadcast to everyone in it ----
@@ -43,7 +48,7 @@ function anonymousDemoUpgrade(options: { tenantId: string; ttlMs: number }) {
   path: '/rooms/:id/ws',
   roomParam: 'id',
   binding: 'CHAT_ROOM',
-  authenticateUpgrade: anonymousDemoUpgrade({ tenantId: 'demo', ttlMs: 60 * 60 * 1000 }),
+  authenticator: AnonymousDemoAuthenticator,
 })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(@WebSocketServer() private readonly server: WsServer) {}
