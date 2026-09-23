@@ -95,7 +95,7 @@ Platform drivers implement the `QueueDriver` interface (`enqueue`, optional `enq
 - Delivery needs no mapping: the Worker `queue()` handler gives batches no `@QueueConsumer` claims to `QueueModule`, which routes each message by the envelope's logical `queue` (several logical queues may share one physical queue) through the module's dispatch policy. Success acks after processors and managed work settle; non-envelope messages, unregistered queues, unhandled jobs and failures stay unacked (retry → dead-letter).
 - Raw `@QueueConsumer(physicalQueue)` handlers keep their physical queue; bootstrap rejects a physical queue claimed by both a `@QueueConsumer` and a registration `consumer`.
 - `vela deploy check` verifies registered bindings against Wrangler `queues.producers`, and that each processed queue has a `queues.consumers` entry (derived from `consumer` or the binding's producer queue). It fails when a `@QueueConsumer` claims a physical queue a processed or pinned registration uses (`queue-consumer-claimed-by-raw`), when an unpinned queue's producer sends to a physical queue pinned by other registrations (`queue-sent-to-pinned-queue`), and when a pinned queue's producer binding sends outside its own pins (`queue-producer-outside-pins`).
-- A raw `@QueueConsumer` that receives jobs of a registered queue warns once at runtime; each native delivery failure is reported once to the exception handler.
+- A raw `@QueueConsumer` owns its physical queue and must not carry jobs of registered queues: they reach their `@Processor` only if the raw handler dispatches them itself, and the adapter warns once when it sees them. Deliver registered queues through `cloudflareQueues()`. Each native delivery failure is reported once to the exception handler.
 
 ## Signed dispatch
 
@@ -113,7 +113,7 @@ successful ack/retry and does not prove that a DLQ received a delivery.
 
 ## Dispatching a single job
 
-`dispatchQueueJob(container, entrypoints, job)` is the delivery entry point for tests and custom transports (for example a raw `@QueueConsumer` bridging its batches to processors). In an app with `QueueModule.forRoot()` it goes through `QueueDispatchBinding` exactly like a native delivery: the job's queue must be registered, and signed dispatch re-enters the signed route, so its global guards run and a custom transport cannot bypass them. Without a `QueueModule` it calls the processors directly:
+`dispatchQueueJob(container, entrypoints, job)` is the delivery entry point for tests and for custom transports other than Cloudflare Queues (`cloudflareQueues()` delivers registered queues itself; never bridge a raw `@QueueConsumer` to processors with it). In an app with `QueueModule.forRoot()` it goes through `QueueDispatchBinding` exactly like a native delivery: the job's queue must be registered, and signed dispatch re-enters the signed route, so its global guards run and a custom transport cannot bypass them. Without a `QueueModule` it calls the processors directly:
 
 ```ts
 import { dispatchQueueJob } from '@velajs/vela/queue';

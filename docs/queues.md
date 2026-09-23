@@ -123,6 +123,14 @@ A bound driver instance belongs to one application. Reusing it for another
 application throws instead of redirecting deliveries. Producer-only drivers
 without a `bind` method can be shared if their own transport permits it.
 
+A transport that is not Cloudflare Queues, and a test, hands each job it
+receives to `dispatchQueueJob(container, entrypoints, job)` from
+`@velajs/vela/queue`. It goes through `QueueModule`'s dispatch policy exactly as
+a native delivery does: the job's queue must be registered, and signed dispatch
+re-enters the signed route, so its global guards run. Without a `QueueModule`,
+it calls the processors directly. Cloudflare Queues need no such code:
+`cloudflareQueues()` delivers registered queues itself.
+
 For deterministic tests, create `inline({ mode: 'manual' })` per application and
 await `flush()`. Failed jobs reject the flush after all buffered jobs are tried;
 the inline driver does not retry them. Closing the application releases its
@@ -200,38 +208,27 @@ runs a producer and a consumer Worker in workerd.
 ### Raw batches
 
 Native `Queue<T>` bindings and `@QueueConsumer(physicalQueue)` remain available
-for batches that are not Vela jobs. A `@QueueConsumer` receives its physical
-queue's batches whole and owns their settlement; a batch no consumer claims is
-rejected unacknowledged. A physical queue cannot be both a `@QueueConsumer` queue
-and a pinned `consumer` of a registration: bootstrap fails. When a
-`@QueueConsumer` receives jobs of a queue registered with `QueueModule`, those
-jobs never reach their `@Processor`: the adapter warns once per physical and
-logical queue (unless diagnostics are silent), and `vela deploy check` fails
-with `queue-consumer-claimed-by-raw` when a processed queue's physical queue is
+for batches that are not Vela jobs. A `@QueueConsumer` owns its physical queue:
+it receives that queue's batches whole and owns their settlement, and a batch no
+consumer claims is rejected unacknowledged. It must not carry jobs of queues
+registered with `QueueModule`. Registered queues are delivered by
+`cloudflareQueues()`; a job that arrives at a raw consumer reaches its
+`@Processor` only if the raw handler dispatches it itself, so send registered
+queues to physical queues that no `@QueueConsumer` claims.
+
+A physical queue cannot be both a `@QueueConsumer` queue and a pinned `consumer`
+of a registration: bootstrap fails. When a `@QueueConsumer` receives jobs of a
+registered queue, the adapter warns once per physical and logical queue (unless
+diagnostics are silent), and `vela deploy check` fails with
+`queue-consumer-claimed-by-raw` when a processed queue's physical queue is
 claimed by a `@QueueConsumer`.
 
 `consumeQueueBatch` from `@velajs/cloudflare/queues` applies the per-message
-settlement described above to a raw batch of job envelopes: each message is
-acknowledged after its callback resolves unless the callback settled it first
-with `ack()` or `retry()`, and failures are rethrown after the batch was tried.
-Its `queues` option accepts only jobs of the listed logical queues. A custom
-transport hands each job to `dispatchQueueJob(container, entrypoints, job)` from
-`@velajs/vela/queue`, which goes through `QueueModule`'s dispatch policy exactly
-as a native delivery does: the job's queue must be registered, and signed
-dispatch re-enters the signed route, so its global guards run.
-
-```ts
-@Injectable()
-class LegacyBridge {
-  constructor(@Inject(Container) private readonly container: Container) {}
-
-  @QueueConsumer('legacy-production')
-  async consume(batch: MessageBatch<unknown>) {
-    const entrypoints = this.container.resolve(EntrypointRegistry);
-    await consumeQueueBatch(batch, (job) => dispatchQueueJob(this.container, entrypoints, job));
-  }
-}
-```
+settlement described above to a raw batch: each message is acknowledged after
+its callback resolves unless the callback settled it first with `ack()` or
+`retry()`, a message that is not a job envelope stays unacknowledged, and
+failures are rethrown after the batch was tried. Its `queues` option accepts
+only jobs of the listed logical queues.
 
 ## Signed dispatch
 

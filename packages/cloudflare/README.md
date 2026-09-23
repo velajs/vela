@@ -170,10 +170,13 @@ an unregistered queue, or fails stays unacknowledged, so Cloudflare retries it
 and then dead-letters it. `registerQueue({ name, consumer: 'email-production' })`
 pins the queue to that physical queue: its jobs are accepted only from it, and
 it carries only the queues pinned to it. A physical queue cannot be both a
-`@QueueConsumer` queue and a pinned consumer. A `@QueueConsumer` that receives
-jobs of a registered queue keeps them (they never reach their `@Processor`), and
-the adapter warns once. A custom bridge hands jobs to `dispatchQueueJob`, which
-applies the module's dispatch policy, signed dispatch included.
+`@QueueConsumer` queue and a pinned consumer. A `@QueueConsumer` owns its
+physical queue and must not carry jobs of registered queues: those reach their
+`@Processor` only if the raw handler dispatches them itself, so the adapter
+warns once when it sees them. Registered queues are delivered by
+`cloudflareQueues()`. `dispatchQueueJob` is for tests and for transports other
+than Cloudflare Queues; it applies the module's dispatch policy, signed dispatch
+included.
 
 Use `ScheduleModule.forRoot()` and `@Cron()` for native scheduled work. The
 [queue guide](../../docs/queues.md) and [module guide](../../docs/module-workers.md)

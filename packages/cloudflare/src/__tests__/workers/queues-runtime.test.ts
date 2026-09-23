@@ -5,15 +5,13 @@ import { describe, expect, it } from 'vitest';
 import {
   APP_EXCEPTION_HANDLER,
   APP_GUARD,
-  Container,
   Controller,
-  EntrypointRegistry,
-  Inject,
   Injectable,
   InjectEnv,
   Module,
   Post,
   SignedInvocation,
+  VelaFactory,
   defineProvider,
   type CanActivate,
   type ExecutionContext,
@@ -28,9 +26,12 @@ import {
   QueueModule,
   type QueueClient,
   type QueueJob,
-  type QueueMessageLike,
 } from '@velajs/vela/queue';
-import { createCloudflareApp, createCloudflareWorker } from '../../cloudflare-factory';
+import {
+  cloudflareAdapter,
+  createCloudflareApp,
+  createCloudflareWorker,
+} from '../../cloudflare-factory';
 import { QueueConsumer } from '../../decorators/queue-consumer';
 import { cloudflareQueues, consumeQueueBatch } from '../../queues';
 
@@ -178,7 +179,7 @@ describe('QueueModule delivery under workerd', () => {
     ]);
   });
 
-  it('keeps the global guard of signed dispatch in front of a raw-consumer bridge', async () => {
+  it('keeps the global guard of signed dispatch in front of a custom transport', async () => {
     const seen: string[] = [];
     class Deny implements CanActivate {
       canActivate(): boolean {
@@ -188,50 +189,42 @@ describe('QueueModule delivery under workerd', () => {
     }
     @Controller('/jobs')
     class JobsController {
-      @Post('bridged')
+      @Post('guarded')
       @SignedInvocation()
-      bridged(): { ok: boolean } {
+      guarded(): { ok: boolean } {
         seen.push('route');
         return { ok: true };
       }
     }
-    @Processor('bridged')
+    @Processor('guarded')
     @Injectable()
-    class Bridged {
+    class Guarded {
       @Process() handle() {
         seen.push('processor');
-      }
-    }
-    @Injectable()
-    class Bridge {
-      constructor(@Inject(Container) private readonly container: Container) {}
-      @QueueConsumer('bridge-native')
-      async consume(batch: { queue: string; messages: readonly QueueMessageLike[] }) {
-        const entrypoints = this.container.resolve(EntrypointRegistry);
-        await consumeQueueBatch(batch, (job) => dispatchQueueJob(this.container, entrypoints, job));
       }
     }
     @Module({
       imports: [
         QueueModule.forRoot({
           driver: cloudflareQueues(),
-          dispatch: { kind: 'signed', target: () => ({ path: '/jobs/bridged' }) },
+          dispatch: { kind: 'signed', target: () => ({ path: '/jobs/guarded' }) },
         }),
-        QueueModule.registerQueue({ name: 'bridged' }),
+        QueueModule.registerQueue({ name: 'guarded' }),
       ],
       controllers: [JobsController],
-      providers: [Bridged, Bridge, defineProvider(APP_GUARD, { useClass: Deny })],
+      providers: [Guarded, defineProvider(APP_GUARD, { useClass: Deny })],
     })
     class App {}
-    const worker = createCloudflareWorker(App);
-    const batch = createMessageBatch('bridge-native', [incoming('guarded', 'bridged')]);
-    const context = createExecutionContext();
-
-    await expect(worker.queue(batch, env, context)).rejects.toThrow();
-    const result = await getQueueResult(batch, context);
-    expect(result.ackAll).toBe(false);
-    expect(result.explicitAcks).toEqual([]);
-    expect(seen).toEqual(['guard']);
+    const app = await VelaFactory.create(App, { adapters: [cloudflareAdapter({ env })] });
+    try {
+      // A transport other than Cloudflare Queues hands each job to dispatchQueueJob.
+      await expect(
+        dispatchQueueJob(app.getContainer(), app.entrypoints, incoming('guarded', 'guarded').body),
+      ).rejects.toThrow();
+      expect(seen).toEqual(['guard']);
+    } finally {
+      await app.close();
+    }
   });
 
   it('rejects an unclaimed native batch without acknowledging any message', async () => {

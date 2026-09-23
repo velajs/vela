@@ -152,8 +152,9 @@ export class QueueDispatchBinding {
 
 /**
  * Deliver one job to its queue's processors: the entry point for tests and
- * custom transports (for example a raw `@QueueConsumer` that bridges its
- * batches to processors).
+ * custom transports other than Cloudflare Queues, which `cloudflareQueues()`
+ * delivers itself. A raw `@QueueConsumer` must not carry jobs of registered
+ * queues, so it is not a transport to bridge through this function.
  *
  * In an application that imports `QueueModule.forRoot()`, delivery goes
  * through the module's `QueueDispatchBinding`, exactly as a native delivery

@@ -1,12 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   APP_GUARD,
-  Container,
   Controller,
   Cron,
-  EntrypointRegistry,
   Global,
-  Inject,
   Injectable,
   MetadataRegistry,
   Module,
@@ -20,21 +17,13 @@ import {
   type ExecutionContext,
   type ScheduleJobRef,
 } from '@velajs/vela';
-import {
-  Process,
-  Processor,
-  QueueModule,
-  dispatchQueueJob,
-  queueToken,
-  type QueueMessageLike,
-} from '@velajs/vela/queue';
+import { Process, Processor, QueueModule, dispatchQueueJob, queueToken } from '@velajs/vela/queue';
 import {
   cloudflareAdapter,
   createCloudflareApp,
   createCloudflareWorker,
 } from '../cloudflare-factory';
-import { QueueConsumer } from '../decorators/queue-consumer';
-import { cloudflareQueues, consumeQueueBatch } from '../queues';
+import { cloudflareQueues } from '../queues';
 
 const env = { NAME: 'signed' };
 const context = { waitUntil() {} };
@@ -114,7 +103,7 @@ describe('signed queue dispatch on Cloudflare', () => {
     expect(message.ack).toHaveBeenCalledOnce();
   });
 
-  it('keeps the global guard in front of jobs a custom raw-consumer bridge delivers', async () => {
+  it('keeps the global guard in front of jobs a custom transport dispatches', async () => {
     const seen: string[] = [];
     class Deny implements CanActivate {
       canActivate(): boolean {
@@ -139,16 +128,6 @@ describe('signed queue dispatch on Cloudflare', () => {
         seen.push('processor');
       }
     }
-    // A hand-written bridge: a raw consumer that hands job envelopes to processors.
-    @Injectable()
-    class Bridge {
-      constructor(@Inject(Container) private readonly container: Container) {}
-      @QueueConsumer('tasks-bridge')
-      async consume(batch: { queue: string; messages: readonly QueueMessageLike[] }) {
-        const entrypoints = this.container.resolve(EntrypointRegistry);
-        await consumeQueueBatch(batch, (job) => dispatchQueueJob(this.container, entrypoints, job));
-      }
-    }
     @Module({
       imports: [
         signingSecret(),
@@ -156,25 +135,26 @@ describe('signed queue dispatch on Cloudflare', () => {
         QueueModule.registerQueue({ name: 'tasks' }),
       ],
       controllers: [JobsController],
-      providers: [Tasks, Bridge, defineProvider(APP_GUARD, { useClass: Deny })],
+      providers: [Tasks, defineProvider(APP_GUARD, { useClass: Deny })],
     })
     class App {}
-    const message = {
-      id: 'message-1',
-      timestamp: new Date(),
-      attempts: 1,
-      body: { id: 'job-1', queue: 'tasks', name: 'run', data: {}, attempt: 1 },
-      ack: vi.fn(),
-      retry: vi.fn(),
-    };
-    const worker = createCloudflareWorker(App);
-
-    await expect(
-      worker.queue({ queue: 'tasks-bridge', messages: [message] }, env, context),
-    ).rejects.toThrow();
-
-    expect(seen).toEqual(['guard']);
-    expect(message.ack).not.toHaveBeenCalled();
+    const app = await VelaFactory.create(App, { adapters: [cloudflareAdapter({ env })] });
+    try {
+      // A transport other than Cloudflare Queues hands each job to dispatchQueueJob,
+      // which applies the module's signed policy.
+      await expect(
+        dispatchQueueJob(app.getContainer(), app.entrypoints, {
+          id: 'job-1',
+          queue: 'tasks',
+          name: 'run',
+          data: {},
+          attempt: 1,
+        }),
+      ).rejects.toThrow();
+      expect(seen).toEqual(['guard']);
+    } finally {
+      await app.close();
+    }
   });
 
   it('boots signed dispatch in a Worker that only produces the queue', async () => {

@@ -619,9 +619,14 @@ describe('cloudflareQueues() native delivery', () => {
       expect(received).toEqual([3, 1]);
       expect(job.ack).not.toHaveBeenCalled();
       expect(warn).toHaveBeenCalledOnce();
-      expect(String(warn.mock.calls[0]?.[0])).toMatch(
-        /@QueueConsumer\('claimed-production'\).*'email'.*@Processor/,
+      const warning = String(warn.mock.calls[0]?.[0]);
+      expect(warning).toMatch(
+        /@QueueConsumer\('claimed-production'\) received jobs of registered queue 'email'/,
       );
+      expect(warning).toMatch(
+        /reach @Processor\('email'\) only if the raw handler dispatches them itself/,
+      );
+      expect(warning).toMatch(/through cloudflareQueues\(\)/);
     } finally {
       warn.mockRestore();
     }

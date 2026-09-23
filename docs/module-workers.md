@@ -66,7 +66,8 @@ preserved. Wrangler owns retry limits, delays and dead-letter queues. Transactio
 outboxes, leases and application idempotency remain separate concerns.
 
 `@QueueConsumer`, native `Queue` objects and `consumeQueueBatch` remain available
-for applications needing direct native batch control.
+for applications needing direct native batch control of physical queues that
+carry no jobs of registered queues.
 
 `QueueModule` signed dispatch (`dispatch: { kind: 'signed', target }`) re-enters the
 signed route for every job the module delivers, native deliveries included, so

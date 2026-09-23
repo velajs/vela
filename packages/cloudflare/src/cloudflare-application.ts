@@ -411,11 +411,12 @@ export class CloudflareApplication {
   }
 
   /**
-   * A raw `@QueueConsumer` owns its physical queue's batches, so job envelopes
-   * of a queue registered with `QueueModule` that arrive there never reach
-   * their `@Processor`. Warn once per physical and logical queue (unless
-   * diagnostics are silent); the raw consumer still receives and settles the
-   * batch.
+   * A raw `@QueueConsumer` owns its physical queue's batches and must not carry
+   * jobs of a queue registered with `QueueModule`: those reach their
+   * `@Processor` only if the raw handler dispatches them itself, while
+   * `cloudflareQueues()` delivers registered queues. Warn once per physical and
+   * logical queue (unless diagnostics are silent); the raw consumer still
+   * receives and settles the batch.
    */
   private warnRawJobs(batch: { queue: string; messages: readonly unknown[] }): void {
     if (this.#app.getContainer().getDiagnostics() === 'silent') return;
@@ -435,10 +436,11 @@ export class CloudflareApplication {
       const queue = envelopeQueue(body);
       if (queue === undefined || !registered.has(queue)) continue;
       const warning =
-        `[vela] @QueueConsumer('${batch.queue}') received jobs of queue '${queue}', which ` +
-        `QueueModule.registerQueue() registers: the raw consumer owns '${batch.queue}', so ` +
-        `these jobs never reach their @Processor('${queue}'). Remove the @QueueConsumer, or send ` +
-        `'${queue}' through a physical queue that no @QueueConsumer claims.`;
+        `[vela] @QueueConsumer('${batch.queue}') received jobs of registered queue '${queue}'. ` +
+        `The raw consumer owns '${batch.queue}' and must not carry jobs of registered queues: ` +
+        `they reach @Processor('${queue}') only if the raw handler dispatches them itself. ` +
+        `Deliver '${queue}' through cloudflareQueues() instead: send it to a physical queue ` +
+        `that no @QueueConsumer claims.`;
       if (warnedRawJobs.has(warning)) continue;
       warnedRawJobs.add(warning);
       console.warn(warning);
