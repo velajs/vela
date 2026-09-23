@@ -1,3 +1,4 @@
+import { SetMetadata, applyDecorators } from '../index';
 import {
   Cron,
   Interval,
@@ -5,6 +6,7 @@ import {
   type CronInvocation,
   type CronOptions,
   type IntervalInvocation,
+  type ScheduleDecorator,
   type ScheduleInvocation,
 } from '../schedule';
 
@@ -81,3 +83,28 @@ export class ScheduledHandlers {
     void [tick, extra];
   }
 }
+
+/** Typed schedule decorators compose with applyDecorators like any other decorator. */
+const Nightly = (): ReturnType<typeof applyDecorators> =>
+  applyDecorators(
+    Cron('0 3 * * *', { dialect: 'cloudflare' }),
+    SetMetadata('job', 'nightly'),
+    Interval(60_000),
+  );
+
+export class ComposedScheduledHandlers {
+  @Nightly()
+  nightly(tick: ScheduleInvocation): number {
+    return tick.scheduledTime;
+  }
+}
+
+// @ts-expect-error A plain function is not a decorator.
+applyDecorators((label: string) => label);
+
+// A typed decorator is narrower than the untyped MethodDecorator, which accepts any method.
+// @ts-expect-error Type such a variable as ScheduleDecorator<CronInvocation> or let it infer.
+export const untyped: MethodDecorator = Cron('0 9 * * *', { dialect: 'cloudflare' });
+export const typed: ScheduleDecorator<CronInvocation> = Cron('0 9 * * *', {
+  dialect: 'cloudflare',
+});

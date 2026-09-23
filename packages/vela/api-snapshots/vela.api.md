@@ -4222,7 +4222,9 @@ declare function Header(name: string, value: string): MethodDecorator;
 declare function Redirect(url: string, statusCode?: RedirectStatusCode): MethodDecorator;
 
 type ComposedDecorator = <T>(target: T, propertyKey?: string | symbol, descriptor?: PropertyDescriptor | number) => void;
-declare function applyDecorators(...decorators: Array<ClassDecorator | MethodDecorator | PropertyDecorator | ParameterDecorator>): ComposedDecorator;
+
+type ComposableDecorator = ClassDecorator | MethodDecorator | PropertyDecorator | ParameterDecorator | ((target: object, propertyKey: string | symbol, descriptor: TypedPropertyDescriptor<never>) => unknown);
+declare function applyDecorators(...decorators: ComposableDecorator[]): ComposedDecorator;
 
 type UrlParamValue = string | number | boolean;
 

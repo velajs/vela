@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SetMetadata, applyDecorators } from '../index';
 import type { StandardSchemaV1 } from '../index';
 import { defineQueueJob, Process, QueueClient } from '../queue';
 import type { QueueJob, QueueJobInput, QueueJobOutput } from '../queue';
@@ -27,6 +28,16 @@ class Consumer {
   }
 }
 void Consumer;
+
+// A typed @Process decorator composes with applyDecorators like any other decorator.
+const CountJob = () => applyDecorators(Process(definition), SetMetadata('job', 'count'));
+class ComposedConsumer {
+  @CountJob()
+  handle(job: QueueJob<QueueJobOutput<typeof definition>>) {
+    return job.data.count.toFixed();
+  }
+}
+void ComposedConsumer;
 
 const zodJob = defineQueueJob('zod', z.object({ value: z.string().transform(Number) }));
 void client.add(zodJob, { value: '42' });

@@ -419,9 +419,24 @@ export type ComposedDecorator = <T>(
   descriptor?: PropertyDescriptor | number,
 ) => void;
 
-export function applyDecorators(
-  ...decorators: Array<ClassDecorator | MethodDecorator | PropertyDecorator | ParameterDecorator>
-): ComposedDecorator {
+/**
+ * A decorator {@link applyDecorators} accepts: any class, method, property or
+ * parameter decorator, including typed method decorators whose descriptor is
+ * generic over the handler they accept (`@Cron`, `@Interval`,
+ * `@Process(definition)`).
+ */
+export type ComposableDecorator =
+  | ClassDecorator
+  | MethodDecorator
+  | PropertyDecorator
+  | ParameterDecorator
+  | ((
+      target: object,
+      propertyKey: string | symbol,
+      descriptor: TypedPropertyDescriptor<never>,
+    ) => unknown);
+
+export function applyDecorators(...decorators: ComposableDecorator[]): ComposedDecorator {
   return ((
     target: object,
     propertyKey?: string | symbol,
