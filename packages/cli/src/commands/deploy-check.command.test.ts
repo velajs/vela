@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { Cli } from 'clipanion';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -134,6 +134,30 @@ describe('read-only deploy check command', () => {
     expect(result.output).toContain('Worker: api-staging');
     expect(result.output).toContain('Environment: staging');
     expect(result.output).toContain('Commit: unavailable (cleanliness unknown)');
-    expect(result.output).toContain('Next step (not executed):');
+    expect(result.output).toContain(
+      `Next step (not executed): 'pnpm' 'exec' 'wrangler' 'deploy' '--config' '${configPath}' '--env' 'staging' '--dry-run'\n`,
+    );
   });
+
+  // `wrangler deploy --config` would bundle a Vite project's source with
+  // esbuild, which emits no decorator metadata, instead of the Vite build.
+  it.each(['vite.config.ts', 'vite.config.mjs', '.wrangler/deploy/config.json'])(
+    'builds a Vite project through Vite before the Wrangler dry-run (%s)',
+    async (file) => {
+      await mkdir(dirname(join(directory, file)), { recursive: true });
+      await writeFile(join(directory, file), '{}');
+      const report = JSON.parse((await run(['--json'])).output);
+      expect(report.nextStep).toEqual({
+        build: { command: 'pnpm', args: ['build'], env: { CLOUDFLARE_ENV: 'staging' } },
+        command: 'pnpm',
+        args: ['exec', 'wrangler', 'deploy', '--dry-run'],
+      });
+      const result = await run();
+      expect(result.code).toBe(0);
+      expect(result.output).toContain(
+        'Next step (not executed): CLOUDFLARE_ENV=staging pnpm build && pnpm exec wrangler deploy --dry-run\n',
+      );
+      expect(result.output).not.toContain('--config');
+    },
+  );
 });

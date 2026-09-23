@@ -51,7 +51,9 @@ describe('MissingInjectionMetadataError', () => {
     expect(() => container.register(NoMetadata)).toThrow(MissingInjectionMetadataError);
     expect(() => container.register(NoMetadata)).toThrow(
       'NoMetadata declares 1 constructor parameter but no design:paramtypes were emitted for ' +
-        'parameter #0. Enable emitDecoratorMetadata in your build or add @Inject(Token) to parameter #0.',
+        'parameter #0. Enable emitDecoratorMetadata in your build or add @Inject(Token) to parameter #0. ' +
+        'esbuild (and so `wrangler deploy --config`) emits none; build through Vite or ' +
+        'another transform that emits decorator metadata.',
     );
   });
 

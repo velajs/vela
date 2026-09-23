@@ -408,7 +408,9 @@ export class MissingInjectionMetadataError extends Error {
     const declared = `${className} declares ${pluralParameters(declaredParameters)}`;
     super(
       reason === 'missing'
-        ? `${declared} but no design:paramtypes were emitted for parameter ${index}. ${fix}`
+        ? `${declared} but no design:paramtypes were emitted for parameter ${index}. ${fix} ` +
+            'esbuild (and so `wrangler deploy --config`) emits none; build through Vite or ' +
+            'another transform that emits decorator metadata.'
         : reason === 'erased'
           ? `${declared} but parameter ${index} resolved to Object. ${fix} Interfaces, ` +
             'type-only imports (`import type { X }`) and circular imports all erase to ' +

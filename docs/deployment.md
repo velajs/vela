@@ -184,10 +184,11 @@ pnpm exec wrangler deploy --dry-run
 ```
 
 This dry-run writes local bundle output and checks the upload without performing
-it; it is separate from the static preflight. The `Next step` that `vela deploy
-check` prints passes `--config wrangler.jsonc --env staging`, which suits Workers
-that Wrangler builds itself; for a Vite-built Worker, run the two commands above
-instead (see [Build with Vite](#build-with-vite)).
+it; it is separate from the static preflight. `vela deploy check` prints these two
+commands as its `Next step` when a `vite.config.*` sits beside the Wrangler file
+or a Vite build left `.wrangler/deploy/config.json`; its `--json` report lists the
+build as `nextStep.build`. For a Worker that Wrangler builds itself, it prints
+`wrangler deploy --config <file> --env <name> --dry-run` instead.
 Run native Workers tests for cold HTTP/queue/cron and binding behavior. Verify
 resource/migration readiness for each named database using your application's
 migration tooling before the actual deployment. For D1, apply each database's
