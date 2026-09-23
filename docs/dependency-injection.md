@@ -75,7 +75,10 @@ enhancer of a lazy module waits for its group. A referenced class with no class 
 metadata to inject; it is built with `new`, once per scope, without the missing-decorator
 diagnostic. Classes passed to `app.useGlobalGuards()` and the other `useGlobal*` methods are not
 scanned: one without constructor dependencies is still built with `new` on each use, and one that a
-module registers resolves from that module unless the module is lazy and still pending. An explicit
+module registers resolves from that module. A lazy module still pending is skipped when it holds
+only the copy registered for an enhancer its classes reference, so a global component does not
+materialize it; a lazy module that lists the class in its providers serves it, materialized with its
+group. An explicit
 list resolved for a module, such as a GraphQL operation's guards, uses a registration only when that
 module can see it; any other class is built as an unregistered class.
 

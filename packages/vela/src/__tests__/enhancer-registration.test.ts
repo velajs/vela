@@ -425,6 +425,44 @@ describe('enhancer auto-registration', () => {
     await app.close();
   });
 
+  it('builds a global guard class from the lazy module that provides it', async () => {
+    let built = 0;
+
+    @Injectable()
+    class AuthGuard implements CanActivate {
+      constructor(readonly reflector: Reflector) {
+        built++;
+      }
+      canActivate(): boolean {
+        return true;
+      }
+    }
+
+    @Module({ lazy: true, providers: [AuthGuard], exports: [AuthGuard] })
+    class AuthModule {}
+
+    @Controller('/eager')
+    class EagerController {
+      @Get()
+      index() {
+        return {};
+      }
+    }
+
+    @Module({ imports: [AuthModule], controllers: [EagerController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    app.useGlobalGuards(AuthGuard);
+    const hono = app.getHonoApp();
+    expect((await hono.request('/eager')).status).toBe(200);
+    expect((await hono.request('/eager')).status).toBe(200);
+    // The module's provider, materialized with its group: one instance, not one per request.
+    expect(built).toBe(1);
+    expect(app.getContainer().isLazyPending(AuthGuard)).toBe(false);
+    await app.close();
+  });
+
   it('runs a module class hook after its providers, controllers and enhancers', async () => {
     const calls: string[] = [];
 

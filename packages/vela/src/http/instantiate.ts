@@ -18,12 +18,14 @@ import {
 //
 // A class resolves through the container only where it is registered and
 // visible: from the requesting module, or, for an application-wide lookup
-// (no moduleId), from an owner that is not a lazy module still pending, so a
-// global component never materializes one. Any other class (an
-// `app.useGlobalGuards(Class)` entry, a guard another module registers, a
-// hand-built container) falls back to `new clazz()` so plain parameterless
-// helper classes keep working. That fallback is unsafe for
-// classes whose CONSTRUCTOR EXPECTS DEPENDENCIES, because zero-arg
+// (no moduleId), from its first owner, skipping a lazy module still pending
+// that holds only the loader's copy of an enhancer its classes reference, so a
+// global component never materializes one for that. A pending lazy module that
+// lists the class as a provider serves it, materialized with its group. Any
+// other class (an `app.useGlobalGuards(Class)` entry no module registers, a
+// guard another module registers, a hand-built container) falls back to
+// `new clazz()` so plain parameterless helper classes keep working. That
+// fallback is unsafe for classes whose CONSTRUCTOR EXPECTS DEPENDENCIES, because zero-arg
 // construction would leave every injected slot `undefined` — a silent failure
 // mode that surfaces later deep inside the class. For those classes we throw
 // a loud, actionable error instead.
@@ -82,7 +84,13 @@ function registeredOwner(clazz: Type, container: Container, moduleId?: string): 
   if (moduleId !== undefined) {
     return container.getResolvedScope(clazz, moduleId) === undefined ? undefined : moduleId;
   }
-  return container.getOwnerModuleIds(clazz).find((owner) => !container.isLazyPending(clazz, owner));
+  return container
+    .getOwnerModuleIds(clazz)
+    .find(
+      (owner) =>
+        !container.isLazyPending(clazz, owner) ||
+        container.getModuleScope(owner)?.localProviders.has(clazz),
+    );
 }
 
 // The fallback plan for a class that is not registered in the container. It
