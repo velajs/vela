@@ -1,11 +1,11 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { open, stat } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { Command, Option } from 'clipanion';
 import { parseDeploymentConfig } from './deploy-check.config.js';
-import { checkDeployment } from './deploy-check.plan.js';
+import { checkDeployment, type DeploymentIssue } from './deploy-check.plan.js';
 
 const exec = promisify(execFile);
 const MAX_INPUT_BYTES = 1024 * 1024;
@@ -57,25 +57,35 @@ async function gitProvenance(cwd: string) {
 
 const digest = (text: string): string => createHash('sha256').update(text).digest('hex');
 
-const VITE_FILES = [
-  ...['ts', 'mts', 'cts', 'js', 'mjs', 'cjs'].map((extension) => `vite.config.${extension}`),
-  join('.wrangler', 'deploy', 'config.json'),
-];
+const quote = (arg: string): string => `'${arg.replaceAll("'", "'\\''")}'`;
+
+const VITE_CONFIGS = ['ts', 'mts', 'cts', 'js', 'mjs', 'cjs'].map(
+  (extension) => `vite.config.${extension}`,
+);
+// The Wrangler files the Cloudflare Vite plugin reads when its `configPath` is unset.
+const DEFAULT_WRANGLER_FILES = new Set(['wrangler.json', 'wrangler.jsonc', 'wrangler.toml']);
 
 /**
- * Whether Vite builds this Worker: a Vite config sits beside the Wrangler file,
- * or a `vite build` left the redirect that plain `wrangler deploy` follows.
+ * Whether the Cloudflare Vite plugin builds this Worker: a Vite build left the
+ * redirect that plain `wrangler deploy` follows, or a Vite config beside the
+ * Wrangler file references `@cloudflare/vite-plugin`. Config files are read as
+ * text, never imported.
  */
 async function buildsWithVite(directory: string): Promise<boolean> {
-  const found = await Promise.all(
-    VITE_FILES.map((name) =>
-      stat(join(directory, name)).then(
-        (entry) => entry.isFile(),
+  const redirect = await stat(join(directory, '.wrangler', 'deploy', 'config.json')).then(
+    (entry) => entry.isFile(),
+    () => false,
+  );
+  if (redirect) return true;
+  const configs = await Promise.all(
+    VITE_CONFIGS.map((name) =>
+      readInput(join(directory, name)).then(
+        (text) => text.includes('@cloudflare/vite-plugin'),
         () => false,
       ),
     ),
   );
-  return found.includes(true);
+  return configs.includes(true);
 }
 
 /** Static application deployment preflight; never invokes Wrangler or application code. */
@@ -85,7 +95,7 @@ export class DeployCheckCommand extends Command {
     category: 'Deployment',
     description: 'Check an explicit Wrangler target against a saved entrypoint snapshot.',
     details:
-      'Read-only: no app bootstrap, custom build, credential loading or upload. Compares cron/queue dispatch keys and WebSocket Durable Object bindings. Wrangler remains the deployment tool. For a Vite project (a vite.config.* beside the Wrangler file, or the .wrangler/deploy/config.json redirect a Vite build writes), the suggested next step builds the environment with Vite and dry-runs that build, since `wrangler deploy --config` would bundle the source with esbuild, which emits no decorator metadata.',
+      'Read-only: no app bootstrap, custom build, credential loading or upload. Compares cron/queue dispatch keys and WebSocket Durable Object bindings. Wrangler remains the deployment tool. The suggested next step runs in the Wrangler file directory. For a project the Cloudflare Vite plugin builds (a vite.config.* beside the Wrangler file that references @cloudflare/vite-plugin, or the .wrangler/deploy/config.json redirect a Vite build writes), it builds the environment with Vite and dry-runs that build with the same --env, since `wrangler deploy --config` would bundle the source with esbuild, which emits no decorator metadata.',
     examples: [
       [
         'Check staging',
@@ -136,17 +146,22 @@ export class DeployCheckCommand extends Command {
         entrypoints: { path: snapshotPath, sha256: digest(snapshot) },
       };
       // A Vite project builds one environment into the output that plain
-      // `wrangler deploy` follows; `--config` would bypass that build.
-      const vite = await buildsWithVite(dirname(configPath));
+      // `wrangler deploy` follows; `--config` would bypass that build, and
+      // Wrangler checks `--env` against the environment the build targeted.
+      // `pnpm` resolves the project's own scripts and Wrangler from `cwd`.
+      const cwd = dirname(configPath);
+      const vite = await buildsWithVite(cwd);
       const wrangler = vite
         ? {
             build: {
               command: 'pnpm',
               args: ['build'],
               env: { CLOUDFLARE_ENV: this.environment },
+              cwd,
             },
             command: 'pnpm',
-            args: ['exec', 'wrangler', 'deploy', '--dry-run'],
+            args: ['exec', 'wrangler', 'deploy', '--env', this.environment, '--dry-run'],
+            cwd,
           }
         : {
             command: 'pnpm',
@@ -160,8 +175,16 @@ export class DeployCheckCommand extends Command {
               this.environment,
               '--dry-run',
             ],
+            cwd,
           };
-      const result = { ...plan, provenance, nextStep: wrangler };
+      const file = basename(configPath);
+      const warnings: DeploymentIssue[] = [...plan.warnings];
+      if (vite && !DEFAULT_WRANGLER_FILES.has(file))
+        warnings.push({
+          code: 'vite-config-path',
+          message: `The Cloudflare Vite plugin reads wrangler.json, wrangler.jsonc or wrangler.toml by default; set its configPath to ${JSON.stringify(`./${file}`)} so the build uses the checked file.`,
+        });
+      const result = { ...plan, warnings, provenance, nextStep: wrangler };
       if (this.json) this.context.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
       else {
         this.context.stdout.write(
@@ -169,15 +192,13 @@ export class DeployCheckCommand extends Command {
         );
         for (const issue of plan.errors)
           this.context.stdout.write(`Error [${issue.code}]: ${issue.message}\n`);
-        for (const issue of plan.warnings)
+        for (const issue of warnings)
           this.context.stdout.write(`Warning [${issue.code}]: ${issue.message}\n`);
         // The environment name is validated to letters, digits, `_` and `-`.
         const next = vite
-          ? `CLOUDFLARE_ENV=${this.environment} pnpm build && pnpm exec wrangler deploy --dry-run`
-          : [wrangler.command, ...wrangler.args]
-              .map((arg) => `'${arg.replaceAll("'", "'\\''")}'`)
-              .join(' ');
-        this.context.stdout.write(`Next step (not executed): ${next}\n`);
+          ? `CLOUDFLARE_ENV=${this.environment} pnpm build && pnpm exec wrangler deploy --env ${this.environment} --dry-run`
+          : [wrangler.command, ...wrangler.args].map(quote).join(' ');
+        this.context.stdout.write(`Next step (not executed): cd ${quote(cwd)} && ${next}\n`);
       }
       return plan.status === 'passed' ? 0 : 1;
     } catch (error) {

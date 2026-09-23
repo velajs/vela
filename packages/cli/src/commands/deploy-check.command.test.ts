@@ -4,8 +4,12 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { Cli } from 'clipanion';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DeployCheckCommand } from './deploy-check.command.js';
+
+const VITE_CONFIG = `import { cloudflare } from '@cloudflare/vite-plugin';
+export default { plugins: [cloudflare()] };
+`;
 
 let directory: string;
 let configPath: string;
@@ -31,6 +35,7 @@ beforeEach(async () => {
   );
 });
 afterEach(async () => {
+  vi.restoreAllMocks();
   await rm(directory, { recursive: true, force: true });
 });
 
@@ -135,29 +140,95 @@ describe('read-only deploy check command', () => {
     expect(result.output).toContain('Environment: staging');
     expect(result.output).toContain('Commit: unavailable (cleanliness unknown)');
     expect(result.output).toContain(
-      `Next step (not executed): 'pnpm' 'exec' 'wrangler' 'deploy' '--config' '${configPath}' '--env' 'staging' '--dry-run'\n`,
+      `Next step (not executed): cd '${directory}' && 'pnpm' 'exec' 'wrangler' 'deploy' '--config' '${configPath}' '--env' 'staging' '--dry-run'\n`,
     );
+    expect(JSON.parse((await run(['--json'])).output).nextStep.cwd).toBe(directory);
   });
 
   // `wrangler deploy --config` would bundle a Vite project's source with
   // esbuild, which emits no decorator metadata, instead of the Vite build.
-  it.each(['vite.config.ts', 'vite.config.mjs', '.wrangler/deploy/config.json'])(
-    'builds a Vite project through Vite before the Wrangler dry-run (%s)',
-    async (file) => {
-      await mkdir(dirname(join(directory, file)), { recursive: true });
-      await writeFile(join(directory, file), '{}');
-      const report = JSON.parse((await run(['--json'])).output);
-      expect(report.nextStep).toEqual({
-        build: { command: 'pnpm', args: ['build'], env: { CLOUDFLARE_ENV: 'staging' } },
+  it.each([
+    ['vite.config.ts', VITE_CONFIG],
+    ['vite.config.mjs', VITE_CONFIG],
+    ['.wrangler/deploy/config.json', '{}'],
+  ])('builds a Vite project through Vite before the Wrangler dry-run (%s)', async (file, text) => {
+    await mkdir(dirname(join(directory, file)), { recursive: true });
+    await writeFile(join(directory, file), text);
+    const report = JSON.parse((await run(['--json'])).output);
+    expect(report.nextStep).toEqual({
+      build: {
         command: 'pnpm',
-        args: ['exec', 'wrangler', 'deploy', '--dry-run'],
-      });
-      const result = await run();
-      expect(result.code).toBe(0);
-      expect(result.output).toContain(
-        'Next step (not executed): CLOUDFLARE_ENV=staging pnpm build && pnpm exec wrangler deploy --dry-run\n',
-      );
-      expect(result.output).not.toContain('--config');
-    },
-  );
+        args: ['build'],
+        env: { CLOUDFLARE_ENV: 'staging' },
+        cwd: directory,
+      },
+      command: 'pnpm',
+      args: ['exec', 'wrangler', 'deploy', '--env', 'staging', '--dry-run'],
+      cwd: directory,
+    });
+    expect(report.warnings.map((issue: { code: string }) => issue.code)).not.toContain(
+      'vite-config-path',
+    );
+    const result = await run();
+    expect(result.code).toBe(0);
+    expect(result.output).toContain(
+      `Next step (not executed): cd '${directory}' && CLOUDFLARE_ENV=staging pnpm build && pnpm exec wrangler deploy --env staging --dry-run\n`,
+    );
+    expect(result.output).not.toContain('--config');
+  });
+
+  it('keeps the Wrangler build for a Vite config without the Cloudflare Vite plugin', async () => {
+    await writeFile(join(directory, 'vite.config.ts'), 'export default { plugins: [] };\n');
+    const report = JSON.parse((await run(['--json'])).output);
+    expect(report.nextStep).toEqual({
+      command: 'pnpm',
+      args: ['exec', 'wrangler', 'deploy', '--config', configPath, '--env', 'staging', '--dry-run'],
+      cwd: directory,
+    });
+  });
+
+  it('runs the next step in the Wrangler file directory when checked from a parent', async () => {
+    const project = join(directory, "it's app");
+    await mkdir(project);
+    await writeFile(join(project, 'wrangler.jsonc'), await readFile(configPath, 'utf8'));
+    await writeFile(join(project, 'vite.config.ts'), VITE_CONFIG);
+    vi.spyOn(process, 'cwd').mockReturnValue(directory);
+    const args = ['--config', "it's app/wrangler.jsonc", '--env', 'staging'];
+
+    const report = JSON.parse(
+      (await run([...args, '--entrypoints', 'entrypoints.json', '--json'], false)).output,
+    );
+    expect(report.nextStep.cwd).toBe(project);
+    expect(report.nextStep.build.cwd).toBe(project);
+    const result = await run([...args, '--entrypoints', 'entrypoints.json'], false);
+    expect(result.code).toBe(0);
+    expect(result.output).toContain(
+      `Next step (not executed): cd '${directory}/it'\\''s app' && CLOUDFLARE_ENV=staging pnpm build && pnpm exec wrangler deploy --env staging --dry-run\n`,
+    );
+  });
+
+  // The Cloudflare Vite plugin reads a default-named Wrangler file unless its
+  // `configPath` option names another.
+  it('warns when the Vite build does not read a non-default Wrangler file by default', async () => {
+    const custom = join(directory, 'wrangler.staging.jsonc');
+    await writeFile(custom, await readFile(configPath, 'utf8'));
+    await writeFile(join(directory, 'vite.config.ts'), VITE_CONFIG);
+    const args = ['--config', custom, '--env', 'staging', '--entrypoints', snapshotPath];
+
+    const report = JSON.parse((await run([...args, '--json'], false)).output);
+    expect(report.status).toBe('passed');
+    expect(report.warnings).toContainEqual({
+      code: 'vite-config-path',
+      message:
+        'The Cloudflare Vite plugin reads wrangler.json, wrangler.jsonc or wrangler.toml by ' +
+        'default; set its configPath to "./wrangler.staging.jsonc" so the build uses the checked file.',
+    });
+    expect((await run(args, false)).output).toContain('Warning [vite-config-path]:');
+
+    await rm(join(directory, 'vite.config.ts'));
+    const wranglerBuilt = JSON.parse((await run([...args, '--json'], false)).output);
+    expect(wranglerBuilt.warnings.map((issue: { code: string }) => issue.code)).not.toContain(
+      'vite-config-path',
+    );
+  });
 });

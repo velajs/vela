@@ -176,18 +176,24 @@ Keep source revision, lockfile and application configuration consistent across
 test, snapshot, bundle and deployment steps.
 
 After resolving preflight errors, build the target with Vite and run the pinned
-project Wrangler separately:
+project Wrangler separately, from the directory that holds the Wrangler file:
 
 ```sh
 CLOUDFLARE_ENV=staging pnpm build
-pnpm exec wrangler deploy --dry-run
+pnpm exec wrangler deploy --env staging --dry-run
 ```
 
 This dry-run writes local bundle output and checks the upload without performing
-it; it is separate from the static preflight. `vela deploy check` prints these two
-commands as its `Next step` when a `vite.config.*` sits beside the Wrangler file
-or a Vite build left `.wrangler/deploy/config.json`; its `--json` report lists the
-build as `nextStep.build`. For a Worker that Wrangler builds itself, it prints
+it; it is separate from the static preflight. Wrangler follows the redirect the
+Vite build wrote and fails when `--env` names another environment than the one
+built. `vela deploy check` prints these two commands, after a `cd` into the
+Wrangler file's directory, as its `Next step` when a Vite build left
+`.wrangler/deploy/config.json` or a `vite.config.*` beside the Wrangler file
+references `@cloudflare/vite-plugin`; its `--json` report lists the build as
+`nextStep.build`, and both steps carry that directory as `cwd`. The plugin reads
+`wrangler.json`, `wrangler.jsonc` or `wrangler.toml` unless its `configPath`
+option names another file, so checking a differently named Wrangler file adds a
+`vite-config-path` warning. For a Worker that Wrangler builds itself, it prints
 `wrangler deploy --config <file> --env <name> --dry-run` instead.
 Run native Workers tests for cold HTTP/queue/cron and binding behavior. Verify
 resource/migration readiness for each named database using your application's
@@ -196,7 +202,7 @@ own reviewed migrations to its matching staging binding; do not assume a single
 database migration covers all registrations.
 
 When ready to deploy, use your approved application pipeline or an explicit
-`CLOUDFLARE_ENV=staging pnpm build && pnpm exec wrangler deploy`, then run the
+`CLOUDFLARE_ENV=staging pnpm build && pnpm exec wrangler deploy --env staging`, then run the
 application's smoke checks against the resulting URL. Configure Cloudflare
 credentials only on the deploy job. Production should select its own named
 environment and consume the reviewed revision and configuration. Nothing in the

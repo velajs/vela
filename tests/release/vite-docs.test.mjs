@@ -11,11 +11,11 @@ test('the deployment check example builds with Vite before its Wrangler dry-run'
   const workflow = await read('docs/examples/deployment-check.yml');
   const steps = workflow.match(/^\s*- run: .*$/gm).map((line) => line.replace(/^\s*- run: /, ''));
   const build = steps.indexOf('CLOUDFLARE_ENV=staging pnpm build');
-  const dryRun = steps.indexOf('pnpm exec wrangler deploy --dry-run');
+  const dryRun = steps.indexOf('pnpm exec wrangler deploy --env staging --dry-run');
   assert.ok(build >= 0, 'the example builds the staging Worker with Vite');
-  assert.ok(dryRun > build, 'the dry-run follows the build');
+  assert.ok(dryRun > build, 'the dry-run of the built environment follows the build');
   assert.deepEqual(
-    steps.filter((step) => /wrangler deploy.*--(config|env)\b/.test(step)),
+    steps.filter((step) => /wrangler deploy.*--config\b/.test(step)),
     [],
     'wrangler deploy follows the Vite build redirect',
   );

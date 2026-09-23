@@ -27,7 +27,8 @@ jobs:
       - run: pnpm snapshot:entrypoints
       - run: pnpm exec vela deploy check --config wrangler.jsonc --env staging --entrypoints build/entrypoints.json --json
       # Vite builds the staging Worker, decorator metadata included, and leaves the
-      # redirect that plain `wrangler deploy` follows; `--config` would bypass it.
+      # redirect that `wrangler deploy` follows; `--config` would bypass it.
       - run: CLOUDFLARE_ENV=staging pnpm build
       # Wrangler bundling is separate; no actual upload or Cloudflare credentials.
-      - run: pnpm exec wrangler deploy --dry-run
+      # `--env` must name the environment the build targeted.
+      - run: pnpm exec wrangler deploy --env staging --dry-run
