@@ -183,6 +183,8 @@ Load a reference when the task needs its depth. **This table is the contract** �
 
 **`AppModule.imports[2] is undefined — usually a circular file import`** (`UndefinedModuleError`) → A module list holds `undefined` because two files import each other. Use `imports: [forwardRef(() => OtherModule)]`, or move the class so the cycle disappears.
 
+**`[vela] XModule#key was imported again with different options`** → Two imports share one `(class, key)` but were built from different options (or different closures), so the second one's providers are ignored. Pass a distinct `key` per configuration, or import one shared definition.
+
 **`Circular dependency detected: ...`** → Break the cycle with `@Inject(forwardRef(() => Other))` (providers) or `imports: [forwardRef(() => OtherModule)]` (modules).
 
 **`Multiple providers found for 'X' ...`** (`MultipleProvidersFoundError`) → Two module instances export the same token (e.g. `CacheModule.forRoot({ ttl: 60 })` and `forRoot({ ttl: 120 })`). Import only one, or use a per-instance accessor.

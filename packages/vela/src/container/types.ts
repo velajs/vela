@@ -151,6 +151,10 @@ class CheckedProvider<T> {
   static read<T>(provider: CheckedProvider<T>): Readonly<ProviderOptions<T>> {
     return provider.#options;
   }
+
+  static is(value: unknown): value is CheckedProvider<unknown> {
+    return typeof value === 'object' && value !== null && #options in value;
+  }
 }
 
 /** A nominal provider checked by defineProvider before entering a module graph. */
@@ -161,6 +165,11 @@ export function getProviderOptions<T>(
   provider: ProviderDefinition<T>,
 ): Readonly<ProviderOptions<T>> {
   return CheckedProvider.read(provider);
+}
+
+/** @internal Brand check for descriptors minted by defineProvider. */
+export function isProviderDefinition(value: unknown): value is ProviderDefinition {
+  return CheckedProvider.is(value);
 }
 
 type ProviderStrategy<T, Inject extends readonly DependencyToken[]> =

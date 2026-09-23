@@ -1,4 +1,9 @@
-import { ForwardRef, type Type } from '../container/types';
+import {
+  ForwardRef,
+  getProviderOptions,
+  isProviderDefinition,
+  type Type,
+} from '../container/types';
 import type { DynamicModule, ModuleImport } from '../registry/types';
 
 export const DEFAULT_MODULE_KEY = 'default';
@@ -62,4 +67,125 @@ export function assertDefinedEntries(
       throw new UndefinedModuleError(moduleName, property, index, entry);
     }
   });
+}
+
+// Call-time inputs that decide what a (class, key) module instance contributes.
+// Non-enumerable, so spreading or comparing a DynamicModule never carries it.
+const MODULE_IDENTITY = Symbol('vela:module-identity');
+
+/**
+ * @internal Record the inputs a generated DynamicModule was built from
+ * (`defineModule`, `sideEffectModule`, `defineConfigurableModule`), so the
+ * loader can tell a repeated identical import from a conflicting one.
+ */
+export function attachModuleIdentity<T extends DynamicModule>(definition: T, inputs: unknown): T {
+  if (Object.isExtensible(definition)) {
+    Object.defineProperty(definition, MODULE_IDENTITY, {
+      value: Object.freeze({ inputs }),
+      enumerable: false,
+    });
+  }
+  return definition;
+}
+
+function readModuleIdentity(definition: object): { readonly inputs: unknown } | undefined {
+  const identity: unknown = Reflect.get(definition, MODULE_IDENTITY);
+  return typeof identity === 'object' && identity !== null && 'inputs' in identity
+    ? identity
+    : undefined;
+}
+
+function isPlainObject(value: object): boolean {
+  const prototype: unknown = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+/**
+ * Compares module identity inputs for ONE module loader. Values compare
+ * structurally; functions, symbols and class instances compare by reference,
+ * through ids this instance hands out. Unlike `stableHash`, two closures with
+ * the same source never collide. The ids are owned by the loader (never the
+ * process), so they are released with it and cannot leak across applications.
+ * Fingerprints are only built for repeated imports, never on the common path.
+ */
+export class ModuleIdentityFingerprints {
+  #references = new WeakMap<object, number>();
+  #symbols = new Map<symbol, number>();
+  #fingerprints = new WeakMap<object, string>();
+  #nextReference = 0;
+
+  /**
+   * True when both definitions record their inputs and those inputs differ.
+   * Hand-written DynamicModules carry no inputs and are never reported.
+   */
+  conflicts(first: DynamicModule, repeat: DynamicModule): boolean {
+    if (first === repeat) return false;
+    const firstIdentity = readModuleIdentity(first);
+    const repeatIdentity = readModuleIdentity(repeat);
+    if (!firstIdentity || !repeatIdentity) return false;
+    if (firstIdentity.inputs === repeatIdentity.inputs) return false;
+    return this.fingerprint(firstIdentity) !== this.fingerprint(repeatIdentity);
+  }
+
+  private fingerprint(identity: { readonly inputs: unknown }): string {
+    let fingerprint = this.#fingerprints.get(identity);
+    if (fingerprint === undefined) {
+      fingerprint = this.value(identity.inputs, new Set());
+      this.#fingerprints.set(identity, fingerprint);
+    }
+    return fingerprint;
+  }
+
+  private reference(value: object): string {
+    let id = this.#references.get(value);
+    if (id === undefined) {
+      id = this.#nextReference++;
+      this.#references.set(value, id);
+    }
+    return `ref#${id}`;
+  }
+
+  private symbol(value: symbol): string {
+    let id = this.#symbols.get(value);
+    if (id === undefined) {
+      id = this.#nextReference++;
+      this.#symbols.set(value, id);
+    }
+    return `sym#${id}`;
+  }
+
+  private value(value: unknown, path: Set<object>): string {
+    if (value === undefined) return 'undefined';
+    if (value === null) return 'null';
+    if (typeof value === 'string') return JSON.stringify(value);
+    if (typeof value === 'symbol') return this.symbol(value);
+    if (typeof value === 'function') return this.reference(value);
+    if (typeof value !== 'object') return `${typeof value}:${String(value)}`;
+    // A cycle is only reachable through a reference; compare it as one.
+    if (path.has(value)) return this.reference(value);
+
+    path.add(value);
+    try {
+      if (Array.isArray(value)) {
+        return `[${value.map((item: unknown) => this.value(item, path)).join(',')}]`;
+      }
+      if (isDynamicModule(value)) {
+        const nested = readModuleIdentity(value);
+        if (nested) {
+          const key = JSON.stringify(moduleKeyOf(value));
+          return `module(${this.reference(value.module)},${key},${this.value(nested.inputs, path)})`;
+        }
+      }
+      if (isProviderDefinition(value)) {
+        return `provider${this.value(getProviderOptions(value), path)}`;
+      }
+      if (!isPlainObject(value)) return this.reference(value);
+      const entries = Object.keys(value)
+        .toSorted()
+        .map((key) => `${JSON.stringify(key)}:${this.value(Reflect.get(value, key), path)}`);
+      return `{${entries.join(',')}}`;
+    } finally {
+      path.delete(value);
+    }
+  }
 }

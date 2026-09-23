@@ -29,6 +29,7 @@ import type {
   ConfigurableModuleExtrasTransform,
   ConfigurableModuleHost,
 } from './configurable-module.types';
+import { attachModuleIdentity } from './module-identity';
 import { stableHash } from './stable-hash';
 
 /** The `global:` slot's component groups, lowered to `APP_*` registrations. */
@@ -237,12 +238,15 @@ export function defineModule<
         key,
         providers: [defineProvider(optionsToken, { useValue: rest as Opts })],
       };
-      return applyLazy(
-        transform(applyContributions(definition, rest, key), {
-          ...extrasDefaults,
-          ...rest,
-        }),
-        rest.lazy,
+      return attachModuleIdentity(
+        applyLazy(
+          transform(applyContributions(definition, rest, key), {
+            ...extrasDefaults,
+            ...rest,
+          }),
+          rest.lazy,
+        ),
+        rest,
       );
     },
   });
@@ -257,6 +261,7 @@ export function defineModule<
     ): DynamicModule {
       const bag = options as ConfigurableModuleAsyncOptions<Opts, FactoryMethodKey> &
         Record<string, unknown>;
+      const { key: _explicitKey, ...inputs } = bag;
       const structural: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(bag)) {
         if (!ASYNC_OPTION_KEYS.has(k)) structural[k] = v;
@@ -287,12 +292,15 @@ export function defineModule<
           structural,
         ),
       };
-      return applyLazy(
-        transform(applyContributions(definition, structural, key), {
-          ...extrasDefaults,
-          ...structural,
-        }),
-        structural.lazy,
+      return attachModuleIdentity(
+        applyLazy(
+          transform(applyContributions(definition, structural, key), {
+            ...extrasDefaults,
+            ...structural,
+          }),
+          structural.lazy,
+        ),
+        inputs,
       );
     },
   });

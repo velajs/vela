@@ -79,6 +79,16 @@ Rules:
    `stableHash` of closures (identical source hashes collide).
 3. Always honor the caller's explicit `key` (`defineModule` does).
 
+A repeated `(class, key)` keeps only its first definition. `defineModule`,
+`sideEffectModule` and `defineConfigurableModule` record the inputs each
+definition was built from, and the loader compares a repeat against the first:
+plain values compare structurally, while functions and class instances compare
+by reference, so two closures with the same source are different inputs. A
+repeat built from different inputs is reported through the container's
+diagnostics policy (`'log'` warns, `'throw'` fails bootstrap) instead of
+silently dropping its providers. Identical repeats still deduplicate. The
+reference ids belong to one module loader and are released with it.
+
 An `undefined` or `null` entry in a module's `imports`, `providers`,
 `controllers` or `exports` fails the load with `UndefinedModuleError`, naming
 the list and index (for example `AppModule.imports[2]`). The usual cause is a

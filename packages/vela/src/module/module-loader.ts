@@ -27,6 +27,7 @@ import type { MiddlewareRouteDefinition, NestModule } from './middleware';
 
 import {
   DEFAULT_MODULE_KEY,
+  ModuleIdentityFingerprints,
   assertDefinedEntries,
   isDynamicModule,
   moduleKeyOf,
@@ -98,6 +99,11 @@ export class ModuleLoader {
   // moduleId → controllers it declares; the same Set backs the container's
   // ModuleScope, which pipelines read to apply module-level @Use* components.
   #moduleControllers = new Map<string, Set<Type>>();
+  // Per-load reference ids: identity fingerprints never outlive this loader.
+  #identity = new ModuleIdentityFingerprints();
+  // moduleId → the DynamicModule that first created the instance, compared
+  // against later imports of the same (class, key).
+  #definitionByModuleId = new Map<string, DynamicModule>();
 
   constructor(
     private container: Container,
@@ -200,6 +206,7 @@ export class ModuleLoader {
 
     const moduleId = this.getModuleId(moduleClass, key);
     if (this.isProcessed(moduleClass, key)) {
+      this.reportIdentityCollision(moduleId, moduleClassOrDynamic);
       // Even if already processed, still collect extra controllers from dynamic module
       for (const controller of extraControllers) {
         if (this.registerController(controller, moduleId)) {
@@ -241,6 +248,9 @@ export class ModuleLoader {
     assertDefinedEntries(moduleName, 'controllers', allControllers);
     assertDefinedEntries(moduleName, 'exports', allExports);
 
+    if (isDynamicModule(moduleClassOrDynamic)) {
+      this.#definitionByModuleId.set(moduleId, moduleClassOrDynamic);
+    }
     this.#processingStack.add(moduleId);
 
     try {
@@ -274,6 +284,7 @@ export class ModuleLoader {
         importedModuleIds.add(importedId);
 
         if (entry instanceof ForwardRef && this.#processingStack.has(importedId)) {
+          this.reportIdentityCollision(importedId, importedModule);
           continue;
         }
 
@@ -407,6 +418,22 @@ export class ModuleLoader {
           `token will hit MultipleProvidersFoundError. Use one form consistently.`,
       );
     }
+  }
+
+  /**
+   * A repeated (class, key) is deduplicated to its first definition. That is
+   * only safe when the repeat was built from the same inputs; otherwise its
+   * providers would be dropped without a trace.
+   */
+  private reportIdentityCollision(moduleId: string, repeat: Type | DynamicModule): void {
+    const first = this.#definitionByModuleId.get(moduleId);
+    if (!first || !isDynamicModule(repeat) || !this.#identity.conflicts(first, repeat)) return;
+    reportDiagnostic(
+      this.container.getDiagnostics(),
+      `[vela] ${moduleId} was imported again with different options; the repeated import's ` +
+        `providers were ignored in favor of the first. Give each configuration its own key ` +
+        `(e.g. forRoot({ ..., key: 'secondary' })) or import one shared definition.`,
+    );
   }
 
   /** Registers the provider and returns the token it was registered under. */
