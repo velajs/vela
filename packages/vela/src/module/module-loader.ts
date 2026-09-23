@@ -19,7 +19,7 @@ import {
   APP_MIDDLEWARE,
   APP_PIPE,
 } from '../pipeline/tokens';
-import { getConstructorMetadata, isDecoratedClass } from '../container/decorators';
+import { isDecoratedClass, planConstructor } from '../container/decorators';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import { getOrCreateArray } from '../registry/util';
 import type { ComponentInstance, DynamicModule, ModuleImport } from '../registry/types';
@@ -469,16 +469,15 @@ export class ModuleLoader {
         }
         for (const enhancer of references) {
           if (typeof enhancer !== 'function' || this.isVisible(enhancer, moduleId)) continue;
-          // An undecorated subclass inherits its parent's constructor metadata.
-          // A class with none at all is built with `new`, as before, but once
-          // per scope.
-          const { paramTypes, inject } = getConstructorMetadata(enhancer);
+          // An undecorated subclass inherits its parent's constructor plan. A
+          // class with no constructor metadata at all is built with `new`, as
+          // before, but once per scope.
           this.container.register(
             isDecoratedClass(enhancer)
               ? enhancer
               : defineProvider(
                   enhancer,
-                  paramTypes.length + inject.length
+                  planConstructor(enhancer).length
                     ? { useClass: enhancer }
                     : { useFactory: () => new enhancer() },
                 ),
