@@ -21,6 +21,7 @@ import {
   type DynamicModule,
   type ExecutionContext,
   type MiddlewareConsumer,
+  type ModuleOptions,
   type NestModule,
   type OnApplicationBootstrap,
   type OnModuleDestroy,
@@ -267,6 +268,27 @@ describe('provider literals', () => {
     Module({ providers: [{ provide: COUNT, useExisting: LABEL }] });
     expect(providers).toHaveLength(1);
     expect(optional(true)).toBeTypeOf('function');
+  });
+
+  it('accept Provider[] lists and ModuleOptions objects', async () => {
+    const listed: Provider[] = [Clock, { provide: COUNT, useValue: 3 }];
+    const dynamic: DynamicModule = { module: class ListedModule {}, providers: listed };
+    const options: ModuleOptions = { providers: listed, exports: [COUNT] };
+    const build = (providers: Provider[]) => {
+      @Module({ providers, exports: [COUNT] })
+      class BuiltModule {}
+      return BuiltModule;
+    };
+
+    Module({ providers: dynamic.providers ?? [] });
+    Module(options);
+
+    @Module({ imports: [build(listed)] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    expect(app.get(COUNT)).toBe(3);
+    await app.close();
   });
 
   it('reject a DynamicModule entry that is not a provider, naming the token', async () => {

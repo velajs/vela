@@ -29,6 +29,11 @@ export function Module(
 export function Module<const P extends readonly unknown[] = readonly Provider[]>(
   options?: ModuleDecoratorOptions<P>,
 ): ClassDecorator;
+// A list typed as a whole, such as a `Provider[]` parameter or
+// `dynamic.providers ?? []`, is checked when the module loads.
+export function Module<const P extends readonly Provider[]>(
+  options?: ModuleOptions & { providers?: number extends P['length'] ? P : never },
+): ClassDecorator;
 export function Module(options: ModuleOptions = {}): ClassDecorator {
   return (target) => {
     MetadataRegistry.setModuleOptions(target as unknown as Constructor, {
