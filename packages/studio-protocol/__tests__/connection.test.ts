@@ -1,20 +1,36 @@
 import { describe, expect, it } from 'vitest';
-import { parseStudioConnection, parseTryItRequest, parseTryItResponse } from '../src';
+import {
+  STUDIO_PROTOCOL_VERSION,
+  parseStudioConnection,
+  parseTryItRequest,
+  parseTryItResponse,
+} from '../src';
 
 describe('Studio connection boundary', () => {
+  // Version 3 labels the default provider lifetime 'default' instead of 'singleton'.
+  it('speaks protocol version 3', () => {
+    expect(STUDIO_PROTOCOL_VERSION).toBe(3);
+  });
   it('rejects incompatible or malformed bootstrap values', () => {
     for (const value of [
       null,
       {},
       { protocolVersion: 1 },
-      { protocolVersion: 2, sessionToken: '' },
+      {
+        protocolVersion: 2,
+        routerBasePath: '/studio',
+        adminBasePath: '/custom',
+        apiRequestPath: '/custom/api-request',
+        sessionToken: 'session',
+      },
+      { protocolVersion: STUDIO_PROTOCOL_VERSION, sessionToken: '' },
     ]) {
       expect(() => parseStudioConnection(value)).toThrow();
     }
   });
   it('validates a complete connection', () => {
     const connection = {
-      protocolVersion: 2,
+      protocolVersion: STUDIO_PROTOCOL_VERSION,
       routerBasePath: '/studio',
       adminBasePath: '/custom',
       apiRequestPath: '/custom/api-request',

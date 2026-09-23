@@ -5,7 +5,7 @@ reserved `/_vela/admin` surface, hosts `@AdminRpc` operations, and exposes the t
 port. Subpath exports (`./auth`, `./flags`, `./queue`, `./live`, `./schedule`,
 `./timetravel`, `./logging`) scope the per-feature admin surfaces.
 
-Protocol v2 exposes the usable operation catalog through `studio.capabilities`.
+The protocol exposes the usable operation catalog through `studio.capabilities`.
 Only configured Studio handlers enable their features. Queue depth/DLQ/replay
 remain unavailable until their handlers are implemented. Live and presence
 inspection are enabled by `StudioLiveModule.forRoot({ source })`, where

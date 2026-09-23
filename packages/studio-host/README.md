@@ -20,7 +20,7 @@ The Worker must import `StudioModule.forRoot({ token, rootModule, editable: { op
 for OpenAPI browsing and API execution. Other write categories remain separately controlled
 by the Worker. The host has no `editable` option; read-only sessions bootstrap normally.
 
-The host emits a protocol-v2 `StudioConnection` as `window.__VELA_STUDIO__`. It contains
+The host emits a protocol-v3 `StudioConnection` as `window.__VELA_STUDIO__`. It contains
 the browser session credential, admin mount, UI mount and local API request endpoint.
 Reload Studio after restarting the host. The master token stays in the host process;
 the browser session is required for every proxied admin request and is not persisted.
