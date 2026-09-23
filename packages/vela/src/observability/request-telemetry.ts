@@ -9,7 +9,9 @@ import { extractTraceContext } from './trace-context';
 import { noopScopedTelemetry, safeTelemetry, telemetryHttpMethod } from './telemetry';
 import type { ScopedTelemetry, Telemetry, TelemetryAttributes } from './types';
 
-export const REQUEST_TELEMETRY = new InjectionToken<ScopedTelemetry>('vela.RequestTelemetry');
+export const REQUEST_TELEMETRY = /* @__PURE__ */ new InjectionToken<ScopedTelemetry>(
+  'vela.RequestTelemetry',
+);
 
 /** Outside an active instrumented invocation, return an inert handle. */
 export function telemetryForScope(container: Container): ScopedTelemetry {

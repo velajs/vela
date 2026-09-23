@@ -41,7 +41,9 @@ export class RequestContextKey<Value> {
   readonly contains = (context: RequestContext): boolean => this.#values.has(context);
 }
 
-export const REQUEST_CONTEXT = new InjectionToken<RequestContext>('vela.RequestContext');
+export const REQUEST_CONTEXT = /* @__PURE__ */ new InjectionToken<RequestContext>(
+  'vela.RequestContext',
+);
 
 // An inbound id is caller-controlled and flows into logs and correlation
 // fields, so only a bounded token-safe value is mirrored; anything else is

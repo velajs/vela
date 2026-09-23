@@ -13,7 +13,9 @@ export const INVOCATION_HEADER = 'x-vela-invocation';
  * `app.fetch` short-circuit). {@link InternalDispatcher} resolves it lazily at
  * `run()` time — so it need not exist when the dispatcher is constructed.
  */
-export const INVOCATION_TRANSPORT = new InjectionToken<InvocationTransport>('INVOCATION_TRANSPORT');
+export const INVOCATION_TRANSPORT = /* @__PURE__ */ new InjectionToken<InvocationTransport>(
+  'INVOCATION_TRANSPORT',
+);
 
 /**
  * Optional dedicated HMAC secret for invocation tokens. Falls back to
@@ -21,4 +23,6 @@ export const INVOCATION_TRANSPORT = new InjectionToken<InvocationTransport>('INV
  * `@SignedInvocation`; the `aud` tag keeps the two token families
  * non-interchangeable. Provide it to enforce key separation.
  */
-export const INVOCATION_SIGNING_SECRET = new InjectionToken<string>('INVOCATION_SIGNING_SECRET');
+export const INVOCATION_SIGNING_SECRET = /* @__PURE__ */ new InjectionToken<string>(
+  'INVOCATION_SIGNING_SECRET',
+);

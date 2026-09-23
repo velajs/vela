@@ -7,4 +7,6 @@ import type { DynamicModule } from '../registry/types';
  * Global, so any module can read the whole graph (for example to document it
  * with `createOpenApiDocument`) without importing the root back.
  */
-export const ROOT_MODULE = new InjectionToken<Type | DynamicModule>('vela.RootModule');
+export const ROOT_MODULE = /* @__PURE__ */ new InjectionToken<Type | DynamicModule>(
+  'vela.RootModule',
+);

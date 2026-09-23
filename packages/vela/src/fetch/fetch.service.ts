@@ -22,7 +22,9 @@ import {
   validateTransport,
 } from './fetch.utils';
 
-export const HTTP_MODULE_OPTIONS = new InjectionToken<HttpModuleOptions>('HTTP_MODULE_OPTIONS');
+export const HTTP_MODULE_OPTIONS = /* @__PURE__ */ new InjectionToken<HttpModuleOptions>(
+  'HTTP_MODULE_OPTIONS',
+);
 
 export class HttpRequestException extends Error {
   constructor(

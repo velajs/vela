@@ -18,7 +18,7 @@ import { readEnvString, type VelaEnv } from '../../env';
  * })
  * ```
  */
-export const URL_SIGNING_SECRET = new InjectionToken<string>('URL_SIGNING_SECRET');
+export const URL_SIGNING_SECRET = /* @__PURE__ */ new InjectionToken<string>('URL_SIGNING_SECRET');
 
 /** Key read from `ENV` when no explicit secret / token is available. */
 export const URL_SIGNING_SECRET_ENV_KEY = 'URL_SIGNING_SECRET';

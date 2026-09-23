@@ -6,7 +6,7 @@ export const PROCESSOR_METADATA = 'vela:queue:processor';
 export const PROCESS_METADATA = 'vela:queue:process';
 
 /** The driver in effect for a `QueueModule` instance. */
-export const QUEUE_DRIVER = new InjectionToken<QueueDriver>('vela:queue:driver');
+export const QUEUE_DRIVER = /* @__PURE__ */ new InjectionToken<QueueDriver>('vela:queue:driver');
 
 // Token identity must survive Vite HMR re-evals (a consumer module that was
 // NOT re-evaluated still holds the token minted by the previous generation),

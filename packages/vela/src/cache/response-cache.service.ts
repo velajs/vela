@@ -16,7 +16,7 @@ import {
   validateScope,
 } from './response-cache.validation';
 
-export const RESPONSE_CACHE_OPTIONS = new InjectionToken<ResponseCacheOptions>(
+export const RESPONSE_CACHE_OPTIONS = /* @__PURE__ */ new InjectionToken<ResponseCacheOptions>(
   'RESPONSE_CACHE_OPTIONS',
 );
 

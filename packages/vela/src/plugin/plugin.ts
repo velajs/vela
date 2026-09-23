@@ -49,7 +49,9 @@ export class PluginRegistry {
   }
 }
 
-export const PLUGIN_REGISTRY_TOKEN = new InjectionToken<PluginRegistry>('PLUGIN_REGISTRY');
+export const PLUGIN_REGISTRY_TOKEN = /* @__PURE__ */ new InjectionToken<PluginRegistry>(
+  'PLUGIN_REGISTRY',
+);
 
 @Module({})
 export class PluginRootModule {}

@@ -21,27 +21,29 @@ import type {
  * class AppModule {}
  * ```
  */
-export const APP_GUARD = new InjectionToken<CanActivate>('APP_GUARD');
+export const APP_GUARD = /* @__PURE__ */ new InjectionToken<CanActivate>('APP_GUARD');
 
 /**
  * Register global pipes via module providers.
  */
-export const APP_PIPE = new InjectionToken<PipeTransform>('APP_PIPE');
+export const APP_PIPE = /* @__PURE__ */ new InjectionToken<PipeTransform>('APP_PIPE');
 
 /**
  * Register global interceptors via module providers.
  */
-export const APP_INTERCEPTOR = new InjectionToken<NestInterceptor>('APP_INTERCEPTOR');
+export const APP_INTERCEPTOR = /* @__PURE__ */ new InjectionToken<NestInterceptor>(
+  'APP_INTERCEPTOR',
+);
 
 /**
  * Register global filters via module providers.
  */
-export const APP_FILTER = new InjectionToken<ExceptionFilter>('APP_FILTER');
+export const APP_FILTER = /* @__PURE__ */ new InjectionToken<ExceptionFilter>('APP_FILTER');
 
 /**
  * Register global middleware via module providers.
  */
-export const APP_MIDDLEWARE = new InjectionToken<NestMiddleware>('APP_MIDDLEWARE');
+export const APP_MIDDLEWARE = /* @__PURE__ */ new InjectionToken<NestMiddleware>('APP_MIDDLEWARE');
 
 /**
  * Register the application-wide exception handler via module providers.
@@ -58,11 +60,13 @@ export const APP_MIDDLEWARE = new InjectionToken<NestMiddleware>('APP_MIDDLEWARE
  * class AppModule {}
  * ```
  */
-export const APP_EXCEPTION_HANDLER = new InjectionToken<ExceptionHandler>('APP_EXCEPTION_HANDLER');
+export const APP_EXCEPTION_HANDLER = /* @__PURE__ */ new InjectionToken<ExceptionHandler>(
+  'APP_EXCEPTION_HANDLER',
+);
 
 /**
  * Provide the composed error catalog (`composeCatalogs(CORE_CATALOG, …)`)
  * consulted when rendering wire-bound error bodies. Defaults to the core
  * catalog when unset.
  */
-export const ERROR_CATALOG = new InjectionToken<Catalog<string>>('ERROR_CATALOG');
+export const ERROR_CATALOG = /* @__PURE__ */ new InjectionToken<Catalog<string>>('ERROR_CATALOG');

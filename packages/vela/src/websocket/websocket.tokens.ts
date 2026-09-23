@@ -29,14 +29,18 @@ export type WsParamType = (typeof WsParamType)[keyof typeof WsParamType];
  * `@WebSocketServer()` (constructor injection only — the container has no
  * property-injection pass) or `@Inject(WS_SERVER)`.
  */
-export const WS_SERVER = new InjectionToken<WsServer>('WS_SERVER');
+export const WS_SERVER = /* @__PURE__ */ new InjectionToken<WsServer>('WS_SERVER');
 
 /** The active cross-instance sync driver (`local()` by default). */
-export const WS_SYNC_DRIVER = new InjectionToken<SyncDriver>('WS_SYNC_DRIVER');
+export const WS_SYNC_DRIVER = /* @__PURE__ */ new InjectionToken<SyncDriver>('WS_SYNC_DRIVER');
 
 /** The local room-membership registry a transport reads/writes. */
-export const WS_ROOM_REGISTRY = new InjectionToken<RoomRegistry>('WS_ROOM_REGISTRY');
+export const WS_ROOM_REGISTRY = /* @__PURE__ */ new InjectionToken<RoomRegistry>(
+  'WS_ROOM_REGISTRY',
+);
 
 // forRoot() options carrier — a typed InjectionToken like every other module
 // options token (the raw-string form was the odd one out).
-export const WS_MODULE_OPTIONS = new InjectionToken<WebSocketModuleOptions>('WS_MODULE_OPTIONS');
+export const WS_MODULE_OPTIONS = /* @__PURE__ */ new InjectionToken<WebSocketModuleOptions>(
+  'WS_MODULE_OPTIONS',
+);

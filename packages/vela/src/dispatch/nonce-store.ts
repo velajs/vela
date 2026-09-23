@@ -4,7 +4,7 @@ import { InjectionToken, defineProvider } from '../container/types';
 import type { NonceStore } from './types';
 
 /** Overridable {@link NonceStore} token; defaults to `MemoryNonceStore`. */
-export const NONCE_STORE = new InjectionToken<NonceStore>('NONCE_STORE');
+export const NONCE_STORE = /* @__PURE__ */ new InjectionToken<NonceStore>('NONCE_STORE');
 
 /**
  * Default in-isolate {@link NonceStore}: a `Map<nonce, exp>` with lazy expiry
