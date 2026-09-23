@@ -24,8 +24,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm test
-      - run: pnpm build
       - run: pnpm snapshot:entrypoints
       - run: pnpm exec vela deploy check --config wrangler.jsonc --env staging --entrypoints build/entrypoints.json --json
+      # Vite builds the staging Worker, decorator metadata included, and leaves the
+      # redirect that plain `wrangler deploy` follows; `--config` would bypass it.
+      - run: CLOUDFLARE_ENV=staging pnpm build
       # Wrangler bundling is separate; no actual upload or Cloudflare credentials.
-      - run: pnpm exec wrangler deploy --config wrangler.jsonc --env staging --dry-run
+      - run: pnpm exec wrangler deploy --dry-run

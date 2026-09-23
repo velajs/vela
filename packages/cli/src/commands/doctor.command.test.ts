@@ -39,6 +39,13 @@ async function run(args: string[] = []) {
 }
 
 describe('vela doctor', () => {
+  it('documents inspecting the app from the TypeScript config the CLI loads through Vite', () => {
+    expect(DoctorCommand.usage?.examples).toContainEqual([
+      'Inspect the app',
+      'vela doctor --app --config vela.config.ts --json',
+    ]);
+  });
+
   it('explains config resolution without loading the config', async () => {
     const resolution = {
       path: '/project/vela.config.mjs',

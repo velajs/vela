@@ -44,7 +44,7 @@ export class DoctorCommand extends Command {
       'No files are written, providers are not resolved by the snapshot, and entrypoint metadata is omitted.',
     examples: [
       ['Explain config selection', 'vela doctor --json'],
-      ['Inspect a built app', 'vela doctor --app --config vela.config.mjs --json'],
+      ['Inspect the app', 'vela doctor --app --config vela.config.ts --json'],
     ],
   });
 

@@ -1,8 +1,21 @@
 # Database seeding
 
 Seeders are application providers. Import `SeederModule`, register `@Seeder()`
-classes in their owning feature modules, and supply a Node-side `vela.config.mjs`
-that imports the compiled app. See the [CLI configuration guide](../packages/cli/README.md#configure).
+classes in their owning feature modules, and point `vela.config.ts` at the
+application source. The CLI loads the config and the decorated files it imports
+through Vite, so no build runs first:
+
+```ts
+// vela.config.ts
+import { defineVelaConfig } from '@velajs/cli/config';
+import { VelaFactory } from '@velajs/vela';
+import { AppModule } from './src/app.module.js';
+
+export default defineVelaConfig({ createApp: () => VelaFactory.create(AppModule) });
+```
+
+Without Vite in the project, use a `vela.config.mjs` that imports the compiled
+app instead. See the [CLI configuration guide](../packages/cli/README.md#configure).
 
 ```ts
 import { Inject, Module } from '@velajs/vela';
@@ -34,7 +47,6 @@ Use explicit named database tokens in multi-database applications. The runner
 does not create transactions or promise atomicity across database connections.
 
 ```sh
-pnpm build
 vela db seed --list --json
 vela db seed
 vela db seed --continue-on-error
