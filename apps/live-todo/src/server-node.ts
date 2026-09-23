@@ -5,7 +5,7 @@ import { serve } from '@hono/node-server';
 import { createNodeWebSocket } from '@hono/node-ws';
 import { VelaFactory } from '@velajs/vela';
 import { registerWebSocketGateways } from '@velajs/vela/websocket-node';
-import { makeAppModule } from './app.module.js';
+import { TodoAppModule } from './app.module.js';
 
 const PORT = 8788;
 // `pnpm run bundle:web` writes the page and its client bundle to public/.
@@ -13,7 +13,7 @@ const webDir = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'public
 const indexHtml = readFileSync(join(webDir, 'index.html'), 'utf8');
 const mainJs = readFileSync(join(webDir, 'main.js'), 'utf8');
 
-const app = await VelaFactory.create(makeAppModule());
+const app = await VelaFactory.create(TodoAppModule.forRoot());
 
 const hono = app.getHonoApp();
 hono.get('/', (c) => c.html(indexHtml));

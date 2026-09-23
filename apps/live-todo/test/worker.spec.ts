@@ -35,4 +35,20 @@ describe('live-todo Worker compiled by Oxc under workerd', () => {
       'Write the spec',
     );
   });
+
+  it('admits a same-origin upgrade into the room Durable Object through the demo authenticator', async () => {
+    const origin = 'http://localhost:8789';
+    const ctx = createExecutionContext();
+    const response = await worker.fetch(
+      new Request(`${origin}/rooms/default/ws`, { headers: { origin, upgrade: 'websocket' } }),
+      env,
+      ctx,
+    );
+    // A refusal carries a body, which must be read before the request finishes.
+    if (response.status !== 101) await response.text();
+    await waitOnExecutionContext(ctx);
+    expect(response.status).toBe(101);
+    response.webSocket?.accept();
+    response.webSocket?.close(1000, 'done');
+  });
 });
