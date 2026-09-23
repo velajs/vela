@@ -7,6 +7,7 @@ import {
   InjectionToken,
   MissingInjectionMetadataError,
   Module,
+  ModuleRef,
   Optional,
   VelaFactory,
   defineProvider,
@@ -67,6 +68,17 @@ describe('MissingInjectionMetadataError', () => {
     @Module({ providers: [Dependency, NoMetadata] })
     class AppModule {}
     await expect(VelaFactory.create(AppModule)).rejects.toThrow(MissingInjectionMetadataError);
+  });
+
+  it('plans classes built by ModuleRef.create() the same way', async () => {
+    @Module({ providers: [Dependency] })
+    class AppModule {}
+    const app = await VelaFactory.create(AppModule);
+    const moduleRef = app.get(ModuleRef);
+    await expect(moduleRef.create(NoMetadata)).rejects.toThrow(MissingInjectionMetadataError);
+    const built = await moduleRef.create(Dependency);
+    expect(built).toBeInstanceOf(Dependency);
+    await app.close();
   });
 
   it('counts explicit @Inject indexes into the resolved arity', () => {
