@@ -146,6 +146,39 @@ describe('Test.createTestingModule', () => {
     expect(mailer.send()).toBe('fake-email-sent');
   });
 
+  it('should override a provider with an undecorated fake taking an optional argument', async () => {
+    @Injectable()
+    class RealMailer {
+      send() {
+        return 'real-email-sent';
+      }
+    }
+
+    // A hand-written fake with no decorator: constructed with no arguments.
+    class FakeMailer extends RealMailer {
+      readonly #reply: string;
+      constructor(reply?: string) {
+        super();
+        this.#reply = reply ?? 'fake-email-sent';
+      }
+      override send() {
+        return this.#reply;
+      }
+    }
+
+    @Module({ providers: [RealMailer] })
+    class MailModule {}
+
+    const moduleRef = await Test.createTestingModule({
+      imports: [MailModule],
+    })
+      .overrideProvider(RealMailer)
+      .useClass(FakeMailer)
+      .compile();
+
+    expect(moduleRef.get(RealMailer).send()).toBe('fake-email-sent');
+  });
+
   // ===========================================================================
   // 6. overrideProvider().useFactory()
   // ===========================================================================

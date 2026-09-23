@@ -58,8 +58,8 @@ instance lifetime; an alias does not independently cache a transient target.
 Constructor injection reads the `design:paramtypes` metadata that TypeScript, SWC and Oxc emit
 for a decorated class when `emitDecoratorMetadata` is enabled, plus any `@Inject(token)` and
 `@Optional()` entries. The container plans each class provider's parameters once, when the class
-is registered, and throws `MissingInjectionMetadataError` before anything constructs it when a
-parameter has no usable token:
+is registered. For a class with a class decorator or `@Inject`/`@Optional` entries, it throws
+`MissingInjectionMetadataError` before anything constructs it when a parameter has no usable token:
 
 - the build emitted no paramtype for it (the constructor declares more parameters than the
   metadata and `@Inject` indexes cover), or
@@ -71,10 +71,15 @@ The error names the class and the parameter index. Enable `emitDecoratorMetadata
 `forwardRef` token is accepted as declared and resolved later. A subclass without its own
 constructor inherits its parent's metadata; a subclass that declares a constructor uses its own.
 
-Registering a class that carries no class decorator at all is reported through the container's
-diagnostics policy (`'log'` warns, `'throw'` fails bootstrap, `'silent'` ignores it), as is a module
-export that is neither a local provider nor exported by an imported module. `@Module`, `@Catch`,
-gateway and discoverable class decorators count as decorated.
+A class with no class decorator at all, such as a third-party client or a hand-written test fake,
+never had metadata to emit. Like Nest, the container constructs it with no arguments, so
+`{ provide: EVENTS, useClass: EventEmitter }` keeps working. When such a class declares
+constructor parameters, they stay `undefined`: the container reports it through its diagnostics
+policy (`'log'` warns, `'throw'` fails bootstrap, `'silent'` ignores it) with a message naming the
+missing class decorator. Decorate the class with `@Injectable()`, or provide a class you do not own
+with `useFactory`. Registering an undecorated class directly in `providers` is reported the same
+way, as is a module export that is neither a local provider nor exported by an imported module.
+`@Module`, `@Catch`, gateway and discoverable class decorators count as decorated.
 
 ## Request-scoped providers and the root container
 

@@ -181,6 +181,8 @@ Load a reference when the task needs its depth. **This table is the contract** �
 
 **`X declares N constructor parameters but no design:paramtypes were emitted for parameter #i`** or **`... but parameter #i resolved to Object`** (`MissingInjectionMetadataError`, thrown when `X` is registered) → The build did not emit constructor metadata (`emitDecoratorMetadata` is off, or the bundler ignores it), or the parameter's type was erased — an interface, `import type { Dep }` (TypeScript strips it), or a circular import. Enable `emitDecoratorMetadata` and use a runtime `import { Dep }`, add `@Inject(Token)` to parameter `#i`, or mark it `@Optional()`. Subclasses without their own constructor inherit the parent's metadata.
 
+**`[vela] X declares N constructor parameters but has no class decorator`** → `X` has no `@Injectable()` (or other class decorator), so no metadata exists and it is constructed with `new X()`, leaving its parameters `undefined`. Decorate it with `@Injectable()`, or provide a class you do not own with `useFactory`. Reported through the `diagnostics` policy (`'throw'` fails bootstrap).
+
 **`AppModule.imports[2] is undefined — usually a circular file import`** (`UndefinedModuleError`) → A module list holds `undefined` because two files import each other. Use `imports: [forwardRef(() => OtherModule)]`, or move the class so the cycle disappears.
 
 **`[vela] XModule#key was imported again with different options`** → Two imports share one `(class, key)` but were built from different options (or different closures), so the second one's providers are ignored. Pass a distinct `key` per configuration, or import one shared definition.

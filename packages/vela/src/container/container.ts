@@ -1,7 +1,13 @@
 import { Scope } from '../constants';
 import { reportDiagnostic } from './diagnostics';
 import { disposeInstance, isDisposable } from './disposable';
-import { getScope, isDecoratedClass, isErasedTypeToken, planConstructor } from './decorators';
+import {
+  describeUndecoratedParameters,
+  getScope,
+  isDecoratedClass,
+  isErasedTypeToken,
+  planConstructor,
+} from './decorators';
 import { ModuleRef } from './module-ref';
 import type {
   ConstructorDependency,
@@ -139,8 +145,8 @@ export class Container {
   }
 
   private registerClass<T>(target: Type<T>, moduleId: string): void {
-    const dependencies = planConstructor(target);
-    if (!isDecoratedClass(target)) {
+    const dependencies = this.planClass(target);
+    if (dependencies.length >= target.length && !isDecoratedClass(target)) {
       reportDiagnostic(
         this.#diagnostics,
         `[vela] ${target.name} is not decorated with @Injectable(). Decorate provider ` +
@@ -186,7 +192,7 @@ export class Container {
     }
 
     if (registration.useClass) {
-      registration.dependencies = planConstructor(registration.useClass);
+      registration.dependencies = this.planClass(registration.useClass);
       // A constructed class keeps its declared @Injectable scope unless the
       // provider overrides it; otherwise a REQUEST-scoped implementation would
       // silently become a singleton shared across requests.
@@ -194,6 +200,16 @@ export class Container {
     }
 
     this.writeRegistration(moduleId, token, registration);
+  }
+
+  // An undecorated class constructed without the parameters it declares is a
+  // wiring problem the application may survive (a third-party class taking
+  // optional arguments), so it goes through the diagnostics policy.
+  private planClass(target: Type): ConstructorDependency[] {
+    const dependencies = planConstructor(target);
+    const undecorated = describeUndecoratedParameters(target, dependencies);
+    if (undecorated !== undefined) reportDiagnostic(this.#diagnostics, undecorated);
+    return dependencies;
   }
 
   private writeRegistration(
@@ -1064,7 +1080,7 @@ export class Container {
       useClass: type,
       scope: Scope.TRANSIENT,
       declaringModuleId: requestingModuleId ?? ROOT_MODULE_ID,
-      dependencies: planConstructor(type),
+      dependencies: this.planClass(type),
     };
     return this.runAsyncResolution(() =>
       this.constructAsync(registration, new Set([registration]), this),

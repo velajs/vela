@@ -117,10 +117,15 @@ export function getConstructorMetadata(target: object): ConstructorMetadata {
  * Plan a class provider's constructor parameters once, at registration. The
  * resolved arity is the larger of the emitted paramtypes and the highest
  * `@Inject` index (explicit tokens still work in builds that emit no metadata,
- * such as esbuild), and never less than the constructor's declared `length`, so
- * a missing or erased entry fails here rather than constructing the class with
- * `undefined` injected fields. `@Optional()` gaps resolve to `undefined`;
- * `forwardRef` tokens stay unevaluated until resolution.
+ * such as esbuild). For a class that promises metadata — a class decorator, or
+ * its own or inherited `@Inject`/`@Optional` entries — the arity is never less
+ * than the constructor's declared `length`, so a missing or erased entry fails
+ * here rather than constructing the class with `undefined` injected fields.
+ * An undecorated class (a third-party client, a test fake) never had metadata
+ * to lose: it keeps the metadata-derived arity and is constructed with no
+ * arguments, as in Nest, and the plan is shorter than its `length` (see
+ * {@link describeUndecoratedParameters}). `@Optional()` gaps resolve to
+ * `undefined`; `forwardRef` tokens stay unevaluated until resolution.
  */
 export function planConstructor(target: Type): ConstructorDependency[] {
   const { paramTypes, inject } = getConstructorMetadata(target);
@@ -129,7 +134,8 @@ export function planConstructor(target: Type): ConstructorDependency[] {
     paramTypes.length,
     inject.reduce((max, entry) => Math.max(max, entry.index + 1), 0),
   );
-  const declared = Math.max(arity, target.length);
+  const expectsMetadata = inject.length > 0 || isDecoratedClass(target);
+  const declared = expectsMetadata ? Math.max(arity, target.length) : arity;
 
   return Array.from({ length: declared }, (_unused, index): ConstructorDependency => {
     const entry = entries.get(index);
@@ -151,6 +157,26 @@ export function planConstructor(target: Type): ConstructorDependency[] {
           : 'missing';
     throw new MissingInjectionMetadataError(target.name, index, reason, declared);
   });
+}
+
+/**
+ * The diagnostic for a class whose constructor declares more parameters than
+ * its {@link planConstructor} plan covers, which happens only for a class with
+ * no class decorator; `undefined` when the plan covers every parameter.
+ */
+export function describeUndecoratedParameters(
+  target: Type,
+  dependencies: readonly ConstructorDependency[],
+): string | undefined {
+  if (target.length <= dependencies.length) return undefined;
+  const count = target.length;
+  const parameters = `${count} constructor parameter${count === 1 ? '' : 's'}`;
+  return (
+    `[vela] ${target.name} declares ${parameters} but has no class decorator, so the build ` +
+    `emitted no metadata for ${count === 1 ? 'it' : 'them'} and it is constructed with ` +
+    `\`new ${target.name}()\`. Decorate it with @Injectable() to inject its parameters, or ` +
+    'provide it with useFactory when you do not own the class.'
+  );
 }
 
 /**

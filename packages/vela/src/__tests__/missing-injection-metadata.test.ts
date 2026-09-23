@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   Catch,
@@ -262,5 +263,64 @@ describe('registration diagnostics', () => {
     const silent = await VelaFactory.create(Exporter, { diagnostics: 'silent' });
     await silent.close();
     expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+describe('undecorated classes', () => {
+  // A class the application does not own ships without decorators or emitted
+  // metadata. Like Nest, the container constructs it with no arguments.
+  class SdkClient {
+    readonly endpoint: string;
+    constructor(options?: { endpoint?: string }) {
+      this.endpoint = options?.endpoint ?? 'https://api.invalid';
+    }
+  }
+  const CLIENT = new InjectionToken<SdkClient>('sdk client');
+  const EVENTS = new InjectionToken<EventEmitter>('event emitter');
+
+  it('constructs third-party useClass providers with no arguments', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    @Module({
+      providers: [
+        defineProvider(CLIENT, { useClass: SdkClient }),
+        defineProvider(EVENTS, { useClass: EventEmitter }),
+      ],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    expect(app.get(CLIENT).endpoint).toBe('https://api.invalid');
+    expect(app.get(EVENTS)).toBeInstanceOf(EventEmitter);
+    await app.close();
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('SdkClient declares 1 constructor parameter but has no class'),
+    );
+  });
+
+  it('reports an undecorated class that declares constructor parameters', () => {
+    class Reporter {
+      constructor(readonly dependency?: Dependency) {}
+    }
+    const expected =
+      '[vela] Reporter declares 1 constructor parameter but has no class decorator, so the ' +
+      'build emitted no metadata for it and it is constructed with `new Reporter()`. Decorate ' +
+      'it with @Injectable() to inject its parameters, or provide it with useFactory when you ' +
+      'do not own the class.';
+
+    expect(() => new Container({ diagnostics: 'throw' }).register(Reporter)).toThrow(expected);
+    const REPORTER = new InjectionToken<Reporter>('reporter');
+    expect(() =>
+      new Container({ diagnostics: 'throw' }).register(
+        defineProvider(REPORTER, { useClass: Reporter }),
+      ),
+    ).toThrow(expected);
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const container = new Container();
+    container.register(Dependency);
+    container.register(Reporter);
+    expect(warn).toHaveBeenCalledWith(expected);
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('emitDecoratorMetadata'));
+    expect(container.resolve(Reporter).dependency).toBeUndefined();
   });
 });
