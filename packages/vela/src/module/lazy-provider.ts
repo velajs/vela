@@ -19,7 +19,7 @@ import {
   APP_PIPE,
 } from '../pipeline/tokens';
 import type { ModuleContributions } from './define-module';
-import { attachModuleIdentity } from './module-identity';
+import { attachModuleIdentity } from './module-fingerprints';
 import { stableHash } from './stable-hash';
 
 export type LazyProviderSpec<T, Inject extends readonly Token[]> = {

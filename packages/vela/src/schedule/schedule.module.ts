@@ -1,7 +1,7 @@
 import { Container } from '../container/container';
 import { defineProvider } from '../container/types';
 import { Module } from '../module/decorators';
-import { attachModuleIdentity } from '../module/module-identity';
+import { attachModuleIdentity } from '../module/module-fingerprints';
 import type { DynamicModule } from '../module/types';
 import { ScheduleRegistry } from './schedule.registry';
 import { SCHEDULE_DISPATCH } from './schedule.tokens';

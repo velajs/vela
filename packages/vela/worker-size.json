@@ -27,6 +27,7 @@
     "dist/logging/log-serialization.js",
     "dist/logging/logging.module.js",
     "dist/module/define-module.js",
+    "dist/module/module-fingerprints.js",
     "dist/module/stable-hash.js",
     "dist/observability/",
     "dist/openapi/endpoint-response.js",

@@ -30,11 +30,12 @@ import type { MiddlewareRouteDefinition, NestModule } from './middleware';
 
 import {
   DEFAULT_MODULE_KEY,
-  ModuleIdentityFingerprints,
   assertDefinedEntries,
   isDynamicModule,
   moduleKeyOf,
+  readModuleIdentity,
   unwrapModuleImport,
+  type ModuleIdentityComparer,
 } from './module-identity';
 
 const APP_TOKENS = new Set<Token>([
@@ -106,7 +107,8 @@ export class ModuleLoader {
   // ModuleScope, which pipelines read to apply module-level @Use* components.
   #moduleControllers = new Map<string, Set<Type>>();
   // Per-load reference ids: identity fingerprints never outlive this loader.
-  #identity = new ModuleIdentityFingerprints();
+  // Created by the first recorded identity that needs comparing.
+  #identity?: ModuleIdentityComparer;
   // moduleId → the DynamicModule that first created the instance, compared
   // against later imports of the same (class, key).
   #definitionByModuleId = new Map<string, DynamicModule>();
@@ -520,7 +522,13 @@ export class ModuleLoader {
    */
   private reportIdentityCollision(moduleId: string, repeat: Type | DynamicModule): void {
     const first = this.#definitionByModuleId.get(moduleId);
-    if (!first || !isDynamicModule(repeat) || !this.#identity.conflicts(first, repeat)) return;
+    if (!first || !isDynamicModule(repeat) || first === repeat) return;
+    // Hand-written DynamicModules record no inputs and are never reported.
+    const firstIdentity = readModuleIdentity(first);
+    const repeatIdentity = readModuleIdentity(repeat);
+    if (!firstIdentity || !repeatIdentity) return;
+    this.#identity ??= firstIdentity.createComparer();
+    if (!this.#identity.conflicts(firstIdentity, repeatIdentity)) return;
     reportDiagnostic(
       this.container.getDiagnostics(),
       `[vela] ${moduleId} was imported again with different options; the repeated import's ` +
