@@ -11,14 +11,12 @@ import type {
 
 /**
  * Register global guards via module providers instead of app.useGlobalGuards().
+ * The guard is constructed through DI in the declaring module.
  *
  * @example
  * ```ts
  * @Module({
- *   providers: [
- *     AuthGuard,
- *     { provide: APP_GUARD, useClass: AuthGuard },
- *   ],
+ *   providers: [{ provide: APP_GUARD, useClass: AuthGuard }],
  * })
  * class AppModule {}
  * ```
@@ -54,7 +52,7 @@ export const APP_MIDDLEWARE = new InjectionToken<NestMiddleware>('APP_MIDDLEWARE
  * ```ts
  * @Module({
  *   providers: [
- *     { provide: APP_EXCEPTION_HANDLER, useValue: { report: (e) => sentry.capture(e) } },
+ *     { provide: APP_EXCEPTION_HANDLER, useValue: { report: (error) => tracker.capture(error) } },
  *   ],
  * })
  * class AppModule {}

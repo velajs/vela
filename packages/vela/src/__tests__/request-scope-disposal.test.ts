@@ -1,18 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  VelaFactory,
-  Module,
-  Controller,
-  Get,
-  Injectable,
-  Inject,
-  Scope,
-  MetadataRegistry,
-} from '../index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
+import { describe, it, expect } from 'vitest';
+import { VelaFactory, Module, Controller, Get, Injectable, Inject, Scope } from '../index.js';
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 

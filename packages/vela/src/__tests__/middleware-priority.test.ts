@@ -1,5 +1,5 @@
 import { defineProvider } from '../container/types';
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import type { Context, Next } from 'hono';
 import {
   VelaFactory,
@@ -8,14 +8,9 @@ import {
   Module,
   Injectable,
   APP_MIDDLEWARE,
-  MetadataRegistry,
   Scope,
 } from '../index.js';
 import type { NestMiddleware, NestModule, MiddlewareConsumer } from '../index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 afterEach(() => {
   vi.restoreAllMocks();

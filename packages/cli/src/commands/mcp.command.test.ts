@@ -32,7 +32,7 @@ class UsersController {
 
 @Injectable() class LazyThing {}
 
-@Processor('email') @Injectable()
+@Processor('email')
 class EmailProcessor { @Process('welcome') welcome() {} }
 
 @Module({ lazy: true, providers: [LazyThing] }) class LazyMod {}

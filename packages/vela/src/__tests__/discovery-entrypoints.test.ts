@@ -6,7 +6,6 @@ import {
   Get,
   Injectable,
   InjectionToken,
-  MetadataRegistry,
   Module,
   Scope,
   VelaFactory,
@@ -21,7 +20,6 @@ import type { ContributesEntrypoints, Entrypoint, RuntimeAdapter } from '../inde
 import { Container } from '../internal.js';
 
 beforeEach(() => {
-  MetadataRegistry.clear();
   _resetEntrypointKinds();
 });
 

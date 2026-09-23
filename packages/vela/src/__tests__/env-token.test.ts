@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import * as vela from '../index.js';
 import {
   Controller,
@@ -9,8 +9,8 @@ import {
   InjectEnv,
   InjectionToken,
   InternalDispatcher,
-  MetadataRegistry,
   Module,
+  MultipleProvidersFoundError,
   Optional,
   Post,
   SignedInvocation,
@@ -23,8 +23,6 @@ import {
   type RuntimeAdapter,
   type VelaEnv,
 } from '../index.js';
-
-beforeEach(() => MetadataRegistry.clear());
 
 /** Read one synthetic string binding the way framework readers do. */
 function binding(env: VelaEnv, key: string): string | undefined {
@@ -182,6 +180,73 @@ describe('signing secrets from ENV', () => {
     await expect(
       app.get(UrlGeneratorService).signedUrl('file.download', {}, { expiresIn: 60 }),
     ).rejects.toThrow(/No URL signing secret/);
+    await app.close();
+  });
+
+  it('reads ENV from the one @Global() module that exports it, application-wide', async () => {
+    const moduleEnv = { URL_SIGNING_SECRET: 'module-signing-secret' };
+
+    @Global()
+    @Module({ providers: [defineProvider(ENV, { useValue: moduleEnv })], exports: [ENV] })
+    class EnvModule {}
+
+    @Module({ imports: [EnvModule, signingApp()] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const verifier = await VelaFactory.create(signingApp(), { env: moduleEnv });
+    const signed = await app
+      .get(UrlGeneratorService)
+      .signedUrl('file.download', {}, { expiresIn: 60 });
+
+    expect(app.get(ENV)).toBe(moduleEnv);
+    // The application's UrlGeneratorService signs with the module's ENV.
+    expect((await verifier.getHonoApp().request(signed)).status).toBe(200);
+    await Promise.all([app.close(), verifier.close()]);
+  });
+
+  it('prefers the ENV the application seeds over a @Global() module, application-wide', async () => {
+    const seeded = { URL_SIGNING_SECRET: 'bootstrap-signing-secret', NAME: 'bootstrap' };
+    const { AppModule: FeatureApp, Greeter } = featureApp();
+
+    @Global()
+    @Module({
+      providers: [defineProvider(ENV, { useValue: { NAME: 'module' } })],
+      exports: [ENV],
+    })
+    class EnvModule {}
+
+    @Module({ imports: [EnvModule, FeatureApp, signingApp()] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule, { env: seeded });
+    const verifier = await VelaFactory.create(signingApp(), { env: seeded });
+    const signed = await app
+      .get(UrlGeneratorService)
+      .signedUrl('file.download', {}, { expiresIn: 60 });
+
+    expect(app.get(ENV)).toBe(seeded);
+    // The application's UrlGeneratorService signs with the seeded ENV.
+    expect((await verifier.getHonoApp().request(signed)).status).toBe(200);
+    // A module still reaches the @Global() export before the application's registration.
+    expect(app.get(Greeter).greet()).toBe('hello module');
+    await Promise.all([app.close(), verifier.close()]);
+  });
+
+  it('reports ENV that two @Global() modules export, application-wide too', async () => {
+    @Global()
+    @Module({ providers: [defineProvider(ENV, { useValue: { NAME: 'first' } })], exports: [ENV] })
+    class FirstEnvModule {}
+
+    @Global()
+    @Module({ providers: [defineProvider(ENV, { useValue: { NAME: 'second' } })], exports: [ENV] })
+    class SecondEnvModule {}
+
+    @Module({ imports: [FirstEnvModule, SecondEnvModule] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    expect(() => app.get(ENV)).toThrow(MultipleProvidersFoundError);
     await app.close();
   });
 

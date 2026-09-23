@@ -77,18 +77,19 @@ function parseClaims(value: unknown): MultipartGrantClaims {
   };
 }
 
+// A short secret is server configuration, never a client error: the
+// controller answers a redacted server error instead of naming the setting.
 function secretBytes(secret: string | Uint8Array): Uint8Array<ArrayBuffer> {
   const bytes = typeof secret === 'string' ? encoder.encode(secret) : new Uint8Array(secret);
   if (bytes.byteLength < MIN_SECRET_BYTES) {
-    throw new StorageError(
-      'InvalidRequest',
-      `multipartGrantSecret must contain at least ${MIN_SECRET_BYTES} bytes`,
+    throw new TypeError(
+      `@velajs/storage: multipartGrantSecret must contain at least ${MIN_SECRET_BYTES} bytes`,
     );
   }
   return bytes;
 }
 
-/** Validate grant configuration before a provider-side multipart upload is allocated. */
+/** Validate a configured grant secret where it is configured, before any request uses it. */
 export function validateMultipartGrantSecret(secret: string | Uint8Array): void {
   secretBytes(secret);
 }

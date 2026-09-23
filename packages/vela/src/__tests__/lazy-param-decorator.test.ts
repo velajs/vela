@@ -1,10 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   BadRequestException,
   Controller,
   Get,
   Injectable,
-  MetadataRegistry,
   Module,
   REQUEST_CONTEXT,
   RequestContextKey,
@@ -14,8 +13,6 @@ import {
   createParamDecorator,
 } from '../index.js';
 import type { CanActivate, ExecutionContext, Type } from '../index.js';
-
-beforeEach(() => MetadataRegistry.clear());
 
 async function createApp(controller: Type, providers: Type[] = []) {
   @Module({ controllers: [controller], providers })

@@ -1,5 +1,5 @@
-import { Controller, Get, MetadataRegistry, Module, VelaFactory } from '@velajs/vela';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Controller, Get, Module, VelaFactory } from '@velajs/vela';
+import { describe, expect, it, vi } from 'vitest';
 import {
   BETTER_AUTH_OPTIONS,
   BetterAuthModule,
@@ -18,9 +18,6 @@ function makeMockAuth(session: { user: unknown; session: unknown } | null = null
 }
 
 describe('BetterAuthModule', () => {
-  beforeEach(() => MetadataRegistry.clear());
-  afterEach(() => MetadataRegistry.clear());
-
   it('forRoot exposes BetterAuthService with the provided auth instance', async () => {
     const auth = makeMockAuth();
 
@@ -47,8 +44,8 @@ describe('BetterAuthModule', () => {
 
   it('keys same-source async closures by factory identity', () => {
     const makeFactory = () => () => makeMockAuth();
-    const first = BetterAuthModule.forRootAsync({ inject: [], useFactory: makeFactory() });
-    const second = BetterAuthModule.forRootAsync({ inject: [], useFactory: makeFactory() });
+    const first = BetterAuthModule.forRootAsync({ useFactory: makeFactory() });
+    const second = BetterAuthModule.forRootAsync({ useFactory: makeFactory() });
     expect(first.key).not.toBe(second.key);
   });
 
@@ -62,7 +59,6 @@ describe('BetterAuthModule', () => {
         imports: [
           BetterAuthModule.forRoot({ auth, key: 'rebuilt-auth' }),
           BetterAuthModule.forRootAsync({
-            inject: [],
             useFactory: factory,
             key: 'rebuilt-async-auth',
             basePath: '/internal-auth',
@@ -126,7 +122,6 @@ describe('BetterAuthModule', () => {
     @Module({
       imports: [
         BetterAuthModule.forRootAsync({
-          inject: [],
           useFactory: () => {
             factoryCalls++;
             return auth;
@@ -192,9 +187,7 @@ describe('BetterAuthModule', () => {
     const auth = makeMockAuth();
 
     @Module({
-      imports: [
-        BetterAuthModule.forRootAsync({ inject: [], useFactory: () => auth, basePath: '/auth' }),
-      ],
+      imports: [BetterAuthModule.forRootAsync({ useFactory: () => auth, basePath: '/auth' })],
     })
     class AppModule {}
 

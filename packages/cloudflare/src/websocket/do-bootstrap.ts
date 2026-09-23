@@ -1,5 +1,5 @@
 import { bootstrap, VelaApplication } from '@velajs/vela';
-import type { Type, VelaEnv } from '@velajs/vela';
+import type { DynamicModule, Type, VelaEnv } from '@velajs/vela';
 import {
   local,
   readWsEntrypointMeta,
@@ -35,7 +35,7 @@ export interface DoRuntime {
  * is bound before bootstrap lifecycle so gateway `afterInit`/handlers see it.
  */
 export async function buildDoRuntime(
-  rootModule: Type,
+  rootModule: Type | DynamicModule,
   ctx: DoStateLike,
   options: { env: VelaEnv },
 ): Promise<DoRuntime> {

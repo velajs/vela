@@ -1,8 +1,8 @@
 import {
   Controller,
   Get,
-  MetadataRegistry,
   Module,
+  Reflector,
   UseGuards,
   VelaFactory,
   clearTrustedRequestIdentity,
@@ -14,7 +14,7 @@ import {
   type ExecutionContext,
 } from '@velajs/vela';
 import { AuthzModule, PermissionGuard, RequirePermission } from '@velajs/authz/vela';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   AuthGuard,
   BetterAuthModule,
@@ -27,9 +27,7 @@ import { authenticateRequest, getAuthRequestState } from '../auth-request-state'
 import { validateSessionData } from '../session-data';
 import { sessionFixture } from './fixtures';
 
-beforeEach(() => MetadataRegistry.clear());
 afterEach(() => {
-  MetadataRegistry.clear();
   vi.useRealTimers();
 });
 
@@ -88,6 +86,7 @@ describe('canonical identity lifecycle', () => {
         handler: async () => new Response(),
       })),
       {},
+      new Reflector(),
     );
     const data = validateSessionData(sessionFixture());
     if (!data) throw new Error('Expected valid fixture');

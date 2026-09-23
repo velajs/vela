@@ -2,10 +2,12 @@
 
 This local example mounts the same `item` model and `items` SQL table at
 `/primary/items` and `/analytics/items`. Each D1 binding stores independent rows.
-The environment factory, `{ create: createAppModule }`, receives the native
-environment as `VelaEnv` and creates both typed Drizzle handles; `pnpm types`
-regenerates the D1 binding types in `worker-configuration.d.ts`. The registry preserves
-native queries (`databases.get('primary').handle.query.items`) and adapter row types.
+`AppModule` is declared once. `CrudModule.forRootAsync({ inject: [ENV] })` receives
+each native environment as `VelaEnv` and returns `{ databases }`, a registry with
+both typed Drizzle handles, and each resource selects its database by name
+(`database: 'primary'`). `pnpm types` regenerates the D1 binding types in
+`worker-configuration.d.ts`. The registry preserves native queries
+(`databases.get('primary').handle.query.items`) and adapter row types.
 
 From the workspace root, after `pnpm install --frozen-lockfile`:
 
@@ -19,10 +21,13 @@ pnpm --filter vela-multi-database dev
 
 `dev` runs `vite dev` on port 8792. Vite 8 and `@cloudflare/vite-plugin` run
 `src/worker.ts` in workerd with both local D1 databases; there is no separate
-compile step. `vite.config.ts` asks Oxc for the legacy decorators and
-`design:paramtypes` metadata Vela reads. `build` writes the deployable Worker to
-`dist/`, and `pnpm --filter vela-multi-database run deploy` builds and uploads it
-with Wrangler.
+compile step. `oxc.config.ts` asks Oxc for the legacy decorators and
+`design:paramtypes` metadata Vela reads, for both `vite.config.ts` and
+`vitest.config.ts`. `build` writes the deployable Worker to `dist/`, and
+`pnpm --filter vela-multi-database run deploy` builds and uploads it with
+Wrangler. `pnpm --filter vela-multi-database test` migrates both test databases
+in workerd, writes the same id through each route, and checks that two
+environments build separate database registries from the one `AppModule`.
 
 ```sh
 curl -X POST http://localhost:8792/primary/items -H 'Content-Type: application/json' -d '{"id":"same","title":"Primary"}'

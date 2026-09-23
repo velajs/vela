@@ -8,73 +8,77 @@ import type {
   NestInterceptor,
   PipeTransform,
 } from '@velajs/vela';
-import { defineLabTestingFixture, type LabConfig, LabFailure } from '../src/lab-app.js';
+import {
+  AuthGuard,
+  EnvelopeInterceptor,
+  FakeProbeClient,
+  LAB_CONFIG,
+  LabErrorFilter,
+  LabFailure,
+  LabModule,
+  LIFECYCLE_LOG,
+  NormalizePipe,
+  ProbeClient,
+  ReadingService,
+  type LabConfig,
+} from '../src/lab-app.js';
 
 describe('Lab testing harness consumer project', () => {
   it('compiles a real module and resolves providers with get()', async () => {
-    const fixture = defineLabTestingFixture();
-
     const builder = Test.createTestingModule({
-      imports: [fixture.LabModule],
+      imports: [LabModule],
     });
     expect(builder).toBeInstanceOf(TestingModuleBuilder);
 
     const moduleRef = await builder.compile();
     expect(moduleRef).toBeInstanceOf(TestingModule);
 
-    const readings = moduleRef.get(fixture.ReadingService);
-    expect(readings.list()).toEqual([
-      { id: 'reading-1', source: 'real-probe', mode: 'real' },
-    ]);
-    expect(fixture.lifecycleLog).toEqual(['init']);
+    const readings = moduleRef.get(ReadingService);
+    expect(readings.list()).toEqual([{ id: 'reading-1', source: 'real-probe', mode: 'real' }]);
+    const lifecycleLog = moduleRef.get(LIFECYCLE_LOG);
+    expect(lifecycleLog).toEqual(['init']);
 
     await moduleRef.close('provider-test-complete');
-    expect(fixture.lifecycleLog).toEqual(['init', 'destroy']);
+    expect(lifecycleLog).toEqual(['init', 'destroy']);
   });
 
   it('overrides providers with useValue, useClass, and useFactory', async () => {
-    const fixture = defineLabTestingFixture();
-
     const override = Test.createTestingModule({
-      imports: [fixture.LabModule],
-    }).overrideProvider(fixture.ProbeClient);
+      imports: [LabModule],
+    }).overrideProvider(ProbeClient);
     expect(override).toBeInstanceOf(OverrideBy);
 
     const moduleRef = await override
-      .useClass(fixture.FakeProbeClient)
-      .overrideProvider(fixture.LAB_CONFIG)
+      .useClass(FakeProbeClient)
+      .overrideProvider(LAB_CONFIG)
       .useFactory({
-        inject: [],
-        factory: () => ({ mode: 'factory' } satisfies LabConfig),
+        factory: () => ({ mode: 'factory' }) satisfies LabConfig,
       })
       .compile();
 
-    const readings = moduleRef.get(fixture.ReadingService);
-    expect(readings.list()).toEqual([
-      { id: 'reading-1', source: 'fake-probe', mode: 'factory' },
-    ]);
+    const readings = moduleRef.get(ReadingService);
+    expect(readings.list()).toEqual([{ id: 'reading-1', source: 'fake-probe', mode: 'factory' }]);
 
     await moduleRef.close('provider-overrides-complete');
 
-    const fixtureWithValue = defineLabTestingFixture();
+    // The same module compiles again; the previous override does not carry over.
     const valueModule = await Test.createTestingModule({
-      imports: [fixtureWithValue.LabModule],
+      imports: [LabModule],
     })
-      .overrideProvider(fixtureWithValue.ProbeClient)
+      .overrideProvider(ProbeClient)
       .useValue({ read: () => 'value-probe' })
       .compile();
 
-    expect(
-      valueModule.get(fixtureWithValue.ReadingService).list(),
-    ).toEqual([{ id: 'reading-1', source: 'value-probe', mode: 'real' }]);
+    expect(valueModule.get(ReadingService).list()).toEqual([
+      { id: 'reading-1', source: 'value-probe', mode: 'real' },
+    ]);
 
     await valueModule.close('value-override-complete');
   });
 
   it('creates an HTTP application for controller testing', async () => {
-    const fixture = defineLabTestingFixture();
     const moduleRef = await Test.createTestingModule({
-      imports: [fixture.LabModule],
+      imports: [LabModule],
     }).compile();
     const app = await moduleRef.createApplication();
     const hono = app.getHonoApp();
@@ -98,8 +102,6 @@ describe('Lab testing harness consumer project', () => {
   });
 
   it('overrides guard, pipe, interceptor, and filter components in HTTP tests', async () => {
-    const fixture = defineLabTestingFixture();
-
     class OverridePipe implements PipeTransform {
       transform(value: unknown, _metadata: ArgumentMetadata) {
         return `override:${String(value)}`;
@@ -125,15 +127,15 @@ describe('Lab testing harness consumer project', () => {
     }
 
     const moduleRef = await Test.createTestingModule({
-      imports: [fixture.LabModule],
+      imports: [LabModule],
     })
-      .overrideGuard(fixture.AuthGuard)
+      .overrideGuard(AuthGuard)
       .useValue({ canActivate: () => true })
-      .overridePipe(fixture.NormalizePipe)
+      .overridePipe(NormalizePipe)
       .useClass(OverridePipe)
-      .overrideInterceptor(fixture.EnvelopeInterceptor)
+      .overrideInterceptor(EnvelopeInterceptor)
       .useClass(OverrideInterceptor)
-      .overrideFilter(fixture.LabErrorFilter)
+      .overrideFilter(LabErrorFilter)
       .useClass(OverrideFilter)
       .compile();
 

@@ -1,5 +1,7 @@
 import {
   ForbiddenException,
+  Inject,
+  Injectable,
   Reflector,
   type CanActivate,
   type ExecutionContext,
@@ -9,7 +11,7 @@ import { getContextIdentity } from './context-identity';
 
 /** Role requirements are OR: at least one explicitly granted local role. */
 export class RolesGuard implements CanActivate {
-  private readonly reflector = new Reflector();
+  constructor(private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
     const required = this.reflector.getAllAndOverride(Roles, context);
@@ -21,3 +23,6 @@ export class RolesGuard implements CanActivate {
     return true;
   }
 }
+// This package is authored without decorator syntax.
+Injectable()(RolesGuard);
+Inject(Reflector)(RolesGuard, undefined, 0);

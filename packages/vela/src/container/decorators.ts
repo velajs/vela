@@ -63,8 +63,16 @@ export function isInjectable(target: object): boolean {
   return MetadataRegistry.hasInjectable(target);
 }
 
+/**
+ * The nearest scope declared on the class or a parent class: a subclass that
+ * declares none keeps its parent's lifetime instead of becoming a singleton.
+ */
 export function getScope(target: object): Scope {
-  return MetadataRegistry.getScope(target) ?? Scope.DEFAULT;
+  for (let type: object | null = target; type; type = Object.getPrototypeOf(type)) {
+    const scope = MetadataRegistry.getScope(type);
+    if (scope !== undefined) return scope;
+  }
+  return Scope.DEFAULT;
 }
 
 /**

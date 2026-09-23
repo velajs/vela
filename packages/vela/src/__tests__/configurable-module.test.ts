@@ -1,19 +1,14 @@
 import { defineProvider } from '../container/types';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   VelaFactory,
   Module,
   Injectable,
   Inject,
-  MetadataRegistry,
   ConfigurableModuleBuilder,
   type DynamicModule,
   type ProviderOptions,
 } from '../index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 interface WidgetOptions {
   color: string;
@@ -35,7 +30,7 @@ describe('ConfigurableModuleBuilder', () => {
       expect(typeof dyn.key).toBe('string');
       expect(dyn.global).toBeUndefined();
       expect(dyn.providers).toEqual([
-        defineProvider(MODULE_OPTIONS_TOKEN, {useValue: { color: 'red' }}),
+        defineProvider(MODULE_OPTIONS_TOKEN, { useValue: { color: 'red' } }),
       ]);
     });
 
@@ -109,8 +104,7 @@ describe('ConfigurableModuleBuilder', () => {
       const dyn = WidgetModule.forRootAsync({ useFactory: fn, inject: [], imports: [] });
       expect(dyn.module).toBe(WidgetModule);
       expect(dyn.providers).toEqual([
-        defineProvider(MODULE_OPTIONS_TOKEN, {useFactory: fn,
-inject: []}),
+        defineProvider(MODULE_OPTIONS_TOKEN, { useFactory: fn, inject: [] }),
       ]);
       expect(dyn.imports).toEqual([]);
     });

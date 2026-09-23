@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   VelaFactory,
   Module,
@@ -6,14 +6,9 @@ import {
   Get,
   Injectable,
   Inject,
-  MetadataRegistry,
   getCurrentContainer,
   getCurrentRequestContext,
 } from '../index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 describe('ambient container (opt-in)', () => {
   it('exposes the request container + RequestContext to deep code when enabled', async () => {

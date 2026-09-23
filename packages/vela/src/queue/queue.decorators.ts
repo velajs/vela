@@ -46,8 +46,7 @@ export function InjectQueue(name: string): ParameterDecorator {
  * Marks a provider class as a processor for one queue:
  *
  * ```ts
- * @Processor('email')
- * @Injectable()
+ * @Processor('email') // implies @Injectable()
  * class EmailProcessor {
  *   @Process('welcome')
  *   async sendWelcome(job: QueueJob<{ userId: string }>) { ... }

@@ -56,12 +56,12 @@ const ReservedWsEventMeta =
  * Claims a reserved (`$`-prefixed) envelope event for a framework-module
  * provider (see `ReservedWsEventHandler`). Reserved frames route to the
  * decorated provider across every gateway path — gateways themselves may not
- * subscribe to `$…` events. Stack with `@Injectable()` like `@Processor`.
+ * subscribe to `$…` events. Like any Vela class decorator it implies
+ * `@Injectable()`.
  *
  * @example
  * ```ts
  * @ReservedWsEvent('$live')
- * @Injectable()
  * class LiveEngine implements ReservedWsEventHandler { … }
  * ```
  */

@@ -1,14 +1,6 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import {
-  Injectable,
-  MetadataRegistry,
-  Module,
-  VelaFactory,
-  WebSocketGateway,
-  WebSocketModule,
-  WsDispatcher,
-} from '../index.js';
+import { Module, VelaFactory, WebSocketGateway, WebSocketModule, WsDispatcher } from '../index.js';
 import type { WsClient } from '../index.js';
 import {
   LIVE_PROTOCOL,
@@ -107,14 +99,11 @@ function tenantPartition(_args: unknown, context: LiveQueryContext): string | un
 }
 
 describe('LiveEngine refresh execution coalescing', () => {
-  beforeEach(() => MetadataRegistry.clear());
-
   it('keeps resolver execution per subscription unless coalesceBy opts in', async () => {
     let version = 1;
     let executions = 0;
 
     @LiveResolver()
-    @Injectable()
     class SharedList {
       @LiveQuery('shared.list', versionQuery, { tags: ['rows'] })
       list() {
@@ -156,7 +145,6 @@ describe('LiveEngine refresh execution coalescing', () => {
     let authorizationChecks = 0;
 
     @LiveResolver()
-    @Injectable()
     class SharedList {
       @LiveQuery('shared.list', rowsQuery, {
         tags: ['rows'],
@@ -254,7 +242,6 @@ describe('LiveEngine refresh execution coalescing', () => {
     let executions = 0;
 
     @LiveResolver()
-    @Injectable()
     class SharedList {
       @LiveQuery('shared.list', tenantQuery, { tags: ['rows'], coalesceBy: tenantPartition })
       list(_args: unknown, context: LiveQueryContext) {
@@ -306,7 +293,6 @@ describe('LiveEngine refresh execution coalescing', () => {
     const partitionedClients: string[] = [];
 
     @LiveResolver()
-    @Injectable()
     class SharedList {
       @LiveQuery('shared.list', versionQuery, {
         tags: ['rows'],
@@ -362,7 +348,6 @@ describe('LiveEngine refresh execution coalescing', () => {
     let executions = 0;
 
     @LiveResolver()
-    @Injectable()
     class SharedList {
       @LiveQuery('shared.list', executionsQuery, {
         tags: ['rows'],
@@ -425,7 +410,6 @@ describe('LiveEngine refresh execution coalescing', () => {
     let executions = 0;
 
     @LiveResolver()
-    @Injectable()
     class SharedList {
       @LiveQuery('shared.list', idQuery, {
         tags: ['rows'],

@@ -181,8 +181,6 @@ describe('gateway decorators', () => {
 });
 
 describe('WsDispatcher', () => {
-  beforeEach(() => MetadataRegistry.clear());
-
   it('warns in production when a gateway opts out of Origin isolation', async () => {
     vi.stubEnv('NODE_ENV', 'production');
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -674,8 +672,6 @@ describe('rooms + Server handle', () => {
 });
 
 describe('WsDispatcher — code-review regressions', () => {
-  beforeEach(() => MetadataRegistry.clear());
-
   it('runs APP_GUARD global guards on gateway messages (security)', async () => {
     @Injectable()
     class GlobalDenyGuard implements CanActivate {
@@ -772,7 +768,6 @@ describe('WsDispatcher — exception frames through toErrorBody (Task 9)', () =>
   let errorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    MetadataRegistry.clear();
     errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 

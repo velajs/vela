@@ -1,16 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  Injectable,
-  MetadataRegistry,
-  Module,
-  UnresolvedDependencyError,
-  VelaFactory,
-} from '../index.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Injectable, Module, UnresolvedDependencyError, VelaFactory } from '../index.js';
 import { Container } from '../internal.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -89,8 +79,6 @@ describe('Diagnostics', () => {
     await expect(VelaFactory.create(ModB, { diagnostics: 'silent' })).rejects.toThrow(
       UnresolvedDependencyError,
     );
-
-    MetadataRegistry.clear();
 
     @Module({ providers: [ServiceA] })
     class ModA2 {}

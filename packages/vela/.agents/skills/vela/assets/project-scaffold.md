@@ -133,7 +133,7 @@ import { AppModule } from './app.module.js';
 export default createCloudflareWorker(AppModule, { globalPrefix: '/api' });
 ```
 
-The framework owns the environment token: inject bindings with `@InjectEnv()` typed as `VelaEnv`, or `ENV` in factories: `defineProvider(TOKEN, { inject: [ENV], useFactory: env => ... })`; even a zero-dependency factory supplies `inject: []`.
+The framework owns the environment token: inject bindings with `@InjectEnv()` typed as `VelaEnv`, or `ENV` in factories: `defineProvider(TOKEN, { inject: [ENV], useFactory: env => ... })`; a factory without parameters may omit `inject`.
 
 For a platform-neutral application use `await VelaFactory.create(AppModule)` and export its fetch handler. Node uses `serve({ fetch: app.fetch })` from `@hono/node-server`; keep that runtime-specific server entry separate from the Worker entry.
 

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   Controller,
   createOpenApiDocument,
@@ -8,7 +8,6 @@ import {
   Inject,
   Injectable,
   InjectionToken,
-  MetadataRegistry,
   Module,
   VelaFactory,
   Container,
@@ -18,8 +17,6 @@ import {
   registerEntrypointKind,
   Scope,
 } from '../index';
-
-beforeEach(() => MetadataRegistry.clear());
 
 describe('module registration ownership', () => {
   it('keeps both keyed controller sets in OpenAPI', () => {

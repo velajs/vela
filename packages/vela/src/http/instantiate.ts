@@ -9,17 +9,27 @@ import {
 } from '../container/types';
 
 // Resolve a class/token through the container if registered, otherwise treat
-// the input as a plain instance. Used by RouteManager and HandlerExecutor to
-// materialize middleware, guards, pipes, interceptors, and filters per request.
+// the input as a plain instance. Used by RouteManager, HandlerExecutor and the
+// other dispatchers to materialize middleware, guards, pipes, interceptors,
+// and filters. The module loader registers every guard, pipe, interceptor and
+// filter class a module's classes reference in `@Use*` or parameter
+// decorators, so those resolve through the container from their module, once
+// per scope, like any provider.
 //
-// When the input is a class that is NOT registered in the container, we fall
-// back to `new clazz()` so plain parameterless helper classes (e.g. mixin
-// guards, ad-hoc `@UseGuards(LocalGuard)` references) keep working. That
-// fallback is unsafe for classes whose CONSTRUCTOR EXPECTS DEPENDENCIES,
-// because zero-arg construction would leave every injected slot `undefined`
-// — a silent failure mode that surfaces later as
-// `Cannot read properties of undefined (reading '...')` deep inside the
-// class. For those classes we throw a loud, actionable error instead.
+// A class resolves through the container only where it is registered and
+// visible: from the requesting module, or, for an application-wide lookup
+// (no moduleId), from its first owner that is not a lazy module still pending,
+// so a global component never materializes one another module can serve. Only
+// when every owner is pending does a lazy module that lists the class as a
+// provider serve it, materialized with its group; one that holds only the
+// loader's copy of an enhancer its classes reference never does. Any
+// other class (an `app.useGlobalGuards(Class)` entry no module registers, a
+// guard another module registers, a hand-built container) falls back to
+// `new clazz()` so plain parameterless helper classes keep working. That
+// fallback is unsafe for classes whose CONSTRUCTOR EXPECTS DEPENDENCIES, because zero-arg
+// construction would leave every injected slot `undefined` — a silent failure
+// mode that surfaces later deep inside the class. For those classes we throw
+// a loud, actionable error instead.
 //
 // We treat "expects dependencies" as: the planned constructor has a parameter
 // that is not `@Optional()` (an `@Inject(...)` token or an emitted
@@ -45,16 +55,14 @@ export function instantiate(
 ): unknown {
   if (typeof classOrInstance === 'function') {
     const clazz = classOrInstance as Type;
-    if (container.has(clazz)) {
-      return container.resolve(clazz, moduleId);
-    }
+    const owner = registeredOwner(clazz, container, moduleId);
+    if (owner !== undefined) return container.resolve(clazz, owner);
     const optionalToken = unregisteredOptionalToken(clazz);
     if (optionalToken !== undefined) {
       throw new Error(
-        `Cannot instantiate ${clazz.name} synchronously: its \`@Optional()\` constructor ` +
-          `parameter injects ${describeToken(optionalToken)}, which a bare \`new\` would skip ` +
-          `even when it is registered. Add it to a module's providers (and export it if used ` +
-          `outside its declaring module), or resolve it asynchronously.`,
+        `Cannot instantiate ${clazz.name} synchronously: its @Optional() parameter injects ` +
+          `${describeToken(optionalToken)}, which \`new\` would skip. Add it to a module's ` +
+          'providers, or resolve it asynchronously.',
       );
     }
     return new clazz();
@@ -69,6 +77,19 @@ export function instantiate(
   }
 
   return classOrInstance;
+}
+
+// The module to resolve a registered class from, or undefined to build it as
+// an unregistered class (see instantiate).
+function registeredOwner(clazz: Type, container: Container, moduleId?: string): string | undefined {
+  if (moduleId !== undefined) {
+    return container.getResolvedScope(clazz, moduleId) === undefined ? undefined : moduleId;
+  }
+  const owners = container.getOwnerModuleIds(clazz);
+  return (
+    owners.find((owner) => !container.isLazyPending(clazz, owner)) ??
+    owners.find((owner) => container.getModuleScope(owner)?.localProviders.has(clazz))
+  );
 }
 
 // The fallback plan for a class that is not registered in the container. It
@@ -96,14 +117,9 @@ function unregisteredOptionalToken(clazz: Type<unknown>): Token | undefined {
 
 function missingProviderError(clazz: Type<unknown>): Error {
   return new Error(
-    `Cannot instantiate ${clazz.name}: the class declares constructor ` +
-      `dependencies (\`@Inject(...)\` parameters or typed constructor ` +
-      `parameters), but no matching provider is registered in the ` +
-      `container. Add it to a module's providers (and export it if used ` +
-      `outside its declaring module) instead of relying on the bare ` +
-      `\`new\` fallback, which would construct the class without ` +
-      `honouring its dependency-injection metadata and leave every ` +
-      `injected field \`undefined\`.`,
+    `Cannot instantiate ${clazz.name}: it declares constructor dependencies but is not ` +
+      "registered as a provider, and `new` would leave them undefined. Add it to a module's " +
+      'providers.',
   );
 }
 
@@ -128,7 +144,8 @@ export async function instantiateAsync(
 ): Promise<unknown> {
   if (typeof classOrInstance === 'function') {
     const clazz = classOrInstance as Type;
-    if (container.has(clazz)) return container.resolveAsync(clazz, moduleId);
+    const owner = registeredOwner(clazz, container, moduleId);
+    if (owner !== undefined) return container.resolveAsync(clazz, owner);
     // An optional slot with a token resolves through the container, from the
     // requesting module, so a registered and visible token is never skipped.
     if (unregisteredOptionalToken(clazz) !== undefined) return container.construct(clazz, moduleId);

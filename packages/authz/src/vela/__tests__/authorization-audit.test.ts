@@ -1,11 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   APP_GUARD,
   Controller,
   Get,
   Injectable,
-  MetadataRegistry,
   Module,
+  Reflector,
   Scope,
   UseGuards,
   VelaFactory,
@@ -25,7 +25,6 @@ import {
 } from '../index';
 import { createAuthz } from '../../authz';
 
-beforeEach(() => MetadataRegistry.clear());
 function route(target: new () => object, path: string) {
   Controller(path)(target);
   Get()(target.prototype, 'read', Object.getOwnPropertyDescriptor(target.prototype, 'read')!);
@@ -79,7 +78,7 @@ describe('mounted HTTP authorization audit', () => {
     Module({
       controllers: [Routes],
       providers: [
-        defineProvider(AUTHZ, { scope: Scope.REQUEST, useFactory: factory, inject: [] }),
+        defineProvider(AUTHZ, { scope: Scope.REQUEST, useFactory: factory }),
         ...provideGlobal('guard', PermissionGuard),
       ],
     })(App);
@@ -107,7 +106,7 @@ describe('mounted HTTP authorization audit', () => {
     Module({
       controllers: [Routes],
       providers: [
-        defineProvider(AUTHZ, { scope: Scope.REQUEST, useFactory: factory, inject: [] }),
+        defineProvider(AUTHZ, { scope: Scope.REQUEST, useFactory: factory }),
         defineProvider(APP_GUARD, { scope: Scope.REQUEST, useClass: PermissionGuard }),
         defineProvider(RolesGuard, { scope: Scope.REQUEST, useClass: RolesGuard }),
         defineProvider(AliasGuard, { scope: Scope.REQUEST, useExisting: RolesGuard }),
@@ -171,7 +170,7 @@ describe('mounted HTTP authorization audit', () => {
     class App {}
     Module({
       controllers: [Routes],
-      providers: [defineProvider(APP_GUARD, { useValue: new CustomGuard() })],
+      providers: [defineProvider(APP_GUARD, { useValue: new CustomGuard(new Reflector()) })],
     })(App);
     await expect(VelaFactory.create(App, { adapters: [authorizationAudit()] })).rejects.toThrow(
       'Roles has no verifiable RolesGuard',
@@ -205,7 +204,7 @@ describe('mounted HTTP authorization audit', () => {
     Module({
       imports: [PolicyModule],
       controllers: [Routes],
-      providers: [defineProvider(RolesGuard, { useValue: new CustomGuard() })],
+      providers: [defineProvider(RolesGuard, { useValue: new CustomGuard(new Reflector()) })],
     })(App);
     const app = await VelaFactory.create(App, { adapters: [authorizationAudit()] });
     try {
@@ -265,7 +264,7 @@ describe('mounted HTTP authorization audit', () => {
     }
     route(Routes, '/private');
     Roles(['reader'])(Routes);
-    const factory = vi.fn(() => new RolesGuard());
+    const factory = vi.fn(() => new RolesGuard(new Reflector()));
     class App {}
     Module({
       controllers: [Routes],
@@ -273,7 +272,6 @@ describe('mounted HTTP authorization audit', () => {
         defineProvider(APP_GUARD, {
           scope: Scope.REQUEST,
           useFactory: factory,
-          inject: [],
         }),
       ],
     })(App);

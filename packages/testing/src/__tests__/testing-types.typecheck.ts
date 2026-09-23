@@ -50,6 +50,7 @@ function providerContracts(module: TestingModule): void {
     factory: (prefix, count) => prefix.toUpperCase() + count.toFixed(),
   });
   builder.overrideProvider(LABEL).useFactory({ inject: [], factory: async () => 'async' });
+  builder.overrideProvider(LABEL).useFactory({ factory: () => 'no dependencies' });
   builder.overrideProvider(LABEL).useFactory({
     inject: [forwardRef(() => COUNT)],
     factory: (count) => count.toFixed(),
@@ -72,6 +73,8 @@ function providerContracts(module: TestingModule): void {
   const labelOverride = builder.overrideProvider(LABEL);
   // @ts-expect-error The declared dependency tuple must be supplied at runtime.
   labelOverride.useFactory<readonly [typeof COUNT]>({ factory: (count) => count.toFixed() });
+  // @ts-expect-error A factory with parameters names the tokens that supply them.
+  labelOverride.useFactory({ factory: (count: number) => count.toFixed() });
   builder.overrideProvider(LABEL).useFactory({
     inject: [COUNT],
     // @ts-expect-error Factory dependencies are inferred from their supplied tokens.
@@ -120,9 +123,7 @@ const portBuilder = Test.createTestingModule({
   providers: [defineProvider(DATABASE, { useClass: Database })],
 });
 portBuilder.overrideProvider(DATABASE).useValue(databaseFake);
-portBuilder
-  .overrideProvider(DATABASE)
-  .useFactory({ inject: [], factory: async () => databaseFake });
+portBuilder.overrideProvider(DATABASE).useFactory({ factory: async () => databaseFake });
 // @ts-expect-error A fake must implement the whole injected port.
 portBuilder.overrideProvider(DATABASE).useValue({});
 // @ts-expect-error Return values must honor the port, including asynchronous results.

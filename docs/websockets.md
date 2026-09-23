@@ -40,7 +40,7 @@ import {
   WebSocketGateway, SubscribeMessage, MessageBody, ConnectedSocket, WebSocketServer, WsException,
 } from '@velajs/vela/websocket';
 import type { WsClient, WsServer, OnGatewayConnection, OnGatewayDisconnect } from '@velajs/vela/websocket';
-import { authenticateChatUpgrade } from './auth.js';
+import { ChatUpgradeAuthenticator } from './auth.js';
 
 const chatMessage = z.object({ text: z.string().min(1).max(2000) });
 
@@ -48,7 +48,7 @@ const chatMessage = z.object({ text: z.string().min(1).max(2000) });
   path: '/rooms/:id/ws',
   roomParam: 'id',
   binding: 'CHAT_ROOM',
-  authenticateUpgrade: authenticateChatUpgrade,
+  authenticator: ChatUpgradeAuthenticator,
 })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   // Constructor injection only (the DI container has no property-injection pass).
@@ -73,19 +73,62 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 }
 ```
 
-Install `zod` for the message schema. `authenticateChatUpgrade` is your application's
-session or socket-ticket verifier: it must verify the credential and access to the
-resolved room, then return `{ principal, tenantId, expiresAtMs }` or `false`.
-Its type is `NonNullable<WebSocketGatewayOptions['authenticateUpgrade']>` from
-`@velajs/vela/websocket`. See [connection security](#connection-security) below.
+Install `zod` for the message schema. `ChatUpgradeAuthenticator` is your
+application's session or socket-ticket verifier, a class implementing
+`UpgradeAuthenticator` from `@velajs/vela/websocket`. Its `authenticate` method
+must verify the credential and access to the resolved room, then return
+`{ principal, tenantId, expiresAtMs }` or `false`:
+
+```ts
+// auth.ts
+import { Injectable } from '@velajs/vela';
+import type {
+  UpgradeAuthenticator,
+  WebSocketUpgradeAuthenticationContext,
+  WebSocketUpgradeIdentity,
+} from '@velajs/vela/websocket';
+import { SessionService } from './session.service.js';
+
+@Injectable()
+export class ChatUpgradeAuthenticator implements UpgradeAuthenticator {
+  constructor(private readonly sessions: SessionService) {}
+
+  async authenticate(
+    request: Request,
+    { room }: WebSocketUpgradeAuthenticationContext,
+  ): Promise<WebSocketUpgradeIdentity | false> {
+    const session = await this.sessions.fromCookie(request.headers.get('cookie'));
+    if (!session?.rooms.includes(room)) return false;
+    return {
+      principal: { issuer: 'https://identity.example.com', subject: session.userId, principalType: 'user' },
+      tenantId: session.tenantId,
+      expiresAtMs: session.expiresAtMs,
+    };
+  }
+}
+```
+
+Each application resolves the authenticator once, through dependency injection,
+from the module that declares the gateway: a provider that module can see is
+reused, and any other class, including one another module registers without
+exporting it, is constructed with what that module can inject (here
+`SessionService`, or `ENV` with `@InjectEnv()`). That one instance is built
+once per application and authenticates every upgrade, so it must not be
+request-scoped: an authenticator that declares `Scope.REQUEST`, or injects a
+request-scoped provider such as `REQUEST_CONTEXT`, is a configuration error.
+Read the upgrade request from the `request` argument of `authenticate()`. The
+gateway declaration stays static; there is no closure-based authentication
+option. `BetterAuthUpgradeAuthenticator` (`@velajs/better-auth`) and
+`CloudflareAccessUpgradeAuthenticator` (`@velajs/cloudflare-access/vela`) are
+ready-made authenticators. See [connection security](#connection-security) below.
 
 `@WebSocketGateway(options)`:
 - `path` — the route the upgrade is served on (supports params, e.g. `:id`).
 - `binding` — **Cloudflare only**: the `wrangler.toml` Durable Object binding name that hosts this gateway's sockets. Ignored on node/bun/deno.
 - `roomParam` — the path parameter used as the room id. It is required for every parameterized path; bootstrap rejects missing or non-existent parameter names.
-- `allowedOrigins` — browser Origin allowlist. Omitted means same-origin; clients without an Origin header are allowed. Use `'*'` only as an explicit opt-out.
+- `allowedOrigins` — browser Origin allowlist: an array of origins, or `(env) => origins`, which reads the application's `ENV` once per application (for example `(env) => [env.APP_ORIGIN]`). Omitted means same-origin; clients without an Origin header are allowed. Use `'*'` only as an explicit opt-out.
 - `authorizeUpgrade(request)` — optional lightweight authentication/authorization hook that runs before socket allocation. It must return exactly `true`; errors fail closed.
-- `authenticateUpgrade(request, context)` — required for successful connections. It receives the resolved room and optional short-lived `ticket`, and must return a canonical `{ principal, tenantId, expiresAtMs }` identity. Missing authenticators, invalid results, and errors fail closed.
+- `authenticator` — the `UpgradeAuthenticator` class, required for successful connections. Its `authenticate(request, context)` receives the resolved room and optional short-lived `ticket`, and must return a canonical `{ principal, tenantId, expiresAtMs }` identity. A missing authenticator, `false`, an invalid result or a throwing `authenticate` refuses the upgrade with 403. An authenticator the declaring module cannot construct, or a request-scoped one, is a configuration error and answers 500.
 - `authorizeDelivery(client)` — optional mutable authorization/revocation hook re-run for every server-initiated recipient. App-wide guards are also re-run; denial closes with 1008.
 - `maxFrameBytes` — inbound and outbound frame ceiling, defaulting to 64 KiB. Oversized inbound frames close with code 1009 before JSON decoding; oversized replies, direct sends, and broadcasts close the affected recipient with 1009 without writing the frame.
 
@@ -151,7 +194,7 @@ export class WsAuthGuard implements CanActivate {
 ```
 
 Apply `@UseGuards(WsAuthGuard)` (from `@velajs/vela`) to a gateway or handler.
-The example checks the trusted identity installed by `authenticateUpgrade`;
+The example checks the trusted identity installed by the gateway's authenticator;
 add application-specific permission checks for protected actions. Never treat
 identity fields supplied in a message body as authentication.
 
@@ -162,12 +205,12 @@ identity fields supplied in a message body as authentication.
 
 ### Connection security
 
-Origin, `authorizeUpgrade`, and `authenticateUpgrade` checks run before the runtime upgrades the socket
+Origin, `authorizeUpgrade` and authenticator checks run before the runtime upgrades the socket
 (and, on Cloudflare, before resolving or allocating a Durable Object). Message
 guards still run for every accepted frame. If `handleConnection` throws, the
 transport closes with policy code 1008 and never dispatches queued messages.
 
-`authenticateUpgrade` establishes a canonical principal, tenant, and finite
+The authenticator establishes a canonical principal, tenant, and finite
 epoch-millisecond `expiresAtMs`. The transport stores that identity in
 `client.data` (and the Cloudflare hibernation attachment). The dispatcher checks
 it before every frame and server-initiated delivery, closing invalid or expired
@@ -184,12 +227,23 @@ session token, API key, or other reusable credential in a WebSocket URL. Secure
 same-site cookies plus Origin checks remain preferable when available.
 
 ```ts
-import { MemoryNonceStore } from '@velajs/vela';
 import {
+  Inject,
+  Injectable,
+  InjectEnv,
+  NONCE_STORE,
+  type NonceStore,
+  type VelaEnv,
+} from '@velajs/vela';
+import {
+  WebSocketGateway,
   issueWebSocketTicket,
   verifyAndConsumeWebSocketTicket,
+  type UpgradeAuthenticator,
+  type WebSocketUpgradeAuthenticationContext,
 } from '@velajs/vela/websocket';
 
+// In the authenticated HTTPS handler that hands out the ticket:
 const token = await issueWebSocketTicket({
   secret: env.SOCKET_TICKET_SECRET,
   gatewayPath: '/tenants/:tenantId/rooms/:room/ws',
@@ -203,20 +257,31 @@ const token = await issueWebSocketTicket({
   ttlMs: 30_000,
 });
 
-const nonceStore = new MemoryNonceStore();
+@Injectable()
+class RoomTicketAuthenticator implements UpgradeAuthenticator {
+  constructor(
+    @InjectEnv() private readonly env: VelaEnv,
+    @Inject(NONCE_STORE) private readonly nonces: NonceStore,
+  ) {}
+
+  async authenticate(
+    _request: Request,
+    { ticket, gatewayPath, room }: WebSocketUpgradeAuthenticationContext,
+  ) {
+    if (!ticket) return false;
+    return verifyAndConsumeWebSocketTicket(ticket, {
+      secret: this.env.SOCKET_TICKET_SECRET,
+      gatewayPath,
+      room,
+      nonceStore: this.nonces,
+    });
+  }
+}
 
 @WebSocketGateway({
   path: '/tenants/:tenantId/rooms/:room/ws',
   roomParam: 'room',
-  authenticateUpgrade: async (_request, { ticket, gatewayPath, room }) => {
-    if (!ticket) return false;
-    return verifyAndConsumeWebSocketTicket(ticket, {
-      secret: env.SOCKET_TICKET_SECRET,
-      gatewayPath,
-      room,
-      nonceStore,
-    });
-  },
+  authenticator: RoomTicketAuthenticator,
 })
 class RoomGateway {}
 ```
@@ -228,11 +293,13 @@ Lifetimes cannot exceed 30 seconds. Parsing is size-bounded and rejects unknown
 fields; malformed, tampered, mismatched, future, expired, or replayed tokens
 return `false`.
 
-`MemoryNonceStore` is suitable only for a single process/isolate. Strong
-single-use behavior across Cloudflare isolates requires a structural
-`NonceStore` backed by a Durable Object (or another store whose `claim` operation
-is atomic). The Node and Cloudflare transports persist the returned principal,
-tenant, and `expiresAtMs` in connection state, then continue checking expiry and
+`NONCE_STORE` defaults to the per-isolate `MemoryNonceStore`, which is suitable
+only for a single process/isolate. Strong single-use behavior across Cloudflare
+isolates requires a structural `NonceStore` backed by a Durable Object (or
+another store whose `claim` operation is atomic), such as
+`durableObjectNonceStore()` from `@velajs/cloudflare` provided as `NONCE_STORE`.
+The Node and Cloudflare transports persist the returned principal, tenant, and
+`expiresAtMs` in connection state, then continue checking expiry and
 authorization for frames and server-initiated delivery.
 
 ---

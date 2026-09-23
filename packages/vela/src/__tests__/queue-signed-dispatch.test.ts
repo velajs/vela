@@ -1,5 +1,5 @@
 import { defineProvider } from '../container/types';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   APP_GUARD,
   VelaFactory,
@@ -9,7 +9,6 @@ import {
   Post,
   Inject,
   Injectable,
-  MetadataRegistry,
   SignedInvocation,
   URL_SIGNING_SECRET,
   type CanActivate,
@@ -26,10 +25,6 @@ import {
 import type { QueueClient, QueueDriver, QueueJob } from '../queue/index.js';
 
 const SECRET = 'queue-signed-dispatch-secret';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 describe('QueueModule signed re-entry dispatch (opt-in)', () => {
   it('signed mode re-enters a @SignedInvocation() route instead of the @Processor', async () => {
@@ -55,7 +50,6 @@ describe('QueueModule signed re-entry dispatch (opt-in)', () => {
     }
 
     @Processor('signed-q')
-    @Injectable()
     class SignedProcessor {
       @Process('go')
       go(job: QueueJob): void {
@@ -99,7 +93,6 @@ describe('QueueModule signed re-entry dispatch (opt-in)', () => {
     const driver = inline({ mode: 'manual' });
 
     @Processor('direct-q')
-    @Injectable()
     class DirectProcessor {
       @Process('go')
       go(job: QueueJob): void {
@@ -131,7 +124,6 @@ describe('QueueModule signed re-entry dispatch (opt-in)', () => {
     const driver = inline({ mode: 'manual' });
 
     @Processor('explicit-direct-q')
-    @Injectable()
     class DirectProcessor {
       @Process('go')
       go(job: QueueJob): void {
@@ -194,7 +186,6 @@ describe('QueueModule signed re-entry dispatch (opt-in)', () => {
     }
 
     @Processor('native-q')
-    @Injectable()
     class NativeProcessor {
       @Process('go')
       go(): void {
@@ -253,7 +244,6 @@ describe('QueueModule signed re-entry dispatch (opt-in)', () => {
     }
 
     @Processor('custom-q')
-    @Injectable()
     class CustomProcessor {
       @Process('go')
       go(): void {

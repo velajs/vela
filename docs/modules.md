@@ -42,9 +42,19 @@ export class StorageModule extends ConfigurableModuleClass {}
 ```
 
 Consumers import `StorageModule.forRoot({ name, driver })` into their application
-module. Factories declare `inject`, including `inject: []` for zero dependencies.
-For `forRootAsync`, read resolved options through the `OPTIONS` token: the
-`setup` callback only sees structural options supplied at the call site.
+module. A factory with parameters declares `inject`; a factory without parameters
+may omit it. For `forRootAsync`, read resolved options through the `OPTIONS` token:
+the `setup` callback only sees structural options supplied at the call site.
+
+`setup` may also return Nest provider literals such as
+`{ provide: LABEL, useValue: options.label }`, and so may a hand-written
+`DynamicModule` (`providers` in what `forRoot()` returns) or a `Provider[]` list
+handed to `@Module`. These literals are validated at runtime only: nothing ties
+their value to their token at compile time, so the loader checks each literal's
+shape when the module loads and a value of the wrong type is not caught (see
+[providers](dependency-injection.md#providers)). Use `defineProvider` for any
+provider whose value type matters; it is checked against its token wherever it
+is listed.
 
 - `forRootAsync({ inject, useFactory })` comes free, with typed factory
   params inferred from the `inject` tuple. Structural fields passed alongside
@@ -52,6 +62,18 @@ For `forRootAsync`, read resolved options through the `OPTIONS` token: the
   come from `Partial<Options>`; DI wiring keys are reserved. The factory must
   still return the complete required options. `lazy?: boolean` is accepted
   by both registration methods, alongside the explicit `key`.
+- A module that wraps the generated `forRootAsync` in its own static method
+  types its options as `{ useFactory: (...deps: InferTokens<Inject>) => Result }
+  & FactoryInject<Inject>`, so a factory without parameters may omit `inject`,
+  and forwards the caller's object whole, replacing only what it wraps:
+  `ConfigurableModuleClass.forRootAsync<Inject>({ ...options, useFactory: async
+  (...deps: InferTokens<Inject>) => check(await options.useFactory(...deps)) })`.
+  Destructuring `inject` out of the options separates it from `useFactory`, and
+  the forwarded pair no longer type-checks. The wrapper's rest parameters hide
+  the caller's arity, so call `assertFactoryInject('FeatureModule.forRootAsync',
+  options.useFactory, options.inject)` before wrapping: a caller's factory that
+  declares parameters without `inject` then throws, as the generated
+  `forRootAsync` would.
 - `ConfigurableModuleBuilder` (NestJS parity) is a thin adapter over
   `defineModule` — same engine, either entry.
 - `defineConfigurableModule` remains the low-level engine for
@@ -101,6 +123,26 @@ An `undefined` or `null` entry in a module's `imports`, `providers`,
 the list and index (for example `AppModule.imports[2]`). The usual cause is a
 circular file import; use `forwardRef(() => OtherModule)` for imports.
 
+### Re-exporting modules
+
+`exports: [ImportedModule]` re-exports everything that imported module exports,
+as in Nest. Importers of the re-exporting module see those tokens, and a global
+re-exporting module makes them global. A dynamic module is re-exported by its
+class (`exports: [ConfigModule]`), which covers every imported instance of that
+class. A module whose exports a `forwardRef` import cycle leaves unknown cannot
+be re-exported: the load fails and names both modules, so export the tokens
+directly instead. Exporting a module class that is not imported is reported
+through the container's diagnostics policy, like any unknown export.
+
+### Module classes
+
+The module class itself is constructed through DI and, as in Nest, receives its
+lifecycle hooks (`onModuleInit`, `onApplicationBootstrap`, the shutdown hooks)
+last within its module: after the module's providers, controllers and the
+enhancers registered for it, and before the providers of the modules that
+import it. Its constructor can inject anything the module can see, and
+`configure()` runs on the same instance.
+
 ### Tokens
 
 Mint with `moduleToken<T>('pkg:area:thing')` (an `InjectionToken`) — never
@@ -110,7 +152,8 @@ downstream `@Inject(...)` keeps working.
 ### Companion primitives
 
 - `lazyProvider({ provide, inject, useFactory, memoize? })` — provides a
-  memoized thunk `() => T` whose factory runs on first use. Workers bindings are
+  memoized thunk `() => T` whose factory runs on first use; `inject` may be
+  omitted when the factory takes no parameters. Workers bindings are
   available before provider initialization; lazy construction does not create an I/O context.
 - `provideGlobal(kind, component)` — spread into `providers:` to register an
   app-wide guard/pipe/interceptor/filter/middleware outside `defineModule`.
@@ -124,7 +167,7 @@ downstream `@Inject(...)` keeps working.
 class MessageContributions {}
 export function registerMessages(messages: string[]) {
   return sideEffectModule(MessageContributions, {
-    providers: [defineProvider(MESSAGES, { useValue: messages })],
+    providers: [{ provide: MESSAGES, useValue: messages }],
     exports: [MESSAGES],
   });
 }
@@ -164,6 +207,29 @@ at route build, so give it a `static priority`: without one it sorts at 0, and
 the container's diagnostics policy reports it (`'log'` warns, `'throw'` fails
 bootstrap).
 
+## Static roots: runtime values through DI
+
+An application root is a module class, or a `DynamicModule` such as
+`AppModule.forRoot(...)`, declared once at module scope. `VelaFactory.create`,
+`createOpenApiDocument` and the Cloudflare factories (`createCloudflareWorker`,
+`createCloudflareApp`, `VelaWebSocketDurableObject`) accept either. Declare
+decorated classes at module scope only: a function that declares controllers,
+providers or modules creates new classes on every call, and the isolate-global
+metadata registry keeps every one of them.
+
+Runtime values reach a static graph through dependency injection:
+
+- Bindings, variables and secrets come from `ENV` in `forRootAsync({ inject: [ENV],
+  useFactory })` factories, `useFactory` providers and `@InjectEnv()` constructors.
+- Where a decorator needs runtime behavior, it names an injectable class instead
+  of taking a closure. `@WebSocketGateway({ authenticator })` is an example, and
+  its `allowedOrigins` accepts `(env) => origins`.
+
+Each application runs these factories, so applications built from different
+environments share classes but no instances. Any module can inject the root,
+exactly as it was passed, through the global `ROOT_MODULE` token. Studio uses it
+to document the application, for example, so no module imports the root back.
+
 ## Discovery: finding decorated providers
 
 Never hand-roll a `container.getTokens()` scan. Declare a decorator, then ask
@@ -172,6 +238,7 @@ Never hand-roll a `container.getTokens()` scan. Declare a decorator, then ask
 ```ts
 export const QueueConsumer = createDiscoverableDecorator<{ queue: string }>('pkg:queue:consumer');
 // stackable method decorators: createDiscoverableDecorator(key, { append: true })
+// As a class decorator, @QueueConsumer({ queue }) implies @Injectable().
 
 @Injectable()
 class QueueRegistry implements OnApplicationBootstrap {
@@ -289,6 +356,9 @@ components come from the public
 `resolveScopedComponents(type, class, method, container, moduleId)`: class-level,
 then the owning module's `@Use*` components when the class is one of its
 controllers, then method-level (reverse filters yourself for closest-first).
+Pass the class's declaring `moduleId`: the loader registers the guard, pipe,
+interceptor and filter classes a module's classes reference in that module, so
+they resolve through the container like its providers.
 Module-level entries are read from that application's module graph, never
 copied onto the class, so repeated bootstraps in one isolate do not stack them.
 `getScopedComponents(...)` returns the same declared entries without
@@ -387,9 +457,12 @@ read gateway instances at wiring time).
 ## Checklist
 
 - [ ] Module built on `defineModule` (or plain `@Module` when zero-config).
+- [ ] Classes declared at module scope; runtime values arrive through
+      `forRootAsync({ inject: [ENV] })`, providers or injectable classes.
 - [ ] `key` deterministic; explicit `key` passthrough honored.
 - [ ] Tokens are `InjectionToken`s (`moduleToken`), options token stable.
-- [ ] Global components via the `global:` slot / `provideGlobal` only.
+- [ ] Global components via the `global:` slot, `provideGlobal` or an
+      `{ provide: APP_GUARD, useClass }` provider.
 - [ ] Discovery via `DiscoveryService` / `createDiscoverableDecorator`.
 - [ ] Non-HTTP surface exposed as entrypoints (`registerEntrypointKind` or
       `ContributesEntrypoints`).

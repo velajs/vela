@@ -231,7 +231,9 @@ Pipeline component construction failures are reported before handler exception
 filters render them; filters are resolved only when an error needs handling.
 Controller-scoped and handler-scoped middleware, guards, pipes, interceptors,
 and filters resolve asynchronous providers in their declaring module. Parameter
-pipes use the same owner. Application-wide components retain their global scope. Middleware configured by a
+pipes use the same owner. Guard, pipe, interceptor and filter classes that a
+module's classes reference need no `providers` entry: the module registers them
+and builds each once per scope with its dependencies, as in Nest. Application-wide components retain their global scope. Middleware configured by a
 module resolves in that module, including async providers. Pipes may implement
 `transformAsync`; HTTP prefers it at awaited boundaries and otherwise calls
 `transform`.

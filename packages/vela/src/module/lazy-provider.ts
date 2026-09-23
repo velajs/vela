@@ -1,10 +1,13 @@
 import {
   InjectionToken,
+  assertFactoryInject,
   defineProvider,
+  toProviderDefinition,
   type InferTokens,
   type ProviderDefinition,
   type Token,
   type Type,
+  type FactoryInject,
 } from '../container/types';
 import { Module } from './decorators';
 import type { ComponentType, ComponentTypeMap, DynamicModule } from '../registry/types';
@@ -19,23 +22,19 @@ import type { ModuleContributions } from './define-module';
 import { attachModuleIdentity } from './module-identity';
 import { stableHash } from './stable-hash';
 
-export interface LazyProviderSpec<T, Inject extends readonly Token[]> {
+export type LazyProviderSpec<T, Inject extends readonly Token[]> = {
   /** Token under which the memoized thunk `() => T` is provided. */
   provide: InjectionToken<() => T>;
-  inject: Inject;
   useFactory: (...deps: InferTokens<Inject>) => NoInfer<T>;
   /** Memoize the first call's result (default true). */
   memoize?: boolean;
-}
+} & FactoryInject<Inject>;
 
 /**
  * Provide a zero-arg thunk `() => T` whose factory runs on FIRST CALL, not at
  * provider construction — for values that don't exist yet when the module
- * graph is built (Cloudflare bindings are only live at request time).
- *
- * The shared primitive replacing the hand-rolled
- * `useFactory: (...deps) => () => build(...deps)` closure that auth and
- * storage each copy-pasted.
+ * graph is built, such as a binding read from `ENV` at request time. A factory
+ * without parameters may omit `inject`.
  *
  * ```ts
  * lazyProvider({
@@ -48,21 +47,26 @@ export interface LazyProviderSpec<T, Inject extends readonly Token[]> {
 export function lazyProvider<T, const Inject extends readonly Token[] = readonly Token[]>(
   spec: LazyProviderSpec<T, Inject>,
 ): ProviderDefinition {
-  const memoize = spec.memoize ?? true;
-  return defineProvider<InjectionToken<() => T>, Inject>(spec.provide, {
-    inject: spec.inject,
-    useFactory: (...deps) => {
-      const build = () => spec.useFactory(...deps);
-      if (!memoize) return build;
-      let cached: { value: T } | undefined;
-      return () => (cached ??= { value: build() }).value;
+  const { provide, inject, useFactory, memoize = true } = spec;
+  assertFactoryInject(provide, useFactory, inject);
+  return toProviderDefinition(
+    {
+      provide,
+      inject,
+      useFactory: (...deps: InferTokens<Inject>) => {
+        const build = () => useFactory(...deps);
+        if (!memoize) return build;
+        let cached: { value: T } | undefined;
+        return () => (cached ??= { value: build() }).value;
+      },
     },
-  });
+    'lazyProvider',
+  );
 }
 
 /**
- * The one idiom for registering an app-wide component from a module's
- * providers. Returns registrations to spread:
+ * Register an app-wide component from a module's providers. Returns
+ * registrations to spread:
  *
  * ```ts
  * providers: [MyService, ...provideGlobal('guard', AuthGuard)]
@@ -70,7 +74,9 @@ export function lazyProvider<T, const Inject extends readonly Token[] = readonly
  *
  * Class components are registered as providers and wired via `useExisting`
  * (so DI constructs them with their dependencies); instances via `useValue`.
- * Inside `defineModule`, prefer the equivalent `global:` contribution slot.
+ * The literal `{ provide: APP_GUARD, useClass: AuthGuard }` registers the same
+ * guard without exposing the class as a provider. Inside `defineModule`, prefer
+ * the equivalent `global:` contribution slot.
  */
 function componentProviders<T>(
   token: InjectionToken<T>,
@@ -103,10 +109,11 @@ export function provideGlobal(
 }
 
 /**
- * A first-class side-effect-only module: contributes providers/exports without
- * being a configurable module — the supported form of the "empty marker
- * module" trick (i18n's `registerMessages`). Pass a stable module class to
- * deduplicate identical contributions; a string creates a fresh isolated owner.
+ * A side-effect-only module: contributes providers/exports without being a
+ * configurable module, such as a message catalog registered next to the module
+ * that reads it. Pass a stable module class to deduplicate identical
+ * contributions; a string creates a fresh isolated owner. Provider literals are
+ * checked when the module loads.
  *
  * ```ts
  * export function registerMessages(messages: Messages): DynamicModule {

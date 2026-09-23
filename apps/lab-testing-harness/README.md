@@ -22,3 +22,5 @@ Covered behaviors:
 - Provider overrides with `useValue`, `useClass`, and `useFactory`.
 - Guard, pipe, interceptor, and filter overrides in HTTP controller tests.
 - Lifecycle hooks during compile and close.
+- One module-scope `LabModule` compiled by every test: overrides and the
+  lifecycle log belong to each compiled module, so no registry reset is needed.

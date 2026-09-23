@@ -10,6 +10,7 @@ import {
   VelaFactory,
   defineProvider,
   type ExecutionLifetime,
+  type OnModuleInit,
   type VelaEnv,
 } from '@velajs/vela';
 import {
@@ -73,7 +74,6 @@ function producer() {
 function processors() {
   const seen: string[] = [];
   @Processor('email')
-  @Injectable()
   class Email {
     @Process() handle(job: QueueJob) {
       seen.push(`email:${job.name}:${job.attempt}`);
@@ -81,7 +81,6 @@ function processors() {
     }
   }
   @Processor('sms')
-  @Injectable()
   class Sms {
     @Process() handle(job: QueueJob) {
       seen.push(`sms:${job.name}`);
@@ -411,7 +410,6 @@ describe('cloudflareQueues() native delivery', () => {
       readonly id = crypto.randomUUID();
     }
     @Processor('tasks')
-    @Injectable()
     class Tasks {
       constructor(
         @InjectEnv() private env: { NAME: string },
@@ -428,7 +426,6 @@ describe('cloudflareQueues() native delivery', () => {
     @Module({
       imports: [
         QueueModule.forRootAsync({
-          inject: [],
           useFactory: async () => ({ driver: cloudflareQueues() }),
         }),
         QueueModule.registerQueue({ name: 'tasks' }),
@@ -539,7 +536,6 @@ describe('cloudflareQueues() native delivery', () => {
   it('reports a processor that throws a non-object value once', async () => {
     const reports: unknown[] = [];
     @Processor('email')
-    @Injectable()
     class Email {
       @Process() handle() {
         // A careless processor may throw a value that is not an Error.
@@ -547,7 +543,6 @@ describe('cloudflareQueues() native delivery', () => {
       }
     }
     @Processor('email')
-    @Injectable()
     class Audit {
       @Process() handle() {
         throw 42;
@@ -704,26 +699,27 @@ describe('consumeQueueBatch', () => {
   });
 });
 
-describe('async dynamic Worker roots', () => {
-  it('shares cold factory work, evicts failures, and keeps dynamic providers', async () => {
-    let calls = 0;
+describe('dynamic Worker roots', () => {
+  it('shares cold construction, evicts failures, and keeps dynamic providers', async () => {
+    let attempts = 0;
     const { providers } = processors();
+    @Injectable()
+    class FlakyStartup implements OnModuleInit {
+      async onModuleInit(): Promise<void> {
+        attempts++;
+        await Promise.resolve();
+        if (attempts === 1) throw new Error('retry bootstrap');
+      }
+    }
     @Module({})
     class Root {}
     const worker = createCloudflareWorker({
-      async create() {
-        calls++;
-        await Promise.resolve();
-        if (calls === 1) throw new Error('retry bootstrap');
-        return {
-          module: Root,
-          imports: [
-            QueueModule.forRoot({ driver: cloudflareQueues() }),
-            QueueModule.registerQueue({ name: 'sms' }),
-          ],
-          providers,
-        };
-      },
+      module: Root,
+      imports: [
+        QueueModule.forRoot({ driver: cloudflareQueues() }),
+        QueueModule.registerQueue({ name: 'sms' }),
+      ],
+      providers: [...providers, FlakyStartup],
     });
     const env = { NAME: 'same' };
     const first = () =>
@@ -734,8 +730,8 @@ describe('async dynamic Worker roots', () => {
       );
     const results = await Promise.allSettled([first(), first()]);
     expect(results.every((result) => result.status === 'rejected')).toBe(true);
-    expect(calls).toBe(1);
+    expect(attempts).toBe(1);
     await Promise.all([first(), first()]);
-    expect(calls).toBe(2);
+    expect(attempts).toBe(2);
   });
 });

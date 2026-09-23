@@ -16,7 +16,6 @@ const declarations = new WeakMap<object, LiveQueryMetadata[]>();
  *
  * ```ts
  * @LiveResolver()
- * @Injectable()
  * class TodoLive {
  *   constructor(private readonly todos: TodoService) {}
  *
@@ -29,8 +28,8 @@ const declarations = new WeakMap<object, LiveQueryMetadata[]>();
  *
  * Clients subscribe by query name over the `$live` reserved event; the engine
  * re-runs a handler whenever one of its tags is invalidated and pushes the
- * result (as a keyed delta when possible). Stack with `@Injectable()`, exactly
- * like `@Processor`.
+ * result (as a keyed delta when possible). Like any Vela class decorator it
+ * implies `@Injectable()`; stack `@Injectable({ scope })` only to set a scope.
  */
 export function LiveResolver(): ClassDecorator {
   return LiveResolverMeta({});

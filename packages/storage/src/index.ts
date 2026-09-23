@@ -8,7 +8,11 @@ export type { FileHandle } from './storage.facade';
 
 // --- DI: module / service / tokens / decorator ----------------------------
 export { StorageModule } from './storage.module';
-export type { StorageModuleOptions, StorageModuleAsyncOptions } from './storage.module';
+export type {
+  StorageAsyncResult,
+  StorageModuleOptions,
+  StorageModuleAsyncOptions,
+} from './storage.module';
 export { StorageService, lazyDriver } from './storage.service';
 export type { StorageServiceOptions } from './storage.service';
 export { InjectStorage } from './decorators/inject-storage.decorator';
@@ -16,7 +20,7 @@ export { DEFAULT_STORAGE_NAME, storageDriverBuilder, storageToken } from './stor
 
 // --- HTTP controller (P1) ---
 export { createStorageController } from './storage.controller';
-export type { ResolvedHttpOptions } from './storage.controller';
+export type { ResolvedHttpOptions, StorageControllerOptions } from './storage.controller';
 export type { StorageHttpOptions } from './storage.module';
 export type {
   StorageAction,

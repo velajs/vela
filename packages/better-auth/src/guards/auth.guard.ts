@@ -18,11 +18,10 @@ import { Public } from '../decorators/public.decorator';
 
 @Injectable()
 export class AuthGuard implements CanActivate {
-  private readonly reflector = new Reflector();
-
   constructor(
     @Inject(BetterAuthService) private readonly auth: BetterAuthService,
     @Inject(BETTER_AUTH_OPTIONS) private readonly opts: BetterAuthRuntimeOptions,
+    @Inject(Reflector) private readonly reflector: Reflector,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {

@@ -1,13 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import {
-  Injectable,
-  MetadataRegistry,
-  Module,
-  VelaFactory,
-  WebSocketGateway,
-  WebSocketModule,
-  WsDispatcher,
-} from '@velajs/vela';
+import { describe, expect, it } from 'vitest';
+import { Module, VelaFactory, WebSocketGateway, WebSocketModule, WsDispatcher } from '@velajs/vela';
 import type { WsClient } from '@velajs/vela';
 import {
   COMMIT_CURSOR_HEADER,
@@ -66,8 +58,6 @@ class ServerSocket implements WsClient {
 }
 
 describe('client ↔ vela live e2e (in-memory transport)', () => {
-  beforeEach(() => MetadataRegistry.clear());
-
   async function makeStack() {
     const todos: Array<{ id: string; text: string }> = [{ id: 't1', text: 'first' }];
 
@@ -93,7 +83,6 @@ describe('client ↔ vela live e2e (in-memory transport)', () => {
     });
 
     @LiveResolver()
-    @Injectable()
     class TodoLive {
       @LiveQuery('todos.list', todoList, { tags: ['crud:todos'] })
       list() {

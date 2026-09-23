@@ -1,9 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { VelaFactory, Module, Controller, Get, Inject, MetadataRegistry } from '../index.js';
+import { VelaFactory, Module, Controller, Get, Inject } from '../index.js';
 import { I18nModule, I18nService, MessageRegistry } from '../i18n/index.js';
 
 beforeEach(() => {
-  MetadataRegistry.clear();
   MessageRegistry.reset();
 });
 

@@ -1,19 +1,7 @@
 import { defineProvider } from '../container/types';
-import { beforeEach, describe, expect, it } from 'vitest';
-import {
-  APP_GUARD,
-  Controller,
-  Get,
-  Injectable,
-  MetadataRegistry,
-  Module,
-  VelaFactory,
-} from '../index.js';
+import { describe, expect, it } from 'vitest';
+import { APP_GUARD, Controller, Get, Injectable, Module, VelaFactory } from '../index.js';
 import type { CanActivate } from '../index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 describe('APP_* providers across multiple modules', () => {
   it('two modules each declaring APP_GUARD: both guards execute on every request', async () => {
@@ -36,12 +24,12 @@ describe('APP_* providers across multiple modules', () => {
     }
 
     @Module({
-      providers: [GuardA, defineProvider(APP_GUARD, {useExisting: GuardA})],
+      providers: [GuardA, defineProvider(APP_GUARD, { useExisting: GuardA })],
     })
     class FeatureA {}
 
     @Module({
-      providers: [GuardB, defineProvider(APP_GUARD, {useExisting: GuardB})],
+      providers: [GuardB, defineProvider(APP_GUARD, { useExisting: GuardB })],
     })
     class FeatureB {}
 

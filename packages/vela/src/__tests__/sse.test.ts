@@ -1,9 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { VelaFactory, Controller, Sse, Get, Module, MetadataRegistry } from '../index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
+import { describe, it, expect } from 'vitest';
+import { VelaFactory, Controller, Sse, Get, Module } from '../index.js';
 
 describe('SSE/Streaming', () => {
   it('should register @Sse() as a GET route returning streaming response', async () => {

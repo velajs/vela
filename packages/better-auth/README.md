@@ -74,7 +74,7 @@ imports: [
 
 ### Pattern B — DI'd plugin construction
 
-`forRootAsync` requires an explicit `inject` tuple (use `inject: []` when there are no dependencies), so factory parameter types always have matching runtime tokens. It lets Vela services participate in your Better Auth configuration. On Workers, inject the framework `ENV` from `@velajs/vela`: `createCloudflareWorker(AppModule)` seeds the native event environment before DI factories run, and `wrangler types` types its bindings.
+`forRootAsync` types the factory's parameters from its `inject` tuple, so they always have matching runtime tokens; a factory without parameters may omit `inject`. It lets Vela services participate in your Better Auth configuration. On Workers, inject the framework `ENV` from `@velajs/vela`: `createCloudflareWorker(AppModule)` seeds the native event environment before DI factories run, and `wrangler types` types its bindings.
 
 ```ts
 imports: [
@@ -191,6 +191,41 @@ falls back to a platform-attested client address.
 
 `BETTER_AUTH_OPTIONS` contains runtime configuration; read the auth instance from `BetterAuthService`. Use `createBetterAuthCatchallController()` for a manually mounted catch-all.
 
+## WebSocket upgrades
+
+`BetterAuthUpgradeAuthenticator` authenticates a WebSocket upgrade from the Better Auth session cookie. The application resolves it from the module that declares the gateway, so that module must see `BetterAuthModule`'s exports:
+
+```ts
+import { defineProvider, Module } from '@velajs/vela';
+import { WebSocketGateway } from '@velajs/vela/websocket';
+import {
+  BETTER_AUTH_UPGRADE_TENANT,
+  BetterAuthModule,
+  BetterAuthUpgradeAuthenticator,
+} from '@velajs/better-auth';
+
+@WebSocketGateway({
+  path: '/boards/:board/ws',
+  roomParam: 'board',
+  authenticator: BetterAuthUpgradeAuthenticator,
+})
+class BoardGateway {}
+
+@Module({
+  imports: [BetterAuthModule.forRoot({ auth, issuer: 'boards' })],
+  providers: [
+    BoardGateway,
+    // Optional: choose the tenant per connection. Returning undefined refuses it.
+    defineProvider(BETTER_AUTH_UPGRADE_TENANT, {
+      useValue: (_session, context) => (context.room === 'lobby' ? 'public' : undefined),
+    }),
+  ],
+})
+class BoardsModule {}
+```
+
+The principal carries the module's `issuer`, as `AuthGuard` does for HTTP, and the identity expires with the session. Every WebSocket identity needs a tenant: by default it is the session's active organization, and a session without one is refused unless a `BETTER_AUTH_UPGRADE_TENANT` resolver supplies a tenant.
+
 ## Trusted identity and typing
 
 `@CurrentUser()` and `@CurrentSession()` expose only validated Better Auth data tied to the exact current trusted identity. Public routes, missing/rejected sessions, logout, expiry, and another provider replacing the identity invalidate those values. Hono user variables cannot grant roles or permissions.
@@ -221,12 +256,11 @@ If you deploy to Cloudflare Workers, smoke-test your bundle for `node:` imports.
 Set `mountHandler: false` and mount the catch-all yourself if you need a base path other than `/api/auth`:
 
 ```ts
-import { Controller, All, Req, Inject, Injectable } from '@velajs/vela';
+import { Controller, All, Req, Inject } from '@velajs/vela';
 import { BetterAuthService, Public } from '@velajs/better-auth';
 
 @Public(true)
 @Controller('/auth')
-@Injectable()
 class CustomCatchallController {
   constructor(@Inject(BetterAuthService) private auth: BetterAuthService) {}
   @All('/*') handle(@Req() c: Context) { return this.auth.handler(c.req.raw); }

@@ -1,10 +1,9 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   VelaFactory,
   Controller,
   Get,
   Module,
-  MetadataRegistry,
   ErrorsModule,
   Injectable,
   Scope,
@@ -12,10 +11,6 @@ import {
   resolveErrorReporter,
 } from '../index.js';
 import type { ExceptionHandler } from '../index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 const appCatalog = defineErrorCatalog({
   order_expired: { status: 410, title: 'Order Expired', hint: 'Start a fresh order.' },
@@ -122,6 +117,40 @@ describe('app.useGlobalExceptionHandler', () => {
     const body = (await res.json()) as { error: { code: string; hint?: string } };
     expect(body.error.hint).toBe('Start a fresh order.');
     expect(report).toHaveBeenCalledTimes(1);
+
+    await app.dispose();
+  });
+
+  it('overrides the handler a @Global() ErrorsModule exports', async () => {
+    const fromModule = vi.fn();
+    const fromApplication = vi.fn();
+
+    @Controller('/orders')
+    class OrdersController {
+      @Get('/checkout')
+      checkout() {
+        throw appCatalog.error('order_expired');
+      }
+    }
+
+    @Module({
+      imports: [
+        ErrorsModule.forRoot({
+          catalogs: [appCatalog],
+          handler: { report: fromModule },
+          isGlobal: true,
+        }),
+      ],
+      controllers: [OrdersController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    app.useGlobalExceptionHandler({ report: fromApplication });
+
+    expect((await app.getHonoApp().request('/orders/checkout')).status).toBe(410);
+    expect(fromApplication).toHaveBeenCalledTimes(1);
+    expect(fromModule).not.toHaveBeenCalled();
 
     await app.dispose();
   });

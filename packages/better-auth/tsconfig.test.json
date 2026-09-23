@@ -1,0 +1,11 @@
+{
+  // Typecheck the suites that dogfood the published signatures, in addition to
+  // the library source.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "files": ["src/__tests__/upgrade-authenticator.test.ts"],
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "src/__tests__"]
+}

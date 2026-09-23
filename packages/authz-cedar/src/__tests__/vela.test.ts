@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   Controller,
   Get,
   Module,
+  Reflector,
   VelaFactory,
   setTrustedRequestIdentity,
   clearTrustedRequestIdentity,
@@ -10,6 +11,29 @@ import {
 import { auditCedarRoutes, CedarModule, CedarPublic, RequireResource } from '../vela/index';
 const principal = { issuer: 'test', subject: 'alice', principalType: 'user' } as const;
 describe('resource authorization declarations', () => {
+  it('reads declarations through the application Reflector', async () => {
+    class Routes {
+      read() {
+        return { public: true };
+      }
+    }
+    Controller('/open')(Routes);
+    Get()(Routes.prototype, 'read', Object.getOwnPropertyDescriptor(Routes.prototype, 'read')!);
+    CedarPublic()(Routes);
+    class App {}
+    Module({
+      controllers: [Routes],
+      imports: [CedarModule.forRoot({ authorize: async () => false })],
+    })(App);
+    const app = await VelaFactory.create(App);
+    try {
+      const reads = vi.spyOn(app.get(Reflector), 'getAllAndOverride');
+      expect((await app.getHonoApp().request('/open')).status).toBe(200);
+      expect(reads).toHaveBeenCalledOnce();
+    } finally {
+      await app.close();
+    }
+  });
   it('audits handlers and permits explicit public/class declarations', () => {
     class Routes {
       read() {

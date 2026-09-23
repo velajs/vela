@@ -6,7 +6,7 @@
 
 Construct a Better Auth instance and pass it to `BetterAuthModule.forRoot({ auth, issuer, basePath?, isGlobal?, mountHandler? })`. The default `/api/auth/*` catch-all is explicitly public and the authentication guard is global by default. Keep the Better Auth and Vela base paths aligned. Custom paths must be canonical absolute paths without wildcards, trailing slashes, or dot segments.
 
-For Workers, use `forRootAsync({ inject: [ENV], useFactory: env => betterAuth(...) })`; the factory returns the auth instance directly. The explicit dependency tuple is required, even when empty. Native environment bindings are available before factories run and auth instances are isolated per environment.
+For Workers, use `forRootAsync({ inject: [ENV], issuer, useFactory: env => betterAuth(...) })` in a module declared once at module scope; the factory returns the auth instance directly, and structural options (`issuer`, `basePath`, `isGlobal`, `mountHandler`) sit next to it. A factory without parameters may omit `inject`. Native environment bindings are available before factories run; each application builds its own auth instance on first use, so instances are isolated per environment.
 
 ```ts
 import { Controller, Get, Module } from '@velajs/vela';
@@ -31,6 +31,10 @@ class AppModule {}
 ```
 
 `@CurrentUser()` / `@CurrentSession()` return validated data only while it is bound to the current trusted identity. Expiry, logout, public routes, rejected sessions, or identity replacement clear that access. Authentication is deny-by-default; there is no permissive `defaultPolicy` mode. Disable global authentication only when installing an equivalent guard.
+
+## WebSocket upgrades
+
+Gateways authenticate upgrades with a DI-resolved class, never a closure: `@WebSocketGateway({ authenticator: BetterAuthUpgradeAuthenticator })`. It verifies the same Better Auth session cookie before any socket or Durable Object is allocated, uses the module `issuer` for the principal, and expires with the session. Every WebSocket identity carries a tenant: by default the session's active organization, and a session without one is refused. To choose the tenant, or refuse a room, provide `BETTER_AUTH_UPGRADE_TENANT` (`(session, { room, gatewayPath }, request) => tenantId | undefined`) in the module that declares the gateway, where the authenticator resolves. `CloudflareAccessUpgradeAuthenticator` from `@velajs/cloudflare-access/vela` does the same for the Access token and its signed tenant claim. See `websocket.md` for writing your own `UpgradeAuthenticator`.
 
 ## One authorization layer
 

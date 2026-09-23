@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   VelaFactory,
   Controller,
@@ -6,15 +6,10 @@ import {
   Post,
   Module,
   Injectable,
-  MetadataRegistry,
   Cookie,
   Cookies,
   RawBody,
 } from '../index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 // =============================================================================
 // @Cookie() / @Cookies()

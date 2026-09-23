@@ -3,7 +3,6 @@ import { Container } from '../container/container.js';
 import { Inject, Injectable } from '../container/decorators.js';
 import { instantiate } from '../http/instantiate.js';
 import { Reflector } from '../pipeline/reflector.js';
-import { MetadataRegistry } from '../registry/metadata.registry.js';
 
 // Direct unit tests for the http/instantiate helper, which materializes
 // guards/pipes/interceptors/filters/middleware per request. Regression target:
@@ -17,7 +16,6 @@ describe('instantiate()', () => {
   let container: Container;
 
   beforeEach(() => {
-    MetadataRegistry.clear();
     container = new Container();
   });
 

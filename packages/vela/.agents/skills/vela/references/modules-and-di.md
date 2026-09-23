@@ -5,12 +5,12 @@ Vela's DI is NestJS-compatible: decorator metadata drives constructor injection,
 ## Modules
 
 ```ts
-import { Module, defineProvider } from '@velajs/vela';
+import { Module } from '@velajs/vela';
 
 @Module({
   imports: [OtherModule],       // modules whose exports you need
   controllers: [UserController],
-  providers: [UserService, defineProvider(TOKEN, { useValue: cfg })],
+  providers: [UserService, { provide: TOKEN, useValue: cfg }],
   exports: [UserService],       // what importers of THIS module can resolve
 })
 class UserModule {}
@@ -19,6 +19,8 @@ class UserModule {}
 `ModuleOptions`: `imports`, `controllers`, `providers`, `exports`, `isGlobal?`, `lazy?`. `@Global()` sets `isGlobal` (only **exported** tokens become app-wide). `lazy: true` defers the whole module to first use — see `lazy-and-lifecycle.md`.
 
 > Field-name gotcha: it is `isGlobal` on `@Module`/`ModuleOptions`, but `global` on a `DynamicModule` object.
+
+Modules are static. Declare every module, controller and provider class once at module scope, and never decorate a class inside a function: each call would declare new classes, and the isolate-global metadata registry keeps them all. The application root is a module class or a `DynamicModule` (`AppModule.forRoot(...)`) declared the same way, and any module can inject it as the global `ROOT_MODULE`. Runtime values (bindings, secrets, per-environment clients) enter through DI: `forRootAsync({ inject: [ENV], useFactory })`, `useFactory` providers, `@InjectEnv()`, or an injectable class a decorator names (such as a gateway's `authenticator`). Those run per application, so several applications, including one per Workers environment, share the classes but no instances.
 
 ## Providers & injection
 
@@ -35,17 +37,24 @@ class ProductService {
 }
 ```
 
-Provider kinds:
+Provider kinds, as Nest literals in `@Module({ providers })` or through `defineProvider`:
 
 ```ts
-defineProvider(TOKEN, { useValue: instance })
-defineProvider(TOKEN, { useClass: Impl })
+{ provide: TOKEN, useValue: instance }
+{ provide: TOKEN, useClass: Impl }
+{ provide: ALIAS, useExisting: TOKEN }          // same instance under a second token
+{ provide: TOKEN, useFactory: () => build() }   // a literal factory takes no parameters
 defineProvider(TOKEN, { useFactory: (dep) => build(dep), inject: [DEP_TOKEN] })
-defineProvider(ALIAS, { useExisting: TOKEN })   // same instance under a second token
 ProductService // class-provider shorthand
 ```
 
-Import `defineProvider` from `@velajs/vela`. Descriptors are checked before entering heterogeneous module arrays; do not replace them with raw objects or spread them to modify their registration. Factory `inject` is mandatory, including `[]` for zero dependencies.
+`@Module` checks each literal against its token: `{ provide: COUNT, useValue: 'one' }` does not compile for an `InjectionToken<number>`. A factory with dependencies uses `defineProvider` (import it from `@velajs/vela`), which infers its parameters from `inject`; do not spread a definition to modify its registration. `inject` may be omitted only when the factory takes no parameters (`defineProvider`, `lazyProvider`, literals, `forRootAsync`); a factory with parameters and no `inject` throws, naming the token. `DynamicModule.providers` and `defineModule` `setup` contributions accept loosely typed literals that the loader checks when the module loads (an entry that is not a provider fails, naming the entry and its token).
+
+Every application provides `Reflector` globally: inject it (`constructor(private readonly reflector: Reflector) {}`) instead of `new Reflector()`.
+
+Any Vela class decorator implies `@Injectable()` (`@Controller`, `@Catch`, `@WebSocketGateway`, `@Seeder`, `@Processor`, `@LiveResolver` and other discoverable decorators); stack `@Injectable({ scope })` only to set a scope. A class with no class decorator has no constructor metadata and is reported through `diagnostics` when registered.
+
+Module classes are providers of their own module: constructed through DI after its providers, they receive the same lifecycle hooks after them, and `configure()` runs on that instance.
 
 Tokens: mint with `new InjectionToken<T>('NAME')` (optionally `{ factory: () => default }` to self-provide when unregistered).
 
@@ -105,7 +114,7 @@ Each module gets its own `ModuleRef`: a singleton's is owned by the root, a requ
 
 ## Visibility & exports
 
-A provider is private to its declaring module unless listed in that module's `exports`. Importers then resolve it. Re-export works transitively (import a module and list its token in your own `exports`). A constructor argument without a visible provider throws `UnresolvedDependencyError` naming the class, module, argument and fix (`Cannot resolve UsersController(?, AuditService) in UsersModule. Argument #0 UsersService is declared in DataModule but not exported (add it to DataModule.exports)`), with the `ModuleVisibilityError` as `cause`; direct `resolve()` calls and factory `inject` lists throw `ModuleVisibilityError` itself. Importing two instances that export the same token throws `MultipleProvidersFoundError` (see `SKILL.md` Troubleshooting).
+A provider is private to its declaring module unless listed in that module's `exports`. Importers then resolve it. Re-export works transitively: import a module and list its token, or the module itself (`exports: [DatabaseModule]`, which re-exports everything that module exports; a dynamic module is named by its class), in your own `exports`. Re-exporting a module whose exports a `forwardRef` cycle leaves unknown throws; export its tokens directly. A constructor argument without a visible provider throws `UnresolvedDependencyError` naming the class, module, argument and fix (`Cannot resolve UsersController(?, AuditService) in UsersModule. Argument #0 UsersService is declared in DataModule but not exported (add it to DataModule.exports)`), with the `ModuleVisibilityError` as `cause`; direct `resolve()` calls and factory `inject` lists throw `ModuleVisibilityError` itself. Importing two instances that export the same token throws `MultipleProvidersFoundError` (see `SKILL.md` Troubleshooting), also when one of them is a `@Global()` module imported explicitly. A module resolves a token from its own providers first, then its imports' exports, then the one `@Global()` module that exports it, then the application's registration (`Reflector`, `ENV`, `NONCE_STORE`, ...) or an `InjectionToken` default factory, which applies only when no module registers the token (a registration the module cannot see throws `ModuleVisibilityError`); `resolveAll(token, moduleId)` returns the providers of that same step. Application-wide lookups (`app.get`, `ModuleRef.get(token, { strict: false })`, dependencies of framework services such as `SignedInvocationGuard`) take what the application configures itself first (the `env` option, an adapter's `configureContainer`, `app.useGlobalExceptionHandler()`, testing overrides), then the one `@Global()` exporter, then the framework default (`MemoryNonceStore`, `Reflector`, ...), so a `@Global()` module exporting `NONCE_STORE` overrides the framework default everywhere. A `NONCE_STORE` or `ENV` the application configures itself still wins application-wide, while modules keep resolving the `@Global()` export.
 
 ## Dynamic modules — `forRoot` / `forRootAsync`
 
@@ -119,6 +128,7 @@ Configurable modules expose `forRoot(options)` (sync) and `forRootAsync({ useFac
       inject: [SecretLoader],
       useFactory: async (loader: SecretLoader) => ({ config: await loader.load() }),
     }),
+    RegionModule.forRootAsync({ useFactory: () => ({ region: 'eu' }) }), // no parameters: no inject
   ],
 })
 class AppModule {}

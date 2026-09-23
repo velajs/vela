@@ -1,10 +1,8 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { Injectable, MetadataRegistry, Module, Scope, VelaFactory } from '@velajs/vela';
+import { describe, expect, it } from 'vitest';
+import { Injectable, Module, Scope, VelaFactory } from '@velajs/vela';
 import { WebSocketGateway } from '@velajs/vela/websocket';
 import { CloudflareApplication } from '../cloudflare-application';
 import { CloudflareWebSocketModule } from '../websocket/cloudflare-websocket.module';
-
-afterEach(() => MetadataRegistry.clear());
 
 describe('gateway entrypoint routes', () => {
   it('discovers request-scoped gateway routes without constructing the gateway', async () => {

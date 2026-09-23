@@ -14,14 +14,14 @@ import {
 
 const SECRET = 'test-signing-secret';
 
-// Declared once at module scope (no MetadataRegistry.clear() here): decorator
-// metadata is stable across the cases below, and each test builds its own app
+// Declared once at module scope: decorator metadata is stable across the
+// cases below, and each test builds its own app
 // from the same module tree. Vitest isolates test files, so this does not leak
 // into the other suites.
 
 @Global()
 @Module({
-  providers: [defineProvider(URL_SIGNING_SECRET, {useValue: SECRET})],
+  providers: [defineProvider(URL_SIGNING_SECRET, { useValue: SECRET })],
   exports: [URL_SIGNING_SECRET],
 })
 class SecretModule {}

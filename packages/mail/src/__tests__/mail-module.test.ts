@@ -132,11 +132,9 @@ describe('MailModule + MailService', () => {
       const makeFactory = (transport: MailTransport) => () => ({ from: FROM, transport });
       const firstTransport = spyTransport();
       const first = MailModule.forRootAsync({
-        inject: [],
         useFactory: makeFactory(firstTransport),
       });
       const second = MailModule.forRootAsync({
-        inject: [],
         useFactory: makeFactory(spyTransport()),
       });
       expect(second.key).not.toBe(first.key);
@@ -148,6 +146,13 @@ describe('MailModule + MailService', () => {
       disposers.push(() => app.dispose());
       await app.get(MailService).send(validMessage());
       expect(firstTransport.calls).toHaveLength(1);
+    });
+
+    it('rejects an async factory that declares parameters but no inject', () => {
+      expect(() =>
+        // @ts-expect-error A factory with parameters names the tokens that supply them.
+        MailModule.forRootAsync({ useFactory: (from: string) => ({ from }) }),
+      ).toThrow(/MailModule\.forRootAsync: useFactory declares parameters but no inject tokens/);
     });
 
     it('separates one async factory wired to distinct equal-named configuration tokens', () => {

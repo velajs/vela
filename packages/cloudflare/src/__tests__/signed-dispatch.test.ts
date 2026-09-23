@@ -1,11 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   APP_GUARD,
   Controller,
   Cron,
   Global,
   Injectable,
-  MetadataRegistry,
   Module,
   Post,
   ScheduleModule,
@@ -28,10 +27,6 @@ import { cloudflareQueues } from '../queues';
 const env = { NAME: 'signed' };
 const context = { waitUntil() {} };
 const signed = { kind: 'signed', target: () => ({ route: 'jobs.run' }) } as const;
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 function signingSecret() {
   @Global()
@@ -65,7 +60,6 @@ describe('signed queue dispatch on Cloudflare', () => {
     }
 
     @Processor('tasks')
-    @Injectable()
     class Tasks {
       @Process('run')
       run(): void {
@@ -121,7 +115,6 @@ describe('signed queue dispatch on Cloudflare', () => {
       }
     }
     @Processor('tasks')
-    @Injectable()
     class Tasks {
       @Process('run')
       run(): void {

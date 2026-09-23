@@ -15,8 +15,8 @@ Types come from Wrangler. Run `wrangler types --include-runtime=false` (runtime
 types stay with `@cloudflare/workers-types`) and include the generated
 `worker-configuration.d.ts` in your tsconfig. It declares `Cloudflare.Env` from
 the bindings and variables in your Wrangler file and the secret names in
-`.dev.vars`; this package extends `VelaEnv` with it, so `ENV`, `{ create(env) }`
-roots and `registerAs` factories are typed without a hand-written interface.
+`.dev.vars`; this package extends `VelaEnv` with it, so `ENV`, `forRootAsync`
+factories and `registerAs` factories are typed without a hand-written interface.
 Regenerate it whenever the Wrangler file changes.
 
 ```ts
@@ -46,26 +46,36 @@ environment object share construction. Different environment objects receive
 separate applications, including separate providers, lifecycle state, and live
 drivers. A failed construction is evicted and the next event retries.
 
-When module configuration itself needs bindings, pass `{ create: (env) => AppModule }`
-instead of a static class. Dynamic module roots and asynchronous factories are also
-supported. The callback receives the native environment as `VelaEnv` and runs
-once per environment object in an isolate. The same form
-works with `VelaWebSocketDurableObject` for authenticated live gateways. The Worker
-and every Durable Object instance built from the same environment share the
-resulting module graph, including every value created inside `create(env)`:
-`useValue` providers, module option objects and anything they reference are the
-same objects in all of those applications. Only class and factory providers and
-lifecycle state are built per application. A rejected factory or failed bootstrap
-is evicted, so the next event runs the factory again. Build per-application state
-in factories: `useFactory` providers, `forRootAsync`, or queue driver factories
-such as `cloudflareQueues()` and `() => inline()`. See the
+The root is static: a module class, or a `DynamicModule` such as
+`AppModule.forRoot(...)`, declared once at module scope. `createCloudflareWorker`,
+`createCloudflareApp` and `VelaWebSocketDurableObject` all take the same root.
+When module configuration needs bindings, read them where each application is
+built, from its own `ENV`:
+
+```ts
+import { ENV, Module } from '@velajs/vela';
+
+@Module({
+  imports: [
+    DatabaseModule.forRootAsync({
+      inject: [ENV],
+      useFactory: (env) => ({ database: env.DB }),
+    }),
+  ],
+})
+class AppModule {}
+```
+
+`forRootAsync` factories, `useFactory` providers, `@InjectEnv()` constructors and
+queue driver factories such as `cloudflareQueues()` run for each application, so
+nothing built from one environment is shared with another. Because the root never
+changes, building another application or Durable Object instance declares no new
+classes in the isolate. See the
 [complete API starter](../../apps/api-starter/README.md) for D1, Better Auth, CRUD,
 the generated Hono client, live updates, and Studio inspection in one application.
 
 The application cache uses weak object keys, so the cache itself does not keep a
-replaced environment alive. Module metadata does: classes declared while a root
-resolves stay registered for the life of the isolate, together with the values
-their module options capture. Build secret-bearing values in `forRootAsync`
+replaced environment alive. Build secret-bearing values in `forRootAsync`
 factories that inject `ENV` rather than capturing them in module options.
 Providers with request scope still rebuild per HTTP request or queue/cron dispatch.
 Do not retain request objects or authentication state in singleton providers.
@@ -137,7 +147,6 @@ class Signup {
 }
 
 @Processor('email')
-@Injectable()
 class EmailProcessor {
   @Process(welcome)
   send(job: QueueJob<{ userId: string }>) {}
@@ -233,9 +242,9 @@ const TASK_QUEUE = new InjectionToken<Queue<{ taskId: string }>>('task queue');
 class JobsModule {}
 ```
 
-Every `useFactory` strategy declares its dependencies with `inject`, including
-`inject: []` for factories without dependencies. This also applies to
-`lazyProvider` and `forRootAsync` factory options.
+A `useFactory` strategy declares its dependencies with `inject`; a factory
+without parameters may omit it. This also applies to `lazyProvider` and
+`forRootAsync` factory options.
 
 Use native `env.DB`, `env.CACHE`, `env.FILES`, `env.JOBS`, `env.AI`,
 `env.VECTORIZE`, or `env.HYPERDRIVE` directly. Inject `ENV` in constructors
@@ -319,7 +328,14 @@ export default createCloudflareWorker(RoomModule);
 ```
 
 Declare gateways with `@WebSocketGateway({ path, roomParam, binding, ... })` and
-configure origins and upgrade authentication for your application. Upgrade
+configure origins and upgrade authentication for your application.
+`authenticator` names an `UpgradeAuthenticator` class that the Worker resolves
+once per application from the module declaring the gateway, and
+`allowedOrigins` may read the environment: `(env) => [env.APP_ORIGIN]`.
+`BetterAuthUpgradeAuthenticator` (`@velajs/better-auth`) and
+`CloudflareAccessUpgradeAuthenticator` (`@velajs/cloudflare-access/vela`) are
+ready-made authenticators. A gateway without an authenticator refuses every
+upgrade. Authentication finishes before the Durable Object id is derived. Upgrade
 routing consumes the core trusted request identity, checks conflicts with the
 upgrade credential, and forwards issuer, subject, tenant, and expiry to the DO.
 Client-supplied internal identity headers are stripped before authorization.

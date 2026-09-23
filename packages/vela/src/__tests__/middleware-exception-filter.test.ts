@@ -1,5 +1,5 @@
 import { defineProvider } from '../container/types';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import type { Context, Next } from 'hono';
 import {
   VelaFactory,
@@ -15,7 +15,6 @@ import {
   ForbiddenException,
   NotFoundException,
   APP_FILTER,
-  MetadataRegistry,
 } from '../index.js';
 import type {
   ExceptionFilter,
@@ -24,10 +23,6 @@ import type {
   NestModule,
   MiddlewareConsumer,
 } from '../index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 // =============================================================================
 // Item 1.6.0/A — exception-filter chain catches errors from middlewares

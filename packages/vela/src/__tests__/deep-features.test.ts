@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   VelaFactory,
   Controller,
@@ -9,15 +9,10 @@ import {
   Query,
   Injectable,
   Module,
-  MetadataRegistry,
   createParamDecorator,
   ParseIntPipe,
 } from '../index.js';
 import type { ExecutionContext } from '../index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 // =============================================================================
 // Versioned routes

@@ -1,11 +1,10 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 import {
   Controller,
   Get,
   Post,
   Module,
-  MetadataRegistry,
   defineDto,
   createOpenApiDocument,
   ApiResponse,
@@ -13,10 +12,6 @@ import {
   VelaFactory,
 } from '../index.js';
 import type { Type } from '../index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 describe('@ApiResponse', () => {
   it('registers a response with description and a Zod DTO schema (via $ref)', () => {

@@ -13,8 +13,8 @@ import {
   type DynamicModule,
   type Entrypoint,
   type ModuleImport,
+  type Provider,
   type Token,
-  type ProviderDefinition,
 } from '@velajs/vela';
 import { createRpcClient, type RpcClient, type RpcClientOptions } from './client';
 import { RpcRegistry, type RpcAdapterOptions } from './dispatcher';
@@ -104,18 +104,17 @@ export interface RpcClientModuleOptions extends RpcClientOptions {
   binding?: string;
   imports?: ModuleImport[];
 }
-export interface RpcClientAsyncOptions<
-  Inject extends readonly Token[] = readonly Token[],
-> extends AsyncModuleOptions<RpcClientOptions, Inject> {
-  name: string;
-  binding?: string;
-}
+export type RpcClientAsyncOptions<Inject extends readonly Token[] = readonly Token[]> =
+  AsyncModuleOptions<RpcClientOptions, Inject> & {
+    name: string;
+    binding?: string;
+  };
 
 function clientModule(
   name: string,
   binding: string | undefined,
   imports: ModuleImport[] | undefined,
-  provider: ProviderDefinition<RpcClientOptions>,
+  provider: Provider,
   options: InjectionToken<RpcClientOptions>,
 ): DynamicModule {
   const token = rpcClientToken(name);
@@ -180,7 +179,11 @@ export class RpcClientModule {
       config.name,
       config.binding,
       config.imports,
-      defineProvider(options, { inject: config.inject, useFactory: config.useFactory }),
+      {
+        provide: options,
+        useFactory: config.useFactory,
+        ...(config.inject && { inject: config.inject }),
+      },
       options,
     );
   }

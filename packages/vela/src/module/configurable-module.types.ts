@@ -1,4 +1,4 @@
-import type { InferTokens, InjectionToken, Token, Type } from '../container/types';
+import type { InferTokens, InjectionToken, Token, Type, FactoryInject } from '../container/types';
 import type { DynamicModule, ModuleImport } from '../registry/types';
 
 /**
@@ -63,12 +63,11 @@ export type ConfigurableModuleAsyncFactory<
   MethodName extends string,
   Inject extends readonly Token[] = readonly Token[],
 > =
-  | {
-      inject: Inject;
+  | ({
       useFactory: (...args: InferTokens<Inject>) => Opts | Promise<Opts>;
       useClass?: never;
       useExisting?: never;
-    }
+    } & FactoryInject<Inject>)
   | {
       useClass: Type<ConfigurableModuleOptionsFactory<Opts, MethodName>>;
       useFactory?: never;

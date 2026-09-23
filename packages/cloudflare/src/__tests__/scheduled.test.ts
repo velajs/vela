@@ -1,11 +1,10 @@
-import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
+import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import {
   APP_EXCEPTION_HANDLER,
   Cron,
   Inject,
   Injectable,
   Interval,
-  MetadataRegistry,
   Module,
   SCHEDULE_INVOCATION_SEED,
   Scope,
@@ -30,9 +29,6 @@ import {
 const env = {};
 const context = { waitUntil() {} };
 
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 afterEach(() => {
   vi.restoreAllMocks();
 });

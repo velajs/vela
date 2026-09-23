@@ -1,11 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { Controller, Sse, Module, MetadataRegistry } from '@velajs/vela';
+import { describe, it, expect } from 'vitest';
+import { Controller, Sse, Module } from '@velajs/vela';
 import { Test } from '../test.js';
 import type { TestingModule } from '../testing-module.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 function eventStream(events: string[]): Response {
   const encoder = new TextEncoder();

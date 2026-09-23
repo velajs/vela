@@ -58,11 +58,10 @@ export class StudioAppOps {
   }
 
   /**
-   * The OpenAPI document for the configured root module. `app.openapi` is only
-   * meaningful when the operator hands Studio the app's root module (Studio is
-   * mounted as an imported module and cannot discover it otherwise), so an
-   * absent `rootModule` is a configuration gap, reported as `FEATURE_UNCONFIGURED`
-   * — the same code `studio.capabilities` uses to keep the `openapi` feature dark.
+   * The OpenAPI document for the configured `rootModule`, or else the
+   * application's own root (`ROOT_MODULE`). Without either (a container built
+   * outside `bootstrap`), the op reports `FEATURE_UNCONFIGURED`, the same code
+   * `studio.capabilities` uses to keep the `openapi` feature dark.
    */
   @AdminRpc({ op: 'app.openapi' })
   openapi(_ctx: AdminOpContext): unknown {

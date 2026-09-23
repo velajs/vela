@@ -1,11 +1,10 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   Container,
   Controller,
   Inject,
   Injectable,
   InjectionToken,
-  MetadataRegistry,
   Module,
   ModuleRef,
   ModuleVisibilityError,
@@ -15,10 +14,6 @@ import {
   forwardRef,
 } from '../index';
 import type { ModuleScope } from '../internal';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
   try {
@@ -218,7 +213,6 @@ describe('UnresolvedDependencyError', () => {
     const error = unresolved(await rejectionOf(VelaFactory.create(InboxModule)));
     expect(error.message).toMatch(/^Cannot resolve Inbox\(AuditService, \?\) in InboxModule\./);
 
-    MetadataRegistry.clear();
     @Module({
       providers: [
         defineProvider(REPORT, {

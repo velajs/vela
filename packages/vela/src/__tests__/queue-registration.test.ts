@@ -11,6 +11,7 @@ import {
   defineProvider,
 } from '../index';
 import type { StandardSchemaV1, VelaEnv } from '../index';
+import { countRegisteredClasses } from '../internal';
 import {
   InjectQueue,
   QueueBatchError,
@@ -79,7 +80,6 @@ describe('QueueModule.registerQueue', () => {
     const driver = inline({ mode: 'manual' });
 
     @Processor('email')
-    @Injectable()
     class EmailProcessor {
       @Process('welcome')
       welcome(job: QueueJob<{ user: string }>) {
@@ -178,6 +178,27 @@ describe('QueueModule.registerQueue', () => {
     await expect(VelaFactory.create(App)).rejects.toThrow(
       /Queue 'email' is registered with conflicting bindings 'EMAIL_QUEUE' and 'OTHER_QUEUE'/,
     );
+  });
+
+  it('declares no class per registration, however many queues or calls', async () => {
+    const before = countRegisteredClasses();
+    const registrations = [0, 1, 2].map((index) =>
+      QueueModule.registerQueue({ name: `bulk-${index}` }, { name: 'shared' }),
+    );
+    registrations.push(QueueModule.registerQueue({ name: 'bulk-0', consumer: 'bulk-worker' }));
+    expect(countRegisteredClasses()).toBe(before);
+
+    @Module({ imports: [QueueModule.forRoot({ driver: recordingDriver() }), ...registrations] })
+    class App {}
+
+    const app = await VelaFactory.create(App);
+    expect(app.get(QueueRegistry).all()).toEqual([
+      { name: 'bulk-0', binding: undefined, consumers: ['bulk-worker'] },
+      { name: 'bulk-1', binding: undefined, consumers: [] },
+      { name: 'bulk-2', binding: undefined, consumers: [] },
+      { name: 'shared', binding: undefined, consumers: [] },
+    ]);
+    await app.close();
   });
 
   it('validates registrations when they are declared', () => {
@@ -379,7 +400,6 @@ describe('module dispatch', () => {
 
   it('dispatchQueueJob rejects a misspelled or removed job unless the caller ignores it', async () => {
     @Processor('known')
-    @Injectable()
     class Known {
       @Process('welcome')
       welcome() {}
@@ -517,7 +537,6 @@ describe('QueueClient.addBulk', () => {
   it('delivers bulk jobs to processors through the inline driver', async () => {
     const seen: number[] = [];
     @Processor('jobs')
-    @Injectable()
     class Consumer {
       @Process(tally) handle(job: QueueJob<QueueJobOutput<typeof tally>>) {
         seen.push(job.data.count);

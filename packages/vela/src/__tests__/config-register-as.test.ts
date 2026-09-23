@@ -1,4 +1,4 @@
-import { describe, it, expect, expectTypeOf, beforeEach } from 'vitest';
+import { describe, it, expect, expectTypeOf } from 'vitest';
 import {
   Container,
   defineProvider,
@@ -7,7 +7,6 @@ import {
   Injectable,
   Inject,
   InjectionToken,
-  MetadataRegistry,
   ConfigModule,
   ConfigService,
   ConfigStore,
@@ -40,10 +39,6 @@ function poolOf(config: Record<string, unknown>): unknown {
     ? Reflect.get(database, 'pool')
     : undefined;
 }
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 describe('registerAs config namespaces', () => {
   describe('registerAs()', () => {

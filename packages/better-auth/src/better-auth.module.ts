@@ -1,8 +1,10 @@
 import {
   defineProvider,
+  lazyProvider,
   provideGlobal,
   stableHash,
   type DynamicModule,
+  type FactoryInject,
   type InferTokens,
   type Token,
   type Type,
@@ -92,9 +94,10 @@ function commonContributions(n: NormalizedOptions): {
  *     betterAuth({ database: drizzleAdapter(drizzle(env.DB), ...) }),
  * });
  * ```
+ *
+ * A factory without parameters may omit `inject`.
  */
-interface ForRootAsyncOptions<Inject extends readonly Token[] = readonly Token[]> {
-  inject: Inject;
+type ForRootAsyncOptions<Inject extends readonly Token[] = readonly Token[]> = {
   imports?: DynamicModule['imports'];
   useFactory: (...deps: InferTokens<Inject>) => BetterAuthInstance;
   isGlobal?: boolean;
@@ -102,7 +105,7 @@ interface ForRootAsyncOptions<Inject extends readonly Token[] = readonly Token[]
   basePath?: string;
   issuer?: string;
   key?: string;
-}
+} & FactoryInject<Inject>;
 
 export class BetterAuthModule {
   /**
@@ -160,12 +163,11 @@ export class BetterAuthModule {
       imports: options.imports ?? [],
       providers: [
         defineProvider(BETTER_AUTH_OPTIONS, { useValue: n }),
-        defineProvider(BETTER_AUTH_BUILDER, {
-          inject: options.inject,
-          useFactory:
-            (...deps: InferTokens<Inject>) =>
-            () =>
-              options.useFactory(...deps),
+        // Unmemoized: BetterAuthService caches the instance it builds.
+        lazyProvider<BetterAuthInstance, Inject>({
+          ...options,
+          provide: BETTER_AUTH_BUILDER,
+          memoize: false,
         }),
         ...common.providers,
         ...(n.isGlobal ? provideGlobal('guard', AuthGuard) : []),

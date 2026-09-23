@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 import {
   Controller,
@@ -9,17 +9,12 @@ import {
   Query,
   Body,
   Module,
-  MetadataRegistry,
   defineDto,
   ValidationPipe,
   createOpenApiDocument,
   ApiDoc,
   ApiTags,
 } from '../index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 describe('createOpenApiDocument — document shape', () => {
   it('produces a 3.1 document with info and empty paths for an empty module', () => {

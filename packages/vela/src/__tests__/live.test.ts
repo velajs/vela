@@ -5,7 +5,6 @@ import { MAX_LIVE_FRAME_BYTES, encodeLiveFrame } from '@velajs/live-protocol';
 import {
   Injectable,
   InjectionToken,
-  MetadataRegistry,
   Module,
   UseGuards,
   VelaFactory,
@@ -118,15 +117,12 @@ const subFrame = (
   });
 
 describe('LiveModule (tag-based live queries)', () => {
-  beforeEach(() => MetadataRegistry.clear());
-
   async function makeTodoApp() {
     const todos: Array<{ id: string; text: string; done?: boolean }> = [
       { id: 't1', text: 'first' },
     ];
 
     @LiveResolver()
-    @Injectable()
     class TodoLive {
       @LiveQuery('todos.list', todoListQuery, { tags: (args) => [`todos:${args.listId}`] })
       list(args: { listId: string }, _ctx: LiveQueryContext) {
@@ -348,10 +344,7 @@ describe('LiveModule (tag-based live queries)', () => {
   });
 
   it('validates args at subscribe through the shared definition', async () => {
-    MetadataRegistry.clear();
-
     @LiveResolver()
-    @Injectable()
     class Strict {
       @LiveQuery('strict.q', strictNumberQuery, { tags: ['t'] })
       q(args: { n: number }) {
@@ -375,8 +368,6 @@ describe('LiveModule (tag-based live queries)', () => {
   });
 
   it('runs resolver-tier guards at subscribe and rejects with a forbidden error frame', async () => {
-    MetadataRegistry.clear();
-
     @Injectable()
     class DenyGuard implements CanActivate {
       canActivate() {
@@ -385,7 +376,6 @@ describe('LiveModule (tag-based live queries)', () => {
     }
 
     @LiveResolver()
-    @Injectable()
     class Secret {
       @UseGuards(DenyGuard)
       @LiveQuery('secret.q', numberQuery, { tags: ['secret'] })
@@ -416,7 +406,6 @@ describe('LiveModule (tag-based live queries)', () => {
 
   it('caps active subscriptions per socket', async () => {
     @LiveResolver()
-    @Injectable()
     class Limited {
       @LiveQuery('limited.q', numberQuery, { tags: ['limited'] })
       q() {
@@ -448,7 +437,6 @@ describe('LiveModule (tag-based live queries)', () => {
   it('re-authorizes before invalidation delivery and purges a revoked socket', async () => {
     let authorized = true;
     @LiveResolver()
-    @Injectable()
     class Revocable {
       @LiveQuery('revocable.q', numberQuery, { tags: ['revocable'] })
       q() {
@@ -492,7 +480,6 @@ describe('LiveModule (tag-based live queries)', () => {
       }
     }
     @LiveResolver()
-    @Injectable()
     class Guarded {
       @UseGuards(MutableGuard)
       @LiveQuery('guarded.q', numberQuery, { tags: ['guarded'] })
@@ -732,8 +719,6 @@ describe('LiveModule (tag-based live queries)', () => {
   });
 
   it('rejects app gateways subscribing to the reserved $ namespace', async () => {
-    MetadataRegistry.clear();
-
     @WebSocketGateway({ path: '/ws' })
     class Sneaky {
       @SubscribeMessage('$live')
@@ -764,7 +749,6 @@ describe('LiveEngine — initial-subscribe resolver errors are redacted (Task 10
   let errorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    MetadataRegistry.clear();
     errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
@@ -772,7 +756,6 @@ describe('LiveEngine — initial-subscribe resolver errors are redacted (Task 10
 
   async function subscribeThrowing(makeError: () => unknown): Promise<FakeClient> {
     @LiveResolver()
-    @Injectable()
     class Boom {
       @LiveQuery('boom.q', numberQuery, { tags: ['boom'] })
       q() {
@@ -834,7 +817,6 @@ describe('LiveEngine — initial-subscribe resolver errors are redacted (Task 10
 
   it('leaves the subscribe-arg parse path untouched (validation message still echoed)', async () => {
     @LiveResolver()
-    @Injectable()
     class Strict {
       @LiveQuery('strict.q', strictNumberQuery, { tags: ['t'] })
       q(args: { n: number }) {
@@ -862,8 +844,6 @@ describe('LiveEngine — initial-subscribe resolver errors are redacted (Task 10
 });
 
 describe('LiveModule application resource factories', () => {
-  beforeEach(() => MetadataRegistry.clear());
-
   it('keeps driver sinks and cursor logs separate when the same module starts twice', async () => {
     const createDriver = vi.fn(localLive);
     const createLog = vi.fn(() => new InMemoryCursorLog());

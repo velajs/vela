@@ -1,4 +1,6 @@
 import type { WebSocketSendPolicy, WebSocketSendResult } from '@velajs/live-protocol';
+import type { Type } from '../container/types';
+import type { VelaEnv } from '../env';
 import type { ExecutionContext, WsArgumentsHost } from '../pipeline/types';
 
 export type { WsArgumentsHost };
@@ -102,6 +104,25 @@ export interface WebSocketUpgradeAuthenticationContext {
   ticket?: string;
 }
 
+/**
+ * Authenticates a WebSocket upgrade with a secure cookie or a short-lived
+ * socket ticket, before any socket or Durable Object is allocated. Returning
+ * anything except a valid trusted identity, or throwing, denies the upgrade.
+ *
+ * Gateways name the class in `@WebSocketGateway({ authenticator })`. Each
+ * application resolves it once, through dependency injection, from the module
+ * that declares the gateway: a registered provider is reused, and an
+ * unregistered class is constructed with what that module can inject. That
+ * instance serves every upgrade, so a request-scoped authenticator, declared
+ * or through a request-scoped dependency, is rejected as misconfigured.
+ */
+export interface UpgradeAuthenticator {
+  authenticate(
+    request: Request,
+    context: WebSocketUpgradeAuthenticationContext,
+  ): WebSocketUpgradeIdentity | false | Promise<WebSocketUpgradeIdentity | false>;
+}
+
 export interface WebSocketGatewayOptions {
   /** Route path the upgrade is served on (e.g. `/rooms/:id/ws`). */
   path?: string;
@@ -115,21 +136,18 @@ export interface WebSocketGatewayOptions {
   /**
    * Browser origins allowed to open the socket. Omitted means same-origin;
    * non-browser clients without an Origin header are allowed. `'*'` is an
-   * explicit opt-out.
+   * explicit opt-out. A function derives the list from the application's
+   * `ENV` once per application, so the gateway declaration stays static.
    */
-  allowedOrigins?: '*' | readonly string[];
+  allowedOrigins?: '*' | readonly string[] | ((env: VelaEnv) => readonly string[]);
   /** Optional additional authorization run before authentication/allocation. */
   authorizeUpgrade?: (request: Request) => boolean | Promise<boolean>;
   /**
-   * Authenticate an upgrade with a secure cookie or a short-lived socket
-   * ticket. Returning anything except a valid trusted identity denies the
-   * upgrade. This hook is required for every successful upgrade; omitting it
-   * makes the gateway fail closed.
+   * The {@link UpgradeAuthenticator} class that turns an upgrade request into
+   * a trusted identity. Every successful upgrade needs one; a gateway without
+   * it fails closed.
    */
-  authenticateUpgrade?: (
-    request: Request,
-    context: WebSocketUpgradeAuthenticationContext,
-  ) => WebSocketUpgradeIdentity | false | Promise<WebSocketUpgradeIdentity | false>;
+  authenticator?: Type<UpgradeAuthenticator>;
   /**
    * Per-recipient authorization re-run before server-initiated delivery. Use
    * it for revocation or mutable membership checks; errors fail closed.

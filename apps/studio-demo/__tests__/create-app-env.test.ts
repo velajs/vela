@@ -1,14 +1,30 @@
 import { describe, expect, it } from 'vitest';
 import { ENV } from '@velajs/vela';
-import { ADMIN_BASE_PATH, DEV_TOKEN, createApp } from '../src/create-app';
+import { countRegisteredClasses } from '@velajs/vela/internal';
+import { ADMIN_BASE_PATH, DEV_TOKEN, MODEL_IDS, createApp } from '../src/create-app';
 
-async function capabilities(app: Awaited<ReturnType<typeof createApp>>, token: string) {
-  const response = await app.getHonoApp().request(`${ADMIN_BASE_PATH}/rpc/studio.capabilities`, {
+async function rpc(
+  app: Awaited<ReturnType<typeof createApp>>,
+  token: string,
+  op: string,
+  args: Record<string, unknown> = {},
+): Promise<Response> {
+  return app.getHonoApp().request(`${ADMIN_BASE_PATH}/rpc/${op}`, {
     method: 'POST',
     headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ args: {} }),
+    body: JSON.stringify({ args }),
   });
-  return response.status;
+}
+
+async function capabilities(app: Awaited<ReturnType<typeof createApp>>, token: string) {
+  return (await rpc(app, token, 'studio.capabilities')).status;
+}
+
+async function tagLabel(app: Awaited<ReturnType<typeof createApp>>): Promise<unknown> {
+  const response = await rpc(app, DEV_TOKEN, 'data.readRow', { model: MODEL_IDS.tag, id: 't1' });
+  const body: unknown = await response.json();
+  const row: unknown = typeof body === 'object' && body !== null ? Reflect.get(body, 'data') : null;
+  return typeof row === 'object' && row !== null ? Reflect.get(row, 'label') : undefined;
 }
 
 describe('createApp environment', () => {
@@ -21,6 +37,22 @@ describe('createApp environment', () => {
       expect(await capabilities(app, DEV_TOKEN)).toBe(401);
     } finally {
       await app.close();
+    }
+  });
+
+  it('declares no classes when it builds another application, each with its own store', async () => {
+    const first = await createApp({ env: {} });
+    const before = countRegisteredClasses();
+    const second = await createApp({ env: {} });
+    try {
+      expect(countRegisteredClasses()).toBe(before);
+      const patch = { model: MODEL_IDS.tag, id: 't1', patch: { label: 'changed' } };
+      expect((await rpc(first, DEV_TOKEN, 'data.writeRow', patch)).status).toBe(200);
+      expect(await tagLabel(first)).toBe('changed');
+      expect(await tagLabel(second)).toBe('fiction');
+    } finally {
+      await first.close();
+      await second.close();
     }
   });
 

@@ -3,15 +3,15 @@ import { RolesGuard, Roles } from '@velajs/authz/vela';
 import {
   Controller,
   Get,
-  MetadataRegistry,
   Module,
+  Reflector,
   Req,
   ThrottlerModule,
   UseGuards,
   VelaFactory,
   getTrustedRequestIdentity,
 } from '@velajs/vela';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { ExecutionContext } from '@velajs/vela';
 import {
   AuthGuard,
@@ -34,9 +34,6 @@ function mockAuth(session: typeof SESSION_OK | null) {
 }
 
 describe('AuthGuard', () => {
-  beforeEach(() => MetadataRegistry.clear());
-  afterEach(() => MetadataRegistry.clear());
-
   it('publishes validated session state and lets @CurrentUser observe guard-set state', async () => {
     const auth = mockAuth(SESSION_OK);
 
@@ -59,6 +56,29 @@ describe('AuthGuard', () => {
     const res = await app.getHonoApp().request('/me');
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ id: 'u-1', email: 'ada@example.com' });
+  });
+
+  it('reads route metadata through the application Reflector', async () => {
+    @Controller('/open')
+    class OpenController {
+      @Public(true)
+      @Get()
+      open() {
+        return { ok: true };
+      }
+    }
+
+    @Module({
+      imports: [BetterAuthModule.forRoot({ auth: mockAuth(null) })],
+      controllers: [OpenController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const reads = vi.spyOn(app.get(Reflector), 'getAllAndOverride');
+    expect((await app.getHonoApp().request('/open')).status).toBe(200);
+    expect(reads).toHaveBeenCalledWith(Public, expect.anything());
+    await app.close();
   });
 
   it('publishes verified principal and organization state to Vela security components', async () => {
@@ -284,7 +304,7 @@ describe('AuthGuard', () => {
 
   it('accepts only the trusted finite-lived WebSocket attachment without using HTTP accessors', async () => {
     const auth = mockAuth(null);
-    const guard = new AuthGuard(new BetterAuthService(() => auth), {});
+    const guard = new AuthGuard(new BetterAuthService(() => auth), {}, new Reflector());
     const client = {
       id: 'socket-1',
       rooms: new Set<string>(),
@@ -332,9 +352,6 @@ describe('AuthGuard', () => {
 });
 
 describe('RolesGuard', () => {
-  beforeEach(() => MetadataRegistry.clear());
-  afterEach(() => MetadataRegistry.clear());
-
   it('allows when user has a required role', async () => {
     const auth = mockAuth(SESSION_OK);
 

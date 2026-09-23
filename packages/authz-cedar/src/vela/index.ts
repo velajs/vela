@@ -1,4 +1,5 @@
 import {
+  Inject,
   InjectionToken,
   Injectable,
   Reflector,
@@ -56,7 +57,10 @@ export function auditCedarRoutes(modules: readonly Type[]): void {
   }
 }
 export class CedarGuard implements CanActivate {
-  readonly #reflector = new Reflector();
+  readonly #reflector: Reflector;
+  constructor(reflector: Reflector) {
+    this.#reflector = reflector;
+  }
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const declared = this.#reflector.getAllAndOverride(declaration, context);
     if (!declared || declared.kind === 'public') return true;
@@ -93,6 +97,7 @@ export class CedarGuard implements CanActivate {
   }
 }
 Injectable()(CedarGuard);
+Inject(Reflector)(CedarGuard, undefined, 0);
 const { ConfigurableModuleClass } = defineModule<CedarModuleOptions>({
   name: 'CedarAuthorization',
   setup: ({ OPTIONS }) => ({

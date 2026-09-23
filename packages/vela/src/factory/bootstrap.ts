@@ -16,7 +16,10 @@ import type { RouteManagerOptions } from '../http/route.manager';
 import { UrlGeneratorService } from '../http/url/url-generator.service';
 import { SignedUrlGuard } from '../http/url/signed-url.guard';
 import { ModuleLoader } from '../module/module-loader';
+import { ROOT_MODULE } from '../module/root-module';
+import type { DynamicModule } from '../registry/types';
 import { bindAppProviders } from '../pipeline/app-providers';
+import { Reflector } from '../pipeline/reflector';
 import {
   APP_EXCEPTION_HANDLER,
   APP_FILTER,
@@ -47,17 +50,18 @@ export interface BootstrapResult {
 }
 
 /**
- * Wire the DI graph for `rootModule` and prepare the route manager — without
- * running lifecycle hooks or building the Hono app. The single primitive
- * shared by `VelaFactory.create` (HTTP), `@velajs/testing` (test), and any
- * non-HTTP consumer (CLI tools, custom runtimes).
+ * Wire the DI graph for `rootModule` (a module class or a `DynamicModule`) and
+ * prepare the route manager — without running lifecycle hooks or building the
+ * Hono app. The single primitive shared by `VelaFactory.create` (HTTP),
+ * `@velajs/testing` (test), and any non-HTTP consumer (CLI tools, custom
+ * runtimes).
  *
- * Framework-internal tokens (`Container`, `APP_*`) are marked global so they
- * are resolvable from any module. `ModuleRef` needs no registration: the
- * container builds one per injecting module.
+ * Framework-internal tokens (`Container`, `ROOT_MODULE`, `APP_*`) are marked
+ * global so they are resolvable from any module. `ModuleRef` needs no
+ * registration: the container builds one per injecting module.
  */
 export async function bootstrap(
-  rootModule: Type,
+  rootModule: Type | DynamicModule,
   options: BootstrapOptions = {},
 ): Promise<BootstrapResult> {
   const container = new Container({
@@ -66,14 +70,12 @@ export async function bootstrap(
 
   container.register(defineProvider(Container, { useValue: container }));
   container.markGlobalToken(Container);
+  container.register(defineProvider(ROOT_MODULE, { useValue: rootModule }));
+  container.markGlobalToken(ROOT_MODULE);
 
-  // ENV is global but has no default: seeded here from `options.env`, or by a
-  // runtime adapter's configureContainer below. Readers of optional values
-  // (signing secrets, Studio) inject it with @Optional().
-  if (options.env !== undefined) {
-    assertEnvironment(options.env);
-    container.register(defineProvider(ENV, { useValue: options.env }));
-  }
+  // ENV is global but has no default: seeded below from `options.env`, or by a
+  // runtime adapter's configureContainer. Readers of optional values (signing
+  // secrets, Studio) inject it with @Optional().
   container.markGlobalToken(ENV);
 
   // Decorator-driven discovery — global so any provider can inject it.
@@ -84,6 +86,10 @@ export async function bootstrap(
     }),
   );
   container.markGlobalToken(DiscoveryService);
+
+  // Stateless metadata reader for guards and interceptors, as in Nest.
+  container.register(Reflector);
+  container.markGlobalToken(Reflector);
 
   for (const t of [
     APP_GUARD,
@@ -103,7 +109,6 @@ export async function bootstrap(
   // instead of materializing a phantom context.
   container.register(
     defineProvider(REQUEST_CONTEXT, {
-      inject: [],
       scope: Scope.REQUEST,
       useFactory: () => {
         throw new Error(
@@ -117,7 +122,6 @@ export async function bootstrap(
 
   container.register(
     defineProvider(EXECUTION_LIFETIME, {
-      inject: [],
       scope: Scope.REQUEST,
       useFactory: () => {
         throw new Error('EXECUTION_LIFETIME can only be resolved inside a managed invocation');
@@ -154,6 +158,14 @@ export async function bootstrap(
   container.register(defineProvider(NONCE_STORE, { useClass: MemoryNonceStore }));
   container.markGlobalToken(NONCE_STORE);
 
+  // The registrations above are framework defaults, which the one @Global()
+  // module exporting a token overrides application-wide. What the application
+  // configures from here on (ENV, adapters, useGlobalExceptionHandler) wins.
+  container.markRootDefaults();
+  if (options.env !== undefined) {
+    assertEnvironment(options.env);
+    container.register(defineProvider(ENV, { useValue: options.env }));
+  }
   await options.configureContainer?.(container);
 
   const loader = new ModuleLoader(container, routeManager);

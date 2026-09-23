@@ -54,14 +54,19 @@ const { ConfigurableModuleClass } = defineModule<CloudflareAccessModuleOptions>(
 });
 
 /**
- * Vela module for `@velajs/cloudflare-access`.
+ * Vela module for `@velajs/cloudflare-access`. Read the Access team domain and
+ * audience from the application's `ENV`:
  *
  * ```ts
  * @Module({
  *   imports: [
- *     CloudflareAccessModule.forRoot({
- *       preset: cloudflareAccessIssuer(env.CF_ACCESS_TEAM_DOMAIN),
- *       aud: env.CF_ACCESS_AUD,
+ *     CloudflareAccessModule.forRootAsync({
+ *       inject: [ENV],
+ *       useFactory: (env) => ({
+ *         preset: cloudflareAccessIssuer(env.CF_ACCESS_TEAM_DOMAIN),
+ *         aud: env.CF_ACCESS_AUD,
+ *         groupRoles: { 'idp-editors': ['editor'] },
+ *       }),
  *     }),
  *   ],
  * })

@@ -120,11 +120,11 @@ declare module '@velajs/vela' {
 Protect a route with `@SignedUrl()` (adds `SignedUrlGuard`), generate signed links with `UrlGeneratorService.signedUrl`, and provide the secret via the `URL_SIGNING_SECRET` token or a string `URL_SIGNING_SECRET` in the application's `ENV` (on Workers, a Wrangler secret):
 
 ```ts
-import { Controller, Get, SignedUrl, URL_SIGNING_SECRET, UrlGeneratorService, verifySignedUrl, defineProvider } from '@velajs/vela';
+import { Controller, Get, SignedUrl, URL_SIGNING_SECRET, UrlGeneratorService, verifySignedUrl } from '@velajs/vela';
 
 @Global()
 @Module({
-  providers: [defineProvider(URL_SIGNING_SECRET, { useValue: mySigningSecret })],
+  providers: [{ provide: URL_SIGNING_SECRET, useValue: mySigningSecret }],
   exports: [URL_SIGNING_SECRET],
 })
 class SecretModule {}

@@ -1,9 +1,8 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   Body,
   Controller,
   Injectable,
-  MetadataRegistry,
   Module,
   Post,
   RawBody,
@@ -13,8 +12,6 @@ import {
   VelaFactory,
 } from '../index.js';
 import type { CanActivate, PipeTransform } from '../index.js';
-
-beforeEach(() => MetadataRegistry.clear());
 
 describe('HTTP security boundaries', () => {
   it('runs guards before malformed JSON parsing and pipes', async () => {

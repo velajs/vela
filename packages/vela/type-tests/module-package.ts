@@ -25,7 +25,7 @@ Feature.forRootAsync({
   useFactory: (number) => ({ name: number.toUpperCase() }),
 });
 // @ts-expect-error Structural option values retain their declared types.
-Feature.forRootAsync({ http: 'false', inject: [], useFactory: () => ({ name: 'one' }) });
+Feature.forRootAsync({ http: 'false', useFactory: () => ({ name: 'one' }) });
 class Contributions {}
 sideEffectModule(Contributions);
 
@@ -37,4 +37,4 @@ void registrations;
 // Forwarded partial bags historically allow explicit undefined, even when the
 // consumer enables exactOptionalPropertyTypes. The factory still returns Opts.
 const structural: { http?: boolean | undefined } = { http: undefined };
-Feature.forRootAsync({ ...structural, inject: [], useFactory: () => ({ name: 'forwarded' }) });
+Feature.forRootAsync({ ...structural, useFactory: () => ({ name: 'forwarded' }) });

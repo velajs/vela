@@ -11,14 +11,13 @@ MailModule.forRootAsync({
   }),
 });
 MailModule.forRootAsync({
-  inject: [],
   useFactory: () => ({
     from: 'sender@example.com',
     transport: createMailCatcher(),
   }),
 });
-// @ts-expect-error explicit dependencies are required
-MailModule.forRootAsync({ useFactory: () => ({ from: 'sender@example.com' }) });
+// @ts-expect-error a factory with parameters must declare its inject tokens
+MailModule.forRootAsync({ useFactory: (transport: MailTransport) => ({ from: 'sender@example.com', transport }) });
 function agentContract(email: InboundEmail): Uint8Array {
   const source: 'adapter' | 'authserv-id' | 'none' = email.authenticationSource;
   const recipients: string[] = email.to;

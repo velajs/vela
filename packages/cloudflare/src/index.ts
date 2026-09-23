@@ -87,6 +87,9 @@ export type {
   OnGatewayInit,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  UpgradeAuthenticator,
+  WebSocketUpgradeAuthenticationContext,
+  WebSocketUpgradeIdentity,
 } from '@velajs/vela/websocket';
 
 // Types

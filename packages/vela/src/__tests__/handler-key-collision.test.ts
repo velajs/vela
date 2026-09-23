@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   VelaFactory,
   Module,
@@ -6,14 +6,9 @@ import {
   Get,
   UseGuards,
   Injectable,
-  MetadataRegistry,
   type CanActivate,
   type ExecutionContext,
 } from '../index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 describe('handler-key collision under duplicate class names', () => {
   it('two controllers with the same class.name keep distinct handler-level guards', async () => {

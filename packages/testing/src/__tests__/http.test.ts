@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   Controller,
   Get,
@@ -7,14 +7,9 @@ import {
   Headers as HeadersParam,
   HttpCode,
   Module,
-  MetadataRegistry,
 } from '@velajs/vela';
 import { Test } from '../test.js';
 import type { TestingModule } from '../testing-module.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 @Controller('/items')
 class ItemsController {

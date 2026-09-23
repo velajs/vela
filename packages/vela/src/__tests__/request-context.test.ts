@@ -1,12 +1,11 @@
 import { defineProvider } from '../container/types';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   APP_INTERCEPTOR,
   Controller,
   Get,
   Inject,
   Injectable,
-  MetadataRegistry,
   Module,
   REQUEST_CONTEXT,
   Scope,
@@ -14,10 +13,6 @@ import {
   runInEntrypointScope,
 } from '../index.js';
 import type { CallHandler, ExecutionContext, NestInterceptor, RequestContext } from '../index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 describe('REQUEST_CONTEXT injectable', () => {
   it('gives each request a distinct id and isolated bag', async () => {

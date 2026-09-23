@@ -102,28 +102,17 @@ The guard publishes through core's `setTrustedRequestIdentity`. Authorization, `
 - Import `PermissionGuard`, `RequirePermission`, `RolesGuard`, `Roles`, and `CurrentIdentity` from `@velajs/authz/vela`. These are the same guards Better Auth uses. Exactly one authorization engine must be visible to the declaring route module.
 - Tenant membership comes from a signed `tenantId` claim, or the signed claim selected by `tenantClaim`. `mapClaims` enriches non-authority fields only and cannot replace tenant, issuer, subject, expiry, claims, or roles. Explicit `groupRoles` maps external groups into local roles.
 - `identityFromAccess` is a pure projection for direct authz use; it does not authenticate a request.
+- `CloudflareAccessUpgradeAuthenticator` authenticates WebSocket upgrades: `@WebSocketGateway({ authenticator: CloudflareAccessUpgradeAuthenticator })`. It is resolved from the module that declares the gateway, which must import `CloudflareAccessModule`, and verifies with the same resolver as the guard. Upgrades always need a verified identity, whatever the module `mode`, and a token without the signed tenant claim is refused.
 
 ```ts
+import { defineRole } from '@velajs/authz';
+import { AuthzModule, PermissionGuard, RequirePermission, CurrentIdentity } from '@velajs/authz/vela';
 import { cloudflareAccessIssuer } from '@velajs/cloudflare-access';
 import {
   CloudflareAccessGuard,
   CloudflareAccessModule,
 } from '@velajs/cloudflare-access/vela';
-import { AuthzModule, PermissionGuard, RequirePermission, CurrentIdentity } from '@velajs/authz/vela';
-import type { TrustedRequestIdentity } from '@velajs/vela';
-
-@Module({
-  imports: [
-    CloudflareAccessModule.forRoot({
-      preset: cloudflareAccessIssuer(env.CF_ACCESS_TEAM_DOMAIN),
-      aud: env.CF_ACCESS_AUD,
-      groupRoles: { 'idp-editors': ['editor'] },
-    }),
-    AuthzModule.forRoot({ roles: [defineRole('editor', ['posts:write'])] }),
-  ],
-  controllers: [PostsController],
-})
-class AppModule {}
+import { Controller, ENV, Module, Post, UseGuards, type TrustedRequestIdentity } from '@velajs/vela';
 
 @Controller('/posts')
 @UseGuards(CloudflareAccessGuard, PermissionGuard)
@@ -134,6 +123,24 @@ class PostsController {
     return { author: identity.principal.subject };
   }
 }
+
+@Module({
+  imports: [
+    // The Access team domain and audience come from the runtime environment,
+    // which `wrangler types` types for ENV through @velajs/cloudflare.
+    CloudflareAccessModule.forRootAsync({
+      inject: [ENV],
+      useFactory: (env) => ({
+        preset: cloudflareAccessIssuer(env.CF_ACCESS_TEAM_DOMAIN),
+        aud: env.CF_ACCESS_AUD,
+        groupRoles: { 'idp-editors': ['editor'] },
+      }),
+    }),
+    AuthzModule.forRoot({ roles: [defineRole('editor', ['posts:write'])] }),
+  ],
+  controllers: [PostsController],
+})
+class AppModule {}
 ```
 
 ## Security posture
@@ -152,7 +159,7 @@ The verification key source is injectable (`keySet`), so tests self-host a JWKS 
 ## API
 
 - Core: `verifyAccessJwt`, `verifyRequest`, `assertVerifyOptions`, `normalizeAudiences`, `readToken`, `cloudflareAccessIssuer`, `genericOidcIssuer`, `getRemoteJwks`, `clearJwksCache`, `jwksCacheSize`, `JWKS_CACHE_MAX`, `defineIdentity`, `createAccessResolver`, `composeResolvers`, `IdentityRejectedError`, and the `AccessClaims` / `IssuerPreset` / `ResolvedIdentity` / `ResolveIdentity` / `IdentityContract` / `StandardSchemaV1` types.
-- `@velajs/cloudflare-access/vela`: `CloudflareAccessModule`, `CloudflareAccessGuard`, `CurrentAccessIdentity`, `identityFromAccess`, `ACCESS_RESOLVER`, and `ACCESS_MODULE_OPTIONS`.
+- `@velajs/cloudflare-access/vela`: `CloudflareAccessModule`, `CloudflareAccessGuard`, `CloudflareAccessUpgradeAuthenticator`, `CurrentAccessIdentity`, `identityFromAccess`, `ACCESS_RESOLVER`, and `ACCESS_MODULE_OPTIONS`.
 
 ## Shared authorization
 

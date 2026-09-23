@@ -26,15 +26,17 @@ Use `export default createCloudflareWorker(RootModule)` for each entrypoint; it
 seeds that Worker's native environment as the framework `ENV`. Give each Worker
 its own `wrangler types` output and type-check it as its own program, so its
 `VelaEnv` only has the bindings its Wrangler file declares.
-A root may also be a dynamic module, or `{ create: async env => dynamicModule }`.
-Factories run once per environment object in an isolate: the Worker and its
-Durable Object instances share the module graph and every value the factory
-created, such as `useValue` providers and module options. Each application builds
-its own class and factory providers, so create per-application state with
-`useFactory` or `forRootAsync`. Concurrent events share construction, failed construction is
+A root may also be a `DynamicModule` such as `AppModule.forRoot(...)`, declared
+once at module scope. Roots are static: bindings reach the graph only through
+dependency injection, in `forRootAsync({ inject: [ENV] })` factories, `useFactory`
+providers and `@InjectEnv()` constructors. The Worker and its Durable Object
+instances share the module graph and every value declared with it, such as
+`useValue` providers and `forRoot` options. Each application builds its own class
+and factory providers, so create per-application state with `useFactory` or
+`forRootAsync`. Concurrent events share construction, failed construction is
 evicted and retried, and different environments remain isolated. Keep active
 database connections and authenticated identities in their invocation scopes, not
-in root factories or singleton providers.
+in module options or singleton providers.
 
 ## Native queues through QueueModule
 

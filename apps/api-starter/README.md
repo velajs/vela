@@ -24,7 +24,11 @@ client into `public/`, which the Worker serves as static assets.
 
 Open `http://localhost:8790`, create a local account, and open a second tab.
 Create, complete, or delete a task in either tab to see the live query update.
-The HTTP API and WebSocket upgrade both verify the same session cookie.
+The HTTP API and WebSocket upgrade both verify the same session cookie: the
+gateway names `authenticator: BetterAuthUpgradeAuthenticator`, and the
+`BETTER_AUTH_UPGRADE_TENANT` resolver in `AppModule` admits the shared board's
+`default` room only. `allowedOrigins: (env) => [env.APP_ORIGIN]` reads the
+browser origin from each environment.
 
 In another terminal in this directory:
 
@@ -41,22 +45,33 @@ account and task, checks authentication and live CRUD updates plus Studio's
 models/subscriptions/presence, then removes its test data. It runs the same
 way against `pnpm preview`, which serves the `pnpm build` output on port 8790.
 `pnpm test` drives the Worker inside workerd with a migrated test D1 database:
-public and protected routes, sign-up, the LiveRoom Durable Object upgrade, and
-constructor injection that relies only on the emitted metadata.
+public and protected routes, sign-up, the LiveRoom Durable Object upgrade and
+its refusals, two environments building separate applications from the one
+`AppModule`, and constructor injection that relies only on the emitted metadata.
 
 `src/contracts.ts` is the shared runtime contract for live arguments and rows.
 `web/api.generated.ts` is generated from the module's OpenAPI document and has
-no runtime server imports. `pnpm client:generate` loads `src/app.ts` through
-Vite's module runner with the same Oxc options, so it needs no build. CRUD
+no runtime server imports. `pnpm client:generate` and `pnpm client:check` run
+`vela client generate` (through the workspace CLI entry, since the workspace
+links `@velajs/cli` before building it). `vela.config.ts` imports `AppModule`,
+which the CLI loads through Vite's module runner with the same Oxc options, so
+it needs no build. The CLI also builds the application once to check the
+document against its routes; the config gives it the local bindings
+Wrangler's `getPlatformProxy()` provides and closes them afterwards. CRUD
 request bodies and path parameters are typed. CRUD responses remain `unknown`
 because the general CRUD surface allows custom envelopes and projections; parse
 those responses before consuming them. The browser renders rows validated by
 the live contract.
 
-`{ create: createAppModule }` builds a graph from each native Workers environment.
-There is no process-global environment or secret: the same environment is the
-framework `ENV`, which `TodoQueries` injects with `@InjectEnv()` and Studio
-reads its `VELA_STUDIO_TOKEN` from. `pnpm types` regenerates
+`AppModule` is declared once at module scope, and `src/worker.ts` passes it to
+both `createCloudflareWorker` and `VelaWebSocketDurableObject`. Bindings reach
+the graph through dependency injection only: the `forRootAsync({ inject: [ENV] })`
+factories of Better Auth, CRUD, live queries and Studio's live source run for
+each native environment, so every environment builds its own auth instance,
+adapter and driver. There is no process-global environment or secret: the same
+environment is the framework `ENV`, which `TodoQueries` injects with
+`@InjectEnv()` and Studio reads its `VELA_STUDIO_TOKEN` from. Studio documents
+the application's `ROOT_MODULE`. `pnpm types` regenerates
 `worker-configuration.d.ts` from `wrangler.jsonc` and the secret names in
 `.dev.vars.example`, so `VelaEnv` carries the typed bindings. Wrangler reads
 `main` (`src/worker.ts`), so `LIVE_ROOM` is typed with the `LiveRoom` class and

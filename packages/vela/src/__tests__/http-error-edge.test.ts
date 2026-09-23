@@ -14,7 +14,6 @@ import {
   HttpException,
   InternalServerErrorException,
   NotAcceptableException,
-  MetadataRegistry,
 } from '../index.js';
 import type { ExceptionFilter, ExecutionContext } from '../index.js';
 import { VelaError } from '@velajs/errors';
@@ -34,7 +33,6 @@ describe('HTTP error edge — report-first ordering + canonical body', () => {
   let errorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    MetadataRegistry.clear();
     errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
@@ -172,7 +170,6 @@ describe('hono app.onError — hono/middleware errors cannot bypass report + red
   let errorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    MetadataRegistry.clear();
     errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
@@ -323,7 +320,6 @@ describe('string HttpException — redaction and status-class codes on every HTT
   let errorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    MetadataRegistry.clear();
     errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 

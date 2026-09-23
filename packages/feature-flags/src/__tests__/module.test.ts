@@ -1,12 +1,6 @@
-import {
-  InjectionToken,
-  MetadataRegistry,
-  Module,
-  defineProvider,
-  runInEntrypointScope,
-} from '@velajs/vela';
+import { InjectionToken, Module, defineProvider, runInEntrypointScope } from '@velajs/vela';
 import { Test } from '@velajs/testing';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   FEATURE_FLAG_TOKENS,
   FeatureFlagDriverRegistry,
@@ -16,9 +10,6 @@ import {
 } from '../index';
 
 describe('FeatureFlagsModule', () => {
-  beforeEach(() => MetadataRegistry.clear());
-  afterEach(() => MetadataRegistry.clear());
-
   it('forRoot: resolves the service at root/global scope (no request needed)', async () => {
     // This is the proof the service works in queue / scheduled / global scope:
     // resolving it via module.get() (root, no request) must not throw.

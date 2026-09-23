@@ -1,5 +1,5 @@
 import { defineProvider } from '../container/types';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   Controller,
   EventEmitter,
@@ -8,7 +8,6 @@ import {
   Get,
   Inject,
   Injectable,
-  MetadataRegistry,
   Module,
   OnEvent,
   ScheduleModule,
@@ -24,10 +23,6 @@ import type {
 import { SeederModule, SeederRegistry, Seeder, runSeeders } from '../seeder/index.js';
 import { I18nModule, MessageLoaderService } from '../i18n/index.js';
 import { defineModule } from '../module/define-module.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 describe('lazy cold-start init — deferral', () => {
   it('does not construct providers of a lazy module at create()', async () => {
@@ -461,7 +456,6 @@ describe('lazy cold-start init — first-party subsystems (HTTP-only worker)', (
     const seeded: string[] = [];
 
     @Seeder({ order: 1 })
-    @Injectable()
     class UserSeeder {
       run() {
         seeded.push('users');

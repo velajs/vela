@@ -2,7 +2,7 @@
 "@velajs/cloudflare": minor
 ---
 
-The Cloudflare runtime seeds the native environment as the framework `ENV`, in the Worker and in every `VelaWebSocketDurableObject`, and types it with the environment `wrangler types` generates: the package augments `VelaEnv` with `Cloudflare.Env`, so `@InjectEnv() env: VelaEnv`, `inject: [ENV]` factories, `registerAs` factories and `{ create(env) }` roots see your bindings, variables and secrets typed. Run `wrangler types` (for example with `--include-runtime=false` alongside `@cloudflare/workers-types`) so `Cloudflare.Env` declares them. The per-environment application cache and the environment identity assertion are unchanged.
+The Cloudflare runtime seeds the native environment as the framework `ENV`, in the Worker and in every `VelaWebSocketDurableObject`, and types it with the environment `wrangler types` generates: the package augments `VelaEnv` with `Cloudflare.Env`, so `@InjectEnv() env: VelaEnv`, `inject: [ENV]` factories and `registerAs` factories see your bindings, variables and secrets typed. Run `wrangler types` (for example with `--include-runtime=false` alongside `@cloudflare/workers-types`) so `Cloudflare.Env` declares them. The per-environment application cache and the environment identity assertion are unchanged.
 
 `createCloudflareWorker` and `createCloudflareApp` accept `adapters: RuntimeAdapter[]`, composed after the Cloudflare adapter for each application, so a Worker entry can stay `export default createCloudflareWorker(AppModule, { adapters: [...] })` without a hand-written per-environment cache.
 

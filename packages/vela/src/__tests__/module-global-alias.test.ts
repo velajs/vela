@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   APP_GUARD,
   Controller,
@@ -8,15 +8,12 @@ import {
   Inject,
   Injectable,
   InjectionToken,
-  MetadataRegistry,
   Module,
   Scope,
   VelaFactory,
   type ExecutionContext,
 } from '../index';
 import { bootstrap } from '../factory/bootstrap';
-
-beforeEach(() => MetadataRegistry.clear());
 
 describe('module global aliases', () => {
   it('exposes request alias metadata without construction and reuses its target in each child', async () => {

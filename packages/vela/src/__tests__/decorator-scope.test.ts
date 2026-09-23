@@ -1,11 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { Controller, Injectable, MetadataRegistry, Scope, WebSocketGateway } from '../index.js';
 import { getScope } from '../container/decorators';
 import { Seeder } from '../seeder';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 describe('class decorator scope declarations', () => {
   it('names the default lifetime Scope.DEFAULT without a SINGLETON alias', () => {

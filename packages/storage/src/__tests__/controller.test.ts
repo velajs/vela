@@ -1,6 +1,6 @@
-import { MetadataRegistry } from '@velajs/vela';
 import { Test } from '@velajs/testing';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { InjectionToken, Module, defineProvider } from '@velajs/vela';
+import { describe, expect, it, vi } from 'vitest';
 import { StorageModule } from '../index';
 import type { StorageDriver, StorageHttpOptions } from '../index';
 import { StorageError } from '../storage.error';
@@ -83,9 +83,6 @@ async function createMultipart(
 }
 
 describe('StorageController', () => {
-  beforeEach(() => MetadataRegistry.clear());
-  afterEach(() => MetadataRegistry.clear());
-
   it('default-deny: rejects when no authorizer is configured', async () => {
     const app = await appWith({});
     const res = await app.request(
@@ -319,6 +316,68 @@ describe('StorageController', () => {
     const noActor = await createMultipart(appWithoutActor, 10);
     expect(noActor.response.status).toBe(403);
     expect(missingActor.create).not.toHaveBeenCalled();
+  });
+
+  it('reads the multipart grant secret from the forRootAsync factory, failing closed without one', async () => {
+    const SECRET = new InjectionToken<string>('test.multipart-grant-secret');
+
+    @Module({ providers: [defineProvider(SECRET, { useValue: GRANT_SECRET })], exports: [SECRET] })
+    class SecretsModule {}
+
+    const withSecret = multipartDriver(10);
+    const withoutSecret = multipartDriver(10);
+    const build = async (
+      imported: ReturnType<typeof StorageModule.forRootAsync>,
+    ): Promise<Awaited<ReturnType<typeof appWithDriver>>> => {
+      const moduleRef = await Test.createTestingModule({ imports: [imported] }).compile();
+      return (await moduleRef.createApplication()).getHonoApp();
+    };
+    const http: StorageHttpOptions = { authorize: () => ({ actorId: 'actor-a' }) };
+
+    const secured = await build(
+      StorageModule.forRootAsync({
+        imports: [SecretsModule],
+        inject: [SECRET],
+        useFactory: (secret) => ({ driver: withSecret.driver, multipartGrantSecret: secret }),
+        http,
+      }),
+    );
+    const created = await createMultipart(secured, 10);
+    expect(created.response.status).toBe(200);
+    expect(typeof created.body.grant).toBe('string');
+
+    const unsecured = await build(
+      StorageModule.forRootAsync({ useFactory: () => ({ driver: withoutSecret.driver }), http }),
+    );
+    expect((await createMultipart(unsecured, 10)).response.status).toBe(403);
+    expect(withoutSecret.create).not.toHaveBeenCalled();
+  });
+
+  it('treats a multipart grant secret shorter than 32 bytes as a server configuration error', async () => {
+    const http: StorageHttpOptions = { authorize: () => ({ actorId: 'actor-a' }) };
+    // A secret known at module scope fails when the module is set up.
+    await expect(
+      appWithDriver({ ...http, multipartGrantSecret: 'short' }, multipartDriver(10).driver),
+    ).rejects.toThrow(/multipartGrantSecret must contain at least 32 bytes/);
+
+    // A factory secret fails every use until the factory succeeds, as a redacted
+    // server error, never a client error that names the setting.
+    const fromFactory = multipartDriver(10);
+    const moduleRef = await Test.createTestingModule({
+      imports: [
+        StorageModule.forRootAsync({
+          useFactory: () => ({ driver: fromFactory.driver, multipartGrantSecret: 'short' }),
+          http,
+        }),
+      ],
+    }).compile();
+    const app = (await moduleRef.createApplication()).getHonoApp();
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const { response, body } = await createMultipart(app, 10);
+      expect(response.status).toBe(502);
+      expect(body).toEqual({ error: { code: 'upstream_error', message: 'storage backend error' } });
+    }
+    expect(fromFactory.create).not.toHaveBeenCalled();
   });
 
   it('binds multipart grants to actor, key, upload, expiry, and bounded part numbers', async () => {

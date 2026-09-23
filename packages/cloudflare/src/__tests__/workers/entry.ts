@@ -1,5 +1,6 @@
 import { VelaWebSocketDurableObject } from '../../durable-objects';
 import { Cron, Inject, InjectEnv, Module, Injectable, Scope, type VelaEnv } from '@velajs/vela';
+import { countRegisteredClasses } from '@velajs/vela/internal';
 import {
   CloudflareWebSocketModule,
   ConnectedSocket,
@@ -11,29 +12,51 @@ import {
   CLOUDFLARE_SCHEDULED_EVENT,
   type CloudflareScheduledEvent,
   type OnGatewayConnection,
+  type UpgradeAuthenticator,
+  type WebSocketUpgradeIdentity,
   type WsClient,
   type WsServer,
 } from '../../index';
 
-const allowedOrigin = 'https://app.test';
+/** A string variable wrangler.test.toml seeds into ENV. */
+function readVariable(env: VelaEnv, name: string): string {
+  const value: unknown = Reflect.get(env, name);
+  if (typeof value !== 'string') throw new TypeError(`${name} must be a string variable`);
+  return value;
+}
 
-@WebSocketGateway({
-  path: '/rooms/:room/ws',
-  roomParam: 'room',
-  binding: 'TEST_ROOM',
-  allowedOrigins: [allowedOrigin],
-  authorizeUpgrade: (request) => request.headers.get('x-test-auth') === 'allowed',
-  authenticateUpgrade: (request) => {
+/**
+ * Resolved through DI from the gateway's module: the tenant comes from ENV, so
+ * the authenticator exercises the Worker's per-environment container.
+ */
+@Injectable()
+class CookieSessionAuthenticator implements UpgradeAuthenticator {
+  readonly #tenantId: string;
+
+  constructor(@InjectEnv() env: VelaEnv) {
+    this.#tenantId = readVariable(env, 'WS_TENANT');
+  }
+
+  authenticate(request: Request): WebSocketUpgradeIdentity | false {
     const match = /(?:^|;\s*)session=([^;]+)/.exec(request.headers.get('cookie') ?? '');
     if (!match) return false;
     const ttlMs = Number(match[1]);
     if (!Number.isSafeInteger(ttlMs)) return false;
     return {
       principal: { issuer: 'workerd-test', subject: 'user-1', principalType: 'user' },
-      tenantId: 'tenant-1',
+      tenantId: this.#tenantId,
       expiresAtMs: Date.now() + ttlMs,
     };
-  },
+  }
+}
+
+@WebSocketGateway({
+  path: '/rooms/:room/ws',
+  roomParam: 'room',
+  binding: 'TEST_ROOM',
+  allowedOrigins: (env) => [readVariable(env, 'WS_ALLOWED_ORIGIN')],
+  authorizeUpgrade: (request) => request.headers.get('x-test-auth') === 'allowed',
+  authenticator: CookieSessionAuthenticator,
 })
 @Injectable({ scope: Scope.REQUEST })
 class TestGateway implements OnGatewayConnection {
@@ -101,18 +124,13 @@ class TestModule {}
 
 export class TestRoom extends VelaWebSocketDurableObject(TestModule) {}
 
-// Every Durable Object instance in this isolate constructs from the same root.
-let rootResolutions = 0;
-const countingRoot = {
-  create: () => {
-    rootResolutions++;
-    return { module: TestModule };
-  },
-};
+// Every Durable Object instance in this isolate constructs from one static
+// DynamicModule root declared at module scope.
+const countingRoot = { module: TestModule, key: 'counting-room' };
 export class CountingRoom extends VelaWebSocketDurableObject(countingRoot) {
-  /** Test-only RPC: how many times this isolate ran the root factory. */
-  async rootResolutions(): Promise<number> {
-    return rootResolutions;
+  /** Test-only RPC: classes the isolate-global metadata registry holds once this instance is built. */
+  async registeredClasses(): Promise<number> {
+    return countRegisteredClasses();
   }
 }
 

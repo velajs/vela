@@ -1,9 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { isServerLiveFrame, readLiveEnvelope } from '@velajs/live-protocol';
 import {
   Injectable,
-  MetadataRegistry,
   Module,
   UseInterceptors,
   VelaFactory,
@@ -58,8 +57,6 @@ function subscribe(query: string, args?: unknown, sub = 's1'): string {
 }
 
 describe('shared live query schemas', () => {
-  beforeEach(() => MetadataRegistry.clear());
-
   it('binds transformed args once per subscription and reparses original input on restore', async () => {
     const parseArgs = vi.fn((input: unknown) => {
       const parsed = z.object({ n: z.string() }).parse(input);
@@ -71,7 +68,6 @@ describe('shared live query schemas', () => {
     });
 
     @LiveResolver()
-    @Injectable()
     class Resolver {
       private readonly multiplier = 2;
       @LiveQuery('count', definition, { tags: (args) => [`n:${args.n}`] })
@@ -136,7 +132,6 @@ describe('shared live query schemas', () => {
       }
     }
     @LiveResolver()
-    @Injectable()
     class Resolver {
       @UseInterceptors(Rewrite)
       @LiveQuery('count', definition, { tags: ['count'] })

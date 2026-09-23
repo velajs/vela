@@ -1,9 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { Controller, Get, Module, MetadataRegistry, createOpenApiDocument } from '../index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
+import { describe, it, expect } from 'vitest';
+import { Controller, Get, Module, createOpenApiDocument } from '../index.js';
 
 @Controller('/things')
 class ThingsController {

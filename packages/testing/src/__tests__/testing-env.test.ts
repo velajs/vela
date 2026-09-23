@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
   ConfigModule,
   ConfigService,
@@ -9,7 +9,6 @@ import {
   Injectable,
   InjectEnv,
   InjectionToken,
-  MetadataRegistry,
   Module,
   Sse,
   defineProvider,
@@ -18,8 +17,6 @@ import {
   type VelaEnv,
 } from '@velajs/vela';
 import { Test } from '../test.js';
-
-beforeEach(() => MetadataRegistry.clear());
 
 function probe(env: VelaEnv): string | undefined {
   const value: unknown = Reflect.get(env, 'PROBE');

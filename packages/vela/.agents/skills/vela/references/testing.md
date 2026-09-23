@@ -6,9 +6,6 @@ The official test harness. `Test.createTestingModule()` builds a real app from m
 
 ```ts
 import { Test } from '@velajs/testing';
-import { MetadataRegistry } from '@velajs/vela';
-
-beforeEach(() => MetadataRegistry.clear());   // reset global decorator metadata between cases
 
 const moduleRef = await Test.createTestingModule({ imports: [CatsModule] })
   .overrideProvider(CatsService).useValue(fakeCats)
@@ -28,7 +25,7 @@ const session = await moduleRef.resolveInRequest(SessionState, { url: 'http://lo
 | `overrideInterceptor(Interceptor)` | an interceptor class |
 | `overrideFilter(Filter)` | an exception-filter class |
 
-Overrides infer their value/class/result contract from the token. Factory dependency tuples are required (`inject: []` for none); erased runtime identities cannot authorize typed replacements.
+Overrides infer their value/class/result contract from the token. A factory override types its parameters from its `inject` tuple, which a factory without parameters may omit (`useFactory({ factory: () => fake })`); erased runtime identities cannot authorize typed replacements.
 
 `.compile()` returns `Promise<TestingModule>`. (There is no `overrideMiddleware`.)
 
@@ -39,7 +36,7 @@ closed harness rejects new requests/scopes. Consume or cancel response streams
 and await scope callbacks before shutdown; Node WebSocket servers/connectors
 registered with the harness are closed with it.
 
-**Convention:** call `MetadataRegistry.clear()` (from `@velajs/vela`) in `beforeEach` — the registry is `globalThis`-anchored, so re-declared classes leak between cases otherwise.
+No per-test cleanup is needed: decorator metadata is permanent for the process and holds no application state, so each compiled module starts from its own container. Declare test classes inside the test (or a fixture function) when cases need distinct metadata.
 
 ## The `TestingModule`
 

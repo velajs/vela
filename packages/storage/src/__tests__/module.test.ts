@@ -1,13 +1,9 @@
-import { MetadataRegistry } from '@velajs/vela';
 import { Test } from '@velajs/testing';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { StorageModule, StorageService, storageToken } from '../index';
 import { memoryDriver } from '../drivers/memory';
 
 describe('StorageModule', () => {
-  beforeEach(() => MetadataRegistry.clear());
-  afterEach(() => MetadataRegistry.clear());
-
   it('forRoot provides a working StorageService', async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [StorageModule.forRoot({ driver: memoryDriver() })],
@@ -60,12 +56,21 @@ describe('StorageModule', () => {
   it('includes async factory identity in the dynamic-module key', () => {
     const factoryA = () => memoryDriver();
     const factoryB = () => memoryDriver();
-    const first = StorageModule.forRootAsync({ inject: [], useFactory: factoryA });
-    const same = StorageModule.forRootAsync({ inject: [], useFactory: factoryA });
-    const other = StorageModule.forRootAsync({ inject: [], useFactory: factoryB });
+    const first = StorageModule.forRootAsync({ useFactory: factoryA });
+    const same = StorageModule.forRootAsync({ useFactory: factoryA });
+    const other = StorageModule.forRootAsync({ useFactory: factoryB });
 
     expect(same.key).toBe(first.key);
     expect(other.key).not.toBe(first.key);
+  });
+
+  it('rejects a driver factory that declares parameters but no inject', () => {
+    expect(() =>
+      StorageModule.forRootAsync({
+        // @ts-expect-error A factory with parameters names the tokens that supply them.
+        useFactory: (bucket: string) => memoryDriver({ initial: { bucket } }),
+      }),
+    ).toThrow(/StorageModule\.forRootAsync: useFactory declares parameters but no inject tokens/);
   });
 
   it('forRootAsync builds the driver lazily (edge-binding safe)', async () => {
@@ -73,7 +78,6 @@ describe('StorageModule', () => {
     const moduleRef = await Test.createTestingModule({
       imports: [
         StorageModule.forRootAsync({
-          inject: [],
           useFactory: () => {
             calls += 1;
             return memoryDriver();
@@ -90,6 +94,29 @@ describe('StorageModule', () => {
     expect(calls).toBe(1);
     await svc.download('x');
     expect(calls).toBe(1); // cached
+  });
+
+  it('forRootAsync runs the factory again on the next operation until it succeeds', async () => {
+    let calls = 0;
+    const moduleRef = await Test.createTestingModule({
+      imports: [
+        StorageModule.forRootAsync({
+          useFactory: () => {
+            calls += 1;
+            if (calls === 1) throw new Error('binding not ready');
+            return memoryDriver();
+          },
+        }),
+      ],
+    }).compile();
+
+    const svc = moduleRef.get(StorageService);
+    await expect(svc.upload('x', 'y')).rejects.toThrow('binding not ready');
+    expect(calls).toBe(1);
+    await svc.upload('x', 'y');
+    expect(calls).toBe(2);
+    await svc.download('x');
+    expect(calls).toBe(2); // cached once it succeeds
   });
 
   it('supports multiple named buckets deduped by name', async () => {

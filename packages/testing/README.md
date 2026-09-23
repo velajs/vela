@@ -44,9 +44,9 @@ describe('CatsService', () => {
 });
 ```
 
-Keep module decorators registered until the test completes. Clearing
-`MetadataRegistry` after declaring a module removes the metadata that `compile()`
-needs. Close each compiled module to run its shutdown hooks and dispose constructed
+Keep module decorators registered until the test completes: no per-test cleanup
+is needed, and `MetadataRegistry.reset()` (from `@velajs/vela/internal`) after
+declaring a module removes the metadata that `compile()` needs. Close each compiled module to run its shutdown hooks and dispose constructed
 providers. Concurrent calls to \`close()\` await the same completion. Register owned
 fixtures with \`moduleRef.onClose(async () => { /* cleanup */ })\`; callbacks run in
 reverse order, and cleanup continues after a failure. The Node WebSocket adapter
@@ -113,7 +113,7 @@ const moduleRef = await Test.createTestingModule({
 }).compile();
 ```
 
-Import \`defineProvider\` from \`@velajs/vela\`. Factory dependency types come from the required \`inject\` tuple; use \`inject: []\` for factories without dependencies.
+Import `defineProvider` from `@velajs/vela`. Factory dependency types come from the `inject` tuple, which a factory without parameters may omit, in providers and in `overrideProvider(TOKEN).useFactory({ factory, inject })`.
 Overrides recompute request-scope propagation, including dependencies introduced
 or removed by a replacement factory. Compile separate testing modules to keep
 application/environment-specific replacements independent.

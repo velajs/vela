@@ -9,6 +9,7 @@ export {
   MultipleProvidersFoundError,
   ROOT_MODULE_ID,
   UnresolvedDependencyError,
+  assertFactoryInject,
   describeToken,
   defineProvider,
 } from './types';
@@ -24,7 +25,10 @@ export type {
   InferTokens,
   InjectableOptions,
   InjectMetadata,
+  CheckedProviders,
+  Provider,
   ProviderDefinition,
+  ProviderLiteral,
   ProviderRegistration,
   ProviderSnapshot,
   InjectionTokenOptions,
@@ -35,4 +39,6 @@ export type {
   MissingInjectionMetadataReason,
   UnresolvedDependency,
   UnresolvedDependencyReason,
+  TypedProviderLiteral,
+  FactoryInject,
 } from './types';

@@ -30,8 +30,9 @@ through an in-process Hono instance. The host and browser validate the protocol 
 their boundaries, including all operation-specific RPC response fields.
 
 Portable and Cloudflare time-travel modules accept `imports` for the configured
-Studio/model-source modules that export their dependencies. Async module factories
-must supply `inject`, including `inject: []` when no dependencies are needed.
+Studio/model-source modules that export their dependencies. An async module
+factory with parameters supplies them through `inject`; one without parameters may
+omit it.
 
 ## Diagnostic snapshots
 

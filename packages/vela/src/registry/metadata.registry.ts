@@ -136,6 +136,35 @@ export function allocateDecoratorKey(): string {
   return `vela:custom:${state.nextDecoratorKey++}`;
 }
 
+/**
+ * Distinct classes (and handler owners) the isolate-global registry holds
+ * metadata for. Decoration is permanent, so this only grows; tests use it to
+ * prove a code path declares nothing new, such as rebuilding an application.
+ */
+export function countRegisteredClasses(): number {
+  const state = registryState();
+  const targets = new Set<object>();
+  const perClass: ReadonlyArray<Map<object, unknown> | Set<object>> = [
+    state.routes,
+    state.controllers,
+    state.controllerOptions,
+    state.modules,
+    state.parameters,
+    state.injectables,
+    state.scopes,
+    state.injectTokens,
+    state.handlerHttpMeta,
+    state.catchTypes,
+    state.routeVersions,
+    state.classMeta,
+    state.handlerMeta,
+    ...Object.values(state.controllerComponents),
+    ...Object.values(state.handlerComponents),
+  ];
+  for (const store of perClass) for (const target of store.keys()) targets.add(target);
+  return targets.size;
+}
+
 export class MetadataRegistry {
   // Every field is a getter over the globalThis-anchored state (registryState).
   // Method bodies keep using `this.<field>`; the getter returns the live map so
@@ -294,6 +323,18 @@ export class MetadataRegistry {
       Map<string | symbol, ComponentTypeMap[T][]>
     >;
     return map.get(controller)?.get(methodName) ?? [];
+  }
+
+  /** Every component `target` declares, at class level and on any handler. */
+  static getDeclaredComponents<T extends ComponentType>(
+    type: T,
+    target: Constructor,
+  ): ComponentTypeMap[T][] {
+    const map = this.handlerComponents[type] as Map<
+      Constructor,
+      Map<string | symbol, ComponentTypeMap[T][]>
+    >;
+    return [...this.getController(type, target), ...[...(map.get(target)?.values() ?? [])].flat()];
   }
 
   // DI metadata
@@ -503,18 +544,14 @@ export class MetadataRegistry {
     return this.getReflectMetadata<unknown[]>(target, 'design:paramtypes', propertyKey);
   }
 
-  // Clear app-time state. Decoration metadata persists — once a class is
-  // decorated, that fact is permanent for the lifetime of the process.
-  // Currently a no-op: the last piece of app-time registry state (the global
-  // component tier) moved to the per-app RouteManager. Kept because test
-  // suites call it between cases and future app-time state belongs here.
+  // Decoration metadata is permanent for the lifetime of the process, and the
+  // registry holds no application state: each application keeps its own in its
+  // container and RouteManager, so nothing needs clearing between tests.
 
-  static clear(): void {
-    // no app-time state to clear
-  }
-
-  // Full reset, including decoration metadata. Used in framework-internal scenarios.
-
+  /**
+   * Full reset, including decoration metadata. Framework-internal: only
+   * suites that re-evaluate decorators may call it (see `@velajs/vela/internal`).
+   */
   static reset(): void {
     this.routes.clear();
     this.controllers.clear();

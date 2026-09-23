@@ -1,10 +1,9 @@
 import { defineCrudFeature } from '../synthesize-controller';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
   Controller,
   Get,
-  MetadataRegistry,
   Module,
   UseGuards,
   UrlGeneratorService,
@@ -59,10 +58,6 @@ class AllowGuard implements CanActivate {
     return true;
   }
 }
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 describe('@Crud over HTTP (decorated controller)', () => {
   async function makeApp(seed: Row[] = []) {

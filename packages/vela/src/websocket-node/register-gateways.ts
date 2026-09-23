@@ -3,7 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import type { UpgradeWebSocket, WSMessageReceive } from 'hono/ws';
 import type { VelaApplication } from '../application';
 import {
-  authenticateWebSocketUpgrade,
+  createWebSocketUpgradeGate,
   resolveMaxFrameBytes,
   resolveGatewayRoomId,
   readWsEntrypointMeta,
@@ -58,6 +58,9 @@ export function registerWebSocketGateways(
 
   for (const { meta } of app.entrypoints.ofKind('websocket', readWsEntrypointMeta)) {
     const { path, dispatcher, options } = meta;
+    // One gate per gateway for this application: its authenticator resolves
+    // from the gateway's declaring module once and serves every upgrade.
+    const authenticate = createWebSocketUpgradeGate(app.getContainer(), meta);
     hono.get(
       path,
       upgradeWebSocket(async (c: Context) => {
@@ -67,7 +70,7 @@ export function registerWebSocketGateways(
         } catch {
           throw new HTTPException(400, { message: 'Invalid WebSocket room' });
         }
-        const upgrade = await authenticateWebSocketUpgrade(options, c.req.raw, roomId);
+        const upgrade = await authenticate(c.req.raw, roomId);
         if (upgrade === false) {
           throw new HTTPException(403, { message: 'WebSocket upgrade forbidden' });
         }

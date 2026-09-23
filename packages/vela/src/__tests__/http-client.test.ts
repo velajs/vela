@@ -7,14 +7,12 @@ import {
   Module,
   Injectable,
   InjectionToken,
-  MetadataRegistry,
   HttpModule,
   HttpService,
   HttpRequestException,
 } from '../index.js';
 
 beforeEach(() => {
-  MetadataRegistry.clear();
   vi.restoreAllMocks();
 });
 

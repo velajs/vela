@@ -27,7 +27,6 @@ describe('queue driver application ownership', () => {
     class Producer {
       constructor(@Inject(queueToken('owned')) readonly queue: QueueClient) {}
     }
-    @Injectable()
     @Processor('owned')
     class Consumer {
       @Process() handle(job: { data: string }) {

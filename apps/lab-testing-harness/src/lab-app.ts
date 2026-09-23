@@ -5,14 +5,12 @@ import {
   Injectable,
   Inject,
   InjectionToken,
-  MetadataRegistry,
   Module,
   Param,
   UseFilters,
   UseGuards,
   UseInterceptors,
   UsePipes,
-  defineProvider,
 } from '@velajs/vela';
 import type {
   ArgumentMetadata,
@@ -24,7 +22,6 @@ import type {
   OnModuleDestroy,
   OnModuleInit,
   PipeTransform,
-  Type,
 } from '@velajs/vela';
 
 export interface LabConfig {
@@ -36,166 +33,132 @@ export const LIFECYCLE_LOG = new InjectionToken<string[]>('LIFECYCLE_LOG');
 
 export class LabFailure extends Error {}
 
-export interface LabFixture {
-  LabModule: Type;
-  ProbeClient: Type<{ read(): string }>;
-  FakeProbeClient: Type<{ read(): string }>;
-  ReadingService: Type<{ list(): Array<{ id: string; source: string; mode: string }> }>;
-  AuthGuard: Type<CanActivate>;
-  NormalizePipe: Type<PipeTransform>;
-  EnvelopeInterceptor: Type<NestInterceptor>;
-  LabErrorFilter: Type<ExceptionFilter>;
-  LAB_CONFIG: typeof LAB_CONFIG;
-  LIFECYCLE_LOG: typeof LIFECYCLE_LOG;
-  lifecycleLog: string[];
+@Injectable()
+export class ProbeClient {
+  read() {
+    return 'real-probe';
+  }
 }
 
-export function defineLabTestingFixture(): LabFixture {
-  MetadataRegistry.clear();
+@Injectable()
+export class FakeProbeClient {
+  read() {
+    return 'fake-probe';
+  }
+}
 
-  const lifecycleLog: string[] = [];
+@Injectable()
+export class ReadingService {
+  constructor(
+    private readonly probe: ProbeClient,
+    @Inject(LAB_CONFIG) private readonly config: LabConfig,
+  ) {}
 
-  @Injectable()
-  class ProbeClient {
-    read() {
-      return 'real-probe';
-    }
+  list() {
+    return [
+      {
+        id: 'reading-1',
+        source: this.probe.read(),
+        mode: this.config.mode,
+      },
+    ];
+  }
+}
+
+@Injectable()
+export class AuthGuard implements CanActivate {
+  canActivate(context: ExecutionContext): boolean {
+    return context.getRequest().headers.get('x-lab-key') === 'secret';
+  }
+}
+
+@Injectable()
+export class NormalizePipe implements PipeTransform {
+  transform(value: unknown, _metadata: ArgumentMetadata): unknown {
+    return String(value).toUpperCase();
+  }
+}
+
+@Injectable()
+export class EnvelopeInterceptor implements NestInterceptor {
+  async intercept(_context: ExecutionContext, next: CallHandler): Promise<unknown> {
+    return {
+      wrappedBy: 'real-interceptor',
+      data: await next.handle(),
+    };
+  }
+}
+
+@Catch(LabFailure)
+export class LabErrorFilter implements ExceptionFilter {
+  catch(exception: LabFailure, _context: ExecutionContext) {
+    return {
+      handledBy: 'real-filter',
+      message: exception.message,
+    };
+  }
+}
+
+@Injectable()
+class LabLifecycle implements OnModuleInit, OnModuleDestroy {
+  constructor(@Inject(LIFECYCLE_LOG) private readonly log: string[]) {}
+
+  onModuleInit() {
+    this.log.push('init');
   }
 
-  @Injectable()
-  class FakeProbeClient {
-    read() {
-      return 'fake-probe';
-    }
+  onModuleDestroy() {
+    this.log.push('destroy');
+  }
+}
+
+@Controller('/labs')
+class LabController {
+  constructor(private readonly readings: ReadingService) {}
+
+  @Get('/readings')
+  readingsList() {
+    return this.readings.list();
   }
 
-  @Injectable()
-  class ReadingService {
-    constructor(
-      private readonly probe: ProbeClient,
-      @Inject(LAB_CONFIG) private readonly config: LabConfig,
-    ) {}
-
-    list() {
-      return [
-        {
-          id: 'reading-1',
-          source: this.probe.read(),
-          mode: this.config.mode,
-        },
-      ];
-    }
+  @Get('/secure')
+  @UseGuards(AuthGuard)
+  secure() {
+    return { ok: true };
   }
 
-  @Injectable()
-  class AuthGuard implements CanActivate {
-    canActivate(context: ExecutionContext): boolean {
-      return context.getRequest().headers.get('x-lab-key') === 'secret';
-    }
+  @Get('/samples/:sample')
+  @UsePipes(NormalizePipe)
+  sample(@Param('sample') sample: string) {
+    return { sample };
   }
 
-  @Injectable()
-  class NormalizePipe implements PipeTransform {
-    transform(value: unknown, _metadata: ArgumentMetadata): unknown {
-      return String(value).toUpperCase();
-    }
+  @Get('/enveloped')
+  @UseInterceptors(EnvelopeInterceptor)
+  enveloped() {
+    return { value: 42 };
   }
 
-  @Injectable()
-  class EnvelopeInterceptor implements NestInterceptor {
-    async intercept(_context: ExecutionContext, next: CallHandler): Promise<unknown> {
-      return {
-        wrappedBy: 'real-interceptor',
-        data: await next.handle(),
-      };
-    }
+  @Get('/failure')
+  @UseFilters(LabErrorFilter)
+  failure() {
+    throw new LabFailure('calibration failed');
   }
+}
 
-  @Catch(LabFailure)
-  @Injectable()
-  class LabErrorFilter implements ExceptionFilter {
-    catch(exception: LabFailure, _context: ExecutionContext) {
-      return {
-        handledBy: 'real-filter',
-        message: exception.message,
-      };
-    }
-  }
-
-  @Injectable()
-  class LabLifecycle implements OnModuleInit, OnModuleDestroy {
-    constructor(@Inject(LIFECYCLE_LOG) private readonly log: string[]) {}
-
-    onModuleInit() {
-      this.log.push('init');
-    }
-
-    onModuleDestroy() {
-      this.log.push('destroy');
-    }
-  }
-
-  @Controller('/labs')
-  class LabController {
-    constructor(private readonly readings: ReadingService) {}
-
-    @Get('/readings')
-    readingsList() {
-      return this.readings.list();
-    }
-
-    @Get('/secure')
-    @UseGuards(AuthGuard)
-    secure() {
-      return { ok: true };
-    }
-
-    @Get('/samples/:sample')
-    @UsePipes(NormalizePipe)
-    sample(@Param('sample') sample: string) {
-      return { sample };
-    }
-
-    @Get('/enveloped')
-    @UseInterceptors(EnvelopeInterceptor)
-    enveloped() {
-      return { value: 42 };
-    }
-
-    @Get('/failure')
-    @UseFilters(LabErrorFilter)
-    failure() {
-      throw new LabFailure('calibration failed');
-    }
-  }
-
-  @Module({
-    providers: [
-      ProbeClient,
-      ReadingService,
-      AuthGuard,
-      NormalizePipe,
-      EnvelopeInterceptor,
-      LabErrorFilter,
-      LabLifecycle,
-      defineProvider(LAB_CONFIG, { useValue: { mode: 'real' } }),
-      defineProvider(LIFECYCLE_LOG, { useValue: lifecycleLog }),
-    ],
-    controllers: [LabController],
-  })
-  class LabModule {}
-
-  return {
-    LabModule,
+@Module({
+  providers: [
     ProbeClient,
-    FakeProbeClient,
     ReadingService,
     AuthGuard,
     NormalizePipe,
     EnvelopeInterceptor,
     LabErrorFilter,
-    LAB_CONFIG,
-    LIFECYCLE_LOG,
-    lifecycleLog,
-  };
-}
+    LabLifecycle,
+    { provide: LAB_CONFIG, useValue: { mode: 'real' } },
+    // Each compiled module records its own lifecycle.
+    { provide: LIFECYCLE_LOG, useFactory: () => [] },
+  ],
+  controllers: [LabController],
+})
+export class LabModule {}

@@ -3,7 +3,7 @@ import {
   Controller,
   Get,
   Inject,
-  Injectable,
+  InjectionToken,
   Post,
   readJsonBody,
   Req,
@@ -60,21 +60,38 @@ export interface ResolvedHttpOptions {
   deleteConcurrency: number;
 }
 
+/** Values each application resolves through DI and the controller reads per request. */
+export interface StorageControllerOptions {
+  /** The multipart grant secret, when it comes from a `forRootAsync` factory. */
+  multipartGrantSecret?: () => string | Uint8Array | undefined;
+}
+
+const NO_CONTROLLER_OPTIONS = new InjectionToken<StorageControllerOptions>(
+  '@velajs/storage:controller-options',
+  { factory: () => ({}) },
+);
+
 /**
  * Build a vela controller exposing presigned/multipart upload + download
  * endpoints for one bucket. Factory-decorated (like better-auth's catch-all)
  * so `basePath` bakes in at decoration time. Consumes the {@link StorageService}
- * facade so gating/retry/prefix apply uniformly on the HTTP path.
+ * facade so gating/retry/prefix apply uniformly on the HTTP path. `optionsToken`
+ * supplies values resolved per application, such as a multipart grant secret
+ * that takes precedence over `http.multipartGrantSecret`.
  */
-export function createStorageController(
+export function createStorageController<Options extends StorageControllerOptions>(
   basePath: string,
   serviceToken: TypedToken<StorageService>,
   http: ResolvedHttpOptions,
+  optionsToken?: TypedToken<Options>,
 ): Type {
   @Controller(basePath)
-  @Injectable()
   class StorageController {
-    constructor(@Inject(serviceToken) private readonly svc: StorageService) {}
+    constructor(
+      @Inject(serviceToken) private readonly svc: StorageService,
+      @Inject(optionsToken ?? NO_CONTROLLER_OPTIONS)
+      private readonly options: StorageControllerOptions,
+    ) {}
 
     private get storage() {
       return this.svc.storage;
@@ -130,14 +147,15 @@ export function createStorageController(
     }
 
     private multipartSecret(): string | Uint8Array {
-      if (http.multipartGrantSecret === undefined) {
+      const secret = this.options.multipartGrantSecret?.() ?? http.multipartGrantSecret;
+      if (secret === undefined) {
         throw new StorageError(
           'AccessDenied',
           'storage: multipartGrantSecret is required for browser-direct multipart uploads',
         );
       }
-      validateMultipartGrantSecret(http.multipartGrantSecret);
-      return http.multipartGrantSecret;
+      validateMultipartGrantSecret(secret);
+      return secret;
     }
 
     private actor(result: StorageAuthResult): string {

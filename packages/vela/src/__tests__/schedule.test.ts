@@ -1,11 +1,7 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { VelaFactory, Module, Injectable, MetadataRegistry } from '../index.js';
+import { describe, it, expect, vi } from 'vitest';
+import { VelaFactory, Module, Injectable } from '../index.js';
 import { ScheduleModule, ScheduleRegistry, Cron, Interval, parseCron } from '../schedule/index.js';
 import { ScheduleNodeModule, ScheduleExecutor } from '../schedule-node/index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 describe('ScheduleModule', () => {
   describe('@Cron decorator', () => {

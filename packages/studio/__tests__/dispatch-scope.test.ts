@@ -82,7 +82,6 @@ describe('Studio registration-aware dispatch', () => {
     container.register(
       defineProvider(dependency, {
         scope: Scope.REQUEST,
-        inject: [],
         useFactory: async () => ({ id: crypto.randomUUID() }),
       }),
       'handler',

@@ -7,7 +7,7 @@ import {
   provideGlobal,
   ThrottlerModule,
 } from '@velajs/vela';
-import { Controller, Get, MetadataRegistry, Module, UseGuards, VelaFactory } from '@velajs/vela';
+import { Controller, Get, Module, UseGuards, VelaFactory } from '@velajs/vela';
 import {
   AuthzModule,
   PermissionGuard,
@@ -15,7 +15,7 @@ import {
   CurrentIdentity,
 } from '@velajs/authz/vela';
 import { createAuthz, defineRole } from '@velajs/authz';
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { cloudflareAccessIssuer } from '../issuer';
 import type { ResolvedIdentity } from '../types';
 import type { TrustedRequestIdentity } from '@velajs/vela';
@@ -34,9 +34,6 @@ let keys: TestKeyMaterial;
 beforeAll(async () => {
   keys = await makeKeyMaterial();
 });
-
-beforeEach(() => MetadataRegistry.clear());
-afterEach(() => MetadataRegistry.clear());
 
 const tokenWith = (claims: Record<string, unknown>, subject = 'user-1'): Promise<string> =>
   mintToken({
