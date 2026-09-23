@@ -44,9 +44,12 @@ as a whole the same way, such as a `Provider[]` parameter, `dynamic.providers ??
 These literals are validated at runtime only, so prefer `defineProvider` in computed contributions
 and shared lists when the value type matters.
 
-Framework-global providers such as `Reflector` and `ENV` resolve to the application's own
-registration from every module, even when a module also lists one or a `@Global()` module exports
-one. A token that two `@Global()` modules export still fails with `MultipleProvidersFoundError`.
+Framework-global tokens such as `Reflector`, `ENV` and `NONCE_STORE` resolve to the application's
+registration from every module that neither registers its own copy nor sees a global override. A
+module that lists one in its providers uses that local provider. A `@Global()` module that exports
+one overrides the application registration for every other module, as in Nest, while a copy that
+another module registers without exporting it globally stays private to that module. A token that
+two `@Global()` modules export fails with `MultipleProvidersFoundError`.
 
 Every application provides `Reflector` globally, so guards and interceptors inject it through their
 constructor, as in Nest.

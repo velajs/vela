@@ -9,11 +9,14 @@ import {
   InjectionToken,
   Module,
   MultipleProvidersFoundError,
+  NONCE_STORE,
   Param,
   REQUEST_CONTEXT,
   Reflector,
   Scope,
   SetMetadata,
+  SkipThrottle,
+  ThrottlerModule,
   UseFilters,
   UseGuards,
   UseInterceptors,
@@ -28,6 +31,7 @@ import {
   type ExecutionContext,
   type NestInterceptor,
   type OnModuleInit,
+  type NonceStore,
   type PipeTransform,
   type RequestContext,
 } from '../index';
@@ -592,17 +596,109 @@ describe('framework-global providers', () => {
     await app.close();
   });
 
-  it('serve the application Reflector when a global module exports one', async () => {
+  it('serve the Reflector a global module exports to guards, built-in guards included', async () => {
     @Global()
     @Module({ providers: [Reflector], exports: [Reflector] })
     class SharedModule {}
 
-    @Module({ imports: [SharedModule, AdminModule] })
+    @Injectable()
+    class ReflectorReader {
+      constructor(readonly reflector: Reflector) {}
+    }
+
+    @Controller('/limited')
+    class LimitedController {
+      @Get()
+      index() {
+        return {};
+      }
+
+      @Get('/open')
+      @SkipThrottle()
+      open() {
+        return {};
+      }
+    }
+
+    @Module({
+      imports: [ThrottlerModule.forRoot({ limit: 2, ttl: 60_000 })],
+      providers: [ReflectorReader],
+      controllers: [LimitedController],
+    })
+    class LimitedModule {}
+
+    @Module({ imports: [SharedModule, AdminModule, LimitedModule] })
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
-    const response = await app.getHonoApp().request('/admin', { headers: { 'x-role': 'admin' } });
-    expect(response.status).toBe(200);
+    const hono = app.getHonoApp();
+    expect((await hono.request('/admin', { headers: { 'x-role': 'admin' } })).status).toBe(200);
+    expect((await hono.request('/admin')).status).toBe(403);
+    for (const status of [200, 200, 429]) {
+      expect((await hono.request('/limited')).status).toBe(status);
+    }
+    for (const status of [200, 200, 200]) {
+      expect((await hono.request('/limited/open')).status).toBe(status);
+    }
+    const container = app.getContainer();
+    const [sharedId] = container.getOwnerModuleIds(SharedModule);
+    expect(app.get(ReflectorReader).reflector).toBe(container.resolve(Reflector, sharedId));
+    await app.close();
+  });
+
+  it('let a global module override a framework default such as NONCE_STORE', async () => {
+    @Injectable()
+    class SharedNonceStore implements NonceStore {
+      async claim(): Promise<boolean> {
+        return true;
+      }
+    }
+
+    @Global()
+    @Module({
+      providers: [{ provide: NONCE_STORE, useClass: SharedNonceStore }],
+      exports: [NONCE_STORE],
+    })
+    class NonceModule {}
+
+    @Injectable()
+    class TicketService {
+      constructor(@Inject(NONCE_STORE) readonly nonces: NonceStore) {}
+    }
+
+    @Module({ providers: [TicketService] })
+    class TicketModule {}
+
+    @Module({ imports: [NonceModule, TicketModule] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    expect(app.get(TicketService).nonces).toBeInstanceOf(SharedNonceStore);
+    await app.close();
+  });
+
+  it('ignore a copy another module keeps private', async () => {
+    const REGION = new InjectionToken<string>('shared region');
+
+    @Global()
+    @Module({ providers: [{ provide: REGION, useValue: 'global' }], exports: [REGION] })
+    class RegionModule {}
+
+    @Module({ providers: [{ provide: REGION, useValue: 'private' }] })
+    class PrivateModule {}
+
+    @Injectable()
+    class RegionReader {
+      constructor(@Inject(REGION) readonly region: string) {}
+    }
+
+    @Module({ imports: [RegionModule, PrivateModule], providers: [RegionReader] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    expect(app.get(RegionReader).region).toBe('global');
+    const [appId] = app.getContainer().getOwnerModuleIds(AppModule);
+    expect(app.getContainer().resolveAll(REGION, appId)).toEqual(['global']);
     await app.close();
   });
 
