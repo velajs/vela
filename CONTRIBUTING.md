@@ -47,9 +47,14 @@ it never substitutes an in-memory database. The test user must be able to create
 schemas and roles for the isolated transaction and row-level security checks.
 
 Before submitting, run `pnpm lint` and `pnpm verify`. The verification gate checks
-the workspace, builds, API snapshot, types, bundled skill documentation, package
-tests, release tests, CRUD conformance, and native Workers behavior. Review
-intentional core API changes with `pnpm --filter @velajs/vela api:update`.
+the workspace, builds, API snapshot, Worker size budgets, types, bundled skill
+documentation, package tests, release tests, CRUD conformance, and native Workers
+behavior. Review intentional core API changes with
+`pnpm --filter @velajs/vela api:update`. The size budgets bundle two minimal
+Workers with Wrangler, one through `VelaFactory.create()` and one through
+`createCloudflareWorker()`; record an intentional size change with
+`pnpm --dir packages/vela worker-size:update` or
+`pnpm --dir packages/cloudflare worker-size:update`.
 
 The Fumadocs website is maintained separately in the private
 [velajs/site](https://github.com/velajs/site) repository, with MDX content from
