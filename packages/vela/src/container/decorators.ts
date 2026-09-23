@@ -18,7 +18,7 @@ export function Injectable(options: InjectableOptions = {}): ClassDecorator {
 
 /**
  * Record a scope that a class decorator received explicitly. Decorators given
- * no scope write nothing and {@link getScope} applies the SINGLETON default on
+ * no scope write nothing and {@link getScope} applies `Scope.DEFAULT` on
  * read, so the result never depends on decorator order. Two different explicit
  * scopes on one class are a wiring error; repeating the same scope is fine.
  */
@@ -64,7 +64,7 @@ export function isInjectable(target: object): boolean {
 }
 
 export function getScope(target: object): Scope {
-  return MetadataRegistry.getScope(target) ?? Scope.SINGLETON;
+  return MetadataRegistry.getScope(target) ?? Scope.DEFAULT;
 }
 
 /**

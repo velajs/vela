@@ -9,7 +9,7 @@ import {
 } from '../../index';
 import type { VelaApplication } from '../../application';
 
-// A SINGLETON service that reads the current request's context purely via the
+// A singleton service that reads the current request's context purely via the
 // ambient accessor — the whole point of the opt-in ambient container. If ALS
 // propagation works on workerd, each request sees its own context.
 @Injectable()

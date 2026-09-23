@@ -246,7 +246,7 @@ describe('provider registration identity', () => {
       drainSync: () => {},
       drainAsync: async () => {},
     });
-    expect(container.getProviderScope(token)).toBe(Scope.SINGLETON);
+    expect(container.getProviderScope(token)).toBe(Scope.DEFAULT);
     expect(container.getProviderScope(token, 'B')).toBe(Scope.REQUEST);
     expect(container.getProviderScope(token, 'importer')).toBeUndefined();
     expect(container.isLazyPending(token)).toBe(false);
@@ -305,7 +305,7 @@ describe('provider registration identity', () => {
     expect(
       snapshots.map(({ moduleId, scope: lifetime, kind }) => ({ moduleId, scope: lifetime, kind })),
     ).toEqual([
-      { moduleId: 'A', scope: Scope.SINGLETON, kind: 'value' },
+      { moduleId: 'A', scope: Scope.DEFAULT, kind: 'value' },
       { moduleId: 'B', scope: Scope.REQUEST, kind: 'factory' },
     ]);
     expect(snapshots[0]?.instance?.value).toBe(value);

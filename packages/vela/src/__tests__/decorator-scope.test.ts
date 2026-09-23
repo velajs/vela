@@ -8,7 +8,13 @@ beforeEach(() => {
 });
 
 describe('class decorator scope declarations', () => {
-  it('writes no scope unless one is passed; reads default to SINGLETON', () => {
+  it('names the default lifetime Scope.DEFAULT without a SINGLETON alias', () => {
+    expect(Scope).toEqual({ DEFAULT: 'default', TRANSIENT: 'transient', REQUEST: 'request' });
+    // @ts-expect-error Scope.SINGLETON was renamed to Scope.DEFAULT.
+    expect(Scope.SINGLETON).toBeUndefined();
+  });
+
+  it('writes no scope unless one is passed; reads default to Scope.DEFAULT', () => {
     @Injectable()
     class Plain {}
 
@@ -23,7 +29,7 @@ describe('class decorator scope declarations', () => {
 
     for (const target of [Plain, PlainController, PlainGateway, PlainSeeder]) {
       expect(MetadataRegistry.getScope(target)).toBeUndefined();
-      expect(getScope(target)).toBe(Scope.SINGLETON);
+      expect(getScope(target)).toBe(Scope.DEFAULT);
     }
   });
 
@@ -93,10 +99,10 @@ describe('class decorator scope declarations', () => {
     );
 
     expect(() => {
-      @Injectable({ scope: Scope.SINGLETON })
+      @Injectable({ scope: Scope.DEFAULT })
       @Injectable({ scope: Scope.REQUEST })
       class InjectableConflict {}
       return InjectableConflict;
-    }).toThrow(/InjectableConflict declares conflicting scopes "request" and "singleton"/);
+    }).toThrow(/InjectableConflict declares conflicting scopes "request" and "default"/);
   });
 });

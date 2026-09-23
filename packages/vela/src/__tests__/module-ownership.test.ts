@@ -154,7 +154,7 @@ describe('module registration ownership', () => {
         .getRegistrations({ metadataOnly: true })
         .map((entry) => [entry.moduleId, entry.scope]),
     ).toEqual([
-      ['one', Scope.SINGLETON],
+      ['one', Scope.DEFAULT],
       ['two', Scope.REQUEST],
     ]);
     expect(

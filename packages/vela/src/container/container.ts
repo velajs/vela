@@ -71,7 +71,7 @@ export class Container {
   #globals = new Set<Token>();
   #diagnostics: Diagnostics;
   // The root container that owns shared state; a request child points back here
-  // so container-constructed SINGLETONs are tracked (and disposed) at the root,
+  // so container-constructed singletons are tracked (and disposed) at the root,
   // never by the ephemeral child that happened to first resolve them.
   #root: Container = this;
   // Container-constructed instances in creation order, for LIFO disposal.
@@ -166,7 +166,7 @@ export class Container {
 
     const registration: ProviderRegistration = {
       provide: token,
-      scope: options.scope ?? Scope.SINGLETON,
+      scope: options.scope ?? Scope.DEFAULT,
       declaringModuleId: moduleId,
     };
 
@@ -628,10 +628,10 @@ export class Container {
     }
     if (registration) {
       return registration.value
-        ? Scope.SINGLETON
+        ? Scope.DEFAULT
         : (registration.effectiveScope ?? registration.scope);
     }
-    if (token instanceof InjectionToken && token.options?.factory) return Scope.SINGLETON;
+    if (token instanceof InjectionToken && token.options?.factory) return Scope.DEFAULT;
     return undefined;
   }
 
@@ -775,7 +775,7 @@ export class Container {
     child.#exporterIndex = this.#exporterIndex;
     child.#scopes = this.#scopes;
     child.#globals = this.#globals;
-    // SINGLETON disposal is owned by the root; the child keeps only its own
+    // Singleton disposal is owned by the root; the child keeps only its own
     // REQUEST-scoped disposables (cleared when the request ends).
     child.#root = this.#root;
     return child;
@@ -872,7 +872,7 @@ export class Container {
     if (this.#root === this) {
       for (const bucket of this.#providers.values()) {
         for (const registration of bucket.values()) {
-          if (registration.scope === Scope.SINGLETON && registration.value === undefined) {
+          if (registration.scope === Scope.DEFAULT && registration.value === undefined) {
             registration.instance = undefined;
           }
         }
@@ -888,7 +888,7 @@ export class Container {
       return registration.value.value;
     }
 
-    // Effective scope accounts for request-scope bubbling: a SINGLETON that
+    // Effective scope accounts for request-scope bubbling: a singleton that
     // (transitively) depends on a request-scoped provider is treated as REQUEST
     // so it is rebuilt per request instead of capturing the first one.
     const scope = registration.effectiveScope ?? registration.scope;
@@ -911,7 +911,7 @@ export class Container {
     }
 
     // Singleton: return cached from registration (shared across all containers)
-    if (scope === Scope.SINGLETON && registration.instance !== undefined) {
+    if (scope === Scope.DEFAULT && registration.instance !== undefined) {
       return registration.instance.value;
     }
 
@@ -924,7 +924,7 @@ export class Container {
       }
     }
 
-    const asyncOwner = scope === Scope.SINGLETON ? this.#root : this;
+    const asyncOwner = scope === Scope.DEFAULT ? this.#root : this;
     if (asyncOwner.#pendingInstances.has(registration)) {
       throw new Error(
         `Provider ${this.tokenToString(registration.provide)} is resolving asynchronously. Use resolveAsync().`,
@@ -935,7 +935,7 @@ export class Container {
     this.#resolutionStack.add(registration);
     const previousOwner = this.#constructionOwner;
     const owner =
-      scope === Scope.SINGLETON ? this.#root : scope === Scope.REQUEST ? this : previousOwner;
+      scope === Scope.DEFAULT ? this.#root : scope === Scope.REQUEST ? this : previousOwner;
     this.#constructionOwner = owner;
 
     try {
@@ -952,7 +952,7 @@ export class Container {
         );
       }
 
-      if (scope === Scope.SINGLETON) {
+      if (scope === Scope.DEFAULT) {
         registration.instance = { value: instance };
       } else if (scope === Scope.REQUEST) {
         this.#requestInstances.set(registration, { value: instance });
@@ -1136,7 +1136,7 @@ export class Container {
         retainingOwner,
       );
     }
-    if (scope === Scope.SINGLETON && registration.instance) return registration.instance.value;
+    if (scope === Scope.DEFAULT && registration.instance) return registration.instance.value;
     if (scope === Scope.REQUEST) {
       // This cache is written only through checked token values or this same registration.
       const cached = (this.#requestSeeds.get(registration.provide) ??
@@ -1144,14 +1144,14 @@ export class Container {
       if (cached) return cached.value;
     }
     const owner =
-      scope === Scope.SINGLETON ? this.#root : scope === Scope.REQUEST ? this : retainingOwner;
+      scope === Scope.DEFAULT ? this.#root : scope === Scope.REQUEST ? this : retainingOwner;
     if (scope !== Scope.TRANSIENT) {
       // In-flight entries share the registration's value type, erased by the heterogeneous map.
       const pending = owner.#pendingInstances.get(registration) as Promise<T> | undefined;
       if (pending) return pending;
     }
     const pending = this.constructAsync(registration, next, owner).then((instance) => {
-      if (scope === Scope.SINGLETON) {
+      if (scope === Scope.DEFAULT) {
         registration.instance = { value: instance };
       } else if (scope === Scope.REQUEST) {
         this.#requestInstances.set(registration, { value: instance });

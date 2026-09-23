@@ -73,7 +73,7 @@ before `ThrottlerModule`.
 ## Features
 
 - **Decorator-based controllers** — `@Controller`, `@Get`, `@Post`, `@Put`, `@Patch`, `@Delete`
-- **Dependency injection** — `@Injectable`, `@Inject`, `InjectionToken`, singleton/transient/request scopes
+- **Dependency injection** — `@Injectable`, `@Inject`, `InjectionToken`, `Scope.DEFAULT` (singleton), `Scope.TRANSIENT` and `Scope.REQUEST` scopes
 - **Modules** — `@Module` with imports, exports, controllers, providers
 - **Guards** — `@UseGuards` with `CanActivate` interface
 - **Pipes** — `@UsePipes`, built-in `ParseIntPipe`, `ParseBoolPipe`, `ValidationPipe`, etc.

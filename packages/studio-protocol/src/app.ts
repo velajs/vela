@@ -36,7 +36,7 @@ export interface ModuleNode {
   providerScopes?: Array<{ token: string; scope: StudioProviderScope }>;
 }
 
-export type StudioProviderScope = 'singleton' | 'transient' | 'request';
+export type StudioProviderScope = 'default' | 'transient' | 'request';
 
 /** One entrypoint entry (queue/cron/etc.). Wire shape: `meta` is optional/unknown. */
 export interface EntrypointRow {

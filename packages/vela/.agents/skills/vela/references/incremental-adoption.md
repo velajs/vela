@@ -7,7 +7,7 @@ Migrating a NestJS codebase to Vela, or embedding a Vela app inside an existing 
 Vela mirrors NestJS's authoring surface, so most decorators and interfaces port unchanged (all from `@velajs/vela`):
 
 - **Decorators:** `@Module`, `@Global`, `@Controller`, `@Get/@Post/@Put/@Patch/@Delete/@Options/@Head/@All`, `@Param/@Query/@Body/@Headers/@Req/@Res`, `@Injectable`, `@Inject`, `@Optional`, `@UseGuards/@UsePipes/@UseInterceptors/@UseFilters`, `@Catch`, `@SetMetadata`, `@Version`.
-- **DI:** constructor injection, `forwardRef`, `ModuleRef`, `Reflector`, and the three scopes (`Scope.SINGLETON/REQUEST/TRANSIENT`).
+- **DI:** constructor injection, `forwardRef`, `ModuleRef`, `Reflector`, and the three scopes (`Scope.DEFAULT/REQUEST/TRANSIENT`).
 - **Lifecycle hooks (same names):** `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`, `OnApplicationShutdown`, `BeforeApplicationShutdown`.
 - `ConfigurableModuleBuilder` is provided for parity (it is a thin adapter over `defineModule`).
 

@@ -283,7 +283,7 @@ export class DiscoveryService {
     filter: DiscoveryFilter | undefined,
     label: string,
   ): DiscoveredRegistration | undefined {
-    const scope = this.#container.getProviderScope(metatype, moduleId) ?? Scope.SINGLETON;
+    const scope = this.#container.getProviderScope(metatype, moduleId) ?? Scope.DEFAULT;
     const metadata = { token: metatype, metatype, moduleId, moduleIds, scope };
     if (
       filter?.metadataOnly ||

@@ -221,8 +221,7 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
     )) {
       const gatewayClass = found.metatype;
       const instance =
-        found.scope === Scope.SINGLETON &&
-        !this.#container.isLazyPending(found.token, found.moduleId)
+        found.scope === Scope.DEFAULT && !this.#container.isLazyPending(found.token, found.moduleId)
           ? await resolveEntrypoint(this.#container, {
               token: found.metatype,
               moduleId: found.moduleId,

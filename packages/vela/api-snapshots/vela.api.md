@@ -3908,7 +3908,7 @@ declare const ParamType: {
 };
 type ParamType = (typeof ParamType)[keyof typeof ParamType];
 declare const Scope: {
-  readonly SINGLETON: 'singleton';
+  readonly DEFAULT: 'default';
   readonly TRANSIENT: 'transient';
   readonly REQUEST: 'request';
 };

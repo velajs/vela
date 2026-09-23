@@ -17,7 +17,7 @@ class is decorated.
 
 A class provider keeps the scope its class declares, whether it is listed directly or registered
 through `useClass`, including `APP_*` providers and exception handler classes. A `scope` set on the
-provider overrides the class declaration. Value and factory providers default to `Scope.SINGLETON`.
+provider overrides the class declaration. Value and factory providers default to `Scope.DEFAULT`.
 
 `setRequestInstance(token, value)` explicitly seeds a value in one container. It overrides constructed
 request values for that token, including an intentional `undefined`. The seed still requires a visible

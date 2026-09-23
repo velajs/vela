@@ -16,7 +16,7 @@ export interface ControllerOptions {
   version?: number | number[];
   /**
    * Controller lifetime, like `@Injectable({ scope })`. Defaults to
-   * `Scope.SINGLETON`; declaring a different scope elsewhere on the class throws.
+   * `Scope.DEFAULT`; declaring a different scope elsewhere on the class throws.
    */
   scope?: Scope;
 }

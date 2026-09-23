@@ -7,7 +7,7 @@ import type { StudioInvocationDiagnostic } from './panels';
 
 const row = z.record(z.string(), z.unknown());
 const strings = z.array(z.string());
-const providerScope = z.enum(['singleton', 'transient', 'request']);
+const providerScope = z.enum(['default', 'transient', 'request']);
 const invocationDiagnostic = z.object({
   kind: z.string(),
   source: z.string(),

@@ -49,7 +49,7 @@ export const ParamType = {
 export type ParamType = (typeof ParamType)[keyof typeof ParamType];
 
 export const Scope = {
-  SINGLETON: 'singleton',
+  DEFAULT: 'default',
   TRANSIENT: 'transient',
   REQUEST: 'request',
 } as const;

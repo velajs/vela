@@ -5141,7 +5141,7 @@ describe('useClass provider substitution', () => {
     }
 
     @Module({
-      providers: [defineProvider(COUNTER, { useClass: Counter, scope: Scope.SINGLETON })],
+      providers: [defineProvider(COUNTER, { useClass: Counter, scope: Scope.DEFAULT })],
       controllers: [CounterController],
     })
     class AppModule {}
