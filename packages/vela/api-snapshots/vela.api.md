@@ -3138,7 +3138,7 @@ export { ValidationPipe as t };
 ### `<internal:metadata.registry.d.ts>`
 
 ```ts
-import { $ as ProviderDefinition, F as Constructor, G as InjectionToken, N as Container, P as CheckedProviders, Q as Provider, U as InjectMetadata, V as InferToken, _t as Scope, a as ExecutionContext, c as NestInterceptor, i as ExceptionFilter, it as Type, l as NestMiddleware, r as CanActivate, rt as Token, t as ArgumentMetadata, u as PipeTransform } from "<internal:types-http-hono.types.d.ts>";
+import { $ as ProviderDefinition, F as Constructor, G as InjectionToken, N as Container, P as CheckedProviders, Q as Provider, U as InjectMetadata, V as InferToken, _t as Scope, a as ExecutionContext, c as NestInterceptor, et as ProviderLiteral, i as ExceptionFilter, it as Type, l as NestMiddleware, r as CanActivate, rt as Token, t as ArgumentMetadata, u as PipeTransform } from "<internal:types-http-hono.types.d.ts>";
 import { j as ExceptionHandler } from "<internal:request-context.d.ts>";
 import { $ as ModuleOptions, G as DynamicModule, J as HttpHandlerMeta, K as FilterType, Q as ModuleMetadata, U as ComponentType, W as ComponentTypeMap, X as MiddlewareType, Y as InterceptorType, a as NonceStore, et as ParameterMetadata, i as InvocationTransport, nt as RouteDefinition, q as GuardType, tt as PipeType } from "<internal:types-registry-types.d.ts>";
 import { Catalog } from "@velajs/errors";
@@ -3178,11 +3178,11 @@ declare function Global(): ClassDecorator;
 interface ModuleDecoratorOptions<P extends readonly unknown[] = readonly Provider[]> extends Omit<ModuleOptions, 'providers'> {
   providers?: CheckedProviders<P>;
 }
+declare function Module<const P extends readonly Provider[]>(options?: ModuleOptions & {
+  providers?: number extends P['length'] ? ProviderLiteral extends P[number] ? P : never : never;
+}): ClassDecorator;
 declare function Module(options?: ModuleDecoratorOptions<readonly (Type | ProviderDefinition)[]>): ClassDecorator;
 declare function Module<const P extends readonly unknown[] = readonly Provider[]>(options?: ModuleDecoratorOptions<P>): ClassDecorator;
-declare function Module<const P extends readonly Provider[]>(options?: ModuleOptions & {
-  providers?: number extends P['length'] ? P : never;
-}): ClassDecorator;
 declare function isModule(target: Constructor): boolean;
 
 declare function defineDynamicModule(input: DynamicModule): DynamicModule;
@@ -3685,7 +3685,6 @@ declare class ModuleLoader {
   private isAppToken;
   private buildExportSet;
   getControllers(): Type[];
-  getRegisteredProviders(): Token[];
   getAppProviderTokens<T>(token: TypedToken<T>): TypedToken<T>[];
   getConsumerMiddlewareDefinitions(): MiddlewareRouteDefinition[];
 
@@ -4325,7 +4324,6 @@ declare class Container {
   register<T>(provider: Type<T> | ProviderDefinition<T>, declaringModuleId?: string): this;
   private registerClass;
   private registerOptions;
-  private planClass;
   private writeRegistration;
   registerScope(scope: ModuleScope): void;
 
@@ -4334,16 +4332,9 @@ declare class Container {
   setRequestInstance<K extends Token>(token: K & AuthoringToken<K>, value: NoInfer<InferToken<K>>): void;
   getDiagnostics(): Diagnostics;
   resolve<K extends Token>(token: K, requestingModuleId?: string): InferToken<K>;
-  private resolveToken;
   resolveAll<K extends Token>(token: K, requestingModuleId?: string): InferToken<K>[];
 
   getVisibleProviderSnapshots(token: Token, requestingModuleId?: string): readonly ProviderSnapshot[];
-
-  private findRegistration;
-
-  private lookupInBucket;
-
-  private collectFromImports;
   private findAllRegistrations;
 
   has(token: Token): boolean;
@@ -4381,7 +4372,6 @@ declare class Container {
   clear(): void;
 
   hasDisposables(): boolean;
-  private assertNotDisposing;
   private rememberCallerOwned;
   private trackDisposable;
 
@@ -4396,23 +4386,17 @@ declare class Container {
 
   private unresolvedReason;
   private describeParameter;
-
-  private constructorPlan;
-
-  private dependencyToken;
   private resolveFactory;
   resolveAsync<K extends Token>(token: K, requestingModuleId?: string): Promise<InferToken<K>>;
 
   construct<T>(type: Type<T>, requestingModuleId?: string): Promise<T>;
   private runAsyncResolution;
-  private resolveAsyncInner;
   private constructAsync;
   private moduleRefFor;
 
   private isOptionalMissing;
   private reportHiddenOptional;
   private createLazyProxy;
-  private tokenToString;
 }
 
 interface VelaEnv {}
