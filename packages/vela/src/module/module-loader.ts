@@ -19,7 +19,7 @@ import {
   APP_MIDDLEWARE,
   APP_PIPE,
 } from '../pipeline/tokens';
-import { isDecoratedClass, planConstructor } from '../container/decorators';
+import { getScope, isDecoratedClass, planConstructor } from '../container/decorators';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import { getOrCreateArray } from '../registry/util';
 import type { ComponentInstance, DynamicModule, ModuleImport } from '../registry/types';
@@ -81,7 +81,9 @@ export class ModuleLoader {
   #processingStack = new Set<string>();
   #collectedControllers = new Set<Type>();
   #controllerOwners = new Map<Type, Set<string>>();
-  #registeredProviders: Token[] = [];
+  // moduleId → the tokens whose instances it owns, in lifecycle-hook order:
+  // providers, controllers, enhancers, then the module class, as in Nest.
+  #moduleTokens = new Map<string, Token[]>();
   // (class, key) → exported tokens
   #moduleExportsCache = new Map<Type, Map<string, Set<Token>>>();
   #globalExports = new Set<Token>();
@@ -99,7 +101,6 @@ export class ModuleLoader {
   #seenModuleIds = new Set<string>();
   // Lazy (deferred-init) module instances: moduleId → its own tokens in
   // registration order. Consumed by LazyModuleManager via getLazyGroups().
-  #lazyModuleIds = new Set<string>();
   #lazyGroups = new Map<string, LazyModuleGroupSpec>();
   // moduleId → controllers it declares; the same Set backs the container's
   // ModuleScope, which pipelines read to apply module-level @Use* components.
@@ -222,9 +223,8 @@ export class ModuleLoader {
         if (this.registerController(controller, moduleId)) {
           this.#moduleControllers.get(moduleId)?.add(controller);
           this.#enhancerHosts.get(moduleId)?.add(controller);
+          this.#moduleTokens.get(moduleId)?.push(controller);
         }
-        const group = this.#lazyGroups.get(moduleId);
-        if (group && !group.tokens.includes(controller)) group.tokens.push(controller);
       }
       return this.getCachedExports(moduleClass, key) ?? new Set();
     }
@@ -373,13 +373,15 @@ export class ModuleLoader {
         controllers,
       });
 
-      const lazyTokens: Token[] = [];
+      // registerEnhancers() appends the module's enhancers and its class.
+      const tokens: Token[] = [];
+      this.#moduleTokens.set(moduleId, tokens);
       let hasEntrypointContributor = false;
 
       for (const provider of allProviders) {
         const registered = this.registerProvider(provider, moduleId);
-        if (isLazy && registered !== undefined) {
-          lazyTokens.push(registered);
+        if (registered !== undefined) {
+          tokens.push(registered);
           hasEntrypointContributor ||= declaresEntrypointContributor(provider);
         }
       }
@@ -388,24 +390,17 @@ export class ModuleLoader {
         // Register the controller in its owning module's bucket so its
         // dependencies resolve from the module's POV (vs `__root__`'s).
         this.registerController(controller, moduleId);
-        if (isLazy) lazyTokens.push(controller);
+        tokens.push(controller);
       }
 
       // Like Nest, the module class is a provider of its own bucket, built
-      // through DI after its providers and given their lifecycle hooks.
+      // through DI and given its lifecycle hooks after the rest of its module.
       if (!this.container.hasInScope(moduleClass, moduleId)) {
         this.container.register(moduleClass, moduleId);
       }
-      this.#registeredProviders.push(moduleClass);
-      if (isLazy) lazyTokens.push(moduleClass);
 
       if (isLazy) {
-        this.#lazyModuleIds.add(moduleId);
-        this.#lazyGroups.set(moduleId, {
-          moduleId,
-          tokens: lazyTokens,
-          hasEntrypointContributor,
-        });
+        this.#lazyGroups.set(moduleId, { moduleId, tokens, hasEntrypointContributor });
       }
 
       this.markProcessed(moduleClass, key);
@@ -460,6 +455,7 @@ export class ModuleLoader {
    */
   private registerEnhancers(): void {
     for (const [moduleId, hosts] of this.#enhancerHosts) {
+      const tokens = this.#moduleTokens.get(moduleId) ?? [];
       for (const host of hosts) {
         const references: ComponentInstance[] = ENHANCER_TYPES.flatMap((type) =>
           MetadataRegistry.getDeclaredComponents(type, host),
@@ -469,9 +465,9 @@ export class ModuleLoader {
         }
         for (const enhancer of references) {
           if (typeof enhancer !== 'function' || this.isVisible(enhancer, moduleId)) continue;
-          // An undecorated subclass inherits its parent's constructor plan. A
-          // class with no constructor metadata at all is built with `new`, as
-          // before, but once per scope.
+          // An undecorated subclass inherits its parent's constructor plan and
+          // scope. A class with no constructor metadata at all is built with
+          // `new`, as before, but once per scope.
           this.container.register(
             isDecoratedClass(enhancer)
               ? enhancer
@@ -479,14 +475,16 @@ export class ModuleLoader {
                   enhancer,
                   planConstructor(enhancer).length
                     ? { useClass: enhancer }
-                    : { useFactory: () => new enhancer() },
+                    : { useFactory: () => new enhancer(), scope: getScope(enhancer) },
                 ),
             moduleId,
           );
-          this.#registeredProviders.push(enhancer);
-          this.#lazyGroups.get(moduleId)?.tokens.push(enhancer);
+          tokens.push(enhancer);
         }
       }
+      // The module class, its first host, comes last.
+      const [moduleClass] = hosts;
+      if (moduleClass) tokens.push(moduleClass);
     }
   }
 
@@ -541,7 +539,6 @@ export class ModuleLoader {
       // Per-module bucket: the same class can be registered in multiple
       // modules' buckets simultaneously without collision.
       this.container.register(provider, moduleId);
-      this.#registeredProviders.push(provider);
       return provider;
     }
 
@@ -581,13 +578,11 @@ export class ModuleLoader {
                 : undefined;
       if (!syntheticProvider) throw new Error('Invalid global component provider');
       this.container.register(syntheticProvider, moduleId);
-      this.#registeredProviders.push(syntheticToken);
       getOrCreateArray(this.#appProviderTokens, token).push(syntheticToken);
       return syntheticToken;
     }
 
     this.container.register(provider, moduleId);
-    this.#registeredProviders.push(token);
     return token;
   }
 
@@ -631,7 +626,7 @@ export class ModuleLoader {
   }
 
   getRegisteredProviders(): Token[] {
-    return [...this.#registeredProviders];
+    return [...this.#moduleTokens.values()].flat();
   }
 
   getAppProviderTokens<T>(token: TypedToken<T>): TypedToken<T>[] {
@@ -654,11 +649,11 @@ export class ModuleLoader {
 
   async resolveAllInstances(): Promise<unknown[]> {
     const instances = new Set<unknown>();
-    for (const token of new Set([...this.#registeredProviders, ...this.#collectedControllers])) {
+    for (const token of new Set(this.getRegisteredProviders())) {
       for (const moduleId of this.container.getOwnerModuleIds(token)) {
         if (
           this.container.getProviderScope(token, moduleId) === Scope.REQUEST ||
-          this.#lazyModuleIds.has(moduleId)
+          this.#lazyGroups.has(moduleId)
         )
           continue;
         instances.add(await this.container.resolveAsync(token, moduleId));

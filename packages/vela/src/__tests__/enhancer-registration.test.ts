@@ -3,10 +3,12 @@ import {
   Catch,
   Controller,
   Get,
+  Global,
   Inject,
   Injectable,
   InjectionToken,
   Module,
+  MultipleProvidersFoundError,
   Param,
   REQUEST_CONTEXT,
   Reflector,
@@ -18,15 +20,18 @@ import {
   UsePipes,
   VelaFactory,
   defineProvider,
+  resolvePipelineComponents,
   type ArgumentMetadata,
   type CallHandler,
   type CanActivate,
   type ExceptionFilter,
   type ExecutionContext,
   type NestInterceptor,
+  type OnModuleInit,
   type PipeTransform,
   type RequestContext,
 } from '../index';
+import { instantiate } from '../http/instantiate';
 import { dispatchQueueJob, Process, Processor } from '../queue/index';
 
 const Roles = (...roles: string[]) => SetMetadata('roles', roles);
@@ -291,6 +296,204 @@ describe('enhancer auto-registration', () => {
     await app.close();
   });
 
+  it('keeps the request scope an undecorated subclass inherits', async () => {
+    const ids: string[] = [];
+
+    @Injectable({ scope: Scope.REQUEST })
+    class RequestGuard implements CanActivate {
+      readonly id = crypto.randomUUID();
+      canActivate(): boolean {
+        ids.push(this.id);
+        return true;
+      }
+    }
+
+    @Injectable({ scope: Scope.REQUEST })
+    class RequestRolesGuard extends RolesGuard {
+      readonly id = crypto.randomUUID();
+      override canActivate(context: ExecutionContext): boolean {
+        ids.push(this.id);
+        return super.canActivate(context);
+      }
+    }
+
+    // One inherits no constructor dependencies, the other inherits the Reflector.
+    class ParameterlessGuard extends RequestGuard {}
+    class InjectedGuard extends RequestRolesGuard {}
+
+    @Controller('/inherited')
+    @UseGuards(ParameterlessGuard, InjectedGuard)
+    class InheritedController {
+      @Get()
+      index() {
+        return {};
+      }
+    }
+
+    @Module({ controllers: [InheritedController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+    expect((await hono.request('/inherited')).status).toBe(200);
+    expect((await hono.request('/inherited')).status).toBe(200);
+    expect(new Set(ids).size).toBe(4);
+    await app.close();
+  });
+
+  it('builds an operation guard that another module registers without reaching into it', async () => {
+    class OpenGuard implements CanActivate {
+      canActivate(): boolean {
+        return true;
+      }
+    }
+
+    @Controller('/open')
+    @UseGuards(OpenGuard)
+    class OpenController {
+      @Get()
+      index() {
+        return {};
+      }
+    }
+
+    @Module({ controllers: [OpenController] })
+    class OpenModule {}
+
+    @Injectable()
+    class OperationResolver {}
+
+    @Module({ providers: [OperationResolver] })
+    class OperationModule {}
+
+    @Module({ imports: [OpenModule, OperationModule] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const container = app.getContainer();
+    const [moduleId] = container.getOwnerModuleIds(OperationResolver);
+    const [guard] = await resolvePipelineComponents('guard', [OpenGuard], container, moduleId);
+    expect(guard).toBeInstanceOf(OpenGuard);
+    expect(instantiate(OpenGuard, container, moduleId)).toBeInstanceOf(OpenGuard);
+    await app.close();
+  });
+
+  it('builds a global guard class without materializing a lazy module that references it', async () => {
+    const built: string[] = [];
+
+    class AuditGuard implements CanActivate {
+      constructor() {
+        built.push('guard');
+      }
+      canActivate(): boolean {
+        return true;
+      }
+    }
+
+    @Controller('/lazy')
+    @UseGuards(AuditGuard)
+    class LazyController {
+      @Get()
+      index() {
+        return {};
+      }
+    }
+
+    @Module({ lazy: true, controllers: [LazyController] })
+    class LazyFeature {}
+
+    @Controller('/eager')
+    class EagerController {
+      @Get()
+      index() {
+        return {};
+      }
+    }
+
+    @Module({ imports: [LazyFeature], controllers: [EagerController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    app.useGlobalGuards(AuditGuard);
+    expect((await app.getHonoApp().request('/eager')).status).toBe(200);
+    expect(built).toEqual(['guard']);
+    expect(app.getContainer().isLazyPending(LazyController)).toBe(true);
+    await app.close();
+  });
+
+  it('runs a module class hook after its providers, controllers and enhancers', async () => {
+    const calls: string[] = [];
+
+    class HookGuard implements CanActivate, OnModuleInit {
+      onModuleInit(): void {
+        calls.push('guard');
+      }
+      canActivate(): boolean {
+        return true;
+      }
+    }
+
+    @Injectable()
+    class HookService implements OnModuleInit {
+      onModuleInit(): void {
+        calls.push('service');
+      }
+    }
+
+    @Controller('/hooks')
+    @UseGuards(HookGuard)
+    class HookController implements OnModuleInit {
+      onModuleInit(): void {
+        calls.push('controller');
+      }
+      @Get()
+      index() {
+        return {};
+      }
+    }
+
+    @Module({ providers: [HookService], controllers: [HookController] })
+    class HookModule implements OnModuleInit {
+      onModuleInit(): void {
+        calls.push('module');
+      }
+    }
+
+    @Injectable()
+    class ConsumerService implements OnModuleInit {
+      onModuleInit(): void {
+        calls.push('consumer');
+      }
+    }
+
+    @Module({ imports: [HookModule], providers: [ConsumerService] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    // Like Nest, each module finishes with its class, before its importers' providers.
+    expect(calls.slice(0, 3).toSorted()).toEqual(['controller', 'guard', 'service']);
+    expect(calls.slice(3)).toEqual(['module', 'consumer']);
+    await app.close();
+
+    calls.length = 0;
+    @Module({ lazy: true, providers: [HookService], controllers: [HookController] })
+    class LazyHookModule implements OnModuleInit {
+      onModuleInit(): void {
+        calls.push('module');
+      }
+    }
+
+    @Module({ imports: [LazyHookModule] })
+    class LazyAppModule {}
+
+    const lazyApp = await VelaFactory.create(LazyAppModule);
+    expect(calls).toEqual([]);
+    expect((await lazyApp.getHonoApp().request('/hooks')).status).toBe(200);
+    expect(calls.slice(0, 3).toSorted()).toEqual(['controller', 'guard', 'service']);
+    expect(calls.at(-1)).toBe('module');
+    await lazyApp.close();
+  });
+
   it('defers the enhancers of a lazy module with the rest of its group', async () => {
     let built = 0;
 
@@ -359,5 +562,69 @@ describe('enhancer auto-registration', () => {
     });
     expect(handled).toEqual(['build']);
     await app.close();
+  });
+});
+
+describe('framework-global providers', () => {
+  @Controller('/admin')
+  @UseGuards(RolesGuard)
+  class AdminController {
+    @Roles('admin')
+    @Get()
+    index() {
+      return { ok: true };
+    }
+  }
+
+  @Module({ controllers: [AdminController] })
+  class AdminModule {}
+
+  it('serve the application Reflector when a module also lists one', async () => {
+    @Module({ providers: [Reflector] })
+    class ReportsModule {}
+
+    @Module({ imports: [ReportsModule, AdminModule] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const response = await app.getHonoApp().request('/admin', { headers: { 'x-role': 'admin' } });
+    expect(response.status).toBe(200);
+    await app.close();
+  });
+
+  it('serve the application Reflector when a global module exports one', async () => {
+    @Global()
+    @Module({ providers: [Reflector], exports: [Reflector] })
+    class SharedModule {}
+
+    @Module({ imports: [SharedModule, AdminModule] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const response = await app.getHonoApp().request('/admin', { headers: { 'x-role': 'admin' } });
+    expect(response.status).toBe(200);
+    await app.close();
+  });
+
+  it('still report a token that two global modules export', async () => {
+    const REGION = new InjectionToken<string>('global region');
+
+    @Global()
+    @Module({ providers: [defineProvider(REGION, { useValue: 'north' })], exports: [REGION] })
+    class NorthModule {}
+
+    @Global()
+    @Module({ providers: [defineProvider(REGION, { useValue: 'south' })], exports: [REGION] })
+    class SouthModule {}
+
+    @Injectable()
+    class RegionReader {
+      constructor(@Inject(REGION) readonly region: string) {}
+    }
+
+    @Module({ imports: [NorthModule, SouthModule], providers: [RegionReader] })
+    class AppModule {}
+
+    await expect(VelaFactory.create(AppModule)).rejects.toThrow(MultipleProvidersFoundError);
   });
 });

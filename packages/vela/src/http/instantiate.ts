@@ -16,9 +16,13 @@ import {
 // decorators, so those resolve through the container from their module, once
 // per scope, like any provider.
 //
-// A class that is NOT registered anywhere (an `app.useGlobalGuards(Class)`
-// entry, a hand-built container) falls back to `new clazz()` so plain
-// parameterless helper classes keep working. That fallback is unsafe for
+// A class resolves through the container only where it is registered and
+// visible: from the requesting module, or, for an application-wide lookup
+// (no moduleId), from an owner that is not a lazy module still pending, so a
+// global component never materializes one. Any other class (an
+// `app.useGlobalGuards(Class)` entry, a guard another module registers, a
+// hand-built container) falls back to `new clazz()` so plain parameterless
+// helper classes keep working. That fallback is unsafe for
 // classes whose CONSTRUCTOR EXPECTS DEPENDENCIES, because zero-arg
 // construction would leave every injected slot `undefined` — a silent failure
 // mode that surfaces later deep inside the class. For those classes we throw
@@ -48,9 +52,8 @@ export function instantiate(
 ): unknown {
   if (typeof classOrInstance === 'function') {
     const clazz = classOrInstance as Type;
-    if (container.has(clazz)) {
-      return container.resolve(clazz, moduleId);
-    }
+    const owner = registeredOwner(clazz, container, moduleId);
+    if (owner !== undefined) return container.resolve(clazz, owner);
     const optionalToken = unregisteredOptionalToken(clazz);
     if (optionalToken !== undefined) {
       throw new Error(
@@ -71,6 +74,15 @@ export function instantiate(
   }
 
   return classOrInstance;
+}
+
+// The module to resolve a registered class from, or undefined to build it as
+// an unregistered class (see instantiate).
+function registeredOwner(clazz: Type, container: Container, moduleId?: string): string | undefined {
+  if (moduleId !== undefined) {
+    return container.getResolvedScope(clazz, moduleId) === undefined ? undefined : moduleId;
+  }
+  return container.getOwnerModuleIds(clazz).find((owner) => !container.isLazyPending(clazz, owner));
 }
 
 // The fallback plan for a class that is not registered in the container. It
@@ -125,7 +137,8 @@ export async function instantiateAsync(
 ): Promise<unknown> {
   if (typeof classOrInstance === 'function') {
     const clazz = classOrInstance as Type;
-    if (container.has(clazz)) return container.resolveAsync(clazz, moduleId);
+    const owner = registeredOwner(clazz, container, moduleId);
+    if (owner !== undefined) return container.resolveAsync(clazz, owner);
     // An optional slot with a token resolves through the container, from the
     // requesting module, so a registered and visible token is never skipped.
     if (unregisteredOptionalToken(clazz) !== undefined) return container.construct(clazz, moduleId);

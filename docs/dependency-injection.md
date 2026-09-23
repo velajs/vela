@@ -38,17 +38,25 @@ correlate per element, so they accept the loosely typed `ProviderLiteral` union.
 checks each literal when the module loads: an entry without a token, without exactly one of
 `useValue`, `useClass`, `useFactory` and `useExisting`, or with a strategy of the wrong kind fails
 the load with an error naming the list entry and its token, for example
-`FeatureModule.providers[2] (InjectionToken(STORE)) is not a provider`. Prefer `defineProvider` in
-computed contributions when the value type matters.
+`FeatureModule.providers[2] (InjectionToken(STORE)) is not a provider`. `@Module` treats a list typed
+as a whole the same way, such as a `Provider[]` parameter, `dynamic.providers ?? []` or a
+`ModuleOptions` object: only an array literal written in `@Module` is checked element by element.
+These literals are validated at runtime only, so prefer `defineProvider` in computed contributions
+and shared lists when the value type matters.
+
+Framework-global providers such as `Reflector` and `ENV` resolve to the application's own
+registration from every module, even when a module also lists one or a `@Global()` module exports
+one. A token that two `@Global()` modules export still fails with `MultipleProvidersFoundError`.
 
 Every application provides `Reflector` globally, so guards and interceptors inject it through their
 constructor, as in Nest.
 
 ## Module classes and enhancers
 
-A module class is a provider of its own module. The container constructs it through DI after the
-module's providers, and it receives the same lifecycle hooks, in the same phases, after those
-providers. A lazy module's class is built with the rest of its group. `configure()` runs on that
+A module class is a provider of its own module. The container constructs it through DI, and it
+receives the same lifecycle hooks, in the same phases, last within its module: after the module's
+providers, controllers and registered enhancers, and before the modules that import it. A lazy
+module's class is built with the rest of its group, in the same order. `configure()` runs on that
 same instance.
 
 Guard, pipe, interceptor and filter classes that a module's classes reference in `@UseGuards`,
@@ -63,7 +71,10 @@ enhancer (declared, or bubbled from a request-scoped dependency) is built per re
 enhancer of a lazy module waits for its group. A referenced class with no class decorator has no
 metadata to inject; it is built with `new`, once per scope, without the missing-decorator
 diagnostic. Classes passed to `app.useGlobalGuards()` and the other `useGlobal*` methods are not
-scanned: one without constructor dependencies is still built with `new` on each use.
+scanned: one without constructor dependencies is still built with `new` on each use, and one that a
+module registers resolves from that module unless the module is lazy and still pending. An explicit
+list resolved for a module, such as a GraphQL operation's guards, uses a registration only when that
+module can see it; any other class is built as an unregistered class.
 
 Each module owns its provider registrations. A token registered in two module instances has two
 independent instances, including with `Scope.REQUEST`. Within a request child, repeated resolutions
@@ -77,8 +88,10 @@ declared scope, so decorator order does not matter. Two different scopes on one 
 class is decorated.
 
 A class provider keeps the scope its class declares, whether it is listed directly or registered
-through `useClass`, including `APP_*` providers and exception handler classes. A `scope` set on the
-provider overrides the class declaration. Value and factory providers default to `Scope.DEFAULT`.
+through `useClass`, including `APP_*` providers and exception handler classes. A class that declares
+no scope takes the nearest scope a parent class declares, so a subclass of a request-scoped guard is
+request-scoped too. A `scope` set on the provider overrides the class declaration. Value and factory
+providers default to `Scope.DEFAULT`.
 
 `setRequestInstance(token, value)` explicitly seeds a value in one container. It overrides constructed
 request values for that token, including an intentional `undefined`. The seed still requires a visible

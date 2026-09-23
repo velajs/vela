@@ -409,8 +409,12 @@ export class Container {
     const local = this.lookupInBucket<T>(requestingModuleId, token);
     if (local) return local;
 
-    // 2. Global tokens — registration still lives in some module's bucket.
+    // 2. Global tokens. A `__root__` registration is the application-wide one
+    // (Reflector, ENV, ...) and wins over copies modules declare; otherwise the
+    // registration lives in exactly one module's bucket.
     if (this.#globals.has(token)) {
+      const rootHit = this.lookupInBucket<T>(ROOT_MODULE_ID, token);
+      if (rootHit) return rootHit;
       const exporters = this.#exporterIndex.get(token);
       if (exporters && exporters.size > 0) {
         if (exporters.size > 1) {

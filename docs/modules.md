@@ -47,10 +47,14 @@ may omit it. For `forRootAsync`, read resolved options through the `OPTIONS` tok
 the `setup` callback only sees structural options supplied at the call site.
 
 `setup` may also return Nest provider literals such as
-`{ provide: LABEL, useValue: options.label }`. Nothing ties a contribution's value
-to its token at compile time, so the loader checks each literal's shape when the
-module loads (see [providers](dependency-injection.md#providers)); use
-`defineProvider` when the value type matters.
+`{ provide: LABEL, useValue: options.label }`, and so may a hand-written
+`DynamicModule` (`providers` in what `forRoot()` returns) or a `Provider[]` list
+handed to `@Module`. These literals are validated at runtime only: nothing ties
+their value to their token at compile time, so the loader checks each literal's
+shape when the module loads and a value of the wrong type is not caught (see
+[providers](dependency-injection.md#providers)). Use `defineProvider` for any
+provider whose value type matters; it is checked against its token wherever it
+is listed.
 
 - `forRootAsync({ inject, useFactory })` comes free, with typed factory
   params inferred from the `inject` tuple. Structural fields passed alongside
@@ -128,10 +132,12 @@ through the container's diagnostics policy, like any unknown export.
 
 ### Module classes
 
-The module class itself is constructed through DI, after its providers, and
-receives their lifecycle hooks (`onModuleInit`, `onApplicationBootstrap`, the
-shutdown hooks) after them. Its constructor can inject anything the module can
-see, and `configure()` runs on the same instance.
+The module class itself is constructed through DI and, as in Nest, receives its
+lifecycle hooks (`onModuleInit`, `onApplicationBootstrap`, the shutdown hooks)
+last within its module: after the module's providers, controllers and the
+enhancers registered for it, and before the providers of the modules that
+import it. Its constructor can inject anything the module can see, and
+`configure()` runs on the same instance.
 
 ### Tokens
 
