@@ -32,6 +32,18 @@ describe('dist/ integration', () => {
     expect(existsSync(join(PACKAGE_ROOT, 'dist', 'schedule', 'schedule.module.js'))).toBe(true);
   });
 
+  it('keeps the Reflect polyfill import of each entry that installs it', () => {
+    // package.json#sideEffects names dist files, so without a build rule the
+    // bundler treats src/metadata.ts as side-effect free and drops an entry's
+    // bare `import '../metadata'`: loading only that entry would never install
+    // Reflect.metadata.
+    const scheduleNode = readFileSync(
+      join(PACKAGE_ROOT, 'dist', 'schedule-node', 'index.js'),
+      'utf8',
+    );
+    expect(scheduleNode).toMatch(/^import "\.\.\/metadata\.js";$/mu);
+  });
+
   it('should export all core symbols from the main entry point', async () => {
     const vela = await import('../../dist/index.js');
 

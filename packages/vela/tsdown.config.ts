@@ -31,6 +31,12 @@ export default defineConfig([
     clean: true,
     sourcemap: true,
     unbundle: true,
+    treeshake: {
+      // package.json#sideEffects names dist files, so the build would treat
+      // src/metadata.ts as side-effect free and drop each entry's bare
+      // `import './metadata'`. Keep it: it installs the Reflect polyfill.
+      moduleSideEffects: (id) => (/[\\/]src[\\/]metadata\.ts$/u.test(id) ? true : undefined),
+    },
   },
   {
     ...shared,
