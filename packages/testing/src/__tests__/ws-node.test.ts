@@ -5,6 +5,8 @@ import {
   WebSocketGateway,
   SubscribeMessage,
   MessageBody,
+  type UpgradeAuthenticator,
+  type WebSocketUpgradeIdentity,
 } from '@velajs/vela/websocket';
 import { Test } from '../test.js';
 // Side-effect import: registers the Node WebSocket transport connector. Safe to
@@ -28,14 +30,20 @@ try {
 
 describe.skipIf(!peersAvailable)('module.ws (Node transport)', () => {
   it('echoes a framed message over a real socket', async () => {
+    class TestUpgradeAuthenticator implements UpgradeAuthenticator {
+      authenticate(): WebSocketUpgradeIdentity {
+        return {
+          principal: { issuer: 'test', subject: 'u1', principalType: 'user' },
+          tenantId: 't1',
+          expiresAtMs: Date.now() + 60_000,
+        };
+      }
+    }
+
     @WebSocketGateway({
       path: '/rooms/:id/ws',
       roomParam: 'id',
-      authenticateUpgrade: () => ({
-        principal: { issuer: 'test', subject: 'u1', principalType: 'user' },
-        tenantId: 't1',
-        expiresAtMs: Date.now() + 60_000,
-      }),
+      authenticator: TestUpgradeAuthenticator,
     })
     class RoomGateway {
       @SubscribeMessage('echo')

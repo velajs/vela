@@ -1,7 +1,7 @@
-import type { VelaContext as Context, VelaHono as Hono } from '@velajs/vela';
+import type { Container, Type, VelaContext as Context, VelaHono as Hono } from '@velajs/vela';
 import { getMetadata, getTrustedRequestIdentity } from '@velajs/vela';
 import {
-  authenticateWebSocketUpgrade,
+  createWebSocketUpgradeGate,
   resolveGatewayRoomId,
   resolveGatewayRoomParam,
   resolveMaxFrameBytes,
@@ -15,6 +15,8 @@ export interface WsGatewayRoute {
   path: string;
   binding: string;
   options: WebSocketGatewayOptions;
+  /** Container module that declares the gateway; its authenticator resolves from here. */
+  moduleId?: string;
 }
 
 const MAX_IDENTITY_FIELD_BYTES = 2048;
@@ -82,24 +84,49 @@ function combineIdentities(
   };
 }
 
-/** Read `@WebSocketGateway({ path, binding })` off a resolved instance (CF-hosted gateways only). */
-export function collectWsGatewayRoutes(instance: object): WsGatewayRoute[] {
+/** An instance's constructor is the class token its module registered. */
+function isClass(value: unknown): value is Type {
+  return typeof value === 'function';
+}
+
+/**
+ * Read `@WebSocketGateway({ path, binding })` off a resolved instance (CF-hosted
+ * gateways only). The application container names the module that declares the
+ * gateway when exactly one module registers it.
+ */
+export function collectWsGatewayRoutes(instance: object, container: Container): WsGatewayRoute[] {
   // Decorator metadata is the framework's explicit reflection boundary.
   const options = getMetadata<WebSocketGatewayOptions>(WS_GATEWAY_METADATA, instance.constructor);
   if (!options?.path || !options?.binding) return [];
   resolveGatewayRoomParam(options);
   resolveMaxFrameBytes(options);
-  return [{ path: options.path, binding: options.binding, options: { ...options } }];
+  const gateway: unknown = instance.constructor;
+  const owners = isClass(gateway) ? container.getOwnerModuleIds(gateway) : [];
+  return [
+    {
+      path: options.path,
+      binding: options.binding,
+      options: { ...options },
+      ...(owners.length === 1 ? { moduleId: owners[0] } : {}),
+    },
+  ];
 }
 
 /**
  * Registers the upgrade routes on the Worker's Hono app. Each route validates
- * the `Upgrade` header, resolves the room's Durable Object, and forwards the raw
- * request — injecting spoof-safe `x-vela-*` headers the DO reads. The DO returns
- * the `101` with the client socket.
+ * the `Upgrade` header, authenticates through the gateway's authenticator
+ * (resolved once from `container`, the application's DI container), resolves
+ * the room's Durable Object, and forwards the raw request — injecting
+ * spoof-safe `x-vela-*` headers the DO reads. The DO returns the `101` with the
+ * client socket.
  */
-export function registerWebSocketRoutes(hono: Hono, routes: WsGatewayRoute[]): void {
+export function registerWebSocketRoutes(
+  hono: Hono,
+  routes: WsGatewayRoute[],
+  container: Container,
+): void {
   for (const route of routes) {
+    const authenticate = createWebSocketUpgradeGate(container, route);
     hono.get(route.path, async (c: Context) => {
       if (c.req.header('upgrade')?.toLowerCase() !== 'websocket') {
         return c.text('Expected WebSocket upgrade', 426);
@@ -129,7 +156,7 @@ export function registerWebSocketRoutes(hono: Hono, routes: WsGatewayRoute[]): v
 
       // Origin, application authorization, and ticket/cookie authentication
       // all complete before the gateway Durable Object id is resolved.
-      const upgrade = await authenticateWebSocketUpgrade(route.options, sanitizedRequest, roomId);
+      const upgrade = await authenticate(sanitizedRequest, roomId);
       if (upgrade === false) return c.text('WebSocket upgrade forbidden', 403);
 
       const requestIdentity = accessIdentity(c);

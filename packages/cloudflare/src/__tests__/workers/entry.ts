@@ -11,29 +11,40 @@ import {
   CLOUDFLARE_SCHEDULED_EVENT,
   type CloudflareScheduledEvent,
   type OnGatewayConnection,
+  type UpgradeAuthenticator,
+  type WebSocketUpgradeIdentity,
   type WsClient,
   type WsServer,
 } from '../../index';
 
-const allowedOrigin = 'https://app.test';
+/**
+ * Resolved through DI from the gateway's module: the tenant comes from ENV, so
+ * the authenticator exercises the Worker's per-environment container.
+ */
+@Injectable()
+class CookieSessionAuthenticator implements UpgradeAuthenticator {
+  constructor(@InjectEnv() private readonly env: VelaEnv) {}
 
-@WebSocketGateway({
-  path: '/rooms/:room/ws',
-  roomParam: 'room',
-  binding: 'TEST_ROOM',
-  allowedOrigins: [allowedOrigin],
-  authorizeUpgrade: (request) => request.headers.get('x-test-auth') === 'allowed',
-  authenticateUpgrade: (request) => {
+  authenticate(request: Request): WebSocketUpgradeIdentity | false {
     const match = /(?:^|;\s*)session=([^;]+)/.exec(request.headers.get('cookie') ?? '');
     if (!match) return false;
     const ttlMs = Number(match[1]);
     if (!Number.isSafeInteger(ttlMs)) return false;
     return {
       principal: { issuer: 'workerd-test', subject: 'user-1', principalType: 'user' },
-      tenantId: 'tenant-1',
+      tenantId: this.env.WS_TENANT,
       expiresAtMs: Date.now() + ttlMs,
     };
-  },
+  }
+}
+
+@WebSocketGateway({
+  path: '/rooms/:room/ws',
+  roomParam: 'room',
+  binding: 'TEST_ROOM',
+  allowedOrigins: (env) => [env.WS_ALLOWED_ORIGIN],
+  authorizeUpgrade: (request) => request.headers.get('x-test-auth') === 'allowed',
+  authenticator: CookieSessionAuthenticator,
 })
 @Injectable({ scope: Scope.REQUEST })
 class TestGateway implements OnGatewayConnection {

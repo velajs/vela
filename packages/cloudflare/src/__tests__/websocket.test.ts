@@ -1,6 +1,14 @@
 import { setTrustedRequestIdentity } from '@velajs/vela';
 import { describe, it, expect, beforeEach } from 'vitest';
-import { MemoryNonceStore, Module, MetadataRegistry, REQUEST_CONTEXT } from '@velajs/vela';
+import {
+  Inject,
+  InjectionToken,
+  MemoryNonceStore,
+  Module,
+  MetadataRegistry,
+  REQUEST_CONTEXT,
+  defineProvider,
+} from '@velajs/vela';
 import type { RequestContext } from '@velajs/vela';
 import {
   WebSocketGateway,
@@ -16,6 +24,9 @@ import type {
   WsServer,
   BroadcastCommand,
   OnGatewayConnection,
+  UpgradeAuthenticator,
+  WebSocketUpgradeAuthenticationContext,
+  WebSocketUpgradeIdentity,
 } from '@velajs/vela/websocket';
 import { createCloudflareApp } from '../cloudflare-factory';
 import { CfWsClient } from '../websocket/cf-ws-client';
@@ -68,11 +79,15 @@ class FakeDoState implements DoStateLike {
   }
 }
 
-const authenticateTestUpgrade = () => ({
-  principal: { issuer: 'https://issuer.test', subject: 'user-1', principalType: 'user' as const },
-  tenantId: 'tenant-1',
-  expiresAtMs: Date.now() + 60_000,
-});
+class TestUpgradeAuthenticator implements UpgradeAuthenticator {
+  authenticate(): WebSocketUpgradeIdentity {
+    return {
+      principal: { issuer: 'https://issuer.test', subject: 'user-1', principalType: 'user' },
+      tenantId: 'tenant-1',
+      expiresAtMs: Date.now() + 60_000,
+    };
+  }
+}
 
 function acceptTrusted(
   host: DoWebSocketHost,
@@ -773,7 +788,7 @@ describe('registerWebSocketRoutes (Worker → DO)', () => {
       path: '/rooms/:id/ws',
       roomParam: 'id',
       binding: 'ROOM',
-      authenticateUpgrade: authenticateTestUpgrade,
+      authenticator: TestUpgradeAuthenticator,
     })
     class RoomGateway {
       @SubscribeMessage('noop')
@@ -808,12 +823,79 @@ describe('registerWebSocketRoutes (Worker → DO)', () => {
     expect(Number(calls[0]?.expiresAtMs)).toBeGreaterThan(Date.now());
   });
 
+  it("authenticates through the gateway module's DI before resolving the Durable Object", async () => {
+    // Only the declaring module provides the tenant, so resolution must start there.
+    const TENANT = new InjectionToken<string>('test.cf.ws.tenant');
+    let constructed = 0;
+    class CookieAuthenticator implements UpgradeAuthenticator {
+      constructor(@Inject(TENANT) private readonly tenantId: string) {
+        constructed++;
+      }
+      authenticate(request: Request): WebSocketUpgradeIdentity | false {
+        if (request.headers.get('cookie') !== 'session=valid') return false;
+        return {
+          principal: { issuer: 'https://issuer.test', subject: 'user-7', principalType: 'user' },
+          tenantId: this.tenantId,
+          expiresAtMs: Date.now() + 60_000,
+        };
+      }
+    }
+    @WebSocketGateway({
+      path: '/tenant-rooms/:room/ws',
+      roomParam: 'room',
+      binding: 'ROOM',
+      authenticator: CookieAuthenticator,
+      allowedOrigins: (env) => {
+        const origin: unknown = Reflect.get(env, 'APP_ORIGIN');
+        return typeof origin === 'string' ? [origin] : [];
+      },
+    })
+    class RoomGateway {}
+    @Module({ providers: [defineProvider(TENANT, { useValue: 'tenant-7' }), RoomGateway] })
+    class RoomsModule {}
+    @Module({ imports: [CloudflareWebSocketModule.forRoot(), RoomsModule] })
+    class AppModule {}
+
+    const { ns, calls } = mockNamespace();
+    const resolved: string[] = [];
+    const idFromName = ns.idFromName;
+    ns.idFromName = (name: string) => {
+      resolved.push(name);
+      return idFromName(name);
+    };
+    const app = await createCloudflareApp(AppModule, {
+      env: { ROOM: ns, APP_ORIGIN: 'https://app.test' },
+    });
+    const upgrade = (headers: Record<string, string>) =>
+      app
+        .getHonoApp()
+        .request(
+          'https://api.test/tenant-rooms/alpha/ws',
+          { headers: { upgrade: 'websocket', origin: 'https://app.test', ...headers } },
+          app.env,
+        );
+
+    const anonymous = await upgrade({});
+    const foreign = await upgrade({ cookie: 'session=valid', origin: 'https://evil.test' });
+    expect([anonymous.status, foreign.status]).toEqual([403, 403]);
+    expect(resolved).toEqual([]);
+
+    const first = await upgrade({ cookie: 'session=valid' });
+    const second = await upgrade({ cookie: 'session=valid' });
+    expect([first.status, second.status]).toEqual([200, 200]);
+    expect(calls.map(({ subject, tenantId }) => ({ subject, tenantId }))).toEqual([
+      { subject: 'user-7', tenantId: 'tenant-7' },
+      { subject: 'user-7', tenantId: 'tenant-7' },
+    ]);
+    expect(constructed).toBe(1);
+  });
+
   it('derives room ids from a parameter not named id', async () => {
     @WebSocketGateway({
       path: '/rooms/:roomId/ws',
       roomParam: 'roomId',
       binding: 'ROOM',
-      authenticateUpgrade: authenticateTestUpgrade,
+      authenticator: TestUpgradeAuthenticator,
     })
     class RoomGateway {}
     @Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [RoomGateway] })
@@ -913,19 +995,20 @@ describe('registerWebSocketRoutes (Worker → DO)', () => {
 
   it('forwards request-context credential expiry into the DO attachment header', async () => {
     const expiresAtMs = Date.now() + 60_000;
-    @WebSocketGateway({
-      path: '/identity-ws',
-      binding: 'ROOM',
-      authenticateUpgrade: () => ({
-        principal: {
-          issuer: 'https://access.example.test',
-          subject: 'user-1',
-          principalType: 'user',
-        },
-        tenantId: 'tenant-1',
-        expiresAtMs,
-      }),
-    })
+    class AccessAuthenticator implements UpgradeAuthenticator {
+      authenticate(): WebSocketUpgradeIdentity {
+        return {
+          principal: {
+            issuer: 'https://access.example.test',
+            subject: 'user-1',
+            principalType: 'user',
+          },
+          tenantId: 'tenant-1',
+          expiresAtMs,
+        };
+      }
+    }
+    @WebSocketGateway({ path: '/identity-ws', binding: 'ROOM', authenticator: AccessAuthenticator })
     class IdentityGateway {}
     @Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [IdentityGateway] })
     class AppModule {}
@@ -964,7 +1047,7 @@ describe('registerWebSocketRoutes (Worker → DO)', () => {
     @WebSocketGateway({
       path: '/expired-identity-ws',
       binding: 'ROOM',
-      authenticateUpgrade: authenticateTestUpgrade,
+      authenticator: TestUpgradeAuthenticator,
     })
     class IdentityGateway {}
     @Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [IdentityGateway] })
@@ -999,11 +1082,11 @@ describe('registerWebSocketRoutes (Worker → DO)', () => {
   it('consumes a room-bound socket ticket once and strips it before DO forwarding', async () => {
     const secret = 'test-only-websocket-ticket-secret';
     const nonceStore = new MemoryNonceStore();
-    @WebSocketGateway({
-      path: '/ticket-rooms/:room/ws',
-      roomParam: 'room',
-      binding: 'ROOM',
-      authenticateUpgrade: async (_request, context) => {
+    class TicketAuthenticator implements UpgradeAuthenticator {
+      async authenticate(
+        _request: Request,
+        context: WebSocketUpgradeAuthenticationContext,
+      ): Promise<WebSocketUpgradeIdentity | false> {
         if (!context.ticket) return false;
         return verifyAndConsumeWebSocketTicket(context.ticket, {
           secret,
@@ -1011,7 +1094,13 @@ describe('registerWebSocketRoutes (Worker → DO)', () => {
           room: context.room,
           nonceStore,
         });
-      },
+      }
+    }
+    @WebSocketGateway({
+      path: '/ticket-rooms/:room/ws',
+      roomParam: 'room',
+      binding: 'ROOM',
+      authenticator: TicketAuthenticator,
     })
     class TicketGateway {}
     @Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [TicketGateway] })

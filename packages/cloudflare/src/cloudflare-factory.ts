@@ -123,7 +123,7 @@ async function buildApplication(
   });
   const app = new CloudflareApplication(velaApp, options.env);
   app.scanInstances(velaApp.getInstances());
-  registerWebSocketRoutes(app.getHonoApp(), app.getWsGatewayRoutes());
+  registerWebSocketRoutes(app.getHonoApp(), app.getWsGatewayRoutes(), velaApp.getContainer());
   return app;
 }
 
