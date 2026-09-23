@@ -1,10 +1,37 @@
 import { describe, it, expect } from 'vitest';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+const PACKAGE_ROOT = join(__dirname, '..', '..');
 
 /**
  * Integration test: import from built dist/ to verify the package
  * works as a consumer would use it.
  */
 describe('dist/ integration', () => {
+  it('declares side effects only for modules the build emits', () => {
+    // Bundlers drop every dist module this list does not name once none of its
+    // exports are used; an entry naming a file the build never writes protects
+    // nothing (the Reflect polyfill in metadata.js is the one that matters).
+    const manifest = JSON.parse(readFileSync(join(PACKAGE_ROOT, 'package.json'), 'utf8')) as {
+      sideEffects: string[];
+    };
+    expect(manifest.sideEffects).toContain('./dist/metadata.js');
+    expect(manifest.sideEffects.filter((path) => !existsSync(join(PACKAGE_ROOT, path)))).toEqual(
+      [],
+    );
+  });
+
+  it('emits one module per source file so unused features tree-shake', () => {
+    // A chunk shared by VelaFactory and feature modules keeps every decorated
+    // feature class in a Worker that only imports the factory: each
+    // `X = __decorate([...], X)` assignment is a side effect bundlers must keep.
+    const factory = readFileSync(join(PACKAGE_ROOT, 'dist', 'factory.js'), 'utf8');
+    expect(factory).toContain('VelaFactory');
+    expect(factory).not.toContain('__decorate(');
+    expect(existsSync(join(PACKAGE_ROOT, 'dist', 'schedule', 'schedule.module.js'))).toBe(true);
+  });
+
   it('should export all core symbols from the main entry point', async () => {
     const vela = await import('../../dist/index.js');
 
