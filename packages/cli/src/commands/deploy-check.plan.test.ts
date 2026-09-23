@@ -13,9 +13,7 @@ const row = (kind: string, meta: unknown) => ({
   kind,
   target: 'Jobs#run',
   meta:
-    (kind === 'cf:vela-cron' || kind === 'schedule:cron') &&
-    typeof meta === 'object' &&
-    meta !== null
+    kind === 'schedule:cron' && typeof meta === 'object' && meta !== null
       ? { methodName: 'run', ...meta }
       : meta,
 });
@@ -87,7 +85,7 @@ describe('deployment alignment', () => {
       }),
       'staging',
       [
-        row('cf:scheduled', JSON.stringify({ cron: '0 * * * *', methodName: 'run' })),
+        row('schedule:cron', JSON.stringify({ expression: '0 * * * *', methodName: 'run' })),
         row('cf:queue', { queueName: 'jobs' }),
         row('websocket', { options: { binding: 'ROOM' }, dispatcher: '[WsDispatcher]' }),
       ],
@@ -110,14 +108,14 @@ describe('deployment alignment', () => {
       checkDeployment(
         config({ triggers: { crons } }),
         'staging',
-        crons.map((expression) => row('cf:vela-cron', { expression })),
+        crons.map((expression) => row('schedule:cron', { expression, dialect: 'cloudflare' })),
       ).errors,
     ).toEqual([]);
   });
 
   it('does not silently normalize differing exact trigger strings', () => {
     const result = checkDeployment(config({ triggers: { crons: ['0 0 * * SUN'] } }), 'staging', [
-      row('cf:scheduled', { cron: '0 0 * * 1' }),
+      row('schedule:cron', { expression: '0 0 * * 1', dialect: 'cloudflare' }),
     ]);
     expect(result.errors.map((e) => e.code)).toEqual([
       'missing-cron-trigger',
@@ -130,7 +128,7 @@ describe('deployment alignment', () => {
     (cron) => {
       expect(
         checkDeployment(config({ triggers: { crons: [cron] } }), 'staging', [
-          row('cf:scheduled', { cron }),
+          row('schedule:cron', { expression: cron }),
         ]).errors.some((e) => e.code === 'invalid-cron'),
       ).toBe(true);
     },
@@ -165,7 +163,7 @@ describe('deployment alignment', () => {
     expect(
       checkDeployment(config(), 'staging', [
         row('schedule:interval', { ms: 5000 }),
-        row('cf:scheduled', { cron: 4 }),
+        row('schedule:cron', { expression: 4 }),
         row('cf:queue', null),
       ]).errors.map((e) => e.code),
     ).toEqual(['unsupported-interval', 'invalid-metadata', 'invalid-metadata']);
@@ -178,10 +176,26 @@ describe('deployment alignment', () => {
     },
   );
 
+  it.each([
+    ['cf:scheduled', { cron: '0 * * * *', methodName: 'run' }],
+    ['cf:vela-cron', { expression: '0 * * * *', methodName: 'run' }],
+  ])('rejects a snapshot with the removed %s kind and asks to regenerate it', (kind, meta) => {
+    const result = checkDeployment(config({ triggers: { crons: ['0 * * * *'] } }), 'staging', [
+      row(kind, meta),
+      row('schedule:cron', { expression: '0 * * * *' }),
+    ]);
+    expect(result.errors).toEqual([
+      expect.objectContaining({
+        code: 'stale-entrypoint-snapshot',
+        message: expect.stringMatching(new RegExp(`${kind}.*regenerate`, 's')),
+      }),
+    ]);
+  });
+
   it('does not deduplicate multiple handlers into a false trigger mismatch', () => {
     const result = checkDeployment(config({ triggers: { crons: ['0 * * * *'] } }), 'staging', [
-      row('cf:scheduled', { cron: '0 * * * *' }),
-      row('cf:vela-cron', { expression: '0 * * * *' }),
+      row('schedule:cron', { expression: '0 * * * *', dialect: 'cloudflare' }),
+      row('schedule:cron', { expression: '0 * * * *', methodName: 'other' }),
     ]);
     expect(result.errors).toEqual([]);
   });
