@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Hono, type Context, type Next } from 'hono';
 import {
+  All,
   Controller,
   Delete,
   Get,
@@ -953,5 +954,220 @@ describe('Nest wildcard targets', () => {
     await expect(
       createApp([SlugController], forRoutes('users/:id{[0-9]+}'), { diagnostics: 'throw' }),
     ).rejects.toThrow("[vela] Middleware route 'users/:id{[0-9]+}' resolves to");
+  });
+});
+
+// Hono decodes %0A, %0D, %E2%80%A8 and %E2%80%A9 into c.req.path, and a
+// ':id' segment accepts them, so every fragment Vela generates must match them
+// too or the route is served without its middleware.
+describe('generated patterns match decoded line terminators', () => {
+  @Controller('admin')
+  class AdminUsersController {
+    @Delete('users/:id')
+    remove() {
+      return { ok: true };
+    }
+  }
+
+  it.each(
+    ['admin', 'admin/*', 'admin/*path', 'admin/{*path}', 'admin/(.*)', 'admin/us*'].flatMap(
+      (target) => ['%0A', '%0D', '%E2%80%A8', '%E2%80%A9'].map((encoded) => [target, encoded]),
+    ),
+  )("runs forRoutes('%s') middleware for a path that decodes %s", async (target, encoded) => {
+    const request = await createApp([AdminUsersController], forRoutes(target), {
+      globalPrefix: '/api',
+      diagnostics: 'throw',
+    });
+
+    expect(await request('DELETE', `/api/admin/users/7${encoded}`)).toBe(200);
+    expect(seen).toEqual([`DELETE /api/admin/users/7${decodeURI(encoded)}`]);
+  });
+
+  it.each(['%0A', '%0D', '%E2%80%A8', '%E2%80%A9'])(
+    'runs forRoutes(Controller) middleware for a path that decodes %s',
+    async (encoded) => {
+      const request = await createApp([AdminUsersController], forRoutes(AdminUsersController), {
+        globalPrefix: '/api',
+      });
+
+      expect(await request('DELETE', `/api/admin/users/7${encoded}`)).toBe(200);
+      expect(seen).toEqual([`DELETE /api/admin/users/7${decodeURI(encoded)}`]);
+    },
+  );
+});
+
+describe('a lone optional parameter target', () => {
+  it("excludes the root path, as Hono matches '/:id?' on '/'", async () => {
+    @Controller()
+    class RootController {
+      @Get(':id?')
+      one() {
+        return { ok: true };
+      }
+
+      @Get(':id/details')
+      details() {
+        return { ok: true };
+      }
+    }
+
+    const request = await createApp([RootController], (consumer) => {
+      consumer.apply(RecordingMiddleware).exclude(':id?').forRoutes('*');
+    });
+
+    expect(await request('GET', '/')).toBe(200);
+    expect(await request('GET', '/7')).toBe(200);
+    expect(await request('GET', '/7/details')).toBe(200);
+    expect(seen).toEqual(['GET /7/details']);
+  });
+});
+
+describe('request methods match method-scoped targets as Hono routes them', () => {
+  @Controller('/hooks')
+  class HooksController {
+    @All()
+    any() {
+      return { ok: true };
+    }
+  }
+
+  it("keeps running middleware for the method token 'ALL' when a GET target is excluded", async () => {
+    const request = await createApp([HooksController], (consumer) => {
+      consumer
+        .apply(RecordingMiddleware)
+        .exclude({ path: 'hooks', method: HttpMethod.GET })
+        .forRoutes('*');
+    });
+
+    expect(await request('ALL', '/hooks')).toBe(200);
+    expect(await request('GET', '/hooks')).toBe(200);
+    expect(await request('HEAD', '/hooks')).toBe(200);
+    expect(seen).toEqual(['ALL /hooks']);
+  });
+
+  it("matches a GET target only for GET and HEAD requests, not the method token 'ALL'", async () => {
+    const request = await createApp(
+      [HooksController],
+      forRoutes({ path: 'hooks', method: HttpMethod.GET }),
+    );
+
+    expect(await request('ALL', '/hooks')).toBe(200);
+    expect(await request('POST', '/hooks')).toBe(200);
+    expect(await request('GET', '/hooks')).toBe(200);
+    expect(await request('HEAD', '/hooks')).toBe(200);
+    expect(seen).toEqual(['GET /hooks', 'HEAD /hooks']);
+  });
+});
+
+describe('target syntax that cannot be matched safely fails the route build', () => {
+  @Controller('/files')
+  class FilesController {
+    @Get(':a/:b/:c')
+    nested() {
+      return { ok: true };
+    }
+  }
+
+  // Two unbounded wildcards backtrack polynomially on long paths.
+  it.each([
+    'files/*a/*b',
+    'files/(.*)/(.*)',
+    'files/*a/{*b}',
+    'files/(.*)/x/*b',
+    'files/*a/*',
+    'files/*a/b*',
+  ])("rejects '%s', which has more than one multi-segment wildcard", async (target) => {
+    const message = `Middleware route '${target}' uses pattern syntax that Hono does not match`;
+    await expect(createApp([FilesController], forRoutes(target))).rejects.toThrow(message);
+    await expect(
+      createApp([FilesController], (consumer) => {
+        consumer.apply(RecordingMiddleware).exclude(target).forRoutes('*');
+      }),
+    ).rejects.toThrow(message);
+  });
+
+  // Hono's routers disagree on whether 'abc:name' is text or a parameter.
+  it.each(['files/abc:name', 'files/:a/abc:name', 'a:b', 'files/v1:*'])(
+    "rejects '%s', which has ':' inside a literal segment",
+    async (target) => {
+      const message = `Middleware route '${target}' uses pattern syntax that Hono does not match`;
+      await expect(createApp([FilesController], forRoutes(target))).rejects.toThrow(message);
+      await expect(
+        createApp([FilesController], (consumer) => {
+          consumer.apply(RecordingMiddleware).exclude(target).forRoutes('*');
+        }),
+      ).rejects.toThrow(message);
+    },
+  );
+});
+
+// forRoutes(Controller) asks Hono which handler serves the request, so the
+// middleware runs exactly when one of the controller's own handlers does.
+describe('forRoutes(Controller) follows the handler Hono dispatches to', () => {
+  it('runs for a dynamic route whose literal segment continues into a parameter', async () => {
+    @Controller('/files')
+    class FilesController {
+      @Get(':dir/abc:name')
+      one() {
+        return { ok: true };
+      }
+    }
+
+    const request = await createApp([FilesController], forRoutes(FilesController));
+
+    expect(await request('GET', '/files/d/abcX')).toBe(200);
+    expect(seen).toEqual(['GET /files/d/abcX']);
+  });
+
+  it('skips a request that an earlier controller serves on the same path', async () => {
+    @Controller('/shared')
+    class ProfileController {
+      @Get('me')
+      me() {
+        return { ok: true };
+      }
+    }
+
+    @Controller('/shared')
+    class ItemsController {
+      @Get(':id')
+      one() {
+        return { ok: true };
+      }
+    }
+
+    const request = await createApp(
+      [ProfileController, ItemsController],
+      forRoutes(ItemsController),
+    );
+
+    expect(await request('GET', '/shared/me')).toBe(200);
+    expect(await request('GET', '/shared/7')).toBe(200);
+    expect(await request('GET', '/shared/7/extra')).toBe(404);
+    expect(seen).toEqual(['GET /shared/7']);
+  });
+
+  it('runs for a controller route in an app mounted by two nested parents', async () => {
+    @Controller('/admin')
+    class AdminController {
+      @Get(':id')
+      one() {
+        return { ok: true };
+      }
+    }
+
+    @Module({ providers: [RecordingMiddleware], controllers: [AdminController] })
+    class AppModule implements NestModule {
+      configure(consumer: MiddlewareConsumer) {
+        consumer.apply(RecordingMiddleware).forRoutes(AdminController);
+      }
+    }
+    const app = await VelaFactory.create(AppModule);
+    const inner = new Hono().route('/inner', app.getHonoApp());
+    inner.onError((error, c) => c.text(String(error), 500));
+    const outer = new Hono().route('/outer', inner);
+
+    expect((await outer.request('/outer/inner/admin/7')).status).toBe(200);
+    expect(seen).toEqual(['GET /outer/inner/admin/7']);
   });
 });

@@ -30,9 +30,8 @@ export interface MiddlewareConfigProxy {
   exclude(...routes: Array<string | RouteInfo>): MiddlewareConfigProxy;
   withPriority(priority: number): MiddlewareConfigProxy;
   /**
-   * Run for every route of a controller (global prefix, version, controller
-   * prefix, route path and method) or for a pattern and the paths beneath it.
-   * `'*'` matches every request.
+   * Run whenever Hono dispatches a request to one of a controller's handlers,
+   * or for a pattern and the paths beneath it. `'*'` matches every request.
    */
   forRoutes(...routes: Array<string | Constructor | RouteInfo>): MiddlewareConsumer;
 }

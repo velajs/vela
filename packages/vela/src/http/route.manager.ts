@@ -9,7 +9,7 @@ import type {
 } from './hono.types';
 import { bodyLimit as honoBodyLimit } from 'hono/body-limit';
 import { contextStorage } from 'hono/context-storage';
-import { basePath, routePath } from 'hono/route';
+import { basePath, matchedRoutes, routePath } from 'hono/route';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { HttpMethod, Scope } from '../constants';
 import { HttpException } from '../errors/http-exception';
@@ -203,8 +203,9 @@ function priorityOf(value: unknown): number | undefined {
  * which match one or more characters across segments (`cats/*path` matches
  * `/cats/1` and `/cats/1/toys` but not `/cats`, also mid-path:
  * `files/*path/:id`), and a trailing `{*name}`, which also matches the parent
- * path, as in Nest. Any other syntax fails the route build instead of leaving
- * the routes it names without their middleware.
+ * path, as in Nest. Any other syntax, a ':' inside a literal segment and more
+ * than one wildcard that spans segments fail the route build instead of leaving
+ * the routes they name without their middleware.
  */
 function parseMiddlewareTarget(path: string): RouteSegment[] {
   const segments = parseRoutePattern(path);
@@ -215,19 +216,14 @@ function parseMiddlewareTarget(path: string): RouteSegment[] {
   );
 }
 
-// `'*'`, `'/*'` and `'{*splat}'` match every request, even under a global prefix.
-function matchesEveryPath(segments: readonly RouteSegment[]): boolean {
-  return segments.length === 1 && segments[0]!.text === '*';
-}
-
-// Whether a middleware target's method reaches a route registered for
-// `route`; Hono serves HEAD with the GET handler.
-function methodsOverlap(target: string, route: string): boolean {
+// Whether Hono routes a request with `method` to a route or middleware
+// registered for `registered`: only its own method or ALL, and HEAD to GET. A
+// request's method token 'ALL' is not a wildcard.
+function methodReaches(method: string, registered: string): boolean {
   return (
-    target === HttpMethod.ALL ||
-    route === HttpMethod.ALL ||
-    target === route ||
-    (target === HttpMethod.HEAD && route === HttpMethod.GET)
+    registered === HttpMethod.ALL ||
+    registered === method ||
+    (method === HttpMethod.HEAD && registered === HttpMethod.GET)
   );
 }
 
@@ -266,6 +262,9 @@ export class RouteManager {
   private globalFilters: Array<FilterType | TypedToken<ExceptionFilter>> = [];
   private globalPrefix = '';
   private consumerMiddlewareDefinitions: MiddlewareRouteDefinition[] = [];
+  // The Hono handler that ends each controller route, with its controller and
+  // method, for forRoutes(Controller).
+  private readonly routeOwners = new Map<unknown, [Constructor, string]>();
   private routeDescriptions: RouteDescription[] = [];
   private readonly requestObservers = new Set<HttpRequestObserver>();
 
@@ -889,9 +888,8 @@ export class RouteManager {
           // mounted it with `parent.route(base, app)`.
           const base = basePath(c);
           const path = base === '/' ? c.req.path : c.req.path.slice(base.length) || '/';
-          const method = c.req.method;
 
-          if (!matchRoute(path, method) || matchExclude(path, method)) return next();
+          if (!matchRoute(c, path) || matchExclude(c, path)) return next();
 
           const requestContainer = this.getRequestContainer(c);
           const runChain = async (index: number): Promise<void> => {
@@ -955,6 +953,7 @@ export class RouteManager {
             // Register the onion with its method and terminal handler. A
             // path-only app.use() also matches sibling methods/controllers.
             this.registerRoute(app, route.method, fullPath, ...middleware, handler);
+            this.routeOwners.set(app.routes.at(-1)!.handler, [controller, route.method]);
             this.routeDescriptions.push({
               method: String(route.method),
               path: fullPath || '/',
@@ -1046,7 +1045,7 @@ export class RouteManager {
       const regex = compileRoutePattern(segments, coverDescendants);
       return routes.some(
         (route) =>
-          methodsOverlap(method, route.method) &&
+          (method === HttpMethod.ALL || methodReaches(method, route.method)) &&
           routePatternsOverlap(segments, regex, route.segments, route.regex),
       );
     };
@@ -1061,8 +1060,9 @@ export class RouteManager {
       for (const { target, forRoutes } of targets) {
         if (typeof target === 'function' || target.absolute) continue;
         const segments = parseMiddlewareTarget(target.path);
-        if (matchesEveryPath(segments)) continue;
         const path = formatRoutePattern(segments);
+        // `'*'`, `'/*'` and `'{*splat}'` match every request.
+        if (path === '/*') continue;
         const method = target.method ?? HttpMethod.ALL;
         const prefixed = [...prefixSegments, ...segments];
         const pattern = formatRoutePattern(prefixed);
@@ -1120,51 +1120,39 @@ export class RouteManager {
     }));
   }
 
-  // Consumer targets compile into anchored regular expressions (see
-  // route-target.ts) matched against the request path and method. A controller
-  // expands to its composed routes, matched exactly; a pattern resolves under
-  // the global prefix unless it is `absolute` and, for forRoutes(), also covers
-  // the paths beneath it. `'*'` matches everything.
+  // A controller target matches when one of its handlers serves the request:
+  // the first controller route after the running middleware in the chain Hono
+  // matched (a HEAD route is registered on GET and passes GET requests on). A
+  // pattern compiles to an anchored regular expression (see route-target.ts)
+  // matched against the request path and method; it resolves under the global
+  // prefix unless it is `absolute` and, for forRoutes(), also covers the paths
+  // beneath it. `'*'`, `'/*'` and `'{*splat}'` match every request.
   private compileRouteMatcher(
     targets: Array<RouteInfo | Constructor>,
     coverDescendants: boolean,
-  ): (path: string, method: string) => boolean {
-    if (targets.length === 0) return () => false;
+  ): (c: Context, path: string) => boolean {
+    const controllers = new Set<Constructor>();
     const matchers: Array<{ method: string; regex: RegExp }> = [];
 
     for (const target of targets) {
       if (typeof target === 'function') {
-        const routes = MetadataRegistry.getRoutes(target);
-        if (routes.length === 0) {
+        if (MetadataRegistry.getRoutes(target).length === 0) {
           throw new Error(
             `Cannot apply middleware to ${target.name}: ${target.name} declares no routes. ` +
               'Target contributed routes by path instead.',
           );
         }
-        const prefix = MetadataRegistry.getControllerPath(target);
-        const { version } = MetadataRegistry.getControllerOptions(target);
-        for (const route of routes) {
-          for (const { path } of this.composeRoutePaths(prefix, route, version)) {
-            const segments = parseRoutePattern(path);
-            if (!segments) {
-              throw new Error(
-                `Cannot apply middleware to ${target.name}: its route '${path}' uses pattern ` +
-                  'syntax middleware cannot match.',
-              );
-            }
-            matchers.push({ method: route.method, regex: compileRoutePattern(segments, false) });
-          }
-        }
+        controllers.add(target);
         continue;
       }
 
       const method = target.method ?? HttpMethod.ALL;
       const segments = parseMiddlewareTarget(target.path);
-      if (matchesEveryPath(segments)) {
+      const path = formatRoutePattern(segments);
+      if (path === '/*') {
         matchers.push({ method, regex: /(?:)/ });
         continue;
       }
-      const path = formatRoutePattern(segments);
       const prefix = this.globalPrefix.replace(/\/+$/, '');
       // A relative target that repeats the prefix would resolve to
       // '<prefix><prefix>/...' and never match, leaving its routes unguarded.
@@ -1179,10 +1167,28 @@ export class RouteManager {
       matchers.push({ method, regex: compileRoutePattern(resolved, coverDescendants) });
     }
 
-    return (path, method) =>
-      matchers.some(
-        (matcher) => methodsOverlap(method, matcher.method) && matcher.regex.test(path),
+    return (c, path) => {
+      const method = c.req.method;
+      if (controllers.size) {
+        serving: for (const route of matchedRoutes(c).slice(c.req.routeIndex + 1)) {
+          // A parent app that mounts this one with route() wraps its handlers.
+          for (
+            let handler: unknown = route.handler;
+            typeof handler === 'function';
+            handler = Reflect.get(handler, '__COMPOSED_HANDLER')
+          ) {
+            const owner = this.routeOwners.get(handler);
+            if (owner && (owner[1] !== HttpMethod.HEAD || method === HttpMethod.HEAD)) {
+              if (controllers.has(owner[0])) return true;
+              break serving;
+            }
+          }
+        }
+      }
+      return matchers.some(
+        (matcher) => methodReaches(method, matcher.method) && matcher.regex.test(path),
       );
+    };
   }
 
   getControllers(): ControllerRegistration[] {

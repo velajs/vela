@@ -1165,6 +1165,7 @@ declare class RouteManager {
   private globalFilters;
   private globalPrefix;
   private consumerMiddlewareDefinitions;
+  private readonly routeOwners;
   private routeDescriptions;
   private readonly requestObservers;
   private readonly handlerExecutor;

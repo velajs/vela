@@ -103,13 +103,13 @@ class AppModule implements NestModule {
 
 Route targets use Hono route patterns (`:id`, `*`) and resolve at route build:
 
-- `forRoutes(UsersController)` matches each of the controller's routes with its method, under the global prefix and URI version. A controller that declares no routes throws.
+- `forRoutes(UsersController)` runs exactly when Hono dispatches the request to one of the controller's own handlers (its method, global prefix, URI version, a parent app's base path). A controller that declares no routes throws.
 - A string or `{ path, method }` target gets the global prefix and also covers the paths beneath it: `forRoutes('/users')` under `globalPrefix: '/api'` matches `/api/users` and `/api/users/42`. Write it without the prefix; a target that starts with the prefix throws at route build.
 - `exclude()` targets get the global prefix and match exactly: `exclude('/users/me')` does not exclude `/users/me/keys`.
 - `{ path, method?, absolute: true }` matches the path as written, for routes outside the global prefix: `mountOpenApi()` documents, the `RpcModule` endpoint, Cloudflare WebSocket upgrades and raw Hono routes.
 - After route build, relative targets are checked against the registered routes: one that matches only a route outside the global prefix (e.g. `forRoutes('rpc')`) throws and names `{ path, absolute: true }`; a `forRoutes()` target that matches no route at all is reported through `diagnostics` (routes added to the Hono app after startup need `absolute: true`).
-- Nest wildcards keep Nest's meaning: `cats/*path` and `cats/(.*)` become `cats/:path{.+}` (one or more segments, never `/cats` itself, also mid-path as in `files/*path/download`); a trailing `cats/{*splat}` becomes Hono's `cats/*` (which also matches `/cats`). Other group, optional or named-wildcard syntax (`:id(\d+)`, `users{/:id}`, `ab*cd`, a `{*splat}` before the last segment) throws at route build; use `:id{[0-9]+}` for a constrained segment.
-- A `GET` target also matches `HEAD`, which Hono serves with the GET handler. `'*'` matches every request.
+- Nest wildcards keep Nest's meaning: `cats/*path` and `cats/(.*)` become `cats/:path{.+}` (one or more segments, never `/cats` itself, also mid-path as in `files/*path/download`); a trailing `cats/{*splat}` becomes Hono's `cats/*` (which also matches `/cats`). Other group, optional or named-wildcard syntax (`:id(\d+)`, `users{/:id}`, `ab*cd`, a `{*splat}` before the last segment), a `:` inside a literal segment (`files/abc:name`) and more than one wildcard that spans segments (`files/*a/*b`) throw at route build; use `:id{[0-9]+}` for a constrained segment. Generated wildcards also match decoded line terminators (`%0A`, `%E2%80%A8`).
+- A `GET` target also matches `HEAD`, which Hono serves with the GET handler; a request whose method token is `ALL` matches only unscoped targets. `'*'` matches every request.
 
 For authorization use the shared guards in `@velajs/authz/vela`; raw request headers are not proof of a role or permission.
 

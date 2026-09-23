@@ -73,17 +73,22 @@ still read it through the framework's bounded capture seam.
 ### Middleware route targets
 
 Middleware bound with `consumer.apply(...).forRoutes(...)` resolves its targets
-when routes are built. A controller target covers each of its routes and methods,
-including the global prefix and URI version. Path targets use Hono route patterns
-under the global prefix and also cover nested paths. `exclude()` patterns match
-exactly. A path target that already starts with the global prefix fails the
-build, because it would never match.
+when routes are built. A controller target runs the middleware exactly when Hono
+dispatches the request to one of the controller's own handlers, with that
+handler's method, under any global prefix, URI version or parent app that mounts
+the Vela app. Path targets use Hono route patterns under the global prefix and
+also cover nested paths. `exclude()` patterns match exactly. A path target that
+already starts with the global prefix fails the build, because it would never
+match. A request matches a method-scoped target only for that method, or HEAD
+for a GET target, as Hono routes it; the method token `ALL` is not a wildcard.
 
 Vela compiles each path target to an anchored regular expression. Literal
 segments match as written, so `v1.0` does not match `v1x0`. `:id` and a `*`
 before the last segment match one segment, `:id{[0-9]+}` a segment its regex
 accepts, and a trailing `:id?` an optional last segment. A trailing `*`
-(`cats/*`) matches `/cats` and everything beneath it.
+(`cats/*`) matches `/cats` and everything beneath it. Every wildcard Vela
+generates also matches line terminators, since Hono decodes `%0A`, `%0D`,
+`%E2%80%A8` and `%E2%80%A9` into the request path a `:id` route accepts.
 
 Nest's wildcard segments keep Nest's meaning. `cats/*path` and `cats/(.*)`
 match one or more segments below `/cats` (`/cats/1`, `/cats/1/toys`) but not
@@ -94,7 +99,10 @@ A wildcard can sit anywhere and backtracks onto what follows it:
 also matches `/cats`, as it does in Nest. Any other group, optional segment or
 named wildcard, such as `:id(\d+)`, `users{/:id}`, `ab*cd` or a `{*splat}`
 before the last segment, fails the build instead of never matching; write
-`:id{[0-9]+}` for a constrained segment.
+`:id{[0-9]+}` for a constrained segment. So does a `:` inside a literal segment
+(`files/abc:name`), which Hono's routers read differently, and a target with
+more than one wildcard that spans segments (`files/*a/*b`, `files/*a/*`), whose
+matching would slow down on long paths.
 
 Some routes are served outside the global prefix: `mountOpenApi()` documents
 (`/openapi.json`, `/scalar`, `/docs`, `/redoc`), the `RpcModule` endpoint

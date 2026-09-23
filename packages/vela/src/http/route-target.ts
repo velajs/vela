@@ -1,7 +1,9 @@
 // Middleware route targets and the route patterns they are checked against
 // compile to anchored regular expressions owned by Vela, not to a Hono router:
 // a Nest wildcard then matches with ordinary backtracking wherever it sits,
-// including before a parameter or a literal segment.
+// including before a parameter or a literal segment. Every wildcard fragment
+// Vela generates is `[\s\S]`, not `.`: Hono decodes %0A, %0D, %E2%80%A8 and
+// %E2%80%A9 into the request path, and a `:param` segment accepts them.
 
 /** One segment of a route pattern, as parsed by {@link parseRoutePattern}. */
 export interface RouteSegment {
@@ -15,7 +17,7 @@ export interface RouteSegment {
   readonly constraint?: RegExp;
   /** A trailing `:name?`, `*` or `{*name}` may be absent. */
   readonly optional?: boolean;
-  /** The segment already matches every path beneath it. */
+  /** The segment matches across segments, and so every path beneath it. */
   readonly open?: boolean;
 }
 
@@ -23,10 +25,12 @@ export interface RouteSegment {
 const NEST_WILDCARD = /^(\{?)\*([\p{ID_Start}$_][\p{ID_Continue}$]*)(\}?)$/u;
 // `:name`, `:name{regex}`, either with a trailing `?`.
 const PARAM = /^:([^{}()*?:]+)(?:\{(.+)\})?(\?)?$/s;
-// Literal text, optionally ending in Hono's prefix wildcard (`ab*`).
-const LITERAL = /^([^{}()*?:][^{}()*?]*)(\*)?$/;
+// Literal text, optionally ending in Hono's prefix wildcard (`ab*`). A ':'
+// inside the text is rejected: Hono's routers disagree on whether `abc:name`
+// is text or a parameter.
+const LITERAL = /^([^{}()*?:]+)(\*)?$/;
 const ANY_SEGMENT = '/[^/]+';
-const REST = '(?:/.*)?';
+const REST = '(?:/[\\s\\S]*)?';
 // Values tried for a parameter when looking for a path two patterns share.
 const SAMPLE_VALUES = ['1', 'x'];
 
@@ -39,7 +43,9 @@ const SEGMENT = /(?:[^/{}]|\{(?:[^{}]|\{[^{}]*\})*\})+/g;
  * `*` (one segment, or the parent and the rest of the path when trailing) and
  * a trailing `ab*`, plus Nest's `*name` and `(.*)` (one or more characters
  * across segments) and a trailing `{*name}` (the parent and the rest of the
- * path). Returns `undefined` for any other syntax.
+ * path). Returns `undefined` for any other syntax, and for a pattern with more
+ * than one wildcard that spans segments, whose backtracking would grow
+ * polynomially with the path length.
  */
 export function parseRoutePattern(path: string): RouteSegment[] | undefined {
   // Braces the segments did not consume are unbalanced.
@@ -53,7 +59,11 @@ export function parseRoutePattern(path: string): RouteSegment[] | undefined {
     const param = PARAM.exec(part);
     const literal = LITERAL.exec(part);
     if ((name && !open && !close) || part === '(.*)') {
-      segments.push({ text: `:${name ?? `wildcard${unnamed++}`}{.+}`, source: '/.+', open: true });
+      segments.push({
+        text: `:${name ?? `wildcard${unnamed++}`}{.+}`,
+        source: '/[\\s\\S]+',
+        open: true,
+      });
     } else if (part === '*' || (last && open && close)) {
       segments.push(
         last
@@ -81,11 +91,12 @@ export function parseRoutePattern(path: string): RouteSegment[] | undefined {
       const escaped = `/${fixed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`;
       segments.push(
         literal[2]
-          ? { text: part, source: `${escaped}.*`, fixed, open: true }
+          ? { text: part, source: `${escaped}[\\s\\S]*`, fixed, open: true }
           : { text: part, source: escaped, fixed },
       );
     } else return undefined;
   }
+  if (segments.filter((segment) => segment.open)[1]) return undefined;
   // Hono routes '/cats/' apart from '/cats', so a trailing slash is a segment.
   if (segments.length && path.endsWith('/')) segments.push({ text: '', source: '/', fixed: '' });
   return segments;
@@ -108,7 +119,8 @@ export function compileRoutePattern(
   const parts = descendants && segments.at(-1)?.text === '' ? segments.slice(0, -1) : segments;
   let source = parts.map((segment) => segment.source).join('');
   if (descendants && !parts.at(-1)?.open) source += REST;
-  return new RegExp(`^${source || '/'}$`);
+  // Hono matches a lone ':id?' on the root as well.
+  return new RegExp(`^${parts[0]?.optional ? `(?:${source}|/)` : source || '/'}$`);
 }
 
 // Concrete paths shaped like `segments`, one per variant. Variant 0 fills a
