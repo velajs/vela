@@ -22,7 +22,7 @@ for lazy per-environment bootstrap.
 
 The example covers KV, D1, R2, typed queues, Durable Objects, AI, Vectorize,
 Hyperdrive, the injected environment, `@Cron` jobs on cron triggers (each job
-receives only a `ScheduleInvocation`), and queue consumers. Native bindings are injected directly; no binding wrapper
+receives only a `CronInvocation`), and queue consumers. Native bindings are injected directly; no binding wrapper
 modules or services are required.
 
 Queues come in both forms. `POST /lab/reports` adds a typed `sync-report` job
