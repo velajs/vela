@@ -65,6 +65,7 @@ export type {
   MailModuleAsyncOptions,
   MailModuleFactoryOptions,
   MailModuleOptions,
+  MailQueueOptions,
 } from './mail.module';
 export { MailService } from './mail.service';
 export { createMailSendProcessor, MailSendProcessor } from './mail.processor';

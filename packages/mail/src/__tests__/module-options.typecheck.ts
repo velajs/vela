@@ -22,3 +22,15 @@ MailModule.forRootAsync({
   // @ts-expect-error the factory must match its actual injected token
   useFactory: (config: number) => ({ from: String(config) }),
 });
+
+MailModule.forRoot({
+  from: 'a@example.com',
+  queue: { name: 'mail', binding: 'MAIL_QUEUE', consumer: 'mail-production' },
+});
+MailModule.forRootAsync({
+  inject: [],
+  useFactory: () => ({ from: 'a@example.com' }),
+  queue: { binding: 'MAIL_QUEUE' },
+});
+// @ts-expect-error a queue binding is a binding name
+MailModule.forRoot({ from: 'a@example.com', queue: { binding: 1 } });

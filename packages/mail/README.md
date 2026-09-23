@@ -118,11 +118,16 @@ modules; root `app.get(MailService)` is not a multi-mailer selector.
 
 ```ts
 import { QueueModule } from '@velajs/vela/queue';
+import { cloudflareQueues } from '@velajs/cloudflare/queues';
 
 @Module({
   imports: [
-    QueueModule.forRoot({ queues: ['mail'] }),
-    MailModule.forRoot({ from: 'support@example.com', transport, queue: { name: 'mail' } }),
+    QueueModule.forRoot({ driver: cloudflareQueues() }),
+    MailModule.forRoot({
+      from: 'support@example.com',
+      transport,
+      queue: { name: 'mail', binding: 'MAIL_QUEUE' },
+    }),
   ],
 })
 class AppModule {}
@@ -130,22 +135,28 @@ class AppModule {}
 await mailer.queue({ to: 'user@example.com', subject: 'Digest', text: 'News' });
 ```
 
-`queue: {}` selects the default name `mail`. Queue names must be unique across
-mail registrations in one application. Each registration has its own processor
-class, preventing options from another mailer being selected by token resolution.
-The queue client must also have exactly one owner. The service validates before
-enqueue; the consumer treats `job.data` as unknown, reconstructs a fresh message,
-rebuilds its envelope, and reruns validation and limits before delivery.
+The mailer registers its queue with `QueueModule.registerQueue({ name, binding,
+consumer })` and its consumer as a `@Processor(name)`, so the application only
+imports `QueueModule.forRoot({ driver })` once; a mailer with `queue` fails
+bootstrap without it. `queue: {}` selects the default name `mail`. `binding` is
+the producer binding the driver sends through (on Workers, a Wrangler
+`queues.producers[].binding`) and `consumer` optionally pins the physical queue,
+exactly as in `registerQueue`. Queue names must be unique across mail
+registrations in one application. Each registration has its own processor
+class, preventing options from another mailer being selected by token
+resolution. The service validates before enqueue; the consumer treats
+`job.data` as unknown, reconstructs a fresh message, rebuilds its envelope, and
+reruns validation and limits before delivery.
 
 For `forRootAsync`, `queue` and `inbound` are structural options alongside
 `inject` and `useFactory`; returning them from the factory is rejected. The factory
 returns only outbound options (`from`, `transport?`, `render?`, `limits?`).
 
-The default core queue driver is in-memory. Durable delivery requires an
-application queue driver/adapter. Mail does not implement retries, delivery
-idempotency, or exactly-once delivery; a retried job can send twice. Transport
-failures propagate to the driver/host. Native Cloudflare queue events are not
-automatically connected to this core queue consumer.
+The default core queue driver is in-memory. Durable delivery requires a platform
+queue driver such as `cloudflareQueues()`, whose native deliveries reach the
+mailer's consumer like any other processor. Mail does not implement retries,
+delivery idempotency, or exactly-once delivery; a retried job can send twice.
+Transport failures propagate to the driver/host, which retries the job.
 
 ## Inbound email
 

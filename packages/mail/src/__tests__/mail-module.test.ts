@@ -5,7 +5,14 @@ import {
   Module,
   VelaFactory,
 } from '@velajs/vela';
-import { dispatchQueueJob, inline, QueueModule, type QueueJob } from '@velajs/vela/queue';
+import {
+  dispatchQueueJob,
+  inline,
+  QueueModule,
+  QueueRegistry,
+  type QueueDriver,
+  type QueueJob,
+} from '@velajs/vela/queue';
 import { afterEach, describe, expect, it } from 'vitest';
 import { MailError } from '../mail.error';
 import { MailModule } from '../mail.module';
@@ -54,7 +61,8 @@ async function makeApp(transport: SpyTransport, withQueue: boolean) {
     : MailModule.forRoot({ from: FROM, transport });
 
   @Module({
-    imports: [QueueModule.forRoot({ queues: ['mail'], driver }), mailModule],
+    // The mailer registers its own queue; the application only picks the driver.
+    imports: [QueueModule.forRoot({ driver }), mailModule],
   })
   class App {}
 
@@ -331,6 +339,42 @@ describe('MailModule + MailService', () => {
         dispatchQueueJob(app.getContainer(), app.entrypoints, poisoned),
       ).rejects.toBeInstanceOf(MailError);
       expect(transport.calls).toHaveLength(0);
+    });
+
+    it('registers its queue with the binding and consumer pin it is given', async () => {
+      const sent: QueueJob[] = [];
+      const driver: QueueDriver = {
+        kind: 'recording',
+        async enqueue(job) {
+          sent.push(job);
+        },
+      };
+      @Module({
+        imports: [
+          QueueModule.forRoot({ driver }),
+          MailModule.forRoot({
+            from: FROM,
+            transport: spyTransport(),
+            queue: { name: 'outbound', binding: 'MAIL_QUEUE', consumer: 'mail-production' },
+          }),
+        ],
+      })
+      class App {}
+      const app = await VelaFactory.create(App);
+      disposers.push(() => app.dispose());
+      expect(app.get(QueueRegistry).get('outbound')).toEqual({
+        name: 'outbound',
+        binding: 'MAIL_QUEUE',
+        consumers: ['mail-production'],
+      });
+      await app.get(MailService).queue(validMessage());
+      expect(sent.map((job) => [job.queue, job.name])).toEqual([['outbound', MAIL_QUEUE_JOB]]);
+    });
+
+    it('requires QueueModule.forRoot at bootstrap when a queue is configured', async () => {
+      @Module({ imports: [MailModule.forRoot({ from: FROM, queue: {} })] })
+      class App {}
+      await expect(VelaFactory.create(App)).rejects.toThrow(/QueueModule\.forRoot/);
     });
 
     it('throws queue_required when no queue is configured', async () => {
