@@ -211,9 +211,8 @@ function parseMiddlewareTarget(path: string): RouteSegment[] {
   if (segments) return segments;
   throw new Error(
     `Middleware route '${path}' uses pattern syntax that Hono does not match, so its ` +
-      "middleware would never run. Use ':id' for one segment, ':id{[0-9]+}' for a " +
-      "constrained segment, '*path' for one or more segments and a trailing '*' " +
-      "('cats/*') for the rest of the path, including '/cats'.",
+      "middleware would never run. Use ':id', ':id{[0-9]+}', '*path' (one or more " +
+      "segments) or a trailing '*' (the path and everything beneath it).",
   );
 }
 
@@ -1151,7 +1150,7 @@ export class RouteManager {
             if (!segments) {
               throw new Error(
                 `Cannot apply middleware to ${target.name}: its route '${path}' uses pattern ` +
-                  'syntax that middleware routes cannot match. Target it by path instead.',
+                  'syntax middleware cannot match.',
               );
             }
             matchers.push({ method: route.method, regex: compileRoutePattern(segments, false) });
@@ -1183,14 +1182,9 @@ export class RouteManager {
       matchers.push({ method, regex: compileRoutePattern(resolved, coverDescendants) });
     }
 
-    // Hono serves HEAD requests with the GET handler.
     return (path, method) =>
       matchers.some(
-        (matcher) =>
-          (matcher.method === HttpMethod.ALL ||
-            matcher.method === method ||
-            (matcher.method === HttpMethod.GET && method === HttpMethod.HEAD)) &&
-          matcher.regex.test(path),
+        (matcher) => methodsOverlap(method, matcher.method) && matcher.regex.test(path),
       );
   }
 

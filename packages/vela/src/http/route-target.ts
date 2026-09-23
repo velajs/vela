@@ -30,23 +30,9 @@ const REST = '(?:/.*)?';
 // Values tried for a parameter when looking for a path two patterns share.
 const SAMPLE_VALUES = ['1', 'x'];
 
-// Splits on '/' outside a parameter's `{regex}`, dropping empty segments.
-function splitSegments(path: string): string[] | undefined {
-  const segments: string[] = [];
-  let depth = 0;
-  let start = 0;
-  for (let index = 0; index < path.length; index++) {
-    const char = path[index];
-    if (char === '{') depth++;
-    else if (char === '}' && --depth < 0) return undefined;
-    else if (char === '/' && !depth) {
-      segments.push(path.slice(start, index));
-      start = index + 1;
-    }
-  }
-  segments.push(path.slice(start));
-  return depth ? undefined : segments.filter(Boolean);
-}
+// A non-empty segment: '/' may appear only inside a parameter's `{regex}`,
+// which may nest one level of braces (`:id{[0-9]{3}}`).
+const SEGMENT = /(?:[^/{}]|\{(?:[^{}]|\{[^{}]*\})*\})+/g;
 
 /**
  * Parses a route pattern: Hono's `:name`, `:name{regex}`, a trailing `:name?`,
@@ -56,8 +42,9 @@ function splitSegments(path: string): string[] | undefined {
  * path). Returns `undefined` for any other syntax.
  */
 export function parseRoutePattern(path: string): RouteSegment[] | undefined {
-  const parts = splitSegments(path);
-  if (!parts) return undefined;
+  // Braces the segments did not consume are unbalanced.
+  if (/[^/]/.test(path.replace(SEGMENT, ''))) return undefined;
+  const parts = path.match(SEGMENT) ?? [];
   const segments: RouteSegment[] = [];
   let unnamed = 0;
   for (const [index, part] of parts.entries()) {
@@ -87,8 +74,8 @@ export function parseRoutePattern(path: string): RouteSegment[] | undefined {
       segments.push({
         text: part,
         source: optional ? `(?:${value})?` : value,
-        ...(constraint ? { constraint } : {}),
-        ...(optional ? { optional: true } : {}),
+        constraint,
+        optional: !!optional,
       });
     } else if (literal && (last || !literal[2])) {
       const fixed = literal[1]!;
