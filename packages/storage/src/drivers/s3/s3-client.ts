@@ -104,7 +104,10 @@ export class S3Client {
   /** Send a SigV4-signed request. */
   async send(url: URL, init: RequestInit): Promise<Response> {
     const signed = await this.#aws.sign(url.toString(), init);
-    return this.#fetch(signed);
+    // Call without a receiver: workerd rejects the platform fetch when `this`
+    // is the client ("Illegal invocation").
+    const fetchImpl = this.#fetch;
+    return fetchImpl(signed);
   }
 
   /** Presign a GET or PUT URL via query signing (unsigned payload). */
