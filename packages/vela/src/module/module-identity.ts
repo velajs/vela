@@ -102,11 +102,14 @@ function isPlainObject(value: object): boolean {
 
 /**
  * Compares module identity inputs for ONE module loader. Values compare
- * structurally; functions, symbols and class instances compare by reference,
- * through ids this instance hands out. Unlike `stableHash`, two closures with
- * the same source never collide. The ids are owned by the loader (never the
- * process), so they are released with it and cannot leak across applications.
- * Fingerprints are only built for repeated imports, never on the common path.
+ * structurally and functions by source text, so a shared helper that rebuilds
+ * the same `forRootAsync` config (a new closure each call) is one input.
+ * Classes, native or bound functions, symbols and class instances compare by
+ * reference, through ids this instance hands out: a class is a token, and a
+ * bound function's source hides its target. The ids are owned by the loader
+ * (never the process), so they are released with it and cannot leak across
+ * applications. Fingerprints are only built for repeated imports, never on
+ * the common path.
  */
 export class ModuleIdentityFingerprints {
   #references = new WeakMap<object, number>();
@@ -154,12 +157,18 @@ export class ModuleIdentityFingerprints {
     return `sym#${id}`;
   }
 
+  private function(value: Function): string {
+    const source = Function.prototype.toString.call(value);
+    if (/^class\b/.test(source) || source.includes('[native code]')) return this.reference(value);
+    return `fn:${JSON.stringify(source)}`;
+  }
+
   private value(value: unknown, path: Set<object>): string {
     if (value === undefined) return 'undefined';
     if (value === null) return 'null';
     if (typeof value === 'string') return JSON.stringify(value);
     if (typeof value === 'symbol') return this.symbol(value);
-    if (typeof value === 'function') return this.reference(value);
+    if (typeof value === 'function') return this.function(value);
     if (typeof value !== 'object') return `${typeof value}:${String(value)}`;
     // A cycle is only reachable through a reference; compare it as one.
     if (path.has(value)) return this.reference(value);

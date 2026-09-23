@@ -71,26 +71,81 @@ describe('module identity collisions', () => {
     await app.close();
   });
 
-  it('tells distinct closures with identical source apart', async () => {
-    const regional = (region: string) =>
-      RegionModule.forRootAsync({ key: 'shared', inject: [], useFactory: () => ({ region }) });
-    @Module({ imports: [regional('eu'), regional('us')] })
-    class Distinct {}
-    await expect(VelaFactory.create(Distinct, { diagnostics: 'throw' })).rejects.toThrow(
-      /RegionModule#shared was imported again with different options/,
-    );
+  it('treats closures a shared helper rebuilds from the same source as one input', async () => {
+    // Each call builds a new useFactory closure with the same source text.
+    const sharedRegion = () =>
+      RegionModule.forRootAsync({
+        key: 'shared',
+        inject: [],
+        useFactory: () => ({ region: 'eu' }),
+      });
+    @Module({ imports: [sharedRegion(), sharedRegion()] })
+    class Rebuilt {}
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const app = await VelaFactory.create(Rebuilt, { diagnostics: 'throw' });
+    expect(app.get(REGION)).toBe('eu');
+    expect(app.getContainer().getOwnerModuleIds(MODULE_OPTIONS_TOKEN)).toHaveLength(1);
+    expect(warn).not.toHaveBeenCalled();
+    await app.close();
 
-    const useFactory = () => ({ region: 'eu' });
     @Module({
       imports: [
-        RegionModule.forRootAsync({ key: 'shared', inject: [], useFactory }),
-        RegionModule.forRootAsync({ key: 'shared', inject: [], useFactory }),
+        RegionModule.forRootAsync({
+          key: 'shared',
+          inject: [],
+          useFactory: () => ({ region: 'eu' }),
+        }),
+        RegionModule.forRootAsync({
+          key: 'shared',
+          inject: [],
+          useFactory: () => ({ region: 'us' }),
+        }),
       ],
     })
-    class Shared {}
-    const app = await VelaFactory.create(Shared, { diagnostics: 'throw' });
+    class DifferentSource {}
+    await expect(VelaFactory.create(DifferentSource, { diagnostics: 'throw' })).rejects.toThrow(
+      /RegionModule#shared was imported again with different options/,
+    );
+  });
+
+  it('compares object instances by reference', async () => {
+    const REGION_SOURCE = new InjectionToken<string>('identity test region source');
+    @Module({
+      providers: [defineProvider(REGION_SOURCE, { useValue: 'eu' })],
+      exports: [REGION_SOURCE],
+    })
+    class SourceModule {}
+    const fromSource = (source: InjectionToken<string>) =>
+      RegionModule.forRootAsync({
+        key: 'shared',
+        imports: [SourceModule],
+        inject: [source],
+        useFactory: (region: string) => ({ region }),
+      });
+
+    @Module({ imports: [fromSource(REGION_SOURCE), fromSource(REGION_SOURCE)] })
+    class SameInstance {}
+    const app = await VelaFactory.create(SameInstance, { diagnostics: 'throw' });
     expect(app.get(REGION)).toBe('eu');
+    expect(app.getContainer().getOwnerModuleIds(MODULE_OPTIONS_TOKEN)).toHaveLength(1);
     await app.close();
+
+    // Equal-looking but distinct token instances are different inputs.
+    @Module({
+      imports: [
+        fromSource(new InjectionToken<string>('identity test region source')),
+        fromSource(new InjectionToken<string>('identity test region source')),
+      ],
+    })
+    class DistinctInstances {}
+    const message =
+      '[vela] RegionModule#shared was imported again with different options; the repeated ' +
+      "import's providers were ignored in favor of the first. Import one shared definition " +
+      'instead of building it twice, or give each configuration its own key ' +
+      "(e.g. forRoot({ ..., key: 'secondary' })).";
+    await expect(VelaFactory.create(DistinctInstances, { diagnostics: 'throw' })).rejects.toThrow(
+      message,
+    );
   });
 
   it('reports side-effect contributions that differ under a stable owner', async () => {
