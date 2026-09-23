@@ -1,3 +1,4 @@
+import { Injectable, Optional } from '../container/decorators';
 import { BadRequestException } from '../errors/http-exception';
 import type { ArgumentMetadata, PipeTransform } from '../pipeline/types';
 import {
@@ -11,6 +12,9 @@ import { SchemaValidationError } from './standard-schema';
 
 export type { ValidationSchema } from './parse-schema';
 
+// Constructed with `new ValidationPipe(schema)` or registered as a class
+// provider (`APP_PIPE` with `useClass`), where the schema is simply absent.
+@Injectable()
 export class ValidationPipe implements PipeTransform {
   /** @deprecated No cross-boundary validation state is retained. Let the handler
    * own generated-route validation with validationOwner: 'handler' metadata. */
@@ -19,7 +23,7 @@ export class ValidationPipe implements PipeTransform {
   }
 
   /** Explicit schema metadata shared with OpenAPI and programmatic route builders. */
-  constructor(readonly parser?: ValidationSchema) {}
+  constructor(@Optional() readonly parser?: ValidationSchema) {}
 
   async transformAsync(value: unknown, metadata: ArgumentMetadata): Promise<unknown> {
     const schema = this.#schema(metadata);

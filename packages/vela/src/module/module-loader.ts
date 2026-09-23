@@ -1,6 +1,13 @@
 import { Scope } from '../constants';
 import type { Container } from '../container/container';
-import { ForwardRef, defineProvider, getProviderOptions, InjectionToken } from '../container/types';
+import { reportDiagnostic } from '../container/diagnostics';
+import {
+  ForwardRef,
+  defineProvider,
+  describeToken,
+  getProviderOptions,
+  InjectionToken,
+} from '../container/types';
 import type { ProviderDefinition, Token, TypedToken, Type } from '../container/types';
 import type { RouteManager } from '../http/route.manager';
 import {
@@ -342,7 +349,12 @@ export class ModuleLoader {
 
       this.markProcessed(moduleClass, key);
 
-      const exports = this.buildExportSet(allExports, allProviders, importedProviders);
+      const exports = this.buildExportSet(
+        moduleClass.name || 'AnonModule',
+        allExports,
+        allProviders,
+        importedProviders,
+      );
       this.cacheExports(moduleClass, key, exports);
 
       if (isGlobal) {
@@ -385,17 +397,15 @@ export class ModuleLoader {
     parentName: string,
     keysByClass: Map<Type, Set<string>>,
   ): void {
-    const mode = this.container.getDiagnostics();
-    if (mode === 'silent') return;
     for (const [cls, keys] of keysByClass) {
       if (keys.size < 2) continue;
       if (!keys.has(DEFAULT_MODULE_KEY)) continue;
-      const message =
+      reportDiagnostic(
+        this.container.getDiagnostics(),
         `[vela] ${cls.name} imported in both bare and keyed form in '${parentName}'. ` +
-        `These resolve to distinct module instances; consumers asking for an exported ` +
-        `token will hit MultipleProvidersFoundError. Use one form consistently.`;
-      if (mode === 'throw') throw new Error(message);
-      console.warn(message);
+          `These resolve to distinct module instances; consumers asking for an exported ` +
+          `token will hit MultipleProvidersFoundError. Use one form consistently.`,
+      );
     }
   }
 
@@ -463,6 +473,7 @@ export class ModuleLoader {
   }
 
   private buildExportSet(
+    moduleName: string,
     exports: Token[],
     providers: Array<Type | ProviderDefinition>,
     importedProviders: Set<Token>,
@@ -479,9 +490,10 @@ export class ModuleLoader {
       const isImportedProvider = importedProviders.has(exported);
 
       if (!isLocalProvider && !isImportedProvider) {
-        const name = typeof exported === 'function' ? exported.name : String(exported);
-        console.warn(
-          `Warning: Exporting '${name}' which is neither a local provider nor imported from another module.`,
+        reportDiagnostic(
+          this.container.getDiagnostics(),
+          `[vela] ${moduleName} exports '${describeToken(exported)}', which is neither a local ` +
+            'provider nor exported by an imported module.',
         );
       }
 

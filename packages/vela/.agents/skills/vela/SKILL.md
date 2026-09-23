@@ -179,7 +179,7 @@ Load a reference when the task needs its depth. **This table is the contract** �
 
 **`Module 'X' cannot resolve 'Y': not declared in providers, not imported from another module's exports, not @Global.`** (`ModuleVisibilityError`) → The token exists but isn't visible. Add it to the declaring module's `exports` (and import that module), or mark the module `@Global()`.
 
-**`Cannot resolve dependency at index N for X. Parameter type is undefined or Object.`** → The param type was erased — you used `import type { Dep }` for a DI token (TypeScript strips it), or `emitDecoratorMetadata` is off. Use a runtime `import { Dep }` and enable `emitDecoratorMetadata`, or add `@Inject(Token)`.
+**`X declares N constructor parameters but no design:paramtypes were emitted for parameter #i`** or **`... but parameter #i resolved to Object`** (`MissingInjectionMetadataError`, thrown when `X` is registered) → The build did not emit constructor metadata (`emitDecoratorMetadata` is off, or the bundler ignores it), or the parameter's type was erased — an interface, `import type { Dep }` (TypeScript strips it), or a circular import. Enable `emitDecoratorMetadata` and use a runtime `import { Dep }`, add `@Inject(Token)` to parameter `#i`, or mark it `@Optional()`. Subclasses without their own constructor inherit the parent's metadata.
 
 **`Circular dependency detected: ...`** → Break the cycle with `@Inject(forwardRef(() => Other))` (providers) or `imports: [forwardRef(() => OtherModule)]` (modules).
 

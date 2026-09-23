@@ -232,8 +232,21 @@ export interface ProviderRegistration<T = unknown> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   useFactory?: (...args: any[]) => T | Promise<T>;
   useClass?: Type<T>;
+  /**
+   * `useClass` constructor parameters, planned once at registration from the
+   * class's emitted metadata and `@Inject`/`@Optional` entries. Both resolution
+   * engines and the request-scope computation read this one plan.
+   */
+  dependencies?: readonly ConstructorDependency[];
   inject?: readonly DependencyToken[];
   useExisting?: Token;
+}
+
+/** One planned constructor parameter of a class provider. */
+export interface ConstructorDependency {
+  /** Explicit `@Inject` token or emitted paramtype; absent only for an `@Optional()` gap. */
+  readonly token?: Token | ForwardRef;
+  readonly optional: boolean;
 }
 
 /** Read-only wiring evidence; inspecting a snapshot never constructs a provider. */
@@ -353,6 +366,48 @@ export class MultipleProvidersFoundError extends Error {
         `accessor exposed by the module (e.g., Module.tokenFor(key)).`,
     );
     this.name = 'MultipleProvidersFoundError';
+  }
+}
+
+/**
+ * Why a constructor parameter has no injectable token:
+ * - `'missing'`: the build emitted no `design:paramtypes` entry for it.
+ * - `'erased'`: the emitted entry is `Object` or `undefined` (an interface, a
+ *   type-only import, or a circular import).
+ * - `'undefined-inject'`: `@Inject()` itself received `undefined`.
+ */
+export type MissingInjectionMetadataReason = 'missing' | 'erased' | 'undefined-inject';
+
+function pluralParameters(count: number): string {
+  return `${count} constructor parameter${count === 1 ? '' : 's'}`;
+}
+
+/**
+ * A class provider whose constructor parameter cannot be resolved from its
+ * metadata. Raised when the class is registered, before anything constructs
+ * it, instead of silently passing `undefined` for the parameter.
+ */
+export class MissingInjectionMetadataError extends Error {
+  constructor(
+    public readonly className: string,
+    public readonly parameterIndex: number,
+    public readonly reason: MissingInjectionMetadataReason,
+    declaredParameters: number,
+  ) {
+    const index = `#${parameterIndex}`;
+    const fix = `Enable emitDecoratorMetadata in your build or add @Inject(Token) to parameter ${index}.`;
+    const declared = `${className} declares ${pluralParameters(declaredParameters)}`;
+    super(
+      reason === 'missing'
+        ? `${declared} but no design:paramtypes were emitted for parameter ${index}. ${fix}`
+        : reason === 'erased'
+          ? `${declared} but parameter ${index} resolved to Object. ${fix} Interfaces, ` +
+            'type-only imports (`import type { X }`) and circular imports all erase to ' +
+            'Object or undefined; use a runtime `import { X }` for class tokens.'
+          : `${declared} but @Inject() received undefined for parameter ${index}, usually ` +
+            `because of a circular file import. Use @Inject(forwardRef(() => X)) instead.`,
+    );
+    this.name = 'MissingInjectionMetadataError';
   }
 }
 
