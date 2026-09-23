@@ -353,6 +353,33 @@ describe('StorageController', () => {
     expect(withoutSecret.create).not.toHaveBeenCalled();
   });
 
+  it('treats a multipart grant secret shorter than 32 bytes as a server configuration error', async () => {
+    const http: StorageHttpOptions = { authorize: () => ({ actorId: 'actor-a' }) };
+    // A secret known at module scope fails when the module is set up.
+    await expect(
+      appWithDriver({ ...http, multipartGrantSecret: 'short' }, multipartDriver(10).driver),
+    ).rejects.toThrow(/multipartGrantSecret must contain at least 32 bytes/);
+
+    // A factory secret fails its first use as a redacted server error, never a
+    // client error that names the setting.
+    const fromFactory = multipartDriver(10);
+    const moduleRef = await Test.createTestingModule({
+      imports: [
+        StorageModule.forRootAsync({
+          useFactory: () => ({ driver: fromFactory.driver, multipartGrantSecret: 'short' }),
+          http,
+        }),
+      ],
+    }).compile();
+    const app = (await moduleRef.createApplication()).getHonoApp();
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const { response, body } = await createMultipart(app, 10);
+      expect(response.status).toBe(502);
+      expect(body).toEqual({ error: { code: 'upstream_error', message: 'storage backend error' } });
+    }
+    expect(fromFactory.create).not.toHaveBeenCalled();
+  });
+
   it('binds multipart grants to actor, key, upload, expiry, and bounded part numbers', async () => {
     const mp = multipartDriver(11);
     const app = await appWithDriver(

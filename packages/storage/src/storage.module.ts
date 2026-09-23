@@ -20,6 +20,7 @@ import { StorageService, type StorageServiceOptions } from './storage.service';
 import { DEFAULT_STORAGE_NAME, storageDriverBuilder, storageToken } from './storage.tokens';
 import type { StorageDriver, StorageHooks } from './storage.types';
 import type { StorageAuthorizer } from './http/authorizer.types';
+import { validateMultipartGrantSecret } from './http/multipart-grant';
 
 /** Options for mounting the HTTP upload/download controller for a bucket. */
 export interface StorageHttpOptions {
@@ -36,7 +37,10 @@ export interface StorageHttpOptions {
   defaultExpiresIn?: number;
   maxExpiresIn?: number;
   maxUploadSize?: number;
-  /** HMAC key for stateless multipart grants. Required for multipart HTTP endpoints. */
+  /**
+   * HMAC key for stateless multipart grants, at least 32 bytes: a shorter one
+   * throws when the module is set up. Required for multipart HTTP endpoints.
+   */
   multipartGrantSecret?: string | Uint8Array;
   /** Maximum browser-direct multipart parts. Default 10,000. */
   maxMultipartParts?: number;
@@ -62,8 +66,9 @@ export interface StorageModuleOptions {
 export interface StorageAsyncResult {
   driver: StorageDriver;
   /**
-   * HMAC key for stateless multipart grants (at least 32 bytes). Takes
-   * precedence over `http.multipartGrantSecret`.
+   * HMAC key for stateless multipart grants, at least 32 bytes: a shorter one
+   * fails the factory's first use. Takes precedence over
+   * `http.multipartGrantSecret`.
    */
   multipartGrantSecret?: string | Uint8Array;
 }
@@ -199,6 +204,7 @@ function readAsyncResult(value: StorageDriver | StorageAsyncResult): StorageAsyn
         '{ driver, multipartGrantSecret? } with a string or Uint8Array secret',
     );
   }
+  if (secret !== undefined) validateMultipartGrantSecret(secret);
   return result;
 }
 
@@ -213,6 +219,9 @@ function buildControllers(
     throw new TypeError(
       '@velajs/storage: defaultPolicy is deny-only; use an explicit authorize callback for public access',
     );
+  }
+  if (http.multipartGrantSecret !== undefined) {
+    validateMultipartGrantSecret(http.multipartGrantSecret);
   }
   const defaultExpiresIn = positiveInteger(http.defaultExpiresIn ?? 900, 'defaultExpiresIn');
   const maxExpiresIn = positiveInteger(http.maxExpiresIn ?? 3600, 'maxExpiresIn');
