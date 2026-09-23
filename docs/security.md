@@ -79,10 +79,16 @@ under the global prefix and also cover nested paths. `exclude()` patterns match
 exactly. A path target that already starts with the global prefix fails the
 build, because it would never match.
 
-Nest's wildcard segments `cats/*path`, `cats/{*splat}` and `cats/(.*)` become
-Hono's `cats/*`, which also matches `/cats`. Any other group, optional segment or
-named wildcard, such as `:id(\d+)`, `users{/:id}` or `ab*cd`, fails the build
-because Hono would never match it; write `:id{[0-9]+}` for a constrained segment.
+Nest's wildcard segments keep Nest's meaning. `cats/*path` and `cats/(.*)`
+become `cats/:path{.+}`, which matches one or more segments below `/cats`
+(`/cats/1`, `/cats/1/toys`) but not `/cats` itself, so `exclude('users/*id')`
+still runs the middleware on `/users`. The same holds mid-path:
+`files/*path/download` matches `/files/a/download` and `/files/a/b/download`.
+A trailing `cats/{*splat}` becomes Hono's `cats/*`, which also matches `/cats`,
+as it does in Nest. Any other group, optional segment or named wildcard, such as
+`:id(\d+)`, `users{/:id}`, `ab*cd` or a `{*splat}` before the last segment,
+fails the build because Hono would never match it; write `:id{[0-9]+}` for a
+constrained segment.
 
 Some routes are served outside the global prefix: `mountOpenApi()` documents
 (`/openapi.json`, `/scalar`, `/docs`, `/redoc`), the `RpcModule` endpoint

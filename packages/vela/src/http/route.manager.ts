@@ -190,34 +190,56 @@ function priorityOf(value: unknown): number | undefined {
   return typeof constructor === 'function' ? priorityOf(constructor) : undefined;
 }
 
-// Nest's wildcard segments: `*name` (Nest 11), `{*name}` (Nest 11, which also
-// matches the parent path) and `(.*)` (earlier Nest).
-const NEST_WILDCARD_SEGMENT =
-  /^(?:\*[\p{ID_Start}$_][\p{ID_Continue}$]*|\{\*[\p{ID_Start}$_][\p{ID_Continue}$]*\}|\(\.\*\))$/u;
+// Nest's wildcard segments. `*name` (Nest 11) and `(.*)` (earlier Nest) match
+// one or more characters across segments, never the parent path itself;
+// `{*name}` (Nest 11) is optional, so it also matches the parent path.
+const NEST_NAMED_WILDCARD = /^\*([\p{ID_Start}$_][\p{ID_Continue}$]*)$/u;
+const NEST_OPTIONAL_WILDCARD = /^\{\*[\p{ID_Start}$_][\p{ID_Continue}$]*\}$/u;
+const NEST_UNNAMED_WILDCARD = '(.*)';
 // Hono's regex-constrained parameter, `:id{[0-9]+}`, with one nested brace level.
-const HONO_REGEX_PARAM = /:[^/:{}]+\{(?:[^{}]|\{[^{}]*\})*\}/g;
+const HONO_REGEX_PARAM = /:([^/:{}]+)\{(?:[^{}]|\{[^{}]*\})*\}/g;
 
 /**
- * A middleware target as a Hono route pattern. Nest's wildcard segments become
- * Hono's `*`, which matches the rest of the path. Any other group, optional or
- * named-wildcard syntax would never match in Hono, so it fails the route build
+ * A middleware target as a Hono route pattern. `*name` and `(.*)` become a
+ * parameter that spans segments and needs at least one character
+ * (`:name{.+}`), so `cats/*name` matches `/cats/1` and `/cats/1/toys` but not
+ * `/cats`, also mid-path (`files/*path/download`). A trailing `{*name}`
+ * becomes Hono's `*`, which also matches the parent path, as in Nest. Any
+ * other group, optional or named-wildcard syntax (including `{*name}` before
+ * the last segment) would never match in Hono, so it fails the route build
  * instead of leaving the routes it names without their middleware.
  */
 function toHonoPattern(path: string): string {
-  const pattern = path
-    .split('/')
-    .map((segment) => (NEST_WILDCARD_SEGMENT.test(segment) ? '*' : segment))
+  const segments = path.split('/');
+  const last = segments.findLastIndex((segment) => segment !== '');
+  let unnamed = 0;
+  const pattern = segments
+    .map((segment, index) => {
+      const named = NEST_NAMED_WILDCARD.exec(segment);
+      if (named) return `:${named[1]}{.+}`;
+      if (segment === NEST_UNNAMED_WILDCARD) return `:wildcard${unnamed++}{.+}`;
+      if (index === last && NEST_OPTIONAL_WILDCARD.test(segment)) return '*';
+      return segment;
+    })
     .join('/');
   const bare = pattern.replace(HONO_REGEX_PARAM, ':param');
   if (/[(){}]/.test(bare) || /\*[\p{ID_Continue}$]/u.test(bare)) {
     throw new Error(
       `Middleware route '${path}' uses pattern syntax that Hono does not match, so its ` +
         "middleware would never run. Use Hono route patterns: ':id' for one segment, " +
-        "':id{[0-9]+}' for a constrained segment and a trailing '*' ('cats/*') for the rest " +
-        'of the path.',
+        "':id{[0-9]+}' for a constrained segment, ':path{.+}' for one or more segments and " +
+        "a trailing '*' ('cats/*') for the rest of the path, including '/cats'.",
     );
   }
   return pattern;
+}
+
+/**
+ * A pattern as a path to match against registered routes. A regex-constrained
+ * parameter keeps only its name: its regex source (`{.+}`) is not path text.
+ */
+function patternAsPath(pattern: string): string {
+  return pattern.replace(HONO_REGEX_PARAM, ':$1');
 }
 
 // Whether a middleware target's method reaches a route registered for
@@ -1033,7 +1055,8 @@ export class RouteManager {
     );
     const routeRouter = new TrieRouter<string>();
     for (const route of routes) routeRouter.add(HttpMethod.ALL, route.path, route.method);
-    // Patterns overlap when either one matches the other taken literally.
+    // Patterns overlap when either one matches the other taken literally; a
+    // target's regex-constrained parameters are matched by name, not regex.
     const served = (method: string, pattern: string, coverDescendants: boolean): boolean => {
       const targetRouter = new TrieRouter<true>();
       targetRouter.add(HttpMethod.ALL, pattern, true);
@@ -1047,7 +1070,7 @@ export class RouteManager {
             targetRouter.match(HttpMethod.GET, route.path)[0].length > 0,
         ) ||
         routeRouter
-          .match(HttpMethod.GET, pattern)[0]
+          .match(HttpMethod.GET, patternAsPath(pattern))[0]
           .some(([routeMethod]) => methodsOverlap(method, routeMethod))
       );
     };

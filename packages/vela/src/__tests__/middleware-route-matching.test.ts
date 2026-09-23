@@ -616,19 +616,123 @@ describe('Nest wildcard targets', () => {
     }
   }
 
-  it.each(['cats/*path', 'cats/{*splat}', 'cats/(.*)', 'cats/*'])(
-    "translates '%s' to a trailing Hono wildcard",
-    async (target) => {
-      const request = await createApp([CatsController, DogsController], forRoutes(target), {
-        globalPrefix: '/api',
-      });
+  @Controller('/cats')
+  class CatsWithIndexController {
+    @Get()
+    list() {
+      return { ok: true };
+    }
 
+    @Get(':id')
+    one() {
+      return { ok: true };
+    }
+
+    @Get(':owner/:id/toys')
+    ownedToys() {
+      return { ok: true };
+    }
+  }
+
+  it.each(['cats/*path', 'cats/(.*)'])(
+    "translates '%s' to a wildcard that needs at least one segment below /cats",
+    async (target) => {
+      const request = await createApp(
+        [CatsWithIndexController, CatsController, DogsController],
+        forRoutes(target),
+        { globalPrefix: '/api' },
+      );
+
+      expect(await request('GET', '/api/cats')).toBe(200);
       expect(await request('GET', '/api/cats/1')).toBe(200);
       expect(await request('GET', '/api/cats/1/toys')).toBe(200);
       expect(await request('GET', '/api/dogs/1')).toBe(200);
       expect(seen).toEqual(['GET /api/cats/1', 'GET /api/cats/1/toys']);
     },
   );
+
+  it.each(['cats/{*splat}', 'cats/*'])(
+    "translates '%s' to a trailing Hono wildcard that also matches /cats",
+    async (target) => {
+      const request = await createApp(
+        [CatsWithIndexController, CatsController, DogsController],
+        forRoutes(target),
+        { globalPrefix: '/api' },
+      );
+
+      expect(await request('GET', '/api/cats')).toBe(200);
+      expect(await request('GET', '/api/cats/1')).toBe(200);
+      expect(await request('GET', '/api/cats/1/toys')).toBe(200);
+      expect(await request('GET', '/api/dogs/1')).toBe(200);
+      expect(seen).toEqual(['GET /api/cats', 'GET /api/cats/1', 'GET /api/cats/1/toys']);
+    },
+  );
+
+  it.each(['cats/*path', 'cats/(.*)'])(
+    "keeps running middleware on /cats itself when '%s' is excluded",
+    async (target) => {
+      const request = await createApp([CatsWithIndexController, DogsController], (consumer) => {
+        consumer.apply(RecordingMiddleware).exclude(target).forRoutes('*');
+      });
+
+      expect(await request('GET', '/cats')).toBe(200);
+      expect(await request('GET', '/cats/1')).toBe(200);
+      expect(await request('GET', '/cats/a/1/toys')).toBe(200);
+      expect(await request('GET', '/dogs/1')).toBe(200);
+      expect(seen).toEqual(['GET /cats', 'GET /dogs/1']);
+    },
+  );
+
+  it("skips /cats itself when 'cats/{*splat}' is excluded, as Nest does", async () => {
+    const request = await createApp([CatsWithIndexController, DogsController], (consumer) => {
+      consumer.apply(RecordingMiddleware).exclude('cats/{*splat}').forRoutes('*');
+    });
+
+    expect(await request('GET', '/cats')).toBe(200);
+    expect(await request('GET', '/cats/1')).toBe(200);
+    expect(await request('GET', '/dogs/1')).toBe(200);
+    expect(seen).toEqual(['GET /dogs/1']);
+  });
+
+  it.each(['cats/*path/toys', 'cats/(.*)/toys'])(
+    "matches one or more segments for the mid-path wildcard in '%s'",
+    async (target) => {
+      const request = await createApp([CatsWithIndexController, CatsController], forRoutes(target));
+
+      expect(await request('GET', '/cats/1')).toBe(200);
+      expect(await request('GET', '/cats/1/toys')).toBe(200);
+      expect(await request('GET', '/cats/a/1/toys')).toBe(200);
+      expect(seen).toEqual(['GET /cats/1/toys', 'GET /cats/a/1/toys']);
+
+      seen = [];
+      const excluded = await createApp([CatsWithIndexController, CatsController], (consumer) => {
+        consumer.apply(RecordingMiddleware).exclude(target).forRoutes('*');
+      });
+      expect(await excluded('GET', '/cats/1')).toBe(200);
+      expect(await excluded('GET', '/cats/a/1/toys')).toBe(200);
+      expect(seen).toEqual(['GET /cats/1']);
+    },
+  );
+
+  it('rejects an optional wildcard before the last segment', async () => {
+    await expect(
+      createApp([CatsWithIndexController], forRoutes('cats/{*splat}/toys')),
+    ).rejects.toThrow("Middleware route 'cats/{*splat}/toys' uses pattern syntax");
+  });
+
+  it('reports a Nest wildcard target that only the parent route would match', async () => {
+    @Controller('/cats')
+    class CatsIndexOnlyController {
+      @Get()
+      list() {
+        return { ok: true };
+      }
+    }
+
+    await expect(
+      createApp([CatsIndexOnlyController], forRoutes('cats/*path'), { diagnostics: 'throw' }),
+    ).rejects.toThrow("[vela] Middleware route 'cats/*path' resolves to '/cats/:path{.+}'");
+  });
 
   it('translates a Nest wildcard in an exclude() target', async () => {
     const request = await createApp([CatsController, DogsController], (consumer) => {
