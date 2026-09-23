@@ -1,12 +1,14 @@
-import { InjectionToken } from "@velajs/vela";
 import type { LiveRoom } from "./worker";
 
-export interface Env {
-  DB: D1Database;
-  LIVE_ROOM: DurableObjectNamespace<LiveRoom>;
-  BETTER_AUTH_SECRET: string;
-  APP_ORIGIN: string;
-  VELA_STUDIO_TOKEN?: string;
-}
-export const ENV = new InjectionToken<Env>("api-starter environment");
 export const GATEWAY = "/rooms/:room/ws";
+
+declare global {
+  namespace Cloudflare {
+    // worker-configuration.d.ts comes from `pnpm types`. Wrangler reads Durable
+    // Object classes from the built `main` (dist/worker.js), so this binding
+    // takes its class from the source entry.
+    interface Env {
+      LIVE_ROOM: DurableObjectNamespace<LiveRoom>;
+    }
+  }
+}

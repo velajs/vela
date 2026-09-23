@@ -46,6 +46,7 @@ for (const file of [
   '.swcrc',
   'tsconfig.json',
   'tsconfig.web.json',
+  'worker-configuration.d.ts',
   'wrangler.jsonc',
   'migrations',
 ]) {

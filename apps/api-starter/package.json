@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "npm run build:server && npm run client:generate && esbuild web/main.ts --bundle --format=esm --outfile=public/main.js && node scripts/copy-web.mjs",
+    "types": "wrangler types --include-runtime=false --env-file .dev.vars.example",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.web.json",
     "dev": "npm run build && wrangler dev --port 8790",
     "db:migrate": "wrangler d1 migrations apply vela-api-starter --local",
