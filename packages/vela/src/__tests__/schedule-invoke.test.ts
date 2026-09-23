@@ -28,9 +28,11 @@ import { APP_EXCEPTION_HANDLER } from '../pipeline/tokens';
 import {
   Cron,
   Interval,
+  SCHEDULE_DISPATCH,
   ScheduleModule,
   type CronMetadata,
   type IntervalMetadata,
+  type ScheduleDispatchMode,
   type ScheduleInvocation,
   type ScheduleJobRef,
 } from '../schedule';
@@ -374,6 +376,59 @@ describe('invokeScheduledJob', () => {
 
     expect(seen).toEqual(['guard:http', 'route']);
     expect(jobs).toEqual([{ kind: 'cron', expression: '0 3 * * *', methodName: 'nightly' }]);
+  });
+
+  it('refuses a signed policy that ScheduleModule.forRoot() did not configure', async () => {
+    const seen: string[] = [];
+    const report = vi.fn();
+    const policy: ScheduleDispatchMode = {
+      kind: 'signed',
+      target: () => ({ path: '/jobs/nightly' }),
+    };
+    @Global()
+    @Module({
+      providers: [
+        defineProvider(URL_SIGNING_SECRET, { useValue: 'schedule-invoke-secret' }),
+        defineProvider(SCHEDULE_DISPATCH, { useValue: policy }),
+      ],
+      exports: [URL_SIGNING_SECRET, SCHEDULE_DISPATCH],
+    })
+    class PolicyModule {}
+    @Controller('/jobs')
+    class JobsController {
+      @Post('nightly')
+      @SignedInvocation()
+      nightly(): { ok: boolean } {
+        seen.push('route');
+        return { ok: true };
+      }
+    }
+    @Injectable()
+    class Jobs {
+      @Cron('0 3 * * *', { dialect: 'cloudflare' })
+      nightly() {
+        seen.push('direct');
+      }
+    }
+    @Module({
+      imports: [PolicyModule],
+      controllers: [JobsController],
+      providers: [Jobs, defineProvider(APP_EXCEPTION_HANDLER, { useValue: { report } })],
+    })
+    class Root {}
+    const app = await create(Root);
+
+    await expect(
+      invokeScheduledJob(app.getContainer(), cronEntry(app, 'nightly'), tick('0 3 * * *')),
+    ).rejects.toThrow(
+      /signed SCHEDULE_DISPATCH policy re-enters its routes only through ScheduleModule\.forRoot\(\{ dispatch \}\)/,
+    );
+    expect(seen).toEqual([]);
+    expect(report).toHaveBeenCalledOnce();
+    expect(report).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({ edge: 'schedule', source: 'Jobs.nightly' }),
+    );
   });
 
   it('accepts the owner-bearing entries ScheduleRegistry and app.entrypoints expose', () => {

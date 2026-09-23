@@ -1,9 +1,15 @@
 import { Container } from '../container/container';
 import { defineProvider } from '../container/types';
+import { InternalDispatcher } from '../dispatch/internal-dispatcher';
 import { Module } from '../module/decorators';
 import { attachModuleIdentity } from '../module/module-fingerprints';
 import type { DynamicModule } from '../module/types';
 import { ScheduleRegistry } from './schedule.registry';
+import {
+  bindSignedScheduleDispatch,
+  type SignedScheduleDispatch,
+  type SignedScheduleRunner,
+} from './schedule.signed';
 import { SCHEDULE_DISPATCH } from './schedule.tokens';
 import type { ScheduleDispatchMode } from './schedule.types';
 
@@ -42,6 +48,24 @@ function policyIdentity(dispatch: ScheduleDispatchMode): string {
 }
 
 /**
+ * Re-enter a fired job's route under `policy` through the application's
+ * `InternalDispatcher`, so the route runs the full request pipeline. Lives
+ * with the module that contributes signed policies: `invokeScheduledJob` runs
+ * it without importing the dispatcher and its signing code.
+ */
+function runSignedScheduledJob(policy: SignedScheduleDispatch): SignedScheduleRunner {
+  return async (container, job, signal) => {
+    const dispatcher = await container.resolveAsync(InternalDispatcher);
+    await dispatcher.run(policy.target(job), {
+      method: policy.method,
+      ttlSeconds: policy.ttlSeconds,
+      iss: `schedule:${job.methodName}`,
+      signal,
+    });
+  };
+}
+
+/**
  * Zero-config module (Tier C): providers live on the `@Module` bag; the
  * `forRoot()` static is NestJS-parity sugar returning the bare dynamic module
  * (default key — repeated calls dedup).
@@ -67,6 +91,9 @@ export class ScheduleModule {
   static forRoot(options: { dispatch?: ScheduleDispatchMode } = {}): DynamicModule {
     const dispatch = options.dispatch;
     if (!dispatch) return { module: ScheduleModule };
+    if (dispatch.kind === 'signed') {
+      bindSignedScheduleDispatch(dispatch, runSignedScheduledJob(dispatch));
+    }
     // Key by policy identity: a different policy becomes a second owner of
     // SCHEDULE_DISPATCH instead of being deduplicated into the first policy.
     // Bootstrap resolves the policy once per owner, and that fails when there
