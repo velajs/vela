@@ -89,10 +89,23 @@ registered queue is also published as a `queue:registration` entrypoint that
 
 ## Adding jobs in bulk
 
-`client.addBulk([{ job, data, options? }, ...])` validates every typed job before
-the driver sees any of them, then hands the whole batch to the driver's optional
-`enqueueBatch`, or enqueues the jobs one at a time in order when the driver has
-none. It resolves with the added jobs only when every job was accepted. Otherwise
+`client.addBulk([{ job, data, options? }, ...])` takes one entry per
+`add(job, data, options)` call. Each entry is typed on its own: a typed entry's
+`data` is its definition's wire input, a named entry's `data` is free, and typed
+and named entries may share one call. The entry shape follows `add()`, so it
+differs from BullMQ's `addBulk([{ name, data, opts }])`: use `job` for the name
+or definition and `options` for `{ delayMs }`.
+
+```ts
+await this.email.addBulk([
+  { job: welcome, data: { userId: 'u1' } },
+  { job: 'digest', data: { day: '2026-09-23' }, options: { delayMs: 60_000 } },
+]);
+```
+
+`addBulk` validates every typed job before the driver sees any of them, then
+hands the whole batch to the driver's optional `enqueueBatch`, or enqueues the
+jobs one at a time in order when the driver has none. It resolves with the added jobs only when every job was accepted. Otherwise
 it rejects with a `QueueBatchError`: `accepted` lists the ids of jobs the
 transport already took, which will be delivered, and `rejected` the rest. Retry
 only the rejected jobs; sending the whole batch again delivers the accepted ones
@@ -164,6 +177,11 @@ handlers of its physical queue. A batch no `@QueueConsumer` claims goes to
   carries the queues pinned to it. Without `consumer`, a job is accepted from any
   physical queue the Worker consumes.
 
+Each failure is reported once to the exception handler on the `queue` edge: a
+processor failure where the processor ran, and a message that is not a job, an
+unregistered queue, a job no processor handles or a rejected signed re-entry when
+the batch settles.
+
 Delivery attempts come from the platform and the producer's job id is
 preserved for application idempotency. If one of several processors fails, the
 others may run again on redelivery: business operations must tolerate
@@ -183,12 +201,35 @@ Native `Queue<T>` bindings and `@QueueConsumer(physicalQueue)` remain available
 for batches that are not Vela jobs. A `@QueueConsumer` receives its physical
 queue's batches whole and owns their settlement; a batch no consumer claims is
 rejected unacknowledged. A physical queue cannot be both a `@QueueConsumer` queue
-and a pinned `consumer` of a registration: bootstrap fails. `consumeQueueBatch`
-from `@velajs/cloudflare/queues` applies the per-message settlement described
-above to a raw batch of job envelopes: each message is acknowledged after its
-callback resolves unless the callback settled it first with `ack()` or
-`retry()`, and failures are rethrown after the batch was tried. Its `queues`
-option accepts only jobs of the listed logical queues.
+and a pinned `consumer` of a registration: bootstrap fails. When a
+`@QueueConsumer` receives jobs of a queue registered with `QueueModule`, those
+jobs never reach their `@Processor`: the adapter warns once per physical and
+logical queue (unless diagnostics are silent), and `vela deploy check` fails
+with `queue-consumer-claimed-by-raw` when a processed queue's physical queue is
+claimed by a `@QueueConsumer`.
+
+`consumeQueueBatch` from `@velajs/cloudflare/queues` applies the per-message
+settlement described above to a raw batch of job envelopes: each message is
+acknowledged after its callback resolves unless the callback settled it first
+with `ack()` or `retry()`, and failures are rethrown after the batch was tried.
+Its `queues` option accepts only jobs of the listed logical queues. A custom
+transport hands each job to `dispatchQueueJob(container, entrypoints, job)` from
+`@velajs/vela/queue`, which goes through `QueueModule`'s dispatch policy exactly
+as a native delivery does: the job's queue must be registered, and signed
+dispatch re-enters the signed route, so its global guards run.
+
+```ts
+@Injectable()
+class LegacyBridge {
+  constructor(@Inject(Container) private readonly container: Container) {}
+
+  @QueueConsumer('legacy-production')
+  async consume(batch: MessageBatch<unknown>) {
+    const entrypoints = this.container.resolve(EntrypointRegistry);
+    await consumeQueueBatch(batch, (job) => dispatchQueueJob(this.container, entrypoints, job));
+  }
+}
+```
 
 ## Signed dispatch
 
@@ -196,9 +237,10 @@ option accepts only jobs of the listed logical queues.
 every job by re-entering a `@SignedInvocation()` route, with the job as the
 request body, instead of calling its processors directly. The route runs the
 full request pipeline, including global guards that direct processor dispatch
-deliberately skips. The policy applies to every delivery through the module,
-the inline driver's and a platform driver's native consumer alike, so a
-producer-only application may configure it too. On Workers the invocation is
+deliberately skips. The policy applies to every delivery through the module:
+the inline driver's, a platform driver's native consumer and `dispatchQueueJob`
+alike, so a custom transport cannot bypass the route's guards. A producer-only
+application may configure it too. On Workers the invocation is
 signed with the `URL_SIGNING_SECRET` from `ENV` unless a secret is configured.
 
 ```ts

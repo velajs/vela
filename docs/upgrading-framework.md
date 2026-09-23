@@ -88,7 +88,17 @@ and timezone when sharing schedules across runtimes. Scheduled shutdown waits fo
 owned work; handlers must finish or cooperate with cancellation. A custom runtime
 that fires scheduled jobs should call `invokeScheduledJob(container, entry,
 invocation)`, so its jobs get the same scope, single `ScheduleInvocation`
-argument, signed dispatch and error reporting as Node and Workers.
+argument, signed dispatch and error reporting as Node and Workers. A caller that
+fires jobs on demand passes the runtime's `SCHEDULE_INVOCATION_SEED`, when one is
+registered, as `invokeScheduledJob`'s `seed`. `@Cron` and `@Interval` are typed
+method decorators: annotate a handler's parameter as `CronInvocation` or
+`IntervalInvocation`; a handler that still declares the native
+`(controller, env, ctx)` arguments no longer compiles.
+
+`dispatchQueueJob` delivers through `QueueModule`'s dispatch policy when the
+application imports `QueueModule.forRoot()`: the job's queue must be registered
+and signed dispatch re-enters the signed route. `addBulk` entries are typed one
+by one and keep the `{ job, data, options }` shape of `add()`.
 
 Storage aborts and deadlines stop follow-up work without retrying abandoned writes.
 An already-issued native write can still commit. Reconcile uncertain results at

@@ -301,10 +301,12 @@ The worked example for ALL of this is the first-party queue module
 `runInEntrypointScope` + async-seam re-resolution (lazy-module compatible),
 `defineModule` for the global driver plus `registerQueue` dynamic modules that provide per-queue clients, native transport contributions, and
 an import-audit test (`queue-openness.test.ts`) proving it never leaves the
-public API. Dispatch one unit of platform work with
-`dispatchQueueJob(container, app.entrypoints, job)`; after bootstrap the
-per-app `EntrypointRegistry` is also injectable (global token) for providers
-that dispatch entrypoints themselves.
+public API. A custom transport dispatches one job with
+`dispatchQueueJob(container, app.entrypoints, job)`, which honors the
+application's `QueueModule` dispatch policy (registered queues, signed
+re-entry) exactly as native deliveries do; without a `QueueModule` it calls the
+processors directly. After bootstrap the per-app `EntrypointRegistry` is also
+injectable (global token) for providers that dispatch entrypoints themselves.
 
 ## Lazy modules: deferring cold-start init to first use
 

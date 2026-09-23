@@ -71,7 +71,7 @@ class SignupService {
 }
 ```
 
-`add(jobName | definition, data, { delayMs? })` resolves once the **driver** accepts the job (not once it's processed). Each job gets a `crypto.randomUUID()` id. `addBulk` validates every typed job first, then uses the driver's optional `enqueueBatch` (or enqueues sequentially); it resolves only when every job was accepted, else rejects with `QueueBatchError` (`accepted` / `rejected` job ids — retry only `rejected`).
+`add(jobName | definition, data, { delayMs? })` resolves once the **driver** accepts the job (not once it's processed). Each job gets a `crypto.randomUUID()` id. `addBulk([{ job, data, options? }])` entries mirror `add()` (not BullMQ's `{ name, data, opts }`) and are typed per entry, so typed and named jobs with different payloads can share one call. It validates every typed job first, then uses the driver's optional `enqueueBatch` (or enqueues sequentially); it resolves only when every job was accepted, else rejects with `QueueBatchError` (`accepted` / `rejected` job ids — retry only `rejected`).
 
 ## Drivers
 
@@ -94,7 +94,8 @@ Platform drivers implement the `QueueDriver` interface (`enqueue`, optional `enq
 - Producing reads `ENV[binding]` per send (never at module scope), checks it has `send()`, and awaits it. `delayMs` rounds up to seconds. `addBulk` uses `sendBatch` in calls of ≤100 messages and an estimated ≤256 KB; a job estimated over 128 KB is rejected before anything is sent. A partial failure rejects with `QueueBatchError`.
 - Delivery needs no mapping: the Worker `queue()` handler gives batches no `@QueueConsumer` claims to `QueueModule`, which routes each message by the envelope's logical `queue` (several logical queues may share one physical queue) through the module's dispatch policy. Success acks after processors and managed work settle; non-envelope messages, unregistered queues, unhandled jobs and failures stay unacked (retry → dead-letter).
 - Raw `@QueueConsumer(physicalQueue)` handlers keep their physical queue; bootstrap rejects a physical queue claimed by both a `@QueueConsumer` and a registration `consumer`.
-- `vela deploy check` verifies registered bindings against Wrangler `queues.producers`, and that each processed queue has a `queues.consumers` entry (derived from `consumer` or the binding's producer queue).
+- `vela deploy check` verifies registered bindings against Wrangler `queues.producers`, and that each processed queue has a `queues.consumers` entry (derived from `consumer` or the binding's producer queue). It fails when a `@QueueConsumer` claims a physical queue a processed or pinned registration uses (`queue-consumer-claimed-by-raw`), and when an unpinned queue's producer sends to a physical queue pinned by other registrations (`queue-sent-to-pinned-queue`).
+- A raw `@QueueConsumer` that receives jobs of a registered queue warns once at runtime; each native delivery failure is reported once to the exception handler.
 
 ## Signed dispatch
 
@@ -112,7 +113,7 @@ successful ack/retry and does not prove that a DLQ received a delivery.
 
 ## Dispatching a single job
 
-`dispatchQueueJob(container, entrypoints, job)` is the low-level delivery primitive for tests and custom transports:
+`dispatchQueueJob(container, entrypoints, job)` is the delivery entry point for tests and custom transports (for example a raw `@QueueConsumer` bridging its batches to processors). In an app with `QueueModule.forRoot()` it goes through `QueueDispatchBinding` exactly like a native delivery: the job's queue must be registered, and signed dispatch re-enters the signed route, so its global guards run and a custom transport cannot bypass them. Without a `QueueModule` it calls the processors directly:
 
 ```ts
 import { dispatchQueueJob } from '@velajs/vela/queue';
@@ -120,7 +121,7 @@ import { dispatchQueueJob } from '@velajs/vela/queue';
 const result = await dispatchQueueJob(app.getContainer(), app.entrypoints, {
   id: '1', queue: 'email', name: 'welcome', data: { userId: 'u1' }, attempt: 1,
 });
-// result.handled === number of handlers that ran
+// result.handled === number of handlers that ran (1 for a signed re-entry)
 ```
 
 ## Pipeline note

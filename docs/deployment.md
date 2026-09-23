@@ -83,10 +83,23 @@ and otherwise warns with `unverified-queue-consumer`, because a shared consumer
 may carry it. A configured consumer that no `@QueueConsumer` or processed queue
 expects fails with `unhandled-queue-consumer`.
 
+A `@QueueConsumer` owns its physical queue's batches, so the module consumer
+never sees them. A physical queue that a `@QueueConsumer` claims and that a
+registration pins with `consumer`, or that a processed queue's producer binding
+sends to, fails with `queue-consumer-claimed-by-raw`. A physical queue pinned by
+registrations accepts only their jobs, so an unpinned registered queue whose
+producer binding sends to it fails with `queue-sent-to-pinned-queue`: pin that
+queue to the same physical queue, or send it through another one.
+
 A `@Cron` job that explicitly requests `dialect: 'unix'` or
-`timeZone: 'local'` fails, and `schedule:interval` fails because Workers cron
-delivery does not drive interval timers; at runtime the Cloudflare adapter only
-warns about these (see [scheduling](scheduling.md#workers-cron-triggers)). A
+`timeZone: 'local'` fails with `incompatible-cron-options`, and one that declares
+no dialect but whose weekday field has digits or whose day-of-month and weekday
+fields are both restricted fails with `ambiguous-cron-dialect`: Workers read its
+trigger with Cloudflare semantics while Node reads it as Unix cron, so declare
+`{ dialect: 'cloudflare' }`. `schedule:interval` fails with
+`unsupported-interval` because Workers cron delivery does not drive interval
+timers. At runtime the Cloudflare adapter only reports these through the
+diagnostics policy (see [scheduling](scheduling.md#workers-cron-triggers)). A
 snapshot that still lists the removed `cf:scheduled`, `cf:vela-cron` or
 `cf:queue:producer` kinds, or a `cf:queue:module` consumer mapping, was made by
 an older CLI and fails with `stale-entrypoint-snapshot`: regenerate it.

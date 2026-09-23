@@ -8,15 +8,15 @@ same path. Portable code does not start timers by importing `ScheduleModule`.
 
 ## Portable jobs
 
-A job receives exactly one argument, a `ScheduleInvocation`, on every runtime:
+A job receives exactly one argument, its invocation, on every runtime:
 
 ```ts
-import { Cron, Injectable, type ScheduleInvocation } from '@velajs/vela';
+import { Cron, Injectable, type CronInvocation } from '@velajs/vela';
 
 @Injectable()
 class Reports {
   @Cron('0 9 * * MON-FRI', { dialect: 'cloudflare' })
-  async morning(tick: ScheduleInvocation) {
+  async morning(tick: CronInvocation) {
     await fetch('https://example.com/reports', { signal: tick.signal });
   }
 }
@@ -30,13 +30,23 @@ application closes. It has no platform fields; inject what a job needs instead:
 bindings through `ENV`, background work through `EXECUTION_LIFETIME`, and
 Cloudflare trigger controls through `CLOUDFLARE_SCHEDULED_EVENT`.
 
+`ScheduleInvocation` is the union of `CronInvocation` (what an `@Cron` job
+receives) and `IntervalInvocation` (what an `@Interval` job receives). The
+decorators are typed: a job method may declare no parameter or one parameter
+that accepts its invocation. A method that declares another required parameter,
+such as the `(controller, env, ctx)` arguments of a native scheduled handler, or
+whose first parameter is not the invocation, does not compile.
+
 Every runtime dispatches through `invokeScheduledJob(container, entry,
 invocation)` from `@velajs/vela`. It resolves the job by its owning module in a
 fresh invocation scope, calls the method with only the invocation, reports a
 failure once on the `schedule` edge and rethrows it. A direct job runs no guards,
 interceptors or filters, neither app-global nor declared on its class, method or
-module, as with NestJS `@Cron`: a tick has no caller to authorize. Opt into
-signed dispatch (below) when a job should run through the request pipeline.
+module, as with NestJS `@Cron`: a tick has no caller to authorize. Both runtimes
+report a job that declares `@UseGuards`, `@UseInterceptors` or `@UseFilters`
+through the diagnostics policy, and `scheduledJobComponents(container, entry)`
+names those declarations. Opt into signed dispatch (below) when a job should run
+through the request pipeline, and declare the components on the signed route.
 
 ## Cron dialects
 
@@ -58,8 +68,15 @@ Declare `dialect` whenever a schedule could run on Workers. A Workers trigger is
 always read with Cloudflare semantics, so an expression without a dialect whose
 weekday field uses numbers, or which restricts both day fields, fires on
 different days under Node and under Workers. `cronDialectAmbiguity(meta)`
-explains that ambiguity (or returns `undefined`), and both runtimes report it at
-bootstrap through the diagnostics policy.
+explains that ambiguity (or returns `undefined`), both runtimes report it at
+bootstrap through the diagnostics policy, and `vela deploy check` fails with
+`ambiguous-cron-dialect`.
+
+A cron without `dialect` or `timeZone` runs at local time under Node and in UTC
+on Workers. When the Node process time zone is not UTC, `ScheduleNodeModule`
+reports such a job at bootstrap through the diagnostics policy; declare
+`{ timeZone: 'UTC' }` or `{ dialect: 'cloudflare' }` to fire at the same time
+everywhere, or `{ timeZone: 'local' }` to keep local time on purpose.
 
 `@Cron` validates explicit options at decoration time. A bare decorator defers
 runtime-specific syntax validation. Node validates all jobs before starting any
@@ -83,8 +100,8 @@ import {
   Inject,
   Injectable,
   Scope,
+  type CronInvocation,
   type ExecutionLifetime,
-  type ScheduleInvocation,
 } from '@velajs/vela';
 import { CLOUDFLARE_SCHEDULED_EVENT, type CloudflareScheduledEvent } from '@velajs/cloudflare';
 
@@ -96,7 +113,7 @@ class Exports {
   ) {}
 
   @Cron('30 2 * * *', { dialect: 'cloudflare' })
-  async nightly(tick: ScheduleInvocation) {
+  async nightly(tick: CronInvocation) {
     const response = await fetch('https://example.com/export', { signal: tick.signal });
     if (response.status === 410) this.trigger.noRetry();
     this.lifetime.waitUntil(fetch('https://example.com/export/notify', { method: 'POST' }));
@@ -107,7 +124,11 @@ class Exports {
 `CLOUDFLARE_SCHEDULED_EVENT` is request-scoped and resolves only inside a
 scheduled invocation. It carries the trigger's `cron`, `scheduledTime` and a
 `noRetry()` already bound to the native controller, so it can be destructured or
-passed on. `EXECUTION_LIFETIME.waitUntil()` and `defer()` extend the invocation:
+passed on. A job fired outside a trigger, such as Studio's run-now, receives a
+synthetic event: `cron` is the job's expression, `scheduledTime` is the
+invocation's, and `noRetry()` does nothing. The adapter supplies it through the
+runtime-neutral `SCHEDULE_INVOCATION_SEED` token, which on-demand callers pass
+to `invokeScheduledJob` as `seed`. `EXECUTION_LIFETIME.waitUntil()` and `defer()` extend the invocation:
 the trigger settles only after every matching job and its managed work settle.
 One failing job does not cut off its siblings or dispose their resources early.
 A single failure rejects the trigger; several reject it together as an
@@ -115,11 +136,13 @@ A single failure rejects the trigger; several reject it together as an
 
 The adapter reports declarations a trigger cannot honor through the container's
 diagnostics policy: a cron without a dialect that is ambiguous as described
-above, an explicit `dialect: 'unix'` or `timeZone: 'local'`, and `@Interval` jobs,
-which never run on Workers. The default `'log'` mode warns once per declaration
-and never fails the first event, which is where a Worker bootstraps; `'throw'`
-fails bootstrap. `vela deploy check` rejects the same declarations before
-deployment; see [deployment](deployment.md).
+above, an explicit `dialect: 'unix'` or `timeZone: 'local'`, `@Interval` jobs,
+which never run on Workers, and guards, interceptors or filters declared for a
+cron job. The default `'log'` mode warns once per declaration and never fails
+the first event, which is where a Worker bootstraps; `'throw'` fails bootstrap.
+`vela deploy check` rejects the cron declarations (`ambiguous-cron-dialect`,
+`incompatible-cron-options`) and `@Interval` jobs (`unsupported-interval`)
+before deployment; see [deployment](deployment.md).
 
 ## Signed dispatch
 
@@ -130,7 +153,8 @@ including global guards. This works the same on Node timers, Workers cron
 triggers (the Cloudflare adapter supplies the in-isolate transport and reads
 `URL_SIGNING_SECRET` from `ENV`) and Studio's run-now. `target(job)` receives
 `{ kind, methodName, expression }` for a cron job or `{ kind, methodName, ms }` for
-an interval.
+an interval. An application configures one policy: importing `forRoot` with two
+different `dispatch` kinds fails bootstrap.
 
 ## Introspection
 
@@ -147,9 +171,9 @@ scope. Request-scoped and transient providers are constructed for that invocatio
 singletons retain their normal application lifetime. Handlers that declare no
 parameter still work. No HTTP identity is inferred.
 
-Closing the application stops future timers, aborts active invocation signals,
-and waits for jobs and managed deferred work to settle before disposing
-invocation resources. A job that stops by throwing its signal's abort reason is
+Closing the application stops future timers, aborts active invocation signals
+(including a Studio run-now still in progress), and waits for jobs and managed
+deferred work to settle before disposing invocation resources. A job that stops by throwing its signal's abort reason is
 cancelled, not failed. Signed dispatch forwards cancellation to its transport;
 cancelling the caller cannot guarantee that remote side effects stop. Handlers
 must cooperate with cancellation or finish on their own; shutdown does not

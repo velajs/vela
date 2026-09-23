@@ -4,15 +4,15 @@ Vela splits scheduling into an **edge-safe registry** (`ScheduleModule`, main ex
 
 ## Declaring jobs
 
-`@Cron(expression, options?)` and `@Interval(ms)` are method decorators on any `@Injectable()` provider. Cron options select `dialect: 'unix' | 'cloudflare'` and `timeZone: 'local' | 'UTC'`. A job receives exactly one argument, a `ScheduleInvocation` (`kind`, `expression` or `ms`, `scheduledTime`, `signal`), identically on Node, Workers and Studio's run-now:
+`@Cron(expression, options?)` and `@Interval(ms)` are method decorators on any `@Injectable()` provider. Cron options select `dialect: 'unix' | 'cloudflare'` and `timeZone: 'local' | 'UTC'`. A job receives exactly one argument, its invocation (`kind`, `expression` or `ms`, `scheduledTime`, `signal`), identically on Node, Workers and Studio's run-now: `CronInvocation` for `@Cron`, `IntervalInvocation` for `@Interval` (both members of `ScheduleInvocation`). The decorators are typed, so a method with another required parameter (such as native `(controller, env, ctx)`) or a first parameter that is not the invocation does not compile:
 
 ```ts
-import { Cron, Interval, type ScheduleInvocation } from '@velajs/vela';
+import { Cron, Interval, type CronInvocation } from '@velajs/vela';
 
 @Injectable()
 class MaintenanceJobs {
   @Cron('0 9 * * MON-FRI', { dialect: 'cloudflare' }) // portable: Node timers and Workers triggers
-  async morning(tick: ScheduleInvocation) {
+  async morning(tick: CronInvocation) {
     await fetch('https://example.com/reports', { signal: tick.signal });
   }
 
@@ -21,9 +21,11 @@ class MaintenanceJobs {
 }
 ```
 
-The default Unix dialect uses five fields with lists (`,`), ranges (`a-b`), and steps (`*/n`); both `0` and `7` are Sunday. It preserves the 1.x local-time default. Cloudflare uses UTC and weekday numbers `1` (Sunday) through `7` (Saturday), and accepts either day field when both are restricted. Always declare `dialect` for a schedule that can run on Workers: without it, a numeric weekday or two restricted day fields fire on different days per runtime, and both runtimes report that through diagnostics (`cronDialectAmbiguity(meta)` explains it).
+The default Unix dialect uses five fields with lists (`,`), ranges (`a-b`), and steps (`*/n`); both `0` and `7` are Sunday. It preserves the 1.x local-time default. Cloudflare uses UTC and weekday numbers `1` (Sunday) through `7` (Saturday), and accepts either day field when both are restricted. Always declare `dialect` for a schedule that can run on Workers: without it, a numeric weekday or two restricted day fields fire on different days per runtime, both runtimes report that through diagnostics (`cronDialectAmbiguity(meta)` explains it), and `vela deploy check` fails with `ambiguous-cron-dialect`. A cron with neither `dialect` nor `timeZone` runs at local time on Node but UTC on Workers; `ScheduleNodeModule` reports it when the process time zone is not UTC.
 
-All runtimes dispatch through `invokeScheduledJob(container, entry, invocation)`: a fresh invocation scope in the job's owning module, the invocation as the only argument, one report on the `schedule` edge, rethrow. Direct jobs run **no** guards, interceptors or filters (global or scoped), as with NestJS `@Cron`. `ScheduleModule.forRoot({ dispatch: { kind: 'signed', target } })` re-enters a `@SignedInvocation()` route through `InternalDispatcher` on every runtime, so global guards apply.
+All runtimes dispatch through `invokeScheduledJob(container, entry, invocation)`: a fresh invocation scope in the job's owning module, the invocation as the only argument, one report on the `schedule` edge, rethrow. Direct jobs run **no** guards, interceptors or filters (global or scoped), as with NestJS `@Cron`; both runtimes report a job that declares `@UseGuards`/`@UseInterceptors`/`@UseFilters` (`scheduledJobComponents(container, entry)` lists them). `ScheduleModule.forRoot({ dispatch: { kind: 'signed', target } })` re-enters a `@SignedInvocation()` route through `InternalDispatcher` on every runtime, so global guards apply; two `forRoot` calls with different dispatch kinds fail bootstrap.
+
+A caller that fires a job on demand (Studio's run-now) passes the runtime's optional `SCHEDULE_INVOCATION_SEED` to `invokeScheduledJob` as `seed`, so the job's scope holds what a trigger would seed (on Workers, a synthetic `CLOUDFLARE_SCHEDULED_EVENT` whose `noRetry()` does nothing).
 
 ## Edge-safe registry (`ScheduleModule`)
 

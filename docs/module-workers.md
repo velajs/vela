@@ -77,7 +77,7 @@ global guards apply. See [queues](queues.md) for bulk sends, limits and settleme
 Use `ScheduleModule.forRoot()` and `@Cron(expression, { dialect: 'cloudflare' })`.
 Declare the exact expression in that Worker's Wrangler triggers. Workers do not
 start Node timers, and importing the module does not provision a trigger. Jobs
-receive only their `ScheduleInvocation`, as on Node; inject
+receive only their `CronInvocation`, as on Node; inject
 `CLOUDFLARE_SCHEDULED_EVENT` for the trigger's `noRetry()`. Signed `ScheduleModule`
 dispatch re-enters the signed route with its global guards, exactly as on Node.
 See [scheduling](scheduling.md#workers-cron-triggers).
