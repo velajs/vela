@@ -87,10 +87,11 @@ the client disconnects, then disposes the app.
 
 Create a `vela.config.{js,mjs,ts}` at your project root that builds your app.
 When the project installs Vite 8 (an optional peer dependency; the starter
-does), the CLI loads the config through Vite's module runner (`runnerImport`)
-with Oxc's legacy decorators and decorator metadata, so the config imports the
-decorated application source directly. This minimal config uses the portable
-factory in Node:
+does), the CLI loads the config through a Vite module runner with Oxc's legacy
+decorators and decorator metadata, so the config imports the decorated
+application source directly, at the top level or lazily inside `createApp()`.
+The runner stays open for the whole command. This minimal config uses the
+portable factory in Node:
 
 ```ts
 // vela.config.ts
@@ -110,7 +111,8 @@ Do not import the Worker entrypoint into Node when it uses native
 export also works; `defineVelaConfig` preserves the inferred app subtype and
 custom fields. The loader validates `createApp` and optional `rootModule` before
 commands use them. Command teardown awaits application disposal even when work
-fails, and cleanup warnings do not replace the command's exit result.
+fails, then closes the module runner, and cleanup warnings do not replace the
+command's exit result.
 
 Through Vite, the config and the relative files it imports are transformed;
 packages load from `node_modules` as usual. Vite's own project config
@@ -127,7 +129,9 @@ directory; it does not search parents. `--config` selects exactly that path,
 relative to the current directory or absolute, with no fallback to another file.
 `resolveConfig()` from `@velajs/cli/config` returns the selected absolute path,
 the `explicit`/`discovered` source and the candidates actually checked, without
-importing user code.
+importing user code. `loadConfig()` imports the config and resolves to
+`{ config, path, dispose }`; call `dispose()` after disposing the app to close
+the module runner.
 
 ### Diagnose configuration
 
