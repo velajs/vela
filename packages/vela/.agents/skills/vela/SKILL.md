@@ -181,6 +181,8 @@ Load a reference when the task needs its depth. **This table is the contract** �
 
 **`X declares N constructor parameters but no design:paramtypes were emitted for parameter #i`** or **`... but parameter #i resolved to Object`** (`MissingInjectionMetadataError`, thrown when `X` is registered) → The build did not emit constructor metadata (`emitDecoratorMetadata` is off, or the bundler ignores it), or the parameter's type was erased — an interface, `import type { Dep }` (TypeScript strips it), or a circular import. Enable `emitDecoratorMetadata` and use a runtime `import { Dep }`, add `@Inject(Token)` to parameter `#i`, or mark it `@Optional()`. Subclasses without their own constructor inherit the parent's metadata.
 
+**`AppModule.imports[2] is undefined — usually a circular file import`** (`UndefinedModuleError`) → A module list holds `undefined` because two files import each other. Use `imports: [forwardRef(() => OtherModule)]`, or move the class so the cycle disappears.
+
 **`Circular dependency detected: ...`** → Break the cycle with `@Inject(forwardRef(() => Other))` (providers) or `imports: [forwardRef(() => OtherModule)]` (modules).
 
 **`Multiple providers found for 'X' ...`** (`MultipleProvidersFoundError`) → Two module instances export the same token (e.g. `CacheModule.forRoot({ ttl: 60 })` and `forRoot({ ttl: 120 })`). Import only one, or use a per-instance accessor.

@@ -426,6 +426,7 @@ export {
   moduleToken,
   provideGlobal,
   sideEffectModule,
+  UndefinedModuleError,
 } from './module/index';
 export type {
   ModuleOptions,
@@ -446,6 +447,7 @@ export type {
   ModuleContributions,
   ModuleSetupContext,
   LazyProviderSpec,
+  ModuleEntryList,
 } from './module/index';
 export type { MiddlewareConsumer, NestModule, RouteInfo } from './http/index';
 

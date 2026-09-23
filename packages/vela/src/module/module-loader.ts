@@ -27,6 +27,7 @@ import type { MiddlewareRouteDefinition, NestModule } from './middleware';
 
 import {
   DEFAULT_MODULE_KEY,
+  assertDefinedEntries,
   isDynamicModule,
   moduleKeyOf,
   unwrapModuleImport,
@@ -230,6 +231,16 @@ export class ModuleLoader {
       throw new Error(`Failed to get module metadata for ${moduleClass.name}`);
     }
 
+    const allImports = [...metadata.imports, ...extraImports];
+    const allProviders = [...metadata.providers, ...extraProviders];
+    const allControllers = [...metadata.controllers, ...extraControllers];
+    const allExports = [...metadata.exports, ...extraExports];
+    const moduleName = moduleClass.name || 'AnonModule';
+    assertDefinedEntries(moduleName, 'imports', allImports);
+    assertDefinedEntries(moduleName, 'providers', allProviders);
+    assertDefinedEntries(moduleName, 'controllers', allControllers);
+    assertDefinedEntries(moduleName, 'exports', allExports);
+
     this.#processingStack.add(moduleId);
 
     try {
@@ -243,8 +254,6 @@ export class ModuleLoader {
       // diagnostic when the same module class appears under both `"default"`
       // and at least one explicit key (almost always user error).
       const keysByClassInImports = new Map<Type, Set<string>>();
-
-      const allImports = [...metadata.imports, ...extraImports];
 
       for (const entry of allImports) {
         const importedModule = unwrapModuleImport(entry);
@@ -275,10 +284,6 @@ export class ModuleLoader {
       }
 
       this.warnOnMixedDefaultAndKeyed(moduleClass.name, keysByClassInImports);
-
-      const allProviders = [...metadata.providers, ...extraProviders];
-      const allControllers = [...metadata.controllers, ...extraControllers];
-      const allExports = [...metadata.exports, ...extraExports];
 
       // Build the ModuleScope BEFORE registering providers so the visibility
       // check sees the local-provider set as we register.
@@ -349,12 +354,7 @@ export class ModuleLoader {
 
       this.markProcessed(moduleClass, key);
 
-      const exports = this.buildExportSet(
-        moduleClass.name || 'AnonModule',
-        allExports,
-        allProviders,
-        importedProviders,
-      );
+      const exports = this.buildExportSet(moduleName, allExports, allProviders, importedProviders);
       this.cacheExports(moduleClass, key, exports);
 
       if (isGlobal) {

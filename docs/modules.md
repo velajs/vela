@@ -79,6 +79,11 @@ Rules:
    `stableHash` of closures (identical source hashes collide).
 3. Always honor the caller's explicit `key` (`defineModule` does).
 
+An `undefined` or `null` entry in a module's `imports`, `providers`,
+`controllers` or `exports` fails the load with `UndefinedModuleError`, naming
+the list and index (for example `AppModule.imports[2]`). The usual cause is a
+circular file import; use `forwardRef(() => OtherModule)` for imports.
+
 ### Tokens
 
 Mint with `moduleToken<T>('pkg:area:thing')` (an `InjectionToken`) — never

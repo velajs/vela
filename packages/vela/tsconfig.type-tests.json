@@ -31,6 +31,7 @@
     "src/__tests__/module-components-isolation.test.ts",
     "src/__tests__/reflector-global-scope.test.ts",
     "src/__tests__/missing-injection-metadata.test.ts",
+    "src/__tests__/undefined-module-entry.test.ts",
     "src/__tests__/workers/reflector-decorator.test.ts"
   ],
   "exclude": ["node_modules", "dist"]
