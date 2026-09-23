@@ -151,6 +151,16 @@ the container that owns that resolution. Earlier synthetic `APP_*` factory
 wrappers could accidentally cache a transient target. Applications relying on
 that sharing should register the target as a singleton explicitly.
 
+Global middleware (`APP_MIDDLEWARE` and `app.useGlobalMiddleware()`) runs in
+ascending `priority` order, registration order breaking ties; the default is 0.
+Route build reads a `static priority` from the middleware class, including the
+`useClass` or `useExisting` target of an `APP_MIDDLEWARE` provider, without
+constructing it. Only a singleton without a static priority is constructed to
+read an instance `priority`. A request-scoped middleware cannot be constructed
+at route build, so give it a `static priority`: without one it sorts at 0, and
+the container's diagnostics policy reports it (`'log'` warns, `'throw'` fails
+bootstrap).
+
 ## Discovery: finding decorated providers
 
 Never hand-roll a `container.getTokens()` scan. Declare a decorator, then ask

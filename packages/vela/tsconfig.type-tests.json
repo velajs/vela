@@ -40,6 +40,7 @@
     "src/__tests__/live-transport-wiring.test.ts",
     "src/__tests__/validation-pipe-class-reference.test.ts",
     "src/__tests__/openapi-api-response.test.ts",
+    "src/__tests__/middleware-priority.test.ts",
     "src/__tests__/workers/reflector-decorator.test.ts"
   ],
   "exclude": ["node_modules", "dist"]

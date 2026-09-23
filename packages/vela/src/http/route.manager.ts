@@ -12,14 +12,16 @@ import { contextStorage } from 'hono/context-storage';
 import { basePath, routePath } from 'hono/route';
 import { TrieRouter } from 'hono/router/trie-router';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
-import { HttpMethod } from '../constants';
+import { HttpMethod, Scope } from '../constants';
 import { HttpException } from '../errors/http-exception';
 import { createExecutionScope, finishExecutionScope } from '../entrypoint/execution-scope';
 import { httpExceptionBody } from '../exceptions/http-exception-body';
 import { resolveErrorReporter } from '../exceptions/reporter';
 import { getMetadata } from '../metadata';
 import type { Container } from '../container/container';
-import type { Token, TypedToken, Type } from '../container/types';
+import { reportDiagnostic } from '../container/diagnostics';
+import { InjectionToken } from '../container/types';
+import type { ProviderSnapshot, Token, TypedToken, Type } from '../container/types';
 import type { MiddlewareRouteDefinition, RouteInfo } from '../module/middleware';
 import { joinPaths, normalizePath } from '../registry/paths';
 import { ArgumentResolver } from './argument-resolver';
@@ -173,6 +175,28 @@ function trackResponseStream(
       },
     }),
   };
+}
+
+// A middleware's `priority`: a class's static field, or an instance's own
+// field or its class's static one.
+function priorityOf(value: unknown): number | undefined {
+  if (typeof value !== 'function' && (typeof value !== 'object' || value === null)) {
+    return undefined;
+  }
+  const priority: unknown = Reflect.get(value, 'priority');
+  if (typeof priority === 'number') return priority;
+  if (typeof value === 'function') return undefined;
+  const constructor: unknown = Reflect.get(value, 'constructor');
+  return typeof constructor === 'function' ? priorityOf(constructor) : undefined;
+}
+
+function isTokenEntry(entry: unknown): entry is Token {
+  return (
+    typeof entry === 'function' ||
+    typeof entry === 'string' ||
+    typeof entry === 'symbol' ||
+    entry instanceof InjectionToken
+  );
 }
 
 export class RouteManager {
@@ -413,35 +437,57 @@ export class RouteManager {
 
   private getMiddlewarePriority(entry: unknown): number {
     if (entry == null) return 0;
-    if (typeof entry === 'function') {
-      const p = (entry as { priority?: unknown }).priority;
-      if (typeof p === 'number') return p;
-    }
-    if (typeof entry === 'object') {
-      const inst = entry as { priority?: unknown; constructor?: { priority?: unknown } };
-      if (typeof inst.priority === 'number') return inst.priority;
-      if (typeof inst.constructor?.priority === 'number') return inst.constructor.priority;
-    }
+    const declared = priorityOf(entry);
+    if (declared !== undefined) return declared;
+    if (!isTokenEntry(entry)) return 0;
+
+    // A token's registered target (useClass, useExisting, useValue) carries
+    // its priority without being constructed, which also keeps request-scoped
+    // middleware off the root container.
+    const target = this.middlewareTarget(entry);
+    const targetPriority = priorityOf(target?.instance?.value ?? target?.useClass);
+    if (targetPriority !== undefined) return targetPriority;
     // A token owned exclusively by unmaterialized lazy modules must not be
     // instantiate-probed here — the probe at route build would defeat the
     // module's deferral (i18n's APP_MIDDLEWARE). Default priority instead;
     // the middleware still materializes on its first request.
-    if (this.container.isLazyPending(entry as Token)) return 0;
+    if (this.container.isLazyPending(entry)) return 0;
+    if (this.container.getResolvedScope(entry) === Scope.REQUEST) {
+      const name = target?.useClass?.name ?? String(entry);
+      reportDiagnostic(
+        this.container.getDiagnostics(),
+        `[vela] Middleware ${name} is request-scoped and declares no static priority, so it ` +
+          'sorts at priority 0 among global middleware. Declare `static priority` on the class ' +
+          'to order it.',
+      );
+      return 0;
+    }
     try {
       const resolved = instantiate<NestMiddleware>(
         entry as MiddlewareType | TypedToken<NestMiddleware>,
         this.container,
       );
-      if (resolved && typeof resolved === 'object') {
-        const p = (resolved as { priority?: unknown }).priority;
-        if (typeof p === 'number') return p;
-        const cp = (resolved as { constructor?: { priority?: unknown } }).constructor?.priority;
-        if (typeof cp === 'number') return cp;
-      }
+      return priorityOf(resolved) ?? 0;
     } catch {
-      // Unresolvable at build time (e.g. request-scoped) — default 0
+      // Unresolvable at build time — default 0; the request path reports it.
     }
     return 0;
+  }
+
+  // The registration a middleware token resolves to, following useExisting
+  // aliases from their declaring module. Inspection never constructs.
+  private middlewareTarget(token: Token): ProviderSnapshot | undefined {
+    const seen = new Set<Token>();
+    let current: Token | undefined = token;
+    let requester: string | undefined;
+    while (current !== undefined && !seen.has(current)) {
+      seen.add(current);
+      const [snapshot] = this.container.getVisibleProviderSnapshots(current, requester);
+      if (snapshot?.kind !== 'existing') return snapshot;
+      current = snapshot.useExisting;
+      requester = snapshot.moduleId;
+    }
+    return undefined;
   }
 
   private getRequestContainer(c: Context): Container {
