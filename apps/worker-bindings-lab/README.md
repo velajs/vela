@@ -24,3 +24,11 @@ The example covers KV, D1, R2, typed queues, Durable Objects, AI, Vectorize,
 Hyperdrive, the injected environment, `@Cron` jobs on cron triggers (each job
 receives only a `ScheduleInvocation`), and queue consumers. Native bindings are injected directly; no binding wrapper
 modules or services are required.
+
+Queues come in both forms. `POST /lab/reports` adds a typed `sync-report` job
+with `@InjectQueue('reports')`: `QueueModule.forRoot({ driver: cloudflareQueues() })`
+and `QueueModule.registerQueue({ name: 'reports', binding: 'REPORT_QUEUE' })`
+send it through the `REPORT_QUEUE` producer binding, and the Worker's `queue()`
+handler routes the delivered envelope to `@Processor('reports')`. `POST /lab/queue`
+sends a raw body with the native `JOB_QUEUE` binding, and
+`@QueueConsumer('JOB_QUEUE')` receives that physical queue's batches whole.

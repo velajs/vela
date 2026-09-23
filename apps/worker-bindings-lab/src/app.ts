@@ -13,6 +13,21 @@ import {
   type VelaEnv,
 } from "@velajs/vela";
 import { QueueConsumer, createCloudflareApp, createCloudflareWorker } from "@velajs/cloudflare";
+import { cloudflareQueues } from "@velajs/cloudflare/queues";
+import {
+  InjectQueue,
+  Process,
+  Processor,
+  QueueModule,
+  defineQueueJob,
+  type QueueClient,
+  type QueueJob,
+  type QueueJobOutput,
+} from "@velajs/vela/queue";
+import { z } from "zod";
+
+/** A typed job: producers send its schema input, the processor receives its output. */
+const syncReport = defineQueueJob("sync-report", z.object({ id: z.number().int() }));
 
 function defineWorkerBindingsLabModule() {
   MetadataRegistry.clear();
@@ -89,6 +104,7 @@ function defineWorkerBindingsLabModule() {
     constructor(
       private readonly bindings: WorkerBindingFacade,
       @InjectEnv() private readonly env: VelaEnv,
+      @InjectQueue("reports") private readonly reports: QueueClient,
     ) {}
 
     @Get("/env")
@@ -127,6 +143,13 @@ function defineWorkerBindingsLabModule() {
     @Post("/queue")
     enqueue(@Body() body: unknown) {
       return this.bindings.enqueue(body);
+    }
+
+    // Portable jobs: QueueModule sends through the REPORT_QUEUE producer binding.
+    @Post("/reports")
+    async report(@Body("id") id: number) {
+      await this.reports.add(syncReport, { id });
+      return { queued: true };
     }
 
     @Get("/durable-object/:name")
@@ -171,8 +194,25 @@ function defineWorkerBindingsLabModule() {
     }
   }
 
+  // Delivered by the Worker's queue() handler: batches no @QueueConsumer claims
+  // are routed to processors by each job's logical queue.
+  @Processor("reports")
+  @Injectable()
+  class ReportProcessor {
+    constructor(@InjectEnv() private readonly env: VelaEnv) {}
+
+    @Process(syncReport)
+    sync(job: QueueJob<QueueJobOutput<typeof syncReport>>) {
+      this.env.EVENT_LOG.push(`report:${job.data.id}`);
+    }
+  }
+
   @Module({
-    providers: [WorkerBindingFacade, WorkerEvents],
+    imports: [
+      QueueModule.forRoot({ driver: cloudflareQueues() }),
+      QueueModule.registerQueue({ name: "reports", binding: "REPORT_QUEUE" }),
+    ],
+    providers: [WorkerBindingFacade, WorkerEvents, ReportProcessor],
     controllers: [WorkerBindingsController],
   })
   class WorkerBindingsLabModule {}

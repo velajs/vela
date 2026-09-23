@@ -13,6 +13,7 @@ export type MockQueue = Queue<unknown> & {
 export interface MockWorkerEnv extends VelaEnv {
   CACHE: MockKV;
   JOB_QUEUE: MockQueue;
+  REPORT_QUEUE: MockQueue;
 }
 
 function createMockKV(): MockKV {
@@ -178,6 +179,7 @@ export function createMockWorkerEnv(): MockWorkerEnv {
     DB: createMockD1(),
     ASSETS: createMockR2(),
     JOB_QUEUE: createMockQueue(),
+    REPORT_QUEUE: createMockQueue(),
     COUNTER_DO: createMockDurableObjectNamespace(),
     AI: createMockAI(),
     VECTORIZE: createMockVectorize(),

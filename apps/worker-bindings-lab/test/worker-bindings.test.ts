@@ -44,6 +44,7 @@ describe("Worker bindings lab consumer project", () => {
         "EVENT_LOG",
         "HYPERDRIVE",
         "JOB_QUEUE",
+        "REPORT_QUEUE",
         "VECTORIZE",
       ]),
     });
@@ -130,6 +131,38 @@ describe("Worker bindings lab consumer project", () => {
     expect(env.EVENT_LOG).toEqual(["quarter-hourly:1000", "hourly:2000", "queue:2"]);
 
     await app.close("event-handler-test-complete");
+  });
+
+  it("sends and processes typed jobs through QueueModule and cloudflareQueues()", async () => {
+    const env = createMockWorkerEnv();
+    const app = await createWorkerBindingsLabApp(env);
+    const ctx = createExecutionContext();
+
+    const sent = await fetchJson(app.fetch, "/lab/reports", env, ctx, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: 7 }),
+    });
+    expect(sent.body).toEqual({ queued: true });
+    // The driver sent a job envelope through the REPORT_QUEUE producer binding.
+    const [job] = env.REPORT_QUEUE._messages;
+    expect(job).toMatchObject({ queue: "reports", name: "sync-report", data: { id: 7 } });
+
+    // Native delivery routes the envelope by its logical queue to the processor.
+    const acked: string[] = [];
+    const message = {
+      id: "report-message",
+      timestamp: new Date(),
+      attempts: 1,
+      body: job,
+      ack: () => acked.push("report-message"),
+      retry: () => undefined,
+    };
+    await app.queue({ queue: "reports-production", messages: [message] }, env, ctx);
+    expect(env.EVENT_LOG).toEqual(["report:7"]);
+    expect(acked).toEqual(["report-message"]);
+
+    await app.close("typed-queue-test-complete");
   });
 
   it("exports a Worker-shaped default object", async () => {

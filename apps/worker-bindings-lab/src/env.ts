@@ -9,6 +9,7 @@ declare global {
       DB: D1Database;
       ASSETS: R2Bucket;
       JOB_QUEUE: Queue<unknown>;
+      REPORT_QUEUE: Queue<unknown>;
       COUNTER_DO: DurableObjectNamespace;
       AI: Ai;
       VECTORIZE: VectorizeIndex;

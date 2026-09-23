@@ -1,6 +1,6 @@
 import { Cron, InjectEnv, Injectable, Module, ScheduleModule, type VelaEnv } from '@velajs/vela';
 import { createCloudflareWorker } from '@velajs/cloudflare';
-import { cloudflareQueueDriver } from '@velajs/cloudflare/queue';
+import { cloudflareQueues } from '@velajs/cloudflare/queues';
 import { Process, Processor, QueueModule, type QueueJob } from '@velajs/vela/queue';
 @Injectable()
 @Processor('tasks')
@@ -20,10 +20,9 @@ class Tasks {
 @Module({
   imports: [
     ScheduleModule.forRoot(),
-    QueueModule.forRoot({
-      queues: ['tasks'],
-      driver: cloudflareQueueDriver({}, { consumers: { 'module-tasks': 'tasks' } }),
-    }),
+    // Consumer-only: 'tasks' jobs arrive from the module-tasks queue this Worker consumes.
+    QueueModule.forRoot({ driver: cloudflareQueues() }),
+    QueueModule.registerQueue({ name: 'tasks', consumer: 'module-tasks' }),
   ],
   providers: [Tasks],
 })
