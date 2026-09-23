@@ -156,7 +156,7 @@ Load a reference when the task needs its depth. **This table is the contract** â
 | `references/openapi.md` | `createOpenApiDocument`, `@ApiDoc`/`@ApiTags`/`@ApiResponse`, operationId-from-route-name, `app.mountOpenApi` (Swagger/Scalar/ReDoc) |
 | `references/config.md` | `ConfigModule.forRoot`/`forFeature`, `registerAs`, `ConfigType`/`ConfigShape`, `ENV`/`VelaEnv`/`InjectEnv`, typed `ConfigService<T>` paths, parser-validated dynamic paths, `forRoot`-only caveat |
 | `references/websocket.md` | Gateways, `@SubscribeMessage`, `WsServer`/rooms, `WebSocketModule`, transports (core / websocket-node / CF DO) |
-| `references/queues.md` | `@velajs/vela/queue`: `QueueModule`, `@Processor`/`@Process`, `queueToken`/`QueueClient`, inline driver, `dispatchQueueJob` |
+| `references/queues.md` | `@velajs/vela/queue`: `QueueModule.forRoot`/`registerQueue`, `@InjectQueue`/`QueueClient` (`add`, `addBulk`), `@Processor`/`@Process`, inline driver, `cloudflareQueues()`, signed dispatch, `dispatchQueueJob` |
 | `references/live-queries.md` | `@velajs/vela/live`: `LiveModule`, `@LiveResolver`/`@LiveQuery` + tags, `LiveInvalidation`, resume/cursors, CRUD `live: true` bridge, `@velajs/client` hooks |
 | `references/schedule-and-cron.md` | `ScheduleModule`, `@Cron`/`@Interval`, edge-safe registry vs `@velajs/vela/schedule-node` executor |
 | `references/events.md` | `EventEmitterModule`, `@OnEvent`, wildcards, lazy note |

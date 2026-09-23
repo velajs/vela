@@ -1,15 +1,29 @@
 import { defineProvider } from '@velajs/vela';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   Controller,
   Cron,
+  EXECUTION_LIFETIME,
   Get,
+  Inject,
   Injectable,
+  Interval,
   Module,
   ScheduleModule,
+  Scope,
   VelaFactory,
 } from '@velajs/vela';
-import type { ModuleImport, ProviderDefinition, Type } from '@velajs/vela';
+import type {
+  CronInvocation,
+  ExecutionLifetime,
+  ModuleImport,
+  ProviderDefinition,
+  RuntimeAdapter,
+  ScheduleInvocation,
+  Type,
+} from '@velajs/vela';
+import { CLOUDFLARE_SCHEDULED_EVENT, cloudflareAdapter } from '@velajs/cloudflare';
+import type { CloudflareScheduledEvent } from '@velajs/cloudflare';
 import { Process, Processor, QueueModule } from '@velajs/vela/queue';
 import { FeatureFlagsModule } from '@velajs/feature-flags';
 import { BetterAuthService } from '@velajs/better-auth';
@@ -76,10 +90,11 @@ async function rpc<Op extends StudioOp>(
   app: App,
   op: Op,
   args?: StudioOpReq<Op>,
+  env?: object,
 ): Promise<AdminRpcResponse<StudioOpRes<Op>>> {
   const res = await app
     .getHonoApp()
-    .request(`${BASE}/rpc/${op}`, authed(args !== undefined ? { args } : {}));
+    .request(`${BASE}/rpc/${op}`, authed(args !== undefined ? { args } : {}), env);
   return (await res.json()) as AdminRpcResponse<StudioOpRes<Op>>;
 }
 
@@ -212,13 +227,14 @@ async function makeApp(
   studio: Partial<StudioModuleOptions> = {},
   imports: ModuleImport[] = [],
   extra: Array<Type | ProviderDefinition> = [],
+  adapters: RuntimeAdapter[] = [],
 ): Promise<App> {
   @Module({
     imports: [StudioModule.forRoot({ token: TOKEN, ...studio }), ...imports],
     providers: extra,
   })
   class AppModule {}
-  return VelaFactory.create(AppModule);
+  return VelaFactory.create(AppModule, { adapters });
 }
 
 // ===========================================================================
@@ -632,7 +648,8 @@ class EmailProcessorModule {}
 describe('queue ops (@velajs/studio/queue)', () => {
   function queueApp(editable: Partial<StudioModuleOptions['editable']> = {}) {
     return makeApp({ editable: { ops: true, ...editable } }, [
-      QueueModule.forRoot({ queues: ['email'] }),
+      QueueModule.forRoot(),
+      QueueModule.registerQueue({ name: 'email' }, { name: 'audit' }),
       EmailProcessorModule,
       StudioQueueModule.forRoot({}),
     ]);
@@ -642,14 +659,19 @@ describe('queue ops (@velajs/studio/queue)', () => {
     const app = await queueApp();
     expect(ok(await rpc(app, 'studio.capabilities')).features.queue).toBe(true);
     const queues = ok(await rpc(app, 'queue.list'));
-    expect(queues.map((q) => q.name)).toContain('email');
-    expect(queues.every((q) => q.depth === undefined)).toBe(true);
+    // Registered queues are listed whether or not this app processes them.
+    expect(queues).toEqual([
+      { name: 'audit', kind: 'inline' },
+      { name: 'email', kind: 'inline' },
+    ]);
   });
 
   it('send enqueues a job (opsEditable-gated); depths/dlq/replay degrade honestly', async () => {
     const app = await queueApp();
     const sent = ok(await rpc(app, 'queue.send', { queue: 'email', payload: { hi: 1 } }));
     expect(typeof sent.id).toBe('string');
+    const missing = await rpc(app, 'queue.send', { queue: 'missing', payload: {} });
+    expect(missing.ok).toBe(false);
 
     // Per-op typed calls (no `as never`): each degrades honestly.
     const caps = ok(await rpc(app, 'studio.capabilities'));
@@ -710,6 +732,191 @@ describe('schedule ops (@velajs/studio/schedule)', () => {
     const reports = app.getContainer().resolve(Reports);
     expect(ok(await rpc(app, 'schedule.runNow', { id: 'daily' }))).toEqual({ ok: true });
     expect(reports.ran).toBe(1);
+  });
+
+  it('lists request-scoped and lazy jobs without materializing them, and runs them', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const ran: string[] = [];
+    @Injectable({ scope: Scope.REQUEST })
+    class Scoped {
+      @Cron('0 6 * * *', { dialect: 'cloudflare' })
+      morning() {
+        ran.push('morning');
+      }
+      @Interval(60_000)
+      poll() {
+        ran.push('poll');
+      }
+    }
+    @Module({ providers: [Scoped] })
+    class ScopedModule {}
+    @Injectable()
+    class Deferred {
+      @Cron('0 1 * * *', { dialect: 'cloudflare' })
+      nightly() {
+        ran.push('nightly');
+      }
+    }
+    @Module({ lazy: true, providers: [Deferred] })
+    class DeferredModule {}
+    const app = await makeApp({ editable: { ops: true } }, [
+      ScheduleModule,
+      ScopedModule,
+      DeferredModule,
+      StudioScheduleModule.forRoot({}),
+    ]);
+    try {
+      const jobs = ok(await rpc(app, 'schedule.jobs'));
+      expect(jobs).toEqual(
+        expect.arrayContaining([
+          { name: 'morning', kind: 'cron', expression: '0 6 * * *' },
+          { name: 'nightly', kind: 'cron', expression: '0 1 * * *' },
+          { name: 'poll', kind: 'interval', ms: 60_000 },
+        ]),
+      );
+      expect(jobs).toHaveLength(3);
+      const triggers = ok(await rpc(app, 'schedule.triggers'));
+      expect(triggers.toSorted((a, b) => a.name.localeCompare(b.name))).toEqual([
+        { name: 'morning', cron: '0 6 * * *' },
+        { name: 'nightly', cron: '0 1 * * *' },
+      ]);
+      // Listing reads metadata: nothing is skipped or materialized.
+      expect(warn.mock.calls.flat().join('\n')).not.toMatch(/skipped/);
+      expect(ran).toEqual([]);
+
+      for (const id of ['morning', 'poll', 'nightly']) {
+        expect(ok(await rpc(app, 'schedule.runNow', { id }))).toEqual({ ok: true });
+      }
+      expect(ran).toEqual(['morning', 'poll', 'nightly']);
+    } finally {
+      warn.mockRestore();
+      await app.close();
+    }
+  });
+
+  it('runs a job now exactly as a trigger would, including request-scoped jobs', async () => {
+    const ticks: ScheduleInvocation[] = [];
+    const scopes = new Set<Digest>();
+    @Injectable({ scope: Scope.REQUEST })
+    class Digest {
+      @Cron('0 6 * * *', { dialect: 'cloudflare' })
+      morning(...args: ScheduleInvocation[]) {
+        scopes.add(this);
+        ticks.push(...args);
+      }
+      @Interval(60_000)
+      poll(...args: ScheduleInvocation[]) {
+        ticks.push(...args);
+      }
+    }
+    @Module({ providers: [Digest] })
+    class DigestModule {}
+    const app = await makeApp({ editable: { ops: true } }, [
+      ScheduleModule,
+      DigestModule,
+      StudioScheduleModule.forRoot({}),
+    ]);
+    try {
+      const before = Date.now();
+      expect(ok(await rpc(app, 'schedule.runNow', { id: 'morning' }))).toEqual({ ok: true });
+      expect(ok(await rpc(app, 'schedule.runNow', { id: 'morning' }))).toEqual({ ok: true });
+      expect(ok(await rpc(app, 'schedule.runNow', { id: 'poll' }))).toEqual({ ok: true });
+
+      expect(scopes.size).toBe(2);
+      expect(ticks).toHaveLength(3);
+      expect(ticks[0]).toMatchObject({ kind: 'cron', expression: '0 6 * * *' });
+      expect(ticks[2]).toMatchObject({ kind: 'interval', ms: 60_000 });
+      expect(ticks.every((tick) => tick.scheduledTime >= before && !tick.signal.aborted)).toBe(
+        true,
+      );
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+describe('schedule run-now on the Cloudflare adapter', () => {
+  it('runs a job that reads the scheduled trigger event, as a cron trigger would', async () => {
+    const seen: Array<{ cron: string; expression: string; scheduledTime: number }> = [];
+    @Injectable({ scope: Scope.REQUEST })
+    class Exports {
+      constructor(
+        @Inject(CLOUDFLARE_SCHEDULED_EVENT) private readonly trigger: CloudflareScheduledEvent,
+        @Inject(EXECUTION_LIFETIME) private readonly lifetime: ExecutionLifetime,
+      ) {}
+      @Cron('30 2 * * *', { dialect: 'cloudflare' })
+      async nightly(tick: CronInvocation) {
+        this.trigger.noRetry();
+        this.lifetime.waitUntil(
+          Promise.resolve().then(() => {
+            seen.push({
+              cron: this.trigger.cron,
+              expression: tick.expression,
+              scheduledTime: this.trigger.scheduledTime,
+            });
+          }),
+        );
+      }
+    }
+    @Module({ providers: [Exports] })
+    class ExportsModule {}
+    const env = {};
+    const app = await makeApp(
+      { editable: { ops: true } },
+      [ScheduleModule, ExportsModule, StudioScheduleModule.forRoot({})],
+      [],
+      [cloudflareAdapter({ env })],
+    );
+    try {
+      // The documented request-scoped job appears in the panel.
+      expect(ok(await rpc(app, 'schedule.jobs', undefined, env))).toEqual([
+        { name: 'nightly', kind: 'cron', expression: '30 2 * * *' },
+      ]);
+      const before = Date.now();
+      expect(ok(await rpc(app, 'schedule.runNow', { id: 'nightly' }, env))).toEqual({ ok: true });
+      expect(seen).toEqual([
+        { cron: '30 2 * * *', expression: '30 2 * * *', scheduledTime: expect.any(Number) },
+      ]);
+      expect(seen[0]!.scheduledTime).toBeGreaterThanOrEqual(before);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('aborts a running run-now invocation when the application closes', async () => {
+    const entered = Promise.withResolvers<void>();
+    let aborted = false;
+    @Injectable()
+    class Slow {
+      @Cron('0 5 * * *', { dialect: 'cloudflare' })
+      async drain(tick: CronInvocation) {
+        entered.resolve();
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, 2000);
+          tick.signal.addEventListener(
+            'abort',
+            () => {
+              aborted = true;
+              clearTimeout(timer);
+              resolve();
+            },
+            { once: true },
+          );
+        });
+      }
+    }
+    @Module({ providers: [Slow] })
+    class SlowModule {}
+    const app = await makeApp({ editable: { ops: true } }, [
+      ScheduleModule,
+      SlowModule,
+      StudioScheduleModule.forRoot({}),
+    ]);
+    const running = rpc(app, 'schedule.runNow', { id: 'drain' });
+    await entered.promise;
+    await app.close();
+    expect(aborted).toBe(true);
+    expect(ok(await running)).toEqual({ ok: true });
   });
 });
 

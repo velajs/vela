@@ -1,6 +1,8 @@
+import { Container } from '../container/container';
+import { Inject, Injectable } from '../container/decorators';
 import { defineProvider } from '../container/types';
 import { Module } from '../module/decorators';
-import { stableHash } from '../module/stable-hash';
+import { attachModuleIdentity } from '../module/module-identity';
 import type { DynamicModule } from '../module/types';
 import { ScheduleRegistry } from './schedule.registry';
 import { SCHEDULE_DISPATCH } from './schedule.tokens';
@@ -11,8 +13,8 @@ import type { ScheduleDispatchMode } from './schedule.types';
  * `SCHEDULE_DISPATCH` through THIS class rather than through `ScheduleModule`
  * for two reasons:
  *
- *  1. The only consumers (the schedule-node executor today, a CF executor
- *     later) live in OTHER modules, so the token must be GLOBAL — and a
+ *  1. The only consumers (the schedule-node executor, the Cloudflare adapter,
+ *     Studio) live in OTHER modules, so the token must be GLOBAL — and a
  *     dynamic module's `global: true` globalizes ALL its exports. Riding a
  *     single-token host keeps the globalization scoped to just the policy
  *     (mirrors how `InternalDispatcher` is a global token).
@@ -25,17 +27,56 @@ import type { ScheduleDispatchMode } from './schedule.types';
  */
 class ScheduleDispatchHost {}
 
+// A signed policy keys by reference: a helper that builds
+// `target: () => ({ path })` per call yields policies with one source but
+// different captured targets, which no structural key tells apart.
+const policyIds = new WeakMap<ScheduleDispatchMode, number>();
+let nextPolicyId = 0;
+function policyIdentity(dispatch: ScheduleDispatchMode): string {
+  if (dispatch.kind === 'direct') return 'direct';
+  let id = policyIds.get(dispatch);
+  if (id === undefined) {
+    id = ++nextPolicyId;
+    policyIds.set(dispatch, id);
+  }
+  return `signed:${id}`;
+}
+
+/**
+ * Fails bootstrap when `forRoot` configured different dispatch policies (their
+ * keys differ, so each contributes its own global `SCHEDULE_DISPATCH` and the
+ * one a job would use is ambiguous). Each signed policy object is its own
+ * policy, so two signed policies conflict even when they differ only in a
+ * captured target, method or TTL. Built eagerly with every policy host.
+ */
+@Injectable()
+class ScheduleDispatchOwnership {
+  constructor(@Inject(Container) container: Container) {
+    const owners = container.getOwnerModuleIds(SCHEDULE_DISPATCH);
+    if (owners.length > 1) {
+      throw new Error(
+        `ScheduleModule.forRoot() is imported with different dispatch policies by ` +
+          `${owners.join(', ')}. An application configures scheduled dispatch once: import ` +
+          `ScheduleModule.forRoot({ dispatch }) once, in the root module.`,
+      );
+    }
+  }
+}
+
 /**
  * Zero-config module (Tier C): providers live on the `@Module` bag; the
  * `forRoot()` static is NestJS-parity sugar returning the bare dynamic module
  * (default key — repeated calls dedup).
  *
  * `forRoot({ dispatch })` OPTS IN to signed re-entry for scheduled jobs
- * (`ctx.run`): it contributes a GLOBAL `SCHEDULE_DISPATCH` policy the
- * schedule-node executor reads `@Optional`ly (pair it with
- * `ScheduleNodeModule` for the node runtime). The Cloudflare adapter rejects a
- * signed policy at bootstrap until its cron dispatch honors it. With no options
- * the behavior is unchanged (direct in-isolate method calls).
+ * (`ctx.run`): it contributes a GLOBAL `SCHEDULE_DISPATCH` policy that
+ * `invokeScheduledJob` honors on every runtime (the schedule-node executor, the
+ * Cloudflare adapter's cron triggers, Studio's run-now), so the target route runs
+ * the full request pipeline, global guards included. With no options jobs are
+ * called directly in-isolate. An application configures one policy: two
+ * `forRoot` calls with different `dispatch` policies (a different kind, or two
+ * different signed policy objects, even ones a helper builds from one source)
+ * fail bootstrap, and importing the same policy object again deduplicates.
  */
 @Module({
   // Lazy: the @Cron/@Interval discovery pass runs when ScheduleRegistry is
@@ -48,12 +89,21 @@ export class ScheduleModule {
   static forRoot(options: { dispatch?: ScheduleDispatchMode } = {}): DynamicModule {
     const dispatch = options.dispatch;
     if (!dispatch) return { module: ScheduleModule };
-    return {
-      module: ScheduleDispatchHost,
-      key: stableHash({ dispatch: dispatch.kind }),
-      providers: [defineProvider(SCHEDULE_DISPATCH, { useValue: dispatch })],
-      exports: [SCHEDULE_DISPATCH],
-      global: true,
-    };
+    // Key by policy identity: a different policy becomes a second owner of
+    // SCHEDULE_DISPATCH, which ScheduleDispatchOwnership rejects, instead of
+    // being deduplicated into the first policy.
+    return attachModuleIdentity(
+      {
+        module: ScheduleDispatchHost,
+        key: `dispatch:${policyIdentity(dispatch)}`,
+        providers: [
+          defineProvider(SCHEDULE_DISPATCH, { useValue: dispatch }),
+          ScheduleDispatchOwnership,
+        ],
+        exports: [SCHEDULE_DISPATCH],
+        global: true,
+      },
+      { dispatch },
+    );
   }
 }

@@ -41,7 +41,7 @@ Do not use production credentials simply to inspect metadata. The subsequent
 deployment check only reads the saved JSON. For an application without metadata
 handlers, save `[]`. Unknown entrypoint kinds are tolerated.
 
-Rows have `{ "kind": "cf:scheduled", "target": "Jobs#run", "meta": "{...}" }`.
+Rows have `{ "kind": "schedule:cron", "target": "Jobs#run", "meta": "{...}" }`.
 An object-valued `meta` is also accepted, which is useful when projecting
 `app.entrypoints.all()` in a build/test script. Use existing discovery to make the
 snapshot; do not build a second decorator scanner. For example:
@@ -49,25 +49,70 @@ snapshot; do not build a second decorator scanner. For example:
 ```json
 [
   {
-    "kind": "cf:scheduled",
+    "kind": "schedule:cron",
     "target": "Jobs#hourly",
-    "meta": { "cron": "0 * * * *", "methodName": "hourly" }
+    "meta": { "expression": "0 * * * *", "methodName": "hourly", "dialect": "cloudflare" }
   },
   {
     "kind": "cf:queue",
     "target": "Jobs#process",
     "meta": { "queueName": "jobs-staging", "methodName": "process" }
+  },
+  {
+    "kind": "queue:registration",
+    "target": "InjectionToken(vela:queue:client:email)",
+    "meta": { "name": "email", "binding": "EMAIL_QUEUE", "consumers": [] }
   }
 ]
 ```
 
-The check compares exact cron strings for `cf:scheduled`, `cf:vela-cron` and
-`schedule:cron`, queue names for `cf:queue`, and gateway bindings for `websocket`.
-Missing triggers/consumers and configured triggers/consumers with no metadata
-handler fail. `schedule:interval` fails because Workers cron delivery does not
-drive Node interval timers. Custom hand-written platform handlers are not
-represented by these metadata kinds; review them separately instead of treating
-a snapshot mismatch as a Wrangler error.
+The check compares exact cron strings for `schedule:cron` (every `@Cron` job),
+queue names for `cf:queue`, and gateway bindings for `websocket`. Missing
+triggers/consumers and configured triggers/consumers with no metadata handler
+fail.
+
+Queues registered with `QueueModule.registerQueue()` appear as
+`queue:registration` rows. Each registered `binding` must be a
+`queues.producers[].binding` of the selected environment
+(`missing-queue-producer`). When the application consumes natively through
+`cloudflareQueues()` (a `cf:queue:module` row), every `@Processor` queue must be
+registered (`unregistered-queue-processor`) and must reach this Worker through a
+`queues.consumers` entry: the physical queues its registration pins with
+`consumer`, or else the `queue` of its binding's producer
+(`missing-queue-consumer`). A processed queue with neither fails with
+`queue-processor-without-consumer` when the environment consumes no other queue,
+and otherwise warns with `unverified-queue-consumer`, because a shared consumer
+may carry it. A configured consumer that no `@QueueConsumer` or processed queue
+expects fails with `unhandled-queue-consumer`.
+
+A `@QueueConsumer` owns its physical queue's batches, so the module consumer
+never sees them. A physical queue that a `@QueueConsumer` claims and that a
+registration pins with `consumer`, or that any registered queue's producer
+binding sends to, whether or not the Worker processes that queue, fails with
+`queue-consumer-claimed-by-raw`. A physical queue pinned by
+registrations accepts only their jobs, so an unpinned registered queue whose
+producer binding sends to it fails with `queue-sent-to-pinned-queue`: pin that
+queue to the same physical queue, or send it through another one. Likewise, a
+registration with both a `binding` and `consumer` pins accepts its jobs only
+from those pins, so a producer binding that sends to any other physical queue
+fails with `queue-producer-outside-pins`.
+
+A `@Cron` job that explicitly requests `dialect: 'unix'` or
+`timeZone: 'local'` fails with `incompatible-cron-options`, and one that declares
+no dialect but whose weekday field has digits or whose day-of-month and weekday
+fields are both restricted fails with `ambiguous-cron-dialect`: Workers read its
+trigger with Cloudflare semantics while Node reads it with Vela's unix dialect,
+so declare `{ dialect: 'cloudflare' }`; `{ dialect: 'unix' }` is only for
+Node-only jobs, which are not deployed as Workers. `schedule:interval` fails with
+`unsupported-interval` because Workers cron delivery does not drive interval
+timers. At runtime the Cloudflare adapter only reports these through the
+diagnostics policy (see [scheduling](scheduling.md#workers-cron-triggers)). A
+snapshot that still lists the removed `cf:scheduled`, `cf:vela-cron` or
+`cf:queue:producer` kinds, or a `cf:queue:module` consumer mapping, was made by
+an older CLI and fails with `stale-entrypoint-snapshot`: regenerate it.
+Custom hand-written platform handlers are not represented by these metadata
+kinds; review them separately instead of treating a snapshot mismatch as a
+Wrangler error.
 
 Cron validation uses the core Cloudflare dialect and UTC. Equivalent expressions
 such as `0 0 * * SUN` and `0 0 * * 1` must still match literally because Vela's

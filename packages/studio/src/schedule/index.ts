@@ -9,16 +9,39 @@
  * op-namespace (in UNION with the pre-existing `ScheduleRegistry`/
  * `SCHEDULE_DISPATCH` probe the M4 features service reads).
  *
- * Jobs are read from the app's `ScheduleRegistry` (public). HONEST DEGRADATION:
- * `RegisteredCronJob`/`RegisteredIntervalJob` carry no run timestamps, so
- * `ScheduleJobRow.lastRun`/`nextRun` and `CronTriggerRow.nextRun` are omitted
- * (the registry does not track fire history; a cron `nextRun` would need a clock
- * the registry has no hook into). `schedule.jobs` names each job by its
- * decorated `methodName`. `schedule.runNow` invokes the decorated method
- * directly (the `direct` dispatch path) — a signed-dispatch re-entry is out of
- * scope for this read-panel op.
+ * Jobs are read from the app's `ScheduleRegistry` (public) through its
+ * metadata-only entrypoints, the same descriptors `schedule.runNow` executes:
+ * request-scoped jobs and jobs in lazy modules are listed without being
+ * materialized. HONEST DEGRADATION: the entrypoints carry no run timestamps,
+ * so `ScheduleJobRow.lastRun`/`nextRun` and `CronTriggerRow.nextRun` are
+ * omitted (the registry does not track fire history; a cron `nextRun` would
+ * need a clock the registry has no hook into). `schedule.jobs` names each job
+ * by its decorated `methodName`. `schedule.runNow` runs the job through
+ * `invokeScheduledJob`, like a timer or cron trigger: a fresh invocation scope
+ * (request-scoped jobs included), a `ScheduleInvocation` as the only argument
+ * (`scheduledTime` is now), and signed re-entry when the app opted into signed
+ * dispatch. What a native trigger would seed into the job's scope comes from
+ * the runtime's `SCHEDULE_INVOCATION_SEED` (on Workers, a synthetic
+ * `CLOUDFLARE_SCHEDULED_EVENT` whose `noRetry()` does nothing). Closing the
+ * application aborts the signal of a run still in progress and waits for it.
  */
-import { Container, Inject, Injectable, ScheduleRegistry, defineModule } from '@velajs/vela';
+import {
+  Container,
+  Inject,
+  Injectable,
+  SCHEDULE_INVOCATION_SEED,
+  ScheduleRegistry,
+  defineModule,
+  invokeScheduledJob,
+} from '@velajs/vela';
+import type {
+  BeforeApplicationShutdown,
+  CronMetadata,
+  Entrypoint,
+  IntervalMetadata,
+  InvokeScheduledJobOptions,
+  ScheduleInvocation,
+} from '@velajs/vela';
 import type { CronTriggerRow, ScheduleJobRow, StudioOpReq } from '@velajs/studio-protocol';
 import { AdminRpc } from '../rpc/admin-rpc.decorator';
 import type { AdminOpContext } from '../studio.types';
@@ -27,47 +50,84 @@ import { studioError, studioNotFound } from '../studio.errors';
 export const STUDIO_SCHEDULE_MODULE_ID = 'studio.schedule';
 
 @Injectable()
-export class StudioScheduleOps {
+export class StudioScheduleOps implements BeforeApplicationShutdown {
+  /** Runs in progress; shutdown aborts their signals and waits for them. */
+  readonly #running = new Map<Promise<void>, AbortController>();
+
   constructor(@Inject(Container) private readonly container: Container) {}
 
   @AdminRpc({ op: 'schedule.jobs' })
   jobs(_ctx: AdminOpContext): ScheduleJobRow[] {
     const registry = this.registry();
     const cron: ScheduleJobRow[] = registry
-      .getCronJobs()
-      .map((job) => ({ name: job.methodName, kind: 'cron', expression: job.expression }));
+      .getCronEntrypoints()
+      .map(({ meta }) => ({ name: meta.methodName, kind: 'cron', expression: meta.expression }));
     const interval: ScheduleJobRow[] = registry
-      .getIntervalJobs()
-      .map((job) => ({ name: job.methodName, kind: 'interval', ms: job.ms }));
+      .getIntervalEntrypoints()
+      .map(({ meta }) => ({ name: meta.methodName, kind: 'interval', ms: meta.ms }));
     return [...cron, ...interval];
   }
 
   @AdminRpc({ op: 'schedule.triggers' })
   triggers(_ctx: AdminOpContext): CronTriggerRow[] {
     return this.registry()
-      .getCronJobs()
-      .map((job) => ({ name: job.methodName, cron: job.expression }));
+      .getCronEntrypoints()
+      .map(({ meta }) => ({ name: meta.methodName, cron: meta.expression }));
   }
 
   @AdminRpc({ op: 'schedule.runNow' })
   async runNow(ctx: AdminOpContext, args: StudioOpReq<'schedule.runNow'>): Promise<{ ok: true }> {
     const registry = this.registry();
-    const job =
-      registry.getCronJobs().find((j) => j.methodName === args.id) ??
-      registry.getIntervalJobs().find((j) => j.methodName === args.id);
-    if (job === undefined) throw studioNotFound(`no scheduled job named '${args.id}'`);
-    // Invoke the decorated method on its resolved instance (the in-isolate
-    // `direct` dispatch). `RegisteredCronJob.instance` is the provider instance
-    // and `.methodName` names the decorated method (`.target` is the CLASS
-    // metatype, not the method — never call it directly).
-    const instance = job.instance as Record<string, unknown>;
-    const method = instance[job.methodName];
-    if (typeof method !== 'function') {
-      throw studioError('FEATURE_UNCONFIGURED', `job '${args.id}' has no callable handler`);
+    const cron = registry.getCronEntrypoints().find((e) => e.meta.methodName === args.id);
+    const interval = cron
+      ? undefined
+      : registry.getIntervalEntrypoints().find((e) => e.meta.methodName === args.id);
+    const controller = new AbortController();
+    const scheduledTime = Date.now();
+    let entry: Entrypoint<CronMetadata | IntervalMetadata>;
+    let invocation: ScheduleInvocation;
+    if (cron) {
+      entry = cron;
+      invocation = {
+        kind: 'cron',
+        expression: cron.meta.expression,
+        scheduledTime,
+        signal: controller.signal,
+      };
+    } else if (interval) {
+      entry = interval;
+      invocation = {
+        kind: 'interval',
+        ms: interval.meta.ms,
+        scheduledTime,
+        signal: controller.signal,
+      };
+    } else {
+      throw studioNotFound(`no scheduled job named '${args.id}'`);
     }
-    await Promise.resolve((method as (...a: unknown[]) => unknown).call(instance));
+    // Run through the same primitive a timer or cron trigger uses, seeded the
+    // way the runtime's trigger would seed it.
+    const running = invokeScheduledJob(this.container, entry, invocation, this.seed(invocation));
+    this.#running.set(running, controller);
+    try {
+      await running;
+    } finally {
+      this.#running.delete(running);
+    }
     ctx.audit({ target: args.id, summary: `ran scheduled job ${args.id}` });
     return { ok: true };
+  }
+
+  /** Abort the runs still in progress and wait for them before providers shut down. */
+  async beforeApplicationShutdown(): Promise<void> {
+    for (const controller of this.#running.values()) controller.abort();
+    await Promise.allSettled(this.#running.keys());
+  }
+
+  private seed(invocation: ScheduleInvocation): InvokeScheduledJobOptions {
+    if (!this.container.has(SCHEDULE_INVOCATION_SEED)) return {};
+    const seed = this.container.resolve(SCHEDULE_INVOCATION_SEED);
+    return { seed: (scope) => seed(scope, invocation) };
   }
 
   /** The bound `ScheduleRegistry`, else `FEATURE_UNCONFIGURED` (no `ScheduleModule`). */

@@ -1,6 +1,7 @@
 import { defineProvider } from '../container/types';
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
+  APP_GUARD,
   VelaFactory,
   Module,
   Global,
@@ -11,8 +12,17 @@ import {
   MetadataRegistry,
   SignedInvocation,
   URL_SIGNING_SECRET,
+  type CanActivate,
 } from '../index.js';
-import { QueueModule, Process, Processor, queueToken, inline } from '../queue/index.js';
+import {
+  QueueDispatchBinding,
+  QueueModule,
+  Process,
+  Processor,
+  dispatchQueueJob,
+  queueToken,
+  inline,
+} from '../queue/index.js';
 import type { QueueClient, QueueDriver, QueueJob } from '../queue/index.js';
 
 const SECRET = 'queue-signed-dispatch-secret';
@@ -62,10 +72,10 @@ describe('QueueModule signed re-entry dispatch (opt-in)', () => {
       imports: [
         SecretModule,
         QueueModule.forRoot({
-          queues: ['signed-q'],
           driver,
           dispatch: { kind: 'signed', target: () => ({ route: 'inv.run' }) },
         }),
+        QueueModule.registerQueue({ name: 'signed-q' }),
       ],
       controllers: [QInvController],
       providers: [SignedProcessor, Producer],
@@ -103,7 +113,7 @@ describe('QueueModule signed re-entry dispatch (opt-in)', () => {
     }
 
     @Module({
-      imports: [QueueModule.forRoot({ queues: ['direct-q'], driver })],
+      imports: [QueueModule.forRoot({ driver }), QueueModule.registerQueue({ name: 'direct-q' })],
       providers: [DirectProcessor, Producer],
     })
     class AppModule {}
@@ -137,10 +147,10 @@ describe('QueueModule signed re-entry dispatch (opt-in)', () => {
     @Module({
       imports: [
         QueueModule.forRoot({
-          queues: ['explicit-direct-q'],
           driver,
           dispatch: { kind: 'direct' },
         }),
+        QueueModule.registerQueue({ name: 'explicit-direct-q' }),
       ],
       providers: [DirectProcessor, Producer],
     })
@@ -154,31 +164,175 @@ describe('QueueModule signed re-entry dispatch (opt-in)', () => {
     await app.close();
   });
 
-  it('rejects signed mode at bootstrap when the driver cannot deliver through the module', async () => {
+  it('re-enters the signed route for jobs a platform consumer delivers through the module', async () => {
+    const routeHits: string[] = [];
+    const processorHits: string[] = [];
+    // Producer-only here: the platform hands received jobs to QueueDispatchBinding.
     const sent: QueueJob[] = [];
-    // Producer-only transport: deliveries would reach processors through an
-    // external bridge that never sees the signed policy.
     const driver: QueueDriver = {
-      kind: 'remote',
+      kind: 'native',
       async enqueue(job) {
         sent.push(job);
       },
     };
 
+    @Global()
+    @Module({
+      providers: [defineProvider(URL_SIGNING_SECRET, { useValue: SECRET })],
+      exports: [URL_SIGNING_SECRET],
+    })
+    class SecretModule {}
+
+    @Controller('/q-native')
+    class NativeController {
+      @Post('run', { name: 'native.run' })
+      @SignedInvocation()
+      run(): { ok: boolean } {
+        routeHits.push('run');
+        return { ok: true };
+      }
+    }
+
+    @Processor('native-q')
+    @Injectable()
+    class NativeProcessor {
+      @Process('go')
+      go(): void {
+        processorHits.push('go');
+      }
+    }
+
     @Module({
       imports: [
+        SecretModule,
         QueueModule.forRoot({
-          queues: ['remote-q'],
           driver,
-          dispatch: { kind: 'signed', target: () => ({ route: 'inv.run' }) },
+          dispatch: { kind: 'signed', target: () => ({ route: 'native.run' }) },
         }),
+        QueueModule.registerQueue({ name: 'native-q' }),
       ],
+      controllers: [NativeController],
+      providers: [NativeProcessor],
     })
     class AppModule {}
 
-    await expect(VelaFactory.create(AppModule)).rejects.toThrow(
-      /signed dispatch for queue 'remote-q'.*driver 'remote' implements neither bind\(\) nor consume\(\)/,
-    );
-    expect(sent).toEqual([]);
+    const app = await VelaFactory.create(AppModule);
+    const job = await app.get(queueToken('native-q')).add('go', {});
+    expect(sent).toEqual([job]);
+    await app.get(QueueDispatchBinding).dispatch({ ...job, attempt: 2 });
+
+    expect(routeHits).toEqual(['run']);
+    expect(processorHits).toEqual([]);
+    await app.close();
+  });
+
+  it('dispatchQueueJob honors the signed policy, so a custom transport cannot bypass global guards', async () => {
+    const seen: string[] = [];
+    class Deny implements CanActivate {
+      canActivate(): boolean {
+        seen.push('guard');
+        return false;
+      }
+    }
+
+    @Global()
+    @Module({
+      providers: [defineProvider(URL_SIGNING_SECRET, { useValue: SECRET })],
+      exports: [URL_SIGNING_SECRET],
+    })
+    class SecretModule {}
+
+    @Controller('/q-custom')
+    class CustomController {
+      @Post('run', { name: 'custom.run' })
+      @SignedInvocation()
+      run(): { ok: boolean } {
+        seen.push('route');
+        return { ok: true };
+      }
+    }
+
+    @Processor('custom-q')
+    @Injectable()
+    class CustomProcessor {
+      @Process('go')
+      go(): void {
+        seen.push('processor');
+      }
+    }
+
+    @Module({
+      imports: [
+        SecretModule,
+        QueueModule.forRoot({
+          driver: inline({ mode: 'manual' }),
+          dispatch: { kind: 'signed', target: () => ({ route: 'custom.run' }) },
+        }),
+        QueueModule.registerQueue({ name: 'custom-q' }),
+      ],
+      controllers: [CustomController],
+      providers: [CustomProcessor, defineProvider(APP_GUARD, { useClass: Deny })],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule, { diagnostics: 'silent' });
+    try {
+      const job = { id: 'custom-1', queue: 'custom-q', name: 'go', data: {}, attempt: 1 };
+      await expect(dispatchQueueJob(app.getContainer(), app.entrypoints, job)).rejects.toThrow();
+      // The global guard rejected the signed re-entry; the processor never ran directly.
+      expect(seen).toEqual(['guard']);
+      // The module's registration contract applies to the low-level entry too.
+      await expect(
+        dispatchQueueJob(app.getContainer(), app.entrypoints, { ...job, queue: 'unregistered' }),
+      ).rejects.toThrow(/not registered/);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('dispatchQueueJob reports the signed re-entry as the handled delivery', async () => {
+    const seen: string[] = [];
+
+    @Global()
+    @Module({
+      providers: [defineProvider(URL_SIGNING_SECRET, { useValue: SECRET })],
+      exports: [URL_SIGNING_SECRET],
+    })
+    class SecretModule {}
+
+    @Controller('/q-allowed')
+    class AllowedController {
+      @Post('run', { name: 'allowed.run' })
+      @SignedInvocation()
+      run(): { ok: boolean } {
+        seen.push('route');
+        return { ok: true };
+      }
+    }
+
+    @Module({
+      imports: [
+        SecretModule,
+        QueueModule.forRoot({
+          driver: inline({ mode: 'manual' }),
+          dispatch: { kind: 'signed', target: () => ({ route: 'allowed.run' }) },
+        }),
+        QueueModule.registerQueue({ name: 'allowed-q' }),
+      ],
+      controllers: [AllowedController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    try {
+      const job = { id: 'allowed-1', queue: 'allowed-q', name: 'go', data: {}, attempt: 1 };
+      await expect(dispatchQueueJob(app.getContainer(), app.entrypoints, job)).resolves.toEqual({
+        handled: 1,
+      });
+      await expect(app.get(QueueDispatchBinding).dispatch(job)).resolves.toEqual({ handled: 1 });
+      expect(seen).toEqual(['route', 'route']);
+    } finally {
+      await app.close();
+    }
   });
 });

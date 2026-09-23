@@ -1,0 +1,27 @@
+---
+"@velajs/vela": minor
+---
+
+Add `invokeScheduledJob(container, entry, invocation, options?)`, the one dispatch primitive for scheduled jobs. The Node executor, the Cloudflare adapter's cron triggers and Studio's run-now all use it: the job is resolved by its owning module in a fresh invocation scope, receives only its invocation, honors `ScheduleModule.forRoot({ dispatch: { kind: 'signed' } })` through `InternalDispatcher` (the signed route runs its global guards), and a failure is reported once on the `schedule` edge and rethrown. `options.seed(scope)` lets a runtime seed request-scoped values, such as a native event token, into the job's scope. A custom runtime that fires scheduled jobs should call it.
+
+Add the optional `SCHEDULE_INVOCATION_SEED` token (`ScheduleInvocationSeed`): a runtime adapter provides it so a job fired outside its native trigger, such as Studio's run-now, gets what the trigger would have seeded into its scope. Callers pass it to `invokeScheduledJob` as `seed`.
+
+Add `CronInvocation`, `IntervalInvocation` and `ScheduleDecorator`. `@Cron` and `@Interval` are now typed method decorators: the decorated method may declare no parameter or one that accepts its invocation.
+
+Add `scheduledJobComponents(container, entry)`, which names the `@UseGuards`, `@UseInterceptors` and `@UseFilters` declarations that apply to a scheduled job and that direct dispatch never runs. `invokeScheduledJob`, `cronDialectAmbiguity`, `scheduledJobComponents` and `SCHEDULE_INVOCATION_SEED` are exported from the root `@velajs/vela` barrel; there is no `@velajs/vela/schedule` subpath yet.
+
+Add `DiscoveryFilter.deferRequestScoped`, which returns request-scoped providers as metadata-only entries without the "request-scoped ... skipped" warning. `EntrypointRegistry.build` uses it, so an application whose `@Cron` job, `@Processor` or other entrypoint class is request-scoped (for example a job that injects `CLOUDFLARE_SCHEDULED_EVENT`) no longer logs that warning at every bootstrap; dispatchers already resolve such classes per invocation.
+
+Add `cronDialectAmbiguity(meta)`, which explains why a `@Cron` expression without a `dialect` fires on different days under Vela's unix dialect and Cloudflare semantics (a numeric weekday field, or both day fields restricted: Vela's unix dialect requires both to match, while Cloudflare, like standard crontab, fires when either does), or returns `undefined`.
+
+**Behavior change:** `ScheduleNodeModule` reports such an ambiguous `@Cron` declaration at bootstrap through the diagnostics policy: it warns once in the default `'log'` mode and fails bootstrap in `'throw'` mode. Declare `{ dialect: 'cloudflare' }` for a job that also runs on Workers and write its expression for Cloudflare, or `{ dialect: 'unix' }` only for a Node-only job.
+
+**Behavior change:** direct scheduled jobs run no guards, interceptors or filters on any runtime, neither app-global nor declared on the class, method or module, as with NestJS `@Cron`. Use signed dispatch to run a job through a route's request pipeline.
+
+**Behavior change:** a scheduled job failure is reported with `source: 'Class.method'` (for example `'Reports.nightly'`) on every runtime; the Node executor previously reported only the method name.
+
+**Behavior change:** a handler decorated with `@Cron` or `@Interval` that declares another required parameter, or whose first parameter does not accept its invocation, no longer compiles. Remove the native `(controller, env, ctx)` parameters and annotate the job's parameter as `CronInvocation` or `IntervalInvocation`. `applyDecorators` accepts these typed decorators, and `@Process(definition)`, next to any other decorator, so `applyDecorators(Cron(expression, options), SetMetadata(key, value))` composes. As in NestJS, `applyDecorators` does not check the signature of the handler it decorates: only a `@Cron`, `@Interval` or `@Process(definition)` applied directly does. A variable annotated as `MethodDecorator` can no longer hold `Cron(...)` or `Interval(...)`: annotate it as `ScheduleDecorator<CronInvocation>` (or `ScheduleDecorator<IntervalInvocation>`), or let TypeScript infer it.
+
+**Behavior change:** `ScheduleNodeModule` reports, through the diagnostics policy, a `@Cron` with neither `dialect` nor `timeZone` when the process time zone is not UTC (it runs at local time under Node but in UTC on Workers), and a scheduled job that declares `@UseGuards`, `@UseInterceptors` or `@UseFilters`, which direct dispatch never runs. The default `'log'` mode warns once per declaration; `'throw'` fails bootstrap. Declare `{ timeZone: 'UTC' }`, `{ dialect: 'cloudflare' }` or `{ timeZone: 'local' }`, and move pipeline components to a signed route.
+
+**Behavior change:** importing `ScheduleModule.forRoot({ dispatch })` with two different dispatch policies in one application fails bootstrap instead of leaving the policy a job uses ambiguous or silently keeping the first: a signed policy compares by reference, so a different kind or another signed policy object conflicts, even one that differs only in `target`, `method` or `ttlSeconds`, or one a helper builds from the same source with another captured target. Importing the same policy object again still deduplicates. Import it once, in the root module.

@@ -57,8 +57,8 @@ resulting module graph, including every value created inside `create(env)`:
 same objects in all of those applications. Only class and factory providers and
 lifecycle state are built per application. A rejected factory or failed bootstrap
 is evicted, so the next event runs the factory again. Build per-application state
-in factories: `useFactory` providers, `forRootAsync`, or driver factories such as
-`driver: () => inline()` for an in-process queue driver. See the
+in factories: `useFactory` providers, `forRootAsync`, or queue driver factories
+such as `cloudflareQueues()` and `() => inline()`. See the
 [complete API starter](../../apps/api-starter/README.md) for D1, Better Auth, CRUD,
 the generated Hono client, live updates, and Studio inspection in one application.
 
@@ -109,24 +109,99 @@ value your own code reads before relying on it.
 
 ## Module-based queues, cron and RPC
 
-Import `QueueModule` and configure `cloudflareQueueDriver` consumer mappings to
-connect native batches directly to `@Processor`/`@Process` providers. Use
-`ScheduleModule.forRoot()` and `@Cron()` for native scheduled work. The
-[module guide](../../docs/module-workers.md) covers producer-only and consumer-only
-Workers, RPC modules, migration, and deployment checks. Native decorators remain
-available as escape hatches.
+`QueueModule` from `@velajs/vela/queue` is the Workers queue API. Configure the
+driver once in the root module and register each queue where it is used:
+
+```ts
+import { Injectable, Module } from '@velajs/vela';
+import {
+  InjectQueue,
+  Process,
+  Processor,
+  QueueModule,
+  defineQueueJob,
+  type QueueClient,
+  type QueueJob,
+} from '@velajs/vela/queue';
+import { cloudflareQueues } from '@velajs/cloudflare/queues';
+import { z } from 'zod';
+
+const welcome = defineQueueJob('welcome', z.object({ userId: z.string() }));
+
+@Injectable()
+class Signup {
+  constructor(@InjectQueue('email') private readonly email: QueueClient) {}
+  invite(userId: string) {
+    return this.email.add(welcome, { userId });
+  }
+}
+
+@Processor('email')
+@Injectable()
+class EmailProcessor {
+  @Process(welcome)
+  send(job: QueueJob<{ userId: string }>) {}
+}
+
+@Module({
+  imports: [QueueModule.registerQueue({ name: 'email', binding: 'EMAIL_QUEUE' })],
+  providers: [Signup, EmailProcessor],
+})
+class EmailModule {}
+
+@Module({ imports: [QueueModule.forRoot({ driver: cloudflareQueues() }), EmailModule] })
+class AppModule {}
+```
+
+`binding` names a Wrangler `queues.producers[].binding`. The driver reads it
+from the application's `ENV` when a job is added and awaits the native send.
+`addBulk` uses `sendBatch`, split into calls of at most 100 messages and an
+estimated 256 KB, and rejects a job estimated over 128 KB before sending
+anything. A partial failure rejects with a `QueueBatchError` whose `accepted`
+lists the job ids already sent.
+
+The Worker's `queue()` handler gives each batch to the `@QueueConsumer` handlers
+of its physical queue. Batches no `@QueueConsumer` claims go to `QueueModule`,
+which routes every job by its logical queue, so several registered queues may
+share one physical queue. Each job runs through the module's dispatch policy,
+including signed dispatch and its global guards. A message is acknowledged
+after its processors succeed; a message that is not a job envelope, belongs to
+an unregistered queue, or fails stays unacknowledged, so Cloudflare retries it
+and then dead-letters it. `registerQueue({ name, consumer: 'email-production' })`
+pins the queue to that physical queue: its jobs are accepted only from it, and
+it carries only the queues pinned to it. A physical queue cannot be both a
+`@QueueConsumer` queue and a pinned consumer. A `@QueueConsumer` owns its
+physical queue and must not carry jobs of registered queues: those reach their
+`@Processor` only if the raw handler dispatches them itself, so the adapter
+warns once when it sees them. Registered queues are delivered by
+`cloudflareQueues()`. `dispatchQueueJob` is for tests and for transports other
+than Cloudflare Queues; it applies the module's dispatch policy, signed dispatch
+included.
+
+Use `ScheduleModule.forRoot()` and `@Cron()` for native scheduled work. The
+[queue guide](../../docs/queues.md) and [module guide](../../docs/module-workers.md)
+cover producer-only and consumer-only Workers, RPC modules and deployment
+checks. `@QueueConsumer` remains available for raw batches.
 
 ## Managed queue and cron work
 
-Each matching queue/cron handler receives its original event and environment,
-plus a context whose `waitUntil(promise)` delegates to the platform and retains
-that handler's DI scope until the promise settles. Class/method guards,
-interceptors and filters resolve asynchronously from the handler's declaring
-module. The execution context exposes that same child via `getContainer()` and
-its owner via `getModuleId()`; `REQUEST_CONTEXT` remains HTTP-only.
+Each matching `@QueueConsumer` handler receives its batch and environment, plus
+a context whose `waitUntil(promise)` delegates to the platform and retains that
+handler's DI scope until the promise settles. Class/method guards, interceptors
+and filters resolve asynchronously from the handler's declaring module. The
+execution context exposes that same child via `getContainer()` and its owner via
+`getModuleId()`; `REQUEST_CONTEXT` remains HTTP-only.
 
-Inject `EXECUTION_LIFETIME` from `@velajs/vela` to schedule deferred callbacks
-with `lifetime.defer(work)` or register already-started work with
+A `@Cron` job receives only its `CronInvocation`, with no environment or
+context argument, and runs no guards, interceptors or filters: the adapter warns
+once (fails bootstrap in `diagnostics: 'throw'`) when a job declares
+`@UseGuards`, `@UseInterceptors` or `@UseFilters`. Use signed `ScheduleModule`
+dispatch to run a job through a route's request pipeline, and inject `ENV`,
+`CLOUDFLARE_SCHEDULED_EVENT` and `EXECUTION_LIFETIME` for what the native
+handler arguments used to carry.
+
+In both, inject `EXECUTION_LIFETIME` from `@velajs/vela` to schedule deferred
+callbacks with `lifetime.defer(work)` or register already-started work with
 `lifetime.waitUntil(promise)`. The handler, managed work and asynchronous provider
 disposal finish before queue/cron dispatch returns. Unclaimed failures reject
 for the platform to observe; they are not silently converted into success. When
@@ -169,16 +244,17 @@ queue, cron and Durable Object code.
 ## Queues and cron
 
 ```ts
-import { InjectEnv, Injectable, type VelaEnv } from '@velajs/vela';
-import { QueueConsumer, Scheduled } from '@velajs/cloudflare';
+import { Cron, InjectEnv, Injectable, type CronInvocation, type VelaEnv } from '@velajs/vela';
+import { QueueConsumer } from '@velajs/cloudflare';
 
 @Injectable()
 class Jobs {
   constructor(@InjectEnv() private readonly env: VelaEnv) {}
 
-  @Scheduled('0 * * * *')
-  async refresh() {
-    await this.env.CACHE.put('last-refresh', new Date().toISOString());
+  // Declare the same string under Wrangler `triggers.crons`.
+  @Cron('0 * * * *', { dialect: 'cloudflare' })
+  async refresh(tick: CronInvocation) {
+    await this.env.CACHE.put('last-refresh', new Date(tick.scheduledTime).toISOString());
   }
 
   @QueueConsumer('jobs')
@@ -190,10 +266,17 @@ class Jobs {
 }
 ```
 
-Core `@Cron()` also runs on Workers scheduled triggers. Consumers use fresh
-request scopes and their declared guards, interceptors, and filters. Unclaimed
-errors propagate to the platform for retry. Cold queue and cron events have the
-same native bindings and live invalidation capabilities as HTTP.
+A cron trigger runs every core `@Cron()` job whose expression is exactly the
+trigger string. Jobs receive only their `CronInvocation`, as on Node, in a fresh
+request scope and without guards, interceptors or filters; inject
+`CLOUDFLARE_SCHEDULED_EVENT` for the trigger's bound `noRetry()` and
+`EXECUTION_LIFETIME` for background work. A job run outside a trigger (Studio's
+run-now) receives a synthetic event whose `noRetry()` does nothing. Signed `ScheduleModule` dispatch runs
+the signed route with its global guards. Queue consumers use fresh request
+scopes and their declared guards, interceptors, and filters. Unclaimed errors
+propagate to the platform for retry. Cold queue and cron events have the same
+native bindings and live invalidation capabilities as HTTP. See
+[scheduling](../../docs/scheduling.md).
 
 ## WebSockets, live queries, and Durable Objects
 

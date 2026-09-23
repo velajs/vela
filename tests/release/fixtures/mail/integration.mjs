@@ -36,7 +36,7 @@ class App {}
 Module({
   providers: [Inbox],
   imports: [
-    QueueModule.forRoot({ queues: ['mail'], driver }),
+    QueueModule.forRoot({ driver }),
     MailModule.forRoot({
       from: 'sender@example.com',
       transport: catcher,

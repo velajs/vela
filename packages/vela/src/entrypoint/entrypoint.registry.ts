@@ -60,10 +60,12 @@ export class EntrypointRegistry {
     options: { deferLazy?: boolean } = {},
   ): Promise<EntrypointRegistry> {
     const registry = new EntrypointRegistry();
-    // With deferLazy, providers of unmaterialized lazy modules yield
-    // metadata-only entries (instance: undefined). Dispatchers re-resolve by
-    // token per event, so the owning module materializes at dispatch time.
-    const filter = options.deferLazy ? { deferLazy: true } : undefined;
+    // Dispatchers re-resolve every entry by token per event, so entries whose
+    // instance cannot exist yet are metadata-only (instance: undefined):
+    // request-scoped owners, which are built inside each invocation (no
+    // "skipped" warning: nothing is skipped), and, with deferLazy, providers
+    // of unmaterialized lazy modules, whose module materializes at dispatch.
+    const filter = { deferRequestScoped: true, deferLazy: options.deferLazy === true };
 
     for (const kind of getEntrypointKinds()) {
       if (kind.level === 'class') {

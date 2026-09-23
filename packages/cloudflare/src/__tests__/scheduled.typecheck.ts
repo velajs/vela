@@ -1,20 +1,52 @@
-import type {
-  ScheduledController as VelaController,
-  ScheduledHandler,
-} from '../decorators/scheduled';
+import { Cron, type InjectionToken, type ScheduleInvocation, type VelaEnv } from '@velajs/vela';
+import type { createCloudflareWorker } from '../cloudflare-factory';
+import type { CloudflareApplication } from '../cloudflare-application';
+import {
+  CLOUDFLARE_SCHEDULED_EVENT,
+  type CloudflareScheduledEvent,
+  type ScheduledEvent,
+} from '../scheduled-event';
 
-/** Native Workers generated types and Vela's structural handler types compose directly. */
+/** The native Workers controller and handler types compose with the adapter directly. */
 export function checkNativeController(
   controller: ScheduledController,
-  handler: ScheduledHandler<{ name: string }>,
   ctx: ExecutionContext,
+  app: CloudflareApplication,
+  worker: ReturnType<typeof createCloudflareWorker>,
 ): void {
-  const portable: VelaController = controller;
-  void handler(controller, { name: 'worker' }, ctx);
-  const worker: ExportedHandler<{ name: string }> = { scheduled: handler };
-  // @ts-expect-error Native delivery requires the actual binding type.
-  void handler(controller, { name: 42 }, ctx);
-  // @ts-expect-error A production controller requires its scheduled time and noRetry method.
-  const incomplete: VelaController = { cron: '* * * * *' };
-  void [portable, worker, incomplete];
+  const event: ScheduledEvent = controller;
+  void app.scheduled(controller, {}, ctx);
+  const handler: ExportedHandler<VelaEnv>['scheduled'] = worker.scheduled;
+  // Direct calls may omit the scheduled time and noRetry.
+  void app.scheduled({ cron: '* * * * *' }, {}, ctx);
+  // @ts-expect-error The trigger string is required.
+  void app.scheduled({ scheduledTime: 0 }, {}, ctx);
+
+  const token: InjectionToken<CloudflareScheduledEvent> = CLOUDFLARE_SCHEDULED_EVENT;
+  const injected: CloudflareScheduledEvent = {
+    cron: controller.cron,
+    scheduledTime: controller.scheduledTime,
+    noRetry: () => controller.noRetry(),
+  };
+  // @ts-expect-error The injected event always carries the platform scheduled time.
+  const partial: CloudflareScheduledEvent = { cron: '* * * * *', noRetry() {} };
+
+  // @ts-expect-error The portable invocation carries no platform fields.
+  void ((tick: ScheduleInvocation) => tick.noRetry);
+  void [event, handler, token, injected, partial];
+}
+
+/** Workers cron jobs receive the portable invocation, never the native handler arguments. */
+export class NativeHandlerSignatures {
+  // @ts-expect-error The native (controller, env, ctx) arguments are gone; inject what the job needs.
+  @Cron('0 3 * * *', { dialect: 'cloudflare' })
+  nightly(controller: ScheduledController, env: VelaEnv, ctx: ExecutionContext): void {
+    void [controller, env, ctx];
+  }
+
+  // @ts-expect-error The native controller is not the invocation.
+  @Cron('0 4 * * *', { dialect: 'cloudflare' })
+  controllerOnly(controller: ScheduledController): void {
+    void controller;
+  }
 }

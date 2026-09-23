@@ -301,12 +301,16 @@ The worked example for ALL of this is the first-party queue module
 (`packages/vela/src/queue/`, `@velajs/vela/queue`): decorators via
 `createDiscoverableDecorator`, the `'queue'` entrypoint kind, per-job
 `runInEntrypointScope` + async-seam re-resolution (lazy-module compatible),
-`defineModule` with options-derived per-queue providers and native transport contributions, and
+`defineModule` for the global driver plus `registerQueue` dynamic modules that provide per-queue clients, native transport contributions, and
 an import-audit test (`queue-openness.test.ts`) proving it never leaves the
-public API. Dispatch one unit of platform work with
-`dispatchQueueJob(container, app.entrypoints, job)`; after bootstrap the
-per-app `EntrypointRegistry` is also injectable (global token) for providers
-that dispatch entrypoints themselves.
+public API. A custom transport dispatches one job with
+`dispatchQueueJob(container, app.entrypoints, job)`, which honors the
+application's `QueueModule` dispatch policy (registered queues, signed
+re-entry) through the dispatcher native deliveries use; without a `QueueModule`
+it calls the processors directly. It rejects a job no processor handles unless
+called with `{ unhandled: 'ignore' }`, so a transport acknowledges a message
+only when it resolves. After bootstrap the per-app `EntrypointRegistry` is also
+injectable (global token) for providers that dispatch entrypoints themselves.
 
 ## Lazy modules: deferring cold-start init to first use
 

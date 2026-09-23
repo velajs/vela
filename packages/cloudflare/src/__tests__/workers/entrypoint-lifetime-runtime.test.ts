@@ -2,6 +2,7 @@
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import {
+  Cron,
   EXECUTION_LIFETIME,
   REQUEST_CONTEXT,
   Inject,
@@ -19,7 +20,6 @@ import {
 } from '@velajs/vela';
 import { createCloudflareApp } from '../../cloudflare-factory';
 import { QueueConsumer } from '../../decorators/queue-consumer';
-import { Scheduled } from '../../decorators/scheduled';
 
 describe('native entrypoint lifetime in workerd', () => {
   it.each(['queue', 'scheduled'] as const)(
@@ -62,14 +62,18 @@ describe('native entrypoint lifetime in workerd', () => {
           @Inject(EXECUTION_LIFETIME) readonly lifetime: ExecutionLifetime,
         ) {}
         @QueueConsumer('native-lifetime')
-        @Scheduled('* * * * *')
+        @Cron('* * * * *', { dialect: 'cloudflare' })
         run(
           _payload: unknown,
-          _bindings: VelaEnv,
-          ctx: { waitUntil(promise: Promise<unknown>): void },
+          _bindings?: VelaEnv,
+          ctx?: { waitUntil(promise: Promise<unknown>): void },
         ) {
           expect(this.ready).toBe(this.resource.name);
-          ctx.waitUntil(
+          // Queue consumers keep the native context; scheduled jobs receive only
+          // their invocation and extend it through EXECUTION_LIFETIME.
+          if (kind === 'scheduled') expect(ctx).toBeUndefined();
+          ids.add(this.lifetime.id);
+          (ctx ?? this.lifetime).waitUntil(
             this.resource.bindings.CACHE.put(`${prefix}:${this.resource.name}`, 'complete'),
           );
           this.lifetime.defer(async () => {
@@ -107,9 +111,12 @@ describe('native entrypoint lifetime in workerd', () => {
         if (kind === 'queue') await app.queue({ queue: 'native-lifetime', messages: [] }, env, ctx);
         else await app.scheduled({ cron: '* * * * *' }, env, ctx);
         expect(ids.size).toBe(2);
-        expect(nativePromises).toHaveLength(2);
+        expect(nativePromises).toHaveLength(kind === 'queue' ? 2 : 0);
         for (const name of ['one', 'two']) {
-          expect(seen.indexOf(`guard:${name}`)).toBeLessThan(seen.indexOf(`deferred:${name}`));
+          // Declared guards wrap queue consumers only; scheduled jobs run none.
+          if (kind === 'queue')
+            expect(seen.indexOf(`guard:${name}`)).toBeLessThan(seen.indexOf(`deferred:${name}`));
+          else expect(seen).not.toContain(`guard:${name}`);
           expect(seen.indexOf(`deferred:${name}`)).toBeLessThan(seen.indexOf(`disposed:${name}`));
         }
       } finally {

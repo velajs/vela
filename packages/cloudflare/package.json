@@ -44,9 +44,9 @@
       "types": "./dist/durable-objects.d.ts",
       "import": "./dist/durable-objects.js"
     },
-    "./queue": {
-      "types": "./dist/queue.d.ts",
-      "import": "./dist/queue.js"
+    "./queues": {
+      "types": "./dist/queues.d.ts",
+      "import": "./dist/queues.js"
     }
   },
   "publishConfig": {

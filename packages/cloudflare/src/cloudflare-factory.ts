@@ -1,16 +1,18 @@
 import type { ExecutionContext } from 'hono';
 import { getConnInfo } from 'hono/cloudflare-workers';
-import { SCHEDULE_DISPATCH, VelaFactory } from '@velajs/vela';
+import { VelaFactory } from '@velajs/vela';
 import type {
-  Container,
   RuntimeAdapter,
   Type,
+  VelaApplication,
   VelaEnv,
   VelaMiddlewareHandler,
   VelaSecurityOptions,
 } from '@velajs/vela';
 import { CloudflareApplication } from './cloudflare-application';
 import { assertCloudflareEnvironment, registerCloudflareEnvironment } from './environment';
+import { reportCloudflareScheduleDiagnostics } from './schedule-diagnostics';
+import { registerCloudflareScheduledEvent, type ScheduledEvent } from './scheduled-event';
 import { warnWorkerLocalLive } from './websocket/do-live';
 import { registerWebSocketRoutes } from './websocket/websocket-routing';
 import { bootstrapCloudflareRoot } from './root-module';
@@ -30,25 +32,40 @@ export interface CreateCloudflareAppOptions extends CloudflareWorkerOptions {
   env: VelaEnv;
 }
 
+function readStrings(meta: unknown, property: string): string[] {
+  const value: unknown =
+    typeof meta === 'object' && meta !== null ? Reflect.get(meta, property) : undefined;
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value) && value.every((item) => typeof item === 'string')) return value;
+  throw new TypeError(`Invalid queue consumer metadata: ${property}.`);
+}
+
 /**
- * Scheduled events invoke `@Cron` handlers directly, so a signed schedule
- * policy would silently skip the signed route and its global guards.
+ * `@QueueConsumer` handlers own their physical queue. A `QueueModule`
+ * registration that pins the same physical queue with `consumer` would never
+ * see its batches, so bootstrap rejects the overlap.
  */
-async function rejectSignedScheduleDispatch(container: Container): Promise<void> {
-  if (!container.has(SCHEDULE_DISPATCH)) return;
-  const dispatch = await container.resolveAsync(SCHEDULE_DISPATCH);
-  if (dispatch.kind !== 'signed') return;
-  throw new Error(
-    'A signed ScheduleModule dispatch is not supported by the Cloudflare adapter yet: scheduled ' +
-      'events invoke @Cron handlers directly, which would skip the signed route and its global ' +
-      "guards. Remove dispatch: { kind: 'signed' } from ScheduleModule.forRoot(), or call " +
-      'InternalDispatcher.run() from the @Cron handler to re-enter the signed route explicitly.',
+function assertQueueConsumerOwnership(entrypoints: VelaApplication['entrypoints']): void {
+  const pinned = new Set(
+    entrypoints.ofKind('cf:queue:module').flatMap((entry) => readStrings(entry.meta, 'consumers')),
   );
+  for (const entry of entrypoints.ofKind('cf:queue')) {
+    const [queue] = readStrings(entry.meta, 'queueName');
+    if (queue !== undefined && pinned.has(queue)) {
+      throw new Error(
+        `Ambiguous consumer ownership for queue '${queue}': @QueueConsumer('${queue}') and a ` +
+          `QueueModule.registerQueue({ consumer: '${queue}' }) both claim it. Keep one owner.`,
+      );
+    }
+  }
 }
 
 /**
  * Bind an application to one environment: seeded as the global ENV before
- * provider factories and lifecycle hooks, and asserted on every request.
+ * provider factories and lifecycle hooks, and asserted on every request. The
+ * adapter also supplies the `InternalDispatcher` transport, so signed queue and
+ * schedule dispatch re-enter this application's routes, and reports schedule
+ * declarations a cron trigger cannot honor through the diagnostics policy.
  */
 export function cloudflareAdapter(options: { env: VelaEnv }): RuntimeAdapter {
   const { env } = options;
@@ -67,9 +84,11 @@ export function cloudflareAdapter(options: { env: VelaEnv }): RuntimeAdapter {
     getClientIp: (c) => getConnInfo(c).remote.address ?? null,
     configureContainer: (container) => {
       registerCloudflareEnvironment(container, env);
+      registerCloudflareScheduledEvent(container);
     },
-    onBootstrap: async ({ container }) => {
-      await rejectSignedScheduleDispatch(container);
+    onBootstrap: async ({ app, container }) => {
+      assertQueueConsumerOwnership(app.entrypoints);
+      reportCloudflareScheduleDiagnostics(container, app.entrypoints);
       await warnWorkerLocalLive(container);
     },
   };
@@ -103,29 +122,6 @@ async function buildApplication(
     adapters: [cloudflareAdapter(options), ...(options.adapters ?? [])],
   });
   const app = new CloudflareApplication(velaApp, options.env);
-  const consumers = new Map<string, string>();
-  for (const entry of [
-    ...app.entrypoints.ofKind('cf:queue'),
-    ...app.entrypoints.ofKind('cf:queue:module'),
-  ]) {
-    const meta = entry.meta;
-    if (
-      typeof meta !== 'object' ||
-      meta === null ||
-      !('queueName' in meta) ||
-      typeof meta.queueName !== 'string'
-    ) {
-      await app.close();
-      throw new TypeError('Invalid queue consumer metadata.');
-    }
-    const previous = consumers.get(meta.queueName);
-    // Existing native fan-out remains available; module routing owns a queue exclusively.
-    if (previous && (previous === 'cf:queue:module' || entry.kind === 'cf:queue:module')) {
-      await app.close();
-      throw new Error(`Ambiguous consumer ownership for queue '${meta.queueName}'.`);
-    }
-    consumers.set(meta.queueName, entry.kind);
-  }
   app.scanInstances(velaApp.getInstances());
   registerWebSocketRoutes(app.getHonoApp(), app.getWsGatewayRoutes());
   return app;
@@ -159,9 +155,9 @@ export function createCloudflareWorker(
       return (await application(env)).fetch(request, env, ctx);
     },
     async scheduled(
-      event: { cron: string; scheduledTime?: number },
+      event: ScheduledEvent,
       env: VelaEnv,
-      ctx: { waitUntil: (promise: Promise<unknown>) => void },
+      ctx?: { waitUntil: (promise: Promise<unknown>) => void },
     ): Promise<void> {
       return (await application(env)).scheduled(event, env, ctx);
     },

@@ -10,10 +10,11 @@
  * op-namespace registration (in UNION with the pre-existing `queue`
  * entrypoint-kind signal the M4 features service already reads).
  *
- * Queues are enumerated from the app's per-app `EntrypointRegistry` (the public
- * `queue` entrypoint kind `@Processor` contributes) — the same app-scoped source
- * the features service uses. Producing goes through `queueToken(name)`'s
- * `QueueClient`.
+ * Queues are enumerated from the app's `QueueRegistry` (every
+ * `QueueModule.registerQueue` name) in union with the per-app
+ * `EntrypointRegistry`'s `queue` kind (every `@Processor`) — the same app-scoped
+ * sources the features service uses. Producing goes through the registered
+ * queue's `QueueClient` (`queueToken(name)`).
  *
  * HONEST DEGRADATIONS (the in-core `inline()` driver and the `QueueDriver`
  * contract expose neither depth nor a dead-letter queue): `queue.depths` and
@@ -25,7 +26,7 @@
  * so the payload routes to the queue's wildcard `@Process()` handler.
  */
 import { Container, EntrypointRegistry, Inject, Injectable, defineModule } from '@velajs/vela';
-import { QUEUE_DRIVER, queueToken } from '@velajs/vela/queue';
+import { QUEUE_DRIVER, QueueRegistry, queueToken } from '@velajs/vela/queue';
 import type { QueueRow, StudioOpReq } from '@velajs/studio-protocol';
 import { AdminRpc } from '../rpc/admin-rpc.decorator';
 import type { AdminOpContext } from '../studio.types';
@@ -90,11 +91,14 @@ export class StudioQueueOps {
     );
   }
 
-  /** Distinct queue names from this app's `@Processor` entrypoints (app-scoped). */
+  /** Distinct registered and `@Processor` queue names of this app (app-scoped). */
   private queueNames(): string[] {
-    if (!this.container.has(EntrypointRegistry)) return [];
-    const registry = this.container.resolve(EntrypointRegistry);
     const names = new Set<string>();
+    if (this.container.has(QueueRegistry)) {
+      for (const queue of this.container.resolve(QueueRegistry).all()) names.add(queue.name);
+    }
+    if (!this.container.has(EntrypointRegistry)) return [...names].toSorted();
+    const registry = this.container.resolve(EntrypointRegistry);
     for (const ep of registry.ofKind('queue')) {
       const meta = ep.meta;
       if (typeof meta === 'object' && meta !== null && 'queueName' in meta) {
@@ -123,6 +127,6 @@ const { ConfigurableModuleClass } = defineModule<StudioQueueModuleOptions>({
 
 /**
  * Registers {@link StudioQueueOps}. Import it with `StudioQueueModule.forRoot({})`
- * ALONGSIDE `StudioModule` (and `QueueModule`) in apps that use queues.
+ * ALONGSIDE `StudioModule` (and `QueueModule.forRoot()`) in apps that use queues.
  */
 export class StudioQueueModule extends ConfigurableModuleClass {}

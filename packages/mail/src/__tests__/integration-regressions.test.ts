@@ -180,7 +180,7 @@ describe('application isolation and queue routing', () => {
       const catcher = createMailCatcher();
       const driver = inline({ mode: 'manual' });
       const app = await appWith([
-        QueueModule.forRoot({ queues: ['mail'], driver }),
+        QueueModule.forRoot({ driver }),
         MailModule.forRoot({
           key: 'default',
           from: 'sender@example.com',
@@ -207,7 +207,7 @@ describe('application isolation and queue routing', () => {
     const beta = createMailCatcher();
     const driver = inline({ mode: 'manual' });
     const app = await appWith([
-      QueueModule.forRoot({ queues: ['alpha', 'beta'], driver }),
+      QueueModule.forRoot({ driver }),
       ...[alpha, beta].map((catcher, i) =>
         MailModule.forRoot({
           from: 'sender@example.com',
@@ -225,15 +225,16 @@ describe('application isolation and queue routing', () => {
 
   it('rejects two mail registrations consuming the same queue', async () => {
     await expect(
-      appWith(
-        [1, 2].map(() =>
+      appWith([
+        QueueModule.forRoot(),
+        ...[1, 2].map(() =>
           MailModule.forRoot({
             from: 'sender@example.com',
             queue: {},
             transport: createMailCatcher(),
           }),
         ),
-      ),
+      ]),
     ).rejects.toThrow('belongs to multiple mail registrations');
   });
 
@@ -252,7 +253,11 @@ describe('application isolation and queue routing', () => {
     }
     class Feature {}
     await expect(
-      appWith([{ module: Feature, imports: [first], providers: [Startup] }, second]),
+      appWith([
+        QueueModule.forRoot(),
+        { module: Feature, imports: [first], providers: [Startup] },
+        second,
+      ]),
     ).rejects.toThrow('belongs to multiple mail registrations');
     expect(started).toBe(false);
     expect(catcher.messages()).toHaveLength(0);

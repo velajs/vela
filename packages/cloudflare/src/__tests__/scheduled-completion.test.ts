@@ -1,7 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
-import { Injectable, Module, Scope } from '@velajs/vela';
+import {
+  Cron,
+  EXECUTION_LIFETIME,
+  Inject,
+  Injectable,
+  Module,
+  Scope,
+  type ExecutionLifetime,
+} from '@velajs/vela';
 import { createCloudflareApp } from '../cloudflare-factory';
-import { Scheduled, type ScheduledContext } from '../decorators/scheduled';
 
 describe('whole scheduled trigger completion', () => {
   it('awaits slow siblings and their disposal after an early failure', async () => {
@@ -10,7 +17,7 @@ describe('whole scheduled trigger completion', () => {
     const failure = new Error('first failure');
     @Injectable({ scope: Scope.REQUEST })
     class Fast {
-      @Scheduled('* * * * *') run() {
+      @Cron('* * * * *', { dialect: 'cloudflare' }) run() {
         events.push('fast');
         throw failure;
       }
@@ -20,7 +27,7 @@ describe('whole scheduled trigger completion', () => {
     }
     @Injectable({ scope: Scope.REQUEST })
     class Slow {
-      @Scheduled('* * * * *') async run() {
+      @Cron('* * * * *', { dialect: 'cloudflare' }) async run() {
         events.push('slow');
         await hold.promise;
       }
@@ -61,10 +68,10 @@ describe('whole scheduled trigger completion', () => {
     const failures = [new Error('a'), new Error('b')];
     @Injectable()
     class Jobs {
-      @Scheduled('* * * * *') a() {
+      @Cron('* * * * *', { dialect: 'cloudflare' }) a() {
         throw failures[0];
       }
-      @Scheduled('* * * * *') b() {
+      @Cron('* * * * *', { dialect: 'cloudflare' }) b() {
         throw failures[1];
       }
     }
@@ -81,14 +88,15 @@ describe('whole scheduled trigger completion', () => {
     }
   });
 
-  it('retains request resources until scheduled waitUntil work finishes', async () => {
+  it('retains request resources until EXECUTION_LIFETIME waitUntil work finishes', async () => {
     const hold = Promise.withResolvers<void>();
     const events: string[] = [];
     const platformWaitUntil = vi.fn();
     @Injectable({ scope: Scope.REQUEST })
     class Job {
-      @Scheduled('* * * * *') run(_event: unknown, _env: object, context: ScheduledContext) {
-        context.waitUntil(
+      constructor(@Inject(EXECUTION_LIFETIME) readonly lifetime: ExecutionLifetime) {}
+      @Cron('* * * * *', { dialect: 'cloudflare' }) run() {
+        this.lifetime.waitUntil(
           hold.promise.then(() => {
             events.push('background');
           }),
@@ -103,11 +111,18 @@ describe('whole scheduled trigger completion', () => {
     class Root {}
     const env = {};
     const app = await createCloudflareApp(Root, { env });
-    const done = app.scheduled({ cron: '* * * * *' }, env, { waitUntil: platformWaitUntil });
+    let settled = false;
+    const done = app
+      .scheduled({ cron: '* * * * *' }, env, { waitUntil: platformWaitUntil })
+      .then(() => {
+        settled = true;
+        return undefined;
+      });
     try {
       await vi.waitFor(() => expect(events).toContain('handler'));
       expect(events).toEqual(['handler']);
-      expect(platformWaitUntil).toHaveBeenCalledOnce();
+      // The trigger itself stays pending, which keeps the platform event alive.
+      expect(settled).toBe(false);
       hold.resolve();
       await done;
       expect(events).toEqual(['handler', 'background', 'disposed']);

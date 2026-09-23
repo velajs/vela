@@ -32,8 +32,11 @@ export { KvFlagDriver, kvFlagDriver } from './services/kv-flag.driver';
 export type { KvFlagDriverOptions } from './services/kv-flag.driver';
 
 // Decorators
-export { Scheduled, parseScheduledMetadata } from './decorators/scheduled';
 export { QueueConsumer } from './decorators/queue-consumer';
+
+// Cron triggers run core @Cron jobs; this request-scoped token exposes the trigger.
+export { CLOUDFLARE_SCHEDULED_EVENT } from './scheduled-event';
+export type { CloudflareScheduledEvent, ScheduledEvent } from './scheduled-event';
 
 // WebSocket (Durable Object transport for the Vela WebSocketModule)
 export { CloudflareWebSocketModule, broadcastToRoom } from './websocket/index';
@@ -87,13 +90,6 @@ export type {
 } from '@velajs/vela/websocket';
 
 // Types
-export type {
-  ScheduledMetadata,
-  ScheduledEvent,
-  ScheduledController,
-  ScheduledContext,
-  ScheduledHandler,
-} from './decorators/scheduled';
 export type { QueueConsumerMetadata } from './decorators/queue-consumer';
 
 // Distributed abuse control (Cloudflare Workers Rate Limiting binding)
