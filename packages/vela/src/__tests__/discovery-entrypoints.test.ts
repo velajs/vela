@@ -14,6 +14,7 @@ import {
   WS_SERVER,
   createDiscoverableDecorator,
   registerEntrypointKind,
+  runInEntrypointScope,
 } from '../index.js';
 import { _resetEntrypointKinds } from '../entrypoint/entrypoint.registry.js';
 import type { ContributesEntrypoints, Entrypoint, RuntimeAdapter } from '../index.js';
@@ -105,7 +106,7 @@ describe('DiscoveryService', () => {
     expect(methods[0].meta).toBe('a');
   });
 
-  it('skips request-scoped providers by default (instance undefined), resolves them with includeRequestScoped', async () => {
+  it('skips request-scoped providers by default (instance undefined), resolves them in a requestScope', async () => {
     const Flagged = createDiscoverableDecorator<boolean>('vela-test:flagged');
 
     @Flagged(true)
@@ -123,8 +124,11 @@ describe('DiscoveryService', () => {
     expect(found[0].scope).toBe(Scope.REQUEST);
     expect(found[0].instance).toBeUndefined();
 
-    const forced = discovery.providersWithMeta<boolean>(Flagged, { includeRequestScoped: true });
-    expect(forced[0].instance).toBeInstanceOf(PerRequest);
+    await runInEntrypointScope(app.getContainer(), (scope) => {
+      const forced = discovery.providersWithMeta<boolean>(Flagged, { requestScope: scope });
+      expect(forced[0].instance).toBeInstanceOf(PerRequest);
+      expect(forced[0].instance).toBe(scope.resolve(PerRequest));
+    });
   });
 
   it('honors diagnostics=throw when a discovered provider cannot resolve', async () => {
@@ -142,9 +146,14 @@ describe('DiscoveryService', () => {
 
     const app = await VelaFactory.create(AppModule, { diagnostics: 'throw' });
     // Re-register with a factory that throws, simulating a broken provider.
-    app.getContainer().replaceProvider(defineProvider(NeedsMissing, { inject: [],useFactory: () => {
-        throw new Error('boom');
-      }}));
+    app.getContainer().replaceProvider(
+      defineProvider(NeedsMissing, {
+        inject: [],
+        useFactory: () => {
+          throw new Error('boom');
+        },
+      }),
+    );
     // Bust the memoized singleton so discovery re-resolves.
     const discovery = new DiscoveryService(app.getContainer());
 
@@ -283,7 +292,7 @@ describe('Container.replaceProvider', () => {
   it('replaces the token in every bucket that already holds it, plus root', async () => {
     const TOKEN = new InjectionToken<string>('REPLACE_TEST');
 
-    @Module({ providers: [defineProvider(TOKEN, {useValue: 'original'})], exports: [TOKEN] })
+    @Module({ providers: [defineProvider(TOKEN, { useValue: 'original' })], exports: [TOKEN] })
     class FeatureModule {}
 
     @Injectable()
@@ -297,7 +306,7 @@ describe('Container.replaceProvider', () => {
     const app = await VelaFactory.create(AppModule);
     const container = app.getContainer() as Container;
 
-    container.replaceProvider(defineProvider(TOKEN, {useValue: 'override'}));
+    container.replaceProvider(defineProvider(TOKEN, { useValue: 'override' }));
 
     // Root/no-requester view AND module-scoped view both see the override.
     expect(container.resolve(TOKEN)).toBe('override');
@@ -312,7 +321,7 @@ describe('factory dependency visibility (declaringModuleId threading)', () => {
     const DEP = new InjectionToken<string>('SCOPED_DEP_TEST');
     const OUT = new InjectionToken<string>('SCOPED_OUT_TEST');
 
-    @Module({ providers: [defineProvider(DEP, {useValue: 'from-import'})], exports: [DEP] })
+    @Module({ providers: [defineProvider(DEP, { useValue: 'from-import' })], exports: [DEP] })
     class DepModule {}
 
     // FeatureModule imports DepModule; its factory injects DEP — visible only
@@ -320,8 +329,7 @@ describe('factory dependency visibility (declaringModuleId threading)', () => {
     @Module({
       imports: [DepModule],
       providers: [
-        defineProvider(OUT, {useFactory: (dep: string) => `got:${dep}`,
-inject: [DEP]}),
+        defineProvider(OUT, { useFactory: (dep: string) => `got:${dep}`, inject: [DEP] }),
       ],
       exports: [OUT],
       isGlobal: true,

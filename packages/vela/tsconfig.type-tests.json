@@ -10,6 +10,7 @@
     "src/__tests__/container-types.test.ts",
     "src/__tests__/decorator-scope.test.ts",
     "src/__tests__/optional-visibility.test.ts",
+    "src/__tests__/root-request-guard.test.ts",
     "src/__tests__/config-type-boundaries.test.ts",
     "src/__tests__/module-entrypoint-contract.test.ts",
     "src/__tests__/endpoint-http.test.ts",

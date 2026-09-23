@@ -53,6 +53,15 @@ the implementation token public. An alias cannot access another module's unexpor
 consumer's same-token provider cannot change the alias's declared target. The target determines the
 instance lifetime; an alias does not independently cache a transient target.
 
+## Request-scoped providers and the root container
+
+A request-scoped provider, including one that is request-scoped because it depends on one, never
+resolves on the root container: its instance would outlive its request and leak into later ones.
+`container.resolve`, `container.resolveAsync` and `app.get` throw for it on the root. Resolve it in
+the execution scope that owns the invocation: `getRequestContainer(c)`, `context.getContainer()` or
+the `runInEntrypointScope` callback argument. Discovery resolves request-scoped hits only when the
+caller passes `{ requestScope: scope }`.
+
 ## Resource lifetime
 
 The container disposes constructed resources in reverse creation order. It prefers

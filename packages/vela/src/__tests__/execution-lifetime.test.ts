@@ -58,7 +58,7 @@ describe('managed execution lifetime', () => {
     await first;
     expect(new Set(seen).size).toBe(2);
     expect(getExecutionLifetime(container)).toBeUndefined();
-    expect(() => container.resolve(EXECUTION_LIFETIME)).toThrow('outside managed');
+    expect(() => container.resolve(EXECUTION_LIFETIME)).toThrow(/request-scoped[\s\S]*root/);
   });
 
   it('drains nested deferred work before one asynchronous disposal', async () => {

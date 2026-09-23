@@ -3520,6 +3520,7 @@ declare class VelaApplication {
   getInstances(): unknown[];
   getContainer(): Container;
   setInstances(instances: unknown[]): void;
+
   get<K extends Token>(token: K): InferToken<K>;
   getHonoApp(): VelaHono;
 
@@ -4091,6 +4092,8 @@ declare class Container {
   isInstantiated(token: Token, moduleId?: string): boolean;
 
   getProviderScope(token: Token, moduleId?: string): Scope | undefined;
+
+  getResolvedScope(token: Token, requestingModuleId?: string): Scope | undefined;
   getTokens(): Token[];
 
   getUseValues(): unknown[];
@@ -4103,6 +4106,8 @@ declare class Container {
   private tryFindRegistration;
 
   createChild(): Container;
+
+  sharesRootWith(other: Container): boolean;
   createDetached(): Container;
   clear(): void;
 
@@ -4448,7 +4453,7 @@ interface DiscoveryFilter {
 
   moduleId?: string | string[];
 
-  includeRequestScoped?: boolean;
+  requestScope?: Container;
 
   deferLazy?: boolean;
 }

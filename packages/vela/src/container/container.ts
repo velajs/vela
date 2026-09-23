@@ -49,6 +49,17 @@ function isReference(value: unknown): value is object {
   return (typeof value === 'object' && value !== null) || typeof value === 'function';
 }
 
+function requestScopeOnRoot(registration: ProviderRegistration): Error {
+  const name = describeToken(registration.provide);
+  const bubbled =
+    registration.scope === Scope.REQUEST ? '' : ' (it depends on a request-scoped provider)';
+  return new Error(
+    `Cannot resolve request-scoped provider ${name}${bubbled} on the root container: its ` +
+      `instances belong to one request or invocation. Resolve it from that execution scope's ` +
+      `container (getRequestContainer(c), context.getContainer(), runInEntrypointScope()).`,
+  );
+}
+
 /**
  * Per-module provider buckets. Each module instance owns its providers under
  * its `moduleId`; the same logical token can have distinct registrations in
@@ -598,6 +609,31 @@ export class Container {
     return undefined;
   }
 
+  /**
+   * Effective scope of what `resolve(token, requestingModuleId)` would return,
+   * under the requester's visibility and following `useExisting` aliases to
+   * their target. Values count as singletons. `undefined` when nothing is
+   * visible. Never constructs a provider or claims a lazy module.
+   */
+  getResolvedScope(token: Token, requestingModuleId?: string): Scope | undefined {
+    let registration = this.findRegistration(token, requestingModuleId);
+    const aliases = new Set<ProviderRegistration>();
+    while (registration?.useExisting && !aliases.has(registration)) {
+      aliases.add(registration);
+      registration = this.findRegistration(
+        registration.useExisting,
+        registration.declaringModuleId,
+      );
+    }
+    if (registration) {
+      return registration.value
+        ? Scope.SINGLETON
+        : (registration.effectiveScope ?? registration.scope);
+    }
+    if (token instanceof InjectionToken && token.options?.factory) return Scope.SINGLETON;
+    return undefined;
+  }
+
   getTokens(): Token[] {
     const out = new Set<Token>();
     for (const bucket of this.#providers.values()) {
@@ -757,6 +793,11 @@ export class Container {
     return child;
   }
 
+  /** True when both containers belong to one root: the root itself or its request children. */
+  sharesRootWith(other: Container): boolean {
+    return this.#root === other.#root;
+  }
+
   createDetached(): Container {
     const child = new Container({ diagnostics: this.#diagnostics });
     // Deep-clone provider buckets so sandbox writes don't leak back to the
@@ -888,6 +929,14 @@ export class Container {
       return registration.value.value;
     }
 
+    // Effective scope accounts for request-scope bubbling: a SINGLETON that
+    // (transitively) depends on a request-scoped provider is treated as REQUEST
+    // so it is rebuilt per request instead of capturing the first one.
+    const scope = registration.effectiveScope ?? registration.scope;
+    // Mirrors the REQUEST_CONTEXT guard: a request instance cached on the root
+    // would outlive its request and leak into every later one.
+    if (scope === Scope.REQUEST && this.#root === this) throw requestScopeOnRoot(registration);
+
     this.claimLazyModule(registration.declaringModuleId);
 
     if (registration.useExisting) {
@@ -901,11 +950,6 @@ export class Container {
         this.#resolutionStack.delete(registration);
       }
     }
-
-    // Effective scope accounts for request-scope bubbling: a SINGLETON that
-    // (transitively) depends on a request-scoped provider is treated as REQUEST
-    // so it is rebuilt per request instead of capturing the first one.
-    const scope = registration.effectiveScope ?? registration.scope;
 
     // Singleton: return cached from registration (shared across all containers)
     if (scope === Scope.SINGLETON && registration.instance !== undefined) {
@@ -1088,6 +1132,8 @@ export class Container {
       );
     }
     if (registration.value) return registration.value.value;
+    const scope = registration.effectiveScope ?? registration.scope;
+    if (scope === Scope.REQUEST && this.#root === this) throw requestScopeOnRoot(registration);
     if (ancestors.has(registration)) {
       const chain = [...ancestors, registration]
         .map((entry) => this.tokenToString(entry.provide))
@@ -1104,7 +1150,6 @@ export class Container {
         retainingOwner,
       );
     }
-    const scope = registration.effectiveScope ?? registration.scope;
     if (scope === Scope.SINGLETON && registration.instance) return registration.instance.value;
     if (scope === Scope.REQUEST) {
       // This cache is written only through checked token values or this same registration.

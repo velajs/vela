@@ -11,6 +11,7 @@ import {
   REQUEST_CONTEXT,
   Scope,
   VelaFactory,
+  runInEntrypointScope,
 } from '../index.js';
 import type { CallHandler, ExecutionContext, NestInterceptor, RequestContext } from '../index.js';
 
@@ -200,6 +201,12 @@ describe('REQUEST_CONTEXT injectable', () => {
     @Module({})
     class AppModule {}
     const app = await VelaFactory.create(AppModule);
-    expect(() => app.get(REQUEST_CONTEXT)).toThrow(/REQUEST_CONTEXT can only be resolved/);
+    expect(() => app.get(REQUEST_CONTEXT)).toThrow(
+      /request-scoped provider InjectionToken\(vela\.RequestContext\) on the root/,
+    );
+    // A non-HTTP invocation has a scope but no request to describe.
+    await runInEntrypointScope(app.getContainer(), (scope) => {
+      expect(() => scope.resolve(REQUEST_CONTEXT)).toThrow(/REQUEST_CONTEXT can only be resolved/);
+    });
   });
 });

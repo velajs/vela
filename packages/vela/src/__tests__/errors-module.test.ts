@@ -9,6 +9,7 @@ import {
   Injectable,
   Scope,
   defineErrorCatalog,
+  resolveErrorReporter,
 } from '../index.js';
 import type { ExceptionHandler } from '../index.js';
 
@@ -159,5 +160,33 @@ describe('app.useGlobalExceptionHandler', () => {
     expect(reporters[0]).not.toBe(reporters[1]);
 
     await app.dispose();
+  });
+
+  it('falls back to the default report where a REQUEST-scoped handler has no scope', async () => {
+    const reporters: number[] = [];
+
+    @Injectable({ scope: Scope.REQUEST })
+    class PerRequestHandler implements ExceptionHandler {
+      report() {
+        reporters.push(1);
+      }
+    }
+
+    @Module({})
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    app.useGlobalExceptionHandler(PerRequestHandler);
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      // Application-level edges (schedule ticks, socket upgrades) report on the root.
+      const reporter = resolveErrorReporter(app.getContainer());
+      reporter.report(new Error('tick failed'), { edge: 'schedule', source: 'nightly' });
+      expect(reporters).toEqual([]);
+      expect(logged).toHaveBeenCalledWith('[vela] schedule error in nightly:', expect.any(Error));
+    } finally {
+      logged.mockRestore();
+      await app.dispose();
+    }
   });
 });

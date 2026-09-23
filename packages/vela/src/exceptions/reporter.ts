@@ -1,5 +1,6 @@
 import { CORE_CATALOG, isVelaError, type Catalog, type ErrorBodyResult } from '@velajs/errors';
 import { HTTPException } from 'hono/http-exception';
+import { Scope } from '../constants';
 import type { Container } from '../container/container';
 import { HttpException } from '../errors/http-exception';
 import { APP_EXCEPTION_HANDLER, ERROR_CATALOG } from '../pipeline/tokens';
@@ -26,9 +27,7 @@ export interface ErrorReporter {
  * exposes the core catalog.
  */
 export const resolveErrorReporter = (container: Container): ErrorReporter => {
-  const handler: ExceptionHandler | undefined = container.has(APP_EXCEPTION_HANDLER)
-    ? container.resolve(APP_EXCEPTION_HANDLER)
-    : undefined;
+  const handler = resolveHandler(container);
   const catalog: Catalog<string> = container.has(ERROR_CATALOG)
     ? container.resolve(ERROR_CATALOG)
     : CORE_CATALOG;
@@ -95,6 +94,23 @@ export const resolveErrorReporter = (container: Container): ErrorReporter => {
       }
     },
   };
+};
+
+/**
+ * A request-scoped handler exists only inside an invocation. Application-level
+ * edges report on the root container, where it cannot be built; they fall back
+ * to the default report instead of masking the error being reported.
+ */
+const resolveHandler = (container: Container): ExceptionHandler | undefined => {
+  if (!container.has(APP_EXCEPTION_HANDLER)) return undefined;
+  if (container.getResolvedScope(APP_EXCEPTION_HANDLER) !== Scope.REQUEST) {
+    return container.resolve(APP_EXCEPTION_HANDLER);
+  }
+  try {
+    return container.resolve(APP_EXCEPTION_HANDLER);
+  } catch {
+    return undefined;
+  }
 };
 
 /**
