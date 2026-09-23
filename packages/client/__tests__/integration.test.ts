@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  Module,
-  VelaFactory,
-  WebSocketGateway,
-  WebSocketModule,
-  WsDispatcher,
-} from '@velajs/vela';
+import { Module, VelaFactory, WebSocketGateway, WebSocketModule, WsDispatcher } from '@velajs/vela';
 import type { WsClient } from '@velajs/vela';
 import {
   COMMIT_CURSOR_HEADER,
@@ -64,7 +58,6 @@ class ServerSocket implements WsClient {
 }
 
 describe('client ↔ vela live e2e (in-memory transport)', () => {
-
   async function makeStack() {
     const todos: Array<{ id: string; text: string }> = [{ id: 't1', text: 'first' }];
 
