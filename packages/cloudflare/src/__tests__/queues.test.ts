@@ -73,7 +73,6 @@ function producer() {
 function processors() {
   const seen: string[] = [];
   @Processor('email')
-  @Injectable()
   class Email {
     @Process() handle(job: QueueJob) {
       seen.push(`email:${job.name}:${job.attempt}`);
@@ -81,7 +80,6 @@ function processors() {
     }
   }
   @Processor('sms')
-  @Injectable()
   class Sms {
     @Process() handle(job: QueueJob) {
       seen.push(`sms:${job.name}`);
@@ -411,7 +409,6 @@ describe('cloudflareQueues() native delivery', () => {
       readonly id = crypto.randomUUID();
     }
     @Processor('tasks')
-    @Injectable()
     class Tasks {
       constructor(
         @InjectEnv() private env: { NAME: string },
@@ -538,7 +535,6 @@ describe('cloudflareQueues() native delivery', () => {
   it('reports a processor that throws a non-object value once', async () => {
     const reports: unknown[] = [];
     @Processor('email')
-    @Injectable()
     class Email {
       @Process() handle() {
         // A careless processor may throw a value that is not an Error.
@@ -546,7 +542,6 @@ describe('cloudflareQueues() native delivery', () => {
       }
     }
     @Processor('email')
-    @Injectable()
     class Audit {
       @Process() handle() {
         throw 42;

@@ -7,7 +7,6 @@ import {
   Controller,
   Post,
   Inject,
-  Injectable,
   MetadataRegistry,
   SignedInvocation,
   InternalDispatcher,
@@ -36,9 +35,9 @@ beforeEach(() => {
 @Global()
 @Module({
   providers: [
-    defineProvider(URL_SIGNING_SECRET, {useValue: SECRET}),
+    defineProvider(URL_SIGNING_SECRET, { useValue: SECRET }),
     // Silence the report-first edge for the deliberate 5xx route.
-    defineProvider(APP_EXCEPTION_HANDLER, {useValue: { report() {} }}),
+    defineProvider(APP_EXCEPTION_HANDLER, { useValue: { report() {} } }),
   ],
   exports: [URL_SIGNING_SECRET, APP_EXCEPTION_HANDLER],
 })
@@ -67,7 +66,6 @@ class InvController {
 }
 
 @Processor('reenter-q')
-@Injectable()
 class ReentryProcessor {
   constructor(@Inject(InternalDispatcher) private readonly dispatcher: InternalDispatcher) {}
 

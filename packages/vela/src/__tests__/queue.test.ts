@@ -52,7 +52,6 @@ describe('QueueModule routing', () => {
     const seen: string[] = [];
 
     @Processor('email')
-    @Injectable()
     class EmailProcessor {
       @Process('welcome')
       welcome(job: QueueJob) {
@@ -88,7 +87,6 @@ describe('QueueModule routing', () => {
     const seen: string[] = [];
 
     @Processor('audit')
-    @Injectable()
     class A {
       @Process()
       run() {
@@ -97,7 +95,6 @@ describe('QueueModule routing', () => {
     }
 
     @Processor('audit')
-    @Injectable()
     class B {
       @Process()
       run() {
@@ -163,7 +160,6 @@ describe('QueueModule pipeline', () => {
     }
 
     @Processor('work')
-    @Injectable()
     @UseGuards(JobGuard)
     @UseInterceptors(JobInterceptor)
     class WorkProcessor {
@@ -194,7 +190,6 @@ describe('QueueModule pipeline', () => {
     const claimed: string[] = [];
 
     @Catch(KnownError)
-    @Injectable()
     class KnownFilter implements ExceptionFilter {
       catch(error: unknown) {
         claimed.push((error as Error).message);
@@ -202,7 +197,6 @@ describe('QueueModule pipeline', () => {
     }
 
     @Processor('jobs')
-    @Injectable()
     @UseFilters(KnownFilter)
     class JobsProcessor {
       @Process('known')
@@ -247,7 +241,6 @@ describe('QueueModule pipeline', () => {
     }
 
     @Processor('scoped')
-    @Injectable()
     class ScopedProcessor {
       constructor(@Inject(PerJobDep) readonly dep: PerJobDep) {}
 
@@ -279,7 +272,6 @@ describe('inline driver', () => {
     const seen: string[] = [];
 
     @Processor('now')
-    @Injectable()
     class NowProcessor {
       @Process()
       run(job: QueueJob) {
@@ -386,7 +378,6 @@ describe('queue tokens and module identity', () => {
     const seen: string[] = [];
 
     @Processor('async-q')
-    @Injectable()
     class AsyncProcessor {
       @Process()
       run(job: QueueJob) {
@@ -437,7 +428,6 @@ describe('transport initialization', () => {
     const handledJobs: string[] = [];
 
     @Processor('remote')
-    @Injectable()
     class RemoteProcessor {
       @Process()
       run(job: QueueJob) {
@@ -502,7 +492,6 @@ describe('transport initialization', () => {
     const seen: string[] = [];
 
     @Processor('boot')
-    @Injectable()
     class BootProcessor {
       @Process()
       run(job: QueueJob) {
@@ -534,7 +523,6 @@ describe('transport initialization', () => {
     const events: string[] = [];
 
     @Processor('lazy-q')
-    @Injectable()
     class LazyProcessor {
       private ready = false;
 
@@ -587,7 +575,6 @@ describe('error reporter edge (report-then-rethrow)', () => {
     });
 
     @Processor('reportq')
-    @Injectable()
     class ThrowingProcessor {
       @Process()
       run() {
@@ -623,7 +610,6 @@ describe('error reporter edge (report-then-rethrow)', () => {
     const report = vi.fn();
 
     @Processor('inlinereport')
-    @Injectable()
     class BoomProcessor {
       @Process()
       run() {
@@ -657,7 +643,6 @@ describe('error reporter edge (report-then-rethrow)', () => {
     const reports: unknown[] = [];
 
     @Processor('inlinemany')
-    @Injectable()
     class First {
       @Process()
       run() {
@@ -665,7 +650,6 @@ describe('error reporter edge (report-then-rethrow)', () => {
       }
     }
     @Processor('inlinemany')
-    @Injectable()
     class Second {
       @Process()
       run() {

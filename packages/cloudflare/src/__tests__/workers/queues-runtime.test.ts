@@ -48,7 +48,6 @@ describe('QueueModule delivery under workerd', () => {
   it('routes jobs by logical queue and acknowledges only the settled messages', async () => {
     const seen: string[] = [];
     @Processor('email')
-    @Injectable()
     class Email {
       constructor(@InjectEnv() private readonly bindings: VelaEnv) {}
       @Process() async handle(job: QueueJob<{ fail?: boolean }>) {
@@ -57,7 +56,6 @@ describe('QueueModule delivery under workerd', () => {
       }
     }
     @Processor('sms')
-    @Injectable()
     class Sms {
       @Process() async handle(job: QueueJob) {
         seen.push(`sms:${job.name}`);
@@ -107,7 +105,6 @@ describe('QueueModule delivery under workerd', () => {
       }
     }
     @Processor('email')
-    @Injectable()
     class Email {
       @Process() handle() {
         seen.push('direct');
@@ -138,7 +135,6 @@ describe('QueueModule delivery under workerd', () => {
   it('reports each native delivery failure once', async () => {
     const reports: string[] = [];
     @Processor('email')
-    @Injectable()
     class Email {
       @Process() handle(job: QueueJob) {
         if (job.name === 'fail') throw new Error('email failed');
@@ -197,7 +193,6 @@ describe('QueueModule delivery under workerd', () => {
       }
     }
     @Processor('guarded')
-    @Injectable()
     class Guarded {
       @Process() handle() {
         seen.push('processor');

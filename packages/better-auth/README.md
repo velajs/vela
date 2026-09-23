@@ -221,12 +221,11 @@ If you deploy to Cloudflare Workers, smoke-test your bundle for `node:` imports.
 Set `mountHandler: false` and mount the catch-all yourself if you need a base path other than `/api/auth`:
 
 ```ts
-import { Controller, All, Req, Inject, Injectable } from '@velajs/vela';
+import { Controller, All, Req, Inject } from '@velajs/vela';
 import { BetterAuthService, Public } from '@velajs/better-auth';
 
 @Public(true)
 @Controller('/auth')
-@Injectable()
 class CustomCatchallController {
   constructor(@Inject(BetterAuthService) private auth: BetterAuthService) {}
   @All('/*') handle(@Req() c: Context) { return this.auth.handler(c.req.raw); }

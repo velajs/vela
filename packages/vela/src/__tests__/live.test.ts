@@ -126,7 +126,6 @@ describe('LiveModule (tag-based live queries)', () => {
     ];
 
     @LiveResolver()
-    @Injectable()
     class TodoLive {
       @LiveQuery('todos.list', todoListQuery, { tags: (args) => [`todos:${args.listId}`] })
       list(args: { listId: string }, _ctx: LiveQueryContext) {
@@ -351,7 +350,6 @@ describe('LiveModule (tag-based live queries)', () => {
     MetadataRegistry.clear();
 
     @LiveResolver()
-    @Injectable()
     class Strict {
       @LiveQuery('strict.q', strictNumberQuery, { tags: ['t'] })
       q(args: { n: number }) {
@@ -385,7 +383,6 @@ describe('LiveModule (tag-based live queries)', () => {
     }
 
     @LiveResolver()
-    @Injectable()
     class Secret {
       @UseGuards(DenyGuard)
       @LiveQuery('secret.q', numberQuery, { tags: ['secret'] })
@@ -416,7 +413,6 @@ describe('LiveModule (tag-based live queries)', () => {
 
   it('caps active subscriptions per socket', async () => {
     @LiveResolver()
-    @Injectable()
     class Limited {
       @LiveQuery('limited.q', numberQuery, { tags: ['limited'] })
       q() {
@@ -448,7 +444,6 @@ describe('LiveModule (tag-based live queries)', () => {
   it('re-authorizes before invalidation delivery and purges a revoked socket', async () => {
     let authorized = true;
     @LiveResolver()
-    @Injectable()
     class Revocable {
       @LiveQuery('revocable.q', numberQuery, { tags: ['revocable'] })
       q() {
@@ -492,7 +487,6 @@ describe('LiveModule (tag-based live queries)', () => {
       }
     }
     @LiveResolver()
-    @Injectable()
     class Guarded {
       @UseGuards(MutableGuard)
       @LiveQuery('guarded.q', numberQuery, { tags: ['guarded'] })
@@ -772,7 +766,6 @@ describe('LiveEngine — initial-subscribe resolver errors are redacted (Task 10
 
   async function subscribeThrowing(makeError: () => unknown): Promise<FakeClient> {
     @LiveResolver()
-    @Injectable()
     class Boom {
       @LiveQuery('boom.q', numberQuery, { tags: ['boom'] })
       q() {
@@ -834,7 +827,6 @@ describe('LiveEngine — initial-subscribe resolver errors are redacted (Task 10
 
   it('leaves the subscribe-arg parse path untouched (validation message still echoed)', async () => {
     @LiveResolver()
-    @Injectable()
     class Strict {
       @LiveQuery('strict.q', strictNumberQuery, { tags: ['t'] })
       q(args: { n: number }) {

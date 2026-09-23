@@ -197,7 +197,6 @@ function defineWorkerBindingsLabModule() {
   // Delivered by the Worker's queue() handler: batches no @QueueConsumer claims
   // are routed to processors by each job's logical queue.
   @Processor('reports')
-  @Injectable()
   class ReportProcessor {
     constructor(@InjectEnv() private readonly env: VelaEnv) {}
 

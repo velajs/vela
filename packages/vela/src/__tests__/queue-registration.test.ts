@@ -79,7 +79,6 @@ describe('QueueModule.registerQueue', () => {
     const driver = inline({ mode: 'manual' });
 
     @Processor('email')
-    @Injectable()
     class EmailProcessor {
       @Process('welcome')
       welcome(job: QueueJob<{ user: string }>) {
@@ -379,7 +378,6 @@ describe('module dispatch', () => {
 
   it('dispatchQueueJob rejects a misspelled or removed job unless the caller ignores it', async () => {
     @Processor('known')
-    @Injectable()
     class Known {
       @Process('welcome')
       welcome() {}
@@ -517,7 +515,6 @@ describe('QueueClient.addBulk', () => {
   it('delivers bulk jobs to processors through the inline driver', async () => {
     const seen: number[] = [];
     @Processor('jobs')
-    @Injectable()
     class Consumer {
       @Process(tally) handle(job: QueueJob<QueueJobOutput<typeof tally>>) {
         seen.push(job.data.count);

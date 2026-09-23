@@ -65,7 +65,6 @@ describe('signed queue dispatch on Cloudflare', () => {
     }
 
     @Processor('tasks')
-    @Injectable()
     class Tasks {
       @Process('run')
       run(): void {
@@ -121,7 +120,6 @@ describe('signed queue dispatch on Cloudflare', () => {
       }
     }
     @Processor('tasks')
-    @Injectable()
     class Tasks {
       @Process('run')
       run(): void {

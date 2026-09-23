@@ -90,7 +90,6 @@ export class TodosService {
 
 /** The live query: re-runs and pushes whenever the 'todos' tag is invalidated. */
 @LiveResolver()
-@Injectable()
 export class TodoLive {
   constructor(private readonly todos: TodosService) {}
 

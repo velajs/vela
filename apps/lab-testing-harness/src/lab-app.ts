@@ -112,7 +112,6 @@ export function defineLabTestingFixture(): LabFixture {
   }
 
   @Catch(LabFailure)
-  @Injectable()
   class LabErrorFilter implements ExceptionFilter {
     catch(exception: LabFailure, _context: ExecutionContext) {
       return {

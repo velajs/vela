@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
-  Injectable,
   MetadataRegistry,
   Module,
   VelaFactory,
@@ -114,7 +113,6 @@ describe('LiveEngine refresh execution coalescing', () => {
     let executions = 0;
 
     @LiveResolver()
-    @Injectable()
     class SharedList {
       @LiveQuery('shared.list', versionQuery, { tags: ['rows'] })
       list() {
@@ -156,7 +154,6 @@ describe('LiveEngine refresh execution coalescing', () => {
     let authorizationChecks = 0;
 
     @LiveResolver()
-    @Injectable()
     class SharedList {
       @LiveQuery('shared.list', rowsQuery, {
         tags: ['rows'],
@@ -254,7 +251,6 @@ describe('LiveEngine refresh execution coalescing', () => {
     let executions = 0;
 
     @LiveResolver()
-    @Injectable()
     class SharedList {
       @LiveQuery('shared.list', tenantQuery, { tags: ['rows'], coalesceBy: tenantPartition })
       list(_args: unknown, context: LiveQueryContext) {
@@ -306,7 +302,6 @@ describe('LiveEngine refresh execution coalescing', () => {
     const partitionedClients: string[] = [];
 
     @LiveResolver()
-    @Injectable()
     class SharedList {
       @LiveQuery('shared.list', versionQuery, {
         tags: ['rows'],
@@ -362,7 +357,6 @@ describe('LiveEngine refresh execution coalescing', () => {
     let executions = 0;
 
     @LiveResolver()
-    @Injectable()
     class SharedList {
       @LiveQuery('shared.list', executionsQuery, {
         tags: ['rows'],
@@ -425,7 +419,6 @@ describe('LiveEngine refresh execution coalescing', () => {
     let executions = 0;
 
     @LiveResolver()
-    @Injectable()
     class SharedList {
       @LiveQuery('shared.list', idQuery, {
         tags: ['rows'],

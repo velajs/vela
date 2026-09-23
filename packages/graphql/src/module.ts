@@ -4,7 +4,6 @@ import {
   defineProvider,
   DiscoveryService,
   Inject,
-  Injectable,
   InjectionToken,
   Req,
   type DynamicModule,
@@ -95,7 +94,6 @@ export class GraphqlModule {
       }
     }
     // Explicit tokens keep the package independent of decorator compiler metadata.
-    Injectable()(GraphqlController);
     Controller(path)(GraphqlController);
     Inject(service)(GraphqlController, undefined, 0);
     All()(

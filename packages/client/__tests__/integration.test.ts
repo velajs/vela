@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
-  Injectable,
   MetadataRegistry,
   Module,
   VelaFactory,
@@ -93,7 +92,6 @@ describe('client ↔ vela live e2e (in-memory transport)', () => {
     });
 
     @LiveResolver()
-    @Injectable()
     class TodoLive {
       @LiveQuery('todos.list', todoList, { tags: ['crud:todos'] })
       list() {

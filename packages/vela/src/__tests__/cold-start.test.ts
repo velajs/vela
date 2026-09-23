@@ -461,7 +461,6 @@ describe('lazy cold-start init — first-party subsystems (HTTP-only worker)', (
     const seeded: string[] = [];
 
     @Seeder({ order: 1 })
-    @Injectable()
     class UserSeeder {
       run() {
         seeded.push('users');

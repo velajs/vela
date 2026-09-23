@@ -48,7 +48,6 @@ describe('queue entrypoint module ownership and lifetime', () => {
   it('uses owned metadata discovery for jobs emitted before the registry is installed', async () => {
     const NAME = new InjectionToken<string>('early queue owner');
     const seen: string[] = [];
-    @Injectable()
     @Processor('owners')
     class Consumer {
       constructor(@Inject(NAME) readonly name: string) {}
@@ -172,14 +171,12 @@ it('routes asynchronous component-construction failures through scoped filters',
     }
   }
   @Catch(GuardFailure)
-  @Injectable()
   class Filter {
     catch(error: unknown) {
       claimed.push(error);
     }
   }
   @Processor('owners')
-  @Injectable()
   class Consumer {
     @UseGuards(BrokenGuard)
     @UseFilters(Filter)

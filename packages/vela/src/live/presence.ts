@@ -1,5 +1,5 @@
 import { MAX_PRESENCE_METADATA_BYTES, defineLiveQuery } from '@velajs/live-protocol';
-import { Inject, Injectable, assertWebSocketRoomId } from '../index';
+import { Inject, assertWebSocketRoomId } from '../index';
 import { LiveQuery, LiveResolver } from './live.decorators';
 import type { LiveQueryContext } from './live.types';
 
@@ -164,7 +164,6 @@ export class PresenceService {
 
 /** The built-in resolver backing `$presence.roster`. Registered by `LiveModule` unless presence is disabled. */
 @LiveResolver()
-@Injectable()
 export class PresenceResolver {
   constructor(@Inject(PresenceService) private readonly presence: PresenceService) {}
 

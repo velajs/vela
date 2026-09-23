@@ -137,7 +137,6 @@ class Signup {
 }
 
 @Processor('email')
-@Injectable()
 class EmailProcessor {
   @Process(welcome)
   send(job: QueueJob<{ userId: string }>) {}

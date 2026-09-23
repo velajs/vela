@@ -259,7 +259,6 @@ describe('dispatchInboundEmail — routing & pipeline', () => {
     const claimed: string[] = [];
 
     @Catch(KnownError)
-    @Injectable()
     class KnownFilter implements ExceptionFilter {
       catch(error: unknown): void {
         claimed.push((error as Error).message);
