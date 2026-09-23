@@ -14,6 +14,31 @@ const required = [
   '@velajs/live-protocol',
 ];
 
+/**
+ * The consumer's tsconfig. The example's resolver takes its dependency through a
+ * parameter decorator, which tsc accepts and Wrangler's esbuild bundle compiles
+ * only as a legacy decorator, as the example app's own tsconfig declares. It
+ * names its token (`@InjectEnv()`), so the bundle needs no decorator metadata,
+ * which esbuild never emits.
+ */
+export const consumerTsconfig = {
+  compilerOptions: {
+    target: 'ES2024',
+    module: 'ESNext',
+    moduleResolution: 'Bundler',
+    lib: ['ES2024'],
+    types: ['@cloudflare/workers-types'],
+    strict: true,
+    noEmit: true,
+    exactOptionalPropertyTypes: true,
+    skipLibCheck: true,
+    verbatimModuleSyntax: true,
+    experimentalDecorators: true,
+    emitDecoratorMetadata: true,
+  },
+  include: ['*.ts'],
+};
+
 /** Check exact installed archives; missing companions are packed without changing the release plan. */
 export async function verifyGraphqlPackage(releaseTarballs) {
   const tarballs = { ...releaseTarballs };
@@ -57,28 +82,7 @@ export async function verifyGraphqlPackage(releaseTarballs) {
       2,
     ),
   );
-  await writeFile(
-    join(consumer, 'tsconfig.json'),
-    JSON.stringify(
-      {
-        compilerOptions: {
-          target: 'ES2024',
-          module: 'ESNext',
-          moduleResolution: 'Bundler',
-          lib: ['ES2024'],
-          types: ['@cloudflare/workers-types'],
-          strict: true,
-          noEmit: true,
-          exactOptionalPropertyTypes: true,
-          skipLibCheck: true,
-          verbatimModuleSyntax: true,
-        },
-        include: ['*.ts'],
-      },
-      null,
-      2,
-    ),
-  );
+  await writeFile(join(consumer, 'tsconfig.json'), JSON.stringify(consumerTsconfig, null, 2));
   await cp(new URL('apps/graphql-worker/src/index.ts', root), join(consumer, 'worker.ts'));
   for (const name of ['graphql-consumer.ts', 'graphql-consumer.mjs']) {
     await cp(new URL(`tests/release/fixtures/${name}`, root), join(consumer, name));
