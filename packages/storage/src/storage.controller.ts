@@ -3,7 +3,6 @@ import {
   Controller,
   Get,
   Inject,
-  Injectable,
   Post,
   readJsonBody,
   Req,
@@ -72,7 +71,6 @@ export function createStorageController(
   http: ResolvedHttpOptions,
 ): Type {
   @Controller(basePath)
-  @Injectable()
   class StorageController {
     constructor(@Inject(serviceToken) private readonly svc: StorageService) {}
 

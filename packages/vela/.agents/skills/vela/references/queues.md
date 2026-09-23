@@ -32,14 +32,13 @@ There is no `queues` list on `forRoot`; that API was removed in favor of `regist
 
 ## Processors — `@Processor` / `@Process`
 
-A processor is a normal `@Injectable()` provider (listed in `providers`, not a special array). `@Processor(queueName)` binds the class to a queue; `@Process(jobName?)` marks a handler for a named job (omit the name for the wildcard/fallback handler):
+A processor is a normal provider (listed in `providers`, not a special array); `@Processor(queueName)` implies `@Injectable()` and binds the class to a queue; `@Process(jobName?)` marks a handler for a named job (omit the name for the wildcard/fallback handler):
 
 ```ts
 import { Processor, Process } from '@velajs/vela/queue';
 import type { QueueJob } from '@velajs/vela/queue';
 
-@Processor('email')
-@Injectable()
+@Processor('email') // implies @Injectable()
 class EmailProcessor {
   @Process('welcome')
   welcome(job: QueueJob<{ userId: string }>) { /* handle welcome email */ }

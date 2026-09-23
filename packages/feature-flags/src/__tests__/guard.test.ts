@@ -1,6 +1,7 @@
-import { Controller, Get, UseGuards } from '@velajs/vela';
+import { Controller, Get, Reflector, UseGuards } from '@velajs/vela';
 import { Test } from '@velajs/testing';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { FEATURE_FLAG_METADATA } from '../decorators/feature-flag.decorator';
 import { FeatureFlag, FeatureFlagGuard, FeatureFlagsModule, memoryFlagDriver } from '../index';
 import type { FeatureFlagDriver } from '../drivers/driver';
 import type { FlagManifest } from '../feature-flags.types';
@@ -44,6 +45,22 @@ async function appWith(
 }
 
 describe('FeatureFlagGuard (integration)', () => {
+  it('reads route metadata through the application Reflector', async () => {
+    const moduleRef = await Test.createTestingModule({
+      controllers: [guardedController()],
+      imports: [
+        FeatureFlagsModule.forRoot({
+          drivers: [memoryFlagDriver({ values: { 'new-checkout': true } })],
+        }),
+      ],
+    }).compile();
+    const app = await moduleRef.createApplication();
+    const reads = vi.spyOn(app.get(Reflector), 'getAllAndOverride');
+    expect((await app.getHonoApp().request('/checkout/v2')).status).toBe(200);
+    expect(reads).toHaveBeenCalledWith(FEATURE_FLAG_METADATA, expect.anything());
+    await app.close();
+  });
+
   it('hides a route behind a disabled flag (404)', async () => {
     const driver = memoryFlagDriver({ values: { 'new-checkout': false } });
     const app = await appWith(guardedController(), driver);

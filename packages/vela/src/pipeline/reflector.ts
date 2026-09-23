@@ -41,13 +41,14 @@ export function SetMetadata<V = unknown>(key: string, value: V) {
 }
 
 /**
- * Reads custom metadata set by @SetMetadata().
- * Use in guards/interceptors via ExecutionContext.
+ * Reads custom metadata set by @SetMetadata(). Every application provides it
+ * globally, so guards and interceptors inject it like any provider.
  *
  * @example
  * ```ts
+ * @Injectable()
  * class RolesGuard implements CanActivate {
- *   private reflector = new Reflector();
+ *   constructor(private readonly reflector: Reflector) {}
  *
  *   canActivate(context: ExecutionContext): boolean {
  *     const roles = this.reflector.get<string[]>('roles', context);
@@ -73,8 +74,8 @@ export class Reflector {
    * @Controller('/admin')
    * class AdminController {}
    *
-   * // In a guard: typed as string[] | undefined
-   * const roles = new Reflector().get(Roles, context);
+   * // In a guard that injects Reflector: typed as string[] | undefined
+   * const roles = this.reflector.get(Roles, context);
    * ```
    */
   static createDecorator<TParam = unknown>(

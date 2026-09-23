@@ -412,7 +412,6 @@ describe('StudioModule — forRootAsync', () => {
     @Module({
       imports: [
         StudioModule.forRootAsync({
-          inject: [],
           useFactory: (): StudioModuleOptions => ({ token: TOKEN }),
         }),
       ],
@@ -435,7 +434,6 @@ describe('StudioModule — forRootAsync', () => {
     @Module({
       imports: [
         StudioModule.forRootAsync({
-          inject: [],
           useFactory: async (): Promise<StudioModuleOptions> => {
             await Promise.resolve();
             return { token: TOKEN, editable: { data: true } };

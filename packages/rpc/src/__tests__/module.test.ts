@@ -82,9 +82,7 @@ describe('RPC module composition', () => {
   it('supports async server settings and injected named service-binding clients', async () => {
     @Module({
       providers: [Greetings],
-      imports: [
-        RpcModule.forRootAsync({ inject: [], useFactory: async () => ({ authorize: 'public' }) }),
-      ],
+      imports: [RpcModule.forRootAsync({ useFactory: async () => ({ authorize: 'public' }) })],
     })
     class Server {}
     const server = await VelaFactory.create(Server);
@@ -118,6 +116,29 @@ describe('RPC module composition', () => {
       name: 'greetings',
       binding: 'SERVICE',
     });
+    await Promise.all([consumer.close(), server.close()]);
+  });
+
+  it('registers a client whose options factory takes no dependencies', async () => {
+    @Module({ providers: [Greetings], imports: [RpcModule.forRoot({ authorize: 'public' })] })
+    class Server {}
+    const server = await VelaFactory.create(Server);
+    const rpc = RpcClientModule.registerAsync({
+      name: 'static-greetings',
+      useFactory: () => ({
+        url: 'https://worker/rpc',
+        fetch: (request: Request) => Promise.resolve(server.fetch(request)),
+      }),
+    });
+    @Module({ imports: [rpc] })
+    class Consumer {}
+    const consumer = await VelaFactory.create(Consumer);
+    const token = rpcClientToken('static-greetings');
+    expect(await consumer.get(token).call(greet, 'factory')).toBe('Hello factory');
+    const missingInject = () =>
+      // @ts-expect-error A factory with parameters names the tokens that supply them.
+      RpcClientModule.registerAsync({ name: 'missing', useFactory: (url: string) => ({ url }) });
+    void missingInject;
     await Promise.all([consumer.close(), server.close()]);
   });
 

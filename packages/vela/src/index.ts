@@ -75,8 +75,13 @@ export type {
   InferToken,
   InferTokens,
   InjectableOptions,
+  CheckedProviders,
+  Provider,
   ProviderDefinition,
+  ProviderLiteral,
   ProviderSnapshot,
+  TypedProviderLiteral,
+  FactoryInject,
   ModuleScope,
   ModuleDescription,
   ContainerOptions,
@@ -449,6 +454,7 @@ export {
 } from './module/index';
 export type {
   ModuleOptions,
+  ModuleDecoratorOptions,
   DynamicModule,
   AsyncModuleOptions,
   ModuleImport,

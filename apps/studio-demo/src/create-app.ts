@@ -198,7 +198,6 @@ export async function createApp(options: CreateAppOptions = {}): Promise<DemoApp
   class ReportsModule {}
 
   @Processor(DEMO_QUEUE)
-  @Injectable()
   class WelcomeEmailProcessor {
     handled = 0;
     @Process()

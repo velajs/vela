@@ -332,7 +332,6 @@ describe('deployment alignment', () => {
       async enqueue() {},
     };
     @Processor('email')
-    @Injectable()
     class EmailProcessor {
       @Process('welcome')
       welcome() {}

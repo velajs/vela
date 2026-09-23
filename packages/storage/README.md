@@ -46,8 +46,9 @@ class AppModule {}
 `ENV` is the application's runtime environment. On Workers,
 `createCloudflareWorker(AppModule)` from `@velajs/cloudflare` seeds it, and
 `wrangler types` types `AWS_KEY` and `AWS_SECRET` from `.dev.vars`; elsewhere,
-pass `VelaFactory.create(AppModule, { env })`. Async registrations require the
-actual `inject` tuple; use `inject: []` for a factory with no dependencies.
+pass `VelaFactory.create(AppModule, { env })`. An async registration names the
+tokens its factory's parameters receive in `inject`; a factory without
+parameters may omit it.
 
 ## Secure HTTP multipart uploads
 

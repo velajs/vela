@@ -43,4 +43,4 @@ const exists = config.has('app.name');
 - `validateSchema`: parser for merged config; available on `forRoot`, applied on first read.
 - `isGlobal` and `key`: module configuration extras.
 
-`forRootAsync({ imports, inject, useFactory })` resolves factory arguments from the required dependency tuple (`inject: []` for no dependencies). Its factory returns config options, but structural `load`/`validateSchema` behavior must be declared through `forRoot`; async factories do not create those structural contributions. There are no NestJS env-file/Joi options. Namespace factories are synchronous and their providers are materialized lazily.
+`forRootAsync({ imports, inject, useFactory })` resolves factory arguments from the dependency tuple (a factory without parameters may omit `inject`). Its factory returns config options, but structural `load`/`validateSchema` behavior must be declared through `forRoot`; async factories do not create those structural contributions. There are no NestJS env-file/Joi options. Namespace factories are synchronous and their providers are materialized lazily.

@@ -50,7 +50,6 @@ describe('QueueModule signed re-entry dispatch (opt-in)', () => {
     }
 
     @Processor('signed-q')
-    @Injectable()
     class SignedProcessor {
       @Process('go')
       go(job: QueueJob): void {
@@ -94,7 +93,6 @@ describe('QueueModule signed re-entry dispatch (opt-in)', () => {
     const driver = inline({ mode: 'manual' });
 
     @Processor('direct-q')
-    @Injectable()
     class DirectProcessor {
       @Process('go')
       go(job: QueueJob): void {
@@ -126,7 +124,6 @@ describe('QueueModule signed re-entry dispatch (opt-in)', () => {
     const driver = inline({ mode: 'manual' });
 
     @Processor('explicit-direct-q')
-    @Injectable()
     class DirectProcessor {
       @Process('go')
       go(job: QueueJob): void {
@@ -189,7 +186,6 @@ describe('QueueModule signed re-entry dispatch (opt-in)', () => {
     }
 
     @Processor('native-q')
-    @Injectable()
     class NativeProcessor {
       @Process('go')
       go(): void {
@@ -248,7 +244,6 @@ describe('QueueModule signed re-entry dispatch (opt-in)', () => {
     }
 
     @Processor('custom-q')
-    @Injectable()
     class CustomProcessor {
       @Process('go')
       go(): void {

@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   Module,
+  Reflector,
   Req,
   ThrottlerModule,
   UseGuards,
@@ -55,6 +56,29 @@ describe('AuthGuard', () => {
     const res = await app.getHonoApp().request('/me');
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ id: 'u-1', email: 'ada@example.com' });
+  });
+
+  it('reads route metadata through the application Reflector', async () => {
+    @Controller('/open')
+    class OpenController {
+      @Public(true)
+      @Get()
+      open() {
+        return { ok: true };
+      }
+    }
+
+    @Module({
+      imports: [BetterAuthModule.forRoot({ auth: mockAuth(null) })],
+      controllers: [OpenController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const reads = vi.spyOn(app.get(Reflector), 'getAllAndOverride');
+    expect((await app.getHonoApp().request('/open')).status).toBe(200);
+    expect(reads).toHaveBeenCalledWith(Public, expect.anything());
+    await app.close();
   });
 
   it('publishes verified principal and organization state to Vela security components', async () => {
@@ -280,7 +304,7 @@ describe('AuthGuard', () => {
 
   it('accepts only the trusted finite-lived WebSocket attachment without using HTTP accessors', async () => {
     const auth = mockAuth(null);
-    const guard = new AuthGuard(new BetterAuthService(() => auth), {});
+    const guard = new AuthGuard(new BetterAuthService(() => auth), {}, new Reflector());
     const client = {
       id: 'socket-1',
       rooms: new Set<string>(),

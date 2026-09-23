@@ -56,9 +56,9 @@ describe('StorageModule', () => {
   it('includes async factory identity in the dynamic-module key', () => {
     const factoryA = () => memoryDriver();
     const factoryB = () => memoryDriver();
-    const first = StorageModule.forRootAsync({ inject: [], useFactory: factoryA });
-    const same = StorageModule.forRootAsync({ inject: [], useFactory: factoryA });
-    const other = StorageModule.forRootAsync({ inject: [], useFactory: factoryB });
+    const first = StorageModule.forRootAsync({ useFactory: factoryA });
+    const same = StorageModule.forRootAsync({ useFactory: factoryA });
+    const other = StorageModule.forRootAsync({ useFactory: factoryB });
 
     expect(same.key).toBe(first.key);
     expect(other.key).not.toBe(first.key);
@@ -69,7 +69,6 @@ describe('StorageModule', () => {
     const moduleRef = await Test.createTestingModule({
       imports: [
         StorageModule.forRootAsync({
-          inject: [],
           useFactory: () => {
             calls += 1;
             return memoryDriver();

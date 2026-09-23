@@ -1,6 +1,8 @@
 import {
   ForbiddenException,
   getTrustedContextRequest,
+  Inject,
+  Injectable,
   Reflector,
   type CanActivate,
   type ExecutionContext,
@@ -12,7 +14,7 @@ import { getContextIdentity, identityFromTrusted } from './context-identity';
 
 /** Enforce every permission using exactly one engine visible to the route module. */
 export class PermissionGuard implements CanActivate {
-  private readonly reflector = new Reflector();
+  constructor(private readonly reflector: Reflector) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const required = this.reflector.getAllAndOverride(RequirePermission, context);
@@ -50,3 +52,6 @@ export class PermissionGuard implements CanActivate {
     return true;
   }
 }
+// This package is authored without decorator syntax.
+Injectable()(PermissionGuard);
+Inject(Reflector)(PermissionGuard, undefined, 0);

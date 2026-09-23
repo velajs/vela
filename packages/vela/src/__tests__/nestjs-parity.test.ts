@@ -577,6 +577,41 @@ describe('APP_* tokens', () => {
     expect(seen).toHaveLength(2);
     expect(seen[0]).not.toBe(seen[1]);
   });
+
+  it('accepts Nest provider literals, including APP_* tokens', async () => {
+    const GREETING = new InjectionToken<string>('parity greeting');
+
+    @Injectable()
+    class HeaderGuard implements CanActivate {
+      canActivate(ctx: ExecutionContext): boolean {
+        return ctx.getRequest().headers.get('x-pass') === '1';
+      }
+    }
+
+    @Controller('/literal-providers')
+    class LiteralController {
+      constructor(@Inject(GREETING) private readonly greeting: string) {}
+      @Get()
+      handle() {
+        return { greeting: this.greeting };
+      }
+    }
+
+    @Module({
+      providers: [
+        { provide: GREETING, useFactory: () => 'hello' },
+        { provide: APP_GUARD, useClass: HeaderGuard },
+      ],
+      controllers: [LiteralController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+    expect((await hono.request('/literal-providers')).status).toBe(403);
+    const allowed = await hono.request('/literal-providers', { headers: { 'x-pass': '1' } });
+    expect(await allowed.json()).toEqual({ greeting: 'hello' });
+  });
 });
 
 // =============================================================================
@@ -610,8 +645,9 @@ describe('applyDecorators', () => {
       }
     }
 
+    // Reflector is provided by every application, as in Nest.
     @Module({
-      providers: [RolesGuard, Reflector],
+      providers: [RolesGuard],
       controllers: [RoleController],
     })
     class AppModule {}
@@ -623,6 +659,39 @@ describe('applyDecorators', () => {
     expect(denied.status).toBe(403);
 
     const allowed = await hono.request('/role-test', { headers: { 'x-role': 'admin' } });
+    expect(allowed.status).toBe(200);
+  });
+
+  it('constructs a @UseGuards class through DI without a providers entry', async () => {
+    const ROLES_KEY = 'roles';
+    const Roles = (...roles: string[]) => SetMetadata(ROLES_KEY, roles);
+
+    @Injectable()
+    class RolesGuard implements CanActivate {
+      constructor(private readonly reflector: Reflector) {}
+      canActivate(ctx: ExecutionContext): boolean {
+        const required = this.reflector.getAllAndOverride<string[]>(ROLES_KEY, ctx);
+        return !required || required.includes(ctx.getRequest().headers.get('x-role') ?? '');
+      }
+    }
+
+    @Controller('/unlisted-guard')
+    @UseGuards(RolesGuard)
+    class UnlistedGuardController {
+      @Roles('admin')
+      @Get()
+      handle() {
+        return { ok: true };
+      }
+    }
+
+    @Module({ controllers: [UnlistedGuardController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+    expect((await hono.request('/unlisted-guard')).status).toBe(403);
+    const allowed = await hono.request('/unlisted-guard', { headers: { 'x-role': 'admin' } });
     expect(allowed.status).toBe(200);
   });
 
@@ -1523,6 +1592,28 @@ describe('Lifecycle hooks', () => {
 
     await VelaFactory.create(AppModule);
     expect(calls).toEqual(['A', 'B']);
+  });
+
+  it('module classes are injected and receive onModuleInit() after their providers', async () => {
+    const calls: string[] = [];
+
+    @Injectable()
+    class DbService implements OnModuleInit {
+      onModuleInit() {
+        calls.push('db:init');
+      }
+    }
+
+    @Module({ providers: [DbService] })
+    class DbModule implements OnModuleInit {
+      constructor(private readonly db: DbService) {}
+      onModuleInit() {
+        calls.push(`module:init:${this.db instanceof DbService}`);
+      }
+    }
+
+    await VelaFactory.create(DbModule);
+    expect(calls).toEqual(['db:init', 'module:init:true']);
   });
 
   it('app.close() calls onModuleDestroy() on each provider', async () => {
@@ -5961,11 +6052,11 @@ describe('Reflector.createDecorator() in HTTP context', () => {
       }
     }
 
-    @Module({ providers: [TypedRolesGuard, Reflector], controllers: [TypedRolesController] })
+    @Module({ controllers: [TypedRolesController] })
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
-    app.useGlobalGuards(new TypedRolesGuard(new Reflector()));
+    app.useGlobalGuards(new TypedRolesGuard(app.get(Reflector)));
 
     const hono = app.getHonoApp();
 
@@ -6051,6 +6142,36 @@ describe('Module re-export / transitive exports', () => {
     const app = await VelaFactory.create(AppModule);
     const res = await app.getHonoApp().request('/reexport');
     expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ result: 'db result' });
+  });
+
+  it('exports: [ImportedModule] re-exports everything that module exports', async () => {
+    @Injectable()
+    class DatabaseService {
+      query() {
+        return 'db result';
+      }
+    }
+
+    @Module({ providers: [DatabaseService], exports: [DatabaseService] })
+    class DatabaseModule {}
+
+    @Module({ imports: [DatabaseModule], exports: [DatabaseModule] })
+    class InfraModule {}
+
+    @Controller('/reexport-module')
+    class ReexportModuleController {
+      constructor(private db: DatabaseService) {}
+      @Get() handle() {
+        return { result: this.db.query() };
+      }
+    }
+
+    @Module({ imports: [InfraModule], controllers: [ReexportModuleController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const res = await app.getHonoApp().request('/reexport-module');
     expect(await res.json()).toEqual({ result: 'db result' });
   });
 

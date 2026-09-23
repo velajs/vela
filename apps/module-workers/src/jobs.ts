@@ -1,8 +1,7 @@
-import { Cron, InjectEnv, Injectable, Module, ScheduleModule, type VelaEnv } from '@velajs/vela';
+import { Cron, InjectEnv, Module, ScheduleModule, type VelaEnv } from '@velajs/vela';
 import { createCloudflareWorker } from '@velajs/cloudflare';
 import { cloudflareQueues } from '@velajs/cloudflare/queues';
 import { Process, Processor, QueueModule, type QueueJob } from '@velajs/vela/queue';
-@Injectable()
 @Processor('tasks')
 class Tasks {
   // RESULTS is typed by worker-configuration.jobs.d.ts.

@@ -29,8 +29,7 @@ export interface CreateDiscoverableDecoratorOptions {
  * export const QueueConsumer = createDiscoverableDecorator<QueueConsumerMeta>('vela:queue:consumer');
  *
  * @QueueConsumer({ queue: 'emails' })
- * @Injectable()
- * class EmailConsumer { ... }
+ * class EmailConsumer { ... } // a class decorator implies @Injectable()
  *
  * // At bootstrap, anywhere:
  * discovery.providersWithMeta(QueueConsumer)  // typed { meta: QueueConsumerMeta }
@@ -62,6 +61,8 @@ export function createDiscoverableDecorator<T>(
       } else {
         MetadataRegistry.setCustomClassMeta(ctor, key, value);
       }
+      // As a class decorator it implies @Injectable(); a declared scope stays.
+      if (propertyKey === undefined) MetadataRegistry.markInjectable(ctor);
     };
   };
   (decorator as DiscoverableDecorator<T>).KEY = key;

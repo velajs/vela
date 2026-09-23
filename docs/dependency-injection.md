@@ -4,6 +4,67 @@ Declare dependencies with constructor injection or `defineProvider(token, { inje
 Factory parameters are inferred from their tokens; the result must satisfy the provided token.
 An `InjectionToken<T>` represents an identity, so two tokens with the same description remain distinct.
 
+## Providers
+
+A module's `providers` accepts classes, `defineProvider()` definitions and Nest's provider
+literals:
+
+```ts
+@Module({
+  providers: [
+    UsersService,
+    { provide: CLOCK, useValue: systemClock },
+    { provide: Storage, useClass: MemoryStorage },
+    { provide: STORE, useExisting: Storage },
+    { provide: STARTED_AT, useFactory: () => Date.now() },
+    { provide: APP_GUARD, useClass: RolesGuard },
+    defineProvider(REPORTS, { inject: [UsersService, CLOCK], useFactory: (users, clock) => ... }),
+  ],
+})
+class UsersModule {}
+```
+
+`@Module` checks each literal against its token: `useValue`, `useClass`, `useExisting` and the
+factory's result must produce the token's value type, so `{ provide: COUNT, useValue: 'one' }` does
+not compile for an `InjectionToken<number>`. A literal factory takes no parameters. A factory with
+dependencies uses `defineProvider`, which infers its parameters from `inject`.
+
+A factory without parameters may omit `inject`, in `defineProvider`, `lazyProvider`, literals and
+`forRootAsync` options alike. A factory that declares parameters without `inject` throws when it is
+defined, naming the token, because its parameters would otherwise receive `undefined`.
+
+A `DynamicModule` and `defineModule`'s `setup` contributions are object literals the compiler cannot
+correlate per element, so they accept the loosely typed `ProviderLiteral` union. The module loader
+checks each literal when the module loads: an entry without a token, without exactly one of
+`useValue`, `useClass`, `useFactory` and `useExisting`, or with a strategy of the wrong kind fails
+the load with an error naming the list entry and its token, for example
+`FeatureModule.providers[2] (InjectionToken(STORE)) is not a provider`. Prefer `defineProvider` in
+computed contributions when the value type matters.
+
+Every application provides `Reflector` globally, so guards and interceptors inject it through their
+constructor, as in Nest.
+
+## Module classes and enhancers
+
+A module class is a provider of its own module. The container constructs it through DI after the
+module's providers, and it receives the same lifecycle hooks, in the same phases, after those
+providers. A lazy module's class is built with the rest of its group. `configure()` runs on that
+same instance.
+
+Guard, pipe, interceptor and filter classes that a module's classes reference in `@UseGuards`,
+`@UsePipes`, `@UseInterceptors`, `@UseFilters` or parameter decorators such as
+`@Param('id', ParseIntPipe)` need no `providers` entry. The module loader scans the module class,
+its class providers (including `useClass` targets) and its controllers, so gateways, processors,
+live resolvers and other entrypoint classes are covered too. It registers each referenced class in
+the declaring module unless one is already visible there, such as a provider exported by an
+imported module. The class then resolves like any provider of that module: its dependencies come
+from the declaring module, a singleton is built once instead of per request, a request-scoped
+enhancer (declared, or bubbled from a request-scoped dependency) is built per request, and an
+enhancer of a lazy module waits for its group. A referenced class with no class decorator has no
+metadata to inject; it is built with `new`, once per scope, without the missing-decorator
+diagnostic. Classes passed to `app.useGlobalGuards()` and the other `useGlobal*` methods are not
+scanned: one without constructor dependencies is still built with `new` on each use.
+
 Each module owns its provider registrations. A token registered in two module instances has two
 independent instances, including with `Scope.REQUEST`. Within a request child, repeated resolutions
 of the same registration share a value; resolutions from another module's registration remain separate.
@@ -79,7 +140,10 @@ policy (`'log'` warns, `'throw'` fails bootstrap, `'silent'` ignores it) with a 
 missing class decorator. Decorate the class with `@Injectable()`, or provide a class you do not own
 with `useFactory`. Registering an undecorated class directly in `providers` is reported the same
 way, as is a module export that is neither a local provider nor exported by an imported module.
-`@Module`, `@Catch`, gateway and discoverable class decorators count as decorated.
+Any Vela class decorator implies `@Injectable()`: `@Module`, `@Controller`, `@Catch`, gateway,
+seeder and discoverable class decorators such as `@Processor` and `@LiveResolver` all count as
+decorated, so none of them needs a stacked `@Injectable()`. Stack `@Injectable({ scope })` only to
+declare a scope; a class decorator never overrides one.
 
 ## Unresolved dependencies
 

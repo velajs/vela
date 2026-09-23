@@ -21,7 +21,7 @@ Unfiltered exceptions render the same way from handlers, middleware, and raw Hon
 
 ## Exception filters
 
-`@Catch(...ErrorTypes)` + an `ExceptionFilter` intercepts matching errors. Zero args = catch-all. Apply with `@UseFilters` (controller/method) or globally via `defineProvider(APP_FILTER, { useClass: X })`:
+`@Catch(...ErrorTypes)` + an `ExceptionFilter` intercepts matching errors. Zero args = catch-all. Apply with `@UseFilters` (controller/method) or globally with a `{ provide: APP_FILTER, useClass: X }` provider:
 
 ```ts
 import { Catch, ExceptionFilter, ExecutionContext, HttpException } from '@velajs/vela';

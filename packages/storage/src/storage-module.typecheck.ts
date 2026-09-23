@@ -13,6 +13,11 @@ export function verifyStorageFactoryDependencies(): void {
       return memoryDriver();
     },
   });
+  StorageModule.forRootAsync({ useFactory: () => memoryDriver() });
   // @ts-expect-error A declared dependency tuple requires runtime injection tokens.
   StorageModule.forRootAsync<readonly [typeof SECRET]>({ useFactory: () => memoryDriver() });
+  StorageModule.forRootAsync({
+    // @ts-expect-error A factory with parameters names the tokens that supply them.
+    useFactory: (secret: string) => memoryDriver({ initial: { secret } }),
+  });
 }

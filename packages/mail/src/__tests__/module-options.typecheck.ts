@@ -9,9 +9,14 @@ MailModule.forRootAsync({
   useFactory: (config) => ({ from: config.from, transport: config.transport }),
 });
 MailModule.forRootAsync({ inject: [], useFactory: () => ({ from: 'a@example.com' }) });
-
-// @ts-expect-error factories must declare even an empty dependency tuple
 MailModule.forRootAsync({ useFactory: () => ({ from: 'a@example.com' }) });
+
+// @ts-expect-error a factory with parameters names the tokens that supply them
+MailModule.forRootAsync({ useFactory: (config: { from: string }) => ({ from: config.from }) });
+// @ts-expect-error a caller-only dependency tuple cannot supply runtime tokens
+MailModule.forRootAsync<readonly [typeof Config]>({
+  useFactory: () => ({ from: 'a@example.com' }),
+});
 MailModule.forRootAsync({
   inject: ['untyped-config'],
   // @ts-expect-error a raw string token cannot promise a typed configuration
@@ -28,7 +33,6 @@ MailModule.forRoot({
   queue: { name: 'mail', binding: 'MAIL_QUEUE', consumer: 'mail-production' },
 });
 MailModule.forRootAsync({
-  inject: [],
   useFactory: () => ({ from: 'a@example.com' }),
   queue: { binding: 'MAIL_QUEUE' },
 });

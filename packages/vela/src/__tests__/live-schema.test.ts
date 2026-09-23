@@ -68,7 +68,6 @@ describe('shared live query schemas', () => {
     });
 
     @LiveResolver()
-    @Injectable()
     class Resolver {
       private readonly multiplier = 2;
       @LiveQuery('count', definition, { tags: (args) => [`n:${args.n}`] })
@@ -133,7 +132,6 @@ describe('shared live query schemas', () => {
       }
     }
     @LiveResolver()
-    @Injectable()
     class Resolver {
       @UseInterceptors(Rewrite)
       @LiveQuery('count', definition, { tags: ['count'] })

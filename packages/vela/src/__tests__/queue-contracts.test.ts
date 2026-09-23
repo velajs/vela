@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
-import { Module, Injectable, VelaFactory } from '../index';
+import { Module, VelaFactory } from '../index';
 import type { StandardSchemaV1 } from '../index';
 import {
   defineQueueJob,
@@ -37,7 +37,6 @@ describe('validated queue contracts', () => {
   it('keeps wire input across transport and parses output at the processor', async () => {
     const seen: number[] = [];
     @Processor('jobs')
-    @Injectable()
     class Consumer {
       @Process(count) handle(job: QueueJob<QueueJobOutput<typeof count>>) {
         seen.push(job.data.count);
@@ -105,14 +104,12 @@ describe('validated queue contracts', () => {
     });
     let finished = false;
     @Processor('jobs')
-    @Injectable()
     class Broken {
       @Process() run() {
         throw new Error('failed');
       }
     }
     @Processor('jobs')
-    @Injectable()
     class Slow {
       @Process() async run() {
         await barrier;
@@ -173,7 +170,6 @@ it('runs an async Zod transform once per producer and consumer boundary', async 
     }),
   );
   const seen: number[] = [];
-  @Injectable()
   @Processor('transform')
   class Consumer {
     @Process(definition) handle(job: QueueJob<QueueJobOutput<typeof definition>>) {

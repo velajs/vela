@@ -1,3 +1,4 @@
+import type { CheckedProviders, Provider, ProviderDefinition, Type } from '../container/types';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import type { Constructor, DynamicModule, ModuleMetadata, ModuleOptions } from '../registry/types';
 
@@ -9,6 +10,25 @@ export function Global(): ClassDecorator {
   };
 }
 
+/**
+ * `@Module` options. `providers` is checked per element: a
+ * `{ provide, useValue | useClass | useExisting | useFactory }` literal must
+ * produce its token's value.
+ */
+export interface ModuleDecoratorOptions<
+  P extends readonly unknown[] = readonly Provider[],
+> extends Omit<ModuleOptions, 'providers'> {
+  providers?: CheckedProviders<P>;
+}
+
+// A list the compiler cannot read element by element, such as `flag ? [A] : []`,
+// holds classes and definitions; an array literal may also hold checked literals.
+export function Module(
+  options?: ModuleDecoratorOptions<readonly (Type | ProviderDefinition)[]>,
+): ClassDecorator;
+export function Module<const P extends readonly unknown[] = readonly Provider[]>(
+  options?: ModuleDecoratorOptions<P>,
+): ClassDecorator;
 export function Module(options: ModuleOptions = {}): ClassDecorator {
   return (target) => {
     MetadataRegistry.setModuleOptions(target as unknown as Constructor, {

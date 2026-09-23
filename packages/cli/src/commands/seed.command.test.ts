@@ -1,5 +1,5 @@
 import { PassThrough } from 'node:stream';
-import { Injectable, Module, VelaFactory } from '@velajs/vela';
+import { Module, VelaFactory } from '@velajs/vela';
 import { Seeder, SeederModule } from '@velajs/vela/seeder';
 import { Cli } from 'clipanion';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -85,7 +85,6 @@ describe('seeder application lifetime', () => {
   it('preserves seeder failures and continue-on-error while disposing once', async () => {
     const calls: string[] = [];
     @Seeder({ order: 0 })
-    @Injectable()
     class Failing {
       run() {
         calls.push('fail');
@@ -93,7 +92,6 @@ describe('seeder application lifetime', () => {
       }
     }
     @Seeder({ order: 1 })
-    @Injectable()
     class Next {
       run() {
         calls.push('next');

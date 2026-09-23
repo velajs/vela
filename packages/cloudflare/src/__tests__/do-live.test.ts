@@ -196,7 +196,6 @@ describe('live queries inside the Durable Object', () => {
 
   function makeModule(todos: Array<{ id: string; text: string }>) {
     @LiveResolver()
-    @Injectable()
     class TodoLive {
       @LiveQuery('todos.list', todoList, { tags: ['crud:todos'] })
       list() {

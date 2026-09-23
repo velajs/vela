@@ -52,7 +52,9 @@ const erased: Token = count;
 defineProvider(erased, { useValue: 'bad' });
 // @ts-expect-error Request cache writes cannot use an erased generic.
 container.setRequestInstance<Token>(count, 'bad');
-// @ts-expect-error Module arrays cannot accept unchecked provider literals.
+// A literal whose value matches its token is a provider.
+Module({ providers: [{ provide: count, useValue: 1 }] });
+// @ts-expect-error A literal's value must match its token.
 Module({ providers: [{ provide: count, useValue: 'bad' }] });
 // @ts-expect-error Runtime injection tokens cannot be replaced by a generic tuple.
 defineProvider<typeof label, readonly [typeof count]>(label, {

@@ -74,7 +74,7 @@ imports: [
 
 ### Pattern B — DI'd plugin construction
 
-`forRootAsync` requires an explicit `inject` tuple (use `inject: []` when there are no dependencies), so factory parameter types always have matching runtime tokens. It lets Vela services participate in your Better Auth configuration. On Workers, inject the framework `ENV` from `@velajs/vela`: `createCloudflareWorker(AppModule)` seeds the native event environment before DI factories run, and `wrangler types` types its bindings.
+`forRootAsync` types the factory's parameters from its `inject` tuple, so they always have matching runtime tokens; a factory without parameters may omit `inject`. It lets Vela services participate in your Better Auth configuration. On Workers, inject the framework `ENV` from `@velajs/vela`: `createCloudflareWorker(AppModule)` seeds the native event environment before DI factories run, and `wrangler types` types its bindings.
 
 ```ts
 imports: [
@@ -256,12 +256,11 @@ If you deploy to Cloudflare Workers, smoke-test your bundle for `node:` imports.
 Set `mountHandler: false` and mount the catch-all yourself if you need a base path other than `/api/auth`:
 
 ```ts
-import { Controller, All, Req, Inject, Injectable } from '@velajs/vela';
+import { Controller, All, Req, Inject } from '@velajs/vela';
 import { BetterAuthService, Public } from '@velajs/better-auth';
 
 @Public(true)
 @Controller('/auth')
-@Injectable()
 class CustomCatchallController {
   constructor(@Inject(BetterAuthService) private auth: BetterAuthService) {}
   @All('/*') handle(@Req() c: Context) { return this.auth.handler(c.req.raw); }

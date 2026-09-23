@@ -11,7 +11,6 @@ import {
   UseGuards,
   UseInterceptors,
   UsePipes,
-  defineProvider,
 } from '@velajs/vela';
 import type {
   ArgumentMetadata,
@@ -91,7 +90,6 @@ export class EnvelopeInterceptor implements NestInterceptor {
 }
 
 @Catch(LabFailure)
-@Injectable()
 export class LabErrorFilter implements ExceptionFilter {
   catch(exception: LabFailure, _context: ExecutionContext) {
     return {
@@ -157,9 +155,9 @@ class LabController {
     EnvelopeInterceptor,
     LabErrorFilter,
     LabLifecycle,
-    defineProvider(LAB_CONFIG, { useValue: { mode: 'real' } }),
+    { provide: LAB_CONFIG, useValue: { mode: 'real' } },
     // Each compiled module records its own lifecycle.
-    defineProvider(LIFECYCLE_LOG, { useFactory: () => [], inject: [] }),
+    { provide: LIFECYCLE_LOG, useFactory: () => [] },
   ],
   controllers: [LabController],
 })

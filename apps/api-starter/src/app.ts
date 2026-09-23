@@ -8,7 +8,6 @@ import {
   ENV,
   Get,
   InjectEnv,
-  Injectable,
   Module,
   WebSocketGateway,
   createOpenApiDocument,
@@ -111,7 +110,6 @@ class OpenApiController {
 }
 
 @LiveResolver()
-@Injectable()
 class TodoQueries {
   constructor(@InjectEnv() private readonly native: VelaEnv) {}
   @LiveQuery('todos.list', todoList, { tags: ['crud:todos'] })

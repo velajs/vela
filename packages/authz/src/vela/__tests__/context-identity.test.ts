@@ -5,6 +5,7 @@ import {
   getTrustedRequestIdentity,
   setTrustedRequestIdentity,
   clearTrustedRequestIdentity,
+  Reflector,
   type ExecutionContext,
 } from '@velajs/vela';
 import { createAuthz } from '../../authz';
@@ -83,12 +84,16 @@ it('requires explicit HTTP backing for custom contexts and observes identity inv
   const ctx = { ...context({}, container), getType: () => 'graphql', getRequest: () => request };
   RequirePermission(['read'])(ctx.getClass());
   expect(getContextIdentity(ctx)).toBeUndefined();
-  await expect(new PermissionGuard().canActivate(ctx)).rejects.toThrow('Access denied');
+  await expect(new PermissionGuard(new Reflector()).canActivate(ctx)).rejects.toThrow(
+    'Access denied',
+  );
   bindTrustedRequestContext(ctx, request);
   expect(getContextIdentity(ctx)?.principal.subject).toBe('alice');
-  await expect(new PermissionGuard().canActivate(ctx)).resolves.toBe(true);
+  await expect(new PermissionGuard(new Reflector()).canActivate(ctx)).resolves.toBe(true);
   replace = true;
-  await expect(new PermissionGuard().canActivate(ctx)).rejects.toThrow('Access denied');
+  await expect(new PermissionGuard(new Reflector()).canActivate(ctx)).rejects.toThrow(
+    'Access denied',
+  );
   clearTrustedRequestIdentity(request);
   expect(getContextIdentity(ctx)).toBeUndefined();
 });
@@ -146,5 +151,7 @@ it('denies a WebSocket identity replacement while an async permission is being r
   );
   const ctx = context(data, container);
   RequirePermission(['posts:write'])(ctx.getClass());
-  await expect(new PermissionGuard().canActivate(ctx)).rejects.toThrow('Access denied');
+  await expect(new PermissionGuard(new Reflector()).canActivate(ctx)).rejects.toThrow(
+    'Access denied',
+  );
 });

@@ -1,4 +1,4 @@
-import { Inject, Injectable, Optional, type Type } from '@velajs/vela';
+import { Inject, Optional, type Type } from '@velajs/vela';
 import { Process, Processor, type QueueJob } from '@velajs/vela/queue';
 import { MailError } from './mail.error';
 import {
@@ -24,7 +24,6 @@ import { reparseBuiltWire } from './wire';
  */
 export function createMailSendProcessor(queueName: string): Type {
   @Processor(queueName)
-  @Injectable()
   class MailSendProcessor {
     constructor(
       @Optional() @Inject(MAIL_TRANSPORT) private readonly transport: MailTransport | undefined,

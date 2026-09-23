@@ -13,9 +13,11 @@ import type {
   InferToken,
   InferTokens,
   InjectionToken,
+  Provider,
   ProviderDefinition,
   Token,
   Type,
+  FactoryInject,
 } from '../container/types';
 
 export type {
@@ -24,6 +26,7 @@ export type {
   InferToken,
   InferTokens,
   InjectionToken,
+  Provider,
   ProviderDefinition,
   Token,
   Type,
@@ -100,17 +103,14 @@ export type ModuleImport = Type | DynamicModule | ForwardRef;
  * });
  * ```
  *
- * Factories always declare their runtime dependency tuple. Use `inject: []`
- * when there are no dependencies; a type argument cannot supply runtime values.
+ * A factory with parameters declares their runtime dependency tuple; a type
+ * argument cannot supply runtime values. A factory without parameters may
+ * omit `inject`.
  */
-export interface AsyncModuleOptions<
-  T = unknown,
-  Inject extends readonly Token[] = readonly Token[],
-> {
+export type AsyncModuleOptions<T = unknown, Inject extends readonly Token[] = readonly Token[]> = {
   imports?: ModuleImport[];
-  inject: Inject;
   useFactory: (...args: InferTokens<Inject>) => T | Promise<T>;
-}
+} & FactoryInject<Inject>;
 
 export interface DynamicModule {
   module: Type;
@@ -126,7 +126,8 @@ export interface DynamicModule {
    */
   key?: string;
   imports?: ModuleImport[];
-  providers?: Array<Type | ProviderDefinition>;
+  /** Classes, definitions and literals; the module loader checks literals when it loads. */
+  providers?: Provider[];
   controllers?: Type[];
   exports?: Token[];
   global?: boolean;
@@ -140,7 +141,7 @@ export interface DynamicModule {
 }
 
 export interface ModuleOptions {
-  providers?: Array<Type | ProviderDefinition>;
+  providers?: readonly Provider[];
   controllers?: Type[];
   imports?: ModuleImport[];
   exports?: Token[];
@@ -150,7 +151,7 @@ export interface ModuleOptions {
 }
 
 export interface ModuleMetadata {
-  providers: Array<Type | ProviderDefinition>;
+  providers: readonly Provider[];
   controllers: Type[];
   imports: ModuleImport[];
   exports: Token[];

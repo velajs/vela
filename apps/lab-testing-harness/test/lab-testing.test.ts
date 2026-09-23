@@ -52,7 +52,6 @@ describe('Lab testing harness consumer project', () => {
       .useClass(FakeProbeClient)
       .overrideProvider(LAB_CONFIG)
       .useFactory({
-        inject: [],
         factory: () => ({ mode: 'factory' }) satisfies LabConfig,
       })
       .compile();

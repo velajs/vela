@@ -19,6 +19,7 @@ import { ModuleLoader } from '../module/module-loader';
 import { ROOT_MODULE } from '../module/root-module';
 import type { DynamicModule } from '../registry/types';
 import { bindAppProviders } from '../pipeline/app-providers';
+import { Reflector } from '../pipeline/reflector';
 import {
   APP_EXCEPTION_HANDLER,
   APP_FILTER,
@@ -90,6 +91,10 @@ export async function bootstrap(
   );
   container.markGlobalToken(DiscoveryService);
 
+  // Stateless metadata reader for guards and interceptors, as in Nest.
+  container.register(Reflector);
+  container.markGlobalToken(Reflector);
+
   for (const t of [
     APP_GUARD,
     APP_PIPE,
@@ -108,7 +113,6 @@ export async function bootstrap(
   // instead of materializing a phantom context.
   container.register(
     defineProvider(REQUEST_CONTEXT, {
-      inject: [],
       scope: Scope.REQUEST,
       useFactory: () => {
         throw new Error(
@@ -122,7 +126,6 @@ export async function bootstrap(
 
   container.register(
     defineProvider(EXECUTION_LIFETIME, {
-      inject: [],
       scope: Scope.REQUEST,
       useFactory: () => {
         throw new Error('EXECUTION_LIFETIME can only be resolved inside a managed invocation');

@@ -2,7 +2,9 @@ import {
   Container,
   type DynamicModule,
   defineModule,
+  type FactoryInject,
   type InferTokens,
+  type ModuleImport,
   defineProvider,
   type ProviderDefinition,
   stableHash,
@@ -67,10 +69,12 @@ export interface MailModuleOptions {
 /** Options an async factory resolves; structural contributions stay at the call site. */
 export type MailModuleFactoryOptions = Omit<MailModuleOptions, 'queue' | 'inbound'>;
 
-/** Deferred MailModule registration with tuple-inferred injected dependencies. */
-export interface MailModuleAsyncOptions<Inject extends readonly Token[] = readonly Token[]> {
-  inject: Inject;
-  imports?: DynamicModule['imports'];
+/**
+ * Deferred MailModule registration with tuple-inferred injected dependencies.
+ * A factory without parameters may omit `inject`.
+ */
+export type MailModuleAsyncOptions<Inject extends readonly Token[] = readonly Token[]> = {
+  imports?: ModuleImport[];
   useFactory: (
     ...deps: InferTokens<Inject>
   ) => MailModuleFactoryOptions | Promise<MailModuleFactoryOptions>;
@@ -81,7 +85,7 @@ export interface MailModuleAsyncOptions<Inject extends readonly Token[] = readon
   isGlobal?: boolean;
   /** Optional label; configuration reference identity remains part of the key. */
   key?: string;
-}
+} & FactoryInject<Inject>;
 
 const referenceIds = new WeakMap<object, number>();
 const symbolReferenceIds = new Map<symbol, number>();
@@ -291,13 +295,11 @@ export class MailModule {
   static forRootAsync<const Inject extends readonly Token[] = readonly Token[]>(
     options: MailModuleAsyncOptions<Inject>,
   ): DynamicModule {
-    const { useFactory, inject, imports, key: explicitKey, ...structural } = options;
-    const key = registrationKey(asyncIdentity(options), explicitKey);
+    const { useFactory } = options;
+    const key = registrationKey(asyncIdentity(options), options.key);
     return {
       ...mailModuleHost.ConfigurableModuleClass.forRootAsync<Inject>({
-        ...structural,
-        inject,
-        ...(imports === undefined ? {} : { imports }),
+        ...options,
         useFactory: async (...deps: InferTokens<Inject>) => {
           const resolved = await useFactory(...deps);
           if ('queue' in resolved || 'inbound' in resolved) {

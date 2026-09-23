@@ -101,10 +101,10 @@ function invalidWiring(container: Container, moduleRef: ModuleRef, app: VelaAppl
   void asyncOptions;
   // @ts-expect-error Module provider arrays accept checked definitions, not erased plain objects.
   Module({ providers: [{ provide: count, useValue: 'wrong' }] });
+  // Nothing ties a DynamicModule literal to its token: the loader checks its shape at load.
   const dynamic: DynamicModule = {
     module: class {},
-    // @ts-expect-error Dynamic module lists enforce the same definition boundary.
-    providers: [{ provide: count, useValue: 'wrong' }],
+    providers: [{ provide: count, useValue: 'unchecked' }],
   };
   const checked = defineProvider(count, { useValue: 1 });
   const snapshots = container.getVisibleProviderSnapshots(count, 'owner');

@@ -149,7 +149,7 @@ describe('typed headless CRUD service', () => {
   it('can be supplied through an ordinary typed Vela provider', () => {
     const { service } = fixture();
     const token = new InjectionToken<typeof service>('orders-service');
-    const provider = defineProvider(token, { useFactory: () => service, inject: [] });
+    const provider = defineProvider(token, { useFactory: () => service });
     const container = new Container();
     container.register(provider);
     expect(container.resolve(token)).toBe(service);

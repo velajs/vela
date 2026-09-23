@@ -7,8 +7,10 @@ import {
   describeToken,
   getProviderOptions,
   InjectionToken,
+  isProviderDefinition,
+  toProviderDefinition,
 } from '../container/types';
-import type { ProviderDefinition, Token, TypedToken, Type } from '../container/types';
+import type { Provider, ProviderDefinition, Token, TypedToken, Type } from '../container/types';
 import type { RouteManager } from '../http/route.manager';
 import {
   APP_FILTER,
@@ -17,9 +19,10 @@ import {
   APP_MIDDLEWARE,
   APP_PIPE,
 } from '../pipeline/tokens';
+import { isDecoratedClass, planConstructor } from '../container/decorators';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import { getOrCreateArray } from '../registry/util';
-import type { DynamicModule, ModuleImport } from '../registry/types';
+import type { ComponentInstance, DynamicModule, ModuleImport } from '../registry/types';
 import { getModuleMetadata, isModule } from './decorators';
 import { LazyModuleManager } from './lazy-modules';
 import { MiddlewareBuilder } from './middleware';
@@ -41,6 +44,8 @@ const APP_TOKENS = new Set<Token>([
   APP_FILTER,
   APP_MIDDLEWARE,
 ]);
+
+const ENHANCER_TYPES = ['guard', 'pipe', 'interceptor', 'filter'] as const;
 
 /** What the loader records per lazy module instance (see LazyModuleManager). */
 export interface LazyModuleGroupSpec {
@@ -104,6 +109,9 @@ export class ModuleLoader {
   // moduleId → the DynamicModule that first created the instance, compared
   // against later imports of the same (class, key).
   #definitionByModuleId = new Map<string, DynamicModule>();
+  // moduleId → classes whose @Use* and parameter-pipe class references the
+  // module owns: its module class, class providers and controllers.
+  #enhancerHosts = new Map<string, Set<Type>>();
 
   constructor(
     private container: Container,
@@ -112,6 +120,8 @@ export class ModuleLoader {
 
   load(rootModule: Type | DynamicModule): void {
     this.processModule(rootModule);
+    // After every module loaded, so visibility includes all global exports.
+    this.registerEnhancers();
 
     for (const controller of this.#collectedControllers) {
       for (const moduleId of this.#controllerOwners.get(controller) ?? []) {
@@ -189,7 +199,7 @@ export class ModuleLoader {
     let moduleClass: Type;
     let extraImports: ModuleImport[] = [];
     let extraControllers: Type[] = [];
-    let extraProviders: Array<Type | ProviderDefinition> = [];
+    let extraProviders: Provider[] = [];
     let extraExports: Token[] = [];
     let key: string = DEFAULT_MODULE_KEY;
 
@@ -211,6 +221,7 @@ export class ModuleLoader {
       for (const controller of extraControllers) {
         if (this.registerController(controller, moduleId)) {
           this.#moduleControllers.get(moduleId)?.add(controller);
+          this.#enhancerHosts.get(moduleId)?.add(controller);
         }
         const group = this.#lazyGroups.get(moduleId);
         if (group && !group.tokens.includes(controller)) group.tokens.push(controller);
@@ -239,14 +250,20 @@ export class ModuleLoader {
     }
 
     const allImports = [...metadata.imports, ...extraImports];
-    const allProviders = [...metadata.providers, ...extraProviders];
+    const listedProviders = [...metadata.providers, ...extraProviders];
     const allControllers = [...metadata.controllers, ...extraControllers];
     const allExports = [...metadata.exports, ...extraExports];
     const moduleName = moduleClass.name || 'AnonModule';
     assertDefinedEntries(moduleName, 'imports', allImports);
-    assertDefinedEntries(moduleName, 'providers', allProviders);
+    assertDefinedEntries(moduleName, 'providers', listedProviders);
     assertDefinedEntries(moduleName, 'controllers', allControllers);
     assertDefinedEntries(moduleName, 'exports', allExports);
+    // Literals become checked definitions before anything reads their token.
+    const allProviders = listedProviders.map((provider, index) =>
+      typeof provider === 'function' || isProviderDefinition(provider)
+        ? provider
+        : toProviderDefinition(provider, `${moduleName}.providers[${index}]`),
+    );
 
     if (isDynamicModule(moduleClassOrDynamic)) {
       this.#definitionByModuleId.set(moduleId, moduleClassOrDynamic);
@@ -296,6 +313,20 @@ export class ModuleLoader {
 
       this.warnOnMixedDefaultAndKeyed(moduleClass.name, keysByClassInImports);
 
+      // `exports: [ImportedModule]` re-exports what that module exports.
+      const moduleExports = allExports.flatMap((exported) => {
+        const keys = typeof exported === 'function' && keysByClassInImports.get(exported);
+        if (!keys) return [exported];
+        return [...keys].flatMap((key) => {
+          const tokens = this.getCachedExports(exported, key);
+          if (tokens) return [...tokens];
+          throw new Error(
+            `${moduleName} re-exports ${exported.name}, which it imports through a forwardRef ` +
+              'cycle, so its exports are not known yet. Export those tokens directly.',
+          );
+        });
+      });
+
       // Build the ModuleScope BEFORE registering providers so the visibility
       // check sees the local-provider set as we register.
       const localProviders = new Set<Token>();
@@ -324,12 +355,18 @@ export class ModuleLoader {
       // metadata would stack another copy on every bootstrap in the isolate.
       const controllers = new Set<Type>(allControllers);
       this.#moduleControllers.set(moduleId, controllers);
+      const hosts = new Set<Type>([moduleClass, ...allControllers]);
+      for (const provider of allProviders) {
+        const host = typeof provider === 'function' ? provider : provider.useClass;
+        if (host) hosts.add(host);
+      }
+      this.#enhancerHosts.set(moduleId, hosts);
 
       this.container.registerScope({
         moduleId,
         localProviders,
         importedModules: importedModuleIds,
-        exportedTokens: new Set<Token>(allExports),
+        exportedTokens: new Set<Token>(moduleExports),
         isGlobal,
         lazy: isLazy,
         moduleClass,
@@ -354,6 +391,14 @@ export class ModuleLoader {
         if (isLazy) lazyTokens.push(controller);
       }
 
+      // Like Nest, the module class is a provider of its own bucket, built
+      // through DI after its providers and given their lifecycle hooks.
+      if (!this.container.hasInScope(moduleClass, moduleId)) {
+        this.container.register(moduleClass, moduleId);
+      }
+      this.#registeredProviders.push(moduleClass);
+      if (isLazy) lazyTokens.push(moduleClass);
+
       if (isLazy) {
         this.#lazyModuleIds.add(moduleId);
         this.#lazyGroups.set(moduleId, {
@@ -365,7 +410,12 @@ export class ModuleLoader {
 
       this.markProcessed(moduleClass, key);
 
-      const exports = this.buildExportSet(moduleName, allExports, allProviders, importedProviders);
+      const exports = this.buildExportSet(
+        moduleName,
+        moduleExports,
+        allProviders,
+        importedProviders,
+      );
       this.cacheExports(moduleClass, key, exports);
 
       if (isGlobal) {
@@ -374,12 +424,9 @@ export class ModuleLoader {
         }
       }
 
-      // Call configure() if the module implements NestModule. The module is
-      // resolved through the container so it can have its own DI dependencies.
+      // Call configure() if the module implements NestModule, on the module
+      // instance that later receives its lifecycle hooks.
       if (implementsNestModule(moduleClass)) {
-        if (!this.container.hasInScope(moduleClass, moduleId)) {
-          this.container.register(moduleClass, moduleId);
-        }
         const instance = this.container.resolve(moduleClass, moduleId);
         const builder = new MiddlewareBuilder();
         instance.configure(builder);
@@ -402,6 +449,54 @@ export class ModuleLoader {
     this.container.register(controller, moduleId);
     this.#collectedControllers.add(controller);
     return true;
+  }
+
+  /**
+   * Register every guard, pipe, interceptor and filter class a module's
+   * classes reference in `@Use*` or parameter decorators, in that module's
+   * bucket, unless one is already visible there. Each then resolves through
+   * the container from its declaring module, like a provider: once per scope,
+   * with its dependencies, in its module's lazy group.
+   */
+  private registerEnhancers(): void {
+    for (const [moduleId, hosts] of this.#enhancerHosts) {
+      for (const host of hosts) {
+        const references: ComponentInstance[] = ENHANCER_TYPES.flatMap((type) =>
+          MetadataRegistry.getDeclaredComponents(type, host),
+        );
+        for (const params of MetadataRegistry.getParameters(host).values()) {
+          for (const { pipes = [] } of params) references.push(...pipes);
+        }
+        for (const enhancer of references) {
+          if (typeof enhancer !== 'function' || this.isVisible(enhancer, moduleId)) continue;
+          // An undecorated subclass inherits its parent's constructor plan. A
+          // class with no constructor metadata at all is built with `new`, as
+          // before, but once per scope.
+          this.container.register(
+            isDecoratedClass(enhancer)
+              ? enhancer
+              : defineProvider(
+                  enhancer,
+                  planConstructor(enhancer).length
+                    ? { useClass: enhancer }
+                    : { useFactory: () => new enhancer() },
+                ),
+            moduleId,
+          );
+          this.#registeredProviders.push(enhancer);
+          this.#lazyGroups.get(moduleId)?.tokens.push(enhancer);
+        }
+      }
+    }
+  }
+
+  // An ambiguous token is visible too: resolution reports it.
+  private isVisible(token: Type, moduleId: string): boolean {
+    try {
+      return this.container.getResolvedScope(token, moduleId) !== undefined;
+    } catch {
+      return true;
+    }
   }
 
   private warnOnMixedDefaultAndKeyed(

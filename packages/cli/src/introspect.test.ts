@@ -39,7 +39,6 @@ async function fixtureApp(): Promise<VelaApplication> {
   class LazyThing {}
 
   @Processor('email')
-  @Injectable()
   class EmailProcessor {
     @Process('welcome')
     welcome() {}

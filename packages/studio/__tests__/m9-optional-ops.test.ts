@@ -639,7 +639,6 @@ describe('flags ops (@velajs/studio/flags)', () => {
 // ===========================================================================
 
 @Processor('email')
-@Injectable()
 class EmailProcessor {
   @Process()
   handle() {}

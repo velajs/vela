@@ -7,7 +7,6 @@ import {
   Controller,
   Post,
   Inject,
-  Injectable,
   SignedInvocation,
   InternalDispatcher,
   URL_SIGNING_SECRET,
@@ -65,7 +64,6 @@ class InvController {
 }
 
 @Processor('reenter-q')
-@Injectable()
 class ReentryProcessor {
   constructor(@Inject(InternalDispatcher) private readonly dispatcher: InternalDispatcher) {}
 

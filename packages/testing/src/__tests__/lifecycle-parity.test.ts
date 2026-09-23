@@ -159,7 +159,7 @@ it('keeps simultaneous applications and asynchronous override factories isolated
     ['first', 'second'].map((name) =>
       Test.createTestingModule({ imports: [DatabaseModule] })
         .overrideProvider(DATABASE)
-        .useFactory({ inject: [], factory: async () => ({ name }) })
+        .useFactory({ factory: async () => ({ name }) })
         .compile(),
     ),
   );

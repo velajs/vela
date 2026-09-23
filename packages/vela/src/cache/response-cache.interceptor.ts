@@ -22,8 +22,10 @@ export function CacheResponse(options: CacheResponseOptions = {}) {
 
 @Injectable()
 export class ResponseCacheInterceptor implements NestInterceptor {
-  private readonly reflector = new Reflector();
-  constructor(private readonly cache: ResponseCacheService) {}
+  constructor(
+    private readonly cache: ResponseCacheService,
+    private readonly reflector: Reflector,
+  ) {}
 
   async intercept(context: ExecutionContext, next: CallHandler): Promise<unknown> {
     if (context.getType() !== 'http') return next.handle();

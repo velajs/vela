@@ -9,17 +9,20 @@ import {
 } from '../container/types';
 
 // Resolve a class/token through the container if registered, otherwise treat
-// the input as a plain instance. Used by RouteManager and HandlerExecutor to
-// materialize middleware, guards, pipes, interceptors, and filters per request.
+// the input as a plain instance. Used by RouteManager, HandlerExecutor and the
+// other dispatchers to materialize middleware, guards, pipes, interceptors,
+// and filters. The module loader registers every guard, pipe, interceptor and
+// filter class a module's classes reference in `@Use*` or parameter
+// decorators, so those resolve through the container from their module, once
+// per scope, like any provider.
 //
-// When the input is a class that is NOT registered in the container, we fall
-// back to `new clazz()` so plain parameterless helper classes (e.g. mixin
-// guards, ad-hoc `@UseGuards(LocalGuard)` references) keep working. That
-// fallback is unsafe for classes whose CONSTRUCTOR EXPECTS DEPENDENCIES,
-// because zero-arg construction would leave every injected slot `undefined`
-// — a silent failure mode that surfaces later as
-// `Cannot read properties of undefined (reading '...')` deep inside the
-// class. For those classes we throw a loud, actionable error instead.
+// A class that is NOT registered anywhere (an `app.useGlobalGuards(Class)`
+// entry, a hand-built container) falls back to `new clazz()` so plain
+// parameterless helper classes keep working. That fallback is unsafe for
+// classes whose CONSTRUCTOR EXPECTS DEPENDENCIES, because zero-arg
+// construction would leave every injected slot `undefined` — a silent failure
+// mode that surfaces later deep inside the class. For those classes we throw
+// a loud, actionable error instead.
 //
 // We treat "expects dependencies" as: the planned constructor has a parameter
 // that is not `@Optional()` (an `@Inject(...)` token or an emitted
@@ -51,10 +54,9 @@ export function instantiate(
     const optionalToken = unregisteredOptionalToken(clazz);
     if (optionalToken !== undefined) {
       throw new Error(
-        `Cannot instantiate ${clazz.name} synchronously: its \`@Optional()\` constructor ` +
-          `parameter injects ${describeToken(optionalToken)}, which a bare \`new\` would skip ` +
-          `even when it is registered. Add it to a module's providers (and export it if used ` +
-          `outside its declaring module), or resolve it asynchronously.`,
+        `Cannot instantiate ${clazz.name} synchronously: its @Optional() parameter injects ` +
+          `${describeToken(optionalToken)}, which \`new\` would skip. Add it to a module's ` +
+          'providers, or resolve it asynchronously.',
       );
     }
     return new clazz();
@@ -96,14 +98,9 @@ function unregisteredOptionalToken(clazz: Type<unknown>): Token | undefined {
 
 function missingProviderError(clazz: Type<unknown>): Error {
   return new Error(
-    `Cannot instantiate ${clazz.name}: the class declares constructor ` +
-      `dependencies (\`@Inject(...)\` parameters or typed constructor ` +
-      `parameters), but no matching provider is registered in the ` +
-      `container. Add it to a module's providers (and export it if used ` +
-      `outside its declaring module) instead of relying on the bare ` +
-      `\`new\` fallback, which would construct the class without ` +
-      `honouring its dependency-injection metadata and leave every ` +
-      `injected field \`undefined\`.`,
+    `Cannot instantiate ${clazz.name}: it declares constructor dependencies but is not ` +
+      "registered as a provider, and `new` would leave them undefined. Add it to a module's " +
+      'providers.',
   );
 }
 

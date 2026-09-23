@@ -127,6 +127,7 @@ class CheckedProvider<T> {
     readonly provide: Token,
     options: ProviderOptions<T>,
   ) {
+    assertFactoryInject(provide, options.useFactory, options.inject);
     this.#options = Object.freeze({
       ...options,
       provide,
@@ -180,6 +181,18 @@ export function isProviderDefinition(value: unknown): value is ProviderDefinitio
   return CheckedProvider.is(value);
 }
 
+/**
+ * @internal `inject` may be omitted only for a factory that takes no
+ * arguments; otherwise its parameters would silently receive `undefined`.
+ */
+export function assertFactoryInject(provide: Token, useFactory: unknown, inject: unknown): void {
+  if (typeof useFactory === 'function' && useFactory.length > 0 && inject === undefined) {
+    throw new Error(
+      `${describeToken(provide)}: useFactory declares parameters but no inject tokens.`,
+    );
+  }
+}
+
 type ProviderStrategy<T, Inject extends readonly DependencyToken[]> =
   | {
       useValue: NoInfer<T>;
@@ -202,13 +215,22 @@ type ProviderStrategy<T, Inject extends readonly DependencyToken[]> =
       useFactory?: never;
       inject?: never;
     }
-  | {
+  | ({
       useFactory: (...dependencies: InferTokens<Inject>) => NoInfer<T> | Promise<NoInfer<T>>;
-      inject: Inject;
       useValue?: never;
       useClass?: never;
       useExisting?: never;
-    };
+    } & FactoryInject<Inject>);
+
+/**
+ * The `inject` key of a factory. A factory without parameters may omit it,
+ * unless an explicit dependency tuple says it has parameters. Intersected
+ * with one `useFactory` type, so both members share it: the factory's result
+ * stays contextually typed and keeps its literal types.
+ */
+export type FactoryInject<Inject extends readonly unknown[]> =
+  | { inject: Inject }
+  | ([] extends Inject ? { inject?: never } : never);
 
 /** Infer factory dependencies from tokens; all strategies must produce the provided token's value. */
 /** @internal Erasing an invariant token removes the capability to bind a value. */
@@ -224,6 +246,85 @@ export function defineProvider<
   options: ProviderStrategy<InferToken<K>, Inject> & { scope?: Scope },
 ): ProviderDefinition<InferToken<K>> {
   return new CheckedProvider(provide, options);
+}
+
+/**
+ * A Nest-style `{ provide, useX }` literal as a `DynamicModule` or computed
+ * module contributions list it. Nothing ties its value to `provide` here, so
+ * the module loader checks its shape when the module loads. `@Module` checks
+ * each literal against its token instead (see {@link CheckedProviders}).
+ */
+export type ProviderLiteral =
+  | { provide: Token; useValue: unknown; scope?: Scope }
+  | { provide: Token; useClass: Type; scope?: Scope }
+  | { provide: Token; useExisting: Token; scope?: Scope }
+  | {
+      provide: Token;
+      useFactory: (...args: never[]) => unknown;
+      inject?: readonly DependencyToken[];
+      scope?: Scope;
+    };
+
+/** An entry of a module's `providers`. */
+export type Provider = Type | ProviderDefinition | ProviderLiteral;
+
+/**
+ * A literal whose strategy produces the value of its token. A literal factory
+ * takes no parameters: a factory with dependencies uses `defineProvider`,
+ * which infers them from `inject`.
+ */
+export type TypedProviderLiteral<K extends Token> = {
+  provide: K & AuthoringToken<K>;
+  scope?: Scope;
+} & ProviderStrategy<InferToken<K>, readonly []>;
+
+type CheckedProviderEntry<P> = P extends Type | ProviderDefinition
+  ? P
+  : P extends { provide: infer K extends Token }
+    ? P extends TypedProviderLiteral<K>
+      ? P
+      : TypedProviderLiteral<K>
+    : Provider;
+
+/** A `providers` list checked per element; every literal is a {@link TypedProviderLiteral}. */
+export type CheckedProviders<P extends readonly unknown[]> = {
+  [I in keyof P]: CheckedProviderEntry<P[I]>;
+};
+
+function isToken(value: unknown): value is Token {
+  return (
+    typeof value === 'function' ||
+    typeof value === 'string' ||
+    typeof value === 'symbol' ||
+    value instanceof InjectionTokenIdentity
+  );
+}
+
+const PROVIDER_STRATEGIES = ['useValue', 'useClass', 'useFactory', 'useExisting'] as const;
+
+/**
+ * @internal Check a literal as the module loader reads it (`where` names the
+ * list entry): a token and exactly one strategy of the right kind.
+ */
+export function toProviderDefinition(literal: ProviderLiteral, where: string): ProviderDefinition {
+  const provide: unknown = literal.provide;
+  const [strategy, ...others] = PROVIDER_STRATEGIES.filter((key) => key in literal);
+  const value: unknown = strategy && Reflect.get(literal, strategy);
+  if (
+    !isToken(provide) ||
+    !strategy ||
+    others.length > 0 ||
+    (strategy === 'useExisting'
+      ? !isToken(value)
+      : strategy !== 'useValue' && typeof value !== 'function')
+  ) {
+    throw new Error(
+      `${where}${isToken(provide) ? ` (${describeToken(provide)})` : ''} is not a provider: ` +
+        'use a class, defineProvider() or { provide } with one of useValue, useClass, ' +
+        'useFactory, useExisting.',
+    );
+  }
+  return new CheckedProvider(provide, literal);
 }
 
 export interface ProviderRegistration<T = unknown> {

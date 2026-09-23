@@ -1,4 +1,4 @@
-import { All, Controller, Inject, Injectable, Req, type Type } from '@velajs/vela';
+import { All, Controller, Inject, Req, type Type } from '@velajs/vela';
 import type { Context } from 'hono';
 import { BetterAuthService } from './better-auth.service';
 import { Public } from './decorators/public.decorator';
@@ -21,7 +21,6 @@ export function createBetterAuthCatchallController(basePath: string = '/api/auth
   const normalizedBasePath = normalizeBetterAuthBasePath(basePath);
   @Public(true)
   @Controller(normalizedBasePath)
-  @Injectable()
   class BetterAuthCatchallController {
     // Inject the service — its `.handler` getter triggers lazy construction
     // of the underlying betterAuth() instance on first access, AFTER any

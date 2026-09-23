@@ -655,7 +655,7 @@ export class Container {
 
   private registerTokenDefault(token: InjectionToken, factory: () => unknown): void {
     this.registerOptions(
-      { inject: [], provide: token, useFactory: factory, scope: token.options?.scope },
+      { provide: token, useFactory: factory, scope: token.options?.scope },
       ROOT_MODULE_ID,
     );
   }

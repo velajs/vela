@@ -408,7 +408,6 @@ describe('GraphQL adapter', () => {
       providers: [
         Resolver,
         defineProvider(VALUE, {
-          inject: [],
           scope: Scope.REQUEST,
           useFactory: async () => 'awaited',
         }),
