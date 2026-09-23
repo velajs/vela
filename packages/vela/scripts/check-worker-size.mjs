@@ -1,10 +1,23 @@
 #!/usr/bin/env node
 
+// Measures a reference Worker as Wrangler deploys it and holds it to a
+// committed byte budget. `--baseline <file>` names the budget (default:
+// packages/vela/worker-size.json); its `fixture` entry is relative to the
+// budget's directory, and `wrangler.worker-size.toml` sits next to the fixture.
+
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { dirname, relative, resolve, sep } from 'node:path';
+import { basename, dirname, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 
@@ -12,12 +25,15 @@ class GateFailure extends Error {}
 
 const require = createRequire(import.meta.url);
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
-const repositoryRoot = resolve(scriptDirectory, '..');
-const fixturePath = resolve(scriptDirectory, 'fixtures', 'worker-size-entry.ts');
-const wranglerConfigPath = resolve(scriptDirectory, 'fixtures', 'wrangler.worker-size.toml');
-const baselinePath = resolve(repositoryRoot, 'worker-size.json');
-const distDirectory = resolve(repositoryRoot, 'dist');
+const velaDirectory = resolve(scriptDirectory, '..');
 const update = process.argv.includes('--update');
+const baselineFlag = process.argv.indexOf('--baseline');
+const baselinePath =
+  baselineFlag === -1
+    ? resolve(velaDirectory, 'worker-size.json')
+    : resolve(process.argv[baselineFlag + 1] ?? '');
+const baselineDirectory = dirname(baselinePath);
+const baselineName = basename(baselinePath);
 const rawUploadLimitBytes = 64 * 1024 * 1024;
 const gzipUploadLimitBytes = 3 * 1024 * 1024;
 
@@ -27,6 +43,18 @@ function fail(message) {
 
 function kibibytes(bytes) {
   return `${(bytes / 1024).toFixed(1)} KiB`;
+}
+
+function exactBytes(count) {
+  return `${count.toLocaleString('en-US')} bytes`;
+}
+
+function readJson(path, description) {
+  try {
+    return JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    return fail(`${description} is missing or not valid JSON`);
+  }
 }
 
 function collectOutputFiles(directory) {
@@ -59,7 +87,32 @@ function resolveWranglerBin() {
   return resolve(dirname(manifestPath), binTarget);
 }
 
-function bundleWorker(outputDirectory, metafilePath) {
+/**
+ * The packages whose dist modules the budget names. An `excludedModules` entry
+ * is `dist/…` in the budget's own package, or `<package>/dist/…` in a
+ * dependency linked into its node_modules.
+ */
+function packageOf(entry, packages) {
+  const match = /^((?:@[^/]+\/)?[^/@][^/]*)\/(dist\/.*)$/u.exec(entry);
+  const name = entry.startsWith('dist/') ? packages.own : match?.[1];
+  const path = entry.startsWith('dist/') ? entry : match?.[2];
+  if (name === undefined || path === undefined) {
+    fail(
+      `${baselineName} field "excludedModules" must list paths that start with "dist/" or ` +
+        `"<package>/dist/"; got "${entry}"`,
+    );
+  }
+  let directory = packages.directories.get(name);
+  if (directory === undefined) {
+    const linked = resolve(baselineDirectory, 'node_modules', name);
+    if (!existsSync(linked)) fail(`${baselineName} names ${name}, which is not installed here`);
+    directory = realpathSync(linked);
+    packages.directories.set(name, directory);
+  }
+  return { directory, name, path };
+}
+
+function bundleWorker(wranglerConfigPath, outputDirectory, metafilePath) {
   const result = spawnSync(
     process.execPath,
     [
@@ -75,7 +128,7 @@ function bundleWorker(outputDirectory, metafilePath) {
       '--minify',
     ],
     {
-      cwd: repositoryRoot,
+      cwd: baselineDirectory,
       encoding: 'utf8',
       env: { ...process.env, CI: '1', WRANGLER_SEND_METRICS: 'false' },
       maxBuffer: 64 * 1024 * 1024,
@@ -99,9 +152,10 @@ function bundleWorker(outputDirectory, metafilePath) {
 }
 
 // esbuild names metafile inputs relative to Wrangler's project root, the
-// directory holding the Wrangler config. Returns the package's dist modules
-// in the bundle, as package-relative paths such as `dist/factory.js`.
-function bundledPackageModules(metafilePath) {
+// directory holding the Wrangler config. Returns the named packages' dist
+// modules in the bundle, as `dist/factory.js` for the budget's own package
+// and `@velajs/vela/dist/factory.js` for another one.
+function bundledPackageModules(metafilePath, wranglerConfigPath, packages) {
   let metafile;
   try {
     metafile = JSON.parse(readFileSync(metafilePath, 'utf8'));
@@ -110,34 +164,47 @@ function bundledPackageModules(metafilePath) {
   }
 
   const modules = new Set();
+  const found = new Set();
   for (const output of Object.values(metafile.outputs ?? {})) {
     for (const input of Object.keys(output.inputs ?? {})) {
       const inputPath = resolve(dirname(wranglerConfigPath), input);
-      if (inputPath.startsWith(`${distDirectory}${sep}`)) {
-        modules.add(relative(repositoryRoot, inputPath).split(sep).join('/'));
+      for (const [name, directory] of packages.directories) {
+        if (!inputPath.startsWith(`${directory}${sep}dist${sep}`)) continue;
+        const path = relative(directory, inputPath).split(sep).join('/');
+        modules.add(name === packages.own ? path : `${name}/${path}`);
+        found.add(name);
       }
     }
   }
 
   // A metafile whose paths no longer resolve would make every exclusion pass.
-  if (!modules.has('dist/factory.js')) {
-    fail('could not find dist/factory.js among the modules Wrangler bundled');
+  for (const name of packages.directories.keys()) {
+    if (!found.has(name)) {
+      fail(`could not find any ${name} dist module among the modules Wrangler bundled`);
+    }
   }
   return modules;
 }
 
-function measureWorker() {
-  if (!existsSync(resolve(repositoryRoot, 'dist', 'index.js'))) {
-    fail('dist/index.js is missing; run `pnpm build` first');
+function measureWorker(fixturePath, packages) {
+  for (const directory of packages.directories.values()) {
+    if (!existsSync(resolve(directory, 'dist', 'index.js'))) {
+      fail(
+        `${relative(process.cwd(), directory) || '.'}/dist/index.js is missing; run \`pnpm build\` first`,
+      );
+    }
   }
-  if (!existsSync(baselinePath)) fail('worker-size.json is missing');
+  const wranglerConfigPath = resolve(dirname(fixturePath), 'wrangler.worker-size.toml');
+  if (!existsSync(wranglerConfigPath)) {
+    fail(`${relative(baselineDirectory, wranglerConfigPath)} is missing next to the fixture`);
+  }
 
   const workDirectory = mkdtempSync(resolve(tmpdir(), 'vela-worker-size-'));
   const outputDirectory = resolve(workDirectory, 'bundle');
   const metafilePath = resolve(workDirectory, 'metafile.json');
 
   try {
-    bundleWorker(outputDirectory, metafilePath);
+    bundleWorker(wranglerConfigPath, outputDirectory, metafilePath);
     const outputPaths = collectOutputFiles(outputDirectory);
     if (outputPaths.length === 0 || !outputPaths.some((path) => path.endsWith('.js'))) {
       fail('Wrangler reported success but emitted no Worker JavaScript');
@@ -153,7 +220,7 @@ function measureWorker() {
       // zlib's default gzip level. Mirror both details so multi-module output
       // stays comparable to the deploy tool and Cloudflare limit.
       gzipBytes: gzipSync(Buffer.concat(files)).byteLength,
-      modules: bundledPackageModules(metafilePath),
+      modules: bundledPackageModules(metafilePath, wranglerConfigPath, packages),
       rawBytes: files.reduce((total, contents) => total + contents.byteLength, 0),
     };
   } finally {
@@ -162,41 +229,49 @@ function measureWorker() {
 }
 
 function main() {
-  const baseline = JSON.parse(readFileSync(baselinePath, 'utf8'));
-  const fixtureName = relative(repositoryRoot, fixturePath).split(sep).join('/');
-  if (baseline.fixture !== fixtureName) {
-    fail(`worker-size.json must describe ${fixtureName}`);
+  const baseline = readJson(baselinePath, baselineName);
+  const manifest = readJson(resolve(baselineDirectory, 'package.json'), 'package.json');
+  if (typeof baseline.fixture !== 'string' || baseline.fixture === '') {
+    fail(`${baselineName} field "fixture" must name the reference Worker`);
   }
+  const fixturePath = resolve(baselineDirectory, baseline.fixture);
+  const fixtureName = relative(baselineDirectory, fixturePath).split(sep).join('/');
+  if (!existsSync(fixturePath)) fail(`${baselineName} names a missing fixture, ${fixtureName}`);
 
   for (const field of ['rawBytes', 'gzipBytes', 'rawAllowanceBytes', 'gzipAllowanceBytes']) {
     if (!Number.isSafeInteger(baseline[field]) || baseline[field] < 0) {
-      fail(`worker-size.json field "${field}" must be a non-negative safe integer`);
+      fail(`${baselineName} field "${field}" must be a non-negative safe integer`);
     }
   }
   const excludedModules = baseline.excludedModules ?? [];
   if (
     !Array.isArray(excludedModules) ||
-    excludedModules.some((entry) => typeof entry !== 'string' || !entry.startsWith('dist/'))
+    excludedModules.some((entry) => typeof entry !== 'string')
   ) {
-    fail('worker-size.json field "excludedModules" must list paths that start with "dist/"');
+    fail(`${baselineName} field "excludedModules" must list module paths`);
   }
-  const staleExclusions = excludedModules.filter(
-    (entry) => !existsSync(resolve(repositoryRoot, entry)),
-  );
+  const packages = {
+    own: manifest.name,
+    directories: new Map([[manifest.name, baselineDirectory]]),
+  };
+  const exclusions = excludedModules.map((entry) => ({ entry, ...packageOf(entry, packages) }));
+  const staleExclusions = exclusions
+    .filter(({ directory, path }) => !existsSync(resolve(directory, path)))
+    .map(({ entry }) => entry);
   if (staleExclusions.length > 0) {
     fail(
-      `worker-size.json#excludedModules names paths the build no longer emits: ${staleExclusions.join(', ')}`,
+      `${baselineName}#excludedModules names paths the build no longer emits: ${staleExclusions.join(', ')}`,
     );
   }
 
-  const { gzipBytes, modules, rawBytes } = measureWorker();
+  const { gzipBytes, modules, rawBytes } = measureWorker(fixturePath, packages);
   const rawCeiling = baseline.rawBytes + baseline.rawAllowanceBytes;
   const gzipCeiling = baseline.gzipBytes + baseline.gzipAllowanceBytes;
 
   process.stdout.write(
-    `worker-size (${fixtureName}): ${kibibytes(rawBytes)} raw, ` +
-      `${kibibytes(gzipBytes)} gzipped; ceilings ${kibibytes(rawCeiling)} raw / ` +
-      `${kibibytes(gzipCeiling)} gzipped\n`,
+    `worker-size (${manifest.name} ${fixtureName}): ${exactBytes(rawBytes)} raw ` +
+      `(${kibibytes(rawBytes)}), ${exactBytes(gzipBytes)} gzipped (${kibibytes(gzipBytes)}); ` +
+      `ceilings ${kibibytes(rawCeiling)} raw / ${kibibytes(gzipCeiling)} gzipped\n`,
   );
 
   if (rawBytes > rawUploadLimitBytes) {
@@ -223,7 +298,7 @@ function main() {
   if (unexpectedModules.length > 0) {
     fail(
       `the reference Worker bundles ${unexpectedModules.join(', ')}, which ` +
-        'worker-size.json#excludedModules keeps out of a Worker that never uses them. ' +
+        `${baselineName}#excludedModules keeps out of a Worker that never uses them. ` +
         'Look for a new import from the boot path, an eager registration, or a top-level ' +
         'statement that keeps the module alive.',
     );
@@ -232,7 +307,7 @@ function main() {
   if (update) {
     const updatedBaseline = { ...baseline, gzipBytes, rawBytes };
     writeFileSync(baselinePath, `${JSON.stringify(updatedBaseline, undefined, 2)}\n`);
-    process.stdout.write('worker-size: updated worker-size.json; review the byte delta\n');
+    process.stdout.write(`worker-size: updated ${baselineName}; review the byte delta\n`);
     return;
   }
 
@@ -251,7 +326,7 @@ function main() {
   if (violations.length > 0) {
     fail(
       `${violations.join('; ')}. Investigate the deployable Worker, or run ` +
-        '`pnpm worker-size:update` for an intentional increase and review worker-size.json.',
+        `\`pnpm worker-size:update\` for an intentional increase and review ${baselineName}.`,
     );
   }
 
