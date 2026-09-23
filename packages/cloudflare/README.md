@@ -233,9 +233,9 @@ const TASK_QUEUE = new InjectionToken<Queue<{ taskId: string }>>('task queue');
 class JobsModule {}
 ```
 
-Every `useFactory` strategy declares its dependencies with `inject`, including
-`inject: []` for factories without dependencies. This also applies to
-`lazyProvider` and `forRootAsync` factory options.
+A `useFactory` strategy declares its dependencies with `inject`; a factory
+without parameters may omit it. This also applies to `lazyProvider` and
+`forRootAsync` factory options.
 
 Use native `env.DB`, `env.CACHE`, `env.FILES`, `env.JOBS`, `env.AI`,
 `env.VECTORIZE`, or `env.HYPERDRIVE` directly. Inject `ENV` in constructors

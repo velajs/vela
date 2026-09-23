@@ -4,6 +4,7 @@ import {
   lazyProvider,
   stableHash,
   type DynamicModule,
+  type FactoryInject,
   type InferTokens,
   type Token,
   type TypedToken,
@@ -49,8 +50,8 @@ export interface StorageModuleOptions {
   http?: StorageHttpOptions;
 }
 
-export interface StorageModuleAsyncOptions<Inject extends readonly Token[] = readonly Token[]> {
-  inject: Inject;
+/** Deferred registration; a driver factory without parameters may omit `inject`. */
+export type StorageModuleAsyncOptions<Inject extends readonly Token[] = readonly Token[]> = {
   imports?: DynamicModule['imports'];
   useFactory: (...deps: InferTokens<Inject>) => StorageDriver;
   name?: string;
@@ -60,7 +61,7 @@ export interface StorageModuleAsyncOptions<Inject extends readonly Token[] = rea
   http?: StorageHttpOptions;
   /** Optional caller namespace; it is combined with, never substituted for, factory identity. */
   key?: string;
-}
+} & FactoryInject<Inject>;
 
 /**
  * The internal, normalized options the module engine works with: the driver is
@@ -264,21 +265,22 @@ export class StorageModule {
   static forRootAsync<const Inject extends readonly Token[] = readonly Token[]>(
     options: StorageModuleAsyncOptions<Inject>,
   ): DynamicModule {
-    const { useFactory, inject, imports, key, ...structural } = options;
+    const { useFactory } = options;
     const registrationIdentity = securityIdentity({
       owner: useFactory,
-      callerKey: key,
-      hooks: structural.hooks,
-      http: structural.http,
-      inject,
-      imports,
+      callerKey: options.key,
+      hooks: options.hooks,
+      http: options.http,
+      inject: options.inject,
+      imports: options.imports,
     });
-    const asyncStructural = { ...structural, registrationIdentity };
     return {
       ...ConfigurableModuleClass.forRootAsync<Inject>({
-        imports,
-        inject,
-        ...asyncStructural,
+        ...options,
+        // The caller key is part of registrationIdentity, which the module
+        // key hashes; it never names the module instance by itself.
+        key: undefined,
+        registrationIdentity,
         // Wrap the caller's driver factory in a thunk so resolving the options
         // token (at bootstrap) does NOT build the driver — only the first
         // storage operation does.

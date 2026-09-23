@@ -113,7 +113,7 @@ const moduleRef = await Test.createTestingModule({
 }).compile();
 ```
 
-Import \`defineProvider\` from \`@velajs/vela\`. Factory dependency types come from the required \`inject\` tuple; use \`inject: []\` for factories without dependencies.
+Import `defineProvider` from `@velajs/vela`. Factory dependency types come from the `inject` tuple, which a factory without parameters may omit, in providers and in `overrideProvider(TOKEN).useFactory({ factory, inject })`.
 Overrides recompute request-scope propagation, including dependencies introduced
 or removed by a replacement factory. Compile separate testing modules to keep
 application/environment-specific replacements independent.

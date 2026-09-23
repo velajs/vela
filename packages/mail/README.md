@@ -78,8 +78,8 @@ bodies; it is not a complete MIME/attachment composer.
 ### Transport and environment configuration
 
 Use `forRootAsync` with a typed application environment/configuration token when
-credentials depend on the application. Dependencies are tuple-inferred, and
-`inject` is required even when empty:
+credentials depend on the application. Dependencies are tuple-inferred from
+`inject`; a factory without parameters may omit it:
 
 ```ts
 import { InjectionToken } from '@velajs/vela';

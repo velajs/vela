@@ -6,7 +6,7 @@
 
 Construct a Better Auth instance and pass it to `BetterAuthModule.forRoot({ auth, issuer, basePath?, isGlobal?, mountHandler? })`. The default `/api/auth/*` catch-all is explicitly public and the authentication guard is global by default. Keep the Better Auth and Vela base paths aligned. Custom paths must be canonical absolute paths without wildcards, trailing slashes, or dot segments.
 
-For Workers, use `forRootAsync({ inject: [ENV], useFactory: env => betterAuth(...) })`; the factory returns the auth instance directly. The explicit dependency tuple is required, even when empty. Native environment bindings are available before factories run and auth instances are isolated per environment.
+For Workers, use `forRootAsync({ inject: [ENV], useFactory: env => betterAuth(...) })`; the factory returns the auth instance directly. A factory without parameters may omit `inject`. Native environment bindings are available before factories run and auth instances are isolated per environment.
 
 ```ts
 import { Controller, Get, Module } from '@velajs/vela';

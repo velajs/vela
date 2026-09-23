@@ -28,7 +28,7 @@ const session = await moduleRef.resolveInRequest(SessionState, { url: 'http://lo
 | `overrideInterceptor(Interceptor)` | an interceptor class |
 | `overrideFilter(Filter)` | an exception-filter class |
 
-Overrides infer their value/class/result contract from the token. Factory dependency tuples are required (`inject: []` for none); erased runtime identities cannot authorize typed replacements.
+Overrides infer their value/class/result contract from the token. A factory override types its parameters from its `inject` tuple, which a factory without parameters may omit (`useFactory({ factory: () => fake })`); erased runtime identities cannot authorize typed replacements.
 
 `.compile()` returns `Promise<TestingModule>`. (There is no `overrideMiddleware`.)
 

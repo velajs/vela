@@ -3,6 +3,7 @@ import {
   type CanActivate,
   type DependencyToken,
   type ExceptionFilter,
+  type FactoryInject,
   type InferToken,
   type InferTokens,
   type ModuleOptions,
@@ -58,17 +59,16 @@ export class OverrideBy<Key extends Token> {
     return this.commit(defineProvider<Key>(this.token, { useClass: cls }));
   }
 
-  useFactory<const Inject extends readonly DependencyToken[] = readonly []>(options: {
-    factory: (
-      ...args: InferTokens<Inject>
-    ) => NoInfer<InferToken<Key>> | Promise<NoInfer<InferToken<Key>>>;
-    inject: Inject;
-  }): TestingModuleBuilder {
+  /** A factory without parameters may omit `inject`. */
+  useFactory<const Inject extends readonly DependencyToken[] = readonly []>(
+    options: {
+      factory: (
+        ...args: InferTokens<Inject>
+      ) => NoInfer<InferToken<Key>> | Promise<NoInfer<InferToken<Key>>>;
+    } & FactoryInject<Inject>,
+  ): TestingModuleBuilder {
     return this.commit(
-      defineProvider<Key, Inject>(this.token, {
-        useFactory: options.factory,
-        inject: options.inject,
-      }),
+      defineProvider<Key, Inject>(this.token, { ...options, useFactory: options.factory }),
     );
   }
 }
