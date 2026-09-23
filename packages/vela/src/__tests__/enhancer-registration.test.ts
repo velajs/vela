@@ -27,11 +27,12 @@ import {
   type ArgumentMetadata,
   type CallHandler,
   type CanActivate,
+  type DynamicModule,
   type ExceptionFilter,
   type ExecutionContext,
   type NestInterceptor,
-  type OnModuleInit,
   type NonceStore,
+  type OnModuleInit,
   type PipeTransform,
   type RequestContext,
 } from '../index';
@@ -534,6 +535,41 @@ describe('enhancer auto-registration', () => {
     expect(calls.slice(0, 3).toSorted()).toEqual(['controller', 'guard', 'service']);
     expect(calls.at(-1)).toBe('module');
     await lazyApp.close();
+  });
+
+  it('runs the hooks of each keyed instance of a module class within that instance', async () => {
+    const calls: string[] = [];
+    const FEATURE = new InjectionToken<string>('feature name');
+
+    @Injectable()
+    class FeatureService implements OnModuleInit {
+      constructor(@Inject(FEATURE) private readonly name: string) {}
+      onModuleInit(): void {
+        calls.push(`service:${this.name}`);
+      }
+    }
+
+    @Module({})
+    class FeatureModule implements OnModuleInit {
+      constructor(@Inject(FEATURE) private readonly name: string) {}
+      onModuleInit(): void {
+        calls.push(`module:${this.name}`);
+      }
+      static forFeature(name: string): DynamicModule {
+        return {
+          module: FeatureModule,
+          key: name,
+          providers: [FeatureService, { provide: FEATURE, useValue: name }],
+        };
+      }
+    }
+
+    @Module({ imports: [FeatureModule.forFeature('a'), FeatureModule.forFeature('b')] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    expect(calls).toEqual(['service:a', 'module:a', 'service:b', 'module:b']);
+    await app.close();
   });
 
   it('defers the enhancers of a lazy module with the rest of its group', async () => {

@@ -625,10 +625,6 @@ export class ModuleLoader {
     return [...this.#collectedControllers];
   }
 
-  getRegisteredProviders(): Token[] {
-    return [...this.#moduleTokens.values()].flat();
-  }
-
   getAppProviderTokens<T>(token: TypedToken<T>): TypedToken<T>[] {
     // Synthetic tokens alias registrations under this APP_* token. The map
     // erases that key/value correlation; restore it only at this boundary.
@@ -647,16 +643,16 @@ export class ModuleLoader {
     return [...this.#lazyGroups.values()];
   }
 
+  // Module by module, dependencies first, each in lifecycle-hook order; every
+  // keyed instance of one module class is its own module.
   async resolveAllInstances(): Promise<unknown[]> {
     const instances = new Set<unknown>();
-    for (const token of new Set(this.getRegisteredProviders())) {
-      for (const moduleId of this.container.getOwnerModuleIds(token)) {
-        if (
-          this.container.getProviderScope(token, moduleId) === Scope.REQUEST ||
-          this.#lazyGroups.has(moduleId)
-        )
-          continue;
-        instances.add(await this.container.resolveAsync(token, moduleId));
+    for (const [moduleId, tokens] of this.#moduleTokens) {
+      if (this.#lazyGroups.has(moduleId)) continue;
+      for (const token of tokens) {
+        if (this.container.getProviderScope(token, moduleId) !== Scope.REQUEST) {
+          instances.add(await this.container.resolveAsync(token, moduleId));
+        }
       }
     }
     return [...instances];

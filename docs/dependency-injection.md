@@ -58,9 +58,10 @@ constructor, as in Nest.
 
 A module class is a provider of its own module. The container constructs it through DI, and it
 receives the same lifecycle hooks, in the same phases, last within its module: after the module's
-providers, controllers and registered enhancers, and before the modules that import it. A lazy
-module's class is built with the rest of its group, in the same order. `configure()` runs on that
-same instance.
+providers, controllers and registered enhancers, and before the modules that import it. Each keyed
+instance of one module class, such as `FeatureModule.forFeature('a')` and `.forFeature('b')`, is its
+own module and runs in that order on its own. A lazy module's class is built with the rest of its
+group, in the same order. `configure()` runs on that same instance.
 
 Guard, pipe, interceptor and filter classes that a module's classes reference in `@UseGuards`,
 `@UsePipes`, `@UseInterceptors`, `@UseFilters` or parameter decorators such as
