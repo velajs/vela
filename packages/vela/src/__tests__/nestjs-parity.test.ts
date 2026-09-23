@@ -1,5 +1,6 @@
 import { defineProvider } from '../container/types';
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { Context } from 'hono';
 import { z } from 'zod';
 import {
   VelaFactory,
@@ -36,6 +37,8 @@ import {
   HttpMethod,
   ModuleRef,
   ModuleVisibilityError,
+  getRequestContainer,
+  runInEntrypointScope,
   mixin,
   InjectionToken,
   Inject,
@@ -1071,9 +1074,9 @@ describe('ModuleRef', () => {
     class CounterController {
       constructor(private ref: ModuleRef) {}
       @Get()
-      handle() {
-        const a = this.ref.create(CounterService);
-        const b = this.ref.create(CounterService);
+      async handle() {
+        const a = await this.ref.create(CounterService);
+        const b = await this.ref.create(CounterService);
         return { a: a.increment(), b: b.increment(), same: a === b };
       }
     }
@@ -5361,8 +5364,8 @@ describe('ModuleRef.resolve() and ModuleRef.create()', () => {
       ) {}
 
       @Get()
-      handle() {
-        const fresh = this.moduleRef.create(FreshService);
+      async handle() {
+        const fresh = await this.moduleRef.create(FreshService);
         return { same: fresh === this.singleton, freshId: fresh.id !== this.singleton.id };
       }
     }
@@ -5390,9 +5393,9 @@ describe('ModuleRef.resolve() and ModuleRef.create()', () => {
       constructor(private moduleRef: ModuleRef) {}
 
       @Get()
-      handle() {
-        const c1 = this.moduleRef.resolve(Config);
-        const c2 = this.moduleRef.resolve(Config);
+      async handle() {
+        const c1 = await this.moduleRef.resolve(Config);
+        const c2 = await this.moduleRef.resolve(Config);
         return { same: c1 === c2, value: c1.value };
       }
     }
@@ -5404,6 +5407,263 @@ describe('ModuleRef.resolve() and ModuleRef.create()', () => {
     const res = await app.getHonoApp().request('/modref-resolve');
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ same: true, value: 'prod' });
+  });
+});
+
+// =============================================================================
+// ModuleRef host-module scoping, request scopes and create()
+// =============================================================================
+
+describe('ModuleRef host-module scoping', () => {
+  it('get() sees host-module providers, imported exports and globals; strict:false looks app-wide', async () => {
+    const PRIVATE = new InjectionToken<string>('ModuleRefPrivate');
+    const SHARED = new InjectionToken<string>('ModuleRefShared');
+    const EVERYWHERE = new InjectionToken<string>('ModuleRefGlobal');
+
+    @Global()
+    @Module({
+      providers: [defineProvider(EVERYWHERE, { useValue: 'global' })],
+      exports: [EVERYWHERE],
+    })
+    class GlobalModule {}
+
+    @Module({
+      providers: [
+        defineProvider(PRIVATE, { useValue: 'hidden' }),
+        defineProvider(SHARED, { useValue: 'exported' }),
+      ],
+      exports: [SHARED],
+    })
+    class LibModule {}
+
+    @Injectable()
+    class Lookup {
+      constructor(readonly ref: ModuleRef) {}
+    }
+
+    @Module({ imports: [GlobalModule, LibModule], providers: [Lookup] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const { ref } = app.get(Lookup);
+    expect(ref.get(SHARED)).toBe('exported');
+    expect(ref.get(EVERYWHERE)).toBe('global');
+    expect(() => ref.get(PRIVATE)).toThrow(ModuleVisibilityError);
+    expect(ref.get(PRIVATE, { strict: false })).toBe('hidden');
+  });
+
+  it('each module instance injects its own ModuleRef, resolving that module’s registration', async () => {
+    const LABEL = new InjectionToken<string>('ModuleRefLabel');
+
+    @Injectable()
+    class FirstReader {
+      constructor(readonly ref: ModuleRef) {}
+    }
+
+    @Injectable()
+    class FirstSibling {
+      constructor(readonly ref: ModuleRef) {}
+    }
+
+    @Injectable()
+    class SecondReader {
+      constructor(readonly ref: ModuleRef) {}
+    }
+
+    @Module({
+      providers: [defineProvider(LABEL, { useValue: 'first' }), FirstReader, FirstSibling],
+      exports: [FirstReader, FirstSibling],
+    })
+    class FirstModule {}
+
+    @Module({
+      providers: [defineProvider(LABEL, { useValue: 'second' }), SecondReader],
+      exports: [SecondReader],
+    })
+    class SecondModule {}
+
+    @Module({ imports: [FirstModule, SecondModule] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const first = app.get(FirstReader).ref;
+    const second = app.get(SecondReader).ref;
+    expect(first.get(LABEL)).toBe('first');
+    expect(second.get(LABEL)).toBe('second');
+    expect(first).not.toBe(second);
+    expect(app.get(FirstSibling).ref).toBe(first);
+  });
+
+  it('get() refuses request-scoped and transient providers and points to resolve()', async () => {
+    @Injectable({ scope: Scope.REQUEST })
+    class PerRequest {}
+
+    @Injectable({ scope: Scope.TRANSIENT })
+    class PerUse {}
+
+    @Injectable()
+    class Lookup {
+      constructor(readonly ref: ModuleRef) {}
+    }
+
+    @Module({ providers: [PerRequest, PerUse, Lookup] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const { ref } = app.get(Lookup);
+    expect(() => ref.get(PerRequest)).toThrow(/request-scoped[\s\S]*resolve\(/);
+    expect(() => ref.get(PerUse)).toThrow(/transient[\s\S]*resolve\(/);
+  });
+
+  it('resolve() shares the current request instance given a Hono Context, ExecutionContext or request container', async () => {
+    @Injectable({ scope: Scope.REQUEST })
+    class PerRequest {
+      readonly id = crypto.randomUUID();
+    }
+
+    const seenByGuard: string[] = [];
+
+    @Injectable()
+    class PeekGuard implements CanActivate {
+      constructor(private readonly ref: ModuleRef) {}
+      async canActivate(context: ExecutionContext) {
+        seenByGuard.push((await this.ref.resolve(PerRequest, context)).id);
+        return true;
+      }
+    }
+
+    @Controller('/modref-request')
+    class RequestController {
+      constructor(private readonly ref: ModuleRef) {}
+
+      @Get()
+      @UseGuards(PeekGuard)
+      async handle(@Res() c: Context) {
+        const viaHono = await this.ref.resolve(PerRequest, c);
+        const viaContainer = await this.ref.resolve(PerRequest, getRequestContainer(c));
+        return { id: viaHono.id, same: viaHono === viaContainer };
+      }
+    }
+
+    @Module({ providers: [PerRequest, PeekGuard], controllers: [RequestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+    const first = (await (await hono.request('/modref-request')).json()) as {
+      id: string;
+      same: boolean;
+    };
+    const second = (await (await hono.request('/modref-request')).json()) as {
+      id: string;
+      same: boolean;
+    };
+
+    expect(first.same).toBe(true);
+    expect(second.same).toBe(true);
+    expect(first.id).not.toBe(second.id);
+    expect(seenByGuard).toEqual([first.id, second.id]);
+  });
+
+  it('resolve() without a request refuses request-scoped providers instead of caching them on the root', async () => {
+    @Injectable({ scope: Scope.REQUEST })
+    class PerRequest {}
+
+    @Injectable()
+    class Lookup {
+      constructor(readonly ref: ModuleRef) {}
+    }
+
+    @Module({ providers: [PerRequest, Lookup] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const { ref } = app.get(Lookup);
+    await expect(ref.resolve(PerRequest)).rejects.toThrow(/request-scoped/);
+    await expect(ref.resolve(PerRequest, new Context(new Request('http://x/')))).rejects.toThrow(
+      /Vela-managed request/,
+    );
+  });
+
+  it('request-scoped consumers get a ModuleRef bound to their request; singletons never capture one', async () => {
+    @Injectable({ scope: Scope.REQUEST })
+    class PerRequest {}
+
+    @Injectable()
+    class Shared {
+      constructor(readonly ref: ModuleRef) {}
+    }
+
+    @Injectable({ scope: Scope.REQUEST })
+    class Scoped {
+      constructor(
+        readonly ref: ModuleRef,
+        readonly shared: Shared,
+        readonly current: PerRequest,
+      ) {}
+    }
+
+    @Module({ providers: [PerRequest, Shared, Scoped] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const runs = await Promise.all(
+      [1, 2].map(() =>
+        runInEntrypointScope(app.getContainer(), async (scope) => {
+          const scoped = await scope.resolveAsync(Scoped);
+          return { scoped, resolved: await scoped.ref.resolve(PerRequest) };
+        }),
+      ),
+    );
+    const [one, two] = runs.map((run) => run.scoped);
+
+    expect(runs[0]!.resolved).toBe(one!.current);
+    expect(runs[1]!.resolved).toBe(two!.current);
+    expect(one!.ref).not.toBe(two!.ref);
+    expect(one!.shared.ref).toBe(two!.shared.ref);
+    expect(one!.ref).not.toBe(one!.shared.ref);
+    await expect(one!.shared.ref.resolve(PerRequest)).rejects.toThrow(/request-scoped/);
+    // The request-bound reference closes with its invocation.
+    await expect(one!.ref.resolve(PerRequest)).rejects.toThrow(/closed/);
+  });
+
+  it('create() builds an unregistered class with the host module’s dependencies', async () => {
+    const GREETING = new InjectionToken<string>('ModuleRefGreeting');
+    const HIDDEN = new InjectionToken<string>('ModuleRefHidden');
+
+    @Module({ providers: [defineProvider(HIDDEN, { useValue: 'hidden' })] })
+    class OtherModule {}
+
+    @Injectable()
+    class Greeter {
+      constructor(@Inject(GREETING) readonly greeting: string) {}
+    }
+
+    @Injectable()
+    class Snooper {
+      constructor(@Inject(HIDDEN) readonly hidden: string) {}
+    }
+
+    @Injectable()
+    class Builder {
+      constructor(readonly ref: ModuleRef) {}
+    }
+
+    @Module({
+      imports: [OtherModule],
+      providers: [defineProvider(GREETING, { useValue: 'hi' }), Builder],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const { ref } = app.get(Builder);
+    const a = await ref.create(Greeter);
+    const b = await ref.create(Greeter);
+    expect(a).toBeInstanceOf(Greeter);
+    expect(a.greeting).toBe('hi');
+    expect(a).not.toBe(b);
+    expect(app.getContainer().has(Greeter)).toBe(false);
+    await expect(ref.create(Snooper)).rejects.toThrow(ModuleVisibilityError);
   });
 });
 

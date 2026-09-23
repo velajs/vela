@@ -42,7 +42,7 @@ describe('request-scoped providers on the root container', () => {
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
-    expect(() => app.get(Consumer)).toThrow(/runInEntrypointScope/);
+    expect(() => app.get(Consumer)).toThrow(/runInEntrypointScope[\s\S]*ModuleRef\.resolve/);
 
     const [first, second] = await Promise.all(
       [1, 2].map(() =>

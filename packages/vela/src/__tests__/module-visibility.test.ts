@@ -123,7 +123,7 @@ describe('Module visibility', () => {
       static forRoot(): DynamicModule {
         return {
           module: FeatureModule,
-          providers: [defineProvider(TOKEN, {useValue: 'shared-value'})],
+          providers: [defineProvider(TOKEN, { useValue: 'shared-value' })],
           exports: [TOKEN],
           global: true,
         };
@@ -169,7 +169,7 @@ describe('Module visibility', () => {
     // ModB declares the alias but the alias targets ModA's invisible HiddenImpl
     @Module({
       imports: [ModA],
-      providers: [Consumer, defineProvider(ALIAS, {useExisting: HiddenImpl})],
+      providers: [Consumer, defineProvider(ALIAS, { useExisting: HiddenImpl })],
     })
     class ModB {}
 
@@ -232,7 +232,7 @@ describe('Module visibility', () => {
     }
 
     @Module({
-      providers: [defineProvider(NAME, {useValue: 'alice'})],
+      providers: [defineProvider(NAME, { useValue: 'alice' })],
       exports: [NAME],
     })
     class ConfigModule {}
@@ -244,7 +244,7 @@ describe('Module visibility', () => {
     expect(app.get(Consumer).name).toBe('alice');
   });
 
-  it('ModuleRef.create() sandbox bypasses visibility (escape hatch)', async () => {
+  it('ModuleRef.create() from the application root constructs unregistered classes', async () => {
     @Injectable()
     class HiddenDep {}
 
@@ -253,8 +253,7 @@ describe('Module visibility', () => {
     class ModA {}
 
     // We don't actually use HiddenDep cross-module here — we just verify
-    // ModuleRef.create() can instantiate transient classes outside the
-    // visibility check.
+    // the root ModuleRef (app.get) constructs classes that are not providers.
     @Injectable()
     class Transient {
       readonly id = Math.random();
@@ -265,8 +264,8 @@ describe('Module visibility', () => {
 
     const app = await VelaFactory.create(App);
     const ref = app.get(ModuleRef);
-    const t1 = ref.create(Transient);
-    const t2 = ref.create(Transient);
+    const t1 = await ref.create(Transient);
+    const t2 = await ref.create(Transient);
     expect(t1).toBeInstanceOf(Transient);
     expect(t2).toBeInstanceOf(Transient);
     expect(t1.id).not.toBe(t2.id);

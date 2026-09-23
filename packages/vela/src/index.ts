@@ -75,6 +75,8 @@ export type {
   ModuleDescription,
   ContainerOptions,
   Diagnostics,
+  ModuleRefContext,
+  ModuleRefLookupOptions,
 } from './container/index';
 // Introspection: the composed route table VelaApplication.describeRoutes()
 // returns (RouteManager itself stays internal-only).

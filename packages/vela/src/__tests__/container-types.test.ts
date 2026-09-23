@@ -13,6 +13,8 @@ import { lazyProvider, provideGlobal } from '../module/lazy-provider';
 import type { AsyncModuleOptions } from '../registry/types';
 import { VelaApplication } from '../application';
 import { Module } from '../module/decorators';
+import { Injectable } from '../container/decorators';
+import { VelaFactory } from '../factory';
 import type { DynamicModule } from '../module/types';
 
 const count = new InjectionToken<number>('count');
@@ -28,6 +30,13 @@ function invalidWiring(container: Container, moduleRef: ModuleRef, app: VelaAppl
   const numberFromSymbol: number = container.resolve(Symbol('count'));
   // @ts-expect-error ModuleRef follows the token, too.
   moduleRef.get<number>('count');
+  // @ts-expect-error ModuleRef.resolve follows the token as well.
+  moduleRef.resolve<number>('count');
+  // @ts-expect-error ModuleRef.create yields the class it constructs, asynchronously.
+  const created: Promise<number> = moduleRef.create(class Created {});
+  // @ts-expect-error A request scope is identified by a context or container, not a module id.
+  void moduleRef.resolve(count, 'owner');
+  void created;
   // @ts-expect-error Application.get follows the token, too.
   app.get<number>('count');
   // @ts-expect-error A request cache value must satisfy the token.
@@ -144,6 +153,27 @@ describe('typed provider definitions', () => {
     expectTypeOf(container.resolveAll(count)).toEqualTypeOf<number[]>();
     expectTypeOf<ReturnType<typeof container.resolve<'runtime'>>>().toEqualTypeOf<unknown>();
     expect(container.resolve(label)).toBe('service:2');
+  });
+
+  it('infers ModuleRef lookups from the token', async () => {
+    @Injectable()
+    class Service {
+      readonly name = 'service';
+    }
+
+    @Module({ providers: [Service, defineProvider(count, { useValue: 2 })] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const moduleRef = app.get(ModuleRef);
+    expectTypeOf(moduleRef).toEqualTypeOf<ModuleRef>();
+    expectTypeOf(moduleRef.get(count)).toEqualTypeOf<number>();
+    expectTypeOf(moduleRef.get(count, { strict: false })).toEqualTypeOf<number>();
+    expectTypeOf(moduleRef.resolve(count)).toEqualTypeOf<Promise<number>>();
+    expectTypeOf(moduleRef.create(Service)).toEqualTypeOf<Promise<Service>>();
+    expect(moduleRef.get(count)).toBe(2);
+    expect(await moduleRef.resolve(Service)).toBe(app.get(Service));
+    expect(await moduleRef.create(Service)).not.toBe(app.get(Service));
   });
 
   it('supports values, aliases and factories when a token legitimately includes undefined', () => {

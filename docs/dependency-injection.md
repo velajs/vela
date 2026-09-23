@@ -62,6 +62,47 @@ the execution scope that owns the invocation: `getRequestContainer(c)`, `context
 the `runInEntrypointScope` callback argument. Discovery resolves request-scoped hits only when the
 caller passes `{ requestScope: scope }`.
 
+Inside a provider, `await moduleRef.resolve(token, context)` resolves in the scope that `context`
+identifies; see [ModuleRef](#moduleref).
+
+## ModuleRef
+
+Inject `ModuleRef` to look providers up from the point of view of the module that injects it. The
+container builds one per module and owner: a singleton receives one owned by the application root,
+and a request-scoped consumer receives one bound to its own request, which closes with that request.
+A singleton never captures a request.
+
+- `get(token, { strict })` returns a singleton or value provider. By default (`strict: true`) it sees
+  what the host module can inject: its own providers, its imports' exports and global tokens. This is
+  more lenient than Nest's strict `get`, which searches only the host module's own providers.
+  `{ strict: false }` looks the token up across the application. `get` throws for request-scoped
+  and transient providers, since neither has a single instance to return.
+- `await resolve(token, context?, { strict })` resolves any provider and awaits async factories.
+  `context` identifies an existing execution scope: the `ExecutionContext` of a guard or
+  interceptor, the Hono `Context` of a Vela-managed request, or an execution-scope container.
+  Request-scoped providers resolve to the instance that request's other consumers receive. Without
+  a context, `resolve` uses the scope that owns the reference, so a request consumer's reference
+  resolves in its request and a singleton's reference refuses request-scoped tokens. `resolve`
+  never creates a request scope, because a scope owns request disposables that someone must finish.
+  A transient provider is constructed on each call.
+- `await create(Type)` constructs a class that is not registered as a provider, injecting what the
+  host module can see. Each call returns a new instance that the caller owns.
+
+```ts
+@Injectable()
+class SessionGuard implements CanActivate {
+  constructor(private readonly moduleRef: ModuleRef) {}
+
+  async canActivate(context: ExecutionContext) {
+    const session = await this.moduleRef.resolve(SessionState, context);
+    return session.isActive;
+  }
+}
+```
+
+`app.get(ModuleRef)` returns the application-wide reference, whose lookups are not limited to one
+module.
+
 ## Resource lifetime
 
 The container disposes constructed resources in reverse creation order. It prefers

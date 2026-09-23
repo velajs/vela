@@ -603,7 +603,7 @@ describe('lazy cold-start init — entrypoints', () => {
       module: NamedModule,
       key,
       lazy: true,
-      providers: [defineProvider(token, { inject: [],useFactory: () => new Named()})],
+      providers: [defineProvider(token, { inject: [], useFactory: () => new Named() })],
       exports: [token as never],
     });
 
@@ -806,7 +806,7 @@ describe('lazy cold-start init — review hardening', () => {
     },
   );
 
-  it('ModuleRef.create (detached sandbox) still triggers lazy materialization with hook replay', async () => {
+  it('ModuleRef.create still triggers lazy materialization with hook replay', async () => {
     const { ModuleRef } = await import('../index.js');
     const events: string[] = [];
 
@@ -831,7 +831,7 @@ describe('lazy cold-start init — review hardening', () => {
       constructor(@Inject(LazyWired) readonly dep: LazyWired) {}
     }
 
-    const created = app.get(ModuleRef).create(SandboxConsumer);
+    const created = await app.get(ModuleRef).create(SandboxConsumer);
     expect(created.dep).toBeInstanceOf(LazyWired);
     expect(events).toEqual(['init']);
 

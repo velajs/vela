@@ -1,5 +1,6 @@
 import { Scope } from '../constants';
 import { disposeInstance, isDisposable } from './disposable';
+import { ModuleRef } from './module-ref';
 import {
   getConstructorDependencies,
   getInjectMetadata,
@@ -56,7 +57,8 @@ function requestScopeOnRoot(registration: ProviderRegistration): Error {
   return new Error(
     `Cannot resolve request-scoped provider ${name}${bubbled} on the root container: its ` +
       `instances belong to one request or invocation. Resolve it from that execution scope's ` +
-      `container (getRequestContainer(c), context.getContainer(), runInEntrypointScope()).`,
+      `container (getRequestContainer(c), context.getContainer(), runInEntrypointScope()) or ` +
+      `pass the context to ModuleRef.resolve(token, context).`,
   );
 }
 
@@ -66,8 +68,9 @@ function requestScopeOnRoot(registration: ProviderRegistration): Error {
  * different buckets, supporting multi-instance dynamic modules.
  *
  * The `__root__` bucket holds bootstrap-time framework primitives (Container,
- * ModuleRef, REQUEST_CONTEXT, etc.) and any `register()` call that doesn't
- * supply a `declaringModuleId`.
+ * REQUEST_CONTEXT, etc.) and any `register()` call that doesn't supply a
+ * `declaringModuleId`. `ModuleRef` is never registered: the container builds
+ * one per requesting module and owner container on demand.
  */
 export class Container {
   #providers = new Map<string, Map<Token, ProviderRegistration>>();
@@ -101,6 +104,9 @@ export class Container {
   // circular-dependency error.
   #lazyHook?: LazyResolutionHook;
   #asyncDepth = 0;
+  // ModuleRefs this container owns, per requesting module. The root owns
+  // those of singletons; a request child those of its request consumers.
+  #moduleRefs = new Map<string, ModuleRef>();
   // Root-owned: hidden @Optional() dependencies already warned about.
   #reportedHiddenOptionals = new Map<Token, Set<string>>();
 
@@ -267,6 +273,10 @@ export class Container {
   // Heterogeneous provider storage erases its token/value correlation. Keep
   // this generic resolution boundary private; callers infer from the token.
   private resolveToken<T>(token: Token, requestingModuleId?: string): T {
+    if (token === ModuleRef) {
+      // The ModuleRef token carries its own value type; the generic boundary erases it.
+      return this.#constructionOwner.moduleRefFor(requestingModuleId) as T;
+    }
     const registration = this.findRegistration<T>(token, requestingModuleId);
     if (registration) {
       const instance = this.resolveRegistration(registration);
@@ -373,9 +383,8 @@ export class Container {
     requestingModuleId?: string,
   ): ProviderRegistration<T> | undefined {
     // No requester OR no scope for this requester: framework-internal /
-    // sandbox lookup. Prefer the `__root__` bucket so sandbox-registered
-    // transients (ModuleRef.create) and bootstrap primitives win over module
-    // buckets that may hold the same token under SINGLETON scope.
+    // application-wide lookup. Prefer the `__root__` bucket so bootstrap
+    // primitives win over module buckets that may hold the same token.
     if (requestingModuleId === undefined || !this.#scopes.has(requestingModuleId)) {
       const rootHit = this.lookupInBucket<T>(ROOT_MODULE_ID, token);
       if (rootHit) return rootHit;
@@ -798,36 +807,6 @@ export class Container {
     return this.#root === other.#root;
   }
 
-  createDetached(): Container {
-    const child = new Container({ diagnostics: this.#diagnostics });
-    // Deep-clone provider buckets so sandbox writes don't leak back to the
-    // parent. Inner ProviderRegistration objects are shallow-shared (we only
-    // mutate `instance` cache, and per-bucket clones already give per-sandbox
-    // singleton isolation when needed).
-    const clonedProviders = new Map<string, Map<Token, ProviderRegistration>>();
-    for (const [moduleId, bucket] of this.#providers) {
-      clonedProviders.set(moduleId, new Map(bucket));
-    }
-    child.#providers = clonedProviders;
-
-    const clonedIndex = new Map<Token, Set<string>>();
-    for (const [token, owners] of this.#exporterIndex) {
-      clonedIndex.set(token, new Set(owners));
-    }
-    child.#exporterIndex = clonedIndex;
-
-    child.#scopes = this.#scopes;
-    child.#globals = this.#globals;
-    // Registration objects are shallow-shared, so a sandbox resolve of a lazy
-    // module's singleton caches onto the SHARED registration. Point the
-    // sandbox at the real root so that resolution claims the module and
-    // replays its hooks like any other trigger — otherwise ModuleRef.create
-    // would leave a hook-less instance poisoning the shared cache (and its
-    // disposables tracked on an ephemeral root).
-    child.#root = this.#root;
-    return child;
-  }
-
   clear(): void {
     this.#providers.clear();
     this.#exporterIndex.clear();
@@ -837,6 +816,7 @@ export class Container {
     this.#scopes.clear();
     this.#globals.clear();
     this.#disposables.clear();
+    this.#moduleRefs.clear();
     this.#reportedHiddenOptionals.clear();
   }
 
@@ -1091,11 +1071,34 @@ export class Container {
   resolveAsync<K extends Token>(token: K, requestingModuleId?: string): Promise<InferToken<K>>;
   async resolveAsync<T>(token: Token, requestingModuleId?: string): Promise<T> {
     this.assertNotDisposing();
+    return this.runAsyncResolution(() => this.resolveAsyncInner<T>(token, requestingModuleId));
+  }
+
+  /**
+   * Construct `type` without registering it, injecting what `requestingModuleId`
+   * can see. Its dependencies belong to this container like any transient
+   * resolution; each call returns a new instance owned by the caller.
+   */
+  async construct<T>(type: Type<T>, requestingModuleId?: string): Promise<T> {
+    this.assertNotDisposing();
+    const registration: ProviderRegistration<T> = {
+      provide: type,
+      useClass: type,
+      scope: Scope.TRANSIENT,
+      declaringModuleId: requestingModuleId ?? ROOT_MODULE_ID,
+    };
+    return this.runAsyncResolution(() =>
+      this.constructAsync(registration, new Set([registration]), this),
+    );
+  }
+
+  // Lazy groups claimed during an async cascade complete once it has unwound.
+  private async runAsyncResolution<T>(resolution: () => Promise<T>): Promise<T> {
     const root = this.#root;
     root.#asyncDepth++;
     let result: T;
     try {
-      result = await this.resolveAsyncInner<T>(token, requestingModuleId);
+      result = await resolution();
     } finally {
       root.#asyncDepth--;
     }
@@ -1111,6 +1114,10 @@ export class Container {
     ancestors: ReadonlySet<ProviderRegistration> = new Set(),
     retainingOwner: Container = this,
   ): Promise<T> {
+    if (token === ModuleRef) {
+      // The ModuleRef token carries its own value type; the generic boundary erases it.
+      return retainingOwner.moduleRefFor(requestingModuleId) as T;
+    }
     const registration = this.findRegistration<T>(token, requestingModuleId);
     if (!registration) {
       if (
@@ -1238,13 +1245,23 @@ export class Container {
     return new target(...dependencies);
   }
 
+  private moduleRefFor(requestingModuleId: string | undefined): ModuleRef {
+    const moduleId = requestingModuleId ?? ROOT_MODULE_ID;
+    let moduleRef = this.#moduleRefs.get(moduleId);
+    if (!moduleRef) {
+      moduleRef = new ModuleRef(this, moduleId);
+      this.#moduleRefs.set(moduleId, moduleRef);
+    }
+    return moduleRef;
+  }
+
   /**
    * `@Optional()` injects `undefined` only when nothing is registered for the
    * token. A provider another module registers without exposing it to the
    * requester is a wiring mistake, reported through the diagnostics policy.
    */
   private isOptionalMissing(token: Token, requestingModuleId: string): boolean {
-    if (this.findRegistration(token, requestingModuleId)) return false;
+    if (token === ModuleRef || this.findRegistration(token, requestingModuleId)) return false;
     if (this.#scopes.has(requestingModuleId) && this.#exporterIndex.has(token)) {
       this.reportHiddenOptional(token, requestingModuleId);
       return true;

@@ -1,6 +1,5 @@
 import { Scope } from '../constants';
 import { Container } from '../container/container';
-import { ModuleRef } from '../container/module-ref';
 import { DiscoveryService } from '../discovery/discovery.service';
 import type { Diagnostics, Type } from '../container/types';
 import { defineProvider } from '../container/types';
@@ -45,8 +44,9 @@ export interface BootstrapResult {
  * shared by `VelaFactory.create` (HTTP), `@velajs/testing` (test), and any
  * non-HTTP consumer (CLI tools, custom runtimes).
  *
- * Framework-internal tokens (`Container`, `ModuleRef`, `APP_*`) are marked
- * global so they are resolvable from any module.
+ * Framework-internal tokens (`Container`, `APP_*`) are marked global so they
+ * are resolvable from any module. `ModuleRef` needs no registration: the
+ * container builds one per injecting module.
  */
 export async function bootstrap(
   rootModule: Type,
@@ -58,14 +58,6 @@ export async function bootstrap(
 
   container.register(defineProvider(Container, { useValue: container }));
   container.markGlobalToken(Container);
-
-  container.register(
-    defineProvider(ModuleRef, {
-      useFactory: (c) => new ModuleRef(c),
-      inject: [Container],
-    }),
-  );
-  container.markGlobalToken(ModuleRef);
 
   // Decorator-driven discovery — global so any provider can inject it.
   container.register(

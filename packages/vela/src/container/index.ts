@@ -11,6 +11,7 @@ export {
   defineProvider,
 } from './types';
 export { ModuleRef } from './module-ref';
+export type { ModuleRefContext, ModuleRefLookupOptions } from './module-ref';
 export { mixin } from './mixin';
 export type {
   Type,

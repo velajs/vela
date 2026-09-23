@@ -92,13 +92,16 @@ class ModuleB {}
 @Injectable()
 class Playground {
   constructor(private readonly moduleRef: ModuleRef) {}
-  run() {
-    const singleton = this.moduleRef.get(CounterService);      // resolve (shared)
-    const resolved = this.moduleRef.resolve(CounterService);   // resolve
-    const fresh = this.moduleRef.create(SandboxTool);          // new transient, bypasses visibility
+  async run(context: ExecutionContext) {
+    const singleton = this.moduleRef.get(CounterService);                    // singleton/value, host-module visibility
+    const anywhere = this.moduleRef.get(CounterService, { strict: false });   // app-wide lookup
+    const session = await this.moduleRef.resolve(SessionState, context);      // request-scoped: this request's instance
+    const fresh = await this.moduleRef.create(SandboxTool);                   // unregistered class, host-module deps
   }
 }
 ```
+
+Each module gets its own `ModuleRef`: a singleton's is owned by the root, a request-scoped consumer's is bound to its request (and closes with it); a singleton never captures a request. `get` sees the host module's providers, its imports' exports and globals (more lenient than Nest's strict `get`, which only searches the host module) and throws for request-scoped/transient tokens. `resolve(token, context?)` takes an `ExecutionContext`, a Hono `Context` of a Vela-managed request, or an execution-scope `Container`; it never creates a request scope, so without one a root-owned reference refuses request-scoped tokens. `create(Type)` returns a new caller-owned instance per call.
 
 ## Visibility & exports
 
