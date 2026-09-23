@@ -1,14 +1,27 @@
 import { readFile, writeFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { createOpenApiDocument } from '@velajs/vela';
 import { generateClientContract } from '@velajs/cli/client';
-import { createAppModule } from '../dist/app.js';
+import { runnerImport } from 'vite';
+import { oxc } from '../oxc.config.ts';
 
+// Vite's module runner compiles src/ with the Worker build's Oxc options, so the
+// decorator metadata is read from source without a build step. Packages load
+// from node_modules.
+const { module } = await runnerImport(fileURLToPath(new URL('../src/app.ts', import.meta.url)), {
+  oxc,
+  logLevel: 'error',
+});
 // Only build the metadata graph. No application bootstrap or database calls.
-const root = createAppModule({
-  DB: {}, LIVE_ROOM: {}, APP_ORIGIN: 'http://localhost:8790',
+const root = module.createAppModule({
+  DB: {},
+  LIVE_ROOM: {},
+  APP_ORIGIN: 'http://localhost:8790',
   BETTER_AUTH_SECRET: 'contract-generation-only-never-used-for-requests',
 });
-const document = createOpenApiDocument(root, { info: { title: 'Vela API starter', version: '1.0.0' } });
+const document = createOpenApiDocument(root, {
+  info: { title: 'Vela API starter', version: '1.0.0' },
+});
 // The document endpoint describes the document itself, not an application call.
 delete document.paths['/openapi.json'];
 const { source, warnings } = generateClientContract(document);
@@ -17,7 +30,8 @@ const { source, warnings } = generateClientContract(document);
 for (const warning of warnings) console.warn(warning);
 const output = new URL('../web/api.generated.ts', import.meta.url);
 if (process.argv.includes('--check')) {
-  if (await readFile(output, 'utf8') !== source) throw new Error('Run pnpm client:generate to update the HTTP contract');
+  if ((await readFile(output, 'utf8')) !== source)
+    throw new Error('Run pnpm client:generate to update the HTTP contract');
 } else {
   await writeFile(output, source);
 }

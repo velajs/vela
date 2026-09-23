@@ -92,7 +92,7 @@ export class TodosService {
 @LiveResolver()
 @Injectable()
 export class TodoLive {
-  constructor(@Inject(TodosService) private readonly todos: TodosService) {}
+  constructor(private readonly todos: TodosService) {}
 
   @LiveQuery('todos.list', todoListDefinition, { tags: ['todos'] })
   list(): Promise<Todo[]> {
@@ -109,8 +109,8 @@ export class TodoLive {
 @Controller('/todos')
 export class TodosController {
   constructor(
-    @Inject(TodosService) private readonly todos: TodosService,
-    @Inject(LiveInvalidation) private readonly live: LiveInvalidation,
+    private readonly todos: TodosService,
+    private readonly live: LiveInvalidation,
   ) {}
 
   @Get()

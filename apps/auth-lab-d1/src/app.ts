@@ -1,17 +1,13 @@
 import { betterAuth } from 'better-auth';
-// Direct import — `better-auth/adapters/drizzle` triggers esbuild's
-// async-init shim under workerd. Direct import avoids it (same hazard
-// auth-lab encountered with memoryAdapter).
+// Direct import: when Wrangler bundled the Worker with esbuild, the
+// `better-auth/adapters/drizzle` re-export chain was wrapped in an async-init
+// shim under workerd. The direct import does not depend on how a bundler
+// handles that chain.
 import { drizzleAdapter } from '@better-auth/drizzle-adapter';
 import { drizzle } from 'drizzle-orm/d1';
 import { Controller, ENV, Get, Module } from '@velajs/vela';
 import { createCloudflareWorker } from '@velajs/cloudflare';
-import {
-  BetterAuthModule,
-  CurrentUser,
-  Public,
-  type User,
-} from '@velajs/better-auth';
+import { BetterAuthModule, CurrentUser, Public, type User } from '@velajs/better-auth';
 import { schema } from './schema';
 
 @Controller('/me')

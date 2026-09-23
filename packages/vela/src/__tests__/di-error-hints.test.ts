@@ -1,7 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Container } from '../container/container.js';
 import { Injectable, Inject } from '../container/decorators.js';
-import { InjectionToken, MissingInjectionMetadataError } from '../container/types.js';
+import {
+  InjectionToken,
+  MissingInjectionMetadataError,
+  UnresolvedDependencyError,
+} from '../container/types.js';
 
 describe('DI error hints — import type mistake', () => {
   let container: Container;
@@ -75,15 +79,21 @@ describe('DI error hints — import type mistake', () => {
     }
 
     container.register(ServiceB);
-    // TOKEN not registered — should throw "No provider found" without hint
-    let caught: Error | undefined;
+    // TOKEN not registered — names ServiceB's argument, caused by "No provider
+    // found", without the import-type hint.
+    let caught: unknown;
     try {
       container.resolve(ServiceB);
     } catch (err) {
-      caught = err as Error;
+      caught = err;
     }
-    expect(caught).toBeDefined();
-    expect(caught!.message).toMatch(/No provider found/);
-    expect(caught!.message).not.toMatch(/import type/);
+    if (!(caught instanceof UnresolvedDependencyError)) throw caught;
+    expect(caught.message).toBe(
+      'Cannot resolve ServiceB(?) in the root container. Argument #0 InjectionToken(MY_TOKEN) ' +
+        'is not provided by any module.',
+    );
+    expect(caught.cause).toBeInstanceOf(Error);
+    expect(String(caught.cause)).toMatch(/No provider found/);
+    expect(String(caught.cause)).not.toMatch(/import type/);
   });
 });

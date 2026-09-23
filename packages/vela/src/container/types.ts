@@ -420,4 +420,86 @@ export class MissingInjectionMetadataError extends Error {
   }
 }
 
+/**
+ * Why no provider is visible for a constructor argument, from the module that
+ * resolves the class. `modules` are module instance ids:
+ * - `'not-exported'`: these modules declare the token, but none exports it.
+ * - `'not-imported'`: these modules export the token, but the resolving
+ *   module imports none of them.
+ * - `'not-provided'`: no module declares the token.
+ */
+export type UnresolvedDependencyReason =
+  | { readonly kind: 'not-exported'; readonly modules: readonly string[] }
+  | { readonly kind: 'not-imported'; readonly modules: readonly string[] }
+  | { readonly kind: 'not-provided' };
+
+/** What `UnresolvedDependencyError` reports about the unsatisfied constructor. */
+export interface UnresolvedDependency {
+  /** The class whose constructor could not be satisfied. */
+  readonly className: string;
+  /** Module instance whose visibility the constructor resolves in. */
+  readonly moduleId: string;
+  /** A label for every constructor parameter, in declaration order. */
+  readonly parameters: readonly string[];
+  readonly parameterIndex: number;
+  /** The token no visible provider supplies. */
+  readonly token: Token;
+  readonly reason: UnresolvedDependencyReason;
+}
+
+// Module instance ids are `Class#key`; the default key adds nothing to a message.
+function describeModuleId(moduleId: string): string {
+  if (moduleId === ROOT_MODULE_ID) return 'the root container';
+  return moduleId.endsWith('#default') ? moduleId.slice(0, -'#default'.length) : moduleId;
+}
+
+function describeUnresolvedReason(dependency: UnresolvedDependency): string {
+  const { reason } = dependency;
+  const module = describeModuleId(dependency.moduleId);
+  if (reason.kind === 'not-provided') {
+    return dependency.moduleId === ROOT_MODULE_ID
+      ? 'is not provided by any module'
+      : `is not provided in ${module} or its imports`;
+  }
+  const modules = reason.modules.map(describeModuleId);
+  return reason.kind === 'not-exported'
+    ? `is declared in ${modules.join(', ')} but not exported ` +
+        `(add it to ${modules.map((name) => `${name}.exports`).join(' or ')})`
+    : `is exported by ${modules.join(', ')}, which ${module} does not import ` +
+        `(add ${modules.join(' or ')} to ${module}.imports)`;
+}
+
+/**
+ * A class constructor argument whose token no provider visible to the
+ * resolving module supplies. Raised at the innermost constructor only; the
+ * lookup failure stays available as `cause`.
+ */
+export class UnresolvedDependencyError extends Error implements UnresolvedDependency {
+  readonly className: string;
+  readonly moduleId: string;
+  readonly parameters: readonly string[];
+  readonly parameterIndex: number;
+  readonly token: Token;
+  readonly reason: UnresolvedDependencyReason;
+
+  constructor(dependency: UnresolvedDependency, options?: ErrorOptions) {
+    const signature = dependency.parameters
+      .map((label, index) => (index === dependency.parameterIndex ? '?' : label))
+      .join(', ');
+    super(
+      `Cannot resolve ${dependency.className}(${signature}) in ` +
+        `${describeModuleId(dependency.moduleId)}. Argument #${dependency.parameterIndex} ` +
+        `${describeToken(dependency.token)} ${describeUnresolvedReason(dependency)}.`,
+      options,
+    );
+    this.name = 'UnresolvedDependencyError';
+    this.className = dependency.className;
+    this.moduleId = dependency.moduleId;
+    this.parameters = dependency.parameters;
+    this.parameterIndex = dependency.parameterIndex;
+    this.token = dependency.token;
+    this.reason = dependency.reason;
+  }
+}
+
 export const ROOT_MODULE_ID = '__root__';

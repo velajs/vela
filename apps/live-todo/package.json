@@ -2,33 +2,38 @@
   "name": "live-todo",
   "version": "0.0.0",
   "private": true,
-  "type": "module",
   "description": "Realtime todo + presence demo for @velajs/vela/live: node transport and Cloudflare Durable Object variants, driven by the published @velajs/client.",
+  "type": "module",
   "scripts": {
-    "build": "swc src -d dist --strip-leading-paths",
-    "bundle:web": "esbuild web/main.ts --bundle --format=esm --outfile=web/main.js",
-    "start": "pnpm run build && pnpm run bundle:web && node dist/server-node.js",
+    "bundle:web": "esbuild web/main.ts web/index.html --bundle --format=esm --outdir=public --loader:.html=copy",
+    "dev": "pnpm run bundle:web && vite dev",
+    "build": "pnpm run bundle:web && vite build && tsdown",
+    "preview": "vite preview",
+    "start": "pnpm run bundle:web && tsdown && node dist/node/server-node.js",
+    "test": "vitest run",
     "types": "wrangler types --include-runtime=false",
-    "typecheck": "tsc --noEmit",
-    "start:cf": "pnpm run build && pnpm run bundle:web && wrangler dev --port 8789"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.0",
     "@hono/node-ws": "^1.2.0",
     "@velajs/client": "workspace:*",
     "@velajs/cloudflare": "workspace:*",
+    "@velajs/live-protocol": "workspace:*",
     "@velajs/vela": "workspace:*",
     "hono": "catalog:",
-    "zod": "catalog:",
-    "@velajs/live-protocol": "workspace:*"
+    "zod": "catalog:"
   },
   "devDependencies": {
-    "@swc/cli": "^0.8.0",
-    "@swc/core": "catalog:",
+    "@cloudflare/vite-plugin": "catalog:",
+    "@cloudflare/vitest-plugin": "catalog:",
+    "@cloudflare/workers-types": "catalog:",
     "@types/node": "catalog:",
     "esbuild": "^0.25.0",
+    "tsdown": "catalog:",
     "typescript": "catalog:",
-    "wrangler": "catalog:",
-    "@cloudflare/workers-types": "catalog:"
+    "vite": "catalog:",
+    "vitest": "catalog:",
+    "wrangler": "catalog:"
   }
 }

@@ -36,18 +36,21 @@ Requires Node.js 24+ and pnpm 11.11.0:
 pnpm dlx @velajs/cli@latest new my-api
 cd my-api
 pnpm install
-pnpm typecheck
-pnpm build
 pnpm dev
 ```
 
-Request `http://localhost:8787` to receive `{"message":"Hello from Vela!"}`.
-The greeting comes from a constructor-injected service. SWC emits decorator
-metadata, and Wrangler rebuilds source changes during local development.
+Request `http://localhost:5173` to receive `{"message":"Hello from Vela!"}`.
+The greeting comes from a constructor-injected service. Vite 8 and
+`@cloudflare/vite-plugin` serve, build (`pnpm build`) and deploy
+(`pnpm run deploy`) `src/worker.ts` with no separate compile step; Oxc emits the
+legacy decorators and constructor metadata, configured once in `oxc.config.ts`
+for both `vite.config.ts` and `vitest.config.ts`. `pnpm test` runs the included
+spec, which calls the Worker's `fetch` handler inside workerd.
 `src/worker.ts` is only `export default createCloudflareWorker(AppModule)`:
 providers read bindings through the framework `ENV`, typed from the
 `worker-configuration.d.ts` that `pnpm types` (`wrangler types
---include-runtime=false`) regenerates before `pnpm dev` and `pnpm typecheck`.
+--include-runtime=false`) regenerates, also before `pnpm dev`. The project pins
+this CLI as a dev dependency, so `pnpm vela route list` works immediately.
 The generated application uses published npm dependencies and requires no
 Cloudflare login, authentication integration, D1, Studio, or live queries.
 
@@ -83,15 +86,17 @@ the client disconnects, then disposes the app.
 ## Configure
 
 Create a `vela.config.{js,mjs,ts}` at your project root that builds your app.
-Import compiled application JavaScript, including its decorator metadata. The
-starter's SWC build produces these files in `dist/`; run `pnpm build` first.
-This minimal config uses the portable factory in Node:
+When the project installs Vite 8 (an optional peer dependency; the starter
+does), the CLI loads the config through Vite's module runner (`runnerImport`)
+with Oxc's legacy decorators and decorator metadata, so the config imports the
+decorated application source directly. This minimal config uses the portable
+factory in Node:
 
-```js
-// vela.config.mjs
+```ts
+// vela.config.ts
 import { defineVelaConfig } from '@velajs/cli/config';
 import { VelaFactory } from '@velajs/vela';
-import { AppModule } from './dist/app.module.js';
+import { AppModule } from './src/app.module.js';
 
 export default defineVelaConfig({
   rootModule: AppModule, // needed by `vela openapi dump` and `vela client generate`
@@ -107,12 +112,15 @@ custom fields. The loader validates `createApp` and optional `rootModule` before
 commands use them. Command teardown awaits application disposal even when work
 fails, and cleanup warnings do not replace the command's exit result.
 
-Node 24 can strip erasable types in a `.ts` config, but it does not transform
-legacy decorators, emit constructor metadata, or resolve `tsconfig` path
-aliases. A `.ts` config should therefore also import the compiled `.js` graph
-with explicit extensions. Use SWC's `legacyDecorator` and `decoratorMetadata`
-settings from the starter, or a compiler with equivalent output. The CLI adds
-no compiler hooks. See [Node's TypeScript documentation](https://nodejs.org/docs/latest-v24.x/api/typescript.html#typescript-features).
+Through Vite, the config and the relative files it imports are transformed;
+packages load from `node_modules` as usual. Vite's own project config
+(`vite.config.ts`) is not applied, and `tsconfig` path aliases are not resolved.
+
+Without Vite 8, the CLI imports the config with Node. Node 24 can strip erasable
+types in a `.ts` config, but it does not transform legacy decorators, emit
+constructor metadata, or resolve `tsconfig` path aliases, so such a config must
+import compiled `.js` files with explicit extensions (for example the output of
+a metadata-emitting compiler). See [Node's TypeScript documentation](https://nodejs.org/docs/latest-v24.x/api/typescript.html#typescript-features).
 
 The loader checks `vela.config.js`, then `.mjs`, then `.ts` in the current
 directory; it does not search parents. `--config` selects exactly that path,
@@ -125,8 +133,7 @@ importing user code.
 
 ```sh
 vela doctor --json
-pnpm build
-vela doctor --app --config vela.config.mjs --json
+vela doctor --app --config vela.config.ts --json
 ```
 
 The default only resolves the config file. `--app` imports it and runs normal

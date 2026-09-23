@@ -81,6 +81,29 @@ with `useFactory`. Registering an undecorated class directly in `providers` is r
 way, as is a module export that is neither a local provider nor exported by an imported module.
 `@Module`, `@Catch`, gateway and discoverable class decorators count as decorated.
 
+## Unresolved dependencies
+
+When a class constructor argument has no provider visible to the module that resolves the class,
+construction fails with `UnresolvedDependencyError`. The message names the class, its module, the
+argument and the reason:
+
+```text
+Cannot resolve UsersController(?, AuditService) in UsersModule. Argument #0 UsersService is declared in DataModule but not exported (add it to DataModule.exports).
+```
+
+The reason is one of three cases, also available as `error.reason.kind`:
+
+- `'not-exported'`: the listed modules declare the token, but none exports it.
+- `'not-imported'`: the listed modules export it, but the resolving module imports none of them.
+- `'not-provided'`: no module declares it (`is not provided in UsersModule or its imports`).
+
+`error.reason.modules` holds module instance ids. `className`, `moduleId`, `parameterIndex` and
+`token` identify the argument, and `cause` keeps the lookup failure (a `ModuleVisibilityError`
+when the token exists elsewhere). Only the innermost constructor reports: when `Facade` needs
+`Repository` and `Repository` cannot resolve `UsersService`, the error names `Repository`. Provider
+factories (`useFactory` + `inject`), aliases (`useExisting`) and `forwardRef` proxies resolved
+after a cycle keep their own lookup errors.
+
 ## Request-scoped providers and the root container
 
 A request-scoped provider, including one that is request-scoped because it depends on one, never

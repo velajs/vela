@@ -79,10 +79,17 @@
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "unplugin-swc": "catalog:",
+    "vite": "catalog:",
     "vitest": "catalog:"
   },
   "peerDependencies": {
-    "@velajs/vela": "workspace:^"
+    "@velajs/vela": "workspace:^",
+    "vite": "^8.0.0"
+  },
+  "peerDependenciesMeta": {
+    "vite": {
+      "optional": true
+    }
   },
   "optionalDependencies": {
     "@velajs/studio-host": "workspace:*"

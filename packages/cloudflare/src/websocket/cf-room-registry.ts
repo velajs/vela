@@ -79,7 +79,10 @@ export class CfRoomRegistry implements RoomRegistry {
     const selected: Array<{ ws: WsLike; client: WsClient }> = [];
     for (const ws of targets) {
       const att = this.reconcileFrameLimit(ws, this.attachmentOf(ws));
-      // Not authorized for delivery until its connection hook completes.
+      // A socket still in its connection hook is not admitted yet: it receives no
+      // room frames, and its own accept() settles it. Rejecting it here would
+      // close every client whose handleConnection broadcasts to the room. Other
+      // pending sockets fall through and are rejected below.
       if (att.state === 'pending' && this.#admitting.has(ws)) continue;
       if (
         att.state !== 'active' ||

@@ -49,8 +49,9 @@ export default app; // Fetch-compatible application
 
 This example serves `GET /app/` and returns `{ "message": "Hello from the edge!" }`.
 
-Build decorated TypeScript with SWC using legacy decorators and emitted decorator
-metadata. See the [tooling guide](https://github.com/velajs/vela/blob/main/docs/tooling.md)
+Build decorated TypeScript with legacy decorators and emitted decorator metadata,
+for example with Vite 8, whose Oxc transformer emits both. See the
+[tooling guide](https://github.com/velajs/vela/blob/main/docs/tooling.md)
 and [API starter](https://github.com/velajs/vela/tree/main/apps/api-starter) for
 working compiler and runtime configuration. For native Workers bindings, use
 `createCloudflareWorker` from

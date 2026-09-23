@@ -3,22 +3,25 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 const common = { modules: true, compatibilityDate: '2026-09-22' };
+// `vite build` writes each Worker to dist/<environment>/, named after its
+// Wrangler `name` ("module-api" -> "module_api").
+const bundle = (name) => resolve(`dist/module_${name}/index.js`);
 const runtime = new Miniflare(
   convertV4MiniflareOptions({
     workers: [
       {
         ...common,
         name: 'api',
-        scriptPath: resolve('dist/api.mjs'),
+        scriptPath: bundle('api'),
         serviceBindings: { CATALOG: 'catalog', ACCOUNTS: 'accounts' },
         queueProducers: { TASKS: 'module-tasks' },
       },
-      { ...common, name: 'catalog', scriptPath: resolve('dist/catalog.mjs') },
-      { ...common, name: 'accounts', scriptPath: resolve('dist/accounts.mjs') },
+      { ...common, name: 'catalog', scriptPath: bundle('catalog') },
+      { ...common, name: 'accounts', scriptPath: bundle('accounts') },
       {
         ...common,
         name: 'jobs',
-        scriptPath: resolve('dist/jobs.mjs'),
+        scriptPath: bundle('jobs'),
         kvNamespaces: ['RESULTS'],
         queueConsumers: { 'module-tasks': { maxBatchSize: 1, maxBatchTimeout: 0 } },
       },
@@ -39,8 +42,13 @@ try {
   assert.deepEqual(JSON.parse(await results.get('last-job')), { source: 'api', attempt: 1 });
   await (await runtime.getWorker('jobs')).scheduled({ cron: '* * * * *' });
   assert.equal(await results.get('last-cron'), 'completed');
-  const meta = JSON.parse(await readFile('dist/jobs.meta.json', 'utf8'));
-  assert(!Object.keys(meta.inputs).some((path) => /src\/(api|catalog|accounts)\.ts$/.test(path)));
+  // The jobs bundle's source map lists every module Vite bundled into it.
+  const { sources } = JSON.parse(await readFile(`${bundle('jobs')}.map`, 'utf8'));
+  assert(
+    sources.some((path) => path.endsWith('src/jobs.ts')),
+    'the jobs source map lists src/jobs.ts',
+  );
+  assert(!sources.some((path) => /src\/(api|catalog|accounts)\.ts$/.test(path)));
   console.log(
     'Four native Workers passed: composed RPC API, queue delivery, cron, and separate bundles.',
   );

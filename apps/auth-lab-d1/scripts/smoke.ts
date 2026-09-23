@@ -25,9 +25,7 @@ let jar = '';
 function captureCookies(res: Response): void {
   const sc = res.headers.get('set-cookie');
   if (!sc) return;
-  const pairs = sc
-    .split(/,\s*(?=[a-zA-Z0-9_-]+=)/)
-    .map((c) => c.split(';')[0]!.trim());
+  const pairs = sc.split(/,\s*(?=[a-zA-Z0-9_-]+=)/).map((c) => c.split(';')[0]!.trim());
   jar = pairs.join('; ');
 }
 
@@ -42,23 +40,25 @@ async function call(method: string, path: string, body?: unknown): Promise<Respo
   return res;
 }
 
-console.log('auth-lab-d1 wrangler smoke (D1-backed)');
+// `pnpm smoke` builds first: this serves the deployable Vite build in workerd,
+// against the local D1 database that `pnpm db:reset` just migrated.
+console.log('auth-lab-d1 smoke (D1-backed)');
 console.log('--------------------------------------');
-console.log(`Spawning wrangler dev --local --port ${PORT}...`);
+console.log(`Spawning vite preview on port ${PORT}...`);
 
-const child = spawn('pnpm', ['exec', 'wrangler', 'dev', '--local', `--port`, String(PORT)], {
+const child = spawn('pnpm', ['exec', 'vite', 'preview'], {
   stdio: ['ignore', 'pipe', 'pipe'],
   env: process.env,
 });
 
-const wranglerLog: string[] = [];
-child.stdout.on('data', (b) => wranglerLog.push(b.toString()));
-child.stderr.on('data', (b) => wranglerLog.push(b.toString()));
+const serverLog: string[] = [];
+child.stdout.on('data', (b) => serverLog.push(b.toString()));
+child.stderr.on('data', (b) => serverLog.push(b.toString()));
 
 const ready = await waitForReady(60_000);
 if (!ready) {
-  console.error('wrangler dev did not become ready within 60s');
-  console.error(wranglerLog.join(''));
+  console.error('vite preview did not become ready within 60s');
+  console.error(serverLog.join(''));
   child.kill();
   process.exit(1);
 }
@@ -117,7 +117,7 @@ try {
 console.log('--------------------------------------');
 console.log(`${passed} passed, ${failed} failed`);
 if (failed > 0) {
-  console.error('--- wrangler log ---');
-  console.error(wranglerLog.join(''));
+  console.error('--- vite preview log ---');
+  console.error(serverLog.join(''));
   process.exit(1);
 }

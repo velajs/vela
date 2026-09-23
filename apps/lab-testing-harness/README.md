@@ -1,14 +1,18 @@
 # Lab Testing Harness
 
-Fake consumer project for `@velajs/testing` installed through `file:../..` and `@velajs/vela` installed through `file:../../../vela`.
+Fake consumer project for `@velajs/testing` and `@velajs/vela`, linked from the
+workspace. It exercises the public testing API from a separate project and runs
+in Node (a **Node host**, not a Worker).
 
-It exercises the public testing API from a standalone project:
+From the workspace root:
 
 ```sh
-pnpm --dir examples/lab-testing-harness install
-pnpm --dir examples/lab-testing-harness typecheck
-pnpm --dir examples/lab-testing-harness test
+pnpm --dir apps/lab-testing-harness typecheck
+pnpm --dir apps/lab-testing-harness test
 ```
+
+Vitest compiles the tests with Oxc; `vitest.config.ts` asks it for the legacy
+decorators and `design:paramtypes` metadata Vela reads.
 
 Covered behaviors:
 

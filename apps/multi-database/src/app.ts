@@ -37,8 +37,7 @@ export function createDatabases(env: VelaEnv) {
 /** The Cloudflare factory builds this graph once for each native environment. */
 export function createAppModule(env: VelaEnv) {
   const databases = createDatabases(env);
-  class AppModule {}
-  Module({
+  @Module({
     imports: [
       CrudModule.forRootAsync({ inject: [], useFactory: async () => ({ databases }) }),
       CrudModule.forFeature([
@@ -52,6 +51,7 @@ export function createAppModule(env: VelaEnv) {
         }),
       ]),
     ],
-  })(AppModule);
+  })
+  class AppModule {}
   return AppModule;
 }

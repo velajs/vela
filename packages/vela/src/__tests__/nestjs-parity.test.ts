@@ -37,6 +37,7 @@ import {
   HttpMethod,
   ModuleRef,
   ModuleVisibilityError,
+  UnresolvedDependencyError,
   getRequestContainer,
   runInEntrypointScope,
   mixin,
@@ -5666,7 +5667,10 @@ describe('ModuleRef host-module scoping', () => {
     expect(a.greeting).toBe('hi');
     expect(a).not.toBe(b);
     expect(app.getContainer().has(Greeter)).toBe(false);
-    await expect(ref.create(Snooper)).rejects.toThrow(ModuleVisibilityError);
+    await expect(ref.create(Snooper)).rejects.toSatisfy(
+      (error) =>
+        error instanceof UnresolvedDependencyError && error.cause instanceof ModuleVisibilityError,
+    );
   });
 });
 

@@ -8,6 +8,7 @@ export {
   ModuleVisibilityError,
   MultipleProvidersFoundError,
   ROOT_MODULE_ID,
+  UnresolvedDependencyError,
   describeToken,
   defineProvider,
 } from './types';
@@ -32,4 +33,6 @@ export type {
   ContainerOptions,
   Diagnostics,
   MissingInjectionMetadataReason,
+  UnresolvedDependency,
+  UnresolvedDependencyReason,
 } from './types';

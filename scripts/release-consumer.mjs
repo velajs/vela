@@ -1,8 +1,9 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { cp, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { verifyEdgePackages } from './edge-consumer.mjs';
 import { verifyAgentPackage } from './agent-consumer.mjs';
 import { verifyAiPackage } from './ai-consumer.mjs';
@@ -39,18 +40,19 @@ const { tarballs, companions: consumerCompanions } = await ensureConsumerArchive
   '@velajs/graphql',
 ]);
 const consumer = await mkdtemp(join(tmpdir(), 'vela-release-consumer-'));
-for (const file of [
-  'src',
-  'web',
-  'scripts',
-  '.swcrc',
-  'tsconfig.json',
-  'tsconfig.web.json',
-  'worker-configuration.d.ts',
-  'wrangler.jsonc',
-  'migrations',
-]) {
-  await cp(new URL(file, sample), join(consumer, file), { recursive: true });
+// Copy the sample as committed, so its build and compiler configuration (Vite,
+// Vitest, Oxc, tsconfig files) follow the app without a second list to maintain.
+// package.json is rewritten below.
+const sampleFiles = execFileSync('git', ['ls-files', '-z', '--', '.'], {
+  cwd: sample,
+  encoding: 'utf8',
+})
+  .split('\0')
+  .filter((file) => file && file !== 'package.json');
+if (!sampleFiles.includes('wrangler.jsonc')) throw new Error('The sample has no committed files');
+for (const file of sampleFiles) {
+  await mkdir(dirname(join(consumer, file)), { recursive: true });
+  await cp(join(fileURLToPath(sample), file), join(consumer, file));
 }
 const installed = JSON.parse(
   execFileSync('pnpm', ['--filter', manifest.name, 'list', '--depth', '0', '--json'], {

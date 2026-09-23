@@ -1,7 +1,7 @@
 # Application deployment
 
-Use Wrangler to build and deploy Vela Workers. `vela deploy check` checks a named
-target and a saved entrypoint snapshot before those steps:
+Build Vela Workers with Vite and deploy the build with Wrangler. `vela deploy check`
+checks a named target and a saved entrypoint snapshot before those steps:
 
 ```sh
 pnpm exec vela deploy check \
@@ -28,10 +28,12 @@ Generate a fresh snapshot from the same application configuration and source
 revision you will deploy. Existing introspection produces the supported format:
 
 ```sh
-pnpm build
 mkdir -p build
-pnpm exec vela entrypoint list --config vela.config.mjs --json > build/entrypoints.json
+pnpm exec vela entrypoint list --config vela.config.ts --json > build/entrypoints.json
 ```
+
+The CLI loads `vela.config.ts` and the decorated sources it imports through Vite,
+with the same Oxc decorator settings as the Worker build, so no build runs first.
 
 **Snapshot generation creates the application.** Use a deliberate local/test
 configuration with native local bindings and controlled initialization hooks.
@@ -81,9 +83,8 @@ Keep real staging resources separate from production. An example target is:
 ```jsonc
 {
   "name": "my-api",
-  "main": "dist/worker.js",
+  "main": "src/worker.ts",
   "compatibility_date": "2026-09-20",
-  "build": { "command": "pnpm build" },
   "env": {
     "staging": {
       "name": "my-api-staging",
@@ -122,6 +123,33 @@ commands. Missing git information is reported as unavailable; dirty state is
 reported without blocking local iteration. Digests identify inspected bytes;
 they do not prove that a snapshot is fresh or that a bundle ran successfully.
 
+## Build with Vite
+
+Projects created by `vela new` build with Vite 8 and `@cloudflare/vite-plugin`.
+`wrangler.jsonc` points `main` at `src/worker.ts` and has no `build` block:
+
+- `pnpm build` (`vite build`) compiles the Worker with Oxc, including the legacy
+  decorators and `design:paramtypes` metadata that constructor injection reads,
+  and writes it with a generated `wrangler.json` to `dist/<worker>/`. It also
+  writes `.wrangler/deploy/config.json`, which redirects Wrangler to that output.
+- `pnpm exec wrangler deploy`, with no `--config`, follows the redirect and
+  uploads the built Worker. `pnpm run deploy` runs both steps.
+- The Wrangler environment is chosen when building: `CLOUDFLARE_ENV=staging
+  pnpm build` flattens `env.staging` into the generated configuration, so the
+  following `wrangler deploy` targets the staging Worker. Build once per target.
+
+Do not pass `--config wrangler.jsonc` to `wrangler deploy` for such a project:
+an explicit configuration bypasses the redirect, and Wrangler then bundles
+`src/worker.ts` itself with esbuild, which emits no decorator metadata. The
+application would then fail at startup with `MissingInjectionMetadataError`.
+
+The Vite build also copies `.dev.vars` into `dist/<worker>/` so `pnpm preview`
+can serve the build with local secrets. Wrangler does not upload it, and the
+starter's ignore file excludes `dist/`; do not publish `dist/` any other way.
+Vite does not minify the Worker by default. If you enable `build.minify`, also
+set `build.rolldownOptions.output.keepNames: true` so class names, which appear
+in module ids and diagnostics, survive. See [tooling](tooling.md#build-pipeline).
+
 ## Environment types and secrets
 
 The Worker's bindings, variables and secrets reach DI as the framework `ENV`,
@@ -147,14 +175,19 @@ write `build/entrypoints.json` from its local/test application configuration.
 Keep source revision, lockfile and application configuration consistent across
 test, snapshot, bundle and deployment steps.
 
-After resolving preflight errors, run the pinned project Wrangler separately:
+After resolving preflight errors, build the target with Vite and run the pinned
+project Wrangler separately:
 
 ```sh
-pnpm exec wrangler deploy --config wrangler.jsonc --env staging --dry-run
+CLOUDFLARE_ENV=staging pnpm build
+pnpm exec wrangler deploy --dry-run
 ```
 
-This Wrangler dry-run can execute custom builds and write local bundle output.
-It checks bundling without uploading, and is separate from the static preflight.
+This dry-run writes local bundle output and checks the upload without performing
+it; it is separate from the static preflight. The `Next step` that `vela deploy
+check` prints passes `--config wrangler.jsonc --env staging`, which suits Workers
+that Wrangler builds itself; for a Vite-built Worker, run the two commands above
+instead (see [Build with Vite](#build-with-vite)).
 Run native Workers tests for cold HTTP/queue/cron and binding behavior. Verify
 resource/migration readiness for each named database using your application's
 migration tooling before the actual deployment. For D1, apply each database's
@@ -162,7 +195,7 @@ own reviewed migrations to its matching staging binding; do not assume a single
 database migration covers all registrations.
 
 When ready to deploy, use your approved application pipeline or an explicit
-`pnpm exec wrangler deploy --config wrangler.jsonc --env staging`, then run the
+`CLOUDFLARE_ENV=staging pnpm build && pnpm exec wrangler deploy`, then run the
 application's smoke checks against the resulting URL. Configure Cloudflare
 credentials only on the deploy job. Production should select its own named
 environment and consume the reviewed revision and configuration. Nothing in the

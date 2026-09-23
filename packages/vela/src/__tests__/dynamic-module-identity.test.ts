@@ -8,8 +8,8 @@ import {
   InjectionToken,
   MetadataRegistry,
   Module,
-  ModuleVisibilityError,
   MultipleProvidersFoundError,
+  UnresolvedDependencyError,
   VelaFactory,
   CacheModule,
   CACHE_MODULE_OPTIONS,
@@ -333,7 +333,7 @@ describe('Dynamic module identity', () => {
   });
 
   // -------------------------------------------------------------------------
-  // ModuleVisibilityError keeps firing under the new bucketed resolver
+  // Visibility errors keep firing under the new bucketed resolver
   // -------------------------------------------------------------------------
   it('untouched: visibility errors still fire when consumers reach for unexported tokens', async () => {
     const SECRET = new InjectionToken<string>('SECRET');
@@ -344,7 +344,7 @@ describe('Dynamic module identity', () => {
     }
 
     @Module({
-      providers: [defineProvider(SECRET, {useValue: 'hidden'}), Hider],
+      providers: [defineProvider(SECRET, { useValue: 'hidden' }), Hider],
       // no exports
     })
     class HiddenModule {}
@@ -357,7 +357,10 @@ describe('Dynamic module identity', () => {
     @Module({ imports: [HiddenModule], providers: [Peeker] })
     class App {}
 
-    await expect(VelaFactory.create(App)).rejects.toThrow(ModuleVisibilityError);
+    await expect(VelaFactory.create(App)).rejects.toThrow(
+      /^Cannot resolve Peeker\(\?\) in App\. Argument #0 InjectionToken\(SECRET\) is declared in HiddenModule but not exported/,
+    );
+    await expect(VelaFactory.create(App)).rejects.toThrow(UnresolvedDependencyError);
   });
 
   // -------------------------------------------------------------------------

@@ -382,6 +382,34 @@ describe('DO runtime integration', () => {
     expect(ws.lastFrame()).toEqual({ id: '1', event: 'echo', data: 'HI' });
   });
 
+  it('broadcasts from handleConnection without rejecting the connecting socket', async () => {
+    @WebSocketGateway({ path: '/lobby', binding: 'CHAT' })
+    class LobbyGateway implements OnGatewayConnection {
+      constructor(@WebSocketServer() private readonly server: WsServer) {}
+      handleConnection(client: WsClient) {
+        void this.server.emit('joined', { id: client.id });
+      }
+    }
+    @Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [LobbyGateway] })
+    class AppModule {}
+
+    const ctx = new FakeDoState();
+    const runtime = await buildDoRuntime(AppModule, ctx, { env: {} });
+    const host = new DoWebSocketHost(ctx, runtime.dispatcher, runtime.registry);
+    const member = new FakeWs();
+    await expect(acceptTrusted(host, member, '/lobby', 'room1', 'user1')).resolves.toBe(true);
+    const newcomer = new FakeWs();
+    await expect(acceptTrusted(host, newcomer, '/lobby', 'room1', 'user2')).resolves.toBe(true);
+
+    // The admitted member hears about the newcomer. The newcomer is still being
+    // admitted while its own hook runs, so the broadcast skips it: no frame, no close.
+    expect(member.lastFrame().event).toBe('joined');
+    expect(member.closed).toBeUndefined();
+    expect(newcomer.sent).toEqual([]);
+    expect(newcomer.closed).toBeUndefined();
+    expect((newcomer.deserializeAttachment() as { state: string }).state).toBe('active');
+  });
+
   it('closes fail-closed when OnGatewayConnection rejects', async () => {
     let messages = 0;
     @WebSocketGateway({ path: '/reject', binding: 'CHAT' })

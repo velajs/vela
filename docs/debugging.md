@@ -8,10 +8,16 @@ for breakpoints. Both work with the ordinary Vela module and handler APIs.
 Run your application's existing Wrangler development script from a VS Code
 JavaScript Debug Terminal. Set a breakpoint inside a controller method and send
 an HTTP request to that route. Wrangler connects the Worker inspector to that
-terminal automatically. The CLI Worker template builds TypeScript with SWC before
-Wrangler loads `dist/worker.js`.
+terminal automatically.
 
-For a manual attachment, start the application from its package directory:
+The CLI Worker template runs `vite dev` instead: `@cloudflare/vite-plugin` serves
+`src/worker.ts` from source with source maps, starts the Worker inspector on the
+first free port from 9229 (the plugin's `inspectorPort` option fixes it), and
+serves a `/__debug` page that opens DevTools for the Worker. Attach to that port
+with the configuration below.
+
+For a manual attachment of a Wrangler-run application, start it from its package
+directory:
 
 ```sh
 pnpm exec wrangler dev --inspector-port 9229
@@ -42,12 +48,13 @@ Start **Vela Worker** in Run and Debug, then request the route. Use a different
 inspector port for a second development process. These attachment settings follow
 [Cloudflare's breakpoint guide](https://developers.cloudflare.com/workers/observability/dev-tools/breakpoints/).
 
-If a TypeScript breakpoint stays unbound, check that the running build has source
-maps and that Wrangler's `main` points to that build. The CLI template's `.swcrc`
-sets `sourceMaps: true`, `legacyDecorator: true`, `decoratorMetadata: true`, and
-`keepClassNames: true`. Keep those settings when customizing compilation; rebuild
-before attaching. Source maps must survive every transform, including your own
-bundling steps. A breakpoint in an imported file cannot bind until that module
+If a TypeScript breakpoint stays unbound, check that the running code has source
+maps. Under `vite dev` they come from Vite; for a Worker compiled ahead of time,
+check that Wrangler's `main` points to a build with source maps, and rebuild
+before attaching. Keep the legacy decorator and decorator metadata settings (the
+template's `oxc.config.ts`) and class names when customizing compilation; see
+[tooling](tooling.md#build-pipeline). Source maps must survive every transform,
+including your own bundling steps. A breakpoint in an imported file cannot bind until that module
 has loaded; exercise a lazy module's entrypoint first.
 
 ## Debug one test

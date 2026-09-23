@@ -6,8 +6,25 @@ From the workspace root, run `pnpm install --frozen-lockfile` and `pnpm build` f
 
 | Variant | Run | Resume semantics |
 |---|---|---|
-| node (`@hono/node-ws`) | `pnpm start` → http://localhost:8788 | per-process epoch — a restart forks the timeline and reconnects snapshot |
-| Cloudflare (`wrangler dev`) | `pnpm run start:cf` → http://localhost:8789 | Durable Object SQLite retains cursor history; restored subscriptions are validated and their volatile baselines rebuilt |
+| Node host (`@hono/node-ws`) | `pnpm start` → http://localhost:8788 | per-process epoch — a restart forks the timeline and reconnects snapshot |
+| Cloudflare Worker (Vite + workerd) | `pnpm dev` → http://localhost:8789 | Durable Object SQLite retains cursor history; restored subscriptions are validated and their volatile baselines rebuilt |
+
+`src/server-node.ts` is a **Node-only host**: `pnpm start` compiles it with tsdown
+into `dist/node/` and runs it with Node. Workers never load it.
+
+The Cloudflare variant needs no compile step. Vite 8 and
+`@cloudflare/vite-plugin` run `src/worker.ts` and its `LiveRoom` Durable Object
+in workerd, and serve `public/` as static assets. Oxc emits the legacy
+decorators and `design:paramtypes` metadata that `oxc.config.ts` asks for, which
+is what lets `TodosController` and `TodoLive` receive their dependencies from
+constructor types alone. Both variants serve the page and the esbuild bundle of
+`web/main.ts` from `public/`, which `pnpm run bundle:web` writes.
+
+```sh
+pnpm test        # the Worker inside workerd: KV store, DO commit stamps, constructor metadata
+pnpm build       # vite build (deployable Worker in dist/) and the Node host
+pnpm preview     # serves the Vite build on :8789
+```
 
 Open two tabs. Add todos (optimistic, gated on `Vela-Commit-Cursor`), watch presence, and read the **wire panel**, which prints every `$live` frame. The **"simulate network blip"** button closes the raw socket: reconnect uses a resume when the retained history and baseline allow it, otherwise a validated fresh snapshot.
 
