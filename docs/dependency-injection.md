@@ -98,9 +98,10 @@ These framework defaults register themselves when their module loads: `Reflector
 `UrlGeneratorService`, `SignedUrlGuard`, `InternalDispatcher`, `SignedInvocationGuard` and the
 `MemoryNonceStore` behind `NONCE_STORE`. Referencing one, by injecting it or by applying
 `@SignedUrl()` or `@SignedInvocation()`, is enough to provide it, and a Worker bundle that never
-references one does not contain it. Code first imported through a dynamic `import()` after the
-application was created does not add a default to that application; import such services
-statically.
+references one does not contain it. A default whose module is first imported through a dynamic
+`import()` after the application was created registers the first time the application resolves it,
+with the same precedence: a `@Global()` module exporting its token, or the application's own
+configuration, still wins.
 
 ## Module classes and enhancers
 
