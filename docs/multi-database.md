@@ -47,21 +47,29 @@ adapter is resolved from the current application's registered database.
 
 For bindings created by async providers, use the ordinary typed provider/module
 APIs. The provider's inferred registry type can be retained on its own injection
-token; `CrudModule.forRootAsync` awaits its options before compiling resources:
+token; `CrudModule.forRootAsync` awaits its options before compiling resources.
+Select each resource's database by name, since the database objects only exist
+once the factory runs:
 
 ```ts
-CrudModule.forRootAsync({
-  inject: [ENV],
-  useFactory: async (env) => ({ databases: await createDatabases(env) }),
-});
+@Module({ imports: [
+  CrudModule.forRootAsync({
+    inject: [ENV],
+    useFactory: async (env) => ({ databases: await createDatabases(env) }),
+  }),
+  CrudModule.forFeature([
+    defineCrudFeature({ path: '/items', model: itemModel, database: 'primary' }),
+    defineCrudFeature({ path: '/analytics/items', model: itemModel, database: 'analytics' }),
+  ]),
+] })
+class AppModule {}
 ```
 
-Create the handles and stores per environment. In Workers, use
-`createCloudflareWorker({ create: createAppModule })`, as in the example:
-`createAppModule(env: VelaEnv)` receives the native environment typed by
-`wrangler types`, and `ENV` is the same object inside DI. The factory runs once
-per environment object and its registry is shared
-by the applications built from it. Reusing a native handle intentionally reuses its
+Create the handles and stores per environment. In Workers, declare `AppModule`
+once at module scope and pass it to `createCloudflareWorker(AppModule)`, as in the
+example: the factory receives the native environment typed by `wrangler types`
+(`ENV` inside DI) and runs for each application, so every environment gets its
+own registry, handles and stores. Reusing a native handle intentionally reuses its
 underlying data; separate application registrations still get distinct transaction
 capabilities.
 

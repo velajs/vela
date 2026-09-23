@@ -164,6 +164,29 @@ at route build, so give it a `static priority`: without one it sorts at 0, and
 the container's diagnostics policy reports it (`'log'` warns, `'throw'` fails
 bootstrap).
 
+## Static roots: runtime values through DI
+
+An application root is a module class, or a `DynamicModule` such as
+`AppModule.forRoot(...)`, declared once at module scope. `VelaFactory.create`,
+`createOpenApiDocument` and the Cloudflare factories (`createCloudflareWorker`,
+`createCloudflareApp`, `VelaWebSocketDurableObject`) accept either. Declare
+decorated classes at module scope only: a function that declares controllers,
+providers or modules creates new classes on every call, and the isolate-global
+metadata registry keeps every one of them.
+
+Runtime values reach a static graph through dependency injection:
+
+- Bindings, variables and secrets come from `ENV` in `forRootAsync({ inject: [ENV],
+  useFactory })` factories, `useFactory` providers and `@InjectEnv()` constructors.
+- Where a decorator needs runtime behavior, it names an injectable class instead
+  of taking a closure. `@WebSocketGateway({ authenticator })` is an example, and
+  its `allowedOrigins` accepts `(env) => origins`.
+
+Each application runs these factories, so applications built from different
+environments share classes but no instances. Any module can inject the root,
+exactly as it was passed, through the global `ROOT_MODULE` token. Studio uses it
+to document the application, for example, so no module imports the root back.
+
 ## Discovery: finding decorated providers
 
 Never hand-roll a `container.getTokens()` scan. Declare a decorator, then ask
@@ -387,6 +410,8 @@ read gateway instances at wiring time).
 ## Checklist
 
 - [ ] Module built on `defineModule` (or plain `@Module` when zero-config).
+- [ ] Classes declared at module scope; runtime values arrive through
+      `forRootAsync({ inject: [ENV] })`, providers or injectable classes.
 - [ ] `key` deterministic; explicit `key` passthrough honored.
 - [ ] Tokens are `InjectionToken`s (`moduleToken`), options token stable.
 - [ ] Global components via the `global:` slot / `provideGlobal` only.
