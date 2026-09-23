@@ -73,9 +73,12 @@ See [schema contracts](types.md), [serialization](serialization.md) and
 
 ## Queues, events, schedules and storage
 
-Use a queue driver factory when module declarations are reused across applications:
-`driver: () => inline()`. A bound driver instance cannot be rebound to another
-application. Typed queue jobs carry original schema input and validate at producer
+Configure the queue driver once with `QueueModule.forRoot({ driver })` and register
+each queue with `QueueModule.registerQueue({ name, binding? })` in the module that
+uses it; inject clients with `@InjectQueue(name)`. On Workers use
+`cloudflareQueues()` from `@velajs/cloudflare/queues`. Use a queue driver factory
+when module declarations are reused across applications: `driver: () => inline()`.
+A bound driver instance cannot be rebound to another application. Typed queue jobs carry original schema input and validate at producer
 and consumer boundaries; keep transforms deterministic. Delivery handlers must
 still tolerate redelivery.
 

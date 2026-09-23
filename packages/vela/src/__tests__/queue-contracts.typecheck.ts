@@ -38,6 +38,18 @@ const badZodOutput: QueueJobOutput<typeof zodJob> = { value: '42' };
 void zodOutput;
 void badZodOutput;
 
+// addBulk keeps each typed job's wire input, for literal tuples and mapped arrays alike.
+void client
+  .addBulk([
+    { job: zodJob, data: { value: '1' } },
+    { job: definition, data: { count: '2' }, options: { delayMs: 0 } },
+  ])
+  .then(([first, second]) => [first.data.value, second.data.count] satisfies [string, string]);
+void client.addBulk(['1', '2'].map((value) => ({ job: zodJob, data: { value } })));
+void client.addBulk([{ job: 'named', data: { free: true } }]);
+// @ts-expect-error bulk data is the job's wire input, not its output
+void client.addBulk([{ job: zodJob, data: { value: 1 } }]);
+
 // Legacy bind implementations may return ignored values; the void contract stays intact.
 const legacyDriver: import('../queue').QueueDriver = {
   kind: 'legacy',

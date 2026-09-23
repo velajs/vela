@@ -102,8 +102,10 @@ export interface QueueRegistration {
   readonly binding?: string;
   /**
    * The physical queue this application consumes the jobs from. Setting it
-   * pins that physical queue: its batches may then only carry jobs of the
-   * queues pinned to it. Without it, delivery routes each job by its `queue`.
+   * pins the queue to that physical queue: its jobs are accepted only from
+   * it, and that physical queue may only carry the queues pinned to it.
+   * Without it, delivery routes each job by its `queue`, from any physical
+   * queue.
    */
   readonly consumer?: string;
 }

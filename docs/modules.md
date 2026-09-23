@@ -299,7 +299,7 @@ The worked example for ALL of this is the first-party queue module
 (`packages/vela/src/queue/`, `@velajs/vela/queue`): decorators via
 `createDiscoverableDecorator`, the `'queue'` entrypoint kind, per-job
 `runInEntrypointScope` + async-seam re-resolution (lazy-module compatible),
-`defineModule` with options-derived per-queue providers and native transport contributions, and
+`defineModule` for the global driver plus `registerQueue` dynamic modules that provide per-queue clients, native transport contributions, and
 an import-audit test (`queue-openness.test.ts`) proving it never leaves the
 public API. Dispatch one unit of platform work with
 `dispatchQueueJob(container, app.entrypoints, job)`; after bootstrap the

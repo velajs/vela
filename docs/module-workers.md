@@ -39,43 +39,38 @@ in root factories or singleton providers.
 ## Native queues through QueueModule
 
 ```ts
-QueueModule.forRootAsync({
-  queues: ['documents'],
-  inject: [ENV],
-  useFactory: env => ({
-    driver: cloudflareQueueDriver(
-      { documents: env.DOCUMENTS },
-      {
-        consumers: { 'documents-staging': 'documents' },
-        producerBindings: { documents: 'DOCUMENTS' },
-      },
-    ),
-  }),
-});
+// Both Workers
+QueueModule.forRoot({ driver: cloudflareQueues() });
+// API Worker (producer): DOCUMENTS is a queues.producers binding
+QueueModule.registerQueue({ name: 'documents', binding: 'DOCUMENTS' });
+// Jobs Worker (consumer): pins the physical queue it consumes
+QueueModule.registerQueue({ name: 'documents', consumer: 'documents-staging' });
 ```
 
-Import `QueueModule`, `Processor`, `Process` and `queueToken` from
-`@velajs/vela/queue`; import the driver from `@velajs/cloudflare/queue`.
-The first driver argument maps logical names to native producer objects. Omit
-those entries in consumer-only Workers. Omit `consumers` in producer-only Workers.
-`producerBindings` declares the corresponding Wrangler binding names for deployment
-checks. Consumer keys are physical queue names; values are logical processor names.
+Import `QueueModule`, `InjectQueue`, `Processor` and `Process` from
+`@velajs/vela/queue`, and the driver from `@velajs/cloudflare/queues`. Inject the
+producer with `@InjectQueue('documents')`; the driver reads `ENV.DOCUMENTS` from
+each application's environment when a job is added. Put `@Processor('documents')`
+in the consumer Worker's jobs module. Register the queue in the module that uses
+it; `forRoot` goes once in each Worker's root module.
 
-The module contributes native routes automatically. Do not add a bridge consumer
-for the same physical queue: ambiguous ownership fails bootstrap. Unknown native
-queues, mismatched envelopes and unhandled jobs reject delivery. Successful siblings
-are acknowledged after their handlers and managed work settle; failures remain
-unsettled for platform redelivery. Existing envelopes and delivery IDs are preserved.
-Wrangler owns retry limits, delays and dead-letter queues. Transactional outboxes,
-leases and application idempotency remain separate concerns.
+The module consumes natively without a mapping: batches no `@QueueConsumer` claims
+are routed message by message by each job's logical queue, so several queues can
+share one physical queue. `consumer` is optional; it pins the logical queue to
+that physical queue in both directions. Do not add a `@QueueConsumer` for a pinned
+physical queue: ambiguous ownership fails bootstrap. Unregistered queues,
+non-envelope messages and unhandled or failed jobs reject delivery. Successful
+siblings are acknowledged after their handlers and managed work settle; failures
+remain unsettled for platform redelivery. Existing envelopes and delivery IDs are
+preserved. Wrangler owns retry limits, delays and dead-letter queues. Transactional
+outboxes, leases and application idempotency remain separate concerns.
 
 `@QueueConsumer`, native `Queue` objects and `consumeQueueBatch` remain available
 for applications needing direct native batch control.
 
 `QueueModule` signed dispatch (`dispatch: { kind: 'signed', target }`) re-enters the
-signed route for batches the module consumes, so global guards apply. It needs a
-`consumers` mapping: bootstrap rejects signed dispatch on a producer-only driver,
-because bridge deliveries would skip the signed route.
+signed route for every job the module delivers, native deliveries included, so
+global guards apply. See [queues](queues.md) for bulk sends, limits and settlement.
 
 ## Scheduling and RPC
 
@@ -95,8 +90,9 @@ Wrangler name for deployment checks. Contracts and browser clients stay free of
 server imports. The server module applies the global and scoped pipeline once.
 
 `vela deploy check` consumes the selected environment and entrypoint snapshot to
-check native consumers, producer declarations, cron triggers, and RPC service
-bindings. It does not create resources. See the [four-worker example](../apps/module-workers/README.md).
+check native consumers, registered queue producers, cron triggers, and RPC
+service bindings. It derives a registered queue's physical queue from its
+`consumer` pin or its binding's Wrangler producer. It does not create resources. See the [four-worker example](../apps/module-workers/README.md).
 
 ## Migration
 
@@ -109,8 +105,10 @@ compatibility layers. Follow the current module APIs and update application
 imports and configuration when upgrading.
 
 Queue transport configuration now initializes during bootstrap, including apps
-without a producer. Duplicate queue ownership fails at startup instead of the
-first client resolution. Job providers still follow their declared scopes.
+without a producer. `QueueModule.forRoot()` configures only the driver; register
+queues with `QueueModule.registerQueue()` and replace `cloudflareQueueDriver`
+with `cloudflareQueues()` from `@velajs/cloudflare/queues`. Conflicting queue
+bindings fail at startup instead of the first client resolution. Job providers still follow their declared scopes.
 Cloudflare queue deliveries without a registered consumer now reject, rather than
 returning successfully and allowing implicit acknowledgement. These behavior
 changes ship within 1.x; native decorators remain explicit escape hatches.
