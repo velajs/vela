@@ -9,6 +9,7 @@ import {
   planConstructor,
 } from './decorators';
 import { ModuleRef } from './module-ref';
+import { getRootDefaults } from './root-defaults';
 import type {
   ConstructorDependency,
   ContainerOptions,
@@ -414,7 +415,43 @@ export class Container {
         candidates.map((candidate) => candidate.declaringModuleId),
       );
     }
+    if (candidates.length === 0 && this.#registerLateRootDefault(token)) {
+      return this.#findRegistration<T>(token, requestingModuleId);
+    }
     return candidates[0];
+  }
+
+  /**
+   * Register a framework default whose module first loaded after bootstrap,
+   * through a dynamic `import()`, so bootstrap never saw its declaration.
+   * It joins the application exactly as bootstrap registers one: in
+   * `__root__`, global, ranked as a framework default (see
+   * {@link markRootDefaults}), and request-scoped when it injects a
+   * request-scoped provider. Returns whether it registered one; a container
+   * bootstrap did not build takes no framework defaults.
+   */
+  #registerLateRootDefault(token: Token): boolean {
+    const root = this.#root;
+    const defaults = root.#rootDefaults;
+    if (!defaults || root.#lookupInBucket(ROOT_MODULE_ID, token)) return false;
+    const provider = getRootDefaults().get(token);
+    if (provider === undefined) return false;
+    root.register(provider);
+    root.markGlobalToken(token);
+    const registration = root.#lookupInBucket(ROOT_MODULE_ID, token);
+    if (!registration) return false;
+    defaults.add(registration);
+    // Bootstrap's scope pass has already run; bubble request scope up from
+    // what this default injects, as computeEffectiveScopes() would have.
+    const requestScoped = root.dependencyTokensOf(registration).some((dependency) => {
+      try {
+        return root.getResolvedScope(dependency, ROOT_MODULE_ID) === Scope.REQUEST;
+      } catch {
+        return false;
+      }
+    });
+    registration.effectiveScope = requestScoped ? Scope.REQUEST : registration.scope;
+    return true;
   }
 
   /**
