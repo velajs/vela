@@ -1,8 +1,8 @@
 {
   "$comment": "Committed regression budget for the minimal Worker in scripts/fixtures/worker-size-entry.ts, bundled with the package root's required nodejs_als flag. Absolute 64 MiB raw and 3 MiB gzip upload limits are enforced separately. Run pnpm worker-size:update after an intentional increase and review the byte delta. excludedModules lists dist modules (or directories, ending in /) the fixture never uses; the gate fails when the bundle contains one.",
   "fixture": "scripts/fixtures/worker-size-entry.ts",
-  "rawBytes": 176489,
-  "gzipBytes": 57704,
+  "rawBytes": 118954,
+  "gzipBytes": 40012,
   "rawAllowanceBytes": 32768,
   "gzipAllowanceBytes": 9216,
   "excludedModules": [
