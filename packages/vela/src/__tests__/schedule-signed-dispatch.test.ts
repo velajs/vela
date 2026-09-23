@@ -144,4 +144,42 @@ describe('ScheduleModule signed re-entry dispatch (opt-in)', () => {
     const app = await VelaFactory.create(SameModule);
     await app.close();
   });
+
+  it('fails bootstrap when two signed forRoot policies re-enter different targets', async () => {
+    @Module({
+      imports: [
+        ScheduleModule.forRoot({
+          dispatch: { kind: 'signed', target: () => ({ path: '/jobs/feature' }) },
+        }),
+      ],
+    })
+    class FeatureModule {}
+
+    @Module({
+      imports: [
+        ScheduleModule.forRoot({
+          dispatch: { kind: 'signed', target: () => ({ path: '/jobs/root' }) },
+        }),
+        FeatureModule,
+      ],
+    })
+    class AppModule {}
+
+    await expect(VelaFactory.create(AppModule, { diagnostics: 'silent' })).rejects.toThrow(
+      /ScheduleModule\.forRoot\(\) is imported with different dispatch policies/,
+    );
+
+    // A signed policy that differs only in its request options conflicts too.
+    const target = () => ({ path: '/jobs/run' });
+    @Module({
+      imports: [
+        ScheduleModule.forRoot({ dispatch: { kind: 'signed', target, ttlSeconds: 30 } }),
+        ScheduleModule.forRoot({ dispatch: { kind: 'signed', target, ttlSeconds: 60 } }),
+      ],
+    })
+    class TtlModule {}
+    await expect(VelaFactory.create(TtlModule, { diagnostics: 'silent' })).rejects.toThrow(
+      /different dispatch policies/,
+    );
+  });
 });

@@ -2,6 +2,7 @@ import { Container } from '../container/container';
 import { Inject, Injectable } from '../container/decorators';
 import { defineProvider } from '../container/types';
 import { Module } from '../module/decorators';
+import { attachModuleIdentity } from '../module/module-identity';
 import { stableHash } from '../module/stable-hash';
 import type { DynamicModule } from '../module/types';
 import { ScheduleRegistry } from './schedule.registry';
@@ -30,7 +31,9 @@ class ScheduleDispatchHost {}
 /**
  * Fails bootstrap when `forRoot` configured different dispatch policies (their
  * keys differ, so each contributes its own global `SCHEDULE_DISPATCH` and the
- * one a job would use is ambiguous). Built eagerly with every policy host.
+ * one a job would use is ambiguous). The key covers the whole policy (kind,
+ * target, method and TTL), so two signed policies that re-enter different
+ * routes conflict too. Built eagerly with every policy host.
  */
 @Injectable()
 class ScheduleDispatchOwnership {
@@ -57,7 +60,9 @@ class ScheduleDispatchOwnership {
  * Cloudflare adapter's cron triggers, Studio's run-now), so the target route runs
  * the full request pipeline, global guards included. With no options jobs are
  * called directly in-isolate. An application configures one policy: two
- * `forRoot` calls with different `dispatch` kinds fail bootstrap.
+ * `forRoot` calls with different `dispatch` policies (a different kind, or a
+ * signed policy with a different target, method or TTL) fail bootstrap, and
+ * repeating one policy deduplicates.
  */
 @Module({
   // Lazy: the @Cron/@Interval discovery pass runs when ScheduleRegistry is
@@ -70,15 +75,21 @@ export class ScheduleModule {
   static forRoot(options: { dispatch?: ScheduleDispatchMode } = {}): DynamicModule {
     const dispatch = options.dispatch;
     if (!dispatch) return { module: ScheduleModule };
-    return {
-      module: ScheduleDispatchHost,
-      key: stableHash({ dispatch: dispatch.kind }),
-      providers: [
-        defineProvider(SCHEDULE_DISPATCH, { useValue: dispatch }),
-        ScheduleDispatchOwnership,
-      ],
-      exports: [SCHEDULE_DISPATCH],
-      global: true,
-    };
+    // Key by the whole policy: a conflicting repeat becomes a second owner of
+    // SCHEDULE_DISPATCH, which ScheduleDispatchOwnership rejects, instead of
+    // being deduplicated into the first policy.
+    return attachModuleIdentity(
+      {
+        module: ScheduleDispatchHost,
+        key: `dispatch:${dispatch.kind}:${stableHash({ dispatch })}`,
+        providers: [
+          defineProvider(SCHEDULE_DISPATCH, { useValue: dispatch }),
+          ScheduleDispatchOwnership,
+        ],
+        exports: [SCHEDULE_DISPATCH],
+        global: true,
+      },
+      { dispatch },
+    );
   }
 }
