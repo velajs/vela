@@ -33,9 +33,9 @@ export class SeedCommand extends Command {
     if (this.json && !this.list) throw new UsageError('--json requires --list.');
     if (this.list && this.continueOnError)
       throw new UsageError('--list cannot be combined with --continue-on-error.');
-    const config = await loadConfig(process.cwd(), this.config);
+    const loaded = await loadConfig(process.cwd(), this.config);
     return withApp(
-      config,
+      loaded,
       async (app) => {
         if (this.list) {
           const inventory = app

@@ -4,13 +4,17 @@ import { describe, expect, it } from 'vitest';
 
 describe('vela.config.ts', () => {
   it('loads through the CLI config loader and boots the demo app', async () => {
-    const config = await loadConfig(fileURLToPath(new URL('..', import.meta.url)));
-    const app = await config.createApp();
+    const { config, dispose } = await loadConfig(fileURLToPath(new URL('..', import.meta.url)));
     try {
-      const routes = app.describeRoutes().map((route) => `${route.method} ${route.path}`);
-      expect(routes).toContain('GET /authors');
+      const app = await config.createApp();
+      try {
+        const routes = app.describeRoutes().map((route) => `${route.method} ${route.path}`);
+        expect(routes).toContain('GET /authors');
+      } finally {
+        await app.close();
+      }
     } finally {
-      await app.close();
+      await dispose();
     }
   });
 });

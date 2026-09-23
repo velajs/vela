@@ -5,10 +5,15 @@ import { PassThrough } from 'node:stream';
 import { ApiResponse, Controller, Get, Module, VelaFactory } from '@velajs/vela';
 import { Cli } from 'clipanion';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { loadConfig } from '../config.js';
+import { loadConfig, type LoadedVelaConfig, type VelaConfig } from '../config.js';
 import { ClientGenerateCommand } from './client.command.js';
 
 vi.mock('../config.js', () => ({ loadConfig: vi.fn() }));
+
+/** A loaded config as loadConfig() returns it, with a runner that has nothing to close. */
+function loadedConfig(config: VelaConfig): LoadedVelaConfig {
+  return { config, path: '/project/vela.config.ts', dispose: vi.fn(async () => {}) };
+}
 const dirs: string[] = [];
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -117,7 +122,9 @@ describe('vela client generate', () => {
     class App {}
     const app = await VelaFactory.create(App, { globalPrefix: '/api' });
     const dispose = vi.spyOn(app, 'dispose');
-    vi.mocked(loadConfig).mockResolvedValue({ rootModule: App, createApp: () => app });
+    vi.mocked(loadConfig).mockResolvedValue(
+      loadedConfig({ rootModule: App, createApp: () => app }),
+    );
     const result = await run(['--strict']);
     expect(result.code).toBe(0);
     expect(result.output).toContain('"/api/users/:id"');
@@ -132,7 +139,9 @@ describe('vela client generate', () => {
       { method: 'GET', path: '/missing', controller: 'Missing', handler: 'find', moduleId: 'App' },
     ]);
     const dispose = vi.spyOn(app, 'dispose');
-    vi.mocked(loadConfig).mockResolvedValue({ rootModule: App, createApp: () => app });
+    vi.mocked(loadConfig).mockResolvedValue(
+      loadedConfig({ rootModule: App, createApp: () => app }),
+    );
     const result = await run([]);
     expect(result.code).toBe(1);
     expect(result.output + result.errors).toContain('OpenAPI is missing GET /missing');

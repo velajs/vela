@@ -80,13 +80,13 @@ describe('generated config workflow in Node', () => {
       '--eval',
       `
       import { loadConfig } from ${JSON.stringify(configModule)};
-      const config = await loadConfig();
+      const { config, dispose } = await loadConfig();
       const app = await config.createApp();
       try {
         const response = await app.getHonoApp().request('http://localhost/');
         if (response.status !== 200) throw new Error(await response.text());
         console.log(JSON.stringify(await response.json()));
-      } finally { await app.dispose(); }
+      } finally { await app.dispose(); await dispose(); }
     `,
     ]);
     expect(response.status, response.stdout + response.stderr).toBe(0);
@@ -109,6 +109,65 @@ describe('generated config workflow in Node', () => {
     const result = run([cli, 'route', 'list', '--config', 'typed.config.ts', '--json']);
     expect(result.status, result.stdout + result.stderr).toBe(0);
     expect(JSON.parse(result.stdout)).toContainEqual(expect.objectContaining({ path: '/typed/' }));
+  });
+
+  it('keeps the module runner open for application files the config imports lazily', () => {
+    writeFileSync(
+      join(project, 'lazy.config.ts'),
+      `
+      import { VelaFactory } from '@velajs/vela';
+      export default {
+        async createApp() {
+          const { AppModule } = await import('./src/app.module.js');
+          return VelaFactory.create(AppModule, { globalPrefix: '/lazy' });
+        },
+      };
+    `,
+    );
+    const result = run([cli, 'route', 'list', '--config', 'lazy.config.ts', '--json']);
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toContainEqual(expect.objectContaining({ path: '/lazy/' }));
+  });
+
+  it('runs a plain .mjs config whose createApp imports a relative file lazily', () => {
+    writeFileSync(
+      join(project, 'lazy-root.mjs'),
+      `
+      import { Controller, Get, Module } from '@velajs/vela';
+      class Health { ok() { return { ok: true }; } }
+      Get('health')(Health.prototype, 'ok', Object.getOwnPropertyDescriptor(Health.prototype, 'ok'));
+      Controller('lazy')(Health);
+      export class Root {}
+      Module({ controllers: [Health] })(Root);
+    `,
+    );
+    writeFileSync(
+      join(project, 'lazy-plain.config.mjs'),
+      `
+      import { VelaFactory } from '@velajs/vela';
+      export default {
+        async createApp() {
+          const { Root } = await import('./lazy-root.mjs');
+          return VelaFactory.create(Root);
+        },
+      };
+    `,
+    );
+    for (const flags of [[], withoutPackages(['vite'])]) {
+      const result = run([
+        ...flags,
+        cli,
+        'route',
+        'list',
+        '--config',
+        'lazy-plain.config.mjs',
+        '--json',
+      ]);
+      expect(result.status, result.stdout + result.stderr).toBe(0);
+      expect(JSON.parse(result.stdout)).toContainEqual(
+        expect.objectContaining({ method: 'GET', path: '/lazy/health' }),
+      );
+    }
   });
 
   it('falls back to Node without vite, with guidance for decorated TypeScript', () => {

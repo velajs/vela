@@ -58,32 +58,41 @@ async function importVite(): Promise<Vite | undefined> {
   return Number.parseInt(vite.version, 10) >= 8 ? vite : undefined;
 }
 
+/** A config and the module runner that imported it, as {@link loadConfig} returns it. */
+export interface LoadedVelaConfig {
+  readonly config: VelaConfig;
+  /** Absolute path of the imported config file. */
+  readonly path: string;
+  /**
+   * Closes the Vite module runner that imported the config, after which files
+   * the config imports lazily (`await import('./src/app.module.js')`) can no
+   * longer load. Call it once the app is disposed; a config Node imported has
+   * nothing to close.
+   */
+  dispose(): Promise<void>;
+}
+
 /**
  * Locate and import a config. When the project installs Vite 8, the config
- * and the application files it imports load through Vite's module runner,
+ * and the application files it imports load through a Vite module runner,
  * compiled by Oxc with legacy decorators and constructor metadata, so a
- * config can import decorated `src/` files directly; packages load from
- * node_modules as usual. Without Vite, Node imports the config: it strips
+ * config can import decorated `src/` files directly, eagerly or from
+ * `createApp()`; packages load from node_modules as usual. The runner stays
+ * open until `dispose()`. Without Vite, Node imports the config: it strips
  * erasable types from `.ts` files but emits no decorators or DI metadata, so
  * such a config must import compiled `.js` files.
  */
 export async function loadConfig(
   cwd: string = process.cwd(),
   explicitPath?: string,
-): Promise<VelaConfig> {
+): Promise<LoadedVelaConfig> {
   const { path } = await resolveConfig(cwd, explicitPath);
   const vite = await importVite();
-  let mod: unknown;
+  let loaded: { module: unknown; dispose(): Promise<void> };
   try {
-    mod = vite
-      ? (
-          await vite.runnerImport<unknown>(path, {
-            root: resolve(cwd),
-            logLevel: 'error',
-            oxc: DECORATOR_TRANSFORM,
-          })
-        ).module
-      : await import(pathToFileURL(path).href);
+    loaded = vite
+      ? await importThroughVite(vite, path, resolve(cwd))
+      : { module: await import(pathToFileURL(path).href), dispose: async () => {} };
   } catch (cause) {
     throw new Error(
       `Could not import config at ${path}: ${cause instanceof Error ? cause.message : String(cause)}\n` +
@@ -97,14 +106,63 @@ export async function loadConfig(
       { cause },
     );
   }
+  const { module: mod, dispose } = loaded;
   const config = isRecord(mod) ? (mod.default ?? mod.config) : undefined;
   if (!isVelaConfig(config)) {
+    await dispose();
     throw new Error(
       `Config at ${path} must export an object with createApp(): VelaApplication | Promise<VelaApplication> ` +
         "(default export or a named 'config'); rootModule, when provided, must be a constructor.",
     );
   }
-  return config;
+  return { config, path, dispose };
+}
+
+/**
+ * Imports `path` through a runnable Vite environment configured like Vite's
+ * `runnerImport()`, but left open: `runnerImport()` closes its runner before
+ * returning, so an `import()` the config runs later, such as one inside
+ * `createApp()`, would fail.
+ */
+async function importThroughVite(
+  vite: Vite,
+  path: string,
+  root: string,
+): Promise<{ module: unknown; dispose(): Promise<void> }> {
+  const config = await vite.resolveConfig(
+    {
+      root,
+      logLevel: 'error',
+      oxc: DECORATOR_TRANSFORM,
+      configFile: false,
+      envDir: false,
+      cacheDir: process.cwd(),
+      environments: {
+        inline: {
+          consumer: 'server',
+          dev: { moduleRunnerTransform: true },
+          resolve: {
+            external: true,
+            mainFields: [],
+            conditions: ['node', ...(process.features.require_module ? ['module-sync'] : [])],
+          },
+        },
+      },
+    },
+    'serve',
+  );
+  const environment = vite.createRunnableDevEnvironment('inline', config, {
+    runnerOptions: { hmr: { logger: false } },
+    hot: false,
+  });
+  await environment.init();
+  try {
+    const module: unknown = await environment.runner.import(path);
+    return { module, dispose: () => environment.close() };
+  } catch (error) {
+    await environment.close();
+    throw error;
+  }
 }
 
 export interface ConfigResolution {
