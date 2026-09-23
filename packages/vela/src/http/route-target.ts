@@ -1,164 +1,93 @@
-// Middleware route targets and the route patterns they are checked against
-// compile to anchored regular expressions owned by Vela, not to a Hono router:
-// a Nest wildcard then matches with ordinary backtracking wherever it sits,
-// including before a parameter or a literal segment. Every wildcard fragment
-// Vela generates is `[\s\S]`, not `.`: Hono decodes %0A, %0D, %E2%80%A8 and
-// %E2%80%A9 into the request path, and a `:param` segment accepts them.
+// Middleware route targets are Hono route patterns. Vela registers each one on
+// the application's Hono app as a route that does nothing, so Hono's own router
+// decides which requests a target matches, exactly as it decides which route
+// serves them. Vela only translates Nest's wildcards and rejects the syntax
+// Hono would read differently from Nest.
 
-/** One segment of a route pattern, as parsed by {@link parseRoutePattern}. */
-export interface RouteSegment {
-  /** The segment in Hono syntax, with Nest wildcards as `:name{.+}`, for messages. */
-  readonly text: string;
-  /** Its regular-expression source, leading `/` included. */
-  readonly source: string;
-  /** Text matched as written: a literal segment, or the start of a trailing `ab*`. */
-  readonly fixed?: string;
-  /** The values a `:name{regex}` parameter accepts. */
-  readonly constraint?: RegExp;
-  /** A trailing `:name?`, `*` or `{*name}` may be absent. */
-  readonly optional?: boolean;
-  /** The segment matches across segments, and so every path beneath it. */
-  readonly open?: boolean;
-}
+import { splitRoutingPath } from 'hono/utils/url';
 
-// Nest's `*name`, or its optional `{*name}` form.
-const NEST_WILDCARD = /^(\{?)\*([\p{ID_Start}$_][\p{ID_Continue}$]*)(\}?)$/u;
-// `:name`, `:name{regex}`, either with a trailing `?`.
-const PARAM = /^:([^{}()*?:]+)(?:\{(.+)\})?(\?)?$/s;
-// Literal text, optionally ending in Hono's prefix wildcard (`ab*`). A ':'
-// inside the text is rejected: Hono's routers disagree on whether `abc:name`
-// is text or a parameter.
-const LITERAL = /^([^{}()*?:]+)(\*)?$/;
-const ANY_SEGMENT = '/[^/]+';
-const REST = '(?:/[\\s\\S]*)?';
-// Values tried for a parameter when looking for a path two patterns share.
-const SAMPLE_VALUES = ['1', 'x'];
+// A trailing Nest wildcard: `{*name}`, `*name` or `(.*)`.
+const NEST_WILDCARD =
+  /^(?:\{\*[\p{ID_Start}$_][\p{ID_Continue}$]*\}|\*([\p{ID_Start}$_][\p{ID_Continue}$]*)|\(\.\*\))$/u;
+// One part Hono matches as written: `*`, `:name` or `:name{regex}`, optionally
+// ending in `?`, or literal text, optionally ending in Hono's prefix `*`. Only
+// the last part may end in `?` or a prefix `*`.
+const HONO_PART = /^(?:\*|:[^{}()*?:]+(?:\{(.+)\})?(\?)?|[^{}()*?]*(\*)?)$/s;
 
-// A non-empty segment: '/' may appear only inside a parameter's `{regex}`,
-// which may nest one level of braces (`:id{[0-9]{3}}`).
-const SEGMENT = /(?:[^/{}]|\{(?:[^{}]|\{[^{}]*\})*\})+/g;
-
-/**
- * Parses a route pattern: Hono's `:name`, `:name{regex}`, a trailing `:name?`,
- * `*` (one segment, or the parent and the rest of the path when trailing) and
- * a trailing `ab*`, plus Nest's `*name` and `(.*)` (one or more characters
- * across segments) and a trailing `{*name}` (the parent and the rest of the
- * path). Returns `undefined` for any other syntax, and for a pattern with more
- * than one wildcard that spans segments, whose backtracking would grow
- * polynomially with the path length.
- */
-export function parseRoutePattern(path: string): RouteSegment[] | undefined {
-  // Braces the segments did not consume are unbalanced.
-  if (/[^/]/.test(path.replace(SEGMENT, ''))) return undefined;
-  const parts = path.match(SEGMENT) ?? [];
-  const segments: RouteSegment[] = [];
-  let unnamed = 0;
-  for (const [index, part] of parts.entries()) {
-    const last = index === parts.length - 1;
-    const [, open, name, close] = NEST_WILDCARD.exec(part) ?? [];
-    const param = PARAM.exec(part);
-    const literal = LITERAL.exec(part);
-    if ((name && !open && !close) || part === '(.*)') {
-      segments.push({
-        text: `:${name ?? `wildcard${unnamed++}`}{.+}`,
-        source: '/[\\s\\S]+',
-        open: true,
-      });
-    } else if (part === '*' || (last && open && close)) {
-      segments.push(
-        last
-          ? { text: '*', source: REST, optional: true, open: true }
-          : { text: '*', source: ANY_SEGMENT },
-      );
-    } else if (param) {
-      const [, , regex, optional] = param;
-      if (optional && !last) return undefined;
-      let constraint: RegExp | undefined;
-      try {
-        if (regex !== undefined) constraint = new RegExp(`^(?:${regex})$`);
-      } catch {
-        return undefined;
-      }
-      const value = regex === undefined ? ANY_SEGMENT : `/(?:${regex})`;
-      segments.push({
-        text: part,
-        source: optional ? `(?:${value})?` : value,
-        constraint,
-        optional: !!optional,
-      });
-    } else if (literal && (last || !literal[2])) {
-      const fixed = literal[1]!;
-      const escaped = `/${fixed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`;
-      segments.push(
-        literal[2]
-          ? { text: part, source: `${escaped}[\\s\\S]*`, fixed, open: true }
-          : { text: part, source: escaped, fixed },
-      );
-    } else return undefined;
+// Hono compiles a constraint only when it first routes a request, and its
+// default router fails on a parameter that captures nothing.
+function isConstraint(source?: string): boolean {
+  try {
+    return source === undefined || !RegExp(`^(?:${source})$`).test('');
+  } catch {
+    return false;
   }
-  if (segments.filter((segment) => segment.open)[1]) return undefined;
-  // Hono routes '/cats/' apart from '/cats', so a trailing slash is a segment.
-  if (segments.length && path.endsWith('/')) segments.push({ text: '', source: '/', fixed: '' });
-  return segments;
-}
-
-/** A pattern written back in Hono syntax, for messages. */
-export function formatRoutePattern(segments: readonly RouteSegment[]): string {
-  return `/${segments.map((segment) => segment.text).join('/')}`;
 }
 
 /**
- * The anchored regular expression for a parsed pattern. With `descendants`
- * it also matches every path beneath it, as a `forRoutes()` target does.
+ * A middleware target in Hono syntax, with a leading `/`. A trailing Nest
+ * `{*name}` becomes Hono's `*`, and a trailing `*name` or `(.*)`, which match
+ * one or more characters across segments, becomes `:name{[\s\S]+}`. Throws for
+ * any other group, optional-segment or wildcard syntax, including a Nest
+ * wildcard before the last segment, which no Hono pattern expresses, and for a
+ * constraint that is not a regular expression or matches an empty segment.
  */
-export function compileRoutePattern(
-  segments: readonly RouteSegment[],
-  descendants: boolean,
-): RegExp {
-  // Beneath 'cats/' covers '/cats' and everything under it, as beneath 'cats'.
-  const parts = descendants && segments.at(-1)?.text === '' ? segments.slice(0, -1) : segments;
-  let source = parts.map((segment) => segment.source).join('');
-  if (descendants && !parts.at(-1)?.open) source += REST;
-  // Hono matches a lone ':id?' on the root as well.
-  return new RegExp(`^${parts[0]?.optional ? `(?:${source}|/)` : source || '/'}$`);
-}
-
-// Concrete paths shaped like `segments`, one per variant. Variant 0 fills a
-// parameter from the other pattern's literal at the same position (`hints`)
-// when it fits; variant n tries sample n first and leaves optional segments out
-// when n is 1.
-function samplePaths(segments: readonly RouteSegment[], hints: readonly RouteSegment[]): string[] {
-  return [0, 1, 2].map((variant) => {
-    let path = '';
-    for (const [index, segment] of segments.entries()) {
-      if (segment.fixed !== undefined) {
-        path += `/${segment.fixed}`;
-        continue;
-      }
-      if (segment.optional && variant === 1) continue;
-      const hint = hints[index]?.fixed;
-      const value = [variant ? SAMPLE_VALUES[variant - 1] : hint, hint, ...SAMPLE_VALUES].find(
-        (candidate) => candidate && (!segment.constraint || segment.constraint.test(candidate)),
+export function toHonoPattern(path: string): string {
+  const parts = splitRoutingPath(path);
+  return `/${parts
+    .map((part, index) => {
+      const last = index === parts.length - 1;
+      const nest = last && NEST_WILDCARD.exec(part);
+      if (nest) return part[0] === '{' ? '*' : `:${nest[1] ?? 'path'}{[\\s\\S]+}`;
+      const hono = HONO_PART.exec(part);
+      if (hono && (last || !(hono[2] || hono[3])) && isConstraint(hono[1])) return part;
+      throw new Error(
+        `Middleware route '${path}' uses pattern syntax that Hono does not match, so its ` +
+          "middleware would never run. Use ':id', ':id{[0-9]+}', or a trailing '*' or '*path'.",
       );
-      path += `/${value ?? SAMPLE_VALUES[0]}`;
-    }
-    return path || '/';
-  });
+    })
+    .join('/')}`;
 }
 
 /**
- * Whether some concrete path matches both patterns. Candidate paths are built
- * from each pattern's shape and must match both regular expressions, so an
- * overlap is only reported for a path that exists; two patterns that share a
- * path only through values these samples miss count as disjoint.
+ * The patterns a `forRoutes()` target is registered as. Beneath `/cats`,
+ * `/cats/`, `/cats/:id?` or `/cats/*` means `/cats` and every path under it:
+ * - the pattern itself, since Hono can serve a route on a path that only the
+ *   pattern matches (a constraint such as `{\d+|me}` matches part of a segment);
+ * - Hono's trailing `*` form;
+ * - a parameter form, `/cats/:_{[^]+}`. Hono's default RegExpRouter applies a
+ *   path ending in `*` to the routes whose pattern text it matches, and misses
+ *   one that has a parameter where the path has `*`, or the reverse. It cannot
+ *   hold this form beside a deeper route, so it falls back to its TrieRouter,
+ *   which matches every pattern against the request path. The form needs a
+ *   character because that router fails on a parameter that captures nothing.
+ * A `'*'` target and Hono's prefix wildcard (`/admin/us*`) cover the paths
+ * beneath them as written.
  */
-export function routePatternsOverlap(
-  a: readonly RouteSegment[],
-  aRegex: RegExp,
-  b: readonly RouteSegment[],
-  bRegex: RegExp,
-): boolean {
-  return [...samplePaths(a, b), ...samplePaths(b, a)].some(
-    (path) => aRegex.test(path) && bRegex.test(path),
+export function withDescendants(pattern: string): string[] {
+  if (pattern === '/*' || /[^/]\*$/.test(pattern)) return [pattern];
+  const parent = pattern.replace(/\/(?::[^/]+\?|\*)?$/, '');
+  return [...new Set([pattern, `${parent}/*`, `${parent}/:_{[^]+}`])];
+}
+
+/**
+ * Request paths shaped like a Hono pattern, for the startup check of targets
+ * against routes. Each parameter and `*` takes the literal `other` has at the
+ * same position, then `1`, then `x`; the last variant also leaves out a
+ * trailing optional part or `*`.
+ */
+export function samplePaths(pattern: string, other: string): string[] {
+  const parts = splitRoutingPath(pattern);
+  const hints = splitRoutingPath(other);
+  return [0, 1, 2, 3].map(
+    (variant) =>
+      `/${parts
+        .flatMap((part, index) => {
+          if (!/^[:*]/.test(part)) return part.replace(/\*$/, '');
+          if (variant === 3 && index === parts.length - 1 && /^\*$|\?$/.test(part)) return [];
+          const hint = variant ? undefined : hints[index];
+          return variant === 2 ? 'x' : hint && !/^[:*]|\*$/.test(hint) ? hint : '1';
+        })
+        .join('/')}`,
   );
 }

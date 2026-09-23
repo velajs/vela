@@ -557,6 +557,214 @@ describe('an app mounted under a parent base path', () => {
     expect(await request('GET', '/mounted/api/admin/7')).toBe(200);
     expect(seen).toEqual(['GET /mounted/api/admin/7']);
   });
+
+  @Controller('/auth')
+  class AuthController {
+    @Get('login')
+    login() {
+      return { ok: true };
+    }
+  }
+
+  @Controller('/admin')
+  class SecretsController {
+    @Get('secrets')
+    secrets() {
+      return { ok: true };
+    }
+  }
+
+  @Controller('/users')
+  class UsersController {
+    @Get(':id')
+    one() {
+      return { ok: true };
+    }
+  }
+
+  // Hono's basePath() helper cannot measure a base whose constraint rejects
+  // the rest of the path, so a request's own path must never be re-derived.
+  it('matches under a base with a regex-constrained parameter', async () => {
+    const base = '/:tenant{[a-z0-9-]+}';
+    const controllers = [AuthController, SecretsController, UsersController];
+    const excluded = await createApp(
+      controllers,
+      (consumer) => {
+        consumer.apply(RecordingMiddleware).exclude('auth/*').forRoutes('*');
+      },
+      undefined,
+      base,
+    );
+
+    expect(await excluded('GET', '/auth/admin/secrets')).toBe(200);
+    expect(await excluded('GET', '/acme/auth/login')).toBe(200);
+    expect(seen).toEqual(['GET /auth/admin/secrets']);
+
+    seen = [];
+    const scoped = await createApp(controllers, forRoutes('users'), undefined, base);
+    expect(await scoped('GET', '/acme/users/7')).toBe(200);
+    expect(await scoped('GET', '/users/users/7')).toBe(200);
+    expect(await scoped('GET', '/acme/admin/secrets')).toBe(200);
+    expect(seen).toEqual(['GET /acme/users/7', 'GET /users/users/7']);
+  });
+
+  it.each(['/m/', '/:tenant/'])('matches under the trailing-slash base %s', async (base) => {
+    const prefix = base === '/m/' ? '/m' : '/acme';
+    const request = await createApp(
+      [AuthController, UsersController],
+      (consumer) => {
+        consumer.apply(RecordingMiddleware).exclude('users/:id').forRoutes('auth', 'users');
+      },
+      undefined,
+      base,
+    );
+
+    expect(await request('GET', `${prefix}/auth/login`)).toBe(200);
+    expect(await request('GET', `${prefix}/users/7`)).toBe(200);
+    expect(seen).toEqual([`GET ${prefix}/auth/login`]);
+  });
+});
+
+// Each target is registered on the Hono app as a route that does nothing, so
+// whichever router Hono picks decides what it matches, exactly as it decides
+// which route serves the request.
+describe('targets match the requests Hono dispatches their patterns for', () => {
+  it("runs for a value a '|' constraint accepts only unanchored, as Hono serves it", async () => {
+    @Controller('/users')
+    class UsersController {
+      @Get(':id{\\d+|me}')
+      one() {
+        return { ok: true };
+      }
+
+      // A literal beside the parameter makes Hono fall back to its TrieRouter,
+      // which anchors only the first and last alternative.
+      @Get('static')
+      fixed() {
+        return { ok: true };
+      }
+    }
+
+    const request = await createApp([UsersController], forRoutes('users/:id{\\d+|me}'));
+
+    expect(await request('GET', '/users/12abc')).toBe(200);
+    expect(await request('GET', '/users/me')).toBe(200);
+    expect(await request('GET', '/users/static')).toBe(200);
+    expect(seen).toEqual(['GET /users/12abc', 'GET /users/me']);
+  });
+
+  it("runs for an empty segment that a '*' before the last segment accepts", async () => {
+    @Controller('/files')
+    class FilesController {
+      @Get('*/raw')
+      raw() {
+        return { ok: true };
+      }
+
+      @Get('static/raw')
+      fixed() {
+        return { ok: true };
+      }
+    }
+
+    const request = await createApp([FilesController], forRoutes('files/*/raw'));
+
+    expect(await request('GET', '/files//raw')).toBe(200);
+    expect(await request('GET', '/files/a/raw')).toBe(200);
+    expect(seen).toEqual(['GET /files//raw', 'GET /files/a/raw']);
+  });
+
+  it("covers the parent of a '*' before a trailing ':id?', as Hono's '/files/*' does", async () => {
+    @Controller('/files')
+    class FilesController {
+      @Get()
+      list() {
+        return { ok: true };
+      }
+
+      @Get(':a/:b')
+      nested() {
+        return { ok: true };
+      }
+    }
+
+    const request = await createApp([FilesController], forRoutes('files/*/:id?'));
+
+    expect(await request('GET', '/files')).toBe(200);
+    expect(await request('GET', '/files/a/b')).toBe(200);
+    expect(seen).toEqual(['GET /files', 'GET /files/a/b']);
+  });
+
+  // Hono's RegExpRouter applies a path ending in '*' to the routes whose
+  // pattern text it matches, and compares a '*' before the last segment as
+  // text, so neither side may rely on that comparison.
+  it("runs beneath a '*' or ':id' target for a deeper route written the other way", async () => {
+    @Controller('/users')
+    class PostsController {
+      @Get(':id/posts/:post')
+      one() {
+        return { ok: true };
+      }
+    }
+
+    @Controller('/files')
+    class RawController {
+      @Get('*/raw/:name')
+      one() {
+        return { ok: true };
+      }
+    }
+
+    const request = await createApp(
+      [PostsController, RawController],
+      forRoutes('users/*/posts', 'files/:id/raw'),
+    );
+
+    expect(await request('GET', '/users/7/posts/9')).toBe(200);
+    expect(await request('GET', '/files/7/raw/9')).toBe(200);
+    expect(seen).toEqual(['GET /users/7/posts/9', 'GET /files/7/raw/9']);
+  });
+
+  it("keeps running middleware on a single segment when '*/*' is excluded", async () => {
+    @Controller()
+    class RootController {
+      @Get(':a')
+      one() {
+        return { ok: true };
+      }
+    }
+
+    const request = await createApp([RootController], (consumer) => {
+      consumer.apply(RecordingMiddleware).exclude('*/*').forRoutes('*');
+    });
+
+    expect(await request('GET', '/x')).toBe(200);
+    expect(seen).toEqual(['GET /x']);
+  });
+
+  it('leaves constraints that span segments to Hono instead of backtracking over the path', async () => {
+    // ':a' beside the constrained target makes Hono fall back to its
+    // TrieRouter, which tries each constraint once where it starts.
+    @Controller('/files')
+    class FilesController {
+      @Get(':a')
+      one() {
+        return { ok: true };
+      }
+    }
+
+    const request = await createApp(
+      [FilesController],
+      forRoutes('files/:a{[\\s\\S]+}/:b{[\\s\\S]+}/:c{[\\s\\S]+}/:d{[\\s\\S]+}/x'),
+      { diagnostics: 'silent' },
+    );
+
+    const startedAt = performance.now();
+    expect(await request('GET', `/files/${'a/'.repeat(600)}b`)).toBe(404);
+    expect(performance.now() - startedAt).toBeLessThan(500);
+    expect(await request('GET', '/files/a')).toBe(200);
+    expect(seen).toEqual([]);
+  });
 });
 
 // A route contributor registers its routes during route build, outside the
@@ -739,25 +947,24 @@ describe('Nest wildcard targets', () => {
     expect(seen).toEqual(['GET /dogs/1']);
   });
 
-  it.each(['cats/*path/toys', 'cats/(.*)/toys'])(
-    "matches one or more segments for the mid-path wildcard in '%s'",
-    async (target) => {
-      const request = await createApp([CatsWithIndexController, CatsController], forRoutes(target));
-
-      expect(await request('GET', '/cats/1')).toBe(200);
-      expect(await request('GET', '/cats/1/toys')).toBe(200);
-      expect(await request('GET', '/cats/a/1/toys')).toBe(200);
-      expect(seen).toEqual(['GET /cats/1/toys', 'GET /cats/a/1/toys']);
-
-      seen = [];
-      const excluded = await createApp([CatsWithIndexController, CatsController], (consumer) => {
+  // Hono has no pattern for a wildcard that spans segments before the last
+  // one, so these targets, which used to match one or more segments in place,
+  // now fail the route build instead of matching something else.
+  it.each([
+    'cats/*path/toys',
+    'cats/(.*)/toys',
+    'files/*path/:id',
+    'files/(.*)/:id',
+    'users/*id/admin',
+  ])("rejects the Nest wildcard before the last segment of '%s'", async (target) => {
+    const message = `Middleware route '${target}' uses pattern syntax that Hono does not match`;
+    await expect(createApp([CatsWithIndexController], forRoutes(target))).rejects.toThrow(message);
+    await expect(
+      createApp([CatsWithIndexController], (consumer) => {
         consumer.apply(RecordingMiddleware).exclude(target).forRoutes('*');
-      });
-      expect(await excluded('GET', '/cats/1')).toBe(200);
-      expect(await excluded('GET', '/cats/a/1/toys')).toBe(200);
-      expect(seen).toEqual(['GET /cats/1']);
-    },
-  );
+      }),
+    ).rejects.toThrow(message);
+  });
 
   it('rejects an optional wildcard before the last segment', async () => {
     await expect(
@@ -774,9 +981,10 @@ describe('Nest wildcard targets', () => {
       }
     }
 
+    // '*path' now becomes '[\\s\\S]+', which also matches decoded line terminators.
     await expect(
       createApp([CatsIndexOnlyController], forRoutes('cats/*path'), { diagnostics: 'throw' }),
-    ).rejects.toThrow("[vela] Middleware route 'cats/*path' resolves to '/cats/:path{.+}'");
+    ).rejects.toThrow("[vela] Middleware route 'cats/*path' resolves to '/cats/:path{[\\s\\S]+}'");
   });
 
   it('translates a Nest wildcard in an exclude() target', async () => {
@@ -797,92 +1005,19 @@ describe('Nest wildcard targets', () => {
     expect(seen).toEqual(['GET /cats/42']);
   });
 
-  it.each(['cats/:id(\\d+)', 'cats/ab*cd', 'cats{/:id}', 'cats/(a|b)'])(
-    "rejects '%s', which no Hono pattern matches",
-    async (target) => {
-      await expect(createApp([CatsController], forRoutes(target))).rejects.toThrow(
-        `Middleware route '${target}' uses pattern syntax that Hono does not match`,
-      );
-    },
-  );
-
-  @Controller('/files')
-  class FilesController {
-    @Get(':a')
-    one() {
-      return { ok: true };
-    }
-
-    @Get(':a/:b')
-    two() {
-      return { ok: true };
-    }
-
-    @Get(':a/:b/:c')
-    three() {
-      return { ok: true };
-    }
-  }
-
-  it.each(['files/*path/:id', 'files/(.*)/:id'])(
-    "matches a parameter after the mid-path wildcard in '%s'",
-    async (target) => {
-      const request = await createApp([FilesController], forRoutes(target), {
-        diagnostics: 'throw',
-      });
-
-      expect(await request('GET', '/files/x')).toBe(200);
-      expect(await request('GET', '/files/x/y')).toBe(200);
-      expect(await request('GET', '/files/x/y/z')).toBe(200);
-      expect(seen).toEqual(['GET /files/x/y', 'GET /files/x/y/z']);
-
-      seen = [];
-      const excluded = await createApp([FilesController], (consumer) => {
-        consumer.apply(RecordingMiddleware).exclude(target).forRoutes('*');
-      });
-      expect(await excluded('GET', '/files/x')).toBe(200);
-      expect(await excluded('GET', '/files/x/y')).toBe(200);
-      expect(await excluded('GET', '/files/x/y/z')).toBe(200);
-      expect(seen).toEqual(['GET /files/x']);
-    },
-  );
-
-  it("backtracks a mid-path wildcard onto the literal after it in 'users/*id/admin'", async () => {
-    @Controller('/users')
-    class UsersAdminController {
-      @Get(':id/admin/administrators')
-      administrators() {
-        return { ok: true };
-      }
-
-      @Get(':id/admin/:scope/administrators')
-      scoped() {
-        return { ok: true };
-      }
-
-      @Get(':id/administrators')
-      direct() {
-        return { ok: true };
-      }
-
-      @Get(':id/adminx')
-      lookalike() {
-        return { ok: true };
-      }
-    }
-
-    const request = await createApp([UsersAdminController], forRoutes('users/*id/admin'), {
-      diagnostics: 'throw',
-    });
-
-    expect(await request('GET', '/users/1/admin/administrators')).toBe(200);
-    expect(await request('GET', '/users/1/admin/x/administrators')).toBe(200);
-    expect(await request('GET', '/users/1/administrators')).toBe(200);
-    expect(await request('GET', '/users/1/adminx')).toBe(200);
-    expect(seen).toEqual([
-      'GET /users/1/admin/administrators',
-      'GET /users/1/admin/x/administrators',
-    ]);
+  // Hono compiles a constraint only for its first request, and its default
+  // router fails on a parameter that captures nothing.
+  it.each([
+    'cats/:id(\\d+)',
+    'cats/ab*cd',
+    'cats{/:id}',
+    'cats/(a|b)',
+    'cats/:id{[0-9}',
+    'cats/:id{[0-9]*}',
+  ])("rejects '%s', which no Hono pattern matches", async (target) => {
+    await expect(createApp([CatsController], forRoutes(target))).rejects.toThrow(
+      `Middleware route '${target}' uses pattern syntax that Hono does not match`,
+    );
   });
 
   it('matches literal segments as text, not as regular expressions', async () => {
@@ -937,9 +1072,10 @@ describe('Nest wildcard targets', () => {
       }
     }
 
+    // A Nest wildcard may only end the target now, so it sits after ':a'.
     await expect(
-      createApp([ShallowFilesController], forRoutes('files/*path/:id'), { diagnostics: 'throw' }),
-    ).rejects.toThrow("[vela] Middleware route 'files/*path/:id' resolves to");
+      createApp([ShallowFilesController], forRoutes('files/:a/*path'), { diagnostics: 'throw' }),
+    ).rejects.toThrow("[vela] Middleware route 'files/:a/*path' resolves to");
   });
 
   it('reports a constrained target that no constrained route value satisfies', async () => {
@@ -1068,7 +1204,8 @@ describe('target syntax that cannot be matched safely fails the route build', ()
     }
   }
 
-  // Two unbounded wildcards backtrack polynomially on long paths.
+  // A Nest wildcard before the last segment has no Hono equivalent. These used
+  // to be rejected because two of them backtrack polynomially on long paths.
   it.each([
     'files/*a/*b',
     'files/(.*)/(.*)',
@@ -1086,17 +1223,61 @@ describe('target syntax that cannot be matched safely fails the route build', ()
     ).rejects.toThrow(message);
   });
 
-  // Hono's routers disagree on whether 'abc:name' is text or a parameter.
+  // Hono's routers disagree on whether 'abc:name' is text or a parameter. A
+  // target is now whatever the router in use makes of it, exactly as the route
+  // with the same pattern is, so these no longer fail the route build.
   it.each(['files/abc:name', 'files/:a/abc:name', 'a:b', 'files/v1:*'])(
-    "rejects '%s', which has ':' inside a literal segment",
+    "matches '%s', with ':' inside a literal segment, wherever its own route serves",
     async (target) => {
-      const message = `Middleware route '${target}' uses pattern syntax that Hono does not match`;
-      await expect(createApp([FilesController], forRoutes(target))).rejects.toThrow(message);
-      await expect(
-        createApp([FilesController], (consumer) => {
-          consumer.apply(RecordingMiddleware).exclude(target).forRoutes('*');
-        }),
-      ).rejects.toThrow(message);
+      @Controller()
+      class TargetController {
+        @Get(target)
+        serve() {
+          return { ok: true };
+        }
+      }
+
+      // A literal beside a parameter makes Hono fall back to its TrieRouter.
+      @Controller('/elsewhere')
+      class TrieOnlyController {
+        @Get('static')
+        fixed() {
+          return { ok: true };
+        }
+
+        @Get(':id')
+        one() {
+          return { ok: true };
+        }
+      }
+
+      const paths = [
+        '/files/abc:name',
+        '/files/abcX',
+        '/files/d/abc:name',
+        '/files/d/abcX',
+        '/a:b',
+        '/aX',
+        '/files/v1:x',
+        '/files/v1x',
+      ];
+      for (const controllers of [[TargetController], [TargetController, TrieOnlyController]]) {
+        for (const excluded of [false, true]) {
+          seen = [];
+          const request = await createApp(controllers, (consumer) => {
+            if (excluded) consumer.apply(RecordingMiddleware).exclude(target).forRoutes('*');
+            else consumer.apply(RecordingMiddleware).forRoutes(target);
+          });
+          const served: string[] = [];
+          const missed: string[] = [];
+          for (const path of paths) {
+            if ((await request('GET', path)) === 200) served.push(`GET ${path}`);
+            else missed.push(`GET ${path}`);
+          }
+          expect(served.length).toBeGreaterThan(0);
+          expect(seen).toEqual(excluded ? missed : served);
+        }
+      }
     },
   );
 });
