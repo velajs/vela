@@ -35,17 +35,24 @@ class ProductService {
 }
 ```
 
-Provider kinds:
+Provider kinds, as Nest literals in `@Module({ providers })` or through `defineProvider`:
 
 ```ts
-defineProvider(TOKEN, { useValue: instance })
-defineProvider(TOKEN, { useClass: Impl })
+{ provide: TOKEN, useValue: instance }
+{ provide: TOKEN, useClass: Impl }
+{ provide: ALIAS, useExisting: TOKEN }          // same instance under a second token
+{ provide: TOKEN, useFactory: () => build() }   // a literal factory takes no parameters
 defineProvider(TOKEN, { useFactory: (dep) => build(dep), inject: [DEP_TOKEN] })
-defineProvider(ALIAS, { useExisting: TOKEN })   // same instance under a second token
 ProductService // class-provider shorthand
 ```
 
-Import `defineProvider` from `@velajs/vela`. Descriptors are checked before entering heterogeneous module arrays; do not replace them with raw objects or spread them to modify their registration. Factory `inject` is mandatory, including `[]` for zero dependencies.
+`@Module` checks each literal against its token: `{ provide: COUNT, useValue: 'one' }` does not compile for an `InjectionToken<number>`. A factory with dependencies uses `defineProvider` (import it from `@velajs/vela`), which infers its parameters from `inject`; do not spread a definition to modify its registration. `inject` may be omitted only when the factory takes no parameters (`defineProvider`, `lazyProvider`, literals, `forRootAsync`); a factory with parameters and no `inject` throws, naming the token. `DynamicModule.providers` and `defineModule` `setup` contributions accept loosely typed literals that the loader checks when the module loads (an entry that is not a provider fails, naming the entry and its token).
+
+Every application provides `Reflector` globally: inject it (`constructor(private readonly reflector: Reflector) {}`) instead of `new Reflector()`.
+
+Any Vela class decorator implies `@Injectable()` (`@Controller`, `@Catch`, `@WebSocketGateway`, `@Seeder`, `@Processor`, `@LiveResolver` and other discoverable decorators); stack `@Injectable({ scope })` only to set a scope. A class with no class decorator has no constructor metadata and is reported through `diagnostics` when registered.
+
+Module classes are providers of their own module: constructed through DI after its providers, they receive the same lifecycle hooks after them, and `configure()` runs on that instance.
 
 Tokens: mint with `new InjectionToken<T>('NAME')` (optionally `{ factory: () => default }` to self-provide when unregistered).
 
@@ -105,7 +112,7 @@ Each module gets its own `ModuleRef`: a singleton's is owned by the root, a requ
 
 ## Visibility & exports
 
-A provider is private to its declaring module unless listed in that module's `exports`. Importers then resolve it. Re-export works transitively (import a module and list its token in your own `exports`). A constructor argument without a visible provider throws `UnresolvedDependencyError` naming the class, module, argument and fix (`Cannot resolve UsersController(?, AuditService) in UsersModule. Argument #0 UsersService is declared in DataModule but not exported (add it to DataModule.exports)`), with the `ModuleVisibilityError` as `cause`; direct `resolve()` calls and factory `inject` lists throw `ModuleVisibilityError` itself. Importing two instances that export the same token throws `MultipleProvidersFoundError` (see `SKILL.md` Troubleshooting).
+A provider is private to its declaring module unless listed in that module's `exports`. Importers then resolve it. Re-export works transitively: import a module and list its token, or the module itself (`exports: [DatabaseModule]`, which re-exports everything that module exports; a dynamic module is named by its class), in your own `exports`. Re-exporting a module whose exports a `forwardRef` cycle leaves unknown throws; export its tokens directly. A constructor argument without a visible provider throws `UnresolvedDependencyError` naming the class, module, argument and fix (`Cannot resolve UsersController(?, AuditService) in UsersModule. Argument #0 UsersService is declared in DataModule but not exported (add it to DataModule.exports)`), with the `ModuleVisibilityError` as `cause`; direct `resolve()` calls and factory `inject` lists throw `ModuleVisibilityError` itself. Importing two instances that export the same token throws `MultipleProvidersFoundError` (see `SKILL.md` Troubleshooting).
 
 ## Dynamic modules — `forRoot` / `forRootAsync`
 
@@ -119,6 +126,7 @@ Configurable modules expose `forRoot(options)` (sync) and `forRootAsync({ useFac
       inject: [SecretLoader],
       useFactory: async (loader: SecretLoader) => ({ config: await loader.load() }),
     }),
+    RegionModule.forRootAsync({ useFactory: () => ({ region: 'eu' }) }), // no parameters: no inject
   ],
 })
 class AppModule {}

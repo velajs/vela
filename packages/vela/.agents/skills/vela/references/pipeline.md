@@ -24,7 +24,7 @@ Decorators work on a controller class or a method, and accept **classes** (DI-re
 
 ```ts
 @Controller('/orders')
-@UseGuards(AuthGuard)                 // class → resolved from DI
+@UseGuards(AuthGuard)                 // class → registered in this module, resolved from DI
 @UseInterceptors(new LoggingInterceptor())  // instance → used as-is
 class OrdersController {
   @Post()
@@ -36,6 +36,8 @@ class OrdersController {
 ```
 
 `@UseGuards`, `@UsePipes`, `@UseInterceptors`, `@UseFilters`, `@UseMiddleware` are all variadic. `@Catch(...ErrorTypes)` marks an `ExceptionFilter` class for specific error types (zero args = catch-all).
+
+Guard, pipe, interceptor and filter classes referenced by `@UseGuards`/`@UsePipes`/`@UseInterceptors`/`@UseFilters` or a parameter decorator (`@Param('id', ParseIntPipe)`) need no `providers` entry, as in Nest. The loader scans each module's class, class providers and controllers (so gateways, `@Processor`s and live resolvers too) and registers every referenced class in the declaring module unless one is already visible there (for example exported by an imported module). They resolve from that module like its providers: dependencies injected, singletons built once rather than per request, request-scoped ones (declared or bubbled) per request, lazy modules' ones with their group. A class without a class decorator is built with `new`, once per scope. Classes given to `app.useGlobalGuards()` and the other `useGlobal*` methods are not registered.
 
 On a `@Module` class they apply to the controllers that module declares (after each controller's class-level entries, before method-level ones), not to its providers or imported modules. They are resolved per application, so bootstrapping the same modules again never runs them twice.
 
@@ -49,18 +51,18 @@ import { defineProvider } from '@velajs/vela';
 // 1. APP_* provider tokens (multiple providers per token all run)
 @Module({
   providers: [
-    AuthGuard,
-    defineProvider(APP_GUARD, { useExisting: AuthGuard }),
-    defineProvider(APP_PIPE, { useClass: ValidationPipe }),
-    defineProvider(APP_INTERCEPTOR, { useClass: SerializerInterceptor }),
-    defineProvider(APP_FILTER, { useClass: AllExceptionsFilter }),
+    TraceMiddleware,
+    { provide: APP_GUARD, useClass: AuthGuard },
+    { provide: APP_PIPE, useClass: ValidationPipe },
+    { provide: APP_INTERCEPTOR, useClass: SerializerInterceptor },
+    { provide: APP_FILTER, useClass: AllExceptionsFilter },
     defineProvider(APP_MIDDLEWARE, { useExisting: TraceMiddleware }),
   ],
 })
 class AppModule {}
 
 // 2. App methods (chainable) — instances only
-app.useGlobalGuards(new AuthGuard())
+app.useGlobalGuards(new RolesGuard(app.get(Reflector)))
    .useGlobalPipes(new ValidationPipe())
    .useGlobalInterceptors(new SerializerInterceptor())
    .useGlobalFilters(new AllExceptionsFilter());
@@ -122,8 +124,9 @@ Attach metadata with `@SetMetadata(key, value)` (or `Reflector.createDecorator()
 ```ts
 const RequireScope = Reflector.createDecorator<string>();
 
+@Injectable()
 class ScopeGuard implements CanActivate {
-  private readonly reflector = new Reflector();
+  constructor(private readonly reflector: Reflector) {} // provided by every application
   canActivate(ctx: ExecutionContext): boolean {
     const required = this.reflector.getAllAndOverride(RequireScope, ctx);
     if (!required) return true;

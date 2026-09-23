@@ -14,8 +14,7 @@ import type { LiveQueryContext } from '@velajs/vela/live';
 // Put this definition in a portable module imported by both server and browser.
 const todoListDefinition = defineLiveQuery({ args: TodoListArgs, result: TodoListResult });
 
-@LiveResolver()
-@Injectable()
+@LiveResolver() // implies @Injectable()
 class TodoLive {
   constructor(private readonly todos: TodoService) {}
 

@@ -19,8 +19,7 @@ export const queries = { 'todos.list': todoList };
 ```ts
 import { LiveModule, LiveQuery, LiveResolver, type LiveQueryContext } from '@velajs/vela/live';
 
-@LiveResolver()
-@Injectable()
+@LiveResolver() // implies @Injectable()
 class TodoLive {
   constructor(private readonly todos: TodoService) {}
 

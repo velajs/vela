@@ -34,8 +34,7 @@ class SignupService {
   }
 }
 
-@Processor('email')
-@Injectable()
+@Processor('email') // implies @Injectable()
 class EmailProcessor {
   @Process(welcome)
   async send(job: QueueJob<QueueJobOutput<typeof welcome>>) {
@@ -287,8 +286,7 @@ export const welcome = defineQueueJob('welcome', z.object({
   age: z.string().transform(Number),
 }));
 
-@Processor('email')
-@Injectable()
+@Processor('email') // implies @Injectable()
 class EmailProcessor {
   @Process(welcome)
   async send(job: QueueJob<QueueJobOutput<typeof welcome>>) {
