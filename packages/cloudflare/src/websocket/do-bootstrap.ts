@@ -1,5 +1,5 @@
 import { bootstrap, VelaApplication } from '@velajs/vela';
-import type { InjectionToken, Type } from '@velajs/vela';
+import type { Type, VelaEnv } from '@velajs/vela';
 import {
   local,
   readWsEntrypointMeta,
@@ -30,18 +30,18 @@ export interface DoRuntime {
 /**
  * Slim DI bootstrap for the Durable Object isolate: wires the container and runs
  * `OnModuleInit`/`OnApplicationBootstrap` (so `WsDispatcher` discovers gateways)
- * WITHOUT building the Hono app/routes the DO never serves. Cloudflare binding
- * refs are initialized straight from the DO's `env`, and the ctx-backed server
+ * WITHOUT building the Hono app/routes the DO never serves. The DO's `env` is
+ * seeded as the global ENV before providers construct, and the ctx-backed server
  * is bound before bootstrap lifecycle so gateway `afterInit`/handlers see it.
  */
-export async function buildDoRuntime<T extends object>(
+export async function buildDoRuntime(
   rootModule: Type,
   ctx: DoStateLike,
-  options: { env: T; envToken: InjectionToken<T> },
+  options: { env: VelaEnv },
 ): Promise<DoRuntime> {
   const { container, routeManager, loader } = await bootstrap(rootModule, {
     configureContainer: (container) => {
-      registerCloudflareEnvironment(container, { token: options.envToken, env: options.env });
+      registerCloudflareEnvironment(container, options.env);
     },
   });
 
@@ -52,7 +52,16 @@ export async function buildDoRuntime<T extends object>(
 
   if (container.has(WS_SERVER)) {
     const holder = await container.resolveAsync(WS_SERVER);
-    if (holder instanceof WsServerHolder) holder.setTarget(server);
+    // The core WebSocketModule's server broadcasts through its own sync driver,
+    // which never reaches this Durable Object's hibernatable sockets.
+    if (!(holder instanceof WsServerHolder)) {
+      throw new Error(
+        '[vela] The WebSocket Durable Object found a WS_SERVER from the core WebSocketModule, ' +
+          'which cannot reach Durable Object sockets. On Cloudflare, import ' +
+          'CloudflareWebSocketModule.forRoot() instead of WebSocketModule.forRoot().',
+      );
+    }
+    holder.setTarget(server);
   }
 
   const app = new VelaApplication(container, routeManager);

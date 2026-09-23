@@ -1,24 +1,15 @@
-import { defineProvider, InjectionToken } from '@velajs/vela';
+import { defineProvider, ENV } from '@velajs/vela';
+import type { VelaEnv } from '@velajs/vela';
 import type { Container } from '@velajs/vela/internal';
 
-/** An application's native Workers environment, including bindings and secrets. */
-export interface CloudflareEnvironment<T extends object> {
-  /** Typed token used by @Inject and provider factories. */
-  readonly token: InjectionToken<T>;
-  /** The environment supplied by the current platform event or DO constructor. */
-  readonly env: T;
-}
-
 /**
- * Register native bindings before provider factories or lifecycle hooks run.
- * No platform I/O is performed here; callers create applications inside an event.
+ * Seed the application's native environment as the global ENV before provider
+ * factories or lifecycle hooks run. No platform I/O is performed here; callers
+ * create applications inside an event or a Durable Object constructor.
  */
-export function registerCloudflareEnvironment<T extends object>(
-  container: Container,
-  environment: CloudflareEnvironment<T>,
-): void {
-  container.register(defineProvider(environment.token, { useValue: environment.env }));
-  container.markGlobalToken(environment.token);
+export function registerCloudflareEnvironment(container: Container, env: VelaEnv): void {
+  container.register(defineProvider(ENV, { useValue: env }));
+  container.markGlobalToken(ENV);
 }
 
 /** Reject accidental reuse of an application with another event's environment. */

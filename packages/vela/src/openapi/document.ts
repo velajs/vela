@@ -1,6 +1,7 @@
 import { endpointResponseSchema } from './endpoint-response';
 import { ParamType } from '../constants';
 import type { Type } from '../container/types';
+import { DEFAULT_SUCCESS_STATUS, resolveSuccessStatus } from '../http/response-mapper';
 import { getRouteContributors } from '../http/route-contributor';
 import { getMetadata } from '../metadata';
 import { collectControllers } from '../module/graph';
@@ -290,17 +291,15 @@ function buildOperation(
   const responses: Record<
     string,
     { description: string; content?: Record<string, { schema: JsonSchema }> }
-  > = {
-    [String(
-      endpoint?.status ??
-        MetadataRegistry.getHandlerHttpMeta(controller, handlerName)?.httpCode ??
-        200,
-    )]: {
-      description: 'OK',
-    },
-  };
+  > = {};
 
   const apiResponses = getApiResponses(controller, handlerName) ?? [];
+  // Document the status the runtime sends: a declared status (`@Endpoint`,
+  // `@HttpCode`) replaces the default 200; a documented 2xx alone does not,
+  // because the handler still answers 200 without one.
+  responses[String(resolveSuccessStatus(controller, handlerName) ?? DEFAULT_SUCCESS_STATUS)] = {
+    description: 'OK',
+  };
   for (const entry of apiResponses) {
     const key = String(entry.status);
     const resolved: { description: string; content?: Record<string, { schema: JsonSchema }> } = {

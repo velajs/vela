@@ -5,7 +5,16 @@ reserved `/_vela/admin` surface, hosts `@AdminRpc` operations, and exposes the t
 port. Subpath exports (`./auth`, `./flags`, `./queue`, `./live`, `./schedule`,
 `./timetravel`, `./logging`) scope the per-feature admin surfaces.
 
-Protocol v2 exposes the usable operation catalog through `studio.capabilities`.
+Studio stays closed until it has a master token: `StudioModule.forRoot({ token })`,
+or a `VELA_STUDIO_TOKEN` variable or secret in the application's `ENV`. The
+`VELA_STUDIO_DATA_EDITABLE`, `VELA_STUDIO_SCHEMA_EDITABLE`, `VELA_STUDIO_OPS_EDITABLE`,
+`VELA_STUDIO_TIMETRAVEL_EDITABLE` and `VELA_STUDIO_TRANSFER_EDITABLE` flags open write
+categories the same way; module options win over environment values, and non-string
+values are ignored. On Workers `@velajs/cloudflare` seeds `ENV`, so a Wrangler secret
+takes effect without extra wiring. `readStudioEnv(env)` parses these values and
+`resolveStudioConfig(envConfig, options)` merges them under module options.
+
+The protocol exposes the usable operation catalog through `studio.capabilities`.
 Only configured Studio handlers enable their features. Queue depth/DLQ/replay
 remain unavailable until their handlers are implemented. Live and presence
 inspection are enabled by `StudioLiveModule.forRoot({ source })`, where

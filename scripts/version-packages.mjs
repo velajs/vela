@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertV1Releases } from './release-line.mjs';
+import { starterManifest, syncStarterPins } from './starter-pins.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 if (
@@ -45,6 +46,14 @@ execFileSync('node', ['packages/vela/scripts/sync-skill-version.mjs'], {
   cwd: root,
   stdio: 'inherit',
 });
+const versions = new Map(
+  before.map(({ path }) => {
+    const next = JSON.parse(readFileSync(join(path, 'package.json'), 'utf8'));
+    return [next.name, next.version];
+  }),
+);
+const starter = JSON.parse(readFileSync(starterManifest, 'utf8'));
+writeFileSync(starterManifest, JSON.stringify(syncStarterPins(starter, versions), null, 2) + '\n');
 const changed = before.flatMap(({ path, manifest }) => {
   const next = JSON.parse(readFileSync(join(path, 'package.json'), 'utf8'));
   if (next.private || next.version === manifest.version) return [];

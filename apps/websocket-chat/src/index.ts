@@ -1,5 +1,5 @@
-import { VelaWebSocketDurableObject } from "@velajs/cloudflare/durable-objects";
-import { Module, Controller, Get, InjectionToken } from "@velajs/vela";
+import { VelaWebSocketDurableObject } from '@velajs/cloudflare/durable-objects';
+import { Module, Controller, Get } from '@velajs/vela';
 import {
   createCloudflareWorker,
   CloudflareWebSocketModule,
@@ -8,34 +8,60 @@ import {
   MessageBody,
   ConnectedSocket,
   WebSocketServer,
-} from "@velajs/cloudflare";
+} from '@velajs/cloudflare';
 import type {
   WsClient,
   WsServer,
   OnGatewayConnection,
   OnGatewayDisconnect,
-} from "@velajs/cloudflare";
+} from '@velajs/cloudflare';
+import type { WebSocketUpgradeIdentity } from '@velajs/vela/websocket';
+
+// ---- Upgrade authentication (DEMO ONLY) ----
+
+/**
+ * DEMO ONLY: admits every upgrade as a fresh anonymous visitor so the example
+ * runs without an auth stack. Gateways reject upgrades that have no
+ * `authenticateUpgrade`; a real application verifies a session cookie or a
+ * short-lived socket ticket here and returns that user's identity.
+ */
+function anonymousDemoUpgrade(options: { tenantId: string; ttlMs: number }) {
+  return (): WebSocketUpgradeIdentity => ({
+    principal: {
+      issuer: 'vela-ws-chat-demo',
+      subject: `anonymous:${crypto.randomUUID()}`,
+      principalType: 'user',
+    },
+    tenantId: options.tenantId,
+    expiresAtMs: Date.now() + options.ttlMs,
+  });
+}
 
 // ---- Gateway: one Durable Object per room; broadcast to everyone in it ----
 
-@WebSocketGateway({ path: "/rooms/:id/ws", roomParam: "id", binding: "CHAT_ROOM" })
+@WebSocketGateway({
+  path: '/rooms/:id/ws',
+  roomParam: 'id',
+  binding: 'CHAT_ROOM',
+  authenticateUpgrade: anonymousDemoUpgrade({ tenantId: 'demo', ttlMs: 60 * 60 * 1000 }),
+})
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(@WebSocketServer() private readonly server: WsServer) {}
 
   handleConnection(client: WsClient) {
     const who = client.id.slice(0, 8);
-    client.send("system", { text: `you are ${who}` });
-    void this.server.emit("system", { text: `${who} joined` });
+    client.send('system', { text: `you are ${who}` });
+    void this.server.emit('system', { text: `${who} joined` });
   }
 
   handleDisconnect(client: WsClient) {
-    void this.server.emit("system", { text: `${client.id.slice(0, 8)} left` });
+    void this.server.emit('system', { text: `${client.id.slice(0, 8)} left` });
   }
 
-  @SubscribeMessage("chat")
+  @SubscribeMessage('chat')
   onChat(@MessageBody() body: { text: string }, @ConnectedSocket() client: WsClient) {
-    void this.server.emit("chat", { from: client.id.slice(0, 8), text: body.text });
-    return { event: "ack", data: { ok: true } }; // echoed back to the sender only
+    void this.server.emit('chat', { from: client.id.slice(0, 8), text: body.text });
+    return { event: 'ack', data: { ok: true } }; // echoed back to the sender only
   }
 }
 
@@ -80,9 +106,9 @@ const PAGE = /* html */ `<!doctype html>
 
 @Controller()
 export class PageController {
-  @Get("/")
+  @Get('/')
   index() {
-    return new Response(PAGE, { headers: { "content-type": "text/html; charset=utf-8" } });
+    return new Response(PAGE, { headers: { 'content-type': 'text/html; charset=utf-8' } });
   }
 }
 
@@ -95,10 +121,8 @@ export class PageController {
 })
 export class AppModule {}
 
-interface WorkerEnv {
-  CHAT_ROOM: DurableObjectNamespace<ChatRoom>;
-}
-const WORKER_ENV = new InjectionToken<WorkerEnv>("chat environment");
-export class ChatRoom extends VelaWebSocketDurableObject(AppModule, { envToken: WORKER_ENV }) {}
+// The gateway resolves its CHAT_ROOM binding by name from the framework ENV,
+// which the Worker and the Durable Object each seed from their native environment.
+export class ChatRoom extends VelaWebSocketDurableObject(AppModule) {}
 
-export default createCloudflareWorker(AppModule, { envToken: WORKER_ENV });
+export default createCloudflareWorker(AppModule);

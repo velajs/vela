@@ -7,6 +7,7 @@ import {
   APP_EXCEPTION_HANDLER,
   defineProvider,
   EXECUTION_LIFETIME,
+  HttpException,
   Inject,
   Injectable,
   InjectionToken,
@@ -574,6 +575,44 @@ describe('Vela RPC adapter', () => {
       );
       expect(malformed.status).toBe(400);
       await malformed.text();
+    } finally {
+      await app.dispose();
+    }
+  });
+  it('redacts 5xx HttpException text and derives codes from the status', async () => {
+    const contract = defineProcedure({ name: 'status.throw', input: z.number(), output: z.null() });
+    @Injectable()
+    class Handler {
+      @Rpc(contract) call(status: number): null {
+        throw new HttpException(`caller detail for ${status}`, status);
+      }
+    }
+    @Module({ providers: [Handler] })
+    class App {}
+    const app = await VelaFactory.create(App, {
+      adapters: [rpcAdapter({ authorize: 'public' })],
+      diagnostics: 'silent',
+    });
+    const cases: Array<[number, { code: string; message: string }]> = [
+      [500, { code: 'internal', message: 'Internal Server Error' }],
+      [502, { code: 'bad_gateway', message: 'Bad Gateway' }],
+      [507, { code: 'internal', message: 'Internal Server Error' }],
+      [406, { code: 'not_acceptable', message: 'caller detail for 406' }],
+      [428, { code: 'precondition_required', message: 'caller detail for 428' }],
+      [418, { code: 'bad_request', message: 'caller detail for 418' }],
+    ];
+    try {
+      for (const [status, error] of cases) {
+        const res = await app.fetch(request(contract.name, status));
+        expect(res.status).toBe(status);
+        expect(await res.json()).toEqual({
+          version: 1,
+          id: 'call',
+          procedure: contract.name,
+          ok: false,
+          error: { ...error, status },
+        });
+      }
     } finally {
       await app.dispose();
     }

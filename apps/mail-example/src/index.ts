@@ -38,7 +38,7 @@ class SupportInbox {
 
 @Module({ imports: [mail], providers: [SupportInbox] })
 class SupportModule {}
-@Module({ imports: [QueueModule.forRoot({ queues: ['support-replies'], driver }), SupportModule] })
+@Module({ imports: [QueueModule.forRoot({ driver }), SupportModule] })
 class AppModule {}
 
 const app = await VelaFactory.create(AppModule);

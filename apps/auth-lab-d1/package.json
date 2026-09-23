@@ -4,12 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "deploy": "pnpm run build && wrangler deploy",
     "db:reset": "rm -rf .wrangler/state/v3/d1 && wrangler d1 execute velajs_better_auth_d1 --local --file=migrations/0000_initial.sql",
-    "dev": "pnpm run build && wrangler dev --local --port 8789",
-    "wrangler:smoke": "pnpm run db:reset && pnpm run build && node dist/wrangler-smoke.js",
-    "typecheck": "tsc --noEmit",
-    "deploy": "pnpm run build && wrangler deploy"
+    "smoke": "pnpm run db:reset && pnpm run build && node scripts/smoke.ts",
+    "types": "wrangler types --include-runtime=false",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@better-auth/drizzle-adapter": "^1.7.5",
@@ -22,11 +24,11 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "catalog:",
     "@cloudflare/workers-types": "catalog:",
-    "@swc/cli": "^0.8.0",
-    "@swc/core": "catalog:",
     "@types/node": "catalog:",
     "typescript": "catalog:",
+    "vite": "catalog:",
     "wrangler": "catalog:"
   }
 }

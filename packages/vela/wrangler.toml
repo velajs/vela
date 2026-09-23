@@ -11,6 +11,6 @@ main = "src/__tests__/workers/entry.ts"
 compatibility_date = "2026-05-01"
 
 # Bindings surfaced to `env` (the c.env source). Used by config-env.test.ts to
-# prove CONFIG_ENV seeds from the Workers env under real workerd.
+# prove the Workers env seeds ENV for config namespaces under real workerd.
 [vars]
 CONFIG_DATABASE_URL = "postgres://edge/db"

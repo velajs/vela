@@ -5,17 +5,31 @@ for breakpoints. Both work with the ordinary Vela module and handler APIs.
 
 ## Local Worker breakpoints
 
-Run your application's existing Wrangler development script from a VS Code
-JavaScript Debug Terminal. Set a breakpoint inside a controller method and send
-an HTTP request to that route. Wrangler connects the Worker inspector to that
-terminal automatically. The CLI Worker template builds TypeScript with SWC before
-Wrangler loads `dist/worker.js`.
-
-For a manual attachment, start the application from its package directory:
+Debug a Vela Worker under `vite dev`, the `dev` script of the CLI Worker
+template. `@cloudflare/vite-plugin` serves `src/worker.ts` from source with
+source maps and the decorator metadata constructor injection reads, starts the
+Worker inspector on the first free port from 9229 (the plugin's `inspectorPort`
+option fixes it), and serves a `/__debug` page that opens DevTools for the
+Worker. Attach to that port with the configuration below, set a breakpoint
+inside a controller method and send an HTTP request to that route:
 
 ```sh
-pnpm exec wrangler dev --inspector-port 9229
+pnpm exec vite dev
 ```
+
+Use `wrangler dev --inspector-port 9229` only on a build that already contains
+decorator metadata: run `vite build` first and start Wrangler from the package
+directory without `--config`, so it follows the `.wrangler/deploy/config.json`
+redirect to the built Worker, or point `main` at a Worker you compile ahead of
+time with decorator metadata:
+
+```sh
+pnpm exec vite build && pnpm exec wrangler dev --inspector-port 9229
+```
+
+Do not run `wrangler dev` on the TypeScript sources: Wrangler bundles them with
+esbuild, which emits no `design:paramtypes` metadata, so constructor injection
+fails with `MissingInjectionMetadataError`.
 
 Add this configuration to the application's `.vscode/launch.json`:
 
@@ -42,12 +56,13 @@ Start **Vela Worker** in Run and Debug, then request the route. Use a different
 inspector port for a second development process. These attachment settings follow
 [Cloudflare's breakpoint guide](https://developers.cloudflare.com/workers/observability/dev-tools/breakpoints/).
 
-If a TypeScript breakpoint stays unbound, check that the running build has source
-maps and that Wrangler's `main` points to that build. The CLI template's `.swcrc`
-sets `sourceMaps: true`, `legacyDecorator: true`, `decoratorMetadata: true`, and
-`keepClassNames: true`. Keep those settings when customizing compilation; rebuild
-before attaching. Source maps must survive every transform, including your own
-bundling steps. A breakpoint in an imported file cannot bind until that module
+If a TypeScript breakpoint stays unbound, check that the running code has source
+maps. Under `vite dev` they come from Vite; for a Worker built ahead of time,
+check that Wrangler runs a build with source maps, and rebuild before
+attaching. Keep the legacy decorator and decorator metadata settings (the
+template's `oxc.config.ts`) and class names when customizing compilation; see
+[tooling](tooling.md#build-pipeline). Source maps must survive every transform,
+including your own bundling steps. A breakpoint in an imported file cannot bind until that module
 has loaded; exercise a lazy module's entrypoint first.
 
 ## Debug one test

@@ -30,8 +30,8 @@ describe('Container per-module buckets', () => {
       isGlobal: false,
     });
 
-    c.register(defineProvider(TOKEN, {useValue: 'from-A'}), 'A');
-    c.register(defineProvider(TOKEN, {useValue: 'from-B'}), 'B');
+    c.register(defineProvider(TOKEN, { useValue: 'from-A' }), 'A');
+    c.register(defineProvider(TOKEN, { useValue: 'from-B' }), 'B');
 
     expect(c.resolve(TOKEN, 'A')).toBe('from-A');
     expect(c.resolve(TOKEN, 'B')).toBe('from-B');
@@ -63,8 +63,8 @@ describe('Container per-module buckets', () => {
       exportedTokens: new Set(),
       isGlobal: false,
     });
-    c.register(defineProvider(TOKEN, {useValue: 'a'}), 'A');
-    c.register(defineProvider(TOKEN, {useValue: 'b'}), 'B');
+    c.register(defineProvider(TOKEN, { useValue: 'a' }), 'A');
+    c.register(defineProvider(TOKEN, { useValue: 'b' }), 'B');
 
     expect(() => c.resolve(TOKEN, 'Consumer')).toThrow(MultipleProvidersFoundError);
   });
@@ -92,7 +92,7 @@ describe('Container per-module buckets', () => {
       exportedTokens: new Set(),
       isGlobal: false,
     });
-    c.register(defineProvider(TOKEN, {useValue: 'leaf-value'}), 'leaf');
+    c.register(defineProvider(TOKEN, { useValue: 'leaf-value' }), 'leaf');
 
     expect(c.resolve(TOKEN, 'top')).toBe('leaf-value');
   });
@@ -113,7 +113,7 @@ describe('Container per-module buckets', () => {
       exportedTokens: new Set(),
       isGlobal: false,
     });
-    c.register(defineProvider(TOKEN, {useValue: 'hidden'}), 'private');
+    c.register(defineProvider(TOKEN, { useValue: 'hidden' }), 'private');
 
     expect(() => c.resolve(TOKEN, 'consumer')).toThrow(ModuleVisibilityError);
   });
@@ -134,35 +134,25 @@ describe('Container per-module buckets', () => {
       exportedTokens: new Set(),
       isGlobal: false,
     });
-    c.register(defineProvider(TOKEN, {useValue: 'globally-visible'}), 'global');
+    c.register(defineProvider(TOKEN, { useValue: 'globally-visible' }), 'global');
 
     expect(c.resolve(TOKEN, 'consumer')).toBe('globally-visible');
   });
 
-  it("createDetached deep-clones buckets so sandbox writes don't leak back", () => {
-    const c = new Container({ diagnostics: 'silent' });
-    c.register(defineProvider(TOKEN, {useValue: 'parent'}));
-    const sandbox = c.createDetached();
-    sandbox.register(defineProvider(TOKEN, {useValue: 'sandbox'}));
-
-    expect(sandbox.resolve(TOKEN)).toBe('sandbox');
-    expect(c.resolve(TOKEN)).toBe('parent');
-  });
-
   it('createChild shares buckets by reference (request-scope semantics)', () => {
     const c = new Container({ diagnostics: 'silent' });
-    c.register(defineProvider(TOKEN, {useValue: 'shared'}));
+    c.register(defineProvider(TOKEN, { useValue: 'shared' }));
     const child = c.createChild();
     expect(child.resolve(TOKEN)).toBe('shared');
 
     // Mutating parent is visible in child.
-    c.register(defineProvider(TOKEN, {useValue: 'mutated'}));
+    c.register(defineProvider(TOKEN, { useValue: 'mutated' }));
     expect(child.resolve(TOKEN)).toBe('mutated');
   });
 
   it('register without a moduleId lands in __root__ bucket', () => {
     const c = new Container({ diagnostics: 'silent' });
-    c.register(defineProvider(TOKEN, {useValue: 'rooted'}));
+    c.register(defineProvider(TOKEN, { useValue: 'rooted' }));
     expect(c.hasInScope(TOKEN, ROOT_MODULE_ID)).toBe(true);
     expect(c.resolve(TOKEN)).toBe('rooted');
   });
@@ -208,7 +198,7 @@ describe('Container per-module buckets', () => {
       isGlobal: false,
     });
     c.register(Real, 'A');
-    c.register(defineProvider(ALIAS, {useExisting: Real}), 'A');
+    c.register(defineProvider(ALIAS, { useExisting: Real }), 'A');
 
     expect(c.resolve(ALIAS, 'A')).toBeInstanceOf(Real);
   });
@@ -235,8 +225,8 @@ describe('Container per-module buckets', () => {
       exportedTokens: new Set([ITEM]),
       isGlobal: true,
     });
-    c.register(defineProvider(ITEM, {useValue: new Item('a')}), 'A');
-    c.register(defineProvider(ITEM, {useValue: new Item('b')}), 'B');
+    c.register(defineProvider(ITEM, { useValue: new Item('a') }), 'A');
+    c.register(defineProvider(ITEM, { useValue: new Item('b') }), 'B');
 
     const all = c.resolveAll(ITEM);
     expect(all.map((i) => i.label).sort()).toEqual(['a', 'b']);

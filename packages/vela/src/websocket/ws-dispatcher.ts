@@ -12,9 +12,9 @@ import { resolveErrorReporter, type ErrorReporter } from '../exceptions/reporter
 import { instantiateManyAsync } from '../http/instantiate';
 import { RouteManager } from '../http/route.manager';
 import type { OnApplicationBootstrap } from '../lifecycle/index';
-import { ComponentManager } from '../pipeline/component.manager';
 import { shouldFilterCatch } from '../pipeline/decorators';
 import { PipelineRunner } from '../pipeline/pipeline-runner';
+import { getScopedComponents } from '../pipeline/scoped-components';
 import type {
   CanActivate,
   ExceptionFilter,
@@ -221,8 +221,7 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
     )) {
       const gatewayClass = found.metatype;
       const instance =
-        found.scope === Scope.SINGLETON &&
-        !this.#container.isLazyPending(found.token, found.moduleId)
+        found.scope === Scope.DEFAULT && !this.#container.isLazyPending(found.token, found.moduleId)
           ? await resolveEntrypoint(this.#container, {
               token: found.metatype,
               moduleId: found.moduleId,
@@ -714,15 +713,16 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
         methodName,
       ) as unknown[] | undefined;
 
+      const container = this.#container;
       handlers.set(event, {
         methodName,
         paramMeta,
         paramTypes,
-        guards: ComponentManager.getScopedComponents('guard', ctor, methodName),
-        pipes: ComponentManager.getScopedComponents('pipe', ctor, methodName),
-        interceptors: ComponentManager.getScopedComponents('interceptor', ctor, methodName),
+        guards: getScopedComponents('guard', ctor, methodName, container, moduleId),
+        pipes: getScopedComponents('pipe', ctor, methodName, container, moduleId),
+        interceptors: getScopedComponents('interceptor', ctor, methodName, container, moduleId),
         // Handler → controller → global, so the closest filter runs first (mirrors HandlerExecutor).
-        filters: [...ComponentManager.getScopedComponents('filter', ctor, methodName)].reverse(),
+        filters: getScopedComponents('filter', ctor, methodName, container, moduleId).toReversed(),
       });
     }
 

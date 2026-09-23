@@ -53,14 +53,18 @@ describe('configuration boundary', () => {
     const cwd = await fixture(
       `export default { marker: 'receiver', createApp() { return this.marker; } };`,
     );
-    const config = await loadConfig(cwd);
+    const { config, path, dispose } = await loadConfig(cwd);
+    expect(path).toBe(join(cwd, 'vela.config.mjs'));
     expect(config.createApp()).toBe('receiver');
     expect(defineVelaConfig(config)).toBe(config);
+    await dispose();
   });
 
   it('supports named exports and gives default exports precedence', async () => {
     const named = await fixture(`export const config = { createApp() {} };`);
-    expect(typeof (await loadConfig(named)).createApp).toBe('function');
+    const loaded = await loadConfig(named);
+    expect(typeof loaded.config.createApp).toBe('function');
+    await loaded.dispose();
     const invalidDefault = await fixture(
       `export default false; export const config = { createApp() {} };`,
     );
@@ -84,12 +88,89 @@ describe('configuration boundary', () => {
     const cwd = await fixture(
       `export default { createApp() {}, rootModule: class Root { constructor() { throw Error('do not construct'); } } };`,
     );
-    expect((await loadConfig(cwd)).rootModule?.name).toBe('Root');
+    const loaded = await loadConfig(cwd);
+    expect(loaded.config.rootModule?.name).toBe('Root');
+    await loaded.dispose();
   });
 
-  it('reports malformed config files and missing compiled imports with build guidance', async () => {
-    const cwd = await fixture(`import './dist/missing.js'; export default { createApp() {} };`);
-    await expect(loadConfig(cwd)).rejects.toThrow(/SWC|compiled/);
+  it('reports a config that fails to load with the Vite runner that loaded it', async () => {
+    const cwd = await fixture(`import './src/missing.js'; export default { createApp() {} };`);
+    const error = await loadConfig(cwd).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(Error);
+    expect(String(error)).toContain(`Could not import config at ${join(cwd, 'vela.config.mjs')}`);
+    expect(String(error)).toContain("Vite's module runner");
+    expect(error).toHaveProperty('cause');
+  });
+
+  it('loads TypeScript configs through Vite with legacy decorators and constructor metadata', async () => {
+    // A stand-in for the Reflect metadata polyfill Vela installs, restored after
+    // the class is decorated so no other test sees it.
+    const cwd = await fixture(
+      `
+      const recorded: [string, string[]][] = [];
+      const reflect: { metadata?: unknown } = Reflect;
+      const previous = reflect.metadata;
+      reflect.metadata = (key: string, value: unknown) => () => {
+        if (Array.isArray(value)) recorded.push([key, value.map((type) => type.name)]);
+      };
+      function Decorated(_target: object): void {}
+      export class Dependency {}
+      @Decorated
+      class Root {
+        constructor(readonly dependency: Dependency) {}
+      }
+      if (previous === undefined) delete reflect.metadata;
+      else reflect.metadata = previous;
+      export default { rootModule: Root, createApp: () => recorded };
+      `,
+      'vela.config.ts',
+    );
+    const { config, dispose } = await loadConfig(cwd);
+    expect(config.rootModule?.name).toBe('Root');
+    expect(config.createApp()).toEqual([['design:paramtypes', ['Dependency']]]);
+    await dispose();
+  });
+
+  it('keeps the Vite module runner open for files createApp() imports, until dispose()', async () => {
+    const cwd = await fixture(
+      `
+      export default {
+        async createApp() {
+          const { AppModule, marker } = await import('./src/app.module.js');
+          return [AppModule.name, marker];
+        },
+      };
+      `,
+      'vela.config.ts',
+    );
+    await mkdir(join(cwd, 'src'));
+    await writeFile(
+      join(cwd, 'src/app.module.ts'),
+      `
+      function Decorated(_target: object): void {}
+      @Decorated
+      export class AppModule {}
+      export const marker: string = 'lazy';
+      `,
+    );
+    const { config, dispose } = await loadConfig(cwd);
+    expect(await config.createApp()).toEqual(['AppModule', 'lazy']);
+    await dispose();
+    // dispose() closes the runner, so the config can no longer import through it.
+    await expect(Promise.resolve(config.createApp())).rejects.toThrow(/closed/);
+  });
+
+  it('keeps lazy relative imports of a plain .mjs config working', async () => {
+    const cwd = await fixture(
+      `export default { async createApp() { return (await import('./lazy.mjs')).value; } };`,
+    );
+    await writeFile(join(cwd, 'lazy.mjs'), `export const value = 'lazy';`);
+    const { config, dispose } = await loadConfig(cwd);
+    try {
+      expect(await config.createApp()).toBe('lazy');
+    } finally {
+      await dispose();
+    }
   });
 
   it('rejects a config directory instead of attempting to import it', async () => {

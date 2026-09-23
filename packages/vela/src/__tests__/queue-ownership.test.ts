@@ -37,13 +37,13 @@ describe('queue driver application ownership', () => {
     @Module({
       imports: [
         QueueModule.forRoot({
-          queues: ['owned'],
           driver: () => {
             const driver = inline({ mode: 'manual' });
             drivers.push(driver);
             return driver;
           },
         }),
+        QueueModule.registerQueue({ name: 'owned' }),
       ],
       providers: [Producer, Consumer],
     })
@@ -71,7 +71,10 @@ describe('queue driver application ownership', () => {
       constructor(@Inject(queueToken('shared')) readonly queue: QueueClient) {}
     }
     @Module({
-      imports: [QueueModule.forRoot({ queues: ['shared'], driver: shared })],
+      imports: [
+        QueueModule.forRoot({ driver: shared }),
+        QueueModule.registerQueue({ name: 'shared' }),
+      ],
       providers: [Producer],
     })
     class App {}
@@ -86,10 +89,11 @@ it('does not silently deduplicate different driver instances with the same kind'
   const b = inline({ mode: 'manual' });
   @Module({
     imports: [
-      QueueModule.forRoot({ queues: ['collision'], driver: a }),
-      QueueModule.forRoot({ queues: ['collision'], driver: b }),
+      QueueModule.forRoot({ driver: a }),
+      QueueModule.forRoot({ driver: b }),
+      QueueModule.registerQueue({ name: 'collision' }),
     ],
   })
   class App {}
-  await expect(VelaFactory.create(App)).rejects.toThrow(/provided by multiple/);
+  await expect(VelaFactory.create(App)).rejects.toThrow(/imported with different options/);
 });

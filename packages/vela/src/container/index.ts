@@ -4,13 +4,16 @@ export {
   InjectionToken,
   ForwardRef,
   forwardRef,
+  MissingInjectionMetadataError,
   ModuleVisibilityError,
   MultipleProvidersFoundError,
   ROOT_MODULE_ID,
+  UnresolvedDependencyError,
   describeToken,
   defineProvider,
 } from './types';
 export { ModuleRef } from './module-ref';
+export type { ModuleRefContext, ModuleRefLookupOptions } from './module-ref';
 export { mixin } from './mixin';
 export type {
   Type,
@@ -29,4 +32,7 @@ export type {
   ModuleDescription,
   ContainerOptions,
   Diagnostics,
+  MissingInjectionMetadataReason,
+  UnresolvedDependency,
+  UnresolvedDependencyReason,
 } from './types';

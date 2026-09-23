@@ -9,11 +9,16 @@ import {
 } from '@velajs/vela';
 import { Cli } from 'clipanion';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { loadConfig, resolveConfig } from '../config.js';
+import { loadConfig, resolveConfig, type LoadedVelaConfig, type VelaConfig } from '../config.js';
 import { DoctorCommand } from './doctor.command.js';
 
 vi.mock('../config.js', () => ({ loadConfig: vi.fn(), resolveConfig: vi.fn() }));
 afterEach(() => vi.restoreAllMocks());
+
+/** A loaded config as loadConfig() returns it, with a runner that has nothing to close. */
+function loadedConfig(config: VelaConfig): LoadedVelaConfig {
+  return { config, path: '/project/vela.config.ts', dispose: vi.fn(async () => {}) };
+}
 
 async function run(args: string[] = []) {
   const stdout = new PassThrough();
@@ -34,6 +39,13 @@ async function run(args: string[] = []) {
 }
 
 describe('vela doctor', () => {
+  it('documents inspecting the app from the TypeScript config the CLI loads through Vite', () => {
+    expect(DoctorCommand.usage?.examples).toContainEqual([
+      'Inspect the app',
+      'vela doctor --app --config vela.config.ts --json',
+    ]);
+  });
+
   it('explains config resolution without loading the config', async () => {
     const resolution = {
       path: '/project/vela.config.mjs',
@@ -93,7 +105,7 @@ describe('vela doctor', () => {
         source: 'explicit',
         candidates: [],
       });
-      vi.mocked(loadConfig).mockResolvedValue({ createApp: () => app });
+      vi.mocked(loadConfig).mockResolvedValue(loadedConfig({ createApp: () => app }));
       const result = await run(['--app']);
       expect(result.code).toBe(0);
       expect(result.output).not.toContain('do-not-print');
@@ -122,7 +134,7 @@ describe('vela doctor', () => {
       source: 'explicit',
       candidates: [],
     });
-    vi.mocked(loadConfig).mockResolvedValue({ createApp: () => app });
+    vi.mocked(loadConfig).mockResolvedValue(loadedConfig({ createApp: () => app }));
     const result = await run(['--app']);
     expect(result.code).toBe(1);
     expect(JSON.parse(result.output).issues).toEqual(['snapshot failed']);

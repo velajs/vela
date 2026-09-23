@@ -47,7 +47,7 @@ async function writeWebResponse(response: Response, res: ServerResponse): Promis
 }
 
 async function main(): Promise<void> {
-  const app = await createApp();
+  const app = await createApp({ env: process.env });
   const hono = app.getHonoApp();
   const port = Number(process.env.PORT ?? 8787);
   const host = '127.0.0.1';

@@ -51,6 +51,11 @@ await client.mutate('/todos', { text: 'ship it' }, {
 });
 ```
 
+Subscriptions arrive over the `$live` WebSocket event, so `LiveModule` requires a
+WebSocket module in the same application (`WebSocketModule.forRoot()`, or
+`CloudflareWebSocketModule.forRoot()` on Cloudflare). Without one, bootstrap fails
+instead of silently dropping every subscription.
+
 Writes invalidate tags either **automatically** — `@Crud({ ..., live: true })` in `@velajs/crud` emits `crud:<tableName>` after every successful write verb and stamps the commit headers — or **explicitly**:
 
 ```ts
@@ -94,12 +99,17 @@ Returning the same partition is an application assertion that the complete resol
 ### Cloudflare setup
 
 ```ts
-LiveModule.forRoot({
-  log: () => durableObjectCursorLog(),           // SQLite-backed cursor log (per room DO)
-  driver: () => durableObjectLive({
-    binding: 'CHAT_ROOM',
-    gatewayPath: '/rooms/:id/ws',
-    defaultRoom: 'lobby',
+import { ENV } from '@velajs/vela';
+
+LiveModule.forRootAsync({
+  inject: [ENV],                                   // the Worker's or the DO's native environment
+  useFactory: (env) => ({
+    log: () => durableObjectCursorLog(),           // SQLite-backed cursor log (per room DO)
+    driver: () => durableObjectLive({
+      namespace: env.CHAT_ROOM,                    // the native namespace, not a binding name
+      gatewayPath: '/rooms/:id/ws',
+      defaultRoom: 'lobby',
+    }),
   }),
 })
 ```
@@ -107,8 +117,10 @@ LiveModule.forRoot({
 `driver` and `log` are factories, called once per application. Return fresh instances:
 the same module definition can bootstrap a Worker and multiple Durable Objects, each
 with its own environment, sink, cursor, and epoch. Factories may be asynchronous.
-When construction needs injected dependencies, use `LiveModule.forRootAsync` to
-resolve them and return factories that capture those application-local values.
+`durableObjectLive` takes the room Durable Object's `namespace` object, so resolve the
+environment with `LiveModule.forRootAsync` and return factories that capture it, as
+above. `createCloudflareWorker` and `VelaWebSocketDurableObject` each seed their own
+environment as `ENV`, and `wrangler types` types `env.CHAT_ROOM` from the Wrangler file.
 
 - The DO class **must** be SQLite-backed: add it to wrangler `migrations[].new_sqlite_classes`.
 - Worker-side `invalidate()` (HTTP mutations, crons, queue consumers) routes to the gateway + room DO's `invalidate` RPC and returns *that* log scope's stamp; inside the DO it applies locally. `liveInvalidateToRoom(ns, gatewayPath, room, tags)` is the imperative sibling of `broadcastToRoom`.
@@ -130,6 +142,7 @@ All may be lowered; the first three have explicit bounded module options.
 
 - **Data locality**: the Worker and each Durable Object bootstrap SEPARATE app instances of the same module. State that live queries read and mutations write must live in a shared store (D1/KV/external DB) — per-isolate memory makes writes invisible to re-runs. See the [live todo example](../apps/live-todo/README.md).
 - **Commit headers on Workers**: stamp them explicitly (`stampCommitHeaders(c, stamp)`; the CRUD bridge does it automatically). Do NOT rely on `ambientContainer`: awaiting a Durable Object RPC inside hono's ALS `contextStorage()` middleware hangs the response under workerd.
+- **Worker-side driver**: the default `localLive()` delivers to the engine in the same isolate, but the subscriptions live in the Durable Object. The Cloudflare adapter warns once per isolate when the Worker bootstraps `LiveModule` with `localLive()`; pass `driver: () => durableObjectLive({ namespace, gatewayPath })`.
 - Driver/log factories run once in each application container. Keep state on the returned instance and return a new instance each time; shared mutable drivers or logs would leak environment bindings, sinks, or cursor state between applications.
 
 ## Guarantees & limits (v1)

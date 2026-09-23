@@ -46,6 +46,7 @@
     "@cloudflare/vitest-plugin": "catalog:",
     "@swc/core": "catalog:",
     "@types/node": "catalog:",
+    "@velajs/cloudflare": "workspace:*",
     "@velajs/vela": "workspace:*",
     "tsdown": "catalog:",
     "typescript": "catalog:",

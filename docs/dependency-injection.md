@@ -10,6 +10,15 @@ of the same registration share a value; resolutions from another module's regist
 Concurrent `resolveAsync` calls share construction only for the same singleton or request registration.
 Provider replacement creates a new registration and does not reuse the previous request value.
 
+Declare a class's scope once, with `@Injectable({ scope })` or `@Controller({ path, scope })`. Class
+decorators given no scope, such as `@Controller('/path')` or `@WebSocketGateway()`, never override a
+declared scope, so decorator order does not matter. Two different scopes on one class throw when the
+class is decorated.
+
+A class provider keeps the scope its class declares, whether it is listed directly or registered
+through `useClass`, including `APP_*` providers and exception handler classes. A `scope` set on the
+provider overrides the class declaration. Value and factory providers default to `Scope.DEFAULT`.
+
 `setRequestInstance(token, value)` explicitly seeds a value in one container. It overrides constructed
 request values for that token, including an intentional `undefined`. The seed still requires a visible
 request-scoped registration and cannot expose a private provider or create a missing provider.
@@ -30,6 +39,12 @@ values are referenced as `unknown` and remain under application control. Factori
 arrays are not exposed. Use this for startup wiring audits; a missing instance is not permission to
 assume an opaque factory's output type or to construct it during the audit.
 
+`@Optional()` injects `undefined` only when no module registers the token. When another module
+registers it without exporting it to the consumer, the wiring mistake is reported through the
+container's diagnostics policy: `throw` fails construction with `ModuleVisibilityError`, `log` warns
+once per consuming module and injects `undefined`, and `silent` injects `undefined`. An
+`InjectionToken` with a default factory still resolves through that factory.
+
 Circular dependencies through `useExisting` produce a circular-dependency error on both synchronous
 and asynchronous resolution. Separate registrations sharing a token do not constitute a cycle.
 An alias must be visible to its consumer, then its target resolves from the alias's declaring module.
@@ -37,6 +52,108 @@ An exported public alias can therefore expose its own module's private implement
 the implementation token public. An alias cannot access another module's unexported provider, and a
 consumer's same-token provider cannot change the alias's declared target. The target determines the
 instance lifetime; an alias does not independently cache a transient target.
+
+## Constructor metadata
+
+Constructor injection reads the `design:paramtypes` metadata that TypeScript, SWC and Oxc emit
+for a decorated class when `emitDecoratorMetadata` is enabled, plus any `@Inject(token)` and
+`@Optional()` entries. The container plans each class provider's parameters once, when the class
+is registered. For a class with a class decorator or `@Inject`/`@Optional` entries, it throws
+`MissingInjectionMetadataError` before anything constructs it when a parameter has no usable token:
+
+- the build emitted no paramtype for it (the constructor declares more parameters than the
+  metadata and `@Inject` indexes cover), or
+- its paramtype is `Object` or `undefined` (an interface, a type-only import, or a circular import)
+  and it has no `@Inject(token)`.
+
+The error names the class and the parameter index. Enable `emitDecoratorMetadata`, add
+`@Inject(Token)` to that parameter, or mark it `@Optional()` to inject `undefined`. A
+`forwardRef` token is accepted as declared and resolved later. A subclass without its own
+constructor inherits its parent's metadata; a subclass that declares a constructor uses its own.
+
+A class with no class decorator at all, such as a third-party client or a hand-written test fake,
+never had metadata to emit. Like Nest, the container constructs it with no arguments, so
+`{ provide: EVENTS, useClass: EventEmitter }` keeps working. When such a class declares
+constructor parameters, they stay `undefined`: the container reports it through its diagnostics
+policy (`'log'` warns, `'throw'` fails bootstrap, `'silent'` ignores it) with a message naming the
+missing class decorator. Decorate the class with `@Injectable()`, or provide a class you do not own
+with `useFactory`. Registering an undecorated class directly in `providers` is reported the same
+way, as is a module export that is neither a local provider nor exported by an imported module.
+`@Module`, `@Catch`, gateway and discoverable class decorators count as decorated.
+
+## Unresolved dependencies
+
+When a class constructor argument has no provider visible to the module that resolves the class,
+construction fails with `UnresolvedDependencyError`. The message names the class, its module, the
+argument and the reason:
+
+```text
+Cannot resolve UsersController(?, AuditService) in UsersModule. Argument #0 UsersService is declared in DataModule but not exported (add it to DataModule.exports).
+```
+
+The reason is one of three cases, also available as `error.reason.kind`:
+
+- `'not-exported'`: the listed modules declare the token, but none exports it.
+- `'not-imported'`: the listed modules export it, but the resolving module imports none of them.
+- `'not-provided'`: no module declares it (`is not provided in UsersModule or its imports`).
+
+`error.reason.modules` holds module instance ids. `className`, `moduleId`, `parameterIndex` and
+`token` identify the argument, and `cause` keeps the lookup failure (a `ModuleVisibilityError`
+when the token exists elsewhere). Only the innermost constructor reports: when `Facade` needs
+`Repository` and `Repository` cannot resolve `UsersService`, the error names `Repository`. Provider
+factories (`useFactory` + `inject`), aliases (`useExisting`) and `forwardRef` proxies resolved
+after a cycle keep their own lookup errors.
+
+## Request-scoped providers and the root container
+
+A request-scoped provider, including one that is request-scoped because it depends on one, never
+resolves on the root container: its instance would outlive its request and leak into later ones.
+`container.resolve`, `container.resolveAsync` and `app.get` throw for it on the root. Resolve it in
+the execution scope that owns the invocation: `getRequestContainer(c)`, `context.getContainer()` or
+the `runInEntrypointScope` callback argument. Discovery resolves request-scoped hits only when the
+caller passes `{ requestScope: scope }`.
+
+Inside a provider, `await moduleRef.resolve(token, context)` resolves in the scope that `context`
+identifies; see [ModuleRef](#moduleref). In tests, `TestingModule.get` throws for request-scoped
+providers too; use `await module.resolveInRequest(token)`.
+
+## ModuleRef
+
+Inject `ModuleRef` to look providers up from the point of view of the module that injects it. The
+container builds one per module and owner: a singleton receives one owned by the application root,
+and a request-scoped consumer receives one bound to its own request, which closes with that request.
+A singleton never captures a request.
+
+- `get(token, { strict })` returns a singleton or value provider. By default (`strict: true`) it sees
+  what the host module can inject: its own providers, its imports' exports and global tokens. This is
+  more lenient than Nest's strict `get`, which searches only the host module's own providers.
+  `{ strict: false }` looks the token up across the application. `get` throws for request-scoped
+  and transient providers, since neither has a single instance to return.
+- `await resolve(token, context?, { strict })` resolves any provider and awaits async factories.
+  `context` identifies an existing execution scope: the `ExecutionContext` of a guard or
+  interceptor, the Hono `Context` of a Vela-managed request, or an execution-scope container.
+  Request-scoped providers resolve to the instance that request's other consumers receive. Without
+  a context, `resolve` uses the scope that owns the reference, so a request consumer's reference
+  resolves in its request and a singleton's reference refuses request-scoped tokens. `resolve`
+  never creates a request scope, because a scope owns request disposables that someone must finish.
+  A transient provider is constructed on each call.
+- `await create(Type)` constructs a class that is not registered as a provider, injecting what the
+  host module can see. Each call returns a new instance that the caller owns.
+
+```ts
+@Injectable()
+class SessionGuard implements CanActivate {
+  constructor(private readonly moduleRef: ModuleRef) {}
+
+  async canActivate(context: ExecutionContext) {
+    const session = await this.moduleRef.resolve(SessionState, context);
+    return session.isActive;
+  }
+}
+```
+
+`app.get(ModuleRef)` returns the application-wide reference, whose lookups are not limited to one
+module.
 
 ## Resource lifetime
 

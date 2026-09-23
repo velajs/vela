@@ -2,6 +2,7 @@ export { ComponentManager } from './component.manager';
 export { PipelineRunner } from './pipeline-runner';
 export type { PipelineRunOptions } from './pipeline-runner';
 export {
+  getScopedComponents,
   resolveScopedComponents,
   resolveScopedComponentsAsync,
   resolvePipelineComponents,
@@ -38,7 +39,6 @@ export {
   ParseArrayPipe,
   DefaultValuePipe,
   RequiredPipe,
-  ZodValidationPipe,
 } from './pipes';
 export type { ParseUUIDPipeOptions, ParseArrayPipeOptions } from './pipes';
 export type {

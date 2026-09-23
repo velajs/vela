@@ -15,9 +15,10 @@ const moduleRef = await Test.createTestingModule({ imports: [CatsModule] })
   .compile();
 
 const service = moduleRef.get(CatsService);   // resolve from the root container
+const session = await moduleRef.resolveInRequest(SessionState, { url: 'http://localhost/cats' }); // request-scoped
 ```
 
-`Test.createTestingModule(metadata)` takes the same `ModuleOptions` as `@Module` (`imports/controllers/providers/exports`) and returns a builder. Override methods each return an `OverrideBy` with `.useValue(value)`, `.useClass(cls)`, and `.useFactory({ factory, inject })`:
+`Test.createTestingModule(metadata, { env?, adapters? })` takes the same `ModuleOptions` as `@Module` (`imports/controllers/providers/exports`) and returns a builder; `env` seeds the framework `ENV` and `adapters` bind `RuntimeAdapter`s through the production bootstrap (`overrideProvider(ENV)` also works). Override methods each return an `OverrideBy` with `.useValue(value)`, `.useClass(cls)`, and `.useFactory({ factory, inject })`:
 
 | Override | Targets |
 |---|---|
@@ -44,14 +45,15 @@ registered with the harness are closed with it.
 
 | Member | Signature |
 |---|---|
-| `get(token)` | resolve a provider from the root container |
+| `get(token)` | resolve a provider from the root container (throws for request-scoped tokens) |
+| `resolveInRequest(token, init?)` | `Promise` of the token resolved in a fresh request scope seeded from `init` (`RequestInit` + `url`); the scope stays open until `close()` |
 | `createApplication()` | `Promise<VelaApplication>` — the built app (use `.getHonoApp()` for raw `.request()`) |
 | `http` | lazy `TestHttpClient` getter (see below) |
 | `sse(path)` | `TestSseRequest` |
 | `ws(path)` | `TestWsRequest` (needs the websocket-node transport, below) |
 | `fetch(request, env?, ctx?)` | drive the full Hono pipeline with a raw `Request` |
 | `setAuthResolver(resolver)` / `getAuthResolver()` | module-default `actingAs` resolver |
-| `runInRequestScope(cb)` | `cb(container)` inside a fresh child with the production request context and typed request-key storage |
+| `runInRequestScope(cb, init?)` | `cb(container)` inside a fresh child with the production request context and typed request-key storage |
 | `seed(...SeederClasses)` | run registered `@Seeder` classes in request scope |
 | `assertDatabaseHas/Missing/Count(db, ...)` | DB assertions against a `TestDatabase` |
 | `close(signal?)` | dispose the app |

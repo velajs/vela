@@ -4,7 +4,13 @@ export type { VelaErrorOptions } from './error';
 export { CORE_ENTRIES } from './catalog-data';
 export type { CoreErrorCode, ErrorCatalogEntry } from './catalog-data';
 
-export { CORE_CATALOG, STATUS_TO_CODE, composeCatalogs, defineErrorCatalog } from './catalog';
+export {
+  CORE_CATALOG,
+  STATUS_TO_CODE,
+  codeForStatus,
+  composeCatalogs,
+  defineErrorCatalog,
+} from './catalog';
 export type { Catalog } from './catalog';
 
 export { isVelaError } from './guard';

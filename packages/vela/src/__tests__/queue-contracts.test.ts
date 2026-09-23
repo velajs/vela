@@ -44,7 +44,10 @@ describe('validated queue contracts', () => {
       }
     }
     const driver = inline({ mode: 'manual' });
-    @Module({ imports: [QueueModule.forRoot({ queues: ['jobs'], driver })], providers: [Consumer] })
+    @Module({
+      imports: [QueueModule.forRoot({ driver }), QueueModule.registerQueue({ name: 'jobs' })],
+      providers: [Consumer],
+    })
     class App {}
     const app = await VelaFactory.create(App);
     const input = { count: '12' };
@@ -142,8 +145,18 @@ describe('validated queue contracts', () => {
         { unhandled: 'error' },
       ),
     ).rejects.toThrow('No processor');
+    // A transport acknowledges when delivery resolves, so an unhandled job
+    // rejects unless the caller explicitly ignores it.
     await expect(
       dispatchQueueJob(app.getContainer(), app.entrypoints, { ...job, queue: 'missing' }),
+    ).rejects.toThrow('No processor');
+    await expect(
+      dispatchQueueJob(
+        app.getContainer(),
+        app.entrypoints,
+        { ...job, queue: 'missing' },
+        { unhandled: 'ignore' },
+      ),
     ).resolves.toEqual({ handled: 0 });
     await app.close();
   });
@@ -169,7 +182,7 @@ it('runs an async Zod transform once per producer and consumer boundary', async 
   }
   const driver = inline({ mode: 'manual' });
   @Module({
-    imports: [QueueModule.forRoot({ queues: ['transform'], driver })],
+    imports: [QueueModule.forRoot({ driver }), QueueModule.registerQueue({ name: 'transform' })],
     providers: [Consumer],
   })
   class App {}

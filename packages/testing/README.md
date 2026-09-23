@@ -80,8 +80,30 @@ const moduleRef = await Test.createTestingModule({ imports: [UsersModule] })
 })
 ```
 
-Here `ENV` is a registered `InjectionToken<{ APP_ENV: string }>` and `CONFIG`
-is an `InjectionToken<{ env: string }>`.
+Here `ENV` is the framework environment token from `@velajs/vela`, with
+`APP_ENV: string` declared on `VelaEnv`, and `CONFIG` is an
+`InjectionToken<{ env: string }>`.
+
+### Environment and runtime adapters
+
+The builder's second argument seeds the application's `ENV` and binds runtime
+adapters through the same bootstrap as `VelaFactory.create`:
+
+```ts
+const moduleRef = await Test.createTestingModule(
+  { imports: [ReportsModule] },
+  { env: { APP_ENV: 'test' }, adapters: [myRuntimeAdapter] },
+).compile();
+```
+
+Adapter `configureContainer`, request middleware, client-IP resolution and
+lifecycle hooks all apply, and `registerAs` namespaces read the seeded `env`.
+`moduleRef.fetch()` and the HTTP and SSE builders send each request with the
+seeded `env` as `c.env` (an explicit `fetch(request, env)` argument wins), so an
+adapter that binds requests to its environment accepts them. Pass it the same
+object, for example `{ env, adapters: [cloudflareAdapter({ env })] }`.
+`overrideProvider(ENV).useValue(env)` replaces the environment for every module,
+with or without a seeded `env`.
 
 Inline providers (skip importing a module):
 
@@ -130,7 +152,16 @@ const items = await response.json(z.array(z.object({ id: z.number(), name: z.str
 expect(items[0]?.name).toBe('Item 1');
 ```
 
-`runInRequestScope(callback)` creates a real framework request context, including typed `RequestContextKey` storage, and disposes its child container when the callback finishes.
+`runInRequestScope(callback, init?)` creates a real framework request context, including typed `RequestContextKey` storage, and disposes its child container when the callback finishes.
+
+`get(token)` resolves from the root container and throws for request-scoped providers. Resolve those with `resolveInRequest`, which opens a fresh request scope per call, seeded from an optional `RequestInit` plus `url`. The scope stays open until `close()`, so the returned instance and its request dependencies remain usable during the test:
+
+```ts
+const session = await moduleRef.resolveInRequest(SessionState, {
+  url: 'http://localhost/cats',
+  headers: { 'x-request-id': 'test-1' },
+});
+```
 
 ## Lifecycle
 

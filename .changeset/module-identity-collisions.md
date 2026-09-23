@@ -1,0 +1,5 @@
+---
+"@velajs/vela": minor
+---
+
+**Behavior change:** importing the same `(class, key)` module instance twice with different inputs is now reported through the container's diagnostics policy (`'log'` warns, `'throw'` fails bootstrap) instead of silently dropping the repeat's providers. `defineModule`, `sideEffectModule` and `defineConfigurableModule` record the inputs each definition was built from. The loader compares plain values structurally, including their symbol-keyed properties, and functions, symbols and class instances such as tokens by reference, using ids owned by that loader: source text cannot see what a closure captured, so a parameterized helper called with different arguments (`database('PRIMARY_URL')` and `database('ANALYTICS_URL')`) is reported instead of silently keeping the first configuration. A helper that rebuilds one configuration on every call is reported too; the diagnostic suggests importing one shared definition (for example, export a const of the `DynamicModule`) or giving each configuration its own `key`. The first definition still wins, and identical repeats still deduplicate without a diagnostic.

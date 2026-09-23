@@ -1,26 +1,44 @@
-import { HttpMethod } from '../constants';
+import type { HttpMethod } from '../constants';
 import type { NestMiddleware } from '../pipeline/types';
-import { MetadataRegistry } from '../registry/metadata.registry';
 import type { Constructor, Type } from '../registry/types';
 
+/**
+ * A middleware path target, resolved under the global prefix: literal and
+ * `:name` segments, optionally ending in `*`, `{*name}`, `*name` or `(.*)`
+ * (read as `{*name}` in `forRoutes()` and as `*name` in `exclude()`).
+ * Other pattern syntax, such as `{regex}` constraints or optional `?`
+ * segments, fails the route build.
+ */
 export interface RouteInfo {
   path: string;
   method?: HttpMethod;
+  /**
+   * Match `path` as written, without the global prefix. Use it for routes
+   * served outside the prefix, such as RPC, WebSocket upgrade and OpenAPI
+   * document routes, or routes added to the Hono app directly.
+   */
+  absolute?: boolean;
 }
 
 export interface MiddlewareRouteDefinition {
   /** Module that configured these middleware registrations. */
   readonly moduleId?: string;
   middleware: Array<Type<NestMiddleware> | NestMiddleware>;
-  routes: RouteInfo[];
+  /** Patterns and controllers; a controller expands to its composed routes at route build. */
+  routes: Array<RouteInfo | Constructor>;
   excludes: RouteInfo[];
   /** Stable-sort key; lower runs first. Default 0. */
   priority?: number;
 }
 
 export interface MiddlewareConfigProxy {
+  /** Skip requests matching one of these patterns exactly. */
   exclude(...routes: Array<string | RouteInfo>): MiddlewareConfigProxy;
   withPriority(priority: number): MiddlewareConfigProxy;
+  /**
+   * Run whenever Hono dispatches a request to one of a controller's handlers,
+   * or for a path target and the paths beneath it. `'*'` matches every request.
+   */
   forRoutes(...routes: Array<string | Constructor | RouteInfo>): MiddlewareConsumer;
 }
 
@@ -52,7 +70,9 @@ export class MiddlewareBuilder implements MiddlewareConsumer {
       forRoutes: (...routes: Array<string | Constructor | RouteInfo>) => {
         this.definitions.push({
           middleware: currentMiddleware,
-          routes: routes.flatMap(resolveRouteArg),
+          routes: routes.map((route) =>
+            typeof route === 'function' ? route : normalizeRouteArg(route),
+          ),
           excludes: [...currentExcludes],
           ...(currentPriority !== undefined ? { priority: currentPriority } : {}),
         });
@@ -72,15 +92,4 @@ export class MiddlewareBuilder implements MiddlewareConsumer {
 
 function normalizeRouteArg(route: string | RouteInfo): RouteInfo {
   return typeof route === 'string' ? { path: route } : route;
-}
-
-function resolveRouteArg(route: string | Constructor | RouteInfo): RouteInfo[] {
-  if (typeof route === 'string') {
-    return [{ path: route }];
-  }
-  if (typeof route === 'function') {
-    const prefix = MetadataRegistry.getControllerPath(route as Constructor);
-    return [{ path: prefix || '/' }];
-  }
-  return [route];
 }

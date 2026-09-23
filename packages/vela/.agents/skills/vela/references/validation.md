@@ -27,7 +27,7 @@ class ProductsController {
 Schemas can use Standard Schema (including async refinements) or legacy parsers.
 JSON Schema conversion is separate: use `defineDto` with `jsonSchema` or
 `schemaConverter(direction)` when the library cannot export its wire shape.
-Endpoint input docs use the input direction; response docs use the output direction. Input groups are `param`, `query`, `header`, and either `json` or `form`. The dispatcher validates input after guards and validates the final result after interceptors. Invalid input returns 400; invalid output returns 500. An endpoint owns its status and argument parsing, so do not combine it with parameter decorators, `@HttpCode`, or `@Redirect` on the same method. JSON is the default response, even for strings and null; string outputs can opt into `format: 'text'`.
+Endpoint input docs use the input direction; response docs use the output direction. Input groups are `param`, `query`, `header`, and either `json` or `form`. A `json` body must use `application/json` or a `+json` media type (else 415). The dispatcher validates input after guards and validates the final result after interceptors. Invalid input returns 400; invalid output returns 500. An endpoint owns its status and argument parsing, so do not combine it with parameter decorators, `@HttpCode`, or `@Redirect` on the same method. JSON is the default response, even for strings and null; string outputs can opt into `format: 'text'`.
 
 For forms, use `defineEndpoint({ input: z.object({ form: z.object({ title:
 z.string(), tags: z.array(z.string()), file: z.file().optional() }) }), output,
@@ -59,22 +59,22 @@ behavior, with the existing request scope retained until the body settles.
 ## Parameter decorators with named descriptors
 
 ```ts
-import { Body, Post, ValidationPipe, defineDto } from '@velajs/vela';
+import { Body, Post, defineDto } from '@velajs/vela';
 
 const CreateProduct = defineDto(z.object({ name: z.string().min(1) }), { name: 'CreateProduct' });
 type CreateProduct = ReturnType<typeof CreateProduct.parse>;
 
 @Post()
-create(@Body(new ValidationPipe(CreateProduct)) body: CreateProduct) {
+create(@Body(CreateProduct) body: CreateProduct) {
   return body;
 }
 ```
 
 `defineDto` returns a frozen descriptor (`name`, `schema`, `parse`, `parseAsync`, `toJSONSchema`), not a constructor. Its parse result may be an object, array, scalar, or transformed value. JSON-schema export delegates to the supplied schema and fails explicitly when unavailable.
 
-Type aliases disappear from reflection. Supply the parser explicitly as above; a global `ValidationPipe` cannot infer it from a body type annotation. Programmatic routes can put the descriptor in parameter `metatype`. `ValidationPipe.parser` exposes the same parser to OpenAPI. The standalone pipe does not check that the method's TypeScript annotation matches its schema; `@Endpoint` supplies that stronger contract.
+`@Body`, `@Query`, `@Param`, `@Headers` and `@Cookie` turn a schema argument into `new ValidationPipe(schema)`; a Zod schema is detected by its Standard Schema marker, never run as a pipe. Type aliases disappear from reflection. Supply the schema explicitly as above; a global `ValidationPipe` cannot infer it from a body type annotation. Programmatic routes can put the descriptor in parameter `metatype`. `ValidationPipe.parser` exposes the same parser to OpenAPI. The standalone pipe does not check that the method's TypeScript annotation matches its schema; `@Endpoint` supplies that stronger contract.
 
-`ValidationPipe` maps schema issues to `BadRequestException`. `ZodValidationPipe(schema)` directly delegates to `schema.parse` and leaves its errors unchanged.
+`ValidationPipe` maps schema issues to a 400 `BadRequestException` whose body carries `message: 'Validation failed'` and the normalized `errors`. It is the only schema pipe; exceptions thrown by a validator itself remain server errors.
 
 ## Output serialization
 

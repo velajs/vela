@@ -11,6 +11,9 @@ import {
   Module,
   VelaFactory,
   defineProvider,
+  type MiddlewareConsumer,
+  type NestMiddleware,
+  type NestModule,
 } from '@velajs/vela';
 import { createRpcClient, defineProcedure, type RpcClient } from '../index';
 import { Rpc, RpcModule, RpcClientModule, rpcClientToken } from '../server';
@@ -117,6 +120,33 @@ describe('RPC module composition', () => {
     });
     await Promise.all([consumer.close(), server.close()]);
   });
+
+  it.each([undefined, '/api'])(
+    'runs consumer middleware for the endpoint as an absolute target under prefix %s',
+    async (globalPrefix) => {
+      const seen: string[] = [];
+      @Injectable()
+      class Audit implements NestMiddleware {
+        use: NestMiddleware['use'] = async (c, next) => {
+          seen.push(`${c.req.method} ${c.req.path}`);
+          await next();
+        };
+      }
+      @Module({
+        imports: [RpcModule.forRoot({ authorize: 'public' })],
+        providers: [Greetings, Audit],
+      })
+      class Root implements NestModule {
+        configure(consumer: MiddlewareConsumer) {
+          consumer.apply(Audit).forRoutes({ path: '/rpc', absolute: true });
+        }
+      }
+      const app = await VelaFactory.create(Root, globalPrefix ? { globalPrefix } : {});
+      expect(await client(app).call(greet, 'world')).toBe('Hello world');
+      expect(seen).toEqual(['POST /rpc']);
+      await app.close();
+    },
+  );
 
   it('rejects conflicting named clients and deduplicates reused imports', async () => {
     const shared = RpcClientModule.register({ name: 'shared', url: 'https://one/rpc' });

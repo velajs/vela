@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { renderMissingAssetsHtml, renderStudioHtml } from '../src/render-html';
-import type { StudioConnection } from '@velajs/studio-protocol';
+import { STUDIO_PROTOCOL_VERSION, type StudioConnection } from '@velajs/studio-protocol';
 
 const connection: StudioConnection = {
-  protocolVersion: 2,
+  protocolVersion: STUDIO_PROTOCOL_VERSION,
   routerBasePath: '/tools',
   adminBasePath: '/api/admin',
   apiRequestPath: '/api/admin/api-request',

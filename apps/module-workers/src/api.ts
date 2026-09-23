@@ -1,22 +1,17 @@
-import { Controller, Get, Inject, InjectionToken, Module, Post } from '@velajs/vela';
+import { Controller, ENV, Get, Inject, Module, Post } from '@velajs/vela';
 import { createCloudflareWorker } from '@velajs/cloudflare';
-import { cloudflareQueueDriver } from '@velajs/cloudflare/queue';
-import { QueueModule, queueToken, type QueueClient, type QueueJob } from '@velajs/vela/queue';
+import { cloudflareQueues } from '@velajs/cloudflare/queues';
+import { InjectQueue, QueueModule, type QueueClient } from '@velajs/vela/queue';
 import { RpcClientModule, rpcClientToken } from '@velajs/rpc/server';
 import type { RpcClient } from '@velajs/rpc';
 import { account, catalog } from './contracts';
-interface Env {
-  CATALOG: Fetcher;
-  ACCOUNTS: Fetcher;
-  TASKS: Queue<QueueJob>;
-}
-const ENV = new InjectionToken<Env>('API environment');
+// ENV carries this Worker's bindings, typed by worker-configuration.api.d.ts.
 @Controller('/api')
 class ApiController {
   constructor(
     @Inject(rpcClientToken('catalog')) private catalogClient: RpcClient,
     @Inject(rpcClientToken('accounts')) private accountsClient: RpcClient,
-    @Inject(queueToken('tasks')) private tasks: QueueClient,
+    @InjectQueue('tasks') private tasks: QueueClient,
   ) {}
   @Get('/document') async document() {
     const [document, owner] = await Promise.all([
@@ -44,18 +39,11 @@ class ApiController {
       inject: [ENV],
       useFactory: (env) => ({ url: 'https://accounts/rpc', fetch: env.ACCOUNTS }),
     }),
-    QueueModule.forRootAsync({
-      queues: ['tasks'],
-      inject: [ENV],
-      useFactory: (env) => ({
-        driver: cloudflareQueueDriver(
-          { tasks: env.TASKS },
-          { producerBindings: { tasks: 'TASKS' } },
-        ),
-      }),
-    }),
+    // TASKS is a queues.producers binding; the driver reads it from ENV per send.
+    QueueModule.forRoot({ driver: cloudflareQueues() }),
+    QueueModule.registerQueue({ name: 'tasks', binding: 'TASKS' }),
   ],
   controllers: [ApiController],
 })
 class ApiModule {}
-export default createCloudflareWorker(ApiModule, { envToken: ENV });
+export default createCloudflareWorker(ApiModule);

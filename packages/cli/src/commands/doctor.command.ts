@@ -44,7 +44,7 @@ export class DoctorCommand extends Command {
       'No files are written, providers are not resolved by the snapshot, and entrypoint metadata is omitted.',
     examples: [
       ['Explain config selection', 'vela doctor --json'],
-      ['Inspect a built app', 'vela doctor --app --config vela.config.mjs --json'],
+      ['Inspect the app', 'vela doctor --app --config vela.config.ts --json'],
     ],
   });
 
@@ -65,8 +65,8 @@ export class DoctorCommand extends Command {
     try {
       report.config = await resolveConfig(report.cwd, this.config);
       if (this.app) {
-        const config = await loadConfig(report.cwd, report.config.path);
-        report.application = await withApp(config, describeApplication, (message) => {
+        const loaded = await loadConfig(report.cwd, report.config.path);
+        report.application = await withApp(loaded, describeApplication, (message) => {
           report.issues.push(message);
         });
       }

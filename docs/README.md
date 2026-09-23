@@ -12,6 +12,8 @@ HTTP client, live queries, and Studio in a runnable Workers application.
   compatibility boundaries, and migration steps after the 1.24.0 baseline.
 - [Debugging](debugging.md): Worker and test breakpoints, structured Studio logs,
   handler timing, and module ownership snapshots.
+- [Testing](../packages/testing/README.md): isolated testing modules, provider and
+  enhancer overrides, and HTTP requests through the production bootstrap.
 
 - [Module authoring](modules.md): configurable modules, dependency injection,
   discovery, entrypoints, and lazy initialization.

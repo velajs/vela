@@ -6,7 +6,8 @@
  * each op for dispatch (read/write), feature negotiation, write-gating, and
  * destructive-confirm handling.
  *
- * Breaking changes increment STUDIO_PROTOCOL_VERSION and update all consumers.
+ * Breaking changes to an op's request or response, including a renamed enum
+ * value, increment STUDIO_PROTOCOL_VERSION and update all consumers.
  */
 import type { StudioCapabilities, StudioFeatureKey, StudioWriteGates } from './capabilities';
 import type {

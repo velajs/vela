@@ -5,9 +5,12 @@
   "description": "Executable GraphQL schema with Vela resolver DI on Cloudflare Workers",
   "type": "module",
   "scripts": {
-    "build": "tsdown",
-    "typecheck": "tsc --noEmit",
-    "dev": "wrangler dev"
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "deploy": "vite build && wrangler deploy",
+    "types": "wrangler types --include-runtime=false --strict-vars=false",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@velajs/cloudflare": "workspace:*",
@@ -18,9 +21,10 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "catalog:",
     "@cloudflare/workers-types": "catalog:",
-    "tsdown": "catalog:",
     "typescript": "catalog:",
+    "vite": "catalog:",
     "wrangler": "catalog:"
   }
 }

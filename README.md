@@ -14,9 +14,9 @@ pnpm dev
 ```
 
 With Node.js 24+ and pnpm 11.11.0, this creates a small module, controller, and
-injected service. Request `http://localhost:8787` to see its JSON greeting;
+injected service. Request `http://localhost:5173` to see its JSON greeting;
 local development needs no Cloudflare login. See the
-[project creation guide](docs/getting-started.md) for typechecking, builds,
+[project creation guide](docs/getting-started.md) for typechecking, Vite builds, tests,
 and the generated project structure.
 
 Continue with the [framework guide](packages/vela/README.md) and
@@ -64,9 +64,10 @@ pnpm test:conformance
 ## Tooling
 
 TypeScript **7.0.2** checks all active packages and applications. Oxlint and Oxfmt
-provide Rust-based linting and formatting; tsdown uses Rolldown/Oxc, and SWC
-preserves the decorator metadata used by dependency injection. TypeScript 7's
-native compiler is written in Go. Root `lint`, `format`, and `format:check`
+provide Rust-based linting and formatting; tsdown uses Rolldown/Oxc, and the
+`vela new` starter builds with Vite 8, whose Oxc transformer emits the decorator
+metadata used by dependency injection. TypeScript 7's native compiler is written
+in Go. Root `lint`, `format`, and `format:check`
 commands share one configuration, and dependency versions use the pnpm catalog.
 
 The documentation website uses Fumadocs and TypeScript 7 in the separate private
@@ -78,9 +79,10 @@ packages. See [the tooling guide](docs/tooling.md) for coverage and validation.
 
 - **Application modules:** classes or checked `defineProvider` descriptors,
   explicit imports/exports, and token-inferred resolution.
-- **Native platform:** an `InjectionToken<Env>` makes generated Workers bindings
-  available before providers and lifecycle hooks run. `createCloudflareWorker`
-  exports the Worker handlers and shares bootstrap per environment identity.
+- **Native platform:** the framework-owned `ENV` token carries the Workers
+  bindings, typed by `wrangler types`, before providers and lifecycle hooks run.
+  `export default createCloudflareWorker(AppModule)` exports the Worker handlers
+  and shares bootstrap per environment identity.
 - **HTTP contract:** `defineEndpoint` connects a controller's input and output
   schemas to runtime validation, OpenAPI, and upstream Hono `hc` types.
 - **CRUD:** model schemas determine row types, adapters validate returned rows,

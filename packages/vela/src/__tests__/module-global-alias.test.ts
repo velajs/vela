@@ -133,7 +133,7 @@ describe('module global aliases', () => {
     }
   });
 
-  it.each([Scope.SINGLETON, Scope.TRANSIENT])(
+  it.each([Scope.DEFAULT, Scope.TRANSIENT])(
     'retains the target lifetime and disposal for a %s global guard',
     async (scope) => {
       let constructed = 0;
@@ -168,7 +168,7 @@ describe('module global aliases', () => {
         ]);
         expect(responses.map((response) => response.status)).toEqual([204, 204]);
         expect(calls).toHaveLength(2);
-        if (scope === Scope.SINGLETON) {
+        if (scope === Scope.DEFAULT) {
           expect(calls).toEqual([
             app.getContainer().resolve(Guard, 'Feature#default').id,
             app.getContainer().resolve(Guard, 'Feature#default').id,

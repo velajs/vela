@@ -14,7 +14,7 @@ export const STUDIO_ADMIN_BASE_PATH = '/_vela/admin';
 
 // Module + config
 export { StudioModule, STUDIO_MODULE_OPTIONS } from './studio.module';
-export { studioConfig, resolveStudioConfig } from './studio.config';
+export { readStudioEnv, resolveStudioConfig } from './studio.config';
 export type { StudioEnv, StudioEnvConfig } from './studio.config';
 
 // Public types

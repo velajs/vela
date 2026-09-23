@@ -16,7 +16,7 @@ export interface DiscoveredClass<T = unknown> {
   /**
    * Resolved instance, or `undefined` when metadataOnly/deferLazy applies or
    * a request-scoped provider is skipped. Request-scoped instances require
-   * an invocation container; bootstrap discovery does not fabricate one.
+   * an invocation container (`requestScope`); discovery does not fabricate one.
    */
   instance: T | undefined;
 }
@@ -44,11 +44,13 @@ export interface DiscoveryFilter {
   /** Restrict to providers declared by these module buckets. */
   moduleId?: string | string[];
   /**
-   * Resolve request-scoped providers too (constructs an instance outside any
-   * request — only for callers that know what they're doing). Default false:
-   * request-scoped hits are skipped with a diagnostics warning.
+   * Execution-scope container (the `runInEntrypointScope` callback argument,
+   * `getRequestContainer(c)` or `context.getContainer()`) in which
+   * request-scoped providers are resolved; their instances belong to that
+   * invocation. Without it, request-scoped hits are skipped with a
+   * diagnostics warning.
    */
-  includeRequestScoped?: boolean;
+  requestScope?: Container;
   /**
    * Return providers of not-yet-materialized lazy modules as metadata-only
    * entries (`instance: undefined`, mirroring the request-scoped convention)
@@ -57,6 +59,14 @@ export interface DiscoveryFilter {
    * scanner keeps its transparent cascade-materialization semantics.
    */
   deferLazy?: boolean;
+  /**
+   * Return request-scoped providers as metadata-only entries (`instance:
+   * undefined`) without the diagnostics warning a skipped request-scoped hit
+   * otherwise produces. For callers that resolve each entry by token inside
+   * its own invocation scope, such as `EntrypointRegistry.build`: nothing is
+   * skipped, the instance is built per invocation.
+   */
+  deferRequestScoped?: boolean;
 }
 
 /** Class-level appended-list convention: method decorators that push `{ methodName, ... }` items. */
@@ -281,24 +291,29 @@ export class DiscoveryService {
     filter: DiscoveryFilter | undefined,
     label: string,
   ): DiscoveredRegistration | undefined {
-    const scope = this.#container.getProviderScope(metatype, moduleId) ?? Scope.SINGLETON;
+    const scope = this.#container.getProviderScope(metatype, moduleId) ?? Scope.DEFAULT;
     const metadata = { token: metatype, metatype, moduleId, moduleIds, scope };
     if (
       filter?.metadataOnly ||
-      (filter?.deferLazy && this.#container.isLazyPending(metatype, moduleId))
+      (filter?.deferLazy && this.#container.isLazyPending(metatype, moduleId)) ||
+      (filter?.deferRequestScoped && scope === Scope.REQUEST)
     ) {
       return { ...metadata, instance: undefined };
     }
-    if (scope === Scope.REQUEST && !filter?.includeRequestScoped) {
+    if (filter?.requestScope && !filter.requestScope.sharesRootWith(this.#container)) {
+      throw new Error('DiscoveryFilter.requestScope belongs to another application.');
+    }
+    const container = scope === Scope.REQUEST ? filter?.requestScope : this.#container;
+    if (!container) {
       if (this.#container.getDiagnostics() === 'log') {
         console.warn(
-          `[vela] ${label}: ${metatype.name} is request-scoped and cannot be materialized at bootstrap — skipped. Pass { includeRequestScoped: true } to override.`,
+          `[vela] ${label}: ${metatype.name} is request-scoped and cannot be materialized outside an invocation — skipped. Pass { requestScope } to resolve it in an execution scope.`,
         );
       }
       return { ...metadata, instance: undefined };
     }
     try {
-      return { ...metadata, instance: this.#container.resolve(metatype, moduleId) };
+      return { ...metadata, instance: container.resolve(metatype, moduleId) };
     } catch (err) {
       const mode = this.#container.getDiagnostics();
       if (mode === 'throw') throw err;

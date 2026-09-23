@@ -1,3 +1,4 @@
+import type { Container } from '../container/container';
 import type { InvocationTarget } from '../dispatch/index';
 import type { CronOptions } from './cron-matcher';
 
@@ -11,7 +12,13 @@ export interface IntervalMetadata {
   methodName: string;
 }
 
-/** Passed to Node handlers; cancellation is cooperative and close awaits completion. */
+/**
+ * The only argument a scheduled handler receives, identical on every runtime:
+ * the Node executor, a Workers cron trigger and Studio's run-now. `expression`
+ * is the cron string that fired (on Workers, the trigger's exact string),
+ * `scheduledTime` is in Unix milliseconds, and `signal` aborts when the
+ * application closes. Cancellation is cooperative; close awaits completion.
+ */
 export type ScheduleInvocation =
   | {
       readonly kind: 'cron';
@@ -25,6 +32,32 @@ export type ScheduleInvocation =
       readonly scheduledTime: number;
       readonly signal: AbortSignal;
     };
+
+/**
+ * Seeds request-scoped values into the scope of a scheduled job that fires
+ * outside its native trigger (for example Studio's run-now), as a platform
+ * trigger would. See `SCHEDULE_INVOCATION_SEED`.
+ */
+export type ScheduleInvocationSeed = (scope: Container, invocation: ScheduleInvocation) => void;
+
+/** The invocation a `@Cron` job receives. */
+export type CronInvocation = Extract<ScheduleInvocation, { kind: 'cron' }>;
+
+/** The invocation an `@Interval` job receives. */
+export type IntervalInvocation = Extract<ScheduleInvocation, { kind: 'interval' }>;
+
+/**
+ * A method decorator for scheduled jobs: the decorated method receives only
+ * the invocation `I`, so a handler declaring another required parameter, or a
+ * first parameter that is not the invocation, does not compile.
+ */
+export type ScheduleDecorator<I extends ScheduleInvocation> = <
+  Handler extends (invocation: I) => unknown,
+>(
+  target: object,
+  key: string | symbol,
+  descriptor: TypedPropertyDescriptor<Handler>,
+) => void;
 
 /**
  * A fired scheduled job, as passed to a signed-dispatch `target`. Enough to

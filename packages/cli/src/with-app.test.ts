@@ -1,6 +1,12 @@
 import { Injectable, Module, VelaFactory } from '@velajs/vela';
 import { describe, expect, it, vi } from 'vitest';
+import type { LoadedVelaConfig, VelaConfig } from './config.js';
 import { withApp } from './with-app.js';
+
+/** A loaded config whose module runner records when it closes. */
+function loadedConfig(config: VelaConfig, dispose = vi.fn(async () => {})): LoadedVelaConfig {
+  return { config, path: '/project/vela.config.ts', dispose };
+}
 
 describe('command application ownership', () => {
   it('retains the config receiver and waits for work before disposing', async () => {
@@ -16,7 +22,7 @@ describe('command application ownership', () => {
     };
     expect(
       await withApp(
-        config,
+        loadedConfig(config),
         async (current) => {
           await Promise.resolve();
           expect(current).toBe(app);
@@ -47,7 +53,7 @@ describe('command application ownership', () => {
     const failure = new Error('work failed');
     await expect(
       withApp(
-        { createApp: () => app },
+        loadedConfig({ createApp: () => app }),
         () => {
           throw failure;
         },
@@ -66,7 +72,7 @@ describe('command application ownership', () => {
     const cleanup = vi.spyOn(app.getContainer(), 'dispose');
     expect(
       await withApp(
-        { createApp: () => app },
+        loadedConfig({ createApp: () => app }),
         () => 0,
         () => {
           throw new Error('stream closed');
@@ -79,17 +85,56 @@ describe('command application ownership', () => {
   it('propagates app creation failures without running work', async () => {
     const failure = new Error('bootstrap failed');
     const work = vi.fn();
-    await expect(
-      withApp(
-        {
-          createApp() {
-            throw failure;
-          },
+    const loaded = loadedConfig({
+      createApp() {
+        throw failure;
+      },
+    });
+    await expect(withApp(loaded, work, vi.fn())).rejects.toBe(failure);
+    expect(work).not.toHaveBeenCalled();
+    // The module runner still closes, so the command can exit.
+    expect(loaded.dispose).toHaveBeenCalledOnce();
+  });
+
+  it('closes the config module runner only after the app is disposed', async () => {
+    @Module({})
+    class Root {}
+    const app = await VelaFactory.create(Root);
+    const events: string[] = [];
+    vi.spyOn(app, 'dispose').mockImplementation(async () => {
+      events.push('app');
+    });
+    const loaded = loadedConfig(
+      { createApp: () => app },
+      vi.fn(async () => {
+        events.push('runner');
+      }),
+    );
+    expect(
+      await withApp(
+        loaded,
+        () => {
+          events.push('work');
+          return 3;
         },
-        work,
         vi.fn(),
       ),
-    ).rejects.toBe(failure);
-    expect(work).not.toHaveBeenCalled();
+    ).toBe(3);
+    expect(events).toEqual(['work', 'app', 'runner']);
+  });
+
+  it('reports a failing runner close without replacing the result', async () => {
+    @Module({})
+    class Root {}
+    const app = await VelaFactory.create(Root);
+    const warn = vi.fn();
+    const loaded = loadedConfig(
+      { createApp: () => app },
+      vi.fn(async () => {
+        throw new Error('runner close failed');
+      }),
+    );
+    expect(await withApp(loaded, () => 'done', warn)).toBe('done');
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('runner close failed'));
   });
 });

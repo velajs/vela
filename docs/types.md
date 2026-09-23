@@ -4,9 +4,10 @@ Execution contexts expose the objects the runtime actually provides. HTTP access
 
 The HTTP context uses `VelaContext`, and `getHonoApp()` returns `VelaHono`. Core
 knows neither application bindings nor custom middleware values: `context.env`
-is an opaque object and `context.get(name)` returns `unknown`. Resolve a configured
-`InjectionToken<Env>` for native platform bindings, and use a `RequestContextKey`
-for typed request values. This also applies to raw routes registered directly on
+is an opaque object and `context.get(name)` returns `unknown`. Inject `ENV`
+(`@InjectEnv()`) for native platform bindings, typed as `VelaEnv`, which
+`@velajs/cloudflare` extends with the `Cloudflare.Env` that `wrangler types`
+generates; use a `RequestContextKey` for typed request values. This also applies to raw routes registered directly on
 the returned Hono app. Runtime-registered controllers do not acquire Hono's
 static route inference; generate the HTTP RPC type from their endpoint schemas.
 
@@ -39,7 +40,7 @@ The key is a runtime identity, like an `InjectionToken` for a provider. Two keys
 
 ```ts
 import { z } from 'zod';
-import { Body, Controller, Post, ValidationPipe, defineDto } from '@velajs/vela';
+import { Body, Controller, Post, defineDto } from '@velajs/vela';
 
 const CreateUser = defineDto(
   z.object({ name: z.string().min(1), age: z.number().int().nonnegative() }),
@@ -50,7 +51,7 @@ type CreateUser = ReturnType<typeof CreateUser.parse>;
 @Controller('/users')
 class UsersController {
   @Post()
-  create(@Body(new ValidationPipe(CreateUser)) body: CreateUser) {
+  create(@Body(CreateUser) body: CreateUser) {
     return { name: body.name, age: body.age };
   }
 }
@@ -58,7 +59,7 @@ class UsersController {
 
 The descriptor exposes `name`, the original `schema`, `parse`, and `toJSONSchema`. Parsing preserves the schema's actual output, including scalar, array, and transformed outputs. `toJSONSchema` delegates to the schema and throws explicitly if that capability is unavailable. A descriptor is not constructible and never promises that an empty class instance contains required fields.
 
-`ValidationPipe.parser` exposes an explicitly supplied parser to route introspection. A global `ValidationPipe` can also read a schema descriptor from explicit parameter metadata. TypeScript type aliases do not survive reflection, so use the explicit parser shown above for ordinary parameter decorators. For a single checked contract spanning handler inputs, outputs, validation, and generated Hono RPC types, use `defineEndpoint` and `@Endpoint`; a standalone body parser does not check a method's TypeScript annotation against its schema.
+`@Body`, `@Query`, `@Param`, `@Headers` and `@Cookie` accept a schema where they accept a pipe: `@Body(schema)`, `@Query(schema)` for the whole query object, or `@Query('page', schema)`, `@Param('id', schema)` and `@Headers('x-tenant', schema)` for one named value. The schema can be a descriptor, a Standard Schema such as Zod, or a `parse()` parser. The decorator validates the value with `new ValidationPipe(schema)`: invalid input is a 400 carrying the normalized issues, OpenAPI documents the schema, and pipes written after it receive its parsed output. Writing `new ValidationPipe(schema)` yourself is equivalent. `ValidationPipe.parser` exposes that parser to route introspection. A global `ValidationPipe` can also read a schema descriptor from explicit parameter metadata. TypeScript type aliases do not survive reflection, so pass the schema to the decorator for ordinary parameters. For a single checked contract spanning handler inputs, outputs, validation, and generated Hono RPC types, use `defineEndpoint` and `@Endpoint`; a standalone body parser does not check a method's TypeScript annotation against its schema.
 
 Programmatic routes supply the descriptor directly as `ParamMetadata.metatype`. The extractor passes that value through as `unknown`; validation narrows it to a callable parser. Real classes carrying static schema metadata are also readable, but class instances are not treated as schema output.
 

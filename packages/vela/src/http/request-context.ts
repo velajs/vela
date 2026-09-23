@@ -43,10 +43,16 @@ export class RequestContextKey<Value> {
 
 export const REQUEST_CONTEXT = new InjectionToken<RequestContext>('vela.RequestContext');
 
+// An inbound id is caller-controlled and flows into logs and correlation
+// fields, so only a bounded token-safe value is mirrored; anything else is
+// replaced by a generated id.
+const INBOUND_REQUEST_ID = /^[A-Za-z0-9._:-]{1,128}$/;
+
 export function createRequestContext(c: Context): RequestContext {
   const bag = new Map<string | symbol, unknown>();
   const inboundId = c.req.raw.headers.get('x-request-id');
-  const id = inboundId && inboundId.length > 0 ? inboundId : crypto.randomUUID();
+  const id =
+    inboundId !== null && INBOUND_REQUEST_ID.test(inboundId) ? inboundId : crypto.randomUUID();
 
   function set<Value>(key: RequestContextKey<Value>, value: NoInfer<Value>): void;
   function set(key: string | symbol, value: unknown): void;

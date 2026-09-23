@@ -1,8 +1,11 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "noEmit": true
+    "noEmit": true,
+    // The Workers test imports apps/graphql-worker, which uses legacy decorators.
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "../../apps/graphql-worker/worker-configuration.d.ts"],
   "exclude": ["node_modules", "dist"]
 }

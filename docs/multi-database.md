@@ -56,10 +56,14 @@ CrudModule.forRootAsync({
 });
 ```
 
-Create the handles and stores per application/environment. In Workers, use
-`createCloudflareWorker({ create: createAppModule }, { envToken: ENV })`, as in the
-example. Reusing a native handle intentionally reuses its underlying data; separate
-application registrations still get distinct transaction capabilities.
+Create the handles and stores per environment. In Workers, use
+`createCloudflareWorker({ create: createAppModule })`, as in the example:
+`createAppModule(env: VelaEnv)` receives the native environment typed by
+`wrangler types`, and `ENV` is the same object inside DI. The factory runs once
+per environment object and its registry is shared
+by the applications built from it. Reusing a native handle intentionally reuses its
+underlying data; separate application registrations still get distinct transaction
+capabilities.
 
 Selection order is the resource's `database`, then
 `CrudModule.forFeature(features, { database: 'primary' })`, then the registry's

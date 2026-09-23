@@ -1,11 +1,16 @@
 import { Context } from 'hono';
 import {
   REQUEST_CONTEXT,
+  Scope,
+  createExecutionScope,
+  describeToken,
   runInEntrypointScope,
+  type ExecutionScope,
   type InferToken,
   type Token,
   type Type,
   type VelaApplication,
+  type VelaEnv,
 } from '@velajs/vela';
 import { createRequestContext, setRequestContainer, type Container } from '@velajs/vela/internal';
 import { SeederRegistry, type ISeeder } from '@velajs/vela/seeder';
@@ -31,6 +36,12 @@ export type ActingAsResolver = (
 
 type HonoApp = ReturnType<VelaApplication['getHonoApp']>;
 
+/** The synthetic request a test request scope is seeded with. */
+export interface TestRequestInit extends RequestInit {
+  /** Absolute request URL; defaults to `http://localhost/`. */
+  readonly url?: string | URL;
+}
+
 /**
  * TestingModule
  *
@@ -55,16 +66,69 @@ export class TestingModule {
   readonly #cleanups: Array<() => void | Promise<void>> = [];
   #closing: Promise<void> | undefined;
   readonly #pending = new Set<Promise<unknown>>();
+  // Request scopes opened by resolveInRequest(), finished by close().
+  readonly #openScopes = new Set<ExecutionScope>();
 
-  constructor(app: VelaApplication, container: Container) {
+  // The environment seeded at compile time; requests carry it as `c.env`.
+  readonly #env: VelaEnv | undefined;
+
+  constructor(app: VelaApplication, container: Container, env?: VelaEnv) {
     this.#app = app;
     this.#container = container;
+    this.#env = env;
   }
 
-  /** Resolve a provider from the root container. */
+  /**
+   * Resolve a provider from the root container. Request-scoped providers have
+   * no root instance; use {@link resolveInRequest} or {@link runInRequestScope}.
+   */
   get<const Key extends Token>(token: Key): InferToken<Key> {
     this.#assertOpen();
+    if (this.#container.getResolvedScope(token) === Scope.REQUEST) {
+      const name = describeToken(token);
+      throw new Error(
+        `TestingModule.get(${name}) cannot resolve a request-scoped provider. ` +
+          `Use \`await module.resolveInRequest(${name})\` or \`module.runInRequestScope()\`.`,
+      );
+    }
     return this.#container.resolve(token);
+  }
+
+  /**
+   * Resolve `token` in a fresh request scope seeded with a RequestContext for
+   * `init`, so REQUEST-scoped providers (and their request dependencies)
+   * resolve. Each call opens its own scope, which stays open until `close()`.
+   */
+  resolveInRequest<const Key extends Token>(
+    token: Key,
+    init?: TestRequestInit,
+  ): Promise<InferToken<Key>> {
+    this.#assertOpen();
+    return this.#track(this.#resolveInRequest(token, init));
+  }
+
+  async #resolveInRequest<const Key extends Token>(
+    token: Key,
+    init?: TestRequestInit,
+  ): Promise<InferToken<Key>> {
+    const scope = createExecutionScope(this.#container);
+    this.#openScopes.add(scope);
+    try {
+      seedRequest(scope.container, init);
+      return await scope.container.resolveAsync(token);
+    } catch (error) {
+      this.#openScopes.delete(scope);
+      try {
+        await scope.finish();
+      } catch (completionError) {
+        // Both caught failures are retained in AggregateError.errors.
+        // eslint-disable-next-line preserve-caught-error
+        throw new AggregateError([error, completionError], 'Resolution and completion failed.', {
+          cause: completionError,
+        });
+      }
+      throw error;
+    }
   }
 
   /** Build (once) and return the underlying application. */
@@ -91,11 +155,17 @@ export class TestingModule {
 
   /**
    * Drive a `Request` through the full Hono pipeline. The Hono app is built
-   * once and reused across requests.
+   * once and reused across requests. Without an explicit `env`, the request
+   * carries the environment the module was compiled with (the `env` option)
+   * as `c.env`, as a runtime would, so an adapter that binds requests to its
+   * environment (such as `cloudflareAdapter({ env })`) accepts them. The HTTP
+   * and SSE builders send through here.
    */
-  async fetch(...args: Parameters<HonoApp['fetch']>): Promise<Response> {
+  async fetch(
+    ...[request, env = this.#env, executionContext]: Parameters<HonoApp['fetch']>
+  ): Promise<Response> {
     const hono = await this.ensureHono();
-    return hono.fetch(...args);
+    return hono.fetch(request, env, executionContext);
   }
 
   /**
@@ -114,12 +184,19 @@ export class TestingModule {
 
   /**
    * Run `callback` inside a request-scoped child container seeded with a real
-   * RequestContext, so REQUEST-scoped providers (and anything injecting
-   * `REQUEST_CONTEXT`) resolve. The child is disposed afterwards.
+   * RequestContext for `init`, so REQUEST-scoped providers (and anything
+   * injecting `REQUEST_CONTEXT`) resolve. The child is disposed afterwards.
    */
-  runInRequestScope<T>(callback: (container: Container) => T | Promise<T>): Promise<T> {
+  runInRequestScope<T>(
+    callback: (container: Container) => T | Promise<T>,
+    init?: TestRequestInit,
+  ): Promise<T> {
     this.#assertOpen();
-    const operation = this.#runInRequestScope(callback);
+    return this.#track(this.#runInRequestScope(callback, init));
+  }
+
+  // close() drains tracked operations before finishing scopes and the root.
+  #track<T>(operation: Promise<T>): Promise<T> {
     this.#pending.add(operation);
     // Observe completion without creating an unhandled rejected promise.
     void operation.then(
@@ -129,11 +206,12 @@ export class TestingModule {
     return operation;
   }
 
-  async #runInRequestScope<T>(callback: (container: Container) => T | Promise<T>): Promise<T> {
+  async #runInRequestScope<T>(
+    callback: (container: Container) => T | Promise<T>,
+    init?: TestRequestInit,
+  ): Promise<T> {
     return runInEntrypointScope(this.#container, async (child) => {
-      const hono = new Context(new Request('http://localhost/'));
-      setRequestContainer(hono, child);
-      child.setRequestInstance(REQUEST_CONTEXT, createRequestContext(hono));
+      seedRequest(child, init);
       return callback(child);
     });
   }
@@ -215,6 +293,16 @@ export class TestingModule {
     }
     // Existing scopes may still use singletons. Drain them before closing the root.
     await Promise.allSettled(this.#pending);
+    for (const scope of [...this.#openScopes].toReversed()) {
+      this.#openScopes.delete(scope);
+      try {
+        // Later scopes may depend on work an earlier one started.
+        // eslint-disable-next-line no-await-in-loop
+        await scope.finish();
+      } catch (error) {
+        failures.push(error);
+      }
+    }
     try {
       await this.#app.dispose(signal);
     } catch (error) {
@@ -236,4 +324,13 @@ export class TestingModule {
     }
     return this.#honoApp;
   }
+}
+
+// The production request seeding: a Hono Context bound to the child, and the
+// REQUEST_CONTEXT built from it.
+function seedRequest(child: Container, init: TestRequestInit = {}): void {
+  const { url = 'http://localhost/', ...requestInit } = init;
+  const hono = new Context(new Request(url, requestInit));
+  setRequestContainer(hono, child);
+  child.setRequestInstance(REQUEST_CONTEXT, createRequestContext(hono));
 }

@@ -11,6 +11,7 @@ import {
   REQUEST_CONTEXT,
   Scope,
   VelaFactory,
+  runInEntrypointScope,
 } from '../index.js';
 import type { CallHandler, ExecutionContext, NestInterceptor, RequestContext } from '../index.js';
 
@@ -46,7 +47,7 @@ describe('REQUEST_CONTEXT injectable', () => {
     @Module({
       providers: [
         CapturingInterceptor,
-        defineProvider(APP_INTERCEPTOR, {useExisting: CapturingInterceptor}),
+        defineProvider(APP_INTERCEPTOR, { useExisting: CapturingInterceptor }),
       ],
       controllers: [C],
     })
@@ -75,7 +76,7 @@ describe('REQUEST_CONTEXT injectable', () => {
     @Injectable({ scope: Scope.REQUEST })
     class IdInterceptor implements NestInterceptor {
       constructor(@Inject(REQUEST_CONTEXT) private readonly ctx: RequestContext) {}
-      intercept(_e: ExecutionContext, next: CallHandler): Promise<unknown> | unknown {
+      intercept(_e: ExecutionContext, next: CallHandler): Promise<unknown> {
         captured = this.ctx.id;
         return next.handle();
       }
@@ -90,7 +91,7 @@ describe('REQUEST_CONTEXT injectable', () => {
     }
 
     @Module({
-      providers: [IdInterceptor, defineProvider(APP_INTERCEPTOR, {useExisting: IdInterceptor})],
+      providers: [IdInterceptor, defineProvider(APP_INTERCEPTOR, { useExisting: IdInterceptor })],
       controllers: [C],
     })
     class AppModule {}
@@ -105,6 +106,56 @@ describe('REQUEST_CONTEXT injectable', () => {
     expect(captured).toBe('caller-supplied-id-123');
   });
 
+  it('accepts only bounded token-safe inbound request ids', async () => {
+    let captured: string | undefined;
+
+    @Injectable({ scope: Scope.REQUEST })
+    class IdInterceptor implements NestInterceptor {
+      constructor(@Inject(REQUEST_CONTEXT) private readonly ctx: RequestContext) {}
+      intercept(_e: ExecutionContext, next: CallHandler): Promise<unknown> {
+        captured = this.ctx.id;
+        return next.handle();
+      }
+    }
+
+    @Controller('/req-id')
+    class C {
+      @Get()
+      handle() {
+        return { ok: true };
+      }
+    }
+
+    @Module({
+      providers: [IdInterceptor, defineProvider(APP_INTERCEPTOR, { useExisting: IdInterceptor })],
+      controllers: [C],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+    const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+    for (const accepted of ['A-z_0.9:trace', 'x'.repeat(128)]) {
+      captured = undefined;
+      await hono.request('/req-id', { headers: { 'x-request-id': accepted } });
+      expect(captured).toBe(accepted);
+    }
+
+    for (const rejected of [
+      'x'.repeat(129),
+      'has space',
+      '<script>alert(1)</script>',
+      'forged" level="info',
+      'id/with/slashes',
+      'café',
+    ]) {
+      captured = undefined;
+      await hono.request('/req-id', { headers: { 'x-request-id': rejected } });
+      expect(captured).toMatch(uuid);
+    }
+  });
+
   it('exposes the raw Request and Hono Context', async () => {
     let capturedRawSame = false;
     let capturedHonoSame = false;
@@ -112,7 +163,7 @@ describe('REQUEST_CONTEXT injectable', () => {
     @Injectable({ scope: Scope.REQUEST })
     class PeekingInterceptor implements NestInterceptor {
       constructor(@Inject(REQUEST_CONTEXT) private readonly ctx: RequestContext) {}
-      intercept(e: ExecutionContext, next: CallHandler): Promise<unknown> | unknown {
+      intercept(e: ExecutionContext, next: CallHandler): Promise<unknown> {
         const http = e.switchToHttp();
         capturedHonoSame = this.ctx.hono === http.getResponse();
         capturedRawSame = this.ctx.request === http.getRequest();
@@ -131,7 +182,7 @@ describe('REQUEST_CONTEXT injectable', () => {
     @Module({
       providers: [
         PeekingInterceptor,
-        defineProvider(APP_INTERCEPTOR, {useExisting: PeekingInterceptor}),
+        defineProvider(APP_INTERCEPTOR, { useExisting: PeekingInterceptor }),
       ],
       controllers: [C],
     })
@@ -150,6 +201,12 @@ describe('REQUEST_CONTEXT injectable', () => {
     @Module({})
     class AppModule {}
     const app = await VelaFactory.create(AppModule);
-    expect(() => app.get(REQUEST_CONTEXT)).toThrow(/REQUEST_CONTEXT can only be resolved/);
+    expect(() => app.get(REQUEST_CONTEXT)).toThrow(
+      /request-scoped provider InjectionToken\(vela\.RequestContext\) on the root/,
+    );
+    // A non-HTTP invocation has a scope but no request to describe.
+    await runInEntrypointScope(app.getContainer(), (scope) => {
+      expect(() => scope.resolve(REQUEST_CONTEXT)).toThrow(/REQUEST_CONTEXT can only be resolved/);
+    });
   });
 });

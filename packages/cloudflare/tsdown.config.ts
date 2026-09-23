@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsdown';
 
 export default defineConfig({
-  entry: ['src/index.ts', 'src/durable-objects.ts', 'src/queue.ts'],
+  entry: ['src/index.ts', 'src/durable-objects.ts', 'src/queues.ts'],
   format: ['esm'],
   dts: true,
   clean: true,

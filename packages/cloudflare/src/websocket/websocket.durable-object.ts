@@ -1,5 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
-import type { InjectionToken } from '@velajs/vela';
+import type { VelaEnv } from '@velajs/vela';
 import type { BroadcastCommand } from '@velajs/vela/websocket';
 import type {
   CommitStamp,
@@ -10,7 +10,7 @@ import type {
 import { buildDoRuntime } from './do-bootstrap';
 import { DoWebSocketHost, type WsConnectionPrincipal } from './do-websocket-host';
 import { armDoPitr, readDoPitrBookmark } from './do-pitr';
-import { resolveCloudflareRoot } from '../root-module';
+import { bootstrapCloudflareRoot } from '../root-module';
 import type { CloudflareRoot } from '../root-module';
 import type {
   DoPitrArmOptions,
@@ -37,31 +37,29 @@ function isIdentityField(value: string | null): value is string {
  * (matching their `wrangler.toml` `class_name`) built from their `AppModule`:
  *
  * ```ts
- * export class ChatRoom extends VelaWebSocketDurableObject(AppModule, { envToken: ENV }) {}
+ * export class ChatRoom extends VelaWebSocketDurableObject(AppModule) {}
  * ```
  *
  * It owns the raw hibernation socket lifecycle (Hono's `upgradeWebSocket` cannot
  * bridge DO hibernation) and forwards every event into the runtime-agnostic
- * `WsDispatcher` via {@link DoWebSocketHost}.
+ * `WsDispatcher` via {@link DoWebSocketHost}. The DO's `env` is the
+ * application's ENV, as in the Worker.
  */
-export function VelaWebSocketDurableObject<T extends object>(
-  rootModule: CloudflareRoot<NoInfer<T>>,
-  options: { envToken: InjectionToken<T> },
-): new (
+export function VelaWebSocketDurableObject(rootModule: CloudflareRoot): new (
   ctx: DurableObjectState,
-  env: T,
-) => DurableObject<T> &
+  env: VelaEnv,
+) => DurableObject<VelaEnv> &
   VelaDoPitrRpc & {
     broadcast(cmd: BroadcastCommand): Promise<void>;
     invalidate(cmd: InvalidationCommand): Promise<CommitStamp | undefined>;
     inspectLive(): Promise<LiveInspection>;
   } {
-  return class VelaWsDurableObject extends DurableObject<T> {
+  return class VelaWsDurableObject extends DurableObject<VelaEnv> {
     private host!: DoWebSocketHost;
     private liveEngine?: LiveEngine;
     private readonly ready: Promise<void>;
 
-    constructor(ctx: DurableObjectState, env: T) {
+    constructor(ctx: DurableObjectState, env: VelaEnv) {
       super(ctx, env);
       // Application-level ping/pong answered WITHOUT waking a hibernated DO.
       try {
@@ -70,10 +68,11 @@ export function VelaWebSocketDurableObject<T extends object>(
         // Older runtimes without auto-response — fine, protocol pings still work.
       }
       this.ready = ctx.blockConcurrencyWhile(async () => {
-        const runtime = await buildDoRuntime(await resolveCloudflareRoot(rootModule, env), ctx, {
-          ...options,
-          env,
-        });
+        // Instances in one isolate share the root resolved for their environment;
+        // resolving per instance would register new classes for every construction.
+        const runtime = await bootstrapCloudflareRoot(rootModule, env, (root) =>
+          buildDoRuntime(root, ctx, { env }),
+        );
         this.host = new DoWebSocketHost(
           ctx,
           runtime.dispatcher,

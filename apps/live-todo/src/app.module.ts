@@ -16,6 +16,7 @@ import {
   WebSocketModule,
 } from '@velajs/vela';
 import type { DynamicModule, ModuleImport, ProviderDefinition, Type } from '@velajs/vela';
+import type { WebSocketUpgradeIdentity } from '@velajs/vela/websocket';
 import {
   LiveInvalidation,
   LiveModule,
@@ -24,12 +25,14 @@ import {
   stampCommitHeaders,
 } from '@velajs/vela/live';
 import type { LiveModuleOptions } from '@velajs/vela/live';
-import { todoListDefinition } from './live-contract';
-import type { Todo } from './live-contract';
+import { todoListDefinition } from './live-contract.js';
+import type { Todo } from './live-contract.js';
 
-export type { Todo } from './live-contract';
+export type { Todo } from './live-contract.js';
 
-const SEED: Todo[] = [{ id: 'seed-1', text: 'Try opening this page in a second tab', createdAt: 0 }];
+const SEED: Todo[] = [
+  { id: 'seed-1', text: 'Try opening this page in a second tab', createdAt: 0 },
+];
 
 /**
  * The demo's "database" seam. CRITICAL on Cloudflare: the Worker (HTTP
@@ -89,7 +92,7 @@ export class TodosService {
 @LiveResolver()
 @Injectable()
 export class TodoLive {
-  constructor(@Inject(TodosService) private readonly todos: TodosService) {}
+  constructor(private readonly todos: TodosService) {}
 
   @LiveQuery('todos.list', todoListDefinition, { tags: ['todos'] })
   list(): Promise<Todo[]> {
@@ -106,8 +109,8 @@ export class TodoLive {
 @Controller('/todos')
 export class TodosController {
   constructor(
-    @Inject(TodosService) private readonly todos: TodosService,
-    @Inject(LiveInvalidation) private readonly live: LiveInvalidation,
+    private readonly todos: TodosService,
+    private readonly live: LiveInvalidation,
   ) {}
 
   @Get()
@@ -138,11 +141,34 @@ export class TodosController {
 }
 
 /**
+ * DEMO ONLY: admits every upgrade as a fresh anonymous visitor so the demo
+ * runs without an auth stack. Gateways reject upgrades that have no
+ * `authenticateUpgrade`; a real application verifies a session cookie or a
+ * short-lived socket ticket here and returns that user's identity.
+ */
+function anonymousDemoUpgrade(options: { tenantId: string; ttlMs: number }) {
+  return (): WebSocketUpgradeIdentity => ({
+    principal: {
+      issuer: 'live-todo-demo',
+      subject: `anonymous:${crypto.randomUUID()}`,
+      principalType: 'user',
+    },
+    tenantId: options.tenantId,
+    expiresAtMs: Date.now() + options.ttlMs,
+  });
+}
+
+/**
  * The live socket's gateway path — the client connects to /rooms/default/ws.
  * `binding` is only read by the Cloudflare transport (which forwards the
  * upgrade to that room's Durable Object); the node transport ignores it.
  */
-@WebSocketGateway({ path: '/rooms/:id/ws', roomParam: 'id', binding: 'CHAT_ROOM' })
+@WebSocketGateway({
+  path: '/rooms/:id/ws',
+  roomParam: 'id',
+  binding: 'CHAT_ROOM',
+  authenticateUpgrade: anonymousDemoUpgrade({ tenantId: 'demo', ttlMs: 60 * 60 * 1000 }),
+})
 export class RoomsGateway {}
 
 export interface MakeAppModuleOptions {
@@ -155,7 +181,8 @@ export interface MakeAppModuleOptions {
 }
 
 export function makeAppModule(options: MakeAppModuleOptions = {}): new () => object {
-  const storeProvider = options.storeProvider ?? defineProvider(TODO_STORE, { useClass: MemoryTodoStore });
+  const storeProvider =
+    options.storeProvider ?? defineProvider(TODO_STORE, { useClass: MemoryTodoStore });
   @Module({
     imports: [
       options.websocketModule ?? WebSocketModule.forRoot({}),

@@ -136,6 +136,21 @@ describe('Cloudflare WebSocket security under workerd', () => {
     otherRoom.socket.close(1000, 'done');
   });
 
+  it('admits connections whose hook broadcasts to the room they join', async () => {
+    const first = await socketFor('announce');
+    const second = await socketFor('announce');
+    try {
+      // The broadcast reaches the admitted socket; the joining one gets only
+      // its own ready frame (checked by socketFor) while it is admitted.
+      expect(await first.next()).toMatchObject({ event: 'joined' });
+      second.socket.send(JSON.stringify({ event: 'echo', data: 'after-join' }));
+      expect(await second.next()).toMatchObject({ event: 'echo', data: { body: 'after-join' } });
+    } finally {
+      first.socket.close(1000, 'done');
+      second.socket.close(1000, 'done');
+    }
+  });
+
   it('enforces identity expiry on frames and closes oversized frames with 1009', async () => {
     const { socket: expiring } = await socketFor('expiry', 500);
     await new Promise((resolve) => setTimeout(resolve, 550));

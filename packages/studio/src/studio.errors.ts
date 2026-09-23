@@ -91,6 +91,15 @@ export function studioBadRequest(message: string, hint?: string): VelaError {
 }
 
 /**
+ * A 415 UNSUPPORTED MEDIA TYPE via the composed core `unsupported_media_type`
+ * code — the frozen protocol adds no code for it. Used when an admin request
+ * carries a body under a non-JSON media type.
+ */
+export function studioUnsupportedMediaType(message: string): VelaError {
+  return STUDIO_CATALOG.error('unsupported_media_type', { message });
+}
+
+/**
  * THE Studio error edge. Redacts through `toErrorBody`, then enriches the wire
  * object with the `title`/`status` the UI renders. Returns `redacted` so the
  * caller can log the raw error server-side.

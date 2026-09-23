@@ -38,7 +38,16 @@ export async function verifyModuleWorkers(tarballs) {
   manifest.overrides = tarballs;
   await writeFile(join(consumer, 'package.json'), JSON.stringify(manifest, null, 2));
   const run = (cmd, args) => execFileSync(cmd, args, { cwd: consumer, stdio: 'inherit' });
-  run('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund']);
+  // A private cache, as in the other consumers: the shared npm cache can hold
+  // stale metadata for an earlier archive with the same name and version.
+  run('npm', [
+    'install',
+    '--ignore-scripts',
+    '--no-audit',
+    '--no-fund',
+    '--cache',
+    join(consumer, '.npm-cache'),
+  ]);
   run('npm', ['run', 'build']);
   run('npm', ['run', 'typecheck']);
   run('npm', ['run', 'test:workers']);

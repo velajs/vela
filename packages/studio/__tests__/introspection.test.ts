@@ -215,7 +215,7 @@ describe('registration scope snapshots', () => {
     );
     const rows = collectModules(container);
     expect(rows.find((row) => row.moduleId === 'singleton-owner')?.providerScopes).toEqual([
-      { token: 'Shared', scope: 'singleton' },
+      { token: 'Shared', scope: 'default' },
     ]);
     expect(rows.find((row) => row.moduleId === 'request-owner')?.providerScopes).toEqual([
       { token: 'Shared', scope: 'request' },

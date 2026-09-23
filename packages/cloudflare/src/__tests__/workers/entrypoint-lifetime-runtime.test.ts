@@ -2,9 +2,11 @@
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import {
+  Cron,
   EXECUTION_LIFETIME,
   REQUEST_CONTEXT,
   Inject,
+  InjectEnv,
   Injectable,
   InjectionToken,
   Module,
@@ -14,13 +16,10 @@ import {
   getExecutionLifetime,
   type ExecutionContext,
   type ExecutionLifetime,
+  type VelaEnv,
 } from '@velajs/vela';
 import { createCloudflareApp } from '../../cloudflare-factory';
 import { QueueConsumer } from '../../decorators/queue-consumer';
-import { Scheduled } from '../../decorators/scheduled';
-import type { TestEnv } from './entry';
-
-const ENV = new InjectionToken<TestEnv>('native lifetime environment');
 
 describe('native entrypoint lifetime in workerd', () => {
   it.each(['queue', 'scheduled'] as const)(
@@ -47,15 +46,17 @@ describe('native entrypoint lifetime in workerd', () => {
       class Resource {
         constructor(
           @Inject(NAME) readonly name: string,
-          @Inject(ENV) readonly bindings: TestEnv,
+          @InjectEnv() readonly bindings: VelaEnv,
         ) {}
         async dispose() {
           expect(await this.bindings.CACHE.get(`${prefix}:${this.name}`)).toBe('complete');
           seen.push(`disposed:${this.name}`);
         }
       }
+      // Queue consumers run their declared guards; a direct scheduled job that
+      // declared one would be refused, so only the queue variant declares it.
       @Injectable()
-      @UseGuards(Guard)
+      @(kind === 'queue' ? UseGuards(Guard) : () => {})
       class Job {
         constructor(
           @Inject(READY) readonly ready: string,
@@ -63,14 +64,18 @@ describe('native entrypoint lifetime in workerd', () => {
           @Inject(EXECUTION_LIFETIME) readonly lifetime: ExecutionLifetime,
         ) {}
         @QueueConsumer('native-lifetime')
-        @Scheduled('* * * * *')
+        @Cron('* * * * *', { dialect: 'cloudflare' })
         run(
           _payload: unknown,
-          _bindings: TestEnv,
-          ctx: { waitUntil(promise: Promise<unknown>): void },
+          _bindings?: VelaEnv,
+          ctx?: { waitUntil(promise: Promise<unknown>): void },
         ) {
           expect(this.ready).toBe(this.resource.name);
-          ctx.waitUntil(
+          // Queue consumers keep the native context; scheduled jobs receive only
+          // their invocation and extend it through EXECUTION_LIFETIME.
+          if (kind === 'scheduled') expect(ctx).toBeUndefined();
+          ids.add(this.lifetime.id);
+          (ctx ?? this.lifetime).waitUntil(
             this.resource.bindings.CACHE.put(`${prefix}:${this.resource.name}`, 'complete'),
           );
           this.lifetime.defer(async () => {
@@ -97,7 +102,7 @@ describe('native entrypoint lifetime in workerd', () => {
         })),
       })
       class App {}
-      const app = await createCloudflareApp(App, { env, envToken: ENV });
+      const app = await createCloudflareApp(App, { env });
       const nativePromises: Promise<unknown>[] = [];
       const ctx = {
         waitUntil(promise: Promise<unknown>) {
@@ -108,9 +113,12 @@ describe('native entrypoint lifetime in workerd', () => {
         if (kind === 'queue') await app.queue({ queue: 'native-lifetime', messages: [] }, env, ctx);
         else await app.scheduled({ cron: '* * * * *' }, env, ctx);
         expect(ids.size).toBe(2);
-        expect(nativePromises).toHaveLength(2);
+        expect(nativePromises).toHaveLength(kind === 'queue' ? 2 : 0);
         for (const name of ['one', 'two']) {
-          expect(seen.indexOf(`guard:${name}`)).toBeLessThan(seen.indexOf(`deferred:${name}`));
+          // Declared guards wrap queue consumers only; scheduled jobs run none.
+          if (kind === 'queue')
+            expect(seen.indexOf(`guard:${name}`)).toBeLessThan(seen.indexOf(`deferred:${name}`));
+          else expect(seen).not.toContain(`guard:${name}`);
           expect(seen.indexOf(`deferred:${name}`)).toBeLessThan(seen.indexOf(`disposed:${name}`));
         }
       } finally {

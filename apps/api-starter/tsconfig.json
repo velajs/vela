@@ -19,19 +19,10 @@
     "emitDecoratorMetadata": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "lib": [
-      "ES2024"
-    ],
-    "types": [
-      "@cloudflare/workers-types",
-      "node"
-    ]
+    "allowImportingTsExtensions": true,
+    "lib": ["ES2024"],
+    "types": ["@cloudflare/workers-types", "node"]
   },
-  "include": [
-    "src/**/*.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist"
-  ]
+  "include": ["src/**/*.ts", "*.config.ts", "worker-configuration.d.ts"],
+  "exclude": ["node_modules", "dist"]
 }

@@ -1,12 +1,16 @@
 import { Scope } from '../constants';
+import { reportDiagnostic } from './diagnostics';
 import { disposeInstance, isDisposable } from './disposable';
 import {
-  getConstructorDependencies,
-  getInjectMetadata,
+  describeUndecoratedParameters,
   getScope,
-  isInjectable,
+  isDecoratedClass,
+  isErasedTypeToken,
+  planConstructor,
 } from './decorators';
+import { ModuleRef } from './module-ref';
 import type {
+  ConstructorDependency,
   ContainerOptions,
   AuthoringToken,
   Diagnostics,
@@ -20,6 +24,7 @@ import type {
   ProviderSnapshot,
   Token,
   Type,
+  UnresolvedDependencyReason,
 } from './types';
 import {
   describeToken,
@@ -29,6 +34,7 @@ import {
   ModuleVisibilityError,
   MultipleProvidersFoundError,
   ROOT_MODULE_ID,
+  UnresolvedDependencyError,
 } from './types';
 
 const IMPORT_TYPE_HINT =
@@ -36,17 +42,20 @@ const IMPORT_TYPE_HINT =
   'runtime and `design:paramtypes` emits `Object`/`undefined` for their ' +
   'positions. Use a runtime `import { X }` for DI tokens.';
 
-/**
- * Sentinel comparing a token to the bare `Object` class — `design:paramtypes`
- * emits `Object` when TypeScript erases a type-only import, so any token that
- * is `Object` (or nullish) is the fingerprint of a stripped type.
- */
-function isErasedTypeToken(token: unknown): boolean {
-  return token === Object || token === null || token === undefined;
-}
-
 function isReference(value: unknown): value is object {
   return (typeof value === 'object' && value !== null) || typeof value === 'function';
+}
+
+function requestScopeOnRoot(registration: ProviderRegistration): Error {
+  const name = describeToken(registration.provide);
+  const bubbled =
+    registration.scope === Scope.REQUEST ? '' : ' (it depends on a request-scoped provider)';
+  return new Error(
+    `Cannot resolve request-scoped provider ${name}${bubbled} on the root container: its ` +
+      `instances belong to one request or invocation. Resolve it from that execution scope's ` +
+      `container (getRequestContainer(c), context.getContainer(), runInEntrypointScope()) or ` +
+      `pass the context to ModuleRef.resolve(token, context).`,
+  );
 }
 
 /**
@@ -55,8 +64,9 @@ function isReference(value: unknown): value is object {
  * different buckets, supporting multi-instance dynamic modules.
  *
  * The `__root__` bucket holds bootstrap-time framework primitives (Container,
- * ModuleRef, REQUEST_CONTEXT, etc.) and any `register()` call that doesn't
- * supply a `declaringModuleId`.
+ * REQUEST_CONTEXT, etc.) and any `register()` call that doesn't supply a
+ * `declaringModuleId`. `ModuleRef` is never registered: the container builds
+ * one per requesting module and owner container on demand.
  */
 export class Container {
   #providers = new Map<string, Map<Token, ProviderRegistration>>();
@@ -69,7 +79,7 @@ export class Container {
   #globals = new Set<Token>();
   #diagnostics: Diagnostics;
   // The root container that owns shared state; a request child points back here
-  // so container-constructed SINGLETONs are tracked (and disposed) at the root,
+  // so container-constructed singletons are tracked (and disposed) at the root,
   // never by the ephemeral child that happened to first resolve them.
   #root: Container = this;
   // Container-constructed instances in creation order, for LIFO disposal.
@@ -90,6 +100,11 @@ export class Container {
   // circular-dependency error.
   #lazyHook?: LazyResolutionHook;
   #asyncDepth = 0;
+  // ModuleRefs this container owns, per requesting module. The root owns
+  // those of singletons; a request child those of its request consumers.
+  #moduleRefs = new Map<string, ModuleRef>();
+  // Root-owned: hidden @Optional() dependencies already warned about.
+  #reportedHiddenOptionals = new Map<Token, Set<string>>();
 
   constructor(options: ContainerOptions = {}) {
     this.#diagnostics = options.diagnostics ?? 'log';
@@ -132,10 +147,12 @@ export class Container {
   }
 
   private registerClass<T>(target: Type<T>, moduleId: string): void {
-    if (!isInjectable(target)) {
-      console.warn(
-        `Warning: ${target.name} is not decorated with @Injectable(). ` +
-          `It will be registered but dependency resolution may not work correctly.`,
+    const dependencies = this.planClass(target);
+    if (dependencies.length >= target.length && !isDecoratedClass(target)) {
+      reportDiagnostic(
+        this.#diagnostics,
+        `[vela] ${target.name} is not decorated with @Injectable(). Decorate provider ` +
+          'classes so the build emits the constructor metadata dependency injection reads.',
       );
     }
 
@@ -145,6 +162,7 @@ export class Container {
       scope,
       declaringModuleId: moduleId,
       useClass: target,
+      dependencies,
     });
   }
 
@@ -156,7 +174,7 @@ export class Container {
 
     const registration: ProviderRegistration = {
       provide: token,
-      scope: options.scope ?? Scope.SINGLETON,
+      scope: options.scope ?? Scope.DEFAULT,
       declaringModuleId: moduleId,
     };
 
@@ -175,7 +193,25 @@ export class Container {
       registration.useClass = token;
     }
 
+    if (registration.useClass) {
+      registration.dependencies = this.planClass(registration.useClass);
+      // A constructed class keeps its declared @Injectable scope unless the
+      // provider overrides it; otherwise a REQUEST-scoped implementation would
+      // silently become a singleton shared across requests.
+      if (options.scope === undefined) registration.scope = getScope(registration.useClass);
+    }
+
     this.writeRegistration(moduleId, token, registration);
+  }
+
+  // An undecorated class constructed without the parameters it declares is a
+  // wiring problem the application may survive (a third-party class taking
+  // optional arguments), so it goes through the diagnostics policy.
+  private planClass(target: Type): ConstructorDependency[] {
+    const dependencies = planConstructor(target);
+    const undecorated = describeUndecoratedParameters(target, dependencies);
+    if (undecorated !== undefined) reportDiagnostic(this.#diagnostics, undecorated);
+    return dependencies;
   }
 
   private writeRegistration(
@@ -211,6 +247,11 @@ export class Container {
     }
   }
 
+  /** The registered scope of one module instance (shared by request children). */
+  getModuleScope(moduleId: string): Readonly<ModuleScope> | undefined {
+    return this.#scopes.get(moduleId);
+  }
+
   markGlobalToken(token: Token): void {
     this.#globals.add(token);
   }
@@ -242,6 +283,10 @@ export class Container {
   // Heterogeneous provider storage erases its token/value correlation. Keep
   // this generic resolution boundary private; callers infer from the token.
   private resolveToken<T>(token: Token, requestingModuleId?: string): T {
+    if (token === ModuleRef) {
+      // The ModuleRef token carries its own value type; the generic boundary erases it.
+      return this.#constructionOwner.moduleRefFor(requestingModuleId) as T;
+    }
     const registration = this.findRegistration<T>(token, requestingModuleId);
     if (registration) {
       const instance = this.resolveRegistration(registration);
@@ -277,12 +322,10 @@ export class Container {
     }
 
     // InjectionToken default factories are explicit user declarations
-    // attached to the token at construction — self-providing singletons.
+    // attached to the token at construction: self-providing, in the scope the
+    // token declares (a singleton unless it says otherwise).
     if (token instanceof InjectionToken && token.options?.factory) {
-      this.registerOptions(
-        { inject: [], provide: token, useFactory: token.options.factory },
-        ROOT_MODULE_ID,
-      );
+      this.registerTokenDefault(token, token.options.factory);
       return this.resolveToken<T>(token, requestingModuleId);
     }
 
@@ -348,9 +391,8 @@ export class Container {
     requestingModuleId?: string,
   ): ProviderRegistration<T> | undefined {
     // No requester OR no scope for this requester: framework-internal /
-    // sandbox lookup. Prefer the `__root__` bucket so sandbox-registered
-    // transients (ModuleRef.create) and bootstrap primitives win over module
-    // buckets that may hold the same token under SINGLETON scope.
+    // application-wide lookup. Prefer the `__root__` bucket so bootstrap
+    // primitives win over module buckets that may hold the same token.
     if (requestingModuleId === undefined || !this.#scopes.has(requestingModuleId)) {
       const rootHit = this.lookupInBucket<T>(ROOT_MODULE_ID, token);
       if (rootHit) return rootHit;
@@ -584,6 +626,40 @@ export class Container {
     return undefined;
   }
 
+  /**
+   * Effective scope of what `resolve(token, requestingModuleId)` would return,
+   * under the requester's visibility and following `useExisting` aliases to
+   * their target. Values count as singletons. `undefined` when nothing is
+   * visible. Never constructs a provider or claims a lazy module.
+   */
+  getResolvedScope(token: Token, requestingModuleId?: string): Scope | undefined {
+    let registration = this.findRegistration(token, requestingModuleId);
+    const aliases = new Set<ProviderRegistration>();
+    while (registration?.useExisting && !aliases.has(registration)) {
+      aliases.add(registration);
+      registration = this.findRegistration(
+        registration.useExisting,
+        registration.declaringModuleId,
+      );
+    }
+    if (registration) {
+      return registration.value
+        ? Scope.DEFAULT
+        : (registration.effectiveScope ?? registration.scope);
+    }
+    if (token instanceof InjectionToken && token.options?.factory) {
+      return token.options.scope ?? Scope.DEFAULT;
+    }
+    return undefined;
+  }
+
+  private registerTokenDefault(token: InjectionToken, factory: () => unknown): void {
+    this.registerOptions(
+      { inject: [], provide: token, useFactory: factory, scope: token.options?.scope },
+      ROOT_MODULE_ID,
+    );
+  }
+
   getTokens(): Token[] {
     const out = new Set<Token>();
     for (const bucket of this.#providers.values()) {
@@ -665,7 +741,18 @@ export class Container {
     for (const reg of regs) {
       for (const depToken of this.dependencyTokensOf(reg)) {
         const depReg = this.tryFindRegistration(depToken, reg.declaringModuleId);
-        if (!depReg) continue;
+        if (!depReg) {
+          // A token default registers on first use; a request-scoped one
+          // already makes its consumers request-scoped.
+          if (
+            depToken instanceof InjectionToken &&
+            depToken.options?.factory &&
+            depToken.options.scope === Scope.REQUEST
+          ) {
+            reg.effectiveScope = Scope.REQUEST;
+          }
+          continue;
+        }
         const list = consumers.get(depReg);
         if (list) list.push(reg);
         else consumers.set(depReg, [reg]);
@@ -690,23 +777,10 @@ export class Container {
     if (reg.useFactory) {
       return (reg.inject ?? []).map((t) => (t instanceof ForwardRef ? t.factory() : t));
     }
-    const cls =
-      reg.useClass ?? (typeof reg.provide === 'function' ? (reg.provide as Type) : undefined);
-    if (!cls) return [];
-
-    const paramTypes = getConstructorDependencies(cls);
-    const injectMetadata = getInjectMetadata(cls);
-    const injectMap = new Map(injectMetadata.map((m) => [m.index, m]));
-    const arity = Math.max(
-      paramTypes.length,
-      injectMetadata.reduce((max, m) => Math.max(max, m.index + 1), 0),
-    );
-
     const tokens: Token[] = [];
-    for (let i = 0; i < arity; i++) {
-      const raw = injectMap.get(i)?.token;
-      const token = raw instanceof ForwardRef ? raw.factory() : (raw ?? paramTypes[i]);
-      if (token && !isErasedTypeToken(token)) tokens.push(token);
+    for (const { token: raw } of reg.dependencies ?? []) {
+      const token = raw instanceof ForwardRef ? raw.factory() : raw;
+      if (!isErasedTypeToken(token)) tokens.push(token);
     }
     return tokens;
   }
@@ -737,40 +811,15 @@ export class Container {
     child.#exporterIndex = this.#exporterIndex;
     child.#scopes = this.#scopes;
     child.#globals = this.#globals;
-    // SINGLETON disposal is owned by the root; the child keeps only its own
+    // Singleton disposal is owned by the root; the child keeps only its own
     // REQUEST-scoped disposables (cleared when the request ends).
     child.#root = this.#root;
     return child;
   }
 
-  createDetached(): Container {
-    const child = new Container({ diagnostics: this.#diagnostics });
-    // Deep-clone provider buckets so sandbox writes don't leak back to the
-    // parent. Inner ProviderRegistration objects are shallow-shared (we only
-    // mutate `instance` cache, and per-bucket clones already give per-sandbox
-    // singleton isolation when needed).
-    const clonedProviders = new Map<string, Map<Token, ProviderRegistration>>();
-    for (const [moduleId, bucket] of this.#providers) {
-      clonedProviders.set(moduleId, new Map(bucket));
-    }
-    child.#providers = clonedProviders;
-
-    const clonedIndex = new Map<Token, Set<string>>();
-    for (const [token, owners] of this.#exporterIndex) {
-      clonedIndex.set(token, new Set(owners));
-    }
-    child.#exporterIndex = clonedIndex;
-
-    child.#scopes = this.#scopes;
-    child.#globals = this.#globals;
-    // Registration objects are shallow-shared, so a sandbox resolve of a lazy
-    // module's singleton caches onto the SHARED registration. Point the
-    // sandbox at the real root so that resolution claims the module and
-    // replays its hooks like any other trigger — otherwise ModuleRef.create
-    // would leave a hook-less instance poisoning the shared cache (and its
-    // disposables tracked on an ephemeral root).
-    child.#root = this.#root;
-    return child;
+  /** True when both containers belong to one root: the root itself or its request children. */
+  sharesRootWith(other: Container): boolean {
+    return this.#root === other.#root;
   }
 
   clear(): void {
@@ -782,6 +831,8 @@ export class Container {
     this.#scopes.clear();
     this.#globals.clear();
     this.#disposables.clear();
+    this.#moduleRefs.clear();
+    this.#reportedHiddenOptionals.clear();
   }
 
   /** Whether teardown has owned resources or construction to drain. */
@@ -857,7 +908,7 @@ export class Container {
     if (this.#root === this) {
       for (const bucket of this.#providers.values()) {
         for (const registration of bucket.values()) {
-          if (registration.scope === Scope.SINGLETON && registration.value === undefined) {
+          if (registration.scope === Scope.DEFAULT && registration.value === undefined) {
             registration.instance = undefined;
           }
         }
@@ -873,6 +924,14 @@ export class Container {
       return registration.value.value;
     }
 
+    // Effective scope accounts for request-scope bubbling: a singleton that
+    // (transitively) depends on a request-scoped provider is treated as REQUEST
+    // so it is rebuilt per request instead of capturing the first one.
+    const scope = registration.effectiveScope ?? registration.scope;
+    // Mirrors the REQUEST_CONTEXT guard: a request instance cached on the root
+    // would outlive its request and leak into every later one.
+    if (scope === Scope.REQUEST && this.#root === this) throw requestScopeOnRoot(registration);
+
     this.claimLazyModule(registration.declaringModuleId);
 
     if (registration.useExisting) {
@@ -887,13 +946,8 @@ export class Container {
       }
     }
 
-    // Effective scope accounts for request-scope bubbling: a SINGLETON that
-    // (transitively) depends on a request-scoped provider is treated as REQUEST
-    // so it is rebuilt per request instead of capturing the first one.
-    const scope = registration.effectiveScope ?? registration.scope;
-
     // Singleton: return cached from registration (shared across all containers)
-    if (scope === Scope.SINGLETON && registration.instance !== undefined) {
+    if (scope === Scope.DEFAULT && registration.instance !== undefined) {
       return registration.instance.value;
     }
 
@@ -906,7 +960,7 @@ export class Container {
       }
     }
 
-    const asyncOwner = scope === Scope.SINGLETON ? this.#root : this;
+    const asyncOwner = scope === Scope.DEFAULT ? this.#root : this;
     if (asyncOwner.#pendingInstances.has(registration)) {
       throw new Error(
         `Provider ${this.tokenToString(registration.provide)} is resolving asynchronously. Use resolveAsync().`,
@@ -917,7 +971,7 @@ export class Container {
     this.#resolutionStack.add(registration);
     const previousOwner = this.#constructionOwner;
     const owner =
-      scope === Scope.SINGLETON ? this.#root : scope === Scope.REQUEST ? this : previousOwner;
+      scope === Scope.DEFAULT ? this.#root : scope === Scope.REQUEST ? this : previousOwner;
     this.#constructionOwner = owner;
 
     try {
@@ -927,14 +981,14 @@ export class Container {
         // Factory dependencies follow the same module visibility as constructors.
         instance = this.resolveFactory(registration);
       } else if (registration.useClass) {
-        instance = this.resolveClass(registration.useClass, registration.declaringModuleId);
+        instance = this.resolveClass(registration, registration.useClass);
       } else {
         throw new Error(
           `Invalid provider registration for: ${this.tokenToString(registration.provide)}`,
         );
       }
 
-      if (scope === Scope.SINGLETON) {
+      if (scope === Scope.DEFAULT) {
         registration.instance = { value: instance };
       } else if (scope === Scope.REQUEST) {
         this.#requestInstances.set(registration, { value: instance });
@@ -956,56 +1010,127 @@ export class Container {
     throw new Error(`Circular dependency detected: ${chain}`);
   }
 
-  private resolveClass<T>(target: Type<T>, ownerModuleId: string): T {
-    const paramTypes = getConstructorDependencies(target);
-    const injectMetadata = getInjectMetadata(target);
-    const injectMap = new Map(injectMetadata.map((m) => [m.index, m]));
-
-    // Constructor arity. Normally `design:paramtypes` (emitDecoratorMetadata)
-    // gives the count, but some bundlers — notably esbuild (and therefore
-    // Wrangler) — do not emit it, leaving `paramTypes` empty even when
-    // `@Inject(token)` recorded explicit tokens. Fall back to the highest
-    // `@Inject` index so explicit-token constructors still resolve without
-    // emitted metadata. Slots with neither a param type nor an `@Inject` token
-    // still hit the unresolved-dependency error below.
-    const arity = Math.max(
-      paramTypes.length,
-      injectMetadata.reduce((max, m) => Math.max(max, m.index + 1), 0),
-    );
-
-    const dependencies = Array.from({ length: arity }, (_unused, index) => {
-      const paramType = paramTypes[index];
-      const meta = injectMap.get(index);
-      const rawToken = meta?.token;
-      const isForwardRef = rawToken instanceof ForwardRef;
-      const token: Token | undefined = isForwardRef ? rawToken.factory() : (rawToken ?? paramType);
-
-      if (!token || isErasedTypeToken(token)) {
-        if (meta?.optional) return undefined;
-        throw new Error(
-          `Cannot resolve dependency at index ${index} for ${target.name}. ` +
-            `Parameter type is undefined or Object. ` +
-            IMPORT_TYPE_HINT +
-            ` Alternatively, use \`@Inject()\` to specify the token explicitly.`,
-        );
-      }
-
-      if (meta?.optional && !this.has(token)) {
-        return undefined;
-      }
+  private resolveClass<T>(registration: ProviderRegistration<T>, target: Type<T>): T {
+    const ownerModuleId = registration.declaringModuleId;
+    const dependencies = this.constructorPlan(registration).map((dependency, index) => {
+      const token = this.dependencyToken(target, dependency, index);
+      if (token === undefined) return undefined;
+      if (dependency.optional && this.isOptionalMissing(token, ownerModuleId)) return undefined;
 
       // forwardRef with circular dep — break the cycle with a lazy Proxy
-      if (isForwardRef) {
-        const dependency = this.findRegistration(token, ownerModuleId);
-        if (dependency && this.#resolutionStack.has(dependency)) {
+      if (dependency.token instanceof ForwardRef) {
+        const resolved = this.findRegistration(token, ownerModuleId);
+        if (resolved && this.#resolutionStack.has(resolved)) {
           return this.createLazyProxy(token, ownerModuleId);
         }
       }
 
-      return this.resolve(token, ownerModuleId);
+      try {
+        return this.resolve(token, ownerModuleId);
+      } catch (error) {
+        throw this.unresolvedDependency(error, registration, target, index, token);
+      }
     });
 
     return new target(...dependencies);
+  }
+
+  /**
+   * Name the constructor whose argument has no visible provider. Only the
+   * innermost class wraps: when the argument's own token is visible, the error
+   * came from deeper construction and passes through unchanged.
+   */
+  private unresolvedDependency(
+    error: unknown,
+    registration: ProviderRegistration,
+    target: Type,
+    parameterIndex: number,
+    token: Token,
+  ): unknown {
+    const moduleId = registration.declaringModuleId;
+    if (!this.isUnresolvable(token, moduleId)) return error;
+    return new UnresolvedDependencyError(
+      {
+        className: target.name,
+        moduleId,
+        parameters: this.constructorPlan(registration).map(({ token: raw }) =>
+          this.describeParameter(raw),
+        ),
+        parameterIndex,
+        token,
+        reason: this.unresolvedReason(token, moduleId),
+      },
+      { cause: error },
+    );
+  }
+
+  // Ambiguity (MultipleProvidersFoundError) and InjectionToken default
+  // factories are resolvable tokens whose own errors stay as they are.
+  private isUnresolvable(token: Token, requestingModuleId: string): boolean {
+    if (token === ModuleRef || (token instanceof InjectionToken && token.options?.factory)) {
+      return false;
+    }
+    try {
+      return this.findRegistration(token, requestingModuleId) === undefined;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Built from the declarer index and the declaring modules' exported tokens. */
+  private unresolvedReason(token: Token, requestingModuleId: string): UnresolvedDependencyReason {
+    const declarers = [...(this.#exporterIndex.get(token) ?? [])].filter((moduleId) =>
+      this.#scopes.has(moduleId),
+    );
+    if (!this.#scopes.has(requestingModuleId) || declarers.length === 0) {
+      return { kind: 'not-provided' };
+    }
+    const exporters = declarers.filter((moduleId) =>
+      this.#scopes.get(moduleId)?.exportedTokens.has(token),
+    );
+    return exporters.length > 0
+      ? { kind: 'not-imported', modules: exporters }
+      : { kind: 'not-exported', modules: declarers };
+  }
+
+  private describeParameter(raw: Token | ForwardRef | undefined): string {
+    if (raw === undefined) return 'undefined';
+    if (!(raw instanceof ForwardRef)) return describeToken(raw);
+    try {
+      return describeToken(raw.factory());
+    } catch {
+      return 'forwardRef';
+    }
+  }
+
+  /** The registration-time constructor plan; every class registration carries one. */
+  private constructorPlan(registration: ProviderRegistration): readonly ConstructorDependency[] {
+    if (!registration.dependencies) {
+      throw new Error(
+        `Invalid provider registration for: ${this.tokenToString(registration.provide)}`,
+      );
+    }
+    return registration.dependencies;
+  }
+
+  /**
+   * The token one planned parameter resolves, or undefined for an optional gap.
+   * A forwardRef is evaluated here, at resolution, once every module has loaded.
+   */
+  private dependencyToken(
+    target: Type,
+    dependency: ConstructorDependency,
+    index: number,
+  ): Token | undefined {
+    const raw = dependency.token;
+    const token = raw instanceof ForwardRef ? raw.factory() : raw;
+    if (!isErasedTypeToken(token)) return token;
+    if (dependency.optional) return undefined;
+    throw new Error(
+      `Cannot resolve dependency at index ${index} for ${target.name}: its forwardRef ` +
+        `returned ${token === Object ? 'Object' : String(token)}. Make sure the referenced ` +
+        'class is defined and imported at runtime.',
+    );
   }
 
   private resolveFactory<T>(registration: ProviderRegistration<T>): T {
@@ -1032,11 +1157,35 @@ export class Container {
   resolveAsync<K extends Token>(token: K, requestingModuleId?: string): Promise<InferToken<K>>;
   async resolveAsync<T>(token: Token, requestingModuleId?: string): Promise<T> {
     this.assertNotDisposing();
+    return this.runAsyncResolution(() => this.resolveAsyncInner<T>(token, requestingModuleId));
+  }
+
+  /**
+   * Construct `type` without registering it, injecting what `requestingModuleId`
+   * can see. Its dependencies belong to this container like any transient
+   * resolution; each call returns a new instance owned by the caller.
+   */
+  async construct<T>(type: Type<T>, requestingModuleId?: string): Promise<T> {
+    this.assertNotDisposing();
+    const registration: ProviderRegistration<T> = {
+      provide: type,
+      useClass: type,
+      scope: Scope.TRANSIENT,
+      declaringModuleId: requestingModuleId ?? ROOT_MODULE_ID,
+      dependencies: this.planClass(type),
+    };
+    return this.runAsyncResolution(() =>
+      this.constructAsync(registration, new Set([registration]), this),
+    );
+  }
+
+  // Lazy groups claimed during an async cascade complete once it has unwound.
+  private async runAsyncResolution<T>(resolution: () => Promise<T>): Promise<T> {
     const root = this.#root;
     root.#asyncDepth++;
     let result: T;
     try {
-      result = await this.resolveAsyncInner<T>(token, requestingModuleId);
+      result = await resolution();
     } finally {
       root.#asyncDepth--;
     }
@@ -1052,6 +1201,10 @@ export class Container {
     ancestors: ReadonlySet<ProviderRegistration> = new Set(),
     retainingOwner: Container = this,
   ): Promise<T> {
+    if (token === ModuleRef) {
+      // The ModuleRef token carries its own value type; the generic boundary erases it.
+      return retainingOwner.moduleRefFor(requestingModuleId) as T;
+    }
     const registration = this.findRegistration<T>(token, requestingModuleId);
     if (!registration) {
       if (
@@ -1062,10 +1215,7 @@ export class Container {
         throw new ModuleVisibilityError(requestingModuleId, token);
       }
       if (token instanceof InjectionToken && token.options?.factory) {
-        this.registerOptions(
-          { inject: [], provide: token, useFactory: token.options.factory },
-          ROOT_MODULE_ID,
-        );
+        this.registerTokenDefault(token, token.options.factory);
         return this.resolveAsyncInner(token, requestingModuleId, ancestors, retainingOwner);
       }
       throw new Error(
@@ -1073,6 +1223,8 @@ export class Container {
       );
     }
     if (registration.value) return registration.value.value;
+    const scope = registration.effectiveScope ?? registration.scope;
+    if (scope === Scope.REQUEST && this.#root === this) throw requestScopeOnRoot(registration);
     if (ancestors.has(registration)) {
       const chain = [...ancestors, registration]
         .map((entry) => this.tokenToString(entry.provide))
@@ -1089,8 +1241,7 @@ export class Container {
         retainingOwner,
       );
     }
-    const scope = registration.effectiveScope ?? registration.scope;
-    if (scope === Scope.SINGLETON && registration.instance) return registration.instance.value;
+    if (scope === Scope.DEFAULT && registration.instance) return registration.instance.value;
     if (scope === Scope.REQUEST) {
       // This cache is written only through checked token values or this same registration.
       const cached = (this.#requestSeeds.get(registration.provide) ??
@@ -1098,14 +1249,14 @@ export class Container {
       if (cached) return cached.value;
     }
     const owner =
-      scope === Scope.SINGLETON ? this.#root : scope === Scope.REQUEST ? this : retainingOwner;
+      scope === Scope.DEFAULT ? this.#root : scope === Scope.REQUEST ? this : retainingOwner;
     if (scope !== Scope.TRANSIENT) {
       // In-flight entries share the registration's value type, erased by the heterogeneous map.
       const pending = owner.#pendingInstances.get(registration) as Promise<T> | undefined;
       if (pending) return pending;
     }
     const pending = this.constructAsync(registration, next, owner).then((instance) => {
-      if (scope === Scope.SINGLETON) {
+      if (scope === Scope.DEFAULT) {
         registration.instance = { value: instance };
       } else if (scope === Scope.REQUEST) {
         this.#requestInstances.set(registration, { value: instance });
@@ -1148,34 +1299,59 @@ export class Container {
       throw new Error(
         `Invalid provider registration for: ${this.tokenToString(registration.provide)}`,
       );
-    const paramTypes = getConstructorDependencies(target);
-    const metadata = getInjectMetadata(target);
-    const inject = new Map(metadata.map((entry) => [entry.index, entry]));
-    const arity = Math.max(
-      paramTypes.length,
-      metadata.reduce((max, entry) => Math.max(max, entry.index + 1), 0),
-    );
     const dependencies = await Promise.all(
-      Array.from({ length: arity }, async (_unused, index) => {
-        const entry = inject.get(index);
-        const rawToken = entry?.token;
-        const token =
-          rawToken instanceof ForwardRef ? rawToken.factory() : (rawToken ?? paramTypes[index]);
-        if (!token || isErasedTypeToken(token)) {
-          if (entry?.optional) return undefined;
-          throw new Error(
-            `Cannot resolve dependency at index ${index} for ${target.name}. ` + IMPORT_TYPE_HINT,
-          );
+      this.constructorPlan(registration).map(async (dependency, index) => {
+        const token = this.dependencyToken(target, dependency, index);
+        if (token === undefined) return undefined;
+        if (dependency.optional && this.isOptionalMissing(token, moduleId)) return undefined;
+        if (dependency.token instanceof ForwardRef) {
+          const resolved = this.findRegistration(token, moduleId);
+          if (resolved && ancestors.has(resolved)) return this.createLazyProxy(token, moduleId);
         }
-        if (entry?.optional && !this.has(token)) return undefined;
-        if (rawToken instanceof ForwardRef) {
-          const dependency = this.findRegistration(token, moduleId);
-          if (dependency && ancestors.has(dependency)) return this.createLazyProxy(token, moduleId);
+        try {
+          return await this.resolveAsyncInner(token, moduleId, ancestors, owner);
+        } catch (error) {
+          throw this.unresolvedDependency(error, registration, target, index, token);
         }
-        return this.resolveAsyncInner(token, moduleId, ancestors, owner);
       }),
     );
     return new target(...dependencies);
+  }
+
+  private moduleRefFor(requestingModuleId: string | undefined): ModuleRef {
+    const moduleId = requestingModuleId ?? ROOT_MODULE_ID;
+    let moduleRef = this.#moduleRefs.get(moduleId);
+    if (!moduleRef) {
+      moduleRef = new ModuleRef(this, moduleId);
+      this.#moduleRefs.set(moduleId, moduleRef);
+    }
+    return moduleRef;
+  }
+
+  /**
+   * `@Optional()` injects `undefined` only when nothing is registered for the
+   * token. A provider another module registers without exposing it to the
+   * requester is a wiring mistake, reported through the diagnostics policy.
+   */
+  private isOptionalMissing(token: Token, requestingModuleId: string): boolean {
+    if (token === ModuleRef || this.findRegistration(token, requestingModuleId)) return false;
+    if (this.#scopes.has(requestingModuleId) && this.#exporterIndex.has(token)) {
+      this.reportHiddenOptional(token, requestingModuleId);
+      return true;
+    }
+    return !(token instanceof InjectionToken && token.options?.factory);
+  }
+
+  private reportHiddenOptional(token: Token, requestingModuleId: string): void {
+    const error = new ModuleVisibilityError(requestingModuleId, token);
+    if (this.#diagnostics === 'throw') throw error;
+    if (this.#diagnostics === 'silent') return;
+    const reported = this.#root.#reportedHiddenOptionals;
+    const modules = reported.get(token) ?? new Set<string>();
+    if (modules.has(requestingModuleId)) return;
+    modules.add(requestingModuleId);
+    reported.set(token, modules);
+    console.warn(`[vela] @Optional() dependency injected as undefined. ${error.message}`);
   }
 
   private createLazyProxy(token: Token, requestingModuleId?: string): object {

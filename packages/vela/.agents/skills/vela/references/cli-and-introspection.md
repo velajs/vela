@@ -4,13 +4,13 @@
 
 ## Config — `defineVelaConfig`
 
-Add a `vela.config.{js,mjs,ts}` at the project root. The CLI tries those three names in that order in the current directory (override with `--config <path>`; no parent search). Run the application's SWC build first and import compiled `.js` files with explicit extensions. Node 24 type stripping handles erasable `.ts` config syntax, but does not emit legacy decorators/DI metadata or resolve tsconfig aliases. The CLI installs no compiler hooks.
+Add a `vela.config.{js,mjs,ts}` at the project root. The CLI tries those three names in that order in the current directory (override with `--config <path>`; no parent search). When the project installs Vite 8 (an optional peer of the CLI; `vela new` projects do), the CLI loads the config through a Vite module runner that stays open for the whole command, with Oxc legacy decorators + decorator metadata, so the config imports decorated `src/` files directly and no build runs first; packages still load from node_modules, and neither `vite.config.ts` nor tsconfig path aliases apply. Without Vite, Node imports the config: type stripping handles erasable `.ts` syntax but emits no decorators/DI metadata, so import compiled `.js` files with explicit extensions. Pin the CLI as a dev dependency and run it as `pnpm vela ...`.
 
 ```ts
-// vela.config.mjs
+// vela.config.ts
 import { defineVelaConfig } from '@velajs/cli/config';
 import { VelaFactory } from '@velajs/vela';
-import { AppModule } from './dist/app.module.js';
+import { AppModule } from './src/app.module.js';
 
 export default defineVelaConfig({
   createApp: () => VelaFactory.create(AppModule),

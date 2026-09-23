@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { capabilitiesDegraded, FakeAdminTransport, fakeTable } from '@velajs/studio-fixtures';
+import { STUDIO_PROTOCOL_VERSION } from '@velajs/studio-protocol';
 import { StudioApp } from '../src/shell/studio-app';
 import { Studio } from '../src/shell/studio-app';
 import { renderWithAdmin, studioFetch } from './helpers';
@@ -30,7 +31,7 @@ describe('StudioApp login gate', () => {
       <StudioApp
         baseUrl="http://host"
         connection={{
-          protocolVersion: 2,
+          protocolVersion: STUDIO_PROTOCOL_VERSION,
           adminBasePath: '/custom/admin',
           routerBasePath: '/',
           apiRequestPath: '/custom/admin/api-request',
@@ -61,7 +62,7 @@ describe('StudioApp login gate', () => {
         initialPath="/"
         fetchImpl={async (input) => {
           if (String(input).endsWith('/health'))
-            return Response.json({ enabled: true, protocolVersion: 2 });
+            return Response.json({ enabled: true, protocolVersion: STUDIO_PROTOCOL_VERSION });
           return Response.json(
             {
               ok: false,

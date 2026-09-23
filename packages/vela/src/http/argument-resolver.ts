@@ -2,9 +2,9 @@ import { getCookie } from 'hono/cookie';
 import type { Context } from 'hono';
 import { ParamType } from '../constants';
 import type { Container } from '../container/container';
-import { BadRequestException } from '../errors/http-exception';
 import type { ArgumentMetadata, PipeTransform } from '../pipeline/types';
 import { instantiateAsync } from './instantiate';
+import { readJsonBody } from './json-body';
 import type { ParamMetadata } from './types';
 
 type ParamExtractor = (c: Context, param: ParamMetadata) => unknown | Promise<unknown>;
@@ -15,16 +15,7 @@ const PARAM_EXTRACTORS = new Map<ParamType, ParamExtractor>([
   [
     ParamType.BODY,
     async (c, p) => {
-      if (!c.req.raw.body || c.req.header('content-length') === '0') return undefined;
-      let body: unknown;
-      try {
-        body = await c.req.json();
-      } catch (error) {
-        if (error instanceof SyntaxError) {
-          throw new BadRequestException('Malformed JSON body');
-        }
-        throw error;
-      }
+      const body = await readJsonBody(c);
       return p.name && body !== null && typeof body === 'object'
         ? (body as Record<string, unknown>)[p.name]
         : body;

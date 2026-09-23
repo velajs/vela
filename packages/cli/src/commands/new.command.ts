@@ -16,7 +16,7 @@ export class NewCommand extends Command {
   async execute(): Promise<number> {
     await createProject(this.name, process.cwd());
     this.context.stdout.write(
-      `Created ${this.name}.\n\nNext steps:\n  cd ${this.name}\n  pnpm install\n  pnpm typecheck\n  pnpm build\n  pnpm dev\n\nThen visit http://localhost:8787 or run: curl http://localhost:8787\n`,
+      `Created ${this.name}.\n\nNext steps:\n  cd ${this.name}\n  pnpm install\n  pnpm dev\n\nThen visit http://localhost:5173 or run: curl http://localhost:5173\nRun the Worker tests in workerd with: pnpm test\n`,
     );
     return 0;
   }

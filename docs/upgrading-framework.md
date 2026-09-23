@@ -73,16 +73,34 @@ See [schema contracts](types.md), [serialization](serialization.md) and
 
 ## Queues, events, schedules and storage
 
-Use a queue driver factory when module declarations are reused across applications:
-`driver: () => inline()`. A bound driver instance cannot be rebound to another
-application. Typed queue jobs carry original schema input and validate at producer
+Configure the queue driver once with `QueueModule.forRoot({ driver })` and register
+each queue with `QueueModule.registerQueue({ name, binding? })` in the module that
+uses it; inject clients with `@InjectQueue(name)`. On Workers use
+`cloudflareQueues()` from `@velajs/cloudflare/queues`. Use a queue driver factory
+when module declarations are reused across applications: `driver: () => inline()`.
+A bound driver instance cannot be rebound to another application. Typed queue jobs carry original schema input and validate at producer
 and consumer boundaries; keep transforms deterministic. Delivery handlers must
 still tolerate redelivery.
 
 Once event listeners are consumed before invocation, including recursive dispatch.
 Node schedules validate their syntax before timers start. Specify the cron dialect
 and timezone when sharing schedules across runtimes. Scheduled shutdown waits for
-owned work; handlers must finish or cooperate with cancellation.
+owned work; handlers must finish or cooperate with cancellation. A custom runtime
+that fires scheduled jobs should call `invokeScheduledJob(container, entry,
+invocation)`, so its jobs get the same scope, single `ScheduleInvocation`
+argument, signed dispatch and error reporting as Node and Workers. A caller that
+fires jobs on demand passes the runtime's `SCHEDULE_INVOCATION_SEED`, when one is
+registered, as `invokeScheduledJob`'s `seed`. `@Cron` and `@Interval` are typed
+method decorators: annotate a handler's parameter as `CronInvocation` or
+`IntervalInvocation`; a handler that still declares the native
+`(controller, env, ctx)` arguments no longer compiles.
+
+`dispatchQueueJob` delivers through `QueueModule`'s dispatch policy when the
+application imports `QueueModule.forRoot()`: the job's queue must be registered
+and signed dispatch re-enters the signed route. It rejects a job no processor
+handles; pass `{ unhandled: 'ignore' }` to resolve with `handled: 0` instead.
+`addBulk` entries are typed one by one and keep the `{ job, data, options }`
+shape of `add()`.
 
 Storage aborts and deadlines stop follow-up work without retrying abandoned writes.
 An already-issued native write can still commit. Reconcile uncertain results at

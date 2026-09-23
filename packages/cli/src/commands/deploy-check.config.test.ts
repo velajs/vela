@@ -83,13 +83,41 @@ describe('deployment configuration', () => {
         vars: { SECRET: 'redact-me' },
         kv_namespaces: [{ binding: 'CACHE', id: 'prod-id' }],
         durable_objects: { bindings: [{ name: 'ROOM', class_name: 'Room' }] },
-        queues: { consumers: [{ queue: 'prod' }] },
+        queues: {
+          producers: [{ binding: 'JOBS', queue: 'prod' }],
+          consumers: [{ queue: 'prod' }],
+        },
       },
       'staging',
     );
     expect(plan.bindings).toEqual([]);
+    expect(plan.queueProducers).toEqual([]);
     expect(plan.queueConsumers).toEqual([]);
     expect(JSON.stringify(plan)).not.toContain('redact-me');
+  });
+
+  it('maps each queue producer binding to its physical queue', () => {
+    const plan = selectDeploymentTarget(
+      {
+        ...config(),
+        env: {
+          staging: {
+            queues: {
+              producers: [{ binding: 'EMAIL_QUEUE', queue: 'email-staging' }, { binding: 'AUDIT' }],
+            },
+          },
+        },
+      },
+      'staging',
+    );
+    expect(plan.queueProducers).toEqual([
+      { binding: 'EMAIL_QUEUE', queue: 'email-staging' },
+      { binding: 'AUDIT', queue: undefined },
+    ]);
+    expect(plan.bindings).toEqual([
+      { name: 'EMAIL_QUEUE', kind: 'queues' },
+      { name: 'AUDIT', kind: 'queues' },
+    ]);
   });
 
   it('permits auto-provisioned IDs and multiple distinct D1 bindings', () => {

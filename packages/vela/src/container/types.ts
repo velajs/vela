@@ -10,6 +10,14 @@ export type Constructor<T = unknown> = abstract new (...args: any[]) => T;
 
 export interface InjectionTokenOptions<T> {
   readonly factory?: () => T;
+  /**
+   * The scope `factory` provides the token in, `Scope.DEFAULT` by default.
+   * With `Scope.REQUEST` the token is a per-scope value that a runtime seeds
+   * with `setRequestInstance()`: its consumers become request-scoped in every
+   * container, and `factory` runs only in a scope nothing seeded, so it can
+   * throw to say where the token resolves.
+   */
+  readonly scope?: Scope;
 }
 
 // Runtime identity is intentionally separate from the invariant authoring token.
@@ -151,6 +159,10 @@ class CheckedProvider<T> {
   static read<T>(provider: CheckedProvider<T>): Readonly<ProviderOptions<T>> {
     return provider.#options;
   }
+
+  static is(value: unknown): value is CheckedProvider<unknown> {
+    return typeof value === 'object' && value !== null && #options in value;
+  }
 }
 
 /** A nominal provider checked by defineProvider before entering a module graph. */
@@ -161,6 +173,11 @@ export function getProviderOptions<T>(
   provider: ProviderDefinition<T>,
 ): Readonly<ProviderOptions<T>> {
   return CheckedProvider.read(provider);
+}
+
+/** @internal Brand check for descriptors minted by defineProvider. */
+export function isProviderDefinition(value: unknown): value is ProviderDefinition {
+  return CheckedProvider.is(value);
 }
 
 type ProviderStrategy<T, Inject extends readonly DependencyToken[]> =
@@ -232,8 +249,21 @@ export interface ProviderRegistration<T = unknown> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   useFactory?: (...args: any[]) => T | Promise<T>;
   useClass?: Type<T>;
+  /**
+   * `useClass` constructor parameters, planned once at registration from the
+   * class's emitted metadata and `@Inject`/`@Optional` entries. Both resolution
+   * engines and the request-scope computation read this one plan.
+   */
+  dependencies?: readonly ConstructorDependency[];
   inject?: readonly DependencyToken[];
   useExisting?: Token;
+}
+
+/** One planned constructor parameter of a class provider. */
+export interface ConstructorDependency {
+  /** Explicit `@Inject` token or emitted paramtype; absent only for an `@Optional()` gap. */
+  readonly token?: Token | ForwardRef;
+  readonly optional: boolean;
 }
 
 /** Read-only wiring evidence; inspecting a snapshot never constructs a provider. */
@@ -258,6 +288,10 @@ export interface ModuleScope {
   isGlobal: boolean;
   /** Module instance opted into deferred (first-use) materialization. */
   lazy?: boolean;
+  /** Class this module instance was loaded from; carries module-level `@Use*` metadata. */
+  moduleClass?: Constructor;
+  /** Controllers declared by this module instance. */
+  controllers?: ReadonlySet<Constructor>;
 }
 
 /**
@@ -349,6 +383,132 @@ export class MultipleProvidersFoundError extends Error {
         `accessor exposed by the module (e.g., Module.tokenFor(key)).`,
     );
     this.name = 'MultipleProvidersFoundError';
+  }
+}
+
+/**
+ * Why a constructor parameter has no injectable token:
+ * - `'missing'`: the build emitted no `design:paramtypes` entry for it.
+ * - `'erased'`: the emitted entry is `Object` or `undefined` (an interface, a
+ *   type-only import, or a circular import).
+ * - `'undefined-inject'`: `@Inject()` itself received `undefined`.
+ */
+export type MissingInjectionMetadataReason = 'missing' | 'erased' | 'undefined-inject';
+
+function pluralParameters(count: number): string {
+  return `${count} constructor parameter${count === 1 ? '' : 's'}`;
+}
+
+/**
+ * A class provider whose constructor parameter cannot be resolved from its
+ * metadata. Raised when the class is registered, before anything constructs
+ * it, instead of silently passing `undefined` for the parameter.
+ */
+export class MissingInjectionMetadataError extends Error {
+  constructor(
+    public readonly className: string,
+    public readonly parameterIndex: number,
+    public readonly reason: MissingInjectionMetadataReason,
+    declaredParameters: number,
+  ) {
+    const index = `#${parameterIndex}`;
+    const fix = `Enable emitDecoratorMetadata in your build or add @Inject(Token) to parameter ${index}.`;
+    const declared = `${className} declares ${pluralParameters(declaredParameters)}`;
+    super(
+      reason === 'missing'
+        ? `${declared} but no design:paramtypes were emitted for parameter ${index}. ${fix} ` +
+            'esbuild (and so `wrangler deploy --config`) emits none; build through Vite or ' +
+            'another transform that emits decorator metadata.'
+        : reason === 'erased'
+          ? `${declared} but parameter ${index} resolved to Object. ${fix} Interfaces, ` +
+            'type-only imports (`import type { X }`) and circular imports all erase to ' +
+            'Object or undefined; use a runtime `import { X }` for class tokens.'
+          : `${declared} but @Inject() received undefined for parameter ${index}, usually ` +
+            `because of a circular file import. Use @Inject(forwardRef(() => X)) instead.`,
+    );
+    this.name = 'MissingInjectionMetadataError';
+  }
+}
+
+/**
+ * Why no provider is visible for a constructor argument, from the module that
+ * resolves the class. `modules` are module instance ids:
+ * - `'not-exported'`: these modules declare the token, but none exports it.
+ * - `'not-imported'`: these modules export the token, but the resolving
+ *   module imports none of them.
+ * - `'not-provided'`: no module declares the token.
+ */
+export type UnresolvedDependencyReason =
+  | { readonly kind: 'not-exported'; readonly modules: readonly string[] }
+  | { readonly kind: 'not-imported'; readonly modules: readonly string[] }
+  | { readonly kind: 'not-provided' };
+
+/** What `UnresolvedDependencyError` reports about the unsatisfied constructor. */
+export interface UnresolvedDependency {
+  /** The class whose constructor could not be satisfied. */
+  readonly className: string;
+  /** Module instance whose visibility the constructor resolves in. */
+  readonly moduleId: string;
+  /** A label for every constructor parameter, in declaration order. */
+  readonly parameters: readonly string[];
+  readonly parameterIndex: number;
+  /** The token no visible provider supplies. */
+  readonly token: Token;
+  readonly reason: UnresolvedDependencyReason;
+}
+
+// Module instance ids are `Class#key`; the default key adds nothing to a message.
+function describeModuleId(moduleId: string): string {
+  if (moduleId === ROOT_MODULE_ID) return 'the root container';
+  return moduleId.endsWith('#default') ? moduleId.slice(0, -'#default'.length) : moduleId;
+}
+
+function describeUnresolvedReason(dependency: UnresolvedDependency): string {
+  const { reason } = dependency;
+  const module = describeModuleId(dependency.moduleId);
+  if (reason.kind === 'not-provided') {
+    return dependency.moduleId === ROOT_MODULE_ID
+      ? 'is not provided by any module'
+      : `is not provided in ${module} or its imports`;
+  }
+  const modules = reason.modules.map(describeModuleId);
+  return reason.kind === 'not-exported'
+    ? `is declared in ${modules.join(', ')} but not exported ` +
+        `(add it to ${modules.map((name) => `${name}.exports`).join(' or ')})`
+    : `is exported by ${modules.join(', ')}, which ${module} does not import ` +
+        `(add ${modules.join(' or ')} to ${module}.imports)`;
+}
+
+/**
+ * A class constructor argument whose token no provider visible to the
+ * resolving module supplies. Raised at the innermost constructor only; the
+ * lookup failure stays available as `cause`.
+ */
+export class UnresolvedDependencyError extends Error implements UnresolvedDependency {
+  readonly className: string;
+  readonly moduleId: string;
+  readonly parameters: readonly string[];
+  readonly parameterIndex: number;
+  readonly token: Token;
+  readonly reason: UnresolvedDependencyReason;
+
+  constructor(dependency: UnresolvedDependency, options?: ErrorOptions) {
+    const signature = dependency.parameters
+      .map((label, index) => (index === dependency.parameterIndex ? '?' : label))
+      .join(', ');
+    super(
+      `Cannot resolve ${dependency.className}(${signature}) in ` +
+        `${describeModuleId(dependency.moduleId)}. Argument #${dependency.parameterIndex} ` +
+        `${describeToken(dependency.token)} ${describeUnresolvedReason(dependency)}.`,
+      options,
+    );
+    this.name = 'UnresolvedDependencyError';
+    this.className = dependency.className;
+    this.moduleId = dependency.moduleId;
+    this.parameters = dependency.parameters;
+    this.parameterIndex = dependency.parameterIndex;
+    this.token = dependency.token;
+    this.reason = dependency.reason;
   }
 }
 

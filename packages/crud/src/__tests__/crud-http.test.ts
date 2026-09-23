@@ -190,6 +190,23 @@ describe('@Crud over HTTP (decorated controller)', () => {
     expect(doc.paths['/items']?.get?.tags).toContain('items');
   });
 
+  it('documents each verb with the success status it responds with', async () => {
+    const { hono, AppModule } = await makeApp();
+    const doc = createOpenApiDocument(AppModule);
+
+    // create declares and answers 201; the default 200 must not be documented beside it.
+    const created = await hono.request('/items', json('POST', { name: 'Anchor', qty: 1 }));
+    expect(created.status).toBe(201);
+    expect(Object.keys(doc.paths['/items']?.post?.responses ?? {}).toSorted()).toEqual([
+      '201',
+      '400',
+    ]);
+    expect(Object.keys(doc.paths['/items/{id}']?.get?.responses ?? {}).toSorted()).toEqual([
+      '200',
+      '404',
+    ]);
+  });
+
   it('runs controller guards on generated routes', async () => {
     const store = new Map<string, Row>();
     @Controller('/guarded')

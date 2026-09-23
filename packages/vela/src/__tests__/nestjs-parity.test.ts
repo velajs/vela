@@ -1,5 +1,6 @@
 import { defineProvider } from '../container/types';
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { Context } from 'hono';
 import { z } from 'zod';
 import {
   VelaFactory,
@@ -35,6 +36,10 @@ import {
   applyDecorators,
   HttpMethod,
   ModuleRef,
+  ModuleVisibilityError,
+  UnresolvedDependencyError,
+  getRequestContainer,
+  runInEntrypointScope,
   mixin,
   InjectionToken,
   Inject,
@@ -115,7 +120,6 @@ import {
   LogLevel,
   CacheService,
   CACHE_MANAGER,
-  ZodValidationPipe,
   RequiredPipe,
 } from '../index.js';
 import type {
@@ -538,6 +542,44 @@ describe('APP_* tokens', () => {
     });
     expect(allowed.status).toBe(200);
     expect(order).toEqual(['first', 'second']);
+  });
+
+  it('APP_GUARD { useClass } keeps a REQUEST-scoped guard per request', async () => {
+    const seen: number[] = [];
+
+    @Injectable({ scope: Scope.REQUEST })
+    class PerRequestGuard implements CanActivate {
+      readonly id = Math.random();
+      #calls = 0;
+      canActivate(_context: ExecutionContext): boolean {
+        this.#calls++;
+        seen.push(this.id);
+        // A shared instance would carry state from the previous request.
+        return this.#calls === 1;
+      }
+    }
+
+    @Controller('/request-guard')
+    class GuardedController {
+      @Get()
+      handle() {
+        return { ok: true };
+      }
+    }
+
+    @Module({
+      providers: [defineProvider(APP_GUARD, { useClass: PerRequestGuard })],
+      controllers: [GuardedController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    expect((await hono.request('/request-guard')).status).toBe(200);
+    expect((await hono.request('/request-guard')).status).toBe(200);
+    expect(seen).toHaveLength(2);
+    expect(seen[0]).not.toBe(seen[1]);
   });
 });
 
@@ -1032,9 +1074,9 @@ describe('ModuleRef', () => {
     class CounterController {
       constructor(private ref: ModuleRef) {}
       @Get()
-      handle() {
-        const a = this.ref.create(CounterService);
-        const b = this.ref.create(CounterService);
+      async handle() {
+        const a = await this.ref.create(CounterService);
+        const b = await this.ref.create(CounterService);
         return { a: a.increment(), b: b.increment(), same: a === b };
       }
     }
@@ -4184,10 +4226,10 @@ describe('CacheService / CACHE_MANAGER direct injection', () => {
 });
 
 // =============================================================================
-// ZodValidationPipe
+// ValidationPipe with Zod schemas
 // =============================================================================
 
-describe('ZodValidationPipe', () => {
+describe('ValidationPipe with Zod schemas', () => {
   it('transforms and validates body with Zod schema', async () => {
     const CreateUserSchema = z.object({
       name: z.string().min(1),
@@ -4197,7 +4239,7 @@ describe('ZodValidationPipe', () => {
     @Controller('/zod-users')
     class ZodUserController {
       @Post()
-      create(@Body(new ZodValidationPipe(CreateUserSchema)) body: { name: string; age: number }) {
+      create(@Body(new ValidationPipe(CreateUserSchema)) body: { name: string; age: number }) {
         return { created: body };
       }
     }
@@ -4215,13 +4257,13 @@ describe('ZodValidationPipe', () => {
     expect(await res.json()).toEqual({ created: { name: 'Alice', age: 30 } });
   });
 
-  it('throws when Zod schema validation fails', async () => {
+  it('rejects invalid input with 400 and the schema issues', async () => {
     const Schema = z.object({ count: z.number() });
 
     @Controller('/zod-fail')
     class ZodFailController {
       @Post()
-      handle(@Body(new ZodValidationPipe(Schema)) body: unknown) {
+      handle(@Body(new ValidationPipe(Schema)) body: unknown) {
         return body;
       }
     }
@@ -4235,14 +4277,18 @@ describe('ZodValidationPipe', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ count: 'not-a-number' }),
     });
-    expect(res.status).toBe(500); // Zod throws ZodError; not wrapped in HttpException
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({
+      message: 'Validation failed',
+      errors: [expect.objectContaining({ path: ['count'] })],
+    });
   });
 
   it('can be used as a class-level pipe with @UsePipes()', async () => {
     const QuerySchema = z.object({ page: z.coerce.number().default(1) });
 
     @Controller('/zod-query')
-    @UsePipes(new ZodValidationPipe(QuerySchema))
+    @UsePipes(new ValidationPipe(QuerySchema))
     class ZodQueryController {
       @Get()
       handle(@Query() query: unknown) {
@@ -5039,6 +5085,75 @@ describe('useClass provider substitution', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ result: 'sms:ping' });
   });
+
+  it('useClass inherits the REQUEST scope of the implementation class', async () => {
+    @Injectable({ scope: Scope.REQUEST })
+    class RequestBag {
+      readonly id = Math.random();
+      readonly items: string[] = [];
+    }
+    const BAG = new InjectionToken<RequestBag>('REQUEST_BAG');
+
+    @Controller('/use-class-scope')
+    class BagController {
+      constructor(@Inject(BAG) private bag: RequestBag) {}
+      @Get() handle() {
+        this.bag.items.push('item');
+        return { id: this.bag.id, size: this.bag.items.length };
+      }
+    }
+
+    @Module({
+      providers: [defineProvider(BAG, { useClass: RequestBag })],
+      controllers: [BagController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    const r1 = (await (await hono.request('/use-class-scope')).json()) as {
+      id: number;
+      size: number;
+    };
+    const r2 = (await (await hono.request('/use-class-scope')).json()) as {
+      id: number;
+      size: number;
+    };
+
+    expect(r1.id).not.toBe(r2.id);
+    expect(r1.size).toBe(1);
+    expect(r2.size).toBe(1);
+  });
+
+  it('an explicit provider scope overrides the implementation class scope', async () => {
+    @Injectable({ scope: Scope.REQUEST })
+    class Counter {
+      readonly id = Math.random();
+    }
+    const COUNTER = new InjectionToken<Counter>('COUNTER');
+
+    @Controller('/use-class-explicit-scope')
+    class CounterController {
+      constructor(@Inject(COUNTER) private counter: Counter) {}
+      @Get() handle() {
+        return { id: this.counter.id };
+      }
+    }
+
+    @Module({
+      providers: [defineProvider(COUNTER, { useClass: Counter, scope: Scope.DEFAULT })],
+      controllers: [CounterController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    const r1 = (await (await hono.request('/use-class-explicit-scope')).json()) as { id: number };
+    const r2 = (await (await hono.request('/use-class-explicit-scope')).json()) as { id: number };
+    expect(r1.id).toBe(r2.id);
+  });
 });
 
 // =============================================================================
@@ -5253,8 +5368,8 @@ describe('ModuleRef.resolve() and ModuleRef.create()', () => {
       ) {}
 
       @Get()
-      handle() {
-        const fresh = this.moduleRef.create(FreshService);
+      async handle() {
+        const fresh = await this.moduleRef.create(FreshService);
         return { same: fresh === this.singleton, freshId: fresh.id !== this.singleton.id };
       }
     }
@@ -5282,9 +5397,9 @@ describe('ModuleRef.resolve() and ModuleRef.create()', () => {
       constructor(private moduleRef: ModuleRef) {}
 
       @Get()
-      handle() {
-        const c1 = this.moduleRef.resolve(Config);
-        const c2 = this.moduleRef.resolve(Config);
+      async handle() {
+        const c1 = await this.moduleRef.resolve(Config);
+        const c2 = await this.moduleRef.resolve(Config);
         return { same: c1 === c2, value: c1.value };
       }
     }
@@ -5300,6 +5415,353 @@ describe('ModuleRef.resolve() and ModuleRef.create()', () => {
 });
 
 // =============================================================================
+// ModuleRef host-module scoping, request scopes and create()
+// =============================================================================
+
+describe('ModuleRef host-module scoping', () => {
+  it('get() sees host-module providers, imported exports and globals; strict:false looks app-wide', async () => {
+    const PRIVATE = new InjectionToken<string>('ModuleRefPrivate');
+    const SHARED = new InjectionToken<string>('ModuleRefShared');
+    const EVERYWHERE = new InjectionToken<string>('ModuleRefGlobal');
+
+    @Global()
+    @Module({
+      providers: [defineProvider(EVERYWHERE, { useValue: 'global' })],
+      exports: [EVERYWHERE],
+    })
+    class GlobalModule {}
+
+    @Module({
+      providers: [
+        defineProvider(PRIVATE, { useValue: 'hidden' }),
+        defineProvider(SHARED, { useValue: 'exported' }),
+      ],
+      exports: [SHARED],
+    })
+    class LibModule {}
+
+    @Injectable()
+    class Lookup {
+      constructor(readonly ref: ModuleRef) {}
+    }
+
+    @Module({ imports: [GlobalModule, LibModule], providers: [Lookup] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const { ref } = app.get(Lookup);
+    expect(ref.get(SHARED)).toBe('exported');
+    expect(ref.get(EVERYWHERE)).toBe('global');
+    expect(() => ref.get(PRIVATE)).toThrow(ModuleVisibilityError);
+    expect(ref.get(PRIVATE, { strict: false })).toBe('hidden');
+  });
+
+  it('each module instance injects its own ModuleRef, resolving that module’s registration', async () => {
+    const LABEL = new InjectionToken<string>('ModuleRefLabel');
+
+    @Injectable()
+    class FirstReader {
+      constructor(readonly ref: ModuleRef) {}
+    }
+
+    @Injectable()
+    class FirstSibling {
+      constructor(readonly ref: ModuleRef) {}
+    }
+
+    @Injectable()
+    class SecondReader {
+      constructor(readonly ref: ModuleRef) {}
+    }
+
+    @Module({
+      providers: [defineProvider(LABEL, { useValue: 'first' }), FirstReader, FirstSibling],
+      exports: [FirstReader, FirstSibling],
+    })
+    class FirstModule {}
+
+    @Module({
+      providers: [defineProvider(LABEL, { useValue: 'second' }), SecondReader],
+      exports: [SecondReader],
+    })
+    class SecondModule {}
+
+    @Module({ imports: [FirstModule, SecondModule] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const first = app.get(FirstReader).ref;
+    const second = app.get(SecondReader).ref;
+    expect(first.get(LABEL)).toBe('first');
+    expect(second.get(LABEL)).toBe('second');
+    expect(first).not.toBe(second);
+    expect(app.get(FirstSibling).ref).toBe(first);
+  });
+
+  it('get() refuses request-scoped and transient providers and points to resolve()', async () => {
+    @Injectable({ scope: Scope.REQUEST })
+    class PerRequest {}
+
+    @Injectable({ scope: Scope.TRANSIENT })
+    class PerUse {}
+
+    @Injectable()
+    class Lookup {
+      constructor(readonly ref: ModuleRef) {}
+    }
+
+    @Module({ providers: [PerRequest, PerUse, Lookup] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const { ref } = app.get(Lookup);
+    expect(() => ref.get(PerRequest)).toThrow(/request-scoped[\s\S]*resolve\(/);
+    expect(() => ref.get(PerUse)).toThrow(/transient[\s\S]*resolve\(/);
+  });
+
+  it('resolve() shares the current request instance given a Hono Context, ExecutionContext or request container', async () => {
+    @Injectable({ scope: Scope.REQUEST })
+    class PerRequest {
+      readonly id = crypto.randomUUID();
+    }
+
+    const seenByGuard: string[] = [];
+
+    @Injectable()
+    class PeekGuard implements CanActivate {
+      constructor(private readonly ref: ModuleRef) {}
+      async canActivate(context: ExecutionContext) {
+        seenByGuard.push((await this.ref.resolve(PerRequest, context)).id);
+        return true;
+      }
+    }
+
+    @Controller('/modref-request')
+    class RequestController {
+      constructor(private readonly ref: ModuleRef) {}
+
+      @Get()
+      @UseGuards(PeekGuard)
+      async handle(@Res() c: Context) {
+        const viaHono = await this.ref.resolve(PerRequest, c);
+        const viaContainer = await this.ref.resolve(PerRequest, getRequestContainer(c));
+        return { id: viaHono.id, same: viaHono === viaContainer };
+      }
+    }
+
+    @Module({ providers: [PerRequest, PeekGuard], controllers: [RequestController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+    const first = (await (await hono.request('/modref-request')).json()) as {
+      id: string;
+      same: boolean;
+    };
+    const second = (await (await hono.request('/modref-request')).json()) as {
+      id: string;
+      same: boolean;
+    };
+
+    expect(first.same).toBe(true);
+    expect(second.same).toBe(true);
+    expect(first.id).not.toBe(second.id);
+    expect(seenByGuard).toEqual([first.id, second.id]);
+  });
+
+  it('resolve() without a request refuses request-scoped providers instead of caching them on the root', async () => {
+    @Injectable({ scope: Scope.REQUEST })
+    class PerRequest {}
+
+    @Injectable()
+    class Lookup {
+      constructor(readonly ref: ModuleRef) {}
+    }
+
+    @Module({ providers: [PerRequest, Lookup] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const { ref } = app.get(Lookup);
+    await expect(ref.resolve(PerRequest)).rejects.toThrow(/request-scoped/);
+    await expect(ref.resolve(PerRequest, new Context(new Request('http://x/')))).rejects.toThrow(
+      /Vela-managed request/,
+    );
+  });
+
+  it('request-scoped consumers get a ModuleRef bound to their request; singletons never capture one', async () => {
+    @Injectable({ scope: Scope.REQUEST })
+    class PerRequest {}
+
+    @Injectable()
+    class Shared {
+      constructor(readonly ref: ModuleRef) {}
+    }
+
+    @Injectable({ scope: Scope.REQUEST })
+    class Scoped {
+      constructor(
+        readonly ref: ModuleRef,
+        readonly shared: Shared,
+        readonly current: PerRequest,
+      ) {}
+    }
+
+    @Module({ providers: [PerRequest, Shared, Scoped] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const runs = await Promise.all(
+      [1, 2].map(() =>
+        runInEntrypointScope(app.getContainer(), async (scope) => {
+          const scoped = await scope.resolveAsync(Scoped);
+          return { scoped, resolved: await scoped.ref.resolve(PerRequest) };
+        }),
+      ),
+    );
+    const [one, two] = runs.map((run) => run.scoped);
+
+    expect(runs[0]!.resolved).toBe(one!.current);
+    expect(runs[1]!.resolved).toBe(two!.current);
+    expect(one!.ref).not.toBe(two!.ref);
+    expect(one!.shared.ref).toBe(two!.shared.ref);
+    expect(one!.ref).not.toBe(one!.shared.ref);
+    await expect(one!.shared.ref.resolve(PerRequest)).rejects.toThrow(/request-scoped/);
+    // The request-bound reference closes with its invocation.
+    await expect(one!.ref.resolve(PerRequest)).rejects.toThrow(/closed/);
+  });
+
+  it('create() builds an unregistered class with the host module’s dependencies', async () => {
+    const GREETING = new InjectionToken<string>('ModuleRefGreeting');
+    const HIDDEN = new InjectionToken<string>('ModuleRefHidden');
+
+    @Module({ providers: [defineProvider(HIDDEN, { useValue: 'hidden' })] })
+    class OtherModule {}
+
+    @Injectable()
+    class Greeter {
+      constructor(@Inject(GREETING) readonly greeting: string) {}
+    }
+
+    @Injectable()
+    class Snooper {
+      constructor(@Inject(HIDDEN) readonly hidden: string) {}
+    }
+
+    @Injectable()
+    class Builder {
+      constructor(readonly ref: ModuleRef) {}
+    }
+
+    @Module({
+      imports: [OtherModule],
+      providers: [defineProvider(GREETING, { useValue: 'hi' }), Builder],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const { ref } = app.get(Builder);
+    const a = await ref.create(Greeter);
+    const b = await ref.create(Greeter);
+    expect(a).toBeInstanceOf(Greeter);
+    expect(a.greeting).toBe('hi');
+    expect(a).not.toBe(b);
+    expect(app.getContainer().has(Greeter)).toBe(false);
+    await expect(ref.create(Snooper)).rejects.toSatisfy(
+      (error) =>
+        error instanceof UnresolvedDependencyError && error.cause instanceof ModuleVisibilityError,
+    );
+  });
+});
+
+// =============================================================================
+// @Optional() and module visibility
+// =============================================================================
+
+describe('@Optional() and module visibility', () => {
+  const HIDDEN = new InjectionToken<string>('OptionalHidden');
+
+  function hiddenGraph() {
+    @Module({ providers: [defineProvider(HIDDEN, { useValue: 'hidden' })] })
+    class OwnerModule {}
+
+    @Injectable()
+    class Consumer {
+      constructor(@Optional() @Inject(HIDDEN) readonly value: string | undefined) {}
+    }
+
+    @Module({ imports: [OwnerModule], providers: [Consumer] })
+    class AppModule {}
+
+    return { AppModule, Consumer };
+  }
+
+  it('reports a registered but invisible @Optional token instead of injecting it', async () => {
+    const { AppModule } = hiddenGraph();
+    await expect(VelaFactory.create(AppModule, { diagnostics: 'throw' })).rejects.toThrow(
+      ModuleVisibilityError,
+    );
+  });
+
+  it('warns and injects undefined in log mode, silently in silent mode', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const logged = hiddenGraph();
+      const app = await VelaFactory.create(logged.AppModule);
+      expect(app.get(logged.Consumer).value).toBeUndefined();
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('OptionalHidden'));
+
+      warn.mockClear();
+      const silent = hiddenGraph();
+      const quiet = await VelaFactory.create(silent.AppModule, { diagnostics: 'silent' });
+      expect(quiet.get(silent.Consumer).value).toBeUndefined();
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('honors InjectionToken default factories', async () => {
+    const WITH_DEFAULT = new InjectionToken<string>('OptionalDefault', {
+      factory: () => 'fallback',
+    });
+
+    @Injectable()
+    class Consumer {
+      constructor(@Optional() @Inject(WITH_DEFAULT) readonly value: string | undefined) {}
+    }
+
+    @Injectable({ scope: Scope.TRANSIENT })
+    class PerUse {
+      constructor(@Optional() @Inject(WITH_DEFAULT) readonly value: string | undefined) {}
+    }
+
+    @Module({ providers: [Consumer, PerUse] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    expect(app.get(Consumer).value).toBe('fallback');
+    // Synchronous construction path.
+    expect(app.getContainer().resolve(PerUse).value).toBe('fallback');
+  });
+
+  it('still injects undefined when nothing registers the token', async () => {
+    const ABSENT = new InjectionToken<string>('OptionalAbsent');
+
+    @Injectable()
+    class Consumer {
+      constructor(@Optional() @Inject(ABSENT) readonly value: string | undefined) {}
+    }
+
+    @Module({ providers: [Consumer] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule, { diagnostics: 'throw' });
+    expect(app.get(Consumer).value).toBeUndefined();
+  });
+});
+
+// =============================================================================
 // Request-scoped controller
 // =============================================================================
 
@@ -5307,7 +5769,6 @@ describe('Request-scoped controller', () => {
   it('@Injectable({ scope: Scope.REQUEST }) on a controller creates one per request', async () => {
     const ctrlIds: number[] = [];
 
-    // @Injectable must come BEFORE @Controller so it's applied LAST (overriding SINGLETON scope)
     @Injectable({ scope: Scope.REQUEST })
     @Controller('/req-ctrl')
     class ReqScopeCtrl {
@@ -5332,6 +5793,60 @@ describe('Request-scoped controller', () => {
 
     expect(r1.id).not.toBe(r2.id);
     expect(ctrlIds.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('keeps the REQUEST scope when @Controller is applied after @Injectable', async () => {
+    @Controller('/req-ctrl-below')
+    @Injectable({ scope: Scope.REQUEST })
+    class ReqScopeCtrl {
+      readonly id = Math.random();
+
+      @Get() handle() {
+        return { id: this.id };
+      }
+    }
+
+    @Module({ controllers: [ReqScopeCtrl] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    const r1 = (await (await hono.request('/req-ctrl-below')).json()) as { id: number };
+    const r2 = (await (await hono.request('/req-ctrl-below')).json()) as { id: number };
+
+    expect(r1.id).not.toBe(r2.id);
+  });
+
+  it('@Controller({ path, scope: Scope.REQUEST }) creates one per request', async () => {
+    @Controller({ path: '/req-ctrl-option', scope: Scope.REQUEST })
+    class ReqScopeCtrl {
+      readonly id = Math.random();
+
+      @Get() handle() {
+        return { id: this.id };
+      }
+    }
+
+    @Module({ controllers: [ReqScopeCtrl] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const hono = app.getHonoApp();
+
+    const r1 = (await (await hono.request('/req-ctrl-option')).json()) as { id: number };
+    const r2 = (await (await hono.request('/req-ctrl-option')).json()) as { id: number };
+
+    expect(r1.id).not.toBe(r2.id);
+  });
+
+  it('rejects conflicting scopes declared on one controller', () => {
+    expect(() => {
+      @Controller({ path: '/req-ctrl-conflict', scope: Scope.REQUEST })
+      @Injectable({ scope: Scope.TRANSIENT })
+      class ConflictingCtrl {}
+      return ConflictingCtrl;
+    }).toThrow(/conflicting scopes/);
   });
 });
 
@@ -5822,7 +6337,8 @@ describe('useFactory async inline providers', () => {
 
     @Module({
       providers: [
-        defineProvider(DB_CONNECTION, { inject: [],
+        defineProvider(DB_CONNECTION, {
+          inject: [],
           useFactory: async () => {
             await new Promise((r) => setTimeout(r, 5));
             return { ping: () => 'pong' };
@@ -8169,7 +8685,8 @@ describe('useFactory with Scope.TRANSIENT creates a new instance on each resolve
 
     @Module({
       providers: [
-        defineProvider(COUNTER_TOKEN, { inject: [],
+        defineProvider(COUNTER_TOKEN, {
+          inject: [],
           useFactory: () => ({ id: ++callCount }),
           scope: Scope.TRANSIENT,
         }),

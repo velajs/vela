@@ -114,11 +114,11 @@ export class McpServeCommand extends Command {
       this.context.stderr.write(`${message}\n`);
     };
 
-    const velaConfig = await loadConfig(process.cwd(), this.config);
-    const rootModule: Type | undefined = velaConfig.rootModule;
+    const loaded = await loadConfig(process.cwd(), this.config);
+    const rootModule: Type | undefined = loaded.config.rootModule;
 
     return withApp(
-      velaConfig,
+      loaded,
       async (app) => {
         const identity = await readCliIdentity();
         const server = new McpServer(identity);

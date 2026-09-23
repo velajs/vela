@@ -1,37 +1,43 @@
-import { HttpMethod, ParamType, Scope } from '../constants';
+import { HttpMethod, ParamType } from '../constants';
 import type { RedirectStatusCode, StatusCode } from 'hono/utils/http-status';
+import { declareScope } from '../container/decorators';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import { normalizePath } from '../registry/paths';
 import type { Constructor, PipeType, Type } from '../registry/types';
 import type { ControllerOptions } from './types';
 import type { ExecutionContext } from '../pipeline/types';
+import { isValidationSchema, type ValidationSchema } from '../validation/parse-schema';
+import { isStandardSchema } from '../validation/standard-schema';
+import { ValidationPipe } from '../validation/validation.pipe';
 import { buildExecutionContext } from './execution-context';
 
 /**
  * Marks a class as a controller.
- * Accepts a path string or an options object with `path` and `version`.
+ * Accepts a path string or an options object with `path`, `version` and `scope`.
+ * Without a scope here or on `@Injectable`, the controller is a singleton.
  *
  * @example
  * ```ts
  * @Controller('/users')
  * @Controller({ path: '/users', version: 1 })
  * @Controller({ path: '/users', version: [1, 2] })
+ * @Controller({ path: '/users', scope: Scope.REQUEST })
  * ```
  */
 export function Controller(pathOrOptions?: string | ControllerOptions): ClassDecorator {
   return (target) => {
     const ctor = target as unknown as Constructor;
-    const path = typeof pathOrOptions === 'string' ? pathOrOptions : (pathOrOptions?.path ?? '');
-    const version = typeof pathOrOptions === 'object' ? pathOrOptions?.version : undefined;
+    const options = typeof pathOrOptions === 'object' ? pathOrOptions : undefined;
+    const path = typeof pathOrOptions === 'string' ? pathOrOptions : (options?.path ?? '');
 
     MetadataRegistry.setControllerPath(ctor, normalizePath(path));
 
-    if (version !== undefined) {
-      MetadataRegistry.setControllerOptions(ctor, { version });
+    if (options?.version !== undefined) {
+      MetadataRegistry.setControllerOptions(ctor, { version: options.version });
     }
 
     MetadataRegistry.markInjectable(ctor);
-    MetadataRegistry.setScope(ctor, Scope.SINGLETON);
+    if (options?.scope !== undefined) declareScope(ctor, options.scope);
   };
 }
 
@@ -113,25 +119,57 @@ export const Sse = createMethodDecorator(HttpMethod.GET);
 
 const CUSTOM_PARAM_TYPE = 'custom';
 
-function createBuiltinParamDecorator(type: ParamType) {
-  return (nameOrPipe?: string | PipeType, ...pipes: PipeType[]): ParameterDecorator => {
+/**
+ * A parameter decorator for a request value. A schema argument (a Standard Schema such
+ * as Zod, a `parse()` parser, or a `defineDto` descriptor) validates the value with
+ * `ValidationPipe`: invalid input is a 400, OpenAPI documents the schema, and pipes
+ * written after it receive the schema's parsed output.
+ *
+ * @example
+ * ```ts
+ * create(@Body(CreateUser) body: SchemaOutput<typeof CreateUser>) {}
+ * list(@Query('page', z.coerce.number().int().min(1)) page: number) {}
+ * show(@Param('id', z.uuid()) id: string) {}
+ * ```
+ */
+export interface SchemaParamDecorator {
+  (schema: ValidationSchema, ...pipes: PipeType[]): ParameterDecorator;
+  (name: string, schema: ValidationSchema, ...pipes: PipeType[]): ParameterDecorator;
+  (nameOrPipe?: string | PipeType, ...pipes: PipeType[]): ParameterDecorator;
+}
+
+// For @Req, @Res and @Ip, which inject request objects rather than request values.
+type PipedParamDecorator = (
+  nameOrPipe?: string | PipeType,
+  ...pipes: PipeType[]
+) => ParameterDecorator;
+
+// A Zod schema also has a transform() method, so Standard Schemas are recognized
+// before anything else; otherwise it would run as a pipe and replace the value with
+// a new schema. Pipes are classes or objects with transform(); schema parsers and
+// defineDto descriptors are neither.
+function isParamSchema(value: PipeType | ValidationSchema): value is ValidationSchema {
+  if (isStandardSchema(value)) return true;
+  if (typeof value !== 'object' || ('transform' in value && typeof value.transform === 'function'))
+    return false;
+  return isValidationSchema(value);
+}
+
+function createBuiltinParamDecorator(type: ParamType): SchemaParamDecorator {
+  return (
+    nameOrPipe?: string | PipeType | ValidationSchema,
+    ...pipes: Array<PipeType | ValidationSchema>
+  ): ParameterDecorator => {
+    const name = typeof nameOrPipe === 'string' ? nameOrPipe : undefined;
+    const entries =
+      typeof nameOrPipe === 'string' || nameOrPipe === undefined ? pipes : [nameOrPipe, ...pipes];
+    const allPipes = entries.map((entry) =>
+      isParamSchema(entry) ? new ValidationPipe(entry) : entry,
+    );
+
     return (target: object, propertyKey: string | symbol | undefined, parameterIndex: number) => {
       if (propertyKey === undefined) {
         throw new Error('Parameter decorators can only be used on method parameters');
-      }
-
-      let name: string | undefined;
-      let allPipes: PipeType[];
-
-      if (typeof nameOrPipe === 'string') {
-        name = nameOrPipe;
-        allPipes = pipes;
-      } else if (nameOrPipe !== undefined) {
-        name = undefined;
-        allPipes = [nameOrPipe, ...pipes];
-      } else {
-        name = undefined;
-        allPipes = pipes;
       }
 
       MetadataRegistry.addParameter(target.constructor as Constructor, propertyKey, {
@@ -148,7 +186,7 @@ export const Param = createBuiltinParamDecorator(ParamType.PARAM);
 export const Query = createBuiltinParamDecorator(ParamType.QUERY);
 export const Body = createBuiltinParamDecorator(ParamType.BODY);
 export const Headers = createBuiltinParamDecorator(ParamType.HEADERS);
-export const Req = createBuiltinParamDecorator(ParamType.REQUEST);
+export const Req: PipedParamDecorator = createBuiltinParamDecorator(ParamType.REQUEST);
 /**
  * Injects the Hono `Context` as the response handle.
  * In Hono, request and response state are unified in the `Context` object,
@@ -165,8 +203,8 @@ export const Req = createBuiltinParamDecorator(ParamType.REQUEST);
  * }
  * ```
  */
-export const Res = createBuiltinParamDecorator(ParamType.RESPONSE);
-export const Ip = createBuiltinParamDecorator(ParamType.IP);
+export const Res: PipedParamDecorator = createBuiltinParamDecorator(ParamType.RESPONSE);
+export const Ip: PipedParamDecorator = createBuiltinParamDecorator(ParamType.IP);
 export const Cookie = createBuiltinParamDecorator(ParamType.COOKIE);
 
 /**
@@ -381,9 +419,24 @@ export type ComposedDecorator = <T>(
   descriptor?: PropertyDescriptor | number,
 ) => void;
 
-export function applyDecorators(
-  ...decorators: Array<ClassDecorator | MethodDecorator | PropertyDecorator | ParameterDecorator>
-): ComposedDecorator {
+/**
+ * A decorator {@link applyDecorators} accepts: any class, method, property or
+ * parameter decorator, including typed method decorators whose descriptor is
+ * generic over the handler they accept (`@Cron`, `@Interval`,
+ * `@Process(definition)`).
+ */
+export type ComposableDecorator =
+  | ClassDecorator
+  | MethodDecorator
+  | PropertyDecorator
+  | ParameterDecorator
+  | ((
+      target: object,
+      propertyKey: string | symbol,
+      descriptor: TypedPropertyDescriptor<never>,
+    ) => unknown);
+
+export function applyDecorators(...decorators: ComposableDecorator[]): ComposedDecorator {
   return ((
     target: object,
     propertyKey?: string | symbol,

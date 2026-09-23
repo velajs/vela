@@ -7,14 +7,9 @@ import {
   type GraphqlResolverContext,
 } from '@velajs/graphql';
 import { yogaDriver } from '@velajs/graphql/yoga';
-import { Inject, Injectable, InjectionToken, Module, Scope } from '@velajs/vela';
+import { InjectEnv, Injectable, Module, Scope, type VelaEnv } from '@velajs/vela';
 import { createSchema } from 'graphql-yoga';
 import { z } from 'zod';
-
-export interface Env {
-  APP_LABEL: string;
-}
-const ENV = new InjectionToken<Env>('example.env');
 
 // Any DataLoader implementation can be returned here. This small cache illustrates ownership.
 const greetings = new GraphqlLoader(
@@ -23,9 +18,11 @@ const greetings = new GraphqlLoader(
     cache.clear();
   },
 );
+@Injectable({ scope: Scope.REQUEST })
 class GreetingResolver {
   readonly #label: string;
-  constructor(env: Env) {
+  // APP_LABEL is typed by worker-configuration.d.ts, which `pnpm types` generates.
+  constructor(@InjectEnv() env: VelaEnv) {
     this.#label = env.APP_LABEL;
   }
   async greet(args: { name: string }, context: GraphqlResolverContext): Promise<string> {
@@ -37,11 +34,7 @@ class GreetingResolver {
     return greeting;
   }
 }
-Injectable({ scope: Scope.REQUEST })(GreetingResolver);
-Inject(ENV)(GreetingResolver, undefined, 0);
-
-export class AppModule {}
-Module({
+@Module({
   providers: [GreetingResolver],
   imports: [
     GraphqlModule.forRoot({
@@ -59,6 +52,7 @@ Module({
         }),
     }),
   ],
-})(AppModule);
+})
+export class AppModule {}
 
-export default createCloudflareWorker<Env>(AppModule, { envToken: ENV });
+export default createCloudflareWorker(AppModule);

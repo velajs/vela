@@ -12,7 +12,7 @@ interface ExceptionFilter<T> { catch(exception: T, ctx: ExecutionContext): unkno
 interface NestMiddleware  { use(c: VelaContext, next: Next): Promise<Response | void>; }  // Hono Context
 ```
 
-`VelaHonoEnv`, `VelaContext`, and `VelaHono` preserve Hono types with unknown-valued context variables and object bindings. Resolve the request container with `getRequestContainer(context)` or the execution-context accessor; it is private runtime state, not a Hono variable. Inject native bindings through the declared environment token.
+`VelaHonoEnv`, `VelaContext`, and `VelaHono` preserve Hono types with unknown-valued context variables and object bindings. Resolve the request container with `getRequestContainer(context)` or the execution-context accessor; it is private runtime state, not a Hono variable. Inject native bindings through the framework `ENV` (`@InjectEnv()`).
 
 `ExecutionContext`: `getClass()`, `getHandler()`, `getModuleId()`, `getRequest(): Request`, `getContext(): VelaContext`, `getContainer(): Container | undefined`, `getType(): string` (including custom entrypoint kinds), `switchToHttp()`, `switchToWs()`. Transport-inapplicable accessors throw. `CallHandler.handle(): Promise<unknown>`. `ArgumentMetadata`: `{ type, metatype?: unknown, data? }`. WebSocket payloads and custom entrypoint payloads remain unknown until parsed; accessors do not accept result generics.
 
@@ -31,11 +31,13 @@ class OrdersController {
   @UseGuards(new ApiKeyGuard())
   @UseInterceptors(EnvelopeInterceptor)
   @UseFilters(ClientErrorFilter)
-  create(@Body(new ValidationPipe(CreateOrder)) body: ReturnType<typeof CreateOrder.parse>) {}
+  create(@Body(CreateOrder) body: ReturnType<typeof CreateOrder.parse>) {}
 }
 ```
 
 `@UseGuards`, `@UsePipes`, `@UseInterceptors`, `@UseFilters`, `@UseMiddleware` are all variadic. `@Catch(...ErrorTypes)` marks an `ExceptionFilter` class for specific error types (zero args = catch-all).
+
+On a `@Module` class they apply to the controllers that module declares (after each controller's class-level entries, before method-level ones), not to its providers or imported modules. They are resolved per application, so bootstrapping the same modules again never runs them twice.
 
 ## Global (app-wide) components
 
@@ -69,6 +71,8 @@ providers: [AuthGuard, ...provideGlobal('guard', AuthGuard)]
 
 `APP_GUARD`, `APP_PIPE`, `APP_INTERCEPTOR`, `APP_FILTER`, `APP_MIDDLEWARE` are `InjectionToken`s. Multiple providers for one token all execute.
 
+Global middleware runs in ascending `priority` (default 0, ties keep registration order). Declare it as `static priority = -10` on the middleware class: route build reads it from the `useClass`/`useExisting` target without constructing it. A request-scoped middleware needs the static field; without it, it sorts at 0 and is reported through the `diagnostics` policy.
+
 ## Execution order
 
 Per HTTP request:
@@ -96,6 +100,18 @@ class AppModule implements NestModule {
   }
 }
 ```
+
+Route targets resolve at route build:
+
+- `forRoutes(UsersController)` runs exactly when Hono dispatches the request to one of the controller's own handlers (its method, global prefix, URI version, a parent app's base path). It is the most precise target and the one to use for authentication. A controller that declares no routes throws.
+- A string or `{ path, method }` target gets the global prefix and also covers the paths beneath it: `forRoutes('/users')` under `globalPrefix: '/api'` matches `/api/users` and `/api/users/42`. Write it without the prefix; a target that starts with the prefix throws at route build.
+- `exclude()` targets get the global prefix and match exactly: `exclude('/users/me')` does not exclude `/users/me/keys`.
+- `{ path, method?, absolute: true }` matches the path as written, for routes outside the global prefix: `mountOpenApi()` documents, the `RpcModule` endpoint, Cloudflare WebSocket upgrades and raw Hono routes.
+- After route build, relative targets are checked against the registered routes, reading a `{regex}`-constrained route parameter as one segment: one that matches only a route outside the global prefix (e.g. `forRoutes('rpc')`) throws and names `{ path, absolute: true }`; a `forRoutes()` target that matches no route at all is reported through `diagnostics` (routes added to the Hono app after startup need `absolute: true` and the path they are served on; the report suggests the resolved path, prefix included, such as `{ path: '/api/users/:id', absolute: true }`).
+- Path targets use a small grammar that Vela matches segment by segment, in time linear in the path, without adding routes to the app. Segments are literals, matched exactly and case-sensitively against the decoded path, or `:name` with an identifier name, which matches one segment, decoded line terminators (`%0A`, `%E2%80%A8`) included. Hono's LinearRouter (`hono/quick`) serves `:name` on an empty segment, so in `forRoutes()` `:name` also matches an empty segment (fail closed); in `exclude()` it matches only a non-empty one. The last segment may be `*` or `{*name}` (the parent path and everything beneath it: `cats/*` matches `/cats`, `/cats/` and `/cats/1/toys`) or `*name` (one or more characters beneath the parent, never `/cats` itself). A trailing `(.*)` reads as `{*name}` in `forRoutes()`, as Nest 11 rewrites it (`forRoutes('cats/(.*)')` covers `/cats` too), and as `*name` in `exclude()` (fail closed both ways). A trailing `/` is significant in `exclude()`. `'*'`, `'/*'` and `'{*splat}'` match every request and never get the prefix, as does a lone `'(.*)'` in `forRoutes()`.
+- Everything else throws at route build with its cause: `{regex}` constraints (`:id{[0-9]+}`, `:action{login|register}`), optional `?` (`:id?`), a wildcard before the last segment (`files/*/raw`, `files/*path/download`), `*` or `:` inside a segment (`us*`, `abc:name`), a parameter name that is not an identifier (`:name.pdf`, `:from-to`), other parentheses or braces (`:id(\d+)`, `users{/:id}`) and empty segments (`a//b`). Use `:name`, list the paths, or target the controller.
+- Under a parent app (`parent.route(base, app)`), path targets match the path beneath the base Hono matched, with its `:param` values filled in. When that base does not spell the start of the path (a percent-encoded parameter value, or `/m` under a `/m/` base), or a base parameter's `{regex}` can match a `/` (`/:org{.+}`), the middleware runs and its `exclude()` path targets are ignored for that request. A controller route that a parent serves without the app's `'*'` middleware (Hono's TrieRouter under `/:org{[a-z]+/[a-z]+}`) answers 500: mount under bases whose parameters match one segment.
+- A `GET` target also matches `HEAD`, which Hono serves with the GET handler; a request whose method token is `ALL` matches only unscoped targets.
 
 For authorization use the shared guards in `@velajs/authz/vela`; raw request headers are not proof of a role or permission.
 
@@ -130,7 +146,7 @@ class ScopeGuard implements CanActivate {
 | `ParseArrayPipe` | `({ separator?, optional? })` | split + trim (default sep `,`) |
 | `DefaultValuePipe` | `(defaultValue)` | fill `undefined`/`null` |
 | `RequiredPipe` | `()` | throw on `undefined`/`null`/`''` |
-| `ZodValidationPipe` | `(schema)` | `schema.parse(value)` (raw errors) |
+| `ValidationPipe` | `(schema?)` | Standard Schema, parser, or `defineDto` descriptor; issues become 400 |
 
 ```ts
 params(

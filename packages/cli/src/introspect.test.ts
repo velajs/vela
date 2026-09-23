@@ -52,7 +52,12 @@ async function fixtureApp(): Promise<VelaApplication> {
   class SharedMod {}
 
   @Module({
-    imports: [SharedMod, LazyMod, QueueModule.forRoot({ queues: ['email'] })],
+    imports: [
+      SharedMod,
+      LazyMod,
+      QueueModule.forRoot(),
+      QueueModule.registerQueue({ name: 'email' }),
+    ],
     controllers: [UsersController],
     providers: [EmailProcessor],
   })

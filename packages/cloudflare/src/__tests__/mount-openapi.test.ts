@@ -1,6 +1,4 @@
-import { InjectionToken } from '@velajs/vela';
 const env = {};
-const envToken = new InjectionToken<object>('test environment');
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Controller, Get, Module, MetadataRegistry } from '@velajs/vela';
 import type { OpenApiDocument } from '@velajs/vela';
@@ -41,7 +39,7 @@ describe('CloudflareApplication.mountOpenApi', () => {
     class AppModule {}
 
     const document = buildMinimalDoc();
-    const app = await createCloudflareApp(AppModule, { env, envToken });
+    const app = await createCloudflareApp(AppModule, { env });
     app.mountOpenApi({ document, ui: 'scalar' });
     const hono = app.getHonoApp();
 
@@ -64,7 +62,7 @@ describe('CloudflareApplication.mountOpenApi', () => {
     class AppModule {}
 
     const document = buildMinimalDoc();
-    const app = await createCloudflareApp(AppModule, { env, envToken });
+    const app = await createCloudflareApp(AppModule, { env });
     app.mountOpenApi({ document, ui: 'scalar' });
     const hono = app.getHonoApp();
 
@@ -84,7 +82,7 @@ describe('CloudflareApplication.mountOpenApi', () => {
     @Module({})
     class AppModule {}
 
-    const app = await createCloudflareApp(AppModule, { env, envToken });
+    const app = await createCloudflareApp(AppModule, { env });
     const result = app.mountOpenApi({ document: buildMinimalDoc(), ui: 'scalar' });
     expect(result).toBe(app);
   });
@@ -94,7 +92,7 @@ describe('CloudflareApplication.mountOpenApi', () => {
     class AppModule {}
 
     const document = buildMinimalDoc();
-    const app = await createCloudflareApp(AppModule, { env, envToken });
+    const app = await createCloudflareApp(AppModule, { env });
     app.mountOpenApi({
       document,
       path: '/openapi.json',

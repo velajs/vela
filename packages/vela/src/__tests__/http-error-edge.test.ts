@@ -10,6 +10,10 @@ import {
   UseFilters,
   NotFoundException,
   BadRequestException,
+  BadGatewayException,
+  HttpException,
+  InternalServerErrorException,
+  NotAcceptableException,
   MetadataRegistry,
 } from '../index.js';
 import type { ExceptionFilter, ExecutionContext } from '../index.js';
@@ -306,5 +310,206 @@ describe('hono app.onError — hono/middleware errors cannot bypass report + red
     expect(await res.text()).toContain('slow down');
     // 4xx author-intended client errors are NOT server faults — never reported.
     expect(errorSpy).toHaveBeenCalledTimes(0);
+  });
+});
+
+// =============================================================================
+// String HttpException rendering is identical on every HTTP edge: 5xx (and any
+// status whose code resolves to `internal`) never echoes the caller's text,
+// and unmapped statuses derive their code from the status class.
+// =============================================================================
+
+describe('string HttpException — redaction and status-class codes on every HTTP edge', () => {
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    MetadataRegistry.clear();
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    errorSpy.mockRestore();
+  });
+
+  const cases: Array<{ name: string; make: () => Error; status: number; body: unknown }> = [
+    {
+      name: '500 InternalServerErrorException',
+      make: () => new InternalServerErrorException('db password=hunter2'),
+      status: 500,
+      body: { error: { code: 'internal', message: 'Internal Server Error' } },
+    },
+    {
+      name: '502 BadGatewayException',
+      make: () => new BadGatewayException('upstream host=10.0.0.5 refused'),
+      status: 502,
+      body: { error: { code: 'bad_gateway', message: 'Bad Gateway' } },
+    },
+    {
+      name: 'unmapped 5xx HttpException',
+      make: () => new HttpException('storage node 7 full', 507),
+      status: 507,
+      body: { error: { code: 'internal', message: 'Internal Server Error' } },
+    },
+    {
+      name: '406 NotAcceptableException',
+      make: () => new NotAcceptableException('only text/csv is available'),
+      status: 406,
+      body: { error: { code: 'not_acceptable', message: 'only text/csv is available' } },
+    },
+    {
+      name: '412 HttpException',
+      make: () => new HttpException('etag mismatch', 412),
+      status: 412,
+      body: { error: { code: 'precondition_failed', message: 'etag mismatch' } },
+    },
+    {
+      name: 'unmapped 4xx HttpException',
+      make: () => new HttpException('short and stout', 418),
+      status: 418,
+      body: { error: { code: 'bad_request', message: 'short and stout' } },
+    },
+  ];
+
+  for (const { name, make, status, body } of cases) {
+    it(`handler: ${name}`, async () => {
+      @Controller('/edge')
+      class EdgeController {
+        @Get()
+        handle() {
+          throw make();
+        }
+      }
+
+      @Module({ controllers: [EdgeController] })
+      class AppModule {}
+
+      const app = await VelaFactory.create(AppModule);
+      const res = await app.getHonoApp().request('/edge');
+
+      expect(res.status).toBe(status);
+      expect(await res.json()).toEqual(body);
+    });
+
+    it(`vela middleware: ${name}`, async () => {
+      @Controller('/edge')
+      class EdgeController {
+        @Get()
+        handle() {
+          return { ok: true };
+        }
+      }
+
+      @Module({ controllers: [EdgeController] })
+      class AppModule {}
+
+      const app = await VelaFactory.create(AppModule, {
+        middleware: [
+          async (_c: Context, _next: Next) => {
+            throw make();
+          },
+        ],
+      });
+      const res = await app.getHonoApp().request('/edge');
+
+      expect(res.status).toBe(status);
+      expect(await res.json()).toEqual(body);
+    });
+
+    it(`hono onError: ${name}`, async () => {
+      @Controller('/ok')
+      class OkController {
+        @Get()
+        handle() {
+          return { ok: true };
+        }
+      }
+
+      @Module({ controllers: [OkController] })
+      class AppModule {}
+
+      const app = await VelaFactory.create(AppModule);
+      // Registered on the built Hono app, so only `onError` sees the throw.
+      app.getHonoApp().use('*', async (_c: Context, _next: Next) => {
+        throw make();
+      });
+      const res = await app.getHonoApp().request('/boom');
+
+      expect(res.status).toBe(status);
+      expect(await res.json()).toEqual(body);
+    });
+  }
+
+  it('hono onError: object 5xx HttpException is redacted to the status title', async () => {
+    @Controller('/ok')
+    class OkController {
+      @Get()
+      handle() {
+        return { ok: true };
+      }
+    }
+
+    @Module({ controllers: [OkController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    app.getHonoApp().use('*', async (_c: Context, _next: Next) => {
+      throw new HttpException({ reason: 'db password=hunter2' }, 503);
+    });
+    const res = await app.getHonoApp().request('/boom');
+
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body).toEqual({
+      error: { code: 'service_unavailable', message: 'Service Unavailable' },
+    });
+    expect(JSON.stringify(body)).not.toContain('hunter2');
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('hono onError: object 4xx HttpException ships verbatim', async () => {
+    @Controller('/ok')
+    class OkController {
+      @Get()
+      handle() {
+        return { ok: true };
+      }
+    }
+
+    @Module({ controllers: [OkController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    app.getHonoApp().use('*', async (_c: Context, _next: Next) => {
+      throw new BadRequestException({ custom: 'shape' });
+    });
+    const res = await app.getHonoApp().request('/boom');
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ custom: 'shape' });
+  });
+
+  it('vela middleware: object HttpException ships verbatim', async () => {
+    @Controller('/edge')
+    class EdgeController {
+      @Get()
+      handle() {
+        return { ok: true };
+      }
+    }
+
+    @Module({ controllers: [EdgeController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule, {
+      middleware: [
+        async (_c: Context, _next: Next) => {
+          throw new BadRequestException({ custom: 'shape' });
+        },
+      ],
+    });
+    const res = await app.getHonoApp().request('/edge');
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ custom: 'shape' });
   });
 });

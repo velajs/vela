@@ -9,9 +9,25 @@ compatibility_date = "2026-07-01"
 name = "TEST_ROOM"
 class_name = "TestRoom"
 
+[[durable_objects.bindings]]
+name = "COUNTING_ROOM"
+class_name = "CountingRoom"
+
+[[durable_objects.bindings]]
+name = "CRON_ROOM"
+class_name = "CronRoom"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["TestRoom"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["CountingRoom"]
+
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["CronRoom"]
 
 [[kv_namespaces]]
 binding = "CACHE"
@@ -29,3 +45,8 @@ bucket_name = "test-files"
 [[queues.producers]]
 binding = "QUEUE_BRIDGE"
 queue = "vela-queue-bridge-test"
+
+# Plain variables the runtime seeds into ENV (see workers/env-runtime.test.ts).
+[vars]
+ENV_PROBE = "workerd-env"
+URL_SIGNING_SECRET = "workerd-signing-secret"

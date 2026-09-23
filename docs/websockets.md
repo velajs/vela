@@ -256,35 +256,33 @@ import { ChatGateway } from './chat.gateway.js';
 export class AppModule {}
 ```
 
-```ts
-// env.ts — use Wrangler's generated binding types in your application.
-import { InjectionToken } from '@velajs/vela';
-import type { ChatRoom } from './index.js';
-
-export interface Env {
-  CHAT_ROOM: DurableObjectNamespace<ChatRoom>;
-}
-export const ENV = new InjectionToken<Env>('worker environment');
-```
+Import `CloudflareWebSocketModule` rather than the core `WebSocketModule`: its
+`WS_SERVER` is bound to each Durable Object's sockets. The Durable Object refuses to
+start when the module it bootstraps registers the core `WebSocketModule` server,
+whose broadcasts could never reach hibernatable sockets.
 
 ```ts
 // Worker entry (src/index.ts)
 import { createCloudflareWorker } from '@velajs/cloudflare';
 import { VelaWebSocketDurableObject } from '@velajs/cloudflare/durable-objects';
 import { AppModule } from './app.module.js';
-import { ENV } from './env.js';
 
 // The DO class name must match wrangler `class_name`.
-export class ChatRoom extends VelaWebSocketDurableObject(AppModule, { envToken: ENV }) {}
+export class ChatRoom extends VelaWebSocketDurableObject(AppModule) {}
 
-export default createCloudflareWorker(AppModule, { envToken: ENV });
+export default createCloudflareWorker(AppModule);
 ```
+
+The Worker and each Durable Object seed their native environment as the
+framework `ENV`; the gateway resolves its `binding` by name from it. Run
+`wrangler types --include-runtime=false` so `worker-configuration.d.ts` types
+`CHAT_ROOM` (and every other binding) on `VelaEnv` for code that injects `ENV`.
 
 ```toml
 # wrangler.toml
 main = "src/index.ts"
 compatibility_date = "2024-11-06"
-compatibility_flags = ["nodejs_compat"]   # REQUIRED — vela uses hono/context-storage (node:async_hooks)
+compatibility_flags = ["nodejs_als"]   # node:async_hooks for the vela root entry; see the caveats below
 
 [[durable_objects.bindings]]
 name = "CHAT_ROOM"
@@ -372,7 +370,7 @@ Delivery guarantees (honest): at-most-once, no ordering across publishers, no re
 
 ## Caveats & non-goals (v1)
 
-- **`nodejs_compat` is required on Cloudflare** — vela statically imports `hono/context-storage` (`node:async_hooks`).
+- **Cloudflare needs `node:async_hooks`** — the `@velajs/vela` root entry statically imports `hono/context-storage`, even when ambient request access is off. The `nodejs_als` flag provides it. `nodejs_compat` includes it too and is on by default from compatibility date 2026-08-04, so only earlier dates need a flag. Neither `@velajs/cloudflare` nor the Durable Object WebSocket transport uses other Node.js APIs; `nodejs_compat` matters only when your code or another dependency imports further `node:*` modules.
 - Cloudflare per-connection state (`client.data`, room membership) lives in the hibernation **attachment** — max **16 KiB**; store larger state in Durable Object storage keyed by `client.id`. Room membership survives hibernation; never keep it in DO instance fields.
 - Inbound and outbound frames default to a **64 KiB** limit. The per-gateway value follows each connection through local or Redis fan-out and Cloudflare hibernation. Raise `maxFrameBytes` only after considering isolate memory, synchronization traffic, and validation cost.
 - Protocol is **JSON text frames only** — binary frames and backpressure signalling are out of scope.

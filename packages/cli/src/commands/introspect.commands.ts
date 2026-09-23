@@ -20,9 +20,9 @@ abstract class AppCommand extends Command {
   protected abstract run(app: VelaApplication): Promise<number>;
 
   async execute(): Promise<number> {
-    const velaConfig = await loadConfig(process.cwd(), this.config);
+    const loaded = await loadConfig(process.cwd(), this.config);
     return withApp(
-      velaConfig,
+      loaded,
       (app) => this.run(app),
       (message) => {
         this.context.stderr.write(`${message}\n`);
@@ -150,8 +150,10 @@ export class OpenApiDumpCommand extends Command {
   });
 
   async execute(): Promise<number> {
-    const velaConfig = await loadConfig(process.cwd(), this.config);
-    if (!velaConfig.rootModule) {
+    const loaded = await loadConfig(process.cwd(), this.config);
+    const rootModule = loaded.config.rootModule;
+    if (!rootModule) {
+      await loaded.dispose();
       this.context.stderr.write(
         'openapi dump needs the root module. Add it to your vela.config:\n\n' +
           '  export default defineVelaConfig({\n' +
@@ -162,9 +164,8 @@ export class OpenApiDumpCommand extends Command {
       return 1;
     }
 
-    const rootModule = velaConfig.rootModule;
     return withApp(
-      velaConfig,
+      loaded,
       async (app) => {
         const info: Record<string, string> = {};
         if (this.title) info.title = this.title;

@@ -1,16 +1,22 @@
 // @ts-expect-error virtual module supplied by @cloudflare/vitest-plugin
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
-import { defineProvider, Inject, Injectable, InjectionToken, Module } from '@velajs/vela';
+import {
+  Cron,
+  defineProvider,
+  ENV,
+  Inject,
+  Injectable,
+  InjectEnv,
+  InjectionToken,
+  Module,
+  type VelaEnv,
+} from '@velajs/vela';
 import { LiveInvalidation, LiveModule } from '@velajs/vela/live';
 import { createCloudflareApp, createCloudflareWorker } from '../../cloudflare-factory';
 import { QueueConsumer } from '../../decorators/queue-consumer';
-import { Scheduled } from '../../decorators/scheduled';
 import { CloudflareWebSocketModule } from '../../websocket/cloudflare-websocket.module';
 import { durableObjectLive } from '../../websocket/do-live';
-import type { TestEnv } from './entry';
-
-const ENV = new InjectionToken<TestEnv>('cold Worker environment');
 
 describe('cold native bindings under workerd', () => {
   it.each(['queue', 'scheduled'] as const)(
@@ -19,9 +25,9 @@ describe('cold native bindings under workerd', () => {
       const bookmarks: string[] = [];
       @Injectable()
       class Jobs {
-        constructor(@Inject(ENV) private readonly bindings: TestEnv) {}
+        constructor(@InjectEnv() private readonly bindings: VelaEnv) {}
         @QueueConsumer('jobs')
-        @Scheduled('* * * * *')
+        @Cron('* * * * *', { dialect: 'cloudflare' })
         async run(): Promise<void> {
           const namespace = this.bindings.TEST_ROOM;
           const room = namespace.get(namespace.idFromName(`cold-${kind}`));
@@ -30,7 +36,7 @@ describe('cold native bindings under workerd', () => {
       }
       @Module({ providers: [Jobs] })
       class AppModule {}
-      const worker = createCloudflareWorker(AppModule, { envToken: ENV });
+      const worker = createCloudflareWorker(AppModule);
       const context = { waitUntil: (): void => {} };
       if (kind === 'queue') await worker.queue({ queue: 'jobs', messages: [] }, env, context);
       else await worker.scheduled({ cron: '* * * * *' }, env, context);
@@ -46,7 +52,7 @@ describe('cold native bindings under workerd', () => {
       class Jobs {
         constructor(private readonly live: LiveInvalidation) {}
         @QueueConsumer('live-jobs')
-        @Scheduled('* * * * *')
+        @Cron('* * * * *', { dialect: 'cloudflare' })
         async run(): Promise<void> {
           await this.live.invalidate({ tags: ['todos'] });
           dispatched = true;
@@ -57,7 +63,7 @@ describe('cold native bindings under workerd', () => {
           CloudflareWebSocketModule.forRoot(),
           LiveModule.forRootAsync({
             inject: [ENV],
-            useFactory: (bindings: TestEnv) => ({
+            useFactory: (bindings: VelaEnv) => ({
               driver: () =>
                 durableObjectLive({
                   namespace: bindings.TEST_ROOM,
@@ -69,7 +75,7 @@ describe('cold native bindings under workerd', () => {
         providers: [Jobs],
       })
       class AppModule {}
-      const worker = createCloudflareWorker(AppModule, { envToken: ENV });
+      const worker = createCloudflareWorker(AppModule);
       const context = { waitUntil: (): void => {} };
       if (kind === 'queue') await worker.queue({ queue: 'live-jobs', messages: [] }, env, context);
       else await worker.scheduled({ cron: '* * * * *' }, env, context);
@@ -115,7 +121,7 @@ describe('cold native bindings under workerd', () => {
       ],
     })
     class AppModule {}
-    const app = await createCloudflareApp(AppModule, { env, envToken: ENV });
+    const app = await createCloudflareApp(AppModule, { env });
     expect(lifecycleValue).toBe('all native bindings available');
     expect(app.get(CHECK)).toBe('all native bindings available');
     await app.close();

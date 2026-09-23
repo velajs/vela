@@ -24,10 +24,7 @@ pnpm add @velajs/storage
 ```ts
 import { StorageModule, StorageService } from '@velajs/storage';
 import { s3Driver } from '@velajs/storage/drivers/s3';
-import { InjectionToken, Module } from '@velajs/vela';
-
-interface Env { AWS_KEY: string; AWS_SECRET: string }
-const ENV = new InjectionToken<Env>('app.env');
+import { ENV, Module } from '@velajs/vela';
 
 @Module({
   imports: [
@@ -46,9 +43,11 @@ const ENV = new InjectionToken<Env>('app.env');
 class AppModule {}
 ```
 
-Supply `ENV` through `createCloudflareWorker(AppModule, { envToken: ENV })` from
-`@velajs/cloudflare`. Async registrations require the actual `inject` tuple;
-use `inject: []` for a factory with no dependencies.
+`ENV` is the application's runtime environment. On Workers,
+`createCloudflareWorker(AppModule)` from `@velajs/cloudflare` seeds it, and
+`wrangler types` types `AWS_KEY` and `AWS_SECRET` from `.dev.vars`; elsewhere,
+pass `VelaFactory.create(AppModule, { env })`. Async registrations require the
+actual `inject` tuple; use `inject: []` for a factory with no dependencies.
 
 ## Secure HTTP multipart uploads
 
@@ -67,6 +66,8 @@ StorageModule.forRoot({
 ```
 
 The browser client sends the exact file size when creating an upload and echoes the returned grant for part signing, completion, and abort. Multipart data is completed into a reserved quarantine key, verified there, and only then promoted to the requested key. A mismatched, oversized, or unreadable result is never exposed at the requested key. HTTP downloads default to `attachment`; both `/download` redirects and `/sign-download` URLs bind an attachment `Content-Disposition`, proxy responses emit `X-Content-Type-Options: nosniff`, and HTML/SVG are never served inline.
+
+The HTTP control plane's POST endpoints accept only `application/json` or `+json` bodies, because browsers send `text/plain` and form-encoded POSTs cross-site without a CORS preflight. Any other media type is refused with 415 before the authorizer runs, and a malformed or non-object body is a 400 `invalid_request`. The `@velajs/storage/client` browser client already sends JSON.
 
 ## Drivers
 

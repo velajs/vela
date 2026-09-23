@@ -85,6 +85,7 @@ describe('async endpoint boundaries', () => {
       const response = await app.fetch(
         new Request('https://test/amounts', {
           method: 'POST',
+          headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ amount: '42' }),
         }),
       );
@@ -102,6 +103,7 @@ describe('async endpoint boundaries', () => {
       const invalid = await app.fetch(
         new Request('https://test/amounts', {
           method: 'POST',
+          headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ amount: false }),
         }),
       );
@@ -186,7 +188,11 @@ it('executes async Zod endpoint transforms once and preserves directional conver
   const app = await VelaFactory.create(App);
   try {
     const response = await app.fetch(
-      new Request('https://test/zod-async', { method: 'POST', body: '{"amount":"4"}' }),
+      new Request('https://test/zod-async', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{"amount":"4"}',
+      }),
     );
     expect(await response.json()).toBe('4');
     expect(inputTransform).toHaveBeenCalledTimes(1);
@@ -211,7 +217,11 @@ it('prefers the async ValidationPipe entry for decorated HTTP body parameters', 
   const app = await VelaFactory.create(App);
   try {
     const response = await app.fetch(
-      new Request('https://test/pipe-async', { method: 'POST', body: '{"amount":"4"}' }),
+      new Request('https://test/pipe-async', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{"amount":"4"}',
+      }),
     );
     expect(await response.json()).toBe(4);
     expect(transform).toHaveBeenCalledTimes(1);

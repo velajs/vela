@@ -7,6 +7,7 @@ import type {
   DefineConfigurableModuleSpec,
 } from './configurable-module.types';
 import { defineModule, type DefineModuleSpec } from './define-module';
+import { attachModuleIdentity } from './module-identity';
 import { stableHash } from './stable-hash';
 
 /**
@@ -113,7 +114,7 @@ export function defineConfigurableModule<Args>(
       if (spec.imports) definition.imports = spec.imports(args);
       if (spec.exports) definition.exports = spec.exports;
       if (spec.global) definition.global = true;
-      return definition;
+      return attachModuleIdentity(definition, args);
     },
   };
 }

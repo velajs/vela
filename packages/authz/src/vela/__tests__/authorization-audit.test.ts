@@ -124,6 +124,37 @@ describe('mounted HTTP authorization audit', () => {
     }
   });
 
+  it('verifies guards declared on the owning module', async () => {
+    class Routes {
+      read() {
+        return 'private';
+      }
+    }
+    route(Routes, '/private');
+    Roles(['reader'])(Routes);
+    class App {}
+    Module({
+      controllers: [Routes],
+      providers: [defineProvider(RolesGuard, { scope: Scope.REQUEST, useClass: RolesGuard })],
+    })(App);
+    UseGuards(RolesGuard)(App);
+    const app = await VelaFactory.create(App, { adapters: [authorizationAudit()] });
+    try {
+      const allowed = new Request('https://test.invalid/private');
+      setTrustedRequestIdentity(allowed, {
+        principal: { issuer: 'test', subject: 'reader', principalType: 'user' },
+        roles: ['reader'],
+      });
+      const responses = await Promise.all([
+        app.getHonoApp().request(allowed),
+        app.getHonoApp().request('https://test.invalid/private'),
+      ]);
+      expect(responses.map((response) => response.status)).toEqual([200, 403]);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('does not approve a subclass overriding the built-in policy check', async () => {
     class Routes {
       read() {

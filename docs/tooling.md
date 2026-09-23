@@ -9,12 +9,82 @@ apply shared lint and formatting configuration across packages and applications.
 | Linting | Oxlint | Rust |
 | Formatting | Oxfmt | Rust |
 | Library bundling | tsdown | TypeScript orchestration over Rust Rolldown/Oxc |
-| Decorator metadata | SWC | Rust |
-| Tests | Vitest with SWC or the Workers plugin | JavaScript runner with native transforms or Workerd |
+| Worker builds | Vite 8 with `@cloudflare/vite-plugin` | Rust Rolldown/Oxc |
+| Decorator metadata | Oxc (Vite, tsdown); SWC in package test suites | Rust |
+| Tests | Vitest with Oxc, SWC or the Workers plugin | JavaScript runner with native transforms or Workerd |
 
-Versions are pinned in the root `pnpm-workspace.yaml` catalog. SWC emits the
-legacy decorator metadata used by constructor injection. TypeScript checks
-source and public declarations separately from bundling.
+Versions are pinned in the root `pnpm-workspace.yaml` catalog. Oxc emits the
+legacy decorator metadata used by constructor injection in Worker builds and the
+published package bundles; several package test suites still compile with SWC
+through `unplugin-swc`. TypeScript checks source and public declarations
+separately from bundling.
+
+## Build pipeline
+
+Applications build with Vite 8 and `@cloudflare/vite-plugin`: `vite dev` runs the
+Worker in the local Workers runtime, `vite build` writes the deployable Worker,
+and Vitest runs Workers tests with `@cloudflare/vitest-plugin`. Vite compiles
+TypeScript with its built-in Oxc transformer, with no separate SWC step. The
+`vela new` starter is the reference setup:
+
+```ts
+// oxc.config.ts: one setting for the build and the tests.
+export const oxc = {
+  decorator: { legacy: true, emitDecoratorMetadata: true },
+} satisfies UserConfig['oxc'];
+
+// vite.config.ts
+export default defineConfig({ oxc, plugins: [cloudflare()] });
+
+// vitest.config.ts
+export default defineConfig({
+  oxc,
+  plugins: [cloudflareTest({ wrangler: { configPath: './wrangler.jsonc' } })],
+});
+```
+
+Oxc emits `design:paramtypes` like SWC: an imported class becomes
+`typeof X === "undefined" ? Object : X`, and an interface or a type-only import
+becomes `Object`. The container rejects such an `Object` parameter without
+`@Inject(token)` at registration with `MissingInjectionMetadataError`.
+
+Keep these rules when you configure a project yourself:
+
+- **Pass the Oxc decorator options explicitly** in both the Vite and the Vitest
+  config. Vite can infer them from `experimentalDecorators` and
+  `emitDecoratorMetadata` in `tsconfig.json`, but only for files that tsconfig
+  includes; any other file (a test, a script, a file outside `include`) is then
+  compiled as a TC39 decorator and fails with a syntax error.
+- **Keep `cloudflare()` out of the Vitest config.** `cloudflareTest()` runs the
+  tests in workerd; the Vite plugin belongs to `vite.config.ts` only.
+- **Read a response body before `waitOnExecutionContext(ctx)`** in Workers
+  tests: a request finishes only once its body is consumed.
+- **Enable `verbatimModuleSyntax` and `isolatedModules`** in the application
+  tsconfig. Oxc compiles one file at a time, so it keeps a plain
+  `import { Options }` of an interface used in a decorated signature, and the
+  module then fails to link; with these flags TypeScript reports that import
+  (TS1484). Import the classes you inject as values: `import type` erases their
+  metadata, which the container rejects at registration.
+- **Keep class names if you minify.** Vite does not minify the Worker by default;
+  with `build.minify` on, set `build.rolldownOptions.output.keepNames: true`.
+- **`.dev.vars` is copied into the build output** for `vite preview`; do not
+  publish `dist/` beyond `wrangler deploy`.
+- **Deploy the Vite output.** `wrangler deploy` without `--config` follows the
+  redirect `vite build` writes; `--config wrangler.jsonc` makes Wrangler bundle
+  `src/` with esbuild, which emits no decorator metadata. See
+  [deployment](deployment.md#build-with-vite).
+
+`vela.config.ts` is loaded by `@velajs/cli` through a Vite module runner that
+stays open for the whole command, with the same Oxc options, when the project
+installs Vite 8 (an optional peer of the CLI), so the config can import decorated
+`src/` files directly. Without Vite, the CLI
+imports the config with Node, which does not transform decorators.
+
+If Oxc cannot build a project, use SWC inside Vite with
+[`unplugin-swc`](https://github.com/unplugin/unplugin-swc) as a fallback: set
+`oxc: false` and add
+`swc.vite({ tsconfigFile: false, swcrc: false, jsc: { parser: { syntax: 'typescript', decorators: true }, transform: { legacyDecorator: true, decoratorMetadata: true }, keepClassNames: true } })`
+before `cloudflare()` (or `cloudflareTest()` in the Vitest config).
 
 ## Commands
 

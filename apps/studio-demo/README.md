@@ -2,7 +2,8 @@
 
 A runnable example that wires the **whole Vela Studio product** together on the
 Node adapter (no Cloudflare), plus a reproducible end-to-end walkthrough that
-drives every admin operation to prove the pieces integrate.
+drives every admin operation to prove the pieces integrate. It is a **Node host**:
+tsdown compiles it and Node runs it; it never runs in workerd.
 
 This package is **private** (not published). It is the conformance gate for the
 Studio monorepo.
@@ -33,7 +34,7 @@ explicitly import the configured Studio and model-source modules.
 
 ```bash
 pnpm --filter @velajs/studio-demo build
-VELA_STUDIO_TOKEN=my-secret PORT=8787 node examples/demo/dist/main.js
+VELA_STUDIO_TOKEN=my-secret PORT=8787 node apps/studio-demo/dist/main.js
 ```
 
 Then open Studio against it (the admin surface is at `<url>/_vela/admin`):
@@ -42,7 +43,12 @@ Then open Studio against it (the admin surface is at `<url>/_vela/admin`):
 vela studio --url http://localhost:8787
 ```
 
-`vela.config.ts` exports `createApp()` for the CLI's config-boot path as well.
+`vela.config.ts` is the CLI's config-boot entry: `pnpm exec vela route list` or
+`pnpm exec vela doctor --app` in this directory loads it, and the decorated
+sources it imports, through Vite and boots the demo in-process.
+Both Node entries pass `process.env` as the application's `ENV`, and Studio
+reads `VELA_STUDIO_TOKEN` from it; without one, the demo falls back to its
+non-production `DEV_TOKEN`.
 
 ## Run the walkthrough (the conformance gate)
 
@@ -61,7 +67,7 @@ does not substitute for that Worker integration test.
 pnpm --filter @velajs/studio-demo test
 
 # As a human-readable pass table (after build):
-node examples/demo/scripts/walkthrough.mjs
+node apps/studio-demo/scripts/walkthrough.mjs
 ```
 
 Both share one runner (`src/walkthrough.ts`).

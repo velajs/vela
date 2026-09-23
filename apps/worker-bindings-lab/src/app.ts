@@ -3,31 +3,38 @@ import {
   Controller,
   Cron,
   Get,
+  InjectEnv,
   Injectable,
-  Inject,
-  InjectionToken,
   MetadataRegistry,
   Module,
   Param,
   Post,
-} from "@velajs/vela";
+  type CronInvocation,
+  type VelaEnv,
+} from '@velajs/vela';
+import { QueueConsumer, createCloudflareApp, createCloudflareWorker } from '@velajs/cloudflare';
+import { cloudflareQueues } from '@velajs/cloudflare/queues';
 import {
-  Env,
-  QueueConsumer,
-  Scheduled,
-  createCloudflareApp,
-  createCloudflareWorker,
-} from "@velajs/cloudflare";
-import type { WorkerBindingsLabEnv } from "./mock-env.js";
+  InjectQueue,
+  Process,
+  Processor,
+  QueueModule,
+  defineQueueJob,
+  type QueueClient,
+  type QueueJob,
+  type QueueJobOutput,
+} from '@velajs/vela/queue';
+import { z } from 'zod';
 
-export const WORKER_ENV = new InjectionToken<WorkerBindingsLabEnv>("worker lab bindings");
+/** A typed job: producers send its schema input, the processor receives its output. */
+const syncReport = defineQueueJob('sync-report', z.object({ id: z.number().int() }));
 
 function defineWorkerBindingsLabModule() {
   MetadataRegistry.clear();
 
   @Injectable()
   class WorkerBindingFacade {
-    constructor(@Inject(WORKER_ENV) private readonly env: WorkerBindingsLabEnv) {}
+    constructor(@InjectEnv() private readonly env: VelaEnv) {}
 
     async writeKV(key: string, value: string) {
       await this.env.CACHE.put(key, value);
@@ -39,7 +46,7 @@ function defineWorkerBindingsLabModule() {
     }
 
     async findUser(id: string) {
-      const user = await this.env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(id).first();
+      const user = await this.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(id).first();
       return { user };
     }
 
@@ -67,14 +74,14 @@ function defineWorkerBindingsLabModule() {
 
     async runAI(input: unknown) {
       if (
-        typeof input !== "object" ||
+        typeof input !== 'object' ||
         input === null ||
-        !("prompt" in input) ||
-        typeof input.prompt !== "string"
+        !('prompt' in input) ||
+        typeof input.prompt !== 'string'
       ) {
-        throw new TypeError("AI input requires a prompt string");
+        throw new TypeError('AI input requires a prompt string');
       }
-      return this.env.AI.run("@cf/meta/llama-3.1-8b-instruct", { prompt: input.prompt });
+      return this.env.AI.run('@cf/meta/llama-3.1-8b-instruct', { prompt: input.prompt });
     }
 
     async search() {
@@ -92,64 +99,75 @@ function defineWorkerBindingsLabModule() {
     }
   }
 
-  @Controller("/lab")
+  @Controller('/lab')
   class WorkerBindingsController {
-    constructor(private readonly bindings: WorkerBindingFacade) {}
+    constructor(
+      private readonly bindings: WorkerBindingFacade,
+      @InjectEnv() private readonly env: VelaEnv,
+      @InjectQueue('reports') private readonly reports: QueueClient,
+    ) {}
 
-    @Get("/env")
-    envSummary(@Env() env: Record<string, unknown>, @Env("CACHE") cache: unknown) {
+    @Get('/env')
+    envSummary() {
       return {
-        hasCache: cache === env.CACHE,
-        keys: Object.keys(env).sort(),
+        hasCache: this.env.CACHE !== undefined,
+        keys: Object.keys(this.env).sort(),
       };
     }
 
-    @Post("/kv/:key")
-    writeKV(@Param("key") key: string, @Body("value") value: string) {
+    @Post('/kv/:key')
+    writeKV(@Param('key') key: string, @Body('value') value: string) {
       return this.bindings.writeKV(key, value);
     }
 
-    @Get("/kv/:key")
-    readKV(@Param("key") key: string) {
+    @Get('/kv/:key')
+    readKV(@Param('key') key: string) {
       return this.bindings.readKV(key);
     }
 
-    @Get("/d1/users/:id")
-    findUser(@Param("id") id: string) {
+    @Get('/d1/users/:id')
+    findUser(@Param('id') id: string) {
       return this.bindings.findUser(id);
     }
 
-    @Post("/r2/:key")
-    putAsset(@Param("key") key: string, @Body("value") value: string) {
+    @Post('/r2/:key')
+    putAsset(@Param('key') key: string, @Body('value') value: string) {
       return this.bindings.putAsset(key, value);
     }
 
-    @Get("/r2/:key")
-    getAsset(@Param("key") key: string) {
+    @Get('/r2/:key')
+    getAsset(@Param('key') key: string) {
       return this.bindings.getAsset(key);
     }
 
-    @Post("/queue")
+    @Post('/queue')
     enqueue(@Body() body: unknown) {
       return this.bindings.enqueue(body);
     }
 
-    @Get("/durable-object/:name")
-    durableObjectStatus(@Param("name") name: string) {
+    // Portable jobs: QueueModule sends through the REPORT_QUEUE producer binding.
+    @Post('/reports')
+    async report(@Body('id') id: number) {
+      await this.reports.add(syncReport, { id });
+      return { queued: true };
+    }
+
+    @Get('/durable-object/:name')
+    durableObjectStatus(@Param('name') name: string) {
       return this.bindings.durableObjectStatus(name);
     }
 
-    @Post("/ai")
+    @Post('/ai')
     runAI(@Body() body: unknown) {
       return this.bindings.runAI(body);
     }
 
-    @Get("/vectorize")
+    @Get('/vectorize')
     search() {
       return this.bindings.search();
     }
 
-    @Get("/hyperdrive")
+    @Get('/hyperdrive')
     hyperdrive() {
       return this.bindings.hyperdriveInfo();
     }
@@ -157,24 +175,44 @@ function defineWorkerBindingsLabModule() {
 
   @Injectable()
   class WorkerEvents {
-    @Scheduled("*/15 * * * *")
-    scheduled(event: { cron: string }, env: WorkerBindingsLabEnv) {
-      env.EVENT_LOG.push(`scheduled:${event.cron}`);
+    constructor(@InjectEnv() private readonly env: VelaEnv) {}
+
+    // Each expression matches a Wrangler `triggers.crons` entry exactly.
+    @Cron('*/15 * * * *', { dialect: 'cloudflare' })
+    quarterHourly(tick: CronInvocation) {
+      this.env.EVENT_LOG.push(`quarter-hourly:${tick.scheduledTime}`);
     }
 
-    @Cron("0 * * * *")
-    velaCron(event: { cron: string }, env: WorkerBindingsLabEnv) {
-      env.EVENT_LOG.push(`cron:${event.cron}`);
+    @Cron('0 * * * *', { dialect: 'cloudflare' })
+    hourly(tick: CronInvocation) {
+      this.env.EVENT_LOG.push(`hourly:${tick.scheduledTime}`);
     }
 
-    @QueueConsumer("JOB_QUEUE")
-    queue(batch: { queue: string; messages: Array<{ body: unknown }> }, env: WorkerBindingsLabEnv) {
-      env.EVENT_LOG.push(`queue:${batch.messages.length}`);
+    @QueueConsumer('JOB_QUEUE')
+    queue(batch: { queue: string; messages: Array<{ body: unknown }> }) {
+      this.env.EVENT_LOG.push(`queue:${batch.messages.length}`);
+    }
+  }
+
+  // Delivered by the Worker's queue() handler: batches no @QueueConsumer claims
+  // are routed to processors by each job's logical queue.
+  @Processor('reports')
+  @Injectable()
+  class ReportProcessor {
+    constructor(@InjectEnv() private readonly env: VelaEnv) {}
+
+    @Process(syncReport)
+    sync(job: QueueJob<QueueJobOutput<typeof syncReport>>) {
+      this.env.EVENT_LOG.push(`report:${job.data.id}`);
     }
   }
 
   @Module({
-    providers: [WorkerBindingFacade, WorkerEvents],
+    imports: [
+      QueueModule.forRoot({ driver: cloudflareQueues() }),
+      QueueModule.registerQueue({ name: 'reports', binding: 'REPORT_QUEUE' }),
+    ],
+    providers: [WorkerBindingFacade, WorkerEvents, ReportProcessor],
     controllers: [WorkerBindingsController],
   })
   class WorkerBindingsLabModule {}
@@ -182,10 +220,10 @@ function defineWorkerBindingsLabModule() {
   return WorkerBindingsLabModule;
 }
 
-export async function createWorkerBindingsLabApp(env: WorkerBindingsLabEnv) {
-  return createCloudflareApp(defineWorkerBindingsLabModule(), { env, envToken: WORKER_ENV });
+export async function createWorkerBindingsLabApp(env: VelaEnv) {
+  return createCloudflareApp(defineWorkerBindingsLabModule(), { env });
 }
 
 export function createWorkerBindingsLabWorker() {
-  return createCloudflareWorker(defineWorkerBindingsLabModule(), { envToken: WORKER_ENV });
+  return createCloudflareWorker(defineWorkerBindingsLabModule());
 }

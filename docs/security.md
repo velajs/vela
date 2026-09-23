@@ -29,6 +29,14 @@ a trusted outer proxy enforces an equivalent bound. Production Node runtimes
 raised above the secure defaults, when a streaming limit is disabled, or when a
 WebSocket gateway opts out of Origin isolation with `allowedOrigins: '*'`.
 
+JSON bodies read by `@Body()` and `defineEndpoint` `json` groups must use
+`application/json` or a `+json` media type such as `application/vnd.api+json`;
+parameters like `charset` are allowed. Any other body returns 415, because
+browsers send `text/plain` and form-encoded POSTs cross-site without a CORS
+preflight. A request without a body still reaches the handler as `undefined`.
+Routes registered directly on Hono can apply the same rule with
+`readJsonBody(c)`.
+
 `defineEndpoint` form contracts add bounded parsing after guards. Set
 `body.contentType` to `multipart/form-data` or `application/x-www-form-urlencoded`
 and optionally tighten `maxBytes`, `maxFields`, `maxFieldBytes`, `maxFiles`, and
@@ -61,6 +69,140 @@ checking its returned identity, rather than checking the function's truthiness.
 Denied guards therefore run before JSON/form parsing and validation pipes. A guard
 that intentionally verifies the raw body, such as `@SignedInvocation()`, may
 still read it through the framework's bounded capture seam.
+
+### Middleware route targets
+
+Middleware bound with `consumer.apply(...).forRoutes(...)` resolves its targets
+when routes are built. A controller target runs the middleware exactly when Hono
+dispatches the request to one of the controller's own handlers, with that
+handler's method, under any global prefix, URI version or parent app that mounts
+the Vela app. It is the most precise target, so bind authentication to the
+controller when you can. Path targets resolve under the global prefix and also
+cover nested paths. `exclude()` patterns match exactly. A path target that
+already starts with the global prefix fails the build, because it would never
+match. A request matches a method-scoped target only for that method, or HEAD
+for a GET target, as Hono routes it; the method token `ALL` is not a wildcard.
+
+Path targets use a small grammar that Vela matches itself, segment by segment,
+in time linear in the length of the request path. Targets add no routes to the
+Hono app, so they never change which of Hono's routers the app uses. Even within
+the grammar, Hono's routers do not all read a pattern the same way:
+
+- The RegExpRouter's trailing `*` stops at a line terminator Hono decodes into
+  the path (`%0A`, `%0D`, `%E2%80%A8`, `%E2%80%A9`); its other routers match it.
+- The LinearRouter, which `hono/quick` uses, serves `:name` on an empty
+  segment: a parent on it serves `/app//settings` with the route
+  `/app/:org/settings`. Its other routers need a non-empty segment.
+- The PatternRouter reads `:name.pdf` as the parameter `:name` followed by the
+  text `.pdf`; its other routers read the whole segment as the parameter.
+
+Vela reads each form so that no router serves a route without the middleware
+its targets name. `forRoutes()` targets take the broader reading and fail
+closed: `:name` also matches an empty segment. `exclude()` targets take the
+strict one: `:name` matches one non-empty segment, so an empty segment never
+skips the middleware. In both, a trailing wildcard covers every path beneath its
+parent, decoded line terminators included, since the routes beneath it serve
+those paths on every router. A `:name` whose name is not an identifier fails the
+build. The grammar:
+
+- A literal segment matches the same text in the decoded path, case-sensitively.
+  `v1.0` and `a+b` are text, not regular expressions.
+- `:name`, where `name` is an identifier, matches one segment, including the
+  line terminators Hono decodes into the path. It matches an empty segment only
+  in `forRoutes()`.
+- The last segment may be `*` or Nest's `{*name}`, which match the parent path
+  and every path beneath it: `cats/*` matches `/cats`, `/cats/` and
+  `/cats/1/toys`. It may also be Nest's `*name`, which matches one or more
+  characters beneath the parent but not the parent itself:
+  `exclude('users/*id')` still runs the middleware on `/users`.
+- A trailing `(.*)` reads as `{*name}` in `forRoutes()`, as Nest 11 rewrites
+  it, so `forRoutes('cats/(.*)')` also covers `/cats` and a lone
+  `forRoutes('(.*)')` matches every request. In `exclude()` it reads as
+  `*name`, so `exclude('cats/(.*)')` still runs the middleware on `/cats`.
+- A trailing `/` is a segment of its own, so `exclude('cats/')` skips `/cats/`
+  but not `/cats`. `forRoutes('cats/')` covers the same paths as
+  `forRoutes('cats')`.
+- `'*'`, `'/*'` and `'{*splat}'` match every request and never get the prefix,
+  as does a lone `'(.*)'` in `forRoutes()`.
+
+Any other syntax fails the build with its cause, instead of matching whatever
+one of Hono's routers makes of it:
+
+- `{regex}` constraints, such as `:id{[0-9]+}` or `:action{login|register}`.
+  Hono's TrieRouter anchors only the first and last alternative of a top-level
+  `|`, so `exclude('auth/:action{login|register}')` would also have skipped
+  `/auth/login-as/42`, and constraints that span segments backtrack.
+- An optional `?`, such as `:id?`. List each path instead.
+- A wildcard before the last segment, such as `files/*/raw`, `*/*`,
+  `files/*path/download` or `cats/{*splat}/toys`.
+- `*` or `:` inside a segment, such as `us*`, `ab*cd` or `abc:name`. Hono's
+  routers disagree on whether `abc:name` is text or a parameter.
+- A parameter name that is not an identifier, such as `:name.pdf`, `:from-to`
+  or `:x@1`. Use a whole `:name` segment, list the paths, or target the
+  controller.
+- Parentheses or braces other than a trailing `(.*)` or `{*name}`, such as
+  `:id(\d+)`, `(a|b)` or `users{/:id}`.
+- An empty segment, such as `a//b`.
+
+When constraint-level precision matters, target the controller, or list each
+literal path.
+
+When a parent app mounts the Vela app with `parent.route(base, app)`, path
+targets match the request path beneath that base. Vela reads the base pattern
+of the route Hono matched for the running middleware, fills in its `:param`
+values as Hono matched them, and checks that the result spells the start of the
+request path, segment by segment. A base with a trailing slash, such as `/m/`
+or `/:tenant/`, puts the app's root at the base itself, as Hono joins routes
+under it. If the base does not spell the start of the path, because Hono decoded
+a percent-encoded parameter value (`/a%3Ab`) or the request stops at `/m`
+under a `/m/` base, the request fails closed: the middleware runs, and its
+`exclude()` path targets are ignored for that request.
+
+A base parameter whose `{regex}` constraint can match a `/`, such as
+`/:org{.+}`, `/:org{.+?}` or `/:org{(?:[a-z]+/)?[a-z]+}`, also fails closed on
+every request. Hono can give the running middleware and the route it runs for
+different values for it: under `/:org{.+}` the middleware reads `acme/admin`
+for `/acme/admin` while the route reads `acme`. Vela probes the constraint with
+strings such as `/`, `a/a` and `0/0`, and also fails closed when a filled-in
+value does not spell one path segment. Hono's TrieRouter goes further for a
+base whose parameter must span a `/`, such as `/:org{[a-z]+/[a-z]+}`: it serves
+the Vela app's routes without running any of its `'*'` middleware, so body
+limits, global and consumer middleware would all be skipped. A controller
+route served that way answers 500 with the error
+`Vela middleware chain did not run — unsupported mount`, reported like any
+other server error. Mount the Vela app under bases whose parameters match one
+path segment.
+
+Some routes are served outside the global prefix: `mountOpenApi()` documents
+(`/openapi.json`, `/scalar`, `/docs`, `/redoc`), the `RpcModule` endpoint
+(`/rpc`), Cloudflare WebSocket gateway upgrade paths, Studio mounted with
+`absolute: true`, and routes added to the Hono app directly. Target them with
+`absolute: true`, which matches the path as written:
+
+```ts
+consumer
+  .apply(AuditMiddleware)
+  .forRoutes({ path: '/rpc', method: HttpMethod.POST, absolute: true });
+```
+
+Once every controller and route contributor has registered its routes, each
+relative path target is checked against them: a target reaches a route through a
+concrete path, shaped like either of them, that the target and the route both
+match. A `{regex}`-constrained route parameter counts as one segment there,
+whatever its constraint, so `forRoutes('users/:id')` reaches
+`users/:id{[0-9a-f-]{36}}` and `forRoutes('images/:file')` reaches
+`images/:file{.+\.png}`. These sample paths only drive startup checks, never a
+request's decision.
+A target that reaches no route under the global prefix but matches a route
+served outside it, such as `forRoutes('rpc')` for the `RpcModule` endpoint,
+fails the build and names the `{ path, absolute: true }` form to use.
+A `forRoutes()` target that reaches no registered route at all is reported
+through the container's diagnostics policy (`'log'` warns, `'throw'` fails
+bootstrap), since the route may still be added to the Hono app later; target
+such a route with `absolute: true` and the path it is served on. The report
+suggests the resolved path, global prefix included, such as
+`{ path: '/api/users/:id', absolute: true }`, so following it never moves the
+middleware off the path the target named.
 
 ## Browser security
 

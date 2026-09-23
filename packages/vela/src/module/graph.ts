@@ -1,7 +1,12 @@
 import type { Type } from '../container/types';
 import { getModuleMetadata } from './decorators';
 import type { DynamicModule, ModuleImport } from '../registry/types';
-import { isDynamicModule, moduleKeyOf, unwrapModuleImport } from './module-identity';
+import {
+  assertDefinedEntries,
+  isDynamicModule,
+  moduleKeyOf,
+  unwrapModuleImport,
+} from './module-identity';
 
 /**
  * Walks the module dependency graph from a root, unwrapping ForwardRef and
@@ -33,6 +38,13 @@ export function collectControllers(rootModule: Type): Type[] {
     visited.set(moduleClass, keys);
 
     const metadata = getModuleMetadata(moduleClass);
+    // Same guard as the loader: a nullish entry is a wiring error, not an absence.
+    const name = moduleClass.name || 'AnonModule';
+    assertDefinedEntries(name, 'imports', [...(metadata?.imports ?? []), ...extraImports]);
+    assertDefinedEntries(name, 'controllers', [
+      ...(metadata?.controllers ?? []),
+      ...extraControllers,
+    ]);
     if (metadata) {
       for (const controller of metadata.controllers) controllers.add(controller);
       for (const imp of metadata.imports) visit(imp);

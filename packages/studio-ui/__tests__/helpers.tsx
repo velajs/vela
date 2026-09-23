@@ -16,6 +16,7 @@ import {
   routes,
   scheduleJobs,
 } from '@velajs/studio-fixtures';
+import { STUDIO_PROTOCOL_VERSION } from '@velajs/studio-protocol';
 import { AdminClientProvider } from '../src/data/context';
 
 export function wrapperFor(transport: FakeAdminTransport) {
@@ -49,7 +50,7 @@ export function studioFetch(options?: {
   requests?: Array<{ url: string; init?: RequestInit }>;
 }): typeof fetch {
   const responses = options?.responses ?? cannedResponses;
-  const health = options?.health ?? { enabled: true, protocolVersion: 2 };
+  const health = options?.health ?? { enabled: true, protocolVersion: STUDIO_PROTOCOL_VERSION };
   const impl = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = typeof input === 'string' ? input : input.toString();
     options?.requests?.push({ url, init });

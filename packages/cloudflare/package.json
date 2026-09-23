@@ -44,9 +44,9 @@
       "types": "./dist/durable-objects.d.ts",
       "import": "./dist/durable-objects.js"
     },
-    "./queue": {
-      "types": "./dist/queue.d.ts",
-      "import": "./dist/queue.js"
+    "./queues": {
+      "types": "./dist/queues.d.ts",
+      "import": "./dist/queues.js"
     }
   },
   "publishConfig": {
@@ -56,7 +56,7 @@
     "build": "tsdown",
     "test": "vitest run",
     "test:workers": "vitest run --config vitest.config.workers.ts",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json && tsc --noEmit -p tsconfig.workers-test.json && tsc --noEmit -p tsconfig.package-tests.json",
     "lint": "oxlint .",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
@@ -71,6 +71,7 @@
     "@cloudflare/workers-types": "catalog:",
     "@swc/core": "catalog:",
     "@velajs/feature-flags": "workspace:*",
+    "@velajs/testing": "workspace:*",
     "@velajs/vela": "workspace:*",
     "hono": "catalog:",
     "oxfmt": "catalog:",

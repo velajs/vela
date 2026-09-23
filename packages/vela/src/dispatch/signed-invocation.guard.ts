@@ -1,7 +1,7 @@
-import { CONFIG_ENV } from '../config/config.tokens';
 import { Inject, Injectable, Optional } from '../container/decorators';
 import { sha256Base64Url } from '../crypto/hmac';
 import { verifyInvocation } from '../crypto/invocation';
+import { InjectEnv, type VelaEnv } from '../env';
 import { ForbiddenException } from '../errors/http-exception';
 import { applyDecorators } from '../http/decorators';
 import { URL_SIGNING_SECRET, resolveSigningSecret } from '../http/url/signing-secret';
@@ -51,13 +51,13 @@ async function hashLiveBody(request: Request): Promise<string> {
 export class SignedInvocationGuard implements CanActivate {
   readonly #invocationSecret: string | undefined;
   readonly #urlSecret: string | undefined;
-  readonly #env: Record<string, unknown>;
+  readonly #env: VelaEnv | undefined;
 
   constructor(
     @Optional() @Inject(INVOCATION_SIGNING_SECRET) invocationSecret?: string,
     @Optional() @Inject(URL_SIGNING_SECRET) urlSecret?: string,
     @Optional() @Inject(NONCE_STORE) private readonly nonceStore?: NonceStore,
-    @Optional() @Inject(CONFIG_ENV) env: Record<string, unknown> = {},
+    @Optional() @InjectEnv() env?: VelaEnv,
   ) {
     this.#invocationSecret = invocationSecret;
     this.#urlSecret = urlSecret;

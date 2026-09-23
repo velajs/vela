@@ -1,8 +1,10 @@
+import { Injectable } from '../container/decorators';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import type { CallHandler, ExecutionContext, NestInterceptor } from '../pipeline/types';
 import { isValidationSchema, parseSchemaAsync } from '../validation';
 import { SERIALIZE_METADATA } from './serialize.decorator';
 
+@Injectable()
 export class SerializerInterceptor implements NestInterceptor {
   async intercept(context: ExecutionContext, next: CallHandler): Promise<unknown> {
     const result = await next.handle();

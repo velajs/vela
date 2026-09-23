@@ -3,11 +3,16 @@ import { Injectable, Module, VelaFactory } from '@velajs/vela';
 import { Seeder, SeederModule } from '@velajs/vela/seeder';
 import { Cli } from 'clipanion';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { loadConfig } from '../config.js';
+import { loadConfig, type LoadedVelaConfig, type VelaConfig } from '../config.js';
 import { SeedCommand } from './seed.command.js';
 
 vi.mock('../config.js', () => ({ loadConfig: vi.fn() }));
 afterEach(() => vi.restoreAllMocks());
+
+/** A loaded config as loadConfig() returns it, with a runner that has nothing to close. */
+function loadedConfig(config: VelaConfig): LoadedVelaConfig {
+  return { config, path: '/project/vela.config.ts', dispose: vi.fn(async () => {}) };
+}
 
 async function run(args: string[] = []) {
   const stdout = new PassThrough();
@@ -47,7 +52,7 @@ describe('seeder application lifetime', () => {
     class Root {}
     const app = await VelaFactory.create(Root);
     const dispose = vi.spyOn(app, 'dispose');
-    vi.mocked(loadConfig).mockResolvedValue({ createApp: () => app });
+    vi.mocked(loadConfig).mockResolvedValue(loadedConfig({ createApp: () => app }));
     const result = await run(['--list', '--json']);
     expect(result.code).toBe(0);
     expect(JSON.parse(result.output)).toEqual([
@@ -72,7 +77,7 @@ describe('seeder application lifetime', () => {
     class Root {}
     const app = await VelaFactory.create(Root);
     const dispose = vi.spyOn(app, 'dispose');
-    vi.mocked(loadConfig).mockResolvedValue({ createApp: () => app });
+    vi.mocked(loadConfig).mockResolvedValue(loadedConfig({ createApp: () => app }));
     expect((await run()).code).toBe(1);
     expect(dispose).toHaveBeenCalledOnce();
   });
@@ -100,7 +105,7 @@ describe('seeder application lifetime', () => {
       calls.length = 0;
       const app = await VelaFactory.create(Root);
       const dispose = vi.spyOn(app, 'dispose');
-      vi.mocked(loadConfig).mockResolvedValue({ createApp: () => app });
+      vi.mocked(loadConfig).mockResolvedValue(loadedConfig({ createApp: () => app }));
       expect((await run(args)).code).toBe(1);
       expect(calls).toEqual(args.length ? ['fail', 'next'] : ['fail']);
       expect(dispose).toHaveBeenCalledOnce();

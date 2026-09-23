@@ -1,9 +1,9 @@
 import { VelaError } from '@velajs/errors';
 import type { VelaErrorOptions } from '@velajs/errors';
-import { CONFIG_ENV } from '../config/config.tokens';
 import { Container } from '../container/container';
 import { Inject, Injectable, Optional } from '../container/decorators';
 import { sha256Base64Url } from '../crypto/hmac';
+import { InjectEnv, type VelaEnv } from '../env';
 import {
   INVOCATION_AUDIENCE,
   INVOCATION_DEFAULT_TTL_SECONDS,
@@ -149,14 +149,14 @@ async function readResponseText(response: Response, signal: AbortSignal | undefi
 export class InternalDispatcher {
   readonly #invocationSecret: string | undefined;
   readonly #urlSecret: string | undefined;
-  readonly #env: Record<string, unknown>;
+  readonly #env: VelaEnv | undefined;
 
   constructor(
     @Inject(UrlGeneratorService) private readonly urls: UrlGeneratorService,
     @Inject(Container) private readonly container: Container,
     @Optional() @Inject(INVOCATION_SIGNING_SECRET) invocationSecret?: string,
     @Optional() @Inject(URL_SIGNING_SECRET) urlSecret?: string,
-    @Optional() @Inject(CONFIG_ENV) env: Record<string, unknown> = {},
+    @Optional() @InjectEnv() env?: VelaEnv,
   ) {
     this.#invocationSecret = invocationSecret;
     this.#urlSecret = urlSecret;

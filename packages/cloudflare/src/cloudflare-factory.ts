@@ -2,105 +2,145 @@ import type { ExecutionContext } from 'hono';
 import { getConnInfo } from 'hono/cloudflare-workers';
 import { VelaFactory } from '@velajs/vela';
 import type {
-  InjectionToken,
   RuntimeAdapter,
+  Type,
+  VelaApplication,
+  VelaEnv,
   VelaMiddlewareHandler,
   VelaSecurityOptions,
 } from '@velajs/vela';
 import { CloudflareApplication } from './cloudflare-application';
 import { assertCloudflareEnvironment, registerCloudflareEnvironment } from './environment';
+import { reportCloudflareScheduleDiagnostics } from './schedule-diagnostics';
+import { registerScheduledEventSeed, type ScheduledEvent } from './scheduled-event';
+import { warnWorkerLocalLive } from './websocket/do-live';
 import { registerWebSocketRoutes } from './websocket/websocket-routing';
-import { resolveCloudflareRoot } from './root-module';
+import { bootstrapCloudflareRoot } from './root-module';
 import type { CloudflareRoot } from './root-module';
 
-export interface CloudflareWorkerOptions<T extends object> {
-  /** Global typed DI token for the platform's native environment. */
-  envToken: InjectionToken<T>;
+export interface CloudflareWorkerOptions {
   globalPrefix?: string;
   security?: VelaSecurityOptions;
-  /** Build request middleware from the same typed native environment as DI. */
-  middleware?: (env: NoInfer<T>) => VelaMiddlewareHandler[];
+  /** Build request middleware from the same native environment DI receives as ENV. */
+  middleware?: (env: VelaEnv) => VelaMiddlewareHandler[];
+  /** Further runtime adapters, composed after the Cloudflare adapter for each application. */
+  adapters?: RuntimeAdapter[];
 }
 
-export interface CreateCloudflareAppOptions<T extends object> extends CloudflareWorkerOptions<T> {
+export interface CreateCloudflareAppOptions extends CloudflareWorkerOptions {
   /** Supply the platform environment inside fetch/queue/scheduled or a DO constructor. */
-  env: NoInfer<T>;
+  env: VelaEnv;
 }
 
-/** Bind an application to one environment before provider factories and lifecycle hooks. */
-export function cloudflareAdapter<T extends object>(
-  options: CreateCloudflareAppOptions<T>,
-): RuntimeAdapter {
+function readStrings(meta: unknown, property: string): string[] {
+  const value: unknown =
+    typeof meta === 'object' && meta !== null ? Reflect.get(meta, property) : undefined;
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value) && value.every((item) => typeof item === 'string')) return value;
+  throw new TypeError(`Invalid queue consumer metadata: ${property}.`);
+}
+
+/**
+ * `@QueueConsumer` handlers own their physical queue. A `QueueModule`
+ * registration that pins the same physical queue with `consumer` would never
+ * see its batches, so bootstrap rejects the overlap.
+ */
+function assertQueueConsumerOwnership(entrypoints: VelaApplication['entrypoints']): void {
+  const pinned = new Set(
+    entrypoints.ofKind('cf:queue:module').flatMap((entry) => readStrings(entry.meta, 'consumers')),
+  );
+  for (const entry of entrypoints.ofKind('cf:queue')) {
+    const [queue] = readStrings(entry.meta, 'queueName');
+    if (queue !== undefined && pinned.has(queue)) {
+      throw new Error(
+        `Ambiguous consumer ownership for queue '${queue}': @QueueConsumer('${queue}') and a ` +
+          `QueueModule.registerQueue({ consumer: '${queue}' }) both claim it. Keep one owner.`,
+      );
+    }
+  }
+}
+
+/**
+ * Bind an application to one environment: seeded as the global ENV before
+ * provider factories and lifecycle hooks, and asserted on every request. The
+ * adapter also supplies the `InternalDispatcher` transport, so signed queue and
+ * schedule dispatch re-enter this application's routes, and reports schedule
+ * declarations a cron trigger cannot honor through the diagnostics policy.
+ */
+export function cloudflareAdapter(options: { env: VelaEnv }): RuntimeAdapter {
+  const { env } = options;
   return {
     name: 'cloudflare',
     requestMiddleware: [
       async (context, next) => {
-        assertCloudflareEnvironment(options.env, context.env);
+        assertCloudflareEnvironment(env, context.env);
         await next();
       },
     ],
     invocationTransport:
       ({ app }) =>
       (request) =>
-        Promise.resolve(app.fetch(request, options.env)),
+        Promise.resolve(app.fetch(request, env)),
     getClientIp: (c) => getConnInfo(c).remote.address ?? null,
     configureContainer: (container) => {
-      registerCloudflareEnvironment(container, { token: options.envToken, env: options.env });
+      registerCloudflareEnvironment(container, env);
+      registerScheduledEventSeed(container);
+    },
+    onBootstrap: async ({ app, container }) => {
+      assertQueueConsumerOwnership(app.entrypoints);
+      reportCloudflareScheduleDiagnostics(container, app.entrypoints);
+      await warnWorkerLocalLive(container);
     },
   };
 }
 
-/** Build an application for one native Workers environment. Call inside a platform event. */
-export async function createCloudflareApp<T extends object>(
-  rootModule: CloudflareRoot<NoInfer<T>>,
-  options: CreateCloudflareAppOptions<T>,
-): Promise<CloudflareApplication<T>> {
-  const velaApp = await VelaFactory.create(await resolveCloudflareRoot(rootModule, options.env), {
+/**
+ * Build an application for one native Workers environment. Call inside a platform event.
+ * A `{ create(env) }` root runs once per environment, and every application built for
+ * that environment reuses its module graph. Values created in `create(env)`, such as
+ * `useValue` providers and module option objects, are therefore shared by all of those
+ * applications and Durable Object instances. Build per-application state in factories
+ * (`useFactory`, `forRootAsync`, `driver: () => ...`), which run for each application.
+ */
+export async function createCloudflareApp(
+  rootModule: CloudflareRoot,
+  options: CreateCloudflareAppOptions,
+): Promise<CloudflareApplication> {
+  return bootstrapCloudflareRoot(rootModule, options.env, (root) =>
+    buildApplication(root, options),
+  );
+}
+
+async function buildApplication(
+  root: Type,
+  options: CreateCloudflareAppOptions,
+): Promise<CloudflareApplication> {
+  const velaApp = await VelaFactory.create(root, {
     globalPrefix: options.globalPrefix,
     security: options.security,
     middleware: options.middleware?.(options.env),
-    adapters: [cloudflareAdapter(options)],
+    adapters: [cloudflareAdapter(options), ...(options.adapters ?? [])],
   });
   const app = new CloudflareApplication(velaApp, options.env);
-  const consumers = new Map<string, string>();
-  for (const entry of [
-    ...app.entrypoints.ofKind('cf:queue'),
-    ...app.entrypoints.ofKind('cf:queue:module'),
-  ]) {
-    const meta = entry.meta;
-    if (
-      typeof meta !== 'object' ||
-      meta === null ||
-      !('queueName' in meta) ||
-      typeof meta.queueName !== 'string'
-    ) {
-      await app.close();
-      throw new TypeError('Invalid queue consumer metadata.');
-    }
-    const previous = consumers.get(meta.queueName);
-    // Existing native fan-out remains available; module routing owns a queue exclusively.
-    if (previous && (previous === 'cf:queue:module' || entry.kind === 'cf:queue:module')) {
-      await app.close();
-      throw new Error(`Ambiguous consumer ownership for queue '${meta.queueName}'.`);
-    }
-    consumers.set(meta.queueName, entry.kind);
-  }
   app.scanInstances(velaApp.getInstances());
   registerWebSocketRoutes(app.getHonoApp(), app.getWsGatewayRoutes());
   return app;
 }
 
 /**
- * Worker entrypoint with one bootstrap per environment identity. Weak keys let
- * obsolete environments and secrets be collected. Concurrent cold events share
- * construction; failed construction is evicted so the next event can retry.
+ * Worker entrypoint with one bootstrap per environment identity. Concurrent cold
+ * events share construction; failed construction is evicted so the next event
+ * can retry. Weak keys stop this cache from retaining a replaced environment,
+ * but classes a root declares stay in the isolate-global metadata registry with
+ * the values their metadata captures, so roots resolve once per environment
+ * rather than once per application.
  */
-export function createCloudflareWorker<T extends object>(
-  rootModule: CloudflareRoot<NoInfer<T>>,
-  options: CloudflareWorkerOptions<T>,
+export function createCloudflareWorker(
+  rootModule: CloudflareRoot,
+  options: CloudflareWorkerOptions = {},
 ) {
-  const applications = new WeakMap<T, Promise<CloudflareApplication<T>>>();
-  const application = (env: T): Promise<CloudflareApplication<T>> => {
+  const applications = new WeakMap<VelaEnv, Promise<CloudflareApplication>>();
+  const application = (env: VelaEnv): Promise<CloudflareApplication> => {
     const existing = applications.get(env);
     if (existing) return existing;
     const pending = createCloudflareApp(rootModule, { ...options, env });
@@ -111,19 +151,19 @@ export function createCloudflareWorker<T extends object>(
     return pending;
   };
   return {
-    async fetch(request: Request, env: T, ctx: ExecutionContext): Promise<Response> {
+    async fetch(request: Request, env: VelaEnv, ctx: ExecutionContext): Promise<Response> {
       return (await application(env)).fetch(request, env, ctx);
     },
     async scheduled(
-      event: { cron: string; scheduledTime?: number },
-      env: T,
-      ctx: { waitUntil: (promise: Promise<unknown>) => void },
+      event: ScheduledEvent,
+      env: VelaEnv,
+      ctx?: { waitUntil: (promise: Promise<unknown>) => void },
     ): Promise<void> {
       return (await application(env)).scheduled(event, env, ctx);
     },
     async queue(
       batch: { queue: string; messages: readonly unknown[] },
-      env: T,
+      env: VelaEnv,
       ctx: { waitUntil: (promise: Promise<unknown>) => void },
     ): Promise<void> {
       return (await application(env)).queue(batch, env, ctx);

@@ -74,12 +74,12 @@ imports: [
 
 ### Pattern B — DI'd plugin construction
 
-`forRootAsync` requires an explicit `inject` tuple (use `inject: []` when there are no dependencies), so factory parameter types always have matching runtime tokens. It lets Vela services participate in your Better Auth configuration. On Workers, declare `WORKER_ENV = new InjectionToken<WorkerEnv>('app.Env')` and pass that token to `createCloudflareWorker(AppModule, { envToken: WORKER_ENV })`; the native event environment is available before DI factories run.
+`forRootAsync` requires an explicit `inject` tuple (use `inject: []` when there are no dependencies), so factory parameter types always have matching runtime tokens. It lets Vela services participate in your Better Auth configuration. On Workers, inject the framework `ENV` from `@velajs/vela`: `createCloudflareWorker(AppModule)` seeds the native event environment before DI factories run, and `wrangler types` types its bindings.
 
 ```ts
 imports: [
   BetterAuthModule.forRootAsync({
-    inject: [WORKER_ENV, EmailService],
+    inject: [ENV, EmailService],
     useFactory: (env, email) => betterAuth({
         database: drizzleAdapter(drizzle(env.DB), { provider: 'sqlite' }),
         plugins: [

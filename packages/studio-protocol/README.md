@@ -14,7 +14,9 @@ operation identity, metadata and error fields. The browser client uses these
 parsers before exposing typed results; callers cannot choose an arbitrary result
 type. Dynamic model rows and OpenAPI documents retain their declared unknown data.
 
-Upgrade host, server and UI together. There is no protocol-v1 compatibility path.
+Protocol v3 labels the default provider lifetime `default` instead of `singleton` in
+`app.modules` and `app.entrypoints`. Upgrade host, server and UI together. There is no
+compatibility path for an earlier protocol version.
 
 ## License
 

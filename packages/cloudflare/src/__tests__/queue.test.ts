@@ -10,9 +10,7 @@ import {
   UseInterceptors,
 } from '@velajs/vela';
 import { createCloudflareApp } from '../cloudflare-factory';
-import { InjectionToken } from '@velajs/vela';
 const env = {};
-const envToken = new InjectionToken<object>('test environment');
 import { QueueConsumer } from '../decorators/queue-consumer';
 beforeEach(() => {
   MetadataRegistry.clear();
@@ -35,7 +33,7 @@ describe('@QueueConsumer() decorator', () => {
     @Module({ providers: [EmailWorker] })
     class AppModule {}
 
-    const app = await createCloudflareApp(AppModule, { env, envToken });
+    const app = await createCloudflareApp(AppModule, { env });
     const ctx = { waitUntil: () => {} };
 
     await app.queue(
@@ -71,7 +69,7 @@ describe('@QueueConsumer() decorator', () => {
     @Module({ providers: [ScopedWorker, BatchContext] })
     class AppModule {}
 
-    const app = await createCloudflareApp(AppModule, { env, envToken });
+    const app = await createCloudflareApp(AppModule, { env });
     const ctx = { waitUntil: () => {} };
 
     await app.queue({ queue: 'scoped-queue', messages: [{ body: 1 }] }, env, ctx);
@@ -113,7 +111,7 @@ describe('@QueueConsumer() decorator', () => {
     @Module({ providers: [GuardedWorker] })
     class AppModule {}
 
-    const app = await createCloudflareApp(AppModule, { env, envToken });
+    const app = await createCloudflareApp(AppModule, { env });
     const ctx = { waitUntil: () => {} };
 
     // Guard rejects → handler never runs; the rejection surfaces (platform
@@ -124,7 +122,7 @@ describe('@QueueConsumer() decorator', () => {
     expect(events).toEqual(['guard:cf:queue']);
   });
 
-  it('should not invoke consumers for non-matching queue', async () => {
+  it('rejects an unclaimed batch with guidance so the platform retries it', async () => {
     const processed: unknown[] = [];
 
     @Injectable()
@@ -138,12 +136,15 @@ describe('@QueueConsumer() decorator', () => {
     @Module({ providers: [Worker] })
     class AppModule {}
 
-    const app = await createCloudflareApp(AppModule, { env, envToken });
+    const app = await createCloudflareApp(AppModule, { env });
     const ctx = { waitUntil: () => {} };
 
-    await expect(
-      app.queue({ queue: 'other-queue', messages: [{ body: 'test' }] }, env, ctx),
-    ).rejects.toThrow('No consumer');
+    // Resolving would let Cloudflare acknowledge the whole batch implicitly.
+    const rejection = app.queue({ queue: 'other-queue', messages: [{ body: 'test' }] }, env, ctx);
+    await expect(rejection).rejects.toThrow(
+      /No consumer claims queue 'other-queue'.*@QueueConsumer\('other-queue'\)/,
+    );
+    await expect(rejection).rejects.toThrow(/retries it.*dead-letter queue/);
 
     expect(processed).toEqual([]);
   });

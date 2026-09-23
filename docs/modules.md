@@ -55,8 +55,9 @@ For `forRootAsync`, read resolved options through the `OPTIONS` token: the
 - `ConfigurableModuleBuilder` (NestJS parity) is a thin adapter over
   `defineModule` — same engine, either entry.
 - `defineConfigurableModule` remains the low-level engine for
-  runtime-generated module classes. Workers bindings use a typed environment
-  token; see the [Cloudflare integration](../packages/cloudflare/README.md).
+  runtime-generated module classes. Workers bindings come from the framework
+  `ENV` (`inject: [ENV]` in `forRootAsync`); see the
+  [Cloudflare integration](../packages/cloudflare/README.md).
 
 ### Keys (multi-instance dedup)
 
@@ -78,6 +79,27 @@ Rules:
    counter (non-deterministic keys break HMR dedup), and never rely on
    `stableHash` of closures (identical source hashes collide).
 3. Always honor the caller's explicit `key` (`defineModule` does).
+
+A repeated `(class, key)` keeps only its first definition. `defineModule`,
+`sideEffectModule` and `defineConfigurableModule` record the inputs each
+definition was built from, and the loader compares a repeat against the first:
+plain values compare structurally, while functions and class instances (such
+as an `InjectionToken`) compare by reference. Source text cannot see what a
+closure captured, so two closures with the same source are different inputs: a
+helper such as `database('PRIMARY_URL')` and `database('ANALYTICS_URL')` that
+builds a `forRootAsync` config from its argument is reported instead of
+silently keeping the first configuration. A repeat built from different inputs
+is reported through the container's diagnostics policy (`'log'` warns,
+`'throw'` fails bootstrap) instead of silently dropping its providers. A helper
+that rebuilds the same configuration on every call is reported as well; import
+one shared definition (export a const of the `DynamicModule`), or give each
+configuration its own `key`. Identical repeats still deduplicate. The reference
+ids belong to one module loader and are released with it.
+
+An `undefined` or `null` entry in a module's `imports`, `providers`,
+`controllers` or `exports` fails the load with `UndefinedModuleError`, naming
+the list and index (for example `AppModule.imports[2]`). The usual cause is a
+circular file import; use `forwardRef(() => OtherModule)` for imports.
 
 ### Tokens
 
@@ -132,6 +154,16 @@ the container that owns that resolution. Earlier synthetic `APP_*` factory
 wrappers could accidentally cache a transient target. Applications relying on
 that sharing should register the target as a singleton explicitly.
 
+Global middleware (`APP_MIDDLEWARE` and `app.useGlobalMiddleware()`) runs in
+ascending `priority` order, registration order breaking ties; the default is 0.
+Route build reads a `static priority` from the middleware class, including the
+`useClass` or `useExisting` target of an `APP_MIDDLEWARE` provider, without
+constructing it. Only a singleton without a static priority is constructed to
+read an instance `priority`. A request-scoped middleware cannot be constructed
+at route build, so give it a `static priority`: without one it sorts at 0, and
+the container's diagnostics policy reports it (`'log'` warns, `'throw'` fails
+bootstrap).
+
 ## Discovery: finding decorated providers
 
 Never hand-roll a `container.getTokens()` scan. Declare a decorator, then ask
@@ -180,7 +212,10 @@ for (const hit of handlers) {
 ```
 
 `deferLazy` only defers pending lazy owners; `metadataOnly` defers every owner.
-Neither fabricates a request context. Discovery sees only the current
+Neither fabricates a request context. Request-scoped hits come back with
+`instance: undefined` unless the filter carries `requestScope`, an execution-scope
+container of the current application (for example the `runInEntrypointScope`
+callback argument); they are then resolved in, and owned by, that invocation. Discovery sees only the current
 application's registrations.
 
 ## Entrypoints: the open non-HTTP surface
@@ -251,8 +286,13 @@ Custom dispatchers (queue consumers, schedulers) run handlers through
 `PipelineRunner.run({ context, guards, interceptors, resolveArgs, invoke, onGuardReject })`
 — the same guard → pipe → interceptor core HTTP and WebSocket use. Scoped
 components come from the public
-`resolveScopedComponents(type, class, method, container)` (declaration order;
-reverse filters yourself for closest-first). Whether app-wide components
+`resolveScopedComponents(type, class, method, container, moduleId)`: class-level,
+then the owning module's `@Use*` components when the class is one of its
+controllers, then method-level (reverse filters yourself for closest-first).
+Module-level entries are read from that application's module graph, never
+copied onto the class, so repeated bootstraps in one isolate do not stack them.
+`getScopedComponents(...)` returns the same declared entries without
+constructing them, for audits and introspection. Whether app-wide components
 apply is a transport decision: WS merges `RouteManager.getGlobalComponents()`;
 queue/scheduled dispatch deliberately applies none. Exception-filter terminal
 behavior stays transport-specific.
@@ -261,12 +301,16 @@ The worked example for ALL of this is the first-party queue module
 (`packages/vela/src/queue/`, `@velajs/vela/queue`): decorators via
 `createDiscoverableDecorator`, the `'queue'` entrypoint kind, per-job
 `runInEntrypointScope` + async-seam re-resolution (lazy-module compatible),
-`defineModule` with options-derived per-queue providers and native transport contributions, and
+`defineModule` for the global driver plus `registerQueue` dynamic modules that provide per-queue clients, native transport contributions, and
 an import-audit test (`queue-openness.test.ts`) proving it never leaves the
-public API. Dispatch one unit of platform work with
-`dispatchQueueJob(container, app.entrypoints, job)`; after bootstrap the
-per-app `EntrypointRegistry` is also injectable (global token) for providers
-that dispatch entrypoints themselves.
+public API. A custom transport dispatches one job with
+`dispatchQueueJob(container, app.entrypoints, job)`, which honors the
+application's `QueueModule` dispatch policy (registered queues, signed
+re-entry) through the dispatcher native deliveries use; without a `QueueModule`
+it calls the processors directly. It rejects a job no processor handles unless
+called with `{ unhandled: 'ignore' }`, so a transport acknowledges a message
+only when it resolves. After bootstrap the per-app `EntrypointRegistry` is also
+injectable (global token) for providers that dispatch entrypoints themselves.
 
 ## Lazy modules: deferring cold-start init to first use
 

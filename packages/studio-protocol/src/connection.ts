@@ -1,6 +1,8 @@
+import { STUDIO_PROTOCOL_VERSION } from './http';
+
 /** Browser configuration emitted by the loopback host. Never contains the master token. */
 export interface StudioConnection {
-  protocolVersion: 2;
+  protocolVersion: typeof STUDIO_PROTOCOL_VERSION;
   routerBasePath: string;
   adminBasePath: string;
   apiRequestPath: string;
@@ -23,7 +25,7 @@ function isLocalPath(value: unknown): value is string {
 export function parseStudioConnection(value: unknown): StudioConnection {
   if (
     !isRecord(value) ||
-    value.protocolVersion !== 2 ||
+    value.protocolVersion !== STUDIO_PROTOCOL_VERSION ||
     !isLocalPath(value.routerBasePath) ||
     !isLocalPath(value.adminBasePath) ||
     !isLocalPath(value.apiRequestPath) ||

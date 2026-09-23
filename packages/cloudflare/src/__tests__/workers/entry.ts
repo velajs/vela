@@ -1,5 +1,5 @@
 import { VelaWebSocketDurableObject } from '../../durable-objects';
-import { InjectionToken, Module, Injectable, Scope } from '@velajs/vela';
+import { Cron, Inject, InjectEnv, Module, Injectable, Scope, type VelaEnv } from '@velajs/vela';
 import {
   CloudflareWebSocketModule,
   ConnectedSocket,
@@ -8,6 +8,8 @@ import {
   WebSocketGateway,
   WebSocketServer,
   createCloudflareWorker,
+  CLOUDFLARE_SCHEDULED_EVENT,
+  type CloudflareScheduledEvent,
   type OnGatewayConnection,
   type WsClient,
   type WsServer,
@@ -36,7 +38,17 @@ const allowedOrigin = 'https://app.test';
 @Injectable({ scope: Scope.REQUEST })
 class TestGateway implements OnGatewayConnection {
   #messageCount = 0;
-  constructor(@WebSocketServer() private readonly server: WsServer) {}
+  constructor(
+    @WebSocketServer() private readonly server: WsServer,
+    @InjectEnv() private readonly env: VelaEnv,
+  ) {}
+
+  /** Reports what the Durable Object's ENV carries (see env-runtime.test.ts). */
+  @SubscribeMessage('env')
+  probeEnv() {
+    const probe: unknown = Reflect.get(this.env, 'ENV_PROBE');
+    return { event: 'env', data: { probe: typeof probe === 'string' ? probe : null } };
+  }
 
   async handleConnection(client: WsClient): Promise<void> {
     // Make the connection hook asynchronous so an immediate client frame also
@@ -45,6 +57,8 @@ class TestGateway implements OnGatewayConnection {
     if (client.rooms.has('reject')) throw new Error('connection rejected');
     client.data.connected = true;
     client.commit();
+    // Announce the connection to its room while this socket is still admitted.
+    if (client.rooms.has('announce')) await this.server.emit('joined', { id: client.id });
     client.send('ready', { rooms: [...client.rooms] });
   }
 
@@ -85,13 +99,40 @@ class TestGateway implements OnGatewayConnection {
 @Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [TestGateway] })
 class TestModule {}
 
-export interface TestEnv {
-  TEST_ROOM: DurableObjectNamespace<TestRoom>;
-  CACHE: KVNamespace;
-  DB: D1Database;
-  FILES: R2Bucket;
-}
-export const TEST_ENV = new InjectionToken<TestEnv>('Worker bindings');
-export class TestRoom extends VelaWebSocketDurableObject(TestModule, { envToken: TEST_ENV }) {}
+export class TestRoom extends VelaWebSocketDurableObject(TestModule) {}
 
-export default createCloudflareWorker(TestModule, { envToken: TEST_ENV });
+// Every Durable Object instance in this isolate constructs from the same root.
+let rootResolutions = 0;
+const countingRoot = {
+  create: () => {
+    rootResolutions++;
+    return { module: TestModule };
+  },
+};
+export class CountingRoom extends VelaWebSocketDurableObject(countingRoot) {
+  /** Test-only RPC: how many times this isolate ran the root factory. */
+  async rootResolutions(): Promise<number> {
+    return rootResolutions;
+  }
+}
+
+// A cron job beside the gateway: the Durable Object builds the same graph
+// without the Worker adapter, so the job must stay out of its bootstrap.
+@Injectable()
+class NightlyReports {
+  constructor(
+    @Inject(CLOUDFLARE_SCHEDULED_EVENT) private readonly trigger: CloudflareScheduledEvent,
+  ) {}
+
+  @Cron('30 2 * * *', { dialect: 'cloudflare' })
+  nightly(): void {
+    this.trigger.noRetry();
+  }
+}
+
+@Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [NightlyReports] })
+class CronRoomModule {}
+
+export class CronRoom extends VelaWebSocketDurableObject(CronRoomModule) {}
+
+export default createCloudflareWorker(TestModule);

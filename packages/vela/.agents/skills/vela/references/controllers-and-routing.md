@@ -5,9 +5,9 @@ Controllers, method/param decorators, versioning, named routes, URL generation, 
 ## Controllers & method decorators
 
 ```ts
-import { Controller, Get, Post, Param, Body, Query, ParseIntPipe, ValidationPipe } from '@velajs/vela';
+import { Controller, Get, Post, Param, Body, Query, ParseIntPipe } from '@velajs/vela';
 
-@Controller('/users')            // or @Controller({ path: '/users', version: 1 })
+@Controller('/users')            // or @Controller({ path: '/users', version: 1, scope: Scope.REQUEST })
 class UsersController {
   constructor(private readonly users: UserService) {}
 
@@ -22,7 +22,7 @@ class UsersController {
   }
 
   @Post()
-  create(@Body(new ValidationPipe(CreateUser)) body: ReturnType<typeof CreateUser.parse>) {
+  create(@Body(CreateUser) body: ReturnType<typeof CreateUser.parse>) {
     return this.users.create(body);
   }
 }
@@ -36,16 +36,18 @@ Return a plain value (JSON) or a `Response`. Response-shaping method decorators:
 
 | Decorator | Reads |
 |---|---|
-| `@Param(name?, ...pipes)` | path params |
-| `@Query(name?, ...pipes)` | query string |
-| `@Body(name?, ...pipes)` | request body (or one field) |
-| `@Headers(name?)` | request header(s) |
-| `@Cookie(name?)` / `@Cookies()` | cookie(s) |
+| `@Param(name?, schema?, ...pipes)` | path params |
+| `@Query(name?, schema?, ...pipes)` | query string |
+| `@Body(name?, schema?, ...pipes)` | request body (or one field) |
+| `@Headers(name?, schema?, ...pipes)` | request header(s) |
+| `@Cookie(name?, schema?, ...pipes)` / `@Cookies()` | cookie(s) |
 | `@Ip()` | client IP (see `getClientIp` create-option) |
 | `@RawBody()` | raw body as `Uint8Array` |
 | `@Req()` / `@Res()` | `VelaContext` (the Hono request/response context) |
 
-Pipes attach positionally: `@Param('id', ParseIntPipe)`, `@Query('mode', new ParseEnumPipe(Mode))`. See `pipeline.md` for the pipe list. Custom factories run after guards. Use `createParamDecorator` with the actual required data argument; `createLazyParamDecorator` injects an explicit memoized thunk: declare the parameter as `() => User | undefined` and call it in the handler. Validate inside the factory; lazy decorators do not take parameter pipes. Type annotations alone do not validate the value.
+`@Body()` parses JSON only: a body must arrive as `application/json` or a `+json` media type (parameters like `charset` are fine), otherwise the request fails with 415 `unsupported_media_type`; malformed JSON is 400 and a request without a body yields `undefined`. Send `content-type: application/json` in tests (`@velajs/testing` does this for you). Raw Hono routes can use `readJsonBody(c)` for the same rule.
+
+Pipes attach positionally: `@Param('id', ParseIntPipe)`, `@Query('mode', new ParseEnumPipe(Mode))`. A schema in a pipe position (Standard Schema such as Zod, a `parse()` parser, or a `defineDto` descriptor) becomes `new ValidationPipe(schema)`: `@Body(CreateUser)`, `@Query('page', z.coerce.number().int().min(1))`, `@Param('id', z.uuid())`. Invalid input is a 400 with the normalized issues, OpenAPI documents the schema, and later pipes receive its parsed output. See `pipeline.md` for the pipe list. Custom factories run after guards. Use `createParamDecorator` with the actual required data argument; `createLazyParamDecorator` injects an explicit memoized thunk: declare the parameter as `() => User | undefined` and call it in the handler. Validate inside the factory; lazy decorators do not take parameter pipes. Type annotations alone do not validate the value.
 
 ## Global prefix & versioning
 
@@ -115,7 +117,7 @@ declare module '@velajs/vela' {
 
 ## Signed URLs
 
-Protect a route with `@SignedUrl()` (adds `SignedUrlGuard`), generate signed links with `UrlGeneratorService.signedUrl`, and provide the secret via the `URL_SIGNING_SECRET` token or `CONFIG_ENV['URL_SIGNING_SECRET']`:
+Protect a route with `@SignedUrl()` (adds `SignedUrlGuard`), generate signed links with `UrlGeneratorService.signedUrl`, and provide the secret via the `URL_SIGNING_SECRET` token or a string `URL_SIGNING_SECRET` in the application's `ENV` (on Workers, a Wrangler secret):
 
 ```ts
 import { Controller, Get, SignedUrl, URL_SIGNING_SECRET, UrlGeneratorService, verifySignedUrl, defineProvider } from '@velajs/vela';
@@ -140,4 +142,4 @@ const link = await urls.signedUrl('file.download', {}, { expiresIn: 3600 });
 // requests to `link` pass the guard until it expires; tampered/expired → 403
 ```
 
-`signedUrl(name, params?, { expiresIn?, secret? })` builds the URL then HMAC-signs it (Web Crypto, edge-safe — no `node:crypto`). The guard resolves the secret in order: explicit → `URL_SIGNING_SECRET` token → `CONFIG_ENV`. The low-level primitives `signUrl(url, secret, { expiresIn? })` and `verifySignedUrl(url, secret)` are also exported (and re-exported from `@velajs/vela/storage`).
+`signedUrl(name, params?, { expiresIn?, secret? })` builds the URL then HMAC-signs it (Web Crypto, edge-safe — no `node:crypto`). The guard resolves the secret in order: explicit → `URL_SIGNING_SECRET` token → the string `ENV.URL_SIGNING_SECRET` (non-string values are ignored). The low-level primitives `signUrl(url, secret, { expiresIn? })` and `verifySignedUrl(url, secret)` are also exported (and re-exported from `@velajs/vela/storage`).

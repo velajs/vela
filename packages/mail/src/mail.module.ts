@@ -9,6 +9,7 @@ import {
   type Token,
   type Type,
 } from '@velajs/vela';
+import { QueueModule } from '@velajs/vela/queue';
 import { snapshotInboundGate, type MailInboundGate } from './inbound/gate';
 import { assertUniqueMailQueues, MAIL_QUEUE_REGISTRATION } from './mail.configuration';
 import { type MailLimits, resolveMailLimits } from './limits';
@@ -22,6 +23,20 @@ import {
 } from './mail.tokens';
 import type { AddressInput, MailTransport, RenderSeam } from './types';
 
+/**
+ * The queue `MailService.queue()` sends through. The mailer registers it with
+ * `QueueModule.registerQueue({ name, binding, consumer })`, so the application
+ * only imports `QueueModule.forRoot({ driver })`.
+ */
+export interface MailQueueOptions {
+  /** Logical queue name. Defaults to `'mail'`. */
+  name?: string;
+  /** Producer binding the driver sends through, such as a Wrangler `queues.producers[].binding`. */
+  binding?: string;
+  /** Physical queue to pin the queue to, as `QueueModule.registerQueue({ consumer })` does. */
+  consumer?: string;
+}
+
 export interface MailModuleOptions {
   /** Default `from` for messages that omit their own. */
   from: AddressInput;
@@ -34,11 +49,11 @@ export interface MailModuleOptions {
   render?: RenderSeam;
   /**
    * Enable the queue-backed send path. STRUCTURAL — pass it alongside the
-   * factory for `forRootAsync`, like `@velajs/vela/queue`'s `queues`. `name`
-   * defaults to `'mail'` and must match a queue registered with
-   * `QueueModule.forRoot({ queues: [name] })`.
+   * factory for `forRootAsync`. The mailer registers the queue (`name`
+   * defaults to `'mail'`) and its consumer; the application imports
+   * `QueueModule.forRoot({ driver })` once.
    */
-  queue?: { name?: string };
+  queue?: MailQueueOptions;
   /**
    * App-level inbound gate. When a custom `gate` is given it is globalized (the
    * `SCHEDULE_DISPATCH` pattern) so the cross-module inbound dispatcher reads
@@ -123,7 +138,14 @@ function structuralKeyPart(options: StructuralMailOptions): Record<string, unkno
   const gate = options.inbound?.gate;
   return {
     from: fromKey(options.from),
-    queue: options.queue?.name ?? (options.queue !== undefined ? MAIL_QUEUE : undefined),
+    queue:
+      options.queue === undefined
+        ? undefined
+        : {
+            name: options.queue.name ?? MAIL_QUEUE,
+            binding: options.queue.binding ?? null,
+            consumer: options.queue.consumer ?? null,
+          },
     gate: gate === undefined ? 'default' : { require: gate.require ?? null },
     limits: resolveMailLimits(options.limits),
     isGlobal: options.isGlobal ?? false,
@@ -221,17 +243,24 @@ const mailModuleHost = defineModule<MailModuleOptions>({
       MailService,
     ];
 
+    const imports: DynamicModule[] = [];
     // Every registration gets its own class token so the core queue dispatcher
     // resolves this registration's MAIL_OPTIONS, including the default queue.
     if (options.queue !== undefined) {
-      const queueName = options.queue.name ?? MAIL_QUEUE;
+      const { name: queueName = MAIL_QUEUE, binding, consumer } = options.queue;
       providers.push(
         defineProvider(MAIL_QUEUE_REGISTRATION, { useValue: queueName }),
         createMailSendProcessor(queueName),
       );
+      imports.push(
+        QueueModule.registerQueue({
+          name: queueName,
+          ...(binding === undefined ? {} : { binding }),
+          ...(consumer === undefined ? {} : { consumer }),
+        }),
+      );
     }
 
-    const imports: DynamicModule[] = [];
     const customGate = options.inbound?.gate;
     if (customGate !== undefined) imports.push(gateHost(customGate));
 
@@ -242,8 +271,8 @@ const mailModuleHost = defineModule<MailModuleOptions>({
 
 /**
  * The Vela mail module. Provides `MailService` (the injectable producer) and,
- * when `queue` is set, registers the `mail:send` consumer so the vela queue
- * dispatcher picks it up. Compose a transport by passing `transport` directly or
+ * when `queue` is set, registers that queue with `QueueModule.registerQueue`
+ * and its `mail:send` consumer so the vela queue dispatcher picks it up. Compose a transport by passing `transport` directly or
  * by importing a transport module (which provides {@link MAIL_TRANSPORT}) before
  * this one.
  */

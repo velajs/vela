@@ -1,4 +1,4 @@
-import { CORE_CATALOG, STATUS_TO_CODE, type Catalog } from './catalog';
+import { CORE_CATALOG, codeForStatus, type Catalog } from './catalog';
 import { isVelaError } from './guard';
 
 export interface WireErrorObject {
@@ -27,10 +27,8 @@ export interface ToErrorBodyOptions {
   includeHint?: boolean;
 }
 
-const defaultRedactedMessage = (status: number, catalog: Catalog<string>): string => {
-  const code = STATUS_TO_CODE[status];
-  return (code && catalog.get(code)?.title) || 'Internal Server Error';
-};
+const defaultRedactedMessage = (status: number, catalog: Catalog<string>): string =>
+  catalog.get(codeForStatus(status))?.title || 'Internal Server Error';
 
 /**
  * THE single wire-redaction seam. Every transport edge (HTTP, WS, live, queue
@@ -51,7 +49,7 @@ export const toErrorBody = (error: unknown, options: ToErrorBodyOptions = {}): E
 
   if (!isVelaError(error)) {
     const status = options.fallbackStatus ?? 500;
-    return redact(status, STATUS_TO_CODE[status] ?? 'internal');
+    return redact(status, codeForStatus(status));
   }
 
   const entry = catalog.get(error.code);

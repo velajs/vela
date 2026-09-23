@@ -49,8 +49,9 @@ export default app; // Fetch-compatible application
 
 This example serves `GET /app/` and returns `{ "message": "Hello from the edge!" }`.
 
-Build decorated TypeScript with SWC using legacy decorators and emitted decorator
-metadata. See the [tooling guide](https://github.com/velajs/vela/blob/main/docs/tooling.md)
+Build decorated TypeScript with legacy decorators and emitted decorator metadata,
+for example with Vite 8, whose Oxc transformer emits both. See the
+[tooling guide](https://github.com/velajs/vela/blob/main/docs/tooling.md)
 and [API starter](https://github.com/velajs/vela/tree/main/apps/api-starter) for
 working compiler and runtime configuration. For native Workers bindings, use
 `createCloudflareWorker` from
@@ -73,17 +74,18 @@ before `ThrottlerModule`.
 ## Features
 
 - **Decorator-based controllers** — `@Controller`, `@Get`, `@Post`, `@Put`, `@Patch`, `@Delete`
-- **Dependency injection** — `@Injectable`, `@Inject`, `InjectionToken`, singleton/transient/request scopes
+- **Dependency injection** — `@Injectable`, `@Inject`, `InjectionToken`, `Scope.DEFAULT` (singleton), `Scope.TRANSIENT` and `Scope.REQUEST` scopes
 - **Modules** — `@Module` with imports, exports, controllers, providers
 - **Guards** — `@UseGuards` with `CanActivate` interface
-- **Pipes** — `@UsePipes`, built-in `ParseIntPipe`, `ParseBoolPipe`, `ZodValidationPipe`, etc.
+- **Pipes** — `@UsePipes`, built-in `ParseIntPipe`, `ParseBoolPipe`, `ValidationPipe`, etc.
+- **Schema-validated parameters** — `@Body(schema)`, `@Query('page', schema)`, `@Param('id', schema)` return 400 on invalid input and document the schema in OpenAPI
 - **Interceptors** — `@UseInterceptors` with `NestInterceptor` interface
 - **Exception filters** — `@UseFilters`, `@Catch`, built-in HTTP exceptions
 - **Middleware** — `@UseMiddleware` for Hono-native middleware
 - **Custom metadata** — `@SetMetadata` + `Reflector`
 - **Custom param decorators** — `createParamDecorator`
-- **Route versioning** — `@Controller({ version: '1' })` + `@Version('2')`
-- **Global prefix** — `app.setGlobalPrefix('/api')`
+- **Route versioning** — `@Controller({ path: '/users', version: 1 })` + `@Version(2)` (serves `/v1/users` and `/v2/users`)
+- **Global prefix** — `VelaFactory.create(AppModule, { globalPrefix: '/api' })`, read back with `app.getGlobalPrefix()`
 - **Lifecycle hooks** — `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`
 - **CRUD integration** — Optional [`@velajs/crud`](https://github.com/velajs/vela/tree/main/packages/crud) package
 
@@ -113,6 +115,52 @@ import { ScheduleNodeModule } from '@velajs/vela/schedule-node';
 WebSocket transports for Node, Bun, and Deno are exposed separately through
 `@velajs/vela/websocket-node`. On Workers, use `@velajs/cloudflare` and its native
 Durable Object entrypoint. See the [WebSocket guide](https://github.com/velajs/vela/blob/main/docs/websockets.md).
+
+## Runtime environment and config
+
+`ENV` is the framework-owned token for the environment a runtime hands the
+application: bindings, variables and secrets, typed as `VelaEnv`. Core declares
+`VelaEnv` empty and never reads a platform global; `@velajs/cloudflare` extends it
+with the `Cloudflare.Env` that `wrangler types` generates and seeds `ENV` for each
+Worker and Durable Object. Elsewhere, seed it yourself:
+`VelaFactory.create(AppModule, { env })` (a Node entry may pass `process.env`), or
+`Test.createTestingModule(metadata, { env })` in tests.
+
+```ts
+import { ConfigModule, Inject, InjectEnv, Injectable, Module, registerAs, type ConfigType, type VelaEnv } from '@velajs/vela';
+
+// Declare what your runtime provides. On Workers, @velajs/cloudflare types
+// VelaEnv from `wrangler types` instead.
+declare module '@velajs/vela' {
+  interface VelaEnv {
+    DATABASE_URL?: string;
+  }
+}
+
+export const database = registerAs('database', (env) => ({
+  url: env.DATABASE_URL ?? 'sqlite::memory:',
+}));
+
+@Injectable()
+class Reports {
+  constructor(
+    @InjectEnv() private readonly env: VelaEnv,
+    @Inject(database.KEY) private readonly db: ConfigType<typeof database>,
+  ) {}
+}
+
+@Module({ imports: [ConfigModule.forFeature(database)], providers: [Reports] })
+class ReportsModule {}
+```
+
+`registerAs(namespace, env => config)` reads `ENV`; `ConfigModule.forFeature`
+provides one namespace to the importing module, and `ConfigModule.forRoot({ load })`
+registers several; both share one provider per namespace, so its factory runs
+once. `ConfigService<T>` checks `get`/`getOrThrow` dot paths against the shape
+you declare. `ENV` has no default: reading it where no runtime seeded one fails,
+while framework readers inject it optionally. A string `URL_SIGNING_SECRET` in
+`ENV` signs URLs and invocations when no explicit secret is configured. Values
+come from outside the program, so validate what you read.
 
 ## Dynamic modules
 

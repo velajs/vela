@@ -1,12 +1,10 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "__PROJECT_NAME__",
-  "main": "dist/worker.js",
+  "main": "src/worker.ts",
+  // Dates from 2026-08-04 enable Node.js compatibility by default, including the
+  // node:async_hooks module that the @velajs/vela root entry imports (through
+  // hono/context-storage) whether or not ambient access is enabled. An older
+  // date needs "compatibility_flags": ["nodejs_als"].
   "compatibility_date": "2026-09-20",
-  "compatibility_flags": ["nodejs_compat"],
-  "build": {
-    "command": "pnpm build",
-    "watch_dir": ["src", ".swcrc"],
-  },
-  "dev": { "port": 8787 },
 }

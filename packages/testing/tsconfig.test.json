@@ -2,12 +2,12 @@
   // Typechecks the eval harness together with its own *.test.ts files, so the
   // tests dogfood the exported signatures. The root tsconfig deliberately
   // excludes all test files (see its `exclude`); this scoped config brings the
-  // eval tests back under `tsc --noEmit` without pulling in unrelated,
-  // pre-existing test files elsewhere in the repo.
+  // eval tests and the typed env/adapter tests back under `tsc --noEmit`
+  // without pulling in unrelated, pre-existing test files elsewhere in the repo.
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": true
   },
-  "include": ["src/eval/**/*.ts"],
+  "include": ["src/eval/**/*.ts", "src/__tests__/testing-env.test.ts"],
   "exclude": ["node_modules", "dist"]
 }

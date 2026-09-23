@@ -170,10 +170,19 @@ describe('AdminClient', () => {
 
   it('health() reports enabled + protocolVersion', async () => {
     const fetchImpl = (async () =>
+      new Response(JSON.stringify({ enabled: true, protocolVersion: 3 }), {
+        status: 200,
+      })) as typeof fetch;
+    const client = new AdminClient({ baseUrl: 'http://host', fetchImpl });
+    await expect(client.health()).resolves.toEqual({ enabled: true, protocolVersion: 3 });
+  });
+
+  it('health() rejects an application on the protocol before the scope rename', async () => {
+    const fetchImpl = (async () =>
       new Response(JSON.stringify({ enabled: true, protocolVersion: 2 }), {
         status: 200,
       })) as typeof fetch;
     const client = new AdminClient({ baseUrl: 'http://host', fetchImpl });
-    await expect(client.health()).resolves.toEqual({ enabled: true, protocolVersion: 2 });
+    await expect(client.health()).rejects.toMatchObject({ code: 'STUDIO_BAD_RESPONSE' });
   });
 });

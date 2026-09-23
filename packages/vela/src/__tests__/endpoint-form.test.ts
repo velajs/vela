@@ -306,7 +306,7 @@ describe('endpoint form contracts', () => {
     }
   });
 
-  it('allows an explicit JSON byte limit while retaining headerless JSON compatibility', async () => {
+  it('allows an explicit JSON byte limit and still requires a JSON media type', async () => {
     const definition = defineEndpoint({
       input: z.object({ json: z.string() }),
       output: z.string(),
@@ -324,15 +324,18 @@ describe('endpoint form contracts', () => {
     class App {}
     const app = await VelaFactory.create(App);
     try {
-      for (const [body, status] of [
-        ['"ok"', 200],
-        ['"1234567"', 413],
-        ['broken', 400],
+      for (const [body, contentType, status] of [
+        ['"ok"', 'application/json', 200],
+        ['"1234567"', 'application/json', 413],
+        ['broken', 'application/json', 400],
+        ['"ok"', 'text/plain', 415],
       ] as const) {
-        expect(
-          (await app.fetch(new Request('https://example.test/json', { method: 'POST', body })))
-            .status,
-        ).toBe(status);
+        const request = new Request('https://example.test/json', {
+          method: 'POST',
+          headers: { 'content-type': contentType },
+          body,
+        });
+        expect((await app.fetch(request)).status).toBe(status);
       }
     } finally {
       await app.close();

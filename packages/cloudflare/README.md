@@ -6,26 +6,27 @@ platform's native types.
 
 ## Native environment and application lifetime
 
-Define one typed token for your generated Workers environment. Inject that token
-wherever bindings or secrets are needed, including async provider factories.
+The Worker's native environment is the framework `ENV` from `@velajs/vela`.
+`createCloudflareWorker` seeds it for each environment before any provider is
+constructed, so the Worker entry only exports. Inject it wherever bindings or
+secrets are needed, including async provider factories (`inject: [ENV]`).
+
+Types come from Wrangler. Run `wrangler types --include-runtime=false` (runtime
+types stay with `@cloudflare/workers-types`) and include the generated
+`worker-configuration.d.ts` in your tsconfig. It declares `Cloudflare.Env` from
+the bindings and variables in your Wrangler file and the secret names in
+`.dev.vars`; this package extends `VelaEnv` with it, so `ENV`, `{ create(env) }`
+roots and `registerAs` factories are typed without a hand-written interface.
+Regenerate it whenever the Wrangler file changes.
 
 ```ts
-import { Controller, Get, Inject, InjectionToken, Module } from '@velajs/vela';
+import { Controller, Get, InjectEnv, Module, type VelaEnv } from '@velajs/vela';
 import { createCloudflareWorker } from '@velajs/cloudflare';
-
-interface WorkerEnv {
-  CACHE: KVNamespace;
-  DB: D1Database;
-  FILES: R2Bucket;
-  JOBS: Queue<{ taskId: string }>;
-  SERVICE_NAME: string;
-  APP_SECRET: string;
-}
-export const ENV = new InjectionToken<WorkerEnv>('Worker environment');
 
 @Controller('/status')
 class StatusController {
-  constructor(@Inject(ENV) private readonly env: WorkerEnv) {}
+  // CACHE is a KVNamespace in worker-configuration.d.ts.
+  constructor(@InjectEnv() private readonly env: VelaEnv) {}
 
   @Get()
   async status() {
@@ -36,7 +37,7 @@ class StatusController {
 @Module({ controllers: [StatusController] })
 class AppModule {}
 
-export default createCloudflareWorker(AppModule, { envToken: ENV });
+export default createCloudflareWorker(AppModule);
 ```
 
 The worker exposes `fetch`, `queue`, and `scheduled`. Its first event builds an
@@ -47,35 +48,45 @@ drivers. A failed construction is evicted and the next event retries.
 
 When module configuration itself needs bindings, pass `{ create: (env) => AppModule }`
 instead of a static class. Dynamic module roots and asynchronous factories are also
-supported. The callback receives the native environment inferred
-from `envToken` and runs once per successful environment bootstrap. The same form
-works with `VelaWebSocketDurableObject` for authenticated live gateways. See the
+supported. The callback receives the native environment as `VelaEnv` and runs
+once per environment object in an isolate. The same form
+works with `VelaWebSocketDurableObject` for authenticated live gateways. The Worker
+and every Durable Object instance built from the same environment share the
+resulting module graph, including every value created inside `create(env)`:
+`useValue` providers, module option objects and anything they reference are the
+same objects in all of those applications. Only class and factory providers and
+lifecycle state are built per application. A rejected factory or failed bootstrap
+is evicted, so the next event runs the factory again. Build per-application state
+in factories: `useFactory` providers, `forRootAsync`, or queue driver factories
+such as `cloudflareQueues()` and `() => inline()`. See the
 [complete API starter](../../apps/api-starter/README.md) for D1, Better Auth, CRUD,
 the generated Hono client, live updates, and Studio inspection in one application.
 
-The cache uses weak object keys: it does not permanently retain replaced
-environments or secrets. Providers with request scope still rebuild per HTTP
-request or queue/cron dispatch. Do not retain request objects or authentication
-state in singleton providers.
+The application cache uses weak object keys, so the cache itself does not keep a
+replaced environment alive. Module metadata does: classes declared while a root
+resolves stay registered for the life of the isolate, together with the values
+their module options capture. Build secret-bearing values in `forRootAsync`
+factories that inject `ENV` rather than capturing them in module options.
+Providers with request scope still rebuild per HTTP request or queue/cron dispatch.
+Do not retain request objects or authentication state in singleton providers.
 
 For explicit construction inside a platform event:
 
 ```ts
 const app = await createCloudflareApp(AppModule, {
   env,
-  envToken: ENV,
   globalPrefix: '/api',
   middleware: (bindings) => [async (context, next) => {
     context.header('x-service', bindings.SERVICE_NAME);
     await next();
   }],
 });
-const bindings = app.get(ENV); // WorkerEnv, inferred from ENV
+const bindings = app.get(ENV); // VelaEnv
 return app.fetch(request, env, executionContext);
 ```
 
-`env` is registered before provider factories and lifecycle hooks. Referencing a
-binding inside `middleware(env)` is typed from that same token; request callbacks
+`env` is registered as `ENV` before provider factories and lifecycle hooks.
+Bindings inside `middleware(env)` are typed as `VelaEnv` too; request callbacks
 capture the native environment without retyping Hono's context. Referencing a
 binding is safe during construction; platform I/O must still happen inside a
 Workers event or Durable Object context. An explicitly built application rejects
@@ -83,29 +94,115 @@ requests or events carrying another environment object, including calls through
 the underlying Hono app. Internal `ctx.run` reentry retains the application's
 environment.
 
-`cloudflareAdapter({ env, envToken })` provides the same bootstrap and request
-contract when composing `VelaFactory.create` directly.
+`cloudflareAdapter({ env })` provides the same bootstrap and request contract
+when composing `VelaFactory.create` directly. `createCloudflareWorker` and
+`createCloudflareApp` accept `adapters: RuntimeAdapter[]`, composed after the
+Cloudflare adapter for each application, so the Worker entry needs no
+hand-written per-environment cache for them.
+
+Because `ENV` carries every binding, variable and secret, framework features
+read their secrets from it without extra wiring: a string `URL_SIGNING_SECRET`
+signs URLs and invocations when no explicit secret is configured, and Studio
+reads `VELA_STUDIO_TOKEN` and its `VELA_STUDIO_*_EDITABLE` flags. Set them with
+`wrangler secret put`. Values come from outside the program, so validate each
+value your own code reads before relying on it.
 
 ## Module-based queues, cron and RPC
 
-Import `QueueModule` and configure `cloudflareQueueDriver` consumer mappings to
-connect native batches directly to `@Processor`/`@Process` providers. Use
-`ScheduleModule.forRoot()` and `@Cron()` for native scheduled work. The
-[module guide](../../docs/module-workers.md) covers producer-only and consumer-only
-Workers, RPC modules, migration, and deployment checks. Native decorators remain
-available as escape hatches.
+`QueueModule` from `@velajs/vela/queue` is the Workers queue API. Configure the
+driver once in the root module and register each queue where it is used:
+
+```ts
+import { Injectable, Module } from '@velajs/vela';
+import {
+  InjectQueue,
+  Process,
+  Processor,
+  QueueModule,
+  defineQueueJob,
+  type QueueClient,
+  type QueueJob,
+} from '@velajs/vela/queue';
+import { cloudflareQueues } from '@velajs/cloudflare/queues';
+import { z } from 'zod';
+
+const welcome = defineQueueJob('welcome', z.object({ userId: z.string() }));
+
+@Injectable()
+class Signup {
+  constructor(@InjectQueue('email') private readonly email: QueueClient) {}
+  invite(userId: string) {
+    return this.email.add(welcome, { userId });
+  }
+}
+
+@Processor('email')
+@Injectable()
+class EmailProcessor {
+  @Process(welcome)
+  send(job: QueueJob<{ userId: string }>) {}
+}
+
+@Module({
+  imports: [QueueModule.registerQueue({ name: 'email', binding: 'EMAIL_QUEUE' })],
+  providers: [Signup, EmailProcessor],
+})
+class EmailModule {}
+
+@Module({ imports: [QueueModule.forRoot({ driver: cloudflareQueues() }), EmailModule] })
+class AppModule {}
+```
+
+`binding` names a Wrangler `queues.producers[].binding`. The driver reads it
+from the application's `ENV` when a job is added and awaits the native send.
+`addBulk` uses `sendBatch`, split into calls of at most 100 messages and an
+estimated 256 KB, and rejects a job estimated over 128 KB before sending
+anything. A partial failure rejects with a `QueueBatchError` whose `accepted`
+lists the job ids already sent.
+
+The Worker's `queue()` handler gives each batch to the `@QueueConsumer` handlers
+of its physical queue. Batches no `@QueueConsumer` claims go to `QueueModule`,
+which routes every job by its logical queue, so several registered queues may
+share one physical queue. Each job runs through the module's dispatch policy,
+including signed dispatch and its global guards. A message is acknowledged
+after its processors succeed; a message that is not a job envelope, belongs to
+an unregistered queue, or fails stays unacknowledged, so Cloudflare retries it
+and then dead-letters it. `registerQueue({ name, consumer: 'email-production' })`
+pins the queue to that physical queue: its jobs are accepted only from it, and
+it carries only the queues pinned to it. A physical queue cannot be both a
+`@QueueConsumer` queue and a pinned consumer. A `@QueueConsumer` owns its
+physical queue and must not carry jobs of registered queues: those reach their
+`@Processor` only if the raw handler dispatches them itself, so the adapter
+warns once when it sees them. Registered queues are delivered by
+`cloudflareQueues()`. `dispatchQueueJob` is for tests and for transports other
+than Cloudflare Queues; it applies the module's dispatch policy, signed dispatch
+included.
+
+Use `ScheduleModule.forRoot()` and `@Cron()` for native scheduled work. The
+[queue guide](../../docs/queues.md) and [module guide](../../docs/module-workers.md)
+cover producer-only and consumer-only Workers, RPC modules and deployment
+checks. `@QueueConsumer` remains available for raw batches.
 
 ## Managed queue and cron work
 
-Each matching queue/cron handler receives its original event and environment,
-plus a context whose `waitUntil(promise)` delegates to the platform and retains
-that handler's DI scope until the promise settles. Class/method guards,
-interceptors and filters resolve asynchronously from the handler's declaring
-module. The execution context exposes that same child via `getContainer()` and
-its owner via `getModuleId()`; `REQUEST_CONTEXT` remains HTTP-only.
+Each matching `@QueueConsumer` handler receives its batch and environment, plus
+a context whose `waitUntil(promise)` delegates to the platform and retains that
+handler's DI scope until the promise settles. Class/method guards, interceptors
+and filters resolve asynchronously from the handler's declaring module. The
+execution context exposes that same child via `getContainer()` and its owner via
+`getModuleId()`; `REQUEST_CONTEXT` remains HTTP-only.
 
-Inject `EXECUTION_LIFETIME` from `@velajs/vela` to schedule deferred callbacks
-with `lifetime.defer(work)` or register already-started work with
+A `@Cron` job receives only its `CronInvocation`, with no environment or
+context argument, and runs no guards, interceptors or filters: the adapter warns
+once (fails bootstrap in `diagnostics: 'throw'`) when a job declares
+`@UseGuards`, `@UseInterceptors` or `@UseFilters`, and a job that declares
+guards is refused on every trigger instead of running unguarded. Use signed
+`ScheduleModule` dispatch to run a job through a route's request pipeline, and
+inject `ENV`, `CLOUDFLARE_SCHEDULED_EVENT` and `EXECUTION_LIFETIME` for what the
+native handler arguments used to carry.
+
+In both, inject `EXECUTION_LIFETIME` from `@velajs/vela` to schedule deferred
+callbacks with `lifetime.defer(work)` or register already-started work with
 `lifetime.waitUntil(promise)`. The handler, managed work and asynchronous provider
 disposal finish before queue/cron dispatch returns. Unclaimed failures reject
 for the platform to observe; they are not silently converted into success. When
@@ -122,7 +219,7 @@ Bindings retain their full native API and generic parameters. There are no
 binding-name wrappers to initialize or cast.
 
 ```ts
-import { defineProvider, InjectionToken, Module } from '@velajs/vela';
+import { defineProvider, ENV, InjectionToken, Module } from '@velajs/vela';
 
 const TASK_QUEUE = new InjectionToken<Queue<{ taskId: string }>>('task queue');
 
@@ -141,22 +238,24 @@ Every `useFactory` strategy declares its dependencies with `inject`, including
 `lazyProvider` and `forRootAsync` factory options.
 
 Use native `env.DB`, `env.CACHE`, `env.FILES`, `env.JOBS`, `env.AI`,
-`env.VECTORIZE`, or `env.HYPERDRIVE` directly. `@Env()` remains available for HTTP
-handler parameters; typed token injection also works outside HTTP.
+`env.VECTORIZE`, or `env.HYPERDRIVE` directly. Inject `ENV` in constructors
+(`@InjectEnv()`) and factories (`inject: [ENV]`); it works the same in HTTP,
+queue, cron and Durable Object code.
 
 ## Queues and cron
 
 ```ts
-import { Inject, Injectable } from '@velajs/vela';
-import { QueueConsumer, Scheduled } from '@velajs/cloudflare';
+import { Cron, InjectEnv, Injectable, type CronInvocation, type VelaEnv } from '@velajs/vela';
+import { QueueConsumer } from '@velajs/cloudflare';
 
 @Injectable()
 class Jobs {
-  constructor(@Inject(ENV) private readonly env: WorkerEnv) {}
+  constructor(@InjectEnv() private readonly env: VelaEnv) {}
 
-  @Scheduled('0 * * * *')
-  async refresh() {
-    await this.env.CACHE.put('last-refresh', new Date().toISOString());
+  // Declare the same string under Wrangler `triggers.crons`.
+  @Cron('0 * * * *', { dialect: 'cloudflare' })
+  async refresh(tick: CronInvocation) {
+    await this.env.CACHE.put('last-refresh', new Date(tick.scheduledTime).toISOString());
   }
 
   @QueueConsumer('jobs')
@@ -168,17 +267,24 @@ class Jobs {
 }
 ```
 
-Core `@Cron()` also runs on Workers scheduled triggers. Consumers use fresh
-request scopes and their declared guards, interceptors, and filters. Unclaimed
-errors propagate to the platform for retry. Cold queue and cron events have the
-same native bindings and live invalidation capabilities as HTTP.
+A cron trigger runs every core `@Cron()` job whose expression is exactly the
+trigger string. Jobs receive only their `CronInvocation`, as on Node, in a fresh
+request scope and without guards, interceptors or filters; inject
+`CLOUDFLARE_SCHEDULED_EVENT` for the trigger's bound `noRetry()` and
+`EXECUTION_LIFETIME` for background work. A job run outside a trigger (Studio's
+run-now) receives a synthetic event whose `noRetry()` does nothing. Signed `ScheduleModule` dispatch runs
+the signed route with its global guards. Queue consumers use fresh request
+scopes and their declared guards, interceptors, and filters. Unclaimed errors
+propagate to the platform for retry. Cold queue and cron events have the same
+native bindings and live invalidation capabilities as HTTP. See
+[scheduling](../../docs/scheduling.md).
 
 ## WebSockets, live queries, and Durable Objects
 
 Use the native Durable Object entrypoint only in your Worker entry file:
 
 ```ts
-import { InjectionToken, Module } from '@velajs/vela';
+import { ENV, Module } from '@velajs/vela';
 import { LiveModule } from '@velajs/vela/live';
 import {
   CloudflareWebSocketModule,
@@ -188,14 +294,12 @@ import {
 } from '@velajs/cloudflare';
 import { VelaWebSocketDurableObject } from '@velajs/cloudflare/durable-objects';
 
-interface RoomEnv { ROOMS: DurableObjectNamespace<Room> }
-const ROOM_ENV = new InjectionToken<RoomEnv>('room environment');
-
 @Module({
   imports: [
     CloudflareWebSocketModule.forRoot(),
     LiveModule.forRootAsync({
-      inject: [ROOM_ENV],
+      // ROOMS is typed DurableObjectNamespace<Room> by `wrangler types`.
+      inject: [ENV],
       useFactory: (env) => ({
         driver: () => durableObjectLive({
           namespace: env.ROOMS,
@@ -210,8 +314,8 @@ const ROOM_ENV = new InjectionToken<RoomEnv>('room environment');
 })
 class RoomModule {}
 
-export class Room extends VelaWebSocketDurableObject(RoomModule, { envToken: ROOM_ENV }) {}
-export default createCloudflareWorker(RoomModule, { envToken: ROOM_ENV });
+export class Room extends VelaWebSocketDurableObject(RoomModule) {}
+export default createCloudflareWorker(RoomModule);
 ```
 
 Declare gateways with `@WebSocketGateway({ path, roomParam, binding, ... })` and

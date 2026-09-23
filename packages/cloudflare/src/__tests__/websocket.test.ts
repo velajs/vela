@@ -1,5 +1,4 @@
-import { InjectionToken, setTrustedRequestIdentity } from '@velajs/vela';
-const envToken = new InjectionToken<object>('test environment');
+import { setTrustedRequestIdentity } from '@velajs/vela';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MemoryNonceStore, Module, MetadataRegistry, REQUEST_CONTEXT } from '@velajs/vela';
 import type { RequestContext } from '@velajs/vela';
@@ -345,7 +344,7 @@ describe('DO runtime integration', () => {
 
   it('accept tags the hub room + conn and persists the attachment', async () => {
     const ctx = new FakeDoState();
-    const runtime = await buildDoRuntime(chatModule(), ctx, { env: {}, envToken });
+    const runtime = await buildDoRuntime(chatModule(), ctx, { env: {} });
     const host = new DoWebSocketHost(ctx, runtime.dispatcher, runtime.registry);
 
     const ws = new FakeWs();
@@ -370,7 +369,7 @@ describe('DO runtime integration', () => {
 
   it('fires OnGatewayConnection and dispatches messages to the gateway', async () => {
     const ctx = new FakeDoState();
-    const runtime = await buildDoRuntime(chatModule(), ctx, { env: {}, envToken });
+    const runtime = await buildDoRuntime(chatModule(), ctx, { env: {} });
     const host = new DoWebSocketHost(ctx, runtime.dispatcher, runtime.registry);
 
     const ws = new FakeWs();
@@ -381,6 +380,34 @@ describe('DO runtime integration', () => {
     ws.sent.length = 0;
     await host.onMessage(ws, JSON.stringify({ id: '1', event: 'echo', data: { text: 'hi' } }));
     expect(ws.lastFrame()).toEqual({ id: '1', event: 'echo', data: 'HI' });
+  });
+
+  it('broadcasts from handleConnection without rejecting the connecting socket', async () => {
+    @WebSocketGateway({ path: '/lobby', binding: 'CHAT' })
+    class LobbyGateway implements OnGatewayConnection {
+      constructor(@WebSocketServer() private readonly server: WsServer) {}
+      handleConnection(client: WsClient) {
+        void this.server.emit('joined', { id: client.id });
+      }
+    }
+    @Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [LobbyGateway] })
+    class AppModule {}
+
+    const ctx = new FakeDoState();
+    const runtime = await buildDoRuntime(AppModule, ctx, { env: {} });
+    const host = new DoWebSocketHost(ctx, runtime.dispatcher, runtime.registry);
+    const member = new FakeWs();
+    await expect(acceptTrusted(host, member, '/lobby', 'room1', 'user1')).resolves.toBe(true);
+    const newcomer = new FakeWs();
+    await expect(acceptTrusted(host, newcomer, '/lobby', 'room1', 'user2')).resolves.toBe(true);
+
+    // The admitted member hears about the newcomer. The newcomer is still being
+    // admitted while its own hook runs, so the broadcast skips it: no frame, no close.
+    expect(member.lastFrame().event).toBe('joined');
+    expect(member.closed).toBeUndefined();
+    expect(newcomer.sent).toEqual([]);
+    expect(newcomer.closed).toBeUndefined();
+    expect((newcomer.deserializeAttachment() as { state: string }).state).toBe('active');
   });
 
   it('closes fail-closed when OnGatewayConnection rejects', async () => {
@@ -399,7 +426,7 @@ describe('DO runtime integration', () => {
     class AppModule {}
 
     const ctx = new FakeDoState();
-    const runtime = await buildDoRuntime(AppModule, ctx, { env: {}, envToken });
+    const runtime = await buildDoRuntime(AppModule, ctx, { env: {} });
     const host = new DoWebSocketHost(ctx, runtime.dispatcher, runtime.registry);
     const ws = new FakeWs();
 
@@ -431,7 +458,7 @@ describe('DO runtime integration', () => {
     class AppModule {}
 
     const ctx = new FakeDoState();
-    const runtime = await buildDoRuntime(AppModule, ctx, { env: {}, envToken });
+    const runtime = await buildDoRuntime(AppModule, ctx, { env: {} });
     const host = new DoWebSocketHost(ctx, runtime.dispatcher, runtime.registry);
     const ws = new FakeWs();
 
@@ -444,6 +471,61 @@ describe('DO runtime integration', () => {
     expect(messages).toBe(0);
     expect(ws.closed?.code).toBe(1008);
     expect((ws.deserializeAttachment() as { state: string }).state).toBe('rejected');
+  });
+
+  it('admits a socket whose connection hook broadcasts to its room', async () => {
+    @WebSocketGateway({ path: '/announce', binding: 'CHAT' })
+    class AnnounceGateway implements OnGatewayConnection {
+      constructor(@WebSocketServer() private readonly server: WsServer) {}
+      async handleConnection(client: WsClient) {
+        client.send('welcome', { id: client.id });
+        await this.server.emit('joined', { id: client.id });
+      }
+    }
+    @Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [AnnounceGateway] })
+    class AppModule {}
+
+    const ctx = new FakeDoState();
+    const runtime = await buildDoRuntime(AppModule, ctx, { env: {} });
+    const host = new DoWebSocketHost(ctx, runtime.dispatcher, runtime.registry);
+    const first = new FakeWs();
+    const second = new FakeWs();
+
+    await expect(acceptTrusted(host, first, '/announce', 'room1')).resolves.toBe(true);
+    await expect(acceptTrusted(host, second, '/announce', 'room1', 'user-2')).resolves.toBe(true);
+
+    const secondId = (second.deserializeAttachment() as { connId: string }).connId;
+    for (const ws of [first, second]) {
+      expect(ws.closed).toBeUndefined();
+      expect((ws.deserializeAttachment() as { state: string }).state).toBe('active');
+    }
+    // Delivered to the admitted socket; the joining one only gets its own
+    // hook's direct frame until the hook completes.
+    expect(first.lastFrame()).toEqual({ event: 'joined', data: { id: secondId } });
+    expect(second.sent.map((frame) => JSON.parse(frame))).toEqual([
+      { event: 'welcome', data: { id: secondId } },
+    ]);
+  });
+
+  it('still closes a pending socket that is not being admitted when a broadcast reaches it', async () => {
+    const ctx = new FakeDoState();
+    const runtime = await buildDoRuntime(chatModule(), ctx, { env: {} });
+    const stale = new FakeWs();
+    ctx.acceptWebSocket(stale, [roomTag('room1'), connTag('stale')]);
+    stale.serializeAttachment({
+      version: 1,
+      connId: 'stale',
+      state: 'pending',
+      path: '/chat',
+      rooms: ['room1'],
+      data: {},
+    });
+
+    await runtime.server.to('room1').emit('shout', 'hello');
+
+    expect(stale.sent).toEqual([]);
+    expect(stale.closed?.code).toBe(1008);
+    expect((stale.deserializeAttachment() as { state: string }).state).toBe('rejected');
   });
 
   it('closes an oversized Durable Object frame with 1009 before dispatch', async () => {
@@ -459,7 +541,7 @@ describe('DO runtime integration', () => {
     class AppModule {}
 
     const ctx = new FakeDoState();
-    const runtime = await buildDoRuntime(AppModule, ctx, { env: {}, envToken });
+    const runtime = await buildDoRuntime(AppModule, ctx, { env: {} });
     const host = new DoWebSocketHost(ctx, runtime.dispatcher, runtime.registry);
     const ws = new FakeWs();
     await expect(acceptTrusted(host, ws, '/limited', 'room1')).resolves.toBe(true);
@@ -482,7 +564,7 @@ describe('DO runtime integration', () => {
     class AppModule {}
 
     const ctx = new FakeDoState();
-    const runtime = await buildDoRuntime(AppModule, ctx, { env: {}, envToken });
+    const runtime = await buildDoRuntime(AppModule, ctx, { env: {} });
     const host = new DoWebSocketHost(ctx, runtime.dispatcher, runtime.registry);
     const ws = new FakeWs();
     await expect(acceptTrusted(host, ws, '/limited-reply', 'room1')).resolves.toBe(true);
@@ -505,7 +587,7 @@ describe('DO runtime integration', () => {
 
   it('persists normalized identity expiry in the hibernation attachment', async () => {
     const ctx = new FakeDoState();
-    const runtime = await buildDoRuntime(chatModule(), ctx, { env: {}, envToken });
+    const runtime = await buildDoRuntime(chatModule(), ctx, { env: {} });
     const host = new DoWebSocketHost(ctx, runtime.dispatcher, runtime.registry);
     const ws = new FakeWs();
     const expiresAtMs = Date.now() + 60_000;
@@ -546,7 +628,7 @@ describe('DO runtime integration', () => {
 
   it('rejects an already-expired identity before accepting the socket', async () => {
     const ctx = new FakeDoState();
-    const runtime = await buildDoRuntime(chatModule(), ctx, { env: {}, envToken });
+    const runtime = await buildDoRuntime(chatModule(), ctx, { env: {} });
     const host = new DoWebSocketHost(ctx, runtime.dispatcher, runtime.registry);
     const ws = new FakeWs();
 
@@ -557,7 +639,7 @@ describe('DO runtime integration', () => {
 
   it('rejects an oversized initial hibernation attachment before accepting the socket', async () => {
     const ctx = new FakeDoState();
-    const runtime = await buildDoRuntime(chatModule(), ctx, { env: {}, envToken });
+    const runtime = await buildDoRuntime(chatModule(), ctx, { env: {} });
     const host = new DoWebSocketHost(ctx, runtime.dispatcher, runtime.registry);
     const ws = new FakeWs();
 
@@ -568,7 +650,7 @@ describe('DO runtime integration', () => {
 
   it('broadcasts from a handler to every socket in the room', async () => {
     const ctx = new FakeDoState();
-    const runtime = await buildDoRuntime(chatModule(), ctx, { env: {}, envToken });
+    const runtime = await buildDoRuntime(chatModule(), ctx, { env: {} });
     const host = new DoWebSocketHost(ctx, runtime.dispatcher, runtime.registry);
 
     const a = new FakeWs();
@@ -596,7 +678,7 @@ describe('DO runtime integration', () => {
     class AppModule {}
 
     const ctx = new FakeDoState();
-    const runtime = await buildDoRuntime(AppModule, ctx, { env: {}, envToken });
+    const runtime = await buildDoRuntime(AppModule, ctx, { env: {} });
     const host = new DoWebSocketHost(ctx, runtime.dispatcher, runtime.registry);
     const ws = new FakeWs();
     await expect(acceptTrusted(host, ws, '/delivery', 'room1')).resolves.toBe(true);
@@ -701,7 +783,7 @@ describe('registerWebSocketRoutes (Worker → DO)', () => {
     class AppModule {}
 
     const { ns, calls } = mockNamespace();
-    const app = await createCloudflareApp(AppModule, { env: { ROOM: ns }, envToken });
+    const app = await createCloudflareApp(AppModule, { env: { ROOM: ns } });
 
     const res = await app
       .getHonoApp()
@@ -738,7 +820,7 @@ describe('registerWebSocketRoutes (Worker → DO)', () => {
     class AppModule {}
 
     const { ns, calls } = mockNamespace();
-    const app = await createCloudflareApp(AppModule, { env: { ROOM: ns }, envToken });
+    const app = await createCloudflareApp(AppModule, { env: { ROOM: ns } });
     const res = await app
       .getHonoApp()
       .request('/rooms/alpha/ws', { headers: { upgrade: 'websocket' } }, app.env);
@@ -759,7 +841,7 @@ describe('registerWebSocketRoutes (Worker → DO)', () => {
     class AppModule {}
 
     const { ns, calls } = mockNamespace();
-    const app = await createCloudflareApp(AppModule, { env: { ROOM: ns }, envToken });
+    const app = await createCloudflareApp(AppModule, { env: { ROOM: ns } });
     const res = await app
       .getHonoApp()
       .request(
@@ -784,7 +866,7 @@ describe('registerWebSocketRoutes (Worker → DO)', () => {
     class AppModule {}
 
     const { ns, calls } = mockNamespace();
-    const app = await createCloudflareApp(AppModule, { env: { ROOM: ns }, envToken });
+    const app = await createCloudflareApp(AppModule, { env: { ROOM: ns } });
     const evil = await app
       .getHonoApp()
       .request(
@@ -816,7 +898,7 @@ describe('registerWebSocketRoutes (Worker → DO)', () => {
     class AppModule {}
 
     const { ns, calls } = mockNamespace();
-    const app = await createCloudflareApp(AppModule, { env: { ROOM: ns }, envToken });
+    const app = await createCloudflareApp(AppModule, { env: { ROOM: ns } });
     const res = await app
       .getHonoApp()
       .request(
@@ -851,7 +933,6 @@ describe('registerWebSocketRoutes (Worker → DO)', () => {
     const { ns, calls } = mockNamespace();
     const app = await createCloudflareApp(AppModule, {
       env: { ROOM: ns },
-      envToken,
       middleware: () => [
         async (c, next) => {
           setTrustedRequestIdentity(c.req.raw, {
@@ -892,7 +973,6 @@ describe('registerWebSocketRoutes (Worker → DO)', () => {
     const { ns, calls } = mockNamespace();
     const app = await createCloudflareApp(AppModule, {
       env: { ROOM: ns },
-      envToken,
       middleware: () => [
         async (c, next) => {
           setTrustedRequestIdentity(c.req.raw, {
@@ -945,7 +1025,7 @@ describe('registerWebSocketRoutes (Worker → DO)', () => {
       tenantId: 'tenant-1',
     });
     const { ns, calls } = mockNamespace();
-    const app = await createCloudflareApp(AppModule, { env: { ROOM: ns }, envToken });
+    const app = await createCloudflareApp(AppModule, { env: { ROOM: ns } });
     const first = await app
       .getHonoApp()
       .request(
@@ -983,7 +1063,7 @@ describe('registerWebSocketRoutes (Worker → DO)', () => {
     @Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [Gw] })
     class AppModule {}
 
-    const app = await createCloudflareApp(AppModule, { env: {}, envToken });
+    const app = await createCloudflareApp(AppModule, { env: {} });
     const res = await app.getHonoApp().request('/ws', undefined, app.env);
     expect(res.status).toBe(426);
   });
@@ -1002,7 +1082,7 @@ describe('VelaWebSocketDurableObject shell', () => {
     class AppModule {}
 
     const ctx = new FakeDoState();
-    const DoClass = VelaWebSocketDurableObject(AppModule, { envToken });
+    const DoClass = VelaWebSocketDurableObject(AppModule);
     const instance = new DoClass(ctx as never, {}) as unknown as {
       broadcast(cmd: BroadcastCommand): Promise<void>;
       webSocketMessage(ws: WsLike, msg: string): Promise<void>;
@@ -1087,7 +1167,7 @@ describe('cloudflare — code-review regressions', () => {
     class MiniApp {}
 
     const ctx = new FakeDoState();
-    const runtime = await buildDoRuntime(MiniApp, ctx, { env: {}, envToken });
+    const runtime = await buildDoRuntime(MiniApp, ctx, { env: {} });
     const host = new DoWebSocketHost(ctx, runtime.dispatcher, runtime.registry);
 
     const ws = new FakeWs();

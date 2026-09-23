@@ -59,6 +59,25 @@ describe('additive diagnostic wire fields', () => {
     ).toThrow();
   });
 
+  it('labels the default lifetime "default" and rejects the retired "singleton" label', () => {
+    const node = (scope: string) => ({
+      moduleId: 'a',
+      imports: [],
+      exports: [],
+      providers: ['A'],
+      isGlobal: false,
+      lazy: false,
+      providerScopes: [{ token: 'A', scope }],
+    });
+    expect(parseStudioResponse('app.modules', [node('default')])).toEqual([node('default')]);
+    expect(
+      parseStudioResponse('app.entrypoints', [
+        { kind: 'cron', target: 'Jobs#run', scope: 'default' },
+      ]),
+    ).toEqual([{ kind: 'cron', target: 'Jobs#run', scope: 'default' }]);
+    expect(() => parseStudioResponse('app.modules', [node('singleton')])).toThrow();
+  });
+
   it('rejects fabricated scope names', () => {
     expect(() =>
       parseStudioResponse('app.modules', [

@@ -1,7 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Container } from '../container/container.js';
 import { Injectable, Inject } from '../container/decorators.js';
-import { InjectionToken } from '../container/types.js';
+import {
+  InjectionToken,
+  MissingInjectionMetadataError,
+  UnresolvedDependencyError,
+} from '../container/types.js';
 
 describe('DI error hints — import type mistake', () => {
   let container: Container;
@@ -10,7 +14,7 @@ describe('DI error hints — import type mistake', () => {
     container = new Container();
   });
 
-  it('resolveClass() hints about import type when paramtype is undefined/Object', () => {
+  it('registration hints about import type when paramtype is undefined/Object', () => {
     // Simulate what TypeScript emits for a `import type { Foo }` paramtype:
     // design:paramtypes contains Object (or undefined) at that index.
     @Injectable()
@@ -22,16 +26,16 @@ describe('DI error hints — import type mistake', () => {
     // Stamp paramtypes as Object so DI hits the "undefined or Object" branch.
     Reflect.defineMetadata('design:paramtypes', [Object], ServiceA);
 
-    container.register(ServiceA);
-
+    // The erased paramtype is rejected when the class is registered, before
+    // anything could construct it with an undefined dependency.
     let caught: Error | undefined;
     try {
-      container.resolve(ServiceA);
+      container.register(ServiceA);
     } catch (err) {
       caught = err as Error;
     }
 
-    expect(caught).toBeDefined();
+    expect(caught).toBeInstanceOf(MissingInjectionMetadataError);
     expect(caught!.message).toMatch(/ServiceA/);
     expect(caught!.message).toMatch(/import type/);
     expect(caught!.message).toMatch(/runtime `import/);
@@ -75,15 +79,21 @@ describe('DI error hints — import type mistake', () => {
     }
 
     container.register(ServiceB);
-    // TOKEN not registered — should throw "No provider found" without hint
-    let caught: Error | undefined;
+    // TOKEN not registered — names ServiceB's argument, caused by "No provider
+    // found", without the import-type hint.
+    let caught: unknown;
     try {
       container.resolve(ServiceB);
     } catch (err) {
-      caught = err as Error;
+      caught = err;
     }
-    expect(caught).toBeDefined();
-    expect(caught!.message).toMatch(/No provider found/);
-    expect(caught!.message).not.toMatch(/import type/);
+    if (!(caught instanceof UnresolvedDependencyError)) throw caught;
+    expect(caught.message).toBe(
+      'Cannot resolve ServiceB(?) in the root container. Argument #0 InjectionToken(MY_TOKEN) ' +
+        'is not provided by any module.',
+    );
+    expect(caught.cause).toBeInstanceOf(Error);
+    expect(String(caught.cause)).toMatch(/No provider found/);
+    expect(String(caught.cause)).not.toMatch(/import type/);
   });
 });

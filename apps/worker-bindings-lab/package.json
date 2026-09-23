@@ -2,11 +2,11 @@
   "name": "worker-bindings-lab",
   "version": "0.0.0",
   "private": true,
-  "type": "module",
   "description": "Fictional Cloudflare Worker used as a real @velajs/cloudflare example project.",
+  "type": "module",
   "scripts": {
-    "build": "swc src -d dist --strip-leading-paths && tsc --emitDeclarationOnly",
-    "smoke": "node dist/smoke.js",
+    "build": "tsdown",
+    "smoke": "pnpm run build && node dist/smoke.js",
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json"
   },
@@ -18,11 +18,9 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:",
-    "@swc/cli": "^0.8.0",
-    "@swc/core": "catalog:",
     "@types/node": "catalog:",
+    "tsdown": "catalog:",
     "typescript": "catalog:",
-    "unplugin-swc": "catalog:",
     "vitest": "catalog:"
   }
 }

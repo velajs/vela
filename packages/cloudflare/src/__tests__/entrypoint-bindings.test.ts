@@ -6,17 +6,20 @@ import { beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
 import {
   defineProvider,
   Controller,
+  Cron,
+  ENV,
   Get,
   Inject,
   Injectable,
+  InjectEnv,
   InjectionToken,
   MetadataRegistry,
   Module,
   Scope,
+  type VelaEnv,
 } from '@velajs/vela';
 import { createCloudflareApp, createCloudflareWorker } from '../cloudflare-factory';
 import { QueueConsumer } from '../decorators/queue-consumer';
-import { Scheduled } from '../decorators/scheduled';
 
 beforeEach(() => MetadataRegistry.clear());
 const context = { waitUntil: (_promise: Promise<unknown>): void => {} };
@@ -27,13 +30,14 @@ const httpContext: ExecutionContext = {
 };
 
 function fixture() {
+  // Synthetic native bindings. Node tests leave Cloudflare.Env empty, so the
+  // factory below validates what it reads from ENV like application code must.
   interface Bindings {
     NAME: string;
     CACHE: { get(key: string): Promise<string> };
     pause?: Promise<void>;
     fail?: boolean;
   }
-  const ENV = new InjectionToken<Bindings>('native Worker environment');
   const CONFIG = new InjectionToken<string>('constructed from native env');
   const seen: Array<{ name: string; value: string; scope: string }> = [];
   const initialized: string[] = [];
@@ -46,7 +50,7 @@ function fixture() {
 
   @Injectable()
   class Lifecycle {
-    constructor(@Inject(ENV) private readonly env: Bindings) {
+    constructor(@InjectEnv() private readonly env: Bindings) {
       constructions++;
     }
     onModuleInit() {
@@ -57,12 +61,12 @@ function fixture() {
   @Injectable()
   class Jobs {
     constructor(
-      @Inject(ENV) private readonly env: Bindings,
+      @InjectEnv() private readonly env: Bindings,
       @Inject(CONFIG) private readonly name: string,
       private readonly scope: EventScope,
     ) {}
     @QueueConsumer('jobs')
-    @Scheduled('* * * * *')
+    @Cron('* * * * *', { dialect: 'cloudflare' })
     async run(): Promise<void> {
       await this.env.pause;
       seen.push({ name: this.name, value: await this.env.CACHE.get('key'), scope: this.scope.id });
@@ -84,9 +88,11 @@ function fixture() {
       EventScope,
       defineProvider(CONFIG, {
         inject: [ENV],
-        useFactory: (env: Bindings) => {
-          if (env.fail) throw new Error('configuration unavailable');
-          return env.NAME;
+        useFactory: (env: VelaEnv) => {
+          if (Reflect.get(env, 'fail') === true) throw new Error('configuration unavailable');
+          const name: unknown = Reflect.get(env, 'NAME');
+          if (typeof name !== 'string') throw new TypeError('NAME must be a string');
+          return name;
         },
       }),
     ],
@@ -98,7 +104,6 @@ function fixture() {
     CACHE: { get: async () => `cached:${name}` },
   });
   return {
-    ENV,
     CONFIG,
     AppModule,
     seen,
@@ -112,15 +117,12 @@ describe('native application environments', () => {
   it('builds a root graph once per environment, sharing concurrent cold events', async () => {
     const f = fixture();
     const created: object[] = [];
-    const worker = createCloudflareWorker(
-      {
-        create(env) {
-          created.push(env);
-          return f.AppModule;
-        },
+    const worker = createCloudflareWorker({
+      create(env) {
+        created.push(env);
+        return f.AppModule;
       },
-      { envToken: f.ENV },
-    );
+    });
     const a = f.environment('a');
     const b = f.environment('b');
     await Promise.all([
@@ -137,9 +139,9 @@ describe('native application environments', () => {
   it('makes bindings available to factories and lifecycle before the first handler', async () => {
     const f = fixture();
     const env = f.environment('eager');
-    const app = await createCloudflareApp(f.AppModule, { env, envToken: f.ENV });
-    expect(app.get(f.ENV)).toBe(env);
-    expectTypeOf(app.get(f.ENV)).toEqualTypeOf(env);
+    const app = await createCloudflareApp(f.AppModule, { env });
+    expect(app.get(ENV)).toBe(env);
+    expectTypeOf(app.get(ENV)).toEqualTypeOf<VelaEnv>();
     expectTypeOf(app.get(f.CONFIG)).toEqualTypeOf<string>();
     expect(f.initialized).toEqual(['eager']);
     expect(app.get(f.CONFIG)).toBe('eager');
@@ -150,7 +152,7 @@ describe('native application environments', () => {
     'boots on a cold %s event and reuses only that env application',
     async (kind) => {
       const f = fixture();
-      const worker = createCloudflareWorker(f.AppModule, { envToken: f.ENV });
+      const worker = createCloudflareWorker(f.AppModule);
       const env = f.environment(kind);
       if (kind === 'queue') await worker.queue({ queue: 'jobs', messages: [] }, env, context);
       else await worker.scheduled({ cron: '* * * * *' }, env, context);
@@ -165,7 +167,7 @@ describe('native application environments', () => {
 
   it('isolates concurrent events for different environments using the SAME root module', async () => {
     const f = fixture();
-    const worker = createCloudflareWorker(f.AppModule, { envToken: f.ENV });
+    const worker = createCloudflareWorker(f.AppModule);
     const a = f.environment('a');
     const b = f.environment('b');
     let release = () => {};
@@ -188,7 +190,7 @@ describe('native application environments', () => {
 
   it('shares concurrent bootstrap for the same environment and preserves fresh event scopes', async () => {
     const f = fixture();
-    const worker = createCloudflareWorker(f.AppModule, { envToken: f.ENV });
+    const worker = createCloudflareWorker(f.AppModule);
     const env = f.environment('same');
     await Promise.all([
       worker.queue({ queue: 'jobs', messages: [] }, env, context),
@@ -201,7 +203,7 @@ describe('native application environments', () => {
 
   it('evicts rejected bootstrap and retries the same environment identity', async () => {
     const f = fixture();
-    const worker = createCloudflareWorker(f.AppModule, { envToken: f.ENV });
+    const worker = createCloudflareWorker(f.AppModule);
     const env = f.environment('retry');
     env.fail = true;
     await expect(worker.queue({ queue: 'jobs', messages: [] }, env, context)).rejects.toThrow(
@@ -215,10 +217,7 @@ describe('native application environments', () => {
 
   it('rejects accidentally reusing an explicitly built app with a different environment', async () => {
     const f = fixture();
-    const app = await createCloudflareApp(f.AppModule, {
-      env: f.environment('a'),
-      envToken: f.ENV,
-    });
+    const app = await createCloudflareApp(f.AppModule, { env: f.environment('a') });
     const b = f.environment('b');
     await expect(app.queue({ queue: 'jobs', messages: [] }, b, context)).rejects.toThrow(
       'different environment',
@@ -237,7 +236,8 @@ describe('native application environments', () => {
 
 describe('per-application native live namespaces', () => {
   it('keeps a shared module definition isolated across two environments', async () => {
-    const LIVE_ENV = new InjectionToken<{ ROOMS: LiveNamespace }>('live native env');
+    // Synthetic environments map to their namespace; the factory reads it from ENV.
+    const rooms = new WeakMap<VelaEnv, LiveNamespace>();
     const dispatched: string[] = [];
     const namespace = (name: string): LiveNamespace => ({
       idFromName(room): DurableObjectId {
@@ -256,23 +256,24 @@ describe('per-application native live namespaces', () => {
       imports: [
         CloudflareWebSocketModule.forRoot(),
         LiveModule.forRootAsync({
-          inject: [LIVE_ENV],
-          useFactory: (env) => ({
-            driver: () =>
-              durableObjectLive({ namespace: env.ROOMS, gatewayPath: '/rooms/:room/ws' }),
-          }),
+          inject: [ENV],
+          useFactory: (env) => {
+            const live = rooms.get(env);
+            if (!live) throw new Error('ROOMS binding is missing');
+            return {
+              driver: () => durableObjectLive({ namespace: live, gatewayPath: '/rooms/:room/ws' }),
+            };
+          },
         }),
       ],
     })
     class App {}
-    const a = await createCloudflareApp(App, {
-      env: { ROOMS: namespace('a') },
-      envToken: LIVE_ENV,
-    });
-    const b = await createCloudflareApp(App, {
-      env: { ROOMS: namespace('b') },
-      envToken: LIVE_ENV,
-    });
+    const envA = {};
+    const envB = {};
+    rooms.set(envA, namespace('a'));
+    rooms.set(envB, namespace('b'));
+    const a = await createCloudflareApp(App, { env: envA });
+    const b = await createCloudflareApp(App, { env: envB });
     await a.get(LiveInvalidation).invalidate({ tags: ['todos'] });
     await b.get(LiveInvalidation).invalidate({ tags: ['todos'] });
     await a.get(LiveInvalidation).invalidate({ tags: ['todos'] });
@@ -280,48 +281,3 @@ describe('per-application native live namespaces', () => {
     await Promise.all([a.close(), b.close()]);
   });
 });
-
-// Compile-time contract checks: generated Workers types stay intact through DI.
-interface NativeBindings {
-  CACHE: KVNamespace;
-  DB: D1Database;
-  FILES: R2Bucket;
-  JOBS: Queue<{ taskId: string }>;
-  SECRET: string;
-}
-const NATIVE_ENV = new InjectionToken<NativeBindings>('typed native contract');
-function nativeTypeContract(env: NativeBindings, root: Parameters<typeof createCloudflareApp>[0]) {
-  const worker: ExportedHandler<NativeBindings> = createCloudflareWorker(root, {
-    envToken: NATIVE_ENV,
-  });
-  void worker;
-  return createCloudflareApp(root, {
-    env,
-    envToken: NATIVE_ENV,
-    middleware: (bindings) => [
-      async (context, next) => {
-        expectTypeOf(bindings).toEqualTypeOf<NativeBindings>();
-        // @ts-expect-error Hono itself cannot infer native bindings from runtime registration.
-        context.env.DB.prepare('select 1');
-        await next();
-      },
-    ],
-  }).then((app) => {
-    const bindings = app.get(NATIVE_ENV);
-    // @ts-expect-error get infers the value from the token; callers cannot select a result type
-    app.get<NativeBindings>(NATIVE_ENV);
-    expectTypeOf(app.get('runtime-only-token')).toEqualTypeOf<unknown>();
-    expectTypeOf(bindings.CACHE).toEqualTypeOf<KVNamespace>();
-    expectTypeOf(bindings.DB).toEqualTypeOf<D1Database>();
-    expectTypeOf(bindings.FILES).toEqualTypeOf<R2Bucket>();
-    expectTypeOf(bindings.JOBS).toEqualTypeOf<Queue<{ taskId: string }>>();
-    expectTypeOf(bindings.SECRET).toEqualTypeOf<string>();
-    // @ts-expect-error binding names come from the native environment type
-    bindings.MISSING;
-    // @ts-expect-error preserve the queue's body generic
-    bindings.JOBS.send({ taskId: 123 });
-    // @ts-expect-error supplied environment must satisfy the token's entire contract
-    createCloudflareApp(root, { env: { SECRET: 'incomplete' }, envToken: NATIVE_ENV });
-  });
-}
-void nativeTypeContract;

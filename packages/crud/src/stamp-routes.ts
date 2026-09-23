@@ -17,6 +17,7 @@ import {
   ApiTags,
   Delete,
   Get,
+  HttpCode,
   MetadataRegistry,
   ParamType,
   Patch,
@@ -205,6 +206,13 @@ export function stampCrudRoutes(controller: Ctor, config: RuntimeCrudConfig): vo
         handlerName,
         descriptor,
       );
+    }
+
+    // The generated create answers 201. Declaring it tells the OpenAPI walk
+    // that the runtime never sends the default 200; an @Override'd create
+    // owns its status and declares its own @HttpCode.
+    if (endpoint === 'create' && overrideMethod === undefined) {
+      HttpCode(201)(proto, handlerName, descriptor);
     }
 
     // Canonical response statuses so the OpenAPI walk documents each verb:

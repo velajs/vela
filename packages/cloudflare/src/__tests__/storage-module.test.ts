@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Controller, Get, Inject, InjectionToken, Module, MetadataRegistry } from '@velajs/vela';
+import { Controller, ENV, Get, Inject, Module, MetadataRegistry } from '@velajs/vela';
 import { signUrl, STORAGE_SIGNED_URL_PURPOSE } from '@velajs/vela/storage';
 import { createCloudflareApp } from '../cloudflare-factory';
 import { StorageModule } from '../storage/storage.module';
@@ -40,8 +40,6 @@ function createMockR2() {
     _store: store,
   };
 }
-
-const ENV = new InjectionToken<{ MY_BUCKET: R2Bucket; APP_SECRET: string }>('storage env');
 
 @Controller('files')
 class FilesController {
@@ -91,9 +89,10 @@ class FilesController {
   imports: [
     StorageModule.forRootAsync({
       inject: [ENV],
+      // The synthetic environments below carry a mock bucket and the secret.
       useFactory: (env) => ({
-        secret: env.APP_SECRET,
-        disks: [{ disk: 'uploads', bucket: env.MY_BUCKET, root: 'uploads' }],
+        secret: Reflect.get(env, 'APP_SECRET'),
+        disks: [{ disk: 'uploads', bucket: Reflect.get(env, 'MY_BUCKET'), root: 'uploads' }],
         defaultDisk: 'uploads',
         presignedUrl: { defaultExpiry: 3600, maxExpiry: 86400 },
       }),
@@ -121,7 +120,7 @@ describe('StorageModule (multi-disk R2 + presign proxy)', () => {
   it('uploads with the disk root applied, reports existence, and serves a valid presigned URL', async () => {
     const bucket = createMockR2();
     const env = { MY_BUCKET: bucket, APP_SECRET: 'test-secret' };
-    const app = await createCloudflareApp(AppModule, { env, envToken: ENV });
+    const app = await createCloudflareApp(AppModule, { env });
     const hono = app.getHonoApp();
 
     // Upload → root 'uploads' is applied to the relative key.
@@ -151,7 +150,7 @@ describe('StorageModule (multi-disk R2 + presign proxy)', () => {
   it('never renders stored HTML or SVG inline on the authenticated API origin', async () => {
     const bucket = createMockR2();
     const env = { MY_BUCKET: bucket, APP_SECRET: 'test-secret' };
-    const app = await createCloudflareApp(AppModule, { env, envToken: ENV });
+    const app = await createCloudflareApp(AppModule, { env });
     const hono = app.getHonoApp();
 
     for (const [name, contentType] of [
@@ -179,7 +178,7 @@ describe('StorageModule (multi-disk R2 + presign proxy)', () => {
   it('rejects tampered/unsigned presign-proxy requests with 403', async () => {
     const bucket = createMockR2();
     const env = { MY_BUCKET: bucket, APP_SECRET: 'test-secret' };
-    const app = await createCloudflareApp(AppModule, { env, envToken: ENV });
+    const app = await createCloudflareApp(AppModule, { env });
     const hono = app.getHonoApp();
 
     await hono.request('/files/upload', undefined, env);
@@ -205,7 +204,7 @@ describe('StorageModule (multi-disk R2 + presign proxy)', () => {
   it('does not honor a non-GET-scoped signed URL as a read (403)', async () => {
     const bucket = createMockR2();
     const env = { MY_BUCKET: bucket, APP_SECRET: 'test-secret' };
-    const app = await createCloudflareApp(AppModule, { env, envToken: ENV });
+    const app = await createCloudflareApp(AppModule, { env });
     const hono = app.getHonoApp();
 
     await hono.request('/files/upload', undefined, env);
@@ -224,7 +223,7 @@ describe('StorageModule (multi-disk R2 + presign proxy)', () => {
     bucket._store.set('uploads/private/secret.txt', { body: 'rooted object' });
     bucket._store.set('private/secret.txt', { body: 'escaped object' });
 
-    const app = await createCloudflareApp(AppModule, { env, envToken: ENV });
+    const app = await createCloudflareApp(AppModule, { env });
     const hono = app.getHonoApp();
     const signed = await hono.request('/files/sign-encoded-traversal', undefined, env);
     const { url } = (await signed.json()) as { url: string };
@@ -238,7 +237,7 @@ describe('StorageModule (multi-disk R2 + presign proxy)', () => {
     const bucket = createMockR2();
     const env = { MY_BUCKET: bucket, APP_SECRET: 'test-secret' };
     bucket._store.set('private/secret.txt', { body: 'escaped object' });
-    const app = await createCloudflareApp(AppModule, { env, envToken: ENV });
+    const app = await createCloudflareApp(AppModule, { env });
     const hono = app.getHonoApp();
 
     for (const key of ['private/secret.txt', 'uploads/../private/secret.txt']) {
@@ -256,7 +255,7 @@ describe('StorageModule (multi-disk R2 + presign proxy)', () => {
   it('rejects a malformed opaque key claim after signature verification', async () => {
     const bucket = createMockR2();
     const env = { MY_BUCKET: bucket, APP_SECRET: 'test-secret' };
-    const app = await createCloudflareApp(AppModule, { env, envToken: ENV });
+    const app = await createCloudflareApp(AppModule, { env });
     const hono = app.getHonoApp();
     const signed = await signUrl('/storage/uploads?key=%%%&method=GET', env.APP_SECRET, {
       expiresIn: 60,
@@ -282,7 +281,7 @@ describe('StorageModule (multi-disk R2 + presign proxy)', () => {
   it('always sets an expiry and rejects a NaN expiry', async () => {
     const bucket = createMockR2();
     const env = { MY_BUCKET: bucket, APP_SECRET: 'test-secret' };
-    const app = await createCloudflareApp(AppModule, { env, envToken: ENV });
+    const app = await createCloudflareApp(AppModule, { env });
     const hono = app.getHonoApp();
 
     // A normal presign carries an `expires` param (never a permanent URL).

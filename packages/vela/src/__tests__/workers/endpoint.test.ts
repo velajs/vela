@@ -31,6 +31,7 @@ it('uses the same schema at the HTTP and OpenAPI boundaries inside bare workerd'
     const invalid = await app.fetch(
       new Request('http://example.test/greetings', {
         method: 'POST',
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ name: 42 }),
       }),
     );
@@ -38,6 +39,7 @@ it('uses the same schema at the HTTP and OpenAPI boundaries inside bare workerd'
     const response = await app.fetch(
       new Request('http://example.test/greetings', {
         method: 'POST',
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ name: 'Ada' }),
       }),
     );

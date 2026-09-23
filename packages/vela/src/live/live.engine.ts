@@ -295,6 +295,15 @@ export class LiveEngine
   }
 
   async onApplicationBootstrap(): Promise<void> {
+    // Subscriptions only arrive through the dispatcher's reserved `$live`
+    // event; without one every subscribe would be dropped without an error.
+    if (!this.container.has(WsDispatcher)) {
+      throw new Error(
+        "[vela] LiveModule serves subscriptions over the '$live' WebSocket event, but no " +
+          'WsDispatcher is registered. Import WebSocketModule.forRoot() (on Cloudflare, ' +
+          'CloudflareWebSocketModule.forRoot()) alongside LiveModule.',
+      );
+    }
     for (const found of this.discovery.registrationsWithMeta<LiveResolverMetadata>(
       LIVE_RESOLVER_METADATA,
       { metadataOnly: true },

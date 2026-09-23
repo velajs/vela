@@ -4,9 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc --outDir dist --noEmit false --declaration false",
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "deploy": "vite build && wrangler deploy",
+    "types": "wrangler types --include-runtime=false",
     "typecheck": "tsc --noEmit",
-    "dev": "pnpm build && wrangler dev --port 8792",
     "db:primary": "wrangler d1 migrations apply vela-multi-primary --local",
     "db:analytics": "wrangler d1 migrations apply vela-multi-analytics --local"
   },
@@ -20,8 +23,10 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "catalog:",
     "@cloudflare/workers-types": "catalog:",
     "typescript": "catalog:",
+    "vite": "catalog:",
     "wrangler": "catalog:"
   }
 }

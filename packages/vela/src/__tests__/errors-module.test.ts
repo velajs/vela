@@ -6,8 +6,12 @@ import {
   Module,
   MetadataRegistry,
   ErrorsModule,
+  Injectable,
+  Scope,
   defineErrorCatalog,
+  resolveErrorReporter,
 } from '../index.js';
+import type { ExceptionHandler } from '../index.js';
 
 beforeEach(() => {
   MetadataRegistry.clear();
@@ -120,5 +124,69 @@ describe('app.useGlobalExceptionHandler', () => {
     expect(report).toHaveBeenCalledTimes(1);
 
     await app.dispose();
+  });
+
+  it('keeps the scope of a REQUEST-scoped handler class', async () => {
+    const reporters: number[] = [];
+
+    @Injectable({ scope: Scope.REQUEST })
+    class PerRequestHandler implements ExceptionHandler {
+      readonly id = Math.random();
+      report() {
+        reporters.push(this.id);
+      }
+    }
+
+    @Controller('/orders')
+    class OrdersController {
+      @Get('/checkout')
+      checkout() {
+        throw appCatalog.error('order_expired');
+      }
+    }
+
+    @Module({
+      imports: [ErrorsModule.forRoot({ catalogs: [appCatalog] })],
+      controllers: [OrdersController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    app.useGlobalExceptionHandler(PerRequestHandler);
+
+    expect((await app.getHonoApp().request('/orders/checkout')).status).toBe(410);
+    expect((await app.getHonoApp().request('/orders/checkout')).status).toBe(410);
+    expect(reporters).toHaveLength(2);
+    expect(reporters[0]).not.toBe(reporters[1]);
+
+    await app.dispose();
+  });
+
+  it('falls back to the default report where a REQUEST-scoped handler has no scope', async () => {
+    const reporters: number[] = [];
+
+    @Injectable({ scope: Scope.REQUEST })
+    class PerRequestHandler implements ExceptionHandler {
+      report() {
+        reporters.push(1);
+      }
+    }
+
+    @Module({})
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    app.useGlobalExceptionHandler(PerRequestHandler);
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      // Application-level edges (schedule ticks, socket upgrades) report on the root.
+      const reporter = resolveErrorReporter(app.getContainer());
+      reporter.report(new Error('tick failed'), { edge: 'schedule', source: 'nightly' });
+      expect(reporters).toEqual([]);
+      expect(logged).toHaveBeenCalledWith('[vela] schedule error in nightly:', expect.any(Error));
+    } finally {
+      logged.mockRestore();
+      await app.dispose();
+    }
   });
 });

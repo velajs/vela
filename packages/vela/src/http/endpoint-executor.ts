@@ -5,7 +5,8 @@ import { isEndpointBinaryBody } from '../openapi/endpoint-response';
 import { parseSchemaAsync } from '../validation/parse-schema';
 import { SchemaValidationError } from '../validation/standard-schema';
 import type { PipeTransform } from '../pipeline/types';
-import { extractEndpointForm, limitEndpointBody } from './endpoint-body';
+import { extractEndpointForm } from './endpoint-body';
+import { readJsonBody } from './json-body';
 
 /** Extract HTTP wire values before the endpoint parser establishes their types. */
 export async function extractEndpointInput(
@@ -29,20 +30,12 @@ export async function extractEndpointInput(
     });
   }
 
-  let json: unknown;
-  if (endpoint.hasJsonBody && context.req.raw.body !== null) {
-    try {
-      json =
-        endpoint.body?.maxBytes !== undefined
-          ? JSON.parse(
-              new TextDecoder().decode(await limitEndpointBody(context, endpoint.body.maxBytes)),
-            )
-          : await context.req.json();
-    } catch (error) {
-      if (error instanceof SyntaxError) throw new BadRequestException('Malformed JSON body');
-      throw error;
-    }
-  }
+  const json = endpoint.hasJsonBody
+    ? await readJsonBody(
+        context,
+        endpoint.body?.maxBytes === undefined ? {} : { maxBytes: endpoint.body.maxBytes },
+      )
+    : undefined;
 
   const form =
     endpoint.body && endpoint.body.contentType !== 'application/json'

@@ -19,10 +19,10 @@ import type { DeliveryResult, MailMessage, MailTransport } from './types';
  *
  * The transport is preferred from the mailer options, then the `@Optional`
  * {@link MAIL_TRANSPORT} token a transport module provides. The queue client is
- * resolved lazily through the app container (`@velajs/vela/queue` exports the
- * per-name `QueueClient` from a sibling module the mailer does not import, so a
- * root-POV `container.resolve` is the reachable path), which keeps the
- * `queue_required` failure at first use rather than at bootstrap.
+ * resolved lazily through the app container from the one module that owns the
+ * queue's `QueueClient` (`QueueModule.registerQueue`, which the mailer imports
+ * when `queue` is configured), so a mailer without a queue fails with
+ * `queue_required` at first use rather than at bootstrap.
  */
 @Injectable()
 export class MailService {
@@ -52,11 +52,12 @@ export class MailService {
     if (token === undefined || !this.container.has(token)) {
       throw new MailError(
         'queue_required',
-        '@velajs/mail: queueing requires a queue — pass queue:{ name } to MailModule and register that queue with @velajs/vela/queue',
+        '@velajs/mail: queueing requires a queue. Pass queue: { name?, binding? } to ' +
+          'MailModule.forRoot (the mailer registers that queue itself) and import ' +
+          'QueueModule.forRoot({ driver }) once in the root module.',
       );
     }
-    // Root-POV resolution: the queue client is exported by QueueModule, a
-    // sibling the mailer does not import, so it is reached via the app container.
+    // One client module owns each queue name, however many modules register it.
     const owners = this.container.getOwnerModuleIds(token);
     if (owners.length !== 1) {
       throw new MailError(

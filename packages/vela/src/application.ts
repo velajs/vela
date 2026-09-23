@@ -8,7 +8,9 @@ import type { InferToken, Token, Type } from './container/types';
 import { defineProvider } from './container/types';
 import { APP_EXCEPTION_HANDLER } from './pipeline/tokens';
 import type { ExceptionHandler } from './exceptions/exception-handler';
+import { httpExceptionBody } from './exceptions/http-exception-body';
 import { resolveErrorReporter } from './exceptions/reporter';
+import { HttpException } from './errors/http-exception';
 import { DiscoveryService } from './discovery/discovery.service';
 import { EntrypointRegistry } from './entrypoint/entrypoint.registry';
 import { LazyModuleManager } from './module/lazy-modules';
@@ -88,7 +90,15 @@ export class VelaApplication {
         return err.getResponse();
       }
       reporter.report(err, { edge: 'hono', source: `${c.req.method} ${c.req.path}` });
-      const { body, status } = toErrorBody(err, { catalog: reporter.catalog });
+      // Vela's HttpException keeps its status and, below 500, renders exactly
+      // as it does from a handler or a wrapped middleware. A 5xx is redacted
+      // to its status title even when its response is an object: this edge
+      // only sees raw throws, never a deliberate body such as a health 503.
+      const httpStatus = err instanceof HttpException ? err.getStatus() : 500;
+      const { body, status } =
+        err instanceof HttpException && httpStatus < 500
+          ? httpExceptionBody(err, reporter.catalog)
+          : toErrorBody(err, { catalog: reporter.catalog, fallbackStatus: httpStatus });
       return c.json(body, status as ContentfulStatusCode);
     });
   }
@@ -120,6 +130,12 @@ export class VelaApplication {
     for (const i of instances) this.knownInstances.add(i);
   }
 
+  /**
+   * Resolve a provider from the application root. Request-scoped providers
+   * (declared or bubbled) have no root instance and throw; resolve them in an
+   * execution scope (`runInEntrypointScope`, `getRequestContainer(c)`) or
+   * with `ModuleRef.resolve(token, context)`.
+   */
   get<K extends Token>(token: K): InferToken<K> {
     return this.container.resolve(token);
   }

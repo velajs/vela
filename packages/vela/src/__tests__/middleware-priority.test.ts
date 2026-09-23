@@ -1,5 +1,5 @@
 import { defineProvider } from '../container/types';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { Context, Next } from 'hono';
 import {
   VelaFactory,
@@ -9,11 +9,16 @@ import {
   Injectable,
   APP_MIDDLEWARE,
   MetadataRegistry,
+  Scope,
 } from '../index.js';
 import type { NestMiddleware, NestModule, MiddlewareConsumer } from '../index.js';
 
 beforeEach(() => {
   MetadataRegistry.clear();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe('Middleware priority — consumer (.configure())', () => {
@@ -206,8 +211,8 @@ describe('Middleware priority — APP_MIDDLEWARE (static priority)', () => {
         WrapperMw,
         // DefaultMw registered BEFORE WrapperMw — registration order has
         // default coming first. Priority should force WrapperMw to the outside.
-        defineProvider(APP_MIDDLEWARE, {useExisting: DefaultMw}),
-        defineProvider(APP_MIDDLEWARE, {useExisting: WrapperMw}),
+        defineProvider(APP_MIDDLEWARE, { useExisting: DefaultMw }),
+        defineProvider(APP_MIDDLEWARE, { useExisting: WrapperMw }),
       ],
       controllers: [AppMwController],
     })
@@ -217,5 +222,116 @@ describe('Middleware priority — APP_MIDDLEWARE (static priority)', () => {
     order.length = 0;
     await app.getHonoApp().request('/app-mw-prio');
     expect(order).toEqual(['wrapper', 'default', 'handler']);
+  });
+});
+
+describe('Middleware priority — request-scoped APP_MIDDLEWARE', () => {
+  function orderedApp(order: string[], wrapper: 'useClass' | 'useExisting') {
+    @Injectable()
+    class DefaultMw implements NestMiddleware {
+      async use(_c: Context, next: Next) {
+        order.push('default');
+        await next();
+      }
+    }
+
+    // Request-scoped: the root container cannot construct it at route build.
+    @Injectable({ scope: Scope.REQUEST })
+    class RequestWrapperMw implements NestMiddleware {
+      static priority = -10;
+      async use(_c: Context, next: Next) {
+        order.push('request-wrapper');
+        await next();
+      }
+    }
+
+    @Controller('/request-prio')
+    class PriorityController {
+      @Get()
+      handle() {
+        order.push('handler');
+        return { ok: true };
+      }
+    }
+
+    @Module({
+      providers: [
+        DefaultMw,
+        RequestWrapperMw,
+        defineProvider(APP_MIDDLEWARE, { useExisting: DefaultMw }),
+        wrapper === 'useClass'
+          ? defineProvider(APP_MIDDLEWARE, { useClass: RequestWrapperMw })
+          : defineProvider(APP_MIDDLEWARE, { useExisting: RequestWrapperMw }),
+      ],
+      controllers: [PriorityController],
+    })
+    class AppModule {}
+    return AppModule;
+  }
+
+  it.each(['useClass', 'useExisting'] as const)(
+    'reads the static priority of a %s target without constructing it',
+    async (wrapper) => {
+      const order: string[] = [];
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const app = await VelaFactory.create(orderedApp(order, wrapper), { diagnostics: 'throw' });
+      await app.getHonoApp().request('/request-prio');
+      expect(order).toEqual(['request-wrapper', 'default', 'handler']);
+      expect(warn).not.toHaveBeenCalled();
+      await app.close();
+    },
+  );
+
+  it('reports a request-scoped middleware without a static priority', async () => {
+    const order: string[] = [];
+
+    @Injectable({ scope: Scope.REQUEST })
+    class AuditMw implements NestMiddleware {
+      readonly priority = -10;
+      async use(_c: Context, next: Next) {
+        order.push('audit');
+        await next();
+      }
+    }
+
+    @Injectable()
+    class FirstMw implements NestMiddleware {
+      async use(_c: Context, next: Next) {
+        order.push('first');
+        await next();
+      }
+    }
+
+    @Controller('/request-default')
+    class DefaultController {
+      @Get()
+      handle() {
+        order.push('handler');
+        return { ok: true };
+      }
+    }
+
+    @Module({
+      providers: [
+        defineProvider(APP_MIDDLEWARE, { useClass: FirstMw }),
+        defineProvider(APP_MIDDLEWARE, { useClass: AuditMw }),
+      ],
+      controllers: [DefaultController],
+    })
+    class AppModule {}
+
+    const message =
+      '[vela] Middleware AuditMw is request-scoped and declares no static priority, so it ' +
+      'sorts at priority 0 among global middleware. Declare `static priority` on the class ' +
+      'to order it.';
+    await expect(VelaFactory.create(AppModule, { diagnostics: 'throw' })).rejects.toThrow(message);
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const app = await VelaFactory.create(AppModule);
+    expect(warn).toHaveBeenCalledWith(message);
+    await app.getHonoApp().request('/request-default');
+    // The instance-level priority is invisible at build: registration order holds.
+    expect(order).toEqual(['first', 'audit', 'handler']);
+    await app.close();
   });
 });

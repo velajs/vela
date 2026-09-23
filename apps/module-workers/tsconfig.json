@@ -1,4 +1,7 @@
 {
+  // Shared options. Each Worker type-checks as its own program
+  // (tsconfig.<worker>.json) with its generated worker-configuration.<worker>.d.ts,
+  // so ENV carries only the bindings of that Worker's Wrangler file.
   "compilerOptions": {
     "target": "ES2024",
     "module": "ESNext",
@@ -7,8 +10,12 @@
     "skipLibCheck": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
     "types": ["@cloudflare/workers-types"],
-    "noEmit": true
+    "noEmit": true,
+    "allowImportingTsExtensions": true
   },
-  "include": ["src/**/*.ts"]
+  // This program checks the shared contracts and the Vite config.
+  "include": ["src/contracts.ts", "*.config.ts"]
 }

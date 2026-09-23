@@ -1,5 +1,6 @@
 import {
   MetadataRegistry,
+  getScopedComponents,
   type AdapterContext,
   type CanActivate,
   type RuntimeAdapter,
@@ -99,10 +100,7 @@ export function inspectAuthorizationWiring(
           }),
         );
       };
-      const scoped = [
-        ...MetadataRegistry.getController('guard', controller),
-        ...MetadataRegistry.getHandler('guard', controller, handler),
-      ];
+      const scoped = getScopedComponents('guard', controller, handler, context.container, moduleId);
       const wired = (guard: Type<CanActivate>) =>
         globals.some((ref) => hasGuard(ref, guard, context.container)) ||
         scoped.some((ref) => hasGuard(ref, guard, context.container, moduleId));

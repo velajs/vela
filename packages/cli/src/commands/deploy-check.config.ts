@@ -51,6 +51,12 @@ export interface DeploymentBinding {
   readonly kind: string;
 }
 
+/** A Wrangler `queues.producers` row: the binding and the physical queue it sends to. */
+export interface DeploymentQueueProducer {
+  readonly binding: string;
+  readonly queue: string | undefined;
+}
+
 export interface DeploymentTarget {
   readonly environment: string;
   readonly worker: string;
@@ -59,6 +65,7 @@ export interface DeploymentTarget {
   readonly compatibilityFlags: readonly string[];
   readonly crons: readonly string[];
   readonly bindings: readonly DeploymentBinding[];
+  readonly queueProducers: readonly DeploymentQueueProducer[];
   readonly queueConsumers: readonly string[];
   readonly customBuild: boolean;
 }
@@ -161,7 +168,10 @@ export function selectDeploymentTarget(raw: unknown, environment: string): Deplo
     selected.queues,
     'queues',
   );
-  for (const producer of queues?.producers ?? []) add(producer.binding, 'queues');
+  const queueProducers = (queues?.producers ?? []).map(({ binding, queue }) => {
+    add(binding, 'queues');
+    return { binding, queue };
+  });
   const queueConsumers = queues?.consumers?.map((row) => row.queue) ?? [];
   if (new Set(queueConsumers).size !== queueConsumers.length)
     throw new Error('Duplicate queue consumer configuration.');
@@ -173,6 +183,7 @@ export function selectDeploymentTarget(raw: unknown, environment: string): Deplo
     compatibilityFlags,
     crons: triggers?.crons ?? [],
     bindings,
+    queueProducers,
     queueConsumers,
     customBuild: build?.command !== undefined,
   };

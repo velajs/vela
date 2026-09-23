@@ -9,17 +9,24 @@ import {
   shouldFilterCatch,
   parseSchemaAsync,
 } from '../index';
-import type { Container, EntrypointRegistry, ExceptionFilter, Token, Type } from '../index';
-import { getProcessHandlers, readProcessorMetadata } from './queue.decorators';
+import type { Container, ExceptionFilter, Token, Type } from '../index';
+import { getProcessHandlers } from './queue.decorators';
 import type { ProcessMetadata, ProcessorMetadata, QueueJob } from './queue.types';
 
 export interface QueueDispatchOptions {
-  /** Legacy default is ignore. Platform adapters can reject unmatched jobs. */
+  /**
+   * What a job no processor handles does: `'error'` (the default) rejects, so
+   * the transport retries it instead of acknowledging it; `'ignore'` resolves
+   * with `handled: 0`.
+   */
   unhandled?: 'ignore' | 'error';
 }
 
 export interface QueueDispatchResult {
-  /** Processors that ran a handler for this job. */
+  /**
+   * Processors that ran a handler for this job, or 1 when signed dispatch
+   * re-entered the job's route.
+   */
   handled: number;
 }
 
@@ -31,6 +38,43 @@ export interface QueueEntry {
 }
 
 const warnedDuplicates = new WeakSet<object>();
+
+// Processor failures this module already reported, so a transport that settles
+// several deliveries reports each failure once.
+const reportedFailures = new WeakSet<object>();
+
+/** Whether a processor failure was already reported on the queue edge. */
+function isReportedQueueFailure(error: unknown): boolean {
+  return (
+    ((typeof error === 'object' && error !== null) || typeof error === 'function') &&
+    reportedFailures.has(error)
+  );
+}
+
+/**
+ * @internal The failures in a delivery rejection that no processor already
+ * reported, looking inside the `AggregateError` several processors (or a
+ * batch of deliveries) reject with.
+ */
+export function unreportedQueueFailures(error: unknown): unknown[] {
+  if (isReportedQueueFailure(error)) return [];
+  if (error instanceof AggregateError) return error.errors.flatMap(unreportedQueueFailures);
+  return [error];
+}
+
+/**
+ * Mark a reported processor failure so transports do not report it again. A
+ * thrown primitive (`throw 'boom'`) cannot be remembered by identity, so it is
+ * rethrown wrapped in an `Error` whose `cause` is the thrown value.
+ */
+function markReported(error: unknown, source: string): unknown {
+  const failure =
+    (typeof error === 'object' && error !== null) || typeof error === 'function'
+      ? error
+      : new Error(`Queue processor ${source} threw ${String(error)}`, { cause: error });
+  reportedFailures.add(failure);
+  return failure;
+}
 
 function selectHandler(
   container: Container,
@@ -53,41 +97,30 @@ function selectHandler(
 }
 
 /**
- * Deliver one job to every `@Processor` of its queue — the primitive both the
- * in-core `inline()` driver and platform adapters call.
+ * The DIRECT delivery path: hands one job to every `@Processor` of its queue,
+ * without consulting `QueueModule`'s dispatch policy. Only
+ * `QueueDispatchBinding`, which applies that policy first, and applications
+ * without a `QueueModule` reach it; custom transports call the public
+ * `dispatchQueueJob`, which honors the policy.
  *
- * Each matching processor runs inside `runInEntrypointScope` (request-scoped
- * dependencies rebuild per job) and is re-resolved BY TOKEN through the async
- * seam, so processors living in `lazy: true` modules materialize cleanly on
- * first dispatch — async providers and lifecycle hooks included. Scoped
- * guards/interceptors/filters run through `PipelineRunner`
- * (`getType() === 'queue'`, `getPayload()` is the job); app-wide `APP_*`
- * components deliberately do NOT apply (cloudflare queue/scheduled parity —
- * documented divergence from the WebSocket dispatcher).
+ * Entries are tokens + meta ONLY (from the per-app `EntrypointRegistry`, or
+ * from discovery before the registry exists). Each matching processor runs
+ * inside `runInEntrypointScope` (request-scoped dependencies rebuild per job)
+ * and is re-resolved BY TOKEN through the async seam, so processors living in
+ * `lazy: true` modules materialize cleanly on first dispatch — async providers
+ * and lifecycle hooks included. Scoped guards/interceptors/filters run through
+ * `PipelineRunner` (`getType() === 'queue'`, `getPayload()` is the job);
+ * app-wide `APP_*` components deliberately do NOT apply (cloudflare
+ * queue/scheduled parity — documented divergence from the WebSocket
+ * dispatcher).
  *
  * Errors no scoped filter claims RETHROW so awaiting platforms keep their
  * retry semantics; fire-and-forget callers (inline `immediate` mode) must
  * catch — `QueueDispatchBinding` routes those to diagnostics.
+ *
+ * @internal
  */
-export async function dispatchQueueJob(
-  container: Container,
-  entrypoints: EntrypointRegistry,
-  job: QueueJob,
-  options: QueueDispatchOptions = {},
-): Promise<QueueDispatchResult> {
-  const entries = entrypoints
-    .ofKind('queue', readProcessorMetadata)
-    .map((ep) => ({ token: ep.token, meta: ep.meta, moduleId: ep.moduleId }));
-  return dispatchJobToEntries(container, entries, job, options);
-}
-
-/**
- * Entry-list core shared by `dispatchQueueJob` (registry) and the in-process
- * driver binding (discovery fallback before the registry exists). Entries are
- * tokens + meta ONLY — every processor is re-resolved by token in its own
- * scope, so request-scoped and lazy-module processors work on both paths.
- */
-export async function dispatchJobToEntries(
+export async function dispatchJobToProcessors(
   container: Container,
   entries: QueueEntry[],
   job: QueueJob,
@@ -210,17 +243,16 @@ async function dispatchToProcessor(
       // Report BEFORE the filter loop and BEFORE any rethrow — every dispatch
       // error reaches the exception handler, whether a scoped filter claims it
       // or it rethrows to preserve platform retry semantics.
-      resolveErrorReporter(scope).report(error, {
-        edge: 'queue',
-        source: `${processorClass.name}.${String(handler.methodName)}`,
-      });
+      const source = `${processorClass.name}.${String(handler.methodName)}`;
+      resolveErrorReporter(scope).report(error, { edge: 'queue', source });
+      const reported = markReported(error, source);
       for (const filter of filters) {
         if (shouldFilterCatch(filter, error)) {
           await filter.catch(error, context);
           return true;
         }
       }
-      throw error; // unclaimed → platform retry semantics stay intact
+      throw reported; // unclaimed → platform retry semantics stay intact
     }
   });
 }

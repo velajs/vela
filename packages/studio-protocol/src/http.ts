@@ -21,5 +21,9 @@ export const STUDIO_EXPORT_SUFFIX = '/export';
 /** The header carrying the master bearer token (`Authorization: Bearer <token>`). */
 export const STUDIO_TOKEN_HEADER = 'authorization';
 
-/** The wire protocol version. Bumped only on a breaking envelope change. */
-export const STUDIO_PROTOCOL_VERSION = 2;
+/**
+ * The wire protocol version. Bumped on any breaking change to the envelope or an
+ * op's payload: version 3 labels the default provider lifetime `'default'`
+ * instead of `'singleton'`.
+ */
+export const STUDIO_PROTOCOL_VERSION = 3;

@@ -28,6 +28,7 @@ import {
   Processor,
   QueueClient,
   QueueModule,
+  QUEUE_DRIVER,
   queueToken,
 } from '../queue/index.js';
 import type { InlineQueueDriver, QueueDriver, QueueJob } from '../queue/index.js';
@@ -67,7 +68,7 @@ describe('QueueModule routing', () => {
     const { driver } = manualApp();
 
     @Module({
-      imports: [QueueModule.forRoot({ queues: ['email'], driver })],
+      imports: [QueueModule.forRoot({ driver }), QueueModule.registerQueue({ name: 'email' })],
       providers: [EmailProcessor],
     })
     class App {}
@@ -107,7 +108,7 @@ describe('QueueModule routing', () => {
     const { driver } = manualApp();
 
     @Module({
-      imports: [QueueModule.forRoot({ queues: ['audit'], driver })],
+      imports: [QueueModule.forRoot({ driver }), QueueModule.registerQueue({ name: 'audit' })],
       providers: [A, B],
     })
     class App {}
@@ -124,7 +125,9 @@ describe('QueueModule routing', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { driver } = manualApp();
 
-    @Module({ imports: [QueueModule.forRoot({ queues: ['ghost'], driver })] })
+    @Module({
+      imports: [QueueModule.forRoot({ driver }), QueueModule.registerQueue({ name: 'ghost' })],
+    })
     class App {}
 
     const app = await VelaFactory.create(App);
@@ -173,7 +176,7 @@ describe('QueueModule pipeline', () => {
     const { driver } = manualApp();
 
     @Module({
-      imports: [QueueModule.forRoot({ queues: ['work'], driver })],
+      imports: [QueueModule.forRoot({ driver }), QueueModule.registerQueue({ name: 'work' })],
       providers: [WorkProcessor, JobGuard, JobInterceptor],
     })
     class App {}
@@ -216,7 +219,7 @@ describe('QueueModule pipeline', () => {
     const { driver } = manualApp();
 
     @Module({
-      imports: [QueueModule.forRoot({ queues: ['jobs'], driver })],
+      imports: [QueueModule.forRoot({ driver }), QueueModule.registerQueue({ name: 'jobs' })],
       providers: [JobsProcessor, KnownFilter],
     })
     class App {}
@@ -255,7 +258,7 @@ describe('QueueModule pipeline', () => {
     const { driver } = manualApp();
 
     @Module({
-      imports: [QueueModule.forRoot({ queues: ['scoped'], driver })],
+      imports: [QueueModule.forRoot({ driver }), QueueModule.registerQueue({ name: 'scoped' })],
       providers: [ScopedProcessor, PerJobDep],
     })
     class App {}
@@ -285,7 +288,7 @@ describe('inline driver', () => {
     }
 
     @Module({
-      imports: [QueueModule.forRoot({ queues: ['now'] })], // default inline() immediate
+      imports: [QueueModule.forRoot(), QueueModule.registerQueue({ name: 'now' })], // default inline() immediate
       providers: [NowProcessor],
     })
     class App {}
@@ -302,7 +305,9 @@ describe('inline driver', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { driver } = manualApp();
 
-    @Module({ imports: [QueueModule.forRoot({ queues: ['later'], driver })] })
+    @Module({
+      imports: [QueueModule.forRoot({ driver }), QueueModule.registerQueue({ name: 'later' })],
+    })
     class App {}
 
     const app = await VelaFactory.create(App);
@@ -319,7 +324,7 @@ describe('inline driver', () => {
   });
 
   it('does not crash on add() after dispose', async () => {
-    @Module({ imports: [QueueModule.forRoot({ queues: ['late'] })] })
+    @Module({ imports: [QueueModule.forRoot(), QueueModule.registerQueue({ name: 'late' })] })
     class App {}
 
     const app = await VelaFactory.create(App);
@@ -338,7 +343,7 @@ describe('queue tokens and module identity', () => {
   });
 
   it('fails with the queue name in the error for unregistered queues', async () => {
-    @Module({ imports: [QueueModule.forRoot({ queues: ['real'] })] })
+    @Module({ imports: [QueueModule.forRoot(), QueueModule.registerQueue({ name: 'real' })] })
     class App {}
 
     const app = await VelaFactory.create(App);
@@ -346,35 +351,37 @@ describe('queue tokens and module identity', () => {
     await app.dispose();
   });
 
-  it('identical forRoot options dedup into one module instance', async () => {
-    const first = QueueModule.forRoot({ queues: ['dedup'] });
-    const second = QueueModule.forRoot({ queues: ['dedup'] });
+  it('identical forRoot options and registrations dedup into one module instance', async () => {
+    const first = [QueueModule.forRoot(), QueueModule.registerQueue({ name: 'dedup' })];
+    const second = [QueueModule.forRoot(), QueueModule.registerQueue({ name: 'dedup' })];
 
-    @Module({ imports: [first, second] })
+    @Module({ imports: [...first, ...second] })
     class App {}
 
     const app = await VelaFactory.create(App);
     expect(app.getContainer().getOwnerModuleIds(queueToken('dedup'))).toHaveLength(1);
+    expect(app.getContainer().getOwnerModuleIds(QUEUE_DRIVER)).toHaveLength(1);
     await app.dispose();
   });
 
-  it('rejects the same queue name provided by two module instances', async () => {
+  it('rejects two driver configurations in one application', async () => {
     const other: QueueDriver = { kind: 'other', enqueue: async () => {} };
 
     @Module({
       imports: [
-        QueueModule.forRoot({ queues: ['clash'] }),
-        QueueModule.forRoot({ queues: ['clash'], driver: other }),
+        QueueModule.forRoot(),
+        QueueModule.forRoot({ driver: other }),
+        QueueModule.registerQueue({ name: 'clash' }),
       ],
     })
     class App {}
 
     await expect(VelaFactory.create(App)).rejects.toThrow(
-      /provided by multiple QueueModule instances/,
+      /QueueModule\.forRoot\(\) is imported with different options/,
     );
   });
 
-  it('forRootAsync takes queues structurally alongside the factory', async () => {
+  it('forRootAsync resolves the driver and dispatch policy from its factory', async () => {
     const { driver } = manualApp();
     const seen: string[] = [];
 
@@ -400,9 +407,9 @@ describe('queue tokens and module identity', () => {
       imports: [
         QueueModule.forRootAsync({
           inject: [],
-          queues: ['async-q'],
-          useFactory: async () => ({ driver }),
+          useFactory: async () => ({ driver, dispatch: { kind: 'direct' } }),
         }),
+        QueueModule.registerQueue({ name: 'async-q' }),
       ],
       providers: [AsyncProcessor, AsyncProducer],
     })
@@ -413,12 +420,6 @@ describe('queue tokens and module identity', () => {
     await driver.flush();
     expect(seen).toEqual(['hello']);
     await app.dispose();
-  });
-
-  it('forRootAsync without structural queues fails fast at call time', () => {
-    expect(() => QueueModule.forRootAsync({ inject: [], useFactory: async () => ({}) })).toThrow(
-      /queues.*structural/,
-    );
   });
 });
 
@@ -445,7 +446,7 @@ describe('transport initialization', () => {
     }
 
     @Module({
-      imports: [QueueModule.forRoot({ queues: ['remote'], driver })],
+      imports: [QueueModule.forRoot({ driver }), QueueModule.registerQueue({ name: 'remote' })],
       providers: [RemoteProcessor],
     })
     class App {}
@@ -487,7 +488,7 @@ describe('transport initialization', () => {
     }
 
     @Module({
-      imports: [QueueModule.forRoot({ queues: ['orders'], driver })],
+      imports: [QueueModule.forRoot({ driver }), QueueModule.registerQueue({ name: 'orders' })],
       providers: [ProducerService],
     })
     class App {}
@@ -518,7 +519,7 @@ describe('transport initialization', () => {
     }
 
     @Module({
-      imports: [QueueModule.forRoot({ queues: ['boot'] })],
+      imports: [QueueModule.forRoot(), QueueModule.registerQueue({ name: 'boot' })],
       providers: [BootProcessor, EagerProducer],
     })
     class App {}
@@ -555,7 +556,11 @@ describe('transport initialization', () => {
     const { driver } = manualApp();
 
     @Module({
-      imports: [QueueModule.forRoot({ queues: ['lazy-q'], driver }), LazyConsumers],
+      imports: [
+        QueueModule.forRoot({ driver }),
+        QueueModule.registerQueue({ name: 'lazy-q' }),
+        LazyConsumers,
+      ],
     })
     class App {}
 
@@ -593,7 +598,7 @@ describe('error reporter edge (report-then-rethrow)', () => {
     const { driver } = manualApp();
 
     @Module({
-      imports: [QueueModule.forRoot({ queues: ['reportq'], driver })],
+      imports: [QueueModule.forRoot({ driver }), QueueModule.registerQueue({ name: 'reportq' })],
       providers: [
         ThrowingProcessor,
         defineProvider(APP_EXCEPTION_HANDLER, { useValue: { report } }),
@@ -613,7 +618,7 @@ describe('error reporter edge (report-then-rethrow)', () => {
     await app.dispose();
   });
 
-  it('routes the inline driver fire-and-forget error through APP_EXCEPTION_HANDLER, not console.error', async () => {
+  it('reports a detached inline delivery failure once through APP_EXCEPTION_HANDLER, not console.error', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const report = vi.fn();
 
@@ -627,7 +632,7 @@ describe('error reporter edge (report-then-rethrow)', () => {
     }
 
     @Module({
-      imports: [QueueModule.forRoot({ queues: ['inlinereport'] })], // default inline() immediate
+      imports: [QueueModule.forRoot(), QueueModule.registerQueue({ name: 'inlinereport' })], // default inline() immediate
       providers: [BoomProcessor, defineProvider(APP_EXCEPTION_HANDLER, { useValue: { report } })],
     })
     class App {}
@@ -636,13 +641,87 @@ describe('error reporter edge (report-then-rethrow)', () => {
     await app.get<QueueClient>(queueToken('inlinereport')).add('ping', {});
     await settle();
 
-    // The binding's fire-and-forget default arm reports instead of bare console.error.
+    // The processor reported its failure; the binding's fire-and-forget arm
+    // does not report it again, and nothing reaches a bare console.error.
+    expect(report).toHaveBeenCalledOnce();
     expect(report).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ edge: 'queue', note: 'inline driver' }),
+      expect.objectContaining({ message: 'detached-boom' }),
+      expect.objectContaining({ edge: 'queue', source: 'BoomProcessor.run' }),
     );
     expect(errorSpy).not.toHaveBeenCalled();
     errorSpy.mockRestore();
+    await app.dispose();
+  });
+
+  it('reports each failed processor of a detached inline delivery once, thrown values included', async () => {
+    const reports: unknown[] = [];
+
+    @Processor('inlinemany')
+    @Injectable()
+    class First {
+      @Process()
+      run() {
+        throw new Error('first failed');
+      }
+    }
+    @Processor('inlinemany')
+    @Injectable()
+    class Second {
+      @Process()
+      run() {
+        // A careless processor may throw a value that is not an Error.
+        throw 'second failed';
+      }
+    }
+
+    @Module({
+      imports: [QueueModule.forRoot(), QueueModule.registerQueue({ name: 'inlinemany' })],
+      providers: [
+        First,
+        Second,
+        defineProvider(APP_EXCEPTION_HANDLER, {
+          useValue: { report: (error: unknown) => reports.push(error) },
+        }),
+      ],
+    })
+    class App {}
+
+    const app = await VelaFactory.create(App);
+    await app.get<QueueClient>(queueToken('inlinemany')).add('ping', {});
+    await settle();
+
+    expect(reports).toHaveLength(2);
+    expect(reports).toContainEqual(expect.objectContaining({ message: 'first failed' }));
+    expect(reports).toContain('second failed');
+    await app.dispose();
+  });
+
+  it('reports a detached delivery failure no processor reported, noting the inline driver', async () => {
+    const report = vi.fn();
+    let onError: ((error: unknown, job: QueueJob) => void) | undefined;
+    const driver: QueueDriver = {
+      kind: 'detached',
+      async enqueue() {},
+      bind(_dispatch, hooks) {
+        onError = hooks?.onError;
+      },
+    };
+
+    @Module({
+      imports: [QueueModule.forRoot({ driver }), QueueModule.registerQueue({ name: 'detached' })],
+      providers: [defineProvider(APP_EXCEPTION_HANDLER, { useValue: { report } })],
+    })
+    class App {}
+
+    const app = await VelaFactory.create(App);
+    const job = { id: 'j', queue: 'detached', name: 'ping', data: {}, attempt: 1 };
+    onError?.(new Error('transport failed'), job);
+
+    expect(report).toHaveBeenCalledOnce();
+    expect(report).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'transport failed' }),
+      expect.objectContaining({ edge: 'queue', source: 'detached/ping', note: 'inline driver' }),
+    );
     await app.dispose();
   });
 });

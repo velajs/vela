@@ -19,10 +19,6 @@ import { AuthGuard } from './guards/auth.guard';
 import { normalizeBetterAuthBasePath } from './base-path';
 
 const referenceIds = new WeakMap<object, number>();
-const explicitKeyClaims = new Map<
-  string,
-  { readonly kind: 'auth' | 'factory'; readonly reference: object; readonly shape: string }
->();
 let nextReferenceId = 1;
 
 function referenceId(reference: object): number {
@@ -33,26 +29,18 @@ function referenceId(reference: object): number {
   return id;
 }
 
-function claimExplicitKey(
-  key: string,
-  kind: 'auth' | 'factory',
-  reference: object,
-  shape: string,
-): string {
+/**
+ * An explicit key names a registration without widening its identity: the
+ * options shape and auth reference stay in the module key, so the same
+ * registration deduplicates within an application while a different one
+ * (including a root rebuilt per environment) becomes its own instance. No
+ * process-wide state is kept, so repeated bootstraps in one isolate succeed.
+ */
+function explicitKey(key: string, shape: string, reference: object): string {
   if (key.length === 0 || key !== key.trim()) {
     throw new Error('@velajs/better-auth: an explicit module key must be a non-empty string');
   }
-  const existing = explicitKeyClaims.get(key);
-  if (
-    existing !== undefined &&
-    (existing.kind !== kind || existing.reference !== reference || existing.shape !== shape)
-  ) {
-    throw new Error(
-      `@velajs/better-auth: explicit module key "${key}" is already bound to a different auth registration`,
-    );
-  }
-  explicitKeyClaims.set(key, { kind, reference, shape });
-  return `explicit:${key}:ref:${referenceId(reference)}`;
+  return `explicit:${key}:${shape}:ref:${referenceId(reference)}`;
 }
 
 /** Structural options with defaults applied (everything but the auth instance). */
@@ -99,7 +87,7 @@ function commonContributions(n: NormalizedOptions): {
  *
  * ```ts
  * BetterAuthModule.forRootAsync({
- *   inject: [WORKER_ENV, ConfigService], // captured as readonly tuple
+ *   inject: [ENV, ConfigService],         // captured as readonly tuple
  *   useFactory: (env, config) =>          // inferred from the tokens
  *     betterAuth({ database: drizzleAdapter(drizzle(env.DB), ...) }),
  * });
@@ -131,7 +119,7 @@ export class BetterAuthModule {
     const key =
       options.key === undefined
         ? `${shape}:auth:${referenceId(options.auth)}`
-        : claimExplicitKey(options.key, 'auth', options.auth, shape);
+        : explicitKey(options.key, shape, options.auth);
     const common = commonContributions(normalized);
     return {
       module: BetterAuthModule,
@@ -165,7 +153,7 @@ export class BetterAuthModule {
     const key =
       options.key === undefined
         ? `${shape}:factory:${referenceId(options.useFactory)}`
-        : claimExplicitKey(options.key, 'factory', options.useFactory, shape);
+        : explicitKey(options.key, shape, options.useFactory);
     return {
       module: BetterAuthModule,
       key,

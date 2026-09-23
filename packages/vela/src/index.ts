@@ -7,6 +7,10 @@ export { VelaApplication } from './application';
 export { bootstrap } from './factory/bootstrap';
 export type { BootstrapOptions, BootstrapResult } from './factory/bootstrap';
 
+// Runtime environment: bindings, variables and secrets seeded per application
+export { ENV, InjectEnv } from './env';
+export type { VelaEnv } from './env';
+
 // OpenAPI
 export {
   createOpenApiDocument,
@@ -54,9 +58,11 @@ export {
   ForwardRef,
   forwardRef,
   ModuleRef,
+  MissingInjectionMetadataError,
   ModuleVisibilityError,
   MultipleProvidersFoundError,
   ROOT_MODULE_ID,
+  UnresolvedDependencyError,
   mixin,
   describeToken,
   defineProvider,
@@ -75,6 +81,11 @@ export type {
   ModuleDescription,
   ContainerOptions,
   Diagnostics,
+  MissingInjectionMetadataReason,
+  UnresolvedDependency,
+  UnresolvedDependencyReason,
+  ModuleRefContext,
+  ModuleRefLookupOptions,
 } from './container/index';
 // Introspection: the composed route table VelaApplication.describeRoutes()
 // returns (RouteManager itself stays internal-only).
@@ -112,6 +123,7 @@ export {
   createParamDecorator,
   createLazyParamDecorator,
   applyDecorators,
+  readJsonBody,
   UrlGeneratorService,
   SignedUrlGuard,
   SignedUrl,
@@ -123,6 +135,8 @@ export {
 } from './http/index';
 export type {
   RouteOptions,
+  SchemaParamDecorator,
+  ReadJsonBodyOptions,
   UrlForOptions,
   SignedUrlGenerateOptions,
   VelaRouteMap,
@@ -210,7 +224,6 @@ export {
   ConfigService,
   ConfigStore,
   CONFIG_OPTIONS,
-  CONFIG_ENV,
   registerAs,
 } from './config/index';
 
@@ -232,8 +245,8 @@ export type {
   ConfigSchema,
   ConfigNamespace,
   AnyConfigNamespace,
-  InferConfigType,
   ConfigType,
+  ConfigShape,
   ConfigPath,
   ConfigPathValue,
 } from './config/index';
@@ -322,9 +335,13 @@ export {
   parseCron,
   parseCronMetadata,
   parseIntervalMetadata,
+  invokeScheduledJob,
+  cronDialectAmbiguity,
+  scheduledJobComponents,
   CRON_METADATA,
   INTERVAL_METADATA,
   SCHEDULE_DISPATCH,
+  SCHEDULE_INVOCATION_SEED,
 } from './schedule/index';
 export type {
   RegisteredCronJob,
@@ -333,9 +350,14 @@ export type {
   IntervalMetadata,
   CronMatcher,
   CronOptions,
+  CronInvocation,
+  IntervalInvocation,
+  ScheduleDecorator,
   ScheduleInvocation,
+  ScheduleInvocationSeed,
   ScheduleDispatchMode,
   ScheduleJobRef,
+  InvokeScheduledJobOptions,
 } from './schedule/index';
 
 // WebSocket (edge-safe core; transport-facing internals live at @velajs/vela/websocket)
@@ -422,6 +444,7 @@ export {
   moduleToken,
   provideGlobal,
   sideEffectModule,
+  UndefinedModuleError,
 } from './module/index';
 export type {
   ModuleOptions,
@@ -442,6 +465,7 @@ export type {
   ModuleContributions,
   ModuleSetupContext,
   LazyProviderSpec,
+  ModuleEntryList,
 } from './module/index';
 export type { MiddlewareConsumer, NestModule, RouteInfo } from './http/index';
 
@@ -518,6 +542,7 @@ export {
   PipelineRunner,
   getCatchTypes,
   shouldFilterCatch,
+  getScopedComponents,
   resolveScopedComponents,
   resolveScopedComponentsAsync,
   resolvePipelineComponents,
@@ -568,7 +593,6 @@ export {
   ParseArrayPipe,
   DefaultValuePipe,
   RequiredPipe,
-  ZodValidationPipe,
 } from './pipeline/index';
 export type { ParseUUIDPipeOptions, ParseArrayPipeOptions } from './pipeline/index';
 
@@ -671,7 +695,6 @@ export type { SerializationDescriptor, SerializerDefinition } from './serializat
 
 // Hono Adapter Utilities
 export type { VelaContext, VelaHono, VelaHonoEnv, VelaMiddlewareHandler } from './http/hono.types';
-export { getRuntimeKey, env } from 'hono/adapter';
 
 export { defineEvent, defineEventVocabulary, EventDispatcher } from './event-emitter/index';
 export type {

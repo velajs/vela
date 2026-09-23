@@ -2,8 +2,8 @@
   "name": "lab-testing-harness",
   "version": "0.0.0",
   "private": true,
-  "type": "module",
   "description": "Fictional sensor lab test harness used as a real @velajs/testing example project.",
+  "type": "module",
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json"
@@ -13,11 +13,9 @@
     "hono": "catalog:"
   },
   "devDependencies": {
-    "@swc/core": "catalog:",
     "@types/node": "catalog:",
     "@velajs/testing": "workspace:*",
     "typescript": "catalog:",
-    "unplugin-swc": "catalog:",
     "vitest": "catalog:"
   }
 }

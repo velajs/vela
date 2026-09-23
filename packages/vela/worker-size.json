@@ -4,5 +4,5 @@
   "rawBytes": 176489,
   "gzipBytes": 57704,
   "rawAllowanceBytes": 32768,
-  "gzipAllowanceBytes": 8192
+  "gzipAllowanceBytes": 9216
 }

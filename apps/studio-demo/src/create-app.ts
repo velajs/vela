@@ -24,11 +24,12 @@ import {
   Module,
   ScheduleModule,
   VelaFactory,
+  type VelaEnv,
 } from '@velajs/vela';
 import { Process, Processor, QueueModule } from '@velajs/vela/queue';
 import { FeatureFlagsModule } from '@velajs/feature-flags';
 import { Crud } from '@velajs/crud';
-import { StudioModule, studioRuntimeAdapter } from '@velajs/studio';
+import { StudioModule, readStudioEnv, studioRuntimeAdapter } from '@velajs/studio';
 import type { EditableFlags } from '@velajs/studio';
 import { StudioCrudModule } from '@velajs/studio/crud';
 import { StudioTimeTravelModule } from '@velajs/studio/timetravel';
@@ -41,7 +42,7 @@ import { MemoryDb, memoryAdapter } from './memory-adapter';
 /** The demo's reserved admin base path. */
 export const ADMIN_BASE_PATH = '/_vela/admin';
 
-/** A non-production fallback token (env `VELA_STUDIO_TOKEN` overrides it). */
+/** A non-production fallback token (a `VELA_STUDIO_TOKEN` in ENV overrides it). */
 export const DEV_TOKEN = 'demo-master-token-change-me';
 
 /** The demo's feature-flag manifest (drives the flags panel). */
@@ -73,10 +74,42 @@ function seed(db: MemoryDb): void {
     { id: 'a3', name: 'Cy', email: 'cy@x.io', role: 'member', createdAt: 3, updatedAt: 3 },
   ]);
   db.seed('books', [
-    { id: 'b1', title: 'Portable Time', authorId: 'a1', status: 'published', deletedAt: null, createdAt: 1, updatedAt: 1 },
-    { id: 'b2', title: 'Draft Notes', authorId: 'a1', status: 'draft', deletedAt: null, createdAt: 2, updatedAt: 2 },
-    { id: 'b3', title: 'World Tour', authorId: 'a2', status: 'published', deletedAt: null, createdAt: 3, updatedAt: 3 },
-    { id: 'b4', title: 'Tombstoned', authorId: 'a1', status: 'draft', deletedAt: 123, createdAt: 4, updatedAt: 4 },
+    {
+      id: 'b1',
+      title: 'Portable Time',
+      authorId: 'a1',
+      status: 'published',
+      deletedAt: null,
+      createdAt: 1,
+      updatedAt: 1,
+    },
+    {
+      id: 'b2',
+      title: 'Draft Notes',
+      authorId: 'a1',
+      status: 'draft',
+      deletedAt: null,
+      createdAt: 2,
+      updatedAt: 2,
+    },
+    {
+      id: 'b3',
+      title: 'World Tour',
+      authorId: 'a2',
+      status: 'published',
+      deletedAt: null,
+      createdAt: 3,
+      updatedAt: 3,
+    },
+    {
+      id: 'b4',
+      title: 'Tombstoned',
+      authorId: 'a1',
+      status: 'draft',
+      deletedAt: 123,
+      createdAt: 4,
+      updatedAt: 4,
+    },
   ]);
   db.seed('tags', [
     { id: 't1', label: 'fiction', createdAt: 1, updatedAt: 1 },
@@ -86,8 +119,13 @@ function seed(db: MemoryDb): void {
 
 /** Options for {@link createApp}. */
 export interface CreateAppOptions {
-  /** Master admin bearer. Default: env `VELA_STUDIO_TOKEN`, else {@link DEV_TOKEN}. */
+  /** Master admin bearer. Default: `VELA_STUDIO_TOKEN` from `env`, else {@link DEV_TOKEN}. */
   token?: string;
+  /**
+   * The runtime environment, seeded as the application's `ENV`. Studio reads its
+   * `VELA_STUDIO_*` values from it. The Node entry passes `process.env`.
+   */
+  env?: VelaEnv;
   /** Editable-gate overrides. Default: data + timeTravel + transfer + ops open. */
   editable?: Partial<EditableFlags>;
 }
@@ -100,7 +138,9 @@ export type DemoApp = Awaited<ReturnType<typeof VelaFactory.create>>;
  * so callers (tests, the walkthrough) never share mutable state.
  */
 export async function createApp(options: CreateAppOptions = {}): Promise<DemoApp> {
-  const token = options.token ?? process.env.VELA_STUDIO_TOKEN ?? DEV_TOKEN;
+  const env = options.env ?? {};
+  // Studio reads VELA_STUDIO_TOKEN from ENV itself; supply the demo token only without one.
+  const token = options.token ?? (readStudioEnv(env).token === undefined ? DEV_TOKEN : undefined);
   const editable: Partial<EditableFlags> = {
     data: true,
     timeTravel: true,
@@ -176,11 +216,11 @@ export async function createApp(options: CreateAppOptions = {}): Promise<DemoApp
   class ApiModule {}
 
   const studioModule = StudioModule.forRoot({
-        path: ADMIN_BASE_PATH,
-        token,
-        rootModule: ApiModule,
-        editable,
-      });
+    path: ADMIN_BASE_PATH,
+    ...(token === undefined ? {} : { token }),
+    rootModule: ApiModule,
+    editable,
+  });
   const modelSourceModule = StudioCrudModule.forRoot({});
   @Module({
     imports: [
@@ -193,12 +233,13 @@ export async function createApp(options: CreateAppOptions = {}): Promise<DemoApp
       ScheduleModule,
       ReportsModule,
       StudioScheduleModule.forRoot({}),
-      QueueModule.forRoot({ queues: [DEMO_QUEUE] }),
+      QueueModule.forRoot(),
+      QueueModule.registerQueue({ name: DEMO_QUEUE }),
       EmailProcessorModule,
       StudioQueueModule.forRoot({}),
     ],
   })
   class AppModule {}
 
-  return VelaFactory.create(AppModule, { adapters: [studioRuntimeAdapter] });
+  return VelaFactory.create(AppModule, { env, adapters: [studioRuntimeAdapter] });
 }

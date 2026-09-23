@@ -61,5 +61,5 @@ export {
 export type { RouteRow, EntrypointRow } from './introspect.js';
 export { renderTable } from './format.js';
 export { loadConfig, defineVelaConfig, resolveConfig } from './config.js';
-export type { VelaConfig, ConfigResolution } from './config.js';
+export type { VelaConfig, ConfigResolution, LoadedVelaConfig } from './config.js';
 export { formatSeedResults } from './format.js';

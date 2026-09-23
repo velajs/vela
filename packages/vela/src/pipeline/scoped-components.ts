@@ -1,8 +1,8 @@
 import type { Container } from '../container/container';
-import type { TypedToken } from '../container/types';
+import type { Type, TypedToken } from '../container/types';
 import { instantiateMany, instantiateManyAsync } from '../http/instantiate';
-import type { ComponentType, Constructor } from '../registry/types';
-import { ComponentManager } from './component.manager';
+import { MetadataRegistry } from '../registry/metadata.registry';
+import type { ComponentType, ComponentTypeMap, Constructor } from '../registry/types';
 import type {
   CanActivate,
   ExceptionFilter,
@@ -39,7 +39,43 @@ export function resolvePipelineComponents<T extends ComponentType>(
 }
 
 /**
- * Class-level then method-level components. The caller owns ordering policy:
+ * Declared (unresolved) scoped components in pipeline order: class-level,
+ * then module-level (`@UseGuards` etc. on the module class, applied to the
+ * controllers that module instance declares), then method-level. Module-level
+ * entries are read from the application's module graph in `container`, so
+ * bootstrapping the same classes again never accumulates entries. Without
+ * `moduleId`, the class's owning module is used when it has exactly one.
+ */
+export function getScopedComponents<T extends ComponentType>(
+  type: T,
+  targetClass: Constructor,
+  methodName: string | symbol,
+  container: Container,
+  moduleId?: string,
+): ComponentTypeMap[T][] {
+  return [
+    ...MetadataRegistry.getController(type, targetClass),
+    ...getModuleComponents(type, targetClass, container, moduleId),
+    ...MetadataRegistry.getHandler(type, targetClass, methodName),
+  ];
+}
+
+function getModuleComponents<T extends ComponentType>(
+  type: T,
+  targetClass: Constructor,
+  container: Container,
+  moduleId: string | undefined,
+): ComponentTypeMap[T][] {
+  // Registered classes are concrete; the container indexes them as `Type`.
+  const owners = moduleId === undefined ? container.getOwnerModuleIds(targetClass as Type) : [];
+  const ownerId = moduleId ?? (owners.length === 1 ? owners[0] : undefined);
+  const scope = ownerId === undefined ? undefined : container.getModuleScope(ownerId);
+  if (!scope?.moduleClass || !scope.controllers?.has(targetClass)) return [];
+  return MetadataRegistry.getController(type, scope.moduleClass);
+}
+
+/**
+ * Resolve {@link getScopedComponents}. The caller owns ordering policy:
  * reverse filters for closest-first handling, and choose transport globals
  * separately. Synchronous resolution remains available for 1.x callers.
  */
@@ -52,10 +88,12 @@ export function resolveScopedComponents<T extends ComponentType>(
 ): ResolvedComponentMap[T][] {
   // MetadataRegistry's ComponentTypeMap and this result map share the same
   // discriminant, but TypeScript cannot retain that indexed correlation.
-  const scoped = ComponentManager.getScopedComponents(
+  const scoped = getScopedComponents(
     type,
     targetClass,
     methodName,
+    container,
+    moduleId,
   ) as PipelineComponentEntry<T>[];
   return instantiateMany<ResolvedComponentMap[T]>(scoped, container, moduleId);
 }
@@ -70,10 +108,12 @@ export function resolveScopedComponentsAsync<T extends ComponentType>(
 ): Promise<ResolvedComponentMap[T][]> {
   // MetadataRegistry's ComponentTypeMap and this result map share the same
   // discriminant, but TypeScript cannot retain that indexed correlation.
-  const scoped = ComponentManager.getScopedComponents(
+  const scoped = getScopedComponents(
     type,
     targetClass,
     methodName,
+    container,
+    moduleId,
   ) as PipelineComponentEntry<T>[];
   return instantiateManyAsync<ResolvedComponentMap[T]>(scoped, container, moduleId);
 }
