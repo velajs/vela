@@ -27,6 +27,7 @@ import {
   type OnModuleDestroy,
   type OnModuleInit,
   type Provider,
+  type ProviderLiteral,
   Catch,
   Global,
   forwardRef,
@@ -266,6 +267,23 @@ describe('provider literals', () => {
     Module({ providers: [{ provide: Clock, useClass: RequestScopedLabel }] });
     // @ts-expect-error Aliases keep the token's value type.
     Module({ providers: [{ provide: COUNT, useExisting: LABEL }] });
+    // A list declared without a type annotation is checked element by element too.
+    const unannotated = [{ provide: COUNT, useValue: 'one' }];
+    // @ts-expect-error The value must have the token's type.
+    Module({ providers: unannotated });
+    // Errors point at the literal or option that is wrong, not at the whole list.
+    Module({
+      providers: [
+        Clock,
+        // @ts-expect-error The value must have the token's type.
+        { provide: COUNT, useValue: 'one' },
+      ],
+    });
+    Module({
+      providers: [Clock],
+      // @ts-expect-error A misspelled option is reported where it is written.
+      exprts: [Clock],
+    });
     expect(providers).toHaveLength(1);
     expect(optional(true)).toBeTypeOf('function');
   });
@@ -280,7 +298,11 @@ describe('provider literals', () => {
       return BuiltModule;
     };
 
+    const literals: ProviderLiteral[] = [{ provide: COUNT, useValue: 3 }];
+    const counted = [{ provide: COUNT, useValue: 3 }];
     Module({ providers: dynamic.providers ?? [] });
+    Module({ providers: literals });
+    Module({ providers: counted });
     Module(options);
 
     @Module({ imports: [build(listed)] })

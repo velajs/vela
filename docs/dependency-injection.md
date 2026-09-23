@@ -38,11 +38,12 @@ correlate per element, so they accept the loosely typed `ProviderLiteral` union.
 checks each literal when the module loads: an entry without a token, without exactly one of
 `useValue`, `useClass`, `useFactory` and `useExisting`, or with a strategy of the wrong kind fails
 the load with an error naming the list entry and its token, for example
-`FeatureModule.providers[2] (InjectionToken(STORE)) is not a provider`. `@Module` treats a list typed
-as a whole the same way, such as a `Provider[]` parameter, `dynamic.providers ?? []` or a
-`ModuleOptions` object: only an array literal written in `@Module` is checked element by element.
-These literals are validated at runtime only, so prefer `defineProvider` in computed contributions
-and shared lists when the value type matters.
+`FeatureModule.providers[2] (InjectionToken(STORE)) is not a provider`. `@Module` treats a list
+typed with the whole `Provider` or `ProviderLiteral` element type the same way, such as a
+`Provider[]` parameter, `dynamic.providers ?? []` or a `ModuleOptions` object. An array literal
+written in `@Module`, and a list declared without a type annotation, are checked element by element.
+The literals of a list typed as a whole are validated at runtime only, so prefer `defineProvider` in
+computed contributions and shared lists when the value type matters.
 
 Framework-global tokens such as `Reflector`, `ENV` and `NONCE_STORE` resolve to the application's
 registration from every module that neither registers its own copy nor sees a global override. A
