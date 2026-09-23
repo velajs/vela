@@ -1,11 +1,10 @@
-import { Module, type VelaEnv } from '@velajs/vela';
+import { ENV, Module, type VelaEnv } from '@velajs/vela';
 import { drizzle } from 'drizzle-orm/d1';
 import {
   CrudModule,
   defineCrudFeature,
   defineCrudDatabase,
   createCrudDatabaseRegistry,
-  databaseResource,
 } from '@velajs/crud';
 import { drizzleAdapter } from '@velajs/crud-drizzle';
 import { items, itemModel, itemSchema } from './schema.js';
@@ -34,24 +33,20 @@ export function createDatabases(env: VelaEnv) {
   );
 }
 
-/** The Cloudflare factory builds this graph once for each native environment. */
-export function createAppModule(env: VelaEnv) {
-  const databases = createDatabases(env);
-  @Module({
-    imports: [
-      CrudModule.forRootAsync({ inject: [], useFactory: async () => ({ databases }) }),
-      CrudModule.forFeature([
-        defineCrudFeature({
-          path: '/primary/items',
-          ...databaseResource(databases.get('primary'), 'item'),
-        }),
-        defineCrudFeature({
-          path: '/analytics/items',
-          ...databaseResource(databases.get('analytics'), 'item'),
-        }),
-      ]),
-    ],
-  })
-  class AppModule {}
-  return AppModule;
-}
+/**
+ * Declared once. The CRUD factory builds both databases from each native
+ * environment, and each resource selects its database by name.
+ */
+@Module({
+  imports: [
+    CrudModule.forRootAsync({
+      inject: [ENV],
+      useFactory: (env) => ({ databases: createDatabases(env) }),
+    }),
+    CrudModule.forFeature([
+      defineCrudFeature({ path: '/primary/items', model: itemModel, database: 'primary' }),
+      defineCrudFeature({ path: '/analytics/items', model: itemModel, database: 'analytics' }),
+    ]),
+  ],
+})
+export class AppModule {}
