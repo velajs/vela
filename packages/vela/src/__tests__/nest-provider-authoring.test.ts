@@ -223,6 +223,9 @@ describe('provider literals', () => {
 
   it('keep literals typed against their token', () => {
     const providers: Provider[] = [{ provide: COUNT, useValue: 1 }];
+    // A list that is not one array literal still accepts classes and definitions.
+    const optional = (enabled: boolean) =>
+      Module({ providers: enabled ? [Clock, defineProvider(COUNT, { useValue: 1 })] : [] });
     // Factories with dependencies use defineProvider, which infers their parameters.
     // @ts-expect-error A literal factory takes no parameters.
     Module({ providers: [{ provide: LABEL, inject: [COUNT], useFactory: (n: number) => `${n}` }] });
@@ -231,6 +234,7 @@ describe('provider literals', () => {
     // @ts-expect-error Aliases keep the token's value type.
     Module({ providers: [{ provide: COUNT, useExisting: LABEL }] });
     expect(providers).toHaveLength(1);
+    expect(optional(true)).toBeTypeOf('function');
   });
 
   it('reject a DynamicModule entry that is not a provider, naming the token', async () => {

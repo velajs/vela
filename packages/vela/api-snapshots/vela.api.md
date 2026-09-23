@@ -3559,7 +3559,7 @@ export { ValidationPipe as t };
 ### `<internal:metadata.registry.d.ts>`
 
 ```ts
-import { $ as Type, A as CheckedProviders, B as InjectionToken, I as InferToken, Q as Token, R as InjectMetadata, a as ExecutionContext, c as NestInterceptor, ft as Scope, i as ExceptionFilter, j as Constructor, k as Container, l as NestMiddleware, r as CanActivate, t as ArgumentMetadata, u as PipeTransform } from "<internal:types.d.ts>";
+import { $ as Type, A as CheckedProviders, B as InjectionToken, I as InferToken, J as ProviderDefinition, Q as Token, R as InjectMetadata, a as ExecutionContext, c as NestInterceptor, ft as Scope, i as ExceptionFilter, j as Constructor, k as Container, l as NestMiddleware, q as Provider, r as CanActivate, t as ArgumentMetadata, u as PipeTransform } from "<internal:types.d.ts>";
 import { j as ExceptionHandler } from "<internal:request-context.d.ts>";
 import { $ as MiddlewareType, J as DynamicModule, K as ComponentType, Q as InterceptorType, X as GuardType, Y as FilterType, Z as HttpHandlerMeta, at as RouteDefinition, c as NonceStore, it as PipeType, nt as ModuleOptions, q as ComponentTypeMap, rt as ParameterMetadata, s as InvocationTransport, tt as ModuleMetadata } from "<internal:env.d.ts>";
 import { Catalog } from "@velajs/errors";
@@ -3596,10 +3596,11 @@ declare function getRequestContainer(c: Context): Container;
 
 declare function Global(): ClassDecorator;
 
-interface ModuleDecoratorOptions<P extends readonly unknown[] = readonly []> extends Omit<ModuleOptions, 'providers'> {
+interface ModuleDecoratorOptions<P extends readonly unknown[] = readonly Provider[]> extends Omit<ModuleOptions, 'providers'> {
   providers?: CheckedProviders<P>;
 }
-declare function Module<const P extends readonly unknown[] = readonly []>(options?: ModuleDecoratorOptions<P>): ClassDecorator;
+declare function Module(options?: ModuleDecoratorOptions<readonly (Type | ProviderDefinition)[]>): ClassDecorator;
+declare function Module<const P extends readonly unknown[] = readonly Provider[]>(options?: ModuleDecoratorOptions<P>): ClassDecorator;
 declare function isModule(target: Constructor): boolean;
 
 declare function defineDynamicModule(input: DynamicModule): DynamicModule;
