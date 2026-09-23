@@ -1,6 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { Controller, Get, Module } from '../index';
+import {
+  Controller,
+  Cookie,
+  Get,
+  HttpCode,
+  Ip,
+  Module,
+  Query,
+  Req,
+  createLazyParamDecorator,
+  createParamDecorator,
+} from '../index';
+import type { ExecutionContext, VelaContext } from '../index';
 import { defineEndpoint, Endpoint, getEndpointDefinition } from '../openapi/endpoint';
 import { createOpenApiDocument } from '../openapi/document';
 
@@ -55,6 +67,77 @@ describe('schema-bearing endpoint definitions', () => {
     });
     expect(operation?.responses['200']?.content?.['application/json']?.schema).toEqual(
       runtime?.outputSchema,
+    );
+  });
+
+  it('keeps endpoint context parameters out of the HTTP contract', () => {
+    const CurrentActor = createParamDecorator(
+      (_data: undefined, context: ExecutionContext) => context.getModuleId() ?? null,
+    );
+    const DeferredActor = createLazyParamDecorator(() => undefined);
+    @Controller('/plain')
+    class Plain {
+      @Get('/:id')
+      @Endpoint(definition)
+      find(value: z.infer<typeof input>) {
+        return { id: value.param.id };
+      }
+    }
+    @Controller('/contextual')
+    class Contextual {
+      @Get('/:id')
+      @Endpoint(definition)
+      find(
+        value: z.infer<typeof input>,
+        @CurrentActor() _actor: string | null,
+        @DeferredActor() _load: () => undefined,
+        @Req() _request: VelaContext,
+        @Ip() _address: string | null,
+        @Cookie('theme') _theme: string | undefined,
+      ) {
+        return { id: value.param.id };
+      }
+    }
+    @Module({ controllers: [Plain, Contextual] })
+    class App {}
+    const { paths } = createOpenApiDocument(App);
+    const contextual = paths['/contextual/{id}']?.get;
+    expect(contextual).toBeDefined();
+    expect(contextual).toEqual(paths['/plain/{id}']?.get);
+    expect(contextual?.parameters?.map(({ name, in: location }) => `${location}:${name}`)).toEqual([
+      'path:id',
+      'query:tags',
+    ]);
+  });
+
+  it('rejects the same endpoint declarations as route building', () => {
+    @Controller('/conflicting')
+    class Conflicting {
+      @Get('/:id')
+      @Endpoint(definition)
+      find(value: z.infer<typeof input>, @Query('tags') _tags: string) {
+        return { id: value.param.id };
+      }
+    }
+    @Module({ controllers: [Conflicting] })
+    class App {}
+    expect(() => createOpenApiDocument(App)).toThrow(
+      'Conflicting.find: parameter 1 uses @Query(), which reads request data the @Endpoint input owns; declare the value in the input query group',
+    );
+
+    @Controller('/accepted')
+    class Accepted {
+      @Get('/:id')
+      @HttpCode(202)
+      @Endpoint(definition)
+      find(value: z.infer<typeof input>) {
+        return { id: value.param.id };
+      }
+    }
+    @Module({ controllers: [Accepted] })
+    class StatusApp {}
+    expect(() => createOpenApiDocument(StatusApp)).toThrow(
+      'Accepted.find: @Endpoint owns the response status; remove @HttpCode and @Redirect',
     );
   });
 });

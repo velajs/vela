@@ -202,7 +202,9 @@ Rejected bodies retain their original request context through reporting and clea
 An ordinary `createParamDecorator` can read state populated by a guard. Its data
 argument is required when the factory excludes `undefined`: a factory accepting
 `string` produces `@Header('x-id')`; a factory accepting `undefined` supports
-`@CurrentUser()`.
+`@CurrentUser()`. Custom and lazy decorators also work on `@Endpoint` methods,
+after the validated input parameter; they are not part of the HTTP contract. See
+[context parameters](https://github.com/velajs/vela/blob/main/docs/client/HTTP.md#context-parameters).
 
 Use `createLazyParamDecorator` when a handler may not need an expensive value.
 It injects a function the handler calls explicitly. The function caches the

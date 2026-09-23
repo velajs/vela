@@ -1,6 +1,7 @@
 import { endpointResponseSchema } from './endpoint-response';
 import { ParamType } from '../constants';
 import type { Type } from '../container/types';
+import { assertEndpointMethod } from '../http/endpoint-parameters';
 import { getRouteContributors } from '../http/route-contributor';
 import { getMetadata } from '../metadata';
 import { collectControllers } from '../module/graph';
@@ -158,74 +159,12 @@ function buildOperation(
   const clientUnsupported: string[] = [];
   let requestBody: OpenApiRequestBody | undefined;
 
-  const declaredPathParams = new Set<string>();
   const pathParamNames = [...pathString.matchAll(/\{([^}]+)\}/g)].map((m) => m[1]!);
 
-  for (const param of paramMetadata) {
-    if (param.type === ParamType.PARAM && param.name) {
-      declaredPathParams.add(param.name);
-      parameters.push({
-        name: param.name,
-        in: 'path',
-        required: true,
-        schema: getParamSchema(param, paramtypes, registry) ?? { type: 'string' },
-      });
-    } else if (param.type === ParamType.QUERY && param.name) {
-      parameters.push({
-        name: param.name,
-        in: 'query',
-        required: !isParamOptional(param, paramtypes),
-        schema: getParamSchema(param, paramtypes, registry) ?? { type: 'string' },
-      });
-    } else if (param.type === ParamType.QUERY && !param.name) {
-      const schema = getParamSchema(param, paramtypes, registry);
-      const resolved = schema && registry.resolve(schema);
-      if (resolved?.type === 'object' && resolved.properties) {
-        for (const [name, property] of Object.entries(resolved.properties)) {
-          parameters.push({
-            name,
-            in: 'query',
-            required: resolved.required?.includes(name) ?? false,
-            schema: property,
-          });
-        }
-      } else {
-        clientUnsupported.push('Whole-query parameters require an object DTO schema.');
-      }
-    } else if (param.type === ParamType.HEADERS && param.name) {
-      parameters.push({
-        name: param.name,
-        in: 'header',
-        required: !isParamOptional(param, paramtypes),
-        schema: getParamSchema(param, paramtypes, registry) ?? { type: 'string' },
-      });
-    } else if (param.type === ParamType.BODY) {
-      const schema = getParamSchema(param, paramtypes, registry) ?? {};
-      if (param.name) {
-        clientUnsupported.push(
-          'Named body parameters require a whole-body DTO for client generation.',
-        );
-      }
-      requestBody = {
-        required: !isParamOptional(param, paramtypes),
-        content: { 'application/json': { schema } },
-      };
-    }
-  }
-
-  for (const name of pathParamNames) {
-    if (!declaredPathParams.has(name)) {
-      parameters.push({ name, in: 'path', required: true, schema: { type: 'string' } });
-    }
-  }
-
   if (endpoint) {
-    if (paramMetadata.length)
-      throw new Error(
-        '@Endpoint methods receive one schema-parsed input; remove parameter decorators from this method.',
-      );
-    parameters.length = 0;
-    requestBody = undefined;
+    // Context parameters after the endpoint input are resolved on the server;
+    // they are not part of the HTTP contract.
+    assertEndpointMethod(controller, handlerName, paramMetadata);
     const groups = endpoint.inputSchema.properties ?? {};
     const requiredGroups = new Set(endpoint.inputSchema.required ?? []);
     for (const group of Object.keys(groups)) {
@@ -278,6 +217,66 @@ function buildOperation(
         },
         'x-vela-body-limits': limits,
       };
+    }
+  } else {
+    const declaredPathParams = new Set<string>();
+
+    for (const param of paramMetadata) {
+      if (param.type === ParamType.PARAM && param.name) {
+        declaredPathParams.add(param.name);
+        parameters.push({
+          name: param.name,
+          in: 'path',
+          required: true,
+          schema: getParamSchema(param, paramtypes, registry) ?? { type: 'string' },
+        });
+      } else if (param.type === ParamType.QUERY && param.name) {
+        parameters.push({
+          name: param.name,
+          in: 'query',
+          required: !isParamOptional(param, paramtypes),
+          schema: getParamSchema(param, paramtypes, registry) ?? { type: 'string' },
+        });
+      } else if (param.type === ParamType.QUERY && !param.name) {
+        const schema = getParamSchema(param, paramtypes, registry);
+        const resolved = schema && registry.resolve(schema);
+        if (resolved?.type === 'object' && resolved.properties) {
+          for (const [name, property] of Object.entries(resolved.properties)) {
+            parameters.push({
+              name,
+              in: 'query',
+              required: resolved.required?.includes(name) ?? false,
+              schema: property,
+            });
+          }
+        } else {
+          clientUnsupported.push('Whole-query parameters require an object DTO schema.');
+        }
+      } else if (param.type === ParamType.HEADERS && param.name) {
+        parameters.push({
+          name: param.name,
+          in: 'header',
+          required: !isParamOptional(param, paramtypes),
+          schema: getParamSchema(param, paramtypes, registry) ?? { type: 'string' },
+        });
+      } else if (param.type === ParamType.BODY) {
+        const schema = getParamSchema(param, paramtypes, registry) ?? {};
+        if (param.name) {
+          clientUnsupported.push(
+            'Named body parameters require a whole-body DTO for client generation.',
+          );
+        }
+        requestBody = {
+          required: !isParamOptional(param, paramtypes),
+          content: { 'application/json': { schema } },
+        };
+      }
+    }
+
+    for (const name of pathParamNames) {
+      if (!declaredPathParams.has(name)) {
+        parameters.push({ name, in: 'path', required: true, schema: { type: 'string' } });
+      }
     }
   }
 

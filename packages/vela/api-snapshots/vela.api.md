@@ -983,7 +983,7 @@ interface RuntimeEndpointDefinition {
 declare function Endpoint<Input extends ValidationSchema, Output extends ValidationSchema>(definition: RuntimeEndpointDefinition & {
   readonly input: Input;
   readonly output: Output;
-}): <Handler extends (input: NoInfer<SchemaOutput<Input>>) => NoInfer<EndpointHandlerOutput<Output>> | Promise<NoInfer<EndpointHandlerOutput<Output>>>>(target: object, key: string | symbol, descriptor: TypedPropertyDescriptor<Handler>) => void;
+}): <Handler extends (input: NoInfer<SchemaOutput<Input>>, ...context: never[]) => NoInfer<EndpointHandlerOutput<Output>> | Promise<NoInfer<EndpointHandlerOutput<Output>>>>(target: object, key: string | symbol, descriptor: TypedPropertyDescriptor<Handler>) => void;
 
 declare function ApiDoc(metadata: ApiDocMetadata): MethodDecorator & ClassDecorator;
 

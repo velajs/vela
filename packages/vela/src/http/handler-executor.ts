@@ -27,6 +27,7 @@ import type { ArgumentResolver } from './argument-resolver';
 import { getHttpCode, getRedirect, getResponseHeaders } from './decorators';
 import { buildExecutionContext } from './execution-context';
 import { extractEndpointInput, mapEndpointResponse } from './endpoint-executor';
+import { assertEndpointMethod } from './endpoint-parameters';
 import { instantiateAsync, instantiateManyAsync } from './instantiate';
 import { applyResponseHeaders, mapRedirect, mapResponse } from './response-mapper';
 import type { ParamMetadata, RouteMetadata } from './types';
@@ -97,11 +98,7 @@ export class HandlerExecutor {
     const responseHeaders = getResponseHeaders(controller, route.handlerName);
     const redirect = getRedirect(controller, route.handlerName);
     const endpoint = getEndpointDefinition(controller, route.handlerName);
-    if (endpoint && (paramMetadata.length > 0 || redirect || httpCode !== undefined)) {
-      throw new Error(
-        `${controller.name}.${String(route.handlerName)}: @Endpoint owns its single input argument and response status; remove parameter decorators, @HttpCode, and @Redirect`,
-      );
-    }
+    if (endpoint) assertEndpointMethod(controller, route.handlerName, paramMetadata);
 
     return async (c: Context) => {
       // Combine global + method at request time so post-create registrations propagate.
@@ -132,6 +129,15 @@ export class HandlerExecutor {
             moduleId,
           )),
         ];
+        const extractParameters = (): Promise<unknown[]> =>
+          this.#argumentResolver.extract(
+            c,
+            paramMetadata,
+            pipes,
+            requestContainer,
+            paramTypes,
+            moduleId,
+          );
         // Guards → args + pipes → interceptor chain → handler, via the shared
         // runner. Authentication/authorization therefore rejects before body
         // parsing and validation work, matching Nest's request lifecycle.
@@ -139,17 +145,16 @@ export class HandlerExecutor {
           context: executionContext,
           guards,
           interceptors,
-          resolveArgs: () =>
-            endpoint
-              ? extractEndpointInput(c, endpoint, pipes)
-              : this.#argumentResolver.extract(
-                  c,
-                  paramMetadata,
-                  pipes,
-                  requestContainer,
-                  paramTypes,
-                  moduleId,
-                ),
+          resolveArgs: async () => {
+            if (!endpoint) return extractParameters();
+            // Parameters resolve in index order: the validated input first,
+            // then context parameters through the ordinary argument resolver.
+            const input = await extractEndpointInput(c, endpoint, pipes);
+            if (paramMetadata.length === 0) return [input];
+            const args = await extractParameters();
+            args[0] = input;
+            return args;
+          },
           invoke: async (args) => {
             // Singleton lifecycle is owned by bootstrap. Request-scoped
             // controllers need not exist when a guard/pipe/interceptor rejects.

@@ -7,6 +7,16 @@ integrations together using their published dependency ranges; consult each
 package's changelog for its version. A prepared version in this repository becomes
 installable only after publication to npm.
 
+## Endpoint context parameters
+
+`@Endpoint` methods may declare context parameters after the validated input:
+`createParamDecorator` and `createLazyParamDecorator` decorators such as
+`@CurrentUser()`, plus `@Req()`, `@Res()`, `@Ip()`, and `@Cookie()`. Replace a
+request-scoped controller that only existed to read identity through
+`REQUEST_CONTEXT` with a context decorator. Decorators that read data owned by the
+endpoint input (`@Param()`, `@Query()`, `@Headers()`, `@Body()`, `@RawBody()`)
+still fail at startup. See [context parameters](client/HTTP.md#context-parameters).
+
 ## Dependency injection and module ownership
 
 A provider token registered in two modules now has a separate cached instance for

@@ -27,7 +27,19 @@ class ProductsController {
 Schemas can use Standard Schema (including async refinements) or legacy parsers.
 JSON Schema conversion is separate: use `defineDto` with `jsonSchema` or
 `schemaConverter(direction)` when the library cannot export its wire shape.
-Endpoint input docs use the input direction; response docs use the output direction. Input groups are `param`, `query`, `header`, and either `json` or `form`. The dispatcher validates input after guards and validates the final result after interceptors. Invalid input returns 400; invalid output returns 500. An endpoint owns its status and argument parsing, so do not combine it with parameter decorators, `@HttpCode`, or `@Redirect` on the same method. JSON is the default response, even for strings and null; string outputs can opt into `format: 'text'`.
+Endpoint input docs use the input direction; response docs use the output direction. Input groups are `param`, `query`, `header`, and either `json` or `form`. The dispatcher validates input after guards and validates the final result after interceptors. Invalid input returns 400; invalid output returns 500. An endpoint owns its status, so do not combine it with `@HttpCode` or `@Redirect` on the same method. JSON is the default response, even for strings and null; string outputs can opt into `format: 'text'`.
+
+The first parameter receives the validated input. Later parameters may use context decorators — `createParamDecorator`/`createLazyParamDecorator` decorators such as `@CurrentUser()`, plus `@Req()`, `@Res()`, `@Ip()`, and `@Cookie()` — which resolve after guards and input validation with ordinary pipe semantics and stay out of OpenAPI and generated clients:
+
+```ts
+@Get('/:id')
+@Endpoint(readProduct)
+read(input: z.output<typeof readProduct.input>, @CurrentUser() user: User) {
+  return this.products.find(input.param.id, user.id);
+}
+```
+
+`@Param()`, `@Query()`, `@Headers()`, `@Body()`, and `@RawBody()` read data the input owns and fail at startup and in OpenAPI generation (declare those values in the input schema; read raw bytes on a route without `@Endpoint`), as does any decorator on the input parameter. Do not make a controller request-scoped just to read identity; use a context decorator.
 
 For forms, use `defineEndpoint({ input: z.object({ form: z.object({ title:
 z.string(), tags: z.array(z.string()), file: z.file().optional() }) }), output,

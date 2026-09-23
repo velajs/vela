@@ -184,7 +184,7 @@ const response = await client.users[':id'].$get({ param: { id: 'u1' } });
 const user = await response.json();
 ```
 
-Generate with the current Vela exporter to include global prefixes, route versions, `@HttpCode`, and query DTO fields. Use the server origin for `hc`; prefixes are already in the generated paths. `@Endpoint(defineEndpoint({ input, output, status }))` shares schemas with runtime validation. Named `defineDto` descriptors passed to `ValidationPipe` and `@ApiResponse` also supply documentation types; erased TypeScript interfaces and handler return types cannot be recovered from decorators. Missing schemas produce `unknown` and stderr warnings. `--strict` fails on these warnings before writing, and `--check` verifies the exact generated file without changing it.
+Generate with the current Vela exporter to include global prefixes, route versions, `@HttpCode`, and query DTO fields. Use the server origin for `hc`; prefixes are already in the generated paths. `@Endpoint(defineEndpoint({ input, output, status }))` shares schemas with runtime validation; context parameters after its input (for example `@CurrentUser()`) are server-side and excluded from the contract. Named `defineDto` descriptors passed to `ValidationPipe` and `@ApiResponse` also supply documentation types; erased TypeScript interfaces and handler return types cannot be recovered from decorators. Missing schemas produce `unknown` and stderr warnings. `--strict` fails on these warnings before writing, and `--check` verifies the exact generated file without changing it.
 
 Form endpoints use `input.form` with `body.contentType` set to
 `multipart/form-data` or `application/x-www-form-urlencoded`. The generator emits

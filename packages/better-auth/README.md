@@ -178,6 +178,16 @@ handle(@CurrentUser() user: User | undefined) {
 }
 ```
 
+Both decorators also work on schema-bound `@Endpoint` handlers, after the validated input. They resolve after the guard and are not part of the generated HTTP contract:
+
+```ts
+@Get()
+@Endpoint(readProfile)
+read(input: z.output<typeof readProfile.input>, @CurrentUser() user: User) {
+  return { id: user.id, view: input.query.view ?? 'summary' };
+}
+```
+
 ## Guards
 
 - **`AuthGuard`** — singleton. Reads `Authorization` header / cookies via `auth.api.getSession`, validates the full base user/session models, and publishes Vela's trusted principal, tenant, roles, and session expiry for downstream security components. The Better Auth organization plugin's verified `activeOrganizationId` becomes the tenant partition when present. The guard honors only explicit `@Public()` / `@OptionalAuth()` metadata. The generated Better Auth catch-all controller is explicitly public; sharing its URL prefix never makes an application controller public.

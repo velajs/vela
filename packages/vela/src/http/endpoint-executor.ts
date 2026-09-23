@@ -12,7 +12,7 @@ export async function extractEndpointInput(
   context: Context,
   endpoint: RuntimeEndpointDefinition,
   pipes: readonly PipeTransform[],
-): Promise<unknown[]> {
+): Promise<unknown> {
   const arrayParameters = new Set(
     endpoint.queryParameters
       .filter((parameter) => parameter.multiple)
@@ -64,7 +64,7 @@ export async function extractEndpointInput(
       : pipe.transform(input, { type: 'custom' }));
   }
   try {
-    return [await parseSchemaAsync(endpoint.input, input)];
+    return await parseSchemaAsync(endpoint.input, input);
   } catch (error) {
     if (error instanceof SchemaValidationError) {
       throw new BadRequestException({
@@ -91,10 +91,11 @@ export async function mapEndpointResponse(
   ) {
     if (value instanceof Response) return value;
     if (isEndpointBinaryBody(value) || value instanceof ReadableStream) {
-      return new Response(value, {
-        status: endpoint.status,
-        headers: { 'content-type': endpoint.contentType ?? 'application/octet-stream' },
-      });
+      // Keep headers and cookies already set on the context (for example
+      // through @Res()), as the JSON and text responses below do.
+      const headers = new Headers(context.res.headers);
+      headers.set('content-type', endpoint.contentType ?? 'application/octet-stream');
+      return new Response(value, { status: endpoint.status, headers });
     }
     throw new TypeError('Invalid native endpoint response');
   }

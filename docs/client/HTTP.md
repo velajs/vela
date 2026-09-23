@@ -68,7 +68,35 @@ export class UsersController {
 }
 ```
 
-`@Endpoint` constrains the method's argument and return types. The dispatcher parses input after guards and validates the final result after interceptors. Invalid input returns 400; an invalid result returns 500. JSON is the default response format, including strings and `null`. A string output can select `format: 'text'`. The endpoint owns its status and parameter parsing, so it cannot be combined with parameter decorators, `@HttpCode`, or `@Redirect` on the same method.
+`@Endpoint` constrains the method's input argument and return type. The dispatcher parses input after guards and validates the final result after interceptors. Invalid input returns 400; an invalid result returns 500. JSON is the default response format, including strings and `null`. A string output can select `format: 'text'`. The endpoint owns its status, so it cannot be combined with `@HttpCode` or `@Redirect` on the same method.
+
+### Context parameters
+
+The first parameter always receives the validated input. Later parameters can receive request context through context decorators: custom `createParamDecorator` and `createLazyParamDecorator` decorators (such as `@CurrentUser()` from `@velajs/better-auth`), `@Req()`, `@Res()`, `@Ip()`, and `@Cookie()`:
+
+```ts
+import { Controller, Endpoint, Get, defineEndpoint } from '@velajs/vela';
+import { CurrentUser, type User } from '@velajs/better-auth';
+import { z } from 'zod';
+
+const readProfile = defineEndpoint({
+  input: z.object({ query: z.object({ view: z.enum(['summary', 'full']).optional() }) }),
+  output: z.object({ id: z.string(), view: z.string() }),
+});
+
+@Controller('/profile')
+export class ProfileController {
+  @Get()
+  @Endpoint(readProfile)
+  read(input: z.output<typeof readProfile.input>, @CurrentUser() user: User) {
+    return { id: user.id, view: input.query.view ?? 'summary' };
+  }
+}
+```
+
+Context parameters resolve after guards and after the input is validated, in parameter order, with the same argument resolver, pipes, and request container as ordinary handlers. They are not part of the HTTP contract: OpenAPI and `vela client generate` ignore them. `@Res()` can set response headers or cookies on JSON, text, binary, and stream responses, but the endpoint still owns the status and body; a `format: 'response'` handler sets headers on the `Response` it returns. Cookies are ambient request state that the generated client does not model.
+
+Decorators that read request data owned by the input — `@Param()`, `@Query()`, `@Headers()`, `@Body()`, and `@RawBody()` — fail at startup, as does any decorator on the input parameter itself. Declare those values in the input's `param`, `query`, `header`, `json`, or `form` group so they are validated and documented; read raw body bytes on a route without `@Endpoint`. OpenAPI generation applies the same checks, including the `@HttpCode` and `@Redirect` rejection.
 
 Ordinary parameter decorators can use named descriptors: `const BodyDto = defineDto(schema, { name: 'CreateUser' })`, then `@Body(new ValidationPipe(BodyDto)) body: ReturnType<typeof BodyDto.parse>`. OpenAPI reads that same parser metadata. `@ApiResponse` accepts a descriptor, an exportable schema, or a checked raw JSON Schema; it documents a response without validating the handler's output. Erased TypeScript interfaces cannot supply schemas.
 

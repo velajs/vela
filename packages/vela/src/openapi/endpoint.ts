@@ -196,6 +196,11 @@ const definitions = new WeakMap<object, Map<string | symbol, RuntimeEndpointDefi
  * Correlate a controller method with one schema-bearing endpoint definition.
  * The dispatcher must parse the HTTP input and handler result using this same
  * definition. This decorator records metadata; it does not wrap another route.
+ *
+ * The method's first parameter receives the validated input. Later parameters
+ * may use context decorators (`createParamDecorator`, `@Req()`, `@Res()`,
+ * `@Ip()`, `@Cookie()`); they are resolved after guards and are not part of the
+ * HTTP contract.
  */
 export function Endpoint<Input extends ValidationSchema, Output extends ValidationSchema>(
   definition: RuntimeEndpointDefinition & { readonly input: Input; readonly output: Output },
@@ -203,6 +208,8 @@ export function Endpoint<Input extends ValidationSchema, Output extends Validati
   return <
     Handler extends (
       input: NoInfer<SchemaOutput<Input>>,
+      // Context parameters come from their decorators, not from the schema.
+      ...context: never[]
     ) => NoInfer<EndpointHandlerOutput<Output>> | Promise<NoInfer<EndpointHandlerOutput<Output>>>,
   >(
     target: object,

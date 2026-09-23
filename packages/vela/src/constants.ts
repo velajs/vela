@@ -48,6 +48,9 @@ export const ParamType = {
 } as const;
 export type ParamType = (typeof ParamType)[keyof typeof ParamType];
 
+/** Parameter metadata type recorded by `createParamDecorator` and lazy decorators. */
+export const CUSTOM_PARAM_TYPE = 'custom';
+
 export const Scope = {
   SINGLETON: 'singleton',
   TRANSIENT: 'transient',

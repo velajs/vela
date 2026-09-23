@@ -32,6 +32,8 @@ class AppModule {}
 
 `@CurrentUser()` / `@CurrentSession()` return validated data only while it is bound to the current trusted identity. Expiry, logout, public routes, rejected sessions, or identity replacement clear that access. Authentication is deny-by-default; there is no permissive `defaultPolicy` mode. Disable global authentication only when installing an equivalent guard.
 
+On schema-bound `@Endpoint` handlers, place these decorators after the validated input: `read(input: z.output<typeof readProfile.input>, @CurrentUser() user: User)`. They resolve after guards and never enter OpenAPI or generated clients; do not make the controller request-scoped to reach identity.
+
 ## One authorization layer
 
 Import `AuthzModule`, `PermissionGuard`, `RequirePermission`, `RolesGuard`, `Roles`, and `CurrentIdentity` from `@velajs/authz/vela`. Authenticate before authorization. `RequirePermission(['posts:write'])` requires every permission; `Roles(['admin', 'editor'])` allows any listed verified local role. Guards do not trust user headers, Hono variables, Better Auth metadata, or arbitrary socket role fields.

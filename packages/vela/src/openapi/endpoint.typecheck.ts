@@ -1,5 +1,9 @@
 // Compiled by the source typecheck; never imported by the runtime entry point.
 import { z } from 'zod';
+import { Cookie, createParamDecorator, Ip, Req } from '../http/decorators';
+import type { VelaContext } from '../http/hono.types';
+import { createLazyParamDecorator } from '../http/lazy-param.decorator';
+import type { ExecutionContext } from '../pipeline/types';
 import { defineEndpoint, Endpoint } from './endpoint';
 
 export function checkEndpointTypes(): void {
@@ -29,6 +33,61 @@ export function checkEndpointTypes(): void {
   }
   void Valid;
   void Invalid;
+}
+
+interface Actor {
+  readonly id: string;
+}
+const CurrentActor = createParamDecorator(
+  (_data: undefined, _context: ExecutionContext): Actor | undefined => undefined,
+);
+const DeferredActor = createLazyParamDecorator(
+  (_data: undefined, _context: ExecutionContext): Promise<Actor | undefined> =>
+    Promise.resolve(undefined),
+);
+
+export function checkEndpointContextParameterTypes(): void {
+  const definition = defineEndpoint({
+    input: z.object({ query: z.object({ view: z.string() }) }),
+    output: z.object({ view: z.string(), actor: z.string().optional() }),
+  });
+  class WithContext {
+    // Parameters after the validated input come from their own decorators.
+    @Endpoint(definition)
+    read(
+      input: z.output<typeof definition.input>,
+      @CurrentActor() actor: Actor | undefined,
+      @Req() context: VelaContext,
+      @Ip() address: string | null,
+      @Cookie('theme') theme: string | undefined,
+    ) {
+      void [context, address, theme];
+      return { view: input.query.view, actor: actor?.id };
+    }
+
+    @Endpoint(definition)
+    async readLater(
+      input: z.output<typeof definition.input>,
+      @DeferredActor() loadActor: () => Promise<Actor | undefined>,
+    ) {
+      return { view: input.query.view, actor: (await loadActor())?.id };
+    }
+  }
+  class WrongInput {
+    // @ts-expect-error The first parameter still receives the schema-parsed input.
+    @Endpoint(definition)
+    read(input: { query: { view: number } }, @CurrentActor() actor: Actor | undefined) {
+      return { view: String(input.query.view), actor: actor?.id };
+    }
+  }
+  class WrongOutput {
+    // @ts-expect-error Context parameters do not relax the output contract.
+    @Endpoint(definition)
+    read(input: z.output<typeof definition.input>, @CurrentActor() actor: Actor | undefined) {
+      return { view: input.query.view.length, actor: actor?.id };
+    }
+  }
+  void [WithContext, WrongInput, WrongOutput];
 }
 
 // A Standard schema's handler output is its input domain, not its wire output.

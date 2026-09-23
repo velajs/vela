@@ -47,7 +47,8 @@ HTTP requests run in this order:
 
 1. framework body/query limits and route middleware;
 2. global and route guards;
-3. parameter extraction and pipes;
+3. parameter extraction and pipes, in parameter order (an `@Endpoint` method
+   parses and validates its input first, then resolves its context parameters);
 4. interceptors;
 5. the controller handler.
 
@@ -57,6 +58,9 @@ guard-populated request state with an ordinary `createParamDecorator`. Optional
 identity decorators must return the real `undefined` value for anonymous
 requests. Lazy decorators inject explicit functions: call the function before
 checking its returned identity, rather than checking the function's truthiness.
+The same decorators work on `@Endpoint` methods after the validated input; see
+[context parameters](client/HTTP.md#context-parameters). A request-scoped
+controller is not needed to read identity.
 
 Denied guards therefore run before JSON/form parsing and validation pipes. A guard
 that intentionally verifies the raw body, such as `@SignedInvocation()`, may

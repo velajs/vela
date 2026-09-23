@@ -1,4 +1,4 @@
-import { HttpMethod, ParamType, Scope } from '../constants';
+import { CUSTOM_PARAM_TYPE, HttpMethod, ParamType, Scope } from '../constants';
 import type { RedirectStatusCode, StatusCode } from 'hono/utils/http-status';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import { normalizePath } from '../registry/paths';
@@ -110,8 +110,6 @@ export const All = createMethodDecorator(HttpMethod.ALL);
 export const Sse = createMethodDecorator(HttpMethod.GET);
 
 // Parameter decorators
-
-const CUSTOM_PARAM_TYPE = 'custom';
 
 function createBuiltinParamDecorator(type: ParamType) {
   return (nameOrPipe?: string | PipeType, ...pipes: PipeType[]): ParameterDecorator => {
