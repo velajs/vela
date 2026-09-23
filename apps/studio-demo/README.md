@@ -43,6 +43,9 @@ vela studio --url http://localhost:8787
 ```
 
 `vela.config.ts` exports `createApp()` for the CLI's config-boot path as well.
+Both Node entries pass `process.env` as the application's `ENV`, and Studio
+reads `VELA_STUDIO_TOKEN` from it; without one, the demo falls back to its
+non-production `DEV_TOKEN`.
 
 ## Run the walkthrough (the conformance gate)
 
