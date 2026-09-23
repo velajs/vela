@@ -63,6 +63,29 @@ describe('enhancer auto-registration', () => {
     await app.close();
   });
 
+  it('gives an undecorated subclass the dependencies its parent declares', async () => {
+    class AdminRolesGuard extends RolesGuard {}
+
+    @Controller('/admin')
+    @UseGuards(AdminRolesGuard)
+    class AdminController {
+      @Roles('admin')
+      @Get()
+      index() {
+        return { ok: true };
+      }
+    }
+
+    @Module({ controllers: [AdminController] })
+    class AdminModule {}
+
+    const app = await VelaFactory.create(AdminModule, { diagnostics: 'throw' });
+    const hono = app.getHonoApp();
+    expect((await hono.request('/admin')).status).toBe(403);
+    expect((await hono.request('/admin', { headers: { 'x-role': 'admin' } })).status).toBe(200);
+    await app.close();
+  });
+
   it('builds each parameterless enhancer once, not per request', async () => {
     const built: string[] = [];
 
