@@ -76,53 +76,62 @@ Middleware bound with `consumer.apply(...).forRoutes(...)` resolves its targets
 when routes are built. A controller target runs the middleware exactly when Hono
 dispatches the request to one of the controller's own handlers, with that
 handler's method, under any global prefix, URI version or parent app that mounts
-the Vela app. Path targets use Hono route patterns under the global prefix and
-also cover nested paths. `exclude()` patterns match exactly. A path target that
+the Vela app. It is the most precise target, so bind authentication to the
+controller when you can. Path targets resolve under the global prefix and also
+cover nested paths. `exclude()` patterns match exactly. A path target that
 already starts with the global prefix fails the build, because it would never
 match. A request matches a method-scoped target only for that method, or HEAD
 for a GET target, as Hono routes it; the method token `ALL` is not a wildcard.
 
-Matching follows Hono's router exactly. Vela registers every path target on the
-Hono app as a route that does nothing, ahead of the controller routes, and runs
-the middleware when Hono matches one of its `forRoutes()` targets for the request
-and none of its `exclude()` targets. The router that picks the serving route
-therefore also decides what a target matches, including the base path of a
-parent app that mounts the Vela app with `parent.route(base, app)` (a trailing
-slash or a `:tenant{[a-z0-9-]+}` parameter included), percent-decoding and
-`{regex}` constraints. A `forRoutes()` target is registered as its pattern, as
-Hono's trailing `*` form for the paths beneath it, and as a `:_{[^]+}` parameter
-form of the same. The parameter form keeps Hono's default RegExpRouter from
-applying the target to deeper routes by comparing pattern text, which misses a
-route with `:id` where the target has `*`, or the reverse: that router cannot
-hold the form beside a deeper route and falls back to Hono's TrieRouter, which
-matches every pattern against the request path. Targets can therefore change
-which of Hono's routers the app uses, as any route can.
+Path targets use a small grammar that Vela matches itself, segment by segment,
+in time linear in the length of the request path. Targets add no routes to the
+Hono app, so they never change which of Hono's routers the app uses. Hono's
+routers agree on every form in the grammar, so a target matches the requests a
+route with the same pattern would serve:
 
-Constraints behave as they do in routes. A `.` in a `{regex}` constraint does
-not match the line terminators Hono decodes into the path (`%0A`, `%0D`,
-`%E2%80%A8`, `%E2%80%A9`), while a `:id` route accepts them. Write `[\s\S]`
-instead of `.`, or use a trailing `*`, for a catch-all. A constraint with a
-top-level `|`, such as `{\d+|me}`, anchors only its first and last alternative
-in Hono's TrieRouter, so wrap alternatives in `(?:...)`. Several constraints
-that span segments backtrack in Hono's router as they would in routes. A
-constraint that is not a valid regular expression, or that matches an empty
-segment, fails the build: Hono compiles constraints only for its first request,
-and its default router fails on a parameter that captures nothing.
+- A literal segment matches the same text in the decoded path, case-sensitively.
+  `v1.0` and `a+b` are text, not regular expressions.
+- `:name` matches one non-empty segment, including the line terminators Hono
+  decodes into the path (`%0A`, `%0D`, `%E2%80%A8`, `%E2%80%A9`).
+- The last segment may be `*` or Nest's `{*name}`, which match the parent path
+  and every path beneath it: `cats/*` matches `/cats`, `/cats/` and
+  `/cats/1/toys`. It may also be Nest's `*name` or `(.*)`, which match one or
+  more characters beneath the parent but not the parent itself:
+  `exclude('users/*id')` still runs the middleware on `/users`.
+- A trailing `/` is a segment of its own, so `exclude('cats/')` skips `/cats/`
+  but not `/cats`. `forRoutes('cats/')` covers the same paths as
+  `forRoutes('cats')`.
+- `'*'`, `'/*'` and `'{*splat}'` match every request and never get the prefix.
 
-Nest's trailing wildcards become Hono patterns. `cats/*path` and `cats/(.*)`
-become `cats/:path{[\s\S]+}`, which matches one or more characters below `/cats`
-(`/cats/1`, `/cats/1/toys`) but not `/cats` itself, so `exclude('users/*id')`
-still runs the middleware on `/users`. A trailing `cats/{*splat}` becomes Hono's
-`cats/*`, which also matches `/cats`, as it does in Nest. Hono has no pattern
-for a wildcard that spans segments before the last one, so a Nest wildcard in
-any other segment (`files/*path/:id`, `users/*id/admin`, `cats/(.*)/toys`,
-`cats/{*splat}/toys`, `files/*a/*b`) fails the build. So does any other group,
-optional segment or named wildcard, such as `:id(\d+)`, `users{/:id}`, `ab*cd`
-or a `:id?` before the last segment; write `:id{[0-9]+}` for a constrained
-segment. Hono's own `*` keeps Hono's meaning: before the last segment it matches
-one segment, including an empty one where Hono's TrieRouter routes it, and a
-trailing `*` also matches its parent path unless that ends in `*`, so
-`exclude('*/*')` still runs the middleware on `/x`.
+Any other syntax fails the build with its cause, instead of matching whatever
+one of Hono's routers makes of it:
+
+- `{regex}` constraints, such as `:id{[0-9]+}` or `:action{login|register}`.
+  Hono's TrieRouter anchors only the first and last alternative of a top-level
+  `|`, so `exclude('auth/:action{login|register}')` would also have skipped
+  `/auth/login-as/42`, and constraints that span segments backtrack.
+- An optional `?`, such as `:id?`. List each path instead.
+- A wildcard before the last segment, such as `files/*/raw`, `*/*`,
+  `files/*path/download` or `cats/{*splat}/toys`.
+- `*` or `:` inside a segment, such as `us*`, `ab*cd` or `abc:name`. Hono's
+  routers disagree on whether `abc:name` is text or a parameter.
+- Parentheses or braces other than a trailing `(.*)` or `{*name}`, such as
+  `:id(\d+)`, `(a|b)` or `users{/:id}`.
+- An empty segment, such as `a//b`.
+
+When constraint-level precision matters, target the controller, or list each
+literal path.
+
+When a parent app mounts the Vela app with `parent.route(base, app)`, path
+targets match the request path beneath that base. Vela reads the base pattern
+of the route Hono matched for the running middleware, fills in its `:param`
+values as Hono matched them, and checks that the result spells the start of the
+request path, segment by segment. A base with a trailing slash, such as `/m/`
+or `/:tenant/`, puts the app's root at the base itself, as Hono joins routes
+under it. If the base does not spell the start of the path, because Hono decoded
+a percent-encoded parameter value (`/a%3Ab`) or the request stops at `/m`
+under a `/m/` base, the request fails closed: the middleware runs, and its
+`exclude()` path targets are ignored for that request.
 
 Some routes are served outside the global prefix: `mountOpenApi()` documents
 (`/openapi.json`, `/scalar`, `/docs`, `/redoc`), the `RpcModule` endpoint
@@ -137,11 +146,12 @@ consumer
 ```
 
 Once every controller and route contributor has registered its routes, each
-relative path target is checked against them with Hono's TrieRouter: a target
-reaches a route through a concrete path, shaped like either of them, that both
-match. A target that reaches no route under the global prefix but matches a
-route served outside it, such as `forRoutes('rpc')` for the `RpcModule`
-endpoint, fails the build and names the `{ path, absolute: true }` form to use.
+relative path target is checked against them: a target reaches a route through a
+concrete path, shaped like either of them, that the target and the route both
+match. These sample paths only drive startup checks, never a request's decision.
+A target that reaches no route under the global prefix but matches a route
+served outside it, such as `forRoutes('rpc')` for the `RpcModule` endpoint,
+fails the build and names the `{ path, absolute: true }` form to use.
 A `forRoutes()` target that reaches no registered route at all is reported
 through the container's diagnostics policy (`'log'` warns, `'throw'` fails
 bootstrap), since the route may still be added to the Hono app later; target
