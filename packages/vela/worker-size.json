@@ -31,6 +31,7 @@
     "dist/observability/",
     "dist/openapi/endpoint-response.js",
     "dist/openapi/endpoint.js",
+    "dist/pipeline/reflector.js",
     "dist/plugin/",
     "dist/queue/",
     "dist/schedule-node/",

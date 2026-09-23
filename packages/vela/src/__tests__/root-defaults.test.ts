@@ -14,6 +14,7 @@ const OPTIONAL_SERVICES = [
   'InternalDispatcher',
   'SignedInvocationGuard',
   'InjectionToken(NONCE_STORE)',
+  'Reflector',
 ];
 
 interface Clock {
@@ -21,7 +22,7 @@ interface Clock {
 }
 
 describe('framework root defaults', () => {
-  it('registers the signed-URL and signed-dispatch services once their modules load', async () => {
+  it('registers Reflector and the signed-URL and signed-dispatch services once their modules load', async () => {
     @Module({})
     class AppModule {}
 
@@ -34,6 +35,7 @@ describe('framework root defaults', () => {
     const { NONCE_STORE, MemoryNonceStore } = await import('../dispatch/nonce-store');
     const { SignedUrlGuard } = await import('../http/url/signed-url.guard');
     const { UrlGeneratorService } = await import('../http/url/url-generator.service');
+    const { Reflector } = await import('../pipeline/reflector');
 
     const app = await VelaFactory.create(AppModule);
     for (const token of [
@@ -42,11 +44,13 @@ describe('framework root defaults', () => {
       NONCE_STORE,
       SignedUrlGuard,
       UrlGeneratorService,
+      Reflector,
     ]) {
       expect(app.getContainer().has(token)).toBe(true);
     }
     expect(app.get(NONCE_STORE)).toBeInstanceOf(MemoryNonceStore);
     expect(app.get(InternalDispatcher)).toBe(app.get(InternalDispatcher));
+    expect(app.get(Reflector)).toBeInstanceOf(Reflector);
     await app.close();
   });
 

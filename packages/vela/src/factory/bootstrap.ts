@@ -14,7 +14,6 @@ import { ModuleLoader } from '../module/module-loader';
 import { ROOT_MODULE } from '../module/root-module';
 import type { DynamicModule } from '../registry/types';
 import { bindAppProviders } from '../pipeline/app-providers';
-import { Reflector } from '../pipeline/reflector';
 import {
   APP_EXCEPTION_HANDLER,
   APP_FILTER,
@@ -82,10 +81,6 @@ export async function bootstrap(
   );
   container.markGlobalToken(DiscoveryService);
 
-  // Stateless metadata reader for guards and interceptors, as in Nest.
-  container.register(Reflector);
-  container.markGlobalToken(Reflector);
-
   for (const t of [
     APP_GUARD,
     APP_PIPE,
@@ -133,7 +128,8 @@ export async function bootstrap(
 
   // Optional framework services declare themselves as root defaults when
   // their modules load, so a Worker that never references one does not bundle
-  // it: named-route URL generation and signed-URL verification
+  // it: the Reflector guards and interceptors read metadata with, as in Nest;
+  // named-route URL generation and signed-URL verification
   // (UrlGeneratorService, SignedUrlGuard), and the internal-dispatch seam
   // (`ctx.run`: InternalDispatcher, SignedInvocationGuard, and NONCE_STORE's
   // per-isolate MemoryNonceStore). Each is an app-level singleton injectable
