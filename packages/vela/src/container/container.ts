@@ -322,12 +322,10 @@ export class Container {
     }
 
     // InjectionToken default factories are explicit user declarations
-    // attached to the token at construction — self-providing singletons.
+    // attached to the token at construction: self-providing, in the scope the
+    // token declares (a singleton unless it says otherwise).
     if (token instanceof InjectionToken && token.options?.factory) {
-      this.registerOptions(
-        { inject: [], provide: token, useFactory: token.options.factory },
-        ROOT_MODULE_ID,
-      );
+      this.registerTokenDefault(token, token.options.factory);
       return this.resolveToken<T>(token, requestingModuleId);
     }
 
@@ -649,8 +647,17 @@ export class Container {
         ? Scope.DEFAULT
         : (registration.effectiveScope ?? registration.scope);
     }
-    if (token instanceof InjectionToken && token.options?.factory) return Scope.DEFAULT;
+    if (token instanceof InjectionToken && token.options?.factory) {
+      return token.options.scope ?? Scope.DEFAULT;
+    }
     return undefined;
+  }
+
+  private registerTokenDefault(token: InjectionToken, factory: () => unknown): void {
+    this.registerOptions(
+      { inject: [], provide: token, useFactory: factory, scope: token.options?.scope },
+      ROOT_MODULE_ID,
+    );
   }
 
   getTokens(): Token[] {
@@ -734,7 +741,18 @@ export class Container {
     for (const reg of regs) {
       for (const depToken of this.dependencyTokensOf(reg)) {
         const depReg = this.tryFindRegistration(depToken, reg.declaringModuleId);
-        if (!depReg) continue;
+        if (!depReg) {
+          // A token default registers on first use; a request-scoped one
+          // already makes its consumers request-scoped.
+          if (
+            depToken instanceof InjectionToken &&
+            depToken.options?.factory &&
+            depToken.options.scope === Scope.REQUEST
+          ) {
+            reg.effectiveScope = Scope.REQUEST;
+          }
+          continue;
+        }
         const list = consumers.get(depReg);
         if (list) list.push(reg);
         else consumers.set(depReg, [reg]);
@@ -1197,10 +1215,7 @@ export class Container {
         throw new ModuleVisibilityError(requestingModuleId, token);
       }
       if (token instanceof InjectionToken && token.options?.factory) {
-        this.registerOptions(
-          { inject: [], provide: token, useFactory: token.options.factory },
-          ROOT_MODULE_ID,
-        );
+        this.registerTokenDefault(token, token.options.factory);
         return this.resolveAsyncInner(token, requestingModuleId, ancestors, retainingOwner);
       }
       throw new Error(

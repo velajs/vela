@@ -10,6 +10,14 @@ export type Constructor<T = unknown> = abstract new (...args: any[]) => T;
 
 export interface InjectionTokenOptions<T> {
   readonly factory?: () => T;
+  /**
+   * The scope `factory` provides the token in, `Scope.DEFAULT` by default.
+   * With `Scope.REQUEST` the token is a per-scope value that a runtime seeds
+   * with `setRequestInstance()`: its consumers become request-scoped in every
+   * container, and `factory` runs only in a scope nothing seeded, so it can
+   * throw to say where the token resolves.
+   */
+  readonly scope?: Scope;
 }
 
 // Runtime identity is intentionally separate from the invariant authoring token.

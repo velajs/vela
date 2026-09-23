@@ -4475,6 +4475,8 @@ type Type<T = unknown> = new (...args: any[]) => T;
 type Constructor<T = unknown> = abstract new (...args: any[]) => T;
 interface InjectionTokenOptions<T> {
   readonly factory?: () => T;
+
+  readonly scope?: Scope;
 }
 declare class InjectionTokenIdentity {
   private readonly description;
@@ -4725,6 +4727,7 @@ declare class Container {
   getProviderScope(token: Token, moduleId?: string): Scope | undefined;
 
   getResolvedScope(token: Token, requestingModuleId?: string): Scope | undefined;
+  private registerTokenDefault;
   getTokens(): Token[];
 
   getUseValues(): unknown[];
