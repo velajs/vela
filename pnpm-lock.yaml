@@ -1540,6 +1540,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.3
+      '@velajs/cloudflare':
+        specifier: workspace:*
+        version: link:../cloudflare
       '@velajs/vela':
         specifier: workspace:*
         version: link:../vela
