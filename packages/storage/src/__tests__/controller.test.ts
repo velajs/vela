@@ -1,4 +1,5 @@
 import { Test } from '@velajs/testing';
+import { InjectionToken, Module, defineProvider } from '@velajs/vela';
 import { describe, expect, it, vi } from 'vitest';
 import { StorageModule } from '../index';
 import type { StorageDriver, StorageHttpOptions } from '../index';
@@ -315,6 +316,41 @@ describe('StorageController', () => {
     const noActor = await createMultipart(appWithoutActor, 10);
     expect(noActor.response.status).toBe(403);
     expect(missingActor.create).not.toHaveBeenCalled();
+  });
+
+  it('reads the multipart grant secret from the forRootAsync factory, failing closed without one', async () => {
+    const SECRET = new InjectionToken<string>('test.multipart-grant-secret');
+
+    @Module({ providers: [defineProvider(SECRET, { useValue: GRANT_SECRET })], exports: [SECRET] })
+    class SecretsModule {}
+
+    const withSecret = multipartDriver(10);
+    const withoutSecret = multipartDriver(10);
+    const build = async (
+      imported: ReturnType<typeof StorageModule.forRootAsync>,
+    ): Promise<Awaited<ReturnType<typeof appWithDriver>>> => {
+      const moduleRef = await Test.createTestingModule({ imports: [imported] }).compile();
+      return (await moduleRef.createApplication()).getHonoApp();
+    };
+    const http: StorageHttpOptions = { authorize: () => ({ actorId: 'actor-a' }) };
+
+    const secured = await build(
+      StorageModule.forRootAsync({
+        imports: [SecretsModule],
+        inject: [SECRET],
+        useFactory: (secret) => ({ driver: withSecret.driver, multipartGrantSecret: secret }),
+        http,
+      }),
+    );
+    const created = await createMultipart(secured, 10);
+    expect(created.response.status).toBe(200);
+    expect(typeof created.body.grant).toBe('string');
+
+    const unsecured = await build(
+      StorageModule.forRootAsync({ useFactory: () => ({ driver: withoutSecret.driver }), http }),
+    );
+    expect((await createMultipart(unsecured, 10)).response.status).toBe(403);
+    expect(withoutSecret.create).not.toHaveBeenCalled();
   });
 
   it('binds multipart grants to actor, key, upload, expiry, and bounded part numbers', async () => {

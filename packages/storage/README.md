@@ -52,19 +52,24 @@ parameters may omit it.
 
 ## Secure HTTP multipart uploads
 
-Browser-direct multipart uploads use a stateless HMAC grant bound to the authenticated actor, object key, provider upload ID, exact byte size, part count, and expiry. Configure a stable secret of at least 32 bytes and return a server-derived `actorId` from the authorizer:
+Browser-direct multipart uploads use a stateless HMAC grant bound to the authenticated actor, object key, provider upload ID, exact byte size, part count, and expiry. Configure a stable secret of at least 32 bytes and return a server-derived `actorId` from the authorizer. A secret from the runtime environment comes through DI: the `forRootAsync` factory returns it next to the driver.
 
 ```ts
-StorageModule.forRoot({
-  driver,
-  http: {
+StorageModule.forRootAsync({
+  inject: [ENV],
+  useFactory: (env) => ({
+    driver: r2Driver({ bucket: env.UPLOADS }),
     multipartGrantSecret: env.STORAGE_MULTIPART_GRANT_SECRET,
+  }),
+  http: {
     maxUploadSize: 100 * 1024 * 1024,
     maxMultipartParts: 1000,
     authorize: (_action, { ctx }) => ({ actorId: ctx.get('user').id }),
   },
 });
 ```
+
+The factory still runs once, on the first storage operation or multipart request, and a factory secret takes precedence over `http.multipartGrantSecret`, which `forRoot` accepts for a secret known at module scope. Without a secret, the multipart endpoints refuse every request with 403; a secret shorter than 32 bytes is refused as invalid.
 
 The browser client sends the exact file size when creating an upload and echoes the returned grant for part signing, completion, and abort. Multipart data is completed into a reserved quarantine key, verified there, and only then promoted to the requested key. A mismatched, oversized, or unreadable result is never exposed at the requested key. HTTP downloads default to `attachment`; both `/download` redirects and `/sign-download` URLs bind an attachment `Content-Disposition`, proxy responses emit `X-Content-Type-Options: nosniff`, and HTML/SVG are never served inline.
 

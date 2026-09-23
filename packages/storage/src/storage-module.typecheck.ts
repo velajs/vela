@@ -14,6 +14,14 @@ export function verifyStorageFactoryDependencies(): void {
     },
   });
   StorageModule.forRootAsync({ useFactory: () => memoryDriver() });
+  StorageModule.forRootAsync({
+    inject: [SECRET],
+    useFactory: (secret) => ({ driver: memoryDriver(), multipartGrantSecret: secret }),
+  });
+  StorageModule.forRootAsync({
+    // @ts-expect-error A multipart grant secret is a string or bytes.
+    useFactory: () => ({ driver: memoryDriver(), multipartGrantSecret: 42 }),
+  });
   // @ts-expect-error A declared dependency tuple requires runtime injection tokens.
   StorageModule.forRootAsync<readonly [typeof SECRET]>({ useFactory: () => memoryDriver() });
   StorageModule.forRootAsync({

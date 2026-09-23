@@ -64,6 +64,15 @@ describe('StorageModule', () => {
     expect(other.key).not.toBe(first.key);
   });
 
+  it('rejects a driver factory that declares parameters but no inject', () => {
+    expect(() =>
+      StorageModule.forRootAsync({
+        // @ts-expect-error A factory with parameters names the tokens that supply them.
+        useFactory: (bucket: string) => memoryDriver({ initial: { bucket } }),
+      }),
+    ).toThrow(/StorageModule\.forRootAsync: useFactory declares parameters but no inject tokens/);
+  });
+
   it('forRootAsync builds the driver lazily (edge-binding safe)', async () => {
     let calls = 0;
     const moduleRef = await Test.createTestingModule({
