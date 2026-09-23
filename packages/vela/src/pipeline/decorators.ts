@@ -41,6 +41,7 @@ export function UseFilters(...filters: ComponentTypeMap['filter'][]) {
 export function Catch(...exceptions: Type<Error>[]): ClassDecorator {
   return (target) => {
     MetadataRegistry.setCatchTypes(target as unknown as Constructor, exceptions);
+    MetadataRegistry.markInjectable(target);
   };
 }
 

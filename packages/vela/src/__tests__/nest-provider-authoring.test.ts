@@ -21,7 +21,11 @@ import {
   type DynamicModule,
   type ExecutionContext,
   type Provider,
+  Catch,
 } from '../index';
+import { getScope, isInjectable } from '../container/decorators';
+import { LiveResolver } from '../live/index';
+import { Processor } from '../queue/index';
 
 const COUNT = new InjectionToken<number>('authoring count');
 const LABEL = new InjectionToken<string>('authoring label');
@@ -255,3 +259,61 @@ describe('provider literals', () => {
 class RequestScopedLabel {
   readonly label = 'label';
 }
+
+describe('implied @Injectable', () => {
+  @Injectable()
+  class Mailer {
+    send(): string {
+      return 'sent';
+    }
+  }
+
+  it('lets a discoverable class decorator stand in for @Injectable', () => {
+    @Processor('mail')
+    class MailJobs {
+      constructor(readonly mailer: Mailer) {}
+    }
+
+    @LiveResolver()
+    class MailLive {
+      constructor(readonly mailer: Mailer) {}
+    }
+
+    @Catch(Error)
+    class MailFilter {
+      constructor(readonly mailer: Mailer) {}
+      catch(): string {
+        return this.mailer.send();
+      }
+    }
+
+    const container = new Container({ diagnostics: 'throw' });
+    container.register(Mailer);
+    for (const target of [MailJobs, MailLive, MailFilter]) {
+      expect(isInjectable(target)).toBe(true);
+      container.register(target);
+    }
+    expect(container.resolve(MailJobs).mailer.send()).toBe('sent');
+    expect(container.resolve(MailLive).mailer).toBe(container.resolve(Mailer));
+    expect(container.resolve(MailFilter).catch()).toBe('sent');
+  });
+
+  it('keeps an explicit scope whichever class decorator runs first', () => {
+    @Processor('first')
+    @Injectable({ scope: Scope.REQUEST })
+    class ScopeFirst {}
+
+    @Injectable({ scope: Scope.TRANSIENT })
+    @Processor('second')
+    class ScopeLast {}
+
+    expect(getScope(ScopeFirst)).toBe(Scope.REQUEST);
+    expect(getScope(ScopeLast)).toBe(Scope.TRANSIENT);
+  });
+
+  it('still reports a registered class that has no class decorator', () => {
+    class Undecorated {}
+    const container = new Container({ diagnostics: 'throw' });
+    expect(() => container.register(Undecorated)).toThrow(/Undecorated is not decorated/);
+  });
+});
