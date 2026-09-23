@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Cron, Injectable, Module, VelaFactory } from '@velajs/vela';
+import { Process, Processor, QueueModule, type QueueDriver } from '@velajs/vela/queue';
 import { collectEntrypoints } from '../introspect.js';
 import { checkDeployment } from './deploy-check.plan.js';
 
@@ -19,16 +20,19 @@ const row = (kind: string, meta: unknown) => ({
 });
 
 describe('deployment alignment', () => {
-  it('checks module queue mappings, producers and service bindings in the selected environment', () => {
+  it('checks registered queue producers, module consumers and service bindings', () => {
     const snapshot = [
-      row('cf:queue:module', { queueName: 'tasks-staging', logicalQueue: 'tasks' }),
-      row('cf:queue:producer', { logicalQueue: 'tasks', binding: 'TASKS' }),
+      row('cf:queue:module', { consumers: ['notifications-staging'] }),
+      row('queue:registration', { name: 'email', binding: 'EMAIL_QUEUE', consumers: [] }),
+      row('queue:registration', { name: 'sms', consumers: ['notifications-staging'] }),
+      row('queue', { queueName: 'email' }),
+      row('queue', { queueName: 'sms' }),
       row('rpc:client', { name: 'catalog', binding: 'CATALOG' }),
     ];
     const valid = config({
       queues: {
-        producers: [{ binding: 'TASKS', queue: 'tasks-staging' }],
-        consumers: [{ queue: 'tasks-staging' }],
+        producers: [{ binding: 'EMAIL_QUEUE', queue: 'email-staging' }],
+        consumers: [{ queue: 'email-staging' }, { queue: 'notifications-staging' }],
       },
       services: [{ binding: 'CATALOG', service: 'catalog-staging' }],
     });
@@ -36,9 +40,181 @@ describe('deployment alignment', () => {
     expect(
       checkDeployment(config(), 'staging', snapshot)
         .errors.map((x) => x.code)
-        .sort(),
-    ).toEqual(['missing-queue-consumer', 'missing-queue-producer', 'missing-service-binding']);
+        .toSorted(),
+    ).toEqual([
+      'missing-queue-consumer',
+      'missing-queue-producer',
+      'missing-service-binding',
+      'queue-processor-without-consumer',
+    ]);
   });
+
+  it("derives a registered binding's physical queue from its Wrangler producer", () => {
+    const snapshot = [
+      row('cf:queue:module', { consumers: [] }),
+      row('queue:registration', { name: 'email', binding: 'EMAIL_QUEUE', consumers: [] }),
+      row('queue', { queueName: 'email' }),
+    ];
+    const producers = [{ binding: 'EMAIL_QUEUE', queue: 'email-staging' }];
+    expect(checkDeployment(config({ queues: { producers } }), 'staging', snapshot).errors).toEqual([
+      {
+        code: 'missing-queue-consumer',
+        message: expect.stringMatching(/"email-staging".*"email"/),
+      },
+    ]);
+    expect(
+      checkDeployment(
+        config({ queues: { producers, consumers: [{ queue: 'email-staging' }] } }),
+        'staging',
+        snapshot,
+      ).status,
+    ).toBe('passed');
+  });
+
+  it('flags a registered binding missing from the Wrangler producers', () => {
+    const snapshot = [
+      row('cf:queue:module', { consumers: [] }),
+      row('queue:registration', { name: 'email', binding: 'EMAIL_QUEUE', consumers: [] }),
+    ];
+    expect(
+      checkDeployment(config({ kv_namespaces: [{ binding: 'EMAIL_QUEUE' }] }), 'staging', snapshot)
+        .errors,
+    ).toEqual([
+      {
+        code: 'missing-queue-producer',
+        message: expect.stringMatching(/"email".*"EMAIL_QUEUE"/),
+      },
+    ]);
+  });
+
+  it('flags processors whose queue is unregistered or has no consumer', () => {
+    const snapshot = [
+      row('cf:queue:module', { consumers: [] }),
+      row('queue:registration', { name: 'email', consumers: [] }),
+      row('queue', { queueName: 'email' }),
+      row('queue', { queueName: 'orders' }),
+    ];
+    expect(checkDeployment(config(), 'staging', snapshot).errors).toEqual([
+      {
+        code: 'unregistered-queue-processor',
+        message: expect.stringContaining('"orders"'),
+      },
+      {
+        code: 'queue-processor-without-consumer',
+        message: expect.stringContaining('"email"'),
+      },
+    ]);
+  });
+
+  it('warns instead when a processed queue may arrive through an unpinned consumer', () => {
+    const result = checkDeployment(
+      config({ queues: { consumers: [{ queue: 'shared-staging' }] } }),
+      'staging',
+      [
+        row('cf:queue:module', { consumers: [] }),
+        row('queue:registration', { name: 'sms', consumers: [] }),
+        row('queue', { queueName: 'sms' }),
+      ],
+    );
+    expect(result.errors).toEqual([]);
+    expect(result.warnings.map((warning) => warning.code)).toContain('unverified-queue-consumer');
+  });
+
+  it('flags a selected consumer queue that no raw consumer or processor expects', () => {
+    const result = checkDeployment(
+      config({
+        queues: {
+          consumers: [{ queue: 'email-staging' }, { queue: 'extra-staging' }, { queue: 'raw' }],
+        },
+      }),
+      'staging',
+      [
+        row('cf:queue:module', { consumers: ['email-staging'] }),
+        row('queue:registration', { name: 'email', consumers: ['email-staging'] }),
+        row('queue', { queueName: 'email' }),
+        row('cf:queue', { queueName: 'raw' }),
+      ],
+    );
+    expect(result.errors).toEqual([
+      {
+        code: 'unhandled-queue-consumer',
+        message: expect.stringContaining('"extra-staging"'),
+      },
+    ]);
+  });
+
+  it('does not require consumers for processors an in-process driver delivers', () => {
+    const result = checkDeployment(config(), 'staging', [
+      row('queue:registration', { name: 'email', consumers: [] }),
+      row('queue', { queueName: 'email' }),
+    ]);
+    expect(result.errors).toEqual([]);
+  });
+
+  it.each([
+    ['cf:queue:producer', { logicalQueue: 'tasks', binding: 'TASKS' }],
+    ['cf:queue:module', { queueName: 'tasks-staging', logicalQueue: 'tasks' }],
+  ])('rejects a snapshot with the removed %s queue metadata', (kind, meta) => {
+    expect(checkDeployment(config(), 'staging', [row(kind, meta)]).errors).toEqual([
+      expect.objectContaining({
+        code: 'stale-entrypoint-snapshot',
+        message: expect.stringMatching(/regenerate/),
+      }),
+    ]);
+  });
+
+  it('rejects malformed queue registration metadata', () => {
+    expect(
+      checkDeployment(config(), 'staging', [
+        row('queue:registration', { name: 'email', binding: 4, consumers: [] }),
+        row('queue:registration', { consumers: [] }),
+        row('queue', { queueName: '' }),
+      ]).errors.map((error) => error.code),
+    ).toEqual(['invalid-metadata', 'invalid-metadata', 'invalid-metadata']);
+  });
+
+  it('checks the queue projection of an actual application', async () => {
+    const driver: QueueDriver = {
+      kind: 'native',
+      entrypoints: [{ kind: 'cf:queue:module', meta: { consumers: [] } }],
+      async enqueue() {},
+    };
+    @Processor('email')
+    @Injectable()
+    class EmailProcessor {
+      @Process('welcome')
+      welcome() {}
+    }
+    /* oxlint-disable typescript/no-extraneous-class -- The decorated class is the module's identity. */
+    @Module({
+      imports: [
+        QueueModule.forRoot({ driver }),
+        QueueModule.registerQueue({ name: 'email', binding: 'EMAIL_QUEUE' }),
+      ],
+      providers: [EmailProcessor],
+    })
+    class AppModule {}
+    /* oxlint-enable typescript/no-extraneous-class */
+    const app = await VelaFactory.create(AppModule);
+    try {
+      const snapshot = JSON.parse(JSON.stringify(collectEntrypoints(app)));
+      const queues = {
+        producers: [{ binding: 'EMAIL_QUEUE', queue: 'email-staging' }],
+        consumers: [{ queue: 'email-staging' }],
+      };
+      expect(checkDeployment(config({ queues }), 'staging', snapshot).errors).toEqual([]);
+      expect(
+        checkDeployment(
+          config({ queues: { producers: queues.producers } }),
+          'staging',
+          snapshot,
+        ).errors.map((error) => error.code),
+      ).toEqual(['missing-queue-consumer']);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('consumes the actual Vela entrypoint-list projection without constructing another app', async () => {
     let constructed = 0;
     @Injectable()

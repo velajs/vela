@@ -64,7 +64,7 @@ export class DeployCheckCommand extends Command {
     category: 'Deployment',
     description: 'Check an explicit Wrangler target against a saved entrypoint snapshot.',
     details:
-      'Read-only: no app bootstrap, custom build, credential loading or upload. Compares cron/queue dispatch keys and WebSocket Durable Object bindings. Wrangler remains the deployment tool.',
+      'Read-only: no app bootstrap, custom build, credential loading or upload. Compares cron triggers, queue producers and consumers, and WebSocket Durable Object bindings. Wrangler remains the deployment tool.',
     examples: [
       [
         'Check staging',

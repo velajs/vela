@@ -55,6 +55,11 @@ snapshot; do not build a second decorator scanner. For example:
     "kind": "cf:queue",
     "target": "Jobs#process",
     "meta": { "queueName": "jobs-staging", "methodName": "process" }
+  },
+  {
+    "kind": "queue:registration",
+    "target": "InjectionToken(vela:queue:client:email)",
+    "meta": { "name": "email", "binding": "EMAIL_QUEUE", "consumers": [] }
   }
 ]
 ```
@@ -62,12 +67,29 @@ snapshot; do not build a second decorator scanner. For example:
 The check compares exact cron strings for `schedule:cron` (every `@Cron` job),
 queue names for `cf:queue`, and gateway bindings for `websocket`. Missing
 triggers/consumers and configured triggers/consumers with no metadata handler
-fail. A `@Cron` job that explicitly requests `dialect: 'unix'` or
+fail.
+
+Queues registered with `QueueModule.registerQueue()` appear as
+`queue:registration` rows. Each registered `binding` must be a
+`queues.producers[].binding` of the selected environment
+(`missing-queue-producer`). When the application consumes natively through
+`cloudflareQueues()` (a `cf:queue:module` row), every `@Processor` queue must be
+registered (`unregistered-queue-processor`) and must reach this Worker through a
+`queues.consumers` entry: the physical queues its registration pins with
+`consumer`, or else the `queue` of its binding's producer
+(`missing-queue-consumer`). A processed queue with neither fails with
+`queue-processor-without-consumer` when the environment consumes no other queue,
+and otherwise warns with `unverified-queue-consumer`, because a shared consumer
+may carry it. A configured consumer that no `@QueueConsumer` or processed queue
+expects fails with `unhandled-queue-consumer`.
+
+A `@Cron` job that explicitly requests `dialect: 'unix'` or
 `timeZone: 'local'` fails, and `schedule:interval` fails because Workers cron
 delivery does not drive interval timers; at runtime the Cloudflare adapter only
 warns about these (see [scheduling](scheduling.md#workers-cron-triggers)). A
-snapshot that still lists the removed `cf:scheduled` or `cf:vela-cron` kinds was
-made by an older CLI and fails with `stale-entrypoint-snapshot`: regenerate it.
+snapshot that still lists the removed `cf:scheduled`, `cf:vela-cron` or
+`cf:queue:producer` kinds, or a `cf:queue:module` consumer mapping, was made by
+an older CLI and fails with `stale-entrypoint-snapshot`: regenerate it.
 Custom hand-written platform handlers are not represented by these metadata
 kinds; review them separately instead of treating a snapshot mismatch as a
 Wrangler error.
