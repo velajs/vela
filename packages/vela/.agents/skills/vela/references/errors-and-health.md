@@ -17,7 +17,7 @@ The full family (status in parens): `BadRequestException`(400), `UnauthorizedExc
 
 The base `HttpException(response, statusCode)` takes the **response first, status second** (note the order). Methods: `getStatus()` → number, `getResponse()` → normalized object.
 
-Unfiltered exceptions render the same way from handlers, middleware, and raw Hono middleware. A string response becomes `{ error: { code, message } }`, with `code` taken from the status (`not_found`, `not_acceptable`, …; an unmapped 4xx is `bad_request`). A 5xx string response is a server fault: the client gets only the status title (for example `{ error: { code: 'internal', message: 'Internal Server Error' } }`), never your text. Object responses ship verbatim.
+Unfiltered exceptions render the same way from handlers, middleware, and raw Hono middleware. A string response becomes `{ error: { code, message } }`, with `code` taken from the status (`not_found`, `not_acceptable`, …; an unmapped 4xx is `bad_request`). A 5xx string response is a server fault: the client gets only the status title (for example `{ error: { code: 'internal', message: 'Internal Server Error' } }`), never your text. Object responses ship verbatim from controller handlers and Vela middleware, and from raw Hono middleware below 500; a 5xx object response thrown by raw Hono middleware is redacted to its status title the same way.
 
 ## Exception filters
 
