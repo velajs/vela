@@ -1,4 +1,5 @@
 import type { ExecutionContext } from "hono";
+import type { VelaEnv } from "@velajs/vela";
 
 export type MockKV = KVNamespace & {
   _store: Map<string, string>;
@@ -8,16 +9,10 @@ export type MockQueue = Queue<unknown> & {
   _messages: unknown[];
 };
 
-export interface WorkerBindingsLabEnv {
+/** The lab's environment, with handles tests use to inspect the in-memory KV and queue. */
+export interface MockWorkerEnv extends VelaEnv {
   CACHE: MockKV;
-  DB: D1Database;
-  ASSETS: R2Bucket;
   JOB_QUEUE: MockQueue;
-  COUNTER_DO: DurableObjectNamespace;
-  AI: Ai;
-  VECTORIZE: VectorizeIndex;
-  HYPERDRIVE: Hyperdrive;
-  EVENT_LOG: string[];
 }
 
 function createMockKV(): MockKV {
@@ -177,7 +172,7 @@ function createMockHyperdrive(): Hyperdrive {
   } as unknown as Hyperdrive;
 }
 
-export function createMockWorkerEnv(): WorkerBindingsLabEnv {
+export function createMockWorkerEnv(): MockWorkerEnv {
   return {
     CACHE: createMockKV(),
     DB: createMockD1(),

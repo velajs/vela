@@ -1,13 +1,14 @@
 import type { ExecutionContext } from "hono";
-import type { WorkerBindingsLabEnv } from "../src/mock-env.js";
+import { ENV } from "@velajs/vela";
+import type { MockWorkerEnv } from "../src/mock-env.js";
 import { describe, expect, it } from "vitest";
 import { createWorkerBindingsLabApp } from "../src/app.js";
 import { createExecutionContext, createMockWorkerEnv } from "../src/mock-env.js";
 
 async function fetchJson(
-  fetch: (request: Request, env: WorkerBindingsLabEnv, ctx: ExecutionContext) => Promise<Response>,
+  fetch: (request: Request, env: MockWorkerEnv, ctx: ExecutionContext) => Promise<Response>,
   path: string,
-  env: WorkerBindingsLabEnv,
+  env: MockWorkerEnv,
   ctx: ExecutionContext,
   init?: RequestInit,
 ): Promise<{ status: number; body: unknown }> {
@@ -27,6 +28,8 @@ describe("Worker bindings lab consumer project", () => {
     const env = createMockWorkerEnv();
     const app = await createWorkerBindingsLabApp(env);
     const ctx = createExecutionContext();
+    // The native environment is the framework ENV; no application token is involved.
+    expect(app.get(ENV)).toBe(env);
 
     const envRes = await fetchJson(app.fetch, "/lab/env", env, ctx);
     expect(envRes.status).toBe(200);

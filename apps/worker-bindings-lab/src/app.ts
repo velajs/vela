@@ -3,31 +3,27 @@ import {
   Controller,
   Cron,
   Get,
+  InjectEnv,
   Injectable,
-  Inject,
-  InjectionToken,
   MetadataRegistry,
   Module,
   Param,
   Post,
+  type VelaEnv,
 } from "@velajs/vela";
 import {
-  Env,
   QueueConsumer,
   Scheduled,
   createCloudflareApp,
   createCloudflareWorker,
 } from "@velajs/cloudflare";
-import type { WorkerBindingsLabEnv } from "./mock-env.js";
-
-export const WORKER_ENV = new InjectionToken<WorkerBindingsLabEnv>("worker lab bindings");
 
 function defineWorkerBindingsLabModule() {
   MetadataRegistry.clear();
 
   @Injectable()
   class WorkerBindingFacade {
-    constructor(@Inject(WORKER_ENV) private readonly env: WorkerBindingsLabEnv) {}
+    constructor(@InjectEnv() private readonly env: VelaEnv) {}
 
     async writeKV(key: string, value: string) {
       await this.env.CACHE.put(key, value);
@@ -94,13 +90,16 @@ function defineWorkerBindingsLabModule() {
 
   @Controller("/lab")
   class WorkerBindingsController {
-    constructor(private readonly bindings: WorkerBindingFacade) {}
+    constructor(
+      private readonly bindings: WorkerBindingFacade,
+      @InjectEnv() private readonly env: VelaEnv,
+    ) {}
 
     @Get("/env")
-    envSummary(@Env() env: Record<string, unknown>, @Env("CACHE") cache: unknown) {
+    envSummary() {
       return {
-        hasCache: cache === env.CACHE,
-        keys: Object.keys(env).sort(),
+        hasCache: this.env.CACHE !== undefined,
+        keys: Object.keys(this.env).sort(),
       };
     }
 
@@ -158,17 +157,17 @@ function defineWorkerBindingsLabModule() {
   @Injectable()
   class WorkerEvents {
     @Scheduled("*/15 * * * *")
-    scheduled(event: { cron: string }, env: WorkerBindingsLabEnv) {
+    scheduled(event: { cron: string }, env: VelaEnv) {
       env.EVENT_LOG.push(`scheduled:${event.cron}`);
     }
 
     @Cron("0 * * * *")
-    velaCron(event: { cron: string }, env: WorkerBindingsLabEnv) {
+    velaCron(event: { cron: string }, env: VelaEnv) {
       env.EVENT_LOG.push(`cron:${event.cron}`);
     }
 
     @QueueConsumer("JOB_QUEUE")
-    queue(batch: { queue: string; messages: Array<{ body: unknown }> }, env: WorkerBindingsLabEnv) {
+    queue(batch: { queue: string; messages: Array<{ body: unknown }> }, env: VelaEnv) {
       env.EVENT_LOG.push(`queue:${batch.messages.length}`);
     }
   }
@@ -182,10 +181,10 @@ function defineWorkerBindingsLabModule() {
   return WorkerBindingsLabModule;
 }
 
-export async function createWorkerBindingsLabApp(env: WorkerBindingsLabEnv) {
-  return createCloudflareApp(defineWorkerBindingsLabModule(), { env, envToken: WORKER_ENV });
+export async function createWorkerBindingsLabApp(env: VelaEnv) {
+  return createCloudflareApp(defineWorkerBindingsLabModule(), { env });
 }
 
 export function createWorkerBindingsLabWorker() {
-  return createCloudflareWorker(defineWorkerBindingsLabModule(), { envToken: WORKER_ENV });
+  return createCloudflareWorker(defineWorkerBindingsLabModule());
 }
