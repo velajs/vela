@@ -1,4 +1,5 @@
 import { Injectable, Inject, Optional } from '../../container/decorators';
+import { declareRootDefault } from '../../container/root-defaults';
 import { HTTP_SIGNED_URL_PURPOSE, verifySignedUrl } from '../../crypto/signed-url';
 import { InjectEnv, type VelaEnv } from '../../env';
 import { ForbiddenException } from '../../errors/http-exception';
@@ -41,6 +42,9 @@ export class SignedUrlGuard implements CanActivate {
     return true;
   }
 }
+
+// Built by the pipeline for `@SignedUrl()` routes in any module.
+declareRootDefault(SignedUrlGuard);
 
 /**
  * Guards a route with {@link SignedUrlGuard} — the request must carry a valid,

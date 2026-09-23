@@ -1,5 +1,10 @@
 import { Injectable } from '../container/decorators';
+import { declareRootDefault } from '../container/root-defaults';
+import { InjectionToken, defineProvider } from '../container/types';
 import type { NonceStore } from './types';
+
+/** Overridable {@link NonceStore} token; defaults to `MemoryNonceStore`. */
+export const NONCE_STORE = new InjectionToken<NonceStore>('NONCE_STORE');
 
 /**
  * Default in-isolate {@link NonceStore}: a `Map<nonce, exp>` with lazy expiry
@@ -34,3 +39,8 @@ export class MemoryNonceStore implements NonceStore {
     }
   }
 }
+
+// Declared with the token, so every application that can inject NONCE_STORE
+// has this per-isolate default. A runtime adapter or one @Global() module can
+// provide a shared store instead.
+declareRootDefault(defineProvider(NONCE_STORE, { useClass: MemoryNonceStore }));

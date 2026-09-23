@@ -1,4 +1,5 @@
 import { Inject, Injectable, Optional } from '../container/decorators';
+import { declareRootDefault } from '../container/root-defaults';
 import { sha256Base64Url } from '../crypto/hmac';
 import { verifyInvocation } from '../crypto/invocation';
 import { InjectEnv, type VelaEnv } from '../env';
@@ -8,7 +9,8 @@ import { URL_SIGNING_SECRET, resolveSigningSecret } from '../http/url/signing-se
 import { UseGuards, UseMiddleware } from '../pipeline/decorators';
 import type { CanActivate, ExecutionContext } from '../pipeline/types';
 import { SignedInvocationBodyCapture, takeCapturedBodyHash } from './signed-body-capture';
-import { INVOCATION_HEADER, INVOCATION_SIGNING_SECRET, NONCE_STORE } from './tokens';
+import { NONCE_STORE } from './nonce-store';
+import { INVOCATION_HEADER, INVOCATION_SIGNING_SECRET } from './tokens';
 import type { NonceStore } from './types';
 
 // One opaque, generic 403 for EVERY failure mode — a missing/tampered/expired
@@ -102,6 +104,9 @@ export class SignedInvocationGuard implements CanActivate {
     return true;
   }
 }
+
+// Built by the pipeline for `@SignedInvocation()` routes in any module.
+declareRootDefault(SignedInvocationGuard);
 
 /**
  * Guards a route with {@link SignedInvocationGuard} — the request must carry a

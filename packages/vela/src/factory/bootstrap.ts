@@ -3,18 +3,13 @@ import { Container } from '../container/container';
 import { DiscoveryService } from '../discovery/discovery.service';
 import type { Diagnostics, Type } from '../container/types';
 import { defineProvider } from '../container/types';
-import { InternalDispatcher } from '../dispatch/internal-dispatcher';
-import { MemoryNonceStore } from '../dispatch/nonce-store';
-import { SignedInvocationGuard } from '../dispatch/signed-invocation.guard';
-import { NONCE_STORE } from '../dispatch/tokens';
+import { getRootDefaults } from '../container/root-defaults';
 import { EXECUTION_LIFETIME } from '../entrypoint/execution-scope';
 import { ENV, assertEnvironment } from '../env';
 import type { VelaEnv } from '../env';
 import { REQUEST_CONTEXT } from '../http/request-context';
 import { RouteManager } from '../http/route.manager';
 import type { RouteManagerOptions } from '../http/route.manager';
-import { UrlGeneratorService } from '../http/url/url-generator.service';
-import { SignedUrlGuard } from '../http/url/signed-url.guard';
 import { ModuleLoader } from '../module/module-loader';
 import { ROOT_MODULE } from '../module/root-module';
 import type { DynamicModule } from '../registry/types';
@@ -136,27 +131,19 @@ export async function bootstrap(
   container.register(defineProvider(RouteManager, { useValue: routeManager }));
   container.markGlobalToken(RouteManager);
 
-  // Named-route URL generation + signed-URL verification are app-level
-  // singletons: injectable from any module, and (for the guard) instantiable by
-  // the pipeline when a route opts in via `@SignedUrl()`. Both read their secret
-  // lazily and never force controllers/lazy modules to materialize.
-  container.register(UrlGeneratorService);
-  container.markGlobalToken(UrlGeneratorService);
-  container.register(SignedUrlGuard);
-  container.markGlobalToken(SignedUrlGuard);
-
-  // Internal-dispatch seam (`ctx.run`): the dispatcher + its signed-invocation
-  // guard are app-level singletons injectable from any queue/cron/entrypoint
-  // handler. The transport the dispatcher resolves (INVOCATION_TRANSPORT) is
-  // registered later by VelaFactory, once the Hono app exists. The nonce store
-  // defaults to the per-isolate MemoryNonceStore and stays overridable (an
-  // adapter can provide a shared DO/KV-backed store for cross-isolate reuse).
-  container.register(InternalDispatcher);
-  container.markGlobalToken(InternalDispatcher);
-  container.register(SignedInvocationGuard);
-  container.markGlobalToken(SignedInvocationGuard);
-  container.register(defineProvider(NONCE_STORE, { useClass: MemoryNonceStore }));
-  container.markGlobalToken(NONCE_STORE);
+  // Optional framework services declare themselves as root defaults when
+  // their modules load, so a Worker that never references one does not bundle
+  // it: named-route URL generation and signed-URL verification
+  // (UrlGeneratorService, SignedUrlGuard), and the internal-dispatch seam
+  // (`ctx.run`: InternalDispatcher, SignedInvocationGuard, and NONCE_STORE's
+  // per-isolate MemoryNonceStore). Each is an app-level singleton injectable
+  // from any module, and instantiable by the pipeline when a route opts in
+  // via `@SignedUrl()` or `@SignedInvocation()`. The transport the dispatcher
+  // resolves (INVOCATION_TRANSPORT) is registered once the Hono app exists.
+  for (const [token, provider] of getRootDefaults()) {
+    container.register(provider);
+    container.markGlobalToken(token);
+  }
 
   // The registrations above are framework defaults, which the one @Global()
   // module exporting a token overrides application-wide. What the application

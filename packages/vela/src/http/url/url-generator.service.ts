@@ -1,4 +1,5 @@
 import { Injectable, Inject, Optional } from '../../container/decorators';
+import { declareRootDefault } from '../../container/root-defaults';
 import { HTTP_SIGNED_URL_PURPOSE, signUrl } from '../../crypto/signed-url';
 import { InjectEnv, type VelaEnv } from '../../env';
 import { RouteManager } from '../route.manager';
@@ -137,3 +138,6 @@ export class UrlGeneratorService {
     return map;
   }
 }
+
+// Injectable from any module of every application that loads this module.
+declareRootDefault(UrlGeneratorService);

@@ -2,6 +2,7 @@ import { VelaError } from '@velajs/errors';
 import type { VelaErrorOptions } from '@velajs/errors';
 import { Container } from '../container/container';
 import { Inject, Injectable, Optional } from '../container/decorators';
+import { declareRootDefault } from '../container/root-defaults';
 import { sha256Base64Url } from '../crypto/hmac';
 import { InjectEnv, type VelaEnv } from '../env';
 import {
@@ -299,3 +300,6 @@ export class InternalDispatcher {
     return new VelaError(code, options);
   }
 }
+
+// Injectable from any queue, schedule or entrypoint handler of the application.
+declareRootDefault(InternalDispatcher);

@@ -1,5 +1,5 @@
 import { InjectionToken } from '../container/types';
-import type { InvocationTransport, NonceStore } from './types';
+import type { InvocationTransport } from './types';
 
 /**
  * Header carrying the signed invocation token on an internal re-entry request.
@@ -22,6 +22,3 @@ export const INVOCATION_TRANSPORT = new InjectionToken<InvocationTransport>('INV
  * non-interchangeable. Provide it to enforce key separation.
  */
 export const INVOCATION_SIGNING_SECRET = new InjectionToken<string>('INVOCATION_SIGNING_SECRET');
-
-/** Overridable {@link NonceStore} token; defaults to `MemoryNonceStore`. */
-export const NONCE_STORE = new InjectionToken<NonceStore>('NONCE_STORE');

@@ -5,13 +5,8 @@
 
 export { InternalDispatcher } from './internal-dispatcher';
 export { SignedInvocationGuard, SignedInvocation } from './signed-invocation.guard';
-export { MemoryNonceStore } from './nonce-store';
-export {
-  INVOCATION_HEADER,
-  INVOCATION_SIGNING_SECRET,
-  INVOCATION_TRANSPORT,
-  NONCE_STORE,
-} from './tokens';
+export { MemoryNonceStore, NONCE_STORE } from './nonce-store';
+export { INVOCATION_HEADER, INVOCATION_SIGNING_SECRET, INVOCATION_TRANSPORT } from './tokens';
 export type {
   InvocationTransport,
   InvocationTarget,
