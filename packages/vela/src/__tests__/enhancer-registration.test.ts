@@ -776,6 +776,62 @@ describe('framework-global providers', () => {
     await app.close();
   });
 
+  it('prefer what a module imports over a global module export, as in Nest', async () => {
+    const POLICY = new InjectionToken<string>('policy');
+
+    @Global()
+    @Module({ providers: [{ provide: POLICY, useValue: 'global-default' }], exports: [POLICY] })
+    class DefaultPolicyModule {}
+
+    @Module({ providers: [{ provide: POLICY, useValue: 'strict-feature' }], exports: [POLICY] })
+    class StrictPolicyModule {}
+
+    @Module({ imports: [StrictPolicyModule], exports: [StrictPolicyModule] })
+    class PolicyBundleModule {}
+
+    @Injectable()
+    class FeatureService {
+      constructor(@Inject(POLICY) readonly policy: string) {}
+    }
+
+    @Module({ imports: [StrictPolicyModule], providers: [FeatureService] })
+    class FeatureModule {}
+
+    @Injectable()
+    class BundledService {
+      constructor(@Inject(POLICY) readonly policy: string) {}
+    }
+
+    @Module({ imports: [PolicyBundleModule], providers: [BundledService] })
+    class BundledModule {}
+
+    @Injectable()
+    class DefaultService {
+      constructor(@Inject(POLICY) readonly policy: string) {}
+    }
+
+    @Module({
+      imports: [DefaultPolicyModule, FeatureModule, BundledModule],
+      providers: [DefaultService],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const container = app.getContainer();
+    const [featureId] = container.getOwnerModuleIds(FeatureModule);
+    const [bundledId] = container.getOwnerModuleIds(BundledModule);
+    const [appId] = container.getOwnerModuleIds(AppModule);
+    expect(app.get(FeatureService).policy).toBe('strict-feature');
+    expect(container.resolveAll(POLICY, featureId)).toEqual(['strict-feature']);
+    // Re-exported through an imported module, for resolve() and resolveAll() alike.
+    expect(app.get(BundledService).policy).toBe('strict-feature');
+    expect(container.resolveAll(POLICY, bundledId)).toEqual(['strict-feature']);
+    // A module that imports no exporter still sees the global one.
+    expect(app.get(DefaultService).policy).toBe('global-default');
+    expect(container.resolveAll(POLICY, appId)).toEqual(['global-default']);
+    await app.close();
+  });
+
   it('still report a token that two global modules export', async () => {
     const REGION = new InjectionToken<string>('global region');
 

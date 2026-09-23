@@ -384,92 +384,68 @@ export class Container {
   }
 
   /**
-   * Find a single reachable registration for a token, applying the visibility
-   * walk: requester's bucket → globals → requester's importedModules
-   * (transitively, following re-exports).
-   *
-   * Returns `undefined` if no candidate exists. Throws
-   * `MultipleProvidersFoundError` if the imports walk yields more than one.
+   * The one registration a lookup of `token` resolves to, among
+   * {@link #visibleRegistrations}. Returns `undefined` when nothing is visible;
+   * throws `MultipleProvidersFoundError` when the tier that answers holds more
+   * than one candidate.
    */
   #findRegistration<T>(
     token: Token,
     requestingModuleId?: string,
   ): ProviderRegistration<T> | undefined {
-    // No requester OR no scope for this requester: framework-internal /
-    // application-wide lookup. Prefer the `__root__` bucket so bootstrap
-    // primitives win over module buckets that may hold the same token.
-    if (requestingModuleId === undefined || !this.#scopes.has(requestingModuleId)) {
-      const rootHit = this.#lookupInBucket<T>(ROOT_MODULE_ID, token);
-      if (rootHit) return rootHit;
-      const exporters = this.#exporterIndex.get(token);
-      if (!exporters) return undefined;
-      for (const owner of exporters) {
-        const hit = this.#lookupInBucket<T>(owner, token);
-        if (hit) return hit;
-      }
-      return undefined;
-    }
-
-    // 1. Local bucket.
-    const local = this.#lookupInBucket<T>(requestingModuleId, token);
-    if (local) return local;
-
-    // 2. Global tokens: what the one @Global module exporting the token
-    // provides overrides the application registration in `__root__`
-    // (Reflector, ENV, NONCE_STORE, ...); two such modules are ambiguous.
-    const globalExporters = this.#globals.get(token);
-    if (globalExporters) {
-      const candidates: ProviderRegistration<T>[] = [];
-      const moduleIds: string[] = [];
-      this.#collectGlobal(globalExporters, token, candidates, moduleIds);
-      if (candidates.length > 1) {
-        throw new MultipleProvidersFoundError(requestingModuleId, token, moduleIds);
-      }
-      return candidates[0];
-    }
-
-    // 3. InjectionToken with default factory — self-providing from any
-    // scope. If already auto-registered (in `__root__`), return that;
-    // otherwise let the caller materialize it.
-    if (token instanceof InjectionToken && token.options?.factory) {
-      return this.#lookupInBucket<T>(ROOT_MODULE_ID, token);
-    }
-
-    // 4. Imported modules' exports — walk transitively so re-exports work.
-    const scope = this.#scopes.get(requestingModuleId);
-    if (!scope) return undefined;
-
-    const candidates: ProviderRegistration<T>[] = [];
-    const candidateModuleIds: string[] = [];
-    const visited = new Set<string>([requestingModuleId]);
-    this.#collectFromImports<T>(scope, token, visited, candidates, candidateModuleIds);
-
-    if (candidates.length === 0) return undefined;
+    const candidates = this.#visibleRegistrations<T>(token, requestingModuleId);
     if (candidates.length > 1) {
-      throw new MultipleProvidersFoundError(requestingModuleId, token, candidateModuleIds);
+      throw new MultipleProvidersFoundError(
+        requestingModuleId ?? ROOT_MODULE_ID,
+        token,
+        candidates.map((candidate) => candidate.declaringModuleId),
+      );
     }
     return candidates[0];
+  }
+
+  /**
+   * The registrations a lookup of `token` chooses among, in Nest's order. The
+   * first tier that holds one answers:
+   *
+   * 1. the requesting module's own provider;
+   * 2. what its imports export, transitively through re-exports;
+   * 3. what the `@Global()` modules exporting the token provide;
+   * 4. the `__root__` registration of a global token or InjectionToken default.
+   *
+   * A module that registers the token without exporting it is never a
+   * candidate. An application-wide lookup (no requester, or one without a
+   * module scope) prefers `__root__`, then the first module registering it.
+   */
+  #visibleRegistrations<T>(token: Token, requestingModuleId?: string): ProviderRegistration<T>[] {
+    const scope =
+      requestingModuleId === undefined ? undefined : this.#scopes.get(requestingModuleId);
+    const candidates: ProviderRegistration<T>[] = [];
+    if (!scope) {
+      for (const owner of [ROOT_MODULE_ID, ...(this.#exporterIndex.get(token) ?? [])]) {
+        const hit = this.#lookupInBucket<T>(owner, token);
+        if (hit) return [hit];
+      }
+      return candidates;
+    }
+    const local = this.#lookupInBucket<T>(scope.moduleId, token);
+    if (local) return [local];
+    this.#collectFromImports(scope, token, new Set([scope.moduleId]), candidates);
+    const globalExporters = this.#globals.get(token);
+    if (!candidates.length && globalExporters) {
+      this.#collectFromImports({ importedModules: globalExporters }, token, new Set(), candidates);
+    }
+    const rootHit =
+      !candidates.length &&
+      (globalExporters || (token instanceof InjectionToken && token.options?.factory)) &&
+      this.#lookupInBucket<T>(ROOT_MODULE_ID, token);
+    if (rootHit) candidates.push(rootHit);
+    return candidates;
   }
 
   /** Typed bucket lookup — single seam where the Map<Token, Registration> erases T. */
   #lookupInBucket<T>(moduleId: string, token: Token): ProviderRegistration<T> | undefined {
     return this.#providers.get(moduleId)?.get(token) as ProviderRegistration<T> | undefined;
-  }
-
-  /**
-   * The registrations the given @Global modules export for a token, following
-   * re-exports, or else the `__root__` one. A module that registers the token
-   * without exporting it globally is not a candidate.
-   */
-  #collectGlobal<T>(
-    importedModules: Set<string>,
-    token: Token,
-    candidates: ProviderRegistration<T>[],
-    moduleIds: string[],
-  ): void {
-    this.#collectFromImports({ importedModules }, token, new Set(), candidates, moduleIds);
-    const rootHit = candidates.length ? undefined : this.#lookupInBucket<T>(ROOT_MODULE_ID, token);
-    if (rootHit) candidates.push(rootHit);
   }
 
   /**
@@ -482,7 +458,6 @@ export class Container {
     token: Token,
     visited: Set<string>,
     candidates: ProviderRegistration<T>[],
-    candidateModuleIds: string[],
   ): void {
     for (const importedId of scope.importedModules) {
       if (visited.has(importedId)) continue;
@@ -493,63 +468,29 @@ export class Container {
       const direct = this.#lookupInBucket<T>(importedId, token);
       if (direct) {
         candidates.push(direct);
-        candidateModuleIds.push(importedId);
         continue;
       }
 
       // Imported module re-exports the token without owning it — recurse
       // into ITS imports.
-      this.#collectFromImports<T>(imported, token, visited, candidates, candidateModuleIds);
+      this.#collectFromImports<T>(imported, token, visited, candidates);
     }
   }
 
+  /**
+   * With a requester, the candidates resolve() chooses among; without one,
+   * every module's registration of the token.
+   */
   private findAllRegistrations<T>(
     token: Token,
     requestingModuleId?: string,
   ): ProviderRegistration<T>[] {
-    if (requestingModuleId === undefined) {
-      const exporters = this.#exporterIndex.get(token);
-      if (!exporters) return [];
-      return [...exporters]
-        .map((id) => this.#lookupInBucket<T>(id, token))
-        .filter((r): r is ProviderRegistration<T> => r !== undefined);
+    if (requestingModuleId !== undefined) {
+      return this.#visibleRegistrations<T>(token, requestingModuleId);
     }
-
-    const out: ProviderRegistration<T>[] = [];
-    const seen = new Set<ProviderRegistration<T>>();
-
-    const local = this.#lookupInBucket<T>(requestingModuleId, token);
-    if (local && !seen.has(local)) {
-      out.push(local);
-      seen.add(local);
-    }
-
-    const globalExporters = this.#globals.get(token);
-    if (globalExporters) {
-      const candidates: ProviderRegistration<T>[] = [];
-      this.#collectGlobal(globalExporters, token, candidates, []);
-      for (const reg of candidates) {
-        if (!seen.has(reg)) {
-          out.push(reg);
-          seen.add(reg);
-        }
-      }
-    }
-
-    const scope = this.#scopes.get(requestingModuleId);
-    if (scope) {
-      for (const importedId of scope.importedModules) {
-        const imported = this.#scopes.get(importedId);
-        if (!imported?.exportedTokens.has(token)) continue;
-        const reg = this.#lookupInBucket<T>(importedId, token);
-        if (reg && !seen.has(reg)) {
-          out.push(reg);
-          seen.add(reg);
-        }
-      }
-    }
-
-    return out;
+    return [...(this.#exporterIndex.get(token) ?? [])]
+      .map((id) => this.#lookupInBucket<T>(id, token))
+      .filter((r): r is ProviderRegistration<T> => r !== undefined);
   }
 
   /** True if any bucket has a registration for `token`. Sandbox-friendly. */

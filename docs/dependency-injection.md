@@ -45,12 +45,21 @@ written in `@Module`, and a list declared without a type annotation, are checked
 The literals of a list typed as a whole are validated at runtime only, so prefer `defineProvider` in
 computed contributions and shared lists when the value type matters.
 
-Framework-global tokens such as `Reflector`, `ENV` and `NONCE_STORE` resolve to the application's
-registration from every module that neither registers its own copy nor sees a global override. A
-module that lists one in its providers uses that local provider. A `@Global()` module that exports
-one overrides the application registration for every other module, as in Nest, while a copy that
-another module registers without exporting it globally stays private to that module. A token that
-two `@Global()` modules export fails with `MultipleProvidersFoundError`.
+A module looks a token up in Nest's order, and the first step that finds a provider answers:
+
+1. the module's own providers;
+2. what its imports export, following re-exports;
+3. what the one `@Global()` module that exports the token provides;
+4. the application's registration of a framework-global token such as `Reflector`, `ENV` or
+   `NONCE_STORE`, or the default factory of an `InjectionToken`.
+
+A module that imports an exporter of a token therefore uses that export even when a `@Global()`
+module exports the token too, and a `@Global()` export overrides the application's registration only
+for the modules that neither provide the token nor import an exporter of it. A copy that a module
+registers without exporting it is never a candidate outside that module. When a module's imports
+export the token from more than one module, or two `@Global()` modules export it, the lookup fails
+with `MultipleProvidersFoundError`; Nest would pick one of them instead. `resolveAll(token, moduleId)`
+returns the providers of the same step, so it agrees with `resolve(token, moduleId)`.
 
 Every application provides `Reflector` globally, so guards and interceptors inject it through their
 constructor, as in Nest.
