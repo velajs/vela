@@ -1,0 +1,25 @@
+{
+  // Typecheck the workerd suites against the environment `wrangler types`
+  // declares for wrangler.test.toml (worker-configuration.d.ts): ENV carries
+  // those bindings exactly as it does in an application.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "files": [
+    "src/__tests__/workers/worker-configuration.d.ts",
+    "src/__tests__/workers/entry.ts",
+    "src/__tests__/workers/cache-runtime.test.ts",
+    "src/__tests__/workers/env-runtime.test.ts",
+    "src/__tests__/workers/queue-bridge-runtime.test.ts",
+    "src/__tests__/workers/scheduled-runtime.test.ts",
+    "src/__tests__/workers/entrypoint-bindings-runtime.test.ts",
+    "src/__tests__/workers/entrypoint-lifetime-runtime.test.ts",
+    "src/__tests__/workers/websocket-runtime.test.ts",
+    "src/__tests__/workers/pitr-runtime.test.ts",
+    "src/__tests__/workers/root-resolution-runtime.test.ts",
+    "src/__tests__/workers/module-queue-runtime.test.ts"
+  ],
+  "include": ["src/**/*.ts", "test-shims/**/*.ts"],
+  "exclude": ["node_modules", "dist", "src/__tests__"]
+}

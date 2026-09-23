@@ -1,13 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { Injectable, InjectionToken, MetadataRegistry, Module } from '@velajs/vela';
-import type { OnModuleInit } from '@velajs/vela';
+import { ENV, Injectable, MetadataRegistry, Module } from '@velajs/vela';
+import type { OnModuleInit, VelaEnv } from '@velajs/vela';
 import { createCloudflareApp } from '../cloudflare-factory';
 import { resolveCloudflareRoot } from '../root-module';
-
-interface Bindings {
-  readonly NAME: string;
-}
-const ENV = new InjectionToken<Bindings>('root resolution environment');
 
 beforeEach(() => {
   MetadataRegistry.clear();
@@ -27,17 +22,17 @@ describe('Cloudflare root resolution', () => {
     const { Feature, Service } = feature();
     const calls: string[] = [];
     const root = {
-      create: (env: Bindings) => {
-        calls.push(env.NAME);
+      create: (env: VelaEnv) => {
+        calls.push(String(Reflect.get(env, 'NAME')));
         return { module: Feature };
       },
     };
     const a = { NAME: 'a' };
     const b = { NAME: 'b' };
 
-    const first = await createCloudflareApp(root, { env: a, envToken: ENV });
-    const second = await createCloudflareApp(root, { env: a, envToken: ENV });
-    const other = await createCloudflareApp(root, { env: b, envToken: ENV });
+    const first = await createCloudflareApp(root, { env: a });
+    const second = await createCloudflareApp(root, { env: a });
+    const other = await createCloudflareApp(root, { env: b });
 
     expect(calls).toEqual(['a', 'b']);
     expect(await resolveCloudflareRoot(root, a)).toBe(await resolveCloudflareRoot(root, a));
@@ -80,10 +75,8 @@ describe('Cloudflare root resolution', () => {
     };
     const env = { NAME: 'retry' };
 
-    await expect(createCloudflareApp(root, { env, envToken: ENV })).rejects.toThrow(
-      'transient bootstrap failure',
-    );
-    const app = await createCloudflareApp(root, { env, envToken: ENV });
+    await expect(createCloudflareApp(root, { env })).rejects.toThrow('transient bootstrap failure');
+    const app = await createCloudflareApp(root, { env });
 
     expect(attempts).toBe(2);
     await app.close();

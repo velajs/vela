@@ -22,12 +22,11 @@ import type { CloudflareApplication } from '../cloudflare-application';
 import { QueueConsumer } from '../decorators/queue-consumer';
 import { Scheduled } from '../decorators/scheduled';
 
-const ENV = new InjectionToken<object>('lifetime test environment');
 const kinds = ['queue', 'scheduled'] as const;
 const event = { cron: '* * * * *', scheduledTime: 123 };
 const batch = { queue: 'jobs', messages: [] };
 function dispatch(
-  app: CloudflareApplication<object>,
+  app: CloudflareApplication,
   kind: (typeof kinds)[number],
   env: object,
   context = { waitUntil: (_promise: Promise<unknown>) => {} },
@@ -102,7 +101,7 @@ describe('native managed entrypoints', () => {
       })
       class App {}
       const env = {};
-      const app = await createCloudflareApp(App, { env, envToken: ENV });
+      const app = await createCloudflareApp(App, { env });
       try {
         await dispatch(app, kind, env);
         expect(scopes.size).toBe(2);
@@ -157,7 +156,7 @@ describe('native managed entrypoints', () => {
       @Module({ providers: [Job, Resource] })
       class App {}
       const env = {};
-      const app = await createCloudflareApp(App, { env, envToken: ENV });
+      const app = await createCloudflareApp(App, { env });
       try {
         let done = false;
         const running = dispatch(app, kind, env, {
@@ -231,7 +230,7 @@ describe('native managed entrypoints', () => {
       })
       class App {}
       const env = {};
-      const app = await createCloudflareApp(App, { env, envToken: ENV });
+      const app = await createCloudflareApp(App, { env });
       try {
         let done = false;
         const result = dispatch(app, kind, env).catch((error: unknown) => {
@@ -272,7 +271,7 @@ describe('native managed entrypoints', () => {
     @Module({ providers: [Job] })
     class App {}
     const env = {};
-    const app = await createCloudflareApp(App, { env, envToken: ENV });
+    const app = await createCloudflareApp(App, { env });
     try {
       await expect(dispatch(app, 'queue', env)).rejects.toThrow('Forbidden');
       expect(constructed).toBe(0);

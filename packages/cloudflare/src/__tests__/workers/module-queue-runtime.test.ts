@@ -1,14 +1,12 @@
 // @ts-expect-error virtual module supplied by @cloudflare/vitest-plugin
 import { createExecutionContext, createMessageBatch, getQueueResult, env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
-import { Cron, Injectable, InjectionToken, Module, ScheduleModule } from '@velajs/vela';
+import { Cron, ENV, Injectable, Module, ScheduleModule } from '@velajs/vela';
 import { Process, Processor, QueueModule, queueToken } from '@velajs/vela/queue';
 import type { QueueJob } from '@velajs/vela/queue';
 import { createCloudflareApp, createCloudflareWorker } from '../../cloudflare-factory';
 import { cloudflareQueueDriver } from '../../queue';
 import { QueueConsumer } from '../../decorators/queue-consumer';
-
-const ENV = new InjectionToken<{ QUEUE_BRIDGE: Queue<QueueJob> }>('queue environment');
 
 describe('module dispatch in workerd', () => {
   it('boots on native delivery, preserves partial settlement and drives core cron handlers', async () => {
@@ -42,11 +40,7 @@ describe('module dispatch in workerd', () => {
       providers: [Tasks],
     })
     class App {}
-    const worker = createCloudflareWorker(
-      { create: async () => ({ module: App }) },
-      { envToken: ENV },
-    );
-    const bindings = { QUEUE_BRIDGE: env.QUEUE_BRIDGE };
+    const worker = createCloudflareWorker({ create: async () => ({ module: App }) });
     const batch = createMessageBatch(
       'native-tasks',
       [false, true].map((fail, index) => ({
@@ -57,16 +51,16 @@ describe('module dispatch in workerd', () => {
       })),
     );
     const context = createExecutionContext();
-    await expect(worker.queue(batch, bindings, context)).rejects.toThrow('retry this job');
+    await expect(worker.queue(batch, env, context)).rejects.toThrow('retry this job');
     expect((await getQueueResult(batch, context)).explicitAcks).toEqual(['0']);
     expect(attempts).toEqual([3, 3]);
     await worker.scheduled(
       { cron: '* * * * *', scheduledTime: Date.now() },
-      bindings,
+      env,
       createExecutionContext(),
     );
     expect(ticks).toBe(1);
-    const app = await createCloudflareApp(App, { envToken: ENV, env: bindings });
+    const app = await createCloudflareApp(App, { env });
     await app.get(queueToken('tasks')).add('run', {});
     await app.close();
   });
@@ -82,13 +76,13 @@ describe('module dispatch in workerd', () => {
     }
     @Module({ providers: [Claimed] })
     class App {}
-    const worker = createCloudflareWorker(App, { envToken: ENV });
+    const worker = createCloudflareWorker(App);
     const batch = createMessageBatch('unclaimed-native', [
       { id: 'lost-0', timestamp: new Date(), attempts: 1, body: { value: 1 } },
     ]);
     const context = createExecutionContext();
 
-    await expect(worker.queue(batch, { QUEUE_BRIDGE: env.QUEUE_BRIDGE }, context)).rejects.toThrow(
+    await expect(worker.queue(batch, env, context)).rejects.toThrow(
       /No consumer claims queue 'unclaimed-native'/,
     );
     const result = await getQueueResult(batch, context);

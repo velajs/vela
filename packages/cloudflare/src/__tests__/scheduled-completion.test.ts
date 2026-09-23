@@ -1,9 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { Injectable, InjectionToken, Module, Scope } from '@velajs/vela';
+import { Injectable, Module, Scope } from '@velajs/vela';
 import { createCloudflareApp } from '../cloudflare-factory';
 import { Scheduled, type ScheduledContext } from '../decorators/scheduled';
-
-const ENV = new InjectionToken<object>('scheduled completion environment');
 
 describe('whole scheduled trigger completion', () => {
   it('awaits slow siblings and their disposal after an early failure', async () => {
@@ -33,7 +31,7 @@ describe('whole scheduled trigger completion', () => {
     @Module({ providers: [Fast, Slow] })
     class Root {}
     const env = {};
-    const app = await createCloudflareApp(Root, { env, envToken: ENV });
+    const app = await createCloudflareApp(Root, { env });
     let settled = false;
     const done = app.scheduled({ cron: '* * * * *' }, env, { waitUntil() {} }).then(
       () => {
@@ -73,7 +71,7 @@ describe('whole scheduled trigger completion', () => {
     @Module({ providers: [Jobs] })
     class Root {}
     const env = {};
-    const app = await createCloudflareApp(Root, { env, envToken: ENV });
+    const app = await createCloudflareApp(Root, { env });
     try {
       await expect(
         app.scheduled({ cron: '* * * * *' }, env, { waitUntil() {} }),
@@ -104,7 +102,7 @@ describe('whole scheduled trigger completion', () => {
     @Module({ providers: [Job] })
     class Root {}
     const env = {};
-    const app = await createCloudflareApp(Root, { env, envToken: ENV });
+    const app = await createCloudflareApp(Root, { env });
     const done = app.scheduled({ cron: '* * * * *' }, env, { waitUntil: platformWaitUntil });
     try {
       await vi.waitFor(() => expect(events).toContain('handler'));

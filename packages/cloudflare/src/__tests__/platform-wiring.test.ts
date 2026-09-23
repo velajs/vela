@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { InjectionToken, Module, WebSocketModule } from '@velajs/vela';
+import { Module, WebSocketModule } from '@velajs/vela';
 import { LiveModule } from '@velajs/vela/live';
 import { createCloudflareApp } from '../cloudflare-factory';
 import { buildDoRuntime } from '../websocket/do-bootstrap';
@@ -11,8 +11,6 @@ import type { DoStateLike, WsLike } from '../websocket/do-state';
 afterEach(() => {
   vi.restoreAllMocks();
 });
-
-const envToken = new InjectionToken<object>('platform wiring environment');
 
 class EmptyDoState implements DoStateLike {
   readonly id = { toString: () => 'do-1', name: 'room-1' };
@@ -36,9 +34,9 @@ describe('Durable Object WebSocket wiring', () => {
     @Module({ imports: [WebSocketModule.forRoot({})] })
     class CoreTransport {}
 
-    await expect(
-      buildDoRuntime(CoreTransport, new EmptyDoState(), { env: {}, envToken }),
-    ).rejects.toThrow(/import CloudflareWebSocketModule\.forRoot\(\) instead of WebSocketModule/);
+    await expect(buildDoRuntime(CoreTransport, new EmptyDoState(), { env: {} })).rejects.toThrow(
+      /import CloudflareWebSocketModule\.forRoot\(\) instead of WebSocketModule/,
+    );
   });
 
   it('binds the Cloudflare WebSocket server holder', async () => {
@@ -47,7 +45,6 @@ describe('Durable Object WebSocket wiring', () => {
 
     const runtime = await buildDoRuntime(CloudflareTransport, new EmptyDoState(), {
       env: {},
-      envToken,
     });
     await runtime.close();
   });
@@ -59,8 +56,8 @@ describe('Worker live driver wiring', () => {
     @Module({ imports: [CloudflareWebSocketModule.forRoot(), LiveModule.forRoot({})] })
     class LocalLive {}
 
-    const first = await createCloudflareApp(LocalLive, { env: {}, envToken });
-    const second = await createCloudflareApp(LocalLive, { env: {}, envToken });
+    const first = await createCloudflareApp(LocalLive, { env: {} });
+    const second = await createCloudflareApp(LocalLive, { env: {} });
     const warnings = warn.mock.calls.filter(([message]) =>
       String(message).includes('localLive() in the Worker isolate'),
     );
@@ -81,7 +78,7 @@ describe('Worker live driver wiring', () => {
     })
     class RemoteLive {}
 
-    const app = await createCloudflareApp(RemoteLive, { env: {}, envToken });
+    const app = await createCloudflareApp(RemoteLive, { env: {} });
     expect(warn).not.toHaveBeenCalled();
     await app.close();
   });

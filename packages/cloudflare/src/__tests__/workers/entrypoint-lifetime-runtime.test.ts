@@ -5,6 +5,7 @@ import {
   EXECUTION_LIFETIME,
   REQUEST_CONTEXT,
   Inject,
+  InjectEnv,
   Injectable,
   InjectionToken,
   Module,
@@ -14,13 +15,11 @@ import {
   getExecutionLifetime,
   type ExecutionContext,
   type ExecutionLifetime,
+  type VelaEnv,
 } from '@velajs/vela';
 import { createCloudflareApp } from '../../cloudflare-factory';
 import { QueueConsumer } from '../../decorators/queue-consumer';
 import { Scheduled } from '../../decorators/scheduled';
-import type { TestEnv } from './entry';
-
-const ENV = new InjectionToken<TestEnv>('native lifetime environment');
 
 describe('native entrypoint lifetime in workerd', () => {
   it.each(['queue', 'scheduled'] as const)(
@@ -47,7 +46,7 @@ describe('native entrypoint lifetime in workerd', () => {
       class Resource {
         constructor(
           @Inject(NAME) readonly name: string,
-          @Inject(ENV) readonly bindings: TestEnv,
+          @InjectEnv() readonly bindings: VelaEnv,
         ) {}
         async dispose() {
           expect(await this.bindings.CACHE.get(`${prefix}:${this.name}`)).toBe('complete');
@@ -66,7 +65,7 @@ describe('native entrypoint lifetime in workerd', () => {
         @Scheduled('* * * * *')
         run(
           _payload: unknown,
-          _bindings: TestEnv,
+          _bindings: VelaEnv,
           ctx: { waitUntil(promise: Promise<unknown>): void },
         ) {
           expect(this.ready).toBe(this.resource.name);
@@ -97,7 +96,7 @@ describe('native entrypoint lifetime in workerd', () => {
         })),
       })
       class App {}
-      const app = await createCloudflareApp(App, { env, envToken: ENV });
+      const app = await createCloudflareApp(App, { env });
       const nativePromises: Promise<unknown>[] = [];
       const ctx = {
         waitUntil(promise: Promise<unknown>) {

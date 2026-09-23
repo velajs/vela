@@ -37,3 +37,8 @@ bucket_name = "test-files"
 [[queues.producers]]
 binding = "QUEUE_BRIDGE"
 queue = "vela-queue-bridge-test"
+
+# Plain variables the runtime seeds into ENV (see workers/env-runtime.test.ts).
+[vars]
+ENV_PROBE = "workerd-env"
+URL_SIGNING_SECRET = "workerd-signing-secret"

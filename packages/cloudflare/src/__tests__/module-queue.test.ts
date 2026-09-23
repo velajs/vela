@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  ENV,
   Inject,
   Injectable,
-  InjectionToken,
+  InjectEnv,
   Module,
   Scope,
   EXECUTION_LIFETIME,
@@ -15,7 +16,6 @@ import { cloudflareQueueDriver } from '../queue';
 import { QueueConsumer } from '../decorators/queue-consumer';
 
 const context = { waitUntil() {} };
-const ENV = new InjectionToken<{ NAME: string }>('environment');
 function message(name = 'run', data: unknown = {}, queue = 'tasks') {
   return {
     id: crypto.randomUUID(),
@@ -38,7 +38,7 @@ function fixture() {
   @Injectable()
   class Tasks {
     constructor(
-      @Inject(ENV) private env: { NAME: string },
+      @InjectEnv() private env: { NAME: string },
       private resource: Resource,
       @Inject(EXECUTION_LIFETIME) private lifetime: ExecutionLifetime,
     ) {}
@@ -69,7 +69,7 @@ function fixture() {
 describe('QueueModule native wiring', () => {
   it('dispatches consumer-only modules on a cold event with isolated environments and native attempts', async () => {
     const { App, seen } = fixture();
-    const worker = createCloudflareWorker(App, { envToken: ENV });
+    const worker = createCloudflareWorker(App);
     const a = message(),
       b = message();
     await Promise.all([
@@ -85,7 +85,7 @@ describe('QueueModule native wiring', () => {
 
   it('settles successful siblings and rejects malformed, unknown and deferred failures', async () => {
     const { App } = fixture();
-    const worker = createCloudflareWorker(App, { envToken: ENV });
+    const worker = createCloudflareWorker(App);
     const messages = [
       message(),
       message('run', { fail: true }),
@@ -102,7 +102,7 @@ describe('QueueModule native wiring', () => {
 
   it('rejects unmapped physical queues without acknowledgement', async () => {
     const { App } = fixture();
-    const worker = createCloudflareWorker(App, { envToken: ENV });
+    const worker = createCloudflareWorker(App);
     const item = message();
     await expect(
       worker.queue({ queue: 'wrong', messages: [item] }, { NAME: 'test' }, context),
@@ -118,9 +118,7 @@ describe('QueueModule native wiring', () => {
     }
     @Module({ imports: [App], providers: [Native] })
     class Root {}
-    await expect(
-      createCloudflareApp(Root, { env: { NAME: 'test' }, envToken: ENV }),
-    ).rejects.toThrow('Ambiguous');
+    await expect(createCloudflareApp(Root, { env: { NAME: 'test' } })).rejects.toThrow('Ambiguous');
   });
 
   it('awaits native sends in producer-only modules and publishes binding metadata', async () => {
@@ -131,7 +129,7 @@ describe('QueueModule native wiring', () => {
     });
     @Module({ imports: [queueModule] })
     class Root {}
-    const app = await createCloudflareApp(Root, { env: { NAME: 'test' }, envToken: ENV });
+    const app = await createCloudflareApp(Root, { env: { NAME: 'test' } });
     const client: QueueClient = app.get(queueToken('tasks'));
     await client.add('run', { value: 1 });
     expect(send).toHaveBeenCalledOnce();
@@ -148,17 +146,14 @@ describe('async dynamic Worker roots', () => {
     let calls = 0;
     @Module({})
     class Root {}
-    const worker = createCloudflareWorker(
-      {
-        async create() {
-          calls++;
-          await Promise.resolve();
-          if (calls === 1) throw new Error('retry bootstrap');
-          return { module: Root, imports: [fixture().App] };
-        },
+    const worker = createCloudflareWorker({
+      async create() {
+        calls++;
+        await Promise.resolve();
+        if (calls === 1) throw new Error('retry bootstrap');
+        return { module: Root, imports: [fixture().App] };
       },
-      { envToken: ENV },
-    );
+    });
     const env = { NAME: 'same' };
     const first = () => worker.queue({ queue: 'tasks-test', messages: [message()] }, env, context);
     const results = await Promise.allSettled([first(), first()]);

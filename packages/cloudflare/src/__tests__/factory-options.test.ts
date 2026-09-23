@@ -10,9 +10,7 @@ import {
   VelaFactory,
 } from '@velajs/vela';
 import { cloudflareAdapter, createCloudflareApp } from '../cloudflare-factory';
-import { InjectionToken } from '@velajs/vela';
 const env = {};
-const envToken = new InjectionToken<object>('test environment');
 
 beforeEach(() => {
   MetadataRegistry.clear();
@@ -31,7 +29,7 @@ describe('createCloudflareApp options', () => {
     @Module({ controllers: [UserController] })
     class AppModule {}
 
-    const app = await createCloudflareApp(AppModule, { env, envToken, globalPrefix: '/api' });
+    const app = await createCloudflareApp(AppModule, { env, globalPrefix: '/api' });
     const hono = app.getHonoApp();
 
     // With globalPrefix '/api', the controller path '/users' is mounted at '/api/users'.
@@ -69,7 +67,6 @@ describe('createCloudflareApp options', () => {
 
     const app = await createCloudflareApp(AppModule, {
       env,
-      envToken,
       middleware: (bindings) => {
         expect(bindings).toBe(env);
         return [markerMw, observerMw];
@@ -94,7 +91,7 @@ describe('createCloudflareApp options', () => {
     @Module({ controllers: [IpController] })
     class AppModule {}
 
-    const app = await createCloudflareApp(AppModule, { env, envToken });
+    const app = await createCloudflareApp(AppModule, { env });
     const hono = app.getHonoApp();
     const trusted = await hono.request(
       '/ip',
@@ -132,7 +129,7 @@ describe('createCloudflareApp options', () => {
     })
     class AppModule {}
 
-    const hono = (await createCloudflareApp(AppModule, { env, envToken })).getHonoApp();
+    const hono = (await createCloudflareApp(AppModule, { env })).getHonoApp();
     const first = await hono.request(
       '/limited',
       { headers: { 'cf-connecting-ip': '203.0.113.1', 'x-forwarded-for': 'a' } },
@@ -165,7 +162,7 @@ describe('createCloudflareApp options', () => {
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule, {
-      adapters: [cloudflareAdapter({ env, envToken })],
+      adapters: [cloudflareAdapter({ env })],
     });
     const response = await app.getHonoApp().request(
       '/direct-ip',
@@ -191,7 +188,6 @@ describe('createCloudflareApp options', () => {
     const hono = (
       await createCloudflareApp(AppModule, {
         env,
-        envToken,
         security: { query: { maxParameters: 1 } },
       })
     ).getHonoApp();

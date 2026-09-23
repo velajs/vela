@@ -1,14 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { cloudflareQueueDriver, consumeQueueBatch } from '../queue/cloudflare-queue';
 import type { QueueJob, QueueMessageLike } from '@velajs/vela/queue';
-import {
-  Container,
-  EntrypointRegistry,
-  Inject,
-  Injectable,
-  InjectionToken,
-  Module,
-} from '@velajs/vela';
+import { Container, EntrypointRegistry, Inject, Injectable, Module } from '@velajs/vela';
 import { dispatchQueueJob, Process, Processor } from '@velajs/vela/queue';
 import { QueueConsumer } from '../decorators/queue-consumer';
 import { createCloudflareApp } from '../cloudflare-factory';
@@ -135,10 +128,7 @@ it('composes native consumers with the portable registry after bootstrap', async
   @Module({ providers: [ConsumerService, ProcessorService] })
   class App {}
   const env = {};
-  const app = await createCloudflareApp(App, {
-    env,
-    envToken: new InjectionToken<object>('bridge env'),
-  });
+  const app = await createCloudflareApp(App, { env });
   const host = message(job(), 4);
   await app.queue({ queue: 'physical', messages: [host] }, env, { waitUntil() {} });
   expect(seen).toEqual([4]);
