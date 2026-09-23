@@ -82,27 +82,47 @@ already starts with the global prefix fails the build, because it would never
 match. A request matches a method-scoped target only for that method, or HEAD
 for a GET target, as Hono routes it; the method token `ALL` is not a wildcard.
 
-Vela compiles each path target to an anchored regular expression. Literal
-segments match as written, so `v1.0` does not match `v1x0`. `:id` and a `*`
-before the last segment match one segment, `:id{[0-9]+}` a segment its regex
-accepts, and a trailing `:id?` an optional last segment. A trailing `*`
-(`cats/*`) matches `/cats` and everything beneath it. Every wildcard Vela
-generates also matches line terminators, since Hono decodes `%0A`, `%0D`,
-`%E2%80%A8` and `%E2%80%A9` into the request path a `:id` route accepts.
+Matching follows Hono's router exactly. Vela registers every path target on the
+Hono app as a route that does nothing, ahead of the controller routes, and runs
+the middleware when Hono matches one of its `forRoutes()` targets for the request
+and none of its `exclude()` targets. The router that picks the serving route
+therefore also decides what a target matches, including the base path of a
+parent app that mounts the Vela app with `parent.route(base, app)` (a trailing
+slash or a `:tenant{[a-z0-9-]+}` parameter included), percent-decoding and
+`{regex}` constraints. A `forRoutes()` target is registered as its pattern, as
+Hono's trailing `*` form for the paths beneath it, and as a `:_{[^]+}` parameter
+form of the same. The parameter form keeps Hono's default RegExpRouter from
+applying the target to deeper routes by comparing pattern text, which misses a
+route with `:id` where the target has `*`, or the reverse: that router cannot
+hold the form beside a deeper route and falls back to Hono's TrieRouter, which
+matches every pattern against the request path. Targets can therefore change
+which of Hono's routers the app uses, as any route can.
 
-Nest's wildcard segments keep Nest's meaning. `cats/*path` and `cats/(.*)`
-match one or more segments below `/cats` (`/cats/1`, `/cats/1/toys`) but not
-`/cats` itself, so `exclude('users/*id')` still runs the middleware on `/users`.
-A wildcard can sit anywhere and backtracks onto what follows it:
-`files/*path/:id` matches `/files/a/b` and `/files/a/b/c`, and
-`users/*id/admin` covers `/users/1/admin/settings`. A trailing `cats/{*splat}`
-also matches `/cats`, as it does in Nest. Any other group, optional segment or
-named wildcard, such as `:id(\d+)`, `users{/:id}`, `ab*cd` or a `{*splat}`
-before the last segment, fails the build instead of never matching; write
-`:id{[0-9]+}` for a constrained segment. So does a `:` inside a literal segment
-(`files/abc:name`), which Hono's routers read differently, and a target with
-more than one wildcard that spans segments (`files/*a/*b`, `files/*a/*`), whose
-matching would slow down on long paths.
+Constraints behave as they do in routes. A `.` in a `{regex}` constraint does
+not match the line terminators Hono decodes into the path (`%0A`, `%0D`,
+`%E2%80%A8`, `%E2%80%A9`), while a `:id` route accepts them. Write `[\s\S]`
+instead of `.`, or use a trailing `*`, for a catch-all. A constraint with a
+top-level `|`, such as `{\d+|me}`, anchors only its first and last alternative
+in Hono's TrieRouter, so wrap alternatives in `(?:...)`. Several constraints
+that span segments backtrack in Hono's router as they would in routes. A
+constraint that is not a valid regular expression, or that matches an empty
+segment, fails the build: Hono compiles constraints only for its first request,
+and its default router fails on a parameter that captures nothing.
+
+Nest's trailing wildcards become Hono patterns. `cats/*path` and `cats/(.*)`
+become `cats/:path{[\s\S]+}`, which matches one or more characters below `/cats`
+(`/cats/1`, `/cats/1/toys`) but not `/cats` itself, so `exclude('users/*id')`
+still runs the middleware on `/users`. A trailing `cats/{*splat}` becomes Hono's
+`cats/*`, which also matches `/cats`, as it does in Nest. Hono has no pattern
+for a wildcard that spans segments before the last one, so a Nest wildcard in
+any other segment (`files/*path/:id`, `users/*id/admin`, `cats/(.*)/toys`,
+`cats/{*splat}/toys`, `files/*a/*b`) fails the build. So does any other group,
+optional segment or named wildcard, such as `:id(\d+)`, `users{/:id}`, `ab*cd`
+or a `:id?` before the last segment; write `:id{[0-9]+}` for a constrained
+segment. Hono's own `*` keeps Hono's meaning: before the last segment it matches
+one segment, including an empty one where Hono's TrieRouter routes it, and a
+trailing `*` also matches its parent path unless that ends in `*`, so
+`exclude('*/*')` still runs the middleware on `/x`.
 
 Some routes are served outside the global prefix: `mountOpenApi()` documents
 (`/openapi.json`, `/scalar`, `/docs`, `/redoc`), the `RpcModule` endpoint
@@ -117,15 +137,15 @@ consumer
 ```
 
 Once every controller and route contributor has registered its routes, each
-relative path target is checked against them with the same matcher: a target
-reaches a route only through a concrete path that both match. A target that
-reaches no route under the global prefix but matches a route served outside it,
-such as `forRoutes('rpc')` for the `RpcModule` endpoint, fails the build and
-names the `{ path, absolute: true }` form to use. A `forRoutes()` target that
-reaches no registered route at all is reported through the container's
-diagnostics policy (`'log'` warns, `'throw'` fails bootstrap), since the route
-may still be added to the Hono app later; target such a route with
-`absolute: true`.
+relative path target is checked against them with Hono's TrieRouter: a target
+reaches a route through a concrete path, shaped like either of them, that both
+match. A target that reaches no route under the global prefix but matches a
+route served outside it, such as `forRoutes('rpc')` for the `RpcModule`
+endpoint, fails the build and names the `{ path, absolute: true }` form to use.
+A `forRoutes()` target that reaches no registered route at all is reported
+through the container's diagnostics policy (`'log'` warns, `'throw'` fails
+bootstrap), since the route may still be added to the Hono app later; target
+such a route with `absolute: true`.
 
 ## Browser security
 
