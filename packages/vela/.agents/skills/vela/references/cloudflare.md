@@ -1,19 +1,16 @@
 # Cloudflare Workers
 
-Use native platform bindings through a typed environment token. `@velajs/cloudflare` supplies HTTP, queue, cron, and live transports; its root entrypoint is safe for Node tooling. Native Durable Object classes live in `@velajs/cloudflare/durable-objects`.
+Use native platform bindings through the framework `ENV`, typed by `wrangler types`. `@velajs/cloudflare` supplies HTTP, queue, cron, and live transports; its root entrypoint is safe for Node tooling. Native Durable Object classes live in `@velajs/cloudflare/durable-objects`.
 
 ## Worker and environment
 
 ```ts
-import { Inject, Injectable, InjectionToken, Module } from '@velajs/vela';
+import { InjectEnv, Injectable, Module, type VelaEnv } from '@velajs/vela';
 import { createCloudflareWorker } from '@velajs/cloudflare';
-
-interface WorkerEnv { DB: D1Database; CACHE: KVNamespace; FILES: R2Bucket }
-export const ENV = new InjectionToken<WorkerEnv>('app.Env');
 
 @Injectable()
 class UsersService {
-  constructor(@Inject(ENV) private readonly env: WorkerEnv) {}
+  constructor(@InjectEnv() private readonly env: VelaEnv) {}
   find(id: string) {
     return this.env.DB.prepare('select * from users where id = ?').bind(id).first();
   }
@@ -21,12 +18,12 @@ class UsersService {
 
 @Module({ providers: [UsersService] })
 class AppModule {}
-export default createCloudflareWorker(AppModule, { envToken: ENV });
+export default createCloudflareWorker(AppModule);
 ```
 
-Generate native environment types with the application's Wrangler configuration. Inject `ENV` directly or derive a narrower binding token with `defineProvider(TOKEN, { inject: [ENV], useFactory: env => env.DB })`. Binding wrapper modules/services are not part of the API.
+`ENV` (`InjectionToken<VelaEnv>` from `@velajs/vela`) is the native environment; the Worker entry only exports. Type it with `wrangler types --include-runtime=false` (keep `@cloudflare/workers-types` for runtime types): include the generated `worker-configuration.d.ts` in tsconfig and regenerate it when the Wrangler file changes; `@velajs/cloudflare` extends `VelaEnv` with its `Cloudflare.Env`. Do not hand-write an `Env` interface or mint an environment `InjectionToken`. Inject `ENV` directly (`@InjectEnv()`, `inject: [ENV]`) or derive a narrower binding token with `defineProvider(TOKEN, { inject: [ENV], useFactory: env => env.DB })`. There is no environment parameter decorator; binding wrapper modules/services are not part of the API. Secrets in `ENV` drive framework features automatically: `URL_SIGNING_SECRET` (signed URLs and invocations) and `VELA_STUDIO_TOKEN` (Studio).
 
-The worker exposes `fetch`, `queue`, and `scheduled`. Applications are cached by environment object identity; concurrent first events share bootstrap, different environments get separate applications, and failed bootstrap retries on the next event. For explicit construction use `createCloudflareApp(AppModule, { env, envToken: ENV })` or `cloudflareAdapter({ env, envToken: ENV })`. Bindings exist before DI factories run; binding I/O still belongs inside a platform event. An explicitly constructed app rejects events from another environment.
+The worker exposes `fetch`, `queue`, and `scheduled`. Applications are cached by environment object identity; concurrent first events share bootstrap, different environments get separate applications, and failed bootstrap retries on the next event. For explicit construction use `createCloudflareApp(AppModule, { env })` or `cloudflareAdapter({ env })`; `adapters: RuntimeAdapter[]` on either entry composes further adapters. Bindings exist before DI factories run; binding I/O still belongs inside a platform event. An explicitly constructed app rejects events from another environment. Separate Workers sharing one repository type-check as separate programs, each with its own `wrangler types` output.
 
 ## Queue and cron handlers
 
@@ -35,11 +32,12 @@ Register `@Injectable()` providers with `@QueueConsumer('queue-name')` or `@Sche
 ## Durable Objects and live queries
 
 ```ts
+import { ENV, Module } from '@velajs/vela';
 import { LiveModule } from '@velajs/vela/live';
 import { CloudflareWebSocketModule, durableObjectCursorLog, durableObjectLive } from '@velajs/cloudflare';
 import { VelaWebSocketDurableObject } from '@velajs/cloudflare/durable-objects';
 
-// ENV includes ROOMS: DurableObjectNamespace<Room>.
+// wrangler types declares ROOMS: DurableObjectNamespace<Room> on ENV.
 @Module({
   imports: [
     CloudflareWebSocketModule.forRoot(),
@@ -54,7 +52,7 @@ import { VelaWebSocketDurableObject } from '@velajs/cloudflare/durable-objects';
   providers: [RoomsGateway, TodoLive],
 })
 class RoomModule {}
-export class Room extends VelaWebSocketDurableObject(RoomModule, { envToken: ENV }) {}
+export class Room extends VelaWebSocketDurableObject(RoomModule) {}
 ```
 
 Import native classes only in Worker entry files. Use `CloudflareWebSocketModule`, never the core `WebSocketModule`, in a module a WebSocket Durable Object bootstraps: the Durable Object refuses to start with the core server. The Worker warns once when `LiveModule` keeps the default `localLive()` driver there, because its invalidations would never reach the Durable Object's subscriptions. Configure the namespace and `new_sqlite_classes` migration in Wrangler. Gateway options declare `path`, `roomParam`, `binding`, origins, and upgrade authentication. Core trusted identity, tenant, and expiry cross the upgrade boundary; caller-supplied identity headers are not authority. Driver/log factories return fresh state per application. Read `live-queries.md` for shared query schemas and delivery authorization.

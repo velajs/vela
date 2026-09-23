@@ -18,7 +18,7 @@ Vela (`@velajs/vela`) provides a NestJS-style framework for **edge runtimes**, b
 
 Breaking these causes runtime or build failures.
 
-1. **The main export is edge-pure.** Never add `node:*` imports, `Buffer`, `process` (`process.env`), `__dirname`, `fs`/`path`/`os`, `setInterval`, or `Bun.serve()` to the edge-safe core entrypoint or shared Worker code. Use Web Crypto, `Uint8Array` + `TextEncoder`/`TextDecoder`, `URL`, and `fetch`. Read application environment through its declared `InjectionToken<Env>`; on Workers pass it to `createCloudflareWorker`. Parse dynamic config reads instead of casting them. Runtime-specific Node adapters belong behind their own entrypoints; do not import them in Worker code.
+1. **The main export is edge-pure.** Never add `node:*` imports, `Buffer`, `process` (`process.env`), `__dirname`, `fs`/`path`/`os`, `setInterval`, or `Bun.serve()` to the edge-safe core entrypoint or shared Worker code. Use Web Crypto, `Uint8Array` + `TextEncoder`/`TextDecoder`, `URL`, and `fetch`. Read the application environment through the framework `ENV` (`@InjectEnv()`, `inject: [ENV]`); on Workers `createCloudflareWorker` seeds it and `wrangler types` types it. Parse dynamic config reads instead of casting them. Runtime-specific Node adapters belong behind their own entrypoints; do not import them in Worker code.
 
 2. **`experimentalDecorators` and `emitDecoratorMetadata` must both be `true`** in `tsconfig.json`. `emitDecoratorMetadata` powers constructor auto-injection. Vela ships its own `reflect-metadata` polyfill (imported by the main entry) — do **not** add an external `reflect-metadata` dependency.
 
@@ -59,12 +59,12 @@ export default app;   // { fetch } handler — runs on Workers, Deno, Bun, Node
 ```
 
 - `VelaFactory.create(rootModule, options?)` is **always async** and returns `Promise<VelaApplication>`.
-- `VelaCreateOptions`: `globalPrefix?`, `getClientIp?`, `middleware?`, `adapters?` (platform `RuntimeAdapter`s), `ambientContainer?` (opt-in AsyncLocalStorage), `diagnostics?`. There is **no** `logger`, `cors`, or `versioning` option, and **no** `app.setGlobalPrefix()` method — set the prefix via the create option, read it with `app.getGlobalPrefix()`.
+- `VelaCreateOptions`: `globalPrefix?`, `getClientIp?`, `middleware?`, `adapters?` (platform `RuntimeAdapter`s), `env?` (seeds the framework `ENV`), `ambientContainer?` (opt-in AsyncLocalStorage), `diagnostics?`. There is **no** `logger`, `cors`, or `versioning` option, and **no** `app.setGlobalPrefix()` method — set the prefix via the create option, read it with `app.getGlobalPrefix()`.
 - `app.fetch` is the universal handler (`serve({ fetch: app.fetch })` on Node via `@hono/node-server`; `export default app` on edge).
 - `VelaApplication` methods: `get(token)`, `getHonoApp()` (for `.request()` in tests), `describeRoutes()`, `mountOpenApi(opts)`, `useGlobal*(...)`, `materializeLazyModules()`, `entrypoints`, `close(signal?)`, `dispose()`.
 - Convention: examples export an `async function createXApp()` factory (calls `MetadataRegistry.clear()` first for test isolation). The `@velajs/cli` reads a `vela.config.ts` with a `createApp()` factory — Vela itself has no `createApp` API.
 
-For Cloudflare use `createCloudflareWorker(AppModule, { envToken: ENV })`; it supplies bindings before bootstrap and isolates applications by environment. Read `references/cloudflare.md`. New projects: read `assets/project-scaffold.md`.
+For Cloudflare export `createCloudflareWorker(AppModule)`; it seeds the native environment as the framework `ENV` before bootstrap and isolates applications by environment. Inject bindings with `@InjectEnv()` or `inject: [ENV]`, typed by `wrangler types` (`worker-configuration.d.ts`); never hand-write an environment `InjectionToken`. Read `references/cloudflare.md`. New projects: read `assets/project-scaffold.md`.
 
 ## Module System
 
@@ -122,7 +122,7 @@ src/
     dto/
       create-user.dto.ts   # defineDto(schema) or shared endpoint schemas
   config/
-    database.config.ts     # registerAs('database', ENV, env => ({...}))
+    database.config.ts     # registerAs('database', env => ({...}))
 vela.config.ts          # optional — for @velajs/cli
 wrangler.toml           # Cloudflare only
 ```
@@ -133,11 +133,11 @@ Use `.js` extensions on relative imports (ESM). Feature modules bundle their con
 
 **"Create a users module with CRUD endpoints"** → Create `src/users/` with `users.module.ts`, `users.controller.ts` (`@Controller('/users')` + `@Get/@Post/...`), `users.service.ts` (`@Injectable()`), and schema-bound endpoints or descriptors via `defineDto`. Register `UsersModule` in the root `imports`. Run `vela route list` to verify. Read `references/controllers-and-routing.md` + `references/validation.md`.
 
-**"Add typed config with a database namespace"** → Use `registerAs('database', ENV, env => ({ url: env.DATABASE_URL }))`, load it with `ConfigModule.forRoot({ load: [dbConfig], isGlobal: true })`, and inject `dbConfig.KEY`. `ENV` is the typed platform token; dynamic `ConfigService` reads return unknown unless parsed. Read `references/config.md`.
+**"Add typed config with a database namespace"** → Use `registerAs('database', env => ({ url: env.DATABASE_URL }))` (the factory receives the application's `ENV`), load it with `ConfigModule.forRoot({ load: [dbConfig], isGlobal: true })` or `ConfigModule.forFeature(dbConfig)`, and inject `dbConfig.KEY` as `ConfigType<typeof dbConfig>`. Untyped `ConfigService` reads return unknown unless parsed; `ConfigService<ConfigShape<[typeof dbConfig]>>` checks paths. Read `references/config.md`.
 
-**"Add signed download URLs"** → Name the route (`@Get('download', { name: 'file.download' })`), add `@SignedUrl()`, provide `URL_SIGNING_SECRET`, and generate links with `UrlGeneratorService.signedUrl('file.download', {}, { expiresIn })`. Read `references/controllers-and-routing.md`.
+**"Add signed download URLs"** → Name the route (`@Get('download', { name: 'file.download' })`), add `@SignedUrl()`, set a `URL_SIGNING_SECRET` secret in `ENV` (or provide the `URL_SIGNING_SECRET` token), and generate links with `UrlGeneratorService.signedUrl('file.download', {}, { expiresIn })`. Read `references/controllers-and-routing.md`.
 
-**"Deploy to Cloudflare Workers"** → Add `@velajs/cloudflare` + `wrangler`, export `createCloudflareWorker(AppModule, { envToken: ENV })` and inject native KV/D1/R2/Queue/DO bindings from `ENV`, and make sure `node:async_hooks` is available for the root entry's `hono/context-storage` import: `nodejs_compat` is default-on from compatibility date 2026-08-04; earlier dates need the `nodejs_als` flag. Read `references/cloudflare.md`.
+**"Deploy to Cloudflare Workers"** → Add `@velajs/cloudflare` + `wrangler`, `export default createCloudflareWorker(AppModule)`, run `wrangler types --include-runtime=false` and include `worker-configuration.d.ts`, inject native KV/D1/R2/Queue/DO bindings from `ENV`, and make sure `node:async_hooks` is available for the root entry's `hono/context-storage` import: `nodejs_compat` is default-on from compatibility date 2026-08-04; earlier dates need the `nodejs_als` flag. Read `references/cloudflare.md`.
 
 ## Reference Loading Guide
 
@@ -154,7 +154,7 @@ Load a reference when the task needs its depth. **This table is the contract** �
 | `references/serialization.md` | Async output schemas, `defineSerializer`, explicit domain projections and private state |
 | `references/rpc-and-graphql.md` | Optional method RPC and executable-schema GraphQL, wire types, owner-aware providers, and operation resources |
 | `references/openapi.md` | `createOpenApiDocument`, `@ApiDoc`/`@ApiTags`/`@ApiResponse`, operationId-from-route-name, `app.mountOpenApi` (Swagger/Scalar/ReDoc) |
-| `references/config.md` | `ConfigModule.forRoot`, `registerAs`, `ConfigType`/`InferConfigType`, typed environment tokens, parser-validated dynamic paths, `forRoot`-only caveat |
+| `references/config.md` | `ConfigModule.forRoot`/`forFeature`, `registerAs`, `ConfigType`/`ConfigShape`, `ENV`/`VelaEnv`/`InjectEnv`, typed `ConfigService<T>` paths, parser-validated dynamic paths, `forRoot`-only caveat |
 | `references/websocket.md` | Gateways, `@SubscribeMessage`, `WsServer`/rooms, `WebSocketModule`, transports (core / websocket-node / CF DO) |
 | `references/queues.md` | `@velajs/vela/queue`: `QueueModule`, `@Processor`/`@Process`, `queueToken`/`QueueClient`, inline driver, `dispatchQueueJob` |
 | `references/live-queries.md` | `@velajs/vela/live`: `LiveModule`, `@LiveResolver`/`@LiveQuery` + tags, `LiveInvalidation`, resume/cursors, CRUD `live: true` bridge, `@velajs/client` hooks |
