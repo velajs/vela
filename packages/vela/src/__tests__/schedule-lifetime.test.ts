@@ -291,7 +291,7 @@ describe('Node scheduled invocation ownership', () => {
     expect(report).toHaveBeenCalledTimes(2);
     expect(report).toHaveBeenLastCalledWith(
       expect.any(Error),
-      expect.objectContaining({ edge: 'schedule', source: 'run' }),
+      expect.objectContaining({ edge: 'schedule', source: 'Job.run' }),
     );
   });
 

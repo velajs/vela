@@ -13,3 +13,6 @@ export type {
 export { parseCron } from './cron-matcher';
 export type { CronMatcher, CronOptions } from './cron-matcher';
 export { parseCronMetadata, parseIntervalMetadata } from './schedule.metadata';
+export { invokeScheduledJob } from './schedule.invoke';
+export type { InvokeScheduledJobOptions } from './schedule.invoke';
+export { cronDialectAmbiguity } from './schedule.diagnostics';

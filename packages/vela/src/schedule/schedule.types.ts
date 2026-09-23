@@ -11,7 +11,13 @@ export interface IntervalMetadata {
   methodName: string;
 }
 
-/** Passed to Node handlers; cancellation is cooperative and close awaits completion. */
+/**
+ * The only argument a scheduled handler receives, identical on every runtime:
+ * the Node executor, a Workers cron trigger and Studio's run-now. `expression`
+ * is the cron string that fired (on Workers, the trigger's exact string),
+ * `scheduledTime` is in Unix milliseconds, and `signal` aborts when the
+ * application closes. Cancellation is cooperative; close awaits completion.
+ */
 export type ScheduleInvocation =
   | {
       readonly kind: 'cron';

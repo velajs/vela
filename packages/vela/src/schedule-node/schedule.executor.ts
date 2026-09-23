@@ -1,16 +1,19 @@
 import { Inject, Injectable, Optional } from '../container/index';
 import { Container } from '../container/container';
 import { InternalDispatcher } from '../dispatch/index';
-import { resolveEntrypoint } from '../entrypoint/execution-context';
-import { runInEntrypointScope } from '../entrypoint/execution-scope';
 import type { Entrypoint } from '../entrypoint/entrypoint.types';
-import { resolveErrorReporter } from '../exceptions/reporter';
 import type {
   BeforeApplicationShutdown,
   OnApplicationBootstrap,
   OnModuleDestroy,
 } from '../lifecycle/index';
 import { parseCron } from '../schedule/cron-matcher';
+import {
+  cronDialectAmbiguity,
+  reportScheduleDiagnostic,
+  scheduledJobName,
+} from '../schedule/schedule.diagnostics';
+import { invokeScheduledJob } from '../schedule/schedule.invoke';
 import { ScheduleRegistry } from '../schedule/schedule.registry';
 import { SCHEDULE_DISPATCH } from '../schedule/schedule.tokens';
 import type {
@@ -18,7 +21,6 @@ import type {
   IntervalMetadata,
   ScheduleDispatchMode,
   ScheduleInvocation,
-  ScheduleJobRef,
 } from '../schedule/schedule.types';
 
 @Injectable()
@@ -67,6 +69,16 @@ export class ScheduleExecutor
         throw new TypeError(
           `Invalid cron expression for ${entry.meta.methodName}: ${entry.meta.expression}`,
         );
+      const ambiguity = cronDialectAmbiguity(entry.meta);
+      if (ambiguity) {
+        reportScheduleDiagnostic(
+          this.#container,
+          `[vela] @Cron('${entry.meta.expression}') on ` +
+            `${scheduledJobName(entry.token, entry.meta.methodName)} declares no dialect, and ` +
+            `${ambiguity}. Node runs it as Unix cron; declare { dialect: 'unix' } or ` +
+            `{ dialect: 'cloudflare' } so it fires on the same days on every runtime.`,
+        );
+      }
       return { entry, matcher, lastMinute: undefined as number | undefined };
     });
     this.#started = true;
@@ -96,11 +108,7 @@ export class ScheduleExecutor
       'expression' in meta
         ? { kind: 'cron', expression: meta.expression, scheduledTime, signal: controller.signal }
         : { kind: 'interval', ms: meta.ms, scheduledTime, signal: controller.signal };
-    const job: ScheduleJobRef =
-      tick.kind === 'cron'
-        ? { kind: 'cron', expression: tick.expression, methodName: meta.methodName }
-        : { kind: 'interval', ms: tick.ms, methodName: meta.methodName };
-    const pending = this.#invoke(entry, job, tick);
+    const pending = this.#invoke(entry, tick);
     this.#active.set(pending, controller);
     // Observe immediately; no detached rejection escapes a timer callback.
     void pending.then(
@@ -117,41 +125,15 @@ export class ScheduleExecutor
     );
   }
 
-  async #invoke(entry: Entrypoint, job: ScheduleJobRef, tick: ScheduleInvocation): Promise<void> {
+  async #invoke(
+    entry: Entrypoint<CronMetadata | IntervalMetadata>,
+    tick: ScheduleInvocation,
+  ): Promise<void> {
     try {
-      if (this.#dispatch?.kind === 'signed') {
-        if (!this.#dispatcher)
-          throw new Error('Signed schedule dispatch requires InternalDispatcher.');
-        await this.#dispatcher.run(this.#dispatch.target(job), {
-          method: this.#dispatch.method,
-          ttlSeconds: this.#dispatch.ttlSeconds,
-          iss: `schedule:${job.methodName}`,
-          signal: tick.signal,
-        });
-      } else {
-        await runInEntrypointScope(
-          this.#container,
-          async (scope) => {
-            const instance: unknown = await resolveEntrypoint(scope, entry);
-            tick.signal.throwIfAborted();
-            if (typeof instance !== 'object' || instance === null)
-              throw new TypeError('Schedule provider must resolve to an object.');
-            const method: unknown = Reflect.get(instance, job.methodName);
-            if (typeof method !== 'function')
-              throw new TypeError(`Scheduled method ${job.methodName} is not callable.`);
-            await Reflect.apply(method, instance, [tick]);
-          },
-          { signal: tick.signal },
-        );
-      }
+      // Scope, signed dispatch and reporting are shared with every other runtime.
+      await invokeScheduledJob(this.#container, entry, tick);
     } catch (error) {
-      // A cooperative shutdown acknowledgement is not a failed job. Unrelated
-      // errors remain reportable even when shutdown happened concurrently.
-      if (tick.signal.aborted && error === tick.signal.reason) return;
-      resolveErrorReporter(this.#container).report(error, {
-        edge: 'schedule',
-        source: job.methodName,
-      });
+      // Already reported; timers keep running unless diagnostics are strict.
       if (this.#container.getDiagnostics() === 'throw') throw error;
     }
   }

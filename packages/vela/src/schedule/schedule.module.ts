@@ -11,8 +11,8 @@ import type { ScheduleDispatchMode } from './schedule.types';
  * `SCHEDULE_DISPATCH` through THIS class rather than through `ScheduleModule`
  * for two reasons:
  *
- *  1. The only consumers (the schedule-node executor today, a CF executor
- *     later) live in OTHER modules, so the token must be GLOBAL — and a
+ *  1. The only consumers (the schedule-node executor, the Cloudflare adapter,
+ *     Studio) live in OTHER modules, so the token must be GLOBAL — and a
  *     dynamic module's `global: true` globalizes ALL its exports. Riding a
  *     single-token host keeps the globalization scoped to just the policy
  *     (mirrors how `InternalDispatcher` is a global token).
@@ -31,11 +31,11 @@ class ScheduleDispatchHost {}
  * (default key — repeated calls dedup).
  *
  * `forRoot({ dispatch })` OPTS IN to signed re-entry for scheduled jobs
- * (`ctx.run`): it contributes a GLOBAL `SCHEDULE_DISPATCH` policy the
- * schedule-node executor reads `@Optional`ly (pair it with
- * `ScheduleNodeModule` for the node runtime). The Cloudflare adapter rejects a
- * signed policy at bootstrap until its cron dispatch honors it. With no options
- * the behavior is unchanged (direct in-isolate method calls).
+ * (`ctx.run`): it contributes a GLOBAL `SCHEDULE_DISPATCH` policy that
+ * `invokeScheduledJob` honors on every runtime (the schedule-node executor, the
+ * Cloudflare adapter's cron triggers, Studio's run-now), so the target route runs
+ * the full request pipeline, global guards included. With no options jobs are
+ * called directly in-isolate.
  */
 @Module({
   // Lazy: the @Cron/@Interval discovery pass runs when ScheduleRegistry is

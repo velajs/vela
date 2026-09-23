@@ -332,6 +332,8 @@ export {
   parseCron,
   parseCronMetadata,
   parseIntervalMetadata,
+  invokeScheduledJob,
+  cronDialectAmbiguity,
   CRON_METADATA,
   INTERVAL_METADATA,
   SCHEDULE_DISPATCH,
@@ -346,6 +348,7 @@ export type {
   ScheduleInvocation,
   ScheduleDispatchMode,
   ScheduleJobRef,
+  InvokeScheduledJobOptions,
 } from './schedule/index';
 
 // WebSocket (edge-safe core; transport-facing internals live at @velajs/vela/websocket)
