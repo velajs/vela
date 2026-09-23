@@ -69,7 +69,11 @@ is listed.
   `ConfigurableModuleClass.forRootAsync<Inject>({ ...options, useFactory: async
   (...deps: InferTokens<Inject>) => check(await options.useFactory(...deps)) })`.
   Destructuring `inject` out of the options separates it from `useFactory`, and
-  the forwarded pair no longer type-checks.
+  the forwarded pair no longer type-checks. The wrapper's rest parameters hide
+  the caller's arity, so call `assertFactoryInject('FeatureModule.forRootAsync',
+  options.useFactory, options.inject)` before wrapping: a caller's factory that
+  declares parameters without `inject` then throws, as the generated
+  `forRootAsync` would.
 - `ConfigurableModuleBuilder` (NestJS parity) is a thin adapter over
   `defineModule` — same engine, either entry.
 - `defineConfigurableModule` remains the low-level engine for

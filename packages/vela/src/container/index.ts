@@ -9,6 +9,7 @@ export {
   MultipleProvidersFoundError,
   ROOT_MODULE_ID,
   UnresolvedDependencyError,
+  assertFactoryInject,
   describeToken,
   defineProvider,
 } from './types';

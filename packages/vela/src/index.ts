@@ -64,6 +64,7 @@ export {
   ROOT_MODULE_ID,
   UnresolvedDependencyError,
   mixin,
+  assertFactoryInject,
   describeToken,
   defineProvider,
 } from './container/index';

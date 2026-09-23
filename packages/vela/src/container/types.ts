@@ -182,8 +182,11 @@ export function isProviderDefinition(value: unknown): value is ProviderDefinitio
 }
 
 /**
- * @internal `inject` may be omitted only for a factory that takes no
- * arguments; otherwise its parameters would silently receive `undefined`.
+ * Throw, naming `provide`, when `useFactory` declares parameters but `inject`
+ * is omitted: `inject` may be omitted only for a factory that takes no
+ * arguments, otherwise its parameters would silently receive `undefined`.
+ * A module that wraps a caller's factory in its own calls this on the
+ * caller's factory first, because the wrapper hides the caller's arity.
  */
 export function assertFactoryInject(provide: Token, useFactory: unknown, inject: unknown): void {
   if (typeof useFactory === 'function' && useFactory.length > 0 && inject === undefined) {
