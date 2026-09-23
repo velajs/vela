@@ -45,9 +45,10 @@ whole `Provider` or `ProviderLiteral` union is checked when the module loads ins
 elements of a `Provider[]` parameter, of `dynamic.providers ?? []` or of a `ModuleOptions` object,
 also when they are spread into an array next to other entries:
 `@Module({ providers: [...(dynamic.providers ?? []), AuditService] })` compiles, while a mistyped
-literal written next to the spread does not. The literals of a list typed as a whole are validated
-at runtime only, so prefer `defineProvider` in computed contributions and shared lists when the
-value type matters.
+literal written next to a single spread does not. A literal written between two spreads, as in
+`[...shared, literal, ...extra]`, is not checked until the module loads. The literals of a list
+typed as a whole are validated at runtime only, so prefer `defineProvider` in computed contributions
+and shared lists when the value type matters.
 
 A module looks a token up in Nest's order, and the first step that finds a provider answers:
 
@@ -62,9 +63,14 @@ A module that imports an exporter of a token therefore uses that export even whe
 module exports the token too, and a `@Global()` export overrides the application's registration only
 for the modules that neither provide the token nor import an exporter of it. A copy that a module
 registers without exporting it is never a candidate outside that module. When a module's imports
-export the token from more than one module, or two `@Global()` modules export it, the lookup fails
-with `MultipleProvidersFoundError`; Nest would pick one of them instead. `resolveAll(token, moduleId)`
+export the token from more than one module, including a `@Global()` module that the module also
+imports explicitly, or two `@Global()` modules export it, the lookup fails with
+`MultipleProvidersFoundError`; Nest would pick one of them instead. `resolveAll(token, moduleId)`
 returns the providers of the same step, so it agrees with `resolve(token, moduleId)`.
+
+An `InjectionToken` default factory applies only when no module registers the token. When another
+module registers it and the requesting module cannot see that registration, the lookup fails with
+`ModuleVisibilityError` instead of falling back to the default.
 
 An application-wide lookup has no requesting module: `app.get(token)`, `ModuleRef.get(token,
 { strict: false })`, and the dependencies of the providers the application registers itself, such as
@@ -114,8 +120,9 @@ module registers resolves from the first such module that is not a lazy module s
 global component does not materialize a lazy module another module can serve. When every module
 that registers the class is pending, a lazy module that lists the class in its providers serves it,
 materialized with its group, while one that holds only the copy registered for an enhancer its
-classes reference never does. An explicit list resolved for a module, such as a GraphQL operation's guards, uses a registration only when that
-module can see it; any other class is built as an unregistered class.
+classes reference never does. An explicit list resolved for a module, such as a GraphQL
+operation's guards, uses a registration only when that module can see it; any other class is built
+as an unregistered class.
 
 Each module owns its provider registrations. A token registered in two module instances has two
 independent instances, including with `Scope.REQUEST`. Within a request child, repeated resolutions
