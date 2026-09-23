@@ -114,15 +114,9 @@ function fixture() {
 }
 
 describe('native application environments', () => {
-  it('builds a root graph once per environment, sharing concurrent cold events', async () => {
+  it('builds one application per environment, sharing concurrent cold events', async () => {
     const f = fixture();
-    const created: object[] = [];
-    const worker = createCloudflareWorker({
-      create(env) {
-        created.push(env);
-        return f.AppModule;
-      },
-    });
+    const worker = createCloudflareWorker(f.AppModule);
     const a = f.environment('a');
     const b = f.environment('b');
     await Promise.all([
@@ -131,7 +125,6 @@ describe('native application environments', () => {
       worker.queue({ queue: 'jobs', messages: [] }, b, context),
     ]);
     await worker.queue({ queue: 'jobs', messages: [] }, a, context);
-    expect(created).toEqual([a, b]);
     expect(f.constructions()).toBe(2);
     expect(f.seen.map((row) => row.name).sort()).toEqual(['a', 'a', 'a', 'b']);
   });

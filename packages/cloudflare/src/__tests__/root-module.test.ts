@@ -1,84 +1,84 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import { ENV, Injectable, MetadataRegistry, Module } from '@velajs/vela';
-import type { OnModuleInit, VelaEnv } from '@velajs/vela';
-import { createCloudflareApp } from '../cloudflare-factory';
-import { resolveCloudflareRoot } from '../root-module';
+import { describe, expect, it } from 'vitest';
+import { ENV, Inject, Injectable, InjectionToken, Module, defineModule } from '@velajs/vela';
+import type { VelaEnv } from '@velajs/vela';
+import { countRegisteredClasses } from '@velajs/vela/internal';
+import { createCloudflareApp, createCloudflareWorker } from '../cloudflare-factory';
+import { VelaWebSocketDurableObject } from '../websocket/websocket.durable-object';
 
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
-
-function feature() {
-  @Injectable()
-  class Service {}
-
-  @Module({ providers: [Service], exports: [Service] })
-  class Feature {}
-  return { Feature, Service };
+interface GreetingOptions {
+  greeting: string;
 }
 
-describe('Cloudflare root resolution', () => {
-  it('runs a { create(env) } root once per environment across applications', async () => {
-    const { Feature, Service } = feature();
-    const calls: string[] = [];
-    const root = {
-      create: (env: VelaEnv) => {
-        calls.push(String(Reflect.get(env, 'NAME')));
-        return { module: Feature };
+const GREETING_OPTIONS = new InjectionToken<GreetingOptions>('test.cf.root.greeting');
+
+const { ConfigurableModuleClass } = defineModule<GreetingOptions>({
+  name: 'Greeting',
+  optionsToken: GREETING_OPTIONS,
+  setup: () => ({ exports: [GREETING_OPTIONS] }),
+});
+
+class GreetingModule extends ConfigurableModuleClass {}
+
+@Injectable()
+class Greeter {
+  constructor(@Inject(GREETING_OPTIONS) readonly options: GreetingOptions) {}
+}
+
+/** One static root for every environment: bindings reach it through ENV. */
+@Module({
+  imports: [
+    GreetingModule.forRootAsync({
+      inject: [ENV],
+      useFactory: (env: VelaEnv): GreetingOptions => {
+        const greeting: unknown = Reflect.get(env, 'GREETING');
+        if (typeof greeting !== 'string') throw new TypeError('GREETING must be a string');
+        return { greeting };
       },
-    };
-    const a = { NAME: 'a' };
-    const b = { NAME: 'b' };
+    }),
+  ],
+  providers: [Greeter],
+})
+class AppModule {}
 
-    const first = await createCloudflareApp(root, { env: a });
-    const second = await createCloudflareApp(root, { env: a });
-    const other = await createCloudflareApp(root, { env: b });
-
-    expect(calls).toEqual(['a', 'b']);
-    expect(await resolveCloudflareRoot(root, a)).toBe(await resolveCloudflareRoot(root, a));
-    // Sharing the resolved module graph never shares application state.
-    expect(first.get(Service)).not.toBe(second.get(Service));
-    expect(second.get(ENV)).toBe(a);
-    expect(other.get(ENV)).toBe(b);
-    await Promise.all([first.close(), second.close(), other.close()]);
+describe('Cloudflare roots', () => {
+  it('configures one static root per environment through forRootAsync({ inject: [ENV] })', async () => {
+    const a = await createCloudflareApp(AppModule, { env: { GREETING: 'a' } });
+    const b = await createCloudflareApp(AppModule, { env: { GREETING: 'b' } });
+    try {
+      expect(a.get(Greeter).options).toEqual({ greeting: 'a' });
+      expect(b.get(Greeter).options).toEqual({ greeting: 'b' });
+    } finally {
+      await Promise.all([a.close(), b.close()]);
+    }
   });
 
-  it('wraps a dynamic root once per environment', async () => {
-    const { Feature } = feature();
-    const root = { module: Feature };
-    const env = { NAME: 'dynamic' };
+  it('builds applications from a DynamicModule root without declaring classes', async () => {
+    const root = { module: AppModule, key: 'dynamic-root' };
+    const warm = await createCloudflareApp(root, { env: { GREETING: 'warm' } });
+    await warm.close();
+    const before = countRegisteredClasses();
 
-    const wrapper = await resolveCloudflareRoot(root, env);
-
-    expect(await resolveCloudflareRoot(root, env)).toBe(wrapper);
-    expect(await resolveCloudflareRoot(root, { NAME: 'replaced' })).not.toBe(wrapper);
-  });
-
-  it('runs the factory again after a failed bootstrap', async () => {
-    let attempts = 0;
-
-    @Injectable()
-    class Flaky implements OnModuleInit {
-      onModuleInit(): void {
-        if (attempts === 1) throw new Error('transient bootstrap failure');
-      }
+    for (const greeting of ['one', 'two', 'three']) {
+      // oxlint-disable-next-line eslint/no-await-in-loop -- one environment at a time
+      const app = await createCloudflareApp(root, { env: { GREETING: greeting } });
+      expect(app.get(Greeter).options).toEqual({ greeting });
+      // oxlint-disable-next-line eslint/no-await-in-loop -- close before the next environment
+      await app.close();
     }
 
-    @Module({ providers: [Flaky] })
-    class FlakyModule {}
+    expect(countRegisteredClasses()).toBe(before);
+  });
 
-    const root = {
-      create: () => {
-        attempts++;
-        return FlakyModule;
-      },
+  it('accepts only module roots', () => {
+    const env = { GREETING: 'typed' };
+    const typeOnly = (): void => {
+      // @ts-expect-error environment-built roots are removed; configure through forRootAsync({ inject: [ENV] })
+      void createCloudflareApp({ create: () => AppModule }, { env });
+      // @ts-expect-error async environment-built roots are removed as well
+      createCloudflareWorker({ create: async () => ({ module: AppModule }) });
+      // @ts-expect-error a Durable Object is built from a module class or DynamicModule
+      VelaWebSocketDurableObject({ create: () => AppModule });
     };
-    const env = { NAME: 'retry' };
-
-    await expect(createCloudflareApp(root, { env })).rejects.toThrow('transient bootstrap failure');
-    const app = await createCloudflareApp(root, { env });
-
-    expect(attempts).toBe(2);
-    await app.close();
+    void typeOnly;
   });
 });
