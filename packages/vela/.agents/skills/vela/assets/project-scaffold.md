@@ -19,6 +19,7 @@ Decorator metadata requires a compiler that emits it. Vite 8 compiles with Oxc; 
     "deploy": "vite build && wrangler deploy",
     "test": "vitest run",
     "types": "wrangler types --include-runtime=false",
+    "pretypecheck": "pnpm run types",
     "typecheck": "tsc --noEmit"
   }
 }
@@ -138,6 +139,6 @@ For a platform-neutral application use `await VelaFactory.create(AppModule)` and
 
 ## Introspection and RPC
 
-Install `@velajs/cli` as a dev dependency when introspection/codegen is needed and run it as `pnpm vela ...`. Its `vela.config.ts` uses `defineVelaConfig({ rootModule: AppModule, createApp })` from `@velajs/cli/config` and imports `./src/app.module.js` directly: with Vite 8 installed, the CLI loads it through Vite's `runnerImport` with the same Oxc decorator options, so nothing is built first. Make `createApp` construct the application with the appropriate test/tooling environment (`VelaFactory.create(AppModule, { env, adapters })`); never invent platform bindings with a type assertion.
+Install `@velajs/cli` as a dev dependency when introspection/codegen is needed and run it as `pnpm vela ...`. Its `vela.config.ts` uses `defineVelaConfig({ rootModule: AppModule, createApp })` from `@velajs/cli/config` and imports `./src/app.module.js` directly: with Vite 8 installed, the CLI loads it through a Vite module runner that stays open for the whole command, with the same Oxc decorator options, so nothing is built first. Make `createApp` construct the application with the appropriate test/tooling environment (`VelaFactory.create(AppModule, { env, adapters })`); never invent platform bindings with a type assertion.
 
 Run `vela route list` and `vela openapi dump` to inspect the contract, then `vela client generate --out src/api.generated.ts --strict`. The frontend imports only the generated `AppType` and Hono `hc` from `@velajs/client/http`. See `references/openapi.md`, `references/cloudflare.md`, and `references/live-queries.md` for the complete wiring.

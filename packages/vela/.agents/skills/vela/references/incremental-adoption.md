@@ -36,7 +36,7 @@ NestJS compiles with `tsc`, which reads `emitDecoratorMetadata` from tsconfig. A
 - Enable `verbatimModuleSyntax` + `isolatedModules`: Oxc compiles file by file, so a plain `import { SomeInterface }` in a decorated signature breaks at link time. Import injected classes as values, never `import type`.
 - In Workers tests, read the response body before `await waitOnExecutionContext(ctx)`.
 - If you turn on `build.minify`, set `build.rolldownOptions.output.keepNames: true`.
-- `vela.config.ts` can import `./src/...` directly: `@velajs/cli` loads it through Vite's `runnerImport` with the same Oxc options when `vite` is installed.
+- `vela.config.ts` can import `./src/...` directly: `@velajs/cli` loads it through a Vite module runner that stays open for the whole command, with the same Oxc options, when `vite` is installed.
 - A Nest `UnknownDependenciesException` corresponds to Vela's `UnresolvedDependencyError`: `Cannot resolve UsersController(?, AuditService) in UsersModule. Argument #0 UsersService is declared in DataModule but not exported (add it to DataModule.exports)`.
 
 ## Embedding a Vela app inside an existing Hono app

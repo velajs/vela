@@ -74,9 +74,10 @@ Keep these rules when you configure a project yourself:
   `src/` with esbuild, which emits no decorator metadata. See
   [deployment](deployment.md#build-with-vite).
 
-`vela.config.ts` is loaded by `@velajs/cli` through Vite's `runnerImport` with the
-same Oxc options when the project installs Vite 8 (an optional peer of the CLI),
-so the config can import decorated `src/` files directly. Without Vite, the CLI
+`vela.config.ts` is loaded by `@velajs/cli` through a Vite module runner that
+stays open for the whole command, with the same Oxc options, when the project
+installs Vite 8 (an optional peer of the CLI), so the config can import decorated
+`src/` files directly. Without Vite, the CLI
 imports the config with Node, which does not transform decorators.
 
 If Oxc cannot build a project, use SWC inside Vite with
