@@ -1,4 +1,5 @@
 import {
+  assertFactoryInject,
   Container,
   type DynamicModule,
   defineModule,
@@ -296,6 +297,8 @@ export class MailModule {
     options: MailModuleAsyncOptions<Inject>,
   ): DynamicModule {
     const { useFactory } = options;
+    // The wrapper below hides the factory's arity from the module engine.
+    assertFactoryInject('MailModule.forRootAsync', useFactory, options.inject);
     const key = registrationKey(asyncIdentity(options), options.key);
     return {
       ...mailModuleHost.ConfigurableModuleClass.forRootAsync<Inject>({

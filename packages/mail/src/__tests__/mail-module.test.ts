@@ -148,6 +148,13 @@ describe('MailModule + MailService', () => {
       expect(firstTransport.calls).toHaveLength(1);
     });
 
+    it('rejects an async factory that declares parameters but no inject', () => {
+      expect(() =>
+        // @ts-expect-error A factory with parameters names the tokens that supply them.
+        MailModule.forRootAsync({ useFactory: (from: string) => ({ from }) }),
+      ).toThrow(/MailModule\.forRootAsync: useFactory declares parameters but no inject tokens/);
+    });
+
     it('separates one async factory wired to distinct equal-named configuration tokens', () => {
       interface MailConfig {
         transport: MailTransport;
