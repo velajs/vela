@@ -1,10 +1,10 @@
+import { createDiscoverableDecorator } from '../index';
 import type { DiscoveryService } from '../index';
 import type { QueueRegistration, RegisteredQueue } from './queue.types';
 
-// The record rides on a per-registration class as a static property keyed by a
-// registry symbol, so it survives Vite HMR re-evaluation and MetadataRegistry
-// resets alike, and discovery reads it without constructing anything.
-const REGISTRATION = Symbol.for('vela:queue:registration:v1');
+// The key is stable across Vite HMR re-evaluation; discovery reads each
+// record's value structurally, so a re-evaluated class still counts.
+const QueueRegistrationMarker = createDiscoverableDecorator<true>('vela:queue:registration');
 
 const BINDING_NAME = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 
@@ -43,14 +43,21 @@ export function readQueueRegistration(value: unknown): QueueRegistration {
   });
 }
 
-/** Attach a registration to the class `registerQueue` declares for it. */
-export function attachQueueRegistration(target: object, registration: QueueRegistration): void {
-  Object.defineProperty(target, REGISTRATION, { value: registration });
+/**
+ * The registration one `registerQueue` module instance provides. Every keyed
+ * instance lists this one class token with its own record as the value, so
+ * registering queues declares no class, and discovery reads the values
+ * without constructing anything.
+ */
+@QueueRegistrationMarker(true)
+export class QueueRegistrationRecord {
+  constructor(readonly registration: QueueRegistration) {}
 }
 
-function registrationOf(token: unknown): QueueRegistration | undefined {
-  if (typeof token !== 'function' || !Object.hasOwn(token, REGISTRATION)) return undefined;
-  return readQueueRegistration(Reflect.get(token, REGISTRATION));
+function registrationOf(record: unknown): QueueRegistration {
+  return readQueueRegistration(
+    typeof record === 'object' && record !== null ? Reflect.get(record, 'registration') : record,
+  );
 }
 
 /**
@@ -98,12 +105,11 @@ export class QueueRegistry {
 
   /** Collect the registrations of every module in an application, without constructing them. */
   static discover(discovery: DiscoveryService): QueueRegistry {
-    const registrations: QueueRegistration[] = [];
-    for (const found of discovery.getRegistrations({ metadataOnly: true })) {
-      const registration = registrationOf(found.token);
-      if (registration) registrations.push(registration);
-    }
-    return new QueueRegistry(registrations);
+    return new QueueRegistry(
+      discovery
+        .registrationsWithMeta(QueueRegistrationMarker)
+        .map(({ instance }) => registrationOf(instance)),
+    );
   }
 
   /** The merged registration of a logical queue, or `undefined` when none registered it. */

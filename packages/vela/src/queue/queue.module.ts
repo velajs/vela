@@ -18,7 +18,7 @@ import { inline } from './inline.driver';
 import { QueueClient } from './queue.client';
 import { QueueDispatchBinding } from './queue.binding';
 import { QueueTransportEntrypoints } from './queue.entrypoints';
-import { attachQueueRegistration, QueueRegistry, readQueueRegistration } from './queue.registry';
+import { QueueRegistrationRecord, QueueRegistry, readQueueRegistration } from './queue.registry';
 import { QUEUE_DRIVER, queueToken } from './queue.tokens';
 import type { QueueDriver, QueueModuleOptions, QueueRegistration } from './queue.types';
 
@@ -109,7 +109,7 @@ class QueueModuleRequired {
 
 /** Owns one queue's client, keyed by name, so every registration shares it. */
 class QueueClientHost {}
-/** Owns one registration record, keyed by the whole registration. */
+/** Owns one registration record, keyed by the whole registration, like a defineModule instance. */
 class QueueRegistrationHost {}
 /** Groups the registrations of one `registerQueue(a, b, ...)` call. */
 class QueueRegistrationGroup {}
@@ -118,12 +118,6 @@ function registrationModule(input: QueueRegistration): DynamicModule {
   const registration = readQueueRegistration(input);
   const { name } = registration;
   const token = queueToken(name);
-  class QueueRegistrationRecord {}
-  Object.defineProperty(QueueRegistrationRecord, 'name', {
-    value: `QueueRegistration(${name})`,
-  });
-  Injectable()(QueueRegistrationRecord);
-  attachQueueRegistration(QueueRegistrationRecord, registration);
   const client: DynamicModule = {
     module: QueueClientHost,
     key: name,
@@ -142,7 +136,11 @@ function registrationModule(input: QueueRegistration): DynamicModule {
     module: QueueRegistrationHost,
     key: JSON.stringify([name, registration.binding ?? null, registration.consumer ?? null]),
     imports: [client],
-    providers: [QueueRegistrationRecord],
+    providers: [
+      defineProvider(QueueRegistrationRecord, {
+        useValue: new QueueRegistrationRecord(registration),
+      }),
+    ],
     exports: [token],
   };
 }
