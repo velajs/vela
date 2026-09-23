@@ -94,12 +94,12 @@ Native `Queue<T>` bindings and `@QueueConsumer` remain independently usable. The
 optional `@velajs/cloudflare/queue` helpers connect native delivery to portable processors:
 
 ```ts
-import { Container, EntrypointRegistry, Inject, Injectable } from '@velajs/vela';
+import { Container, ENV, EntrypointRegistry, Inject, Injectable } from '@velajs/vela';
 import { QueueModule, dispatchQueueJob } from '@velajs/vela/queue';
 import { QueueConsumer } from '@velajs/cloudflare';
 import { cloudflareQueueDriver, consumeQueueBatch } from '@velajs/cloudflare/queue';
 
-// ENV (from @velajs/vela) is the native Workers environment.
+// ENV is the native Workers environment.
 QueueModule.forRootAsync({
   queues: ['email'],
   inject: [ENV],
