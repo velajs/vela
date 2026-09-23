@@ -281,15 +281,23 @@ export type TypedProviderLiteral<K extends Token> = {
   scope?: Scope;
 } & ProviderStrategy<InferToken<K>, readonly []>;
 
+// An entry typed as a member of the whole literal union, such as an element
+// of a spread `Provider[]`, names no particular token: the loader checks it.
 type CheckedProviderEntry<P> = P extends Type | ProviderDefinition
   ? P
   : P extends { provide: infer K extends Token }
-    ? P extends TypedProviderLiteral<K>
-      ? P
-      : TypedProviderLiteral<K>
+    ? [Extract<ProviderLiteral, P>] extends [never]
+      ? P extends TypedProviderLiteral<K>
+        ? P
+        : TypedProviderLiteral<K>
+      : P
     : Provider;
 
-/** A `providers` list checked per element; every literal is a {@link TypedProviderLiteral}. */
+/**
+ * A `providers` list checked per element: every literal that names its token
+ * is a {@link TypedProviderLiteral}; an entry typed as the whole
+ * {@link ProviderLiteral} union is checked when the module loads.
+ */
 export type CheckedProviders<P extends readonly unknown[]> = {
   [I in keyof P]: CheckedProviderEntry<P[I]>;
 };

@@ -284,6 +284,11 @@ describe('provider literals', () => {
       // @ts-expect-error A misspelled option is reported where it is written.
       exprts: [Clock],
     });
+    // Literals written next to a spread list typed as a whole are checked too.
+    Module({
+      // @ts-expect-error The value must have the token's type.
+      providers: [...providers, { provide: COUNT, useValue: 'one' }],
+    });
     expect(providers).toHaveLength(1);
     expect(optional(true)).toBeTypeOf('function');
   });
@@ -301,6 +306,9 @@ describe('provider literals', () => {
     const literals: ProviderLiteral[] = [{ provide: COUNT, useValue: 3 }];
     const counted = [{ provide: COUNT, useValue: 3 }];
     Module({ providers: dynamic.providers ?? [] });
+    Module({ providers: [...(dynamic.providers ?? []), Clock] });
+    Module({ providers: [...listed, defineProvider(LABEL, { useValue: 'extra' })] });
+    Module({ providers: [Clock, ...literals, { provide: COUNT, useValue: 4 }] });
     Module({ providers: literals });
     Module({ providers: counted });
     Module(options);

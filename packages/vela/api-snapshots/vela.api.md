@@ -3138,7 +3138,7 @@ export { ValidationPipe as t };
 ### `<internal:metadata.registry.d.ts>`
 
 ```ts
-import { $ as ProviderDefinition, F as Constructor, G as InjectionToken, N as Container, P as CheckedProviders, Q as Provider, U as InjectMetadata, V as InferToken, _t as Scope, a as ExecutionContext, c as NestInterceptor, et as ProviderLiteral, i as ExceptionFilter, it as Type, l as NestMiddleware, r as CanActivate, rt as Token, t as ArgumentMetadata, u as PipeTransform } from "<internal:types-http-hono.types.d.ts>";
+import { $ as ProviderDefinition, F as Constructor, G as InjectionToken, N as Container, P as CheckedProviders, Q as Provider, U as InjectMetadata, V as InferToken, _t as Scope, a as ExecutionContext, c as NestInterceptor, i as ExceptionFilter, it as Type, l as NestMiddleware, r as CanActivate, rt as Token, t as ArgumentMetadata, u as PipeTransform } from "<internal:types-http-hono.types.d.ts>";
 import { j as ExceptionHandler } from "<internal:request-context.d.ts>";
 import { $ as ModuleOptions, G as DynamicModule, J as HttpHandlerMeta, K as FilterType, Q as ModuleMetadata, U as ComponentType, W as ComponentTypeMap, X as MiddlewareType, Y as InterceptorType, a as NonceStore, et as ParameterMetadata, i as InvocationTransport, nt as RouteDefinition, q as GuardType, tt as PipeType } from "<internal:types-registry-types.d.ts>";
 import { Catalog } from "@velajs/errors";
@@ -3178,9 +3178,6 @@ declare function Global(): ClassDecorator;
 interface ModuleDecoratorOptions<P extends readonly unknown[] = readonly Provider[]> extends Omit<ModuleOptions, 'providers'> {
   providers?: CheckedProviders<P>;
 }
-declare function Module<const P extends readonly Provider[]>(options?: ModuleOptions & {
-  providers?: number extends P['length'] ? ProviderLiteral extends P[number] ? P : never : never;
-}): ClassDecorator;
 declare function Module(options?: ModuleDecoratorOptions<readonly (Type | ProviderDefinition)[]>): ClassDecorator;
 declare function Module<const P extends readonly unknown[] = readonly Provider[]>(options?: ModuleDecoratorOptions<P>): ClassDecorator;
 declare function isModule(target: Constructor): boolean;
@@ -4196,7 +4193,7 @@ type TypedProviderLiteral<K extends Token> = {
 } & ProviderStrategy<InferToken<K>, readonly []>;
 type CheckedProviderEntry<P> = P extends Type | ProviderDefinition ? P : P extends {
   provide: infer K extends Token;
-} ? P extends TypedProviderLiteral<K> ? P : TypedProviderLiteral<K> : Provider;
+} ? [Extract<ProviderLiteral, P>] extends [never] ? P extends TypedProviderLiteral<K> ? P : TypedProviderLiteral<K> : P : Provider;
 
 type CheckedProviders<P extends readonly unknown[]> = { [I in keyof P]: CheckedProviderEntry<P[I]>; };
 
@@ -4335,6 +4332,7 @@ declare class Container {
   resolveAll<K extends Token>(token: K, requestingModuleId?: string): InferToken<K>[];
 
   getVisibleProviderSnapshots(token: Token, requestingModuleId?: string): readonly ProviderSnapshot[];
+
   private findAllRegistrations;
 
   has(token: Token): boolean;

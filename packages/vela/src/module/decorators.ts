@@ -1,10 +1,4 @@
-import type {
-  CheckedProviders,
-  Provider,
-  ProviderDefinition,
-  ProviderLiteral,
-  Type,
-} from '../container/types';
+import type { CheckedProviders, Provider, ProviderDefinition, Type } from '../container/types';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import type { Constructor, DynamicModule, ModuleMetadata, ModuleOptions } from '../registry/types';
 
@@ -27,22 +21,13 @@ export interface ModuleDecoratorOptions<
   providers?: CheckedProviders<P>;
 }
 
-// A list whose element type is the whole literal union, such as a `Provider[]`
-// parameter or `dynamic.providers ?? []`, is checked when the module loads; a
-// narrower list, such as an unannotated `const`, is checked per element below.
-// Declared first because TypeScript reports a call that no overload accepts
-// against the last overload, which reads each element.
-export function Module<const P extends readonly Provider[]>(
-  options?: ModuleOptions & {
-    providers?: number extends P['length']
-      ? ProviderLiteral extends P[number]
-        ? P
-        : never
-      : never;
-  },
-): ClassDecorator;
 // A list the compiler cannot read element by element, such as `flag ? [A] : []`,
-// holds classes and definitions; an array literal may also hold checked literals.
+// holds classes and definitions. Declared first because TypeScript reports a
+// call that no overload accepts against the last overload, which reads each
+// element: a literal that names its token must produce its value, while an
+// entry typed as the whole `Provider` union, such as the elements of a
+// `Provider[]` parameter or of `dynamic.providers ?? []`, spread or not, is
+// checked when the module loads.
 export function Module(
   options?: ModuleDecoratorOptions<readonly (Type | ProviderDefinition)[]>,
 ): ClassDecorator;

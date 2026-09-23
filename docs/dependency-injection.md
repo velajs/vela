@@ -38,12 +38,16 @@ correlate per element, so they accept the loosely typed `ProviderLiteral` union.
 checks each literal when the module loads: an entry without a token, without exactly one of
 `useValue`, `useClass`, `useFactory` and `useExisting`, or with a strategy of the wrong kind fails
 the load with an error naming the list entry and its token, for example
-`FeatureModule.providers[2] (InjectionToken(STORE)) is not a provider`. `@Module` treats a list
-typed with the whole `Provider` or `ProviderLiteral` element type the same way, such as a
-`Provider[]` parameter, `dynamic.providers ?? []` or a `ModuleOptions` object. An array literal
-written in `@Module`, and a list declared without a type annotation, are checked element by element.
-The literals of a list typed as a whole are validated at runtime only, so prefer `defineProvider` in
-computed contributions and shared lists when the value type matters.
+`FeatureModule.providers[2] (InjectionToken(STORE)) is not a provider`. `@Module` checks its
+`providers` element by element: a literal that names its token, whether written in the array or in a
+list declared without a type annotation, must produce the token's value. An entry typed with the
+whole `Provider` or `ProviderLiteral` union is checked when the module loads instead, such as the
+elements of a `Provider[]` parameter, of `dynamic.providers ?? []` or of a `ModuleOptions` object,
+also when they are spread into an array next to other entries:
+`@Module({ providers: [...(dynamic.providers ?? []), AuditService] })` compiles, while a mistyped
+literal written next to the spread does not. The literals of a list typed as a whole are validated
+at runtime only, so prefer `defineProvider` in computed contributions and shared lists when the
+value type matters.
 
 A module looks a token up in Nest's order, and the first step that finds a provider answers:
 
