@@ -112,7 +112,9 @@ export interface WebSocketUpgradeAuthenticationContext {
  * Gateways name the class in `@WebSocketGateway({ authenticator })`. Each
  * application resolves it once, through dependency injection, from the module
  * that declares the gateway: a registered provider is reused, and an
- * unregistered class is constructed with what that module can inject.
+ * unregistered class is constructed with what that module can inject. That
+ * instance serves every upgrade, so a request-scoped authenticator, declared
+ * or through a request-scoped dependency, is rejected as misconfigured.
  */
 export interface UpgradeAuthenticator {
   authenticate(

@@ -112,7 +112,11 @@ Each application resolves the authenticator once, through dependency injection,
 from the module that declares the gateway: a provider that module can see is
 reused, and any other class, including one another module registers without
 exporting it, is constructed with what that module can inject (here
-`SessionService`, or `ENV` with `@InjectEnv()`). The
+`SessionService`, or `ENV` with `@InjectEnv()`). That one instance is built
+once per application and authenticates every upgrade, so it must not be
+request-scoped: an authenticator that declares `Scope.REQUEST`, or injects a
+request-scoped provider such as `REQUEST_CONTEXT`, is a configuration error.
+Read the upgrade request from the `request` argument of `authenticate()`. The
 gateway declaration stays static; there is no closure-based authentication
 option. `BetterAuthUpgradeAuthenticator` (`@velajs/better-auth`) and
 `CloudflareAccessUpgradeAuthenticator` (`@velajs/cloudflare-access/vela`) are
@@ -124,7 +128,7 @@ ready-made authenticators. See [connection security](#connection-security) below
 - `roomParam` — the path parameter used as the room id. It is required for every parameterized path; bootstrap rejects missing or non-existent parameter names.
 - `allowedOrigins` — browser Origin allowlist: an array of origins, or `(env) => origins`, which reads the application's `ENV` once per application (for example `(env) => [env.APP_ORIGIN]`). Omitted means same-origin; clients without an Origin header are allowed. Use `'*'` only as an explicit opt-out.
 - `authorizeUpgrade(request)` — optional lightweight authentication/authorization hook that runs before socket allocation. It must return exactly `true`; errors fail closed.
-- `authenticator` — the `UpgradeAuthenticator` class, required for successful connections. Its `authenticate(request, context)` receives the resolved room and optional short-lived `ticket`, and must return a canonical `{ principal, tenantId, expiresAtMs }` identity. A missing authenticator, `false`, an invalid result or a throwing `authenticate` refuses the upgrade with 403. An authenticator the declaring module cannot construct is a configuration error and answers 500.
+- `authenticator` — the `UpgradeAuthenticator` class, required for successful connections. Its `authenticate(request, context)` receives the resolved room and optional short-lived `ticket`, and must return a canonical `{ principal, tenantId, expiresAtMs }` identity. A missing authenticator, `false`, an invalid result or a throwing `authenticate` refuses the upgrade with 403. An authenticator the declaring module cannot construct, or a request-scoped one, is a configuration error and answers 500.
 - `authorizeDelivery(client)` — optional mutable authorization/revocation hook re-run for every server-initiated recipient. App-wide guards are also re-run; denial closes with 1008.
 - `maxFrameBytes` — inbound and outbound frame ceiling, defaulting to 64 KiB. Oversized inbound frames close with code 1009 before JSON decoding; oversized replies, direct sends, and broadcasts close the affected recipient with 1009 without writing the frame.
 

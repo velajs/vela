@@ -1,4 +1,7 @@
+import { Scope } from '../constants';
 import type { Container } from '../container/container';
+import { getScope, isErasedTypeToken, planConstructor } from '../container/decorators';
+import { ForwardRef, type Type } from '../container/types';
 import { ENV } from '../env';
 import type {
   UpgradeAuthenticator,
@@ -191,9 +194,18 @@ async function resolveUpgradePolicy(
   if (type === undefined) return { allowedOrigins };
   // A provider the declaring module can see keeps its registration; any other
   // class, including one another module keeps private, is built with what the
-  // declaring module can inject.
+  // declaring module can inject. Either way it serves every upgrade of the
+  // application, so it cannot be request-scoped.
+  const scope = container.getResolvedScope(type, moduleId);
+  if ((scope ?? constructedScope(container, type, moduleId)) === Scope.REQUEST) {
+    throw new TypeError(
+      `WebSocket gateway '${options.path ?? ''}' authenticator ${type.name} is request-scoped, ` +
+        'but an upgrade authenticator is built once per application: give it the default ' +
+        'scope and read the request authenticate() receives.',
+    );
+  }
   const authenticator: unknown =
-    container.getResolvedScope(type, moduleId) === undefined
+    scope === undefined
       ? await container.construct(type, moduleId)
       : await container.resolveAsync(type, moduleId);
   // A provider registered under the class token may hold any value.
@@ -201,6 +213,21 @@ async function resolveUpgradePolicy(
     throw new TypeError(`${type.name} must implement UpgradeAuthenticator.authenticate()`);
   }
   return { allowedOrigins, authenticator };
+}
+
+// The scope of a class built for a module: REQUEST when it declares it or when
+// a dependency the module resolves is request-scoped, as for a provider.
+function constructedScope(container: Container, type: Type, moduleId?: string): Scope {
+  for (const { token: raw } of planConstructor(type)) {
+    const token = raw instanceof ForwardRef ? raw.factory() : raw;
+    if (
+      !isErasedTypeToken(token) &&
+      container.getResolvedScope(token, moduleId) === Scope.REQUEST
+    ) {
+      return Scope.REQUEST;
+    }
+  }
+  return getScope(type);
 }
 
 function isUpgradeAuthenticator(value: unknown): value is UpgradeAuthenticator {

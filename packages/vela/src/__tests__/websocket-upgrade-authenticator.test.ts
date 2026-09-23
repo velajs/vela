@@ -5,13 +5,17 @@ import {
   Injectable,
   InjectionToken,
   Module,
+  REQUEST_CONTEXT,
+  Scope,
   VelaFactory,
   defineProvider,
+  type RequestContext,
   type VelaApplication,
 } from '../index.js';
 import {
   WebSocketGateway,
   WebSocketModule,
+  createWebSocketUpgradeGate,
   type OnGatewayConnection,
   type UpgradeAuthenticator,
   type WebSocketUpgradeAuthenticationContext,
@@ -234,6 +238,50 @@ describe('WebSocket upgrade authenticators', () => {
       expect(opened).toHaveLength(1);
       // The private provider and the gateway's own instance.
       expect(built).toEqual(['authenticator', 'authenticator']);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('rejects a request-scoped authenticator, declared or bubbled, registered or not', async () => {
+    @Injectable({ scope: Scope.REQUEST })
+    class DeclaredAuthenticator extends StaticAuthenticator {}
+
+    @Injectable()
+    class BubbledAuthenticator extends StaticAuthenticator {
+      constructor(@Inject(REQUEST_CONTEXT) readonly request: RequestContext) {
+        super();
+      }
+    }
+
+    @Module({ providers: [DeclaredAuthenticator, BubbledAuthenticator] })
+    class RegisteredModule {}
+
+    @Module({})
+    class UnregisteredModule {}
+
+    @Module({ imports: [RegisteredModule, UnregisteredModule] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    try {
+      const container = app.getContainer();
+      // Visible providers, then classes built for a module that cannot see them.
+      const moduleIds = [RegisteredModule, UnregisteredModule].flatMap((module) =>
+        container.getOwnerModuleIds(module),
+      );
+      for (const moduleId of moduleIds) {
+        for (const authenticator of [DeclaredAuthenticator, BubbledAuthenticator]) {
+          const gate = createWebSocketUpgradeGate(container, {
+            options: { path: '/scoped', authenticator },
+            moduleId,
+          });
+          await expect(gate(new Request('http://localhost/scoped'), 'room')).rejects.toThrow(
+            `WebSocket gateway '/scoped' authenticator ${authenticator.name} is request-scoped, ` +
+              'but an upgrade authenticator is built once per application',
+          );
+        }
+      }
     } finally {
       await app.close();
     }
