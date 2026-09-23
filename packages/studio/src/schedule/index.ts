@@ -15,17 +15,30 @@
  * (the registry does not track fire history; a cron `nextRun` would need a clock
  * the registry has no hook into). `schedule.jobs` names each job by its
  * decorated `methodName`. `schedule.runNow` runs the job through
- * `invokeScheduledJob`, exactly as a timer or cron trigger would: a fresh
- * invocation scope (request-scoped jobs included), a `ScheduleInvocation` as the
- * only argument, and signed re-entry when the app opted into signed dispatch.
+ * `invokeScheduledJob`, like a timer or cron trigger: a fresh invocation scope
+ * (request-scoped jobs included), a `ScheduleInvocation` as the only argument
+ * (`scheduledTime` is now), and signed re-entry when the app opted into signed
+ * dispatch. What a native trigger would seed into the job's scope comes from
+ * the runtime's `SCHEDULE_INVOCATION_SEED` (on Workers, a synthetic
+ * `CLOUDFLARE_SCHEDULED_EVENT` whose `noRetry()` does nothing). Closing the
+ * application aborts the signal of a run still in progress and waits for it.
  */
 import {
   Container,
   Inject,
   Injectable,
+  SCHEDULE_INVOCATION_SEED,
   ScheduleRegistry,
   defineModule,
   invokeScheduledJob,
+} from '@velajs/vela';
+import type {
+  BeforeApplicationShutdown,
+  CronMetadata,
+  Entrypoint,
+  IntervalMetadata,
+  InvokeScheduledJobOptions,
+  ScheduleInvocation,
 } from '@velajs/vela';
 import type { CronTriggerRow, ScheduleJobRow, StudioOpReq } from '@velajs/studio-protocol';
 import { AdminRpc } from '../rpc/admin-rpc.decorator';
@@ -35,7 +48,10 @@ import { studioError, studioNotFound } from '../studio.errors';
 export const STUDIO_SCHEDULE_MODULE_ID = 'studio.schedule';
 
 @Injectable()
-export class StudioScheduleOps {
+export class StudioScheduleOps implements BeforeApplicationShutdown {
+  /** Runs in progress; shutdown aborts their signals and waits for them. */
+  readonly #running = new Map<Promise<void>, AbortController>();
+
   constructor(@Inject(Container) private readonly container: Container) {}
 
   @AdminRpc({ op: 'schedule.jobs' })
@@ -64,30 +80,52 @@ export class StudioScheduleOps {
     const interval = cron
       ? undefined
       : registry.getIntervalEntrypoints().find((e) => e.meta.methodName === args.id);
+    const controller = new AbortController();
     const scheduledTime = Date.now();
-    const signal = new AbortController().signal;
-    // Run through the same primitive a timer or cron trigger uses: a fresh
-    // invocation scope, only a ScheduleInvocation argument, and signed
-    // dispatch when ScheduleModule.forRoot({ dispatch }) opts in.
+    let entry: Entrypoint<CronMetadata | IntervalMetadata>;
+    let invocation: ScheduleInvocation;
     if (cron) {
-      await invokeScheduledJob(this.container, cron, {
+      entry = cron;
+      invocation = {
         kind: 'cron',
         expression: cron.meta.expression,
         scheduledTime,
-        signal,
-      });
+        signal: controller.signal,
+      };
     } else if (interval) {
-      await invokeScheduledJob(this.container, interval, {
+      entry = interval;
+      invocation = {
         kind: 'interval',
         ms: interval.meta.ms,
         scheduledTime,
-        signal,
-      });
+        signal: controller.signal,
+      };
     } else {
       throw studioNotFound(`no scheduled job named '${args.id}'`);
     }
+    // Run through the same primitive a timer or cron trigger uses, seeded the
+    // way the runtime's trigger would seed it.
+    const running = invokeScheduledJob(this.container, entry, invocation, this.seed(invocation));
+    this.#running.set(running, controller);
+    try {
+      await running;
+    } finally {
+      this.#running.delete(running);
+    }
     ctx.audit({ target: args.id, summary: `ran scheduled job ${args.id}` });
     return { ok: true };
+  }
+
+  /** Abort the runs still in progress and wait for them before providers shut down. */
+  async beforeApplicationShutdown(): Promise<void> {
+    for (const controller of this.#running.values()) controller.abort();
+    await Promise.allSettled(this.#running.keys());
+  }
+
+  private seed(invocation: ScheduleInvocation): InvokeScheduledJobOptions {
+    if (!this.container.has(SCHEDULE_INVOCATION_SEED)) return {};
+    const seed = this.container.resolve(SCHEDULE_INVOCATION_SEED);
+    return { seed: (scope) => seed(scope, invocation) };
   }
 
   /** The bound `ScheduleRegistry`, else `FEATURE_UNCONFIGURED` (no `ScheduleModule`). */

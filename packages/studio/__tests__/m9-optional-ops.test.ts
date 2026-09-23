@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   Controller,
   Cron,
+  EXECUTION_LIFETIME,
   Get,
+  Inject,
   Injectable,
   Interval,
   Module,
@@ -11,7 +13,17 @@ import {
   Scope,
   VelaFactory,
 } from '@velajs/vela';
-import type { ModuleImport, ProviderDefinition, ScheduleInvocation, Type } from '@velajs/vela';
+import type {
+  CronInvocation,
+  ExecutionLifetime,
+  ModuleImport,
+  ProviderDefinition,
+  RuntimeAdapter,
+  ScheduleInvocation,
+  Type,
+} from '@velajs/vela';
+import { CLOUDFLARE_SCHEDULED_EVENT, cloudflareAdapter } from '@velajs/cloudflare';
+import type { CloudflareScheduledEvent } from '@velajs/cloudflare';
 import { Process, Processor, QueueModule } from '@velajs/vela/queue';
 import { FeatureFlagsModule } from '@velajs/feature-flags';
 import { BetterAuthService } from '@velajs/better-auth';
@@ -78,10 +90,11 @@ async function rpc<Op extends StudioOp>(
   app: App,
   op: Op,
   args?: StudioOpReq<Op>,
+  env?: object,
 ): Promise<AdminRpcResponse<StudioOpRes<Op>>> {
   const res = await app
     .getHonoApp()
-    .request(`${BASE}/rpc/${op}`, authed(args !== undefined ? { args } : {}));
+    .request(`${BASE}/rpc/${op}`, authed(args !== undefined ? { args } : {}), env);
   return (await res.json()) as AdminRpcResponse<StudioOpRes<Op>>;
 }
 
@@ -214,13 +227,14 @@ async function makeApp(
   studio: Partial<StudioModuleOptions> = {},
   imports: ModuleImport[] = [],
   extra: Array<Type | ProviderDefinition> = [],
+  adapters: RuntimeAdapter[] = [],
 ): Promise<App> {
   @Module({
     imports: [StudioModule.forRoot({ token: TOKEN, ...studio }), ...imports],
     providers: extra,
   })
   class AppModule {}
-  return VelaFactory.create(AppModule);
+  return VelaFactory.create(AppModule, { adapters });
 }
 
 // ===========================================================================
@@ -758,6 +772,87 @@ describe('schedule ops (@velajs/studio/schedule)', () => {
     } finally {
       await app.close();
     }
+  });
+});
+
+describe('schedule run-now on the Cloudflare adapter', () => {
+  it('runs a job that reads the scheduled trigger event, as a cron trigger would', async () => {
+    const seen: Array<{ cron: string; expression: string; scheduledTime: number }> = [];
+    @Injectable({ scope: Scope.REQUEST })
+    class Exports {
+      constructor(
+        @Inject(CLOUDFLARE_SCHEDULED_EVENT) private readonly trigger: CloudflareScheduledEvent,
+        @Inject(EXECUTION_LIFETIME) private readonly lifetime: ExecutionLifetime,
+      ) {}
+      @Cron('30 2 * * *', { dialect: 'cloudflare' })
+      async nightly(tick: CronInvocation) {
+        this.trigger.noRetry();
+        this.lifetime.waitUntil(
+          Promise.resolve().then(() => {
+            seen.push({
+              cron: this.trigger.cron,
+              expression: tick.expression,
+              scheduledTime: this.trigger.scheduledTime,
+            });
+          }),
+        );
+      }
+    }
+    @Module({ providers: [Exports] })
+    class ExportsModule {}
+    const env = {};
+    const app = await makeApp(
+      { editable: { ops: true } },
+      [ScheduleModule, ExportsModule, StudioScheduleModule.forRoot({})],
+      [],
+      [cloudflareAdapter({ env })],
+    );
+    try {
+      const before = Date.now();
+      expect(ok(await rpc(app, 'schedule.runNow', { id: 'nightly' }, env))).toEqual({ ok: true });
+      expect(seen).toEqual([
+        { cron: '30 2 * * *', expression: '30 2 * * *', scheduledTime: expect.any(Number) },
+      ]);
+      expect(seen[0]!.scheduledTime).toBeGreaterThanOrEqual(before);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('aborts a running run-now invocation when the application closes', async () => {
+    const entered = Promise.withResolvers<void>();
+    let aborted = false;
+    @Injectable()
+    class Slow {
+      @Cron('0 5 * * *', { dialect: 'cloudflare' })
+      async drain(tick: CronInvocation) {
+        entered.resolve();
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, 2000);
+          tick.signal.addEventListener(
+            'abort',
+            () => {
+              aborted = true;
+              clearTimeout(timer);
+              resolve();
+            },
+            { once: true },
+          );
+        });
+      }
+    }
+    @Module({ providers: [Slow] })
+    class SlowModule {}
+    const app = await makeApp({ editable: { ops: true } }, [
+      ScheduleModule,
+      SlowModule,
+      StudioScheduleModule.forRoot({}),
+    ]);
+    const running = rpc(app, 'schedule.runNow', { id: 'drain' });
+    await entered.promise;
+    await app.close();
+    expect(aborted).toBe(true);
+    expect(ok(await running)).toEqual({ ok: true });
   });
 });
 
