@@ -153,9 +153,10 @@ export interface QueueModuleOptions {
   /**
    * Opt-in signed re-entry for delivered jobs (default `direct`). Every
    * delivery through the module honors it: the inline driver's and a
-   * platform driver's native consumer alike. The `dispatch.kind` participates
-   * in the module dedup key, so a `signed` instance never dedups with a
-   * `direct` one.
+   * platform driver's native consumer alike. A signed policy is keyed by
+   * reference, like the driver: a different policy object is a different
+   * `forRoot` configuration, which fails bootstrap, even when it differs only
+   * in a captured target.
    */
   dispatch?: QueueDispatchMode;
 }

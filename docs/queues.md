@@ -62,10 +62,15 @@ scope per job.
 ## Registration
 
 `QueueModule.forRoot({ driver, dispatch })` configures the driver and dispatch
-policy. It is global and belongs in the root module, once per application: two
-different `forRoot` configurations fail bootstrap. The driver defaults to the
-in-process `inline()` driver. `forRootAsync` resolves the same options from a
-factory during application initialization.
+policy. It is global and belongs in the root module, once per application. The
+driver and a signed dispatch policy are compared by reference: importing the
+same objects again deduplicates, while a different driver instance or another
+signed policy object fails bootstrap, even a policy that differs only in its
+target, method or TTL, or one a helper builds from the same source. The driver
+defaults to the in-process `inline()` driver. `forRootAsync` resolves the same
+options from a factory during application initialization. Its options object
+is the configuration: importing the same object again deduplicates, and a
+different one, or a `forRoot` next to it, fails bootstrap.
 
 `QueueModule.registerQueue({ name, binding?, consumer? })` registers queues in
 the module that uses them and provides each queue's `QueueClient`. Inject it with

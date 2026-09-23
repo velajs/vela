@@ -385,7 +385,7 @@ Declaration entry: `./dist/queue/index.d.ts`
 import { Y as Token, k as Container, z as InjectionToken } from "<internal:types.d.ts>";
 import { E as EntrypointRegistry } from "<internal:request-context.d.ts>";
 import { J as DynamicModule, V as DiscoveryService, o as InvocationTarget, r as VelaEnv } from "<internal:env.d.ts>";
-import { Gt as ConfigurableModuleClassType } from "<internal:index-factory.d.ts>";
+import { Gt as ConfigurableModuleClassType, Ut as ConfigurableModuleAsyncOptions, Zt as ModuleRegistrationOptions } from "<internal:index-factory.d.ts>";
 import { g as StandardSchemaV1 } from "<internal:parse-schema.d.ts>";
 
 export declare class QueueRegistry {
@@ -504,6 +504,8 @@ declare const ConfigurableModuleClass: ConfigurableModuleClassType<QueueModuleOp
 export declare class QueueModule extends ConfigurableModuleClass {
 
   static forRoot(options?: QueueModuleOptions): DynamicModule;
+
+  static forRootAsync<const Inject extends readonly Token[]>(options: ConfigurableModuleAsyncOptions<QueueModuleOptions, 'create', Inject> & ModuleRegistrationOptions): DynamicModule;
 
   static registerQueue(registration: QueueRegistration, ...more: QueueRegistration[]): DynamicModule;
 }

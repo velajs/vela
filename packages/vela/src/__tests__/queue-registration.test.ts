@@ -22,9 +22,11 @@ import {
   inline,
   Process,
   Processor,
+  QUEUE_DRIVER,
   queueToken,
 } from '../queue';
 import type {
+  QueueDispatchMode,
   QueueDriver,
   QueueDriverContext,
   QueueEnqueueRequest,
@@ -50,6 +52,13 @@ const count: StandardSchemaV1<{ count: string }, { count: number }> = {
   },
 };
 const tally = defineQueueJob('tally', count);
+
+type SignedQueueDispatch = Extract<QueueDispatchMode, { kind: 'signed' }>;
+
+/** Builds a signed policy per path: every policy has the same source. */
+function signedTo(path: string): SignedQueueDispatch {
+  return { kind: 'signed', target: () => ({ path }) };
+}
 
 /** A producer-only driver that records what it accepted. */
 function recordingDriver(): QueueDriver & { sent: QueueJob[] } {
@@ -194,6 +203,79 @@ describe('QueueModule.registerQueue', () => {
     })
     class App {}
     await expect(VelaFactory.create(App)).rejects.toThrow(/QueueModule\.forRoot\(\) .*once/);
+  });
+
+  it('rejects two forRoot dispatch policies that differ in target, method or TTL', async () => {
+    const driver = recordingDriver();
+    const policy = signedTo('/jobs/a');
+    // signedTo('/jobs/b') has the same source as `policy`; only its capture differs.
+    const conflicting: SignedQueueDispatch[] = [
+      signedTo('/jobs/b'),
+      { ...policy, method: 'PUT' },
+      { ...policy, ttlSeconds: 30 },
+    ];
+    await Promise.all(
+      conflicting.map((other) => {
+        @Module({
+          imports: [
+            QueueModule.forRoot({ driver, dispatch: policy }),
+            QueueModule.forRoot({ driver, dispatch: other }),
+            QueueModule.registerQueue({ name: 'email' }),
+          ],
+        })
+        class App {}
+        return expect(VelaFactory.create(App, { diagnostics: 'silent' })).rejects.toThrow(
+          /QueueModule\.forRoot\(\) is imported with different options/,
+        );
+      }),
+    );
+
+    // The same driver and policy objects imported again deduplicate.
+    @Module({
+      imports: [
+        QueueModule.forRoot({ driver, dispatch: policy }),
+        QueueModule.forRoot({ driver, dispatch: policy }),
+        QueueModule.registerQueue({ name: 'email' }),
+      ],
+    })
+    class Same {}
+    const app = await VelaFactory.create(Same);
+    expect(app.getContainer().getOwnerModuleIds(QUEUE_DRIVER)).toHaveLength(1);
+    await app.close();
+  });
+
+  it('rejects forRootAsync next to a different forRoot or forRootAsync configuration', async () => {
+    const driver = recordingDriver();
+    const factory = { inject: [], useFactory: async () => ({ driver }) } as const;
+    const others = [QueueModule.forRoot(), QueueModule.forRootAsync({ ...factory })];
+    await Promise.all(
+      others.map((other) => {
+        @Module({
+          imports: [
+            QueueModule.forRootAsync(factory),
+            other,
+            QueueModule.registerQueue({ name: 'email' }),
+          ],
+        })
+        class App {}
+        return expect(VelaFactory.create(App, { diagnostics: 'silent' })).rejects.toThrow(
+          /QueueModule\.forRoot\(\) is imported with different options/,
+        );
+      }),
+    );
+
+    // One async options object imported again deduplicates.
+    @Module({
+      imports: [
+        QueueModule.forRootAsync(factory),
+        QueueModule.forRootAsync(factory),
+        QueueModule.registerQueue({ name: 'email' }),
+      ],
+    })
+    class Same {}
+    const app = await VelaFactory.create(Same);
+    expect(app.getContainer().getOwnerModuleIds(QUEUE_DRIVER)).toHaveLength(1);
+    await app.close();
   });
 });
 

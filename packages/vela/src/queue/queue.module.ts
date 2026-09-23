@@ -8,7 +8,12 @@ import {
   Injectable,
   stableHash,
 } from '../index';
-import type { DynamicModule } from '../index';
+import type {
+  ConfigurableModuleAsyncOptions,
+  DynamicModule,
+  ModuleRegistrationOptions,
+  Token,
+} from '../index';
 import { inline } from './inline.driver';
 import { QueueClient } from './queue.client';
 import { QueueDispatchBinding } from './queue.binding';
@@ -17,17 +22,28 @@ import { attachQueueRegistration, QueueRegistry, readQueueRegistration } from '.
 import { QUEUE_DRIVER, queueToken } from './queue.tokens';
 import type { QueueDriver, QueueModuleOptions, QueueRegistration } from './queue.types';
 
-// Stateful transport objects and factories must not dedup by their kind/source.
-// Default inline configuration still has a stable structural key.
-const driverIds = new WeakMap<object, number>();
-let nextDriverId = 0;
-function driverIdentity(driver: QueueModuleOptions['driver']): string | number {
-  if (driver === undefined) return 'default-inline';
-  const existing = driverIds.get(driver);
+// Stateful transport objects, factories and signed dispatch policies must not
+// dedup by their kind or source: a helper that builds `target: () => ({ path })`
+// per call yields closures with one source but different captures. Each such
+// object keys by reference, so a different one becomes a second owner of
+// QUEUE_DRIVER, which QueueDispatchBinding rejects, while re-importing the same
+// object deduplicates. Default inline, direct configuration keeps a stable key.
+const referenceIds = new WeakMap<object, number>();
+let nextReferenceId = 0;
+function referenceId(value: object): number {
+  const existing = referenceIds.get(value);
   if (existing !== undefined) return existing;
-  const id = ++nextDriverId;
-  driverIds.set(driver, id);
+  const id = ++nextReferenceId;
+  referenceIds.set(value, id);
   return id;
+}
+
+function driverIdentity(driver: QueueModuleOptions['driver']): string | number {
+  return driver === undefined ? 'default-inline' : referenceId(driver);
+}
+
+function dispatchIdentity(dispatch: QueueModuleOptions['dispatch']): string | number {
+  return dispatch === undefined || dispatch.kind === 'direct' ? 'direct' : referenceId(dispatch);
 }
 
 const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<
@@ -38,7 +54,7 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<
   key: (o) =>
     stableHash({
       driver: driverIdentity(o.driver),
-      dispatch: o.dispatch?.kind ?? 'direct',
+      dispatch: dispatchIdentity(o.dispatch),
     }),
   extras: {},
   // One driver per application, visible to every registerQueue() module.
@@ -151,9 +167,27 @@ function registrationModule(input: QueueRegistration): DynamicModule {
  * during application initialization.
  */
 export class QueueModule extends ConfigurableModuleClass {
-  /** Configure the application's driver and dispatch policy (defaults: `inline()`, direct). */
+  /**
+   * Configure the application's driver and dispatch policy (defaults:
+   * `inline()`, direct). The driver and a signed policy compare by reference:
+   * importing the same objects again deduplicates, and a different driver
+   * instance or signed policy object fails bootstrap.
+   */
   static override forRoot(options: QueueModuleOptions = {}): DynamicModule {
     return super.forRoot(options);
+  }
+
+  /**
+   * Resolve the options from a factory during application initialization. The
+   * options object is the configuration: importing the same object again
+   * deduplicates, while a different one, or a `forRoot` next to it, fails
+   * bootstrap like two different `forRoot` configurations.
+   */
+  static override forRootAsync<const Inject extends readonly Token[]>(
+    options: ConfigurableModuleAsyncOptions<QueueModuleOptions, 'create', Inject> &
+      ModuleRegistrationOptions,
+  ): DynamicModule {
+    return super.forRootAsync({ ...options, key: options.key ?? `async:${referenceId(options)}` });
   }
 
   /**
