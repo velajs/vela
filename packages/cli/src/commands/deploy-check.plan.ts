@@ -265,6 +265,22 @@ export function checkDeployment(
         `Queue ${JSON.stringify(name)} sends through binding ${JSON.stringify(binding)}, which ` +
           'is not a queues.producers binding of the selected environment.',
       );
+  // A pinned registration's jobs are accepted only from its pins, so a producer
+  // binding that sends anywhere else has every job rejected and dead-lettered.
+  for (const [name, { binding, consumers }] of registrations) {
+    if (binding === undefined || consumers.length === 0) continue;
+    const produced = producers.get(binding);
+    if (produced === undefined || consumers.includes(produced)) continue;
+    report(
+      'queue-producer-outside-pins',
+      `Queue ${JSON.stringify(name)} sends through binding ${JSON.stringify(binding)} to ` +
+        `${JSON.stringify(produced)}, but QueueModule pins it to ` +
+        `${consumers.map((queue) => JSON.stringify(queue)).join(', ')}: its consumer accepts ` +
+        `${JSON.stringify(name)} jobs only from those queues, so Cloudflare retries and then ` +
+        `dead-letters the jobs sent to ${JSON.stringify(produced)}. Point the binding at a ` +
+        `pinned queue, or add ${JSON.stringify(produced)} to the registration's consumer pins.`,
+    );
+  }
   for (const queue of rawQueues)
     if (!target.queueConsumers.includes(queue))
       report(
@@ -322,11 +338,13 @@ export function checkDeployment(
     for (const queue of modulePins) claim(queue);
     for (const [name, registration] of registrations)
       for (const queue of registration.consumers) claim(queue, name);
+    // A processed queue's producer queue, pinned or not: a raw consumer there
+    // takes the jobs the binding sends before the module consumer sees them.
     for (const name of processedQueues) {
       const registration = registrations.get(name);
       const produced =
         registration?.binding === undefined ? undefined : producers.get(registration.binding);
-      if (registration?.consumers.length === 0 && produced !== undefined) claim(produced, name);
+      if (produced !== undefined) claim(produced, name);
     }
     for (const [queue, names] of claimed) {
       const jobs = [...names].map((name) => JSON.stringify(name)).join(', ');

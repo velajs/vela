@@ -175,7 +175,9 @@ handlers of its physical queue. A batch no `@QueueConsumer` claims goes to
 - `registerQueue({ name, consumer: 'email-production' })` pins the queue: its
   jobs are accepted only from `email-production`, and that physical queue only
   carries the queues pinned to it. Without `consumer`, a job is accepted from any
-  physical queue the Worker consumes.
+  physical queue the Worker consumes. A pinned registration with a `binding`
+  must send to one of its pins; `vela deploy check` fails with
+  `queue-producer-outside-pins` otherwise.
 
 Each failure is reported once to the exception handler on the `queue` edge: a
 processor failure where the processor ran, and a message that is not a job, an

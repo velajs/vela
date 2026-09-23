@@ -89,7 +89,10 @@ registration pins with `consumer`, or that a processed queue's producer binding
 sends to, fails with `queue-consumer-claimed-by-raw`. A physical queue pinned by
 registrations accepts only their jobs, so an unpinned registered queue whose
 producer binding sends to it fails with `queue-sent-to-pinned-queue`: pin that
-queue to the same physical queue, or send it through another one.
+queue to the same physical queue, or send it through another one. Likewise, a
+registration with both a `binding` and `consumer` pins accepts its jobs only
+from those pins, so a producer binding that sends to any other physical queue
+fails with `queue-producer-outside-pins`.
 
 A `@Cron` job that explicitly requests `dialect: 'unix'` or
 `timeZone: 'local'` fails with `incompatible-cron-options`, and one that declares

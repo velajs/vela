@@ -203,6 +203,72 @@ describe('deployment alignment', () => {
     expect(checkDeployment(config({ queues }), 'staging', snapshot).errors).toEqual([]);
   });
 
+  it('flags a pinned registration whose producer binding sends outside its pins', () => {
+    const queues = {
+      producers: [{ binding: 'EMAIL_QUEUE', queue: 'email-staging' }],
+      consumers: [{ queue: 'notifications-staging' }],
+    };
+    const snapshot = [
+      row('cf:queue:module', { consumers: ['notifications-staging'] }),
+      row('queue:registration', {
+        name: 'email',
+        binding: 'EMAIL_QUEUE',
+        consumers: ['notifications-staging'],
+      }),
+      row('queue', { queueName: 'email' }),
+    ];
+    // The consumer accepts email jobs only from its pin, so every job the
+    // producer sends to email-staging would be rejected and dead-lettered.
+    expect(checkDeployment(config({ queues }), 'staging', snapshot).errors).toEqual([
+      {
+        code: 'queue-producer-outside-pins',
+        message: expect.stringMatching(
+          /"email".*"EMAIL_QUEUE".*"email-staging".*"notifications-staging"/,
+        ),
+      },
+    ]);
+    // A producer-only Worker that shares the registration is checked the same way.
+    expect(
+      checkDeployment(config({ queues: { producers: queues.producers } }), 'staging', [
+        row('queue:registration', {
+          name: 'email',
+          binding: 'EMAIL_QUEUE',
+          consumers: ['notifications-staging'],
+        }),
+      ]).errors.map((error) => error.code),
+    ).toEqual(['queue-producer-outside-pins']);
+    // Sending to one of its pins is accepted.
+    const aligned = {
+      producers: [{ binding: 'EMAIL_QUEUE', queue: 'notifications-staging' }],
+      consumers: queues.consumers,
+    };
+    expect(checkDeployment(config({ queues: aligned }), 'staging', snapshot).errors).toEqual([]);
+  });
+
+  it('flags the producer queue of a pinned processed registration that a raw consumer claims', () => {
+    const queues = {
+      producers: [{ binding: 'EMAIL_QUEUE', queue: 'email-staging' }],
+      consumers: [{ queue: 'email-pinned' }, { queue: 'email-staging' }],
+    };
+    const result = checkDeployment(config({ queues }), 'staging', [
+      row('cf:queue:module', { consumers: ['email-pinned'] }),
+      row('queue:registration', {
+        name: 'email',
+        binding: 'EMAIL_QUEUE',
+        consumers: ['email-pinned'],
+      }),
+      row('queue', { queueName: 'email' }),
+      row('cf:queue', { queueName: 'email-staging' }),
+    ]);
+    expect(result.errors).toEqual([
+      expect.objectContaining({ code: 'queue-producer-outside-pins' }),
+      {
+        code: 'queue-consumer-claimed-by-raw',
+        message: expect.stringMatching(/"email-staging".*@QueueConsumer.*"email"/),
+      },
+    ]);
+  });
+
   it('does not require consumers for processors an in-process driver delivers', () => {
     const result = checkDeployment(config(), 'staging', [
       row('queue:registration', { name: 'email', consumers: [] }),
