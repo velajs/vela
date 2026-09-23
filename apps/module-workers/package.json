@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "typecheck": "tsc --noEmit",
+    "types": "wrangler types --include-runtime=false -c wrangler.api.jsonc worker-configuration.api.d.ts && wrangler types --include-runtime=false -c wrangler.catalog.jsonc worker-configuration.catalog.d.ts && wrangler types --include-runtime=false -c wrangler.accounts.jsonc worker-configuration.accounts.d.ts && wrangler types --include-runtime=false -c wrangler.jobs.jsonc worker-configuration.jobs.d.ts",
+    "typecheck": "tsc -p tsconfig.api.json && tsc -p tsconfig.catalog.json && tsc -p tsconfig.accounts.json && tsc -p tsconfig.jobs.json",
     "test:workers": "node scripts/proof.mjs",
     "dev": "pnpm build && wrangler dev -c wrangler.api.jsonc -c wrangler.catalog.jsonc -c wrangler.accounts.jsonc -c wrangler.jobs.jsonc"
   },

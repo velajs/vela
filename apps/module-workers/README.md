@@ -17,7 +17,14 @@ The proof runs four independently bundled Workers in workerd, with actual servic
 and queue bindings, and checks that background code excludes HTTP feature modules.
 The exact same proof runs in an external consumer of the packed release archives.
 
-Each worker has its own Wrangler file. Catalog, accounts, and jobs have no public
+Each worker has its own Wrangler file and reads its bindings from the framework
+`ENV` (`inject: [ENV]` or `@InjectEnv()`). `pnpm types` runs `wrangler types
+--include-runtime=false` once per Wrangler file into
+`worker-configuration.<worker>.d.ts`, and `typecheck` checks each worker as its
+own program (`tsconfig.<worker>.json`), so a worker's `VelaEnv` only has the
+bindings its own Wrangler file declares.
+
+Catalog, accounts, and jobs have no public
 route, workers.dev URL, or preview URL. Their RPC modules explicitly allow callers
 that possess the service binding; applications needing user/tenant authorization
 must also provide that policy. Deployment is explicit and requires configuring

@@ -1,16 +1,11 @@
-import { Controller, Get, Inject, InjectionToken, Module, Post } from '@velajs/vela';
+import { Controller, ENV, Get, Inject, Module, Post } from '@velajs/vela';
 import { createCloudflareWorker } from '@velajs/cloudflare';
 import { cloudflareQueueDriver } from '@velajs/cloudflare/queue';
-import { QueueModule, queueToken, type QueueClient, type QueueJob } from '@velajs/vela/queue';
+import { QueueModule, queueToken, type QueueClient } from '@velajs/vela/queue';
 import { RpcClientModule, rpcClientToken } from '@velajs/rpc/server';
 import type { RpcClient } from '@velajs/rpc';
 import { account, catalog } from './contracts';
-interface Env {
-  CATALOG: Fetcher;
-  ACCOUNTS: Fetcher;
-  TASKS: Queue<QueueJob>;
-}
-const ENV = new InjectionToken<Env>('API environment');
+// ENV carries this Worker's bindings, typed by worker-configuration.api.d.ts.
 @Controller('/api')
 class ApiController {
   constructor(
@@ -58,4 +53,4 @@ class ApiController {
   controllers: [ApiController],
 })
 class ApiModule {}
-export default createCloudflareWorker(ApiModule, { envToken: ENV });
+export default createCloudflareWorker(ApiModule);
