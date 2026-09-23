@@ -19,6 +19,8 @@ import {
   type SchemaOutput,
 } from '../validation/parse-schema';
 import { standardJsonSchema, type StandardSchemaV1 } from '../validation/standard-schema';
+import { extractEndpointInput, mapEndpointResponse } from '../http/endpoint-executor';
+import { getEndpointBinding, setEndpointBinding } from '../http/endpoint-registry';
 import {
   resolveEndpointBody,
   type EndpointBodyOptions,
@@ -190,12 +192,11 @@ export interface RuntimeEndpointDefinition {
   readonly queryParameters: readonly { name: string; multiple: boolean }[];
 }
 
-const definitions = new WeakMap<object, Map<string | symbol, RuntimeEndpointDefinition>>();
-
 /**
  * Correlate a controller method with one schema-bearing endpoint definition.
  * The dispatcher must parse the HTTP input and handler result using this same
- * definition. This decorator records metadata; it does not wrap another route.
+ * definition. This decorator records metadata, including how the route runs;
+ * it does not wrap another route.
  */
 export function Endpoint<Input extends ValidationSchema, Output extends ValidationSchema>(
   definition: RuntimeEndpointDefinition & { readonly input: Input; readonly output: Output },
@@ -210,12 +211,11 @@ export function Endpoint<Input extends ValidationSchema, Output extends Validati
     descriptor: TypedPropertyDescriptor<Handler>,
   ): void => {
     if (!descriptor.value) throw new Error('@Endpoint requires a method.');
-    let methods = definitions.get(target);
-    if (!methods) {
-      methods = new Map();
-      definitions.set(target, methods);
-    }
-    methods.set(key, definition);
+    setEndpointBinding(target, key, {
+      definition,
+      extractInput: (context, pipes) => extractEndpointInput(context, definition, pipes),
+      mapResponse: (context, result) => mapEndpointResponse(context, definition, result),
+    });
   };
 }
 
@@ -224,13 +224,7 @@ export function getEndpointDefinition(
   controller: object,
   key: string | symbol,
 ): RuntimeEndpointDefinition | undefined {
-  let current: unknown = typeof controller === 'function' ? controller.prototype : controller;
-  while (current !== null && typeof current === 'object') {
-    const definition = definitions.get(current)?.get(key);
-    if (definition) return definition;
-    current = Object.getPrototypeOf(current);
-  }
-  return undefined;
+  return getEndpointBinding(controller, key)?.definition;
 }
 
 /** Conversion is directional and independent from runtime parsing. */

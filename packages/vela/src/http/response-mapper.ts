@@ -1,6 +1,6 @@
 import type { Context } from 'hono';
 import type { RedirectStatusCode, StatusCode } from 'hono/utils/http-status';
-import { getEndpointDefinition } from '../openapi/endpoint';
+import { getEndpointBinding } from './endpoint-registry';
 import type { Constructor } from '../registry/types';
 import { getHttpCode } from './decorators';
 
@@ -16,7 +16,9 @@ export function resolveSuccessStatus(
   controller: Constructor,
   handler: string | symbol,
 ): StatusCode | undefined {
-  return getEndpointDefinition(controller, handler)?.status ?? getHttpCode(controller, handler);
+  return (
+    getEndpointBinding(controller, handler)?.definition.status ?? getHttpCode(controller, handler)
+  );
 }
 
 interface RedirectOverride {
