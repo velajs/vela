@@ -307,7 +307,9 @@ free of external side effects because producer and consumer both validate.
 Typed jobs must be structured-cloneable. Legacy `add(name, data)` and
 `@Process(name)` retain their existing behavior without automatic validation.
 
-The decorator checks the annotated handler's job type. Use `QueueJobInput<D>` for
+The decorator checks the annotated handler's job type. As in NestJS, a
+`@Process(definition)` composed through `applyDecorators` does not check the
+handler it decorates. Use `QueueJobInput<D>` for
 producer payload types and `QueueJobOutput<D>` for processor payload types.
 Validation failures propagate through declared processor filters; a filter that
 claims an error treats that delivery as handled. A valid payload does not confer

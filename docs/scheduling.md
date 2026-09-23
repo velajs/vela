@@ -35,7 +35,10 @@ receives) and `IntervalInvocation` (what an `@Interval` job receives). The
 decorators are typed: a job method may declare no parameter or one parameter
 that accepts its invocation. A method that declares another required parameter,
 such as the `(controller, env, ctx)` arguments of a native scheduled handler, or
-whose first parameter is not the invocation, does not compile.
+whose first parameter is not the invocation, does not compile. As in NestJS, a
+decorator composed through `applyDecorators`, such as
+`applyDecorators(Cron(expression, options), SetMetadata(key, value))`, does not
+check the handler it decorates.
 
 Every runtime dispatches through `invokeScheduledJob(container, entry,
 invocation)` from `@velajs/vela`. It resolves the job by its owning module in a

@@ -99,6 +99,15 @@ export class ComposedScheduledHandlers {
   }
 }
 
+// As in NestJS, a composed decorator does not check the handler it decorates:
+// a direct @Cron rejects this signature, the composition accepts it.
+export class ComposedUncheckedHandlers {
+  @Nightly()
+  nightly(label: string): string {
+    return label;
+  }
+}
+
 // @ts-expect-error A plain function is not a decorator.
 applyDecorators((label: string) => label);
 
