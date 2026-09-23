@@ -29,7 +29,7 @@
     "@cloudflare/vitest-plugin": "catalog:",
     "@cloudflare/workers-types": "catalog:",
     "@types/node": "catalog:",
-    "esbuild": "^0.25.0",
+    "esbuild": "^0.28.1",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
