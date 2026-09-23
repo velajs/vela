@@ -111,14 +111,18 @@ import {
   CloudflareAccessModule,
 } from '@velajs/cloudflare-access/vela';
 import { AuthzModule, PermissionGuard, RequirePermission, CurrentIdentity } from '@velajs/authz/vela';
-import type { TrustedRequestIdentity } from '@velajs/vela';
+import { ENV, type TrustedRequestIdentity } from '@velajs/vela';
 
 @Module({
   imports: [
-    CloudflareAccessModule.forRoot({
-      preset: cloudflareAccessIssuer(env.CF_ACCESS_TEAM_DOMAIN),
-      aud: env.CF_ACCESS_AUD,
-      groupRoles: { 'idp-editors': ['editor'] },
+    // The Access team domain and audience come from the runtime environment.
+    CloudflareAccessModule.forRootAsync({
+      inject: [ENV],
+      useFactory: (env) => ({
+        preset: cloudflareAccessIssuer(env.CF_ACCESS_TEAM_DOMAIN),
+        aud: env.CF_ACCESS_AUD,
+        groupRoles: { 'idp-editors': ['editor'] },
+      }),
     }),
     AuthzModule.forRoot({ roles: [defineRole('editor', ['posts:write'])] }),
   ],
