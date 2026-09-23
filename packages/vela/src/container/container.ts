@@ -1,12 +1,9 @@
 import { Scope } from '../constants';
+import { reportDiagnostic } from './diagnostics';
 import { disposeInstance, isDisposable } from './disposable';
-import {
-  getConstructorDependencies,
-  getInjectMetadata,
-  getScope,
-  isInjectable,
-} from './decorators';
+import { getScope, isDecoratedClass, isErasedTypeToken, planConstructor } from './decorators';
 import type {
+  ConstructorDependency,
   ContainerOptions,
   AuthoringToken,
   Diagnostics,
@@ -35,15 +32,6 @@ const IMPORT_TYPE_HINT =
   'Did you use `import type { X }`? TypeScript strips type-only imports at ' +
   'runtime and `design:paramtypes` emits `Object`/`undefined` for their ' +
   'positions. Use a runtime `import { X }` for DI tokens.';
-
-/**
- * Sentinel comparing a token to the bare `Object` class — `design:paramtypes`
- * emits `Object` when TypeScript erases a type-only import, so any token that
- * is `Object` (or nullish) is the fingerprint of a stripped type.
- */
-function isErasedTypeToken(token: unknown): boolean {
-  return token === Object || token === null || token === undefined;
-}
 
 function isReference(value: unknown): value is object {
   return (typeof value === 'object' && value !== null) || typeof value === 'function';
@@ -132,10 +120,12 @@ export class Container {
   }
 
   private registerClass<T>(target: Type<T>, moduleId: string): void {
-    if (!isInjectable(target)) {
-      console.warn(
-        `Warning: ${target.name} is not decorated with @Injectable(). ` +
-          `It will be registered but dependency resolution may not work correctly.`,
+    const dependencies = planConstructor(target);
+    if (!isDecoratedClass(target)) {
+      reportDiagnostic(
+        this.#diagnostics,
+        `[vela] ${target.name} is not decorated with @Injectable(). Decorate provider ` +
+          'classes so the build emits the constructor metadata dependency injection reads.',
       );
     }
 
@@ -145,6 +135,7 @@ export class Container {
       scope,
       declaringModuleId: moduleId,
       useClass: target,
+      dependencies,
     });
   }
 
@@ -175,11 +166,12 @@ export class Container {
       registration.useClass = token;
     }
 
-    // A constructed class keeps its declared @Injectable scope unless the
-    // provider overrides it; otherwise a REQUEST-scoped implementation would
-    // silently become a singleton shared across requests.
-    if (options.scope === undefined && registration.useClass) {
-      registration.scope = getScope(registration.useClass);
+    if (registration.useClass) {
+      registration.dependencies = planConstructor(registration.useClass);
+      // A constructed class keeps its declared @Injectable scope unless the
+      // provider overrides it; otherwise a REQUEST-scoped implementation would
+      // silently become a singleton shared across requests.
+      if (options.scope === undefined) registration.scope = getScope(registration.useClass);
     }
 
     this.writeRegistration(moduleId, token, registration);
@@ -702,23 +694,10 @@ export class Container {
     if (reg.useFactory) {
       return (reg.inject ?? []).map((t) => (t instanceof ForwardRef ? t.factory() : t));
     }
-    const cls =
-      reg.useClass ?? (typeof reg.provide === 'function' ? (reg.provide as Type) : undefined);
-    if (!cls) return [];
-
-    const paramTypes = getConstructorDependencies(cls);
-    const injectMetadata = getInjectMetadata(cls);
-    const injectMap = new Map(injectMetadata.map((m) => [m.index, m]));
-    const arity = Math.max(
-      paramTypes.length,
-      injectMetadata.reduce((max, m) => Math.max(max, m.index + 1), 0),
-    );
-
     const tokens: Token[] = [];
-    for (let i = 0; i < arity; i++) {
-      const raw = injectMap.get(i)?.token;
-      const token = raw instanceof ForwardRef ? raw.factory() : (raw ?? paramTypes[i]);
-      if (token && !isErasedTypeToken(token)) tokens.push(token);
+    for (const { token: raw } of reg.dependencies ?? []) {
+      const token = raw instanceof ForwardRef ? raw.factory() : raw;
+      if (!isErasedTypeToken(token)) tokens.push(token);
     }
     return tokens;
   }
@@ -939,7 +918,7 @@ export class Container {
         // Factory dependencies follow the same module visibility as constructors.
         instance = this.resolveFactory(registration);
       } else if (registration.useClass) {
-        instance = this.resolveClass(registration.useClass, registration.declaringModuleId);
+        instance = this.resolveClass(registration, registration.useClass);
       } else {
         throw new Error(
           `Invalid provider registration for: ${this.tokenToString(registration.provide)}`,
@@ -968,48 +947,17 @@ export class Container {
     throw new Error(`Circular dependency detected: ${chain}`);
   }
 
-  private resolveClass<T>(target: Type<T>, ownerModuleId: string): T {
-    const paramTypes = getConstructorDependencies(target);
-    const injectMetadata = getInjectMetadata(target);
-    const injectMap = new Map(injectMetadata.map((m) => [m.index, m]));
-
-    // Constructor arity. Normally `design:paramtypes` (emitDecoratorMetadata)
-    // gives the count, but some bundlers — notably esbuild (and therefore
-    // Wrangler) — do not emit it, leaving `paramTypes` empty even when
-    // `@Inject(token)` recorded explicit tokens. Fall back to the highest
-    // `@Inject` index so explicit-token constructors still resolve without
-    // emitted metadata. Slots with neither a param type nor an `@Inject` token
-    // still hit the unresolved-dependency error below.
-    const arity = Math.max(
-      paramTypes.length,
-      injectMetadata.reduce((max, m) => Math.max(max, m.index + 1), 0),
-    );
-
-    const dependencies = Array.from({ length: arity }, (_unused, index) => {
-      const paramType = paramTypes[index];
-      const meta = injectMap.get(index);
-      const rawToken = meta?.token;
-      const isForwardRef = rawToken instanceof ForwardRef;
-      const token: Token | undefined = isForwardRef ? rawToken.factory() : (rawToken ?? paramType);
-
-      if (!token || isErasedTypeToken(token)) {
-        if (meta?.optional) return undefined;
-        throw new Error(
-          `Cannot resolve dependency at index ${index} for ${target.name}. ` +
-            `Parameter type is undefined or Object. ` +
-            IMPORT_TYPE_HINT +
-            ` Alternatively, use \`@Inject()\` to specify the token explicitly.`,
-        );
-      }
-
-      if (meta?.optional && !this.has(token)) {
-        return undefined;
-      }
+  private resolveClass<T>(registration: ProviderRegistration<T>, target: Type<T>): T {
+    const ownerModuleId = registration.declaringModuleId;
+    const dependencies = this.constructorPlan(registration).map((dependency, index) => {
+      const token = this.dependencyToken(target, dependency, index);
+      if (token === undefined) return undefined;
+      if (dependency.optional && !this.has(token)) return undefined;
 
       // forwardRef with circular dep — break the cycle with a lazy Proxy
-      if (isForwardRef) {
-        const dependency = this.findRegistration(token, ownerModuleId);
-        if (dependency && this.#resolutionStack.has(dependency)) {
+      if (dependency.token instanceof ForwardRef) {
+        const resolved = this.findRegistration(token, ownerModuleId);
+        if (resolved && this.#resolutionStack.has(resolved)) {
           return this.createLazyProxy(token, ownerModuleId);
         }
       }
@@ -1018,6 +966,36 @@ export class Container {
     });
 
     return new target(...dependencies);
+  }
+
+  /** The registration-time constructor plan; every class registration carries one. */
+  private constructorPlan(registration: ProviderRegistration): readonly ConstructorDependency[] {
+    if (!registration.dependencies) {
+      throw new Error(
+        `Invalid provider registration for: ${this.tokenToString(registration.provide)}`,
+      );
+    }
+    return registration.dependencies;
+  }
+
+  /**
+   * The token one planned parameter resolves, or undefined for an optional gap.
+   * A forwardRef is evaluated here, at resolution, once every module has loaded.
+   */
+  private dependencyToken(
+    target: Type,
+    dependency: ConstructorDependency,
+    index: number,
+  ): Token | undefined {
+    const raw = dependency.token;
+    const token = raw instanceof ForwardRef ? raw.factory() : raw;
+    if (!isErasedTypeToken(token)) return token;
+    if (dependency.optional) return undefined;
+    throw new Error(
+      `Cannot resolve dependency at index ${index} for ${target.name}: its forwardRef ` +
+        `returned ${token === Object ? 'Object' : String(token)}. Make sure the referenced ` +
+        'class is defined and imported at runtime.',
+    );
   }
 
   private resolveFactory<T>(registration: ProviderRegistration<T>): T {
@@ -1160,29 +1138,14 @@ export class Container {
       throw new Error(
         `Invalid provider registration for: ${this.tokenToString(registration.provide)}`,
       );
-    const paramTypes = getConstructorDependencies(target);
-    const metadata = getInjectMetadata(target);
-    const inject = new Map(metadata.map((entry) => [entry.index, entry]));
-    const arity = Math.max(
-      paramTypes.length,
-      metadata.reduce((max, entry) => Math.max(max, entry.index + 1), 0),
-    );
     const dependencies = await Promise.all(
-      Array.from({ length: arity }, async (_unused, index) => {
-        const entry = inject.get(index);
-        const rawToken = entry?.token;
-        const token =
-          rawToken instanceof ForwardRef ? rawToken.factory() : (rawToken ?? paramTypes[index]);
-        if (!token || isErasedTypeToken(token)) {
-          if (entry?.optional) return undefined;
-          throw new Error(
-            `Cannot resolve dependency at index ${index} for ${target.name}. ` + IMPORT_TYPE_HINT,
-          );
-        }
-        if (entry?.optional && !this.has(token)) return undefined;
-        if (rawToken instanceof ForwardRef) {
-          const dependency = this.findRegistration(token, moduleId);
-          if (dependency && ancestors.has(dependency)) return this.createLazyProxy(token, moduleId);
+      this.constructorPlan(registration).map(async (dependency, index) => {
+        const token = this.dependencyToken(target, dependency, index);
+        if (token === undefined) return undefined;
+        if (dependency.optional && !this.has(token)) return undefined;
+        if (dependency.token instanceof ForwardRef) {
+          const resolved = this.findRegistration(token, moduleId);
+          if (resolved && ancestors.has(resolved)) return this.createLazyProxy(token, moduleId);
         }
         return this.resolveAsyncInner(token, moduleId, ancestors, owner);
       }),

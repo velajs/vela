@@ -34,7 +34,7 @@ class TodoLive {
 class AppModule {}
 ```
 
-The definition checks method inputs/results and parses arguments and final output at runtime. Register the resolver as a provider. Handlers receive `(args, context)` positionally. Core/gateway/resolver authorization and identity expiry are rechecked on delivery and resume; invalid identities lose their subscriptions. Restored hibernation arguments are parsed again through the same schema.
+`LiveModule` requires a WebSocket module in the same application; bootstrap fails without a `WsDispatcher`. The definition checks method inputs/results and parses arguments and final output at runtime. Register the resolver as a provider. Handlers receive `(args, context)` positionally. Core/gateway/resolver authorization and identity expiry are rechecked on delivery and resume; invalid identities lose their subscriptions. Restored hibernation arguments are parsed again through the same schema.
 
 Inject `LiveInvalidation` to call `invalidate({ tags, room? })`; it returns the log's `{ cursor, epoch }`. Stamp mutation responses with `stampCommitHeaders(context, stamp)`. CRUD `live: true` bridges successful writes to `crud:<tableName>` tags and commit headers. Extra tags and room selectors can be configured explicitly.
 

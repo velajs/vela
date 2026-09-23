@@ -57,7 +57,7 @@ class RoomModule {}
 export class Room extends VelaWebSocketDurableObject(RoomModule, { envToken: ENV }) {}
 ```
 
-Import native classes only in Worker entry files. Configure the namespace and `new_sqlite_classes` migration in Wrangler. Gateway options declare `path`, `roomParam`, `binding`, origins, and upgrade authentication. Core trusted identity, tenant, and expiry cross the upgrade boundary; caller-supplied identity headers are not authority. Driver/log factories return fresh state per application. Read `live-queries.md` for shared query schemas and delivery authorization.
+Import native classes only in Worker entry files. Use `CloudflareWebSocketModule`, never the core `WebSocketModule`, in a module a WebSocket Durable Object bootstraps: the Durable Object refuses to start with the core server. The Worker warns once when `LiveModule` keeps the default `localLive()` driver there, because its invalidations would never reach the Durable Object's subscriptions. Configure the namespace and `new_sqlite_classes` migration in Wrangler. Gateway options declare `path`, `roomParam`, `binding`, origins, and upgrade authentication. Core trusted identity, tenant, and expiry cross the upgrade boundary; caller-supplied identity headers are not authority. Driver/log factories return fresh state per application. Read `live-queries.md` for shared query schemas and delivery authorization.
 
 ## Storage, caches, and flags
 

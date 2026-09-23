@@ -1,3 +1,4 @@
+import { Injectable } from '../container/decorators';
 import { MetadataRegistry, allocateDecoratorKey } from '../registry/metadata.registry';
 import type { Constructor } from '../registry/types';
 import type { ExecutionContext } from './types';
@@ -57,6 +58,7 @@ export function SetMetadata<V = unknown>(key: string, value: V) {
  * }
  * ```
  */
+@Injectable()
 export class Reflector {
   /**
    * Create a type-safe decorator that sets metadata with a typed key.

@@ -249,6 +249,26 @@ export function initDoLive(
   return engine;
 }
 
+let workerLocalLiveWarned = false;
+
+/**
+ * @internal Worker-isolate check, warned once per isolate. `localLive()` hands
+ * invalidations to this isolate's own engine, but subscriptions are held by
+ * the WebSocket Durable Object, so Worker-side writes would never reach them.
+ */
+export async function warnWorkerLocalLive(container: Container): Promise<void> {
+  if (workerLocalLiveWarned || container.getDiagnostics() === 'silent') return;
+  if (!container.has(LIVE_DRIVER)) return;
+  const driver = await container.resolveAsync(LIVE_DRIVER);
+  if (driver.kind !== 'local') return;
+  workerLocalLiveWarned = true;
+  console.warn(
+    '[vela] LiveModule is running localLive() in the Worker isolate: its subscriptions live in ' +
+      'the WebSocket Durable Object, so invalidations sent from the Worker never reach them. ' +
+      'Pass driver: () => durableObjectLive({ namespace, gatewayPath }) to LiveModule.',
+  );
+}
+
 /** Ergonomic alias: the log option for `LiveModule.forRoot` on Cloudflare. */
 export function durableObjectCursorLog(maxRows?: number): DoCursorLog {
   return new DoCursorLog(maxRows);

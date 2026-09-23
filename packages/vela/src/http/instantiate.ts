@@ -1,4 +1,4 @@
-import { getConstructorDependencies, getInjectMetadata } from '../container/decorators';
+import { getConstructorMetadata } from '../container/decorators';
 import type { Container } from '../container/container';
 import type { TypedToken, Type } from '../container/types';
 import { InjectionToken } from '../container/types';
@@ -63,11 +63,12 @@ export function instantiate(
 
 // True when calling `new clazz()` would leave an injected slot `undefined`:
 // either the class has explicit `@Inject(...)` metadata, or it has any typed
-// constructor parameter (TS/SWC's `design:paramtypes` emit). Parameterless
+// constructor parameter (TS/SWC's `design:paramtypes` emit), including the
+// metadata a subclass inherits with its parent's constructor. Parameterless
 // `@Injectable()` classes return false — `new()` is safe for them.
 function constructorExpectsDependencies(clazz: Type<unknown>): boolean {
-  if (getInjectMetadata(clazz).length > 0) return true;
-  return getConstructorDependencies(clazz).length > 0;
+  const { paramTypes, inject } = getConstructorMetadata(clazz);
+  return inject.length > 0 || paramTypes.length > 0;
 }
 
 export function instantiateMany<T>(

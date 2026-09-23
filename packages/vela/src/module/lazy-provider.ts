@@ -16,6 +16,7 @@ import {
   APP_PIPE,
 } from '../pipeline/tokens';
 import type { ModuleContributions } from './define-module';
+import { attachModuleIdentity } from './module-identity';
 import { stableHash } from './stable-hash';
 
 export interface LazyProviderSpec<T, Inject extends readonly Token[]> {
@@ -125,14 +126,19 @@ export function sideEffectModule(
   // dynamic code evaluation (edge-safe; no `new Function`).
   const moduleClass = typeof owner === 'string' ? ({ [owner]: class {} }[owner] as Type) : owner;
   if (typeof owner === 'string') Module({})(moduleClass);
-  return {
-    module: moduleClass,
-    key: key ?? stableHash(rest),
-    providers: rest.providers ?? [],
-    controllers: rest.controllers ?? [],
-    imports: rest.imports ?? [],
-    exports: rest.exports ?? [],
-  };
+  // stableHash cannot see inside provider descriptors or closures, so a stable
+  // owner's repeat is compared on these inputs before it is deduplicated.
+  return attachModuleIdentity(
+    {
+      module: moduleClass,
+      key: key ?? stableHash(rest),
+      providers: rest.providers ?? [],
+      controllers: rest.controllers ?? [],
+      imports: rest.imports ?? [],
+      exports: rest.exports ?? [],
+    },
+    rest,
+  );
 }
 
 /**

@@ -47,6 +47,29 @@ the implementation token public. An alias cannot access another module's unexpor
 consumer's same-token provider cannot change the alias's declared target. The target determines the
 instance lifetime; an alias does not independently cache a transient target.
 
+## Constructor metadata
+
+Constructor injection reads the `design:paramtypes` metadata that TypeScript, SWC and Oxc emit
+for a decorated class when `emitDecoratorMetadata` is enabled, plus any `@Inject(token)` and
+`@Optional()` entries. The container plans each class provider's parameters once, when the class
+is registered, and throws `MissingInjectionMetadataError` before anything constructs it when a
+parameter has no usable token:
+
+- the build emitted no paramtype for it (the constructor declares more parameters than the
+  metadata and `@Inject` indexes cover), or
+- its paramtype is `Object` or `undefined` (an interface, a type-only import, or a circular import)
+  and it has no `@Inject(token)`.
+
+The error names the class and the parameter index. Enable `emitDecoratorMetadata`, add
+`@Inject(Token)` to that parameter, or mark it `@Optional()` to inject `undefined`. A
+`forwardRef` token is accepted as declared and resolved later. A subclass without its own
+constructor inherits its parent's metadata; a subclass that declares a constructor uses its own.
+
+Registering a class that carries no class decorator at all is reported through the container's
+diagnostics policy (`'log'` warns, `'throw'` fails bootstrap, `'silent'` ignores it), as is a module
+export that is neither a local provider nor exported by an imported module. `@Module`, `@Catch`,
+gateway and discoverable class decorators count as decorated.
+
 ## Resource lifetime
 
 The container disposes constructed resources in reverse creation order. It prefers

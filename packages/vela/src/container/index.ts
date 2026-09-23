@@ -4,6 +4,7 @@ export {
   InjectionToken,
   ForwardRef,
   forwardRef,
+  MissingInjectionMetadataError,
   ModuleVisibilityError,
   MultipleProvidersFoundError,
   ROOT_MODULE_ID,
@@ -29,4 +30,5 @@ export type {
   ModuleDescription,
   ContainerOptions,
   Diagnostics,
+  MissingInjectionMetadataReason,
 } from './types';

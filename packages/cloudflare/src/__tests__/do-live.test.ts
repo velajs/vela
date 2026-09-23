@@ -3,7 +3,7 @@ const envToken = new InjectionToken<object>('test environment');
 import { describe, it, expect, beforeEach } from 'vitest';
 import { z } from 'zod';
 import { DatabaseSync } from 'node:sqlite';
-import { Injectable, MetadataRegistry, Module, WebSocketModule } from '@velajs/vela';
+import { Injectable, MetadataRegistry, Module } from '@velajs/vela';
 import { WebSocketGateway } from '@velajs/vela/websocket';
 import {
   defineLiveQuery,
@@ -15,6 +15,7 @@ import {
 } from '@velajs/vela/live';
 import type { CommitStamp, InvalidationCommand, LiveInvalidationSink } from '@velajs/vela/live';
 import { buildDoRuntime } from '../websocket/do-bootstrap';
+import { CloudflareWebSocketModule } from '../websocket/cloudflare-websocket.module';
 import { DoCursorLog, durableObjectCursorLog, durableObjectLive } from '../websocket/do-live';
 import { DoWebSocketHost } from '../websocket/do-websocket-host';
 import type { DoStateLike, SqlStorageLike, WsLike } from '../websocket/do-state';
@@ -212,7 +213,7 @@ describe('live queries inside the Durable Object', () => {
 
     @Module({
       imports: [
-        WebSocketModule.forRoot({}),
+        CloudflareWebSocketModule.forRoot(),
         LiveModule.forRoot({
           log: () => durableObjectCursorLog(),
           driver: () => durableObjectLive({ namespace: unusedNamespace, gatewayPath: PATH }),
@@ -339,7 +340,7 @@ describe('Durable Object lifecycle bindings', () => {
     }
     @Module({
       imports: [
-        WebSocketModule.forRoot({}),
+        CloudflareWebSocketModule.forRoot(),
         LiveModule.forRoot({
           driver: () =>
             durableObjectLive({ namespace: unusedNamespace, gatewayPath: '/rooms/:id/ws' }),

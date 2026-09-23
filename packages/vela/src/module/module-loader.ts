@@ -1,6 +1,13 @@
 import { Scope } from '../constants';
 import type { Container } from '../container/container';
-import { ForwardRef, defineProvider, getProviderOptions, InjectionToken } from '../container/types';
+import { reportDiagnostic } from '../container/diagnostics';
+import {
+  ForwardRef,
+  defineProvider,
+  describeToken,
+  getProviderOptions,
+  InjectionToken,
+} from '../container/types';
 import type { ProviderDefinition, Token, TypedToken, Type } from '../container/types';
 import type { RouteManager } from '../http/route.manager';
 import {
@@ -20,6 +27,8 @@ import type { MiddlewareRouteDefinition, NestModule } from './middleware';
 
 import {
   DEFAULT_MODULE_KEY,
+  ModuleIdentityFingerprints,
+  assertDefinedEntries,
   isDynamicModule,
   moduleKeyOf,
   unwrapModuleImport,
@@ -90,6 +99,11 @@ export class ModuleLoader {
   // moduleId → controllers it declares; the same Set backs the container's
   // ModuleScope, which pipelines read to apply module-level @Use* components.
   #moduleControllers = new Map<string, Set<Type>>();
+  // Per-load reference ids: identity fingerprints never outlive this loader.
+  #identity = new ModuleIdentityFingerprints();
+  // moduleId → the DynamicModule that first created the instance, compared
+  // against later imports of the same (class, key).
+  #definitionByModuleId = new Map<string, DynamicModule>();
 
   constructor(
     private container: Container,
@@ -192,6 +206,7 @@ export class ModuleLoader {
 
     const moduleId = this.getModuleId(moduleClass, key);
     if (this.isProcessed(moduleClass, key)) {
+      this.reportIdentityCollision(moduleId, moduleClassOrDynamic);
       // Even if already processed, still collect extra controllers from dynamic module
       for (const controller of extraControllers) {
         if (this.registerController(controller, moduleId)) {
@@ -223,6 +238,19 @@ export class ModuleLoader {
       throw new Error(`Failed to get module metadata for ${moduleClass.name}`);
     }
 
+    const allImports = [...metadata.imports, ...extraImports];
+    const allProviders = [...metadata.providers, ...extraProviders];
+    const allControllers = [...metadata.controllers, ...extraControllers];
+    const allExports = [...metadata.exports, ...extraExports];
+    const moduleName = moduleClass.name || 'AnonModule';
+    assertDefinedEntries(moduleName, 'imports', allImports);
+    assertDefinedEntries(moduleName, 'providers', allProviders);
+    assertDefinedEntries(moduleName, 'controllers', allControllers);
+    assertDefinedEntries(moduleName, 'exports', allExports);
+
+    if (isDynamicModule(moduleClassOrDynamic)) {
+      this.#definitionByModuleId.set(moduleId, moduleClassOrDynamic);
+    }
     this.#processingStack.add(moduleId);
 
     try {
@@ -236,8 +264,6 @@ export class ModuleLoader {
       // diagnostic when the same module class appears under both `"default"`
       // and at least one explicit key (almost always user error).
       const keysByClassInImports = new Map<Type, Set<string>>();
-
-      const allImports = [...metadata.imports, ...extraImports];
 
       for (const entry of allImports) {
         const importedModule = unwrapModuleImport(entry);
@@ -258,6 +284,7 @@ export class ModuleLoader {
         importedModuleIds.add(importedId);
 
         if (entry instanceof ForwardRef && this.#processingStack.has(importedId)) {
+          this.reportIdentityCollision(importedId, importedModule);
           continue;
         }
 
@@ -268,10 +295,6 @@ export class ModuleLoader {
       }
 
       this.warnOnMixedDefaultAndKeyed(moduleClass.name, keysByClassInImports);
-
-      const allProviders = [...metadata.providers, ...extraProviders];
-      const allControllers = [...metadata.controllers, ...extraControllers];
-      const allExports = [...metadata.exports, ...extraExports];
 
       // Build the ModuleScope BEFORE registering providers so the visibility
       // check sees the local-provider set as we register.
@@ -342,7 +365,7 @@ export class ModuleLoader {
 
       this.markProcessed(moduleClass, key);
 
-      const exports = this.buildExportSet(allExports, allProviders, importedProviders);
+      const exports = this.buildExportSet(moduleName, allExports, allProviders, importedProviders);
       this.cacheExports(moduleClass, key, exports);
 
       if (isGlobal) {
@@ -385,18 +408,32 @@ export class ModuleLoader {
     parentName: string,
     keysByClass: Map<Type, Set<string>>,
   ): void {
-    const mode = this.container.getDiagnostics();
-    if (mode === 'silent') return;
     for (const [cls, keys] of keysByClass) {
       if (keys.size < 2) continue;
       if (!keys.has(DEFAULT_MODULE_KEY)) continue;
-      const message =
+      reportDiagnostic(
+        this.container.getDiagnostics(),
         `[vela] ${cls.name} imported in both bare and keyed form in '${parentName}'. ` +
-        `These resolve to distinct module instances; consumers asking for an exported ` +
-        `token will hit MultipleProvidersFoundError. Use one form consistently.`;
-      if (mode === 'throw') throw new Error(message);
-      console.warn(message);
+          `These resolve to distinct module instances; consumers asking for an exported ` +
+          `token will hit MultipleProvidersFoundError. Use one form consistently.`,
+      );
     }
+  }
+
+  /**
+   * A repeated (class, key) is deduplicated to its first definition. That is
+   * only safe when the repeat was built from the same inputs; otherwise its
+   * providers would be dropped without a trace.
+   */
+  private reportIdentityCollision(moduleId: string, repeat: Type | DynamicModule): void {
+    const first = this.#definitionByModuleId.get(moduleId);
+    if (!first || !isDynamicModule(repeat) || !this.#identity.conflicts(first, repeat)) return;
+    reportDiagnostic(
+      this.container.getDiagnostics(),
+      `[vela] ${moduleId} was imported again with different options; the repeated import's ` +
+        `providers were ignored in favor of the first. Give each configuration its own key ` +
+        `(e.g. forRoot({ ..., key: 'secondary' })) or import one shared definition.`,
+    );
   }
 
   /** Registers the provider and returns the token it was registered under. */
@@ -463,6 +500,7 @@ export class ModuleLoader {
   }
 
   private buildExportSet(
+    moduleName: string,
     exports: Token[],
     providers: Array<Type | ProviderDefinition>,
     importedProviders: Set<Token>,
@@ -479,9 +517,10 @@ export class ModuleLoader {
       const isImportedProvider = importedProviders.has(exported);
 
       if (!isLocalProvider && !isImportedProvider) {
-        const name = typeof exported === 'function' ? exported.name : String(exported);
-        console.warn(
-          `Warning: Exporting '${name}' which is neither a local provider nor imported from another module.`,
+        reportDiagnostic(
+          this.container.getDiagnostics(),
+          `[vela] ${moduleName} exports '${describeToken(exported)}', which is neither a local ` +
+            'provider nor exported by an imported module.',
         );
       }
 

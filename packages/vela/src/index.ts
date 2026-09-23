@@ -54,6 +54,7 @@ export {
   ForwardRef,
   forwardRef,
   ModuleRef,
+  MissingInjectionMetadataError,
   ModuleVisibilityError,
   MultipleProvidersFoundError,
   ROOT_MODULE_ID,
@@ -75,6 +76,7 @@ export type {
   ModuleDescription,
   ContainerOptions,
   Diagnostics,
+  MissingInjectionMetadataReason,
 } from './container/index';
 // Introspection: the composed route table VelaApplication.describeRoutes()
 // returns (RouteManager itself stays internal-only).
@@ -425,6 +427,7 @@ export {
   moduleToken,
   provideGlobal,
   sideEffectModule,
+  UndefinedModuleError,
 } from './module/index';
 export type {
   ModuleOptions,
@@ -445,6 +448,7 @@ export type {
   ModuleContributions,
   ModuleSetupContext,
   LazyProviderSpec,
+  ModuleEntryList,
 } from './module/index';
 export type { MiddlewareConsumer, NestModule, RouteInfo } from './http/index';
 
