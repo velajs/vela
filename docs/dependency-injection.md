@@ -63,7 +63,8 @@ the `runInEntrypointScope` callback argument. Discovery resolves request-scoped 
 caller passes `{ requestScope: scope }`.
 
 Inside a provider, `await moduleRef.resolve(token, context)` resolves in the scope that `context`
-identifies; see [ModuleRef](#moduleref).
+identifies; see [ModuleRef](#moduleref). In tests, `TestingModule.get` throws for request-scoped
+providers too; use `await module.resolveInRequest(token)`.
 
 ## ModuleRef
 

@@ -33,6 +33,15 @@ function providerContracts(module: TestingModule): void {
   // @ts-expect-error get's type argument describes the actual token, not a requested result.
   module.get<Date>(COUNT);
 
+  const scopedCounter: Promise<Counter> = module.resolveInRequest(Counter);
+  const scopedCount: Promise<number> = module.resolveInRequest(COUNT, {
+    url: 'http://localhost/items',
+    headers: { 'x-request-id': 'typed' },
+  });
+  // @ts-expect-error Request-scoped resolution follows the token as well.
+  const scopedInvented: Promise<Date> = module.resolveInRequest(COUNT);
+  void [scopedCounter, scopedCount, scopedInvented];
+
   const builder = Test.createTestingModule({ providers: [defineProvider(COUNT, { useValue: 1 })] });
   builder.overrideProvider(COUNT).useValue(2);
   builder.overrideProvider(Counter).useClass(Counter);
