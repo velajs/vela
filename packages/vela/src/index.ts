@@ -124,6 +124,7 @@ export {
 } from './http/index';
 export type {
   RouteOptions,
+  SchemaParamDecorator,
   ReadJsonBodyOptions,
   UrlForOptions,
   SignedUrlGenerateOptions,
@@ -571,7 +572,6 @@ export {
   ParseArrayPipe,
   DefaultValuePipe,
   RequiredPipe,
-  ZodValidationPipe,
 } from './pipeline/index';
 export type { ParseUUIDPipeOptions, ParseArrayPipeOptions } from './pipeline/index';
 

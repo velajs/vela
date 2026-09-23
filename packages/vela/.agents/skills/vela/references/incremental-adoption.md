@@ -15,7 +15,7 @@ Vela mirrors NestJS's authoring surface, so most decorators and interfaces port 
 
 | NestJS | Vela | Notes |
 |---|---|---|
-| class-validator + class-transformer DTOs | **Schemas** via `defineEndpoint` or `defineDto(schema)` + explicit `ValidationPipe` | core never imports class-validator — see `references/validation.md` |
+| class-validator + class-transformer DTOs | **Schemas** via `defineEndpoint`, or a schema passed to the parameter decorator (`@Body(dto)`, validated by `ValidationPipe`) | core never imports class-validator — see `references/validation.md` |
 | `ConfigurableModuleBuilder` for dynamic modules | **`defineModule`** (the engine; `ConfigurableModuleBuilder` adapts it) | see `references/modules-and-di.md` + `docs/modules.md` |
 | `app.setGlobalPrefix('/api')` | `globalPrefix` create-option; read back via `app.getGlobalPrefix()` | there is **no** `setGlobalPrefix` method on the app |
 | `app.enableVersioning({...})` | decorator-driven `@Controller({ version })` / `@Version(2)` | no `enableVersioning`/`VersioningType` |
@@ -66,4 +66,4 @@ The main `@velajs/vela` export is edge-pure by contract, enforced in CI (an audi
 - `__dirname` / `__filename`, `setInterval`, `Bun.serve()`
 - Node `crypto` → Web Crypto
 
-The one sanctioned exception is `@velajs/vela/schedule-node`, an opt-in Node/Bun cron executor — don't import it on edge runtimes (see `references/schedule-and-cron.md`). Ambient request access (`getCurrentContainer()` / `getCurrentRequestContext()`) is off by default; enabling it (`ambientContainer: true`) uses Hono's `context-storage` and, on Cloudflare Workers, requires the `nodejs_als` (or `nodejs_compat`) flag. The default DI path — the explicit per-request child container — needs no flags.
+The one sanctioned exception is `@velajs/vela/schedule-node`, an opt-in Node/Bun cron executor — don't import it on edge runtimes (see `references/schedule-and-cron.md`). Ambient request access (`getCurrentContainer()` / `getCurrentRequestContext()`) is off by default; enabling it (`ambientContainer: true`) uses Hono's `context-storage`. The root entry imports that module either way, so Cloudflare Workers need `node:async_hooks` even when the default DI path, the explicit per-request child container, is all you use: `nodejs_compat` is default-on from compatibility date 2026-08-04, and earlier dates need the `nodejs_als` (or `nodejs_compat`) flag.

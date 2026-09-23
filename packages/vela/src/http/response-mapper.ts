@@ -1,5 +1,23 @@
 import type { Context } from 'hono';
 import type { RedirectStatusCode, StatusCode } from 'hono/utils/http-status';
+import { getEndpointDefinition } from '../openapi/endpoint';
+import type { Constructor } from '../registry/types';
+import { getHttpCode } from './decorators';
+
+/** The status of a successful non-empty result from a handler that declares none. */
+export const DEFAULT_SUCCESS_STATUS = 200;
+
+/**
+ * The success status a handler declares: its `@Endpoint` contract, then `@HttpCode`.
+ * `undefined` leaves the default, which is 200 (204 for an empty result). Responses,
+ * OpenAPI and the response cache all read the status from here.
+ */
+export function resolveSuccessStatus(
+  controller: Constructor,
+  handler: string | symbol,
+): StatusCode | undefined {
+  return getEndpointDefinition(controller, handler)?.status ?? getHttpCode(controller, handler);
+}
 
 interface RedirectOverride {
   url: string;
@@ -42,7 +60,8 @@ export function mapResponse(c: Context, result: unknown, statusCode?: StatusCode
   if (result instanceof Response) {
     return result;
   }
-  const status = statusCode ?? (result === null || result === undefined ? 204 : 200);
+  const status =
+    statusCode ?? (result === null || result === undefined ? 204 : DEFAULT_SUCCESS_STATUS);
   // Ordinary Fetch responses cannot carry informational/upgrade statuses.
   // A transport-owned upgrade Response passed through above stays untouched.
   if (status === 101) {

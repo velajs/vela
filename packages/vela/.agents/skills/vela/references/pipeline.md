@@ -31,7 +31,7 @@ class OrdersController {
   @UseGuards(new ApiKeyGuard())
   @UseInterceptors(EnvelopeInterceptor)
   @UseFilters(ClientErrorFilter)
-  create(@Body(new ValidationPipe(CreateOrder)) body: ReturnType<typeof CreateOrder.parse>) {}
+  create(@Body(CreateOrder) body: ReturnType<typeof CreateOrder.parse>) {}
 }
 ```
 
@@ -140,7 +140,7 @@ class ScopeGuard implements CanActivate {
 | `ParseArrayPipe` | `({ separator?, optional? })` | split + trim (default sep `,`) |
 | `DefaultValuePipe` | `(defaultValue)` | fill `undefined`/`null` |
 | `RequiredPipe` | `()` | throw on `undefined`/`null`/`''` |
-| `ZodValidationPipe` | `(schema)` | `schema.parse(value)` (raw errors) |
+| `ValidationPipe` | `(schema?)` | Standard Schema, parser, or `defineDto` descriptor; issues become 400 |
 
 ```ts
 params(

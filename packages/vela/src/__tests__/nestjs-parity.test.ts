@@ -115,7 +115,6 @@ import {
   LogLevel,
   CacheService,
   CACHE_MANAGER,
-  ZodValidationPipe,
   RequiredPipe,
 } from '../index.js';
 import type {
@@ -4222,10 +4221,10 @@ describe('CacheService / CACHE_MANAGER direct injection', () => {
 });
 
 // =============================================================================
-// ZodValidationPipe
+// ValidationPipe with Zod schemas
 // =============================================================================
 
-describe('ZodValidationPipe', () => {
+describe('ValidationPipe with Zod schemas', () => {
   it('transforms and validates body with Zod schema', async () => {
     const CreateUserSchema = z.object({
       name: z.string().min(1),
@@ -4235,7 +4234,7 @@ describe('ZodValidationPipe', () => {
     @Controller('/zod-users')
     class ZodUserController {
       @Post()
-      create(@Body(new ZodValidationPipe(CreateUserSchema)) body: { name: string; age: number }) {
+      create(@Body(new ValidationPipe(CreateUserSchema)) body: { name: string; age: number }) {
         return { created: body };
       }
     }
@@ -4253,13 +4252,13 @@ describe('ZodValidationPipe', () => {
     expect(await res.json()).toEqual({ created: { name: 'Alice', age: 30 } });
   });
 
-  it('throws when Zod schema validation fails', async () => {
+  it('rejects invalid input with 400 and the schema issues', async () => {
     const Schema = z.object({ count: z.number() });
 
     @Controller('/zod-fail')
     class ZodFailController {
       @Post()
-      handle(@Body(new ZodValidationPipe(Schema)) body: unknown) {
+      handle(@Body(new ValidationPipe(Schema)) body: unknown) {
         return body;
       }
     }
@@ -4273,14 +4272,18 @@ describe('ZodValidationPipe', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ count: 'not-a-number' }),
     });
-    expect(res.status).toBe(500); // Zod throws ZodError; not wrapped in HttpException
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({
+      message: 'Validation failed',
+      errors: [expect.objectContaining({ path: ['count'] })],
+    });
   });
 
   it('can be used as a class-level pipe with @UsePipes()', async () => {
     const QuerySchema = z.object({ page: z.coerce.number().default(1) });
 
     @Controller('/zod-query')
-    @UsePipes(new ZodValidationPipe(QuerySchema))
+    @UsePipes(new ValidationPipe(QuerySchema))
     class ZodQueryController {
       @Get()
       handle(@Query() query: unknown) {

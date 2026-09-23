@@ -39,7 +39,6 @@ export {
   ParseArrayPipe,
   DefaultValuePipe,
   RequiredPipe,
-  ZodValidationPipe,
 } from './pipes';
 export type { ParseUUIDPipeOptions, ParseArrayPipeOptions } from './pipes';
 export type {

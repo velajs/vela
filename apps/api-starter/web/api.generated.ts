@@ -15,7 +15,7 @@ export type AppType = HttpApp<{
   };
   "/todos": {
     $get: { input: {}; output: unknown; outputFormat: 'json'; status: 200 };
-    $post: { input: { json: (Schemas["CreateTodoDto"]); }; output: unknown; outputFormat: 'json'; status: 200 } | { input: { json: (Schemas["CreateTodoDto"]); }; output: unknown; outputFormat: 'json'; status: 201 } | { input: { json: (Schemas["CreateTodoDto"]); }; output: unknown; outputFormat: 'json'; status: 400 };
+    $post: { input: { json: (Schemas["CreateTodoDto"]); }; output: unknown; outputFormat: 'json'; status: 201 } | { input: { json: (Schemas["CreateTodoDto"]); }; output: unknown; outputFormat: 'json'; status: 400 };
   };
   "/todos/:id": {
     $get: { input: { param: { "id": string; }; }; output: unknown; outputFormat: 'json'; status: 200 } | { input: { param: { "id": string; }; }; output: unknown; outputFormat: 'json'; status: 404 };

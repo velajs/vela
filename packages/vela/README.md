@@ -76,14 +76,15 @@ before `ThrottlerModule`.
 - **Dependency injection** — `@Injectable`, `@Inject`, `InjectionToken`, singleton/transient/request scopes
 - **Modules** — `@Module` with imports, exports, controllers, providers
 - **Guards** — `@UseGuards` with `CanActivate` interface
-- **Pipes** — `@UsePipes`, built-in `ParseIntPipe`, `ParseBoolPipe`, `ZodValidationPipe`, etc.
+- **Pipes** — `@UsePipes`, built-in `ParseIntPipe`, `ParseBoolPipe`, `ValidationPipe`, etc.
+- **Schema-validated parameters** — `@Body(schema)`, `@Query('page', schema)`, `@Param('id', schema)` return 400 on invalid input and document the schema in OpenAPI
 - **Interceptors** — `@UseInterceptors` with `NestInterceptor` interface
 - **Exception filters** — `@UseFilters`, `@Catch`, built-in HTTP exceptions
 - **Middleware** — `@UseMiddleware` for Hono-native middleware
 - **Custom metadata** — `@SetMetadata` + `Reflector`
 - **Custom param decorators** — `createParamDecorator`
-- **Route versioning** — `@Controller({ version: '1' })` + `@Version('2')`
-- **Global prefix** — `app.setGlobalPrefix('/api')`
+- **Route versioning** — `@Controller({ path: '/users', version: 1 })` + `@Version(2)` (serves `/v1/users` and `/v2/users`)
+- **Global prefix** — `VelaFactory.create(AppModule, { globalPrefix: '/api' })`, read back with `app.getGlobalPrefix()`
 - **Lifecycle hooks** — `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`
 - **CRUD integration** — Optional [`@velajs/crud`](https://github.com/velajs/vela/tree/main/packages/crud) package
 
