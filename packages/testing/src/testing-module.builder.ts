@@ -9,11 +9,26 @@ import {
   type NestInterceptor,
   type PipeTransform,
   type ProviderDefinition,
+  type RuntimeAdapter,
   type Token,
   type Type,
+  type VelaEnv,
 } from '@velajs/vela';
-import { MetadataRegistry, bootstrap, finalizeApplication } from '@velajs/vela/internal';
+import {
+  MetadataRegistry,
+  applyRuntimeAdapters,
+  bootstrap,
+  finalizeApplication,
+} from '@velajs/vela/internal';
 import { TestingModule } from './testing-module.js';
+
+/** Runtime inputs for a testing module, as `VelaFactory.create` takes them. */
+export interface TestingModuleOptions {
+  /** Seeded as the application's ENV (bindings, variables, secrets). */
+  env?: VelaEnv;
+  /** Runtime adapters bound exactly as in production. */
+  adapters?: RuntimeAdapter[];
+}
 
 interface OverrideEntry {
   token: Token;
@@ -56,9 +71,11 @@ export class OverrideBy<Key extends Token> {
 export class TestingModuleBuilder {
   #overrides: OverrideEntry[] = [];
   readonly #metadata: ModuleOptions;
+  readonly #options: TestingModuleOptions;
 
-  constructor(metadata: ModuleOptions) {
+  constructor(metadata: ModuleOptions, options: TestingModuleOptions = {}) {
     this.#metadata = metadata;
+    this.#options = options;
   }
 
   overrideProvider<const Key extends Token>(token: OverrideToken<Key>): OverrideBy<Key> {
@@ -112,8 +129,10 @@ export class TestingModuleBuilder {
 
     // Use the framework's single bootstrap primitive. Hand-copying its
     // registrations caused test applications to drift from production (most
-    // critically REQUEST_CONTEXT token/request-child behavior).
-    const prepared = await bootstrap(TestRootModule);
+    // critically REQUEST_CONTEXT token/request-child behavior). ENV and
+    // runtime adapters bind through the same path as VelaFactory.create.
+    const { env, adapters = [] } = this.#options;
+    const prepared = await bootstrap(TestRootModule, applyRuntimeAdapters({ env }, adapters));
     const { container } = prepared;
 
     // Force-apply overrides into every module bucket that already holds the
@@ -122,11 +141,12 @@ export class TestingModuleBuilder {
     // registration first and never consults the root override. The default
     // 'all-existing' buckets replace every non-root bucket holding the token
     // and re-register at root — the supported form of the old private loop.
+    // An ENV override lands at root, where the global ENV is read.
     for (const override of this.#overrides) {
       container.replaceProvider(override.provider);
     }
 
-    const app = await finalizeApplication(prepared);
+    const app = await finalizeApplication(prepared, adapters);
 
     return new TestingModule(app, container);
   }
