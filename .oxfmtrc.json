@@ -14,6 +14,8 @@
     ".github/**",
     ".superpowers/**",
     "**/*.md",
-    "**/worker-configuration*.d.ts"
+    "**/worker-configuration*.d.ts",
+    "apps/api-starter/web/api.generated.ts",
+    "pnpm-workspace.yaml"
   ]
 }

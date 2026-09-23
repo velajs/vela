@@ -1,5 +1,5 @@
-import type { ExecutionContext } from "hono";
-import type { VelaEnv } from "@velajs/vela";
+import type { ExecutionContext } from 'hono';
+import type { VelaEnv } from '@velajs/vela';
 
 export type MockKV = KVNamespace & {
   _store: Map<string, string>;
@@ -43,8 +43,8 @@ function createMockKV(): MockKV {
 
 function createMockD1(): D1Database {
   const users = [
-    { id: "u1", name: "Ada Harbor" },
-    { id: "u2", name: "Lin Dock" },
+    { id: 'u1', name: 'Ada Harbor' },
+    { id: 'u2', name: 'Lin Dock' },
   ];
 
   const statement = {
@@ -86,7 +86,7 @@ function createMockR2(): R2Bucket {
       return value === undefined ? null : { key, size: value.length };
     },
     put: async (key: string, value: string | ArrayBuffer | ArrayBufferView) => {
-      store.set(key, typeof value === "string" ? value : String(value));
+      store.set(key, typeof value === 'string' ? value : String(value));
       return { key };
     },
     delete: async (keys: string | string[]) => {
@@ -123,7 +123,7 @@ function createMockDurableObjectNamespace(): DurableObjectNamespace {
       const url = new URL(String(input));
       return Response.json({
         durableObject: true,
-        name: url.pathname.split("/").pop() ?? "unknown",
+        name: url.pathname.split('/').pop() ?? 'unknown',
       });
     },
   };
@@ -131,7 +131,7 @@ function createMockDurableObjectNamespace(): DurableObjectNamespace {
   return {
     idFromName: (name: string) => ({ name, toString: () => `id:${name}` }),
     idFromString: (id: string) => ({ id, toString: () => id }),
-    newUniqueId: () => ({ toString: () => "id:unique" }),
+    newUniqueId: () => ({ toString: () => 'id:unique' }),
     get: () => stub,
     jurisdiction: () => ({ get: () => stub }),
   } as unknown as DurableObjectNamespace;
@@ -142,7 +142,7 @@ function createMockAI(): Ai {
     run: async (model: string, input: unknown) => ({
       model,
       input,
-      response: "lab-ai-response",
+      response: 'lab-ai-response',
     }),
   } as unknown as Ai;
 }
@@ -152,9 +152,9 @@ function createMockVectorize(): VectorizeIndex {
     query: async () => ({
       matches: [
         {
-          id: "doc-1",
+          id: 'doc-1',
           score: 0.98,
-          metadata: { title: "Harbor safety guide" },
+          metadata: { title: 'Harbor safety guide' },
         },
       ],
       count: 1,
@@ -164,12 +164,12 @@ function createMockVectorize(): VectorizeIndex {
 
 function createMockHyperdrive(): Hyperdrive {
   return {
-    connectionString: "postgres://lab:secret@db.example.test:5432/worker_lab",
-    host: "db.example.test",
+    connectionString: 'postgres://lab:secret@db.example.test:5432/worker_lab',
+    host: 'db.example.test',
     port: 5432,
-    user: "lab",
-    password: "secret",
-    database: "worker_lab",
+    user: 'lab',
+    password: 'secret',
+    database: 'worker_lab',
   } as unknown as Hyperdrive;
 }
 

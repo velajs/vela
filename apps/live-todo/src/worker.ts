@@ -11,7 +11,9 @@ import { makeAppModule, TODO_STORE } from './app.module';
 import type { Todo, TodoStore } from './app.module';
 import { todoListDefinition } from './live-contract';
 
-const SEED: Todo[] = [{ id: 'seed-1', text: 'Try opening this page in a second tab', createdAt: 0 }];
+const SEED: Todo[] = [
+  { id: 'seed-1', text: 'Try opening this page in a second tab', createdAt: 0 },
+];
 const KV_KEY = 'todos';
 
 /**

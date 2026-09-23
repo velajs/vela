@@ -74,10 +74,42 @@ function seed(db: MemoryDb): void {
     { id: 'a3', name: 'Cy', email: 'cy@x.io', role: 'member', createdAt: 3, updatedAt: 3 },
   ]);
   db.seed('books', [
-    { id: 'b1', title: 'Portable Time', authorId: 'a1', status: 'published', deletedAt: null, createdAt: 1, updatedAt: 1 },
-    { id: 'b2', title: 'Draft Notes', authorId: 'a1', status: 'draft', deletedAt: null, createdAt: 2, updatedAt: 2 },
-    { id: 'b3', title: 'World Tour', authorId: 'a2', status: 'published', deletedAt: null, createdAt: 3, updatedAt: 3 },
-    { id: 'b4', title: 'Tombstoned', authorId: 'a1', status: 'draft', deletedAt: 123, createdAt: 4, updatedAt: 4 },
+    {
+      id: 'b1',
+      title: 'Portable Time',
+      authorId: 'a1',
+      status: 'published',
+      deletedAt: null,
+      createdAt: 1,
+      updatedAt: 1,
+    },
+    {
+      id: 'b2',
+      title: 'Draft Notes',
+      authorId: 'a1',
+      status: 'draft',
+      deletedAt: null,
+      createdAt: 2,
+      updatedAt: 2,
+    },
+    {
+      id: 'b3',
+      title: 'World Tour',
+      authorId: 'a2',
+      status: 'published',
+      deletedAt: null,
+      createdAt: 3,
+      updatedAt: 3,
+    },
+    {
+      id: 'b4',
+      title: 'Tombstoned',
+      authorId: 'a1',
+      status: 'draft',
+      deletedAt: 123,
+      createdAt: 4,
+      updatedAt: 4,
+    },
   ]);
   db.seed('tags', [
     { id: 't1', label: 'fiction', createdAt: 1, updatedAt: 1 },
@@ -184,11 +216,11 @@ export async function createApp(options: CreateAppOptions = {}): Promise<DemoApp
   class ApiModule {}
 
   const studioModule = StudioModule.forRoot({
-        path: ADMIN_BASE_PATH,
-        ...(token === undefined ? {} : { token }),
-        rootModule: ApiModule,
-        editable,
-      });
+    path: ADMIN_BASE_PATH,
+    ...(token === undefined ? {} : { token }),
+    rootModule: ApiModule,
+    editable,
+  });
   const modelSourceModule = StudioCrudModule.forRoot({});
   @Module({
     imports: [
