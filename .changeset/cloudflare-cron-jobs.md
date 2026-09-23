@@ -17,3 +17,5 @@ The adapter provides `SCHEDULE_INVOCATION_SEED`: a cron job fired outside a trig
 **Behavior change:** scheduled handlers receive only a `ScheduleInvocation` (`kind`, `expression` equal to the trigger string, `scheduledTime`, `signal`), identical to Node, instead of `(controller, env, ctx)`. Inject `ENV` for bindings, `CLOUDFLARE_SCHEDULED_EVENT` for `noRetry()`, and `EXECUTION_LIFETIME` for `waitUntil()`.
 
 **Behavior change:** scheduled jobs no longer run guards, interceptors or filters declared with `@UseGuards`, `@UseInterceptors` or `@UseFilters`, matching the Node executor. Queue consumers keep them. Use signed `ScheduleModule` dispatch to run a job through a route's request pipeline.
+
+**Behavior change:** a `@Cron` job that declares `@UseGuards`, `@UseInterceptors` or `@UseFilters` on its class, method or module is reported through the diagnostics policy, because those components never run for scheduled jobs: the default `'log'` mode warns once and `'throw'` fails bootstrap. Move them to a signed `ScheduleModule` dispatch route.
