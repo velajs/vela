@@ -2,9 +2,16 @@
   "name": "vela-ws-chat",
   "private": true,
   "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
   "dependencies": {
     "@velajs/cloudflare": "workspace:*",
     "@velajs/vela": "workspace:*",
     "hono": "catalog:"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "catalog:",
+    "typescript": "catalog:"
   }
 }
