@@ -3,7 +3,6 @@ import { Inject, Injectable } from '../container/decorators';
 import { defineProvider } from '../container/types';
 import { Module } from '../module/decorators';
 import { attachModuleIdentity } from '../module/module-identity';
-import { stableHash } from '../module/stable-hash';
 import type { DynamicModule } from '../module/types';
 import { ScheduleRegistry } from './schedule.registry';
 import { SCHEDULE_DISPATCH } from './schedule.tokens';
@@ -28,12 +27,27 @@ import type { ScheduleDispatchMode } from './schedule.types';
  */
 class ScheduleDispatchHost {}
 
+// A signed policy keys by reference: a helper that builds
+// `target: () => ({ path })` per call yields policies with one source but
+// different captured targets, which no structural key tells apart.
+const policyIds = new WeakMap<ScheduleDispatchMode, number>();
+let nextPolicyId = 0;
+function policyIdentity(dispatch: ScheduleDispatchMode): string {
+  if (dispatch.kind === 'direct') return 'direct';
+  let id = policyIds.get(dispatch);
+  if (id === undefined) {
+    id = ++nextPolicyId;
+    policyIds.set(dispatch, id);
+  }
+  return `signed:${id}`;
+}
+
 /**
  * Fails bootstrap when `forRoot` configured different dispatch policies (their
  * keys differ, so each contributes its own global `SCHEDULE_DISPATCH` and the
- * one a job would use is ambiguous). The key covers the whole policy (kind,
- * target, method and TTL), so two signed policies that re-enter different
- * routes conflict too. Built eagerly with every policy host.
+ * one a job would use is ambiguous). Each signed policy object is its own
+ * policy, so two signed policies conflict even when they differ only in a
+ * captured target, method or TTL. Built eagerly with every policy host.
  */
 @Injectable()
 class ScheduleDispatchOwnership {
@@ -60,9 +74,9 @@ class ScheduleDispatchOwnership {
  * Cloudflare adapter's cron triggers, Studio's run-now), so the target route runs
  * the full request pipeline, global guards included. With no options jobs are
  * called directly in-isolate. An application configures one policy: two
- * `forRoot` calls with different `dispatch` policies (a different kind, or a
- * signed policy with a different target, method or TTL) fail bootstrap, and
- * repeating one policy deduplicates.
+ * `forRoot` calls with different `dispatch` policies (a different kind, or two
+ * different signed policy objects, even ones a helper builds from one source)
+ * fail bootstrap, and importing the same policy object again deduplicates.
  */
 @Module({
   // Lazy: the @Cron/@Interval discovery pass runs when ScheduleRegistry is
@@ -75,13 +89,13 @@ export class ScheduleModule {
   static forRoot(options: { dispatch?: ScheduleDispatchMode } = {}): DynamicModule {
     const dispatch = options.dispatch;
     if (!dispatch) return { module: ScheduleModule };
-    // Key by the whole policy: a conflicting repeat becomes a second owner of
+    // Key by policy identity: a different policy becomes a second owner of
     // SCHEDULE_DISPATCH, which ScheduleDispatchOwnership rejects, instead of
     // being deduplicated into the first policy.
     return attachModuleIdentity(
       {
         module: ScheduleDispatchHost,
-        key: `dispatch:${dispatch.kind}:${stableHash({ dispatch })}`,
+        key: `dispatch:${policyIdentity(dispatch)}`,
         providers: [
           defineProvider(SCHEDULE_DISPATCH, { useValue: dispatch }),
           ScheduleDispatchOwnership,

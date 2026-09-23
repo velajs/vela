@@ -157,8 +157,10 @@ including global guards. This works the same on Node timers, Workers cron
 triggers (the Cloudflare adapter supplies the in-isolate transport and reads
 `URL_SIGNING_SECRET` from `ENV`) and Studio's run-now. `target(job)` receives
 `{ kind, methodName, expression }` for a cron job or `{ kind, methodName, ms }` for
-an interval. An application configures one policy: importing `forRoot` with two
-different `dispatch` kinds fails bootstrap.
+an interval. An application configures one policy, in the root module. A
+signed policy is compared by reference: importing the same policy object again
+deduplicates, while a different kind or another signed policy object fails
+bootstrap, even one a helper builds from the same source with another target.
 
 ## Introspection
 

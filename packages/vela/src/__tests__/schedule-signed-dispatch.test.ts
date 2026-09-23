@@ -11,10 +11,21 @@ import {
   SignedInvocation,
   URL_SIGNING_SECRET,
 } from '../index.js';
-import { ScheduleModule, Interval, type ScheduleJobRef } from '../schedule/index.js';
+import {
+  ScheduleModule,
+  Interval,
+  SCHEDULE_DISPATCH,
+  type ScheduleDispatchMode,
+  type ScheduleJobRef,
+} from '../schedule/index.js';
 import { ScheduleNodeModule } from '../schedule-node/index.js';
 
 const SECRET = 'schedule-signed-dispatch-secret';
+
+/** Builds a signed policy per path: every policy has the same source. */
+function signedTo(path: string): ScheduleDispatchMode {
+  return { kind: 'signed', target: () => ({ path }) };
+}
 
 beforeEach(() => {
   MetadataRegistry.clear();
@@ -181,5 +192,32 @@ describe('ScheduleModule signed re-entry dispatch (opt-in)', () => {
     await expect(VelaFactory.create(TtlModule, { diagnostics: 'silent' })).rejects.toThrow(
       /different dispatch policies/,
     );
+  });
+
+  it('fails bootstrap on helper-built policies with one source but different targets', async () => {
+    @Module({ imports: [ScheduleModule.forRoot({ dispatch: signedTo('/jobs/feature') })] })
+    class FeatureModule {}
+
+    @Module({
+      imports: [ScheduleModule.forRoot({ dispatch: signedTo('/jobs/root') }), FeatureModule],
+    })
+    class AppModule {}
+
+    await expect(VelaFactory.create(AppModule, { diagnostics: 'silent' })).rejects.toThrow(
+      /ScheduleModule\.forRoot\(\) is imported with different dispatch policies/,
+    );
+
+    // One policy object imported again deduplicates into one owner.
+    const policy = signedTo('/jobs/root');
+    @Module({
+      imports: [
+        ScheduleModule.forRoot({ dispatch: policy }),
+        ScheduleModule.forRoot({ dispatch: policy }),
+      ],
+    })
+    class SameModule {}
+    const app = await VelaFactory.create(SameModule);
+    expect(app.getContainer().getOwnerModuleIds(SCHEDULE_DISPATCH)).toHaveLength(1);
+    await app.close();
   });
 });
