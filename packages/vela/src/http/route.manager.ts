@@ -220,6 +220,17 @@ function toHonoPattern(path: string): string {
   return pattern;
 }
 
+// Whether a middleware target's method reaches a route registered for
+// `route`; Hono serves HEAD with the GET handler.
+function methodsOverlap(target: string, route: string): boolean {
+  return (
+    target === HttpMethod.ALL ||
+    route === HttpMethod.ALL ||
+    target === route ||
+    (target === HttpMethod.HEAD && route === HttpMethod.GET)
+  );
+}
+
 function isTokenEntry(entry: unknown): entry is Token {
   return (
     typeof entry === 'function' ||
@@ -899,6 +910,9 @@ export class RouteManager {
       );
     }
 
+    // Every registration from here on serves a route (controllers, then contributors).
+    const firstRoute = app.routes.length;
+
     // First pass: register all custom routes (must come before CRUD /:id routes).
     for (const { controller, moduleId, metadata, routes } of this.controllers) {
       if (routes.length > 0) {
@@ -999,7 +1013,76 @@ export class RouteManager {
       }
     }
 
+    this.checkMiddlewareTargets(app.routes.slice(firstRoute));
     return app;
+  }
+
+  // Relative path targets resolve under the global prefix, so a target for a
+  // route served outside it (a contributor's RPC endpoint, say) would match
+  // nothing and leave that route without its middleware. Checked once this
+  // build has registered every route: a target that reaches no route under the
+  // prefix but does without it throws. A forRoutes() target that reaches no
+  // route at all is reported, because the route may still be added to the Hono
+  // app after startup (mountOpenApi(), WebSocket upgrades, raw Hono routes).
+  private checkMiddlewareTargets(
+    registered: ReadonlyArray<{ method: string; path: string }>,
+  ): void {
+    // A contributor's own app.use('*') middleware serves no route of its own.
+    const routes = registered.filter(
+      ({ method, path }) => method !== HttpMethod.ALL || (path !== '*' && path !== '/*'),
+    );
+    const routeRouter = new TrieRouter<string>();
+    for (const route of routes) routeRouter.add(HttpMethod.ALL, route.path, route.method);
+    // Patterns overlap when either one matches the other taken literally.
+    const served = (method: string, pattern: string, coverDescendants: boolean): boolean => {
+      const targetRouter = new TrieRouter<true>();
+      targetRouter.add(HttpMethod.ALL, pattern, true);
+      if (coverDescendants && !pattern.endsWith('*')) {
+        targetRouter.add(HttpMethod.ALL, joinPaths(pattern, '/*'), true);
+      }
+      return (
+        routes.some(
+          (route) =>
+            methodsOverlap(method, route.method) &&
+            targetRouter.match(HttpMethod.GET, route.path)[0].length > 0,
+        ) ||
+        routeRouter
+          .match(HttpMethod.GET, pattern)[0]
+          .some(([routeMethod]) => methodsOverlap(method, routeMethod))
+      );
+    };
+
+    const prefix = this.globalPrefix.replace(/\/+$/, '');
+    for (const definition of this.consumerMiddlewareDefinitions) {
+      const targets = [
+        ...definition.routes.map((target) => ({ target, forRoutes: true })),
+        ...definition.excludes.map((target) => ({ target, forRoutes: false })),
+      ];
+      for (const { target, forRoutes } of targets) {
+        if (typeof target === 'function' || target.absolute) continue;
+        const path = normalizePath(toHonoPattern(target.path)) || '/';
+        if (path === '/*') continue;
+        const method = target.method ?? HttpMethod.ALL;
+        const pattern = joinPaths(this.globalPrefix, path);
+        if (served(method, pattern, forRoutes)) continue;
+        if (prefix && served(method, path, forRoutes)) {
+          throw new Error(
+            `Middleware route '${target.path}' resolves to '${pattern}' under the global prefix ` +
+              `'${prefix}', which serves no route, but '${path}' is served outside the prefix. ` +
+              `Pass { path: '${path}', absolute: true } to match it as written.`,
+          );
+        }
+        if (!forRoutes) continue;
+        reportDiagnostic(
+          this.container.getDiagnostics(),
+          `[vela] Middleware route '${target.path}' resolves to '${pattern}', which matches no ` +
+            'route registered at startup, so the middleware never runs for it. If the route is ' +
+            (prefix ? 'served outside the global prefix or ' : '') +
+            'added to the Hono app after startup (mountOpenApi(), WebSocket upgrades, ' +
+            `app.getHonoApp()), pass { path: '${path}', absolute: true }.`,
+        );
+      }
+    }
   }
 
   private registerRoute(

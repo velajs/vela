@@ -96,6 +96,15 @@ consumer
   .forRoutes({ path: '/rpc', method: HttpMethod.POST, absolute: true });
 ```
 
+Once every controller and route contributor has registered its routes, each
+relative path target is checked against them. A target that reaches no route
+under the global prefix but matches a route served outside it, such as
+`forRoutes('rpc')` for the `RpcModule` endpoint, fails the build and names the
+`{ path, absolute: true }` form to use. A `forRoutes()` target that reaches no
+registered route at all is reported through the container's diagnostics policy
+(`'log'` warns, `'throw'` fails bootstrap), since the route may still be added
+to the Hono app later; target such a route with `absolute: true`.
+
 ## Browser security
 
 Import `SecurityModule` for exact-origin CORS, credentialed unsafe-method Origin

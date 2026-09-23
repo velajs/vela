@@ -11,6 +11,8 @@ import {
   Post,
   VelaFactory,
   Version,
+  defineMetadata,
+  registerRouteContributor,
   type Constructor,
   type MiddlewareConsumer,
   type NestMiddleware,
@@ -383,13 +385,28 @@ describe('absolute RouteInfo targets skip the global prefix', () => {
     expect(seen).toEqual(['POST /rpc', 'GET /rpc/manifest']);
   });
 
-  it('keeps a relative target under the global prefix', async () => {
+  it('keeps a relative target under the global prefix and reports that it matches no route', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const request = await createPlatformApp((consumer) => {
       consumer.apply(RecordingMiddleware).forRoutes('/rpc');
     });
 
     expect(await request('POST', '/rpc')).toBe(200);
     expect(seen).toEqual([]);
+    expect(warn).toHaveBeenCalledWith(
+      "[vela] Middleware route '/rpc' resolves to '/api/rpc', which matches no route " +
+        'registered at startup, so the middleware never runs for it. If the route is served ' +
+        'outside the global prefix or added to the Hono app after startup (mountOpenApi(), ' +
+        "WebSocket upgrades, app.getHonoApp()), pass { path: '/rpc', absolute: true }.",
+    );
+  });
+
+  it('keeps absolute targets out of the startup route check', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await createPlatformApp((consumer) => {
+      consumer.apply(RecordingMiddleware).forRoutes({ path: '/rpc', absolute: true });
+    });
+    expect(warn).not.toHaveBeenCalled();
   });
 
   it('filters by method and accepts a path that starts with the global prefix', async () => {
@@ -494,6 +511,86 @@ describe('an app mounted under a parent base path', () => {
     expect(await request('GET', '/mounted/api/admin/0')).toBe(200);
     expect(await request('GET', '/mounted/api/admin/7')).toBe(200);
     expect(seen).toEqual(['GET /mounted/api/admin/7']);
+  });
+});
+
+// A route contributor registers its routes during route build, outside the
+// global prefix, like the RPC endpoint or the Studio surface.
+const PLATFORM_ROUTE = 'test:middleware-platform-route';
+registerRouteContributor({
+  id: PLATFORM_ROUTE,
+  claimsMetaKey: PLATFORM_ROUTE,
+  buildRoutes(app, context) {
+    app.post(String(context.meta), (c) => c.json({ ok: true }));
+  },
+});
+
+describe('relative targets are checked against the routes registered at startup', () => {
+  function platformEndpoint(path: string): Type {
+    @Controller('')
+    class PlatformEndpoint {}
+    defineMetadata(PLATFORM_ROUTE, path, PlatformEndpoint);
+    return PlatformEndpoint;
+  }
+
+  @Controller('/users')
+  class UsersController {
+    @Get(':id')
+    one() {
+      return { ok: true };
+    }
+  }
+
+  it.each<{ name: string; configure: (consumer: MiddlewareConsumer) => void }>([
+    {
+      name: 'forRoutes()',
+      configure: (consumer) => {
+        consumer.apply(RecordingMiddleware).forRoutes('platform');
+      },
+    },
+    {
+      name: 'exclude()',
+      configure: (consumer) => {
+        consumer.apply(RecordingMiddleware).exclude('platform').forRoutes('*');
+      },
+    },
+  ])(
+    'rejects a $name target for a route served outside the global prefix',
+    async ({ configure }) => {
+      await expect(
+        createApp([UsersController, platformEndpoint('/platform')], configure, {
+          globalPrefix: '/api',
+        }),
+      ).rejects.toThrow(
+        "Middleware route 'platform' resolves to '/api/platform' under the global prefix " +
+          "'/api', which serves no route, but '/platform' is served outside the prefix. Pass " +
+          "{ path: '/platform', absolute: true } to match it as written.",
+      );
+    },
+  );
+
+  it('accepts a relative target served under the global prefix', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const request = await createApp(
+      [UsersController, platformEndpoint('/platform')],
+      (consumer) => {
+        consumer
+          .apply(RecordingMiddleware)
+          .forRoutes('users/42', { path: '/platform', absolute: true });
+      },
+      { globalPrefix: '/api', diagnostics: 'throw' },
+    );
+
+    expect(await request('GET', '/api/users/42')).toBe(200);
+    expect(await request('POST', '/platform')).toBe(200);
+    expect(seen).toEqual(['GET /api/users/42', 'POST /platform']);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('fails bootstrap in diagnostics throw mode for a target that matches no route', async () => {
+    await expect(
+      createApp([UsersController], forRoutes('accounts'), { diagnostics: 'throw' }),
+    ).rejects.toThrow("[vela] Middleware route 'accounts' resolves to '/accounts'");
   });
 });
 
