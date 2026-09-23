@@ -3,20 +3,22 @@ import { Inject, InjectEnv, Module, Injectable, Scope, type VelaEnv } from '@vel
 import { Cron } from '@velajs/vela/schedule';
 import { countRegisteredClasses } from '@velajs/vela/internal';
 import {
-  CloudflareWebSocketModule,
   ConnectedSocket,
   MessageBody,
   SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
-  createCloudflareWorker,
-  CLOUDFLARE_SCHEDULED_EVENT,
-  type CloudflareScheduledEvent,
   type OnGatewayConnection,
   type UpgradeAuthenticator,
   type WebSocketUpgradeIdentity,
   type WsClient,
   type WsServer,
+} from '@velajs/vela/websocket';
+import {
+  CloudflareWebSocketModule,
+  createCloudflareWorker,
+  CLOUDFLARE_SCHEDULED_EVENT,
+  type CloudflareScheduledEvent,
 } from '../../index';
 
 /** A string variable wrangler.test.toml seeds into ENV. */

@@ -70,27 +70,6 @@ export {
   liveInvalidateToRoom,
 } from './websocket/index';
 export type { CfLiveDriver, DurableObjectLiveOptions, LiveNamespace } from './websocket/index';
-// Re-export the core gateway API so a Cloudflare app can import it from one place.
-export {
-  WebSocketGateway,
-  SubscribeMessage,
-  MessageBody,
-  ConnectedSocket,
-  WebSocketServer,
-  WsException,
-} from '@velajs/vela/websocket';
-export type {
-  WsClient,
-  WsServer,
-  WsResponse,
-  WsMessage,
-  OnGatewayInit,
-  OnGatewayConnection,
-  OnGatewayDisconnect,
-  UpgradeAuthenticator,
-  WebSocketUpgradeAuthenticationContext,
-  WebSocketUpgradeIdentity,
-} from '@velajs/vela/websocket';
 
 // Types
 export type { QueueConsumerMetadata } from './decorators/queue-consumer';
