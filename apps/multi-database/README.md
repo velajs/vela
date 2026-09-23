@@ -17,6 +17,13 @@ pnpm --filter vela-multi-database db:analytics
 pnpm --filter vela-multi-database dev
 ```
 
+`dev` runs `vite dev` on port 8792. Vite 8 and `@cloudflare/vite-plugin` run
+`src/worker.ts` in workerd with both local D1 databases; there is no separate
+compile step. `vite.config.ts` asks Oxc for the legacy decorators and
+`design:paramtypes` metadata Vela reads. `build` writes the deployable Worker to
+`dist/`, and `pnpm --filter vela-multi-database run deploy` builds and uploads it
+with Wrangler.
+
 ```sh
 curl -X POST http://localhost:8792/primary/items -H 'Content-Type: application/json' -d '{"id":"same","title":"Primary"}'
 curl -X POST http://localhost:8792/analytics/items -H 'Content-Type: application/json' -d '{"id":"same","title":"Analytics"}'

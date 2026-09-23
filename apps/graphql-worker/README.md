@@ -5,8 +5,16 @@ A native Worker example using `@velajs/graphql`, Yoga, Zod validation, request-s
 From the repository root, after installing and building workspace dependencies:
 
 ```sh
-pnpm --filter graphql-worker dev
+pnpm --filter graphql-worker dev        # vite dev on :8787
+pnpm --filter graphql-worker build      # the deployable Worker in dist/
+pnpm --filter graphql-worker typecheck
 ```
+
+Vite 8 and `@cloudflare/vite-plugin` run `src/index.ts` in workerd with no
+separate compile step. `vite.config.ts` asks Oxc for the legacy decorators and
+`design:paramtypes` metadata that `@Injectable`, `@InjectEnv` and `@Module`
+need. `pnpm --filter graphql-worker run deploy` builds with Vite and uploads
+`dist/` with Wrangler.
 
 ```sh
 curl http://localhost:8787/graphql \

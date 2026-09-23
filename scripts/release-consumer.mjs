@@ -41,7 +41,7 @@ const { tarballs, companions: consumerCompanions } = await ensureConsumerArchive
 ]);
 const consumer = await mkdtemp(join(tmpdir(), 'vela-release-consumer-'));
 // Copy the sample as committed, so its build and compiler configuration (Vite,
-// Vitest, SWC, tsconfig files) follow the app without a second list to maintain.
+// Vitest, Oxc, tsconfig files) follow the app without a second list to maintain.
 // package.json is rewritten below.
 const sampleFiles = execFileSync('git', ['ls-files', '-z', '--', '.'], {
   cwd: sample,

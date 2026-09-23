@@ -18,10 +18,11 @@ const greetings = new GraphqlLoader(
     cache.clear();
   },
 );
+@Injectable({ scope: Scope.REQUEST })
 class GreetingResolver {
   readonly #label: string;
   // APP_LABEL is typed by worker-configuration.d.ts, which `pnpm types` generates.
-  constructor(env: VelaEnv) {
+  constructor(@InjectEnv() env: VelaEnv) {
     this.#label = env.APP_LABEL;
   }
   async greet(args: { name: string }, context: GraphqlResolverContext): Promise<string> {
@@ -33,11 +34,7 @@ class GreetingResolver {
     return greeting;
   }
 }
-Injectable({ scope: Scope.REQUEST })(GreetingResolver);
-InjectEnv()(GreetingResolver, undefined, 0);
-
-export class AppModule {}
-Module({
+@Module({
   providers: [GreetingResolver],
   imports: [
     GraphqlModule.forRoot({
@@ -55,6 +52,7 @@ Module({
         }),
     }),
   ],
-})(AppModule);
+})
+export class AppModule {}
 
 export default createCloudflareWorker(AppModule);

@@ -4,11 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node scripts/build.mjs",
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview",
     "types": "wrangler types --include-runtime=false -c wrangler.api.jsonc worker-configuration.api.d.ts && wrangler types --include-runtime=false -c wrangler.catalog.jsonc worker-configuration.catalog.d.ts && wrangler types --include-runtime=false -c wrangler.accounts.jsonc worker-configuration.accounts.d.ts && wrangler types --include-runtime=false -c wrangler.jobs.jsonc worker-configuration.jobs.d.ts",
-    "typecheck": "tsc -p tsconfig.api.json && tsc -p tsconfig.catalog.json && tsc -p tsconfig.accounts.json && tsc -p tsconfig.jobs.json",
-    "test:workers": "node scripts/proof.mjs",
-    "dev": "pnpm build && wrangler dev -c wrangler.api.jsonc -c wrangler.catalog.jsonc -c wrangler.accounts.jsonc -c wrangler.jobs.jsonc"
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.api.json && tsc -p tsconfig.catalog.json && tsc -p tsconfig.accounts.json && tsc -p tsconfig.jobs.json",
+    "test:workers": "node scripts/proof.mjs"
   },
   "dependencies": {
     "@velajs/cloudflare": "workspace:*",
@@ -18,11 +19,11 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "catalog:",
     "@cloudflare/workers-types": "catalog:",
-    "@swc/core": "catalog:",
-    "esbuild": "^0.28.1",
     "miniflare": "5.20260918.0-alpha",
     "typescript": "catalog:",
+    "vite": "catalog:",
     "wrangler": "catalog:"
   }
 }

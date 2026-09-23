@@ -27,12 +27,11 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@swc/core": "catalog:",
     "@types/node": "catalog:",
+    "@velajs/cli": "workspace:*",
     "@velajs/studio-ui": "workspace:*",
     "tsdown": "catalog:",
     "typescript": "catalog:",
-    "unplugin-swc": "catalog:",
     "vitest": "catalog:"
   },
   "engines": {

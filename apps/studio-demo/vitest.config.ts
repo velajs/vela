@@ -1,8 +1,10 @@
-import swc from 'unplugin-swc';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
-  oxc: false,
+  // Vela reads constructor dependencies from legacy decorators and the
+  // `design:paramtypes` metadata they record; Vitest's Oxc transform emits both
+  // only when asked.
+  oxc: { decorator: { legacy: true, emitDecoratorMetadata: true } },
   test: {
     globals: false,
     include: ['__tests__/**/*.test.ts'],
@@ -11,16 +13,4 @@ export default defineConfig({
     testTimeout: 30_000,
     hookTimeout: 30_000,
   },
-  plugins: [
-    swc.vite({
-      tsconfigFile: false,
-      swcrc: false,
-      jsc: {
-        target: 'es2022',
-        parser: { syntax: 'typescript', decorators: true },
-        transform: { legacyDecorator: true, decoratorMetadata: true },
-        keepClassNames: true,
-      },
-    }),
-  ],
 });

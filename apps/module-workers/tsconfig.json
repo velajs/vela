@@ -10,8 +10,12 @@
     "skipLibCheck": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
     "types": ["@cloudflare/workers-types"],
-    "noEmit": true
+    "noEmit": true,
+    "allowImportingTsExtensions": true
   },
-  "include": ["src/contracts.ts"]
+  // This program checks the shared contracts and the Vite config.
+  "include": ["src/contracts.ts", "*.config.ts"]
 }
