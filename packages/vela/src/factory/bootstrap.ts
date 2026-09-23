@@ -16,6 +16,8 @@ import type { RouteManagerOptions } from '../http/route.manager';
 import { UrlGeneratorService } from '../http/url/url-generator.service';
 import { SignedUrlGuard } from '../http/url/signed-url.guard';
 import { ModuleLoader } from '../module/module-loader';
+import { ROOT_MODULE } from '../module/root-module';
+import type { DynamicModule } from '../registry/types';
 import { bindAppProviders } from '../pipeline/app-providers';
 import {
   APP_EXCEPTION_HANDLER,
@@ -47,17 +49,18 @@ export interface BootstrapResult {
 }
 
 /**
- * Wire the DI graph for `rootModule` and prepare the route manager — without
- * running lifecycle hooks or building the Hono app. The single primitive
- * shared by `VelaFactory.create` (HTTP), `@velajs/testing` (test), and any
- * non-HTTP consumer (CLI tools, custom runtimes).
+ * Wire the DI graph for `rootModule` (a module class or a `DynamicModule`) and
+ * prepare the route manager — without running lifecycle hooks or building the
+ * Hono app. The single primitive shared by `VelaFactory.create` (HTTP),
+ * `@velajs/testing` (test), and any non-HTTP consumer (CLI tools, custom
+ * runtimes).
  *
- * Framework-internal tokens (`Container`, `APP_*`) are marked global so they
- * are resolvable from any module. `ModuleRef` needs no registration: the
- * container builds one per injecting module.
+ * Framework-internal tokens (`Container`, `ROOT_MODULE`, `APP_*`) are marked
+ * global so they are resolvable from any module. `ModuleRef` needs no
+ * registration: the container builds one per injecting module.
  */
 export async function bootstrap(
-  rootModule: Type,
+  rootModule: Type | DynamicModule,
   options: BootstrapOptions = {},
 ): Promise<BootstrapResult> {
   const container = new Container({
@@ -66,6 +69,8 @@ export async function bootstrap(
 
   container.register(defineProvider(Container, { useValue: container }));
   container.markGlobalToken(Container);
+  container.register(defineProvider(ROOT_MODULE, { useValue: rootModule }));
+  container.markGlobalToken(ROOT_MODULE);
 
   // ENV is global but has no default: seeded here from `options.env`, or by a
   // runtime adapter's configureContainer below. Readers of optional values

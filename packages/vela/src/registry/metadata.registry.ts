@@ -136,6 +136,35 @@ export function allocateDecoratorKey(): string {
   return `vela:custom:${state.nextDecoratorKey++}`;
 }
 
+/**
+ * Distinct classes (and handler owners) the isolate-global registry holds
+ * metadata for. Decoration is permanent, so this only grows; tests use it to
+ * prove a code path declares nothing new, such as rebuilding an application.
+ */
+export function countRegisteredClasses(): number {
+  const state = registryState();
+  const targets = new Set<object>();
+  const perClass: ReadonlyArray<Map<object, unknown> | Set<object>> = [
+    state.routes,
+    state.controllers,
+    state.controllerOptions,
+    state.modules,
+    state.parameters,
+    state.injectables,
+    state.scopes,
+    state.injectTokens,
+    state.handlerHttpMeta,
+    state.catchTypes,
+    state.routeVersions,
+    state.classMeta,
+    state.handlerMeta,
+    ...Object.values(state.controllerComponents),
+    ...Object.values(state.handlerComponents),
+  ];
+  for (const store of perClass) for (const target of store.keys()) targets.add(target);
+  return targets.size;
+}
+
 export class MetadataRegistry {
   // Every field is a getter over the globalThis-anchored state (registryState).
   // Method bodies keep using `this.<field>`; the getter returns the live map so

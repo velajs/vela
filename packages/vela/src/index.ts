@@ -445,6 +445,7 @@ export {
   provideGlobal,
   sideEffectModule,
   UndefinedModuleError,
+  ROOT_MODULE,
 } from './module/index';
 export type {
   ModuleOptions,

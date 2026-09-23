@@ -110,7 +110,7 @@ export class ModuleLoader {
     private router: RouteManager,
   ) {}
 
-  load(rootModule: Type): void {
+  load(rootModule: Type | DynamicModule): void {
     this.processModule(rootModule);
 
     for (const controller of this.#collectedControllers) {
