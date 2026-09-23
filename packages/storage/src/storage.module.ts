@@ -329,7 +329,8 @@ export class StorageModule {
         registrationIdentity,
         // Wrap the caller's driver factory in a thunk so resolving the options
         // token (at bootstrap) does NOT build the driver — only the first
-        // storage operation, or multipart grant, calls it, once.
+        // storage operation, or multipart grant, calls it: once, or again on
+        // the next one until it succeeds.
         useFactory: (...deps: InferTokens<Inject>) => {
           let result: StorageAsyncResult | undefined;
           const build = (): StorageAsyncResult => (result ??= readAsyncResult(useFactory(...deps)));

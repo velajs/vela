@@ -96,6 +96,29 @@ describe('StorageModule', () => {
     expect(calls).toBe(1); // cached
   });
 
+  it('forRootAsync runs the factory again on the next operation until it succeeds', async () => {
+    let calls = 0;
+    const moduleRef = await Test.createTestingModule({
+      imports: [
+        StorageModule.forRootAsync({
+          useFactory: () => {
+            calls += 1;
+            if (calls === 1) throw new Error('binding not ready');
+            return memoryDriver();
+          },
+        }),
+      ],
+    }).compile();
+
+    const svc = moduleRef.get(StorageService);
+    await expect(svc.upload('x', 'y')).rejects.toThrow('binding not ready');
+    expect(calls).toBe(1);
+    await svc.upload('x', 'y');
+    expect(calls).toBe(2);
+    await svc.download('x');
+    expect(calls).toBe(2); // cached once it succeeds
+  });
+
   it('supports multiple named buckets deduped by name', async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [
