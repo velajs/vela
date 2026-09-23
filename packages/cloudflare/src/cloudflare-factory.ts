@@ -4,6 +4,7 @@ import { VelaFactory } from '@velajs/vela';
 import type {
   RuntimeAdapter,
   Type,
+  VelaApplication,
   VelaEnv,
   VelaMiddlewareHandler,
   VelaSecurityOptions,
@@ -29,6 +30,34 @@ export interface CloudflareWorkerOptions {
 export interface CreateCloudflareAppOptions extends CloudflareWorkerOptions {
   /** Supply the platform environment inside fetch/queue/scheduled or a DO constructor. */
   env: VelaEnv;
+}
+
+function readStrings(meta: unknown, property: string): string[] {
+  const value: unknown =
+    typeof meta === 'object' && meta !== null ? Reflect.get(meta, property) : undefined;
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value) && value.every((item) => typeof item === 'string')) return value;
+  throw new TypeError(`Invalid queue consumer metadata: ${property}.`);
+}
+
+/**
+ * `@QueueConsumer` handlers own their physical queue. A `QueueModule`
+ * registration that pins the same physical queue with `consumer` would never
+ * see its batches, so bootstrap rejects the overlap.
+ */
+function assertQueueConsumerOwnership(entrypoints: VelaApplication['entrypoints']): void {
+  const pinned = new Set(
+    entrypoints.ofKind('cf:queue:module').flatMap((entry) => readStrings(entry.meta, 'consumers')),
+  );
+  for (const entry of entrypoints.ofKind('cf:queue')) {
+    const [queue] = readStrings(entry.meta, 'queueName');
+    if (queue !== undefined && pinned.has(queue)) {
+      throw new Error(
+        `Ambiguous consumer ownership for queue '${queue}': @QueueConsumer('${queue}') and a ` +
+          `QueueModule.registerQueue({ consumer: '${queue}' }) both claim it. Keep one owner.`,
+      );
+    }
+  }
 }
 
 /**
@@ -58,6 +87,7 @@ export function cloudflareAdapter(options: { env: VelaEnv }): RuntimeAdapter {
       registerCloudflareScheduledEvent(container);
     },
     onBootstrap: async ({ app, container }) => {
+      assertQueueConsumerOwnership(app.entrypoints);
       reportCloudflareScheduleDiagnostics(container, app.entrypoints);
       await warnWorkerLocalLive(container);
     },
@@ -92,29 +122,6 @@ async function buildApplication(
     adapters: [cloudflareAdapter(options), ...(options.adapters ?? [])],
   });
   const app = new CloudflareApplication(velaApp, options.env);
-  const consumers = new Map<string, string>();
-  for (const entry of [
-    ...app.entrypoints.ofKind('cf:queue'),
-    ...app.entrypoints.ofKind('cf:queue:module'),
-  ]) {
-    const meta = entry.meta;
-    if (
-      typeof meta !== 'object' ||
-      meta === null ||
-      !('queueName' in meta) ||
-      typeof meta.queueName !== 'string'
-    ) {
-      await app.close();
-      throw new TypeError('Invalid queue consumer metadata.');
-    }
-    const previous = consumers.get(meta.queueName);
-    // Existing native fan-out remains available; module routing owns a queue exclusively.
-    if (previous && (previous === 'cf:queue:module' || entry.kind === 'cf:queue:module')) {
-      await app.close();
-      throw new Error(`Ambiguous consumer ownership for queue '${meta.queueName}'.`);
-    }
-    consumers.set(meta.queueName, entry.kind);
-  }
   app.scanInstances(velaApp.getInstances());
   registerWebSocketRoutes(app.getHonoApp(), app.getWsGatewayRoutes());
   return app;

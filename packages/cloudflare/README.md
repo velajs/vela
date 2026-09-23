@@ -57,8 +57,8 @@ resulting module graph, including every value created inside `create(env)`:
 same objects in all of those applications. Only class and factory providers and
 lifecycle state are built per application. A rejected factory or failed bootstrap
 is evicted, so the next event runs the factory again. Build per-application state
-in factories: `useFactory` providers, `forRootAsync`, or driver factories such as
-`driver: () => inline()` for an in-process queue driver. See the
+in factories: `useFactory` providers, `forRootAsync`, or queue driver factories
+such as `cloudflareQueues()` and `() => inline()`. See the
 [complete API starter](../../apps/api-starter/README.md) for D1, Better Auth, CRUD,
 the generated Hono client, live updates, and Studio inspection in one application.
 
@@ -109,12 +109,73 @@ value your own code reads before relying on it.
 
 ## Module-based queues, cron and RPC
 
-Import `QueueModule` and configure `cloudflareQueueDriver` consumer mappings to
-connect native batches directly to `@Processor`/`@Process` providers. Use
-`ScheduleModule.forRoot()` and `@Cron()` for native scheduled work. The
-[module guide](../../docs/module-workers.md) covers producer-only and consumer-only
-Workers, RPC modules, migration, and deployment checks. Native decorators remain
-available as escape hatches.
+`QueueModule` from `@velajs/vela/queue` is the Workers queue API. Configure the
+driver once in the root module and register each queue where it is used:
+
+```ts
+import { Injectable, Module } from '@velajs/vela';
+import {
+  InjectQueue,
+  Process,
+  Processor,
+  QueueModule,
+  defineQueueJob,
+  type QueueClient,
+  type QueueJob,
+} from '@velajs/vela/queue';
+import { cloudflareQueues } from '@velajs/cloudflare/queues';
+import { z } from 'zod';
+
+const welcome = defineQueueJob('welcome', z.object({ userId: z.string() }));
+
+@Injectable()
+class Signup {
+  constructor(@InjectQueue('email') private readonly email: QueueClient) {}
+  invite(userId: string) {
+    return this.email.add(welcome, { userId });
+  }
+}
+
+@Processor('email')
+@Injectable()
+class EmailProcessor {
+  @Process(welcome)
+  send(job: QueueJob<{ userId: string }>) {}
+}
+
+@Module({
+  imports: [QueueModule.registerQueue({ name: 'email', binding: 'EMAIL_QUEUE' })],
+  providers: [Signup, EmailProcessor],
+})
+class EmailModule {}
+
+@Module({ imports: [QueueModule.forRoot({ driver: cloudflareQueues() }), EmailModule] })
+class AppModule {}
+```
+
+`binding` names a Wrangler `queues.producers[].binding`. The driver reads it
+from the application's `ENV` when a job is added and awaits the native send.
+`addBulk` uses `sendBatch`, split into calls of at most 100 messages and an
+estimated 256 KB, and rejects a job estimated over 128 KB before sending
+anything. A partial failure rejects with a `QueueBatchError` whose `accepted`
+lists the job ids already sent.
+
+The Worker's `queue()` handler gives each batch to the `@QueueConsumer` handlers
+of its physical queue. Batches no `@QueueConsumer` claims go to `QueueModule`,
+which routes every job by its logical queue, so several registered queues may
+share one physical queue. Each job runs through the module's dispatch policy,
+including signed dispatch and its global guards. A message is acknowledged
+after its processors succeed; a message that is not a job envelope, belongs to
+an unregistered queue, or fails stays unacknowledged, so Cloudflare retries it
+and then dead-letters it. `registerQueue({ name, consumer: 'email-production' })`
+pins the queue to that physical queue: its jobs are accepted only from it, and
+it carries only the queues pinned to it. A physical queue cannot be both a
+`@QueueConsumer` queue and a pinned consumer.
+
+Use `ScheduleModule.forRoot()` and `@Cron()` for native scheduled work. The
+[queue guide](../../docs/queues.md) and [module guide](../../docs/module-workers.md)
+cover producer-only and consumer-only Workers, RPC modules and deployment
+checks. `@QueueConsumer` remains available for raw batches.
 
 ## Managed queue and cron work
 

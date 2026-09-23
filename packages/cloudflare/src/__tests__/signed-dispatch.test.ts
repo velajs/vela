@@ -17,13 +17,13 @@ import {
   type ExecutionContext,
   type ScheduleJobRef,
 } from '@velajs/vela';
-import { Process, Processor, QueueModule } from '@velajs/vela/queue';
+import { Process, Processor, QueueModule, queueToken } from '@velajs/vela/queue';
 import {
   cloudflareAdapter,
   createCloudflareApp,
   createCloudflareWorker,
 } from '../cloudflare-factory';
-import { cloudflareQueueDriver } from '../queue';
+import { cloudflareQueues } from '../queues';
 
 const env = { NAME: 'signed' };
 const context = { waitUntil() {} };
@@ -44,16 +44,22 @@ function signingSecret() {
 }
 
 describe('signed queue dispatch on Cloudflare', () => {
-  it('re-enters the signed route for batches the module consumes natively', async () => {
-    const routeHits: string[] = [];
-    const processorHits: string[] = [];
+  function queueApp() {
+    const seen: string[] = [];
+
+    class GlobalGuard implements CanActivate {
+      canActivate(execution: ExecutionContext): boolean {
+        seen.push(`guard:${execution.getType()}`);
+        return true;
+      }
+    }
 
     @Controller('/jobs')
     class JobsController {
       @Post('run', { name: 'jobs.run' })
       @SignedInvocation()
       run(): { ok: boolean } {
-        routeHits.push('run');
+        seen.push('route');
         return { ok: true };
       }
     }
@@ -63,24 +69,25 @@ describe('signed queue dispatch on Cloudflare', () => {
     class Tasks {
       @Process('run')
       run(): void {
-        processorHits.push('run');
+        seen.push('processor');
       }
     }
 
     @Module({
       imports: [
         signingSecret(),
-        QueueModule.forRoot({
-          queues: ['tasks'],
-          driver: () => cloudflareQueueDriver({}, { consumers: { 'tasks-native': 'tasks' } }),
-          dispatch: signed,
-        }),
+        QueueModule.forRoot({ driver: cloudflareQueues(), dispatch: signed }),
+        QueueModule.registerQueue({ name: 'tasks', binding: 'TASKS' }),
       ],
       controllers: [JobsController],
-      providers: [Tasks],
+      providers: [Tasks, defineProvider(APP_GUARD, { useClass: GlobalGuard })],
     })
     class App {}
+    return { App, seen };
+  }
 
+  it('re-enters the signed route with its global guards for natively delivered jobs', async () => {
+    const { App, seen } = queueApp();
     const message = {
       id: 'message-1',
       timestamp: new Date(),
@@ -92,29 +99,21 @@ describe('signed queue dispatch on Cloudflare', () => {
     const worker = createCloudflareWorker(App);
     await worker.queue({ queue: 'tasks-native', messages: [message] }, env, context);
 
-    expect(routeHits).toEqual(['run']);
-    expect(processorHits).toEqual([]);
+    expect(seen).toEqual(['guard:http', 'route']);
     expect(message.ack).toHaveBeenCalledOnce();
   });
 
-  it('rejects signed dispatch when the driver has no consumer mapping', async () => {
+  it('boots signed dispatch in a Worker that only produces the queue', async () => {
+    const { App, seen } = queueApp();
     const send = vi.fn(async () => {});
-
-    @Module({
-      imports: [
-        QueueModule.forRoot({
-          queues: ['tasks'],
-          driver: cloudflareQueueDriver({ tasks: { send } }),
-          dispatch: signed,
-        }),
-      ],
-    })
-    class App {}
-
-    await expect(createCloudflareApp(App, { env })).rejects.toThrow(
-      /signed dispatch for queue 'tasks'.*driver 'cloudflare' implements neither bind\(\) nor consume\(\)/,
-    );
-    expect(send).not.toHaveBeenCalled();
+    const app = await createCloudflareApp(App, { env: { ...env, TASKS: { send } } });
+    try {
+      await app.get(queueToken('tasks')).add('run', {});
+      expect(send).toHaveBeenCalledOnce();
+      expect(seen).toEqual([]);
+    } finally {
+      await app.close();
+    }
   });
 });
 

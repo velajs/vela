@@ -66,7 +66,8 @@ async function settleEntrypoints(work: readonly Promise<void>[]): Promise<void> 
  * - `fetch` — HTTP request handler (from Hono)
  * - `scheduled` — Cron trigger handler (runs the `@Cron()` jobs whose
  *                 expression is the trigger's exact string)
- * - `queue` — Queue consumer handler (matches `@QueueConsumer()` decorators)
+ * - `queue` — Queue consumer handler (`@QueueConsumer()` by physical queue,
+ *             then `QueueModule`'s native consumer)
  * - `mountOpenApi` — Serve an OpenAPI document (and optional Scalar UI) on
  *                    the underlying Hono app
  *
@@ -341,12 +342,14 @@ export class CloudflareApplication {
   }
 
   /**
-   * Handle Cloudflare Queue consumer events.
-   * Matches the batch queue name to `@QueueConsumer()` handlers read from
-   * `app.entrypoints`; each batch is processed inside a fresh request-scoped
-   * child (request-scoped providers rebuild per batch — no boot-time captives).
-   * A batch no handler claims rejects: resolving would let Cloudflare
-   * acknowledge every message implicitly.
+   * Handle Cloudflare Queue consumer events. `@QueueConsumer()` handlers read
+   * from `app.entrypoints` claim a batch by its physical queue name and
+   * receive it whole. A batch no handler claims goes to `QueueModule`'s native
+   * consumer (`cloudflareQueues()` from `@velajs/cloudflare/queues`), which
+   * routes each job by its logical queue. Each dispatch runs inside a fresh
+   * request-scoped child (request-scoped providers rebuild per batch — no
+   * boot-time captives). A batch nothing claims rejects: resolving would let
+   * Cloudflare acknowledge every message implicitly.
    */
   async queue(
     batch: { queue: string; messages: readonly unknown[] },
@@ -354,15 +357,16 @@ export class CloudflareApplication {
     ctx: { waitUntil: (promise: Promise<unknown>) => void },
   ): Promise<void> {
     assertCloudflareEnvironment(this.env, env);
-    const handlers = [
-      ...this.#app.entrypoints.ofKind('cf:queue'),
-      ...this.#app.entrypoints.ofKind('cf:queue:module'),
-    ].filter((ep) => entrypointString(ep.meta, 'queueName') === batch.queue);
+    const raw = this.#app.entrypoints
+      .ofKind('cf:queue')
+      .filter((ep) => entrypointString(ep.meta, 'queueName') === batch.queue);
+    const handlers = raw.length > 0 ? raw : this.#app.entrypoints.ofKind('cf:queue:module');
 
     if (handlers.length === 0) {
       throw new Error(
         `No consumer claims queue '${batch.queue}'. Add @QueueConsumer('${batch.queue}') to a ` +
-          `provider or map it in cloudflareQueueDriver({ consumers }). The batch is rejected ` +
+          `provider, or deliver it through QueueModule.forRoot({ driver: cloudflareQueues() }) ` +
+          `with a QueueModule.registerQueue() for each queue it carries. The batch is rejected ` +
           `unacknowledged, so Cloudflare retries it and then routes it to the configured ` +
           `dead-letter queue.`,
       );

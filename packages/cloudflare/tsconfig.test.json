@@ -7,7 +7,7 @@
     "noEmit": true
   },
   "files": [
-    "src/__tests__/queue-bridge.test.ts",
+    "src/__tests__/queues.test.ts",
     "src/__tests__/scheduled.test.ts",
     "src/__tests__/scheduled-diagnostics.test.ts",
     "src/__tests__/scheduled-completion.test.ts",
@@ -20,8 +20,7 @@
     "src/__tests__/signed-dispatch.test.ts",
     "src/__tests__/root-module.test.ts",
     "src/__tests__/platform-wiring.test.ts",
-    "src/__tests__/env.test.ts",
-    "src/__tests__/module-queue.test.ts"
+    "src/__tests__/env.test.ts"
   ],
   "include": ["src/**/*.ts", "test-shims/**/*.ts"],
   "exclude": ["node_modules", "dist", "src/__tests__"]
