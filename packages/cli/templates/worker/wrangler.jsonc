@@ -3,7 +3,8 @@
   "name": "__PROJECT_NAME__",
   "main": "src/worker.ts",
   // Dates from 2026-08-04 enable Node.js compatibility by default, including the
-  // node:async_hooks module that Vela's opt-in ambient container imports. An older
+  // node:async_hooks module that the @velajs/vela root entry imports (through
+  // hono/context-storage) whether or not ambient access is enabled. An older
   // date needs "compatibility_flags": ["nodejs_als"].
   "compatibility_date": "2026-09-20",
 }

@@ -11,6 +11,7 @@
     "deploy": "vite build && wrangler deploy",
     "test": "vitest run",
     "types": "wrangler types --include-runtime=false",
+    "pretypecheck": "pnpm run types",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

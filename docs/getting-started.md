@@ -122,9 +122,9 @@ export class AppService {
 `pnpm types` runs `wrangler types --include-runtime=false`, which writes the
 bindings, variables and secret names (from `.dev.vars`) into
 `worker-configuration.d.ts` as `Cloudflare.Env`. `@velajs/cloudflare` extends
-`VelaEnv` with it, so `this.env.GREETING` is typed. `pnpm dev` regenerates the
-file first; run `pnpm types` yourself after editing `wrangler.jsonc`, and commit
-the file. `pnpm typecheck` reads the committed file. Runtime types still come
+`VelaEnv` with it, so `this.env.GREETING` is typed. `pnpm dev` and
+`pnpm typecheck` regenerate the file first; run `pnpm types` yourself after
+editing `wrangler.jsonc`, and commit the file. Runtime types still come
 from `@cloudflare/workers-types`. Factories read the same object with
 `inject: [ENV]`, and `registerAs('app', (env) => ...)` config namespaces receive
 it too. Values arrive from outside the program, so validate what you read.

@@ -94,13 +94,14 @@ describe('vela new', () => {
     expect(worker).toContain('export default createCloudflareWorker(AppModule);');
     expect(worker).not.toContain('InjectionToken');
     const manifest = JSON.parse(await readFile(join(project, 'package.json'), 'utf8'));
+    // Both regenerate the binding types first; with no Wrangler build block,
+    // `wrangler types` runs no build.
     expect(manifest.scripts).toMatchObject({
       types: 'wrangler types --include-runtime=false',
       predev: 'pnpm run types',
+      pretypecheck: 'pnpm run types',
       typecheck: 'tsc --noEmit',
     });
-    // Typechecking reads the committed file; regenerating it is `pnpm types`' job.
-    expect(manifest.scripts).not.toHaveProperty('pretypecheck');
     // Committed so a fresh checkout typechecks before its first `pnpm types`.
     const generated = await readFile(join(project, 'worker-configuration.d.ts'), 'utf8');
     expect(generated).toContain('wrangler types --include-runtime=false');
@@ -148,6 +149,10 @@ describe('vela new', () => {
     expect(wrangler).not.toHaveProperty('build');
     // Dates from 2026-08-04 enable Node.js compatibility, node:async_hooks included.
     expect(wrangler).not.toHaveProperty('compatibility_flags');
+    // The root entry imports node:async_hooks whether or not ambient access is on.
+    const comment = await read('wrangler.jsonc');
+    expect(comment).toContain('@velajs/vela root entry imports');
+    expect(comment).toContain('whether or not ambient access is enabled');
 
     // One Oxc decorator setting, shared so the build and the tests cannot drift.
     expect(await read('oxc.config.ts')).toContain(
