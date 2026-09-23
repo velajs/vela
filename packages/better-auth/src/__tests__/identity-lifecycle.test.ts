@@ -3,6 +3,7 @@ import {
   Get,
   MetadataRegistry,
   Module,
+  Reflector,
   UseGuards,
   VelaFactory,
   clearTrustedRequestIdentity,
@@ -88,6 +89,7 @@ describe('canonical identity lifecycle', () => {
         handler: async () => new Response(),
       })),
       {},
+      new Reflector(),
     );
     const data = validateSessionData(sessionFixture());
     if (!data) throw new Error('Expected valid fixture');

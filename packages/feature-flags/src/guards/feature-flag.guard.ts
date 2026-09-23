@@ -33,9 +33,10 @@ import { FEATURE_FLAG_TOKENS } from '../feature-flags.tokens';
  */
 @Injectable()
 export class FeatureFlagGuard implements CanActivate {
-  private readonly reflector = new Reflector();
-
-  constructor(@Inject(FEATURE_FLAG_TOKENS.Service) private readonly flags: FeatureFlagsService) {}
+  constructor(
+    @Inject(FEATURE_FLAG_TOKENS.Service) private readonly flags: FeatureFlagsService,
+    @Inject(Reflector) private readonly reflector: Reflector,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const meta = this.reflector.getAllAndOverride<FeatureFlagMetadata>(

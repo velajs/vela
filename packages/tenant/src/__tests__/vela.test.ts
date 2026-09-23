@@ -1,9 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   Controller,
   Get,
   Inject,
   Module,
+  Reflector,
   UseGuards,
   VelaFactory,
   setTrustedRequestIdentity,
@@ -28,6 +29,34 @@ const tenant = (id: string) => ({
 });
 
 describe('Vela tenant admission', () => {
+  it('reads route requirements through the application Reflector', async () => {
+    class Routes {
+      open() {
+        return { public: true };
+      }
+    }
+    Controller('/open')(Routes);
+    UseGuards(TenantGuard)(Routes);
+    const open = Object.getOwnPropertyDescriptor(Routes.prototype, 'open')!;
+    Get()(Routes.prototype, 'open', open);
+    TenantIgnored()(Routes.prototype, 'open', open);
+    class App {}
+    Module({
+      imports: [
+        TenantModule.forRoot({ lookup: new MemoryTenantRegistryStore([]), authorize: () => false }),
+      ],
+      controllers: [Routes],
+    })(App);
+    const app = await VelaFactory.create(App);
+    try {
+      const reads = vi.spyOn(app.get(Reflector), 'getAllAndOverride');
+      expect((await app.getHonoApp().request('/open')).status).toBe(200);
+      expect(reads).toHaveBeenCalledOnce();
+    } finally {
+      await app.close();
+    }
+  });
+
   it('isolates HTTP requests, rejects forged/conflicting selectors, and observes suspension', async () => {
     const store = new MemoryTenantRegistryStore([tenant('a'), tenant('b')]);
     let retained: TenantContextReader | undefined;

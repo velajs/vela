@@ -1,4 +1,6 @@
 import {
+  Inject,
+  Injectable,
   InjectionToken,
   REQUEST_CONTEXT,
   runInEntrypointScope,
@@ -102,7 +104,10 @@ const { ConfigurableModuleClass } = defineModule<TenantModuleOptions>({
 });
 export class TenantModule extends ConfigurableModuleClass {}
 export class TenantGuard implements CanActivate {
-  readonly #reflector = new Reflector();
+  readonly #reflector: Reflector;
+  constructor(reflector: Reflector) {
+    this.#reflector = reflector;
+  }
   async canActivate(context: ExecutionContext): Promise<boolean> {
     if (this.#reflector.getAllAndOverride(requirement, context) === 'ignored') return true;
     const container = context.getContainer();
@@ -169,6 +174,9 @@ export class TenantGuard implements CanActivate {
     return true;
   }
 }
+// This package is authored without decorator syntax.
+Injectable()(TenantGuard);
+Inject(Reflector)(TenantGuard, undefined, 0);
 export const CurrentTenant = createParamDecorator((_data: undefined, context: ExecutionContext) =>
   context.getContainer()?.resolve(TENANT_CONTEXT_READER, context.getModuleId()).requireTenant(),
 );

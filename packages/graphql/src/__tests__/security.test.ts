@@ -8,6 +8,7 @@ import {
   Injectable,
   Module,
   REQUEST_CONTEXT,
+  Reflector,
   Scope,
   UseGuards,
   VelaFactory,
@@ -150,7 +151,7 @@ describe('GraphQL trusted HTTP authority', () => {
             return true;
           },
         },
-        new TenantGuard(),
+        new TenantGuard(app.get(Reflector)),
       );
       const call = (user: string | undefined, selectedTenant: string, query: string) => {
         const body = JSON.stringify({ query });
