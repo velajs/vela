@@ -256,6 +256,11 @@ import { ChatGateway } from './chat.gateway.js';
 export class AppModule {}
 ```
 
+Import `CloudflareWebSocketModule` rather than the core `WebSocketModule`: its
+`WS_SERVER` is bound to each Durable Object's sockets. The Durable Object refuses to
+start when the module it bootstraps registers the core `WebSocketModule` server,
+whose broadcasts could never reach hibernatable sockets.
+
 ```ts
 // env.ts — use Wrangler's generated binding types in your application.
 import { InjectionToken } from '@velajs/vela';

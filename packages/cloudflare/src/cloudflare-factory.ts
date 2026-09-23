@@ -11,6 +11,7 @@ import type {
 } from '@velajs/vela';
 import { CloudflareApplication } from './cloudflare-application';
 import { assertCloudflareEnvironment, registerCloudflareEnvironment } from './environment';
+import { warnWorkerLocalLive } from './websocket/do-live';
 import { registerWebSocketRoutes } from './websocket/websocket-routing';
 import { bootstrapCloudflareRoot } from './root-module';
 import type { CloudflareRoot } from './root-module';
@@ -65,7 +66,10 @@ export function cloudflareAdapter<T extends object>(
     configureContainer: (container) => {
       registerCloudflareEnvironment(container, { token: options.envToken, env: options.env });
     },
-    onBootstrap: ({ container }) => rejectSignedScheduleDispatch(container),
+    onBootstrap: async ({ container }) => {
+      await rejectSignedScheduleDispatch(container);
+      await warnWorkerLocalLive(container);
+    },
   };
 }
 

@@ -52,7 +52,16 @@ export async function buildDoRuntime<T extends object>(
 
   if (container.has(WS_SERVER)) {
     const holder = await container.resolveAsync(WS_SERVER);
-    if (holder instanceof WsServerHolder) holder.setTarget(server);
+    // The core WebSocketModule's server broadcasts through its own sync driver,
+    // which never reaches this Durable Object's hibernatable sockets.
+    if (!(holder instanceof WsServerHolder)) {
+      throw new Error(
+        '[vela] The WebSocket Durable Object found a WS_SERVER from the core WebSocketModule, ' +
+          'which cannot reach Durable Object sockets. On Cloudflare, import ' +
+          'CloudflareWebSocketModule.forRoot() instead of WebSocketModule.forRoot().',
+      );
+    }
+    holder.setTarget(server);
   }
 
   const app = new VelaApplication(container, routeManager);
