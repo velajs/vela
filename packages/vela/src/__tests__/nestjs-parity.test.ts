@@ -4215,7 +4215,7 @@ describe('ZodValidationPipe', () => {
     expect(await res.json()).toEqual({ created: { name: 'Alice', age: 30 } });
   });
 
-  it('throws when Zod schema validation fails', async () => {
+  it('rejects invalid input with the 400 validation error body', async () => {
     const Schema = z.object({ count: z.number() });
 
     @Controller('/zod-fail')
@@ -4235,7 +4235,49 @@ describe('ZodValidationPipe', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ count: 'not-a-number' }),
     });
-    expect(res.status).toBe(500); // Zod throws ZodError; not wrapped in HttpException
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: {
+        code: 'bad_request',
+        message: 'Validation failed',
+        details: [{ message: expect.any(String), path: ['count'], code: 'invalid_type' }],
+      },
+    });
+  });
+
+  it('keeps errors thrown by schema code as server errors', async () => {
+    const offline = {
+      parse(): never {
+        throw new Error('schema backend offline');
+      },
+    };
+
+    @Controller('/zod-offline')
+    class ZodOfflineController {
+      @Post()
+      handle(@Body(new ZodValidationPipe(offline)) body: unknown) {
+        return body;
+      }
+    }
+
+    @Module({ controllers: [ZodOfflineController] })
+    class AppModule {}
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const app = await VelaFactory.create(AppModule);
+      const res = await app.getHonoApp().request('/zod-offline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ count: 1 }),
+      });
+      expect(res.status).toBe(500);
+      expect(await res.json()).toEqual({
+        error: { code: 'internal', message: 'Internal Server Error' },
+      });
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 
   it('can be used as a class-level pipe with @UsePipes()', async () => {

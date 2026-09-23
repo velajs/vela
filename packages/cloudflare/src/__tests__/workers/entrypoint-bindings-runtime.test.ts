@@ -1,7 +1,16 @@
 // @ts-expect-error virtual module supplied by @cloudflare/vitest-plugin
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
-import { defineProvider, Inject, Injectable, InjectionToken, Module } from '@velajs/vela';
+import type { ExecutionContext } from 'hono';
+import {
+  Controller,
+  defineProvider,
+  Get,
+  Inject,
+  Injectable,
+  InjectionToken,
+  Module,
+} from '@velajs/vela';
 import { LiveInvalidation, LiveModule } from '@velajs/vela/live';
 import { createCloudflareApp, createCloudflareWorker } from '../../cloudflare-factory';
 import { QueueConsumer } from '../../decorators/queue-consumer';
@@ -119,5 +128,31 @@ describe('cold native bindings under workerd', () => {
     expect(lifecycleValue).toBe('all native bindings available');
     expect(app.get(CHECK)).toBe('all native bindings available');
     await app.close();
+  });
+
+  it('answers unmatched HTTP routes with the framework JSON 404', async () => {
+    @Controller('/present')
+    class PresentController {
+      @Get()
+      read() {
+        return { ok: true };
+      }
+    }
+    @Module({ controllers: [PresentController] })
+    class AppModule {}
+    const worker = createCloudflareWorker(AppModule, { envToken: ENV });
+    const context: ExecutionContext = {
+      waitUntil: (): void => {},
+      passThroughOnException: (): void => {},
+      props: {},
+    };
+    const missing = await worker.fetch(new Request('https://worker/absent'), env, context);
+    expect(missing.status).toBe(404);
+    expect(missing.headers.get('content-type')).toContain('application/json');
+    expect(await missing.json()).toEqual({
+      error: { code: 'not_found', message: 'Route not found' },
+    });
+    const present = await worker.fetch(new Request('https://worker/present'), env, context);
+    expect(await present.json()).toEqual({ ok: true });
   });
 });

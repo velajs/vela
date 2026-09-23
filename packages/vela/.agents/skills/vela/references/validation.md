@@ -86,7 +86,7 @@ create(@Body(new ValidationPipe(CreateProduct)) body: CreateProduct) {
 
 Type aliases disappear from reflection. Supply the parser explicitly as above; a global `ValidationPipe` cannot infer it from a body type annotation. Programmatic routes can put the descriptor in parameter `metatype`. `ValidationPipe.parser` exposes the same parser to OpenAPI. The standalone pipe does not check that the method's TypeScript annotation matches its schema; `@Endpoint` supplies that stronger contract.
 
-`ValidationPipe` maps schema issues to `BadRequestException`. `ZodValidationPipe(schema)` directly delegates to `schema.parse` and leaves its errors unchanged.
+`ValidationPipe` and `ZodValidationPipe(schema)` map schema issues to a 400 `BadRequestException('Validation failed')` whose `getDetails()` lists the issues; clients receive `{ error: { code: 'bad_request', message: 'Validation failed', details } }`. Errors thrown by schema code stay server errors.
 
 ## Output serialization
 

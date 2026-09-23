@@ -233,6 +233,20 @@ describe('native application environments', () => {
     expect(f.seen).toEqual([]);
     await app.close();
   });
+
+  it('answers unmatched routes with the framework JSON 404', async () => {
+    const f = fixture();
+    const worker = createCloudflareWorker(f.AppModule, { envToken: f.ENV });
+    const env = f.environment('unmatched');
+    const response = await worker.fetch(new Request('https://worker/unknown'), env, httpContext);
+    expect(response.status).toBe(404);
+    expect(response.headers.get('content-type')).toContain('application/json');
+    expect(await response.json()).toEqual({
+      error: { code: 'not_found', message: 'Route not found' },
+    });
+    const matched = await worker.fetch(new Request('https://worker/bindings'), env, httpContext);
+    expect(matched.status).toBe(200);
+  });
 });
 
 describe('per-application native live namespaces', () => {

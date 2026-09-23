@@ -1,14 +1,9 @@
 import type { VelaHono as Hono } from './http/hono.types';
-import { findRequestContainer } from './http/request-container';
-import { HTTPException } from 'hono/http-exception';
-import type { ContentfulStatusCode } from 'hono/utils/http-status';
-import { toErrorBody } from '@velajs/errors';
 import type { Container } from './container/container';
 import type { InferToken, Token, Type } from './container/types';
 import { defineProvider } from './container/types';
 import { APP_EXCEPTION_HANDLER } from './pipeline/tokens';
 import type { ExceptionHandler } from './exceptions/exception-handler';
-import { resolveErrorReporter } from './exceptions/reporter';
 import { DiscoveryService } from './discovery/discovery.service';
 import { EntrypointRegistry } from './entrypoint/entrypoint.registry';
 import { LazyModuleManager } from './module/lazy-modules';
@@ -59,38 +54,13 @@ export class VelaApplication {
     return fresh;
   }
 
-  /** Pre-build routes (handles async CRUD imports). Called by VelaFactory. */
+  /**
+   * Pre-build routes (handles async CRUD imports). Called by VelaFactory. The
+   * route manager also installs the application's not-found and last-resort
+   * error handlers, so every HTTP failure renders through one path.
+   */
   async initRoutes(): Promise<void> {
     this.honoApp = await this.routeManager.build();
-
-    // Last line of defense for the HTTP edge. HandlerExecutor's catch tail
-    // only sees controller-handler errors; a raw Hono middleware (or any
-    // hono-level throw that bypasses route.manager's wrapMiddlewareWithFilters)
-    // would otherwise reach Hono's default error handler unreported and
-    // unredacted. `onError` funnels it through the same report-first + canonical
-    // redacted body path every other edge uses.
-    this.honoApp.onError((err, c) => {
-      const reporter = resolveErrorReporter(findRequestContainer(c) ?? this.container);
-      // Hono's own HTTPException (e.g. `bodyLimit`'s 413) carries a deliberate,
-      // author-intended client response — honor it exactly as Hono's default
-      // error handler would, without treating it as a server fault to redact.
-      // But a 5xx HTTPException is still a server fault: report it and replace
-      // its possibly provider-controlled response body.  The status is useful
-      // protocol information; the raw message/headers remain server-side only.
-      if (err instanceof HTTPException) {
-        if (err.status >= 500) {
-          reporter.report(err, { edge: 'hono', source: `${c.req.method} ${c.req.path}` });
-          return c.json(
-            { error: { code: 'internal', message: 'Internal Server Error' } },
-            err.status as ContentfulStatusCode,
-          );
-        }
-        return err.getResponse();
-      }
-      reporter.report(err, { edge: 'hono', source: `${c.req.method} ${c.req.path}` });
-      const { body, status } = toErrorBody(err, { catalog: reporter.catalog });
-      return c.json(body, status as ContentfulStatusCode);
-    });
   }
 
   private getApp(): Hono {

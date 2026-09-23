@@ -10,12 +10,19 @@ Throw an `HttpException` subclass from anywhere in the request path; Vela render
 import { NotFoundException, BadRequestException, ConflictException } from '@velajs/vela';
 
 throw new NotFoundException(`Product ${id} not found`);   // 404
-throw new BadRequestException({ field: 'email', reason: 'invalid' }); // 400, object body
+throw new BadRequestException('Invalid range', { details: { field: 'end' } }); // 400 with details
+throw new BadRequestException({ field: 'email', reason: 'invalid' }); // 400, object body sent verbatim
 ```
 
 The full family (status in parens): `BadRequestException`(400), `UnauthorizedException`(401), `ForbiddenException`(403), `NotFoundException`(404), `MethodNotAllowedException`(405), `NotAcceptableException`(406), `RequestTimeoutException`(408), `ConflictException`(409), `GoneException`(410), `PayloadTooLargeException`(413), `UnsupportedMediaTypeException`(415), `UnprocessableEntityException`(422), `TooManyRequestsException`(429), `InternalServerErrorException`(500), `NotImplementedException`(501), `BadGatewayException`(502), `ServiceUnavailableException`(503), `GatewayTimeoutException`(504).
 
-The base `HttpException(response, statusCode)` takes the **response first, status second** (note the order). Methods: `getStatus()` → number, `getResponse()` → normalized object.
+The base `HttpException(response, statusCode, options?)` takes the **response first, status second** (note the order). Methods: `getStatus()` → number, `getResponse()` → normalized object, `getDetails()` → the `details` option.
+
+## Error response body
+
+Every framework-rendered HTTP failure uses `{ error: { code, message, details? } }`: string-message exceptions (code from the status, e.g. `not_found`), validation failures from `@Endpoint`, `ValidationPipe`, and `ZodValidationPipe` (400 `bad_request`, `message: 'Validation failed'`, issues with `message`/`path`/`code` in `details`), middleware exceptions, the body limit (413 `payload_too_large`), query limits (400 `bad_request`), and unmatched routes (404 `not_found`, `message: 'Route not found'`). Unknown errors are redacted to 500 `internal`. Object responses ship verbatim.
+
+Customize all of them in one `ExceptionHandler.render` hook (`ErrorsModule.forRoot({ handler })` or `app.useGlobalExceptionHandler`); start from `toHttpErrorBody(error, { context })` (the context supplies the app's error catalog; returns `undefined` for verbatim responses) and return a modified result, a `Response`, or `undefined`. Outside controllers the hook's `ExecutionContext` reports `getClass() === VelaMiddlewareHost` and `getHandler()` of `VELA_MIDDLEWARE_HANDLER` (middleware and limits) or `VELA_NOT_FOUND_HANDLER` (unmatched route). Request limits and unmatched routes are not reported and skip exception filters; middleware failures still reach global filters. See `docs/errors.md` in the repository.
 
 ## Exception filters
 

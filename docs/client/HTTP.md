@@ -104,13 +104,15 @@ The generated `AppType` uses Hono's schema types. `Schemas` exports named DTO/co
 
 The generator supports JSON, multipart, and URL-encoded request bodies, JSON/text and native binary/stream responses, component schema references, object properties, arrays, enums, unions/intersections, and nullable JSON values. Form fields have the concrete wire shapes described below. Use separate input/output definitions for `readOnly` or `writeOnly` fields. Cookie parameters, external references and custom parameter serialization require a separately authored contract. Paths with a trailing slash (other than `/`) or reserved `hc` segments such as `index` and `then` are rejected; use `@Get()` for a controller's base route. GET/HEAD request bodies are rejected because `hc` does not send them. Contributed routes need OpenAPI metadata from their contributor; raw Hono mounts are not inferred.
 
-Declare global guard/filter responses explicitly when needed:
+Framework failures, such as validation errors, request limits, and unmatched routes, share one body: `{ error: { code, message, details? } }`; validation failures list their issues in `details`. See [HTTP errors](../errors.md). Declare global guard/filter responses explicitly when needed:
 
 ```ts
 import type { ApplyGlobalResponse } from '@velajs/client/http';
+type ErrorBody = { error: { code: string; message: string; details?: unknown } };
 type ApiWithErrors = ApplyGlobalResponse<AppType, {
-  401: { json: { error: { code: string; message: string } } };
-  500: { json: { error: { code: string; message: string } } };
+  400: { json: ErrorBody };
+  401: { json: ErrorBody };
+  500: { json: ErrorBody };
 }>;
 const authenticated = hc<ApiWithErrors>('https://api.example.com');
 ```
@@ -171,8 +173,8 @@ an empty client array sends no entries. Make fields optional in the schema, and
 make the `form` group optional to allow an absent body. Duplicate scalar fields,
 unknown names, and the wrong text/file kind return 400. A malformed multipart
 body returns 400; the wrong media type returns 415. URL-encoded text follows
-native `URLSearchParams` decoding. Schema errors use the existing endpoint error
-envelope; transforms run once, after guards.
+native `URLSearchParams` decoding. Schema errors use the standard validation
+error body; transforms run once, after guards.
 
 All forms have finite defaults: 1 MiB of encoded body bytes (including multipart
 overhead), 100 text entries, 64 KiB per text entry including its UTF-8 key, 10

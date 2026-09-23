@@ -239,9 +239,12 @@ describe('ValidationPipe integration', () => {
       body: JSON.stringify({ name: 'Alice', email: 'not-an-email' }),
     });
     expect(invalidRes.status).toBe(400);
-    expect(await invalidRes.json()).toMatchObject({
-      message: 'Validation failed',
-      errors: expect.any(Array),
+    expect(await invalidRes.json()).toEqual({
+      error: {
+        code: 'bad_request',
+        message: 'Validation failed',
+        details: [{ message: expect.any(String), path: ['email'], code: 'invalid_format' }],
+      },
     });
   });
 

@@ -64,6 +64,11 @@ Guards run before parameter decorators and pipes, and malformed JSON passed to
 `@Body()` produces a 400 response. See the [security guide](https://github.com/velajs/vela/blob/main/docs/security.md)
 for caching, signed URLs, browser headers, client identity, and WebSockets.
 
+Framework HTTP failures (validation, request limits, exceptions, and unmatched
+routes) share one JSON body, `{ error: { code, message, details? } }`, which one
+`ExceptionHandler.render` hook can customize. See the
+[HTTP errors guide](https://github.com/velajs/vela/blob/main/docs/errors.md).
+
 Rate limiting prefers identity explicitly published by trusted authentication
 through `setTrustedRequestIdentity()` (principal plus verified tenant), then a
 configured tracker, then the runtime-attested client address. Core never derives

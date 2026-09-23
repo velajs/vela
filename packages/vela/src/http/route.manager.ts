@@ -1,6 +1,5 @@
 import { type Next, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { toErrorBody } from '@velajs/errors';
 import type {
   VelaContext as Context,
   VelaHono as HonoApp,
@@ -10,9 +9,13 @@ import type {
 import { bodyLimit as honoBodyLimit } from 'hono/body-limit';
 import { contextStorage } from 'hono/context-storage';
 import { routePath } from 'hono/route';
-import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { HttpMethod } from '../constants';
-import { HttpException } from '../errors/http-exception';
+import {
+  BadRequestException,
+  HttpException,
+  NotFoundException,
+  PayloadTooLargeException,
+} from '../errors/http-exception';
 import { createExecutionScope, finishExecutionScope } from '../entrypoint/execution-scope';
 import { resolveErrorReporter } from '../exceptions/reporter';
 import { getMetadata } from '../metadata';
@@ -22,7 +25,11 @@ import type { MiddlewareRouteDefinition } from '../module/middleware';
 import { joinPaths } from '../registry/paths';
 import { ArgumentResolver } from './argument-resolver';
 import { getRouteContributors } from './route-contributor';
-import { buildMiddlewareExecutionContext } from './execution-context';
+import {
+  buildMiddlewareExecutionContext,
+  buildNotFoundExecutionContext,
+} from './execution-context';
+import { renderHttpError } from './error-response';
 import { HandlerExecutor } from './handler-executor';
 import { instantiate, instantiateMany, instantiateAsync } from './instantiate';
 import { REQUEST_CONTEXT, createRequestContext } from './request-context';
@@ -34,6 +41,7 @@ import { shouldFilterCatch } from '../pipeline/decorators';
 import type {
   CanActivate,
   ExceptionFilter,
+  HttpExecutionContext,
   NestInterceptor,
   NestMiddleware,
   PipeTransform,
@@ -482,6 +490,8 @@ export class RouteManager {
     };
   }
 
+  // Middleware failures report first, let global filters render, then share
+  // the handlers' rendering path.
   private async mapMiddlewareError(c: Context, error: unknown): Promise<Response> {
     const requestContainer = this.getRequestContainer(c);
     const host = buildMiddlewareExecutionContext(c);
@@ -501,23 +511,33 @@ export class RouteManager {
       }
     }
 
-    const rendered = reporter.render(error, host);
-    if (rendered instanceof Response) return rendered;
-    if (rendered) return c.json(rendered.body, rendered.status as ContentfulStatusCode);
+    return renderHttpError(c, error, reporter, host);
+  }
 
-    if (error instanceof HttpException) {
-      // Preserve the 1.x middleware exception envelope.
-      return c.json(error.getResponse(), error.getStatus() as ContentfulStatusCode);
+  // Framework request rejections (request limits and unmatched routes) are
+  // client faults detected before any application code runs. They are neither
+  // reported nor passed to exception filters, which may map values to 200, but
+  // they render through the application's ExceptionHandler like every other
+  // HTTP failure.
+  private rejectRequest(
+    c: Context,
+    error: HttpException,
+    host: HttpExecutionContext = buildMiddlewareExecutionContext(c),
+  ): Response {
+    return renderHttpError(c, error, resolveErrorReporter(this.getRequestContainer(c)), host);
+  }
+
+  // Last line of defense for errors that bypass the wrapped boundaries: raw
+  // Hono middleware or routes registered on the built app, and failures of the
+  // request lifetime itself. Reports server faults, then renders through the
+  // same path. A Hono HTTPException below 500 is an author-intended client
+  // response rather than a server fault.
+  private renderUnhandledError(c: Context, error: unknown): Response {
+    const reporter = resolveErrorReporter(findRequestContainer(c) ?? this.container);
+    if (!(error instanceof HTTPException && error.status < 500)) {
+      reporter.report(error, { edge: 'hono', source: `${c.req.method} ${c.req.path}` });
     }
-    if (error instanceof HTTPException) {
-      if (error.status < 500) return error.getResponse();
-      return c.json(
-        { error: { code: 'internal', message: 'Internal Server Error' } },
-        error.status as ContentfulStatusCode,
-      );
-    }
-    const { body, status } = toErrorBody(error, { catalog: reporter.catalog });
-    return c.json(body, status as ContentfulStatusCode);
+    return renderHttpError(c, error, reporter, buildMiddlewareExecutionContext(c));
   }
 
   registerController(controller: Type, moduleId?: string): this {
@@ -583,6 +603,19 @@ export class RouteManager {
   async build(): Promise<HonoApp> {
     const app = new Hono<VelaHonoEnv>();
     this.routeDescriptions = [];
+
+    // One JSON error contract for requests no route matched and for errors
+    // that escape the wrapped boundaries. Both render through the
+    // application's ExceptionHandler first. Routes registered on the built app
+    // later (adapters, OpenAPI documents, sockets) still match before this.
+    app.notFound((c) =>
+      this.rejectRequest(
+        c,
+        new NotFoundException('Route not found'),
+        buildNotFoundExecutionContext(c),
+      ),
+    );
+    app.onError((error, c) => this.renderUnhandledError(c, error));
 
     // HTTP owns one lifetime through both response transmission and managed
     // deferred work. Native waitUntil also retains asynchronous disposal.
@@ -701,13 +734,22 @@ export class RouteManager {
         seedContext();
         await next();
       };
+      const rejectBody = (): Response => {
+        // A rejected body never reaches next(). Seed its original request
+        // before the rejection renders inside the active lifetime.
+        seedContext();
+        return this.rejectRequest(
+          c,
+          new PayloadTooLargeException('Request body exceeds the configured limit'),
+        );
+      };
       try {
         const maxSize = this.resolveBodyLimit(c.req.path, c.req.method);
         return maxSize === false
           ? await normalizedNext()
-          : await honoBodyLimit({ maxSize })(c, normalizedNext);
+          : await honoBodyLimit({ maxSize, onError: rejectBody })(c, normalizedNext);
       } finally {
-        // A rejected/failed body never reaches next(). Seed its original
+        // A failed body read never reaches next() either. Seed its original
         // request before Hono's error reporter runs inside the active lifetime.
         // Never replace a context already exposed to application code.
         seedContext();
@@ -724,9 +766,9 @@ export class RouteManager {
           ? ''
           : rawUrl.slice(queryStart + 1, fragmentStart < 0 ? undefined : fragmentStart);
       if (this.queryMaxBytes !== false && rawQuery.length > this.queryMaxBytes) {
-        return c.json(
-          { error: { code: 'bad_request', message: 'Query string exceeds the configured limit' } },
-          400,
+        return this.rejectRequest(
+          c,
+          new BadRequestException('Query string exceeds the configured limit'),
         );
       }
       if (rawQuery.length > 0) {
@@ -734,25 +776,15 @@ export class RouteManager {
         for (const [key] of new URL(c.req.raw.url).searchParams) {
           count++;
           if (this.queryMaxParameters !== false && count > this.queryMaxParameters) {
-            return c.json(
-              {
-                error: {
-                  code: 'bad_request',
-                  message: 'Query parameter count exceeds the configured limit',
-                },
-              },
-              400,
+            return this.rejectRequest(
+              c,
+              new BadRequestException('Query parameter count exceeds the configured limit'),
             );
           }
           if (this.queryMaxDepth !== false && queryKeyDepth(key) > this.queryMaxDepth) {
-            return c.json(
-              {
-                error: {
-                  code: 'bad_request',
-                  message: 'Query parameter depth exceeds the configured limit',
-                },
-              },
-              400,
+            return this.rejectRequest(
+              c,
+              new BadRequestException('Query parameter depth exceeds the configured limit'),
             );
           }
         }

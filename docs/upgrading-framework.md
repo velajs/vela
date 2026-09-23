@@ -7,6 +7,40 @@ integrations together using their published dependency ranges; consult each
 package's changelog for its version. A prepared version in this repository becomes
 installable only after publication to npm.
 
+## HTTP error bodies
+
+The first core release after 1.28.0 renders every HTTP failure that the framework
+produces as `{ error: { code, message, details? } }`, through one path that the
+application's `ExceptionHandler.render` hook can customize. See
+[HTTP errors](errors.md). The wire format changes for clients:
+
+| Failure | Before | Now |
+| --- | --- | --- |
+| Endpoint input, `ValidationPipe` validation (400) | `{ statusCode, message, errors }` | `{ error: { code: 'bad_request', message: 'Validation failed', details } }` |
+| `ZodValidationPipe` invalid input | 500 | 400 with the same body as other validation failures |
+| `HttpException` thrown in middleware | `{ statusCode, message }` | `{ error: { code, message } }` |
+| Body over `security.body.maxBytes` (413) | Plain text `Payload Too Large` | `{ error: { code: 'payload_too_large', message: 'Request body exceeds the configured limit' } }` |
+| No route matched (404) | Plain text `404 Not Found` | `{ error: { code: 'not_found', message: 'Route not found' } }` |
+
+Query-limit failures keep their 400 body, and an `HttpException` constructed with
+an object is still sent verbatim. Request-limit failures and unmatched routes now
+reach the render hook; as before, they are not reported and skip exception
+filters. Middleware exceptions still go through global filters and the render
+hook; only their default body changed. A vela `HttpException` that escapes to the
+last-resort handler keeps its status instead of becoming a redacted 500, and a
+Hono `HTTPException` below 500 thrown by a controller keeps its own response, as
+it already did in middleware. The default body no longer calls `getResponse()`,
+so an exception subclass that overrides it to reshape middleware errors should
+use a render hook or an object response instead.
+
+To migrate, read validation issues from `error.details` (each issue keeps
+`message`, `path`, and `code`) instead of `errors`, and error text from
+`error.message`. Filters that read the issue list from an exception use
+`exception.getDetails()`; `getResponse()` now carries it as `details`. Tests that
+asserted plain-text 404 or 413 bodies should parse JSON. Apps that translate or
+reshape errors can do so for every failure in one `render` hook with
+`toHttpErrorBody(error, { context })`.
+
 ## Endpoint context parameters
 
 `@Endpoint` methods may declare context parameters after the validated input:

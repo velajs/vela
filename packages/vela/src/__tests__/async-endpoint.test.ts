@@ -106,7 +106,13 @@ describe('async endpoint boundaries', () => {
         }),
       );
       expect(invalid.status).toBe(400);
-      expect(await invalid.json()).toMatchObject({ errors: [{ path: ['json', 'amount'] }] });
+      expect(await invalid.json()).toMatchObject({
+        error: {
+          code: 'bad_request',
+          message: 'Validation failed',
+          details: [{ path: ['json', 'amount'] }],
+        },
+      });
     } finally {
       await app.close();
     }

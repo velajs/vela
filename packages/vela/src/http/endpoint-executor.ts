@@ -4,6 +4,7 @@ import type { RuntimeEndpointDefinition } from '../openapi/endpoint';
 import { isEndpointBinaryBody } from '../openapi/endpoint-response';
 import { parseSchemaAsync } from '../validation/parse-schema';
 import { SchemaValidationError } from '../validation/standard-schema';
+import { validationFailed } from '../validation/validation.pipe';
 import type { PipeTransform } from '../pipeline/types';
 import { extractEndpointForm, limitEndpointBody } from './endpoint-body';
 
@@ -66,13 +67,7 @@ export async function extractEndpointInput(
   try {
     return await parseSchemaAsync(endpoint.input, input);
   } catch (error) {
-    if (error instanceof SchemaValidationError) {
-      throw new BadRequestException({
-        statusCode: 400,
-        message: 'Endpoint input validation failed',
-        errors: error.issues,
-      });
-    }
+    if (error instanceof SchemaValidationError) throw validationFailed(error.issues);
     throw error;
   }
 }

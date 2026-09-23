@@ -49,22 +49,34 @@ export class ValidationPipe implements PipeTransform {
   transform(value: unknown, metadata: ArgumentMetadata): unknown {
     const schema = this.#schema(metadata);
     if (schema === undefined) return value;
-    try {
-      const result = parseSchema(schema, value);
-      return isPromiseLike(result) ? Promise.resolve(result).catch(validationFailure) : result;
-    } catch (error) {
-      return validationFailure(error);
-    }
+    return parseValidated(schema, value);
+  }
+}
+
+/**
+ * The framework's HTTP validation failure: a 400 `BadRequestException` whose
+ * details are the normalized schema issues (message, path, and code). It
+ * renders as `{ error: { code: 'bad_request', message, details } }`.
+ */
+export function validationFailed(issues: SchemaValidationError['issues']): BadRequestException {
+  return new BadRequestException('Validation failed', { details: issues });
+}
+
+/**
+ * Parse one input boundary and report schema issues as {@link validationFailed}.
+ * Synchronous schemas keep a synchronous result; errors thrown by validator
+ * code are not validation failures and propagate unchanged.
+ */
+export function parseValidated(schema: ValidationSchema, value: unknown): unknown {
+  try {
+    const result = parseSchema(schema, value);
+    return isPromiseLike(result) ? Promise.resolve(result).catch(validationFailure) : result;
+  } catch (error) {
+    return validationFailure(error);
   }
 }
 
 function validationFailure(error: unknown): never {
-  if (error instanceof SchemaValidationError) {
-    throw new BadRequestException({
-      statusCode: 400,
-      message: 'Validation failed',
-      errors: error.issues,
-    });
-  }
+  if (error instanceof SchemaValidationError) throw validationFailed(error.issues);
   throw error;
 }

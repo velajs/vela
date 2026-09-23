@@ -1,0 +1,7 @@
+---
+'@velajs/vela': minor
+---
+
+Render every framework-originated HTTP failure as `{ error: { code, message, details? } }` through one path that ends in the application's `ExceptionHandler.render` hook, so an application can customize every failure in one place. Validation failures from `@Endpoint` input, `ValidationPipe`, and `ZodValidationPipe` return 400 `bad_request` with the message `Validation failed` and the issue list (message, path, code) in `error.details`; `ZodValidationPipe` no longer turns invalid input into a 500. Exceptions thrown in middleware, the request body limit (413 `payload_too_large`), query limits, and unmatched routes (404 `not_found`, previously plain text) use the same body and reach the render hook. Request limits and unmatched routes stay unreported and skip exception filters, and errors that reach the last-resort handler render through the same hook.
+
+Breaking: clients that read `statusCode`, `message`, or `errors` from validation and middleware failures, or plain-text 404 and 413 bodies, must read `error.code`, `error.message`, and `error.details`. `HttpException` and its subclasses accept a `details` option (`getDetails()`); the default body no longer calls `getResponse()`. `toHttpErrorBody(error, { context })` exposes the catalog-aware default body to render hooks, and outside controllers the hook context reports `VelaMiddlewareHost` with `VELA_MIDDLEWARE_HANDLER` or `VELA_NOT_FOUND_HANDLER`. An `HttpException` constructed with an object response is still sent verbatim.

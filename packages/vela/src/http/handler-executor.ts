@@ -1,9 +1,6 @@
-import { STATUS_TO_CODE, toErrorBody } from '@velajs/errors';
 import type { Context } from 'hono';
-import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { Container } from '../container/container';
 import type { TypedToken, Type } from '../container/types';
-import { HttpException } from '../errors/http-exception';
 import { getEndpointDefinition } from '../openapi/endpoint';
 import { resolveErrorReporter } from '../exceptions/reporter';
 import { ComponentManager } from '../pipeline/component.manager';
@@ -28,6 +25,7 @@ import { getHttpCode, getRedirect, getResponseHeaders } from './decorators';
 import { buildExecutionContext } from './execution-context';
 import { extractEndpointInput, mapEndpointResponse } from './endpoint-executor';
 import { assertEndpointMethod } from './endpoint-parameters';
+import { renderHttpError } from './error-response';
 import { instantiateAsync, instantiateManyAsync } from './instantiate';
 import { applyResponseHeaders, mapRedirect, mapResponse } from './response-mapper';
 import type { ParamMetadata, RouteMetadata } from './types';
@@ -217,24 +215,7 @@ export class HandlerExecutor {
           }
         }
 
-        const rendered = reporter.render(error, executionContext);
-        if (rendered instanceof Response) return rendered;
-        if (rendered) return c.json(rendered.body, rendered.status as ContentfulStatusCode);
-
-        if (error instanceof HttpException) {
-          const status = error.getStatus() as ContentfulStatusCode;
-          const raw = error.getRawResponse() ?? error.message;
-          if (typeof raw === 'string') {
-            return c.json(
-              { error: { code: STATUS_TO_CODE[status] ?? 'internal', message: raw } },
-              status,
-            );
-          }
-          return c.json(raw, status); // object responses ship verbatim (crud envelope compat)
-        }
-
-        const { body, status } = toErrorBody(error, { catalog: reporter.catalog });
-        return c.json(body, status as ContentfulStatusCode);
+        return renderHttpError(c, error, reporter, executionContext);
       }
     };
   }

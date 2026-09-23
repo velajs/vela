@@ -19,3 +19,4 @@ export {
   ServiceUnavailableException,
   GatewayTimeoutException,
 } from './http-exception';
+export type { HttpExceptionOptions } from './http-exception';

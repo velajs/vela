@@ -191,7 +191,12 @@ export type {
 // Explicit request-child container access (for programmatic-route authors,
 // param-decorator factories, and scoped middleware)
 export { getRequestContainer } from './http/request-container';
-export { buildExecutionContext as buildHttpExecutionContext } from './http/execution-context';
+export {
+  buildExecutionContext as buildHttpExecutionContext,
+  VelaMiddlewareHost,
+  VELA_MIDDLEWARE_HANDLER,
+  VELA_NOT_FOUND_HANDLER,
+} from './http/execution-context';
 
 // Opt-in ambient container access (ALS via hono/context-storage)
 export {
@@ -594,6 +599,10 @@ export {
   ServiceUnavailableException,
   GatewayTimeoutException,
 } from './errors/index';
+export type { HttpExceptionOptions } from './errors/index';
+// The default HTTP error body, for ExceptionHandler.render hooks that adapt it.
+export { toHttpErrorBody } from './http/error-response';
+export type { HttpErrorBodyOptions } from './http/error-response';
 
 // Exception handling — the ExceptionHandler contract + shared error reporter.
 // Re-exports the core @velajs/errors surface so app authors need one import to

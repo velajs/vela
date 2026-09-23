@@ -1,4 +1,5 @@
 import { BadRequestException } from '../errors/http-exception';
+import { parseValidated } from '../validation/validation.pipe';
 import type { ArgumentMetadata, PipeTransform } from './types';
 
 export class ParseIntPipe implements PipeTransform<string, number> {
@@ -54,11 +55,16 @@ export class RequiredPipe implements PipeTransform {
   }
 }
 
+/**
+ * Validates with one Zod (or other `parse`-based) schema. Schema issues become
+ * the same 400 validation failure as `ValidationPipe`, with the issue list in
+ * `error.details`; errors thrown by schema code propagate unchanged.
+ */
 export class ZodValidationPipe implements PipeTransform {
   constructor(private readonly schema: { parse(data: unknown): unknown }) {}
 
   transform(value: unknown, _metadata: ArgumentMetadata): unknown {
-    return this.schema.parse(value);
+    return parseValidated(this.schema, value);
   }
 }
 

@@ -29,6 +29,14 @@ a trusted outer proxy enforces an equivalent bound. Production Node runtimes
 raised above the secure defaults, when a streaming limit is disabled, or when a
 WebSocket gateway opts out of Origin isolation with `allowedOrigins: '*'`.
 
+An oversized body returns 413 with
+`{ "error": { "code": "payload_too_large", "message": "Request body exceeds the configured limit" } }`.
+A query over its size, entry, or depth limit returns 400 with code `bad_request`
+and a message naming the limit, for example
+`{ "error": { "code": "bad_request", "message": "Query parameter count exceeds the configured limit" } }`.
+Limit failures are not reported and skip exception filters; the application's
+`ExceptionHandler.render` hook can adapt them. See [HTTP errors](errors.md).
+
 `defineEndpoint` form contracts add bounded parsing after guards. Set
 `body.contentType` to `multipart/form-data` or `application/x-www-form-urlencoded`
 and optionally tighten `maxBytes`, `maxFields`, `maxFieldBytes`, `maxFiles`, and

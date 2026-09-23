@@ -208,7 +208,8 @@ describe('Serialization', () => {
     });
     expect(invalidRes.status).toBe(400);
     const errorBody = (await invalidRes.json()) as any;
-    expect(errorBody.message).toBe('Validation failed');
-    expect(errorBody.errors.length).toBeGreaterThan(0);
+    expect(errorBody.error.code).toBe('bad_request');
+    expect(errorBody.error.message).toBe('Validation failed');
+    expect(errorBody.error.details.length).toBeGreaterThan(0);
   });
 });
