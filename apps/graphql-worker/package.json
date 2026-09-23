@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "tsdown",
+    "types": "wrangler types --include-runtime=false --strict-vars=false",
     "typecheck": "tsc --noEmit",
     "dev": "wrangler dev"
   },

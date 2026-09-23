@@ -12,5 +12,5 @@
     "lib": ["ES2024", "WebWorker"],
     "types": ["@cloudflare/workers-types"]
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "worker-configuration.d.ts"]
 }
