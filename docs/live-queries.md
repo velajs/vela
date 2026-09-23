@@ -51,6 +51,11 @@ await client.mutate('/todos', { text: 'ship it' }, {
 });
 ```
 
+Subscriptions arrive over the `$live` WebSocket event, so `LiveModule` requires a
+WebSocket module in the same application (`WebSocketModule.forRoot()`, or
+`CloudflareWebSocketModule.forRoot()` on Cloudflare). Without one, bootstrap fails
+instead of silently dropping every subscription.
+
 Writes invalidate tags either **automatically** — `@Crud({ ..., live: true })` in `@velajs/crud` emits `crud:<tableName>` after every successful write verb and stamps the commit headers — or **explicitly**:
 
 ```ts
