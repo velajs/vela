@@ -4,7 +4,7 @@ import { Scope } from '../constants';
 import type { Container } from '../container/container';
 import { HttpException } from '../errors/http-exception';
 import { APP_EXCEPTION_HANDLER, ERROR_CATALOG } from '../pipeline/tokens';
-import { APP_LOGGER } from '../logging/logging.module';
+import { APP_LOGGER } from '../logging/logging.tokens';
 import { logDeliveryForScope } from '../logging/scoped-logger';
 import { matchesAny, type ErrorReportContext, type ExceptionHandler } from './exception-handler';
 

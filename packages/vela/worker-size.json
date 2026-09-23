@@ -14,18 +14,25 @@
     "dist/health/",
     "dist/i18n/",
     "dist/live/",
+    "dist/logging/application-logger.js",
+    "dist/logging/log-levels.js",
+    "dist/logging/log-serialization.js",
+    "dist/logging/logging.module.js",
+    "dist/module/define-module.js",
+    "dist/module/stable-hash.js",
     "dist/observability/",
     "dist/plugin/",
     "dist/queue/",
-    "dist/schedule/",
     "dist/schedule-node/",
+    "dist/schedule/",
     "dist/security/",
     "dist/seeder/",
     "dist/serialization/",
+    "dist/services/logger.js",
     "dist/storage/",
     "dist/streaming/",
     "dist/throttler/",
-    "dist/websocket/",
-    "dist/websocket-node/"
+    "dist/websocket-node/",
+    "dist/websocket/"
   ]
 }

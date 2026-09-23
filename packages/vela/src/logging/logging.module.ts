@@ -1,9 +1,10 @@
-import { InjectionToken, defineProvider } from '../container/types';
+import { defineProvider } from '../container/types';
 import { defineModule } from '../module/define-module';
 import { ApplicationLogger } from './application-logger';
 import type { ApplicationLoggerOptions } from './log.types';
+import { APP_LOGGER } from './logging.tokens';
 
-export const APP_LOGGER = new InjectionToken<ApplicationLogger>('vela.applicationLogger');
+export { APP_LOGGER };
 
 const { ConfigurableModuleClass } = defineModule<ApplicationLoggerOptions>({
   name: 'Logging',

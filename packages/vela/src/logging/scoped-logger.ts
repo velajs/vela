@@ -3,7 +3,7 @@ import { assertExecutionScopeActive, getExecutionLifetime } from '../entrypoint/
 import { REQUEST_CONTEXT } from '../http/request-context';
 import type { StructuredLogger } from './application-logger';
 import type { LogDeliveryContext, LogFields } from './log.types';
-import { APP_LOGGER } from './logging.module';
+import { APP_LOGGER } from './logging.tokens';
 
 /** @internal Explicit metadata/completion read path shared with exception reporting. */
 export function logDeliveryForScope(container: Container): LogDeliveryContext {
