@@ -35,6 +35,7 @@ import {
   applyDecorators,
   HttpMethod,
   ModuleRef,
+  ModuleVisibilityError,
   mixin,
   InjectionToken,
   Inject,
@@ -5403,6 +5404,93 @@ describe('ModuleRef.resolve() and ModuleRef.create()', () => {
     const res = await app.getHonoApp().request('/modref-resolve');
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ same: true, value: 'prod' });
+  });
+});
+
+// =============================================================================
+// @Optional() and module visibility
+// =============================================================================
+
+describe('@Optional() and module visibility', () => {
+  const HIDDEN = new InjectionToken<string>('OptionalHidden');
+
+  function hiddenGraph() {
+    @Module({ providers: [defineProvider(HIDDEN, { useValue: 'hidden' })] })
+    class OwnerModule {}
+
+    @Injectable()
+    class Consumer {
+      constructor(@Optional() @Inject(HIDDEN) readonly value: string | undefined) {}
+    }
+
+    @Module({ imports: [OwnerModule], providers: [Consumer] })
+    class AppModule {}
+
+    return { AppModule, Consumer };
+  }
+
+  it('reports a registered but invisible @Optional token instead of injecting it', async () => {
+    const { AppModule } = hiddenGraph();
+    await expect(VelaFactory.create(AppModule, { diagnostics: 'throw' })).rejects.toThrow(
+      ModuleVisibilityError,
+    );
+  });
+
+  it('warns and injects undefined in log mode, silently in silent mode', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const logged = hiddenGraph();
+      const app = await VelaFactory.create(logged.AppModule);
+      expect(app.get(logged.Consumer).value).toBeUndefined();
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('OptionalHidden'));
+
+      warn.mockClear();
+      const silent = hiddenGraph();
+      const quiet = await VelaFactory.create(silent.AppModule, { diagnostics: 'silent' });
+      expect(quiet.get(silent.Consumer).value).toBeUndefined();
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('honors InjectionToken default factories', async () => {
+    const WITH_DEFAULT = new InjectionToken<string>('OptionalDefault', {
+      factory: () => 'fallback',
+    });
+
+    @Injectable()
+    class Consumer {
+      constructor(@Optional() @Inject(WITH_DEFAULT) readonly value: string | undefined) {}
+    }
+
+    @Injectable({ scope: Scope.TRANSIENT })
+    class PerUse {
+      constructor(@Optional() @Inject(WITH_DEFAULT) readonly value: string | undefined) {}
+    }
+
+    @Module({ providers: [Consumer, PerUse] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    expect(app.get(Consumer).value).toBe('fallback');
+    // Synchronous construction path.
+    expect(app.getContainer().resolve(PerUse).value).toBe('fallback');
+  });
+
+  it('still injects undefined when nothing registers the token', async () => {
+    const ABSENT = new InjectionToken<string>('OptionalAbsent');
+
+    @Injectable()
+    class Consumer {
+      constructor(@Optional() @Inject(ABSENT) readonly value: string | undefined) {}
+    }
+
+    @Module({ providers: [Consumer] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule, { diagnostics: 'throw' });
+    expect(app.get(Consumer).value).toBeUndefined();
   });
 });
 

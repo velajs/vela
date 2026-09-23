@@ -4120,6 +4120,9 @@ declare class Container {
   resolveAsync<K extends Token>(token: K, requestingModuleId?: string): Promise<InferToken<K>>;
   private resolveAsyncInner;
   private constructAsync;
+
+  private isOptionalMissing;
+  private reportHiddenOptional;
   private createLazyProxy;
   private tokenToString;
 }

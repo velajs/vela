@@ -39,6 +39,12 @@ values are referenced as `unknown` and remain under application control. Factori
 arrays are not exposed. Use this for startup wiring audits; a missing instance is not permission to
 assume an opaque factory's output type or to construct it during the audit.
 
+`@Optional()` injects `undefined` only when no module registers the token. When another module
+registers it without exporting it to the consumer, the wiring mistake is reported through the
+container's diagnostics policy: `throw` fails construction with `ModuleVisibilityError`, `log` warns
+once per consuming module and injects `undefined`, and `silent` injects `undefined`. An
+`InjectionToken` with a default factory still resolves through that factory.
+
 Circular dependencies through `useExisting` produce a circular-dependency error on both synchronous
 and asynchronous resolution. Separate registrations sharing a token do not constitute a cycle.
 An alias must be visible to its consumer, then its target resolves from the alias's declaring module.

@@ -70,6 +70,8 @@ Constructed request instances are keyed by provider registration, so the same to
 
 ## `@Inject`, `@Optional`, `forwardRef`
 
+`@Optional()` injects `undefined` only when no module registers the token. A token another module registers without exporting it to the consumer is reported through `diagnostics` (`throw`: `ModuleVisibilityError`; `log`: one warning per module, then `undefined`; `silent`: `undefined`). An `InjectionToken` default factory still supplies its value.
+
 Circular dependencies (provider↔provider or module↔module) resolve with `forwardRef`:
 
 ```ts

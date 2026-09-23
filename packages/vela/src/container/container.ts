@@ -90,6 +90,8 @@ export class Container {
   // circular-dependency error.
   #lazyHook?: LazyResolutionHook;
   #asyncDepth = 0;
+  // Root-owned: hidden @Optional() dependencies already warned about.
+  #reportedHiddenOptionals = new Map<Token, Set<string>>();
 
   constructor(options: ContainerOptions = {}) {
     this.#diagnostics = options.diagnostics ?? 'log';
@@ -794,6 +796,7 @@ export class Container {
     this.#scopes.clear();
     this.#globals.clear();
     this.#disposables.clear();
+    this.#reportedHiddenOptionals.clear();
   }
 
   /** Whether teardown has owned resources or construction to drain. */
@@ -1002,7 +1005,7 @@ export class Container {
         );
       }
 
-      if (meta?.optional && !this.has(token)) {
+      if (meta?.optional && this.isOptionalMissing(token, ownerModuleId)) {
         return undefined;
       }
 
@@ -1179,7 +1182,7 @@ export class Container {
             `Cannot resolve dependency at index ${index} for ${target.name}. ` + IMPORT_TYPE_HINT,
           );
         }
-        if (entry?.optional && !this.has(token)) return undefined;
+        if (entry?.optional && this.isOptionalMissing(token, moduleId)) return undefined;
         if (rawToken instanceof ForwardRef) {
           const dependency = this.findRegistration(token, moduleId);
           if (dependency && ancestors.has(dependency)) return this.createLazyProxy(token, moduleId);
@@ -1188,6 +1191,32 @@ export class Container {
       }),
     );
     return new target(...dependencies);
+  }
+
+  /**
+   * `@Optional()` injects `undefined` only when nothing is registered for the
+   * token. A provider another module registers without exposing it to the
+   * requester is a wiring mistake, reported through the diagnostics policy.
+   */
+  private isOptionalMissing(token: Token, requestingModuleId: string): boolean {
+    if (this.findRegistration(token, requestingModuleId)) return false;
+    if (this.#scopes.has(requestingModuleId) && this.#exporterIndex.has(token)) {
+      this.reportHiddenOptional(token, requestingModuleId);
+      return true;
+    }
+    return !(token instanceof InjectionToken && token.options?.factory);
+  }
+
+  private reportHiddenOptional(token: Token, requestingModuleId: string): void {
+    const error = new ModuleVisibilityError(requestingModuleId, token);
+    if (this.#diagnostics === 'throw') throw error;
+    if (this.#diagnostics === 'silent') return;
+    const reported = this.#root.#reportedHiddenOptionals;
+    const modules = reported.get(token) ?? new Set<string>();
+    if (modules.has(requestingModuleId)) return;
+    modules.add(requestingModuleId);
+    reported.set(token, modules);
+    console.warn(`[vela] @Optional() dependency injected as undefined. ${error.message}`);
   }
 
   private createLazyProxy(token: Token, requestingModuleId?: string): object {
