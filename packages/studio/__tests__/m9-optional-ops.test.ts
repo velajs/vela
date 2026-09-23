@@ -634,7 +634,8 @@ class EmailProcessorModule {}
 describe('queue ops (@velajs/studio/queue)', () => {
   function queueApp(editable: Partial<StudioModuleOptions['editable']> = {}) {
     return makeApp({ editable: { ops: true, ...editable } }, [
-      QueueModule.forRoot({ queues: ['email'] }),
+      QueueModule.forRoot(),
+      QueueModule.registerQueue({ name: 'email' }, { name: 'audit' }),
       EmailProcessorModule,
       StudioQueueModule.forRoot({}),
     ]);
@@ -644,14 +645,19 @@ describe('queue ops (@velajs/studio/queue)', () => {
     const app = await queueApp();
     expect(ok(await rpc(app, 'studio.capabilities')).features.queue).toBe(true);
     const queues = ok(await rpc(app, 'queue.list'));
-    expect(queues.map((q) => q.name)).toContain('email');
-    expect(queues.every((q) => q.depth === undefined)).toBe(true);
+    // Registered queues are listed whether or not this app processes them.
+    expect(queues).toEqual([
+      { name: 'audit', kind: 'inline' },
+      { name: 'email', kind: 'inline' },
+    ]);
   });
 
   it('send enqueues a job (opsEditable-gated); depths/dlq/replay degrade honestly', async () => {
     const app = await queueApp();
     const sent = ok(await rpc(app, 'queue.send', { queue: 'email', payload: { hi: 1 } }));
     expect(typeof sent.id).toBe('string');
+    const missing = await rpc(app, 'queue.send', { queue: 'missing', payload: {} });
+    expect(missing.ok).toBe(false);
 
     // Per-op typed calls (no `as never`): each degrades honestly.
     const caps = ok(await rpc(app, 'studio.capabilities'));
