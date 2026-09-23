@@ -33,6 +33,7 @@ import {
   cronDialectAmbiguity,
   invokeScheduledJob,
   parseCronMetadata,
+  parseIntervalMetadata,
   type CronMetadata,
   type IntervalMetadata,
   type InvokeScheduledJobOptions,
@@ -118,7 +119,7 @@ describe('invokeScheduledJob', () => {
     expect(disposed).toEqual(calls.map((call) => call.job));
   });
 
-  it('applies neither global nor scoped guards and interceptors to a direct job', async () => {
+  it('applies neither global guards nor declared interceptors and filters to a direct job', async () => {
     const seen: string[] = [];
     class Deny implements CanActivate {
       canActivate(): boolean {
@@ -132,12 +133,16 @@ describe('invokeScheduledJob', () => {
         return next.handle();
       }
     }
+    class Claim {
+      catch(): void {
+        seen.push('filter');
+      }
+    }
     @Injectable()
-    @UseGuards(Deny)
     @UseInterceptors(Spy)
     class Jobs {
       @Cron('0 3 * * *', { dialect: 'cloudflare' })
-      @UseGuards(Deny)
+      @UseFilters(Claim)
       nightly() {
         seen.push('job');
       }
@@ -149,6 +154,109 @@ describe('invokeScheduledJob', () => {
     await invokeScheduledJob(app.getContainer(), cronEntry(app, 'nightly'), tick('0 3 * * *'));
 
     expect(seen).toEqual(['job']);
+  });
+
+  describe('a direct job that declares guards', () => {
+    class Allow implements CanActivate {
+      canActivate(): boolean {
+        return true;
+      }
+    }
+    // The same job with its guard declared on the class, method or module.
+    // Module-level components apply to the controllers a module declares.
+    function guardedRoot(on: 'class' | 'method' | 'module', seen: string[], report: () => void) {
+      const onClass = on === 'class' ? UseGuards(Allow) : () => {};
+      const onMethod = on === 'method' ? UseGuards(Allow) : () => {};
+      const onModule = on === 'module' ? UseGuards(Allow) : () => {};
+      @Controller('jobs')
+      @onClass
+      class Jobs {
+        @Cron('0 3 * * *', { dialect: 'cloudflare' })
+        @onMethod
+        nightly() {
+          seen.push('job');
+        }
+        @Interval(60_000)
+        @onMethod
+        poll() {
+          seen.push('poll');
+        }
+      }
+      @onModule
+      @Module({
+        controllers: [Jobs],
+        providers: [defineProvider(APP_EXCEPTION_HANDLER, { useValue: { report } })],
+      })
+      class Root {}
+      return Root;
+    }
+
+    it.each(['class', 'method', 'module'] as const)(
+      'refuses to run when the guard is declared on its %s, and reports why',
+      async (on) => {
+        const seen: string[] = [];
+        const report = vi.fn();
+        const app = await create(guardedRoot(on, seen, report));
+        const refusal =
+          /Jobs\.nightly declares @UseGuards, but guards do not run for directly dispatched scheduled jobs — use ScheduleModule\.forRoot\(\{ dispatch: \{ kind: 'signed', \.\.\. \} \}\) or remove the guard/;
+
+        await expect(
+          invokeScheduledJob(app.getContainer(), cronEntry(app, 'nightly'), tick('0 3 * * *')),
+        ).rejects.toThrow(refusal);
+        const [interval] = app.entrypoints.ofKind('schedule:interval', parseIntervalMetadata);
+        await expect(
+          invokeScheduledJob(app.getContainer(), interval!, {
+            kind: 'interval',
+            ms: 60_000,
+            scheduledTime: Date.UTC(2024, 0, 8, 3),
+            signal: new AbortController().signal,
+          }),
+        ).rejects.toThrow(/Jobs\.poll declares @UseGuards/);
+
+        expect(seen).toEqual([]);
+        expect(report).toHaveBeenCalledTimes(2);
+        expect(report).toHaveBeenCalledWith(
+          expect.objectContaining({ message: expect.stringMatching(refusal) }),
+          expect.objectContaining({ edge: 'schedule', source: 'Jobs.nightly' }),
+        );
+      },
+    );
+
+    it('is refused on every tick of the Node executor', async () => {
+      vi.useFakeTimers();
+      try {
+        const seen: string[] = [];
+        const report = vi.fn();
+        @Injectable()
+        @UseGuards(Allow)
+        class Jobs {
+          @Interval(1000)
+          poll() {
+            seen.push('poll');
+          }
+        }
+        @Module({
+          imports: [ScheduleNodeModule],
+          providers: [Jobs, defineProvider(APP_EXCEPTION_HANDLER, { useValue: { report } })],
+        })
+        class Root {}
+        const app = await create(Root);
+
+        await vi.advanceTimersByTimeAsync(2000);
+        await app.close();
+
+        expect(seen).toEqual([]);
+        expect(report).toHaveBeenCalledTimes(2);
+        expect(report).toHaveBeenCalledWith(
+          expect.objectContaining({
+            message: expect.stringMatching(/Jobs\.poll declares @UseGuards, but guards do not run/),
+          }),
+          expect.objectContaining({ edge: 'schedule', source: 'Jobs.poll' }),
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   it('reports a failure once on the schedule edge and rethrows it', async () => {
@@ -230,7 +338,15 @@ describe('invokeScheduledJob', () => {
         return { ok: true };
       }
     }
+    class Deny implements CanActivate {
+      canActivate(): boolean {
+        seen.push('job guard');
+        return false;
+      }
+    }
+    // Signed dispatch never calls the job directly, so its guard is no refusal.
     @Injectable()
+    @UseGuards(Deny)
     class Jobs {
       @Cron('0 3 * * *', { dialect: 'cloudflare' })
       nightly() {
@@ -432,8 +548,11 @@ describe('scheduled job components', () => {
 
     const messages = warn.mock.calls.map(([message]) => String(message));
     expect(messages).toHaveLength(2);
-    expect(messages[0]).toMatch(/Guarded\.nightly declares @UseGuards.*do not run.*signed/);
+    expect(messages[0]).toMatch(
+      /Guarded\.nightly declares @UseGuards.*do not run.*one that declares guards refuses to run.*signed/,
+    );
     expect(messages[1]).toMatch(/Decorated\.poll declares @UseInterceptors and @UseFilters/);
+    expect(messages[1]).not.toMatch(/refuses/);
     await expect(VelaFactory.create(Root, { diagnostics: 'throw' })).rejects.toThrow(
       /Guarded\.nightly declares @UseGuards/,
     );

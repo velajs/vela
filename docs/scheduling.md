@@ -45,11 +45,21 @@ invocation)` from `@velajs/vela`. It resolves the job by its owning module in a
 fresh invocation scope, calls the method with only the invocation, reports a
 failure once on the `schedule` edge and rethrows it. A direct job runs no guards,
 interceptors or filters, neither app-global nor declared on its class, method or
-module, as with NestJS `@Cron`: a tick has no caller to authorize. Both runtimes
-report a job that declares `@UseGuards`, `@UseInterceptors` or `@UseFilters`
-through the diagnostics policy, and `scheduledJobComponents(container, entry)`
-names those declarations. Opt into signed dispatch (below) when a job should run
-through the request pipeline, and declare the components on the signed route.
+module, as with NestJS `@Cron`: a tick has no caller to authorize.
+
+A direct job that declares `@UseGuards` on its class, method or module fails
+closed instead of running unguarded: `invokeScheduledJob` refuses it before
+resolving it, on Node timers, Workers cron triggers and Studio's run-now alike,
+and reports the refusal through the exception reporter: guards do not run for
+directly dispatched scheduled jobs — use
+`ScheduleModule.forRoot({ dispatch: { kind: 'signed', ... } })` or remove the
+guard. `vela deploy check` rejects such a Workers job before deployment
+(`scheduled-job-guards`). Interceptors and filters declared for a job stay a
+diagnostic: both runtimes report a job that declares `@UseGuards`,
+`@UseInterceptors` or `@UseFilters` at bootstrap through the diagnostics policy,
+and `scheduledJobComponents(container, entry)` names those declarations. Opt
+into signed dispatch (below) when a job should run through the request pipeline,
+and declare the components on the signed route.
 
 ## Cron dialects
 
@@ -152,9 +162,11 @@ above, an explicit `dialect: 'unix'` or `timeZone: 'local'`, `@Interval` jobs,
 which never run on Workers, and guards, interceptors or filters declared for a
 cron job. The default `'log'` mode warns once per declaration and never fails
 the first event, which is where a Worker bootstraps; `'throw'` fails bootstrap.
+A direct job that declares guards is still refused on every trigger.
 `vela deploy check` rejects the cron declarations (`ambiguous-cron-dialect`,
-`incompatible-cron-options`) and `@Interval` jobs (`unsupported-interval`)
-before deployment; see [deployment](deployment.md).
+`incompatible-cron-options`), `@Interval` jobs (`unsupported-interval`) and
+guarded direct jobs (`scheduled-job-guards`) before deployment; see
+[deployment](deployment.md).
 
 ## Signed dispatch
 
@@ -174,7 +186,8 @@ bootstrap, even one a helper builds from the same source with another target.
 
 For deployment tools, entrypoints expose `schedule:cron` metadata
 `{ expression, methodName, dialect?, timeZone? }` and `schedule:interval` metadata
-`{ ms, methodName }`. `parseCronMetadata` and `parseIntervalMetadata` validate
+`{ ms, methodName }`. `vela entrypoint list` adds `guards: true` to a job that
+declares `@UseGuards` and `dispatch: 'signed'` under signed dispatch. `parseCronMetadata` and `parseIntervalMetadata` validate
 unknown introspection data without constructing job providers. These are the only
 schedule kinds; regenerate entrypoint snapshots made by older CLIs.
 

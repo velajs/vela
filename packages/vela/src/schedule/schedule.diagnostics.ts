@@ -45,7 +45,8 @@ const COMPONENT_DECORATORS = [
  * Name the component decorators (`@UseGuards`, `@UseInterceptors`,
  * `@UseFilters`) that apply to a scheduled job's method through its class,
  * method or module, in that order. A direct scheduled job runs none of them,
- * so runtimes report a non-empty result through diagnostics.
+ * so runtimes report a non-empty result through diagnostics, and
+ * `invokeScheduledJob` refuses to run a direct job that declares guards.
  */
 export function scheduledJobComponents(
   container: Container,
@@ -72,10 +73,25 @@ export function scheduledJobComponentsMessage(
     decorators.length > 1
       ? `${decorators.slice(0, -1).join(', ')} and ${decorators.at(-1)!}`
       : decorators.join('');
+  const refused = decorators.includes('@UseGuards')
+    ? ', and one that declares guards refuses to run'
+    : '';
   return (
     `[vela] ${label} declares ${named}, which do not run for scheduled jobs: a direct job ` +
-    `runs no guards, interceptors or filters. Use signed ScheduleModule dispatch and declare ` +
-    `them on the signed route to run the job through the request pipeline.`
+    `runs no guards, interceptors or filters${refused}. Use signed ScheduleModule dispatch ` +
+    `and declare them on the signed route to run the job through the request pipeline.`
+  );
+}
+
+/**
+ * @internal Why `invokeScheduledJob` refuses a direct job that declares
+ * guards: `name` is the job's `Class.method`.
+ */
+export function scheduledJobGuardsMessage(name: string): string {
+  return (
+    `Scheduled job ${name} declares @UseGuards, but guards do not run for directly ` +
+    `dispatched scheduled jobs — use ScheduleModule.forRoot({ dispatch: { kind: 'signed', ` +
+    `... } }) or remove the guard.`
   );
 }
 

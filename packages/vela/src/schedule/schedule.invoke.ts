@@ -4,7 +4,11 @@ import type { Entrypoint } from '../entrypoint/entrypoint.types';
 import { resolveEntrypoint } from '../entrypoint/execution-context';
 import { runInEntrypointScope } from '../entrypoint/execution-scope';
 import { resolveErrorReporter } from '../exceptions/reporter';
-import { scheduledJobName } from './schedule.diagnostics';
+import {
+  scheduledJobComponents,
+  scheduledJobGuardsMessage,
+  scheduledJobName,
+} from './schedule.diagnostics';
 import { SCHEDULE_DISPATCH } from './schedule.tokens';
 import type {
   CronMetadata,
@@ -45,6 +49,8 @@ function jobRef(
  *   its method is called with only the {@link ScheduleInvocation}. No guards,
  *   interceptors or filters run, neither app-global nor declared on the class,
  *   method or module: a tick has no caller to authorize, as with NestJS `@Cron`.
+ *   A job that declares `@UseGuards` on its class, method or module fails
+ *   closed: it is refused, without being resolved, rather than run unguarded.
  * - **Signed**: with `ScheduleModule.forRoot({ dispatch: { kind: 'signed' } })`
  *   the job re-enters its route through `InternalDispatcher`, so that route runs
  *   the full request pipeline, including global guards.
@@ -83,6 +89,9 @@ export async function invokeScheduledJob(
         signal: invocation.signal,
       });
       return;
+    }
+    if (scheduledJobComponents(container, entry).includes('@UseGuards')) {
+      throw new Error(scheduledJobGuardsMessage(context.source));
     }
     await runInEntrypointScope(
       container,
