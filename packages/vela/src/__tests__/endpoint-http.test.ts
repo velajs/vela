@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
   Body,
@@ -7,7 +7,6 @@ import {
   Get,
   HttpCode,
   Injectable,
-  MetadataRegistry,
   Module,
   Post,
   UseGuards,
@@ -17,8 +16,6 @@ import {
   defineEndpoint,
 } from '../index';
 import type { CanActivate, NestInterceptor } from '../index';
-
-beforeEach(() => MetadataRegistry.clear());
 
 describe('schema-bound HTTP endpoints', () => {
   it('applies a transforming input parser once with a global ValidationPipe', async () => {

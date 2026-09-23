@@ -8,7 +8,6 @@ import {
   Post,
   Inject,
   Injectable,
-  MetadataRegistry,
   SignedInvocation,
   InternalDispatcher,
   URL_SIGNING_SECRET,
@@ -28,7 +27,6 @@ const routeHits: string[] = [];
 const runResults: Array<{ ran: boolean }> = [];
 
 beforeEach(() => {
-  MetadataRegistry.clear();
   routeHits.length = 0;
   runResults.length = 0;
 });
@@ -36,9 +34,9 @@ beforeEach(() => {
 @Global()
 @Module({
   providers: [
-    defineProvider(URL_SIGNING_SECRET, {useValue: SECRET}),
+    defineProvider(URL_SIGNING_SECRET, { useValue: SECRET }),
     // Silence the report-first edge for the deliberate 5xx route.
-    defineProvider(APP_EXCEPTION_HANDLER, {useValue: { report() {} }}),
+    defineProvider(APP_EXCEPTION_HANDLER, { useValue: { report() {} } }),
   ],
   exports: [URL_SIGNING_SECRET, APP_EXCEPTION_HANDLER],
 })

@@ -6,7 +6,7 @@ import {
   VelaFactory,
   defineMetadata,
 } from '@velajs/vela';
-import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
+import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { z } from 'zod';
 import { MemoryAuditStore, type AuditStore } from '../audit/index';
 import { Crud, getCrudConfig } from '../crud.decorator';
@@ -28,8 +28,6 @@ const model = defineModel({
   tableName: 'boundary_items',
   schema: z.object({ id: z.string(), name: z.string().min(1) }),
 });
-
-beforeEach(() => MetadataRegistry.clear());
 
 describe('CRUD integration boundaries', () => {
   it('keeps optional store token types and undefined values honest', async () => {

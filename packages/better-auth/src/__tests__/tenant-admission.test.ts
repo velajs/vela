@@ -1,11 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   Controller,
   Get,
   Module,
   UseGuards,
   VelaFactory,
-  MetadataRegistry,
   clearTrustedRequestIdentity,
   getTrustedRequestIdentity,
   setTrustedRequestIdentity,
@@ -18,9 +17,6 @@ import { MemoryTenantRegistryStore, type TenantSnapshot } from '@velajs/tenant';
 import { AuthGuard, BetterAuthModule, CurrentUser, CurrentSession } from '../index';
 import type { User, Session } from '../better-auth.types';
 import { sessionFixture } from './fixtures';
-
-beforeEach(() => MetadataRegistry.clear());
-afterEach(() => MetadataRegistry.clear());
 
 async function application(issuer: string) {
   class Revoke implements CanActivate {

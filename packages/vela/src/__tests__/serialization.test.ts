@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 import {
   VelaFactory,
@@ -8,17 +8,12 @@ import {
   Body,
   Module,
   Injectable,
-  MetadataRegistry,
   UseInterceptors,
   defineDto,
   ValidationPipe,
   Serialize,
   SerializerInterceptor,
 } from '../index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 // =============================================================================
 // Serialization: @Serialize + SerializerInterceptor

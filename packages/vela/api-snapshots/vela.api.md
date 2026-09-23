@@ -74,15 +74,15 @@ Declaration entry: `./dist/index.d.ts`
 
 ```ts
 import { $ as applyDecorators, A as Cookie, B as Param, C as InternalDispatcher, D as All, E as UrlGeneratorService, F as Header, G as RawBody, H as Post, I as Headers, J as Res, K as Redirect, L as HttpCode, M as Delete, N as Get, O as Body, P as Head, Q as Version, R as Ip, S as SignedInvocationGuard, T as UrlForOptions, U as Put, V as Patch, W as Query, X as SchemaParamDecorator, Y as RouteOptions, Z as Sse, _ as OnApplicationBootstrap, a as CronMetadata, b as OnModuleInit, c as ScheduleDecorator, d as ScheduleInvocationSeed, et as createParamDecorator, f as ScheduleJobRef, g as BeforeApplicationShutdown, h as parseCron, i as CronInvocation, j as Cookies, k as Controller, l as ScheduleDispatchMode, m as CronOptions, n as RegisteredIntervalJob, nt as getMetadata, o as IntervalInvocation, p as CronMatcher, q as Req, r as ScheduleRegistry, s as IntervalMetadata, t as RegisteredCronJob, tt as defineMetadata, u as ScheduleInvocation, v as OnApplicationShutdown, w as SignedUrlGenerateOptions, x as SignedInvocation, y as OnModuleDestroy, z as Options } from "<internal:schedule.registry.d.ts>";
-import { $ as UnresolvedDependencyError, A as Constructor, B as MissingInjectionMetadataError, D as WsResponse, E as WsMessage, F as InferToken, G as MultipleProvidersFoundError, H as ModuleDescription, I as InferTokens, J as ROOT_MODULE_ID, K as ProviderDefinition, M as DependencyToken, N as Diagnostics, O as WsServer, P as ForwardRef, Q as UnresolvedDependency, R as InjectableOptions, T as WsExecutionContext, U as ModuleScope, V as MissingInjectionMetadataReason, W as ModuleVisibilityError, X as Type, Y as Token, Z as TypedToken, _ as ReservedWsEventHandler, a as ExecutionContext, at as METADATA_KEYS, c as NestInterceptor, ct as VelaContext, d as WsArgumentsHost, dt as VelaMiddlewareHandler, et as UnresolvedDependencyReason, f as BroadcastCommand, g as OnGatewayInit, h as OnGatewayDisconnect, i as ExceptionFilter, it as HttpMethod, j as ContainerOptions, k as Container, l as NestMiddleware, lt as VelaHono, m as OnGatewayConnection, n as CallHandler, nt as describeToken, o as HttpArgumentsHost, ot as ParamType, q as ProviderSnapshot, r as CanActivate, rt as forwardRef, s as HttpExecutionContext, st as Scope, t as ArgumentMetadata, tt as defineProvider, u as PipeTransform, ut as VelaHonoEnv, v as ReservedWsEventMetadata, w as WsClient, z as InjectionToken } from "<internal:types.d.ts>";
+import { $ as Token, A as ENV, B as InferTokens, D as WsMessage, E as WsExecutionContext, F as ContainerOptions, G as MissingInjectionMetadataReason, H as InjectableOptions, I as DependencyToken, J as ModuleVisibilityError, K as ModuleDescription, L as Diagnostics, M as VelaEnv, N as Container, O as WsResponse, P as Constructor, Q as ROOT_MODULE_ID, R as ForwardRef, T as WsClient, U as InjectionToken, W as MissingInjectionMetadataError, X as ProviderDefinition, Y as MultipleProvidersFoundError, Z as ProviderSnapshot, _ as ReservedWsEventHandler, a as ExecutionContext, at as defineProvider, c as NestInterceptor, ct as HttpMethod, d as WsArgumentsHost, dt as Scope, et as Type, f as BroadcastCommand, ft as VelaContext, g as OnGatewayInit, h as OnGatewayDisconnect, ht as VelaMiddlewareHandler, i as ExceptionFilter, it as UnresolvedDependencyReason, j as InjectEnv, k as WsServer, l as NestMiddleware, lt as METADATA_KEYS, m as OnGatewayConnection, mt as VelaHonoEnv, n as CallHandler, nt as UnresolvedDependency, o as HttpArgumentsHost, ot as describeToken, pt as VelaHono, q as ModuleScope, r as CanActivate, rt as UnresolvedDependencyError, s as HttpExecutionContext, st as forwardRef, t as ArgumentMetadata, tt as TypedToken, u as PipeTransform, ut as ParamType, v as ReservedWsEventMetadata, z as InferToken } from "<internal:types-http-hono.types.d.ts>";
 import { A as ErrorReportContext, C as OpenApiPathItem, D as getEntrypointKinds, E as EntrypointRegistry, M as matchesAny, O as registerEntrypointKind, S as OpenApiParameter, T as OpenApiResponse, _ as HttpVerb, a as AdapterContext, b as OpenApiInfo, c as BootstrapOptions, f as VelaApplication, g as CreateOpenApiDocumentOptions, h as ApiResponseOptions, j as ExceptionHandler, k as ErrorMatcher, l as BootstrapResult, m as ApiResponseEntry, n as RequestContext, o as RuntimeAdapter, p as ApiDocMetadata, r as RequestContextKey, t as REQUEST_CONTEXT, u as bootstrap, v as JsonSchema, w as OpenApiRequestBody, x as OpenApiOperation, y as OpenApiDocument } from "<internal:request-context.d.ts>";
-import { $ as MiddlewareType, A as NestModule, B as DiscoveryFilter, C as VelaSecurityOptions, F as contributesEntrypoints, G as AsyncModuleOptions, H as CreateDiscoverableDecoratorOptions, I as DiscoveredClass, J as DynamicModule, L as DiscoveredMethodMeta, M as ContributesEntrypoints, N as Entrypoint, O as MiddlewareConsumer, P as EntrypointKind, Q as InterceptorType, R as DiscoveredRegisteredMethodMeta, S as VelaQuerySecurityOptions, U as DiscoverableDecorator, V as DiscoveryService, W as createDiscoverableDecorator, X as GuardType, Y as FilterType, _ as DEFAULT_QUERY_BYTES_LIMIT, a as InvocationRouteTarget, b as VelaBodyLimitOverride, c as NonceStore, d as RouteParams, et as ModuleImport, f as VelaRouteMap, i as InvocationPathTarget, it as PipeType, j as RouteInfo, l as RunInit, m as RouteDescription, n as InjectEnv, nt as ModuleOptions, o as InvocationTarget, p as DEFAULT_BODY_LIMIT_BYTES, r as VelaEnv, s as InvocationTransport, t as ENV, u as RouteName, v as DEFAULT_QUERY_DEPTH_LIMIT, x as VelaBodySecurityOptions, y as DEFAULT_QUERY_PARAMETER_LIMIT, z as DiscoveredRegistration } from "<internal:env.d.ts>";
-import { $ as UseGuards, $a as LoggerService, $i as CacheInterceptor, $r as WebSocketServer, $t as UndefinedModuleError, A as SERIALIZE_METADATA, Aa as Secret, Ai as MemoryCacheInvalidationStore, An as HttpException, Ao as Injectable, At as LazyProviderSpec, B as ParseBoolPipe, Ba as ConfigModuleOptions, Bi as ResponseCacheOptions, Bn as UnauthorizedException, Bo as EndpointSchema, Bt as ModuleContributions, C as LogRecord, Ca as HttpModuleOptions, Ci as EventDefinition, Cn as ResponseCheckCallback, Co as SignedUrl, Ct as ExecutionLifetime, D as SerializerDefinition, Da as RequestConfig, Di as defineEvent, Dn as ForbiddenException, Do as createLazyParamDecorator, Dt as finishExecutionScope, E as LogValue, Ea as HttpTransport, Ei as EventVocabulary, En as ConflictException, Eo as readJsonBody, Er as assertWebSocketRoomId, Et as createExecutionScope, F as ErrorsModule, Fa as SecurityModuleOptions, Fi as ResponseCacheModule, Fn as NotImplementedException, Fo as ApiTags, Fr as WsDispatcher, Ft as ConfigurableModuleBuilder, G as ParseUUIDPipeOptions, Ga as ConfigNamespace, Gi as CACHE_MANAGER, Go as EndpointFormLimits, Gt as ConfigurableModuleClassType, H as ParseFloatPipe, Ha as ConfigPathValue, Hi as ScopedResponseCache, Hn as UnsupportedMediaTypeException, Ho as EndpointBodyContract, Hr as RoomRegistry, Ht as defineModule, I as ErrorsModuleOptions, Ia as CONFIG_OPTIONS, Ii as CacheInvalidationResult, In as PayloadTooLargeException, Io as Endpoint, It as defineConfigurableModule, J as ReflectableDecorator, Ja as registerAs, Ji as CacheKey, Jo as EndpointResponseOutput, Jr as ConnectedSocket, Jt as ConfigurableModuleHost, K as RequiredPipe, Ka as ConfigShape, Ki as CACHE_MODULE_OPTIONS, Ko as EndpointBinaryBody, Kt as ConfigurableModuleExtras, L as DefaultValuePipe, La as ConfigService, Li as CacheInvalidationStore, Ln as RequestTimeoutException, Lo as EndpointDefinition, Lt as moduleKey, M as Serialize, Ma as OriginProtectionOptions, Mi as ResponseCacheInterceptor, Mn as MethodNotAllowedException, Mo as zodToJsonSchema, Mt as moduleToken, N as ErrorReporter, Na as SecurityCorsOptions, Ni as RESPONSE_CACHE_OPTIONS, Nn as NotAcceptableException, No as ApiDoc, Nt as provideGlobal, O as defineSerializer, Oa as buildSecurityMiddleware, Oi as defineEventVocabulary, On as GatewayTimeoutException, Oo as mixin, Ot as getExecutionLifetime, P as resolveErrorReporter, Pa as SecurityHeadersOptions, Pi as ResponseCacheService, Pn as NotFoundException, Po as ApiResponse, Pt as sideEffectModule, Q as UseFilters, Qa as LoggerLevelName, Qi as MemoryCacheStore, Qr as WebSocketGateway, Qt as ModuleEntryList, R as ParseArrayPipe, Ra as ConfigStore, Ri as CacheResponseOptions, Rn as ServiceUnavailableException, Ro as EndpointHandlerOutput, Rr as WebSocketModule, Rt as DefineModuleSpec, S as LogFields, Sa as HttpFetch, Si as OnEventMetadata, Sn as HealthIndicatorResult, So as URL_SIGNING_SECRET, St as EXECUTION_LIFETIME, T as LogSink, Ta as HttpResponse, Ti as EventPayload, Tn as BadRequestException, To as ReadJsonBodyOptions, Tt as ExecutionScopeOptions, U as ParseIntPipe, Ua as ConfigSchema, Ui as CACHEABLE_METADATA, Un as HealthModule, Uo as EndpointBodyOptions, Ur as SyncDriver, Ut as ConfigurableModuleAsyncOptions, V as ParseEnumPipe, Va as ConfigPath, Vi as ResponseCacheScope, Vn as UnprocessableEntityException, Vo as defineEndpoint, Vt as ModuleSetupContext, W as ParseUUIDPipe, Wa as AnyConfigNamespace, Wi as CACHE_KEY_METADATA, Wo as EndpointFormField, Wt as ConfigurableModuleBuilderOptions, X as SetMetadata, Xa as LogLevel, Xi as Cacheable, Xn as RESERVED_WS_EVENT_PREFIX, Xo as VelaCreateOptions, Xr as ReservedWsEvent, Xt as DefineConfigurableModuleSpec, Y as Reflector, Ya as ContextProvider, Yi as CacheTTL, Yn as trySendWebSocketFrame, Yo as createOpenApiDocument, Yr as MessageBody, Yt as ConfigurableModuleOptionsFactory, Z as Catch, Za as Logger, Zi as TieredCacheStore, Zo as VelaFactory, Zr as SubscribeMessage, Zt as ModuleRegistrationOptions, _ as ApplicationLogger, _a as HttpModule, _i as OnEvent, _n as HealthIndicatorService, _o as verifyInvocation, _t as registerRouteContributor, a as VelaError, aa as CacheEntry, ai as parseIntervalMetadata, an as SkipThrottle, ao as bindTrustedRequestContext, at as PipelineComponentEntry, b as ApplicationLoggerOptions, ba as HttpClientRequestObserver, bi as EventEmitOptions, bn as HealthCheckStatus, bo as getCurrentContainer, bt as getEntrypointModuleId, c as defineErrorCatalog, ca as CacheModuleOptions, ci as SCHEDULE_DISPATCH, cn as ThrottlerGuard, co as getTrustedContextRequest, ct as resolvePipelineComponents, d as loggerForScope, da as CorsModule, di as Interval, dn as ThrottleConfig, do as setTrustedRequestTenant, dt as PipelineRunOptions, ea as CacheService, ei as cronDialectAmbiguity, en as stableHash, eo as Writer, et as UseInterceptors, f as LogThresholds, fa as CorsOptions, fi as ScheduleModule, fn as ThrottlerModuleOptions, fo as INVOCATION_AUDIENCE, ft as PipelineRunner, g as LoggingModule, ga as HttpService, gi as EventListenerDecorator, gn as HttpPingOptions, go as signInvocation, gt as getRouteContributors, h as APP_LOGGER, ha as HttpRequestException, hi as ON_EVENT_METADATA, hn as HttpHealthIndicator, ho as VerifyInvocationOptions, ht as RouteContributorOpenApiContext, i as ErrorCatalogEntry, ia as Awaitable, ii as parseCronMetadata, in as THROTTLE_METADATA, io as TrustedRequestPrincipal, it as shouldFilterCatch, j as SerializationDescriptor, ja as SecurityModule, ji as CacheResponse, jn as InternalServerErrorException, jo as Optional, jt as lazyProvider, k as SerializerInterceptor, ka as SECURITY_OPTIONS, ki as EventEmitterModule, kn as GoneException, ko as Inject, kt as runInEntrypointScope, l as isVelaError, la as CacheStore, li as SCHEDULE_INVOCATION_SEED, ln as ThrottlerModule, lo as getTrustedRequestIdentity, lt as resolveScopedComponents, m as serializeLogValue, ma as HTTP_MODULE_OPTIONS, mi as ScopedEventDispatcher, mn as ThrottlerStore, mo as InvocationClaim, mt as RouteContributorContext, n as Catalog, na as AnyCacheStore, ni as InvokeScheduledJobOptions, nn as THROTTLER_OPTIONS, no as TrustedRequestIdentity, nt as UsePipes, o as VelaErrorOptions, oa as CacheEntryReader, oi as CRON_METADATA, on as Throttle, oo as clearTrustedRequestIdentity, or as WsException, ot as ResolvedComponentMap, p as parseLogDirective, pa as HttpResponseSizeException, pi as EventDispatcher, pn as ThrottlerStorageRecord, po as INVOCATION_DEFAULT_TTL_SECONDS, pt as RouteContributor, q as CreateDecoratorOptions, qa as ConfigType, qi as CACHE_TTL_METADATA, qo as EndpointResponseFormat, qt as ConfigurableModuleExtrasTransform, r as ErrorBodyResult, ra as AsyncCacheStore, ri as invokeScheduledJob, rn as THROTTLER_STORAGE, ro as TrustedRequestIdentityStore, rt as getCatchTypes, s as composeCatalogs, sa as CacheEntryWriter, si as INTERVAL_METADATA, sn as ThrottlerStorage, so as createTrustedRequestIdentityStore, st as getScopedComponents, t as CORE_CATALOG, ta as CacheModule, ti as scheduledJobComponents, tn as SKIP_THROTTLE_METADATA, to as buildExecutionContext, tr as WS_SERVER, tt as UseMiddleware, u as toErrorBody, ua as CORS_OPTIONS, ui as Cron, un as RateLimitInfo, uo as setTrustedRequestIdentity, ut as resolveScopedComponentsAsync, v as StructuredLogger, va as HttpClientObserver, vi as EventEmitterSubscriber, vn as HealthCheckService, vo as MemoryNonceStore, vt as EntrypointExecutionContext, w as LogSerializationOptions, wa as HttpRequestConfig, wi as EventInput, wn as BadGatewayException, wo as SignedUrlGuard, wt as ExecutionScope, x as LogDeliveryContext, xa as HttpClientResponse, xi as EventHandler, xn as HealthIndicatorFunction, xo as getCurrentRequestContext, xt as resolveEntrypoint, y as consoleLogSink, ya as HttpClientRequest, yi as EventEmitter, yn as HealthCheckResult, yo as enableAmbientContainer, yt as buildEntrypointExecutionContext, z as ParseArrayPipeOptions, za as ConfigModule, zi as ResponseCacheEntryOptions, zn as TooManyRequestsException, zo as EndpointRequest, zr as WebSocketModuleOptions, zt as GlobalComponentSlot } from "<internal:index-factory.d.ts>";
+import { $ as ModuleOptions, A as Entrypoint, B as DiscoverableDecorator, D as NestModule, F as DiscoveredRegisteredMethodMeta, G as DynamicModule, H as AsyncModuleOptions, I as DiscoveredRegistration, K as FilterType, L as DiscoveryFilter, M as contributesEntrypoints, N as DiscoveredClass, O as RouteInfo, P as DiscoveredMethodMeta, R as DiscoveryService, T as MiddlewareConsumer, V as createDiscoverableDecorator, X as MiddlewareType, Y as InterceptorType, Z as ModuleImport, _ as VelaBodyLimitOverride, a as NonceStore, b as VelaSecurityOptions, c as RouteParams, d as RouteDescription, g as DEFAULT_QUERY_PARAMETER_LIMIT, h as DEFAULT_QUERY_DEPTH_LIMIT, i as InvocationTransport, j as EntrypointKind, k as ContributesEntrypoints, l as VelaRouteMap, m as DEFAULT_QUERY_BYTES_LIMIT, n as InvocationRouteTarget, o as RunInit, q as GuardType, r as InvocationTarget, s as RouteName, t as InvocationPathTarget, tt as PipeType, u as DEFAULT_BODY_LIMIT_BYTES, v as VelaBodySecurityOptions, y as VelaQuerySecurityOptions, z as CreateDiscoverableDecoratorOptions } from "<internal:types-registry-types.d.ts>";
+import { $ as UseGuards, $a as Logger, $i as TieredCacheStore, $o as VelaFactory, $r as SubscribeMessage, $t as UndefinedModuleError, A as SERIALIZE_METADATA, Aa as buildSecurityMiddleware, Ai as defineEventVocabulary, An as GoneException, Ao as mixin, At as LazyProviderSpec, B as ParseBoolPipe, Ba as ConfigStore, Bi as CacheResponseOptions, Bn as TooManyRequestsException, Bo as EndpointHandlerOutput, Br as WebSocketModule, Bt as ModuleContributions, C as LogRecord, Ca as HttpClientResponse, Ci as EventHandler, Cn as HealthIndicatorResult, Co as getCurrentRequestContext, Ct as ExecutionLifetime, D as SerializerDefinition, Da as HttpResponse, Di as EventPayload, Dn as ConflictException, Do as ReadJsonBodyOptions, Dt as finishExecutionScope, E as LogValue, Ea as HttpRequestConfig, Ei as EventInput, En as BadRequestException, Eo as SignedUrlGuard, Et as createExecutionScope, F as ErrorsModule, Fa as SecurityCorsOptions, Fi as RESPONSE_CACHE_OPTIONS, Fn as NotFoundException, Fo as ApiDoc, Ft as ConfigurableModuleBuilder, G as ParseUUIDPipeOptions, Ga as ConfigSchema, Gi as CACHEABLE_METADATA, Go as EndpointBodyOptions, Gr as SyncDriver, Gt as ConfigurableModuleClassType, H as ParseFloatPipe, Ha as ConfigModuleOptions, Hi as ResponseCacheOptions, Hn as UnprocessableEntityException, Ho as EndpointSchema, Ht as defineModule, I as ErrorsModuleOptions, Ia as SecurityHeadersOptions, Ii as ResponseCacheService, In as NotImplementedException, Io as ApiResponse, It as defineConfigurableModule, J as ReflectableDecorator, Ja as ConfigShape, Ji as CACHE_MODULE_OPTIONS, Jo as EndpointBinaryBody, Jt as ConfigurableModuleHost, K as RequiredPipe, Ka as AnyConfigNamespace, Ki as CACHE_KEY_METADATA, Ko as EndpointFormField, Kt as ConfigurableModuleExtras, L as DefaultValuePipe, La as SecurityModuleOptions, Li as ResponseCacheModule, Ln as PayloadTooLargeException, Lo as ApiTags, Lr as WsDispatcher, Lt as moduleKey, M as Serialize, Ma as Secret, Mi as MemoryCacheInvalidationStore, Mn as InternalServerErrorException, Mo as Injectable, Mt as moduleToken, N as ErrorReporter, Na as SecurityModule, Ni as CacheResponse, Nn as MethodNotAllowedException, No as Optional, Nt as provideGlobal, O as defineSerializer, Oa as HttpTransport, Oi as EventVocabulary, On as ForbiddenException, Oo as readJsonBody, Ot as getExecutionLifetime, P as resolveErrorReporter, Pa as OriginProtectionOptions, Pi as ResponseCacheInterceptor, Pn as NotAcceptableException, Po as zodToJsonSchema, Pt as sideEffectModule, Q as UseFilters, Qa as LogLevel, Qi as Cacheable, Qo as VelaCreateOptions, Qr as ReservedWsEvent, Qt as ModuleEntryList, R as ParseArrayPipe, Ra as CONFIG_OPTIONS, Ri as CacheInvalidationResult, Rn as RequestTimeoutException, Ro as Endpoint, Rt as DefineModuleSpec, S as LogFields, Sa as HttpClientRequestObserver, Si as EventEmitOptions, Sn as HealthIndicatorFunction, So as getCurrentContainer, St as EXECUTION_LIFETIME, T as LogSink, Ta as HttpModuleOptions, Ti as EventDefinition, Tn as BadGatewayException, To as SignedUrl, Tt as ExecutionScopeOptions, U as ParseIntPipe, Ua as ConfigPath, Ui as ResponseCacheScope, Un as UnsupportedMediaTypeException, Uo as defineEndpoint, Ut as ConfigurableModuleAsyncOptions, V as ParseEnumPipe, Va as ConfigModule, Vi as ResponseCacheEntryOptions, Vn as UnauthorizedException, Vo as EndpointRequest, Vr as WebSocketModuleOptions, Vt as ModuleSetupContext, W as ParseUUIDPipe, Wa as ConfigPathValue, Wi as ScopedResponseCache, Wn as HealthModule, Wo as EndpointBodyContract, Wr as RoomRegistry, Wt as ConfigurableModuleBuilderOptions, X as SetMetadata, Xa as registerAs, Xi as CacheKey, Xn as trySendWebSocketFrame, Xo as EndpointResponseOutput, Xr as ConnectedSocket, Xt as DefineConfigurableModuleSpec, Y as Reflector, Ya as ConfigType, Yi as CACHE_TTL_METADATA, Yo as EndpointResponseFormat, Yt as ConfigurableModuleOptionsFactory, Z as Catch, Za as ContextProvider, Zi as CacheTTL, Zn as RESERVED_WS_EVENT_PREFIX, Zo as createOpenApiDocument, Zr as MessageBody, Zt as ModuleRegistrationOptions, _ as ApplicationLogger, _a as HttpRequestException, _i as ON_EVENT_METADATA, _n as HttpPingOptions, _o as VerifyInvocationOptions, _t as registerRouteContributor, a as VelaError, aa as AsyncCacheStore, ai as invokeScheduledJob, an as THROTTLE_METADATA, ao as TrustedRequestIdentityStore, at as PipelineComponentEntry, b as ApplicationLoggerOptions, ba as HttpClientObserver, bi as EventEmitterSubscriber, bn as HealthCheckResult, bo as MemoryNonceStore, bt as getEntrypointModuleId, c as defineErrorCatalog, ca as CacheEntryReader, ci as CRON_METADATA, cn as ThrottlerStorage, co as clearTrustedRequestIdentity, ct as resolvePipelineComponents, d as loggerForScope, da as CacheStore, di as SCHEDULE_INVOCATION_SEED, dn as RateLimitInfo, do as getTrustedRequestIdentity, dt as PipelineRunOptions, ea as MemoryCacheStore, ei as WebSocketGateway, en as ROOT_MODULE, eo as LoggerLevelName, et as UseInterceptors, f as LogThresholds, fa as CORS_OPTIONS, fi as Cron, fn as ThrottleConfig, fo as setTrustedRequestIdentity, ft as PipelineRunner, g as LoggingModule, ga as HTTP_MODULE_OPTIONS, gi as ScopedEventDispatcher, gn as HttpHealthIndicator, go as InvocationClaim, gt as getRouteContributors, h as APP_LOGGER, ha as HttpResponseSizeException, hi as EventDispatcher, hn as ThrottlerStore, ho as INVOCATION_DEFAULT_TTL_SECONDS, ht as RouteContributorOpenApiContext, i as ErrorCatalogEntry, ia as AnyCacheStore, ii as InvokeScheduledJobOptions, in as THROTTLER_STORAGE, io as TrustedRequestIdentity, it as shouldFilterCatch, j as SerializationDescriptor, ja as SECURITY_OPTIONS, ji as EventEmitterModule, jn as HttpException, jo as Inject, jt as lazyProvider, k as SerializerInterceptor, ka as RequestConfig, ki as defineEvent, kn as GatewayTimeoutException, ko as createLazyParamDecorator, kr as assertWebSocketRoomId, kt as runInEntrypointScope, l as isVelaError, la as CacheEntryWriter, li as INTERVAL_METADATA, ln as ThrottlerGuard, lo as createTrustedRequestIdentityStore, lt as resolveScopedComponents, m as serializeLogValue, ma as CorsOptions, mi as ScheduleModule, mn as ThrottlerStorageRecord, mo as INVOCATION_AUDIENCE, mt as RouteContributorContext, n as Catalog, na as CacheService, ni as cronDialectAmbiguity, nn as SKIP_THROTTLE_METADATA, no as Writer, nr as WS_SERVER, nt as UsePipes, o as VelaErrorOptions, oa as Awaitable, oi as parseCronMetadata, on as SkipThrottle, oo as TrustedRequestPrincipal, ot as ResolvedComponentMap, p as parseLogDirective, pa as CorsModule, pi as Interval, pn as ThrottlerModuleOptions, po as setTrustedRequestTenant, pt as RouteContributor, q as CreateDecoratorOptions, qa as ConfigNamespace, qi as CACHE_MANAGER, qo as EndpointFormLimits, qt as ConfigurableModuleExtrasTransform, r as ErrorBodyResult, ra as CacheModule, ri as scheduledJobComponents, rn as THROTTLER_OPTIONS, ro as buildExecutionContext, rt as getCatchTypes, s as composeCatalogs, sa as CacheEntry, si as parseIntervalMetadata, sn as Throttle, so as bindTrustedRequestContext, sr as WsException, st as getScopedComponents, t as CORE_CATALOG, ta as CacheInterceptor, ti as WebSocketServer, tn as stableHash, to as LoggerService, tt as UseMiddleware, u as toErrorBody, ua as CacheModuleOptions, ui as SCHEDULE_DISPATCH, un as ThrottlerModule, uo as getTrustedContextRequest, ut as resolveScopedComponentsAsync, v as StructuredLogger, va as HttpService, vi as EventListenerDecorator, vn as HealthIndicatorService, vo as signInvocation, vt as EntrypointExecutionContext, w as LogSerializationOptions, wa as HttpFetch, wi as OnEventMetadata, wn as ResponseCheckCallback, wo as URL_SIGNING_SECRET, wt as ExecutionScope, x as LogDeliveryContext, xa as HttpClientRequest, xi as EventEmitter, xn as HealthCheckStatus, xo as enableAmbientContainer, xt as resolveEntrypoint, y as consoleLogSink, ya as HttpModule, yi as OnEvent, yn as HealthCheckService, yo as verifyInvocation, yt as buildEntrypointExecutionContext, z as ParseArrayPipeOptions, za as ConfigService, zi as CacheInvalidationStore, zn as ServiceUnavailableException, zo as EndpointDefinition, zt as GlobalComponentSlot } from "<internal:index-factory.d.ts>";
 import { _ as ValidationIssue, a as parseSchema, b as validateSchema, c as DtoOptions, d as SchemaParser, f as StandardDtoDefinition, g as StandardSchemaV1, h as StandardJSONSchemaV1, i as isValidationSchema, l as DtoSchema, m as SchemaValidationError, n as SchemaOutput, o as parseSchemaAsync, p as defineDto, r as ValidationSchema, s as DtoDefinition, t as SchemaInput, u as RuntimeParser, v as isStandardSchema, y as standardJsonSchema } from "<internal:parse-schema.d.ts>";
-import { C as INVOCATION_SIGNING_SECRET, D as ModuleRefContext, E as ModuleRef, O as ModuleRefLookupOptions, T as NONCE_STORE, _ as Module, a as APP_INTERCEPTOR, c as ERROR_CATALOG, d as Plugin, f as PluginRegistry, g as Global, h as definePlugin, i as APP_GUARD, m as composePlugins, n as APP_EXCEPTION_HANDLER, o as APP_MIDDLEWARE, p as PluginRootModule, r as APP_FILTER, s as APP_PIPE, t as MetadataRegistry, u as PLUGIN_REGISTRY_TOKEN, v as defineDynamicModule, x as getRequestContainer } from "<internal:metadata.registry.d.ts>";
+import { D as ModuleRef, E as NONCE_STORE, O as ModuleRefContext, S as getRequestContainer, _ as Global, a as APP_GUARD, c as APP_PIPE, d as PLUGIN_REGISTRY_TOKEN, f as Plugin, g as definePlugin, h as composePlugins, i as APP_FILTER, k as ModuleRefLookupOptions, l as ERROR_CATALOG, m as PluginRootModule, o as APP_INTERCEPTOR, p as PluginRegistry, r as APP_EXCEPTION_HANDLER, s as APP_MIDDLEWARE, t as MetadataRegistry, v as Module, w as INVOCATION_SIGNING_SECRET, y as defineDynamicModule } from "<internal:metadata.registry.d.ts>";
 import { a as signUrl, i as VerifySignedUrlOptions, n as STORAGE_SIGNED_URL_PURPOSE, o as verifySignedUrl, r as SignedUrlOptions, t as HTTP_SIGNED_URL_PURPOSE } from "<internal:signed-url.d.ts>";
 import { t as ValidationPipe } from "<internal:index-validation-validation.pipe.d.ts>";
-export { APP_EXCEPTION_HANDLER, APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_LOGGER, APP_MIDDLEWARE, APP_PIPE, type AdapterContext, All, type AnyCacheStore, type AnyConfigNamespace, ApiDoc, type ApiDocMetadata, ApiResponse, type ApiResponseEntry, type ApiResponseOptions, ApiTags, ApplicationLogger, type ApplicationLoggerOptions, type ArgumentMetadata, type AsyncCacheStore, type AsyncModuleOptions, type Awaitable, BadGatewayException, BadRequestException, type BeforeApplicationShutdown, Body, type BootstrapOptions, type BootstrapResult, type BroadcastCommand, CACHEABLE_METADATA, CACHE_KEY_METADATA, CACHE_MANAGER, CACHE_MODULE_OPTIONS, CACHE_TTL_METADATA, CONFIG_OPTIONS, CORE_CATALOG, CORS_OPTIONS, CRON_METADATA, type CacheEntry, type CacheEntryReader, type CacheEntryWriter, CacheInterceptor, type CacheInvalidationResult, type CacheInvalidationStore, CacheKey, CacheModule, type CacheModuleOptions, CacheResponse, type CacheResponseOptions, CacheService, type CacheStore, CacheTTL, Cacheable, type CallHandler, type CanActivate, type Catalog, Catch, ConfigModule, type ConfigModuleOptions, type ConfigNamespace, type ConfigPath, type ConfigPathValue, type ConfigSchema, ConfigService, type ConfigShape, ConfigStore, type ConfigType, type ConfigurableModuleAsyncOptions, ConfigurableModuleBuilder, type ConfigurableModuleBuilderOptions, type ConfigurableModuleClassType, type ConfigurableModuleExtras, type ConfigurableModuleExtrasTransform, type ConfigurableModuleHost, type ConfigurableModuleOptionsFactory, ConflictException, ConnectedSocket, type Constructor, Container, type ContainerOptions, type ContextProvider, type ContributesEntrypoints, Controller, Cookie, Cookies, CorsModule, type CorsOptions, type CreateDecoratorOptions, type CreateDiscoverableDecoratorOptions, type CreateOpenApiDocumentOptions, Cron, type CronInvocation, type CronMatcher, type CronMetadata, type CronOptions, DEFAULT_BODY_LIMIT_BYTES, DEFAULT_QUERY_BYTES_LIMIT, DEFAULT_QUERY_DEPTH_LIMIT, DEFAULT_QUERY_PARAMETER_LIMIT, DefaultValuePipe, type DefineConfigurableModuleSpec, type DefineModuleSpec, Delete, type DependencyToken, type Diagnostics, type DiscoverableDecorator, type DiscoveredClass, type DiscoveredMethodMeta, type DiscoveredRegisteredMethodMeta, type DiscoveredRegistration, type DiscoveryFilter, DiscoveryService, type DtoDefinition, type DtoOptions, type DtoSchema, type DynamicModule, ENV, ERROR_CATALOG, EXECUTION_LIFETIME, Endpoint, type EndpointBinaryBody, type EndpointBodyContract, type EndpointBodyOptions, type EndpointDefinition, type EndpointFormField, type EndpointFormLimits, type EndpointHandlerOutput, type EndpointRequest, type EndpointResponseFormat, type EndpointResponseOutput, type EndpointSchema, type Entrypoint, type EntrypointExecutionContext, type EntrypointKind, EntrypointRegistry, type ErrorBodyResult, type ErrorCatalogEntry, type ErrorMatcher, type ErrorReportContext, type ErrorReporter, ErrorsModule, type ErrorsModuleOptions, type EventDefinition, EventDispatcher, type EventEmitOptions, EventEmitter, EventEmitterModule, EventEmitterSubscriber, type EventHandler, type EventInput, type EventListenerDecorator, type EventPayload, type EventVocabulary, type ExceptionFilter, type ExceptionHandler, type ExecutionContext, type ExecutionLifetime, type ExecutionScope, type ExecutionScopeOptions, type FilterType, ForbiddenException, ForwardRef, GatewayTimeoutException, Get, Global, type GlobalComponentSlot, GoneException, type GuardType, HTTP_MODULE_OPTIONS, HTTP_SIGNED_URL_PURPOSE, Head, Header, Headers, type HealthCheckResult, HealthCheckService, type HealthCheckStatus, type HealthIndicatorFunction, type HealthIndicatorResult, HealthIndicatorService, HealthModule, type HttpArgumentsHost, type HttpClientObserver, type HttpClientRequest, type HttpClientRequestObserver, type HttpClientResponse, HttpCode, HttpException, type HttpExecutionContext, type HttpFetch, HttpHealthIndicator, HttpMethod, HttpModule, type HttpModuleOptions, type HttpPingOptions, type HttpRequestConfig, HttpRequestException, type HttpResponse, HttpResponseSizeException, HttpService, type HttpTransport, type HttpVerb, INTERVAL_METADATA, INVOCATION_AUDIENCE, INVOCATION_DEFAULT_TTL_SECONDS, INVOCATION_SIGNING_SECRET, type InferToken, type InferTokens, Inject, InjectEnv, Injectable, type InjectableOptions, InjectionToken, type InterceptorType, InternalDispatcher, InternalServerErrorException, Interval, type IntervalInvocation, type IntervalMetadata, type InvocationClaim, type InvocationPathTarget, type InvocationRouteTarget, type InvocationTarget, type InvocationTransport, type InvokeScheduledJobOptions, Ip, type JsonSchema, type LazyProviderSpec, type LogDeliveryContext, type LogFields, LogLevel, type LogRecord, type LogSerializationOptions, type LogSink, type LogThresholds, type LogValue, Logger, type LoggerLevelName, type LoggerService, LoggingModule, METADATA_KEYS, MemoryCacheInvalidationStore, MemoryCacheStore, MemoryNonceStore, MessageBody, MetadataRegistry, MethodNotAllowedException, type MiddlewareConsumer, type MiddlewareType, MissingInjectionMetadataError, type MissingInjectionMetadataReason, Module, type ModuleContributions, type ModuleDescription, type ModuleEntryList, type ModuleImport, type ModuleOptions, ModuleRef, type ModuleRefContext, type ModuleRefLookupOptions, type ModuleRegistrationOptions, type ModuleScope, type ModuleSetupContext, ModuleVisibilityError, MultipleProvidersFoundError, NONCE_STORE, type NestInterceptor, type NestMiddleware, type NestModule, type NonceStore, NotAcceptableException, NotFoundException, NotImplementedException, ON_EVENT_METADATA, type OnApplicationBootstrap, type OnApplicationShutdown, OnEvent, type OnEventMetadata, type OnGatewayConnection, type OnGatewayDisconnect, type OnGatewayInit, type OnModuleDestroy, type OnModuleInit, type OpenApiDocument, type OpenApiInfo, type OpenApiOperation, type OpenApiParameter, type OpenApiPathItem, type OpenApiRequestBody, type OpenApiResponse, Optional, Options, type OriginProtectionOptions, PLUGIN_REGISTRY_TOKEN, Param, ParamType, ParseArrayPipe, type ParseArrayPipeOptions, ParseBoolPipe, ParseEnumPipe, ParseFloatPipe, ParseIntPipe, ParseUUIDPipe, type ParseUUIDPipeOptions, Patch, PayloadTooLargeException, type PipeTransform, type PipeType, type PipelineComponentEntry, type PipelineRunOptions, PipelineRunner, type Plugin, PluginRegistry, PluginRootModule, Post, type ProviderDefinition, type ProviderSnapshot, Put, Query, REQUEST_CONTEXT, RESERVED_WS_EVENT_PREFIX, RESPONSE_CACHE_OPTIONS, ROOT_MODULE_ID, type RateLimitInfo, RawBody, type ReadJsonBodyOptions, Redirect, type ReflectableDecorator, Reflector, type RegisteredCronJob, type RegisteredIntervalJob, Req, type RequestConfig, type RequestContext, RequestContextKey, RequestTimeoutException, RequiredPipe, Res, ReservedWsEvent, type ReservedWsEventHandler, type ReservedWsEventMetadata, type ResolvedComponentMap, type ResponseCacheEntryOptions, ResponseCacheInterceptor, ResponseCacheModule, type ResponseCacheOptions, type ResponseCacheScope, ResponseCacheService, type ResponseCheckCallback, type RoomRegistry, type RouteContributor, type RouteContributorContext, type RouteContributorOpenApiContext, type RouteDescription, type RouteInfo, type RouteName, type RouteOptions, type RouteParams, type RunInit, type RuntimeAdapter, type RuntimeParser, SCHEDULE_DISPATCH, SCHEDULE_INVOCATION_SEED, SECURITY_OPTIONS, SERIALIZE_METADATA, SKIP_THROTTLE_METADATA, STORAGE_SIGNED_URL_PURPOSE, type ScheduleDecorator, type ScheduleDispatchMode, type ScheduleInvocation, type ScheduleInvocationSeed, type ScheduleJobRef, ScheduleModule, ScheduleRegistry, type SchemaInput, type SchemaOutput, type SchemaParamDecorator, type SchemaParser, SchemaValidationError, Scope, type ScopedEventDispatcher, type ScopedResponseCache, Secret, type SecurityCorsOptions, type SecurityHeadersOptions, SecurityModule, type SecurityModuleOptions, type SerializationDescriptor, Serialize, type SerializerDefinition, SerializerInterceptor, ServiceUnavailableException, SetMetadata, SignedInvocation, SignedInvocationGuard, SignedUrl, type SignedUrlGenerateOptions, SignedUrlGuard, type SignedUrlOptions, SkipThrottle, Sse, type StandardDtoDefinition, type StandardJSONSchemaV1, type StandardSchemaV1, StructuredLogger, SubscribeMessage, type SyncDriver, THROTTLER_OPTIONS, THROTTLER_STORAGE, THROTTLE_METADATA, Throttle, type ThrottleConfig, ThrottlerGuard, ThrottlerModule, type ThrottlerModuleOptions, ThrottlerStorage, type ThrottlerStorageRecord, type ThrottlerStore, TieredCacheStore, type Token, TooManyRequestsException, type TrustedRequestIdentity, type TrustedRequestIdentityStore, type TrustedRequestPrincipal, type Type, type TypedToken, URL_SIGNING_SECRET, UnauthorizedException, UndefinedModuleError, UnprocessableEntityException, type UnresolvedDependency, UnresolvedDependencyError, type UnresolvedDependencyReason, UnsupportedMediaTypeException, type UrlForOptions, UrlGeneratorService, UseFilters, UseGuards, UseInterceptors, UseMiddleware, UsePipes, type ValidationIssue, ValidationPipe, type ValidationSchema, VelaApplication, type VelaBodyLimitOverride, type VelaBodySecurityOptions, type VelaContext, type VelaCreateOptions, type VelaEnv, VelaError, type VelaErrorOptions, VelaFactory, type VelaHono, type VelaHonoEnv, type VelaMiddlewareHandler, type VelaQuerySecurityOptions, type VelaRouteMap, type VelaSecurityOptions, type VerifyInvocationOptions, type VerifySignedUrlOptions, Version, WS_SERVER, WebSocketGateway, WebSocketModule, type WebSocketModuleOptions, WebSocketServer, type Writer, type WsArgumentsHost, type WsClient, WsDispatcher, WsException, type WsExecutionContext, type WsMessage, type WsResponse, type WsServer, applyDecorators, assertWebSocketRoomId, bindTrustedRequestContext, bootstrap, buildEntrypointExecutionContext, buildExecutionContext as buildHttpExecutionContext, buildSecurityMiddleware, clearTrustedRequestIdentity, composeCatalogs, composePlugins, consoleLogSink, contributesEntrypoints, createDiscoverableDecorator, createExecutionScope, createLazyParamDecorator, createOpenApiDocument, createParamDecorator, createTrustedRequestIdentityStore, cronDialectAmbiguity, defineConfigurableModule, defineDto, defineDynamicModule, defineEndpoint, defineErrorCatalog, defineEvent, defineEventVocabulary, defineMetadata, defineModule, definePlugin, defineProvider, defineSerializer, describeToken, enableAmbientContainer, finishExecutionScope, forwardRef, getCatchTypes, getCurrentContainer, getCurrentRequestContext, getEntrypointKinds, getEntrypointModuleId, getExecutionLifetime, getMetadata, getRequestContainer, getRouteContributors, getScopedComponents, getTrustedContextRequest, getTrustedRequestIdentity, invokeScheduledJob, isStandardSchema, isValidationSchema, isVelaError, lazyProvider, loggerForScope, matchesAny, mixin, moduleKey, moduleToken, parseCron, parseCronMetadata, parseIntervalMetadata, parseLogDirective, parseSchema, parseSchemaAsync, provideGlobal, readJsonBody, registerAs, registerEntrypointKind, registerRouteContributor, resolveEntrypoint, resolveErrorReporter, resolvePipelineComponents, resolveScopedComponents, resolveScopedComponentsAsync, runInEntrypointScope, scheduledJobComponents, serializeLogValue, setTrustedRequestIdentity, setTrustedRequestTenant, shouldFilterCatch, sideEffectModule, signInvocation, signUrl, stableHash, standardJsonSchema, toErrorBody, trySendWebSocketFrame, validateSchema, verifyInvocation, verifySignedUrl, zodToJsonSchema };
+export { APP_EXCEPTION_HANDLER, APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_LOGGER, APP_MIDDLEWARE, APP_PIPE, type AdapterContext, All, type AnyCacheStore, type AnyConfigNamespace, ApiDoc, type ApiDocMetadata, ApiResponse, type ApiResponseEntry, type ApiResponseOptions, ApiTags, ApplicationLogger, type ApplicationLoggerOptions, type ArgumentMetadata, type AsyncCacheStore, type AsyncModuleOptions, type Awaitable, BadGatewayException, BadRequestException, type BeforeApplicationShutdown, Body, type BootstrapOptions, type BootstrapResult, type BroadcastCommand, CACHEABLE_METADATA, CACHE_KEY_METADATA, CACHE_MANAGER, CACHE_MODULE_OPTIONS, CACHE_TTL_METADATA, CONFIG_OPTIONS, CORE_CATALOG, CORS_OPTIONS, CRON_METADATA, type CacheEntry, type CacheEntryReader, type CacheEntryWriter, CacheInterceptor, type CacheInvalidationResult, type CacheInvalidationStore, CacheKey, CacheModule, type CacheModuleOptions, CacheResponse, type CacheResponseOptions, CacheService, type CacheStore, CacheTTL, Cacheable, type CallHandler, type CanActivate, type Catalog, Catch, ConfigModule, type ConfigModuleOptions, type ConfigNamespace, type ConfigPath, type ConfigPathValue, type ConfigSchema, ConfigService, type ConfigShape, ConfigStore, type ConfigType, type ConfigurableModuleAsyncOptions, ConfigurableModuleBuilder, type ConfigurableModuleBuilderOptions, type ConfigurableModuleClassType, type ConfigurableModuleExtras, type ConfigurableModuleExtrasTransform, type ConfigurableModuleHost, type ConfigurableModuleOptionsFactory, ConflictException, ConnectedSocket, type Constructor, Container, type ContainerOptions, type ContextProvider, type ContributesEntrypoints, Controller, Cookie, Cookies, CorsModule, type CorsOptions, type CreateDecoratorOptions, type CreateDiscoverableDecoratorOptions, type CreateOpenApiDocumentOptions, Cron, type CronInvocation, type CronMatcher, type CronMetadata, type CronOptions, DEFAULT_BODY_LIMIT_BYTES, DEFAULT_QUERY_BYTES_LIMIT, DEFAULT_QUERY_DEPTH_LIMIT, DEFAULT_QUERY_PARAMETER_LIMIT, DefaultValuePipe, type DefineConfigurableModuleSpec, type DefineModuleSpec, Delete, type DependencyToken, type Diagnostics, type DiscoverableDecorator, type DiscoveredClass, type DiscoveredMethodMeta, type DiscoveredRegisteredMethodMeta, type DiscoveredRegistration, type DiscoveryFilter, DiscoveryService, type DtoDefinition, type DtoOptions, type DtoSchema, type DynamicModule, ENV, ERROR_CATALOG, EXECUTION_LIFETIME, Endpoint, type EndpointBinaryBody, type EndpointBodyContract, type EndpointBodyOptions, type EndpointDefinition, type EndpointFormField, type EndpointFormLimits, type EndpointHandlerOutput, type EndpointRequest, type EndpointResponseFormat, type EndpointResponseOutput, type EndpointSchema, type Entrypoint, type EntrypointExecutionContext, type EntrypointKind, EntrypointRegistry, type ErrorBodyResult, type ErrorCatalogEntry, type ErrorMatcher, type ErrorReportContext, type ErrorReporter, ErrorsModule, type ErrorsModuleOptions, type EventDefinition, EventDispatcher, type EventEmitOptions, EventEmitter, EventEmitterModule, EventEmitterSubscriber, type EventHandler, type EventInput, type EventListenerDecorator, type EventPayload, type EventVocabulary, type ExceptionFilter, type ExceptionHandler, type ExecutionContext, type ExecutionLifetime, type ExecutionScope, type ExecutionScopeOptions, type FilterType, ForbiddenException, ForwardRef, GatewayTimeoutException, Get, Global, type GlobalComponentSlot, GoneException, type GuardType, HTTP_MODULE_OPTIONS, HTTP_SIGNED_URL_PURPOSE, Head, Header, Headers, type HealthCheckResult, HealthCheckService, type HealthCheckStatus, type HealthIndicatorFunction, type HealthIndicatorResult, HealthIndicatorService, HealthModule, type HttpArgumentsHost, type HttpClientObserver, type HttpClientRequest, type HttpClientRequestObserver, type HttpClientResponse, HttpCode, HttpException, type HttpExecutionContext, type HttpFetch, HttpHealthIndicator, HttpMethod, HttpModule, type HttpModuleOptions, type HttpPingOptions, type HttpRequestConfig, HttpRequestException, type HttpResponse, HttpResponseSizeException, HttpService, type HttpTransport, type HttpVerb, INTERVAL_METADATA, INVOCATION_AUDIENCE, INVOCATION_DEFAULT_TTL_SECONDS, INVOCATION_SIGNING_SECRET, type InferToken, type InferTokens, Inject, InjectEnv, Injectable, type InjectableOptions, InjectionToken, type InterceptorType, InternalDispatcher, InternalServerErrorException, Interval, type IntervalInvocation, type IntervalMetadata, type InvocationClaim, type InvocationPathTarget, type InvocationRouteTarget, type InvocationTarget, type InvocationTransport, type InvokeScheduledJobOptions, Ip, type JsonSchema, type LazyProviderSpec, type LogDeliveryContext, type LogFields, LogLevel, type LogRecord, type LogSerializationOptions, type LogSink, type LogThresholds, type LogValue, Logger, type LoggerLevelName, type LoggerService, LoggingModule, METADATA_KEYS, MemoryCacheInvalidationStore, MemoryCacheStore, MemoryNonceStore, MessageBody, MetadataRegistry, MethodNotAllowedException, type MiddlewareConsumer, type MiddlewareType, MissingInjectionMetadataError, type MissingInjectionMetadataReason, Module, type ModuleContributions, type ModuleDescription, type ModuleEntryList, type ModuleImport, type ModuleOptions, ModuleRef, type ModuleRefContext, type ModuleRefLookupOptions, type ModuleRegistrationOptions, type ModuleScope, type ModuleSetupContext, ModuleVisibilityError, MultipleProvidersFoundError, NONCE_STORE, type NestInterceptor, type NestMiddleware, type NestModule, type NonceStore, NotAcceptableException, NotFoundException, NotImplementedException, ON_EVENT_METADATA, type OnApplicationBootstrap, type OnApplicationShutdown, OnEvent, type OnEventMetadata, type OnGatewayConnection, type OnGatewayDisconnect, type OnGatewayInit, type OnModuleDestroy, type OnModuleInit, type OpenApiDocument, type OpenApiInfo, type OpenApiOperation, type OpenApiParameter, type OpenApiPathItem, type OpenApiRequestBody, type OpenApiResponse, Optional, Options, type OriginProtectionOptions, PLUGIN_REGISTRY_TOKEN, Param, ParamType, ParseArrayPipe, type ParseArrayPipeOptions, ParseBoolPipe, ParseEnumPipe, ParseFloatPipe, ParseIntPipe, ParseUUIDPipe, type ParseUUIDPipeOptions, Patch, PayloadTooLargeException, type PipeTransform, type PipeType, type PipelineComponentEntry, type PipelineRunOptions, PipelineRunner, type Plugin, PluginRegistry, PluginRootModule, Post, type ProviderDefinition, type ProviderSnapshot, Put, Query, REQUEST_CONTEXT, RESERVED_WS_EVENT_PREFIX, RESPONSE_CACHE_OPTIONS, ROOT_MODULE, ROOT_MODULE_ID, type RateLimitInfo, RawBody, type ReadJsonBodyOptions, Redirect, type ReflectableDecorator, Reflector, type RegisteredCronJob, type RegisteredIntervalJob, Req, type RequestConfig, type RequestContext, RequestContextKey, RequestTimeoutException, RequiredPipe, Res, ReservedWsEvent, type ReservedWsEventHandler, type ReservedWsEventMetadata, type ResolvedComponentMap, type ResponseCacheEntryOptions, ResponseCacheInterceptor, ResponseCacheModule, type ResponseCacheOptions, type ResponseCacheScope, ResponseCacheService, type ResponseCheckCallback, type RoomRegistry, type RouteContributor, type RouteContributorContext, type RouteContributorOpenApiContext, type RouteDescription, type RouteInfo, type RouteName, type RouteOptions, type RouteParams, type RunInit, type RuntimeAdapter, type RuntimeParser, SCHEDULE_DISPATCH, SCHEDULE_INVOCATION_SEED, SECURITY_OPTIONS, SERIALIZE_METADATA, SKIP_THROTTLE_METADATA, STORAGE_SIGNED_URL_PURPOSE, type ScheduleDecorator, type ScheduleDispatchMode, type ScheduleInvocation, type ScheduleInvocationSeed, type ScheduleJobRef, ScheduleModule, ScheduleRegistry, type SchemaInput, type SchemaOutput, type SchemaParamDecorator, type SchemaParser, SchemaValidationError, Scope, type ScopedEventDispatcher, type ScopedResponseCache, Secret, type SecurityCorsOptions, type SecurityHeadersOptions, SecurityModule, type SecurityModuleOptions, type SerializationDescriptor, Serialize, type SerializerDefinition, SerializerInterceptor, ServiceUnavailableException, SetMetadata, SignedInvocation, SignedInvocationGuard, SignedUrl, type SignedUrlGenerateOptions, SignedUrlGuard, type SignedUrlOptions, SkipThrottle, Sse, type StandardDtoDefinition, type StandardJSONSchemaV1, type StandardSchemaV1, StructuredLogger, SubscribeMessage, type SyncDriver, THROTTLER_OPTIONS, THROTTLER_STORAGE, THROTTLE_METADATA, Throttle, type ThrottleConfig, ThrottlerGuard, ThrottlerModule, type ThrottlerModuleOptions, ThrottlerStorage, type ThrottlerStorageRecord, type ThrottlerStore, TieredCacheStore, type Token, TooManyRequestsException, type TrustedRequestIdentity, type TrustedRequestIdentityStore, type TrustedRequestPrincipal, type Type, type TypedToken, URL_SIGNING_SECRET, UnauthorizedException, UndefinedModuleError, UnprocessableEntityException, type UnresolvedDependency, UnresolvedDependencyError, type UnresolvedDependencyReason, UnsupportedMediaTypeException, type UrlForOptions, UrlGeneratorService, UseFilters, UseGuards, UseInterceptors, UseMiddleware, UsePipes, type ValidationIssue, ValidationPipe, type ValidationSchema, VelaApplication, type VelaBodyLimitOverride, type VelaBodySecurityOptions, type VelaContext, type VelaCreateOptions, type VelaEnv, VelaError, type VelaErrorOptions, VelaFactory, type VelaHono, type VelaHonoEnv, type VelaMiddlewareHandler, type VelaQuerySecurityOptions, type VelaRouteMap, type VelaSecurityOptions, type VerifyInvocationOptions, type VerifySignedUrlOptions, Version, WS_SERVER, WebSocketGateway, WebSocketModule, type WebSocketModuleOptions, WebSocketServer, type Writer, type WsArgumentsHost, type WsClient, WsDispatcher, WsException, type WsExecutionContext, type WsMessage, type WsResponse, type WsServer, applyDecorators, assertWebSocketRoomId, bindTrustedRequestContext, bootstrap, buildEntrypointExecutionContext, buildExecutionContext as buildHttpExecutionContext, buildSecurityMiddleware, clearTrustedRequestIdentity, composeCatalogs, composePlugins, consoleLogSink, contributesEntrypoints, createDiscoverableDecorator, createExecutionScope, createLazyParamDecorator, createOpenApiDocument, createParamDecorator, createTrustedRequestIdentityStore, cronDialectAmbiguity, defineConfigurableModule, defineDto, defineDynamicModule, defineEndpoint, defineErrorCatalog, defineEvent, defineEventVocabulary, defineMetadata, defineModule, definePlugin, defineProvider, defineSerializer, describeToken, enableAmbientContainer, finishExecutionScope, forwardRef, getCatchTypes, getCurrentContainer, getCurrentRequestContext, getEntrypointKinds, getEntrypointModuleId, getExecutionLifetime, getMetadata, getRequestContainer, getRouteContributors, getScopedComponents, getTrustedContextRequest, getTrustedRequestIdentity, invokeScheduledJob, isStandardSchema, isValidationSchema, isVelaError, lazyProvider, loggerForScope, matchesAny, mixin, moduleKey, moduleToken, parseCron, parseCronMetadata, parseIntervalMetadata, parseLogDirective, parseSchema, parseSchemaAsync, provideGlobal, readJsonBody, registerAs, registerEntrypointKind, registerRouteContributor, resolveEntrypoint, resolveErrorReporter, resolvePipelineComponents, resolveScopedComponents, resolveScopedComponentsAsync, runInEntrypointScope, scheduledJobComponents, serializeLogValue, setTrustedRequestIdentity, setTrustedRequestTenant, shouldFilterCatch, sideEffectModule, signInvocation, signUrl, stableHash, standardJsonSchema, toErrorBody, trySendWebSocketFrame, validateSchema, verifyInvocation, verifySignedUrl, zodToJsonSchema };
 ```
 
 ## `./i18n`
@@ -93,9 +93,9 @@ Declaration entry: `./dist/i18n/index.d.ts`
 
 ```ts
 import "<internal:schedule.registry.d.ts>";
-import { l as NestMiddleware, z as InjectionToken } from "<internal:types.d.ts>";
+import { U as InjectionToken, l as NestMiddleware } from "<internal:types-http-hono.types.d.ts>";
 import { n as RequestContext, r as RequestContextKey } from "<internal:request-context.d.ts>";
-import { J as DynamicModule } from "<internal:env.d.ts>";
+import { G as DynamicModule } from "<internal:types-registry-types.d.ts>";
 import { Gt as ConfigurableModuleClassType } from "<internal:index-factory.d.ts>";
 import { Context, Next } from "hono";
 
@@ -200,16 +200,16 @@ Type conditions: `types`
 Declaration entry: `./dist/internal.d.ts`
 
 ```ts
-import { N as Diagnostics, U as ModuleScope, W as ModuleVisibilityError, j as ContainerOptions, k as Container } from "<internal:types.d.ts>";
+import { F as ContainerOptions, J as ModuleVisibilityError, L as Diagnostics, N as Container, q as ModuleScope } from "<internal:types-http-hono.types.d.ts>";
 import { c as BootstrapOptions, d as ModuleLoader, f as VelaApplication, i as createRequestContext, l as BootstrapResult, o as RuntimeAdapter, s as applyRuntimeAdapters, u as bootstrap } from "<internal:request-context.d.ts>";
-import { C as VelaSecurityOptions, g as RouteManagerOptions, h as RouteManager } from "<internal:env.d.ts>";
-import { E as ModuleRef, S as setRequestContainer, a as APP_INTERCEPTOR, b as isModule, d as Plugin, f as PluginRegistry, h as definePlugin, i as APP_GUARD, l as ComponentManager, m as composePlugins, o as APP_MIDDLEWARE, p as PluginRootModule, r as APP_FILTER, s as APP_PIPE, t as MetadataRegistry, u as PLUGIN_REGISTRY_TOKEN, w as INVOCATION_TRANSPORT, y as getModuleMetadata } from "<internal:metadata.registry.d.ts>";
+import { b as VelaSecurityOptions, f as RouteManager, p as RouteManagerOptions } from "<internal:types-registry-types.d.ts>";
+import { C as setRequestContainer, D as ModuleRef, T as INVOCATION_TRANSPORT, a as APP_GUARD, b as getModuleMetadata, c as APP_PIPE, d as PLUGIN_REGISTRY_TOKEN, f as Plugin, g as definePlugin, h as composePlugins, i as APP_FILTER, m as PluginRootModule, n as countRegisteredClasses, o as APP_INTERCEPTOR, p as PluginRegistry, s as APP_MIDDLEWARE, t as MetadataRegistry, u as ComponentManager, x as isModule } from "<internal:metadata.registry.d.ts>";
 
 export declare function bindAppProviders(routeManager: RouteManager, container: Container, loader: ModuleLoader): void;
 
 export declare function finalizeApplication({ container, routeManager, loader }: BootstrapResult, adapters?: readonly RuntimeAdapter[]): Promise<VelaApplication>;
 
-export { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_MIDDLEWARE, APP_PIPE, type BootstrapOptions, type BootstrapResult, ComponentManager, Container, type ContainerOptions, type Diagnostics, INVOCATION_TRANSPORT, MetadataRegistry, ModuleLoader, ModuleRef, type ModuleScope, ModuleVisibilityError, PLUGIN_REGISTRY_TOKEN, type Plugin, PluginRegistry, PluginRootModule, RouteManager, type RouteManagerOptions, VelaApplication, type VelaSecurityOptions, applyRuntimeAdapters, bootstrap, composePlugins, createRequestContext, definePlugin, getModuleMetadata, isModule, setRequestContainer };
+export { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_MIDDLEWARE, APP_PIPE, type BootstrapOptions, type BootstrapResult, ComponentManager, Container, type ContainerOptions, type Diagnostics, INVOCATION_TRANSPORT, MetadataRegistry, ModuleLoader, ModuleRef, type ModuleScope, ModuleVisibilityError, PLUGIN_REGISTRY_TOKEN, type Plugin, PluginRegistry, PluginRootModule, RouteManager, type RouteManagerOptions, VelaApplication, type VelaSecurityOptions, applyRuntimeAdapters, bootstrap, composePlugins, countRegisteredClasses, createRequestContext, definePlugin, getModuleMetadata, isModule, setRequestContainer };
 ```
 
 ## `./live`
@@ -230,9 +230,9 @@ Type conditions: `types`
 Declaration entry: `./dist/observability/index.d.ts`
 
 ```ts
-import { k as Container, z as InjectionToken } from "<internal:types.d.ts>";
+import { N as Container, U as InjectionToken } from "<internal:types-http-hono.types.d.ts>";
 import { n as RequestContext, o as RuntimeAdapter } from "<internal:request-context.d.ts>";
-import { D as HttpRequestObserver, E as HttpRequestObservation, T as HttpRequestCompletion } from "<internal:env.d.ts>";
+import { C as HttpRequestObservation, S as HttpRequestCompletion, w as HttpRequestObserver } from "<internal:types-registry-types.d.ts>";
 
 interface TraceContext {
   readonly traceId: string;
@@ -382,9 +382,9 @@ Type conditions: `types`
 Declaration entry: `./dist/queue/index.d.ts`
 
 ```ts
-import { Y as Token, k as Container, z as InjectionToken } from "<internal:types.d.ts>";
+import { $ as Token, M as VelaEnv, N as Container, U as InjectionToken } from "<internal:types-http-hono.types.d.ts>";
 import { E as EntrypointRegistry } from "<internal:request-context.d.ts>";
-import { J as DynamicModule, V as DiscoveryService, o as InvocationTarget, r as VelaEnv } from "<internal:env.d.ts>";
+import { G as DynamicModule, R as DiscoveryService, r as InvocationTarget } from "<internal:types-registry-types.d.ts>";
 import { Gt as ConfigurableModuleClassType, Ut as ConfigurableModuleAsyncOptions, Zt as ModuleRegistrationOptions } from "<internal:index-factory.d.ts>";
 import { g as StandardSchemaV1 } from "<internal:parse-schema.d.ts>";
 
@@ -693,8 +693,8 @@ Declaration entry: `./dist/schedule-node/index.d.ts`
 
 ```ts
 import { C as InternalDispatcher, _ as OnApplicationBootstrap, g as BeforeApplicationShutdown, l as ScheduleDispatchMode, r as ScheduleRegistry, y as OnModuleDestroy } from "<internal:schedule.registry.d.ts>";
-import { k as Container } from "<internal:types.d.ts>";
-import { J as DynamicModule } from "<internal:env.d.ts>";
+import { N as Container } from "<internal:types-http-hono.types.d.ts>";
+import { G as DynamicModule } from "<internal:types-registry-types.d.ts>";
 
 export declare class ScheduleNodeModule {
   static forRoot(): DynamicModule;
@@ -718,7 +718,7 @@ Declaration entry: `./dist/seeder/index.d.ts`
 
 ```ts
 import { _ as OnApplicationBootstrap } from "<internal:schedule.registry.d.ts>";
-import { X as Type, k as Container } from "<internal:types.d.ts>";
+import { N as Container, et as Type } from "<internal:types-http-hono.types.d.ts>";
 import { f as VelaApplication } from "<internal:request-context.d.ts>";
 import { Gt as ConfigurableModuleClassType } from "<internal:index-factory.d.ts>";
 
@@ -858,9 +858,9 @@ Type conditions: `types`
 Declaration entry: `./dist/websocket/index.d.ts`
 
 ```ts
-import { C as WebSocketUpgradeIdentity, D as WsResponse, E as WsMessage, O as WsServer, S as WebSocketUpgradeAuthenticationContext, T as WsExecutionContext, _ as ReservedWsEventHandler, b as WebSocketGatewayOptions, d as WsArgumentsHost, f as BroadcastCommand, g as OnGatewayInit, h as OnGatewayDisconnect, m as OnGatewayConnection, p as BroadcastOperator, v as ReservedWsEventMetadata, w as WsClient, x as WebSocketPrincipal, y as SubscribeMessageMetadata } from "<internal:types.d.ts>";
-import { $n as WS_RESERVED_METADATA, $r as WebSocketServer, Ar as normalizeWebSocketUpgradeIdentity, Br as InMemoryRoomRegistry, Cr as DEFAULT_WS_MAX_FRAME_BYTES, Dr as authenticateWebSocketUpgrade, Er as assertWebSocketRoomId, Fr as WsDispatcher, Gn as WebSocketSendPolicy, Gr as broadcastCommandFits, Hr as RoomRegistry, Ir as WsEntrypointMeta, Jn as WsMessageQueue, Jr as ConnectedSocket, Kn as WebSocketSendResult, Kr as local, Lr as readWsEntrypointMeta, Mr as resolveGatewayRoomParam, Nr as resolveMaxFrameBytes, Or as authorizeWebSocketUpgrade, Pr as webSocketFrameFits, Qn as WS_MODULE_OPTIONS, Qr as WebSocketGateway, Rr as WebSocketModule, Sr as AuthenticatedWebSocketUpgrade, Tr as DEFAULT_WS_MAX_ROOM_ID_BYTES, Ur as SyncDriver, Vr as MAX_WS_SYNC_ENVELOPE_OVERHEAD_BYTES, Wn as WebSocketSendGate, Wr as assertBroadcastCommandFits, Xn as RESERVED_WS_EVENT_PREFIX, Xr as ReservedWsEvent, Yn as trySendWebSocketFrame, Yr as MessageBody, Zn as WS_GATEWAY_METADATA, Zr as SubscribeMessage, _r as WebSocketTicketNonceStore, ar as resolveWsArgs, br as issueWebSocketTicket, cr as buildWsExecutionContext, dr as IssueWebSocketTicketOptions, er as WS_ROOM_REGISTRY, fr as VerifyWebSocketTicketOptions, gr as WebSocketTicketClaim, hr as WEBSOCKET_TICKET_PURPOSE, ir as WsParamType, jr as resolveGatewayRoomId, kr as isWebSocketOriginAllowed, lr as BroadcastOperatorImpl, mr as WEBSOCKET_TICKET_MAX_TTL_MS, nr as WS_SUBSCRIBE_METADATA, or as WsException, pr as WEBSOCKET_TICKET_AUDIENCE, qn as readWebSocketEnvelope, qr as webSocketSyncEnvelopeFits, rr as WS_SYNC_DRIVER, sr as toErrorFrame, tr as WS_SERVER, ur as WsServerImpl, vr as WebSocketTicketPrincipal, wr as DEFAULT_WS_MAX_JOINED_ROOMS, xr as verifyAndConsumeWebSocketTicket, yr as WebSocketTicketPrincipalType, zr as WebSocketModuleOptions } from "<internal:index-factory.d.ts>";
-export { type AuthenticatedWebSocketUpgrade, type BroadcastCommand, type BroadcastOperator, BroadcastOperatorImpl, ConnectedSocket, DEFAULT_WS_MAX_FRAME_BYTES, DEFAULT_WS_MAX_JOINED_ROOMS, DEFAULT_WS_MAX_ROOM_ID_BYTES, InMemoryRoomRegistry, type IssueWebSocketTicketOptions, MAX_WS_SYNC_ENVELOPE_OVERHEAD_BYTES, MessageBody, type OnGatewayConnection, type OnGatewayDisconnect, type OnGatewayInit, RESERVED_WS_EVENT_PREFIX, ReservedWsEvent, type ReservedWsEventHandler, type ReservedWsEventMetadata, type RoomRegistry, SubscribeMessage, type SubscribeMessageMetadata, type SyncDriver, type VerifyWebSocketTicketOptions, WEBSOCKET_TICKET_AUDIENCE, WEBSOCKET_TICKET_MAX_TTL_MS, WEBSOCKET_TICKET_PURPOSE, WS_GATEWAY_METADATA, WS_MODULE_OPTIONS, WS_RESERVED_METADATA, WS_ROOM_REGISTRY, WS_SERVER, WS_SUBSCRIBE_METADATA, WS_SYNC_DRIVER, WebSocketGateway, type WebSocketGatewayOptions, WebSocketModule, type WebSocketModuleOptions, type WebSocketPrincipal, WebSocketSendGate, type WebSocketSendPolicy, type WebSocketSendResult, WebSocketServer, type WebSocketTicketClaim, type WebSocketTicketNonceStore, type WebSocketTicketPrincipal, type WebSocketTicketPrincipalType, type WebSocketUpgradeAuthenticationContext, type WebSocketUpgradeIdentity, type WsArgumentsHost, type WsClient, WsDispatcher, type WsEntrypointMeta, WsException, type WsExecutionContext, type WsMessage, WsMessageQueue, WsParamType, type WsResponse, type WsServer, WsServerImpl, assertBroadcastCommandFits, assertWebSocketRoomId, authenticateWebSocketUpgrade, authorizeWebSocketUpgrade, broadcastCommandFits, buildWsExecutionContext, isWebSocketOriginAllowed, issueWebSocketTicket, local, normalizeWebSocketUpgradeIdentity, readWebSocketEnvelope, readWsEntrypointMeta, resolveGatewayRoomId, resolveGatewayRoomParam, resolveMaxFrameBytes, resolveWsArgs, toErrorFrame, trySendWebSocketFrame, verifyAndConsumeWebSocketTicket, webSocketFrameFits, webSocketSyncEnvelopeFits };
+import { C as WebSocketUpgradeAuthenticationContext, D as WsMessage, E as WsExecutionContext, O as WsResponse, S as WebSocketPrincipal, T as WsClient, _ as ReservedWsEventHandler, b as UpgradeAuthenticator, d as WsArgumentsHost, f as BroadcastCommand, g as OnGatewayInit, h as OnGatewayDisconnect, k as WsServer, m as OnGatewayConnection, p as BroadcastOperator, v as ReservedWsEventMetadata, w as WebSocketUpgradeIdentity, x as WebSocketGatewayOptions, y as SubscribeMessageMetadata } from "<internal:types-http-hono.types.d.ts>";
+import { $n as WS_MODULE_OPTIONS, $r as SubscribeMessage, Ar as createWebSocketUpgradeGate, Br as WebSocketModule, Cr as AuthenticatedWebSocketUpgrade, Dr as WebSocketUpgradeGate, Er as DEFAULT_WS_MAX_ROOM_ID_BYTES, Fr as resolveMaxFrameBytes, Gn as WebSocketSendGate, Gr as SyncDriver, Hr as InMemoryRoomRegistry, Ir as webSocketFrameFits, Jn as readWebSocketEnvelope, Jr as local, Kn as WebSocketSendPolicy, Kr as assertBroadcastCommandFits, Lr as WsDispatcher, Mr as normalizeWebSocketUpgradeIdentity, Nr as resolveGatewayRoomId, Or as WebSocketUpgradeGateway, Pr as resolveGatewayRoomParam, Qn as WS_GATEWAY_METADATA, Qr as ReservedWsEvent, Rr as WsEntrypointMeta, Sr as verifyAndConsumeWebSocketTicket, Tr as DEFAULT_WS_MAX_JOINED_ROOMS, Ur as MAX_WS_SYNC_ENVELOPE_OVERHEAD_BYTES, Vr as WebSocketModuleOptions, Wr as RoomRegistry, Xn as trySendWebSocketFrame, Xr as ConnectedSocket, Yn as WsMessageQueue, Yr as webSocketSyncEnvelopeFits, Zn as RESERVED_WS_EVENT_PREFIX, Zr as MessageBody, _r as WebSocketTicketClaim, ar as WsParamType, br as WebSocketTicketPrincipalType, cr as toErrorFrame, dr as WsServerImpl, ei as WebSocketGateway, er as WS_RESERVED_METADATA, fr as IssueWebSocketTicketOptions, gr as WEBSOCKET_TICKET_PURPOSE, hr as WEBSOCKET_TICKET_MAX_TTL_MS, ir as WS_SYNC_DRIVER, jr as isWebSocketOriginAllowed, kr as assertWebSocketRoomId, lr as buildWsExecutionContext, mr as WEBSOCKET_TICKET_AUDIENCE, nr as WS_SERVER, or as resolveWsArgs, pr as VerifyWebSocketTicketOptions, qn as WebSocketSendResult, qr as broadcastCommandFits, rr as WS_SUBSCRIBE_METADATA, sr as WsException, ti as WebSocketServer, tr as WS_ROOM_REGISTRY, ur as BroadcastOperatorImpl, vr as WebSocketTicketNonceStore, wr as DEFAULT_WS_MAX_FRAME_BYTES, xr as issueWebSocketTicket, yr as WebSocketTicketPrincipal, zr as readWsEntrypointMeta } from "<internal:index-factory.d.ts>";
+export { type AuthenticatedWebSocketUpgrade, type BroadcastCommand, type BroadcastOperator, BroadcastOperatorImpl, ConnectedSocket, DEFAULT_WS_MAX_FRAME_BYTES, DEFAULT_WS_MAX_JOINED_ROOMS, DEFAULT_WS_MAX_ROOM_ID_BYTES, InMemoryRoomRegistry, type IssueWebSocketTicketOptions, MAX_WS_SYNC_ENVELOPE_OVERHEAD_BYTES, MessageBody, type OnGatewayConnection, type OnGatewayDisconnect, type OnGatewayInit, RESERVED_WS_EVENT_PREFIX, ReservedWsEvent, type ReservedWsEventHandler, type ReservedWsEventMetadata, type RoomRegistry, SubscribeMessage, type SubscribeMessageMetadata, type SyncDriver, type UpgradeAuthenticator, type VerifyWebSocketTicketOptions, WEBSOCKET_TICKET_AUDIENCE, WEBSOCKET_TICKET_MAX_TTL_MS, WEBSOCKET_TICKET_PURPOSE, WS_GATEWAY_METADATA, WS_MODULE_OPTIONS, WS_RESERVED_METADATA, WS_ROOM_REGISTRY, WS_SERVER, WS_SUBSCRIBE_METADATA, WS_SYNC_DRIVER, WebSocketGateway, type WebSocketGatewayOptions, WebSocketModule, type WebSocketModuleOptions, type WebSocketPrincipal, WebSocketSendGate, type WebSocketSendPolicy, type WebSocketSendResult, WebSocketServer, type WebSocketTicketClaim, type WebSocketTicketNonceStore, type WebSocketTicketPrincipal, type WebSocketTicketPrincipalType, type WebSocketUpgradeAuthenticationContext, type WebSocketUpgradeGate, type WebSocketUpgradeGateway, type WebSocketUpgradeIdentity, type WsArgumentsHost, type WsClient, WsDispatcher, type WsEntrypointMeta, WsException, type WsExecutionContext, type WsMessage, WsMessageQueue, WsParamType, type WsResponse, type WsServer, WsServerImpl, assertBroadcastCommandFits, assertWebSocketRoomId, broadcastCommandFits, buildWsExecutionContext, createWebSocketUpgradeGate, isWebSocketOriginAllowed, issueWebSocketTicket, local, normalizeWebSocketUpgradeIdentity, readWebSocketEnvelope, readWsEntrypointMeta, resolveGatewayRoomId, resolveGatewayRoomParam, resolveMaxFrameBytes, resolveWsArgs, toErrorFrame, trySendWebSocketFrame, verifyAndConsumeWebSocketTicket, webSocketFrameFits, webSocketSyncEnvelopeFits };
 ```
 
 ## `./websocket-node`
@@ -870,9 +870,9 @@ Type conditions: `types`
 Declaration entry: `./dist/websocket-node/index.d.ts`
 
 ```ts
-import { w as WsClient } from "<internal:types.d.ts>";
+import { T as WsClient } from "<internal:types-http-hono.types.d.ts>";
 import { f as VelaApplication } from "<internal:request-context.d.ts>";
-import { Hr as RoomRegistry, Ur as SyncDriver } from "<internal:index-factory.d.ts>";
+import { Gr as SyncDriver, Wr as RoomRegistry } from "<internal:index-factory.d.ts>";
 import { K as LiveDriver } from "<internal:index-live-live.types.d.ts>";
 import { WebSocketSendPolicy, WebSocketSendResult } from "@velajs/live-protocol";
 import { UpgradeWebSocket, WSContext } from "hono/ws";
@@ -934,438 +934,13 @@ export type { RedisLiveOptions, RedisPubSubClient, RedisSyncOptions };
 
 ## Referenced declaration chunks
 
-### `<internal:env.d.ts>`
-
-```ts
-import { A as Constructor, I as InferTokens, K as ProviderDefinition, P as ForwardRef, X as Type, Y as Token, Z as TypedToken, c as NestInterceptor, ct as VelaContext, dt as VelaMiddlewareHandler, i as ExceptionFilter, it as HttpMethod, k as Container, l as NestMiddleware, lt as VelaHono, r as CanActivate, st as Scope, u as PipeTransform, z as InjectionToken } from "<internal:types.d.ts>";
-import { Context } from "hono";
-import { RedirectStatusCode, StatusCode } from "hono/utils/http-status";
-
-type ComponentType = 'middleware' | 'guard' | 'pipe' | 'interceptor' | 'filter';
-type MiddlewareType = Type<NestMiddleware> | NestMiddleware;
-type GuardType = Type<CanActivate> | CanActivate;
-type PipeType = Type<PipeTransform> | PipeTransform;
-type InterceptorType = Type<NestInterceptor> | NestInterceptor;
-type FilterType = Type<ExceptionFilter> | ExceptionFilter;
-interface ComponentTypeMap {
-  middleware: MiddlewareType;
-  guard: GuardType;
-  pipe: PipeType;
-  interceptor: InterceptorType;
-  filter: FilterType;
-}
-interface RouteDefinition {
-  method: string;
-  path: string;
-  handlerName: string | symbol;
-  version?: number | number[];
-
-  name?: string;
-}
-interface ParameterMetadata {
-  index: number;
-  type: string;
-  name?: string;
-  pipes?: PipeType[];
-  factory?: (data: unknown, ctx: Context) => unknown;
-
-  metatype?: unknown;
-}
-interface HttpHandlerMeta {
-  httpCode?: StatusCode;
-  responseHeaders?: Array<[string, string]>;
-  redirect?: {
-    url: string;
-    statusCode: RedirectStatusCode;
-  };
-}
-type ModuleImport = Type | DynamicModule | ForwardRef;
-
-interface AsyncModuleOptions<T = unknown, Inject extends readonly Token[] = readonly Token[]> {
-  imports?: ModuleImport[];
-  inject: Inject;
-  useFactory: (...args: InferTokens<Inject>) => T | Promise<T>;
-}
-interface DynamicModule {
-  module: Type;
-
-  key?: string;
-  imports?: ModuleImport[];
-  providers?: Array<Type | ProviderDefinition>;
-  controllers?: Type[];
-  exports?: Token[];
-  global?: boolean;
-
-  lazy?: boolean;
-}
-interface ModuleOptions {
-  providers?: Array<Type | ProviderDefinition>;
-  controllers?: Type[];
-  imports?: ModuleImport[];
-  exports?: Token[];
-  isGlobal?: boolean;
-
-  lazy?: boolean;
-}
-interface ModuleMetadata {
-  providers: Array<Type | ProviderDefinition>;
-  controllers: Type[];
-  imports: ModuleImport[];
-  exports: Token[];
-  isGlobal: boolean;
-  lazy: boolean;
-}
-
-interface DiscoverableDecorator<T> {
-  (value: T): ClassDecorator & MethodDecorator;
-
-  KEY: string;
-}
-interface CreateDiscoverableDecoratorOptions {
-
-  append?: boolean;
-}
-
-declare function createDiscoverableDecorator<T>(key: string, options?: CreateDiscoverableDecoratorOptions): DiscoverableDecorator<T>;
-
-interface DiscoveredClass<T = unknown> {
-  token: Token;
-  metatype: Type<T>;
-
-  moduleIds: string[];
-  scope: Scope;
-
-  instance: T | undefined;
-}
-
-interface DiscoveredRegistration<T = unknown> extends DiscoveredClass<T> {
-  readonly moduleId: string;
-}
-interface DiscoveredRegisteredMethodMeta<M = unknown> {
-  class: DiscoveredRegistration;
-  methodName: string | symbol;
-  meta: M;
-}
-interface DiscoveredMethodMeta<M = unknown> {
-  class: DiscoveredClass;
-  methodName: string | symbol;
-  meta: M;
-}
-interface DiscoveryFilter {
-
-  metadataOnly?: boolean;
-
-  moduleId?: string | string[];
-
-  requestScope?: Container;
-
-  deferLazy?: boolean;
-
-  deferRequestScoped?: boolean;
-}
-
-declare class DiscoveryService {
-  #private;
-  constructor(container: Container);
-
-  getProviders(filter?: DiscoveryFilter): DiscoveredClass[];
-
-  getRegistrations(filter?: DiscoveryFilter): DiscoveredRegistration[];
-  registrationsWithMeta<M>(key: string | DiscoverableDecorator<M>, filter?: DiscoveryFilter): Array<DiscoveredRegistration & {
-    meta: M;
-  }>;
-
-  providersWithMeta<M>(key: string | DiscoverableDecorator<M>, filter?: DiscoveryFilter): Array<DiscoveredClass & {
-    meta: M;
-  }>;
-
-  methodsWithMeta<M>(key: string | DiscoverableDecorator<M>, filter?: DiscoveryFilter): DiscoveredMethodMeta<M>[];
-  registeredMethodsWithMeta<M>(key: string | DiscoverableDecorator<M>, filter?: DiscoveryFilter): DiscoveredRegisteredMethodMeta<M>[];
-  private findMethods;
-
-  private candidatesWithClassMeta;
-  private matchingOwners;
-  private buildEntries;
-  private buildEntry;
-  private buildRegistration;
-}
-
-interface EntrypointKind {
-  kind: string;
-  metaKey: string;
-
-  level: 'class' | 'method';
-}
-
-interface Entrypoint<M = unknown> {
-  kind: string;
-  token: Token;
-
-  moduleId?: string;
-
-  instance: unknown;
-
-  methodName?: string | symbol;
-  meta: M;
-}
-
-interface ContributesEntrypoints {
-  collectEntrypoints(discovery: DiscoveryService): Entrypoint[] | Promise<Entrypoint[]>;
-}
-declare function contributesEntrypoints(x: unknown): x is ContributesEntrypoints;
-
-interface RouteInfo {
-  path: string;
-  method?: HttpMethod;
-
-  absolute?: boolean;
-}
-interface MiddlewareRouteDefinition {
-
-  readonly moduleId?: string;
-  middleware: Array<Type<NestMiddleware> | NestMiddleware>;
-
-  routes: Array<RouteInfo | Constructor>;
-  excludes: RouteInfo[];
-
-  priority?: number;
-}
-interface MiddlewareConfigProxy {
-
-  exclude(...routes: Array<string | RouteInfo>): MiddlewareConfigProxy;
-  withPriority(priority: number): MiddlewareConfigProxy;
-
-  forRoutes(...routes: Array<string | Constructor | RouteInfo>): MiddlewareConsumer;
-}
-interface MiddlewareConsumer {
-  apply(...middleware: Array<Type<NestMiddleware> | NestMiddleware>): MiddlewareConfigProxy;
-}
-interface NestModule {
-  configure(consumer: MiddlewareConsumer): void;
-}
-
-interface HttpRequestCompletion {
-
-  readonly status: number | undefined;
-
-  readonly route: string | undefined;
-  readonly outcome: 'success' | 'error' | 'cancelled';
-  readonly durationMs: number;
-}
-interface HttpRequestObservation {
-
-  complete(completion: HttpRequestCompletion): void;
-}
-
-type HttpRequestObserver = (context: VelaContext, container: Container) => HttpRequestObservation | undefined;
-
-interface RouteMetadata {
-  method: HttpMethod;
-  path: string;
-  handlerName: string | symbol;
-  version?: number | number[];
-
-  name?: string;
-}
-interface ControllerOptions {
-  path?: string;
-  version?: number | number[];
-
-  scope?: Scope;
-}
-interface ControllerMetadata {
-  prefix: string;
-  version?: number | number[];
-}
-interface ControllerRegistration {
-  controller: Type;
-
-  moduleId: string;
-  metadata: ControllerMetadata;
-  routes: RouteMetadata[];
-}
-
-interface VelaBodyLimitOverride {
-
-  path: string;
-
-  methods?: string[];
-
-  maxBytes: number | false;
-}
-interface VelaBodySecurityOptions {
-
-  maxBytes?: number | false;
-
-  streamingOverrides?: VelaBodyLimitOverride[];
-}
-interface VelaQuerySecurityOptions {
-
-  maxParameters?: number | false;
-
-  maxDepth?: number | false;
-
-  maxBytes?: number | false;
-}
-
-interface VelaSecurityOptions {
-  body?: VelaBodySecurityOptions;
-  query?: VelaQuerySecurityOptions;
-}
-declare const DEFAULT_QUERY_PARAMETER_LIMIT = 100;
-declare const DEFAULT_QUERY_DEPTH_LIMIT = 5;
-declare const DEFAULT_QUERY_BYTES_LIMIT: number;
-
-interface RouteDescription {
-
-  method: string;
-
-  path: string;
-  controller: string;
-  handler: string;
-
-  moduleId: string;
-  version?: number;
-
-  name?: string;
-}
-interface RouteManagerOptions {
-
-  getClientIp?: (c: VelaContext) => string | null;
-  middleware?: VelaMiddlewareHandler[];
-  globalPrefix?: string;
-
-  ambientContainer?: boolean;
-
-  bodyLimit?: number | false;
-
-  security?: VelaSecurityOptions;
-}
-
-declare const DEFAULT_BODY_LIMIT_BYTES: number;
-declare class RouteManager {
-  private container;
-  private static readonly METHOD_REGISTRAR;
-  private controllers;
-  private globalMiddleware;
-  private globalPipes;
-  private globalGuards;
-  private globalInterceptors;
-  private globalFilters;
-  private globalPrefix;
-  private consumerMiddlewareDefinitions;
-  private readonly routeOwners;
-  private routeDescriptions;
-  private readonly requestObservers;
-  private readonly handlerExecutor;
-  private readonly ambientContainer;
-  private readonly bodyLimit;
-  private readonly bodyLimitOverrides;
-  private readonly queryMaxParameters;
-  private readonly queryMaxDepth;
-  private readonly queryMaxBytes;
-  private readonly clientIpResolver;
-  constructor(container: Container, options?: RouteManagerOptions);
-
-  getGlobalComponents(): {
-    guards: Array<GuardType | TypedToken<CanActivate>>;
-    pipes: Array<PipeType | TypedToken<PipeTransform>>;
-    interceptors: Array<InterceptorType | TypedToken<NestInterceptor>>;
-    filters: Array<FilterType | TypedToken<ExceptionFilter>>;
-  };
-
-  resolveClientIp(c: VelaContext): string | null;
-  private validateBodyLimitOverride;
-  private resolveBodyLimit;
-  registerConsumerMiddleware(definitions: MiddlewareRouteDefinition[]): this;
-  setGlobalPrefix(prefix: string): this;
-  useGlobalMiddleware(...middleware: MiddlewareType[]): this;
-  useGlobalMiddlewareTokens(...middlewareTokens: Array<TypedToken<NestMiddleware>>): this;
-  useGlobalPipes(...pipes: PipeType[]): this;
-  useGlobalPipeTokens(...pipeTokens: Array<TypedToken<PipeTransform>>): this;
-  useGlobalGuards(...guards: GuardType[]): this;
-  useGlobalGuardTokens(...guardTokens: Array<TypedToken<CanActivate>>): this;
-  useGlobalInterceptors(...interceptors: InterceptorType[]): this;
-  useGlobalInterceptorTokens(...interceptorTokens: Array<TypedToken<NestInterceptor>>): this;
-  useGlobalFilters(...filters: FilterType[]): this;
-  useGlobalFilterTokens(...filterTokens: Array<TypedToken<ExceptionFilter>>): this;
-  private getMiddlewarePriority;
-  private middlewareTarget;
-  private getRequestContainer;
-  private wrapMiddlewareWithFilters;
-  private mapMiddlewareError;
-  registerController(controller: Type, moduleId?: string): this;
-
-  getRouteDescriptions(): RouteDescription[];
-
-  getGlobalPrefix(): string;
-
-  observeRequests(observer: HttpRequestObserver): () => void;
-  build(): Promise<VelaHono>;
-  private checkMiddlewareTargets;
-  private registerRoute;
-  private composeRoutePaths;
-  private compileTargets;
-  private resolveTarget;
-  getControllers(): ControllerRegistration[];
-}
-
-interface VelaRouteMap {}
-
-type RouteName = keyof VelaRouteMap extends never ? string : Extract<keyof VelaRouteMap, string>;
-
-type RouteParams<N extends RouteName> = N extends keyof VelaRouteMap ? VelaRouteMap[N] : Record<string, string> | undefined;
-
-type InvocationTransport = (request: Request) => Promise<Response>;
-
-interface InvocationRouteTarget<N extends RouteName = RouteName> {
-  route: N;
-  params?: RouteParams<N>;
-}
-
-interface InvocationPathTarget {
-  path: string;
-}
-
-type InvocationTarget = InvocationRouteTarget | InvocationPathTarget;
-
-interface RunInit {
-
-  method?: string;
-
-  body?: unknown;
-
-  headers?: HeadersInit;
-
-  ttlSeconds?: number;
-
-  iss?: string;
-
-  signal?: AbortSignal;
-
-  timeoutMs?: number;
-}
-
-interface NonceStore {
-  claim(nonce: string, expEpochSeconds: number): Promise<boolean>;
-}
-
-interface VelaEnv {}
-
-declare const ENV: InjectionToken<VelaEnv>;
-
-declare function InjectEnv(): ParameterDecorator;
-
-export { MiddlewareType as $, NestModule as A, DiscoveryFilter as B, VelaSecurityOptions as C, HttpRequestObserver as D, HttpRequestObservation as E, contributesEntrypoints as F, AsyncModuleOptions as G, CreateDiscoverableDecoratorOptions as H, DiscoveredClass as I, DynamicModule as J, ComponentType as K, DiscoveredMethodMeta as L, ContributesEntrypoints as M, Entrypoint as N, MiddlewareConsumer as O, EntrypointKind as P, InterceptorType as Q, DiscoveredRegisteredMethodMeta as R, VelaQuerySecurityOptions as S, HttpRequestCompletion as T, DiscoverableDecorator as U, DiscoveryService as V, createDiscoverableDecorator as W, GuardType as X, FilterType as Y, HttpHandlerMeta as Z, DEFAULT_QUERY_BYTES_LIMIT as _, InvocationRouteTarget as a, RouteDefinition as at, VelaBodyLimitOverride as b, NonceStore as c, RouteParams as d, ModuleImport as et, VelaRouteMap as f, RouteManagerOptions as g, RouteManager as h, InvocationPathTarget as i, PipeType as it, RouteInfo as j, MiddlewareRouteDefinition as k, RunInit as l, RouteDescription as m, InjectEnv as n, ModuleOptions as nt, InvocationTarget as o, DEFAULT_BODY_LIMIT_BYTES as p, ComponentTypeMap as q, VelaEnv as r, ParameterMetadata as rt, InvocationTransport as s, ENV as t, ModuleMetadata as tt, RouteName as u, DEFAULT_QUERY_DEPTH_LIMIT as v, ControllerOptions as w, VelaBodySecurityOptions as x, DEFAULT_QUERY_PARAMETER_LIMIT as y, DiscoveredRegistration as z };
-```
-
 ### `<internal:index-factory.d.ts>`
 
 ```ts
 import { $ as applyDecorators, _ as OnApplicationBootstrap, a as CronMetadata, c as ScheduleDecorator, d as ScheduleInvocationSeed, g as BeforeApplicationShutdown, i as CronInvocation, l as ScheduleDispatchMode, m as CronOptions, o as IntervalInvocation, s as IntervalMetadata, u as ScheduleInvocation } from "<internal:schedule.registry.d.ts>";
-import { A as Constructor, C as WebSocketUpgradeIdentity, F as InferToken, I as InferTokens, K as ProviderDefinition, O as WsServer, P as ForwardRef, R as InjectableOptions, T as WsExecutionContext, X as Type, Y as Token, Z as TypedToken, a as ExecutionContext, b as WebSocketGatewayOptions, c as NestInterceptor, f as BroadcastCommand, i as ExceptionFilter, k as Container, l as NestMiddleware, lt as VelaHono, n as CallHandler, p as BroadcastOperator, r as CanActivate, s as HttpExecutionContext, t as ArgumentMetadata, u as PipeTransform, w as WsClient, z as InjectionToken } from "<internal:types.d.ts>";
+import { $ as Token, B as InferTokens, E as WsExecutionContext, H as InjectableOptions, M as VelaEnv, N as Container, P as Constructor, R as ForwardRef, T as WsClient, U as InjectionToken, X as ProviderDefinition, a as ExecutionContext, c as NestInterceptor, et as Type, f as BroadcastCommand, i as ExceptionFilter, k as WsServer, l as NestMiddleware, n as CallHandler, p as BroadcastOperator, pt as VelaHono, r as CanActivate, s as HttpExecutionContext, t as ArgumentMetadata, tt as TypedToken, u as PipeTransform, w as WebSocketUpgradeIdentity, x as WebSocketGatewayOptions, z as InferToken } from "<internal:types-http-hono.types.d.ts>";
 import { A as ErrorReportContext, C as OpenApiPathItem, c as BootstrapOptions, f as VelaApplication, g as CreateOpenApiDocumentOptions, h as ApiResponseOptions, j as ExceptionHandler, n as RequestContext, o as RuntimeAdapter, p as ApiDocMetadata, v as JsonSchema, y as OpenApiDocument } from "<internal:request-context.d.ts>";
-import { $ as MiddlewareType, J as DynamicModule, K as ComponentType, M as ContributesEntrypoints, N as Entrypoint, Q as InterceptorType, V as DiscoveryService, X as GuardType, Y as FilterType, c as NonceStore, et as ModuleImport, h as RouteManager, it as PipeType, q as ComponentTypeMap, r as VelaEnv, rt as ParameterMetadata } from "<internal:env.d.ts>";
+import { A as Entrypoint, G as DynamicModule, K as FilterType, R as DiscoveryService, U as ComponentType, W as ComponentTypeMap, X as MiddlewareType, Y as InterceptorType, Z as ModuleImport, a as NonceStore, et as ParameterMetadata, f as RouteManager, k as ContributesEntrypoints, q as GuardType, tt as PipeType } from "<internal:types-registry-types.d.ts>";
 import { d as SchemaParser, g as StandardSchemaV1, n as SchemaOutput, r as ValidationSchema, t as SchemaInput } from "<internal:parse-schema.d.ts>";
 import "<internal:metadata.registry.d.ts>";
 import "<internal:index-validation-validation.pipe.d.ts>";
@@ -1379,10 +954,11 @@ interface VelaCreateOptions extends BootstrapOptions {
   adapters?: RuntimeAdapter[];
 }
 declare const VelaFactory: {
-  create(rootModule: Type, options?: VelaCreateOptions): Promise<VelaApplication>;
+
+  create(rootModule: Type | DynamicModule, options?: VelaCreateOptions): Promise<VelaApplication>;
 };
 
-declare function createOpenApiDocument(rootModule: Type, options?: CreateOpenApiDocumentOptions): OpenApiDocument;
+declare function createOpenApiDocument(rootModule: Type | DynamicModule, options?: CreateOpenApiDocumentOptions): OpenApiDocument;
 
 type EndpointResponseFormat = 'binary' | 'stream' | 'response';
 type EndpointBinaryBody = Blob | ArrayBuffer | Uint8Array<ArrayBuffer>;
@@ -2413,9 +1989,15 @@ declare function webSocketFrameFits(frame: string | ArrayBuffer, maxFrameBytes: 
 
 declare function isWebSocketOriginAllowed(request: Request, allowedOrigins?: '*' | readonly string[]): boolean;
 
-declare function authorizeWebSocketUpgrade(options: WebSocketGatewayOptions, request: Request): Promise<boolean>;
+interface WebSocketUpgradeGateway {
+  options: WebSocketGatewayOptions;
 
-declare function authenticateWebSocketUpgrade(options: WebSocketGatewayOptions, request: Request, room: string): Promise<AuthenticatedWebSocketUpgrade | false>;
+  moduleId?: string;
+}
+
+type WebSocketUpgradeGate = (request: Request, room: string) => Promise<AuthenticatedWebSocketUpgrade | false>;
+
+declare function createWebSocketUpgradeGate(container: Container, gateway: WebSocketUpgradeGateway): WebSocketUpgradeGate;
 
 declare function normalizeWebSocketUpgradeIdentity(value: unknown): WebSocketUpgradeIdentity | false;
 
@@ -2715,6 +2297,8 @@ declare const THROTTLE_METADATA = "vela:throttle";
 declare const SKIP_THROTTLE_METADATA = "vela:skip-throttle";
 
 declare function stableHash(value: unknown): string;
+
+declare const ROOT_MODULE: InjectionToken<DynamicModule | Type>;
 
 type ModuleEntryList = 'imports' | 'providers' | 'controllers' | 'exports';
 
@@ -3243,15 +2827,15 @@ declare function parseLogDirective(directive: string, defaults?: {
 
 declare function loggerForScope(container: Container, category?: string, fields?: LogFields): StructuredLogger;
 
-export { UseGuards as $, LoggerService as $a, CacheInterceptor as $i, WS_RESERVED_METADATA as $n, WebSocketServer as $r, UndefinedModuleError as $t, SERIALIZE_METADATA as A, Secret as Aa, MemoryCacheInvalidationStore as Ai, HttpException as An, Injectable as Ao, normalizeWebSocketUpgradeIdentity as Ar, LazyProviderSpec as At, ParseBoolPipe as B, ConfigModuleOptions as Ba, ResponseCacheOptions as Bi, UnauthorizedException as Bn, EndpointSchema as Bo, InMemoryRoomRegistry as Br, ModuleContributions as Bt, LogRecord as C, HttpModuleOptions as Ca, EventDefinition as Ci, ResponseCheckCallback as Cn, SignedUrl as Co, DEFAULT_WS_MAX_FRAME_BYTES as Cr, ExecutionLifetime as Ct, SerializerDefinition as D, RequestConfig as Da, defineEvent as Di, ForbiddenException as Dn, createLazyParamDecorator as Do, authenticateWebSocketUpgrade as Dr, finishExecutionScope as Dt, LogValue as E, HttpTransport as Ea, EventVocabulary as Ei, ConflictException as En, readJsonBody as Eo, assertWebSocketRoomId as Er, createExecutionScope as Et, ErrorsModule as F, SecurityModuleOptions as Fa, ResponseCacheModule as Fi, NotImplementedException as Fn, ApiTags as Fo, WsDispatcher as Fr, ConfigurableModuleBuilder as Ft, ParseUUIDPipeOptions as G, ConfigNamespace as Ga, CACHE_MANAGER as Gi, WebSocketSendPolicy$1 as Gn, EndpointFormLimits as Go, broadcastCommandFits as Gr, ConfigurableModuleClassType as Gt, ParseFloatPipe as H, ConfigPathValue as Ha, ScopedResponseCache as Hi, UnsupportedMediaTypeException as Hn, EndpointBodyContract as Ho, RoomRegistry as Hr, defineModule as Ht, ErrorsModuleOptions as I, CONFIG_OPTIONS as Ia, CacheInvalidationResult as Ii, PayloadTooLargeException as In, Endpoint as Io, WsEntrypointMeta as Ir, defineConfigurableModule as It, ReflectableDecorator as J, registerAs as Ja, CacheKey as Ji, WsMessageQueue as Jn, EndpointResponseOutput as Jo, ConnectedSocket as Jr, ConfigurableModuleHost as Jt, RequiredPipe as K, ConfigShape as Ka, CACHE_MODULE_OPTIONS as Ki, WebSocketSendResult$1 as Kn, EndpointBinaryBody as Ko, local as Kr, ConfigurableModuleExtras as Kt, DefaultValuePipe as L, ConfigService as La, CacheInvalidationStore as Li, RequestTimeoutException as Ln, EndpointDefinition as Lo, readWsEntrypointMeta as Lr, moduleKey as Lt, Serialize as M, OriginProtectionOptions as Ma, ResponseCacheInterceptor as Mi, MethodNotAllowedException as Mn, zodToJsonSchema as Mo, resolveGatewayRoomParam as Mr, moduleToken as Mt, ErrorReporter as N, SecurityCorsOptions as Na, RESPONSE_CACHE_OPTIONS as Ni, NotAcceptableException as Nn, ApiDoc as No, resolveMaxFrameBytes as Nr, provideGlobal as Nt, defineSerializer as O, buildSecurityMiddleware as Oa, defineEventVocabulary as Oi, GatewayTimeoutException as On, mixin as Oo, authorizeWebSocketUpgrade as Or, getExecutionLifetime as Ot, resolveErrorReporter as P, SecurityHeadersOptions as Pa, ResponseCacheService as Pi, NotFoundException as Pn, ApiResponse as Po, webSocketFrameFits as Pr, sideEffectModule as Pt, UseFilters as Q, LoggerLevelName as Qa, MemoryCacheStore as Qi, WS_MODULE_OPTIONS as Qn, WebSocketGateway as Qr, ModuleEntryList as Qt, ParseArrayPipe as R, ConfigStore as Ra, CacheResponseOptions as Ri, ServiceUnavailableException as Rn, EndpointHandlerOutput as Ro, WebSocketModule as Rr, DefineModuleSpec as Rt, LogFields as S, HttpFetch as Sa, OnEventMetadata as Si, HealthIndicatorResult as Sn, URL_SIGNING_SECRET as So, AuthenticatedWebSocketUpgrade as Sr, EXECUTION_LIFETIME as St, LogSink as T, HttpResponse as Ta, EventPayload as Ti, BadRequestException as Tn, ReadJsonBodyOptions as To, DEFAULT_WS_MAX_ROOM_ID_BYTES as Tr, ExecutionScopeOptions as Tt, ParseIntPipe as U, ConfigSchema as Ua, CACHEABLE_METADATA as Ui, HealthModule as Un, EndpointBodyOptions as Uo, SyncDriver as Ur, ConfigurableModuleAsyncOptions as Ut, ParseEnumPipe as V, ConfigPath as Va, ResponseCacheScope as Vi, UnprocessableEntityException as Vn, defineEndpoint as Vo, MAX_WS_SYNC_ENVELOPE_OVERHEAD_BYTES as Vr, ModuleSetupContext as Vt, ParseUUIDPipe as W, AnyConfigNamespace as Wa, CACHE_KEY_METADATA as Wi, WebSocketSendGate$1 as Wn, EndpointFormField as Wo, assertBroadcastCommandFits as Wr, ConfigurableModuleBuilderOptions as Wt, SetMetadata as X, LogLevel as Xa, Cacheable as Xi, RESERVED_WS_EVENT_PREFIX as Xn, VelaCreateOptions as Xo, ReservedWsEvent as Xr, DefineConfigurableModuleSpec as Xt, Reflector as Y, ContextProvider as Ya, CacheTTL as Yi, trySendWebSocketFrame as Yn, createOpenApiDocument as Yo, MessageBody as Yr, ConfigurableModuleOptionsFactory as Yt, Catch as Z, Logger as Za, TieredCacheStore as Zi, WS_GATEWAY_METADATA as Zn, VelaFactory as Zo, SubscribeMessage as Zr, ModuleRegistrationOptions as Zt, ApplicationLogger as _, HttpModule as _a, OnEvent as _i, HealthIndicatorService as _n, verifyInvocation as _o, WebSocketTicketNonceStore as _r, registerRouteContributor as _t, VelaError$1 as a, CacheEntry as aa, parseIntervalMetadata as ai, SkipThrottle as an, bindTrustedRequestContext as ao, resolveWsArgs as ar, PipelineComponentEntry as at, ApplicationLoggerOptions as b, HttpClientRequestObserver as ba, EventEmitOptions as bi, HealthCheckStatus as bn, getCurrentContainer as bo, issueWebSocketTicket as br, getEntrypointModuleId as bt, defineErrorCatalog as c, CacheModuleOptions as ca, SCHEDULE_DISPATCH as ci, ThrottlerGuard as cn, getTrustedContextRequest as co, buildWsExecutionContext as cr, resolvePipelineComponents as ct, loggerForScope as d, CorsModule as da, Interval as di, ThrottleConfig as dn, setTrustedRequestTenant as do, IssueWebSocketTicketOptions as dr, PipelineRunOptions as dt, CacheService as ea, cronDialectAmbiguity as ei, stableHash as en, Writer as eo, WS_ROOM_REGISTRY as er, UseInterceptors as et, LogThresholds as f, CorsOptions as fa, ScheduleModule as fi, ThrottlerModuleOptions as fn, INVOCATION_AUDIENCE as fo, VerifyWebSocketTicketOptions as fr, PipelineRunner as ft, LoggingModule as g, HttpService as ga, EventListenerDecorator as gi, HttpPingOptions as gn, signInvocation as go, WebSocketTicketClaim as gr, getRouteContributors as gt, APP_LOGGER as h, HttpRequestException as ha, ON_EVENT_METADATA as hi, HttpHealthIndicator as hn, VerifyInvocationOptions as ho, WEBSOCKET_TICKET_PURPOSE as hr, RouteContributorOpenApiContext as ht, ErrorCatalogEntry as i, Awaitable as ia, parseCronMetadata as ii, THROTTLE_METADATA as in, TrustedRequestPrincipal as io, WsParamType as ir, shouldFilterCatch as it, SerializationDescriptor as j, SecurityModule as ja, CacheResponse as ji, InternalServerErrorException as jn, Optional as jo, resolveGatewayRoomId as jr, lazyProvider as jt, SerializerInterceptor as k, SECURITY_OPTIONS as ka, EventEmitterModule as ki, GoneException as kn, Inject as ko, isWebSocketOriginAllowed as kr, runInEntrypointScope as kt, isVelaError$1 as l, CacheStore as la, SCHEDULE_INVOCATION_SEED as li, ThrottlerModule as ln, getTrustedRequestIdentity as lo, BroadcastOperatorImpl as lr, resolveScopedComponents as lt, serializeLogValue as m, HTTP_MODULE_OPTIONS as ma, ScopedEventDispatcher as mi, ThrottlerStore as mn, InvocationClaim as mo, WEBSOCKET_TICKET_MAX_TTL_MS as mr, RouteContributorContext as mt, Catalog$1 as n, AnyCacheStore as na, InvokeScheduledJobOptions as ni, THROTTLER_OPTIONS as nn, TrustedRequestIdentity as no, WS_SUBSCRIBE_METADATA as nr, UsePipes as nt, VelaErrorOptions as o, CacheEntryReader as oa, CRON_METADATA as oi, Throttle as on, clearTrustedRequestIdentity as oo, WsException as or, ResolvedComponentMap as ot, parseLogDirective as p, HttpResponseSizeException as pa, EventDispatcher as pi, ThrottlerStorageRecord as pn, INVOCATION_DEFAULT_TTL_SECONDS as po, WEBSOCKET_TICKET_AUDIENCE as pr, RouteContributor as pt, CreateDecoratorOptions as q, ConfigType as qa, CACHE_TTL_METADATA as qi, readWebSocketEnvelope$1 as qn, EndpointResponseFormat as qo, webSocketSyncEnvelopeFits as qr, ConfigurableModuleExtrasTransform as qt, ErrorBodyResult$1 as r, AsyncCacheStore as ra, invokeScheduledJob as ri, THROTTLER_STORAGE as rn, TrustedRequestIdentityStore as ro, WS_SYNC_DRIVER as rr, getCatchTypes as rt, composeCatalogs$1 as s, CacheEntryWriter as sa, INTERVAL_METADATA as si, ThrottlerStorage as sn, createTrustedRequestIdentityStore as so, toErrorFrame as sr, getScopedComponents as st, CORE_CATALOG$1 as t, CacheModule as ta, scheduledJobComponents as ti, SKIP_THROTTLE_METADATA as tn, buildExecutionContext as to, WS_SERVER as tr, UseMiddleware as tt, toErrorBody$1 as u, CORS_OPTIONS as ua, Cron as ui, RateLimitInfo as un, setTrustedRequestIdentity as uo, WsServerImpl as ur, resolveScopedComponentsAsync as ut, StructuredLogger as v, HttpClientObserver as va, EventEmitterSubscriber as vi, HealthCheckService as vn, MemoryNonceStore as vo, WebSocketTicketPrincipal as vr, EntrypointExecutionContext as vt, LogSerializationOptions as w, HttpRequestConfig as wa, EventInput as wi, BadGatewayException as wn, SignedUrlGuard as wo, DEFAULT_WS_MAX_JOINED_ROOMS as wr, ExecutionScope as wt, LogDeliveryContext as x, HttpClientResponse as xa, EventHandler as xi, HealthIndicatorFunction as xn, getCurrentRequestContext as xo, verifyAndConsumeWebSocketTicket as xr, resolveEntrypoint as xt, consoleLogSink as y, HttpClientRequest as ya, EventEmitter as yi, HealthCheckResult as yn, enableAmbientContainer as yo, WebSocketTicketPrincipalType as yr, buildEntrypointExecutionContext as yt, ParseArrayPipeOptions as z, ConfigModule as za, ResponseCacheEntryOptions as zi, TooManyRequestsException as zn, EndpointRequest as zo, WebSocketModuleOptions as zr, GlobalComponentSlot as zt };
+export { UseGuards as $, Logger as $a, TieredCacheStore as $i, WS_MODULE_OPTIONS as $n, VelaFactory as $o, SubscribeMessage as $r, UndefinedModuleError as $t, SERIALIZE_METADATA as A, buildSecurityMiddleware as Aa, defineEventVocabulary as Ai, GoneException as An, mixin as Ao, createWebSocketUpgradeGate as Ar, LazyProviderSpec as At, ParseBoolPipe as B, ConfigStore as Ba, CacheResponseOptions as Bi, TooManyRequestsException as Bn, EndpointHandlerOutput as Bo, WebSocketModule as Br, ModuleContributions as Bt, LogRecord as C, HttpClientResponse as Ca, EventHandler as Ci, HealthIndicatorResult as Cn, getCurrentRequestContext as Co, AuthenticatedWebSocketUpgrade as Cr, ExecutionLifetime as Ct, SerializerDefinition as D, HttpResponse as Da, EventPayload as Di, ConflictException as Dn, ReadJsonBodyOptions as Do, WebSocketUpgradeGate as Dr, finishExecutionScope as Dt, LogValue as E, HttpRequestConfig as Ea, EventInput as Ei, BadRequestException as En, SignedUrlGuard as Eo, DEFAULT_WS_MAX_ROOM_ID_BYTES as Er, createExecutionScope as Et, ErrorsModule as F, SecurityCorsOptions as Fa, RESPONSE_CACHE_OPTIONS as Fi, NotFoundException as Fn, ApiDoc as Fo, resolveMaxFrameBytes as Fr, ConfigurableModuleBuilder as Ft, ParseUUIDPipeOptions as G, ConfigSchema as Ga, CACHEABLE_METADATA as Gi, WebSocketSendGate$1 as Gn, EndpointBodyOptions as Go, SyncDriver as Gr, ConfigurableModuleClassType as Gt, ParseFloatPipe as H, ConfigModuleOptions as Ha, ResponseCacheOptions as Hi, UnprocessableEntityException as Hn, EndpointSchema as Ho, InMemoryRoomRegistry as Hr, defineModule as Ht, ErrorsModuleOptions as I, SecurityHeadersOptions as Ia, ResponseCacheService as Ii, NotImplementedException as In, ApiResponse as Io, webSocketFrameFits as Ir, defineConfigurableModule as It, ReflectableDecorator as J, ConfigShape as Ja, CACHE_MODULE_OPTIONS as Ji, readWebSocketEnvelope$1 as Jn, EndpointBinaryBody as Jo, local as Jr, ConfigurableModuleHost as Jt, RequiredPipe as K, AnyConfigNamespace as Ka, CACHE_KEY_METADATA as Ki, WebSocketSendPolicy$1 as Kn, EndpointFormField as Ko, assertBroadcastCommandFits as Kr, ConfigurableModuleExtras as Kt, DefaultValuePipe as L, SecurityModuleOptions as La, ResponseCacheModule as Li, PayloadTooLargeException as Ln, ApiTags as Lo, WsDispatcher as Lr, moduleKey as Lt, Serialize as M, Secret as Ma, MemoryCacheInvalidationStore as Mi, InternalServerErrorException as Mn, Injectable as Mo, normalizeWebSocketUpgradeIdentity as Mr, moduleToken as Mt, ErrorReporter as N, SecurityModule as Na, CacheResponse as Ni, MethodNotAllowedException as Nn, Optional as No, resolveGatewayRoomId as Nr, provideGlobal as Nt, defineSerializer as O, HttpTransport as Oa, EventVocabulary as Oi, ForbiddenException as On, readJsonBody as Oo, WebSocketUpgradeGateway as Or, getExecutionLifetime as Ot, resolveErrorReporter as P, OriginProtectionOptions as Pa, ResponseCacheInterceptor as Pi, NotAcceptableException as Pn, zodToJsonSchema as Po, resolveGatewayRoomParam as Pr, sideEffectModule as Pt, UseFilters as Q, LogLevel as Qa, Cacheable as Qi, WS_GATEWAY_METADATA as Qn, VelaCreateOptions as Qo, ReservedWsEvent as Qr, ModuleEntryList as Qt, ParseArrayPipe as R, CONFIG_OPTIONS as Ra, CacheInvalidationResult as Ri, RequestTimeoutException as Rn, Endpoint as Ro, WsEntrypointMeta as Rr, DefineModuleSpec as Rt, LogFields as S, HttpClientRequestObserver as Sa, EventEmitOptions as Si, HealthIndicatorFunction as Sn, getCurrentContainer as So, verifyAndConsumeWebSocketTicket as Sr, EXECUTION_LIFETIME as St, LogSink as T, HttpModuleOptions as Ta, EventDefinition as Ti, BadGatewayException as Tn, SignedUrl as To, DEFAULT_WS_MAX_JOINED_ROOMS as Tr, ExecutionScopeOptions as Tt, ParseIntPipe as U, ConfigPath as Ua, ResponseCacheScope as Ui, UnsupportedMediaTypeException as Un, defineEndpoint as Uo, MAX_WS_SYNC_ENVELOPE_OVERHEAD_BYTES as Ur, ConfigurableModuleAsyncOptions as Ut, ParseEnumPipe as V, ConfigModule as Va, ResponseCacheEntryOptions as Vi, UnauthorizedException as Vn, EndpointRequest as Vo, WebSocketModuleOptions as Vr, ModuleSetupContext as Vt, ParseUUIDPipe as W, ConfigPathValue as Wa, ScopedResponseCache as Wi, HealthModule as Wn, EndpointBodyContract as Wo, RoomRegistry as Wr, ConfigurableModuleBuilderOptions as Wt, SetMetadata as X, registerAs as Xa, CacheKey as Xi, trySendWebSocketFrame as Xn, EndpointResponseOutput as Xo, ConnectedSocket as Xr, DefineConfigurableModuleSpec as Xt, Reflector as Y, ConfigType as Ya, CACHE_TTL_METADATA as Yi, WsMessageQueue as Yn, EndpointResponseFormat as Yo, webSocketSyncEnvelopeFits as Yr, ConfigurableModuleOptionsFactory as Yt, Catch as Z, ContextProvider as Za, CacheTTL as Zi, RESERVED_WS_EVENT_PREFIX as Zn, createOpenApiDocument as Zo, MessageBody as Zr, ModuleRegistrationOptions as Zt, ApplicationLogger as _, HttpRequestException as _a, ON_EVENT_METADATA as _i, HttpPingOptions as _n, VerifyInvocationOptions as _o, WebSocketTicketClaim as _r, registerRouteContributor as _t, VelaError$1 as a, AsyncCacheStore as aa, invokeScheduledJob as ai, THROTTLE_METADATA as an, TrustedRequestIdentityStore as ao, WsParamType as ar, PipelineComponentEntry as at, ApplicationLoggerOptions as b, HttpClientObserver as ba, EventEmitterSubscriber as bi, HealthCheckResult as bn, MemoryNonceStore as bo, WebSocketTicketPrincipalType as br, getEntrypointModuleId as bt, defineErrorCatalog as c, CacheEntryReader as ca, CRON_METADATA as ci, ThrottlerStorage as cn, clearTrustedRequestIdentity as co, toErrorFrame as cr, resolvePipelineComponents as ct, loggerForScope as d, CacheStore as da, SCHEDULE_INVOCATION_SEED as di, RateLimitInfo as dn, getTrustedRequestIdentity as do, WsServerImpl as dr, PipelineRunOptions as dt, MemoryCacheStore as ea, WebSocketGateway as ei, ROOT_MODULE as en, LoggerLevelName as eo, WS_RESERVED_METADATA as er, UseInterceptors as et, LogThresholds as f, CORS_OPTIONS as fa, Cron as fi, ThrottleConfig as fn, setTrustedRequestIdentity as fo, IssueWebSocketTicketOptions as fr, PipelineRunner as ft, LoggingModule as g, HTTP_MODULE_OPTIONS as ga, ScopedEventDispatcher as gi, HttpHealthIndicator as gn, InvocationClaim as go, WEBSOCKET_TICKET_PURPOSE as gr, getRouteContributors as gt, APP_LOGGER as h, HttpResponseSizeException as ha, EventDispatcher as hi, ThrottlerStore as hn, INVOCATION_DEFAULT_TTL_SECONDS as ho, WEBSOCKET_TICKET_MAX_TTL_MS as hr, RouteContributorOpenApiContext as ht, ErrorCatalogEntry as i, AnyCacheStore as ia, InvokeScheduledJobOptions as ii, THROTTLER_STORAGE as in, TrustedRequestIdentity as io, WS_SYNC_DRIVER as ir, shouldFilterCatch as it, SerializationDescriptor as j, SECURITY_OPTIONS as ja, EventEmitterModule as ji, HttpException as jn, Inject as jo, isWebSocketOriginAllowed as jr, lazyProvider as jt, SerializerInterceptor as k, RequestConfig as ka, defineEvent as ki, GatewayTimeoutException as kn, createLazyParamDecorator as ko, assertWebSocketRoomId as kr, runInEntrypointScope as kt, isVelaError$1 as l, CacheEntryWriter as la, INTERVAL_METADATA as li, ThrottlerGuard as ln, createTrustedRequestIdentityStore as lo, buildWsExecutionContext as lr, resolveScopedComponents as lt, serializeLogValue as m, CorsOptions as ma, ScheduleModule as mi, ThrottlerStorageRecord as mn, INVOCATION_AUDIENCE as mo, WEBSOCKET_TICKET_AUDIENCE as mr, RouteContributorContext as mt, Catalog$1 as n, CacheService as na, cronDialectAmbiguity as ni, SKIP_THROTTLE_METADATA as nn, Writer as no, WS_SERVER as nr, UsePipes as nt, VelaErrorOptions as o, Awaitable as oa, parseCronMetadata as oi, SkipThrottle as on, TrustedRequestPrincipal as oo, resolveWsArgs as or, ResolvedComponentMap as ot, parseLogDirective as p, CorsModule as pa, Interval as pi, ThrottlerModuleOptions as pn, setTrustedRequestTenant as po, VerifyWebSocketTicketOptions as pr, RouteContributor as pt, CreateDecoratorOptions as q, ConfigNamespace as qa, CACHE_MANAGER as qi, WebSocketSendResult$1 as qn, EndpointFormLimits as qo, broadcastCommandFits as qr, ConfigurableModuleExtrasTransform as qt, ErrorBodyResult$1 as r, CacheModule as ra, scheduledJobComponents as ri, THROTTLER_OPTIONS as rn, buildExecutionContext as ro, WS_SUBSCRIBE_METADATA as rr, getCatchTypes as rt, composeCatalogs$1 as s, CacheEntry as sa, parseIntervalMetadata as si, Throttle as sn, bindTrustedRequestContext as so, WsException as sr, getScopedComponents as st, CORE_CATALOG$1 as t, CacheInterceptor as ta, WebSocketServer as ti, stableHash as tn, LoggerService as to, WS_ROOM_REGISTRY as tr, UseMiddleware as tt, toErrorBody$1 as u, CacheModuleOptions as ua, SCHEDULE_DISPATCH as ui, ThrottlerModule as un, getTrustedContextRequest as uo, BroadcastOperatorImpl as ur, resolveScopedComponentsAsync as ut, StructuredLogger as v, HttpService as va, EventListenerDecorator as vi, HealthIndicatorService as vn, signInvocation as vo, WebSocketTicketNonceStore as vr, EntrypointExecutionContext as vt, LogSerializationOptions as w, HttpFetch as wa, OnEventMetadata as wi, ResponseCheckCallback as wn, URL_SIGNING_SECRET as wo, DEFAULT_WS_MAX_FRAME_BYTES as wr, ExecutionScope as wt, LogDeliveryContext as x, HttpClientRequest as xa, EventEmitter as xi, HealthCheckStatus as xn, enableAmbientContainer as xo, issueWebSocketTicket as xr, resolveEntrypoint as xt, consoleLogSink as y, HttpModule as ya, OnEvent as yi, HealthCheckService as yn, verifyInvocation as yo, WebSocketTicketPrincipal as yr, buildEntrypointExecutionContext as yt, ParseArrayPipeOptions as z, ConfigService as za, CacheInvalidationStore as zi, ServiceUnavailableException as zn, EndpointDefinition as zo, readWsEntrypointMeta as zr, GlobalComponentSlot as zt };
 ```
 
 ### `<internal:index-live-live.types.d.ts>`
 
 ```ts
 import { _ as OnApplicationBootstrap } from "<internal:schedule.registry.d.ts>";
-import { E as WsMessage, T as WsExecutionContext, _ as ReservedWsEventHandler, k as Container, w as WsClient, z as InjectionToken } from "<internal:types.d.ts>";
-import { M as ContributesEntrypoints, N as Entrypoint, V as DiscoveryService } from "<internal:env.d.ts>";
+import { D as WsMessage, E as WsExecutionContext, N as Container, T as WsClient, U as InjectionToken, _ as ReservedWsEventHandler } from "<internal:types-http-hono.types.d.ts>";
+import { A as Entrypoint, R as DiscoveryService, k as ContributesEntrypoints } from "<internal:types-registry-types.d.ts>";
 import { Gt as ConfigurableModuleClassType } from "<internal:index-factory.d.ts>";
 import { COMMIT_CURSOR_HEADER as COMMIT_CURSOR_HEADER$1, COMMIT_EPOCH_HEADER as COMMIT_EPOCH_HEADER$1, ClientLiveFrame, DEFAULT_KEY_FIELD as DEFAULT_KEY_FIELD$1, LIVE_ERROR_CODES as LIVE_ERROR_CODES$1, LIVE_EVENT, LIVE_PROTOCOL as LIVE_PROTOCOL$1, LiveFrame, LiveQueryDefinition, LiveQueryDefinition as LiveQueryDefinition$1, RowOp, ServerLiveFrame, ServerLiveFrame as ServerLiveFrame$1, applyListDelta, defineLiveQuery as defineLiveQuery$1, encodeListDelta as encodeListDelta$1, encodeLiveEnvelope as encodeLiveEnvelope$1, encodeLiveFrame, isClientLiveFrame as isClientLiveFrame$1, isServerLiveFrame, readLiveEnvelope } from "@velajs/live-protocol";
 
@@ -3535,7 +3119,7 @@ export { LiveQueryMetadata as $, LiveEngine as A, getLiveQueries as B, LIVE_RESO
 ### `<internal:index-validation-validation.pipe.d.ts>`
 
 ```ts
-import { t as ArgumentMetadata, u as PipeTransform } from "<internal:types.d.ts>";
+import { t as ArgumentMetadata, u as PipeTransform } from "<internal:types-http-hono.types.d.ts>";
 import { r as ValidationSchema } from "<internal:parse-schema.d.ts>";
 
 declare class ValidationPipe implements PipeTransform {
@@ -3555,9 +3139,9 @@ export { ValidationPipe as t };
 ### `<internal:metadata.registry.d.ts>`
 
 ```ts
-import { A as Constructor, F as InferToken, L as InjectMetadata, X as Type, Y as Token, a as ExecutionContext, c as NestInterceptor, i as ExceptionFilter, k as Container, l as NestMiddleware, r as CanActivate, st as Scope, t as ArgumentMetadata, u as PipeTransform, z as InjectionToken } from "<internal:types.d.ts>";
+import { $ as Token, N as Container, P as Constructor, U as InjectionToken, V as InjectMetadata, a as ExecutionContext, c as NestInterceptor, dt as Scope, et as Type, i as ExceptionFilter, l as NestMiddleware, r as CanActivate, t as ArgumentMetadata, u as PipeTransform, z as InferToken } from "<internal:types-http-hono.types.d.ts>";
 import { j as ExceptionHandler } from "<internal:request-context.d.ts>";
-import { $ as MiddlewareType, J as DynamicModule, K as ComponentType, Q as InterceptorType, X as GuardType, Y as FilterType, Z as HttpHandlerMeta, at as RouteDefinition, c as NonceStore, it as PipeType, nt as ModuleOptions, q as ComponentTypeMap, rt as ParameterMetadata, s as InvocationTransport, tt as ModuleMetadata } from "<internal:env.d.ts>";
+import { $ as ModuleOptions, G as DynamicModule, J as HttpHandlerMeta, K as FilterType, Q as ModuleMetadata, U as ComponentType, W as ComponentTypeMap, X as MiddlewareType, Y as InterceptorType, a as NonceStore, et as ParameterMetadata, i as InvocationTransport, nt as RouteDefinition, q as GuardType, tt as PipeType } from "<internal:types-registry-types.d.ts>";
 import { Catalog } from "@velajs/errors";
 import { Context } from "hono";
 
@@ -3648,6 +3232,8 @@ declare const ERROR_CATALOG: InjectionToken<Catalog<string>>;
 interface ControllerOptions {
   version?: number | number[];
 }
+
+declare function countRegisteredClasses(): number;
 declare class MetadataRegistry {
   private static get routes();
   private static get controllers();
@@ -3711,11 +3297,11 @@ declare class MetadataRegistry {
   static setReflectMetadata(target: object, key: string, value: unknown, propertyKey?: string | symbol): void;
   static getReflectMetadata<T = unknown>(target: object, key: string, propertyKey?: string | symbol): T | undefined;
   static getParamTypes(target: object, propertyKey?: string | symbol): unknown[] | undefined;
-  static clear(): void;
+
   static reset(): void;
 }
 
-export { INVOCATION_SIGNING_SECRET as C, ModuleRefContext as D, ModuleRef as E, ModuleRefLookupOptions as O, setRequestContainer as S, NONCE_STORE as T, Module as _, APP_INTERCEPTOR as a, isModule as b, ERROR_CATALOG as c, Plugin as d, PluginRegistry as f, Global as g, definePlugin as h, APP_GUARD as i, ComponentManager as l, composePlugins as m, APP_EXCEPTION_HANDLER as n, APP_MIDDLEWARE as o, PluginRootModule as p, APP_FILTER as r, APP_PIPE as s, MetadataRegistry as t, PLUGIN_REGISTRY_TOKEN as u, defineDynamicModule as v, INVOCATION_TRANSPORT as w, getRequestContainer as x, getModuleMetadata as y };
+export { setRequestContainer as C, ModuleRef as D, NONCE_STORE as E, ModuleRefContext as O, getRequestContainer as S, INVOCATION_TRANSPORT as T, Global as _, APP_GUARD as a, getModuleMetadata as b, APP_PIPE as c, PLUGIN_REGISTRY_TOKEN as d, Plugin as f, definePlugin as g, composePlugins as h, APP_FILTER as i, ModuleRefLookupOptions as k, ERROR_CATALOG as l, PluginRootModule as m, countRegisteredClasses as n, APP_INTERCEPTOR as o, PluginRegistry as p, APP_EXCEPTION_HANDLER as r, APP_MIDDLEWARE as s, MetadataRegistry as t, ComponentManager as u, Module as v, INVOCATION_SIGNING_SECRET as w, isModule as x, defineDynamicModule as y };
 ```
 
 ### `<internal:parse-schema.d.ts>`
@@ -3800,8 +3386,8 @@ export { ValidationIssue as _, parseSchema as a, validateSchema as b, DtoOptions
 ### `<internal:request-context.d.ts>`
 
 ```ts
-import { F as InferToken, N as Diagnostics, X as Type, Y as Token, Z as TypedToken, ct as VelaContext, dt as VelaMiddlewareHandler, k as Container, lt as VelaHono, z as InjectionToken } from "<internal:types.d.ts>";
-import { N as Entrypoint, P as EntrypointKind, Q as InterceptorType, V as DiscoveryService, X as GuardType, Y as FilterType, g as RouteManagerOptions, h as RouteManager, it as PipeType, k as MiddlewareRouteDefinition, m as RouteDescription, r as VelaEnv, s as InvocationTransport } from "<internal:env.d.ts>";
+import { $ as Token, L as Diagnostics, M as VelaEnv, N as Container, U as InjectionToken, et as Type, ft as VelaContext, ht as VelaMiddlewareHandler, pt as VelaHono, tt as TypedToken, z as InferToken } from "<internal:types-http-hono.types.d.ts>";
+import { A as Entrypoint, E as MiddlewareRouteDefinition, G as DynamicModule, K as FilterType, R as DiscoveryService, Y as InterceptorType, d as RouteDescription, f as RouteManager, i as InvocationTransport, j as EntrypointKind, p as RouteManagerOptions, q as GuardType, tt as PipeType } from "<internal:types-registry-types.d.ts>";
 import { ErrorBodyResult } from "@velajs/errors";
 
 type ErrorMatcher = string | ((error: unknown) => boolean) | (new (...args: never[]) => Error);
@@ -4071,7 +3657,7 @@ declare class ModuleLoader {
   private container;
   private router;
   constructor(container: Container, router: RouteManager);
-  load(rootModule: Type): void;
+  load(rootModule: Type | DynamicModule): void;
   private getModuleId;
   private isProcessed;
   private markProcessed;
@@ -4109,7 +3695,7 @@ interface BootstrapResult {
   loader: ModuleLoader;
 }
 
-declare function bootstrap(rootModule: Type, options?: BootstrapOptions): Promise<BootstrapResult>;
+declare function bootstrap(rootModule: Type | DynamicModule, options?: BootstrapOptions): Promise<BootstrapResult>;
 
 interface AdapterContext {
   app: VelaApplication;
@@ -4163,8 +3749,8 @@ export { ErrorReportContext as A, OpenApiPathItem as C, getEntrypointKinds as D,
 ### `<internal:schedule.registry.d.ts>`
 
 ```ts
-import { a as ExecutionContext, k as Container, r as CanActivate } from "<internal:types.d.ts>";
-import { N as Entrypoint, V as DiscoveryService, a as InvocationRouteTarget, c as NonceStore, d as RouteParams, h as RouteManager, i as InvocationPathTarget, it as PipeType, l as RunInit, o as InvocationTarget, r as VelaEnv, u as RouteName, w as ControllerOptions } from "<internal:env.d.ts>";
+import { M as VelaEnv, N as Container, a as ExecutionContext, r as CanActivate } from "<internal:types-http-hono.types.d.ts>";
+import { A as Entrypoint, R as DiscoveryService, a as NonceStore, c as RouteParams, f as RouteManager, n as InvocationRouteTarget, o as RunInit, r as InvocationTarget, s as RouteName, t as InvocationPathTarget, tt as PipeType, x as ControllerOptions } from "<internal:types-registry-types.d.ts>";
 import { r as ValidationSchema } from "<internal:parse-schema.d.ts>";
 import { RedirectStatusCode, StatusCode } from "hono/utils/http-status";
 
@@ -4412,7 +3998,7 @@ declare function verifySignedUrl(url: string, secret: string, options: VerifySig
 export { signUrl as a, VerifySignedUrlOptions as i, STORAGE_SIGNED_URL_PURPOSE as n, verifySignedUrl as o, SignedUrlOptions as r, HTTP_SIGNED_URL_PURPOSE as t };
 ```
 
-### `<internal:types.d.ts>`
+### `<internal:types-http-hono.types.d.ts>`
 
 ```ts
 import { Context, Hono, MiddlewareHandler, Next } from "hono";
@@ -4779,6 +4365,12 @@ declare class Container {
   private tokenToString;
 }
 
+interface VelaEnv {}
+
+declare const ENV: InjectionToken<VelaEnv>;
+
+declare function InjectEnv(): ParameterDecorator;
+
 interface WsMessage<T = unknown> {
   id?: string;
   event: string;
@@ -4862,6 +4454,10 @@ interface WebSocketUpgradeAuthenticationContext {
 
   ticket?: string;
 }
+
+interface UpgradeAuthenticator {
+  authenticate(request: Request, context: WebSocketUpgradeAuthenticationContext): WebSocketUpgradeIdentity | false | Promise<WebSocketUpgradeIdentity | false>;
+}
 interface WebSocketGatewayOptions {
 
   path?: string;
@@ -4870,11 +4466,11 @@ interface WebSocketGatewayOptions {
 
   roomParam?: string;
 
-  allowedOrigins?: '*' | readonly string[];
+  allowedOrigins?: '*' | readonly string[] | ((env: VelaEnv) => readonly string[]);
 
   authorizeUpgrade?: (request: Request) => boolean | Promise<boolean>;
 
-  authenticateUpgrade?: (request: Request, context: WebSocketUpgradeAuthenticationContext) => WebSocketUpgradeIdentity | false | Promise<WebSocketUpgradeIdentity | false>;
+  authenticator?: Type<UpgradeAuthenticator>;
 
   authorizeDelivery?: (client: WsClient) => boolean | Promise<boolean>;
 
@@ -4974,5 +4570,424 @@ interface NestMiddleware {
   use(c: VelaContext, next: Next): Promise<Response | void>;
 }
 
-export { UnresolvedDependencyError as $, Constructor as A, MissingInjectionMetadataError as B, WebSocketUpgradeIdentity as C, WsResponse as D, WsMessage as E, InferToken as F, MultipleProvidersFoundError as G, ModuleDescription as H, InferTokens as I, ROOT_MODULE_ID as J, ProviderDefinition as K, InjectMetadata as L, DependencyToken as M, Diagnostics as N, WsServer as O, ForwardRef as P, UnresolvedDependency as Q, InjectableOptions as R, WebSocketUpgradeAuthenticationContext as S, WsExecutionContext as T, ModuleScope as U, MissingInjectionMetadataReason as V, ModuleVisibilityError as W, Type as X, Token as Y, TypedToken as Z, ReservedWsEventHandler as _, ExecutionContext as a, METADATA_KEYS as at, WebSocketGatewayOptions as b, NestInterceptor as c, VelaContext as ct, WsArgumentsHost as d, VelaMiddlewareHandler as dt, UnresolvedDependencyReason as et, BroadcastCommand as f, OnGatewayInit as g, OnGatewayDisconnect as h, ExceptionFilter as i, HttpMethod as it, ContainerOptions as j, Container as k, NestMiddleware as l, VelaHono as lt, OnGatewayConnection as m, CallHandler as n, describeToken as nt, HttpArgumentsHost as o, ParamType as ot, BroadcastOperator as p, ProviderSnapshot as q, CanActivate as r, forwardRef as rt, HttpExecutionContext as s, Scope as st, ArgumentMetadata as t, defineProvider as tt, PipeTransform as u, VelaHonoEnv as ut, ReservedWsEventMetadata as v, WsClient as w, WebSocketPrincipal as x, SubscribeMessageMetadata as y, InjectionToken as z };
+export { Token as $, ENV as A, InferTokens as B, WebSocketUpgradeAuthenticationContext as C, WsMessage as D, WsExecutionContext as E, ContainerOptions as F, MissingInjectionMetadataReason as G, InjectableOptions as H, DependencyToken as I, ModuleVisibilityError as J, ModuleDescription as K, Diagnostics as L, VelaEnv as M, Container as N, WsResponse as O, Constructor as P, ROOT_MODULE_ID as Q, ForwardRef as R, WebSocketPrincipal as S, WsClient as T, InjectionToken as U, InjectMetadata as V, MissingInjectionMetadataError as W, ProviderDefinition as X, MultipleProvidersFoundError as Y, ProviderSnapshot as Z, ReservedWsEventHandler as _, ExecutionContext as a, defineProvider as at, UpgradeAuthenticator as b, NestInterceptor as c, HttpMethod as ct, WsArgumentsHost as d, Scope as dt, Type as et, BroadcastCommand as f, VelaContext as ft, OnGatewayInit as g, OnGatewayDisconnect as h, VelaMiddlewareHandler as ht, ExceptionFilter as i, UnresolvedDependencyReason as it, InjectEnv as j, WsServer as k, NestMiddleware as l, METADATA_KEYS as lt, OnGatewayConnection as m, VelaHonoEnv as mt, CallHandler as n, UnresolvedDependency as nt, HttpArgumentsHost as o, describeToken as ot, BroadcastOperator as p, VelaHono as pt, ModuleScope as q, CanActivate as r, UnresolvedDependencyError as rt, HttpExecutionContext as s, forwardRef as st, ArgumentMetadata as t, TypedToken as tt, PipeTransform as u, ParamType as ut, ReservedWsEventMetadata as v, WebSocketUpgradeIdentity as w, WebSocketGatewayOptions as x, SubscribeMessageMetadata as y, InferToken as z };
+```
+
+### `<internal:types-registry-types.d.ts>`
+
+```ts
+import { $ as Token, B as InferTokens, N as Container, P as Constructor, R as ForwardRef, X as ProviderDefinition, c as NestInterceptor, ct as HttpMethod, dt as Scope, et as Type, ft as VelaContext, ht as VelaMiddlewareHandler, i as ExceptionFilter, l as NestMiddleware, pt as VelaHono, r as CanActivate, tt as TypedToken, u as PipeTransform } from "<internal:types-http-hono.types.d.ts>";
+import { Context } from "hono";
+import { RedirectStatusCode, StatusCode } from "hono/utils/http-status";
+
+type ComponentType = 'middleware' | 'guard' | 'pipe' | 'interceptor' | 'filter';
+type MiddlewareType = Type<NestMiddleware> | NestMiddleware;
+type GuardType = Type<CanActivate> | CanActivate;
+type PipeType = Type<PipeTransform> | PipeTransform;
+type InterceptorType = Type<NestInterceptor> | NestInterceptor;
+type FilterType = Type<ExceptionFilter> | ExceptionFilter;
+interface ComponentTypeMap {
+  middleware: MiddlewareType;
+  guard: GuardType;
+  pipe: PipeType;
+  interceptor: InterceptorType;
+  filter: FilterType;
+}
+interface RouteDefinition {
+  method: string;
+  path: string;
+  handlerName: string | symbol;
+  version?: number | number[];
+
+  name?: string;
+}
+interface ParameterMetadata {
+  index: number;
+  type: string;
+  name?: string;
+  pipes?: PipeType[];
+  factory?: (data: unknown, ctx: Context) => unknown;
+
+  metatype?: unknown;
+}
+interface HttpHandlerMeta {
+  httpCode?: StatusCode;
+  responseHeaders?: Array<[string, string]>;
+  redirect?: {
+    url: string;
+    statusCode: RedirectStatusCode;
+  };
+}
+type ModuleImport = Type | DynamicModule | ForwardRef;
+
+interface AsyncModuleOptions<T = unknown, Inject extends readonly Token[] = readonly Token[]> {
+  imports?: ModuleImport[];
+  inject: Inject;
+  useFactory: (...args: InferTokens<Inject>) => T | Promise<T>;
+}
+interface DynamicModule {
+  module: Type;
+
+  key?: string;
+  imports?: ModuleImport[];
+  providers?: Array<Type | ProviderDefinition>;
+  controllers?: Type[];
+  exports?: Token[];
+  global?: boolean;
+
+  lazy?: boolean;
+}
+interface ModuleOptions {
+  providers?: Array<Type | ProviderDefinition>;
+  controllers?: Type[];
+  imports?: ModuleImport[];
+  exports?: Token[];
+  isGlobal?: boolean;
+
+  lazy?: boolean;
+}
+interface ModuleMetadata {
+  providers: Array<Type | ProviderDefinition>;
+  controllers: Type[];
+  imports: ModuleImport[];
+  exports: Token[];
+  isGlobal: boolean;
+  lazy: boolean;
+}
+
+interface DiscoverableDecorator<T> {
+  (value: T): ClassDecorator & MethodDecorator;
+
+  KEY: string;
+}
+interface CreateDiscoverableDecoratorOptions {
+
+  append?: boolean;
+}
+
+declare function createDiscoverableDecorator<T>(key: string, options?: CreateDiscoverableDecoratorOptions): DiscoverableDecorator<T>;
+
+interface DiscoveredClass<T = unknown> {
+  token: Token;
+  metatype: Type<T>;
+
+  moduleIds: string[];
+  scope: Scope;
+
+  instance: T | undefined;
+}
+
+interface DiscoveredRegistration<T = unknown> extends DiscoveredClass<T> {
+  readonly moduleId: string;
+}
+interface DiscoveredRegisteredMethodMeta<M = unknown> {
+  class: DiscoveredRegistration;
+  methodName: string | symbol;
+  meta: M;
+}
+interface DiscoveredMethodMeta<M = unknown> {
+  class: DiscoveredClass;
+  methodName: string | symbol;
+  meta: M;
+}
+interface DiscoveryFilter {
+
+  metadataOnly?: boolean;
+
+  moduleId?: string | string[];
+
+  requestScope?: Container;
+
+  deferLazy?: boolean;
+
+  deferRequestScoped?: boolean;
+}
+
+declare class DiscoveryService {
+  #private;
+  constructor(container: Container);
+
+  getProviders(filter?: DiscoveryFilter): DiscoveredClass[];
+
+  getRegistrations(filter?: DiscoveryFilter): DiscoveredRegistration[];
+  registrationsWithMeta<M>(key: string | DiscoverableDecorator<M>, filter?: DiscoveryFilter): Array<DiscoveredRegistration & {
+    meta: M;
+  }>;
+
+  providersWithMeta<M>(key: string | DiscoverableDecorator<M>, filter?: DiscoveryFilter): Array<DiscoveredClass & {
+    meta: M;
+  }>;
+
+  methodsWithMeta<M>(key: string | DiscoverableDecorator<M>, filter?: DiscoveryFilter): DiscoveredMethodMeta<M>[];
+  registeredMethodsWithMeta<M>(key: string | DiscoverableDecorator<M>, filter?: DiscoveryFilter): DiscoveredRegisteredMethodMeta<M>[];
+  private findMethods;
+
+  private candidatesWithClassMeta;
+  private matchingOwners;
+  private buildEntries;
+  private buildEntry;
+  private buildRegistration;
+}
+
+interface EntrypointKind {
+  kind: string;
+  metaKey: string;
+
+  level: 'class' | 'method';
+}
+
+interface Entrypoint<M = unknown> {
+  kind: string;
+  token: Token;
+
+  moduleId?: string;
+
+  instance: unknown;
+
+  methodName?: string | symbol;
+  meta: M;
+}
+
+interface ContributesEntrypoints {
+  collectEntrypoints(discovery: DiscoveryService): Entrypoint[] | Promise<Entrypoint[]>;
+}
+declare function contributesEntrypoints(x: unknown): x is ContributesEntrypoints;
+
+interface RouteInfo {
+  path: string;
+  method?: HttpMethod;
+
+  absolute?: boolean;
+}
+interface MiddlewareRouteDefinition {
+
+  readonly moduleId?: string;
+  middleware: Array<Type<NestMiddleware> | NestMiddleware>;
+
+  routes: Array<RouteInfo | Constructor>;
+  excludes: RouteInfo[];
+
+  priority?: number;
+}
+interface MiddlewareConfigProxy {
+
+  exclude(...routes: Array<string | RouteInfo>): MiddlewareConfigProxy;
+  withPriority(priority: number): MiddlewareConfigProxy;
+
+  forRoutes(...routes: Array<string | Constructor | RouteInfo>): MiddlewareConsumer;
+}
+interface MiddlewareConsumer {
+  apply(...middleware: Array<Type<NestMiddleware> | NestMiddleware>): MiddlewareConfigProxy;
+}
+interface NestModule {
+  configure(consumer: MiddlewareConsumer): void;
+}
+
+interface HttpRequestCompletion {
+
+  readonly status: number | undefined;
+
+  readonly route: string | undefined;
+  readonly outcome: 'success' | 'error' | 'cancelled';
+  readonly durationMs: number;
+}
+interface HttpRequestObservation {
+
+  complete(completion: HttpRequestCompletion): void;
+}
+
+type HttpRequestObserver = (context: VelaContext, container: Container) => HttpRequestObservation | undefined;
+
+interface RouteMetadata {
+  method: HttpMethod;
+  path: string;
+  handlerName: string | symbol;
+  version?: number | number[];
+
+  name?: string;
+}
+interface ControllerOptions {
+  path?: string;
+  version?: number | number[];
+
+  scope?: Scope;
+}
+interface ControllerMetadata {
+  prefix: string;
+  version?: number | number[];
+}
+interface ControllerRegistration {
+  controller: Type;
+
+  moduleId: string;
+  metadata: ControllerMetadata;
+  routes: RouteMetadata[];
+}
+
+interface VelaBodyLimitOverride {
+
+  path: string;
+
+  methods?: string[];
+
+  maxBytes: number | false;
+}
+interface VelaBodySecurityOptions {
+
+  maxBytes?: number | false;
+
+  streamingOverrides?: VelaBodyLimitOverride[];
+}
+interface VelaQuerySecurityOptions {
+
+  maxParameters?: number | false;
+
+  maxDepth?: number | false;
+
+  maxBytes?: number | false;
+}
+
+interface VelaSecurityOptions {
+  body?: VelaBodySecurityOptions;
+  query?: VelaQuerySecurityOptions;
+}
+declare const DEFAULT_QUERY_PARAMETER_LIMIT = 100;
+declare const DEFAULT_QUERY_DEPTH_LIMIT = 5;
+declare const DEFAULT_QUERY_BYTES_LIMIT: number;
+
+interface RouteDescription {
+
+  method: string;
+
+  path: string;
+  controller: string;
+  handler: string;
+
+  moduleId: string;
+  version?: number;
+
+  name?: string;
+}
+interface RouteManagerOptions {
+
+  getClientIp?: (c: VelaContext) => string | null;
+  middleware?: VelaMiddlewareHandler[];
+  globalPrefix?: string;
+
+  ambientContainer?: boolean;
+
+  bodyLimit?: number | false;
+
+  security?: VelaSecurityOptions;
+}
+
+declare const DEFAULT_BODY_LIMIT_BYTES: number;
+declare class RouteManager {
+  private container;
+  private static readonly METHOD_REGISTRAR;
+  private controllers;
+  private globalMiddleware;
+  private globalPipes;
+  private globalGuards;
+  private globalInterceptors;
+  private globalFilters;
+  private globalPrefix;
+  private consumerMiddlewareDefinitions;
+  private readonly routeOwners;
+  private routeDescriptions;
+  private readonly requestObservers;
+  private readonly handlerExecutor;
+  private readonly ambientContainer;
+  private readonly bodyLimit;
+  private readonly bodyLimitOverrides;
+  private readonly queryMaxParameters;
+  private readonly queryMaxDepth;
+  private readonly queryMaxBytes;
+  private readonly clientIpResolver;
+  constructor(container: Container, options?: RouteManagerOptions);
+
+  getGlobalComponents(): {
+    guards: Array<GuardType | TypedToken<CanActivate>>;
+    pipes: Array<PipeType | TypedToken<PipeTransform>>;
+    interceptors: Array<InterceptorType | TypedToken<NestInterceptor>>;
+    filters: Array<FilterType | TypedToken<ExceptionFilter>>;
+  };
+
+  resolveClientIp(c: VelaContext): string | null;
+  private validateBodyLimitOverride;
+  private resolveBodyLimit;
+  registerConsumerMiddleware(definitions: MiddlewareRouteDefinition[]): this;
+  setGlobalPrefix(prefix: string): this;
+  useGlobalMiddleware(...middleware: MiddlewareType[]): this;
+  useGlobalMiddlewareTokens(...middlewareTokens: Array<TypedToken<NestMiddleware>>): this;
+  useGlobalPipes(...pipes: PipeType[]): this;
+  useGlobalPipeTokens(...pipeTokens: Array<TypedToken<PipeTransform>>): this;
+  useGlobalGuards(...guards: GuardType[]): this;
+  useGlobalGuardTokens(...guardTokens: Array<TypedToken<CanActivate>>): this;
+  useGlobalInterceptors(...interceptors: InterceptorType[]): this;
+  useGlobalInterceptorTokens(...interceptorTokens: Array<TypedToken<NestInterceptor>>): this;
+  useGlobalFilters(...filters: FilterType[]): this;
+  useGlobalFilterTokens(...filterTokens: Array<TypedToken<ExceptionFilter>>): this;
+  private getMiddlewarePriority;
+  private middlewareTarget;
+  private getRequestContainer;
+  private wrapMiddlewareWithFilters;
+  private mapMiddlewareError;
+  registerController(controller: Type, moduleId?: string): this;
+
+  getRouteDescriptions(): RouteDescription[];
+
+  getGlobalPrefix(): string;
+
+  observeRequests(observer: HttpRequestObserver): () => void;
+  build(): Promise<VelaHono>;
+  private checkMiddlewareTargets;
+  private registerRoute;
+  private composeRoutePaths;
+  private compileTargets;
+  private resolveTarget;
+  getControllers(): ControllerRegistration[];
+}
+
+interface VelaRouteMap {}
+
+type RouteName = keyof VelaRouteMap extends never ? string : Extract<keyof VelaRouteMap, string>;
+
+type RouteParams<N extends RouteName> = N extends keyof VelaRouteMap ? VelaRouteMap[N] : Record<string, string> | undefined;
+
+type InvocationTransport = (request: Request) => Promise<Response>;
+
+interface InvocationRouteTarget<N extends RouteName = RouteName> {
+  route: N;
+  params?: RouteParams<N>;
+}
+
+interface InvocationPathTarget {
+  path: string;
+}
+
+type InvocationTarget = InvocationRouteTarget | InvocationPathTarget;
+
+interface RunInit {
+
+  method?: string;
+
+  body?: unknown;
+
+  headers?: HeadersInit;
+
+  ttlSeconds?: number;
+
+  iss?: string;
+
+  signal?: AbortSignal;
+
+  timeoutMs?: number;
+}
+
+interface NonceStore {
+  claim(nonce: string, expEpochSeconds: number): Promise<boolean>;
+}
+
+export { ModuleOptions as $, Entrypoint as A, DiscoverableDecorator as B, HttpRequestObservation as C, NestModule as D, MiddlewareRouteDefinition as E, DiscoveredRegisteredMethodMeta as F, DynamicModule as G, AsyncModuleOptions as H, DiscoveredRegistration as I, HttpHandlerMeta as J, FilterType as K, DiscoveryFilter as L, contributesEntrypoints as M, DiscoveredClass as N, RouteInfo as O, DiscoveredMethodMeta as P, ModuleMetadata as Q, DiscoveryService as R, HttpRequestCompletion as S, MiddlewareConsumer as T, ComponentType as U, createDiscoverableDecorator as V, ComponentTypeMap as W, MiddlewareType as X, InterceptorType as Y, ModuleImport as Z, VelaBodyLimitOverride as _, NonceStore as a, VelaSecurityOptions as b, RouteParams as c, RouteDescription as d, ParameterMetadata as et, RouteManager as f, DEFAULT_QUERY_PARAMETER_LIMIT as g, DEFAULT_QUERY_DEPTH_LIMIT as h, InvocationTransport as i, EntrypointKind as j, ContributesEntrypoints as k, VelaRouteMap as l, DEFAULT_QUERY_BYTES_LIMIT as m, InvocationRouteTarget as n, RouteDefinition as nt, RunInit as o, RouteManagerOptions as p, GuardType as q, InvocationTarget as r, RouteName as s, InvocationPathTarget as t, PipeType as tt, DEFAULT_BODY_LIMIT_BYTES as u, VelaBodySecurityOptions as v, HttpRequestObserver as w, ControllerOptions as x, VelaQuerySecurityOptions as y, CreateDiscoverableDecoratorOptions as z };
 ```

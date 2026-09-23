@@ -9,7 +9,6 @@ import {
   Get,
   HttpMethod,
   Injectable,
-  MetadataRegistry,
   Module,
   Post,
   VelaFactory,
@@ -204,7 +203,6 @@ async function createApp(
 }
 
 beforeEach(() => {
-  MetadataRegistry.clear();
   ran = false;
 });
 

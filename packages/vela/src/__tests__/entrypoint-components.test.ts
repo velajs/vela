@@ -1,16 +1,13 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { Container } from '../container/container';
 import { InjectionToken, defineProvider } from '../container/types';
 import { UseGuards } from '../pipeline/decorators';
-import { MetadataRegistry } from '../registry/metadata.registry';
 import {
   resolvePipelineComponents,
   resolveScopedComponents,
   resolveScopedComponentsAsync,
 } from '../pipeline/scoped-components';
 import type { CanActivate } from '../pipeline/types';
-
-afterEach(() => MetadataRegistry.clear());
 
 describe('public owned component resolution', () => {
   it('resolves async guard factories from each handler owner in declaration order', async () => {

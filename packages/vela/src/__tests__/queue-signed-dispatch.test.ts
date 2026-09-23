@@ -1,5 +1,5 @@
 import { defineProvider } from '../container/types';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   APP_GUARD,
   VelaFactory,
@@ -9,7 +9,6 @@ import {
   Post,
   Inject,
   Injectable,
-  MetadataRegistry,
   SignedInvocation,
   URL_SIGNING_SECRET,
   type CanActivate,
@@ -26,10 +25,6 @@ import {
 import type { QueueClient, QueueDriver, QueueJob } from '../queue/index.js';
 
 const SECRET = 'queue-signed-dispatch-secret';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 describe('QueueModule signed re-entry dispatch (opt-in)', () => {
   it('signed mode re-enters a @SignedInvocation() route instead of the @Processor', async () => {

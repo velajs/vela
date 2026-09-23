@@ -16,7 +16,7 @@ import {
  * Used by createOpenApiDocument and any other consumer that needs a
  * controller list without bootstrapping the application.
  */
-export function collectControllers(rootModule: Type): Type[] {
+export function collectControllers(rootModule: Type | DynamicModule): Type[] {
   const visited = new Map<Type, Set<string>>();
   const controllers = new Set<Type>();
 

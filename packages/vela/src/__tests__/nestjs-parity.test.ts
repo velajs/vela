@@ -142,10 +142,6 @@ import type {
   ExceptionFilter,
 } from '../index.js';
 
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
-
 // =============================================================================
 // @HttpCode
 // =============================================================================
@@ -1299,8 +1295,6 @@ describe('Module-level Use* decorators', () => {
 });
 
 describe('switchToHttp() and @Res() decorator', () => {
-  beforeEach(() => MetadataRegistry.clear());
-
   it('switchToHttp().getRequest() returns the raw Request in a guard', async () => {
     let capturedUrl: string | undefined;
 
@@ -1383,8 +1377,6 @@ describe('switchToHttp() and @Res() decorator', () => {
 });
 
 describe('Inline param-level pipes', () => {
-  beforeEach(() => MetadataRegistry.clear());
-
   it('@Param("id", ParseIntPipe) parses route param to number', async () => {
     @Controller('/users')
     class UsersController {
@@ -1473,8 +1465,6 @@ describe('Inline param-level pipes', () => {
 });
 
 describe('Lifecycle hooks', () => {
-  beforeEach(() => MetadataRegistry.clear());
-
   it('onModuleInit() is called before the app is ready', async () => {
     const calls: string[] = [];
 
@@ -1555,8 +1545,6 @@ describe('Lifecycle hooks', () => {
 });
 
 describe('APP_FILTER global exception filter', () => {
-  beforeEach(() => MetadataRegistry.clear());
-
   it('{ provide: APP_FILTER, useClass: Filter } catches exceptions globally', async () => {
     @Injectable()
     @Catch()
@@ -2877,15 +2865,6 @@ describe('CacheInterceptor / @CacheKey / @CacheTTL', () => {
 // =============================================================================
 
 describe('EventEmitter / @OnEvent', () => {
-  beforeEach(() => {
-    // MetadataRegistry.clear() wipes EventEmitterModule metadata since it's a
-    // plain @Module() class whose decorator runs once at import time.
-    MetadataRegistry.setModuleOptions(EventEmitterModule, {
-      providers: [EventEmitter, EventEmitterSubscriber],
-      exports: [EventEmitter],
-    });
-  });
-
   it('@OnEvent handler is auto-subscribed and fires on emit', async () => {
     const received: string[] = [];
 
@@ -3484,14 +3463,6 @@ describe('HttpModule / HttpService', () => {
 // =============================================================================
 
 describe('HealthModule', () => {
-  beforeEach(() => {
-    // HealthModule is a plain @Module() class; re-register after MetadataRegistry.clear()
-    MetadataRegistry.setModuleOptions(HealthModule, {
-      providers: [HealthCheckService, HealthIndicatorService, HttpHealthIndicator],
-      exports: [HealthCheckService, HealthIndicatorService, HttpHealthIndicator],
-    });
-  });
-
   afterEach(() => {
     vi.restoreAllMocks();
   });

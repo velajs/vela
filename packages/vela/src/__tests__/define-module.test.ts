@@ -1,12 +1,11 @@
 import { defineProvider } from '../container/types';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   APP_GUARD,
   Controller,
   Get,
   Injectable,
   InjectionToken,
-  MetadataRegistry,
   Module,
   VelaFactory,
   defineModule,
@@ -18,10 +17,6 @@ import {
   stableHash,
 } from '../index.js';
 import type { CanActivate, DynamicModule } from '../index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 interface WidgetOptions {
   color?: string;

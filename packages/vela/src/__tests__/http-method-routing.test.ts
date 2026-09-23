@@ -1,9 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { VelaFactory, Module, Controller, Get, Head, Options, MetadataRegistry } from '../index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
+import { describe, it, expect } from 'vitest';
+import { VelaFactory, Module, Controller, Get, Head, Options } from '../index.js';
 
 describe('HTTP method routing', () => {
   describe('@Head()', () => {

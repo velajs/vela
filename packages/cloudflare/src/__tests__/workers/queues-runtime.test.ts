@@ -72,7 +72,7 @@ describe('QueueModule delivery under workerd', () => {
       providers: [Email, Sms],
     })
     class App {}
-    const worker = createCloudflareWorker({ create: async () => ({ module: App }) });
+    const worker = createCloudflareWorker({ module: App });
     const batch = createMessageBatch('shared-native', [
       incoming('welcome', 'email'),
       incoming('code', 'sms'),

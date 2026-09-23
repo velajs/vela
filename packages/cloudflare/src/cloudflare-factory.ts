@@ -3,7 +3,6 @@ import { getConnInfo } from 'hono/cloudflare-workers';
 import { VelaFactory } from '@velajs/vela';
 import type {
   RuntimeAdapter,
-  Type,
   VelaApplication,
   VelaEnv,
   VelaMiddlewareHandler,
@@ -15,7 +14,6 @@ import { reportCloudflareScheduleDiagnostics } from './schedule-diagnostics';
 import { registerScheduledEventSeed, type ScheduledEvent } from './scheduled-event';
 import { warnWorkerLocalLive } from './websocket/do-live';
 import { registerWebSocketRoutes } from './websocket/websocket-routing';
-import { bootstrapCloudflareRoot } from './root-module';
 import type { CloudflareRoot } from './root-module';
 
 export interface CloudflareWorkerOptions {
@@ -96,26 +94,15 @@ export function cloudflareAdapter(options: { env: VelaEnv }): RuntimeAdapter {
 
 /**
  * Build an application for one native Workers environment. Call inside a platform event.
- * A `{ create(env) }` root runs once per environment, and every application built for
- * that environment reuses its module graph. Values created in `create(env)`, such as
- * `useValue` providers and module option objects, are therefore shared by all of those
- * applications and Durable Object instances. Build per-application state in factories
- * (`useFactory`, `forRootAsync`, `driver: () => ...`), which run for each application.
+ * The root is static: a module class or a `DynamicModule` declared at module scope.
+ * Read bindings in providers (`@InjectEnv()`) and module factories
+ * (`forRootAsync({ inject: [ENV], useFactory })`), which run for each application.
  */
 export async function createCloudflareApp(
   rootModule: CloudflareRoot,
   options: CreateCloudflareAppOptions,
 ): Promise<CloudflareApplication> {
-  return bootstrapCloudflareRoot(rootModule, options.env, (root) =>
-    buildApplication(root, options),
-  );
-}
-
-async function buildApplication(
-  root: Type,
-  options: CreateCloudflareAppOptions,
-): Promise<CloudflareApplication> {
-  const velaApp = await VelaFactory.create(root, {
+  const velaApp = await VelaFactory.create(rootModule, {
     globalPrefix: options.globalPrefix,
     security: options.security,
     middleware: options.middleware?.(options.env),
@@ -123,17 +110,14 @@ async function buildApplication(
   });
   const app = new CloudflareApplication(velaApp, options.env);
   app.scanInstances(velaApp.getInstances());
-  registerWebSocketRoutes(app.getHonoApp(), app.getWsGatewayRoutes());
+  registerWebSocketRoutes(app.getHonoApp(), app.getWsGatewayRoutes(), velaApp.getContainer());
   return app;
 }
 
 /**
  * Worker entrypoint with one bootstrap per environment identity. Concurrent cold
  * events share construction; failed construction is evicted so the next event
- * can retry. Weak keys stop this cache from retaining a replaced environment,
- * but classes a root declares stay in the isolate-global metadata registry with
- * the values their metadata captures, so roots resolve once per environment
- * rather than once per application.
+ * can retry. Weak keys stop this cache from retaining a replaced environment.
  */
 export function createCloudflareWorker(
   rootModule: CloudflareRoot,

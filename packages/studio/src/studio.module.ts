@@ -9,8 +9,8 @@ import { defineProvider } from '@velajs/vela';
  * the dispatch registry's `onApplicationBootstrap` builds the op map and the
  * route contributor mounts routes at build time.
  */
-import { Container, defineModule } from '@velajs/vela';
-import type { ProviderDefinition, Type } from '@velajs/vela';
+import { Container, ROOT_MODULE, defineModule } from '@velajs/vela';
+import type { DynamicModule, ProviderDefinition, Type } from '@velajs/vela';
 import { resolveStudioConfig, StudioEnvReader } from './studio.config';
 import type { StudioModuleOptions } from './studio.types';
 import { ADMIN_AUDIT_SINK, STUDIO_RESOLVED_CONFIG } from './tokens';
@@ -44,11 +44,15 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<StudioMod
     const providers: Array<Type | ProviderDefinition> = [
       // Env-derived config slice (reads VELA_STUDIO_* from the optional ENV).
       StudioEnvReader,
-      // Resolved config = env UNDER module options.
+      // Resolved config = env UNDER module options; OpenAPI documents the
+      // application's root unless the options name a narrower module.
       defineProvider(STUDIO_RESOLVED_CONFIG, {
-        useFactory: (env: StudioEnvReader, options: StudioModuleOptions) =>
-          resolveStudioConfig(env.config, options),
-        inject: [StudioEnvReader, OPTIONS],
+        useFactory: (
+          env: StudioEnvReader,
+          options: StudioModuleOptions,
+          root: Type | DynamicModule,
+        ) => resolveStudioConfig(env.config, options, root),
+        inject: [StudioEnvReader, OPTIONS, ROOT_MODULE],
       }),
       defineProvider(AdminSubTokenSigner, {
         useFactory: (config: ResolvedStudioConfig) =>

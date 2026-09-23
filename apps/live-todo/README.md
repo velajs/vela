@@ -1,6 +1,6 @@
 # live-todo — realtime todo + presence on `@velajs/vela/live`
 
-A two-runtime demo of Vela live queries using the linked workspace client. The server and browser share argument/result parsers in `src/live-contract.ts`, and `src/app.module.ts` defines the common application.
+A two-runtime demo of Vela live queries using the linked workspace client. The server and browser share argument/result parsers in `src/live-contract.ts`, and `src/app.module.ts` declares the common application once as `TodoAppModule`. Each entry calls `TodoAppModule.forRoot(...)` at module scope with its runtime's WebSocket transport, live module and store. The gateway admits every upgrade as an anonymous visitor through `AnonymousDemoAuthenticator`, a demo `UpgradeAuthenticator` class; a real application verifies a session cookie or a short-lived socket ticket there.
 
 From the workspace root, run `pnpm install --frozen-lockfile` and `pnpm build` first. Then run either command below from this example directory:
 
@@ -21,7 +21,7 @@ constructor types alone. Both variants serve the page and the esbuild bundle of
 `web/main.ts` from `public/`, which `pnpm run bundle:web` writes.
 
 ```sh
-pnpm test        # the Worker inside workerd: KV store, DO commit stamps, constructor metadata
+pnpm test        # the Worker inside workerd: KV store, DO commit stamps, the room upgrade, constructor metadata
 pnpm build       # vite build (deployable Worker in dist/) and the Node host
 pnpm preview     # serves the Vite build on :8789
 ```

@@ -10,6 +10,7 @@ import {
   VelaFactory,
   defineProvider,
   type ExecutionLifetime,
+  type OnModuleInit,
   type VelaEnv,
 } from '@velajs/vela';
 import {
@@ -704,26 +705,27 @@ describe('consumeQueueBatch', () => {
   });
 });
 
-describe('async dynamic Worker roots', () => {
-  it('shares cold factory work, evicts failures, and keeps dynamic providers', async () => {
-    let calls = 0;
+describe('dynamic Worker roots', () => {
+  it('shares cold construction, evicts failures, and keeps dynamic providers', async () => {
+    let attempts = 0;
     const { providers } = processors();
+    @Injectable()
+    class FlakyStartup implements OnModuleInit {
+      async onModuleInit(): Promise<void> {
+        attempts++;
+        await Promise.resolve();
+        if (attempts === 1) throw new Error('retry bootstrap');
+      }
+    }
     @Module({})
     class Root {}
     const worker = createCloudflareWorker({
-      async create() {
-        calls++;
-        await Promise.resolve();
-        if (calls === 1) throw new Error('retry bootstrap');
-        return {
-          module: Root,
-          imports: [
-            QueueModule.forRoot({ driver: cloudflareQueues() }),
-            QueueModule.registerQueue({ name: 'sms' }),
-          ],
-          providers,
-        };
-      },
+      module: Root,
+      imports: [
+        QueueModule.forRoot({ driver: cloudflareQueues() }),
+        QueueModule.registerQueue({ name: 'sms' }),
+      ],
+      providers: [...providers, FlakyStartup],
     });
     const env = { NAME: 'same' };
     const first = () =>
@@ -734,8 +736,8 @@ describe('async dynamic Worker roots', () => {
       );
     const results = await Promise.allSettled([first(), first()]);
     expect(results.every((result) => result.status === 'rejected')).toBe(true);
-    expect(calls).toBe(1);
+    expect(attempts).toBe(1);
     await Promise.all([first(), first()]);
-    expect(calls).toBe(2);
+    expect(attempts).toBe(2);
   });
 });

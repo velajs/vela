@@ -1,20 +1,8 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import type { VelaMiddlewareHandler } from '@velajs/vela';
-import {
-  Controller,
-  Get,
-  Ip,
-  Module,
-  MetadataRegistry,
-  ThrottlerModule,
-  VelaFactory,
-} from '@velajs/vela';
+import { Controller, Get, Ip, Module, ThrottlerModule, VelaFactory } from '@velajs/vela';
 import { cloudflareAdapter, createCloudflareApp } from '../cloudflare-factory';
 const env = {};
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 describe('createCloudflareApp options', () => {
   it('forwards globalPrefix to VelaFactory.create', async () => {

@@ -1,4 +1,4 @@
 import { createCloudflareWorker } from '@velajs/cloudflare';
-import { createAppModule } from './app.js';
+import { AppModule } from './app.js';
 
-export default createCloudflareWorker({ create: createAppModule });
+export default createCloudflareWorker(AppModule);

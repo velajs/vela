@@ -14,7 +14,7 @@ export type { VelaSecurityOptions } from './http/security-options';
 export { ModuleLoader } from './module/module-loader';
 export { ComponentManager } from './pipeline/component.manager';
 export { VelaApplication } from './application';
-export { MetadataRegistry } from './registry/metadata.registry';
+export { MetadataRegistry, countRegisteredClasses } from './registry/metadata.registry';
 export {
   APP_GUARD,
   APP_PIPE,

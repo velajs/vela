@@ -1,11 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { Module, MetadataRegistry } from '@velajs/vela';
+import { describe, it, expect } from 'vitest';
+import { Module } from '@velajs/vela';
 import { Test } from '../test.js';
 import { TestWsConnection } from '../ws/test-ws-connection.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 /** Minimal EventTarget-backed stand-in for a WebSocket. */
 class MockSocket extends EventTarget {

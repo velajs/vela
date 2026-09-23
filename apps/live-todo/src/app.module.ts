@@ -15,8 +15,8 @@ import {
   WebSocketGateway,
   WebSocketModule,
 } from '@velajs/vela';
-import type { DynamicModule, ModuleImport, ProviderDefinition, Type } from '@velajs/vela';
-import type { WebSocketUpgradeIdentity } from '@velajs/vela/websocket';
+import type { DynamicModule, ProviderDefinition, Type } from '@velajs/vela';
+import type { UpgradeAuthenticator, WebSocketUpgradeIdentity } from '@velajs/vela/websocket';
 import {
   LiveInvalidation,
   LiveModule,
@@ -24,7 +24,6 @@ import {
   LiveResolver,
   stampCommitHeaders,
 } from '@velajs/vela/live';
-import type { LiveModuleOptions } from '@velajs/vela/live';
 import { todoListDefinition } from './live-contract.js';
 import type { Todo } from './live-contract.js';
 
@@ -142,20 +141,25 @@ export class TodosController {
 
 /**
  * DEMO ONLY: admits every upgrade as a fresh anonymous visitor so the demo
- * runs without an auth stack. Gateways reject upgrades that have no
- * `authenticateUpgrade`; a real application verifies a session cookie or a
- * short-lived socket ticket here and returns that user's identity.
+ * runs without an auth stack. Gateways reject upgrades that name no
+ * `authenticator`; a real application verifies a session cookie or a
+ * short-lived socket ticket here and returns that user's identity. Each
+ * application resolves this class through dependency injection, so a real
+ * authenticator can inject its session service.
  */
-function anonymousDemoUpgrade(options: { tenantId: string; ttlMs: number }) {
-  return (): WebSocketUpgradeIdentity => ({
-    principal: {
-      issuer: 'live-todo-demo',
-      subject: `anonymous:${crypto.randomUUID()}`,
-      principalType: 'user',
-    },
-    tenantId: options.tenantId,
-    expiresAtMs: Date.now() + options.ttlMs,
-  });
+@Injectable()
+export class AnonymousDemoAuthenticator implements UpgradeAuthenticator {
+  authenticate(): WebSocketUpgradeIdentity {
+    return {
+      principal: {
+        issuer: 'live-todo-demo',
+        subject: `anonymous:${crypto.randomUUID()}`,
+        principalType: 'user',
+      },
+      tenantId: 'demo',
+      expiresAtMs: Date.now() + 60 * 60 * 1000,
+    };
+  }
 }
 
 /**
@@ -167,31 +171,39 @@ function anonymousDemoUpgrade(options: { tenantId: string; ttlMs: number }) {
   path: '/rooms/:id/ws',
   roomParam: 'id',
   binding: 'CHAT_ROOM',
-  authenticateUpgrade: anonymousDemoUpgrade({ tenantId: 'demo', ttlMs: 60 * 60 * 1000 }),
+  authenticator: AnonymousDemoAuthenticator,
 })
 export class RoomsGateway {}
 
-export interface MakeAppModuleOptions {
-  live?: LiveModuleOptions;
-  liveModule?: DynamicModule;
+export interface TodoAppOptions {
+  /** The WebSocket transport. Defaults to the core (Node) `WebSocketModule`. */
   websocketModule?: DynamicModule;
-  /** Extra imports (e.g. Cloudflare's KVModule) and the TodoStore provider. */
-  imports?: ModuleImport[];
+  /** The live module with this runtime's driver and cursor log. Defaults to in-memory. */
+  liveModule?: DynamicModule;
+  /** Provides `TODO_STORE`. Defaults to the in-memory store. */
   storeProvider?: Type | ProviderDefinition;
 }
 
-export function makeAppModule(options: MakeAppModuleOptions = {}): new () => object {
-  const storeProvider =
-    options.storeProvider ?? defineProvider(TODO_STORE, { useClass: MemoryTodoStore });
-  @Module({
-    imports: [
-      options.websocketModule ?? WebSocketModule.forRoot({}),
-      options.liveModule ?? LiveModule.forRoot(options.live ?? {}),
-      ...(options.imports ?? []),
-    ],
-    controllers: [TodosController],
-    providers: [RoomsGateway, storeProvider, TodosService, TodoLive],
-  })
-  class AppModule {}
-  return AppModule;
+/**
+ * The application both runtimes share, declared once. Each runtime's entry
+ * calls `TodoAppModule.forRoot(...)` once, at module scope, with its own
+ * transport, live module and store.
+ */
+@Module({
+  controllers: [TodosController],
+  providers: [RoomsGateway, TodosService, TodoLive],
+})
+export class TodoAppModule {
+  static forRoot(options: TodoAppOptions = {}): DynamicModule {
+    return {
+      module: TodoAppModule,
+      imports: [
+        options.websocketModule ?? WebSocketModule.forRoot({}),
+        options.liveModule ?? LiveModule.forRoot({}),
+      ],
+      providers: [
+        options.storeProvider ?? defineProvider(TODO_STORE, { useClass: MemoryTodoStore }),
+      ],
+    };
+  }
 }

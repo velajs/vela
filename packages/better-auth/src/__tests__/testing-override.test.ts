@@ -1,7 +1,7 @@
 import { sessionFixture } from './fixtures';
-import { Controller, Get, Inject, MetadataRegistry, UseGuards } from '@velajs/vela';
+import { Controller, Get, Inject, UseGuards } from '@velajs/vela';
 import { Test } from '@velajs/testing';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { AuthGuard, BetterAuthModule, BetterAuthService, CurrentUser, Public } from '../index';
 import type { BetterAuthInstance } from '../better-auth.types';
 
@@ -18,9 +18,6 @@ function makeAuth(label: string) {
 // AuthGuard and the catch-all controller both inject BetterAuthService, so a
 // single override at that token swaps the auth surface for every consumer.
 describe('Test.createTestingModule — BetterAuthService override', () => {
-  beforeEach(() => MetadataRegistry.clear());
-  afterEach(() => MetadataRegistry.clear());
-
   it('overrideProvider(BetterAuthService).useValue(stub) — resolved via moduleRef.get', async () => {
     const real = makeAuth('real');
     const stub = new BetterAuthService(() => makeAuth('stub'));

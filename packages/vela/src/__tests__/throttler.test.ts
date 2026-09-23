@@ -1,5 +1,5 @@
 import { defineProvider } from '../container/types';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   APP_GUARD,
   VelaFactory,
@@ -7,16 +7,11 @@ import {
   Get,
   Injectable,
   Module,
-  MetadataRegistry,
   setTrustedRequestIdentity,
 } from '../index.js';
 import { ThrottlerModule, Throttle, SkipThrottle } from '../throttler/index.js';
 import type { CanActivate, ExecutionContext } from '../index.js';
 import type { ThrottlerStore, ThrottlerStorageRecord } from '../throttler/index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 describe('ThrottlerModule', () => {
   it('should allow requests under the limit', async () => {
@@ -391,7 +386,7 @@ describe('ThrottlerModule', () => {
     @Module({
       providers: [
         VerifiedIdentityGuard,
-        defineProvider(APP_GUARD, {useExisting: VerifiedIdentityGuard}),
+        defineProvider(APP_GUARD, { useExisting: VerifiedIdentityGuard }),
       ],
     })
     class IdentityModule {}

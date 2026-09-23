@@ -1,14 +1,10 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { Controller, ENV, Get, Inject, Module, MetadataRegistry } from '@velajs/vela';
+import { describe, it, expect } from 'vitest';
+import { Controller, ENV, Get, Inject, Module } from '@velajs/vela';
 import { signUrl, STORAGE_SIGNED_URL_PURPOSE } from '@velajs/vela/storage';
 import { createCloudflareApp } from '../cloudflare-factory';
 import { StorageModule } from '../storage/storage.module';
 import { StorageService } from '../storage/storage.service';
 import { encodeStorageKeyClaim, isStorageKeyWithinRoot } from '../storage/storage-key-claim';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 function createMockR2() {
   const store = new Map<string, { body: string; contentType?: string }>();

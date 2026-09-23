@@ -3,7 +3,6 @@ import { RolesGuard, Roles } from '@velajs/authz/vela';
 import {
   Controller,
   Get,
-  MetadataRegistry,
   Module,
   Req,
   ThrottlerModule,
@@ -11,7 +10,7 @@ import {
   VelaFactory,
   getTrustedRequestIdentity,
 } from '@velajs/vela';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { ExecutionContext } from '@velajs/vela';
 import {
   AuthGuard,
@@ -34,9 +33,6 @@ function mockAuth(session: typeof SESSION_OK | null) {
 }
 
 describe('AuthGuard', () => {
-  beforeEach(() => MetadataRegistry.clear());
-  afterEach(() => MetadataRegistry.clear());
-
   it('publishes validated session state and lets @CurrentUser observe guard-set state', async () => {
     const auth = mockAuth(SESSION_OK);
 
@@ -332,9 +328,6 @@ describe('AuthGuard', () => {
 });
 
 describe('RolesGuard', () => {
-  beforeEach(() => MetadataRegistry.clear());
-  afterEach(() => MetadataRegistry.clear());
-
   it('allows when user has a required role', async () => {
     const auth = mockAuth(SESSION_OK);
 

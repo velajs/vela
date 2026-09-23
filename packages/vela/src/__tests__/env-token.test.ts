@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import * as vela from '../index.js';
 import {
   Controller,
@@ -9,7 +9,6 @@ import {
   InjectEnv,
   InjectionToken,
   InternalDispatcher,
-  MetadataRegistry,
   Module,
   Optional,
   Post,
@@ -23,8 +22,6 @@ import {
   type RuntimeAdapter,
   type VelaEnv,
 } from '../index.js';
-
-beforeEach(() => MetadataRegistry.clear());
 
 /** Read one synthetic string binding the way framework readers do. */
 function binding(env: VelaEnv, key: string): string | undefined {

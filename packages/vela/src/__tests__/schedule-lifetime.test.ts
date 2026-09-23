@@ -5,7 +5,6 @@ import {
   Inject,
   Injectable,
   InjectionToken,
-  MetadataRegistry,
   Module,
   Scope,
   VelaFactory,
@@ -26,7 +25,6 @@ const gate = () => {
 };
 
 beforeEach(() => {
-  MetadataRegistry.clear();
   vi.useFakeTimers();
 });
 afterEach(async () => {

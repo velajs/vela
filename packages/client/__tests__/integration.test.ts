@@ -1,7 +1,6 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   Injectable,
-  MetadataRegistry,
   Module,
   VelaFactory,
   WebSocketGateway,
@@ -66,7 +65,6 @@ class ServerSocket implements WsClient {
 }
 
 describe('client ↔ vela live e2e (in-memory transport)', () => {
-  beforeEach(() => MetadataRegistry.clear());
 
   async function makeStack() {
     const todos: Array<{ id: string; text: string }> = [{ id: 't1', text: 'first' }];

@@ -4,7 +4,7 @@
  * here — they come from `@velajs/studio-protocol`.
  */
 import type { Context } from 'hono';
-import type { InferToken, Token, Type } from '@velajs/vela';
+import type { DynamicModule, InferToken, Token, Type } from '@velajs/vela';
 import type { StudioConfirmChallenge, StudioOp, StudioWriteGates } from '@velajs/studio-protocol';
 import type { AdminAuditEntry } from '@velajs/studio-protocol';
 
@@ -63,12 +63,11 @@ export interface StudioModuleOptions {
   /** Master bearer token. When absent (and none in env), Studio is default-closed. */
   token?: string;
   /**
-   * The app's ROOT module. Required for `app.openapi` (and the `openapi`
-   * capability): Studio is mounted as an imported module and cannot otherwise
-   * discover the graph to hand `createOpenApiDocument`. Absent ⇒ the op reports
-   * `FEATURE_UNCONFIGURED` and the `openapi` feature stays dark.
+   * The module `app.openapi` documents. Defaults to the application's root
+   * (`ROOT_MODULE`, the class or `DynamicModule` the application was created
+   * from); pass a narrower module to document only part of the graph.
    */
-  rootModule?: Type;
+  rootModule?: Type | DynamicModule;
   /** Editable-category overrides (each defaults to its env value, else false). */
   editable?: Partial<EditableFlags>;
   /**
@@ -100,8 +99,8 @@ export interface ResolvedStudioConfig {
   path: string;
   absolute: boolean;
   token?: string;
-  /** The app's root module for OpenAPI generation (see {@link StudioModuleOptions.rootModule}). */
-  rootModule?: Type;
+  /** The module OpenAPI generation documents (see {@link StudioModuleOptions.rootModule}). */
+  rootModule?: Type | DynamicModule;
   editable: EditableFlags;
   /** Data-browser model allow/deny filter (see {@link StudioModuleOptions.managedModels}). */
   managedModels?: { include?: string[]; exclude?: string[] };

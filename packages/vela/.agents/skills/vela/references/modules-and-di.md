@@ -20,6 +20,8 @@ class UserModule {}
 
 > Field-name gotcha: it is `isGlobal` on `@Module`/`ModuleOptions`, but `global` on a `DynamicModule` object.
 
+Modules are static. Declare every module, controller and provider class once at module scope, and never decorate a class inside a function: each call would declare new classes, and the isolate-global metadata registry keeps them all. The application root is a module class or a `DynamicModule` (`AppModule.forRoot(...)`) declared the same way, and any module can inject it as the global `ROOT_MODULE`. Runtime values (bindings, secrets, per-environment clients) enter through DI: `forRootAsync({ inject: [ENV], useFactory })`, `useFactory` providers, `@InjectEnv()`, or an injectable class a decorator names (such as a gateway's `authenticator`). Those run per application, so several applications, including one per Workers environment, share the classes but no instances.
+
 ## Providers & injection
 
 Class-type constructor params auto-resolve via emitted decorator metadata — no `@Inject` needed. Use `@Inject(token)` only for non-class tokens (`InjectionToken`, string, symbol), `forwardRef`, or when a bundler strips types:

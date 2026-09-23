@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   VelaFactory,
   Controller,
@@ -8,13 +8,8 @@ import {
   SetMetadata,
   Reflector,
   ForbiddenException,
-  MetadataRegistry,
 } from '../index.js';
 import type { CanActivate, ExecutionContext, ReflectableDecorator } from '../index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 // Helper: create a decorator from SetMetadata
 const Roles = (...roles: string[]) => SetMetadata('roles', roles);

@@ -34,8 +34,10 @@ propagated as issuer + subject + principal type + trusted tenant +
 identities fail closed. Authenticated upgrades without a server-derived tenant
 fail closed.
 
-The `authenticateUpgrade` gateway hook accepts secure-cookie sessions or
-Vela's 30-second, room-bound, single-use socket tickets. Bearer-like query
+A gateway's `authenticator`, an `UpgradeAuthenticator` class each application
+resolves through dependency injection, accepts secure-cookie sessions or
+Vela's 30-second, room-bound, single-use socket tickets. A gateway without one
+refuses every upgrade. Bearer-like query
 credentials and duplicate tickets are rejected. A ticket is stripped before
 Durable Object forwarding, atomically consumed through a `NonceStore`, and its
 canonical `{ principal, tenantId, expiresAtMs }` identity is stored in the

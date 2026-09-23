@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   VelaFactory,
   Controller,
@@ -11,10 +11,6 @@ import {
 import { METADATA_KEYS } from '../constants.js';
 import { defineMetadata } from '../metadata.js';
 import type { DynamicModule } from '../index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 // =============================================================================
 // DynamicModule.imports

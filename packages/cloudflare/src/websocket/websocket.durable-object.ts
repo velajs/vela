@@ -10,7 +10,6 @@ import type {
 import { buildDoRuntime } from './do-bootstrap';
 import { DoWebSocketHost, type WsConnectionPrincipal } from './do-websocket-host';
 import { armDoPitr, readDoPitrBookmark } from './do-pitr';
-import { bootstrapCloudflareRoot } from '../root-module';
 import type { CloudflareRoot } from '../root-module';
 import type {
   DoPitrArmOptions,
@@ -34,7 +33,8 @@ function isIdentityField(value: string | null): value is string {
 
 /**
  * Base class for the WebSocket Durable Object. The user exports a named subclass
- * (matching their `wrangler.toml` `class_name`) built from their `AppModule`:
+ * (matching their `wrangler.toml` `class_name`) built from their `AppModule`, or
+ * from a `DynamicModule` declared at module scope:
  *
  * ```ts
  * export class ChatRoom extends VelaWebSocketDurableObject(AppModule) {}
@@ -68,11 +68,9 @@ export function VelaWebSocketDurableObject(rootModule: CloudflareRoot): new (
         // Older runtimes without auto-response — fine, protocol pings still work.
       }
       this.ready = ctx.blockConcurrencyWhile(async () => {
-        // Instances in one isolate share the root resolved for their environment;
-        // resolving per instance would register new classes for every construction.
-        const runtime = await bootstrapCloudflareRoot(rootModule, env, (root) =>
-          buildDoRuntime(root, ctx, { env }),
-        );
+        // The root is static, so constructing another instance declares no new
+        // classes in the isolate-global metadata registry.
+        const runtime = await buildDoRuntime(rootModule, ctx, { env });
         this.host = new DoWebSocketHost(
           ctx,
           runtime.dispatcher,

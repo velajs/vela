@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 import {
   VelaFactory,
@@ -9,14 +9,9 @@ import {
   Query,
   Module,
   Injectable,
-  MetadataRegistry,
   defineDto,
   ValidationPipe,
 } from '../index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 // =============================================================================
 // defineDto

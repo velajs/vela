@@ -3,7 +3,6 @@ import {
   Controller,
   Get,
   Module,
-  MetadataRegistry,
   METADATA_KEYS,
   VelaFactory,
   createOpenApiDocument,
@@ -26,7 +25,6 @@ const contributor = (overrides: Partial<RouteContributor> = {}): RouteContributo
 });
 
 beforeEach(() => {
-  MetadataRegistry.clear();
   _resetRouteContributors();
 });
 

@@ -7,14 +7,9 @@ import {
   Param,
   Version,
   ApiDoc,
-  MetadataRegistry,
   UrlGeneratorService,
   createOpenApiDocument,
 } from '../index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 describe('named routes + URL generation', () => {
   describe('route name reaches describeRoutes()', () => {

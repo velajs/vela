@@ -1,10 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { VelaFactory, Module, Injectable, Inject, MetadataRegistry } from '../index.js';
+import { describe, it, expect } from 'vitest';
+import { VelaFactory, Module, Injectable, Inject } from '../index.js';
 import { Seeder, SeederModule, SeederRegistry, runSeeders } from '../seeder/index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 describe('SeederModule', () => {
   it('discovers @Seeder providers and runs them in `order`', async () => {

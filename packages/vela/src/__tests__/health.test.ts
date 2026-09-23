@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { VelaFactory, Controller, Get, Module, MetadataRegistry } from '../index.js';
+import { describe, it, expect, vi } from 'vitest';
+import { VelaFactory, Controller, Get, Module } from '../index.js';
 import {
   HealthCheckException,
   HealthModule,
@@ -8,16 +8,6 @@ import {
   HttpHealthIndicator,
 } from '../health/index.js';
 import { ServiceUnavailableException } from '../errors/http-exception.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-  // Re-register HealthModule metadata after clear — the @Module() decorator
-  // runs once at import time, but MetadataRegistry.clear() wipes it.
-  MetadataRegistry.setModuleOptions(HealthModule, {
-    providers: [HealthCheckService, HealthIndicatorService, HttpHealthIndicator],
-    exports: [HealthCheckService, HealthIndicatorService, HttpHealthIndicator],
-  });
-});
 
 describe('HealthIndicatorService', () => {
   it('should produce up result with correct shape', () => {

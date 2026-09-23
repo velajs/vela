@@ -1,11 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { VelaFactory, Controller, Get, Module, MetadataRegistry } from '../index.js';
+import { describe, it, expect } from 'vitest';
+import { VelaFactory, Controller, Get, Module } from '../index.js';
 import { CorsModule } from '../cors/index.js';
 import { cors } from 'hono/cors';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 describe('CorsModule', () => {
   it('should add CORS headers with wildcard origin', async () => {

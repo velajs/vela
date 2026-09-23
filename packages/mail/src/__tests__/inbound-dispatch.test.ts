@@ -8,7 +8,6 @@ import {
   type ExceptionFilter,
   type ExecutionContext,
   Injectable,
-  MetadataRegistry,
   Module,
   type NestInterceptor,
   type ProviderDefinition,
@@ -19,15 +18,13 @@ import {
   UseInterceptors,
   VelaFactory,
 } from '@velajs/vela';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { OnInboundEmail } from '../inbound/decorator';
 import { dispatchInboundEmail } from '../inbound/dispatch';
 import { parseInboundEmail, type InboundEmail } from '../inbound/parse';
 import { MailModule } from '../mail.module';
 import { MAIL_INBOUND_GATE } from '../mail.tokens';
 import type { MailInboundGate } from '../inbound/gate';
-
-beforeEach(() => MetadataRegistry.clear());
 
 const disposers: Array<() => Promise<void>> = [];
 afterEach(async () => {

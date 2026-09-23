@@ -102,6 +102,7 @@ The guard publishes through core's `setTrustedRequestIdentity`. Authorization, `
 - Import `PermissionGuard`, `RequirePermission`, `RolesGuard`, `Roles`, and `CurrentIdentity` from `@velajs/authz/vela`. These are the same guards Better Auth uses. Exactly one authorization engine must be visible to the declaring route module.
 - Tenant membership comes from a signed `tenantId` claim, or the signed claim selected by `tenantClaim`. `mapClaims` enriches non-authority fields only and cannot replace tenant, issuer, subject, expiry, claims, or roles. Explicit `groupRoles` maps external groups into local roles.
 - `identityFromAccess` is a pure projection for direct authz use; it does not authenticate a request.
+- `CloudflareAccessUpgradeAuthenticator` authenticates WebSocket upgrades: `@WebSocketGateway({ authenticator: CloudflareAccessUpgradeAuthenticator })`. It is resolved from the module that declares the gateway, which must import `CloudflareAccessModule`, and verifies with the same resolver as the guard. Upgrades always need a verified identity, whatever the module `mode`, and a token without the signed tenant claim is refused.
 
 ```ts
 import { cloudflareAccessIssuer } from '@velajs/cloudflare-access';
@@ -152,7 +153,7 @@ The verification key source is injectable (`keySet`), so tests self-host a JWKS 
 ## API
 
 - Core: `verifyAccessJwt`, `verifyRequest`, `assertVerifyOptions`, `normalizeAudiences`, `readToken`, `cloudflareAccessIssuer`, `genericOidcIssuer`, `getRemoteJwks`, `clearJwksCache`, `jwksCacheSize`, `JWKS_CACHE_MAX`, `defineIdentity`, `createAccessResolver`, `composeResolvers`, `IdentityRejectedError`, and the `AccessClaims` / `IssuerPreset` / `ResolvedIdentity` / `ResolveIdentity` / `IdentityContract` / `StandardSchemaV1` types.
-- `@velajs/cloudflare-access/vela`: `CloudflareAccessModule`, `CloudflareAccessGuard`, `CurrentAccessIdentity`, `identityFromAccess`, `ACCESS_RESOLVER`, and `ACCESS_MODULE_OPTIONS`.
+- `@velajs/cloudflare-access/vela`: `CloudflareAccessModule`, `CloudflareAccessGuard`, `CloudflareAccessUpgradeAuthenticator`, `CurrentAccessIdentity`, `identityFromAccess`, `ACCESS_RESOLVER`, and `ACCESS_MODULE_OPTIONS`.
 
 ## Shared authorization
 

@@ -200,12 +200,14 @@ export class CloudflareApplication {
           path: meta.path,
           binding: meta.options.binding,
           options: { ...meta.options },
+          moduleId: meta.moduleId,
         });
       }
     }
+    const container = this.#app.getContainer();
     for (const instance of instances) {
       if (!instance || typeof instance !== 'object') continue;
-      for (const route of collectWsGatewayRoutes(instance)) {
+      for (const route of collectWsGatewayRoutes(instance, container)) {
         if (!routes.has(route.path)) routes.set(route.path, route);
       }
     }

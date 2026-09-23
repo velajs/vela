@@ -1,5 +1,5 @@
 import { defineProvider } from '../container/types';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   VelaFactory,
   Controller,
@@ -25,7 +25,6 @@ import {
   HttpException,
   ForbiddenException,
   NotFoundException,
-  MetadataRegistry,
   Scope,
 } from '../index.js';
 import type {
@@ -39,11 +38,6 @@ import type {
   OnModuleInit,
   OnApplicationBootstrap,
 } from '../index.js';
-
-// Clean state before each test
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 // =============================================================================
 // Test 1: Basic controller + service + module
@@ -296,7 +290,10 @@ describe('DI Container', () => {
     }
 
     @Module({
-      providers: [ApiService, defineProvider(CONFIG, {useValue: { apiUrl: 'https://api.example.com' }})],
+      providers: [
+        ApiService,
+        defineProvider(CONFIG, { useValue: { apiUrl: 'https://api.example.com' } }),
+      ],
       controllers: [ApiController],
     })
     class AppModule {}

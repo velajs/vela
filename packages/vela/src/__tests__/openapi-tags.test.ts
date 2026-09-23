@@ -1,20 +1,15 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import {
   Controller,
   Get,
   Post,
   Module,
-  MetadataRegistry,
   METADATA_KEYS,
   createOpenApiDocument,
   defineMetadata,
   ApiTags,
 } from '../index.js';
 import { registerRouteContributor, _resetRouteContributors } from '../http/route-contributor.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 afterEach(() => {
   _resetRouteContributors();

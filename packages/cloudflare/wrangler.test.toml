@@ -49,4 +49,7 @@ queue = "vela-queue-bridge-test"
 # Plain variables the runtime seeds into ENV (see workers/env-runtime.test.ts).
 [vars]
 ENV_PROBE = "workerd-env"
+# Read through DI by the gateway's origin allowlist and upgrade authenticator.
+WS_ALLOWED_ORIGIN = "https://app.test"
+WS_TENANT = "tenant-1"
 URL_SIGNING_SECRET = "workerd-signing-secret"

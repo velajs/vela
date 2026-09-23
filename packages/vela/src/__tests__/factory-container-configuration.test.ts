@@ -1,16 +1,7 @@
 import { defineProvider } from '../container/types';
-import { beforeEach, describe, expect, it } from 'vitest';
-import {
-  Inject,
-  Injectable,
-  InjectionToken,
-  MetadataRegistry,
-  Module,
-  VelaFactory,
-} from '../index';
+import { describe, expect, it } from 'vitest';
+import { Inject, Injectable, InjectionToken, Module, VelaFactory } from '../index';
 import { bootstrap } from '../factory/bootstrap';
-
-beforeEach(() => MetadataRegistry.clear());
 
 describe('container configuration before bootstrap', () => {
   it('awaits the bootstrap hook before loading the module graph', async () => {

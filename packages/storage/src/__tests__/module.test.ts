@@ -1,13 +1,9 @@
-import { MetadataRegistry } from '@velajs/vela';
 import { Test } from '@velajs/testing';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { StorageModule, StorageService, storageToken } from '../index';
 import { memoryDriver } from '../drivers/memory';
 
 describe('StorageModule', () => {
-  beforeEach(() => MetadataRegistry.clear());
-  afterEach(() => MetadataRegistry.clear());
-
   it('forRoot provides a working StorageService', async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [StorageModule.forRoot({ driver: memoryDriver() })],

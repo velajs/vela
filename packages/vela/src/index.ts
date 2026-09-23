@@ -445,6 +445,7 @@ export {
   provideGlobal,
   sideEffectModule,
   UndefinedModuleError,
+  ROOT_MODULE,
 } from './module/index';
 export type {
   ModuleOptions,
@@ -649,8 +650,8 @@ export type {
   BeforeApplicationShutdown,
 } from './lifecycle/index';
 
-// MetadataRegistry — the central decoration store. Test setup typically
-// uses `MetadataRegistry.clear()` between cases. Internal primitives like
+// MetadataRegistry — the central decoration store. It holds no application
+// state, so tests need no cleanup between cases. Internal primitives like
 // RouteManager/ModuleLoader/ComponentManager live only at @velajs/vela/internal.
 export { MetadataRegistry } from './registry/metadata.registry';
 

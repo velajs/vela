@@ -27,4 +27,4 @@ class Tasks {
   providers: [Tasks],
 })
 class JobsModule {}
-export default createCloudflareWorker({ create: async () => ({ module: JobsModule }) });
+export default createCloudflareWorker(JobsModule);

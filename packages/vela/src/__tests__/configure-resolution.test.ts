@@ -1,11 +1,7 @@
 import type { Context, Next } from 'hono';
-import { describe, it, expect, beforeEach } from 'vitest';
-import { Controller, Get, Injectable, MetadataRegistry, Module, VelaFactory } from '../index.js';
+import { describe, it, expect } from 'vitest';
+import { Controller, Get, Injectable, Module, VelaFactory } from '../index.js';
 import type { MiddlewareConsumer, NestModule } from '../index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 // NestModule.configure() must (1) run with
 // constructor-injected deps resolved through the container, and (2) propagate

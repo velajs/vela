@@ -1,16 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  VelaFactory,
-  Controller,
-  Get,
-  Module,
-  MetadataRegistry,
-  createOpenApiDocument,
-} from '../index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
+import { describe, it, expect } from 'vitest';
+import { VelaFactory, Controller, Get, Module, createOpenApiDocument } from '../index.js';
 
 async function buildApp() {
   @Controller('/users')

@@ -7,7 +7,7 @@ import {
   durableObjectLive,
 } from '@velajs/cloudflare';
 import { VelaWebSocketDurableObject } from '@velajs/cloudflare/durable-objects';
-import { makeAppModule, TODO_STORE } from './app.module';
+import { TodoAppModule, TODO_STORE } from './app.module';
 import type { Todo, TodoStore } from './app.module';
 import { todoListDefinition } from './live-contract';
 
@@ -52,7 +52,9 @@ class KvTodoStore implements TodoStore {
 // One module definition for both isolates: the Worker (HTTP mutations — its
 // invalidations route to the room DO over the `invalidate` RPC and return the
 // DO's commit stamp) and the Durable Object (sockets, cursor log, re-runs).
-const AppModule = makeAppModule({
+// Declared once at module scope; each environment's application reads its
+// bindings through the ENV-injected factories.
+const AppModule = TodoAppModule.forRoot({
   liveModule: LiveModule.forRootAsync({
     inject: [ENV],
     useFactory: (env) => ({

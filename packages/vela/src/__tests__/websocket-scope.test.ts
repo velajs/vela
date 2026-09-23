@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { LIVE_PROTOCOL } from '@velajs/live-protocol';
 import {
@@ -12,7 +12,6 @@ import {
   UseFilters,
   UseInterceptors,
   ValidationPipe,
-  MetadataRegistry,
   VelaFactory,
   defineProvider,
   getExecutionLifetime,
@@ -60,7 +59,6 @@ class Client implements WsClient {
   commit() {}
   close() {}
 }
-beforeEach(() => MetadataRegistry.clear());
 
 describe('WebSocket invocation ownership', () => {
   it('shares a child across async guards and a request gateway; isolates overlapping tenants and drains before disposal', async () => {

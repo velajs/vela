@@ -2,7 +2,7 @@ import { LiveInvalidation, LiveModule, type InvalidationCommand } from '@velajs/
 import { CloudflareWebSocketModule } from '../websocket/cloudflare-websocket.module';
 import { durableObjectLive, type LiveNamespace } from '../websocket/do-live';
 import type { ExecutionContext } from 'hono';
-import { beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
   defineProvider,
   Controller,
@@ -13,7 +13,6 @@ import {
   Injectable,
   InjectEnv,
   InjectionToken,
-  MetadataRegistry,
   Module,
   Scope,
   type VelaEnv,
@@ -21,7 +20,6 @@ import {
 import { createCloudflareApp, createCloudflareWorker } from '../cloudflare-factory';
 import { QueueConsumer } from '../decorators/queue-consumer';
 
-beforeEach(() => MetadataRegistry.clear());
 const context = { waitUntil: (_promise: Promise<unknown>): void => {} };
 const httpContext: ExecutionContext = {
   ...context,
@@ -114,15 +112,9 @@ function fixture() {
 }
 
 describe('native application environments', () => {
-  it('builds a root graph once per environment, sharing concurrent cold events', async () => {
+  it('builds one application per environment, sharing concurrent cold events', async () => {
     const f = fixture();
-    const created: object[] = [];
-    const worker = createCloudflareWorker({
-      create(env) {
-        created.push(env);
-        return f.AppModule;
-      },
-    });
+    const worker = createCloudflareWorker(f.AppModule);
     const a = f.environment('a');
     const b = f.environment('b');
     await Promise.all([
@@ -131,7 +123,6 @@ describe('native application environments', () => {
       worker.queue({ queue: 'jobs', messages: [] }, b, context),
     ]);
     await worker.queue({ queue: 'jobs', messages: [] }, a, context);
-    expect(created).toEqual([a, b]);
     expect(f.constructions()).toBe(2);
     expect(f.seen.map((row) => row.name).sort()).toEqual(['a', 'a', 'a', 'b']);
   });

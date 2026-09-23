@@ -5,6 +5,8 @@ declare namespace Cloudflare {
   interface Env {
     ENV_PROBE: 'workerd-env';
     URL_SIGNING_SECRET: 'workerd-signing-secret';
+    WS_ALLOWED_ORIGIN: 'https://app.test';
+    WS_TENANT: 'tenant-1';
     TEST_ROOM: DurableObjectNamespace<import('./entry').TestRoom>;
     COUNTING_ROOM: DurableObjectNamespace<import('./entry').CountingRoom>;
     CRON_ROOM: DurableObjectNamespace<import('./entry').CronRoom>;

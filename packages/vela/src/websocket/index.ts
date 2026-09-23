@@ -19,8 +19,7 @@ export {
   DEFAULT_WS_MAX_JOINED_ROOMS,
   DEFAULT_WS_MAX_ROOM_ID_BYTES,
   assertWebSocketRoomId,
-  authenticateWebSocketUpgrade,
-  authorizeWebSocketUpgrade,
+  createWebSocketUpgradeGate,
   isWebSocketOriginAllowed,
   normalizeWebSocketUpgradeIdentity,
   webSocketFrameFits,
@@ -28,7 +27,11 @@ export {
   resolveGatewayRoomParam,
   resolveMaxFrameBytes,
 } from './gateway-routing';
-export type { AuthenticatedWebSocketUpgrade } from './gateway-routing';
+export type {
+  AuthenticatedWebSocketUpgrade,
+  WebSocketUpgradeGate,
+  WebSocketUpgradeGateway,
+} from './gateway-routing';
 export {
   issueWebSocketTicket,
   verifyAndConsumeWebSocketTicket,
@@ -89,6 +92,7 @@ export type {
   WebSocketPrincipal,
   WebSocketUpgradeIdentity,
   WebSocketUpgradeAuthenticationContext,
+  UpgradeAuthenticator,
   SubscribeMessageMetadata,
   ReservedWsEventMetadata,
   ReservedWsEventHandler,

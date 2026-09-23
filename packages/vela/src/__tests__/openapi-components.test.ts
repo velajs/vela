@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 import {
   Controller,
@@ -6,16 +6,11 @@ import {
   Post,
   Body,
   Module,
-  MetadataRegistry,
   defineDto,
   ValidationPipe,
   createOpenApiDocument,
   ApiResponse,
 } from '../index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 describe('OpenAPI — $ref components for DTO descriptors', () => {
   it('@Body() DTO produces a $ref and registers the schema under components', () => {

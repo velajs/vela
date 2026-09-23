@@ -17,7 +17,7 @@
     "src/__tests__/workers/entrypoint-lifetime-runtime.test.ts",
     "src/__tests__/workers/websocket-runtime.test.ts",
     "src/__tests__/workers/pitr-runtime.test.ts",
-    "src/__tests__/workers/root-resolution-runtime.test.ts"
+    "src/__tests__/workers/do-registry-runtime.test.ts"
   ],
   "include": ["src/**/*.ts", "test-shims/**/*.ts"],
   "exclude": ["node_modules", "dist", "src/__tests__"]

@@ -1,5 +1,6 @@
 import type { VelaApplication } from './application';
 import type { Type } from './container/types';
+import type { DynamicModule } from './registry/types';
 import { applyRuntimeAdapters } from './factory/adapter';
 import type { RuntimeAdapter } from './factory/adapter';
 import { bootstrap } from './factory/bootstrap';
@@ -17,7 +18,16 @@ export interface VelaCreateOptions extends BootstrapOptions {
 }
 
 export const VelaFactory = {
-  async create(rootModule: Type, options: VelaCreateOptions = {}): Promise<VelaApplication> {
+  /**
+   * Create an application from a root module class or a `DynamicModule`
+   * (`AppModule.forRoot(...)`). Configuration that depends on the runtime
+   * environment belongs in providers that inject `ENV`, so one static root
+   * serves every environment.
+   */
+  async create(
+    rootModule: Type | DynamicModule,
+    options: VelaCreateOptions = {},
+  ): Promise<VelaApplication> {
     const { adapters = [], ...bootstrapOptions } = options;
     return finalizeApplication(
       await bootstrap(rootModule, applyRuntimeAdapters(bootstrapOptions, adapters)),

@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { VelaFactory, Module, MetadataRegistry } from '../index.js';
+import { describe, it, expect } from 'vitest';
+import { VelaFactory, Module } from '../index.js';
 import {
   WebSocketModule,
   WebSocketGateway,
@@ -16,12 +16,13 @@ import type {
   WsServer,
   BroadcastCommand,
   OnGatewayConnection,
+  UpgradeAuthenticator,
+  WebSocketUpgradeAuthenticationContext,
+  WebSocketUpgradeIdentity,
 } from '../websocket/index.js';
 import { NodeWsClient, registerWebSocketGateways, redis } from '../websocket-node/index.js';
 import type { RedisPubSubClient } from '../websocket-node/index.js';
 import type { WSContext, WSEvents, UpgradeWebSocket } from 'hono/ws';
-
-beforeEach(() => MetadataRegistry.clear());
 
 class FakeWSContext {
   readonly sent: string[] = [];
@@ -48,11 +49,15 @@ function capturingUpgrade() {
   return { upgrade, captured };
 }
 
-const authenticateTestUpgrade = () => ({
-  principal: { issuer: 'test', subject: 'u1', principalType: 'user' as const },
-  tenantId: 't1',
-  expiresAtMs: Date.now() + 60_000,
-});
+class TestUpgradeAuthenticator implements UpgradeAuthenticator {
+  authenticate(): WebSocketUpgradeIdentity {
+    return {
+      principal: { issuer: 'test', subject: 'u1', principalType: 'user' },
+      tenantId: 't1',
+      expiresAtMs: Date.now() + 60_000,
+    };
+  }
+}
 
 describe('NodeWsClient', () => {
   it('frames messages and mirrors room membership into the registry', () => {
@@ -106,7 +111,7 @@ describe('registerWebSocketGateways', () => {
     @WebSocketGateway({
       path: '/rooms/:id/ws',
       roomParam: 'id',
-      authenticateUpgrade: authenticateTestUpgrade,
+      authenticator: TestUpgradeAuthenticator,
     })
     class RoomGateway {
       constructor(@WebSocketServer() private readonly server: WsServer) {}
@@ -155,7 +160,7 @@ describe('registerWebSocketGateways', () => {
     @WebSocketGateway({
       path: '/limited-reply',
       maxFrameBytes: 48,
-      authenticateUpgrade: authenticateTestUpgrade,
+      authenticator: TestUpgradeAuthenticator,
     })
     class LimitedReplyGateway {
       @SubscribeMessage('large')
@@ -214,7 +219,7 @@ describe('registerWebSocketGateways', () => {
     @WebSocketGateway({
       path: '/rooms/:roomId/ws',
       roomParam: 'roomId',
-      authenticateUpgrade: authenticateTestUpgrade,
+      authenticator: TestUpgradeAuthenticator,
     })
     class NamedRoomGateway {}
     @Module({ imports: [WebSocketModule.forRoot()], providers: [NamedRoomGateway] })
@@ -385,7 +390,7 @@ describe('websocket-node — code-review regressions', () => {
   it('queues inbound messages until handleConnection resolves', async () => {
     const order: string[] = [];
 
-    @WebSocketGateway({ path: '/ordered', authenticateUpgrade: authenticateTestUpgrade })
+    @WebSocketGateway({ path: '/ordered', authenticator: TestUpgradeAuthenticator })
     class OrderedGateway implements OnGatewayConnection {
       async handleConnection() {
         await new Promise((r) => setTimeout(r, 20));
@@ -431,7 +436,7 @@ describe('websocket-node — code-review regressions', () => {
       let hits = 0;
       @WebSocketGateway({
         path: '/setup-budget',
-        authenticateUpgrade: authenticateTestUpgrade,
+        authenticator: TestUpgradeAuthenticator,
         maxPendingMessages: 1,
       })
       class Gateway {
@@ -479,7 +484,7 @@ describe('websocket-node — code-review regressions', () => {
   it('closes fail-closed and never dispatches when handleConnection rejects', async () => {
     let hits = 0;
 
-    @WebSocketGateway({ path: '/rejected', authenticateUpgrade: authenticateTestUpgrade })
+    @WebSocketGateway({ path: '/rejected', authenticator: TestUpgradeAuthenticator })
     class RejectedGateway implements OnGatewayConnection {
       handleConnection() {
         throw new Error('not authorized');
@@ -558,10 +563,11 @@ describe('websocket-node — code-review regressions', () => {
     let connectedData: unknown;
     const expiresAtMs = Date.now() + 30_000;
 
-    @WebSocketGateway({
-      path: '/rooms/:room/ws',
-      roomParam: 'room',
-      authenticateUpgrade: (request, context) => {
+    class TicketAuthenticator implements UpgradeAuthenticator {
+      authenticate(
+        request: Request,
+        context: WebSocketUpgradeAuthenticationContext,
+      ): WebSocketUpgradeIdentity | false {
         callbackUrl = request.url;
         callbackTicket = context.ticket;
         if (context.room !== 'alpha' || context.ticket !== 'opaque-once') return false;
@@ -570,7 +576,13 @@ describe('websocket-node — code-review regressions', () => {
           tenantId: 't1',
           expiresAtMs,
         };
-      },
+      }
+    }
+
+    @WebSocketGateway({
+      path: '/rooms/:room/ws',
+      roomParam: 'room',
+      authenticator: TicketAuthenticator,
     })
     class TicketGateway implements OnGatewayConnection {
       handleConnection(client: WsClient) {
@@ -605,13 +617,13 @@ describe('websocket-node — code-review regressions', () => {
 
   it('rejects reusable or malformed WebSocket query credentials before authentication', async () => {
     let authCalls = 0;
-    @WebSocketGateway({
-      path: '/query-secret',
-      authenticateUpgrade: () => {
+    class CountingAuthenticator implements UpgradeAuthenticator {
+      authenticate(): false {
         authCalls++;
         return false;
-      },
-    })
+      }
+    }
+    @WebSocketGateway({ path: '/query-secret', authenticator: CountingAuthenticator })
     class SecretGateway {}
     @Module({ imports: [WebSocketModule.forRoot()], providers: [SecretGateway] })
     class AppModule {}

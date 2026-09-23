@@ -106,8 +106,11 @@ export default defineVelaConfig({
 ```
 
 Supply local runtime bindings inside `createApp` if the application needs them.
-Do not import the Worker entrypoint into Node when it uses native
-`cloudflare:workers` APIs. A plain default-exported object or named `config`
+For a Worker whose modules read `ENV`, pass the bindings Wrangler's
+`getPlatformProxy()` provides through `cloudflareAdapter({ env })`, and close
+the proxy once the app is disposed; the
+[API starter](../../apps/api-starter/vela.config.ts) does this. Do not import the
+Worker entrypoint into Node when it uses native `cloudflare:workers` APIs. A plain default-exported object or named `config`
 export also works; `defineVelaConfig` preserves the inferred app subtype and
 custom fields. The loader validates `createApp` and optional `rootModule` before
 commands use them. Command teardown awaits application disposal even when work
@@ -199,7 +202,7 @@ const response = await client.users[':id'].$get({ param: { id: 'u1' } });
 const user = await response.json();
 ```
 
-Generate with the current Vela exporter to include global prefixes, route versions, `@HttpCode`, and query DTO fields. Use the server origin for `hc`; prefixes are already in the generated paths. `@Endpoint(defineEndpoint({ input, output, status }))` shares schemas with runtime validation. Named `defineDto` descriptors passed to parameter decorators such as `@Body(dto)`, to `ValidationPipe`, and to `@ApiResponse` also supply documentation types; erased TypeScript interfaces and handler return types cannot be recovered from decorators. Missing schemas produce `unknown` and stderr warnings. `--strict` fails on these warnings before writing, and `--check` verifies the exact generated file without changing it.
+Generate with the current Vela exporter to include global prefixes, route versions, `@HttpCode`, and query DTO fields. Use the server origin for `hc`; prefixes are already in the generated paths. `@Endpoint(defineEndpoint({ input, output, status }))` shares schemas with runtime validation. Named `defineDto` descriptors passed to parameter decorators such as `@Body(dto)`, to `ValidationPipe`, and to `@ApiResponse` also supply documentation types; erased TypeScript interfaces and handler return types cannot be recovered from decorators. Missing schemas produce `unknown` and stderr warnings. `--strict` fails on these warnings before writing, and `--check` verifies the exact generated file without changing it. `@All` handlers, such as a mounted auth handler, have no OpenAPI operation, so the contract and its check against the app's routes leave them out.
 
 Form endpoints use `input.form` with `body.contentType` set to
 `multipart/form-data` or `application/x-www-form-urlencoded`. The generator emits

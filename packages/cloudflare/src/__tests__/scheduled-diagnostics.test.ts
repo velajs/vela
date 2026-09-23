@@ -1,9 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   Cron,
   Injectable,
   Interval,
-  MetadataRegistry,
   Module,
   UseFilters,
   UseGuards,
@@ -14,9 +13,6 @@ import { cloudflareAdapter, createCloudflareApp } from '../cloudflare-factory';
 
 const env = {};
 
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 afterEach(() => {
   vi.restoreAllMocks();
 });

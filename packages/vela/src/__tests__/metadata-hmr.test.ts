@@ -39,7 +39,6 @@ describe('MetadataRegistry HMR-safe state', () => {
     @Injectable()
     class Svc {}
 
-    MetadataRegistry.clear();
     // The decoration fact survives clear() precisely because it lives in the
     // anchored state, separate from the app-time globalComponents that clear resets.
     expect(MetadataRegistry.hasInjectable(Svc as never)).toBe(true);

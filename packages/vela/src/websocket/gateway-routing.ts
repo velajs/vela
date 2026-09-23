@@ -1,4 +1,10 @@
-import type { WebSocketGatewayOptions, WebSocketUpgradeIdentity } from './websocket.types';
+import type { Container } from '../container/container';
+import { ENV } from '../env';
+import type {
+  UpgradeAuthenticator,
+  WebSocketGatewayOptions,
+  WebSocketUpgradeIdentity,
+} from './websocket.types';
 
 const PATH_PARAM_RE = /:([A-Za-z_][A-Za-z0-9_]*)/g;
 
@@ -136,86 +142,166 @@ export function isWebSocketOriginAllowed(
   return normalized === new URL(request.url).origin;
 }
 
-/** Run origin and optional application authorization before socket allocation. */
-export async function authorizeWebSocketUpgrade(
-  options: WebSocketGatewayOptions,
-  request: Request,
-): Promise<boolean> {
-  if (!isWebSocketOriginAllowed(request, options.allowedOrigins)) return false;
-  if (!options.authorizeUpgrade) return true;
-  try {
-    return (await options.authorizeUpgrade(request)) === true;
-  } catch {
-    return false;
-  }
+/** One gateway as a transport serves it: its options and the module that declares it. */
+export interface WebSocketUpgradeGateway {
+  options: WebSocketGatewayOptions;
+  /**
+   * Container module that declares the gateway (the `'websocket'` entrypoint's
+   * `moduleId`). The authenticator resolves with this module's visibility;
+   * omitted means the application-wide lookup.
+   */
+  moduleId?: string;
 }
 
 /**
- * Complete pre-allocation WebSocket trust boundary. It rejects bearer-like
- * query credentials, removes the one supported short-lived `ticket`, runs
- * Origin + application authorization, and validates the returned identity.
+ * The pre-allocation trust boundary of one gateway in one application.
+ * Resolves `false` when the upgrade must be refused, and rejects only when the
+ * gateway is misconfigured: an authenticator its module cannot construct, or
+ * an ENV-derived origin allowlist without an environment.
  */
-export async function authenticateWebSocketUpgrade(
-  options: WebSocketGatewayOptions,
+export type WebSocketUpgradeGate = (
   request: Request,
   room: string,
-): Promise<AuthenticatedWebSocketUpgrade | false> {
-  let url: URL;
-  try {
-    url = new URL(request.url);
-  } catch {
-    return false;
-  }
-  if (url.username || url.password) return false;
+) => Promise<AuthenticatedWebSocketUpgrade | false>;
 
-  for (const key of url.searchParams.keys()) {
-    const normalized = key.toLowerCase();
+interface UpgradePolicy {
+  allowedOrigins?: '*' | readonly string[];
+  authenticator?: UpgradeAuthenticator;
+}
+
+function readAllowedOrigins(value: unknown, path: string): readonly string[] {
+  if (!Array.isArray(value) || !value.every((origin) => typeof origin === 'string')) {
+    throw new TypeError(
+      `WebSocket gateway '${path}' allowedOrigins(env) must return an array of origin strings`,
+    );
+  }
+  return [...value];
+}
+
+async function resolveUpgradePolicy(
+  container: Container,
+  { options, moduleId }: WebSocketUpgradeGateway,
+): Promise<UpgradePolicy> {
+  const allowed = options.allowedOrigins;
+  const allowedOrigins =
+    typeof allowed === 'function'
+      ? readAllowedOrigins(allowed(container.resolve(ENV)), options.path ?? '')
+      : allowed;
+  const type = options.authenticator;
+  if (type === undefined) return { allowedOrigins };
+  // A registered provider keeps its registration; any other class is built
+  // with what the declaring module can inject.
+  const authenticator: unknown = container.has(type)
+    ? await container.resolveAsync(type, moduleId)
+    : await container.construct(type, moduleId);
+  // A provider registered under the class token may hold any value.
+  if (!isUpgradeAuthenticator(authenticator)) {
+    throw new TypeError(`${type.name} must implement UpgradeAuthenticator.authenticate()`);
+  }
+  return { allowedOrigins, authenticator };
+}
+
+function isUpgradeAuthenticator(value: unknown): value is UpgradeAuthenticator {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof Reflect.get(value, 'authenticate') === 'function'
+  );
+}
+
+/**
+ * Bind a gateway's upgrade policy to one application. The gate rejects
+ * bearer-like query credentials, removes the one supported short-lived
+ * `ticket`, runs Origin + application authorization, then the gateway's
+ * {@link UpgradeAuthenticator}, and validates the identity it returns.
+ *
+ * The authenticator and an ENV-derived origin allowlist resolve on the first
+ * upgrade and serve every later one, so create one gate per gateway per
+ * application. A failed resolution is not kept; the next upgrade retries it.
+ */
+export function createWebSocketUpgradeGate(
+  container: Container,
+  gateway: WebSocketUpgradeGateway,
+): WebSocketUpgradeGate {
+  let policy: Promise<UpgradePolicy> | undefined;
+  const resolvePolicy = (): Promise<UpgradePolicy> => {
+    if (policy) return policy;
+    const pending = resolveUpgradePolicy(container, gateway);
+    policy = pending;
+    pending.catch(() => {
+      if (policy === pending) policy = undefined;
+    });
+    return pending;
+  };
+
+  return async (request, room) => {
+    let url: URL;
+    try {
+      url = new URL(request.url);
+    } catch {
+      return false;
+    }
+    if (url.username || url.password) return false;
+
+    for (const key of url.searchParams.keys()) {
+      const normalized = key.toLowerCase();
+      if (
+        FORBIDDEN_WEBSOCKET_CREDENTIAL_PARAMS.has(normalized) ||
+        (normalized === 'ticket' && key !== 'ticket')
+      ) {
+        return false;
+      }
+    }
+    const tickets = url.searchParams.getAll('ticket');
     if (
-      FORBIDDEN_WEBSOCKET_CREDENTIAL_PARAMS.has(normalized) ||
-      (normalized === 'ticket' && key !== 'ticket')
+      tickets.length > 1 ||
+      tickets.some(
+        (ticket) =>
+          ticket.length === 0 ||
+          !/^[\x21-\x7e]+$/.test(ticket) ||
+          encoder.encode(ticket).byteLength > MAX_SOCKET_TICKET_BYTES,
+      )
     ) {
       return false;
     }
-  }
-  const tickets = url.searchParams.getAll('ticket');
-  if (
-    tickets.length > 1 ||
-    tickets.some(
-      (ticket) =>
-        ticket.length === 0 ||
-        !/^[\x21-\x7e]+$/.test(ticket) ||
-        encoder.encode(ticket).byteLength > MAX_SOCKET_TICKET_BYTES,
-    )
-  ) {
-    return false;
-  }
-  const ticket = tickets[0];
-  url.searchParams.delete('ticket');
+    const ticket = tickets[0];
+    url.searchParams.delete('ticket');
 
-  let sanitized: Request;
-  try {
-    sanitized = new Request(url.toString(), request);
-  } catch {
-    return false;
-  }
-  if (!(await authorizeWebSocketUpgrade(options, sanitized))) return false;
+    let sanitized: Request;
+    try {
+      sanitized = new Request(url.toString(), request);
+    } catch {
+      return false;
+    }
 
-  // Origin checks alone are not authentication. Every successful upgrade
-  // must install a finite-lived principal+tenant identity before allocation.
-  if (!options.authenticateUpgrade) return false;
+    const { options } = gateway;
+    const { allowedOrigins, authenticator } = await resolvePolicy();
+    if (!isWebSocketOriginAllowed(sanitized, allowedOrigins)) return false;
+    if (options.authorizeUpgrade) {
+      try {
+        if ((await options.authorizeUpgrade(sanitized)) !== true) return false;
+      } catch {
+        return false;
+      }
+    }
 
-  let candidate: WebSocketUpgradeIdentity | false;
-  try {
-    candidate = await options.authenticateUpgrade(sanitized, {
-      gatewayPath: options.path ?? '',
-      room,
-      ...(ticket === undefined ? {} : { ticket }),
-    });
-  } catch {
-    return false;
-  }
-  const identity = normalizeWebSocketUpgradeIdentity(candidate);
-  return identity === false ? false : { request: sanitized, identity };
+    // Origin checks alone are not authentication. Every successful upgrade
+    // must install a finite-lived principal+tenant identity before allocation.
+    if (!authenticator) return false;
+
+    let candidate: WebSocketUpgradeIdentity | false;
+    try {
+      candidate = await authenticator.authenticate(sanitized, {
+        gatewayPath: options.path ?? '',
+        room,
+        ...(ticket === undefined ? {} : { ticket }),
+      });
+    } catch {
+      return false;
+    }
+    const identity = normalizeWebSocketUpgradeIdentity(candidate);
+    return identity === false ? false : { request: sanitized, identity };
+  };
 }
 
 /** Validate trusted attachment/client data before every frame or push. */

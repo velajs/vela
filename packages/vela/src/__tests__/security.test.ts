@@ -1,15 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  Controller,
-  Get,
-  MetadataRegistry,
-  Module,
-  Post,
-  SecurityModule,
-  VelaFactory,
-} from '../index.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Controller, Get, Module, Post, SecurityModule, VelaFactory } from '../index.js';
 
-beforeEach(() => MetadataRegistry.clear());
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.restoreAllMocks();

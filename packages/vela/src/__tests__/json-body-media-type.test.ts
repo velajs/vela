@@ -1,19 +1,16 @@
 /* eslint-disable no-await-in-loop -- Each media type is sent and asserted in order. */
-import { beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
   Body,
   Controller,
   Endpoint,
-  MetadataRegistry,
   Module,
   Post,
   VelaFactory,
   defineEndpoint,
   readJsonBody,
 } from '../index';
-
-beforeEach(() => MetadataRegistry.clear());
 
 const unsupported = {
   error: { code: 'unsupported_media_type', message: 'Expected application/json body' },

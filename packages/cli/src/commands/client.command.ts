@@ -7,6 +7,9 @@ import { generateClientContract } from '../client-contract.js';
 import { loadConfig } from '../config.js';
 import { withApp } from '../with-app.js';
 
+/** The HTTP methods an OpenAPI path item can describe. */
+const OPENAPI_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete', 'options', 'head']);
+
 export class ClientGenerateCommand extends Command {
   static override paths = [['client', 'generate']];
   static override usage = Command.Usage({
@@ -89,6 +92,8 @@ export class ClientGenerateCommand extends Command {
         // Detect older Vela exporters which omit versioned controller routes.
         // Never silently ship a contract which points at a different endpoint.
         for (const route of app.describeRoutes()) {
+          // An @All handler (such as a mounted auth handler) has no OpenAPI operation.
+          if (!OPENAPI_METHODS.has(route.method.toLowerCase())) continue;
           const path = route.path.replace(/:([A-Za-z_][A-Za-z0-9_]*)/g, '{$1}');
           const item = document.paths[path];
           if (!item || !Object.hasOwn(item, route.method.toLowerCase())) {

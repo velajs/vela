@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 import {
   VelaFactory,
@@ -17,10 +17,6 @@ import {
   getRequestContainer,
   REQUEST_CONTEXT,
 } from '../index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 // =============================================================================
 // Programmatic routes with explicit param `metatype`

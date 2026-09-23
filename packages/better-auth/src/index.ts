@@ -8,6 +8,16 @@ export { BETTER_AUTH_OPTIONS } from './better-auth.tokens';
 // Guards
 export { AuthGuard } from './guards/auth.guard';
 
+// WebSocket upgrade authentication (@WebSocketGateway({ authenticator }))
+export {
+  BETTER_AUTH_UPGRADE_TENANT,
+  BetterAuthUpgradeAuthenticator,
+} from './upgrade-authenticator';
+export type {
+  BetterAuthUpgradeSession,
+  BetterAuthUpgradeTenantResolver,
+} from './upgrade-authenticator';
+
 // Decorators
 export { CurrentUser } from './decorators/current-user.decorator';
 export { CurrentSession } from './decorators/current-session.decorator';

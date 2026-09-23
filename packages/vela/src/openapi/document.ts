@@ -7,7 +7,7 @@ import { getMetadata } from '../metadata';
 import { collectControllers } from '../module/graph';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import { joinPaths, toOpenApiPath } from '../registry/paths';
-import type { ParameterMetadata, RouteDefinition } from '../registry/types';
+import type { DynamicModule, ParameterMetadata, RouteDefinition } from '../registry/types';
 import { getApiDoc, getApiResponses, getApiTags } from './decorators';
 import type {
   CreateOpenApiDocumentOptions,
@@ -358,7 +358,7 @@ function buildOperation(
 const HTTP_VERBS: HttpVerb[] = ['get', 'post', 'put', 'patch', 'delete', 'options', 'head'];
 
 export function createOpenApiDocument(
-  rootModule: Type,
+  rootModule: Type | DynamicModule,
   options: CreateOpenApiDocumentOptions = {},
 ): OpenApiDocument {
   const paths: Record<string, OpenApiPathItem> = {};
