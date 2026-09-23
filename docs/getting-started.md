@@ -6,8 +6,6 @@ Use Node.js 24+ and pnpm 11.11.0. Create a project with the Vela CLI:
 pnpm dlx @velajs/cli@latest new my-api
 cd my-api
 pnpm install
-pnpm typecheck
-pnpm build
 pnpm dev
 ```
 
@@ -22,13 +20,14 @@ directories are left untouched. There is no overwrite option.
 In another terminal, request the API:
 
 ```sh
-curl http://localhost:8787
+curl http://localhost:5173
 # {"message":"Hello from Vela!"}
 ```
 
-Local development uses Wrangler's local Workers runtime. No Cloudflare login,
-database, authentication setup, Studio, or live-query service is required.
-Use `pnpm dev --port 8788` if port 8787 is occupied.
+`pnpm dev` runs `vite dev`: Vite and `@cloudflare/vite-plugin` serve
+`src/worker.ts` in the local Workers runtime, with no build step first. No
+Cloudflare login, database, authentication setup, Studio, or live-query service
+is required. Use `pnpm dev --port 5174` if port 5173 is occupied.
 
 ## Understand the application
 
@@ -45,8 +44,6 @@ The controller receives `AppService` through constructor injection:
 
 ```ts
 import { Controller, Get } from '@velajs/vela';
-// Keep the runtime import for SWC's constructor metadata.
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { AppService } from './app.service.js';
 
 @Controller('/')
@@ -65,15 +62,37 @@ export class AppController {
 ```
 
 `AppService` is imported as a value, not with `import type`: the constructor
-parameter metadata that SWC emits refers to the class at runtime.
+parameter metadata refers to the class at runtime. The project's `tsconfig.json`
+enables `verbatimModuleSyntax` and `isolatedModules`, so TypeScript keeps exactly
+the imports you write and flags a type-only name imported as a value.
 
-Edit the message in `AppService` and repeat the request. Wrangler reruns the SWC
-build when `src/` or `.swcrc` changes, and the response reflects the new service
-code. SWC's `.swcrc` enables legacy decorators and constructor parameter metadata;
-TypeScript checks the source separately. `wrangler.jsonc` points to compiled
-JavaScript so Wrangler does not have to infer decorator metadata. Its
-`nodejs_compat` flag provides the `node:async_hooks` module that Vela's root
-entry imports; the flag is also on by default from compatibility date 2026-08-04.
+Edit the message in `AppService` and repeat the request: the dev server reloads
+the Worker when `src/` changes. Vite compiles TypeScript with Oxc. Constructor
+injection needs legacy decorators and the `design:paramtypes` metadata they
+record, and Oxc emits both only when asked, so `oxc.config.ts` enables them and
+both `vite.config.ts` and `vitest.config.ts` import that one setting. TypeScript
+checks the source separately with `pnpm typecheck`.
+
+`wrangler.jsonc` points `main` at `src/worker.ts`; Vite builds it, so there is
+no Wrangler `build` block. Its compatibility date, 2026-09-20, enables Node.js
+compatibility by default (from 2026-08-04 on), which provides the
+`node:async_hooks` module that Vela's root entry imports. With an older date, add
+`"compatibility_flags": ["nodejs_als"]`.
+
+## Test the Worker
+
+`pnpm test` runs `test/worker.spec.ts` inside the Workers runtime with
+`@cloudflare/vitest-plugin`. The spec calls the Worker's `fetch` handler and
+reads the response body before `waitOnExecutionContext(ctx)`, since a request
+completes only once its body is consumed:
+
+```ts
+const ctx = createExecutionContext();
+const response = await worker.fetch(new Request('http://localhost/'), env, ctx);
+const body = await response.json();
+await waitOnExecutionContext(ctx);
+expect(body).toEqual({ message: 'Hello from Vela!' });
+```
 
 ## Read bindings
 
@@ -103,8 +122,9 @@ export class AppService {
 `pnpm types` runs `wrangler types --include-runtime=false`, which writes the
 bindings, variables and secret names (from `.dev.vars`) into
 `worker-configuration.d.ts` as `Cloudflare.Env`. `@velajs/cloudflare` extends
-`VelaEnv` with it, so `this.env.GREETING` is typed. `pnpm dev` and
-`pnpm typecheck` regenerate the file first; commit it. Runtime types still come
+`VelaEnv` with it, so `this.env.GREETING` is typed. `pnpm dev` regenerates the
+file first; run `pnpm types` yourself after editing `wrangler.jsonc`, and commit
+the file. `pnpm typecheck` reads the committed file. Runtime types still come
 from `@cloudflare/workers-types`. Factories read the same object with
 `inject: [ENV]`, and `registerAs('app', (env) => ...)` config namespaces receive
 it too. Values arrive from outside the program, so validate what you read.
@@ -114,19 +134,26 @@ Wrangler secrets such as `URL_SIGNING_SECRET` (signed URLs) and
 
 ## Inspect the application
 
-The project also includes `vela.config.mjs`, which loads the compiled
-application from `dist/` for Node-side CLI tools. After `pnpm build`, inspect
-the routes with `pnpm dlx @velajs/cli@latest route list`.
+The project pins `@velajs/cli` as a dev dependency and includes
+`vela.config.ts`, which imports the application from `src/`. The CLI loads the
+config through Vite with the same Oxc decorator settings as the Worker build, so
+no build is needed first:
+
+```sh
+pnpm vela route list
+pnpm vela doctor --app --json
+```
 
 Dependencies use pinned published npm versions. The generated
-`pnpm-workspace.yaml` allows the native build dependencies used by SWC and
-Wrangler; it has no dependency catalog or repository links. Commit the lockfile
-created by `pnpm install`.
+`pnpm-workspace.yaml` allows the native build dependencies used by Wrangler and
+the Workers runtime; it has no dependency catalog or repository links. Commit
+the lockfile created by `pnpm install`.
 
 ## Next steps
 
 To deploy, run `pnpm exec wrangler login` and then `pnpm run deploy`. This requires
-your Cloudflare account and rebuilds the Worker before publishing it.
+your Cloudflare account; it runs `vite build`, then `wrangler deploy` uploads the
+built Worker from `dist/`. See [deployment](deployment.md).
 
 Continue with [module authoring](modules.md), [runtime values and types](types.md),
 and [Cloudflare integration](../packages/cloudflare/README.md) when adding routes

@@ -22,8 +22,22 @@ Vela mirrors NestJS's authoring surface, so most decorators and interfaces port 
 | `app.enableCors()` | `middleware: [cors()]` create-option, or `CorsModule.forRoot({})` | no `enableCors` method |
 | `logger` bootstrap option / `NestFactory.create(m, { logger })` | inject the `Logger`/`LoggerService` provider | no create-time `logger` option |
 | `app.listen(port)` | export the `fetch` handler (`export default app`) or `serve({ fetch: app.fetch })` on Node | Vela is a fetch handler, not a server |
+| `nest build` / `tsc` with `emitDecoratorMetadata` | **Vite 8** + `@cloudflare/vite-plugin` on Workers; Oxc emits legacy decorators + `design:paramtypes` | pass `oxc: { decorator: { legacy: true, emitDecoratorMetadata: true } }` explicitly in the Vite **and** Vitest configs — see "Build and test" below |
+| Jest + `@nestjs/testing` | Vitest + `@cloudflare/vitest-plugin` (workerd), `@velajs/testing` | see `references/testing.md` |
 
 `VelaFactory.create(rootModule, options?)` is **always async** and returns `Promise<VelaApplication>`. `VelaCreateOptions` in full: `globalPrefix`, `middleware`, `getClientIp`, `adapters`, `ambientContainer`, `diagnostics` — nothing else. Authoring configurable modules uses `defineModule`, not hand-wired `forRoot`; see the module reference.
+
+## Build and test
+
+NestJS compiles with `tsc`, which reads `emitDecoratorMetadata` from tsconfig. A Vela Worker builds with Vite 8 instead (`vela new` generates this setup; `docs/tooling.md` has the full list of pitfalls):
+
+- `vite.config.ts`: `defineConfig({ oxc, plugins: [cloudflare()] })`; `vitest.config.ts`: `defineConfig({ oxc, plugins: [cloudflareTest({ wrangler: { configPath: './wrangler.jsonc' } })] })`, sharing one exported `oxc = { decorator: { legacy: true, emitDecoratorMetadata: true } }`. Always pass it explicitly — tsconfig auto-detection skips files outside `include`, which then fail as TC39 decorators. Never add `cloudflare()` to the Vitest config.
+- `wrangler.jsonc` `main` is `src/worker.ts` with no `build` block. Deploy with `vite build && wrangler deploy` (no `--config`: an explicit config makes Wrangler bundle `src/` with esbuild, which drops decorator metadata).
+- Enable `verbatimModuleSyntax` + `isolatedModules`: Oxc compiles file by file, so a plain `import { SomeInterface }` in a decorated signature breaks at link time. Import injected classes as values, never `import type`.
+- In Workers tests, read the response body before `await waitOnExecutionContext(ctx)`.
+- If you turn on `build.minify`, set `build.rolldownOptions.output.keepNames: true`.
+- `vela.config.ts` can import `./src/...` directly: `@velajs/cli` loads it through Vite's `runnerImport` with the same Oxc options when `vite` is installed.
+- A Nest `UnknownDependenciesException` corresponds to Vela's `UnresolvedDependencyError`: `Cannot resolve UsersController(?, AuditService) in UsersModule. Argument #0 UsersService is declared in DataModule but not exported (add it to DataModule.exports)`.
 
 ## Embedding a Vela app inside an existing Hono app
 
