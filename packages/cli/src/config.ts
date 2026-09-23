@@ -9,10 +9,10 @@ import type { Type, VelaApplication } from '@velajs/vela';
  * Cloudflare Worker, or a plain Node adapter — and return a built app.
  *
  * ```ts
- * // vela.config.mjs — run `pnpm build` before using app-aware commands.
+ * // vela.config.ts — loaded through Vite when the project installs it.
  * import { defineVelaConfig } from '@velajs/cli/config';
  * import { VelaFactory } from '@velajs/vela';
- * import { AppModule } from './dist/app.module.js';
+ * import { AppModule } from './src/app.module.js';
  * export default defineVelaConfig({
  *   rootModule: AppModule,
  *   createApp: () => VelaFactory.create(AppModule),
@@ -35,26 +35,65 @@ export function defineVelaConfig<const Config extends VelaConfig>(config: Config
 
 const CANDIDATES = ['vela.config.js', 'vela.config.mjs', 'vela.config.ts'];
 
+/** Oxc output Vela's DI reads: legacy decorators plus `design:paramtypes` metadata. */
+const DECORATOR_TRANSFORM = { decorator: { legacy: true, emitDecoratorMetadata: true } };
+
+type Vite = typeof import('vite');
+
+// The optional `vite` peer: the project's own Vite 8 when it installs one.
+async function importVite(): Promise<Vite | undefined> {
+  let vite: Vite;
+  try {
+    vite = await import('vite');
+  } catch (error) {
+    // Only a missing `vite` package means "not installed"; a broken install still fails loudly.
+    if (
+      isRecord(error) &&
+      error.code === 'ERR_MODULE_NOT_FOUND' &&
+      /'vite'/.test(String(error.message))
+    )
+      return undefined;
+    throw error;
+  }
+  return Number.parseInt(vite.version, 10) >= 8 ? vite : undefined;
+}
+
 /**
- * Locate and import a config using Node's loader. Node 24 can strip erasable
- * types in `.ts` configs, but does not emit legacy decorators or DI metadata.
- * Import compiled application `.js` from the config (e.g. the SWC build used
- * by Wrangler). This loader does not install compiler or path-alias hooks.
+ * Locate and import a config. When the project installs Vite 8, the config
+ * and the application files it imports load through Vite's module runner,
+ * compiled by Oxc with legacy decorators and constructor metadata, so a
+ * config can import decorated `src/` files directly; packages load from
+ * node_modules as usual. Without Vite, Node imports the config: it strips
+ * erasable types from `.ts` files but emits no decorators or DI metadata, so
+ * such a config must import compiled `.js` files.
  */
 export async function loadConfig(
   cwd: string = process.cwd(),
   explicitPath?: string,
 ): Promise<VelaConfig> {
   const { path } = await resolveConfig(cwd, explicitPath);
+  const vite = await importVite();
   let mod: unknown;
   try {
-    mod = await import(pathToFileURL(path).href);
+    mod = vite
+      ? (
+          await vite.runnerImport<unknown>(path, {
+            root: resolve(cwd),
+            logLevel: 'error',
+            oxc: DECORATOR_TRANSFORM,
+          })
+        ).module
+      : await import(pathToFileURL(path).href);
   } catch (cause) {
     throw new Error(
       `Could not import config at ${path}: ${cause instanceof Error ? cause.message : String(cause)}\n` +
-        'Configs run in Node. Compile decorated application source with SWC (legacyDecorator + decoratorMetadata) ' +
-        'or an equivalent metadata-emitting compiler, then import its compiled .js files with explicit extensions. ' +
-        'Run your application build first; native TypeScript stripping does not transform decorators or tsconfig paths.',
+        (vite
+          ? "The config and the files it imports ran through Vite's module runner (Oxc, legacy " +
+            'decorators and decorator metadata); packages load from node_modules.'
+          : 'Configs run in Node without Vite. Node strips erasable TypeScript types but does not ' +
+            'transform decorators, emit DI metadata or apply tsconfig paths. Install vite 8 in the ' +
+            'project so the CLI loads decorated sources through Vite, or import compiled .js files ' +
+            'with explicit extensions.'),
       { cause },
     );
   }

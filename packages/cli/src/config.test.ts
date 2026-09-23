@@ -87,9 +87,41 @@ describe('configuration boundary', () => {
     expect((await loadConfig(cwd)).rootModule?.name).toBe('Root');
   });
 
-  it('reports malformed config files and missing compiled imports with build guidance', async () => {
-    const cwd = await fixture(`import './dist/missing.js'; export default { createApp() {} };`);
-    await expect(loadConfig(cwd)).rejects.toThrow(/SWC|compiled/);
+  it('reports a config that fails to load with the Vite runner that loaded it', async () => {
+    const cwd = await fixture(`import './src/missing.js'; export default { createApp() {} };`);
+    const error = await loadConfig(cwd).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(Error);
+    expect(String(error)).toContain(`Could not import config at ${join(cwd, 'vela.config.mjs')}`);
+    expect(String(error)).toContain("Vite's module runner");
+    expect(error).toHaveProperty('cause');
+  });
+
+  it('loads TypeScript configs through Vite with legacy decorators and constructor metadata', async () => {
+    // A stand-in for the Reflect metadata polyfill Vela installs, restored after
+    // the class is decorated so no other test sees it.
+    const cwd = await fixture(
+      `
+      const recorded: [string, string[]][] = [];
+      const reflect: { metadata?: unknown } = Reflect;
+      const previous = reflect.metadata;
+      reflect.metadata = (key: string, value: unknown) => () => {
+        if (Array.isArray(value)) recorded.push([key, value.map((type) => type.name)]);
+      };
+      function Decorated(_target: object): void {}
+      export class Dependency {}
+      @Decorated
+      class Root {
+        constructor(readonly dependency: Dependency) {}
+      }
+      if (previous === undefined) delete reflect.metadata;
+      else reflect.metadata = previous;
+      export default { rootModule: Root, createApp: () => recorded };
+      `,
+      'vela.config.ts',
+    );
+    const config = await loadConfig(cwd);
+    expect(config.rootModule?.name).toBe('Root');
+    expect(config.createApp()).toEqual([['design:paramtypes', ['Dependency']]]);
   });
 
   it('rejects a config directory instead of attempting to import it', async () => {

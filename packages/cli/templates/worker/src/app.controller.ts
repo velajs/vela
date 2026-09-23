@@ -1,6 +1,4 @@
 import { Controller, Get } from '@velajs/vela';
-// Keep the runtime import for SWC's constructor metadata.
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { AppService } from './app.service.js';
 
 @Controller('/')

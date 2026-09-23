@@ -8,16 +8,20 @@ const files = [
   'pnpm-workspace.yaml',
   'tsconfig.json',
   'worker-configuration.d.ts',
-  '.swcrc',
   'wrangler.jsonc',
-  'vela.config.mjs',
+  'oxc.config.ts',
+  'vite.config.ts',
+  'vitest.config.ts',
+  'vela.config.ts',
   'gitignore',
   'README.md',
   'src/worker.ts',
   'src/app.module.ts',
   'src/app.controller.ts',
   'src/app.service.ts',
+  'test/worker.spec.ts',
 ] as const;
+const subdirectories = ['src', 'test'] as const;
 
 function hasCode(error: unknown, code: string): boolean {
   return error instanceof Error && 'code' in error && error.code === code;
@@ -64,9 +68,11 @@ export async function createProject(name: string, cwd: string): Promise<string> 
         );
       }
     }
-    const source = join(destination, 'src');
-    await mkdir(source);
-    directories.push(source);
+    for (const name of subdirectories) {
+      const directory = join(destination, name);
+      await mkdir(directory);
+      directories.push(directory);
+    }
     for (const { file, content } of contents) {
       const path = join(destination, file);
       // Never overwrite a file, even if it appeared after the initial check.

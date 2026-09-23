@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { Cli } from 'clipanion';
+import { parse, type ParseError } from 'jsonc-parser';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NewCommand } from './new.command.js';
 
@@ -49,7 +50,9 @@ describe('vela new', () => {
   it('creates a standalone project with public dependencies and actionable next steps', async () => {
     const result = await run(['new', 'my-api']);
     expect(result.code).toBe(0);
-    expect(result.output).toContain('cd my-api\n  pnpm install');
+    expect(result.output).toContain('cd my-api\n  pnpm install\n  pnpm dev\n');
+    expect(result.output).toContain('http://localhost:5173');
+    expect(result.output).not.toContain('pnpm build');
     const project = join(cwd, 'my-api');
     const manifest = JSON.parse(await readFile(join(project, 'package.json'), 'utf8'));
     expect(manifest.name).toBe('my-api');
@@ -66,6 +69,22 @@ describe('vela new', () => {
       'app.service.ts',
       'worker.ts',
     ]);
+    expect(await readdir(join(project, 'test'))).toEqual(['worker.spec.ts']);
+    expect((await readdir(project)).toSorted()).toEqual([
+      '.gitignore',
+      'README.md',
+      'oxc.config.ts',
+      'package.json',
+      'pnpm-workspace.yaml',
+      'src',
+      'test',
+      'tsconfig.json',
+      'vela.config.ts',
+      'vite.config.ts',
+      'vitest.config.ts',
+      'worker-configuration.d.ts',
+      'wrangler.jsonc',
+    ]);
   });
 
   it('exports the Worker without an environment token and types ENV from wrangler types', async () => {
@@ -78,15 +97,88 @@ describe('vela new', () => {
     expect(manifest.scripts).toMatchObject({
       types: 'wrangler types --include-runtime=false',
       predev: 'pnpm run types',
-      pretypecheck: 'pnpm run types',
+      typecheck: 'tsc --noEmit',
     });
+    // Typechecking reads the committed file; regenerating it is `pnpm types`' job.
+    expect(manifest.scripts).not.toHaveProperty('pretypecheck');
     // Committed so a fresh checkout typechecks before its first `pnpm types`.
     const generated = await readFile(join(project, 'worker-configuration.d.ts'), 'utf8');
     expect(generated).toContain('wrangler types --include-runtime=false');
     expect(generated).toContain('declare namespace Cloudflare');
+    expect(generated).toContain('mainModule: typeof import("./src/worker");');
     const tsconfig = JSON.parse(await readFile(join(project, 'tsconfig.json'), 'utf8'));
     expect(tsconfig.include).toContain('worker-configuration.d.ts');
-    expect(tsconfig.compilerOptions.types).toEqual(['@cloudflare/workers-types']);
+    expect(tsconfig.compilerOptions.types).toEqual([
+      '@cloudflare/workers-types',
+      '@cloudflare/vitest-plugin/types',
+    ]);
+  });
+
+  it('builds, serves and tests the Worker with Vite and Oxc instead of a precompile step', async () => {
+    expect((await run(['new', 'vite-api'])).code).toBe(0);
+    const project = join(cwd, 'vite-api');
+    const read = (file: string) => readFile(join(project, file), 'utf8');
+    const manifest = JSON.parse(await read('package.json'));
+    expect(manifest.scripts).toMatchObject({
+      dev: 'vite dev',
+      build: 'vite build',
+      preview: 'vite preview',
+      deploy: 'vite build && wrangler deploy',
+      test: 'vitest run',
+    });
+    for (const name of [
+      '@cloudflare/vite-plugin',
+      '@cloudflare/vitest-plugin',
+      '@velajs/cli',
+      'vite',
+      'vitest',
+    ]) {
+      expect(manifest.devDependencies).toHaveProperty(name);
+    }
+    const dependencies = Object.keys({ ...manifest.dependencies, ...manifest.devDependencies });
+    expect(dependencies.filter((name) => name.startsWith('@swc/'))).toEqual([]);
+    expect(await read('pnpm-workspace.yaml')).not.toContain('@swc/core');
+
+    const errors: ParseError[] = [];
+    const wrangler: unknown = parse(await read('wrangler.jsonc'), errors, {
+      allowTrailingComma: true,
+    });
+    expect(errors).toEqual([]);
+    expect(wrangler).toMatchObject({ main: 'src/worker.ts', compatibility_date: '2026-09-20' });
+    expect(wrangler).not.toHaveProperty('build');
+    // Dates from 2026-08-04 enable Node.js compatibility, node:async_hooks included.
+    expect(wrangler).not.toHaveProperty('compatibility_flags');
+
+    // One Oxc decorator setting, shared so the build and the tests cannot drift.
+    expect(await read('oxc.config.ts')).toContain(
+      'decorator: { legacy: true, emitDecoratorMetadata: true }',
+    );
+    const vite = await read('vite.config.ts');
+    expect(vite).toContain("import { oxc } from './oxc.config.ts';");
+    expect(vite).toContain('plugins: [cloudflare()]');
+    const vitest = await read('vitest.config.ts');
+    expect(vitest).toContain("import { oxc } from './oxc.config.ts';");
+    expect(vitest).toContain('cloudflareTest(');
+    expect(vitest).not.toContain('cloudflare()');
+
+    const spec = await read('test/worker.spec.ts');
+    expect(spec).toContain('worker.fetch(');
+    // The body is drained before waiting on the execution context.
+    expect(spec.indexOf('await response.json()')).toBeLessThan(
+      spec.indexOf('await waitOnExecutionContext(ctx)'),
+    );
+
+    const tsconfig = JSON.parse(await read('tsconfig.json'));
+    expect(tsconfig.compilerOptions).toMatchObject({
+      verbatimModuleSyntax: true,
+      isolatedModules: true,
+      experimentalDecorators: true,
+      emitDecoratorMetadata: true,
+    });
+    expect(await read('src/app.controller.ts')).not.toContain('eslint-disable');
+    expect(await read('vela.config.ts')).toContain("from './src/app.module.js'");
+    expect(await read('README.md')).toContain('pnpm vela route list');
+    expect(await read('README.md')).not.toContain('pnpm dlx');
   });
 
   it('accepts an empty destination but preserves every file in a nonempty one', async () => {
