@@ -282,6 +282,12 @@ describe('cron dialect ambiguity', () => {
     expect(cronDialectAmbiguity({ expression, dialect: 'unix' })).toBeUndefined();
   });
 
+  it("attributes the rule that both restricted day fields must match to Vela's unix dialect", () => {
+    const reason = cronDialectAmbiguity({ expression: '0 9 1 * MON' });
+    expect(reason).toMatch(/Vela's unix dialect requires/);
+    expect(reason).toMatch(/Cloudflare, like standard crontab, fires when either/);
+  });
+
   it.each(['0 9 * * *', '*/5 * * * *', '0 9 * * MON-FRI', '0 9 15 * *'])(
     'accepts %s, which means the same on every runtime',
     (expression) => {
@@ -308,7 +314,12 @@ describe('cron dialect ambiguity', () => {
       const second = await VelaFactory.create(Root);
       await Promise.all([first.close(), second.close()]);
       expect(warn).toHaveBeenCalledOnce();
-      expect(String(warn.mock.calls[0]?.[0])).toMatch(/'0 7 \* \* 1'.*Jobs\.weekly.*no dialect/);
+      const warning = String(warn.mock.calls[0]?.[0]);
+      expect(warning).toMatch(/'0 7 \* \* 1'.*Jobs\.weekly.*no dialect/);
+      // A portable job declares the Cloudflare dialect; unix is only for Node-only jobs.
+      expect(warning).toMatch(
+        /declare \{ dialect: 'cloudflare' \}.*\{ dialect: 'unix' \} only for/,
+      );
 
       await expect(VelaFactory.create(Root, { diagnostics: 'throw' })).rejects.toThrow(
         /Jobs\.weekly declares no dialect/,

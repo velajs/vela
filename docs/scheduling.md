@@ -50,11 +50,12 @@ through the request pipeline, and declare the components on the signed route.
 
 ## Cron dialects
 
-Without options, `@Cron(expression)` and `parseCron(expression)` use the Unix
-dialect: local time, weekday numbers where 0 or 7 is Sunday, and both
-day-of-month and weekday must match when both are restricted. The Cloudflare
-dialect uses UTC and numbers weekdays from 1 (Sunday) through 7 (Saturday); when
-both day fields are restricted, either may match. It accepts named
+Without options, `@Cron(expression)` and `parseCron(expression)` use Vela's
+unix dialect: local time, weekday numbers where 0 or 7 is Sunday, and both
+day-of-month and weekday must match when both are restricted. That last rule is
+Vela's: standard crontab, like Cloudflare, fires when either day field matches.
+The Cloudflare dialect uses UTC and numbers weekdays from 1 (Sunday) through 7
+(Saturday); when both day fields are restricted, either may match. It accepts named
 months/weekdays, lists, ranges including wrap-around, steps, and calendar forms
 `L`, `LW`, `L-n`, `L-nW`, `nW`, `nL` and `n#k`. Cloudflare with
 `timeZone: 'local'` is invalid. Unix schedules can set `timeZone: 'UTC'`
@@ -70,7 +71,10 @@ weekday field uses numbers, or which restricts both day fields, fires on
 different days under Node and under Workers. `cronDialectAmbiguity(meta)`
 explains that ambiguity (or returns `undefined`), both runtimes report it at
 bootstrap through the diagnostics policy, and `vela deploy check` fails with
-`ambiguous-cron-dialect`.
+`ambiguous-cron-dialect`. Declare `{ dialect: 'cloudflare' }` for a job that
+runs on Workers, including one that also runs on Node, and write its
+expression for Cloudflare; declare `{ dialect: 'unix' }` only for a Node-only
+job.
 
 A cron without `dialect` or `timeZone` runs at local time under Node and in UTC
 on Workers. When the Node process time zone is not UTC, `ScheduleNodeModule`

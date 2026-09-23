@@ -95,8 +95,9 @@ A `@Cron` job that explicitly requests `dialect: 'unix'` or
 `timeZone: 'local'` fails with `incompatible-cron-options`, and one that declares
 no dialect but whose weekday field has digits or whose day-of-month and weekday
 fields are both restricted fails with `ambiguous-cron-dialect`: Workers read its
-trigger with Cloudflare semantics while Node reads it as Unix cron, so declare
-`{ dialect: 'cloudflare' }`. `schedule:interval` fails with
+trigger with Cloudflare semantics while Node reads it with Vela's unix dialect,
+so declare `{ dialect: 'cloudflare' }`; `{ dialect: 'unix' }` is only for
+Node-only jobs, which are not deployed as Workers. `schedule:interval` fails with
 `unsupported-interval` because Workers cron delivery does not drive interval
 timers. At runtime the Cloudflare adapter only reports these through the
 diagnostics policy (see [scheduling](scheduling.md#workers-cron-triggers)). A

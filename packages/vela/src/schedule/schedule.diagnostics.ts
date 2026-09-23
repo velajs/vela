@@ -6,11 +6,12 @@ import type { CronMetadata } from './schedule.types';
 /**
  * Explain why a cron declaration without a `dialect` would fire on different
  * days depending on the runtime, or return `undefined` when it cannot. Node
- * reads an undeclared dialect as Unix cron, while Cloudflare delivers the
- * trigger string with its own semantics: weekday numbers start at 0 = Sunday in
- * Unix cron and at 1 = Sunday on Cloudflare, and when both day fields are
- * restricted Unix cron requires both to match while Cloudflare accepts either.
- * Declaring `dialect` removes the ambiguity.
+ * reads an undeclared dialect as Vela's unix dialect, while Cloudflare
+ * delivers the trigger string with its own semantics: weekday numbers start at
+ * 0 = Sunday in Unix cron and at 1 = Sunday on Cloudflare, and when both day
+ * fields are restricted Vela's unix dialect requires both to match, while
+ * Cloudflare, like standard crontab, accepts either. Declaring `dialect`
+ * removes the ambiguity.
  */
 export function cronDialectAmbiguity(
   meta: Pick<CronMetadata, 'expression' | 'dialect'>,
@@ -27,8 +28,8 @@ export function cronDialectAmbiguity(
   }
   if (day !== '*' && weekday !== '*') {
     return (
-      'it restricts both day-of-month and weekday, which Unix cron requires together and ' +
-      'Cloudflare accepts separately'
+      "it restricts both day-of-month and weekday: Vela's unix dialect requires both to " +
+      'match, while Cloudflare, like standard crontab, fires when either does'
     );
   }
   return undefined;

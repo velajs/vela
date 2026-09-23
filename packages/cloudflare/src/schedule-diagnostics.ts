@@ -66,7 +66,7 @@ export function reportCloudflareScheduleDiagnostics(
       reportScheduleDiagnostic(
         container,
         `[vela] ${cron} declares no dialect, and ${ambiguity}. Workers deliver the trigger ` +
-          `with Cloudflare semantics while Node reads it as Unix cron; declare ` +
+          `with Cloudflare semantics while Node reads it with Vela's unix dialect; declare ` +
           `{ dialect: 'cloudflare' } so it fires on the same days on every runtime.`,
       );
     }

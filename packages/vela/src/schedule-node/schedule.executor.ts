@@ -91,9 +91,10 @@ export class ScheduleExecutor
       if (ambiguity) {
         reportScheduleDiagnostic(
           this.#container,
-          `[vela] ${cron} declares no dialect, and ${ambiguity}. Node runs it as Unix cron; ` +
-            `declare { dialect: 'unix' } or { dialect: 'cloudflare' } so it fires on the same ` +
-            `days on every runtime.`,
+          `[vela] ${cron} declares no dialect, and ${ambiguity}. Node runs it with Vela's ` +
+            `unix dialect. For a job that also runs on Workers, declare ` +
+            `{ dialect: 'cloudflare' } and write the expression for Cloudflare, so it fires on ` +
+            `the same days on every runtime; declare { dialect: 'unix' } only for a Node-only job.`,
         );
       }
       if (

@@ -12,9 +12,9 @@ Add `scheduledJobComponents(container, entry)`, which names the `@UseGuards`, `@
 
 Add `DiscoveryFilter.deferRequestScoped`, which returns request-scoped providers as metadata-only entries without the "request-scoped ... skipped" warning. `EntrypointRegistry.build` uses it, so an application whose `@Cron` job, `@Processor` or other entrypoint class is request-scoped (for example a job that injects `CLOUDFLARE_SCHEDULED_EVENT`) no longer logs that warning at every bootstrap; dispatchers already resolve such classes per invocation.
 
-Add `cronDialectAmbiguity(meta)`, which explains why a `@Cron` expression without a `dialect` fires on different days under Unix and Cloudflare semantics (a numeric weekday field, or both day fields restricted), or returns `undefined`.
+Add `cronDialectAmbiguity(meta)`, which explains why a `@Cron` expression without a `dialect` fires on different days under Vela's unix dialect and Cloudflare semantics (a numeric weekday field, or both day fields restricted: Vela's unix dialect requires both to match, while Cloudflare, like standard crontab, fires when either does), or returns `undefined`.
 
-**Behavior change:** `ScheduleNodeModule` reports such an ambiguous `@Cron` declaration at bootstrap through the diagnostics policy: it warns once in the default `'log'` mode and fails bootstrap in `'throw'` mode. Declare `{ dialect: 'unix' }` or `{ dialect: 'cloudflare' }` to keep the current days explicitly.
+**Behavior change:** `ScheduleNodeModule` reports such an ambiguous `@Cron` declaration at bootstrap through the diagnostics policy: it warns once in the default `'log'` mode and fails bootstrap in `'throw'` mode. Declare `{ dialect: 'cloudflare' }` for a job that also runs on Workers and write its expression for Cloudflare, or `{ dialect: 'unix' }` only for a Node-only job.
 
 **Behavior change:** direct scheduled jobs run no guards, interceptors or filters on any runtime, neither app-global nor declared on the class, method or module, as with NestJS `@Cron`. Use signed dispatch to run a job through a route's request pipeline.
 
