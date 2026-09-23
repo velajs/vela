@@ -19,12 +19,22 @@ export interface QueueBulkNamedJob<T = unknown> {
   readonly options?: AddJobOptions;
 }
 
-type BulkJobs<S extends readonly StandardSchemaV1[]> = {
-  readonly [K in keyof S]: QueueBulkJob<S[K]>;
-};
-type BulkResults<S extends readonly StandardSchemaV1[]> = {
-  -readonly [K in keyof S]: QueueJob<StandardSchemaV1.InferInput<S[K]>>;
-};
+/**
+ * One `addBulk` entry: the arguments of one `add(job, data, options)` call as
+ * `{ job, data, options }` (not BullMQ's `{ name, data, opts }`).
+ */
+export type QueueBulkEntry = QueueBulkJob | QueueBulkNamedJob;
+
+/** A typed entry must carry its definition's wire input; a named entry carries any data. */
+type CheckedBulkEntry<E> = E extends { readonly job: QueueJobDefinition<infer S> }
+  ? QueueBulkJob<S>
+  : E;
+
+type BulkEntryResult<E> = E extends { readonly job: QueueJobDefinition<infer S> }
+  ? QueueJob<StandardSchemaV1.InferInput<S>>
+  : E extends { readonly data: infer T }
+    ? QueueJob<T>
+    : never;
 
 /**
  * Producer handle for one registered queue. Inject it with `@InjectQueue(name)`
@@ -69,16 +79,20 @@ export class QueueClient {
   }
 
   /**
-   * Add several jobs at once. Every typed job is validated before the driver
-   * sees any of them. A driver with `enqueueBatch` receives the whole batch
+   * Add several jobs at once. Each entry has the shape of an `add()` call,
+   * `{ job, data, options? }`, and is typed on its own: a typed entry's `data`
+   * is its definition's wire input, a named entry's `data` is free, and both
+   * may share one call. Every typed job is validated before the driver sees
+   * any of them. A driver with `enqueueBatch` receives the whole batch
    * (Cloudflare sends it in as few native calls as the platform limits allow);
    * any other driver receives one job at a time. Resolves only when every job
    * was accepted; otherwise rejects with a `QueueBatchError` naming the jobs
    * that were.
    */
-  addBulk<const S extends readonly StandardSchemaV1[]>(jobs: BulkJobs<S>): Promise<BulkResults<S>>;
-  addBulk<T>(jobs: readonly QueueBulkNamedJob<T>[]): Promise<QueueJob<T>[]>;
-  async addBulk(jobs: readonly (QueueBulkJob | QueueBulkNamedJob)[]): Promise<QueueJob<unknown>[]> {
+  addBulk<J extends readonly QueueBulkEntry[] | []>(
+    jobs: J & { readonly [K in keyof J]: CheckedBulkEntry<J[K]> },
+  ): Promise<{ -readonly [K in keyof J]: BulkEntryResult<J[K]> }>;
+  async addBulk(jobs: readonly QueueBulkEntry[]): Promise<QueueJob<unknown>[]> {
     const requests: QueueEnqueueRequest[] = [];
     for (const entry of jobs) {
       // Sequential on purpose: a failing validation stops before later work.

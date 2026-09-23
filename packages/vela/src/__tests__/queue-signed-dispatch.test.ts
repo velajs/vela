@@ -1,6 +1,7 @@
 import { defineProvider } from '../container/types';
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
+  APP_GUARD,
   VelaFactory,
   Module,
   Global,
@@ -11,12 +12,14 @@ import {
   MetadataRegistry,
   SignedInvocation,
   URL_SIGNING_SECRET,
+  type CanActivate,
 } from '../index.js';
 import {
   QueueDispatchBinding,
   QueueModule,
   Process,
   Processor,
+  dispatchQueueJob,
   queueToken,
   inline,
 } from '../queue/index.js';
@@ -221,5 +224,115 @@ describe('QueueModule signed re-entry dispatch (opt-in)', () => {
     expect(routeHits).toEqual(['run']);
     expect(processorHits).toEqual([]);
     await app.close();
+  });
+
+  it('dispatchQueueJob honors the signed policy, so a custom transport cannot bypass global guards', async () => {
+    const seen: string[] = [];
+    class Deny implements CanActivate {
+      canActivate(): boolean {
+        seen.push('guard');
+        return false;
+      }
+    }
+
+    @Global()
+    @Module({
+      providers: [defineProvider(URL_SIGNING_SECRET, { useValue: SECRET })],
+      exports: [URL_SIGNING_SECRET],
+    })
+    class SecretModule {}
+
+    @Controller('/q-custom')
+    class CustomController {
+      @Post('run', { name: 'custom.run' })
+      @SignedInvocation()
+      run(): { ok: boolean } {
+        seen.push('route');
+        return { ok: true };
+      }
+    }
+
+    @Processor('custom-q')
+    @Injectable()
+    class CustomProcessor {
+      @Process('go')
+      go(): void {
+        seen.push('processor');
+      }
+    }
+
+    @Module({
+      imports: [
+        SecretModule,
+        QueueModule.forRoot({
+          driver: inline({ mode: 'manual' }),
+          dispatch: { kind: 'signed', target: () => ({ route: 'custom.run' }) },
+        }),
+        QueueModule.registerQueue({ name: 'custom-q' }),
+      ],
+      controllers: [CustomController],
+      providers: [CustomProcessor, defineProvider(APP_GUARD, { useClass: Deny })],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule, { diagnostics: 'silent' });
+    try {
+      const job = { id: 'custom-1', queue: 'custom-q', name: 'go', data: {}, attempt: 1 };
+      await expect(dispatchQueueJob(app.getContainer(), app.entrypoints, job)).rejects.toThrow();
+      // The global guard rejected the signed re-entry; the processor never ran directly.
+      expect(seen).toEqual(['guard']);
+      // The module's registration contract applies to the low-level entry too.
+      await expect(
+        dispatchQueueJob(app.getContainer(), app.entrypoints, { ...job, queue: 'unregistered' }),
+      ).rejects.toThrow(/not registered/);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('dispatchQueueJob reports the signed re-entry as the handled delivery', async () => {
+    const seen: string[] = [];
+
+    @Global()
+    @Module({
+      providers: [defineProvider(URL_SIGNING_SECRET, { useValue: SECRET })],
+      exports: [URL_SIGNING_SECRET],
+    })
+    class SecretModule {}
+
+    @Controller('/q-allowed')
+    class AllowedController {
+      @Post('run', { name: 'allowed.run' })
+      @SignedInvocation()
+      run(): { ok: boolean } {
+        seen.push('route');
+        return { ok: true };
+      }
+    }
+
+    @Module({
+      imports: [
+        SecretModule,
+        QueueModule.forRoot({
+          driver: inline({ mode: 'manual' }),
+          dispatch: { kind: 'signed', target: () => ({ route: 'allowed.run' }) },
+        }),
+        QueueModule.registerQueue({ name: 'allowed-q' }),
+      ],
+      controllers: [AllowedController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    try {
+      const job = { id: 'allowed-1', queue: 'allowed-q', name: 'go', data: {}, attempt: 1 };
+      await expect(dispatchQueueJob(app.getContainer(), app.entrypoints, job)).resolves.toEqual({
+        handled: 1,
+      });
+      await expect(app.get(QueueDispatchBinding).dispatch(job)).resolves.toEqual({ handled: 1 });
+      expect(seen).toEqual(['route', 'route']);
+    } finally {
+      await app.close();
+    }
   });
 });

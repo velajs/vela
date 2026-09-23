@@ -50,6 +50,30 @@ void client.addBulk([{ job: 'named', data: { free: true } }]);
 // @ts-expect-error bulk data is the job's wire input, not its output
 void client.addBulk([{ job: zodJob, data: { value: 1 } }]);
 
+// Each entry is inferred on its own: named jobs may carry different payloads,
+// and typed and named jobs may share one call.
+void client
+  .addBulk([
+    { job: 'resize', data: { width: 100 } },
+    { job: 'label', data: 'thumbnail' },
+  ])
+  .then(([resize, label]) => [resize.data.width, label.data] satisfies [number, string]);
+void client
+  .addBulk([
+    { job: zodJob, data: { value: '1' } },
+    { job: 'audit', data: { actor: 'system' }, options: { delayMs: 1000 } },
+  ])
+  .then(([typed, named]) => [typed.data.value, named.data.actor] satisfies [string, string]);
+void client.addBulk([
+  { job: 'audit', data: 1 },
+  // @ts-expect-error a typed entry still checks its wire input next to named entries
+  { job: zodJob, data: { value: 1 } },
+]);
+// @ts-expect-error entries use Vela's { job, data, options }, not BullMQ's { name, data, opts }
+void client.addBulk([{ name: 'audit', data: 1, opts: {} }]);
+// @ts-expect-error bulk options are the same AddJobOptions add() accepts
+void client.addBulk([{ job: 'audit', data: 1, options: { delay: 1000 } }]);
+
 // Legacy bind implementations may return ignored values; the void contract stays intact.
 const legacyDriver: import('../queue').QueueDriver = {
   kind: 'legacy',

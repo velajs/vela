@@ -1,6 +1,7 @@
-import { Container, Inject, Injectable } from '../index';
+import { Container, Inject, Injectable, resolveErrorReporter } from '../index';
 import type { DiscoveryService, Entrypoint } from '../index';
 import { QueueDispatchBinding } from './queue.binding';
+import { isReportedQueueFailure } from './queue.dispatch';
 import { QueueRegistry } from './queue.registry';
 import { QUEUE_DRIVER, queueToken } from './queue.tokens';
 import type { QueueDriver } from './queue.types';
@@ -52,8 +53,33 @@ export class QueueTransportEntrypoints {
     return [...routes, ...declarations];
   }
 
+  /**
+   * Settle one native batch through the driver. Every failure is reported once
+   * on the `queue` edge: processor failures where the processor ran, and the
+   * transport's own (a message that is not a job, an unregistered or
+   * mis-pinned queue, a job no processor handles, a rejected signed re-entry)
+   * here. The platform adapter therefore does not report this entrypoint's
+   * rejection again.
+   */
   async consume(payload: unknown): Promise<void> {
     if (!this.driver.consume) throw new Error('Queue driver has no native consumer.');
-    await this.driver.consume(payload, (job) => this.binding.dispatch(job));
+    try {
+      await this.driver.consume(payload, async (job) => {
+        await this.binding.dispatch(job);
+      });
+    } catch (error) {
+      const reporter = resolveErrorReporter(this.container);
+      for (const failure of unreported(error)) {
+        reporter.report(failure, { edge: 'queue', source: 'QueueTransportEntrypoints.consume' });
+      }
+      throw error;
+    }
   }
+}
+
+/** The failures in a batch rejection that no processor already reported. */
+function unreported(error: unknown): unknown[] {
+  if (isReportedQueueFailure(error)) return [];
+  if (error instanceof AggregateError) return error.errors.flatMap(unreported);
+  return [error];
 }

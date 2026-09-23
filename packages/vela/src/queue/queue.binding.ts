@@ -1,8 +1,8 @@
 import { EntrypointRegistry, InternalDispatcher, resolveErrorReporter } from '../index';
 import type { Container, DiscoveryService } from '../index';
-import { dispatchJobToEntries } from './queue.dispatch';
+import { dispatchJobToProcessors } from './queue.dispatch';
 import { readProcessorMetadata } from './queue.decorators';
-import type { QueueEntry } from './queue.dispatch';
+import type { QueueDispatchOptions, QueueDispatchResult, QueueEntry } from './queue.dispatch';
 import type { QueueRegistry } from './queue.registry';
 import { PROCESSOR_METADATA, QUEUE_DRIVER } from './queue.tokens';
 import type { QueueDispatchMode, QueueDriver, QueueJob } from './queue.types';
@@ -57,9 +57,14 @@ export class QueueDispatchBinding {
           'Queue driver already belongs to an application. Use a driver factory for isolated reuse.',
         );
       }
-      driver.bind((job) => this.#deliver(job), {
-        onError: (error, job) => this.#routeError(error, job),
-      });
+      driver.bind(
+        async (job) => {
+          await this.#deliver(job);
+        },
+        {
+          onError: (error, job) => this.#routeError(error, job),
+        },
+      );
       this.#unbind = () => driver.unbind?.();
       ownedDrivers.add(driver);
     }
@@ -72,12 +77,16 @@ export class QueueDispatchBinding {
   }
 
   /**
-   * Deliver one job a platform consumer received, through the module's
-   * dispatch policy. Rejects, so the platform retries the message instead of
-   * acknowledging it, when the job's queue is not registered in this
-   * application or no processor handles it.
+   * Deliver one job a platform consumer (or a custom transport, through
+   * `dispatchQueueJob`) received, through the module's dispatch policy.
+   * Rejects, so the platform retries the message instead of acknowledging it,
+   * when the job's queue is not registered in this application or, unless
+   * `options.unhandled` is `'ignore'`, when no processor handles it.
    */
-  async dispatch(job: QueueJob): Promise<void> {
+  async dispatch(
+    job: QueueJob,
+    options: QueueDispatchOptions = { unhandled: 'error' },
+  ): Promise<QueueDispatchResult> {
     if (this.#closed) throw new Error('Queue module is closed.');
     if (!this.#queues.has(job.queue)) {
       throw new Error(
@@ -85,11 +94,11 @@ export class QueueDispatchBinding {
           `QueueModule.registerQueue({ name: '${job.queue}' }) in the module that processes it.`,
       );
     }
-    await this.#deliver(job, true);
+    return this.#deliver(job, options);
   }
 
-  async #deliver(job: QueueJob, strict = false): Promise<void> {
-    if (this.#closed) return;
+  async #deliver(job: QueueJob, options: QueueDispatchOptions = {}): Promise<QueueDispatchResult> {
+    if (this.#closed) return { handled: 0 };
     // Opt-in signed re-entry: the job re-enters a user-authored
     // `@SignedInvocation()` route through `ctx.run` instead of the direct
     // in-isolate `@Processor` path, so it runs the full HTTP pipeline (and,
@@ -104,7 +113,7 @@ export class QueueDispatchBinding {
         ttlSeconds: dispatch.ttlSeconds,
         iss: `queue:${job.queue}`,
       });
-      return;
+      return { handled: 1 };
     }
 
     const entries: QueueEntry[] = this.#container.has(EntrypointRegistry)
@@ -120,9 +129,7 @@ export class QueueDispatchBinding {
             moduleId: found.moduleId,
           }));
 
-    await dispatchJobToEntries(this.#container, entries, job, {
-      unhandled: strict ? 'error' : 'ignore',
-    });
+    return dispatchJobToProcessors(this.#container, entries, job, options);
   }
 
   #routeError(error: unknown, job: QueueJob): void {
@@ -140,4 +147,34 @@ export class QueueDispatchBinding {
       note: 'inline driver',
     });
   }
+}
+
+/**
+ * Deliver one job to its queue's processors: the entry point for tests and
+ * custom transports (for example a raw `@QueueConsumer` that bridges its
+ * batches to processors).
+ *
+ * In an application that imports `QueueModule.forRoot()`, delivery goes
+ * through the module's `QueueDispatchBinding`, exactly as a native delivery
+ * does: the job's queue must be registered, and signed dispatch re-enters the
+ * job's route, so the route's global guards run and cannot be bypassed.
+ * Without a `QueueModule`, the job goes directly to the `@Processor` providers
+ * listed in `entrypoints`. `options.unhandled` defaults to `'ignore'` (a job
+ * no processor handles resolves with `handled: 0`).
+ */
+export async function dispatchQueueJob(
+  container: Container,
+  entrypoints: EntrypointRegistry,
+  job: QueueJob,
+  options: QueueDispatchOptions = {},
+): Promise<QueueDispatchResult> {
+  const unhandled = options.unhandled ?? 'ignore';
+  if (container.has(QueueDispatchBinding)) {
+    const binding = await container.resolveAsync(QueueDispatchBinding);
+    return binding.dispatch(job, { unhandled });
+  }
+  const entries: QueueEntry[] = entrypoints
+    .ofKind('queue', readProcessorMetadata)
+    .map((ep) => ({ token: ep.token, meta: ep.meta, moduleId: ep.moduleId }));
+  return dispatchJobToProcessors(container, entries, job, { unhandled });
 }
