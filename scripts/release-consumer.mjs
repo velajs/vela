@@ -93,7 +93,7 @@ run('npm', ['run', 'typecheck']);
 run('npm', ['run', 'client:check']);
 run('npx', ['--no-install', 'wrangler', 'deploy', '--dry-run', '--outdir', 'worker-bundle']);
 const generatedProject = tarballs['@velajs/cli']
-  ? await verifyNewProject(join(consumer, 'node_modules/@velajs/cli/dist/index.js'))
+  ? await verifyNewProject(join(consumer, 'node_modules/@velajs/cli/dist/index.js'), tarballs)
   : undefined;
 const eventSourceArchive = artifacts.packages.find(
   (entry) => entry.name === '@velajs/event-source',

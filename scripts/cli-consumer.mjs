@@ -1,15 +1,26 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdir, mkdtemp, readFile, readdir, symlink, writeFile } from 'node:fs/promises';
+import {
+  appendFile,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
+import { starterArchiveOverrides } from './starter-pins.mjs';
 
 // The entrypoint must come from an installed tarball, never the workspace dist.
-export async function verifyNewProject(cliEntrypoint) {
+// `archives` maps package names to `file:` release archives: the starter pins
+// the framework versions released with the CLI, which are not on npm yet.
+export async function verifyNewProject(cliEntrypoint, archives = {}) {
   const consumer = await mkdtemp(join(tmpdir(), 'vela-new-consumer-'));
   const runCli = (args) =>
     spawnSync(process.execPath, [cliEntrypoint, ...args], {
@@ -66,10 +77,25 @@ export async function verifyNewProject(cliEntrypoint) {
 
   console.log(`Generated CLI consumer: ${project}`);
   const run = (args) => execFileSync('pnpm', args, { cwd: project, stdio: 'inherit' });
-  // Deliberately keep the generated manifest unchanged: all app dependencies
-  // must install from npm, independently of this repository's release archives.
+  // Deliberately keep the generated manifest unchanged. Only its framework pins
+  // resolve to the release archives; every other dependency installs from npm.
+  const overrides = Object.entries(starterArchiveOverrides(manifest, archives));
+  if (overrides.length) {
+    await appendFile(
+      join(project, 'pnpm-workspace.yaml'),
+      `overrides:\n${overrides.map(([name, spec]) => `  '${name}': '${spec}'\n`).join('')}`,
+    );
+  }
   run(['install']);
+  const worker = await readFile(join(project, 'src/worker.ts'), 'utf8');
+  assert.match(worker, /export default createCloudflareWorker\(AppModule\);/);
+  assert.doesNotMatch(worker, /InjectionToken/);
+  // pretypecheck regenerates the committed binding types with `wrangler types`.
   run(['typecheck']);
+  assert.match(
+    await readFile(join(project, 'worker-configuration.d.ts'), 'utf8'),
+    /declare namespace Cloudflare/,
+  );
   run(['build']);
   assert.match(
     await readFile(join(project, 'dist/app.controller.js'), 'utf8'),
@@ -168,6 +194,8 @@ export async function verifyNewProject(cliEntrypoint) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   if (!process.argv[2])
-    throw new Error('Usage: node scripts/cli-consumer.mjs <installed-cli-dist/index.js>');
-  await verifyNewProject(resolve(process.argv[2]));
+    throw new Error(
+      'Usage: node scripts/cli-consumer.mjs <installed-cli-dist/index.js> [archives-json]',
+    );
+  await verifyNewProject(resolve(process.argv[2]), JSON.parse(process.argv[3] ?? '{}'));
 }

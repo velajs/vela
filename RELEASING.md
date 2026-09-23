@@ -56,10 +56,14 @@ ensures the starter uses the current framework, adapters, and Studio packages
 together instead of silently installing older registry versions.
 
 The consumer also runs the installed packed `vela new`
-outside the workspace, installs the generated project's published dependencies
-with pnpm, checks types and builds, and verifies HTTP, constructor injection,
-and source rebuilds under local Wrangler. CLI argument and destination failure
-cases run against that same installed archive.
+outside the workspace, installs the generated project's dependencies with pnpm,
+checks types and builds, and verifies HTTP, constructor injection, and source
+rebuilds under local Wrangler. CLI argument and destination failure cases run
+against that same installed archive. The starter pins exact framework versions
+that track the workspace: `pnpm version-packages` updates them, and
+`pnpm check:workspace` rejects drift. Those pins install from the release
+archives, because they are published together with the CLI; every other
+starter dependency installs from npm.
 
 When the release includes `@velajs/event-source`, a separate clean consumer installs
 its archive and checks the root runtime/type exports and inventory checkpoint
