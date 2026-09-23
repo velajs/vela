@@ -11,6 +11,7 @@ import { bodyLimit as honoBodyLimit } from 'hono/body-limit';
 import { contextStorage } from 'hono/context-storage';
 import { baseRoutePath, matchedRoutes, routePath } from 'hono/route';
 import { TrieRouter } from 'hono/router/trie-router';
+import { splitRoutingPath } from 'hono/utils/url';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { HttpMethod, Scope } from '../constants';
 import { HttpException } from '../errors/http-exception';
@@ -32,7 +33,6 @@ import {
   samplePaths,
   segmentsBeneath,
   segmentsUnder,
-  withDescendants,
   type RouteTarget,
 } from './route-target';
 import { buildMiddlewareExecutionContext } from './execution-context';
@@ -529,21 +529,14 @@ export class RouteManager {
     return undefined;
   }
 
+  // The first '*' middleware of every request seeds its container. A parent
+  // app can serve a route without the app's '*' middleware (Hono's TrieRouter
+  // does under a mount base whose '{regex}' parameter must span '/'), which
+  // would skip body limits and consumer middleware, so the request fails.
   private getRequestContainer(c: Context): Container {
-    const existing = findRequestContainer(c);
-    if (existing) {
-      return existing;
-    }
-
-    const child = this.createRequestContainer(c);
-    child.setRequestInstance(REQUEST_CONTEXT, createRequestContext(c));
-    return child;
-  }
-
-  private createRequestContainer(c: Context): Container {
-    const { container: child } = createExecutionScope(this.container, { signal: c.req.raw.signal });
-    setRequestContainer(c, child);
-    return child;
+    const container = findRequestContainer(c);
+    if (container) return container;
+    throw new Error('Vela middleware chain did not run — unsupported mount');
   }
 
   // Wraps an attached middleware so a thrown error flows through the
@@ -679,7 +672,10 @@ export class RouteManager {
       // Adapter-mounted routes share this same child even without controllers.
       // Start the lifetime before input validation, but snapshot REQUEST_CONTEXT
       // only after the body limiter has normalized the raw Request.
-      const child = this.createRequestContainer(c);
+      const { container: child } = createExecutionScope(this.container, {
+        signal: c.req.raw.signal,
+      });
+      setRequestContainer(c, child);
       const startedAt = performance.now();
       const observations = [...this.requestObservers].flatMap((observer) => {
         try {
@@ -1016,8 +1012,10 @@ export class RouteManager {
   // reaches no route at all is reported, because the route may still be added
   // to the Hono app after startup (mountOpenApi(), WebSocket upgrades, raw Hono
   // routes). A target reaches a route through a concrete path, shaped like
-  // either of them, that the target and Hono's TrieRouter both match. These
-  // samples only drive this check, never a request's decision.
+  // either of them, that the target and Hono's TrieRouter both match, with
+  // each constrained route parameter read as a plain ':name' segment so no
+  // sample has to satisfy its '{regex}'. These samples only drive this check,
+  // never a request's decision.
   private checkMiddlewareTargets(
     registered: ReadonlyArray<{ method: string; path: string }>,
   ): void {
@@ -1027,7 +1025,16 @@ export class RouteManager {
       ({ method, path }) => method !== HttpMethod.ALL || (path !== '*' && path !== '/*'),
     );
     const router = new TrieRouter<{ method: string; path: string }>();
-    for (const route of routes) router.add(HttpMethod.ALL, route.path, route);
+    // A constrained route parameter reads as one segment, whatever its value.
+    for (const route of routes) {
+      router.add(
+        HttpMethod.ALL,
+        `/${splitRoutingPath(route.path)
+          .map((part) => part.replace(/^(:[^{}]+)\{.*\}$/s, '$1'))
+          .join('/')}`,
+        route,
+      );
+    }
     const prefix = this.globalPrefix.replace(/\/+$/, '');
     const served = (target: RouteTarget, method: string, outside?: boolean): boolean => {
       const shape = `/${[...target.parts, ...(target.tail ? [target.tail === '*' ? '*' : ':_'] : [])].join('/')}`;
@@ -1069,10 +1076,10 @@ export class RouteManager {
         reportDiagnostic(
           this.container.getDiagnostics(),
           `[vela] Middleware route '${target.path}' resolves to '${pattern}', which matches no ` +
-            'route registered at startup, so the middleware never runs for it. If the route is ' +
-            (prefix ? 'served outside the global prefix or ' : '') +
-            'added to the Hono app after startup (mountOpenApi(), WebSocket upgrades, ' +
-            `app.getHonoApp()), pass { path: '${path}', absolute: true }.`,
+            'route registered at startup, so the middleware never runs for it. For a route added ' +
+            'to the Hono app later (mountOpenApi(), WebSocket upgrades, app.getHonoApp()), pass ' +
+            `the path it is served on with absolute: true, such as { path: '${pattern}', ` +
+            'absolute: true }.',
         );
       }
     }
@@ -1149,7 +1156,7 @@ export class RouteManager {
             c.req.param(name),
           );
         }
-        return segments ? matchTarget(target, segments) : forRoutes;
+        return segments ? matchTarget(target, segments, forRoutes) : forRoutes;
       };
       let matched = included.some((target) => hit(target, true));
       if (!matched && controllers.size) {
@@ -1188,7 +1195,16 @@ export class RouteManager {
       }
       target = parseTarget(joinPaths(prefix, written));
     }
-    return { method, target: forRoutes ? withDescendants(target) : target };
+    // A forRoutes() target also covers every path beneath it, and a trailing
+    // '/' covers the same paths as its parent.
+    const { parts, tail } = target;
+    return {
+      method,
+      target:
+        forRoutes && !tail
+          ? { parts: parts.at(-1) === '' ? parts.slice(0, -1) : parts, tail: '*' }
+          : target,
+    };
   }
 
   getControllers(): ControllerRegistration[] {

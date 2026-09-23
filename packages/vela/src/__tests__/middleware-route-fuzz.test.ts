@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Hono, type Context, type Env, type Next } from 'hono';
+import { LinearRouter } from 'hono/router/linear-router';
 import { RegExpRouter } from 'hono/router/reg-exp-router';
 import { TrieRouter } from 'hono/router/trie-router';
 import {
@@ -135,6 +136,23 @@ function referencePatterns(target: string, prefix: string, descendants: boolean)
   if (tail === '+') return [beneath];
   if (tail === '*') return [`${parent}/*`, beneath];
   return [parent];
+}
+
+// Hono's LinearRouter serves ':name' on an empty segment, so a forRoutes()
+// ':name' segment also matches one. Its reference therefore reads each empty
+// segment of the request path that lines up with a target parameter, beneath
+// the base and the global prefix, as a value. A base that ends in '/', like
+// the root, is the app's root itself, not an empty segment beneath it.
+function fillParameters(path: string, base: string, prefix: string, target: string): string {
+  if (path === base || path === '/') return path;
+  const skip = `${base}/${prefix}`.split('/').filter(Boolean).length;
+  const parameters = target.replace(/^\//, '').split('/');
+  return path
+    .split('/')
+    .map((segment, index) =>
+      !segment && parameters[index - 1 - skip]?.startsWith(':') ? '_' : segment,
+    )
+    .join('/');
 }
 
 function methodReaches(method: string, target: string | undefined): boolean {
@@ -303,10 +321,16 @@ describe('path targets decide as Hono dispatches their patterns on every router'
 
   // How parents mount the app, and the bases requests arrive with: a base
   // that ends in '/' puts the app's root beneath it, and a decoded parameter
-  // does not spell its path, so the middleware runs for those requests.
-  const MOUNTS: ReadonlyArray<readonly [readonly string[], readonly string[]]> = [
+  // does not spell its path, so the middleware runs for those requests. A
+  // parent on the LinearRouter serves ':name' routes on empty segments, and a
+  // base parameter whose '{regex}' can span '/' makes every request fail closed.
+  const MOUNTS: ReadonlyArray<
+    readonly [readonly string[], readonly string[], (() => Hono<VelaHonoEnv>)?]
+  > = [
     [[], ['']],
     [['/m'], ['/m']],
+    [['/m'], ['/m'], () => new Hono<VelaHonoEnv>({ router: new LinearRouter() })],
+    [['/:tenant{.+}'], ['/t', '/a/b']],
     [['/m/'], ['/m/', '/m']],
     [['/:tenant'], ['/t', '/users', '/a%3Ab', '/x%25y']],
     [['/:tenant{[a-z0-9-]+}'], ['/t', '/users', '/A', '/auth']],
@@ -335,6 +359,8 @@ describe('path targets decide as Hono dispatches their patterns on every router'
     let mounted = 0;
     let failedClosed = 0;
     let absolute = 0;
+    let emptyParameters = 0;
+    let spanned = 0;
     const routers = new Map<string, number>();
 
     for (let round = 0; round < 240; round += 1) {
@@ -345,7 +371,11 @@ describe('path targets decide as Hono dispatches their patterns on every router'
       const isAbsolute = !everyPath && next() % 4 === 0;
       const exclude = next() % 2 === 0;
       const routeSet = pick(next, ROUTE_SETS);
-      const [bases, requestBases] = pick(next, MOUNTS);
+      const [bases, requestBases, createParent = () => new Hono<VelaHonoEnv>()] = pick(
+        next,
+        MOUNTS,
+      );
+      const spans = bases.some((base) => base.includes('{.+}'));
       const route: RouteInfo = {
         path: target,
         ...(method ? { method } : {}),
@@ -364,7 +394,7 @@ describe('path targets decide as Hono dispatches their patterns on every router'
         },
         prefix,
       );
-      const hono = mount(app, bases, () => new Hono<VelaHonoEnv>());
+      const hono = mount(app, bases, createParent);
 
       // The target's patterns alone, on each of Hono's routers.
       const patterns = everyPath
@@ -401,29 +431,40 @@ describe('path targets decide as Hono dispatches their patterns on every router'
         ran = false;
         reached = false;
         await hono.request(path, { method: requestMethod });
-        for (const reference of references) {
+        for (const reference of spans ? [] : references) {
           reference.matched = false;
           await reference.app.request(path, { method: requestMethod });
         }
         const [onRegExp, onTrie] = references.map((reference) => reference.matched);
         const sample = { target, method, isAbsolute, exclude, bases, requestMethod, path };
-        // The grammar is one Hono's routers agree on.
-        if (!trieMisreads) {
+        // Both routers read the reference patterns alike: each spells a trailing
+        // wildcard the RegExpRouter's way and the TrieRouter's way.
+        if (!trieMisreads && !spans) {
           expect({ ...sample, onRegExp }).toEqual({ ...sample, onRegExp: onTrie });
         }
         if (!reached) continue;
 
+        let onTarget = onRegExp;
+        const filled = fillParameters(path, base, isAbsolute ? '' : prefix, target);
+        if (!exclude && filled !== path) {
+          references[0]!.matched = false;
+          await references[0]!.app.request(filled, { method: requestMethod });
+          onTarget = references[0]!.matched;
+          if (onTarget !== onRegExp) emptyParameters += 1;
+        }
         const failClosed =
           !everyPath &&
-          (base.includes('%') ||
+          (spans ||
+            base.includes('%') ||
             (!!bases.at(-1)?.endsWith('/') && !path.startsWith(base.replace(/\/?$/, '/'))));
         const methodOk = methodReaches(requestMethod, method);
-        const hit = everyPath ? methodOk : failClosed ? methodOk && !exclude : onRegExp;
+        const hit = everyPath ? methodOk : failClosed ? methodOk && !exclude : onTarget;
         expect({ ...sample, ran }).toEqual({ ...sample, ran: exclude ? !hit : hit });
 
         compared += 1;
         if (bases.length) mounted += 1;
         if (failClosed) failedClosed += 1;
+        if (spans) spanned += 1;
         if (isAbsolute) absolute += 1;
         if (/%0A|%0D|%E2%80%A[89]/.test(path)) terminators += 1;
       }
@@ -434,6 +475,9 @@ describe('path targets decide as Hono dispatches their patterns on every router'
     expect(mounted).toBeGreaterThan(4000);
     expect(failedClosed).toBeGreaterThan(500);
     expect(absolute).toBeGreaterThan(1000);
+    expect(emptyParameters).toBeGreaterThan(20);
+    expect(spanned).toBeGreaterThan(400);
+    expect(routers.get('LinearRouter')).toBeGreaterThan(20);
     expect(routers.get('SmartRouter + RegExpRouter')).toBeGreaterThan(100);
     expect(routers.get('SmartRouter + TrieRouter')).toBeGreaterThan(60);
   });

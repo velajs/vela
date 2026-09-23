@@ -1203,7 +1203,6 @@ declare class RouteManager {
   private getMiddlewarePriority;
   private middlewareTarget;
   private getRequestContainer;
-  private createRequestContainer;
   private wrapMiddlewareWithFilters;
   private mapMiddlewareError;
   registerController(controller: Type, moduleId?: string): this;
