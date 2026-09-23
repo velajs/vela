@@ -1,5 +1,56 @@
 # Changelog
 
+## 1.29.0
+
+### Minor Changes
+
+- 4071cb7: A factory without parameters may omit `inject` in `BetterAuthModule.forRootAsync()`, `MailModule.forRootAsync()`, `StorageModule.forRootAsync()`, `RpcClientModule.registerAsync()` and `overrideProvider(token).useFactory({ factory })`, as in the `@velajs/vela` factories. A factory with parameters still names their tokens in `inject`, and a dependency tuple given as a type argument still needs a matching `inject`.
+  
+  `StorageModule.forRootAsync()` factories may return `{ driver, multipartGrantSecret }` instead of a bare driver, so the multipart grant secret comes through DI, for example from `ENV`, now that roots are static. The factory still runs once, on first use, or again on the next use until it succeeds; its secret takes precedence over `http.multipartGrantSecret` and is validated with the rest of the factory result on each such use, and multipart endpoints without any secret keep refusing every request. Adds the `StorageAsyncResult` and `StorageControllerOptions` types, and `createStorageController()` takes an optional token for the values it resolves per application.
+  
+  **Behavior change:** a multipart grant secret shorter than 32 bytes is a server configuration error instead of a client error. `StorageModule.forRoot()` throws for such an `http.multipartGrantSecret` when the module is set up, and a `forRootAsync()` factory that returns one fails every storage operation and multipart request until the factory returns a valid result, which the controller answers with a redacted 502 `upstream_error`. Multipart requests no longer answer 400 `invalid_request` with a message that names the setting.
+  
+  **Behavior change:** `MailModule.forRootAsync()` and `StorageModule.forRootAsync()` throw when called with a factory that declares parameters but no `inject`, naming the method, instead of running it with `undefined` arguments. `MailModuleAsyncOptions`, `StorageModuleAsyncOptions` and `RpcClientAsyncOptions` are type aliases instead of interfaces, so an interface can no longer extend them: intersect them instead (`RpcClientAsyncOptions<Inject> & { region: string }`). `MailModuleAsyncOptions.imports` is typed `ModuleImport[]`, so a caller that enables `exactOptionalPropertyTypes` omits it instead of passing `undefined`.
+- efc0876: `Test.createTestingModule(metadata, { env, adapters })` seeds the application's `ENV` and binds runtime adapters through the same bootstrap path as `VelaFactory.create`: adapter `configureContainer`, request middleware, client-IP resolver and lifecycle hooks all apply. `moduleRef.fetch()` and the HTTP and SSE builders send each request with the seeded `env` as the Hono `c.env` unless `fetch(request, env)` passes one explicitly, so an adapter that binds requests to its environment, such as `cloudflareAdapter({ env })` given the same `env`, accepts them. The WebSocket builder keeps the Node transport's own request bindings. `overrideProvider(ENV).useValue(...)` replaces the environment for every module, with or without a seeded `env`. The `TestingModuleOptions` type is exported.
+- a5d5615: Add `TestingModule.resolveInRequest(token, init?)`. It resolves the token in a fresh request scope seeded from an optional `RequestInit` plus `url`, and keeps that scope open until `close()` so the returned instance and its request dependencies stay usable. `runInRequestScope(callback, init?)` accepts the same request init, and the `TestRequestInit` type is exported.
+  
+  **Behavior change:** `TestingModule.get()` throws for request-scoped providers and points to `resolveInRequest()`, instead of constructing them on the root container.
+
+### Patch Changes
+
+- Updated dependencies [07d1713]
+- Updated dependencies [db18d3a]
+- Updated dependencies [07d1713]
+- Updated dependencies [bacaacd]
+- Updated dependencies [a814199]
+- Updated dependencies [1838474]
+- Updated dependencies [8a3016c]
+- Updated dependencies [d803a49]
+- Updated dependencies [b235935]
+- Updated dependencies [08a81c8]
+- Updated dependencies [5b5b81d]
+- Updated dependencies [7daf4fc]
+- Updated dependencies [35e8e0d]
+- Updated dependencies [4420501]
+- Updated dependencies [ff44b6a]
+- Updated dependencies [6d4f0c0]
+- Updated dependencies [e3bda2a]
+- Updated dependencies [bd7e3c9]
+- Updated dependencies [2b74880]
+- Updated dependencies [5ba8635]
+- Updated dependencies [db0c834]
+- Updated dependencies [d6f6a65]
+- Updated dependencies [8a3016c]
+- Updated dependencies [d5a3ec8]
+- Updated dependencies [0f7e8e7]
+- Updated dependencies [41ec70d]
+- Updated dependencies [b265297]
+- Updated dependencies [bdfff47]
+- Updated dependencies [28c7d07]
+- Updated dependencies [8a3016c]
+- Updated dependencies [44efdde]
+  - @velajs/vela@1.29.0
+
 ## 1.28.0
 
 ### Minor Changes

@@ -1,5 +1,61 @@
 # Changelog
 
+## 1.29.0
+
+### Minor Changes
+
+- 2dd809d: `BetterAuthModule.forRoot({ key })` and `forRootAsync({ key })` no longer throw when a root is rebuilt with the same explicit key in one isolate, for example per Worker environment or per Durable Object. Within an application, the same registration still deduplicates.
+  
+  **Behavior change:** an explicit `key` no longer rejects a different registration that reuses it within one application. The key now labels a registration instead of claiming it: the options shape and the auth instance (or `useFactory`) stay part of the module's identity, so each distinct registration under the same key, one with a different auth instance, factory or options, becomes its own module instance, as a registration without a key does. Previously the second registration threw. Use distinct keys, or pass the same auth instance or factory and options, when one application should hold a single registration.
+- 8a3016c: Add `BetterAuthUpgradeAuthenticator` for `@WebSocketGateway({ authenticator: BetterAuthUpgradeAuthenticator })`. It reads the session cookie through the module's `BetterAuthService`, validates the full session, and issues a WebSocket identity under the `BetterAuthModule` issuer, as `AuthGuard` does for HTTP, expiring with the session. The tenant is the session's active organization; provide `BETTER_AUTH_UPGRADE_TENANT` in the module that declares the gateway to choose it per connection (`(session, context, request) => tenantId | undefined`). Without a tenant, the upgrade is refused.
+- 4071cb7: The built-in guards inject the application `Reflector` instead of constructing their own: `AuthGuard` (`@velajs/better-auth`), `FeatureFlagGuard` (`@velajs/feature-flags`), `PermissionGuard` and `RolesGuard` (`@velajs/authz/vela`), `TenantGuard` (`@velajs/tenant/vela`) and `CedarGuard` (`@velajs/authz-cedar/vela`). `PermissionGuard`, `RolesGuard` and `TenantGuard` are now injectable, so `@UseGuards()` builds them in the declaring module through DI, like any provider.
+  
+  **Behavior change:** each guard takes the `Reflector` as a constructor parameter, after any dependencies it already had: `new PermissionGuard(reflector)`, `new RolesGuard(reflector)`, `new TenantGuard(reflector)`, `new CedarGuard(reflector)`, `new AuthGuard(auth, options, reflector)` and `new FeatureFlagGuard(flags, reflector)`. Code that constructs a guard itself, such as `app.useGlobalGuards(new TenantGuard(app.get(Reflector)))` or a unit test, passes the application's `Reflector` or a `new Reflector()`, and a subclass that declares its own constructor passes it to `super()`. A guard class passed to `app.useGlobalGuards()` is built through DI only when a module registers it, including the copy a module registers for a `@UseGuards()` reference; otherwise pass an instance or register it as `{ provide: APP_GUARD, useClass: PermissionGuard }`. Guards resolved through DI need no change.
+- 4071cb7: A factory without parameters may omit `inject` in `BetterAuthModule.forRootAsync()`, `MailModule.forRootAsync()`, `StorageModule.forRootAsync()`, `RpcClientModule.registerAsync()` and `overrideProvider(token).useFactory({ factory })`, as in the `@velajs/vela` factories. A factory with parameters still names their tokens in `inject`, and a dependency tuple given as a type argument still needs a matching `inject`.
+  
+  `StorageModule.forRootAsync()` factories may return `{ driver, multipartGrantSecret }` instead of a bare driver, so the multipart grant secret comes through DI, for example from `ENV`, now that roots are static. The factory still runs once, on first use, or again on the next use until it succeeds; its secret takes precedence over `http.multipartGrantSecret` and is validated with the rest of the factory result on each such use, and multipart endpoints without any secret keep refusing every request. Adds the `StorageAsyncResult` and `StorageControllerOptions` types, and `createStorageController()` takes an optional token for the values it resolves per application.
+  
+  **Behavior change:** a multipart grant secret shorter than 32 bytes is a server configuration error instead of a client error. `StorageModule.forRoot()` throws for such an `http.multipartGrantSecret` when the module is set up, and a `forRootAsync()` factory that returns one fails every storage operation and multipart request until the factory returns a valid result, which the controller answers with a redacted 502 `upstream_error`. Multipart requests no longer answer 400 `invalid_request` with a message that names the setting.
+  
+  **Behavior change:** `MailModule.forRootAsync()` and `StorageModule.forRootAsync()` throw when called with a factory that declares parameters but no `inject`, naming the method, instead of running it with `undefined` arguments. `MailModuleAsyncOptions`, `StorageModuleAsyncOptions` and `RpcClientAsyncOptions` are type aliases instead of interfaces, so an interface can no longer extend them: intersect them instead (`RpcClientAsyncOptions<Inject> & { region: string }`). `MailModuleAsyncOptions.imports` is typed `ModuleImport[]`, so a caller that enables `exactOptionalPropertyTypes` omits it instead of passing `undefined`.
+
+### Patch Changes
+
+- Updated dependencies [07d1713]
+- Updated dependencies [db18d3a]
+- Updated dependencies [07d1713]
+- Updated dependencies [4071cb7]
+- Updated dependencies [bacaacd]
+- Updated dependencies [a814199]
+- Updated dependencies [1838474]
+- Updated dependencies [8a3016c]
+- Updated dependencies [d803a49]
+- Updated dependencies [b235935]
+- Updated dependencies [08a81c8]
+- Updated dependencies [5b5b81d]
+- Updated dependencies [7daf4fc]
+- Updated dependencies [35e8e0d]
+- Updated dependencies [4420501]
+- Updated dependencies [ff44b6a]
+- Updated dependencies [6d4f0c0]
+- Updated dependencies [e3bda2a]
+- Updated dependencies [bd7e3c9]
+- Updated dependencies [2b74880]
+- Updated dependencies [5ba8635]
+- Updated dependencies [db0c834]
+- Updated dependencies [d6f6a65]
+- Updated dependencies [8a3016c]
+- Updated dependencies [d5a3ec8]
+- Updated dependencies [0f7e8e7]
+- Updated dependencies [41ec70d]
+- Updated dependencies [b265297]
+- Updated dependencies [bdfff47]
+- Updated dependencies [28c7d07]
+- Updated dependencies [8a3016c]
+- Updated dependencies [44efdde]
+  - @velajs/vela@1.29.0
+  - @velajs/authz@1.29.0
+
 ## 1.28.0
 
 ### Minor Changes

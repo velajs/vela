@@ -1,5 +1,17 @@
 # @velajs/agent
 
+## 1.28.1
+
+### Patch Changes
+
+- Updated dependencies [bacaacd]
+- Updated dependencies [9d5bccc]
+- Updated dependencies [4071cb7]
+- Updated dependencies [e3bda2a]
+  - @velajs/errors@1.23.0
+  - @velajs/mail@1.29.0
+  - @velajs/workflow@1.0.2
+
 ## 1.28.0
 
 ### Minor Changes

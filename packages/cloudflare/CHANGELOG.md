@@ -1,5 +1,94 @@
 # Changelog
 
+## 1.29.0
+
+### Minor Changes
+
+- 416650e: Cron triggers run core `@Cron()` jobs through `invokeScheduledJob`, the same primitive as the Node executor: the adapter runs every `@Cron` job whose expression is exactly the trigger string, in a fresh invocation scope, and the trigger settles after every matching job and its `EXECUTION_LIFETIME` work settle. Closing the application aborts the invocation signal of running jobs and waits for them.
+  
+  Add `CLOUDFLARE_SCHEDULED_EVENT`, a request-scoped token seeded into each job's invocation scope. Its `CloudflareScheduledEvent` value carries the trigger's `cron`, `scheduledTime` and a `noRetry()` already bound to the native controller. The token provides itself as request-scoped in every container, so a class that injects it is request-scoped wherever the module graph boots, including a `VelaWebSocketDurableObject`, `vela` CLI commands and `Test.createTestingModule()`, and is constructed per invocation instead of at bootstrap; resolving it outside a scheduled invocation throws. `ScheduledEvent` (the input of `scheduled()`) now also accepts the controller's optional `noRetry`.
+  
+  Signed `ScheduleModule` dispatch now works on Workers: the adapter's invocation transport re-enters the signed route, so its global guards run.
+  
+  The adapter reports schedule declarations a cron trigger cannot honor through the diagnostics policy: a `@Cron` without a dialect whose weekday field has digits or whose day fields are both restricted, `dialect: 'unix'`, `timeZone: 'local'`, `@Interval` jobs, which never run on Workers, and `@UseGuards`, `@UseInterceptors` or `@UseFilters` declared for a cron job. The default `'log'` mode warns once per declaration and never fails the first event; `'throw'` fails bootstrap. `vela deploy check` rejects the cron declarations and `@Interval` jobs before deployment (`ambiguous-cron-dialect`, `incompatible-cron-options`, `unsupported-interval`).
+  
+  The adapter provides `SCHEDULE_INVOCATION_SEED`: a cron job fired outside a trigger, such as by Studio's run-now, receives a synthetic `CLOUDFLARE_SCHEDULED_EVENT` whose `cron` is the job's expression, whose `scheduledTime` is the invocation's, and whose `noRetry()` does nothing.
+  
+  **Behavior change:** `@Scheduled` and `parseScheduledMetadata` are removed, along with the `ScheduledMetadata`, `ScheduledController`, `ScheduledContext` and `ScheduledHandler` types and the `cf:scheduled` and `cf:vela-cron` entrypoint kinds. Replace `@Scheduled(expr)` with `@Cron(expr, { dialect: 'cloudflare' })` from `@velajs/vela`. Cron jobs appear only as `schedule:cron` entrypoints.
+  
+  **Behavior change:** scheduled handlers receive only a `ScheduleInvocation` (`kind`, `expression` equal to the trigger string, `scheduledTime`, `signal`), identical to Node, instead of `(controller, env, ctx)`. Inject `ENV` for bindings, `CLOUDFLARE_SCHEDULED_EVENT` for `noRetry()`, and `EXECUTION_LIFETIME` for `waitUntil()`.
+  
+  **Behavior change:** scheduled jobs no longer run interceptors or filters declared with `@UseInterceptors` or `@UseFilters`, matching the Node executor. A job that declares `@UseGuards` on its class, method or module, whose guards the adapter used to run on each trigger, is now refused instead of running unguarded: the trigger fails, the job is never constructed, and the refusal is reported through the exception reporter (guards do not run for directly dispatched scheduled jobs — use `ScheduleModule.forRoot({ dispatch: { kind: 'signed', ... } })` or remove the guard). Other jobs on the same trigger still run. Queue consumers keep their guards, interceptors and filters. Use signed `ScheduleModule` dispatch to run a job through a route's request pipeline, or remove the guard.
+  
+  **Behavior change:** a `@Cron` job that declares `@UseGuards`, `@UseInterceptors` or `@UseFilters` on its class, method or module is reported through the diagnostics policy, because those components never run for scheduled jobs: the default `'log'` mode warns once and `'throw'` fails bootstrap. Move them to a signed `ScheduleModule` dispatch route.
+- a3e2b38: The Cloudflare runtime seeds the native environment as the framework `ENV`, in the Worker and in every `VelaWebSocketDurableObject`, and types it with the environment `wrangler types` generates: the package augments `VelaEnv` with `Cloudflare.Env`, so `@InjectEnv() env: VelaEnv`, `inject: [ENV]` factories and `registerAs` factories see your bindings, variables and secrets typed. Run `wrangler types` (for example with `--include-runtime=false` alongside `@cloudflare/workers-types`) so `Cloudflare.Env` declares them. The per-environment application cache and the environment identity assertion are unchanged.
+  
+  `createCloudflareWorker` and `createCloudflareApp` accept `adapters: RuntimeAdapter[]`, composed after the Cloudflare adapter for each application, so a Worker entry can stay `export default createCloudflareWorker(AppModule, { adapters: [...] })` without a hand-written per-environment cache.
+  
+  **Behavior change:** the `envToken` option is removed from `createCloudflareWorker`, `createCloudflareApp`, `cloudflareAdapter`, `VelaWebSocketDurableObject` and `buildDoRuntime`, with no alias. Delete the application's environment `InjectionToken` and inject `ENV` from `@velajs/vela` instead: `createCloudflareWorker(AppModule)`, `VelaWebSocketDurableObject(AppModule)`, `cloudflareAdapter({ env })`. `CloudflareApplication` and `CloudflareRoot` are no longer generic; their environment type is `VelaEnv`.
+  
+  **Behavior change:** the `@Env()` parameter decorator is removed. Inject the environment with `@InjectEnv()` in a constructor, or read a binding in a factory with `inject: [ENV]`.
+  
+  **Behavior change:** ENV now carries every binding, variable and secret of the Worker, so framework readers pick up values such as `URL_SIGNING_SECRET` (URL and invocation signing) and `VELA_STUDIO_TOKEN` (Studio) automatically once they are set as variables or secrets. Values come from outside the program: validate each value your code reads before relying on it.
+- 2ae8505: Add the `@velajs/cloudflare/queues` subpath with `cloudflareQueues()`, the Cloudflare Queues driver for `QueueModule`. Configure it once with `QueueModule.forRoot({ driver: cloudflareQueues() })` and register each queue where it is used with `QueueModule.registerQueue({ name: 'email', binding: 'EMAIL_QUEUE' })`. Each application gets its own driver, which reads the registered binding from that application's `ENV` when a job is added, checks that it has `send()`, and awaits the native send. `QueueClient.addBulk` uses `sendBatch`, split into calls of at most 100 messages and an estimated 256 KB; a job estimated over 128 KB is rejected before anything is sent, and a partial failure rejects with a `QueueBatchError` listing the accepted job ids.
+  
+  Native delivery needs no mapping: the Worker's `queue()` handler gives batches that no `@QueueConsumer` claims to `QueueModule`, which routes every job by its logical `queue`, so several registered queues can share one physical queue. Every job goes through the module's dispatch policy, so signed dispatch re-enters the signed route and runs its global guards. A message that is not a job envelope, belongs to an unregistered queue, or fails stays unacknowledged, so Cloudflare retries it and then dead-letters it. `registerQueue({ name, consumer })` pins the queue to that physical queue: its jobs are accepted only from it, and it carries only the queues pinned to it. Bootstrap rejects a physical queue claimed by both `@QueueConsumer` and a pinned registration. A raw `@QueueConsumer` owns its physical queue and must not carry jobs of queues registered with `QueueModule`, which `cloudflareQueues()` delivers: when it receives such job envelopes, which reach their `@Processor` only if the raw handler dispatches them itself, the adapter warns once per physical and logical queue unless diagnostics are silent; the raw consumer still receives and settles the batch.
+  
+  **Behavior change:** `cloudflareQueueDriver(bindings, { consumers, producerBindings })` and the `@velajs/cloudflare/queue` subpath are removed, together with the `CloudflareQueueBindings` and `CloudflareQueueDriverOptions` types. Replace `driver: cloudflareQueueDriver({ email: env.EMAIL_QUEUE }, { producerBindings: { email: 'EMAIL_QUEUE' } })` with `driver: cloudflareQueues()` plus `QueueModule.registerQueue({ name: 'email', binding: 'EMAIL_QUEUE' })`, and replace a `consumers: { 'email-production': 'email' }` mapping with `QueueModule.registerQueue({ name: 'email', consumer: 'email-production' })`, or with a plain `registerQueue({ name: 'email' })` when the physical queue needs no pin.
+  
+  **Behavior change:** `consumeQueueBatch` moves to `@velajs/cloudflare/queues`. It accepts every job envelope by default instead of requiring the job's queue to equal the batch's physical queue; its `queue` option is replaced by `queues`, the list of logical queues to accept.
+  
+  **Behavior change:** the driver publishes one `cf:queue:module` entrypoint per application with `{ consumers }` (the pinned physical queues) instead of one `{ queueName, logicalQueue }` entrypoint per mapping, and the `cf:queue:producer` entrypoint kind is removed: registered queues are published as `queue:registration` entrypoints by `QueueModule`.
+  
+  **Behavior change:** a failure on the native `QueueModule` path is reported once to the exception handler instead of once by its processor and again, with the whole batch rejection, by the adapter; a message that is not a job envelope or belongs to an unregistered queue is still reported once, individually.
+- 8a3016c: **Behavior change:** Workers and Durable Objects are built from static roots only. `createCloudflareWorker`, `createCloudflareApp` and `VelaWebSocketDurableObject` take a module class or a `DynamicModule` declared at module scope; `CloudflareRoot` is now `Type | DynamicModule`. The `{ create(env) }` and async `{ create: async (env) => ... }` roots are removed, with no alias, together with the per-(root, environment) resolution cache. Read bindings where each application is built instead: `Module.forRootAsync({ inject: [ENV], useFactory: (env) => ({ ... }) })`, `useFactory` providers that inject `ENV`, or `@InjectEnv()` constructors. These run for each application, so nothing built from one environment is shared with another, and constructing another application or Durable Object instance declares no new classes in the isolate. The per-environment application cache of `createCloudflareWorker` is unchanged.
+  
+  WebSocket upgrade routes authenticate with the gateway's `authenticator`, resolved once per application from the module that declares the gateway, and read an `(env) => origins` allowlist from the Worker's `ENV`. Authentication still completes before the Durable Object id is derived, and client-supplied `x-vela-*` headers are still stripped first. `UpgradeAuthenticator`, `WebSocketUpgradeIdentity` and `WebSocketUpgradeAuthenticationContext` are re-exported from the package root.
+  
+  `WsGatewayRoute` gains an optional `moduleId`: the module that declares the gateway, from which its authenticator resolves.
+- 864735d: **Behavior change:** a WebSocket Durable Object now refuses to start when its module registers the core `WebSocketModule` instead of `CloudflareWebSocketModule`. The core module's `WS_SERVER` broadcasts through its own sync driver, which never reaches the Durable Object's sockets, so `@WebSocketServer()` pushes were silently lost. Import `CloudflareWebSocketModule.forRoot()` in modules a `VelaWebSocketDurableObject` bootstraps.
+  
+  The Worker adapter now warns once per isolate when `LiveModule` runs the default `localLive()` driver in the Worker, whose invalidations never reach subscriptions held by the Durable Object. Pass `driver: () => durableObjectLive({ namespace, gatewayPath })`. The warning respects the `'silent'` diagnostics mode.
+
+### Patch Changes
+
+- a01273b: A queue batch that no consumer claims now rejects with guidance: the error names the physical queue, points to `@QueueConsumer(name)` or `QueueModule.forRoot({ driver: cloudflareQueues() })` with a `QueueModule.registerQueue()` for each queue the batch carries, and states that the unacknowledged batch is retried and then dead-lettered by Cloudflare.
+- e4f2008: A Durable Object WebSocket whose `handleConnection` hook broadcasts to its room, for example `server.emit('system', { text: 'joined' })`, is now admitted. The broadcast reached the still-pending socket and rejected it, so every such upgrade failed with "Unable to persist authorized WebSocket state". Broadcasts now skip a socket while its connection hook runs and deliver to the room's active sockets; a pending socket that is not being admitted is still closed with 1008. When a socket is rejected while its hook runs, the error now says so.
+- Updated dependencies [07d1713]
+- Updated dependencies [db18d3a]
+- Updated dependencies [07d1713]
+- Updated dependencies [4071cb7]
+- Updated dependencies [bacaacd]
+- Updated dependencies [a814199]
+- Updated dependencies [1838474]
+- Updated dependencies [8a3016c]
+- Updated dependencies [d803a49]
+- Updated dependencies [b235935]
+- Updated dependencies [08a81c8]
+- Updated dependencies [5b5b81d]
+- Updated dependencies [7daf4fc]
+- Updated dependencies [35e8e0d]
+- Updated dependencies [4420501]
+- Updated dependencies [ff44b6a]
+- Updated dependencies [6d4f0c0]
+- Updated dependencies [e3bda2a]
+- Updated dependencies [bd7e3c9]
+- Updated dependencies [2b74880]
+- Updated dependencies [5ba8635]
+- Updated dependencies [db0c834]
+- Updated dependencies [d6f6a65]
+- Updated dependencies [8a3016c]
+- Updated dependencies [d5a3ec8]
+- Updated dependencies [0f7e8e7]
+- Updated dependencies [41ec70d]
+- Updated dependencies [b265297]
+- Updated dependencies [bdfff47]
+- Updated dependencies [28c7d07]
+- Updated dependencies [8a3016c]
+- Updated dependencies [44efdde]
+  - @velajs/vela@1.29.0
+  - @velajs/feature-flags@1.29.0
+
 ## 1.28.0
 
 ### Minor Changes

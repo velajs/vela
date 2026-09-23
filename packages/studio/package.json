@@ -1,6 +1,6 @@
 {
   "name": "@velajs/studio",
-  "version": "1.28.0",
+  "version": "1.29.0",
   "description": "Vela Studio admin module: reserved /_vela/admin surface, @AdminRpc ops, time-travel port",
   "keywords": [
     "admin",

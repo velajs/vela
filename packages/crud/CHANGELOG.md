@@ -1,5 +1,53 @@
 # Changelog
 
+## 1.29.0
+
+### Minor Changes
+
+- ff44b6a: Declare the 201 that generated `create` routes answer with `@HttpCode(201)`, so the
+  OpenAPI walk documents only the 201 and 400 responses they return.
+  
+  **Behavior change:** OpenAPI documents and generated clients no longer list a default
+  `200` response beside the `201` of a generated `create` operation; code that narrowed a
+  generated client's create result on `status === 200` must use `201`. An `@Override`'d
+  create handler keeps its own status: declare `@HttpCode(201)` on it to document the same
+  contract.
+
+### Patch Changes
+
+- Updated dependencies [07d1713]
+- Updated dependencies [db18d3a]
+- Updated dependencies [07d1713]
+- Updated dependencies [bacaacd]
+- Updated dependencies [a814199]
+- Updated dependencies [1838474]
+- Updated dependencies [8a3016c]
+- Updated dependencies [d803a49]
+- Updated dependencies [b235935]
+- Updated dependencies [08a81c8]
+- Updated dependencies [5b5b81d]
+- Updated dependencies [7daf4fc]
+- Updated dependencies [35e8e0d]
+- Updated dependencies [4420501]
+- Updated dependencies [ff44b6a]
+- Updated dependencies [6d4f0c0]
+- Updated dependencies [e3bda2a]
+- Updated dependencies [bd7e3c9]
+- Updated dependencies [2b74880]
+- Updated dependencies [5ba8635]
+- Updated dependencies [db0c834]
+- Updated dependencies [d6f6a65]
+- Updated dependencies [8a3016c]
+- Updated dependencies [d5a3ec8]
+- Updated dependencies [0f7e8e7]
+- Updated dependencies [41ec70d]
+- Updated dependencies [b265297]
+- Updated dependencies [bdfff47]
+- Updated dependencies [28c7d07]
+- Updated dependencies [8a3016c]
+- Updated dependencies [44efdde]
+  - @velajs/vela@1.29.0
+
 ## 1.28.0
 
 ### Minor Changes

@@ -1,5 +1,65 @@
 # @velajs/cli
 
+## 1.29.0
+
+### Minor Changes
+
+- c8d2940: `vela deploy check` checks queues registered with `QueueModule.registerQueue()`. Wrangler `queues.producers` rows now map each binding to its physical queue. Every registered `binding` must be a producer binding of the selected environment (`missing-queue-producer`). When the application consumes natively through `cloudflareQueues()`, each `@Processor` queue must be registered (`unregistered-queue-processor`) and must have a `queues.consumers` entry for the physical queues its registration pins with `consumer`, or else for its binding's producer queue (`missing-queue-consumer`). A processed queue with neither fails with `queue-processor-without-consumer` when the environment consumes no other queue, and otherwise produces an `unverified-queue-consumer` warning. A consumer that no `@QueueConsumer` or processed queue expects fails with `unhandled-queue-consumer`.
+  
+  **Behavior change:** snapshots listing the removed `cf:queue:producer` kind, or a `cf:queue:module` row with the removed `{ queueName, logicalQueue }` mapping, fail with `stale-entrypoint-snapshot`; regenerate them with `vela entrypoint list --json`. A `cf:queue:module` row no longer counts as a handler for its own physical queue: module consumers are derived from `queue:registration` and `queue` rows.
+  
+  **Behavior change:** a physical queue claimed by a `@QueueConsumer` that a registration pins with `consumer`, or that any registered queue's producer binding sends to, whether or not the Worker processes that queue, fails with `queue-consumer-claimed-by-raw`, because the raw consumer takes its batches whole and the registered jobs sent there never reach their `@Processor`. An unpinned registered queue whose producer binding sends to a physical queue pinned by other registrations fails with `queue-sent-to-pinned-queue`, because the module consumer rejects its jobs there and Cloudflare dead-letters them. A registration with both a `binding` and `consumer` pins whose producer binding sends to a physical queue outside its pins fails with `queue-producer-outside-pins`, for the same reason; this applies to a producer-only Worker that shares the registration too.
+- 0327fb9: **Behavior change:** `vela deploy check` checks Workers cron jobs only through `schedule:cron` rows. A snapshot that lists the removed `cf:scheduled` or `cf:vela-cron` kinds fails with `stale-entrypoint-snapshot` instead of counting them: entrypoint snapshots made by older CLIs must be regenerated with `vela entrypoint list --json`.
+  
+  **Behavior change:** a `schedule:cron` row without a `dialect` whose weekday field has digits or whose day-of-month and weekday fields are both restricted (for example `0 9 * * 1` or `0 9 1 * MON`) fails with `ambiguous-cron-dialect`: Workers read the trigger with Cloudflare semantics while Node reads it with Vela's unix dialect, so the job fires on different days. Declare `{ dialect: 'cloudflare' }` on the `@Cron`; `{ dialect: 'unix' }` is only for Node-only jobs, which are not deployed as Workers.
+  
+  **Behavior change:** `vela entrypoint list` adds `guards: true` to the metadata of a `schedule:cron` or `schedule:interval` row whose job declares `@UseGuards` on its class, method or module, and `dispatch: 'signed'` to every scheduled row when `ScheduleModule.forRoot({ dispatch: { kind: 'signed' } })` is configured. `vela deploy check` fails a `schedule:cron` row marked `guards: true` without `dispatch: 'signed'` with `scheduled-job-guards`: guards do not run for directly dispatched scheduled jobs, so the Worker refuses to run the job on every trigger. Use signed dispatch or remove the guard, and regenerate the snapshot.
+- 4a166ac: **Behavior change:** `vela new` generates a Worker entry that is only `export default createCloudflareWorker(AppModule)`, with no hand-written environment `InjectionToken`: providers read bindings, variables and secrets through the framework `ENV` (`@InjectEnv()` or `inject: [ENV]`). Generated projects add a `types` script, `wrangler types --include-runtime=false`, which also runs before `dev`, and commit its `worker-configuration.d.ts` so `VelaEnv` carries the bindings declared in `wrangler.jsonc`. They pin `@velajs/vela` and `@velajs/cloudflare` releases that provide `ENV`.
+- a07f491: **Behavior change:** when the project installs Vite 8, `loadConfig()` and every command that reads `vela.config.{js,mjs,ts}` load the config, and the relative files it imports, through a Vite module runner with Oxc legacy decorators and decorator metadata; packages still load from `node_modules`, and neither the project's Vite config nor tsconfig path aliases apply. A config can therefore import decorated TypeScript source directly, at the top level or lazily from `createApp()` (`await import('./src/app.module.js')`): the runner stays open for the whole command and closes after the app is disposed. `vite` is a new optional peer dependency. Without it, Node imports the config as before, and the load error now explains how to install Vite or import compiled `.js` files.
+  
+  **Behavior change:** `loadConfig()` now resolves to `{ config, path, dispose }` (the new `LoadedVelaConfig` type) instead of the config itself. Call `config.createApp()` as before, then `await dispose()` once the app is disposed to close the module runner that loaded the config.
+- a07f491: **Behavior change:** `vela new` generates a Vite 8 project instead of an SWC precompile. `pnpm dev` runs `vite dev` (Vite's port, 5173), `pnpm build` runs `vite build`, `pnpm preview` serves the build, and `pnpm run deploy` runs `vite build && wrangler deploy`, all through `@cloudflare/vite-plugin`. Vite's Oxc transformer emits the legacy decorators and `design:paramtypes` metadata that constructor injection needs, from options stated once in `oxc.config.ts` and imported by both `vite.config.ts` and `vitest.config.ts`. `wrangler.jsonc` points `main` at `src/worker.ts`, drops the `build` block, and sets no compatibility flags: its compatibility date enables Node.js compatibility, including `node:async_hooks`, by default. The `.swcrc` file, the `@swc/*` dependencies and the lint suppression in `src/app.controller.ts` are gone, and `tsconfig.json` (which keeps `verbatimModuleSyntax` and `isolatedModules`, since Oxc compiles one file at a time) also checks the tests and config files.
+  
+  Generated projects now include `test/worker.spec.ts`, which `pnpm test` runs inside workerd with `@cloudflare/vitest-plugin`; it calls the Worker's `fetch` handler and reads the body before waiting on the execution context. They pin `@velajs/cli` as a dev dependency, so `pnpm vela route list` works without a separate install, and their `vela.config.ts` imports the decorated `src/` files instead of a `dist/` build. The committed `worker-configuration.d.ts` lets a fresh checkout typecheck; `pnpm dev` and `pnpm typecheck` regenerate it first (the Wrangler file has no `build` block, so `wrangler types` runs no build), and `pnpm types` regenerates it on demand.
+  
+  **Behavior change:** for a project the Cloudflare Vite plugin builds, one with the `.wrangler/deploy/config.json` redirect a Vite build writes or a `vite.config.*` beside the Wrangler file that references `@cloudflare/vite-plugin`, `vela deploy check` suggests `cd '<dir>' && CLOUDFLARE_ENV=<env> pnpm build && pnpm exec wrangler deploy --env <env> --dry-run` as its next step, and its `--json` report adds the build as `nextStep.build` (`{ command, args, env, cwd }`). It previously suggested `wrangler deploy --config <file> --env <name> --dry-run`, which bypasses the Vite build and bundles the source with esbuild, without decorator metadata. Wrangler checks the kept `--env` against the environment the build targeted. Checking a Wrangler file with another name than `wrangler.json`, `wrangler.jsonc` or `wrangler.toml` adds a `vite-config-path` warning, since the plugin reads those unless its `configPath` option names the file. Other projects keep the `--config` suggestion. Every next step now runs in the Wrangler file's directory: the printed command starts with `cd '<dir>' &&`, and the JSON steps carry it as `cwd`, so a check run from a parent directory suggests commands that resolve the project's own scripts and Wrangler.
+
+### Patch Changes
+
+- 53e8f43: `vela client generate` no longer fails with `OpenAPI is missing ALL ...` on an application with an `@All` route, such as the Better Auth catch-all handler. OpenAPI has no operation for `ALL`, so the check that the document covers every application route now skips those routes, as the document itself does.
+- Updated dependencies [07d1713]
+- Updated dependencies [db18d3a]
+- Updated dependencies [07d1713]
+- Updated dependencies [bacaacd]
+- Updated dependencies [a814199]
+- Updated dependencies [1838474]
+- Updated dependencies [8a3016c]
+- Updated dependencies [d803a49]
+- Updated dependencies [b235935]
+- Updated dependencies [08a81c8]
+- Updated dependencies [5b5b81d]
+- Updated dependencies [7daf4fc]
+- Updated dependencies [35e8e0d]
+- Updated dependencies [4420501]
+- Updated dependencies [ff44b6a]
+- Updated dependencies [6d4f0c0]
+- Updated dependencies [e3bda2a]
+- Updated dependencies [bd7e3c9]
+- Updated dependencies [2b74880]
+- Updated dependencies [5ba8635]
+- Updated dependencies [db0c834]
+- Updated dependencies [d6f6a65]
+- Updated dependencies [8a3016c]
+- Updated dependencies [d5a3ec8]
+- Updated dependencies [0f7e8e7]
+- Updated dependencies [41ec70d]
+- Updated dependencies [b265297]
+- Updated dependencies [bdfff47]
+- Updated dependencies [28c7d07]
+- Updated dependencies [8a3016c]
+- Updated dependencies [44efdde]
+  - @velajs/vela@1.29.0
+
 ## 1.28.0
 
 ### Minor Changes

@@ -1,5 +1,48 @@
 # @velajs/cloudflare-access
 
+## 1.29.0
+
+### Minor Changes
+
+- 8a3016c: Add `CloudflareAccessUpgradeAuthenticator` to `@velajs/cloudflare-access/vela` for `@WebSocketGateway({ authenticator: CloudflareAccessUpgradeAuthenticator })`. It verifies the Access token on the upgrade request with the `CloudflareAccessModule` resolver, so issuer, audience, identity contract and tenant claim match `CloudflareAccessGuard`. Upgrades always require a verified identity, whatever the module `mode`, and a token without the signed tenant claim is refused.
+
+### Patch Changes
+
+- Updated dependencies [07d1713]
+- Updated dependencies [db18d3a]
+- Updated dependencies [07d1713]
+- Updated dependencies [4071cb7]
+- Updated dependencies [bacaacd]
+- Updated dependencies [a814199]
+- Updated dependencies [1838474]
+- Updated dependencies [8a3016c]
+- Updated dependencies [d803a49]
+- Updated dependencies [b235935]
+- Updated dependencies [08a81c8]
+- Updated dependencies [5b5b81d]
+- Updated dependencies [7daf4fc]
+- Updated dependencies [35e8e0d]
+- Updated dependencies [4420501]
+- Updated dependencies [ff44b6a]
+- Updated dependencies [6d4f0c0]
+- Updated dependencies [e3bda2a]
+- Updated dependencies [bd7e3c9]
+- Updated dependencies [2b74880]
+- Updated dependencies [5ba8635]
+- Updated dependencies [db0c834]
+- Updated dependencies [d6f6a65]
+- Updated dependencies [8a3016c]
+- Updated dependencies [d5a3ec8]
+- Updated dependencies [0f7e8e7]
+- Updated dependencies [41ec70d]
+- Updated dependencies [b265297]
+- Updated dependencies [bdfff47]
+- Updated dependencies [28c7d07]
+- Updated dependencies [8a3016c]
+- Updated dependencies [44efdde]
+  - @velajs/vela@1.29.0
+  - @velajs/authz@1.29.0
+
 ## 1.28.0
 
 ### Minor Changes
