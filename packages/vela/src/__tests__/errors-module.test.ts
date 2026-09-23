@@ -8,8 +8,8 @@ import {
   Injectable,
   Scope,
   defineErrorCatalog,
-  resolveErrorReporter,
 } from '../index.js';
+import { resolveErrorReporter } from '../module-kit.js';
 import type { ExceptionHandler } from '../index.js';
 
 const appCatalog = defineErrorCatalog({

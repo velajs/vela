@@ -1,30 +1,22 @@
-import { defineProvider } from '@velajs/vela';
-import { describe, expect, it, vi } from 'vitest';
 import {
+  defineProvider,
   APP_EXCEPTION_HANDLER,
   Controller,
-  Cron,
   EXECUTION_LIFETIME,
   Get,
   Inject,
   Injectable,
-  Interval,
   Module,
-  ScheduleModule,
   Scope,
   UseGuards,
   VelaFactory,
   type CanActivate,
 } from '@velajs/vela';
-import type {
-  CronInvocation,
-  ExecutionLifetime,
-  ModuleImport,
-  ProviderDefinition,
-  RuntimeAdapter,
-  ScheduleInvocation,
-  Type,
-} from '@velajs/vela';
+import { describe, expect, it, vi } from 'vitest';
+import { Cron, Interval, ScheduleModule } from '@velajs/vela/schedule';
+import type { ExecutionLifetime, ModuleImport, ProviderDefinition, Type } from '@velajs/vela';
+import type { CronInvocation, ScheduleInvocation } from '@velajs/vela/schedule';
+import type { RuntimeAdapter } from '@velajs/vela/module-kit';
 import { CLOUDFLARE_SCHEDULED_EVENT, cloudflareAdapter } from '@velajs/cloudflare';
 import type { CloudflareScheduledEvent } from '@velajs/cloudflare';
 import { Process, Processor, QueueModule } from '@velajs/vela/queue';

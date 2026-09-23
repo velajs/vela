@@ -7,7 +7,7 @@
  * The meta stores ONLY the op name; mode / feature / gate / destructive come
  * from `STUDIO_OP_META[op]` — one source of truth, no duplication.
  */
-import { createDiscoverableDecorator } from '@velajs/vela';
+import { createDiscoverableDecorator } from '@velajs/vela/module-kit';
 import type { AdminConfirmSummaryMeta, AdminRpcMeta } from '../studio.types';
 
 export const AdminRpc = createDiscoverableDecorator<AdminRpcMeta>('vela:studio:rpc');

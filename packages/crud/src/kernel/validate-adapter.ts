@@ -1,4 +1,4 @@
-import { parseSchemaAsync, type StandardSchemaV1 } from '@velajs/vela';
+import { parseSchemaAsync, type StandardSchemaV1 } from '@velajs/vela/validation';
 import type { RuntimeAdapter } from '../adapter/contract';
 
 type Row = Record<string, unknown>;

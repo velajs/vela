@@ -1,9 +1,5 @@
-import {
-  InjectionToken,
-  defineProvider,
-  REQUEST_CONTEXT,
-  type StandardSchemaV1,
-} from '@velajs/vela';
+import { InjectionToken, defineProvider, REQUEST_CONTEXT } from '@velajs/vela';
+import type { StandardSchemaV1 } from '@velajs/vela/validation';
 import { Test, createTestHttpClient, type TestingModule } from '@velajs/testing';
 
 interface Database {

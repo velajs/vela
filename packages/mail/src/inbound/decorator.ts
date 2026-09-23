@@ -1,4 +1,4 @@
-import { MetadataRegistry, registerEntrypointKind } from '@velajs/vela';
+import { MetadataRegistry, registerEntrypointKind } from '@velajs/vela/module-kit';
 import { MAIL_INBOUND_METADATA } from '../mail.tokens';
 import type { InboundEmail } from './parse';
 

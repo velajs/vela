@@ -12,17 +12,17 @@
  * `{ ok, op, data, meta }`; thrown errors → redacted `AdminErrorBody`. Handler
  * providers are resolved PER CALL (lazy-safe), mirroring the queue dispatcher.
  */
+import { Inject, Injectable } from '@velajs/vela';
+import { APP_LOGGER } from '@velajs/vela/logging';
 import {
-  APP_LOGGER,
   Container,
   DiscoveryService,
-  Inject,
-  Injectable,
   getRequestContainer,
   runInEntrypointScope,
   resolveErrorReporter,
-} from '@velajs/vela';
-import type { ErrorReporter, OnApplicationBootstrap, Token, Type } from '@velajs/vela';
+} from '@velajs/vela/module-kit';
+import type { OnApplicationBootstrap, Token, Type } from '@velajs/vela';
+import type { ErrorReporter } from '@velajs/vela/module-kit';
 import { STUDIO_OP_META, STUDIO_OPS } from '@velajs/studio-protocol';
 import type { AdminRpcRequest, AdminRpcResponse, StudioOp } from '@velajs/studio-protocol';
 import { AdminConfirmSummary, AdminRpc } from './admin-rpc.decorator';

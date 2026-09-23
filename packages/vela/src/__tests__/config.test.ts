@@ -8,8 +8,8 @@ import {
   Inject,
   ConfigModule,
   ConfigService,
-  CONFIG_OPTIONS,
 } from '../index.js';
+import { CONFIG_OPTIONS } from '../internal.js';
 
 describe('ConfigModule', () => {
   describe('ConfigService basic operations', () => {

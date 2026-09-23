@@ -9,13 +9,15 @@ import {
   Module,
   VelaFactory,
   defineModule,
+} from '../index.js';
+import {
   lazyProvider,
   moduleKey,
   moduleToken,
   provideGlobal,
   sideEffectModule,
   stableHash,
-} from '../index.js';
+} from '../module-kit.js';
 import type { CanActivate, DynamicModule } from '../index.js';
 
 interface WidgetOptions {

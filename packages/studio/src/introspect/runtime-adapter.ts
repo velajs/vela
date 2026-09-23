@@ -17,7 +17,7 @@
  * 'controller'`; without it, the holder's mount-time Hono capture is the
  * fallback and every row keeps the honest `(mounted)` degradation.
  */
-import type { AdapterContext, RuntimeAdapter } from '@velajs/vela';
+import type { AdapterContext, RuntimeAdapter } from '@velajs/vela/module-kit';
 import { StudioAppHolder } from './app-holder';
 
 /**

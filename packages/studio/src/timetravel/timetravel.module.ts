@@ -1,4 +1,4 @@
-import { defineProvider } from '@velajs/vela';
+import { defineProvider, defineModule } from '@velajs/vela';
 import type { ModuleImport } from '@velajs/vela';
 /**
  * `StudioTimeTravelModule` — the opt-in binding for the PORTABLE time-travel
@@ -17,7 +17,7 @@ import type { ModuleImport } from '@velajs/vela';
  * `changeSource` to enable audit-backed CDC replay (`granularity: 'snapshot+cdc'`
  * — see `@velajs/studio/crud`'s `AuditStoreChangeSource`).
  */
-import { Container, defineModule } from '@velajs/vela';
+import { Container } from '@velajs/vela/module-kit';
 import { ConfirmTokenSigner } from '../security/confirm-token';
 import { STUDIO_MODEL_SOURCE } from '../data/model-source.port';
 import type { StudioModelSource } from '../data/model-source.port';

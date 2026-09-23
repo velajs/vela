@@ -7,10 +7,8 @@ import {
   Module,
   Injectable,
   InjectionToken,
-  HttpModule,
-  HttpService,
-  HttpRequestException,
 } from '../index.js';
+import { HttpModule, HttpService, HttpRequestException } from '../fetch/index.js';
 
 beforeEach(() => {
   vi.restoreAllMocks();

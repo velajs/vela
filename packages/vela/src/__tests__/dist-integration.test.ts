@@ -52,15 +52,11 @@ describe('dist/ integration', () => {
     expect(vela.VelaApplication).toBeDefined();
 
     // DI
-    expect(vela.Container).toBeDefined();
     expect(vela.Injectable).toBeDefined();
     expect(vela.Inject).toBeDefined();
     expect(vela.InjectionToken).toBeDefined();
 
     // Constants
-    expect(vela.METADATA_KEYS).toBeDefined();
-    expect(vela.HttpMethod).toBeDefined();
-    expect(vela.ParamType).toBeDefined();
     expect(vela.Scope).toBeDefined();
 
     // HTTP decorators
@@ -95,9 +91,17 @@ describe('dist/ integration', () => {
     expect(vela.ParseBoolPipe).toBeDefined();
     expect(vela.DefaultValuePipe).toBeDefined();
     expect(vela.RequiredPipe).toBeDefined();
-    expect(vela.ValidationPipe).toBeDefined();
+
     // ValidationPipe is the one schema pipe; the raw-parse Zod pipe answered 500.
-    expect('ZodValidationPipe' in vela).toBe(false);
+    const validation = await import('../../dist/validation/index.js');
+    expect(validation.ValidationPipe).toBeDefined();
+    expect('ZodValidationPipe' in validation).toBe(false);
+
+    // Module-author seams
+    const moduleKit = await import('../../dist/module-kit.js');
+    expect(moduleKit.METADATA_KEYS).toBeDefined();
+    expect(moduleKit.HttpMethod).toBeDefined();
+    expect(moduleKit.ParamType).toBeDefined();
 
     // Errors
     expect(vela.HttpException).toBeDefined();
@@ -107,11 +111,11 @@ describe('dist/ integration', () => {
     expect(vela.NotFoundException).toBeDefined();
     expect(vela.InternalServerErrorException).toBeDefined();
 
-    // Advanced — internal subpath
+    // Module-kit seams and internal plumbing
+    expect(moduleKit.MetadataRegistry).toBeDefined();
+    expect(moduleKit.Container).toBeDefined();
     const internal = await import('../../dist/internal.js');
-    expect(internal.MetadataRegistry).toBeDefined();
     expect(internal.ComponentManager).toBeDefined();
-    expect(internal.Container).toBeDefined();
     expect(internal.RouteManager).toBeDefined();
     expect(internal.ModuleLoader).toBeDefined();
     expect(internal.bindAppProviders).toBeDefined();
@@ -120,7 +124,7 @@ describe('dist/ integration', () => {
   it('should create a working app from dist/', async () => {
     const { VelaFactory, Controller, Get, Injectable, Module } =
       await import('../../dist/index.js');
-    const { MetadataRegistry } = await import('../../dist/internal.js');
+    const { MetadataRegistry } = await import('../../dist/module-kit.js');
 
     @Injectable()
     class HelloService {

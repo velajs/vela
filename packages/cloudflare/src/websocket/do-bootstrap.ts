@@ -1,4 +1,5 @@
-import { bootstrap, VelaApplication } from '@velajs/vela';
+import { VelaApplication } from '@velajs/vela';
+import { bootstrap } from '@velajs/vela/internal';
 import type { DynamicModule, Type, VelaEnv } from '@velajs/vela';
 import {
   local,

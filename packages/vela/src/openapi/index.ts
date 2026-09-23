@@ -1,5 +1,9 @@
+// @velajs/vela/openapi — OpenAPI documents, `@Endpoint` contracts and the
+// `@ApiDoc`/`@ApiTags`/`@ApiResponse` decorators.
+import '../metadata';
+
 export { createOpenApiDocument } from './document';
-export { defineEndpoint, Endpoint, getEndpointDefinition } from './endpoint';
+export { defineEndpoint, Endpoint } from './endpoint';
 export type {
   EndpointSchema,
   EndpointResponseFormat,
@@ -12,20 +16,9 @@ export type {
   EndpointRequest,
   EndpointDefinition,
   EndpointHandlerOutput,
-  RuntimeEndpointDefinition,
 } from './endpoint';
-export {
-  ApiDoc,
-  ApiTags,
-  ApiResponse,
-  API_DOC_METADATA,
-  API_TAGS_METADATA,
-  API_RESPONSES_METADATA,
-} from './decorators';
+export { ApiDoc, ApiTags, ApiResponse } from './decorators';
 export { zodToJsonSchema } from './zod-to-json-schema';
-export { renderScalarUi } from './scalar-ui';
-export { renderSwaggerUi } from './swagger-ui';
-export { renderRedocUi } from './redoc-ui';
 export type {
   ApiDocMetadata,
   ApiResponseEntry,

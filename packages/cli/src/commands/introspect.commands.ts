@@ -1,5 +1,5 @@
 import { writeFile } from 'node:fs/promises';
-import { createOpenApiDocument } from '@velajs/vela';
+import { createOpenApiDocument } from '@velajs/vela/openapi';
 import type { VelaApplication } from '@velajs/vela';
 import { Command, Option } from 'clipanion';
 import { loadConfig } from '../config.js';

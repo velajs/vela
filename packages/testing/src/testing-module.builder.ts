@@ -3,24 +3,22 @@ import {
   type CanActivate,
   type DependencyToken,
   type ExceptionFilter,
-  type FactoryInject,
-  type InferToken,
-  type InferTokens,
   type ModuleOptions,
   type NestInterceptor,
   type PipeTransform,
   type ProviderDefinition,
-  type RuntimeAdapter,
   type Token,
   type Type,
   type VelaEnv,
 } from '@velajs/vela';
-import {
-  MetadataRegistry,
-  applyRuntimeAdapters,
-  bootstrap,
-  finalizeApplication,
-} from '@velajs/vela/internal';
+import type {
+  FactoryInject,
+  InferToken,
+  InferTokens,
+  RuntimeAdapter,
+} from '@velajs/vela/module-kit';
+import { applyRuntimeAdapters, bootstrap, finalizeApplication } from '@velajs/vela/internal';
+import { MetadataRegistry } from '@velajs/vela/module-kit';
 import { TestingModule } from './testing-module.js';
 
 /** Runtime inputs for a testing module, as `VelaFactory.create` takes them. */

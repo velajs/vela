@@ -1,3 +1,6 @@
+// @velajs/vela/health — health checks and indicators.
+import '../metadata';
+
 export { HealthModule } from './health.module';
 export { HealthCheckService, HealthCheckException } from './health.service';
 export { HealthIndicatorService } from './health.indicator';

@@ -1,12 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import {
-  Controller,
-  Module,
-  ValidationPipe,
-  VelaFactory,
-  createOpenApiDocument,
-} from '@velajs/vela';
+import { Controller, Module, VelaFactory } from '@velajs/vela';
+import { ValidationPipe } from '@velajs/vela/validation';
+import { createOpenApiDocument } from '@velajs/vela/openapi';
 import { Crud } from '../crud.decorator';
 import { defineModel } from '../model/define-model';
 import { defineResource } from '../kernel/resource';

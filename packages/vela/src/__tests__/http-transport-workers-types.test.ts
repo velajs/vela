@@ -8,7 +8,7 @@ import { expect, it } from 'vitest';
 it('accepts native Workers Fetcher bindings in a Workers-global consumer', () => {
   const directory = mkdtempSync(join(tmpdir(), 'vela-http-workers-types-'));
   try {
-    const entry = fileURLToPath(new URL('../../dist/index.js', import.meta.url));
+    const entry = fileURLToPath(new URL('../../dist/fetch/index.js', import.meta.url));
     const workers = fileURLToPath(
       new URL('../../../../node_modules/@cloudflare/workers-types/index.d.ts', import.meta.url),
     );

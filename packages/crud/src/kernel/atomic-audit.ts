@@ -1,5 +1,5 @@
 import { historyTenantNamespace } from '../versioning/index';
-import { parseSchemaAsync } from '@velajs/vela';
+import { parseSchemaAsync } from '@velajs/vela/validation';
 import { AtomicBatchResultError, requireAtomicBatch } from '../adapter/atomic';
 import { ConfigurationException, NotFoundException } from '../envelope/errors';
 import { applyManagedInsertFields, applyManagedUpdateFields } from '../model/managed-fields';

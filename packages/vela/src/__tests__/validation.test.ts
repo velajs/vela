@@ -1,17 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
-import {
-  VelaFactory,
-  Controller,
-  Get,
-  Post,
-  Body,
-  Query,
-  Module,
-  Injectable,
-  defineDto,
-  ValidationPipe,
-} from '../index.js';
+import { VelaFactory, Controller, Get, Post, Body, Query, Module, Injectable } from '../index.js';
+import { defineDto, ValidationPipe } from '../validation/index.js';
 
 // =============================================================================
 // defineDto

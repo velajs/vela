@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { Module, Injectable, MetadataRegistry } from '../index.js';
+import { Module, Injectable } from '../index.js';
+import { MetadataRegistry } from '../module-kit.js';
 
 // The versioned symbol the registry anchors its state under.
 const REGISTRY_STATE_KEY = Symbol.for('vela:registry:v1');

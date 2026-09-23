@@ -1,6 +1,7 @@
 import { assertHistoryPersistence, globalHistoryBinding } from './history';
 import { captureAudit, captureVersion, auditRecordId } from './capture';
-import { parseSchemaAsync, getTrustedRequestIdentity } from '@velajs/vela';
+import { parseSchemaAsync } from '@velajs/vela/validation';
+import { getTrustedRequestIdentity } from '@velajs/vela/module-kit';
 import type { AdapterScope, RuntimeAdapter } from '../adapter/contract';
 import type { FilterCondition, Lookup } from '../adapter/query-types';
 import { CrudException, ForbiddenException, InputValidationException } from '../envelope/errors';

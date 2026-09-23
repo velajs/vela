@@ -11,10 +11,11 @@ import {
   Post,
   Query,
   VelaFactory,
-  createOpenApiDocument,
-  defineDto,
 } from '../index.js';
-import type { ArgumentMetadata, PipeTransform, StandardSchemaV1, Type } from '../index.js';
+import { createOpenApiDocument } from '../openapi/index.js';
+import { defineDto } from '../validation/index.js';
+import type { ArgumentMetadata, PipeTransform, Type } from '../index.js';
+import type { StandardSchemaV1 } from '../validation/index.js';
 
 // A validator from no particular library: a Standard Schema without Zod's
 // `transform()` method, which the pipe-only signature used to reject.

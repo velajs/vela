@@ -1,3 +1,7 @@
+// @velajs/vela/cache — the value cache (CacheModule) and the HTTP response
+// cache (ResponseCacheModule).
+import '../metadata';
+
 export { CacheModule } from './cache.module';
 export { CacheService } from './cache.service';
 export { CacheInterceptor } from './cache.interceptor';

@@ -1,6 +1,6 @@
 import { defineProvider, ENV } from '@velajs/vela';
 import type { VelaEnv } from '@velajs/vela';
-import type { Container } from '@velajs/vela/internal';
+import type { Container } from '@velajs/vela/module-kit';
 
 /**
  * Seed the application's native environment as the global ENV before provider

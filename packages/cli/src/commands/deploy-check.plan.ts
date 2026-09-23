@@ -1,4 +1,5 @@
-import { cronDialectAmbiguity, parseCron, parseCronMetadata } from '@velajs/vela';
+import { cronDialectAmbiguity, parseCronMetadata } from '@velajs/vela/module-kit';
+import { parseCron } from '@velajs/vela/schedule';
 import { z } from 'zod';
 import { selectDeploymentTarget, type DeploymentTarget } from './deploy-check.config.js';
 

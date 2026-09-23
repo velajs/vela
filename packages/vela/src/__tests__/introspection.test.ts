@@ -2,7 +2,6 @@ import { defineProvider } from '../container/types';
 import { describe, expect, it } from 'vitest';
 import {
   Controller,
-  describeToken,
   Get,
   Head,
   Injectable,
@@ -10,8 +9,9 @@ import {
   Module,
   Post,
   VelaFactory,
-  ROOT_MODULE_ID,
 } from '../index.js';
+import { describeToken } from '../module-kit.js';
+import { ROOT_MODULE_ID } from '../internal.js';
 
 describe('describeRoutes / getGlobalPrefix', () => {
   it('records fully composed paths, methods as declared, and versions', async () => {
@@ -106,7 +106,7 @@ describe('Container.getModuleDescriptions', () => {
     class LazyMod {}
 
     @Module({
-      providers: [defineProvider(SHARED, {useValue: 'x'})],
+      providers: [defineProvider(SHARED, { useValue: 'x' })],
       exports: [SHARED],
     })
     class SharedMod {}

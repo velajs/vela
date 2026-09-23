@@ -6,11 +6,11 @@ import {
   Module,
   Post,
   RawBody,
-  SignedInvocation,
   Query,
   UseGuards,
   VelaFactory,
 } from '../index.js';
+import { SignedInvocation } from '../dispatch/index.js';
 import type { CanActivate, PipeTransform } from '../index.js';
 
 describe('HTTP security boundaries', () => {

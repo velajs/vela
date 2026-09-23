@@ -6,7 +6,6 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
   defineProvider,
   Controller,
-  Cron,
   ENV,
   Get,
   Inject,
@@ -17,6 +16,7 @@ import {
   Scope,
   type VelaEnv,
 } from '@velajs/vela';
+import { Cron } from '@velajs/vela/schedule';
 import { createCloudflareApp, createCloudflareWorker } from '../cloudflare-factory';
 import { QueueConsumer } from '../decorators/queue-consumer';
 

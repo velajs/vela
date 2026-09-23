@@ -29,20 +29,21 @@ describe('AdminErrorBody / WireErrorObject drift guard', () => {
 });
 
 describe('openness audit — no deep vela imports', () => {
-  it('every src file imports vela only via the public @velajs/vela barrel', () => {
+  it('every src file imports vela only via its public entries', () => {
     const srcDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'src');
     const files = readdirSync(srcDir, { recursive: true, encoding: 'utf8' }).filter((f) =>
       f.endsWith('.ts'),
     );
-    // The bare barrel is always allowed. The PUBLIC vela subpaths (first-class
-    // entries in vela's exports map — not internals) are allowed ONLY in the M9
+    // The root app kit, `/module-kit` and the feature subpaths are public
+    // entries in vela's exports map; `/internal` is framework plumbing and
+    // stays forbidden. The queue and live subsystems are allowed ONLY in the M9
     // optional-op subpath that is the sanctioned SOLE importer of each: the
     // whole point of `@velajs/studio/{queue,live}` is to isolate those imports
     // there, keeping the core `.` entry free of them (a build-time grep of
     // `dist/index.js` also verifies this). Everything else stays forbidden.
-    const publicSubpathAllow = new Map<string, string>([
-      [normalizeRel('queue/index.ts'), '@velajs/vela/queue'],
-      [normalizeRel('live/index.ts'), '@velajs/vela/live'],
+    const isolatedSubpaths = new Map<string, string>([
+      ['@velajs/vela/queue', normalizeRel('queue/index.ts')],
+      ['@velajs/vela/live', normalizeRel('live/index.ts')],
     ]);
     const offenders: string[] = [];
     const importRe = /(?:import|export)[^'"]*from\s*['"]([^'"]+)['"]/g;
@@ -50,10 +51,13 @@ describe('openness audit — no deep vela imports', () => {
       const content = readFileSync(join(srcDir, rel), 'utf8');
       for (const match of content.matchAll(importRe)) {
         const spec = match[1] ?? '';
-        if (spec === '@velajs/vela') continue;
-        if (publicSubpathAllow.get(normalizeRel(rel)) === spec) continue;
-        if (spec.startsWith('@velajs/vela/')) offenders.push(`${rel}: ${spec}`);
+        if (spec === '@velajs/vela/internal' || spec.startsWith('@velajs/vela/internal/')) {
+          offenders.push(`${rel}: ${spec}`);
+        }
+        const owner = isolatedSubpaths.get(spec);
+        if (owner !== undefined && owner !== normalizeRel(rel)) offenders.push(`${rel}: ${spec}`);
         if (/(^|\/)vela\/src\//.test(spec)) offenders.push(`${rel}: ${spec}`);
+        if (/^@velajs\/vela\/.+\/.+/.test(spec)) offenders.push(`${rel}: ${spec}`);
         if (spec.startsWith('node:')) offenders.push(`${rel}: ${spec}`);
       }
     }

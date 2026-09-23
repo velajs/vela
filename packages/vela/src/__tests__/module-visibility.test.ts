@@ -9,11 +9,9 @@ import {
   InjectionToken,
   Module,
   ModuleRef,
-  ModuleVisibilityError,
-  UnresolvedDependencyError,
   VelaFactory,
 } from '../index.js';
-import { Container } from '../internal.js';
+import { ModuleVisibilityError, UnresolvedDependencyError, Container } from '../module-kit.js';
 import type { DynamicModule } from '../index.js';
 
 describe('Module visibility', () => {

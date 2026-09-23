@@ -7,16 +7,16 @@ import {
   Injectable,
   InjectionToken,
   Module,
+  VelaFactory,
+} from '../index.js';
+import {
   MultipleProvidersFoundError,
   UnresolvedDependencyError,
-  VelaFactory,
-  CacheModule,
-  CACHE_MODULE_OPTIONS,
-  HttpModule,
-  HTTP_MODULE_OPTIONS,
   defineDynamicModule,
   stableHash,
-} from '../index.js';
+} from '../module-kit.js';
+import { CacheModule, CACHE_MODULE_OPTIONS } from '../cache/index.js';
+import { HttpModule, HTTP_MODULE_OPTIONS } from '../fetch/index.js';
 import type { DynamicModule } from '../index.js';
 
 describe('Dynamic module identity', () => {

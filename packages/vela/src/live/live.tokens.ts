@@ -1,4 +1,4 @@
-import { InjectionToken } from '../index';
+import { InjectionToken } from '../container/types';
 import type { CursorLog, LiveDriver, LiveModuleOptions } from './live.types';
 
 // Free-form metadata keys — same string-token convention as the queue module.

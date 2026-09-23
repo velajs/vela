@@ -1,3 +1,7 @@
+// @velajs/vela/websocket — gateways, the dispatcher and the transport-facing
+// internals WebSocket transports build on.
+import '../metadata';
+
 // Decorators
 export {
   WebSocketGateway,

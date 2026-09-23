@@ -1,4 +1,4 @@
-import type { ThrottlerStorageRecord, ThrottlerStore } from '@velajs/vela';
+import type { ThrottlerStorageRecord, ThrottlerStore } from '@velajs/vela/throttler';
 
 /** The deliberately small surface exposed by a Workers Rate Limiting binding. */
 export interface CloudflareRateLimitBinding {

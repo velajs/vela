@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { signUrl, verifySignedUrl, expandPathTemplate, joinStoragePath } from '../storage/index.js';
+import { expandPathTemplate, joinStoragePath } from '../storage/index.js';
+import { signUrl, verifySignedUrl } from '../security/index.js';
 import { importHmacKey, toBase64Url } from '../crypto/hmac.js';
 
 describe('storage signed URLs', () => {

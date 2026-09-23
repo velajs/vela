@@ -7,14 +7,13 @@ import {
   Controller,
   Post,
   Inject,
-  SignedInvocation,
-  InternalDispatcher,
   URL_SIGNING_SECRET,
   APP_EXCEPTION_HANDLER,
   BadRequestException,
   InternalServerErrorException,
   isVelaError,
 } from '../index.js';
+import { SignedInvocation, InternalDispatcher } from '../dispatch/index.js';
 import { dispatchQueueJob, Process, Processor } from '../queue/index.js';
 import type { QueueJob } from '../queue/index.js';
 

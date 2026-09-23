@@ -1,5 +1,5 @@
-import { parseSchemaAsync } from '../index';
-import type { StandardSchemaV1 } from '../index';
+import { parseSchemaAsync } from '../validation/parse-schema';
+import type { StandardSchemaV1 } from '../validation/standard-schema';
 import type { QueueJobDefinition } from './queue.definition';
 import { QueueBatchError } from './queue.errors';
 import type { AddJobOptions, QueueDriver, QueueEnqueueRequest, QueueJob } from './queue.types';

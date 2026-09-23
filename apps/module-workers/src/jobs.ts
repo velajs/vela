@@ -1,4 +1,5 @@
-import { Cron, InjectEnv, Module, ScheduleModule, type VelaEnv } from '@velajs/vela';
+import { InjectEnv, Module, type VelaEnv } from '@velajs/vela';
+import { Cron, ScheduleModule } from '@velajs/vela/schedule';
 import { createCloudflareWorker } from '@velajs/cloudflare';
 import { cloudflareQueues } from '@velajs/cloudflare/queues';
 import { Process, Processor, QueueModule, type QueueJob } from '@velajs/vela/queue';

@@ -9,9 +9,9 @@ import {
   RequestContextKey,
   UseGuards,
   VelaFactory,
-  createLazyParamDecorator,
   createParamDecorator,
 } from '../index.js';
+import { createLazyParamDecorator } from '../module-kit.js';
 import type { CanActivate, ExecutionContext, Type } from '../index.js';
 
 async function createApp(controller: Type, providers: Type[] = []) {

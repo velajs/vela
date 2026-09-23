@@ -1,4 +1,4 @@
-import { moduleToken } from '@velajs/vela';
+import { moduleToken } from '@velajs/vela/module-kit';
 import type { FeatureFlagDriverRegistry } from './drivers/registry';
 import type { FeatureFlagsService } from './feature-flags.service';
 import type { FeatureFlagsOptions } from './feature-flags.types';

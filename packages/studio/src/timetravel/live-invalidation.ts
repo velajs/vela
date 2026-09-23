@@ -14,7 +14,7 @@
  * (dynamic import fails, or the token is unbound) invalidation NO-OPS gracefully:
  * a restore must never fail because live queries aren't wired.
  */
-import type { Container } from '@velajs/vela';
+import type { Container } from '@velajs/vela/module-kit';
 
 /**
  * The invalidation port the adapter depends on (so tests can assert with a fake).

@@ -15,7 +15,7 @@
  */
 import { Injectable } from '@velajs/vela';
 import type { VelaHono as Hono } from '@velajs/vela';
-import type { RouteDescription } from '@velajs/vela';
+import type { RouteDescription } from '@velajs/vela/module-kit';
 
 /**
  * A per-app singleton the route contributor populates once, at mount time.

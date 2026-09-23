@@ -1,5 +1,5 @@
 import type { Container } from '../container/container';
-import type { InvocationTarget } from '../dispatch/index';
+import type { InvocationTarget } from '../dispatch/types';
 import type { CronOptions } from './cron-matcher';
 
 export interface CronMetadata extends CronOptions {

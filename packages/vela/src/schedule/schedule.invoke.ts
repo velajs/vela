@@ -1,5 +1,5 @@
 import type { Container } from '../container/container';
-import { InternalDispatcher } from '../dispatch/index';
+import { InternalDispatcher } from '../dispatch/internal-dispatcher';
 import type { Entrypoint } from '../entrypoint/entrypoint.types';
 import { resolveEntrypoint } from '../entrypoint/execution-context';
 import { runInEntrypointScope } from '../entrypoint/execution-scope';

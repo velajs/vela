@@ -21,7 +21,8 @@
  * method from the flag's declared manifest default; a key absent from the
  * manifest is probed as a boolean (documented — the driver carries no type).
  */
-import { Container, Inject, Injectable, defineModule } from '@velajs/vela';
+import { Inject, Injectable, defineModule } from '@velajs/vela';
+import { Container } from '@velajs/vela/module-kit';
 import { FEATURE_FLAG_TOKENS } from '@velajs/feature-flags';
 import type {
   FeatureFlagsOptions,

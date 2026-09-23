@@ -1,14 +1,11 @@
+import { defineProvider, type DynamicModule, type Token, type Type } from '@velajs/vela';
 import {
-  defineProvider,
   lazyProvider,
   provideGlobal,
   stableHash,
-  type DynamicModule,
   type FactoryInject,
   type InferTokens,
-  type Token,
-  type Type,
-} from '@velajs/vela';
+} from '@velajs/vela/module-kit';
 import { createBetterAuthCatchallController } from './better-auth.controller';
 import { BetterAuthService, BETTER_AUTH_BUILDER } from './better-auth.service';
 import { BETTER_AUTH_OPTIONS } from './better-auth.tokens';

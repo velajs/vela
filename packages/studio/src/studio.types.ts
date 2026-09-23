@@ -4,7 +4,8 @@
  * here — they come from `@velajs/studio-protocol`.
  */
 import type { Context } from 'hono';
-import type { DynamicModule, InferToken, Token, Type } from '@velajs/vela';
+import type { DynamicModule, Token, Type } from '@velajs/vela';
+import type { InferToken } from '@velajs/vela/module-kit';
 import type { StudioConfirmChallenge, StudioOp, StudioWriteGates } from '@velajs/studio-protocol';
 import type { AdminAuditEntry } from '@velajs/studio-protocol';
 

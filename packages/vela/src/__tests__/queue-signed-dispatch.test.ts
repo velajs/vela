@@ -9,10 +9,10 @@ import {
   Post,
   Inject,
   Injectable,
-  SignedInvocation,
   URL_SIGNING_SECRET,
   type CanActivate,
 } from '../index.js';
+import { SignedInvocation } from '../dispatch/index.js';
 import {
   QueueDispatchBinding,
   QueueModule,

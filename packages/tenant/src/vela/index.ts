@@ -3,8 +3,6 @@ import {
   Injectable,
   InjectionToken,
   REQUEST_CONTEXT,
-  runInEntrypointScope,
-  type Container,
   Scope,
   defineModule,
   defineProvider,
@@ -12,11 +10,15 @@ import {
   Reflector,
   ForbiddenException,
   BadRequestException,
-  getTrustedRequestIdentity,
-  setTrustedRequestTenant,
   type CanActivate,
   type ExecutionContext,
 } from '@velajs/vela';
+import {
+  runInEntrypointScope,
+  getTrustedRequestIdentity,
+  setTrustedRequestTenant,
+} from '@velajs/vela/module-kit';
+import type { Container } from '@velajs/vela/module-kit';
 import {
   TenantService,
   TenantError,

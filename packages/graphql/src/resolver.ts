@@ -1,15 +1,16 @@
+import type { ExecutionContext, Type } from '@velajs/vela';
 import {
   bindTrustedRequestContext,
-  parseSchemaAsync,
   PipelineRunner,
   resolveScopedComponentsAsync,
   resolvePipelineComponents,
   shouldFilterCatch,
-  type ExecutionContext,
+} from '@velajs/vela/module-kit';
+import {
+  parseSchemaAsync,
   type SchemaOutput,
-  type Type,
   type ValidationSchema,
-} from '@velajs/vela';
+} from '@velajs/vela/validation';
 import type { GraphQLFieldResolver } from 'graphql';
 import { GraphqlOperation } from './operation';
 import type { GraphqlContext, GraphqlResolverContext } from './types';

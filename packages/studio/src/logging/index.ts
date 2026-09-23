@@ -1,22 +1,16 @@
 /** Optional, application-owned structured log capture. No console patching or ambient state. */
-import {
-  APP_INTERCEPTOR,
-  APP_LOGGER,
-  defineModule,
-  defineProvider,
-  describeToken,
-  getExecutionLifetime,
-} from '@velajs/vela';
+import { APP_INTERCEPTOR, defineModule, defineProvider } from '@velajs/vela';
+import { APP_LOGGER } from '@velajs/vela/logging';
+import { describeToken, getExecutionLifetime } from '@velajs/vela/module-kit';
 import type {
-  ApplicationLogger,
   CallHandler,
   ExecutionContext,
-  LogRecord,
   ModuleImport,
   NestInterceptor,
   OnModuleDestroy,
   OnModuleInit,
 } from '@velajs/vela';
+import type { ApplicationLogger, LogRecord } from '@velajs/vela/logging';
 import { parseStudioInvocationDiagnostic } from '@velajs/studio-protocol';
 import type { AdminLogEntry, StudioInvocationDiagnostic } from '@velajs/studio-protocol';
 import { AdminLogBuffer } from '../logs/log-buffer';

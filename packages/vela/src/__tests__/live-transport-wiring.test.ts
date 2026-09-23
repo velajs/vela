@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { Module, VelaFactory, WebSocketModule } from '../index';
+import { Module, VelaFactory } from '../index';
+import { WebSocketModule } from '../websocket/index';
 import { LiveEngine, LiveModule } from '../live';
 
 describe('LiveModule transport wiring', () => {

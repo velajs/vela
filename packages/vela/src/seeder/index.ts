@@ -1,3 +1,6 @@
+// @velajs/vela/seeder — database seeders.
+import '../metadata';
+
 export { Seeder } from './seeder.decorator';
 export { SeederRegistry } from './seeder.registry';
 export { SeederModule, runSeeders } from './seeder.module';

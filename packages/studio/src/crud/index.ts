@@ -1,4 +1,4 @@
-import { defineProvider } from '@velajs/vela';
+import { defineProvider, defineModule } from '@velajs/vela';
 /**
  * `@velajs/studio/crud` — the OPTIONAL crud binding for the data browser.
  *
@@ -19,7 +19,7 @@ import { defineProvider } from '@velajs/vela';
  * All of `@velajs/crud` is consumed through its PUBLIC entry points (`.`,
  * `./adapter`, `./model`) — no deep imports.
  */
-import { Container, DiscoveryService, METADATA_KEYS, defineModule } from '@velajs/vela';
+import { Container, DiscoveryService, METADATA_KEYS } from '@velajs/vela/module-kit';
 import { getCrudConfig, resolveCrudDatabaseSync } from '@velajs/crud';
 import type { CrudConfig } from '@velajs/crud';
 import type { AuditStore } from '@velajs/crud/audit';

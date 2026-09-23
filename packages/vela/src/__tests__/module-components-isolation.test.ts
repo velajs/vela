@@ -3,17 +3,19 @@ import {
   Controller,
   Get,
   Injectable,
-  MetadataRegistry,
   Module,
   UseGuards,
   UseInterceptors,
   VelaFactory,
-  resolveScopedComponents,
-  resolveScopedComponentsAsync,
   type CallHandler,
   type CanActivate,
   type NestInterceptor,
 } from '../index';
+import {
+  MetadataRegistry,
+  resolveScopedComponents,
+  resolveScopedComponentsAsync,
+} from '../module-kit';
 
 // Module-level @Use* decorators are per-application state. Bootstrapping the
 // same module classes again in one isolate (per-env rebuilds, Durable Object

@@ -1,14 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  Cron,
   Injectable,
-  Interval,
   Module,
   UseFilters,
   UseGuards,
   VelaFactory,
   type CanActivate,
 } from '@velajs/vela';
+import { Cron, Interval } from '@velajs/vela/schedule';
 import { cloudflareAdapter, createCloudflareApp } from '../cloudflare-factory';
 
 const env = {};

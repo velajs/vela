@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { VelaMiddlewareHandler } from '@velajs/vela';
-import { Controller, Get, Ip, Module, ThrottlerModule, VelaFactory } from '@velajs/vela';
+import { Controller, Get, Ip, Module, VelaFactory } from '@velajs/vela';
+import { ThrottlerModule } from '@velajs/vela/throttler';
 import { cloudflareAdapter, createCloudflareApp } from '../cloudflare-factory';
 const env = {};
 

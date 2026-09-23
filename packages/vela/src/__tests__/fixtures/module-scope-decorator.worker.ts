@@ -1,4 +1,5 @@
-import { Reflector, getMetadata } from '../../index';
+import { Reflector } from '../../index';
+import { getMetadata } from '../../module-kit';
 
 // workerd evaluates this module in global scope, where generating random
 // values throws. Typed decorators are conventionally declared right here.

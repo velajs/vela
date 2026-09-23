@@ -1,13 +1,11 @@
+import { defineProvider, Reflector, type ExecutionContext } from '@velajs/vela';
 import {
   Container,
-  defineProvider,
   bindTrustedRequestContext,
   getTrustedRequestIdentity,
   setTrustedRequestIdentity,
   clearTrustedRequestIdentity,
-  Reflector,
-  type ExecutionContext,
-} from '@velajs/vela';
+} from '@velajs/vela/module-kit';
 import { createAuthz } from '../../authz';
 import { AUTHZ } from '../tokens';
 import { PermissionGuard } from '../permission.guard';

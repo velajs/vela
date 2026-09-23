@@ -1,15 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
-  DiscoveryService,
   Injectable,
   InjectionToken,
   Module,
   Scope,
   VelaFactory,
-  createDiscoverableDecorator,
   defineProvider,
-  runInEntrypointScope,
 } from '../index.js';
+import {
+  DiscoveryService,
+  createDiscoverableDecorator,
+  runInEntrypointScope,
+} from '../module-kit.js';
 import { Container } from '../container/container.js';
 
 describe('request-scoped providers on the root container', () => {

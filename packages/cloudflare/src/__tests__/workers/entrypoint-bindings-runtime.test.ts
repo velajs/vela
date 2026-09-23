@@ -2,7 +2,6 @@
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import {
-  Cron,
   defineProvider,
   ENV,
   Inject,
@@ -12,6 +11,7 @@ import {
   Module,
   type VelaEnv,
 } from '@velajs/vela';
+import { Cron } from '@velajs/vela/schedule';
 import { LiveInvalidation, LiveModule } from '@velajs/vela/live';
 import { createCloudflareApp, createCloudflareWorker } from '../../cloudflare-factory';
 import { QueueConsumer } from '../../decorators/queue-consumer';

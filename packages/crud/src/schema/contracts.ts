@@ -1,4 +1,4 @@
-import type { StandardSchemaV1 } from '@velajs/vela';
+import type { StandardSchemaV1 } from '@velajs/vela/validation';
 
 export interface CrudContracts {
   id?: StandardSchemaV1;

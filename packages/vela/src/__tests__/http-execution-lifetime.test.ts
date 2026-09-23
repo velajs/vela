@@ -10,10 +10,9 @@ import {
   Req,
   Scope,
   VelaFactory,
-  getExecutionLifetime,
-  getRequestContainer,
   type ExecutionLifetime,
 } from '../index';
+import { getExecutionLifetime, getRequestContainer } from '../module-kit';
 
 afterEach(() => vi.restoreAllMocks());
 

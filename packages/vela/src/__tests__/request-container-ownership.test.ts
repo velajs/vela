@@ -1,14 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import {
-  Container,
-  Controller,
-  Get,
-  Module,
-  REQUEST_CONTEXT,
-  VelaFactory,
-  getCurrentContainer,
-  getRequestContainer,
-} from '../index';
+import { Controller, Get, Module, REQUEST_CONTEXT, VelaFactory } from '../index';
+import { Container, getCurrentContainer, getRequestContainer } from '../module-kit';
 
 describe('framework-owned request containers', () => {
   it('ignores application Hono variables while preserving scope and ambient access', async () => {

@@ -1,12 +1,10 @@
+import { Module, VelaFactory } from '@velajs/vela';
+import { APP_LOGGER, LoggingModule } from '@velajs/vela/logging';
 import {
-  APP_LOGGER,
-  LoggingModule,
-  Module,
-  VelaFactory,
   Container,
   createExecutionScope,
   buildEntrypointExecutionContext,
-} from '@velajs/vela';
+} from '@velajs/vela/module-kit';
 import { AdminLogBuffer, StudioModule } from '../../src';
 import { StudioLoggingModule, StudioTimingInterceptor } from '../../src/logging';
 

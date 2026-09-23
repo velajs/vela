@@ -1,6 +1,6 @@
-import { InjectionToken, SCHEDULE_INVOCATION_SEED, Scope, defineProvider } from '@velajs/vela';
-import type { ScheduleInvocationSeed } from '@velajs/vela';
-import type { Container } from '@velajs/vela/internal';
+import { InjectionToken, Scope, defineProvider } from '@velajs/vela';
+import { SCHEDULE_INVOCATION_SEED } from '@velajs/vela/module-kit';
+import type { ScheduleInvocationSeed, Container } from '@velajs/vela/module-kit';
 
 /**
  * The event a Worker's `scheduled()` export receives. The native

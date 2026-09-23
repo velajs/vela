@@ -1,4 +1,6 @@
-import { defineModule, defineProvider, stableHash } from '../index';
+import { defineModule } from '../module/define-module';
+import { defineProvider } from '../container/types';
+import { stableHash } from '../module/stable-hash';
 import { InMemoryCursorLog } from './live.cursor';
 import { LiveEngine } from './live.engine';
 import { LiveInvalidation, localLive } from './live.invalidation';

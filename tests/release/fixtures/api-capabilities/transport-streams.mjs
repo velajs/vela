@@ -1,16 +1,8 @@
 import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
-import {
-  Controller,
-  Endpoint,
-  Get,
-  HttpService,
-  HttpResponseSizeException,
-  Module,
-  VelaFactory,
-  createOpenApiDocument,
-  defineEndpoint,
-} from '@velajs/vela';
+import { Controller, Get, Module, VelaFactory } from '@velajs/vela';
+import { Endpoint, createOpenApiDocument, defineEndpoint } from '@velajs/vela/openapi';
+import { HttpService, HttpResponseSizeException } from '@velajs/vela/http-client';
 import {
   createHttpClientTelemetryObserver,
   observabilityAdapter,

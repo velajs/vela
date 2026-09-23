@@ -1,16 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { isServerLiveFrame, readLiveEnvelope } from '@velajs/live-protocol';
-import {
-  Injectable,
-  Module,
-  UseInterceptors,
-  VelaFactory,
-  WebSocketGateway,
-  WebSocketModule,
-  WsDispatcher,
-} from '../index';
-import type { CallHandler, ExecutionContext, NestInterceptor, WsClient } from '../index';
+import { Injectable, Module, UseInterceptors, VelaFactory } from '../index';
+import { WebSocketGateway, WebSocketModule, WsDispatcher } from '../websocket/index';
+import type { CallHandler, ExecutionContext, NestInterceptor } from '../index';
+import type { WsClient } from '../websocket/index';
 import {
   LIVE_PROTOCOL,
   LIVE_SUBS_DATA_KEY,

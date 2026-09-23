@@ -1,12 +1,6 @@
 import { PassThrough } from 'node:stream';
-import {
-  Injectable,
-  Module,
-  VelaFactory,
-  registerEntrypointKind,
-  defineProvider,
-  InjectionToken,
-} from '@velajs/vela';
+import { Injectable, Module, VelaFactory, defineProvider, InjectionToken } from '@velajs/vela';
+import { registerEntrypointKind } from '@velajs/vela/module-kit';
 import { Cli } from 'clipanion';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadConfig, resolveConfig, type LoadedVelaConfig, type VelaConfig } from '../config.js';

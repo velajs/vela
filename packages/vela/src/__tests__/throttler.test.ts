@@ -1,14 +1,7 @@
 import { defineProvider } from '../container/types';
 import { describe, it, expect } from 'vitest';
-import {
-  APP_GUARD,
-  VelaFactory,
-  Controller,
-  Get,
-  Injectable,
-  Module,
-  setTrustedRequestIdentity,
-} from '../index.js';
+import { APP_GUARD, VelaFactory, Controller, Get, Injectable, Module } from '../index.js';
+import { setTrustedRequestIdentity } from '../module-kit.js';
 import { ThrottlerModule, Throttle, SkipThrottle } from '../throttler/index.js';
 import type { CanActivate, ExecutionContext } from '../index.js';
 import type { ThrottlerStore, ThrottlerStorageRecord } from '../throttler/index.js';

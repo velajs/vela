@@ -2,7 +2,6 @@
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import {
-  Cron,
   EXECUTION_LIFETIME,
   REQUEST_CONTEXT,
   Inject,
@@ -13,11 +12,12 @@ import {
   Scope,
   UseGuards,
   defineProvider,
-  getExecutionLifetime,
   type ExecutionContext,
   type ExecutionLifetime,
   type VelaEnv,
 } from '@velajs/vela';
+import { Cron } from '@velajs/vela/schedule';
+import { getExecutionLifetime } from '@velajs/vela/module-kit';
 import { createCloudflareApp } from '../../cloudflare-factory';
 import { QueueConsumer } from '../../decorators/queue-consumer';
 

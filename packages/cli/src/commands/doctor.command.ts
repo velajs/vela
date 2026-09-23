@@ -1,4 +1,4 @@
-import { describeToken } from '@velajs/vela';
+import { describeToken } from '@velajs/vela/module-kit';
 import type { VelaApplication } from '@velajs/vela';
 import { Command, Option } from 'clipanion';
 import { loadConfig, resolveConfig } from '../config.js';

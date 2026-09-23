@@ -1,4 +1,5 @@
 import type { ExecutionContext } from 'hono';
+import type { VelaApplication, ExceptionFilter, VelaEnv } from '@velajs/vela';
 import {
   PipelineRunner,
   buildEntrypointExecutionContext,
@@ -10,10 +11,9 @@ import {
   resolveErrorReporter,
   runInEntrypointScope,
   shouldFilterCatch,
-  type ScheduleInvocation,
-  type VelaApplication,
-} from '@velajs/vela';
-import type { Entrypoint, ExceptionFilter, VelaEnv } from '@velajs/vela';
+} from '@velajs/vela/module-kit';
+import type { ScheduleInvocation } from '@velajs/vela/schedule';
+import type { Entrypoint } from '@velajs/vela/module-kit';
 import { readWsEntrypointMeta } from '@velajs/vela/websocket';
 import { collectWsGatewayRoutes, type WsGatewayRoute } from './websocket/websocket-routing';
 import { assertCloudflareEnvironment } from './environment';
@@ -169,7 +169,7 @@ export class CloudflareApplication {
    *
    * @example
    * ```ts
-   * import { createOpenApiDocument } from '@velajs/vela';
+   * import { createOpenApiDocument } from '@velajs/vela/openapi';
    *
    * const app = await createCloudflareApp(AppModule, { env });
    * const document = createOpenApiDocument(AppModule, {

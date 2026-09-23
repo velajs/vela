@@ -8,14 +8,16 @@ import {
   Post,
   Body,
   UseGuards,
+  URL_SIGNING_SECRET,
+} from '../index.js';
+import {
   SignedInvocation,
   SignedInvocationGuard,
   InternalDispatcher,
-  URL_SIGNING_SECRET,
   INVOCATION_AUDIENCE,
   signInvocation,
-} from '../index.js';
-import type { InvocationClaim } from '../index.js';
+} from '../dispatch/index.js';
+import type { InvocationClaim } from '../dispatch/index.js';
 import { sha256Base64Url } from '../crypto/hmac';
 
 // Signed invocation body binding is exercised both through the route-scoped
@@ -33,7 +35,7 @@ const bareHits: string[] = [];
 
 @Global()
 @Module({
-  providers: [defineProvider(URL_SIGNING_SECRET, {useValue: SECRET})],
+  providers: [defineProvider(URL_SIGNING_SECRET, { useValue: SECRET })],
   exports: [URL_SIGNING_SECRET],
 })
 class SecretModule {}

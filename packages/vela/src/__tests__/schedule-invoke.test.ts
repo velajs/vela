@@ -10,7 +10,6 @@ import {
   Module,
   Post,
   Scope,
-  SignedInvocation,
   URL_SIGNING_SECRET,
   UseFilters,
   UseGuards,
@@ -18,27 +17,30 @@ import {
   VelaFactory,
   defineProvider,
   type CanActivate,
-  type Entrypoint,
   type ExecutionContext,
   type ExecutionLifetime,
   type NestInterceptor,
   type VelaApplication,
 } from '../index';
+import { SignedInvocation } from '../dispatch/index';
+import type { Entrypoint } from '../module-kit';
 import { APP_EXCEPTION_HANDLER } from '../pipeline/tokens';
 import {
   Cron,
   Interval,
   ScheduleModule,
+  type CronMetadata,
+  type IntervalMetadata,
+  type ScheduleInvocation,
+  type ScheduleJobRef,
+} from '../schedule';
+import {
   cronDialectAmbiguity,
   invokeScheduledJob,
   parseCronMetadata,
   parseIntervalMetadata,
-  type CronMetadata,
-  type IntervalMetadata,
   type InvokeScheduledJobOptions,
-  type ScheduleInvocation,
-  type ScheduleJobRef,
-} from '../schedule';
+} from '../module-kit';
 import { ScheduleNodeModule } from '../schedule-node';
 import { Process, Processor } from '../queue';
 

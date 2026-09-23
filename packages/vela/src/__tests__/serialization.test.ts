@@ -9,11 +9,10 @@ import {
   Module,
   Injectable,
   UseInterceptors,
-  defineDto,
-  ValidationPipe,
   Serialize,
   SerializerInterceptor,
 } from '../index.js';
+import { defineDto, ValidationPipe } from '../validation/index.js';
 
 // =============================================================================
 // Serialization: @Serialize + SerializerInterceptor

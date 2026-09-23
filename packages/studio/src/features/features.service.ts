@@ -1,4 +1,5 @@
-import { Container, Inject, Injectable } from '@velajs/vela';
+import { Inject, Injectable } from '@velajs/vela';
+import { Container } from '@velajs/vela/module-kit';
 import { STUDIO_OPS, STUDIO_OP_META } from '@velajs/studio-protocol';
 import type { StudioCapabilities, StudioFeatureKey } from '@velajs/studio-protocol';
 import type { TimeTravelCapabilities } from '@velajs/studio-protocol';

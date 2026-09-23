@@ -1,10 +1,10 @@
+import type { ExecutionContext } from '@velajs/vela';
 import {
   clearTrustedRequestIdentity,
   createTrustedRequestIdentityStore,
   getTrustedContextRequest,
   setTrustedRequestIdentity,
-  type ExecutionContext,
-} from '@velajs/vela';
+} from '@velajs/vela/module-kit';
 import type { SessionData } from './session-data';
 
 // This map stores provider payload, never a second authentication authority.

@@ -1,16 +1,18 @@
 import { expect, it } from 'vitest';
 import {
-  createDiscoverableDecorator,
   defineProvider,
-  DiscoveryService,
   Inject,
   Injectable,
   InjectionToken,
   Module,
-  registerEntrypointKind,
   Scope,
   VelaFactory,
 } from '../../index';
+import {
+  createDiscoverableDecorator,
+  DiscoveryService,
+  registerEntrypointKind,
+} from '../../module-kit';
 
 it('preserves keyed module ownership and lazy metadata in the Workers runtime', async () => {
   const Marker = createDiscoverableDecorator<{ queue: string }>('workers:owned:module');

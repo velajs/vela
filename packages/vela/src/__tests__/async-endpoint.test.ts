@@ -1,20 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import * as v from 'valibot';
 import { z } from 'zod';
-import {
-  Body,
-  Controller,
-  Endpoint,
-  Module,
-  Post,
-  VelaFactory,
-  ValidationPipe,
-  UseInterceptors,
-  defineDto,
-  defineEndpoint,
-  createOpenApiDocument,
-  type StandardSchemaV1,
-} from '../index';
+import { Body, Controller, Module, Post, VelaFactory, UseInterceptors } from '../index';
+import { Endpoint, defineEndpoint, createOpenApiDocument } from '../openapi/index';
+import { ValidationPipe, defineDto, type StandardSchemaV1 } from '../validation/index';
 
 class Amount {
   readonly #value: number;

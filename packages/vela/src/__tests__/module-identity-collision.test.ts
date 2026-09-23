@@ -6,9 +6,9 @@ import {
   VelaFactory,
   defineModule,
   defineProvider,
-  sideEffectModule,
   type VelaEnv,
 } from '../index';
+import { sideEffectModule } from '../module-kit';
 
 afterEach(() => {
   vi.restoreAllMocks();

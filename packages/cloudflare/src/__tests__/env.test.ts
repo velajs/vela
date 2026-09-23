@@ -8,9 +8,9 @@ import {
   InjectionToken,
   Module,
   defineProvider,
-  type RuntimeAdapter,
   type VelaEnv,
 } from '@velajs/vela';
+import type { RuntimeAdapter } from '@velajs/vela/module-kit';
 import { Test } from '@velajs/testing';
 import * as cloudflare from '../index';
 import {

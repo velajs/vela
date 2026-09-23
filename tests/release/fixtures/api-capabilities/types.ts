@@ -1,10 +1,10 @@
 import { z } from 'zod';
+import { defineEndpoint } from '@velajs/vela/openapi';
 import {
-  defineEndpoint,
   ResponseCacheService,
   type ResponseCacheOptions,
   type CacheInvalidationResult,
-} from '@velajs/vela';
+} from '@velajs/vela/cache';
 import {
   hc,
   withFormEncoding,

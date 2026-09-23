@@ -7,7 +7,6 @@ import {
   All,
   Controller,
   Get,
-  HttpMethod,
   Injectable,
   Module,
   Post,
@@ -20,6 +19,7 @@ import {
   type VelaHono,
   type VelaHonoEnv,
 } from '../index';
+import { HttpMethod } from '../module-kit';
 
 // Differential property sweep for consumer middleware: a seeded generator
 // builds targets, routes, mounts and request paths, and every sample compares

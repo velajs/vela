@@ -1,8 +1,8 @@
 /** Portable collectors over public per-application inspection APIs. Controller
  * attribution is supplied by studioRuntimeAdapter; contributed routes retain
  * their mounted label. Module snapshots never resolve providers. */
-import { DiscoveryService, EntrypointRegistry, describeToken } from '@velajs/vela';
-import type { Container, ModuleDescription } from '@velajs/vela';
+import { DiscoveryService, EntrypointRegistry, describeToken } from '@velajs/vela/module-kit';
+import type { Container, ModuleDescription } from '@velajs/vela/module-kit';
 import type { EntrypointRow, ModuleNode, RouteRow } from '@velajs/studio-protocol';
 import type { StudioAppHolder } from './app-holder';
 import { diagnosticSnapshot } from './snapshot';

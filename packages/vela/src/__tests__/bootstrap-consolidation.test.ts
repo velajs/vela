@@ -11,7 +11,7 @@ import {
   VelaApplication,
   VelaFactory,
 } from '../index.js';
-import { Container } from '../internal.js';
+import { Container } from '../module-kit.js';
 import { bootstrap } from '../factory/bootstrap.js';
 
 describe('bootstrap()', () => {

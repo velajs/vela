@@ -81,7 +81,7 @@ export async function verifyEdgePackages(releaseTarballs) {
   await writeFile(
     join(consumer, 'consumer.ts'),
     `
-import { defineDto, ValidationPipe } from '@velajs/vela';
+import { defineDto, ValidationPipe } from '@velajs/vela/validation';
 import { defineResource, defineStandardModel, defineCrudDatabase, createCrudDatabaseRegistry, type ContractInput, type ContractOutput } from '@velajs/crud';
 import { bindCrudService } from '@velajs/crud/service';
 import { hmacCursorCodec } from '@velajs/crud/query';

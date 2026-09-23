@@ -9,15 +9,11 @@ import {
   Controller,
   Delete,
   Get,
-  HttpMethod,
   Injectable,
   Module,
   Post,
   VelaFactory,
   Version,
-  defineMetadata,
-  registerRouteContributor,
-  type Constructor,
   type MiddlewareConsumer,
   type NestMiddleware,
   type NestModule,
@@ -25,6 +21,12 @@ import {
   type Type,
   type VelaCreateOptions,
 } from '../index';
+import {
+  HttpMethod,
+  defineMetadata,
+  registerRouteContributor,
+  type Constructor,
+} from '../module-kit';
 
 // Consumer middleware is how applications attach authentication to a subset
 // of routes, so every case here asserts that the middleware actually runs on

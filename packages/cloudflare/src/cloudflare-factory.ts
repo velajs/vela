@@ -2,12 +2,12 @@ import type { ExecutionContext } from 'hono';
 import { getConnInfo } from 'hono/cloudflare-workers';
 import { VelaFactory } from '@velajs/vela';
 import type {
-  RuntimeAdapter,
   VelaApplication,
   VelaEnv,
   VelaMiddlewareHandler,
   VelaSecurityOptions,
 } from '@velajs/vela';
+import type { RuntimeAdapter } from '@velajs/vela/module-kit';
 import { CloudflareApplication } from './cloudflare-application';
 import { assertCloudflareEnvironment, registerCloudflareEnvironment } from './environment';
 import { reportCloudflareScheduleDiagnostics } from './schedule-diagnostics';

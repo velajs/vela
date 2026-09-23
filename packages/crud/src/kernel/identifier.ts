@@ -1,4 +1,4 @@
-import { parseSchemaAsync, SchemaValidationError } from '@velajs/vela';
+import { parseSchemaAsync, SchemaValidationError } from '@velajs/vela/validation';
 import { InputValidationException } from '../envelope/errors';
 import type { EngineRequest } from './engine-request';
 import type { CrudResource } from './resource';

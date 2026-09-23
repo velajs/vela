@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { VelaFactory, Module, Injectable, MetadataRegistry } from '../index.js';
+import { VelaFactory, Module, Injectable } from '../index.js';
+import { MetadataRegistry } from '../module-kit.js';
 
 describe('Module circular detection', () => {
   it('should throw on direct circular module dependency (A imports B, B imports A)', async () => {

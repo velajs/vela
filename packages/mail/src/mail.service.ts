@@ -1,4 +1,5 @@
-import { Container, Inject, Injectable, Optional } from '@velajs/vela';
+import { Inject, Injectable, Optional } from '@velajs/vela';
+import { Container } from '@velajs/vela/module-kit';
 import { queueToken } from '@velajs/vela/queue';
 import { buildMessage } from './build';
 import { MailError } from './mail.error';

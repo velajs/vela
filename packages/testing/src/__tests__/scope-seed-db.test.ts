@@ -6,9 +6,9 @@ import {
   Scope,
   REQUEST_CONTEXT,
   RequestContextKey,
-  getRequestContainer,
   type RequestContext,
 } from '@velajs/vela';
+import { getRequestContainer } from '@velajs/vela/module-kit';
 import { Seeder, SeederModule, type ISeeder } from '@velajs/vela/seeder';
 import { Test } from '../test.js';
 import type { TestDatabase } from '../db/test-database.js';

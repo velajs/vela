@@ -1,10 +1,10 @@
-import {
-  type AsyncCacheStore,
-  type CacheEntryReader,
-  type CacheEntryWriter,
-  type CacheEntry,
-  type CacheInvalidationStore,
-} from '@velajs/vela';
+import type {
+  AsyncCacheStore,
+  CacheEntryReader,
+  CacheEntryWriter,
+  CacheEntry,
+  CacheInvalidationStore,
+} from '@velajs/vela/cache';
 
 /**
  * Native KV JSON value store. Metadata retains logical expiry even when KV's

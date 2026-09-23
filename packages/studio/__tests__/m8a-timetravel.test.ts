@@ -1,8 +1,8 @@
 import { matchesPredicate } from '@velajs/crud/query';
 import { bindAdapter } from '@velajs/crud/adapter';
-import { defineProvider } from '@velajs/vela';
+import { defineProvider, Controller, Module, VelaFactory } from '@velajs/vela';
 import { describe, expect, it } from 'vitest';
-import { Controller, METADATA_KEYS, Module, VelaFactory, defineMetadata } from '@velajs/vela';
+import { METADATA_KEYS, defineMetadata } from '@velajs/vela/module-kit';
 import type { CrudConfig } from '@velajs/crud';
 import { MemoryAuditStore } from '@velajs/crud/audit';
 import type { Model, RelationConfig } from '@velajs/crud/model';

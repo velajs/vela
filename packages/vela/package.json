@@ -33,9 +33,27 @@
   ],
   "type": "module",
   "sideEffects": [
-    "./dist/index.js",
     "./dist/metadata.js",
-    "./dist/schedule-node/index.js"
+    "./dist/index.js",
+    "./dist/module-kit.js",
+    "./dist/internal.js",
+    "./dist/cache/index.js",
+    "./dist/dispatch/index.js",
+    "./dist/event-emitter/index.js",
+    "./dist/health/index.js",
+    "./dist/fetch/index.js",
+    "./dist/i18n/index.js",
+    "./dist/live/index.js",
+    "./dist/logging/index.js",
+    "./dist/openapi/index.js",
+    "./dist/queue/index.js",
+    "./dist/schedule/index.js",
+    "./dist/schedule-node/index.js",
+    "./dist/security/index.js",
+    "./dist/seeder/index.js",
+    "./dist/throttler/index.js",
+    "./dist/validation/index.js",
+    "./dist/websocket/index.js"
   ],
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -44,21 +62,89 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./module-kit": {
+      "types": "./dist/module-kit.d.ts",
+      "import": "./dist/module-kit.js"
+    },
     "./internal": {
       "types": "./dist/internal.d.ts",
       "import": "./dist/internal.js"
     },
-    "./streaming": {
-      "types": "./dist/streaming/index.d.ts",
-      "import": "./dist/streaming/index.js"
+    "./cache": {
+      "types": "./dist/cache/index.d.ts",
+      "import": "./dist/cache/index.js"
+    },
+    "./dispatch": {
+      "types": "./dist/dispatch/index.d.ts",
+      "import": "./dist/dispatch/index.js"
+    },
+    "./events": {
+      "types": "./dist/event-emitter/index.d.ts",
+      "import": "./dist/event-emitter/index.js"
+    },
+    "./health": {
+      "types": "./dist/health/index.d.ts",
+      "import": "./dist/health/index.js"
+    },
+    "./http-client": {
+      "types": "./dist/fetch/index.d.ts",
+      "import": "./dist/fetch/index.js"
+    },
+    "./i18n": {
+      "types": "./dist/i18n/index.d.ts",
+      "import": "./dist/i18n/index.js"
+    },
+    "./live": {
+      "types": "./dist/live/index.d.ts",
+      "import": "./dist/live/index.js"
+    },
+    "./logging": {
+      "types": "./dist/logging/index.d.ts",
+      "import": "./dist/logging/index.js"
     },
     "./observability": {
       "types": "./dist/observability/index.d.ts",
       "import": "./dist/observability/index.js"
     },
+    "./openapi": {
+      "types": "./dist/openapi/index.d.ts",
+      "import": "./dist/openapi/index.js"
+    },
+    "./queue": {
+      "types": "./dist/queue/index.d.ts",
+      "import": "./dist/queue/index.js"
+    },
+    "./schedule": {
+      "types": "./dist/schedule/index.d.ts",
+      "import": "./dist/schedule/index.js"
+    },
     "./schedule-node": {
       "types": "./dist/schedule-node/index.d.ts",
       "import": "./dist/schedule-node/index.js"
+    },
+    "./security": {
+      "types": "./dist/security/index.d.ts",
+      "import": "./dist/security/index.js"
+    },
+    "./seeder": {
+      "types": "./dist/seeder/index.d.ts",
+      "import": "./dist/seeder/index.js"
+    },
+    "./storage": {
+      "types": "./dist/storage/index.d.ts",
+      "import": "./dist/storage/index.js"
+    },
+    "./streaming": {
+      "types": "./dist/streaming/index.d.ts",
+      "import": "./dist/streaming/index.js"
+    },
+    "./throttler": {
+      "types": "./dist/throttler/index.d.ts",
+      "import": "./dist/throttler/index.js"
+    },
+    "./validation": {
+      "types": "./dist/validation/index.d.ts",
+      "import": "./dist/validation/index.js"
     },
     "./websocket": {
       "types": "./dist/websocket/index.d.ts",
@@ -67,30 +153,6 @@
     "./websocket-node": {
       "types": "./dist/websocket-node/index.d.ts",
       "import": "./dist/websocket-node/index.js"
-    },
-    "./i18n": {
-      "types": "./dist/i18n/index.d.ts",
-      "import": "./dist/i18n/index.js"
-    },
-    "./queue": {
-      "types": "./dist/queue/index.d.ts",
-      "import": "./dist/queue/index.js"
-    },
-    "./live": {
-      "types": "./dist/live/index.d.ts",
-      "import": "./dist/live/index.js"
-    },
-    "./storage": {
-      "types": "./dist/storage/index.d.ts",
-      "import": "./dist/storage/index.js"
-    },
-    "./seeder": {
-      "types": "./dist/seeder/index.d.ts",
-      "import": "./dist/seeder/index.js"
-    },
-    "./validation": {
-      "types": "./dist/validation/index.d.ts",
-      "import": "./dist/validation/index.js"
     }
   },
   "publishConfig": {

@@ -1,4 +1,4 @@
-import { InjectionToken } from '../index';
+import { InjectionToken } from '../container/types';
 import type { QueueClient } from './queue.client';
 import type { QueueDriver } from './queue.types';
 

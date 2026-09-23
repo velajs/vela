@@ -1,3 +1,6 @@
+// @velajs/vela/throttler — rate limiting for routes.
+import '../metadata';
+
 export { ThrottlerModule } from './throttler.module';
 export { ThrottlerGuard } from './throttler.guard';
 export { ThrottlerStorage } from './throttler.storage';

@@ -5,15 +5,15 @@ import {
   Controller,
   Get,
   Module,
-  MetadataRegistry,
   SERIALIZE_METADATA,
   Serialize,
   SerializerInterceptor,
   UseInterceptors,
   VelaFactory,
-  defineDto,
   type VelaApplication,
 } from '../index';
+import { MetadataRegistry } from '../module-kit';
+import { defineDto } from '../validation/index';
 
 const apps: VelaApplication[] = [];
 afterEach(async () => {

@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  Container,
   Controller,
   Get,
   Injectable,
@@ -9,6 +8,7 @@ import {
   VelaFactory,
   createParamDecorator,
 } from '../index.js';
+import { Container } from '../module-kit.js';
 import type { CanActivate, ExecutionContext } from '../index.js';
 
 describe('ExecutionContext declaring module', () => {

@@ -1,5 +1,5 @@
 import type { LiveQueryDefinition } from '@velajs/live-protocol';
-import { createDiscoverableDecorator } from '../index';
+import { createDiscoverableDecorator } from '../discovery/discoverable.decorator';
 import { LIVE_RESOLVER_METADATA } from './live.tokens';
 import type {
   LiveQueryContext,

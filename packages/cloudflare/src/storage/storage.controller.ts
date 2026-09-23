@@ -1,5 +1,6 @@
 import { Controller, Get, Inject, Req } from '@velajs/vela';
-import { joinStoragePath, STORAGE_SIGNED_URL_PURPOSE, verifySignedUrl } from '@velajs/vela/storage';
+import { joinStoragePath } from '@velajs/vela/storage';
+import { STORAGE_SIGNED_URL_PURPOSE, verifySignedUrl } from '@velajs/vela/security';
 import type { Context } from 'hono';
 import { STORAGE_OPTIONS } from './storage.tokens';
 import type { StorageModuleOptions } from './storage.types';

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { Module, VelaFactory, WebSocketGateway, WebSocketModule, WsDispatcher } from '../index.js';
-import type { WsClient } from '../index.js';
+import { Module, VelaFactory } from '../index.js';
+import { WebSocketGateway, WebSocketModule, WsDispatcher } from '../websocket/index.js';
+import type { WsClient } from '../websocket/index.js';
 import {
   LIVE_PROTOCOL,
   LiveEngine,

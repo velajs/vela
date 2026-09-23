@@ -7,10 +7,10 @@ import {
   Logger,
   Optional,
   Scope,
-  getCurrentRequestContext,
   type LoggerService,
   type RequestContext,
 } from '@velajs/vela';
+import { getCurrentRequestContext } from '@velajs/vela/module-kit';
 import type { FeatureFlagDriver } from './drivers/driver';
 import type { FeatureFlagDriverRegistry } from './drivers/registry';
 import { FEATURE_FLAG_TOKENS } from './feature-flags.tokens';

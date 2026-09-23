@@ -4,7 +4,6 @@ import { AuthzModule, PermissionGuard, RequirePermission } from '@velajs/authz/v
 import { MemoryTenantRegistryStore } from '@velajs/tenant';
 import { TenantGuard, TenantModule } from '@velajs/tenant/vela';
 import {
-  getTrustedRequestIdentity,
   Injectable,
   Module,
   REQUEST_CONTEXT,
@@ -13,6 +12,7 @@ import {
   UseGuards,
   VelaFactory,
 } from '@velajs/vela';
+import { getTrustedRequestIdentity } from '@velajs/vela/module-kit';
 import { createSchema } from 'graphql-yoga';
 import { z } from 'zod';
 import {

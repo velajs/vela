@@ -1,5 +1,5 @@
 import { z, type ZodType } from 'zod';
-import type { StandardSchemaV1 } from '@velajs/vela';
+import type { StandardSchemaV1 } from '@velajs/vela/validation';
 import type { CrudContracts, CrudFieldMetadata } from '../schema/contracts';
 import { defineModel } from './define-model';
 import type { ModelConfig, Model } from './model.types';

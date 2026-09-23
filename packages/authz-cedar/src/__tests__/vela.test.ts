@@ -1,13 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import {
-  Controller,
-  Get,
-  Module,
-  Reflector,
-  VelaFactory,
-  setTrustedRequestIdentity,
-  clearTrustedRequestIdentity,
-} from '@velajs/vela';
+import { Controller, Get, Module, Reflector, VelaFactory } from '@velajs/vela';
+import { setTrustedRequestIdentity, clearTrustedRequestIdentity } from '@velajs/vela/module-kit';
 import { auditCedarRoutes, CedarModule, CedarPublic, RequireResource } from '../vela/index';
 const principal = { issuer: 'test', subject: 'alice', principalType: 'user' } as const;
 describe('resource authorization declarations', () => {

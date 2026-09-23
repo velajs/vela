@@ -1,7 +1,9 @@
-// @velajs/vela/queue — first-party queue subsystem, authored entirely on the
-// public API (every vela import in src/queue/* comes from '../index'; the
-// openness audit test enforces it). Deliberately NOT re-exported from the
-// main barrel: consumers opt in through this subpath.
+// @velajs/vela/queue — first-party queue subsystem, authored on the public API:
+// every symbol src/queue/* imports from the rest of vela is exported by the root
+// app kit or @velajs/vela/module-kit (the openness audit test enforces it).
+// Consumers opt in through this subpath.
+import '../metadata';
+
 export { QueueModule, QUEUE_MODULE_OPTIONS } from './queue.module';
 export { Processor, Process, InjectQueue, getProcessHandlers } from './queue.decorators';
 export { queueToken, QUEUE_DRIVER, PROCESSOR_METADATA, PROCESS_METADATA } from './queue.tokens';

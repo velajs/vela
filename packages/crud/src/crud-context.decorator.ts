@@ -5,7 +5,8 @@
  */
 
 import type { Context } from 'hono';
-import { createParamDecorator, getRequestContainer } from '@velajs/vela';
+import { createParamDecorator } from '@velajs/vela';
+import { getRequestContainer } from '@velajs/vela/module-kit';
 
 export interface CrudRequestContext {
   c: Context;

@@ -1,25 +1,24 @@
 import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
 import {
-  CacheResponse,
   Controller,
-  Endpoint,
   Get,
   Injectable,
-  MemoryCacheInvalidationStore,
-  MemoryCacheStore,
   Module,
   Post,
-  ResponseCacheModule,
-  ResponseCacheService,
   UnauthorizedException,
   UseGuards,
   VelaFactory,
-  createOpenApiDocument,
-  defineEndpoint,
-  getTrustedRequestIdentity,
-  setTrustedRequestIdentity,
 } from '@velajs/vela';
+import {
+  CacheResponse,
+  MemoryCacheInvalidationStore,
+  MemoryCacheStore,
+  ResponseCacheModule,
+  ResponseCacheService,
+} from '@velajs/vela/cache';
+import { Endpoint, createOpenApiDocument, defineEndpoint } from '@velajs/vela/openapi';
+import { getTrustedRequestIdentity, setTrustedRequestIdentity } from '@velajs/vela/module-kit';
 import { generateClientContract } from '@velajs/cli/client';
 import { hc, withFormEncoding } from '@velajs/client/http';
 import { z } from 'zod';

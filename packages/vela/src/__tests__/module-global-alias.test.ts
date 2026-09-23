@@ -4,7 +4,6 @@ import {
   Controller,
   defineProvider,
   Get,
-  getRequestContainer,
   Inject,
   Injectable,
   InjectionToken,
@@ -13,6 +12,7 @@ import {
   VelaFactory,
   type ExecutionContext,
 } from '../index';
+import { getRequestContainer } from '../module-kit';
 import { bootstrap } from '../factory/bootstrap';
 
 describe('module global aliases', () => {

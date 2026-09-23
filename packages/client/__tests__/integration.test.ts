@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { Module, VelaFactory, WebSocketGateway, WebSocketModule, WsDispatcher } from '@velajs/vela';
-import type { WsClient } from '@velajs/vela';
+import { Module, VelaFactory } from '@velajs/vela';
+import { WebSocketGateway, WebSocketModule, WsDispatcher } from '@velajs/vela/websocket';
+import type { WsClient } from '@velajs/vela/websocket';
 import {
   COMMIT_CURSOR_HEADER,
   COMMIT_EPOCH_HEADER,

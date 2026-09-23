@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 // Side-effect import installs the Reflect.* polyfill that funnels into MetadataRegistry.
-import { MetadataRegistry, SetMetadata, Reflector } from '../index.js';
+import { SetMetadata, Reflector } from '../index.js';
+import { MetadataRegistry } from '../module-kit.js';
 
 beforeEach(() => {
   MetadataRegistry.reset();

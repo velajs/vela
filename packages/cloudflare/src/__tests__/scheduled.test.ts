@@ -1,22 +1,26 @@
 import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import {
   APP_EXCEPTION_HANDLER,
-  Cron,
   Inject,
   Injectable,
-  Interval,
   Module,
-  SCHEDULE_INVOCATION_SEED,
   Scope,
   UseGuards,
   VelaFactory,
   defineProvider,
-  invokeScheduledJob,
-  parseCronMetadata,
   type CanActivate,
+} from '@velajs/vela';
+import {
+  Cron,
+  Interval,
   type CronInvocation,
   type ScheduleInvocation,
-} from '@velajs/vela';
+} from '@velajs/vela/schedule';
+import {
+  SCHEDULE_INVOCATION_SEED,
+  invokeScheduledJob,
+  parseCronMetadata,
+} from '@velajs/vela/module-kit';
 import { Test } from '@velajs/testing';
 import * as cloudflare from '../index';
 import { cloudflareAdapter, createCloudflareApp } from '../cloudflare-factory';

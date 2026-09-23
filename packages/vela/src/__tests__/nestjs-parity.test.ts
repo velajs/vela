@@ -20,7 +20,6 @@ import {
   HttpCode,
   Header,
   Redirect,
-  MetadataRegistry,
   APP_GUARD,
   APP_PIPE,
   APP_INTERCEPTOR,
@@ -34,12 +33,7 @@ import {
   SetMetadata,
   Reflector,
   applyDecorators,
-  HttpMethod,
   ModuleRef,
-  ModuleVisibilityError,
-  UnresolvedDependencyError,
-  getRequestContainer,
-  runInEntrypointScope,
   mixin,
   InjectionToken,
   Inject,
@@ -58,8 +52,6 @@ import {
   createParamDecorator,
   Serialize,
   SerializerInterceptor,
-  defineDto,
-  ValidationPipe,
   HttpException,
   NotFoundException,
   BadRequestException,
@@ -70,26 +62,6 @@ import {
   Cookies,
   RawBody,
   Test,
-  CacheModule,
-  CacheInterceptor,
-  Cacheable,
-  CacheKey,
-  CacheTTL,
-  EventEmitterModule,
-  EventEmitter,
-  EventEmitterSubscriber,
-  OnEvent,
-  ScheduleModule,
-  ScheduleRegistry,
-} from '../index.js';
-import { ScheduleNodeModule } from '../schedule-node/index.js';
-import {
-  Cron,
-  Interval,
-  ThrottlerModule,
-  ThrottlerGuard,
-  Throttle,
-  SkipThrottle,
   Put,
   Patch,
   Options,
@@ -97,13 +69,6 @@ import {
   All,
   Ip,
   Sse,
-  HttpModule,
-  HttpService,
-  HttpRequestException,
-  HealthModule,
-  HealthCheckService,
-  HealthIndicatorService,
-  HttpHealthIndicator,
   ServiceUnavailableException,
   MethodNotAllowedException,
   NotAcceptableException,
@@ -115,21 +80,51 @@ import {
   NotImplementedException,
   TooManyRequestsException,
   Optional,
-  CorsModule,
   Logger,
   LogLevel,
-  CacheService,
-  CACHE_MANAGER,
   RequiredPipe,
 } from '../index.js';
+import {
+  MetadataRegistry,
+  HttpMethod,
+  ModuleVisibilityError,
+  UnresolvedDependencyError,
+  getRequestContainer,
+  runInEntrypointScope,
+} from '../module-kit.js';
+import { defineDto, ValidationPipe } from '../validation/index.js';
+import {
+  CacheModule,
+  CacheInterceptor,
+  Cacheable,
+  CacheKey,
+  CacheTTL,
+  CacheService,
+  CACHE_MANAGER,
+} from '../cache/index.js';
+import {
+  EventEmitterModule,
+  EventEmitter,
+  EventEmitterSubscriber,
+  OnEvent,
+} from '../event-emitter/index.js';
+import { ScheduleModule, ScheduleRegistry, Cron, Interval } from '../schedule/index.js';
+import { ScheduleNodeModule } from '../schedule-node/index.js';
+import { ThrottlerModule, ThrottlerGuard, Throttle, SkipThrottle } from '../throttler/index.js';
+import { HttpModule, HttpService, HttpRequestException } from '../fetch/index.js';
+import {
+  HealthModule,
+  HealthCheckService,
+  HealthIndicatorService,
+  HttpHealthIndicator,
+} from '../health/index.js';
+import { CorsModule } from '../security/index.js';
 import type {
   OnModuleInit,
   OnApplicationBootstrap,
   OnModuleDestroy,
   OnApplicationShutdown,
   BeforeApplicationShutdown,
-} from '../index.js';
-import type {
   MiddlewareConsumer,
   NestModule,
   CanActivate,

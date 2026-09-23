@@ -8,13 +8,16 @@ import {
   Module,
   UseGuards,
   VelaFactory,
+  defineProvider,
+} from '../index.js';
+import {
   WebSocketGateway,
   WebSocketModule,
   SubscribeMessage,
   WsDispatcher,
-  defineProvider,
-} from '../index.js';
-import type { CanActivate, WsClient } from '../index.js';
+} from '../websocket/index.js';
+import type { CanActivate } from '../index.js';
+import type { WsClient } from '../websocket/index.js';
 import {
   LiveEngine,
   LiveInvalidation,

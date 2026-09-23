@@ -1,5 +1,6 @@
 import { VelaWebSocketDurableObject } from '../../durable-objects';
-import { Cron, Inject, InjectEnv, Module, Injectable, Scope, type VelaEnv } from '@velajs/vela';
+import { Inject, InjectEnv, Module, Injectable, Scope, type VelaEnv } from '@velajs/vela';
+import { Cron } from '@velajs/vela/schedule';
 import { countRegisteredClasses } from '@velajs/vela/internal';
 import {
   CloudflareWebSocketModule,

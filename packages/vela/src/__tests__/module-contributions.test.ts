@@ -1,13 +1,6 @@
 import { expect, it } from 'vitest';
-import {
-  Controller,
-  defineModule,
-  Get,
-  Injectable,
-  Module,
-  sideEffectModule,
-  VelaFactory,
-} from '../index';
+import { Controller, defineModule, Get, Injectable, Module, VelaFactory } from '../index';
+import { sideEffectModule } from '../module-kit';
 
 it('deduplicates stable contribution owners, without globally interning names', async () => {
   let initialized = 0;

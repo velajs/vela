@@ -18,9 +18,9 @@ import {
   UseGuards,
   UseInterceptors,
   UsePipes,
-  ValidationPipe,
   VelaFactory,
 } from '@velajs/vela';
+import { ValidationPipe } from '@velajs/vela/validation';
 import type {
   CanActivate,
   ExceptionFilter,

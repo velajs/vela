@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  Cron,
   EXECUTION_LIFETIME,
   Inject,
   Injectable,
@@ -8,6 +7,7 @@ import {
   Scope,
   type ExecutionLifetime,
 } from '@velajs/vela';
+import { Cron } from '@velajs/vela/schedule';
 import { createCloudflareApp } from '../cloudflare-factory';
 
 describe('whole scheduled trigger completion', () => {

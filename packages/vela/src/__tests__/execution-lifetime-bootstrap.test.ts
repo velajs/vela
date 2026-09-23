@@ -5,9 +5,9 @@ import {
   Injectable,
   Module,
   VelaFactory,
-  runInEntrypointScope,
   type ExecutionLifetime,
 } from '../index';
+import { runInEntrypointScope } from '../module-kit';
 
 it('makes the managed lifetime injectable from feature modules without root resolution', async () => {
   @Injectable()

@@ -5,10 +5,10 @@ import {
   Module,
   UseGuards,
   VelaFactory,
-  setTrustedRequestIdentity,
   type CanActivate,
   type ExecutionContext,
 } from '@velajs/vela';
+import { setTrustedRequestIdentity } from '@velajs/vela/module-kit';
 import { MemoryTenantRegistryStore, TenantRegistry } from '../../packages/tenant/src/index';
 import {
   TenantGuard,

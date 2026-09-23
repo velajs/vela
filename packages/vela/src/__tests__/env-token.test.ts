@@ -8,21 +8,19 @@ import {
   Injectable,
   InjectEnv,
   InjectionToken,
-  InternalDispatcher,
   Module,
-  MultipleProvidersFoundError,
   Optional,
   Post,
-  SignedInvocation,
   SignedUrl,
   URL_SIGNING_SECRET,
   UrlGeneratorService,
   VelaFactory,
-  bootstrap,
   defineProvider,
-  type RuntimeAdapter,
   type VelaEnv,
 } from '../index.js';
+import { InternalDispatcher, SignedInvocation } from '../dispatch/index.js';
+import { MultipleProvidersFoundError, type RuntimeAdapter } from '../module-kit.js';
+import { bootstrap } from '../internal.js';
 
 /** Read one synthetic string binding the way framework readers do. */
 function binding(env: VelaEnv, key: string): string | undefined {

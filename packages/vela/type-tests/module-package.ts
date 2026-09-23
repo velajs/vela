@@ -1,11 +1,9 @@
+import { defineModule, InjectionToken, type ModuleRegistrationOptions } from '@velajs/vela';
 import {
-  defineModule,
   DiscoveryService,
-  InjectionToken,
   sideEffectModule,
   type DiscoveredRegistration,
-  type ModuleRegistrationOptions,
-} from '@velajs/vela';
+} from '@velajs/vela/module-kit';
 
 const NUMBER = new InjectionToken<number>('module number');
 const { ConfigurableModuleClass: Feature } = defineModule<{ name: string; http?: boolean }>({

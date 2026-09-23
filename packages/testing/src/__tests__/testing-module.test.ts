@@ -9,9 +9,9 @@ import {
   REQUEST_CONTEXT,
   RequestContextKey,
   UseGuards,
-  createLazyParamDecorator,
   defineProvider,
 } from '@velajs/vela';
+import { createLazyParamDecorator } from '@velajs/vela/module-kit';
 import type { CanActivate, ExecutionContext, OnModuleInit, OnModuleDestroy } from '@velajs/vela';
 import { Test } from '../test.js';
 

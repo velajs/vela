@@ -1,17 +1,19 @@
 import {
-  assertFactoryInject,
-  Container,
   type DynamicModule,
   defineModule,
-  type FactoryInject,
-  type InferTokens,
   type ModuleImport,
   defineProvider,
   type ProviderDefinition,
-  stableHash,
   type Token,
   type Type,
 } from '@velajs/vela';
+import {
+  assertFactoryInject,
+  type FactoryInject,
+  type InferTokens,
+  stableHash,
+  Container,
+} from '@velajs/vela/module-kit';
 import { QueueModule } from '@velajs/vela/queue';
 import { snapshotInboundGate, type MailInboundGate } from './inbound/gate';
 import { assertUniqueMailQueues, MAIL_QUEUE_REGISTRATION } from './mail.configuration';

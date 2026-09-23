@@ -1,4 +1,6 @@
-import type { InvocationTarget, StandardSchemaV1, VelaEnv } from '../index';
+import type { InvocationTarget } from '../dispatch/types';
+import type { StandardSchemaV1 } from '../validation/standard-schema';
+import type { VelaEnv } from '../env';
 import type { QueueRegistry } from './queue.registry';
 
 /**

@@ -2,20 +2,20 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 import { z } from 'zod';
 import {
   Controller,
-  Endpoint,
   Injectable,
   Module,
   Post,
   UseGuards,
-  ValidationPipe,
   VelaFactory,
-  createOpenApiDocument,
-  defineDto,
-  defineEndpoint,
   type CanActivate,
-  type EndpointBodyOptions,
-  type SchemaOutput,
 } from '../index';
+import {
+  Endpoint,
+  createOpenApiDocument,
+  defineEndpoint,
+  type EndpointBodyOptions,
+} from '../openapi/index';
+import { ValidationPipe, defineDto, type SchemaOutput } from '../validation/index';
 
 const output = z.object({
   name: z.string(),

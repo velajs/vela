@@ -1,5 +1,5 @@
 import type { CfRoomRegistry } from './cf-room-registry';
-import type { Container } from '@velajs/vela';
+import type { Container } from '@velajs/vela/module-kit';
 import {
   LIVE_CURSOR_LOG,
   LIVE_DRIVER,

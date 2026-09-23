@@ -1,7 +1,8 @@
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { z } from 'zod';
-import { Container, InjectionToken, defineProvider } from '@velajs/vela';
-import type { StandardSchemaV1 } from '@velajs/vela';
+import { InjectionToken, defineProvider } from '@velajs/vela';
+import { Container } from '@velajs/vela/module-kit';
+import type { StandardSchemaV1 } from '@velajs/vela/validation';
 import { testAdapter } from '../__tests__/test-adapter';
 import { defineModel } from '../model/define-model';
 import { defineStandardModel } from '../model/standard-model';

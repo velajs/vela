@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   APP_EXCEPTION_HANDLER,
-  Cron,
   EXECUTION_LIFETIME,
   REQUEST_CONTEXT,
   Inject,
@@ -11,12 +10,13 @@ import {
   Scope,
   UseGuards,
   defineProvider,
-  getExecutionLifetime,
   type CanActivate,
-  type Container,
   type ExecutionContext,
   type ExecutionLifetime,
 } from '@velajs/vela';
+import { Cron } from '@velajs/vela/schedule';
+import { getExecutionLifetime } from '@velajs/vela/module-kit';
+import type { Container } from '@velajs/vela/module-kit';
 import { createCloudflareApp } from '../cloudflare-factory';
 import type { CloudflareApplication } from '../cloudflare-application';
 import { QueueConsumer } from '../decorators/queue-consumer';

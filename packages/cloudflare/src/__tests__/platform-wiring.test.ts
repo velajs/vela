@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Module, WebSocketModule } from '@velajs/vela';
+import { Module } from '@velajs/vela';
+import { WebSocketModule } from '@velajs/vela/websocket';
 import { LiveModule } from '@velajs/vela/live';
 import { createCloudflareApp } from '../cloudflare-factory';
 import { buildDoRuntime } from '../websocket/do-bootstrap';

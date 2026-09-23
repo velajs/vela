@@ -1,5 +1,5 @@
-import { createDiscoverableDecorator } from '../index';
-import type { DiscoveryService } from '../index';
+import { createDiscoverableDecorator } from '../discovery/discoverable.decorator';
+import type { DiscoveryService } from '../discovery/discovery.service';
 import type { QueueRegistration, RegisteredQueue } from './queue.types';
 
 // The key is stable across Vite HMR re-evaluation; discovery reads each

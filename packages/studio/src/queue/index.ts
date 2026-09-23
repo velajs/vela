@@ -25,7 +25,8 @@
  * job name ({@link STUDIO_QUEUE_JOB_NAME}) — the frozen op carries no job name,
  * so the payload routes to the queue's wildcard `@Process()` handler.
  */
-import { Container, EntrypointRegistry, Inject, Injectable, defineModule } from '@velajs/vela';
+import { Inject, Injectable, defineModule } from '@velajs/vela';
+import { Container, EntrypointRegistry } from '@velajs/vela/module-kit';
 import { QUEUE_DRIVER, QueueRegistry, queueToken } from '@velajs/vela/queue';
 import type { QueueRow, StudioOpReq } from '@velajs/studio-protocol';
 import { AdminRpc } from '../rpc/admin-rpc.decorator';

@@ -1,13 +1,7 @@
-import { setTrustedRequestIdentity } from '@velajs/vela';
+import { setTrustedRequestIdentity } from '@velajs/vela/module-kit';
 import { describe, it, expect } from 'vitest';
-import {
-  Inject,
-  InjectionToken,
-  MemoryNonceStore,
-  Module,
-  REQUEST_CONTEXT,
-  defineProvider,
-} from '@velajs/vela';
+import { Inject, InjectionToken, Module, REQUEST_CONTEXT, defineProvider } from '@velajs/vela';
+import { MemoryNonceStore } from '@velajs/vela/security';
 import type { RequestContext } from '@velajs/vela';
 import {
   WebSocketGateway,

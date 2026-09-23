@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { createOpenApiDocument } from '@velajs/vela';
-import type { OpenApiDocument } from '@velajs/vela';
+import { createOpenApiDocument } from '@velajs/vela/openapi';
+import type { OpenApiDocument } from '@velajs/vela/openapi';
 import { Command, Option } from 'clipanion';
 import { generateClientContract } from '../client-contract.js';
 import { loadConfig } from '../config.js';

@@ -2,7 +2,6 @@ import {
   All,
   Controller,
   defineProvider,
-  DiscoveryService,
   Inject,
   InjectionToken,
   Req,
@@ -10,6 +9,7 @@ import {
   type ModuleImport,
   type VelaContext,
 } from '@velajs/vela';
+import { DiscoveryService } from '@velajs/vela/module-kit';
 import { assertValidSchema } from 'graphql';
 import { GraphqlOperation } from './operation';
 import type { GraphqlOptions, GraphqlServer } from './types';

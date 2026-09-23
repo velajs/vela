@@ -1,19 +1,13 @@
 import { defineProvider } from '../container/types';
 import { describe, expect, it } from 'vitest';
+import { Controller, Get, Inject, Injectable, Module, VelaFactory } from '../index.js';
 import {
-  Controller,
   EventEmitter,
   EventEmitterModule,
   EventEmitterSubscriber,
-  Get,
-  Inject,
-  Injectable,
-  Module,
   OnEvent,
-  ScheduleModule,
-  ScheduleRegistry,
-  VelaFactory,
-} from '../index.js';
+} from '../event-emitter/index.js';
+import { ScheduleModule, ScheduleRegistry } from '../schedule/index.js';
 import type {
   DynamicModule,
   OnApplicationBootstrap,
@@ -505,9 +499,9 @@ describe('lazy cold-start init — first-party subsystems (HTTP-only worker)', (
 
 describe('lazy cold-start init — entrypoints', () => {
   it('declared-kind providers in lazy modules yield metadata-only entries; dispatch-time resolve materializes', async () => {
-    const { registerEntrypointKind } = await import('../index.js');
+    const { registerEntrypointKind } = await import('../module-kit.js');
     const { _resetEntrypointKinds } = await import('../entrypoint/entrypoint.registry.js');
-    const { createDiscoverableDecorator } = await import('../index.js');
+    const { createDiscoverableDecorator } = await import('../module-kit.js');
     _resetEntrypointKinds();
 
     const QueueWorker = createDiscoverableDecorator<{ queue: string }>('test:cs:queue');
@@ -683,8 +677,9 @@ describe('lazy cold-start init — hand-rolled bootstrap paths', () => {
     // bootstrap(). If the LazyModuleManager were armed only by bootstrap(),
     // that path would skip lazy tokens in the eager sweep with NO trigger
     // installed — first touch would construct silently WITHOUT hook replay.
-    const { Container, ModuleLoader, RouteManager, VelaApplication } =
-      await import('../internal.js');
+    const { ModuleLoader, RouteManager } = await import('../internal.js');
+    const { Container } = await import('../module-kit.js');
+    const { VelaApplication } = await import('../index.js');
 
     const events: string[] = [];
 

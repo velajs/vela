@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { VelaFactory, Controller, Get, Module, createOpenApiDocument } from '../index.js';
+import { VelaFactory, Controller, Get, Module } from '../index.js';
+import { createOpenApiDocument } from '../openapi/index.js';
 
 async function buildApp() {
   @Controller('/users')

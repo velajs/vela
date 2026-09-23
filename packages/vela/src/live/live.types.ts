@@ -1,4 +1,4 @@
-import type { WsClient } from '../index';
+import type { WsClient } from '../websocket/websocket.types';
 import type { LiveQueryDefinition } from '@velajs/live-protocol';
 
 /**

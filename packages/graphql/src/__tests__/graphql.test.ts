@@ -6,7 +6,6 @@ import {
   InjectionToken,
   Module,
   Scope,
-  setTrustedRequestIdentity,
   UseGuards,
   UsePipes,
   UseInterceptors,
@@ -21,6 +20,7 @@ import {
   type Type,
   type VelaApplication,
 } from '@velajs/vela';
+import { setTrustedRequestIdentity } from '@velajs/vela/module-kit';
 import { createSchema } from 'graphql-yoga';
 import { GraphQLError } from 'graphql';
 import { z } from 'zod';

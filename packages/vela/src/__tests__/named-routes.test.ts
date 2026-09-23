@@ -6,10 +6,9 @@ import {
   Get,
   Param,
   Version,
-  ApiDoc,
   UrlGeneratorService,
-  createOpenApiDocument,
 } from '../index.js';
+import { ApiDoc, createOpenApiDocument } from '../openapi/index.js';
 
 describe('named routes + URL generation', () => {
   describe('route name reaches describeRoutes()', () => {

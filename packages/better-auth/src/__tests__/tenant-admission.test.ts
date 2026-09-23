@@ -5,12 +5,14 @@ import {
   Module,
   UseGuards,
   VelaFactory,
-  clearTrustedRequestIdentity,
-  getTrustedRequestIdentity,
-  setTrustedRequestIdentity,
   type CanActivate,
   type ExecutionContext,
 } from '@velajs/vela';
+import {
+  clearTrustedRequestIdentity,
+  getTrustedRequestIdentity,
+  setTrustedRequestIdentity,
+} from '@velajs/vela/module-kit';
 import { AuthzModule, PermissionGuard, RequirePermission } from '@velajs/authz/vela';
 import { TenantModule, TenantGuard, CurrentTenant } from '@velajs/tenant/vela';
 import { MemoryTenantRegistryStore, type TenantSnapshot } from '@velajs/tenant';

@@ -1,14 +1,13 @@
-import {
-  signUrl,
-  STORAGE_SIGNED_URL_PURPOSE,
-  type DownloadResult,
-  type PresignedUrlResult,
-  type PresignMethod,
-  type StorageBody,
-  type StorageDriver,
-  type UploadOptions,
-  type UploadResult,
+import type {
+  DownloadResult,
+  PresignedUrlResult,
+  PresignMethod,
+  StorageBody,
+  StorageDriver,
+  UploadOptions,
+  UploadResult,
 } from '@velajs/vela/storage';
+import { signUrl, STORAGE_SIGNED_URL_PURPOSE } from '@velajs/vela/security';
 import { encodeStorageKeyClaim } from './storage-key-claim';
 
 /** Base path of the StorageController presign-proxy route. */
