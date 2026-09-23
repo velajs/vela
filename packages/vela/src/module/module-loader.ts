@@ -313,6 +313,20 @@ export class ModuleLoader {
 
       this.warnOnMixedDefaultAndKeyed(moduleClass.name, keysByClassInImports);
 
+      // `exports: [ImportedModule]` re-exports what that module exports.
+      const moduleExports = allExports.flatMap((exported) => {
+        const keys = typeof exported === 'function' && keysByClassInImports.get(exported);
+        if (!keys) return [exported];
+        return [...keys].flatMap((key) => {
+          const tokens = this.getCachedExports(exported, key);
+          if (tokens) return [...tokens];
+          throw new Error(
+            `${moduleName} re-exports ${exported.name}, which it imports through a forwardRef ` +
+              'cycle, so its exports are not known yet. Export those tokens directly.',
+          );
+        });
+      });
+
       // Build the ModuleScope BEFORE registering providers so the visibility
       // check sees the local-provider set as we register.
       const localProviders = new Set<Token>();
@@ -352,7 +366,7 @@ export class ModuleLoader {
         moduleId,
         localProviders,
         importedModules: importedModuleIds,
-        exportedTokens: new Set<Token>(allExports),
+        exportedTokens: new Set<Token>(moduleExports),
         isGlobal,
         lazy: isLazy,
         moduleClass,
@@ -377,6 +391,14 @@ export class ModuleLoader {
         if (isLazy) lazyTokens.push(controller);
       }
 
+      // Like Nest, the module class is a provider of its own bucket, built
+      // through DI after its providers and given their lifecycle hooks.
+      if (!this.container.hasInScope(moduleClass, moduleId)) {
+        this.container.register(moduleClass, moduleId);
+      }
+      this.#registeredProviders.push(moduleClass);
+      if (isLazy) lazyTokens.push(moduleClass);
+
       if (isLazy) {
         this.#lazyModuleIds.add(moduleId);
         this.#lazyGroups.set(moduleId, {
@@ -388,7 +410,12 @@ export class ModuleLoader {
 
       this.markProcessed(moduleClass, key);
 
-      const exports = this.buildExportSet(moduleName, allExports, allProviders, importedProviders);
+      const exports = this.buildExportSet(
+        moduleName,
+        moduleExports,
+        allProviders,
+        importedProviders,
+      );
       this.cacheExports(moduleClass, key, exports);
 
       if (isGlobal) {
@@ -397,12 +424,9 @@ export class ModuleLoader {
         }
       }
 
-      // Call configure() if the module implements NestModule. The module is
-      // resolved through the container so it can have its own DI dependencies.
+      // Call configure() if the module implements NestModule, on the module
+      // instance that later receives its lifecycle hooks.
       if (implementsNestModule(moduleClass)) {
-        if (!this.container.hasInScope(moduleClass, moduleId)) {
-          this.container.register(moduleClass, moduleId);
-        }
         const instance = this.container.resolve(moduleClass, moduleId);
         const builder = new MiddlewareBuilder();
         instance.configure(builder);

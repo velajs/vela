@@ -20,8 +20,15 @@ import {
   type CanActivate,
   type DynamicModule,
   type ExecutionContext,
+  type MiddlewareConsumer,
+  type NestModule,
+  type OnApplicationBootstrap,
+  type OnModuleDestroy,
+  type OnModuleInit,
   type Provider,
   Catch,
+  Global,
+  forwardRef,
 } from '../index';
 import { getScope, isInjectable } from '../container/decorators';
 import { LiveResolver } from '../live/index';
@@ -315,5 +322,155 @@ describe('implied @Injectable', () => {
     class Undecorated {}
     const container = new Container({ diagnostics: 'throw' });
     expect(() => container.register(Undecorated)).toThrow(/Undecorated is not decorated/);
+  });
+});
+
+describe('module re-exports', () => {
+  @Injectable()
+  class DatabaseService {
+    query(): string {
+      return 'rows';
+    }
+  }
+
+  @Module({ providers: [DatabaseService], exports: [DatabaseService] })
+  class DatabaseModule {}
+
+  @Injectable()
+  class Reader {
+    constructor(readonly database: DatabaseService) {}
+  }
+
+  it('expands an exported module to the tokens it exports', async () => {
+    @Module({ imports: [DatabaseModule], exports: [DatabaseModule] })
+    class InfraModule {}
+
+    @Module({ imports: [InfraModule], providers: [Reader] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule, { diagnostics: 'throw' });
+    expect(app.get(Reader).database.query()).toBe('rows');
+    await app.close();
+  });
+
+  it('re-exports a dynamic module by its class, globally from a global module', async () => {
+    const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<{ region: string }>({
+      name: 'Region',
+      setup: ({ OPTIONS }) => ({ exports: [OPTIONS] }),
+    });
+    class RegionModule extends ConfigurableModuleClass {}
+
+    @Global()
+    @Module({ imports: [RegionModule.forRoot({ region: 'north' })], exports: [RegionModule] })
+    class CoreModule {}
+
+    @Injectable()
+    class RegionReader {
+      constructor(@Inject(MODULE_OPTIONS_TOKEN) readonly options: { region: string }) {}
+    }
+
+    @Module({ providers: [RegionReader] })
+    class FeatureModule {}
+
+    @Module({ imports: [CoreModule, FeatureModule] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule, { diagnostics: 'throw' });
+    expect(app.get(RegionReader).options).toEqual({ region: 'north' });
+    await app.close();
+  });
+
+  it('rejects re-exporting a module whose exports a forwardRef cycle leaves unknown', async () => {
+    @Module({ imports: [forwardRef(() => SecondModule)] })
+    class FirstModule {}
+
+    @Module({ imports: [forwardRef(() => FirstModule)], exports: [FirstModule] })
+    class SecondModule {}
+
+    await expect(VelaFactory.create(FirstModule)).rejects.toThrow(
+      /SecondModule re-exports FirstModule.*forwardRef/,
+    );
+  });
+
+  it('reports a module export that is not imported through diagnostics', async () => {
+    @Module({ exports: [DatabaseModule] })
+    class AppModule {}
+
+    await expect(VelaFactory.create(AppModule, { diagnostics: 'throw' })).rejects.toThrow(
+      /AppModule exports 'DatabaseModule'/,
+    );
+  });
+});
+
+describe('module classes', () => {
+  it('are constructed through DI and receive lifecycle hooks after their providers', async () => {
+    const calls: string[] = [];
+
+    @Injectable()
+    class Store implements OnModuleInit {
+      onModuleInit(): void {
+        calls.push('store:init');
+      }
+    }
+
+    @Module({ providers: [Store] })
+    class StoreModule implements OnModuleInit, OnApplicationBootstrap, OnModuleDestroy {
+      constructor(readonly store: Store) {}
+      onModuleInit(): void {
+        calls.push(`module:init:${this.store instanceof Store}`);
+      }
+      onApplicationBootstrap(): void {
+        calls.push('module:bootstrap');
+      }
+      onModuleDestroy(): void {
+        calls.push('module:destroy');
+      }
+    }
+
+    const app = await VelaFactory.create(StoreModule);
+    expect(app.get(StoreModule).store).toBe(app.get(Store));
+    await app.close();
+    expect(calls).toEqual(['store:init', 'module:init:true', 'module:bootstrap', 'module:destroy']);
+  });
+
+  it('configure() runs on the instance that receives lifecycle hooks', async () => {
+    const instances = new Set<object>();
+
+    @Module({})
+    class ConfiguredModule implements NestModule, OnModuleInit {
+      configure(_consumer: MiddlewareConsumer): void {
+        instances.add(this);
+      }
+      onModuleInit(): void {
+        instances.add(this);
+      }
+    }
+
+    const app = await VelaFactory.create(ConfiguredModule);
+    expect(instances.size).toBe(1);
+    await app.close();
+  });
+
+  it('are built with their lazy module, not at bootstrap', async () => {
+    const calls: string[] = [];
+
+    @Injectable()
+    class LazyService {}
+
+    @Module({ lazy: true, providers: [LazyService], exports: [LazyService] })
+    class LazyFeature implements OnModuleInit {
+      onModuleInit(): void {
+        calls.push('lazy-module:init');
+      }
+    }
+
+    @Module({ imports: [LazyFeature] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    expect(calls).toEqual([]);
+    await app.materializeLazyModules();
+    expect(calls).toEqual(['lazy-module:init']);
+    await app.close();
   });
 });
