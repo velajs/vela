@@ -28,6 +28,7 @@ export { getModuleMetadata, isModule } from './module/decorators';
 // non-HTTP consumer (CLI tools, custom runtimes).
 export { bootstrap } from './factory/bootstrap';
 export { finalizeApplication } from './factory/finalize';
+export { applyRuntimeAdapters } from './factory/adapter';
 export { INVOCATION_TRANSPORT } from './dispatch/tokens';
 export type { BootstrapOptions, BootstrapResult } from './factory/bootstrap';
 

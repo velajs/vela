@@ -7,6 +7,10 @@ export { VelaApplication } from './application';
 export { bootstrap } from './factory/bootstrap';
 export type { BootstrapOptions, BootstrapResult } from './factory/bootstrap';
 
+// Runtime environment: bindings, variables and secrets seeded per application
+export { ENV, InjectEnv } from './env';
+export type { VelaEnv } from './env';
+
 // OpenAPI
 export {
   createOpenApiDocument,
@@ -217,7 +221,6 @@ export {
   ConfigService,
   ConfigStore,
   CONFIG_OPTIONS,
-  CONFIG_ENV,
   registerAs,
 } from './config/index';
 
@@ -239,8 +242,8 @@ export type {
   ConfigSchema,
   ConfigNamespace,
   AnyConfigNamespace,
-  InferConfigType,
   ConfigType,
+  ConfigShape,
   ConfigPath,
   ConfigPathValue,
 } from './config/index';
@@ -680,7 +683,6 @@ export type { SerializationDescriptor, SerializerDefinition } from './serializat
 
 // Hono Adapter Utilities
 export type { VelaContext, VelaHono, VelaHonoEnv, VelaMiddlewareHandler } from './http/hono.types';
-export { getRuntimeKey, env } from 'hono/adapter';
 
 export { defineEvent, defineEventVocabulary, EventDispatcher } from './event-emitter/index';
 export type {

@@ -11,7 +11,8 @@
     "src/__tests__/internal-dispatch-deadline.test.ts",
     "src/__tests__/queue-signed-dispatch.test.ts",
     "src/__tests__/schedule-signed-dispatch.test.ts",
-    "src/__tests__/message-disposition.test.ts"
+    "src/__tests__/message-disposition.test.ts",
+    "src/__tests__/env-token.test.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }

@@ -31,25 +31,39 @@ export interface ConfigModuleOptions {
 }
 
 /**
- * All valid dot-notation paths of a config object type.
+ * All valid dot-notation paths of a config object type, expanded at most
+ * `Depth` levels below the first so recursive shapes stay cheap to check.
  * @example `ConfigPath<{ database: { url: string } }>` → `'database' | 'database.url'`
  */
-export type ConfigPath<T> = {
-  [K in keyof T & string]: T[K] extends Record<string, unknown>
-    ? K | `${K}.${ConfigPath<T[K]>}`
-    : K;
-}[keyof T & string];
+export type ConfigPath<T, Depth extends number = 8> = [Depth] extends [never]
+  ? never
+  : {
+      [K in keyof T & string]: [ConfigBranch<T[K]>] extends [never]
+        ? K
+        : K | `${K}.${ConfigPath<ConfigBranch<T[K]>, PreviousDepth[Depth]>}`;
+    }[keyof T & string];
 
 /**
- * The value type at a dot-notation path.
+ * The value type at a dot-notation path. Segments below an `unknown` value
+ * stay `unknown`, so an untyped record reads as `unknown` at any path.
  * @example `ConfigPathValue<{ database: { url: string } }, 'database.url'>` → `string`
  */
-export type ConfigPathValue<T, P extends string> = P extends `${infer K}.${infer Rest}`
-  ? K extends keyof T
-    ? T[K] extends Record<string, unknown>
-      ? ConfigPathValue<T[K], Rest>
+export type ConfigPathValue<T, P extends string> = P extends keyof T
+  ? T[P]
+  : P extends `${infer K}.${infer Rest}`
+    ? K extends keyof T
+      ? unknown extends T[K]
+        ? unknown
+        : ConfigPathValue<NonNullable<T[K]>, Rest> | (undefined extends T[K] ? undefined : never)
       : never
-    : never
-  : P extends keyof T
-    ? T[P]
+    : never;
+
+/** Remaining path depth per segment; caps the recursion of self-referential shapes. */
+type PreviousDepth = [never, 0, 1, 2, 3, 4, 5, 6, 7];
+
+/** A value whose keys continue a path. Arrays and functions are leaves. */
+type ConfigBranch<V> = V extends readonly unknown[] | ((...args: never[]) => unknown)
+  ? never
+  : V extends object
+    ? V
     : never;

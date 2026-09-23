@@ -52,6 +52,19 @@ export class ConfigStore {
     }
   }
 
+  /**
+   * Merge a namespace registered after construction (`ConfigModule.forFeature`).
+   * Its KEY still resolves lazily on first read. A merged-config schema that
+   * already ran is re-run on the next read so it covers the new namespace.
+   */
+  addNamespace(namespace: AnyConfigNamespace): void {
+    if (this.namespaceKeys.get(namespace.namespace) === namespace.KEY) return;
+    this.namespaceKeys.set(namespace.namespace, namespace.KEY);
+    this.cache.delete(namespace.namespace);
+    this.validated = false;
+    this.validationError = undefined;
+  }
+
   /** Read a value by dot-notation path; `undefined` if absent. */
   get(path: string): unknown {
     this.ensureValidated();

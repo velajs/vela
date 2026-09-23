@@ -1,6 +1,6 @@
 import { Injectable, Inject, Optional } from '../../container/decorators';
-import { CONFIG_ENV } from '../../config/config.tokens';
 import { HTTP_SIGNED_URL_PURPOSE, signUrl } from '../../crypto/signed-url';
+import { InjectEnv, type VelaEnv } from '../../env';
 import { RouteManager } from '../route.manager';
 import type { RouteDescription } from '../route.manager';
 import type { RouteName, RouteParams } from '../route-map';
@@ -24,7 +24,7 @@ export interface SignedUrlGenerateOptions {
    * for an `@All()` route because `ALL` is not a wire method.
    */
   method?: string;
-  /** Override the signing secret (else the `URL_SIGNING_SECRET` token / `CONFIG_ENV`). */
+  /** Override the signing secret (else the `URL_SIGNING_SECRET` token / `ENV`). */
   secret?: string;
 }
 
@@ -40,14 +40,14 @@ export interface SignedUrlGenerateOptions {
 @Injectable()
 export class UrlGeneratorService {
   readonly #secretToken: string | undefined;
-  readonly #env: Record<string, unknown>;
+  readonly #env: VelaEnv | undefined;
 
   private routeMap: Map<string, RouteDescription> | null = null;
 
   constructor(
     @Inject(RouteManager) private readonly routeManager: RouteManager,
     @Optional() @Inject(URL_SIGNING_SECRET) secretToken?: string,
-    @Optional() @Inject(CONFIG_ENV) env: Record<string, unknown> = {},
+    @Optional() @InjectEnv() env?: VelaEnv,
   ) {
     this.#secretToken = secretToken;
     this.#env = env;
@@ -97,8 +97,9 @@ export class UrlGeneratorService {
 
   /**
    * Build a named-route URL and HMAC-sign it (path + query). The secret comes
-   * from `options.secret`, else the {@link URL_SIGNING_SECRET} token, else
-   * `CONFIG_ENV`; a descriptive error is thrown when none is available.
+   * from `options.secret`, else the {@link URL_SIGNING_SECRET} token, else the
+   * string `ENV.URL_SIGNING_SECRET`; a descriptive error is thrown when none
+   * is available.
    */
   async signedUrl<N extends RouteName>(
     name: N,
