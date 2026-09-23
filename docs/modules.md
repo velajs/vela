@@ -83,16 +83,18 @@ Rules:
 A repeated `(class, key)` keeps only its first definition. `defineModule`,
 `sideEffectModule` and `defineConfigurableModule` record the inputs each
 definition was built from, and the loader compares a repeat against the first:
-plain values compare structurally and functions by source text, so a shared
-helper that rebuilds the same `forRootAsync` config is one input. Classes,
-native or bound functions and class instances (such as an `InjectionToken`)
-compare by reference. The source text cannot see captured values: two closures
-from one helper that capture different values count as the same input, and the
-first still wins. A repeat built from different inputs is reported through the
-container's diagnostics policy (`'log'` warns, `'throw'` fails bootstrap)
-instead of silently dropping its providers; import one shared definition, or
-give each configuration its own `key`. Identical repeats still deduplicate. The
-reference ids belong to one module loader and are released with it.
+plain values compare structurally, while functions and class instances (such
+as an `InjectionToken`) compare by reference. Source text cannot see what a
+closure captured, so two closures with the same source are different inputs: a
+helper such as `database('PRIMARY_URL')` and `database('ANALYTICS_URL')` that
+builds a `forRootAsync` config from its argument is reported instead of
+silently keeping the first configuration. A repeat built from different inputs
+is reported through the container's diagnostics policy (`'log'` warns,
+`'throw'` fails bootstrap) instead of silently dropping its providers. A helper
+that rebuilds the same configuration on every call is reported as well; import
+one shared definition (export a const of the `DynamicModule`), or give each
+configuration its own `key`. Identical repeats still deduplicate. The reference
+ids belong to one module loader and are released with it.
 
 An `undefined` or `null` entry in a module's `imports`, `providers`,
 `controllers` or `exports` fails the load with `UndefinedModuleError`, naming

@@ -431,9 +431,9 @@ export class ModuleLoader {
     reportDiagnostic(
       this.container.getDiagnostics(),
       `[vela] ${moduleId} was imported again with different options; the repeated import's ` +
-        `providers were ignored in favor of the first. Import one shared definition instead ` +
-        `of building it twice, or give each configuration its own key ` +
-        `(e.g. forRoot({ ..., key: 'secondary' })).`,
+        `providers were ignored in favor of the first. Import one shared definition ` +
+        `(e.g. export a const of the DynamicModule) instead of building it twice, or give ` +
+        `each configuration its own key (e.g. forRoot({ ..., key: 'secondary' })).`,
     );
   }
 
