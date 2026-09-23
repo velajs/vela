@@ -24,8 +24,9 @@ with tsdown into `dist/` and runs it with Node.
 The native environment is the framework `ENV`: services and controllers inject
 it with `@InjectEnv()`. The lab has no Wrangler file, so `src/env.ts` declares
 the bindings on `Cloudflare.Env` the way `wrangler types` would generate them,
-and `VelaEnv` picks them up. `createWorkerBindingsLabApp(env)` constructs an
-explicit application for tests; the Worker entry uses `createCloudflareWorker`
+and `VelaEnv` picks them up. `WorkerBindingsLabModule` is declared once at
+module scope. `createWorkerBindingsLabApp(env)` constructs an explicit
+application from it for tests; the Worker entry uses `createCloudflareWorker`
 for lazy per-environment bootstrap.
 
 The example covers KV, D1, R2, typed queues, Durable Objects, AI, Vectorize,
