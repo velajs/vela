@@ -21,6 +21,6 @@ explicit application for tests; the Worker entry uses `createCloudflareWorker`
 for lazy per-environment bootstrap.
 
 The example covers KV, D1, R2, typed queues, Durable Objects, AI, Vectorize,
-Hyperdrive, the injected environment, scheduled triggers, Vela cron handlers,
-and queue consumers. Native bindings are injected directly; no binding wrapper
+Hyperdrive, the injected environment, `@Cron` jobs on cron triggers (each job
+receives only a `ScheduleInvocation`), and queue consumers. Native bindings are injected directly; no binding wrapper
 modules or services are required.

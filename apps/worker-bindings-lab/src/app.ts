@@ -9,14 +9,10 @@ import {
   Module,
   Param,
   Post,
+  type ScheduleInvocation,
   type VelaEnv,
 } from "@velajs/vela";
-import {
-  QueueConsumer,
-  Scheduled,
-  createCloudflareApp,
-  createCloudflareWorker,
-} from "@velajs/cloudflare";
+import { QueueConsumer, createCloudflareApp, createCloudflareWorker } from "@velajs/cloudflare";
 
 function defineWorkerBindingsLabModule() {
   MetadataRegistry.clear();
@@ -156,19 +152,22 @@ function defineWorkerBindingsLabModule() {
 
   @Injectable()
   class WorkerEvents {
-    @Scheduled("*/15 * * * *")
-    scheduled(event: { cron: string }, env: VelaEnv) {
-      env.EVENT_LOG.push(`scheduled:${event.cron}`);
+    constructor(@InjectEnv() private readonly env: VelaEnv) {}
+
+    // Each expression matches a Wrangler `triggers.crons` entry exactly.
+    @Cron("*/15 * * * *", { dialect: "cloudflare" })
+    quarterHourly(tick: ScheduleInvocation) {
+      this.env.EVENT_LOG.push(`quarter-hourly:${tick.scheduledTime}`);
     }
 
-    @Cron("0 * * * *")
-    velaCron(event: { cron: string }, env: VelaEnv) {
-      env.EVENT_LOG.push(`cron:${event.cron}`);
+    @Cron("0 * * * *", { dialect: "cloudflare" })
+    hourly(tick: ScheduleInvocation) {
+      this.env.EVENT_LOG.push(`hourly:${tick.scheduledTime}`);
     }
 
     @QueueConsumer("JOB_QUEUE")
-    queue(batch: { queue: string; messages: Array<{ body: unknown }> }, env: VelaEnv) {
-      env.EVENT_LOG.push(`queue:${batch.messages.length}`);
+    queue(batch: { queue: string; messages: Array<{ body: unknown }> }) {
+      this.env.EVENT_LOG.push(`queue:${batch.messages.length}`);
     }
   }
 

@@ -111,13 +111,13 @@ describe("Worker bindings lab consumer project", () => {
     await app.close("binding-route-test-complete");
   });
 
-  it("covers scheduled handlers, Vela @Cron handlers, and queue consumers", async () => {
+  it("covers @Cron jobs on cron triggers and queue consumers", async () => {
     const env = createMockWorkerEnv();
     const app = await createWorkerBindingsLabApp(env);
     const ctx = createExecutionContext();
 
-    await app.scheduled({ cron: "*/15 * * * *", scheduledTime: Date.now() }, env, ctx);
-    await app.scheduled({ cron: "0 * * * *", scheduledTime: Date.now() }, env, ctx);
+    await app.scheduled({ cron: "*/15 * * * *", scheduledTime: 1_000 }, env, ctx);
+    await app.scheduled({ cron: "0 * * * *", scheduledTime: 2_000 }, env, ctx);
     await app.queue(
       {
         queue: "JOB_QUEUE",
@@ -127,7 +127,7 @@ describe("Worker bindings lab consumer project", () => {
       ctx,
     );
 
-    expect(env.EVENT_LOG).toEqual(["scheduled:*/15 * * * *", "cron:0 * * * *", "queue:2"]);
+    expect(env.EVENT_LOG).toEqual(["quarter-hourly:1000", "hourly:2000", "queue:2"]);
 
     await app.close("event-handler-test-complete");
   });
@@ -141,11 +141,7 @@ describe("Worker bindings lab consumer project", () => {
     expect(envRes.status).toBe(200);
     expect(envRes.body).toMatchObject({ hasCache: true });
 
-    await worker.scheduled(
-      { cron: "*/15 * * * *", scheduledTime: Date.now() } as ScheduledEvent,
-      env,
-      ctx,
-    );
+    await worker.scheduled({ cron: "*/15 * * * *", scheduledTime: 3_000 }, env, ctx);
     await worker.queue(
       {
         queue: "JOB_QUEUE",
@@ -155,6 +151,6 @@ describe("Worker bindings lab consumer project", () => {
       ctx,
     );
 
-    expect(env.EVENT_LOG).toEqual(["scheduled:*/15 * * * *", "queue:1"]);
+    expect(env.EVENT_LOG).toEqual(["quarter-hourly:3000", "queue:1"]);
   });
 });
