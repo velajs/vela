@@ -178,6 +178,50 @@ describe('forRoutes(Controller) expands to the composed routes', () => {
     expect(seen).toEqual(['POST /shared', 'HEAD /shared/report']);
   });
 
+  it('matches a controller route registered with a trailing slash', async () => {
+    @Controller('/cats')
+    class CatsController {
+      @Get('/')
+      list() {
+        return { ok: true };
+      }
+    }
+
+    const request = await createApp([CatsController], (consumer) => {
+      consumer.apply(RecordingMiddleware).forRoutes(CatsController);
+    });
+
+    const status = await request('GET', '/cats/');
+    expect(status).toBe(200);
+    expect(seen).toEqual(['GET /cats/']);
+  });
+
+  it('keeps a trailing slash significant in exclude() targets', async () => {
+    @Controller('/cats')
+    class CatsController {
+      @Get('/')
+      slashed() {
+        return { ok: true };
+      }
+    }
+
+    @Controller('/dogs')
+    class DogsController {
+      @Get()
+      bare() {
+        return { ok: true };
+      }
+    }
+
+    const request = await createApp([CatsController, DogsController], (consumer) => {
+      consumer.apply(RecordingMiddleware).exclude('cats/', 'dogs/').forRoutes('*');
+    });
+
+    expect(await request('GET', '/cats/')).toBe(200);
+    expect(await request('GET', '/dogs')).toBe(200);
+    expect(seen).toEqual(['GET /dogs']);
+  });
+
   it('rejects a controller that declares no routes instead of matching nothing', async () => {
     @Controller('/empty')
     class EmptyController {

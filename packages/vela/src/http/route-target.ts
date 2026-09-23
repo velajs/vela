@@ -19,8 +19,8 @@ export interface RouteSegment {
   readonly open?: boolean;
 }
 
-const NEST_NAMED_WILDCARD = /^\*([\p{ID_Start}$_][\p{ID_Continue}$]*)$/u;
-const NEST_OPTIONAL_WILDCARD = /^\{\*[\p{ID_Start}$_][\p{ID_Continue}$]*\}$/u;
+// Nest's `*name`, or its optional `{*name}` form.
+const NEST_WILDCARD = /^(\{?)\*([\p{ID_Start}$_][\p{ID_Continue}$]*)(\}?)$/u;
 // `:name`, `:name{regex}`, either with a trailing `?`.
 const PARAM = /^:([^{}()*?:]+)(?:\{(.+)\})?(\?)?$/s;
 // Literal text, optionally ending in Hono's prefix wildcard (`ab*`).
@@ -49,13 +49,12 @@ export function parseRoutePattern(path: string): RouteSegment[] | undefined {
   let unnamed = 0;
   for (const [index, part] of parts.entries()) {
     const last = index === parts.length - 1;
-    const wildcard = NEST_NAMED_WILDCARD.exec(part);
+    const [, open, name, close] = NEST_WILDCARD.exec(part) ?? [];
     const param = PARAM.exec(part);
     const literal = LITERAL.exec(part);
-    if (wildcard || part === '(.*)') {
-      const name = wildcard?.[1] ?? `wildcard${unnamed++}`;
-      segments.push({ text: `:${name}{.+}`, source: '/.+', open: true });
-    } else if (part === '*' || (last && NEST_OPTIONAL_WILDCARD.test(part))) {
+    if ((name && !open && !close) || part === '(.*)') {
+      segments.push({ text: `:${name ?? `wildcard${unnamed++}`}{.+}`, source: '/.+', open: true });
+    } else if (part === '*' || (last && open && close)) {
       segments.push(
         last
           ? { text: '*', source: REST, optional: true, open: true }
@@ -87,6 +86,8 @@ export function parseRoutePattern(path: string): RouteSegment[] | undefined {
       );
     } else return undefined;
   }
+  // Hono routes '/cats/' apart from '/cats', so a trailing slash is a segment.
+  if (segments.length && path.endsWith('/')) segments.push({ text: '', source: '/', fixed: '' });
   return segments;
 }
 
@@ -103,8 +104,10 @@ export function compileRoutePattern(
   segments: readonly RouteSegment[],
   descendants: boolean,
 ): RegExp {
-  let source = segments.map((segment) => segment.source).join('');
-  if (descendants && !segments.at(-1)?.open) source += REST;
+  // Beneath 'cats/' covers '/cats' and everything under it, as beneath 'cats'.
+  const parts = descendants && segments.at(-1)?.text === '' ? segments.slice(0, -1) : segments;
+  let source = parts.map((segment) => segment.source).join('');
+  if (descendants && !parts.at(-1)?.open) source += REST;
   return new RegExp(`^${source || '/'}$`);
 }
 
@@ -123,8 +126,7 @@ function samplePaths(segments: readonly RouteSegment[], hints: readonly RouteSeg
       if (segment.optional && variant === 1) continue;
       const hint = hints[index]?.fixed;
       const value = [variant ? SAMPLE_VALUES[variant - 1] : hint, hint, ...SAMPLE_VALUES].find(
-        (candidate) =>
-          candidate !== undefined && (!segment.constraint || segment.constraint.test(candidate)),
+        (candidate) => candidate && (!segment.constraint || segment.constraint.test(candidate)),
       );
       path += `/${value ?? SAMPLE_VALUES[0]}`;
     }

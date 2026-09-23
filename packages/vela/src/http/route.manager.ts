@@ -211,8 +211,7 @@ function parseMiddlewareTarget(path: string): RouteSegment[] {
   if (segments) return segments;
   throw new Error(
     `Middleware route '${path}' uses pattern syntax that Hono does not match, so its ` +
-      "middleware would never run. Use ':id', ':id{[0-9]+}', '*path' (one or more " +
-      "segments) or a trailing '*' (the path and everything beneath it).",
+      "middleware would never run. Use ':id', ':id{[0-9]+}', '*path' or a trailing '*'.",
   );
 }
 
@@ -1053,7 +1052,7 @@ export class RouteManager {
     };
 
     const prefix = this.globalPrefix.replace(/\/+$/, '');
-    const prefixSegments = parseMiddlewareTarget(this.globalPrefix);
+    const prefixSegments = parseMiddlewareTarget(prefix);
     for (const definition of this.consumerMiddlewareDefinitions) {
       const targets = [
         ...definition.routes.map((target) => ({ target, forRoutes: true })),
@@ -1176,9 +1175,7 @@ export class RouteManager {
             'to match it as written.',
         );
       }
-      const resolved = target.absolute
-        ? segments
-        : [...parseMiddlewareTarget(this.globalPrefix), ...segments];
+      const resolved = target.absolute ? segments : [...parseMiddlewareTarget(prefix), ...segments];
       matchers.push({ method, regex: compileRoutePattern(resolved, coverDescendants) });
     }
 
