@@ -1,7 +1,7 @@
-import { getConstructorMetadata } from '../container/decorators';
+import { planConstructor } from '../container/decorators';
 import type { Container } from '../container/container';
 import type { TypedToken, Type } from '../container/types';
-import { InjectionToken } from '../container/types';
+import { InjectionToken, MissingInjectionMetadataError } from '../container/types';
 
 // Resolve a class/token through the container if registered, otherwise treat
 // the input as a plain instance. Used by RouteManager and HandlerExecutor to
@@ -16,10 +16,12 @@ import { InjectionToken } from '../container/types';
 // `Cannot read properties of undefined (reading '...')` deep inside the
 // class. For those classes we throw a loud, actionable error instead.
 //
-// We treat "expects dependencies" as: any `@Inject(...)` parameter metadata
-// OR a non-empty `design:paramtypes` (the SWC/TS emit for any constructor
-// parameter). `@Injectable()` alone is NOT sufficient — `mixin()` and many
-// parameterless guards are `@Injectable()` and still safe to `new` directly.
+// We treat "expects dependencies" as: the planned constructor has a parameter
+// that is not `@Optional()` (an `@Inject(...)` token or an emitted
+// `design:paramtypes` entry). `@Injectable()` alone is NOT sufficient —
+// `mixin()` and many parameterless guards are `@Injectable()` and still safe to
+// `new` directly, as is a class whose only parameters are `@Optional()`, such
+// as `ValidationPipe` and its subclasses.
 export function instantiate<T>(
   classOrInstance: Type<T> | TypedToken<T> | T,
   container: Container,
@@ -61,14 +63,18 @@ export function instantiate(
   return classOrInstance;
 }
 
-// True when calling `new clazz()` would leave an injected slot `undefined`:
-// either the class has explicit `@Inject(...)` metadata, or it has any typed
-// constructor parameter (TS/SWC's `design:paramtypes` emit), including the
-// metadata a subclass inherits with its parent's constructor. Parameterless
-// `@Injectable()` classes return false — `new()` is safe for them.
+// True when calling `new clazz()` would leave a required injected slot
+// `undefined`: the container's own constructor plan (including the metadata a
+// subclass inherits with its parent's constructor) has a non-optional
+// parameter, or no usable plan exists at all. Parameterless and
+// all-`@Optional()` classes return false — `new()` is safe for them.
 function constructorExpectsDependencies(clazz: Type<unknown>): boolean {
-  const { paramTypes, inject } = getConstructorMetadata(clazz);
-  return inject.length > 0 || paramTypes.length > 0;
+  try {
+    return planConstructor(clazz).some((dependency) => !dependency.optional);
+  } catch (error) {
+    if (error instanceof MissingInjectionMetadataError) return true;
+    throw error;
+  }
 }
 
 export function instantiateMany<T>(
