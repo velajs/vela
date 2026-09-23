@@ -25,10 +25,20 @@ export interface QueueBulkNamedJob<T = unknown> {
  */
 export type QueueBulkEntry = QueueBulkJob | QueueBulkNamedJob;
 
+/**
+ * Keys outside `{ job, data, options }` are rejected, so a misspelled or
+ * BullMQ-style key (`opts`, `name`, `delay`) does not compile instead of
+ * being dropped. A generic argument gets no excess-property check of its own.
+ */
+type NoExtraBulkKeys<E> = {
+  readonly [K in Exclude<keyof E, keyof QueueBulkNamedJob>]: never;
+};
+
 /** A typed entry must carry its definition's wire input; a named entry carries any data. */
-type CheckedBulkEntry<E> = E extends { readonly job: QueueJobDefinition<infer S> }
+type CheckedBulkEntry<E> = (E extends { readonly job: QueueJobDefinition<infer S> }
   ? QueueBulkJob<S>
-  : E;
+  : E) &
+  NoExtraBulkKeys<E>;
 
 type BulkEntryResult<E> = E extends { readonly job: QueueJobDefinition<infer S> }
   ? QueueJob<StandardSchemaV1.InferInput<S>>
@@ -83,7 +93,8 @@ export class QueueClient {
    * `{ job, data, options? }`, and is typed on its own: a typed entry's `data`
    * is its definition's wire input, a named entry's `data` is free, and both
    * may share one call. Every typed job is validated before the driver sees
-   * any of them. A driver with `enqueueBatch` receives the whole batch
+   * any of them. An entry with any other key (such as BullMQ's `opts`) does
+   * not compile. A driver with `enqueueBatch` receives the whole batch
    * (Cloudflare sends it in as few native calls as the platform limits allow);
    * any other driver receives one job at a time. Resolves only when every job
    * was accepted; otherwise rejects with a `QueueBatchError` naming the jobs

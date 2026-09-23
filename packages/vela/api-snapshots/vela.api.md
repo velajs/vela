@@ -544,9 +544,11 @@ interface QueueBulkNamedJob<T = unknown> {
 
 type QueueBulkEntry = QueueBulkJob | QueueBulkNamedJob;
 
-type CheckedBulkEntry<E> = E extends {
+type NoExtraBulkKeys<E> = { readonly [K in Exclude<keyof E, keyof QueueBulkNamedJob>]: never; };
+
+type CheckedBulkEntry<E> = (E extends {
   readonly job: QueueJobDefinition<infer S>;
-} ? QueueBulkJob<S> : E;
+} ? QueueBulkJob<S> : E) & NoExtraBulkKeys<E>;
 type BulkEntryResult<E> = E extends {
   readonly job: QueueJobDefinition<infer S>;
 } ? QueueJob<StandardSchemaV1.InferInput<S>> : E extends {

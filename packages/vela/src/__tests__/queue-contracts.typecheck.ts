@@ -82,6 +82,15 @@ void client.addBulk([
 ]);
 // @ts-expect-error entries use Vela's { job, data, options }, not BullMQ's { name, data, opts }
 void client.addBulk([{ name: 'audit', data: 1, opts: {} }]);
+// @ts-expect-error BullMQ's opts is not an entry key, so its options are not silently dropped
+void client.addBulk([{ job: 'audit', data: 1, opts: { delayMs: 1000 } }]);
+void client.addBulk([
+  { job: zodJob, data: { value: '1' } },
+  // @ts-expect-error a typed entry rejects keys outside { job, data, options } too
+  { job: zodJob, data: { value: '2' }, opts: { delayMs: 1000 } },
+]);
+// @ts-expect-error mapped entries are checked for unknown keys as well
+void client.addBulk(['1'].map((value) => ({ job: zodJob, data: { value }, delay: 1000 })));
 // @ts-expect-error bulk options are the same AddJobOptions add() accepts
 void client.addBulk([{ job: 'audit', data: 1, options: { delay: 1000 } }]);
 
