@@ -107,8 +107,9 @@ imports and configuration when upgrading.
 
 Queue transport configuration now initializes during bootstrap, including apps
 without a producer. `QueueModule.forRoot()` configures only the driver; register
-queues with `QueueModule.registerQueue()` and replace `cloudflareQueueDriver`
-with `cloudflareQueues()` from `@velajs/cloudflare/queues`. Conflicting queue
+queues with `QueueModule.registerQueue()` and replace the former
+`@velajs/cloudflare/queue` driver with `cloudflareQueues()` from
+`@velajs/cloudflare/queues`. Conflicting queue
 bindings fail at startup instead of the first client resolution. Job providers still follow their declared scopes.
 Cloudflare queue deliveries without a registered consumer now reject, rather than
 returning successfully and allowing implicit acknowledgement. These behavior

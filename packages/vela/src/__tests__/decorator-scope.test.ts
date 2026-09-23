@@ -10,8 +10,8 @@ beforeEach(() => {
 describe('class decorator scope declarations', () => {
   it('names the default lifetime Scope.DEFAULT without a SINGLETON alias', () => {
     expect(Scope).toEqual({ DEFAULT: 'default', TRANSIENT: 'transient', REQUEST: 'request' });
-    // @ts-expect-error Scope.SINGLETON was renamed to Scope.DEFAULT.
-    expect(Scope.SINGLETON).toBeUndefined();
+    // @ts-expect-error The singleton lifetime was renamed to Scope.DEFAULT.
+    expect(Scope['SINGLETON']).toBeUndefined();
   });
 
   it('writes no scope unless one is passed; reads default to Scope.DEFAULT', () => {
