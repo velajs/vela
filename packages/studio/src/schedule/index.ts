@@ -20,7 +20,8 @@
  * `invokeScheduledJob`, like a timer or cron trigger: a fresh invocation scope
  * (request-scoped jobs included), a `ScheduleInvocation` as the only argument
  * (`scheduledTime` is now), and signed re-entry when the app opted into signed
- * dispatch. What a native trigger would seed into the job's scope comes from
+ * dispatch. A direct job that declares guards is refused, as on a trigger, and
+ * the refusal is returned to the caller. What a native trigger would seed into the job's scope comes from
  * the runtime's `SCHEDULE_INVOCATION_SEED` (on Workers, a synthetic
  * `CLOUDFLARE_SCHEDULED_EVENT` whose `noRetry()` does nothing). Closing the
  * application aborts the signal of a run still in progress and waits for it.

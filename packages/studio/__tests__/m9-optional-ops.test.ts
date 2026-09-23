@@ -1,6 +1,7 @@
 import { defineProvider } from '@velajs/vela';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  APP_EXCEPTION_HANDLER,
   Controller,
   Cron,
   EXECUTION_LIFETIME,
@@ -11,7 +12,9 @@ import {
   Module,
   ScheduleModule,
   Scope,
+  UseGuards,
   VelaFactory,
+  type CanActivate,
 } from '@velajs/vela';
 import type {
   CronInvocation,
@@ -788,6 +791,49 @@ describe('schedule ops (@velajs/studio/schedule)', () => {
         expect(ok(await rpc(app, 'schedule.runNow', { id }))).toEqual({ ok: true });
       }
       expect(ran).toEqual(['morning', 'poll', 'nightly']);
+    } finally {
+      warn.mockRestore();
+      await app.close();
+    }
+  });
+
+  it('refuses to run now a direct job that declares guards, as a trigger would', async () => {
+    const ran: string[] = [];
+    const report = vi.fn();
+    class Allow implements CanActivate {
+      canActivate(): boolean {
+        return true;
+      }
+    }
+    @Injectable()
+    @UseGuards(Allow)
+    class Guarded {
+      @Cron('0 7 * * *', { dialect: 'cloudflare' })
+      morning() {
+        ran.push('morning');
+      }
+    }
+    @Module({ providers: [Guarded] })
+    class GuardedModule {}
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const app = await makeApp(
+      { editable: { ops: true } },
+      [ScheduleModule, GuardedModule, StudioScheduleModule.forRoot({})],
+      [defineProvider(APP_EXCEPTION_HANDLER, { useValue: { report } })],
+    );
+    try {
+      const res = await rpc(app, 'schedule.runNow', { id: 'morning' });
+
+      expect(res.ok).toBe(false);
+      expect(ran).toEqual([]);
+      expect(report).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: expect.stringMatching(
+            /Guarded\.morning declares @UseGuards, but guards do not run for directly dispatched scheduled jobs/,
+          ),
+        }),
+        expect.objectContaining({ edge: 'schedule', source: 'Guarded.morning' }),
+      );
     } finally {
       warn.mockRestore();
       await app.close();
