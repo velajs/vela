@@ -18,10 +18,11 @@ import {
 //
 // A class resolves through the container only where it is registered and
 // visible: from the requesting module, or, for an application-wide lookup
-// (no moduleId), from its first owner, skipping a lazy module still pending
-// that holds only the loader's copy of an enhancer its classes reference, so a
-// global component never materializes one for that. A pending lazy module that
-// lists the class as a provider serves it, materialized with its group. Any
+// (no moduleId), from its first owner that is not a lazy module still pending,
+// so a global component never materializes one another module can serve. Only
+// when every owner is pending does a lazy module that lists the class as a
+// provider serve it, materialized with its group; one that holds only the
+// loader's copy of an enhancer its classes reference never does. Any
 // other class (an `app.useGlobalGuards(Class)` entry no module registers, a
 // guard another module registers, a hand-built container) falls back to
 // `new clazz()` so plain parameterless helper classes keep working. That
@@ -84,13 +85,11 @@ function registeredOwner(clazz: Type, container: Container, moduleId?: string): 
   if (moduleId !== undefined) {
     return container.getResolvedScope(clazz, moduleId) === undefined ? undefined : moduleId;
   }
-  return container
-    .getOwnerModuleIds(clazz)
-    .find(
-      (owner) =>
-        !container.isLazyPending(clazz, owner) ||
-        container.getModuleScope(owner)?.localProviders.has(clazz),
-    );
+  const owners = container.getOwnerModuleIds(clazz);
+  return (
+    owners.find((owner) => !container.isLazyPending(clazz, owner)) ??
+    owners.find((owner) => container.getModuleScope(owner)?.localProviders.has(clazz))
+  );
 }
 
 // The fallback plan for a class that is not registered in the container. It

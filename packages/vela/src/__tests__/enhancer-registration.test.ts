@@ -464,6 +464,49 @@ describe('enhancer auto-registration', () => {
     await app.close();
   });
 
+  it('builds a global guard class from an eager module before a pending lazy one', async () => {
+    let built = 0;
+
+    @Injectable()
+    class TenantGuard implements CanActivate {
+      constructor(readonly reflector: Reflector) {
+        built++;
+      }
+      canActivate(): boolean {
+        return true;
+      }
+    }
+
+    @Module({ lazy: true, providers: [TenantGuard], exports: [TenantGuard] })
+    class LazyTenantModule {}
+
+    @Module({ providers: [TenantGuard], exports: [TenantGuard] })
+    class EagerTenantModule {}
+
+    @Controller('/eager')
+    class EagerController {
+      @Get()
+      index() {
+        return {};
+      }
+    }
+
+    @Module({ imports: [LazyTenantModule, EagerTenantModule], controllers: [EagerController] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    app.useGlobalGuards(TenantGuard);
+    const container = app.getContainer();
+    const [lazyId] = container.getOwnerModuleIds(LazyTenantModule);
+    const [eagerId] = container.getOwnerModuleIds(EagerTenantModule);
+    // The lazy module registers the class first.
+    expect(container.getOwnerModuleIds(TenantGuard)).toEqual([lazyId, eagerId]);
+    expect((await app.getHonoApp().request('/eager')).status).toBe(200);
+    expect(built).toBe(1);
+    expect(container.isLazyPending(TenantGuard, lazyId)).toBe(true);
+    await app.close();
+  });
+
   it('runs a module class hook after its providers, controllers and enhancers', async () => {
     const calls: string[] = [];
 
