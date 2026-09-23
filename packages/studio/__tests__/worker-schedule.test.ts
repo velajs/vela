@@ -51,6 +51,25 @@ afterAll(async () => {
   if (directory) await rm(directory, { recursive: true, force: true });
 });
 
+it('lists the request-scoped job that reads the scheduled trigger event', async () => {
+  const response = await runtime!.dispatchFetch(
+    'https://worker.test/_vela/admin/rpc/schedule.jobs',
+    {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer worker-schedule-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ args: {} }),
+    },
+  );
+  expect(await response.json()).toMatchObject({
+    ok: true,
+    data: [{ name: 'nightly', kind: 'cron', expression: '30 2 * * *' }],
+  });
+  expect(response.status).toBe(200);
+}, 30_000);
+
 it('runs a job that reads the scheduled trigger event now', async () => {
   const response = await runtime!.dispatchFetch(
     'https://worker.test/_vela/admin/rpc/schedule.runNow',

@@ -9,12 +9,14 @@
  * op-namespace (in UNION with the pre-existing `ScheduleRegistry`/
  * `SCHEDULE_DISPATCH` probe the M4 features service reads).
  *
- * Jobs are read from the app's `ScheduleRegistry` (public). HONEST DEGRADATION:
- * `RegisteredCronJob`/`RegisteredIntervalJob` carry no run timestamps, so
- * `ScheduleJobRow.lastRun`/`nextRun` and `CronTriggerRow.nextRun` are omitted
- * (the registry does not track fire history; a cron `nextRun` would need a clock
- * the registry has no hook into). `schedule.jobs` names each job by its
- * decorated `methodName`. `schedule.runNow` runs the job through
+ * Jobs are read from the app's `ScheduleRegistry` (public) through its
+ * metadata-only entrypoints, the same descriptors `schedule.runNow` executes:
+ * request-scoped jobs and jobs in lazy modules are listed without being
+ * materialized. HONEST DEGRADATION: the entrypoints carry no run timestamps,
+ * so `ScheduleJobRow.lastRun`/`nextRun` and `CronTriggerRow.nextRun` are
+ * omitted (the registry does not track fire history; a cron `nextRun` would
+ * need a clock the registry has no hook into). `schedule.jobs` names each job
+ * by its decorated `methodName`. `schedule.runNow` runs the job through
  * `invokeScheduledJob`, like a timer or cron trigger: a fresh invocation scope
  * (request-scoped jobs included), a `ScheduleInvocation` as the only argument
  * (`scheduledTime` is now), and signed re-entry when the app opted into signed
@@ -58,19 +60,19 @@ export class StudioScheduleOps implements BeforeApplicationShutdown {
   jobs(_ctx: AdminOpContext): ScheduleJobRow[] {
     const registry = this.registry();
     const cron: ScheduleJobRow[] = registry
-      .getCronJobs()
-      .map((job) => ({ name: job.methodName, kind: 'cron', expression: job.expression }));
+      .getCronEntrypoints()
+      .map(({ meta }) => ({ name: meta.methodName, kind: 'cron', expression: meta.expression }));
     const interval: ScheduleJobRow[] = registry
-      .getIntervalJobs()
-      .map((job) => ({ name: job.methodName, kind: 'interval', ms: job.ms }));
+      .getIntervalEntrypoints()
+      .map(({ meta }) => ({ name: meta.methodName, kind: 'interval', ms: meta.ms }));
     return [...cron, ...interval];
   }
 
   @AdminRpc({ op: 'schedule.triggers' })
   triggers(_ctx: AdminOpContext): CronTriggerRow[] {
     return this.registry()
-      .getCronJobs()
-      .map((job) => ({ name: job.methodName, cron: job.expression }));
+      .getCronEntrypoints()
+      .map(({ meta }) => ({ name: meta.methodName, cron: meta.expression }));
   }
 
   @AdminRpc({ op: 'schedule.runNow' })

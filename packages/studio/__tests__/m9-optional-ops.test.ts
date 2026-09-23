@@ -1,5 +1,5 @@
 import { defineProvider } from '@velajs/vela';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   Controller,
   Cron,
@@ -734,6 +734,66 @@ describe('schedule ops (@velajs/studio/schedule)', () => {
     expect(reports.ran).toBe(1);
   });
 
+  it('lists request-scoped and lazy jobs without materializing them, and runs them', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const ran: string[] = [];
+    @Injectable({ scope: Scope.REQUEST })
+    class Scoped {
+      @Cron('0 6 * * *', { dialect: 'cloudflare' })
+      morning() {
+        ran.push('morning');
+      }
+      @Interval(60_000)
+      poll() {
+        ran.push('poll');
+      }
+    }
+    @Module({ providers: [Scoped] })
+    class ScopedModule {}
+    @Injectable()
+    class Deferred {
+      @Cron('0 1 * * *', { dialect: 'cloudflare' })
+      nightly() {
+        ran.push('nightly');
+      }
+    }
+    @Module({ lazy: true, providers: [Deferred] })
+    class DeferredModule {}
+    const app = await makeApp({ editable: { ops: true } }, [
+      ScheduleModule,
+      ScopedModule,
+      DeferredModule,
+      StudioScheduleModule.forRoot({}),
+    ]);
+    try {
+      const jobs = ok(await rpc(app, 'schedule.jobs'));
+      expect(jobs).toEqual(
+        expect.arrayContaining([
+          { name: 'morning', kind: 'cron', expression: '0 6 * * *' },
+          { name: 'nightly', kind: 'cron', expression: '0 1 * * *' },
+          { name: 'poll', kind: 'interval', ms: 60_000 },
+        ]),
+      );
+      expect(jobs).toHaveLength(3);
+      const triggers = ok(await rpc(app, 'schedule.triggers'));
+      expect(triggers.toSorted((a, b) => a.name.localeCompare(b.name))).toEqual([
+        { name: 'morning', cron: '0 6 * * *' },
+        { name: 'nightly', cron: '0 1 * * *' },
+      ]);
+      // Listing reads metadata: nothing is skipped or materialized.
+      expect(warn.mock.calls.flat().join('\n')).not.toMatch(/skipped/);
+      expect(ran).toEqual([]);
+
+      for (const id of ['morning', 'poll', 'nightly']) {
+        expect(ok(await rpc(app, 'schedule.runNow', { id }))).toEqual({ ok: true });
+      }
+      expect(ran).toEqual(['morning', 'poll', 'nightly']);
+    } finally {
+      warn.mockRestore();
+      await app.close();
+    }
+  });
+
   it('runs a job now exactly as a trigger would, including request-scoped jobs', async () => {
     const ticks: ScheduleInvocation[] = [];
     const scopes = new Set<Digest>();
@@ -808,6 +868,10 @@ describe('schedule run-now on the Cloudflare adapter', () => {
       [cloudflareAdapter({ env })],
     );
     try {
+      // The documented request-scoped job appears in the panel.
+      expect(ok(await rpc(app, 'schedule.jobs', undefined, env))).toEqual([
+        { name: 'nightly', kind: 'cron', expression: '30 2 * * *' },
+      ]);
       const before = Date.now();
       expect(ok(await rpc(app, 'schedule.runNow', { id: 'nightly' }, env))).toEqual({ ok: true });
       expect(seen).toEqual([
