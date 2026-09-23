@@ -119,4 +119,29 @@ describe('ScheduleModule signed re-entry dispatch (opt-in)', () => {
     await app.close();
     vi.useRealTimers();
   });
+
+  it('fails bootstrap when forRoot configures two different dispatch policies', async () => {
+    const signed = { kind: 'signed', target: () => ({ path: '/tick' }) } as const;
+
+    @Module({ imports: [ScheduleModule.forRoot({ dispatch: signed })] })
+    class FeatureModule {}
+
+    @Module({ imports: [ScheduleModule.forRoot({ dispatch: { kind: 'direct' } }), FeatureModule] })
+    class AppModule {}
+
+    await expect(VelaFactory.create(AppModule)).rejects.toThrow(
+      /ScheduleModule\.forRoot\(\) is imported with different dispatch policies/,
+    );
+
+    // The same policy imported twice deduplicates into one owner.
+    @Module({
+      imports: [
+        ScheduleModule.forRoot({ dispatch: signed }),
+        ScheduleModule.forRoot({ dispatch: signed }),
+      ],
+    })
+    class SameModule {}
+    const app = await VelaFactory.create(SameModule);
+    await app.close();
+  });
 });

@@ -334,9 +334,11 @@ export {
   parseIntervalMetadata,
   invokeScheduledJob,
   cronDialectAmbiguity,
+  scheduledJobComponents,
   CRON_METADATA,
   INTERVAL_METADATA,
   SCHEDULE_DISPATCH,
+  SCHEDULE_INVOCATION_SEED,
 } from './schedule/index';
 export type {
   RegisteredCronJob,
@@ -345,7 +347,11 @@ export type {
   IntervalMetadata,
   CronMatcher,
   CronOptions,
+  CronInvocation,
+  IntervalInvocation,
+  ScheduleDecorator,
   ScheduleInvocation,
+  ScheduleInvocationSeed,
   ScheduleDispatchMode,
   ScheduleJobRef,
   InvokeScheduledJobOptions,

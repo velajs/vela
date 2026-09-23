@@ -1,3 +1,5 @@
+import { Container } from '../container/container';
+import { Inject, Injectable } from '../container/decorators';
 import { defineProvider } from '../container/types';
 import { Module } from '../module/decorators';
 import { stableHash } from '../module/stable-hash';
@@ -26,6 +28,25 @@ import type { ScheduleDispatchMode } from './schedule.types';
 class ScheduleDispatchHost {}
 
 /**
+ * Fails bootstrap when `forRoot` configured different dispatch policies (their
+ * keys differ, so each contributes its own global `SCHEDULE_DISPATCH` and the
+ * one a job would use is ambiguous). Built eagerly with every policy host.
+ */
+@Injectable()
+class ScheduleDispatchOwnership {
+  constructor(@Inject(Container) container: Container) {
+    const owners = container.getOwnerModuleIds(SCHEDULE_DISPATCH);
+    if (owners.length > 1) {
+      throw new Error(
+        `ScheduleModule.forRoot() is imported with different dispatch policies by ` +
+          `${owners.join(', ')}. An application configures scheduled dispatch once: import ` +
+          `ScheduleModule.forRoot({ dispatch }) once, in the root module.`,
+      );
+    }
+  }
+}
+
+/**
  * Zero-config module (Tier C): providers live on the `@Module` bag; the
  * `forRoot()` static is NestJS-parity sugar returning the bare dynamic module
  * (default key — repeated calls dedup).
@@ -35,7 +56,8 @@ class ScheduleDispatchHost {}
  * `invokeScheduledJob` honors on every runtime (the schedule-node executor, the
  * Cloudflare adapter's cron triggers, Studio's run-now), so the target route runs
  * the full request pipeline, global guards included. With no options jobs are
- * called directly in-isolate.
+ * called directly in-isolate. An application configures one policy: two
+ * `forRoot` calls with different `dispatch` kinds fail bootstrap.
  */
 @Module({
   // Lazy: the @Cron/@Interval discovery pass runs when ScheduleRegistry is
@@ -51,7 +73,10 @@ export class ScheduleModule {
     return {
       module: ScheduleDispatchHost,
       key: stableHash({ dispatch: dispatch.kind }),
-      providers: [defineProvider(SCHEDULE_DISPATCH, { useValue: dispatch })],
+      providers: [
+        defineProvider(SCHEDULE_DISPATCH, { useValue: dispatch }),
+        ScheduleDispatchOwnership,
+      ],
       exports: [SCHEDULE_DISPATCH],
       global: true,
     };

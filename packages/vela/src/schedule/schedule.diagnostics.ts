@@ -1,4 +1,6 @@
 import type { Container } from '../container/container';
+import type { Entrypoint } from '../entrypoint/entrypoint.types';
+import { getScopedComponents } from '../pipeline/scoped-components';
 import type { CronMetadata } from './schedule.types';
 
 /**
@@ -30,6 +32,50 @@ export function cronDialectAmbiguity(
     );
   }
   return undefined;
+}
+
+const COMPONENT_DECORATORS = [
+  ['guard', '@UseGuards'],
+  ['interceptor', '@UseInterceptors'],
+  ['filter', '@UseFilters'],
+] as const;
+
+/**
+ * Name the component decorators (`@UseGuards`, `@UseInterceptors`,
+ * `@UseFilters`) that apply to a scheduled job's method through its class,
+ * method or module, in that order. A direct scheduled job runs none of them,
+ * so runtimes report a non-empty result through diagnostics.
+ */
+export function scheduledJobComponents(
+  container: Container,
+  entry: Entrypoint<{ readonly methodName: string }>,
+): string[] {
+  const target = entry.token;
+  if (typeof target !== 'function') return [];
+  return COMPONENT_DECORATORS.filter(
+    ([kind]) =>
+      getScopedComponents(kind, target, entry.meta.methodName, container, entry.moduleId).length >
+      0,
+  ).map(([, decorator]) => decorator);
+}
+
+/**
+ * @internal The diagnostic for {@link scheduledJobComponents}: `label` names
+ * the job (for example `@Cron('0 3 * * *') on Reports.nightly`).
+ */
+export function scheduledJobComponentsMessage(
+  label: string,
+  decorators: readonly string[],
+): string {
+  const named =
+    decorators.length > 1
+      ? `${decorators.slice(0, -1).join(', ')} and ${decorators.at(-1)!}`
+      : decorators.join('');
+  return (
+    `[vela] ${label} declares ${named}, which do not run for scheduled jobs: a direct job ` +
+    `runs no guards, interceptors or filters. Use signed ScheduleModule dispatch and declare ` +
+    `them on the signed route to run the job through the request pipeline.`
+  );
 }
 
 const reported = new Set<string>();

@@ -1,5 +1,5 @@
 import { InjectionToken } from '../container/index';
-import type { ScheduleDispatchMode } from './schedule.types';
+import type { ScheduleDispatchMode, ScheduleInvocationSeed } from './schedule.types';
 
 export const CRON_METADATA = 'vela:cron';
 export const INTERVAL_METADATA = 'vela:interval';
@@ -11,3 +11,23 @@ export const INTERVAL_METADATA = 'vela:interval';
  * every runtime. Absent ⇒ direct in-isolate invocation (default).
  */
 export const SCHEDULE_DISPATCH = new InjectionToken<ScheduleDispatchMode>('vela:schedule:dispatch');
+
+/**
+ * Optional, runtime-neutral hook a runtime adapter provides so a scheduled job
+ * fired outside its native trigger sees what the trigger would have seeded
+ * into its scope. The Cloudflare adapter provides one that seeds a synthetic
+ * `CLOUDFLARE_SCHEDULED_EVENT` for a cron job. Callers that fire jobs on
+ * demand (Studio's run-now) pass it to `invokeScheduledJob` as `seed`:
+ *
+ * ```ts
+ * const seed = container.has(SCHEDULE_INVOCATION_SEED)
+ *   ? container.resolve(SCHEDULE_INVOCATION_SEED)
+ *   : undefined;
+ * await invokeScheduledJob(container, entry, invocation, {
+ *   seed: seed && ((scope) => seed(scope, invocation)),
+ * });
+ * ```
+ */
+export const SCHEDULE_INVOCATION_SEED = new InjectionToken<ScheduleInvocationSeed>(
+  'vela:schedule:invocation-seed',
+);

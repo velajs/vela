@@ -13,6 +13,7 @@ import {
   Scope,
   SignedInvocation,
   URL_SIGNING_SECRET,
+  UseFilters,
   UseGuards,
   UseInterceptors,
   VelaFactory,
@@ -27,6 +28,7 @@ import {
 import { APP_EXCEPTION_HANDLER } from '../pipeline/tokens';
 import {
   Cron,
+  Interval,
   ScheduleModule,
   cronDialectAmbiguity,
   invokeScheduledJob,
@@ -38,6 +40,7 @@ import {
   type ScheduleJobRef,
 } from '../schedule';
 import { ScheduleNodeModule } from '../schedule-node';
+import { Process, Processor } from '../queue';
 
 const applications: VelaApplication[] = [];
 
@@ -288,6 +291,9 @@ describe('cron dialect ambiguity', () => {
 
   it('warns once per declaration from the Node executor and throws only in throw mode', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // A UTC process isolates the dialect report from the time-zone report.
+    const zone = process.env.TZ;
+    process.env.TZ = 'UTC';
     vi.useFakeTimers();
     try {
       @Injectable()
@@ -310,6 +316,153 @@ describe('cron dialect ambiguity', () => {
       expect(vi.getTimerCount()).toBe(0);
     } finally {
       vi.useRealTimers();
+      restoreTimeZone(zone);
     }
+  });
+});
+
+function restoreTimeZone(zone: string | undefined): void {
+  if (zone === undefined) delete process.env.TZ;
+  else process.env.TZ = zone;
+}
+
+describe('Node executor time zone', () => {
+  let zone: string | undefined;
+  beforeEach(() => {
+    zone = process.env.TZ;
+  });
+  afterEach(() => {
+    restoreTimeZone(zone);
+  });
+
+  function jobs() {
+    @Injectable()
+    class Jobs {
+      @Cron('0 9 * * *')
+      morning() {}
+      @Cron('0 10 * * *', { timeZone: 'UTC' })
+      utc() {}
+      @Cron('0 11 * * *', { dialect: 'cloudflare' })
+      cloudflare() {}
+      @Cron('0 12 * * *', { timeZone: 'local' })
+      local() {}
+    }
+    @Module({ imports: [ScheduleNodeModule], providers: [Jobs] })
+    class Root {}
+    return Root;
+  }
+
+  it('warns once when a bare @Cron runs at local time under Node but in UTC on Workers', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    process.env.TZ = 'America/New_York';
+    const Root = jobs();
+
+    const first = await VelaFactory.create(Root);
+    const second = await VelaFactory.create(Root);
+    await Promise.all([first.close(), second.close()]);
+
+    expect(warn).toHaveBeenCalledOnce();
+    expect(String(warn.mock.calls[0]?.[0])).toMatch(
+      /'0 9 \* \* \*'.*Jobs\.morning.*local time \(America\/New_York\).*UTC/,
+    );
+    await expect(VelaFactory.create(Root, { diagnostics: 'throw' })).rejects.toThrow(
+      /Jobs\.morning declares neither dialect nor timeZone/,
+    );
+  });
+
+  it('stays quiet when the process runs in UTC', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    process.env.TZ = 'UTC';
+
+    const app = await VelaFactory.create(jobs(), { diagnostics: 'throw' });
+    await app.close();
+
+    expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+describe('scheduled job components', () => {
+  it('warns once that guards, interceptors and filters declared for a job do not run', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    class Deny implements CanActivate {
+      canActivate(): boolean {
+        return false;
+      }
+    }
+    class Spy implements NestInterceptor {
+      intercept(_context: ExecutionContext, next: { handle(): Promise<unknown> }) {
+        return next.handle();
+      }
+    }
+    class Claim {
+      catch(): void {}
+    }
+    @Injectable()
+    @UseGuards(Deny)
+    class Guarded {
+      @Cron('0 3 * * *', { dialect: 'cloudflare' })
+      nightly() {}
+    }
+    @Injectable()
+    class Decorated {
+      @Interval(60_000)
+      @UseInterceptors(Spy)
+      @UseFilters(Claim)
+      poll() {}
+      @Cron('0 4 * * *', { dialect: 'cloudflare' })
+      plain() {}
+    }
+    @Module({ imports: [ScheduleNodeModule], providers: [Guarded, Decorated] })
+    class Root {}
+
+    const first = await VelaFactory.create(Root);
+    const second = await VelaFactory.create(Root);
+    await Promise.all([first.close(), second.close()]);
+
+    const messages = warn.mock.calls.map(([message]) => String(message));
+    expect(messages).toHaveLength(2);
+    expect(messages[0]).toMatch(/Guarded\.nightly declares @UseGuards.*do not run.*signed/);
+    expect(messages[1]).toMatch(/Decorated\.poll declares @UseInterceptors and @UseFilters/);
+    await expect(VelaFactory.create(Root, { diagnostics: 'throw' })).rejects.toThrow(
+      /Guarded\.nightly declares @UseGuards/,
+    );
+  });
+});
+
+describe('request-scoped entrypoint owners', () => {
+  it('lists request-scoped jobs and processors at bootstrap without a skipped warning', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const EVENT = new InjectionToken<string>('synthetic scheduled event');
+    const ran: string[] = [];
+    @Injectable({ scope: Scope.REQUEST })
+    class Jobs {
+      constructor(@Inject(EVENT) readonly event: string) {}
+      @Cron('0 3 * * *', { dialect: 'cloudflare' })
+      nightly() {
+        ran.push(this.event);
+      }
+    }
+    @Injectable({ scope: Scope.REQUEST })
+    @Processor('scoped')
+    class Scoped {
+      @Process() handle() {}
+    }
+    @Module({
+      providers: [
+        Jobs,
+        Scoped,
+        defineProvider(EVENT, { scope: Scope.REQUEST, inject: [], useFactory: () => 'event' }),
+      ],
+    })
+    class Root {}
+
+    const app = await VelaFactory.create(Root);
+    applications.push(app);
+
+    expect(warn).not.toHaveBeenCalled();
+    expect(cronEntry(app, 'nightly').instance).toBeUndefined();
+    expect(app.entrypoints.ofKind('queue').map((entry) => entry.token)).toEqual([Scoped]);
+    await invokeScheduledJob(app.getContainer(), cronEntry(app, 'nightly'), tick('0 3 * * *'));
+    expect(ran).toEqual(['event']);
   });
 });

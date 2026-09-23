@@ -11,6 +11,8 @@ import { parseCron } from '../schedule/cron-matcher';
 import {
   cronDialectAmbiguity,
   reportScheduleDiagnostic,
+  scheduledJobComponents,
+  scheduledJobComponentsMessage,
   scheduledJobName,
 } from '../schedule/schedule.diagnostics';
 import { invokeScheduledJob } from '../schedule/schedule.invoke';
@@ -22,6 +24,20 @@ import type {
   ScheduleDispatchMode,
   ScheduleInvocation,
 } from '../schedule/schedule.types';
+
+/**
+ * The process time zone when it is not UTC, else `undefined`. A zone whose
+ * offset is zero in both January and July (UTC, Etc/GMT, Africa/Abidjan) runs
+ * a local-time cron at the same instants as UTC.
+ */
+function nonUtcTimeZone(now = new Date()): string | undefined {
+  const year = now.getFullYear();
+  const offsets = [new Date(year, 0, 1), new Date(year, 6, 1)].map((date) =>
+    date.getTimezoneOffset(),
+  );
+  if (offsets.every((offset) => offset === 0)) return undefined;
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || 'local';
+}
 
 @Injectable()
 export class ScheduleExecutor
@@ -63,24 +79,45 @@ export class ScheduleExecutor
     // Validate the entire plan before creating any timer, including when a later
     // cron is malformed. Invalid configuration cannot leave background work alive.
     const intervals = this.#registry.getIntervalEntrypoints();
+    const zone = nonUtcTimeZone();
     const crons = this.#registry.getCronEntrypoints().map((entry) => {
       const matcher = parseCron(entry.meta.expression, entry.meta);
       if (!matcher)
         throw new TypeError(
           `Invalid cron expression for ${entry.meta.methodName}: ${entry.meta.expression}`,
         );
+      const cron = `@Cron('${entry.meta.expression}') on ${scheduledJobName(entry.token, entry.meta.methodName)}`;
       const ambiguity = cronDialectAmbiguity(entry.meta);
       if (ambiguity) {
         reportScheduleDiagnostic(
           this.#container,
-          `[vela] @Cron('${entry.meta.expression}') on ` +
-            `${scheduledJobName(entry.token, entry.meta.methodName)} declares no dialect, and ` +
-            `${ambiguity}. Node runs it as Unix cron; declare { dialect: 'unix' } or ` +
-            `{ dialect: 'cloudflare' } so it fires on the same days on every runtime.`,
+          `[vela] ${cron} declares no dialect, and ${ambiguity}. Node runs it as Unix cron; ` +
+            `declare { dialect: 'unix' } or { dialect: 'cloudflare' } so it fires on the same ` +
+            `days on every runtime.`,
         );
       }
+      if (
+        zone !== undefined &&
+        entry.meta.dialect === undefined &&
+        entry.meta.timeZone === undefined
+      ) {
+        reportScheduleDiagnostic(
+          this.#container,
+          `[vela] ${cron} declares neither dialect nor timeZone, so Node runs it at local ` +
+            `time (${zone}) while a Workers cron trigger runs it in UTC. Declare ` +
+            `{ timeZone: 'UTC' } or { dialect: 'cloudflare' } so it fires at the same time on ` +
+            `every runtime, or { timeZone: 'local' } to keep local time.`,
+        );
+      }
+      this.#reportComponents(cron, entry);
       return { entry, matcher, lastMinute: undefined as number | undefined };
     });
+    for (const entry of intervals) {
+      this.#reportComponents(
+        `@Interval(${entry.meta.ms}) on ${scheduledJobName(entry.token, entry.meta.methodName)}`,
+        entry,
+      );
+    }
     this.#started = true;
     for (const entry of intervals) {
       this.#timers.push(setInterval(() => this.#start(entry, Date.now()), entry.meta.ms));
@@ -97,6 +134,13 @@ export class ScheduleExecutor
           }
         }, 1000),
       );
+    }
+  }
+
+  #reportComponents(label: string, entry: Entrypoint<CronMetadata | IntervalMetadata>): void {
+    const decorators = scheduledJobComponents(this.#container, entry);
+    if (decorators.length > 0) {
+      reportScheduleDiagnostic(this.#container, scheduledJobComponentsMessage(label, decorators));
     }
   }
 

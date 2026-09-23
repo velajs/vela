@@ -59,6 +59,14 @@ export interface DiscoveryFilter {
    * scanner keeps its transparent cascade-materialization semantics.
    */
   deferLazy?: boolean;
+  /**
+   * Return request-scoped providers as metadata-only entries (`instance:
+   * undefined`) without the diagnostics warning a skipped request-scoped hit
+   * otherwise produces. For callers that resolve each entry by token inside
+   * its own invocation scope, such as `EntrypointRegistry.build`: nothing is
+   * skipped, the instance is built per invocation.
+   */
+  deferRequestScoped?: boolean;
 }
 
 /** Class-level appended-list convention: method decorators that push `{ methodName, ... }` items. */
@@ -287,7 +295,8 @@ export class DiscoveryService {
     const metadata = { token: metatype, metatype, moduleId, moduleIds, scope };
     if (
       filter?.metadataOnly ||
-      (filter?.deferLazy && this.#container.isLazyPending(metatype, moduleId))
+      (filter?.deferLazy && this.#container.isLazyPending(metatype, moduleId)) ||
+      (filter?.deferRequestScoped && scope === Scope.REQUEST)
     ) {
       return { ...metadata, instance: undefined };
     }
