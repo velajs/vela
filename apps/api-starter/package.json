@@ -13,8 +13,8 @@
     "deploy": "npm run build && wrangler deploy",
     "test": "vitest run",
     "db:migrate": "wrangler d1 migrations apply vela-api-starter --local",
-    "client:generate": "node scripts/client.mjs",
-    "client:check": "node scripts/client.mjs --check",
+    "client:generate": "node node_modules/@velajs/cli/dist/index.js client generate --out web/api.generated.ts",
+    "client:check": "node node_modules/@velajs/cli/dist/index.js client generate --out web/api.generated.ts --check",
     "studio": "vela studio --url http://localhost:8790 --port 8791",
     "smoke": "node scripts/smoke.mjs"
   },

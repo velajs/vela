@@ -5,16 +5,26 @@ import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 import {
   ApiResponse,
   Controller,
+  ENV,
   Get,
   InjectEnv,
   Injectable,
   Module,
   WebSocketGateway,
   createOpenApiDocument,
+  defineProvider,
   type VelaEnv,
 } from '@velajs/vela';
 import { LiveModule, LiveQuery, LiveResolver } from '@velajs/vela/live';
-import { BetterAuthModule, CurrentUser, Public, type User } from '@velajs/better-auth';
+import {
+  BETTER_AUTH_UPGRADE_TENANT,
+  BetterAuthModule,
+  BetterAuthUpgradeAuthenticator,
+  CurrentUser,
+  Public,
+  type BetterAuthUpgradeTenantResolver,
+  type User,
+} from '@velajs/better-auth';
 import { Crud, CrudModule, defineModel } from '@velajs/crud';
 import { drizzleAdapter } from '@velajs/crud-drizzle';
 import {
@@ -43,114 +53,134 @@ const model = defineModel({
   timestamps: false,
 });
 
-/** One graph per native environment; secrets never live in process-wide globals. */
-export function createAppModule(env: VelaEnv) {
-  const db = drizzle(env.DB, { schema: authSchema });
-  const auth = betterAuth({
-    secret: env.BETTER_AUTH_SECRET,
-    baseURL: env.APP_ORIGIN,
-    database: authAdapter(db, { provider: 'sqlite', schema: authSchema }),
-    emailAndPassword: { enabled: true, autoSignIn: true },
-    user: { deleteUser: { enabled: true } },
-    trustedOrigins: [env.APP_ORIGIN],
-  });
-  const adapter = drizzleAdapter({
-    driver: 'd1',
-    db: drizzle(env.DB),
-    table: todos,
-    parseRow: (value: unknown) => todoSchema.parse(value),
-  });
+/** Every signed-in user shares one board, reached only through its `default` room. */
+const sharedBoard: BetterAuthUpgradeTenantResolver = (_session, { room }) =>
+  room === 'default' ? 'shared-board' : undefined;
 
-  @Controller('/todos')
-  @Crud({ model, adapter, live: { room: () => 'default' } })
-  class TodosController {}
+// CrudModule supplies the adapter each environment builds below.
+@Controller('/todos')
+@Crud({ model, live: { room: () => 'default' } })
+class TodosController {}
 
-  @Controller('/me')
-  class MeController {
-    @Get()
-    @ApiResponse(200, {
-      description: 'Current user',
-      schema: {
-        type: 'object',
-        required: ['id', 'email', 'name'],
-        properties: { id: { type: 'string' }, email: { type: 'string' }, name: { type: 'string' } },
-      },
-    })
-    me(@CurrentUser() user: User) {
-      return { id: user.id, email: user.email, name: user.name };
-    }
-  }
-
-  @Controller('/healthz')
-  class HealthController {
-    @Get()
-    @Public(true)
-    @ApiResponse(200, {
-      description: 'Healthy',
-      schema: { type: 'object', required: ['ok'], properties: { ok: { type: 'boolean' } } },
-    })
-    health() {
-      return { ok: true };
-    }
-  }
-
-  @Controller('/openapi.json')
-  class OpenApiController {
-    @Get()
-    @Public(true)
-    document() {
-      return createOpenApiDocument(AppModule, {
-        info: { title: 'Vela API starter', version: '1.0.0' },
-      });
-    }
-  }
-
-  @LiveResolver()
-  @Injectable()
-  class TodoQueries {
-    constructor(@InjectEnv() private readonly native: VelaEnv) {}
-    @LiveQuery('todos.list', todoList, { tags: ['crud:todos'] })
-    async list() {
-      const rows = await drizzle(this.native.DB).select().from(todos).orderBy(todos.id);
-      return todoList.result.parse(rows);
-    }
-  }
-
-  @WebSocketGateway({
-    path: GATEWAY,
-    roomParam: 'room',
-    binding: 'LIVE_ROOM',
-    allowedOrigins: [env.APP_ORIGIN],
-    authenticateUpgrade: async (request, context) => {
-      if (context.room !== 'default') return false;
-      const session = await auth.api.getSession({ headers: request.headers });
-      if (!session) return false;
-      return {
-        principal: { issuer: 'api-starter', subject: session.user.id, principalType: 'user' },
-        tenantId: 'shared-board',
-        expiresAtMs: session.session.expiresAt.getTime(),
-      };
+@Controller('/me')
+class MeController {
+  @Get()
+  @ApiResponse(200, {
+    description: 'Current user',
+    schema: {
+      type: 'object',
+      required: ['id', 'email', 'name'],
+      properties: { id: { type: 'string' }, email: { type: 'string' }, name: { type: 'string' } },
     },
   })
-  class TodoGateway {}
+  me(@CurrentUser() user: User) {
+    return { id: user.id, email: user.email, name: user.name };
+  }
+}
 
-  @Module({
-    imports: [
-      BetterAuthModule.forRoot({ auth, issuer: 'api-starter' }),
-      CrudModule.forRoot({ adapter }),
-      CloudflareWebSocketModule.forRoot(),
-      LiveModule.forRoot({
+@Controller('/healthz')
+class HealthController {
+  @Get()
+  @Public(true)
+  @ApiResponse(200, {
+    description: 'Healthy',
+    schema: { type: 'object', required: ['ok'], properties: { ok: { type: 'boolean' } } },
+  })
+  health() {
+    return { ok: true };
+  }
+}
+
+@Controller('/openapi.json')
+class OpenApiController {
+  @Get()
+  @Public(true)
+  @ApiResponse(200, {
+    description: 'OpenAPI 3.1 document',
+    schema: {
+      type: 'object',
+      required: ['openapi', 'paths'],
+      properties: { openapi: { type: 'string' }, paths: { type: 'object' } },
+    },
+  })
+  document() {
+    return createOpenApiDocument(AppModule, {
+      info: { title: 'Vela API starter', version: '1.0.0' },
+    });
+  }
+}
+
+@LiveResolver()
+@Injectable()
+class TodoQueries {
+  constructor(@InjectEnv() private readonly native: VelaEnv) {}
+  @LiveQuery('todos.list', todoList, { tags: ['crud:todos'] })
+  async list() {
+    const rows = await drizzle(this.native.DB).select().from(todos).orderBy(todos.id);
+    return todoList.result.parse(rows);
+  }
+}
+
+@WebSocketGateway({
+  path: GATEWAY,
+  roomParam: 'room',
+  binding: 'LIVE_ROOM',
+  allowedOrigins: (env) => [env.APP_ORIGIN],
+  authenticator: BetterAuthUpgradeAuthenticator,
+})
+class TodoGateway {}
+
+/**
+ * The whole application, declared once. Each native environment builds its own
+ * auth instance, CRUD adapter, live driver and Studio source in the factories
+ * below; secrets never live in process-wide globals.
+ */
+@Module({
+  imports: [
+    BetterAuthModule.forRootAsync({
+      inject: [ENV],
+      issuer: 'api-starter',
+      useFactory: (env) => {
+        const db = drizzle(env.DB, { schema: authSchema });
+        return betterAuth({
+          secret: env.BETTER_AUTH_SECRET,
+          baseURL: env.APP_ORIGIN,
+          database: authAdapter(db, { provider: 'sqlite', schema: authSchema }),
+          emailAndPassword: { enabled: true, autoSignIn: true },
+          user: { deleteUser: { enabled: true } },
+          trustedOrigins: [env.APP_ORIGIN],
+        });
+      },
+    }),
+    CrudModule.forRootAsync({
+      inject: [ENV],
+      useFactory: (env) => ({
+        adapter: drizzleAdapter({
+          driver: 'd1',
+          db: drizzle(env.DB),
+          table: todos,
+          parseRow: (value: unknown) => todoSchema.parse(value),
+        }),
+      }),
+    }),
+    CloudflareWebSocketModule.forRoot(),
+    LiveModule.forRootAsync({
+      inject: [ENV],
+      useFactory: (env) => ({
         log: () => durableObjectCursorLog(),
         driver: () => durableObjectLive({ namespace: env.LIVE_ROOM, gatewayPath: GATEWAY }),
       }),
-      // Studio reads its VELA_STUDIO_TOKEN secret from ENV and stays closed without one.
-      StudioModule.forRoot({
-        rootModule: AppModule,
-        editable: { ops: true },
-        managedModels: { include: ['todo'] },
-      }),
-      StudioCrudModule.forRoot({}),
-      StudioLiveModule.forRoot({
+    }),
+    // Studio documents this module (ROOT_MODULE) and reads its VELA_STUDIO_TOKEN
+    // secret from ENV; it stays closed without one.
+    StudioModule.forRoot({
+      editable: { ops: true },
+      managedModels: { include: ['todo'] },
+    }),
+    StudioCrudModule.forRoot({}),
+    StudioLiveModule.forRootAsync({
+      inject: [ENV],
+      useFactory: (env) => ({
         source: {
           inspect: () =>
             env.LIVE_ROOM.get(
@@ -158,10 +188,14 @@ export function createAppModule(env: VelaEnv) {
             ).inspectLive(),
         },
       }),
-    ],
-    controllers: [TodosController, MeController, HealthController, OpenApiController],
-    providers: [TodoGateway, TodoQueries],
-  })
-  class AppModule {}
-  return AppModule;
-}
+    }),
+  ],
+  controllers: [TodosController, MeController, HealthController, OpenApiController],
+  providers: [
+    TodoGateway,
+    TodoQueries,
+    // BetterAuthUpgradeAuthenticator resolves from this module, so it sees this resolver.
+    defineProvider(BETTER_AUTH_UPGRADE_TENANT, { useValue: sharedBoard }),
+  ],
+})
+export class AppModule {}
