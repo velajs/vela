@@ -10,7 +10,6 @@ import type {
 import { bodyLimit as honoBodyLimit } from 'hono/body-limit';
 import { contextStorage } from 'hono/context-storage';
 import { basePath, routePath } from 'hono/route';
-import { TrieRouter } from 'hono/router/trie-router';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { HttpMethod, Scope } from '../constants';
 import { HttpException } from '../errors/http-exception';
@@ -23,9 +22,16 @@ import { reportDiagnostic } from '../container/diagnostics';
 import { InjectionToken } from '../container/types';
 import type { ProviderSnapshot, Token, TypedToken, Type } from '../container/types';
 import type { MiddlewareRouteDefinition, RouteInfo } from '../module/middleware';
-import { joinPaths, normalizePath } from '../registry/paths';
+import { joinPaths } from '../registry/paths';
 import { ArgumentResolver } from './argument-resolver';
 import { getRouteContributors } from './route-contributor';
+import {
+  compileRoutePattern,
+  formatRoutePattern,
+  parseRoutePattern,
+  routePatternsOverlap,
+  type RouteSegment,
+} from './route-target';
 import { buildMiddlewareExecutionContext } from './execution-context';
 import { HandlerExecutor } from './handler-executor';
 import { instantiate, instantiateMany, instantiateAsync } from './instantiate';
@@ -190,56 +196,30 @@ function priorityOf(value: unknown): number | undefined {
   return typeof constructor === 'function' ? priorityOf(constructor) : undefined;
 }
 
-// Nest's wildcard segments. `*name` (Nest 11) and `(.*)` (earlier Nest) match
-// one or more characters across segments, never the parent path itself;
-// `{*name}` (Nest 11) is optional, so it also matches the parent path.
-const NEST_NAMED_WILDCARD = /^\*([\p{ID_Start}$_][\p{ID_Continue}$]*)$/u;
-const NEST_OPTIONAL_WILDCARD = /^\{\*[\p{ID_Start}$_][\p{ID_Continue}$]*\}$/u;
-const NEST_UNNAMED_WILDCARD = '(.*)';
-// Hono's regex-constrained parameter, `:id{[0-9]+}`, with one nested brace level.
-const HONO_REGEX_PARAM = /:([^/:{}]+)\{(?:[^{}]|\{[^{}]*\})*\}/g;
-
 /**
- * A middleware target as a Hono route pattern. `*name` and `(.*)` become a
- * parameter that spans segments and needs at least one character
- * (`:name{.+}`), so `cats/*name` matches `/cats/1` and `/cats/1/toys` but not
- * `/cats`, also mid-path (`files/*path/download`). A trailing `{*name}`
- * becomes Hono's `*`, which also matches the parent path, as in Nest. Any
- * other group, optional or named-wildcard syntax (including `{*name}` before
- * the last segment) would never match in Hono, so it fails the route build
- * instead of leaving the routes it names without their middleware.
+ * A middleware target's segments. `forRoutes()` and `exclude()` accept Hono's
+ * `:id`, `:id{[0-9]+}`, a trailing `:id?`, a trailing `*` (the parent path and
+ * everything beneath it) and a trailing `ab*`, plus Nest's `*name` and `(.*)`,
+ * which match one or more characters across segments (`cats/*path` matches
+ * `/cats/1` and `/cats/1/toys` but not `/cats`, also mid-path:
+ * `files/*path/:id`), and a trailing `{*name}`, which also matches the parent
+ * path, as in Nest. Any other syntax fails the route build instead of leaving
+ * the routes it names without their middleware.
  */
-function toHonoPattern(path: string): string {
-  const segments = path.split('/');
-  const last = segments.findLastIndex((segment) => segment !== '');
-  let unnamed = 0;
-  const pattern = segments
-    .map((segment, index) => {
-      const named = NEST_NAMED_WILDCARD.exec(segment);
-      if (named) return `:${named[1]}{.+}`;
-      if (segment === NEST_UNNAMED_WILDCARD) return `:wildcard${unnamed++}{.+}`;
-      if (index === last && NEST_OPTIONAL_WILDCARD.test(segment)) return '*';
-      return segment;
-    })
-    .join('/');
-  const bare = pattern.replace(HONO_REGEX_PARAM, ':param');
-  if (/[(){}]/.test(bare) || /\*[\p{ID_Continue}$]/u.test(bare)) {
-    throw new Error(
-      `Middleware route '${path}' uses pattern syntax that Hono does not match, so its ` +
-        "middleware would never run. Use Hono route patterns: ':id' for one segment, " +
-        "':id{[0-9]+}' for a constrained segment, ':path{.+}' for one or more segments and " +
-        "a trailing '*' ('cats/*') for the rest of the path, including '/cats'.",
-    );
-  }
-  return pattern;
+function parseMiddlewareTarget(path: string): RouteSegment[] {
+  const segments = parseRoutePattern(path);
+  if (segments) return segments;
+  throw new Error(
+    `Middleware route '${path}' uses pattern syntax that Hono does not match, so its ` +
+      "middleware would never run. Use ':id' for one segment, ':id{[0-9]+}' for a " +
+      "constrained segment, '*path' for one or more segments and a trailing '*' " +
+      "('cats/*') for the rest of the path, including '/cats'.",
+  );
 }
 
-/**
- * A pattern as a path to match against registered routes. A regex-constrained
- * parameter keeps only its name: its regex source (`{.+}`) is not path text.
- */
-function patternAsPath(pattern: string): string {
-  return pattern.replace(HONO_REGEX_PARAM, ':$1');
+// `'*'`, `'/*'` and `'{*splat}'` match every request, even under a global prefix.
+function matchesEveryPath(segments: readonly RouteSegment[]): boolean {
+  return segments.length === 1 && segments[0]!.text === '*';
 }
 
 // Whether a middleware target's method reaches a route registered for
@@ -1046,36 +1026,35 @@ export class RouteManager {
   // prefix but does without it throws. A forRoutes() target that reaches no
   // route at all is reported, because the route may still be added to the Hono
   // app after startup (mountOpenApi(), WebSocket upgrades, raw Hono routes).
+  // A target reaches a route only through a concrete path that the target's
+  // request matcher and the route's pattern both match.
   private checkMiddlewareTargets(
     registered: ReadonlyArray<{ method: string; path: string }>,
   ): void {
-    // A contributor's own app.use('*') middleware serves no route of its own.
-    const routes = registered.filter(
-      ({ method, path }) => method !== HttpMethod.ALL || (path !== '*' && path !== '/*'),
-    );
-    const routeRouter = new TrieRouter<string>();
-    for (const route of routes) routeRouter.add(HttpMethod.ALL, route.path, route.method);
-    // Patterns overlap when either one matches the other taken literally; a
-    // target's regex-constrained parameters are matched by name, not regex.
-    const served = (method: string, pattern: string, coverDescendants: boolean): boolean => {
-      const targetRouter = new TrieRouter<true>();
-      targetRouter.add(HttpMethod.ALL, pattern, true);
-      if (coverDescendants && !pattern.endsWith('*')) {
-        targetRouter.add(HttpMethod.ALL, joinPaths(pattern, '/*'), true);
-      }
-      return (
-        routes.some(
-          (route) =>
-            methodsOverlap(method, route.method) &&
-            targetRouter.match(HttpMethod.GET, route.path)[0].length > 0,
-        ) ||
-        routeRouter
-          .match(HttpMethod.GET, patternAsPath(pattern))[0]
-          .some(([routeMethod]) => methodsOverlap(method, routeMethod))
+    if (this.consumerMiddlewareDefinitions.length === 0) return;
+    // A contributor's own app.use('*') middleware serves no route of its own,
+    // and a route in syntax the matcher cannot parse cannot prove a match.
+    const routes = registered
+      .filter(({ method, path }) => method !== HttpMethod.ALL || (path !== '*' && path !== '/*'))
+      .flatMap(({ method, path }) => {
+        const segments = parseRoutePattern(path);
+        return segments ? [{ method, segments, regex: compileRoutePattern(segments, false) }] : [];
+      });
+    const served = (
+      method: string,
+      segments: readonly RouteSegment[],
+      coverDescendants: boolean,
+    ): boolean => {
+      const regex = compileRoutePattern(segments, coverDescendants);
+      return routes.some(
+        (route) =>
+          methodsOverlap(method, route.method) &&
+          routePatternsOverlap(segments, regex, route.segments, route.regex),
       );
     };
 
     const prefix = this.globalPrefix.replace(/\/+$/, '');
+    const prefixSegments = parseMiddlewareTarget(this.globalPrefix);
     for (const definition of this.consumerMiddlewareDefinitions) {
       const targets = [
         ...definition.routes.map((target) => ({ target, forRoutes: true })),
@@ -1083,12 +1062,14 @@ export class RouteManager {
       ];
       for (const { target, forRoutes } of targets) {
         if (typeof target === 'function' || target.absolute) continue;
-        const path = normalizePath(toHonoPattern(target.path)) || '/';
-        if (path === '/*') continue;
+        const segments = parseMiddlewareTarget(target.path);
+        if (matchesEveryPath(segments)) continue;
+        const path = formatRoutePattern(segments);
         const method = target.method ?? HttpMethod.ALL;
-        const pattern = joinPaths(this.globalPrefix, path);
-        if (served(method, pattern, forRoutes)) continue;
-        if (prefix && served(method, path, forRoutes)) {
+        const prefixed = [...prefixSegments, ...segments];
+        const pattern = formatRoutePattern(prefixed);
+        if (served(method, prefixed, forRoutes)) continue;
+        if (prefix && served(method, segments, forRoutes)) {
           throw new Error(
             `Middleware route '${target.path}' resolves to '${pattern}' under the global prefix ` +
               `'${prefix}', which serves no route, but '${path}' is served outside the prefix. ` +
@@ -1141,22 +1122,17 @@ export class RouteManager {
     }));
   }
 
-  // Consumer targets compile into a Hono router so they match with the same
-  // `:param` / `*` semantics that route the request. A controller expands to
-  // its composed routes; a pattern (Nest wildcards translated) resolves under
-  // the global prefix unless it is `absolute` and, for forRoutes(), also
-  // covers the paths beneath it. `'*'` matches everything.
+  // Consumer targets compile into anchored regular expressions (see
+  // route-target.ts) matched against the request path and method. A controller
+  // expands to its composed routes, matched exactly; a pattern resolves under
+  // the global prefix unless it is `absolute` and, for forRoutes(), also covers
+  // the paths beneath it. `'*'` matches everything.
   private compileRouteMatcher(
     targets: Array<RouteInfo | Constructor>,
     coverDescendants: boolean,
   ): (path: string, method: string) => boolean {
     if (targets.length === 0) return () => false;
-    const router = new TrieRouter<true>();
-    const add = (method: string, pattern: string): void => {
-      router.add(method, pattern, true);
-      // Hono serves HEAD requests with the GET handler.
-      if (method === HttpMethod.GET) router.add(HttpMethod.HEAD, pattern, true);
-    };
+    const matchers: Array<{ method: string; regex: RegExp }> = [];
 
     for (const target of targets) {
       if (typeof target === 'function') {
@@ -1171,19 +1147,26 @@ export class RouteManager {
         const { version } = MetadataRegistry.getControllerOptions(target);
         for (const route of routes) {
           for (const { path } of this.composeRoutePaths(prefix, route, version)) {
-            add(route.method, path);
+            const segments = parseRoutePattern(path);
+            if (!segments) {
+              throw new Error(
+                `Cannot apply middleware to ${target.name}: its route '${path}' uses pattern ` +
+                  'syntax that middleware routes cannot match. Target it by path instead.',
+              );
+            }
+            matchers.push({ method: route.method, regex: compileRoutePattern(segments, false) });
           }
         }
         continue;
       }
 
       const method = target.method ?? HttpMethod.ALL;
-      const translated = toHonoPattern(target.path);
-      if (translated === '*' || translated === '/*') {
-        add(method, '*');
+      const segments = parseMiddlewareTarget(target.path);
+      if (matchesEveryPath(segments)) {
+        matchers.push({ method, regex: /(?:)/ });
         continue;
       }
-      const path = normalizePath(translated);
+      const path = formatRoutePattern(segments);
       const prefix = this.globalPrefix.replace(/\/+$/, '');
       // A relative target that repeats the prefix would resolve to
       // '<prefix><prefix>/...' and never match, leaving its routes unguarded.
@@ -1194,12 +1177,21 @@ export class RouteManager {
             'to match it as written.',
         );
       }
-      const pattern = target.absolute ? path || '/' : joinPaths(this.globalPrefix, path);
-      add(method, pattern);
-      if (coverDescendants && !pattern.endsWith('*')) add(method, joinPaths(pattern, '/*'));
+      const resolved = target.absolute
+        ? segments
+        : [...parseMiddlewareTarget(this.globalPrefix), ...segments];
+      matchers.push({ method, regex: compileRoutePattern(resolved, coverDescendants) });
     }
 
-    return (path, method) => router.match(method, path)[0].length > 0;
+    // Hono serves HEAD requests with the GET handler.
+    return (path, method) =>
+      matchers.some(
+        (matcher) =>
+          (matcher.method === HttpMethod.ALL ||
+            matcher.method === method ||
+            (matcher.method === HttpMethod.GET && method === HttpMethod.HEAD)) &&
+          matcher.regex.test(path),
+      );
   }
 
   getControllers(): ControllerRegistration[] {

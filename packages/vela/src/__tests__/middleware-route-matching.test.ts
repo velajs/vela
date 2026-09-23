@@ -760,4 +760,154 @@ describe('Nest wildcard targets', () => {
       );
     },
   );
+
+  @Controller('/files')
+  class FilesController {
+    @Get(':a')
+    one() {
+      return { ok: true };
+    }
+
+    @Get(':a/:b')
+    two() {
+      return { ok: true };
+    }
+
+    @Get(':a/:b/:c')
+    three() {
+      return { ok: true };
+    }
+  }
+
+  it.each(['files/*path/:id', 'files/(.*)/:id'])(
+    "matches a parameter after the mid-path wildcard in '%s'",
+    async (target) => {
+      const request = await createApp([FilesController], forRoutes(target), {
+        diagnostics: 'throw',
+      });
+
+      expect(await request('GET', '/files/x')).toBe(200);
+      expect(await request('GET', '/files/x/y')).toBe(200);
+      expect(await request('GET', '/files/x/y/z')).toBe(200);
+      expect(seen).toEqual(['GET /files/x/y', 'GET /files/x/y/z']);
+
+      seen = [];
+      const excluded = await createApp([FilesController], (consumer) => {
+        consumer.apply(RecordingMiddleware).exclude(target).forRoutes('*');
+      });
+      expect(await excluded('GET', '/files/x')).toBe(200);
+      expect(await excluded('GET', '/files/x/y')).toBe(200);
+      expect(await excluded('GET', '/files/x/y/z')).toBe(200);
+      expect(seen).toEqual(['GET /files/x']);
+    },
+  );
+
+  it("backtracks a mid-path wildcard onto the literal after it in 'users/*id/admin'", async () => {
+    @Controller('/users')
+    class UsersAdminController {
+      @Get(':id/admin/administrators')
+      administrators() {
+        return { ok: true };
+      }
+
+      @Get(':id/admin/:scope/administrators')
+      scoped() {
+        return { ok: true };
+      }
+
+      @Get(':id/administrators')
+      direct() {
+        return { ok: true };
+      }
+
+      @Get(':id/adminx')
+      lookalike() {
+        return { ok: true };
+      }
+    }
+
+    const request = await createApp([UsersAdminController], forRoutes('users/*id/admin'), {
+      diagnostics: 'throw',
+    });
+
+    expect(await request('GET', '/users/1/admin/administrators')).toBe(200);
+    expect(await request('GET', '/users/1/admin/x/administrators')).toBe(200);
+    expect(await request('GET', '/users/1/administrators')).toBe(200);
+    expect(await request('GET', '/users/1/adminx')).toBe(200);
+    expect(seen).toEqual([
+      'GET /users/1/admin/administrators',
+      'GET /users/1/admin/x/administrators',
+    ]);
+  });
+
+  it('matches literal segments as text, not as regular expressions', async () => {
+    @Controller()
+    class VersionedController {
+      @Get('v1.0/items')
+      dotted() {
+        return { ok: true };
+      }
+
+      @Get('v1x0/items')
+      lookalike() {
+        return { ok: true };
+      }
+
+      @Get('a+b')
+      plus() {
+        return { ok: true };
+      }
+
+      @Get('aab')
+      repeated() {
+        return { ok: true };
+      }
+    }
+
+    const request = await createApp([VersionedController], forRoutes('v1.0', 'a+b'), {
+      diagnostics: 'throw',
+    });
+
+    expect(await request('GET', '/v1.0/items')).toBe(200);
+    expect(await request('GET', '/v1x0/items')).toBe(200);
+    expect(await request('GET', '/a+b')).toBe(200);
+    expect(await request('GET', '/aab')).toBe(200);
+    expect(seen).toEqual(['GET /v1.0/items', 'GET /a+b']);
+
+    seen = [];
+    const excluded = await createApp([VersionedController], (consumer) => {
+      consumer.apply(RecordingMiddleware).exclude('v1.0/items').forRoutes('*');
+    });
+    expect(await excluded('GET', '/v1.0/items')).toBe(200);
+    expect(await excluded('GET', '/v1x0/items')).toBe(200);
+    expect(seen).toEqual(['GET /v1x0/items']);
+  });
+
+  it('reports a wildcard target that needs more segments than any route has', async () => {
+    @Controller('/files')
+    class ShallowFilesController {
+      @Get(':a')
+      one() {
+        return { ok: true };
+      }
+    }
+
+    await expect(
+      createApp([ShallowFilesController], forRoutes('files/*path/:id'), { diagnostics: 'throw' }),
+    ).rejects.toThrow("[vela] Middleware route 'files/*path/:id' resolves to");
+  });
+
+  it('reports a constrained target that no constrained route value satisfies', async () => {
+    @Controller('/users')
+    class SlugController {
+      @Get(':slug{[a-z]+}')
+      one() {
+        return { ok: true };
+      }
+    }
+
+    await expect(
+      createApp([SlugController], forRoutes('users/:id{[0-9]+}'), { diagnostics: 'throw' }),
+    ).rejects.toThrow("[vela] Middleware route 'users/:id{[0-9]+}' resolves to");
+  });
 });

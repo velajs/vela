@@ -79,16 +79,22 @@ under the global prefix and also cover nested paths. `exclude()` patterns match
 exactly. A path target that already starts with the global prefix fails the
 build, because it would never match.
 
+Vela compiles each path target to an anchored regular expression. Literal
+segments match as written, so `v1.0` does not match `v1x0`. `:id` and a `*`
+before the last segment match one segment, `:id{[0-9]+}` a segment its regex
+accepts, and a trailing `:id?` an optional last segment. A trailing `*`
+(`cats/*`) matches `/cats` and everything beneath it.
+
 Nest's wildcard segments keep Nest's meaning. `cats/*path` and `cats/(.*)`
-become `cats/:path{.+}`, which matches one or more segments below `/cats`
-(`/cats/1`, `/cats/1/toys`) but not `/cats` itself, so `exclude('users/*id')`
-still runs the middleware on `/users`. The same holds mid-path:
-`files/*path/download` matches `/files/a/download` and `/files/a/b/download`.
-A trailing `cats/{*splat}` becomes Hono's `cats/*`, which also matches `/cats`,
-as it does in Nest. Any other group, optional segment or named wildcard, such as
-`:id(\d+)`, `users{/:id}`, `ab*cd` or a `{*splat}` before the last segment,
-fails the build because Hono would never match it; write `:id{[0-9]+}` for a
-constrained segment.
+match one or more segments below `/cats` (`/cats/1`, `/cats/1/toys`) but not
+`/cats` itself, so `exclude('users/*id')` still runs the middleware on `/users`.
+A wildcard can sit anywhere and backtracks onto what follows it:
+`files/*path/:id` matches `/files/a/b` and `/files/a/b/c`, and
+`users/*id/admin` covers `/users/1/admin/settings`. A trailing `cats/{*splat}`
+also matches `/cats`, as it does in Nest. Any other group, optional segment or
+named wildcard, such as `:id(\d+)`, `users{/:id}`, `ab*cd` or a `{*splat}`
+before the last segment, fails the build instead of never matching; write
+`:id{[0-9]+}` for a constrained segment.
 
 Some routes are served outside the global prefix: `mountOpenApi()` documents
 (`/openapi.json`, `/scalar`, `/docs`, `/redoc`), the `RpcModule` endpoint
@@ -103,13 +109,15 @@ consumer
 ```
 
 Once every controller and route contributor has registered its routes, each
-relative path target is checked against them. A target that reaches no route
-under the global prefix but matches a route served outside it, such as
-`forRoutes('rpc')` for the `RpcModule` endpoint, fails the build and names the
-`{ path, absolute: true }` form to use. A `forRoutes()` target that reaches no
-registered route at all is reported through the container's diagnostics policy
-(`'log'` warns, `'throw'` fails bootstrap), since the route may still be added
-to the Hono app later; target such a route with `absolute: true`.
+relative path target is checked against them with the same matcher: a target
+reaches a route only through a concrete path that both match. A target that
+reaches no route under the global prefix but matches a route served outside it,
+such as `forRoutes('rpc')` for the `RpcModule` endpoint, fails the build and
+names the `{ path, absolute: true }` form to use. A `forRoutes()` target that
+reaches no registered route at all is reported through the container's
+diagnostics policy (`'log'` warns, `'throw'` fails bootstrap), since the route
+may still be added to the Hono app later; target such a route with
+`absolute: true`.
 
 ## Browser security
 
