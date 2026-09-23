@@ -29,7 +29,7 @@ function entrypoints(value: unknown) {
         }
       }
       // Unknown kinds can contain arbitrary metadata; known ones validate below.
-      return { kind: row.kind, meta };
+      return { kind: row.kind, target: row.target, meta };
     });
 }
 
@@ -197,6 +197,17 @@ export function checkDeployment(
           report(
             'incompatible-cron-options',
             'A cron handler explicitly requests options incompatible with Cloudflare UTC delivery.',
+          );
+        }
+        // `vela entrypoint list` marks a job that declares guards, and one that
+        // signed ScheduleModule dispatch re-enters through a route instead.
+        if (meta.guards === true && meta.dispatch !== 'signed') {
+          report(
+            'scheduled-job-guards',
+            `Scheduled job ${JSON.stringify(row.target)} declares @UseGuards, but guards do not ` +
+              `run for directly dispatched scheduled jobs — use ScheduleModule.forRoot({ ` +
+              `dispatch: { kind: 'signed', ... } }) or remove the guard. The Worker refuses ` +
+              'to run it on every trigger.',
           );
         }
         const ambiguity = cronDialectAmbiguity(cron);

@@ -95,7 +95,7 @@ export class DeployCheckCommand extends Command {
     category: 'Deployment',
     description: 'Check an explicit Wrangler target against a saved entrypoint snapshot.',
     details:
-      'Read-only: no app bootstrap, custom build, credential loading or upload. Compares cron triggers, queue producers and consumers, and WebSocket Durable Object bindings. Wrangler remains the deployment tool. The suggested next step runs in the Wrangler file directory. For a project the Cloudflare Vite plugin builds (a vite.config.* beside the Wrangler file that references @cloudflare/vite-plugin, or the .wrangler/deploy/config.json redirect a Vite build writes), it builds the environment with Vite and dry-runs that build with the same --env, since `wrangler deploy --config` would bundle the source with esbuild, which emits no decorator metadata.',
+      'Read-only: no app bootstrap, custom build, credential loading or upload. Compares cron triggers, queue producers and consumers, and WebSocket Durable Object bindings, and rejects directly dispatched cron jobs that declare guards. Wrangler remains the deployment tool. The suggested next step runs in the Wrangler file directory. For a project the Cloudflare Vite plugin builds (a vite.config.* beside the Wrangler file that references @cloudflare/vite-plugin, or the .wrangler/deploy/config.json redirect a Vite build writes), it builds the environment with Vite and dry-runs that build with the same --env, since `wrangler deploy --config` would bundle the source with esbuild, which emits no decorator metadata.',
     examples: [
       [
         'Check staging',

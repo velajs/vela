@@ -106,7 +106,14 @@ so declare `{ dialect: 'cloudflare' }`; `{ dialect: 'unix' }` is only for
 Node-only jobs, which are not deployed as Workers. `schedule:interval` fails with
 `unsupported-interval` because Workers cron delivery does not drive interval
 timers. At runtime the Cloudflare adapter only reports these through the
-diagnostics policy (see [scheduling](scheduling.md#workers-cron-triggers)). A
+diagnostics policy (see [scheduling](scheduling.md#workers-cron-triggers)).
+A `@Cron` job that declares `@UseGuards` on its class, method or module fails
+with `scheduled-job-guards` unless `ScheduleModule.forRoot({ dispatch: { kind:
+'signed', ... } })` re-enters a signed route for it: guards do not run for
+directly dispatched scheduled jobs, so the Worker refuses to run such a job on
+every trigger. `vela entrypoint list --json` marks those rows with
+`guards: true`, and every scheduled row with `dispatch: 'signed'` under signed
+dispatch. A
 snapshot that still lists the removed `cf:scheduled`, `cf:vela-cron` or
 `cf:queue:producer` kinds, or a `cf:queue:module` consumer mapping, was made by
 an older CLI and fails with `stale-entrypoint-snapshot`: regenerate it.

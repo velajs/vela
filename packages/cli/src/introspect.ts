@@ -1,5 +1,10 @@
-import type { VelaApplication } from '@velajs/vela';
-import { describeToken, getEntrypointKinds } from '@velajs/vela';
+import type { Entrypoint, VelaApplication } from '@velajs/vela';
+import {
+  SCHEDULE_DISPATCH,
+  describeToken,
+  getEntrypointKinds,
+  scheduledJobComponents,
+} from '@velajs/vela';
 import type { ModuleDescription, RouteDescription } from '@velajs/vela';
 
 /** One row of `vela route list`. */
@@ -115,6 +120,31 @@ function safeMeta(meta: unknown): string {
 }
 
 /**
+ * A scheduled job's metadata, plus what `vela deploy check` verifies about its
+ * dispatch: `guards: true` when the job declares `@UseGuards` on its class,
+ * method or module (a directly dispatched job that does is refused), and
+ * `dispatch: 'signed'` when `ScheduleModule` re-enters a signed route instead.
+ */
+function scheduleMeta(app: VelaApplication, ep: Entrypoint, signed: () => boolean): unknown {
+  const { meta, methodName } = ep;
+  if (
+    !ep.kind.startsWith('schedule:') ||
+    methodName === undefined ||
+    typeof meta !== 'object' ||
+    meta === null
+  ) {
+    return meta;
+  }
+  const job = { ...ep, meta: { methodName: String(methodName) } };
+  const guards = scheduledJobComponents(app.getContainer(), job).includes('@UseGuards');
+  return {
+    ...meta,
+    ...(guards ? { guards: true } : {}),
+    ...(signed() ? { dispatch: 'signed' } : {}),
+  };
+}
+
+/**
  * Every DECLARED entrypoint kind (from the global kind store — includes kinds
  * with zero entries) joined with the app's entries. Metadata-only entries of
  * lazy modules list fine; nothing materializes.
@@ -124,6 +154,11 @@ export function collectEntrypoints(app: VelaApplication): EntrypointRow[] {
   const declared = getEntrypointKinds().map((k: { kind: string }) => k.kind);
   const populated = app.entrypoints.kinds();
   const kinds = [...new Set([...declared, ...populated])];
+  const container = app.getContainer();
+  let signed: boolean | undefined;
+  const signedDispatch = () =>
+    (signed ??=
+      container.has(SCHEDULE_DISPATCH) && container.resolve(SCHEDULE_DISPATCH).kind === 'signed');
 
   for (const kind of kinds) {
     const entries = app.entrypoints.ofKind(kind);
@@ -133,7 +168,11 @@ export function collectEntrypoints(app: VelaApplication): EntrypointRow[] {
     }
     for (const ep of entries) {
       const method = ep.methodName !== undefined ? `#${String(ep.methodName)}` : '';
-      rows.push({ kind, target: `${describeToken(ep.token)}${method}`, meta: safeMeta(ep.meta) });
+      rows.push({
+        kind,
+        target: `${describeToken(ep.token)}${method}`,
+        meta: safeMeta(scheduleMeta(app, ep, signedDispatch)),
+      });
     }
   }
   return rows;

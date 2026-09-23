@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Cron, Injectable, Module, VelaFactory } from '@velajs/vela';
+import { Cron, Injectable, Module, ScheduleModule, UseGuards, VelaFactory } from '@velajs/vela';
 import { Process, Processor, QueueModule, type QueueDriver } from '@velajs/vela/queue';
 import { collectEntrypoints } from '../introspect.js';
 import { checkDeployment } from './deploy-check.plan.js';
@@ -541,6 +541,73 @@ describe('deployment alignment', () => {
         message: expect.stringMatching(new RegExp(`${kind}.*regenerate`, 's')),
       }),
     ]);
+  });
+
+  it('rejects a directly dispatched cron job that declares guards', () => {
+    const trigger = config({ triggers: { crons: ['0 3 * * *'] } });
+    const guarded = { expression: '0 3 * * *', dialect: 'cloudflare', guards: true };
+    expect(checkDeployment(trigger, 'staging', [row('schedule:cron', guarded)]).errors).toEqual([
+      {
+        code: 'scheduled-job-guards',
+        message: expect.stringMatching(
+          /"Jobs#run" declares @UseGuards, but guards do not run for directly dispatched scheduled jobs — use ScheduleModule\.forRoot\(\{ dispatch: \{ kind: 'signed', \.\.\. \} \}\) or remove the guard/,
+        ),
+      },
+    ]);
+    expect(
+      checkDeployment(trigger, 'staging', [
+        row('schedule:cron', { ...guarded, dispatch: 'signed' }),
+      ]).errors,
+    ).toEqual([]);
+  });
+
+  it('checks the guards of scheduled jobs in an actual application', async () => {
+    class Allow {
+      canActivate(): boolean {
+        return true;
+      }
+    }
+    @Injectable()
+    @UseGuards(Allow)
+    class Jobs {
+      @Cron('0 3 * * *', { dialect: 'cloudflare' })
+      nightly() {}
+    }
+    @Injectable()
+    class Open {
+      @Cron('0 4 * * *', { dialect: 'cloudflare' })
+      early() {}
+    }
+    /* oxlint-disable typescript/no-extraneous-class -- The decorated class is the module's identity. */
+    @Module({ providers: [Jobs, Open] })
+    class DirectModule {}
+    @Module({
+      imports: [
+        ScheduleModule.forRoot({
+          dispatch: { kind: 'signed', target: () => ({ path: '/jobs' }) },
+        }),
+      ],
+      providers: [Jobs, Open],
+    })
+    class SignedModule {}
+    /* oxlint-enable typescript/no-extraneous-class */
+    const trigger = config({ triggers: { crons: ['0 3 * * *', '0 4 * * *'] } });
+    for (const [root, codes] of [
+      [DirectModule, ['scheduled-job-guards']],
+      [SignedModule, []],
+    ] as const) {
+      // eslint-disable-next-line no-await-in-loop -- one application at a time
+      const app = await VelaFactory.create(root, { diagnostics: 'silent' });
+      try {
+        const snapshot = JSON.parse(JSON.stringify(collectEntrypoints(app)));
+        expect(
+          checkDeployment(trigger, 'staging', snapshot).errors.map((error) => error.code),
+        ).toEqual(codes);
+      } finally {
+        // eslint-disable-next-line no-await-in-loop -- one application at a time
+        await app.close();
+      }
+    }
   });
 
   it('does not deduplicate multiple handlers into a false trigger mismatch', () => {
