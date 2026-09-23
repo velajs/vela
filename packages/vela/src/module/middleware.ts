@@ -4,7 +4,8 @@ import type { Constructor, Type } from '../registry/types';
 
 /**
  * A middleware path target, resolved under the global prefix: literal and
- * `:name` segments, optionally ending in `*`, `{*name}`, `*name` or `(.*)`.
+ * `:name` segments, optionally ending in `*`, `{*name}`, `*name` or `(.*)`
+ * (read as `{*name}` in `forRoutes()` and as `*name` in `exclude()`).
  * Other pattern syntax, such as `{regex}` constraints or optional `?`
  * segments, fails the route build.
  */

@@ -96,8 +96,10 @@ function targetPattern(next: () => number): string {
   return next() % 2 === 0 && !path.startsWith('/') ? `/${path}` : path;
 }
 
-// '*', '/*' and '{*name}' alone match every path, never under the prefix.
+// '*', '/*' and '{*name}' alone match every path, never under the prefix,
+// and so does '(.*)' in forRoutes(), which Nest 11 reads as '{*path}'.
 const EVERY_PATH = /^\/?(?:\*|\{\*\w+\})$/;
+const EVERY_PATH_FOR_ROUTES = /^\/?(?:\*|\{\*\w+\}|\(\.\*\))$/;
 
 // A request path shaped like `pattern` half the time, random otherwise.
 function requestPath(next: () => number, pattern: string, prefix: string): string {
@@ -118,16 +120,19 @@ function requestPath(next: () => number, pattern: string, prefix: string): strin
 // The Hono patterns whose dispatch a target means. An exact target is its
 // own pattern, with the global prefix joined as routes join it. A trailing
 // '*' or '{*name}' covers the parent path and every path beneath it, a
-// trailing '*name' or '(.*)' one or more characters beneath it, and a
-// forRoutes() target also covers the paths beneath it. Hono's RegExpRouter
-// stops a trailing '*' at a decoded line terminator, while its TrieRouter does
-// not, so the paths beneath are also written ':rest{[\s\S]+}'.
+// trailing '*name' one or more characters beneath it, and a forRoutes()
+// target also covers the paths beneath it. A trailing '(.*)' is '{*name}' in
+// forRoutes(), as Nest 11 reads it, and '*name' in exclude(). Hono's
+// RegExpRouter stops a trailing '*' at a decoded line terminator, while its
+// TrieRouter does not, so the paths beneath are also written ':rest{[\s\S]+}'.
 function referencePatterns(target: string, prefix: string, descendants: boolean): string[] {
   const written = `${prefix.replace(/\/$/, '')}/${target.replace(/^\//, '')}`;
   const tail = /\/(?:\*|\{\*rest\})$/.test(written)
     ? '*'
     : /\/(?:\*rest|\(\.\*\))$/.test(written)
-      ? '+'
+      ? descendants && written.endsWith('(.*)')
+        ? '*'
+        : '+'
       : descendants
         ? '*'
         : '';
@@ -366,10 +371,10 @@ describe('path targets decide as Hono dispatches their patterns on every router'
     for (let round = 0; round < 240; round += 1) {
       const prefix = pick(next, ['', '/api']);
       const target = next() % 12 === 0 ? pick(next, ['*', '/*', '{*splat}']) : targetPattern(next);
-      const everyPath = EVERY_PATH.test(target);
       const method = pick(next, TARGET_METHODS);
-      const isAbsolute = !everyPath && next() % 4 === 0;
+      const isAbsolute = !EVERY_PATH.test(target) && next() % 4 === 0;
       const exclude = next() % 2 === 0;
+      const everyPath = (exclude ? EVERY_PATH : EVERY_PATH_FOR_ROUTES).test(target);
       const routeSet = pick(next, ROUTE_SETS);
       const [bases, requestBases, createParent = () => new Hono<VelaHonoEnv>()] = pick(
         next,

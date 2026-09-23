@@ -1174,13 +1174,16 @@ export class RouteManager {
 
   // A path target under the global prefix unless it is absolute, covering the
   // paths beneath it for forRoutes(). `'*'`, `'/*'` and `'{*splat}'` match
-  // every path, never under the prefix.
+  // every path, never under the prefix. Nest 11 reads a trailing `(.*)` as
+  // `{*path}`, so in forRoutes() it also covers its parent path, and a lone
+  // `(.*)` matches every path; exclude() keeps the strict reading.
   private resolveTarget(
     { path, method = HttpMethod.ALL, absolute }: RouteInfo,
     forRoutes: boolean,
   ): PathTarget {
+    const legacy = forRoutes && path.endsWith('(.*)');
     let target = parseTarget(path);
-    if (!target.parts.length && target.tail === '*') return { method };
+    if (!target.parts.length && (legacy || target.tail === '*')) return { method };
     const prefix = this.globalPrefix.replace(/\/+$/, '');
     if (prefix && !absolute) {
       const written = `/${path.replace(/^\//, '')}`;
@@ -1201,7 +1204,7 @@ export class RouteManager {
     return {
       method,
       target:
-        forRoutes && !tail
+        forRoutes && (!tail || legacy)
           ? { parts: parts.at(-1) === '' ? parts.slice(0, -1) : parts, tail: '*' }
           : target,
     };

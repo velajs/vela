@@ -1329,7 +1329,7 @@ describe('Nest wildcard targets', () => {
     }
   }
 
-  it.each(['cats/*path', 'cats/(.*)'])(
+  it.each(['cats/*path'])(
     "translates '%s' to a wildcard that needs at least one segment below /cats",
     async (target) => {
       const request = await createApp(
@@ -1346,7 +1346,9 @@ describe('Nest wildcard targets', () => {
     },
   );
 
-  it.each(['cats/{*splat}', 'cats/*'])(
+  // Nest 11 rewrites a trailing '(.*)' to '{*path}', so forRoutes() covers
+  // the parent path with it, while exclude() keeps the strict reading below.
+  it.each(['cats/{*splat}', 'cats/*', 'cats/(.*)'])(
     "translates '%s' to a trailing Hono wildcard that also matches /cats",
     async (target) => {
       const request = await createApp(
@@ -1375,6 +1377,39 @@ describe('Nest wildcard targets', () => {
       expect(await request('GET', '/cats/a/1/toys')).toBe(200);
       expect(await request('GET', '/dogs/1')).toBe(200);
       expect(seen).toEqual(['GET /cats', 'GET /dogs/1']);
+    },
+  );
+
+  it.each(
+    ['(.*)', '/(.*)'].flatMap((target) => [
+      [target, ''],
+      [target, '/api'],
+    ]),
+  )(
+    "reads a lone forRoutes('%s') as every request, root included (prefix '%s')",
+    async (target, prefix) => {
+      @Controller()
+      class RootController {
+        @Get()
+        index() {
+          return { ok: true };
+        }
+
+        @Get('cats')
+        cats() {
+          return { ok: true };
+        }
+      }
+
+      const request = await createApp([RootController], forRoutes(target), {
+        globalPrefix: prefix,
+        diagnostics: 'throw',
+      });
+
+      // The root route is served at '/api/' under the prefix.
+      expect(await request('GET', `${prefix}/`)).toBe(200);
+      expect(await request('GET', `${prefix}/cats`)).toBe(200);
+      expect(seen).toEqual([`GET ${prefix}/`, `GET ${prefix}/cats`]);
     },
   );
 

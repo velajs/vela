@@ -112,13 +112,18 @@ build. The grammar:
   in `forRoutes()`.
 - The last segment may be `*` or Nest's `{*name}`, which match the parent path
   and every path beneath it: `cats/*` matches `/cats`, `/cats/` and
-  `/cats/1/toys`. It may also be Nest's `*name` or `(.*)`, which match one or
-  more characters beneath the parent but not the parent itself:
+  `/cats/1/toys`. It may also be Nest's `*name`, which matches one or more
+  characters beneath the parent but not the parent itself:
   `exclude('users/*id')` still runs the middleware on `/users`.
+- A trailing `(.*)` reads as `{*name}` in `forRoutes()`, as Nest 11 rewrites
+  it, so `forRoutes('cats/(.*)')` also covers `/cats` and a lone
+  `forRoutes('(.*)')` matches every request. In `exclude()` it reads as
+  `*name`, so `exclude('cats/(.*)')` still runs the middleware on `/cats`.
 - A trailing `/` is a segment of its own, so `exclude('cats/')` skips `/cats/`
   but not `/cats`. `forRoutes('cats/')` covers the same paths as
   `forRoutes('cats')`.
-- `'*'`, `'/*'` and `'{*splat}'` match every request and never get the prefix.
+- `'*'`, `'/*'` and `'{*splat}'` match every request and never get the prefix,
+  as does a lone `'(.*)'` in `forRoutes()`.
 
 Any other syntax fails the build with its cause, instead of matching whatever
 one of Hono's routers makes of it:

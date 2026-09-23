@@ -32,7 +32,8 @@ const WILDCARD =
  * Parses a target: literal segments, matched exactly, and `:name` segments
  * whose name is an identifier. The last segment may instead be `*` or
  * `{*name}` (the parent path and every path beneath it) or `*name` or `(.*)`
- * (one or more characters beneath the parent). A trailing `/` is a segment of
+ * (one or more characters beneath the parent; `forRoutes()` widens a trailing
+ * `(.*)` to its parent, as Nest 11 reads it). A trailing `/` is a segment of
  * its own. Throws, naming the cause, for a `{regex}` constraint, an optional
  * `?`, a wildcard before the last segment, a parameter name that is not an
  * identifier, a `*` or `:` inside a segment, any other parentheses or braces,
