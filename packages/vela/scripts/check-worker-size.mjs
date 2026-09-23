@@ -16,6 +16,7 @@ const repositoryRoot = resolve(scriptDirectory, '..');
 const fixturePath = resolve(scriptDirectory, 'fixtures', 'worker-size-entry.ts');
 const wranglerConfigPath = resolve(scriptDirectory, 'fixtures', 'wrangler.worker-size.toml');
 const baselinePath = resolve(repositoryRoot, 'worker-size.json');
+const distDirectory = resolve(repositoryRoot, 'dist');
 const update = process.argv.includes('--update');
 const rawUploadLimitBytes = 64 * 1024 * 1024;
 const gzipUploadLimitBytes = 3 * 1024 * 1024;
@@ -58,7 +59,7 @@ function resolveWranglerBin() {
   return resolve(dirname(manifestPath), binTarget);
 }
 
-function bundleWorker(outputDirectory) {
+function bundleWorker(outputDirectory, metafilePath) {
   const result = spawnSync(
     process.execPath,
     [
@@ -69,6 +70,8 @@ function bundleWorker(outputDirectory) {
       wranglerConfigPath,
       '--outdir',
       outputDirectory,
+      '--metafile',
+      metafilePath,
       '--minify',
     ],
     {
@@ -95,16 +98,46 @@ function bundleWorker(outputDirectory) {
   }
 }
 
+// esbuild names metafile inputs relative to Wrangler's project root, the
+// directory holding the Wrangler config. Returns the package's dist modules
+// in the bundle, as package-relative paths such as `dist/factory.js`.
+function bundledPackageModules(metafilePath) {
+  let metafile;
+  try {
+    metafile = JSON.parse(readFileSync(metafilePath, 'utf8'));
+  } catch {
+    fail('Wrangler did not write a readable esbuild metafile');
+  }
+
+  const modules = new Set();
+  for (const output of Object.values(metafile.outputs ?? {})) {
+    for (const input of Object.keys(output.inputs ?? {})) {
+      const inputPath = resolve(dirname(wranglerConfigPath), input);
+      if (inputPath.startsWith(`${distDirectory}${sep}`)) {
+        modules.add(relative(repositoryRoot, inputPath).split(sep).join('/'));
+      }
+    }
+  }
+
+  // A metafile whose paths no longer resolve would make every exclusion pass.
+  if (!modules.has('dist/factory.js')) {
+    fail('could not find dist/factory.js among the modules Wrangler bundled');
+  }
+  return modules;
+}
+
 function measureWorker() {
   if (!existsSync(resolve(repositoryRoot, 'dist', 'index.js'))) {
     fail('dist/index.js is missing; run `pnpm build` first');
   }
   if (!existsSync(baselinePath)) fail('worker-size.json is missing');
 
-  const outputDirectory = mkdtempSync(resolve(tmpdir(), 'vela-worker-size-'));
+  const workDirectory = mkdtempSync(resolve(tmpdir(), 'vela-worker-size-'));
+  const outputDirectory = resolve(workDirectory, 'bundle');
+  const metafilePath = resolve(workDirectory, 'metafile.json');
 
   try {
-    bundleWorker(outputDirectory);
+    bundleWorker(outputDirectory, metafilePath);
     const outputPaths = collectOutputFiles(outputDirectory);
     if (outputPaths.length === 0 || !outputPaths.some((path) => path.endsWith('.js'))) {
       fail('Wrangler reported success but emitted no Worker JavaScript');
@@ -120,10 +153,11 @@ function measureWorker() {
       // zlib's default gzip level. Mirror both details so multi-module output
       // stays comparable to the deploy tool and Cloudflare limit.
       gzipBytes: gzipSync(Buffer.concat(files)).byteLength,
+      modules: bundledPackageModules(metafilePath),
       rawBytes: files.reduce((total, contents) => total + contents.byteLength, 0),
     };
   } finally {
-    rmSync(outputDirectory, { force: true, recursive: true });
+    rmSync(workDirectory, { force: true, recursive: true });
   }
 }
 
@@ -139,8 +173,23 @@ function main() {
       fail(`worker-size.json field "${field}" must be a non-negative safe integer`);
     }
   }
+  const excludedModules = baseline.excludedModules ?? [];
+  if (
+    !Array.isArray(excludedModules) ||
+    excludedModules.some((entry) => typeof entry !== 'string' || !entry.startsWith('dist/'))
+  ) {
+    fail('worker-size.json field "excludedModules" must list paths that start with "dist/"');
+  }
+  const staleExclusions = excludedModules.filter(
+    (entry) => !existsSync(resolve(repositoryRoot, entry)),
+  );
+  if (staleExclusions.length > 0) {
+    fail(
+      `worker-size.json#excludedModules names paths the build no longer emits: ${staleExclusions.join(', ')}`,
+    );
+  }
 
-  const { gzipBytes, rawBytes } = measureWorker();
+  const { gzipBytes, modules, rawBytes } = measureWorker();
   const rawCeiling = baseline.rawBytes + baseline.rawAllowanceBytes;
   const gzipCeiling = baseline.gzipBytes + baseline.gzipAllowanceBytes;
 
@@ -160,6 +209,23 @@ function main() {
     fail(
       `Worker exceeds Cloudflare Free's ${kibibytes(gzipUploadLimitBytes)} gzip upload limit; ` +
         'this cannot be accepted by updating the regression baseline',
+    );
+  }
+
+  // The byte budget has headroom, so it cannot notice one feature creeping back
+  // into a Worker that never uses it. Name each such module instead: a module
+  // or directory listed here must stay out of the reference Worker.
+  const unexpectedModules = [...modules].filter((module) =>
+    excludedModules.some((entry) =>
+      entry.endsWith('/') ? module.startsWith(entry) : module === entry,
+    ),
+  );
+  if (unexpectedModules.length > 0) {
+    fail(
+      `the reference Worker bundles ${unexpectedModules.join(', ')}, which ` +
+        'worker-size.json#excludedModules keeps out of a Worker that never uses them. ' +
+        'Look for a new import from the boot path, an eager registration, or a top-level ' +
+        'statement that keeps the module alive.',
     );
   }
 
