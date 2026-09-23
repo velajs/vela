@@ -17,7 +17,7 @@ import type {
   ProviderDefinition,
   Token,
   Type,
-  ZeroArgumentFactory,
+  FactoryInject,
 } from '../container/types';
 
 export type {
@@ -109,10 +109,8 @@ export type ModuleImport = Type | DynamicModule | ForwardRef;
  */
 export type AsyncModuleOptions<T = unknown, Inject extends readonly Token[] = readonly Token[]> = {
   imports?: ModuleImport[];
-} & (
-  | { inject: Inject; useFactory: (...args: InferTokens<Inject>) => T | Promise<T> }
-  | ZeroArgumentFactory<Inject, T | Promise<T>>
-);
+  useFactory: (...args: InferTokens<Inject>) => T | Promise<T>;
+} & FactoryInject<Inject>;
 
 export interface DynamicModule {
   module: Type;

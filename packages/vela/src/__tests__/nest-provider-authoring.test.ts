@@ -110,6 +110,38 @@ describe('zero-argument factories', () => {
     await app.close();
   });
 
+  it('keep literal option types, with or without an empty inject tuple', async () => {
+    type Mode = { mode: 'strict' | 'loose' };
+    const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<Mode>({
+      name: 'LiteralOptions',
+      setup: ({ OPTIONS }) => ({ exports: [OPTIONS] }),
+    });
+    class ModeModule extends ConfigurableModuleClass {}
+    const options: AsyncModuleOptions<Mode> = { useFactory: () => ({ mode: 'strict' }) };
+    const empty: AsyncModuleOptions<Mode> = { inject: [], useFactory: () => ({ mode: 'loose' }) };
+
+    @Injectable()
+    class ModeReader {
+      constructor(@Inject(MODULE_OPTIONS_TOKEN) readonly options: Mode) {}
+    }
+
+    for (const imported of [
+      ModeModule.forRootAsync({ useFactory: () => ({ mode: 'strict' }) }),
+      ModeModule.forRootAsync({ inject: [], useFactory: async () => ({ mode: 'strict' }) }),
+    ]) {
+      @Module({ imports: [imported], providers: [ModeReader] })
+      class AppModule {}
+
+      const app = await VelaFactory.create(AppModule);
+      expect(app.get(ModeReader).options).toEqual({ mode: 'strict' });
+      await app.close();
+    }
+    expect([await options.useFactory(), await empty.useFactory()]).toEqual([
+      { mode: 'strict' },
+      { mode: 'loose' },
+    ]);
+  });
+
   it('throws, naming the token, when a factory declares parameters but no inject', () => {
     expect(() =>
       // @ts-expect-error A factory that declares parameters needs the tokens that supply them.

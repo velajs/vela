@@ -2,11 +2,12 @@ import {
   InjectionToken,
   assertFactoryInject,
   defineProvider,
+  toProviderDefinition,
   type InferTokens,
   type ProviderDefinition,
   type Token,
   type Type,
-  type ZeroArgumentFactory,
+  type FactoryInject,
 } from '../container/types';
 import { Module } from './decorators';
 import type { ComponentType, ComponentTypeMap, DynamicModule } from '../registry/types';
@@ -24,12 +25,10 @@ import { stableHash } from './stable-hash';
 export type LazyProviderSpec<T, Inject extends readonly Token[]> = {
   /** Token under which the memoized thunk `() => T` is provided. */
   provide: InjectionToken<() => T>;
+  useFactory: (...deps: InferTokens<Inject>) => NoInfer<T>;
   /** Memoize the first call's result (default true). */
   memoize?: boolean;
-} & (
-  | { inject: Inject; useFactory: (...deps: InferTokens<Inject>) => NoInfer<T> }
-  | ZeroArgumentFactory<Inject, NoInfer<T>>
-);
+} & FactoryInject<Inject>;
 
 /**
  * Provide a zero-arg thunk `() => T` whose factory runs on FIRST CALL, not at
@@ -48,22 +47,21 @@ export type LazyProviderSpec<T, Inject extends readonly Token[]> = {
 export function lazyProvider<T, const Inject extends readonly Token[] = readonly Token[]>(
   spec: LazyProviderSpec<T, Inject>,
 ): ProviderDefinition {
-  assertFactoryInject(spec.provide, spec.useFactory, spec.inject);
-  const memoize = spec.memoize ?? true;
-  const thunk = (build: () => T): (() => T) => {
-    if (!memoize) return build;
-    let cached: { value: T } | undefined;
-    return () => (cached ??= { value: build() }).value;
-  };
-  if (!spec.inject) {
-    const factory = spec.useFactory;
-    return defineProvider(spec.provide, { useFactory: () => thunk(() => factory()) });
-  }
-  const factory = spec.useFactory;
-  return defineProvider<InjectionToken<() => T>, Inject>(spec.provide, {
-    inject: spec.inject,
-    useFactory: (...deps: InferTokens<Inject>) => thunk(() => factory(...deps)),
-  });
+  const { provide, inject, useFactory, memoize = true } = spec;
+  assertFactoryInject(provide, useFactory, inject);
+  return toProviderDefinition(
+    {
+      provide,
+      inject,
+      useFactory: (...deps: InferTokens<Inject>) => {
+        const build = () => useFactory(...deps);
+        if (!memoize) return build;
+        let cached: { value: T } | undefined;
+        return () => (cached ??= { value: build() }).value;
+      },
+    },
+    'lazyProvider',
+  );
 }
 
 /**

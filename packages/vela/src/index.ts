@@ -81,7 +81,7 @@ export type {
   ProviderLiteral,
   ProviderSnapshot,
   TypedProviderLiteral,
-  ZeroArgumentFactory,
+  FactoryInject,
   ModuleScope,
   ModuleDescription,
   ContainerOptions,

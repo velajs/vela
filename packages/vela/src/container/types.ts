@@ -215,22 +215,22 @@ type ProviderStrategy<T, Inject extends readonly DependencyToken[]> =
       useFactory?: never;
       inject?: never;
     }
-  | {
+  | ({
       useFactory: (...dependencies: InferTokens<Inject>) => NoInfer<T> | Promise<NoInfer<T>>;
-      inject: Inject;
       useValue?: never;
       useClass?: never;
       useExisting?: never;
-    }
-  | ZeroArgumentFactory<Inject, NoInfer<T> | Promise<NoInfer<T>>>;
+    } & FactoryInject<Inject>);
 
 /**
- * A factory without parameters may omit `inject`, unless an explicit
- * dependency tuple says it has parameters.
+ * The `inject` key of a factory. A factory without parameters may omit it,
+ * unless an explicit dependency tuple says it has parameters. Intersected
+ * with one `useFactory` type, so both members share it: the factory's result
+ * stays contextually typed and keeps its literal types.
  */
-export type ZeroArgumentFactory<Inject extends readonly unknown[], R> = [] extends Inject
-  ? { useFactory: () => R; inject?: never; useValue?: never; useClass?: never; useExisting?: never }
-  : never;
+export type FactoryInject<Inject extends readonly unknown[]> =
+  | { inject: Inject }
+  | ([] extends Inject ? { inject?: never } : never);
 
 /** Infer factory dependencies from tokens; all strategies must produce the provided token's value. */
 /** @internal Erasing an invariant token removes the capability to bind a value. */

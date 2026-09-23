@@ -39,5 +39,5 @@ export type {
   UnresolvedDependency,
   UnresolvedDependencyReason,
   TypedProviderLiteral,
-  ZeroArgumentFactory,
+  FactoryInject,
 } from './types';
