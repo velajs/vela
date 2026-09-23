@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   Injectable,
   Inject,
@@ -9,16 +9,11 @@ import {
   REQUEST_CONTEXT,
   RequestContextKey,
   UseGuards,
-  MetadataRegistry,
   createLazyParamDecorator,
   defineProvider,
 } from '@velajs/vela';
 import type { CanActivate, ExecutionContext, OnModuleInit, OnModuleDestroy } from '@velajs/vela';
 import { Test } from '../test.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 // =============================================================================
 // 1. Basic compile + get()

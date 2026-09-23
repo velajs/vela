@@ -7,7 +7,6 @@ import {
   Inject,
   Injectable,
   InjectionToken,
-  MetadataRegistry,
   Module,
   Post,
   Scope,
@@ -45,9 +44,6 @@ import { Process, Processor } from '../queue';
 
 const applications: VelaApplication[] = [];
 
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 afterEach(async () => {
   vi.restoreAllMocks();
   await Promise.allSettled(applications.splice(0).map((app) => app.close()));

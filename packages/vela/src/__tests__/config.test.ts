@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   VelaFactory,
   Controller,
@@ -6,15 +6,10 @@ import {
   Module,
   Injectable,
   Inject,
-  MetadataRegistry,
   ConfigModule,
   ConfigService,
   CONFIG_OPTIONS,
 } from '../index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 describe('ConfigModule', () => {
   describe('ConfigService basic operations', () => {

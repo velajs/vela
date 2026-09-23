@@ -1,21 +1,11 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { VelaFactory, Controller, Get, Module, Injectable, MetadataRegistry } from '../index.js';
+import { describe, it, expect } from 'vitest';
+import { VelaFactory, Controller, Get, Module, Injectable } from '../index.js';
 import {
   EventEmitterModule,
   EventEmitter,
   EventEmitterSubscriber,
   OnEvent,
 } from '../event-emitter/index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-  // Re-register EventEmitterModule metadata after clear — the @Module() decorator
-  // runs once at import time, but MetadataRegistry.clear() wipes it.
-  MetadataRegistry.setModuleOptions(EventEmitterModule, {
-    providers: [EventEmitter, EventEmitterSubscriber],
-    exports: [EventEmitter],
-  });
-});
 
 describe('EventEmitter', () => {
   describe('standalone EventEmitter', () => {

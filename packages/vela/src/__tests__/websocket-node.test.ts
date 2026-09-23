@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { VelaFactory, Module, MetadataRegistry } from '../index.js';
+import { describe, it, expect } from 'vitest';
+import { VelaFactory, Module } from '../index.js';
 import {
   WebSocketModule,
   WebSocketGateway,
@@ -23,8 +23,6 @@ import type {
 import { NodeWsClient, registerWebSocketGateways, redis } from '../websocket-node/index.js';
 import type { RedisPubSubClient } from '../websocket-node/index.js';
 import type { WSContext, WSEvents, UpgradeWebSocket } from 'hono/ws';
-
-beforeEach(() => MetadataRegistry.clear());
 
 class FakeWSContext {
   readonly sent: string[] = [];

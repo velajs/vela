@@ -3297,7 +3297,7 @@ declare class MetadataRegistry {
   static setReflectMetadata(target: object, key: string, value: unknown, propertyKey?: string | symbol): void;
   static getReflectMetadata<T = unknown>(target: object, key: string, propertyKey?: string | symbol): T | undefined;
   static getParamTypes(target: object, propertyKey?: string | symbol): unknown[] | undefined;
-  static clear(): void;
+
   static reset(): void;
 }
 

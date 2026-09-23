@@ -1,5 +1,5 @@
 import { defineProvider } from '../container/types';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   VelaFactory,
   Module,
@@ -7,7 +7,6 @@ import {
   Controller,
   Post,
   Injectable,
-  MetadataRegistry,
   SignedInvocation,
   URL_SIGNING_SECRET,
 } from '../index.js';
@@ -26,10 +25,6 @@ const SECRET = 'schedule-signed-dispatch-secret';
 function signedTo(path: string): ScheduleDispatchMode {
   return { kind: 'signed', target: () => ({ path }) };
 }
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 /** Poll until `predicate` holds or the deadline passes (real timers). */
 async function waitUntil(predicate: () => boolean, timeoutMs = 2000): Promise<void> {

@@ -1,7 +1,6 @@
 import {
   Controller,
   Get,
-  MetadataRegistry,
   UseGuards,
   getTrustedRequestIdentity,
   setTrustedRequestIdentity,
@@ -9,7 +8,7 @@ import {
 import { Test } from '@velajs/testing';
 import { betterAuth } from 'better-auth';
 import { memoryAdapter } from 'better-auth/adapters/memory';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { AuthGuard, BetterAuthModule, BetterAuthService, CurrentUser } from '../index';
 import { actingAs } from '../testing';
 
@@ -41,9 +40,6 @@ class MeController {
 }
 
 describe('actingAs (@velajs/better-auth/testing)', () => {
-  beforeEach(() => MetadataRegistry.clear());
-  afterEach(() => MetadataRegistry.clear());
-
   it('mints a signed session cookie a guarded route accepts', async () => {
     const auth = makeRealAuth();
     const moduleRef = await Test.createTestingModule({
@@ -124,9 +120,6 @@ describe('actingAs (@velajs/better-auth/testing)', () => {
 });
 
 describe('logout identity lifecycle', () => {
-  beforeEach(() => MetadataRegistry.clear());
-  afterEach(() => MetadataRegistry.clear());
-
   it('the public sign-out handler clears request identity and invalidates the real session', async () => {
     const auth = makeRealAuth();
     const moduleRef = await Test.createTestingModule({

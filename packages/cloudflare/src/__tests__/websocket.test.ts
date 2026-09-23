@@ -1,11 +1,10 @@
 import { setTrustedRequestIdentity } from '@velajs/vela';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   Inject,
   InjectionToken,
   MemoryNonceStore,
   Module,
-  MetadataRegistry,
   REQUEST_CONTEXT,
   defineProvider,
 } from '@velajs/vela';
@@ -38,8 +37,6 @@ import { VelaWebSocketDurableObject } from '../websocket/websocket.durable-objec
 import { roomTag, connTag, durableObjectRoomName, roomToDurableId } from '../websocket/room-id';
 import { broadcastToRoom } from '../websocket/broadcast';
 import type { DoStateLike, WsLike } from '../websocket/do-state';
-
-beforeEach(() => MetadataRegistry.clear());
 
 // ---- fakes for the Durable Object runtime ----
 

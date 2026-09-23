@@ -1,9 +1,9 @@
 import { sessionFixture } from './fixtures';
 import { PermissionGuard, RequirePermission } from '@velajs/authz/vela';
-import { Controller, Get, MetadataRegistry, Module, UseGuards, VelaFactory } from '@velajs/vela';
+import { Controller, Get, Module, UseGuards, VelaFactory } from '@velajs/vela';
 import { AuthzModule } from '@velajs/authz/vela';
 import { defineRole } from '@velajs/authz';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { AuthGuard, BetterAuthModule, OptionalAuth } from '../index';
 import type { BetterAuthInstance } from '../better-auth.types';
 
@@ -17,9 +17,6 @@ function mockAuth(session: ReturnType<typeof sessionWithRole> | null): BetterAut
 }
 
 describe('PermissionGuard (e2e)', () => {
-  beforeEach(() => MetadataRegistry.clear());
-  afterEach(() => MetadataRegistry.clear());
-
   it('allows (200) when the session user has a role granting the required permission', async () => {
     const auth = mockAuth(sessionWithRole('editor'));
 

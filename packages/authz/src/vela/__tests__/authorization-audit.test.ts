@@ -1,10 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   APP_GUARD,
   Controller,
   Get,
   Injectable,
-  MetadataRegistry,
   Module,
   Scope,
   UseGuards,
@@ -25,7 +24,6 @@ import {
 } from '../index';
 import { createAuthz } from '../../authz';
 
-beforeEach(() => MetadataRegistry.clear());
 function route(target: new () => object, path: string) {
   Controller(path)(target);
   Get()(target.prototype, 'read', Object.getOwnPropertyDescriptor(target.prototype, 'read')!);

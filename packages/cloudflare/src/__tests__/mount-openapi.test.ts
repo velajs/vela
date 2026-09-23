@@ -1,12 +1,8 @@
 const env = {};
-import { describe, it, expect, beforeEach } from 'vitest';
-import { Controller, Get, Module, MetadataRegistry } from '@velajs/vela';
+import { describe, it, expect } from 'vitest';
+import { Controller, Get, Module } from '@velajs/vela';
 import type { OpenApiDocument } from '@velajs/vela';
 import { createCloudflareApp } from '../cloudflare-factory';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 function buildMinimalDoc(): OpenApiDocument {
   return {

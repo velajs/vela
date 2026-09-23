@@ -1,11 +1,10 @@
 import { defineProvider } from '../container/types';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   APP_EXCEPTION_HANDLER,
   CanActivate,
   Inject,
   Injectable,
-  MetadataRegistry,
   Module,
   Scope,
   UseFilters,
@@ -32,10 +31,6 @@ import {
   queueToken,
 } from '../queue/index.js';
 import type { InlineQueueDriver, QueueDriver, QueueJob } from '../queue/index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 const settle = async (): Promise<void> => {
   await new Promise<void>((resolve) => setTimeout(resolve, 0));

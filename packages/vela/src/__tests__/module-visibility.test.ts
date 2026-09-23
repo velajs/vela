@@ -1,5 +1,5 @@
 import { defineProvider } from '../container/types';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   Controller,
   Get,
@@ -7,7 +7,6 @@ import {
   Inject,
   Injectable,
   InjectionToken,
-  MetadataRegistry,
   Module,
   ModuleRef,
   ModuleVisibilityError,
@@ -16,10 +15,6 @@ import {
 } from '../index.js';
 import { Container } from '../internal.js';
 import type { DynamicModule } from '../index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 describe('Module visibility', () => {
   it('rejects cross-module resolution when token is not exported', async () => {

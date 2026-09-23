@@ -5,7 +5,6 @@ import { MAX_LIVE_FRAME_BYTES, encodeLiveFrame } from '@velajs/live-protocol';
 import {
   Injectable,
   InjectionToken,
-  MetadataRegistry,
   Module,
   UseGuards,
   VelaFactory,
@@ -118,8 +117,6 @@ const subFrame = (
   });
 
 describe('LiveModule (tag-based live queries)', () => {
-  beforeEach(() => MetadataRegistry.clear());
-
   async function makeTodoApp() {
     const todos: Array<{ id: string; text: string; done?: boolean }> = [
       { id: 't1', text: 'first' },
@@ -348,8 +345,6 @@ describe('LiveModule (tag-based live queries)', () => {
   });
 
   it('validates args at subscribe through the shared definition', async () => {
-    MetadataRegistry.clear();
-
     @LiveResolver()
     @Injectable()
     class Strict {
@@ -375,8 +370,6 @@ describe('LiveModule (tag-based live queries)', () => {
   });
 
   it('runs resolver-tier guards at subscribe and rejects with a forbidden error frame', async () => {
-    MetadataRegistry.clear();
-
     @Injectable()
     class DenyGuard implements CanActivate {
       canActivate() {
@@ -732,8 +725,6 @@ describe('LiveModule (tag-based live queries)', () => {
   });
 
   it('rejects app gateways subscribing to the reserved $ namespace', async () => {
-    MetadataRegistry.clear();
-
     @WebSocketGateway({ path: '/ws' })
     class Sneaky {
       @SubscribeMessage('$live')
@@ -764,7 +755,6 @@ describe('LiveEngine — initial-subscribe resolver errors are redacted (Task 10
   let errorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    MetadataRegistry.clear();
     errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
@@ -862,8 +852,6 @@ describe('LiveEngine — initial-subscribe resolver errors are redacted (Task 10
 });
 
 describe('LiveModule application resource factories', () => {
-  beforeEach(() => MetadataRegistry.clear());
-
   it('keeps driver sinks and cursor logs separate when the same module starts twice', async () => {
     const createDriver = vi.fn(localLive);
     const createLog = vi.fn(() => new InMemoryCursorLog());

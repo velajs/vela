@@ -1,6 +1,5 @@
-import { MetadataRegistry } from '@velajs/vela';
 import { Test } from '@velajs/testing';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { StorageModule } from '../index';
 import type { StorageDriver, StorageHttpOptions } from '../index';
 import { StorageError } from '../storage.error';
@@ -83,9 +82,6 @@ async function createMultipart(
 }
 
 describe('StorageController', () => {
-  beforeEach(() => MetadataRegistry.clear());
-  afterEach(() => MetadataRegistry.clear());
-
   it('default-deny: rejects when no authorizer is configured', async () => {
     const app = await appWith({});
     const res = await app.request(

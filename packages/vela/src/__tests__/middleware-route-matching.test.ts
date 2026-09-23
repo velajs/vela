@@ -11,7 +11,6 @@ import {
   Get,
   HttpMethod,
   Injectable,
-  MetadataRegistry,
   Module,
   Post,
   VelaFactory,
@@ -70,7 +69,6 @@ function forRoutes(...routes: Array<string | Constructor | RouteInfo>) {
 }
 
 beforeEach(() => {
-  MetadataRegistry.clear();
   seen = [];
 });
 

@@ -19,7 +19,6 @@ import {
 import { SchemaValidationError } from '../validation/standard-schema';
 
 beforeEach(() => {
-  MetadataRegistry.clear();
   MetadataRegistry.setModuleOptions(EventEmitterModule, {
     lazy: true,
     providers: [EventEmitter, EventEmitterSubscriber, EventDispatcher],

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { Controller, MetadataRegistry, Module, VelaFactory, defineProvider } from '@velajs/vela';
+import { Controller, Module, VelaFactory, defineProvider } from '@velajs/vela';
 import { LiveInvalidation } from '@velajs/vela/live';
 import type { InvalidationCommand } from '@velajs/vela/live';
 import { Crud } from '../crud.decorator';
@@ -66,7 +66,6 @@ const json = (method: string, body: unknown) => ({
 });
 
 beforeEach(() => {
-  MetadataRegistry.clear();
   vi.restoreAllMocks();
 });
 

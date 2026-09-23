@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   VelaFactory,
   Controller,
@@ -8,7 +8,6 @@ import {
   Module,
   Injectable,
   Inject,
-  MetadataRegistry,
   UseInterceptors,
 } from '../index.js';
 import {
@@ -20,10 +19,6 @@ import {
   CacheTTL,
   CACHE_MANAGER,
 } from '../cache/index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 describe('CacheModule', () => {
   it('should cache GET responses (handler called once for same URL)', async () => {

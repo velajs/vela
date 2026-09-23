@@ -6,17 +6,12 @@ import {
   Scope,
   REQUEST_CONTEXT,
   RequestContextKey,
-  MetadataRegistry,
   getRequestContainer,
   type RequestContext,
 } from '@velajs/vela';
 import { Seeder, SeederModule, type ISeeder } from '@velajs/vela/seeder';
 import { Test } from '../test.js';
 import type { TestDatabase } from '../db/test-database.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 // ---------------------------------------------------------------------------
 // runInRequestScope

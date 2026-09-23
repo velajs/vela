@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { Module, MetadataRegistry } from '@velajs/vela';
+import { describe, it, expect } from 'vitest';
+import { Module } from '@velajs/vela';
 import {
   WebSocketModule,
   WebSocketGateway,
@@ -12,10 +12,6 @@ import { Test } from '../test.js';
 // Side-effect import: registers the Node WebSocket transport connector. Safe to
 // import even without the optional peers — they load lazily at connect() time.
 import '../websocket-node/index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 // Gate the live-connect suite on the optional Node peers being installed.
 let peersAvailable = false;

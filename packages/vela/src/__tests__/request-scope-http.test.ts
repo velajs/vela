@@ -1,20 +1,7 @@
 import { defineProvider } from '../container/types';
-import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  APP_GUARD,
-  Controller,
-  Get,
-  Injectable,
-  MetadataRegistry,
-  Module,
-  Scope,
-  VelaFactory,
-} from '../index.js';
+import { describe, it, expect } from 'vitest';
+import { APP_GUARD, Controller, Get, Injectable, Module, Scope, VelaFactory } from '../index.js';
 import type { CanActivate, ExecutionContext } from '../index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 describe('HTTP request scope', () => {
   it('should resolve request-scoped APP_GUARD providers per request', async () => {
@@ -47,7 +34,7 @@ describe('HTTP request scope', () => {
       providers: [
         RequestContextValue,
         RequestScopedGuard,
-        defineProvider(APP_GUARD, {useExisting: RequestScopedGuard}),
+        defineProvider(APP_GUARD, { useExisting: RequestScopedGuard }),
       ],
       controllers: [TestController],
     })

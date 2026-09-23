@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   VelaFactory,
   Module,
@@ -8,12 +8,7 @@ import {
   Inject,
   Scope,
   forwardRef,
-  MetadataRegistry,
 } from '../index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 describe('request-scope bubbling', () => {
   it('rebuilds a singleton controller per request when it depends on a request-scoped provider', async () => {

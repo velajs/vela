@@ -1,14 +1,10 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { logger } from 'hono/logger';
 import { secureHeaders } from 'hono/secure-headers';
 import { requestId } from 'hono/request-id';
 import { etag } from 'hono/etag';
 import { bodyLimit } from 'hono/body-limit';
-import { VelaFactory, Controller, Get, Post, Module, MetadataRegistry } from '../index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
+import { VelaFactory, Controller, Get, Post, Module } from '../index.js';
 
 @Controller('/test')
 class TestController {
@@ -28,8 +24,6 @@ class AppModule {}
 
 describe('VelaApplication Hono middleware methods', () => {
   it('enableSecureHeaders() adds security headers', async () => {
-    MetadataRegistry.clear();
-
     @Controller('/sec')
     class SecController {
       @Get('/hello')
@@ -52,8 +46,6 @@ describe('VelaApplication Hono middleware methods', () => {
   });
 
   it('enableBodyLimit() returns 413 for oversized body', async () => {
-    MetadataRegistry.clear();
-
     @Controller('/limit')
     class LimitController {
       @Post('/upload')
@@ -79,8 +71,6 @@ describe('VelaApplication Hono middleware methods', () => {
   });
 
   it('enableLogger() does not throw and middleware chain continues', async () => {
-    MetadataRegistry.clear();
-
     @Controller('/log')
     class LogController {
       @Get('/hello')
@@ -103,8 +93,6 @@ describe('VelaApplication Hono middleware methods', () => {
   });
 
   it('enableRequestId() adds x-request-id header', async () => {
-    MetadataRegistry.clear();
-
     @Controller('/rid')
     class RidController {
       @Get('/hello')
@@ -126,8 +114,6 @@ describe('VelaApplication Hono middleware methods', () => {
   });
 
   it('enableEtag() adds etag header', async () => {
-    MetadataRegistry.clear();
-
     @Controller('/etag')
     class EtagController {
       @Get('/hello')
@@ -149,8 +135,6 @@ describe('VelaApplication Hono middleware methods', () => {
   });
 
   it('enableEtag() returns 304 on repeat request with If-None-Match', async () => {
-    MetadataRegistry.clear();
-
     @Controller('/etag2')
     class Etag2Controller {
       @Get('/hello')
@@ -177,8 +161,6 @@ describe('VelaApplication Hono middleware methods', () => {
   });
 
   it('useRawMiddleware() applies arbitrary Hono middleware', async () => {
-    MetadataRegistry.clear();
-
     @Controller('/raw')
     class RawController {
       @Get('/hello')
@@ -208,8 +190,6 @@ describe('VelaApplication Hono middleware methods', () => {
   });
 
   it('factory middleware option applies without rebuild()', async () => {
-    MetadataRegistry.clear();
-
     @Controller('/factory')
     class FactoryController {
       @Get('/hello')
@@ -235,8 +215,6 @@ describe('VelaApplication Hono middleware methods', () => {
   });
 
   it('multiple middleware applied via factory options all work', async () => {
-    MetadataRegistry.clear();
-
     @Controller('/chain')
     class ChainController {
       @Get('/hello')

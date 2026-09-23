@@ -58,11 +58,11 @@ const app = await VelaFactory.create(AppModule, { globalPrefix: '/api' });
 export default app;   // { fetch } handler — runs on Workers, Deno, Bun, Node
 ```
 
-- `VelaFactory.create(rootModule, options?)` is **always async** and returns `Promise<VelaApplication>`.
+- `VelaFactory.create(rootModule, options?)` is **always async** and returns `Promise<VelaApplication>`. The root is a module class or a `DynamicModule` (`AppModule.forRoot(...)`); any module can inject it as the global `ROOT_MODULE`.
 - `VelaCreateOptions`: `globalPrefix?`, `getClientIp?`, `middleware?`, `adapters?` (platform `RuntimeAdapter`s), `env?` (seeds the framework `ENV`), `ambientContainer?` (opt-in AsyncLocalStorage), `diagnostics?`. There is **no** `logger`, `cors`, or `versioning` option, and **no** `app.setGlobalPrefix()` method — set the prefix via the create option, read it with `app.getGlobalPrefix()`.
 - `app.fetch` is the universal handler (`serve({ fetch: app.fetch })` on Node via `@hono/node-server`; `export default app` on edge).
 - `VelaApplication` methods: `get(token)`, `getHonoApp()` (for `.request()` in tests), `describeRoutes()`, `mountOpenApi(opts)`, `useGlobal*(...)`, `materializeLazyModules()`, `entrypoints`, `close(signal?)`, `dispose()`.
-- Convention: examples export an `async function createXApp()` factory (calls `MetadataRegistry.clear()` first for test isolation). The `@velajs/cli` reads a `vela.config.ts` with a `createApp()` factory — Vela itself has no `createApp` API.
+- Convention: examples export an `async function createXApp()` factory. The `@velajs/cli` reads a `vela.config.ts` with a `createApp()` factory — Vela itself has no `createApp` API.
 
 For Cloudflare export `createCloudflareWorker(AppModule)`; it seeds the native environment as the framework `ENV` before bootstrap and isolates applications by environment. Inject bindings with `@InjectEnv()` or `inject: [ENV]`, typed by `wrangler types` (`worker-configuration.d.ts`); never hand-write an environment `InjectionToken`. Read `references/cloudflare.md`. New projects: read `assets/project-scaffold.md`.
 
@@ -197,6 +197,6 @@ Load a reference when the task needs its depth. **This table is the contract** �
 
 **Routes missing from `vela route list`** → Controller not in a module's `controllers`, or the module not imported in the root.
 
-**Stale metadata after Vite HMR** → `MetadataRegistry` is anchored on `globalThis` (`Symbol.for('vela:registry:v1')`) so HMR re-eval reuses one store. In tests call `MetadataRegistry.clear()` between cases.
+**Stale metadata after Vite HMR** → `MetadataRegistry` is anchored on `globalThis` (`Symbol.for('vela:registry:v1')`) so HMR re-eval reuses one store. It holds no application state, so tests need no cleanup between cases.
 
 **Ambient container / `getCurrentContainer()` fails on Cloudflare Workers** → ALS (`ambientContainer: true`) needs `nodejs_als` (or `nodejs_compat`) in `wrangler.toml` compatibility flags. Ambient access is off by default; the per-request child container is the default DI path.

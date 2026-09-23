@@ -1,11 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { VelaFactory, Controller, Get, Module, UseMiddleware, MetadataRegistry } from '../index.js';
+import { describe, it, expect } from 'vitest';
+import { VelaFactory, Controller, Get, Module, UseMiddleware } from '../index.js';
 import type { NestMiddleware } from '../index.js';
 import type { Context, Next } from 'hono';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 describe('Middleware', () => {
   it('should run controller-level middleware before the handler', async () => {

@@ -1,12 +1,11 @@
 import { defineProvider } from '../container/types';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   Controller,
   Get,
   Inject,
   Injectable,
   InjectionToken,
-  MetadataRegistry,
   Module,
   ModuleRef,
   VelaApplication,
@@ -14,10 +13,6 @@ import {
 } from '../index.js';
 import { Container } from '../internal.js';
 import { bootstrap } from '../factory/bootstrap.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 describe('bootstrap()', () => {
   it('returns { container, routeManager, loader } shape', async () => {

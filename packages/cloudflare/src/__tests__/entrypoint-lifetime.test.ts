@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   APP_EXCEPTION_HANDLER,
   Cron,
@@ -7,7 +7,6 @@ import {
   Inject,
   Injectable,
   InjectionToken,
-  MetadataRegistry,
   Module,
   Scope,
   UseGuards,
@@ -33,7 +32,6 @@ function dispatch(
 ) {
   return kind === 'queue' ? app.queue(batch, env, context) : app.scheduled(event, env, context);
 }
-afterEach(() => MetadataRegistry.clear());
 
 describe('native managed entrypoints', () => {
   it.each(kinds)('resolves each owning module asynchronously for %s handlers', async (kind) => {

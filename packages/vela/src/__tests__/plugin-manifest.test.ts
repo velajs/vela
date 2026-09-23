@@ -1,10 +1,9 @@
 import { defineProvider } from '../container/types';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   Inject,
   Injectable,
   InjectionToken,
-  MetadataRegistry,
   Module,
   PLUGIN_REGISTRY_TOKEN,
   PluginRegistry,
@@ -13,10 +12,6 @@ import {
   definePlugin,
 } from '../index.js';
 import type { DynamicModule } from '../index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 describe('Plugin manifest', () => {
   it('definePlugin freezes the manifest', () => {
@@ -129,7 +124,7 @@ describe('Plugin manifest', () => {
     const TOKEN_A = new InjectionToken<string>('TOK_A');
 
     @Module({
-      providers: [defineProvider(TOKEN_A, {useValue: 'from-a'})],
+      providers: [defineProvider(TOKEN_A, { useValue: 'from-a' })],
       exports: [TOKEN_A],
     })
     class APlugin {}

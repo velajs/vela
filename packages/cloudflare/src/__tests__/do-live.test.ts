@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 import { DatabaseSync } from 'node:sqlite';
-import { Injectable, MetadataRegistry, Module } from '@velajs/vela';
+import { Injectable, Module } from '@velajs/vela';
 import { WebSocketGateway } from '@velajs/vela/websocket';
 import {
   defineLiveQuery,
@@ -17,8 +17,6 @@ import { CloudflareWebSocketModule } from '../websocket/cloudflare-websocket.mod
 import { DoCursorLog, durableObjectCursorLog, durableObjectLive } from '../websocket/do-live';
 import { DoWebSocketHost } from '../websocket/do-websocket-host';
 import type { DoStateLike, SqlStorageLike, WsLike } from '../websocket/do-state';
-
-beforeEach(() => MetadataRegistry.clear());
 
 // Real SQLite (node:sqlite) behind the structural SqlStorageLike — faithful
 // AUTOINCREMENT + sqlite_sequence + trim semantics, unlike a hand-rolled fake.
@@ -261,7 +259,6 @@ describe('live queries inside the Durable Object', () => {
     expect(ws.liveFrames().at(-1)).toMatchObject({ t: 'settled', cursor: 1, epoch }); // unchanged result
 
     // --- eviction: fresh runtime over the same ctx/storage ------------------
-    MetadataRegistry.clear();
     const { AppModule: AppModule2 } = makeModule(todos);
     const woken = await buildDoRuntime(AppModule2, ctx, { env: {} });
 

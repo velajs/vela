@@ -28,6 +28,7 @@ class ChatGateway implements OnGatewayConnection {
 ```
 
 - `@WebSocketGateway({ path?, binding? })` — `path` is the upgrade route (supports `:params`, e.g. `/rooms/:id/ws`); `binding` is a Cloudflare-only Durable Object binding name (ignored elsewhere). Register the gateway in module `providers`. It defaults to singleton scope; stack `@Injectable({ scope: Scope.REQUEST })` for invocation-local state.
+- Upgrades fail closed until the gateway names `authenticator: SomeAuthenticator`, a class implementing `UpgradeAuthenticator` (`authenticate(request, { gatewayPath, room, ticket? })` → `{ principal, tenantId, expiresAtMs }` or `false`). Each application resolves it once through DI from the module that declares the gateway, so it may inject that module's providers. Ready-made: `BetterAuthUpgradeAuthenticator` (`@velajs/better-auth`, tenant from the active organization or a `BETTER_AUTH_UPGRADE_TENANT` resolver) and `CloudflareAccessUpgradeAuthenticator` (`@velajs/cloudflare-access/vela`). `allowedOrigins` takes origins or `(env) => origins`, read from `ENV` once per application; there is no closure-based authentication option.
 - `@SubscribeMessage(event)` — handler for an inbound message event (stackable).
 - `@MessageBody()` injects an unknown wire payload; validate it with a pipe or schema before use; `@ConnectedSocket()` injects the `WsClient`. With no param decorators a handler receives `(client, data)` positionally.
 - `@WebSocketServer()` injects the `WsServer` for broadcasting.

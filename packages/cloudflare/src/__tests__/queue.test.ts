@@ -1,10 +1,9 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   Controller,
   Get,
   Module,
   Injectable,
-  MetadataRegistry,
   Scope,
   UseGuards,
   UseInterceptors,
@@ -12,9 +11,6 @@ import {
 import { createCloudflareApp } from '../cloudflare-factory';
 const env = {};
 import { QueueConsumer } from '../decorators/queue-consumer';
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 describe('@QueueConsumer() decorator', () => {
   it('should invoke matching queue consumers', async () => {

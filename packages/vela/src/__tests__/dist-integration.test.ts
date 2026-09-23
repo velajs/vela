@@ -83,8 +83,6 @@ describe('dist/ integration', () => {
       await import('../../dist/index.js');
     const { MetadataRegistry } = await import('../../dist/internal.js');
 
-    MetadataRegistry.clear();
-
     @Injectable()
     class HelloService {
       greet() {
@@ -114,7 +112,5 @@ describe('dist/ integration', () => {
     const res = await hono.request('/hello');
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ message: 'Hello from dist!' });
-
-    MetadataRegistry.clear();
   });
 });

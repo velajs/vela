@@ -532,18 +532,14 @@ export class MetadataRegistry {
     return this.getReflectMetadata<unknown[]>(target, 'design:paramtypes', propertyKey);
   }
 
-  // Clear app-time state. Decoration metadata persists — once a class is
-  // decorated, that fact is permanent for the lifetime of the process.
-  // Currently a no-op: the last piece of app-time registry state (the global
-  // component tier) moved to the per-app RouteManager. Kept because test
-  // suites call it between cases and future app-time state belongs here.
+  // Decoration metadata is permanent for the lifetime of the process, and the
+  // registry holds no application state: each application keeps its own in its
+  // container and RouteManager, so nothing needs clearing between tests.
 
-  static clear(): void {
-    // no app-time state to clear
-  }
-
-  // Full reset, including decoration metadata. Used in framework-internal scenarios.
-
+  /**
+   * Full reset, including decoration metadata. Framework-internal: only
+   * suites that re-evaluate decorators may call it (see `@velajs/vela/internal`).
+   */
   static reset(): void {
     this.routes.clear();
     this.controllers.clear();

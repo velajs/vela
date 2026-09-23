@@ -1,8 +1,7 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
   Injectable,
-  MetadataRegistry,
   Module,
   VelaFactory,
   WebSocketGateway,
@@ -107,8 +106,6 @@ function tenantPartition(_args: unknown, context: LiveQueryContext): string | un
 }
 
 describe('LiveEngine refresh execution coalescing', () => {
-  beforeEach(() => MetadataRegistry.clear());
-
   it('keeps resolver execution per subscription unless coalesceBy opts in', async () => {
     let version = 1;
     let executions = 0;

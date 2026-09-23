@@ -1,11 +1,7 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import { MetadataRegistry, Module, VelaFactory } from '@velajs/vela';
+import { describe, expect, it } from 'vitest';
+import { Module, VelaFactory } from '@velajs/vela';
 import { definePermission, defineRole } from '../../roles';
 import { AUTHZ, AuthzModule } from '../index';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 describe('AuthzModule.forRoot', () => {
   it('provides an Authz instance resolvable by the AUTHZ token', async () => {

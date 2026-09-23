@@ -1,12 +1,11 @@
 import { defineProvider } from '../container/types';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   Controller,
   Get,
   Inject,
   Injectable,
   InjectionToken,
-  MetadataRegistry,
   Module,
   MultipleProvidersFoundError,
   UnresolvedDependencyError,
@@ -19,10 +18,6 @@ import {
   stableHash,
 } from '../index.js';
 import type { DynamicModule } from '../index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 describe('Dynamic module identity', () => {
   // -------------------------------------------------------------------------

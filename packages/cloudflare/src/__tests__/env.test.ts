@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
   Controller,
   ENV,
@@ -6,7 +6,6 @@ import {
   Injectable,
   InjectEnv,
   InjectionToken,
-  MetadataRegistry,
   Module,
   defineProvider,
   type RuntimeAdapter,
@@ -23,8 +22,6 @@ import {
 import { buildDoRuntime } from '../websocket/do-bootstrap';
 import { CloudflareWebSocketModule } from '../websocket/cloudflare-websocket.module';
 import type { DoStateLike, WsLike } from '../websocket/do-state';
-
-beforeEach(() => MetadataRegistry.clear());
 
 const context = { waitUntil: (_promise: Promise<unknown>): void => {} };
 const httpContext = { ...context, passThroughOnException() {}, props: {} };

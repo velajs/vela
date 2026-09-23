@@ -1,6 +1,6 @@
-import { Controller, Get, MetadataRegistry, UseGuards } from '@velajs/vela';
+import { Controller, Get, UseGuards } from '@velajs/vela';
 import { Test } from '@velajs/testing';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { FeatureFlag, FeatureFlagGuard, FeatureFlagsModule, memoryFlagDriver } from '../index';
 import type { FeatureFlagDriver } from '../drivers/driver';
 import type { FlagManifest } from '../feature-flags.types';
@@ -44,9 +44,6 @@ async function appWith(
 }
 
 describe('FeatureFlagGuard (integration)', () => {
-  beforeEach(() => MetadataRegistry.clear());
-  afterEach(() => MetadataRegistry.clear());
-
   it('hides a route behind a disabled flag (404)', async () => {
     const driver = memoryFlagDriver({ values: { 'new-checkout': false } });
     const app = await appWith(guardedController(), driver);

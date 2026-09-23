@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   VelaFactory,
   Controller,
@@ -20,7 +20,6 @@ import {
   BadRequestException,
   NotFoundException,
   ForbiddenException,
-  MetadataRegistry,
 } from '../index.js';
 import type {
   ExceptionFilter,
@@ -28,10 +27,6 @@ import type {
   PipeTransform,
   ArgumentMetadata,
 } from '../index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 // =============================================================================
 // @Catch type matching

@@ -1,10 +1,9 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   VelaFactory,
   Controller,
   Get,
   Module,
-  MetadataRegistry,
   ErrorsModule,
   Injectable,
   Scope,
@@ -12,10 +11,6 @@ import {
   resolveErrorReporter,
 } from '../index.js';
 import type { ExceptionHandler } from '../index.js';
-
-beforeEach(() => {
-  MetadataRegistry.clear();
-});
 
 const appCatalog = defineErrorCatalog({
   order_expired: { status: 410, title: 'Order Expired', hint: 'Start a fresh order.' },
