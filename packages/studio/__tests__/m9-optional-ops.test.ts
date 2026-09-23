@@ -5,11 +5,13 @@ import {
   Cron,
   Get,
   Injectable,
+  Interval,
   Module,
   ScheduleModule,
+  Scope,
   VelaFactory,
 } from '@velajs/vela';
-import type { ModuleImport, ProviderDefinition, Type } from '@velajs/vela';
+import type { ModuleImport, ProviderDefinition, ScheduleInvocation, Type } from '@velajs/vela';
 import { Process, Processor, QueueModule } from '@velajs/vela/queue';
 import { FeatureFlagsModule } from '@velajs/feature-flags';
 import { BetterAuthService } from '@velajs/better-auth';
@@ -710,6 +712,46 @@ describe('schedule ops (@velajs/studio/schedule)', () => {
     const reports = app.getContainer().resolve(Reports);
     expect(ok(await rpc(app, 'schedule.runNow', { id: 'daily' }))).toEqual({ ok: true });
     expect(reports.ran).toBe(1);
+  });
+
+  it('runs a job now exactly as a trigger would, including request-scoped jobs', async () => {
+    const ticks: ScheduleInvocation[] = [];
+    const scopes = new Set<Digest>();
+    @Injectable({ scope: Scope.REQUEST })
+    class Digest {
+      @Cron('0 6 * * *', { dialect: 'cloudflare' })
+      morning(...args: ScheduleInvocation[]) {
+        scopes.add(this);
+        ticks.push(...args);
+      }
+      @Interval(60_000)
+      poll(...args: ScheduleInvocation[]) {
+        ticks.push(...args);
+      }
+    }
+    @Module({ providers: [Digest] })
+    class DigestModule {}
+    const app = await makeApp({ editable: { ops: true } }, [
+      ScheduleModule,
+      DigestModule,
+      StudioScheduleModule.forRoot({}),
+    ]);
+    try {
+      const before = Date.now();
+      expect(ok(await rpc(app, 'schedule.runNow', { id: 'morning' }))).toEqual({ ok: true });
+      expect(ok(await rpc(app, 'schedule.runNow', { id: 'morning' }))).toEqual({ ok: true });
+      expect(ok(await rpc(app, 'schedule.runNow', { id: 'poll' }))).toEqual({ ok: true });
+
+      expect(scopes.size).toBe(2);
+      expect(ticks).toHaveLength(3);
+      expect(ticks[0]).toMatchObject({ kind: 'cron', expression: '0 6 * * *' });
+      expect(ticks[2]).toMatchObject({ kind: 'interval', ms: 60_000 });
+      expect(ticks.every((tick) => tick.scheduledTime >= before && !tick.signal.aborted)).toBe(
+        true,
+      );
+    } finally {
+      await app.close();
+    }
   });
 });
 
