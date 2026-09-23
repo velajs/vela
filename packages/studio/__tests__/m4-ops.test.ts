@@ -35,6 +35,17 @@ class StatusController {
 @Module({ controllers: [WidgetsController, StatusController] })
 class ApiModule {}
 
+@Controller('/reports')
+class ReportsController {
+  @Get()
+  list() {
+    return [];
+  }
+}
+
+@Module({ controllers: [ReportsController] })
+class ReportsModule {}
+
 type App = Awaited<ReturnType<typeof VelaFactory.create>>;
 
 /** Build a real app: the fixture ApiModule + StudioModule + any extra providers. */
@@ -140,13 +151,44 @@ describe('app.entrypoints', () => {
 });
 
 describe('app.openapi', () => {
-  it('reports FEATURE_UNCONFIGURED when no rootModule is configured', async () => {
-    const app = await makeApp();
+  async function documentedPaths(app: App): Promise<string[]> {
     const r = await rpc(app, 'app.openapi');
-    expect(r.ok).toBe(false);
-    if (r.ok) throw new Error('expected error');
-    expect(r.status).toBe(404);
-    expect(r.error.code).toBe('FEATURE_UNCONFIGURED');
+    if (!r.ok) throw new Error(`expected ok, got ${r.error.code}`);
+    const doc = r.data as { paths?: Record<string, unknown> };
+    return Object.keys(doc.paths ?? {});
+  }
+
+  it('documents the application root (ROOT_MODULE) when no rootModule is given', async () => {
+    const app = await makeApp({}, [], [ReportsModule]);
+
+    const paths = await documentedPaths(app);
+
+    expect(paths).toContain('/status');
+    expect(paths).toContain('/reports');
+  });
+
+  it('documents only an explicit rootModule', async () => {
+    const app = await makeApp({ rootModule: ApiModule }, [], [ReportsModule]);
+
+    const paths = await documentedPaths(app);
+
+    expect(paths).toContain('/status');
+    expect(paths).not.toContain('/reports');
+  });
+
+  it('documents a DynamicModule application root', async () => {
+    @Module({})
+    class Shell {}
+    const app = await VelaFactory.create({
+      module: Shell,
+      imports: [ApiModule, StudioModule.forRoot({ token: TOKEN })],
+      controllers: [ReportsController],
+    });
+
+    const paths = await documentedPaths(app);
+
+    expect(paths).toContain('/status');
+    expect(paths).toContain('/reports');
   });
 
   it('returns an OpenAPI 3.x document with the fixture paths when rootModule is set', async () => {
@@ -304,8 +346,8 @@ describe('studio.capabilities', () => {
     expect(features.app).toBe(true);
     expect(features.logs).toBe(true);
     expect(features.audit).toBe(true);
-    // No rootModule here → openapi stays dark.
-    expect(features.openapi).toBe(false);
+    // No rootModule here, so the application root (ROOT_MODULE) is documented.
+    expect(features.openapi).toBe(true);
     // Nothing optional wired → every negotiated feature is false.
     for (const key of [
       'data',

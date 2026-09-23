@@ -4,7 +4,14 @@
  * override these env values; the merge into {@link ResolvedStudioConfig}
  * lives in the module (env under options).
  */
-import { Injectable, InjectEnv, Optional, type VelaEnv } from '@velajs/vela';
+import {
+  Injectable,
+  InjectEnv,
+  Optional,
+  type DynamicModule,
+  type Type,
+  type VelaEnv,
+} from '@velajs/vela';
 import { STUDIO_DEFAULT_PATH } from '@velajs/studio-protocol';
 import type { EditableFlags, ResolvedStudioConfig, StudioModuleOptions } from './studio.types';
 
@@ -74,11 +81,17 @@ export class StudioEnvReader {
 
 const DEFAULT_RATE_LIMIT = { windowMs: 60_000, max: 120 } as const;
 
-/** Merge env-derived config UNDER module options into the resolved shape. */
+/**
+ * Merge env-derived config UNDER module options into the resolved shape.
+ * `applicationRoot` (the application's `ROOT_MODULE`) is documented when the
+ * options name no `rootModule`.
+ */
 export function resolveStudioConfig(
   env: StudioEnvConfig,
   options: StudioModuleOptions,
+  applicationRoot?: Type | DynamicModule,
 ): ResolvedStudioConfig {
+  const rootModule = options.rootModule ?? applicationRoot;
   const token = options.token ?? env.token;
   const editable: EditableFlags = {
     data: options.editable?.data ?? env.data ?? false,
@@ -95,7 +108,7 @@ export function resolveStudioConfig(
     path: options.path ?? STUDIO_DEFAULT_PATH,
     absolute: options.absolute ?? false,
     ...(token !== undefined ? { token } : {}),
-    ...(options.rootModule !== undefined ? { rootModule: options.rootModule } : {}),
+    ...(rootModule !== undefined ? { rootModule } : {}),
     editable,
     ...(options.managedModels !== undefined ? { managedModels: options.managedModels } : {}),
     rateLimit: options.rateLimit === undefined ? { ...DEFAULT_RATE_LIMIT } : options.rateLimit,
