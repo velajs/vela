@@ -89,8 +89,18 @@ function asChallenge<T>(res: AdminRpcResponse<T>): StudioConfirmChallenge {
   if (res.ok) throw new Error(`expected a 428 challenge, got ${JSON.stringify(res)}`);
   assert(res.status === 428, `expected 428, got ${res.status}`);
   const details = res.error.details;
-  assert(isRecord(details) && typeof details.confirmToken === 'string' && typeof details.expiresAt === 'number' && typeof details.summary === 'string', 'valid confirmation challenge');
-  return { confirmToken: details.confirmToken, expiresAt: details.expiresAt, summary: details.summary };
+  assert(
+    isRecord(details) &&
+      typeof details.confirmToken === 'string' &&
+      typeof details.expiresAt === 'number' &&
+      typeof details.summary === 'string',
+    'valid confirmation challenge',
+  );
+  return {
+    confirmToken: details.confirmToken,
+    expiresAt: details.expiresAt,
+    summary: details.summary,
+  };
 }
 
 /**
@@ -105,7 +115,12 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
       const evidence = await fn();
       rows.push({ op, pass: true, evidence });
     } catch (error) {
-      rows.push({ op, pass: false, evidence: '', detail: error instanceof Error ? error.message : String(error) });
+      rows.push({
+        op,
+        pass: false,
+        evidence: '',
+        detail: error instanceof Error ? error.message : String(error),
+      });
     }
   };
 
@@ -122,14 +137,34 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
   await step('studio.capabilities', async () => {
     const caps = unwrap(await call('studio.capabilities'));
     const f = caps.features;
-    for (const key of ['data', 'timeTravel', 'transfer', 'flags', 'schedule', 'queue', 'openapi', 'app', 'logs', 'audit'] as const) {
+    for (const key of [
+      'data',
+      'timeTravel',
+      'transfer',
+      'flags',
+      'schedule',
+      'queue',
+      'openapi',
+      'app',
+      'logs',
+      'audit',
+    ] as const) {
       assert(f[key] === true, `feature ${key} should be true`);
     }
     for (const key of ['auth', 'authOrganizations', 'live', 'presence'] as const) {
       assert(f[key] === false, `feature ${key} should be false (not wired)`);
     }
-    assert(caps.writes.dataEditable && caps.writes.timeTravelRestore && caps.writes.transferImport && caps.writes.opsEditable, 'write gates should reflect editable config');
-    assert(caps.timeTravel?.granularity === 'snapshot', 'timeTravel granularity should be portable snapshot');
+    assert(
+      caps.writes.dataEditable &&
+        caps.writes.timeTravelRestore &&
+        caps.writes.transferImport &&
+        caps.writes.opsEditable,
+      'write gates should reflect editable config',
+    );
+    assert(
+      caps.timeTravel?.granularity === 'snapshot',
+      'timeTravel granularity should be portable snapshot',
+    );
     return `features lit: data/timeTravel/transfer/flags/schedule/queue/openapi; auth=false; writes gated true; tt=snapshot`;
   });
 
@@ -139,7 +174,10 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
     const routeList = unwrap(routesRes);
     const info = routeList.find((r) => r.method === 'GET' && r.path.startsWith('/info'));
     assert(info !== undefined, 'expected an /info route');
-    assert(info.source === 'controller' && info.handler.startsWith('InfoController#'), `expected attributed InfoController handler, got ${info.handler}/${info.source}`);
+    assert(
+      info.source === 'controller' && info.handler.startsWith('InfoController#'),
+      `expected attributed InfoController handler, got ${info.handler}/${info.source}`,
+    );
     const health = routeList.find((r) => r.path === `${ADMIN_BASE_PATH}/health`);
     assert(health?.source === 'mounted', 'the admin surface should degrade to (mounted)');
     return `${routeList.length} routes; ${info.handler} source=controller (runtime adapter); ${ADMIN_BASE_PATH}/health=(mounted)`;
@@ -148,10 +186,19 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
   await step('app.modules', async () => {
     const modules = unwrap(await call('app.modules'));
     for (const m of modules) {
-      assert(typeof m.moduleId === 'string' && Array.isArray(m.imports) && typeof m.lazy === 'boolean', 'module node shape');
+      assert(
+        typeof m.moduleId === 'string' && Array.isArray(m.imports) && typeof m.lazy === 'boolean',
+        'module node shape',
+      );
     }
-    assert(modules.some((m) => m.moduleId.startsWith('ApiModule')), 'ApiModule present');
-    assert(modules.some((m) => m.moduleId.startsWith('StudioModule')), 'StudioModule present');
+    assert(
+      modules.some((m) => m.moduleId.startsWith('ApiModule')),
+      'ApiModule present',
+    );
+    assert(
+      modules.some((m) => m.moduleId.startsWith('StudioModule')),
+      'StudioModule present',
+    );
     return `${modules.length} modules with import edges + lazy flags (ApiModule, StudioModule, ...)`;
   });
 
@@ -163,10 +210,16 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
   });
 
   await step('app.openapi', async () => {
-    const doc = unwrap(await call('app.openapi')) as { openapi?: string; paths?: Record<string, unknown> };
+    const doc = unwrap(await call('app.openapi')) as {
+      openapi?: string;
+      paths?: Record<string, unknown>;
+    };
     assert(typeof doc.openapi === 'string' && doc.openapi.startsWith('3.'), 'OpenAPI 3.x');
     const paths = Object.keys(doc.paths ?? {});
-    assert(paths.some((p) => p.startsWith('/info')), 'documents the /info paths');
+    assert(
+      paths.some((p) => p.startsWith('/info')),
+      'documents the /info paths',
+    );
     return `OpenAPI ${doc.openapi} with ${paths.length} paths (incl /info)`;
   });
 
@@ -174,36 +227,63 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
   await step('data.listModels', async () => {
     const list = unwrap(await call('data.listModels'));
     const names = list.map((m) => m.name).toSorted();
-    assert(JSON.stringify(names) === JSON.stringify(['author', 'book', 'tag']), `models ${names.join(',')}`);
+    assert(
+      JSON.stringify(names) === JSON.stringify(['author', 'book', 'tag']),
+      `models ${names.join(',')}`,
+    );
     const author = list.find((m) => m.name === 'author');
-    assert(JSON.stringify([...(author?.capabilities ?? [])].toSorted()) === JSON.stringify(['aggregate', 'cascade', 'transactions']), 'author caps');
+    assert(
+      JSON.stringify([...(author?.capabilities ?? [])].toSorted()) ===
+        JSON.stringify(['aggregate', 'cascade', 'transactions']),
+      'author caps',
+    );
     return `3 models [author, book, tag]; author caps=[aggregate,cascade,transactions], book caps=[nativeSearch,transactions]`;
   });
 
   await step('data.describeModel', async () => {
     const book = unwrap(await call('data.describeModel', { model: 'book' }));
-    assert(book.table === 'books' && JSON.stringify(book.primaryKeys) === JSON.stringify(['id']), 'book pk');
+    assert(
+      book.table === 'books' && JSON.stringify(book.primaryKeys) === JSON.stringify(['id']),
+      'book pk',
+    );
     const authorId = book.columns.find((c) => c.name === 'authorId');
-    assert(JSON.stringify(authorId?.fk) === JSON.stringify({ table: 'authors', relation: 'author' }), 'authorId FK');
+    assert(
+      JSON.stringify(authorId?.fk) === JSON.stringify({ table: 'authors', relation: 'author' }),
+      'authorId FK',
+    );
     const deletedAt = book.columns.find((c) => c.name === 'deletedAt');
-    assert(deletedAt?.managed === true && deletedAt.nullable === true, 'deletedAt managed+nullable');
+    assert(
+      deletedAt?.managed === true && deletedAt.nullable === true,
+      'deletedAt managed+nullable',
+    );
     assert(book.flags.softDelete === true && book.supports.search === true, 'flags/supports');
     return `book: pk=id, FK authorId->authors, softDelete flag, deletedAt managed+nullable, supports.search`;
   });
 
   await step('data.listRows', async () => {
-    const published = unwrap(await call('data.listRows', {
-      model: 'book',
-      filters: [{ field: 'status', operator: 'eq', value: 'published' }],
-      sort: { field: 'createdAt', order: 'asc' },
-    }));
-    assert(JSON.stringify(published.rows.map((r) => r.id)) === JSON.stringify(['b1', 'b3']), 'filter+sort');
+    const published = unwrap(
+      await call('data.listRows', {
+        model: 'book',
+        filters: [{ field: 'status', operator: 'eq', value: 'published' }],
+        sort: { field: 'createdAt', order: 'asc' },
+      }),
+    );
+    assert(
+      JSON.stringify(published.rows.map((r) => r.id)) === JSON.stringify(['b1', 'b3']),
+      'filter+sort',
+    );
     const live = unwrap(await call('data.listRows', { model: 'book' }));
     assert(!live.rows.some((r) => r.id === SEED.softDeletedBook), 'soft-deleted hidden by default');
     const all = unwrap(await call('data.listRows', { model: 'book', withDeleted: true }));
-    assert(all.rows.some((r) => r.id === SEED.softDeletedBook), 'withDeleted reveals tombstone');
+    assert(
+      all.rows.some((r) => r.id === SEED.softDeletedBook),
+      'withDeleted reveals tombstone',
+    );
     const search = unwrap(await call('data.listRows', { model: 'book', search: 'Draft' }));
-    assert(JSON.stringify(search.rows.map((r) => r.id)) === JSON.stringify(['b2']), 'inline search');
+    assert(
+      JSON.stringify(search.rows.map((r) => r.id)) === JSON.stringify(['b2']),
+      'inline search',
+    );
     return `filter(status=published)+sort=[b1,b3]; soft-delete hidden; withDeleted reveals b4; inline search 'Draft'=[b2]`;
   });
 
@@ -218,7 +298,10 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
   await step('data.facets', async () => {
     const facets = unwrap(await call('data.facets', { model: 'author', field: 'role' }));
     const byValue = new Map(facets.buckets.map((b) => [b.value, b.count]));
-    assert(byValue.get('member') === 2 && byValue.get('admin') === 1, `facets ${JSON.stringify([...byValue])}`);
+    assert(
+      byValue.get('member') === 2 && byValue.get('admin') === 1,
+      `facets ${JSON.stringify([...byValue])}`,
+    );
     return `facets(author.role)=admin:1, member:2`;
   });
 
@@ -231,22 +314,52 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
 
   // -- data browser: writes -------------------------------------------------
   await step('data.writeRow', async () => {
-    const created = unwrap(await call('data.writeRow', { model: 'author', patch: { name: 'Dee', email: 'dee@x.io', role: 'member' } }));
-    assert(typeof created.id === 'string' && typeof created.createdAt === 'number', 'create stamps id+timestamps');
-    const updated = unwrap(await call('data.writeRow', { model: 'author', id: 'a2', patch: { role: 'owner' } }));
-    assert(updated.role === 'owner' && updated.email === 'bo@x.io', 'update patches + keeps untouched');
+    const created = unwrap(
+      await call('data.writeRow', {
+        model: 'author',
+        patch: { name: 'Dee', email: 'dee@x.io', role: 'member' },
+      }),
+    );
+    assert(
+      typeof created.id === 'string' && typeof created.createdAt === 'number',
+      'create stamps id+timestamps',
+    );
+    const updated = unwrap(
+      await call('data.writeRow', { model: 'author', id: 'a2', patch: { role: 'owner' } }),
+    );
+    assert(
+      updated.role === 'owner' && updated.email === 'bo@x.io',
+      'update patches + keeps untouched',
+    );
     return `create(author) stamped id+createdAt; update(a2) role=owner (email untouched)`;
   });
 
   await step('data.deleteRows', async () => {
-    const first = await call('data.deleteRows', { model: 'book', ids: ['b2', 'b3'], mode: 'hard', confirmToken: '' });
+    const first = await call('data.deleteRows', {
+      model: 'book',
+      ids: ['b2', 'b3'],
+      mode: 'hard',
+      confirmToken: '',
+    });
     const challenge = asChallenge(first);
     assert(challenge.summary.toLowerCase().includes('delete'), 'challenge summary');
-    const done = unwrap(await call('data.deleteRows', { model: 'book', ids: ['b2', 'b3'], mode: 'hard', confirmToken: challenge.confirmToken }));
+    const done = unwrap(
+      await call('data.deleteRows', {
+        model: 'book',
+        ids: ['b2', 'b3'],
+        mode: 'hard',
+        confirmToken: challenge.confirmToken,
+      }),
+    );
     assert(done.deleted === 2, `deleted ${done.deleted}`);
     const gone = unwrap(await call('data.readRow', { model: 'book', id: 'b2' }));
     assert(gone === null, 'b2 gone');
-    const replay = await call('data.deleteRows', { model: 'book', ids: ['b2', 'b3'], mode: 'hard', confirmToken: challenge.confirmToken });
+    const replay = await call('data.deleteRows', {
+      model: 'book',
+      ids: ['b2', 'b3'],
+      mode: 'hard',
+      confirmToken: challenge.confirmToken,
+    });
     const second = asChallenge(replay);
     assert(second.confirmToken !== challenge.confirmToken, 'single-use: replay -> fresh challenge');
     return `428 mint -> confirm -> deleted 2 (b2,b3); replay of used token -> fresh challenge (single-use)`;
@@ -277,7 +390,10 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
   // -- time travel: snapshot -> restore -> undo round-trip ------------------
   await step('timeTravel.capabilities', async () => {
     const caps = unwrap(await call('timeTravel.capabilities', {}));
-    assert(caps.granularity === 'snapshot' && caps.portableExport === true, 'portable snapshot caps');
+    assert(
+      caps.granularity === 'snapshot' && caps.portableExport === true,
+      'portable snapshot caps',
+    );
     return `granularity=snapshot, portableExport=true, undo=${String(caps.undo)}`;
   });
 
@@ -296,18 +412,39 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
   await step('timeTravel.preview + armRestore (428) restores rows', async () => {
     // Mutate b1, then preview the restore to the snapshot.
     unwrap(await call('data.writeRow', { model: 'book', id: 'b1', patch: { title: 'MUTATED' } }));
-    assert(unwrap(await call('data.readRow', { model: 'book', id: 'b1' }))?.title === 'MUTATED', 'b1 mutated');
+    assert(
+      unwrap(await call('data.readRow', { model: 'book', id: 'b1' }))?.title === 'MUTATED',
+      'b1 mutated',
+    );
 
-    const preview = unwrap(await call('timeTravel.preview', { target: { bookmark: snapshotMarkId } }));
-    assert(preview.schemaCompatible === true && preview.confirmToken.length > 0, 'preview compatible + token');
+    const preview = unwrap(
+      await call('timeTravel.preview', { target: { bookmark: snapshotMarkId } }),
+    );
+    assert(
+      preview.schemaCompatible === true && preview.confirmToken.length > 0,
+      'preview compatible + token',
+    );
 
     // armRestore rides its OWN 428 (empty token -> challenge -> confirm).
-    const challenge = asChallenge(await call('timeTravel.armRestore', { bookmark: snapshotMarkId, confirmToken: '' }));
+    const challenge = asChallenge(
+      await call('timeTravel.armRestore', { bookmark: snapshotMarkId, confirmToken: '' }),
+    );
     assert(challenge.summary.toLowerCase().includes('restore'), 'restore challenge summary');
-    const outcome = unwrap(await call('timeTravel.armRestore', { bookmark: snapshotMarkId, confirmToken: challenge.confirmToken }));
-    assert(outcome.applied === true && outcome.undoMark !== undefined, 'restore applied + undo mark');
+    const outcome = unwrap(
+      await call('timeTravel.armRestore', {
+        bookmark: snapshotMarkId,
+        confirmToken: challenge.confirmToken,
+      }),
+    );
+    assert(
+      outcome.applied === true && outcome.undoMark !== undefined,
+      'restore applied + undo mark',
+    );
     const restored = unwrap(await call('data.readRow', { model: 'book', id: 'b1' }));
-    assert(restored?.title === ttSnapshotTitle, `b1 restored to '${ttSnapshotTitle}', got '${String(restored?.title)}'`);
+    assert(
+      restored?.title === ttSnapshotTitle,
+      `b1 restored to '${ttSnapshotTitle}', got '${String(restored?.title)}'`,
+    );
     // stash the undo mark for the next step via a closure-scoped variable.
     undoMarkId = outcome.undoMark?.id ?? '';
     return `preview compatible; armRestore rode 428; b1 restored '${ttSnapshotTitle}'; undoMark=${undoMarkId}`;
@@ -315,8 +452,12 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
 
   await step('timeTravel.undo (428) returns to pre-restore state', async () => {
     assert(undoMarkId.length > 0, 'have an undo mark');
-    const challenge = asChallenge(await call('timeTravel.undo', { undoMark: undoMarkId, confirmToken: '' }));
-    const undone = unwrap(await call('timeTravel.undo', { undoMark: undoMarkId, confirmToken: challenge.confirmToken }));
+    const challenge = asChallenge(
+      await call('timeTravel.undo', { undoMark: undoMarkId, confirmToken: '' }),
+    );
+    const undone = unwrap(
+      await call('timeTravel.undo', { undoMark: undoMarkId, confirmToken: challenge.confirmToken }),
+    );
     assert(undone.applied === true, 'undo applied');
     const back = unwrap(await call('data.readRow', { model: 'book', id: 'b1' }));
     assert(back?.title === 'MUTATED', `undo returns b1 to 'MUTATED', got '${String(back?.title)}'`);
@@ -334,8 +475,15 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
   });
 
   await step('timeTravel.prune (428)', async () => {
-    const challenge = asChallenge(await call('timeTravel.prune', { retention: { keepLast: 1 }, confirmToken: '' }));
-    const pruned = unwrap(await call('timeTravel.prune', { retention: { keepLast: 1 }, confirmToken: challenge.confirmToken }));
+    const challenge = asChallenge(
+      await call('timeTravel.prune', { retention: { keepLast: 1 }, confirmToken: '' }),
+    );
+    const pruned = unwrap(
+      await call('timeTravel.prune', {
+        retention: { keepLast: 1 },
+        confirmToken: challenge.confirmToken,
+      }),
+    );
     assert(pruned.pruned >= 1, `pruned ${pruned.pruned}`);
     const after = unwrap(await call('timeTravel.listMarks', {}));
     assert(after.marks.length === 1, `keepLast:1 -> ${after.marks.length} mark`);
@@ -376,13 +524,21 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
   // -- queue ----------------------------------------------------------------
   await step('queue.list', async () => {
     const queues = unwrap(await call('queue.list'));
-    assert(queues.some((q) => q.name === DEMO_QUEUE), 'welcome-email queue');
-    assert(queues.every((q) => q.depth === undefined), 'honest: no depth');
+    assert(
+      queues.some((q) => q.name === DEMO_QUEUE),
+      'welcome-email queue',
+    );
+    assert(
+      queues.every((q) => q.depth === undefined),
+      'honest: no depth',
+    );
     return `queues include '${DEMO_QUEUE}' (kind advertised, depth honestly omitted)`;
   });
 
   await step('queue.send', async () => {
-    const sent = unwrap(await call('queue.send', { queue: DEMO_QUEUE, payload: { to: 'ada@x.io' } }));
+    const sent = unwrap(
+      await call('queue.send', { queue: DEMO_QUEUE, payload: { to: 'ada@x.io' } }),
+    );
     assert(typeof sent.id === 'string', 'send returns id');
     return `send to '${DEMO_QUEUE}' enqueued job id=${sent.id}`;
   });
@@ -395,7 +551,10 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
     ]) {
       assert(!res.ok, 'should degrade');
       if (res.ok) throw new Error('unreachable');
-      assert(res.error.code === 'FEATURE_UNCONFIGURED', `expected FEATURE_UNCONFIGURED, got ${res.error.code}`);
+      assert(
+        res.error.code === 'FEATURE_UNCONFIGURED',
+        `expected FEATURE_UNCONFIGURED, got ${res.error.code}`,
+      );
     }
     return `depths/dlq/replay -> FEATURE_UNCONFIGURED (inline driver has no depth/DLQ)`;
   });
@@ -408,7 +567,11 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
       method: 'GET',
       headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': '10.0.0.1' },
     });
-    assert(res.status === 200 && (res.headers.get('content-type') ?? '').includes('application/x-ndjson'), 'ndjson stream');
+    assert(
+      res.status === 200 &&
+        (res.headers.get('content-type') ?? '').includes('application/x-ndjson'),
+      'ndjson stream',
+    );
     const lines = (await res.text()).trim().split('\n').filter(Boolean);
     exportedNdjson = `${lines.join('\n')}\n`;
     exportedCount = lines.length;
@@ -418,9 +581,13 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
   await step('data.clearTable (428)', async () => {
     // Wipe the book table so the re-import is a clean create (no unique clash) —
     // the export -> clear -> import round-trip.
-    const challenge = asChallenge(await call('data.clearTable', { model: 'book', confirmToken: '' }));
+    const challenge = asChallenge(
+      await call('data.clearTable', { model: 'book', confirmToken: '' }),
+    );
     assert(challenge.summary.toLowerCase().includes('clear'), 'clear challenge');
-    const cleared = unwrap(await call('data.clearTable', { model: 'book', confirmToken: challenge.confirmToken }));
+    const cleared = unwrap(
+      await call('data.clearTable', { model: 'book', confirmToken: challenge.confirmToken }),
+    );
     assert(cleared.deleted >= exportedCount, `cleared ${cleared.deleted}`);
     const empty = unwrap(await call('data.listRows', { model: 'book', withDeleted: true }));
     assert((empty.info.total_count ?? 0) === 0, 'table wiped');
@@ -428,9 +595,17 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
   });
 
   await step('transfer.import (428)', async () => {
-    const challenge = asChallenge(await call('transfer.import', { model: 'book', ndjson: exportedNdjson, confirmToken: '' }));
+    const challenge = asChallenge(
+      await call('transfer.import', { model: 'book', ndjson: exportedNdjson, confirmToken: '' }),
+    );
     assert(challenge.summary.toLowerCase().includes('import'), 'import challenge');
-    const result = unwrap(await call('transfer.import', { model: 'book', ndjson: exportedNdjson, confirmToken: challenge.confirmToken }));
+    const result = unwrap(
+      await call('transfer.import', {
+        model: 'book',
+        ndjson: exportedNdjson,
+        confirmToken: challenge.confirmToken,
+      }),
+    );
     assert(result.imported === exportedCount, `imported ${result.imported} of ${exportedCount}`);
     const restored = unwrap(await call('data.listRows', { model: 'book', withDeleted: true }));
     assert((restored.info.total_count ?? 0) === exportedCount, 'rows restored from NDJSON');
@@ -441,7 +616,12 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
   await step('audit.tail', async () => {
     const tail = unwrap(await call('audit.tail', {}));
     const ops = new Set(tail.map((e) => e.op));
-    for (const op of ['data.writeRow', 'data.deleteRows', 'timeTravel.armRestore', 'transfer.import'] as const) {
+    for (const op of [
+      'data.writeRow',
+      'data.deleteRows',
+      'timeTravel.armRestore',
+      'transfer.import',
+    ] as const) {
       assert(ops.has(op), `audit should include ${op}`);
     }
     const del = tail.find((e) => e.op === 'data.deleteRows' && e.status === 200);
@@ -451,9 +631,15 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
 
   await step('logs.tail', async () => {
     // Seed a log line through the public buffer, then read it back.
-    app.getContainer().resolve(AdminLogBuffer).record({ ts: Date.now(), level: 'info', msg: 'walkthrough-marker' });
+    app
+      .getContainer()
+      .resolve(AdminLogBuffer)
+      .record({ ts: Date.now(), level: 'info', msg: 'walkthrough-marker' });
     const logs = unwrap(await call('logs.tail', {}));
-    assert(logs.some((l) => l.msg === 'walkthrough-marker'), 'recorded log surfaces');
+    assert(
+      logs.some((l) => l.msg === 'walkthrough-marker'),
+      'recorded log surfaces',
+    );
     return `logs.tail returns the buffered app logs (incl the seeded marker)`;
   });
 
@@ -462,7 +648,10 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
     const res = await call('auth.users', {});
     assert(!res.ok, 'auth should be unconfigured');
     if (res.ok) throw new Error('unreachable');
-    assert(res.error.code === 'FEATURE_UNCONFIGURED', `expected FEATURE_UNCONFIGURED, got ${res.error.code}`);
+    assert(
+      res.error.code === 'FEATURE_UNCONFIGURED',
+      `expected FEATURE_UNCONFIGURED, got ${res.error.code}`,
+    );
     return `auth panel not wired -> auth.users FEATURE_UNCONFIGURED (feature.auth=false); acceptable demo state`;
   });
 
@@ -487,7 +676,10 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
       const bootstrap = html.match(/window\.__VELA_STUDIO__=(.+);/);
       assert(bootstrap?.[1], 'boots the Studio connection');
       sessionToken = parseStudioConnection(JSON.parse(bootstrap[1])).sessionToken;
-      assert(html.includes('<script type="module" src="/studio.js">'), 'references the standalone bundle');
+      assert(
+        html.includes('<script type="module" src="/studio.js">'),
+        'references the standalone bundle',
+      );
       assert(!html.includes(token), 'master token never in the browser document');
       return `GET ${host.url} -> 200 text/html shell (script /studio.js; master token absent)`;
     });
@@ -495,7 +687,10 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
     await step('host: serves the standalone bundle', async () => {
       const res = await fetch(new URL('/studio.js', host.url));
       assert(res.status === 200, `bundle status ${res.status}`);
-      assert((res.headers.get('content-type') ?? '').includes('javascript'), 'javascript content-type');
+      assert(
+        (res.headers.get('content-type') ?? '').includes('javascript'),
+        'javascript content-type',
+      );
       return `GET /studio.js -> 200 (the built standalone bundle exists + is served)`;
     });
 
@@ -503,7 +698,11 @@ export async function runWalkthrough(options: { token?: string } = {}): Promise<
       // The browser authenticates with the local session; the host holds the master token.
       const res = await fetch(new URL(`${ADMIN_BASE_PATH}/rpc/studio.capabilities`, host.url), {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'sec-fetch-site': 'same-origin', authorization: `Bearer ${sessionToken}` },
+        headers: {
+          'content-type': 'application/json',
+          'sec-fetch-site': 'same-origin',
+          authorization: `Bearer ${sessionToken}`,
+        },
         body: JSON.stringify({ args: {} }),
       });
       assert(res.status === 200, `proxied status ${res.status}`);
