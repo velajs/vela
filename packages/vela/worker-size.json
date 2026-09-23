@@ -42,6 +42,7 @@
     "dist/storage/",
     "dist/streaming/",
     "dist/throttler/",
+    "dist/validation/",
     "dist/websocket-node/",
     "dist/websocket/"
   ]

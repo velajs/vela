@@ -1,4 +1,4 @@
-import { HttpMethod, ParamType } from '../constants';
+import { ParamType, type HttpMethod } from '../constants';
 import type { RedirectStatusCode, StatusCode } from 'hono/utils/http-status';
 import { declareScope } from '../container/decorators';
 import { MetadataRegistry } from '../registry/metadata.registry';
@@ -105,15 +105,18 @@ function createMethodDecorator(method: HttpMethod) {
   };
 }
 
-export const Get = createMethodDecorator(HttpMethod.GET);
-export const Post = createMethodDecorator(HttpMethod.POST);
-export const Put = createMethodDecorator(HttpMethod.PUT);
-export const Patch = createMethodDecorator(HttpMethod.PATCH);
-export const Delete = createMethodDecorator(HttpMethod.DELETE);
-export const Options = createMethodDecorator(HttpMethod.OPTIONS);
-export const Head = createMethodDecorator(HttpMethod.HEAD);
-export const All = createMethodDecorator(HttpMethod.ALL);
-export const Sse = createMethodDecorator(HttpMethod.GET);
+// Pure calls with literal arguments, so a bundle drops every decorator it never
+// uses. A member access such as `HttpMethod.GET` could run a getter, which keeps
+// an annotated call alive; pure-annotations.test.ts enforces the literals.
+export const Get = /* @__PURE__ */ createMethodDecorator('GET');
+export const Post = /* @__PURE__ */ createMethodDecorator('POST');
+export const Put = /* @__PURE__ */ createMethodDecorator('PUT');
+export const Patch = /* @__PURE__ */ createMethodDecorator('PATCH');
+export const Delete = /* @__PURE__ */ createMethodDecorator('DELETE');
+export const Options = /* @__PURE__ */ createMethodDecorator('OPTIONS');
+export const Head = /* @__PURE__ */ createMethodDecorator('HEAD');
+export const All = /* @__PURE__ */ createMethodDecorator('ALL');
+export const Sse = /* @__PURE__ */ createMethodDecorator('GET');
 
 // Parameter decorators
 
@@ -182,11 +185,12 @@ function createBuiltinParamDecorator(type: ParamType): SchemaParamDecorator {
   };
 }
 
-export const Param = createBuiltinParamDecorator(ParamType.PARAM);
-export const Query = createBuiltinParamDecorator(ParamType.QUERY);
-export const Body = createBuiltinParamDecorator(ParamType.BODY);
-export const Headers = createBuiltinParamDecorator(ParamType.HEADERS);
-export const Req: PipedParamDecorator = createBuiltinParamDecorator(ParamType.REQUEST);
+// Pure, with literal arguments, for the same reason as the method decorators.
+export const Param = /* @__PURE__ */ createBuiltinParamDecorator('param');
+export const Query = /* @__PURE__ */ createBuiltinParamDecorator('query');
+export const Body = /* @__PURE__ */ createBuiltinParamDecorator('body');
+export const Headers = /* @__PURE__ */ createBuiltinParamDecorator('headers');
+export const Req: PipedParamDecorator = /* @__PURE__ */ createBuiltinParamDecorator('request');
 /**
  * Injects the Hono `Context` as the response handle.
  * In Hono, request and response state are unified in the `Context` object,
@@ -203,9 +207,9 @@ export const Req: PipedParamDecorator = createBuiltinParamDecorator(ParamType.RE
  * }
  * ```
  */
-export const Res: PipedParamDecorator = createBuiltinParamDecorator(ParamType.RESPONSE);
-export const Ip: PipedParamDecorator = createBuiltinParamDecorator(ParamType.IP);
-export const Cookie = createBuiltinParamDecorator(ParamType.COOKIE);
+export const Res: PipedParamDecorator = /* @__PURE__ */ createBuiltinParamDecorator('response');
+export const Ip: PipedParamDecorator = /* @__PURE__ */ createBuiltinParamDecorator('ip');
+export const Cookie = /* @__PURE__ */ createBuiltinParamDecorator('cookie');
 
 /**
  * Injects all cookies as a `Record<string, string>`, or a single cookie value by name.
