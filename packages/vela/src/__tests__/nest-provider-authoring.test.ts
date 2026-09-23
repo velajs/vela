@@ -117,7 +117,7 @@ describe('zero-argument factories', () => {
       setup: ({ OPTIONS }) => ({ exports: [OPTIONS] }),
     });
     class ModeModule extends ConfigurableModuleClass {}
-    const options: AsyncModuleOptions<Mode> = { useFactory: () => ({ mode: 'strict' }) };
+    const omitted: AsyncModuleOptions<Mode> = { useFactory: () => ({ mode: 'strict' }) };
     const empty: AsyncModuleOptions<Mode> = { inject: [], useFactory: () => ({ mode: 'loose' }) };
 
     @Injectable()
@@ -136,7 +136,7 @@ describe('zero-argument factories', () => {
       expect(app.get(ModeReader).options).toEqual({ mode: 'strict' });
       await app.close();
     }
-    expect([await options.useFactory(), await empty.useFactory()]).toEqual([
+    expect([await omitted.useFactory(), await empty.useFactory()]).toEqual([
       { mode: 'strict' },
       { mode: 'loose' },
     ]);
