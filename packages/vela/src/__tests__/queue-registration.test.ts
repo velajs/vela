@@ -234,6 +234,27 @@ describe('module dispatch', () => {
     await app.close();
   });
 
+  it('rejects an unhandled job unless the caller explicitly ignores it', async () => {
+    @Module({ imports: [QueueModule.forRoot({}), QueueModule.registerQueue({ name: 'known' })] })
+    class App {}
+    const app = await VelaFactory.create(App, { diagnostics: 'silent' });
+    const binding = app.get(QueueDispatchBinding);
+    const job = { id: 'j', queue: 'known', name: 'n', data: {}, attempt: 1 };
+    try {
+      await expect(binding.dispatch(job)).rejects.toThrow(/No processor for queue 'known'/);
+      // Options that leave `unhandled` out keep the platform default.
+      await expect(binding.dispatch(job, {})).rejects.toThrow(/No processor for queue 'known'/);
+      await expect(binding.dispatch(job, { unhandled: undefined })).rejects.toThrow(
+        /No processor for queue 'known'/,
+      );
+      await expect(binding.dispatch(job, { unhandled: 'ignore' })).resolves.toEqual({
+        handled: 0,
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
   it('boots signed dispatch with a producer-only driver: delivery is owned by the consumer', async () => {
     const driver = recordingDriver();
     @Global()

@@ -81,12 +81,10 @@ export class QueueDispatchBinding {
    * `dispatchQueueJob`) received, through the module's dispatch policy.
    * Rejects, so the platform retries the message instead of acknowledging it,
    * when the job's queue is not registered in this application or, unless
-   * `options.unhandled` is `'ignore'`, when no processor handles it.
+   * `options.unhandled` is `'ignore'`, when no processor handles it. Options
+   * that leave `unhandled` out keep that `'error'` default.
    */
-  async dispatch(
-    job: QueueJob,
-    options: QueueDispatchOptions = { unhandled: 'error' },
-  ): Promise<QueueDispatchResult> {
+  async dispatch(job: QueueJob, options: QueueDispatchOptions = {}): Promise<QueueDispatchResult> {
     if (this.#closed) throw new Error('Queue module is closed.');
     if (!this.#queues.has(job.queue)) {
       throw new Error(
@@ -94,7 +92,7 @@ export class QueueDispatchBinding {
           `QueueModule.registerQueue({ name: '${job.queue}' }) in the module that processes it.`,
       );
     }
-    return this.#deliver(job, options);
+    return this.#deliver(job, { ...options, unhandled: options.unhandled ?? 'error' });
   }
 
   async #deliver(job: QueueJob, options: QueueDispatchOptions = {}): Promise<QueueDispatchResult> {
