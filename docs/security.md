@@ -79,6 +79,11 @@ under the global prefix and also cover nested paths. `exclude()` patterns match
 exactly. A path target that already starts with the global prefix fails the
 build, because it would never match.
 
+Nest's wildcard segments `cats/*path`, `cats/{*splat}` and `cats/(.*)` become
+Hono's `cats/*`, which also matches `/cats`. Any other group, optional segment or
+named wildcard, such as `:id(\d+)`, `users{/:id}` or `ab*cd`, fails the build
+because Hono would never match it; write `:id{[0-9]+}` for a constrained segment.
+
 Some routes are served outside the global prefix: `mountOpenApi()` documents
 (`/openapi.json`, `/scalar`, `/docs`, `/redoc`), the `RpcModule` endpoint
 (`/rpc`), Cloudflare WebSocket gateway upgrade paths, Studio mounted with

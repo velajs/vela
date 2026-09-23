@@ -107,6 +107,7 @@ Route targets use Hono route patterns (`:id`, `*`) and resolve at route build:
 - A string or `{ path, method }` target gets the global prefix and also covers the paths beneath it: `forRoutes('/users')` under `globalPrefix: '/api'` matches `/api/users` and `/api/users/42`. Write it without the prefix; a target that starts with the prefix throws at route build.
 - `exclude()` targets get the global prefix and match exactly: `exclude('/users/me')` does not exclude `/users/me/keys`.
 - `{ path, method?, absolute: true }` matches the path as written, for routes outside the global prefix: `mountOpenApi()` documents, the `RpcModule` endpoint, Cloudflare WebSocket upgrades and raw Hono routes.
+- Nest wildcards translate to Hono's trailing `*`: `cats/*path`, `cats/{*splat}` and `cats/(.*)` all become `cats/*` (which also matches `/cats`). Other group, optional or named-wildcard syntax (`:id(\d+)`, `users{/:id}`, `ab*cd`) throws at route build; use `:id{[0-9]+}` for a constrained segment.
 - A `GET` target also matches `HEAD`, which Hono serves with the GET handler. `'*'` matches every request.
 
 For authorization use the shared guards in `@velajs/authz/vela`; raw request headers are not proof of a role or permission.

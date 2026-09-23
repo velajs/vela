@@ -190,6 +190,36 @@ function priorityOf(value: unknown): number | undefined {
   return typeof constructor === 'function' ? priorityOf(constructor) : undefined;
 }
 
+// Nest's wildcard segments: `*name` (Nest 11), `{*name}` (Nest 11, which also
+// matches the parent path) and `(.*)` (earlier Nest).
+const NEST_WILDCARD_SEGMENT =
+  /^(?:\*[\p{ID_Start}$_][\p{ID_Continue}$]*|\{\*[\p{ID_Start}$_][\p{ID_Continue}$]*\}|\(\.\*\))$/u;
+// Hono's regex-constrained parameter, `:id{[0-9]+}`, with one nested brace level.
+const HONO_REGEX_PARAM = /:[^/:{}]+\{(?:[^{}]|\{[^{}]*\})*\}/g;
+
+/**
+ * A middleware target as a Hono route pattern. Nest's wildcard segments become
+ * Hono's `*`, which matches the rest of the path. Any other group, optional or
+ * named-wildcard syntax would never match in Hono, so it fails the route build
+ * instead of leaving the routes it names without their middleware.
+ */
+function toHonoPattern(path: string): string {
+  const pattern = path
+    .split('/')
+    .map((segment) => (NEST_WILDCARD_SEGMENT.test(segment) ? '*' : segment))
+    .join('/');
+  const bare = pattern.replace(HONO_REGEX_PARAM, ':param');
+  if (/[(){}]/.test(bare) || /\*[\p{ID_Continue}$]/u.test(bare)) {
+    throw new Error(
+      `Middleware route '${path}' uses pattern syntax that Hono does not match, so its ` +
+        "middleware would never run. Use Hono route patterns: ':id' for one segment, " +
+        "':id{[0-9]+}' for a constrained segment and a trailing '*' ('cats/*') for the rest " +
+        'of the path.',
+    );
+  }
+  return pattern;
+}
+
 function isTokenEntry(entry: unknown): entry is Token {
   return (
     typeof entry === 'function' ||
@@ -1007,9 +1037,9 @@ export class RouteManager {
 
   // Consumer targets compile into a Hono router so they match with the same
   // `:param` / `*` semantics that route the request. A controller expands to
-  // its composed routes; a pattern resolves under the global prefix unless it
-  // is `absolute` and, for forRoutes(), also covers the paths beneath it.
-  // `'*'` matches everything.
+  // its composed routes; a pattern (Nest wildcards translated) resolves under
+  // the global prefix unless it is `absolute` and, for forRoutes(), also
+  // covers the paths beneath it. `'*'` matches everything.
   private compileRouteMatcher(
     targets: Array<RouteInfo | Constructor>,
     coverDescendants: boolean,
@@ -1042,11 +1072,12 @@ export class RouteManager {
       }
 
       const method = target.method ?? HttpMethod.ALL;
-      if (target.path === '*' || target.path === '/*') {
+      const translated = toHonoPattern(target.path);
+      if (translated === '*' || translated === '/*') {
         add(method, '*');
         continue;
       }
-      const path = normalizePath(target.path);
+      const path = normalizePath(translated);
       const prefix = this.globalPrefix.replace(/\/+$/, '');
       // A relative target that repeats the prefix would resolve to
       // '<prefix><prefix>/...' and never match, leaving its routes unguarded.

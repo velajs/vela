@@ -496,3 +496,67 @@ describe('an app mounted under a parent base path', () => {
     expect(seen).toEqual(['GET /mounted/api/admin/7']);
   });
 });
+
+describe('Nest wildcard targets', () => {
+  @Controller('/cats')
+  class CatsController {
+    @Get(':id')
+    one() {
+      return { ok: true };
+    }
+
+    @Get(':id/toys')
+    toys() {
+      return { ok: true };
+    }
+  }
+
+  @Controller('/dogs')
+  class DogsController {
+    @Get(':id')
+    one() {
+      return { ok: true };
+    }
+  }
+
+  it.each(['cats/*path', 'cats/{*splat}', 'cats/(.*)', 'cats/*'])(
+    "translates '%s' to a trailing Hono wildcard",
+    async (target) => {
+      const request = await createApp([CatsController, DogsController], forRoutes(target), {
+        globalPrefix: '/api',
+      });
+
+      expect(await request('GET', '/api/cats/1')).toBe(200);
+      expect(await request('GET', '/api/cats/1/toys')).toBe(200);
+      expect(await request('GET', '/api/dogs/1')).toBe(200);
+      expect(seen).toEqual(['GET /api/cats/1', 'GET /api/cats/1/toys']);
+    },
+  );
+
+  it('translates a Nest wildcard in an exclude() target', async () => {
+    const request = await createApp([CatsController, DogsController], (consumer) => {
+      consumer.apply(RecordingMiddleware).exclude('cats/*path').forRoutes('*');
+    });
+
+    expect(await request('GET', '/cats/1')).toBe(200);
+    expect(await request('GET', '/dogs/1')).toBe(200);
+    expect(seen).toEqual(['GET /dogs/1']);
+  });
+
+  it('keeps Hono regex-constrained parameters', async () => {
+    const request = await createApp([CatsController], forRoutes('cats/:id{[0-9]+}'));
+
+    expect(await request('GET', '/cats/42')).toBe(200);
+    expect(await request('GET', '/cats/tom')).toBe(200);
+    expect(seen).toEqual(['GET /cats/42']);
+  });
+
+  it.each(['cats/:id(\\d+)', 'cats/ab*cd', 'cats{/:id}', 'cats/(a|b)'])(
+    "rejects '%s', which no Hono pattern matches",
+    async (target) => {
+      await expect(createApp([CatsController], forRoutes(target))).rejects.toThrow(
+        `Middleware route '${target}' uses pattern syntax that Hono does not match`,
+      );
+    },
+  );
+});
