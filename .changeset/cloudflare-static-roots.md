@@ -6,4 +6,4 @@
 
 WebSocket upgrade routes authenticate with the gateway's `authenticator`, resolved once per application from the module that declares the gateway, and read an `(env) => origins` allowlist from the Worker's `ENV`. Authentication still completes before the Durable Object id is derived, and client-supplied `x-vela-*` headers are still stripped first. `UpgradeAuthenticator`, `WebSocketUpgradeIdentity` and `WebSocketUpgradeAuthenticationContext` are re-exported from the package root.
 
-**Behavior change:** `registerWebSocketRoutes(hono, routes, container)` and `collectWsGatewayRoutes(instance, container)` take the application's container, and `WsGatewayRoute` carries the declaring `moduleId`.
+`WsGatewayRoute` gains an optional `moduleId`: the module that declares the gateway, from which its authenticator resolves.
