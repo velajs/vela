@@ -6,11 +6,16 @@ import {
   Interval,
   MetadataRegistry,
   Module,
+  SCHEDULE_INVOCATION_SEED,
   Scope,
+  VelaFactory,
+  invokeScheduledJob,
+  parseCronMetadata,
+  type CronInvocation,
   type ScheduleInvocation,
 } from '@velajs/vela';
 import * as cloudflare from '../index';
-import { createCloudflareApp } from '../cloudflare-factory';
+import { cloudflareAdapter, createCloudflareApp } from '../cloudflare-factory';
 import {
   CLOUDFLARE_SCHEDULED_EVENT,
   type CloudflareScheduledEvent,
@@ -140,6 +145,47 @@ describe('@Cron on Workers scheduled triggers', () => {
       expect(seen[0]).not.toBe(seen[1]);
       expect(Object.isFrozen(seen[0])).toBe(true);
       expect(() => app.get(CLOUDFLARE_SCHEDULED_EVENT)).toThrow('scheduled');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('seeds a synthetic trigger event for cron jobs fired outside a trigger', async () => {
+    const seen: CloudflareScheduledEvent[] = [];
+    @Injectable({ scope: Scope.REQUEST })
+    class Jobs {
+      constructor(@Inject(CLOUDFLARE_SCHEDULED_EVENT) readonly event: CloudflareScheduledEvent) {}
+      @Cron('30 2 * * *', { dialect: 'cloudflare' })
+      nightly(tick: CronInvocation) {
+        seen.push(this.event);
+        this.event.noRetry();
+        return tick.expression;
+      }
+    }
+    @Module({ providers: [Jobs] })
+    class AppModule {}
+    const app = await VelaFactory.create(AppModule, { adapters: [cloudflareAdapter({ env })] });
+    try {
+      const container = app.getContainer();
+      expect(container.has(SCHEDULE_INVOCATION_SEED)).toBe(true);
+      const seed = container.resolve(SCHEDULE_INVOCATION_SEED);
+      const [entry] = app.entrypoints.ofKind('schedule:cron', parseCronMetadata);
+      const invocation: CronInvocation = {
+        kind: 'cron',
+        expression: '30 2 * * *',
+        scheduledTime: Date.UTC(2024, 0, 8, 2, 30),
+        signal: new AbortController().signal,
+      };
+      await invokeScheduledJob(container, entry!, invocation, {
+        seed: (scope) => seed(scope, invocation),
+      });
+
+      expect(seen).toHaveLength(1);
+      expect(seen[0]).toMatchObject({
+        cron: '30 2 * * *',
+        scheduledTime: invocation.scheduledTime,
+      });
+      expect(Object.isFrozen(seen[0])).toBe(true);
     } finally {
       await app.close();
     }

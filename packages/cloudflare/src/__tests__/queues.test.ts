@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  APP_EXCEPTION_HANDLER,
   EXECUTION_LIFETIME,
   Inject,
   Injectable,
@@ -7,6 +8,7 @@ import {
   Module,
   Scope,
   VelaFactory,
+  defineProvider,
   type ExecutionLifetime,
   type VelaEnv,
 } from '@velajs/vela';
@@ -487,6 +489,97 @@ describe('cloudflareQueues() native delivery', () => {
     await expect(
       VelaFactory.create(App, { adapters: [cloudflareAdapter({ env: {} })] }),
     ).rejects.toThrow(/Ambiguous consumer ownership/);
+  });
+
+  it('reports each failure of a native batch once', async () => {
+    const reports: unknown[] = [];
+    const { providers } = processors();
+    @Module({
+      imports: [
+        QueueModule.forRoot({ driver: cloudflareQueues() }),
+        QueueModule.registerQueue({ name: 'email' }),
+      ],
+      providers: [
+        ...providers,
+        defineProvider(APP_EXCEPTION_HANDLER, {
+          useValue: {
+            report(error: unknown) {
+              reports.push(error);
+            },
+          },
+        }),
+      ],
+    })
+    class App {}
+    const worker = createCloudflareWorker(App);
+    const env = {};
+
+    const failed = message(envelope('email', 'fail'));
+    await expect(
+      worker.queue({ queue: 'reports-production', messages: [failed] }, env, context),
+    ).rejects.toThrow('email failed');
+    expect(reports).toEqual([expect.objectContaining({ message: 'email failed' })]);
+
+    reports.length = 0;
+    const batch = [
+      message(envelope('email', 'fail')),
+      message(envelope('orders', 'placed')),
+      message({ plain: 'payload' }),
+    ];
+    await expect(
+      worker.queue({ queue: 'reports-production', messages: batch }, env, context),
+    ).rejects.toBeInstanceOf(AggregateError);
+    expect(reports).toEqual([
+      expect.objectContaining({ message: 'email failed' }),
+      expect.objectContaining({ message: expect.stringMatching(/'orders' is not registered/) }),
+      expect.objectContaining({ message: expect.stringMatching(/Invalid queue job envelope/) }),
+    ]);
+  });
+
+  it('warns once when a raw consumer receives jobs of a queue QueueModule registers', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const received: number[] = [];
+    @Injectable()
+    class Native {
+      @QueueConsumer('claimed-production') async consume(batch: { messages: unknown[] }) {
+        received.push(batch.messages.length);
+      }
+    }
+    @Module({
+      imports: [
+        QueueModule.forRoot({ driver: cloudflareQueues() }),
+        QueueModule.registerQueue({ name: 'email', binding: 'EMAIL_QUEUE' }),
+      ],
+      providers: [Native],
+    })
+    class App {}
+    const worker = createCloudflareWorker(App);
+    const env = {};
+    try {
+      const job = message(envelope('email', 'welcome'));
+      const other = message(envelope('orders', 'placed'));
+      const raw = message({ plain: true });
+      await worker.queue(
+        { queue: 'claimed-production', messages: [job, other, raw] },
+        env,
+        context,
+      );
+      await worker.queue(
+        { queue: 'claimed-production', messages: [message(envelope('email', 'again'))] },
+        env,
+        context,
+      );
+
+      // The raw consumer keeps its batches and their settlement.
+      expect(received).toEqual([3, 1]);
+      expect(job.ack).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledOnce();
+      expect(String(warn.mock.calls[0]?.[0])).toMatch(
+        /@QueueConsumer\('claimed-production'\).*'email'.*@Processor/,
+      );
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('publishes one native module route with the pinned physical queues', async () => {

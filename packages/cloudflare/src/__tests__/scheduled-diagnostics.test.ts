@@ -1,5 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Cron, Injectable, Interval, MetadataRegistry, Module, VelaFactory } from '@velajs/vela';
+import {
+  Cron,
+  Injectable,
+  Interval,
+  MetadataRegistry,
+  Module,
+  UseFilters,
+  UseGuards,
+  VelaFactory,
+  type CanActivate,
+} from '@velajs/vela';
 import { cloudflareAdapter, createCloudflareApp } from '../cloudflare-factory';
 
 const env = {};
@@ -81,5 +91,38 @@ describe('schedule diagnostics under the Cloudflare adapter', () => {
     await app.close();
 
     expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('warns once that guards and filters declared for a cron job do not run', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    class Deny implements CanActivate {
+      canActivate(): boolean {
+        return false;
+      }
+    }
+    class Claim {
+      catch(): void {}
+    }
+    @Injectable()
+    @UseGuards(Deny)
+    class Exports {
+      @Cron('15 2 * * *', { dialect: 'cloudflare' })
+      @UseFilters(Claim)
+      nightly() {}
+    }
+    @Module({ providers: [Exports] })
+    class App {}
+
+    const first = await createCloudflareApp(App, { env });
+    const second = await createCloudflareApp(App, { env: {} });
+    await Promise.all([first.close(), second.close()]);
+
+    expect(warn).toHaveBeenCalledOnce();
+    expect(String(warn.mock.calls[0]?.[0])).toMatch(
+      /@Cron\('15 2 \* \* \*'\) on Exports\.nightly declares @UseGuards and @UseFilters, which do not run.*signed/,
+    );
+    await expect(
+      VelaFactory.create(App, { adapters: [cloudflareAdapter({ env })], diagnostics: 'throw' }),
+    ).rejects.toThrow(/Exports\.nightly declares @UseGuards/);
   });
 });

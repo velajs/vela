@@ -1,4 +1,9 @@
-import { cronDialectAmbiguity, parseCronMetadata, parseIntervalMetadata } from '@velajs/vela';
+import {
+  cronDialectAmbiguity,
+  parseCronMetadata,
+  parseIntervalMetadata,
+  scheduledJobComponents,
+} from '@velajs/vela';
 import type { Entrypoint, VelaApplication } from '@velajs/vela';
 import type { Container } from '@velajs/vela/internal';
 
@@ -19,12 +24,36 @@ function jobName(entry: Entrypoint<{ methodName: string }>): string {
   return `${owner}.${entry.meta.methodName}`;
 }
 
+/** Guards, interceptors and filters declared for a job never run on its trigger. */
+function reportComponents(
+  container: Container,
+  label: string,
+  entry: Entrypoint<{ methodName: string }>,
+): void {
+  const decorators = scheduledJobComponents(container, entry);
+  if (decorators.length === 0) return;
+  const named =
+    decorators.length > 1
+      ? `${decorators.slice(0, -1).join(', ')} and ${decorators.at(-1)!}`
+      : decorators.join('');
+  reportScheduleDiagnostic(
+    container,
+    `[vela] ${label} declares ${named}, which do not run for scheduled jobs: a direct job ` +
+      `runs no guards, interceptors or filters. Use signed ScheduleModule dispatch and declare ` +
+      `them on the signed route to run the job through the request pipeline.`,
+  );
+}
+
 /**
- * Report schedule declarations a Workers cron trigger cannot honor as written.
+ * Report schedule declarations a Workers cron trigger cannot honor as written:
+ * a dialect-ambiguous `@Cron`, `dialect: 'unix'`, `timeZone: 'local'`,
+ * `@Interval` jobs, and guards, interceptors or filters declared for a job.
  * The container's diagnostics policy applies: `'throw'` fails bootstrap and the
  * default `'log'` warns once per declaration, so the first event of a Worker
  * (which bootstraps the application) never fails because of these checks.
- * `vela deploy check` remains the gate that rejects them before deployment.
+ * `vela deploy check` rejects the cron declarations and `@Interval` jobs before
+ * deployment (`ambiguous-cron-dialect`, `incompatible-cron-options`,
+ * `unsupported-interval`).
  */
 export function reportCloudflareScheduleDiagnostics(
   container: Container,
@@ -56,6 +85,7 @@ export function reportCloudflareScheduleDiagnostics(
           `Remove timeZone or set it to 'UTC'.`,
       );
     }
+    reportComponents(container, cron, entry);
   }
   for (const entry of entrypoints.ofKind('schedule:interval', parseIntervalMetadata)) {
     reportScheduleDiagnostic(

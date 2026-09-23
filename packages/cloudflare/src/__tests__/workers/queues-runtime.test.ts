@@ -3,8 +3,12 @@ import * as cloudflareTest from 'cloudflare:test';
 const { createExecutionContext, createMessageBatch, getQueueResult, env } = cloudflareTest;
 import { describe, expect, it } from 'vitest';
 import {
+  APP_EXCEPTION_HANDLER,
   APP_GUARD,
+  Container,
   Controller,
+  EntrypointRegistry,
+  Inject,
   Injectable,
   InjectEnv,
   Module,
@@ -16,6 +20,7 @@ import {
   type VelaEnv,
 } from '@velajs/vela';
 import {
+  dispatchQueueJob,
   InjectQueue,
   observeMessage,
   Process,
@@ -23,6 +28,7 @@ import {
   QueueModule,
   type QueueClient,
   type QueueJob,
+  type QueueMessageLike,
 } from '@velajs/vela/queue';
 import { createCloudflareApp, createCloudflareWorker } from '../../cloudflare-factory';
 import { QueueConsumer } from '../../decorators/queue-consumer';
@@ -126,6 +132,106 @@ describe('QueueModule delivery under workerd', () => {
     await worker.queue(batch, env, context);
     expect(seen).toEqual(['guard:http', 'route']);
     expect((await getQueueResult(batch, context)).explicitAcks).toEqual(['signed']);
+  });
+
+  it('reports each native delivery failure once', async () => {
+    const reports: string[] = [];
+    @Processor('email')
+    @Injectable()
+    class Email {
+      @Process() handle(job: QueueJob) {
+        if (job.name === 'fail') throw new Error('email failed');
+      }
+    }
+    @Module({
+      imports: [
+        QueueModule.forRoot({ driver: cloudflareQueues() }),
+        QueueModule.registerQueue({ name: 'email' }),
+      ],
+      providers: [
+        Email,
+        defineProvider(APP_EXCEPTION_HANDLER, {
+          useValue: {
+            report(error: unknown) {
+              reports.push(error instanceof Error ? error.message : String(error));
+            },
+          },
+        }),
+      ],
+    })
+    class App {}
+    const worker = createCloudflareWorker(App);
+    const batch = createMessageBatch('reports-native', [
+      incoming('ok', 'email'),
+      incoming('fail', 'email'),
+      incoming('placed', 'orders'),
+      { id: 'raw', timestamp: new Date(), attempts: 1, body: 'not an envelope' },
+    ]);
+    const context = createExecutionContext();
+
+    await expect(worker.queue(batch, env, context)).rejects.toBeInstanceOf(AggregateError);
+    expect((await getQueueResult(batch, context)).explicitAcks).toEqual(['ok']);
+    expect(reports).toEqual([
+      'email failed',
+      expect.stringMatching(/'orders' is not registered/),
+      expect.stringMatching(/Invalid queue job envelope/),
+    ]);
+  });
+
+  it('keeps the global guard of signed dispatch in front of a raw-consumer bridge', async () => {
+    const seen: string[] = [];
+    class Deny implements CanActivate {
+      canActivate(): boolean {
+        seen.push('guard');
+        return false;
+      }
+    }
+    @Controller('/jobs')
+    class JobsController {
+      @Post('bridged')
+      @SignedInvocation()
+      bridged(): { ok: boolean } {
+        seen.push('route');
+        return { ok: true };
+      }
+    }
+    @Processor('bridged')
+    @Injectable()
+    class Bridged {
+      @Process() handle() {
+        seen.push('processor');
+      }
+    }
+    @Injectable()
+    class Bridge {
+      constructor(@Inject(Container) private readonly container: Container) {}
+      @QueueConsumer('bridge-native')
+      async consume(batch: { queue: string; messages: readonly QueueMessageLike[] }) {
+        const entrypoints = this.container.resolve(EntrypointRegistry);
+        await consumeQueueBatch(batch, (job) => dispatchQueueJob(this.container, entrypoints, job));
+      }
+    }
+    @Module({
+      imports: [
+        QueueModule.forRoot({
+          driver: cloudflareQueues(),
+          dispatch: { kind: 'signed', target: () => ({ path: '/jobs/bridged' }) },
+        }),
+        QueueModule.registerQueue({ name: 'bridged' }),
+      ],
+      controllers: [JobsController],
+      providers: [Bridged, Bridge, defineProvider(APP_GUARD, { useClass: Deny })],
+    })
+    class App {}
+    const worker = createCloudflareWorker(App);
+    const batch = createMessageBatch('bridge-native', [incoming('guarded', 'bridged')]);
+    const context = createExecutionContext();
+
+    await expect(worker.queue(batch, env, context)).rejects.toThrow();
+    const result = await getQueueResult(batch, context);
+    expect(result.ackAll).toBe(false);
+    expect(result.explicitAcks).toEqual([]);
+    expect(seen).toEqual(['guard']);
   });
 
   it('rejects an unclaimed native batch without acknowledging any message', async () => {

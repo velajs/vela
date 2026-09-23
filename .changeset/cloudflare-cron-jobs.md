@@ -8,7 +8,9 @@ Add `CLOUDFLARE_SCHEDULED_EVENT`, a request-scoped token seeded into each job's 
 
 Signed `ScheduleModule` dispatch now works on Workers: the adapter's invocation transport re-enters the signed route, so its global guards run.
 
-The adapter reports schedule declarations a cron trigger cannot honor through the diagnostics policy: a `@Cron` without a dialect whose weekday field has digits or whose day fields are both restricted, `dialect: 'unix'`, `timeZone: 'local'`, and `@Interval` jobs, which never run on Workers. The default `'log'` mode warns once per declaration and never fails the first event; `'throw'` fails bootstrap. `vela deploy check` remains the hard gate.
+The adapter reports schedule declarations a cron trigger cannot honor through the diagnostics policy: a `@Cron` without a dialect whose weekday field has digits or whose day fields are both restricted, `dialect: 'unix'`, `timeZone: 'local'`, `@Interval` jobs, which never run on Workers, and `@UseGuards`, `@UseInterceptors` or `@UseFilters` declared for a cron job. The default `'log'` mode warns once per declaration and never fails the first event; `'throw'` fails bootstrap. `vela deploy check` rejects the cron declarations and `@Interval` jobs before deployment (`ambiguous-cron-dialect`, `incompatible-cron-options`, `unsupported-interval`).
+
+The adapter provides `SCHEDULE_INVOCATION_SEED`: a cron job fired outside a trigger, such as by Studio's run-now, receives a synthetic `CLOUDFLARE_SCHEDULED_EVENT` whose `cron` is the job's expression, whose `scheduledTime` is the invocation's, and whose `noRetry()` does nothing.
 
 **Behavior change:** `@Scheduled` and `parseScheduledMetadata` are removed, along with the `ScheduledMetadata`, `ScheduledController`, `ScheduledContext` and `ScheduledHandler` types and the `cf:scheduled` and `cf:vela-cron` entrypoint kinds. Replace `@Scheduled(expr)` with `@Cron(expr, { dialect: 'cloudflare' })` from `@velajs/vela`. Cron jobs appear only as `schedule:cron` entrypoints.
 

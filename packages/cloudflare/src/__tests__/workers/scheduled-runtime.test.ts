@@ -14,19 +14,24 @@ import {
   Interval,
   Module,
   Post,
+  SCHEDULE_INVOCATION_SEED,
   ScheduleModule,
   Scope,
   SignedInvocation,
+  VelaFactory,
   defineProvider,
+  invokeScheduledJob,
   parseCron,
+  parseCronMetadata,
   type CanActivate,
+  type CronInvocation,
   type ExecutionContext,
   type ExecutionLifetime,
   type ScheduleInvocation,
   type ScheduleJobRef,
   type VelaEnv,
 } from '@velajs/vela';
-import { createCloudflareWorker } from '../../cloudflare-factory';
+import { cloudflareAdapter, createCloudflareWorker } from '../../cloudflare-factory';
 import { CLOUDFLARE_SCHEDULED_EVENT, type CloudflareScheduledEvent } from '../../scheduled-event';
 
 // 2024-01-08 is a Monday.
@@ -233,6 +238,54 @@ describe('native scheduled controller contract', () => {
       );
     } finally {
       warn.mockRestore();
+    }
+  });
+});
+
+describe('scheduled jobs fired outside a trigger', () => {
+  it('seeds a synthetic trigger event under workerd', async () => {
+    const seen: Array<{ cron: string; scheduledTime: number; expression: string }> = [];
+    @Injectable({ scope: Scope.REQUEST })
+    class Exports {
+      constructor(
+        @Inject(CLOUDFLARE_SCHEDULED_EVENT) private readonly trigger: CloudflareScheduledEvent,
+        @Inject(EXECUTION_LIFETIME) private readonly lifetime: ExecutionLifetime,
+      ) {}
+      @Cron('30 2 * * *', { dialect: 'cloudflare' })
+      nightly(tick: CronInvocation) {
+        this.trigger.noRetry();
+        this.lifetime.waitUntil(
+          Promise.resolve().then(() => {
+            seen.push({
+              cron: this.trigger.cron,
+              scheduledTime: this.trigger.scheduledTime,
+              expression: tick.expression,
+            });
+          }),
+        );
+      }
+    }
+    @Module({ providers: [Exports] })
+    class App {}
+    const app = await VelaFactory.create(App, { adapters: [cloudflareAdapter({ env })] });
+    try {
+      const container = app.getContainer();
+      const seed = container.resolve(SCHEDULE_INVOCATION_SEED);
+      const [entry] = app.entrypoints.ofKind('schedule:cron', parseCronMetadata);
+      const invocation: CronInvocation = {
+        kind: 'cron',
+        expression: '30 2 * * *',
+        scheduledTime: mondayNine,
+        signal: new AbortController().signal,
+      };
+      await invokeScheduledJob(container, entry!, invocation, {
+        seed: (scope) => seed(scope, invocation),
+      });
+      expect(seen).toEqual([
+        { cron: '30 2 * * *', scheduledTime: mondayNine, expression: '30 2 * * *' },
+      ]);
+    } finally {
+      await app.close();
     }
   });
 });

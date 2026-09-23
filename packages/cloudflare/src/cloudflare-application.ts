@@ -51,6 +51,30 @@ function entrypointString(meta: unknown, property: string): string {
   return value;
 }
 
+/**
+ * `QueueModule`'s native consumer reports each failure of a batch once itself
+ * (processor failures where they ran, transport failures on settlement), so
+ * its rejection is not reported again here.
+ */
+const SELF_REPORTING_KINDS = new Set(['cf:queue:module']);
+
+const warnedRawJobs = new Set<string>();
+
+/** The logical queue of a Vela job envelope, without importing the queue subsystem. */
+function envelopeQueue(body: unknown): string | undefined {
+  if (typeof body !== 'object' || body === null) return undefined;
+  const queue: unknown = Reflect.get(body, 'queue');
+  if (
+    typeof queue !== 'string' ||
+    typeof Reflect.get(body, 'id') !== 'string' ||
+    typeof Reflect.get(body, 'name') !== 'string' ||
+    !('data' in body)
+  ) {
+    return undefined;
+  }
+  return queue;
+}
+
 /** Wait for every matching handler, even when one fails before its siblings. */
 async function settleEntrypoints(work: readonly Promise<void>[]): Promise<void> {
   const outcomes = await Promise.allSettled(work);
@@ -245,8 +269,9 @@ export class CloudflareApplication {
    * guard → interceptor pipeline (components declared with
    * `@UseGuards`/`@UseInterceptors`/`@UseFilters` on the consumer class or
    * method). HTTP-global components deliberately do NOT apply — an HTTP auth
-   * guard has no business rejecting a queue batch. Unclaimed errors rethrow
-   * so the platform's retry semantics stay intact.
+   * guard has no business rejecting a queue batch. Unclaimed errors are
+   * reported once (`QueueModule`'s consumer reports its own) and rethrow so
+   * the platform's retry semantics stay intact.
    */
   private async dispatchEntrypoint(
     ep: Entrypoint,
@@ -263,6 +288,8 @@ export class CloudflareApplication {
       source: `${targetClass.name}.${String(methodName)}`,
     };
     let reported: { error: unknown } | undefined;
+    // A self-reporting handler's own rejection was already reported.
+    let delegated: { error: unknown } | undefined;
     try {
       await runInEntrypointScope(this.#app.getContainer(), async (scope, lifetime) => {
         const moduleId = getEntrypointModuleId(scope, ep);
@@ -309,11 +336,18 @@ export class CloudflareApplication {
               if (typeof instance !== 'object' || instance === null) {
                 throw new Error('Entrypoint must resolve to an object.');
               }
-              return invoke(instance, methodName, args);
+              try {
+                return await invoke(instance, methodName, args);
+              } catch (error) {
+                if (SELF_REPORTING_KINDS.has(ep.kind)) delegated = { error };
+                throw error;
+              }
             },
           });
         } catch (error) {
-          resolveErrorReporter(scope).report(error, reportContext);
+          if (delegated?.error !== error) {
+            resolveErrorReporter(scope).report(error, reportContext);
+          }
           for (const filter of filters) {
             if (shouldFilterCatch(filter, error)) {
               // Filters run closest-first; this is the framework catch hook.
@@ -360,6 +394,7 @@ export class CloudflareApplication {
     const raw = this.#app.entrypoints
       .ofKind('cf:queue')
       .filter((ep) => entrypointString(ep.meta, 'queueName') === batch.queue);
+    if (raw.length > 0) this.warnRawJobs(batch);
     const handlers = raw.length > 0 ? raw : this.#app.entrypoints.ofKind('cf:queue:module');
 
     if (handlers.length === 0) {
@@ -373,6 +408,41 @@ export class CloudflareApplication {
     }
 
     await settleEntrypoints(handlers.map((ep) => this.dispatchEntrypoint(ep, batch, env, ctx)));
+  }
+
+  /**
+   * A raw `@QueueConsumer` owns its physical queue's batches, so job envelopes
+   * of a queue registered with `QueueModule` that arrive there never reach
+   * their `@Processor`. Warn once per physical and logical queue (unless
+   * diagnostics are silent); the raw consumer still receives and settles the
+   * batch.
+   */
+  private warnRawJobs(batch: { queue: string; messages: readonly unknown[] }): void {
+    if (this.#app.getContainer().getDiagnostics() === 'silent') return;
+    const registered = new Set(
+      this.#app.entrypoints
+        .ofKind('queue:registration')
+        .map((entry) =>
+          typeof entry.meta === 'object' && entry.meta !== null
+            ? Reflect.get(entry.meta, 'name')
+            : undefined,
+        ),
+    );
+    if (registered.size === 0) return;
+    for (const message of batch.messages) {
+      const body =
+        typeof message === 'object' && message !== null ? Reflect.get(message, 'body') : undefined;
+      const queue = envelopeQueue(body);
+      if (queue === undefined || !registered.has(queue)) continue;
+      const warning =
+        `[vela] @QueueConsumer('${batch.queue}') received jobs of queue '${queue}', which ` +
+        `QueueModule.registerQueue() registers: the raw consumer owns '${batch.queue}', so ` +
+        `these jobs never reach their @Processor('${queue}'). Remove the @QueueConsumer, or send ` +
+        `'${queue}' through a physical queue that no @QueueConsumer claims.`;
+      if (warnedRawJobs.has(warning)) continue;
+      warnedRawJobs.add(warning);
+      console.warn(warning);
+    }
   }
 
   /**

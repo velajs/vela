@@ -170,7 +170,10 @@ an unregistered queue, or fails stays unacknowledged, so Cloudflare retries it
 and then dead-letters it. `registerQueue({ name, consumer: 'email-production' })`
 pins the queue to that physical queue: its jobs are accepted only from it, and
 it carries only the queues pinned to it. A physical queue cannot be both a
-`@QueueConsumer` queue and a pinned consumer.
+`@QueueConsumer` queue and a pinned consumer. A `@QueueConsumer` that receives
+jobs of a registered queue keeps them (they never reach their `@Processor`), and
+the adapter warns once. A custom bridge hands jobs to `dispatchQueueJob`, which
+applies the module's dispatch policy, signed dispatch included.
 
 Use `ScheduleModule.forRoot()` and `@Cron()` for native scheduled work. The
 [queue guide](../../docs/queues.md) and [module guide](../../docs/module-workers.md)
@@ -179,15 +182,23 @@ checks. `@QueueConsumer` remains available for raw batches.
 
 ## Managed queue and cron work
 
-Each matching queue/cron handler receives its original event and environment,
-plus a context whose `waitUntil(promise)` delegates to the platform and retains
-that handler's DI scope until the promise settles. Class/method guards,
-interceptors and filters resolve asynchronously from the handler's declaring
-module. The execution context exposes that same child via `getContainer()` and
-its owner via `getModuleId()`; `REQUEST_CONTEXT` remains HTTP-only.
+Each matching `@QueueConsumer` handler receives its batch and environment, plus
+a context whose `waitUntil(promise)` delegates to the platform and retains that
+handler's DI scope until the promise settles. Class/method guards, interceptors
+and filters resolve asynchronously from the handler's declaring module. The
+execution context exposes that same child via `getContainer()` and its owner via
+`getModuleId()`; `REQUEST_CONTEXT` remains HTTP-only.
 
-Inject `EXECUTION_LIFETIME` from `@velajs/vela` to schedule deferred callbacks
-with `lifetime.defer(work)` or register already-started work with
+A `@Cron` job receives only its `CronInvocation`, with no environment or
+context argument, and runs no guards, interceptors or filters: the adapter warns
+once (fails bootstrap in `diagnostics: 'throw'`) when a job declares
+`@UseGuards`, `@UseInterceptors` or `@UseFilters`. Use signed `ScheduleModule`
+dispatch to run a job through a route's request pipeline, and inject `ENV`,
+`CLOUDFLARE_SCHEDULED_EVENT` and `EXECUTION_LIFETIME` for what the native
+handler arguments used to carry.
+
+In both, inject `EXECUTION_LIFETIME` from `@velajs/vela` to schedule deferred
+callbacks with `lifetime.defer(work)` or register already-started work with
 `lifetime.waitUntil(promise)`. The handler, managed work and asynchronous provider
 disposal finish before queue/cron dispatch returns. Unclaimed failures reject
 for the platform to observe; they are not silently converted into success. When
@@ -230,7 +241,7 @@ queue, cron and Durable Object code.
 ## Queues and cron
 
 ```ts
-import { Cron, InjectEnv, Injectable, type ScheduleInvocation, type VelaEnv } from '@velajs/vela';
+import { Cron, InjectEnv, Injectable, type CronInvocation, type VelaEnv } from '@velajs/vela';
 import { QueueConsumer } from '@velajs/cloudflare';
 
 @Injectable()
@@ -239,7 +250,7 @@ class Jobs {
 
   // Declare the same string under Wrangler `triggers.crons`.
   @Cron('0 * * * *', { dialect: 'cloudflare' })
-  async refresh(tick: ScheduleInvocation) {
+  async refresh(tick: CronInvocation) {
     await this.env.CACHE.put('last-refresh', new Date(tick.scheduledTime).toISOString());
   }
 
@@ -253,10 +264,11 @@ class Jobs {
 ```
 
 A cron trigger runs every core `@Cron()` job whose expression is exactly the
-trigger string. Jobs receive only a `ScheduleInvocation`, as on Node, in a fresh
+trigger string. Jobs receive only their `CronInvocation`, as on Node, in a fresh
 request scope and without guards, interceptors or filters; inject
 `CLOUDFLARE_SCHEDULED_EVENT` for the trigger's bound `noRetry()` and
-`EXECUTION_LIFETIME` for background work. Signed `ScheduleModule` dispatch runs
+`EXECUTION_LIFETIME` for background work. A job run outside a trigger (Studio's
+run-now) receives a synthetic event whose `noRetry()` does nothing. Signed `ScheduleModule` dispatch runs
 the signed route with its global guards. Queue consumers use fresh request
 scopes and their declared guards, interceptors, and filters. Unclaimed errors
 propagate to the platform for retry. Cold queue and cron events have the same
