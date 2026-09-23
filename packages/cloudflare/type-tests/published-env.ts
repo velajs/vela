@@ -3,6 +3,7 @@ import {
   createCloudflareApp,
   createCloudflareWorker,
   type CloudflareRoot,
+  type CloudflareWorkerOptions,
 } from '@velajs/cloudflare';
 import { VelaWebSocketDurableObject } from '@velajs/cloudflare/durable-objects';
 
@@ -65,8 +66,14 @@ export async function verifyPublishedEnvironment(
   void runtimeOnly;
   // @ts-expect-error the supplied environment must satisfy the generated contract
   void createCloudflareApp(root, { env: { SECRET: 'incomplete' } });
-  // @ts-expect-error ENV is framework-owned; the envToken option is gone
-  void createCloudflareWorker(root, { envToken: ENV });
+  // ENV is framework-owned: the published Worker options carry no environment token.
+  const workerOptions: Record<keyof CloudflareWorkerOptions, true> = {
+    globalPrefix: true,
+    security: true,
+    middleware: true,
+    adapters: true,
+  };
+  void workerOptions;
 
   class Room extends VelaWebSocketDurableObject(root) {
     database(): D1Database {

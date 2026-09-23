@@ -13,7 +13,12 @@ import {
   type VelaEnv,
 } from '@velajs/vela';
 import * as cloudflare from '../index';
-import { createCloudflareApp, createCloudflareWorker } from '../cloudflare-factory';
+import {
+  createCloudflareApp,
+  createCloudflareWorker,
+  type CloudflareWorkerOptions,
+  type CreateCloudflareAppOptions,
+} from '../cloudflare-factory';
 import { buildDoRuntime } from '../websocket/do-bootstrap';
 import { CloudflareWebSocketModule } from '../websocket/cloudflare-websocket.module';
 import type { DoStateLike, WsLike } from '../websocket/do-state';
@@ -126,11 +131,14 @@ describe('Cloudflare runtime ENV', () => {
     expect(booted).toEqual(['from adapter', 'from adapter']);
   });
 
-  it('no longer accepts an envToken nor exports the @Env parameter decorator', () => {
-    const { AppModule } = fixture();
-    const token = new InjectionToken<object>('legacy environment');
-    // @ts-expect-error ENV is framework-owned; applications no longer mint an environment token
-    void createCloudflareWorker(AppModule, { envToken: token });
+  it('takes no environment token and exports no environment parameter decorator', () => {
+    // ENV is framework-owned: the entry options carry no application token.
+    expectTypeOf<keyof CloudflareWorkerOptions>().toEqualTypeOf<
+      'globalPrefix' | 'security' | 'middleware' | 'adapters'
+    >();
+    expectTypeOf<keyof CreateCloudflareAppOptions>().toEqualTypeOf<
+      keyof CloudflareWorkerOptions | 'env'
+    >();
     expect(Object.keys(cloudflare)).not.toContain('Env');
     expectTypeOf(createCloudflareApp).parameter(1).toHaveProperty('env').toEqualTypeOf<VelaEnv>();
   });

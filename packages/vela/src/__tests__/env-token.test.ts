@@ -122,7 +122,8 @@ describe('framework-owned ENV', () => {
     expect(ENV.options?.factory).toBeUndefined();
     const exported = Object.keys(vela);
     expect(exported).toContain('InjectEnv');
-    expect(exported).not.toContain('CONFIG_ENV');
+    // ENV is the only environment token; the config layer exports no second one.
+    expect(exported.filter((name) => name.endsWith('_ENV'))).toEqual([]);
     // Hono's `env()` adapter helper is confusable with ENV; core no longer re-exports it.
     expect(exported).not.toContain('env');
     expect(exported).not.toContain('getRuntimeKey');
