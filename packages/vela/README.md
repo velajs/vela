@@ -154,11 +154,12 @@ class ReportsModule {}
 
 `registerAs(namespace, env => config)` reads `ENV`; `ConfigModule.forFeature`
 provides one namespace to the importing module, and `ConfigModule.forRoot({ load })`
-registers several. `ConfigService<T>` checks `get`/`getOrThrow` dot paths against
-the shape you declare. `ENV` has no default: reading it where no runtime seeded
-one fails, while framework readers inject it optionally. A string
-`URL_SIGNING_SECRET` in `ENV` signs URLs and invocations when no explicit secret
-is configured. Values come from outside the program, so validate what you read.
+registers several; both share one provider per namespace, so its factory runs
+once. `ConfigService<T>` checks `get`/`getOrThrow` dot paths against the shape
+you declare. `ENV` has no default: reading it where no runtime seeded one fails,
+while framework readers inject it optionally. A string `URL_SIGNING_SECRET` in
+`ENV` signs URLs and invocations when no explicit secret is configured. Values
+come from outside the program, so validate what you read.
 
 ## Dynamic modules
 

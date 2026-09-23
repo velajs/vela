@@ -212,6 +212,72 @@ describe('registerAs config namespaces', () => {
       expect(app.get(ConfigService).get('lazy.ready')).toBe(true);
       expect(calls).toBe(1);
     });
+
+    it('shares one KEY owner with a global forRoot load of the same namespace', async () => {
+      let calls = 0;
+      const sharedConfig = registerAs('shared', (env) => {
+        calls++;
+        return { region: binding(env, 'SHARED_REGION') ?? 'none' };
+      });
+
+      @Injectable()
+      class SharedReader {
+        constructor(@Inject(sharedConfig.KEY) readonly config: ConfigType<typeof sharedConfig>) {}
+      }
+      @Module({ imports: [ConfigModule.forFeature(sharedConfig)], providers: [SharedReader] })
+      class FeatureModule {}
+      @Module({
+        imports: [ConfigModule.forRoot({ isGlobal: true, load: [sharedConfig] }), FeatureModule],
+      })
+      class AppModule {}
+
+      const app = await VelaFactory.create(AppModule, {
+        diagnostics: 'throw',
+        env: { SHARED_REGION: 'eu' },
+      });
+      const reader = app.get(SharedReader);
+
+      expect(reader.config).toEqual({ region: 'eu' });
+      expect(app.get(ConfigService).get('shared')).toBe(reader.config);
+      expect(app.getContainer().getOwnerModuleIds(sharedConfig.KEY)).toHaveLength(1);
+      expect(calls).toBe(1);
+    });
+
+    it('runs the namespace factory once when forRoot and forFeature both load it', async () => {
+      let calls = 0;
+      const sharedConfig = registerAs('shared', () => {
+        calls++;
+        return { ready: true };
+      });
+
+      @Injectable()
+      class SharedReader {
+        constructor(@Inject(sharedConfig.KEY) readonly config: ConfigType<typeof sharedConfig>) {}
+      }
+      @Module({ imports: [ConfigModule.forFeature(sharedConfig)], providers: [SharedReader] })
+      class FeatureModule {}
+      @Module({ imports: [ConfigModule.forRoot({ load: [sharedConfig] }), FeatureModule] })
+      class AppModule {}
+
+      const app = await VelaFactory.create(AppModule, { diagnostics: 'throw', env: {} });
+
+      expect(app.get(SharedReader).config).toBe(app.get(ConfigService).get('shared'));
+      expect(app.getContainer().getOwnerModuleIds(sharedConfig.KEY)).toHaveLength(1);
+      expect(calls).toBe(1);
+    });
+
+    it('reports another namespace object registered under the same name', async () => {
+      const first = registerAs('duplicate', () => ({ source: 'first' }));
+      const second = registerAs('duplicate', () => ({ source: 'second' }));
+      @Module({ imports: [ConfigModule.forFeature(second)] })
+      class FeatureModule {}
+      @Module({ imports: [ConfigModule.forRoot({ isGlobal: true, load: [first] }), FeatureModule] })
+      class AppModule {}
+
+      await expect(
+        VelaFactory.create(AppModule, { diagnostics: 'throw', env: {} }),
+      ).rejects.toThrow(/was imported again with different options/);
+    });
   });
 
   describe('lazy namespace resolution', () => {

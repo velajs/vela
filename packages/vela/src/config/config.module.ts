@@ -21,18 +21,24 @@ class ConfigNamespacesModule {}
 class ConfigFeatureModule {}
 
 /**
- * Build the lazy sub-module holding one KEY provider per namespace. Its `key`
- * is derived from the owning module instance key so multiple instances get
- * distinct sub-module instances (no import-dedup collision).
+ * The lazy sub-module holding ONE namespace's KEY provider. It is keyed by the
+ * namespace name, not by the importing module, so `forRoot({ load })` (in any
+ * ConfigModule instance) and `forFeature()` of the same namespace collapse
+ * into one `(class, key)` instance: the KEY has a single owner, whatever the
+ * import path, and its factory runs once. Another namespace object under the
+ * same name is reported as a module identity collision.
  */
-function namespacesSubModule(load: AnyConfigNamespace[], key: string): DynamicModule {
-  return {
-    module: ConfigNamespacesModule,
-    key: `config-ns:${key}`,
-    lazy: true,
-    providers: load.map((namespace) => namespace.asProvider()),
-    exports: load.map((namespace) => namespace.KEY),
-  };
+function namespaceSubModule(namespace: AnyConfigNamespace): DynamicModule {
+  return attachModuleIdentity(
+    {
+      module: ConfigNamespacesModule,
+      key: `config-ns:${namespace.namespace}`,
+      lazy: true,
+      providers: [namespace.asProvider()],
+      exports: [namespace.KEY],
+    },
+    { namespace },
+  );
 }
 
 // Rebuilt on `defineModule` (the blessed engine — CLAUDE.md: changed modules
@@ -41,9 +47,9 @@ function namespacesSubModule(load: AnyConfigNamespace[], key: string): DynamicMo
 // `useFactory` resolves in the awaited bootstrap pass and a *synchronous*
 // `app.get(ConfigService)` afterwards returns the cached singleton (no drain).
 //
-// ONLY the namespace `asProvider()` KEY providers are deferred — they move into
-// a LAZY sub-module (`ConfigNamespacesModule`) that ConfigModule imports and
-// re-exports. Their factories read ENV, and construction waits for the first
+// ONLY the namespace `asProvider()` KEY providers are deferred — each moves
+// into a LAZY per-namespace sub-module (`ConfigNamespacesModule`) that
+// ConfigModule imports and re-exports. Their factories read ENV, and construction waits for the first
 // read. `ConfigStore` resolves each KEY through the container on first `get()`;
 // that first resolution claims + sync-drains the sub-module (namespace
 // factories are synchronous, so the sync seam is safe). `resolveAllInstances`
@@ -51,13 +57,13 @@ function namespacesSubModule(load: AnyConfigNamespace[], key: string): DynamicMo
 // sub-module) and skips them at bootstrap.
 const { ConfigurableModuleClass } = defineModule<ConfigModuleOptions>({
   name: 'Config',
-  setup: ({ OPTIONS, options, key }) => {
+  setup: ({ OPTIONS, options }) => {
     const load = options.load ?? [];
     const { validateSchema } = options;
     return {
-      // Lazy sub-module carries the KEY providers; re-exported below so direct
+      // Lazy sub-modules carry the KEY providers; re-exported below so direct
       // `@Inject(ns.KEY)` and `ConfigStore`'s container lookup both reach them.
-      imports: load.length > 0 ? [namespacesSubModule(load, key)] : [],
+      imports: load.map(namespaceSubModule),
       providers: [
         defineProvider(CONFIG_OPTIONS, {
           // Flat config record. `validate` is applied here for the async path;
@@ -104,15 +110,15 @@ export class ConfigModule extends ConfigurableModuleClass {
    * stays lazy until the first read.
    */
   static forFeature(namespace: AnyConfigNamespace): DynamicModule {
-    const key = `feature:${namespace.namespace}`;
     const registration = new InjectionToken<string>(`vela:config-feature:${namespace.namespace}`);
     // Repeating the same namespace dedupes; another namespace object under the
     // same name is reported as a module identity collision.
     return attachModuleIdentity(
       {
         module: ConfigFeatureModule,
-        key: `config-${key}`,
-        imports: [namespacesSubModule([namespace], key)],
+        key: `config-feature:${namespace.namespace}`,
+        // Shared with `forRoot({ load })`: one owner for the namespace KEY.
+        imports: [namespaceSubModule(namespace)],
         providers: [
           // Merge the namespace into the application's ConfigService at
           // bootstrap. Registering never resolves the KEY, so the factory
