@@ -4097,6 +4097,7 @@ declare class Container {
   register<T>(provider: Type<T> | ProviderDefinition<T>, declaringModuleId?: string): this;
   private registerClass;
   private registerOptions;
+  private planClass;
   private writeRegistration;
   registerScope(scope: ModuleScope): void;
 
@@ -4730,6 +4731,7 @@ declare class RouteManager {
   useGlobalFilters(...filters: FilterType[]): this;
   useGlobalFilterTokens(...filterTokens: Array<TypedToken<ExceptionFilter>>): this;
   private getMiddlewarePriority;
+  private middlewareTarget;
   private getRequestContainer;
   private createRequestContainer;
   private wrapMiddlewareWithFilters;
@@ -4742,6 +4744,7 @@ declare class RouteManager {
 
   observeRequests(observer: HttpRequestObserver): () => void;
   build(): Promise<VelaHono>;
+  private checkMiddlewareTargets;
   private registerRoute;
   private composeRoutePaths;
   private compileRouteMatcher;
