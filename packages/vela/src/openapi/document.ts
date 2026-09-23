@@ -122,13 +122,6 @@ function isParamOptional(param: ParameterMetadata, paramtypes?: unknown[]): bool
   return true;
 }
 
-// A documented status is a number or a code string such as '201' or '2XX'.
-function isSuccessStatus(status: number | string): boolean {
-  return typeof status === 'number'
-    ? status >= 200 && status < 300
-    : /^2(?:\d\d|XX)$/i.test(status);
-}
-
 function resolveResponseSchema(
   input: unknown,
   registry: ComponentsRegistry,
@@ -301,12 +294,12 @@ function buildOperation(
   > = {};
 
   const apiResponses = getApiResponses(controller, handlerName) ?? [];
-  // A declared status is what the handler sends. Without one, a documented 2xx
-  // (e.g. a generated create's 201 Response) replaces the default 200.
-  const successStatus = resolveSuccessStatus(controller, handlerName);
-  if (successStatus !== undefined || !apiResponses.some(({ status }) => isSuccessStatus(status))) {
-    responses[String(successStatus ?? DEFAULT_SUCCESS_STATUS)] = { description: 'OK' };
-  }
+  // Document the status the runtime sends: a declared status (`@Endpoint`,
+  // `@HttpCode`) replaces the default 200; a documented 2xx alone does not,
+  // because the handler still answers 200 without one.
+  responses[String(resolveSuccessStatus(controller, handlerName) ?? DEFAULT_SUCCESS_STATUS)] = {
+    description: 'OK',
+  };
   for (const entry of apiResponses) {
     const key = String(entry.status);
     const resolved: { description: string; content?: Record<string, { schema: JsonSchema }> } = {

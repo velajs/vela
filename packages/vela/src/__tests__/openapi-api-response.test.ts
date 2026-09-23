@@ -10,7 +10,9 @@ import {
   createOpenApiDocument,
   ApiResponse,
   HttpCode,
+  VelaFactory,
 } from '../index.js';
+import type { Type } from '../index.js';
 
 beforeEach(() => {
   MetadataRegistry.clear();
@@ -152,7 +154,15 @@ describe('@ApiResponse', () => {
     expect(doc.paths['/override']!.get!.responses['200']!.description).toBe('custom ok');
   });
 
-  it('adds no default 200 beside a documented 2xx success response', () => {
+  // The documented success statuses must include the one the runtime sends.
+  async function sentStatus(module: Type, path: string): Promise<number> {
+    const app = await VelaFactory.create(module);
+    const response = await app.getHonoApp().request(path, { method: 'POST' });
+    await app.close();
+    return response.status;
+  }
+
+  it('keeps the default 200 the runtime sends beside an undeclared documented 2xx', async () => {
     @Controller('/created')
     class CreatedController {
       @Post()
@@ -167,7 +177,29 @@ describe('@ApiResponse', () => {
     class AppModule {}
 
     const responses = createOpenApiDocument(AppModule).paths['/created']!.post!.responses;
+    expect(Object.keys(responses).toSorted()).toEqual(['200', '201', '400']);
+    expect(await sentStatus(AppModule, '/created')).toBe(200);
+  });
+
+  it('documents only the declared 2xx when @HttpCode makes the runtime send it', async () => {
+    @Controller('/created')
+    class CreatedController {
+      @Post()
+      @HttpCode(201)
+      @ApiResponse(201, { description: 'Created' })
+      @ApiResponse(400, { description: 'Validation failed' })
+      create() {
+        return {};
+      }
+    }
+
+    @Module({ controllers: [CreatedController] })
+    class AppModule {}
+
+    const responses = createOpenApiDocument(AppModule).paths['/created']!.post!.responses;
     expect(Object.keys(responses).toSorted()).toEqual(['201', '400']);
+    expect(responses['201']).toEqual({ description: 'Created' });
+    expect(await sentStatus(AppModule, '/created')).toBe(201);
   });
 
   it('keeps the default 200 when only error responses are documented', () => {

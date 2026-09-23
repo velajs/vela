@@ -1,13 +1,9 @@
 ---
-'@velajs/vela': minor
+'@velajs/vela': patch
 ---
 
 Resolve a handler's success status in one place for responses, OpenAPI documents and
 `@CacheResponse`: an `@Endpoint` contract's status, then `@HttpCode`, otherwise 200 (204
-for an empty result). Default statuses are unchanged.
-
-**Behavior change:** `createOpenApiDocument()` no longer adds a default `200 OK` response
-to an operation that declares no status but documents a 2xx response with `@ApiResponse`,
-such as `@ApiResponse(201, ...)`. Such operations previously listed both 200 and the
-documented status, and generated clients typed the phantom 200 as a possible result.
-Operations with only error responses documented still receive the default 200.
+for an empty result). OpenAPI documents that status as before, so a 2xx documented only
+with `@ApiResponse` is listed beside the default 200 the handler still sends. Statuses are
+unchanged.

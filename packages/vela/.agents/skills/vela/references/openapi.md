@@ -37,6 +37,7 @@ class CatalogController {
 - `@ApiTags(...tags)` — class or method; tags merge and de-dupe.
 - `@ApiDoc({ summary?, description?, operationId?, deprecated?, tags? })` — class or method.
 - `@ApiResponse(status, { description, schema? })` — method; stackable for multiple statuses. `schema` accepts a Zod schema, a `defineDto` descriptor, or checked raw JSON Schema.
+- The document always lists the success status the handler sends: an `@Endpoint` status or `@HttpCode`, otherwise 200. A 2xx documented only with `@ApiResponse` is listed beside that 200, so a handler that answers 201 declares `@HttpCode(201)` to drop the 200 from the document and generated clients.
 
 ### operationId from the route name
 

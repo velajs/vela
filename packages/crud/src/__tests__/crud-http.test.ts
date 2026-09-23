@@ -191,10 +191,12 @@ describe('@Crud over HTTP (decorated controller)', () => {
   });
 
   it('documents each verb with the success status it responds with', async () => {
-    const { AppModule } = await makeApp();
+    const { hono, AppModule } = await makeApp();
     const doc = createOpenApiDocument(AppModule);
 
-    // create answers 201; the default 200 must not be documented beside it.
+    // create declares and answers 201; the default 200 must not be documented beside it.
+    const created = await hono.request('/items', json('POST', { name: 'Anchor', qty: 1 }));
+    expect(created.status).toBe(201);
     expect(Object.keys(doc.paths['/items']?.post?.responses ?? {}).toSorted()).toEqual([
       '201',
       '400',
