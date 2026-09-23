@@ -52,7 +52,9 @@ export class MailService {
     if (token === undefined || !this.container.has(token)) {
       throw new MailError(
         'queue_required',
-        '@velajs/mail: queueing requires a queue — pass queue:{ name } to MailModule and register that queue with @velajs/vela/queue',
+        '@velajs/mail: queueing requires a queue. Pass queue: { name?, binding? } to ' +
+          'MailModule.forRoot (the mailer registers that queue itself) and import ' +
+          'QueueModule.forRoot({ driver }) once in the root module.',
       );
     }
     // One client module owns each queue name, however many modules register it.

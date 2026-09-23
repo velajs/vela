@@ -382,13 +382,18 @@ describe('MailModule + MailService', () => {
       const { app } = await makeApp(transport, false);
       const svc = app.get(MailService);
 
-      let code: string | undefined;
+      let error: MailError | undefined;
       try {
         await svc.queue(validMessage());
       } catch (err) {
-        if (err instanceof MailError) code = err.code;
+        if (err instanceof MailError) error = err;
       }
-      expect(code).toBe('queue_required');
+      expect(error?.code).toBe('queue_required');
+      // The fix is MailModule configuration, not a hand-registered queue.
+      expect(error?.message).toMatch(/queue: \{ name\?, binding\? \}.*MailModule\.forRoot/);
+      expect(error?.message).toMatch(
+        /QueueModule\.forRoot\(\{ driver \}\) once in the root module/,
+      );
     });
   });
 });
