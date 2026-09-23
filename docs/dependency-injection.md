@@ -94,6 +94,14 @@ token fail with `MultipleProvidersFoundError` unless the application configured 
 Every application provides `Reflector` globally, so guards and interceptors inject it through their
 constructor, as in Nest.
 
+These framework defaults register themselves when their module loads: `Reflector`,
+`UrlGeneratorService`, `SignedUrlGuard`, `InternalDispatcher`, `SignedInvocationGuard` and the
+`MemoryNonceStore` behind `NONCE_STORE`. Referencing one, by injecting it or by applying
+`@SignedUrl()` or `@SignedInvocation()`, is enough to provide it, and a Worker bundle that never
+references one does not contain it. Code first imported through a dynamic `import()` after the
+application was created does not add a default to that application; import such services
+statically.
+
 ## Module classes and enhancers
 
 A module class is a provider of its own module. The container constructs it through DI, and it
