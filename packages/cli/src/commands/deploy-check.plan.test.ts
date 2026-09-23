@@ -143,6 +143,66 @@ describe('deployment alignment', () => {
     ]);
   });
 
+  it('flags a physical queue a raw @QueueConsumer takes from a processed registration', () => {
+    const queues = {
+      producers: [{ binding: 'EMAIL_QUEUE', queue: 'email-staging' }],
+      consumers: [{ queue: 'email-staging' }, { queue: 'jobs-staging' }],
+    };
+    // The producer's physical queue is claimed by a raw consumer, so the
+    // native module consumer never receives the email jobs.
+    const produced = checkDeployment(config({ queues }), 'staging', [
+      row('cf:queue:module', { consumers: [] }),
+      row('queue:registration', { name: 'email', binding: 'EMAIL_QUEUE', consumers: [] }),
+      row('queue', { queueName: 'email' }),
+      row('cf:queue', { queueName: 'email-staging' }),
+      row('cf:queue', { queueName: 'jobs-staging' }),
+    ]);
+    expect(produced.errors).toEqual([
+      {
+        code: 'queue-consumer-claimed-by-raw',
+        message: expect.stringMatching(/"email-staging".*@QueueConsumer.*"email"/),
+      },
+    ]);
+    // A pin on a raw consumer's queue fails like bootstrap does, processed or not.
+    const pinned = checkDeployment(
+      config({ queues: { consumers: [{ queue: 'jobs-staging' }] } }),
+      'staging',
+      [
+        row('cf:queue:module', { consumers: ['jobs-staging'] }),
+        row('queue:registration', { name: 'sms', consumers: ['jobs-staging'] }),
+        row('cf:queue', { queueName: 'jobs-staging' }),
+      ],
+    );
+    expect(pinned.errors.map((error) => error.code)).toEqual(['queue-consumer-claimed-by-raw']);
+  });
+
+  it('flags an unpinned queue whose producer sends to a queue pinned by other registrations', () => {
+    const queues = {
+      producers: [{ binding: 'EMAIL_QUEUE', queue: 'shared-staging' }],
+      consumers: [{ queue: 'shared-staging' }],
+    };
+    const snapshot = [
+      row('cf:queue:module', { consumers: ['shared-staging'] }),
+      row('queue:registration', { name: 'sms', consumers: ['shared-staging'] }),
+      row('queue:registration', { name: 'email', binding: 'EMAIL_QUEUE', consumers: [] }),
+      row('queue', { queueName: 'sms' }),
+      row('queue', { queueName: 'email' }),
+    ];
+    expect(checkDeployment(config({ queues }), 'staging', snapshot).errors).toEqual([
+      {
+        code: 'queue-sent-to-pinned-queue',
+        message: expect.stringMatching(/"email".*"shared-staging".*"sms"/),
+      },
+    ]);
+    // Pinning the queue to the shared physical queue accepts its jobs there.
+    snapshot[2] = row('queue:registration', {
+      name: 'email',
+      binding: 'EMAIL_QUEUE',
+      consumers: ['shared-staging'],
+    });
+    expect(checkDeployment(config({ queues }), 'staging', snapshot).errors).toEqual([]);
+  });
+
   it('does not require consumers for processors an in-process driver delivers', () => {
     const result = checkDeployment(config(), 'staging', [
       row('queue:registration', { name: 'email', consumers: [] }),
@@ -244,6 +304,29 @@ describe('deployment alignment', () => {
       await app.close();
     }
   });
+  it.each([
+    ['0 9 * * 1', /weekday field uses numbers/],
+    ['0 9 1 * MON', /both day-of-month and weekday/],
+  ])('flags the dialect-ambiguous cron %s', (expression, reason) => {
+    const trigger = config({ triggers: { crons: [expression] } });
+    expect(
+      checkDeployment(trigger, 'staging', [row('schedule:cron', { expression })]).errors,
+    ).toEqual([
+      {
+        code: 'ambiguous-cron-dialect',
+        message: expect.stringMatching(reason),
+      },
+    ]);
+    expect(
+      checkDeployment(trigger, 'staging', [row('schedule:cron', { expression })]).errors[0],
+    ).toMatchObject({ message: expect.stringMatching(/dialect: 'cloudflare'.*'unix'/) });
+    expect(
+      checkDeployment(trigger, 'staging', [
+        row('schedule:cron', { expression, dialect: 'cloudflare' }),
+      ]).errors,
+    ).toEqual([]);
+  });
+
   it('rejects explicitly conflicting core cron dialect or time zone', () => {
     for (const options of [{ dialect: 'unix' }, { timeZone: 'local' }]) {
       const result = checkDeployment(config({ triggers: { crons: ['0 * * * *'] } }), 'staging', [

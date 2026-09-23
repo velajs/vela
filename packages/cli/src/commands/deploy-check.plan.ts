@@ -1,4 +1,4 @@
-import { parseCron, parseCronMetadata } from '@velajs/vela';
+import { cronDialectAmbiguity, parseCron, parseCronMetadata } from '@velajs/vela';
 import { z } from 'zod';
 import { selectDeploymentTarget, type DeploymentTarget } from './deploy-check.config.js';
 
@@ -91,6 +91,8 @@ export function checkDeployment(
   const registrations = new Map<string, QueueRegistrationRow>();
   // True when the queue driver consumes natively through QueueModule.
   let moduleConsumer = false;
+  // Physical queues the native module consumer pins (its cf:queue:module rows).
+  const modulePins = new Set<string>();
   const stale = (kind: string, replacement: string): void => {
     report(
       'stale-entrypoint-snapshot',
@@ -153,11 +155,13 @@ export function checkDeployment(
         );
         continue;
       }
-      if (!moduleConsumerSchema.safeParse(meta).success) {
+      const moduleRow = moduleConsumerSchema.safeParse(meta);
+      if (!moduleRow.success) {
         report('invalid-metadata', `Invalid ${row.kind} metadata.`);
         continue;
       }
       moduleConsumer = true;
+      for (const queue of moduleRow.data.consumers) modulePins.add(queue);
       continue;
     }
     if (row.kind === 'queue:registration') {
@@ -193,6 +197,16 @@ export function checkDeployment(
           report(
             'incompatible-cron-options',
             'A cron handler explicitly requests options incompatible with Cloudflare UTC delivery.',
+          );
+        }
+        const ambiguity = cronDialectAmbiguity(cron);
+        if (ambiguity !== undefined) {
+          report(
+            'ambiguous-cron-dialect',
+            `Cron handler ${JSON.stringify(cron.expression)} declares no dialect, and ` +
+              `${ambiguity}, so it fires on different days under Node and under Workers. ` +
+              `Declare { dialect: 'cloudflare' } and write the expression for Cloudflare; a ` +
+              `Node-only job declares { dialect: 'unix' } and is not deployed as a Worker.`,
           );
         }
       } catch {
@@ -294,6 +308,60 @@ export function checkDeployment(
               `${JSON.stringify(name)} jobs.`,
           );
       }
+    }
+
+    // A raw @QueueConsumer owns its physical queue's batches, so the module
+    // consumer never receives them (bootstrap rejects a pinned one too).
+    const claimed = new Map<string, Set<string>>();
+    const claim = (queue: string, name?: string): void => {
+      if (!rawQueues.has(queue)) return;
+      const names = claimed.get(queue) ?? new Set<string>();
+      if (name !== undefined) names.add(name);
+      claimed.set(queue, names);
+    };
+    for (const queue of modulePins) claim(queue);
+    for (const [name, registration] of registrations)
+      for (const queue of registration.consumers) claim(queue, name);
+    for (const name of processedQueues) {
+      const registration = registrations.get(name);
+      const produced =
+        registration?.binding === undefined ? undefined : producers.get(registration.binding);
+      if (registration?.consumers.length === 0 && produced !== undefined) claim(produced, name);
+    }
+    for (const [queue, names] of claimed) {
+      const jobs = [...names].map((name) => JSON.stringify(name)).join(', ');
+      report(
+        'queue-consumer-claimed-by-raw',
+        `Queue ${JSON.stringify(queue)} is claimed by @QueueConsumer(${JSON.stringify(queue)}), ` +
+          'so the QueueModule consumer never receives its batches' +
+          (jobs ? ` and ${jobs} jobs sent to it never reach their @Processor` : '') +
+          '. Remove the @QueueConsumer, or route the registered queues through a physical ' +
+          'queue that no @QueueConsumer claims.',
+      );
+    }
+
+    // A physical queue pinned by registrations accepts only their jobs, so an
+    // unpinned queue whose producer sends there is rejected and dead-lettered.
+    const pinnedTo = new Map<string, string[]>();
+    for (const queue of modulePins) pinnedTo.set(queue, []);
+    for (const [name, registration] of registrations)
+      for (const queue of registration.consumers)
+        pinnedTo.set(queue, [...(pinnedTo.get(queue) ?? []), name]);
+    for (const [name, { binding, consumers }] of registrations) {
+      if (consumers.length > 0 || binding === undefined) continue;
+      const produced = producers.get(binding);
+      const owners = produced === undefined ? undefined : pinnedTo.get(produced);
+      if (produced === undefined || owners === undefined) continue;
+      report(
+        'queue-sent-to-pinned-queue',
+        `Queue ${JSON.stringify(name)} sends through binding ${JSON.stringify(binding)} to ` +
+          `${JSON.stringify(produced)}, which QueueModule pins to ` +
+          `${owners.map((owner) => JSON.stringify(owner)).join(', ') || 'other queues'}: the ` +
+          `consumer rejects ${JSON.stringify(name)} jobs there, so Cloudflare retries and then ` +
+          `dead-letters them. Pin it too with QueueModule.registerQueue({ name: ` +
+          `${JSON.stringify(name)}, consumer: ${JSON.stringify(produced)} }), or send it through ` +
+          'another queue.',
+      );
     }
   }
   const moduleConsumers = target.queueConsumers.filter((queue) => !rawQueues.has(queue));
