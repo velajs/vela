@@ -2,9 +2,10 @@ import {
   createDiscoverableDecorator,
   defineMetadata,
   getMetadata,
+  Inject,
   registerEntrypointKind,
 } from '../index';
-import { PROCESS_METADATA, PROCESSOR_METADATA } from './queue.tokens';
+import { PROCESS_METADATA, PROCESSOR_METADATA, queueToken } from './queue.tokens';
 import type { StandardSchemaV1 } from '../index';
 import type { QueueJobDefinition } from './queue.definition';
 import type { QueueJob, ProcessMetadata, ProcessorMetadata } from './queue.types';
@@ -27,6 +28,18 @@ export function readProcessorMetadata(value: unknown): ProcessorMetadata {
     throw new Error('Invalid queue entrypoint metadata: queueName must be a string.');
   }
   return { queueName: value.queueName };
+}
+
+/**
+ * Inject the `QueueClient` of a queue registered with
+ * `QueueModule.registerQueue({ name })`. Same as `@Inject(queueToken(name))`:
+ *
+ * ```ts
+ * constructor(@InjectQueue('email') private readonly email: QueueClient) {}
+ * ```
+ */
+export function InjectQueue(name: string): ParameterDecorator {
+  return Inject(queueToken(name));
 }
 
 /**

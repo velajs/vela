@@ -1,21 +1,26 @@
 import { Container, Inject, Injectable } from '../index';
 import type { DiscoveryService, Entrypoint } from '../index';
 import { QueueDispatchBinding } from './queue.binding';
+import { QueueRegistry } from './queue.registry';
 import { QUEUE_DRIVER, queueToken } from './queue.tokens';
 import type { QueueDriver } from './queue.types';
 
-/** A normal class provider makes async transport configuration discoverable at bootstrap. */
+/**
+ * A normal class provider makes async transport configuration discoverable at
+ * bootstrap. It contributes the driver's platform routes (a native consumer)
+ * and one portable `queue:registration` entrypoint per registered queue, whose
+ * `{ name, binding?, consumers }` meta deployment checks read.
+ */
 @Injectable()
 export class QueueTransportEntrypoints {
   constructor(
     @Inject(Container) private readonly container: Container,
     @Inject(QUEUE_DRIVER) private readonly driver: QueueDriver,
     @Inject(QueueDispatchBinding) private readonly binding: QueueDispatchBinding,
+    @Inject(QueueRegistry) private readonly queues: QueueRegistry,
   ) {}
 
   async collectEntrypoints(discovery: DiscoveryService): Promise<Entrypoint[]> {
-    const routes = this.driver.entrypoints ?? [];
-    if (routes.length === 0) return [];
     const registrations = discovery.getRegistrations({ metadataOnly: true });
     let owner: string | undefined;
     for (const registration of registrations) {
@@ -24,19 +29,27 @@ export class QueueTransportEntrypoints {
       if (instance === this) owner = registration.moduleId;
     }
     if (!owner) throw new Error('Queue transport has no module owner.');
-    return routes.map((route) => {
-      if (!this.container.getOwnerModuleIds(queueToken(route.queue)).includes(owner)) {
-        throw new Error(`Transport references unregistered queue '${route.queue}'.`);
-      }
-      return {
-        kind: route.kind,
-        token: QueueTransportEntrypoints,
-        moduleId: owner,
-        instance: this,
-        methodName: 'consume',
-        meta: route.meta,
-      };
-    });
+    const moduleId = owner;
+    const routes: Entrypoint[] = (this.driver.entrypoints ?? []).map((route) => ({
+      kind: route.kind,
+      token: QueueTransportEntrypoints,
+      moduleId,
+      instance: this,
+      methodName: 'consume',
+      meta: route.meta,
+    }));
+    const declarations: Entrypoint[] = this.queues.all().map((queue) => ({
+      kind: 'queue:registration',
+      token: queueToken(queue.name),
+      moduleId: this.container.getOwnerModuleIds(queueToken(queue.name))[0],
+      instance: undefined,
+      meta: {
+        name: queue.name,
+        ...(queue.binding === undefined ? {} : { binding: queue.binding }),
+        consumers: [...queue.consumers],
+      },
+    }));
+    return [...routes, ...declarations];
   }
 
   async consume(payload: unknown): Promise<void> {

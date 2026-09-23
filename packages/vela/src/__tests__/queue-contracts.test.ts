@@ -44,7 +44,10 @@ describe('validated queue contracts', () => {
       }
     }
     const driver = inline({ mode: 'manual' });
-    @Module({ imports: [QueueModule.forRoot({ queues: ['jobs'], driver })], providers: [Consumer] })
+    @Module({
+      imports: [QueueModule.forRoot({ driver }), QueueModule.registerQueue({ name: 'jobs' })],
+      providers: [Consumer],
+    })
     class App {}
     const app = await VelaFactory.create(App);
     const input = { count: '12' };
@@ -169,7 +172,7 @@ it('runs an async Zod transform once per producer and consumer boundary', async 
   }
   const driver = inline({ mode: 'manual' });
   @Module({
-    imports: [QueueModule.forRoot({ queues: ['transform'], driver })],
+    imports: [QueueModule.forRoot({ driver }), QueueModule.registerQueue({ name: 'transform' })],
     providers: [Consumer],
   })
   class App {}

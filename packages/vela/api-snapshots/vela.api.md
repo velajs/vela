@@ -384,9 +384,21 @@ Declaration entry: `./dist/queue/index.d.ts`
 ```ts
 import { Y as Token, k as Container, z as InjectionToken } from "<internal:types.d.ts>";
 import { E as EntrypointRegistry } from "<internal:request-context.d.ts>";
-import { V as DiscoveryService, o as InvocationTarget } from "<internal:env.d.ts>";
+import { J as DynamicModule, V as DiscoveryService, o as InvocationTarget, r as VelaEnv } from "<internal:env.d.ts>";
 import { Gt as ConfigurableModuleClassType } from "<internal:index-factory.d.ts>";
 import { g as StandardSchemaV1 } from "<internal:parse-schema.d.ts>";
+
+export declare class QueueRegistry {
+  #private;
+  constructor(registrations: Iterable<QueueRegistration>);
+
+  static discover(discovery: DiscoveryService): QueueRegistry;
+
+  get(name: string): RegisteredQueue | undefined;
+  has(name: string): boolean;
+
+  all(): RegisteredQueue[];
+}
 
 interface QueueJob<T = unknown> {
   id: string;
@@ -403,6 +415,11 @@ interface AddJobOptions {
   delayMs?: number;
 }
 
+interface QueueEnqueueRequest {
+  readonly job: QueueJob;
+  readonly options?: AddJobOptions;
+}
+
 type QueueDispatchFn = (job: QueueJob) => Promise<void>;
 interface QueueDriverBindHooks {
 
@@ -416,14 +433,41 @@ interface QueueDriver {
 
   consume?(payload: unknown, dispatch: QueueDispatchFn): Promise<void>;
   enqueue(job: QueueJob, options?: AddJobOptions): Promise<void>;
+
+  enqueueBatch?(requests: readonly QueueEnqueueRequest[]): Promise<void>;
   bind?(dispatch: QueueDispatchFn, hooks?: QueueDriverBindHooks): void;
 
   unbind?(): void;
 }
+
 interface QueueDriverEntrypoint {
   readonly kind: string;
-  readonly queue: string;
   readonly meta: Readonly<Record<string, unknown>>;
+}
+
+interface QueueDriverContext {
+
+  readonly env: VelaEnv | undefined;
+
+  readonly queues: QueueRegistry;
+}
+
+type QueueDriverFactory = (context: QueueDriverContext) => QueueDriver;
+
+interface QueueRegistration {
+  readonly name: string;
+
+  readonly binding?: string;
+
+  readonly consumer?: string;
+}
+
+interface RegisteredQueue {
+  readonly name: string;
+
+  readonly binding: string | undefined;
+
+  readonly consumers: readonly string[];
 }
 
 type QueueDispatchMode = {
@@ -439,9 +483,7 @@ type QueueDispatchMode = {
 };
 interface QueueModuleOptions {
 
-  queues?: string[];
-
-  driver?: QueueDriver | (() => QueueDriver);
+  driver?: QueueDriver | QueueDriverFactory;
 
   dispatch?: QueueDispatchMode;
 }
@@ -457,10 +499,14 @@ interface ProcessMetadata {
   methodName: string | symbol;
 }
 
-declare const ConfigurableModuleClass: ConfigurableModuleClassType<QueueModuleOptions, "forRoot", "create", {
-  isGlobal?: boolean;
-}>, MODULE_OPTIONS_TOKEN: InjectionToken<QueueModuleOptions>;
-export declare class QueueModule extends ConfigurableModuleClass {}
+declare const ConfigurableModuleClass: ConfigurableModuleClassType<QueueModuleOptions, "forRoot", "create", Record<never, never>>, MODULE_OPTIONS_TOKEN: InjectionToken<QueueModuleOptions>;
+
+export declare class QueueModule extends ConfigurableModuleClass {
+
+  static forRoot(options?: QueueModuleOptions): DynamicModule;
+
+  static registerQueue(registration: QueueRegistration, ...more: QueueRegistration[]): DynamicModule;
+}
 
 interface QueueJobDefinition<S extends StandardSchemaV1 = StandardSchemaV1> {
   readonly name: string;
@@ -473,6 +519,8 @@ export declare function defineQueueJob<const N extends string, S extends Standar
   readonly name: N;
 };
 
+export declare function InjectQueue(name: string): ParameterDecorator;
+
 export declare function Processor(queueName: string): ClassDecorator;
 
 type QueueProcessDecorator<Data> = <Handler extends (job: QueueJob<Data>) => unknown>(target: object, key: string | symbol, descriptor: TypedPropertyDescriptor<Handler>) => void;
@@ -481,12 +529,30 @@ export declare function Process(jobName?: string): MethodDecorator;
 
 export declare function getProcessHandlers(processorClass: object): ProcessMetadata[];
 
+interface QueueBulkJob<S extends StandardSchemaV1 = StandardSchemaV1> {
+  readonly job: QueueJobDefinition<S>;
+
+  readonly data: StandardSchemaV1.InferInput<S>;
+  readonly options?: AddJobOptions;
+}
+
+interface QueueBulkNamedJob<T = unknown> {
+  readonly job: string;
+  readonly data: T;
+  readonly options?: AddJobOptions;
+}
+type BulkJobs<S extends readonly StandardSchemaV1[]> = { readonly [K in keyof S]: QueueBulkJob<S[K]>; };
+type BulkResults<S extends readonly StandardSchemaV1[]> = { -readonly [K in keyof S]: QueueJob<StandardSchemaV1.InferInput<S[K]>>; };
+
 export declare class QueueClient {
   #private;
   constructor(queue: string, driver: QueueDriver);
   get name(): string;
   add<S extends StandardSchemaV1>(definition: QueueJobDefinition<S>, data: StandardSchemaV1.InferInput<S>, options?: AddJobOptions): Promise<QueueJob<StandardSchemaV1.InferInput<S>>>;
   add<T>(jobName: string, data: T, options?: AddJobOptions): Promise<QueueJob<T>>;
+
+  addBulk<const S extends readonly StandardSchemaV1[]>(jobs: BulkJobs<S>): Promise<BulkResults<S>>;
+  addBulk<T>(jobs: readonly QueueBulkNamedJob<T>[]): Promise<QueueJob<T>[]>;
 }
 
 export declare const PROCESSOR_METADATA = "vela:queue:processor";
@@ -496,9 +562,18 @@ export declare const QUEUE_DRIVER: InjectionToken<QueueDriver>;
 
 export declare function queueToken(name: string): InjectionToken<QueueClient>;
 
+export declare class QueueBatchError extends Error {
+  readonly name = "QueueBatchError";
+
+  readonly accepted: readonly string[];
+
+  readonly rejected: readonly string[];
+  constructor(accepted: readonly string[], rejected: readonly string[], cause: unknown);
+}
+
 export declare class QueueDispatchBinding {
   #private;
-  constructor(container: Container, discovery: DiscoveryService, driver: QueueDriver, queues: string[], dispatch?: QueueDispatchMode);
+  constructor(container: Container, discovery: DiscoveryService, driver: QueueDriver, queues: QueueRegistry, dispatch?: QueueDispatchMode);
   dispose(): void;
 
   dispatch(job: QueueJob): Promise<void>;
@@ -595,7 +670,7 @@ export declare function observeBatch<Body = unknown>(messages: readonly QueueMes
 
 export declare function parseQueueJob(value: unknown, deliveryAttempt?: number): QueueJob;
 
-export { type AddJobOptions, type BatchDisposition, type InlineQueueDriver, type InlineQueueOptions, type MessageDisposition, type MessageOutcome, type ObserveMessageOptions, type ObservedBatch, type ObservedMessage, type ProcessMetadata, type ProcessorMetadata, MODULE_OPTIONS_TOKEN as QUEUE_MODULE_OPTIONS, type QueueDispatchFn, type QueueDispatchMode, type QueueDispatchOptions, type QueueDispatchResult, type QueueDriver, type QueueDriverBindHooks, type QueueDriverEntrypoint, type QueueEntry, type QueueJob, type QueueJobDefinition, type QueueJobInput, type QueueJobOutput, type QueueMessageLike, type QueueModuleOptions, type QueueProcessDecorator };
+export { type AddJobOptions, type BatchDisposition, type InlineQueueDriver, type InlineQueueOptions, type MessageDisposition, type MessageOutcome, type ObserveMessageOptions, type ObservedBatch, type ObservedMessage, type ProcessMetadata, type ProcessorMetadata, MODULE_OPTIONS_TOKEN as QUEUE_MODULE_OPTIONS, type QueueBulkJob, type QueueBulkNamedJob, type QueueDispatchFn, type QueueDispatchMode, type QueueDispatchOptions, type QueueDispatchResult, type QueueDriver, type QueueDriverBindHooks, type QueueDriverContext, type QueueDriverEntrypoint, type QueueDriverFactory, type QueueEnqueueRequest, type QueueEntry, type QueueJob, type QueueJobDefinition, type QueueJobInput, type QueueJobOutput, type QueueMessageLike, type QueueModuleOptions, type QueueProcessDecorator, type QueueRegistration, type RegisteredQueue };
 ```
 
 ## `./schedule-node`

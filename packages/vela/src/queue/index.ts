@@ -3,9 +3,12 @@
 // openness audit test enforces it). Deliberately NOT re-exported from the
 // main barrel: consumers opt in through this subpath.
 export { QueueModule, QUEUE_MODULE_OPTIONS } from './queue.module';
-export { Processor, Process, getProcessHandlers } from './queue.decorators';
+export { Processor, Process, InjectQueue, getProcessHandlers } from './queue.decorators';
 export { queueToken, QUEUE_DRIVER, PROCESSOR_METADATA, PROCESS_METADATA } from './queue.tokens';
 export { QueueClient } from './queue.client';
+export type { QueueBulkJob, QueueBulkNamedJob } from './queue.client';
+export { QueueBatchError } from './queue.errors';
+export { QueueRegistry } from './queue.registry';
 export { QueueDispatchBinding } from './queue.binding';
 export { dispatchQueueJob } from './queue.dispatch';
 export type { QueueDispatchOptions, QueueDispatchResult, QueueEntry } from './queue.dispatch';
@@ -28,10 +31,15 @@ export type {
   QueueDispatchFn,
   QueueDispatchMode,
   QueueDriver,
+  QueueDriverContext,
   QueueDriverEntrypoint,
   QueueDriverBindHooks,
+  QueueDriverFactory,
+  QueueEnqueueRequest,
   QueueJob,
   QueueModuleOptions,
+  QueueRegistration,
+  RegisteredQueue,
 } from './queue.types';
 
 export { defineQueueJob } from './queue.definition';

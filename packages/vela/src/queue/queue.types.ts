@@ -1,4 +1,5 @@
-import type { InvocationTarget, StandardSchemaV1 } from '../index';
+import type { InvocationTarget, StandardSchemaV1, VelaEnv } from '../index';
+import type { QueueRegistry } from './queue.registry';
 
 /**
  * One job as handed to `@Process` handlers and drivers. Ids are minted by the
@@ -6,7 +7,10 @@ import type { InvocationTarget, StandardSchemaV1 } from '../index';
  */
 export interface QueueJob<T = unknown> {
   id: string;
-  /** Queue the job was added to (`QueueModule.forRoot({ queues })` name). */
+  /**
+   * Logical queue the job was added to: the `QueueModule.registerQueue({ name })`
+   * its client belongs to. Native delivery routes a job by this name.
+   */
   queue: string;
   /** Job name — matched against `@Process(name)`; unnamed handlers catch the rest. */
   name: string;
@@ -21,6 +25,12 @@ export interface AddJobOptions {
    * in-core `inline()` driver does not and warns once (log diagnostics).
    */
   delayMs?: number;
+}
+
+/** One job of a batch handed to {@link QueueDriver.enqueueBatch}. */
+export interface QueueEnqueueRequest {
+  readonly job: QueueJob;
+  readonly options?: AddJobOptions;
 }
 
 /** The function a driver calls to deliver one job into the app's processors. */
@@ -48,15 +58,63 @@ export interface QueueDriver {
   /** Await native delivery and settlement, using the module's dispatch policy. */
   consume?(payload: unknown, dispatch: QueueDispatchFn): Promise<void>;
   enqueue(job: QueueJob, options?: AddJobOptions): Promise<void>;
+  /**
+   * Accept several jobs at once (`QueueClient.addBulk`). Resolve only when the
+   * transport accepted every job; otherwise reject, with a `QueueBatchError`
+   * naming the jobs it already accepted. Without it, `addBulk` enqueues the
+   * jobs one at a time.
+   */
+  enqueueBatch?(requests: readonly QueueEnqueueRequest[]): Promise<void>;
   bind?(dispatch: QueueDispatchFn, hooks?: QueueDriverBindHooks): void;
   /** Release an application's binding at disposal. Optional for legacy drivers. */
   unbind?(): void;
 }
 
+/** A platform route a driver contributes, for example a native queue consumer. */
 export interface QueueDriverEntrypoint {
   readonly kind: string;
-  readonly queue: string;
   readonly meta: Readonly<Record<string, unknown>>;
+}
+
+/** What `QueueModule` hands a driver factory when it builds one application's driver. */
+export interface QueueDriverContext {
+  /** The application's `ENV`, when a runtime seeded one (the Worker environment on Cloudflare). */
+  readonly env: VelaEnv | undefined;
+  /** The queues this application registered with `QueueModule.registerQueue`. */
+  readonly queues: QueueRegistry;
+}
+
+/** Builds a fresh driver for each application, from that application's context. */
+export type QueueDriverFactory = (context: QueueDriverContext) => QueueDriver;
+
+/**
+ * One `QueueModule.registerQueue` entry. `name` is the logical queue: the
+ * `@InjectQueue(name)` client, the `@Processor(name)` handlers and every
+ * job's `queue`.
+ */
+export interface QueueRegistration {
+  readonly name: string;
+  /**
+   * The transport binding the driver sends this queue's jobs through. On
+   * Workers it is the Wrangler `queues.producers[].binding`, read from `ENV`
+   * when a job is added. Omit it in applications that only consume the queue.
+   */
+  readonly binding?: string;
+  /**
+   * The physical queue this application consumes the jobs from. Setting it
+   * pins that physical queue: its batches may then only carry jobs of the
+   * queues pinned to it. Without it, delivery routes each job by its `queue`.
+   */
+  readonly consumer?: string;
+}
+
+/** Every registration of one logical queue in an application, merged. */
+export interface RegisteredQueue {
+  readonly name: string;
+  /** The binding the registrations agree on, if any declared one. */
+  readonly binding: string | undefined;
+  /** Physical queues pinned by `consumer`, in registration order. */
+  readonly consumers: readonly string[];
 }
 
 /**
@@ -86,20 +144,16 @@ export type QueueDispatchMode =
 
 export interface QueueModuleOptions {
   /**
-   * Queue names this instance provides clients for. STRUCTURAL — must be
-   * known at `forRoot`/`forRootAsync` call time (clients are options-derived
-   * providers); `forRootAsync` callers pass it alongside the factory.
+   * Defaults to `inline()`. A factory builds a fresh driver for each
+   * application and receives that application's `ENV` and registered queues.
    */
-  queues?: string[];
-  /** Defaults to inline(). A factory creates a fresh driver per application. */
-  driver?: QueueDriver | (() => QueueDriver);
+  driver?: QueueDriver | QueueDriverFactory;
   /**
-   * Opt-in signed re-entry for delivered jobs (default `direct`). STRUCTURAL —
-   * like `queues`, pass it alongside the factory for `forRootAsync`. The
-   * `dispatch.kind` participates in the module dedup key, so a `signed`
-   * instance never dedups with a `direct` one. `signed` requires a driver
-   * that delivers through the module (`bind` or `consume`); bootstrap rejects
-   * any other driver instead of letting deliveries skip the signed route.
+   * Opt-in signed re-entry for delivered jobs (default `direct`). Every
+   * delivery through the module honors it: the inline driver's and a
+   * platform driver's native consumer alike. The `dispatch.kind` participates
+   * in the module dedup key, so a `signed` instance never dedups with a
+   * `direct` one.
    */
   dispatch?: QueueDispatchMode;
 }

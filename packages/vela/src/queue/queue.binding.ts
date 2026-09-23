@@ -3,15 +3,17 @@ import type { Container, DiscoveryService } from '../index';
 import { dispatchJobToEntries } from './queue.dispatch';
 import { readProcessorMetadata } from './queue.decorators';
 import type { QueueEntry } from './queue.dispatch';
-import { PROCESSOR_METADATA, queueToken } from './queue.tokens';
+import type { QueueRegistry } from './queue.registry';
+import { PROCESSOR_METADATA, QUEUE_DRIVER } from './queue.tokens';
 import type { QueueDispatchMode, QueueDriver, QueueJob } from './queue.types';
 
 const ownedDrivers = new WeakSet<QueueDriver>();
 
 /**
- * Wires a `QueueModule` instance's driver to the app: binds in-process
- * delivery to the dispatch core and validates that no other module instance
- * provides the same queue names.
+ * Wires the application's `QueueModule` driver to the app and is the one
+ * dispatcher every delivery goes through: in-process drivers bind to it, and
+ * platform consumers (`consume`) call {@link dispatch}. Both honor the module's
+ * `dispatch` policy, so signed re-entry applies to native deliveries too.
  *
  * Delivery resolves processors from the per-app `EntrypointRegistry` once it
  * exists (registered into the container at the end of
@@ -25,6 +27,7 @@ const ownedDrivers = new WeakSet<QueueDriver>();
 export class QueueDispatchBinding {
   readonly #container: Container;
   readonly #discovery: DiscoveryService;
+  readonly #queues: QueueRegistry;
   readonly #dispatch: QueueDispatchMode | undefined;
   #unbind: (() => void) | undefined;
   #closed = false;
@@ -32,31 +35,19 @@ export class QueueDispatchBinding {
     container: Container,
     discovery: DiscoveryService,
     driver: QueueDriver,
-    queues: string[],
+    queues: QueueRegistry,
     dispatch?: QueueDispatchMode,
   ) {
     this.#container = container;
     this.#discovery = discovery;
+    this.#queues = queues;
     this.#dispatch = dispatch;
-    for (const queue of queues) {
-      const owners = container.getOwnerModuleIds(queueToken(queue));
-      if (owners.length > 1) {
-        throw new Error(
-          `Queue '${queue}' is provided by multiple QueueModule instances (${owners.join(', ')}). ` +
-            `Queue names must be unique per app — either dedup the forRoot options or rename the queue.`,
-        );
-      }
-    }
-    // Only bind() and consume() deliveries pass through this binding. Any other
-    // path reaches processors directly and would skip the signed route's guards.
-    if (dispatch?.kind === 'signed' && !driver.bind && !driver.consume) {
-      const names = queues.map((queue) => `'${queue}'`).join(', ');
+    const owners = container.getOwnerModuleIds(QUEUE_DRIVER);
+    if (owners.length > 1) {
       throw new Error(
-        `QueueModule signed dispatch for queue ${names} cannot be honored: driver ` +
-          `'${driver.kind}' implements neither bind() nor consume(), so its jobs would reach ` +
-          `processors without the signed route and its global guards. Configure the driver to ` +
-          `consume through this module (for example with a consumer mapping), or remove ` +
-          `dispatch: { kind: 'signed' } where this module only produces jobs.`,
+        `QueueModule.forRoot() is imported with different options by ${owners.join(', ')}. ` +
+          `An application configures its queue driver once: import QueueModule.forRoot() ` +
+          `once in the root module and register queues with QueueModule.registerQueue().`,
       );
     }
 
@@ -80,9 +71,20 @@ export class QueueDispatchBinding {
     this.#unbind = undefined;
   }
 
-  /** Platform delivery must reject an unhandled job instead of acknowledging it. */
+  /**
+   * Deliver one job a platform consumer received, through the module's
+   * dispatch policy. Rejects, so the platform retries the message instead of
+   * acknowledging it, when the job's queue is not registered in this
+   * application or no processor handles it.
+   */
   async dispatch(job: QueueJob): Promise<void> {
     if (this.#closed) throw new Error('Queue module is closed.');
+    if (!this.#queues.has(job.queue)) {
+      throw new Error(
+        `Queue '${job.queue}' is not registered in this application. Register it with ` +
+          `QueueModule.registerQueue({ name: '${job.queue}' }) in the module that processes it.`,
+      );
+    }
     await this.#deliver(job, true);
   }
 

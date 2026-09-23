@@ -12,7 +12,14 @@ import {
   SignedInvocation,
   URL_SIGNING_SECRET,
 } from '../index.js';
-import { QueueModule, Process, Processor, queueToken, inline } from '../queue/index.js';
+import {
+  QueueDispatchBinding,
+  QueueModule,
+  Process,
+  Processor,
+  queueToken,
+  inline,
+} from '../queue/index.js';
 import type { QueueClient, QueueDriver, QueueJob } from '../queue/index.js';
 
 const SECRET = 'queue-signed-dispatch-secret';
@@ -62,10 +69,10 @@ describe('QueueModule signed re-entry dispatch (opt-in)', () => {
       imports: [
         SecretModule,
         QueueModule.forRoot({
-          queues: ['signed-q'],
           driver,
           dispatch: { kind: 'signed', target: () => ({ route: 'inv.run' }) },
         }),
+        QueueModule.registerQueue({ name: 'signed-q' }),
       ],
       controllers: [QInvController],
       providers: [SignedProcessor, Producer],
@@ -103,7 +110,7 @@ describe('QueueModule signed re-entry dispatch (opt-in)', () => {
     }
 
     @Module({
-      imports: [QueueModule.forRoot({ queues: ['direct-q'], driver })],
+      imports: [QueueModule.forRoot({ driver }), QueueModule.registerQueue({ name: 'direct-q' })],
       providers: [DirectProcessor, Producer],
     })
     class AppModule {}
@@ -137,10 +144,10 @@ describe('QueueModule signed re-entry dispatch (opt-in)', () => {
     @Module({
       imports: [
         QueueModule.forRoot({
-          queues: ['explicit-direct-q'],
           driver,
           dispatch: { kind: 'direct' },
         }),
+        QueueModule.registerQueue({ name: 'explicit-direct-q' }),
       ],
       providers: [DirectProcessor, Producer],
     })
@@ -154,31 +161,65 @@ describe('QueueModule signed re-entry dispatch (opt-in)', () => {
     await app.close();
   });
 
-  it('rejects signed mode at bootstrap when the driver cannot deliver through the module', async () => {
+  it('re-enters the signed route for jobs a platform consumer delivers through the module', async () => {
+    const routeHits: string[] = [];
+    const processorHits: string[] = [];
+    // Producer-only here: the platform hands received jobs to QueueDispatchBinding.
     const sent: QueueJob[] = [];
-    // Producer-only transport: deliveries would reach processors through an
-    // external bridge that never sees the signed policy.
     const driver: QueueDriver = {
-      kind: 'remote',
+      kind: 'native',
       async enqueue(job) {
         sent.push(job);
       },
     };
 
+    @Global()
+    @Module({
+      providers: [defineProvider(URL_SIGNING_SECRET, { useValue: SECRET })],
+      exports: [URL_SIGNING_SECRET],
+    })
+    class SecretModule {}
+
+    @Controller('/q-native')
+    class NativeController {
+      @Post('run', { name: 'native.run' })
+      @SignedInvocation()
+      run(): { ok: boolean } {
+        routeHits.push('run');
+        return { ok: true };
+      }
+    }
+
+    @Processor('native-q')
+    @Injectable()
+    class NativeProcessor {
+      @Process('go')
+      go(): void {
+        processorHits.push('go');
+      }
+    }
+
     @Module({
       imports: [
+        SecretModule,
         QueueModule.forRoot({
-          queues: ['remote-q'],
           driver,
-          dispatch: { kind: 'signed', target: () => ({ route: 'inv.run' }) },
+          dispatch: { kind: 'signed', target: () => ({ route: 'native.run' }) },
         }),
+        QueueModule.registerQueue({ name: 'native-q' }),
       ],
+      controllers: [NativeController],
+      providers: [NativeProcessor],
     })
     class AppModule {}
 
-    await expect(VelaFactory.create(AppModule)).rejects.toThrow(
-      /signed dispatch for queue 'remote-q'.*driver 'remote' implements neither bind\(\) nor consume\(\)/,
-    );
-    expect(sent).toEqual([]);
+    const app = await VelaFactory.create(AppModule);
+    const job = await app.get(queueToken('native-q')).add('go', {});
+    expect(sent).toEqual([job]);
+    await app.get(QueueDispatchBinding).dispatch({ ...job, attempt: 2 });
+
+    expect(routeHits).toEqual(['run']);
+    expect(processorHits).toEqual([]);
+    await app.close();
   });
 });
