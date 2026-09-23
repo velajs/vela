@@ -115,6 +115,51 @@ WebSocket transports for Node, Bun, and Deno are exposed separately through
 `@velajs/vela/websocket-node`. On Workers, use `@velajs/cloudflare` and its native
 Durable Object entrypoint. See the [WebSocket guide](https://github.com/velajs/vela/blob/main/docs/websockets.md).
 
+## Runtime environment and config
+
+`ENV` is the framework-owned token for the environment a runtime hands the
+application: bindings, variables and secrets, typed as `VelaEnv`. Core declares
+`VelaEnv` empty and never reads a platform global; `@velajs/cloudflare` extends it
+with the `Cloudflare.Env` that `wrangler types` generates and seeds `ENV` for each
+Worker and Durable Object. Elsewhere, seed it yourself:
+`VelaFactory.create(AppModule, { env })` (a Node entry may pass `process.env`), or
+`Test.createTestingModule(metadata, { env })` in tests.
+
+```ts
+import { ConfigModule, Inject, InjectEnv, Injectable, Module, registerAs, type ConfigType, type VelaEnv } from '@velajs/vela';
+
+// Declare what your runtime provides. On Workers, @velajs/cloudflare types
+// VelaEnv from `wrangler types` instead.
+declare module '@velajs/vela' {
+  interface VelaEnv {
+    DATABASE_URL?: string;
+  }
+}
+
+export const database = registerAs('database', (env) => ({
+  url: env.DATABASE_URL ?? 'sqlite::memory:',
+}));
+
+@Injectable()
+class Reports {
+  constructor(
+    @InjectEnv() private readonly env: VelaEnv,
+    @Inject(database.KEY) private readonly db: ConfigType<typeof database>,
+  ) {}
+}
+
+@Module({ imports: [ConfigModule.forFeature(database)], providers: [Reports] })
+class ReportsModule {}
+```
+
+`registerAs(namespace, env => config)` reads `ENV`; `ConfigModule.forFeature`
+provides one namespace to the importing module, and `ConfigModule.forRoot({ load })`
+registers several. `ConfigService<T>` checks `get`/`getOrThrow` dot paths against
+the shape you declare. `ENV` has no default: reading it where no runtime seeded
+one fails, while framework readers inject it optionally. A string
+`URL_SIGNING_SECRET` in `ENV` signs URLs and invocations when no explicit secret
+is configured. Values come from outside the program, so validate what you read.
+
 ## Dynamic modules
 
 Configurable modules use `forRoot` (sync) and `forRootAsync` (DI-resolved):

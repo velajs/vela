@@ -62,7 +62,7 @@ The main `@velajs/vela` export is edge-pure by contract, enforced in CI (an audi
 
 - `node:*` imports, `fs`/`path`/`os`/`child_process`
 - `Buffer` → use `Uint8Array` + `TextEncoder`/`TextDecoder`
-- `process` (incl. `process.env`) → read env via the config layer (`CONFIG_ENV` / `ConfigService`), never `process.env`
+- `process` (incl. `process.env`) → read the runtime environment through `ENV` (`@InjectEnv()`, `registerAs` factories, `ConfigService`), never `process.env`; a Node entry seeds it with `VelaFactory.create(AppModule, { env: process.env })`
 - `__dirname` / `__filename`, `setInterval`, `Bun.serve()`
 - Node `crypto` → Web Crypto
 

@@ -68,6 +68,27 @@ describe('vela new', () => {
     ]);
   });
 
+  it('exports the Worker without an environment token and types ENV from wrangler types', async () => {
+    expect((await run(['new', 'typed-env'])).code).toBe(0);
+    const project = join(cwd, 'typed-env');
+    const worker = await readFile(join(project, 'src/worker.ts'), 'utf8');
+    expect(worker).toContain('export default createCloudflareWorker(AppModule);');
+    expect(worker).not.toContain('InjectionToken');
+    const manifest = JSON.parse(await readFile(join(project, 'package.json'), 'utf8'));
+    expect(manifest.scripts).toMatchObject({
+      types: 'wrangler types --include-runtime=false',
+      predev: 'pnpm run types',
+      pretypecheck: 'pnpm run types',
+    });
+    // Committed so a fresh checkout typechecks before its first `pnpm types`.
+    const generated = await readFile(join(project, 'worker-configuration.d.ts'), 'utf8');
+    expect(generated).toContain('wrangler types --include-runtime=false');
+    expect(generated).toContain('declare namespace Cloudflare');
+    const tsconfig = JSON.parse(await readFile(join(project, 'tsconfig.json'), 'utf8'));
+    expect(tsconfig.include).toContain('worker-configuration.d.ts');
+    expect(tsconfig.compilerOptions.types).toEqual(['@cloudflare/workers-types']);
+  });
+
   it('accepts an empty destination but preserves every file in a nonempty one', async () => {
     await mkdir(join(cwd, 'empty'));
     expect((await run(['new', 'empty'])).code).toBe(0);

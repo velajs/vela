@@ -117,7 +117,7 @@ declare module '@velajs/vela' {
 
 ## Signed URLs
 
-Protect a route with `@SignedUrl()` (adds `SignedUrlGuard`), generate signed links with `UrlGeneratorService.signedUrl`, and provide the secret via the `URL_SIGNING_SECRET` token or `CONFIG_ENV['URL_SIGNING_SECRET']`:
+Protect a route with `@SignedUrl()` (adds `SignedUrlGuard`), generate signed links with `UrlGeneratorService.signedUrl`, and provide the secret via the `URL_SIGNING_SECRET` token or a string `URL_SIGNING_SECRET` in the application's `ENV` (on Workers, a Wrangler secret):
 
 ```ts
 import { Controller, Get, SignedUrl, URL_SIGNING_SECRET, UrlGeneratorService, verifySignedUrl, defineProvider } from '@velajs/vela';
@@ -142,4 +142,4 @@ const link = await urls.signedUrl('file.download', {}, { expiresIn: 3600 });
 // requests to `link` pass the guard until it expires; tampered/expired → 403
 ```
 
-`signedUrl(name, params?, { expiresIn?, secret? })` builds the URL then HMAC-signs it (Web Crypto, edge-safe — no `node:crypto`). The guard resolves the secret in order: explicit → `URL_SIGNING_SECRET` token → `CONFIG_ENV`. The low-level primitives `signUrl(url, secret, { expiresIn? })` and `verifySignedUrl(url, secret)` are also exported (and re-exported from `@velajs/vela/storage`).
+`signedUrl(name, params?, { expiresIn?, secret? })` builds the URL then HMAC-signs it (Web Crypto, edge-safe — no `node:crypto`). The guard resolves the secret in order: explicit → `URL_SIGNING_SECRET` token → the string `ENV.URL_SIGNING_SECRET` (non-string values are ignored). The low-level primitives `signUrl(url, secret, { expiresIn? })` and `verifySignedUrl(url, secret)` are also exported (and re-exported from `@velajs/vela/storage`).

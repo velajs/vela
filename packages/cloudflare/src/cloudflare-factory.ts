@@ -3,9 +3,9 @@ import { getConnInfo } from 'hono/cloudflare-workers';
 import { SCHEDULE_DISPATCH, VelaFactory } from '@velajs/vela';
 import type {
   Container,
-  InjectionToken,
   RuntimeAdapter,
   Type,
+  VelaEnv,
   VelaMiddlewareHandler,
   VelaSecurityOptions,
 } from '@velajs/vela';
@@ -16,18 +16,18 @@ import { registerWebSocketRoutes } from './websocket/websocket-routing';
 import { bootstrapCloudflareRoot } from './root-module';
 import type { CloudflareRoot } from './root-module';
 
-export interface CloudflareWorkerOptions<T extends object> {
-  /** Global typed DI token for the platform's native environment. */
-  envToken: InjectionToken<T>;
+export interface CloudflareWorkerOptions {
   globalPrefix?: string;
   security?: VelaSecurityOptions;
-  /** Build request middleware from the same typed native environment as DI. */
-  middleware?: (env: NoInfer<T>) => VelaMiddlewareHandler[];
+  /** Build request middleware from the same native environment DI receives as ENV. */
+  middleware?: (env: VelaEnv) => VelaMiddlewareHandler[];
+  /** Further runtime adapters, composed after the Cloudflare adapter for each application. */
+  adapters?: RuntimeAdapter[];
 }
 
-export interface CreateCloudflareAppOptions<T extends object> extends CloudflareWorkerOptions<T> {
+export interface CreateCloudflareAppOptions extends CloudflareWorkerOptions {
   /** Supply the platform environment inside fetch/queue/scheduled or a DO constructor. */
-  env: NoInfer<T>;
+  env: VelaEnv;
 }
 
 /**
@@ -46,25 +46,27 @@ async function rejectSignedScheduleDispatch(container: Container): Promise<void>
   );
 }
 
-/** Bind an application to one environment before provider factories and lifecycle hooks. */
-export function cloudflareAdapter<T extends object>(
-  options: CreateCloudflareAppOptions<T>,
-): RuntimeAdapter {
+/**
+ * Bind an application to one environment: seeded as the global ENV before
+ * provider factories and lifecycle hooks, and asserted on every request.
+ */
+export function cloudflareAdapter(options: { env: VelaEnv }): RuntimeAdapter {
+  const { env } = options;
   return {
     name: 'cloudflare',
     requestMiddleware: [
       async (context, next) => {
-        assertCloudflareEnvironment(options.env, context.env);
+        assertCloudflareEnvironment(env, context.env);
         await next();
       },
     ],
     invocationTransport:
       ({ app }) =>
       (request) =>
-        Promise.resolve(app.fetch(request, options.env)),
+        Promise.resolve(app.fetch(request, env)),
     getClientIp: (c) => getConnInfo(c).remote.address ?? null,
     configureContainer: (container) => {
-      registerCloudflareEnvironment(container, { token: options.envToken, env: options.env });
+      registerCloudflareEnvironment(container, env);
     },
     onBootstrap: async ({ container }) => {
       await rejectSignedScheduleDispatch(container);
@@ -81,24 +83,24 @@ export function cloudflareAdapter<T extends object>(
  * applications and Durable Object instances. Build per-application state in factories
  * (`useFactory`, `forRootAsync`, `driver: () => ...`), which run for each application.
  */
-export async function createCloudflareApp<T extends object>(
-  rootModule: CloudflareRoot<NoInfer<T>>,
-  options: CreateCloudflareAppOptions<T>,
-): Promise<CloudflareApplication<T>> {
+export async function createCloudflareApp(
+  rootModule: CloudflareRoot,
+  options: CreateCloudflareAppOptions,
+): Promise<CloudflareApplication> {
   return bootstrapCloudflareRoot(rootModule, options.env, (root) =>
     buildApplication(root, options),
   );
 }
 
-async function buildApplication<T extends object>(
+async function buildApplication(
   root: Type,
-  options: CreateCloudflareAppOptions<T>,
-): Promise<CloudflareApplication<T>> {
+  options: CreateCloudflareAppOptions,
+): Promise<CloudflareApplication> {
   const velaApp = await VelaFactory.create(root, {
     globalPrefix: options.globalPrefix,
     security: options.security,
     middleware: options.middleware?.(options.env),
-    adapters: [cloudflareAdapter(options)],
+    adapters: [cloudflareAdapter(options), ...(options.adapters ?? [])],
   });
   const app = new CloudflareApplication(velaApp, options.env);
   const consumers = new Map<string, string>();
@@ -137,12 +139,12 @@ async function buildApplication<T extends object>(
  * the values their metadata captures, so roots resolve once per environment
  * rather than once per application.
  */
-export function createCloudflareWorker<T extends object>(
-  rootModule: CloudflareRoot<NoInfer<T>>,
-  options: CloudflareWorkerOptions<T>,
+export function createCloudflareWorker(
+  rootModule: CloudflareRoot,
+  options: CloudflareWorkerOptions = {},
 ) {
-  const applications = new WeakMap<T, Promise<CloudflareApplication<T>>>();
-  const application = (env: T): Promise<CloudflareApplication<T>> => {
+  const applications = new WeakMap<VelaEnv, Promise<CloudflareApplication>>();
+  const application = (env: VelaEnv): Promise<CloudflareApplication> => {
     const existing = applications.get(env);
     if (existing) return existing;
     const pending = createCloudflareApp(rootModule, { ...options, env });
@@ -153,19 +155,19 @@ export function createCloudflareWorker<T extends object>(
     return pending;
   };
   return {
-    async fetch(request: Request, env: T, ctx: ExecutionContext): Promise<Response> {
+    async fetch(request: Request, env: VelaEnv, ctx: ExecutionContext): Promise<Response> {
       return (await application(env)).fetch(request, env, ctx);
     },
     async scheduled(
       event: { cron: string; scheduledTime?: number },
-      env: T,
+      env: VelaEnv,
       ctx: { waitUntil: (promise: Promise<unknown>) => void },
     ): Promise<void> {
       return (await application(env)).scheduled(event, env, ctx);
     },
     async queue(
       batch: { queue: string; messages: readonly unknown[] },
-      env: T,
+      env: VelaEnv,
       ctx: { waitUntil: (promise: Promise<unknown>) => void },
     ): Promise<void> {
       return (await application(env)).queue(batch, env, ctx);

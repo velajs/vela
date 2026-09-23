@@ -11,9 +11,8 @@ import { defineProvider } from '@velajs/vela';
  */
 import { Container, defineModule } from '@velajs/vela';
 import type { ProviderDefinition, Type } from '@velajs/vela';
-import { resolveStudioConfig, studioConfig } from './studio.config';
+import { resolveStudioConfig, StudioEnvReader } from './studio.config';
 import type { StudioModuleOptions } from './studio.types';
-import type { StudioEnvConfig } from './studio.config';
 import { ADMIN_AUDIT_SINK, STUDIO_RESOLVED_CONFIG } from './tokens';
 import type { AdminAuditSink } from './tokens';
 import { AdminSubTokenSigner } from './security/sub-token.signer';
@@ -43,13 +42,13 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<StudioMod
   name: 'Studio',
   setup: ({ OPTIONS }) => {
     const providers: Array<Type | ProviderDefinition> = [
-      // Env-derived config slice (reads VELA_STUDIO_* via CONFIG_ENV).
-      studioConfig.asProvider(),
+      // Env-derived config slice (reads VELA_STUDIO_* from the optional ENV).
+      StudioEnvReader,
       // Resolved config = env UNDER module options.
       defineProvider(STUDIO_RESOLVED_CONFIG, {
-        useFactory: (env: StudioEnvConfig, options: StudioModuleOptions) =>
-          resolveStudioConfig(env, options),
-        inject: [studioConfig.KEY, OPTIONS],
+        useFactory: (env: StudioEnvReader, options: StudioModuleOptions) =>
+          resolveStudioConfig(env.config, options),
+        inject: [StudioEnvReader, OPTIONS],
       }),
       defineProvider(AdminSubTokenSigner, {
         useFactory: (config: ResolvedStudioConfig) =>

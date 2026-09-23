@@ -1,8 +1,12 @@
 import type { ModuleOptions } from '@velajs/vela';
-import { TestingModuleBuilder } from './testing-module.builder.js';
+import { TestingModuleBuilder, type TestingModuleOptions } from './testing-module.builder.js';
 
 export const Test = {
-  createTestingModule(metadata: ModuleOptions): TestingModuleBuilder {
-    return new TestingModuleBuilder(metadata);
+  /** Build a testing module; `options` seeds ENV and binds runtime adapters. */
+  createTestingModule(
+    metadata: ModuleOptions,
+    options: TestingModuleOptions = {},
+  ): TestingModuleBuilder {
+    return new TestingModuleBuilder(metadata, options);
   },
 };

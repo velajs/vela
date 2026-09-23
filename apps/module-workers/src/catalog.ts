@@ -1,4 +1,4 @@
-import { Injectable, InjectionToken, Module } from '@velajs/vela';
+import { Injectable, Module } from '@velajs/vela';
 import { createCloudflareWorker } from '@velajs/cloudflare';
 import { Rpc, RpcModule } from '@velajs/rpc/server';
 import { catalog } from './contracts';
@@ -13,6 +13,4 @@ export class CatalogModule {}
 // This worker has no public route or workers.dev exposure. The binding grants access.
 @Module({ imports: [CatalogModule, RpcModule.forRoot({ authorize: 'public' })] })
 class CatalogWorkerModule {}
-export default createCloudflareWorker(CatalogWorkerModule, {
-  envToken: new InjectionToken<object>('catalog environment'),
-});
+export default createCloudflareWorker(CatalogWorkerModule);

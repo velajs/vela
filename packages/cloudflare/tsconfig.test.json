@@ -1,31 +1,26 @@
 {
   // Include runtime integration regressions in addition to the library source.
+  // These Node suites build synthetic environments, so VelaEnv stays the empty
+  // Cloudflare.Env here; tsconfig.workers-test.json types the workerd suites.
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": true
   },
   "files": [
     "src/__tests__/queue-bridge.test.ts",
-    "src/__tests__/workers/queue-bridge-runtime.test.ts",
     "src/__tests__/scheduled-metadata.test.ts",
     "src/__tests__/scheduled-completion.test.ts",
-    "src/__tests__/workers/scheduled-runtime.test.ts",
     "src/__tests__/entrypoint-bindings.test.ts",
     "src/__tests__/entrypoint-lifetime.test.ts",
     "src/__tests__/gateway-entrypoint-routes.test.ts",
     "src/__tests__/durable-object-nonce-store.test.ts",
     "src/__tests__/do-pitr.test.ts",
-    "src/__tests__/workers/entry.ts",
-    "src/__tests__/workers/entrypoint-bindings-runtime.test.ts",
-    "src/__tests__/workers/entrypoint-lifetime-runtime.test.ts",
-    "src/__tests__/workers/websocket-runtime.test.ts",
-    "src/__tests__/workers/pitr-runtime.test.ts",
     "src/__tests__/queue.test.ts",
     "src/__tests__/signed-dispatch.test.ts",
     "src/__tests__/root-module.test.ts",
     "src/__tests__/platform-wiring.test.ts",
-    "src/__tests__/workers/root-resolution-runtime.test.ts",
-    "src/__tests__/workers/module-queue-runtime.test.ts"
+    "src/__tests__/env.test.ts",
+    "src/__tests__/module-queue.test.ts"
   ],
   "include": ["src/**/*.ts", "test-shims/**/*.ts"],
   "exclude": ["node_modules", "dist", "src/__tests__"]

@@ -44,6 +44,10 @@ pnpm dev
 Request `http://localhost:8787` to receive `{"message":"Hello from Vela!"}`.
 The greeting comes from a constructor-injected service. SWC emits decorator
 metadata, and Wrangler rebuilds source changes during local development.
+`src/worker.ts` is only `export default createCloudflareWorker(AppModule)`:
+providers read bindings through the framework `ENV`, typed from the
+`worker-configuration.d.ts` that `pnpm types` (`wrangler types
+--include-runtime=false`) regenerates before `pnpm dev` and `pnpm typecheck`.
 The generated application uses published npm dependencies and requires no
 Cloudflare login, authentication integration, D1, Studio, or live queries.
 

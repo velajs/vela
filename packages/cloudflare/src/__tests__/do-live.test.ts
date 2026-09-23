@@ -1,5 +1,3 @@
-import { InjectionToken } from '@velajs/vela';
-const envToken = new InjectionToken<object>('test environment');
 import { describe, it, expect, beforeEach } from 'vitest';
 import { z } from 'zod';
 import { DatabaseSync } from 'node:sqlite';
@@ -238,7 +236,7 @@ describe('live queries inside the Durable Object', () => {
     const { AppModule } = makeModule(todos);
 
     // --- first DO lifetime -------------------------------------------------
-    const runtime = await buildDoRuntime(AppModule, ctx, { env: {}, envToken });
+    const runtime = await buildDoRuntime(AppModule, ctx, { env: {} });
     expect(runtime.live).toBeDefined();
     const host = new DoWebSocketHost(
       ctx,
@@ -265,7 +263,7 @@ describe('live queries inside the Durable Object', () => {
     // --- eviction: fresh runtime over the same ctx/storage ------------------
     MetadataRegistry.clear();
     const { AppModule: AppModule2 } = makeModule(todos);
-    const woken = await buildDoRuntime(AppModule2, ctx, { env: {}, envToken });
+    const woken = await buildDoRuntime(AppModule2, ctx, { env: {} });
 
     todos.push({ id: 't2', text: 'second' });
     const stamp2 = await woken.live!.applyInvalidation({ tags: ['crud:todos'] });
@@ -287,7 +285,7 @@ describe('live queries inside the Durable Object', () => {
     const storage = { sql: sqlStorage() };
     const ctx = new FakeDoState(storage);
     const { AppModule } = makeModule(todos);
-    const runtime = await buildDoRuntime(AppModule, ctx, { env: {}, envToken });
+    const runtime = await buildDoRuntime(AppModule, ctx, { env: {} });
     const host = new DoWebSocketHost(
       ctx,
       runtime.dispatcher,
@@ -352,7 +350,6 @@ describe('Durable Object lifecycle bindings', () => {
     class App {}
     const runtime = await buildDoRuntime(App, new FakeDoState({ sql: sqlStorage() }), {
       env: {},
-      envToken,
     });
     expect(stamp?.cursor).toBe(1);
     expect(stamp?.epoch).toBeTypeOf('string');

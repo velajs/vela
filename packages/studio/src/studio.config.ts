@@ -1,14 +1,14 @@
 /**
- * `studioConfig` — the `registerAs('studio', …)` namespace that reads the
- * `VELA_STUDIO_*` environment. Module options override these env values; the
- * merge into {@link ResolvedStudioConfig} lives in the module (env under
- * options).
+ * Studio's environment slice: the `VELA_STUDIO_*` variables and secrets read
+ * from the application's ENV, when a runtime seeded one. Module options
+ * override these env values; the merge into {@link ResolvedStudioConfig}
+ * lives in the module (env under options).
  */
-import { CONFIG_ENV, registerAs } from '@velajs/vela';
+import { Injectable, InjectEnv, Optional, type VelaEnv } from '@velajs/vela';
 import { STUDIO_DEFAULT_PATH } from '@velajs/studio-protocol';
 import type { EditableFlags, ResolvedStudioConfig, StudioModuleOptions } from './studio.types';
 
-/** The `VELA_STUDIO_*` env vars this namespace consumes. */
+/** The `VELA_STUDIO_*` variables and secrets Studio reads from ENV. */
 export interface StudioEnv {
   VELA_STUDIO_TOKEN?: string;
   VELA_STUDIO_DATA_EDITABLE?: string;
@@ -28,27 +28,49 @@ export interface StudioEnvConfig {
   transfer?: boolean;
 }
 
+/** One string variable or secret; any other value is ignored. */
+function envString(env: VelaEnv | undefined, key: keyof StudioEnv): string | undefined {
+  if (typeof env !== 'object' || env === null) return undefined;
+  const value: unknown = Reflect.get(env, key);
+  return typeof value === 'string' ? value : undefined;
+}
+
 /** Parse a boolean-ish env flag: `'1'` / `'true'` (case-insensitive) → true. */
-function envBool(raw: unknown): boolean | undefined {
-  if (typeof raw !== 'string') return undefined;
+function envBool(raw: string | undefined): boolean | undefined {
+  if (raw === undefined) return undefined;
   const v = raw.trim().toLowerCase();
   if (v === '1' || v === 'true') return true;
   if (v === '0' || v === 'false' || v === '') return false;
   return undefined;
 }
 
-export const studioConfig = registerAs(
-  'studio',
-  CONFIG_ENV,
-  (env): StudioEnvConfig => ({
-    token: typeof env.VELA_STUDIO_TOKEN === 'string' ? env.VELA_STUDIO_TOKEN : undefined,
-    data: envBool(env.VELA_STUDIO_DATA_EDITABLE),
-    schema: envBool(env.VELA_STUDIO_SCHEMA_EDITABLE),
-    ops: envBool(env.VELA_STUDIO_OPS_EDITABLE),
-    timeTravel: envBool(env.VELA_STUDIO_TIMETRAVEL_EDITABLE),
-    transfer: envBool(env.VELA_STUDIO_TRANSFER_EDITABLE),
-  }),
-);
+/**
+ * Validate the `VELA_STUDIO_*` values of an environment. Non-string values
+ * are ignored, so a stray binding can never enable Studio or a write gate.
+ */
+export function readStudioEnv(env: VelaEnv | undefined): StudioEnvConfig {
+  return {
+    token: envString(env, 'VELA_STUDIO_TOKEN'),
+    data: envBool(envString(env, 'VELA_STUDIO_DATA_EDITABLE')),
+    schema: envBool(envString(env, 'VELA_STUDIO_SCHEMA_EDITABLE')),
+    ops: envBool(envString(env, 'VELA_STUDIO_OPS_EDITABLE')),
+    timeTravel: envBool(envString(env, 'VELA_STUDIO_TIMETRAVEL_EDITABLE')),
+    transfer: envBool(envString(env, 'VELA_STUDIO_TRANSFER_EDITABLE')),
+  };
+}
+
+/**
+ * The env slice of one application. ENV is optional: without a seeded
+ * environment Studio keeps its option-only, default-closed configuration.
+ */
+@Injectable()
+export class StudioEnvReader {
+  readonly config: StudioEnvConfig;
+
+  constructor(@Optional() @InjectEnv() env?: VelaEnv) {
+    this.config = readStudioEnv(env);
+  }
+}
 
 const DEFAULT_RATE_LIMIT = { windowMs: 60_000, max: 120 } as const;
 

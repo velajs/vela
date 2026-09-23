@@ -1,5 +1,5 @@
 import { VelaWebSocketDurableObject } from '@velajs/cloudflare/durable-objects';
-import { Module, Controller, Get, InjectionToken } from '@velajs/vela';
+import { Module, Controller, Get } from '@velajs/vela';
 import {
   createCloudflareWorker,
   CloudflareWebSocketModule,
@@ -121,10 +121,8 @@ export class PageController {
 })
 export class AppModule {}
 
-interface WorkerEnv {
-  CHAT_ROOM: DurableObjectNamespace<ChatRoom>;
-}
-const WORKER_ENV = new InjectionToken<WorkerEnv>('chat environment');
-export class ChatRoom extends VelaWebSocketDurableObject(AppModule, { envToken: WORKER_ENV }) {}
+// The gateway resolves its CHAT_ROOM binding by name from the framework ENV,
+// which the Worker and the Durable Object each seed from their native environment.
+export class ChatRoom extends VelaWebSocketDurableObject(AppModule) {}
 
-export default createCloudflareWorker(AppModule, { envToken: WORKER_ENV });
+export default createCloudflareWorker(AppModule);

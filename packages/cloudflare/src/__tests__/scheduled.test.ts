@@ -1,6 +1,4 @@
-import { InjectionToken } from '@velajs/vela';
 const env = {};
-const envToken = new InjectionToken<object>('test environment');
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Module, Injectable, MetadataRegistry } from '@velajs/vela';
 import { createCloudflareApp } from '../cloudflare-factory';
@@ -29,7 +27,7 @@ describe('@Scheduled() decorator', () => {
     @Module({ providers: [WorkerService] })
     class AppModule {}
 
-    const app = await createCloudflareApp(AppModule, { env, envToken });
+    const app = await createCloudflareApp(AppModule, { env });
     const ctx = { waitUntil: () => {} };
 
     // Trigger hourly cron
@@ -55,7 +53,7 @@ describe('@Scheduled() decorator', () => {
     @Module({ providers: [CronService] })
     class AppModule {}
 
-    const app = await createCloudflareApp(AppModule, { env, envToken });
+    const app = await createCloudflareApp(AppModule, { env });
     const ctx = { waitUntil: () => {} };
 
     await app.scheduled({ cron: '*/5 * * * *' }, env, ctx);
@@ -84,7 +82,7 @@ describe('@Scheduled() decorator', () => {
     @Module({ providers: [ServiceA, ServiceB] })
     class AppModule {}
 
-    const app = await createCloudflareApp(AppModule, { env, envToken });
+    const app = await createCloudflareApp(AppModule, { env });
     const ctx = { waitUntil: () => {} };
 
     await app.scheduled({ cron: '0 * * * *' }, env, ctx);

@@ -105,6 +105,14 @@ export async function verifyGraphqlPackage(releaseTarballs) {
     '--cache',
     join(consumer, '.npm-cache'),
   ]);
+  // The example reads APP_LABEL from ENV, typed by the generated Cloudflare.Env.
+  run('npx', [
+    '--no-install',
+    'wrangler',
+    'types',
+    '--include-runtime=false',
+    '--strict-vars=false',
+  ]);
   run('node', ['node_modules/typescript/bin/tsc', '--noEmit']);
   run('node', ['graphql-consumer.mjs']);
   run('npx', ['--no-install', 'wrangler', 'deploy', '--dry-run', '--outdir', 'worker-bundle']);

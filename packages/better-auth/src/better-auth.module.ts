@@ -87,7 +87,7 @@ function commonContributions(n: NormalizedOptions): {
  *
  * ```ts
  * BetterAuthModule.forRootAsync({
- *   inject: [WORKER_ENV, ConfigService], // captured as readonly tuple
+ *   inject: [ENV, ConfigService],         // captured as readonly tuple
  *   useFactory: (env, config) =>          // inferred from the tokens
  *     betterAuth({ database: drizzleAdapter(drizzle(env.DB), ...) }),
  * });

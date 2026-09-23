@@ -1,0 +1,10 @@
+{
+  // Type-check the emitted declarations the way an application consumes them:
+  // `type-tests/` imports only the built packages plus generated Env types.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["type-tests/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

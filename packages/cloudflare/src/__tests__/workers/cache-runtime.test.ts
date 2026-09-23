@@ -5,7 +5,7 @@ import {
   CacheResponse,
   Controller,
   Get,
-  InjectionToken,
+  ENV,
   MemoryCacheInvalidationStore,
   MemoryCacheStore,
   Module,
@@ -14,9 +14,6 @@ import {
 } from '@velajs/vela';
 import { createCloudflareWorker } from '../../cloudflare-factory';
 import { KVCacheStore, KVCacheInvalidationStore } from '../../services/kv-cache.store';
-import type { TestEnv } from './entry';
-
-const ENV = new InjectionToken<TestEnv>('response-cache environment');
 
 describe('response caching under workerd', () => {
   it('uses native KV metadata for logical expiry and tier backfill in an environment factory', async () => {
@@ -32,7 +29,7 @@ describe('response caching under workerd', () => {
       imports: [
         ResponseCacheModule.forRootAsync({
           inject: [ENV],
-          useFactory: (bindings: TestEnv) => ({
+          useFactory: (bindings) => ({
             namespace: `worker-cache-${crypto.randomUUID()}`,
             store: new TieredCacheStore([l1, new KVCacheStore(bindings.CACHE)]),
             invalidation: new MemoryCacheInvalidationStore(),
@@ -44,9 +41,13 @@ describe('response caching under workerd', () => {
       controllers: [ReadController],
     })
     class App {}
-    const worker = createCloudflareWorker(App, { envToken: ENV });
+    const worker = createCloudflareWorker(App);
     const request = () =>
-      worker.fetch(new Request('https://worker.test/cached'), env, { waitUntil() {} });
+      worker.fetch(new Request('https://worker.test/cached'), env, {
+        waitUntil() {},
+        passThroughOnException() {},
+        props: {},
+      });
     expect(await (await request()).json()).toEqual({ count: 1 });
     l1.clear();
     expect(await (await request()).json()).toEqual({ count: 1 });

@@ -7,6 +7,7 @@ const files = [
   'package.json',
   'pnpm-workspace.yaml',
   'tsconfig.json',
+  'worker-configuration.d.ts',
   '.swcrc',
   'wrangler.jsonc',
   'vela.config.mjs',

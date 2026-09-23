@@ -41,7 +41,13 @@ envelopes and projections; parse those responses before consuming them. The
 browser renders rows validated by the live contract.
 
 `{ create: createAppModule }` builds a graph from each native Workers environment.
-There is no process-global environment or secret. Studio's live source explicitly
+There is no process-global environment or secret: the same environment is the
+framework `ENV`, which `TodoQueries` injects with `@InjectEnv()` and Studio
+reads its `VELA_STUDIO_TOKEN` from. `pnpm types` regenerates
+`worker-configuration.d.ts` from `wrangler.jsonc` and the secret names in
+`.dev.vars.example`, so `VelaEnv` carries the typed bindings. `src/env.ts` only
+narrows the Durable Object binding to its source class, because Wrangler reads
+classes from the built entry. Studio's live source explicitly
 addresses the `default` room with `durableObjectRoomName`; Cloudflare has no
 global room enumeration API. Inspection excludes query arguments, results,
 authentication claims, and presence metadata. `connectedAt` describes when the

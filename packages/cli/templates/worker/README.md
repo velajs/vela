@@ -19,8 +19,17 @@ curl http://localhost:8787
 
 `src/app.module.ts` registers the controller and service. Vela injects
 `AppService` into `AppController` through its constructor; the service supplies
-the response message. `src/worker.ts` connects the module to Workers and keeps
-application construction scoped to the Workers environment.
+the response message. `src/worker.ts` only exports
+`createCloudflareWorker(AppModule)`, which builds one application per Workers
+environment.
+
+That environment is available to providers as `ENV` from `@velajs/vela`:
+`constructor(@InjectEnv() env: VelaEnv)`, or `inject: [ENV]` in a factory.
+`pnpm types` runs `wrangler types --include-runtime=false`, which writes the
+bindings and variables declared in `wrangler.jsonc`, plus the secret names in
+`.dev.vars`, to `worker-configuration.d.ts`; `VelaEnv` picks them up from there. `pnpm dev` and
+`pnpm typecheck` regenerate the file first. Commit it, and validate each value
+your code reads, since it comes from outside the program.
 
 `pnpm build` compiles TypeScript into `dist/` with SWC, including the legacy
 decorator metadata needed for constructor injection. `pnpm typecheck` checks
@@ -43,7 +52,8 @@ pnpm dlx @velajs/cli@latest route list
 descriptions. Node's native TypeScript stripping does not emit decorators or DI
 metadata, so keep the config pointed at `dist/` rather than decorated `src/`
 files. If you add Workers bindings, provide their local equivalents in this
-config; the Worker entrypoint and its environment remain separate.
+config with `VelaFactory.create(AppModule, { env })`; the Worker entrypoint and
+its environment remain separate.
 
 To deploy later, authenticate with `pnpm exec wrangler login` and run
 `pnpm run deploy`. Deployment uses your Cloudflare account; it is optional for

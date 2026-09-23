@@ -99,8 +99,8 @@ const mail = MailModule.forRootAsync({
 ```
 
 `ApplicationConfigModule` is an application module exporting `Config`. On Workers,
-prefer the host's typed environment token; never cache per-environment credentials
-in a process-wide variable. The sample token is illustrative, not a framework token.
+build it from the framework `ENV` (`inject: [ENV]`), which carries the Worker's
+secrets; never cache per-environment credentials in a process-wide variable. The sample token is illustrative, not a framework token.
 
 Alternatively, an application transport module can export a global
 `defineProvider(MAIL_TRANSPORT, { useValue: transport })`. `MailService` prefers an

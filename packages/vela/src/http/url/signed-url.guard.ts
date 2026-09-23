@@ -1,6 +1,6 @@
 import { Injectable, Inject, Optional } from '../../container/decorators';
-import { CONFIG_ENV } from '../../config/config.tokens';
 import { HTTP_SIGNED_URL_PURPOSE, verifySignedUrl } from '../../crypto/signed-url';
+import { InjectEnv, type VelaEnv } from '../../env';
 import { ForbiddenException } from '../../errors/http-exception';
 import { applyDecorators } from '../decorators';
 import { UseGuards } from '../../pipeline/decorators';
@@ -10,19 +10,19 @@ import { URL_SIGNING_SECRET, resolveSigningSecret } from './signing-secret';
 /**
  * Verifies the HMAC signature (and `expires`) of the incoming request URL,
  * using the same secret source as {@link UrlGeneratorService.signedUrl}: the
- * {@link URL_SIGNING_SECRET} token, else `CONFIG_ENV`. Throws
- * `ForbiddenException` (403) when the signature is missing, tampered, or
- * expired. Registered app-wide by `bootstrap`; apply it per-route with
+ * {@link URL_SIGNING_SECRET} token, else the string `ENV.URL_SIGNING_SECRET`.
+ * Throws `ForbiddenException` (403) when the signature is missing, tampered,
+ * or expired. Registered app-wide by `bootstrap`; apply it per-route with
  * {@link SignedUrl}.
  */
 @Injectable()
 export class SignedUrlGuard implements CanActivate {
   readonly #secretToken: string | undefined;
-  readonly #env: Record<string, unknown>;
+  readonly #env: VelaEnv | undefined;
 
   constructor(
     @Optional() @Inject(URL_SIGNING_SECRET) secretToken?: string,
-    @Optional() @Inject(CONFIG_ENV) env: Record<string, unknown> = {},
+    @Optional() @InjectEnv() env?: VelaEnv,
   ) {
     this.#secretToken = secretToken;
     this.#env = env;

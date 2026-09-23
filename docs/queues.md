@@ -20,7 +20,8 @@ QueueModule.forRoot({ queues: ['email'], driver: () => inline() });
 A bound driver instance belongs to one application. Reusing it for another
 application throws instead of redirecting deliveries. Producer-only drivers
 without a `bind` method can be shared if their own transport permits it. Use
-`forRootAsync` with the application's environment token for native bindings.
+`forRootAsync` with `inject: [ENV]` for native bindings: on Workers, `ENV` is the
+native environment, typed by `wrangler types`.
 
 For deterministic tests, create `inline({ mode: 'manual' })` per application and
 await `flush()`. Failed jobs reject the flush after all buffered jobs are tried;
@@ -98,7 +99,7 @@ import { QueueModule, dispatchQueueJob } from '@velajs/vela/queue';
 import { QueueConsumer } from '@velajs/cloudflare';
 import { cloudflareQueueDriver, consumeQueueBatch } from '@velajs/cloudflare/queue';
 
-// ENV is an InjectionToken for the native Workers environment.
+// ENV (from @velajs/vela) is the native Workers environment.
 QueueModule.forRootAsync({
   queues: ['email'],
   inject: [ENV],

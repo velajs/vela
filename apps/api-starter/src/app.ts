@@ -6,11 +6,12 @@ import {
   ApiResponse,
   Controller,
   Get,
-  Inject,
+  InjectEnv,
   Injectable,
   Module,
   WebSocketGateway,
   createOpenApiDocument,
+  type VelaEnv,
 } from "@velajs/vela";
 import { LiveModule, LiveQuery, LiveResolver } from "@velajs/vela/live";
 import { BetterAuthModule, CurrentUser, Public, type User } from "@velajs/better-auth";
@@ -27,7 +28,7 @@ import { StudioCrudModule } from "@velajs/studio/crud";
 import { StudioLiveModule } from "@velajs/studio/live";
 import { schema as authSchema } from "./auth-schema";
 import { todoSchema, todoList } from "./contracts";
-import { ENV, GATEWAY, type Env } from "./env";
+import { GATEWAY } from "./env";
 
 const todos = sqliteTable("todos", {
   id: text().primaryKey(),
@@ -42,7 +43,7 @@ const model = defineModel({
 });
 
 /** One graph per native environment; secrets never live in process-wide globals. */
-export function createAppModule(env: Env) {
+export function createAppModule(env: VelaEnv) {
   const db = drizzle(env.DB, { schema: authSchema });
   const auth = betterAuth({
     secret: env.BETTER_AUTH_SECRET,
@@ -106,7 +107,7 @@ export function createAppModule(env: Env) {
   @LiveResolver()
   @Injectable()
   class TodoQueries {
-    constructor(@Inject(ENV) private readonly native: Env) {}
+    constructor(@InjectEnv() private readonly native: VelaEnv) {}
     @LiveQuery("todos.list", todoList, { tags: ["crud:todos"] })
     async list() {
       const rows = await drizzle(this.native.DB).select().from(todos).orderBy(todos.id);
@@ -141,14 +142,11 @@ export function createAppModule(env: Env) {
         log: () => durableObjectCursorLog(),
         driver: () => durableObjectLive({ namespace: env.LIVE_ROOM, gatewayPath: GATEWAY }),
       }),
-      StudioModule.forRootAsync({
-        inject: [],
-        useFactory: () => ({
-          token: env.VELA_STUDIO_TOKEN,
-          rootModule: AppModule,
-          editable: { ops: true },
-          managedModels: { include: ["todo"] },
-        }),
+      // Studio reads its VELA_STUDIO_TOKEN secret from ENV and stays closed without one.
+      StudioModule.forRoot({
+        rootModule: AppModule,
+        editable: { ops: true },
+        managedModels: { include: ["todo"] },
       }),
       StudioCrudModule.forRoot({}),
       StudioLiveModule.forRoot({

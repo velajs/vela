@@ -1,3 +1,4 @@
+import './vela-env';
 // Factory & Application
 export type { CloudflareRoot } from './root-module';
 export { durableObjectRoomName } from './websocket/room-id';
@@ -31,7 +32,6 @@ export { KvFlagDriver, kvFlagDriver } from './services/kv-flag.driver';
 export type { KvFlagDriverOptions } from './services/kv-flag.driver';
 
 // Decorators
-export { Env } from './decorators/env';
 export { Scheduled, parseScheduledMetadata } from './decorators/scheduled';
 export { QueueConsumer } from './decorators/queue-consumer';
 

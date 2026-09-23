@@ -16,8 +16,9 @@ console.log(studio.url);
 ```
 
 The CLI uses the same host: `vela studio --url http://127.0.0.1:8787 --token "$TOKEN"`.
-The Worker must import `StudioModule.forRoot({ token, rootModule, editable: { ops: true } })`
-for OpenAPI browsing and API execution. Other write categories remain separately controlled
+The Worker must import `StudioModule.forRoot({ rootModule, editable: { ops: true } })`
+for OpenAPI browsing and API execution; Studio reads its `VELA_STUDIO_TOKEN` secret from
+the Worker's `ENV` (or pass `token`). Other write categories remain separately controlled
 by the Worker. The host has no `editable` option; read-only sessions bootstrap normally.
 
 The host emits a protocol-v3 `StudioConnection` as `window.__VELA_STUDIO__`. It contains

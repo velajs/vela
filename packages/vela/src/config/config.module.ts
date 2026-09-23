@@ -1,7 +1,8 @@
 import { Container } from '../container/container';
-import { defineProvider } from '../container/types';
+import { defineProvider, InjectionToken } from '../container/types';
 import type { DynamicModule } from '../module/types';
 import { defineModule } from '../module/define-module';
+import { attachModuleIdentity } from '../module/module-identity';
 import { ConfigService } from './config.service';
 import { ConfigStore } from './config.store';
 import { CONFIG_OPTIONS } from './config.tokens';
@@ -10,16 +11,19 @@ import type { AnyConfigNamespace } from './register-as';
 
 /**
  * Carrier for the namespace `asProvider()` KEY providers ONLY. Split out of
- * ConfigModule and marked `lazy: true` so those factories — which inject
- * `CONFIG_ENV`, live per-request on edge runtimes — never run at bootstrap.
+ * ConfigModule and marked `lazy: true` so those factories, which read the
+ * application's ENV, run on first read instead of at bootstrap (cold start).
  * ConfigModule itself stays EAGER (see below).
  */
 class ConfigNamespacesModule {}
 
+/** Holder for one `ConfigModule.forFeature()` namespace. */
+class ConfigFeatureModule {}
+
 /**
  * Build the lazy sub-module holding one KEY provider per namespace. Its `key`
- * is derived from the owning ConfigModule instance key so multiple ConfigModule
- * instances get distinct sub-module instances (no import-dedup collision).
+ * is derived from the owning module instance key so multiple instances get
+ * distinct sub-module instances (no import-dedup collision).
  */
 function namespacesSubModule(load: AnyConfigNamespace[], key: string): DynamicModule {
   return {
@@ -39,13 +43,12 @@ function namespacesSubModule(load: AnyConfigNamespace[], key: string): DynamicMo
 //
 // ONLY the namespace `asProvider()` KEY providers are deferred — they move into
 // a LAZY sub-module (`ConfigNamespacesModule`) that ConfigModule imports and
-// re-exports. Their factories inject `CONFIG_ENV` (live per-request on edge
-// runtimes), so construction must not happen at bootstrap. `ConfigStore`
-// resolves each KEY through the container on first `get()`; that first
-// resolution claims + sync-drains the sub-module (namespace factories are
-// synchronous, so the sync seam is safe). `resolveAllInstances` treats the KEY
-// tokens as lazy-only (they belong solely to the lazy sub-module) and skips
-// them at bootstrap.
+// re-exports. Their factories read ENV, and construction waits for the first
+// read. `ConfigStore` resolves each KEY through the container on first `get()`;
+// that first resolution claims + sync-drains the sub-module (namespace
+// factories are synchronous, so the sync seam is safe). `resolveAllInstances`
+// treats the KEY tokens as lazy-only (they belong solely to the lazy
+// sub-module) and skips them at bootstrap.
 const { ConfigurableModuleClass } = defineModule<ConfigModuleOptions>({
   name: 'Config',
   setup: ({ OPTIONS, options, key }) => {
@@ -92,5 +95,41 @@ export class ConfigModule extends ConfigurableModuleClass {
       : options.config;
     const { validate: _validate, ...rest } = options;
     return super.forRoot({ ...rest, config: validatedConfig });
+  }
+
+  /**
+   * Provide one `registerAs` namespace to the importing module (NestJS
+   * `forFeature`): `@Inject(ns.KEY)` resolves there, and a `ConfigModule`
+   * store in the application reads it under `ns.namespace`. The factory
+   * stays lazy until the first read.
+   */
+  static forFeature(namespace: AnyConfigNamespace): DynamicModule {
+    const key = `feature:${namespace.namespace}`;
+    const registration = new InjectionToken<string>(`vela:config-feature:${namespace.namespace}`);
+    // Repeating the same namespace dedupes; another namespace object under the
+    // same name is reported as a module identity collision.
+    return attachModuleIdentity(
+      {
+        module: ConfigFeatureModule,
+        key: `config-${key}`,
+        imports: [namespacesSubModule([namespace], key)],
+        providers: [
+          // Merge the namespace into the application's ConfigService at
+          // bootstrap. Registering never resolves the KEY, so the factory
+          // still waits for its first read.
+          defineProvider(registration, {
+            useFactory: async (container: Container) => {
+              if (container.has(ConfigStore)) {
+                (await container.resolveAsync(ConfigStore)).addNamespace(namespace);
+              }
+              return namespace.namespace;
+            },
+            inject: [Container],
+          }),
+        ],
+        exports: [namespace.KEY],
+      },
+      { namespace },
+    );
   }
 }

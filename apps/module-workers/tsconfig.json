@@ -1,4 +1,7 @@
 {
+  // Shared options. Each Worker type-checks as its own program
+  // (tsconfig.<worker>.json) with its generated worker-configuration.<worker>.d.ts,
+  // so ENV carries only the bindings of that Worker's Wrangler file.
   "compilerOptions": {
     "target": "ES2024",
     "module": "ESNext",
@@ -10,5 +13,5 @@
     "types": ["@cloudflare/workers-types"],
     "noEmit": true
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/contracts.ts"]
 }

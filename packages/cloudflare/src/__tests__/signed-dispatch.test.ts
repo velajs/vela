@@ -4,7 +4,6 @@ import {
   Cron,
   Global,
   Injectable,
-  InjectionToken,
   MetadataRegistry,
   Module,
   Post,
@@ -22,7 +21,6 @@ import {
 } from '../cloudflare-factory';
 import { cloudflareQueueDriver } from '../queue';
 
-const ENV = new InjectionToken<{ NAME: string }>('signed dispatch environment');
 const env = { NAME: 'signed' };
 const context = { waitUntil() {} };
 const signed = { kind: 'signed', target: () => ({ route: 'jobs.run' }) } as const;
@@ -87,7 +85,7 @@ describe('signed queue dispatch on Cloudflare', () => {
       ack: vi.fn(),
       retry: vi.fn(),
     };
-    const worker = createCloudflareWorker(App, { envToken: ENV });
+    const worker = createCloudflareWorker(App);
     await worker.queue({ queue: 'tasks-native', messages: [message] }, env, context);
 
     expect(routeHits).toEqual(['run']);
@@ -109,7 +107,7 @@ describe('signed queue dispatch on Cloudflare', () => {
     })
     class App {}
 
-    await expect(createCloudflareApp(App, { env, envToken: ENV })).rejects.toThrow(
+    await expect(createCloudflareApp(App, { env })).rejects.toThrow(
       /signed dispatch for queue 'tasks'.*driver 'cloudflare' implements neither bind\(\) nor consume\(\)/,
     );
     expect(send).not.toHaveBeenCalled();
@@ -139,7 +137,7 @@ describe('signed schedule dispatch on Cloudflare', () => {
   it('rejects signed ScheduleModule dispatch at bootstrap with guidance', async () => {
     const { App, ticks } = scheduledApp({ dispatch: signed });
 
-    await expect(createCloudflareApp(App, { env, envToken: ENV })).rejects.toThrow(
+    await expect(createCloudflareApp(App, { env })).rejects.toThrow(
       /signed ScheduleModule dispatch.*not supported by the Cloudflare adapter.*InternalDispatcher/,
     );
     expect(ticks).toEqual([]);
@@ -149,13 +147,13 @@ describe('signed schedule dispatch on Cloudflare', () => {
     const { App } = scheduledApp({ dispatch: signed });
 
     await expect(
-      VelaFactory.create(App, { adapters: [cloudflareAdapter({ env, envToken: ENV })] }),
+      VelaFactory.create(App, { adapters: [cloudflareAdapter({ env })] }),
     ).rejects.toThrow(/signed ScheduleModule dispatch/);
   });
 
   it('keeps direct schedule dispatch available', async () => {
     const { App, ticks } = scheduledApp({ dispatch: { kind: 'direct' } });
-    const app = await createCloudflareApp(App, { env, envToken: ENV });
+    const app = await createCloudflareApp(App, { env });
 
     await app.scheduled({ cron: '* * * * *' }, env, context);
 

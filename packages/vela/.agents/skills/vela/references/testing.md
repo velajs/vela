@@ -18,7 +18,7 @@ const service = moduleRef.get(CatsService);   // resolve from the root container
 const session = await moduleRef.resolveInRequest(SessionState, { url: 'http://localhost/cats' }); // request-scoped
 ```
 
-`Test.createTestingModule(metadata)` takes the same `ModuleOptions` as `@Module` (`imports/controllers/providers/exports`) and returns a builder. Override methods each return an `OverrideBy` with `.useValue(value)`, `.useClass(cls)`, and `.useFactory({ factory, inject })`:
+`Test.createTestingModule(metadata, { env?, adapters? })` takes the same `ModuleOptions` as `@Module` (`imports/controllers/providers/exports`) and returns a builder; `env` seeds the framework `ENV` and `adapters` bind `RuntimeAdapter`s through the production bootstrap (`overrideProvider(ENV)` also works). Override methods each return an `OverrideBy` with `.useValue(value)`, `.useClass(cls)`, and `.useFactory({ factory, inject })`:
 
 | Override | Targets |
 |---|---|

@@ -1,15 +1,16 @@
 # auth-lab-d1
 
 Cloudflare D1-backed end-to-end smoke for `@velajs/better-auth`. Demonstrates
-**Pattern B** wiring: `BetterAuthModule.forRootAsync` injects a typed native
-Workers environment, hands `env.DB` to `drizzle-orm/d1`, and passes
-the resulting drizzle instance into `better-auth`'s `drizzleAdapter`.
+**Pattern B** wiring: `BetterAuthModule.forRootAsync` injects the framework
+`ENV` (the native Workers environment), hands `env.DB` to `drizzle-orm/d1`, and
+passes the resulting drizzle instance into `better-auth`'s `drizzleAdapter`.
 
 ```bash
 pnpm install
 pnpm wrangler:smoke        # auto-reset DB, apply migration, run wrangler dev, drive HTTP
 pnpm dev                   # interactive: wrangler dev on :8789
 pnpm db:reset              # nuke local D1 + reapply migrations/0000_initial.sql
+pnpm types                 # regenerate worker-configuration.d.ts from wrangler.toml
 ```
 
 `wrangler:smoke` runs 6 checks: healthz, 401-without-session, sign-up,
@@ -20,16 +21,13 @@ through D1.
 
 ```ts
 import { schema } from './schema';
-import { InjectionToken } from '@velajs/vela';
+import { ENV } from '@velajs/vela';
 import { createCloudflareWorker } from '@velajs/cloudflare';
-
-interface WorkerEnv { DB: D1Database; }
-const WORKER_ENV = new InjectionToken<WorkerEnv>('auth-lab-d1.Env');
 
 @Module({
   imports: [
     BetterAuthModule.forRootAsync({
-      inject: [WORKER_ENV],
+      inject: [ENV],
       // useFactory returns the betterAuth() instance directly.
       useFactory: (env) =>
         betterAuth({
@@ -49,9 +47,12 @@ const WORKER_ENV = new InjectionToken<WorkerEnv>('auth-lab-d1.Env');
 class AppModule {}
 ```
 
-`createCloudflareWorker(AppModule, { envToken: WORKER_ENV })` registers the native
-platform environment before DI factories run. Each environment owns its own app
-and auth instance. No binding wrapper or first-request capture is required.
+`createCloudflareWorker(AppModule)` seeds the native platform environment as
+`ENV` before DI factories run. `env.DB` is typed as `D1Database` by the
+`worker-configuration.d.ts` that `pnpm types` (`wrangler types
+--include-runtime=false`) generates from `wrangler.toml`. Each environment owns
+its own app and auth instance. No binding wrapper or first-request capture is
+required.
 
 ## Schema + migrations
 
@@ -74,8 +75,9 @@ re-applies the migration via `wrangler d1 execute --local`.
 1. `wrangler d1 create velajs-better-auth-d1` — creates the remote database.
 2. Copy the returned `database_id` UUID into `wrangler.toml`.
 3. `wrangler d1 execute velajs-better-auth-d1 --remote --file=migrations/0000_initial.sql`.
-4. Replace the hard-coded `secret` and `baseURL` in `src/app.ts` with
-   `env`-driven values via vela's `ConfigModule`.
+4. Replace the hard-coded `secret` and `baseURL` in `src/app.ts` with Worker
+   secrets and variables read from the factory's `env` (the injected `ENV`),
+   validating each value, and rerun `pnpm types`.
 5. `pnpm deploy`.
 
 ## Direct imports (workerd hazard)

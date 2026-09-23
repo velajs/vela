@@ -12,7 +12,7 @@ import {
   shouldFilterCatch,
   type VelaApplication,
 } from '@velajs/vela';
-import type { Entrypoint, ExceptionFilter } from '@velajs/vela';
+import type { Entrypoint, ExceptionFilter, VelaEnv } from '@velajs/vela';
 import { readWsEntrypointMeta } from '@velajs/vela/websocket';
 import { collectWsGatewayRoutes, type WsGatewayRoute } from './websocket/websocket-routing';
 import { assertCloudflareEnvironment } from './environment';
@@ -71,7 +71,7 @@ async function settleEntrypoints(work: readonly Promise<void>[]): Promise<void> 
  *
  * @example
  * ```ts
- * const app = await createCloudflareApp(AppModule, { env, envToken: ENV });
+ * const app = await createCloudflareApp(AppModule, { env });
  * export default {
  *   fetch: app.fetch,
  *   scheduled: app.scheduled.bind(app),
@@ -82,26 +82,30 @@ async function settleEntrypoints(work: readonly Promise<void>[]): Promise<void> 
  * @example
  * ```ts
  * // Serve OpenAPI docs alongside your routes
- * const app = await createCloudflareApp(AppModule, { env, envToken: ENV });
+ * const app = await createCloudflareApp(AppModule, { env });
  * const document = createOpenApiDocument(AppModule);
  * app.mountOpenApi({ document, ui: 'scalar' });
  * // GET /openapi.json -> JSON document
  * // GET /scalar       -> Scalar UI (loads from CDN)
  * ```
  */
-export class CloudflareApplication<T extends object = object> {
+export class CloudflareApplication {
   readonly #wsGatewayRoutes: WsGatewayRoute[] = [];
   readonly #app: VelaApplication;
 
   constructor(
     app: VelaApplication,
-    readonly env: T,
+    readonly env: VelaEnv,
   ) {
     this.#app = app;
     this.get = app.get.bind(app);
   }
 
-  readonly fetch = async (request: Request, env: T, ctx?: ExecutionContext): Promise<Response> => {
+  readonly fetch = async (
+    request: Request,
+    env: VelaEnv,
+    ctx?: ExecutionContext,
+  ): Promise<Response> => {
     assertCloudflareEnvironment(this.env, env);
     return this.#app.fetch(request, env, ctx);
   };
@@ -118,7 +122,7 @@ export class CloudflareApplication<T extends object = object> {
    *
    * @example
    * ```ts
-   * const app = await createCloudflareApp(AppModule, { env, envToken: ENV });
+   * const app = await createCloudflareApp(AppModule, { env });
    * const auth = app.get(BetterAuthService);
    * ```
    */
@@ -139,7 +143,7 @@ export class CloudflareApplication<T extends object = object> {
    * ```ts
    * import { createOpenApiDocument } from '@velajs/vela';
    *
-   * const app = await createCloudflareApp(AppModule, { env, envToken: ENV });
+   * const app = await createCloudflareApp(AppModule, { env });
    * const document = createOpenApiDocument(AppModule, {
    *   info: { title: 'My API', version: '1.0.0' },
    * });
@@ -193,7 +197,7 @@ export class CloudflareApplication<T extends object = object> {
    */
   async scheduled(
     event: { cron: string; scheduledTime?: number },
-    env: T,
+    env: VelaEnv,
     ctx: { waitUntil: (promise: Promise<unknown>) => void },
   ): Promise<void> {
     assertCloudflareEnvironment(this.env, env);
@@ -220,7 +224,7 @@ export class CloudflareApplication<T extends object = object> {
   private async dispatchEntrypoint(
     ep: Entrypoint,
     payload: unknown,
-    env: T,
+    env: VelaEnv,
     platformContext: { waitUntil: (promise: Promise<unknown>) => void },
   ): Promise<void> {
     const targetClass = ep.token;
@@ -320,7 +324,7 @@ export class CloudflareApplication<T extends object = object> {
    */
   async queue(
     batch: { queue: string; messages: readonly unknown[] },
-    env: T,
+    env: VelaEnv,
     ctx: { waitUntil: (promise: Promise<unknown>) => void },
   ): Promise<void> {
     assertCloudflareEnvironment(this.env, env);

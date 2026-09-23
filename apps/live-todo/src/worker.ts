@@ -1,4 +1,4 @@
-import { defineProvider, Inject, Injectable, InjectionToken } from '@velajs/vela';
+import { defineProvider, ENV, InjectEnv, Injectable, type VelaEnv } from '@velajs/vela';
 import { LiveModule } from '@velajs/vela/live';
 import {
   CloudflareWebSocketModule,
@@ -11,24 +11,18 @@ import { makeAppModule, TODO_STORE } from './app.module';
 import type { Todo, TodoStore } from './app.module';
 import { todoListDefinition } from './live-contract';
 
-interface WorkerEnv {
-  TODOS: KVNamespace;
-  CHAT_ROOM: DurableObjectNamespace<LiveRoom>;
-}
-
-const ENV = new InjectionToken<WorkerEnv>('live-todo environment');
-
 const SEED: Todo[] = [{ id: 'seed-1', text: 'Try opening this page in a second tab', createdAt: 0 }];
 const KV_KEY = 'todos';
 
 /**
  * KV-backed store: the Worker (mutations) and the Durable Object (live-query
  * re-runs) are separate app instances, so the data they share must live in a
- * shared binding — never in per-isolate memory.
+ * shared binding — never in per-isolate memory. Bindings are typed by the
+ * generated worker-configuration.d.ts (`pnpm types`).
  */
 @Injectable()
 class KvTodoStore implements TodoStore {
-  constructor(@Inject(ENV) private readonly env: WorkerEnv) {}
+  constructor(@InjectEnv() private readonly env: VelaEnv) {}
 
   async all(): Promise<Todo[]> {
     const raw = await this.env.TODOS.get(KV_KEY);
@@ -69,6 +63,6 @@ const AppModule = makeAppModule({
 });
 
 /** wrangler `class_name` — must be in `migrations[].new_sqlite_classes` (the cursor log lives in DO SQLite). */
-export class LiveRoom extends VelaWebSocketDurableObject(AppModule, { envToken: ENV }) {}
+export class LiveRoom extends VelaWebSocketDurableObject(AppModule) {}
 
-export default createCloudflareWorker(AppModule, { envToken: ENV });
+export default createCloudflareWorker(AppModule);

@@ -1,15 +1,12 @@
-import { Cron, Inject, Injectable, InjectionToken, Module, ScheduleModule } from '@velajs/vela';
+import { Cron, InjectEnv, Injectable, Module, ScheduleModule, type VelaEnv } from '@velajs/vela';
 import { createCloudflareWorker } from '@velajs/cloudflare';
 import { cloudflareQueueDriver } from '@velajs/cloudflare/queue';
 import { Process, Processor, QueueModule, type QueueJob } from '@velajs/vela/queue';
-interface Env {
-  RESULTS: KVNamespace;
-}
-const ENV = new InjectionToken<Env>('jobs environment');
 @Injectable()
 @Processor('tasks')
 class Tasks {
-  constructor(@Inject(ENV) private env: Env) {}
+  // RESULTS is typed by worker-configuration.jobs.d.ts.
+  constructor(@InjectEnv() private env: VelaEnv) {}
   @Process('record') async record(job: QueueJob<{ source: string }>) {
     await this.env.RESULTS.put(
       'last-job',
@@ -31,7 +28,4 @@ class Tasks {
   providers: [Tasks],
 })
 class JobsModule {}
-export default createCloudflareWorker(
-  { create: async () => ({ module: JobsModule }) },
-  { envToken: ENV },
-);
+export default createCloudflareWorker({ create: async () => ({ module: JobsModule }) });

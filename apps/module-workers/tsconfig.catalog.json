@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["src/catalog.ts", "worker-configuration.catalog.d.ts"]
+}

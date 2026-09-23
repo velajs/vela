@@ -80,8 +80,26 @@ const moduleRef = await Test.createTestingModule({ imports: [UsersModule] })
 })
 ```
 
-Here `ENV` is a registered `InjectionToken<{ APP_ENV: string }>` and `CONFIG`
-is an `InjectionToken<{ env: string }>`.
+Here `ENV` is the framework environment token from `@velajs/vela`, with
+`APP_ENV: string` declared on `VelaEnv`, and `CONFIG` is an
+`InjectionToken<{ env: string }>`.
+
+### Environment and runtime adapters
+
+The builder's second argument seeds the application's `ENV` and binds runtime
+adapters through the same bootstrap as `VelaFactory.create`:
+
+```ts
+const moduleRef = await Test.createTestingModule(
+  { imports: [ReportsModule] },
+  { env: { APP_ENV: 'test' }, adapters: [myRuntimeAdapter] },
+).compile();
+```
+
+Adapter `configureContainer`, request middleware, client-IP resolution and
+lifecycle hooks all apply, and `registerAs` namespaces read the seeded `env`.
+`overrideProvider(ENV).useValue(env)` replaces the environment for every module,
+with or without a seeded `env`.
 
 Inline providers (skip importing a module):
 

@@ -13,11 +13,14 @@ pnpm --dir apps/worker-bindings-lab test
 pnpm --dir apps/worker-bindings-lab smoke
 ```
 
-`WORKER_ENV` carries the environment type into DI. `createWorkerBindingsLabApp(env)`
-constructs an explicit application for tests; the Worker entry uses
-`createCloudflareWorker` for lazy per-environment bootstrap.
+The native environment is the framework `ENV`: services and controllers inject
+it with `@InjectEnv()`. The lab has no Wrangler file, so `src/env.ts` declares
+the bindings on `Cloudflare.Env` the way `wrangler types` would generate them,
+and `VelaEnv` picks them up. `createWorkerBindingsLabApp(env)` constructs an
+explicit application for tests; the Worker entry uses `createCloudflareWorker`
+for lazy per-environment bootstrap.
 
 The example covers KV, D1, R2, typed queues, Durable Objects, AI, Vectorize,
-Hyperdrive, HTTP environment parameters, scheduled triggers, Vela cron handlers,
+Hyperdrive, the injected environment, scheduled triggers, Vela cron handlers,
 and queue consumers. Native bindings are injected directly; no binding wrapper
 modules or services are required.

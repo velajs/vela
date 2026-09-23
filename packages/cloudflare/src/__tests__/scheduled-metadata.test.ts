@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import { Cron, Injectable, InjectionToken, Module } from '@velajs/vela';
+import { Cron, Injectable, Module } from '@velajs/vela';
 import { createCloudflareApp } from '../cloudflare-factory';
 import {
   Scheduled,
@@ -45,7 +45,6 @@ describe('native scheduled metadata', () => {
 
   it('preserves native controller identity, receiver and exact matching for both decorators', async () => {
     const env = { name: 'native' };
-    const token = new InjectionToken<typeof env>('scheduled metadata env');
     let calls = 0;
     let noRetry = false;
     const event: ScheduledController = {
@@ -75,7 +74,7 @@ describe('native scheduled metadata', () => {
     expectTypeOf<Jobs['native']>().toExtend<ScheduledHandler<typeof env>>();
     @Module({ providers: [Jobs] })
     class Root {}
-    const app = await createCloudflareApp(Root, { env, envToken: token });
+    const app = await createCloudflareApp(Root, { env });
     try {
       await app.scheduled({ cron: '0 9 * * MON' }, env, { waitUntil() {} });
       expect(calls).toBe(0);

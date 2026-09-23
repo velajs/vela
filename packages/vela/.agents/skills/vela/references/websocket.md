@@ -74,7 +74,7 @@ The gateway + module are identical across runtimes; you only choose the wiring:
 | Runtime | Wiring | Sync |
 |---|---|---|
 | Node / Bun / Deno | `@velajs/vela/websocket-node` → `registerWebSocketGateways(app, upgradeWebSocket)` | `redis()` for multi-process |
-| Cloudflare Workers | `@velajs/cloudflare` → `CloudflareWebSocketModule.forRoot()` + a `VelaWebSocketDurableObject(AppModule, { envToken: ENV })` from `/durable-objects` | native per-room Durable Object |
+| Cloudflare Workers | `@velajs/cloudflare` → `CloudflareWebSocketModule.forRoot()` + a `VelaWebSocketDurableObject(AppModule)` from `/durable-objects` (the Worker and DO each seed `ENV`) | native per-room Durable Object |
 
 On Node/Bun/Deno, pass the runtime's Hono `upgradeWebSocket` factory (`@hono/node-ws`, `hono/bun`, or `hono/deno`); `registerWebSocketGateways` iterates `app.entrypoints.ofKind('websocket')` and mounts each gateway route (auto-joining the room from a `:id` path param). On Cloudflare, the Durable Object owns the raw socket via `WebSocketPair` + hibernation (`ctx.acceptWebSocket`), which Hono's `upgradeWebSocket` cannot bridge — one DO per room gives native horizontal scale.
 

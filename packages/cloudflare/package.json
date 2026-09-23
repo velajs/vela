@@ -56,7 +56,7 @@
     "build": "tsdown",
     "test": "vitest run",
     "test:workers": "vitest run --config vitest.config.workers.ts",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json && tsc --noEmit -p tsconfig.workers-test.json && tsc --noEmit -p tsconfig.package-tests.json",
     "lint": "oxlint .",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",

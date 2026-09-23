@@ -4,9 +4,10 @@ Execution contexts expose the objects the runtime actually provides. HTTP access
 
 The HTTP context uses `VelaContext`, and `getHonoApp()` returns `VelaHono`. Core
 knows neither application bindings nor custom middleware values: `context.env`
-is an opaque object and `context.get(name)` returns `unknown`. Resolve a configured
-`InjectionToken<Env>` for native platform bindings, and use a `RequestContextKey`
-for typed request values. This also applies to raw routes registered directly on
+is an opaque object and `context.get(name)` returns `unknown`. Inject `ENV`
+(`@InjectEnv()`) for native platform bindings, typed as `VelaEnv`, which
+`@velajs/cloudflare` extends with the `Cloudflare.Env` that `wrangler types`
+generates; use a `RequestContextKey` for typed request values. This also applies to raw routes registered directly on
 the returned Hono app. Runtime-registered controllers do not acquire Hono's
 static route inference; generate the HTTP RPC type from their endpoint schemas.
 

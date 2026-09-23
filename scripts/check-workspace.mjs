@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertV1Releases } from './release-line.mjs';
+import { starterManifest, starterPinMismatches } from './starter-pins.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const projects = JSON.parse(
@@ -70,6 +71,13 @@ for (const pkg of packages) {
   ) {
     errors.push(`${pkg.name}: repository metadata must point to this monorepo directory`);
   }
+}
+const versions = new Map(packages.map((pkg) => [pkg.name, pkg.version]));
+for (const mismatch of starterPinMismatches(
+  JSON.parse(readFileSync(starterManifest, 'utf8')),
+  versions,
+)) {
+  errors.push(`packages/cli/templates/worker: ${mismatch}`);
 }
 if (errors.length) throw new Error(errors.join('\n'));
 console.log(

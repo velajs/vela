@@ -1,4 +1,4 @@
-import { Module } from '@velajs/vela';
+import { Module, type VelaEnv } from '@velajs/vela';
 import { drizzle } from 'drizzle-orm/d1';
 import {
   CrudModule,
@@ -10,12 +10,8 @@ import {
 import { drizzleAdapter } from '@velajs/crud-drizzle';
 import { items, itemModel, itemSchema } from './schema.js';
 
-export interface Env {
-  PRIMARY_DB: D1Database;
-  ANALYTICS_DB: D1Database;
-}
-
-export function createDatabases(env: Env) {
+// PRIMARY_DB and ANALYTICS_DB are typed by worker-configuration.d.ts (`pnpm types`).
+export function createDatabases(env: VelaEnv) {
   const primary = drizzle(env.PRIMARY_DB, { schema: { items } });
   const analytics = drizzle(env.ANALYTICS_DB, { schema: { items } });
   const resource = (db: typeof primary) => ({
@@ -39,7 +35,7 @@ export function createDatabases(env: Env) {
 }
 
 /** The Cloudflare factory builds this graph once for each native environment. */
-export function createAppModule(env: Env) {
+export function createAppModule(env: VelaEnv) {
   const databases = createDatabases(env);
   class AppModule {}
   Module({
