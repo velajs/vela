@@ -1,4 +1,11 @@
-export { Global, Module, isModule, getModuleMetadata, defineDynamicModule } from './decorators';
+export {
+  Global,
+  Module,
+  isModule,
+  getModuleMetadata,
+  defineDynamicModule,
+  type ModuleDecoratorOptions,
+} from './decorators';
 export { stableHash } from './stable-hash';
 export { UndefinedModuleError, type ModuleEntryList } from './module-identity';
 export {

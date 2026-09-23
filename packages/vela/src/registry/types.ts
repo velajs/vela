@@ -13,6 +13,7 @@ import type {
   InferToken,
   InferTokens,
   InjectionToken,
+  Provider,
   ProviderDefinition,
   Token,
   Type,
@@ -25,6 +26,7 @@ export type {
   InferToken,
   InferTokens,
   InjectionToken,
+  Provider,
   ProviderDefinition,
   Token,
   Type,
@@ -126,7 +128,8 @@ export interface DynamicModule {
    */
   key?: string;
   imports?: ModuleImport[];
-  providers?: Array<Type | ProviderDefinition>;
+  /** Classes, definitions and literals; the module loader checks literals when it loads. */
+  providers?: Provider[];
   controllers?: Type[];
   exports?: Token[];
   global?: boolean;
@@ -140,7 +143,7 @@ export interface DynamicModule {
 }
 
 export interface ModuleOptions {
-  providers?: Array<Type | ProviderDefinition>;
+  providers?: readonly Provider[];
   controllers?: Type[];
   imports?: ModuleImport[];
   exports?: Token[];
@@ -150,7 +153,7 @@ export interface ModuleOptions {
 }
 
 export interface ModuleMetadata {
-  providers: Array<Type | ProviderDefinition>;
+  providers: readonly Provider[];
   controllers: Type[];
   imports: ModuleImport[];
   exports: Token[];

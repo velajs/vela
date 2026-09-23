@@ -67,8 +67,8 @@ export function lazyProvider<T, const Inject extends readonly Token[] = readonly
 }
 
 /**
- * The one idiom for registering an app-wide component from a module's
- * providers. Returns registrations to spread:
+ * Register an app-wide component from a module's providers. Returns
+ * registrations to spread:
  *
  * ```ts
  * providers: [MyService, ...provideGlobal('guard', AuthGuard)]
@@ -76,7 +76,9 @@ export function lazyProvider<T, const Inject extends readonly Token[] = readonly
  *
  * Class components are registered as providers and wired via `useExisting`
  * (so DI constructs them with their dependencies); instances via `useValue`.
- * Inside `defineModule`, prefer the equivalent `global:` contribution slot.
+ * The literal `{ provide: APP_GUARD, useClass: AuthGuard }` registers the same
+ * guard without exposing the class as a provider. Inside `defineModule`, prefer
+ * the equivalent `global:` contribution slot.
  */
 function componentProviders<T>(
   token: InjectionToken<T>,
@@ -109,10 +111,11 @@ export function provideGlobal(
 }
 
 /**
- * A first-class side-effect-only module: contributes providers/exports without
- * being a configurable module — the supported form of the "empty marker
- * module" trick (i18n's `registerMessages`). Pass a stable module class to
- * deduplicate identical contributions; a string creates a fresh isolated owner.
+ * A side-effect-only module: contributes providers/exports without being a
+ * configurable module, such as a message catalog registered next to the module
+ * that reads it. Pass a stable module class to deduplicate identical
+ * contributions; a string creates a fresh isolated owner. Provider literals are
+ * checked when the module loads.
  *
  * ```ts
  * export function registerMessages(messages: Messages): DynamicModule {

@@ -2,12 +2,20 @@ import { InjectionToken } from '../../container/types';
 import { readEnvString, type VelaEnv } from '../../env';
 
 /**
- * Optional DI token holding the HMAC secret used to sign / verify URLs. Provide
- * it globally (e.g. from a platform adapter or a `@Global` module) so both
- * {@link UrlGeneratorService} and the signed-URL guard can read it:
+ * Optional DI token holding the HMAC secret used to sign / verify URLs. Without
+ * a provider, {@link UrlGeneratorService} and the signed-URL guard read the
+ * `URL_SIGNING_SECRET` string from `ENV`, such as a Workers secret. Provide the
+ * token to take the secret from elsewhere:
  *
  * ```ts
- * { provide: URL_SIGNING_SECRET, useValue: env.URL_SIGNING_SECRET }
+ * @Module({
+ *   providers: [
+ *     defineProvider(URL_SIGNING_SECRET, {
+ *       inject: [SecretStore],
+ *       useFactory: (store) => store.read('url-signing'),
+ *     }),
+ *   ],
+ * })
  * ```
  */
 export const URL_SIGNING_SECRET = new InjectionToken<string>('URL_SIGNING_SECRET');

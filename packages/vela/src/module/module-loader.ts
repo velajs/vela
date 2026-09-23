@@ -7,8 +7,10 @@ import {
   describeToken,
   getProviderOptions,
   InjectionToken,
+  isProviderDefinition,
+  toProviderDefinition,
 } from '../container/types';
-import type { ProviderDefinition, Token, TypedToken, Type } from '../container/types';
+import type { Provider, ProviderDefinition, Token, TypedToken, Type } from '../container/types';
 import type { RouteManager } from '../http/route.manager';
 import {
   APP_FILTER,
@@ -189,7 +191,7 @@ export class ModuleLoader {
     let moduleClass: Type;
     let extraImports: ModuleImport[] = [];
     let extraControllers: Type[] = [];
-    let extraProviders: Array<Type | ProviderDefinition> = [];
+    let extraProviders: Provider[] = [];
     let extraExports: Token[] = [];
     let key: string = DEFAULT_MODULE_KEY;
 
@@ -239,14 +241,20 @@ export class ModuleLoader {
     }
 
     const allImports = [...metadata.imports, ...extraImports];
-    const allProviders = [...metadata.providers, ...extraProviders];
+    const listedProviders = [...metadata.providers, ...extraProviders];
     const allControllers = [...metadata.controllers, ...extraControllers];
     const allExports = [...metadata.exports, ...extraExports];
     const moduleName = moduleClass.name || 'AnonModule';
     assertDefinedEntries(moduleName, 'imports', allImports);
-    assertDefinedEntries(moduleName, 'providers', allProviders);
+    assertDefinedEntries(moduleName, 'providers', listedProviders);
     assertDefinedEntries(moduleName, 'controllers', allControllers);
     assertDefinedEntries(moduleName, 'exports', allExports);
+    // Literals become checked definitions before anything reads their token.
+    const allProviders = listedProviders.map((provider, index) =>
+      typeof provider === 'function' || isProviderDefinition(provider)
+        ? provider
+        : toProviderDefinition(provider, `${moduleName}.providers[${index}]`),
+    );
 
     if (isDynamicModule(moduleClassOrDynamic)) {
       this.#definitionByModuleId.set(moduleId, moduleClassOrDynamic);

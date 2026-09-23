@@ -2,6 +2,7 @@ import {
   assertFactoryInject,
   defineProvider,
   InjectionToken,
+  type Provider,
   type ProviderDefinition,
   type Token,
   type Type,
@@ -44,15 +45,16 @@ export interface GlobalComponentSlot {
 
 /** What a module instance contributes, computed from its call-time options. */
 export interface ModuleContributions {
-  providers?: Array<Type | ProviderDefinition>;
+  /** Classes, definitions and literals; the module loader checks literals when it loads. */
+  providers?: Provider[];
   controllers?: Type[];
   imports?: ModuleImport[];
   exports?: Token[];
   /**
-   * Standardized global-component registration — the one idiom replacing both
-   * the `@Module({ providers: [{ provide: APP_GUARD, useExisting: X }] })`
-   * pattern and the conditional-push-into-forRoot pattern. Class entries are
-   * registered as providers and wired via `useExisting`; instances via `useValue`.
+   * App-wide components contributed by this module instance, lowered to
+   * `APP_*` providers. Class entries are registered as providers and wired
+   * via `useExisting`; instances via `useValue`. Conditional entries need no
+   * separate `{ provide: APP_GUARD, ... }` push into `providers`.
    */
   global?: GlobalComponentSlot;
 }

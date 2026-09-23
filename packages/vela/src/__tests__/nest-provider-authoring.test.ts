@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  APP_GUARD,
   Container,
   Controller,
   Get,
@@ -8,6 +9,7 @@ import {
   InjectionToken,
   Module,
   Reflector,
+  Scope,
   SetMetadata,
   UseGuards,
   VelaFactory,
@@ -16,7 +18,9 @@ import {
   lazyProvider,
   type AsyncModuleOptions,
   type CanActivate,
+  type DynamicModule,
   type ExecutionContext,
+  type Provider,
 } from '../index';
 
 const COUNT = new InjectionToken<number>('authoring count');
@@ -118,3 +122,136 @@ describe('zero-argument factories', () => {
     ).toThrow(/MissingInject_MODULE_OPTIONS.*inject/);
   });
 });
+
+@Injectable()
+class Clock {
+  now(): number {
+    return Date.now();
+  }
+}
+
+@Injectable()
+class FixedClock extends Clock {
+  override now(): number {
+    return 42;
+  }
+}
+
+describe('provider literals', () => {
+  it('register { provide, useX } literals listed in @Module({ providers })', async () => {
+    const ALIAS = new InjectionToken<number>('authoring alias');
+
+    @Injectable({ scope: Scope.REQUEST })
+    class RequestState {}
+
+    @Module({
+      providers: [
+        { provide: COUNT, useValue: 7 },
+        { provide: LABEL, useFactory: () => 'label' },
+        { provide: Clock, useClass: FixedClock },
+        { provide: ALIAS, useExisting: COUNT },
+        { provide: RequestState, useClass: RequestState, scope: Scope.TRANSIENT },
+      ],
+      exports: [COUNT],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    expect(app.get(COUNT)).toBe(7);
+    expect(app.get(LABEL)).toBe('label');
+    expect(app.get(Clock).now()).toBe(42);
+    expect(app.get(ALIAS)).toBe(7);
+    // A literal's scope overrides the class declaration, as with defineProvider.
+    expect(app.get(RequestState)).not.toBe(app.get(RequestState));
+    await app.close();
+  });
+
+  it('accept APP_* literals and computed contributions', async () => {
+    const calls: string[] = [];
+
+    @Injectable()
+    class CountingGuard implements CanActivate {
+      canActivate(): boolean {
+        calls.push('guard');
+        return true;
+      }
+    }
+
+    const { ConfigurableModuleClass } = defineModule<{ label: string }>({
+      name: 'LiteralContributions',
+      setup: ({ options }) => ({
+        providers: [{ provide: LABEL, useValue: options.label ?? 'none' }],
+        exports: [LABEL],
+      }),
+    });
+    class LabelModule extends ConfigurableModuleClass {}
+
+    @Controller('/literal')
+    class LiteralController {
+      constructor(@Inject(LABEL) private readonly label: string) {}
+
+      @Get()
+      index() {
+        return { label: this.label };
+      }
+    }
+
+    @Module({
+      imports: [LabelModule.forRoot({ label: 'computed' })],
+      providers: [{ provide: APP_GUARD, useClass: CountingGuard }],
+      controllers: [LiteralController],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    const response = await app.getHonoApp().request('/literal');
+    expect(await response.json()).toEqual({ label: 'computed' });
+    expect(calls).toEqual(['guard']);
+    await app.close();
+  });
+
+  it('keep literals typed against their token', () => {
+    const providers: Provider[] = [{ provide: COUNT, useValue: 1 }];
+    // Factories with dependencies use defineProvider, which infers their parameters.
+    // @ts-expect-error A literal factory takes no parameters.
+    Module({ providers: [{ provide: LABEL, inject: [COUNT], useFactory: (n: number) => `${n}` }] });
+    // @ts-expect-error The class must construct the provided token's type.
+    Module({ providers: [{ provide: Clock, useClass: RequestScopedLabel }] });
+    // @ts-expect-error Aliases keep the token's value type.
+    Module({ providers: [{ provide: COUNT, useExisting: LABEL }] });
+    expect(providers).toHaveLength(1);
+  });
+
+  it('reject a DynamicModule entry that is not a provider, naming the token', async () => {
+    const dynamic = (providers: Provider[]): DynamicModule => ({
+      module: class DynamicLiterals {},
+      providers,
+    });
+
+    @Module({
+      // @ts-expect-error A literal without a strategy is not a provider.
+      imports: [dynamic([{ provide: COUNT }])],
+    })
+    class MissingStrategy {}
+    await expect(VelaFactory.create(MissingStrategy)).rejects.toThrow(
+      /DynamicLiterals\.providers\[0\] \(InjectionToken\(authoring count\)\) is not a provider/,
+    );
+
+    @Module({ imports: [dynamic([{ provide: COUNT, useValue: 1, useFactory: () => 2 }])] })
+    class TwoStrategies {}
+    await expect(VelaFactory.create(TwoStrategies)).rejects.toThrow(
+      /InjectionToken\(authoring count\)\) is not a provider/,
+    );
+
+    @Module({ imports: [dynamic([{ provide: LABEL, useFactory: (n: number) => `${n}` }])] })
+    class MissingInject {}
+    await expect(VelaFactory.create(MissingInject)).rejects.toThrow(
+      /InjectionToken\(authoring label\).*inject/,
+    );
+  });
+});
+
+@Injectable()
+class RequestScopedLabel {
+  readonly label = 'label';
+}

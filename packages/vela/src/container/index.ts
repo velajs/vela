@@ -24,7 +24,10 @@ export type {
   InferTokens,
   InjectableOptions,
   InjectMetadata,
+  CheckedProviders,
+  Provider,
   ProviderDefinition,
+  ProviderLiteral,
   ProviderRegistration,
   ProviderSnapshot,
   InjectionTokenOptions,
@@ -35,4 +38,6 @@ export type {
   MissingInjectionMetadataReason,
   UnresolvedDependency,
   UnresolvedDependencyReason,
+  TypedProviderLiteral,
+  ZeroArgumentFactory,
 } from './types';

@@ -1,3 +1,4 @@
+import type { CheckedProviders } from '../container/types';
 import { MetadataRegistry } from '../registry/metadata.registry';
 import type { Constructor, DynamicModule, ModuleMetadata, ModuleOptions } from '../registry/types';
 
@@ -9,6 +10,21 @@ export function Global(): ClassDecorator {
   };
 }
 
+/**
+ * `@Module` options. `providers` is checked per element: a
+ * `{ provide, useValue | useClass | useExisting | useFactory }` literal must
+ * produce its token's value.
+ */
+export interface ModuleDecoratorOptions<P extends readonly unknown[] = readonly []> extends Omit<
+  ModuleOptions,
+  'providers'
+> {
+  providers?: CheckedProviders<P>;
+}
+
+export function Module<const P extends readonly unknown[] = readonly []>(
+  options?: ModuleDecoratorOptions<P>,
+): ClassDecorator;
 export function Module(options: ModuleOptions = {}): ClassDecorator {
   return (target) => {
     MetadataRegistry.setModuleOptions(target as unknown as Constructor, {

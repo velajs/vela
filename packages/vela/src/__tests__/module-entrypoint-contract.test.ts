@@ -6,6 +6,8 @@ import { createDiscoverableDecorator } from '../discovery/discoverable.decorator
 import { DiscoveryService } from '../discovery/discovery.service';
 import { EntrypointRegistry } from '../entrypoint/entrypoint.registry';
 import { ConfigurableModuleBuilder } from '../module/configurable-module.builder';
+import { Module } from '../module/decorators';
+import { VelaFactory } from '../factory';
 import { readProcessorMetadata } from '../queue/queue.decorators';
 import { readWsEntrypointMeta } from '../websocket/ws-dispatcher';
 
@@ -57,13 +59,17 @@ describe('immutable configurable module builder', () => {
     }
     const first = original.build();
     const second = changed.build();
-    const firstModule = first.ConfigurableModuleClass.forRootAsync({ useClass: DefaultFactory });
-    const secondModule = second.ConfigurableModuleClass.forRootAsync({ useClass: ChangedFactory });
-    const container = new Container();
-    for (const provider of [...(firstModule.providers ?? []), ...(secondModule.providers ?? [])])
-      container.register(provider);
-    expect(await container.resolveAsync(first.MODULE_OPTIONS_TOKEN)).toEqual({ color: 'red' });
-    expect(await container.resolveAsync(second.MODULE_OPTIONS_TOKEN)).toEqual({ color: 'blue' });
+    @Module({
+      imports: [
+        first.ConfigurableModuleClass.forRootAsync({ useClass: DefaultFactory }),
+        second.ConfigurableModuleClass.forRootAsync({ useClass: ChangedFactory }),
+      ],
+    })
+    class OptionsHost {}
+    const app = await VelaFactory.create(OptionsHost);
+    expect(app.get(first.MODULE_OPTIONS_TOKEN)).toEqual({ color: 'red' });
+    expect(app.get(second.MODULE_OPTIONS_TOKEN)).toEqual({ color: 'blue' });
+    await app.close();
   });
 
   it('copies extras into a new branch without changing older transformations', () => {
