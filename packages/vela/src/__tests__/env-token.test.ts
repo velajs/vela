@@ -10,6 +10,7 @@ import {
   InjectionToken,
   InternalDispatcher,
   Module,
+  MultipleProvidersFoundError,
   Optional,
   Post,
   SignedInvocation,
@@ -179,6 +180,47 @@ describe('signing secrets from ENV', () => {
     await expect(
       app.get(UrlGeneratorService).signedUrl('file.download', {}, { expiresIn: 60 }),
     ).rejects.toThrow(/No URL signing secret/);
+    await app.close();
+  });
+
+  it('reads ENV from the one @Global() module that exports it, application-wide', async () => {
+    const moduleEnv = { URL_SIGNING_SECRET: 'module-signing-secret' };
+
+    @Global()
+    @Module({ providers: [defineProvider(ENV, { useValue: moduleEnv })], exports: [ENV] })
+    class EnvModule {}
+
+    @Module({ imports: [EnvModule, signingApp()] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule, {
+      env: { URL_SIGNING_SECRET: 'bootstrap-signing-secret' },
+    });
+    const verifier = await VelaFactory.create(signingApp(), { env: moduleEnv });
+    const signed = await app
+      .get(UrlGeneratorService)
+      .signedUrl('file.download', {}, { expiresIn: 60 });
+
+    expect(app.get(ENV)).toBe(moduleEnv);
+    // The application's UrlGeneratorService signs with the module's ENV.
+    expect((await verifier.getHonoApp().request(signed)).status).toBe(200);
+    await Promise.all([app.close(), verifier.close()]);
+  });
+
+  it('reports ENV that two @Global() modules export, application-wide too', async () => {
+    @Global()
+    @Module({ providers: [defineProvider(ENV, { useValue: { NAME: 'first' } })], exports: [ENV] })
+    class FirstEnvModule {}
+
+    @Global()
+    @Module({ providers: [defineProvider(ENV, { useValue: { NAME: 'second' } })], exports: [ENV] })
+    class SecondEnvModule {}
+
+    @Module({ imports: [FirstEnvModule, SecondEnvModule] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule, { env: { NAME: 'bootstrap' } });
+    expect(() => app.get(ENV)).toThrow(MultipleProvidersFoundError);
     await app.close();
   });
 

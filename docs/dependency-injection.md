@@ -61,6 +61,16 @@ export the token from more than one module, or two `@Global()` modules export it
 with `MultipleProvidersFoundError`; Nest would pick one of them instead. `resolveAll(token, moduleId)`
 returns the providers of the same step, so it agrees with `resolve(token, moduleId)`.
 
+An application-wide lookup has no requesting module: `app.get(token)`, `ModuleRef.get(token,
+{ strict: false })`, and the dependencies of the providers the application registers itself, such as
+`SignedInvocationGuard`, `SignedUrlGuard`, `UrlGeneratorService` and `InternalDispatcher`. It starts
+at step 3, so the one `@Global()` module that exports a framework-global token overrides the
+application's registration there too: a `@Global()` module that provides a durable `NONCE_STORE`
+protects signed invocations against replay, and `app.get(NONCE_STORE)` returns it. Two `@Global()`
+modules that export the token fail with `MultipleProvidersFoundError`. A token that is not global
+resolves application-wide from the application's registration, else from the first module that
+registers it.
+
 Every application provides `Reflector` globally, so guards and interceptors inject it through their
 constructor, as in Nest.
 

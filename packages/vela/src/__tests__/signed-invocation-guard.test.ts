@@ -5,14 +5,17 @@ import {
   Module,
   Global,
   Controller,
+  Injectable,
   Post,
   SignedInvocation,
   InternalDispatcher,
+  MultipleProvidersFoundError,
+  NONCE_STORE,
   URL_SIGNING_SECRET,
   INVOCATION_AUDIENCE,
   signInvocation,
 } from '../index.js';
-import type { InvocationClaim } from '../index.js';
+import type { InvocationClaim, NonceStore } from '../index.js';
 
 const SECRET = 'guard-signing-secret';
 const HEADER = 'x-vela-invocation';
@@ -23,7 +26,7 @@ const hits: string[] = [];
 
 @Global()
 @Module({
-  providers: [defineProvider(URL_SIGNING_SECRET, {useValue: SECRET})],
+  providers: [defineProvider(URL_SIGNING_SECRET, { useValue: SECRET })],
   exports: [URL_SIGNING_SECRET],
 })
 class SecretModule {}
@@ -155,6 +158,63 @@ describe('SignedInvocation guard — @SignedInvocation() route', () => {
     const text = await res.text();
     expect(res.status).toBe(403);
     expect(text).not.toContain(SECRET);
+    await app.dispose();
+  });
+});
+
+describe('SignedInvocation guard — a @Global() NONCE_STORE', () => {
+  // A store every application shares, as a Durable Object or KV-backed one is.
+  const claimed = new Set<string>();
+
+  @Injectable()
+  class DurableNonceStore implements NonceStore {
+    async claim(nonce: string): Promise<boolean> {
+      if (claimed.has(nonce)) return false;
+      claimed.add(nonce);
+      return true;
+    }
+  }
+
+  @Global()
+  @Module({
+    providers: [{ provide: NONCE_STORE, useClass: DurableNonceStore }],
+    exports: [NONCE_STORE],
+  })
+  class NonceModule {}
+
+  @Module({ imports: [NonceModule, AppModule] })
+  class DurableAppModule {}
+
+  it('protects every application sharing it against a replayed nonce', async () => {
+    hits.length = 0;
+    const first = await VelaFactory.create(DurableAppModule);
+    const second = await VelaFactory.create(DurableAppModule);
+    const token = await tokenFor();
+
+    expect(first.get(NONCE_STORE)).toBeInstanceOf(DurableNonceStore);
+    expect((await send(first, token)).status).toBe(200);
+    // The guard claims the nonce in the module's store, not in a per-application default.
+    expect((await send(second, token)).status).toBe(403);
+    expect(hits).toEqual(['run']);
+    await Promise.all([first.dispose(), second.dispose()]);
+  });
+
+  it('reports a NONCE_STORE that two @Global() modules export', async () => {
+    @Global()
+    @Module({
+      providers: [{ provide: NONCE_STORE, useClass: DurableNonceStore }],
+      exports: [NONCE_STORE],
+    })
+    class OtherNonceModule {}
+
+    @Module({ imports: [NonceModule, OtherNonceModule, AppModule] })
+    class AmbiguousAppModule {}
+
+    hits.length = 0;
+    const app = await VelaFactory.create(AmbiguousAppModule);
+    expect(() => app.get(NONCE_STORE)).toThrow(MultipleProvidersFoundError);
+    expect((await send(app, await tokenFor())).status).toBe(500);
+    expect(hits).toEqual([]);
     await app.dispose();
   });
 });

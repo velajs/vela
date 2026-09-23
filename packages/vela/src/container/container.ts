@@ -415,31 +415,33 @@ export class Container {
    *
    * A module that registers the token without exporting it is never a
    * candidate. An application-wide lookup (no requester, or one without a
-   * module scope) prefers `__root__`, then the first module registering it.
+   * module scope, such as a provider registered in `__root__`) starts at tier
+   * 3, and resolves any other token from `__root__`, else from the first
+   * module that registers it.
    */
   #visibleRegistrations<T>(token: Token, requestingModuleId?: string): ProviderRegistration<T>[] {
     const scope =
       requestingModuleId === undefined ? undefined : this.#scopes.get(requestingModuleId);
     const candidates: ProviderRegistration<T>[] = [];
-    if (!scope) {
-      for (const owner of [ROOT_MODULE_ID, ...(this.#exporterIndex.get(token) ?? [])]) {
-        const hit = this.#lookupInBucket<T>(owner, token);
-        if (hit) return [hit];
-      }
-      return candidates;
+    if (scope) {
+      const local = this.#lookupInBucket<T>(scope.moduleId, token);
+      if (local) return [local];
+      this.#collectFromImports(scope, token, new Set([scope.moduleId]), candidates);
     }
-    const local = this.#lookupInBucket<T>(scope.moduleId, token);
-    if (local) return [local];
-    this.#collectFromImports(scope, token, new Set([scope.moduleId]), candidates);
     const globalExporters = this.#globals.get(token);
     if (!candidates.length && globalExporters) {
       this.#collectFromImports({ importedModules: globalExporters }, token, new Set(), candidates);
     }
-    const rootHit =
-      !candidates.length &&
-      (globalExporters || (token instanceof InjectionToken && token.options?.factory)) &&
-      this.#lookupInBucket<T>(ROOT_MODULE_ID, token);
-    if (rootHit) candidates.push(rootHit);
+    if (candidates.length) return candidates;
+    const owners =
+      !scope || globalExporters || (token instanceof InjectionToken && token.options?.factory)
+        ? [ROOT_MODULE_ID]
+        : [];
+    if (!scope) owners.push(...(this.#exporterIndex.get(token) ?? []));
+    for (const owner of owners) {
+      const hit = this.#lookupInBucket<T>(owner, token);
+      if (hit) return [hit];
+    }
     return candidates;
   }
 
