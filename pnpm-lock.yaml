@@ -959,6 +959,9 @@ importers:
       '@velajs/feature-flags':
         specifier: workspace:*
         version: link:../feature-flags
+      '@velajs/testing':
+        specifier: workspace:*
+        version: link:../testing
       '@velajs/vela':
         specifier: workspace:*
         version: link:../vela

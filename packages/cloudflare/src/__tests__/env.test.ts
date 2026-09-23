@@ -12,6 +12,7 @@ import {
   type RuntimeAdapter,
   type VelaEnv,
 } from '@velajs/vela';
+import { Test } from '@velajs/testing';
 import * as cloudflare from '../index';
 import {
   createCloudflareApp,
@@ -141,5 +142,19 @@ describe('Cloudflare runtime ENV', () => {
     >();
     expect(Object.keys(cloudflare)).not.toContain('Env');
     expectTypeOf(createCloudflareApp).parameter(1).toHaveProperty('env').toEqualTypeOf<VelaEnv>();
+  });
+
+  it('composes cloudflareAdapter({ env }) with a testing module and its HTTP builder', async () => {
+    const { AppModule } = fixture();
+    const env = { PROBE: 'tested' };
+    const moduleRef = await Test.createTestingModule(
+      { imports: [AppModule] },
+      { env, adapters: [cloudflare.cloudflareAdapter({ env })] },
+    ).compile();
+
+    const response = await moduleRef.http.get('/probe').send();
+    response.assertOk();
+    await response.assertJson({ probe: 'tested' });
+    await moduleRef.close();
   });
 });

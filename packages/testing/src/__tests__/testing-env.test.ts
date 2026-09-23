@@ -11,6 +11,7 @@ import {
   InjectionToken,
   MetadataRegistry,
   Module,
+  Sse,
   defineProvider,
   registerAs,
   type RuntimeAdapter,
@@ -134,6 +135,47 @@ describe('TestingModuleBuilder env and adapters', () => {
     expect(hooks).toEqual(['bootstrap', 'routes']);
     expect(response.headers.get('x-runtime')).toBe('synthetic');
     expect(await response.json()).toEqual({ probe: 'from adapter' });
+    await moduleRef.close();
+  });
+
+  it('sends requests from fetch() and the HTTP and SSE builders with the seeded env', async () => {
+    const env = { PROBE: 'bound' };
+    // A runtime that binds each request to the environment it was built for,
+    // as the Cloudflare adapter does.
+    const boundRuntime: RuntimeAdapter = {
+      name: 'synthetic-bound-runtime',
+      requestMiddleware: [
+        async (context, next) => {
+          if (context.env !== env) return context.text('different environment', 500);
+          await next();
+        },
+      ],
+    };
+    @Controller('/probe')
+    class ProbeController {
+      @Get()
+      read() {
+        return { ok: true };
+      }
+
+      @Sse('/events')
+      events() {
+        return new Response('data: ready\n\n', {
+          headers: { 'Content-Type': 'text/event-stream' },
+        });
+      }
+    }
+    const moduleRef = await Test.createTestingModule(
+      { controllers: [ProbeController] },
+      { env, adapters: [boundRuntime] },
+    ).compile();
+
+    await (await moduleRef.http.get('/probe').send()).assertOk().assertJson({ ok: true });
+    expect((await moduleRef.fetch(new Request('http://localhost/probe'))).status).toBe(200);
+    await (await moduleRef.sse('/probe/events').connect()).assertEventData('ready');
+    // An explicit environment still wins over the seeded one.
+    const other = await moduleRef.fetch(new Request('http://localhost/probe'), { PROBE: 'other' });
+    expect(other.status).toBe(500);
     await moduleRef.close();
   });
 });

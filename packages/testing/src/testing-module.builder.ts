@@ -24,7 +24,12 @@ import { TestingModule } from './testing-module.js';
 
 /** Runtime inputs for a testing module, as `VelaFactory.create` takes them. */
 export interface TestingModuleOptions {
-  /** Seeded as the application's ENV (bindings, variables, secrets). */
+  /**
+   * Seeded as the application's ENV (bindings, variables, secrets), and sent
+   * as `c.env` with every request from `fetch()` and the HTTP and SSE builders.
+   * Pass the same object to an adapter that binds requests to it, such as
+   * `cloudflareAdapter({ env })`.
+   */
   env?: VelaEnv;
   /** Runtime adapters bound exactly as in production. */
   adapters?: RuntimeAdapter[];
@@ -148,6 +153,6 @@ export class TestingModuleBuilder {
 
     const app = await finalizeApplication(prepared, adapters);
 
-    return new TestingModule(app, container);
+    return new TestingModule(app, container, env);
   }
 }

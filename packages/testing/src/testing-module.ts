@@ -10,6 +10,7 @@ import {
   type Token,
   type Type,
   type VelaApplication,
+  type VelaEnv,
 } from '@velajs/vela';
 import { createRequestContext, setRequestContainer, type Container } from '@velajs/vela/internal';
 import { SeederRegistry, type ISeeder } from '@velajs/vela/seeder';
@@ -68,9 +69,13 @@ export class TestingModule {
   // Request scopes opened by resolveInRequest(), finished by close().
   readonly #openScopes = new Set<ExecutionScope>();
 
-  constructor(app: VelaApplication, container: Container) {
+  // The environment seeded at compile time; requests carry it as `c.env`.
+  readonly #env: VelaEnv | undefined;
+
+  constructor(app: VelaApplication, container: Container, env?: VelaEnv) {
     this.#app = app;
     this.#container = container;
+    this.#env = env;
   }
 
   /**
@@ -150,11 +155,17 @@ export class TestingModule {
 
   /**
    * Drive a `Request` through the full Hono pipeline. The Hono app is built
-   * once and reused across requests.
+   * once and reused across requests. Without an explicit `env`, the request
+   * carries the environment the module was compiled with (the `env` option)
+   * as `c.env`, as a runtime would, so an adapter that binds requests to its
+   * environment (such as `cloudflareAdapter({ env })`) accepts them. The HTTP
+   * and SSE builders send through here.
    */
-  async fetch(...args: Parameters<HonoApp['fetch']>): Promise<Response> {
+  async fetch(
+    ...[request, env = this.#env, executionContext]: Parameters<HonoApp['fetch']>
+  ): Promise<Response> {
     const hono = await this.ensureHono();
-    return hono.fetch(...args);
+    return hono.fetch(request, env, executionContext);
   }
 
   /**

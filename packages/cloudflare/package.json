@@ -71,6 +71,7 @@
     "@cloudflare/workers-types": "catalog:",
     "@swc/core": "catalog:",
     "@velajs/feature-flags": "workspace:*",
+    "@velajs/testing": "workspace:*",
     "@velajs/vela": "workspace:*",
     "hono": "catalog:",
     "oxfmt": "catalog:",

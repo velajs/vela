@@ -98,6 +98,10 @@ const moduleRef = await Test.createTestingModule(
 
 Adapter `configureContainer`, request middleware, client-IP resolution and
 lifecycle hooks all apply, and `registerAs` namespaces read the seeded `env`.
+`moduleRef.fetch()` and the HTTP and SSE builders send each request with the
+seeded `env` as `c.env` (an explicit `fetch(request, env)` argument wins), so an
+adapter that binds requests to its environment accepts them. Pass it the same
+object, for example `{ env, adapters: [cloudflareAdapter({ env })] }`.
 `overrideProvider(ENV).useValue(env)` replaces the environment for every module,
 with or without a seeded `env`.
 
