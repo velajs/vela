@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
 import {
   defineProvider,
   Controller,
+  Cron,
   ENV,
   Get,
   Inject,
@@ -19,7 +20,6 @@ import {
 } from '@velajs/vela';
 import { createCloudflareApp, createCloudflareWorker } from '../cloudflare-factory';
 import { QueueConsumer } from '../decorators/queue-consumer';
-import { Scheduled } from '../decorators/scheduled';
 
 beforeEach(() => MetadataRegistry.clear());
 const context = { waitUntil: (_promise: Promise<unknown>): void => {} };
@@ -66,7 +66,7 @@ function fixture() {
       private readonly scope: EventScope,
     ) {}
     @QueueConsumer('jobs')
-    @Scheduled('* * * * *')
+    @Cron('* * * * *', { dialect: 'cloudflare' })
     async run(): Promise<void> {
       await this.env.pause;
       seen.push({ name: this.name, value: await this.env.CACHE.get('key'), scope: this.scope.id });

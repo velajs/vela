@@ -1,26 +1,27 @@
 import type { ExecutionContext } from 'hono';
 import {
-  CRON_METADATA,
   PipelineRunner,
   buildEntrypointExecutionContext,
-  registerEntrypointKind,
   getEntrypointModuleId,
+  invokeScheduledJob,
+  parseCronMetadata,
   resolveEntrypoint,
   resolveScopedComponentsAsync,
   resolveErrorReporter,
   runInEntrypointScope,
   shouldFilterCatch,
+  type ScheduleInvocation,
   type VelaApplication,
 } from '@velajs/vela';
 import type { Entrypoint, ExceptionFilter, VelaEnv } from '@velajs/vela';
 import { readWsEntrypointMeta } from '@velajs/vela/websocket';
 import { collectWsGatewayRoutes, type WsGatewayRoute } from './websocket/websocket-routing';
 import { assertCloudflareEnvironment } from './environment';
-
-// vela's own @Cron jobs run via the same Workers cron trigger — declare an
-// entrypoint kind over vela's metadata key (the open-kind system makes
-// cross-package declarations first-class).
-registerEntrypointKind({ kind: 'cf:vela-cron', metaKey: CRON_METADATA, level: 'method' });
+import {
+  CLOUDFLARE_SCHEDULED_EVENT,
+  cloudflareScheduledEvent,
+  type ScheduledEvent,
+} from './scheduled-event';
 
 /**
  * Options accepted by {@link CloudflareApplication.mountOpenApi}.
@@ -63,8 +64,8 @@ async function settleEntrypoints(work: readonly Promise<void>[]): Promise<void> 
 /**
  * Wraps VelaApplication with Cloudflare-specific handlers:
  * - `fetch` — HTTP request handler (from Hono)
- * - `scheduled` — Cron trigger handler (matches `@Scheduled()` decorators
- *                 AND vela's own `@Cron()` jobs)
+ * - `scheduled` — Cron trigger handler (runs the `@Cron()` jobs whose
+ *                 expression is the trigger's exact string)
  * - `queue` — Queue consumer handler (matches `@QueueConsumer()` decorators)
  * - `mountOpenApi` — Serve an OpenAPI document (and optional Scalar UI) on
  *                    the underlying Hono app
@@ -92,6 +93,8 @@ async function settleEntrypoints(work: readonly Promise<void>[]): Promise<void> 
 export class CloudflareApplication {
   readonly #wsGatewayRoutes: WsGatewayRoute[] = [];
   readonly #app: VelaApplication;
+  /** Scheduled triggers in flight; close() aborts their signals and awaits them. */
+  readonly #scheduled = new Map<Promise<void>, AbortController>();
 
   constructor(
     app: VelaApplication,
@@ -190,32 +193,55 @@ export class CloudflareApplication {
   }
 
   /**
-   * Handle Cloudflare scheduled (cron) events.
-   * Matches the event's cron expression to `@Scheduled()` and vela `@Cron()`
-   * handlers read from `app.entrypoints`; each handler runs inside a fresh
-   * request-scoped child (request-scoped providers rebuild per tick).
+   * Handle a Cloudflare cron trigger. Runs every core `@Cron()` job whose
+   * expression is exactly `event.cron` (the trigger string is compared as
+   * delivered, never re-evaluated) through `invokeScheduledJob`, the dispatch
+   * primitive every runtime shares. Each job receives only its
+   * `ScheduleInvocation`, runs in a fresh invocation scope seeded with
+   * {@link CLOUDFLARE_SCHEDULED_EVENT}, and honors signed `ScheduleModule`
+   * dispatch. The trigger settles after every matching job and its managed
+   * work (`EXECUTION_LIFETIME.waitUntil`/`defer`) settle; failures reject it.
    */
   async scheduled(
-    event: { cron: string; scheduledTime?: number },
+    event: ScheduledEvent,
     env: VelaEnv,
-    ctx: { waitUntil: (promise: Promise<unknown>) => void },
+    _ctx?: { waitUntil: (promise: Promise<unknown>) => void },
   ): Promise<void> {
     assertCloudflareEnvironment(this.env, env);
-    const handlers = [
-      ...this.#app.entrypoints
-        .ofKind('cf:scheduled')
-        .map((ep) => ({ ep, cron: entrypointString(ep.meta, 'cron') })),
-      ...this.#app.entrypoints
-        .ofKind('cf:vela-cron')
-        .map((ep) => ({ ep, cron: entrypointString(ep.meta, 'expression') })),
-    ].filter((h) => h.cron === event.cron);
+    const jobs = this.#app.entrypoints
+      .ofKind('schedule:cron', parseCronMetadata)
+      .filter((entry) => entry.meta.expression === event.cron);
+    if (jobs.length === 0) return;
 
-    await settleEntrypoints(handlers.map(({ ep }) => this.dispatchEntrypoint(ep, event, env, ctx)));
+    const controller = new AbortController();
+    const scheduledTime = event.scheduledTime ?? Date.now();
+    // Shared by every matching job, so none of them can alter what another sees.
+    const invocation: ScheduleInvocation = Object.freeze({
+      kind: 'cron' as const,
+      expression: event.cron,
+      scheduledTime,
+      signal: controller.signal,
+    });
+    const trigger = cloudflareScheduledEvent(event, scheduledTime);
+    const container = this.#app.getContainer();
+    const running = settleEntrypoints(
+      jobs.map((entry) =>
+        invokeScheduledJob(container, entry, invocation, {
+          seed: (scope) => scope.setRequestInstance(CLOUDFLARE_SCHEDULED_EVENT, trigger),
+        }),
+      ),
+    );
+    this.#scheduled.set(running, controller);
+    try {
+      await running;
+    } finally {
+      this.#scheduled.delete(running);
+    }
   }
 
   /**
-   * Run one entrypoint handler inside a fresh request scope, through the
-   * shared guard → interceptor pipeline (components declared with
+   * Run one queue consumer inside a fresh request scope, through the shared
+   * guard → interceptor pipeline (components declared with
    * `@UseGuards`/`@UseInterceptors`/`@UseFilters` on the consumer class or
    * method). HTTP-global components deliberately do NOT apply — an HTTP auth
    * guard has no business rejecting a queue batch. Unclaimed errors rethrow
@@ -232,7 +258,7 @@ export class CloudflareApplication {
     if (ep.methodName === undefined) throw new Error('Entrypoint must declare a handler method.');
     const methodName = ep.methodName;
     const reportContext = {
-      edge: ep.kind.startsWith('cf:queue') ? ('queue' as const) : ('schedule' as const),
+      edge: 'queue' as const,
       source: `${targetClass.name}.${String(methodName)}`,
     };
     let reported: { error: unknown } | undefined;
@@ -345,7 +371,13 @@ export class CloudflareApplication {
     await settleEntrypoints(handlers.map((ep) => this.dispatchEntrypoint(ep, batch, env, ctx)));
   }
 
+  /**
+   * Abort the signals of scheduled jobs still running, wait for them and their
+   * managed work to settle, then close the application.
+   */
   async close(signal?: string): Promise<void> {
+    for (const controller of this.#scheduled.values()) controller.abort();
+    await Promise.allSettled(this.#scheduled.keys());
     return this.#app.close(signal);
   }
 }

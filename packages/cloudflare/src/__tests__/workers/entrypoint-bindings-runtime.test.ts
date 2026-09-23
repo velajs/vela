@@ -2,6 +2,7 @@
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import {
+  Cron,
   defineProvider,
   ENV,
   Inject,
@@ -14,7 +15,6 @@ import {
 import { LiveInvalidation, LiveModule } from '@velajs/vela/live';
 import { createCloudflareApp, createCloudflareWorker } from '../../cloudflare-factory';
 import { QueueConsumer } from '../../decorators/queue-consumer';
-import { Scheduled } from '../../decorators/scheduled';
 import { CloudflareWebSocketModule } from '../../websocket/cloudflare-websocket.module';
 import { durableObjectLive } from '../../websocket/do-live';
 
@@ -27,7 +27,7 @@ describe('cold native bindings under workerd', () => {
       class Jobs {
         constructor(@InjectEnv() private readonly bindings: VelaEnv) {}
         @QueueConsumer('jobs')
-        @Scheduled('* * * * *')
+        @Cron('* * * * *', { dialect: 'cloudflare' })
         async run(): Promise<void> {
           const namespace = this.bindings.TEST_ROOM;
           const room = namespace.get(namespace.idFromName(`cold-${kind}`));
@@ -52,7 +52,7 @@ describe('cold native bindings under workerd', () => {
       class Jobs {
         constructor(private readonly live: LiveInvalidation) {}
         @QueueConsumer('live-jobs')
-        @Scheduled('* * * * *')
+        @Cron('* * * * *', { dialect: 'cloudflare' })
         async run(): Promise<void> {
           await this.live.invalidate({ tags: ['todos'] });
           dispatched = true;

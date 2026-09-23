@@ -169,16 +169,17 @@ queue, cron and Durable Object code.
 ## Queues and cron
 
 ```ts
-import { InjectEnv, Injectable, type VelaEnv } from '@velajs/vela';
-import { QueueConsumer, Scheduled } from '@velajs/cloudflare';
+import { Cron, InjectEnv, Injectable, type ScheduleInvocation, type VelaEnv } from '@velajs/vela';
+import { QueueConsumer } from '@velajs/cloudflare';
 
 @Injectable()
 class Jobs {
   constructor(@InjectEnv() private readonly env: VelaEnv) {}
 
-  @Scheduled('0 * * * *')
-  async refresh() {
-    await this.env.CACHE.put('last-refresh', new Date().toISOString());
+  // Declare the same string under Wrangler `triggers.crons`.
+  @Cron('0 * * * *', { dialect: 'cloudflare' })
+  async refresh(tick: ScheduleInvocation) {
+    await this.env.CACHE.put('last-refresh', new Date(tick.scheduledTime).toISOString());
   }
 
   @QueueConsumer('jobs')
@@ -190,10 +191,16 @@ class Jobs {
 }
 ```
 
-Core `@Cron()` also runs on Workers scheduled triggers. Consumers use fresh
-request scopes and their declared guards, interceptors, and filters. Unclaimed
-errors propagate to the platform for retry. Cold queue and cron events have the
-same native bindings and live invalidation capabilities as HTTP.
+A cron trigger runs every core `@Cron()` job whose expression is exactly the
+trigger string. Jobs receive only a `ScheduleInvocation`, as on Node, in a fresh
+request scope and without guards, interceptors or filters; inject
+`CLOUDFLARE_SCHEDULED_EVENT` for the trigger's bound `noRetry()` and
+`EXECUTION_LIFETIME` for background work. Signed `ScheduleModule` dispatch runs
+the signed route with its global guards. Queue consumers use fresh request
+scopes and their declared guards, interceptors, and filters. Unclaimed errors
+propagate to the platform for retry. Cold queue and cron events have the same
+native bindings and live invalidation capabilities as HTTP. See
+[scheduling](../../docs/scheduling.md).
 
 ## WebSockets, live queries, and Durable Objects
 
