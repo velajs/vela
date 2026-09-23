@@ -92,16 +92,33 @@ export async function verifyNewProject(cliEntrypoint, archives = {}) {
   const worker = await readFile(join(project, 'src/worker.ts'), 'utf8');
   assert.match(worker, /export default createCloudflareWorker\(AppModule\);/);
   assert.doesNotMatch(worker, /InjectionToken/);
-  // pretypecheck regenerates the committed binding types with `wrangler types`.
+  // The committed binding types are exactly what this Wrangler generates.
+  const bindingTypes = join(project, 'worker-configuration.d.ts');
+  const committedTypes = await readFile(bindingTypes, 'utf8');
+  assert.match(committedTypes, /declare namespace Cloudflare/);
+  run(['types']);
+  assert.equal(await readFile(bindingTypes, 'utf8'), committedTypes);
   run(['typecheck']);
-  assert.match(
-    await readFile(join(project, 'worker-configuration.d.ts'), 'utf8'),
-    /declare namespace Cloudflare/,
-  );
+  // Vite builds src/worker.ts with Oxc; no precompile step writes dist/ first.
   run(['build']);
-  assert.match(
-    await readFile(join(project, 'dist/app.controller.js'), 'utf8'),
-    /design:paramtypes/,
+  const deployConfig = JSON.parse(
+    await readFile(join(project, '.wrangler/deploy/config.json'), 'utf8'),
+  );
+  const builtConfigPath = resolve(project, '.wrangler/deploy', deployConfig.configPath);
+  const builtConfig = JSON.parse(await readFile(builtConfigPath, 'utf8'));
+  const bundle = await readFile(join(dirname(builtConfigPath), builtConfig.main), 'utf8');
+  assert.match(bundle, /design:paramtypes/);
+  assert.match(bundle, /class AppController/, 'The Worker build keeps class names');
+  // The template spec drives worker.fetch inside workerd.
+  run(['test']);
+  // The pinned CLI loads vela.config.ts and the decorated sources through Vite.
+  const routes = execFileSync('pnpm', ['exec', 'vela', 'route', 'list', '--json'], {
+    cwd: project,
+    encoding: 'utf8',
+  });
+  assert.deepEqual(
+    JSON.parse(routes).map(({ method, path }) => `${method} ${path}`),
+    ['GET /'],
   );
   run(['run', 'deploy', '--dry-run', '--outdir', 'worker-bundle']);
 
@@ -111,12 +128,16 @@ export async function verifyNewProject(cliEntrypoint, archives = {}) {
   const port = listener.address().port;
   await new Promise((done, reject) => listener.close((error) => (error ? reject(error) : done())));
 
-  const child = spawn('pnpm', ['dev', '--ip', '127.0.0.1', '--port', String(port)], {
-    cwd: project,
-    detached: process.platform !== 'win32',
-    env: { ...process.env, CI: 'true', WRANGLER_SEND_METRICS: 'false', BROWSER: 'none' },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  const child = spawn(
+    'pnpm',
+    ['dev', '--host', '127.0.0.1', '--port', String(port), '--strictPort'],
+    {
+      cwd: project,
+      detached: process.platform !== 'win32',
+      env: { ...process.env, CI: 'true', WRANGLER_SEND_METRICS: 'false', BROWSER: 'none' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  );
   let logs = '';
   const collect = (chunk) => {
     logs = (logs + chunk).slice(-20_000);
@@ -136,7 +157,7 @@ export async function verifyNewProject(cliEntrypoint, archives = {}) {
     while (Date.now() < deadline) {
       if (spawnError) throw spawnError;
       if (child.exitCode !== null || child.signalCode !== null) {
-        throw new Error(`Wrangler exited before serving the expected response.\n${logs}`);
+        throw new Error(`vite dev exited before serving the expected response.\n${logs}`);
       }
       try {
         const response = await fetch(`http://127.0.0.1:${port}`, {
@@ -151,7 +172,7 @@ export async function verifyNewProject(cliEntrypoint, archives = {}) {
       }
       await delay(250);
     }
-    throw new Error(`Wrangler did not serve ${JSON.stringify(message)}.\n${logs}`, {
+    throw new Error(`vite dev did not serve ${JSON.stringify(message)}.\n${logs}`, {
       cause: lastError,
     });
   }
@@ -159,7 +180,7 @@ export async function verifyNewProject(cliEntrypoint, archives = {}) {
     await expectMessage('Hello from Vela!');
     const service = join(project, 'src/app.service.ts');
     const source = await readFile(service, 'utf8');
-    // Only edit the injected service: proves metadata, DI and the dev rebuild.
+    // Only edit the injected service: proves metadata, DI and the dev reload.
     await writeFile(
       service,
       source.replace('Hello from Vela!', 'Hello from the injected service!'),
@@ -189,7 +210,7 @@ export async function verifyNewProject(cliEntrypoint, archives = {}) {
     }
   }
   console.log(
-    'PASS: packed vela new, failure cases, registry install, types, build, Worker bundle, HTTP, DI and dev rebuild',
+    'PASS: packed vela new, failure cases, registry install, types, Vite build, workerd spec, CLI config, Worker bundle, HTTP, DI and dev reload',
   );
   return project;
 }
