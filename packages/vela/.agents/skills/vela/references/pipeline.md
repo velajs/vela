@@ -46,8 +46,6 @@ On a `@Module` class they apply to the controllers that module declares (after e
 Three ways to register globals:
 
 ```ts
-import { defineProvider } from '@velajs/vela';
-
 // 1. APP_* provider tokens (multiple providers per token all run)
 @Module({
   providers: [
@@ -56,7 +54,7 @@ import { defineProvider } from '@velajs/vela';
     { provide: APP_PIPE, useClass: ValidationPipe },
     { provide: APP_INTERCEPTOR, useClass: SerializerInterceptor },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
-    defineProvider(APP_MIDDLEWARE, { useExisting: TraceMiddleware }),
+    { provide: APP_MIDDLEWARE, useExisting: TraceMiddleware },
   ],
 })
 class AppModule {}

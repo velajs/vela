@@ -84,13 +84,15 @@ transaction ownership belong to the database integration.
 Register the binding with an ordinary typed Vela provider when DI is useful:
 
 ```ts
-import { InjectionToken, defineProvider } from '@velajs/vela';
+import { InjectionToken, Module } from '@velajs/vela';
 
 const ORDERS = new InjectionToken<typeof orders>('orders');
-const ordersProvider = defineProvider(ORDERS, {
-  useFactory: () => bindCrudService(resource, contracts),
-});
-// Add ordersProvider and ORDERS to your module's providers/exports.
+
+@Module({
+  providers: [{ provide: ORDERS, useFactory: () => bindCrudService(resource, contracts) }],
+  exports: [ORDERS],
+})
+class OrdersModule {}
 ```
 
 The typed facade currently requires the default response envelope and rejects

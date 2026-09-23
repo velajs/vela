@@ -58,6 +58,14 @@ module loads (see [providers](dependency-injection.md#providers)); use
   come from `Partial<Options>`; DI wiring keys are reserved. The factory must
   still return the complete required options. `lazy?: boolean` is accepted
   by both registration methods, alongside the explicit `key`.
+- A module that wraps the generated `forRootAsync` in its own static method
+  types its options as `{ useFactory: (...deps: InferTokens<Inject>) => Result }
+  & FactoryInject<Inject>`, so a factory without parameters may omit `inject`,
+  and forwards the caller's object whole, replacing only what it wraps:
+  `ConfigurableModuleClass.forRootAsync<Inject>({ ...options, useFactory: async
+  (...deps: InferTokens<Inject>) => check(await options.useFactory(...deps)) })`.
+  Destructuring `inject` out of the options separates it from `useFactory`, and
+  the forwarded pair no longer type-checks.
 - `ConfigurableModuleBuilder` (NestJS parity) is a thin adapter over
   `defineModule` — same engine, either entry.
 - `defineConfigurableModule` remains the low-level engine for
@@ -149,7 +157,7 @@ downstream `@Inject(...)` keeps working.
 class MessageContributions {}
 export function registerMessages(messages: string[]) {
   return sideEffectModule(MessageContributions, {
-    providers: [defineProvider(MESSAGES, { useValue: messages })],
+    providers: [{ provide: MESSAGES, useValue: messages }],
     exports: [MESSAGES],
   });
 }

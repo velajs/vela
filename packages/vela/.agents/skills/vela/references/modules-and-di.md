@@ -5,12 +5,12 @@ Vela's DI is NestJS-compatible: decorator metadata drives constructor injection,
 ## Modules
 
 ```ts
-import { Module, defineProvider } from '@velajs/vela';
+import { Module } from '@velajs/vela';
 
 @Module({
   imports: [OtherModule],       // modules whose exports you need
   controllers: [UserController],
-  providers: [UserService, defineProvider(TOKEN, { useValue: cfg })],
+  providers: [UserService, { provide: TOKEN, useValue: cfg }],
   exports: [UserService],       // what importers of THIS module can resolve
 })
 class UserModule {}

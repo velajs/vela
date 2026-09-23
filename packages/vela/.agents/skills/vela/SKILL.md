@@ -69,12 +69,12 @@ For Cloudflare export `createCloudflareWorker(AppModule)`; it seeds the native e
 ## Module System
 
 ```ts
-import { Module, defineProvider } from '@velajs/vela';
+import { Module } from '@velajs/vela';
 
 @Module({
   imports: [ConfigModule.forRoot({ config: { app: { name: 'api' } } }), OtherModule],
   controllers: [UserController],
-  providers: [UserService, defineProvider(TOKEN, { useValue: cfg })],
+  providers: [UserService, { provide: TOKEN, useValue: cfg }],
   exports: [UserService],
 })
 class AppModule {}

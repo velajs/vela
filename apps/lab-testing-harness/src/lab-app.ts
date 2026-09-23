@@ -12,7 +12,6 @@ import {
   UseGuards,
   UseInterceptors,
   UsePipes,
-  defineProvider,
 } from '@velajs/vela';
 import type {
   ArgumentMetadata,
@@ -177,8 +176,8 @@ export function defineLabTestingFixture(): LabFixture {
       EnvelopeInterceptor,
       LabErrorFilter,
       LabLifecycle,
-      defineProvider(LAB_CONFIG, { useValue: { mode: 'real' } }),
-      defineProvider(LIFECYCLE_LOG, { useValue: lifecycleLog }),
+      { provide: LAB_CONFIG, useValue: { mode: 'real' } },
+      { provide: LIFECYCLE_LOG, useValue: lifecycleLog },
     ],
     controllers: [LabController],
   })

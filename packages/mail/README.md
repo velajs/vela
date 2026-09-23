@@ -103,7 +103,7 @@ build it from the framework `ENV` (`inject: [ENV]`), which carries the Worker's
 secrets; never cache per-environment credentials in a process-wide variable. The sample token is illustrative, not a framework token.
 
 Alternatively, an application transport module can export a global
-`defineProvider(MAIL_TRANSPORT, { useValue: transport })`. `MailService` prefers an
+`{ provide: MAIL_TRANSPORT, useValue: transport }` provider. `MailService` prefers an
 explicit `transport`, then that token. A missing transport fails at delivery with
 `no_transport`, so producer-only queue workers can enqueue without one.
 
@@ -202,7 +202,7 @@ return exactly `true`. Empty requirements are rejected. Every required verdict
 must equal `pass`; missing, failing, or unknown verdicts fail closed.
 
 Configure `inbound: { gate }` on `MailModule`, or register
-`defineProvider(MAIL_INBOUND_GATE, { useValue: gate })` in an inbound-only app.
+`{ provide: MAIL_INBOUND_GATE, useValue: gate }` in an inbound-only app.
 Module-supplied gates are snapshotted at registration. More than one distinct
 registered gate rejects dispatch; compose application policies into one gate.
 The gate and transport belong to their application, not a shared registration map.
