@@ -278,6 +278,45 @@ describe('QueueModule.registerQueue', () => {
     expect(app.getContainer().getOwnerModuleIds(QUEUE_DRIVER)).toHaveLength(1);
     await app.close();
   });
+
+  it('rejects two forRootAsync configurations that share an explicit key', async () => {
+    const driver = recordingDriver();
+    const direct = {
+      key: 'q',
+      inject: [],
+      useFactory: async () => ({ driver }),
+    } as const;
+    const signed = {
+      key: 'q',
+      inject: [],
+      useFactory: async () => ({ driver, dispatch: signedTo('/jobs/a') }),
+    } as const;
+    // A shared key must not merge the signed policy into the direct one.
+    @Module({
+      imports: [
+        QueueModule.forRootAsync(direct),
+        QueueModule.forRootAsync(signed),
+        QueueModule.registerQueue({ name: 'email' }),
+      ],
+    })
+    class App {}
+    await expect(VelaFactory.create(App, { diagnostics: 'silent' })).rejects.toThrow(
+      /QueueModule\.forRoot\(\) is imported with different options/,
+    );
+
+    // The same keyed options object imported again still deduplicates.
+    @Module({
+      imports: [
+        QueueModule.forRootAsync(signed),
+        QueueModule.forRootAsync(signed),
+        QueueModule.registerQueue({ name: 'email' }),
+      ],
+    })
+    class Same {}
+    const app = await VelaFactory.create(Same);
+    expect(app.getContainer().getOwnerModuleIds(QUEUE_DRIVER)).toHaveLength(1);
+    await app.close();
+  });
 });
 
 describe('driver factories', () => {

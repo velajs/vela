@@ -181,13 +181,17 @@ export class QueueModule extends ConfigurableModuleClass {
    * Resolve the options from a factory during application initialization. The
    * options object is the configuration: importing the same object again
    * deduplicates, while a different one, or a `forRoot` next to it, fails
-   * bootstrap like two different `forRoot` configurations.
+   * bootstrap like two different `forRoot` configurations. An explicit `key`
+   * does not change that, so two option objects sharing a key cannot merge
+   * different dispatch policies.
    */
   static override forRootAsync<const Inject extends readonly Token[]>(
     options: ConfigurableModuleAsyncOptions<QueueModuleOptions, 'create', Inject> &
       ModuleRegistrationOptions,
   ): DynamicModule {
-    return super.forRootAsync({ ...options, key: options.key ?? `async:${referenceId(options)}` });
+    const identity = `async:${referenceId(options)}`;
+    const key = options.key === undefined ? identity : `${options.key}:${identity}`;
+    return super.forRootAsync({ ...options, key });
   }
 
   /**

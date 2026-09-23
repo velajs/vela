@@ -69,8 +69,9 @@ signed policy object fails bootstrap, even a policy that differs only in its
 target, method or TTL, or one a helper builds from the same source. The driver
 defaults to the in-process `inline()` driver. `forRootAsync` resolves the same
 options from a factory during application initialization. Its options object
-is the configuration: importing the same object again deduplicates, and a
-different one, or a `forRoot` next to it, fails bootstrap.
+is the configuration, with or without an explicit `key`: importing the same
+object again deduplicates, and a different one, even one that shares its `key`,
+or a `forRoot` next to it, fails bootstrap.
 
 `QueueModule.registerQueue({ name, binding?, consumer? })` registers queues in
 the module that uses them and provides each queue's `QueueClient`. Inject it with
