@@ -57,8 +57,10 @@ describe('native managed entrypoints', () => {
         return true;
       }
     }
+    // Queue consumers run their declared guards; a direct scheduled job that
+    // declared one would be refused, so only the queue variant declares it.
     @Injectable()
-    @UseGuards(Guard)
+    @(kind === 'queue' ? UseGuards(Guard) : () => {})
     class Job {
       constructor(
         @Inject(VALUE) readonly name: string,
@@ -105,8 +107,6 @@ describe('native managed entrypoints', () => {
       await dispatch(app, kind, env);
       expect(new Set(lifetimes.map((lifetime) => lifetime.id)).size).toBe(2);
       expect(lifetimes.every((lifetime) => !lifetime.active)).toBe(true);
-      // Queue consumers run their declared guards; scheduled jobs run none,
-      // exactly like the Node executor (signed dispatch runs a route's pipeline).
       expect(scopes.size).toBe(kind === 'queue' ? 2 : 0);
       for (const name of ['alpha', 'beta']) {
         if (kind === 'queue')

@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import {
+  APP_EXCEPTION_HANDLER,
   Cron,
   Inject,
   Injectable,
@@ -8,9 +9,12 @@ import {
   Module,
   SCHEDULE_INVOCATION_SEED,
   Scope,
+  UseGuards,
   VelaFactory,
+  defineProvider,
   invokeScheduledJob,
   parseCronMetadata,
+  type CanActivate,
   type CronInvocation,
   type ScheduleInvocation,
 } from '@velajs/vela';
@@ -28,6 +32,9 @@ const context = { waitUntil() {} };
 
 beforeEach(() => {
   MetadataRegistry.clear();
+});
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 // A job that injects the trigger and declares no scope of its own.
@@ -239,6 +246,50 @@ describe('@Cron on Workers scheduled triggers', () => {
     await app.close();
     expect(events).toEqual(['aborted']);
     await expect(running).resolves.toBeUndefined();
+  });
+
+  it('refuses a guarded job on its trigger and still runs its siblings', async () => {
+    const ran: string[] = [];
+    const report = vi.fn();
+    class Allow implements CanActivate {
+      canActivate(): boolean {
+        return true;
+      }
+    }
+    @Injectable()
+    @UseGuards(Allow)
+    class Guarded {
+      @Cron('0 3 * * *', { dialect: 'cloudflare' })
+      nightly() {
+        ran.push('guarded');
+      }
+    }
+    @Injectable()
+    class Plain {
+      @Cron('0 3 * * *', { dialect: 'cloudflare' })
+      nightly() {
+        ran.push('plain');
+      }
+    }
+    @Module({
+      providers: [Guarded, Plain, defineProvider(APP_EXCEPTION_HANDLER, { useValue: { report } })],
+    })
+    class AppModule {}
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const app = await createCloudflareApp(AppModule, { env });
+    try {
+      await expect(app.scheduled({ cron: '0 3 * * *' }, env, context)).rejects.toThrow(
+        /Guarded\.nightly declares @UseGuards, but guards do not run for directly dispatched scheduled jobs/,
+      );
+      expect(ran).toEqual(['plain']);
+      expect(report).toHaveBeenCalledOnce();
+      expect(report).toHaveBeenCalledWith(
+        expect.objectContaining({ message: expect.stringMatching(/remove the guard/) }),
+        expect.objectContaining({ edge: 'schedule', source: 'Guarded.nightly' }),
+      );
+    } finally {
+      await app.close();
+    }
   });
 
   describe('in a container the Cloudflare adapter did not configure', () => {

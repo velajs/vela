@@ -195,10 +195,11 @@ execution context exposes that same child via `getContainer()` and its owner via
 A `@Cron` job receives only its `CronInvocation`, with no environment or
 context argument, and runs no guards, interceptors or filters: the adapter warns
 once (fails bootstrap in `diagnostics: 'throw'`) when a job declares
-`@UseGuards`, `@UseInterceptors` or `@UseFilters`. Use signed `ScheduleModule`
-dispatch to run a job through a route's request pipeline, and inject `ENV`,
-`CLOUDFLARE_SCHEDULED_EVENT` and `EXECUTION_LIFETIME` for what the native
-handler arguments used to carry.
+`@UseGuards`, `@UseInterceptors` or `@UseFilters`, and a job that declares
+guards is refused on every trigger instead of running unguarded. Use signed
+`ScheduleModule` dispatch to run a job through a route's request pipeline, and
+inject `ENV`, `CLOUDFLARE_SCHEDULED_EVENT` and `EXECUTION_LIFETIME` for what the
+native handler arguments used to carry.
 
 In both, inject `EXECUTION_LIFETIME` from `@velajs/vela` to schedule deferred
 callbacks with `lifetime.defer(work)` or register already-started work with

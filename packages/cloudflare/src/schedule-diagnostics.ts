@@ -24,7 +24,10 @@ function jobName(entry: Entrypoint<{ methodName: string }>): string {
   return `${owner}.${entry.meta.methodName}`;
 }
 
-/** Guards, interceptors and filters declared for a job never run on its trigger. */
+/**
+ * Guards, interceptors and filters declared for a job never run on its
+ * trigger, and a direct job that declares guards is refused on every trigger.
+ */
 function reportComponents(
   container: Container,
   label: string,
@@ -36,24 +39,28 @@ function reportComponents(
     decorators.length > 1
       ? `${decorators.slice(0, -1).join(', ')} and ${decorators.at(-1)!}`
       : decorators.join('');
+  const refused = decorators.includes('@UseGuards')
+    ? ', and one that declares guards refuses to run'
+    : '';
   reportScheduleDiagnostic(
     container,
     `[vela] ${label} declares ${named}, which do not run for scheduled jobs: a direct job ` +
-      `runs no guards, interceptors or filters. Use signed ScheduleModule dispatch and declare ` +
-      `them on the signed route to run the job through the request pipeline.`,
+      `runs no guards, interceptors or filters${refused}. Use signed ScheduleModule dispatch ` +
+      `and declare them on the signed route to run the job through the request pipeline.`,
   );
 }
 
 /**
  * Report schedule declarations a Workers cron trigger cannot honor as written:
  * a dialect-ambiguous `@Cron`, `dialect: 'unix'`, `timeZone: 'local'`,
- * `@Interval` jobs, and guards, interceptors or filters declared for a job.
+ * `@Interval` jobs, and guards, interceptors or filters declared for a job
+ * (a direct job that declares guards is refused when it fires).
  * The container's diagnostics policy applies: `'throw'` fails bootstrap and the
  * default `'log'` warns once per declaration, so the first event of a Worker
  * (which bootstraps the application) never fails because of these checks.
- * `vela deploy check` rejects the cron declarations and `@Interval` jobs before
- * deployment (`ambiguous-cron-dialect`, `incompatible-cron-options`,
- * `unsupported-interval`).
+ * `vela deploy check` rejects the cron declarations, `@Interval` jobs and
+ * guarded direct jobs before deployment (`ambiguous-cron-dialect`,
+ * `incompatible-cron-options`, `unsupported-interval`, `scheduled-job-guards`).
  */
 export function reportCloudflareScheduleDiagnostics(
   container: Container,

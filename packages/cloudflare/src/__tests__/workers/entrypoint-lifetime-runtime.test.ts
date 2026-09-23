@@ -53,8 +53,10 @@ describe('native entrypoint lifetime in workerd', () => {
           seen.push(`disposed:${this.name}`);
         }
       }
+      // Queue consumers run their declared guards; a direct scheduled job that
+      // declared one would be refused, so only the queue variant declares it.
       @Injectable()
-      @UseGuards(Guard)
+      @(kind === 'queue' ? UseGuards(Guard) : () => {})
       class Job {
         constructor(
           @Inject(READY) readonly ready: string,

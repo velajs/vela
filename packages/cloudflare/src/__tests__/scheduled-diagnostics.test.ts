@@ -119,7 +119,7 @@ describe('schedule diagnostics under the Cloudflare adapter', () => {
 
     expect(warn).toHaveBeenCalledOnce();
     expect(String(warn.mock.calls[0]?.[0])).toMatch(
-      /@Cron\('15 2 \* \* \*'\) on Exports\.nightly declares @UseGuards and @UseFilters, which do not run.*signed/,
+      /@Cron\('15 2 \* \* \*'\) on Exports\.nightly declares @UseGuards and @UseFilters, which do not run.*one that declares guards refuses to run.*signed/,
     );
     await expect(
       VelaFactory.create(App, { adapters: [cloudflareAdapter({ env })], diagnostics: 'throw' }),

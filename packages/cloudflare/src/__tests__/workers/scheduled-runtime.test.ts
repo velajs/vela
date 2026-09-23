@@ -4,6 +4,7 @@ const { createExecutionContext, createScheduledController, waitOnExecutionContex
   cloudflareTest;
 import { describe, expect, it, vi } from 'vitest';
 import {
+  APP_EXCEPTION_HANDLER,
   APP_GUARD,
   Controller,
   Cron,
@@ -18,6 +19,7 @@ import {
   ScheduleModule,
   Scope,
   SignedInvocation,
+  UseGuards,
   VelaFactory,
   defineProvider,
   invokeScheduledJob,
@@ -198,6 +200,53 @@ describe('native scheduled controller contract', () => {
 
     expect(seen).toEqual(['guard:http', 'route']);
     expect(jobs).toEqual([{ kind: 'cron', expression: '0 3 * * *', methodName: 'nightly' }]);
+  });
+
+  it('refuses a direct job that declares guards and reports why', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const ran: string[] = [];
+    const report = vi.fn();
+    try {
+      class Allow implements CanActivate {
+        canActivate(): boolean {
+          return true;
+        }
+      }
+      @Injectable()
+      class Jobs {
+        @Cron('0 4 * * *', { dialect: 'cloudflare' })
+        @UseGuards(Allow)
+        nightly() {
+          ran.push('nightly');
+        }
+      }
+      @Module({
+        providers: [Jobs, defineProvider(APP_EXCEPTION_HANDLER, { useValue: { report } })],
+      })
+      class Root {}
+      const worker = createCloudflareWorker(Root);
+
+      await expect(
+        worker.scheduled(
+          createScheduledController({ cron: '0 4 * * *', scheduledTime: mondayNine }),
+          env,
+          createExecutionContext(),
+        ),
+      ).rejects.toThrow(
+        /Jobs\.nightly declares @UseGuards, but guards do not run for directly dispatched scheduled jobs/,
+      );
+      expect(ran).toEqual([]);
+      expect(report).toHaveBeenCalledOnce();
+      expect(report).toHaveBeenCalledWith(
+        expect.objectContaining({ message: expect.stringMatching(/kind: 'signed'/) }),
+        expect.objectContaining({ edge: 'schedule', source: 'Jobs.nightly' }),
+      );
+      expect(warn.mock.calls.map((call) => String(call[0]))).toEqual(
+        expect.arrayContaining([expect.stringMatching(/one that declares guards refuses to run/)]),
+      );
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('only warns about declarations Workers cannot honor when the first event bootstraps', async () => {
