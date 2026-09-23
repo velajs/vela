@@ -4,8 +4,9 @@
 For application-isolated structured logs, import `LoggingModule` once at the root:
 
 ```ts
-import { APP_LOGGER, Inject, Injectable, LoggingModule, Module } from '@velajs/vela';
-import type { ApplicationLogger, LogRecord } from '@velajs/vela';
+import { Inject, Injectable, Module } from '@velajs/vela';
+import { APP_LOGGER, LoggingModule } from '@velajs/vela/logging';
+import type { ApplicationLogger, LogRecord } from '@velajs/vela/logging';
 
 @Injectable()
 class Orders {
@@ -99,7 +100,8 @@ Use `loggerForScope` with the existing invocation child to attach the generated
 `invocationId` and, for HTTP, the current `REQUEST_CONTEXT.id` as `requestId`:
 
 ```ts
-import { loggerForScope, runInEntrypointScope } from '@velajs/vela';
+import { loggerForScope } from '@velajs/vela/logging';
+import { runInEntrypointScope } from '@velajs/vela/module-kit';
 
 await runInEntrypointScope(app.getContainer(), async (scope) => {
   loggerForScope(scope, 'orders', { source: 'Orders.process' }).log('processing');

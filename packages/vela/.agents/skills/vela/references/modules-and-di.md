@@ -48,7 +48,7 @@ defineProvider(TOKEN, { useFactory: (dep) => build(dep), inject: [DEP_TOKEN] })
 ProductService // class-provider shorthand
 ```
 
-`@Module` checks each literal against its token: `{ provide: COUNT, useValue: 'one' }` does not compile for an `InjectionToken<number>`. A factory with dependencies uses `defineProvider` (import it from `@velajs/vela`), which infers its parameters from `inject`; do not spread a definition to modify its registration. `inject` may be omitted only when the factory takes no parameters (`defineProvider`, `lazyProvider`, literals, `forRootAsync`); a factory with parameters and no `inject` throws, naming the token. `DynamicModule.providers` and `defineModule` `setup` contributions accept loosely typed literals that the loader checks when the module loads (an entry that is not a provider fails, naming the entry and its token).
+`@Module` checks each literal against its token: `{ provide: COUNT, useValue: 'one' }` does not compile for an `InjectionToken<number>`. A factory with dependencies uses `defineProvider` (import it from `@velajs/vela`), which infers its parameters from `inject`; do not spread a definition to modify its registration. `inject` may be omitted only when the factory takes no parameters (`defineProvider`, `lazyProvider` from `@velajs/vela/module-kit`, literals, `forRootAsync`); a factory with parameters and no `inject` throws, naming the token. `DynamicModule.providers` and `defineModule` `setup` contributions accept loosely typed literals that the loader checks when the module loads (an entry that is not a provider fails, naming the entry and its token).
 
 Every application provides `Reflector` globally: inject it (`constructor(private readonly reflector: Reflector) {}`) instead of `new Reflector()`.
 

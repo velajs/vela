@@ -244,8 +244,9 @@ cache failures cannot turn committed writes into reported rollbacks.
 
 ## Signed URLs
 
-Generic `signUrl` calls require `{ expiresIn, method, purpose }`, and
-`verifySignedUrl` requires `{ method, purpose }`. Missing expiry is invalid.
+Generic `signUrl` calls (from `@velajs/vela/security`) require
+`{ expiresIn, method, purpose }`, and `verifySignedUrl` requires
+`{ method, purpose }`. Missing expiry is invalid.
 The signature payload is method- and purpose-separated. Named HTTP routes and
 Cloudflare storage provide fixed
 purposes automatically.

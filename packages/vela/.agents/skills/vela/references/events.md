@@ -1,13 +1,13 @@
 # Events (`EventEmitterModule`)
 
-An in-process event bus with decorator-based listeners. On the main export `@velajs/vela`. The module is lazy — the emitter and `@OnEvent` wiring materialize on first `EventEmitter` resolution.
+An in-process event bus with decorator-based listeners, on the subpath `@velajs/vela/events`. The module is lazy — the emitter and `@OnEvent` wiring materialize on first `EventEmitter` resolution.
 
 ## Setup
 
 `EventEmitterModule` is a plain module (no `forRoot`, no options). Import it and list your listener providers:
 
 ```ts
-import { EventEmitterModule, EventEmitter, OnEvent } from '@velajs/vela';
+import { EventEmitterModule, EventEmitter, OnEvent } from '@velajs/vela/events';
 
 @Injectable()
 class UserListener {

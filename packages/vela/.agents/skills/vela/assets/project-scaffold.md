@@ -103,7 +103,8 @@ it('serves /api/app', async () => {
 ## `src/app.module.ts`
 
 ```ts
-import { Controller, Endpoint, Get, Module, defineEndpoint } from '@velajs/vela';
+import { Controller, Get, Module } from '@velajs/vela';
+import { Endpoint, defineEndpoint } from '@velajs/vela/openapi';
 import { z } from 'zod';
 
 const hello = defineEndpoint({

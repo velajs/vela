@@ -6,9 +6,8 @@ For example, an object schema that strips unknown fields can remove a stored
 password from the public representation.
 
 ```ts
-import {
-  Controller, Get, Serialize, SerializerInterceptor, UseInterceptors, defineDto,
-} from '@velajs/vela';
+import { Controller, Get, Serialize, SerializerInterceptor, UseInterceptors } from '@velajs/vela';
+import { defineDto } from '@velajs/vela/validation';
 import { z } from 'zod';
 
 const publicUser = defineDto(z.object({ id: z.string(), name: z.string() }));

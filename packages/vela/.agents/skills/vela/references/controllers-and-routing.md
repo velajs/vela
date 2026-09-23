@@ -1,6 +1,6 @@
 # Controllers & Routing
 
-Controllers, method/param decorators, versioning, named routes, URL generation, and signed URLs — all on the main export `@velajs/vela`.
+Controllers, method/param decorators, versioning, named routes, URL generation, and signed URLs — all on the main export `@velajs/vela`. The low-level `signUrl`/`verifySignedUrl` primitives come from `@velajs/vela/security`.
 
 ## Controllers & method decorators
 
@@ -120,7 +120,8 @@ declare module '@velajs/vela' {
 Protect a route with `@SignedUrl()` (adds `SignedUrlGuard`), generate signed links with `UrlGeneratorService.signedUrl`, and provide the secret via the `URL_SIGNING_SECRET` token or a string `URL_SIGNING_SECRET` in the application's `ENV` (on Workers, a Wrangler secret):
 
 ```ts
-import { Controller, Get, SignedUrl, URL_SIGNING_SECRET, UrlGeneratorService, verifySignedUrl } from '@velajs/vela';
+import { Controller, Get, SignedUrl, URL_SIGNING_SECRET, UrlGeneratorService } from '@velajs/vela';
+import { verifySignedUrl } from '@velajs/vela/security';
 
 @Global()
 @Module({

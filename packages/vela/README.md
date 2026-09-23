@@ -77,7 +77,7 @@ before `ThrottlerModule`.
 - **Dependency injection** — `@Injectable`, `@Inject`, `InjectionToken`, `Scope.DEFAULT` (singleton), `Scope.TRANSIENT` and `Scope.REQUEST` scopes
 - **Modules** — `@Module` with imports, exports, controllers, providers
 - **Guards** — `@UseGuards` with `CanActivate` interface
-- **Pipes** — `@UsePipes`, built-in `ParseIntPipe`, `ParseBoolPipe`, `ValidationPipe`, etc.
+- **Pipes** — `@UsePipes`, built-in `ParseIntPipe`, `ParseBoolPipe`, etc., and `ValidationPipe` from `@velajs/vela/validation`
 - **Schema-validated parameters** — `@Body(schema)`, `@Query('page', schema)`, `@Param('id', schema)` return 400 on invalid input and document the schema in OpenAPI
 - **Interceptors** — `@UseInterceptors` with `NestInterceptor` interface
 - **Exception filters** — `@UseFilters`, `@Catch`, built-in HTTP exceptions
@@ -88,6 +88,22 @@ before `ThrottlerModule`.
 - **Global prefix** — `VelaFactory.create(AppModule, { globalPrefix: '/api' })`, read back with `app.getGlobalPrefix()`
 - **Lifecycle hooks** — `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`
 - **CRUD integration** — Optional [`@velajs/crud`](https://github.com/velajs/vela/tree/main/packages/crud) package
+
+## Import paths
+
+Each name has exactly one import path.
+
+| Entry | Contents |
+|---|---|
+| `@velajs/vela` | The application kit: `VelaFactory`, modules and DI, controllers and route/param decorators, guards, pipes, interceptors, filters, HTTP exceptions, `ConfigModule`, `Logger`, lifecycle types |
+| `@velajs/vela/module-kit` | Seams for module, integration and adapter authors: `Container`, `MetadataRegistry`, `DiscoveryService`, entrypoint kinds and execution scopes, `PipelineRunner`, route contributors, `invokeScheduledJob`, module-authoring helpers |
+| `@velajs/vela/cache`, `/throttler`, `/schedule`, `/events`, `/health`, `/logging`, `/http-client` | Optional feature modules |
+| `@velajs/vela/openapi` | `@Endpoint`/`defineEndpoint`, `createOpenApiDocument`, `@ApiDoc`/`@ApiTags`/`@ApiResponse` |
+| `@velajs/vela/security` | `SecurityModule`, `CorsModule`, `Secret`, signed-URL primitives, the nonce store |
+| `@velajs/vela/dispatch` | Signed internal dispatch (`InternalDispatcher`, `@SignedInvocation`) |
+| `@velajs/vela/validation`, `/websocket`, `/queue`, `/live`, `/i18n`, `/seeder`, `/storage`, `/streaming`, `/observability` | Validation and the other feature subsystems |
+| `@velajs/vela/schedule-node`, `/websocket-node` | Node/Bun adapters |
+| `@velajs/vela/internal` | Bootstrap plumbing for first-party tooling such as `@velajs/testing` |
 
 ## Edge Runtime Compatibility
 
@@ -203,7 +219,7 @@ When a consumer module imports two instances both exporting the same logical tok
 Custom modules can use the same pattern via the public helpers:
 
 ```ts
-import { defineDynamicModule, stableHash } from '@velajs/vela';
+import { defineDynamicModule, stableHash } from '@velajs/vela/module-kit';
 
 class MyModule {
   static forRoot(options: MyOptions): DynamicModule {
@@ -260,13 +276,8 @@ returned value or Promise, or the thrown error, and never reruns the factory.
 Primitives, `undefined`, objects and promises retain their real semantics.
 
 ```ts
-import {
-  createLazyParamDecorator,
-  Injectable,
-  REQUEST_CONTEXT,
-  RequestContextKey,
-  UseGuards,
-} from '@velajs/vela';
+import { Injectable, REQUEST_CONTEXT, RequestContextKey, UseGuards } from '@velajs/vela';
+import { createLazyParamDecorator } from '@velajs/vela/module-kit';
 import type { CanActivate, ExecutionContext } from '@velajs/vela';
 
 const USER = new RequestContextKey<{ id: string; name: string }>('app.user');
@@ -315,9 +326,11 @@ pnpm add @velajs/crud @velajs/crud-memory zod
 
 ## Advanced framework integration
 
-Application and module authors should use the public root and feature subpaths.
-`Container`, `ModuleRef`, `VelaApplication`, and `MetadataRegistry` are available
-from `@velajs/vela`. The [module authoring guide](https://github.com/velajs/vela/blob/main/docs/modules.md)
+Applications use the root application kit and the feature subpaths. Module,
+integration and adapter authors also use `@velajs/vela/module-kit`: `Container`,
+`MetadataRegistry`, `DiscoveryService`, entrypoint kinds, execution scopes,
+`PipelineRunner` and route contributors. `ModuleRef` and `VelaApplication` are
+part of the root. The [module authoring guide](https://github.com/velajs/vela/blob/main/docs/modules.md)
 covers public discovery, entrypoint, and route integration APIs.
 
 `@velajs/vela/internal` also exposes lower-level bootstrap and routing machinery,

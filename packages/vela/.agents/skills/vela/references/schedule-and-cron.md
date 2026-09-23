@@ -1,13 +1,13 @@
 # Scheduling — Cron & Intervals
 
-Vela splits scheduling into an **edge-safe registry** (`ScheduleModule`, main export — discovers jobs, never arms a timer) and a **Node/Bun executor** (`ScheduleNodeModule`, subpath `@velajs/vela/schedule-node` — arms `setInterval` to actually run them). This keeps `setInterval` out of edge-safe core.
+Vela splits scheduling into an **edge-safe registry** (`ScheduleModule`, subpath `@velajs/vela/schedule` — discovers jobs, never arms a timer) and a **Node/Bun executor** (`ScheduleNodeModule`, subpath `@velajs/vela/schedule-node` — arms `setInterval` to actually run them). This keeps `setInterval` out of edge-safe core.
 
 ## Declaring jobs
 
 `@Cron(expression, options?)` and `@Interval(ms)` are method decorators on any `@Injectable()` provider. Cron options select `dialect: 'unix' | 'cloudflare'` and `timeZone: 'local' | 'UTC'`. A job receives exactly one argument, its invocation (`kind`, `expression` or `ms`, `scheduledTime`, `signal`), identically on Node, Workers and Studio's run-now: `CronInvocation` for `@Cron`, `IntervalInvocation` for `@Interval` (both members of `ScheduleInvocation`). The decorators are typed, so a method with another required parameter (such as native `(controller, env, ctx)`) or a first parameter that is not the invocation does not compile:
 
 ```ts
-import { Cron, Interval, type CronInvocation } from '@velajs/vela';
+import { Cron, Interval, type CronInvocation } from '@velajs/vela/schedule';
 
 @Injectable()
 class MaintenanceJobs {
@@ -34,7 +34,7 @@ A caller that fires a job on demand (Studio's run-now) passes the runtime's opti
 On edge runtimes, import `ScheduleModule` and let the platform's cron trigger drive execution. `ScheduleModule.forRoot()` provides `ScheduleRegistry`, which **lists** discovered jobs but never runs a timer; `forRoot({ dispatch })` opts into signed dispatch:
 
 ```ts
-import { ScheduleModule, ScheduleRegistry } from '@velajs/vela';
+import { ScheduleModule, ScheduleRegistry } from '@velajs/vela/schedule';
 
 @Module({ imports: [ScheduleModule.forRoot()], providers: [MaintenanceJobs] })
 class AppModule {}

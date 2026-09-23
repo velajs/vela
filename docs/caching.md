@@ -14,10 +14,13 @@ caches can remain in their own `CacheModule`.
 ## Configure an explicit scope
 
 ```ts
+import { Controller, Get, Module } from '@velajs/vela';
 import {
-  CacheResponse, Controller, Get, MemoryCacheStore,
-  MemoryCacheInvalidationStore, Module, ResponseCacheModule,
-} from '@velajs/vela';
+  CacheResponse,
+  MemoryCacheStore,
+  MemoryCacheInvalidationStore,
+  ResponseCacheModule,
+} from '@velajs/vela/cache';
 
 @Controller('/catalog')
 class CatalogController {

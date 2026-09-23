@@ -1,6 +1,6 @@
 # Errors, Health, Throttling & Caching
 
-Built-in HTTP exceptions and exception filters, plus the `HealthModule`, `ThrottlerModule`, and `CacheModule`. All on the main export `@velajs/vela`.
+Built-in HTTP exceptions and exception filters are on the main export `@velajs/vela`. `HealthModule` comes from `@velajs/vela/health`, `ThrottlerModule` from `@velajs/vela/throttler`, and `CacheModule` from `@velajs/vela/cache`.
 
 ## HTTP exceptions
 
@@ -41,7 +41,7 @@ Filters run closest-first (handler → controller → global) — see `pipeline.
 Import `HealthModule` (plain module, no options) and write your own endpoint injecting `HealthCheckService` + `HealthIndicatorService`:
 
 ```ts
-import { HealthModule, HealthCheckService, HealthIndicatorService } from '@velajs/vela';
+import { HealthModule, HealthCheckService, HealthIndicatorService } from '@velajs/vela/health';
 
 @Controller('/health')
 class HealthController {
@@ -66,7 +66,7 @@ class HealthController {
 `ThrottlerModule.forRoot({ limit, ttl })` registers a global rate-limit guard (`APP_GUARD`) — importing it throttles all routes:
 
 ```ts
-import { ThrottlerModule, Throttle, SkipThrottle } from '@velajs/vela';
+import { ThrottlerModule, Throttle, SkipThrottle } from '@velajs/vela/throttler';
 
 @Module({ imports: [ThrottlerModule.forRoot({ limit: 100, ttl: 60_000 })] }) // ttl in MILLISECONDS
 class AppModule {}
@@ -90,7 +90,14 @@ class ApiController {
 `CacheModule.forRoot({ ttl, max })` provides `CacheService` (manual) and `CacheInterceptor` (auto-cache GET responses):
 
 ```ts
-import { CacheModule, CacheService, CacheInterceptor, Cacheable, CacheKey, CacheTTL } from '@velajs/vela';
+import {
+  CacheModule,
+  CacheService,
+  CacheInterceptor,
+  Cacheable,
+  CacheKey,
+  CacheTTL,
+} from '@velajs/vela/cache';
 
 @Module({ imports: [CacheModule.forRoot({ ttl: 60, max: 100 })] }) // ttl in SECONDS
 class AppModule {}

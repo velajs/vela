@@ -6,13 +6,8 @@ queue processors, scheduled handlers, and other adapters can use
 request-scoped providers and their consumers resolve within the child.
 
 ```ts
-import {
-  EXECUTION_LIFETIME,
-  Inject,
-  Injectable,
-  runInEntrypointScope,
-  type ExecutionLifetime,
-} from '@velajs/vela';
+import { EXECUTION_LIFETIME, Inject, Injectable, type ExecutionLifetime } from '@velajs/vela';
+import { runInEntrypointScope } from '@velajs/vela/module-kit';
 
 @Injectable()
 class Handler {
