@@ -16,7 +16,7 @@ Open two tabs. Add todos (optimistic, gated on `Vela-Commit-Cursor`), watch pres
 - **Shared query contract**: `@LiveQuery('todos.list', todoListDefinition, { tags: ['todos'] })` and `createLiveClient({ queries: { 'todos.list': todoListDefinition }, ... })` consume the same schemas. Tag invalidations rerun the query, and server/client validate its results.
 - **Commit headers**: mutation responses carry `Vela-Commit-Cursor`/`Vela-Commit-Epoch` (stamped explicitly via `stampCommitHeaders`) — the client's optimistic layers drop exactly when a live frame's cursor passes them.
 - **Cloudflare data locality** (`TodoStore` seam): the Worker (HTTP mutations) and the Durable Object (live re-runs) are separate app instances. Shared data MUST live in a shared store — KV here, D1/Postgres in real apps. Per-isolate memory would make writes invisible to re-runs.
-- **Native bindings**: one `InjectionToken<WorkerEnv>` is registered before construction. The Worker and Durable Object resolve it independently; live drivers and cursor logs are created per application. The example's KV read-modify-write store illustrates sharing and does not provide concurrent-write atomicity.
+- **Native bindings**: the Worker and the Durable Object each seed their native environment as the framework `ENV` before construction and resolve it independently; `KvTodoStore` injects it with `@InjectEnv()`, and live drivers and cursor logs are created per application. `pnpm types` (`wrangler types --include-runtime=false`) regenerates `worker-configuration.d.ts`, which types `TODOS` and `CHAT_ROOM` on `VelaEnv`. The example's KV read-modify-write store illustrates sharing and does not provide concurrent-write atomicity.
 
 ## Cloudflare footguns encoded here
 
