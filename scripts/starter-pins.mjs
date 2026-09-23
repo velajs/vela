@@ -34,15 +34,19 @@ export function syncStarterPins(manifest, versions) {
 }
 
 /**
- * Before publication, the pinned framework versions exist only as release
- * archives: install those from the archives and every other pin from npm.
+ * Before publication, the release's framework packages exist only as archives:
+ * resolve every archive, so the starter's pins and their own framework
+ * dependencies install from the release, and third-party packages from npm.
+ * Without archives (a check after publication) everything comes from npm.
  */
 export function starterArchiveOverrides(manifest, archives) {
-  return Object.fromEntries(
-    fields
-      .flatMap((field) => Object.keys(manifest[field] ?? {}))
-      .filter((name) => Object.hasOwn(archives, name))
-      .toSorted()
-      .map((name) => [name, archives[name]]),
-  );
+  const names = Object.keys(archives);
+  if (names.length === 0) return {};
+  for (const field of fields) {
+    for (const name of Object.keys(manifest[field] ?? {})) {
+      if (name.startsWith('@velajs/') && !Object.hasOwn(archives, name))
+        throw new Error(`The starter pins ${name}, but ${name} has no release archive`);
+    }
+  }
+  return Object.fromEntries(names.toSorted().map((name) => [name, archives[name]]));
 }

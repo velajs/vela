@@ -38,18 +38,23 @@ test('sync only workspace packages and leave third-party pins alone', () => {
   assert.equal(starter.dependencies['@velajs/vela'], '1.27.0', 'the input stays unchanged');
 });
 
-test('install pinned framework packages from release archives, everything else from npm', () => {
-  assert.deepEqual(
-    starterArchiveOverrides(starter, {
-      '@velajs/vela': 'file:/artifacts/velajs-vela-1.29.0.tgz',
-      '@velajs/cloudflare': 'file:/artifacts/velajs-cloudflare-1.29.0.tgz',
-      '@velajs/cli': 'file:/artifacts/velajs-cli-1.29.0.tgz',
-    }),
-    {
-      '@velajs/cloudflare': 'file:/artifacts/velajs-cloudflare-1.29.0.tgz',
-      '@velajs/vela': 'file:/artifacts/velajs-vela-1.29.0.tgz',
-    },
+test('install the pinned framework and its unpublished dependencies from release archives', () => {
+  const archives = {
+    '@velajs/vela': 'file:/artifacts/velajs-vela-1.29.0.tgz',
+    '@velajs/cloudflare': 'file:/artifacts/velajs-cloudflare-1.29.0.tgz',
+    // A dependency of the pinned core, released with it and not on npm yet.
+    '@velajs/errors': 'file:/artifacts/velajs-errors-1.23.0.tgz',
+  };
+  assert.deepEqual(starterArchiveOverrides(starter, archives), {
+    '@velajs/cloudflare': 'file:/artifacts/velajs-cloudflare-1.29.0.tgz',
+    '@velajs/errors': 'file:/artifacts/velajs-errors-1.23.0.tgz',
+    '@velajs/vela': 'file:/artifacts/velajs-vela-1.29.0.tgz',
+  });
+  assert.throws(
+    () => starterArchiveOverrides(starter, { '@velajs/vela': archives['@velajs/vela'] }),
+    /@velajs\/cloudflare has no release archive/,
   );
+  assert.deepEqual(starterArchiveOverrides(starter, {}), {}, 'after publication: npm only');
 });
 
 test('the committed starter pins the current workspace framework versions', async () => {

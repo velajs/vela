@@ -19,7 +19,8 @@ import { starterArchiveOverrides } from './starter-pins.mjs';
 
 // The entrypoint must come from an installed tarball, never the workspace dist.
 // `archives` maps package names to `file:` release archives: the starter pins
-// the framework versions released with the CLI, which are not on npm yet.
+// the framework versions released with the CLI, which are not on npm yet. Omit
+// it to check a published CLI against npm alone.
 export async function verifyNewProject(cliEntrypoint, archives = {}) {
   const consumer = await mkdtemp(join(tmpdir(), 'vela-new-consumer-'));
   const runCli = (args) =>
@@ -77,8 +78,9 @@ export async function verifyNewProject(cliEntrypoint, archives = {}) {
 
   console.log(`Generated CLI consumer: ${project}`);
   const run = (args) => execFileSync('pnpm', args, { cwd: project, stdio: 'inherit' });
-  // Deliberately keep the generated manifest unchanged. Only its framework pins
-  // resolve to the release archives; every other dependency installs from npm.
+  // Deliberately keep the generated manifest unchanged. Its framework pins and
+  // their framework dependencies resolve to the release archives; every other
+  // dependency installs from npm.
   const overrides = Object.entries(starterArchiveOverrides(manifest, archives));
   if (overrides.length) {
     await appendFile(
