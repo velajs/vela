@@ -182,9 +182,20 @@ export class ModuleIdentityFingerprints {
         return `provider${this.value(getProviderOptions(value), path)}`;
       }
       if (!isPlainObject(value)) return this.reference(value);
-      const entries = Object.keys(value)
-        .toSorted()
-        .map((key) => `${JSON.stringify(key)}:${this.value(Reflect.get(value, key), path)}`);
+      // Enumerable own keys, symbols included (compared by reference like
+      // symbol values); sorting the rendered entries makes key order irrelevant.
+      const keys: Array<string | symbol> = [
+        ...Object.keys(value),
+        ...Object.getOwnPropertySymbols(value).filter((key) =>
+          Object.prototype.propertyIsEnumerable.call(value, key),
+        ),
+      ];
+      const entries = keys
+        .map(
+          (key) =>
+            `${typeof key === 'symbol' ? this.symbol(key) : JSON.stringify(key)}:${this.value(Reflect.get(value, key), path)}`,
+        )
+        .toSorted();
       return `{${entries.join(',')}}`;
     } finally {
       path.delete(value);

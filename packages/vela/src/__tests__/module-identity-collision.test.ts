@@ -188,6 +188,41 @@ describe('module identity collisions', () => {
     );
   });
 
+  it('compares symbol-keyed options', async () => {
+    const TIER: unique symbol = Symbol('identity test tier');
+    interface TieredOptions {
+      region: string;
+      [TIER]: string;
+    }
+    const { ConfigurableModuleClass: TieredBase } = defineModule<TieredOptions>({
+      name: 'Tiered',
+      key: () => 'shared',
+      setup: () => ({}),
+    });
+    class TieredModule extends TieredBase {}
+
+    @Module({
+      imports: [
+        TieredModule.forRoot({ region: 'eu', [TIER]: 'gold' }),
+        TieredModule.forRoot({ region: 'eu', [TIER]: 'silver' }),
+      ],
+    })
+    class Conflicting {}
+    await expect(VelaFactory.create(Conflicting, { diagnostics: 'throw' })).rejects.toThrow(
+      /TieredModule#shared was imported again with different options/,
+    );
+
+    @Module({
+      imports: [
+        TieredModule.forRoot({ region: 'eu', [TIER]: 'gold' }),
+        TieredModule.forRoot({ region: 'eu', [TIER]: 'gold' }),
+      ],
+    })
+    class Repeated {}
+    const app = await VelaFactory.create(Repeated, { diagnostics: 'throw' });
+    await app.close();
+  });
+
   it('reports side-effect contributions that differ under a stable owner', async () => {
     const MESSAGES = new InjectionToken<string>('identity test messages');
     class Messages {}
