@@ -99,11 +99,10 @@ Returning the same partition is an application assertion that the complete resol
 ### Cloudflare setup
 
 ```ts
-interface ChatEnv { CHAT_ROOM: DurableObjectNamespace<ChatRoom> }
-const CHAT_ENV = new InjectionToken<ChatEnv>('chat environment');
+import { ENV } from '@velajs/vela';
 
 LiveModule.forRootAsync({
-  inject: [CHAT_ENV],                              // the envToken given to the Worker and DO
+  inject: [ENV],                                   // the Worker's or the DO's native environment
   useFactory: (env) => ({
     log: () => durableObjectCursorLog(),           // SQLite-backed cursor log (per room DO)
     driver: () => durableObjectLive({
@@ -120,8 +119,8 @@ the same module definition can bootstrap a Worker and multiple Durable Objects, 
 with its own environment, sink, cursor, and epoch. Factories may be asynchronous.
 `durableObjectLive` takes the room Durable Object's `namespace` object, so resolve the
 environment with `LiveModule.forRootAsync` and return factories that capture it, as
-above. Pass the same `envToken` to `createCloudflareWorker` and
-`VelaWebSocketDurableObject`.
+above. `createCloudflareWorker` and `VelaWebSocketDurableObject` each seed their own
+environment as `ENV`, and `wrangler types` types `env.CHAT_ROOM` from the Wrangler file.
 
 - The DO class **must** be SQLite-backed: add it to wrangler `migrations[].new_sqlite_classes`.
 - Worker-side `invalidate()` (HTTP mutations, crons, queue consumers) routes to the gateway + room DO's `invalidate` RPC and returns *that* log scope's stamp; inside the DO it applies locally. `liveInvalidateToRoom(ns, gatewayPath, room, tags)` is the imperative sibling of `broadcastToRoom`.

@@ -39,7 +39,7 @@ The generated project has four source files:
 | `src/app.module.ts` | Registers the controller and service. |
 | `src/app.controller.ts` | Handles `GET /` and calls its injected service. |
 | `src/app.service.ts` | Supplies the greeting through an injectable class. |
-| `src/worker.ts` | Exports Workers handlers with application initialization scoped to the native environment. |
+| `src/worker.ts` | `export default createCloudflareWorker(AppModule)`: one application per native Workers environment. |
 
 The controller receives `AppService` through constructor injection:
 
@@ -74,6 +74,45 @@ TypeScript checks the source separately. `wrangler.jsonc` points to compiled
 JavaScript so Wrangler does not have to infer decorator metadata. Its
 `nodejs_compat` flag provides the `node:async_hooks` module that Vela's root
 entry imports; the flag is also on by default from compatibility date 2026-08-04.
+
+## Read bindings
+
+The native Workers environment is the framework `ENV`. The worker entry needs no
+environment token: `createCloudflareWorker` seeds `ENV` for each environment
+before any provider is constructed. Declare a binding or variable in
+`wrangler.jsonc`, run `pnpm types`, and inject it:
+
+```jsonc
+// wrangler.jsonc
+"vars": { "GREETING": "Hello from a variable!" }
+```
+
+```ts
+import { Injectable, InjectEnv, type VelaEnv } from '@velajs/vela';
+
+@Injectable()
+export class AppService {
+  constructor(@InjectEnv() private readonly env: VelaEnv) {}
+
+  getHello(): string {
+    return this.env.GREETING;
+  }
+}
+```
+
+`pnpm types` runs `wrangler types --include-runtime=false`, which writes the
+bindings, variables and secret names (from `.dev.vars`) into
+`worker-configuration.d.ts` as `Cloudflare.Env`. `@velajs/cloudflare` extends
+`VelaEnv` with it, so `this.env.GREETING` is typed. `pnpm dev` and
+`pnpm typecheck` regenerate the file first; commit it. Runtime types still come
+from `@cloudflare/workers-types`. Factories read the same object with
+`inject: [ENV]`, and `registerAs('app', (env) => ...)` config namespaces receive
+it too. Values arrive from outside the program, so validate what you read.
+
+Wrangler secrets such as `URL_SIGNING_SECRET` (signed URLs) and
+`VELA_STUDIO_TOKEN` (Studio) are part of `ENV` as well and take effect once set.
+
+## Inspect the application
 
 The project also includes `vela.config.mjs`, which loads the compiled
 application from `dist/` for Node-side CLI tools. After `pnpm build`, inspect

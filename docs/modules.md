@@ -55,8 +55,9 @@ For `forRootAsync`, read resolved options through the `OPTIONS` token: the
 - `ConfigurableModuleBuilder` (NestJS parity) is a thin adapter over
   `defineModule` — same engine, either entry.
 - `defineConfigurableModule` remains the low-level engine for
-  runtime-generated module classes. Workers bindings use a typed environment
-  token; see the [Cloudflare integration](../packages/cloudflare/README.md).
+  runtime-generated module classes. Workers bindings come from the framework
+  `ENV` (`inject: [ENV]` in `forRootAsync`); see the
+  [Cloudflare integration](../packages/cloudflare/README.md).
 
 ### Keys (multi-instance dedup)
 

@@ -22,7 +22,10 @@ class ApiModule {}
 class JobsModule {}
 ```
 
-Use `createCloudflareWorker(RootModule, { envToken: ENV })` for each entrypoint.
+Use `export default createCloudflareWorker(RootModule)` for each entrypoint; it
+seeds that Worker's native environment as the framework `ENV`. Give each Worker
+its own `wrangler types` output and type-check it as its own program, so its
+`VelaEnv` only has the bindings its Wrangler file declares.
 A root may also be a dynamic module, or `{ create: async env => dynamicModule }`.
 Factories run once per environment object in an isolate: the Worker and its
 Durable Object instances share the module graph and every value the factory

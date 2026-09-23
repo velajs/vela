@@ -24,10 +24,7 @@ pnpm add @velajs/storage
 ```ts
 import { StorageModule, StorageService } from '@velajs/storage';
 import { s3Driver } from '@velajs/storage/drivers/s3';
-import { InjectionToken, Module } from '@velajs/vela';
-
-interface Env { AWS_KEY: string; AWS_SECRET: string }
-const ENV = new InjectionToken<Env>('app.env');
+import { ENV, Module } from '@velajs/vela';
 
 @Module({
   imports: [
@@ -46,9 +43,11 @@ const ENV = new InjectionToken<Env>('app.env');
 class AppModule {}
 ```
 
-Supply `ENV` through `createCloudflareWorker(AppModule, { envToken: ENV })` from
-`@velajs/cloudflare`. Async registrations require the actual `inject` tuple;
-use `inject: []` for a factory with no dependencies.
+`ENV` is the application's runtime environment. On Workers,
+`createCloudflareWorker(AppModule)` from `@velajs/cloudflare` seeds it, and
+`wrangler types` types `AWS_KEY` and `AWS_SECRET` from `.dev.vars`; elsewhere,
+pass `VelaFactory.create(AppModule, { env })`. Async registrations require the
+actual `inject` tuple; use `inject: []` for a factory with no dependencies.
 
 ## Secure HTTP multipart uploads
 

@@ -111,9 +111,9 @@ The binding inventory checks names and selected shapes for vars, KV, D1, R2,
 services, Hyperdrive, Vectorize, workflows, analytics datasets, Durable Objects
 and queues. Distinct databases of the same engine are valid. Duplicate binding
 names fail; gateway bindings must name a Durable Object in the selected target.
-Other Wrangler settings and arbitrary DI environment-token requirements remain
-Wrangler/application responsibilities. No resource lookup, migration ownership,
-cross-database transaction check or cloud authentication occurs here.
+Other Wrangler settings and the bindings application code reads from `ENV`
+remain Wrangler/application responsibilities. No resource lookup, migration
+ownership, cross-database transaction check or cloud authentication occurs here.
 
 Output contains the worker/environment, binding names/types, compatibility
 settings, current git commit/dirty state and SHA-256 digests of both input files.
@@ -121,6 +121,22 @@ It excludes variable values, resource IDs, arbitrary metadata and custom build
 commands. Missing git information is reported as unavailable; dirty state is
 reported without blocking local iteration. Digests identify inspected bytes;
 they do not prove that a snapshot is fresh or that a bundle ran successfully.
+
+## Environment types and secrets
+
+The Worker's bindings, variables and secrets reach DI as the framework `ENV`,
+typed by the `Cloudflare.Env` that `wrangler types --include-runtime=false`
+writes to `worker-configuration.d.ts`. Regenerate and commit it whenever the
+Wrangler file changes; `wrangler types --check` fails when it is stale. The
+generated types follow the file's top-level bindings, so an environment that
+declares different bindings needs the application to tolerate both shapes, or
+its own generated types (`wrangler types --env staging`).
+
+Framework features read their secrets from `ENV` without extra wiring:
+`URL_SIGNING_SECRET` for signed URLs and signed invocations, and
+`VELA_STUDIO_TOKEN` (plus the `VELA_STUDIO_*_EDITABLE` flags) for Studio. Set
+them per environment with `pnpm exec wrangler secret put <NAME> --env staging`;
+Studio stays closed and signed routes fail closed while they are unset.
 
 ## CI and deployment
 

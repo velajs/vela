@@ -6,26 +6,27 @@ platform's native types.
 
 ## Native environment and application lifetime
 
-Define one typed token for your generated Workers environment. Inject that token
-wherever bindings or secrets are needed, including async provider factories.
+The Worker's native environment is the framework `ENV` from `@velajs/vela`.
+`createCloudflareWorker` seeds it for each environment before any provider is
+constructed, so the Worker entry only exports. Inject it wherever bindings or
+secrets are needed, including async provider factories (`inject: [ENV]`).
+
+Types come from Wrangler. Run `wrangler types --include-runtime=false` (runtime
+types stay with `@cloudflare/workers-types`) and include the generated
+`worker-configuration.d.ts` in your tsconfig. It declares `Cloudflare.Env` from
+the bindings and variables in your Wrangler file and the secret names in
+`.dev.vars`; this package extends `VelaEnv` with it, so `ENV`, `{ create(env) }`
+roots and `registerAs` factories are typed without a hand-written interface.
+Regenerate it whenever the Wrangler file changes.
 
 ```ts
-import { Controller, Get, Inject, InjectionToken, Module } from '@velajs/vela';
+import { Controller, Get, InjectEnv, Module, type VelaEnv } from '@velajs/vela';
 import { createCloudflareWorker } from '@velajs/cloudflare';
-
-interface WorkerEnv {
-  CACHE: KVNamespace;
-  DB: D1Database;
-  FILES: R2Bucket;
-  JOBS: Queue<{ taskId: string }>;
-  SERVICE_NAME: string;
-  APP_SECRET: string;
-}
-export const ENV = new InjectionToken<WorkerEnv>('Worker environment');
 
 @Controller('/status')
 class StatusController {
-  constructor(@Inject(ENV) private readonly env: WorkerEnv) {}
+  // CACHE is a KVNamespace in worker-configuration.d.ts.
+  constructor(@InjectEnv() private readonly env: VelaEnv) {}
 
   @Get()
   async status() {
@@ -36,7 +37,7 @@ class StatusController {
 @Module({ controllers: [StatusController] })
 class AppModule {}
 
-export default createCloudflareWorker(AppModule, { envToken: ENV });
+export default createCloudflareWorker(AppModule);
 ```
 
 The worker exposes `fetch`, `queue`, and `scheduled`. Its first event builds an
@@ -47,8 +48,8 @@ drivers. A failed construction is evicted and the next event retries.
 
 When module configuration itself needs bindings, pass `{ create: (env) => AppModule }`
 instead of a static class. Dynamic module roots and asynchronous factories are also
-supported. The callback receives the native environment inferred
-from `envToken` and runs once per environment object in an isolate. The same form
+supported. The callback receives the native environment as `VelaEnv` and runs
+once per environment object in an isolate. The same form
 works with `VelaWebSocketDurableObject` for authenticated live gateways. The Worker
 and every Durable Object instance built from the same environment share the
 resulting module graph, including every value created inside `create(env)`:
@@ -65,7 +66,7 @@ The application cache uses weak object keys, so the cache itself does not keep a
 replaced environment alive. Module metadata does: classes declared while a root
 resolves stay registered for the life of the isolate, together with the values
 their module options capture. Build secret-bearing values in `forRootAsync`
-factories that inject `envToken` rather than capturing them in module options.
+factories that inject `ENV` rather than capturing them in module options.
 Providers with request scope still rebuild per HTTP request or queue/cron dispatch.
 Do not retain request objects or authentication state in singleton providers.
 
@@ -74,19 +75,18 @@ For explicit construction inside a platform event:
 ```ts
 const app = await createCloudflareApp(AppModule, {
   env,
-  envToken: ENV,
   globalPrefix: '/api',
   middleware: (bindings) => [async (context, next) => {
     context.header('x-service', bindings.SERVICE_NAME);
     await next();
   }],
 });
-const bindings = app.get(ENV); // WorkerEnv, inferred from ENV
+const bindings = app.get(ENV); // VelaEnv
 return app.fetch(request, env, executionContext);
 ```
 
-`env` is registered before provider factories and lifecycle hooks. Referencing a
-binding inside `middleware(env)` is typed from that same token; request callbacks
+`env` is registered as `ENV` before provider factories and lifecycle hooks.
+Bindings inside `middleware(env)` are typed as `VelaEnv` too; request callbacks
 capture the native environment without retyping Hono's context. Referencing a
 binding is safe during construction; platform I/O must still happen inside a
 Workers event or Durable Object context. An explicitly built application rejects
@@ -94,8 +94,18 @@ requests or events carrying another environment object, including calls through
 the underlying Hono app. Internal `ctx.run` reentry retains the application's
 environment.
 
-`cloudflareAdapter({ env, envToken })` provides the same bootstrap and request
-contract when composing `VelaFactory.create` directly.
+`cloudflareAdapter({ env })` provides the same bootstrap and request contract
+when composing `VelaFactory.create` directly. `createCloudflareWorker` and
+`createCloudflareApp` accept `adapters: RuntimeAdapter[]`, composed after the
+Cloudflare adapter for each application, so the Worker entry needs no
+hand-written per-environment cache for them.
+
+Because `ENV` carries every binding, variable and secret, framework features
+read their secrets from it without extra wiring: a string `URL_SIGNING_SECRET`
+signs URLs and invocations when no explicit secret is configured, and Studio
+reads `VELA_STUDIO_TOKEN` and its `VELA_STUDIO_*_EDITABLE` flags. Set them with
+`wrangler secret put`. Values come from outside the program, so validate each
+value your own code reads before relying on it.
 
 ## Module-based queues, cron and RPC
 
@@ -133,7 +143,7 @@ Bindings retain their full native API and generic parameters. There are no
 binding-name wrappers to initialize or cast.
 
 ```ts
-import { defineProvider, InjectionToken, Module } from '@velajs/vela';
+import { defineProvider, ENV, InjectionToken, Module } from '@velajs/vela';
 
 const TASK_QUEUE = new InjectionToken<Queue<{ taskId: string }>>('task queue');
 
@@ -152,18 +162,19 @@ Every `useFactory` strategy declares its dependencies with `inject`, including
 `lazyProvider` and `forRootAsync` factory options.
 
 Use native `env.DB`, `env.CACHE`, `env.FILES`, `env.JOBS`, `env.AI`,
-`env.VECTORIZE`, or `env.HYPERDRIVE` directly. `@Env()` remains available for HTTP
-handler parameters; typed token injection also works outside HTTP.
+`env.VECTORIZE`, or `env.HYPERDRIVE` directly. Inject `ENV` in constructors
+(`@InjectEnv()`) and factories (`inject: [ENV]`); it works the same in HTTP,
+queue, cron and Durable Object code.
 
 ## Queues and cron
 
 ```ts
-import { Inject, Injectable } from '@velajs/vela';
+import { InjectEnv, Injectable, type VelaEnv } from '@velajs/vela';
 import { QueueConsumer, Scheduled } from '@velajs/cloudflare';
 
 @Injectable()
 class Jobs {
-  constructor(@Inject(ENV) private readonly env: WorkerEnv) {}
+  constructor(@InjectEnv() private readonly env: VelaEnv) {}
 
   @Scheduled('0 * * * *')
   async refresh() {
@@ -189,7 +200,7 @@ same native bindings and live invalidation capabilities as HTTP.
 Use the native Durable Object entrypoint only in your Worker entry file:
 
 ```ts
-import { InjectionToken, Module } from '@velajs/vela';
+import { ENV, Module } from '@velajs/vela';
 import { LiveModule } from '@velajs/vela/live';
 import {
   CloudflareWebSocketModule,
@@ -199,14 +210,12 @@ import {
 } from '@velajs/cloudflare';
 import { VelaWebSocketDurableObject } from '@velajs/cloudflare/durable-objects';
 
-interface RoomEnv { ROOMS: DurableObjectNamespace<Room> }
-const ROOM_ENV = new InjectionToken<RoomEnv>('room environment');
-
 @Module({
   imports: [
     CloudflareWebSocketModule.forRoot(),
     LiveModule.forRootAsync({
-      inject: [ROOM_ENV],
+      // ROOMS is typed DurableObjectNamespace<Room> by `wrangler types`.
+      inject: [ENV],
       useFactory: (env) => ({
         driver: () => durableObjectLive({
           namespace: env.ROOMS,
@@ -221,8 +230,8 @@ const ROOM_ENV = new InjectionToken<RoomEnv>('room environment');
 })
 class RoomModule {}
 
-export class Room extends VelaWebSocketDurableObject(RoomModule, { envToken: ROOM_ENV }) {}
-export default createCloudflareWorker(RoomModule, { envToken: ROOM_ENV });
+export class Room extends VelaWebSocketDurableObject(RoomModule) {}
+export default createCloudflareWorker(RoomModule);
 ```
 
 Declare gateways with `@WebSocketGateway({ path, roomParam, binding, ... })` and

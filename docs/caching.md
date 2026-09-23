@@ -153,12 +153,13 @@ tiered instance are ordered; bypassing it with direct tier writes is outside tha
 fence. No tier can extend the response envelope's logical deadline.
 
 For Workers, configure stores inside an environment-injected `forRootAsync`
-factory, using the typed environment token from `createCloudflareWorker`:
+factory. `ENV` from `@velajs/vela` is the Worker's native environment, typed by
+`wrangler types`:
 
 ```ts
 ResponseCacheModule.forRootAsync({
   inject: [ENV],
-  useFactory: (env: Env) => ({
+  useFactory: (env) => ({
     namespace: 'catalog-v1',
     store: new TieredCacheStore([
       new MemoryCacheStore(), new KVCacheStore(env.CACHE_VALUES),

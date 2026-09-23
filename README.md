@@ -78,9 +78,10 @@ packages. See [the tooling guide](docs/tooling.md) for coverage and validation.
 
 - **Application modules:** classes or checked `defineProvider` descriptors,
   explicit imports/exports, and token-inferred resolution.
-- **Native platform:** an `InjectionToken<Env>` makes generated Workers bindings
-  available before providers and lifecycle hooks run. `createCloudflareWorker`
-  exports the Worker handlers and shares bootstrap per environment identity.
+- **Native platform:** the framework-owned `ENV` token carries the Workers
+  bindings, typed by `wrangler types`, before providers and lifecycle hooks run.
+  `export default createCloudflareWorker(AppModule)` exports the Worker handlers
+  and shares bootstrap per environment identity.
 - **HTTP contract:** `defineEndpoint` connects a controller's input and output
   schemas to runtime validation, OpenAPI, and upstream Hono `hc` types.
 - **CRUD:** model schemas determine row types, adapters validate returned rows,

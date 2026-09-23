@@ -262,28 +262,21 @@ start when the module it bootstraps registers the core `WebSocketModule` server,
 whose broadcasts could never reach hibernatable sockets.
 
 ```ts
-// env.ts — use Wrangler's generated binding types in your application.
-import { InjectionToken } from '@velajs/vela';
-import type { ChatRoom } from './index.js';
-
-export interface Env {
-  CHAT_ROOM: DurableObjectNamespace<ChatRoom>;
-}
-export const ENV = new InjectionToken<Env>('worker environment');
-```
-
-```ts
 // Worker entry (src/index.ts)
 import { createCloudflareWorker } from '@velajs/cloudflare';
 import { VelaWebSocketDurableObject } from '@velajs/cloudflare/durable-objects';
 import { AppModule } from './app.module.js';
-import { ENV } from './env.js';
 
 // The DO class name must match wrangler `class_name`.
-export class ChatRoom extends VelaWebSocketDurableObject(AppModule, { envToken: ENV }) {}
+export class ChatRoom extends VelaWebSocketDurableObject(AppModule) {}
 
-export default createCloudflareWorker(AppModule, { envToken: ENV });
+export default createCloudflareWorker(AppModule);
 ```
+
+The Worker and each Durable Object seed their native environment as the
+framework `ENV`; the gateway resolves its `binding` by name from it. Run
+`wrangler types --include-runtime=false` so `worker-configuration.d.ts` types
+`CHAT_ROOM` (and every other binding) on `VelaEnv` for code that injects `ENV`.
 
 ```toml
 # wrangler.toml
