@@ -296,6 +296,18 @@ export class MetadataRegistry {
     return map.get(controller)?.get(methodName) ?? [];
   }
 
+  /** Every component `target` declares, at class level and on any handler. */
+  static getDeclaredComponents<T extends ComponentType>(
+    type: T,
+    target: Constructor,
+  ): ComponentTypeMap[T][] {
+    const map = this.handlerComponents[type] as Map<
+      Constructor,
+      Map<string | symbol, ComponentTypeMap[T][]>
+    >;
+    return [...this.getController(type, target), ...[...(map.get(target)?.values() ?? [])].flat()];
+  }
+
   // DI metadata
 
   static markInjectable(target: object): void {
