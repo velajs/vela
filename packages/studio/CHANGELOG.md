@@ -1,5 +1,86 @@
 # @velajs/studio
 
+## 1.29.0
+
+### Minor Changes
+
+- 41ec70d: Name the default provider lifetime `Scope.DEFAULT`, as Nest does.
+  
+  **Behavior change:** Scope.SINGLETON is renamed Scope.DEFAULT (Nest naming); no alias. Replace every `Scope.SINGLETON` with `Scope.DEFAULT`. The member's runtime value changes from `'singleton'` to `'default'`, so `getScope`, `Container.getProviderScope`, `Container.getResolvedScope`, `DiscoveryService` registrations and the conflicting-scope decorator error now report `default`. Code that compares a scope against the string `'singleton'` must compare against `Scope.DEFAULT` instead.
+  
+  **Behavior change:** Studio's `app.modules` provider scopes and `app.entrypoints` scopes label that lifetime `default` instead of `singleton`. `StudioProviderScope` is now `'default' | 'transient' | 'request'`, and the response validators reject `singleton`. Because an op's payload changed, `STUDIO_PROTOCOL_VERSION` is now 3 and `StudioConnection.protocolVersion` is typed as that constant. The Studio UI rejects a health probe or host connection that reports another version with its protocol-mismatch error instead of failing on the first scope label, so upgrade `@velajs/vela`, `@velajs/studio`, `@velajs/studio-ui` and `@velajs/studio-host` together.
+- d4610ac: **Behavior change:** Studio reads its `VELA_STUDIO_*` variables and secrets from the application's `ENV`, when a runtime seeded one, instead of `CONFIG_ENV`. On Workers, a `VELA_STUDIO_TOKEN` secret (and the `VELA_STUDIO_*_EDITABLE` flags) now takes effect automatically, because `@velajs/cloudflare` seeds the Worker environment as ENV; before, it was never read there. Module options still override environment values, non-string values are ignored, and Studio stays closed when no token is configured.
+  
+  **Behavior change:** the `studioConfig` namespace export is removed, with no alias. Use `readStudioEnv(env)` to parse the `VELA_STUDIO_*` values of an environment into a `StudioEnvConfig`, and `resolveStudioConfig(envConfig, options)` to merge them under module options.
+- a814199: Read admin RPC and `/ws-token` request bodies with `readJsonBody` from `@velajs/vela`.
+  
+  **Behavior change:** admin RPC and `/ws-token` requests whose body is not sent as
+  `application/json` (or a `+json` media type) are refused with a 415 `unsupported_media_type`
+  error envelope instead of being parsed as JSON, so a cross-site form or `text/plain` POST never
+  reaches an admin operation. Requests without a body are dispatched as before. Custom Studio
+  clients must send `content-type: application/json`.
+- ddb823c: The queues panel lists every queue the application registers with `QueueModule.registerQueue()`, in union with the queues its `@Processor` providers handle, so a producer-only queue appears too. `queue.send` enqueues through the registered queue's client.
+  
+  **Behavior change:** apps that mount `StudioQueueModule` configure queues with `QueueModule.forRoot()` plus `QueueModule.registerQueue({ name })` instead of `QueueModule.forRoot({ queues: [name] })`, which no longer exists. `queue.list` now includes registered queues without a processor.
+- 8a3016c: **Behavior change:** `app.openapi` and the `openapi` capability document the application's root module by default. Studio reads the core `ROOT_MODULE` token when its options name no `rootModule`, so an application no longer hands its root back to Studio, for example through a `forRootAsync` self-reference. `rootModule` still narrows the document to one module and accepts a `DynamicModule`. `resolveStudioConfig(env, options, applicationRoot?)` takes the application root as an optional third argument.
+- d448f3d: **Behavior change:** `schedule.runNow` runs the job through `invokeScheduledJob`, the primitive timers and cron triggers use. The job receives a `ScheduleInvocation` (with `scheduledTime` set to the time of the run) instead of no arguments, runs in a fresh invocation scope so request-scoped jobs can be run, and re-enters its signed route when the application uses signed `ScheduleModule` dispatch. Interval jobs can be run too. What a native trigger seeds into the job's scope comes from the runtime's `SCHEDULE_INVOCATION_SEED`: on Workers the job receives a synthetic `CLOUDFLARE_SCHEDULED_EVENT` whose `noRetry()` does nothing, so a job that injects it runs instead of failing. Unlike a trigger, the run completes inside the Studio request, and a failure is returned to the caller rather than retried by the platform. A direct job that declares `@UseGuards` is refused, as it is on a trigger, instead of running unguarded. Closing the application aborts the signal of a run still in progress and waits for it.
+  
+  **Behavior change:** `schedule.jobs` and `schedule.triggers` list jobs from the schedule registry's metadata-only entrypoints, the same descriptors `schedule.runNow` executes, instead of its materialized instances. Request-scoped jobs (such as one that injects `CLOUDFLARE_SCHEDULED_EVENT`) and jobs in lazy modules now appear in the panel, without a "request-scoped ... skipped" warning and without being constructed.
+
+### Patch Changes
+
+- Updated dependencies [2dd809d]
+- Updated dependencies [8a3016c]
+- Updated dependencies [416650e]
+- Updated dependencies [a3e2b38]
+- Updated dependencies [2ae8505]
+- Updated dependencies [8a3016c]
+- Updated dependencies [a01273b]
+- Updated dependencies [e4f2008]
+- Updated dependencies [864735d]
+- Updated dependencies [07d1713]
+- Updated dependencies [ff44b6a]
+- Updated dependencies [bacaacd]
+- Updated dependencies [db18d3a]
+- Updated dependencies [07d1713]
+- Updated dependencies [4071cb7]
+- Updated dependencies [bacaacd]
+- Updated dependencies [a814199]
+- Updated dependencies [1838474]
+- Updated dependencies [8a3016c]
+- Updated dependencies [d803a49]
+- Updated dependencies [b235935]
+- Updated dependencies [08a81c8]
+- Updated dependencies [5b5b81d]
+- Updated dependencies [7daf4fc]
+- Updated dependencies [35e8e0d]
+- Updated dependencies [4420501]
+- Updated dependencies [ff44b6a]
+- Updated dependencies [6d4f0c0]
+- Updated dependencies [4071cb7]
+- Updated dependencies [e3bda2a]
+- Updated dependencies [bd7e3c9]
+- Updated dependencies [2b74880]
+- Updated dependencies [5ba8635]
+- Updated dependencies [db0c834]
+- Updated dependencies [d6f6a65]
+- Updated dependencies [8a3016c]
+- Updated dependencies [d5a3ec8]
+- Updated dependencies [0f7e8e7]
+- Updated dependencies [41ec70d]
+- Updated dependencies [b265297]
+- Updated dependencies [bdfff47]
+- Updated dependencies [28c7d07]
+- Updated dependencies [8a3016c]
+- Updated dependencies [44efdde]
+  - @velajs/better-auth@1.29.0
+  - @velajs/cloudflare@1.29.0
+  - @velajs/vela@1.29.0
+  - @velajs/crud@1.29.0
+  - @velajs/errors@1.23.0
+  - @velajs/feature-flags@1.29.0
+  - @velajs/studio-protocol@1.24.0
+
 ## 1.28.0
 
 ### Minor Changes

@@ -1,137 +1,131 @@
 {
-  "version": "1.28.0",
+  "version": "2026-09-23",
   "packages": [
     {
       "name": "@velajs/agent",
       "path": "packages/agent",
-      "version": "1.28.0",
+      "version": "1.28.1",
       "summary": "See packages/agent/CHANGELOG.md."
     },
     {
       "name": "@velajs/authz",
       "path": "packages/authz",
-      "version": "1.28.0",
+      "version": "1.29.0",
       "summary": "See packages/authz/CHANGELOG.md."
     },
     {
       "name": "@velajs/authz-cedar",
       "path": "packages/authz-cedar",
-      "version": "1.28.0",
+      "version": "1.29.0",
       "summary": "See packages/authz-cedar/CHANGELOG.md."
     },
     {
       "name": "@velajs/better-auth",
       "path": "packages/better-auth",
-      "version": "1.28.0",
+      "version": "1.29.0",
       "summary": "See packages/better-auth/CHANGELOG.md."
     },
     {
       "name": "@velajs/cli",
       "path": "packages/cli",
-      "version": "1.28.0",
+      "version": "1.29.0",
       "summary": "See packages/cli/CHANGELOG.md."
     },
     {
       "name": "@velajs/cloudflare",
       "path": "packages/cloudflare",
-      "version": "1.28.0",
+      "version": "1.29.0",
       "summary": "See packages/cloudflare/CHANGELOG.md."
     },
     {
       "name": "@velajs/cloudflare-access",
       "path": "packages/cloudflare-access",
-      "version": "1.28.0",
+      "version": "1.29.0",
       "summary": "See packages/cloudflare-access/CHANGELOG.md."
     },
     {
       "name": "@velajs/crud",
       "path": "packages/crud",
-      "version": "1.28.0",
+      "version": "1.29.0",
       "summary": "See packages/crud/CHANGELOG.md."
     },
     {
-      "name": "@velajs/crud-drizzle",
-      "path": "packages/crud-drizzle",
-      "version": "1.28.0",
-      "summary": "See packages/crud-drizzle/CHANGELOG.md."
-    },
-    {
-      "name": "@velajs/crud-durable-objects",
-      "path": "packages/crud-durable-objects",
-      "version": "1.28.0",
-      "summary": "See packages/crud-durable-objects/CHANGELOG.md."
-    },
-    {
-      "name": "@velajs/crud-memory",
-      "path": "packages/crud-memory",
-      "version": "1.28.0",
-      "summary": "See packages/crud-memory/CHANGELOG.md."
-    },
-    {
-      "name": "@velajs/crypto",
-      "path": "packages/crypto",
-      "version": "1.28.0",
-      "summary": "See packages/crypto/CHANGELOG.md."
+      "name": "@velajs/errors",
+      "path": "packages/errors",
+      "version": "1.23.0",
+      "summary": "See packages/errors/CHANGELOG.md."
     },
     {
       "name": "@velajs/feature-flags",
       "path": "packages/feature-flags",
-      "version": "1.28.0",
+      "version": "1.29.0",
       "summary": "See packages/feature-flags/CHANGELOG.md."
-    },
-    {
-      "name": "@velajs/graphql",
-      "path": "packages/graphql",
-      "version": "1.28.0",
-      "summary": "See packages/graphql/CHANGELOG.md."
     },
     {
       "name": "@velajs/mail",
       "path": "packages/mail",
-      "version": "1.28.0",
+      "version": "1.29.0",
       "summary": "See packages/mail/CHANGELOG.md."
-    },
-    {
-      "name": "@velajs/reliability",
-      "path": "packages/reliability",
-      "version": "1.28.0",
-      "summary": "See packages/reliability/CHANGELOG.md."
     },
     {
       "name": "@velajs/rpc",
       "path": "packages/rpc",
-      "version": "1.28.0",
+      "version": "1.29.0",
       "summary": "See packages/rpc/CHANGELOG.md."
     },
     {
       "name": "@velajs/storage",
       "path": "packages/storage",
-      "version": "1.28.0",
+      "version": "1.29.0",
       "summary": "See packages/storage/CHANGELOG.md."
     },
     {
       "name": "@velajs/studio",
       "path": "packages/studio",
-      "version": "1.28.0",
+      "version": "1.29.0",
       "summary": "See packages/studio/CHANGELOG.md."
+    },
+    {
+      "name": "@velajs/studio-host",
+      "path": "packages/studio-host",
+      "version": "1.23.0",
+      "summary": "See packages/studio-host/CHANGELOG.md."
+    },
+    {
+      "name": "@velajs/studio-protocol",
+      "path": "packages/studio-protocol",
+      "version": "1.24.0",
+      "summary": "See packages/studio-protocol/CHANGELOG.md."
+    },
+    {
+      "name": "@velajs/studio-ui",
+      "path": "packages/studio-ui",
+      "version": "1.24.0",
+      "summary": "See packages/studio-ui/CHANGELOG.md."
     },
     {
       "name": "@velajs/tenant",
       "path": "packages/tenant",
-      "version": "1.28.0",
+      "version": "1.29.0",
       "summary": "See packages/tenant/CHANGELOG.md."
     },
     {
       "name": "@velajs/testing",
       "path": "packages/testing",
-      "version": "1.28.0",
+      "version": "1.29.0",
       "summary": "See packages/testing/CHANGELOG.md."
     },
     {
       "name": "@velajs/vela",
       "path": "packages/vela",
-      "version": "1.28.0",
+      "version": "1.29.0",
       "summary": "See packages/vela/CHANGELOG.md."
+    },
+    {
+      "name": "@velajs/workflow",
+      "path": "packages/workflow",
+      "version": "1.0.2",
+      "summary": "See packages/workflow/CHANGELOG.md."
     }
   ]
 }

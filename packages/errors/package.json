@@ -1,6 +1,6 @@
 {
   "name": "@velajs/errors",
-  "version": "1.22.1",
+  "version": "1.23.0",
   "description": "Unified error layer for Vela: branded VelaError, composable error catalogs, and the single toErrorBody wire-redaction seam",
   "keywords": [
     "error-catalog",

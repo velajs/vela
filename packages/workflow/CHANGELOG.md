@@ -1,5 +1,12 @@
 # @velajs/workflow
 
+## 1.0.2
+
+### Patch Changes
+
+- Updated dependencies [bacaacd]
+  - @velajs/errors@1.23.0
+
 ## 1.0.1
 
 ### Patch Changes
