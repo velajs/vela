@@ -26,7 +26,7 @@ const options: ResponseCacheOptions = {
   invalidation: new MemoryCacheInvalidationStore(),
 };
 ResponseCacheModule.forRoot(options);
-ResponseCacheModule.forRootAsync({ inject: [], useFactory: async () => options });
+ResponseCacheModule.forRootAsync({ useFactory: async () => options });
 const cache = new ResponseCacheService(options).scope({
   visibility: 'private',
   partition: 'trusted',

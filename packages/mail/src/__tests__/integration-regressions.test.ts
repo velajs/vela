@@ -123,7 +123,7 @@ describe('inbound module ownership and lifetime', () => {
       {
         module: Feature,
         lazy: true,
-        providers: [Inbox, defineProvider(Config, { inject: [], useFactory: async () => 'ready' })],
+        providers: [Inbox, defineProvider(Config, { useFactory: async () => 'ready' })],
       },
     ]);
     expect(created).toBe(0);
@@ -267,7 +267,6 @@ describe('application isolation and queue routing', () => {
     await expect(
       appWith([
         MailModule.forRootAsync({
-          inject: [],
           useFactory: () => ({
             from: 'sender@example.com',
             queue: { name: 'hidden' },

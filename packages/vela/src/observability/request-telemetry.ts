@@ -44,7 +44,6 @@ export function observabilityAdapter(options: ObservabilityOptions = {}): Runtim
       container.register(
         defineProvider(REQUEST_TELEMETRY, {
           scope: Scope.REQUEST,
-          inject: [],
           useFactory: () => noopScopedTelemetry,
         }),
       );

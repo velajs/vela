@@ -53,7 +53,6 @@ describe('AuthzModule.forRootAsync', () => {
     Module({
       imports: [
         AuthzModule.forRootAsync({
-          inject: [],
           useFactory: async () => ({
             roles: [defineRole('editor', ['posts:write'])],
             permissions: [definePermission('posts:write')],
@@ -78,7 +77,6 @@ describe('AuthzModule.forRootAsync', () => {
     Module({
       imports: [
         AuthzModule.forRootAsync({
-          inject: [],
           useFactory: async () => ({
             roles: [defineRole('editor', ['posts:write'])],
             permissions: [definePermission('posts:read')],

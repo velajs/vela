@@ -402,7 +402,7 @@ describe('Vela RPC adapter', () => {
     }
     @Module({
       lazy: true,
-      providers: [Handler, defineProvider(value, { useFactory: async () => 'loaded', inject: [] })],
+      providers: [Handler, defineProvider(value, { useFactory: async () => 'loaded' })],
     })
     class Lazy {}
     @Module({ imports: [Lazy] })

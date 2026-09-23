@@ -94,7 +94,6 @@ const { ConfigurableModuleClass } = defineModule<TenantModuleOptions>({
       }),
       defineProvider(TENANT_CONTEXT_READER, {
         scope: Scope.REQUEST,
-        inject: [],
         useFactory: () => new TenantScopeState(),
       }),
     ],

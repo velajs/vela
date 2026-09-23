@@ -132,11 +132,9 @@ describe('MailModule + MailService', () => {
       const makeFactory = (transport: MailTransport) => () => ({ from: FROM, transport });
       const firstTransport = spyTransport();
       const first = MailModule.forRootAsync({
-        inject: [],
         useFactory: makeFactory(firstTransport),
       });
       const second = MailModule.forRootAsync({
-        inject: [],
         useFactory: makeFactory(spyTransport()),
       });
       expect(second.key).not.toBe(first.key);

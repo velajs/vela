@@ -108,7 +108,6 @@ export async function bootstrap(
   // instead of materializing a phantom context.
   container.register(
     defineProvider(REQUEST_CONTEXT, {
-      inject: [],
       scope: Scope.REQUEST,
       useFactory: () => {
         throw new Error(
@@ -122,7 +121,6 @@ export async function bootstrap(
 
   container.register(
     defineProvider(EXECUTION_LIFETIME, {
-      inject: [],
       scope: Scope.REQUEST,
       useFactory: () => {
         throw new Error('EXECUTION_LIFETIME can only be resolved inside a managed invocation');

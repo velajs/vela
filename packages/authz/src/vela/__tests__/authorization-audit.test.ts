@@ -79,7 +79,7 @@ describe('mounted HTTP authorization audit', () => {
     Module({
       controllers: [Routes],
       providers: [
-        defineProvider(AUTHZ, { scope: Scope.REQUEST, useFactory: factory, inject: [] }),
+        defineProvider(AUTHZ, { scope: Scope.REQUEST, useFactory: factory }),
         ...provideGlobal('guard', PermissionGuard),
       ],
     })(App);
@@ -107,7 +107,7 @@ describe('mounted HTTP authorization audit', () => {
     Module({
       controllers: [Routes],
       providers: [
-        defineProvider(AUTHZ, { scope: Scope.REQUEST, useFactory: factory, inject: [] }),
+        defineProvider(AUTHZ, { scope: Scope.REQUEST, useFactory: factory }),
         defineProvider(APP_GUARD, { scope: Scope.REQUEST, useClass: PermissionGuard }),
         defineProvider(RolesGuard, { scope: Scope.REQUEST, useClass: RolesGuard }),
         defineProvider(AliasGuard, { scope: Scope.REQUEST, useExisting: RolesGuard }),
@@ -273,7 +273,6 @@ describe('mounted HTTP authorization audit', () => {
         defineProvider(APP_GUARD, {
           scope: Scope.REQUEST,
           useFactory: factory,
-          inject: [],
         }),
       ],
     })(App);

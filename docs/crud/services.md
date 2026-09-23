@@ -89,7 +89,6 @@ import { InjectionToken, defineProvider } from '@velajs/vela';
 const ORDERS = new InjectionToken<typeof orders>('orders');
 const ordersProvider = defineProvider(ORDERS, {
   useFactory: () => bindCrudService(resource, contracts),
-  inject: [],
 });
 // Add ordersProvider and ORDERS to your module's providers/exports.
 ```

@@ -428,7 +428,6 @@ describe('cloudflareQueues() native delivery', () => {
     @Module({
       imports: [
         QueueModule.forRootAsync({
-          inject: [],
           useFactory: async () => ({ driver: cloudflareQueues() }),
         }),
         QueueModule.registerQueue({ name: 'tasks' }),

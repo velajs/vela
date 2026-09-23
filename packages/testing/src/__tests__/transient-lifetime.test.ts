@@ -17,7 +17,6 @@ it('drains pending asynchronous transient construction before a testing scope cl
     providers: [
       defineProvider(RESOURCE, {
         scope: Scope.TRANSIENT,
-        inject: [],
         useFactory: async () => {
           await Promise.resolve();
           return new Resource();

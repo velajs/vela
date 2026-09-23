@@ -39,7 +39,7 @@ export function createAppModule(env: VelaEnv) {
   const databases = createDatabases(env);
   @Module({
     imports: [
-      CrudModule.forRootAsync({ inject: [], useFactory: async () => ({ databases }) }),
+      CrudModule.forRootAsync({ useFactory: async () => ({ databases }) }),
       CrudModule.forFeature([
         defineCrudFeature({
           path: '/primary/items',

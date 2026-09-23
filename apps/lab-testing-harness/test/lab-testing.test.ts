@@ -23,9 +23,7 @@ describe('Lab testing harness consumer project', () => {
     expect(moduleRef).toBeInstanceOf(TestingModule);
 
     const readings = moduleRef.get(fixture.ReadingService);
-    expect(readings.list()).toEqual([
-      { id: 'reading-1', source: 'real-probe', mode: 'real' },
-    ]);
+    expect(readings.list()).toEqual([{ id: 'reading-1', source: 'real-probe', mode: 'real' }]);
     expect(fixture.lifecycleLog).toEqual(['init']);
 
     await moduleRef.close('provider-test-complete');
@@ -44,15 +42,12 @@ describe('Lab testing harness consumer project', () => {
       .useClass(fixture.FakeProbeClient)
       .overrideProvider(fixture.LAB_CONFIG)
       .useFactory({
-        inject: [],
-        factory: () => ({ mode: 'factory' } satisfies LabConfig),
+        factory: () => ({ mode: 'factory' }) satisfies LabConfig,
       })
       .compile();
 
     const readings = moduleRef.get(fixture.ReadingService);
-    expect(readings.list()).toEqual([
-      { id: 'reading-1', source: 'fake-probe', mode: 'factory' },
-    ]);
+    expect(readings.list()).toEqual([{ id: 'reading-1', source: 'fake-probe', mode: 'factory' }]);
 
     await moduleRef.close('provider-overrides-complete');
 
@@ -64,9 +59,9 @@ describe('Lab testing harness consumer project', () => {
       .useValue({ read: () => 'value-probe' })
       .compile();
 
-    expect(
-      valueModule.get(fixtureWithValue.ReadingService).list(),
-    ).toEqual([{ id: 'reading-1', source: 'value-probe', mode: 'real' }]);
+    expect(valueModule.get(fixtureWithValue.ReadingService).list()).toEqual([
+      { id: 'reading-1', source: 'value-probe', mode: 'real' },
+    ]);
 
     await valueModule.close('value-override-complete');
   });
