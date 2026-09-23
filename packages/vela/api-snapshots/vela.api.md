@@ -4326,6 +4326,8 @@ declare class Container {
 
   getModuleScope(moduleId: string): Readonly<ModuleScope> | undefined;
   markGlobalToken(token: Token): void;
+
+  markRootDefaults(): void;
   setRequestInstance<K extends Token>(token: K & AuthoringToken<K>, value: NoInfer<InferToken<K>>): void;
   getDiagnostics(): Diagnostics;
   resolve<K extends Token>(token: K, requestingModuleId?: string): InferToken<K>;

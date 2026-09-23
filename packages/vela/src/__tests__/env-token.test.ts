@@ -193,9 +193,7 @@ describe('signing secrets from ENV', () => {
     @Module({ imports: [EnvModule, signingApp()] })
     class AppModule {}
 
-    const app = await VelaFactory.create(AppModule, {
-      env: { URL_SIGNING_SECRET: 'bootstrap-signing-secret' },
-    });
+    const app = await VelaFactory.create(AppModule);
     const verifier = await VelaFactory.create(signingApp(), { env: moduleEnv });
     const signed = await app
       .get(UrlGeneratorService)
@@ -204,6 +202,34 @@ describe('signing secrets from ENV', () => {
     expect(app.get(ENV)).toBe(moduleEnv);
     // The application's UrlGeneratorService signs with the module's ENV.
     expect((await verifier.getHonoApp().request(signed)).status).toBe(200);
+    await Promise.all([app.close(), verifier.close()]);
+  });
+
+  it('prefers the ENV the application seeds over a @Global() module, application-wide', async () => {
+    const seeded = { URL_SIGNING_SECRET: 'bootstrap-signing-secret', NAME: 'bootstrap' };
+    const { AppModule: FeatureApp, Greeter } = featureApp();
+
+    @Global()
+    @Module({
+      providers: [defineProvider(ENV, { useValue: { NAME: 'module' } })],
+      exports: [ENV],
+    })
+    class EnvModule {}
+
+    @Module({ imports: [EnvModule, FeatureApp, signingApp()] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule, { env: seeded });
+    const verifier = await VelaFactory.create(signingApp(), { env: seeded });
+    const signed = await app
+      .get(UrlGeneratorService)
+      .signedUrl('file.download', {}, { expiresIn: 60 });
+
+    expect(app.get(ENV)).toBe(seeded);
+    // The application's UrlGeneratorService signs with the seeded ENV.
+    expect((await verifier.getHonoApp().request(signed)).status).toBe(200);
+    // A module still reaches the @Global() export before the application's registration.
+    expect(app.get(Greeter).greet()).toBe('hello module');
     await Promise.all([app.close(), verifier.close()]);
   });
 
@@ -219,7 +245,7 @@ describe('signing secrets from ENV', () => {
     @Module({ imports: [FirstEnvModule, SecondEnvModule] })
     class AppModule {}
 
-    const app = await VelaFactory.create(AppModule, { env: { NAME: 'bootstrap' } });
+    const app = await VelaFactory.create(AppModule);
     expect(() => app.get(ENV)).toThrow(MultipleProvidersFoundError);
     await app.close();
   });

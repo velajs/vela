@@ -107,6 +107,9 @@ export class Container {
   #moduleRefs = new Map<string, ModuleRef>();
   // Root-owned: hidden @Optional() dependencies already warned about.
   #reportedHiddenOptionals = new Map<Token, Set<string>>();
+  // Root-owned: the `__root__` registrations bootstrap makes as framework
+  // defaults, which the one @Global() exporter of a token overrides.
+  #rootDefaults?: Set<ProviderRegistration>;
 
   constructor(options: ContainerOptions = {}) {
     this.#diagnostics = options.diagnostics ?? 'log';
@@ -259,6 +262,16 @@ export class Container {
 
   markGlobalToken(token: Token): void {
     if (!this.#globals.has(token)) this.#globals.set(token, new Set());
+  }
+
+  /**
+   * Rank the `__root__` registrations made so far as framework defaults
+   * (bootstrap-time). An application-wide lookup prefers the one `@Global()`
+   * module exporting such a token; any later `__root__` registration is
+   * explicit application configuration and answers first.
+   */
+  markRootDefaults(): void {
+    this.#rootDefaults = new Set(this.#providers.get(ROOT_MODULE_ID)?.values());
   }
 
   // Explicit seeds override constructed REQUEST values for this token, but
@@ -415,9 +428,10 @@ export class Container {
    *
    * A module that registers the token without exporting it is never a
    * candidate. An application-wide lookup (no requester, or one without a
-   * module scope, such as a provider registered in `__root__`) starts at tier
-   * 3, and resolves any other token from `__root__`, else from the first
-   * module that registers it.
+   * module scope, such as a provider registered in `__root__`) takes an
+   * explicit `__root__` registration first, then tier 3, then a framework
+   * default (see {@link markRootDefaults}), else the first module that
+   * registers the token.
    */
   #visibleRegistrations<T>(token: Token, requestingModuleId?: string): ProviderRegistration<T>[] {
     const scope =
@@ -427,6 +441,9 @@ export class Container {
       const local = this.#lookupInBucket<T>(scope.moduleId, token);
       if (local) return [local];
       this.#collectFromImports(scope, token, new Set([scope.moduleId]), candidates);
+    } else {
+      const root = this.#lookupInBucket<T>(ROOT_MODULE_ID, token);
+      if (root && !this.#root.#rootDefaults?.has(root)) return [root];
     }
     const globalExporters = this.#globals.get(token);
     if (!candidates.length && globalExporters) {

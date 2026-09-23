@@ -15,7 +15,7 @@ import {
   INVOCATION_AUDIENCE,
   signInvocation,
 } from '../index.js';
-import type { InvocationClaim, NonceStore } from '../index.js';
+import type { InvocationClaim, NonceStore, RuntimeAdapter } from '../index.js';
 
 const SECRET = 'guard-signing-secret';
 const HEADER = 'x-vela-invocation';
@@ -215,6 +215,33 @@ describe('SignedInvocation guard — a @Global() NONCE_STORE', () => {
     expect(() => app.get(NONCE_STORE)).toThrow(MultipleProvidersFoundError);
     expect((await send(app, await tokenFor())).status).toBe(500);
     expect(hits).toEqual([]);
+    await app.dispose();
+  });
+
+  it('yields to a NONCE_STORE the application configures itself', async () => {
+    const seen: string[] = [];
+    const configured: NonceStore = {
+      claim: async (nonce) => {
+        seen.push(nonce);
+        return true;
+      },
+    };
+    const adapter: RuntimeAdapter = {
+      name: 'synthetic-runtime',
+      configureContainer: (container) => {
+        container.register(defineProvider(NONCE_STORE, { useValue: configured }));
+      },
+    };
+
+    hits.length = 0;
+    const app = await VelaFactory.create(DurableAppModule, { adapters: [adapter] });
+    const token = await tokenFor();
+
+    expect(app.get(NONCE_STORE)).toBe(configured);
+    // The guard claims the nonce in the configured store, not in the @Global() module's.
+    expect((await send(app, token)).status).toBe(200);
+    expect(seen).toHaveLength(1);
+    expect(hits).toEqual(['run']);
     await app.dispose();
   });
 });

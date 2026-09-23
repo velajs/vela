@@ -73,13 +73,9 @@ export async function bootstrap(
   container.register(defineProvider(ROOT_MODULE, { useValue: rootModule }));
   container.markGlobalToken(ROOT_MODULE);
 
-  // ENV is global but has no default: seeded here from `options.env`, or by a
-  // runtime adapter's configureContainer below. Readers of optional values
-  // (signing secrets, Studio) inject it with @Optional().
-  if (options.env !== undefined) {
-    assertEnvironment(options.env);
-    container.register(defineProvider(ENV, { useValue: options.env }));
-  }
+  // ENV is global but has no default: seeded below from `options.env`, or by a
+  // runtime adapter's configureContainer. Readers of optional values (signing
+  // secrets, Studio) inject it with @Optional().
   container.markGlobalToken(ENV);
 
   // Decorator-driven discovery — global so any provider can inject it.
@@ -162,6 +158,14 @@ export async function bootstrap(
   container.register(defineProvider(NONCE_STORE, { useClass: MemoryNonceStore }));
   container.markGlobalToken(NONCE_STORE);
 
+  // The registrations above are framework defaults, which the one @Global()
+  // module exporting a token overrides application-wide. What the application
+  // configures from here on (ENV, adapters, useGlobalExceptionHandler) wins.
+  container.markRootDefaults();
+  if (options.env !== undefined) {
+    assertEnvironment(options.env);
+    container.register(defineProvider(ENV, { useValue: options.env }));
+  }
   await options.configureContainer?.(container);
 
   const loader = new ModuleLoader(container, routeManager);

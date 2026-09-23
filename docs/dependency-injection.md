@@ -55,7 +55,8 @@ A module looks a token up in Nest's order, and the first step that finds a provi
 2. what its imports export, following re-exports;
 3. what the one `@Global()` module that exports the token provides;
 4. the application's registration of a framework-global token such as `Reflector`, `ENV` or
-   `NONCE_STORE`, or the default factory of an `InjectionToken`.
+   `NONCE_STORE`, whether the application configured it or the framework registers it by default,
+   or the default factory of an `InjectionToken`.
 
 A module that imports an exporter of a token therefore uses that export even when a `@Global()`
 module exports the token too, and a `@Global()` export overrides the application's registration only
@@ -67,13 +68,22 @@ returns the providers of the same step, so it agrees with `resolve(token, module
 
 An application-wide lookup has no requesting module: `app.get(token)`, `ModuleRef.get(token,
 { strict: false })`, and the dependencies of the providers the application registers itself, such as
-`SignedInvocationGuard`, `SignedUrlGuard`, `UrlGeneratorService` and `InternalDispatcher`. It starts
-at step 3, so the one `@Global()` module that exports a framework-global token overrides the
-application's registration there too: a `@Global()` module that provides a durable `NONCE_STORE`
-protects signed invocations against replay, and `app.get(NONCE_STORE)` returns it. Two `@Global()`
-modules that export the token fail with `MultipleProvidersFoundError`. A token that is not global
-resolves application-wide from the application's registration, else from the first module that
-registers it.
+`SignedInvocationGuard`, `SignedUrlGuard`, `UrlGeneratorService` and `InternalDispatcher`. The first
+step that finds a provider answers:
+
+1. what the application configures itself: the `env` option of `VelaFactory.create()`, a runtime
+   adapter's `configureContainer`, `app.useGlobalExceptionHandler()`, a `@velajs/testing` override,
+   or any other registration in the root container made after bootstrap registered its defaults;
+2. what the one `@Global()` module that exports the token provides;
+3. the framework default that bootstrap registers, such as the `MemoryNonceStore` behind
+   `NONCE_STORE` or the `Reflector` every application provides;
+4. the first module that registers the token, whether it exports the token or not.
+
+A `@Global()` module that provides a durable `NONCE_STORE` therefore protects signed invocations
+against replay, and `app.get(NONCE_STORE)` returns it, while a handler passed to
+`app.useGlobalExceptionHandler()` reports errors instead of the one a global
+`ErrorsModule.forRoot({ handler, isGlobal: true })` exports. Two `@Global()` modules that export the
+token fail with `MultipleProvidersFoundError` unless the application configured the token itself.
 
 Every application provides `Reflector` globally, so guards and interceptors inject it through their
 constructor, as in Nest.
