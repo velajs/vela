@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc --outDir dist --noEmit false --declaration false",
+    "types": "wrangler types --include-runtime=false",
     "typecheck": "tsc --noEmit",
     "dev": "pnpm build && wrangler dev --port 8792",
     "db:primary": "wrangler d1 migrations apply vela-multi-primary --local",

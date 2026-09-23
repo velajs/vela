@@ -2,7 +2,9 @@
 
 This local example mounts the same `item` model and `items` SQL table at
 `/primary/items` and `/analytics/items`. Each D1 binding stores independent rows.
-The environment factory creates both typed Drizzle handles. The registry preserves
+The environment factory, `{ create: createAppModule }`, receives the native
+environment as `VelaEnv` and creates both typed Drizzle handles; `pnpm types`
+regenerates the D1 binding types in `worker-configuration.d.ts`. The registry preserves
 native queries (`databases.get('primary').handle.query.items`) and adapter row types.
 
 From the workspace root, after `pnpm install --frozen-lockfile`:
