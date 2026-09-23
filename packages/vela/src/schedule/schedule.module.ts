@@ -1,5 +1,4 @@
 import { Container } from '../container/container';
-import { Inject, Injectable } from '../container/decorators';
 import { defineProvider } from '../container/types';
 import { Module } from '../module/decorators';
 import { attachModuleIdentity } from '../module/module-identity';
@@ -43,27 +42,6 @@ function policyIdentity(dispatch: ScheduleDispatchMode): string {
 }
 
 /**
- * Fails bootstrap when `forRoot` configured different dispatch policies (their
- * keys differ, so each contributes its own global `SCHEDULE_DISPATCH` and the
- * one a job would use is ambiguous). Each signed policy object is its own
- * policy, so two signed policies conflict even when they differ only in a
- * captured target, method or TTL. Built eagerly with every policy host.
- */
-@Injectable()
-class ScheduleDispatchOwnership {
-  constructor(@Inject(Container) container: Container) {
-    const owners = container.getOwnerModuleIds(SCHEDULE_DISPATCH);
-    if (owners.length > 1) {
-      throw new Error(
-        `ScheduleModule.forRoot() is imported with different dispatch policies by ` +
-          `${owners.join(', ')}. An application configures scheduled dispatch once: import ` +
-          `ScheduleModule.forRoot({ dispatch }) once, in the root module.`,
-      );
-    }
-  }
-}
-
-/**
  * Zero-config module (Tier C): providers live on the `@Module` bag; the
  * `forRoot()` static is NestJS-parity sugar returning the bare dynamic module
  * (default key — repeated calls dedup).
@@ -90,15 +68,29 @@ export class ScheduleModule {
     const dispatch = options.dispatch;
     if (!dispatch) return { module: ScheduleModule };
     // Key by policy identity: a different policy becomes a second owner of
-    // SCHEDULE_DISPATCH, which ScheduleDispatchOwnership rejects, instead of
-    // being deduplicated into the first policy.
+    // SCHEDULE_DISPATCH instead of being deduplicated into the first policy.
+    // Bootstrap resolves the policy once per owner, and that fails when there
+    // is more than one: each signed policy object is its own policy, so two
+    // conflict even when they differ only in a captured target, method or TTL.
     return attachModuleIdentity(
       {
         module: ScheduleDispatchHost,
         key: `dispatch:${policyIdentity(dispatch)}`,
         providers: [
-          defineProvider(SCHEDULE_DISPATCH, { useValue: dispatch }),
-          ScheduleDispatchOwnership,
+          defineProvider(SCHEDULE_DISPATCH, {
+            useFactory: (container: Container) => {
+              const owners = container.getOwnerModuleIds(SCHEDULE_DISPATCH);
+              if (owners.length > 1) {
+                throw new Error(
+                  `ScheduleModule.forRoot() is imported with different dispatch policies by ` +
+                    `${owners.join(', ')}. An application configures scheduled dispatch once: ` +
+                    `import ScheduleModule.forRoot({ dispatch }) once, in the root module.`,
+                );
+              }
+              return dispatch;
+            },
+            inject: [Container],
+          }),
         ],
         exports: [SCHEDULE_DISPATCH],
         global: true,
