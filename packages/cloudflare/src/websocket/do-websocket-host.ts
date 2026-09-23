@@ -119,12 +119,18 @@ export class DoWebSocketHost {
 
     const client = this.registry.clientFor(ws);
     try {
-      await this.dispatcher.handleOpen(path, client);
+      // Broadcasts the hook issues skip this still-pending socket.
+      await this.registry.admitting(ws, () => this.dispatcher.handleOpen(path, client));
       // Another callback may have rejected the socket while the asynchronous
       // connection hook was still pending. Never resurrect that terminal state
       // after the hook resolves.
       if (!this.transition(ws, 'active', 'pending')) {
-        throw new Error('Unable to persist authorized WebSocket state');
+        throw new Error(
+          socketAttachment(ws)?.state === 'rejected'
+            ? 'WebSocket was rejected while OnGatewayConnection was running: a frame ' +
+                'arrived before the connection hook completed, or the connection closed or failed'
+            : 'Unable to persist authorized WebSocket state',
+        );
       }
       return true;
     } catch (err) {

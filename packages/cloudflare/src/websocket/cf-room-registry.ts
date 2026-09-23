@@ -12,6 +12,10 @@ import { CfWsClient } from './cf-ws-client';
  */
 export class CfRoomRegistry implements RoomRegistry {
   readonly #sendGates = new WeakMap<WsLike, WebSocketSendGate>();
+  // Sockets whose OnGatewayConnection hook is running in this instance. They
+  // are still `pending`, so broadcasts skip them; any other pending socket
+  // never finished admission and is closed when a broadcast reaches it.
+  readonly #admitting = new WeakSet<WsLike>();
   #sendPolicyForPath?: (path: string) => WebSocketSendPolicy | undefined;
 
   setSendPolicyResolver(resolve: (path: string) => WebSocketSendPolicy | undefined): void {
@@ -30,6 +34,20 @@ export class CfRoomRegistry implements RoomRegistry {
   /** Reconcile pre-migration/woken attachments with authoritative gateway metadata. */
   setFrameLimitResolver(resolver: (path: string) => number | undefined): void {
     this.frameLimitForPath = resolver;
+  }
+
+  /**
+   * Run `admit` (the connection hook) with `ws` marked as being admitted, so a
+   * broadcast issued meanwhile (for example `server.emit()` announcing the new
+   * connection) skips the still-pending socket instead of rejecting it.
+   */
+  async admitting<T>(ws: WsLike, admit: () => Promise<T>): Promise<T> {
+    this.#admitting.add(ws);
+    try {
+      return await admit();
+    } finally {
+      this.#admitting.delete(ws);
+    }
   }
 
   // CF sockets are registered with the DO by `acceptWebSocket`; nothing to track.
@@ -61,6 +79,8 @@ export class CfRoomRegistry implements RoomRegistry {
     const selected: Array<{ ws: WsLike; client: WsClient }> = [];
     for (const ws of targets) {
       const att = this.reconcileFrameLimit(ws, this.attachmentOf(ws));
+      // Not authorized for delivery until its connection hook completes.
+      if (att.state === 'pending' && this.#admitting.has(ws)) continue;
       if (
         att.state !== 'active' ||
         (att.expiresAtMs !== undefined &&

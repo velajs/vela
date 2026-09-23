@@ -45,6 +45,11 @@ protection.
 Sockets persist an explicit pending/active/rejected lifecycle. Failed
 `handleConnection` hooks cannot dispatch later frames, and every fan-out reruns
 Vela's app-wide guards plus the gateway's optional `authorizeDelivery` hook.
+A broadcast issued while a socket's `handleConnection` hook runs, such as
+`server.emit()` announcing the new connection, skips that still-pending socket
+and reaches the room's active sockets; the hook can still `client.send()` to the
+new socket directly. A pending socket that is not being admitted is closed with
+1008 when a broadcast reaches it.
 The gateway's validated `maxFrameBytes` is also persisted in the hibernation
 attachment. Direct sends, replies, Durable Object broadcasts, and live/sync
 delivery therefore keep the same outbound ceiling after eviction; oversized

@@ -445,6 +445,61 @@ describe('DO runtime integration', () => {
     expect((ws.deserializeAttachment() as { state: string }).state).toBe('rejected');
   });
 
+  it('admits a socket whose connection hook broadcasts to its room', async () => {
+    @WebSocketGateway({ path: '/announce', binding: 'CHAT' })
+    class AnnounceGateway implements OnGatewayConnection {
+      constructor(@WebSocketServer() private readonly server: WsServer) {}
+      async handleConnection(client: WsClient) {
+        client.send('welcome', { id: client.id });
+        await this.server.emit('joined', { id: client.id });
+      }
+    }
+    @Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [AnnounceGateway] })
+    class AppModule {}
+
+    const ctx = new FakeDoState();
+    const runtime = await buildDoRuntime(AppModule, ctx, { env: {} });
+    const host = new DoWebSocketHost(ctx, runtime.dispatcher, runtime.registry);
+    const first = new FakeWs();
+    const second = new FakeWs();
+
+    await expect(acceptTrusted(host, first, '/announce', 'room1')).resolves.toBe(true);
+    await expect(acceptTrusted(host, second, '/announce', 'room1', 'user-2')).resolves.toBe(true);
+
+    const secondId = (second.deserializeAttachment() as { connId: string }).connId;
+    for (const ws of [first, second]) {
+      expect(ws.closed).toBeUndefined();
+      expect((ws.deserializeAttachment() as { state: string }).state).toBe('active');
+    }
+    // Delivered to the admitted socket; the joining one only gets its own
+    // hook's direct frame until the hook completes.
+    expect(first.lastFrame()).toEqual({ event: 'joined', data: { id: secondId } });
+    expect(second.sent.map((frame) => JSON.parse(frame))).toEqual([
+      { event: 'welcome', data: { id: secondId } },
+    ]);
+  });
+
+  it('still closes a pending socket that is not being admitted when a broadcast reaches it', async () => {
+    const ctx = new FakeDoState();
+    const runtime = await buildDoRuntime(chatModule(), ctx, { env: {} });
+    const stale = new FakeWs();
+    ctx.acceptWebSocket(stale, [roomTag('room1'), connTag('stale')]);
+    stale.serializeAttachment({
+      version: 1,
+      connId: 'stale',
+      state: 'pending',
+      path: '/chat',
+      rooms: ['room1'],
+      data: {},
+    });
+
+    await runtime.server.to('room1').emit('shout', 'hello');
+
+    expect(stale.sent).toEqual([]);
+    expect(stale.closed?.code).toBe(1008);
+    expect((stale.deserializeAttachment() as { state: string }).state).toBe('rejected');
+  });
+
   it('closes an oversized Durable Object frame with 1009 before dispatch', async () => {
     let messages = 0;
     @WebSocketGateway({ path: '/limited', binding: 'CHAT', maxFrameBytes: 32 })

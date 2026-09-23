@@ -55,6 +55,8 @@ class TestGateway implements OnGatewayConnection {
     if (client.rooms.has('reject')) throw new Error('connection rejected');
     client.data.connected = true;
     client.commit();
+    // Announce the connection to its room while this socket is still admitted.
+    if (client.rooms.has('announce')) await this.server.emit('joined', { id: client.id });
     client.send('ready', { rooms: [...client.rooms] });
   }
 
