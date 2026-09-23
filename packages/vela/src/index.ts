@@ -77,6 +77,8 @@ export type {
   ContainerOptions,
   Diagnostics,
   MissingInjectionMetadataReason,
+  ModuleRefContext,
+  ModuleRefLookupOptions,
 } from './container/index';
 // Introspection: the composed route table VelaApplication.describeRoutes()
 // returns (RouteManager itself stays internal-only).

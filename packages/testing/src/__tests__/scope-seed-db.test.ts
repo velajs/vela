@@ -46,9 +46,9 @@ describe('module.runInRequestScope', () => {
     expect(id.length).toBeGreaterThan(0);
   });
 
-  it('root get() cannot resolve a REQUEST-scoped REQUEST_CONTEXT injector', async () => {
+  it('root get() refuses a REQUEST-scoped provider and points to resolveInRequest()', async () => {
     const module = await Test.createTestingModule({ imports: [ProbeModule] }).compile();
-    expect(() => module.get(RequestScopedProbe)).toThrow();
+    expect(() => module.get(RequestScopedProbe)).toThrow(/resolveInRequest/);
   });
 
   it('returns the callback value', async () => {
@@ -72,6 +72,58 @@ describe('module.runInRequestScope', () => {
     await module.runInRequestScope((container) => {
       expect(container.resolve(REQUEST_CONTEXT).has(key)).toBe(false);
     });
+    await module.close();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveInRequest
+// ---------------------------------------------------------------------------
+
+describe('module.resolveInRequest', () => {
+  it('resolves each call in a fresh request seeded from the init', async () => {
+    const module = await Test.createTestingModule({ imports: [ProbeModule] }).compile();
+
+    const first = await module.resolveInRequest(RequestScopedProbe, {
+      url: 'http://localhost/items?page=2',
+      headers: { 'x-request-id': 'probe-1' },
+    });
+    const second = await module.resolveInRequest(RequestScopedProbe);
+
+    expect(first).toBeInstanceOf(RequestScopedProbe);
+    expect(first).not.toBe(second);
+    expect(first.requestId()).toBe('probe-1');
+    expect(first.ctx.request.url).toBe('http://localhost/items?page=2');
+    expect(second.ctx.request.url).toBe('http://localhost/');
+    expect(getRequestContainer(first.ctx.hono).resolve(RequestScopedProbe)).toBe(first);
+    await module.close();
+  });
+
+  it('keeps the request open until close(), then disposes it', async () => {
+    const disposed: string[] = [];
+
+    @Injectable({ scope: Scope.REQUEST })
+    class Session {
+      [Symbol.dispose]() {
+        disposed.push('session');
+      }
+    }
+
+    @Module({ providers: [Session] })
+    class SessionModule {}
+
+    const module = await Test.createTestingModule({ imports: [SessionModule] }).compile();
+    const session = await module.resolveInRequest(Session);
+    expect(session).toBeInstanceOf(Session);
+    expect(disposed).toEqual([]);
+
+    await module.close();
+    expect(disposed).toEqual(['session']);
+  });
+
+  it('closes the request again when resolution fails', async () => {
+    const module = await Test.createTestingModule({ imports: [ProbeModule] }).compile();
+    await expect(module.resolveInRequest('missing-token')).rejects.toThrow(/No provider/);
     await module.close();
   });
 });

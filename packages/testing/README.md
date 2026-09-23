@@ -130,7 +130,16 @@ const items = await response.json(z.array(z.object({ id: z.number(), name: z.str
 expect(items[0]?.name).toBe('Item 1');
 ```
 
-`runInRequestScope(callback)` creates a real framework request context, including typed `RequestContextKey` storage, and disposes its child container when the callback finishes.
+`runInRequestScope(callback, init?)` creates a real framework request context, including typed `RequestContextKey` storage, and disposes its child container when the callback finishes.
+
+`get(token)` resolves from the root container and throws for request-scoped providers. Resolve those with `resolveInRequest`, which opens a fresh request scope per call, seeded from an optional `RequestInit` plus `url`. The scope stays open until `close()`, so the returned instance and its request dependencies remain usable during the test:
+
+```ts
+const session = await moduleRef.resolveInRequest(SessionState, {
+  url: 'http://localhost/cats',
+  headers: { 'x-request-id': 'test-1' },
+});
+```
 
 ## Lifecycle
 

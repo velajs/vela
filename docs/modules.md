@@ -195,7 +195,10 @@ for (const hit of handlers) {
 ```
 
 `deferLazy` only defers pending lazy owners; `metadataOnly` defers every owner.
-Neither fabricates a request context. Discovery sees only the current
+Neither fabricates a request context. Request-scoped hits come back with
+`instance: undefined` unless the filter carries `requestScope`, an execution-scope
+container of the current application (for example the `runInEntrypointScope`
+callback argument); they are then resolved in, and owned by, that invocation. Discovery sees only the current
 application's registrations.
 
 ## Entrypoints: the open non-HTTP surface

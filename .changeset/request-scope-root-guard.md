@@ -1,0 +1,9 @@
+---
+"@velajs/vela": minor
+---
+
+**Behavior change:** Resolving a request-scoped provider on the root container now throws instead of constructing it there and caching it for the life of the application. This covers providers declared with `Scope.REQUEST` and providers that are request-scoped because they depend on one, through `container.resolve()`, `container.resolveAsync()` and therefore `app.get()`. Resolve them in the execution scope of the invocation: `getRequestContainer(c)`, `context.getContainer()` or the `runInEntrypointScope()` callback argument. Application-level error reporting on the root container falls back to the default report when the registered exception handler is request-scoped.
+
+**Behavior change:** `DiscoveryFilter.includeRequestScoped` is removed. Pass `requestScope`, an execution-scope container of the same application, to resolve request-scoped discovery hits inside that invocation. Without it they are still returned with `instance: undefined`.
+
+Adds `Container.getResolvedScope(token, moduleId?)`, the effective scope of what a resolution would return without constructing it, and `Container.sharesRootWith(other)`.

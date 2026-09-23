@@ -130,6 +130,12 @@ export class VelaApplication {
     for (const i of instances) this.knownInstances.add(i);
   }
 
+  /**
+   * Resolve a provider from the application root. Request-scoped providers
+   * (declared or bubbled) have no root instance and throw; resolve them in an
+   * execution scope (`runInEntrypointScope`, `getRequestContainer(c)`) or
+   * with `ModuleRef.resolve(token, context)`.
+   */
   get<K extends Token>(token: K): InferToken<K> {
     return this.container.resolve(token);
   }

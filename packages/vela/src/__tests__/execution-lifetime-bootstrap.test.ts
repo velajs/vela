@@ -18,7 +18,9 @@ it('makes the managed lifetime injectable from feature modules without root reso
   class AppModule {}
   const app = await VelaFactory.create(AppModule);
   try {
-    expect(() => app.get(EXECUTION_LIFETIME)).toThrow('managed invocation');
+    expect(() => app.get(EXECUTION_LIFETIME)).toThrow(
+      /request-scoped provider InjectionToken\(vela\.ExecutionLifetime\) on the root/,
+    );
     const lifetimes: ExecutionLifetime[] = [];
     await Promise.all(
       [1, 2].map(() =>
