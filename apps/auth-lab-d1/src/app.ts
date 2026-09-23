@@ -4,7 +4,7 @@ import { betterAuth } from 'better-auth';
 // auth-lab encountered with memoryAdapter).
 import { drizzleAdapter } from '@better-auth/drizzle-adapter';
 import { drizzle } from 'drizzle-orm/d1';
-import { Controller, Get, InjectionToken, Module } from '@velajs/vela';
+import { Controller, ENV, Get, Module } from '@velajs/vela';
 import { createCloudflareWorker } from '@velajs/cloudflare';
 import {
   BetterAuthModule,
@@ -13,9 +13,6 @@ import {
   type User,
 } from '@velajs/better-auth';
 import { schema } from './schema';
-
-interface WorkerEnv { DB: D1Database; }
-const WORKER_ENV = new InjectionToken<WorkerEnv>('auth-lab-d1.Env');
 
 @Controller('/me')
 class MeController {
@@ -34,12 +31,13 @@ class HealthController {
   }
 }
 
-// The worker installs this event's native environment before DI runs. The auth
-// service builds once within that environment's application, with the typed D1 binding.
+// The worker seeds this event's native environment as ENV before DI runs. The
+// auth service builds once within that environment's application, with the D1
+// binding typed by `wrangler types` (worker-configuration.d.ts).
 @Module({
   imports: [
     BetterAuthModule.forRootAsync({
-      inject: [WORKER_ENV],
+      inject: [ENV],
       useFactory: (env) =>
         betterAuth({
           secret: 'auth-lab-d1-demo-secret-32-bytes-please-rotate',
@@ -62,4 +60,4 @@ class HealthController {
 })
 class AppModule {}
 
-export const worker = createCloudflareWorker(AppModule, { envToken: WORKER_ENV });
+export const worker = createCloudflareWorker(AppModule);
