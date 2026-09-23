@@ -1,7 +1,12 @@
-import { planConstructor } from '../container/decorators';
+import { isErasedTypeToken, planConstructor } from '../container/decorators';
 import type { Container } from '../container/container';
-import type { TypedToken, Type } from '../container/types';
-import { InjectionToken, MissingInjectionMetadataError } from '../container/types';
+import type { ConstructorDependency, Token, TypedToken, Type } from '../container/types';
+import {
+  ForwardRef,
+  InjectionToken,
+  MissingInjectionMetadataError,
+  describeToken,
+} from '../container/types';
 
 // Resolve a class/token through the container if registered, otherwise treat
 // the input as a plain instance. Used by RouteManager and HandlerExecutor to
@@ -20,8 +25,14 @@ import { InjectionToken, MissingInjectionMetadataError } from '../container/type
 // that is not `@Optional()` (an `@Inject(...)` token or an emitted
 // `design:paramtypes` entry). `@Injectable()` alone is NOT sufficient —
 // `mixin()` and many parameterless guards are `@Injectable()` and still safe to
-// `new` directly, as is a class whose only parameters are `@Optional()`, such
-// as `ValidationPipe` and its subclasses.
+// `new` directly, as is a class whose only parameters are `@Optional()` slots
+// WITHOUT a token, such as `ValidationPipe`'s erased schema parameter.
+//
+// An `@Optional()` slot that DOES carry a token must not be skipped: the token
+// may be registered and visible, and a guard that falls back when its policy
+// is missing would fail open. The async path constructs such a class through
+// the container from the requesting module (a transient, caller-owned
+// instance); the synchronous path cannot resolve async providers, so it throws.
 export function instantiate<T>(
   classOrInstance: Type<T> | TypedToken<T> | T,
   container: Container,
@@ -37,16 +48,13 @@ export function instantiate(
     if (container.has(clazz)) {
       return container.resolve(clazz, moduleId);
     }
-    if (constructorExpectsDependencies(clazz)) {
+    const optionalToken = unregisteredOptionalToken(clazz);
+    if (optionalToken !== undefined) {
       throw new Error(
-        `Cannot instantiate ${clazz.name}: the class declares constructor ` +
-          `dependencies (\`@Inject(...)\` parameters or typed constructor ` +
-          `parameters), but no matching provider is registered in the ` +
-          `container. Add it to a module's providers (and export it if used ` +
-          `outside its declaring module) instead of relying on the bare ` +
-          `\`new\` fallback, which would construct the class without ` +
-          `honouring its dependency-injection metadata and leave every ` +
-          `injected field \`undefined\`.`,
+        `Cannot instantiate ${clazz.name} synchronously: its \`@Optional()\` constructor ` +
+          `parameter injects ${describeToken(optionalToken)}, which a bare \`new\` would skip ` +
+          `even when it is registered. Add it to a module's providers (and export it if used ` +
+          `outside its declaring module), or resolve it asynchronously.`,
       );
     }
     return new clazz();
@@ -63,18 +71,40 @@ export function instantiate(
   return classOrInstance;
 }
 
-// True when calling `new clazz()` would leave a required injected slot
-// `undefined`: the container's own constructor plan (including the metadata a
-// subclass inherits with its parent's constructor) has a non-optional
-// parameter, or no usable plan exists at all. Parameterless and
-// all-`@Optional()` classes return false — `new()` is safe for them.
-function constructorExpectsDependencies(clazz: Type<unknown>): boolean {
+// The fallback plan for a class that is not registered in the container. It
+// throws when `new clazz()` would leave a required injected slot `undefined`:
+// the container's own constructor plan (including the metadata a subclass
+// inherits with its parent's constructor) has a non-optional parameter, or no
+// usable plan exists at all. Otherwise it returns the token of the first
+// `@Optional()` slot that names one, which only the container can resolve, or
+// undefined when every slot is a tokenless optional and `new()` is safe.
+function unregisteredOptionalToken(clazz: Type<unknown>): Token | undefined {
+  let dependencies: ConstructorDependency[];
   try {
-    return planConstructor(clazz).some((dependency) => !dependency.optional);
+    dependencies = planConstructor(clazz);
   } catch (error) {
-    if (error instanceof MissingInjectionMetadataError) return true;
+    if (error instanceof MissingInjectionMetadataError) throw missingProviderError(clazz);
     throw error;
   }
+  if (dependencies.some((dependency) => !dependency.optional)) throw missingProviderError(clazz);
+  for (const { token: raw } of dependencies) {
+    const token = raw instanceof ForwardRef ? raw.factory() : raw;
+    if (!isErasedTypeToken(token)) return token;
+  }
+  return undefined;
+}
+
+function missingProviderError(clazz: Type<unknown>): Error {
+  return new Error(
+    `Cannot instantiate ${clazz.name}: the class declares constructor ` +
+      `dependencies (\`@Inject(...)\` parameters or typed constructor ` +
+      `parameters), but no matching provider is registered in the ` +
+      `container. Add it to a module's providers (and export it if used ` +
+      `outside its declaring module) instead of relying on the bare ` +
+      `\`new\` fallback, which would construct the class without ` +
+      `honouring its dependency-injection metadata and leave every ` +
+      `injected field \`undefined\`.`,
+  );
 }
 
 export function instantiateMany<T>(
@@ -96,8 +126,13 @@ export async function instantiateAsync(
   container: Container,
   moduleId?: string,
 ): Promise<unknown> {
-  if (typeof classOrInstance === 'function' && container.has(classOrInstance as Type)) {
-    return container.resolveAsync(classOrInstance as Type, moduleId);
+  if (typeof classOrInstance === 'function') {
+    const clazz = classOrInstance as Type;
+    if (container.has(clazz)) return container.resolveAsync(clazz, moduleId);
+    // An optional slot with a token resolves through the container, from the
+    // requesting module, so a registered and visible token is never skipped.
+    if (unregisteredOptionalToken(clazz) !== undefined) return container.construct(clazz, moduleId);
+    return new clazz();
   }
   if (
     typeof classOrInstance === 'string' ||
