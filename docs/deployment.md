@@ -39,7 +39,7 @@ Do not use production credentials simply to inspect metadata. The subsequent
 deployment check only reads the saved JSON. For an application without metadata
 handlers, save `[]`. Unknown entrypoint kinds are tolerated.
 
-Rows have `{ "kind": "cf:scheduled", "target": "Jobs#run", "meta": "{...}" }`.
+Rows have `{ "kind": "schedule:cron", "target": "Jobs#run", "meta": "{...}" }`.
 An object-valued `meta` is also accepted, which is useful when projecting
 `app.entrypoints.all()` in a build/test script. Use existing discovery to make the
 snapshot; do not build a second decorator scanner. For example:
@@ -47,9 +47,9 @@ snapshot; do not build a second decorator scanner. For example:
 ```json
 [
   {
-    "kind": "cf:scheduled",
+    "kind": "schedule:cron",
     "target": "Jobs#hourly",
-    "meta": { "cron": "0 * * * *", "methodName": "hourly" }
+    "meta": { "expression": "0 * * * *", "methodName": "hourly", "dialect": "cloudflare" }
   },
   {
     "kind": "cf:queue",
@@ -59,13 +59,18 @@ snapshot; do not build a second decorator scanner. For example:
 ]
 ```
 
-The check compares exact cron strings for `cf:scheduled`, `cf:vela-cron` and
-`schedule:cron`, queue names for `cf:queue`, and gateway bindings for `websocket`.
-Missing triggers/consumers and configured triggers/consumers with no metadata
-handler fail. `schedule:interval` fails because Workers cron delivery does not
-drive Node interval timers. Custom hand-written platform handlers are not
-represented by these metadata kinds; review them separately instead of treating
-a snapshot mismatch as a Wrangler error.
+The check compares exact cron strings for `schedule:cron` (every `@Cron` job),
+queue names for `cf:queue`, and gateway bindings for `websocket`. Missing
+triggers/consumers and configured triggers/consumers with no metadata handler
+fail. A `@Cron` job that explicitly requests `dialect: 'unix'` or
+`timeZone: 'local'` fails, and `schedule:interval` fails because Workers cron
+delivery does not drive interval timers; at runtime the Cloudflare adapter only
+warns about these (see [scheduling](scheduling.md#workers-cron-triggers)). A
+snapshot that still lists the removed `cf:scheduled` or `cf:vela-cron` kinds was
+made by an older CLI and fails with `stale-entrypoint-snapshot`: regenerate it.
+Custom hand-written platform handlers are not represented by these metadata
+kinds; review them separately instead of treating a snapshot mismatch as a
+Wrangler error.
 
 Cron validation uses the core Cloudflare dialect and UTC. Equivalent expressions
 such as `0 0 * * SUN` and `0 0 * * 1` must still match literally because Vela's

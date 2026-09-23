@@ -81,11 +81,11 @@ because bridge deliveries would skip the signed route.
 
 Use `ScheduleModule.forRoot()` and `@Cron(expression, { dialect: 'cloudflare' })`.
 Declare the exact expression in that Worker's Wrangler triggers. Workers do not
-start Node timers, and importing the module does not provision a trigger.
-`@Scheduled` remains available for direct native controller access.
-The Cloudflare adapter does not support signed `ScheduleModule` dispatch yet and
-rejects it at bootstrap. To run a scheduled job through a signed route, call
-`InternalDispatcher.run()` from the `@Cron` handler.
+start Node timers, and importing the module does not provision a trigger. Jobs
+receive only their `ScheduleInvocation`, as on Node; inject
+`CLOUDFLARE_SCHEDULED_EVENT` for the trigger's `noRetry()`. Signed `ScheduleModule`
+dispatch re-enters the signed route with its global guards, exactly as on Node.
+See [scheduling](scheduling.md#workers-cron-triggers).
 
 `RpcModule.forRoot({ authorize })` and `forRootAsync` serve registered `@Rpc`
 procedures through the existing schema-validated HTTP dispatcher. Named clients

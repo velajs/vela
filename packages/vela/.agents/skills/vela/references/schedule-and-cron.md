@@ -4,26 +4,30 @@ Vela splits scheduling into an **edge-safe registry** (`ScheduleModule`, main ex
 
 ## Declaring jobs
 
-`@Cron(expression, options?)` and `@Interval(ms)` are method decorators on any `@Injectable()` provider. Cron options select `dialect: 'unix' | 'cloudflare'` and `timeZone: 'local' | 'UTC'`:
+`@Cron(expression, options?)` and `@Interval(ms)` are method decorators on any `@Injectable()` provider. Cron options select `dialect: 'unix' | 'cloudflare'` and `timeZone: 'local' | 'UTC'`. A job receives exactly one argument, a `ScheduleInvocation` (`kind`, `expression` or `ms`, `scheduledTime`, `signal`), identically on Node, Workers and Studio's run-now:
 
 ```ts
-import { Cron, Interval } from '@velajs/vela';
+import { Cron, Interval, type ScheduleInvocation } from '@velajs/vela';
 
 @Injectable()
 class MaintenanceJobs {
-  @Cron('0 * * * *')     // standard 5-field cron: minute hour day month weekday
-  hourly() { /* ... */ }
+  @Cron('0 9 * * MON-FRI', { dialect: 'cloudflare' }) // portable: Node timers and Workers triggers
+  async morning(tick: ScheduleInvocation) {
+    await fetch('https://example.com/reports', { signal: tick.signal });
+  }
 
-  @Interval(30_000)      // every 30s (milliseconds)
+  @Interval(30_000)      // every 30s (milliseconds); Node only
   poll() { /* ... */ }
 }
 ```
 
-The default Unix dialect uses five fields with lists (`,`), ranges (`a-b`), and steps (`*/n`); both `0` and `7` are Sunday. It preserves the 1.x local-time default. Cloudflare uses UTC and weekday numbers `1` (Sunday) through `7` (Saturday). Select the dialect explicitly when sharing cron expressions with Wrangler, and let the parser reject unsupported expressions.
+The default Unix dialect uses five fields with lists (`,`), ranges (`a-b`), and steps (`*/n`); both `0` and `7` are Sunday. It preserves the 1.x local-time default. Cloudflare uses UTC and weekday numbers `1` (Sunday) through `7` (Saturday), and accepts either day field when both are restricted. Always declare `dialect` for a schedule that can run on Workers: without it, a numeric weekday or two restricted day fields fire on different days per runtime, and both runtimes report that through diagnostics (`cronDialectAmbiguity(meta)` explains it).
+
+All runtimes dispatch through `invokeScheduledJob(container, entry, invocation)`: a fresh invocation scope in the job's owning module, the invocation as the only argument, one report on the `schedule` edge, rethrow. Direct jobs run **no** guards, interceptors or filters (global or scoped), as with NestJS `@Cron`. `ScheduleModule.forRoot({ dispatch: { kind: 'signed', target } })` re-enters a `@SignedInvocation()` route through `InternalDispatcher` on every runtime, so global guards apply.
 
 ## Edge-safe registry (`ScheduleModule`)
 
-On edge runtimes, import `ScheduleModule` and let the platform's cron trigger drive execution. `ScheduleModule.forRoot()` takes no options; it provides `ScheduleRegistry`, which **lists** discovered jobs but never runs a timer:
+On edge runtimes, import `ScheduleModule` and let the platform's cron trigger drive execution. `ScheduleModule.forRoot()` provides `ScheduleRegistry`, which **lists** discovered jobs but never runs a timer; `forRoot({ dispatch })` opts into signed dispatch:
 
 ```ts
 import { ScheduleModule, ScheduleRegistry } from '@velajs/vela';
@@ -39,7 +43,7 @@ registry.getCronEntrypoints(); // owner-bearing metadata, including async/reques
 registry.getIntervalEntrypoints();
 ```
 
-On Cloudflare Workers, `@velajs/cloudflare` (≥ 0.2.0) dispatches `@Cron` jobs from the Workers `scheduled()` handler — you configure the trigger in `wrangler.toml`, not `setInterval`.
+On Cloudflare Workers, `@velajs/cloudflare` runs every `@Cron` job whose expression is exactly the delivered trigger string from the Workers `scheduled()` handler — you declare the trigger in the Wrangler file, not `setInterval`. There is no separate Cloudflare cron decorator. Inject `CLOUDFLARE_SCHEDULED_EVENT` (request-scoped) for `noRetry()`; `@Interval` never runs on Workers. See `cloudflare.md`.
 
 ## Node/Bun executor (`@velajs/vela/schedule-node`)
 
@@ -62,10 +66,11 @@ const app = await VelaFactory.create(AppModule);
 
 Node execution resolves each handler in a fresh managed child using its module
 owner. It awaits asynchronous providers and managed work, then disposes the
-child. Shutdown stops new timer admissions and drains accepted invocations.
-Native Workers dispatch uses the delivered trigger's exact expression and its
-own child/environment; it does not run a local timer matcher. Keep distributed
-locking and durable execution history explicit application integrations.
+child. Shutdown stops new timer admissions, aborts active signals and drains
+accepted invocations. Native Workers dispatch uses the delivered trigger's exact
+expression and its own child/environment; it does not run a local timer matcher,
+and closing the application aborts active signals too. Keep distributed locking
+and durable execution history explicit application integrations.
 
 ## Which to use
 

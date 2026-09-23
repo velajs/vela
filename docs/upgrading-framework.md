@@ -82,7 +82,10 @@ still tolerate redelivery.
 Once event listeners are consumed before invocation, including recursive dispatch.
 Node schedules validate their syntax before timers start. Specify the cron dialect
 and timezone when sharing schedules across runtimes. Scheduled shutdown waits for
-owned work; handlers must finish or cooperate with cancellation.
+owned work; handlers must finish or cooperate with cancellation. A custom runtime
+that fires scheduled jobs should call `invokeScheduledJob(container, entry,
+invocation)`, so its jobs get the same scope, single `ScheduleInvocation`
+argument, signed dispatch and error reporting as Node and Workers.
 
 Storage aborts and deadlines stop follow-up work without retrying abandoned writes.
 An already-issued native write can still commit. Reconcile uncertain results at

@@ -100,7 +100,7 @@ const result = await dispatchQueueJob(app.getContainer(), app.entrypoints, {
 
 ## Pipeline note
 
-Queue dispatch runs handler-scoped guards/interceptors/filters through the shared `PipelineRunner` (`getType() === 'queue'`), but **app-wide `APP_*` components deliberately do NOT apply** — a documented divergence from the WebSocket dispatcher, matching Cloudflare queue/scheduled parity. If you need cross-cutting behavior on queue jobs, use scoped components (`@UseGuards`, `@UseInterceptors` on the processor), not `APP_*`.
+Queue dispatch runs handler-scoped guards/interceptors/filters through the shared `PipelineRunner` (`getType() === 'queue'`), but **app-wide `APP_*` components deliberately do NOT apply** — a documented divergence from the WebSocket dispatcher, matching native Cloudflare queue consumers. (Scheduled jobs differ: they run no guards/interceptors/filters at all; see `schedule-and-cron.md`.) If you need cross-cutting behavior on queue jobs, use scoped components (`@UseGuards`, `@UseInterceptors` on the processor), not `APP_*`.
 
 Dispatch preserves each registration's module owner, resolves handlers and
 components asynchronously, and drains managed invocation work before disposing
