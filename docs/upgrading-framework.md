@@ -106,8 +106,13 @@ Every HTTP failure renders through `renderHttpError`. Clients see these changes:
 
 `HttpException.getRawResponse()` is removed. Exceptions own their wire shape
 through `toResponse()`: an object response still renders verbatim, and a custom
-exception overrides `toResponse()` to return `{ status, body }`. Pass structured
-client data on a 4xx with `new BadRequestException(message, { details })`.
+exception extends `HttpException` and overrides `toResponse()` to return
+`{ status, body }`. Only exceptions the `HttpException` constructor built own a
+response; another thrown object with a `toResponse()` renders as an unknown
+error (a reported, redacted 500). Error edges answer only 400–599: an
+`HttpException` constructed with another status, such as 302, is reported and
+renders as a redacted 500. Pass structured client data on a 4xx with
+`new BadRequestException(message, { details })`.
 Integrations that map errors to another transport call `renderHttpError(error)`.
 
 `@Req()` injects the platform `Request`; inject the Hono context with the new

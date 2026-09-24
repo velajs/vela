@@ -21,6 +21,27 @@ export interface HttpErrorResponse {
   readonly body: unknown;
 }
 
+// Set by the HttpException constructor, so every framework exception and its
+// subclasses (such as `@velajs/crud`'s `CrudException`) carry it: only those
+// may render their own response. Another object that defines `toResponse()`
+// is an unknown error.
+const OWNED_HTTP_ERROR = Symbol('vela.owned-http-error');
+
+/**
+ * @internal Whether `error` was constructed as an `HttpException` (or a
+ * subclass), not merely shaped like one.
+ */
+export function isOwnedHttpError(error: unknown): error is HttpException {
+  return typeof error === 'object' && error !== null && Object.hasOwn(error, OWNED_HTTP_ERROR);
+}
+
+/**
+ * An HTTP error with a status and a response. As in Nest, the constructor
+ * accepts any status and `getStatus()` returns it, but HTTP edges answer only
+ * 400–599: an exception constructed with another status (such as 200 or 302)
+ * is reported and renders as a redacted 500. Use `@Redirect()` or return a
+ * `Response` for a redirect.
+ */
 export class HttpException extends Error {
   public readonly statusCode: number;
   readonly #response: ExceptionResponse;
@@ -33,6 +54,7 @@ export class HttpException extends Error {
     this.statusCode = statusCode;
     this.#response = response;
     this.#details = options?.details;
+    Object.defineProperty(this, OWNED_HTTP_ERROR, { value: true });
     Object.setPrototypeOf(this, new.target.prototype);
   }
 
@@ -57,7 +79,9 @@ export class HttpException extends Error {
    * canonical `{ error: { code, message, details? } }` body. An object response
    * renders verbatim; a string response returns `undefined` and takes the
    * canonical body, which redacts 5xx text. Subclasses override it to own
-   * their wire shape.
+   * their wire shape. Only exceptions this constructor built own a response:
+   * any other thrown object with a `toResponse()` renders as an unknown error
+   * (reported, and a redacted 500).
    */
   toResponse(): HttpErrorResponse | undefined {
     if (!(#response in this) || typeof this.#response === 'string') return undefined;
