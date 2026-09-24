@@ -56,7 +56,9 @@ The factory returns the module options. `name` (the bucket, default
 mounted routes, so `forRootAsync` takes them next to the factory. The driver
 may be a function, `driver: () => r2Driver({ bucket: env.UPLOADS })`, which
 builds it on the first storage operation. Each bucket name is one module
-instance; registering a name again with other options is reported.
+instance; registering a name again with another driver, `http` block or other
+options fails bootstrap, so two features that each need a bucket give them
+distinct names (`name: 'avatars'`).
 
 ## Secure HTTP multipart uploads
 

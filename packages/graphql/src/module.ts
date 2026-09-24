@@ -127,7 +127,7 @@ function endpointFor(path: string): Endpoint {
 const { ConfigurableModuleClass } = defineModule<GraphqlModuleOptions, GraphqlStructuralOption>({
   name: 'Graphql',
   structural: ['path', 'imports'],
-  // One endpoint per path: another configuration of a path is reported.
+  // One endpoint per path: another configuration of a path fails bootstrap.
   key: (options) => graphqlPath(options.path),
   setup: ({ OPTIONS, options }) => {
     const { service, controller } = endpointFor(graphqlPath(options.path));

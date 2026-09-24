@@ -171,6 +171,6 @@ const { ConfigurableModuleClass } = defineModule<MailModuleOptions, MailStructur
  *
  * `queue` and `inbound` are structural: `forRootAsync` takes them alongside
  * its factory, which returns the rest. A second mailer in one application
- * needs its own `key`; the same key with different options is reported.
+ * needs its own `key`; the same key with different options fails bootstrap.
  */
 export class MailModule extends ConfigurableModuleClass {}

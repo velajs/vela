@@ -143,8 +143,9 @@ const { ConfigurableModuleClass } = defineModule<StorageModuleOptions, StorageSt
   name: 'Storage',
   structural: ['name', 'http'],
   // One instance per bucket name: the name decides the provided tokens, so a
-  // second registration of a name with different options is reported rather
-  // than merged. Never keyed by a secret.
+  // second registration of a name with different options fails bootstrap
+  // rather than serving one bucket through the other's routes. Never keyed by
+  // a secret.
   key: (options) => options.name ?? DEFAULT_STORAGE_NAME,
   setup: ({ OPTIONS, options }) => {
     const name = options.name ?? DEFAULT_STORAGE_NAME;
