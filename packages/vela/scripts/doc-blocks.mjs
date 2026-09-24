@@ -170,26 +170,53 @@ function compile(work, files) {
       files: ['document-env.d.ts', ...files],
     }),
   );
-  let output = '';
+  let result;
   try {
-    execFileSync(
+    const output = execFileSync(
       join(repoRoot, 'packages/vela/node_modules/.bin/tsc'),
       ['-p', 'tsconfig.json', '--pretty', 'false'],
       { cwd: work, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
     );
+    result = { status: 0, output };
   } catch (error) {
-    output = `${error.stdout ?? ''}${error.stderr ?? ''}`;
+    result = {
+      status: typeof error.status === 'number' ? error.status : null,
+      output: `${error.stdout ?? ''}${error.stderr ?? ''}`,
+      error,
+    };
   }
-  return output
-    .split('\n')
-    .map((line) => /^(block-\d+\.tsx?)\((\d+),(\d+)\): error TS(\d+): (.*)$/.exec(line.trim()))
-    .filter((match) => match !== null)
-    .map(([, file, row, , code, message]) => ({
-      file,
-      row: Number(row),
-      code: Number(code),
-      message,
-    }));
+  return tscDiagnostics(result);
+}
+
+/**
+ * The diagnostics of the code blocks in a tsc run: `{ status, output, error? }`.
+ * Throws when tsc did not run, reported an error outside the blocks (a
+ * tsconfig option, a missing `types` entry), or failed without a diagnostic,
+ * so the check never passes without typechecking.
+ */
+export function tscDiagnostics({ status, output, error }) {
+  if (status === null) {
+    throw new Error(`tsc did not run: ${error?.message ?? 'no exit status'}`, { cause: error });
+  }
+  const diagnostics = [];
+  const outside = [];
+  for (const line of output.split('\n')) {
+    const text = line.trim();
+    const match = /^(block-\d+\.tsx?)\((\d+),(\d+)\): error TS(\d+): (.*)$/.exec(text);
+    if (match) {
+      const [, file, row, , code, message] = match;
+      diagnostics.push({ file, row: Number(row), code: Number(code), message });
+    } else if (/\berror TS\d+:/.test(text)) {
+      outside.push(text);
+    }
+  }
+  if (outside.length > 0) {
+    throw new Error(`tsc reported errors outside the code blocks:\n${outside.join('\n')}`);
+  }
+  if (status !== 0 && diagnostics.length === 0) {
+    throw new Error(`tsc exited with ${status} without a diagnostic:\n${output}`);
+  }
+  return diagnostics;
 }
 
 // TypeScript reports no semantic diagnostic while any file has a syntax error.
