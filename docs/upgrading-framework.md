@@ -116,13 +116,15 @@ Integrations that map errors to another transport call `renderHttpError(error)`.
 with `@Req() request: Request` when the handler only read `c.req.raw`.
 
 `ExecutionContext.getHandler()` returns the handler method, as in Nest, and the
-new `getHandlerName()` returns its name. Custom execution contexts implement both.
+new `getHandlerName()` returns its name. Custom execution contexts implement both
+and record the handler with `MetadataRegistry.addHandlerMethod(handler, type, name)`.
 Pass `context.getHandler()` and `context.getClass()` to the `Reflector`, or keep
-passing the context; keep the context where several controllers decorate one
-inherited method, since that function cannot name its controller and reading
-through it throws. In `[context.getHandler(), context.getClass()]`, a handler's
-metadata counts only for the class that declared it and its subclasses. Code that used the handler name, such as a throttling key,
-calls `getHandlerName()`.
+passing the context. `[context.getHandler(), context.getClass()]` reads the
+method that class routes, so one controller's metadata on an inherited method
+never applies to a sibling controller. Alone, `context.getHandler()` throws when
+several controllers route the function with different metadata for the key; list
+the class with it or pass the context there. Code that used the handler name,
+such as a throttling key, calls `getHandlerName()`.
 
 Global guards run in phases: `authenticate`, `tenant`, `authorize`, `feature`.
 Better Auth, Cloudflare Access, `TenantModule`, `AuthzModule` and `CedarModule`
@@ -136,10 +138,12 @@ cover every application route, including modules that do not import
 the previous behavior. Declare the policy of generated CRUD controllers with the
 resource's `decorators` and `endpointDecorators`. Integration packages mark their own
 controllers with `SkipGuardPhases` from `@velajs/vela/module-kit`, which skips only the
-guards integrations install (`static readonly skippable = true`); the application's own
-global guards still run there. Import order no longer decides whether authentication
-runs before throttling. The RPC `authorize` policy runs after global authentication and
-tenant guards, so it can read the trusted identity.
+guards integrations install (`static readonly skippable = true`); other global guards
+still run there. An application guard that extends an integration guard inherits
+`skippable`; declare `static override readonly skippable = false` on it to keep it
+running there. Import order no longer decides whether authentication runs before
+throttling. The RPC `authorize` policy runs after global authentication and tenant
+guards, so it can read the trusted identity.
 
 `ThrottlerGuard` publishes its decision under the `RATE_LIMIT` request-context
 key instead of the `rateLimit` Hono variable.
