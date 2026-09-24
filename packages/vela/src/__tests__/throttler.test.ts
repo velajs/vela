@@ -453,7 +453,8 @@ describe('ThrottlerModule', () => {
       .request('/context-tracker');
     expect(response.status).toBe(200);
     expect(observed?.getClass()).toBe(TestController);
-    expect(observed?.getHandler()).toBe('getData');
+    expect(observed?.getHandlerName()).toBe('getData');
+    expect(observed?.getHandler()).toBe(TestController.prototype.getData);
   });
 
   it('rejects inherited or oversized trusted identity fields', () => {

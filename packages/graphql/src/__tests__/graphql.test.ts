@@ -193,7 +193,8 @@ describe('GraphQL adapter', () => {
       async canActivate(context: ExecutionContext) {
         expect(Object.isFrozen(context)).toBe(true);
         expect(context.getType()).toBe('graphql');
-        paths.push(context.getHandler().toString());
+        paths.push(String(context.getHandlerName()));
+        expect(context.getHandler()).toBe(Resolver.prototype.value);
         await Promise.resolve();
         return false;
       }

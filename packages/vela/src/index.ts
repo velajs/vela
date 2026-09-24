@@ -169,6 +169,7 @@ export type {
   HttpArgumentsHost,
   HttpExecutionContext,
   ExecutionContext,
+  HandlerFunction,
   CanActivate,
   CallHandler,
   NestInterceptor,
@@ -178,6 +179,8 @@ export type {
   ArgumentMetadata,
   ReflectableDecorator,
   CreateDecoratorOptions,
+  ReflectorContext,
+  ReflectorTarget,
   ParseUUIDPipeOptions,
   ParseArrayPipeOptions,
 } from './pipeline/index';
@@ -204,11 +207,7 @@ export {
   ServiceUnavailableException,
   GatewayTimeoutException,
 } from './errors/index';
-export type {
-  ExceptionResponse,
-  HttpErrorResponse,
-  HttpExceptionOptions,
-} from './errors/index';
+export type { ExceptionResponse, HttpErrorResponse, HttpExceptionOptions } from './errors/index';
 
 // Exception handling — the ExceptionHandler contract, plus the core
 // @velajs/errors surface so one import authors handlers, throws branded errors,

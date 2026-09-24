@@ -297,6 +297,7 @@ describe('AuthGuard', () => {
   it('accepts only the trusted finite-lived WebSocket attachment without using HTTP accessors', async () => {
     const auth = mockAuth(null);
     const guard = new AuthGuard(new BetterAuthService(() => auth), {}, new Reflector());
+    const message = (): void => {};
     const client = {
       id: 'socket-1',
       rooms: new Set<string>(),
@@ -316,7 +317,8 @@ describe('AuthGuard', () => {
     const context = {
       getType: () => 'ws',
       getClass: () => class Gateway {},
-      getHandler: () => 'message',
+      getHandler: () => message,
+      getHandlerName: () => 'message',
       getModuleId: () => 'GatewayModule',
       getContainer: () => undefined,
       getContext: () => {

@@ -108,7 +108,9 @@ const frame = (event: string, data: unknown, id?: string): string =>
   JSON.stringify(id !== undefined ? { id, event, data } : { event, data });
 
 describe('buildWsExecutionContext', () => {
-  class ChatGateway {}
+  class ChatGateway {
+    onChat(): void {}
+  }
   const client = { id: 'c1' } as never;
 
   it('reports a ws context type with client/data/pattern access', () => {
@@ -123,7 +125,8 @@ describe('buildWsExecutionContext', () => {
 
     expect(ctx.getType()).toBe('ws');
     expect(ctx.getClass()).toBe(ChatGateway);
-    expect(ctx.getHandler()).toBe('onChat');
+    expect(ctx.getHandler()).toBe(ChatGateway.prototype.onChat);
+    expect(ctx.getHandlerName()).toBe('onChat');
     expect(ctx.getModuleId()).toBe('ChatModule#default');
     expect(ctx.switchToWs().getClient()).toBe(client);
     expect(ctx.switchToWs().getData()).toEqual({ hi: 1 });

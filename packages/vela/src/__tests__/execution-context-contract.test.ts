@@ -25,7 +25,8 @@ describe('execution context contracts', () => {
       const context = buildExecutionContext(c, HandlerHost, 'handle', 'FeatureModule');
       expect(context.getType()).toBe('http');
       expect(context.getClass()).toBe(HandlerHost);
-      expect(context.getHandler()).toBe('handle');
+      expect(context.getHandler()).toBe(HandlerHost.prototype.handle);
+      expect(context.getHandlerName()).toBe('handle');
       expect(context.getModuleId()).toBe('FeatureModule');
       expect(context.getContext()).toBe(c);
       expect(context.getRequest()).toBe(c.req.raw);

@@ -79,7 +79,7 @@ describe('MetadataRegistry — stacking + funnel + reset', () => {
     const reflector = new Reflector();
     const ctx = {
       getClass: () => Target,
-      getHandler: () => 'handle' as const,
+      getHandlerName: () => 'handle' as const,
     } as unknown as import('../index.js').ExecutionContext;
 
     expect(reflector.get<string>(KEY, ctx)).toBe('handler-value');

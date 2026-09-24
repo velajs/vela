@@ -33,10 +33,20 @@ export interface WsArgumentsHost {
 /** `'http'`, `'ws'`, or a custom entrypoint kind registered by an adapter. */
 export type ContextType = string;
 
+/** A handler method, as returned by `ExecutionContext.getHandler()`. */
+export type HandlerFunction = (...args: never[]) => unknown;
+
 export interface ExecutionContext {
   getType(): ContextType;
   getClass(): Type;
-  getHandler(): string | symbol;
+  /**
+   * The handler method about to run, as in Nest: pass it to the Reflector
+   * (`reflector.get(key, context.getHandler())`). Framework hosts without a
+   * method (middleware, unmatched routes) return a stable marker function.
+   */
+  getHandler(): HandlerFunction;
+  /** The handler's method name on `getClass()`, or a framework host's marker symbol. */
+  getHandlerName(): string | symbol;
   /** Declaring module bucket for routed HTTP/WS handlers; absent for synthetic framework hosts. */
   getModuleId(): string | undefined;
   /** Framework-owned DI container for transport-neutral guards. */

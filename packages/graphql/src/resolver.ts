@@ -1,4 +1,4 @@
-import type { ExecutionContext, Type } from '@velajs/vela';
+import type { ExecutionContext, HandlerFunction, Type } from '@velajs/vela';
 import {
   bindTrustedRequestContext,
   PipelineRunner,
@@ -189,7 +189,12 @@ function executionContext(
   const execution: GraphqlExecutionContext = {
     getType: () => 'graphql',
     getClass: () => provider,
-    getHandler: () => method,
+    getHandler: () => {
+      const handler: unknown = Reflect.get(provider.prototype as object, method);
+      if (typeof handler !== 'function') throw new TypeError('GraphQL resolver method is missing');
+      return handler as HandlerFunction;
+    },
+    getHandlerName: () => method,
     getModuleId: () => moduleId,
     getContainer: () => container,
     getRequest: () => operation.request,

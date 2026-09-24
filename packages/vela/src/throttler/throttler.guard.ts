@@ -55,7 +55,7 @@ export class ThrottlerGuard implements CanActivate {
         : 'anonymous';
 
     const className = context.getClass().name;
-    const handlerName = String(context.getHandler());
+    const handlerName = String(context.getHandlerName());
 
     const key = this.options.generateKey
       ? this.options.generateKey(tracker, { className, handlerName })

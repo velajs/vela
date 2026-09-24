@@ -526,7 +526,7 @@ describe('HTTP instrumentation seam', () => {
           throw failure;
         };
       if (kind === 'status') options.transport = async () => new Response('error', { status: 500 });
-    const error = await http.request(options).catch((caught: unknown) => caught);
+      const error = await http.request(options).catch((caught: unknown) => caught);
       expect(onError).toHaveBeenCalledExactlyOnceWith(error);
       expect(onEnd).toHaveBeenCalledOnce();
       expect(onResponse).toHaveBeenCalledTimes(kind === 'abort' || kind === 'transport' ? 0 : 1);

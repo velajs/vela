@@ -71,6 +71,9 @@ interface RegistryState {
   // Next default key for Reflector.createDecorator. Never reset: decorators
   // created earlier keep their keys for the lifetime of the process.
   nextDecoratorKey: number;
+  // Handler function -> (declaring class, method name), recorded by
+  // SetMetadata, so Reflector reads handler metadata from a function target.
+  handlerOwners: WeakMap<object, readonly [Constructor, string | symbol]>;
 }
 
 function createRegistryState(): RegistryState {
@@ -99,6 +102,7 @@ function createRegistryState(): RegistryState {
       filter: new Map(),
     },
     nextDecoratorKey: 0,
+    handlerOwners: new WeakMap(),
   };
 }
 
@@ -122,6 +126,7 @@ function registryState(): RegistryState {
   state.classMetaIndex ??= new Map();
   state.handlerMetaIndex ??= new Map();
   state.nextDecoratorKey ??= 0;
+  state.handlerOwners ??= new WeakMap();
   return state;
 }
 
@@ -458,6 +463,16 @@ export class MetadataRegistry {
     return this.handlerMeta.get(target)?.get(handler)?.get(key);
   }
 
+  /** Record which class method a handler function is, for function-target metadata reads. */
+  static setHandlerOwner(handler: object, owner: Constructor, name: string | symbol): void {
+    registryState().handlerOwners.set(handler, [owner, name]);
+  }
+
+  /** The (class, method name) a handler function was decorated as, if any. */
+  static getHandlerOwner(handler: object): readonly [Constructor, string | symbol] | undefined {
+    return registryState().handlerOwners.get(handler);
+  }
+
   static getCustomHandlerMetaAll(
     target: object,
     handler: string | symbol,
@@ -568,6 +583,7 @@ export class MetadataRegistry {
     this.handlerMeta.clear();
     this.classMetaIndex.clear();
     this.handlerMetaIndex.clear();
+    registryState().handlerOwners = new WeakMap();
     for (const type of ['middleware', 'guard', 'pipe', 'interceptor', 'filter'] as const) {
       this.controllerComponents[type].clear();
       this.handlerComponents[type].clear();
