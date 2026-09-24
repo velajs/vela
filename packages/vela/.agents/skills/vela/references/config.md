@@ -38,9 +38,9 @@ const exists = config.has('app.name');
 ## Module options
 
 - `config`: flat/nested values.
-- `load`: declared namespaces; available on `forRoot`.
+- `load`: declared namespaces. Structural: pass it next to a `forRootAsync` factory.
 - `validate`: validator for flat config; `forRoot` applies it eagerly.
-- `validateSchema`: parser for merged config; available on `forRoot`, applied on first read.
-- `isGlobal` and `key`: module configuration extras.
+- `validateSchema`: parser for merged config, applied on first read.
+- `isGlobal` and `key`: registration controls, never part of the options.
 
-`forRootAsync({ imports, inject, useFactory })` resolves factory arguments from the dependency tuple (a factory without parameters may omit `inject`). Its factory returns config options, but structural `load`/`validateSchema` behavior must be declared through `forRoot`; async factories do not create those structural contributions. There are no NestJS env-file/Joi options. Namespace factories are synchronous and their providers are materialized lazily.
+`forRootAsync({ imports, inject, useFactory, load? })` resolves factory arguments from the dependency tuple (a factory without parameters may omit `inject`). Its factory returns the other config options (`config`, `validate`, `validateSchema`); returning `load` fails bootstrap, because namespaces shape the module graph. There are no NestJS env-file/Joi options. Namespace factories are synchronous and their providers are materialized lazily.

@@ -4,26 +4,28 @@
  * `@Inject(crudResourceToken('users'))` keeps resolving across reloads.
  */
 
-import type { InjectionToken } from '@velajs/vela';
-import { moduleToken } from '@velajs/vela/module-kit';
+import { InjectionToken } from '@velajs/vela';
 import type { CrudDatabaseRegistry } from './databases';
 import type { CrudAdapter } from './adapter/contract';
 import type { CrudResource } from './kernel/resource';
 import type { VersioningStore } from './versioning/index';
 import type { AuditStore } from './audit/index';
 
-export const CRUD_DATABASES = moduleToken<CrudDatabaseRegistry | undefined>('crud:databases');
+export const CRUD_DATABASES = new InjectionToken<CrudDatabaseRegistry | undefined>(
+  'crud:databases',
+);
 
 /** The app-wide default adapter, provided by `CrudModule.forRoot`. */
-export const CRUD_DEFAULT_ADAPTER =
-  moduleToken<Pick<CrudAdapter, 'runtime'>>('crud:default-adapter');
+export const CRUD_DEFAULT_ADAPTER = new InjectionToken<Pick<CrudAdapter, 'runtime'>>(
+  'crud:default-adapter',
+);
 
 /** The app-wide default version-history store, provided by `CrudModule.forRoot`. */
 export const CRUD_DEFAULT_VERSIONING_STORE: InjectionToken<VersioningStore | undefined> =
-  moduleToken<VersioningStore | undefined>('crud:default-versioning-store');
+  new InjectionToken<VersioningStore | undefined>('crud:default-versioning-store');
 
 /** The app-wide default audit-log store, provided by `CrudModule.forRoot`. */
-export const CRUD_DEFAULT_AUDIT_STORE: InjectionToken<AuditStore | undefined> = moduleToken<
+export const CRUD_DEFAULT_AUDIT_STORE: InjectionToken<AuditStore | undefined> = new InjectionToken<
   AuditStore | undefined
 >('crud:default-audit-store');
 
@@ -47,7 +49,7 @@ export function crudResourceToken(name: string, database?: string): InjectionTok
   const key = database === undefined ? name : JSON.stringify([database, name]);
   let token = store.get(key);
   if (!token) {
-    token = moduleToken<CrudResource>(`crud:resource:${key}`);
+    token = new InjectionToken<CrudResource>(`crud:resource:${key}`);
     store.set(key, token);
   }
   return token;

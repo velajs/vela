@@ -30,13 +30,14 @@ import { ENV, Module } from '@velajs/vela';
   imports: [
     StorageModule.forRootAsync({
       inject: [ENV],
-      useFactory: (env) =>
-        s3Driver({
+      useFactory: (env) => ({
+        driver: s3Driver({
           endpoint: 'https://s3.us-east-1.amazonaws.com',
           region: 'us-east-1',
           bucket: 'my-bucket',
           credentials: { accessKeyId: env.AWS_KEY, secretAccessKey: env.AWS_SECRET },
         }),
+      }),
     }),
   ],
 })
@@ -49,6 +50,15 @@ class AppModule {}
 pass `VelaFactory.create(AppModule, { env })`. An async registration names the
 tokens its factory's parameters receive in `inject`; a factory without
 parameters may omit it.
+
+The factory returns the module options. `name` (the bucket, default
+`'default'`) and `http` are structural: they decide the provided tokens and the
+mounted routes, so `forRootAsync` takes them next to the factory. The driver
+may be a function, `driver: () => r2Driver({ bucket: env.UPLOADS })`, which
+builds it on the first storage operation. Each bucket name is one module
+instance; registering a name again with another driver, `http` block or other
+options fails bootstrap, so two features that each need a bucket give them
+distinct names (`name: 'avatars'`).
 
 ## Secure HTTP multipart uploads
 
@@ -69,7 +79,7 @@ StorageModule.forRootAsync({
 });
 ```
 
-The factory still runs once, on the first storage operation or multipart request, or again on the next one until it succeeds, and a factory secret takes precedence over `http.multipartGrantSecret`, which `forRoot` accepts for a secret known at module scope. Without a secret, the multipart endpoints refuse every request with 403. A secret shorter than 32 bytes is a configuration error, not a client error: `http.multipartGrantSecret` throws when the module is set up, and a short factory secret fails every storage operation and multipart request until the factory returns a valid result, which the controller answers with a redacted server error (502 `upstream_error`).
+The factory runs once, while the application initializes; a driver function it returns runs on the first storage operation, or again on the next one until it succeeds. The top-level `multipartGrantSecret` takes precedence over `http.multipartGrantSecret`, which suits a secret known at module scope. Without a secret, the multipart endpoints refuse every request with 403. A secret shorter than 32 bytes is a configuration error, not a client error: `http.multipartGrantSecret` throws when the module is set up, and a short top-level secret fails every multipart request, which the controller answers with a redacted server error (502 `upstream_error`).
 
 The browser client sends the exact file size when creating an upload and echoes the returned grant for part signing, completion, and abort. Multipart data is completed into a reserved quarantine key, verified there, and only then promoted to the requested key. A mismatched, oversized, or unreadable result is never exposed at the requested key. HTTP downloads default to `attachment`; both `/download` redirects and `/sign-download` URLs bind an attachment `Content-Disposition`, proxy responses emit `X-Content-Type-Options: nosniff`, and HTML/SVG are never served inline.
 

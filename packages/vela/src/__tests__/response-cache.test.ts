@@ -535,7 +535,29 @@ describe('response cache pipeline', () => {
       ],
     })
     class Duplicates {}
-    await expect(VelaFactory.create(Duplicates)).rejects.toThrow('only one ResponseCacheModule');
+    await expect(VelaFactory.create(Duplicates, { diagnostics: 'throw' })).rejects.toThrow(
+      /ResponseCacheModule#\w+ was imported again with different options/,
+    );
+    @Module({
+      imports: [
+        ResponseCacheModule.forRoot({
+          key: 'first',
+          namespace: 'first',
+          store: new AsyncStore(),
+          scope: () => publicScope,
+        }),
+        ResponseCacheModule.forRoot({
+          key: 'second',
+          namespace: 'second',
+          store: new AsyncStore(),
+          scope: () => publicScope,
+        }),
+      ],
+    })
+    class KeyedDuplicates {}
+    await expect(VelaFactory.create(KeyedDuplicates)).rejects.toThrow(
+      'only one ResponseCacheModule',
+    );
   });
 
   it('bypasses public caching for trusted identities without credential headers', async () => {

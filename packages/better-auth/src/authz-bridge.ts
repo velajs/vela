@@ -25,7 +25,7 @@ const normalizeRoles = (role: string | string[] | null | undefined): string[] =>
 /**
  * Pure authorization projection; this does not authenticate or publish trusted state.
  * Adapts an already verified better-auth user into a stable `@velajs/authz` {@link Identity}.
- * The issuer scopes `user.id` as both `subject` and the compatibility `userId`;
+ * The issuer scopes `user.id` as the `subject`;
  * the admin-plugin `role` field supplies local roles.
  *
  * Fail-closed: a missing user (`null`/`undefined`, i.e. an unauthenticated
@@ -44,7 +44,6 @@ export const identityFromUser = (
     issuer,
     subject: user.id,
     principalType,
-    userId: user.id,
     roles: normalizeRoles(user.role),
   };
 };

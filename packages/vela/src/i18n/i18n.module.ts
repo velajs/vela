@@ -1,7 +1,7 @@
 import { defineProvider } from '../container/types';
 import type { DynamicModule } from '../module/types';
 import { Module } from '../module/decorators';
-import { ConfigurableModuleBuilder } from '../module/configurable-module.builder';
+import { defineModule } from '../module/define-module';
 import { stableHash } from '../module/stable-hash';
 import { APP_MIDDLEWARE } from '../pipeline/tokens';
 import { I18nLocaleMiddleware } from './i18n.middleware';
@@ -11,10 +11,10 @@ import { I18N_OPTIONS } from './i18n.tokens';
 import { MessageLoaderService } from './message-loader.service';
 import { MessageRegistry } from './message-registry';
 
-const { ConfigurableModuleClass } = new ConfigurableModuleBuilder<I18nModuleOptions>({
-  moduleName: 'I18n',
-  optionsInjectionToken: I18N_OPTIONS,
-}).build();
+const { ConfigurableModuleClass } = defineModule<I18nModuleOptions>({
+  name: 'I18n',
+  optionsToken: I18N_OPTIONS,
+});
 
 // Empty marker module for `registerMessages`. The contribution is a side-effect
 // on the global MessageRegistry; this carries NO providers so it never

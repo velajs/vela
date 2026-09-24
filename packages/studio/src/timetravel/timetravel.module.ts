@@ -40,39 +40,42 @@ export interface StudioTimeTravelModuleOptions {
   perPage?: number;
 }
 
-const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } =
-  defineModule<StudioTimeTravelModuleOptions>({
-    name: 'StudioTimeTravel',
-    setup: ({ OPTIONS, options: moduleOptions }) => ({
-      imports: moduleOptions.imports,
-      providers: [
-        defineProvider(SNAPSHOT_STORE, {
-          useFactory: (options: StudioTimeTravelModuleOptions) =>
-            options.store ?? new InMemorySnapshotStore(),
-          inject: [OPTIONS],
-        }),
-        defineProvider(TIME_TRAVEL_PORT, {
-          useFactory: (
-            source: StudioModelSource,
-            confirm: ConfirmTokenSigner,
-            container: Container,
-            store: SnapshotStore,
-            options: StudioTimeTravelModuleOptions,
-          ) =>
-            new SnapshotTimeTravelAdapter({
-              store,
-              source,
-              confirm,
-              live: new ContainerLiveInvalidator(container),
-              ...(options.changeSource !== undefined ? { changeSource: options.changeSource } : {}),
-              ...(options.perPage !== undefined ? { perPage: options.perPage } : {}),
-            }),
-          inject: [STUDIO_MODEL_SOURCE, ConfirmTokenSigner, Container, SNAPSHOT_STORE, OPTIONS],
-        }),
-      ],
-      exports: [TIME_TRAVEL_PORT, SNAPSHOT_STORE],
-    }),
-  });
+const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<
+  StudioTimeTravelModuleOptions,
+  'imports'
+>({
+  name: 'StudioTimeTravel',
+  structural: ['imports'],
+  setup: ({ OPTIONS, options: moduleOptions }) => ({
+    imports: moduleOptions.imports,
+    providers: [
+      defineProvider(SNAPSHOT_STORE, {
+        useFactory: (options: StudioTimeTravelModuleOptions) =>
+          options.store ?? new InMemorySnapshotStore(),
+        inject: [OPTIONS],
+      }),
+      defineProvider(TIME_TRAVEL_PORT, {
+        useFactory: (
+          source: StudioModelSource,
+          confirm: ConfirmTokenSigner,
+          container: Container,
+          store: SnapshotStore,
+          options: StudioTimeTravelModuleOptions,
+        ) =>
+          new SnapshotTimeTravelAdapter({
+            store,
+            source,
+            confirm,
+            live: new ContainerLiveInvalidator(container),
+            ...(options.changeSource !== undefined ? { changeSource: options.changeSource } : {}),
+            ...(options.perPage !== undefined ? { perPage: options.perPage } : {}),
+          }),
+        inject: [STUDIO_MODEL_SOURCE, ConfirmTokenSigner, Container, SNAPSHOT_STORE, OPTIONS],
+      }),
+    ],
+    exports: [TIME_TRAVEL_PORT, SNAPSHOT_STORE],
+  }),
+});
 
 /**
  * Binds the {@link SnapshotTimeTravelAdapter} to `TIME_TRAVEL_PORT`. Requires a

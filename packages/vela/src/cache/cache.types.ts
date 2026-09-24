@@ -4,7 +4,8 @@ export type Awaitable<T> = T | Promise<T>;
 export interface CacheModuleOptions {
   ttl?: number; // default TTL in seconds (default: 5)
   max?: number; // max entries (default: 100)
-  isGlobal?: boolean; // register CacheInterceptor as APP_INTERCEPTOR
+  /** Register `CacheInterceptor` application-wide (`APP_INTERCEPTOR`). Structural. */
+  globalInterceptor?: boolean;
   /**
    * Resolve the authenticated principal/tenant partition for a request.
    * Credential-bearing requests are cached only when this returns a non-empty

@@ -16,15 +16,13 @@ export const BETTER_AUTH_BUILDER = new InjectionToken<() => BetterAuthInstance>(
  * The single injectable consumers reach for to interact with better-auth.
  * Wraps the underlying `betterAuth({...})` instance with lazy construction:
  *
- * - `forRoot({ auth })` — the builder returns the eagerly-provided instance,
- *   so the first `.auth` / `.api` / `.handler` access is effectively a
- *   read-and-cache.
- * - `forRootAsync({ inject, useFactory })` — the builder wraps the user's
- *   factory + inject deps. First access triggers `useFactory(...deps)`. This
- *   is what makes Cloudflare D1/KV bindings work: at module load the factory
- *   doesn't run; on first request (when AuthGuard or the catch-all calls
- *   `service.api` / `service.handler`), the native environment is registered and the
- *   factory can read them safely.
+ * - `auth` is an instance — the builder returns it, so the first `.auth` /
+ *   `.api` / `.handler` access is effectively a read-and-cache.
+ * - `auth` is a function (`auth: () => betterAuth({ ... })`, typically
+ *   returned by a `forRootAsync` factory) — the first access calls it. On
+ *   Workers, construction then happens on the first request (when AuthGuard
+ *   or the catch-all calls `service.api` / `service.handler`), never at
+ *   bootstrap.
  *
  * Used directly by AuthGuard and the catch-all controller. Consumers in
  * application code inject the same way: `@Inject(BetterAuthService)`.

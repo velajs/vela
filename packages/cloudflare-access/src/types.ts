@@ -92,7 +92,7 @@ export type GroupRoleMapping = Readonly<Record<string, string | readonly string[
 export type PrincipalType = 'user' | 'service';
 
 /**
- * The structural shape a resolved identity returns. `userId` is the durable
+ * The structural shape a resolved identity returns. `(issuer, subject)` is the durable
  * caller key; all other properties tag along as-is. Security-sensitive fields
  * are derived only from the verified JWT and cannot be replaced by `mapClaims`.
  */
@@ -105,8 +105,6 @@ export interface ResolvedIdentity {
   subject: string;
   /** Interactive user or machine/service principal. */
   principalType: PrincipalType;
-  /** @deprecated Compatibility alias for `subject`. */
-  userId: string;
   /** Verified absolute credential expiry in epoch milliseconds. */
   expiresAtMs: number;
   /** Tenant membership from the verified JWT tenantId claim. */

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Module, VelaFactory } from '@velajs/vela';
 import { MetadataRegistry } from '@velajs/vela/module-kit';
 import { buildSchema } from 'graphql';
 import { GraphqlModule } from '../module';
@@ -16,6 +17,17 @@ describe('GraphQL route validation', () => {
   it('defaults to /graphql', () => {
     const module = GraphqlModule.forRoot(options);
     expect(MetadataRegistry.getControllerPath(module.controllers![0]!)).toBe('/graphql');
+  });
+
+  it('treats the default path spelled out as the default endpoint', async () => {
+    const implicit = GraphqlModule.forRoot(options);
+    const spelled = GraphqlModule.forRoot({ ...options, path: '/graphql' });
+    expect(spelled.key).toBe(implicit.key);
+    class App {}
+    Module({ imports: [implicit, spelled] })(App);
+    const app = await VelaFactory.create(App, { diagnostics: 'throw' });
+    expect(app.describeRoutes().filter((route) => route.path === '/graphql')).not.toHaveLength(0);
+    await app.close();
   });
 
   it.each(['/', '/graphql', '/v1/graphql', '/A_b-C9/0/_/-'])(

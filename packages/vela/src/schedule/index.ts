@@ -4,6 +4,7 @@
 import '../metadata';
 
 export { ScheduleModule } from './schedule.module';
+export type { ScheduleModuleOptions } from './schedule.module';
 export { ScheduleRegistry } from './schedule.registry';
 export type { RegisteredCronJob, RegisteredIntervalJob } from './schedule.registry';
 export { Cron, Interval } from './schedule.decorators';

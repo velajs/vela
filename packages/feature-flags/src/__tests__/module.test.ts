@@ -1,10 +1,11 @@
-import { InjectionToken, Module, defineProvider } from '@velajs/vela';
+import { InjectionToken, Module, VelaFactory, defineProvider } from '@velajs/vela';
 import { runInEntrypointScope } from '@velajs/vela/module-kit';
 import { Test } from '@velajs/testing';
 import { describe, expect, it } from 'vitest';
 import {
   FEATURE_FLAG_TOKENS,
   FeatureFlagDriverRegistry,
+  FeatureFlagGuard,
   FeatureFlagsModule,
   FeatureFlagsService,
   memoryFlagDriver,
@@ -89,5 +90,23 @@ describe('FeatureFlagsModule', () => {
 
     expect(moduleRef.get(FEATURE_FLAG_TOKENS.DriverRegistry).defaultName).toBe('memory');
     expect(moduleRef.get(FEATURE_FLAG_TOKENS.Options)).toMatchObject({ default: 'memory' });
+  });
+
+  it('registers one instance, and one app-wide guard, for registrations that spell out defaults', async () => {
+    const manifest = { beta: false };
+    // `globalGuard` defaults to true and the module is lazy by default.
+    const registrations = [
+      FeatureFlagsModule.forRoot({ manifest }),
+      FeatureFlagsModule.forRoot({ manifest, globalGuard: true }),
+      FeatureFlagsModule.forRoot({ manifest, lazy: true }),
+    ];
+    expect(new Set(registrations.map((registration) => registration.key)).size).toBe(1);
+
+    @Module({ imports: registrations })
+    class AppModule {}
+    const app = await VelaFactory.create(AppModule, { diagnostics: 'throw' });
+    expect(app.getContainer().getOwnerModuleIds(FeatureFlagGuard)).toHaveLength(1);
+    expect(app.getContainer().getOwnerModuleIds(FEATURE_FLAG_TOKENS.Options)).toHaveLength(1);
+    await app.close();
   });
 });

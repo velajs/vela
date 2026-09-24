@@ -20,11 +20,11 @@ entrypoints.ofKind<{ count: number }>('count');
 // @ts-expect-error A caller cannot fabricate a builder state through constructor generics.
 new ConfigurableModuleBuilder<{ count: number }, 'register'>();
 const originalBuilder = new ConfigurableModuleBuilder<{ count: number }>();
-const renamedBuilder = originalBuilder.setClassMethodName('register');
-originalBuilder.build().ConfigurableModuleClass.forRoot({ count: 1 });
-renamedBuilder.build().ConfigurableModuleClass.register({ count: 1 });
-// @ts-expect-error The older builder alias keeps its original method name.
+const renamedBuilder = originalBuilder.setClassMethodName('forRoot');
 originalBuilder.build().ConfigurableModuleClass.register({ count: 1 });
+renamedBuilder.build().ConfigurableModuleClass.forRoot({ count: 1 });
+// @ts-expect-error The older builder alias keeps Nest's default method name.
+originalBuilder.build().ConfigurableModuleClass.forRoot({ count: 1 });
 container.register(defineProvider(count, { useValue: 1 }));
 container.register(
   defineProvider(label, {

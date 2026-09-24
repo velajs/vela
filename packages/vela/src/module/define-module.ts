@@ -24,14 +24,15 @@ import type {
   ModuleImport,
 } from '../registry/types';
 import type {
-  ConfigurableModuleAsyncOptions,
   ConfigurableModuleAsyncFactory,
   ConfigurableModuleClassType,
   ConfigurableModuleExtras,
   ConfigurableModuleExtrasTransform,
   ConfigurableModuleHost,
 } from './configurable-module.types';
+import { getModuleMetadata } from './decorators';
 import { attachModuleIdentity } from './module-fingerprints';
+import { UNCONFIGURED_MODULE } from './module-identity';
 import { stableHash } from './stable-hash';
 
 /** The `global:` slot's component groups, lowered to `APP_*` registrations. */
@@ -43,7 +44,7 @@ export interface GlobalComponentSlot {
   middleware?: MiddlewareType[];
 }
 
-/** What a module instance contributes, computed from its call-time options. */
+/** What a module instance contributes, computed from its structural options. */
 export interface ModuleContributions {
   /** Classes, definitions and literals; the module loader checks literals when it loads. */
   providers?: Provider[];
@@ -59,22 +60,23 @@ export interface ModuleContributions {
   global?: GlobalComponentSlot;
 }
 
-export interface ModuleSetupContext<Opts> {
+export interface ModuleSetupContext<Opts, S extends keyof Opts = never> {
   /** The options token — derived providers do `inject: [OPTIONS]`. */
   readonly OPTIONS: InjectionToken<Opts>;
   /**
-   * Structural options known at call time. For `forRoot` this is the full
-   * bag; for `forRootAsync` it is only the structural fields passed alongside
-   * the factory (the DI-resolved options exist only at resolution time —
-   * read them through `OPTIONS`, never here).
+   * The structural options: the fields the spec declares in `structural`,
+   * which `forRoot` and `forRootAsync` both take at the call site, over the
+   * spec's `defaults`. Every other option exists only once DI resolves
+   * `OPTIONS`; read it there.
    */
-  readonly options: Partial<Opts>;
+  readonly options: Pick<Opts, S>;
   /** The instance key in effect (for deriving per-instance token names). */
   readonly key: string;
 }
 
 export interface DefineModuleSpec<
   Opts,
+  S extends keyof Opts = never,
   Extras extends ConfigurableModuleExtras = { isGlobal?: boolean },
   MethodKey extends string = 'forRoot',
   FactoryMethodKey extends string = 'create',
@@ -87,17 +89,37 @@ export interface DefineModuleSpec<
    */
   optionsToken?: InjectionToken<Opts>;
   /**
-   * Structural contributions as a function of the call-time options. Runs at
+   * The option fields `setup` and `key` read. They shape the module graph, so
+   * `forRoot` and `forRootAsync` both take them at the call site, and an async
+   * factory returns only the other fields. List every member of `S`:
+   * `forRootAsync` rejects a call-site option this list leaves out.
+   */
+  structural?: readonly S[];
+  /**
+   * Values for structural options a call site leaves out or passes as
+   * `undefined`. `key`, `setup` and the comparison of repeated imports see
+   * them, so with `{ globalGuard: true }` here `forRoot({})` and
+   * `forRoot({ globalGuard: true })` are one configuration and one instance.
+   * The options token receives the options as given. Only options in
+   * `structural` may have a default.
+   */
+  defaults?: Partial<Pick<Opts, S>>;
+  /**
+   * Contributions as a function of the structural options. Runs at
    * `forRoot`/`forRootAsync` call time, once per module instance.
    */
-  setup?: (ctx: ModuleSetupContext<Opts>) => ModuleContributions;
+  setup?: (ctx: ModuleSetupContext<Opts, S>) => ModuleContributions;
   /**
-   * Dedup key from the structural options. Defaults to `stableHash(options)`.
-   * Modules whose options carry stateful instances (drivers, registries)
-   * should derive from the stable identifying subset — or document that
-   * callers pass an explicit `key` for multi-instance setups.
+   * Instance key from the structural options (over the spec's `defaults`).
+   * Defaults to `stableHash(structural)`, so a module without structural
+   * fields has one instance per class unless the caller passes an explicit
+   * `key`. Use `referenceKey` to key stateful structural values by
+   * reference. A module that takes no options and is also imported bare (an
+   * `@Module` class with its own providers) returns `'default'`, the bare
+   * import's key, so `forRoot()` and the class are one instance; a configured
+   * import under that key fails bootstrap next to the bare one.
    */
-  key?: (options: Partial<Opts>) => string;
+  key?: (options: Pick<Opts, S>) => string;
   /** Call-site extras defaults (default `{ isGlobal: false }`). */
   extras?: Extras;
   /** Reshape the definition from resolved extras (default: `isGlobal` → `global: true`). */
@@ -109,8 +131,9 @@ export interface DefineModuleSpec<
   /**
    * Default every generated module instance to deferred (first-use)
    * materialization. Call sites can also opt in per instance by passing
-   * `lazy: true` alongside the options (recognized like `isGlobal`).
-   * See docs/modules.md "Lazy modules".
+   * `lazy: true` alongside the options, which changes nothing when the spec
+   * or the class's `@Module({ lazy: true })` already makes it lazy. See
+   * docs/modules.md "Lazy modules".
    */
   lazy?: boolean;
 }
@@ -144,8 +167,36 @@ function lowerGlobalSlot(slot: GlobalComponentSlot): Array<Type | ProviderDefini
   return out;
 }
 
-const ASYNC_OPTION_KEYS = new Set([
-  'key',
+/**
+ * Split a call-site bag into the named fields and everything else, keeping
+ * enumerable symbol-keyed options with the rest.
+ */
+function split(
+  bag: object,
+  names: ReadonlySet<string>,
+): [picked: Record<PropertyKey, unknown>, rest: Record<PropertyKey, unknown>] {
+  const picked: Record<PropertyKey, unknown> = {};
+  const rest: Record<PropertyKey, unknown> = {};
+  for (const name of Reflect.ownKeys(bag)) {
+    if (!Object.prototype.propertyIsEnumerable.call(bag, name)) continue;
+    const value: unknown = Reflect.get(bag, name);
+    if (typeof name === 'string' && names.has(name)) picked[name] = value;
+    else rest[name] = value;
+  }
+  return [picked, rest];
+}
+
+/** The bag without its `undefined` fields: an explicit `undefined` means "not given". */
+function defined(bag: Record<PropertyKey, unknown>): Record<PropertyKey, unknown> {
+  const out: Record<PropertyKey, unknown> = {};
+  for (const name of Reflect.ownKeys(bag)) {
+    if (bag[name] !== undefined) out[name] = bag[name];
+  }
+  return out;
+}
+
+const REGISTRATION_KEYS: ReadonlySet<string> = new Set(['key', 'lazy']);
+const ASYNC_WIRING_KEYS: ReadonlySet<string> = new Set([
   'imports',
   'inject',
   'useFactory',
@@ -154,12 +205,11 @@ const ASYNC_OPTION_KEYS = new Set([
 ]);
 
 /**
- * Generates configurable modules with `forRoot` and
- * `forRootAsync` statics with: `stableHash` key derivation (multi-instance
- * dedup that survives HMR), typed `inject` tuple inference on the async
- * factory, an `isGlobal` extra, and — the piece `ConfigurableModuleBuilder`
- * could not express — providers/controllers/imports/exports/global components
- * computed **as functions of the options**.
+ * Generates configurable modules with `forRoot` and `forRootAsync` statics:
+ * instance keys from the declared structural options, typed `inject` tuple
+ * inference on the async factory, an `isGlobal` extra, and contributions
+ * (providers/controllers/imports/exports/global components) computed from the
+ * structural options.
  *
  * ```ts
  * const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<CorsOptions>({
@@ -175,41 +225,81 @@ const ASYNC_OPTION_KEYS = new Set([
  * export class CorsModule extends ConfigurableModuleClass {}
  * ```
  *
- * `ConfigurableModuleBuilder` remains supported (NestJS parity) and is a thin
- * adapter over this engine.
+ * `key`, `lazy` and the extras (such as `isGlobal`) are registration controls:
+ * they never reach the options token and never change the instance key. The
+ * module loader rejects a repeated `(class, key)` import built from different
+ * inputs. `ConfigurableModuleBuilder` is a Nest-shaped facade over this engine.
  */
 export function defineModule<
   Opts,
+  S extends keyof Opts = never,
   Extras extends ConfigurableModuleExtras = { isGlobal?: boolean },
   MethodKey extends string = 'forRoot',
   FactoryMethodKey extends string = 'create',
 >(
-  spec: DefineModuleSpec<Opts, Extras, MethodKey, FactoryMethodKey>,
-): ConfigurableModuleHost<Opts, MethodKey, FactoryMethodKey, Extras> {
+  spec: DefineModuleSpec<Opts, S, Extras, MethodKey, FactoryMethodKey>,
+): ConfigurableModuleHost<Opts, MethodKey, FactoryMethodKey, Extras, S> {
   const optionsToken = spec.optionsToken ?? new InjectionToken<Opts>(`${spec.name}_MODULE_OPTIONS`);
   const syncName = spec.methodName ?? 'forRoot';
   const asyncName = `${syncName}Async`;
   const factoryMethodName = spec.factoryMethodName ?? 'create';
-  const extrasDefaults = (spec.extras ?? DEFAULT_EXTRAS) as ConfigurableModuleExtras;
+  const extrasDefaults: ConfigurableModuleExtras = spec.extras ?? DEFAULT_EXTRAS;
+  const extrasKeys: ReadonlySet<string> = new Set(Object.keys(extrasDefaults));
+  const structuralKeys: ReadonlySet<string> = new Set((spec.structural ?? []).map(String));
+  const [listedDefaults, unlistedDefaults] = split(spec.defaults ?? {}, structuralKeys);
+  const [unlistedDefault] = Reflect.ownKeys(unlistedDefaults);
+  if (unlistedDefault !== undefined) {
+    const name = String(unlistedDefault);
+    throw new TypeError(
+      `${spec.name}: the default for '${name}' needs '${name}' in the structural list`,
+    );
+  }
+  const structuralDefaults = defined(listedDefaults);
+  /**
+   * The structural options in effect, the one form that keys, sets up and
+   * identifies an instance: the given fields over the spec's defaults. An
+   * `undefined` field is not given; `stableHash` and the loader's comparison
+   * of repeated imports read nested `undefined` fields the same way.
+   */
+  const effectiveStructural = (given: Record<PropertyKey, unknown>) => ({
+    ...structuralDefaults,
+    ...defined(given),
+  });
   const transform = (spec.transform ??
     DEFAULT_TRANSFORM) as ConfigurableModuleExtrasTransform<ConfigurableModuleExtras>;
+  // The default transform reads `isGlobal` only for the definition's `global`
+  // flag, which the module loader compares on its own; a repeat that differs
+  // only there is reported, not rejected. A custom transform may read any
+  // extra for anything, so each one it receives is an identity input.
+  const identityExtras = spec.transform
+    ? (extras: ConfigurableModuleExtras) => extras
+    : ({ isGlobal: _visibility, ...extras }: ConfigurableModuleExtras) => extras;
 
-  const deriveKey = (explicit: string | undefined, structural: Record<string, unknown>): string =>
-    explicit ?? spec.key?.(structural as Partial<Opts>) ?? stableHash(structural);
+  const hostName = (host: unknown): string =>
+    typeof host === 'function' && host.name ? host.name : `${spec.name}Module`;
 
-  // Laziness is OR-composed: the spec defaults it, a call site can add it.
-  const applyLazy = (definition: DynamicModule, callSiteLazy: unknown): DynamicModule =>
-    spec.lazy === true || callSiteLazy === true ? { ...definition, lazy: true } : definition;
+  const deriveKey = (host: unknown, explicit: unknown, structural: object): string => {
+    if (explicit === undefined) {
+      return spec.key?.(structural as Pick<Opts, S>) ?? stableHash(structural);
+    }
+    if (typeof explicit !== 'string' || explicit.length === 0 || explicit !== explicit.trim()) {
+      throw new TypeError(
+        `${hostName(host)}: an explicit module key must be a non-empty string without ` +
+          'surrounding whitespace',
+      );
+    }
+    return explicit;
+  };
 
   const applyContributions = (
     definition: DynamicModule,
-    structural: Record<string, unknown>,
+    structural: object,
     key: string,
   ): DynamicModule => {
     if (!spec.setup) return definition;
     const contributions = spec.setup({
       OPTIONS: optionsToken,
-      options: structural as Partial<Opts>,
+      options: structural as Pick<Opts, S>,
       key,
     });
     const providers = [
@@ -226,6 +316,46 @@ export function defineModule<
     };
   };
 
+  /**
+   * Key, contribute, reshape and record one instance from its separated
+   * inputs. `configured` says whether the call site supplied module options
+   * (any options at all, or an async factory).
+   */
+  const buildDefinition = (
+    host: unknown,
+    registration: Record<PropertyKey, unknown>,
+    extras: Record<PropertyKey, unknown>,
+    structural: Record<PropertyKey, unknown>,
+    base: Pick<DynamicModule, 'imports' | 'providers'>,
+    inputs: Record<PropertyKey, unknown>,
+    configured: boolean,
+  ): DynamicModule => {
+    const moduleClass = host as DynamicModule['module'];
+    const key = deriveKey(host, registration.key, structural);
+    const contributed = applyContributions({ module: moduleClass, key, ...base }, structural, key);
+    // An extra the call site leaves out, or passes as undefined, takes its
+    // default, so `{ isGlobal: false }` and `{}` build the same definition.
+    const resolvedExtras = { ...extrasDefaults, ...defined(extras) };
+    const shaped = transform(contributed, resolvedExtras);
+    const comparedExtras = identityExtras(resolvedExtras);
+    // Laziness is OR-composed: the spec defaults it, a call site can add it,
+    // and the class's own `@Module({ lazy: true })` makes every instance lazy.
+    const lazy = spec.lazy === true || registration.lazy === true;
+    const classLazy = typeof host === 'function' && getModuleMetadata(moduleClass)?.lazy === true;
+    // A definition that adds nothing to its class is the bare class import.
+    const unconfigured =
+      !configured &&
+      !spec.setup &&
+      Reflect.ownKeys(comparedExtras).length === 0 &&
+      (!lazy || classLazy);
+    return attachModuleIdentity(
+      lazy ? { ...shaped, lazy: true } : shaped,
+      unconfigured
+        ? UNCONFIGURED_MODULE
+        : { ...inputs, extras: comparedExtras, lazy: lazy || classLazy },
+    );
+  };
+
   class GeneratedModuleClass {}
   Object.defineProperty(GeneratedModuleClass, 'name', { value: `${spec.name}ModuleHost` });
 
@@ -233,23 +363,19 @@ export function defineModule<
     configurable: true,
     writable: true,
     enumerable: false,
-    value(this: unknown, options: Record<string, unknown> = {}): DynamicModule {
-      const { key: explicitKey, ...rest } = options;
-      const key = deriveKey(explicitKey as string | undefined, rest);
-      const definition: DynamicModule = {
-        module: this as DynamicModule['module'],
-        key,
-        providers: [defineProvider(optionsToken, { useValue: rest as Opts })],
-      };
-      return attachModuleIdentity(
-        applyLazy(
-          transform(applyContributions(definition, rest, key), {
-            ...extrasDefaults,
-            ...rest,
-          }),
-          rest.lazy,
-        ),
-        rest,
+    value(this: unknown, options: object = {}): DynamicModule {
+      const [registration, withExtras] = split(options, REGISTRATION_KEYS);
+      const [extras, moduleOptions] = split(withExtras, extrasKeys);
+      const structural = effectiveStructural(split(moduleOptions, structuralKeys)[0]);
+      return buildDefinition(
+        this,
+        registration,
+        extras,
+        structural,
+        { providers: [defineProvider(optionsToken, { useValue: moduleOptions as Opts })] },
+        // Compared with the structural defaults applied, as the key is derived.
+        { options: { ...moduleOptions, ...structural } },
+        Reflect.ownKeys(defined(moduleOptions)).length > 0,
       );
     },
   });
@@ -260,50 +386,44 @@ export function defineModule<
     enumerable: false,
     value(
       this: unknown,
-      options: ConfigurableModuleAsyncOptions<Opts, FactoryMethodKey>,
+      options: Pick<
+        ConfigurableModuleAsyncFactory<Opts, string>,
+        'inject' | 'useFactory' | 'useClass' | 'useExisting'
+      > & { imports?: ModuleImport[] },
     ): DynamicModule {
-      const bag = options as ConfigurableModuleAsyncOptions<Opts, FactoryMethodKey> &
-        Record<string, unknown>;
-      const { key: _explicitKey, ...inputs } = bag;
-      const structural: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(bag)) {
-        if (!ASYNC_OPTION_KEYS.has(k)) structural[k] = v;
+      const [registration, rest] = split(options, REGISTRATION_KEYS);
+      const [wiring, callSite] = split(rest, ASYNC_WIRING_KEYS);
+      const [extras, others] = split(callSite, extrasKeys);
+      // Only declared structural fields belong at the call site; the factory
+      // supplies every other option. Anything else would reach neither setup
+      // nor the options token, so it fails here instead of vanishing.
+      const [structural, unlisted] = split(others, structuralKeys);
+      for (const name of Reflect.ownKeys(unlisted)) {
+        if (unlisted[name] === undefined) continue;
+        throw new TypeError(
+          `${hostName(this)}.${asyncName}: '${String(name)}' is neither a structural option ` +
+            'nor a registration control; return module options from the factory.',
+        );
       }
-      const key = deriveKey(
-        bag.key,
-        // Async factories aren't structurally hashable in a useful way, so the
-        // default key hashes the async wiring + structural fields — same
-        // instance-identity semantics ConfigurableModuleBuilder always had.
-        spec.key
-          ? structural
-          : {
-              inject: bag.inject,
-              useFactory: bag.useFactory,
-              useClass: bag.useClass,
-              useExisting: bag.useExisting,
-              ...structural,
-            },
-      );
-      const definition: DynamicModule = {
-        module: this as DynamicModule['module'],
-        key,
-        imports: bag.imports ?? [],
-        providers: buildAsyncOptionsProviders<Opts, string>(
-          optionsToken,
-          factoryMethodName,
-          bag,
-          structural,
-        ),
-      };
-      return attachModuleIdentity(
-        applyLazy(
-          transform(applyContributions(definition, structural, key), {
-            ...extrasDefaults,
-            ...structural,
-          }),
-          structural.lazy,
-        ),
-        inputs,
+      const effective = effectiveStructural(structural);
+      return buildDefinition(
+        this,
+        registration,
+        extras,
+        effective,
+        {
+          imports: options.imports ?? [],
+          providers: buildAsyncOptionsProviders<Opts>(
+            optionsToken,
+            factoryMethodName,
+            options,
+            defined(structural),
+            structuralKeys,
+            `${hostName(this)}.${asyncName}`,
+          ),
+        },
+        { structural: effective, wiring },
+        true,
       );
     },
   });
@@ -313,7 +433,8 @@ export function defineModule<
       Opts,
       MethodKey,
       FactoryMethodKey,
-      Extras
+      Extras,
+      S
     >,
     MODULE_OPTIONS_TOKEN: optionsToken,
     // Type-only sentinels — never read at runtime.
@@ -324,28 +445,45 @@ export function defineModule<
 
 /**
  * Lower `useFactory`/`useClass`/`useExisting` async options into provider
- * registrations. Structural fields from the call site merge UNDER the resolved
- * options (`{ ...structural, ...resolved }`) so sync-declared fields act as
- * defaults and the factory stays authoritative.
+ * registrations. The call-site structural fields complete the resolved
+ * options: `setup` built the module from them, so the factory may not return
+ * them.
  */
-function buildAsyncOptionsProviders<Opts, MethodKey extends string>(
+function buildAsyncOptionsProviders<Opts>(
   optionsToken: InjectionToken<Opts>,
-  factoryMethodName: MethodKey,
+  factoryMethodName: string,
   async: Pick<
-    ConfigurableModuleAsyncFactory<Opts, MethodKey>,
+    ConfigurableModuleAsyncFactory<Opts, string>,
     'inject' | 'useFactory' | 'useClass' | 'useExisting'
   >,
-  structural: Record<string, unknown> = {},
+  structural: Record<PropertyKey, unknown>,
+  structuralKeys: ReadonlySet<string>,
+  caller: string,
 ): Array<Type | ProviderDefinition> {
-  const hasStructural = Object.keys(structural).length > 0;
-  const merge = (resolved: Opts | Promise<Opts>): Opts | Promise<Opts> =>
-    resolved instanceof Promise
-      ? resolved.then((o) => ({ ...structural, ...o }) as Opts)
-      : ({ ...structural, ...resolved } as Opts);
+  const hasStructural = structuralKeys.size > 0;
+  const complete = (resolved: unknown): Opts => {
+    if (typeof resolved !== 'object' || resolved === null) {
+      throw new TypeError(`${caller}: the factory must return an options object`);
+    }
+    for (const name of structuralKeys) {
+      if (Reflect.get(resolved, name) !== undefined) {
+        throw new TypeError(
+          `${caller}: the factory returned the structural option '${name}'; ` +
+            'pass structural options alongside the factory instead.',
+        );
+      }
+    }
+    return { ...resolved, ...structural } as Opts;
+  };
+  // Without structural fields the resolved options pass through untouched.
+  const merge = (resolved: Opts | Promise<Opts>): Opts | Promise<Opts> => {
+    if (!hasStructural) return resolved;
+    return resolved instanceof Promise ? resolved.then(complete) : complete(resolved);
+  };
 
   if (async.useFactory) {
     const factory = async.useFactory;
-    assertFactoryInject(optionsToken, factory, async.inject);
+    assertFactoryInject(caller, factory, async.inject);
     return [
       defineProvider(optionsToken, {
         useFactory: hasStructural ? (...deps: unknown[]) => merge(factory(...deps)) : factory,
@@ -353,23 +491,17 @@ function buildAsyncOptionsProviders<Opts, MethodKey extends string>(
       }),
     ];
   }
+  const create = (instance: Record<string, () => Opts | Promise<Opts>>): Opts | Promise<Opts> =>
+    merge(instance[factoryMethodName]!());
   if (async.useClass) {
     const factoryClass = async.useClass;
     return [
       factoryClass,
-      defineProvider(optionsToken, {
-        useFactory: (instance) => merge(instance[factoryMethodName]()),
-        inject: [factoryClass],
-      }),
+      defineProvider(optionsToken, { useFactory: create, inject: [factoryClass] }),
     ];
   }
   if (async.useExisting) {
-    return [
-      defineProvider(optionsToken, {
-        useFactory: (instance) => merge(instance[factoryMethodName]()),
-        inject: [async.useExisting],
-      }),
-    ];
+    return [defineProvider(optionsToken, { useFactory: create, inject: [async.useExisting] })];
   }
   throw new Error(
     'Async module options require one of `useFactory`, `useClass`, or `useExisting`.',

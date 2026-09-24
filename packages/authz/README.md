@@ -43,8 +43,6 @@ interface Identity {
   issuer?: string;
   subject?: string;
   principalType?: 'user' | 'service';
-  /** @deprecated compatibility alias for subject */
-  userId?: string;
   roles?: string[];
   claims?: Record<string, unknown>;
 }
@@ -54,7 +52,7 @@ interface PermissionResolver {
 }
 ```
 
-Authenticated adapters should populate `{ issuer, subject, principalType }`. Treat the `(issuer, subject)` pair as the durable principal key: OIDC subjects are issuer-local and can collide across identity providers. `userId` remains as a compatibility alias while applications migrate.
+Authenticated adapters should populate `{ issuer, subject, principalType }`. Treat the `(issuer, subject)` pair as the durable principal key: OIDC subjects are issuer-local and can collide across identity providers.
 
 `anonymous` is the zero-privilege identity (`{ roles: [] }`, frozen) — the fail-closed default when no session is present.
 
@@ -100,8 +98,8 @@ Combine capability checks with resource-level rules (ownership, tenancy, state):
 ```ts
 import { anyOf, allOf, hasPerm, mask } from '@velajs/authz';
 
-const isOwner = (ctx: { identity: { userId?: string } }, post: { authorId: string }) =>
-  ctx.identity.userId === post.authorId;
+const isOwner = (ctx: { identity: { subject?: string } }, post: { authorId: string }) =>
+  ctx.identity.subject === post.authorId;
 
 // A reader may see a post if they own it OR hold posts:read.
 const canRead = anyOf(isOwner, hasPerm(authz, 'posts:read'));
@@ -109,7 +107,7 @@ const canRead = anyOf(isOwner, hasPerm(authz, 'posts:read'));
 // A writer must own it AND hold posts:write.
 const canWrite = allOf(isOwner, hasPerm(authz, 'posts:write'));
 
-await canRead({ identity: { userId: 'u1', roles: [] } }, { authorId: 'u1' }); // true
+await canRead({ identity: { subject: 'u1', roles: [] } }, { authorId: 'u1' }); // true
 
 // Redact a sensitive field, fail-closed to null on any error.
 const lastFour = mask((_ctx: unknown, r: { ssn: string }) => r.ssn.slice(-4));

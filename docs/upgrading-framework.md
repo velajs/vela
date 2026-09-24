@@ -72,9 +72,8 @@ or a DTO's `parseAsync` for asynchronous validation outside dispatch.
 
 Generated CRUD endpoints validate request bodies in the engine. Independent
 headless engine calls still require raw input: do not parse a transforming schema
-first and submit its transformed result for another parse. The deprecated
-`ValidationPipe.consumeValidated` method returns false and no longer supplies a
-global validation receipt.
+first and submit its transformed result for another parse. There is no global
+validation receipt: `ValidationPipe.consumeValidated` has been removed.
 
 `@Serialize` still requires `SerializerInterceptor` and applies its schema to each
 array element. Standard Schema output validation now runs instead of allowing
