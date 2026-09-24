@@ -7,7 +7,9 @@ import {
   getTrustedRequestIdentity,
   type TrustedRequestIdentity,
 } from '../http/trusted-request-identity';
+import { REQUEST_CONTEXT } from '../http/request-context';
 import {
+  RATE_LIMIT,
   THROTTLER_OPTIONS,
   THROTTLER_STORAGE,
   THROTTLE_METADATA,
@@ -90,7 +92,7 @@ export class ThrottlerGuard implements CanActivate {
       reset: resetSeconds,
       ...(remaining !== undefined ? { remaining } : {}),
     };
-    honoContext.set('rateLimit', rateLimitInfo);
+    context.getContainer()?.resolve(REQUEST_CONTEXT).set(RATE_LIMIT, rateLimitInfo);
 
     if (record.allowed === false || count > limit) {
       honoContext.header('Retry-After', String(resetSeconds));

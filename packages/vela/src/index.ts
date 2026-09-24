@@ -100,7 +100,7 @@ export type {
 
 // Request context
 export { REQUEST_CONTEXT, RequestContextKey } from './http/request-context';
-export type { RequestContext } from './http/request-context';
+export type { RequestContext, RequestContextKeyOptions } from './http/request-context';
 
 // Logger
 export { Logger, LogLevel } from './services/index';

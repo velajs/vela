@@ -144,6 +144,7 @@ export {
   createTrustedRequestIdentityStore,
   bindTrustedRequestContext,
   getTrustedContextRequest,
+  TRUSTED_REQUEST_IDENTITY,
 } from './http/trusted-request-identity';
 export type {
   TrustedRequestIdentity,
