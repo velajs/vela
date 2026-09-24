@@ -1,8 +1,8 @@
 {
   "$comment": "Committed regression budget for the minimal Worker in scripts/fixtures/worker-size-entry.ts, built through createCloudflareWorker() and bundled with @velajs/vela's required nodejs_als flag. Absolute 64 MiB raw and 3 MiB gzip upload limits are enforced separately. Run pnpm worker-size:update after an intentional increase and review the byte delta. excludedModules lists dist modules (or directories, ending in /) the fixture never uses, as dist/... in this package or @velajs/vela/dist/...; the gate fails when the bundle contains one.",
   "fixture": "scripts/fixtures/worker-size-entry.ts",
-  "rawBytes": 142189,
-  "gzipBytes": 47949,
+  "rawBytes": 142415,
+  "gzipBytes": 48035,
   "rawAllowanceBytes": 32768,
   "gzipAllowanceBytes": 9216,
   "excludedModules": [
