@@ -15,8 +15,7 @@ import { Cron } from '@velajs/vela/schedule';
 import { LiveInvalidation, LiveModule } from '@velajs/vela/live';
 import { createCloudflareApp, createCloudflareWorker } from '../../cloudflare-factory';
 import { QueueConsumer } from '../../decorators/queue-consumer';
-import { CloudflareWebSocketModule } from '../../websocket/cloudflare-websocket.module';
-import { durableObjectLive } from '../../websocket/do-live';
+import { WebSocketGateway, WebSocketModule } from '@velajs/vela/websocket';
 
 describe('cold native bindings under workerd', () => {
   it.each(['queue', 'scheduled'] as const)(
@@ -48,6 +47,8 @@ describe('cold native bindings under workerd', () => {
     'performs live invalidation through a native DO on a cold %s event',
     async (kind) => {
       let dispatched = false;
+      @WebSocketGateway({ path: '/rooms/:room/ws', roomParam: 'room', binding: 'TEST_ROOM' })
+      class RoomsGateway {}
       @Injectable()
       class Jobs {
         constructor(private readonly live: LiveInvalidation) {}
@@ -60,19 +61,11 @@ describe('cold native bindings under workerd', () => {
       }
       @Module({
         imports: [
-          CloudflareWebSocketModule.forRoot(),
-          LiveModule.forRootAsync({
-            inject: [ENV],
-            useFactory: (bindings: VelaEnv) => ({
-              driver: () =>
-                durableObjectLive({
-                  namespace: bindings.TEST_ROOM,
-                  gatewayPath: '/rooms/:room/ws',
-                }),
-            }),
-          }),
+          WebSocketModule.forRoot(),
+          // The default driver reads TEST_ROOM, the gateway's binding, from ENV.
+          LiveModule.forRoot(),
         ],
-        providers: [Jobs],
+        providers: [Jobs, RoomsGateway],
       })
       class AppModule {}
       const worker = createCloudflareWorker(AppModule);

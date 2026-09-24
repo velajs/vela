@@ -7,6 +7,7 @@ import {
   MessageBody,
   SubscribeMessage,
   WebSocketGateway,
+  WebSocketModule,
   WebSocketServer,
   type OnGatewayConnection,
   type UpgradeAuthenticator,
@@ -15,7 +16,6 @@ import {
   type WsServer,
 } from '@velajs/vela/websocket';
 import {
-  CloudflareWebSocketModule,
   createCloudflareWorker,
   CLOUDFLARE_SCHEDULED_EVENT,
   type CloudflareScheduledEvent,
@@ -122,7 +122,7 @@ class TestGateway implements OnGatewayConnection {
   }
 }
 
-@Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [TestGateway] })
+@Module({ imports: [WebSocketModule.forRoot()], providers: [TestGateway] })
 class TestModule {}
 
 export class TestRoom extends VelaWebSocketDurableObject(TestModule) {}
@@ -151,7 +151,7 @@ class NightlyReports {
   }
 }
 
-@Module({ imports: [CloudflareWebSocketModule.forRoot()], providers: [NightlyReports] })
+@Module({ imports: [WebSocketModule.forRoot()], providers: [NightlyReports] })
 class CronRoomModule {}
 
 export class CronRoom extends VelaWebSocketDurableObject(CronRoomModule) {}

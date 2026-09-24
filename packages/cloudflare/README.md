@@ -80,29 +80,67 @@ factories that inject `ENV` rather than capturing them in module options.
 Providers with request scope still rebuild per HTTP request or queue/cron dispatch.
 Do not retain request objects or authentication state in singleton providers.
 
+Request middleware belongs in modules: a consumer middleware class resolves
+through dependency injection, so it can inject `ENV` like any provider.
+
+```ts
+import {
+  InjectEnv,
+  Injectable,
+  Module,
+  type MiddlewareConsumer,
+  type NestMiddleware,
+  type NestModule,
+  type VelaContext,
+  type VelaEnv,
+} from '@velajs/vela';
+
+@Injectable()
+class ServiceHeader implements NestMiddleware {
+  constructor(@InjectEnv() private readonly env: VelaEnv) {}
+  async use(context: VelaContext, next: () => Promise<void>) {
+    context.header('x-service', this.env.SERVICE_NAME);
+    await next();
+  }
+}
+
+@Module({ providers: [ServiceHeader] })
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(ServiceHeader).forRoutes('*');
+  }
+}
+```
+
+`createCloudflareWorker(AppModule, { configure })` finishes each application's
+HTTP surface, for example with extra Hono routes, once per environment. It runs
+after the application is built and before any event reaches it, including
+concurrent cold events; a throw fails that construction and the next event
+retries. It must be synchronous and do no I/O (a returned promise fails the
+construction):
+
+```ts
+export default createCloudflareWorker(AppModule, {
+  configure(app, env) {
+    app.getHonoApp().get('/version', (c) => c.text(env.SERVICE_VERSION));
+  },
+});
+```
+
 For explicit construction inside a platform event:
 
 ```ts
-const app = await createCloudflareApp(AppModule, {
-  env,
-  globalPrefix: '/api',
-  middleware: (bindings) => [async (context, next) => {
-    context.header('x-service', bindings.SERVICE_NAME);
-    await next();
-  }],
-});
+const app = await createCloudflareApp(AppModule, { env, globalPrefix: '/api' });
 const bindings = app.get(ENV); // VelaEnv
 return app.fetch(request, env, executionContext);
 ```
 
 `env` is registered as `ENV` before provider factories and lifecycle hooks.
-Bindings inside `middleware(env)` are typed as `VelaEnv` too; request callbacks
-capture the native environment without retyping Hono's context. Referencing a
-binding is safe during construction; platform I/O must still happen inside a
-Workers event or Durable Object context. An explicitly built application rejects
-requests or events carrying another environment object, including calls through
-the underlying Hono app. Internal `ctx.run` reentry retains the application's
-environment.
+Referencing a binding is safe during construction; platform I/O must still
+happen inside a Workers event or Durable Object context. An explicitly built
+application rejects requests or events carrying another environment object,
+including calls through the underlying Hono app. Internal `ctx.run` reentry
+retains the application's environment.
 
 `cloudflareAdapter({ env })` provides the same bootstrap and request contract
 when composing `VelaFactory.create` directly. `createCloudflareWorker` and
@@ -291,35 +329,19 @@ native bindings and live invalidation capabilities as HTTP. See
 
 ## WebSockets, live queries, and Durable Objects
 
+Import the core modules; the Cloudflare adapter wires them to Durable Objects.
 Use the native Durable Object entrypoint only in your Worker entry file:
 
 ```ts
-import { ENV, Module } from '@velajs/vela';
+import { Module } from '@velajs/vela';
 import { LiveModule } from '@velajs/vela/live';
-import {
-  CloudflareWebSocketModule,
-  createCloudflareWorker,
-  durableObjectCursorLog,
-  durableObjectLive,
-} from '@velajs/cloudflare';
+import { WebSocketModule } from '@velajs/vela/websocket';
+import { createCloudflareWorker } from '@velajs/cloudflare';
 import { VelaWebSocketDurableObject } from '@velajs/cloudflare/durable-objects';
 
 @Module({
-  imports: [
-    CloudflareWebSocketModule.forRoot(),
-    LiveModule.forRootAsync({
-      // ROOMS is typed DurableObjectNamespace<Room> by `wrangler types`.
-      inject: [ENV],
-      useFactory: (env) => ({
-        driver: () => durableObjectLive({
-          namespace: env.ROOMS,
-          gatewayPath: '/rooms/:room/ws',
-        }),
-        log: () => durableObjectCursorLog(),
-      }),
-    }),
-  ],
-  // Add your @WebSocketGateway and @LiveResolver classes here.
+  imports: [WebSocketModule.forRoot(), LiveModule.forRoot()],
+  // Your @WebSocketGateway({ binding: 'ROOMS', ... }) and @LiveResolver classes.
   providers: [],
 })
 class RoomModule {}
@@ -327,6 +349,21 @@ class RoomModule {}
 export class Room extends VelaWebSocketDurableObject(RoomModule) {}
 export default createCloudflareWorker(RoomModule);
 ```
+
+`cloudflareAdapter` registers the platform as the global `WS_TRANSPORT` and
+`LIVE_PLATFORM` tokens before modules load; it never replaces module providers.
+In the Worker, `WebSocketModule` serves an upgrade route for each gateway that
+names a `binding` and forwards the authenticated upgrade to that room's Durable
+Object, and a gateway's `@WebSocketServer()` has no sockets to push to (use
+`broadcastToRoom`). `LiveModule` sends invalidations to the room Durable
+Object of the single binding-backed gateway, reading the namespace from `ENV`
+when first needed; with several, the first invalidation reports the ambiguity,
+and `driver: () => durableObjectLive({ gatewayPath })` (or `{ binding }`)
+chooses. Inside the Durable Object, the gateway server broadcasts to its
+hibernatable sockets, invalidations apply locally, and the cursor log is a
+`DoCursorLog` in the object's SQLite storage (in memory when the class is not
+SQLite-backed). The same `RoomModule` serves the Worker, every Durable Object
+and a node host.
 
 Declare gateways with `@WebSocketGateway({ path, roomParam, binding, ... })` and
 configure origins and upgrade authentication for your application.
@@ -348,7 +385,7 @@ resolver and share the definition with its client. Restored hibernation argument
 and final query results use the same validation boundary.
 
 Each application constructs its own driver and cursor log. Workers send
-invalidations through the typed DO namespace; the DO uses its own live engine
+invalidations through the gateway's DO namespace; the DO uses its own live engine
 and SQLite cursor log. Configure the class in Wrangler `new_sqlite_classes` to
 retain cursor/epoch state across hibernation. Hibernated subscriptions are
 restored on wake; the shared live protocol handles resume or snapshot fallback.

@@ -16,29 +16,21 @@ export type {
   DoPitrNamespace,
 } from './do-pitr';
 
-// Module + server-initiated emit helper
-export { CloudflareWebSocketModule } from './cloudflare-websocket.module';
+// Server-initiated emit helper
 export { broadcastToRoom } from './broadcast';
 
 // Live queries: durable cursor log + DO-routed invalidation driver
-export {
-  DoCursorLog,
-  durableObjectCursorLog,
-  durableObjectLive,
-  initDoLive,
-  liveInvalidateToRoom,
-} from './do-live';
-export type { CfLiveDriver, DurableObjectLiveOptions, LiveNamespace } from './do-live';
+export { DoCursorLog, initDoLive, liveInvalidateToRoom } from './do-live';
+export { CfLiveDriver, durableObjectLive } from './live-driver';
+export type { DurableObjectLiveOptions, LiveInvalidateStub, LiveNamespace } from './live-driver';
 
 // Transport internals (advanced use / testing)
 export { CfWsClient } from './cf-ws-client';
 export { CfRoomRegistry } from './cf-room-registry';
 export { DoWebSocketHost, type WsConnectionPrincipal } from './do-websocket-host';
-export { WsServerHolder } from './ws-server-holder';
 export { buildDoRuntime } from './do-bootstrap';
 export type { DoRuntime } from './do-bootstrap';
-export { registerWebSocketRoutes, collectWsGatewayRoutes } from './websocket-routing';
-export type { WsGatewayRoute } from './websocket-routing';
+export { FORWARDED_UPGRADE_HEADERS, workerWebSocketTransport } from './worker-transport';
 export { roomTag, connTag, durableObjectRoomName, roomToDurableId } from './room-id';
 export { MAX_WS_ATTACHMENT_BYTES } from './do-state';
 export type { DoStateLike, SqlStorageLike, WsLike, WsAttachment } from './do-state';

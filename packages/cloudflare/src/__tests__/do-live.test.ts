@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
-import { DatabaseSync } from 'node:sqlite';
+import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import { Injectable, Module } from '@velajs/vela';
-import { WebSocketGateway } from '@velajs/vela/websocket';
+import { WebSocketGateway, WebSocketModule } from '@velajs/vela/websocket';
 import {
   defineLiveQuery,
   LIVE_PROTOCOL,
@@ -13,22 +13,28 @@ import {
 } from '@velajs/vela/live';
 import type { CommitStamp, InvalidationCommand, LiveInvalidationSink } from '@velajs/vela/live';
 import { buildDoRuntime } from '../websocket/do-bootstrap';
-import { CloudflareWebSocketModule } from '../websocket/cloudflare-websocket.module';
-import { DoCursorLog, durableObjectCursorLog, durableObjectLive } from '../websocket/do-live';
+import { DoCursorLog } from '../websocket/do-live';
+import { durableObjectLive, type LiveNamespace } from '../websocket/live-driver';
 import { DoWebSocketHost } from '../websocket/do-websocket-host';
 import type { DoStateLike, SqlStorageLike, WsLike } from '../websocket/do-state';
 
 // Real SQLite (node:sqlite) behind the structural SqlStorageLike — faithful
 // AUTOINCREMENT + sqlite_sequence + trim semantics, unlike a hand-rolled fake.
+function sqlValue(value: unknown): SQLInputValue {
+  if (value === null || typeof value === 'number' || typeof value === 'string') return value;
+  throw new TypeError('Unsupported SQL binding');
+}
+
 function sqlStorage(): SqlStorageLike {
   const db = new DatabaseSync(':memory:');
   return {
-    exec(query: string, ...bindings: unknown[]) {
+    exec(query: string, ...raw: unknown[]) {
+      const bindings = raw.map(sqlValue);
       if (query.trimStart().toUpperCase().startsWith('SELECT')) {
-        const rows = db.prepare(query).all(...(bindings as never[])) as Record<string, unknown>[];
+        const rows = db.prepare(query).all(...bindings);
         return { toArray: () => rows };
       }
-      if (bindings.length > 0) db.prepare(query).run(...(bindings as never[]));
+      if (bindings.length > 0) db.prepare(query).run(...bindings);
       else db.exec(query);
       return { toArray: () => [] };
     },
@@ -87,8 +93,7 @@ function acceptTrusted(host: DoWebSocketHost, ws: WsLike): Promise<boolean> {
 describe('DoCursorLog (SQLite)', () => {
   it('is monotonic, epoch-stable across instances, and cursor-stable across trims', () => {
     const storage = sqlStorage();
-    const log = new DoCursorLog(3);
-    log._initialize(storage);
+    const log = new DoCursorLog(storage, 3);
 
     expect(log.current().cursor).toBe(0);
     const first = log.append(['a']);
@@ -99,14 +104,12 @@ describe('DoCursorLog (SQLite)', () => {
     expect(log.current().cursor).toBe(4);
 
     // A fresh instance over the SAME storage (hibernation wake) keeps both.
-    const woken = new DoCursorLog(3);
-    woken._initialize(storage);
+    const woken = new DoCursorLog(storage, 3);
     expect(woken.current()).toEqual({ cursor: 4, epoch: first.epoch });
   });
 
   it('resolves resume verdicts: resume / rerun / snapshot (epoch, rollback, trimmed gap)', () => {
-    const log = new DoCursorLog(100);
-    log._initialize(sqlStorage());
+    const log = new DoCursorLog(sqlStorage(), 100);
     const { epoch } = log.append(['todos']); // seq 1
     log.append(['other']); // seq 2
 
@@ -116,45 +119,31 @@ describe('DoCursorLog (SQLite)', () => {
     expect(log.evaluateResume(1, 'forked', ['other'])).toBe('snapshot'); // epoch fork
     expect(log.evaluateResume(99, epoch, ['other'])).toBe('snapshot'); // rollback guard
 
-    const trimmed = new DoCursorLog(1);
-    trimmed._initialize(sqlStorage());
+    const trimmed = new DoCursorLog(sqlStorage(), 1);
     const stamp = trimmed.append(['a']);
     trimmed.append(['b']);
     trimmed.append(['c']); // only seq 3 retained
     expect(trimmed.evaluateResume(1, stamp.epoch, ['nope'])).toBe('snapshot'); // gap trimmed
   });
-
-  it('throws a descriptive error when used un-initialized (Worker isolate misuse)', () => {
-    expect(() => new DoCursorLog().current()).toThrow(/new_sqlite_classes|durableObjectLive/);
-  });
 });
-
-const unusedNamespace = {
-  idFromName(): never {
-    throw new Error('unexpected remote access');
-  },
-  get(): never {
-    throw new Error('unexpected remote access');
-  },
-};
 
 describe('durableObjectLive driver', () => {
   it('routes Worker-side dispatches to the room DO and returns its stamp', async () => {
     const calls: Array<{ id: string; cmd: InvalidationCommand }> = [];
-    const ns = {
-      idFromName: (name: string) => ({ toString: () => `id:${name}` }),
-      get: (id: { toString(): string }) => ({
+    const ns: LiveNamespace = {
+      idFromName: (name) => ({ name, toString: () => `id:${name}`, equals: () => false }),
+      get: (id) => ({
         invalidate: async (cmd: InvalidationCommand): Promise<CommitStamp> => {
           calls.push({ id: id.toString(), cmd });
           return { cursor: 7, epoch: 'do-epoch' };
         },
       }),
-    } as never;
+    };
 
-    const driver = durableObjectLive({
-      namespace: ns,
-      gatewayPath: '/rooms/:id/ws',
-      defaultRoom: 'lobby',
+    const driver = durableObjectLive({ gatewayPath: '/rooms/:id/ws', defaultRoom: 'lobby' });
+    driver._attach({
+      env: { ROOMS: ns },
+      gateways: () => [{ path: '/rooms/:id/ws', binding: 'ROOMS' }],
     });
 
     const stamp = await driver.dispatch({ tags: ['crud:todos'] });
@@ -168,7 +157,7 @@ describe('durableObjectLive driver', () => {
     expect(calls[1]?.id).toBe('id:vela:ws:v2:%2Frooms%2F%3Aid%2Fws:org%3A1');
   });
 
-  it('applies locally inside the DO (local mode) without using its remote namespace', async () => {
+  it('applies locally inside the DO (local mode) and needs the adapter anywhere else', async () => {
     const applied: InvalidationCommand[] = [];
     const sink: LiveInvalidationSink = {
       applyInvalidation: async (cmd) => {
@@ -176,14 +165,14 @@ describe('durableObjectLive driver', () => {
         return { cursor: 1, epoch: 'e' };
       },
     };
-    const driver = durableObjectLive({ namespace: unusedNamespace, gatewayPath: '/rooms/:id/ws' });
+    const driver = durableObjectLive({ binding: 'ROOMS' });
     driver.bind(sink);
     driver._setLocalMode();
     await driver.dispatch({ tags: ['t'] });
     expect(applied).toEqual([{ tags: ['t'] }]);
 
-    const cold = durableObjectLive({ namespace: unusedNamespace, gatewayPath: '/rooms/:id/ws' });
-    expect(() => cold.dispatch({ tags: ['t'] })).toThrow('unexpected remote access');
+    const detached = durableObjectLive({ binding: 'ROOMS' });
+    expect(() => detached.dispatch({ tags: ['t'] })).toThrow(/needs the Cloudflare adapter/);
   });
 });
 
@@ -208,11 +197,9 @@ describe('live queries inside the Durable Object', () => {
 
     @Module({
       imports: [
-        CloudflareWebSocketModule.forRoot(),
-        LiveModule.forRoot({
-          log: () => durableObjectCursorLog(),
-          driver: () => durableObjectLive({ namespace: unusedNamespace, gatewayPath: PATH }),
-        }),
+        // Inside the Durable Object the platform supplies local delivery and the SQLite log.
+        WebSocketModule.forRoot(),
+        LiveModule.forRoot(),
       ],
       providers: [RoomsGateway, TodoLive],
     })
@@ -334,12 +321,8 @@ describe('Durable Object lifecycle bindings', () => {
     }
     @Module({
       imports: [
-        CloudflareWebSocketModule.forRoot(),
-        LiveModule.forRoot({
-          driver: () =>
-            durableObjectLive({ namespace: unusedNamespace, gatewayPath: '/rooms/:id/ws' }),
-          log: () => durableObjectCursorLog(),
-        }),
+        WebSocketModule.forRoot(),
+        LiveModule.forRoot({ driver: () => durableObjectLive({ gatewayPath: '/rooms/:id/ws' }) }),
       ],
       providers: [Startup],
     })
