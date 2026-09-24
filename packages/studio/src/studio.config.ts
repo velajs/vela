@@ -81,6 +81,25 @@ export class StudioEnvReader {
 
 const DEFAULT_RATE_LIMIT = { windowMs: 60_000, max: 120 } as const;
 
+// The data browser's settings, which its panel now takes.
+const PANEL_OPTIONS = ['managedModels', 'runAsIdentity'] as const;
+
+/**
+ * Refuse options StudioModule no longer takes, whether an async factory
+ * returned them or JavaScript passed them: ignoring them would silently open
+ * every model to the data browser and run its writes as the master principal.
+ */
+function assertStudioModuleOptions(options: StudioModuleOptions): void {
+  for (const key of PANEL_OPTIONS) {
+    if (typeof options === 'object' && options !== null && key in options) {
+      throw new TypeError(
+        `StudioModule no longer takes ${key}: pass it to the data browser's panel, ` +
+          'crudPanel({ managedModels, runAsIdentity }) from @velajs/studio/crud.',
+      );
+    }
+  }
+}
+
 /**
  * Merge env-derived config UNDER module options into the resolved shape.
  * `applicationRoot` (the application's `ROOT_MODULE`) is documented when the
@@ -91,6 +110,7 @@ export function resolveStudioConfig(
   options: StudioModuleOptions,
   applicationRoot?: Type | DynamicModule,
 ): ResolvedStudioConfig {
+  assertStudioModuleOptions(options);
   const rootModule = options.rootModule ?? applicationRoot;
   const token = options.token ?? env.token;
   const editable: EditableFlags = {
@@ -110,13 +130,9 @@ export function resolveStudioConfig(
     ...(token !== undefined ? { token } : {}),
     ...(rootModule !== undefined ? { rootModule } : {}),
     editable,
-    ...(options.managedModels !== undefined ? { managedModels: options.managedModels } : {}),
     rateLimit: options.rateLimit === undefined ? { ...DEFAULT_RATE_LIMIT } : options.rateLimit,
     subTokenTtlSec: options.subTokenTtlSec ?? 300,
     auditBufferSize: options.auditBufferSize ?? 500,
     logBufferSize: options.logBufferSize ?? 1000,
-    // Server-only impersonation identity (no env source — never read from the
-    // environment, and never serialized).
-    ...(options.runAsIdentity !== undefined ? { runAsIdentity: options.runAsIdentity } : {}),
   };
 }

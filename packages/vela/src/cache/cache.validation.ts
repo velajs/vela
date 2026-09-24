@@ -1,8 +1,4 @@
-import type {
-  ResponseCacheEntryOptions,
-  ResponseCacheOptions,
-  ResponseCacheScope,
-} from './response-cache.types';
+import type { CacheEntryOptions, CacheScope, ResolvedCacheOptions } from './cache.types';
 
 export function validateLabel(value: unknown, name: string): asserts value is string {
   if (
@@ -20,13 +16,13 @@ export function validateTtl(ttl: number): void {
     throw new TypeError('Cache TTL must be between zero and one year in seconds.');
 }
 
-export function validateScope(scope: ResponseCacheScope): void {
+export function validateScope(scope: CacheScope): void {
   if (!scope || (scope.visibility !== 'public' && scope.visibility !== 'private'))
     throw new TypeError('An explicit public/private cache scope is required.');
   validateLabel(scope.partition, 'Cache partition');
 }
 
-export function validateEntryOptions(options: ResponseCacheEntryOptions): void {
+export function validateEntryOptions(options: CacheEntryOptions): void {
   if (options.ttl !== undefined) validateTtl(options.ttl);
   if (options.tags !== undefined) {
     if (!Array.isArray(options.tags) || options.tags.length > 32)
@@ -35,7 +31,7 @@ export function validateEntryOptions(options: ResponseCacheEntryOptions): void {
   }
 }
 
-export function validateOptions(options: ResponseCacheOptions): void {
+export function validateOptions(options: ResolvedCacheOptions): void {
   validateLabel(options.namespace, 'Cache namespace');
   validateTtl(options.ttl ?? 30);
   if (
@@ -45,7 +41,9 @@ export function validateOptions(options: ResponseCacheOptions): void {
   )
     throw new TypeError('maxBytes must be between 1 and 1048576.');
   if (typeof options.scope !== 'function')
-    throw new TypeError('Response caching requires a trusted scope resolver.');
+    throw new TypeError('Caching requires a trusted scope resolver.');
+  if (options.max !== undefined && (!Number.isSafeInteger(options.max) || options.max < 1))
+    throw new TypeError('max must be a positive integer.');
   for (const method of ['get', 'set', 'del', 'clear'] as const) {
     if (typeof options.store?.[method] !== 'function')
       throw new TypeError(`Cache store requires ${method}().`);

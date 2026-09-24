@@ -8,15 +8,24 @@ import {
   InjectionToken,
   Module,
   VelaFactory,
+  defineModule,
 } from '../index.js';
 import {
   MultipleProvidersFoundError,
   UnresolvedDependencyError,
   stableHash,
 } from '../module-kit.js';
-import { CacheModule, CACHE_MODULE_OPTIONS } from '../cache/index.js';
 import { HttpModule, HttpService, HTTP_MODULE_OPTIONS } from '../fetch/index.js';
 import type { DynamicModule, Type } from '../index.js';
+
+/** A configurable module whose options are its only provider: identity mechanics only. */
+const TTL_OPTIONS = new InjectionToken<{ ttl: number }>('TTL_OPTIONS');
+const { ConfigurableModuleClass: TtlBase } = defineModule<{ ttl: number }>({
+  name: 'Ttl',
+  optionsToken: TTL_OPTIONS,
+  setup: ({ OPTIONS }) => ({ exports: [OPTIONS] }),
+});
+class TtlModule extends TtlBase {}
 
 describe('Dynamic module identity', () => {
   // -------------------------------------------------------------------------
@@ -73,15 +82,15 @@ describe('Dynamic module identity', () => {
   // -------------------------------------------------------------------------
   // Case C — same forRoot options imported twice → dedups (same key)
   // -------------------------------------------------------------------------
-  it('C: CacheModule.forRoot({ttl:60}) imported twice → dedups (same key)', async () => {
+  it('C: TtlModule.forRoot({ttl:60}) imported twice → dedups (same key)', async () => {
     @Module({
-      imports: [CacheModule.forRoot({ ttl: 60 }), CacheModule.forRoot({ ttl: 60 })],
+      imports: [TtlModule.forRoot({ ttl: 60 }), TtlModule.forRoot({ ttl: 60 })],
     })
     class App {}
 
     const app = await VelaFactory.create(App);
-    // Same key dedups; only one CACHE_MODULE_OPTIONS registration exists.
-    const opts = app.getContainer().resolve(CACHE_MODULE_OPTIONS);
+    // Same key dedups; only one TTL_OPTIONS registration exists.
+    const opts = app.getContainer().resolve(TTL_OPTIONS);
     expect(opts).toEqual({ ttl: 60 });
   });
 
@@ -90,10 +99,10 @@ describe('Dynamic module identity', () => {
   // both → MultipleProvidersFoundError; consumer importing one → that one wins
   // -------------------------------------------------------------------------
   it('D: distinct keys register distinct instances; each consumer sees its own', async () => {
-    @Module({ imports: [CacheModule.forRoot({ ttl: 60, key: 'fast' })] })
+    @Module({ imports: [TtlModule.forRoot({ ttl: 60, key: 'fast' })] })
     class FastFeatureModule {}
 
-    @Module({ imports: [CacheModule.forRoot({ ttl: 120, key: 'slow' })] })
+    @Module({ imports: [TtlModule.forRoot({ ttl: 120, key: 'slow' })] })
     class SlowFeatureModule {}
 
     @Module({ imports: [FastFeatureModule, SlowFeatureModule] })
@@ -106,28 +115,28 @@ describe('Dynamic module identity', () => {
     // appears once (it's the same logical token), but two distinct instances
     // exist. Resolving from a sandbox picks one (legacy behavior); resolving
     // from inside a module that imports both would throw.
-    expect(tokens).toContain(CACHE_MODULE_OPTIONS);
+    expect(tokens).toContain(TTL_OPTIONS);
 
     // A controller in either feature module should see ITS own ttl.
     @Controller('/fast')
     class FastCtl {
-      constructor(@Inject(CACHE_MODULE_OPTIONS) public opts: { ttl: number }) {}
+      constructor(@Inject(TTL_OPTIONS) public opts: { ttl: number }) {}
       @Get() handle() {
         return this.opts;
       }
     }
     @Controller('/slow')
     class SlowCtl {
-      constructor(@Inject(CACHE_MODULE_OPTIONS) public opts: { ttl: number }) {}
+      constructor(@Inject(TTL_OPTIONS) public opts: { ttl: number }) {}
       @Get() handle() {
         return this.opts;
       }
     }
 
-    @Module({ imports: [CacheModule.forRoot({ ttl: 60 })], controllers: [FastCtl] })
+    @Module({ imports: [TtlModule.forRoot({ ttl: 60 })], controllers: [FastCtl] })
     class FastApp {}
 
-    @Module({ imports: [CacheModule.forRoot({ ttl: 120 })], controllers: [SlowCtl] })
+    @Module({ imports: [TtlModule.forRoot({ ttl: 120 })], controllers: [SlowCtl] })
     class SlowApp {}
 
     const fastApp = await VelaFactory.create(FastApp);
@@ -138,16 +147,16 @@ describe('Dynamic module identity', () => {
     expect(await slowRes.json()).toEqual({ ttl: 120 });
   });
 
-  it('D: importing two keyed CacheModule instances directly throws MultipleProvidersFoundError on resolve', async () => {
+  it('D: importing two keyed TtlModule instances directly throws MultipleProvidersFoundError on resolve', async () => {
     @Injectable()
     class Consumer {
-      constructor(@Inject(CACHE_MODULE_OPTIONS) public opts: unknown) {}
+      constructor(@Inject(TTL_OPTIONS) public opts: unknown) {}
     }
 
     @Module({
       imports: [
-        CacheModule.forRoot({ ttl: 60, key: 'fast' }),
-        CacheModule.forRoot({ ttl: 120, key: 'slow' }),
+        TtlModule.forRoot({ ttl: 60, key: 'fast' }),
+        TtlModule.forRoot({ ttl: 120, key: 'slow' }),
       ],
       providers: [Consumer],
     })
@@ -377,18 +386,18 @@ describe('Dynamic module identity', () => {
     }
   });
 
-  it('reports a second unkeyed CacheModule configuration instead of swallowing it', async () => {
-    @Module({ imports: [CacheModule.forRoot({ ttl: 60 })] })
+  it('reports a second unkeyed TtlModule configuration instead of swallowing it', async () => {
+    @Module({ imports: [TtlModule.forRoot({ ttl: 60 })] })
     class FastSide {}
 
-    @Module({ imports: [CacheModule.forRoot({ ttl: 120 })] })
+    @Module({ imports: [TtlModule.forRoot({ ttl: 120 })] })
     class SlowSide {}
 
     @Module({ imports: [FastSide, SlowSide] })
     class App {}
 
     await expect(VelaFactory.create(App, { diagnostics: 'throw' })).rejects.toThrow(
-      /CacheModule#\w+ was imported again with different options/,
+      /TtlModule#\w+ was imported again with different options/,
     );
   });
 

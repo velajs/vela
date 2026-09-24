@@ -97,6 +97,7 @@ export type {
   VelaBodySecurityOptions,
   VelaBodyLimitOverride,
   VelaQuerySecurityOptions,
+  CorsOptions,
 } from './http/index';
 
 // Request context

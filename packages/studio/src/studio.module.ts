@@ -13,6 +13,7 @@ import { Container, ROOT_MODULE } from '@velajs/vela/module-kit';
 import type { DynamicModule, ProviderDefinition, Type } from '@velajs/vela';
 import { resolveStudioConfig, StudioEnvReader } from './studio.config';
 import type { StudioModuleOptions } from './studio.types';
+import { collectStudioPlugins, providerToken } from './plugin';
 import { ADMIN_AUDIT_SINK, STUDIO_RESOLVED_CONFIG } from './tokens';
 import type { AdminAuditSink } from './tokens';
 import { AdminSubTokenSigner } from './security/sub-token.signer';
@@ -38,10 +39,19 @@ function resolveSink(container: Container): AdminAuditSink | undefined {
   return container.has(ADMIN_AUDIT_SINK) ? container.resolve(ADMIN_AUDIT_SINK) : undefined;
 }
 
-const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<StudioModuleOptions>({
+const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<
+  StudioModuleOptions,
+  'plugins'
+>({
   name: 'Studio',
-  setup: ({ OPTIONS }) => {
-    const providers: Array<Type | ProviderDefinition> = [
+  // Plugins decide the providers, so forRootAsync takes them next to its factory.
+  structural: ['plugins'],
+  defaults: { plugins: [] },
+  // One admin surface per application, whatever its panels: a second
+  // configuration fails bootstrap instead of mounting another surface.
+  key: () => 'application',
+  setup: ({ OPTIONS, options }) => {
+    const core: Array<Type | ProviderDefinition> = [
       // Env-derived config slice (reads VELA_STUDIO_* from the optional ENV).
       StudioEnvReader,
       // Resolved config = env UNDER module options; OpenAPI documents the
@@ -83,12 +93,12 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<StudioMod
       StudioCapabilitiesOps,
       // Data-browser READ ops. Registered unconditionally (stable wire surface);
       // each reports FEATURE_UNCONFIGURED until a STUDIO_MODEL_SOURCE is bound
-      // (the `@velajs/studio/crud` subpath's StudioCrudModule, or a BYO source).
+      // (the `@velajs/studio/crud` subpath's crudPanel(), or a BYO source).
       StudioDataOps,
       // Time-travel ops. Registered unconditionally (stable wire surface); each
       // reports TIMETRAVEL_UNAVAILABLE until a TIME_TRAVEL_PORT is bound (the
-      // opt-in `@velajs/studio/timetravel` StudioTimeTravelModule, or a CF-DO
-      // PITR module in M11).
+      // `@velajs/studio/timetravel` timeTravelPanel(), or the Durable Object
+      // PITR cloudflareTimeTravelPanel()).
       StudioTimeTravelOps,
       // Auth panel ops (M9). Registered unconditionally against STUDIO_AUTH_SOURCE
       // (the port); each reports FEATURE_UNCONFIGURED until the
@@ -100,9 +110,14 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<StudioMod
       // each reports FEATURE_UNCONFIGURED until a source is bound.
       StudioTransferOps,
     ];
+    // A panel never replaces these: providing one of their tokens fails here.
+    const plugins = collectStudioPlugins(options.plugins, [OPTIONS, ...core.map(providerToken)]);
 
     return {
-      providers,
+      imports: plugins.flatMap((plugin) => plugin.imports ?? []),
+      // Each panel's ops and ports, in this module's scope: they inject the
+      // signers, buffers and resolved config above directly.
+      providers: [...core, ...plugins.flatMap((plugin) => plugin.providers ?? [])],
       controllers: [StudioAdminController],
       exports: [
         STUDIO_RESOLVED_CONFIG,
@@ -118,5 +133,10 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<StudioMod
   },
 });
 
+/**
+ * The Studio admin surface. Panels join through one contract,
+ * `StudioModule.forRoot({ plugins: [queuesPanel(), livePanel(), ...] })`: each
+ * plugin's providers register in this module's scope. `plugins` is structural.
+ */
 export class StudioModule extends ConfigurableModuleClass {}
 export { MODULE_OPTIONS_TOKEN as STUDIO_MODULE_OPTIONS };

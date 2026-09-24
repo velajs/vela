@@ -169,13 +169,15 @@ describe('cloudflareQueues() producers', () => {
     class App {}
     const missing = await createCloudflareApp(App, { env: {} });
     await expect(missing.get(queueToken('email')).add('n', {})).rejects.toThrow(
-      /ENV\.EMAIL_QUEUE is not a Cloudflare queue producer/,
+      /Queue 'email' cannot send: ENV\.EMAIL_QUEUE is not set: declare the queue producer binding 'EMAIL_QUEUE' under queues\.producers/,
     );
     await expect(missing.get(queueToken('inbound')).add('n', {})).rejects.toThrow(
       /Queue 'inbound' has no producer binding/,
     );
     const wrong = await createCloudflareApp(App, { env: { EMAIL_QUEUE: { send: 'no' } } });
-    await expect(wrong.get(queueToken('email')).add('n', {})).rejects.toThrow(/not a Cloudflare/);
+    await expect(wrong.get(queueToken('email')).add('n', {})).rejects.toThrow(
+      /ENV\.EMAIL_QUEUE is not a binding of type queue producer/,
+    );
     await missing.close();
     await wrong.close();
   });
@@ -189,7 +191,9 @@ describe('cloudflareQueues() producers', () => {
     })
     class App {}
     const app = await VelaFactory.create(App);
-    await expect(app.get(queueToken('email')).add('n', {})).rejects.toThrow(/ENV/);
+    await expect(app.get(queueToken('email')).add('n', {})).rejects.toThrow(
+      /queue producer binding 'EMAIL_QUEUE' needs the application ENV/,
+    );
     await app.close();
   });
 });

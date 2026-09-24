@@ -1,5 +1,7 @@
 import type { VelaEnv } from '@velajs/vela';
 import type { ForwardedWebSocketUpgrade, WebSocketTransport } from '@velajs/vela/websocket';
+import { resolveBinding } from '@velajs/vela/module-kit';
+import { DURABLE_OBJECT_NAMESPACE } from '../bindings';
 import { durableObjectRoomName } from './room-id';
 
 /**
@@ -38,10 +40,9 @@ export interface GatewayRoomObject {
 
 /**
  * The Durable Object that holds one gateway room, one object per gateway and
- * room, in the namespace the gateway's `binding` names in ENV. Gateway
- * metadata contains a runtime binding name, so the native type is erased:
- * validate only the operations consumed here, never assert that an arbitrary
- * value implements a native namespace.
+ * room, in the namespace the gateway's `binding` names in ENV, resolved through
+ * the binding seam. Room objects are application classes, so validate only
+ * the stub operations called here.
  */
 export function gatewayRoomObject(
   env: VelaEnv,
@@ -54,17 +55,12 @@ export function gatewayRoomObject(
       `Gateway '${gatewayPath}' names no binding: declare @WebSocketGateway({ binding })`,
     );
   }
-  const namespace: unknown = Reflect.get(env, binding);
-  if (typeof namespace !== 'object' || namespace === null) {
-    throw new Error(`Gateway '${gatewayPath}' has no Durable Object binding '${binding}' in ENV`);
-  }
-  const id: unknown = Reflect.apply(operation(namespace, 'idFromName'), namespace, [
-    durableObjectRoomName(gatewayPath, room),
-  ]);
+  const namespace = resolveBinding(env, { binding }, DURABLE_OBJECT_NAMESPACE);
+  const id = namespace.idFromName(durableObjectRoomName(gatewayPath, room));
   return {
     id,
     async call(method, ...args) {
-      const stub: unknown = Reflect.apply(operation(namespace, 'get'), namespace, [id]);
+      const stub: unknown = namespace.get(id);
       if (typeof stub !== 'object' || stub === null) throw new Error('Invalid Durable Object stub');
       return Reflect.apply(operation(stub, method), stub, args);
     },

@@ -2,10 +2,8 @@
 // no node:crypto). Verification uses crypto.subtle.verify for timing-safety.
 // Pattern: https://developers.cloudflare.com/workers/examples/signing-requests/
 //
-// This is the canonical home for the util. `@velajs/vela/storage` re-exports it
-// (see src/storage/index.ts) so the storage subpath API is unchanged, while
-// core (the URL generator + signed-URL guard) imports it here directly — core
-// never reaches into a published subpath.
+// Public on `@velajs/vela/security`; core (the URL generator and signed-URL
+// guard) imports it here directly and never reaches into a published subpath.
 //
 // The HMAC / base64url plumbing lives in `./hmac` — a single definition shared
 // with `./invocation` so no security verify path drifts from a byte-similar copy.
@@ -24,7 +22,6 @@ export interface SignedUrlOptions {
 export type VerifySignedUrlOptions = Pick<SignedUrlOptions, 'method' | 'purpose'>;
 
 export const HTTP_SIGNED_URL_PURPOSE = 'vela:http-route';
-export const STORAGE_SIGNED_URL_PURPOSE = 'vela:storage';
 
 const SIGNATURE_RE = /^[A-Za-z0-9_-]{43}$/;
 const METHOD_RE = /^[A-Z]+$/;

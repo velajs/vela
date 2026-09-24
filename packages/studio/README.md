@@ -2,8 +2,48 @@
 
 The edge-safe [Vela Studio](https://github.com/velajs/vela/tree/main/packages/studio) admin module: mounts the
 reserved `/_vela/admin` surface, hosts `@AdminRpc` operations, and exposes the time-travel
-port. Subpath exports (`./auth`, `./flags`, `./queue`, `./live`, `./schedule`,
-`./timetravel`, `./logging`) scope the per-feature admin surfaces.
+port. Panels join through one contract, `StudioModule.forRoot({ plugins: [...] })`,
+each from its own subpath so optional peers stay optional:
+
+```ts
+import { StudioModule } from '@velajs/studio';
+import { crudPanel } from '@velajs/studio/crud';
+import { queuesPanel } from '@velajs/studio/queue';
+import { livePanel } from '@velajs/studio/live';
+import { logsPanel } from '@velajs/studio/logging';
+
+StudioModule.forRoot({
+  editable: { ops: true },
+  plugins: [
+    crudPanel({ managedModels: { include: ['todo'] } }),
+    queuesPanel(),
+    livePanel({ rooms: ['default'] }),
+    logsPanel({ timings: true }),
+  ],
+});
+```
+
+| Panel | Subpath | Lights |
+| --- | --- | --- |
+| `crudPanel({ managedModels?, runAsIdentity? })` | `./crud` | `data`, `transfer` |
+| `timeTravelPanel({ store?, changeSource?, perPage?, imports? })` | `./timetravel` | `timeTravel` (portable snapshots) |
+| `cloudflareTimeTravelPanel({ binding, shardKey? })` | `./cloudflare` | `timeTravel` (Durable Object PITR) |
+| `authPanel()` | `./auth` | `auth`, `authOrganizations` |
+| `flagsPanel()` | `./flags` | `flags` |
+| `queuesPanel()` | `./queue` | `queue` |
+| `schedulePanel()` | `./schedule` | `schedule` |
+| `livePanel({ rooms?, source? })` | `./live` | `live`, `presence` |
+| `logsPanel({ timings? })` | `./logging` | `logs` capture |
+
+Each plugin's providers register in StudioModule's own scope, so they reach its
+signers and buffers without re-importing the configured module. `plugins` is
+structural: `forRootAsync({ plugins, useFactory })` takes it next to the factory.
+Options that depend on the runtime environment take a function of the
+application's `ENV` (`livePanel({ source: (env) => … })`,
+`timeTravelPanel({ store: (env) => … })`), called once per application; the
+Cloudflare time-travel panel names its Durable Object binding and reads it from
+`ENV` when a call first needs it. `defineStudioPlugin({ name, providers, imports })`
+builds a custom panel; each name appears once.
 
 Studio stays closed until it has a master token: `StudioModule.forRoot({ token })`,
 or a `VELA_STUDIO_TOKEN` variable or secret in the application's `ENV`. The
@@ -17,14 +57,15 @@ takes effect without extra wiring. `readStudioEnv(env)` parses these values and
 The protocol exposes the usable operation catalog through `studio.capabilities`.
 Only configured Studio handlers enable their features. Queue depth/DLQ/replay
 remain unavailable until their handlers are implemented. Live and presence
-inspection are enabled by `StudioLiveModule.forRoot({ rooms: ['default'] })`,
-which reads each named room through `LiveModule`'s `LiveInspector`: on
-Cloudflare the room's Durable Object, through the gateway binding the live
-driver delivers to; elsewhere the application's own engine. There is no global
-room list, so name each room; the sockets of a gateway without `roomParam`
-join its path, so name that path for them. `forRoot({ source })` takes a custom source whose
-`inspect()` returns explicitly scoped subscription and room snapshots instead.
-With neither, the features remain disabled.
+inspection are enabled by `livePanel({ rooms: ['default'] })`, which reads each
+named room through `LiveModule`'s `LiveInspector`: on Cloudflare the room's
+Durable Object, through the gateway binding the live driver delivers to;
+elsewhere the application's own engine. There is no global room list, so name
+each room; the sockets of a gateway without `roomParam` join its path, so name
+that path for them. `livePanel({ source })` takes a custom source whose
+`inspect()` returns explicitly scoped subscription and room snapshots instead,
+or a function that builds it from the application's `ENV`. With neither, the
+features remain disabled.
 CRUD reads and single writes use the adapter's request scope. Bulk mutations require
 transaction support, exposed as `supports.bulkWrites` in model descriptors.
 
@@ -33,10 +74,15 @@ sends the API request over actual Worker HTTP. Studio does not dispatch that req
 through an in-process Hono instance. The host and browser validate the protocol at
 their boundaries, including all operation-specific RPC response fields.
 
-Portable and Cloudflare time-travel modules accept `imports` for the configured
-Studio/model-source modules that export their dependencies. An async module
-factory with parameters supplies them through `inject`; one without parameters may
-omit it.
+The portable time-travel panel uses the model source a `crudPanel()` binds in the
+same Studio; `timeTravelPanel({ imports: [SourceModule] })` reaches a model source
+another module exports. Each port is bound by one panel: `timeTravelPanel()` and
+`cloudflareTimeTravelPanel()` both bind `TIME_TRAVEL_PORT`, so `forRoot` fails
+when a Studio lists both, as it does for any token two plugins provide
+(application-wide enhancers such as `APP_INTERCEPTOR` excepted) and for a
+plugin providing a token StudioModule provides itself, such as
+`STUDIO_RESOLVED_CONFIG` or `AdminAuditLog`. An async Studio factory with parameters supplies them
+through `inject`; one without parameters may omit it.
 
 ## Diagnostic snapshots
 
@@ -50,8 +96,9 @@ descriptions are copied so inspection cannot mutate the stored descriptions.
 
 ## Structured logs and timings
 
-Import `StudioLoggingModule` from `@velajs/studio/logging` and configure it with
-`{ imports: [configuredStudio, configuredLogging], timings: true }`. Capture reads
+Add `logsPanel({ timings: true })` from `@velajs/studio/logging` to Studio's
+plugins next to `LoggingModule.forRoot()`; without the logging module the
+application fails to boot, naming it. Capture reads
 only that application's `APP_LOGGER` records after normalization and redaction;
 it unsubscribes on application shutdown. It never patches global console methods.
 Timing is optional and defaults off. Rows measure handler/inner-interceptor
@@ -70,7 +117,7 @@ See the [debugging guide](../../docs/debugging.md) for setup and debugger recipe
 The CRUD binding uses the same database selection as Vela CRUD. Named resources
 appear as `encodeURIComponent(database)::encodeURIComponent(resourceKey)`; a
 resource key defaults to the model name. Use that complete identity in row,
-transfer, snapshot and `managedModels` requests. Unique unnamed models retain
+transfer, snapshot and `crudPanel({ managedModels })` requests. Unique unnamed models retain
 their existing names. Model/table include or exclude rules still match all
 namespaces; use a qualified identity to select one. Missing named databases and
 colliding identities fail closed, without borrowing the default adapter.

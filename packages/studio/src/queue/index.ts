@@ -4,9 +4,8 @@
  *
  * This subpath is the ONLY module in the package that imports
  * `@velajs/vela/queue`: the core `.` entry never does, so apps without the queue
- * module still mount `StudioModule`. An app WITH queues imports
- * `StudioQueueModule` ALONGSIDE `StudioModule`, which registers
- * {@link StudioQueueOps} — the seam that lights the `queue` feature by
+ * module still mount `StudioModule`. An app WITH queues adds `queuesPanel()` to
+ * `StudioModule.forRoot({ plugins })`, which registers {@link StudioQueueOps} — the seam that lights the `queue` feature by
  * op-namespace registration (in UNION with the pre-existing `queue`
  * entrypoint-kind signal the M4 features service already reads).
  *
@@ -25,15 +24,14 @@
  * job name ({@link STUDIO_QUEUE_JOB_NAME}) — the frozen op carries no job name,
  * so the payload routes to the queue's wildcard `@Process()` handler.
  */
-import { Inject, Injectable, defineModule } from '@velajs/vela';
+import { Inject, Injectable } from '@velajs/vela';
 import { Container, EntrypointRegistry } from '@velajs/vela/module-kit';
 import { QUEUE_DRIVER, QueueRegistry, queueToken } from '@velajs/vela/queue';
 import type { QueueRow, StudioOpReq } from '@velajs/studio-protocol';
 import { AdminRpc } from '../rpc/admin-rpc.decorator';
 import type { AdminOpContext } from '../studio.types';
 import { studioError } from '../studio.errors';
-
-export const STUDIO_QUEUE_MODULE_ID = 'studio.queue';
+import { defineStudioPlugin, type StudioPlugin } from '../plugin';
 
 /**
  * The job name `queue.send` enqueues under. The frozen `queue.send` op carries
@@ -118,16 +116,11 @@ export class StudioQueueOps {
   }
 }
 
-/** Options for {@link StudioQueueModule}. Reserved for future queue-panel wiring. */
-export type StudioQueueModuleOptions = Record<string, never>;
-
-const { ConfigurableModuleClass } = defineModule<StudioQueueModuleOptions>({
-  name: 'StudioQueue',
-  setup: () => ({ providers: [StudioQueueOps] }),
-});
-
 /**
- * Registers {@link StudioQueueOps}. Import it with `StudioQueueModule.forRoot({})`
- * ALONGSIDE `StudioModule` (and `QueueModule.forRoot()`) in apps that use queues.
+ * The queues panel: registers {@link StudioQueueOps}, lighting the `queue`
+ * feature in apps with `QueueModule`:
+ * `StudioModule.forRoot({ plugins: [queuesPanel()] })`.
  */
-export class StudioQueueModule extends ConfigurableModuleClass {}
+export function queuesPanel(): StudioPlugin {
+  return defineStudioPlugin({ name: 'queues', providers: [StudioQueueOps] });
+}

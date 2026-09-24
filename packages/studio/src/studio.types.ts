@@ -6,6 +6,7 @@
 import type { Context } from 'hono';
 import type { DynamicModule, Token, Type } from '@velajs/vela';
 import type { InferToken } from '@velajs/vela/module-kit';
+import type { StudioPlugin } from './plugin';
 import type { StudioConfirmChallenge, StudioOp, StudioWriteGates } from '@velajs/studio-protocol';
 import type { AdminAuditEntry } from '@velajs/studio-protocol';
 
@@ -72,12 +73,11 @@ export interface StudioModuleOptions {
   /** Editable-category overrides (each defaults to its env value, else false). */
   editable?: Partial<EditableFlags>;
   /**
-   * Restrict which discovered crud models the data browser manages. `include`
-   * is an allow-list (only these surface); `exclude` is a deny-list. Each entry
-   * matches a model by its qualified identity, name OR table name. Absent ⇒ every discovered
-   * model is managed.
+   * The panels this Studio serves, such as `queuesPanel()` from
+   * `@velajs/studio/queue` or `crudPanel()` from `@velajs/studio/crud`. Each
+   * registers its providers in this module's scope. Structural.
    */
-  managedModels?: { include?: string[]; exclude?: string[] };
+  plugins?: readonly StudioPlugin[];
   /** Audit ring-buffer capacity. Default 500. */
   auditBufferSize?: number;
   /** Log ring-buffer capacity. Default 1000. */
@@ -86,12 +86,6 @@ export interface StudioModuleOptions {
   rateLimit?: { windowMs: number; max: number } | false;
   /** WS sub-token lifetime in seconds. Default 300. */
   subTokenTtlSec?: number;
-  /**
-   * Impersonation identity applied to data WRITES, honored only when the
-   * `identity` editable gate is open. Server-only; never serialized. See
-   * {@link StudioRunAsIdentity}.
-   */
-  runAsIdentity?: StudioRunAsIdentity;
 }
 
 /** Fully-resolved config (env merged under options), the shape providers inject. */
@@ -103,14 +97,10 @@ export interface ResolvedStudioConfig {
   /** The module OpenAPI generation documents (see {@link StudioModuleOptions.rootModule}). */
   rootModule?: Type | DynamicModule;
   editable: EditableFlags;
-  /** Data-browser model allow/deny filter (see {@link StudioModuleOptions.managedModels}). */
-  managedModels?: { include?: string[]; exclude?: string[] };
   rateLimit: { windowMs: number; max: number } | false;
   subTokenTtlSec: number;
   auditBufferSize: number;
   logBufferSize: number;
-  /** Impersonation identity for writes (server-only; see {@link StudioModuleOptions.runAsIdentity}). */
-  runAsIdentity?: StudioRunAsIdentity;
 }
 
 /** The authenticated admin caller. M2 authenticates the master bearer only. */

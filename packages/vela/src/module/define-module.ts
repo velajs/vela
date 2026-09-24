@@ -212,17 +212,17 @@ const ASYNC_WIRING_KEYS: ReadonlySet<string> = new Set([
  * structural options.
  *
  * ```ts
- * const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<CorsOptions>({
- *   name: 'Cors',
+ * const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<AuditOptions>({
+ *   name: 'Audit',
  *   setup: ({ OPTIONS }) => ({
  *     providers: [defineProvider(APP_MIDDLEWARE, {
- *       useFactory: (options) => buildCorsMiddleware(options),
+ *       useFactory: (options) => buildAuditMiddleware(options),
  *       inject: [OPTIONS],
  *     })],
  *     exports: [OPTIONS],
  *   }),
  * });
- * export class CorsModule extends ConfigurableModuleClass {}
+ * export class AuditModule extends ConfigurableModuleClass {}
  * ```
  *
  * `key`, `lazy` and the extras (such as `isGlobal`) are registration controls:

@@ -11,11 +11,11 @@ import {
   VelaFactory,
 } from '@velajs/vela';
 import {
+  CacheModule,
   CacheResponse,
+  CacheService,
   MemoryCacheInvalidationStore,
   MemoryCacheStore,
-  ResponseCacheModule,
-  ResponseCacheService,
 } from '@velajs/vela/cache';
 import { Endpoint, createOpenApiDocument, defineEndpoint } from '@velajs/vela/openapi';
 import { getTrustedRequestIdentity, setTrustedRequestIdentity } from '@velajs/vela/module-kit';
@@ -130,7 +130,7 @@ export async function verifyFormsAndCache() {
   class Application {}
   Module({
     imports: [
-      ResponseCacheModule.forRoot({
+      CacheModule.forRoot({
         namespace: 'packed-consumer',
         store,
         invalidation: new MemoryCacheInvalidationStore(),
@@ -204,7 +204,7 @@ export async function verifyFormsAndCache() {
     assert.equal(authorizationChecks, checks + 2, 'a cache hit must still authorize');
     assert.equal((await request()).status, 401);
     assert.deepEqual(await (await request('beta')).json(), { count: 2 });
-    const cache = app.get(ResponseCacheService);
+    const cache = app.get(CacheService);
     assert.deepEqual(await cache.scope(scopeFor('alpha')).invalidateTags(['records']), {
       ok: true,
     });

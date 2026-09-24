@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { defineEndpoint } from '@velajs/vela/openapi';
 import {
-  ResponseCacheService,
-  type ResponseCacheOptions,
+  CacheService,
+  type CacheModuleOptions,
   type CacheInvalidationResult,
 } from '@velajs/vela/cache';
 import {
@@ -42,8 +42,8 @@ endpoint.bind((input) => {
 // @ts-expect-error Handler output must agree with the endpoint's response schema.
 endpoint.bind(() => ({ count: 'wrong' }));
 
-declare const options: ResponseCacheOptions;
-const cache = new ResponseCacheService(options).scope({
+declare const options: CacheModuleOptions;
+const cache = new CacheService(options).scope({
   visibility: 'private',
   partition: 'verified-subject',
 });

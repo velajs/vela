@@ -12,12 +12,12 @@ Studio monorepo.
 
 | Piece | Module | Panel it lights |
 | --- | --- | --- |
-| Admin surface + gates | `StudioModule.forRoot({ path, token, rootModule, editable })` | the reserved `/_vela/admin` API |
-| Data browser | `StudioCrudModule` over 3 `@Crud` models (`author` → `book` (soft-delete) + `tag`) | `data.*` |
-| Portable time travel | `StudioTimeTravelModule` (in-memory snapshot store) | `timeTravel.*` (granularity `snapshot`) |
-| Feature flags | `StudioFlagsModule` + `FeatureFlagsModule` | `flags.*` |
-| Schedule | `StudioScheduleModule` + `ScheduleModule` (a `@Cron` job) | `schedule.*` |
-| Queues | `StudioQueueModule` + `QueueModule` (a `@Processor`) | `queue.*` |
+| Admin surface + gates | `StudioModule.forRoot({ path, token, rootModule, editable, plugins })` | the reserved `/_vela/admin` API |
+| Data browser | `crudPanel()` over 3 `@Crud` models (`author` → `book` (soft-delete) + `tag`) | `data.*` |
+| Portable time travel | `timeTravelPanel()` (in-memory snapshot store) | `timeTravel.*` (granularity `snapshot`) |
+| Feature flags | `flagsPanel()` + `FeatureFlagsModule` | `flags.*` |
+| Schedule | `schedulePanel()` + `ScheduleModule` (a `@Cron` job) | `schedule.*` |
+| Queues | `queuesPanel()` + `QueueModule` (a `@Processor`) | `queue.*` |
 | Route attribution | `studioRuntimeAdapter` (passed to `VelaFactory.create`) | real `Controller#handler` in `app.routes` |
 
 **Auth is intentionally not wired** (it needs better-auth + a DB): the auth panel

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { Module, VelaFactory } from '@velajs/vela';
-import { ConfirmTokenSigner, StudioModule } from '../src';
+import { ConfirmTokenSigner, StudioModule, TIME_TRAVEL_PORT } from '../src';
 import type { StudioConfirmChallenge, StudioModuleOptions } from '../src';
-import { CloudflareDoTimeTravelPort, StudioCloudflareTimeTravelModule } from '../src/cloudflare';
+import { CloudflareDoTimeTravelPort, cloudflareTimeTravelPanel } from '../src/cloudflare';
 // TYPE-ONLY: importing a VALUE from `@velajs/cloudflare` would pull its
 // `cloudflare:workers` runtime module (workerd-only), which studio's node/vitest
 // cannot load — the same edge-coupling the subpath itself avoids. The unavailable
@@ -310,7 +310,7 @@ describe('CloudflareDoTimeTravelPort — unavailable DO PITR', () => {
 });
 
 // ===========================================================================
-// Integration: the module binds TIME_TRAVEL_PORT and the CF port threads through
+// Integration: the panel binds TIME_TRAVEL_PORT and the CF port threads through
 // the SAME dispatch registry + 428 confirm gate + studio.capabilities as the
 // portable adapter.
 // ===========================================================================
@@ -324,16 +324,40 @@ async function makeCfApp(
   namespace: DoPitrNamespace,
   studio: Partial<StudioModuleOptions> = {},
 ): Promise<App> {
-  const studioModule = StudioModule.forRoot({ token: TOKEN, ...studio });
   @Module({
     imports: [
-      studioModule,
-      StudioCloudflareTimeTravelModule.forRoot({ namespace, imports: [studioModule] }),
+      StudioModule.forRoot({
+        token: TOKEN,
+        ...studio,
+        plugins: [cloudflareTimeTravelPanel({ binding: 'ROOM' })],
+      }),
     ],
   })
   class AppModule {}
-  return VelaFactory.create(AppModule);
+  // The panel names the binding; each application reads it from its own ENV.
+  return VelaFactory.create(AppModule, { env: { ROOM: namespace } });
 }
+
+describe('cloudflareTimeTravelPanel({ binding })', () => {
+  it('reads the namespace from ENV when a call first needs it, naming the binding when absent', async () => {
+    @Module({
+      imports: [
+        StudioModule.forRoot({
+          token: TOKEN,
+          plugins: [cloudflareTimeTravelPanel({ binding: 'ROOM' })],
+        }),
+      ],
+    })
+    class AppModule {}
+    const app = await VelaFactory.create(AppModule, { env: {} });
+    const port = app.get(TIME_TRAVEL_PORT);
+    expect(port.capabilities().undo).toBe(true);
+    await expect(port.getCurrentMark()).rejects.toThrow(
+      "ENV.ROOM is not set: declare the Durable Object namespace binding 'ROOM' under durable_objects.bindings",
+    );
+    await app.close();
+  });
+});
 
 function authed(body: unknown): RequestInit {
   return {
@@ -372,7 +396,7 @@ function challenge<T>(res: AdminRpcResponse<T>): StudioConfirmChallenge {
   return d;
 }
 
-describe('StudioCloudflareTimeTravelModule — capabilities through dispatch', () => {
+describe('cloudflareTimeTravelPanel — capabilities through dispatch', () => {
   it('studio.capabilities resolves the CF port’s capabilities the same way as the portable one', async () => {
     const app = await makeCfApp(new FakePitrNamespace(new FakePitrStub()));
     const caps = ok(await rpc(app, 'studio.capabilities'));
@@ -389,7 +413,7 @@ describe('StudioCloudflareTimeTravelModule — capabilities through dispatch', (
   });
 });
 
-describe('StudioCloudflareTimeTravelModule — preview → armRestore through the 428 gate', () => {
+describe('cloudflareTimeTravelPanel — preview → armRestore through the 428 gate', () => {
   it('the preview token clears the registry’s single-use gate and drives pitrArmRestore', async () => {
     const stub = new FakePitrStub({ undo: 'bm-undo-live' });
     const app = await makeCfApp(new FakePitrNamespace(stub), { editable: { timeTravel: true } });
@@ -432,7 +456,7 @@ describe('StudioCloudflareTimeTravelModule — preview → armRestore through th
 // port silently broke `undo` after the token was already single-use consumed.
 // ===========================================================================
 
-describe('StudioCloudflareTimeTravelModule — destructive ops through the 428 challenge', () => {
+describe('cloudflareTimeTravelPanel — destructive ops through the 428 challenge', () => {
   it('timeTravel.armRestore: no token → 428 → echo token → arms the DO restore', async () => {
     const stub = new FakePitrStub({ undo: 'bm-undo-arm' });
     const app = await makeCfApp(new FakePitrNamespace(stub), { editable: { timeTravel: true } });

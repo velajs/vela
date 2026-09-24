@@ -1,25 +1,20 @@
-# Response caching and scoped invalidation
+# Caching and scoped invalidation
 
-`ResponseCacheModule` is the asynchronous response-caching path. It accepts the
-existing `CacheStore` or `AsyncCacheStore`, including `MemoryCacheStore`,
-`TieredCacheStore` and `KVCacheStore`. One configured value store serves both
-`@CacheResponse()` routes and injected `ResponseCacheService` instances.
-
-`CacheModule`, `CacheInterceptor`, `@Cacheable()` and `CacheService` remain the
-synchronous 1.x API. Keep asynchronous stores out of `CACHE_MANAGER`. Migrate a
-route by replacing its legacy cache decorators/interceptor with `@CacheResponse`;
-do not put both cache decorators on the same route. Existing manual synchronous
-caches can remain in their own `CacheModule`.
+`CacheModule` from `@velajs/vela/cache` is the one cache module, asynchronous
+end to end. Its `store` is any `CacheStore`, synchronous or asynchronous:
+`MemoryCacheStore` (the default, one per application), `TieredCacheStore`, or
+`kvCache({ binding })` from `@velajs/cloudflare` on Workers. One configured
+store serves both `@CacheResponse()` routes and the injected `CacheService`.
+`namespace` and a trusted `scope` resolver are required.
 
 ## Configure an explicit scope
 
 ```ts
 import { Controller, Get, Module } from '@velajs/vela';
 import {
+  CacheModule,
   CacheResponse,
-  MemoryCacheStore,
   MemoryCacheInvalidationStore,
-  ResponseCacheModule,
 } from '@velajs/vela/cache';
 
 @Controller('/catalog')
@@ -30,10 +25,10 @@ class CatalogController {
 }
 
 @Module({
-  imports: [ResponseCacheModule.forRoot({
+  imports: [CacheModule.forRoot({
     namespace: 'catalog-v1',
-    store: new MemoryCacheStore(),
-    invalidation: new MemoryCacheInvalidationStore(),
+    // A function builds one generation store per application.
+    invalidation: () => new MemoryCacheInvalidationStore(),
     scope: () => ({ visibility: 'public', partition: 'catalog' }),
   })],
   controllers: [CatalogController],
@@ -41,7 +36,11 @@ class CatalogController {
 class AppModule {}
 ```
 
-Configure one response-cache module per application. The module registers its interceptor automatically, but only decorated GET
+Configure one `CacheModule` per application, with `forRoot` or `forRootAsync`.
+Without `store`, each application gets its own `MemoryCacheStore` of `max`
+entries (default 1000). A store or invalidation object in static options is
+shared by every application built from the module; pass a function to build one
+per application instead. The module registers its interceptor automatically, but only decorated GET
 routes participate. Guards run on **every request**, including hits. The scope
 resolver receives `ExecutionContext` after authorization. For authenticated
 routes, return `{ visibility: 'private', partition: JSON.stringify([tenantId,
@@ -66,8 +65,7 @@ Change `namespace` when deploying an incompatible response schema or cache polic
 strings of at most 2048 UTF-8 bytes; at most 32 tags are allowed per entry. Invalid
 module options fail when its service is constructed. Invalid decorator options
 fail when declared. Tags require an invalidation store; a tagged route without
-one fails at application bootstrap, as do mixed cache decorators and multiple
-response-cache module instances.
+one fails at application bootstrap, as do multiple `CacheModule` instances.
 
 ## Custom services and post-commit invalidation
 
@@ -83,7 +81,7 @@ if (!invalidation.ok) recordInvalidationFailure(invalidation.reason);
 return result;
 ```
 
-Here `cache` is an injected `ResponseCacheService`. `get` returns unknown;
+Here `cache` is an injected `CacheService`. `get` returns unknown;
 `getParsed` validates through the supplied parser (parser errors propagate).
 `remember(key, asyncLoader, options)` reads through the same store. Its result is
 unknown because stored values require validation; validate it before domain use.
@@ -123,10 +121,14 @@ secret. Use `shouldCache(value)` for an additional domain allowlist, or omit
 
 Store or generation-read failure means a miss; a read failure bypasses filling
 for that request. Cache write failure returns the original handler result. Loader
-errors propagate. An optional `onError(operation, error)` callback can report
-failures; exceptions from this callback are ignored. No cache key, partition or
-payload is added to that callback. Store error objects may contain vendor details,
-so redact them before external logging.
+errors propagate. Each absorbed failure goes to the application's error reporter
+with edge `'cache'` and the operation (`read`, `write`, `invalidate` or `scope`)
+as its source, so an unreachable store or a missing KV binding is logged, or
+reaches an `ExceptionHandler`, instead of silently disabling the cache. An
+optional `onError(operation, error)` callback then receives it too; exceptions
+from this callback are ignored. No cache key, partition or payload is added to
+either. Store error objects may contain vendor details, so redact them before
+external logging.
 
 ## Expiry, concurrency, and distributed stores
 
@@ -155,27 +157,39 @@ attempt every tier and reject on failure. Mutations and backfills through a sing
 tiered instance are ordered; bypassing it with direct tier writes is outside that
 fence. No tier can extend the response envelope's logical deadline.
 
-For Workers, configure stores inside an environment-injected `forRootAsync`
-factory. `ENV` from `@velajs/vela` is the Worker's native environment, typed by
-`wrangler types`:
+On Workers, name the KV namespaces instead of holding them. `kvCache` and
+`kvCacheInvalidation` from `@velajs/cloudflare` read each application's `ENV`
+when an operation needs the namespace, so one static registration serves every
+environment. A binding missing from `ENV` fails that operation with an error
+naming the binding and `kv_namespaces`, which the cache reports as above:
 
 ```ts
-ResponseCacheModule.forRootAsync({
-  inject: [ENV],
-  useFactory: (env) => ({
-    namespace: 'catalog-v1',
-    store: new TieredCacheStore([
-      new MemoryCacheStore(), new KVCacheStore(env.CACHE_VALUES),
-    ]),
-    invalidation: new KVCacheInvalidationStore(env.CACHE_GENERATIONS),
-    scope: trustedCacheScope,
-    ttl: 30,
-  }),
+import { CacheModule } from '@velajs/vela/cache';
+import { kvCache, kvCacheInvalidation } from '@velajs/cloudflare';
+
+CacheModule.forRoot({
+  namespace: 'catalog-v1',
+  store: kvCache({ binding: 'CACHE_VALUES' }),
+  invalidation: kvCacheInvalidation({ binding: 'CACHE_GENERATIONS' }),
+  scope: trustedCacheScope,
+  ttl: 30,
 });
 ```
 
-`KVCacheStore` and `KVCacheInvalidationStore` come from `@velajs/cloudflare`.
-The value adapter records logical expiry in metadata, so KV's minimum 60-second
+`store` and `invalidation` also take a function of `ENV`, which builds them per
+application; use it to compose tiers:
+
+```ts
+CacheModule.forRoot({
+  namespace: 'catalog-v1',
+  store: (env) => new TieredCacheStore([new MemoryCacheStore(), new KVCacheStore(env.CACHE_VALUES)]),
+  invalidation: kvCacheInvalidation({ binding: 'CACHE_GENERATIONS' }),
+  scope: trustedCacheScope,
+});
+```
+
+`KVCacheStore`, `KVCacheInvalidationStore`, `kvCache` and `kvCacheInvalidation`
+come from `@velajs/cloudflare`. The value adapter records logical expiry in metadata, so KV's minimum 60-second
 physical retention does not extend a shorter cache TTL. Legacy KV values without
 expiry metadata stay readable but are not promoted. Use a **separate dedicated
 namespace** for generations, without expiration or lifecycle deletion. Never

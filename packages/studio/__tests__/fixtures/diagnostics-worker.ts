@@ -6,15 +6,17 @@ import {
   buildEntrypointExecutionContext,
 } from '@velajs/vela/module-kit';
 import { AdminLogBuffer, StudioModule } from '../../src';
-import { StudioLoggingModule, StudioTimingInterceptor } from '../../src/logging';
+import { StudioTimingInterceptor, logsPanel } from '../../src/logging';
 
 function createApp() {
-  const studio = StudioModule.forRoot({ token: 'worker-token', logBufferSize: 4 });
+  const studio = StudioModule.forRoot({
+    token: 'worker-token',
+    logBufferSize: 4,
+    plugins: [logsPanel()],
+  });
   const logging = LoggingModule.forRoot({ sinks: [] });
   class App {}
-  Module({
-    imports: [studio, logging, StudioLoggingModule.forRoot({ imports: [studio, logging] })],
-  })(App);
+  Module({ imports: [studio, logging] })(App);
   return VelaFactory.create(App);
 }
 const apps = Promise.all([createApp(), createApp()]);

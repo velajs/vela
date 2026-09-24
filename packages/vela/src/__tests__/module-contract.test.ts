@@ -17,7 +17,6 @@ import {
   type Token,
   type Type,
 } from '../index';
-import { CACHE_MANAGER, CacheModule } from '../cache';
 import { EventEmitter, EventEmitterModule } from '../event-emitter';
 import { HealthCheckService, HealthModule } from '../health';
 import { LoggingModule } from '../logging';
@@ -598,11 +597,6 @@ describe('module contract: keys and repeats share one normalization', () => {
 
   it('keeps one instance of each first-party module when a call spells out a default', async () => {
     const cases: Array<[root: DynamicModule, spelled: DynamicModule, token: Token]> = [
-      [
-        CacheModule.forRoot({ ttl: 60 }),
-        CacheModule.forRoot({ ttl: 60, globalInterceptor: false }),
-        CACHE_MANAGER,
-      ],
       [ErrorsModule.forRoot(), ErrorsModule.forRoot({ catalogs: [] }), ERROR_CATALOG],
       [SeederModule.forRoot(), SeederModule.forRoot({ seeders: [] }), SeederRegistry],
       [

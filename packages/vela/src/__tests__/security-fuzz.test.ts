@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import { verifyInvocation } from '../crypto/invocation';
-import { joinStoragePath } from '../storage/index.js';
 import { signUrl, verifySignedUrl } from '../security/index.js';
 import { verifyAndConsumeWebSocketTicket } from '../websocket/socket-ticket';
 
@@ -15,10 +14,6 @@ function seeded(seed: number): () => number {
   };
 }
 
-function pick<T>(next: () => number, values: readonly T[]): T {
-  return values[next() % values.length]!;
-}
-
 function randomText(next: () => number, alphabet: string, maxLength: number): string {
   const length = next() % (maxLength + 1);
   let value = '';
@@ -28,54 +23,7 @@ function randomText(next: () => number, alphabet: string, maxLength: number): st
   return value;
 }
 
-function decodeTwice(value: string): string {
-  let decoded = value;
-  for (let index = 0; index < 2; index += 1) {
-    try {
-      decoded = decodeURIComponent(decoded);
-    } catch {
-      break;
-    }
-  }
-  return decoded;
-}
-
-describe('security property sweep — URL and path boundaries', () => {
-  it('keeps randomized traversal-shaped keys beneath the configured root', () => {
-    const next = seeded(0x51a7_2026);
-    const segments = [
-      '.',
-      '..',
-      '%2e',
-      '%2E%2e',
-      '.%2e',
-      '%252e%252e',
-      'asset',
-      'tenant-42',
-      'photo.png',
-      'a%2fb',
-      '...',
-    ] as const;
-    const separators = ['/', '//', '\\', '\\\\', '/\\'] as const;
-    const root = 'tenants/tenant-42/uploads';
-
-    for (let sample = 0; sample < 500; sample += 1) {
-      const count = 1 + (next() % 20);
-      let relative = next() % 2 === 0 ? pick(next, separators) : '';
-      for (let index = 0; index < count; index += 1) {
-        if (index > 0) relative += pick(next, separators);
-        relative += pick(next, segments);
-      }
-
-      const key = joinStoragePath(root, relative, new Date('2026-07-18T00:00:00Z'));
-      expect(key === root || key.startsWith(`${root}/`)).toBe(true);
-      expect(key.startsWith('/')).toBe(false);
-      for (const segment of key.split('/')) {
-        expect(['.', '..']).not.toContain(decodeTwice(segment));
-      }
-    }
-  });
-
+describe('security property sweep — URL boundaries', () => {
   it('binds randomized signed URLs to their canonical path and query', async () => {
     const next = seeded(0x51a7_5eed);
     const scope = { method: 'GET', purpose: 'fuzz:download' } as const;

@@ -210,7 +210,11 @@ describe('Cloudflare WebSocket platform wiring', () => {
       const gateways = app.get(Gateways);
       // The namespace is read from ENV when a push needs it.
       await expect(gateways.of(RoomsGateway).to('general').emit('hello', 1)).rejects.toThrow(
-        /binding 'ROOMS'/,
+        "ENV.ROOMS is not set: declare the Durable Object namespace binding 'ROOMS' under durable_objects.bindings",
+      );
+      env.ROOMS = { idFromName: (name: string) => name };
+      await expect(gateways.of(RoomsGateway).to('general').emit('hello', 1)).rejects.toThrow(
+        'ENV.ROOMS is not a binding of type Durable Object namespace',
       );
       env.ROOMS = roomNamespace(calls);
       await gateways.of(RoomsGateway).to('general').to('random').emit('hello', 1);
@@ -414,7 +418,7 @@ describe('Cloudflare live platform wiring', () => {
     try {
       expect(app.get(LIVE_DRIVER).kind).toBe('durable-object');
       await expect(app.get(LiveInvalidation).invalidate({ tags: ['todos'] })).rejects.toThrow(
-        /binding 'ROOMS'/,
+        /ENV\.ROOMS is not set: declare the Durable Object namespace binding 'ROOMS' under durable_objects\.bindings/,
       );
 
       // The namespace is read when an invalidation needs it, not at bootstrap.

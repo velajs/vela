@@ -23,7 +23,7 @@ import { AdminLogBuffer, AdminRpc, StudioModule } from '../src';
 import { StudioDispatchRegistry } from '../src/rpc/dispatch.registry';
 import { ConfirmTokenSigner } from '../src/security/confirm-token';
 import { AdminAuditLog } from '../src/audit/audit-log';
-import { StudioLogCapture, StudioLoggingModule, StudioTimingInterceptor } from '../src/logging';
+import { StudioLogCapture, StudioTimingInterceptor, logsPanel } from '../src/logging';
 
 const rpcOptions: RequestInit = {
   method: 'POST',
@@ -32,7 +32,11 @@ const rpcOptions: RequestInit = {
 };
 
 async function appWithLogging(timings = false) {
-  const studio = StudioModule.forRoot({ token: 'test-token', logBufferSize: 3 });
+  const studio = StudioModule.forRoot({
+    token: 'test-token',
+    logBufferSize: 3,
+    plugins: [logsPanel({ timings })],
+  });
   const logging = LoggingModule.forRoot({ sinks: [] });
   @Controller('/hello')
   class Hello {
@@ -41,11 +45,7 @@ async function appWithLogging(timings = false) {
     }
   }
   @Module({
-    imports: [
-      studio,
-      logging,
-      StudioLoggingModule.forRoot({ imports: [studio, logging], timings }),
-    ],
+    imports: [studio, logging],
     controllers: [Hello],
   })
   class App {}
@@ -269,5 +269,15 @@ describe('Studio exception boundary', () => {
     expect(report).toHaveBeenCalledOnce();
     expect(buffer.size).toBe(1);
     capture.onModuleDestroy();
+  });
+});
+
+describe('logsPanel()', () => {
+  it('names LoggingModule when the application has no logger', async () => {
+    @Module({ imports: [StudioModule.forRoot({ token: 'test-token', plugins: [logsPanel()] })] })
+    class App {}
+    await expect(VelaFactory.create(App)).rejects.toThrow(
+      'logsPanel() captures the application logger: import LoggingModule.forRoot()',
+    );
   });
 });

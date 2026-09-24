@@ -35,10 +35,9 @@ import type {
   SearchQuery,
 } from '@velajs/crud/adapter';
 import { StudioModule } from '../src';
-import type { StudioModuleOptions } from '../src';
-import { CrudStudioModelSource, StudioCrudModule } from '../src/crud';
-import { STUDIO_RESOLVED_CONFIG } from '../src/tokens';
-import { resolveStudioConfig } from '../src/studio.config';
+import { STUDIO_DATA_OPTIONS } from '../src';
+import type { StudioDataOptions, StudioModuleOptions } from '../src';
+import { CrudStudioModelSource, crudPanel } from '../src/crud';
 import { STUDIO_MODEL_SOURCE } from '../src/data/model-source.port';
 import type {
   AdminRpcResponse,
@@ -360,7 +359,14 @@ function memoryAdapter(model: Model, db: MemoryDb, caps: AdapterCapability[]): C
 type App = Awaited<ReturnType<typeof VelaFactory.create>>;
 
 /** Build an app with two @Crud resources + Studio + the crud source binding. */
-async function makeCrudApp(studio: Partial<StudioModuleOptions> = {}): Promise<App> {
+async function makeCrudApp(
+  options: Partial<StudioModuleOptions> & StudioDataOptions = {},
+): Promise<App> {
+  const { managedModels, runAsIdentity, ...studio } = options;
+  const crud = crudPanel({
+    ...(managedModels === undefined ? {} : { managedModels }),
+    ...(runAsIdentity === undefined ? {} : { runAsIdentity }),
+  });
   const db = new MemoryDb();
   db.seed('users', [
     { id: 'u1', email: 'ann@x.io', role: 'admin', createdAt: 1 },
@@ -423,7 +429,7 @@ async function makeCrudApp(studio: Partial<StudioModuleOptions> = {}): Promise<A
   );
 
   @Module({
-    imports: [StudioModule.forRoot({ token: TOKEN, ...studio }), StudioCrudModule.forRoot({})],
+    imports: [StudioModule.forRoot({ token: TOKEN, ...studio, plugins: [crud] })],
     controllers: [UsersController, PostsController],
   })
   class AppModule {}
@@ -493,7 +499,7 @@ async function makeCascadeApp(): Promise<App> {
   );
 
   @Module({
-    imports: [StudioModule.forRoot({ token: TOKEN }), StudioCrudModule.forRoot({})],
+    imports: [StudioModule.forRoot({ token: TOKEN, plugins: [crudPanel()] })],
     controllers: [OrgsController, SeatsController],
   })
   class AppModule {}
@@ -870,8 +876,8 @@ describe('database-qualified Studio resources', () => {
       }
     if (options.exclude) {
       container.register(
-        defineProvider(STUDIO_RESOLVED_CONFIG, {
-          useValue: resolveStudioConfig({}, { managedModels: { exclude: options.exclude } }),
+        defineProvider(STUDIO_DATA_OPTIONS, {
+          useValue: { managedModels: { exclude: options.exclude } },
         }),
       );
     }

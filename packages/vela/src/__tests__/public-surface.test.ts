@@ -125,12 +125,12 @@ const MODULE_KIT = [
 ];
 
 const FEATURES: Record<string, string[]> = {
-  './cache': ['CacheModule', 'ResponseCacheModule', 'CacheResponse', 'Cacheable'],
+  './cache': ['CacheModule', 'CacheService', 'CacheResponse', 'MemoryCacheStore'],
   './throttler': ['ThrottlerModule', 'ThrottlerGuard', 'Throttle', 'SkipThrottle'],
   './schedule': ['ScheduleModule', 'ScheduleRegistry', 'Cron', 'Interval', 'parseCron'],
   './events': ['EventEmitterModule', 'EventEmitter', 'OnEvent', 'defineEvent', 'EventDispatcher'],
   './health': ['HealthModule', 'HealthCheckService', 'HealthIndicatorService'],
-  './security': ['SecurityModule', 'Secret', 'CorsModule', 'signUrl', 'NONCE_STORE'],
+  './security': ['SecurityModule', 'Secret', 'signUrl', 'NONCE_STORE'],
   './logging': ['LoggingModule', 'ApplicationLogger', 'APP_LOGGER', 'loggerForScope'],
   './openapi': ['createOpenApiDocument', 'Endpoint', 'defineEndpoint', 'ApiDoc', 'ApiResponse'],
   './dispatch': ['InternalDispatcher', 'SignedInvocation', 'INVOCATION_SIGNING_SECRET'],
@@ -235,12 +235,7 @@ describe('public surface tiers', () => {
   });
 
   it('installs the Reflect polyfill from every entry that ships decorated classes', () => {
-    const withoutDecorators = new Set([
-      './observability',
-      './storage',
-      './streaming',
-      './websocket-node',
-    ]);
+    const withoutDecorators = new Set(['./observability', './streaming', './websocket-node']);
     const missing = Object.entries(manifest.exports)
       .filter(([subpath]) => !withoutDecorators.has(subpath))
       .filter(

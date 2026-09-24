@@ -1,4 +1,4 @@
-import type { CacheInvalidationStore } from './response-cache.types';
+import type { CacheInvalidationStore } from './cache.types';
 
 /** Bounded, process-local generations. Eviction generates a new version, never resurrecting an entry. */
 export class MemoryCacheInvalidationStore implements CacheInvalidationStore {

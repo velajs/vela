@@ -9,10 +9,25 @@ export const THROTTLER_STORAGE = /* @__PURE__ */ new InjectionToken<ThrottlerSto
   'THROTTLER_STORAGE',
 );
 
-/** The throttling decision for the current request: `requestContext.get(RATE_LIMIT)`. */
-export const RATE_LIMIT = /* @__PURE__ */ new RequestContextKey<RateLimitInfo>(
-  'vela.throttler.rate-limit',
-);
+/**
+ * The current request's throttling decisions, one per throttler name:
+ * `requestContext.get(RATE_LIMIT)?.default`.
+ */
+export const RATE_LIMIT = /* @__PURE__ */ new RequestContextKey<
+  Readonly<Record<string, RateLimitInfo>>
+>('vela.throttler.rate-limit');
 
+/** The `@Throttle()` record of a route or controller. */
 export const THROTTLE_METADATA = 'vela:throttle';
+/** The `@SkipThrottle()` record of a route or controller. */
 export const SKIP_THROTTLE_METADATA = 'vela:skip-throttle';
+
+/**
+ * One field of one named throttler's override, as Nest v5 keys them: a route's
+ * `limit` overrides its controller's `limit`, and its `ttl` the controller's `ttl`.
+ */
+export const throttleMetadataKey = (name: string, field: 'limit' | 'ttl'): string =>
+  `${THROTTLE_METADATA}:${name}:${field}`;
+/** Whether one named throttler is skipped; a route's value overrides its controller's. */
+export const skipThrottleMetadataKey = (name: string): string =>
+  `${SKIP_THROTTLE_METADATA}:${name}`;
