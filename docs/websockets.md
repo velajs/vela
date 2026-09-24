@@ -124,7 +124,7 @@ ready-made authenticators. See [connection security](#connection-security) below
 
 `@WebSocketGateway(options)`:
 - `path` — the route the upgrade is served on (supports params, e.g. `:id`).
-- `binding` — **Cloudflare only**: the `wrangler.toml` Durable Object binding name that hosts this gateway's sockets. Ignored on node/bun/deno.
+- `binding` — **Cloudflare only**: the `wrangler.toml` Durable Object binding name that hosts this gateway's sockets. The Worker serves an upgrade route only for gateways that name one. Ignored on node/bun/deno.
 - `roomParam` — the path parameter used as the room id. It is required for every parameterized path; bootstrap rejects missing or non-existent parameter names.
 - `allowedOrigins` — browser Origin allowlist: an array of origins, or `(env) => origins`, which reads the application's `ENV` once per application (for example `(env) => [env.APP_ORIGIN]`). Omitted means same-origin; clients without an Origin header are allowed. Use `'*'` only as an explicit opt-out.
 - `authorizeUpgrade(request)` — optional lightweight authentication/authorization hook that runs before socket allocation. It must return exactly `true`; errors fail closed.
@@ -307,20 +307,24 @@ The gateway + module is identical; only the transport wiring differs.
 ```ts
 // app.module.ts
 import { Module } from '@velajs/vela';
-import { CloudflareWebSocketModule } from '@velajs/cloudflare';
+import { WebSocketModule } from '@velajs/vela/websocket';
 import { ChatGateway } from './chat.gateway.js';
 
 @Module({
-  imports: [CloudflareWebSocketModule.forRoot()],
+  imports: [WebSocketModule.forRoot()],
   providers: [ChatGateway],
 })
 export class AppModule {}
 ```
 
-Import `CloudflareWebSocketModule` rather than the core `WebSocketModule`: its
-`WS_SERVER` is bound to each Durable Object's sockets. The Durable Object refuses to
-start when the module it bootstraps registers the core `WebSocketModule` server,
-whose broadcasts could never reach hibernatable sockets.
+The module is the same one node, Bun and Deno use. The Cloudflare adapter,
+which `createCloudflareWorker` and `VelaWebSocketDurableObject` register,
+supplies the platform through the global `WS_TRANSPORT` token: in the Worker,
+`WebSocketModule` mounts an upgrade route for every gateway that names a
+`binding` and forwards each authenticated upgrade to that room's Durable
+Object; inside the Durable Object, the server gateways inject broadcasts to the
+object's hibernatable sockets. A gateway's server has no sockets in the Worker
+isolate, so pushes from there fail with guidance; use `broadcastToRoom` below.
 
 ```ts
 // Worker entry (src/index.ts)
@@ -354,7 +358,7 @@ tag = "v1"
 new_sqlite_classes = ["ChatRoom"]
 ```
 
-How it works: the Worker's Hono app validates the `Upgrade` header and forwards the request to the gateway + room Durable Object (a canonical namespace derived from the declared gateway path and room id). The DO owns the raw socket via `WebSocketPair` + `ctx.acceptWebSocket(server, tags)` (hibernatable) and dispatches `webSocketMessage`/`webSocketClose`/`webSocketError` into the gateway. **One Durable Object per gateway room = native horizontal scale without cross-gateway room collisions.** Hono's `upgradeWebSocket` cannot bridge DO hibernation, which is why the DO uses the raw runtime API.
+How it works: the Worker's upgrade route validates the `Upgrade` header, removes client copies of the internal `x-vela-*` forwarding headers, resolves the room, runs the gateway's origin, authorization and authenticator checks, and forwards the request with the verified identity to the gateway + room Durable Object (a canonical namespace derived from the declared gateway path and room id). An identity that request middleware published with `setTrustedRequestIdentity` must match the authenticator's; the earlier expiry wins. The DO owns the raw socket via `WebSocketPair` + `ctx.acceptWebSocket(server, tags)` (hibernatable) and dispatches `webSocketMessage`/`webSocketClose`/`webSocketError` into the gateway. **One Durable Object per gateway room = native horizontal scale without cross-gateway room collisions.** Hono's `upgradeWebSocket` cannot bridge DO hibernation, which is why the DO uses the raw runtime API.
 
 Server-initiated push from an HTTP controller / cron / queue:
 
@@ -408,6 +412,18 @@ Deno.serve(app.fetch);
 ```
 
 On node/bun/deno each connection auto-joins the room from the configured or derived route parameter (or the static route path), mirroring the Cloudflare DO-per-room model.
+
+### Other platforms
+
+A runtime adapter wires its platform by registering the global `WS_TRANSPORT`
+token (a `WebSocketTransport`) in `configureContainer`, before modules load.
+`createServer(driver)` builds the server gateways inject. A platform whose
+sockets live in another isolate also implements `forwardUpgrade(upgrade)`:
+`WebSocketModule` then mounts each binding-backed gateway's upgrade route,
+authenticates the upgrade there and passes the request, gateway path, room,
+binding and verified identity to it. `forwardingHeaders` names the headers the
+transport sets; the route removes client copies before any application hook
+runs. The adapter never replaces the module's providers.
 
 ---
 

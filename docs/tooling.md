@@ -133,6 +133,37 @@ OpenAPI documents and typed HTTP clients are generated from application contract
 independently of the website. Framework builds, decorator compilation, and API
 snapshot checks remain part of this workspace's validation.
 
+## OpenAPI
+
+An application serves its OpenAPI 3.1 document by importing `OpenApiModule` from
+`@velajs/vela/openapi`:
+
+```ts
+@Module({
+  imports: [
+    OpenApiModule.forRoot({ path: '/openapi.json', info: { title: 'API', version: '1.0.0' } }),
+  ],
+  controllers: [UsersController],
+})
+export class AppModule {}
+```
+
+The document covers the application root (`ROOT_MODULE`), including routes that
+route contributors such as `@Crud()` document, under the application's global
+prefix. It is built on the first request and kept for that application, so each
+Workers environment documents its own application. The document route is served
+at `path` exactly as given, outside the global prefix, runs no guards, and is
+left out of the document itself. `forRoot` also accepts `tags`, `servers`,
+`securitySchemes` and `security`; `forRootAsync` reads them through DI. Mark a
+controller or handler with `@ApiExclude()` to leave it out of the document and
+the generated client while still serving it.
+
+`vela openapi dump` writes the same document from `vela.config.ts`, and
+`vela client generate` turns it into a typed `hc` contract; see
+[the HTTP client guide](client/HTTP.md). `createOpenApiDocument(root, options)`
+remains available for custom serving, and `app.mountOpenApi()` serves a built
+document with the Scalar, Swagger UI or ReDoc pages.
+
 ## Release artifacts
 
 Release scripts write tested archives, their integrity manifest, and consumer
