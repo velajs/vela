@@ -1,4 +1,5 @@
-import { Injectable, Module, VelaFactory } from '@velajs/vela';
+import { Writable } from 'node:stream';
+import { Injectable, Logger, Module, VelaFactory } from '@velajs/vela';
 import { describe, expect, it, vi } from 'vitest';
 import type { LoadedVelaConfig, VelaConfig } from './config.js';
 import { withApp } from './with-app.js';
@@ -121,6 +122,59 @@ describe('command application ownership', () => {
       ),
     ).toBe(3);
     expect(events).toEqual(['work', 'app', 'runner']);
+  });
+
+  it("writes the application's console output to the log stream, keeping stdout for results", async () => {
+    @Injectable()
+    class Warmup {
+      onModuleInit() {
+        new Logger('Warmup').log('warming up');
+      }
+      onApplicationShutdown() {
+        console.log('shutting down');
+      }
+    }
+    @Module({ providers: [Warmup] })
+    class Root {}
+    let logged = '';
+    const logs = new Writable({
+      write(chunk, _encoding, callback) {
+        logged += String(chunk);
+        callback();
+      },
+    });
+    const original = { log: console.log, info: console.info, error: console.error };
+    const result = await withApp(
+      loadedConfig({ createApp: () => VelaFactory.create(Root) }),
+      () => {
+        console.info('working');
+        console.error('careful');
+        return 'done';
+      },
+      vi.fn(),
+      logs,
+    );
+    expect(result).toBe('done');
+    expect(logged).toMatch(/LOG \[Warmup\] warming up\n[^]*working\ncareful\n[^]*shutting down\n/);
+    expect({ log: console.log, info: console.info, error: console.error }).toEqual(original);
+  });
+
+  it('restores the console when the application fails to build', async () => {
+    const log = console.log;
+    const failure = new Error('bootstrap failed');
+    await expect(
+      withApp(
+        loadedConfig({
+          createApp() {
+            throw failure;
+          },
+        }),
+        vi.fn(),
+        vi.fn(),
+        new Writable({ write: (_chunk, _encoding, callback) => callback() }),
+      ),
+    ).rejects.toBe(failure);
+    expect(console.log).toBe(log);
   });
 
   it('reports a failing runner close without replacing the result', async () => {

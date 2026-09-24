@@ -1,4 +1,5 @@
 import { open } from 'node:fs/promises';
+import type { DynamicModule, Type } from '@velajs/vela';
 
 /** Configuration and snapshot inputs are small; a larger file is not one of them. */
 export const MAX_INPUT_BYTES = 1024 * 1024;
@@ -29,4 +30,20 @@ export function hasErrorCode(error: unknown, code: string): boolean {
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+export function isConstructor(value: unknown): value is Type {
+  if (typeof value !== 'function') return false;
+  try {
+    // Validate constructability without invoking the application's constructor.
+    Reflect.construct(Object, [], value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** A root module: a module class, or a `DynamicModule` of one. */
+export function isModuleRoot(value: unknown): value is Type | DynamicModule {
+  return isConstructor(value) || (isRecord(value) && isConstructor(value.module));
 }

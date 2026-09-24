@@ -128,9 +128,12 @@ export class DeployCheckCommand extends Command {
           environment: this.environment,
           wrangler: configPath,
         });
-        const rows = await withApp(loaded, collectEntrypoints, (message) => {
-          this.context.stderr.write(`${message}\n`);
-        });
+        const rows = await withApp(
+          loaded,
+          collectEntrypoints,
+          (message) => this.context.stderr.write(`${message}\n`),
+          this.context.stderr,
+        );
         snapshot = JSON.stringify(rows);
       } else {
         snapshotPath = resolve(this.entrypoints);

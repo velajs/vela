@@ -1,8 +1,12 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { PassThrough } from 'node:stream';
 import { ENV } from '@velajs/vela';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createOpenApiDocument } from '@velajs/vela/openapi';
+import { Cli } from 'clipanion';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { OpenApiDumpCommand } from '../commands/introspect.commands.js';
 import { loadConfig, resolveConfig } from '../config.js';
 import { withApp } from '../with-app.js';
 import { classifyWorkerExports } from './worker-entry.js';
@@ -29,6 +33,23 @@ export const notAClass = 1;
 export default createCloudflareWorker(AppModule, { globalPrefix: ${JSON.stringify(prefix)} });
 `;
 
+// A DynamicModule root, and an entry that spreads the Worker to add a handler.
+const DYNAMIC_WORKER = `
+import { Controller, Get, Module } from '@velajs/vela';
+import { createCloudflareWorker } from '@velajs/cloudflare';
+
+class ExtraController { extra() { return { extra: true }; } }
+Get()(ExtraController.prototype, 'extra', Object.getOwnPropertyDescriptor(ExtraController.prototype, 'extra'));
+Controller('/extra')(ExtraController);
+class ExtraModule {}
+Module({ controllers: [ExtraController] })(ExtraModule);
+export class AppModule {}
+Module({})(AppModule);
+
+const worker = createCloudflareWorker({ module: AppModule, imports: [ExtraModule] });
+export default { ...worker, async email() {} };
+`;
+
 function write(file: string, content: string): void {
   mkdirSync(dirname(join(project, file)), { recursive: true });
   writeFileSync(join(project, file), content);
@@ -47,12 +68,14 @@ beforeAll(() => {
       "env": {
         "staging": { "main": "src/staging.mjs", "vars": { "GREETING": "staging" } },
         "plain": { "main": "src/plain.mjs" },
+        "dynamic": { "main": "src/dynamic.mjs" },
       },
     }`,
   );
   write('src/worker.mjs', WORKER('/api'));
   write('src/staging.mjs', WORKER('/staging'));
   write('src/plain.mjs', 'export default { fetch() { return new Response("hi"); } };\n');
+  write('src/dynamic.mjs', DYNAMIC_WORKER);
   // A stand-in for the project's Wrangler, whose getPlatformProxy() supplies local bindings.
   write(
     'node_modules/wrangler/package.json',
@@ -67,6 +90,7 @@ beforeAll(() => {
   );
 });
 afterAll(() => rmSync(project, { recursive: true, force: true }));
+afterEach(() => vi.restoreAllMocks());
 
 describe('loading the Worker entry without a vela.config', () => {
   it('resolves the Wrangler file after the config candidates', async () => {
@@ -81,7 +105,8 @@ describe('loading the Worker entry without a vela.config', () => {
   it('builds the application createCloudflareWorker() describes with the Wrangler vars', async () => {
     const loaded = await loadConfig(project);
     expect(loaded.source).toBe('wrangler');
-    expect(loaded.config.rootModule?.name).toBe('AppModule');
+    const root = loaded.config.rootModule;
+    expect(typeof root === 'function' ? root.name : root).toBe('AppModule');
     const described = await withApp(
       loaded,
       (app) => ({
@@ -144,6 +169,34 @@ describe('loading the Worker entry without a vela.config', () => {
       () => {},
     );
     expect(described).toEqual({ env: { GREETING: 'preview' }, prefix: '/staging' });
+  });
+
+  it('keeps a DynamicModule root whole, through an entry that spreads the Worker', async () => {
+    const loaded = await loadConfig(project, undefined, { environment: 'dynamic' });
+    const root = loaded.config.rootModule;
+    expect(typeof root === 'object' ? root.module.name : root).toBe('AppModule');
+    const described = await withApp(
+      loaded,
+      (app) => ({
+        routes: app.describeRoutes().map((route) => `${route.method} ${route.path}`),
+        paths: root === undefined ? [] : Object.keys(createOpenApiDocument(root).paths),
+      }),
+      () => {},
+    );
+    expect(described).toEqual({ routes: ['GET /extra'], paths: ['/extra'] });
+  });
+
+  it('dumps the OpenAPI document of a named environment', async () => {
+    vi.spyOn(process, 'cwd').mockReturnValue(project);
+    const stdout = new PassThrough();
+    let output = '';
+    stdout.on('data', (chunk: Buffer) => (output += String(chunk)));
+    const code = await Cli.from([OpenApiDumpCommand], { binaryName: 'vela' }).run(
+      ['openapi', 'dump', '--env', 'dynamic'],
+      { stdout, stderr: new PassThrough() },
+    );
+    expect(code, output).toBe(0);
+    expect(Object.keys(JSON.parse(output).paths)).toEqual(['/extra']);
   });
 
   it('explains a Worker entry that is not createCloudflareWorker()', async () => {

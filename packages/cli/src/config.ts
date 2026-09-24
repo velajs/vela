@@ -2,9 +2,9 @@ import { stat } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import type { Type, VelaApplication } from '@velajs/vela';
+import type { DynamicModule, Type, VelaApplication } from '@velajs/vela';
 import { installCloudflareStubs } from './project/cloudflare-stubs.js';
-import { hasErrorCode, isRecord } from './project/files.js';
+import { hasErrorCode, isModuleRoot, isRecord } from './project/files.js';
 import { openModuleRunner, type ModuleRunner } from './project/module-runner.js';
 import {
   findWranglerConfig,
@@ -35,10 +35,11 @@ import { readWorkerDescriptor } from './project/worker-entry.js';
 export interface VelaConfig {
   createApp(): Promise<VelaApplication> | VelaApplication;
   /**
-   * The app's root module class — needed only by commands that work from
-   * module metadata rather than the built app (`vela openapi dump`, `vela client generate`).
+   * The app's root module, a class or a `DynamicModule` — needed only by
+   * commands that work from module metadata rather than the built app
+   * (`vela openapi dump`, `vela client generate`, `vela mcp serve`).
    */
-  rootModule?: Type;
+  rootModule?: Type | DynamicModule;
 }
 
 /** Identity helper for type-safe config files. */
@@ -153,7 +154,7 @@ async function loadConfigFile(
   if (!isVelaConfig(config)) {
     throw new Error(
       `Config at ${path} must export an object with createApp(): VelaApplication | Promise<VelaApplication> ` +
-        "(default export or a named 'config'); rootModule, when provided, must be a constructor.",
+        "(default export or a named 'config'); rootModule, when provided, must be a module class or a DynamicModule.",
     );
   }
   return {
@@ -183,7 +184,7 @@ async function loadWorker(
   const vars = wranglerVars(wrangler, environment);
   const platforms: Array<{ dispose(): Promise<void> }> = [];
   const config: VelaConfig = {
-    rootModule: descriptor.rootClass,
+    rootModule: descriptor.rootModule,
     async createApp() {
       const env =
         bindings === 'local' ? await localBindings(wrangler, environment, platforms) : vars;
@@ -303,21 +304,10 @@ export async function resolveConfig(
   );
 }
 
-function isConstructor(value: unknown): value is Type {
-  if (typeof value !== 'function') return false;
-  try {
-    // Validate constructability without invoking the user's constructor.
-    Reflect.construct(Object, [], value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 function isVelaConfig(value: unknown): value is VelaConfig {
   return (
     isRecord(value) &&
     typeof value.createApp === 'function' &&
-    (value.rootModule === undefined || isConstructor(value.rootModule))
+    (value.rootModule === undefined || isModuleRoot(value.rootModule))
   );
 }

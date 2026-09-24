@@ -1,27 +1,16 @@
-import type { Type } from '@velajs/vela';
+import type { DynamicModule, Type } from '@velajs/vela';
 import { cloudflareBaseClasses } from './cloudflare-stubs.js';
-import { isRecord } from './files.js';
+import { isModuleRoot, isRecord } from './files.js';
 
 /** The key `createCloudflareWorker()` attaches its descriptor under (see `@velajs/cloudflare`). */
 export const WORKER_DESCRIPTOR = Symbol.for('vela.cloudflare.worker');
 
 /** What `createCloudflareWorker(rootModule, options)` records on the Worker entry. */
 export interface WorkerDescriptor {
-  /** The root module class; a `DynamicModule` root contributes its `module`. */
-  readonly rootClass: Type;
+  /** The root the Worker passes to `createCloudflareWorker()`: a module class or a `DynamicModule`. */
+  readonly rootModule: Type | DynamicModule;
   /** Build the application as the Worker does for `env`, without its Worker handlers. */
   createApplication(env: Record<string, unknown>): Promise<unknown>;
-}
-
-function isConstructor(value: unknown): value is Type {
-  if (typeof value !== 'function') return false;
-  try {
-    // Validate constructability without invoking the application's constructor.
-    Reflect.construct(Object, [], value);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 /** Read and validate the descriptor of a loaded Worker entry module. */
@@ -39,14 +28,13 @@ export function readWorkerDescriptor(entry: unknown, main: string): WorkerDescri
     );
   }
   const { rootModule, createApplication } = descriptor;
-  const rootClass = isRecord(rootModule) ? rootModule.module : rootModule;
-  if (!isConstructor(rootClass) || typeof createApplication !== 'function') {
+  if (!isModuleRoot(rootModule) || typeof createApplication !== 'function') {
     throw new Error(
       `The Worker descriptor of ${main} is invalid: update @velajs/cloudflare and @velajs/cli together.`,
     );
   }
   return {
-    rootClass,
+    rootModule,
     createApplication: async (env) => Reflect.apply(createApplication, descriptor, [env]),
   };
 }

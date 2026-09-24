@@ -75,6 +75,7 @@ export class SeedCommand extends Command {
         return formatSeedResults(results, (message) => this.context.stdout.write(`${message}\n`));
       },
       (message) => this.context.stderr.write(`${message}\n`),
+      this.context.stderr,
     );
   }
 }

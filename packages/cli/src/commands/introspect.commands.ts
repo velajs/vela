@@ -35,6 +35,7 @@ abstract class AppCommand extends Command {
       (message) => {
         this.context.stderr.write(`${message}\n`);
       },
+      this.context.stderr,
     );
   }
 
@@ -149,6 +150,9 @@ export class OpenApiDumpCommand extends Command {
   });
 
   config = Option.String('--config', { description: 'Path to the vela config file.' });
+  environment = Option.String('--env', {
+    description: 'Wrangler environment whose main and vars apply without a config.',
+  });
   out = Option.String('--out', {
     description: 'Write the document to this file instead of stdout.',
   });
@@ -159,7 +163,9 @@ export class OpenApiDumpCommand extends Command {
   });
 
   async execute(): Promise<number> {
-    const loaded = await loadConfig(process.cwd(), this.config);
+    const loaded = await loadConfig(process.cwd(), this.config, {
+      environment: this.environment,
+    });
     const rootModule = loaded.config.rootModule;
     if (!rootModule) {
       await loaded.dispose();
@@ -195,6 +201,7 @@ export class OpenApiDumpCommand extends Command {
         return 0;
       },
       (message) => this.context.stderr.write(`${message}\n`),
+      this.context.stderr,
     );
   }
 }

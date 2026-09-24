@@ -70,9 +70,14 @@ export class DoctorCommand extends Command {
       report.config = await resolveConfig(report.cwd, this.config);
       if (this.app) {
         const loaded = await loadConfig(report.cwd, this.config, { environment: this.environment });
-        report.application = await withApp(loaded, describeApplication, (message) => {
-          report.issues.push(message);
-        });
+        report.application = await withApp(
+          loaded,
+          describeApplication,
+          (message) => {
+            report.issues.push(message);
+          },
+          this.context.stderr,
+        );
       }
     } catch (error) {
       report.issues.push(error instanceof Error ? error.message : String(error));

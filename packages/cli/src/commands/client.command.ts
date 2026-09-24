@@ -16,7 +16,7 @@ export class ClientGenerateCommand extends Command {
     category: 'Client',
     description: "Generate a typed HTTP contract for Hono's hc client.",
     details:
-      'Uses rootModule and createApp from vela.config, or an OpenAPI JSON file with --input. Missing schemas emit unknown and a warning; --strict makes those warnings an error.',
+      'Builds the app (vela.config with rootModule, or else the Worker entry the Wrangler file names; --env selects a Wrangler environment), or reads an OpenAPI JSON file with --input. Missing schemas emit unknown and a warning; --strict makes those warnings an error.',
     examples: [
       ['Generate from an app', 'vela client generate --out src/api.generated.ts'],
       [
@@ -28,6 +28,9 @@ export class ClientGenerateCommand extends Command {
   });
 
   config = Option.String('--config', { description: 'Path to the vela config file.' });
+  environment = Option.String('--env', {
+    description: 'Wrangler environment whose main and vars apply without a config.',
+  });
   input = Option.String('--input', {
     description: 'Read an OpenAPI JSON file without bootstrapping the app.',
   });
@@ -38,7 +41,8 @@ export class ClientGenerateCommand extends Command {
   strict = Option.Boolean('--strict', false, { description: 'Fail on missing or lossy schemas.' });
 
   async execute(): Promise<number> {
-    if (this.input && this.config) throw new Error('Use either --input or --config, not both.');
+    if (this.input && (this.config || this.environment))
+      throw new Error('Use either --input or --config/--env, not both.');
     if (this.check && !this.out) throw new Error('--check requires --out.');
     const document = this.input ? await this.#readDocument(this.input) : await this.#fromApp();
     const { source, warnings } = generateClientContract(document);
@@ -75,7 +79,9 @@ export class ClientGenerateCommand extends Command {
   }
 
   async #fromApp(): Promise<OpenApiDocument> {
-    const loaded = await loadConfig(process.cwd(), this.config);
+    const loaded = await loadConfig(process.cwd(), this.config, {
+      environment: this.environment,
+    });
     const rootModule = loaded.config.rootModule;
     if (!rootModule) {
       await loaded.dispose();
@@ -105,6 +111,7 @@ export class ClientGenerateCommand extends Command {
         return document;
       },
       (message) => this.context.stderr.write(`${message}\n`),
+      this.context.stderr,
     );
   }
 }

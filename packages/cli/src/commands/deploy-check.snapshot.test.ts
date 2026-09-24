@@ -41,17 +41,26 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(project, { recursive: true, force: true }));
 
-async function check(): Promise<{ code: number; report: Record<string, unknown> }> {
+async function check(): Promise<{
+  code: number;
+  report: Record<string, unknown>;
+  errors: string;
+}> {
   const stdout = new PassThrough();
+  const stderr = new PassThrough();
   let output = '';
+  let errors = '';
   stdout.on('data', (chunk: Buffer) => {
     output += chunk.toString();
   });
+  stderr.on('data', (chunk: Buffer) => {
+    errors += chunk.toString();
+  });
   const code = await Cli.from([DeployCheckCommand], { binaryName: 'vela' }).run(
     ['deploy', 'check', '--config', join(project, 'wrangler.jsonc'), '--json'],
-    { stdout, stderr: new PassThrough() },
+    { stdout, stderr },
   );
-  return { code, report: JSON.parse(output) };
+  return { code, report: JSON.parse(output), errors };
 }
 
 describe('deploy check without a saved snapshot', () => {
@@ -70,5 +79,21 @@ describe('deploy check without a saved snapshot', () => {
       code: 'missing-cron-trigger',
       message: 'No exact Wrangler trigger for handler cron "0 3 * * *".',
     });
+  });
+
+  it('keeps the JSON report on stdout while the application logs', async () => {
+    writeFileSync(
+      join(project, 'vela.config.mjs'),
+      APP.replace(
+        'class Nightly { run() {} }',
+        "class Nightly { run() {} onModuleInit() { new Logger('Nightly').log('warming up'); console.log('ready'); } }",
+      ).replace('import { Injectable,', 'import { Injectable, Logger,'),
+    );
+    wrangler(['0 3 * * *']);
+    const result = await check();
+    expect(result.code).toBe(0);
+    expect(result.report.status).toBe('passed');
+    expect(result.errors).toContain('LOG [Nightly] warming up');
+    expect(result.errors).toContain('ready');
   });
 });
