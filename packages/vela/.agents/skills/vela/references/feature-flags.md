@@ -29,7 +29,7 @@ class AppModule {}
 | `default` | `string` | Name of the driver the injected service targets. Defaults to `drivers[0].name`. |
 | `manifest` | `FlagManifest` (`Record<string, FlagValue>`) | Declared flags + defaults. Powers manifest defaults and `service.all()`. |
 | `context` | `(ctx: RequestContext) => FlagContext \| Promise<FlagContext>` | Per-request context resolver merged into every evaluation; skipped outside request scope. |
-| `globalGuard` | `boolean` | Registers `FeatureFlagGuard` app-wide via `APP_GUARD`. Structural: pass it next to a `forRootAsync` factory. |
+| `globalGuard` | `boolean` | Default `true`: registers `FeatureFlagGuard` app-wide via `APP_GUARD`, so every `@FeatureFlag()` route is gated. `false` gates only routes with `@UseGuards(FeatureFlagGuard)`. Structural: pass it next to a `forRootAsync` factory. |
 
 `isGlobal: true` is a `forRoot` **extra** (not a field on the typed options): it makes the module global, nothing more. `forRootAsync({ imports, inject, useFactory, globalGuard? })` returns the other options from the factory.
 
@@ -63,9 +63,9 @@ Primitive reads `getBooleanValue`, `getStringValue`, and `getNumberValue` take `
 ## Gating routes — `@FeatureFlag` + `FeatureFlagGuard`
 
 ```ts
-import { FeatureFlag, FeatureFlagGuard } from '@velajs/feature-flags';
+import { FeatureFlag } from '@velajs/feature-flags';
 
-@UseGuards(FeatureFlagGuard)                          // or app-wide via forRoot({ globalGuard: true })
+// The module's app-wide FeatureFlagGuard gates these; no @UseGuards needed.
 @Controller('/checkout')
 class CheckoutController {
   @FeatureFlag('new-checkout')                        // flag off → 404 (route looks hidden)
@@ -76,7 +76,7 @@ class CheckoutController {
 }
 ```
 
-The guard reads the handler/controller metadata, evaluates `getBooleanValue(key)`, and when the flag is off throws `NotFoundException` (default, `onDisabled: 'notFound'`) or `ForbiddenException` (`onDisabled: 'forbidden'`). Handlers **without** `@FeatureFlag` metadata pass through untouched, so the guard is safe to register app-wide. It does not inject `REQUEST_CONTEXT` (that would force request scope and break lazy materialization) — it reads the request context off the per-request child container instead, so `context` still runs for the gate decision.
+The guard reads the handler/controller metadata, evaluates `getBooleanValue(key)`, and when the flag is off throws `NotFoundException` (default, `onDisabled: 'notFound'`) or `ForbiddenException` (`onDisabled: 'forbidden'`). Handlers **without** `@FeatureFlag` metadata pass through untouched, so `FeatureFlagsModule` registers the guard app-wide by default (fail closed: a flagged route is never reachable ungated). With `forRoot({ globalGuard: false })`, add `@UseGuards(FeatureFlagGuard)` to each gated controller or handler; do not combine it with the default app-wide guard, or the flag is evaluated twice. It does not inject `REQUEST_CONTEXT` (that would force request scope and break lazy materialization) — it reads the request context off the per-request child container instead, so `context` still runs for the gate decision.
 
 ## Drivers — `FeatureFlagDriver`
 

@@ -21,13 +21,13 @@ export interface FeatureFlagMetadata {
 export const FEATURE_FLAG_METADATA = 'vela:feature-flags:flag';
 
 /**
- * Gate a route (handler) or controller behind a boolean feature flag. Pair
- * with {@link FeatureFlagGuard} (via `@UseGuards` or the module's `globalGuard`
- * app-wide registration).
+ * Gate a route (handler) or controller behind a boolean feature flag. The
+ * {@link FeatureFlagGuard} that `FeatureFlagsModule` registers app-wide by
+ * default enforces it; with `globalGuard: false`, add
+ * `@UseGuards(FeatureFlagGuard)` to each gated controller or handler.
  *
  * @example
  * ```ts
- * @UseGuards(FeatureFlagGuard)
  * @Controller('/checkout')
  * class CheckoutController {
  *   @FeatureFlag('new-checkout')            // 404 when off

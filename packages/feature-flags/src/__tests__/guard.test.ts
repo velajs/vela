@@ -36,9 +36,10 @@ async function appWith(
   driver: FeatureFlagDriver,
   moduleOpts: { globalGuard?: boolean; manifest?: FlagManifest } = {},
 ) {
+  // Per-route gating through the controller's @UseGuards, without the app-wide guard.
   const moduleRef = await Test.createTestingModule({
     controllers: [controller],
-    imports: [FeatureFlagsModule.forRoot({ drivers: [driver], ...moduleOpts })],
+    imports: [FeatureFlagsModule.forRoot({ drivers: [driver], globalGuard: false, ...moduleOpts })],
   }).compile();
   const app = await moduleRef.createApplication();
   return app.getHonoApp();
@@ -129,7 +130,7 @@ describe('FeatureFlagGuard (integration)', () => {
     expect((await app.request('/checkout/v2')).status).toBe(404);
   });
 
-  it('gates app-wide via the globalGuard APP_GUARD (no @UseGuards on the controller)', async () => {
+  it('gates app-wide by default (no @UseGuards, no globalGuard option)', async () => {
     @Controller('/promo')
     class PromoController {
       @FeatureFlag('promo')
@@ -139,14 +140,42 @@ describe('FeatureFlagGuard (integration)', () => {
       }
     }
     const driver = memoryFlagDriver({ values: { promo: false } });
-    const moduleRef = await Test.createTestingModule({
-      controllers: [PromoController],
-      imports: [FeatureFlagsModule.forRoot({ drivers: [driver], globalGuard: true })],
-    }).compile();
-    const app = (await moduleRef.createApplication()).getHonoApp();
+    for (const imports of [
+      [FeatureFlagsModule.forRoot({ drivers: [driver] })],
+      [FeatureFlagsModule.forRoot({ drivers: [driver], isGlobal: true })],
+      [FeatureFlagsModule.forRootAsync({ useFactory: () => ({ drivers: [driver] }) })],
+    ]) {
+      driver.set('promo', false);
+      const moduleRef = await Test.createTestingModule({
+        controllers: [PromoController],
+        imports,
+      }).compile();
+      const app = await moduleRef.createApplication();
+      const hono = app.getHonoApp();
 
-    expect((await app.request('/promo/show')).status).toBe(404);
-    driver.set('promo', true);
-    expect((await app.request('/promo/show')).status).toBe(200);
+      expect((await hono.request('/promo/show')).status).toBe(404);
+      driver.set('promo', true);
+      expect((await hono.request('/promo/show')).status).toBe(200);
+      await app.close();
+    }
+  });
+
+  it('leaves gating to @UseGuards with globalGuard: false', async () => {
+    @Controller('/promo')
+    class UngatedController {
+      @FeatureFlag('promo')
+      @Get('/show')
+      show() {
+        return { promo: true };
+      }
+    }
+    const driver = memoryFlagDriver({ values: { promo: false } });
+    const moduleRef = await Test.createTestingModule({
+      controllers: [UngatedController],
+      imports: [FeatureFlagsModule.forRoot({ drivers: [driver], globalGuard: false })],
+    }).compile();
+    const app = await moduleRef.createApplication();
+    expect((await app.getHonoApp().request('/promo/show')).status).toBe(200);
+    await app.close();
   });
 });

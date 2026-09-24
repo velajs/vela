@@ -16,10 +16,10 @@ import type { FeatureFlagsOptions } from './feature-flags.types';
  * no async lifecycle hooks — so the module defers to first use without
  * violating the sync-seam rule (see `docs/modules.md`).
  *
- * `globalGuard: true` registers {@link FeatureFlagGuard} app-wide
- * (`APP_GUARD`) so every `@FeatureFlag()` route is gated without a
- * per-controller `@UseGuards`; `isGlobal: true` makes the service visible to
- * every module.
+ * {@link FeatureFlagGuard} is registered app-wide (`APP_GUARD`) by default,
+ * so every `@FeatureFlag()` route is gated without a per-controller
+ * `@UseGuards`; `globalGuard: false` leaves gating to `@UseGuards`.
+ * `isGlobal: true` makes the service visible to every module.
  */
 const { ConfigurableModuleClass } = defineModule<FeatureFlagsOptions, 'globalGuard'>({
   name: 'FeatureFlags',
@@ -41,9 +41,11 @@ const { ConfigurableModuleClass } = defineModule<FeatureFlagsOptions, 'globalGua
         scope: Scope.TRANSIENT,
       }),
       FeatureFlagGuard,
-      ...(options.globalGuard === true
-        ? [defineProvider(APP_GUARD, { useExisting: FeatureFlagGuard })]
-        : []),
+      // Fail closed: every @FeatureFlag() route is gated unless the app opts
+      // out and gates per route with @UseGuards(FeatureFlagGuard).
+      ...(options.globalGuard === false
+        ? []
+        : [defineProvider(APP_GUARD, { useExisting: FeatureFlagGuard })]),
     ],
     exports: [
       FEATURE_FLAG_TOKENS.Service,
