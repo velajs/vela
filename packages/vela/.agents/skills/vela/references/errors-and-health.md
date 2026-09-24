@@ -124,6 +124,7 @@ A throttler without `name` is `'default'`; `@SkipThrottle()` skips `'default'` o
 `CacheModule` is the one cache module, asynchronous end to end. `namespace` and a trusted `scope(context)` resolver are required; `store` defaults to a per-application `MemoryCacheStore` (`max` entries, default 1000):
 
 ```ts
+import { Body, Controller, Get, Module, Post } from '@velajs/vela';
 import { CacheModule, CacheResponse, CacheService, MemoryCacheInvalidationStore } from '@velajs/vela/cache';
 
 @Module({
