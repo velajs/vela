@@ -526,11 +526,13 @@ export class ModuleLoader {
   /**
    * A repeated (class, key) is deduplicated to its first definition. That is
    * only safe when the repeat was built from the same inputs, so a repeat
-   * built from different options fails the load: keeping either configuration
-   * would run the other import's consumers on options they never asked for
-   * (another base URL, driver or authorizer). A repeat that asks for another
-   * global flag is reported and ignored. Returns whether the repeat agrees
-   * with the first definition.
+   * built from different options fails the load in every diagnostics mode:
+   * keeping either configuration would run the other import's consumers on
+   * options they never asked for (another base URL, driver or authorizer).
+   * The options are compared first, so a global flag that differs as well
+   * never hides that conflict. A repeat with the same options that asks for
+   * another global flag is reported and ignored. Returns whether the repeat
+   * agrees with the first definition.
    */
   private reportIdentityCollision(
     moduleId: string,
@@ -539,33 +541,35 @@ export class ModuleLoader {
   ): boolean {
     const first = this.#definitionByModuleId.get(moduleId);
     if (!first || !isDynamicModule(repeat) || first === repeat) return true;
+    // Hand-written DynamicModules record no inputs, so only their global flag
+    // is compared.
+    const firstIdentity = readModuleIdentity(first);
+    const repeatIdentity = readModuleIdentity(repeat);
+    if (firstIdentity && repeatIdentity) {
+      this.#identity ??= firstIdentity.createComparer();
+      if (this.#identity.conflicts(firstIdentity, repeatIdentity)) {
+        // Not a diagnostic: no policy may keep one configuration for both imports.
+        throw new Error(
+          `[vela] ${moduleId} was imported again with different options, and one module ` +
+            `instance has one configuration. Import one shared definition (e.g. export a ` +
+            `const of the DynamicModule) instead of building it twice, or give each ` +
+            `configuration its own key (e.g. forRoot({ ..., key: 'secondary' })).`,
+        );
+      }
+    }
     // The first definition decided whether the instance's exports are global;
     // a repeat that says otherwise would silently lose (or gain) visibility.
     // A @Global() class is global in either form.
     const classGlobal = getModuleMetadata(moduleClass)?.global === true;
     const firstGlobal = classGlobal || first.global === true;
-    if (firstGlobal !== (classGlobal || repeat.global === true)) {
-      reportDiagnostic(
-        this.container.getDiagnostics(),
-        `[vela] ${moduleId} was imported again with a different global flag; the repeated ` +
-          `import was ignored in favor of the first (global: ${firstGlobal}). ` +
-          `Import the module with one global setting, or give each configuration its own key.`,
-      );
-      return false;
-    }
-    // Other hand-written DynamicModules record no inputs and are never compared.
-    const firstIdentity = readModuleIdentity(first);
-    const repeatIdentity = readModuleIdentity(repeat);
-    if (!firstIdentity || !repeatIdentity) return true;
-    this.#identity ??= firstIdentity.createComparer();
-    if (!this.#identity.conflicts(firstIdentity, repeatIdentity)) return true;
-    // Not a diagnostic: no policy may keep one configuration for both imports.
-    throw new Error(
-      `[vela] ${moduleId} was imported again with different options, and one module instance ` +
-        `has one configuration. Import one shared definition (e.g. export a const of the ` +
-        `DynamicModule) instead of building it twice, or give each configuration its own key ` +
-        `(e.g. forRoot({ ..., key: 'secondary' })).`,
+    if (firstGlobal === (classGlobal || repeat.global === true)) return true;
+    reportDiagnostic(
+      this.container.getDiagnostics(),
+      `[vela] ${moduleId} was imported again with a different global flag; the repeated ` +
+        `import was ignored in favor of the first (global: ${firstGlobal}). ` +
+        `Import the module with one global setting, or give each configuration its own key.`,
     );
+    return false;
   }
 
   /** Registers the provider and returns the token it was registered under. */

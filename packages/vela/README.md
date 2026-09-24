@@ -226,8 +226,9 @@ only one, or use a per-instance accessor exposed by the module.
 The same applies to per-feature clients: two features that each import
 `HttpModule.forRoot({ baseURL })` with different settings give each its own
 `key`. `key`, `lazy` and `isGlobal` never change the key or reach the options
-token, and a repeat with a different `global` flag is reported through the
-diagnostics policy. Build your own
+token. A repeat with other options fails bootstrap even when its `global`
+flag differs too; one with the same options and another `global` flag is
+reported through the diagnostics policy. Build your own
 modules the same way with `defineModule`; see the [module authoring guide](https://github.com/velajs/vela/blob/main/docs/modules.md)
 for structural options, `referenceKey`, and the rest of the authoring contract.
 

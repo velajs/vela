@@ -14,6 +14,7 @@ import {
 } from '../index';
 import { EventEmitter, EventEmitterModule } from '../event-emitter';
 import { HealthCheckService, HealthModule } from '../health';
+import { LoggingModule } from '../logging';
 import * as moduleKit from '../module-kit';
 import { referenceKey } from '../module-kit';
 import { ScheduleExecutor, ScheduleNodeModule } from '../schedule-node';
@@ -330,21 +331,152 @@ describe('module contract: registration controls never reach the options', () =>
 
   it('reports the same (class, key) imported with different global flags', async () => {
     const shared = driver('a');
+    const local = BucketModule.forRoot({ name: 'files', driver: shared });
+    const global = BucketModule.forRoot({ name: 'files', driver: shared, isGlobal: true });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    for (const imports of [
+      [local, global],
+      [global, local],
+    ]) {
+      @Module({ imports })
+      class AppModule {}
+      await expect(VelaFactory.create(AppModule, { diagnostics: 'throw' })).rejects.toThrow(
+        /BucketModule#\w+ was imported again with a different global flag/,
+      );
+
+      warn.mockClear();
+      const app = await VelaFactory.create(AppModule);
+      expect(warn).toHaveBeenCalledWith(expect.stringMatching(/different global flag/));
+      expect(app.get(BUCKET_OPTIONS)).toEqual({ name: 'files', driver: shared });
+      await app.close();
+    }
+  });
+
+  it('fails bootstrap on a repeat whose options and global flag both differ, in either order', async () => {
+    // The global flag must not hide the other difference: keeping the first
+    // definition would run the second import's consumers on its driver.
+    const local = BucketModule.forRoot({ name: 'files', driver: driver('private') });
+    const global = BucketModule.forRoot({
+      name: 'files',
+      driver: driver('public'),
+      isGlobal: true,
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    for (const imports of [
+      [local, global],
+      [global, local],
+    ]) {
+      @Module({ imports })
+      class AppModule {}
+      for (const diagnostics of ['throw', 'log', 'silent'] as const) {
+        await expect(VelaFactory.create(AppModule, { diagnostics })).rejects.toThrow(
+          /BucketModule#\w+ was imported again with different options/,
+        );
+      }
+    }
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('treats an extra at its default and an undefined option as absent', async () => {
+    const shared = driver('a');
+    const inject: [] = [];
+    const useFactory = () => ({ driver: shared });
+    const cases: DynamicModule[][] = [
+      [
+        BucketModule.forRoot({ name: 'files', driver: shared }),
+        BucketModule.forRoot({ name: 'files', driver: shared, isGlobal: false }),
+        BucketModule.forRoot({ name: 'files', driver: shared, label: undefined }),
+        BucketModule.forRoot({
+          name: 'files',
+          driver: shared,
+          isGlobal: undefined,
+          key: undefined,
+        }),
+      ],
+      [
+        BucketModule.forRootAsync({ name: 'files', inject, useFactory }),
+        BucketModule.forRootAsync({ name: 'files', inject, useFactory, isGlobal: false }),
+        BucketModule.forRootAsync({ name: 'files', inject, useFactory, lazy: undefined }),
+      ],
+      // An undefined structural field keys and sets up the instance like an absent one.
+      [
+        BucketModule.forRoot({ driver: shared }),
+        BucketModule.forRoot({ name: undefined, driver: shared }),
+      ],
+    ];
+    for (const imports of cases) {
+      expect(new Set(imports.map((definition) => definition.key)).size).toBe(1);
+      @Module({ imports })
+      class AppModule {}
+      const app = await VelaFactory.create(AppModule, { diagnostics: 'throw' });
+      expect(app.getContainer().getOwnerModuleIds(BUCKET_OPTIONS)).toHaveLength(1);
+      await app.close();
+    }
+  });
+
+  it('compares custom extras merged over their defaults', async () => {
+    const { ConfigurableModuleClass } = defineModule<
+      { ttl: number },
+      never,
+      { isGlobal?: boolean; audit?: boolean }
+    >({
+      name: 'Defaulted',
+      extras: { isGlobal: true, audit: false },
+      transform: (definition, extras) => ({
+        ...definition,
+        ...(extras.isGlobal ? { global: true } : {}),
+      }),
+    });
+    class DefaultedModule extends ConfigurableModuleClass {}
+
     @Module({
       imports: [
-        BucketModule.forRoot({ name: 'files', driver: shared }),
-        BucketModule.forRoot({ name: 'files', driver: shared, isGlobal: true }),
+        DefaultedModule.forRoot({ ttl: 5 }),
+        DefaultedModule.forRoot({ ttl: 5, isGlobal: true, audit: false }),
+        DefaultedModule.forRoot({ ttl: 5, audit: undefined }),
       ],
     })
-    class AppModule {}
-    await expect(VelaFactory.create(AppModule, { diagnostics: 'throw' })).rejects.toThrow(
-      /BucketModule#\w+ was imported again with a different global flag/,
+    class Equivalent {}
+    const app = await VelaFactory.create(Equivalent, { diagnostics: 'throw' });
+    await app.close();
+
+    @Module({
+      imports: [
+        DefaultedModule.forRoot({ ttl: 5 }),
+        DefaultedModule.forRoot({ ttl: 5, audit: true }),
+      ],
+    })
+    class Audited {}
+    await expect(VelaFactory.create(Audited, { diagnostics: 'log' })).rejects.toThrow(
+      /DefaultedModule#\w+ was imported again with different options/,
     );
 
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const app = await VelaFactory.create(AppModule);
-    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/different global flag/));
+    // A custom transform may read any extra, isGlobal included, for more than
+    // visibility, so every extra it receives is compared as an option.
+    @Module({
+      imports: [
+        DefaultedModule.forRoot({ ttl: 5 }),
+        DefaultedModule.forRoot({ ttl: 5, isGlobal: false }),
+      ],
+    })
+    class Local {}
+    await expect(VelaFactory.create(Local, { diagnostics: 'log' })).rejects.toThrow(
+      /DefaultedModule#\w+ was imported again with different options/,
+    );
+  });
+
+  it('compares the default transform isGlobal against its own default', async () => {
+    // LoggingModule is global unless a call site says otherwise.
+    @Module({ imports: [LoggingModule.forRoot({}), LoggingModule.forRoot({ isGlobal: true })] })
+    class Equivalent {}
+    const app = await VelaFactory.create(Equivalent, { diagnostics: 'throw' });
     await app.close();
+
+    @Module({ imports: [LoggingModule.forRoot({}), LoggingModule.forRoot({ isGlobal: false })] })
+    class Local {}
+    await expect(VelaFactory.create(Local, { diagnostics: 'throw' })).rejects.toThrow(
+      /LoggingModule#application was imported again with a different global flag/,
+    );
   });
 
   it('reports a global instance repeated after a bare import of its class', async () => {

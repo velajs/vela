@@ -171,6 +171,15 @@ function split(
   return [picked, rest];
 }
 
+/** The bag without its `undefined` fields: an explicit `undefined` means "not given". */
+function defined(bag: Record<PropertyKey, unknown>): Record<PropertyKey, unknown> {
+  const out: Record<PropertyKey, unknown> = {};
+  for (const name of Reflect.ownKeys(bag)) {
+    if (bag[name] !== undefined) out[name] = bag[name];
+  }
+  return out;
+}
+
 const REGISTRATION_KEYS: ReadonlySet<string> = new Set(['key', 'lazy']);
 const ASYNC_WIRING_KEYS: ReadonlySet<string> = new Set([
   'imports',
@@ -224,6 +233,13 @@ export function defineModule<
   const structuralKeys: ReadonlySet<string> = new Set((spec.structural ?? []).map(String));
   const transform = (spec.transform ??
     DEFAULT_TRANSFORM) as ConfigurableModuleExtrasTransform<ConfigurableModuleExtras>;
+  // The default transform reads `isGlobal` only for the definition's `global`
+  // flag, which the module loader compares on its own; a repeat that differs
+  // only there is reported, not rejected. A custom transform may read any
+  // extra for anything, so each one it receives is an identity input.
+  const identityExtras = spec.transform
+    ? (extras: ConfigurableModuleExtras) => extras
+    : ({ isGlobal: _visibility, ...extras }: ConfigurableModuleExtras) => extras;
 
   const hostName = (host: unknown): string =>
     typeof host === 'function' && host.name ? host.name : `${spec.name}Module`;
@@ -281,12 +297,15 @@ export function defineModule<
       structural,
       key,
     );
-    const shaped = transform(contributed, { ...extrasDefaults, ...extras });
+    // An extra the call site leaves out, or passes as undefined, takes its
+    // default, so `{ isGlobal: false }` and `{}` build the same definition.
+    const resolvedExtras = { ...extrasDefaults, ...defined(extras) };
+    const shaped = transform(contributed, resolvedExtras);
     // Laziness is OR-composed: the spec defaults it, a call site can add it.
     const lazy = spec.lazy === true || registration.lazy === true;
     return attachModuleIdentity(lazy ? { ...shaped, lazy: true } : shaped, {
       ...inputs,
-      extras,
+      extras: identityExtras(resolvedExtras),
       lazy: registration.lazy === true,
     });
   };
@@ -306,7 +325,7 @@ export function defineModule<
         this,
         registration,
         extras,
-        structural,
+        defined(structural),
         { providers: [defineProvider(optionsToken, { useValue: moduleOptions as Opts })] },
         { options: moduleOptions },
       );
@@ -338,23 +357,24 @@ export function defineModule<
             'nor a registration control; return module options from the factory.',
         );
       }
+      const given = defined(structural);
       return buildDefinition(
         this,
         registration,
         extras,
-        structural,
+        given,
         {
           imports: options.imports ?? [],
           providers: buildAsyncOptionsProviders<Opts>(
             optionsToken,
             factoryMethodName,
             options,
-            structural,
+            given,
             structuralKeys,
             `${hostName(this)}.${asyncName}`,
           ),
         },
-        { structural, wiring },
+        { structural: given, wiring },
       );
     },
   });

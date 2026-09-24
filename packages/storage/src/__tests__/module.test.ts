@@ -91,6 +91,78 @@ describe('StorageModule', () => {
     );
   });
 
+  it('fails bootstrap when a second feature also asks for a global bucket, in either order', async () => {
+    const privateBucket = StorageModule.forRoot({
+      driver: memoryDriver({ initial: { 'secret.txt': 'private' } }),
+      http: { basePath: '/files' },
+    });
+    const publicBucket = StorageModule.forRoot({
+      driver: memoryDriver(),
+      isGlobal: true,
+      http: { basePath: '/public' },
+    });
+    for (const [first, second] of [
+      [privateBucket, publicBucket],
+      [publicBucket, privateBucket],
+    ]) {
+      @Module({ imports: [first] })
+      class FeatureA {}
+      @Module({ imports: [second] })
+      class FeatureB {}
+      @Module({ imports: [FeatureA, FeatureB] })
+      class App {}
+      // A global flag that differs too never lets one feature write into the
+      // other's driver, whatever the diagnostics policy.
+      for (const diagnostics of ['throw', 'log', 'silent'] as const) {
+        await expect(VelaFactory.create(App, { diagnostics })).rejects.toThrow(
+          /StorageModule#default was imported again with different options/,
+        );
+      }
+    }
+  });
+
+  it('reports a registration that differs only in its global flag', async () => {
+    const driver = memoryDriver();
+    const authorize = () => true;
+    const local = StorageModule.forRoot({ driver, http: { basePath: '/files', authorize } });
+    const global = StorageModule.forRoot({
+      driver,
+      isGlobal: true,
+      http: { basePath: '/files', authorize },
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      for (const imports of [
+        [local, global],
+        [global, local],
+      ]) {
+        await expect(appWith(imports)).rejects.toThrow(
+          /StorageModule#default was imported again with a different global flag/,
+        );
+        warn.mockClear();
+        class Root {}
+        Module({ imports })(Root);
+        const app = await VelaFactory.create(Root);
+        expect(warn).toHaveBeenCalledWith(expect.stringMatching(/different global flag/));
+        expect(app.get(StorageService)).toBeInstanceOf(StorageService);
+        await app.close();
+      }
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('treats an extra at its default and an undefined option as absent', async () => {
+    const driver = memoryDriver();
+    const app = await appWith([
+      StorageModule.forRoot({ driver }),
+      StorageModule.forRoot({ driver, isGlobal: false }),
+      StorageModule.forRoot({ driver, prefix: undefined }),
+    ]);
+    expect(app.getContainer().getOwnerModuleIds(StorageService)).toEqual(['StorageModule#default']);
+    await app.close();
+  });
+
   it('mounts the routes of an identical repeated registration once', async () => {
     const driver = memoryDriver();
     const authorize = () => true;

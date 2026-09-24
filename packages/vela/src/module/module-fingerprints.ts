@@ -110,6 +110,8 @@ export class ModuleIdentityFingerprints implements ModuleIdentityComparer {
       if (!isPlainObject(value)) return this.reference(value);
       // Enumerable own keys, symbols included (compared by reference like
       // symbol values); sorting the rendered entries makes key order irrelevant.
+      // A key set to `undefined` is an option not given: `{ prefix: undefined }`
+      // configures what `{}` does.
       const keys: Array<string | symbol> = [
         ...Object.keys(value),
         ...Object.getOwnPropertySymbols(value).filter((key) =>
@@ -117,10 +119,12 @@ export class ModuleIdentityFingerprints implements ModuleIdentityComparer {
         ),
       ];
       const entries = keys
-        .map(
-          (key) =>
-            `${typeof key === 'symbol' ? this.symbol(key) : JSON.stringify(key)}:${this.value(Reflect.get(value, key), path)}`,
-        )
+        .flatMap((key) => {
+          const entry: unknown = Reflect.get(value, key);
+          if (entry === undefined) return [];
+          const name = typeof key === 'symbol' ? this.symbol(key) : JSON.stringify(key);
+          return [`${name}:${this.value(entry, path)}`];
+        })
         .toSorted();
       return `{${entries.join(',')}}`;
     } finally {

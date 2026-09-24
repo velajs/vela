@@ -145,12 +145,18 @@ as another base URL, credentials, driver or authorizer. Two features that each
 configure `HttpModule.forRoot({ baseURL })`, for example, give each client its
 own `key`. A helper that rebuilds the same configuration on every call is
 rejected as well; import one shared definition (export a const of the
-`DynamicModule`), or give each configuration its own `key`. A repeat with a
-different `global` flag, including a global instance after a bare import of
-its class, is reported through the container's diagnostics policy (`'log'`
-warns, `'throw'` fails bootstrap) and ignored. Identical repeats still
-deduplicate, and a repeat never adds a generated module's controllers to the
-instance a second time. The reference ids belong to one module loader and are
+`DynamicModule`), or give each configuration its own `key`. The options are
+compared before the `global` flag, so a repeat that also asks for
+`isGlobal: true` still fails. A repeat with the same options and a different
+`global` flag, including a global instance after a bare import of its class,
+is reported through the container's diagnostics policy (`'log'` warns,
+`'throw'` fails bootstrap) and ignored. An extra at its default and an option
+passed as `undefined` count as not given, so `forRoot({ driver })`,
+`forRoot({ driver, isGlobal: false })` and `forRoot({ driver, prefix: undefined })`
+are one configuration. A spec with its own `transform` may read any extra for
+more than visibility, so every extra it receives, `isGlobal` included, is
+compared as an option. Identical repeats still deduplicate, and a repeat never
+adds a generated module's controllers to the instance a second time. The reference ids belong to one module loader and are
 released with it.
 
 An `undefined` or `null` entry in a module's `imports`, `providers`,

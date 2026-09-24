@@ -1,5 +1,5 @@
 import { defineProvider } from '../container/types';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   Controller,
   Get,
@@ -275,6 +275,58 @@ describe('Dynamic module identity', () => {
     const app = await VelaFactory.create(KeyedApp, { diagnostics: 'throw' });
     expect(app.getContainer().getOwnerModuleIds(HttpService)).toHaveLength(2);
     await app.close();
+  });
+
+  it('fails bootstrap on a second HttpModule configuration that also asks to be global', async () => {
+    const privateClient = HttpModule.forRoot({
+      baseURL: 'https://private.test',
+      headers: { authorization: 'Bearer PRIVATE' },
+    });
+    const publicClient = HttpModule.forRoot({ baseURL: 'https://public.test', isGlobal: true });
+    // Either import order: the global flag never decides which client a feature gets.
+    for (const [first, second] of [
+      [privateClient, publicClient],
+      [publicClient, privateClient],
+    ]) {
+      @Module({ imports: [first] })
+      class FeatureA {}
+      @Module({ imports: [second] })
+      class FeatureB {}
+      @Module({ imports: [FeatureA, FeatureB] })
+      class App {}
+      for (const diagnostics of ['throw', 'log', 'silent'] as const) {
+        await expect(VelaFactory.create(App, { diagnostics })).rejects.toThrow(
+          /HttpModule#\w+ was imported again with different options/,
+        );
+      }
+    }
+  });
+
+  it('reports an HttpModule repeat that differs only in its global flag', async () => {
+    const local = HttpModule.forRoot({ baseURL: 'https://shared.test' });
+    const shared = HttpModule.forRoot({ baseURL: 'https://shared.test', isGlobal: true });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      for (const [first, second] of [
+        [local, shared],
+        [shared, local],
+      ]) {
+        @Module({ imports: [first, second] })
+        class App {}
+        await expect(VelaFactory.create(App, { diagnostics: 'throw' })).rejects.toThrow(
+          /HttpModule#\w+ was imported again with a different global flag/,
+        );
+        warn.mockClear();
+        const app = await VelaFactory.create(App);
+        expect(warn).toHaveBeenCalledWith(expect.stringMatching(/different global flag/));
+        expect(app.getContainer().resolve(HTTP_MODULE_OPTIONS)).toEqual({
+          baseURL: 'https://shared.test',
+        });
+        await app.close();
+      }
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('reports a second unkeyed CacheModule configuration instead of swallowing it', async () => {
