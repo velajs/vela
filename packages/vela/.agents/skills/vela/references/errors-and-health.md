@@ -38,7 +38,7 @@ Filters run closest-first (handler → controller → global) — see `pipeline.
 
 ## Health checks — `HealthModule`
 
-Import `HealthModule` (plain module, no options) and write your own endpoint injecting `HealthCheckService` + `HealthIndicatorService`:
+Import `HealthModule` bare or through `HealthModule.forRoot()` (no options; both forms are one instance) and write your own endpoint injecting `HealthCheckService` + `HealthIndicatorService`:
 
 ```ts
 import { HealthModule, HealthCheckService, HealthIndicatorService } from '@velajs/vela/health';

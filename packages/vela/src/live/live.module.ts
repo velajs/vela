@@ -31,7 +31,7 @@ import { PresenceResolver, PresenceService } from './presence';
 const { ConfigurableModuleClass } = defineModule<LiveModuleOptions, 'presence'>({
   name: 'Live',
   optionsToken: LIVE_MODULE_OPTIONS,
-  // One engine per application: a second configuration is reported, not merged.
+  // One engine per application: a second configuration fails bootstrap, not merged.
   structural: ['presence'],
   setup: ({ OPTIONS, options }) => ({
     providers: [

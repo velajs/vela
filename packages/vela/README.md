@@ -208,8 +208,8 @@ module's structural options only, so most modules have one instance per class:
 // The same configuration imported twice → one instance
 imports: [CacheModule.forRoot({ ttl: 60 }), CacheModule.forRoot({ ttl: 60 })]
 
-// A second configuration under the same key → reported by the loader
-// ('log' warns, 'throw' fails bootstrap); the first one is kept
+// A second configuration under the same key → bootstrap fails, whatever the
+// diagnostics policy: neither import may run on the other's options
 imports: [CacheModule.forRoot({ ttl: 60 }), CacheModule.forRoot({ ttl: 120 })]
 
 // Two instances: give each its own key
@@ -223,8 +223,11 @@ When a consumer module imports two instances that export the same token, the
 resolver throws `MultipleProvidersFoundError` with both candidate ids. Import
 only one, or use a per-instance accessor exposed by the module.
 
-`key`, `lazy` and `isGlobal` never change the key or reach the options token,
-and a repeat with a different `global` flag is reported too. Build your own
+The same applies to per-feature clients: two features that each import
+`HttpModule.forRoot({ baseURL })` with different settings give each its own
+`key`. `key`, `lazy` and `isGlobal` never change the key or reach the options
+token, and a repeat with a different `global` flag is reported through the
+diagnostics policy. Build your own
 modules the same way with `defineModule`; see the [module authoring guide](https://github.com/velajs/vela/blob/main/docs/modules.md)
 for structural options, `referenceKey`, and the rest of the authoring contract.
 

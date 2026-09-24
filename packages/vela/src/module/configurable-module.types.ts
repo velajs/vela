@@ -19,13 +19,13 @@ export interface ModuleRegistrationOptions {
 
 /**
  * What an asynchronous options factory returns: the options minus the
- * structural fields `S`, which the call site supplies. Distributes over a
- * union of option shapes.
+ * structural fields `S`, which the call site supplies (a returned structural
+ * field fails to compile). Distributes over a union of option shapes.
  */
 export type ModuleFactoryOptions<Opts, S extends keyof Opts = never> = [S] extends [never]
   ? Opts
   : Opts extends unknown
-    ? Omit<Opts, S>
+    ? Omit<Opts, S> & Partial<Record<S, never>>
     : never;
 
 /**

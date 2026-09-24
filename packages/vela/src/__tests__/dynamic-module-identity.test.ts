@@ -15,7 +15,7 @@ import {
   stableHash,
 } from '../module-kit.js';
 import { CacheModule, CACHE_MODULE_OPTIONS } from '../cache/index.js';
-import { HttpModule, HTTP_MODULE_OPTIONS } from '../fetch/index.js';
+import { HttpModule, HttpService, HTTP_MODULE_OPTIONS } from '../fetch/index.js';
 import type { DynamicModule } from '../index.js';
 
 describe('Dynamic module identity', () => {
@@ -239,8 +239,15 @@ describe('Dynamic module identity', () => {
   // Unkeyed configurations share one instance and are reported, never dropped
   // silently (the pre-1.11 loader swallowed the second one)
   // -------------------------------------------------------------------------
-  it('reports a second unkeyed HttpModule configuration instead of swallowing it', async () => {
-    @Module({ imports: [HttpModule.forRoot({ baseURL: 'https://first.test' })] })
+  it('fails bootstrap on a second unkeyed HttpModule configuration', async () => {
+    @Module({
+      imports: [
+        HttpModule.forRoot({
+          baseURL: 'https://first.test',
+          headers: { authorization: 'Bearer FIRST' },
+        }),
+      ],
+    })
     class FirstModule {}
 
     @Module({ imports: [HttpModule.forRoot({ baseURL: 'https://second.test' })] })
@@ -252,6 +259,22 @@ describe('Dynamic module identity', () => {
     await expect(VelaFactory.create(App, { diagnostics: 'throw' })).rejects.toThrow(
       /HttpModule#\w+ was imported again with different options/,
     );
+    // Under the default policy too: SecondModule's client must never send its
+    // requests to the first base URL with the first credentials.
+    await expect(VelaFactory.create(App)).rejects.toThrow(
+      /HttpModule#\w+ was imported again with different options.*own key/,
+    );
+
+    // A key per configuration keeps both clients.
+    @Module({
+      imports: [HttpModule.forRoot({ baseURL: 'https://second.test', key: 'second' })],
+    })
+    class KeyedSecondModule {}
+    @Module({ imports: [FirstModule, KeyedSecondModule] })
+    class KeyedApp {}
+    const app = await VelaFactory.create(KeyedApp, { diagnostics: 'throw' });
+    expect(app.getContainer().getOwnerModuleIds(HttpService)).toHaveLength(2);
+    await app.close();
   });
 
   it('reports a second unkeyed CacheModule configuration instead of swallowing it', async () => {

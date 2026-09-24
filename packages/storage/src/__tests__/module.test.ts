@@ -60,6 +60,52 @@ describe('StorageModule', () => {
     await app.close();
   });
 
+  it('fails bootstrap when two features register the default bucket with different drivers', async () => {
+    const privateDriver = memoryDriver({ initial: { 'secret.txt': 'private' } });
+    const publicDriver = memoryDriver();
+    @Module({
+      imports: [
+        StorageModule.forRoot({
+          driver: privateDriver,
+          http: { basePath: '/files', authorize: () => false },
+        }),
+      ],
+    })
+    class PrivateFeature {}
+    @Module({
+      imports: [
+        StorageModule.forRoot({
+          driver: publicDriver,
+          http: { basePath: '/public', authorize: () => true },
+        }),
+      ],
+    })
+    class PublicFeature {}
+    @Module({ imports: [PrivateFeature, PublicFeature] })
+    class App {}
+
+    // Under the default diagnostics policy, keeping the first bucket would
+    // serve it through the second feature's routes and authorizer.
+    await expect(VelaFactory.create(App)).rejects.toThrow(
+      /StorageModule#default was imported again with different options/,
+    );
+  });
+
+  it('mounts the routes of an identical repeated registration once', async () => {
+    const driver = memoryDriver();
+    const authorize = () => true;
+    const register = () =>
+      StorageModule.forRoot({ driver, http: { basePath: '/files', authorize } });
+    const app = await appWith([register(), register()]);
+    const routes = app
+      .describeRoutes()
+      .filter((route) => route.path.startsWith('/files'))
+      .map((route) => `${route.method} ${route.path}`);
+    expect(routes.length).toBeGreaterThan(0);
+    expect(new Set(routes).size).toBe(routes.length);
+    await app.close();
+  });
+
   it('reports a second async factory for one bucket', async () => {
     const factoryA = () => ({ driver: memoryDriver() });
     const factoryB = () => ({ driver: memoryDriver() });

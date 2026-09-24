@@ -278,6 +278,7 @@ describe('application isolation and queue routing', () => {
     await expect(
       appWith([
         MailModule.forRootAsync({
+          // @ts-expect-error A factory never returns a structural option; untyped callers fail at bootstrap.
           useFactory: () => ({
             from: 'sender@example.com',
             queue: { name: 'hidden' },

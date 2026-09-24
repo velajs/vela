@@ -219,13 +219,18 @@ export class ModuleLoader {
 
     const moduleId = this.getModuleId(moduleClass, key);
     if (this.isProcessed(moduleClass, key)) {
-      this.reportIdentityCollision(moduleId, moduleClassOrDynamic);
-      // Even if already processed, still collect extra controllers from dynamic module
-      for (const controller of extraControllers) {
-        if (this.registerController(controller, moduleId)) {
-          this.#moduleControllers.get(moduleId)?.add(controller);
-          this.#enhancerHosts.get(moduleId)?.add(controller);
-          this.#moduleTokens.get(moduleId)?.push(controller);
+      const accepted = this.reportIdentityCollision(moduleId, moduleClass, moduleClassOrDynamic);
+      // A hand-written repeat may still add controllers to the instance. A
+      // generated module's controllers came from the setup of the repeat's own
+      // definition, which the first one replaces: another call builds new
+      // controller classes, and a conflicting one never reaches this point.
+      if (accepted && !readModuleIdentity(moduleClassOrDynamic)) {
+        for (const controller of extraControllers) {
+          if (this.registerController(controller, moduleId)) {
+            this.#moduleControllers.get(moduleId)?.add(controller);
+            this.#enhancerHosts.get(moduleId)?.add(controller);
+            this.#moduleTokens.get(moduleId)?.push(controller);
+          }
         }
       }
       return this.getCachedExports(moduleClass, key) ?? new Set();
@@ -267,9 +272,12 @@ export class ModuleLoader {
         : toProviderDefinition(provider, `${moduleName}.providers[${index}]`),
     );
 
-    if (isDynamicModule(moduleClassOrDynamic)) {
-      this.#definitionByModuleId.set(moduleId, moduleClassOrDynamic);
-    }
+    // A bare class import is recorded as its plain definition, so a later
+    // repeat that asks for another global flag is reported too.
+    this.#definitionByModuleId.set(
+      moduleId,
+      isDynamicModule(moduleClassOrDynamic) ? moduleClassOrDynamic : { module: moduleClass },
+    );
     this.#processingStack.add(moduleId);
 
     try {
@@ -303,7 +311,7 @@ export class ModuleLoader {
         importedModuleIds.add(importedId);
 
         if (entry instanceof ForwardRef && this.#processingStack.has(importedId)) {
-          this.reportIdentityCollision(importedId, importedModule);
+          this.reportIdentityCollision(importedId, importedModuleClass, importedModule);
           continue;
         }
 
@@ -517,35 +525,46 @@ export class ModuleLoader {
 
   /**
    * A repeated (class, key) is deduplicated to its first definition. That is
-   * only safe when the repeat was built from the same inputs; otherwise its
-   * providers would be dropped without a trace.
+   * only safe when the repeat was built from the same inputs, so a repeat
+   * built from different options fails the load: keeping either configuration
+   * would run the other import's consumers on options they never asked for
+   * (another base URL, driver or authorizer). A repeat that asks for another
+   * global flag is reported and ignored. Returns whether the repeat agrees
+   * with the first definition.
    */
-  private reportIdentityCollision(moduleId: string, repeat: Type | DynamicModule): void {
+  private reportIdentityCollision(
+    moduleId: string,
+    moduleClass: Type,
+    repeat: Type | DynamicModule,
+  ): boolean {
     const first = this.#definitionByModuleId.get(moduleId);
-    if (!first || !isDynamicModule(repeat) || first === repeat) return;
+    if (!first || !isDynamicModule(repeat) || first === repeat) return true;
     // The first definition decided whether the instance's exports are global;
     // a repeat that says otherwise would silently lose (or gain) visibility.
-    if ((first.global === true) !== (repeat.global === true)) {
+    // A @Global() class is global in either form.
+    const classGlobal = getModuleMetadata(moduleClass)?.global === true;
+    const firstGlobal = classGlobal || first.global === true;
+    if (firstGlobal !== (classGlobal || repeat.global === true)) {
       reportDiagnostic(
         this.container.getDiagnostics(),
         `[vela] ${moduleId} was imported again with a different global flag; the repeated ` +
-          `import was ignored in favor of the first (global: ${first.global === true}). ` +
+          `import was ignored in favor of the first (global: ${firstGlobal}). ` +
           `Import the module with one global setting, or give each configuration its own key.`,
       );
-      return;
+      return false;
     }
-    // Other hand-written DynamicModules record no inputs and are never reported.
+    // Other hand-written DynamicModules record no inputs and are never compared.
     const firstIdentity = readModuleIdentity(first);
     const repeatIdentity = readModuleIdentity(repeat);
-    if (!firstIdentity || !repeatIdentity) return;
+    if (!firstIdentity || !repeatIdentity) return true;
     this.#identity ??= firstIdentity.createComparer();
-    if (!this.#identity.conflicts(firstIdentity, repeatIdentity)) return;
-    reportDiagnostic(
-      this.container.getDiagnostics(),
-      `[vela] ${moduleId} was imported again with different options; the repeated import's ` +
-        `providers were ignored in favor of the first. Import one shared definition ` +
-        `(e.g. export a const of the DynamicModule) instead of building it twice, or give ` +
-        `each configuration its own key (e.g. forRoot({ ..., key: 'secondary' })).`,
+    if (!this.#identity.conflicts(firstIdentity, repeatIdentity)) return true;
+    // Not a diagnostic: no policy may keep one configuration for both imports.
+    throw new Error(
+      `[vela] ${moduleId} was imported again with different options, and one module instance ` +
+        `has one configuration. Import one shared definition (e.g. export a const of the ` +
+        `DynamicModule) instead of building it twice, or give each configuration its own key ` +
+        `(e.g. forRoot({ ..., key: 'secondary' })).`,
     );
   }
 

@@ -1,15 +1,22 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ConfigurableModuleBuilder,
+  Controller,
+  Get,
   Global,
   InjectionToken,
   Module,
   VelaFactory,
   defineModule,
   defineProvider,
+  type DynamicModule,
+  type Type,
 } from '../index';
+import { EventEmitter, EventEmitterModule } from '../event-emitter';
+import { HealthCheckService, HealthModule } from '../health';
 import * as moduleKit from '../module-kit';
 import { referenceKey } from '../module-kit';
+import { ScheduleExecutor, ScheduleNodeModule } from '../schedule-node';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -78,6 +85,24 @@ describe('module contract: keys come from structural fields only', () => {
     expect(PlainModule.forRoot({ ttl: 1, key: 'secondary' }).key).toBe('secondary');
   });
 
+  it('keeps one instance of each first-party module without options across both forms', async () => {
+    const cases: Array<[bare: Type, root: DynamicModule, token: Type]> = [
+      [ScheduleNodeModule, ScheduleNodeModule.forRoot(), ScheduleExecutor],
+      [EventEmitterModule, EventEmitterModule.forRoot(), EventEmitter],
+      [HealthModule, HealthModule.forRoot(), HealthCheckService],
+    ];
+    for (const [bare, root, token] of cases) {
+      // A library imports the bare class; the application uses forRoot().
+      @Module({ imports: [bare] })
+      class LibraryModule {}
+      @Module({ imports: [LibraryModule, root] })
+      class AppModule {}
+      const app = await VelaFactory.create(AppModule, { diagnostics: 'throw' });
+      expect(app.getContainer().getOwnerModuleIds(token)).toEqual([`${bare.name}#default`]);
+      await app.close();
+    }
+  });
+
   it('passes setup only the structural fields, for forRoot as for forRootAsync', () => {
     const seen: unknown[] = [];
     const { ConfigurableModuleClass } = defineModule<BucketOptions, 'name'>({
@@ -94,7 +119,7 @@ describe('module contract: keys come from structural fields only', () => {
     expect(seen).toEqual([{ name: 'files' }, { name: 'files' }]);
   });
 
-  it('reports a repeated structural key whose other options differ', async () => {
+  it('fails bootstrap on a repeated structural key whose other options differ', async () => {
     @Module({
       imports: [
         BucketModule.forRoot({ name: 'files', driver: driver('a') }),
@@ -102,9 +127,14 @@ describe('module contract: keys come from structural fields only', () => {
       ],
     })
     class AppModule {}
-    await expect(VelaFactory.create(AppModule, { diagnostics: 'throw' })).rejects.toThrow(
-      /BucketModule#\w+ was imported again with different options/,
-    );
+    // Keeping either configuration would run the other feature on it, so no
+    // diagnostics policy lets the application start.
+    for (const diagnostics of ['throw', 'log', 'silent'] as const) {
+      await expect(VelaFactory.create(AppModule, { diagnostics })).rejects.toThrow(
+        /BucketModule#\w+ was imported again with different options/,
+      );
+    }
+    await expect(VelaFactory.create(AppModule)).rejects.toThrow(/different options/);
   });
 
   it('lets distinct structural fields coexist as separate instances', async () => {
@@ -117,6 +147,81 @@ describe('module contract: keys come from structural fields only', () => {
     class AppModule {}
     const app = await VelaFactory.create(AppModule, { diagnostics: 'throw' });
     expect(app.getContainer().getOwnerModuleIds(BUCKET_OPTIONS)).toHaveLength(2);
+    await app.close();
+  });
+});
+
+interface MountOptions {
+  path: string;
+  label?: string;
+}
+
+// Like a storage bucket's HTTP controller: setup builds a controller class per
+// call, so two calls with equal inputs still produce two distinct classes.
+const { ConfigurableModuleClass: MountBase } = defineModule<MountOptions, 'path'>({
+  name: 'Mount',
+  structural: ['path'],
+  setup: ({ options }) => {
+    @Controller(options.path)
+    class MountController {
+      @Get('/read')
+      read(): string {
+        return 'mounted';
+      }
+    }
+    return { controllers: [MountController] };
+  },
+});
+class MountModule extends MountBase {}
+
+const routesAt = (routes: ReadonlyArray<{ method: string; path: string }>, path: string) =>
+  routes.filter((route) => route.method === 'GET' && route.path === path);
+
+describe('module contract: a repeated (class, key) contributes nothing of its own', () => {
+  it('mounts the controllers of an identical repeat built by a second call once', async () => {
+    @Module({
+      imports: [MountModule.forRoot({ path: '/mount' }), MountModule.forRoot({ path: '/mount' })],
+    })
+    class AppModule {}
+    const app = await VelaFactory.create(AppModule, { diagnostics: 'throw' });
+    expect(routesAt(app.describeRoutes(), '/mount/read')).toHaveLength(1);
+    await app.close();
+  });
+
+  it('ignores the controllers of a repeat whose global flag differs', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    @Module({
+      imports: [
+        MountModule.forRoot({ path: '/mount' }),
+        MountModule.forRoot({ path: '/mount', isGlobal: true }),
+      ],
+    })
+    class AppModule {}
+    const app = await VelaFactory.create(AppModule);
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/different global flag/));
+    expect(routesAt(app.describeRoutes(), '/mount/read')).toHaveLength(1);
+    await app.close();
+  });
+
+  it('still collects the extra controllers of a hand-written repeat', async () => {
+    @Controller('/extra')
+    class ExtraController {
+      @Get('/read')
+      read(): string {
+        return 'extra';
+      }
+    }
+    @Module({})
+    class HandWritten {}
+    @Module({
+      imports: [
+        { module: HandWritten, key: 'one' },
+        { module: HandWritten, key: 'one', controllers: [ExtraController] },
+      ],
+    })
+    class AppModule {}
+    const app = await VelaFactory.create(AppModule, { diagnostics: 'throw' });
+    expect(routesAt(app.describeRoutes(), '/extra/read')).toHaveLength(1);
     await app.close();
   });
 });
@@ -198,6 +303,31 @@ describe('module contract: registration controls never reach the options', () =>
     );
   });
 
+  it('rejects an async call-site option the spec leaves out of its structural list', () => {
+    // `label` is declared structural in the type but missing from the list, so
+    // it would reach neither setup nor OPTIONS.
+    const { ConfigurableModuleClass } = defineModule<BucketOptions, 'name' | 'label'>({
+      name: 'Unlisted',
+      structural: ['name'],
+    });
+    class UnlistedModule extends ConfigurableModuleClass {}
+    expect(() =>
+      UnlistedModule.forRootAsync({
+        name: 'files',
+        label: 'x',
+        useFactory: () => ({ driver: driver('a') }),
+      }),
+    ).toThrow(/UnlistedModule\.forRootAsync: 'label' is neither a structural option/);
+    // An explicitly undefined field carries nothing, so it is not rejected.
+    expect(
+      UnlistedModule.forRootAsync({
+        name: 'files',
+        label: undefined,
+        useFactory: () => ({ driver: driver('a') }),
+      }).key,
+    ).toBe(UnlistedModule.forRoot({ name: 'files', driver: driver('a') }).key);
+  });
+
   it('reports the same (class, key) imported with different global flags', async () => {
     const shared = driver('a');
     @Module({
@@ -214,6 +344,25 @@ describe('module contract: registration controls never reach the options', () =>
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const app = await VelaFactory.create(AppModule);
     expect(warn).toHaveBeenCalledWith(expect.stringMatching(/different global flag/));
+    await app.close();
+  });
+
+  it('reports a global instance repeated after a bare import of its class', async () => {
+    @Module({})
+    class Plain {}
+    @Module({ imports: [Plain, { module: Plain, global: true }] })
+    class AppModule {}
+    await expect(VelaFactory.create(AppModule, { diagnostics: 'throw' })).rejects.toThrow(
+      /Plain#default was imported again with a different global flag/,
+    );
+
+    // A @Global() class is global in both forms.
+    @Global()
+    @Module({})
+    class AlwaysGlobal {}
+    @Module({ imports: [AlwaysGlobal, { module: AlwaysGlobal, global: true }] })
+    class GlobalApp {}
+    const app = await VelaFactory.create(GlobalApp, { diagnostics: 'throw' });
     await app.close();
   });
 

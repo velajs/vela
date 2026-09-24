@@ -88,7 +88,8 @@ export interface DefineModuleSpec<
   /**
    * The option fields `setup` and `key` read. They shape the module graph, so
    * `forRoot` and `forRootAsync` both take them at the call site, and an async
-   * factory returns only the other fields. List every member of `S`.
+   * factory returns only the other fields. List every member of `S`:
+   * `forRootAsync` rejects a call-site option this list leaves out.
    */
   structural?: readonly S[];
   /**
@@ -100,7 +101,10 @@ export interface DefineModuleSpec<
    * Instance key from the structural options. Defaults to
    * `stableHash(structural)`, so a module without structural fields has one
    * instance per class unless the caller passes an explicit `key`. Use
-   * `referenceKey` to key stateful structural values by reference.
+   * `referenceKey` to key stateful structural values by reference. A module
+   * that takes no options and is also imported bare (an `@Module` class with
+   * its own providers) returns `'default'`, the bare import's key, so
+   * `forRoot()` and the class are one instance.
    */
   key?: (options: Pick<Opts, S>) => string;
   /** Call-site extras defaults (default `{ isGlobal: false }`). */
@@ -199,7 +203,7 @@ const ASYNC_WIRING_KEYS: ReadonlySet<string> = new Set([
  *
  * `key`, `lazy` and the extras (such as `isGlobal`) are registration controls:
  * they never reach the options token and never change the instance key. The
- * module loader reports a repeated `(class, key)` import built from different
+ * module loader rejects a repeated `(class, key)` import built from different
  * inputs. `ConfigurableModuleBuilder` is a Nest-shaped facade over this engine.
  */
 export function defineModule<
@@ -324,8 +328,16 @@ export function defineModule<
       const [wiring, callSite] = split(rest, ASYNC_WIRING_KEYS);
       const [extras, others] = split(callSite, extrasKeys);
       // Only declared structural fields belong at the call site; the factory
-      // supplies every other option.
-      const [structural] = split(others, structuralKeys);
+      // supplies every other option. Anything else would reach neither setup
+      // nor the options token, so it fails here instead of vanishing.
+      const [structural, unlisted] = split(others, structuralKeys);
+      for (const name of Reflect.ownKeys(unlisted)) {
+        if (unlisted[name] === undefined) continue;
+        throw new TypeError(
+          `${hostName(this)}.${asyncName}: '${String(name)}' is neither a structural option ` +
+            'nor a registration control; return module options from the factory.',
+        );
+      }
       return buildDefinition(
         this,
         registration,

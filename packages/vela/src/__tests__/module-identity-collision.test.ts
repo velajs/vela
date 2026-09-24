@@ -35,30 +35,22 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<RegionOpt
 class RegionModule extends ConfigurableModuleClass {}
 
 describe('module identity collisions', () => {
-  it('reports a repeated (class, key) whose options differ', async () => {
+  it('fails bootstrap on a repeated (class, key) whose options differ, in every mode', async () => {
     @Module({
       imports: [RegionModule.forRoot({ region: 'eu' }), RegionModule.forRoot({ region: 'us' })],
     })
     class AppModule {}
 
-    await expect(VelaFactory.create(AppModule, { diagnostics: 'throw' })).rejects.toThrow(
-      /RegionModule#shared was imported again with different options/,
-    );
-
+    // Keeping the first configuration would run the second import's consumers
+    // on options they never asked for, so no diagnostics policy downgrades it.
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const app = await VelaFactory.create(AppModule);
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringMatching(/RegionModule#shared was imported again with different options/),
-    );
-    // The first import still wins, exactly as before the diagnostic.
-    expect(app.get(REGION)).toBe('eu');
-    await app.close();
-
-    warn.mockClear();
-    const silent = await VelaFactory.create(AppModule, { diagnostics: 'silent' });
+    for (const diagnostics of ['throw', 'log', 'silent'] as const) {
+      await expect(VelaFactory.create(AppModule, { diagnostics })).rejects.toThrow(
+        /RegionModule#shared was imported again with different options/,
+      );
+    }
+    await expect(VelaFactory.create(AppModule)).rejects.toThrow(/different options/);
     expect(warn).not.toHaveBeenCalled();
-    await silent.close();
   });
 
   it('still deduplicates identical repeats', async () => {
@@ -114,12 +106,10 @@ describe('module identity collisions', () => {
     await expect(VelaFactory.create(TwoBindings, { diagnostics: 'throw', env })).rejects.toThrow(
       /RegionModule#shared was imported again with different options/,
     );
-
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const app = await VelaFactory.create(TwoBindings, { env });
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(app.get(REGION)).toBe('eu');
-    await app.close();
+    // The default policy never serves the backup binding's consumers the primary region.
+    await expect(VelaFactory.create(TwoBindings, { env })).rejects.toThrow(
+      /RegionModule#shared was imported again with different options/,
+    );
   });
 
   it('asks a helper that rebuilds one configuration to share a single definition', async () => {
@@ -179,10 +169,10 @@ describe('module identity collisions', () => {
     })
     class DistinctInstances {}
     const message =
-      '[vela] RegionModule#shared was imported again with different options; the repeated ' +
-      "import's providers were ignored in favor of the first. Import one shared definition " +
-      '(e.g. export a const of the DynamicModule) instead of building it twice, or give each ' +
-      "configuration its own key (e.g. forRoot({ ..., key: 'secondary' })).";
+      '[vela] RegionModule#shared was imported again with different options, and one module ' +
+      'instance has one configuration. Import one shared definition (e.g. export a const of ' +
+      'the DynamicModule) instead of building it twice, or give each configuration its own ' +
+      "key (e.g. forRoot({ ..., key: 'secondary' })).";
     await expect(VelaFactory.create(DistinctInstances, { diagnostics: 'throw' })).rejects.toThrow(
       message,
     );

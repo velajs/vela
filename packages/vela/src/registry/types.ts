@@ -118,8 +118,8 @@ export interface DynamicModule {
    * Instance discriminator. Two DynamicModules with the same `module` class
    * and the same `key` are one instance; with different keys they coexist as
    * separate module instances. Defaults to `"default"` when absent. A repeat
-   * of the same `(class, key)` built from different inputs, or with a
-   * different `global` flag, is reported by the module loader.
+   * of the same `(class, key)` built from different inputs fails the load; a
+   * repeat with a different `global` flag is reported by the module loader.
    * `defineModule` derives the key from the declared structural options.
    */
   key?: string;

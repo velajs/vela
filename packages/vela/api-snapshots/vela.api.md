@@ -2420,7 +2420,7 @@ interface ModuleRegistrationOptions {
   lazy?: boolean;
 }
 
-type ModuleFactoryOptions<Opts, S extends keyof Opts = never> = [S] extends [never] ? Opts : Opts extends unknown ? Omit<Opts, S> : never;
+type ModuleFactoryOptions<Opts, S extends keyof Opts = never> = [S] extends [never] ? Opts : Opts extends unknown ? Omit<Opts, S> & Partial<Record<S, never>> : never;
 
 type ConfigurableModuleExtrasTransform<E extends ConfigurableModuleExtras> = (definition: DynamicModule, extras: E) => DynamicModule;
 

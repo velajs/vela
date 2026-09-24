@@ -59,7 +59,11 @@ The second type argument lists the options that shape the module graph, and
   option exists only once DI resolves `OPTIONS`, so providers read it there.
 - `forRootAsync` takes the structural fields at the call site (`Pick<Opts, S>`)
   and its factory returns the rest (`Omit<Opts, S>`). A factory that returns a
-  structural field fails the bootstrap: the module was already built without it.
+  structural field fails to compile, and fails the bootstrap when a type
+  assertion hides it: the module was already built without it. A call-site
+  option that is neither in the spec's `structural` list, an extra nor a
+  registration control throws when `forRootAsync` is called instead of being
+  dropped, so list every member of `S`.
 - A module without structural fields (`S` defaults to `never`) has a factory
   that returns the complete options.
 
@@ -98,7 +102,11 @@ is listed.
 `DynamicModule.key` decides instance identity: the same `(class, key)` is one
 instance, different keys coexist. The default key is `stableHash` of the
 structural options, so a module without structural fields has one instance per
-class. A display name is not identity: distinct classes with the same name
+class. A module that takes no options and can also be imported bare (an
+`@Module` class with its own providers, such as `ScheduleNodeModule`,
+`EventEmitterModule` and `HealthModule`) declares `key: () => 'default'`, the
+bare import's key, so `forRoot()` and the class are one instance. A display
+name is not identity: distinct classes with the same name
 remain independent. The loader and OpenAPI metadata walker use the same
 class/key distinction. An HTTP controller class can be mounted by only one
 module owner: registering its identical routes through two owners fails with a
@@ -129,14 +137,20 @@ compare structurally, while functions and class instances (such as an
 `InjectionToken`) compare by reference. Source text cannot see what a closure
 captured, so two closures with the same source are different inputs: a helper
 such as `database('PRIMARY_URL')` and `database('ANALYTICS_URL')` that builds a
-`forRootAsync` config from its argument is reported instead of silently
-keeping the first configuration. A repeat built from different inputs, or with
-a different `global` flag, is reported through the container's diagnostics
-policy (`'log'` warns, `'throw'` fails bootstrap) instead of silently dropping
-its providers. A helper that rebuilds the same configuration on every call is
-reported as well; import one shared definition (export a const of the
-`DynamicModule`), or give each configuration its own `key`. Identical repeats
-still deduplicate. The reference ids belong to one module loader and are
+`forRootAsync` config from its argument is rejected instead of silently
+keeping the first configuration. A repeat built from different inputs fails
+the bootstrap whatever the diagnostics policy: keeping either configuration
+would run the other import's consumers on options they never asked for, such
+as another base URL, credentials, driver or authorizer. Two features that each
+configure `HttpModule.forRoot({ baseURL })`, for example, give each client its
+own `key`. A helper that rebuilds the same configuration on every call is
+rejected as well; import one shared definition (export a const of the
+`DynamicModule`), or give each configuration its own `key`. A repeat with a
+different `global` flag, including a global instance after a bare import of
+its class, is reported through the container's diagnostics policy (`'log'`
+warns, `'throw'` fails bootstrap) and ignored. Identical repeats still
+deduplicate, and a repeat never adds a generated module's controllers to the
+instance a second time. The reference ids belong to one module loader and are
 released with it.
 
 An `undefined` or `null` entry in a module's `imports`, `providers`,

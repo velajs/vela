@@ -156,7 +156,7 @@ Load a reference when the task needs its depth. **This table is the contract** �
 | `references/serialization.md` | Async output schemas, `defineSerializer`, explicit domain projections and private state |
 | `references/rpc-and-graphql.md` | Optional method RPC and executable-schema GraphQL, wire types, owner-aware providers, and operation resources |
 | `references/openapi.md` | `@velajs/vela/openapi`: `createOpenApiDocument`, `@ApiDoc`/`@ApiTags`/`@ApiResponse`, operationId-from-route-name, `app.mountOpenApi` (Swagger/Scalar/ReDoc) |
-| `references/config.md` | `ConfigModule.forRoot`/`forFeature`, `registerAs`, `ConfigType`/`ConfigShape`, `ENV`/`VelaEnv`/`InjectEnv`, typed `ConfigService<T>` paths, parser-validated dynamic paths, `forRoot`-only caveat |
+| `references/config.md` | `ConfigModule.forRoot`/`forFeature`, `registerAs`, `ConfigType`/`ConfigShape`, `ENV`/`VelaEnv`/`InjectEnv`, typed `ConfigService<T>` paths, parser-validated dynamic paths, `load` structural on `forRootAsync` |
 | `references/websocket.md` | Gateways, `@SubscribeMessage`, `WsServer`/rooms, `WebSocketModule`, transports (core / websocket-node / CF DO) |
 | `references/queues.md` | `@velajs/vela/queue`: `QueueModule.forRoot`/`registerQueue`, `@InjectQueue`/`QueueClient` (`add`, `addBulk`), `@Processor`/`@Process`, inline driver, `cloudflareQueues()`, signed dispatch, `dispatchQueueJob` |
 | `references/live-queries.md` | `@velajs/vela/live`: `LiveModule`, `@LiveResolver`/`@LiveQuery` + tags, `LiveInvalidation`, resume/cursors, CRUD `live: true` bridge, `@velajs/client` hooks |
@@ -189,11 +189,11 @@ Load a reference when the task needs its depth. **This table is the contract** �
 
 **`AppModule.imports[2] is undefined — usually a circular file import`** (`UndefinedModuleError`) → A module list holds `undefined` because two files import each other. Use `imports: [forwardRef(() => OtherModule)]`, or move the class so the cycle disappears.
 
-**`[vela] XModule#key was imported again with different options`** → Two imports share one `(class, key)` but were built from different options (different closures, even with the same source, or distinct class instances such as tokens), so the second one's providers are ignored. Import one shared definition (export a const of the `DynamicModule`) instead of building it twice, or pass a distinct `key` per configuration.
+**`[vela] XModule#key was imported again with different options`** → Two imports share one `(class, key)` but were built from different options (different closures, even with the same source, or distinct class instances such as tokens), so bootstrap fails in every diagnostics mode. Import one shared definition (export a const of the `DynamicModule`) instead of building it twice, or pass a distinct `key` per configuration (for example one `HttpModule.forRoot({ baseURL, key })` per feature client).
 
 **`Circular dependency detected: ...`** → Break the cycle with `@Inject(forwardRef(() => Other))` (providers) or `imports: [forwardRef(() => OtherModule)]` (modules).
 
-**`Multiple providers found for 'X' ...`** (`MultipleProvidersFoundError`) → Two module instances export the same token (e.g. `CacheModule.forRoot({ ttl: 60, key: 'fast' })` and `forRoot({ ttl: 120, key: 'slow' })`; without keys the second configuration is reported and ignored). Import only one, or use a per-instance accessor.
+**`Multiple providers found for 'X' ...`** (`MultipleProvidersFoundError`) → Two module instances export the same token (e.g. `CacheModule.forRoot({ ttl: 60, key: 'fast' })` and `forRoot({ ttl: 120, key: 'slow' })`; without keys the second configuration fails bootstrap). Import only one, or use a per-instance accessor.
 
 **`lazy module 'X' has async providers or lifecycle hooks and was triggered through a synchronous resolution path.`** → A `lazy: true` module has async work but was reached via `app.get()` or another synchronous resolver. Use `resolveAsync()` or `app.materializeLazyModules()`. The HTTP pipeline supports async resolution.
 

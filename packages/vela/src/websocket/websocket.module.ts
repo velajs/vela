@@ -32,7 +32,7 @@ export interface WebSocketModuleOptions {
  *
  * The instance key derives from the structural sync driver's kind: importing
  * the same configuration again dedups (HMR-idempotent), a different driver of
- * the same kind is reported; pass an explicit `key` to run multiple same-kind
+ * the same kind fails bootstrap; pass an explicit `key` to run multiple same-kind
  * instances side by side.
  */
 const { ConfigurableModuleClass } = defineModule<WebSocketModuleOptions, 'sync'>({

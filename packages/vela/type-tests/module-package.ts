@@ -31,6 +31,11 @@ Feature.forRootAsync({
 Feature.forRootAsync({ http: 'false', useFactory: () => ({ name: 'one' }) });
 // @ts-expect-error Non-structural options come from the factory.
 Feature.forRootAsync({ name: 'one', useFactory: () => ({ name: 'one' }) });
+Feature.forRootAsync({
+  http: false,
+  // @ts-expect-error The factory never returns a structural option.
+  useFactory: () => ({ name: 'one', http: true }),
+});
 defineModule<{ name: string; http?: boolean }, 'http'>({
   name: 'SetupReadsStructural',
   structural: ['http'],

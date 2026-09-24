@@ -27,7 +27,7 @@ class ConfigFeatureModule {}
  * ConfigModule instance) and `forFeature()` of the same namespace collapse
  * into one `(class, key)` instance: the KEY has a single owner, whatever the
  * import path, and its factory runs once. Another namespace object under the
- * same name is reported as a module identity collision.
+ * same name fails bootstrap as a module identity collision.
  */
 function namespaceSubModule(namespace: AnyConfigNamespace): DynamicModule {
   return attachModuleIdentity(
@@ -113,7 +113,7 @@ export class ConfigModule extends ConfigurableModuleClass {
   static forFeature(namespace: AnyConfigNamespace): DynamicModule {
     const registration = new InjectionToken<string>(`vela:config-feature:${namespace.namespace}`);
     // Repeating the same namespace dedupes; another namespace object under the
-    // same name is reported as a module identity collision.
+    // same name fails bootstrap as a module identity collision.
     return attachModuleIdentity(
       {
         module: ConfigFeatureModule,
