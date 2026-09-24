@@ -43,7 +43,10 @@ function isIdentityField(value: string | null): value is string {
  *
  * It owns the raw hibernation socket lifecycle (Hono's `upgradeWebSocket` cannot
  * bridge DO hibernation) and forwards every event into the runtime-agnostic
- * `WsDispatcher` via {@link DoWebSocketHost}. The DO's `env` is the
+ * `WsDispatcher` via {@link DoWebSocketHost}. The application imports the core
+ * `WebSocketModule.forRoot()`: this object registers the platform that binds
+ * its server to these sockets, delivers live invalidations locally and keeps
+ * the live cursor log in its SQLite storage. The DO's `env` is the
  * application's ENV, as in the Worker.
  */
 export function VelaWebSocketDurableObject(rootModule: CloudflareRoot): new (
