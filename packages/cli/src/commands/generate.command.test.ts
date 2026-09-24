@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -157,6 +157,56 @@ import { REPORTS_QUEUE, ReportsProcessor } from './reports/reports.processor.js'
     expect(await read('src/app.module.ts')).toBe(
       (await renderTemplate('demo', { template: 'api' })).get('src/app.module.ts'),
     );
+  });
+
+  it('adds no queue driver when any module of the project configures one', async () => {
+    await scaffold('minimal');
+    await mkdir(join(project, 'src/infra'), { recursive: true });
+    await writeFile(
+      join(project, 'src/infra/infra.module.ts'),
+      `import { Module } from '@velajs/vela';
+import { cloudflareQueues } from '@velajs/cloudflare/queues';
+import { QueueModule } from '@velajs/vela/queue';
+
+@Module({ imports: [QueueModule.forRoot({ driver: cloudflareQueues() })] })
+export class InfraModule {}
+`,
+    );
+    // A spec's own testing module does not count.
+    await writeFile(
+      join(project, 'src/infra/infra.spec.ts'),
+      "// QueueModule.forRoot({ driver: inline() })\nexport const unused = 'QueueModule.forRoot(';\n",
+    );
+    const result = await generate('g', 'queue', 'audit');
+    expect(result.code, result.output).toBe(0);
+    const app = await read('src/app.module.ts');
+    expect(app).not.toContain('QueueModule.forRoot');
+    expect(app).toContain("QueueModule.registerQueue({ name: AUDIT_QUEUE, binding: 'AUDIT' })");
+    const skipped = await generate('g', 'queue', 'sms', '--skip-import');
+    expect(skipped.code, skipped.output).toBe(0);
+    expect(skipped.output).not.toContain('QueueModule.forRoot');
+  });
+
+  it('prints no driver registration with --skip-import once the root module has one', async () => {
+    await scaffold('minimal');
+    expect((await generate('g', 'queue', 'emails')).code).toBe(0);
+    const skipped = await generate('g', 'queue', 'sms', '--skip-import');
+    expect(skipped.code, skipped.output).toBe(0);
+    expect(skipped.output).toContain('QueueModule.registerQueue({ name: SMS_QUEUE');
+    expect(skipped.output).not.toContain('QueueModule.forRoot');
+  });
+
+  it('registers in the root module the Worker entry names, not a helper module before it', async () => {
+    await scaffold('minimal');
+    const app = await read('src/app.module.ts');
+    await writeFile(
+      join(project, 'src/app.module.ts'),
+      app.replace('@Module({', '@Module({ providers: [] })\nclass InternalModule {}\n\n@Module({'),
+    );
+    expect((await generate('g', 'service', 'billing')).code).toBe(0);
+    const edited = await read('src/app.module.ts');
+    expect(edited).toContain('@Module({ providers: [] })\nclass InternalModule {}');
+    expect(edited).toContain('providers: [AppService, BillingService],');
   });
 
   it('adds a cron job with a validated Cloudflare schedule', async () => {

@@ -139,6 +139,104 @@ export const SESSIONS = new InjectionToken<KVNamespace>('SESSIONS');`);
     expect(result.output).toContain("@InjectQueue('emails')");
   });
 
+  it('adds no queue driver when another module configures one', async () => {
+    await mkdir(join(project, 'src/infra'), { recursive: true });
+    await writeFile(
+      join(project, 'src/infra/infra.module.ts'),
+      `import { Module } from '@velajs/vela';
+import { cloudflareQueues } from '@velajs/cloudflare/queues';
+import { QueueModule } from '@velajs/vela/queue';
+
+@Module({ imports: [QueueModule.forRoot({ driver: cloudflareQueues() })] })
+export class InfraModule {}
+`,
+    );
+    const result = await add('queue', 'EMAILS');
+    expect(result.code, result.output).toBe(0);
+    const app = await read('src/app.module.ts');
+    expect(app).not.toContain('QueueModule.forRoot');
+    expect(app).toContain("QueueModule.registerQueue({ name: 'emails', binding: 'EMAILS' })");
+    const skipped = await add('queue', 'AUDIT', '--skip-import');
+    expect(skipped.code, skipped.output).toBe(0);
+    expect(skipped.output).not.toContain('QueueModule.forRoot');
+  });
+
+  it('prints the registration with --skip-import for a root it cannot edit', async () => {
+    await writeFile(
+      join(project, 'src/worker.ts'),
+      `import { createCloudflareWorker } from '@velajs/cloudflare';
+import { AppModule } from './app.module.js';
+
+const Root = { module: AppModule, providers: [] };
+export default createCloudflareWorker(Root);
+`,
+    );
+    const skipped = await add('kv', 'CACHE', '--skip-import');
+    expect(skipped.code, skipped.output).toBe(0);
+    expect(skipped.output).toContain('Provide it yourself');
+    const queue = await add('queue', 'JOBS', '--skip-import');
+    expect(queue.code, queue.output).toBe(0);
+    expect(queue.output).toContain("QueueModule.registerQueue({ name: 'jobs', binding: 'JOBS' })");
+    expect((await calls()).map((call) => call[0])).toEqual(['kv', 'types', 'queues', 'types']);
+  });
+
+  it('fails before creating anything when it cannot find the root module to edit', async () => {
+    await writeFile(
+      join(project, 'src/worker.ts'),
+      `import { createCloudflareWorker } from '@velajs/cloudflare';
+import { AppModule } from './app.module.js';
+
+export default createCloudflareWorker({ module: AppModule });
+`,
+    );
+    const before = await read('wrangler.jsonc');
+    for (const kind of ['kv', 'queue']) {
+      const result = await add(kind, 'CACHE');
+      expect(result.code).toBe(1);
+      expect(result.output).toContain('pass --skip-import');
+    }
+    await expect(read('wrangler-calls.log')).rejects.toThrow();
+    expect(await read('wrangler.jsonc')).toBe(before);
+  });
+
+  it('runs Wrangler against the Wrangler file --config names', async () => {
+    await writeFile(join(project, 'wrangler.staging.jsonc'), await read('wrangler.jsonc'));
+    const staging = join(project, 'wrangler.staging.jsonc');
+    const result = await add('kv', 'CACHE', '--config', 'wrangler.staging.jsonc');
+    expect(result.code, result.output).toBe(0);
+    expect(await calls()).toEqual([
+      [
+        'kv',
+        'namespace',
+        'create',
+        'demo-cache',
+        '--binding',
+        'CACHE',
+        '--update-config',
+        '--config',
+        staging,
+      ],
+      ['types', '--include-runtime=false', '--config', staging],
+    ]);
+    expect((await add('queue', 'JOBS', '--config', 'wrangler.staging.jsonc')).code).toBe(0);
+    expect((await calls())[2]).toEqual(['queues', 'create', 'demo-jobs', '--config', staging]);
+    expect(await read('wrangler.staging.jsonc')).toContain('"binding": "JOBS"');
+    expect(await read('wrangler.jsonc')).not.toContain('JOBS');
+  });
+
+  it('leaves the types script to the default Wrangler file', async () => {
+    const manifest = JSON.parse(await read('package.json'));
+    manifest.scripts.types = "node -e \"require('node:fs').writeFileSync('types-ran', '')\"";
+    await writeFile(join(project, 'package.json'), JSON.stringify(manifest, null, 2));
+    await writeFile(join(project, 'wrangler.staging.jsonc'), await read('wrangler.jsonc'));
+    const result = await add('kv', 'CACHE', '--config', 'wrangler.staging.jsonc');
+    expect(result.code, result.output).toBe(0);
+    expect(result.output).toContain(
+      'wrangler types --include-runtime=false --config wrangler.staging.jsonc',
+    );
+    await expect(read('types-ran')).rejects.toThrow();
+  });
+
   it('keeps the configuration when Wrangler fails', async () => {
     vi.stubEnv('WRANGLER_STUB_FAIL', 'd1');
     const before = await read('src/app.module.ts');

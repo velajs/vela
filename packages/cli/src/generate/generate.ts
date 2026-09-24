@@ -14,7 +14,14 @@ import {
   serviceSource,
   type ImportExtension,
 } from './schematics.js';
-import { addExport, addToModule, workerRootImport, type NamedImport } from './source-editor.js';
+import {
+  SourceEditError,
+  addExport,
+  addToModule,
+  callsMethod,
+  workerRootImport,
+  type NamedImport,
+} from './source-editor.js';
 
 export const SCHEMATICS = [
   'module',
@@ -104,14 +111,73 @@ function sourceFile(from: string, specifierText: string): string {
   return target.endsWith('.ts') ? target : `${target.replace(/\.(?:js|mjs)$/, '')}.ts`;
 }
 
-/** The root module file: what the Worker entry passes to createCloudflareWorker(). */
-async function rootModuleFile(cwd: string, sourceRoot: string): Promise<string | undefined> {
-  const entry = await workerEntry(cwd);
+/** The root module: the file, and the class, the Worker entry passes to createCloudflareWorker(). */
+interface RootModule {
+  readonly file: string;
+  /** The name the file exports the class under, when the Worker entry names it. */
+  readonly name?: string;
+}
+
+async function rootModule(entry: string, sourceRoot: string): Promise<RootModule | undefined> {
   const text = await readText(entry);
   const root = text === undefined ? undefined : workerRootImport(entry, text);
-  if (root) return sourceFile(entry, root.from);
+  if (root) return { file: sourceFile(entry, root.from), name: root.name };
   const fallback = join(sourceRoot, 'app.module.ts');
-  return (await readText(fallback)) === undefined ? undefined : fallback;
+  return (await readText(fallback)) === undefined ? undefined : { file: fallback };
+}
+
+const SOURCE_FILE = /\.(?:[cm]?ts|tsx|[cm]?js)$/;
+const TEST_FILE = /\.(?:test|spec)\.[^.]+$/;
+
+/**
+ * Whether a source file under `directories`, tests and declaration files
+ * aside, calls `QueueModule.forRoot()` or `forRootAsync()`: the application
+ * configures its queue driver once, in any module.
+ */
+export async function configuresQueueDriver(directories: readonly string[]): Promise<boolean> {
+  const seen = new Set<string>();
+  const visit = async (directory: string): Promise<boolean> => {
+    let entries;
+    try {
+      entries = await readdir(directory, { withFileTypes: true });
+    } catch (error) {
+      if (hasErrorCode(error, 'ENOENT')) return false;
+      throw error;
+    }
+    for (const entry of entries) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
+        // eslint-disable-next-line no-await-in-loop -- Stops at the first match.
+        if (await visit(path)) return true;
+        continue;
+      }
+      const source =
+        entry.isFile() &&
+        SOURCE_FILE.test(entry.name) &&
+        !entry.name.endsWith('.d.ts') &&
+        !TEST_FILE.test(entry.name) &&
+        !seen.has(path);
+      if (!source) continue;
+      seen.add(path);
+      // eslint-disable-next-line no-await-in-loop -- Stops at the first match.
+      const text = await readFile(path, 'utf8');
+      if (!/QueueModule\s*\.\s*forRoot/.test(text)) continue;
+      try {
+        if (callsMethod(path, text, 'QueueModule', ['forRoot', 'forRootAsync'])) return true;
+      } catch (error) {
+        // A file that does not parse may still configure it: do not add a second one.
+        if (error instanceof SourceEditError) return true;
+        throw error;
+      }
+    }
+    return false;
+  };
+  for (const directory of new Set(directories)) {
+    // eslint-disable-next-line no-await-in-loop -- Stops at the first match.
+    if (await visit(directory)) return true;
+  }
+  return false;
 }
 
 /**
@@ -156,7 +222,7 @@ interface Registration {
   readonly key: 'imports' | 'controllers' | 'providers';
   readonly entry: string;
   readonly imports: readonly NamedImport[];
-  /** Skip when an element matches (a forRoot already configured). */
+  /** Skip when an element of the host module matches (a forRoot already configured). */
   readonly unless?: RegExp;
   /** Register in the root module rather than the nearest one. */
   readonly root?: boolean;
@@ -171,8 +237,9 @@ export async function planGeneration(options: GenerateOptions): Promise<Generate
   const name = names(options.name);
   const sourceRoot = resolve(cwd, options.path ?? 'src');
   const directory = options.flat ? sourceRoot : join(sourceRoot, name.kebab);
-  const root = await rootModuleFile(cwd, sourceRoot);
-  const ext = importExtension(root === undefined ? undefined : await readText(root));
+  const entry = await workerEntry(cwd);
+  const root = await rootModule(entry, sourceRoot);
+  const ext = importExtension(root === undefined ? undefined : await readText(root.file));
   const creates: { path: string; content: string }[] = [];
   const registrations: Registration[] = [];
   const notes: string[] = [];
@@ -239,7 +306,10 @@ export async function planGeneration(options: GenerateOptions): Promise<Generate
           ],
         },
         register('providers', `${name.pascal}Processor`, target),
-        {
+      );
+      // The driver is configured once, in whichever module already does it.
+      if (!(await configuresQueueDriver([dirname(entry), sourceRoot]))) {
+        registrations.push({
           key: 'imports',
           entry: 'QueueModule.forRoot({ driver: cloudflareQueues() })',
           imports: [
@@ -248,8 +318,8 @@ export async function planGeneration(options: GenerateOptions): Promise<Generate
           ],
           unless: /^QueueModule\.forRoot(?:Async)?\(/,
           root: true,
-        },
-      );
+        });
+      }
       notes.push(
         `Next: vela cf sync --write adds the ${binding} producer and its consumer, and your types script types ENV.${binding}.`,
       );
@@ -277,7 +347,6 @@ export async function planGeneration(options: GenerateOptions): Promise<Generate
   const manual: string[] = [];
 
   if (exported) {
-    const entry = await workerEntry(cwd);
     const from = specifier(entry, exported.file, ext);
     if (options.skipImport) {
       manual.push(
@@ -296,9 +365,9 @@ export async function planGeneration(options: GenerateOptions): Promise<Generate
       (options.schematic === 'module' || options.schematic === 'resource') && !options.flat
         ? dirname(directory)
         : directory;
-    const parent = explicit ?? (await nearestModule(start, sourceRoot, root, target));
+    const parent = explicit ?? (await nearestModule(start, sourceRoot, root?.file, target));
     for (const registration of registrations) {
-      const host = registration.root ? (root ?? parent) : parent;
+      const host = registration.root ? (root?.file ?? parent) : parent;
       const imports = registration.imports.map((named) =>
         isAbsolute(named.from)
           ? { name: named.name, from: specifier(host, named.from, ext) }
@@ -316,6 +385,7 @@ export async function planGeneration(options: GenerateOptions): Promise<Generate
       const edit = addToModule(host, await read(host), registration.key, registration.entry, {
         imports,
         unless: registration.unless,
+        module: host === root?.file ? root.name : undefined,
       });
       if (edit.changed) updates.set(host, edit.source);
     }

@@ -29,7 +29,7 @@ pnpm add -D @velajs/cli
 | `vela mcp serve` | Run a Model Context Protocol stdio server exposing the introspection above as read-only tools (`route_list`, `module_graph`, `entrypoint_list`, `openapi_dump`, `token_describe`) plus a `vela://openapi` resource — for AI agents. |
 | `vela studio` | Serve the optional Studio UI through a local host, proxying the app selected by `--url`. |
 
-The commands that build the application take `--config <path>` (a `vela.config`) and `--env <name>` (a Wrangler environment); the listing commands also take `--json`.
+The commands that build the application take `--config <path>` (a `vela.config`) and `--env <name>` (a Wrangler environment); the listing commands also take `--json`. While a command runs the application, the application's console output (`Logger` lines included) goes to stderr, so stdout holds only the command's output.
 
 ### Create a project
 
@@ -91,8 +91,12 @@ Files go to `src/<name>/` (`--path`, `--flat`). A controller, service, cron job
 or processor registers in the module of its directory, else the nearest module up
 to the root module the Worker entry passes to `createCloudflareWorker()`
 (`--module` names one); a module or resource registers in the module above.
-Module files are edited with `oxc-parser` and `magic-string`, so comments and
-formatting stay as they are. Generated code uses the application kit, feature
+In the root module file the class the Worker entry names is edited, elsewhere
+the file's exported module class. A queue adds the `cloudflareQueues()` driver
+to the root module only when no source file configures `QueueModule.forRoot()`
+yet. Module files are edited with `oxc-parser` and `magic-string`, so comments
+and formatting stay as they are; a name imported with `import type` becomes a
+value import when the registration needs it. Generated code uses the application kit, feature
 subpaths (`@velajs/vela/queue`, `@velajs/vela/schedule`), `ENV`, and plain
 decorator routes; a resource validates bodies with zod when the project depends
 on it, and with generated parse functions otherwise. Existing files are never
@@ -111,8 +115,11 @@ vela add queue EMAILS   # wrangler queues create <worker>-emails; producer and c
 then the project's `types` script, then registers the binding: D1, KV and R2
 bindings become injection tokens of a global `BindingsModule` next to the root
 module (`constructor(@Inject(DB) db: D1Database)`), and a queue becomes
-`QueueModule.registerQueue({ name, binding })` with the `cloudflareQueues()`
-driver in the root module. `--skip-import` prints the registration instead.
+`QueueModule.registerQueue({ name, binding })`, with the `cloudflareQueues()`
+driver added to the root module unless a module already configures it.
+`--config <file>` is passed on to Wrangler. The root module is found before
+anything is created; `--skip-import` prints the registration instead and needs
+no editable root.
 
 ### Keep Wrangler in sync
 

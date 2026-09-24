@@ -109,6 +109,84 @@ export class AppModule {}
     );
   });
 
+  it('appends on the line instead of reflowing a list with comments', () => {
+    const source = `@Module({ imports: [QueueModule.forRoot({ driver: cloudflareQueues() }), /* keep me */ TodosModule] })\nclass A {}\n`;
+    expect(addToModule('a.ts', source, 'imports', 'NotificationsModule').source).toBe(
+      `@Module({ imports: [QueueModule.forRoot({ driver: cloudflareQueues() }), /* keep me */ TodosModule, NotificationsModule] })\nclass A {}\n`,
+    );
+  });
+
+  it('adds a list on the line of the last property when that property does not start a line', () => {
+    const source = `@Module({ imports: [QueueModule.forRoot({ driver: cloudflareQueues() }), TodosModule] })\nclass A {}\n`;
+    const reflowed = addToModule('a.ts', source, 'imports', 'NotificationsModule').source;
+    expect(addToModule('a.ts', reflowed, 'providers', 'FooService').source).toBe(
+      `@Module({ imports: [\n  QueueModule.forRoot({ driver: cloudflareQueues() }),\n  TodosModule,\n  NotificationsModule,\n], providers: [FooService] })\nclass A {}\n`,
+    );
+  });
+
+  it('edits the module class the file exports, or the one named', () => {
+    const source = `import { Module } from '@velajs/vela';
+
+@Module({ providers: [] })
+class InternalModule {}
+
+@Module({ imports: [InternalModule] })
+export class AppModule {}
+`;
+    const exported = addToModule('app.module.ts', source, 'providers', 'FooService').source;
+    expect(exported).toContain('@Module({ providers: [] })\nclass InternalModule {}');
+    expect(exported).toContain(
+      '@Module({ imports: [InternalModule], providers: [FooService] })\nexport class AppModule {}',
+    );
+    const named = addToModule('app.module.ts', source, 'providers', 'FooService', {
+      module: 'InternalModule',
+    }).source;
+    expect(named).toContain('@Module({ providers: [FooService] })\nclass InternalModule {}');
+    const renamed = `@Module({})\nclass Root {}\n@Module({})\nclass Helper {}\nexport { Root as AppModule };\n`;
+    expect(
+      addToModule('app.module.ts', renamed, 'providers', 'X', { module: 'AppModule' }).source,
+    ).toContain('@Module({ providers: [X] })\nclass Root {}');
+    expect(() =>
+      addToModule(
+        'a.ts',
+        `@Module({})\nexport class A {}\n@Module({})\nexport class B {}\n`,
+        'providers',
+        'X',
+      ),
+    ).toThrow(/several @Module\(\) classes \(A, B\)/);
+    expect(() => addToModule('a.ts', source, 'providers', 'X', { module: 'Missing' })).toThrow(
+      /no @Module\(\) class Missing/,
+    );
+  });
+
+  it('turns a type-only import of a name it registers into a value import', () => {
+    const declared = addToModule(
+      'app.module.ts',
+      `import { Module } from '@velajs/vela';\nimport type { QueueClient, QueueModule } from '@velajs/vela/queue';\n\n@Module({})\nexport class AppModule {}\n`,
+      'imports',
+      'QueueModule.forRoot({ driver: cloudflareQueues() })',
+      {
+        imports: [
+          { name: 'QueueModule', from: '@velajs/vela/queue' },
+          { name: 'cloudflareQueues', from: '@velajs/cloudflare/queues' },
+        ],
+      },
+    ).source;
+    expect(declared).toContain(
+      "import { type QueueClient, QueueModule } from '@velajs/vela/queue';\nimport { cloudflareQueues } from '@velajs/cloudflare/queues';",
+    );
+    const inline = addToModule(
+      'app.module.ts',
+      `import { Module, type ENV } from '@velajs/vela';\nimport { type QueueModule } from '@velajs/vela/queue';\n\n@Module({})\nexport class AppModule {}\n`,
+      'imports',
+      'QueueModule.registerQueue({ name: "emails" })',
+      { imports: [{ name: 'QueueModule', from: '@velajs/vela/queue' }] },
+    ).source;
+    expect(inline).toContain(
+      "import { Module, type ENV } from '@velajs/vela';\nimport { QueueModule } from '@velajs/vela/queue';",
+    );
+  });
+
   it('leaves the file alone when the entry, or a matching one, is listed', () => {
     expect(addToModule('app.module.ts', APP, 'providers', 'AppService')).toEqual({
       source: APP,
@@ -161,6 +239,13 @@ export default createCloudflareWorker(AppModule);
       name: 'AppModule',
       from: './app.module.js',
     });
+    // The name the module file exports, whatever the entry calls it.
+    expect(
+      workerRootImport(
+        'worker.ts',
+        WORKER.replace('{ AppModule }', '{ AppModule as Root }').replace('(AppModule)', '(Root)'),
+      ),
+    ).toEqual({ name: 'AppModule', from: './app.module.js' });
     expect(workerRootImport('worker.ts', 'export default { fetch() {} };\n')).toBeUndefined();
   });
 });

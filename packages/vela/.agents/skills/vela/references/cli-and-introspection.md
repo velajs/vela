@@ -20,7 +20,7 @@ export default defineVelaConfig({
 });
 ```
 
-`VelaConfig` requires `createApp` and accepts optional `rootModule`; `defineVelaConfig` preserves inferred app subtypes and custom properties. Supply local binding equivalents inside the factory if required. Config may be a default export or a named `config` export. Loading validates callable `createApp` and constructable `rootModule`. `resolveConfig` from `./config` resolves `{path, source: 'explicit' | 'discovered' | 'wrangler', candidates}` without importing code. Commands that bootstrap an app dispose it after success/failure; cleanup warnings preserve the primary result.
+`VelaConfig` requires `createApp` and accepts an optional `rootModule` (a module class or `DynamicModule`); `defineVelaConfig` preserves inferred app subtypes and custom properties. Supply local binding equivalents inside the factory if required. Config may be a default export or a named `config` export. Loading validates callable `createApp` and a `rootModule` that is a module class or a `DynamicModule` of one. `resolveConfig` from `./config` resolves `{path, source: 'explicit' | 'discovered' | 'wrangler', candidates}` without importing code. Commands that bootstrap an app dispose it after success/failure; cleanup warnings preserve the primary result.
 
 ## Project commands
 
@@ -31,7 +31,7 @@ export default defineVelaConfig({
 | `vela add <d1\|kv\|r2\|queue> <BINDING>` | `--name`, `--config`, `--env`, `--skip-import` | Create the resource with the project's Wrangler (`--binding --update-config`; a queue's producer and consumer are added to the JSONC), run the `types` script, then provide the binding from a global `BindingsModule` (`@Inject(DB) db: D1Database`) or register `QueueModule.registerQueue({ name, binding })` |
 | `vela cf sync` | `--config`, `--env`, `--write`, `--json` | Compare the Wrangler file with the app: a trigger per `@Cron` expression, a producer per registered binding, a consumer per processed or `@QueueConsumer` queue, a binding and `new_sqlite_classes` migration per exported Durable Object, a `workflows` entry per exported `WorkflowEntrypoint`. Exits 1 on differences; `--write` edits JSON/JSONC through jsonc-parser (comments kept); TOML is compared only. Stale triggers are removed, other stale entries are reported |
 
-Generators place files in `src/<name>/` and register a controller, service, cron job or processor in the module of that directory (else the nearest one up to the root module the Worker entry passes to `createCloudflareWorker`); a module or resource registers in the module above. `queue` also adds `QueueModule.forRoot({ driver: cloudflareQueues() })` to the root module once; `durable-object` adds `export { Name } from ...` to the Worker entry. Follow a generator or `add` with `vela cf sync --write` and the `types` script.
+Generators place files in `src/<name>/` and register a controller, service, cron job or processor in the module of that directory (else the nearest one up to the root module the Worker entry passes to `createCloudflareWorker`); a module or resource registers in the module above. In the root module file the edited class is the one the Worker entry names; elsewhere, the file's exported module class. `queue` also adds `QueueModule.forRoot({ driver: cloudflareQueues() })` to the root module unless some source file already configures the driver; `durable-object` adds `export { Name } from ...` to the Worker entry. Follow a generator or `add` with `vela cf sync --write` and the `types` script.
 
 ## Commands
 
@@ -39,14 +39,14 @@ Generators place files in `src/<name>/` and register a controller, service, cron
 |---|---|---|
 | `vela deploy check` | `--config`, `--env`, `--entrypoints`, `--json` | Check the Wrangler file in the working directory at the top level (or `--env`) against the app's entrypoints: crons, queue producers/consumers, WebSocket Durable Object bindings, guarded direct cron jobs. Without `--entrypoints` the snapshot is computed from the app; with one, no application code is imported |
 | `vela doctor` | `--config`, `--env`, `--app`, `--json` | Resolve config without import; opt-in `--app` bootstraps then snapshots app-local modules/routes/entrypoints without resolving lazy providers or emitting arbitrary metadata/values |
-| `vela route list` | `--config`, `--json` | List HTTP routes (paths incl. prefix/version, named + contributed/CRUD routes, plus `(mounted)` sub-apps) |
-| `vela module graph` | `--config`, `--json` | Print the module import graph with `global`/`lazy` flags, provider/export counts |
-| `vela entrypoint list` | `--config`, `--json` | List declared entrypoint kinds (websocket, queue, cron, cf:*, …) and their entries |
-| `vela openapi dump` | `--config`, `--out`, `--title`, `--api-version`, `--global-prefix` | Emit the OpenAPI document (needs `rootModule`); `--out` writes to a file, else stdout |
-| `vela db seed` | `--config`, `--continue-on-error`, `--list`, `--json` | Run each seeder registration in order, or list names/orders/owners without executing seeders (`--json` requires `--list`) |
-| `vela mcp serve` | `--config` | Start the MCP server over stdio (see below) |
+| `vela route list` | `--config`, `--env`, `--json` | List HTTP routes (paths incl. prefix/version, named + contributed/CRUD routes, plus `(mounted)` sub-apps) |
+| `vela module graph` | `--config`, `--env`, `--json` | Print the module import graph with `global`/`lazy` flags, provider/export counts |
+| `vela entrypoint list` | `--config`, `--env`, `--json` | List declared entrypoint kinds (websocket, queue, cron, cf:*, …) and their entries |
+| `vela openapi dump` | `--config`, `--env`, `--out`, `--title`, `--api-version`, `--global-prefix` | Emit the OpenAPI document of the root module (the Worker's, a class or `DynamicModule`, or `rootModule` in `vela.config`); `--out` writes to a file, else stdout |
+| `vela db seed` | `--config`, `--env`, `--continue-on-error`, `--list`, `--json` | Run each seeder registration in order, or list names/orders/owners without executing seeders (`--json` requires `--list`) |
+| `vela mcp serve` | `--config`, `--env` | Start the MCP server over stdio (see below) |
 
-`openapi dump` emits JSON directly. `doctor --app` and seeder inventory still run application startup/shutdown hooks; send application logs to stderr when consuming JSON.
+`openapi dump` emits JSON directly. `doctor --app` and seeder inventory still run application startup/shutdown hooks; while a command runs the application, its console output (`Logger` lines included) goes to stderr, so JSON on stdout stays parseable.
 
 ```bash
 vela route list

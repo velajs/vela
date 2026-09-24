@@ -3,7 +3,9 @@ import {
   parseSync,
   type CallExpression,
   type Class,
+  type Comment,
   type ImportDeclaration,
+  type ImportDeclarationSpecifier,
   type ModuleExportName,
   type Node,
   type ObjectExpression,
@@ -57,14 +59,18 @@ function* walk(root: unknown): Generator<Node> {
   }
 }
 
-function parse(file: string, source: string): Program {
+function parseModule(file: string, source: string): { program: Program; comments: Comment[] } {
   const result = parseSync(file, source, { sourceType: 'module', lang: 'ts' });
   if (result.errors.length > 0) {
     throw new SourceEditError(
       `Cannot parse ${file}: ${result.errors.map((error) => error.message).join('; ')}`,
     );
   }
-  return result.program;
+  return { program: result.program, comments: result.comments };
+}
+
+function parse(file: string, source: string): Program {
+  return parseModule(file, source).program;
 }
 
 function exportName(name: ModuleExportName): string {
@@ -87,17 +93,74 @@ function indentAt(source: string, offset: number): string {
   return /^[ \t]*/.exec(source.slice(lineStart))?.[0] ?? '';
 }
 
-function addImports(code: MagicString, program: Program, wanted: readonly NamedImport[]): void {
+/**
+ * Make each type-only binding of `names` a value binding: drop the specifier's
+ * `type` modifier, or move an `import type` declaration's to its other
+ * specifiers.
+ */
+function importValues(
+  code: MagicString,
+  source: string,
+  program: Program,
+  names: ReadonlySet<string>,
+): void {
+  for (const declaration of importDeclarations(program)) {
+    const wanted = declaration.specifiers.filter((specifier) => names.has(specifier.local.name));
+    if (wanted.length === 0) continue;
+    if (declaration.importKind === 'type') {
+      if (wanted.some((specifier) => specifier.type !== 'ImportSpecifier')) {
+        throw new SourceEditError(
+          `${wanted.map((specifier) => specifier.local.name).join(', ')} is imported as a type ` +
+            'only; import it as a value yourself.',
+        );
+      }
+      const keyword = /^import\s+(type\s+)/.exec(source.slice(declaration.start));
+      if (keyword?.[1] === undefined) continue;
+      const at = declaration.start + keyword[0].length - keyword[1].length;
+      code.remove(at, at + keyword[1].length);
+      for (const specifier of declaration.specifiers) {
+        if (!wanted.includes(specifier)) code.prependLeft(specifier.start, 'type ');
+      }
+      continue;
+    }
+    for (const specifier of wanted) {
+      if (specifier.type === 'ImportSpecifier' && specifier.importKind === 'type') {
+        code.remove(specifier.start, specifier.imported.start);
+      }
+    }
+  }
+}
+
+/** Whether `specifier` of `declaration` binds a type only. */
+const typeOnly = (declaration: ImportDeclaration, specifier: ImportDeclarationSpecifier) =>
+  declaration.importKind === 'type' ||
+  (specifier.type === 'ImportSpecifier' && specifier.importKind === 'type');
+
+function addImports(
+  code: MagicString,
+  source: string,
+  program: Program,
+  wanted: readonly NamedImport[],
+): void {
   const declarations = importDeclarations(program);
-  const bound = new Set(
-    declarations.flatMap((declaration) =>
-      declaration.specifiers.map((specifier) => specifier.local.name),
-    ),
+  const bound = new Map<string, boolean>();
+  for (const declaration of declarations) {
+    for (const specifier of declaration.specifiers) {
+      bound.set(specifier.local.name, typeOnly(declaration, specifier));
+    }
+  }
+  // A name imported as a type only becomes a value import in place: a second
+  // import of the same name would not compile.
+  importValues(
+    code,
+    source,
+    program,
+    new Set(wanted.map(({ name }) => name).filter((name) => bound.get(name) === true)),
   );
   const pending = new Map<string, string[]>();
   for (const { name, from } of wanted) {
     if (bound.has(name)) continue;
-    bound.add(name);
+    bound.set(name, false);
     const existing = declarations.find(
       (declaration) =>
         declaration.source.value === from &&
@@ -117,17 +180,88 @@ function addImports(code: MagicString, program: Program, wanted: readonly NamedI
   else code.prepend(`${lines.join('\n')}\n\n`);
 }
 
-/** The `@Module(...)` call on the file's module class. */
-function moduleDecorator(file: string, program: Program): CallExpression {
+interface ModuleClass {
+  readonly name: string | undefined;
+  /** The names the file exports the class under (`default` included). */
+  readonly exported: readonly string[];
+  readonly call: CallExpression;
+}
+
+/** Every `@Module()` class of the file, with the names it is exported under. */
+function moduleClasses(program: Program): ModuleClass[] {
+  const exportedAs = new Map<string, string[]>();
+  const exportedClasses = new Map<Class, string[]>();
+  for (const statement of program.body) {
+    if (statement.type === 'ExportNamedDeclaration') {
+      if (statement.declaration?.type === 'ClassDeclaration' && statement.declaration.id) {
+        exportedClasses.set(statement.declaration, [statement.declaration.id.name]);
+      }
+      if (statement.source !== null) continue;
+      for (const specifier of statement.specifiers) {
+        const local = exportName(specifier.local);
+        exportedAs.set(local, [...(exportedAs.get(local) ?? []), exportName(specifier.exported)]);
+      }
+    } else if (
+      statement.type === 'ExportDefaultDeclaration' &&
+      statement.declaration.type === 'ClassDeclaration'
+    ) {
+      exportedClasses.set(statement.declaration, ['default']);
+    }
+  }
+  const classes: ModuleClass[] = [];
   for (const node of walk(program.body)) {
     if (node.type !== 'ClassDeclaration') continue;
     const declaration: Class = node;
-    for (const decorator of declaration.decorators) {
-      const call = decorator.expression;
-      if (call.type === 'CallExpression' && calleeName(call) === 'Module') return call;
-    }
+    const call = declaration.decorators
+      .map((decorator) => decorator.expression)
+      .find(
+        (expression): expression is CallExpression =>
+          expression.type === 'CallExpression' && calleeName(expression) === 'Module',
+      );
+    if (call === undefined) continue;
+    const name = declaration.id?.name;
+    classes.push({
+      name,
+      exported: [
+        ...(exportedClasses.get(declaration) ?? []),
+        ...(name === undefined ? [] : (exportedAs.get(name) ?? [])),
+      ],
+      call,
+    });
   }
-  throw new SourceEditError(`${file} declares no @Module() class.`);
+  return classes;
+}
+
+/**
+ * The `@Module(...)` call to edit: of the class named `name` (declared or
+ * exported under it), else of the file's only module class, else of the only
+ * exported one.
+ */
+function moduleDecorator(
+  file: string,
+  program: Program,
+  name: string | undefined,
+  entry: string,
+): CallExpression {
+  const classes = moduleClasses(program);
+  if (name !== undefined) {
+    const named = classes.find(
+      (candidate) => candidate.name === name || candidate.exported.includes(name),
+    );
+    if (named === undefined)
+      throw new SourceEditError(`${file} declares no @Module() class ${name}.`);
+    return named.call;
+  }
+  const [only] = classes;
+  if (only === undefined) throw new SourceEditError(`${file} declares no @Module() class.`);
+  if (classes.length === 1) return only.call;
+  const exported = classes.filter((candidate) => candidate.exported.length > 0);
+  const [single] = exported;
+  if (exported.length === 1 && single !== undefined) return single.call;
+  const listed = exported.length > 1 ? exported : classes;
+  throw new SourceEditError(
+    `${file} declares several @Module() classes (${listed.map((candidate) => candidate.name ?? '(anonymous)').join(', ')}); register ${entry} yourself.`,
+  );
 }
 
 function propertyNamed(object: ObjectExpression, key: string): ObjectProperty | undefined {
@@ -152,7 +286,12 @@ function appendItem(
     code.appendLeft(container.start + 1, text);
     return;
   }
-  if (!source.slice(container.start, container.end).includes('\n')) {
+  // One entry per line only where the last one starts its own line.
+  const lineStart = source.lastIndexOf('\n', last.start - 1) + 1;
+  if (
+    !source.slice(container.start, container.end).includes('\n') ||
+    source.slice(lineStart, last.start).trim() !== ''
+  ) {
     code.appendLeft(last.end, `, ${text}`);
     return;
   }
@@ -173,10 +312,15 @@ export function addToModule(
   source: string,
   key: 'imports' | 'controllers' | 'providers' | 'exports',
   entry: string,
-  options: { imports?: readonly NamedImport[]; unless?: RegExp } = {},
+  options: {
+    imports?: readonly NamedImport[];
+    unless?: RegExp;
+    /** The module class to edit, by its declared or exported name. */
+    module?: string;
+  } = {},
 ): SourceEdit {
-  const program = parse(file, source);
-  const call = moduleDecorator(file, program);
+  const { program, comments } = parseModule(file, source);
+  const call = moduleDecorator(file, program, options.module, entry);
   const code = new MagicString(source);
   const [argument] = call.arguments;
   if (argument === undefined) {
@@ -206,7 +350,10 @@ export function addToModule(
       const lineStart = source.lastIndexOf('\n', array.start) + 1;
       const lineEnd = source.indexOf('\n', array.end);
       const width = (lineEnd === -1 ? source.length : lineEnd) - lineStart + entry.length + 2;
-      if (!source.slice(array.start, array.end).includes('\n') && width > MAX_WIDTH) {
+      const commented = comments.some(
+        (comment) => comment.start >= array.start && comment.end <= array.end,
+      );
+      if (!source.slice(array.start, array.end).includes('\n') && width > MAX_WIDTH && !commented) {
         // A single-line list that would outgrow the line: one entry per line.
         const indent = indentAt(source, array.start);
         const unit = /\n([ \t]+)\S/.exec(source)?.[1] ?? '  ';
@@ -220,7 +367,7 @@ export function addToModule(
       }
     }
   }
-  addImports(code, program, options.imports ?? []);
+  addImports(code, source, program, options.imports ?? []);
   return { source: code.toString(), changed: true };
 }
 
@@ -249,8 +396,9 @@ export function addExport(file: string, source: string, name: string, from: stri
 
 /**
  * The root module the Worker entry passes to `createCloudflareWorker(...)`:
- * its local name and relative import source, or undefined when the entry
- * builds the Worker another way.
+ * the name its file exports it under (`default` for a default import) and the
+ * relative import source, or undefined when the entry builds the Worker
+ * another way.
  */
 export function workerRootImport(file: string, source: string): NamedImport | undefined {
   const program = parse(file, source);
@@ -264,11 +412,36 @@ export function workerRootImport(file: string, source: string): NamedImport | un
   if (root === undefined) return undefined;
   for (const declaration of importDeclarations(program)) {
     if (!declaration.source.value.startsWith('.')) continue;
-    if (declaration.specifiers.some((specifier) => specifier.local.name === root)) {
-      return { name: root, from: declaration.source.value };
-    }
+    const specifier = declaration.specifiers.find((candidate) => candidate.local.name === root);
+    if (specifier === undefined || specifier.type === 'ImportNamespaceSpecifier') continue;
+    const name = specifier.type === 'ImportSpecifier' ? exportName(specifier.imported) : 'default';
+    return { name, from: declaration.source.value };
   }
   return undefined;
+}
+
+/** Whether the module calls `object.method(...)` for one of `methods`, such as `QueueModule.forRoot()`. */
+export function callsMethod(
+  file: string,
+  source: string,
+  object: string,
+  methods: readonly string[],
+): boolean {
+  for (const node of walk(parse(file, source).body)) {
+    if (node.type !== 'CallExpression') continue;
+    const callee = node.callee;
+    if (
+      callee.type === 'MemberExpression' &&
+      !callee.computed &&
+      callee.object.type === 'Identifier' &&
+      callee.object.name === object &&
+      callee.property.type === 'Identifier' &&
+      methods.includes(callee.property.name)
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**

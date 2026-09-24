@@ -3,7 +3,13 @@ import { readFile, stat, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { applyCloudflareSync, kebabCase, type SyncChange } from './cf-sync.js';
-import { addDeclaration, addToModule, workerRootImport } from './generate/source-editor.js';
+import { configuresQueueDriver } from './generate/generate.js';
+import {
+  addDeclaration,
+  addToModule,
+  workerRootImport,
+  type NamedImport,
+} from './generate/source-editor.js';
 import { hasErrorCode, isRecord } from './project/files.js';
 import {
   environmentSection,
@@ -124,12 +130,29 @@ function wrangler(project: string, args: readonly string[]): void {
   }
 }
 
-/** Regenerate worker-configuration.d.ts: the project's types script, else `wrangler types`. */
-async function refreshTypes(project: string, log: (line: string) => void): Promise<void> {
+/**
+ * Regenerate worker-configuration.d.ts: the project's types script, else
+ * `wrangler types`. `config` is a Wrangler file other than the default one,
+ * which the script does not read.
+ */
+async function refreshTypes(
+  project: string,
+  config: string | undefined,
+  log: (line: string) => void,
+): Promise<void> {
   const manifest: unknown = JSON.parse(await readFile(join(project, 'package.json'), 'utf8'));
   const scripts = isRecord(manifest) && isRecord(manifest.scripts) ? manifest.scripts : {};
+  const configArgs = config === undefined ? [] : ['--config', config];
   if (typeof scripts.types !== 'string') {
-    wrangler(project, ['types', '--include-runtime=false']);
+    wrangler(project, ['types', '--include-runtime=false', ...configArgs]);
+    return;
+  }
+  if (config !== undefined) {
+    const file = relative(project, config).split(sep).join('/');
+    log(
+      `The types script reads the default Wrangler file; type the binding from ${file} yourself, ` +
+        `for example with wrangler types --include-runtime=false --config ${file}.`,
+    );
     return;
   }
   const manager = await projectPackageManager(project);
@@ -143,12 +166,8 @@ async function refreshTypes(project: string, log: (line: string) => void): Promi
   }
 }
 
-/** The root module file: what the Worker entry passes to createCloudflareWorker(). */
-async function rootModule(
-  config: WranglerConfig,
-  environment: string | undefined,
-): Promise<string> {
-  const entry = wranglerMain(config, environment);
+/** The root module: the file and class the Worker entry passes to createCloudflareWorker(), with its source. */
+async function rootModule(entry: string): Promise<NamedImport & { readonly source: string }> {
   const root = workerRootImport(entry, await readFile(entry, 'utf8'));
   if (!root) {
     throw new Error(
@@ -156,7 +175,8 @@ async function rootModule(
     );
   }
   const target = resolve(dirname(entry), root.from);
-  return target.endsWith('.ts') ? target : `${target.replace(/\.(?:js|mjs)$/, '')}.ts`;
+  const from = target.endsWith('.ts') ? target : `${target.replace(/\.(?:js|mjs)$/, '')}.ts`;
+  return { name: root.name, from, source: await readFile(from, 'utf8') };
 }
 
 function importSpecifier(from: string, to: string, like: string): string {
@@ -212,14 +232,20 @@ export async function addResource(options: AddOptions): Promise<void> {
   const name =
     options.name ?? `${wranglerWorkerName(config, options.environment)}-${kebabCase(binding)}`;
   const envArgs = options.environment === undefined ? [] : ['--env', options.environment];
+  // Wrangler finds the default file itself; any other one it is told.
+  const configArgs = options.config === undefined ? [] : ['--config', configPath];
+  const defaultConfig = (await findWranglerConfig(project)).path;
+  const entry = wranglerMain(config, options.environment);
+  // Find the module to register in before creating anything.
+  const root = options.skipImport ? undefined : await rootModule(entry);
 
   if (resource === 'queue') {
-    wrangler(project, ['queues', 'create', name]);
+    wrangler(project, ['queues', 'create', name, ...configArgs]);
     const base =
       options.environment === undefined ? ['queues'] : ['env', options.environment, 'queues'];
     const changes: SyncChange[] = [
-      { path: [...base, 'producers'], value: { binding, queue: name }, append: true, summary: '' },
-      { path: [...base, 'consumers'], value: { queue: name }, append: true, summary: '' },
+      { path: [...base, 'producers'], value: { binding, queue: name }, op: 'append', summary: '' },
+      { path: [...base, 'consumers'], value: { queue: name }, op: 'append', summary: '' },
     ];
     if (config.format === 'toml') {
       log(
@@ -234,38 +260,49 @@ export async function addResource(options: AddOptions): Promise<void> {
       kv: ['kv', 'namespace', 'create', name],
       r2: ['r2', 'bucket', 'create', name],
     }[resource];
-    wrangler(project, [...create, '--binding', binding, '--update-config', ...envArgs]);
+    wrangler(project, [
+      ...create,
+      '--binding',
+      binding,
+      '--update-config',
+      ...envArgs,
+      ...configArgs,
+    ]);
   }
-  await refreshTypes(project, log);
+  await refreshTypes(project, configPath === defaultConfig ? undefined : configPath, log);
 
-  const root = await rootModule(config, options.environment);
-  const rootSource = await readFile(root, 'utf8');
   if (resource === 'queue') {
     const queueName = kebabCase(binding).replace(/-queue$/, '') || kebabCase(binding);
     const registration = `QueueModule.registerQueue({ name: '${queueName}', binding: '${binding}' })`;
-    if (options.skipImport) {
+    // The driver is configured once, in whichever module already does it.
+    const driver = await configuresQueueDriver([dirname(entry)]);
+    if (!root) {
       log(
-        `Register it in the root module: QueueModule.forRoot({ driver: cloudflareQueues() }) (once) and ${registration}.`,
+        `Register it in the root module: ${driver ? '' : 'QueueModule.forRoot({ driver: cloudflareQueues() }) (once) and '}${registration}.`,
       );
     } else {
-      const withDriver = addToModule(
-        root,
-        rootSource,
-        'imports',
-        'QueueModule.forRoot({ driver: cloudflareQueues() })',
-        {
-          imports: [
-            { name: 'QueueModule', from: '@velajs/vela/queue' },
-            { name: 'cloudflareQueues', from: '@velajs/cloudflare/queues' },
-          ],
-          unless: /^QueueModule\.forRoot(?:Async)?\(/,
-        },
-      );
-      const registered = addToModule(root, withDriver.source, 'imports', registration, {
+      const withDriver = driver
+        ? { source: root.source, changed: false }
+        : addToModule(
+            root.from,
+            root.source,
+            'imports',
+            'QueueModule.forRoot({ driver: cloudflareQueues() })',
+            {
+              imports: [
+                { name: 'QueueModule', from: '@velajs/vela/queue' },
+                { name: 'cloudflareQueues', from: '@velajs/cloudflare/queues' },
+              ],
+              unless: /^QueueModule\.forRoot(?:Async)?\(/,
+              module: root.name,
+            },
+          );
+      const registered = addToModule(root.from, withDriver.source, 'imports', registration, {
         imports: [{ name: 'QueueModule', from: '@velajs/vela/queue' }],
+        module: root.name,
       });
       if (registered.changed || withDriver.changed)
-        await writeFile(root, registered.source, 'utf8');
+        await writeFile(root.from, registered.source, 'utf8');
     }
     log(
       `Inject its client with @InjectQueue('${queueName}') client: QueueClient, and process its jobs with @Processor('${queueName}').`,
@@ -274,14 +311,14 @@ export async function addResource(options: AddOptions): Promise<void> {
   }
 
   const type = TYPES[resource];
-  const bindingsFile = join(dirname(root), 'bindings.module.ts');
-  if (options.skipImport) {
+  if (!root) {
     log(
       `Provide it yourself: export const ${binding} = new InjectionToken<${type}>('${binding}'), ` +
         `provided by defineProvider(${binding}, { useFactory: (env) => env.${binding}, inject: [ENV] }).`,
     );
     return;
   }
+  const bindingsFile = join(dirname(root.from), 'bindings.module.ts');
   let bindings: string;
   try {
     const current = await readFile(bindingsFile, 'utf8');
@@ -310,10 +347,13 @@ export async function addResource(options: AddOptions): Promise<void> {
     bindings = BINDINGS_MODULE(binding, type);
   }
   await writeFile(bindingsFile, bindings, 'utf8');
-  const imported = addToModule(root, rootSource, 'imports', 'BindingsModule', {
-    imports: [{ name: 'BindingsModule', from: importSpecifier(root, bindingsFile, rootSource) }],
+  const imported = addToModule(root.from, root.source, 'imports', 'BindingsModule', {
+    imports: [
+      { name: 'BindingsModule', from: importSpecifier(root.from, bindingsFile, root.source) },
+    ],
+    module: root.name,
   });
-  if (imported.changed) await writeFile(root, imported.source, 'utf8');
+  if (imported.changed) await writeFile(root.from, imported.source, 'utf8');
   log(
     `Inject it anywhere with @Inject(${binding}) ${binding.toLowerCase()}: ${type} (import ${binding} from ${relative(options.cwd, bindingsFile).split(sep).join('/')}), or read ENV.${binding}.`,
   );

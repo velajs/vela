@@ -1,4 +1,13 @@
-import { applyEdits, findNodeAtLocation, modify, parseTree, type JSONPath } from 'jsonc-parser';
+import {
+  applyEdits,
+  findNodeAtLocation,
+  getNodeValue,
+  modify,
+  parseTree,
+  type Edit,
+  type JSONPath,
+  type Node as JsonNode,
+} from 'jsonc-parser';
 import { cronDialectAmbiguity, parseCronMetadata } from '@velajs/vela/module-kit';
 import type { EntrypointRow } from './introspect.js';
 import { isRecord } from './project/files.js';
@@ -13,11 +22,15 @@ export interface CloudflareFacts {
   readonly exports: WorkerExports;
 }
 
-/** One edit of the Wrangler file: set `path`, or append to the array at `path` (`append`). */
+/**
+ * One edit of the Wrangler file: `append` adds `value` to the array at `path`
+ * (creating the array when there is none); `remove` deletes the element
+ * `value` at `path`, whose last segment is its index in the file as read.
+ */
 export interface SyncChange {
   readonly path: JSONPath;
   readonly value: unknown;
-  readonly append: boolean;
+  readonly op: 'append' | 'remove';
   /** One line for people: `+ queues.consumers: { "queue": "jobs" }`. */
   readonly summary: string;
 }
@@ -126,19 +139,30 @@ export function planCloudflareSync(
     }
     if (!crons.includes(cron.expression)) crons.push(cron.expression);
   }
+  // One edit per trigger, so the comments of the array and of the triggers kept stay.
   const triggers = location(config, environment, 'triggers', true);
-  const current = strings(isRecord(triggers.value) ? triggers.value.crons : undefined);
-  const kept = current.filter((cron) => crons.includes(cron));
-  const added = crons.filter((cron) => !current.includes(cron));
-  if (added.length > 0 || kept.length !== current.length) {
-    const path = [...triggers.path, 'crons'];
-    const summary = [
-      ...added.map((cron) => `+ ${label(path)}: ${JSON.stringify(cron)}`),
-      ...current
-        .filter((cron) => !crons.includes(cron))
-        .map((cron) => `- ${label(path)}: ${JSON.stringify(cron)} (no @Cron job declares it)`),
-    ].join('\n');
-    changes.push({ path, value: [...kept, ...added], append: false, summary });
+  const current: unknown = isRecord(triggers.value) ? triggers.value.crons : undefined;
+  const path = [...triggers.path, 'crons'];
+  for (const cron of crons) {
+    if (strings(current).includes(cron)) continue;
+    changes.push({
+      path,
+      value: cron,
+      op: 'append',
+      summary: `+ ${label(path)}: ${JSON.stringify(cron)}`,
+    });
+  }
+  // Last first, so each index still names the element read from the file.
+  const listed: unknown[] = Array.isArray(current) ? current : [];
+  for (let index = listed.length - 1; index >= 0; index--) {
+    const cron = listed[index];
+    if (typeof cron !== 'string' || crons.includes(cron)) continue;
+    changes.push({
+      path: [...path, index],
+      value: cron,
+      op: 'remove',
+      summary: `- ${label(path)}: ${JSON.stringify(cron)} (no @Cron job declares it)`,
+    });
   }
 
   // Queues: producers for registered bindings, consumers for processed queues.
@@ -174,7 +198,7 @@ export function planCloudflareSync(
     changes.push({
       path: [...queues.path, 'producers'],
       value: { binding, queue },
-      append: true,
+      op: 'append',
       summary: `+ ${label([...queues.path, 'producers'])}: ${show({ binding, queue })}`,
     });
   }
@@ -214,7 +238,7 @@ export function planCloudflareSync(
     changes.push({
       path: [...queues.path, 'consumers'],
       value: { queue },
-      append: true,
+      op: 'append',
       summary: `+ ${label([...queues.path, 'consumers'])}: ${show({ queue })}`,
     });
   }
@@ -261,7 +285,7 @@ export function planCloudflareSync(
     changes.push({
       path: [...durable.path, 'bindings'],
       value: { name, class_name: className },
-      append: true,
+      op: 'append',
       summary: `+ ${label([...durable.path, 'bindings'])}: ${show({ name, class_name: className })}`,
     });
   }
@@ -310,7 +334,7 @@ export function planCloudflareSync(
     changes.push({
       path: migrations.path,
       value: step,
-      append: true,
+      op: 'append',
       summary: `+ ${label(migrations.path)}: ${show(step)}`,
     });
   }
@@ -331,7 +355,7 @@ export function planCloudflareSync(
     changes.push({
       path: workflows.path,
       value: entry,
-      append: true,
+      op: 'append',
       summary: `+ ${label(workflows.path)}: ${show(entry)}`,
     });
   }
@@ -357,18 +381,104 @@ function formatting(text: string) {
   };
 }
 
-/** Apply `changes` to a Wrangler JSON/JSONC text in place, keeping its comments and layout. */
+/** The offset of the first character after `from` that is neither whitespace nor a comment. */
+function skipTrivia(text: string, from: number): number {
+  let offset = from;
+  for (;;) {
+    while (offset < text.length && /\s/.test(text.charAt(offset))) offset++;
+    if (text.startsWith('//', offset)) {
+      const end = text.indexOf('\n', offset);
+      offset = end === -1 ? text.length : end;
+    } else if (text.startsWith('/*', offset)) {
+      const end = text.indexOf('*/', offset + 2);
+      offset = end === -1 ? text.length : end + 2;
+    } else {
+      return offset;
+    }
+  }
+}
+
+/** Whether `text` holds at most one comment besides whitespace. */
+const onlyComment = (text: string): boolean =>
+  /^[ \t]*(?:\/\/.*|\/\*(?:[^*]|\*(?!\/))*\*\/[ \t]*)?\r?$/.test(text);
+
+/**
+ * Remove element `index` of `array` with its separating comma. An element on a
+ * line of its own goes with that line (and a comment trailing it); comments on
+ * other lines stay.
+ */
+function removeElement(text: string, array: JsonNode, index: number): Edit[] {
+  const children = array.children ?? [];
+  const child = children[index];
+  if (child === undefined) return [];
+  const start = child.offset;
+  const end = child.offset + child.length;
+  const lineStart = text.lastIndexOf('\n', start - 1) + 1;
+  const ownLine = text.slice(lineStart, start).trim() === '';
+  const lineEnd = (from: number): number => {
+    const newline = text.indexOf('\n', from);
+    return newline === -1 ? text.length : newline + 1;
+  };
+  const wholeLine = (after: number): Edit | undefined => {
+    const stop = lineEnd(after);
+    return ownLine && onlyComment(text.slice(after, stop).replace(/\n$/, ''))
+      ? { offset: lineStart, length: stop - lineStart, content: '' }
+      : undefined;
+  };
+  const next = skipTrivia(text, end);
+  if (text.charAt(next) === ',') {
+    const line = wholeLine(next + 1);
+    if (line) return [line];
+    let stop = next + 1;
+    while (text.charAt(stop) === ' ' || text.charAt(stop) === '\t') stop++;
+    return [{ offset: start, length: stop - start, content: '' }];
+  }
+  // The last element: the comma after the one before it goes too.
+  const previous = children[index - 1];
+  const comma = previous === undefined ? -1 : skipTrivia(text, previous.offset + previous.length);
+  const separator = comma !== -1 && text.charAt(comma) === ',' ? comma : undefined;
+  const line = wholeLine(end);
+  if (line) {
+    return separator === undefined ? [line] : [{ offset: separator, length: 1, content: '' }, line];
+  }
+  const from = separator ?? start;
+  return [{ offset: from, length: end - from, content: '' }];
+}
+
+/**
+ * Apply `changes` to a Wrangler JSON/JSONC text in place, keeping its comments
+ * and layout: the appends in order, then the removals, last index first.
+ */
 export function applyCloudflareSync(text: string, changes: readonly SyncChange[]): string {
   const formattingOptions = formatting(text);
   let result = text;
   for (const change of changes) {
-    const root = change.append ? parseTree(result) : undefined;
+    if (change.op !== 'append') continue;
+    const root = parseTree(result);
     const node = root ? findNodeAtLocation(root, [...change.path]) : undefined;
-    const [path, value] =
-      change.append && node?.type === 'array'
-        ? [[...change.path, -1], change.value]
-        : [change.path, change.append ? [change.value] : change.value];
-    result = applyEdits(result, modify(result, path, value, { formattingOptions }));
+    result = applyEdits(
+      result,
+      node?.type === 'array'
+        ? modify(result, [...change.path, -1], change.value, { formattingOptions })
+        : modify(result, change.path, [change.value], { formattingOptions }),
+    );
+  }
+  const removals = changes
+    .filter((change) => change.op === 'remove')
+    .toSorted((a, b) => Number(b.path.at(-1)) - Number(a.path.at(-1)));
+  for (const change of removals) {
+    const index = change.path.at(-1);
+    if (typeof index !== 'number') continue;
+    const root = parseTree(result);
+    const array = root ? findNodeAtLocation(root, change.path.slice(0, -1)) : undefined;
+    const element = array?.children?.[index];
+    if (array?.type !== 'array' || element === undefined) continue;
+    if (getNodeValue(element) !== change.value) {
+      throw new Error(
+        `The Wrangler file changed while it was synced: ${label(change.path)} is not ${JSON.stringify(change.value)}.`,
+      );
+    }
+    result = applyEdits(result, removeElement(result, array, index));
   }
   return result;
 }

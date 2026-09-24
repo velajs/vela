@@ -73,6 +73,7 @@ export class CloudflareSyncCommand extends Command {
         exports: await classifyWorkerExports(await loaded.importModule(main), loaded.importModule),
       }),
       (message) => this.context.stderr.write(`${message}\n`),
+      this.context.stderr,
     );
     const plan = planCloudflareSync(wrangler, this.environment, facts);
     const status = plan.changes.length === 0 ? 'in-sync' : this.write ? 'written' : 'out-of-sync';
@@ -87,10 +88,10 @@ export class CloudflareSyncCommand extends Command {
             status,
             config: path,
             environment: this.environment ?? null,
-            changes: plan.changes.map(({ path: key, value, append }) => ({
+            changes: plan.changes.map(({ path: key, value, op }) => ({
               path: key,
               value,
-              append,
+              op,
             })),
             warnings: plan.warnings,
           },

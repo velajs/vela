@@ -110,22 +110,32 @@ vela deploy check
   `entrypoint list`, `openapi dump`, `client generate`, `doctor --app`,
   `deploy check`, `cf sync`) seed `ENV` with the Wrangler `vars` only; `db seed`
   uses Wrangler's `getPlatformProxy()` local bindings. A `vela.config` in the
-  working directory takes precedence.
+  working directory takes precedence. While a command runs the application,
+  its console output (`Logger` lines included) goes to stderr, so `--json`
+  output and the `mcp serve` channel on stdout stay machine-readable.
 - **Generators.** `vela generate module|controller|service|resource|queue|cron|durable-object <name>`
   writes current-API code (the root application kit, `@velajs/vela/queue`,
   `@velajs/vela/schedule`, `ENV`, plain decorator routes) and registers it:
   module files are parsed with `oxc-parser` and edited with `magic-string`, so
-  only the changed spans move. `--skip-import` prints the registration instead.
+  only the changed spans move. The edited class is the one the Worker entry
+  names (in the root module file) or the one the file exports. `queue` adds
+  `QueueModule.forRoot({ driver: cloudflareQueues() })` to the root module only
+  when no source file configures the driver yet. `--skip-import` prints the
+  registration instead.
   TypeScript 7 has no stable compiler API, which is why the CLI uses Oxc here.
 - **Resources.** `vela add d1|kv|r2|queue <BINDING>` wraps
   `wrangler <resource> create --binding --update-config` (queues:
   `wrangler queues create`, then the producer and consumer are written to the
   Wrangler file), runs the project's `types` script and registers the binding.
+  `--config` is passed on to Wrangler; with a Wrangler file other than the
+  default one, the `types` script (which reads the default file) is left for
+  you to run against it. The root module is checked before anything is
+  created; `--skip-import` needs no editable root.
 - **Wrangler sync.** `vela cf sync` derives cron triggers, queue producers and
   consumers, Durable Object bindings and migrations, and Workflows from the
   application and the Worker entry's exports; it exits 1 on differences, and
-  `--write` edits JSON/JSONC through `jsonc-parser`'s `modify`, keeping
-  comments.
+  `--write` edits JSON/JSONC through `jsonc-parser`, one element at a time
+  (a cron trigger is appended or removed on its own), keeping comments.
 - **Deployment check.** `vela deploy check` defaults to the Wrangler file in the
   working directory and its top-level configuration, and computes the
   entrypoint snapshot from the application unless `--entrypoints` names a saved

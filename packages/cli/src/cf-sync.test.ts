@@ -54,34 +54,36 @@ const TEXT = `{
 describe('vela cf sync plan', () => {
   it('derives crons, queues, Durable Objects, migrations and Workflows from the app', () => {
     const plan = planCloudflareSync(wrangler(TEXT), undefined, APP);
-    expect(plan.changes.map(({ path, value, append }) => ({ path, value, append }))).toEqual([
-      { path: ['triggers', 'crons'], value: ['0 3 * * *'], append: false },
+    expect(plan.changes.map(({ path, value, op }) => ({ path, value, op }))).toEqual([
+      { path: ['triggers', 'crons'], value: '0 3 * * *', op: 'append' },
+      { path: ['triggers', 'crons', 0], value: '0 4 * * *', op: 'remove' },
       {
         path: ['queues', 'producers'],
         value: { binding: 'EMAILS', queue: 'shop-emails' },
-        append: true,
+        op: 'append',
       },
-      { path: ['queues', 'consumers'], value: { queue: 'shop-emails' }, append: true },
-      { path: ['queues', 'consumers'], value: { queue: 'audit-log' }, append: true },
+      { path: ['queues', 'consumers'], value: { queue: 'shop-emails' }, op: 'append' },
+      { path: ['queues', 'consumers'], value: { queue: 'audit-log' }, op: 'append' },
       {
         path: ['durable_objects', 'bindings'],
         value: { name: 'CHAT_ROOM', class_name: 'ChatRoom' },
-        append: true,
+        op: 'append',
       },
       {
         path: ['migrations'],
         value: { tag: 'v1', new_sqlite_classes: ['ChatRoom'] },
-        append: true,
+        op: 'append',
       },
       {
         path: ['workflows'],
         value: { name: 'shop-signup-flow', binding: 'SIGNUP_FLOW', class_name: 'SignupFlow' },
-        append: true,
+        op: 'append',
       },
     ]);
-    expect(plan.changes[0]?.summary).toBe(
-      '+ triggers.crons: "0 3 * * *"\n- triggers.crons: "0 4 * * *" (no @Cron job declares it)',
-    );
+    expect(plan.changes.slice(0, 2).map((change) => change.summary)).toEqual([
+      '+ triggers.crons: "0 3 * * *"',
+      '- triggers.crons: "0 4 * * *" (no @Cron job declares it)',
+    ]);
     expect(plan.warnings).toEqual([]);
   });
 
@@ -134,6 +136,85 @@ describe('vela cf sync plan', () => {
       ],
     });
     expect(plan.warnings).toEqual([]);
+  });
+
+  describe('cron triggers', () => {
+    const crons = (...expressions: string[]): CloudflareFacts => ({
+      entrypoints: expressions.map((expression) =>
+        row('schedule:cron', 'Jobs#run', { expression, methodName: 'run', dialect: 'cloudflare' }),
+      ),
+      exports: { durableObjects: [], workflows: [], entrypoints: [] },
+    });
+    const sync = (text: string, facts: CloudflareFacts) =>
+      applyCloudflareSync(text, planCloudflareSync(wrangler(text), undefined, facts).changes);
+    const written = (text: string) => parse(text, [], { allowTrailingComma: true }).triggers.crons;
+
+    it('adds and removes single triggers, keeping the comments of the array', () => {
+      const text = `{
+  "name": "shop",
+  "main": "src/worker.ts",
+  "triggers": {
+    "crons": [ // nightly report, owned by ops
+      "0 6 * * 1"
+    ]
+  }
+}
+`;
+      const result = sync(text, crons('0 6 * * *'));
+      expect(result).toContain('// nightly report, owned by ops');
+      expect(written(result)).toEqual(['0 6 * * *']);
+    });
+
+    it('keeps the comments of the triggers it keeps', () => {
+      const text = `{
+  "name": "shop",
+  "main": "src/worker.ts",
+  "triggers": { "crons": ["*/5 * * * *" /* legacy */, "0 1 * * *", "0 2 * * *"] }
+}
+`;
+      const middle = sync(text, crons('*/5 * * * *', '0 2 * * *'));
+      expect(middle).toContain('"*/5 * * * *" /* legacy */');
+      expect(written(middle)).toEqual(['*/5 * * * *', '0 2 * * *']);
+      const last = sync(text, crons('*/5 * * * *', '0 1 * * *'));
+      expect(last).toContain('/* legacy */');
+      expect(written(last)).toEqual(['*/5 * * * *', '0 1 * * *']);
+      expect(written(sync(text, crons()))).toEqual([]);
+    });
+
+    it('removes a trigger on its own line with its trailing comment', () => {
+      const text = `{
+  "name": "shop",
+  "main": "src/worker.ts",
+  "triggers": {
+    "crons": [
+      // Hourly sync.
+      "0 * * * *",
+      "0 3 * * *", // retired
+      "0 4 * * *" // nightly
+    ]
+  }
+}
+`;
+      const result = sync(text, crons('0 * * * *', '0 4 * * *'));
+      expect(result).toContain(`    "crons": [
+      // Hourly sync.
+      "0 * * * *",
+      "0 4 * * *" // nightly
+    ]`);
+      const trailing = sync(text, crons('0 * * * *', '0 3 * * *'));
+      expect(trailing).toContain(`      "0 * * * *",
+      "0 3 * * *" // retired
+    ]`);
+      expect(written(trailing)).toEqual(['0 * * * *', '0 3 * * *']);
+    });
+
+    it('creates the array when the file declares none', () => {
+      const text = `{\n  "name": "shop",\n  "main": "src/worker.ts"\n}\n`;
+      expect(written(sync(text, crons('0 3 * * *', '0 4 * * *')))).toEqual([
+        '0 3 * * *',
+        '0 4 * * *',
+      ]);
+    });
   });
 
   it('writes non-inherited keys under the named environment', () => {
