@@ -15,7 +15,8 @@
   "dependencies": {
     "@velajs/cloudflare": "1.30.0",
     "@velajs/vela": "1.30.0",
-    "hono": "4.13.8"
+    "hono": "4.13.8",
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.56.0",

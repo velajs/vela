@@ -44,6 +44,25 @@ describe('deployment configuration', () => {
     },
   );
 
+  it('selects the top-level configuration when no environment is named', () => {
+    const plan = selectDeploymentTarget({
+      ...config(),
+      triggers: { crons: ['0 * * * *'] },
+      kv_namespaces: [{ binding: 'CACHE' }],
+      queues: { producers: [{ binding: 'JOBS', queue: 'jobs' }], consumers: [{ queue: 'jobs' }] },
+      env: { staging: { kv_namespaces: [{ binding: 'STAGING_ONLY' }] } },
+    });
+    expect(plan).toMatchObject({
+      environment: null,
+      worker: 'api',
+      main: 'dist/worker.js',
+      crons: ['0 * * * *'],
+      queueProducers: [{ binding: 'JOBS', queue: 'jobs' }],
+      queueConsumers: ['jobs'],
+    });
+    expect(plan.bindings.map((binding) => binding.name)).toEqual(['CACHE', 'JOBS']);
+  });
+
   it('never falls back to top-level when the requested environment is missing', () => {
     expect(() => selectDeploymentTarget({ ...config(), env: {} }, 'staging')).toThrow(
       'not declared',

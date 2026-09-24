@@ -12,7 +12,9 @@ export class SeedCommand extends Command {
     category: 'Database',
     description: 'Run database seeders for the Vela app.',
     details:
-      'Loads vela.config.{js,mjs,ts}, builds the app, and runs all @Seeder() classes in order.',
+      'Builds the app from vela.config.{js,mjs,ts}, or else from the Worker entry the Wrangler file ' +
+      "names with Wrangler's local bindings (getPlatformProxy, persisted like `vite dev`), and runs " +
+      'all @Seeder() classes in order.',
     examples: [
       ['Run all seeders', 'vela db seed'],
       ['Use a specific config', 'vela db seed --config ./config/vela.config.js'],
@@ -21,6 +23,9 @@ export class SeedCommand extends Command {
   });
 
   config = Option.String('--config', { description: 'Path to the vela config file.' });
+  environment = Option.String('--env', {
+    description: 'Wrangler environment whose bindings the seeders use without a config.',
+  });
   continueOnError = Option.Boolean('--continue-on-error', false, {
     description: 'Run all seeders even if one fails.',
   });
@@ -33,7 +38,11 @@ export class SeedCommand extends Command {
     if (this.json && !this.list) throw new UsageError('--json requires --list.');
     if (this.list && this.continueOnError)
       throw new UsageError('--list cannot be combined with --continue-on-error.');
-    const loaded = await loadConfig(process.cwd(), this.config);
+    // Without a config, seeders write to the local bindings `vite dev` uses.
+    const loaded = await loadConfig(process.cwd(), this.config, {
+      environment: this.environment,
+      bindings: 'local',
+    });
     return withApp(
       loaded,
       async (app) => {

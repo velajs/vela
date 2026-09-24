@@ -1,16 +1,34 @@
 import { env } from 'cloudflare:workers';
-import { createExecutionContext, waitOnExecutionContext } from 'cloudflare:test';
+import { createTestingWorker } from '@velajs/cloudflare/testing';
 import { describe, expect, it } from 'vitest';
-import worker from '../src/worker.js';
+import { AppModule } from '../src/app.module.js';
+import { AppService } from '../src/app.service.js';
 
-describe('worker', () => {
+// Runs inside workerd: createTestingWorker builds AppModule as src/worker.ts
+// does and sends requests through the Worker's fetch handler.
+describe('AppModule', () => {
   it('answers GET / with the injected service message', async () => {
-    const ctx = createExecutionContext();
-    const response = await worker.fetch(new Request('http://localhost/'), env, ctx);
-    // Read the body before waiting: the request finishes once its body is consumed.
-    const body = await response.json();
-    await waitOnExecutionContext(ctx);
-    expect(response.status).toBe(200);
-    expect(body).toEqual({ message: 'Hello from Vela!' });
+    const worker = await createTestingWorker(AppModule, { env });
+    try {
+      const response = await worker.fetch('/');
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ message: 'Hello from Vela!' });
+    } finally {
+      await worker.close();
+    }
+  });
+
+  it('injects a replacement service', async () => {
+    const worker = await createTestingWorker(AppModule, {
+      env,
+      overrides: (module) =>
+        module.overrideProvider(AppService).useValue({ getHello: () => 'Hello from a test!' }),
+    });
+    try {
+      const response = await worker.fetch('/');
+      expect(await response.json()).toEqual({ message: 'Hello from a test!' });
+    } finally {
+      await worker.close();
+    }
   });
 });

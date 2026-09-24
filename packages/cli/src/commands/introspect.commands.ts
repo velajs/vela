@@ -12,15 +12,23 @@ import {
   renderModuleTree,
 } from '../introspect.js';
 
-/** Shared shell: load config → createApp → run → best-effort dispose. */
+/**
+ * Shared shell: load the app (vela.config, or the Worker entry Wrangler names,
+ * built with its `vars` only) → createApp → run → best-effort dispose.
+ */
 abstract class AppCommand extends Command {
   config = Option.String('--config', { description: 'Path to the vela config file.' });
+  environment = Option.String('--env', {
+    description: 'Wrangler environment whose main and vars apply without a config.',
+  });
   json = Option.Boolean('--json', false, { description: 'Emit machine-readable JSON.' });
 
   protected abstract run(app: VelaApplication): Promise<number>;
 
   async execute(): Promise<number> {
-    const loaded = await loadConfig(process.cwd(), this.config);
+    const loaded = await loadConfig(process.cwd(), this.config, {
+      environment: this.environment,
+    });
     return withApp(
       loaded,
       (app) => this.run(app),
@@ -131,8 +139,9 @@ export class OpenApiDumpCommand extends Command {
     category: 'Introspection',
     description: 'Emit the OpenAPI document for the Vela app.',
     details:
-      'Requires `rootModule` in vela.config (createOpenApiDocument works from the module ' +
-      "class). The app's global prefix is applied automatically; --global-prefix overrides.",
+      'Works from the root module: the one the Worker entry passes to createCloudflareWorker(), or ' +
+      "`rootModule` in vela.config. The app's global prefix is applied automatically; " +
+      '--global-prefix overrides.',
     examples: [
       ['Print to stdout', 'vela openapi dump'],
       ['Write to a file', 'vela openapi dump --out openapi.json'],
