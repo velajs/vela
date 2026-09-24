@@ -1,7 +1,6 @@
-import { execFileSync } from 'node:child_process';
 import { spawn } from 'node:child_process';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -51,34 +50,10 @@ export default {
 };
 `;
 
-/** Newest mtime across the CLI source (excluding tests). */
-function newestSourceMtime(dir: string): number {
-  let newest = 0;
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name);
-    if (entry.isDirectory()) {
-      newest = Math.max(newest, newestSourceMtime(full));
-    } else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.test.ts')) {
-      newest = Math.max(newest, statSync(full).mtimeMs);
-    }
-  }
-  return newest;
-}
-
-/** Build the CLI to `dist/` when it is missing or stale relative to source. */
-function ensureBuilt(): void {
-  const stale =
-    !existsSync(cliEntry) || statSync(cliEntry).mtimeMs < newestSourceMtime(join(rootDir, 'src'));
-  if (stale) {
-    execFileSync('pnpm', ['build'], { cwd: rootDir, stdio: 'inherit' });
-  }
-}
-
 let fixturePath: string;
 let tmpDir: string;
 
 beforeAll(() => {
-  ensureBuilt();
   // Compile the fixture (legacy decorators + metadata, matching vitest.config)
   // and write it inside the worktree so `@velajs/vela` resolves from node_modules.
   const { code } = transformSync(FIXTURE_SOURCE, {

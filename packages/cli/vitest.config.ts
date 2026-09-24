@@ -6,6 +6,7 @@ export default defineConfig({
   test: {
     globals: false,
     include: ['src/**/*.test.ts'],
+    globalSetup: ['src/build-cli.global-setup.ts'],
     server: {
       deps: {
         // Load the workspace packages as Node does, so the tests and the
