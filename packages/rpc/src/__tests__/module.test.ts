@@ -11,11 +11,13 @@ import {
   Module,
   VelaFactory,
   defineProvider,
+  type ExecutionContext,
   type MiddlewareConsumer,
   type NestMiddleware,
   type NestModule,
 } from '@velajs/vela';
-import { createRpcClient, defineProcedure, type RpcClient } from '../index';
+import { getTrustedRequestIdentity, setTrustedRequestIdentity } from '@velajs/vela/module-kit';
+import { createRpcClient, defineProcedure, RpcError, type RpcClient } from '../index';
 import { Rpc, RpcModule, RpcClientModule, rpcClientToken } from '../server';
 
 const greet = defineProcedure({ name: 'greetings.hello', input: z.string(), output: z.string() });
@@ -109,6 +111,57 @@ describe('RPC module composition', () => {
     const app = await VelaFactory.create(Root);
     expect(await client(app).call(greet, 'world')).toBe('Hello world');
     expect(trace).toEqual(['authenticate', 'authorize']);
+    await app.close();
+  });
+
+  it('runs the authorize policy after global authentication and tenant guards', async () => {
+    const trace: string[] = [];
+    const phase = (name: 'authenticate' | 'tenant' | 'authorize' | 'feature') => ({
+      phase: name,
+      canActivate(context: ExecutionContext) {
+        trace.push(name);
+        const request = context.getRequest();
+        if (name === 'authenticate' && request.headers.get('x-user') === 'alice') {
+          setTrustedRequestIdentity(request, {
+            principal: { issuer: 'tests', subject: 'alice', principalType: 'user' },
+          });
+        }
+        return true;
+      },
+    });
+    @Module({
+      imports: [
+        RpcModule.forRoot({
+          // An identity-based policy sees the identity global authentication published.
+          authorize: (context) => {
+            trace.push('rpc');
+            return getTrustedRequestIdentity(context.getRequest())?.principal.subject === 'alice';
+          },
+        }),
+      ],
+      providers: [
+        Greetings,
+        ...(['feature', 'authorize', 'tenant', 'authenticate'] as const).map((name) =>
+          defineProvider(APP_GUARD, { useValue: phase(name) }),
+        ),
+      ],
+    })
+    class Root {}
+    const app = await VelaFactory.create(Root);
+    const alice = createRpcClient({
+      url: 'https://worker/rpc',
+      headers: { 'x-user': 'alice' },
+      fetch: (request) => Promise.resolve(app.fetch(request)),
+    });
+    expect(await alice.call(greet, 'world')).toBe('Hello world');
+    expect(trace).toEqual(['authenticate', 'tenant', 'rpc', 'authorize', 'feature']);
+    trace.length = 0;
+    const denied = await client(app)
+      .call(greet, 'world')
+      .catch((error: unknown) => error);
+    expect(denied).toBeInstanceOf(RpcError);
+    expect(denied).toMatchObject({ status: 403 });
+    expect(trace).toEqual(['authenticate', 'tenant', 'rpc']);
     await app.close();
   });
 

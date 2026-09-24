@@ -54,7 +54,12 @@ export interface RpcExecutionContext extends HttpExecutionContext {
 export interface RpcAdapterOptions {
   /** Full absolute route path; include any desired global prefix explicitly. */
   path?: string;
-  /** Explicit exposure policy, in addition to the application's global and method guards. */
+  /**
+   * Explicit exposure policy, in addition to the application's global and
+   * method guards. A policy function runs in the global `authorize` phase:
+   * after global authentication and tenant admission, so it reads the trusted
+   * identity, and before the other global authorize guards.
+   */
   authorize: 'public' | ((context: RpcExecutionContext) => boolean | Promise<boolean>);
 }
 interface Entry {
@@ -170,9 +175,16 @@ export class RpcRegistry {
         ).toReversed(),
         ...(await resolvePipelineComponents('filter', globals.filters, scope)),
       ];
+      const authorize = this.#authorize;
       const guards = [
-        { canActivate: () => this.#authorize === 'public' || this.#authorize(context) },
-        ...orderGuardsByPhase(await resolvePipelineComponents('guard', globals.guards, scope)),
+        // The exposure policy authorizes after global authentication and
+        // tenant admission, first among the global authorize-phase guards.
+        ...orderGuardsByPhase([
+          ...(authorize === 'public'
+            ? []
+            : [{ phase: 'authorize' as const, canActivate: () => authorize(context) }]),
+          ...(await resolvePipelineComponents('guard', globals.guards, scope)),
+        ]),
         ...(await resolveScopedComponentsAsync(
           'guard',
           entry.metatype,
