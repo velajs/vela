@@ -2,6 +2,7 @@ import {
   defineProvider,
   type CanActivate,
   type DependencyToken,
+  type DynamicModule,
   type ExceptionFilter,
   type ModuleOptions,
   type NestInterceptor,
@@ -9,30 +10,25 @@ import {
   type ProviderDefinition,
   type Token,
   type Type,
-  type VelaEnv,
+  type VelaCreateOptions,
 } from '@velajs/vela';
-import type {
-  FactoryInject,
-  InferToken,
-  InferTokens,
-  RuntimeAdapter,
-} from '@velajs/vela/module-kit';
+import type { FactoryInject, InferToken, InferTokens } from '@velajs/vela/module-kit';
 import { applyRuntimeAdapters, bootstrap, finalizeApplication } from '@velajs/vela/internal';
 import { MetadataRegistry } from '@velajs/vela/module-kit';
 import { TestingModule } from './testing-module.js';
 
-/** Runtime inputs for a testing module, as `VelaFactory.create` takes them. */
-export interface TestingModuleOptions {
-  /**
-   * Seeded as the application's ENV (bindings, variables, secrets), and sent
-   * as `c.env` with every request from `fetch()` and the HTTP and SSE builders.
-   * Pass the same object to an adapter that binds requests to it, such as
-   * `cloudflareAdapter({ env })`.
-   */
-  env?: VelaEnv;
-  /** Runtime adapters bound exactly as in production. */
-  adapters?: RuntimeAdapter[];
-}
+/**
+ * Runtime inputs for a testing module: exactly what `VelaFactory.create`
+ * takes. `env` is seeded as the application's ENV (bindings, variables,
+ * secrets) and sent as `c.env` with every request from `fetch()` and the HTTP
+ * and SSE builders; pass the same object to an adapter that binds requests to
+ * it, such as `cloudflareAdapter({ env })`. Runtime adapters, the global
+ * prefix, security options and middleware apply as in production.
+ */
+export interface TestingModuleOptions extends VelaCreateOptions {}
+
+/** Supplies a value for a dependency no provider satisfies (see `useMocker`). */
+export type MockFactory = (token: Token) => unknown;
 
 interface OverrideEntry {
   token: Token;
@@ -71,8 +67,22 @@ export class OverrideBy<Key extends Token> {
   }
 }
 
+/** The replacement half of `overrideModule(module)`. */
+export class OverrideModule {
+  constructor(
+    private readonly commit: (replacement: Type | DynamicModule) => TestingModuleBuilder,
+  ) {}
+
+  /** Load `replacement` wherever the graph imports the overridden module. */
+  useModule(replacement: Type | DynamicModule): TestingModuleBuilder {
+    return this.commit(replacement);
+  }
+}
+
 export class TestingModuleBuilder {
   #overrides: OverrideEntry[] = [];
+  readonly #moduleOverrides = new Map<Type | DynamicModule, Type | DynamicModule>();
+  #mocker: MockFactory | undefined;
   readonly #metadata: ModuleOptions;
   readonly #options: TestingModuleOptions;
 
@@ -112,6 +122,29 @@ export class TestingModuleBuilder {
     return this.overrideProvider<Filter>(filter);
   }
 
+  /**
+   * Replace a module wherever the graph imports it: the class itself, any
+   * `DynamicModule` of that class, or exactly the `DynamicModule` object
+   * passed. The module's metadata is not modified.
+   */
+  overrideModule(module: Type | DynamicModule): OverrideModule {
+    return new OverrideModule((replacement) => {
+      this.#moduleOverrides.set(module, replacement);
+      return this;
+    });
+  }
+
+  /**
+   * Supply the dependencies no provider satisfies. `mocker(token)` runs once
+   * per missing token, before anything is constructed, and its value is
+   * registered in each module that injects the token; optional parameters and
+   * provided or overridden tokens never reach it.
+   */
+  useMocker(mocker: MockFactory): this {
+    this.#mocker = mocker;
+    return this;
+  }
+
   private addOverride(entry: OverrideEntry): void {
     const idx = this.#overrides.findIndex((o) => o.token === entry.token);
     if (idx !== -1) {
@@ -134,8 +167,10 @@ export class TestingModuleBuilder {
     // registrations caused test applications to drift from production (most
     // critically REQUEST_CONTEXT token/request-child behavior). ENV and
     // runtime adapters bind through the same path as VelaFactory.create.
-    const { env, adapters = [] } = this.#options;
-    const prepared = await bootstrap(TestRootModule, applyRuntimeAdapters({ env }, adapters));
+    const { adapters = [], ...options } = this.#options;
+    const prepared = await bootstrap(TestRootModule, applyRuntimeAdapters(options, adapters), {
+      moduleOverrides: this.#moduleOverrides,
+    });
     const { container } = prepared;
 
     // Force-apply overrides into every module bucket that already holds the
@@ -148,9 +183,11 @@ export class TestingModuleBuilder {
     for (const override of this.#overrides) {
       container.replaceProvider(override.provider);
     }
+    // After the overrides, so only what nothing provides is mocked.
+    if (this.#mocker) container.supplyMissingDependencies(this.#mocker);
 
     const app = await finalizeApplication(prepared, adapters);
 
-    return new TestingModule(app, container, env);
+    return new TestingModule(app, container, options.env);
   }
 }

@@ -11,6 +11,7 @@ import { REQUEST_CONTEXT } from '../http/request-context';
 import { RouteManager } from '../http/route.manager';
 import type { RouteManagerOptions } from '../http/route.manager';
 import { ModuleLoader } from '../module/module-loader';
+import type { ModuleOverrides } from '../module/module-loader';
 import { ROOT_MODULE } from '../module/root-module';
 import type { DynamicModule } from '../registry/types';
 import { bindAppProviders } from '../pipeline/app-providers';
@@ -37,6 +38,12 @@ export interface BootstrapOptions extends RouteManagerOptions {
   configureContainer?(container: Container): void | Promise<void>;
 }
 
+/** Test-harness inputs no application passes (see `@velajs/testing`). */
+export interface BootstrapInternals {
+  /** Load each replacement wherever the graph imports the overridden module. */
+  moduleOverrides?: ModuleOverrides;
+}
+
 export interface BootstrapResult {
   container: Container;
   routeManager: RouteManager;
@@ -57,6 +64,7 @@ export interface BootstrapResult {
 export async function bootstrap(
   rootModule: Type | DynamicModule,
   options: BootstrapOptions = {},
+  internals: BootstrapInternals = {},
 ): Promise<BootstrapResult> {
   const container = new Container({
     diagnostics: options.diagnostics,
@@ -151,7 +159,7 @@ export async function bootstrap(
   }
   await options.configureContainer?.(container);
 
-  const loader = new ModuleLoader(container, routeManager);
+  const loader = new ModuleLoader(container, routeManager, internals.moduleOverrides);
   // loader.load() also arms the deferred-init seam (LazyModuleManager) — kept
   // inside the loader so hand-rolled bootstrap paths that never call this
   // function (@velajs/testing's TestingModuleBuilder.compile) get identical
