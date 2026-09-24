@@ -92,7 +92,8 @@ Every HTTP failure renders through `renderHttpError`. Clients see these changes:
 
 - Validation failures from `ValidationPipe` and `@Body(schema)` answer
   `{ error: { code: 'bad_request', message: 'Validation failed', details: { issues } } }`
-  instead of `{ statusCode, message, errors }`.
+  instead of `{ statusCode, message, errors }`; `@Endpoint` input failures answer the
+  same body with the message `'Endpoint input validation failed'`.
 - Unmatched routes answer a JSON 404, `{ error: { code: 'not_found', message: 'Not Found' } }`,
   and oversized bodies a JSON 413 (`payload_too_large`), instead of Hono's plain text.
   Global exception filters receive these rejections, as in Nest, so a catch-all filter that
