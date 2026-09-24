@@ -36,13 +36,12 @@ import { shouldWarnProductionSecurity } from '../http/security-options';
 import { resolveWsArgs } from './ws-argument-resolver';
 import { buildWsExecutionContext } from './ws-execution-context';
 import {
-  DEFAULT_WS_MAX_FRAME_BYTES,
   normalizeWebSocketUpgradeIdentity,
   resolveGatewayRoomParam,
   resolveMaxFrameBytes,
   webSocketFrameFits,
 } from './gateway-routing';
-import { gatewayServerToken } from './ws-server';
+import { gatewayServerOf, gatewayServerToken } from './ws-server';
 import { toErrorFrame, WsException } from './ws-exception';
 import {
   RESERVED_WS_EVENT_PREFIX,
@@ -183,21 +182,24 @@ export class WsDispatcher implements OnModuleInit, OnApplicationBootstrap, Contr
       if (!getConstructorMetadata(metatype).inject.some((entry) => entry.token === token)) continue;
       this.#container
         .resolve(token)
-        .connect(() => this.gatewayServer(metatype, meta, () => this.moduleServer(moduleIds[0])));
+        .connect(() =>
+          this.gatewayServer(metatype, meta, () => this.moduleServer(metatype, moduleIds[0])),
+        );
     }
   }
 
   /**
    * Resolve each gateway's server, awaiting a `WS_SERVER` provided
    * asynchronously that bootstrap has not constructed yet (in a lazy module,
-   * say). A provider that fails fails bootstrap.
+   * say). A provider that fails, or a gateway module that sees an ambiguous
+   * `WS_SERVER`, fails bootstrap.
    */
   async onModuleInit(): Promise<void> {
     for (const { metatype, meta, moduleIds } of this.discoveredGateways()) {
       if (this.#gatewayServers.has(metatype)) continue;
       // One provider at a time, in discovery order.
       // oxlint-disable-next-line no-await-in-loop
-      const server = await this.resolveModuleServer(moduleIds[0]);
+      const server = await this.resolveModuleServer(metatype, moduleIds[0]);
       this.gatewayServer(metatype, meta, () => server);
     }
   }
@@ -228,38 +230,46 @@ export class WsDispatcher implements OnModuleInit, OnApplicationBootstrap, Contr
     if (!scoped) {
       const server = moduleServer() ?? this.#server;
       if (!server) return undefined;
-      scoped =
-        server.forGateway?.(
-          options.path ?? '',
-          options.maxFrameBytes ?? DEFAULT_WS_MAX_FRAME_BYTES,
-        ) ?? server;
+      scoped = gatewayServerOf(server, gatewayClass.name, options);
       this.#gatewayServers.set(gatewayClass, scoped);
     }
     return scoped;
   }
 
   /**
-   * Whether a gateway's declaring module sees exactly one `WS_SERVER`, which
-   * then serves the gateway. A module that imports several `WebSocketModule`
-   * instances keeps the server of the first dispatcher that connects the
-   * gateway.
+   * The module whose `WS_SERVER` serves a gateway declared in `moduleId`:
+   * that module when it sees exactly one `WS_SERVER`. When it sees none, or
+   * only the servers of several `WebSocketModule` instances it imports, the
+   * server of the first dispatcher that connects the gateway serves it. A
+   * `WS_SERVER` from another module beside those is ambiguous, and fails.
    */
-  private seesOneServer(moduleId: string | undefined): moduleId is string {
-    return (
-      moduleId !== undefined &&
-      this.#container.getVisibleProviderSnapshots(WS_SERVER, moduleId).length === 1
+  private serverModule(gatewayClass: Type, moduleId: string | undefined): string | undefined {
+    if (moduleId === undefined) return undefined;
+    const candidates = this.#container.getVisibleProviderSnapshots(WS_SERVER, moduleId);
+    if (candidates.length === 1) return moduleId;
+    // Every WebSocketModule instance provides a dispatcher next to its server.
+    const owners = candidates.map((candidate) => candidate.moduleId);
+    if (owners.every((owner) => this.#container.hasInScope(WsDispatcher, owner))) return undefined;
+    throw new Error(
+      `${gatewayClass.name}'s @WebSocketServer() is ambiguous: its module '${moduleId}' sees ` +
+        `${owners.length} WS_SERVER providers, from ${owners.map((owner) => `'${owner}'`).join(', ')}. ` +
+        "Provide WS_SERVER in the gateway's module, which answers before its imports, import " +
+        'one module that exports it, or override WS_SERVER in the testing module.',
     );
   }
 
   /** The module's `WS_SERVER` once constructed, as it is before any lifecycle hook runs. */
-  private moduleServer(moduleId: string | undefined): WsServer | undefined {
-    return this.seesOneServer(moduleId) ? this.#container.resolve(WS_SERVER, moduleId) : undefined;
+  private moduleServer(gatewayClass: Type, moduleId: string | undefined): WsServer | undefined {
+    const owner = this.serverModule(gatewayClass, moduleId);
+    return owner === undefined ? undefined : this.#container.resolve(WS_SERVER, owner);
   }
 
-  private async resolveModuleServer(moduleId: string | undefined): Promise<WsServer | undefined> {
-    return this.seesOneServer(moduleId)
-      ? this.#container.resolveAsync(WS_SERVER, moduleId)
-      : undefined;
+  private async resolveModuleServer(
+    gatewayClass: Type,
+    moduleId: string | undefined,
+  ): Promise<WsServer | undefined> {
+    const owner = this.serverModule(gatewayClass, moduleId);
+    return owner === undefined ? undefined : this.#container.resolveAsync(WS_SERVER, owner);
   }
 
   /** Paths of every discovered `@WebSocketGateway` — used by transports to register routes. */
@@ -831,7 +841,9 @@ export class WsDispatcher implements OnModuleInit, OnApplicationBootstrap, Contr
       path: options.path ?? '',
       options: { ...options },
       maxFrameBytes,
-      server: this.gatewayServer(gatewayClass, options, () => this.moduleServer(moduleId)),
+      server: this.gatewayServer(gatewayClass, options, () =>
+        this.moduleServer(gatewayClass, moduleId),
+      ),
       instance,
       gatewayClass,
       moduleId,

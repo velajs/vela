@@ -272,15 +272,19 @@ export interface WebSocketTransport {
    * the module's sync driver; a transport that owns socket delivery may ignore
    * it. Defaults to a server that broadcasts through `driver`, or, when the
    * transport `deliver`s pushes, to one that keeps no sockets and refuses each
-   * push with guidance to `Gateways`.
+   * push with guidance to `Gateways`. When the transport forwards upgrades but
+   * does not deliver pushes and `driver` is `local()`, the default server of a
+   * gateway with a `binding` refuses each push, since its sockets are in
+   * another isolate.
    */
   createServer?(driver: SyncDriver): WsServer;
   /**
    * Deliver a `Gateways` push to the isolate that holds one gateway room's
    * sockets. `Gateways` calls it once per room, and a push to several rooms
-   * rejects with an `AggregateError` naming each room whose delivery failed.
-   * Without it, pushes go through the module's sync driver to the gateway's
-   * sockets in this process (and, with `redis()`, on every instance).
+   * rejects with an `AggregateError` whose `errors` name each room whose
+   * delivery failed (its message names the first ten). Without it, pushes go
+   * through the module's sync driver to the gateway's sockets in this process
+   * (and, with `redis()`, on every instance).
    */
   deliver?(delivery: GatewayDelivery): Promise<void>;
   /**
@@ -288,8 +292,9 @@ export interface WebSocketTransport {
    * transport forwards, `WebSocketModule` mounts an upgrade route for each
    * gateway that names a `binding`: the route authenticates the upgrade before
    * any remote allocation, then calls this method. Implement `deliver` too:
-   * a forwarded gateway's sockets are not in this process, so without it a
-   * `Gateways` push to a gateway with a `binding` rejects.
+   * a forwarded gateway's sockets are not in this process, so without it,
+   * under the `local()` sync driver, a push to a gateway with a `binding`
+   * rejects, from `Gateways` and from its default `@WebSocketServer()` alike.
    */
   forwardUpgrade?(upgrade: ForwardedWebSocketUpgrade): Promise<Response>;
   /**

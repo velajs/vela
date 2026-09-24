@@ -8,9 +8,14 @@ import {
   WS_TRANSPORT,
   WebSocketGateway,
   WebSocketModule,
+  WebSocketServer,
+  type BroadcastCommand,
   type GatewayDelivery,
+  type SyncDriver,
+  type WebSocketModuleOptions,
   type WebSocketTransport,
   type WsClient,
+  type WsServer,
 } from '../websocket/index';
 
 interface ChatEvents {
@@ -19,13 +24,17 @@ interface ChatEvents {
 }
 
 @WebSocketGateway({ path: '/rooms/:id/ws', roomParam: 'id', binding: 'ROOMS', maxFrameBytes: 256 })
-class ChatGateway {}
+class ChatGateway {
+  constructor(@WebSocketServer() readonly server: WsServer) {}
+}
 
 @WebSocketGateway({ path: '/lobby' })
 class LobbyGateway {}
 
 @WebSocketGateway({ path: '/admin/:id/ws', roomParam: 'id' })
-class AdminGateway {}
+class AdminGateway {
+  constructor(@WebSocketServer() readonly server: WsServer) {}
+}
 
 const CHAT = '/rooms/:id/ws';
 
@@ -64,13 +73,27 @@ function transportAdapter(transport: WebSocketTransport): RuntimeAdapter {
   };
 }
 
-async function makeApp(adapters: RuntimeAdapter[] = []): Promise<VelaApplication> {
+async function makeApp(
+  adapters: RuntimeAdapter[] = [],
+  options: WebSocketModuleOptions = {},
+): Promise<VelaApplication> {
   @Module({
-    imports: [WebSocketModule.forRoot()],
+    imports: [WebSocketModule.forRoot(options)],
     providers: [ChatGateway, LobbyGateway, AdminGateway],
   })
   class AppModule {}
   return VelaFactory.create(AppModule, { adapters });
+}
+
+/** A cross-instance sync driver that records each command it would fan out. */
+function recordingBus(commands: BroadcastCommand[]): SyncDriver {
+  return {
+    kind: 'bus',
+    bind() {},
+    dispatch(command) {
+      commands.push(command);
+    },
+  };
 }
 
 /** A socket of the gateway served on `path`, joined to `rooms` in this process. */
@@ -261,12 +284,71 @@ describe('Gateways', () => {
       await expect(
         app.get(Gateways).of<ChatEvents>(ChatGateway).to('general').emit('typing'),
       ).rejects.toThrow(
-        /ChatGateway's upgrades are forwarded[\s\S]*WebSocketTransport\.deliver\(\)/,
+        /ChatGateway's upgrades are forwarded[\s\S]*local\(\) sync driver[\s\S]*WebSocketTransport\.deliver\(\)/,
       );
+      // Its own @WebSocketServer() refuses the same way instead of reaching no one.
+      const { server } = app.get(ChatGateway);
+      const guidance =
+        /ChatGateway's @WebSocketServer\(\) cannot reach its sockets[\s\S]*forwarded[\s\S]*local\(\) sync driver[\s\S]*WebSocketTransport\.deliver\(\)[\s\S]*createServer\(\)/;
+      expect(() => server.emit('typing')).toThrow(guidance);
+      expect(() => server.to('general')).toThrow(guidance);
+      expect(() => server.in('general')).toThrow(guidance);
+      expect(() => server.except('general')).toThrow(guidance);
+
       // A gateway without a binding keeps its sockets in this process.
       const member = await joined(app, 'a1', '/admin/:id/ws', 'ops');
       await app.get(Gateways).of<ChatEvents>(AdminGateway).to('ops').emit('typing');
-      expect(member.frames).toEqual([{ event: 'typing' }]);
+      await app.get(AdminGateway).server.to('ops').emit('audit', 1);
+      expect(member.frames).toEqual([{ event: 'typing' }, { event: 'audit', data: 1 }]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("carries a forwarded gateway's pushes through a cross-instance sync driver", async () => {
+    const commands: BroadcastCommand[] = [];
+    const transport: WebSocketTransport = {
+      forwardUpgrade: async () => new Response('forwarded'),
+    };
+    const app = await makeApp([transportAdapter(transport)], { sync: recordingBus(commands) });
+    try {
+      // The bus may reach the isolate the upgrade was forwarded to: both push
+      // paths hand it the command instead of refusing.
+      await app.get(Gateways).of<ChatEvents>(ChatGateway).to('general').emit('typing');
+      await app.get(ChatGateway).server.to('general').emit('typing');
+      const typing = { rooms: ['general'], gatewayPath: CHAT, frame: '{"event":"typing"}' };
+      expect(commands).toEqual([typing, typing]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('names at most ten failed rooms in the message of a multi-room push', async () => {
+    const outage = new Error('the platform is unavailable');
+    const transport: WebSocketTransport = {
+      async deliver() {
+        throw outage;
+      },
+    };
+    const app = await makeApp([transportAdapter(transport)]);
+    try {
+      const rooms = Array.from({ length: 13 }, (_, index) => `r${index}`);
+      let push = app.get(Gateways).of<ChatEvents>(ChatGateway).to('r0');
+      for (const room of rooms) push = push.to(room);
+      const failure: unknown = await push.emit('typing').then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      expect(failure).toBeInstanceOf(AggregateError);
+      if (!(failure instanceof AggregateError)) return;
+      expect(failure.message).toBe(
+        '13 of 13 ChatGateway room pushes failed: ' +
+          '"r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9" and 3 more',
+      );
+      // Every failed room keeps its own error.
+      expect(failure.errors.map((error: Error) => error.message)).toEqual(
+        rooms.map((room) => `ChatGateway push to room "${room}" failed`),
+      );
     } finally {
       await app.close();
     }

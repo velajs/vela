@@ -3390,7 +3390,7 @@ declare class WsDispatcher implements OnModuleInit, OnApplicationBootstrap, Cont
 
   private gatewayServer;
 
-  private seesOneServer;
+  private serverModule;
 
   private moduleServer;
   private resolveModuleServer;

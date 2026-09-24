@@ -16,6 +16,7 @@ import type {
   GatewayServer,
   WebSocketGatewayOptions,
 } from './websocket.types';
+import { forwardedGatewayPushError, forwardedSocketsUnreachable } from './ws-server';
 import { assertBroadcastCommandFits, type SyncDriver } from './ws-sync';
 
 /** What a push needs from one gateway's `@WebSocketGateway` metadata. */
@@ -28,6 +29,9 @@ interface GatewayTarget {
 }
 
 type Push = (rooms: readonly string[], event: string, data: unknown) => Promise<void>;
+
+/** Failed rooms a multi-room push's rejection message names; `errors` holds all. */
+const MAX_NAMED_FAILED_ROOMS = 10;
 
 function isGatewayOptions(value: unknown): value is WebSocketGatewayOptions {
   if (typeof value !== 'object' || value === null) return false;
@@ -147,10 +151,11 @@ class GatewayServerImpl<Events extends object> implements GatewayServer<Events> 
  * A platform transport that delivers pushes receives one `GatewayDelivery`
  * per room (on Cloudflare, a broadcast RPC to that gateway room's Durable
  * Object), and a push to several rooms rejects with an `AggregateError` that
- * names each room it failed to reach; otherwise the push goes through the
- * module's sync driver to this process's sockets (and, with `redis()`, to
- * every instance's). A push to a gateway whose upgrades a transport forwards
- * elsewhere, when that transport cannot deliver pushes, rejects.
+ * holds one error per room it failed to reach; otherwise the push goes
+ * through the module's sync driver to this process's sockets (and, with
+ * `redis()`, to every instance's). A push to a gateway whose upgrades a
+ * transport forwards elsewhere, when neither that transport nor the
+ * `local()` sync driver can reach its sockets, rejects.
  */
 @Injectable()
 export class Gateways {
@@ -182,15 +187,10 @@ export class Gateways {
     assertBroadcastCommandFits(command, target.maxFrameBytes);
     const transport = this.platform.transport;
     if (!transport?.deliver) {
-      if (transport?.forwardUpgrade && target.binding !== undefined) {
-        // The upgrade route hands this gateway's sockets to another isolate:
-        // this process's sync driver would reach none of them.
-        throw new Error(
-          `${target.name}'s upgrades are forwarded by the platform transport, so its sockets ` +
-            'live in another isolate, but the transport cannot deliver pushes there. ' +
-            'A transport that implements forwardUpgrade() must also implement ' +
-            'WebSocketTransport.deliver() for Gateways pushes.',
-        );
+      // The upgrade route hands a gateway's sockets to another isolate, which
+      // only a cross-instance sync driver can reach.
+      if (target.binding !== undefined && forwardedSocketsUnreachable(transport, this.driver)) {
+        throw forwardedGatewayPushError(target.name);
       }
       await this.driver.dispatch(command);
       return;
@@ -225,10 +225,15 @@ export class Gateways {
         error: new Error(`${target.name} push to room ${name} failed`, { cause: reason }),
       };
     });
+    // Room ids reach 512 bytes: the message names the first few, and `errors`
+    // keeps one entry per failed room.
+    const named = missed.slice(0, MAX_NAMED_FAILED_ROOMS).map(({ name }) => name);
+    const more = missed.length - named.length;
     throw new AggregateError(
       missed.map(({ error }) => error),
       `${failed.length} of ${deliveries.length} ${target.name} room pushes failed: ` +
-        missed.map(({ name }) => name).join(', '),
+        named.join(', ') +
+        (more > 0 ? ` and ${more} more` : ''),
     );
   }
 }
