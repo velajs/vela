@@ -71,7 +71,10 @@ their boundaries, including all operation-specific RPC response fields.
 
 The portable time-travel panel uses the model source a `crudPanel()` binds in the
 same Studio; `timeTravelPanel({ imports: [SourceModule] })` reaches a model source
-another module exports. An async Studio factory with parameters supplies them
+another module exports. Each port is bound by one panel: `timeTravelPanel()` and
+`cloudflareTimeTravelPanel()` both bind `TIME_TRAVEL_PORT`, so `forRoot` fails
+when a Studio lists both, as it does for any token two plugins provide
+(application-wide enhancers such as `APP_INTERCEPTOR` excepted). An async Studio factory with parameters supplies them
 through `inject`; one without parameters may omit it.
 
 ## Diagnostic snapshots

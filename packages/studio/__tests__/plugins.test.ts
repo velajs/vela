@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { Inject, Injectable, Module, VelaFactory, type VelaEnv } from '@velajs/vela';
+import {
+  APP_INTERCEPTOR,
+  Inject,
+  Injectable,
+  Module,
+  VelaFactory,
+  defineProvider,
+  type CallHandler,
+  type ExecutionContext,
+  type NestInterceptor,
+  type VelaEnv,
+} from '@velajs/vela';
 import { QueueModule } from '@velajs/vela/queue';
 import { ScheduleModule } from '@velajs/vela/schedule';
 import type { AdminRpcResponse, StudioOp, StudioOpReq, StudioOpRes } from '@velajs/studio-protocol';
@@ -7,6 +18,8 @@ import { AdminLogBuffer, StudioModule, defineStudioPlugin, type StudioPlugin } f
 import { queuesPanel } from '../src/queue';
 import { schedulePanel } from '../src/schedule';
 import { livePanel } from '../src/live';
+import { timeTravelPanel } from '../src/timetravel';
+import { cloudflareTimeTravelPanel } from '../src/cloudflare';
 
 const TOKEN = 'test-master-token-value';
 type App = Awaited<ReturnType<typeof VelaFactory.create>>;
@@ -89,6 +102,32 @@ describe('StudioModule plugins', () => {
       "Studio plugin 'queues' is registered twice",
     );
     expect(() => defineStudioPlugin({ name: '' })).toThrow('non-empty name');
+  });
+
+  it('rejects two panels that bind the same port, naming both', () => {
+    expect(() =>
+      StudioModule.forRoot({
+        plugins: [timeTravelPanel(), cloudflareTimeTravelPanel({ binding: 'ROOM' })],
+      }),
+    ).toThrow(
+      "Studio plugins 'time-travel' and 'cloudflare-time-travel' both provide " +
+        'InjectionToken(TIME_TRAVEL_PORT)',
+    );
+    // Application-wide enhancers are collected, not replaced, so panels may share them.
+    @Injectable()
+    class Timing implements NestInterceptor {
+      intercept(_context: ExecutionContext, next: CallHandler) {
+        return next.handle();
+      }
+    }
+    const enhancer = (name: string) =>
+      defineStudioPlugin({
+        name,
+        providers: [defineProvider(APP_INTERCEPTOR, { useClass: Timing })],
+      });
+    expect(() =>
+      StudioModule.forRoot({ plugins: [enhancer('first'), enhancer('second')] }),
+    ).not.toThrow();
   });
 
   it('keeps one Studio per application whatever its panels', async () => {

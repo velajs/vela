@@ -4,7 +4,18 @@
  * they serve) to StudioModule's own scope, so they inject Studio's signers,
  * buffers and resolved config without re-importing the configured module.
  */
-import type { ModuleImport, ProviderDefinition, Type } from '@velajs/vela';
+import {
+  APP_FILTER,
+  APP_GUARD,
+  APP_INTERCEPTOR,
+  APP_MIDDLEWARE,
+  APP_PIPE,
+  type ModuleImport,
+  type ProviderDefinition,
+  type Token,
+  type Type,
+} from '@velajs/vela';
+import { describeToken } from '@velajs/vela/module-kit';
 
 /** One Studio panel: providers registered inside the configured StudioModule. */
 export interface StudioPlugin {
@@ -35,15 +46,41 @@ export function defineStudioPlugin(plugin: StudioPlugin): StudioPlugin {
   });
 }
 
-/** The plugins of one StudioModule, each name once. */
+// Application-wide enhancers collect every registration, so panels may share them.
+const COLLECTED = new Set<Token>([
+  APP_GUARD,
+  APP_PIPE,
+  APP_INTERCEPTOR,
+  APP_FILTER,
+  APP_MIDDLEWARE,
+]);
+
+/**
+ * The plugins of one StudioModule, each name once. Two plugins providing the
+ * same token (two time-travel tiers binding `TIME_TRAVEL_PORT`) fail, since the
+ * later registration would silently replace the earlier.
+ */
 export function collectStudioPlugins(plugins: readonly StudioPlugin[] | undefined): StudioPlugin[] {
   const names = new Set<string>();
+  const owners = new Map<Token, string>();
   return (plugins ?? []).map((plugin) => {
     const checked = defineStudioPlugin(plugin);
     if (names.has(checked.name)) {
       throw new TypeError(`Studio plugin '${checked.name}' is registered twice.`);
     }
     names.add(checked.name);
+    for (const provider of checked.providers ?? []) {
+      const token: Token = typeof provider === 'function' ? provider : provider.provide;
+      if (COLLECTED.has(token)) continue;
+      const owner = owners.get(token);
+      if (owner !== undefined && owner !== checked.name) {
+        throw new TypeError(
+          `Studio plugins '${owner}' and '${checked.name}' both provide ${describeToken(token)}; ` +
+            'register only one of them.',
+        );
+      }
+      owners.set(token, checked.name);
+    }
     return checked;
   });
 }
