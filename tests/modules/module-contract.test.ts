@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, normalize } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { Module, type DynamicModule } from '@velajs/vela';
@@ -11,13 +11,14 @@ import { Container } from '@velajs/vela/module-kit';
  * exported `*Module` class is authored on `defineModule`, exposes `forRoot`
  * and `forRootAsync`, keys instances by its structural options (never by the
  * factory it was given), strips registration controls from the key, and has
- * the module loader report a second configuration under the same key.
+ * the module loader reject a second configuration under the same key.
  */
 
 const PACKAGES = join(__dirname, '..', '..', 'packages');
 
 interface Manifest {
   name: string;
+  bin?: string | Record<string, string>;
   exports?: Record<string, { import?: string }>;
   dependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
@@ -63,8 +64,16 @@ async function exportedModules(): Promise<ExportedModule[]> {
       '@velajs/vela' in (manifest.dependencies ?? {}) ||
       '@velajs/vela' in (manifest.peerDependencies ?? {});
     if (!dependsOnVela) continue;
+    // A bin target runs its program when imported (the CLI parses the test
+    // worker's argv), and a program exports no module.
+    const bins = new Set(
+      Object.values(
+        typeof manifest.bin === 'string' ? { [manifest.name]: manifest.bin } : (manifest.bin ?? {}),
+      ).map((target) => normalize(target)),
+    );
     for (const [subpath, target] of Object.entries(manifest.exports ?? {})) {
       if (!target.import?.endsWith('.js')) continue;
+      if (bins.has(normalize(target.import))) continue;
       if (WORKERS_ONLY.has(`${manifest.name}${subpath.slice(1)}`)) continue;
       let entry: Record<string, unknown>;
       try {
@@ -147,7 +156,7 @@ describe('uniform module contract', () => {
   });
 
   it.each(modules)(
-    '$id: a second configuration is reported, the same one deduplicated',
+    '$id: a second configuration is rejected, the same one deduplicated',
     ({ name, module }) => {
       const { forRootAsync } = statics(module);
       const structural = STRUCTURAL[name] ?? {};
@@ -165,11 +174,13 @@ describe('uniform module contract', () => {
   );
 
   it.each(modules)('$id: the isGlobal extra does not change the key', ({ name, module }) => {
+    // QueueModule is always global and declares no extras, so it rejects the flag.
+    if (name === 'QueueModule') return;
     const { forRootAsync } = statics(module);
     const structural = STRUCTURAL[name] ?? {};
     const useFactory = () => ({});
     const plain = forRootAsync({ ...structural, useFactory });
     const global = forRootAsync({ ...structural, useFactory, isGlobal: true });
-    if (name !== 'QueueModule') expect(global.key).toBe(plain.key);
+    expect(global.key).toBe(plain.key);
   });
 });
