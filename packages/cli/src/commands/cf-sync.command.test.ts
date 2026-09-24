@@ -114,6 +114,30 @@ describe('vela cf sync', () => {
     });
   });
 
+  it('finds a Worker without jobs, queues or classes in sync', async () => {
+    writeFileSync(
+      join(project, 'src/worker.mjs'),
+      `
+import { Module } from '@velajs/vela';
+import '@velajs/vela/queue';
+import '@velajs/vela/schedule';
+import { createCloudflareWorker } from '@velajs/cloudflare';
+import '@velajs/cloudflare/queues';
+
+class AppModule {}
+Module({})(AppModule);
+export default createCloudflareWorker(AppModule);
+`,
+    );
+    const check = await sync('--json');
+    expect(check.code, check.output).toBe(0);
+    expect(JSON.parse(check.output)).toMatchObject({
+      status: 'in-sync',
+      changes: [],
+      warnings: [],
+    });
+  });
+
   it('compares a wrangler.toml but does not rewrite it', async () => {
     rmSync(join(project, 'wrangler.jsonc'));
     const toml = 'name = "shop"\nmain = "src/worker.mjs"\ncompatibility_date = "2026-09-20"\n';

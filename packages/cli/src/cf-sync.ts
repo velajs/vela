@@ -113,7 +113,11 @@ export function planCloudflareSync(
   const changes: SyncChange[] = [];
   const warnings: string[] = [];
   const worker = wranglerWorkerName(config, environment);
-  const rows = (kind: string) => facts.entrypoints.filter((row) => row.kind === kind);
+  // `vela entrypoint list` lists a declared kind with no entries as a placeholder row.
+  const rows = (kind: string) =>
+    facts.entrypoints.filter(
+      (row) => row.kind === kind && !(row.target === '(no entrypoints)' && row.meta === ''),
+    );
 
   // Cron triggers: exactly the expressions the @Cron jobs deliver on Workers.
   const crons: string[] = [];
@@ -445,23 +449,181 @@ function removeElement(text: string, array: JsonNode, index: number): Edit[] {
   return [{ offset: from, length: end - from, content: '' }];
 }
 
+/** The indentation of the line `offset` is on. */
+function indentAt(text: string, offset: number): string {
+  const lineStart = text.lastIndexOf('\n', offset - 1) + 1;
+  return /^[ \t]*/.exec(text.slice(lineStart))?.[0] ?? '';
+}
+
+/** Whether only whitespace precedes `offset` on its line. */
+function startsLine(text: string, offset: number): boolean {
+  const lineStart = text.lastIndexOf('\n', offset - 1) + 1;
+  return text.slice(lineStart, offset).trim() === '';
+}
+
+/** The offset of the line break ending the line `from` is on (the text's end without one). */
+function endOfLine(text: string, from: number): number {
+  const newline = text.indexOf('\n', from);
+  if (newline === -1) return text.length;
+  return text.charAt(newline - 1) === '\r' ? newline - 1 : newline;
+}
+
+/** `value` as JSON on one line: `{ "binding": "EMAILS", "queue": "jobs" }`. */
+function inlineJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(inlineJson).join(', ')}]`;
+  if (isRecord(value)) {
+    const members = Object.entries(value).map(
+      ([key, member]) => `${JSON.stringify(key)}: ${inlineJson(member)}`,
+    );
+    return members.length === 0 ? '{}' : `{ ${members.join(', ')} }`;
+  }
+  return JSON.stringify(value);
+}
+
+/** How a document lays out what is added to it. */
+interface Layout {
+  /** One indentation level. */
+  readonly unit: string;
+  readonly eol: string;
+  /** Whether the whole document is on one line. */
+  readonly oneLine: boolean;
+}
+
+/** An element or member to add, on one line (`indent` undefined) or from a line indented `indent`. */
+type Item = (indent: string | undefined, layout: Layout) => string;
+
+/**
+ * Insert `item` as the last element or member of `container`, following its
+ * layout: after the last one on its line when that one shares a line, else on
+ * a line of its own, after the comma and comment that trail the last one. An
+ * empty container gets the item on one line unless it starts a line of a
+ * multi-line document. Undefined when a comment inside an empty container
+ * leaves no obvious place.
+ */
+function appendTo(
+  text: string,
+  container: JsonNode,
+  item: Item,
+  layout: Layout,
+): Edit[] | undefined {
+  const last = container.children?.at(-1);
+  if (last === undefined) {
+    const close = container.offset + container.length - 1;
+    if (text.slice(container.offset + 1, close).trim() !== '') return undefined;
+    const [open, end] = container.type === 'array' ? ['[', ']'] : ['{ ', ' }'];
+    const owner = container.parent?.type === 'property' ? container.parent : container;
+    let content = `${open}${item(undefined, layout)}${end}`;
+    if (!layout.oneLine && startsLine(text, owner.offset)) {
+      const indent = indentAt(text, owner.offset);
+      const inner = `${indent}${layout.unit}`;
+      content = `${open.trim()}${layout.eol}${inner}${item(inner, layout)}${layout.eol}${indent}${end.trim()}`;
+    }
+    return [{ offset: container.offset, length: container.length, content }];
+  }
+  const end = last.offset + last.length;
+  if (!startsLine(text, last.offset)) {
+    // One line: after the last element and the block comments that trail it there.
+    let at = end;
+    let offset = end;
+    for (;;) {
+      while (text.charAt(offset) === ' ' || text.charAt(offset) === '\t') offset++;
+      if (!text.startsWith('/*', offset)) break;
+      const close = text.indexOf('*/', offset + 2);
+      if (close === -1) break;
+      offset = close + 2;
+      at = offset;
+    }
+    return text.charAt(offset) === ','
+      ? [{ offset: offset + 1, length: 0, content: ` ${item(undefined, layout)},` }]
+      : [{ offset: at, length: 0, content: `, ${item(undefined, layout)}` }];
+  }
+  const indent = indentAt(text, last.offset);
+  const line = `${layout.eol}${indent}${item(indent, layout)}`;
+  const next = skipTrivia(text, end);
+  const closing = container.offset + container.length - 1;
+  if (text.charAt(next) === ',') {
+    // A trailing comma stays trailing: the new line goes after it and its comment.
+    const stop = endOfLine(text, next + 1);
+    if (stop > closing) return [{ offset: next + 1, length: 0, content: `${line},` }];
+    return [{ offset: stop, length: 0, content: `${line},` }];
+  }
+  const stop = endOfLine(text, end);
+  if (stop > closing) return [{ offset: end, length: 0, content: `,${line}` }];
+  // The comma goes right after the last element, which keeps its own comment.
+  return [
+    { offset: end, length: 0, content: ',' },
+    { offset: stop, length: 0, content: line },
+  ];
+}
+
+/**
+ * Edits appending `value` to the array at `path`, or creating the array (and
+ * the objects above it) as the last member of the deepest object the path
+ * reaches. Undefined when the path meets something else.
+ */
+function appendEdits(
+  text: string,
+  path: JSONPath,
+  value: unknown,
+  layout: Layout,
+): Edit[] | undefined {
+  const root = parseTree(text);
+  if (root === undefined) return undefined;
+  const node = findNodeAtLocation(root, [...path]);
+  if (node !== undefined) {
+    if (node.type !== 'array') return undefined;
+    return appendTo(text, node, (indent, { unit, eol }) => json(value, indent, unit, eol), layout);
+  }
+  for (let depth = path.length - 1; depth >= 0; depth--) {
+    const parent = findNodeAtLocation(root, path.slice(0, depth));
+    if (parent === undefined) continue;
+    const [key, ...rest] = path.slice(depth);
+    if (parent.type !== 'object' || typeof key !== 'string') return undefined;
+    let member: unknown = [value];
+    for (const segment of rest.toReversed()) {
+      if (typeof segment !== 'string') return undefined;
+      member = { [segment]: member };
+    }
+    return appendTo(
+      text,
+      parent,
+      (indent, { unit, eol }) => `${JSON.stringify(key)}: ${json(member, indent, unit, eol)}`,
+      layout,
+    );
+  }
+  return undefined;
+}
+
+/** `value` as JSON: on one line, or indented `unit` per level from a line indented `indent`. */
+function json(value: unknown, indent: string | undefined, unit: string, eol: string): string {
+  if (indent === undefined) return inlineJson(value);
+  return JSON.stringify(value, null, unit).split('\n').join(`${eol}${indent}`);
+}
+
 /**
  * Apply `changes` to a Wrangler JSON/JSONC text in place, keeping its comments
  * and layout: the appends in order, then the removals, last index first.
  */
 export function applyCloudflareSync(text: string, changes: readonly SyncChange[]): string {
   const formattingOptions = formatting(text);
+  const layout: Layout = {
+    unit: formattingOptions.insertSpaces ? ' '.repeat(formattingOptions.tabSize) : '\t',
+    eol: formattingOptions.eol,
+    oneLine: !text.trim().includes('\n'),
+  };
   let result = text;
   for (const change of changes) {
     if (change.op !== 'append') continue;
-    const root = parseTree(result);
-    const node = root ? findNodeAtLocation(root, [...change.path]) : undefined;
-    result = applyEdits(
-      result,
-      node?.type === 'array'
-        ? modify(result, [...change.path, -1], change.value, { formattingOptions })
-        : modify(result, change.path, [change.value], { formattingOptions }),
-    );
+    let edits = appendEdits(result, change.path, change.value, layout);
+    if (edits === undefined) {
+      // A commented empty array, or a path through something else: jsonc-parser edits it.
+      const root = parseTree(result);
+      edits =
+        root && findNodeAtLocation(root, [...change.path])?.type === 'array'
+          ? modify(result, [...change.path, -1], change.value, { formattingOptions })
+          : modify(result, change.path, [change.value], { formattingOptions });
+    }
+    result = applyEdits(result, edits);
   }
   const removals = changes
     .filter((change) => change.op === 'remove')

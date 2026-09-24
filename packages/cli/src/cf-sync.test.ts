@@ -22,6 +22,13 @@ const row = (kind: string, target: string, meta: unknown): EntrypointRow => ({
   meta: JSON.stringify(meta),
 });
 
+/** The row `vela entrypoint list` prints for a kind without entrypoints. */
+const placeholder = (kind: string): EntrypointRow => ({
+  kind,
+  target: '(no entrypoints)',
+  meta: '',
+});
+
 const APP: CloudflareFacts = {
   entrypoints: [
     row('schedule:cron', 'Cleanup#run', {
@@ -210,11 +217,139 @@ describe('vela cf sync plan', () => {
 
     it('creates the array when the file declares none', () => {
       const text = `{\n  "name": "shop",\n  "main": "src/worker.ts"\n}\n`;
-      expect(written(sync(text, crons('0 3 * * *', '0 4 * * *')))).toEqual([
-        '0 3 * * *',
-        '0 4 * * *',
-      ]);
+      expect(sync(text, crons('0 3 * * *', '0 4 * * *'))).toBe(`{
+  "name": "shop",
+  "main": "src/worker.ts",
+  "triggers": {
+    "crons": [
+      "0 3 * * *",
+      "0 4 * * *"
+    ]
+  }
+}
+`);
     });
+
+    it('appends after the line comment of the last trigger, which stays with it', () => {
+      const text = `{
+  "name": "shop",
+  "main": "src/worker.ts",
+  "triggers": {
+    "crons": [
+      "0 3 * * *" // nightly
+    ]
+  }
+}
+`;
+      expect(sync(text, crons('0 3 * * *', '0 4 * * *'))).toContain(`    "crons": [
+      "0 3 * * *", // nightly
+      "0 4 * * *"
+    ]`);
+      const trailingComma = text.replace('"0 3 * * *" // nightly', '"0 3 * * *", // nightly');
+      expect(sync(trailingComma, crons('0 3 * * *', '0 4 * * *'))).toContain(`    "crons": [
+      "0 3 * * *", // nightly
+      "0 4 * * *",
+    ]`);
+      const inline = text.replace('"0 3 * * *" // nightly', '"0 3 * * *" /* nightly */');
+      expect(sync(inline, crons('0 3 * * *', '0 4 * * *'))).toContain(`    "crons": [
+      "0 3 * * *", /* nightly */
+      "0 4 * * *"
+    ]`);
+    });
+
+    it('keeps a one-line Wrangler file on one line', () => {
+      const text = `{ "name": "shop", "main": "src/worker.ts", "triggers": { "crons": ["0 3 * * *" /* nightly */] } }\n`;
+      expect(sync(text, crons('0 3 * * *', '0 4 * * *'))).toBe(
+        `{ "name": "shop", "main": "src/worker.ts", "triggers": { "crons": ["0 3 * * *" /* nightly */, "0 4 * * *"] } }\n`,
+      );
+      expect(sync(`{ "name": "shop", "main": "src/worker.ts" }\n`, crons('0 3 * * *'))).toBe(
+        `{ "name": "shop", "main": "src/worker.ts", "triggers": { "crons": ["0 3 * * *"] } }\n`,
+      );
+      expect(sync(`{ "name": "shop", "triggers": { "crons": [] } }\n`, crons('0 3 * * *'))).toBe(
+        `{ "name": "shop", "triggers": { "crons": ["0 3 * * *"] } }\n`,
+      );
+    });
+  });
+
+  it('lays out an empty container like the lines around it, with their indentation and line ends', () => {
+    const tabs =
+      '{\r\n\t"name": "shop",\r\n\t"main": "src/worker.ts",\r\n\t"triggers": { "crons": [] },\r\n\t"env": { "staging": {} }\r\n}\r\n';
+    const plan = planCloudflareSync(wrangler(tabs), undefined, {
+      entrypoints: APP.entrypoints.filter((entry) => entry.kind === 'schedule:cron'),
+      exports: { durableObjects: [], workflows: [], entrypoints: [] },
+    });
+    expect(applyCloudflareSync(tabs, plan.changes)).toBe(
+      '{\r\n\t"name": "shop",\r\n\t"main": "src/worker.ts",\r\n\t"triggers": { "crons": ["0 3 * * *"] },\r\n\t"env": { "staging": {} }\r\n}\r\n',
+    );
+    const staging = planCloudflareSync(wrangler(tabs), 'staging', {
+      entrypoints: APP.entrypoints.filter((entry) => entry.kind === 'queue:registration'),
+      exports: { durableObjects: [], workflows: [], entrypoints: [] },
+    });
+    expect(applyCloudflareSync(tabs, staging.changes)).toContain(
+      '\t"env": { "staging": { "queues": { "producers": [{ "binding": "EMAILS", "queue": "shop-staging-emails" }] } } }\r\n',
+    );
+    const own = `{\n  "name": "shop",\n  "main": "src/worker.ts",\n  "workflows": []\n}\n`;
+    expect(
+      applyCloudflareSync(
+        own,
+        planCloudflareSync(wrangler(own), undefined, {
+          entrypoints: [],
+          exports: { durableObjects: [], workflows: ['SignupFlow'], entrypoints: [] },
+        }).changes,
+      ),
+    ).toBe(`{
+  "name": "shop",
+  "main": "src/worker.ts",
+  "workflows": [
+    {
+      "name": "shop-signup-flow",
+      "binding": "SIGNUP_FLOW",
+      "class_name": "SignupFlow"
+    }
+  ]
+}
+`);
+  });
+
+  it('adds new sections after the last one, keeping its comment and trailing comma', () => {
+    const plan = planCloudflareSync(wrangler(TEXT), undefined, {
+      entrypoints: APP.entrypoints.filter(
+        (entry) => entry.kind === 'schedule:cron' || entry.kind.startsWith('queue'),
+      ),
+      exports: { durableObjects: [], workflows: [], entrypoints: [] },
+    });
+    expect(applyCloudflareSync(TEXT, plan.changes)).toBe(`{
+  // The Worker.
+  "name": "shop",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-09-20",
+  "triggers": { "crons": ["0 3 * * *"] }, // a stale trigger
+  "queues": {
+    "producers": [
+      {
+        "binding": "EMAILS",
+        "queue": "shop-emails"
+      }
+    ]
+  },
+}
+`);
+  });
+
+  it('appends objects to a one-line array on its line', () => {
+    const text = `{
+  "name": "shop",
+  "main": "src/worker.ts",
+  "queues": { "producers": [{ "binding": "OTHER", "queue": "other" }] },
+}
+`;
+    const plan = planCloudflareSync(wrangler(text), undefined, {
+      entrypoints: APP.entrypoints.filter((entry) => entry.kind === 'queue:registration'),
+      exports: { durableObjects: [], workflows: [], entrypoints: [] },
+    });
+    expect(applyCloudflareSync(text, plan.changes)).toContain(
+      `  "queues": { "producers": [{ "binding": "OTHER", "queue": "other" }, { "binding": "EMAILS", "queue": "shop-emails" }] },\n`,
+    );
   });
 
   it('writes non-inherited keys under the named environment', () => {
@@ -269,6 +404,21 @@ describe('vela cf sync plan', () => {
       'The Durable Object binding "GONE" names class "Removed", which the Worker entry does not export.',
       'The Workflow "old" names class "OldFlow", which the Worker entry does not export.',
     ]);
+  });
+
+  it('ignores the placeholder rows of kinds without entrypoints', () => {
+    const text = `{\n  "name": "shop",\n  "main": "src/worker.ts"\n}\n`;
+    const plan = planCloudflareSync(wrangler(text), undefined, {
+      entrypoints: [
+        'schedule:cron',
+        'queue',
+        'queue:registration',
+        'cf:queue:module',
+        'cf:queue',
+      ].map(placeholder),
+      exports: { durableObjects: [], workflows: [], entrypoints: [] },
+    });
+    expect(plan).toEqual({ changes: [], warnings: [] });
   });
 
   it('names bindings and Workflows after their classes', () => {
