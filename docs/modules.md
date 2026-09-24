@@ -66,6 +66,12 @@ The second type argument lists the options that shape the module graph, and
   dropped, so list every member of `S`.
 - A module without structural fields (`S` defaults to `never`) has a factory
   that returns the complete options.
+- `defaults` gives structural options their values when a call site leaves
+  them out: `defaults: { globalGuard: true }` makes `forRoot({})` and
+  `forRoot({ globalGuard: true })` one configuration with one key, and
+  `setup` receives `globalGuard: true` for both. The options token still
+  receives the options as given. Only options in `structural` may have a
+  default; any other throws when `defineModule` runs.
 
 `key`, `lazy` and the extras (`isGlobal`, or a spec's own `extras`) are
 registration controls: they never reach the options token and never change the
@@ -101,9 +107,12 @@ is listed.
 
 `DynamicModule.key` decides instance identity: the same `(class, key)` is one
 instance, different keys coexist. The default key is `stableHash` of the
-structural options, so a module without structural fields has one instance per
-class. A module that takes no options and can also be imported bare (an
-`@Module` class with its own providers, such as `ScheduleNodeModule`,
+structural options over the spec's `defaults`, so a module without structural
+fields has one instance per class. A field set to `undefined` counts as not
+given at every depth, in the key as in the comparison of repeated imports:
+`forRoot({ presence: {} })` and `forRoot({ presence: { ttlMs: undefined } })`
+are one instance. A module that takes no options and can also be imported bare
+(an `@Module` class with its own providers, such as `ScheduleNodeModule`,
 `EventEmitterModule` and `HealthModule`) declares `key: () => 'default'`, the
 bare import's key, so `forRoot()` and the class are one instance. A display
 name is not identity: distinct classes with the same name
@@ -143,21 +152,36 @@ the bootstrap whatever the diagnostics policy: keeping either configuration
 would run the other import's consumers on options they never asked for, such
 as another base URL, credentials, driver or authorizer. Two features that each
 configure `HttpModule.forRoot({ baseURL })`, for example, give each client its
-own `key`. A helper that rebuilds the same configuration on every call is
-rejected as well; import one shared definition (export a const of the
-`DynamicModule`), or give each configuration its own `key`. The options are
-compared before the `global` flag, so a repeat that also asks for
-`isGlobal: true` still fails. A repeat with the same options and a different
-`global` flag, including a global instance after a bare import of its class,
-is reported through the container's diagnostics policy (`'log'` warns,
-`'throw'` fails bootstrap) and ignored. An extra at its default and an option
-passed as `undefined` count as not given, so `forRoot({ driver })`,
+own `key`. A helper that builds a fresh closure or class instance on every
+call, such as a new `useFactory` or a new token each time, is rejected as
+well, even when every call configures the same thing; import one shared
+definition (export a const of the `DynamicModule`), or give each
+configuration its own `key`. A helper that builds its configuration from plain
+values only deduplicates, because those values compare structurally.
+
+A bare class import configures nothing. A configured import under the same
+key, such as `HttpModule.forRoot({ key: 'default', baseURL })` next to
+`imports: [HttpModule]`, fails the bootstrap in either order instead of
+leaving one of them on the class's own defaults; `forRoot()` with no options
+is the bare import. Laziness is compared as the instance gets it: the spec's
+`lazy`, the class's `@Module({ lazy: true })` and a call site's `lazy: true`
+all count, so `lazy: true` on a module that is already lazy changes nothing,
+while `lazy: true` on one import of an eager module is a different
+configuration.
+
+The options are compared before the `global` flag, so a repeat that also asks
+for `isGlobal: true` still fails. A repeat with the same options and a
+different `global` flag, including a global instance after a bare import of
+its class, is reported through the container's diagnostics policy (`'log'`
+warns, `'throw'` fails bootstrap) and ignored. An extra at its default, a
+structural option at the spec's default and an option passed as `undefined`
+(at any depth) count as not given, so `forRoot({ driver })`,
 `forRoot({ driver, isGlobal: false })` and `forRoot({ driver, prefix: undefined })`
 are one configuration. A spec with its own `transform` may read any extra for
 more than visibility, so every extra it receives, `isGlobal` included, is
 compared as an option. Identical repeats still deduplicate, and a repeat never
-adds a generated module's controllers to the instance a second time. The reference ids belong to one module loader and are
-released with it.
+adds a generated module's controllers to the instance a second time. The
+reference ids belong to one module loader and are released with it.
 
 An `undefined` or `null` entry in a module's `imports`, `providers`,
 `controllers` or `exports` fails the load with `UndefinedModuleError`, naming

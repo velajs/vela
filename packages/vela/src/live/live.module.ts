@@ -59,6 +59,8 @@ const { ConfigurableModuleClass } = defineModule<LiveModuleOptions, 'presence'>(
   optionsToken: LIVE_MODULE_OPTIONS,
   // One engine per application: a second configuration fails bootstrap, not merged.
   structural: ['presence'],
+  // Presence is on unless disabled: `{}` and an absent `presence` are one engine.
+  defaults: { presence: {} },
   setup: ({ OPTIONS, options }) => ({
     providers: [
       LivePlatformRef,

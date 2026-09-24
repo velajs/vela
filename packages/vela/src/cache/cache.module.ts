@@ -18,6 +18,7 @@ const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN } = defineModule<
   name: 'Cache',
   optionsToken: CACHE_MODULE_OPTIONS,
   structural: ['globalInterceptor'],
+  defaults: { globalInterceptor: false },
   setup: ({ options }) => ({
     // CacheInterceptor itself is a provider of the @Module bag below.
     providers: options.globalInterceptor

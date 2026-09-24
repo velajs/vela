@@ -235,6 +235,22 @@ describe('LiveModule (tag-based live queries)', () => {
     await app.close();
   });
 
+  it('keys equivalent presence settings as one engine', async () => {
+    const equivalent = [
+      LiveModule.forRoot(),
+      LiveModule.forRoot({ presence: {} }),
+      LiveModule.forRoot({ presence: { ttlMs: undefined } }),
+    ];
+    expect(new Set(equivalent.map((definition) => definition.key)).size).toBe(1);
+    expect(LiveModule.forRoot({ presence: { ttlMs: 5_000 } }).key).not.toBe(equivalent[0]?.key);
+
+    @Module({ imports: [WebSocketModule.forRoot(), ...equivalent] })
+    class Equivalent {}
+    const app = await VelaFactory.create(Equivalent, { diagnostics: 'throw' });
+    expect(app.getContainer().getOwnerModuleIds(LiveEngine)).toHaveLength(1);
+    await app.close();
+  });
+
   it('restores attachment records with a fresh snapshot and no cached result baseline', async () => {
     const { dispatcher, engine, invalidation, client, dispatch, todos } = await makeTodoApp();
     await dispatch(subFrame('s1', 'todos.list', { listId: 'l1' }));

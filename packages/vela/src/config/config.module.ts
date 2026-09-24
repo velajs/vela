@@ -59,6 +59,7 @@ function namespaceSubModule(namespace: AnyConfigNamespace): DynamicModule {
 const { ConfigurableModuleClass } = defineModule<ConfigModuleOptions, 'load'>({
   name: 'Config',
   structural: ['load'],
+  defaults: { load: [] },
   setup: ({ OPTIONS, options }) => {
     const load = options.load ?? [];
     return {

@@ -30,11 +30,13 @@ import type { MiddlewareRouteDefinition, NestModule } from './middleware';
 
 import {
   DEFAULT_MODULE_KEY,
+  UNCONFIGURED_MODULE,
   assertDefinedEntries,
   isDynamicModule,
   moduleKeyOf,
   readModuleIdentity,
   unwrapModuleImport,
+  type ModuleIdentity,
   type ModuleIdentityComparer,
 } from './module-identity';
 
@@ -76,6 +78,18 @@ function tokenOfProvider(provider: Type | ProviderDefinition): Token | undefined
   return typeof provider === 'function' ? provider : provider.provide;
 }
 
+/**
+ * What an import records about its inputs. A bare class import configures
+ * nothing; a hand-written DynamicModule records nothing (`undefined`).
+ */
+function recordedIdentity(
+  entry: Type | DynamicModule,
+): ModuleIdentity | typeof UNCONFIGURED_MODULE | undefined {
+  if (!isDynamicModule(entry)) return UNCONFIGURED_MODULE;
+  const identity = readModuleIdentity(entry);
+  return identity?.inputs === UNCONFIGURED_MODULE ? UNCONFIGURED_MODULE : identity;
+}
+
 export class ModuleLoader {
   // class → set of keys already processed (multi-instance dedup is by both)
   #processedModules = new Map<Type, Set<string>>();
@@ -109,9 +123,9 @@ export class ModuleLoader {
   // Per-load reference ids: identity fingerprints never outlive this loader.
   // Created by the first recorded identity that needs comparing.
   #identity?: ModuleIdentityComparer;
-  // moduleId → the DynamicModule that first created the instance, compared
-  // against later imports of the same (class, key).
-  #definitionByModuleId = new Map<string, DynamicModule>();
+  // moduleId → the import (a bare class or a DynamicModule) that first
+  // created the instance, compared against later imports of the same (class, key).
+  #definitionByModuleId = new Map<string, Type | DynamicModule>();
   // moduleId → classes whose @Use* and parameter-pipe class references the
   // module owns: its module class, class providers and controllers.
   #enhancerHosts = new Map<string, Set<Type>>();
@@ -272,12 +286,10 @@ export class ModuleLoader {
         : toProviderDefinition(provider, `${moduleName}.providers[${index}]`),
     );
 
-    // A bare class import is recorded as its plain definition, so a later
-    // repeat that asks for another global flag is reported too.
-    this.#definitionByModuleId.set(
-      moduleId,
-      isDynamicModule(moduleClassOrDynamic) ? moduleClassOrDynamic : { module: moduleClass },
-    );
+    // A bare class import is recorded too: it configures nothing, so a later
+    // configured import under its key is a second configuration, and a later
+    // one that asks for another global flag is reported.
+    this.#definitionByModuleId.set(moduleId, moduleClassOrDynamic);
     this.#processingStack.add(moduleId);
 
     try {
@@ -529,10 +541,12 @@ export class ModuleLoader {
    * built from different options fails the load in every diagnostics mode:
    * keeping either configuration would run the other import's consumers on
    * options they never asked for (another base URL, driver or authorizer).
-   * The options are compared first, so a global flag that differs as well
-   * never hides that conflict. A repeat with the same options that asks for
-   * another global flag is reported and ignored. Returns whether the repeat
-   * agrees with the first definition.
+   * A bare class import configures nothing, so a configured import under its
+   * key conflicts with it in either order. The options are compared first, so
+   * a global flag that differs as well never hides that conflict. A
+   * DynamicModule repeat with the same options that asks for another global
+   * flag is reported and ignored. Returns whether the repeat agrees with the
+   * first definition.
    */
   private reportIdentityCollision(
     moduleId: string,
@@ -540,15 +554,24 @@ export class ModuleLoader {
     repeat: Type | DynamicModule,
   ): boolean {
     const first = this.#definitionByModuleId.get(moduleId);
-    if (!first || !isDynamicModule(repeat) || first === repeat) return true;
+    if (!first || first === repeat) return true;
     // Hand-written DynamicModules record no inputs, so only their global flag
     // is compared.
-    const firstIdentity = readModuleIdentity(first);
-    const repeatIdentity = readModuleIdentity(repeat);
-    if (firstIdentity && repeatIdentity) {
+    const firstIdentity = recordedIdentity(first);
+    const repeatIdentity = recordedIdentity(repeat);
+    if (firstIdentity && repeatIdentity && firstIdentity !== repeatIdentity) {
+      // Not a diagnostic: no policy may keep one configuration for both imports.
+      if (firstIdentity === UNCONFIGURED_MODULE || repeatIdentity === UNCONFIGURED_MODULE) {
+        throw new Error(
+          `[vela] ${moduleId} was imported again with different options: one import ` +
+            `configures the module and another imports it bare (or with no options), and ` +
+            `one module instance has one configuration. Import the configured definition ` +
+            `everywhere, or give the configuration its own key ` +
+            `(e.g. forRoot({ ..., key: 'secondary' })).`,
+        );
+      }
       this.#identity ??= firstIdentity.createComparer();
       if (this.#identity.conflicts(firstIdentity, repeatIdentity)) {
-        // Not a diagnostic: no policy may keep one configuration for both imports.
         throw new Error(
           `[vela] ${moduleId} was imported again with different options, and one module ` +
             `instance has one configuration. Import one shared definition (e.g. export a ` +
@@ -557,11 +580,13 @@ export class ModuleLoader {
         );
       }
     }
+    // A bare repeat asks for no global flag of its own.
+    if (!isDynamicModule(repeat)) return true;
     // The first definition decided whether the instance's exports are global;
     // a repeat that says otherwise would silently lose (or gain) visibility.
     // A @Global() class is global in either form.
     const classGlobal = getModuleMetadata(moduleClass)?.global === true;
-    const firstGlobal = classGlobal || first.global === true;
+    const firstGlobal = classGlobal || (isDynamicModule(first) && first.global === true);
     if (firstGlobal === (classGlobal || repeat.global === true)) return true;
     reportDiagnostic(
       this.container.getDiagnostics(),

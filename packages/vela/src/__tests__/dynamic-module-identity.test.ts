@@ -16,7 +16,7 @@ import {
 } from '../module-kit.js';
 import { CacheModule, CACHE_MODULE_OPTIONS } from '../cache/index.js';
 import { HttpModule, HttpService, HTTP_MODULE_OPTIONS } from '../fetch/index.js';
-import type { DynamicModule } from '../index.js';
+import type { DynamicModule, Type } from '../index.js';
 
 describe('Dynamic module identity', () => {
   // -------------------------------------------------------------------------
@@ -329,6 +329,54 @@ describe('Dynamic module identity', () => {
     }
   });
 
+  // -------------------------------------------------------------------------
+  // A bare import configures nothing: a configured import under its key is a
+  // second configuration, never silently replaced by the class's defaults
+  // -------------------------------------------------------------------------
+  it('fails bootstrap on a configured HttpModule under the bare key, in either order', async () => {
+    const configured = HttpModule.forRoot({ key: 'default', baseURL: 'https://configured.test' });
+    const deferred = HttpModule.forRootAsync({
+      key: 'default',
+      useFactory: () => ({ baseURL: 'https://configured.test' }),
+    });
+    const cases: Array<Array<Type | DynamicModule>> = [
+      [HttpModule, configured],
+      [configured, HttpModule],
+      [HttpModule, deferred],
+      [deferred, HttpModule],
+    ];
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      for (const imports of cases) {
+        @Module({ imports })
+        class App {}
+        for (const diagnostics of ['throw', 'log', 'silent'] as const) {
+          await expect(VelaFactory.create(App, { diagnostics })).rejects.toThrow(
+            /HttpModule#default was imported again with different options/,
+          );
+        }
+      }
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('keeps an unconfigured HttpModule forRoot under the bare key as the bare import', async () => {
+    const cases: Array<Array<Type | DynamicModule>> = [
+      [HttpModule, HttpModule.forRoot({ key: 'default' })],
+      [HttpModule.forRoot({ key: 'default', baseURL: undefined }), HttpModule],
+    ];
+    for (const imports of cases) {
+      @Module({ imports })
+      class App {}
+      const app = await VelaFactory.create(App, { diagnostics: 'throw' });
+      expect(app.getContainer().getOwnerModuleIds(HttpService)).toEqual(['HttpModule#default']);
+      expect(app.getContainer().resolve(HTTP_MODULE_OPTIONS)).toEqual({});
+      await app.close();
+    }
+  });
+
   it('reports a second unkeyed CacheModule configuration instead of swallowing it', async () => {
     @Module({ imports: [CacheModule.forRoot({ ttl: 60 })] })
     class FastSide {}
@@ -350,6 +398,14 @@ describe('Dynamic module identity', () => {
   it('stableHash is deterministic for plain objects regardless of key order', () => {
     expect(stableHash({ a: 1, b: 2 })).toBe(stableHash({ b: 2, a: 1 }));
     expect(stableHash({ a: 1, b: 2 })).not.toBe(stableHash({ a: 1, b: 3 }));
+  });
+
+  it('stableHash omits undefined properties at every depth, like the repeat comparison', () => {
+    expect(stableHash({ a: 1, b: undefined })).toBe(stableHash({ a: 1 }));
+    expect(stableHash({ presence: { ttlMs: undefined } })).toBe(stableHash({ presence: {} }));
+    expect(stableHash({ presence: { ttlMs: 1 } })).not.toBe(stableHash({ presence: {} }));
+    // Array positions still count.
+    expect(stableHash([undefined])).not.toBe(stableHash([]));
   });
 
   it('stableHash tolerates functions (hashes by source fingerprint)', () => {

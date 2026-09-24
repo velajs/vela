@@ -30,7 +30,9 @@ import type {
   ConfigurableModuleExtrasTransform,
   ConfigurableModuleHost,
 } from './configurable-module.types';
+import { getModuleMetadata } from './decorators';
 import { attachModuleIdentity } from './module-fingerprints';
+import { UNCONFIGURED_MODULE } from './module-identity';
 import { stableHash } from './stable-hash';
 
 /** The `global:` slot's component groups, lowered to `APP_*` registrations. */
@@ -63,8 +65,9 @@ export interface ModuleSetupContext<Opts, S extends keyof Opts = never> {
   readonly OPTIONS: InjectionToken<Opts>;
   /**
    * The structural options: the fields the spec declares in `structural`,
-   * which `forRoot` and `forRootAsync` both take at the call site. Every other
-   * option exists only once DI resolves `OPTIONS`; read it there.
+   * which `forRoot` and `forRootAsync` both take at the call site, over the
+   * spec's `defaults`. Every other option exists only once DI resolves
+   * `OPTIONS`; read it there.
    */
   readonly options: Pick<Opts, S>;
   /** The instance key in effect (for deriving per-instance token names). */
@@ -93,18 +96,28 @@ export interface DefineModuleSpec<
    */
   structural?: readonly S[];
   /**
+   * Values for structural options a call site leaves out or passes as
+   * `undefined`. `key`, `setup` and the comparison of repeated imports see
+   * them, so with `{ globalGuard: true }` here `forRoot({})` and
+   * `forRoot({ globalGuard: true })` are one configuration and one instance.
+   * The options token receives the options as given. Only options in
+   * `structural` may have a default.
+   */
+  defaults?: Partial<Pick<Opts, S>>;
+  /**
    * Contributions as a function of the structural options. Runs at
    * `forRoot`/`forRootAsync` call time, once per module instance.
    */
   setup?: (ctx: ModuleSetupContext<Opts, S>) => ModuleContributions;
   /**
-   * Instance key from the structural options. Defaults to
-   * `stableHash(structural)`, so a module without structural fields has one
-   * instance per class unless the caller passes an explicit `key`. Use
-   * `referenceKey` to key stateful structural values by reference. A module
-   * that takes no options and is also imported bare (an `@Module` class with
-   * its own providers) returns `'default'`, the bare import's key, so
-   * `forRoot()` and the class are one instance.
+   * Instance key from the structural options (over the spec's `defaults`).
+   * Defaults to `stableHash(structural)`, so a module without structural
+   * fields has one instance per class unless the caller passes an explicit
+   * `key`. Use `referenceKey` to key stateful structural values by
+   * reference. A module that takes no options and is also imported bare (an
+   * `@Module` class with its own providers) returns `'default'`, the bare
+   * import's key, so `forRoot()` and the class are one instance; a configured
+   * import under that key fails bootstrap next to the bare one.
    */
   key?: (options: Pick<Opts, S>) => string;
   /** Call-site extras defaults (default `{ isGlobal: false }`). */
@@ -118,7 +131,9 @@ export interface DefineModuleSpec<
   /**
    * Default every generated module instance to deferred (first-use)
    * materialization. Call sites can also opt in per instance by passing
-   * `lazy: true` alongside the options. See docs/modules.md "Lazy modules".
+   * `lazy: true` alongside the options, which changes nothing when the spec
+   * or the class's `@Module({ lazy: true })` already makes it lazy. See
+   * docs/modules.md "Lazy modules".
    */
   lazy?: boolean;
 }
@@ -231,6 +246,25 @@ export function defineModule<
   const extrasDefaults: ConfigurableModuleExtras = spec.extras ?? DEFAULT_EXTRAS;
   const extrasKeys: ReadonlySet<string> = new Set(Object.keys(extrasDefaults));
   const structuralKeys: ReadonlySet<string> = new Set((spec.structural ?? []).map(String));
+  const [listedDefaults, unlistedDefaults] = split(spec.defaults ?? {}, structuralKeys);
+  const [unlistedDefault] = Reflect.ownKeys(unlistedDefaults);
+  if (unlistedDefault !== undefined) {
+    const name = String(unlistedDefault);
+    throw new TypeError(
+      `${spec.name}: the default for '${name}' needs '${name}' in the structural list`,
+    );
+  }
+  const structuralDefaults = defined(listedDefaults);
+  /**
+   * The structural options in effect, the one form that keys, sets up and
+   * identifies an instance: the given fields over the spec's defaults. An
+   * `undefined` field is not given; `stableHash` and the loader's comparison
+   * of repeated imports read nested `undefined` fields the same way.
+   */
+  const effectiveStructural = (given: Record<PropertyKey, unknown>) => ({
+    ...structuralDefaults,
+    ...defined(given),
+  });
   const transform = (spec.transform ??
     DEFAULT_TRANSFORM) as ConfigurableModuleExtrasTransform<ConfigurableModuleExtras>;
   // The default transform reads `isGlobal` only for the definition's `global`
@@ -282,7 +316,11 @@ export function defineModule<
     };
   };
 
-  /** Key, contribute, reshape and record one instance from its separated inputs. */
+  /**
+   * Key, contribute, reshape and record one instance from its separated
+   * inputs. `configured` says whether the call site supplied module options
+   * (any options at all, or an async factory).
+   */
   const buildDefinition = (
     host: unknown,
     registration: Record<PropertyKey, unknown>,
@@ -290,24 +328,32 @@ export function defineModule<
     structural: Record<PropertyKey, unknown>,
     base: Pick<DynamicModule, 'imports' | 'providers'>,
     inputs: Record<PropertyKey, unknown>,
+    configured: boolean,
   ): DynamicModule => {
+    const moduleClass = host as DynamicModule['module'];
     const key = deriveKey(host, registration.key, structural);
-    const contributed = applyContributions(
-      { module: host as DynamicModule['module'], key, ...base },
-      structural,
-      key,
-    );
+    const contributed = applyContributions({ module: moduleClass, key, ...base }, structural, key);
     // An extra the call site leaves out, or passes as undefined, takes its
     // default, so `{ isGlobal: false }` and `{}` build the same definition.
     const resolvedExtras = { ...extrasDefaults, ...defined(extras) };
     const shaped = transform(contributed, resolvedExtras);
-    // Laziness is OR-composed: the spec defaults it, a call site can add it.
+    const comparedExtras = identityExtras(resolvedExtras);
+    // Laziness is OR-composed: the spec defaults it, a call site can add it,
+    // and the class's own `@Module({ lazy: true })` makes every instance lazy.
     const lazy = spec.lazy === true || registration.lazy === true;
-    return attachModuleIdentity(lazy ? { ...shaped, lazy: true } : shaped, {
-      ...inputs,
-      extras: identityExtras(resolvedExtras),
-      lazy: registration.lazy === true,
-    });
+    const classLazy = typeof host === 'function' && getModuleMetadata(moduleClass)?.lazy === true;
+    // A definition that adds nothing to its class is the bare class import.
+    const unconfigured =
+      !configured &&
+      !spec.setup &&
+      Reflect.ownKeys(comparedExtras).length === 0 &&
+      (!lazy || classLazy);
+    return attachModuleIdentity(
+      lazy ? { ...shaped, lazy: true } : shaped,
+      unconfigured
+        ? UNCONFIGURED_MODULE
+        : { ...inputs, extras: comparedExtras, lazy: lazy || classLazy },
+    );
   };
 
   class GeneratedModuleClass {}
@@ -320,14 +366,16 @@ export function defineModule<
     value(this: unknown, options: object = {}): DynamicModule {
       const [registration, withExtras] = split(options, REGISTRATION_KEYS);
       const [extras, moduleOptions] = split(withExtras, extrasKeys);
-      const [structural] = split(moduleOptions, structuralKeys);
+      const structural = effectiveStructural(split(moduleOptions, structuralKeys)[0]);
       return buildDefinition(
         this,
         registration,
         extras,
-        defined(structural),
+        structural,
         { providers: [defineProvider(optionsToken, { useValue: moduleOptions as Opts })] },
-        { options: moduleOptions },
+        // Compared with the structural defaults applied, as the key is derived.
+        { options: { ...moduleOptions, ...structural } },
+        Reflect.ownKeys(defined(moduleOptions)).length > 0,
       );
     },
   });
@@ -357,24 +405,25 @@ export function defineModule<
             'nor a registration control; return module options from the factory.',
         );
       }
-      const given = defined(structural);
+      const effective = effectiveStructural(structural);
       return buildDefinition(
         this,
         registration,
         extras,
-        given,
+        effective,
         {
           imports: options.imports ?? [],
           providers: buildAsyncOptionsProviders<Opts>(
             optionsToken,
             factoryMethodName,
             options,
-            given,
+            defined(structural),
             structuralKeys,
             `${hostName(this)}.${asyncName}`,
           ),
         },
-        { structural: given, wiring },
+        { structural: effective, wiring },
+        true,
       );
     },
   });

@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  ConfigModule,
+  ConfigService,
   ConfigurableModuleBuilder,
   Controller,
+  ERROR_CATALOG,
+  ErrorsModule,
   Get,
   Global,
   InjectionToken,
@@ -10,14 +14,17 @@ import {
   defineModule,
   defineProvider,
   type DynamicModule,
+  type Token,
   type Type,
 } from '../index';
+import { CACHE_MANAGER, CacheModule } from '../cache';
 import { EventEmitter, EventEmitterModule } from '../event-emitter';
 import { HealthCheckService, HealthModule } from '../health';
 import { LoggingModule } from '../logging';
 import * as moduleKit from '../module-kit';
 import { referenceKey } from '../module-kit';
 import { ScheduleExecutor, ScheduleNodeModule } from '../schedule-node';
+import { SeederModule, SeederRegistry } from '../seeder';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -511,6 +518,194 @@ describe('module contract: registration controls never reach the options', () =>
     await expect(VelaFactory.create(AppModule, { diagnostics: 'throw' })).rejects.toThrow(
       /HandWritten#one was imported again with a different global flag/,
     );
+  });
+});
+
+interface PoolOptions {
+  pool?: { size?: number; idleMs?: number };
+  shared?: boolean;
+  label?: string;
+}
+
+const POOL_SHARED = new InjectionToken<boolean>('module contract pool shared');
+
+// `shared` defaults to true, so `forRoot({})` and `forRoot({ shared: true })`
+// configure one pool.
+const { ConfigurableModuleClass: PoolBase, MODULE_OPTIONS_TOKEN: POOL_OPTIONS } = defineModule<
+  PoolOptions,
+  'pool' | 'shared'
+>({
+  name: 'Pool',
+  structural: ['pool', 'shared'],
+  defaults: { shared: true },
+  setup: ({ options }) => ({
+    providers: [defineProvider(POOL_SHARED, { useValue: options.shared === true })],
+    exports: [POOL_SHARED],
+  }),
+});
+class PoolModule extends PoolBase {}
+
+describe('module contract: keys and repeats share one normalization', () => {
+  it('applies structural defaults before keying, setup and the repeat comparison', async () => {
+    const equivalent = [
+      PoolModule.forRoot({ label: 'a' }),
+      PoolModule.forRoot({ label: 'a', shared: true }),
+      PoolModule.forRoot({ label: 'a', shared: undefined }),
+    ];
+    expect(new Set(equivalent.map((definition) => definition.key)).size).toBe(1);
+    expect(PoolModule.forRoot({ label: 'a', shared: false }).key).not.toBe(equivalent[0]?.key);
+
+    @Module({ imports: equivalent })
+    class AppModule {}
+    const app = await VelaFactory.create(AppModule, { diagnostics: 'throw' });
+    expect(app.getContainer().getOwnerModuleIds(POOL_OPTIONS)).toHaveLength(1);
+    expect(app.get(POOL_SHARED)).toBe(true);
+    // The options token receives the options as given.
+    expect(app.get(POOL_OPTIONS)).toEqual({ label: 'a' });
+    await app.close();
+  });
+
+  it('gives forRootAsync the structural defaults as well', async () => {
+    const useFactory = () => ({ label: 'a' });
+    const deferred = PoolModule.forRootAsync({ useFactory });
+    const spelled = PoolModule.forRootAsync({ shared: true, useFactory });
+    expect(deferred.key).toBe(PoolModule.forRoot({ label: 'a' }).key);
+    expect(spelled.key).toBe(deferred.key);
+
+    @Module({ imports: [deferred, spelled] })
+    class AppModule {}
+    const app = await VelaFactory.create(AppModule, { diagnostics: 'throw' });
+    expect(app.getContainer().getOwnerModuleIds(POOL_OPTIONS)).toHaveLength(1);
+    await expect(app.getContainer().resolveAsync(POOL_OPTIONS)).resolves.toEqual({ label: 'a' });
+    await app.close();
+  });
+
+  it('drops undefined structural fields at every depth before keying', async () => {
+    const equivalent = [
+      PoolModule.forRoot({ pool: {} }),
+      PoolModule.forRoot({ pool: { size: undefined } }),
+      PoolModule.forRoot({ pool: { size: undefined, idleMs: undefined } }),
+    ];
+    expect(new Set(equivalent.map((definition) => definition.key)).size).toBe(1);
+    expect(PoolModule.forRoot({ pool: { size: 2 } }).key).not.toBe(equivalent[0]?.key);
+
+    @Module({ imports: equivalent })
+    class AppModule {}
+    const app = await VelaFactory.create(AppModule, { diagnostics: 'throw' });
+    expect(app.getContainer().getOwnerModuleIds(POOL_OPTIONS)).toHaveLength(1);
+    await app.close();
+  });
+
+  it('keeps one instance of each first-party module when a call spells out a default', async () => {
+    const cases: Array<[root: DynamicModule, spelled: DynamicModule, token: Token]> = [
+      [
+        CacheModule.forRoot({ ttl: 60 }),
+        CacheModule.forRoot({ ttl: 60, globalInterceptor: false }),
+        CACHE_MANAGER,
+      ],
+      [ErrorsModule.forRoot(), ErrorsModule.forRoot({ catalogs: [] }), ERROR_CATALOG],
+      [SeederModule.forRoot(), SeederModule.forRoot({ seeders: [] }), SeederRegistry],
+      [
+        ConfigModule.forRoot({ config: { region: 'eu' } }),
+        ConfigModule.forRoot({ config: { region: 'eu' }, load: [] }),
+        ConfigService,
+      ],
+    ];
+    for (const [root, spelled, token] of cases) {
+      expect(spelled.key).toBe(root.key);
+      @Module({ imports: [root, spelled] })
+      class AppModule {}
+      const app = await VelaFactory.create(AppModule, { diagnostics: 'throw' });
+      expect(app.getContainer().getOwnerModuleIds(token)).toHaveLength(1);
+      await app.close();
+    }
+  });
+
+  it('rejects a default for an option the spec leaves out of its structural list', () => {
+    expect(() =>
+      defineModule<PoolOptions, 'pool' | 'shared'>({
+        name: 'UnlistedDefault',
+        structural: ['pool'],
+        defaults: { shared: true },
+      }),
+    ).toThrow(/UnlistedDefault: the default for 'shared' needs 'shared' in the structural list/);
+  });
+
+  it('compares effective laziness: the spec default and the class decorator count', async () => {
+    const { ConfigurableModuleClass: DeferredBase, MODULE_OPTIONS_TOKEN: DEFERRED_OPTIONS } =
+      defineModule<{ ttl: number }>({ name: 'Deferred', lazy: true });
+    class DeferredModule extends DeferredBase {}
+    @Module({
+      imports: [DeferredModule.forRoot({ ttl: 5 }), DeferredModule.forRoot({ ttl: 5, lazy: true })],
+    })
+    class SpecLazy {}
+    const app = await VelaFactory.create(SpecLazy, { diagnostics: 'throw' });
+    expect(app.getContainer().getOwnerModuleIds(DEFERRED_OPTIONS)).toHaveLength(1);
+    await app.close();
+
+    // EventEmitterModule's class is lazy, so asking for laziness again changes nothing.
+    for (const imports of [
+      [EventEmitterModule.forRoot(), EventEmitterModule.forRoot({ lazy: true })],
+      [EventEmitterModule, EventEmitterModule.forRoot({ lazy: true })],
+      [EventEmitterModule.forRoot({ lazy: true }), EventEmitterModule],
+    ]) {
+      @Module({ imports })
+      class ClassLazy {}
+      const lazyApp = await VelaFactory.create(ClassLazy, { diagnostics: 'throw' });
+      expect(lazyApp.getContainer().getOwnerModuleIds(EventEmitter)).toEqual([
+        'EventEmitterModule#default',
+      ]);
+      await lazyApp.close();
+    }
+
+    // An eager module still tells a lazy repeat apart.
+    const { ConfigurableModuleClass: EagerBase } = defineModule<{ ttl: number }>({ name: 'Eager' });
+    class EagerModule extends EagerBase {}
+    @Module({
+      imports: [EagerModule.forRoot({ ttl: 5 }), EagerModule.forRoot({ ttl: 5, lazy: true })],
+    })
+    class Mixed {}
+    await expect(VelaFactory.create(Mixed, { diagnostics: 'silent' })).rejects.toThrow(
+      /EagerModule#\w+ was imported again with different options/,
+    );
+  });
+});
+
+describe('module contract: a bare import configures nothing', () => {
+  it('fails bootstrap on a configured import under the bare key, in either order', async () => {
+    const configured = HealthModule.forRoot({ lazy: true });
+    const cases: Array<Array<Type | DynamicModule>> = [
+      [HealthModule, configured],
+      [configured, HealthModule],
+    ];
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    for (const imports of cases) {
+      @Module({ imports })
+      class AppModule {}
+      for (const diagnostics of ['throw', 'log', 'silent'] as const) {
+        await expect(VelaFactory.create(AppModule, { diagnostics })).rejects.toThrow(
+          /HealthModule#default was imported again with different options: one import configures/,
+        );
+      }
+    }
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('keeps an unconfigured forRoot and the bare class one instance in either order', async () => {
+    const cases: Array<Array<Type | DynamicModule>> = [
+      [HealthModule, HealthModule.forRoot()],
+      [HealthModule.forRoot(), HealthModule],
+      [HealthModule, HealthModule.forRoot({ isGlobal: false, lazy: undefined })],
+    ];
+    for (const imports of cases) {
+      @Module({ imports })
+      class AppModule {}
+      const app = await VelaFactory.create(AppModule, { diagnostics: 'throw' });
+      expect(app.getContainer().getOwnerModuleIds(HealthCheckService)).toEqual([
+        'HealthModule#default',
+      ]);
+      await app.close();
+    }
   });
 });
 

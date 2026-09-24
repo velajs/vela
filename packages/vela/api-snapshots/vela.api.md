@@ -2558,6 +2558,8 @@ interface DefineModuleSpec<Opts, S extends keyof Opts = never, Extras extends Co
 
   structural?: readonly S[];
 
+  defaults?: Partial<Pick<Opts, S>>;
+
   setup?: (ctx: ModuleSetupContext<Opts, S>) => ModuleContributions;
 
   key?: (options: Pick<Opts, S>) => string;
