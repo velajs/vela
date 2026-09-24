@@ -1,19 +1,20 @@
 import type { HttpMethod, Scope } from '../constants';
 import type { Type } from '../container/types';
 import type { PipeType } from '../registry/types';
+import type { VersionValue } from './version';
 
 export interface RouteMetadata {
   method: HttpMethod;
   path: string;
   handlerName: string | symbol;
-  version?: number | number[];
+  version?: VersionValue;
   /** Route name for URL generation / OpenAPI operationId (`@Get(path, { name })`). */
   name?: string;
 }
 
 export interface ControllerOptions {
   path?: string;
-  version?: number | number[];
+  version?: VersionValue;
   /**
    * Controller lifetime, like `@Injectable({ scope })`. Defaults to
    * `Scope.DEFAULT`; declaring a different scope elsewhere on the class throws.
@@ -23,7 +24,7 @@ export interface ControllerOptions {
 
 export interface ControllerMetadata {
   prefix: string;
-  version?: number | number[];
+  version?: VersionValue;
 }
 
 export interface ParamMetadata {

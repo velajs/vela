@@ -1,7 +1,8 @@
 import { defineModule, defineProvider } from '@velajs/vela';
 import { createAuthz } from '../authz';
-import type { CreateAuthzOptions } from '../authz';
-import { AUTHZ, AUTHZ_OPTIONS } from './tokens';
+import { PermissionGuard } from './permission.guard';
+import { RolesGuard } from './roles.guard';
+import { AUTHZ, AUTHZ_OPTIONS, type AuthzModuleOptions } from './tokens';
 
 /**
  * Built on `@velajs/vela`'s `defineModule` engine (the same pattern as vela's
@@ -10,15 +11,35 @@ import { AUTHZ, AUTHZ_OPTIONS } from './tokens';
  * authorization provider consumes the resolved bag so both entry points use
  * the same construction path, including DI-driven async options.
  */
-const { ConfigurableModuleClass } = defineModule<CreateAuthzOptions>({
+const { ConfigurableModuleClass } = defineModule<AuthzModuleOptions, 'guard'>({
   name: 'Authz',
   // Reuse the public AUTHZ_OPTIONS token for the auto-provided options bag,
   // kept DISTINCT from the AUTHZ instance token below.
   optionsToken: AUTHZ_OPTIONS,
-  setup: ({ OPTIONS }) => ({
-    providers: [defineProvider(AUTHZ, { useFactory: createAuthz, inject: [OPTIONS] })],
-    exports: [AUTHZ],
-  }),
+  // `guard` shapes the module graph: `forRootAsync` takes it beside the factory.
+  structural: ['guard'],
+  defaults: { guard: 'global' },
+  setup: ({ OPTIONS, options }) => {
+    const guard = options.guard;
+    if (guard !== 'global' && guard !== 'none') {
+      throw new TypeError("AuthzModule guard must be 'global' or 'none'");
+    }
+    return {
+      providers: [
+        defineProvider(AUTHZ, {
+          useFactory: ({ roles, permissions, resolver }: AuthzModuleOptions) =>
+            createAuthz({
+              ...(roles === undefined ? {} : { roles }),
+              ...(permissions === undefined ? {} : { permissions }),
+              ...(resolver === undefined ? {} : { resolver }),
+            }),
+          inject: [OPTIONS],
+        }),
+      ],
+      exports: [AUTHZ],
+      global: guard === 'global' ? { guards: [PermissionGuard, RolesGuard] } : {},
+    };
+  },
 });
 
 /**

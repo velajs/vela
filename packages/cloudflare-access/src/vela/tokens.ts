@@ -19,6 +19,14 @@ export interface CloudflareAccessModuleOptions {
   aud: string | string[];
   /** `required` (default) rejects anonymous callers; `optional` lets them pass through. */
   mode?: CloudflareAccessMode;
+  /**
+   * `'global'` (default) installs `CloudflareAccessGuard` as a global guard in
+   * the `authenticate` phase, so every route is verified before tenant,
+   * authorization and feature guards run, whatever the import order. `'none'`
+   * leaves it to `@UseGuards(CloudflareAccessGuard)`. With `forRootAsync`,
+   * pass it beside the factory.
+   */
+  guard?: 'global' | 'none';
   /** Optional declared claim contract run over the verified claims before an identity is minted. */
   identity?: IdentityContract;
   /** Signed tenant membership claim; defaults to tenantId. */

@@ -1,6 +1,4 @@
 import { type Next, Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
-import { toErrorBody } from '@velajs/errors';
 import type {
   VelaContext as Context,
   VelaHono as HonoApp,
@@ -12,12 +10,14 @@ import { contextStorage } from 'hono/context-storage';
 import { baseRoutePath, matchedRoutes, routePath } from 'hono/route';
 import { TrieRouter } from 'hono/router/trie-router';
 import { splitRoutingPath } from 'hono/utils/url';
-import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { HttpMethod, Scope } from '../constants';
-import { HttpException } from '../errors/http-exception';
+import {
+  BadRequestException,
+  NotFoundException,
+  PayloadTooLargeException,
+} from '../errors/http-exception';
 import { createExecutionScope, finishExecutionScope } from '../entrypoint/execution-scope';
-import { httpExceptionBody } from '../exceptions/http-exception-body';
-import { resolveErrorReporter } from '../exceptions/reporter';
+import { resolveErrorReporter, type ErrorReporter } from '../exceptions/reporter';
 import { getMetadata } from '../metadata';
 import type { Container } from '../container/container';
 import { reportDiagnostic } from '../container/diagnostics';
@@ -36,15 +36,29 @@ import {
   segmentsUnder,
   type RouteTarget,
 } from './route-target';
+import {
+  createRouteComposer,
+  normalizeGlobalPrefix,
+  type GlobalPrefixOptions,
+  type RoutePathOptions,
+  type VersioningOptions,
+} from './route-paths';
 import { buildMiddlewareExecutionContext } from './execution-context';
+import { mapFilterResult, sendHttpError } from './error-response';
 import { HandlerExecutor } from './handler-executor';
 import { instantiate, instantiateMany, instantiateAsync } from './instantiate';
 import { REQUEST_CONTEXT, createRequestContext } from './request-context';
 import { findRequestContainer, setRequestContainer } from './request-container';
 import type { HttpRequestCompletion, HttpRequestObserver } from './request-observer';
-import { mapResponse } from './response-mapper';
 import { shouldFilterCatch } from '../pipeline/decorators';
+import { handlerFunction } from '../pipeline/handler-function';
 import { getScopedComponents } from '../pipeline/scoped-components';
+import {
+  declaredField,
+  FEATURE_PHASE_RANK,
+  guardPhaseRank,
+  orderGuardsByPhase,
+} from '../pipeline/guard-phase';
 import type {
   CanActivate,
   ExceptionFilter,
@@ -105,7 +119,12 @@ export interface RouteManagerOptions {
    */
   getClientIp?: (c: Context) => string | null;
   middleware?: MiddlewareHandler[];
+  /** Prefix for every controller route, as Nest's `app.setGlobalPrefix(prefix)`. */
   globalPrefix?: string;
+  /** Routes served without the global prefix (`{ exclude }`). */
+  globalPrefixOptions?: GlobalPrefixOptions;
+  /** URI versioning: the version segment prefix (default `'v'`). */
+  versioning?: VersioningOptions;
   /**
    * Opt into ambient request-container access (`getCurrentContainer()` /
    * `getCurrentRequestContext()`). Registers Hono's `contextStorage()` as the
@@ -199,17 +218,9 @@ function corsConflict(owner: string): Error {
   );
 }
 
-// A middleware's `priority`: a class's static field, or an instance's own
-// field or its class's static one.
 function priorityOf(value: unknown): number | undefined {
-  if (typeof value !== 'function' && (typeof value !== 'object' || value === null)) {
-    return undefined;
-  }
-  const priority: unknown = Reflect.get(value, 'priority');
-  if (typeof priority === 'number') return priority;
-  if (typeof value === 'function') return undefined;
-  const constructor: unknown = Reflect.get(value, 'constructor');
-  return typeof constructor === 'function' ? priorityOf(constructor) : undefined;
+  const priority = declaredField(value, 'priority');
+  return typeof priority === 'number' ? priority : undefined;
 }
 
 // The entry `owners` has for a handler Hono matched. A parent app that mounts
@@ -273,6 +284,8 @@ export class RouteManager {
   private globalInterceptors: Array<InterceptorType | TypedToken<NestInterceptor>> = [];
   private globalFilters: Array<FilterType | TypedToken<ExceptionFilter>> = [];
   private globalPrefix = '';
+  private globalPrefixOptions: GlobalPrefixOptions = {};
+  private readonly versioning: VersioningOptions;
   private consumerMiddlewareDefinitions: MiddlewareRouteDefinition[] = [];
   // The Hono handler that ends each controller route, with its controller and
   // method, for forRoutes(Controller).
@@ -348,6 +361,7 @@ export class RouteManager {
       }
     }
     this.clientIpResolver = options.getClientIp ?? defaultGetClientIp;
+    this.versioning = options.versioning ?? {};
     const argumentResolver = new ArgumentResolver((c) => this.resolveClientIp(c));
     this.handlerExecutor = new HandlerExecutor(
       argumentResolver,
@@ -454,8 +468,10 @@ export class RouteManager {
     this.corsOwner = owner;
   }
 
-  setGlobalPrefix(prefix: string): this {
-    this.globalPrefix = prefix && !prefix.startsWith('/') ? `/${prefix}` : prefix;
+  /** As Nest's `app.setGlobalPrefix(prefix, { exclude })`; takes effect at the next build. */
+  setGlobalPrefix(prefix: string, options: GlobalPrefixOptions = {}): this {
+    this.globalPrefix = normalizeGlobalPrefix(prefix);
+    this.globalPrefixOptions = options;
     return this;
   }
 
@@ -480,13 +496,34 @@ export class RouteManager {
   }
 
   useGlobalGuards(...guards: GuardType[]): this {
-    this.globalGuards.push(...guards);
-    return this;
+    return this.addGlobalGuards(guards);
   }
 
   useGlobalGuardTokens(...guardTokens: Array<TypedToken<CanActivate>>): this {
-    this.globalGuards.push(...guardTokens);
+    return this.addGlobalGuards(guardTokens);
+  }
+
+  // Keeps global guards ordered by phase (see GuardPhase), then registration.
+  private addGlobalGuards(guards: Array<GuardType | TypedToken<CanActivate>>): this {
+    const ranked = [...this.globalGuards, ...guards].map((entry, index) => ({
+      entry,
+      index,
+      rank: this.registeredPhaseRank(entry),
+    }));
+    this.globalGuards = ranked
+      .sort((a, b) => a.rank - b.rank || a.index - b.index)
+      .map(({ entry }) => entry);
     return this;
+  }
+
+  // A token's registered target declares the phase without being constructed.
+  // A factory's guard declares it only once built; transports re-sort the
+  // constructed guards (orderGuardsByPhase), so it still runs in its phase.
+  private registeredPhaseRank(entry: GuardType | TypedToken<CanActivate>): number {
+    const declared = guardPhaseRank(entry);
+    if (declared !== undefined || !isTokenEntry(entry)) return declared ?? FEATURE_PHASE_RANK;
+    const target = this.componentTarget(entry);
+    return guardPhaseRank(target?.instance?.value ?? target?.useClass) ?? FEATURE_PHASE_RANK;
   }
 
   useGlobalInterceptors(...interceptors: InterceptorType[]): this {
@@ -518,7 +555,7 @@ export class RouteManager {
     // A token's registered target (useClass, useExisting, useValue) carries
     // its priority without being constructed, which also keeps request-scoped
     // middleware off the root container.
-    const target = this.middlewareTarget(entry);
+    const target = this.componentTarget(entry);
     const targetPriority = priorityOf(target?.instance?.value ?? target?.useClass);
     if (targetPriority !== undefined) return targetPriority;
     // A token owned exclusively by unmaterialized lazy modules must not be
@@ -548,9 +585,9 @@ export class RouteManager {
     return 0;
   }
 
-  // The registration a middleware token resolves to, following useExisting
+  // The registration a component token resolves to, following useExisting
   // aliases from their declaring module. Inspection never constructs.
-  private middlewareTarget(token: Token): ProviderSnapshot | undefined {
+  private componentTarget(token: Token): ProviderSnapshot | undefined {
     const seen = new Set<Token>();
     let current: Token | undefined = token;
     let requester: string | undefined;
@@ -601,40 +638,52 @@ export class RouteManager {
 
   private async mapMiddlewareError(c: Context, error: unknown): Promise<Response> {
     const requestContainer = this.getRequestContainer(c);
-    const host = buildMiddlewareExecutionContext(c);
     const reporter = resolveErrorReporter(requestContainer);
-    const source = `${c.req.method} ${c.req.path}`;
-    reporter.report(error, { edge: 'http', source, note: 'middleware failed' });
+    reporter.report(error, {
+      edge: 'http',
+      source: `${c.req.method} ${c.req.path}`,
+      note: 'middleware failed',
+    });
+    return this.filterOrRender(c, error, requestContainer, reporter);
+  }
 
+  // Framework rejections (request limits, unmatched routes) are expected
+  // client faults: never reported, but offered to global exception filters and
+  // then the application's render hook, as Nest's router does with its 404.
+  private rejectRequest(c: Context, error: unknown): Promise<Response> {
+    const container = findRequestContainer(c) ?? this.container;
+    return this.filterOrRender(c, error, container, resolveErrorReporter(container));
+  }
+
+  // Global filters are the only scope reachable outside a controller call
+  // frame: the first matching filter decides, and `undefined` falls through
+  // to the render hook and the shared renderer.
+  private async filterOrRender(
+    c: Context,
+    error: unknown,
+    container: Container,
+    reporter: ErrorReporter,
+  ): Promise<Response> {
+    const host = buildMiddlewareExecutionContext(c);
     for (const entry of this.globalFilters) {
       try {
-        const filter = await instantiateAsync<ExceptionFilter>(entry, requestContainer);
+        const filter = await instantiateAsync<ExceptionFilter>(entry, container);
         if (shouldFilterCatch(filter, error)) {
-          return mapResponse(c, await filter.catch(error, host));
+          const filtered = mapFilterResult(c, await filter.catch(error, host), error);
+          if (filtered) return filtered;
+          break;
         }
       } catch (filterError) {
-        reporter.report(filterError, { edge: 'http', source, note: 'middleware filter failed' });
+        reporter.report(filterError, {
+          edge: 'http',
+          source: `${c.req.method} ${c.req.path}`,
+          note: 'middleware filter failed',
+        });
         break;
       }
     }
 
-    const rendered = reporter.render(error, host);
-    if (rendered instanceof Response) return rendered;
-    if (rendered) return c.json(rendered.body, rendered.status as ContentfulStatusCode);
-
-    if (error instanceof HttpException) {
-      const { body, status } = httpExceptionBody(error, reporter.catalog);
-      return c.json(body, status as ContentfulStatusCode);
-    }
-    if (error instanceof HTTPException) {
-      if (error.status < 500) return error.getResponse();
-      return c.json(
-        { error: { code: 'internal', message: 'Internal Server Error' } },
-        error.status as ContentfulStatusCode,
-      );
-    }
-    const { body, status } = toErrorBody(error, { catalog: reporter.catalog });
-    return c.json(body, status as ContentfulStatusCode);
+    return sendHttpError(c, error, reporter, host);
   }
 
   registerController(controller: Type, moduleId?: string): this {
@@ -675,6 +724,9 @@ export class RouteManager {
       metadata: { prefix, version: options.version },
       routes: routes as RouteMetadata[],
     });
+    // Before any request, record the method each route calls, so a function
+    // several controllers route reads the same way through every route.
+    for (const route of routes) handlerFunction(controller, route.handlerName);
 
     return this;
   }
@@ -689,6 +741,15 @@ export class RouteManager {
     return this.globalPrefix;
   }
 
+  /** How controller routes compose into served paths, for OpenAPI documents. */
+  getRoutePathOptions(): RoutePathOptions {
+    return {
+      globalPrefix: this.globalPrefix,
+      globalPrefixOptions: this.globalPrefixOptions,
+      versioning: this.versioning,
+    };
+  }
+
   /** Observe the existing request lifetime without taking ownership of its resources. */
   observeRequests(observer: HttpRequestObserver): () => void {
     this.requestObservers.add(observer);
@@ -700,6 +761,7 @@ export class RouteManager {
   async build(): Promise<HonoApp> {
     const app = new Hono<VelaHonoEnv>();
     this.routeDescriptions = [];
+    const composeRoutePaths = createRouteComposer(this.getRoutePathOptions());
 
     // HTTP owns one lifetime through both response transmission and managed
     // deferred work. Native waitUntil also retains asynchronous disposal.
@@ -829,7 +891,10 @@ export class RouteManager {
         const maxSize = this.resolveBodyLimit(c.req.path, c.req.method);
         return maxSize === false
           ? await normalizedNext()
-          : await honoBodyLimit({ maxSize })(c, normalizedNext);
+          : await honoBodyLimit({
+              maxSize,
+              onError: (limited) => this.rejectRequest(limited, new PayloadTooLargeException()),
+            })(c, normalizedNext);
       } finally {
         // A rejected/failed body never reaches next(). Seed its original
         // request before Hono's error reporter runs inside the active lifetime.
@@ -848,9 +913,9 @@ export class RouteManager {
           ? ''
           : rawUrl.slice(queryStart + 1, fragmentStart < 0 ? undefined : fragmentStart);
       if (this.queryMaxBytes !== false && rawQuery.length > this.queryMaxBytes) {
-        return c.json(
-          { error: { code: 'bad_request', message: 'Query string exceeds the configured limit' } },
-          400,
+        return this.rejectRequest(
+          c,
+          new BadRequestException('Query string exceeds the configured limit'),
         );
       }
       if (rawQuery.length > 0) {
@@ -858,25 +923,15 @@ export class RouteManager {
         for (const [key] of new URL(c.req.raw.url).searchParams) {
           count++;
           if (this.queryMaxParameters !== false && count > this.queryMaxParameters) {
-            return c.json(
-              {
-                error: {
-                  code: 'bad_request',
-                  message: 'Query parameter count exceeds the configured limit',
-                },
-              },
-              400,
+            return this.rejectRequest(
+              c,
+              new BadRequestException('Query parameter count exceeds the configured limit'),
             );
           }
           if (this.queryMaxDepth !== false && queryKeyDepth(key) > this.queryMaxDepth) {
-            return c.json(
-              {
-                error: {
-                  code: 'bad_request',
-                  message: 'Query parameter depth exceeds the configured limit',
-                },
-              },
-              400,
+            return this.rejectRequest(
+              c,
+              new BadRequestException('Query parameter depth exceeds the configured limit'),
             );
           }
         }
@@ -972,7 +1027,7 @@ export class RouteManager {
             }),
           );
 
-          for (const { path: fullPath, version } of this.composeRoutePaths(
+          for (const { path: fullPath, version } of composeRoutePaths(
             metadata.prefix,
             route,
             metadata.version,
@@ -1004,7 +1059,7 @@ export class RouteManager {
     // resolve.
     const contributors = getRouteContributors();
     const resolveGlobalGuards = () =>
-      instantiateMany<CanActivate>(this.globalGuards, this.container);
+      orderGuardsByPhase(instantiateMany<CanActivate>(this.globalGuards, this.container));
     for (const { controller, metadata, routes } of this.controllers) {
       for (const contributor of contributors) {
         const meta = getMetadata(contributor.claimsMetaKey, controller);
@@ -1015,6 +1070,7 @@ export class RouteManager {
           controllerPrefix: metadata.prefix,
           meta,
           globalPrefix: this.globalPrefix,
+          routePathOptions: this.getRoutePathOptions(),
           get globalGuards() {
             return resolveGlobalGuards();
           },
@@ -1040,23 +1096,27 @@ export class RouteManager {
     }
 
     this.checkMiddlewareTargets(app.routes.slice(firstRoute));
+    app.notFound((c) => this.rejectRequest(c, new NotFoundException()));
     return app;
   }
 
   // Relative path targets resolve under the global prefix, so a target for a
-  // route served outside it (a contributor's RPC endpoint, say) would match
-  // nothing and leave that route without its middleware. Checked once this
-  // build has registered every route: a target that reaches no route under the
-  // prefix but reaches one outside it throws. A forRoutes() target that
-  // reaches no route at all is reported, because the route may still be added
-  // to the Hono app after startup (mountOpenApi(), WebSocket upgrades, raw Hono
-  // routes). A target reaches a route through a concrete path, shaped like
-  // either of them, that the target and Hono's TrieRouter both match, with
-  // each constrained route parameter read as a plain ':name' segment so no
-  // sample has to satisfy its '{regex}'. These samples only drive this check,
-  // never a request's decision.
+  // route served outside it (a contributor's RPC endpoint, or a route
+  // globalPrefixOptions.exclude serves unprefixed) would not match it and
+  // leave that route without its middleware. Checked once this build has
+  // registered every route: a forRoutes() target whose written path also
+  // reaches a route outside the prefix throws unless an absolute target or a
+  // controller target of the same middleware accounts for that route, and any
+  // target that reaches no route under the prefix but reaches one outside it
+  // throws. A forRoutes() target that reaches no route at all is reported,
+  // because the route may still be added to the Hono app after startup
+  // (mountOpenApi(), WebSocket upgrades, raw Hono routes). A target reaches a
+  // route through a concrete path, shaped like either of them, that the target
+  // and Hono's TrieRouter both match, with each constrained route parameter
+  // read as a plain ':name' segment so no sample has to satisfy its '{regex}'.
+  // These samples only drive this check, never a request's decision.
   private checkMiddlewareTargets(
-    registered: ReadonlyArray<{ method: string; path: string }>,
+    registered: ReadonlyArray<{ method: string; path: string; handler: unknown }>,
   ): void {
     if (this.consumerMiddlewareDefinitions.length === 0) return;
     // A contributor's own app.use('*') middleware serves no route of its own.
@@ -1075,12 +1135,12 @@ export class RouteManager {
       );
     }
     const prefix = this.globalPrefix.replace(/\/+$/, '');
-    const served = (target: RouteTarget, method: string, outside?: boolean): boolean => {
+    const reached = (target: RouteTarget, method: string, outside?: boolean) => {
       const shape = `/${[...target.parts, ...(target.tail ? [target.tail === '*' ? '*' : ':_'] : [])].join('/')}`;
       const reaches = (route: { method: string; path: string }) =>
         !(outside && (route.path === prefix || route.path.startsWith(`${prefix}/`))) &&
         (method === HttpMethod.ALL || methodReaches(method, route.method));
-      return routes.some(
+      return routes.filter(
         (route) =>
           reaches(route) &&
           [...samplePaths(shape, route.path), ...samplePaths(route.path, shape)].some(
@@ -1096,15 +1156,41 @@ export class RouteManager {
         ...definition.routes.map((target) => ({ target, forRoutes: true })),
         ...definition.excludes.map((target) => ({ target, forRoutes: false })),
       ];
+      // Whether another target of this middleware (a controller, an absolute
+      // path, or a match-all path) runs it on the route or leaves it out.
+      const accounted = (route: (typeof routes)[number]): boolean =>
+        targets.some(({ target, forRoutes }) => {
+          if (typeof target === 'function') {
+            return forRoutes && findOwner(this.routeOwners, route.handler)?.[0] === target;
+          }
+          const { method, target: resolved } = this.resolveTarget(target, forRoutes);
+          if (!resolved) return method === HttpMethod.ALL || methodReaches(method, route.method);
+          return target.absolute === true && reached(resolved, method).includes(route);
+        });
       for (const { target, forRoutes } of targets) {
         if (typeof target === 'function' || target.absolute) continue;
         const { method, target: resolved } = this.resolveTarget(target, forRoutes);
         // `'*'`, `'/*'` and `'{*splat}'` match every request.
-        if (!resolved || served(resolved, method)) continue;
+        if (!resolved) continue;
         const path = `/${target.path.replace(/^\//, '')}`;
         const pattern = joinPaths(prefix, path);
         const outside = this.resolveTarget({ ...target, absolute: true }, forRoutes).target!;
-        if (prefix && served(outside, method, true)) {
+        if (reached(resolved, method).length > 0) {
+          const missed =
+            prefix && forRoutes
+              ? reached(outside, method, true).find((route) => !accounted(route))
+              : undefined;
+          if (missed) {
+            throw new Error(
+              `Middleware route '${target.path}' resolves to '${pattern}' under the global ` +
+                `prefix '${prefix}', so it does not match ${missed.method} ${missed.path}, which ` +
+                `is served outside the prefix. Add { path: '${missed.path}', absolute: true } to ` +
+                'forRoutes() to cover it, or to exclude() to leave it out.',
+            );
+          }
+          continue;
+        }
+        if (prefix && reached(outside, method, true).length > 0) {
           throw new Error(
             `Middleware route '${target.path}' resolves to '${pattern}' under the global prefix ` +
               `'${prefix}', which serves no route, but '${path}' is served outside the prefix. ` +
@@ -1139,22 +1225,6 @@ export class RouteManager {
         app.on(method, normalizedPath, handler);
       }
     }
-  }
-
-  // Every path one route is served on: global prefix, then each version
-  // segment, then controller prefix and route path.
-  private composeRoutePaths(
-    controllerPrefix: string,
-    route: { path: string; version?: number | number[] },
-    controllerVersion?: number | number[],
-  ): Array<{ path: string; version?: number }> {
-    const localPath = joinPaths(controllerPrefix, route.path);
-    const version = route.version ?? controllerVersion;
-    if (version === undefined) return [{ path: joinPaths(this.globalPrefix, localPath) }];
-    return (Array.isArray(version) ? version : [version]).map((v) => ({
-      path: joinPaths(this.globalPrefix, joinPaths(`/v${v}`, localPath)),
-      version: v,
-    }));
   }
 
   // Whether a consumer middleware definition applies to the request. A

@@ -37,20 +37,29 @@ const toResolverOptions = (
  * `forRootAsync`. The resolver token is exported so an app can inject it and
  * compose it with other resolvers.
  */
-const { ConfigurableModuleClass } = defineModule<CloudflareAccessModuleOptions>({
+const { ConfigurableModuleClass } = defineModule<CloudflareAccessModuleOptions, 'guard'>({
   name: 'CloudflareAccess',
   optionsToken: ACCESS_MODULE_OPTIONS,
-  setup: () => ({
-    providers: [
-      defineProvider(ACCESS_RESOLVER, {
-        useFactory: (options: CloudflareAccessModuleOptions) =>
-          createAccessResolver(toResolverOptions(options)),
-        inject: [ACCESS_MODULE_OPTIONS],
-      }),
-      CloudflareAccessGuard,
-    ],
-    exports: [ACCESS_RESOLVER, ACCESS_MODULE_OPTIONS, CloudflareAccessGuard],
-  }),
+  // `guard` shapes the module graph: `forRootAsync` takes it beside the factory.
+  structural: ['guard'],
+  defaults: { guard: 'global' },
+  setup: ({ options }) => {
+    const guard = options.guard;
+    if (guard !== 'global' && guard !== 'none')
+      throw new TypeError("CloudflareAccessModule guard must be 'global' or 'none'");
+    return {
+      providers: [
+        defineProvider(ACCESS_RESOLVER, {
+          useFactory: (resolved: CloudflareAccessModuleOptions) =>
+            createAccessResolver(toResolverOptions(resolved)),
+          inject: [ACCESS_MODULE_OPTIONS],
+        }),
+        ...(guard === 'none' ? [CloudflareAccessGuard] : []),
+      ],
+      exports: [ACCESS_RESOLVER, ACCESS_MODULE_OPTIONS, CloudflareAccessGuard],
+      global: guard === 'global' ? { guards: [CloudflareAccessGuard] } : {},
+    };
+  },
 });
 
 /**

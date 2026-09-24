@@ -3,11 +3,14 @@ import { Reflector } from '../pipeline/reflector';
 import type { CanActivate, ExecutionContext } from '../pipeline/types';
 import { TooManyRequestsException } from '../errors/http-exception';
 import { RouteManager } from '../http/route.manager';
+import type { GuardPhase } from '../pipeline/guard-phase';
 import {
   getTrustedRequestIdentity,
   type TrustedRequestIdentity,
 } from '../http/trusted-request-identity';
+import { REQUEST_CONTEXT } from '../http/request-context';
 import {
+  RATE_LIMIT,
   THROTTLER_OPTIONS,
   THROTTLER_STORAGE,
   THROTTLE_METADATA,
@@ -106,16 +109,14 @@ export function checkThrottleRecord(
   }
 }
 
-/** A route handler's name, whether the context hands out the function or its name. */
-function handlerNameOf(handler: unknown): string {
-  return typeof handler === 'function' ? handler.name : String(handler);
-}
-
 const routeName = (context: ExecutionContext): string =>
-  `${context.getClass().name}.${handlerNameOf(context.getHandler())}`;
+  `${context.getClass().name}.${String(context.getHandlerName())}`;
 
 @Injectable()
 export class ThrottlerGuard implements CanActivate {
+  /** Throttling runs after authentication, so it partitions by trusted identity. */
+  static readonly phase: GuardPhase = 'feature';
+
   readonly #throttlers: readonly DeclaredThrottler[];
 
   constructor(
@@ -147,6 +148,7 @@ export class ThrottlerGuard implements CanActivate {
 
     const tracker = this.tracker(context);
     const honoContext = context.getContext();
+    const requestContext = context.getContainer()?.resolve(REQUEST_CONTEXT);
     const info: Record<string, RateLimitInfo> = {};
     for (const throttler of active) {
       // Each field falls back separately, route over controller, as in Nest v5.
@@ -166,7 +168,7 @@ export class ThrottlerGuard implements CanActivate {
 
       const key = this.options.generateKey
         ? this.options.generateKey(context, tracker, throttler.name)
-        : `throttler:${context.getClass().name}:${handlerNameOf(context.getHandler())}:` +
+        : `throttler:${context.getClass().name}:${String(context.getHandlerName())}:` +
           `${throttler.name}:${tracker}`;
       // eslint-disable-next-line no-await-in-loop
       const record = await this.storage.increment(key, ttl, limit, throttler.name);
@@ -197,7 +199,7 @@ export class ThrottlerGuard implements CanActivate {
         reset: resetSeconds,
         ...(remaining !== undefined ? { remaining } : {}),
       };
-      honoContext.set('rateLimit', { ...info });
+      requestContext?.set(RATE_LIMIT, { ...info });
 
       if (record.allowed === false || count > limit) {
         honoContext.header(`Retry-After${suffix}`, String(resetSeconds));

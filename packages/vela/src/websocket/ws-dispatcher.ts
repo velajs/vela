@@ -13,6 +13,8 @@ import { instantiateManyAsync } from '../http/instantiate';
 import { RouteManager } from '../http/route.manager';
 import type { OnApplicationBootstrap } from '../lifecycle/index';
 import { shouldFilterCatch } from '../pipeline/decorators';
+import { orderGuardsByPhase } from '../pipeline/guard-phase';
+import { handlerFunction } from '../pipeline/handler-function';
 import { PipelineRunner } from '../pipeline/pipeline-runner';
 import { getScopedComponents } from '../pipeline/scoped-components';
 import type {
@@ -379,7 +381,9 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
           scope,
         );
         const globals = this.#routeManager?.getGlobalComponents();
-        const guards = await instantiateManyAsync<CanActivate>(globals?.guards ?? [], scope);
+        const guards = orderGuardsByPhase(
+          await instantiateManyAsync<CanActivate>(globals?.guards ?? [], scope),
+        );
         for (const guard of guards) if (!(await guard.canActivate(context))) return false;
         return (
           !entry.options.authorizeDelivery ||
@@ -467,7 +471,9 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
             ...(await instantiateManyAsync<ExceptionFilter>(globals?.filters ?? [], scope)),
           ];
           const guards = [
-            ...(await instantiateManyAsync<CanActivate>(globals?.guards ?? [], scope)),
+            ...orderGuardsByPhase(
+              await instantiateManyAsync<CanActivate>(globals?.guards ?? [], scope),
+            ),
             ...(await instantiateManyAsync<CanActivate>(handler.guards, scope, entry.moduleId)),
           ];
           const result = await PipelineRunner.run({
@@ -566,7 +572,9 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
           scope,
         );
         const globals = this.#routeManager?.getGlobalComponents();
-        const guards = await instantiateManyAsync<CanActivate>(globals?.guards ?? [], scope);
+        const guards = orderGuardsByPhase(
+          await instantiateManyAsync<CanActivate>(globals?.guards ?? [], scope),
+        );
         for (const guard of guards) {
           if (!(await guard.canActivate(ctx))) {
             const frame = toErrorFrame(
@@ -713,6 +721,8 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
         methodName,
       ) as unknown[] | undefined;
 
+      // Recorded before any message, as for HTTP routes (Reflector reads).
+      handlerFunction(gatewayClass, methodName);
       const container = this.#container;
       handlers.set(event, {
         methodName,

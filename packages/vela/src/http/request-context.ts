@@ -19,6 +19,15 @@ export interface RequestContext {
   has<Value>(key: RequestContextKey<Value> | string | symbol): boolean;
 }
 
+export interface RequestContextKeyOptions<Value> {
+  /**
+   * Derives the value from another authority instead of storing it. The key is
+   * then read-only: `set()` throws, so the owning API stays the only writer
+   * (the trusted request identity, for example).
+   */
+  derive?: (context: RequestContext) => Value | undefined;
+}
+
 /**
  * An identity-based key for a request-local value. Reusing a description does
  * not alias another key. Each key owns its typed storage, so retrieval never
@@ -26,19 +35,30 @@ export interface RequestContext {
  */
 export class RequestContextKey<Value> {
   readonly #values = new WeakMap<RequestContext, Value>();
+  readonly #derive: ((context: RequestContext) => Value | undefined) | undefined;
 
-  constructor(readonly description: string) {}
+  constructor(
+    readonly description: string,
+    options: RequestContextKeyOptions<Value> = {},
+  ) {
+    this.#derive = options.derive;
+  }
 
   /** @internal Read by RequestContext.get(). */
-  readonly read = (context: RequestContext): Value | undefined => this.#values.get(context);
+  readonly read = (context: RequestContext): Value | undefined =>
+    this.#derive ? this.#derive(context) : this.#values.get(context);
 
   /** @internal Write by RequestContext.set(). A function property keeps Value invariant. */
   readonly write = (context: RequestContext, value: Value): void => {
+    if (this.#derive) {
+      throw new TypeError(`[vela] request context key '${this.description}' is read-only`);
+    }
     this.#values.set(context, value);
   };
 
   /** @internal Read by RequestContext.has(). */
-  readonly contains = (context: RequestContext): boolean => this.#values.has(context);
+  readonly contains = (context: RequestContext): boolean =>
+    this.#derive ? this.#derive(context) !== undefined : this.#values.has(context);
 }
 
 export const REQUEST_CONTEXT = /* @__PURE__ */ new InjectionToken<RequestContext>(

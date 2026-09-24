@@ -95,7 +95,7 @@ The factory runs once, while the application initializes; a driver function it r
 
 The browser client sends the exact file size when creating an upload and echoes the returned grant for part signing, completion, and abort. Multipart data is completed into a reserved quarantine key, verified there, and only then promoted to the requested key. A mismatched, oversized, or unreadable result is never exposed at the requested key. HTTP downloads default to `attachment`; both `/download` redirects and `/sign-download` URLs bind an attachment `Content-Disposition`, proxy responses emit `X-Content-Type-Options: nosniff`, and HTML/SVG are never served inline.
 
-The HTTP control plane's POST endpoints accept only `application/json` or `+json` bodies, because browsers send `text/plain` and form-encoded POSTs cross-site without a CORS preflight. Any other media type is refused with 415 before the authorizer runs, and a malformed or non-object body is a 400 `invalid_request`. The `@velajs/storage/client` browser client already sends JSON.
+The controller is marked `SkipGuardPhases(['tenant', 'authorize'])`: the authorizer decides every action, so the tenant admission and authorization guards integrations install globally (`TenantModule`, `AuthzModule`, `CedarModule`) do not run on it, while global authentication and the application's own global guards still do. The HTTP control plane's POST endpoints accept only `application/json` or `+json` bodies, because browsers send `text/plain` and form-encoded POSTs cross-site without a CORS preflight. Any other media type is refused with 415 before the authorizer runs, and a malformed or non-object body is a 400 `invalid_request`. The `@velajs/storage/client` browser client already sends JSON.
 
 ## Drivers
 

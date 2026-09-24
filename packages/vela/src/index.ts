@@ -55,11 +55,13 @@ export {
   Head,
   All,
   Sse,
+  VERSION_NEUTRAL,
   Param,
   Query,
   Body,
   Headers,
   Req,
+  Ctx,
   Res,
   Ip,
   Cookie,
@@ -76,8 +78,16 @@ export {
   URL_SIGNING_SECRET,
 } from './http/index';
 export type {
+  GuardPhase,
   RouteOptions,
   SchemaParamDecorator,
+  MessageEvent,
+  SseResult,
+  RouteVersion,
+  VersionValue,
+  GlobalPrefixOptions,
+  RoutePathOptions,
+  VersioningOptions,
   UrlForOptions,
   SignedUrlGenerateOptions,
   VelaRouteMap,
@@ -92,7 +102,7 @@ export type {
 
 // Request context
 export { REQUEST_CONTEXT, RequestContextKey } from './http/request-context';
-export type { RequestContext } from './http/request-context';
+export type { RequestContext, RequestContextKeyOptions } from './http/request-context';
 
 // Logger
 export { Logger, LogLevel } from './services/index';
@@ -171,6 +181,7 @@ export type {
   HttpArgumentsHost,
   HttpExecutionContext,
   ExecutionContext,
+  HandlerFunction,
   CanActivate,
   CallHandler,
   NestInterceptor,
@@ -180,6 +191,8 @@ export type {
   ArgumentMetadata,
   ReflectableDecorator,
   CreateDecoratorOptions,
+  ReflectorContext,
+  ReflectorTarget,
   ParseUUIDPipeOptions,
   ParseArrayPipeOptions,
 } from './pipeline/index';
@@ -206,16 +219,19 @@ export {
   ServiceUnavailableException,
   GatewayTimeoutException,
 } from './errors/index';
+export type { ExceptionResponse, HttpErrorResponse, HttpExceptionOptions } from './errors/index';
 
 // Exception handling — the ExceptionHandler contract, plus the core
 // @velajs/errors surface so one import authors handlers, throws branded errors,
 // and defines/composes catalogs.
-export { ErrorsModule, matchesAny } from './exceptions/index';
+export { ErrorsModule, getErrorStatus, matchesAny, renderHttpError } from './exceptions/index';
 export type {
   ErrorMatcher,
   ErrorReportContext,
   ErrorsModuleOptions,
   ExceptionHandler,
+  RenderedHttpError,
+  RenderHttpErrorOptions,
 } from './exceptions/index';
 export {
   VelaError,

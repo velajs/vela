@@ -6,6 +6,7 @@ export { ThrottlerGuard } from './throttler.guard';
 export { ThrottlerStorage } from './throttler.storage';
 export { Throttle, SkipThrottle } from './throttler.decorators';
 export {
+  RATE_LIMIT,
   THROTTLER_OPTIONS,
   THROTTLER_STORAGE,
   THROTTLE_METADATA,

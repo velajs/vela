@@ -5,6 +5,7 @@ import {
   UnauthorizedException,
   type CanActivate,
   type ExecutionContext,
+  type GuardPhase,
 } from '@velajs/vela';
 import {
   clearTrustedRequestIdentity,
@@ -21,6 +22,9 @@ import {
 /** Verify and publish to core's single trusted request identity contract. */
 @Injectable()
 export class CloudflareAccessGuard implements CanActivate {
+  /** Global guards authenticate first, then tenant, authorization and feature phases. */
+  static readonly phase: GuardPhase = 'authenticate';
+
   constructor(
     @Inject(ACCESS_RESOLVER) private readonly resolve: ResolveIdentity,
     @Inject(ACCESS_MODULE_OPTIONS) private readonly options: CloudflareAccessModuleOptions,

@@ -5,6 +5,7 @@ import {
   Reflector,
   type CanActivate,
   type ExecutionContext,
+  type GuardPhase,
 } from '@velajs/vela';
 import { getTrustedContextRequest } from '@velajs/vela/module-kit';
 import type { Authz } from '../authz';
@@ -14,6 +15,14 @@ import { getContextIdentity, identityFromTrusted } from './context-identity';
 
 /** Enforce every permission using exactly one engine visible to the route module. */
 export class PermissionGuard implements CanActivate {
+  /** Global guards authorize after authentication and tenant admission. */
+  static readonly phase: GuardPhase = 'authorize';
+  /**
+   * Integration routes marked `SkipGuardPhases(['authorize'])` authorize
+   * themselves. A subclass declares `false` to run on them too.
+   */
+  static readonly skippable: boolean = true;
+
   constructor(private readonly reflector: Reflector) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {

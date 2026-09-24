@@ -1,4 +1,5 @@
 export { AUTHZ, AUTHZ_OPTIONS } from './tokens';
+export type { AuthzModuleOptions } from './tokens';
 export { AuthzModule } from './authz.module';
 export { PermissionGuard } from './permission.guard';
 export { RolesGuard } from './roles.guard';

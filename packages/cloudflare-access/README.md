@@ -95,7 +95,7 @@ interface ResolvedIdentity {
 
 The guard publishes through core's `setTrustedRequestIdentity`. Authorization, `@CurrentIdentity()`, throttling, and WebSocket upgrade checks all consume this canonical state.
 
-- `CloudflareAccessModule.forRoot(options)` / `.forRootAsync(options)` provide the verified resolver, guard, and options. Async registration constructs the resolver from resolved injected options.
+- `CloudflareAccessModule.forRoot(options)` / `.forRootAsync(options)` provide the verified resolver, guard, and options. Async registration constructs the resolver from resolved injected options. The module installs `CloudflareAccessGuard` as a global guard in the `authenticate` phase, so it runs before tenant, authorization and throttling guards whatever the import order; pass `guard: 'none'` (beside the factory for `forRootAsync`) to apply it with `@UseGuards` instead.
 - `CloudflareAccessGuard` clears prior identity before verification. Required mode rejects anonymous callers; optional mode passes them through with no identity. Invalid, expired, or throwing credentials cannot retain an old identity.
 - Import `PermissionGuard`, `RequirePermission`, `RolesGuard`, `Roles`, and `CurrentIdentity` from `@velajs/authz/vela`. These are the same guards Better Auth uses. Exactly one authorization engine must be visible to the declaring route module.
 - Tenant membership comes from a signed `tenantId` claim, or the signed claim selected by `tenantClaim`. `mapClaims` enriches non-authority fields only and cannot replace tenant, issuer, subject, expiry, claims, or roles. Explicit `groupRoles` maps external groups into local roles.
@@ -104,17 +104,14 @@ The guard publishes through core's `setTrustedRequestIdentity`. Authorization, `
 
 ```ts
 import { defineRole } from '@velajs/authz';
-import { AuthzModule, PermissionGuard, RequirePermission, CurrentIdentity } from '@velajs/authz/vela';
+import { AuthzModule, RequirePermission, CurrentIdentity } from '@velajs/authz/vela';
 import { cloudflareAccessIssuer } from '@velajs/cloudflare-access';
-import {
-  CloudflareAccessGuard,
-  CloudflareAccessModule,
-} from '@velajs/cloudflare-access/vela';
-import { Controller, ENV, Module, Post, UseGuards } from '@velajs/vela';
+import { CloudflareAccessModule } from '@velajs/cloudflare-access/vela';
+import { Controller, ENV, Module, Post } from '@velajs/vela';
 import type { TrustedRequestIdentity } from '@velajs/vela/module-kit';
 
+// CloudflareAccessModule and AuthzModule install their guards globally.
 @Controller('/posts')
-@UseGuards(CloudflareAccessGuard, PermissionGuard)
 class PostsController {
   @Post()
   @RequirePermission(['posts:write'])

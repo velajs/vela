@@ -1,16 +1,16 @@
 /**
  * The engine's exception family. Extends Vela's `HttpException` so a thrown
- * engine error renders natively through `HandlerExecutor` and is catchable by
- * any `APP_FILTER` — no sub-app onError rethrow hack.
+ * engine error renders natively through Vela's HTTP error renderer and is
+ * catchable by any `APP_FILTER` — no sub-app onError rethrow hack.
  *
- * `getResponse()` returns the canonical error envelope
+ * `toResponse()` (and `getResponse()`) return the canonical error envelope
  * `{ success: false, error: { code, message, details? } }` (hono-crud 0.13
  * parity, byte-compatible for the default envelope). A configured custom
  * `ResponseEnvelope.error` is applied by the engine's response boundary,
  * which reads `structured` off the exception instead.
  */
 
-import { HttpException } from '@velajs/vela';
+import { HttpException, type HttpErrorResponse } from '@velajs/vela';
 
 /** Known error codes (open union — custom codes pass through untouched). */
 export type CrudErrorCode =
@@ -54,21 +54,19 @@ export class CrudException extends HttpException {
     code: CrudErrorCode = 'INTERNAL_ERROR',
     details?: unknown,
   ) {
-    const error: StructuredError = { code, message };
-    if (details !== undefined) error.details = details;
-    super(
-      { success: false, error: error as unknown as Record<string, unknown> } as Record<
-        string,
-        unknown
-      >,
-      status,
-    );
+    super(message, status);
     this.name = 'CrudException';
     this.code = code;
     this.details = details;
-    // HttpException JSON-stringifies object responses into `message`; restore
-    // the human-readable one.
-    this.message = message;
+  }
+
+  /** The default envelope Vela's HTTP error renderer sends for this exception. */
+  override toResponse(): HttpErrorResponse {
+    return { status: this.statusCode, body: this.getResponse() };
+  }
+
+  override getResponse(): Record<string, unknown> {
+    return { success: false, error: this.structured };
   }
 
   /** The structured error a custom `ResponseEnvelope.error` receives. */

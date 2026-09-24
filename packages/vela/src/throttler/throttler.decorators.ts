@@ -29,13 +29,17 @@ export const Throttle = (overrides: Record<string, ThrottleConfig>) => {
       }
     }
   }
-  return (target: object, propertyKey?: string | symbol): void => {
-    SetMetadata(THROTTLE_METADATA, Object.freeze({ ...overrides }))(target, propertyKey);
+  return (target: object, propertyKey?: string | symbol, descriptor?: PropertyDescriptor): void => {
+    SetMetadata(THROTTLE_METADATA, Object.freeze({ ...overrides }))(
+      target,
+      propertyKey,
+      descriptor,
+    );
     for (const [name, config] of entries) {
       for (const field of FIELDS) {
         const value = config[field];
         if (value !== undefined) {
-          SetMetadata(throttleMetadataKey(name, field), value)(target, propertyKey);
+          SetMetadata(throttleMetadataKey(name, field), value)(target, propertyKey, descriptor);
         }
       }
     }
@@ -50,10 +54,14 @@ export const Throttle = (overrides: Record<string, ThrottleConfig>) => {
  */
 export const SkipThrottle = (skip: Record<string, boolean> = { default: true }) => {
   const entries = Object.entries(skip);
-  return (target: object, propertyKey?: string | symbol): void => {
-    SetMetadata(SKIP_THROTTLE_METADATA, Object.freeze({ ...skip }))(target, propertyKey);
+  return (target: object, propertyKey?: string | symbol, descriptor?: PropertyDescriptor): void => {
+    SetMetadata(SKIP_THROTTLE_METADATA, Object.freeze({ ...skip }))(
+      target,
+      propertyKey,
+      descriptor,
+    );
     for (const [name, value] of entries) {
-      SetMetadata(skipThrottleMetadataKey(name), value)(target, propertyKey);
+      SetMetadata(skipThrottleMetadataKey(name), value)(target, propertyKey, descriptor);
     }
   };
 };

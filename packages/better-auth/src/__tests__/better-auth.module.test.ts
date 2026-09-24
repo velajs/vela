@@ -31,7 +31,7 @@ describe('BetterAuthModule', () => {
     expect(app.get(BETTER_AUTH_OPTIONS)).toEqual({
       basePath: '/api/auth',
       issuer: 'better-auth:/api/auth',
-      globalGuard: true,
+      guard: 'global',
       mountHandler: true,
     });
   });
@@ -109,7 +109,7 @@ describe('BetterAuthModule', () => {
             useFactory: factory,
             key: 'rebuilt-async-auth',
             basePath: '/internal-auth',
-            globalGuard: false,
+            guard: 'none',
           }),
         ],
       })
@@ -171,7 +171,7 @@ describe('BetterAuthModule', () => {
     const auth = makeMockAuth();
     const registrations = [
       BetterAuthModule.forRoot({ auth }),
-      BetterAuthModule.forRoot({ auth, globalGuard: true }),
+      BetterAuthModule.forRoot({ auth, guard: 'global' }),
       BetterAuthModule.forRoot({ auth, basePath: '/api/auth', mountHandler: true }),
     ];
     expect(new Set(registrations.map((registration) => registration.key)).size).toBe(1);
@@ -221,7 +221,7 @@ describe('BetterAuthModule', () => {
     expect(service.api).toBe(auth.api);
     expect(authBuilds).toBe(1);
 
-    expect(app.get(BETTER_AUTH_OPTIONS)).toMatchObject({ issuer: 'accounts', globalGuard: true });
+    expect(app.get(BETTER_AUTH_OPTIONS)).toMatchObject({ issuer: 'accounts', guard: 'global' });
   });
 
   it('isGlobal makes BetterAuthService visible to every module; it defaults to false', async () => {
@@ -254,6 +254,37 @@ describe('BetterAuthModule', () => {
     expect(res.status).toBe(200);
     expect(await res.text()).toBe('better-auth-ok');
     expect(auth.handler).toHaveBeenCalled();
+  });
+
+  it('leaves tenant admission and authorization of its handler to Better Auth', async () => {
+    const auth = makeMockAuth();
+    const ran: string[] = [];
+    const guard = (phase: 'tenant' | 'authorize' | 'feature', owner: 'integration' | 'app') => ({
+      phase,
+      skippable: owner === 'integration',
+      canActivate() {
+        ran.push(`${owner} ${phase}`);
+        return owner === 'app' || phase === 'feature';
+      },
+    });
+
+    @Module({ imports: [BetterAuthModule.forRoot({ auth })] })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    // Application-wide policy guards, as TenantModule and CedarModule install,
+    // and the application's own authorization guard, which still runs.
+    app.useGlobalGuards(
+      guard('tenant', 'integration'),
+      guard('authorize', 'integration'),
+      guard('authorize', 'app'),
+      guard('feature', 'integration'),
+    );
+    const res = await app.getHonoApp().request('/api/auth/sign-in', { method: 'POST' });
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe('better-auth-ok');
+    expect(ran).toEqual(['app authorize', 'integration feature']);
   });
 
   it('mounts the catch-all controller at a custom basePath', async () => {

@@ -98,6 +98,17 @@ describe('Lab testing harness consumer project', () => {
     expect(allowed.status).toBe(200);
     expect(await allowed.json()).toEqual({ ok: true });
 
+    const failure = await hono.request('/labs/failure');
+    expect(failure.status).toBe(503);
+    expect(await failure.json()).toEqual({
+      handledBy: 'real-filter',
+      message: 'calibration failed',
+    });
+
+    const missing = await hono.request('/labs/unknown');
+    expect(missing.status).toBe(404);
+    expect(await missing.json()).toEqual({ error: { code: 'not_found', message: 'Not Found' } });
+
     await moduleRef.close('http-test-complete');
   });
 
@@ -120,8 +131,8 @@ describe('Lab testing harness consumer project', () => {
     class OverrideFilter implements ExceptionFilter {
       catch(exception: LabFailure, _context: ExecutionContext) {
         return {
-          handledBy: 'override-filter',
-          message: exception.message,
+          status: 422,
+          body: { handledBy: 'override-filter', message: exception.message },
         };
       }
     }
@@ -158,7 +169,7 @@ describe('Lab testing harness consumer project', () => {
     });
 
     const filtered = await hono.request('/labs/failure');
-    expect(filtered.status).toBe(200);
+    expect(filtered.status).toBe(422);
     expect(await filtered.json()).toEqual({
       handledBy: 'override-filter',
       message: 'calibration failed',

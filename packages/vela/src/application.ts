@@ -1,21 +1,20 @@
 import type { VelaHono as Hono } from './http/hono.types';
 import { findRequestContainer } from './http/request-container';
 import { HTTPException } from 'hono/http-exception';
-import type { ContentfulStatusCode } from 'hono/utils/http-status';
-import { toErrorBody } from '@velajs/errors';
 import type { Container } from './container/container';
 import type { InferToken, Token, Type } from './container/types';
 import { defineProvider } from './container/types';
 import { APP_EXCEPTION_HANDLER } from './pipeline/tokens';
 import type { ExceptionHandler } from './exceptions/exception-handler';
-import { httpExceptionBody } from './exceptions/http-exception-body';
 import { resolveErrorReporter } from './exceptions/reporter';
-import { HttpException } from './errors/http-exception';
+import { buildMiddlewareExecutionContext } from './http/execution-context';
+import { sendHttpError } from './http/error-response';
 import { DiscoveryService } from './discovery/discovery.service';
 import { EntrypointRegistry } from './entrypoint/entrypoint.registry';
 import { LazyModuleManager } from './module/lazy-modules';
 import type { CorsOptions } from './http/cors';
 import type { RouteDescription, RouteManager } from './http/route.manager';
+import type { RoutePathOptions } from './http/route-paths';
 import {
   hasBeforeApplicationShutdown,
   hasOnApplicationBootstrap,
@@ -74,33 +73,14 @@ export class VelaApplication {
     // redacted body path every other edge uses.
     this.honoApp.onError((err, c) => {
       const reporter = resolveErrorReporter(findRequestContainer(c) ?? this.container);
-      // Hono's own HTTPException (e.g. `bodyLimit`'s 413) carries a deliberate,
-      // author-intended client response — honor it exactly as Hono's default
-      // error handler would, without treating it as a server fault to redact.
-      // But a 5xx HTTPException is still a server fault: report it and replace
-      // its possibly provider-controlled response body.  The status is useful
-      // protocol information; the raw message/headers remain server-side only.
-      if (err instanceof HTTPException) {
-        if (err.status >= 500) {
-          reporter.report(err, { edge: 'hono', source: `${c.req.method} ${c.req.path}` });
-          return c.json(
-            { error: { code: 'internal', message: 'Internal Server Error' } },
-            err.status as ContentfulStatusCode,
-          );
-        }
-        return err.getResponse();
+      // A Hono HTTPException below 500 (an auth challenge, say) is a deliberate
+      // client response, not a server fault; everything else is reported.
+      if (!(err instanceof HTTPException) || err.status >= 500) {
+        reporter.report(err, { edge: 'hono', source: `${c.req.method} ${c.req.path}` });
       }
-      reporter.report(err, { edge: 'hono', source: `${c.req.method} ${c.req.path}` });
-      // Vela's HttpException keeps its status and, below 500, renders exactly
-      // as it does from a handler or a wrapped middleware. A 5xx is redacted
-      // to its status title even when its response is an object: this edge
-      // only sees raw throws, never a deliberate body such as a health 503.
-      const httpStatus = err instanceof HttpException ? err.getStatus() : 500;
-      const { body, status } =
-        err instanceof HttpException && httpStatus < 500
-          ? httpExceptionBody(err, reporter.catalog)
-          : toErrorBody(err, { catalog: reporter.catalog, fallbackStatus: httpStatus });
-      return c.json(body, status as ContentfulStatusCode);
+      // The raw edge only sees unplanned throws, so exception-owned 5xx bodies
+      // (and every 5xx message) are redacted to the status title.
+      return sendHttpError(c, err, reporter, buildMiddlewareExecutionContext(c), true);
     });
   }
 
@@ -171,6 +151,15 @@ export class VelaApplication {
   enableCors(options: CorsOptions = {}): this {
     this.routeManager.enableCors(options);
     return this;
+  }
+
+  /**
+   * How controller routes compose into served paths (global prefix and its
+   * exclusions, URI versioning). Spread into `createOpenApiDocument` so the
+   * document matches the served routes.
+   */
+  getRoutePathOptions(): RoutePathOptions {
+    return this.routeManager.getRoutePathOptions();
   }
 
   // Pipeline components — applied at request time, no rebuild needed

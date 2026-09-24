@@ -2,15 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { AuthGuard, BetterAuthModule } from '@velajs/better-auth';
 import { AuthzModule, PermissionGuard, RequirePermission } from '@velajs/authz/vela';
 import { MemoryTenantRegistryStore } from '@velajs/tenant';
-import { TenantGuard, TenantModule } from '@velajs/tenant/vela';
+import { TenantModule } from '@velajs/tenant/vela';
 import {
   Injectable,
   Module,
   REQUEST_CONTEXT,
-  Reflector,
   Scope,
   UseGuards,
   VelaFactory,
+  type ExecutionContext,
 } from '@velajs/vela';
 import { getTrustedRequestIdentity } from '@velajs/vela/module-kit';
 import { createSchema } from 'graphql-yoga';
@@ -136,23 +136,23 @@ describe('GraphQL trusted HTTP authority', () => {
         sameIdentity: boolean;
         subject: string | undefined;
       }[] = [];
-      app.useGlobalGuards(
-        {
-          canActivate(context) {
-            // Authentication must publish on the same normalized Request seen by injected providers.
-            // Hono's body limiter rebuilds unlengthened bodies before this boundary.
-            const scopedRequest = context.getContainer()!.resolve(REQUEST_CONTEXT).request;
-            const identity = getTrustedRequestIdentity(context.getRequest());
-            observations.push({
-              sameRequest: scopedRequest === context.getRequest(),
-              sameIdentity: getTrustedRequestIdentity(scopedRequest) === identity,
-              subject: identity?.principal.subject,
-            });
-            return true;
-          },
+      // Runs in the authenticate phase, right after the global AuthGuard.
+      const observer = {
+        phase: 'authenticate',
+        canActivate(context: ExecutionContext) {
+          // Authentication must publish on the same normalized Request seen by injected providers.
+          // Hono's body limiter rebuilds unlengthened bodies before this boundary.
+          const scopedRequest = context.getContainer()!.resolve(REQUEST_CONTEXT).request;
+          const identity = getTrustedRequestIdentity(context.getRequest());
+          observations.push({
+            sameRequest: scopedRequest === context.getRequest(),
+            sameIdentity: getTrustedRequestIdentity(scopedRequest) === identity,
+            subject: identity?.principal.subject,
+          });
+          return true;
         },
-        new TenantGuard(app.get(Reflector)),
-      );
+      };
+      app.useGlobalGuards(observer);
       const call = (user: string | undefined, selectedTenant: string, query: string) => {
         const body = JSON.stringify({ query });
         const encoded = new TextEncoder().encode(body);

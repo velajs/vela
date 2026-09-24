@@ -88,7 +88,7 @@ export class StudioTimingInterceptor implements NestInterceptor {
       const moduleId = context.getModuleId();
       const invocation: StudioInvocationDiagnostic = {
         kind: context.getType(),
-        source: `${describeToken(context.getClass())}#${String(context.getHandler())}`,
+        source: `${describeToken(context.getClass())}#${String(context.getHandlerName())}`,
         elapsedMs: Math.max(0, performance.now() - start),
         outcome,
         boundary: 'handler',
