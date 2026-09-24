@@ -270,7 +270,7 @@ describe('Cloudflare live platform wiring', () => {
     try {
       expect(app.get(LIVE_DRIVER).kind).toBe('durable-object');
       await expect(app.get(LiveInvalidation).invalidate({ tags: ['todos'] })).rejects.toThrow(
-        /binding 'ROOMS'/,
+        /ENV\.ROOMS is not set: declare the Durable Object namespace binding 'ROOMS' under durable_objects\.bindings/,
       );
 
       // The namespace is read when an invalidation needs it, not at bootstrap.

@@ -1,5 +1,6 @@
 import type { VelaEnv } from '@velajs/vela';
-import { DiscoveryService, type Container } from '@velajs/vela/module-kit';
+import { DiscoveryService, resolveBinding, type Container } from '@velajs/vela/module-kit';
+import { DURABLE_OBJECT_NAMESPACE } from '../bindings';
 import type {
   CommitStamp,
   InvalidationCommand,
@@ -54,21 +55,11 @@ function describeFilter({ binding, gatewayPath }: DurableObjectLiveOptions): str
 
 /** Read a namespace binding by name, validating the operations the driver calls. */
 function readNamespace(env: VelaEnv, binding: string): LiveNamespace {
-  const value: unknown = Reflect.get(env, binding);
-  const idFromName: unknown =
-    typeof value === 'object' && value !== null ? Reflect.get(value, 'idFromName') : undefined;
-  const get: unknown =
-    typeof value === 'object' && value !== null ? Reflect.get(value, 'get') : undefined;
-  if (typeof idFromName !== 'function' || typeof get !== 'function') {
-    throw new Error(
-      `Live invalidations target the Durable Object binding '${binding}', which this ` +
-        'environment does not provide. Declare it in the Wrangler configuration.',
-    );
-  }
+  const namespace = resolveBinding(env, { binding }, DURABLE_OBJECT_NAMESPACE);
   return {
-    idFromName: (name) => Reflect.apply(idFromName, value, [name]),
+    idFromName: (name) => namespace.idFromName(name),
     get(id) {
-      const stub: unknown = Reflect.apply(get, value, [id]);
+      const stub: unknown = namespace.get(id);
       const invalidate: unknown =
         typeof stub === 'object' && stub !== null ? Reflect.get(stub, 'invalidate') : undefined;
       if (typeof invalidate !== 'function') {

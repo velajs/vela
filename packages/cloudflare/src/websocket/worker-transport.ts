@@ -5,6 +5,8 @@ import type {
   WebSocketTransport,
   WsServer,
 } from '@velajs/vela/websocket';
+import { resolveBinding } from '@velajs/vela/module-kit';
+import { DURABLE_OBJECT_NAMESPACE } from '../bindings';
 import { durableObjectRoomName } from './room-id';
 
 /**
@@ -66,19 +68,8 @@ async function forwardToRoom(
   room: string,
   request: Request,
 ): Promise<Response> {
-  const namespace: unknown = Reflect.get(env, binding);
-  if (typeof namespace !== 'object' || namespace === null) {
-    return new Response(`Durable Object binding '${binding}' is not configured`, { status: 500 });
-  }
-  const idFromName: unknown = Reflect.get(namespace, 'idFromName');
-  const get: unknown = Reflect.get(namespace, 'get');
-  if (typeof idFromName !== 'function' || typeof get !== 'function') {
-    throw new Error('Invalid Durable Object namespace');
-  }
-  const id: unknown = Reflect.apply(idFromName, namespace, [
-    durableObjectRoomName(gatewayPath, room),
-  ]);
-  const stub: unknown = Reflect.apply(get, namespace, [id]);
+  const namespace = resolveBinding(env, { binding }, DURABLE_OBJECT_NAMESPACE);
+  const stub: unknown = namespace.get(namespace.idFromName(durableObjectRoomName(gatewayPath, room)));
   if (typeof stub !== 'object' || stub === null) throw new Error('Invalid Durable Object stub');
   const fetch: unknown = Reflect.get(stub, 'fetch');
   if (typeof fetch !== 'function') throw new Error('Durable Object stub has no fetch operation');

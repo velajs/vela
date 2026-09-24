@@ -15,6 +15,10 @@ export type {
 export { CloudflareApplication } from './cloudflare-application';
 export type { MountOpenApiOptions } from './cloudflare-application';
 
+// Name-based binding factories: { binding } references resolved from each
+// application's ENV when used
+export { d1, durableObject, kv, queue, r2, rateLimit } from './bindings';
+
 // Storage (multi-disk over R2 + presign proxy)
 export {
   StorageModule,

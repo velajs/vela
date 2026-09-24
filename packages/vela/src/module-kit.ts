@@ -45,6 +45,11 @@ export {
 } from './module/index';
 export type { LazyProviderSpec, ModuleEntryList } from './module/index';
 
+// Bindings referenced by name ({ binding: 'CACHE' }) and resolved from each
+// application's ENV when used: the seam platform binding factories build on
+export { defineBinding, readEnv, resolveBinding } from './binding';
+export type { Binding, BindingKind, BindingRef, EnvFactory } from './binding';
+
 // Discovery — decorator-driven provider discovery
 export { DiscoveryService, createDiscoverableDecorator } from './discovery/index';
 export type {

@@ -1,4 +1,6 @@
 import { observeMessage, parseQueueJob, QueueBatchError } from '@velajs/vela/queue';
+import { resolveBinding } from '@velajs/vela/module-kit';
+import { QUEUE_PRODUCER } from '../bindings';
 import type {
   AddJobOptions,
   QueueDispatchFn,
@@ -108,11 +110,6 @@ function delaySeconds(options: AddJobOptions | undefined): number | undefined {
   return Math.ceil(delayMs / 1000);
 }
 
-function isProducer(value: unknown): value is CloudflareQueueProducer {
-  return (
-    typeof value === 'object' && value !== null && typeof Reflect.get(value, 'send') === 'function'
-  );
-}
 
 function nativeBatch(payload: unknown): { queue: string; messages: QueueMessageLike[] } {
   if (
@@ -202,20 +199,14 @@ function createDriver({ env, queues }: QueueDriverContext): QueueDriver {
           `binding is a queues.producers[].binding of this Worker.`,
       );
     }
-    if (env === undefined) {
+    try {
+      return resolveBinding(env, { binding: registration.binding }, QUEUE_PRODUCER);
+    } catch (error) {
       throw new Error(
-        `cloudflareQueues() needs the Workers ENV to send '${name}' jobs. Build the application ` +
-          `with createCloudflareWorker, createCloudflareApp or cloudflareAdapter.`,
+        `Queue '${name}' cannot send: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
       );
     }
-    const producer: unknown = Reflect.get(env, registration.binding);
-    if (!isProducer(producer)) {
-      throw new TypeError(
-        `ENV.${registration.binding} is not a Cloudflare queue producer binding (queue ` +
-          `'${name}'). Declare it under queues.producers in this Worker's Wrangler configuration.`,
-      );
-    }
-    return producer;
   };
 
   return {
