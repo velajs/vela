@@ -80,6 +80,9 @@ describe('AuthzModule global guards', () => {
   it('installs PermissionGuard and RolesGuard in the authorize phase by default', async () => {
     expect(PermissionGuard.phase).toBe('authorize');
     expect(RolesGuard.phase).toBe('authorize');
+    // Integration routes that authorize themselves (SkipGuardPhases) skip them.
+    expect(PermissionGuard.skippable).toBe(true);
+    expect(RolesGuard.skippable).toBe(true);
     const app = await application();
     const hono = app.getHonoApp();
     try {

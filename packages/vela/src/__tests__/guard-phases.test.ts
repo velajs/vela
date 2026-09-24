@@ -15,13 +15,14 @@ import {
 } from '../index.js';
 import { SkipGuardPhases } from '../module-kit.js';
 
-function phasedGuard(name: string, phase?: GuardPhase) {
+function phasedGuard(name: string, phase?: GuardPhase, skippable = false, allow = true) {
   @Injectable()
   class PhasedGuard implements CanActivate {
     static readonly phase = phase;
+    static readonly skippable = skippable;
     canActivate(): boolean {
       trace.push(name);
-      return true;
+      return allow;
     }
   }
   Object.defineProperty(PhasedGuard, 'name', { value: `${name}Guard` });
@@ -30,7 +31,8 @@ function phasedGuard(name: string, phase?: GuardPhase) {
 
 let trace: string[] = [];
 
-// Each integration installs its guard through the defineModule `global:` slot.
+// Each integration installs its guard through the defineModule `global:` slot,
+// and declares it skippable on the routes of integrations that enforce the phase.
 function guardModule(name: string, guard: ReturnType<typeof phasedGuard>) {
   const { ConfigurableModuleClass } = defineModule<{ guard?: 'global' | 'none' }>({
     name,
@@ -41,10 +43,13 @@ function guardModule(name: string, guard: ReturnType<typeof phasedGuard>) {
   return ConfigurableModuleClass;
 }
 
-const Throttling = guardModule('Throttling', phasedGuard('feature', 'feature'));
-const Authorization = guardModule('Authorization', phasedGuard('authorize', 'authorize'));
-const Tenancy = guardModule('Tenancy', phasedGuard('tenant', 'tenant'));
-const Authentication = guardModule('Authentication', phasedGuard('authenticate', 'authenticate'));
+const Throttling = guardModule('Throttling', phasedGuard('feature', 'feature', true));
+const Authorization = guardModule('Authorization', phasedGuard('authorize', 'authorize', true));
+const Tenancy = guardModule('Tenancy', phasedGuard('tenant', 'tenant', true));
+const Authentication = guardModule(
+  'Authentication',
+  phasedGuard('authenticate', 'authenticate', true),
+);
 
 @Controller('/phased')
 class PhasedController {
@@ -166,6 +171,33 @@ describe('deterministic global guard phases', () => {
       'authorize',
       'feature',
     ]);
+  });
+
+  it("still runs the application's own tenant and authorize guards on routes an integration marks", async () => {
+    const AppTenant = phasedGuard('app-tenant', 'tenant');
+    const AppAuthorize = phasedGuard('app-authorize', 'authorize', false, false);
+    @Controller('/integration')
+    @SkipGuardPhases(['tenant', 'authorize'])
+    class IntegrationController {
+      @Get()
+      get() {
+        return trace;
+      }
+    }
+
+    @Module({
+      imports: [Authorization.forRoot({}), Tenancy.forRoot({})],
+      controllers: [IntegrationController],
+      providers: [AppAuthorize, defineProvider(APP_GUARD, { useExisting: AppAuthorize })],
+    })
+    class AppModule {}
+
+    const app = await VelaFactory.create(AppModule);
+    app.useGlobalGuards(new AppTenant());
+    trace = [];
+    // Only the guards the integrations installed are skipped; the app's deny.
+    expect((await app.getHonoApp().request('/integration')).status).toBe(403);
+    expect(trace).toEqual(['app-tenant', 'app-authorize']);
   });
 
   it('lets integration routes skip only the tenant and authorize phases', () => {

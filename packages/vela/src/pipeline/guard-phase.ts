@@ -4,6 +4,11 @@
  * authorization checks it, then feature guards (throttling, flags) run. A
  * guard declares its phase with `static readonly phase`; undeclared guards run
  * in the `'feature'` phase. Guards keep registration order within a phase.
+ *
+ * A policy guard an integration installs (tenant admission, authorization)
+ * also declares `static readonly skippable = true`, so the routes of another
+ * integration that enforces the phase itself (`SkipGuardPhases`) skip it.
+ * Guards without it, such as the application's own, run on every route.
  */
 export type GuardPhase = 'authenticate' | 'tenant' | 'authorize' | 'feature';
 
@@ -46,12 +51,17 @@ export function guardPhaseRank(value: unknown): number | undefined {
  * Constructed global guards in phase order, keeping registration order within
  * a phase. Transports sort after construction because a guard provided by a
  * factory declares its phase only on the instance it builds. `skip` drops the
- * guards of the phases an integration's route leaves to the integration.
+ * guards of the phases an integration's route leaves to the integration, but
+ * only guards that declare `skippable: true` (the policy guards integrations
+ * install); the application's own guards always run.
  */
 export function orderGuardsByPhase<T>(guards: readonly T[], skip?: ReadonlySet<GuardPhase>): T[] {
   return guards
     .map((guard, index) => ({ guard, index, rank: guardPhaseRank(guard) ?? FEATURE_PHASE_RANK }))
-    .filter(({ rank }) => !skip?.has(GUARD_PHASES[rank]!))
+    .filter(
+      ({ guard, rank }) =>
+        !skip?.has(GUARD_PHASES[rank]!) || declaredField(guard, 'skippable') !== true,
+    )
     .toSorted((a, b) => a.rank - b.rank || a.index - b.index)
     .map(({ guard }) => guard);
 }

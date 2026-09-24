@@ -137,6 +137,8 @@ const installedHosts = new WeakMap<TenantGuard, ModuleRef>();
 export class TenantGuard implements CanActivate {
   /** Global guards admit tenants after authentication and before authorization. */
   static readonly phase: GuardPhase = 'tenant';
+  /** Integration routes marked `SkipGuardPhases(['tenant'])` admit tenants themselves. */
+  static readonly skippable = true;
   readonly #reflector: Reflector;
   constructor(reflector: Reflector) {
     this.#reflector = reflector;

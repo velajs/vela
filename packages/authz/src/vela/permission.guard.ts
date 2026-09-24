@@ -17,6 +17,8 @@ import { getContextIdentity, identityFromTrusted } from './context-identity';
 export class PermissionGuard implements CanActivate {
   /** Global guards authorize after authentication and tenant admission. */
   static readonly phase: GuardPhase = 'authorize';
+  /** Integration routes marked `SkipGuardPhases(['authorize'])` authorize themselves. */
+  static readonly skippable = true;
 
   constructor(private readonly reflector: Reflector) {}
 

@@ -74,11 +74,15 @@ function post(
 describe('GraphQL adapter', () => {
   it('authenticates and admits the tenant on its endpoint but leaves authorization to resolvers', async () => {
     const ran: string[] = [];
-    const policy = (phase: 'authenticate' | 'tenant' | 'authorize') => ({
+    const policy = (
+      phase: 'authenticate' | 'tenant' | 'authorize',
+      owner: 'integration' | 'app' = 'integration',
+    ) => ({
       phase,
+      skippable: owner === 'integration',
       canActivate() {
-        ran.push(phase);
-        return phase !== 'authorize';
+        ran.push(owner === 'app' ? `app ${phase}` : phase);
+        return owner === 'app' || phase !== 'authorize';
       },
     });
     const app = await application({
@@ -87,12 +91,18 @@ describe('GraphQL adapter', () => {
         resolvers: { Query: { value: () => 'ok' } },
       }),
     });
-    // Application-wide guards, as authentication, TenantModule and CedarModule install.
-    app.useGlobalGuards(policy('authenticate'), policy('tenant'), policy('authorize'));
+    // Application-wide guards, as authentication, TenantModule and CedarModule
+    // install, and the application's own authorization guard, which still runs.
+    app.useGlobalGuards(
+      policy('authenticate'),
+      policy('tenant'),
+      policy('authorize'),
+      policy('authorize', 'app'),
+    );
     const response = await post(app, '{ value }');
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ data: { value: 'ok' } });
-    expect(ran).toEqual(['authenticate', 'tenant']);
+    expect(ran).toEqual(['authenticate', 'tenant', 'app authorize']);
   });
 
   it('runs asynchronous field pipes once, intercepts invocation and lets filters return field data', async () => {

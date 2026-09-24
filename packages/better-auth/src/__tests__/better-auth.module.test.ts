@@ -167,11 +167,12 @@ describe('BetterAuthModule', () => {
   it('leaves tenant admission and authorization of its handler to Better Auth', async () => {
     const auth = makeMockAuth();
     const ran: string[] = [];
-    const guard = (phase: 'tenant' | 'authorize' | 'feature') => ({
+    const guard = (phase: 'tenant' | 'authorize' | 'feature', owner: 'integration' | 'app') => ({
       phase,
+      skippable: owner === 'integration',
       canActivate() {
-        ran.push(phase);
-        return phase === 'feature';
+        ran.push(`${owner} ${phase}`);
+        return owner === 'app' || phase === 'feature';
       },
     });
 
@@ -179,13 +180,19 @@ describe('BetterAuthModule', () => {
     class AppModule {}
 
     const app = await VelaFactory.create(AppModule);
-    // Application-wide policy guards, as TenantModule and CedarModule install.
-    app.useGlobalGuards(guard('tenant'), guard('authorize'), guard('feature'));
+    // Application-wide policy guards, as TenantModule and CedarModule install,
+    // and the application's own authorization guard, which still runs.
+    app.useGlobalGuards(
+      guard('tenant', 'integration'),
+      guard('authorize', 'integration'),
+      guard('authorize', 'app'),
+      guard('feature', 'integration'),
+    );
     const res = await app.getHonoApp().request('/api/auth/sign-in', { method: 'POST' });
 
     expect(res.status).toBe(200);
     expect(await res.text()).toBe('better-auth-ok');
-    expect(ran).toEqual(['feature']);
+    expect(ran).toEqual(['app authorize', 'integration feature']);
   });
 
   it('mounts the catch-all controller at a custom basePath', async () => {

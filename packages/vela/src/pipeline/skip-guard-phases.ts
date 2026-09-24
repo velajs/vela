@@ -7,16 +7,20 @@ import {
 
 /**
  * Marks an integration package's own controller, or one of its routes, whose
- * access the integration enforces itself: global guards in the listed phases
- * do not run for it. An authentication handler, for example, is outside
- * application-wide tenant admission and authorization
+ * access the integration enforces itself: the global guards other integrations
+ * install in the listed phases do not run for it. An authentication handler,
+ * for example, is outside application-wide tenant admission and authorization
  * (`SkipGuardPhases(['tenant', 'authorize'])`), and a transport that
  * authorizes each operation is outside route authorization
  * (`SkipGuardPhases(['authorize'])`).
  *
- * Authentication and feature guards (throttling, flags) always run, and so do
- * the route's own `@UseGuards` guards. Applications mark their own routes with
- * each phase's marker instead (`@TenantIgnored()`, `@CedarPublic()`).
+ * Only global guards that declare `static readonly skippable = true` are
+ * skipped: the policy guards integrations install, such as `TenantGuard`,
+ * `PermissionGuard`, `RolesGuard` and `CedarGuard`. The application's own
+ * global guards run in every phase, as do authentication and feature guards
+ * (throttling, flags) and the route's own `@UseGuards` guards. Applications
+ * mark their own routes with each phase's marker instead (`@TenantIgnored()`,
+ * `@CedarPublic()`).
  */
 export const SkipGuardPhases = Reflector.createDecorator<
   readonly SkippableGuardPhase[],

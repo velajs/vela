@@ -145,18 +145,27 @@ describe('StorageModule (multi-disk R2 + presign proxy)', () => {
 
   it('leaves tenant admission and authorization of signed downloads to the signature', async () => {
     const ran: string[] = [];
-    // Application-wide policy guards, as TenantModule and CedarModule install.
-    const policy = (phase: 'tenant' | 'authorize') => {
+    // Application-wide policy guards, as TenantModule and CedarModule install,
+    // and the application's own authorization guard, which still runs.
+    const policy = (phase: 'tenant' | 'authorize', owner: 'integration' | 'app') => {
       const guard = {
         phase,
+        skippable: owner === 'integration',
         canActivate() {
-          ran.push(phase);
-          return false;
+          ran.push(`${owner} ${phase}`);
+          return owner === 'app';
         },
       };
       return defineProvider(APP_GUARD, { useValue: guard });
     };
-    @Module({ imports: [AppModule], providers: [policy('tenant'), policy('authorize')] })
+    @Module({
+      imports: [AppModule],
+      providers: [
+        policy('tenant', 'integration'),
+        policy('authorize', 'integration'),
+        policy('authorize', 'app'),
+      ],
+    })
     class PolicedModule {}
     const bucket = createMockR2();
     const env = { MY_BUCKET: bucket, APP_SECRET: 'test-secret' };
@@ -164,7 +173,7 @@ describe('StorageModule (multi-disk R2 + presign proxy)', () => {
     const hono = app.getHonoApp();
     // The application's own routes are covered.
     expect((await hono.request('/files/sign', undefined, env)).status).toBe(403);
-    expect(ran).toEqual(['tenant']);
+    expect(ran).toEqual(['integration tenant']);
 
     const signer = await createCloudflareApp(AppModule, { env });
     await signer.getHonoApp().request('/files/upload', undefined, env);
@@ -174,7 +183,7 @@ describe('StorageModule (multi-disk R2 + presign proxy)', () => {
     const download = await hono.request(url, undefined, env);
     expect(download.status).toBe(200);
     expect(await download.text()).toBe('hello world');
-    expect(ran).toEqual([]);
+    expect(ran).toEqual(['app authorize']);
   });
 
   it('never renders stored HTML or SVG inline on the authenticated API origin', async () => {

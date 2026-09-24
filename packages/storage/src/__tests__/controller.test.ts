@@ -95,20 +95,26 @@ describe('StorageController', () => {
 
   it('leaves tenant admission and authorization of its routes to the storage authorizer', async () => {
     const ran: string[] = [];
-    // Application-wide policy guards, as TenantModule and CedarModule install.
-    const policy = (phase: 'tenant' | 'authorize') => {
+    // Application-wide policy guards, as TenantModule and CedarModule install,
+    // and the application's own authorization guard, which still runs.
+    const policy = (phase: 'tenant' | 'authorize', owner: 'integration' | 'app') => {
       const guard = {
         phase,
+        skippable: owner === 'integration',
         canActivate() {
-          ran.push(phase);
-          return false;
+          ran.push(`${owner} ${phase}`);
+          return owner === 'app';
         },
       };
       return defineProvider(APP_GUARD, { useValue: guard });
     };
     const moduleRef = await Test.createTestingModule({
       imports: [StorageModule.forRoot({ driver: s3Mock(), http: { authorize: () => true } })],
-      providers: [policy('tenant'), policy('authorize')],
+      providers: [
+        policy('tenant', 'integration'),
+        policy('authorize', 'integration'),
+        policy('authorize', 'app'),
+      ],
     }).compile();
     const app = (await moduleRef.createApplication()).getHonoApp();
     const res = await app.request(
@@ -116,7 +122,7 @@ describe('StorageController', () => {
       post('x', { key: 'a.txt', contentType: 'text/plain' }),
     );
     expect(res.status).toBe(200);
-    expect(ran).toEqual([]);
+    expect(ran).toEqual(['app authorize']);
   });
 
   it('rejects the removed defaultPolicy allow compatibility path at runtime', async () => {
