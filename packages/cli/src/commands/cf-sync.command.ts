@@ -62,7 +62,10 @@ export class CloudflareSyncCommand extends Command {
       return 1;
     }
     const main = wranglerMain(wrangler, this.environment);
-    const loaded = await loadConfig(dirname(path), undefined, { environment: this.environment });
+    const loaded = await loadConfig(dirname(path), undefined, {
+      environment: this.environment,
+      wrangler: path,
+    });
     const facts: CloudflareFacts = await withApp(
       loaded,
       async (app) => ({

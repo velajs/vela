@@ -131,6 +131,21 @@ describe('loading the Worker entry without a vela.config', () => {
     }
   });
 
+  it('loads the Worker entry of an explicitly named Wrangler file', async () => {
+    write(
+      'wrangler.preview.jsonc',
+      '{ "name": "preview", "main": "src/staging.mjs", "vars": { "GREETING": "preview" } }',
+    );
+    const loaded = await loadConfig(project, undefined, { wrangler: 'wrangler.preview.jsonc' });
+    expect(loaded.path).toBe(join(project, 'wrangler.preview.jsonc'));
+    const described = await withApp(
+      loaded,
+      (app) => ({ env: app.get(ENV), prefix: app.getGlobalPrefix() }),
+      () => {},
+    );
+    expect(described).toEqual({ env: { GREETING: 'preview' }, prefix: '/staging' });
+  });
+
   it('explains a Worker entry that is not createCloudflareWorker()', async () => {
     await expect(loadConfig(project, undefined, { environment: 'plain' })).rejects.toThrow(
       /does not default-export createCloudflareWorker\(AppModule\)/,

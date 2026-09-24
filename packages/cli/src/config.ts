@@ -61,6 +61,11 @@ export interface LoadConfigOptions {
   /** The Wrangler environment whose `main`, `vars` and bindings apply (top level when omitted). */
   readonly environment?: string;
   readonly bindings?: WorkerBindings;
+  /**
+   * The Wrangler file to load the Worker entry from when no `vela.config` is
+   * found, instead of the default-named one in `cwd`.
+   */
+  readonly wrangler?: string;
 }
 
 /** A config and the module runner that imported it, as {@link loadConfig} returns it. */
@@ -96,7 +101,16 @@ export async function loadConfig(
   explicitPath?: string,
   options: LoadConfigOptions = {},
 ): Promise<LoadedVelaConfig> {
-  const resolution = await resolveConfig(cwd, explicitPath);
+  let resolution: ConfigResolution;
+  try {
+    resolution = await resolveConfig(cwd, explicitPath);
+  } catch (error) {
+    if (options.wrangler === undefined || explicitPath !== undefined) throw error;
+    resolution = { path: resolve(cwd, options.wrangler), source: 'wrangler', candidates: [] };
+  }
+  if (resolution.source === 'wrangler' && options.wrangler !== undefined) {
+    resolution = { ...resolution, path: resolve(cwd, options.wrangler) };
+  }
   installCloudflareStubs();
   const root = resolve(cwd);
   const runner = await openModuleRunner(root);
