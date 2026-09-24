@@ -3322,7 +3322,7 @@ import "<internal:metadata.d.ts>";
 import { B as SyncDriver, D as WebSocketGatewayOptions, I as WsServer, J as Container, M as WsClient, N as WsExecutionContext, d as PipeTransform, j as WebSocketUpgradeIdentity, k as WebSocketTransport, m as BroadcastOperator, ot as InjectionToken, y as GatewayServer, yt as Type, z as RoomRegistry } from "<internal:types-http-hono.types.d.ts>";
 import { M as ContributesEntrypoints, N as Entrypoint, V as DiscoveryService } from "<internal:request-context.d.ts>";
 import { F as DynamicModule, G as ParameterMetadata, a as NonceStore, f as RouteManager } from "<internal:types-http-version.d.ts>";
-import { sn as ConfigurableModuleClassType, v as OnApplicationBootstrap } from "<internal:index-factory.d.ts>";
+import { sn as ConfigurableModuleClassType, v as OnApplicationBootstrap, x as OnModuleInit } from "<internal:index-factory.d.ts>";
 import { Catalog } from "@velajs/errors";
 import { WebSocketSendGate, WebSocketSendPolicy as WebSocketSendPolicy$1, WebSocketSendResult, WebSocketSendResult as WebSocketSendResult$1, readWebSocketEnvelope } from "@velajs/live-protocol";
 
@@ -3381,14 +3381,19 @@ interface WsEntrypointMeta {
 
 declare function readWsEntrypointMeta(value: unknown): WsEntrypointMeta;
 
-declare class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoints {
+declare class WsDispatcher implements OnModuleInit, OnApplicationBootstrap, ContributesEntrypoints {
   #private;
   constructor(container: Container, discovery: DiscoveryService, server?: WsServer, routeManager?: RouteManager);
 
+  onModuleInit(): Promise<void>;
+  private discoveredGateways;
+
   private gatewayServer;
 
+  private seesOneServer;
+
   private moduleServer;
-  private connectGatewayServers;
+  private resolveModuleServer;
 
   get gatewayPaths(): string[];
 

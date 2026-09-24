@@ -125,12 +125,16 @@ export class WsServerImpl implements WsServer {
  */
 export class GatewayServerHandle implements WsServer {
   #server?: WsServer;
+  #resolve?: () => WsServer | undefined;
 
   constructor(private readonly gatewayName: string) {}
 
-  /** Connect the gateway's server; the first connection wins. */
-  connect(server: WsServer): void {
-    this.#server ??= server;
+  /**
+   * Connect the gateway's server, looked up on first use; the first
+   * connection wins.
+   */
+  connect(resolve: () => WsServer | undefined): void {
+    this.#resolve ??= resolve;
   }
 
   emit(event: string, data?: unknown): void | Promise<void> {
@@ -150,13 +154,14 @@ export class GatewayServerHandle implements WsServer {
   }
 
   #target(): WsServer {
+    this.#server ??= this.#resolve?.();
     if (this.#server) return this.#server;
     throw new Error(
       `${this.gatewayName}'s @WebSocketServer() is not connected: WebSocketModule connects ` +
-        'the server of each gateway it discovers while the application starts. Import ' +
-        "WebSocketModule.forRoot() in the gateway's application. To substitute a test " +
-        "double, provide WS_SERVER in the gateway's module next to that import, or " +
-        'override WS_SERVER in the testing module.',
+        'the server of each gateway it discovers while the application starts, so import ' +
+        "WebSocketModule.forRoot() in the gateway's application. A WS_SERVER without " +
+        'WebSocketModule connects nothing: to push to a test double, keep that import and ' +
+        "provide WS_SERVER in the gateway's module or override WS_SERVER in the testing module.",
     );
   }
 }

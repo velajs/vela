@@ -146,8 +146,11 @@ class GatewayServerImpl<Events extends object> implements GatewayServer<Events> 
  * gateway's sockets, even where another gateway has a room with the same id.
  * A platform transport that delivers pushes receives one `GatewayDelivery`
  * per room (on Cloudflare, a broadcast RPC to that gateway room's Durable
- * Object); otherwise the push goes through the module's sync driver to this
- * process's sockets (and, with `redis()`, to every instance's).
+ * Object), and a push to several rooms rejects with an `AggregateError` that
+ * names each room it failed to reach; otherwise the push goes through the
+ * module's sync driver to this process's sockets (and, with `redis()`, to
+ * every instance's). A push to a gateway whose upgrades a transport forwards
+ * elsewhere, when that transport cannot deliver pushes, rejects.
  */
 @Injectable()
 export class Gateways {
@@ -179,6 +182,16 @@ export class Gateways {
     assertBroadcastCommandFits(command, target.maxFrameBytes);
     const transport = this.platform.transport;
     if (!transport?.deliver) {
+      if (transport?.forwardUpgrade && target.binding !== undefined) {
+        // The upgrade route hands this gateway's sockets to another isolate:
+        // this process's sync driver would reach none of them.
+        throw new Error(
+          `${target.name}'s upgrades are forwarded by the platform transport, so its sockets ` +
+            'live in another isolate, but the transport cannot deliver pushes there. ' +
+            'A transport that implements forwardUpgrade() must also implement ' +
+            'WebSocketTransport.deliver() for Gateways pushes.',
+        );
+      }
       await this.driver.dispatch(command);
       return;
     }
@@ -190,13 +203,32 @@ export class Gateways {
       if (target.binding !== undefined) delivery.binding = target.binding;
       return delivery;
     });
-    const results = await Promise.allSettled(deliveries.map((delivery) => deliver(delivery)));
-    const failures = results.flatMap((result) =>
-      result.status === 'rejected' ? [result.reason] : [],
+    const outcomes = await Promise.all(
+      deliveries.map(async (delivery): Promise<{ room: string; reason: unknown } | undefined> => {
+        try {
+          await deliver(delivery);
+          return undefined;
+        } catch (reason) {
+          return { room: delivery.room, reason };
+        }
+      }),
     );
-    if (failures.length === 1) throw failures[0];
-    if (failures.length > 1) {
-      throw new AggregateError(failures, `${failures.length} ${target.name} room pushes failed`);
-    }
+    const failed = outcomes.filter((outcome) => outcome !== undefined);
+    const [first] = failed;
+    if (first === undefined) return;
+    if (deliveries.length === 1) throw first.reason;
+    // Name each room that missed the push; the others received it.
+    const missed = failed.map(({ room, reason }) => {
+      const name = JSON.stringify(room);
+      return {
+        name,
+        error: new Error(`${target.name} push to room ${name} failed`, { cause: reason }),
+      };
+    });
+    throw new AggregateError(
+      missed.map(({ error }) => error),
+      `${failed.length} of ${deliveries.length} ${target.name} room pushes failed: ` +
+        missed.map(({ name }) => name).join(', '),
+    );
   }
 }

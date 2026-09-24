@@ -18,6 +18,7 @@ import type {
   ExceptionFilter,
   ExecutionContext,
   CallHandler,
+  OnModuleInit,
 } from '../index.js';
 import { buildWsExecutionContext } from '../websocket/ws-execution-context.js';
 import {
@@ -762,6 +763,82 @@ describe('rooms + Server handle', () => {
     }
   });
 
+  it.each([
+    { layout: 'loaded after WebSocketModule', order: 'after', lazy: false },
+    { layout: 'loaded before WebSocketModule', order: 'before', lazy: false },
+    { layout: 'lazy', order: 'after', lazy: true },
+  ])(
+    "connects a gateway's server to an async WS_SERVER its module provides ($layout)",
+    async ({ order, lazy }) => {
+      const pushes: Array<{ rooms: string[]; event: string; data: unknown }> = [];
+      const operator = (rooms: string[]): BroadcastOperator => ({
+        to: (room) => operator([...rooms, room]),
+        in: (room) => operator([...rooms, room]),
+        except: () => operator(rooms),
+        emit(event, data) {
+          pushes.push({ rooms, event, data });
+        },
+      });
+      const double: WsServer = {
+        emit(event, data) {
+          pushes.push({ rooms: [], event, data });
+        },
+        to: (room) => operator([room]),
+        in: (room) => operator([room]),
+        except: () => operator([]),
+      };
+
+      @WebSocketGateway({ path: '/rooms' })
+      class RoomGateway implements OnModuleInit, OnGatewayInit {
+        constructor(@WebSocketServer() readonly server: WsServer) {}
+        onModuleInit() {
+          this.server.emit('module-init', 1);
+        }
+        afterInit(server: WsServer) {
+          server.to('r1').emit('after-init', 2);
+        }
+      }
+
+      @Module({
+        lazy,
+        providers: [
+          RoomGateway,
+          defineProvider(WS_SERVER, {
+            useFactory: async () => {
+              await Promise.resolve();
+              return double;
+            },
+          }),
+        ],
+      })
+      class GatewayModule {}
+
+      // Loaded first, the gateway's module runs its hooks before any hook of
+      // WebSocketModule's providers; loaded last, its async WS_SERVER is still
+      // unresolved while WebSocketModule's providers are constructed. Bootstrap
+      // constructs no provider of a lazy module until something needs one.
+      @Module({
+        imports:
+          order === 'after'
+            ? [WebSocketModule.forRoot(), GatewayModule]
+            : [GatewayModule, WebSocketModule.forRoot()],
+      })
+      class AppModule {}
+
+      const app = await VelaFactory.create(AppModule);
+      try {
+        app.get(RoomGateway).server.to('r2').emit('later', 3);
+        expect(pushes).toEqual([
+          { rooms: [], event: 'module-init', data: 1 },
+          { rooms: ['r1'], event: 'after-init', data: 2 },
+          { rooms: ['r2'], event: 'later', data: 3 },
+        ]);
+      } finally {
+        await app.close();
+      }
+    },
+  );
+
   it("refuses a gateway's pushes without WebSocketModule, naming how to serve or substitute it", async () => {
     @WebSocketGateway({ path: '/rooms' })
     class RoomGateway {
@@ -775,7 +852,7 @@ describe('rooms + Server handle', () => {
     try {
       const { server } = app.get(RoomGateway);
       const guidance =
-        /RoomGateway's @WebSocketServer\(\) is not connected[\s\S]*WebSocketModule\.forRoot\(\)[\s\S]*WS_SERVER/;
+        /RoomGateway's @WebSocketServer\(\) is not connected[\s\S]*WebSocketModule\.forRoot\(\)[\s\S]*WS_SERVER without WebSocketModule connects nothing[\s\S]*keep that import/;
       expect(() => server.emit('everyone')).toThrow(guidance);
       expect(() => server.to('r1')).toThrow(guidance);
     } finally {

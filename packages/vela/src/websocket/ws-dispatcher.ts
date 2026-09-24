@@ -11,7 +11,7 @@ import type { ContributesEntrypoints, Entrypoint } from '../entrypoint/entrypoin
 import { resolveErrorReporter, type ErrorReporter } from '../exceptions/reporter';
 import { instantiateManyAsync } from '../http/instantiate';
 import { RouteManager } from '../http/route.manager';
-import type { OnApplicationBootstrap } from '../lifecycle/index';
+import type { OnApplicationBootstrap, OnModuleInit } from '../lifecycle/index';
 import { shouldFilterCatch } from '../pipeline/decorators';
 import { orderGuardsByPhase } from '../pipeline/guard-phase';
 import { handlerFunction } from '../pipeline/handler-function';
@@ -152,7 +152,7 @@ export function readWsEntrypointMeta(value: unknown): WsEntrypointMeta {
  * `PipelineRunner`.
  */
 @Injectable()
-export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoints {
+export class WsDispatcher implements OnModuleInit, OnApplicationBootstrap, ContributesEntrypoints {
   readonly #gateways = new Map<string, GatewayEntry>();
   readonly #reserved = new Map<string, ReservedEntry>();
 
@@ -175,8 +175,41 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
     this.#server = server;
     this.#routeManager = routeManager;
     // Connect every gateway's @WebSocketServer() before any lifecycle hook
-    // runs, so a gateway may push from its own hooks.
-    this.connectGatewayServers();
+    // runs, so a gateway may push from its own hooks. The server behind it
+    // is looked up on first use: a WS_SERVER provided asynchronously may
+    // still be resolving while this dispatcher constructs.
+    for (const { metatype, meta, moduleIds } of this.discoveredGateways()) {
+      const token = gatewayServerToken(metatype);
+      if (!getConstructorMetadata(metatype).inject.some((entry) => entry.token === token)) continue;
+      this.#container
+        .resolve(token)
+        .connect(() => this.gatewayServer(metatype, meta, () => this.moduleServer(moduleIds[0])));
+    }
+  }
+
+  /**
+   * Resolve each gateway's server, awaiting a `WS_SERVER` provided
+   * asynchronously that bootstrap has not constructed yet (in a lazy module,
+   * say). A provider that fails fails bootstrap.
+   */
+  async onModuleInit(): Promise<void> {
+    for (const { metatype, meta, moduleIds } of this.discoveredGateways()) {
+      if (this.#gatewayServers.has(metatype)) continue;
+      // One provider at a time, in discovery order.
+      // oxlint-disable-next-line no-await-in-loop
+      const server = await this.resolveModuleServer(moduleIds[0]);
+      this.gatewayServer(metatype, meta, () => server);
+    }
+  }
+
+  private discoveredGateways(): Array<{
+    metatype: Type;
+    meta: WebSocketGatewayOptions;
+    moduleIds: string[];
+  }> {
+    return this.#discovery.providersWithMeta<WebSocketGatewayOptions>(WS_GATEWAY_METADATA, {
+      metadataOnly: true,
+    });
   }
 
   /**
@@ -189,11 +222,11 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
   private gatewayServer(
     gatewayClass: Type,
     options: WebSocketGatewayOptions,
-    moduleId: string | undefined,
+    moduleServer: () => WsServer | undefined,
   ): WsServer | undefined {
     let scoped = this.#gatewayServers.get(gatewayClass);
     if (!scoped) {
-      const server = this.moduleServer(moduleId) ?? this.#server;
+      const server = moduleServer() ?? this.#server;
       if (!server) return undefined;
       scoped =
         server.forGateway?.(
@@ -201,39 +234,32 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
           options.maxFrameBytes ?? DEFAULT_WS_MAX_FRAME_BYTES,
         ) ?? server;
       this.#gatewayServers.set(gatewayClass, scoped);
-      const token = gatewayServerToken(gatewayClass);
-      if (getConstructorMetadata(gatewayClass).inject.some((entry) => entry.token === token)) {
-        this.#container.resolve(token).connect(scoped);
-      }
     }
     return scoped;
   }
 
   /**
-   * The `WS_SERVER` a gateway's declaring module sees, when it sees exactly
-   * one. A module that imports several `WebSocketModule` instances keeps the
-   * server of the first dispatcher that connects the gateway.
+   * Whether a gateway's declaring module sees exactly one `WS_SERVER`, which
+   * then serves the gateway. A module that imports several `WebSocketModule`
+   * instances keeps the server of the first dispatcher that connects the
+   * gateway.
    */
-  private moduleServer(moduleId: string | undefined): WsServer | undefined {
-    if (
-      moduleId === undefined ||
-      this.#container.getVisibleProviderSnapshots(WS_SERVER, moduleId).length !== 1
-    ) {
-      return undefined;
-    }
-    return this.#container.resolve(WS_SERVER, moduleId);
+  private seesOneServer(moduleId: string | undefined): moduleId is string {
+    return (
+      moduleId !== undefined &&
+      this.#container.getVisibleProviderSnapshots(WS_SERVER, moduleId).length === 1
+    );
   }
 
-  private connectGatewayServers(): void {
-    for (const {
-      metatype,
-      meta,
-      moduleIds,
-    } of this.#discovery.providersWithMeta<WebSocketGatewayOptions>(WS_GATEWAY_METADATA, {
-      metadataOnly: true,
-    })) {
-      this.gatewayServer(metatype, meta, moduleIds[0]);
-    }
+  /** The module's `WS_SERVER` once constructed, as it is before any lifecycle hook runs. */
+  private moduleServer(moduleId: string | undefined): WsServer | undefined {
+    return this.seesOneServer(moduleId) ? this.#container.resolve(WS_SERVER, moduleId) : undefined;
+  }
+
+  private async resolveModuleServer(moduleId: string | undefined): Promise<WsServer | undefined> {
+    return this.seesOneServer(moduleId)
+      ? this.#container.resolveAsync(WS_SERVER, moduleId)
+      : undefined;
   }
 
   /** Paths of every discovered `@WebSocketGateway` — used by transports to register routes. */
@@ -805,7 +831,7 @@ export class WsDispatcher implements OnApplicationBootstrap, ContributesEntrypoi
       path: options.path ?? '',
       options: { ...options },
       maxFrameBytes,
-      server: this.gatewayServer(gatewayClass, options, moduleId),
+      server: this.gatewayServer(gatewayClass, options, () => this.moduleServer(moduleId)),
       instance,
       gatewayClass,
       moduleId,

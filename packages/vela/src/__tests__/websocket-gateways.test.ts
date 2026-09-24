@@ -206,6 +206,72 @@ describe('Gateways', () => {
     }
   });
 
+  it('names the rooms a multi-room push failed to reach', async () => {
+    const delivered: string[] = [];
+    const outages = new Map([
+      ['b', new Error('room b is unavailable')],
+      ['c', new Error('room c is unavailable')],
+    ]);
+    const transport: WebSocketTransport = {
+      async deliver({ room }) {
+        const outage = outages.get(room);
+        if (outage) throw outage;
+        delivered.push(room);
+      },
+    };
+    const app = await makeApp([transportAdapter(transport)]);
+    try {
+      const chat = app.get(Gateways).of<ChatEvents>(ChatGateway);
+      const failure: unknown = await chat
+        .to('a')
+        .to('b')
+        .to('c')
+        .emit('typing')
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+      expect(failure).toBeInstanceOf(AggregateError);
+      if (!(failure instanceof AggregateError)) return;
+      expect(failure.message).toBe('2 of 3 ChatGateway room pushes failed: "b", "c"');
+      expect(failure.errors.map((error: Error) => [error.message, error.cause])).toEqual([
+        ['ChatGateway push to room "b" failed', outages.get('b')],
+        ['ChatGateway push to room "c" failed', outages.get('c')],
+      ]);
+      expect(delivered).toEqual(['a']);
+
+      // One failed room of two is still named.
+      await expect(chat.to('a').to('b').emit('typing')).rejects.toThrow(
+        '1 of 2 ChatGateway room pushes failed: "b"',
+      );
+      // A push to one room fails with the transport's own error.
+      await expect(chat.to('c').emit('typing')).rejects.toBe(outages.get('c'));
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('refuses to push to a forwarded gateway when the transport cannot deliver pushes', async () => {
+    const transport: WebSocketTransport = {
+      forwardUpgrade: async () => new Response('forwarded'),
+    };
+    const app = await makeApp([transportAdapter(transport)]);
+    try {
+      // ChatGateway names a binding, so its upgrades and sockets live elsewhere.
+      await expect(
+        app.get(Gateways).of<ChatEvents>(ChatGateway).to('general').emit('typing'),
+      ).rejects.toThrow(
+        /ChatGateway's upgrades are forwarded[\s\S]*WebSocketTransport\.deliver\(\)/,
+      );
+      // A gateway without a binding keeps its sockets in this process.
+      const member = await joined(app, 'a1', '/admin/:id/ws', 'ops');
+      await app.get(Gateways).of<ChatEvents>(AdminGateway).to('ops').emit('typing');
+      expect(member.frames).toEqual([{ event: 'typing' }]);
+    } finally {
+      await app.close();
+    }
+  });
+
   it("points the injected server at Gateways when a transport's sockets live elsewhere", async () => {
     const transport: WebSocketTransport = { deliver: async () => {} };
     const app = await makeApp([transportAdapter(transport)]);

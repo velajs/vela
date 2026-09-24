@@ -277,16 +277,19 @@ export interface WebSocketTransport {
   createServer?(driver: SyncDriver): WsServer;
   /**
    * Deliver a `Gateways` push to the isolate that holds one gateway room's
-   * sockets. `Gateways` calls it once per room; without it, pushes go through
-   * the module's sync driver to the gateway's sockets in this process (and,
-   * with `redis()`, on every instance).
+   * sockets. `Gateways` calls it once per room, and a push to several rooms
+   * rejects with an `AggregateError` naming each room whose delivery failed.
+   * Without it, pushes go through the module's sync driver to the gateway's
+   * sockets in this process (and, with `redis()`, on every instance).
    */
   deliver?(delivery: GatewayDelivery): Promise<void>;
   /**
    * Deliver an upgrade to the isolate that holds the room's sockets. When the
    * transport forwards, `WebSocketModule` mounts an upgrade route for each
    * gateway that names a `binding`: the route authenticates the upgrade before
-   * any remote allocation, then calls this method.
+   * any remote allocation, then calls this method. Implement `deliver` too:
+   * a forwarded gateway's sockets are not in this process, so without it a
+   * `Gateways` push to a gateway with a `binding` rejects.
    */
   forwardUpgrade?(upgrade: ForwardedWebSocketUpgrade): Promise<Response>;
   /**
