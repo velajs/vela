@@ -117,10 +117,11 @@ function samePlainData(a: unknown, b: unknown, depth = 0): boolean {
 
 // A handler function reads the metadata of the method it stands for; any other
 // function (a class) reads class metadata, its own or its nearest ancestor's,
-// as does metadata defined on the function itself. A function that stands for several methods whose metadata
-// for `key` differs, such as one inherited method several controllers route
-// and decorate differently, or one wrapper function replacing several methods
-// of a controller, cannot say which one it serves: the read throws.
+// as does metadata defined on the function itself. A function that stands for
+// several methods whose metadata for `key` differs, such as one inherited
+// method several controllers route and decorate differently, or one wrapper
+// function replacing several methods of a controller, cannot say which one it
+// serves: the read throws.
 function readTarget(target: ReflectorTarget, key: string, classes: readonly Type[] = []): unknown {
   const values: unknown[] = [];
   for (const [type, name] of methodsOf(target, classes)) {
