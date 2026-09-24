@@ -11,3 +11,5 @@ Build `BetterAuthModule` on `defineModule`. `basePath`, `mountHandler` and `glob
 **Behavior change:** registrations are keyed by their structural options instead of the auth instance or factory reference, so a second auth configuration with the same base path fails bootstrap instead of becoming another instance. The process-wide reference table is removed. `createBetterAuthCatchallController` returns one class per base path, so a registration imported twice mounts the handler once.
 
 **Behavior change:** `identityFromUser` no longer sets the removed `userId` alias; read `subject` (with `issuer`).
+
+`basePath` (`'/api/auth'`), `globalGuard` (`true`) and `mountHandler` (`true`) have structural defaults, so `forRoot({ auth })` and `forRoot({ auth, globalGuard: true })` are one instance with one catch-all controller instead of two.

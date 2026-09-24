@@ -74,8 +74,10 @@ export interface GraphqlModuleOptions extends GraphqlOptions {
 /** The options `forRootAsync` takes alongside its factory: they shape the module graph. */
 export type GraphqlStructuralOption = 'path' | 'imports';
 
+const DEFAULT_GRAPHQL_PATH = '/graphql';
+
 function graphqlPath(path: string | undefined): string {
-  const resolved = path ?? '/graphql';
+  const resolved = path ?? DEFAULT_GRAPHQL_PATH;
   // Independent linear scans avoid backtracking between segments and optional separators.
   if (
     !resolved.startsWith('/') ||
@@ -127,6 +129,7 @@ function endpointFor(path: string): Endpoint {
 const { ConfigurableModuleClass } = defineModule<GraphqlModuleOptions, GraphqlStructuralOption>({
   name: 'Graphql',
   structural: ['path', 'imports'],
+  defaults: { path: DEFAULT_GRAPHQL_PATH },
   // One endpoint per path: another configuration of a path fails bootstrap.
   key: (options) => graphqlPath(options.path),
   setup: ({ OPTIONS, options }) => {

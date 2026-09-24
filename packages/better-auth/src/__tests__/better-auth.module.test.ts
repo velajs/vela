@@ -167,6 +167,24 @@ describe('BetterAuthModule', () => {
     await app.close();
   });
 
+  it('keys and mounts a registration that spells out the structural defaults once', async () => {
+    const auth = makeMockAuth();
+    const registrations = [
+      BetterAuthModule.forRoot({ auth }),
+      BetterAuthModule.forRoot({ auth, globalGuard: true }),
+      BetterAuthModule.forRoot({ auth, basePath: '/api/auth', mountHandler: true }),
+    ];
+    expect(new Set(registrations.map((registration) => registration.key)).size).toBe(1);
+
+    @Module({ imports: registrations })
+    class AppModule {}
+    const app = await VelaFactory.create(AppModule, { diagnostics: 'throw' });
+    const routes = app.describeRoutes().filter((route) => route.path.startsWith('/api/auth'));
+    expect(routes).toHaveLength(1);
+    expect(app.getContainer().getOwnerModuleIds(BetterAuthService)).toHaveLength(1);
+    await app.close();
+  });
+
   it('forRootAsync defers the auth builder its factory returns until first auth access', async () => {
     const auth = makeMockAuth();
     let factoryCalls = 0;

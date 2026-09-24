@@ -9,3 +9,5 @@ Build `StorageModule` on `defineModule`. `name` and `http` are its structural op
 **Behavior change:** each bucket name is one module instance, keyed by the name (never by a secret). A second registration of a name with different options (another driver, `http` block or authorizer) fails bootstrap instead of becoming another instance, so two features that each need a bucket give them distinct names; and `key` is the standard explicit instance key rather than a namespace combined with the driver identity. The process-wide identity tables, including the one that retained secret strings, are removed.
 
 **Behavior change:** the deprecated `http.defaultPolicy` option is removed; HTTP routes deny every request without `authorize`, as before.
+
+`name` defaults to `'default'` as a structural default, so `forRoot({ driver })` and `forRoot({ driver, name: 'default' })` are one configuration.

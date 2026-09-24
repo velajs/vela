@@ -26,6 +26,8 @@ const { ConfigurableModuleClass } = defineModule<FeatureFlagsOptions, 'globalGua
   optionsToken: FEATURE_FLAG_TOKENS.Options,
   lazy: true,
   structural: ['globalGuard'],
+  // `globalGuard: true` configures what leaving it out does: one instance, one guard.
+  defaults: { globalGuard: true },
   setup: ({ OPTIONS, options }) => ({
     providers: [
       defineProvider(FEATURE_FLAG_TOKENS.DriverRegistry, {

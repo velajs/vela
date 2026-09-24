@@ -163,6 +163,16 @@ describe('StorageModule', () => {
     await app.close();
   });
 
+  it('treats the default bucket name spelled out as the default bucket', async () => {
+    const driver = memoryDriver();
+    const app = await appWith([
+      StorageModule.forRoot({ driver }),
+      StorageModule.forRoot({ driver, name: 'default' }),
+    ]);
+    expect(app.getContainer().getOwnerModuleIds(StorageService)).toEqual(['StorageModule#default']);
+    await app.close();
+  });
+
   it('mounts the routes of an identical repeated registration once', async () => {
     const driver = memoryDriver();
     const authorize = () => true;

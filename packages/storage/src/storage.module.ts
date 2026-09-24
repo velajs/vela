@@ -142,6 +142,7 @@ function buildControllers(
 const { ConfigurableModuleClass } = defineModule<StorageModuleOptions, StorageStructuralOption>({
   name: 'Storage',
   structural: ['name', 'http'],
+  defaults: { name: DEFAULT_STORAGE_NAME },
   // One instance per bucket name: the name decides the provided tokens, so a
   // second registration of a name with different options fails bootstrap
   // rather than serving one bucket through the other's routes. Never keyed by

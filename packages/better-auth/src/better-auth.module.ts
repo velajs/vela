@@ -9,7 +9,7 @@ import type {
   BetterAuthStructuralOption,
 } from './better-auth.types';
 import { AuthGuard } from './guards/auth.guard';
-import { normalizeBetterAuthBasePath } from './base-path';
+import { DEFAULT_BETTER_AUTH_BASE_PATH, normalizeBetterAuthBasePath } from './base-path';
 
 const MODULE_OPTIONS = new InjectionToken<BetterAuthModuleOptions>(
   'vela.better-auth.ModuleOptions',
@@ -48,6 +48,8 @@ const { ConfigurableModuleClass } = defineModule<
   name: 'BetterAuth',
   optionsToken: MODULE_OPTIONS,
   structural: ['basePath', 'globalGuard', 'mountHandler'],
+  // Spelling out a default configures what leaving it out does: one instance.
+  defaults: { basePath: DEFAULT_BETTER_AUTH_BASE_PATH, globalGuard: true, mountHandler: true },
   setup: ({ OPTIONS, options }) => {
     // Validates the mount path when the module is declared, before bootstrap.
     const basePath = normalizeBetterAuthBasePath(options.basePath);
