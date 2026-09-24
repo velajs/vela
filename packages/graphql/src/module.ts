@@ -4,7 +4,7 @@ import {
   defineProvider,
   Inject,
   InjectionToken,
-  Req,
+  Ctx,
   type DynamicModule,
   type ModuleImport,
   type VelaContext,
@@ -101,7 +101,7 @@ export class GraphqlModule {
       'handle',
       Object.getOwnPropertyDescriptor(GraphqlController.prototype, 'handle')!,
     );
-    Req()(GraphqlController.prototype, 'handle', 0);
+    Ctx()(GraphqlController.prototype, 'handle', 0);
     class Registration {}
     return {
       module: Registration,

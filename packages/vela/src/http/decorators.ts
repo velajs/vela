@@ -141,7 +141,7 @@ export interface SchemaParamDecorator {
   (nameOrPipe?: string | PipeType, ...pipes: PipeType[]): ParameterDecorator;
 }
 
-// For @Req, @Res and @Ip, which inject request objects rather than request values.
+// For @Req, @Ctx, @Res and @Ip, which inject request objects rather than request values.
 type PipedParamDecorator = (
   nameOrPipe?: string | PipeType,
   ...pipes: PipeType[]
@@ -190,11 +190,32 @@ export const Param = /* @__PURE__ */ createBuiltinParamDecorator('param');
 export const Query = /* @__PURE__ */ createBuiltinParamDecorator('query');
 export const Body = /* @__PURE__ */ createBuiltinParamDecorator('body');
 export const Headers = /* @__PURE__ */ createBuiltinParamDecorator('headers');
+/**
+ * Injects the platform `Request`, as Nest's `@Req()` injects the request
+ * object. It is the exact request guards and middleware saw.
+ *
+ * @example
+ * ```ts
+ * @Post('/webhook')
+ * handle(@Req() request: Request) { return verify(request); }
+ * ```
+ */
 export const Req: PipedParamDecorator = /* @__PURE__ */ createBuiltinParamDecorator('request');
 /**
- * Injects the Hono `Context` as the response handle.
- * In Hono, request and response state are unified in the `Context` object,
- * so `@Res()` and `@Req()` both return it.
+ * Injects the Hono `Context` (`VelaContext`): request helpers, response
+ * headers and cookies, and the typed environment.
+ *
+ * @example
+ * ```ts
+ * @Get('/session')
+ * handle(@Ctx() c: VelaContext) { return c.req.header('accept'); }
+ * ```
+ */
+export const Ctx: PipedParamDecorator = /* @__PURE__ */ createBuiltinParamDecorator('context');
+/**
+ * Injects the Hono `Context` as the response handle. In Hono, request and
+ * response state are unified in the `Context` object, so `@Res()` returns the
+ * same object as `@Ctx()`.
  *
  * Use `c.header()`, `c.setCookie()`, `c.redirect()`, etc. for response control.
  *

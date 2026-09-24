@@ -1,4 +1,4 @@
-import { Controller, Get, Inject, Req } from '@velajs/vela';
+import { Controller, Ctx, Get, Inject } from '@velajs/vela';
 import { joinStoragePath } from '@velajs/vela/storage';
 import { STORAGE_SIGNED_URL_PURPOSE, verifySignedUrl } from '@velajs/vela/security';
 import type { Context } from 'hono';
@@ -23,7 +23,7 @@ export class StorageController {
   ) {}
 
   @Get('/:disk')
-  async download(@Req() c: Context): Promise<Response> {
+  async download(@Ctx() c: Context): Promise<Response> {
     const secret = this.options.secret;
     if (!secret) return new Response('Storage signing is not configured', { status: 500 });
 

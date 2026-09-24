@@ -1,5 +1,4 @@
 import { All, Controller, Inject, Req, type Type } from '@velajs/vela';
-import type { Context } from 'hono';
 import { BetterAuthService } from './better-auth.service';
 import { Public } from './decorators/public.decorator';
 import { normalizeBetterAuthBasePath } from './base-path';
@@ -28,8 +27,8 @@ export function createBetterAuthCatchallController(basePath: string = '/api/auth
     constructor(@Inject(BetterAuthService) private readonly auth: BetterAuthService) {}
 
     @All('/*')
-    async handle(@Req() c: Context): Promise<Response> {
-      return this.auth.handler(c.req.raw);
+    async handle(@Req() request: Request): Promise<Response> {
+      return this.auth.handler(request);
     }
   }
   return BetterAuthCatchallController;

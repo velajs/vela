@@ -80,8 +80,8 @@ describe('AuthGuard', () => {
     @UseGuards(AuthGuard)
     class IdentityController {
       @Get()
-      identity(@Req() context: { req: { raw: Request } }) {
-        return getTrustedRequestIdentity(context.req.raw);
+      identity(@Req() request: Request) {
+        return getTrustedRequestIdentity(request);
       }
     }
 

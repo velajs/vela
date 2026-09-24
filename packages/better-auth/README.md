@@ -263,7 +263,7 @@ import { BetterAuthService, Public } from '@velajs/better-auth';
 @Controller('/auth')
 class CustomCatchallController {
   constructor(@Inject(BetterAuthService) private auth: BetterAuthService) {}
-  @All('/*') handle(@Req() c: Context) { return this.auth.handler(c.req.raw); }
+  @All('/*') handle(@Req() request: Request) { return this.auth.handler(request); }
 }
 ```
 
