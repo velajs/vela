@@ -47,7 +47,8 @@ it('serves, processes jobs and runs cron jobs', async () => {
 ```
 
 `createTestingWorker(rootModule, options)` accepts the options of
-`createCloudflareWorker()` (`globalPrefix`, `security`, `adapters`, …) plus:
+`createCloudflareWorker()` (`globalPrefix`, `security`, `adapters`, and the
+`configure(app, env)` hook, which it runs on the application it builds) plus:
 
 - `env`: the environment the application is built for and every event carries.
   It defaults to the pool's `env` from `cloudflare:workers`.
